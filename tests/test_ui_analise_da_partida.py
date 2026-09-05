@@ -1,8 +1,8 @@
 """A análise da partida inteira, sem motor e sem janela (S-537).
 
 Três coisas se afirmam aqui, e nenhuma delas precisa do Stockfish: **onde estão os cortes** de
-`?!`/`?`/`??`, **como a perda é medida** (com o teto que impede o falso erro grave numa partida já
-decidida) e **onde o gráfico põe cada ply**.
+`?!`/`?`/`??` (em expectativa de vitória desde a segunda rodada), **como a perda é medida** e
+**onde o gráfico põe cada ply**.
 
 O que este arquivo deliberadamente não mede é o laço do motor: ele é fiação, roda numa `QThread` e
 está em `tests/test_qt_motor.py`.
@@ -15,6 +15,7 @@ import unittest
 
 import chess.pgn
 
+from chess_diagram_ocr.engine import fracao_de_vantagem
 from chess_diagram_ocr.ui import analise_da_partida as ap
 
 
@@ -25,24 +26,39 @@ def _jogo(movetext: str) -> chess.pgn.Game:
 
 
 class CortesTests(unittest.TestCase):
-    """A tabela do `lila`: 50, 100 e 300 centipeões de perda."""
+    """8, 15 e 25 pontos percentuais de expectativa de vitória perdidos (S-537, 2ª rodada)."""
 
-    def test_os_tres_cortes_sao_50_100_e_300(self) -> None:
-        """São a tabela clássica do Lichess (`Advice.scala`) e a mesma que o Scid usa. Cinquenta
-        centipeões é meio peão, que é a menor perda que muda o plano de quem joga."""
-        self.assertEqual("", ap.classificar(49))
-        self.assertEqual(ap.IMPRECISAO, ap.classificar(50))
-        self.assertEqual(ap.IMPRECISAO, ap.classificar(99))
-        self.assertEqual(ap.ERRO, ap.classificar(100))
-        self.assertEqual(ap.ERRO, ap.classificar(299))
-        self.assertEqual(ap.ERRO_GRAVE, ap.classificar(300))
-        self.assertEqual(ap.ERRO_GRAVE, ap.classificar(2000))
+    def test_os_tres_cortes_sao_8_15_e_25_pontos_de_expectativa(self) -> None:
+        """**A escala é a chance de ganhar, e não o peão.** Em 256 lances de três partidas de
+        torneio, a tabela em centipeões discorda do Lichess em 14 juízos e esta em 4 -- porque
+        meio peão perdido no equilíbrio muda a partida e o mesmo meio peão com nove de vantagem
+        não muda nada."""
+        self.assertEqual("", ap.classificar(7.9))
+        self.assertEqual(ap.IMPRECISAO, ap.classificar(8))
+        self.assertEqual(ap.IMPRECISAO, ap.classificar(14.9))
+        self.assertEqual(ap.ERRO, ap.classificar(15))
+        self.assertEqual(ap.ERRO, ap.classificar(24.9))
+        self.assertEqual(ap.ERRO_GRAVE, ap.classificar(25))
+        self.assertEqual(ap.ERRO_GRAVE, ap.classificar(100))
+
+    def test_a_expectativa_e_a_curva_da_barra_e_nao_uma_segunda(self) -> None:
+        """Uma segunda logística aqui daria um juízo discordando do desenho ao lado dele -- é o
+        defeito que a S-529 registra para a curva da barra."""
+        self.assertAlmostEqual(50.0, ap.expectativa(0))
+        self.assertAlmostEqual(100 * fracao_de_vantagem(300, None), ap.expectativa(300))
+        self.assertGreater(ap.expectativa(100) - ap.expectativa(0), ap.expectativa(900) - ap.expectativa(800))
 
     def test_a_maioria_dos_lances_nao_recebe_simbolo(self) -> None:
         """A marca só vale enquanto for rara: uma partida em que metade dos lances é `?!` não diz
-        nada sobre a partida."""
+        nada sobre a partida. Medido: 29 lances marcados em 256."""
         self.assertEqual("", ap.classificar(0))
-        self.assertEqual("", ap.classificar(30))
+        self.assertEqual("", ap.classificar(5))
+
+    def test_a_partida_do_critico_sai_como_o_lichess_nos_dois_lances_que_ele_nomeou(self) -> None:
+        """`9...O-O` (0,46 -> 2,94) saía `?` e o Lichess dá `??`; `27...Kh7` (+3,04 -> +3,86) saía
+        `?!` e o Lichess não marca nada. Os dois números são da partida ALG-ch Women 2012."""
+        self.assertEqual(ap.ERRO_GRAVE, ap.julgar(46, 294, brancas_jogaram=False)[1])
+        self.assertEqual("", ap.julgar(304, 386, brancas_jogaram=False)[1])
 
     def test_cada_juizo_vira_o_NAG_do_padrao_PGN(self) -> None:
         """**É o que faz a análise sobreviver ao arquivo**: `$4` é lido por qualquer programa de
@@ -73,10 +89,10 @@ class PerdaTests(unittest.TestCase):
         self.assertEqual(ap.TETO_DE_AVALIACAO, antes)
         self.assertEqual(0, ap.perda_do_lance(antes, depois, brancas_jogaram=True))
 
-    def test_a_posicao_decidida_nao_recebe_juizo_mesmo_com_perda(self) -> None:
-        """**O caso que o teto sozinho não resolve, e foi medido**: +18 -> +9 clampa em 1000 -> 900
-        e sai como "erro" numa posição em que qualquer lance ganha. A regra da posição decidida é o
-        que o Lichess resolve pela escala de expectativa de vitória, dita aqui em voz alta."""
+    def test_a_posicao_ja_ganha_nao_recebe_juizo_e_ja_nao_precisa_de_regra(self) -> None:
+        """**O caso que criou a regra da "posição decidida", e que a escala nova resolve sozinha**:
+        +18 -> +9 clampa em 1000 -> 900 e saía como "erro" numa posição em que qualquer lance
+        ganha. Em expectativa de vitória isso custa 0,24 ponto, e nem chega perto do corte."""
         perda, juizo = ap.julgar(
             ap.avaliacao_em_centipeoes(1800, None),
             ap.avaliacao_em_centipeoes(900, None),
@@ -84,11 +100,22 @@ class PerdaTests(unittest.TestCase):
         )
         self.assertEqual(100, perda, "a perda continua sendo medida e mostrada")
         self.assertEqual("", juizo)
+        self.assertLess(ap.perda_de_expectativa(1000, 900, brancas_jogaram=True), 1.0)
+
+    def test_a_posicao_ja_perdida_tambem_nao_recebe_juizo(self) -> None:
+        """**O outro lado da regra que sumiu, e o defeito que o crítico achou.** `POSICAO_DECIDIDA`
+        media `min` do ponto de vista de quem jogou: ela protegia quem estava ganhando e deixava
+        quem estava perdido levar `erro grave` por cair de -6 para -10. Em expectativa isso custa
+        2,75 pontos, para os dois lados, e não há regra nenhuma a acertar."""
+        _perda, juizo = ap.julgar(600, 1000, brancas_jogaram=False)
+        self.assertEqual("", juizo)
+        _perda, juizo = ap.julgar(-600, -1000, brancas_jogaram=True)
+        self.assertEqual("", juizo)
 
     def test_cair_de_ganho_para_apenas_melhor_continua_sendo_erro(self) -> None:
-        """A regra é dos **dois** lados: quem sai de +6 e para em +2 jogou fora a partida ganha."""
+        """Quem sai de +6 e para em +2 jogou fora a partida ganha: 21 pontos de chance."""
         _perda, juizo = ap.julgar(600, 200, brancas_jogaram=True)
-        self.assertEqual(ap.ERRO_GRAVE, juizo)
+        self.assertEqual(ap.ERRO, juizo)
 
     def test_a_regra_da_decisao_vale_para_as_pretas_com_o_sinal_trocado(self) -> None:
         _perda, juizo = ap.julgar(-1800, -900, brancas_jogaram=False)
@@ -133,7 +160,24 @@ class PercursoTests(unittest.TestCase):
         self.assertEqual((), passos)
 
 
-def _avaliado(ply: int, cp: int, perda: int = 0, mate: int | None = None) -> ap.Avaliado:
+def _avaliado(
+    ply: int,
+    cp: int,
+    perda: int = 0,
+    mate: int | None = None,
+    *,
+    chance: float | None = None,
+    profundidade: int = 0,
+    acabou: bool = False,
+) -> ap.Avaliado:
+    """Um `Avaliado` para o teste. `chance` é a perda de expectativa; sem ela, a do peão.
+
+    Sem `chance`, o lance é tratado como se tivesse saído **do equilíbrio** e perdido `perda`
+    centipeões: é a conversão que a própria `perda_de_expectativa` faz, e não uma segunda régua.
+    """
+    pontos = (
+        ap.perda_de_expectativa(0, -int(perda), brancas_jogaram=True) if chance is None else float(chance)
+    )
     return ap.Avaliado(
         ply=ply,
         numero=(ply + 1) // 2,
@@ -142,7 +186,10 @@ def _avaliado(ply: int, cp: int, perda: int = 0, mate: int | None = None) -> ap.
         centipeoes=cp,
         mate_em=mate,
         perda=perda,
-        juizo=ap.classificar(perda),
+        juizo=ap.classificar(pontos),
+        perda_de_chance=pontos,
+        profundidade=profundidade,
+        acabou=acabou,
     )
 
 

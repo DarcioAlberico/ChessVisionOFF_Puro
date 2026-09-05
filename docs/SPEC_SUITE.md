@@ -450,8 +450,43 @@ enquanto a lista de lances tinha metade da altura vazia. E `Evaluation` ganhou `
 lidos do `info` do UCI.
 
 **Sem motor, nada disso existe** -- nem a barra, nem a seção, nem o grupo Motor da fila. É o
-contrato da S-33, e a barra entrou nele: 18 px tomados do tabuleiro para mostrar o que nunca terá
-número seriam 18 px de promessa.
+contrato da S-33, e a barra entrou nele: pixels tomados do tabuleiro para mostrar o que nunca terá
+número seriam pixels de promessa.
+
+#### O que a segunda rodada trocou (2026-09-04)
+
+O crítico reprovou o item em três pontos, e os três eram da **barra**. Os consertos:
+
+1. **O mate deixou de ser a faixa e passou a ser o fio.** A barra de mate está cheia por
+   construção (`fracao_de_vantagem` devolve 1 ou 0), então "pintar de âmbar a faixa de quem
+   mateia" pintava a barra **inteira** de âmbar nos dois casos: `M3` e `-M3` saíam com **zero**
+   pixel de diferença. Agora a faixa cheia é da cor **do lado** -- branca em `M3`, preta em `-M3`
+   -- e o âmbar é a moldura, com o dobro da espessura. O que ele dizia continua sendo dito; mudou
+   onde.
+2. **A barra passou de 18 para 26 px e o rótulo perdeu o sinal.** Em Consolas 7pt -- a fonte de
+   dado desta janela --, `-12,34` ocupa 30 px e `12,34` ocupa 25. Com 18 px o número saía cortado
+   no meio, e um `12` sem sinal nem casas decimais **afirma outra avaliação**. O sinal sai porque
+   a posição do número já o diz (embaixo = brancas melhor), que é a regra do Lichess; e o corpo da
+   fonte desce de um em um ponto até caber. **O que nem no menor corpo couber não é escrito**:
+   o número inteiro continua na seção do motor, e escrever cortado é pior que não escrever.
+3. **O fio da barra passou a seguir a pele.** `tokens.MOLDURA` é superfície e escurece junto com o
+   cromo: na pele Foco ela dava `#1f1d1b` sobre `#1f2124` -- **1,04:1** --, e a faixa preta dava
+   **1,17:1**. A barra inteira sumia da janela escura. O fio agora é a tinta oposta ao fundo:
+   `MOLDURA` (14,74:1) na pele clara, `GLIFO_CLARO` (15,20:1) na escura.
+
+E quatro dos "deveria" dele:
+
+4. **A lista MultiPV guarda o lugar.** `setHtml` troca o documento inteiro, e o motor responde a
+   cada ~900 ms: quem tinha rolado até a nona linha ou selecionado uma para copiar perdia as duas
+   coisas. Agora HTML igual **não** é redesenhado (o caso comum numa posição parada), e quando ele
+   muda a rolagem e as pontas da seleção são repostas.
+5. **As linhas saem ordenadas pela avaliação.** O MultiPV do Stockfish é a ordem da iteração
+   anterior, e com dez linhas o crítico viu `-3,09` acima de `-3,04`. O índice **não** é
+   reordenado junto: ele é a âncora do clique, e é a posição na lista que a sala guarda.
+6. **A barra espelha com o tabuleiro** (`virado=`), como no Lichess -- ver a linha do relatório
+   abaixo para a fiação que falta.
+7. **`titulo_da_secao`** monta `Motor (Stockfish dev-20230303)` a partir do `id name` do UCI, em
+   vez do nome do arquivo -- também à espera de duas linhas na sala.
 
 ### Critério de aceite
 
@@ -480,6 +515,24 @@ dev-20230303), roteiro `scratchpad/roteiro_motor.py`, na defesa de Legall após 
   mora dentro do arranjo da coluna do tabuleiro, e recriá-lo mexeria na repartição que a S-551
   calcula. Ela chega na abertura seguinte.
 
+#### Segunda rodada, medida em 2026-09-04
+
+- **`M3` e `-M3` desenham diferente.** ✅ **6.504 pixels de 7.800** numa barra de 26×300 (era
+  **0**), e a barra sozinha, sem rótulo, difere em 6.512. `M3` é `GLIFO_CLARO` de ponta a ponta e
+  `-M3` é `GLIFO_ESCURO`; `M3` contra `+20,00` difere em 1.392 pixels, que é o fio âmbar de 2 px.
+- **O rótulo cabe.** ✅ `1,61` e `1,72` legíveis dentro da barra nas fotos de 1400×950 e 1920×1080
+  (ampliação 6×). O que não cabe não é desenhado: com um rótulo grande demais a barra fica
+  **idêntica** à barra sem rótulo, medido em pixel.
+- **A barra se vê na pele Foco.** ✅ Fio a **15,20:1** contra o fundo `#1f2124` (era 1,04:1), e a
+  foto da sala mostra a barra ao lado do tabuleiro nas três peles. O fio de mate fica em 5,20:1
+  (clara) e 5,09:1 (escura) -- os dois acima do piso de 3:1 para objeto gráfico.
+- **A lista não volta ao topo.** ✅ Com `MultiPV 10` e a análise contínua: a rolagem fica onde
+  estava e a seleção sobrevive (medido pelo reprodutor do crítico -- antes `''`, agora a mesma
+  faixa de texto com o número atualizado).
+- **As linhas saem ordenadas.** ✅ Na Ruy Lopez após `6...b5`, dez linhas em ordem crescente para
+  quem joga; o crítico tinha `-3,09` acima de `-3,04`.
+- **O custo do tabuleiro subiu 8 px** com a barra mais larga: de 18 para 26 px de barra.
+
 ### Testes
 
 - `tests/test_ui_motor_declarado.py` (novo, puro): a curva é a de `engine` e não uma segunda; a
@@ -496,9 +549,43 @@ dev-20230303), roteiro `scratchpad/roteiro_motor.py`, na defesa de Legall após 
 - `tests/test_engine.py::test_o_mate_ja_dado_aponta_para_quem_o_deu` (novo): ver a S-537 -- o
   defeito era da barra também.
 
+Na segunda rodada, em `tests/test_qt_motor.py::BarraDeAvaliacaoTests`: `M3` e `-M3` diferindo em
+mais de metade da barra e cada um na cor do seu lado; o fio de mate em âmbar e com 2 px; o fio
+mudando de papel com o cromo, medido no pixel e não na constante; a barra espelhando com o
+tabuleiro virado; e o rótulo grande demais **não** sendo desenhado. Em
+`tests/test_qt_motor.py::LinhasDoMotorTests` (novo): a rolagem e a seleção sobrevivendo à resposta
+seguinte, e o HTML igual não redesenhando (o mesmo `QTextDocument` antes e depois). Em
+`tests/test_ui_motor_declarado.py`: o contraste do fio nas duas peles calculado no teste, o rótulo
+sem sinal, o título com o nome UCI, a frase do binário que não é motor, e a ordenação das linhas
+com o índice **não** reordenado junto.
+
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+Primeira rodada, 2026-09-04. Reprovada em três pontos; os reprodutores dele estão em
+`scratchpad/crit_motor/` (`crit_mate.py`, `crit_barra.py`, `crit_linhas.py`).
+
+| O que ele achou | Como estava | O que mudou |
+|---|---|---|
+| **`M3` e `−M3` desenham a mesma barra** — 0 px de diferença, âmbar cheio nos dois | o mate pintava a **faixa** de quem mateia, e a faixa de mate é a barra inteira | a faixa cheia passou a ser a cor **do lado**; o âmbar virou o fio, com 2 px. Medido: 6.504 px de 7.800 diferentes |
+| **O rótulo sai cortado e perde o sinal** — `−12,34` vira `12` (precisa de 25 a 30 px, há 18) | barra de 18 px e rótulo com sinal, em Consolas 7pt | barra de 26 px, rótulo **sem sinal** (a posição já o diz), corpo que desce até caber, e nada desenhado quando não cabe |
+| **Na pele Foco a barra some** — faixa a 1,17:1 e moldura a 1,04:1 contra o fundo | o fio era `tokens.MOLDURA`, que é superfície e escurece com o cromo | o fio segue a pele: `MOLDURA` na clara (14,74:1), `GLIFO_CLARO` na escura (15,20:1) |
+| A barra não vira com o tabuleiro | nada perguntava pela orientação | `BarraDeAvaliacao(virado=...)`, perguntado no `paintEvent` como a caixa. **Falta uma linha na sala** — ver abaixo |
+| A lista MultiPV volta ao topo a cada resposta (~0,9 s), perdendo rolagem e seleção | `setHtml` a cada resposta | HTML igual não redesenha; quando muda, rolagem e seleção são repostas |
+| As linhas não estão ordenadas por avaliação (`−3,09` acima de `−3,04` com MultiPV 10) | a ordem era a que o motor devolveu, que é a da iteração anterior | `linhas_do_motor` ordena pela avaliação do lado que joga, **sem** reordenar o índice (ele é a âncora do clique) |
+| Não dá para copiar uma linha (o `setHtml` apaga a seleção) | idem | as pontas da seleção são anotadas e repostas |
+| O título diz `Motor (stockfish.exe)` em vez do nome UCI | o título usava `path.name` | `motor_declarado.titulo_da_secao` monta `Motor (Stockfish dev-20230303)`. **Faltam duas linhas na sala** — ver abaixo |
+
+**As três linhas que faltam, e por que elas não estão escritas.** As três moram em
+`qt/painel_de_estudo.py`, e a Fase 83 está escrevendo naquele arquivo agora -- este executor foi
+instruído a não abri-lo. Elas são:
+
+1. `BarraDeAvaliacao(coluna, caixa=self._caixa_do_tabuleiro, virado=lambda: self.estudo.invertido)`
+   em `_montar_a_coluna_do_tabuleiro` (a barra espelhar);
+2. `QGroupBox(motor_declarado.titulo_da_secao(self._analyzer.name, self._analyzer.path.name), pai)`
+   em `_secao_do_motor`, e a mesma troca na linha que refaz o título ao trocar de binário.
+
+Enquanto elas não entram, o mecanismo existe e é afirmado por teste sobre o widget; o que não
+acontece é a sala usá-lo.
 
 ## S-530 · O cabeçalho da partida (jogadores, Elo, evento, data, resultado) visível e editável — ✅ **implementada em 2026-09-04**
 
@@ -1383,7 +1470,22 @@ Medido em 2026-09-04, Stockfish dev-20230303, máquina de 12 núcleos e 32.377 M
 
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+Primeira rodada, 2026-09-04. **Aprovada com uma ressalva**, e ela era a única coisa que a S-33 não
+cobria: o binário que abre e **não fala UCI**.
+
+| O que ele achou | Como estava | O que mudou |
+|---|---|---|
+| Apontar as preferências para `python.exe` dá dez segundos de espera e depois a frase `TimeoutError`, crua e em inglês | `popen_uci` levanta `TimeoutError`, cujo `str()` é **vazio**; `cli.message_for` cai então no nome da classe | `engine.MotorNaoRespondeu`, com a frase de `motor_declarado.frase_de_motor_que_nao_responde`. Ela nomeia o arquivo, o que falhou e o que sobrou: *"O programa em ... não respondeu ao protocolo UCI em dez segundos. Ou ele não é um motor de xadrez, ou não conseguiu abrir. A sala segue sem motor."* |
+| — | — | **E a primeira tentativa de conserto não pegou**, o que virou uma linha de docstring: no Python 3.10 `asyncio.TimeoutError` **não** é o `TimeoutError` embutido (só a partir do 3.11 um é apelido do outro), e capturar o embutido deixava a palavra `TimeoutError` na tela do mesmo jeito. Os dois estão em `engine.FALHAS_AO_ABRIR` |
+
+Ele confirmou o resto: nenhum processo vaza, a janela não congela (653 voltas de linha de eventos
+durante os 10 s da espera), a seção some quando o motor não sobe, os tetos e as cinco recusas de
+validação estão certos.
+
+- `tests/test_engine.py::test_um_binario_que_nao_fala_uci_levanta_a_frase_em_pt_br` (novo) e
+  `tests/test_ui_motor_declarado.py::test_a_frase_do_binario_que_nao_e_motor_nomeia_o_arquivo_e_o_que_sobrou`
+  (novo). O teste usa um binário que **morre** em vez de calar -- o caminho de tradução é o mesmo e
+  não custa os dez segundos da suíte.
 
 ## S-537 · Análise de partida: cada lance avaliado, gráfico de avaliação e erros marcados — ✅ **implementada em 2026-09-04**
 
@@ -1448,6 +1550,38 @@ linha do equilíbrio tracejada por cima, e um ponto sobre cada lance julgado. A 
 preenchia só a área entre a curva e o meio, com uma cor: na fotografia o gráfico saiu inteiro claro
 e não dava para ver de quem era a partida em ponto nenhum.
 
+#### O que a segunda rodada trocou (2026-09-04)
+
+O crítico reprovou o item em três pontos, e o primeiro derruba a decisão 2 acima.
+
+1. **O juízo passou a ser medido em expectativa de vitória, e a "posição decidida" sumiu.** A
+   tabela em centipeões discordava do Lichess em **6 dos 12** juízos de uma partida de torneio
+   real, e a razão é estrutural: meio peão não vale o mesmo no equilíbrio e com nove peões de
+   vantagem. A escala nova é a **mesma curva** que a barra desenha (`engine.fracao_de_vantagem`),
+   em pontos percentuais, e os cortes foram **medidos** e não convertidos: 256 lances de três
+   partidas do gigabase, profundidade 16. Ver `_CORTES` para a varredura. Com isso a regra
+   `POSICAO_DECIDIDA` deixou de ser necessária -- ela existia para tapar um caso que a escala de
+   peões criava, e o crítico tinha achado **o outro lado dela**: com as pretas perdidas, cair de
+   -6 para -10 saía como *erro grave*, porque a regra media `min` do ponto de vista de quem jogou
+   e só protegia quem estava ganhando. Na escala nova esse lance custa 2,75 pontos de chance, e
+   o caso original (+18 → +9) custa 0,24. Uma regra a menos, e a que sumiu era a defeituosa.
+2. **O teto por posição passou a escalar com a profundidade, e o que ele trunca é contado.** Pedir
+   30 dava, medido pelo crítico, 41 de 46 posições paradas no teto de 3 s e profundidade média de
+   23,5: a profundidade que o diálogo oferece **não existia**, e a tela não dizia isso. Agora o
+   teto é `3 s × 1,4^(plies-16)`, limitado a 30 s (`teto_por_lance_ms`), e o relatório traz um
+   segundo rótulo com quantas posições pararam antes de chegar lá. O 1,4 é medido: ver
+   `FATOR_DE_TETO_POR_PLY`.
+3. **O relatório ganhou precisão e ACPL**, que eram os dois números que a ChessBase e o Lichess
+   põem no topo e que não apareciam em lugar nenhum. A fórmula de precisão é a do Lichess
+   (`103,1668·e^(-0,04354·perda) - 3,1669`, média por lance) aplicada à expectativa **daqui**.
+
+E mais três dos "deveria" dele: o progresso conta a partir de **1** e sobre o número de lances (a
+tela dizia `lance 0 de 62` numa partida de 61); o gráfico ganhou **marca do lance corrente** (um
+fio vertical) e **dica** com o ply, o lance e a avaliação sob o ponteiro; e a lista de lances
+deixou de escrever `g6 ?` com espaço -- o símbolo cola no lance, como o EPUB já fazia
+(`estudo_paragrafos._COLA_NO_ANTERIOR`), com o espaço guardado em `Trecho.token` para o texto
+continuar igual ao do exportador.
+
 **Um defeito de `engine.py` apareceu na fotografia e foi consertado aqui.** `score mate 0` -- o que
 o UCI responde na posição em que quem joga está mateado -- **não carrega sinal**: `Mate(0)` e
 `MateGiven` respondem `0` a `.mate()`. Sem normalizar, a posição final de toda partida ganha valia
@@ -1487,6 +1621,41 @@ Medido em 2026-09-04, Stockfish dev-20230303, 1 thread, `Hash` 128 MB.
   e o Cancelar tem a granularidade de uma posição, porque interromper um `go` no meio exigiria o
   protocolo assíncrono do UCI -- uma segunda forma de falar com o motor por causa de um botão.
 
+#### Segunda rodada, medida em 2026-09-04
+
+Stockfish dev-20230303, 1 thread, `Hash` 16 MB, profundidade 16. A partida do crítico é
+`Nouali - Boudechiche, ALG-ch (Women) 2012`, 61 plies, tirada de 55% do gigabase.
+
+- **Os juízos concordam com o Lichess.** ✅ Em 256 lances de três partidas: a tabela em centipeões
+  discordava em **14**, a escala de expectativa discorda em **4**. Na partida do crítico, de **6**
+  para **2**. Os dois lances que ele nomeou saem certos: `9...O-O` (0,46 → 2,94) agora é `??` como
+  no Lichess, e `27...Kh7` (+3,04 → +3,86) deixou de ser marcado.
+- **A varredura dos cortes.** ✅ Platô de 4 divergências entre 24 e 26 (erro grave), 15 e 16 (erro)
+  e 8 (imprecisão); 25/15/8 é o meio dele. Marcados: 29 lances de 256, contra 28 do Lichess e 32 da
+  tabela em peões.
+- **A posição decidida, dos dois lados.** ✅ +18 → +9 custa **0,24** ponto de chance; as pretas
+  perdidas de −6 → −10 custam **2,75** -- nenhum dos dois recebe símbolo, e agora **sem regra**.
+- **O custo de cada profundidade, remedido sem teto** (13 posições da partida, extrapolado para as
+  62): **10 s** a 16, **44 s** a 20, **3 min** a 24 e **16 min** a 30 -- 1,4 por ply. O pior caso
+  por posição vai de 0,55 s a 16 até 34,2 s a 30. Com o teto novo, as profundidades 16, 20 e 24
+  chegam inteiras nas 13 posições; só a 30 trunca uma, e o relatório a conta.
+- **Precisão e ACPL no relatório.** ✅ `Brancas: ... — precisão 90%, perda média 30 centipeões |
+  Pretas: ... — precisão 86%, perda média 51 centipeões` na partida medida.
+- **O progresso conta lances.** ✅ `Analisando o lance 1 de 61 (c4)…` a
+  `Analisando o lance 61 de 61 (Rf8+)…` (era `Analisando o lance 0 de 62`).
+- **O símbolo cola no lance.** ✅ `9... O-O?? — erro grave (perdeu 2,61)` no relatório, e `g6?` na
+  lista de lances; o texto da lista continua igual, token a token, ao do `StringExporter`.
+- **O gráfico diz onde a sala está e o que há sob o ponteiro.** ✅ Fio vertical em
+  `VIZINHA_TEXTO` -- o único papel da paleta que passa de 3:1 contra as duas faixas (5,46:1 sobre
+  a clara, 3,29:1 sobre a escura) -- e a dica `ply 31 · 16. Be3 · avaliação 2,97`.
+- **O Cancelar continua parando rápido** na profundidade padrão: **125 ms** medidos, sem thread
+  viva. Na profundidade 30 a espera máxima passa a ser o teto de 30 s, e isso é o preço declarado
+  de a profundidade 30 existir.
+- **O que ficou de fora nesta rodada**: o `[%eval #1]` na posição já matada. A decisão existe
+  (`grava_avaliacao`, e `Avaliado.acabou` sai do tabuleiro, não do motor), e falta **uma linha** em
+  `qt/painel_de_estudo.py::_marcar_os_lances` -- arquivo que a Fase 83 está escrevendo e que este
+  executor foi instruído a não abrir.
+
 ### Testes
 
 - `tests/test_ui_analise_da_partida.py` (novo, puro): os três cortes nos seis limites; a maioria dos
@@ -1505,19 +1674,40 @@ Medido em 2026-09-04, Stockfish dev-20230303, 1 thread, `Hash` 128 MB.
   recusas (sem lance, sem motor).
 - `tests/test_engine.py::test_o_mate_ja_dado_aponta_para_quem_o_deu` (novo): o `mate 0` sem sinal.
 
+Na segunda rodada, em `tests/test_ui_analise_da_partida.py`: os três cortes nos seis limites da
+escala nova; a expectativa sendo a curva de `engine` e não uma segunda; **os dois lances que o
+crítico nomeou**, pelos números da partida real; a posição ganha e a **posição perdida** sem juízo,
+as duas sem regra nenhuma. Em `tests/test_qt_motor.py::AnaliseDaPartidaTests`: o teto crescendo com
+a profundidade e parando no teto do teto; a frase de truncamento e o segundo rótulo do relatório;
+precisão e perda média no resumo; `grava_avaliacao` recusando a posição já matada, e o laço do
+motor marcando `acabou` na posição depois de `Qh4#`; a marca do lance corrente no gráfico (em pixel)
+e a dica sob o ponteiro; e o progresso contando de 1 sobre o número de lances.
+
 ### O que o crítico recusou
 
-_a preencher pelo crítico_
+Primeira rodada, 2026-09-04. Reprovada em três pontos; os reprodutores dele estão em
+`scratchpad/crit_motor/` (`crit_juizo.py`, `crit_relatorio.py`).
 
-## S-538 · Tablebases Syzygy quando a pasta existir: resultado exato nos finais — ⚠ **implementada em 2026-09-04, sem tabela real para medir**
+| O que ele achou | Como estava | O que mudou |
+|---|---|---|
+| **Os cortes discordam do Lichess em 6 de 12 juízos** de uma partida real: `9...O-O` (0,46→2,94) sai `?` e o Lichess dá `??`; `27...Kh7` (+3,04→+3,86) sai `?!` e o Lichess não marca nada | 50/100/300 **centipeões** de perda | 8/15/25 **pontos de expectativa de vitória**, na curva que o programa já tinha. Divergências: 14 → 4 em 256 lances; 6 → 2 nessa partida |
+| **"Posição decidida" protege só quem ganha**: pretas perdidas −6→−10 sai `erro grave` | `min(antes, depois)` do ponto de vista de quem jogou | a regra **sumiu**. A escala de expectativa resolve os dois lados sozinha (2,75 pontos, e 0,24 no caso que criou a regra) |
+| **A profundidade 30 que o diálogo oferece não existe**: 41 de 46 posições param no teto de 3 s (média 23,5), e 30 custa o mesmo que 24 | teto fixo de 3 s por posição | teto = `3 s × 1,4^(plies-16)`, limitado a 30 s, **e** o relatório conta quantas posições pararam nele. O diálogo passou a dizer o custo medido de cada profundidade |
+| Sem precisão (%) nem ACPL no relatório | nenhum dos dois existia | os dois no resumo, por cor. Medido: brancas 90% e 30 cp, pretas 86% e 51 cp |
+| O progresso diz "lance **0** de 62" | o índice da posição saía como número de lance | conta de 1 sobre o número de **lances**, e nomeia o lance que está sendo avaliado |
+| A lista escreve `g6 ?` com espaço antes do símbolo | o SAN levava sempre um espaço no fim | o espaço vai para `Trecho.token` (o PGN continua `g6 $2`) e o desenho cola o símbolo |
+| `[%eval #1]` gravado na posição já matada | `mate 0` é normalizado para `±1`, que a barra precisa | `Avaliado.acabou` + `grava_avaliacao`. **Falta uma linha na sala** -- ver o critério de aceite |
+| Sem marca do lance corrente no gráfico nem dica com ply e avaliação | o gráfico só tinha a curva e os pontos de erro | `GraficoDaPartida.marcar` (fio vertical + anel) e `frase_em`, que troca a dica a cada movimento do ponteiro |
+
+## S-538 · Tablebases Syzygy quando a pasta existir: resultado exato nos finais — ✅ **implementada em 2026-09-04** (segunda rodada: medida contra tabela real)
 
 ### Problema
 
 Um motor num final de cinco peças ainda está chutando. `engine.py` -- o módulo inteiro, antes deste
 item -- só sabia perguntar ao processo UCI, e `Evaluation.display` (`engine.py:112`) devolvia
 `+3,45` numa posição que ou é ganha ou é tábua: não existe `+3,45` ali. Num final de torre contra
-bispo o motor chega a dizer `+0,90` sobre uma tábua teórica, e quem estuda finais aprende o número
-errado.
+bispo ele diz `+0,26` a profundidade 23 sobre uma tábua teórica -- medido na segunda rodada, com a
+tabela real ao lado --, e quem estuda finais aprende o número errado.
 
 Nada no projeto mencionava tablebases: nem `settings.py` (`EngineSettings:175` tinha três campos),
 nem `engine.py`, nem a sala. E o `python-chess`, que é dependência obrigatória desde sempre, traz
@@ -1559,6 +1749,24 @@ modo que o processo do motor só sobe na primeira análise) e fica aberto, e **t
 sei"**. Direito de roque é `None` e não erro -- Syzygy não representa roque, e `probe_wdl` levanta
 `ValueError` ali.
 
+#### O que a segunda rodada trocou (2026-09-04)
+
+**Há tablebase Syzygy nesta máquina, e a primeira rodada não a viu.** O crítico achou **35
+conjuntos** -- todos os de 3 e 4 peças, 4,1 MB, `.rtbw` e `.rtbz` -- dentro do *sdist* do próprio
+`python-chess`, no cache do `uv`
+(`AppData/Local/uv/cache/sdists-v9/pypi/chess/1.11.2/.../src/data/syzygy/regular`). A primeira
+rodada procurou em `C:/Program Files` e no **wheel** instalado, e concluiu que o menor conjunto
+útil passa de 1 GB. Passa mesmo, a partir de cinco peças; o que não passa é o conjunto pequeno que
+o próprio `python-chess` embarca para os testes dele. **A dívida do item era essa, e ela fecha.**
+
+**E medir de verdade achou um defeito que a injeção não podia achar.** Com `SyzygyPath` no motor, o
+Stockfish imprime a vitória por tabela como `cp 20000 - ply` (`UCI::value`), e o painel mostrava
+**`+200,00`** -- com `[%eval 200.0]` indo para o arquivo. Duzentos peões não é uma avaliação.
+`engine._to_white_pov` passou a reconhecer a faixa (`CP_MINIMO_DE_TABELA`, 150 peões) e a devolver
+`Evaluation.tabela = ±1` com o `score_cp` reescrito no teto de dez peões: o `display` vira `1-0` /
+`0-1` -- os tokens do PGN que a barra já usava --, a barra vai ao teto, e o arquivo recebe um
+número que quer dizer "decidido" em vez de um número inventado.
+
 **Na sala**, a consulta acontece na mesma thread do motor, **antes** dele: ela responde em
 microssegundos, e perguntar depois faria a tela mostrar a estimativa e trocá-la um instante depois.
 A frase substitui a avaliação e a barra vai para onde o resultado manda (`1-0`, `0-1`, `=` -- os
@@ -1581,14 +1789,44 @@ tabela diz o resultado e não a variante.
 - **`SyzygyPath` chega ao motor por `setoption`**, sem derrubar o processo. ✅ É a S-536: o plano de
   aplicação o trata como opção de processo, e o Stockfish desta máquina a declara
   (`option name SyzygyPath type string`).
-- **⚠ O que não foi medido, e é a razão do estado.** **Nenhuma consulta a uma tabela Syzygy real.**
-  Não há um `.rtbw` nesta máquina (procurado em `C:/Program Files`, `C:/Program Files (x86)` e
-  `C:/Python-Chess2`), o `python-chess` não embarca tabela nenhuma no wheel (conferido no pacote
-  instalado) e o menor conjunto útil passa de 1 GB -- baixá-lo não é decisão de um executor. O que
-  está afirmado é a decisão inteira, a degradação contra o `chess.syzygy` real e o caminho da
-  resposta até a tela com uma tabela **injetada** (`Finais(pasta, tabela=...)`, e a injeção existe
-  exatamente para que esta seja a única dívida). Quem tiver os arquivos fecha o item apontando a
-  pasta no diálogo da S-536 e conferindo um final conhecido.
+#### Segunda rodada: medido contra tabela real, 2026-09-04
+
+35 conjuntos de 3 e 4 peças (5 + 30), 4,1 MB, copiados para `scratchpad/syzygy345/`; Stockfish
+dev-20230303, 1 thread. Roteiros: `scratchpad/r2/medir_finais.py` e `procurar_50.py`.
+
+- **A tabela sabe o que o motor chuta.** ✅ Três casos medidos:
+
+  | final | o que o motor diz | o que a tabela diz |
+  |---|---|---|
+  | KRvKB, posição de Philidor (`8/8/8/8/8/4kb2/8/4K2R w`) | `+0,26`, profundidade 23 | `wdl 0` → **Tábuas (tabela de finais).** |
+  | KBNvK (`8/8/8/4k3/8/8/8/2BNK3 w`) | `+2,31`, profundidade 25 | `wdl +2, dtz 56` → **vitória das brancas, zeragem em 56** |
+  | KRvKP com as **pretas** a jogar | `+4,98`, profundidade 24 | `wdl −2, dtz −8` → **derrota das pretas, zeragem em 8** |
+
+- **O sujeito da frase é quem está no lance.** ✅ O terceiro caso acima: `−2` com as pretas na vez
+  é *derrota das pretas*, e a barra vai para as brancas (`cp +1000`) sem que ninguém inverta sinal
+  no caminho entre o arquivo e a tela.
+- **DTZ não é distância até o mate.** ✅ O KBNvK mateia em ~30 lances e a tabela guarda 56 de
+  zeragem -- são coisas diferentes, e a frase não as confunde.
+- **O tempo de consulta.** ✅ 500 consultas: mediana **123 µs**, p95 **196 µs**, pior 1,1 ms; a
+  primeira custa **6,6 ms** (a varredura do diretório). Uma análise a 800 ms é ~6.500 vezes mais
+  cara, e é isso que autoriza perguntar antes do motor em toda posição de final.
+- **Seis peças degradam.** ✅ `deve_consultar` responde verdadeiro (o teto é sete) e a tabela
+  responde `None`: um KRPvKRP não está nesta pasta, e ali a estimativa do motor volta a ser a
+  melhor resposta que existe. O mesmo vale para os conjuntos de 5 peças, que esta pasta também não
+  traz.
+- **Roque continua sendo "não sei".** ✅ `8/8/8/4k3/8/8/8/R3K3 w Q` devolve `None`; a mesma sem o
+  direito de roque devolve `wdl +2, dtz 27`.
+- **`SyzygyPath` chega ao motor, e o `+200,00` acabou.** ✅ No KBNvK: sem tabela o Stockfish diz
+  `+2,26`; com a pasta configurada ele responde `cp 20000` e a tela mostra **`1-0`**, com
+  `score_cp` de 1000 e `tabela = +1`. Antes disso a tela dizia `+200,00` e o PGN recebia
+  `[%eval 200.0]`.
+- **⚠ O que continua sem medição real, e agora é uma dívida pequena e nomeada**: a **vitória
+  anulada pela regra dos 50 lances** (`wdl ±1`). Procurada por amostragem em **1,45 milhão** de
+  posições sorteadas sobre os 35 conjuntos: `{-2: 449.664, 0: 574.693, +2: 430.327}` e **nenhum
+  ±1**; o maior DTZ visto foi **65** (KBNvK com as pretas a jogar). Faz sentido -- o *cursed win*
+  precisa de mais de 50 lances até a zeragem, e isso praticamente só aparece de cinco peças em
+  diante. A frase e a barra do `±1` continuam afirmadas contra a tabela **injetada**, que é o que
+  a injeção existe para permitir.
 
 ### Testes
 
@@ -1605,22 +1843,450 @@ tabela diz o resultado e não a variante.
 - `tests/test_ui_motor_declarado.py::test_a_pasta_de_tablebases_e_opcao_do_processo` e
   `test_pasta_no_lugar_do_binario_e_binario_no_lugar_da_pasta`: a pasta entrando por `setoption` e
   a validação dela.
+- `tests/test_tablebase.py::TabelaRealTests` (novo, segunda rodada): a tabela **de verdade**. Ele
+  procura a pasta -- `CVOFF_SYZYGY_PATH`, e sem ela o cache do `uv` -- e **pula com o motivo
+  escrito** quando não a acha: uma suíte não pode exigir 1 GB de tabela, mas também não pode fingir
+  que 4 MB não estão ali. Cinco afirmações: o final que o motor chuta e a tabela resolve, o KBNvK
+  com a zeragem que o arquivo guarda (e que **não** é mate), o sujeito da frase sendo quem joga, o
+  conjunto ausente virando "não sei", e a consulta em microssegundos.
+- `tests/test_engine.py::test_o_score_de_tablebase_do_uci_vira_resultado_e_nao_duzentos_peoes`
+  (novo): o `cp 20000` do Stockfish virando `1-0`.
+
+### O que o crítico recusou
+
+Primeira rodada, 2026-09-04. **Aprovada** -- e ele achou o que muda o item: há tabela Syzygy nesta
+máquina. Reprodutor: `scratchpad/crit_motor/crit_finais.py`.
+
+| O que ele achou | Como estava | O que mudou |
+|---|---|---|
+| **Há 35 conjuntos Syzygy reais nesta máquina**, dentro do sdist do `python-chess` no cache do `uv` | o item estava em ⚠ por "nenhuma consulta a uma tabela real", com a busca limitada a `C:/Program Files` e ao wheel instalado | medido de verdade: WDL, DTZ, o sujeito da frase, o tempo de consulta, a degradação em 6 peças e o roque. O item fecha em ✅ |
+| **Com `SyzygyPath` no motor, o painel mostra `+200,00` e grava `[%eval 200.0]`** | o `cp` do UCI era lido como centipeões, e o Stockfish usa a faixa acima de 20.000 para a vitória por tabela | `Evaluation.tabela` e `CP_MINIMO_DE_TABELA`: o display vira `1-0`/`0-1`, a barra vai ao teto de dez peões, e é esse número que vai para o arquivo |
+| (dele, a conferir) a pasta tem "3 a 5 peças" | — | são **3 e 4**: 5 conjuntos de três peças e 30 de quatro. O maior conjunto ali é `KQRvK`, e nenhum de cinco |
+
+## S-539 · Táticas do próprio acervo: FEN reconhecida + solução impressa vira exercício — ⚠ **implementada e medida em 2026-09-04: 2 exercícios confiáveis em 2.788 diagramas**
+
+### Problema
+
+Depois de uma varredura, um livro de exercícios do acervo é mil FENs e nenhum exercício -- porque
+exercício é posição **mais** gabarito. `pdf_to_pgn.py:667` (`build_pgn_games`) escreve o que existia:
+*"um jogo por posição, só com headers -- o diagrama é a posição inicial"*, com `SourcePDF`, `Page`,
+`Diagram` e `Caption`. A legenda é o que estava **ao lado** do tabuleiro; a solução não é a legenda,
+e no livro de táticas ela está numa lista no fim do capítulo, atada ao diagrama pelo **número**.
+
+As duas metades da resposta já existiam e nunca tinham se encontrado. `text/notacao.py:421`
+(`validar`) sabe jogar uma linha impressa sobre uma posição e dizer no primeiro lance que ela não
+sustenta qual foi; `qt/painel_de_estudo.py:1930` (`jogar_a_linha_do_livro`) faz isso **um diagrama
+de cada vez**, à mão, com a folha aberta na aba Texto. O que faltava era a passada pelo livro
+inteiro e a régua que diz *qual* linha é a deste diagrama.
+
+### Solução
+
+**Um módulo puro, `taticas.py`**, com quatro decisões, e nenhuma delas abre PDF nem roda modelo
+(`de_pdf` é um adaptador de import tardio).
+
+1. **O número impresso é achado pela geometria, e o candidato é a LINHA e não o parágrafo.** Três
+   condições contra a caixa do diagrama: o texto é *só* o número (`_SO_NUMERO`), ele cruza a faixa
+   horizontal do tabuleiro -- é da mesma coluna --, e a distância vertical cabe em
+   `DISTANCIA_DO_NUMERO` (0,45 da altura do tabuleiro). **Perguntar ao parágrafo dava zero**: no
+   `Big Book of Combinations` o número e a legenda são um bloco só (`5 / Morphy-De Riviere / Paris,
+   1858`), porque a leitura agrupa linhas vizinhas. Perguntando à linha, 95,8% dos 1.005 diagramas
+   daquele livro têm número. Uma **corrida** completa os buracos e corrige o intruso: `97 98 ? 100`
+   vira `97 98 99 100`, e um `1858` que se passou por número é substituído quando a maioria dos
+   outros concorda num deslocamento. Sem maioria, nada é preenchido nem corrigido.
+2. **A lista de soluções é lida contra os números que os diagramas reivindicam, e não em branco.**
+   Uma varredura cega de `^\d+\.` acha os números de **lance** de dentro de cada solução -- `214.
+   Ahues - NN, 1932. 1.Qxh7+!! Kxh7 2.Ng6+` tem quatro números e uma entrada só. `solucoes_da_folha`
+   caminha pelos esperados em ordem crescente e só para a frente. A cauda de cada entrada é fatiada
+   por `text/notacao.fatiar`, e o gabarito é a **primeira fatia de lance**: o que vem antes é o nome
+   dos jogadores e o ano, e o que vem depois é variante entre parênteses. Entrada sem lance nenhum
+   não entra -- e é essa condição que faz uma folha de **exercícios**, onde os mesmos números estão
+   impressos sozinhos embaixo dos diagramas, não ser lida como folha de soluções. **A folha do
+   próprio diagrama não responde por ele**: numa folha de capítulo o número e os lances estão os
+   dois ali, e ler aquilo como lista daria o gabarito certo com a etiqueta errada.
+3. **A solução decide o lado a jogar, e vence a dedução da S-17.** O diagrama não diz de quem é a
+   vez; `semantics.infer_side_to_move` deduz pela legalidade e chuta brancas quando as duas são
+   legais. A linha impressa é prova: `validar_solucao` joga a linha nos **dois** lados e fica com o
+   que sustenta mais lances, usando o palpite anterior só como desempate. Medido no `Big Book`: dos
+   24 exercícios extraídos, **10 saíram com as pretas na vez** -- dez posições em que o PGN de hoje
+   diria brancas.
+4. **O motor confirma, e não decide.** `confirmar` mede quanto o primeiro lance impresso perde
+   contra o que o motor prefere, pela régua da S-537 (abaixo do corte de imprecisão, confirmado). A
+   discordância **não apaga o gabarito** -- um livro de 1934 propõe combinações que o Stockfish
+   refuta, e trocar a solução pela linha do motor seria treinar o motor e não o livro --, ela
+   **marca**. E foi ela que salvou a medição de mentir: ver o critério de aceite.
+
+**A recusa vale tanto quanto o exercício**, e é a metade que costuma sumir: `Extracao.recusas`
+carrega a procedência e o motivo de cada diagrama que ficou de fora, e `por_motivo()` é o que
+permite dizer **onde** o casamento falhou. Um extrator que devolve só o que deu certo não deixa
+medir a própria taxa.
+
+**Persistência atômica, um arquivo por livro** (`taticas_arquivo.py`), com a chave importada de
+`estudo_arquivo.chave_de`: um livro tem uma sala e uma coleção, e as duas respondem ao mesmo nome.
+JSON e não PGN -- a procedência viraria header de invenção nossa, e o que se ganharia (abrir no
+ChessBase) não é o que se faz com um exercício.
+
+**A tela** é `qt/painel_de_treino.JanelaDeTreino` (compartilhada com a S-540): a posição, o lado a
+jogar, o lance cobrado, aceita ou recusa, e -- **depois** de o exercício fechar -- a solução por
+extenso com o desfecho e a procedência (`Reinfeld 1001, p. 63, exercício 214`). "Dá mate" impresso
+ao lado do tabuleiro antes de a pessoa jogar é meia resposta. A extração roda numa `Tarefa` com
+barra e Cancelar (comando `taticas_do_livro`, "Táticas do livro"), e passa o motor da sala quando
+há um.
+
+### Critério de aceite
+
+**Medido em 2026-09-04 sobre sete livros do acervo, o livro inteiro, `motor="camada"`, 220 dpi,
+Stockfish dev-20230303 na confirmação.** O total é 1.729 folhas e 38 minutos de varredura.
+
+| livro | folhas | diagramas | com número | com solução | o motor confirma |
+|---|---|---|---|---|---|
+| Schiller, *The Big Book of Combinations* (1994) | 292 | 1.005 | **963 (95,8%)** | 24 (2,4%) | **2** de 24 |
+| Журавлев, *Manual of Chess Combinations 5* | 122 | 412 | 129 (31,3%) | 10 (2,4%) | **0** de 10 |
+| Gaprindashvili, *Imagination in Chess* | 289 | 769 | 0 | 0 | — |
+| Anand, *Great Chess Combinations* | 244 | 133 | 0 | 0 | — |
+| Koblenz, *El dominio del arte de la combinación* | 70 | 120 | 13 (10,8%) | 0 | — |
+| *1937 Kemeri* (torneio, para o caminho "ao lado") | 289 | 186 | 5 | 0 | — |
+| Chernev, *Melhores Finais de Capablanca* (finais) | 423 | 163 | 0 | 0 | — |
+| **total** | **1.729** | **2.788** | **1.110 (39,8%)** | **34 (1,2%)** | **2 (0,07%)** |
+
+- **⚠ O aproveitamento é 0,07%, e é o resultado do item.** Trinta e quatro diagramas de 2.788
+  ganharam gabarito, e o motor recusou trinta e dois deles -- com perda mediana de **7,3 peões** no
+  `Big Book` e **14,2 peões** no `Manual of Chess Combinations`. Sem a confirmação, o relatório
+  diria "2,4% de aproveitamento" onde há **2,4% de ruído**, e a coleção gravada ensinaria o lance
+  errado. É o número honesto deste item, e ele diz que **o mecanismo está pronto e o acervo não
+  está**.
+- **A primeira metade funciona, e o número é alto.** ✅ Onde a folha de exercício tem camada de
+  texto e o número é uma linha, o casamento geométrico acha **95,8%** (963 de 1.005). A régua da
+  linha contra a do parágrafo é a diferença entre 963 e **zero** -- foi a primeira medição, e ela
+  reescreveu a função.
+- **A segunda metade acha as entradas e perde o lance dentro delas.** ✅/⚠ Medido isolando a lista
+  de soluções (a caminhada contra os números 1 a 1.399, sem casar com diagrama): **581 entradas** em
+  136 folhas do Gaprindashvili, **102** em 68 do Schiller, **62** em 28 do Zhuravlev. A caminhada
+  crescente acha a entrada; o que não sobrevive é a **notação** dentro dela -- a camada de texto de
+  um scan escreve `l:.d8` onde está `♖d8` e `i.xb4` onde está `♗xb4` (`text/leitor.py` documenta
+  isso desde a S-178), e o que resta legível é quase só lance de peão.
+- **Onde o casamento falha, ele falha dizendo o nome.** ✅ No `Big Book`, dos 963 números, 149
+  acharam entrada na lista e **125 delas deram lance ilegal na posição** -- `Bxh7 não é legal nesta
+  posição`, `Rxe6 não é legal nesta posição`, um a um, porque a lista de soluções daquele livro é
+  uma **tabela de quatro colunas** e a ordem de leitura intercala o número de um exercício com o
+  lance de outro. `text/notacao.validar` recusou cada uma pelo nome, e nenhum gabarito errado foi
+  gravado. É o contrato da S-15 -- propõe, marca, não reescreve calado -- valendo aqui.
+- **A solução prova o lado a jogar.** ✅ Dos 24 exercícios do `Big Book`, 10 saíram com as pretas na
+  vez; dos 10 do `Manual`, 4. É informação que o PGN exportado hoje não tem.
+- **Três dos seis livros não têm camada de texto nenhuma nas folhas de exercício.** ⚠ Anand,
+  Gaprindashvili e (quase todo) Koblenz: o número não existe para ser achado. No Gaprindashvili
+  isso é exato -- das 289 folhas, **só as 136 do fim** (a seção de soluções) têm texto.
+- **O leitor de glifo foi tentado, e não resolve por outro motivo.** ⚠ Com `motor="glifo"`
+  (`text/leitor.py`, 35 s por folha medidos), a folha de soluções do Gaprindashvili sai legível
+  **com figurinas** (`1 d6! ♗xd6 1...♗f8 2 h6!`); mas a folha de **exercícios** dele devolve o
+  número das duas colunas numa linha só -- `'7 8'`, `'1 1 1 2'` -- e `numero_junto_ao_diagrama`
+  precisa da caixa do número, que a linha não separa. **O que falta é caixa por palavra em
+  `LinhaLida`**, e é o item que destravaria esta medição inteira. Registrado.
+- **O caminho "ao lado" não inventou um exercício sequer, e é a boa notícia da tabela.** ✅ Nos
+  dois livros que **não** são de exercícios -- 349 diagramas de *Kemeri* e do *Capablanca*, onde
+  cada tabuleiro tem lances impressos em volta --, `linha_ao_lado` não produziu nenhuma linha:
+  `text/notacao.e_linha_de_notacao` exige **maioria** de tokens de notação no parágrafo, e prosa
+  com dois lances dentro não passa. Um extrator frouxo teria devolvido trezentos "exercícios" cujo
+  gabarito é o comentário do autor. Os quatro do *Kemeri* que chegaram à validação foram recusados
+  pelo nome (`La4 não é um lance`, `Sf3 não é um lance`): é notação **alemã**, e `para_ingles` só
+  traduz figurina -- a decisão está documentada em `text/notacao.FIGURINAS_DA_LETRA`, e ela vale
+  aqui: `L` é *Läufer* em alemão e nada em inglês, e adivinhar a língua trocaria uma peça por outra
+  num lance que o tabuleiro aceita.
+- **A extração é cancelável e não bloqueia a janela.** ✅ `Tarefa` com `threading.Event` conferido
+  entre folhas, progresso por sinal, e o que já foi lido fica.
+- **Nada é gravado sem gabarito legal.** ✅ Diagrama sem FEN, sem número, sem entrada na lista ou
+  com linha ilegal vira `Recusa` com o motivo, e não um exercício com solução vazia.
+
+### Testes
+
+- `tests/test_taticas.py` (novo, puro; 47 casos): o número como **linha** com as caixas medidas da
+  folha 21 do `Big Book`; o número embaixo do diagrama; o teto de distância; a outra coluna; o
+  bloco com texto junto; a corrida preenchendo o buraco e corrigindo o ano; a ausência de maioria
+  não inventando nada. A lista de soluções: as três entradas com a linha de lances, **o número de
+  lance de dentro da solução não abrindo entrada**, o número ausente, e a folha de exercícios não
+  sendo lida como folha de soluções. A linha ao lado: o parágrafo atado (S-249), o primeiro abaixo
+  na mesma coluna, e a legenda de partida que **não** é linha de lances. A validação: a solução
+  provando o lado a jogar, o palpite anterior desempatando, a linha parcial valendo com o motivo
+  gravado, a FEN inválida, e os três desfechos. A extração: as duas passadas, a conta fechando
+  entre exercícios e recusas, a lista vencendo a linha ao lado, os dois meios-lances mínimos da
+  vizinhança, e o resumo dizendo o que o motor recusou. O motor: aprovar, discordar **sem trocar o
+  gabarito**, falhar sem estragar o exercício. E o arquivo: ida e volta, a chave igual à da sala de
+  estudo, coleção vazia apagando, exercício corrompido não derrubando os outros, esquema do futuro,
+  `carregar_tudo`, e a gravação atômica cobrada no próprio fonte.
+- `tests/test_qt_painel_de_treino.py::JanelaDeTreinoTests` (novo): a posição, a procedência na tela,
+  o tabuleiro virado para quem resolve, o lance certo andando a linha com a resposta jogada
+  sozinha, o errado não andando e sendo desfeito no desenho, **o lance ilegal não derrubando o
+  processo**, e a solução aparecendo só depois de o exercício fechar.
+- `tests/test_qt_painel_de_treino.py::TaticasNaSalaTests` (novo): extrair sem livro aberto recusando
+  com frase, a agenda que não abre vazia, e os dois comandos novos no "Mais" do grupo Treino.
+- Guardas atualizadas: `tests/test_ui_comandos.py` (os dois rótulos que divergem do menu),
+  `tests/test_busy.py::SEM_REGISTRO` (a medição da perda), `tests/test_editor_model.py::SEM_TKINTER`
+  e `tests/test_ui_orfaos.py::SEM_CHAMADOR`.
+- Reprodução: `scratchpad/medir_taticas.py "<livro>.pdf" --motor 40`, com `PYTHONPATH=src` a partir
+  da raiz do worktree.
 
 ### O que o crítico recusou
 
 _a preencher pelo crítico_
 
-## S-539 · Táticas do próprio acervo: FEN reconhecida + solução impressa vira exercício — ◻ em andamento
+## S-540 · Repetição espaçada dos estudos e das táticas, com agenda do dia — ✅ **implementada em 2026-09-04**
 
-_Seção a escrever pelo executor do item._
+### Problema
 
-## S-540 · Repetição espaçada dos estudos e das táticas, com agenda do dia — ◻ em andamento
+**Não havia agendamento nenhum, e a palavra não aparecia no programa.** `estudo_arquivo.py:104`
+(`gravar`) guarda a sala de um livro para sempre, e `qt/painel_de_estudo.py:1397`
+(`reabrir_por_chave`) devolve quem abre o livro à mesa em que ele parou -- as duas metades de
+*"continuar de onde parei"*. Nenhuma delas responde a outra pergunta, que é a que separa uma suíte
+de treino de um leitor de PDF: **o que eu deveria rever hoje?**
 
-_Seção a escrever pelo executor do item._
+Sem ela, o que acontece com um acervo de centenas de livros é o que acontece com todo acervo: a
+pessoa revê o que abriu por último, e o que ela aprendeu em março não volta nunca. O Chessable
+inteiro é construído em cima dessa pergunta, e o Anki -- que é o programa que a resolveu -- não tem
+tabuleiro.
 
-## S-541 · "Adivinhe o lance" com placar persistente e comparação com o motor — ◻ em andamento
+### Solução
 
-_Seção a escrever pelo executor do item._
+**A escolha do algoritmo é o item, e ela é o FSRS** (`revisao_espacada.py`). Os dois candidatos
+sérios: o **SM-2** do SuperMemo, que o Anki usou por trinta anos, e o **FSRS** (*Free Spaced
+Repetition Scheduler*), que entrou no Anki em 23.10 e passou a ser o recomendado depois. Três
+razões, e a terceira decide **para táticas**:
+
+1. **O SM-2 não modela esquecimento; ele multiplica.** O estado dele é um *fator de facilidade*, e
+   o intervalo seguinte é `intervalo × fator`. Não existe "qual é a chance de eu ainda lembrar
+   disto hoje", então não existe **retenção alvo** -- e é justamente o botão que um profissional
+   quer. O FSRS tem uma curva de esquecimento explícita (`retencao`), e por isso *"quero acertar
+   90% do que revejo"* é uma frase que ele responde: a `RETENCAO_ALVO` vira intervalo por inversão
+   da curva.
+2. **A escala de tempo do SM-2 é a repetição, não o calendário.** Ele não usa quanto tempo passou
+   de verdade: dois acertos, um com um dia e outro com um ano de intervalo, mexem o fator igual. O
+   FSRS come a retrievabilidade do momento (`R`) nas duas fórmulas de estabilidade, e é por isso
+   que **sumir por um mês** tem tratamento nativo aqui, e não uma regra especial.
+3. **O "inferno de facilidade" do SM-2 é o modo de falha das táticas.** Cada erro tira 0,2 do
+   fator, o piso é 1,3, e um acerto devolve quase nada. Numa coleção de combinações -- onde errar
+   é o caso normal nas primeiras voltas -- metade dos itens desce ao piso e **nunca sobe**: o
+   intervalo trava em 1,3× e o baralho vira uma fila diária que não encolhe. O FSRS separa
+   *dificuldade* de *estabilidade*, e o item difícil continua ganhando intervalo quando é acertado.
+
+**O preço está escrito em voz alta: dezessete pesos que este projeto não derivou.** `PESOS` são os
+padrões publicados do FSRS-4.5, copiados. A graça do FSRS é **otimizá-los** contra o histórico de
+quem usa, e não há histórico nesta máquina para otimizar. É por isso que `Estado` guarda o log
+inteiro de revisões (`Revisao`: dia, nota e **dias decorridos**) em vez de só a última: ele é a
+entrada do otimizador do dia em que houver o que otimizar, e jogá-lo fora agora fecharia a porta.
+
+**O que não é do algoritmo, e mesmo assim decide o dia.** O FSRS diz *quando* cada item vence; ele
+não diz o que fazer quando 400 vencem juntos, que é exatamente o que acontece com quem some por um
+mês. A resposta são três decisões de `Agenda`:
+
+- **`TETO_DO_DIA` = 60.** Trezentos itens numa tela não são uma sessão de treino: são o motivo pelo
+  qual as pessoas abandonam repetição espaçada. Sessenta táticas a ~40 s são ~40 min.
+- **`TETO_DE_NOVOS` = 15, e menor que o outro de propósito.** Cada novo de hoje é revisão de
+  amanhã; um baralho que admite cem novos por dia produz a parede acima em duas semanas. E
+  **vencidos antes de novos, sempre**: aprender coisa nova enquanto o que já se aprendeu está
+  sendo esquecido é o jeito de ter um baralho grande e uma memória pequena.
+- **A ordem é por retenção estimada, e não por data de vencimento.** Dois itens vencidos há dez
+  dias: um tinha intervalo de três dias e o outro de duzentos. O primeiro já foi esquecido; o
+  segundo está praticamente intacto. Ordenar pela data trataria os dois igual e gastaria a sessão
+  de hoje no que não corria risco.
+
+**A nota sai do tabuleiro, e não de quatro botões** (`nota_do_treino`). Os quatro botões do Anki
+pedem que a pessoa julgue a própria memória; num exercício de tática isso já está medido -- ou o
+lance saiu, ou não saiu. Errar ou pedir a solução é `DE_NOVO`; acertar de primeira é `BOM`;
+acertar depois de errar é `DIFICIL` (é acerto, com o multiplicador de penalidade `w15`). **`FACIL`
+o programa nunca dá sozinho**: ele multiplica a estabilidade por `w16` e produz intervalos muito
+longos, e concedê-lo a todo acerto de primeira esvaziaria a fila com base numa inferência que
+ninguém fez. É o único botão de julgamento na tela.
+
+**Persistência própria e atômica, num arquivo só para o acervo inteiro** (`revisao_arquivo.py`) --
+ao contrário das táticas, que têm um arquivo por livro. A pergunta deste arquivo é *"o que eu tenho
+para revisar hoje?"*, e ela é do dia e não do livro: uma sessão de segunda mistura três exercícios
+do Reinfeld com dois estudos do Dvoretsky. O vínculo com o livro não se perde porque ele está
+**dentro da chave** (`taticas.Procedencia.chave`). **Vazio não apaga o arquivo**, e é a diferença
+para `estudo_arquivo`: aqui o vazio pode querer dizer "apaguei o histórico", e deixar o arquivo
+antigo o ressuscitaria na abertura seguinte.
+
+**A tela é `qt/painel_de_treino.JanelaDeTreino`**, aberta pelo comando `treinar_agenda` ("Revisar
+hoje", no "Mais" do grupo Treino). Duas colunas -- tabuleiro à esquerda, o que se lê à direita --,
+que é a repartição da sala de estudo e pela mesma razão. **A agenda é montada uma vez, na
+abertura**: refazê-la a cada resposta faria o item recém-acertado sumir da fila no meio da sessão,
+e a pessoa perderia a conta de quantos faltam. **O baralho vai para o disco quando a janela
+fecha**, e não a cada resposta: uma gravação por item reescreveria o arquivo sessenta vezes numa
+sessão, e o que se perde numa queda é uma sessão -- não o histórico.
+
+### Critério de aceite
+
+- **A curva de esquecimento é a de potência do FSRS-4.5, e o intervalo é a inversa dela.** ✅ A
+  90% de retenção o intervalo **é** a estabilidade (`intervalo(20.0) == 20`), que é a definição
+  dela; pedir 95% encurta todos os intervalos de uma vez, sem mexer no que já foi aprendido.
+- **O erro nunca aumenta a estabilidade.** ✅ A trava é explícita (`min(S_lapso, S)`), e vale nos
+  cinco valores de estabilidade medidos (0,2 a 30 dias) -- a fórmula de lapso do 4.5 devolve mais
+  que a anterior em item muito novo.
+- **O item difícil continua ganhando intervalo.** ✅ Um item em `DIFICULDADE_MAXIMA` acertado três
+  vezes seguidas cresce nas três. É a propriedade que o SM-2 não tem, e a razão da escolha.
+- **Sumir por um mês.** ✅ O mesmo item, acertado em dia e acertado trinta dias depois do
+  vencimento, sai com estabilidade **maior** no segundo caso -- é o `1 - R` das duas fórmulas, e
+  não uma regra à parte. E a volta não é uma parede: com 300 vencidos, a fila do dia tem 60 e a
+  frase diz `Outros 240 ficam para amanhã`.
+- **A fila é estável entre dois desenhos da tela.** ✅ Empate de retenção desfeito pela chave: uma
+  fila que se embaralha é uma fila em que se perde o lugar.
+- **O que já foi revisto hoje não volta hoje.** ✅ E o que vence amanhã não entra: medido pela
+  ponte inteira -- o baralho que a sessão anterior gravou é o que a agenda de hoje lê.
+- **Mil itens com vinte revisões cada dão 2,1 MB de JSON**, lidos em milissegundos. ✅ É o custo de
+  guardar o log inteiro, e ele é o que permite otimizar os pesos um dia.
+- **⚠ O que não foi medido, e é a dívida honesta deste item:** **os dezessete pesos não foram
+  derivados aqui**, e não há como derivá-los sem um histórico de revisão que ainda não existe. O
+  que está afirmado é que o agendamento é o do FSRS-4.5 publicado, com as propriedades acima; o que
+  não está é que os pesos sejam os melhores para *este* usuário. Quem quiser calibrá-los tem o log
+  gravado desde o primeiro dia.
+- **Os estudos da sala ainda não entram na fila**, e é a segunda dívida: a agenda alimenta-se de
+  `taticas_arquivo.carregar_tudo`, e um estudo do livro não tem `chave` de exercício. O
+  agendamento é agnóstico -- ele agenda **chaves** --, então o que falta é a ponte, não o
+  mecanismo. Registrado para quem retomar.
+
+### Testes
+
+- `tests/test_revisao_espacada.py` (novo, puro): a curva de potência e a cauda que a exponencial
+  não tem; o intervalo valendo a estabilidade a 90% e encurtando a 95%; o piso de um dia e o teto
+  de dez anos; a estabilidade inicial sendo o peso da nota; o erro nunca aumentando a estabilidade,
+  nos cinco valores; o item difícil crescendo; a dificuldade revertendo à média sem grudar no
+  mínimo; **o acerto depois de um mês valendo mais que o acerto em dia**; a parede de 300 virando
+  fila de 60 com 240 adiados; a ordem por retenção contra a ordem por data; vencidos antes de
+  novos; o teto de novos; nota fora da escala levantando; a tradução do treino em nota e o `FACIL`
+  que o programa nunca dá; e o arquivo -- ida e volta, item corrompido não derrubando os outros,
+  esquema do futuro, vazio que não ressuscita o antigo, e os 2,1 MB medidos.
+- `tests/test_qt_painel_de_treino.py::JanelaDeTreinoTests` (novo): a agenda montada na abertura; o
+  tabuleiro virado para quem resolve; acertar agendando `BOM` e acertar depois de errar agendando
+  `DIFICIL`; ver a solução agendando `DE_NOVO`; o `FACIL` só depois de acertar e esticando o
+  intervalo de verdade (**uma revisão por exercício**, e não uma por botão apertado); a fila que
+  acaba; e o baralho gravado ao fechar.
+- `tests/test_qt_painel_de_treino.py::TaticasNaSalaTests` (novo): a agenda que não abre vazia, a
+  que abre com o que a extração gravou, e o que vence amanhã ficando de fora da fila de hoje.
+- `tests/test_ui_treino_declarado.py::FrasesTests` (novo): a frase da agenda com vencidos, novos e
+  **adiados** -- sem a última, quem volta depois de um mês conclui que o programa perdeu 340 itens.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
+
+## S-541 · "Adivinhe o lance" com placar persistente e comparação com o motor — ✅ **implementada em 2026-09-04**
+
+### Problema
+
+O modo existia desde a S-290 e cabia em três métodos. `qt/painel_de_estudo.py:2581`
+(`alternar_treino`) escondia a continuação e zerava dois inteiros; `:2603` (`_treinar`) comparava o
+lance com `self.estudo.no.variations[0]` e somava um a `_acertos` ou a `_erros`; `:2597`
+(`_mostrar_placar`) escrevia `treino: 3 certo(s), 1 errado(s)`.
+
+**Três coisas faltavam, e as três aparecem na primeira sessão de verdade.**
+
+1. **O placar morria ao desligar o treino** -- e desligar o treino é o gesto que a própria frase de
+   erro declara ("Desligue o treino para guardá-lo como variante"). Meia hora de exercício não
+   deixava rastro nenhum: nada no disco, nada por livro, nada entre sessões.
+2. **Todo lance que não fosse o da linha era erro.** Treinando sobre uma partida de torneio, isso
+   classifica como erro toda transposição e todo lance de igual valor -- o placar passa a medir a
+   memória daquela partida em vez do xadrez de quem treina. O motor estava ali ao lado, e ninguém
+   perguntava nada a ele.
+3. **O lance errado ficava na tela.** `_treinar` não redesenhava no caminho de erro: o modelo do
+   widget joga sobre a própria cópia (`BoardModel`), a árvore não muda -- e a pessoa fica olhando
+   uma posição que o estudo não tem, com o lance seguinte partindo dela.
+
+### Solução
+
+**Três baldes e não dois** (`placar.py`, `ui/treino_declarado.classificar_o_lance`): *certo*, o
+lance do gabarito; *equivalente*, um lance diferente que o motor considera igualmente bom; e
+*errado*. Sem o balde do meio, o defeito 2 permanece.
+
+**A régua do "igualmente bom" é `analise_da_partida.julgar`, inteira, e não um número novo.** Ela
+recebe as **duas avaliações** -- antes e depois do lance -- e devolve a perda em centipeões e o
+juízo; quando ela cala, o lance é `EQUIVALENTE`, e quando ela fala ele é `ERRADO` com o símbolo
+(`?!`, `?`, `??`) e a perda em peões na frase. Passar as duas em vez de um número de perda pronto é
+o que faz o treino herdar as duas regras que a S-537 mediu -- o teto de dez peões e a **posição já
+decidida**: um lance que cai de +18 para +9 não é erro nenhum, e um corte escrito aqui não saberia
+disso. **E foi o que salvou este item de uma quebra silenciosa**: a S-537 trocou a escala do juízo
+de centipeões para pontos percentuais de expectativa de vitória enquanto este era escrito, e o
+treino acompanhou sem uma linha de mudança, porque a régua é uma só.
+
+**O lance do gabarito é certo mesmo quando o motor discorda dele**, e a ordem é a decisão: quem
+treina o `1001 Sacrifices` está aprendendo a combinação de Reinfeld, e um Stockfish que prefere
+outra coisa não torna errado o lance que o livro pede. A discordância do motor com o **gabarito** é
+assunto da extração (`taticas.confirmar`, S-539), e não do lance de quem treina.
+
+**O veredicto chega na hora e o preço chega depois** (`qt/painel_de_treino.PerdaDoLance`). Saber se
+o lance é o da linha não custa nada; saber quanto ele perdeu custa duas buscas do motor, e elas não
+cabem na linha de eventos. A frase do rodapé é escrita **duas vezes**: primeiro *"d4 não é o lance
+da linha: perguntando ao motor quanto custou…"*, depois *"d4? — erro: perde 1,40 contra e4"*. Sem
+motor a primeira é a única, e ela continua sendo verdade -- `frase_do_resultado` não promete número
+que não existe.
+
+**A avaliação de "antes" é guardada por posição.** Errar três vezes no mesmo exercício não pode
+custar seis buscas: a posição antes do lance é a mesma nas três. E um segundo pedido durante o
+primeiro é **recusado** em vez de enfileirado -- quem erra três lances em dois segundos quer a nota
+do último, não três atrasadas.
+
+**Duas escalas de placar, e as duas fazem falta por razões diferentes** (`placar.py`). A **sessão**
+responde *como estou hoje* e é o que muda a decisão de continuar ou parar; ela não é gravada,
+porque uma sessão que sobrevive ao fechamento do programa não é uma sessão. O **livro** responde
+*como estou neste material*, e é ela que dá sentido a um acervo de centenas de livros -- `79% em
+268 lances no Big Book of Combinations` é a frase que diz qual livro reabrir. Essa é gravada, **a
+cada lance**: o arquivo tem uma linha por livro e alguns bytes, e o que se perde numa queda é
+justamente a sessão que ninguém vai repetir. (É a decisão inversa à do baralho de revisão, e a
+diferença é o tamanho do que se grava.)
+
+**A perda é somada e não promediada no arquivo**: a média de duas sessões não é a média das médias,
+e recalculá-la a partir da soma é a única forma de o número continuar certo depois de somar o
+placar de hoje ao de ontem.
+
+**E o lance errado é desfeito na tela**, na sala e na janela de treino -- uma linha em cada, e é o
+defeito 3.
+
+### Critério de aceite
+
+- **O placar do livro sobrevive a desligar o treino.** ✅ Medido no painel: um acerto, desligar,
+  ligar de novo -- a sessão zera e o livro continua com 1. E o arquivo já está no disco depois do
+  **primeiro** lance.
+- **Três baldes, com a régua da S-537.** ✅ O ponto em que o balde do meio vira erro é **procurado**
+  no próprio teste, chamando `julgar` até ela falar, e não escrito de novo: quando a S-537 trocou de
+  escala no meio deste item, os testes acompanharam sozinhos. E a **posição já decidida** vale aqui
+  também: `antes=+18, depois=+9` sai como `EQUIVALENTE`, e não como erro grave.
+- **A comparação com o motor volta por sinal, e o veredicto não espera por ela.** ✅ Contra um
+  processo UCI de verdade (`tests/fake_uci_engine.py`): a frase de "perguntando ao motor" aparece
+  na hora e a nota chega depois; a avaliação de "antes" é reusada na segunda tentativa (medido
+  pelo tamanho do cache, não pelo relógio); e um segundo pedido durante o primeiro é recusado.
+- **Sem motor, nada quebra e nada é prometido.** ✅ `pedir` devolve falso, o lance é contado na
+  hora, e a frase não traz número.
+- **O lance errado não fica na tela.** ✅ Na janela de treino, a FEN do widget volta a ser a do
+  exercício depois de um erro.
+- **O lance ilegal não derruba o processo.** ✅ Achado ao escrever a fotografia: `chess.Board.san`
+  devolve `Nf3` para um lance ilegal quando há peça na origem, e **levanta** quando não há -- e uma
+  exceção num slot do Qt mata o processo sem mensagem. `jogar` confere a legalidade antes de tudo.
+- **A frase do placar cabe na linha.** ✅ Ela mostrava o caminho inteiro do PDF (80 caracteres) e
+  empurrava o número para fora da janela; passa a mostrar `taticas.nome_curto`, que é o mesmo corte
+  de `Procedencia.frase`.
+- **O que ficou de fora:** o placar não separa por **tema** de tática nem por dificuldade (o
+  Chessable e o CT-ART fazem), porque nada no acervo etiqueta tema -- seria inventar uma coluna que
+  ninguém preenche. E a comparação com o motor **não** grava `[%eval]` no estudo: o treino não é
+  edição da árvore, e é a regra da S-290 mantida.
+
+### Testes
+
+- `tests/test_ui_treino_declarado.py` (novo, puro): os três baldes; o corte lido da S-537 nos dois
+  lados; o lance do gabarito sendo certo **mesmo com o motor discordando**; sem motor não haver
+  balde do meio; o símbolo e o juízo vindo da tabela da S-537; as quatro frases do rodapé; o placar
+  vazio que não escreve nada; as duas escalas na mesma linha; e o placar -- zerar a sessão sem
+  zerar o livro, o equivalente contando como bom, a posição sem livro contando só na sessão,
+  resultado desconhecido levantando, o total somando os livros, e o arquivo (ida e volta, ausente,
+  esquema do futuro, JSON quebrado).
+- `tests/test_qt_painel_de_treino.py::PerdaDoLanceTests` (novo): sem motor o pedido é recusado; a
+  perda volta por sinal e a avaliação de antes é reusada; um segundo pedido durante o primeiro é
+  recusado.
+- `tests/test_qt_painel_de_treino.py::TreinoNaSalaTests` (novo): o placar do livro sobrevivendo a
+  desligar o treino; o arquivo no disco depois do lance; a frase sem motor que não promete número;
+  a frase escrita duas vezes com motor; o lance da linha andando; e o fim da linha não cobrando
+  lance.
+- `tests/test_qt_painel_de_estudo.py::test_o_treino_esconde_a_continuacao_e_nao_muda_a_arvore`
+  (ajustado): o placar deixou de contar "errado" e passou a contar `bons de total`.
+
+### O que o crítico recusou
+
+_a preencher pelo crítico_
 
 ## S-542 · Exportar estudo e texto para EPUB, com diagramas como SVG — ✅ **implementada em 2026-09-04** (segunda rodada)
 

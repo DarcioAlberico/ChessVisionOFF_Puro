@@ -48,6 +48,12 @@ TABELA_PERCORRIDA = (
 )
 
 SEM_CHAMADOR: dict[str, str] = {
+    "treino_declarado.rotulo_do_desfecho": (
+        "quem o compõe é `frase_do_gabarito`, no mesmo módulo, e a tela lê a frase pronta. Um "
+        "chamador de fora seria a segunda montagem da mesma linha -- e a primeira já decide onde "
+        "o desfecho aparece: **depois** de o exercício fechar, porque \"dá mate\" ao lado do "
+        "tabuleiro antes de a pessoa jogar é meia resposta (S-539)."
+    ),
     "estudo_lista.NIVEL_MAXIMO_DE_RECUO": (
         "quem o aplica é o próprio `Trecho.recuo`, no mesmo módulo, e o painel usa o resultado. "
         "Ele tinha chamador até a S-514, quando o recuo saiu do `<span>` e foi para o bloco: o "
@@ -169,6 +175,23 @@ SEM_CHAMADOR: dict[str, str] = {
     "barra_do_pdf.LEITURA": (
         "o grupo do OCR: o produto o lê pelo campo `grupo` de cada linha da tabela, e só o teste o "
         "nomeia. `VISTA` é a exceção, e por isso não está aqui -- `interruptores_de_vista` filtra por ele"
+    ),
+    # --- a segunda rodada do painel do motor (S-529/S-537, 2026-09-04)
+    "analise_da_partida.perda_media": (
+        "o ACPL de cada cor, e quem o compõe é `resumo`, no mesmo módulo -- a tela lê a frase "
+        "pronta. Um chamador de fora seria a segunda montagem da mesma linha, e ela já divergiu "
+        "uma vez: a primeira rodada não tinha número nenhum ali"
+    ),
+    "analise_da_partida.grava_avaliacao": (
+        "a decisão de **não** gravar `[%eval]` na posição em que o mate já aconteceu. Quem a "
+        "chamaria é uma linha de `qt/painel_de_estudo.py::_marcar_os_lances`, e este executor foi "
+        "instruído a não abrir aquele arquivo (outro executor escreve nele agora) -- a linha está "
+        "no relatório da S-537. Enquanto ela não entra, o `[%eval #1]` continua saindo"
+    ),
+    "motor_declarado.titulo_da_secao": (
+        "`Motor (Stockfish dev-20230303)` em vez de `Motor (stockfish.exe)`. Quem a chamaria são "
+        "duas linhas de `qt/painel_de_estudo.py` (`_secao_do_motor` e a troca de binário), pelo "
+        "mesmo motivo de `grava_avaliacao`, e as duas estão no relatório da S-529"
     ),
 }
 """`modulo.NOME -> motivo`, e o motivo não pode ser vazio.

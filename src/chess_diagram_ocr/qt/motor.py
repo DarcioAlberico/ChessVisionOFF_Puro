@@ -29,9 +29,10 @@ from __future__ import annotations
 import html
 import logging
 from collections.abc import Callable
+from typing import Any
 
 from PyQt6.QtCore import QSize, Qt, QUrl, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter, QPaintEvent, QTextOption
+from PyQt6.QtGui import QColor, QFontMetrics, QPainter, QPaintEvent, QTextOption
 from PyQt6.QtWidgets import QSizePolicy, QTextBrowser, QWidget
 
 from chess_diagram_ocr.engine import fracao_de_vantagem
@@ -45,6 +46,9 @@ __all__ = ["BarraDeAvaliacao", "LinhasDoMotor"]
 
 ALTURA_MINIMA_DA_BARRA = 120
 """Abaixo disto a barra deixa de separar +0,3 de +0,6 -- um pixel passa a valer meio peão."""
+
+CORPO_MINIMO_DO_ROTULO = 6
+"""O menor corpo em que o número da barra ainda se lê. Abaixo disto ele é mancha, não dígito."""
 
 
 class BarraDeAvaliacao(QWidget):
@@ -60,12 +64,26 @@ class BarraDeAvaliacao(QWidget):
     some é a barra inteira, junto com a seção do motor, quando não há motor nenhum (S-33).
     """
 
-    def __init__(self, parent: QWidget | None = None, *, caixa: Callable[[], tuple[int, int]] | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        caixa: Callable[[], tuple[int, int]] | None = None,
+        virado: Callable[[], bool] | None = None,
+    ) -> None:
         super().__init__(parent)
         self._fracao = 0.5
         self._mate_em: int | None = None
         self._display = ""
         self._caixa = caixa
+        self._virado = virado
+        """O tabuleiro está virado? Perguntado no `paintEvent`, como a caixa (S-529).
+
+        **A barra espelha com o tabuleiro**, e é o que o Lichess faz: quem virou o tabuleiro está
+        olhando a partida do lado das pretas, e uma barra que continuasse com as brancas embaixo
+        obrigaria o olho a traduzir justamente no momento em que ele já está traduzindo o
+        tabuleiro. `None` é "não há quem pergunte" -- a barra fica com as brancas embaixo, que é a
+        posição de fábrica."""
         """De onde a onde desenhar, em `(topo, lado)`. `None` é o widget inteiro (S-529).
 
         **Perguntado no `paintEvent`, e não guardado**, porque a resposta muda a cada geometria e o
@@ -121,23 +139,29 @@ class BarraDeAvaliacao(QWidget):
         """Quantos pixels a faixa branca ocupa agora. O mesmo número que `paintEvent` usa."""
         return motor_declarado.altura_de_brancas(self._fracao, self.faixa()[1])
 
+    def invertida(self) -> bool:
+        """A barra está espelhada (pretas embaixo)? É o que `virado` respondeu (S-529)."""
+        return bool(self._virado()) if self._virado is not None else False
+
     def sizeHint(self) -> QSize:  # noqa: N802 - assinatura do Qt
         return QSize(motor_declarado.LARGURA_DA_BARRA, 4 * ALTURA_MINIMA_DA_BARRA)
 
     # ---------------------------------------------------------------------------- desenho
 
     def paintEvent(self, a0: QPaintEvent | None) -> None:  # noqa: N802 - assinatura do Qt
-        """Duas faixas e um fio. A de baixo é a das brancas, e a divisa é a avaliação.
+        """Duas faixas e um fio. A das brancas é a de baixo -- ou a de cima, com o tabuleiro virado.
 
-        **A ordem importa**: pinta-se a barra inteira com a cor de cima e depois a faixa de baixo
-        por cima dela. Pintar as duas por coordenada deixaria uma linha de fundo entre elas no
-        arredondamento, e essa linha é visível numa barra de 18 px.
+        **A ordem importa**: pinta-se a barra inteira com a cor de um lado e depois a faixa do
+        outro por cima dela. Pintar as duas por coordenada deixaria uma linha de fundo entre elas no
+        arredondamento, e essa linha é visível numa barra de 26 px.
         """
         largura = self.width()
         topo, altura = self.faixa()
         if largura <= 0 or altura <= 0:  # pragma: no cover - widget sem geometria
             return
         de_brancas = motor_declarado.altura_de_brancas(self._fracao, altura)
+        invertida = self.invertida()
+        mate = self._mate_em is not None
         pintor = QPainter(self)
         try:
             pintor.fillRect(
@@ -145,47 +169,82 @@ class BarraDeAvaliacao(QWidget):
                 topo,
                 largura,
                 altura,
-                QColor(tema.cor_atual(motor_declarado.papel_do_lado(brancas=False, mate_em=self._mate_em))),
+                QColor(tema.cor_atual(motor_declarado.papel_do_lado(brancas=False))),
             )
             if de_brancas > 0:
+                # Com o tabuleiro virado a faixa das brancas nasce no topo; sem virar, no pé.
+                inicio = topo if invertida else topo + altura - de_brancas
                 pintor.fillRect(
                     0,
-                    topo + altura - de_brancas,
+                    inicio,
                     largura,
                     de_brancas,
-                    QColor(tema.cor_atual(motor_declarado.papel_do_lado(brancas=True, mate_em=self._mate_em))),
+                    QColor(tema.cor_atual(motor_declarado.papel_do_lado(brancas=True))),
                 )
-            pintor.setPen(QColor(tema.cor_atual(motor_declarado.PAPEL_DA_MOLDURA)))
-            pintor.drawRect(0, topo, largura - 1, altura - 1)
-            self._escrever_avaliacao(pintor, topo, altura)
+            self._desenhar_moldura(pintor, topo, altura, mate=mate)
+            self._escrever_avaliacao(pintor, topo, altura, invertida=invertida)
         finally:
             pintor.end()
 
-    def _escrever_avaliacao(self, pintor: QPainter, topo: int, altura: int) -> None:
+    def _desenhar_moldura(self, pintor: QPainter, topo: int, altura: int, *, mate: bool) -> None:
+        """O fio em volta, na cor que a pele pede e na espessura que o mate pede (S-529)."""
+        papel = motor_declarado.papel_da_moldura(mate=mate, cromo_escuro=tema.cromo_escuro_em_vigor())
+        espessura = motor_declarado.espessura_da_moldura(mate=mate)
+        pintor.setPen(QColor(tema.cor_atual(papel)))
+        for passo in range(espessura):
+            largura = self.width() - 1 - 2 * passo
+            alto = altura - 1 - 2 * passo
+            if largura <= 0 or alto <= 0:  # pragma: no cover - barra sem espaço para o fio
+                break
+            pintor.drawRect(passo, topo + passo, largura, alto)
+
+    def _escrever_avaliacao(self, pintor: QPainter, topo: int, altura: int, *, invertida: bool) -> None:
         """O número dentro da barra, **do lado de quem está melhor** -- como no Lichess.
 
         Do lado de quem está melhor porque é ali que há faixa para escrevê-lo com contraste: um
-        número no meio ficaria metade sobre cada cor. Com a barra quase cheia o número volta para
-        dentro da faixa grande, que é o que o `max` da posição faz.
+        número no meio ficaria metade sobre cada cor.
+
+        **Sem o sinal e no maior corpo que couber** (segunda rodada). O sinal sai porque a posição
+        do número já diz de quem é a vantagem (`motor_declarado.rotulo_da_barra`); o corpo desce de
+        um em um ponto até o texto caber na largura da barra, e **se nem o menor couber o número
+        não é escrito**. Escrever cortado é pior que não escrever: `-12,34` cortado saía `12`, que
+        é uma avaliação diferente e igualmente plausível. O número continua inteiro na seção do
+        motor, que é para onde quem precisa do dígito olha.
         """
-        if not self._display:
+        rotulo = motor_declarado.rotulo_da_barra(self._display)
+        if not rotulo:
             return
-        fonte = tema.fonte_atual(tipografia.DADO)
-        fonte.setPointSize(max(6, fonte.pointSize() - 2))
+        fonte = self._fonte_que_cabe(rotulo)
+        if fonte is None:
+            return
         pintor.setFont(fonte)
         brancas_melhor = self._fracao >= 0.5
+        embaixo = brancas_melhor != invertida
         papel = motor_declarado.PAPEL_DE_PRETAS if brancas_melhor else motor_declarado.PAPEL_DE_BRANCAS
         pintor.setPen(QColor(tema.cor_atual(papel)))
-        altura_do_texto = min(altura, fonte.pointSize() * 2)
-        onde = topo + altura - altura_do_texto if brancas_melhor else topo
+        altura_do_texto = min(altura, QFontMetrics(fonte).height() + 2)
+        onde = topo + altura - altura_do_texto if embaixo else topo
         pintor.drawText(
             0,
             onde,
             self.width(),
             altura_do_texto,
             int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter),
-            self._display,
+            rotulo,
         )
+
+    def _fonte_que_cabe(self, rotulo: str) -> Any:
+        """O maior corpo, de `DADO - 2` para baixo, em que `rotulo` cabe na barra. `None` se nenhum.
+
+        A folga de 2 px é a margem: um texto que encosta nos dois fios fica ilegível mesmo cabendo.
+        """
+        maior = tema.fonte_atual(tipografia.DADO).pointSize() - 2
+        for corpo in range(max(CORPO_MINIMO_DO_ROTULO, maior), CORPO_MINIMO_DO_ROTULO - 1, -1):
+            fonte = tema.fonte_atual(tipografia.DADO)
+            fonte.setPointSize(corpo)
+            if QFontMetrics(fonte).horizontalAdvance(rotulo) <= self.width() - 2:
+                return fonte
+        return None
 
 
 class LinhasDoMotor(QTextBrowser):
@@ -232,12 +291,29 @@ class LinhasDoMotor(QTextBrowser):
             "Quantas linhas aparecem é a opção «Linhas do motor» das preferências.",
         )
         self._linhas: tuple[object, ...] = ()
+        self._html = ""
+        """O último HTML desenhado. Ver `_trocar_html`: igual não redesenha."""
 
     def mostrar(self, linhas: object, vazio: str = "") -> None:
-        """Redesenha a lista. `vazio` é o que dizer quando não há linha nenhuma."""
+        """Redesenha a lista. `vazio` é o que dizer quando não há linha nenhuma.
+
+        **A rolagem e a seleção sobrevivem ao redesenho** (segunda rodada). Com a análise contínua
+        ligada o motor responde a cada ~900 ms, e cada resposta chamava `setHtml` -- que troca o
+        documento inteiro. Medido pelo crítico com `MultiPV 10`: a lista voltava ao topo a cada
+        resposta, e quem tinha rolado até a nona linha para clicar nela não conseguia; quem tinha
+        selecionado uma linha para copiá-la perdia a seleção antes de chegar ao `Ctrl+C`.
+
+        Duas defesas, e a primeira é a que mais paga: **HTML igual não é redesenhado**. A resposta
+        seguinte muda a profundidade e às vezes um centésimo, mas nas posições paradas -- que são
+        aquelas em que alguém está lendo a lista com calma -- ela é literalmente a mesma, e aí não
+        há redesenho nenhum. Quando muda mesmo, a posição da barra e as pontas da seleção são
+        anotadas antes e repostas depois, que é o que `qt/painel_de_texto.py` já faz.
+        """
         self._linhas = tuple(linhas or ())  # type: ignore[arg-type]
         if not self._linhas:
-            self.setHtml(f'<span style="color:{tema.cor_atual(tokens.TEXTO_SECUNDARIO)}">{html.escape(vazio)}</span>')
+            self._trocar_html(
+                f'<span style="color:{tema.cor_atual(tokens.TEXTO_SECUNDARIO)}">{html.escape(vazio)}</span>'
+            )
             return
         secundario = tema.cor_atual(tokens.TEXTO_SECUNDARIO)
         padrao = tema.cor_atual(tokens.TEXTO_PADRAO)
@@ -251,7 +327,26 @@ class LinhasDoMotor(QTextBrowser):
                 f'<span style="color:{secundario}">{_colado(linha.variante)}</span>'  # type: ignore[attr-defined]
                 "</a></div>"
             )
-        self.setHtml("".join(partes))
+        self._trocar_html("".join(partes))
+
+    def _trocar_html(self, marcado: str) -> None:
+        """`setHtml` só quando o texto mudou, e com a rolagem e a seleção repostas. Ver `mostrar`."""
+        if marcado == self._html:
+            return
+        self._html = marcado
+        barra = self.verticalScrollBar()
+        rolagem = barra.value() if barra is not None else 0
+        cursor = self.textCursor()
+        inicio, fim = cursor.selectionStart(), cursor.selectionEnd()
+        self.setHtml(marcado)
+        if barra is not None:
+            barra.setValue(min(rolagem, barra.maximum()))
+        if fim > inicio:
+            reposto = self.textCursor()
+            limite = len(self.toPlainText())
+            reposto.setPosition(min(inicio, limite))
+            reposto.setPosition(min(fim, limite), reposto.MoveMode.KeepAnchor)
+            self.setTextCursor(reposto)
 
     def texto_das_linhas(self) -> tuple[str, ...]:
         """O que cada linha diz, sem marcação. É por aqui que o teste lê a lista."""

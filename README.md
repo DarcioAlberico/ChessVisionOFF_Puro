@@ -1040,15 +1040,20 @@ src/chess_diagram_ocr/
   pdf_io.py             render de paginas de PDF (PyMuPDF)
   pdf_text.py           legenda e metadados da camada de texto do PDF
   pdf_to_pgn.py         varredura de PDF e exportacao PGN
+  placar.py             o placar do treino: por livro e por sessao, em tres baldes (S-541)
   preprocess.py         o recorte do tabuleiro virando as 64 casas que o modelo le, e o caminho de pagina de scan (S-547)
   procedencias.py       de onde veio cada amostra, e o que isso permite fazer com ela
   provenance.py         o registro de procedencia gravado ao lado de cada rotulo
   review_queue.py       fila de revisao ordenada por valor de informacao
+  revisao_arquivo.py    o baralho da repeticao espacada no disco, um para o acervo (S-540)
+  revisao_espacada.py   a repeticao espacada dos estudos e das taticas: FSRS e a agenda (S-540)
   second_opinion.py     a segunda leitura local do tabuleiro, para conferir a primeira (S-66)
   semantics.py          lado a jogar e direitos de roque
   side_survey.py        o levantamento do lado a jogar declarado nas legendas do acervo
   splits.py             divisao treino/validacao/teste estavel
   tablebase.py          tablebases Syzygy opcionais: resultado exato nos finais (S-538)
+  taticas.py            o exercicio montado do acervo: FEN lida + solucao impressa (S-539)
+  taticas_arquivo.py    os exercicios de tatica no disco, um arquivo por livro (S-539)
   text_status.py        o que do plano de texto ja existe no disco, medido por sonda
   training.py           loop de treino (Trainer, TrainingPlan, BestEpochPolicy)
   tsoj_reader.py        o leitor do formato TSOJ, de onde veio o classificador de caractere

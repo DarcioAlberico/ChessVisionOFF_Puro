@@ -458,6 +458,11 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 # E a S-533: o menu diz por que campos se busca ("por jogador, evento, ano, Elo e
                 # ECO…") porque é ali que a lista de campos cabe; o botão diz "Buscar partidas".
                 "buscar_partidas",
+                # E os dois da Fase 83 (S-539/S-540): o menu diz o que o comando faz com o
+                # livro inteiro, e o botão do "Mais" diz o nome curto -- "Táticas do livro" e
+                # "Revisar hoje", que são como se fala deles.
+                "taticas_do_livro",
+                "treinar_agenda",
             },
             divergem,
         )

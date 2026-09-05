@@ -18,6 +18,18 @@ from chess_diagram_ocr.ui import motor_declarado as md
 from chess_diagram_ocr.ui import tokens
 
 
+def _luminancia(cor: str) -> float:
+    """A luminância relativa da WCAG. Aqui e não em `qt_app.py` porque este arquivo é puro."""
+    canais = [int(cor.lstrip("#")[posicao : posicao + 2], 16) / 255 for posicao in (0, 2, 4)]
+    lineares = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in canais]
+    return 0.2126 * lineares[0] + 0.7152 * lineares[1] + 0.0722 * lineares[2]
+
+
+def _contraste(a: str, b: str) -> float:
+    claro, escuro = sorted((_luminancia(a), _luminancia(b)), reverse=True)
+    return (claro + 0.05) / (escuro + 0.05)
+
+
 class TetosTests(unittest.TestCase):
     """O teto sai dos números da máquina, e o teste os passa à mão."""
 
@@ -181,17 +193,59 @@ class BarraTests(unittest.TestCase):
         )
         self.assertGreater(do_zero_a_um, de_cinco_a_dez)
 
-    def test_o_mate_enche_a_barra_e_pinta_a_faixa_de_quem_mateia(self) -> None:
-        """**Cor própria e não barra cheia**: a barra cheia já quer dizer +8. O que separa "está
-        ganho" de "acaba em três lances" é a cor, e é o que o Lichess faz."""
+    def test_o_mate_enche_a_barra_com_a_cor_do_lado_e_o_fio_e_que_muda(self) -> None:
+        """**`M3` e `-M3` têm de desenhar diferente**, e com o âmbar na faixa eles não desenhavam:
+        a barra de mate está cheia por construção, então "a faixa de quem mateia" é a barra
+        inteira, e os dois saíam como o mesmo retângulo âmbar (0 pixel de diferença, medido)."""
         self.assertEqual(200, md.altura_de_brancas(fracao_de_vantagem(None, 3), 200))
-        self.assertEqual(md.PAPEL_DE_MATE, md.papel_do_lado(brancas=True, mate_em=3))
-        self.assertEqual(md.PAPEL_DE_PRETAS, md.papel_do_lado(brancas=False, mate_em=3))
-        self.assertEqual(md.PAPEL_DE_MATE, md.papel_do_lado(brancas=False, mate_em=-2))
+        self.assertEqual(0, md.altura_de_brancas(fracao_de_vantagem(None, -3), 200))
+        self.assertEqual(md.PAPEL_DE_BRANCAS, md.papel_do_lado(brancas=True))
+        self.assertEqual(md.PAPEL_DE_PRETAS, md.papel_do_lado(brancas=False))
+        self.assertEqual(md.PAPEL_DE_MATE, md.papel_da_moldura(mate=True))
+        self.assertEqual(2, md.espessura_da_moldura(mate=True))
+        self.assertEqual(1, md.espessura_da_moldura(mate=False))
 
-    def test_sem_mate_cada_lado_fica_com_a_cor_dele(self) -> None:
-        self.assertEqual(md.PAPEL_DE_BRANCAS, md.papel_do_lado(brancas=True, mate_em=None))
-        self.assertEqual(md.PAPEL_DE_PRETAS, md.papel_do_lado(brancas=False, mate_em=None))
+    def test_o_fio_da_barra_troca_com_a_pele_porque_o_de_antes_sumia(self) -> None:
+        """Na pele Foco `tokens.MOLDURA` dava **1,04:1** contra o fundo da janela e a faixa preta
+        **1,17:1**: a barra inteira desaparecia. O fio passa a ser a tinta oposta ao fundo."""
+        self.assertEqual(tokens.MOLDURA, md.papel_da_moldura(cromo_escuro=False))
+        self.assertEqual(tokens.GLIFO_CLARO, md.papel_da_moldura(cromo_escuro=True))
+
+    def test_o_fio_da_barra_passa_de_tres_por_um_nas_duas_peles(self) -> None:
+        """O piso do projeto para objeto gráfico. Medido aqui, e não conferido a olho."""
+        for escuro, minimo in ((False, 3.0), (True, 3.0)):
+            fundo = tokens.cor(tokens.SUPERFICIE_PADRAO, None, cromo_escuro=escuro)
+            fio = tokens.cor(md.papel_da_moldura(cromo_escuro=escuro), None, cromo_escuro=escuro)
+            mate = tokens.cor(md.papel_da_moldura(mate=True), None, cromo_escuro=escuro)
+            with self.subTest(cromo_escuro=escuro):
+                self.assertGreater(_contraste(fio, fundo), minimo)
+                self.assertGreater(_contraste(mate, fundo), minimo)
+
+    def test_o_rotulo_da_barra_perde_o_sinal_porque_a_posicao_ja_o_diz(self) -> None:
+        """`-12,34` pede 30 px em Consolas 7pt e a barra tem 26. O sinal sai porque o número é
+        escrito do lado de quem está melhor -- é a regra do Lichess, e é o que faz 26 bastar."""
+        self.assertEqual("1,56", md.rotulo_da_barra("+1,56"))
+        self.assertEqual("12,34", md.rotulo_da_barra("-12,34"))
+        self.assertEqual("M3", md.rotulo_da_barra("-M3"))
+        self.assertEqual("M3", md.rotulo_da_barra("M3"))
+        self.assertEqual("1-0", md.rotulo_da_barra("1-0"), "resultado não é sinal")
+        self.assertEqual("=", md.rotulo_da_barra("="))
+        self.assertEqual("", md.rotulo_da_barra(""))
+
+    def test_o_titulo_da_secao_traz_o_nome_uci_e_cai_no_caminho(self) -> None:
+        """`Motor (stockfish.exe)` é o nome do arquivo, e ele não distingue duas versões do mesmo
+        motor. O UCI responde `id name` na abertura, e é o que todo programa de xadrez mostra."""
+        self.assertEqual("Motor (Stockfish dev-20230303)", md.titulo_da_secao("Stockfish dev-20230303"))
+        self.assertEqual("Motor (stockfish.exe)", md.titulo_da_secao("", "stockfish.exe"))
+        self.assertEqual("Motor", md.titulo_da_secao("", ""))
+
+    def test_a_frase_do_binario_que_nao_e_motor_nomeia_o_arquivo_e_o_que_sobrou(self) -> None:
+        """A janela mostrava a palavra `TimeoutError`, que é o nome de uma classe do Python."""
+        frase = md.frase_de_motor_que_nao_responde("C:/Python/python.exe")
+        self.assertIn("C:/Python/python.exe", frase)
+        self.assertIn("UCI", frase)
+        self.assertIn("sem motor", frase)
+        self.assertNotIn("Timeout", frase)
 
     def test_as_cores_da_barra_sao_a_tinta_das_pecas_e_nao_do_tema(self) -> None:
         """Uma faixa "das brancas" que escurecesse junto com a janela deixaria de dizer isso --
@@ -236,6 +290,37 @@ class LinhasTests(unittest.TestCase):
         """Mate ou afogamento: um número apontando para variante nenhuma seria pior que nada."""
         self.assertEqual((), md.linhas_do_motor([self._avaliacao(0)]))
         self.assertEqual((), md.linhas_do_motor(None))
+
+    def test_as_linhas_saem_ordenadas_pela_avaliacao_e_nao_pela_ordem_do_motor(self) -> None:
+        """**O MultiPV do Stockfish é a ordem da iteração anterior**: com dez linhas a ~900 ms o
+        crítico viu `-3,09` acima de `-3,04`. Numa lista cuja razão de ser é comparar candidatos, a
+        ordem é a informação."""
+        linhas = md.linhas_do_motor(
+            [self._avaliacao(-309, "a3"), self._avaliacao(-304, "e4"), self._avaliacao(-320, "h3")],
+            numero_do_lance=1,
+            brancas_jogam=True,
+        )
+        self.assertEqual(["-3,04", "-3,09", "-3,20"], [linha.display for linha in linhas])
+
+    def test_com_as_pretas_a_jogar_a_melhor_e_a_mais_negativa(self) -> None:
+        """A lista é da ordem de quem está no lance: a primeira é a melhor **para ele**."""
+        linhas = md.linhas_do_motor(
+            [self._avaliacao(-100, "a6"), self._avaliacao(-300, "e5")],
+            numero_do_lance=1,
+            brancas_jogam=False,
+        )
+        self.assertEqual(["-3,00", "-1,00"], [linha.display for linha in linhas])
+
+    def test_o_indice_nao_e_reordenado_junto_porque_e_a_ancora_do_clique(self) -> None:
+        """`indice` é a posição na lista que o motor devolveu, que é a que a sala guarda em
+        `_candidatos`. Reordená-lo poria a variante errada na árvore."""
+        linhas = md.linhas_do_motor(
+            [self._avaliacao(10, "a3"), self._avaliacao(90, "e4")],
+            numero_do_lance=1,
+            brancas_jogam=True,
+        )
+        self.assertEqual("+0,90", linhas[0].display)
+        self.assertEqual(2, linhas[0].indice, "a melhor linha é a segunda que o motor deu")
 
 
 class DesempenhoTests(unittest.TestCase):

@@ -1,22 +1,27 @@
 """As tablebases Syzygy: quando perguntar, o que dizer, e o que acontece sem elas (S-538).
 
-**Não há um `.rtbw` nesta máquina, e não haverá numa suíte.** O menor conjunto útil (cinco peças)
-passa de 1 GB, e o `python-chess` não embarca tabela nenhuma no wheel -- foi conferido. Então o que
-se mede aqui é o que **é** mensurável sem os arquivos, e são as três coisas que decidem:
+Quatro coisas se medem aqui:
 
 1. a decisão pura -- quando vale perguntar, o que cada WDL quer dizer, como a barra reage;
 2. a degradação **contra o `chess.syzygy` de verdade**, apontado para uma pasta vazia: é o caso da
    máquina de quem não baixou nada, e ele tem de responder "não sei" em vez de levantar;
 3. o caminho da resposta até a tela, com uma tabela **injetada** -- é o que prova que um WDL de
-   `+2` vira a frase certa e move a barra, sem depender de o arquivo existir.
+   `+2` vira a frase certa e move a barra, sem depender de o arquivo existir;
+4. **e, quando a máquina tiver os arquivos, a resposta de uma tabela de verdade** (`TabelaRealTests`).
 
-O que fica declarado como não medido: nenhuma consulta a uma tabela Syzygy real. O `Finais` aceita
-`tabela=` por injeção justamente para que essa dívida seja a única.
+O item (4) chegou na segunda rodada. A primeira declarava "nenhuma consulta a uma tabela real" como
+a dívida do item, na crença de que o menor conjunto útil passa de 1 GB -- e o crítico achou 35
+conjuntos de 3 e 4 peças (4,1 MB) **dentro do sdist do próprio `python-chess`**, no cache do `uv`
+desta máquina. A classe procura a pasta e **pula com o motivo escrito** quando não a acha: o
+`CVOFF_SYZYGY_PATH` aponta uma pasta à mão, e sem ele a busca é o cache do `uv`. Uma suíte não pode
+exigir 1 GB de tabela, mas também não pode fingir que 4 MB não estão ali.
 """
 
 from __future__ import annotations
 
+import os
 import unittest
+from pathlib import Path
 from typing import Any
 
 import chess
@@ -24,6 +29,18 @@ from ambiente_de_teste import pasta_temporaria
 
 from chess_diagram_ocr import tablebase
 from chess_diagram_ocr.ui import finais
+
+
+def _pasta_real() -> Path | None:
+    """Uma pasta com `.rtbw` de verdade, ou `None`. Ver o cabeçalho para por que ela é opcional."""
+    apontada = os.environ.get("CVOFF_SYZYGY_PATH", "").strip()
+    if apontada and list(Path(apontada).glob("*.rtbw")):
+        return Path(apontada)
+    cache = Path(os.environ.get("LOCALAPPDATA", "~")).expanduser() / "uv" / "cache"
+    for candidata in cache.glob("sdists-v*/pypi/chess/*/*/src/data/syzygy/regular"):
+        if list(candidata.glob("*.rtbw")):
+            return candidata
+    return None
 
 
 class QuandoPerguntarTests(unittest.TestCase):
@@ -189,6 +206,84 @@ class LeitorTests(unittest.TestCase):
         with tablebase.Finais(self.pasta, tabela=tabela) as leitor:
             self.assertTrue(leitor.aberta)
         self.assertTrue(tabela.fechada)
+
+
+PASTA_REAL = _pasta_real()
+
+
+@unittest.skipUnless(
+    PASTA_REAL is not None,
+    "sem tablebase Syzygy nesta máquina: aponte CVOFF_SYZYGY_PATH para uma pasta com .rtbw",
+)
+class TabelaRealTests(unittest.TestCase):
+    """A tabela de verdade, e não a injetada (S-538, segunda rodada).
+
+    Os 35 conjuntos de 3 e 4 peças que o `python-chess` traz no sdist bastam para afirmar as três
+    coisas que a injeção não afirma: que o arquivo é **lido**, que o WDL e o DTZ que saem dele são
+    os que a frase mostra, e que o conjunto ausente vira "não sei" em vez de erro.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        assert PASTA_REAL is not None
+        cls.leitor = tablebase.abrir(str(PASTA_REAL))
+        assert cls.leitor is not None
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.leitor.close()
+
+    def test_o_final_que_o_motor_chuta_a_tabela_resolve(self) -> None:
+        """KRvKB na posição de Philidor: o Stockfish diz **+0,26** a profundidade 23, e a posição é
+        tábua teórica. Não existe "+0,26" ali -- é isto que o item inteiro existe para consertar."""
+        achado = self.leitor.consultar(chess.Board("8/8/8/8/8/4kb2/8/4K2R w - - 0 1"))
+        assert achado is not None
+        self.assertEqual(0, achado.wdl)
+        self.assertEqual("Tábuas (tabela de finais).", finais.frase_do_resultado(achado.wdl, achado.dtz))
+        self.assertEqual(0, finais.centipeoes_de(achado.wdl))
+
+    def test_o_mate_de_bispo_e_cavalo_sai_com_a_zeragem_que_o_arquivo_guarda(self) -> None:
+        """O motor diz `+2,31` (profundidade 25) num mate forçado. A tabela diz vitória e a
+        distância que ela de fato contém -- que **não** é distância até o mate."""
+        achado = self.leitor.consultar(chess.Board("8/8/8/4k3/8/8/8/2BNK3 w - - 0 1"))
+        assert achado is not None
+        self.assertEqual(2, achado.wdl)
+        self.assertEqual(56, achado.dtz)
+        frase = finais.frase_do_resultado(achado.wdl, achado.dtz, brancas_jogam=True)
+        self.assertEqual("Tabela de finais: vitória das brancas, zeragem em 56.", frase)
+        self.assertNotIn("mate", frase, "DTZ não é distância até o mate")
+
+    def test_o_sujeito_da_frase_e_quem_esta_no_lance(self) -> None:
+        """KRvKP com as **pretas** a jogar: `-2` ali é derrota das pretas, e escrevê-lo como
+        vitória das brancas exigiria inverter o sinal no caminho entre o arquivo e a tela."""
+        board = chess.Board("8/8/8/4k3/8/4p3/8/3KR3 b - - 0 1")
+        achado = self.leitor.consultar(board)
+        assert achado is not None
+        self.assertEqual(-2, achado.wdl)
+        self.assertIn("derrota das pretas", finais.frase_do_resultado(achado.wdl, achado.dtz, brancas_jogam=False))
+        self.assertEqual(1000, finais.centipeoes_de(achado.wdl, brancas_jogam=False), "a barra vai para as brancas")
+
+    def test_o_conjunto_que_a_pasta_nao_tem_vira_nao_sei(self) -> None:
+        """A pasta traz 3 e 4 peças. Um final de 6 é o caso comum de quem baixou o conjunto
+        pequeno, e ali a estimativa do motor volta a ser a melhor resposta que existe."""
+        seis = chess.Board("8/8/4k3/6p1/8/3K4/4P3/4R2r w - - 0 1")
+        self.assertEqual(6, chess.popcount(seis.occupied))
+        self.assertTrue(finais.deve_consultar(6, tem_pasta=True))
+        self.assertIsNone(self.leitor.consultar(seis))
+
+    def test_a_consulta_e_ordens_de_grandeza_mais_barata_que_a_busca(self) -> None:
+        """É o que autoriza perguntar **antes** do motor em toda posição de final: medido, mediana
+        de 123 us contra os 800 ms de uma análise."""
+        import time
+
+        board = chess.Board("8/8/8/8/8/4kb2/8/4K2R w - - 0 1")
+        self.leitor.consultar(board)  # a primeira paga a varredura do diretório
+        tempos = []
+        for _ in range(50):
+            inicio = time.perf_counter()
+            self.leitor.consultar(board)
+            tempos.append(time.perf_counter() - inicio)
+        self.assertLess(sorted(tempos)[25], 0.005, "a mediana tem de ficar em microssegundos")
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -101,6 +101,9 @@ class SalaTests(unittest.TestCase):
         self.addCleanup(self.app.processEvents)
 
     def sala(self, **kwargs: object) -> qt_estudo.PainelDeEstudo:
+        # `pasta_de_treino` é a temporária **sempre**: o placar do treino (S-541) grava a cada
+        # lance, e sem isto a suíte escreveria em `data/placar.json` do repositório.
+        kwargs.setdefault("pasta_de_treino", self.pasta)
         montada = qt_estudo.PainelDeEstudo(
             pasta_inicial=self.pasta, pasta_de_estudos=self.pasta, **kwargs  # type: ignore[arg-type]
         )
@@ -245,10 +248,13 @@ class SalaTests(unittest.TestCase):
         antes = painel.estudo.para_pgn()
         painel.push_move(chess.Move.from_uci("d2d4"))
         self.assertEqual(painel.estudo.para_pgn(), antes, "errar não criou variante")
-        self.assertIn("errado", painel.lbl_placar.text())
+        # **O placar deixou de contar "errado" e passou a contar acerto sobre total** (S-541): a
+        # sessão é `bons de total`, e o lance errado é o que faz `0 de 1`.
+        self.assertEqual("sessão: 0 de 1", painel.lbl_placar.text())
 
         painel.push_move(chess.Move.from_uci("e2e4"))
-        self.assertIn("certo", painel.lbl_placar.text())
+        self.assertEqual("sessão: 1 de 2", painel.lbl_placar.text())
+        self.assertIn("certo", painel.lbl_status.text())
         self.assertEqual(painel.estudo.no.san(), "e4", "acertar anda na linha")
 
     def test_a_fen_invalida_nao_troca_o_estudo(self) -> None:
@@ -920,6 +926,9 @@ class ArranjoTests(unittest.TestCase):
         self.addCleanup(self.app.processEvents)
 
     def sala(self, **kwargs: object) -> qt_estudo.PainelDeEstudo:
+        # `pasta_de_treino` é a temporária **sempre**: o placar do treino (S-541) grava a cada
+        # lance, e sem isto a suíte escreveria em `data/placar.json` do repositório.
+        kwargs.setdefault("pasta_de_treino", self.pasta)
         montada = qt_estudo.PainelDeEstudo(
             pasta_inicial=self.pasta, pasta_de_estudos=self.pasta, **kwargs  # type: ignore[arg-type]
         )

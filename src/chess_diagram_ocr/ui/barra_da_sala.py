@@ -301,8 +301,28 @@ ACOES: tuple[Acao, ...] = (
         dica="A linha some e o tabuleiro cobra o lance. A árvore não muda: errar não cria\n"
         "variante -- para guardar o lance que você jogou, desligue o treino.",
     ),
+    # **Os dois da Fase 83 vão para o "Mais", e é a régua de `fila_de_destaque` de novo** (S-539,
+    # S-540): extrair as táticas é uma vez por livro -- a varredura leva minutos -- e abrir a
+    # agenda é uma vez por sessão. O que se faz a cada lance é o `modo_treino` acima, e é ele que
+    # fica na fila. Pôr os três lá empurraria um dos onze que hoje cabem a 714 px para o menu.
+    Acao(
+        "taticas_do_livro",
+        TREINO,
+        "extrair_taticas",
+        principal=False,
+        dica="Casa cada diagrama deste livro com a solução impressa e guarda o par como\nexercício. "
+        "Diz quantos ficaram de fora e por quê. Leva minutos, e é cancelável.",
+    ),
+    Acao(
+        "treinar_agenda",
+        TREINO,
+        "agenda",
+        principal=False,
+        dica="A fila de hoje da repetição espaçada: o que venceu, e alguns que você ainda não viu.\n"
+        "Some por um mês e ela não vira uma parede -- o teto do dia adia o resto.",
+    ),
 )
-"""As trinta e duas ações da barra: trinta comandos da aba, o interruptor e o agrupador.
+"""As trinta e quatro ações da barra: trinta e dois comandos da aba, o interruptor e o agrupador.
 
 É `COMANDOS_DA_ABA` inteira menos `NAVEGACAO`, mais `SEGUIR_OCR` e `EXPORTAR_ESTUDO`. A conta é
 cobrada nos dois sentidos em `tests/test_ui_barra_da_sala.py`: comando da aba que a barra não

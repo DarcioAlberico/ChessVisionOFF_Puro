@@ -22,6 +22,7 @@ o motor instalado -- que não está nesta máquina. Fica registrado como o que �
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import shutil
@@ -41,6 +42,23 @@ DEFAULT_MOVETIME_MS = 800
 """Bem abaixo dos 2 s do critério de aceite da S-33, com folga para o custo de ida e volta
 com o processo. Configurável para quem quiser análise mais funda."""
 
+TETO_DE_CENTIPEOES = 1000
+"""Dez peões: o maior número que uma avaliação diz alguma coisa (S-537/S-538).
+
+**Um número só, com dois nomes, e é de propósito**: `ui/analise_da_partida.TETO_DE_AVALIACAO` é
+este valor importado, e não uma segunda constante. A camada pura corta a perda de um lance aqui, e
+o motor corta aqui o que a tabela de finais lhe manda -- as duas coisas são a mesma afirmação
+("acima de dez peões a diferença deixa de ser informação"), e duas cópias dela divergiriam."""
+
+CP_MINIMO_DE_TABELA = 15_000
+"""Acima de 150 peões o `cp` do UCI **não é uma avaliação**: é a tabela de finais falando (S-538).
+
+O Stockfish imprime a vitória por tablebase como `cp 20000 - ply` (`UCI::value`), reservando a
+faixa acima de `VALUE_TB_WIN_IN_MAX_PLY` para isso. Sem tratá-la, um KBNvK com `SyzygyPath`
+configurado saía na tela como **`+200,00`** e ia para o arquivo como `[%eval 200.0]` -- medido
+nesta máquina com as tabelas de 3 e 4 peças. Cento e cinquenta peões é o corte: nenhuma busca
+devolve tanto (o material inteiro de um lado dá ~103), e a faixa do Stockfish começa em 19.754."""
+
 CANDIDATE_NAMES = ("stockfish", "stockfish.exe")
 
 CANDIDATE_DIRS = (
@@ -58,6 +76,36 @@ A pasta do SCID entrou na S-536, e não é generosidade com um programa de terce
 xadrez num PC quase sempre já instalou SCID ou ChessBase, e os dois trazem um Stockfish dentro.
 Foi assim que esta máquina passou a ter motor -- `C:/Program Files/scid_windows_x64/engines/
 stockfish.exe`, Stockfish dev-20230303 --, e antes disso a seção do motor nunca aparecia aqui."""
+
+
+FALHAS_AO_ABRIR: tuple[type[BaseException], ...] = (
+    asyncio.TimeoutError,
+    TimeoutError,
+    OSError,
+    chess.engine.EngineError,
+    chess.engine.EngineTerminatedError,
+)
+"""O que `popen_uci` levanta quando o binário não vira motor. Ver `MotorNaoRespondeu`.
+
+**`asyncio.TimeoutError` e o `TimeoutError` embutido são classes diferentes no Python 3.10**, e
+esta linha existe por causa disso: só a partir do 3.11 um é apelido do outro. A primeira redação
+capturava o embutido, o `popen_uci` levantava o do `asyncio`, e a janela continuava mostrando a
+palavra `TimeoutError` -- exatamente o defeito que a classe veio consertar. Os dois ficam na tupla
+para que a versão do Python não decida qual mensagem o usuário lê."""
+
+
+class MotorNaoRespondeu(RuntimeError):
+    """O binário abriu e não falou UCI (S-536, segunda rodada).
+
+    **Existe para que a frase chegue à janela em português.** `SimpleEngine.popen_uci` espera dez
+    segundos por `uciok` e, se ele não vem -- porque o programa apontado não é um motor --, levanta
+    `TimeoutError`, que tem `str()` **vazio**. `cli.message_for` cai então no nome da classe e a
+    janela mostrava a palavra `TimeoutError`, crua e em inglês. Com uma classe própria, a mensagem
+    é a frase, e `message_for` a devolve intacta.
+
+    Quem escreve a frase é `ui/motor_declarado.frase_de_motor_que_nao_responde`: ela é texto de
+    tela, e texto de tela é decisão da camada pura.
+    """
 
 
 def find_engine(explicit: str | Path | None = None, *, env: dict[str, str] | None = None) -> Path | None:
@@ -111,6 +159,14 @@ class Evaluation:
     depth: int = 0
     elapsed_s: float = 0.0
 
+    tabela: int | None = None
+    """`+1` vitória por tabela de finais das brancas, `-1` das pretas, `None` fora dela (S-538).
+
+    Vem do `cp` que o motor imprime acima de `CP_MINIMO_DE_TABELA`. Quando ele está preenchido,
+    `score_cp` já foi reescrito para `±TETO_DE_CENTIPEOES` -- é o número que a barra, o gráfico e o
+    `[%eval]` do arquivo entendem, e ele diz o que a tabela disse ("acabou, e é deste lado") sem
+    afirmar duzentos peões de vantagem."""
+
     nodes: int = 0
     nps: int = 0
     """Nós visitados e nós por segundo, como o UCI os relata (S-529).
@@ -125,7 +181,14 @@ class Evaluation:
         return self.mate_in is not None
 
     def display(self) -> str:
-        """A avaliação como se lê num tabuleiro: `+1,35`, `-0,40`, `M3`, `-M2`."""
+        """A avaliação como se lê num tabuleiro: `+1,35`, `-0,40`, `M3`, `-M2`, `1-0`.
+
+        **A vitória por tabela sai como resultado e não como número** (S-538): a tabela não estima
+        uma vantagem, ela sabe o placar. `1-0` e `0-1` são os tokens do PGN, que não têm idioma, e
+        são os mesmos que a barra já escreve quando o leitor de tablebases da sala responde.
+        """
+        if self.tabela is not None:
+            return "1-0" if self.tabela > 0 else "0-1"
         if self.mate_in is not None:
             return f"{'M' if self.mate_in > 0 else '-M'}{abs(self.mate_in)}"
         if self.score_cp is None:
@@ -173,8 +236,8 @@ def fracao_de_vantagem(score_cp: int | None, mate_in: int | None) -> float:
     return 1.0 / (1.0 + 10 ** (-score_cp / 400.0))
 
 
-def _to_white_pov(score: chess.engine.PovScore) -> tuple[int | None, int | None]:
-    """Extrai `(centipeões, mate_em)` do ponto de vista das brancas.
+def _to_white_pov(score: chess.engine.PovScore) -> tuple[int | None, int | None, int | None]:
+    """Extrai `(centipeões, mate_em, tabela)` do ponto de vista das brancas.
 
     **`mate 0` não carrega sinal, e é o mate que já aconteceu** (S-537). O UCI o responde na
     posição em que quem está no lance está mateado, e `Mate(0)` e `MateGiven` -- os dois lados
@@ -185,13 +248,23 @@ def _to_white_pov(score: chess.engine.PovScore) -> tuple[int | None, int | None]
     Normalizado para `±1`, que é o que ele quer dizer -- "acabou, e foi deste lado". A diferença
     entre um mate dado e um mate em um lance não muda decisão nenhuma no programa: as duas enchem
     a barra, e as duas valem o teto na conta de perda.
+
+    **A faixa da tabela de finais é a outra normalização** (S-538, segunda rodada). Ver
+    `CP_MINIMO_DE_TABELA`: acima dela o `cp` é a tabela dizendo o placar, e ele vira
+    `tabela=±1` com o `score_cp` reescrito no teto de dez peões.
     """
     brancas = score.white()
     mate = brancas.mate()
     if mate is not None:
-        return None, int(mate) or (1 if brancas > chess.engine.Cp(0) else -1)
+        return None, int(mate) or (1 if brancas > chess.engine.Cp(0) else -1), None
     centipeoes = brancas.score()
-    return (None, None) if centipeoes is None else (int(centipeoes), None)
+    if centipeoes is None:
+        return None, None, None
+    valor = int(centipeoes)
+    if abs(valor) >= CP_MINIMO_DE_TABELA:
+        lado = 1 if valor > 0 else -1
+        return lado * TETO_DE_CENTIPEOES, None, lado
+    return valor, None, None
 
 
 class EngineAnalyzer:
@@ -243,11 +316,23 @@ class EngineAnalyzer:
             return dict(self._opcoes)
 
     def start(self) -> None:
+        """Sobe o processo. Um binário que não fala UCI vira `MotorNaoRespondeu`, em pt-BR.
+
+        O `import` é dentro da função de propósito: `ui/motor_declarado.py` importa este módulo
+        (a curva da barra mora aqui), e importá-lo de volta no topo fecharia o ciclo. A frase é
+        decisão de tela e mora lá; o que este módulo faz é levantar a classe certa.
+        """
         with self._lock:
             if self._engine is not None:
                 return
             logger.info("Abrindo motor de analise: %s", self.path)
-            self._engine = chess.engine.SimpleEngine.popen_uci(str(self.path))
+            try:
+                self._engine = chess.engine.SimpleEngine.popen_uci(str(self.path))
+            except FALHAS_AO_ABRIR as exc:
+                from chess_diagram_ocr.ui.motor_declarado import frase_de_motor_que_nao_responde
+
+                logger.warning("O motor em %s nao respondeu ao UCI: %r", self.path, exc)
+                raise MotorNaoRespondeu(frase_de_motor_que_nao_responde(str(self.path))) from exc
             self._configurar(self._opcoes)
 
     def _configurar(self, opcoes: dict[str, int | str]) -> list[str]:
@@ -402,12 +487,13 @@ def _avaliacao_de(board: chess.Board, info: Any, *, elapsed_s: float = 0.0) -> E
     implementações da mesma coisa.
     """
     pontuacao = info.get("score")
-    cp, mate = _to_white_pov(pontuacao) if pontuacao is not None else (None, None)
+    cp, mate, tabela = _to_white_pov(pontuacao) if pontuacao is not None else (None, None, None)
     pv = list(info.get("pv") or [])
     melhor = pv[0] if pv and board.is_legal(pv[0]) else None
     return Evaluation(
         score_cp=cp,
         mate_in=mate,
+        tabela=tabela,
         best_move=melhor,
         best_move_san=board.san(melhor) if melhor is not None else "",
         pv_san=tuple(_variation_san(board, pv)),

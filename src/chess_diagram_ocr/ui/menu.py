@@ -253,6 +253,8 @@ MENUS: tuple[Menu, ...] = (
             Item("indexar_base"),
             _sep(),
             Item("modo_treino"),
+            Item("taticas_do_livro"),
+            Item("treinar_agenda"),
             _sep(),
             Item("colar_estudo"),
             Item("abrir_pgn"),

@@ -241,6 +241,8 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "exportar_estudo_rtf": "exportar_estudo_rtf",
     "estudo_para_o_texto": "levar_para_o_texto",
     "modo_treino": "alternar_treino",
+    "taticas_do_livro": "extrair_taticas",
+    "treinar_agenda": "treinar_a_agenda",
 }
 """Comando do catálogo -> método desta aba (S-280).
 

@@ -52,6 +52,12 @@ SEM_REGISTRO = {
         "que a thread faz é com um processo que o fechamento da janela encerraria de qualquer "
         "forma."
     ),
+    ("painel_de_treino.py", "pedir"): (
+        "Quanto o lance jogado custou, no treino (S-541): duas buscas de 700 ms, e a resposta é "
+        "um número que aparece ao lado de um veredicto que **já** chegou sem ela. Não entra no "
+        "registro porque não há o que perder ao fechar -- o placar do lance foi contado com o "
+        "que se sabia, e a mesma pergunta se refaz na tentativa seguinte."
+    ),
     ("busca_de_partidas.py", "buscar"): (
         "Uma consulta ao índice por nome (S-533): dezenas de milissegundos na gigabase, e até "
         "~1 s quando o filtro pede a posição corrente e ela relê dois mil candidatas. Ela sai da "

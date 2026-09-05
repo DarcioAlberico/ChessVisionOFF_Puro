@@ -10,13 +10,13 @@ existia era passar a partida inteira pelo motor e dizer, em uma tela, onde a ava
    quem jogou, e a diferença. É aritmética, e é justamente por isso que ela tem de estar num lugar
    só: escrita duas vezes -- uma no relatório, outra na marca do lance -- as duas versões divergem
    no primeiro mate.
-2. **Onde estão os cortes.** `?!`, `?` e `??` não são opinião: são 50, 100 e 300 centipeões de
-   perda, que é a tabela clássica do Lichess (`lila`, `Advice.scala`) e a mesma que o Scid usa. O
-   Lichess de hoje refinou para perda de **expectativa de vitória** -- 6, 10 e 20 pontos
-   percentuais --, e o motivo do refinamento é o caso "já estava ganho": perder 300 cp partindo de
-   +15 não é erro nenhum. Aqui esse caso é resolvido pelo **teto** (`TETO_DE_AVALIACAO`), que é o
-   que o próprio Lichess faz antes de qualquer conta: acima de dez peões a diferença deixa de
-   contar, porque acima de dez peões a partida acabou.
+2. **Onde estão os cortes.** `?!`, `?` e `??` não são opinião: são 8, 15 e 25 pontos percentuais de
+   **expectativa de vitória** perdidos, medidos na curva que o programa já usa para desenhar a
+   barra. A primeira redação usava a tabela clássica em centipeões (50/100/300, do `lila` e do
+   Scid) e o crítico mediu o que ela custa: em 256 lances de três partidas de torneio ela discorda
+   do Lichess em 14 juízos, contra 4 desta. A razão é que meio peão não vale o mesmo em toda
+   posição -- ver `_CORTES` para a medição e para por que os números não são os 6/10/20 do
+   Lichess.
 3. **Como o gráfico desenha.** A curva é a de `engine.fracao_de_vantagem` -- a mesma da barra
    lateral, e não uma segunda --, e o eixo do tempo é o **ply**, não o lance: um erro das pretas no
    lance 24 e um das brancas no 25 são dois pontos vizinhos, e agrupá-los por lance esconderia um
@@ -32,11 +32,12 @@ Nada de `PyQt6`: quem desenha o gráfico é `qt/analise_da_partida.py`, e ele n�
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from ..engine import fracao_de_vantagem
+from ..engine import TETO_DE_CENTIPEOES, fracao_de_vantagem
 
 __all__ = [
     "ERRO",
@@ -47,17 +48,24 @@ __all__ = [
     "PROFUNDIDADE_MINIMA",
     "PROFUNDIDADE_PADRAO",
     "TETO_DE_AVALIACAO",
-    "TETO_POR_LANCE_MS",
     "Avaliado",
     "avaliacao_em_centipeoes",
     "classificar",
     "frase_de_progresso",
+    "frase_de_truncamento",
+    "frase_do_ponto",
     "frase_final",
+    "grava_avaliacao",
     "indice_no_x",
     "julgar",
+    "peoes",
     "percurso",
+    "perda_de_expectativa",
+    "perda_media",
     "pontos_do_grafico",
+    "precisao",
     "resumo",
+    "teto_por_lance_ms",
     "y_do_meio",
 ]
 
@@ -81,12 +89,31 @@ Dezesseis é onde a curva de custo vira: cinco vezes o tempo de 12 para trocar q
 cinco vezes o tempo para trocar outros três. Quem quiser os outros três tem o campo no diálogo."""
 
 TETO_POR_LANCE_MS = 3000
-"""Teto de tempo por posição, além da profundidade pedida. É o que limita o **cancelamento**.
+"""Teto de tempo por posição **na profundidade padrão**. É o que limita o **cancelamento**.
 
 O botão Cancelar é conferido entre uma posição e a seguinte -- interromper um `go` do UCI no meio
 exige o protocolo assíncrono, e ele traria uma segunda forma de falar com o motor por causa de um
 botão. Com o teto, a espera máxima entre o clique e a parada é o tempo de uma posição, e ela deixa
-de depender de a posição ser um final simples ou um meio-jogo travado."""
+de depender de a posição ser um final simples ou um meio-jogo travado.
+
+**Ele deixou de ser um número só, e a razão foi medida** -- ver `teto_por_lance_ms`."""
+
+TETO_MAXIMO_POR_LANCE_MS = 30_000
+"""Meio minuto: o teto do teto, e o que faz o Cancelar continuar existindo (S-537, 2ª rodada).
+
+A profundidade 30 pede, medida nesta máquina, uma mediana de **15,9 s** por posição e um pior caso
+de **34,2 s**. Deixar o teto crescer com ela sem limite seria trocar "o Cancelar espera uma
+posição" por "o Cancelar espera o tempo que der": meio minuto é o maior atraso que ainda se pode
+chamar de resposta ao botão, e a posição que passar disso sai truncada -- e **contada**, que é a
+outra metade do conserto."""
+
+FATOR_DE_TETO_POR_PLY = 1.4
+"""Cada ply a mais custa 40% de tempo. Medido em 2026-09-04, e é a lei que escala o teto.
+
+Amostra de 13 posições da partida ALG-ch 2012 (Stockfish dev-20230303, 1 thread, `Hash` 16 MB,
+sem teto de tempo): a partida inteira sai em **10 s** a profundidade 16, **44 s** a 20, **188 s** a
+24 e **953 s** a 30. Entre 16 e 24 isso é 1,44 por ply; entre 24 e 30, 1,31. Um e quatro é o meio,
+e é o que `teto_por_lance_ms` usa."""
 
 PROFUNDIDADE_MINIMA = 6
 PROFUNDIDADE_MAXIMA = 30
@@ -94,22 +121,15 @@ PROFUNDIDADE_MAXIMA = 30
 achar; acima de 30 uma partida de 40 lances passa de meia hora, e o caminho para isso é analisar
 uma posição de cada vez, que a sala já faz."""
 
-TETO_DE_AVALIACAO = 1000
+TETO_DE_AVALIACAO = TETO_DE_CENTIPEOES
 """Dez peões, em centipeões. Toda avaliação é cortada aqui antes de qualquer diferença (S-537).
 
-**É o que impede o falso erro grave numa partida já decidida.** Sem teto, ir de +18 para +9 conta
-como 900 centipeões de perda -- um "erro grave" numa posição em que qualquer lance ganha. Com o
-teto, as duas viram +10 e a perda é zero, que é a leitura certa: acima de dez peões a diferença
-entre duas avaliações não é informação sobre o lance.
+Acima de dez peões a diferença entre duas avaliações não é informação sobre o lance: os dois lados
+dela são "acabou". O corte é o mesmo que o `engine` aplica ao que a tabela de finais lhe manda
+(S-538), e por isso ele é **o mesmo número** -- `engine.TETO_DE_CENTIPEOES` -- e não uma segunda
+constante com o mesmo valor.
 
 O mate entra pelo mesmo caminho: ele vale `TETO_DE_AVALIACAO` com o sinal de quem o dá."""
-
-POSICAO_DECIDIDA = 500
-"""Cinco peões: acima disto, para os dois lados de um lance, ele não recebe juízo (S-537).
-
-Ver `julgar` para por que a regra existe além do teto. Cinco e não dez porque é onde "ganho" deixa
-de depender do lance seguinte: com cinco peões de vantagem qualquer continuação razoável ganha, e
-um símbolo de erro ali diz mais sobre o motor do que sobre quem jogou."""
 
 IMPRECISAO = "imprecisao"
 ERRO = "erro"
@@ -119,9 +139,32 @@ tela -- a mesma regra de `pele.CLASSICA`; quem os escreve para o usuário é `ro
 
 JUIZOS: tuple[str, ...] = (IMPRECISAO, ERRO, ERRO_GRAVE)
 
-_CORTES: tuple[tuple[int, str], ...] = ((300, ERRO_GRAVE), (100, ERRO), (50, IMPRECISAO))
-"""Perda em centipeões -> juízo, do pior para o melhor. É a tabela do `lila`, na ordem em que ela
-é consultada lá: o primeiro corte que a perda alcança ganha."""
+_CORTES: tuple[tuple[int, str], ...] = ((25, ERRO_GRAVE), (15, ERRO), (8, IMPRECISAO))
+"""Perda de **expectativa de vitória**, em pontos percentuais -> juízo (S-537, segunda rodada).
+
+**O que estava aqui, e por que ele estava errado.** Eram 300, 100 e 50 *centipeões* -- a tabela
+clássica do `lila` e do Scid. Ela julga a mesma perda de meio peão do mesmo jeito no equilíbrio e
+com dez peões de diferença, e o xadrez não é assim: sair de 0,00 para -0,60 muda a partida, e sair
+de +9 para +8,40 não muda nada. O Lichess de hoje já não usa essa tabela -- ele julga por perda de
+expectativa de vitória, 6/10/20 pontos --, e o crítico mediu o custo de não fazê-lo: numa partida
+de torneio de verdade (ALG-ch Women 2012), **6 dos 12** juízos discordavam do Lichess, com
+`9...O-O` (0,46 -> 2,94) saindo `?` onde o Lichess dá `??` e `27...Kh7` (+3,04 -> +3,86) saindo
+`?!` onde o Lichess não marca nada.
+
+**A curva é a que o programa já tem, e é por isso que os números não são 6/10/20.** A expectativa
+daqui é `engine.fracao_de_vantagem` -- a do Elo, `1/(1+10^(-cp/400))` --, a mesma que desenha a
+barra lateral e o gráfico logo abaixo destes cortes. Ela é 1,56 vez mais íngreme no miolo que a do
+Lichess (`2/(1+e^(-0,00368208·cp))-1`) e satura antes, então os mesmos 6/10/20 marcariam bem mais
+lances. Usar a curva do Lichess aqui seria pôr uma segunda curva no programa, discordando do
+desenho ao lado -- que é exatamente o defeito que a S-529 registra.
+
+**Os cortes foram medidos, e não convertidos.** 256 lances de três partidas do gigabase
+(`scratchpad/r2/calibrar.py`), profundidade 16: a tabela em peões discorda do Lichess em **14**;
+esta, em **4**. A varredura do espaço inteiro dá um platô -- 24 a 26 para o grave, 15 a 16 para o
+erro, 8 para a imprecisão --, todos com 4 divergências; 25/15/8 é o meio dele. Marcados: 29 lances
+de 256, contra 28 do Lichess e 32 da tabela em peões.
+
+Do pior para o melhor, na ordem em que são consultados: o primeiro corte que a perda alcança ganha."""
 
 NAG_DE_JUIZO: dict[str, int] = {IMPRECISAO: 6, ERRO: 2, ERRO_GRAVE: 4}
 """`?!` = $6, `?` = $2, `??` = $4 -- os códigos do padrão PGN, e os mesmos que
@@ -143,6 +186,16 @@ def rotulo_de_juizo(juizo: str, quantos: int = 1) -> str:
     if formas is None:
         return ""
     return formas[0] if abs(int(quantos)) == 1 else formas[1]
+
+
+def peoes(centipeoes: int) -> str:
+    """Centipeões escritos como o tabuleiro os lê: `4,10`. Vírgula, porque a janela é pt-BR.
+
+    Existe porque a mesma grafia é pedida em três lugares -- o rótulo do lance julgado, a frase do
+    treino da S-541 e o placar --, e três `f"{x/100:.2f}".replace(".", ",")` divergiriam na
+    primeira vez que alguém mudasse a casa decimal de um deles.
+    """
+    return f"{int(centipeoes) / 100:.2f}".replace(".", ",")
 
 
 def avaliacao_em_centipeoes(score_cp: int | None, mate_in: int | None) -> int:
@@ -177,17 +230,38 @@ def perda_do_lance(antes: int, depois: int, *, brancas_jogaram: bool) -> int:
     return max(0, diferenca)
 
 
-def classificar(perda: int) -> str:
-    """O juízo daquela perda, ou `""` quando não há juízo a dar.
+def expectativa(centipeoes: int) -> float:
+    """A avaliação como **chance de ganhar**, de 0 a 100. É a curva da barra, em porcento.
+
+    Uma linha, e ela é o item: `engine.fracao_de_vantagem` é a mesma função que desenha a barra
+    lateral e o gráfico. O juízo de um lance passou a ser medido nesta escala (ver `_CORTES`), e
+    escrevê-la aqui como uma segunda logística seria o defeito que a S-529 registra -- um número
+    julgando o lance e outro desenhando a barra ao lado dele.
+    """
+    return 100.0 * fracao_de_vantagem(int(centipeoes), None)
+
+
+def perda_de_expectativa(antes: int, depois: int, *, brancas_jogaram: bool) -> float:
+    """Quantos pontos percentuais de chance de vitória o lance custou a quem o jogou.
+
+    Nunca negativa, pela mesma razão de `perda_do_lance`: um lance que "melhora" a avaliação é o
+    motor tendo mudado de ideia com mais um ply, e não um lance ganho.
+    """
+    sinal = 1.0 if brancas_jogaram else -1.0
+    return max(0.0, sinal * (expectativa(antes) - expectativa(depois)))
+
+
+def classificar(perda_de_chance: float) -> str:
+    """O juízo daquela perda de expectativa, ou `""` quando não há juízo a dar.
 
     **A maioria dos lances não recebe símbolo, e é assim que tem de ser.** Uma partida em que
-    metade dos lances é `?!` não diz nada; a marca só vale enquanto for rara. Cinquenta centipeões
-    é meio peão, que é a menor diferença que muda o plano de quem joga.
+    metade dos lances é `?!` não diz nada; a marca só vale enquanto for rara -- medido: 29 lances
+    marcados em 256.
 
-    É só a tabela de cortes: quem julga um lance de verdade é `julgar`, que aplica antes a regra
-    da posição já decidida.
+    O argumento é **pontos percentuais de chance de vitória**, e não centipeões: ver `_CORTES` para
+    a medição que trocou a escala.
     """
-    valor = int(perda)
+    valor = float(perda_de_chance)
     for corte, juizo in _CORTES:
         if valor >= corte:
             return juizo
@@ -195,27 +269,45 @@ def classificar(perda: int) -> str:
 
 
 def julgar(antes: int, depois: int, *, brancas_jogaram: bool) -> tuple[int, str]:
-    """A perda do lance e o juízo dela, com a regra da **posição já decidida** (S-537).
+    """A perda do lance **em centipeões** e o juízo dela **em expectativa** (S-537, 2ª rodada).
 
-    **A regra existe porque o teto sozinho não resolve o caso**, e foi medido: com o corte em
-    `TETO_DE_AVALIACAO`, ir de +18 para +9 vira 1000 -> 900 e sai como "erro" -- numa posição em
-    que qualquer lance ganha. O teto só apaga a diferença quando os **dois** lados dela estouram.
+    Os dois números, e cada um responde uma pergunta diferente: a perda em peões é o que o
+    relatório escreve (`perdeu 2,48`) e o que soma no ACPL, porque é a linguagem em que se fala de
+    uma posição; o juízo sai da chance de vitória, porque é ali que meio peão significa coisas
+    diferentes em posições diferentes.
 
-    O Lichess resolve o mesmo caso por outro caminho: ele julga por perda de **expectativa de
-    vitória**, e naquela escala +18 e +9 são os dois ~99% -- a diferença some sozinha. Adotar a
-    escala dele aqui significaria uma segunda curva no programa, discordando da que a barra
-    lateral desenha; a regra explícita diz a mesma coisa e continua legível no relatório, que
-    mostra a perda em peões.
+    **A regra da "posição já decidida" sumiu, e é o conserto** (segunda rodada). Ela existia porque
+    a escala em peões não sabia que +18 e +9 são a mesma coisa: o teto só apaga a diferença quando
+    os dois lados dele estouram, e de +18 para +9 sobrava um "erro" numa posição ganha. A regra
+    tapava isso com um limiar (`POSICAO_DECIDIDA`, cinco peões) que só olhava para **quem estava
+    ganhando** -- e o crítico achou o outro lado dela: com as pretas perdidas, cair de -6 para -10
+    saía como *erro grave*, porque a regra não protegia quem já tinha perdido.
 
-    `POSICAO_DECIDIDA` é cinco peões, e o teste é dos dois lados: quem estava ganho por cinco peões
-    e continua ganho por cinco peões não errou -- mas quem cai de +6 para +2 **errou**, e o juízo
-    aparece.
+    A escala de expectativa não precisa de regra nenhuma. Os dois casos saem certos por
+    construção: +18 -> +9 custa **0,24** ponto de chance, e -6 -> -10 custa **2,75** -- os dois bem
+    abaixo do corte de imprecisão. Uma regra a menos, e a que sumiu era a que tinha o defeito.
     """
     perda = perda_do_lance(antes, depois, brancas_jogaram=brancas_jogaram)
-    do_lado = (int(antes), int(depois)) if brancas_jogaram else (-int(antes), -int(depois))
-    if min(do_lado) >= POSICAO_DECIDIDA:
-        return perda, ""
-    return perda, classificar(perda)
+    return perda, classificar(perda_de_expectativa(antes, depois, brancas_jogaram=brancas_jogaram))
+
+
+def teto_por_lance_ms(profundidade: int) -> int:
+    """Quanto o motor pode gastar numa posição, para a profundidade pedida (S-537, 2ª rodada).
+
+    **O teto era fixo em 3 s, e com ele a profundidade que o diálogo oferece não existia.** Medido
+    pelo crítico: pedindo 30, **41 de 46** posições paravam no teto e a profundidade média
+    alcançada era 23,5 -- pedir 30 custava o mesmo que pedir 24 e dava o mesmo resultado, com o
+    diálogo prometendo outra coisa. Remedido aqui em 13 posições sem teto nenhum: a profundidade 16
+    tem pior caso de **0,55 s**, a 20 de **1,33 s**, a 24 de **8,97 s** e a 30 de **34,2 s**.
+
+    O teto passa a crescer com a profundidade na lei medida (`FATOR_DE_TETO_POR_PLY`), ancorado nos
+    3 s da profundidade padrão: 3,0 s a 16, 11,5 s a 20, e o teto do teto
+    (`TETO_MAXIMO_POR_LANCE_MS`) de 24 em diante. Com isso as profundidades 16, 20 e 24 chegam
+    inteiras nas 13 posições medidas, e só a 30 trunca -- **uma** delas, que o relatório conta.
+    """
+    plies = max(PROFUNDIDADE_MINIMA, min(PROFUNDIDADE_MAXIMA, int(profundidade)))
+    escalado = TETO_POR_LANCE_MS * (FATOR_DE_TETO_POR_PLY ** (plies - PROFUNDIDADE_PADRAO))
+    return max(TETO_POR_LANCE_MS, min(TETO_MAXIMO_POR_LANCE_MS, int(round(escalado))))
 
 
 @dataclass(frozen=True)
@@ -270,17 +362,109 @@ class Avaliado:
     perda: int
     juizo: str
 
+    perda_de_chance: float = 0.0
+    """Pontos percentuais de expectativa que o lance custou. É por ele que o juízo foi dado."""
+
+    profundidade: int = 0
+    """A profundidade que o motor **alcançou** nesta posição. Ver `frase_de_truncamento`."""
+
+    acabou: bool = False
+    """A posição depois do lance é mate ou afogamento -- não há o que avaliar nela (S-537).
+
+    Existe por causa do `[%eval #1]` que o crítico achou gravado na posição já matada: um mate já
+    dado não é "mate em um", e escrever isso no arquivo é escrever um número falso num campo que
+    outros programas leem. Quem decide o que fazer com ele é `grava_avaliacao`."""
+
     @property
     def rotulo(self) -> str:
         """`24... Bd3?? -- erro grave (perdeu 4,10)`. A linha que o relatório mostra."""
         simbolo = {IMPRECISAO: "?!", ERRO: "?", ERRO_GRAVE: "??"}.get(self.juizo, "")
         numero = f"{self.numero}." if self.brancas else f"{self.numero}..."
-        perda = f"{self.perda / 100:.2f}".replace(".", ",")
-        return f"{numero} {self.san}{simbolo} — {rotulo_de_juizo(self.juizo)} (perdeu {perda})"
+        return f"{numero} {self.san}{simbolo} — {rotulo_de_juizo(self.juizo)} (perdeu {peoes(self.perda)})"
+
+
+def grava_avaliacao(avaliado: Any) -> bool:
+    """Este lance ganha `[%eval]` no arquivo? Não, quando a posição depois dele já acabou (S-537).
+
+    **O caso é o último lance de uma partida que termina em mate.** O UCI responde `score mate 0`
+    ali -- "quem está no lance está mateado" --, `engine._to_white_pov` normaliza para `±1` porque
+    a barra e a conta de perda precisam do sinal, e o resultado era `[%eval #1]` gravado no PGN de
+    uma posição em que o mate **já aconteceu**. Nenhum programa de xadrez escreve isso; o Lichess
+    simplesmente não grava avaliação na posição final.
+
+    A avaliação continua existindo para o relatório e para o gráfico -- ela é o que diz que o
+    último lance não foi um erro --, só não vai para o arquivo.
+    """
+    return not bool(getattr(avaliado, "acabou", False))
+
+
+def perda_media(avaliados: Sequence[Any] | None, *, brancas: bool) -> int:
+    """O ACPL daquela cor: a perda média por lance, em centipeões (S-537, segunda rodada).
+
+    **É o número que a ChessBase e o Lichess põem no topo do relatório**, e o único que compara
+    duas partidas: a contagem de erros diz quantas vezes alguém tropeçou, e o ACPL diz o quanto.
+    Uma partida de dois `??` e nada mais e uma de vinte imprecisões podem ter a mesma contagem e
+    ACPL muito diferente.
+
+    Cor sem lance nenhum devolve zero -- não há média de nada, e um traço na tela é pior que um
+    zero que ninguém vai ler numa partida sem lances daquela cor.
+    """
+    perdas = [int(lance.perda) for lance in avaliados or () if bool(lance.brancas) == bool(brancas)]
+    return int(round(sum(perdas) / len(perdas))) if perdas else 0
+
+
+def precisao(avaliados: Sequence[Any] | None, *, brancas: bool) -> int:
+    """A precisão daquela cor, de 0 a 100 (S-537, segunda rodada).
+
+    **A fórmula é a do Lichess**, aplicada à expectativa **daqui**:
+    `103,1668·e^(-0,04354·perda) - 3,1669`, por lance, e a média disso. Ela existe porque o ACPL
+    sozinho é enganoso: 100 centipeões perdidos num equilíbrio são a partida, e os mesmos 100 com
+    seis peões de vantagem não são nada -- a exponencial sobre a perda de **chance** já sabe disso,
+    e é a mesma escala em que os cortes de `?!`/`?`/`??` foram medidos.
+
+    Medido na partida do crítico (ALG-ch Women 2012): brancas **91**, pretas **85**, com ACPL 28 e
+    53. Pela curva do Lichess os mesmos lances dariam 92 e 87 -- a diferença é a curva, não a
+    fórmula, e ela é a mesma que o cabeçalho de `ui/motor_declarado.py` tabela.
+
+    Média simples e não a média harmônica ponderada por volatilidade que o Lichess usa: a
+    ponderação dele existe para punir o erro na posição decisiva, e ela pede uma janela deslizante
+    sobre a partida -- um segundo modelo, para mover o número em um ou dois pontos.
+    """
+    perdas = [
+        float(getattr(lance, "perda_de_chance", 0.0) or 0.0)
+        for lance in avaliados or ()
+        if bool(lance.brancas) == bool(brancas)
+    ]
+    if not perdas:
+        return 100
+    notas = [max(0.0, min(100.0, 103.1668 * math.exp(-0.04354 * perda) - 3.1669)) for perda in perdas]
+    return int(round(sum(notas) / len(notas)))
+
+
+def frase_de_truncamento(avaliados: Sequence[Any] | None, profundidade: int) -> str:
+    """Quantas posições **não** chegaram à profundidade pedida. Vazio quando todas chegaram.
+
+    **Ela existe porque o teto de tempo mente em silêncio** (S-537, segunda rodada). O crítico
+    pediu profundidade 30 e recebeu 23,5 de média, sem nada na tela dizendo isso: o relatório
+    afirmava a mesma coisa que afirmaria se as 46 posições tivessem chegado lá. `teto_por_lance_ms`
+    reduziu muito o caso, e não pode eliminá-lo -- um meio-jogo travado a 30 plies passa de meio
+    minuto em qualquer máquina --, então o que sobra tem de estar escrito.
+    """
+    pedida = int(profundidade)
+    if pedida <= 0:
+        return ""
+    curtas = [lance for lance in avaliados or () if 0 < int(getattr(lance, "profundidade", 0)) < pedida]
+    if not curtas:
+        return ""
+    menor = min(int(lance.profundidade) for lance in curtas)
+    return (
+        f"{len(curtas)} posição(ões) pararam no teto de tempo antes da profundidade {pedida} "
+        f"(a mais curta chegou a {menor})."
+    )
 
 
 def resumo(avaliados: Sequence[Any] | None) -> str:
-    """Quantos de cada juízo, por cor. É a linha que o Lichess põe no topo do relatório.
+    """Quantos de cada juízo, o ACPL e a precisão, por cor. É o topo do relatório.
 
     Por cor porque a pergunta é sobre a **própria** partida: quem manda analisar quer saber quantos
     erros cometeu, e um total somado com os do adversário não responde isso.
@@ -296,22 +480,30 @@ def resumo(avaliados: Sequence[Any] | None) -> str:
     partes = []
     for brancas, nome in ((True, "Brancas"), (False, "Pretas")):
         achados = contagem[brancas]
-        if not achados:
-            partes.append(f"{nome}: sem erro")
-            continue
         detalhe = ", ".join(
             f"{achados[juizo]} {rotulo_de_juizo(juizo, achados[juizo])}"
             for juizo in JUIZOS
             if achados.get(juizo)
         )
-        partes.append(f"{nome}: {detalhe}")
+        numeros = (
+            f"precisão {precisao(avaliados, brancas=brancas)}%, "
+            f"perda média {perda_media(avaliados, brancas=brancas)} centipeões"
+        )
+        partes.append(f"{nome}: {detalhe or 'sem erro'} — {numeros}")
     return f"{total} lance(s) analisados. " + " | ".join(partes)
 
 
 def frase_de_progresso(feito: int, total: int, san: str = "") -> str:
-    """O que a barra de progresso escreve. Traz o lance para a espera ter conteúdo."""
+    """O que a barra de progresso escreve. Traz o lance para a espera ter conteúdo.
+
+    **Contando a partir de 1**, e a razão é o que o crítico leu na tela: `Analisando o lance 0 de
+    62`. A análise avalia `n+1` posições para `n` lances (ver `percurso`), e a primeira delas é a
+    posição *antes* do primeiro lance -- quem chamava passava o índice da posição como se fosse o
+    número do lance. O lance 0 não existe, e 62 não era o número de lances (eram 61).
+    """
+    quantos = max(0, int(total))
     onde = f" ({san})" if san else ""
-    return f"Analisando o lance {int(feito)} de {int(total)}{onde}…"
+    return f"Analisando o lance {max(1, min(int(feito), quantos)) if quantos else 0} de {quantos}{onde}…"
 
 
 def frase_final(quantos: int, marcados: int, *, cancelado: bool) -> str:
@@ -370,6 +562,30 @@ def _x_do_indice(indice: int, total: int, largura: int) -> int:
 def _y_da_fracao(fracao: float, altura: int) -> int:
     limpa = min(1.0, max(0.0, float(fracao)))
     return int(round((1.0 - limpa) * (altura - 1)))
+
+
+def frase_do_ponto(avaliado: Any) -> str:
+    """`ply 48 · 24... Rxf2 ?? · avaliação -2,52 · perdeu 2,50`. A dica do ponto do gráfico.
+
+    **O gráfico só tinha forma, e forma sem número não se lê** (S-537, segunda rodada). Ele mostra
+    onde a partida virou, e quem para o ponteiro num vale quer saber *qual lance* e *quanto*:
+    encontrar isso obrigava a clicar (movendo o tabuleiro) ou a procurar na lista ao lado, que só
+    tem os lances julgados.
+
+    O ply vem primeiro porque é o eixo: é a única coordenada que o desenho tem e não escreve.
+    """
+    if avaliado is None:  # pragma: no cover - o gráfico só pergunta por ponto que existe
+        return ""
+    simbolo = {IMPRECISAO: " ?!", ERRO: " ?", ERRO_GRAVE: " ??"}.get(avaliado.juizo, "")
+    numero = f"{avaliado.numero}." if avaliado.brancas else f"{avaliado.numero}..."
+    partes = [
+        f"ply {int(avaliado.ply)}",
+        f"{numero} {avaliado.san}{simbolo}",
+        f"avaliação {peoes(avaliado.centipeoes)}" if avaliado.mate_em is None else f"mate em {abs(int(avaliado.mate_em))}",
+    ]
+    if avaliado.perda:
+        partes.append(f"perdeu {peoes(avaliado.perda)}")
+    return " · ".join(partes)
 
 
 def indice_no_x(x: int, total: int, largura: int) -> int:

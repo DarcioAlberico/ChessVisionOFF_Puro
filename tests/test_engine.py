@@ -22,12 +22,16 @@ import unittest
 from pathlib import Path
 
 import chess
+import chess.engine
 from ambiente_de_teste import pasta_temporaria_da_classe
 
 from chess_diagram_ocr.engine import (
     ENV_ENGINE_PATH,
+    TETO_DE_CENTIPEOES,
     EngineAnalyzer,
     Evaluation,
+    MotorNaoRespondeu,
+    _avaliacao_de,
     find_engine,
 )
 
@@ -203,6 +207,54 @@ class AnalyzerTests(unittest.TestCase):
         self.assertLess(de_pretas.mate_in or 0, 0)
         self.assertEqual(1.0, de_brancas.advantage_fraction())
         self.assertEqual(0.0, de_pretas.advantage_fraction())
+
+    def test_o_score_de_tablebase_do_uci_vira_resultado_e_nao_duzentos_peoes(self) -> None:
+        """**Medido com Syzygy de verdade nesta máquina** (S-538, segunda rodada).
+
+        Com `SyzygyPath` apontado, o Stockfish imprime a vitória por tabela como `cp 20000 - ply`
+        (`UCI::value`) -- e num KBNvK o painel mostrava `+200,00` e o arquivo recebia
+        `[%eval 200.0]`. Duzentos peões não é uma avaliação: é a tabela dizendo o placar, e é assim
+        que ela tem de aparecer.
+        """
+        board = chess.Board("8/8/8/4k3/8/8/8/2BNK3 w - - 0 1")
+        ganho = _avaliacao_de(board, {"score": chess.engine.PovScore(chess.engine.Cp(19_980), chess.WHITE)})
+        self.assertEqual(1, ganho.tabela)
+        self.assertEqual("1-0", ganho.display())
+        self.assertEqual(TETO_DE_CENTIPEOES, ganho.score_cp)
+        # A barra vai ao teto de dez peões e não a 1,0 exato: é o mesmo número que uma partida
+        # decidida já vale, e é o que faz o gráfico e o `[%eval]` do arquivo continuarem coerentes.
+        self.assertGreater(ganho.advantage_fraction(), 0.99)
+
+        perdido = _avaliacao_de(board, {"score": chess.engine.PovScore(chess.engine.Cp(-19_980), chess.WHITE)})
+        self.assertEqual("0-1", perdido.display())
+        self.assertEqual(-TETO_DE_CENTIPEOES, perdido.score_cp)
+
+        normal = _avaliacao_de(board, {"score": chess.engine.PovScore(chess.engine.Cp(229), chess.WHITE)})
+        self.assertIsNone(normal.tabela, "uma avaliação de verdade continua sendo um número")
+        self.assertEqual("+2,29", normal.display())
+
+    def test_um_binario_que_nao_fala_uci_levanta_a_frase_em_pt_br(self) -> None:
+        """A janela mostrava a palavra `TimeoutError` -- o nome de uma classe do Python, em inglês.
+
+        `TimeoutError()` tem `str()` **vazio**, então `cli.message_for` caía no nome do tipo. Com
+        uma classe própria carregando a frase, a mensagem chega inteira à janela. Aqui o binário
+        morre em vez de calar (é mais rápido que os dez segundos do `popen_uci`), e o caminho de
+        tradução é o mesmo.
+        """
+        from chess_diagram_ocr.cli import message_for
+
+        vazio = pasta_temporaria_da_classe(type(self), prefixo="cvoff-engine-") / "nao_e_motor.bat"
+        vazio.write_bytes(b"@echo off\r\nexit /b 1\r\n" if os.name == "nt" else b"#!/bin/sh\nexit 1\n")
+        if os.name != "nt":
+            vazio.chmod(0o755)
+        motor = EngineAnalyzer(vazio)
+        with self.assertRaises(MotorNaoRespondeu) as capturado:
+            motor.start()
+        frase = message_for(capturado.exception)
+        self.assertIn("UCI", frase)
+        self.assertIn("sem motor", frase)
+        self.assertNotIn("Timeout", frase)
+        self.assertNotIn("EngineTerminated", frase)
 
     def test_the_process_is_reused_between_analyses(self) -> None:
         """Reabrir o motor a cada posição custaria ~100–300 ms só de inicialização."""

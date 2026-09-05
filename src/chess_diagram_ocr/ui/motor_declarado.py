@@ -46,6 +46,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..engine import fracao_de_vantagem
 from ..settings import EngineSettings
 from . import tokens
 
@@ -55,18 +56,22 @@ __all__ = [
     "MOVETIME",
     "MULTIPV",
     "OPCOES",
-    "PAPEL_DA_MOLDURA",
     "PAPEL_DE_BRANCAS",
     "PAPEL_DE_PRETAS",
     "THREADS",
     "TITULO",
     "altura_de_brancas",
+    "espessura_da_moldura",
     "frase_de_desempenho",
+    "frase_de_motor_que_nao_responde",
     "linhas_do_motor",
     "opcao",
+    "papel_da_moldura",
     "papel_do_lado",
     "plano_de_aplicacao",
+    "rotulo_da_barra",
     "teto_de",
+    "titulo_da_secao",
     "validar",
     "validar_caminho",
     "validar_pasta_de_tablebase",
@@ -339,11 +344,18 @@ def _normalizado(caminho: str) -> str:
 
 # ------------------------------------------------------- a barra de avaliação (S-529)
 
-LARGURA_DA_BARRA = 18
-"""Largura da barra vertical, em pixel. É a do Lichess (16 a 20 conforme a tela).
+LARGURA_DA_BARRA = 26
+"""Largura da barra vertical, em pixel. Vinte e seis porque é o que o **número** precisa (S-529).
 
-Estreita de propósito: ela fica **entre** a coluna e o tabuleiro, e cada pixel que ela toma sai do
-tabuleiro -- que é o assunto da aba. Dezoito é o que ainda deixa o número caber na faixa."""
+Ela nasceu com 18, que é a do Lichess, e o crítico mediu o que isso fazia com o rótulo: em
+Consolas 7pt -- a fonte de dado desta janela, dois pontos menor --, `12,34` ocupa **25 px** e
+`-12,34` ocupa **30**. Com 18 px o número saía cortado no meio (`-12,34` virava `12`), o que é
+pior que não escrevê-lo: um `12` sem sinal e sem casas decimais afirma outra avaliação.
+
+Vinte e seis é `25 + 1` de folga, e é o **menor** número que deixa a maior avaliação plausível
+caber inteira. O custo é medido e é de oito pixels de tabuleiro; ver `rotulo_da_barra` para a
+outra metade da conta -- o sinal sai do texto porque a **posição** do número já o diz, e é o que
+faz 26 bastar onde 32 seriam precisos."""
 
 PAPEL_DE_BRANCAS = tokens.GLIFO_CLARO
 PAPEL_DE_PRETAS = tokens.GLIFO_ESCURO
@@ -354,25 +366,106 @@ uma faixa "das brancas" que escurecesse junto com a janela deixaria de dizer iss
 argumento que `tokens.GLIFO_CLARO` já carrega para a peça desenhada."""
 
 PAPEL_DE_MATE = tokens.ATENCAO
-"""Mate anunciado pinta a faixa de quem dá o mate em âmbar (S-529).
+"""Mate anunciado é o **fio** em âmbar, e não a faixa (S-529, segunda rodada).
 
-**Cor própria, e não a barra cheia**, porque a barra cheia já quer dizer +8. O que separa "está
-ganho" de "acaba em três lances" não é a altura -- as duas enchem a barra --, é a cor. É o que o
-Lichess faz, e é a única leitura possível a metro de distância."""
+**A primeira redação pintava de âmbar a faixa de quem mateia, e ela não dizia quem mateia.** Numa
+posição de mate a barra está cheia por construção (`fracao_de_vantagem` devolve 1 ou 0), então a
+faixa de quem mateia é a barra inteira: `M3` e `-M3` saíam os dois como um retângulo âmbar de ponta
+a ponta. Medido em pixel pelo crítico: **zero** pixels de diferença entre os dois desenhos.
 
-PAPEL_DA_MOLDURA = tokens.MOLDURA
-"""O fio em volta. Sem ele, uma barra 100% branca some no fundo claro da janela."""
+Agora a faixa cheia é da cor **do lado** -- branca em cima de `M3`, preta em cima de `-M3`, que é a
+diferença que se lê a metro de distância -- e o âmbar é o fio em volta, com o dobro da espessura.
+Ele continua sendo o que separa "está ganho" de "acaba em três lances", que era a decisão certa;
+o que mudou é onde ele é pintado, porque a faixa já estava ocupada dizendo outra coisa."""
 
 
-def papel_do_lado(*, brancas: bool, mate_em: int | None) -> str:
-    """A cor da faixa daquele lado. Mate pinta **só a faixa de quem dá o mate**.
-
-    O outro lado continua com a cor dele, e é o que faz a barra continuar legível: dois âmbares
-    empilhados não diriam quem está mateando.
-    """
-    if mate_em is not None and ((mate_em > 0) == brancas):
-        return PAPEL_DE_MATE
+def papel_do_lado(*, brancas: bool) -> str:
+    """A cor da faixa daquele lado. Só isso: quem diz "mate" é a moldura (ver `PAPEL_DE_MATE`)."""
     return PAPEL_DE_BRANCAS if brancas else PAPEL_DE_PRETAS
+
+
+def papel_da_moldura(*, mate: bool = False, cromo_escuro: bool = False) -> str:
+    """O fio em volta da barra. **Ele muda com a pele, e a razão é contraste medido** (S-529).
+
+    `tokens.MOLDURA` é uma superfície: ela escurece junto com o cromo. Na pele Foco isso dava
+    `#1f1d1b` sobre um fundo `#1f2124` -- **1,04:1** --, e a faixa preta da barra (`#111111`) dava
+    **1,17:1** contra o mesmo fundo. As duas somem: a barra inteira desaparecia da janela escura,
+    e o que restava era a faixa branca flutuando sem contorno. O piso do projeto para objeto
+    gráfico é 3:1.
+
+    O fio passa a ser a tinta da peça **oposta ao fundo**: `MOLDURA` (14,74:1) na pele clara e
+    `GLIFO_CLARO` (15,20:1) na escura. Ele não precisa contrastar com as duas faixas -- a faixa da
+    cor dele encosta no fundo, que é justamente onde ela é visível sozinha --, precisa contrastar
+    com o **fundo**, que é o que faz a barra existir como objeto.
+
+    Mate troca o fio pelo âmbar (5,20:1 na pele clara, 5,09:1 na escura), e aí ele é o que diz que
+    há mate anunciado.
+    """
+    if mate:
+        return PAPEL_DE_MATE
+    return tokens.GLIFO_CLARO if cromo_escuro else tokens.MOLDURA
+
+
+def espessura_da_moldura(*, mate: bool = False) -> int:
+    """Quantos pixels de fio. Dois no mate, um no resto.
+
+    Dobrar a espessura é o que impede o âmbar de virar detalhe numa barra de 26 px: um pixel de
+    cor diferente na borda é a diferença que ninguém vê de longe, e "há mate anunciado" é
+    justamente o que se quer ver de longe.
+    """
+    return 2 if mate else 1
+
+
+def rotulo_da_barra(display: str) -> str:
+    """O número como ele vai **dentro** da barra: sem o sinal (S-529, segunda rodada).
+
+    **O sinal é redundante ali e caro.** A barra escreve o número do lado de quem está melhor --
+    embaixo com as brancas melhor, em cima com as pretas --, e essa posição já diz de quem é a
+    vantagem: é a regra do Lichess, e é a única que faz o número caber num fio de 26 px. Com o
+    sinal, `-12,34` pede 30 px e a barra teria de tomar mais oito do tabuleiro para dizer duas
+    vezes a mesma coisa.
+
+    `+1,56` -> `1,56`; `-12,34` -> `12,34`; `-M3` -> `M3`; `1-0` e `=` passam inteiros -- eles são
+    resultado e não avaliação, e o traço do meio não é sinal.
+    """
+    texto = str(display or "").strip()
+    if texto[:1] in {"+", "-", "−"}:
+        return texto[1:]
+    return texto
+
+
+def titulo_da_secao(nome: str, caminho: str = "") -> str:
+    """`Motor (Stockfish dev-20230303)`. O nome que o **motor** diz, e não o do arquivo (S-529).
+
+    O título saía `Motor (stockfish.exe)`, que é o nome do executável -- e num computador com dois
+    Stockfish de versões diferentes, ou com o binário renomeado, ele não distingue nada. O UCI
+    responde `id name` na abertura, e é esse o nome que todo programa de xadrez mostra.
+
+    Sem nome nenhum (motor ainda fechado, ou motor que não se apresentou) o caminho volta a ser a
+    resposta, porque um título `Motor ()` seria pior que o nome do arquivo.
+    """
+    limpo = str(nome or "").strip() or str(caminho or "").strip()
+    return f"Motor ({limpo})" if limpo else "Motor"
+
+
+def frase_de_motor_que_nao_responde(caminho: str) -> str:
+    """O que dizer quando o binário abre e **não fala UCI** (S-536, segunda rodada).
+
+    Medido pelo crítico: apontar as preferências para `python.exe` dá dez segundos de espera e
+    depois a palavra `TimeoutError`, crua e em inglês -- que é o nome de uma classe do Python, não
+    uma frase. Quem viu isso não sabe se errou o caminho, se o motor travou ou se o programa tem
+    um defeito.
+
+    A frase nomeia as três coisas que quem lê precisa: **qual** arquivo, **o que** falhou (ele não
+    respondeu ao protocolo), e **o que aconteceu com a sala** (ficou sem motor, que é a degradação
+    da S-33 e não um erro a mais).
+    """
+    onde = str(caminho or "").strip()
+    alvo = f" em {onde}" if onde else ""
+    return (
+        f"O programa{alvo} não respondeu ao protocolo UCI em dez segundos. "
+        "Ou ele não é um motor de xadrez, ou não conseguiu abrir. A sala segue sem motor."
+    )
 
 
 def altura_de_brancas(fracao: float, altura: int) -> int:
@@ -403,6 +496,8 @@ class _Linha:
     variante: str
     lances: tuple[str, ...]
     profundidade: int
+    fracao: float = 0.5
+    """A avaliação como fração de barra, para **ordenar**. Ver `linhas_do_motor`."""
 
     def texto(self) -> str:
         """`+0,35  12. Ba4 Nf6 13. O-O`. A avaliação primeiro: é por ela que se compara as linhas."""
@@ -423,6 +518,17 @@ def linhas_do_motor(
 
     Linha sem lance nenhum -- mate ou afogamento -- não vira `_Linha`: não há variante a mostrar, e
     uma linha vazia numerada seria um número apontando para nada.
+
+    **A ordem é a da avaliação, e não a que o motor devolveu** (segunda rodada). O MultiPV do
+    Stockfish é ordenado pela busca *da iteração anterior*: com dez linhas e ~900 ms por resposta,
+    a última iteração reordena algumas e a lista sai com `-3,09` acima de `-3,04` -- medido pelo
+    crítico. Numa lista cuja razão de ser é *comparar candidatos*, a ordem é a informação, e uma
+    lista fora de ordem faz quem lê escolher a segunda melhor achando que é a melhor.
+
+    **O índice não é reordenado junto**, e isso é o que faz o clique continuar certo: `indice` é a
+    posição na lista que o motor devolveu, que é a mesma que a sala guarda em `_candidatos`. Ele
+    não aparece na tela -- serve de âncora --, então reordenar as linhas sem reordenar os índices
+    não deixa buraco nenhum visível.
     """
     saida: list[_Linha] = []
     for indice, avaliacao in enumerate(avaliacoes or (), start=1):
@@ -436,8 +542,12 @@ def linhas_do_motor(
                 variante=variante_numerada(lances, numero=numero_do_lance, brancas=brancas_jogam),
                 lances=lances,
                 profundidade=int(getattr(avaliacao, "depth", 0) or 0),
+                fracao=fracao_de_vantagem(
+                    getattr(avaliacao, "score_cp", None), getattr(avaliacao, "mate_in", None)
+                ),
             )
         )
+    saida.sort(key=lambda linha: linha.fracao, reverse=bool(brancas_jogam))
     return tuple(saida)
 
 

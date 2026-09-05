@@ -770,6 +770,23 @@ CATALOGO: tuple[Comando, ...] = (
         rotulo_curto="Treinar",
         rotulo_alternado="Parar o treino",
     ),
+    # Os dois da Fase 83, e os dois moram no "Mais" da barra pela régua de `fila_de_destaque`:
+    # extrai-se uma vez por livro e abre-se a agenda uma vez por sessão -- nenhum dos dois é gesto
+    # de lance. `modo_treino` acima continua sendo o do lance a lance, e por isso continua na fila.
+    Comando(
+        "taticas_do_livro",
+        "Extrair as táticas deste livro…",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Táticas do livro",
+    ),
+    Comando(
+        "treinar_agenda",
+        "Treinar a agenda de hoje…",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Revisar hoje",
+    ),
     # ------------------------------------------------------------------------------ AJUDA
     # Antes da legenda porque as duas são a mesma pergunta em duas metades -- "o que existe"
     # e "que tecla faz" --, e a paleta é a que responde primeiro. Sem ícone e sem `destaque`:

@@ -73,8 +73,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from chess_diagram_ocr import eco, estudo_arquivo, tablebase
+from chess_diagram_ocr import eco, estudo_arquivo, revisao_arquivo, tablebase, taticas_arquivo
 from chess_diagram_ocr import estudo as estudo_mod
+from chess_diagram_ocr import placar as placar_mod
+from chess_diagram_ocr.config import PROJECT_ROOT
 from chess_diagram_ocr.engine import EngineAnalyzer, Evaluation
 from chess_diagram_ocr.estudo import Ancora, Estudo, PosicaoDeEstudo, Sala
 from chess_diagram_ocr.fen_utils import is_valid_fen, reading_index_from_square, square_from_reading_index
@@ -102,6 +104,7 @@ from chess_diagram_ocr.ui import (
     motor_declarado,
     tipografia,
     tokens,
+    treino_declarado,
 )
 from chess_diagram_ocr.ui import finais as finais_declarados
 from chess_diagram_ocr.ui.busy import BusyRegistry
@@ -124,6 +127,10 @@ from chess_diagram_ocr.ui.sala_declarada import (
 )
 
 logger = logging.getLogger(__name__)
+
+DADOS = PROJECT_ROOT / "data"
+"""Onde os arquivos de trabalho do treino moram por omissão (S-539 a S-541). Ver `pasta_de_treino`
+no construtor: o padrão é este, e o teste passa outro."""
 
 LADO_DO_ICONE_DA_SALA = 16
 """Lado do ícone nos botões desta aba, em pixel (S-520).
@@ -162,6 +169,7 @@ class PainelDeEstudo(QWidget):
         para_o_texto: Callable[[str], bool] = lambda _linha: False,
         busy: BusyRegistry | None = None,
         caminho_das_preferencias: Path = DEFAULT_SETTINGS_PATH,
+        pasta_de_treino: Path | None = None,
     ) -> None:
         super().__init__(parent)
         self._posicao = posicao
@@ -188,8 +196,22 @@ class PainelDeEstudo(QWidget):
         dentro, e abrir o segundo enquanto o primeiro procura destruiria um `QThread` em curso."""
         self._pasta_de_estudos = pasta_de_estudos
 
-        self._acertos = 0
-        self._erros = 0
+        self._pasta_de_treino = Path(pasta_de_treino) if pasta_de_treino is not None else DADOS
+        """Onde moram a coleção de táticas, o baralho de revisão e o placar (S-539 a S-541).
+
+        **Um argumento e não três**, e ele existe pelo motivo dos outros caminhos deste painel: o
+        teste não pode escrever no `data/` do repositório. O produto usa o padrão, e a janela não
+        precisa passar nada -- é o que mantém `qt/janela.py` do tamanho que a catraca exige."""
+
+        self._placar: placar_mod.Placar | None = None
+        """O placar do treino, lido do disco no primeiro uso. Ver a propriedade `placar`."""
+        self._perda_do_lance: Any = None
+        """O medidor do custo do lance errado (S-541), criado no primeiro erro."""
+        self._extrator: Any = None
+        """A extração de táticas em curso, guardada porque um `QObject` sem referência é recolhido
+        com a thread dentro -- a mesma razão de `_indexador`."""
+        self._treino: Any = None
+        """A janela de treino aberta (S-540). Não modal, e guardada pela mesma razão."""
         self._analysing = False
         self._geracao = 0
         """Cresce a cada mudança de nó. A resposta do motor que chegar com geração velha é
@@ -2576,56 +2598,205 @@ class PainelDeEstudo(QWidget):
             return
         self.set_status("Linha do estudo inserida na aba Texto.")
 
-    # ----------------------------------------------------------- treinar (S-290)
+    # ----------------------------------------------------------- treinar (S-290/S-541)
 
     def alternar_treino(self) -> None:
-        """Liga e desliga o modo de treino: a linha some, e o tabuleiro cobra o lance."""
+        """Liga e desliga o modo de treino: a linha some, e o tabuleiro cobra o lance.
+
+        **A sessão zera aqui, e o placar do livro não** (S-541). Até a S-541 os dois contadores
+        eram os mesmos, e desligar o treino -- que é o gesto declarado para guardar um lance que se
+        quis jogar -- apagava a tarde inteira. Agora o que zera é a sessão; o que o livro acumulou
+        está no disco desde o primeiro lance.
+        """
         self.btn_treino.setChecked(not self.btn_treino.isChecked())
         self.btn_treino.setText(
             comandos.rotulo_alternado("modo_treino")
             if self.btn_treino.isChecked()
             else comandos.rotulo_de_botao("modo_treino")
         )
-        self._acertos = 0
-        self._erros = 0
+        self.placar.zerar_sessao()
         self.refresh()
         if self.btn_treino.isChecked():
             self.set_status("Treino: jogue o lance da linha. O que vem depois está escondido.")
         else:
             self.set_status("Treino desligado.")
 
+    @property
+    def placar(self) -> placar_mod.Placar:
+        """O placar do treino, lido do disco na primeira vez que alguém treina (S-541).
+
+        Preguiçoso porque a sala é montada em toda janela e em dezenas de testes, e nenhum deles
+        treina: carregar o `placar.json` no `__init__` faria toda montagem tocar o disco por causa
+        de uma frase que quase nunca aparece.
+        """
+        if self._placar is None:
+            self._placar = placar_mod.carregar(caminho=self._caminho_do_placar())
+        return self._placar
+
+    def _caminho_do_placar(self) -> Path:
+        return self._pasta_de_treino / placar_mod.CAMINHO_PADRAO.name
+
     def _mostrar_placar(self) -> None:
-        if not self.btn_treino.isChecked():
+        if not self.btn_treino.isChecked() or self._placar is None:
             self.lbl_placar.setText("")
             return
-        self.lbl_placar.setText(f"treino: {self._acertos} certo(s), {self._erros} errado(s)")
+        livro = self.estudo.ancora.documento or self.sala.documento
+        self.lbl_placar.setText(
+            treino_declarado.frase_do_placar(self._placar.sessao, self._placar.do_livro(livro))
+        )
 
     def _treinar(self, move: chess.Move) -> None:
-        """Um lance jogado com o treino ligado. **A árvore não muda** (S-290).
+        """Um lance jogado com o treino ligado. **A árvore não muda** (S-290/S-541).
 
         O gabarito é o nó seguinte da linha, e ele já está lá: o estudo tem tudo de que o treino
-        precisa, e é por isso que este item não guarda nada.
+        precisa. **Errar não cria variante**, e o caminho de guardar o lance é declarado na própria
+        frase: desligar o treino.
 
-        **Errar não cria variante**, e o caminho de guardar o lance é declarado na própria frase:
-        desligar o treino. Um "quer guardar?" a cada erro transformaria o exercício numa fila de
-        caixas, e a resposta certa quase sempre é não.
+        **O veredicto chega na hora e o preço chega depois** (S-541). Se o lance é o da linha, não
+        há nada a perguntar. Se não é, ele ainda pode valer o mesmo -- e responder isso custa duas
+        buscas do motor, que não cabem na linha de eventos. A frase do rodapé é escrita duas vezes:
+        uma dizendo que o lance não é o da linha, outra dizendo quanto ele custou. Sem motor, a
+        primeira é a única, e ela continua sendo verdade.
         """
         esperado = self.estudo.no.variations[0] if self.estudo.no.variations else None
         if esperado is None:
             self.set_status("Fim da linha: não há lance a adivinhar aqui.")
             return
-        jogado = self.estudo.tabuleiro.san(move)
+        antes = self.estudo.tabuleiro.copy(stack=False)
+        jogado = antes.san(move)
+        gabarito = antes.san(esperado.move)
         if move == esperado.move:
-            self._acertos += 1
             self.estudo.no = esperado
             self.refresh()
-            self.set_status(f"{jogado} — certo.")
+            self._contar_no_treino(treino_declarado.classificar_o_lance(jogado, gabarito), jogado, gabarito)
             return
-        self._erros += 1
-        self._mostrar_placar()
-        self.set_status(
-            f"{jogado} não é o lance da linha. Desligue o treino para guardá-lo como variante."
+        # **O redesenho desfaz o lance na tela.** O modelo do tabuleiro jogou sobre a cópia dele, e
+        # sem isto a pessoa fica olhando uma posição que a árvore não tem -- o defeito que a S-290
+        # deixou passar porque o caminho de erro não redesenhava nada.
+        self.refresh()
+        if not self._medidor_da_perda().pedir(antes, move, (jogado, gabarito, bool(antes.turn))):
+            self._contar_no_treino(treino_declarado.classificar_o_lance(jogado, gabarito), jogado, gabarito)
+            return
+        self.set_status(f"{jogado} não é o lance da linha: perguntando ao motor quanto custou…")
+
+    def _medidor_da_perda(self) -> Any:
+        """O `PerdaDoLance` da sala, criado no primeiro erro. `pedir` recusa sem motor (S-541)."""
+        if self._perda_do_lance is None:
+            from chess_diagram_ocr.qt.painel_de_treino import PerdaDoLance
+
+            self._perda_do_lance = PerdaDoLance(self, analisador=self._analyzer)
+            self._perda_do_lance.pronta.connect(self._chegou_a_perda)
+            self._perda_do_lance.falhou.connect(self._nao_veio_a_perda)
+        return self._perda_do_lance
+
+    def _chegou_a_perda(self, ficha: Any, antes: int, depois: int) -> None:
+        jogado, gabarito, brancas = ficha
+        julgamento = treino_declarado.classificar_o_lance(
+            jogado, gabarito, antes=int(antes), depois=int(depois), brancas=bool(brancas)
         )
+        self._contar_no_treino(julgamento, jogado, gabarito)
+
+    def _nao_veio_a_perda(self, ficha: Any, _mensagem: str) -> None:
+        jogado, gabarito, _brancas = ficha
+        self._contar_no_treino(treino_declarado.classificar_o_lance(jogado, gabarito), jogado, gabarito)
+
+    def _contar_no_treino(self, julgamento: Any, jogado: str, gabarito: str) -> None:
+        """Conta o lance nos dois placares e grava o do livro **agora** (S-541).
+
+        Uma gravação por lance e não por sessão, ao contrário do baralho de revisão: o arquivo tem
+        uma linha por livro e alguns bytes, e o que se perde numa queda é justamente a sessão que
+        ninguém vai repetir. É a decisão inversa da de `qt/painel_de_treino.JanelaDeTreino`, e a
+        diferença é o tamanho do que se grava.
+        """
+        livro = self.estudo.ancora.documento or self.sala.documento
+        self.placar.registrar(livro, julgamento.resultado, perda=julgamento.perda)
+        self._mostrar_placar()
+        self.set_status(treino_declarado.frase_do_resultado(julgamento, jogado, gabarito))
+        try:
+            placar_mod.gravar(self.placar, caminho=self._caminho_do_placar())
+        except OSError as erro:  # pragma: no cover - disco cheio ou arquivo em uso
+            logger.warning("O placar do treino não pôde ser gravado: %s", erro)
+
+    # -------------------------------------------------- táticas e agenda (S-539/S-540)
+
+    def extrair_taticas(self) -> Any:
+        """Casa os diagramas deste livro com a solução impressa e grava a coleção (S-539).
+
+        **O livro é o da sala, e não um `filedialog`.** A sala já está aberta sobre um diagrama
+        dele, a aba de texto já leu folhas dele, e perguntar de novo qual é o arquivo seria
+        desconhecer o que a janela inteira está mostrando.
+
+        A varredura carrega o classificador por conta própria, do caminho padrão -- é o mesmo que
+        `cvoff-scan` faz, e é o preço de a extração rodar fora do `OcrService` (que está sob o lock
+        da S-31 servindo à página exibida). Dezessete megabytes de modelo por alguns minutos.
+        """
+        from chess_diagram_ocr.qt import painel_de_treino
+
+        livro = self.estudo.ancora.documento or self.sala.documento
+        if not livro or not Path(livro).exists():
+            self.set_status("Abra um livro na sala antes de extrair as táticas dele.")
+            return None
+        if self._extrator is not None and self._extrator.ocupado:
+            self.set_status("A extração de táticas deste livro já está em curso.")
+            return None
+        rodada = painel_de_treino.extrair_com_dialogo(
+            self, Path(livro), analisador=self._analyzer, busy=self._busy
+        )
+        rodada.terminou.connect(partial(self._chegaram_as_taticas, str(livro)))
+        rodada.falhou.connect(lambda mensagem, _e: self.set_status(f"A extração falhou: {mensagem}"))
+        self._extrator = rodada
+        return rodada
+
+    def _chegaram_as_taticas(self, livro: str, extracao: Any) -> None:
+        """Grava o que a extração achou e diz o número -- inclusive quando ele é ruim."""
+        if extracao is None:
+            self.set_status("Extração de táticas cancelada.")
+            return
+        try:
+            taticas_arquivo.gravar(livro, extracao.exercicios, pasta=self._pasta_das_taticas())
+        except OSError as erro:
+            self.set_status(f"Os exercícios não puderam ser gravados: {erro}")
+            return
+        self.set_status(extracao.resumo())
+
+    def _pasta_das_taticas(self) -> Path:
+        return self._pasta_de_treino / taticas_arquivo.PASTA_PADRAO.name
+
+    def _caminho_da_revisao(self) -> Path:
+        return self._pasta_de_treino / revisao_arquivo.CAMINHO_PADRAO.name
+
+    def _gravar_o_baralho(self, caminho: Path, baralho: dict[str, Any]) -> None:
+        """A gravação que a janela de treino chama ao fechar. Método e não `lambda`: um `lambda`
+        não tem nome para o critério de aceite citar, e a S-546 já registrou o argumento."""
+        revisao_arquivo.gravar(baralho, caminho=caminho)
+
+    def treinar_a_agenda(self) -> Any:
+        """Abre a fila de hoje da repetição espaçada (S-540).
+
+        Sem exercício nenhum extraído, a janela **não abre**: uma tela de treino vazia não diz o
+        que fazer, e a frase diz -- o comando que a preenche está ao lado, no mesmo menu.
+        """
+        from chess_diagram_ocr.qt.painel_de_treino import JanelaDeTreino
+
+        exercicios = taticas_arquivo.carregar_tudo(pasta=self._pasta_das_taticas())
+        if not exercicios:
+            self.set_status(
+                'Não há exercício extraído ainda. Use "Táticas do livro" com um livro aberto.'
+            )
+            return None
+        caminho = self._caminho_da_revisao()
+        janela = JanelaDeTreino(
+            self,
+            exercicios=exercicios,
+            baralho=revisao_arquivo.carregar(caminho=caminho),
+            placar=self.placar,
+            analisador=self._analyzer,
+            gravar=partial(self._gravar_o_baralho, caminho),
+        )
+        janela.fechada.connect(self._mostrar_placar)
+        self._treino = janela
+        janela.show()
+        return janela
 
     # --------------------------------------------------------------------------------- PGN
 

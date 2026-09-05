@@ -1,13 +1,19 @@
 """O final resolvido por tabela, e não por busca: quando perguntar e o que dizer (S-538).
 
-**Um motor num final de cinco peças ainda está chutando.** Ele diz `+3,45` numa posição que ou é
-ganha ou é tábua -- não existe "+3,45" ali --, e num final de torre contra bispo ele pode dizer
-`+0,90` sobre uma tábua teórica. As tablebases Syzygy resolveram esses finais por retroanálise: a
-resposta delas não é uma estimativa, é o resultado.
+**Um motor num final de cinco peças ainda está chutando, e agora isso está medido.** Contra as
+tabelas de 3 e 4 peças desta máquina (2026-09-04, Stockfish dev-20230303): na posição de Philidor
+de torre contra bispo ele diz **`+0,26` a profundidade 23** sobre uma **tábua teórica**, e num
+bispo-e-cavalo contra rei ele diz **`+2,31` a profundidade 25** sobre um **mate forçado com 56 de
+zeragem**. Não existe "+0,26" nem "+2,31" ali. As tablebases Syzygy resolveram esses finais por
+retroanálise: a resposta delas não é uma estimativa, é o resultado.
 
 **A pasta é opcional e sem padrão, e é a mesma regra da S-32.** Os arquivos de cinco peças são
 ~1 GB e os de seis, ~150 GB: nada disso vem no repositório e nada disso se presume. Sem pasta
 configurada, nada muda -- o painel continua mostrando o que o motor disse, como sempre mostrou.
+
+**Perguntar é barato, e é isso que autoriza perguntar antes do motor.** Medido em 500 consultas:
+mediana de **123 µs**, p95 de **196 µs**, pior caso de 1,1 ms, e 6,6 ms na primeira (que paga a
+varredura do diretório). Uma análise a 800 ms é ~6.500 vezes mais cara que a consulta.
 
 **O que Syzygy sabe, e o que ele não sabe.** WDL diz o resultado com jogo perfeito (`+2` ganho,
 `+1` ganho que a regra dos 50 lances anula, `0` tábua, e os negativos espelhados); DTZ diz quantos

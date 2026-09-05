@@ -243,10 +243,14 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**Dezessete** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**Dezenove** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
-exceção. Onze são operações longas e estão no `BusyRegistry`; as outras quatro são declaradas em
+exceção. Doze são operações longas e estão no `BusyRegistry`; as outras seis são declaradas em
 `tests/test_busy.py::SEM_REGISTRO`, com o motivo de cada uma (S-112).
+
+**As duas últimas são da Fase 83** (S-539/S-541): a extração de táticas de um livro inteiro, que se
+registra porque leva minutos e grava um arquivo, e a medição do custo do lance no treino, que não
+se registra porque é uma pergunta de dois segundos cuja resposta a próxima tentativa refaz.
 
 A contagem é conferida por `tests/test_docs.py` contra `qt/*.py` (S-410/S-506). **Ela conta duas
 formas**: `threading.Thread(`, que veio do Tk, e `Tarefa(`, o `QThread` de `qt/trabalho.py`.

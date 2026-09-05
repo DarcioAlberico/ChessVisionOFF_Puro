@@ -37,6 +37,8 @@ from chess_diagram_ocr.ui import analise_da_partida as declarada
 from chess_diagram_ocr.ui import motor_declarado, tokens
 
 if TEM_PYQT:
+    from PyQt6.QtGui import QFontMetrics
+
     from chess_diagram_ocr.qt import analise_da_partida as qt_analise
     from chess_diagram_ocr.qt import motor as qt_motor
     from chess_diagram_ocr.qt import painel_de_estudo as qt_estudo
@@ -98,28 +100,161 @@ class BarraDeAvaliacaoTests(unittest.TestCase):
         widget.definir(0, None, "0,00")
         self.assertEqual(ALTURA // 2, widget.altura_de_brancas())
 
-    def test_o_mate_pinta_a_faixa_de_quem_mateia_em_cor_propria(self) -> None:
-        """**Cor e não altura**: a barra cheia já quer dizer +8, e o que separa "está ganho" de
-        "acaba em três lances" é a cor (S-529)."""
+    def test_mate_das_brancas_e_mate_das_pretas_desenham_diferente(self) -> None:
+        """**O bloqueio da primeira rodada, medido em pixel.** Com o âmbar na faixa, `M3` e `-M3`
+        saíam idênticos -- 0 pixel de diferença --, porque a barra de mate está cheia por
+        construção e "a faixa de quem mateia" é a barra inteira. Agora a faixa é a cor do lado."""
+        widget = self.barra()
+        widget.definir(None, 3, "M3")
+        brancas = renderizar(widget)
+        widget.definir(None, -3, "-M3")
+        pretas = renderizar(widget)
+        self.assertGreater(
+            pixels_diferentes(brancas, pretas),
+            motor_declarado.LARGURA_DA_BARRA * ALTURA // 2,
+            "M3 e -M3 têm de trocar a barra inteira de cor",
+        )
+        self.assertEqual(tema.cor_atual(tokens.GLIFO_CLARO), cor_em(brancas, 12, ALTURA // 2))
+        self.assertEqual(tema.cor_atual(tokens.GLIFO_ESCURO), cor_em(pretas, 12, ALTURA // 2))
+
+    def test_o_mate_troca_o_fio_por_ambar_e_o_ganho_grande_nao(self) -> None:
+        """O que separa "está ganho" de "acaba em três lances" continua sendo a cor -- mudou onde
+        ela é pintada. `+20,00` e `M3` enchem a barra igual e diferem no fio."""
         widget = self.barra()
         widget.definir(2000, None, "+20,00")
-        ganho = cor_em(renderizar(widget), 3, ALTURA - 5)
+        ganho = renderizar(widget)
         widget.definir(None, 3, "M3")
-        mate = cor_em(renderizar(widget), 3, ALTURA - 5)
-        self.assertEqual(tema.cor_atual(tokens.GLIFO_CLARO), ganho)
-        self.assertEqual(tema.cor_atual(tokens.ATENCAO), mate)
-        self.assertNotEqual(ganho, mate)
+        mate = renderizar(widget)
+        self.assertEqual(tema.cor_atual(tokens.ATENCAO), cor_em(mate, 0, ALTURA // 2))
+        self.assertEqual(tema.cor_atual(tokens.ATENCAO), cor_em(mate, 1, ALTURA // 2), "o fio tem 2 px")
+        self.assertNotEqual(tema.cor_atual(tokens.ATENCAO), cor_em(ganho, 0, ALTURA // 2))
+        self.assertGreater(pixels_diferentes(ganho, mate), 0)
 
-    def test_o_mate_das_pretas_pinta_a_faixa_de_cima(self) -> None:
+    def test_o_fio_da_barra_muda_com_a_pele_para_nao_sumir_no_escuro(self) -> None:
+        """Na pele Foco o fio `MOLDURA` dava 1,04:1 contra o fundo e a barra sumia. O teste mede o
+        pixel do fio nos dois cromos, e não a constante."""
         widget = self.barra()
-        widget.definir(None, -2, "-M2")
-        self.assertEqual(tema.cor_atual(tokens.ATENCAO), cor_em(renderizar(widget), 3, 5))
+        widget.definir(0, None, "")
+        claro = cor_em(renderizar(widget), 0, ALTURA // 2)
+        self.assertEqual(tema.cor_atual(tokens.MOLDURA), claro)
+        anterior = tema.cromo_escuro_em_vigor()
+        tema.aplicar_tema(None, cromo_escuro=True)
+        self.addCleanup(tema.aplicar_tema, None, cromo_escuro=anterior)
+        escuro = cor_em(renderizar(widget), 0, ALTURA // 2)
+        self.assertEqual(tema.cor_atual(tokens.GLIFO_CLARO), escuro)
+
+    def test_a_barra_espelha_com_o_tabuleiro_virado(self) -> None:
+        """O Lichess espelha a barra junto com o tabuleiro: quem virou está olhando do lado das
+        pretas, e uma barra teimosa obriga o olho a traduzir duas vezes."""
+        virado = {"sim": False}
+        widget = qt_motor.BarraDeAvaliacao(virado=lambda: virado["sim"])
+        self.addCleanup(descartar, widget)
+        widget.resize(motor_declarado.LARGURA_DA_BARRA, ALTURA)
+        widget.show()
+        self.app.processEvents()
+        widget.definir(200, None, "+2,00")
+        de_pe = renderizar(widget)
+        virado["sim"] = True
+        widget.update()
+        espelhada = renderizar(widget)
+        self.assertEqual(tema.cor_atual(tokens.GLIFO_CLARO), cor_em(de_pe, 12, ALTURA - 5))
+        self.assertEqual(tema.cor_atual(tokens.GLIFO_CLARO), cor_em(espelhada, 12, 5))
+        self.assertGreater(pixels_diferentes(de_pe, espelhada), 1000)
+
+    def test_o_rotulo_que_nao_cabe_nao_e_escrito_cortado(self) -> None:
+        """**O outro bloqueio**: `-12,34` precisava de 30 px numa barra de 18 e saía como `12`, que
+        é outra avaliação igualmente plausível. A barra passou a 26 e o rótulo perdeu o sinal; o
+        que ainda não couber **não é desenhado**, e é isto que o pixel afirma -- a barra com um
+        rótulo grande demais fica idêntica à barra sem rótulo nenhum.
+
+        (Sob `offscreen` não há fonte de verdade, então a régua aqui é a decisão e não o glifo: a
+        medida em Consolas está na spec.)
+        """
+        widget = self.barra()
+        self.assertEqual(26, motor_declarado.LARGURA_DA_BARRA)
+        self.assertIsNone(widget._fonte_que_cabe("+123.456,78"), "nem no menor corpo cabe")
+        widget.definir(200, None, "")
+        sem_rotulo = renderizar(widget)
+        widget.definir(200, None, "+123.456,78")
+        com_rotulo = renderizar(widget)
+        self.assertEqual(0, pixels_diferentes(sem_rotulo, com_rotulo))
+        fonte = widget._fonte_que_cabe("M3")
+        if fonte is not None:
+            self.assertLessEqual(
+                QFontMetrics(fonte).horizontalAdvance("M3"), motor_declarado.LARGURA_DA_BARRA - 2
+            )
 
     def test_a_barra_limpa_volta_ao_meio(self) -> None:
         widget = self.barra()
         widget.definir(500, None, "+5,00")
         widget.limpar()
         self.assertEqual(ALTURA // 2, widget.altura_de_brancas())
+
+
+class LinhasDoMotorTests(unittest.TestCase):
+    """A lista MultiPV: ela é redesenhada a cada ~900 ms e não pode perder o lugar (S-529)."""
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.addCleanup(self.app.processEvents)
+        self.lista = qt_motor.LinhasDoMotor()
+        self.addCleanup(descartar, self.lista)
+        self.lista.resize(200, 60)
+        self.lista.show()
+        self.app.processEvents()
+
+    def _linhas(self, quantas: int = 10, desvio: int = 0) -> Any:
+        return motor_declarado.linhas_do_motor(
+            [
+                Evaluation(score_cp=100 - 7 * i + desvio, mate_in=None, best_move=None,
+                           pv_san=("e4", "e5", "Nf3", "Nc6"), depth=20)
+                for i in range(quantas)
+            ],
+            numero_do_lance=12,
+            brancas_jogam=True,
+        )
+
+    def test_a_rolagem_sobrevive_a_resposta_seguinte(self) -> None:
+        """Com `MultiPV 10` a lista voltava ao topo a cada resposta do motor: quem tinha rolado até
+        a nona linha para clicar nela não conseguia -- ela saía debaixo do cursor."""
+        self.lista.mostrar(self._linhas())
+        self.app.processEvents()
+        barra = self.lista.verticalScrollBar()
+        self.assertGreater(barra.maximum(), 0, "dez linhas em 60 px têm de rolar")
+        barra.setValue(barra.maximum())
+        antes = barra.value()
+        self.lista.mostrar(self._linhas(desvio=1))
+        self.app.processEvents()
+        self.assertEqual(antes, self.lista.verticalScrollBar().value())
+
+    def test_a_selecao_sobrevive_a_resposta_seguinte(self) -> None:
+        """`setHtml` troca o documento inteiro e apaga a seleção: quem selecionava uma linha para
+        copiá-la perdia a seleção antes de chegar ao `Ctrl+C`."""
+        self.lista.mostrar(self._linhas(3))
+        self.app.processEvents()
+        cursor = self.lista.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(8, cursor.MoveMode.KeepAnchor)
+        self.lista.setTextCursor(cursor)
+        self.assertTrue(self.lista.textCursor().selectedText())
+        self.lista.mostrar(self._linhas(3, desvio=1))
+        self.app.processEvents()
+        # As **pontas** da seleção, e não o texto: a resposta seguinte muda o número que está
+        # selecionado, e é justamente por isso que ela redesenhou.
+        depois = self.lista.textCursor()
+        self.assertEqual((0, 8), (depois.selectionStart(), depois.selectionEnd()))
+
+    def test_resposta_igual_nao_redesenha_a_lista(self) -> None:
+        """A defesa que mais paga: numa posição parada -- que é onde alguém lê a lista com calma --
+        a resposta seguinte é literalmente a mesma, e aí não há redesenho nenhum a sobreviver."""
+        self.lista.mostrar(self._linhas(3))
+        self.app.processEvents()
+        antes = renderizar(self.lista)
+        documento = self.lista.document()
+        self.lista.mostrar(self._linhas(3))
+        self.app.processEvents()
+        self.assertIs(documento, self.lista.document())
+        self.assertEqual(0, pixels_diferentes(antes, renderizar(self.lista)))
 
 
 class _MotorLento:
@@ -191,7 +326,13 @@ class AnaliseDaPartidaTests(unittest.TestCase):
         rodada.iniciar(self._jogo(6), profundidade=8)
         self.assertTrue(_girar(self.app, lambda: not rodada.ocupado, 5.0))
         self.assertEqual(7, len(vistos), "n+1 posições: a de partida também é avaliada")
-        self.assertEqual("", vistos[0][2], "a posição de partida não veio de lance nenhum")
+        # **Contando a partir de 1, e sobre o número de lances.** A tela dizia `lance 0 de 62`
+        # numa partida de 61 lances: o índice da posição estava sendo mostrado como número de
+        # lance, e a primeira posição (a de partida) virava "lance 0".
+        self.assertEqual((1, 6), vistos[0][:2])
+        self.assertTrue(vistos[0][2], "a frase nomeia o lance que está sendo avaliado")
+        self.assertIn("lance 1 de 6", declarada.frase_de_progresso(*vistos[0]))
+        self.assertIn("lance 6 de 6", declarada.frase_de_progresso(*vistos[-1]))
 
     def test_partida_sem_lance_nao_comeca_rodada(self) -> None:
         import chess.pgn
@@ -220,6 +361,121 @@ class AnaliseDaPartidaTests(unittest.TestCase):
         grafico.escolhido.connect(escolhidos.append)
         grafico.escolhido.emit(declarada.indice_no_x(299, 5, 300))
         self.assertEqual([4], escolhidos)
+
+    def _grafico(self) -> Any:
+        grafico = qt_analise.GraficoDaPartida()
+        self.addCleanup(descartar, grafico)
+        grafico.resize(300, qt_analise.ALTURA_DO_GRAFICO)
+        grafico.show()
+        grafico.definir(
+            [
+                declarada.Avaliado(ply=i + 1, numero=i // 2 + 1, brancas=i % 2 == 0, san="Nf3",
+                                   centipeoes=cp, mate_em=None, perda=0, juizo="")
+                for i, cp in enumerate((20, -40, 300, -600, 120))
+            ]
+        )
+        self.app.processEvents()
+        return grafico
+
+    def test_o_grafico_marca_o_lance_corrente(self) -> None:
+        """Sem a marca, o gráfico e o tabuleiro deixam de conversar depois do primeiro clique:
+        ele continua mostrando a partida inteira sem dizer onde aquele tabuleiro está nela."""
+        grafico = self._grafico()
+        sem_marca = renderizar(grafico)
+        grafico.marcar(3)
+        self.app.processEvents()
+        self.assertEqual(2, grafico.corrente())
+        self.assertGreater(pixels_diferentes(sem_marca, renderizar(grafico)), 100)
+        grafico.marcar(999)
+        self.app.processEvents()
+        self.assertEqual(-1, grafico.corrente(), "ply fora da partida apaga a marca")
+        self.assertEqual(0, pixels_diferentes(sem_marca, renderizar(grafico)))
+
+    def test_a_dica_do_grafico_diz_o_ply_e_a_avaliacao_sob_o_ponteiro(self) -> None:
+        """O gráfico só tinha forma. Quem para o ponteiro num vale quer saber qual lance e quanto,
+        e achar isso obrigava a clicar -- movendo o tabuleiro -- ou a procurar na lista ao lado."""
+        grafico = self._grafico()
+        frase = grafico.frase_em(299)
+        self.assertIn("ply 5", frase)
+        self.assertIn("Nf3", frase)
+        self.assertIn("1,20", frase)
+        sem_dados = qt_analise.GraficoDaPartida()
+        self.addCleanup(descartar, sem_dados)
+        self.assertEqual(sem_dados.DICA, sem_dados.frase_em(10))
+
+    def test_o_teto_por_posicao_acompanha_a_profundidade_pedida(self) -> None:
+        """A profundidade 30 do diálogo não existia: com 3 s fixos, 41 de 46 posições paravam no
+        teto e a média alcançada era 23,5 -- pedir 30 custava o mesmo que pedir 24."""
+        self.assertEqual(declarada.TETO_POR_LANCE_MS, declarada.teto_por_lance_ms(16))
+        self.assertGreater(declarada.teto_por_lance_ms(20), declarada.teto_por_lance_ms(16))
+        self.assertEqual(declarada.TETO_MAXIMO_POR_LANCE_MS, declarada.teto_por_lance_ms(30))
+        self.assertLessEqual(declarada.teto_por_lance_ms(30), declarada.TETO_MAXIMO_POR_LANCE_MS)
+
+    def test_o_relatorio_conta_as_posicoes_que_pararam_no_teto(self) -> None:
+        """O teto não pode ser eliminado -- um meio-jogo travado a 30 plies passa de meio minuto em
+        qualquer máquina --, então o que sobra tem de estar escrito no relatório."""
+        cheios = [
+            declarada.Avaliado(ply=1, numero=1, brancas=True, san="e4", centipeoes=10,
+                               mate_em=None, perda=0, juizo="", profundidade=30)
+        ]
+        curtos = [
+            *cheios,
+            declarada.Avaliado(ply=2, numero=1, brancas=False, san="e5", centipeoes=10,
+                               mate_em=None, perda=0, juizo="", profundidade=22),
+        ]
+        self.assertEqual("", declarada.frase_de_truncamento(cheios, 30))
+        aviso = declarada.frase_de_truncamento(curtos, 30)
+        self.assertIn("1 posição(ões)", aviso)
+        self.assertIn("22", aviso)
+        self.assertNotIn("teto de tempo", declarada.resumo(curtos), "o aviso é da medição, não da partida")
+        janela = qt_analise.JanelaDaAnalise(None, curtos, ir_para=lambda _ply: None, profundidade=30)
+        self.addCleanup(descartar, janela)
+        self.assertEqual(aviso, janela.lbl_truncadas.text())
+        limpa = qt_analise.JanelaDaAnalise(None, cheios, ir_para=lambda _ply: None, profundidade=30)
+        self.addCleanup(descartar, limpa)
+        self.assertEqual("", limpa.lbl_truncadas.text())
+
+    def test_o_resumo_traz_precisao_e_perda_media(self) -> None:
+        """Nenhum dos dois números aparecia, e são os que a ChessBase e o Lichess põem no topo: a
+        contagem de erros diz quantas vezes alguém tropeçou, o ACPL diz o quanto."""
+        lances = [
+            declarada.Avaliado(ply=1, numero=1, brancas=True, san="e4", centipeoes=0,
+                               mate_em=None, perda=20, juizo="", perda_de_chance=3.0),
+            declarada.Avaliado(ply=2, numero=1, brancas=False, san="e5", centipeoes=0,
+                               mate_em=None, perda=400, juizo=declarada.ERRO_GRAVE, perda_de_chance=40.0),
+        ]
+        frase = declarada.resumo(lances)
+        self.assertIn("perda média 20 centipeões", frase)
+        self.assertIn("perda média 400 centipeões", frase)
+        self.assertEqual(20, declarada.perda_media(lances, brancas=True))
+        self.assertGreater(declarada.precisao(lances, brancas=True), declarada.precisao(lances, brancas=False))
+
+    def test_a_posicao_ja_matada_nao_ganha_eval_no_arquivo(self) -> None:
+        """`[%eval #1]` estava sendo gravado na posição em que o mate **já aconteceu**: o UCI
+        responde `mate 0` ali e a normalização para `±1` -- que a barra precisa -- virava um "mate
+        em um" falso no PGN. O Lichess simplesmente não grava avaliação na posição final."""
+        vivo = declarada.Avaliado(ply=1, numero=1, brancas=True, san="e4", centipeoes=10,
+                                  mate_em=None, perda=0, juizo="")
+        matado = declarada.Avaliado(ply=2, numero=1, brancas=False, san="Qh4#", centipeoes=-1000,
+                                    mate_em=-1, perda=0, juizo="", acabou=True)
+        self.assertTrue(declarada.grava_avaliacao(vivo))
+        self.assertFalse(declarada.grava_avaliacao(matado))
+
+    def test_o_laco_marca_a_posicao_final_de_uma_partida_que_acaba_em_mate(self) -> None:
+        """O `acabou` sai do tabuleiro e não do motor: é `generate_legal_moves` vazio."""
+        import chess.pgn
+
+        jogo = chess.pgn.read_game(__import__("io").StringIO("1. f3 e5 2. g4 Qh4# 0-1"))
+        rodada = qt_analise.AnalisadorDaPartida(analisador=_MotorLento(0.0))
+        self.addCleanup(rodada.deleteLater)
+        pronto: list[Any] = []
+        rodada.terminou.connect(pronto.append)
+        rodada.iniciar(jogo, profundidade=8)
+        self.assertTrue(_girar(self.app, lambda: bool(pronto), 5.0))
+        avaliados = pronto[0]
+        self.assertEqual(4, len(avaliados))
+        self.assertFalse(any(lance.acabou for lance in avaliados[:-1]))
+        self.assertTrue(avaliados[-1].acabou, "depois de Qh4# não há lance legal")
 
 
 class _Sala(unittest.TestCase):

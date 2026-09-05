@@ -399,6 +399,23 @@ ICONES_DA_SALA: dict[str, tuple[Traco, ...]] = {
     # ----------------------------------------------------------------------------- TREINO
     # O alvo: três anéis.
     "treinar": (Arco((50, 50), 34), Arco((50, 50), 18), Arco((50, 50), 4)),
+    # A folha do livro com a seta saindo dela: o exercício sai do livro (S-539). O alvo já é o
+    # "treinar" acima, e repeti-lo aqui daria dois botões vizinhos com o mesmo desenho.
+    "extrair_taticas": (
+        Poli((16, 14), (58, 14), (58, 86), (16, 86), fechado=True),
+        Poli((26, 34), (48, 34)),
+        Poli((26, 54), (48, 54)),
+        Poli((64, 62), (94, 62)),
+        Poli((82, 48), (94, 62), (82, 76)),
+    ),
+    # O calendário da agenda do dia (S-540): a folha, a faixa do cabeçalho e os dois ganchos. É o
+    # traço que qualquer programa de repetição espaçada usa, e reconhecê-lo é metade do rótulo.
+    "agenda": (
+        Poli((12, 26), (88, 26), (88, 90), (12, 90), fechado=True),
+        Poli((12, 46), (88, 46)),
+        Poli((32, 12), (32, 36)),
+        Poli((68, 12), (68, 36)),
+    ),
     # ------------------------------------------------------------------- CABECALHO (S-530)
     # O lápis: a haste na diagonal, a ponta triangular embaixo e a virola perto do topo. Ele abre
     # o cabeçalho da partida, que **não é comando do catálogo** -- por isso a chave é o nome que
