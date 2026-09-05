@@ -19,7 +19,7 @@ import re
 import unittest
 from unittest import mock
 
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, pixels_diferentes, renderizar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, assentado, descartar, pixels_diferentes, renderizar
 
 from chess_diagram_ocr.ui import estilos, folha, pele, tipografia, tokens
 
@@ -761,6 +761,62 @@ class IndicadorDaMarcaTests(unittest.TestCase):
         self.assertLess(tema.lado_do_indicador(9), tema.lado_do_indicador(14))
         self.assertGreaterEqual(tema.lado_do_indicador(4), 12, "o ponto do rádio some abaixo de 12")
 
+    def test_o_item_de_menu_marcavel_usa_a_mesma_gramatica_da_caixa(self) -> None:
+        """**Havia duas gramáticas de "marcado" na mesma janela** (S-553, terceira rodada): a caixa
+        marcada era face de ênfase dentro da moldura, e o item de menu marcado era um `✓` nativo --
+        tique sem quadro contra quadro sem tique, para o mesmo par de estados.
+
+        Ficou a face, e as razões estão em `tema.MARCA_DO_MENU`. O que se afirma aqui é que ela é a
+        **mesma**: o desenho do marcado do menu é, letra por letra, o da caixa.
+        """
+        for uma in pele.PELES:
+            regras = self._indicadores(
+                tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
+            )
+            for estado in ("", ":checked", ":disabled", ":checked:disabled"):
+                with self.subTest(pele=uma.nome, estado=estado or "parado"):
+                    self.assertIn(f"{tema.MARCA_DO_MENU}::indicator{estado}", regras)
+            with self.subTest(pele=uma.nome):
+                self.assertEqual(
+                    regras["QCheckBox::indicator:checked"],
+                    regras[f"{tema.MARCA_DO_MENU}::indicator:checked"],
+                    "o menu marcado desenha diferente da caixa marcada",
+                )
+                self.assertNotEqual(
+                    regras[f"{tema.MARCA_DO_MENU}::indicator"],
+                    regras[f"{tema.MARCA_DO_MENU}::indicator:checked"],
+                    "marcado e desmarcado pintam igual no menu",
+                )
+
+    def test_o_menu_marcado_desenha_diferente_do_desmarcado(self) -> None:
+        """A prova de pixel, e ela é a que o `✓` nativo já dava: o que este item mudou não é *se*
+        se vê, é **com que desenho**. Fotografada depois do repintar (ver `qt_app.assentado`)."""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtGui import QAction
+        from PyQt6.QtWidgets import QMenu, QWidget
+
+        tema.aplicar_tema(self.app)
+        pai = QWidget()
+        pai.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        pai.resize(300, 60)
+        pai.show()
+        self.addCleanup(descartar, pai)
+        menu = QMenu(pai)
+        acao = QAction("Mapa de incerteza", menu)
+        acao.setCheckable(True)
+        menu.addAction(acao)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        menu.popup(pai.mapToGlobal(pai.rect().topLeft()))
+        self.addCleanup(menu.close)
+        acao.setChecked(False)
+        desmarcado = assentado(menu)
+        acao.setChecked(True)
+        marcado = assentado(menu)
+        self.assertGreater(
+            pixels_diferentes(desmarcado, marcado), 0, "o item marcado desenha igual ao desmarcado"
+        )
+
+
     def test_o_ponto_do_radio_e_um_pincel_com_o_campo_em_volta(self) -> None:
         """O rádio marcado é ponto dentro de anel, e não disco cheio: é o desenho que todo toolkit
         dá a um rádio, e o que separa a forma dele da da caixa."""
@@ -800,11 +856,9 @@ class IndicadorDaMarcaTests(unittest.TestCase):
                 controle.setChecked(marcado)
                 controle.setEnabled(True)
                 controle.clearFocus()
-                self.app.processEvents()
-                desenhos[(marcado, "parado")] = renderizar(controle)
+                desenhos[(marcado, "parado")] = assentado(controle)
                 controle.setEnabled(False)
-                self.app.processEvents()
-                desenhos[(marcado, "desabilitado")] = renderizar(controle)
+                desenhos[(marcado, "desabilitado")] = assentado(controle)
                 controle.setEnabled(True)
             with self.subTest(controle=nome):
                 self.assertGreater(

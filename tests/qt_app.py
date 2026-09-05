@@ -92,6 +92,62 @@ def renderizar(widget: Any) -> Any:
     return widget.grab().toImage()
 
 
+REPINTURA_LIMITE_MS = 1_500
+"""Teto da espera de `assentado`. Alto de propósito: ele nunca é atingido quando o desenho é
+estável, e é ele que separa "ainda não repintou" de "não vai repintar"."""
+
+REPINTURA_QUIETA_MS = 50
+"""Quanto tempo o desenho precisa ficar **igual** para `assentado` aceitá-lo.
+
+Não é "espere 50 ms": é "só aceite depois de 50 ms sem mudança". A diferença importa porque um
+prazo fixo mede a máquina e um período de quietude mede o desenho -- e é o desenho que se está
+fotografando. Cinquenta milissegundos é mais que a volta da linha de eventos e menos que o
+repolimento de folha que a S-553 mediu (~350 ms na pior das três peles)."""
+
+
+def assentado(widget: Any, *, limite_ms: int = REPINTURA_LIMITE_MS, quieto_ms: int = REPINTURA_QUIETA_MS) -> Any:
+    """O widget desenhado **depois** de o repintar acontecer: gira até o desenho parar de mudar.
+
+    **Um teste que fotografa antes do repintar passa em verde sobre defeito**, e isto foi medido no
+    próprio instrumento do projeto em 2026-09-05: `scratchpad/exec_final/prova_indicador.py` girava
+    120 ms entre trocar o estado e fotografar, e a pele "Fita" respondia **0 px** de diferença entre
+    marcado e desmarcado -- o mesmo número que o defeito que a S-553 tinha acabado de fechar. Com
+    350 ms as três peles respondiam 56 px na caixa e 84 no rádio. Não havia defeito nenhum: havia
+    uma régua curta.
+
+    **A causa é o polimento do QSS, e ele não é síncrono.** Trocar a folha de estilo -- ou um estado
+    que a folha desenhe -- agenda `unpolish`/`polish` e um `update()`; quem chama `processEvents()`
+    uma vez pode pegar o widget entre os dois. Um número maior de milissegundos seria a mesma aposta
+    com outro número: o que se quer não é "espere 350 ms", é "espere o desenho parar de mudar", e é
+    o que `quieto_ms` afirma -- dois desenhos iguais separados por esse intervalo.
+
+    **Dois iguais em seguida não bastariam**, e é a armadilha que este parágrafo existe para marcar:
+    antes do repintar os dois são iguais **e velhos**. O período de quietude é o que distingue "não
+    mudou mais" de "ainda não mudou".
+
+    Devolve o último `QImage`. No teto, devolve o que houver -- um desenho que nunca estabiliza
+    (animação, cursor piscando) é assunto de quem chamou, e travar a suíte não ajudaria a
+    diagnosticá-lo.
+    """
+    import time
+
+    app = aplicacao()
+    fim = time.monotonic() + limite_ms / 1000
+    anterior = None
+    desde = 0.0
+    while time.monotonic() < fim:
+        app.processEvents()
+        atual = widget.grab().toImage()
+        agora = time.monotonic()
+        if anterior is not None and atual == anterior:
+            if (agora - desde) * 1000 >= quieto_ms:
+                return atual
+        else:
+            anterior, desde = atual, agora
+        time.sleep(0.005)
+    return anterior if anterior is not None else widget.grab().toImage()
+
+
 def pixels_diferentes(antes: Any, depois: Any) -> int:
     """Quantos pixels os dois desenhos têm diferentes. Tamanhos diferentes levantam.
 

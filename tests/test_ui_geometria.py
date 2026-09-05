@@ -104,14 +104,52 @@ class GeometriaLembradaTests(unittest.TestCase):
         self.assertEqual(geometria.geometria_a_aplicar("1700x980+2560+0", self.DOIS_MONITORES), "1700x980+2560+0")
 
     def test_cabe_em_parte_e_encolhido_ate_o_monitor(self) -> None:
-        """Trocar por um notebook: a janela guardada é maior que a tela que existe agora."""
+        """Trocar por um notebook: a janela guardada é maior que a tela que existe agora.
+
+        **A tela vence o piso** (S-552, terceira rodada). Até esta rodada a altura saía em 800 --
+        o `PISO_MEDIDO` -- contra os 768 do notebook, e a janela recuperada nascia 32 px mais alta
+        que o monitor em que ela acabara de ser posta. Um piso maior que a tela não é piso.
+        """
         alvo = geometria.geometria_a_aplicar("2600x1500+3000+0", ((0, 0, 1366, 768),))
         assert alvo is not None
         corrigida = geometria.geometria_de_texto(alvo)
         assert corrigida is not None
-        self.assertEqual(corrigida.largura, 1366)
-        self.assertEqual(corrigida.altura, geometria.PISO_MEDIDO[1], "o piso da S-150 vence a tela")
+        self.assertEqual((corrigida.largura, corrigida.altura), (1366, 768))
         self.assertEqual((corrigida.x, corrigida.y), (0, 0))
+
+    def test_a_janela_recuperada_nunca_nasce_maior_que_a_tela(self) -> None:
+        """**O bloqueio 3 do crítico, com o caso dele.** `geometria_a_aplicar` devolvia 1180x800
+        para uma tela de 1024x768: mais larga e mais alta que o monitor, e centrada -- ou seja,
+        sem barra de título ao alcance para arrastá-la de volta.
+
+        Vale para o piso de fábrica e para o que a janela do Qt passa: quem manda é a tela.
+        """
+        pisos = (geometria.PISO_MEDIDO, piso_da_janela(500, 440, com_a_medicao=False), (4000, 3000))
+        for tela in ((0, 0, 1024, 768), (0, 0, 1366, 768), (0, 0, 1280, 720)):
+            for piso in pisos:
+                with self.subTest(tela=tela, piso=piso):
+                    alvo = geometria.geometria_a_aplicar("1400x950+2100+120", (tela,), piso=piso)
+                    assert alvo is not None
+                    lida = geometria.geometria_de_texto(alvo)
+                    assert lida is not None
+                    self.assertLessEqual(lida.largura, tela[2] - tela[0])
+                    self.assertLessEqual(lida.altura, tela[3] - tela[1])
+                    self.assertTrue(geometria.visivel_em(lida, (tela,)))
+
+    def test_sem_a_medicao_o_piso_e_so_a_soma_das_partes(self) -> None:
+        """As duas metades de `piso_da_janela`, separadas porque a janela do Qt rola (S-552).
+
+        `piso_da_janela` continua devolvendo o maior dos dois -- é a decisão da S-150 e ela não
+        mudou. O que mudou é que existe como pedir só a soma, e é isso que `qt/janela.py` passa.
+        """
+        soma = piso_da_janela(500, 440, com_a_medicao=False)
+        self.assertEqual(soma, (500 + 440 + CHROME_HORIZONTAL, ALTURA_MINIMA_DO_CONTEUDO + CHROME_VERTICAL))
+        self.assertLess(soma[0], PISO_MEDIDO[0])
+        self.assertLess(soma[1], PISO_MEDIDO[1])
+        self.assertEqual(piso_da_janela(500, 440), PISO_MEDIDO)
+        # O maior é por componente: a largura somada de 1860 passa o medido, a altura não.
+        self.assertEqual(piso_da_janela(900, 900)[0], piso_da_janela(900, 900, com_a_medicao=False)[0])
+        self.assertEqual(piso_da_janela(900, 900)[1], PISO_MEDIDO[1])
 
     def test_uma_borda_de_fora_de_proposito_e_arranjo_legitimo(self) -> None:
         """Recusar isto seria a interface desfazendo uma escolha deliberada."""

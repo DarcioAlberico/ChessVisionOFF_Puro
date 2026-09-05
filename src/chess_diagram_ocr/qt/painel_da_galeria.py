@@ -43,6 +43,7 @@ from typing import Any
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap, QShowEvent
 from PyQt6.QtWidgets import (
+    QBoxLayout,
     QButtonGroup,
     QGridLayout,
     QGroupBox,
@@ -90,6 +91,7 @@ from chess_diagram_ocr.ui.galeria_declarada import (
     LINK_CHOICES,
     SEM_BASE,
     LivroVarrido,
+    galeria_empilhada,
     mesmo_arquivo,
     resumo_do_lote,
 )
@@ -98,6 +100,10 @@ from chess_diagram_ocr.ui.gallery_model import HEADER_FIELDS, GalleryModel, desc
 logger = logging.getLogger(__name__)
 
 __all__ = ["LARGURA_MINIMA_DA_GALERIA", "PainelDaGaleria"]
+
+LARGURA_MAXIMA_DO_WIDGET = 16_777_215
+"""O `QWIDGETSIZE_MAX` do Qt, que o PyQt6 não exporta. É o valor com que `setMaximumWidth` volta a
+dizer "sem teto" -- `setFixedWidth` cravou os dois lados, e desfazê-lo pede o número."""
 
 
 class PainelDaGaleria(QWidget):
@@ -262,15 +268,21 @@ class PainelDaGaleria(QWidget):
         topo.adicionar(self.lbl_varredura)
         fora.addWidget(topo)
 
-        meio = QHBoxLayout()
+        # **Uma fila que muda de sentido** (S-552, terceira rodada). `QBoxLayout` em vez de
+        # `QHBoxLayout` porque é o mesmo leiaute em duas direções: `setDirection` troca lado a lado
+        # por um sobre o outro sem remontar widget nenhum, e sem uma segunda montagem que
+        # divergiria da primeira. Quem decide *quando* é `galeria_declarada.galeria_empilhada`.
+        meio = QBoxLayout(QBoxLayout.Direction.LeftToRight)
         meio.setSpacing(espaco.folga())
         meio.addLayout(self._centro(), 1)
         # A lateral com largura fixa: ela reserva o que pede, e o centro fica com o resto (S-154).
-        lateral = self._lateral()
-        lateral.setFixedWidth(LARGURA_DA_LATERAL)
-        meio.addWidget(lateral)
+        self.lateral = self._lateral()
+        self.lateral.setFixedWidth(LARGURA_DA_LATERAL)
+        meio.addWidget(self.lateral)
+        self._meio = meio
         fora.addLayout(meio, 1)
         fora.addWidget(self._rodape())
+        self._arranjar(self._largura_do_viewport())
 
     def _botao(self, pai: QWidget, rotulo: str, funcao: Callable[[], object], papel: str = estilos.NEUTRO) -> QPushButton:
         botao = QPushButton(rotulo, pai)
@@ -400,36 +412,46 @@ class PainelDaGaleria(QWidget):
         return lateral
 
     def _rodape(self) -> QGroupBox:
-        rodape = QGroupBox("Este diagrama", self)
-        deitado = QHBoxLayout(rodape)
-        deitado.setContentsMargins(*(espaco.folga(),) * 4)
+        """"Este diagrama": lance, lado a jogar, link, e o botão de copiar.
 
-        deitado.addWidget(QLabel("Lance", rodape))
+        **Uma `BarraFluida` e não um `QHBoxLayout`** (S-552, terceira rodada), pela razão que o
+        cabeçalho de `qt/barra.py` já escreve: `QHBoxLayout` não reflui, e onze controles em fila
+        davam **694 px** de largura mínima ao rodapé -- os mesmos 706 px de conteúdo que punham a
+        barra de rolagem horizontal na aba, mesmo depois de as duas colunas passarem a empilhar.
+        Fila que quebra em fileiras é o widget que este projeto já tem para isto, e é o mesmo da
+        barra de cima desta aba.
+        """
+        rodape = QGroupBox("Este diagrama", self)
+        fora = QVBoxLayout(rodape)
+        fora.setContentsMargins(*(espaco.folga(),) * 4)
+        deitado = BarraFluida(rodape)
+        fora.addWidget(deitado)
+
+        deitado.adicionar(QLabel("Lance", rodape))
         self.campo_lance = QLineEdit(rodape)
         self.campo_lance.setFixedWidth(60)
         self.campo_lance.editingFinished.connect(self._gravar_lance)
-        deitado.addWidget(self.campo_lance)
+        deitado.adicionar(self.campo_lance)
 
-        deitado.addWidget(QLabel(strings.LADO_A_JOGAR, rodape))
+        deitado.adicionar(QLabel(strings.LADO_A_JOGAR, rodape))
         self.lado = QButtonGroup(rodape)
         for rotulo, valor in (("brancas", "w"), ("pretas", "b")):
             botao = QRadioButton(rotulo, rodape)
             botao.setProperty("valor", valor)
             self.lado.addButton(botao)
-            deitado.addWidget(botao)
+            deitado.adicionar(botao)
         self.lado.buttonClicked.connect(lambda _botao: self._gravar_lado())
 
-        deitado.addWidget(QLabel("Lichess", rodape))
+        deitado.adicionar(QLabel("Lichess", rodape))
         self.link = QButtonGroup(rodape)
         for rotulo, valor in LINK_CHOICES:
             botao = QRadioButton(rotulo, rodape)
             botao.setProperty("valor", valor)
             self.link.addButton(botao)
-            deitado.addWidget(botao)
+            deitado.adicionar(botao)
         self.link.buttonClicked.connect(lambda _botao: self._gravar_link())
 
-        deitado.addStretch(1)
-        deitado.addWidget(self._botao(rodape, "Copiar link", self.copiar_link))
+        deitado.adicionar(self._botao(rodape, "Copiar link", self.copiar_link))
         return rodape
 
     def showEvent(self, a0: QShowEvent | None) -> None:  # noqa: N802 - assinatura do Qt
@@ -442,6 +464,40 @@ class PainelDaGaleria(QWidget):
         super().showEvent(a0)
         self.recorte.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.recorte.setFocus()
+        # **E o arranjo se decide aqui também** (S-552, terceira rodada), pela razão da S-551: numa
+        # janela que já nasce no tamanho final a aba nunca é redimensionada depois de aparecer, e
+        # uma regra que morasse só no `resizeEvent` rodaria uma vez, com o viewport ainda em zero.
+        self._arranjar(self._largura_do_viewport())
+
+    def resizeEvent(self, a0: Any) -> None:  # noqa: N802 - assinatura do Qt
+        super().resizeEvent(a0)
+        self._arranjar(self._largura_do_viewport())
+
+    def _largura_do_viewport(self) -> int:
+        """A largura que a aba tem **sem rolar**. Zero antes do primeiro desenho, e é o que
+        `galeria_empilhada` lê como "ainda não há decisão"."""
+        area = self.rolagem.viewport()
+        return area.width() if area is not None else 0
+
+    def _arranjar(self, largura: int) -> None:
+        """Duas colunas, ou o cabeçalho sob o recorte. Quem decide é `galeria_empilhada` (S-552).
+
+        **A lateral perde a largura fixa ao empilhar, e é o que faz o arranjo valer a pena**: os
+        260 px da S-154 são o que ela precisa *ao lado* do recorte; embaixo dele ela tem a coluna
+        inteira, e os dez pares rótulo/campo deixam de disputar 260 px com nada.
+        """
+        empilha = galeria_empilhada(largura)
+        direcao = (
+            QBoxLayout.Direction.TopToBottom if empilha else QBoxLayout.Direction.LeftToRight
+        )
+        if self._meio.direction() == direcao:
+            return
+        self._meio.setDirection(direcao)
+        if empilha:
+            self.lateral.setMinimumWidth(0)
+            self.lateral.setMaximumWidth(LARGURA_MAXIMA_DO_WIDGET)
+        else:
+            self.lateral.setFixedWidth(LARGURA_DA_LATERAL)
 
     # ----------------------------------------------------------------------------- varredura
 

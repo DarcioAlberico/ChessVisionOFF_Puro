@@ -611,15 +611,15 @@ class JanelaPrincipal(QMainWindow):
     def _restaurar_arranjo(self) -> None:
         """Tamanho, posição, divisor e aba de onde a sessão anterior parou (S-156).
 
-        A geometria passa por `geometria_a_aplicar`, que é a mesma decisão pura do outro frontend:
-        ela confere a guardada contra as telas de **hoje** e devolve uma centrada quando o monitor
-        em que a janela estava não existe mais. Sem isso, trocar de monitor entre duas sessões
-        abre a janela fora da tela, sem erro nenhum a que se agarrar.
+        A geometria passa por `geometria_a_aplicar`, a mesma decisão pura do outro frontend: sem ela, trocar
+        de monitor entre duas sessões abre a janela fora da tela, sem erro nenhum a que se agarrar. **E o
+        piso é o desta janela** (S-552, terceira rodada): o `PISO_MEDIDO`, medido numa janela **sem rolagem**,
+        devolvia 1180x800 numa tela de 1024x768 -- esta rola, e o piso dela é a soma (`com_a_medicao`).
         """
         alvo = geometria.geometria_a_aplicar(
             self._estado.window_geometry,
             plataforma.monitores(),
-            piso=geometria.piso_da_janela(LARGURA_MINIMA_DAS_ABAS, LARGURA_MINIMA_DO_VISOR),
+            piso=geometria.piso_da_janela(LARGURA_MINIMA_DAS_ABAS, LARGURA_MINIMA_DO_VISOR, com_a_medicao=False),
         )
         lida = geometria.geometria_de_texto(alvo) if alvo else None
         if lida is not None:

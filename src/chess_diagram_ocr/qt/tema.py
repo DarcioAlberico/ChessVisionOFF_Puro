@@ -55,6 +55,7 @@ __all__ = [
     "ID_DO_SEPARADOR",
     "INDICADOR_DA_MARCA",
     "LADO_DO_INDICADOR",
+    "MARCA_DO_MENU",
     "PROPRIEDADE_DE_PAPEL",
     "RECHEIO_DO_TEMA",
     "altura_de_linha_atual",
@@ -402,6 +403,27 @@ peles. `folha_de_estilo` é pura de propósito (ver o cabeçalho) e não pode de
 Então a marca da caixa é a **face**, que é o que o desenho chato de qualquer interface moderna faz,
 e ela combina com o ponto do rádio: nos dois, marcado é tinta de ênfase dentro da moldura."""
 
+MARCA_DO_MENU = "QMenu"
+"""O item de menu marcável usa a **mesma** gramática das duas acima (S-553, terceira rodada).
+
+**Havia duas gramáticas de "marcado" na mesma janela**, e o crítico as fotografou lado a lado: a
+caixa marcada era face de ênfase dentro da moldura, e o item de menu marcado era um `✓` nativo --
+tique sem quadro, e quadro sem tique, para o mesmo par de estados. Duas gramáticas custam o mesmo
+que duas palavras para a mesma coisa: quem aprende uma não lê a outra.
+
+**Qual das duas ficou, e por quê.** A face, e por três razões, nesta ordem: ela é a que já vale nas
+duas classes onde "marcado" aparece mais -- as caixas de todo diálogo e os rádios do rodapé da
+Galeria --; ela **não depende de imagem**, e é o que a mantém dentro de uma folha pura que serve às
+três peles (ver o parágrafo acima); e ela é o desenho que o Windows 11 dá a uma caixa marcada, de
+modo que o menu passa a concordar com o sistema em vez de discordar da própria janela.
+
+**A alternativa medida e recusada:** pôr o tique **dentro** da face, como o Windows faz. O `✓` só
+entra numa folha de estilo por `url(...)`, que quer dizer arquivo ou recurso -- e um arquivo tem cor
+fixa, o que quebraria a pele escura. Fazê-lo direito exigiria um `QPixmap` desenhado fora da folha
+(como `qt/icones.py` faz), gravado em disco a cada troca de pele para o `url()` o alcançar, e a
+folha deixaria de ser afirmável por leitura de texto -- que é como todo este arquivo é testado. O
+tique é um detalhe; a gramática única é o item."""
+
 
 def ponto_do_radio(marca: str, campo: str) -> str:
     """O pincel do rádio marcado: anel de campo com o ponto no meio, como texto de QSS.
@@ -641,6 +663,18 @@ def folha_de_estilo(
             f"{classe}::indicator:checked:disabled {{ {desenho(secundario)} }}",
             f"{classe}::indicator:checked:focus {{ border: 1px solid {anel}; }}",
         ]
+
+    # **E o item de menu marcável usa a mesma gramática** (S-553, terceira rodada). Ver
+    # `MARCA_DO_MENU`: o `✓` nativo era a segunda gramática de "marcado" na mesma janela.
+    regras += [
+        f"{MARCA_DO_MENU}::indicator {{ width: {lado}px; height: {lado}px;"
+        f" border: 1px solid {moldura}; border-radius: {minima}px;"
+        f" background-color: {superficie}; }}",
+        f"{MARCA_DO_MENU}::indicator:checked {{ {marcado['QCheckBox'](enfase)} }}",
+        f"{MARCA_DO_MENU}::indicator:disabled {{ border: 1px solid {moldura};"
+        f" background-color: {superficie}; }}",
+        f"{MARCA_DO_MENU}::indicator:checked:disabled {{ {marcado['QCheckBox'](secundario)} }}",
+    ]
 
     # A ênfase da S-444. **Também aqui o tema não dá de graça, e pela razão oposta à do Tk:**
     # lá o `ttkbootstrap` pintava os três papéis do mesmo `#f0f0f0` e a folha corrigia; aqui

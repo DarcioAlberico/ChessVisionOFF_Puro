@@ -25,19 +25,25 @@ ele só vale num caminho -- ver `test_o_piso_declarado_ainda_e_o_da_S_150`.
 
 from __future__ import annotations
 
+import time
 import unittest
+from collections.abc import Callable
 
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, cor_em, descartar, renderizar
+from test_engine import _launcher
 
-from chess_diagram_ocr.ui import galeria_declarada, geometria
+from chess_diagram_ocr.engine import EngineAnalyzer
+from chess_diagram_ocr.ui import galeria_declarada, geometria, sala_declarada
 
 if TEM_PYQT:
-    from PyQt6.QtCore import Qt
+    from PyQt6.QtCore import QPoint, Qt
+    from PyQt6.QtWidgets import QPushButton
 
     from chess_diagram_ocr.qt import janela as qt_janela
     from chess_diagram_ocr.qt import painel_da_galeria as qt_galeria
     from chess_diagram_ocr.qt import painel_de_resultado as qt_resultado
+    from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
 
 
 class _ServicoFalso:
@@ -258,6 +264,228 @@ class PisoDaJanelaTests(unittest.TestCase):
         self.assertEqual(self.janela.minimumSizeHint().width(), self.janela.width())
         self.assertEqual(qt_janela.LARGURA_MINIMA_DAS_ABAS, self.janela.abas.minimumWidth())
         self.assertEqual(qt_janela.LARGURA_MINIMA_DO_VISOR, self.janela.pdf.minimumWidth())
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class SalaA1024ComMotorTests(unittest.TestCase):
+    """A 1024 o tabuleiro da sala não é cortado pela barra de avaliação (S-551, terceira rodada).
+
+    **O que o crítico mediu na janela de verdade a 1024x768, com o motor ligado**: o widget do
+    tabuleiro pedia 240 px e **203** apareciam -- 36 px cortados pela borda da coluna. Sumia a
+    coluna `h`, sumiam as duas réguas de coordenadas, e os quatro botões de navegação quebravam em
+    duas fileiras. E não voltava: nem redimensionando a janela, nem desligando o motor.
+
+    **O teste mora aqui, e não em `test_qt_motor.py`, porque o aperto é da janela.** A aba Estudo
+    fica com **496 px** numa janela de 1024 -- `LARGURA_MINIMA_DAS_ABAS` é 500 e é o que o divisor
+    dá ao lado das abas nessa largura --, e um `PainelDeEstudo` solto não chega lá: o mínimo dele
+    recusa o `resize`, o divisor sobra, e a mesma medição passa em verde com o defeito de pé.
+    Medido: painel solto a 496 px responde `[338, 210]` de divisor; dentro da janela, `[320, 160]`.
+
+    **Por que a prova é de pixel e não de `width()`.** Um widget cortado continua respondendo a
+    largura que ele pediu, e `grab()` **nele** desenha os 240 inteiros. Quem sabe o que apareceu é
+    o desenho do painel: as casas da coluna `h` ou estão pintadas nele, ou ficaram do lado de fora.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        raiz = pasta_temporaria(self)
+        self.motor = EngineAnalyzer(_launcher(type(self)), movetime_ms=100)
+        self.addCleanup(self.motor.close)
+        self.janela = qt_janela.JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=raiz / "rotulos.csv",
+            pasta_de_estudos=raiz / "estudos",
+            pasta_da_galeria=raiz / "galeria",
+            caminho_do_estado=raiz / "estado.json",
+            motor=self.motor,
+        )
+        self.janela.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.addCleanup(descartar, self.janela)
+        self.janela.resize(*TELA_MINIMA)
+        self.janela.show()
+        self.app.processEvents()
+        # **O divisor da janela é posto à mão no piso do lado das abas**, e não deixado por conta
+        # do `showEvent`. Sob `offscreen` a largura mínima da janela depende da fonte de queda e do
+        # que os testes vizinhos deixaram na densidade: rodando sozinho este arquivo mede a aba em
+        # 496 px, e na suíte inteira ela mediu 529 -- perto demais do limite para uma medição de
+        # aperto. Os 500 px são `LARGURA_MINIMA_DAS_ABAS`, que é o que a janela de verdade dá ao
+        # lado das abas a 1024 (S-552); pô-los aqui é reproduzir a janela do crítico, não simulá-la.
+        largura = sum(self.janela.divisor.sizes())
+        self.janela.divisor.setSizes(
+            [qt_janela.LARGURA_MINIMA_DAS_ABAS, max(1, largura - qt_janela.LARGURA_MINIMA_DAS_ABAS)]
+        )
+        self.app.processEvents()
+        self.sala = self.janela.estudo
+        self.janela.abas.setCurrentIndex(self._aba("Estudo"))
+        self.app.processEvents()
+
+    def _aba(self, nome: str) -> int:
+        for indice in range(self.janela.abas.count()):
+            if self.janela.abas.tabText(indice).replace("&", "").startswith(nome):
+                return indice
+        raise AssertionError(f"a aba {nome!r} não existe")
+
+    def _girar(self, condicao: Callable[[], bool], limite_s: float = 5.0) -> bool:
+        fim = time.monotonic() + limite_s
+        while time.monotonic() < fim:
+            self.app.processEvents()
+            if condicao():
+                return True
+            time.sleep(0.005)
+        return False
+
+    def ligar_a_analise(self) -> None:
+        """Liga a análise contínua e **garante que ela pare** antes de a janela ser destruída.
+
+        Um `QThread` destruído rodando derruba o processo inteiro e leva os testes seguintes junto
+        (ver o cabeçalho de `tests/qt_app.py`). A limpeza entra depois da da janela, e por isso
+        roda antes dela.
+        """
+        self.sala.alternar_analise_continua()
+        self.addCleanup(self.parar_a_analise)
+        self.assertTrue(self._girar(lambda: bool(self.sala._candidatos)))
+
+    def parar_a_analise(self) -> None:
+        if self.sala.btn_continua is not None and self.sala.btn_continua.isChecked():
+            self.sala.alternar_analise_continua()
+        self._girar(lambda: not self.sala._analysing)
+
+    def _no_painel(self, x: float, y: float) -> QPoint:
+        return self.sala.tabuleiro.mapTo(self.sala, QPoint(int(x), int(y)))
+
+    def _tinta_na_faixa(self, imagem: object, x0: int, y0: int, x1: int, y1: int) -> int:
+        """Quantos pixels da faixa diferem do canto dela. A régua desenha texto; sob `offscreen`
+        ele sai como retângulo, e é tinta do mesmo jeito -- o que **não** se pode é comparar glifo
+        com glifo (ver `ui/desenho_do_tabuleiro.reguas`)."""
+        x0, y0 = max(0, x0), max(0, y0)
+        x1, y1 = min(imagem.width(), x1), min(imagem.height(), y1)  # type: ignore[attr-defined]
+        if x1 <= x0 or y1 <= y0:
+            return 0
+        fundo = cor_em(imagem, x0, y0)
+        return sum(1 for x in range(x0, x1) for y in range(y0, y1) if cor_em(imagem, x, y) != fundo)
+
+    def test_a_aba_de_estudo_e_o_caso_apertado(self) -> None:
+        """O controle do arquivo: se a aba deixar de ser estreita, os testes abaixo param de medir
+        o que dizem medir.
+
+        **Apertado tem definição**, e não é uma largura em pixel: é a aba em que o piso do
+        tabuleiro (a caixa dele mais a esteira da coluna) e o piso da leitura **não cabem juntos**.
+        É o regime em que o `QSplitter` não consegue atender nenhum dos dois lados e reparte meio a
+        meio -- que é onde o tabuleiro saía cortado.
+        """
+        self.assertEqual(qt_janela.LARGURA_MINIMA_DAS_ABAS, self.janela.divisor.sizes()[0])
+        precisam = (
+            self.sala._caixa_minima_do_tabuleiro()
+            + self.sala._esteira_da_coluna()
+            + sala_declarada.LARGURA_MINIMA_DA_LEITURA
+            + self.sala.divisor.handleWidth()
+        )
+        self.assertLess(
+            sum(self.sala.divisor.sizes()),
+            precisam,
+            "a aba Estudo deixou de ser o caso apertado: os dois pisos passaram a caber",
+        )
+
+    def test_a_coluna_h_aparece_com_o_motor_ligado(self) -> None:
+        """h1 e h8 pintadas dentro do desenho do painel, e em cores diferentes uma da outra --
+        casas da mesma coluna alternam."""
+        self.ligar_a_analise()
+        desenho = renderizar(self.sala)
+        geo = self.sala.tabuleiro.geometria()
+        cantos = []
+        for linha in (0, 7):
+            x0, y0, x1, y1 = geo.rect(linha, 7)
+            cantos.append(self._no_painel((x0 + x1) / 2, (y0 + y1) / 2))
+        for ponto, nome in zip(cantos, ("h8", "h1"), strict=True):
+            with self.subTest(casa=nome):
+                self.assertLess(ponto.x(), self.sala.width(), f"{nome} caiu fora do painel")
+                self.assertLess(ponto.y(), self.sala.height(), f"{nome} caiu fora do painel")
+        self.assertNotEqual(
+            cor_em(desenho, cantos[0].x(), cantos[0].y()),
+            cor_em(desenho, cantos[1].x(), cantos[1].y()),
+            "h1 e h8 saíram da mesma cor: a coluna h não foi desenhada",
+        )
+
+    def test_as_duas_reguas_aparecem_com_o_motor_ligado(self) -> None:
+        """**As faixas são medidas em coordenadas do próprio tabuleiro**, e é o que separa esta
+        guarda de uma vácua: tomá-las a partir de `origin_x - MARGEM` faz a da esquerda cair fora
+        do widget, em cima da barra de avaliação, e contar a tinta **dela**.
+
+        A régua de linhas é escrita em `origin_x - 11`: sem `MARGEM/2` de folga à esquerda do
+        quadriculado, ela não tem onde ser desenhada. Era o que acontecia com o piso cru de 240 px
+        -- as letras `a`..`h` apareciam e os números `1`..`8` não.
+        """
+        self.ligar_a_analise()
+        desenho = renderizar(self.sala)
+        tabuleiro = self.sala.tabuleiro
+        geo = tabuleiro.geometria()
+        folga = qt_tabuleiro.MARGEM / 2
+        self.assertGreaterEqual(geo.origin_x, folga, "não sobrou margem para a régua de linhas")
+        self.assertLessEqual(
+            geo.origin_y + geo.size + folga, tabuleiro.height(), "não sobrou margem para as colunas"
+        )
+        faixas = {
+            "linhas": (0.0, geo.origin_y, geo.origin_x, geo.origin_y + geo.size),
+            "colunas": (
+                geo.origin_x,
+                geo.origin_y + geo.size,
+                geo.origin_x + geo.size,
+                geo.origin_y + geo.size + folga,
+            ),
+        }
+        for nome, (x0, y0, x1, y1) in faixas.items():
+            alto, baixo = self._no_painel(x0, y0), self._no_painel(x1, y1)
+            with self.subTest(regua=nome):
+                self.assertLessEqual(baixo.x(), self.sala.width(), "a régua passou da borda")
+                self.assertLessEqual(baixo.y(), self.sala.height())
+                self.assertGreater(
+                    self._tinta_na_faixa(desenho, alto.x(), alto.y(), baixo.x(), baixo.y()),
+                    0,
+                    f"a régua de {nome} não pintou nada",
+                )
+
+    def test_o_tabuleiro_nao_e_cortado_e_religar_o_motor_nao_deixa_residuo(self) -> None:
+        """**"E não volta" era metade do achado.** O mínimo do `QGroupBox` da seção do motor cresce
+        quando ela ganha texto -- 266 px para **386** -- e não volta a encolher quando o motor é
+        desligado. O piso da leitura passa a ser declarado por `sala_declarada.piso_da_leitura`,
+        que não depende do que o `QGroupBox` responde.
+        """
+        momentos = ("antes", "com o motor", "sem o motor", "com o motor de novo")
+        for volta, rotulo in enumerate(momentos):
+            if volta == 1:
+                self.ligar_a_analise()
+            elif volta:
+                self.sala.alternar_analise_continua()
+                self._girar(lambda: False, 0.3)
+            with self.subTest(momento=rotulo):
+                tabuleiro = self.sala.tabuleiro
+                visivel = tabuleiro.visibleRegion().boundingRect().width()
+                self.assertEqual(tabuleiro.width(), visivel, f"o tabuleiro saiu cortado {rotulo}")
+                self.assertGreaterEqual(tabuleiro.geometria().size, qt_tabuleiro.LADO_MINIMO)
+
+    def test_os_quatro_botoes_de_navegacao_ficam_na_mesma_fileira(self) -> None:
+        """Eles quebravam em duas porque o que sobrava da coluna eram 203 px."""
+        faixa = self.sala.lbl_lance.parentWidget()
+        assert faixa is not None
+        botoes = list(faixa.findChildren(QPushButton))[:4]
+        self.assertEqual(4, len(botoes), "a faixa de navegação não tem os quatro botões")
+        alturas = {b.mapTo(self.sala, b.rect().topLeft()).y() for b in botoes}
+        self.assertEqual(1, len(alturas), f"os quatro botões saíram em {len(alturas)} fileiras")
+
+    def test_a_esteira_da_coluna_conta_a_barra_de_avaliacao(self) -> None:
+        """Ela é medida e não cravada: são as margens da coluna mais a barra e o vão até ela."""
+        coluna = self.sala.divisor.widget(0)
+        assert coluna is not None and coluna.layout() is not None
+        margens = coluna.layout().contentsMargins()
+        faixa = self.sala._faixa_do_tabuleiro
+        assert faixa is not None and self.sala.vantagem is not None
+        self.assertEqual(
+            self.sala._esteira_da_coluna(),
+            margens.left()
+            + margens.right()
+            + self.sala.vantagem.sizeHint().width()
+            + faixa.spacing(),
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover

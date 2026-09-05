@@ -77,14 +77,27 @@ def piso_da_janela(
     chrome_horizontal: int = CHROME_HORIZONTAL,
     chrome_vertical: int = CHROME_VERTICAL,
     altura_do_conteudo: int = ALTURA_MINIMA_DO_CONTEUDO,
+    com_a_medicao: bool = True,
 ) -> tuple[int, int]:
     """`(largura, altura)` mínimas da janela, dados os `minsize` dos dois painéis.
 
     Função pura, e é o ponto: o piso é afirmável por teste contra a soma declarada, sem abrir
     janela. Se alguém aumentar o `minsize` de um painel, o piso acompanha -- e é isso que um
     número cravado não faz.
+
+    **`com_a_medicao=False` devolve só a soma** (S-552, terceira rodada), e é o que a janela do Qt
+    pede. `PISO_MEDIDO` é o piso de uma janela **sem rolagem** -- foi assim que a avaliação da S-150
+    o obteve, dirigindo o outro frontend --, e esta rola desde a S-552 (`qt/rolagem.py`). Com ele na
+    conta, recuperar um monitor perdido numa tela de 1024x768 devolvia **1180x800**: uma janela que
+    nasce maior que o monitor em que ela acabou de ser posta, e centrada, sem barra de título ao
+    alcance para arrastá-la de volta.
     """
-    somado = (largura_esquerda + largura_direita + chrome_horizontal, altura_do_conteudo + chrome_vertical)
+    somado = (
+        largura_esquerda + largura_direita + chrome_horizontal,
+        altura_do_conteudo + chrome_vertical,
+    )
+    if not com_a_medicao:
+        return somado
     return (max(somado[0], PISO_MEDIDO[0]), max(somado[1], PISO_MEDIDO[1]))
 
 
@@ -227,6 +240,14 @@ def geometria_corrigida(
     A correção é conservadora: mantém o tamanho quando ele cabe, encolhe até o monitor quando
     não cabe (respeitando o piso da S-150) e centraliza. Sem lista de monitores, devolve a
     geometria como veio — não saber onde estão as telas não é razão para mover a janela.
+
+    **A tela vence o piso, e essa é a correção da terceira rodada da S-552.** O piso entrava por
+    fora do `min`, então um piso maior que o monitor produzia exatamente o que esta função existe
+    para não produzir: `geometria_a_aplicar('1400x950+2100+120', [(0, 0, 1024, 768)])` devolvia
+    **1180x800** — 32 px mais alta que a tela, e sem barra de título para agarrar se ela for
+    centrada. Um piso maior que a tela não é piso: é uma janela que não cabe. Quem garante que o
+    conteúdo continua alcançável abaixo do piso é a outra metade da S-150 (`qt/rolagem.py`), e é
+    ela que torna esta ordem segura.
     """
     if not monitores:
         return geometria
@@ -234,8 +255,9 @@ def geometria_corrigida(
         return geometria
 
     mx0, my0, mx1, my1 = monitores[0]
-    largura = max(piso[0], min(geometria.largura, mx1 - mx0))
-    altura = max(piso[1], min(geometria.altura, my1 - my0))
+    tela = (max(1, mx1 - mx0), max(1, my1 - my0))
+    largura = min(tela[0], max(piso[0], min(geometria.largura, tela[0])))
+    altura = min(tela[1], max(piso[1], min(geometria.altura, tela[1])))
     return Geometria(largura, altura, mx0 + max(0, (mx1 - mx0 - largura) // 2), my0 + max(0, (my1 - my0 - altura) // 2))
 
 

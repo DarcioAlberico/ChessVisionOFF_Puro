@@ -45,6 +45,7 @@ __all__ = [
     "LINK_CHOICES",
     "SEM_BASE",
     "LivroVarrido",
+    "galeria_empilhada",
     "mesmo_arquivo",
     "resumo_do_lote",
 ]
@@ -76,6 +77,36 @@ eram da S-31, de quando a Galeria não existia -- e a consequência estava fotog
 padrão do divisor sobravam ~680 px para 700 pedidos, e quem perdia era a lateral, porque o centro
 já tinha tomado o espaço com `expand=True`. Campos cortados, "Copiar headers para to…" cortado, o
 texto verde de procedência cortado."""
+
+def galeria_empilhada(largura: int, *, minimo: int = LARGURA_MINIMA_DA_GALERIA) -> bool:
+    """Se a Galeria tem de empilhar o cabeçalho **sob** o recorte naquela largura. Pura (S-552).
+
+    **O limiar é `LARGURA_MINIMA_DA_GALERIA`, e não um número novo**: duas colunas cabem exatamente
+    quando as duas colunas cabem -- recorte, lateral e folga, os mesmos 720 px somados na S-154.
+
+    **Abaixo disso a aba rolava na horizontal, que é o modo de não caber.** Medido na janela de
+    verdade a 1024x768: viewport de **482x654** contra conteúdo de **706x800**, com barra de
+    rolagem horizontal *e* vertical. A coluna inteira do cabeçalho da partida ficava fora da tela
+    -- liam-se `Whi`, `Blac`, `Even`, `Site`, `Date`, `Rou`, `Resu`, `Ann` e **nenhum campo** --, e
+    "Exportar" saía cortado na barra de baixo. Alcançá-la exigia rolar 224 px para a direita, e aí
+    os 420 px do recorte saíam da tela: a aba mostrava o diagrama **ou** os campos, nunca os dois.
+
+    **Rolar na horizontal é o pior dos três arranjos possíveis**, e é por isso que a decisão existe
+    em vez de a aba simplesmente rolar nos dois eixos: quem rola na vertical perde de vista o que
+    está acima, o que é normal num formulário; quem rola na horizontal perde de vista o que está ao
+    **lado**, e aqui o que está ao lado é a outra metade da tarefa -- olhar o diagrama e digitar
+    quem jogou. Empilhado, os dois continuam na mesma coluna e a rolagem vertical que a S-552 já
+    deu à aba alcança os dois.
+
+    **O recorte fica em cima**, e não o cabeçalho: é ele que responde a pergunta "que diagrama é
+    este?", que é a que se faz antes de digitar qualquer campo -- e é o que a navegação |◀ ◀ ▶ ▶|
+    logo abaixo dele troca.
+
+    Largura não positiva devolve `False`: antes do primeiro desenho não há viewport, e empilhar por
+    causa de um zero poria a aba no arranjo estreito na janela grande.
+    """
+    return 0 < int(largura) < int(minimo)
+
 
 CAPTION_LINES = 8
 """Altura da legenda em linhas. O resto rola -- e **nada é cortado**.

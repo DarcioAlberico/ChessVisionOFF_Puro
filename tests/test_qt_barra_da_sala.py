@@ -14,7 +14,7 @@ from unittest import mock
 
 import chess
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, pixels_diferentes, renderizar, tinta
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, assentado, descartar, pixels_diferentes, tinta
 
 from chess_diagram_ocr.games_index import Indexacao
 from chess_diagram_ocr.ui import atalhos, barra_da_sala, comandos, estilos, pele, tokens
@@ -513,14 +513,13 @@ class BarraQueSeLeTests(unittest.TestCase):
         """Mostrar a fila dá o foco ao primeiro filho focável -- ver `Foco do Qt vaza entre
         testes`. Sem este `clearFocus` a fotografia de repouso já vem focada."""
         botao.clearFocus()  # type: ignore[attr-defined]
-        self.app.processEvents()
-        return renderizar(botao)
+        return assentado(botao)
 
     def _com_foco(self, botao: object) -> object:
         botao.setFocus(Qt.FocusReason.TabFocusReason)  # type: ignore[attr-defined]
         self.app.processEvents()
         self.assertTrue(botao.hasFocus(), "o botão da fila não recebeu o foco")  # type: ignore[attr-defined]
-        desenho = renderizar(botao)
+        desenho = assentado(botao)
         botao.clearFocus()  # type: ignore[attr-defined]
         self.app.processEvents()
         return desenho
@@ -574,11 +573,9 @@ class BarraQueSeLeTests(unittest.TestCase):
                 botao = self.barra.botao_de(nome)
                 assert botao is not None
                 acao.setEnabled(True)
-                self.app.processEvents()
-                ligado = renderizar(botao)
+                ligado = assentado(botao)
                 acao.setEnabled(False)
-                self.app.processEvents()
-                desligado = renderizar(botao)
+                desligado = assentado(botao)
                 traco_ligado, quantos = tinta(ligado, face)
                 traco_desligado, _quantos = tinta(desligado, face)
                 com_tinta = tokens.razao_de_contraste(traco_ligado, face)

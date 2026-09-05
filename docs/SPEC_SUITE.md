@@ -660,6 +660,30 @@ Testes: `tests/test_qt_motor.py::PainelComMotorTests`
 (`test_a_barra_da_sala_espelha_quando_o_tabuleiro_e_virado`, em pixel sobre a barra do painel, e
 `test_o_titulo_da_secao_traz_o_nome_que_o_motor_diz`, com o `id name` do motor falso).
 
+### Rodada 3 (2026-09-05): os 26 px da barra são largura da coluna, e a régua não sabia
+
+A barra foi **aprovada** — cor do lado, rótulo inteiro, contraste nas três peles, espelhamento. O que
+a rodada 3 achou não é da barra: é de quem reparte a coluna em que ela mora.
+
+`LARGURA_DA_BARRA` é 26 px, e a fila que a põe ao lado do tabuleiro gasta mais `espaco.folga()` de
+vão. Somados às margens da coluna, são **42 px** que a coluna esquerda carrega e que **não** são
+tabuleiro. `fracao_para_o_tabuleiro` não sabia disso: ela entregava a coluna inteira ao quadriculado,
+e numa janela de 1024 com o motor ligado o resultado eram 36 px de tabuleiro fora da borda — sem a
+coluna `h` e sem as duas réguas. O parágrafo de `_esquerda` que diz *"a conta de
+`LARGURA_MINIMA_DA_LEITURA` não muda, porque a barra sai da coluna esquerda"* estava certo sobre a
+coluna de leitura e errado sobre o tabuleiro: o custo da barra **sai do tabuleiro**, e por isso ele
+precisa entrar na régua.
+
+A correção inteira está na S-551 (rodada 3), que é onde a régua mora. Aqui fica o número, para quem
+mexer na largura da barra saber o que ele arrasta junto: **cada pixel de `LARGURA_DA_BARRA` é um
+pixel a menos de tabuleiro, e numa aba de 496 px isso é a diferença entre um tabuleiro inteiro e um
+sem a coluna `h`.**
+
+A fila do próprio botão da seção também mudou de widget nessa rodada: `Analisar posição` mais a
+frase de estado eram um `QHBoxLayout`, e numa coluna de leitura estreita o rótulo do botão saía
+cortado dos dois lados (`nalisar posiçã`). Agora são uma `BarraFluida`, que quebra em fileiras — o
+mesmo widget da barra de cima da sala, pela mesma razão da S-151.
+
 ## S-530 · O cabeçalho da partida (jogadores, Elo, evento, data, resultado) visível e editável — ✅ **implementada em 2026-09-04**
 
 ### Problema
@@ -4525,6 +4549,67 @@ sala do mesmo tamanho, mostrada **uma vez**, com a regra desligada e com ela -- 
 ser maior com; a leitura não desce abaixo do piso já no primeiro desenho; a fração guardada continua
 desligando a regra quando a sala reaparece.
 
+### Rodada 3 (2026-09-05): a barra de avaliação cortava o tabuleiro a 1024
+
+**Bloqueio 1 do crítico**, medido na janela de verdade a 1024×768 com o motor ligado: o widget do
+tabuleiro pedia **240 px** e **203** apareciam — **36 px** fora da coluna. Sumia a coluna `h`,
+sumiam as duas réguas de coordenadas, e os quatro botões de navegação quebravam em duas fileiras.
+E não voltava: nem redimensionando a janela, nem desligando o motor. A 1245 e a 1400, corte zero.
+
+| achado | medido antes | o que mudou | medido depois |
+|---|---|---|---|
+| **A régua entregava ao tabuleiro a largura que a barra ocupa** | divisor `[240, 240]` de 480; tabuleiro 240 px com 203 visíveis | `esteira` entra em `lado_do_tabuleiro` e em `fracao_para_o_tabuleiro`: a alça vai para o tabuleiro **mais** a esteira | divisor `[321, 156]`; tabuleiro 279 px, **corte 0** |
+| **A coluna de leitura exigia mais do que havia** | `minimumSizeHint` dos `QGroupBox`: 266 px, e **386** com a seção do motor cheia de texto | `piso_da_leitura` (nova, pura) declara o que a leitura pode exigir sem cortar o tabuleiro, e o painel o aplica em `divisor_vertical.setMinimumWidth` | 156 px a 1024, 210 px de 1400 para cima |
+| **A régua de linhas não tinha onde ser desenhada** | o piso passado era `LADO_MINIMO` cru: `BoardGeometry.fit` desenha 240 num widget de 245, sobram 2,5 px de cada lado, e `origin_x - 11` cai fora | `_caixa_minima_do_tabuleiro` = `LADO_MINIMO + MARGEM` — a régua trabalha na **caixa**, não no quadriculado | `origin_x` de **2,0** para **17,0**; `1`..`8` aparecem |
+| **"Analisar posição" saía cortado dos dois lados** (`nalisar posiçã`) | a fila do motor era um `QHBoxLayout`, que não reflui | virou `BarraFluida`, o mesmo widget da barra de cima | o botão inteiro, e "pensando…" na fileira de baixo |
+
+**A causa não era a que parecia, e a diferença importa.** A hipótese natural — *"o `QSplitter`
+está pondo a alça no lugar errado"* — está errada: com o estado limpo, `_acomodar_o_tabuleiro`
+pedia `[286, 194]` e o `QSplitter` **recusava**, porque a soma dos dois mínimos (282 + 266, e 282 +
+386 com o motor) não cabe nos 480 px que a aba tem numa janela de 1024. Quando nenhum dos dois lados
+pode ser atendido, o Qt reparte meio a meio — os `[240, 240]` medidos — e quem transborda é o
+tabuleiro, porque ele é o único dos dois que não reflui. Por isso a correção tem duas metades: a
+esteira, que é o que a régua pura não sabia, e o **piso declarado da leitura**, que é o que tirou do
+`QGroupBox` a última palavra sobre a largura da coluna.
+
+**A ordem entre os dois lados é a decisão, e ela está escrita em `piso_da_leitura`.** A coluna de
+leitura reflui e rola — a lista de lances é um `QTextBrowser`, o comentário um `QTextEdit`, as
+linhas do motor outro `QTextBrowser` — e o tabuleiro não é nem uma coisa nem outra. Coluna estreita
+é coluna estreita; tabuleiro cortado é um tabuleiro sem a coluna `h`. `LARGURA_MINIMA_DA_LEITURA`
+continua sendo o piso **que o tabuleiro não invade quando cresce**, e deixa de ser exigível numa
+janela em que os dois pisos não cabem juntos.
+
+**Nada disso muda a janela larga.** A 1400×950 a fração calculada é a mesma de antes (0,629): ali o
+tabuleiro está limitado pela largura, e a esteira sai dos dois lados da conta. Onde a altura manda,
+o tabuleiro **cresce** com a correção: a 1400 o widget foi de 262 para 314 px, porque os 42 px da
+barra deixaram de ser descontados do quadriculado.
+
+### Testes da rodada 3
+
+`tests/test_ui_sala_declarada.py::EsteiraDaColunaTests` (novo, puro): a esteira sai do lado quando a
+largura manda e não sai quando a altura manda; a alça vai para o lado mais a esteira mais a alça; no
+aperto o piso da leitura cede abaixo do declarado e o tabuleiro fica inteiro (194 px para um piso de
+tabuleiro de 240; a janela passa 274 e recebe 156); numa janela larga o piso é o declarado; ele
+nunca é zero nem negativo.
+
+`tests/test_qt_tamanho_da_janela.py::SalaA1024ComMotorTests` (novo, contra a **janela**): a aba
+Estudo é o caso apertado (controle do arquivo); h1 e h8 pintadas em cores diferentes no desenho do
+painel; as duas réguas com margem reservada e com tinta na faixa; o tabuleiro inteiro nas quatro
+voltas de ligar e desligar o motor; os quatro botões de navegação numa fileira; a esteira medida
+igual à soma das partes que a compõem.
+
+**Por que o teste mora no arquivo da S-552 e não no do motor.** O aperto é da janela: a aba Estudo
+fica com 496 px porque `LARGURA_MINIMA_DAS_ABAS` é 500, e um `PainelDeEstudo` solto não chega lá —
+o mínimo dele recusa o `resize`, o divisor sobra, e a mesma medição passa em verde com o defeito de
+pé. Medido: painel solto pedido a 496 px responde divisor `[338, 210]`; dentro da janela, `[320,
+160]`. A primeira versão destes testes foi escrita contra o painel solto e **passava** com o piso
+cru — está registrado aqui porque é o modo de a guarda voltar a ser vácua.
+
+**As guardas foram conferidas contra o estado defeituoso**, e reproduzem os números do crítico: com
+o piso cru e sem a esteira, `test_o_tabuleiro_nao_e_cortado…` falha com `240 != 204` nas quatro
+voltas, `test_a_coluna_h_aparece…` falha com `h1` e `h8` da mesma cor, e `test_as_duas_reguas…`
+falha com `0.0 not greater than or equal to 17.0`.
+
 ## S-552 · A janela cabe em 1024 px de largura — ✅ **implementada em 2026-09-04; fechada em 2026-09-05** (segunda rodada: os dois literais cederam)
 
 ### Problema
@@ -4676,6 +4761,70 @@ Os da primeira rodada continuam, com três trocas e três acréscimos:
   a fração porque ela já passa do preferido; a média fica com o preferido (**é o caso que
   quebrou**); na tela mínima quem cede é a esquerda; nenhuma largura deixa um lado com zero pixel;
   sem geometria a resposta é zero; e a fração padrão é a da S-156, sem número novo.
+
+### Rodada 3 (2026-09-05): a Galeria a 1024, e a janela recuperada maior que a tela
+
+Dois bloqueios, e os dois são de largura — o mesmo assunto desta seção, um degrau abaixo.
+
+**Bloqueio 2: a aba Galeria era inutilizável a 1024.** A primeira rodada pôs a aba num
+`QScrollArea` e o piso da janela caiu; o que ficou foi uma aba que **rolava na horizontal**.
+Medido: viewport de **482×654** contra conteúdo de **706×800**, com as duas barras de rolagem. A
+coluna inteira do cabeçalho da partida ficava fora da tela — liam-se `Whi`, `Blac`, `Even`, `Site`,
+`Date`, `Rou`, `Resu`, `Ann` e **nenhum campo** —, e alcançá-la exigia rolar 224 px para a direita,
+o que tirava da tela os 420 px do recorte. A aba mostrava o diagrama **ou** os campos, nunca os dois.
+
+| achado | medido antes | o que mudou | medido depois |
+|---|---|---|---|
+| **Duas colunas onde só cabe uma** | viewport 482 px, conteúdo 706 px, `H=True (max 224)` | `galeria_empilhada` (nova, pura): abaixo de `LARGURA_MINIMA_DA_GALERIA` a lateral vai **sob** o recorte. Um `QBoxLayout` que troca de direção, sem remontar widget | conteúdo **482 px**, `H=False (max 0)` |
+| **O rodapé "Este diagrama" também não cabia** | onze controles num `QHBoxLayout`: **694 px** de mínimo, e ele não reflui | virou `BarraFluida`, o mesmo widget da barra de cima da aba | 121 px de mínimo |
+| **A lateral com largura fixa embaixo** | `setFixedWidth(260)` valia nos dois arranjos | empilhada, ela tem a coluna inteira; ao lado, volta aos 260 medidos da S-154 | 470 px a 1024, 260 px acima do limiar |
+
+**O limiar não é um número novo, e é o ponto.** Duas colunas cabem exatamente quando as duas colunas
+cabem: `LARGURA_MINIMA_DA_GALERIA` já é a soma das partes da S-154 (recorte 420, lateral 260, folga
+40). **O recorte fica em cima**, e não o cabeçalho: é ele que responde "que diagrama é este?", que é
+a pergunta que se faz antes de digitar qualquer campo.
+
+**Rolar na horizontal é o pior dos três arranjos possíveis**, e é por isso que existe uma decisão em
+vez de a aba simplesmente rolar nos dois eixos: quem rola na vertical perde de vista o que está
+**acima**, o que é normal num formulário; quem rola na horizontal perde de vista o que está ao
+**lado** — e aqui o que está ao lado é a outra metade da tarefa.
+
+**Bloqueio 3: a recuperação de monitor perdido nascia maior que a tela.**
+`geometria_a_aplicar('1400x950+2100+120', [(0, 0, 1024, 768)])` devolvia **1180×800** — mais alta
+que a tela, e centrada, sem barra de título ao alcance para arrastá-la de volta. Num notebook de
+1366×768 daria 1366×800.
+
+| achado | o que mudou |
+|---|---|
+| o piso entrava **por fora** do `min` contra o monitor | `geometria_corrigida` grampeia o resultado na tela: `min(tela, max(piso, min(guardada, tela)))`. Um piso maior que a tela não é piso |
+| a janela pedia `PISO_MEDIDO` (1180×800), que é o piso de uma janela **sem rolagem** | `piso_da_janela(..., com_a_medicao=False)` devolve só a soma — `1000×716` com os literais de hoje —, e é o que `qt/janela.py` passa desde esta rodada. A S-150 continua inteira: `PISO_MEDIDO` é o padrão, e o que autoriza a exceção é a segunda metade dela (`qt/rolagem.py`) |
+
+Medido depois, para a mesma geometria guardada: tela de 1024×768 → **1024×768+0+0**; tela de
+1366×768 → **1366×768+0+0**; tela de 1920×1080 → **1400×950+260+65** (cabe, e não é mexida).
+
+**Uma função e não duas.** A primeira escrita desta correção criou `piso_somado` ao lado de
+`piso_da_janela` — e deixou `piso_da_janela` **sem chamador nenhum**, que é exatamente o que a
+catraca de `tests/test_ui_orfaos.py` conta. Um argumento em vez de um segundo nome mantém a decisão
+da S-150 num lugar só e a catraca em zero.
+
+### O piso das três peles, remedido
+
+O crítico registrou `945×588` para a pele "Fita" e a spec diz **582**. Remedido nesta rodada, na
+plataforma de verdade, com e sem motor: **955×553** (clássica), **955×587** ("Foco") e **945×582**
+("Fita"). A spec estava certa; o 588 não reproduz.
+
+### Testes da rodada 3
+
+- `tests/test_qt_painel_da_galeria.py::EmpilhamentoDeclaradoTests` (novo, puro): o limiar é a soma
+  das partes; 482 px empilha e 794 não; largura zero ou negativa ainda não decide nada.
+- `tests/test_qt_painel_da_galeria.py::ArranjoDaAbaTests` (novo): a 1024 a aba não rola na
+  horizontal; os oito campos do cabeçalho cabem na largura; o recorte inteiro cabe; o recorte fica
+  acima do cabeçalho; numa aba larga as duas colunas voltam; o arranjo vai e volta com a janela; o
+  rodapé quebra em fileiras em vez de esticar a aba.
+- `tests/test_ui_geometria.py`: `test_a_janela_recuperada_nunca_nasce_maior_que_a_tela` (novo, com o
+  caso do crítico, três telas × três pisos) e `test_sem_a_medicao_o_piso_e_so_a_soma_das_partes`
+  (novo). `test_cabe_em_parte_e_encolhido_ate_o_monitor` trocou de resposta: era `PISO_MEDIDO[1]`
+  "o piso da S-150 vence a tela", e agora é a altura da tela.
 
 ## S-553 · O foco de teclado se vê — ✅ **implementada em 2026-09-04**
 
@@ -4863,6 +5012,44 @@ rádio é um pincel com o campo em volta; e um caso de pixel confirmando que os 
 continuam distintos. **A folha é o que se cobra, e não o desenho**, pela armadilha da S-506: sob
 `offscreen` o `fusion` desenha o indicador nativo com folha e sem folha, então a CI não vê o defeito.
 
+### Rodada 3 (2026-09-05): uma gramática de "marcado", e a régua que esperava pouco
+
+O indicador da rodada 2 foi **aprovado**. Ficaram duas coisas, e as duas são sobre a mesma palavra:
+o que "marcado" desenha, e como se mede que ele desenhou.
+
+| achado | como estava | o que mudou |
+|---|---|---|
+| **Duas gramáticas de "marcado" na mesma janela** | a caixa marcada é face de ênfase dentro da moldura; o item de menu marcável desenhava o `✓` **nativo** — tique sem quadro contra quadro sem tique | `MARCA_DO_MENU`: `QMenu::indicator` ganha as mesmas quatro regras da caixa, e o marcado é, letra por letra, o mesmo desenho. Medido nas três peles: 258 px de diferença entre marcado e desmarcado, contra 17 sem folha |
+| **O instrumento media antes de o desenho existir** | `exec_final/prova_indicador.py` girava 120 ms entre trocar o estado e fotografar, e a pele "Fita" respondia **0 px** — o mesmo número do defeito que a rodada 2 acabara de fechar. Com 350 ms, 56 px na caixa e 84 no rádio nas três | `qt_app.assentado`: gira até o desenho **parar de mudar** (50 ms de quietude, teto de 1,5 s). Os três testes de pixel de estado passaram a usá-lo |
+
+**Qual gramática ficou, e por quê.** A face, e por três razões nesta ordem: ela já vale nas duas
+classes onde "marcado" aparece mais — as caixas de todo diálogo e os rádios do rodapé da Galeria —;
+ela **não depende de imagem**, e é o que a mantém dentro de uma folha pura que serve às três peles;
+e ela é o desenho que o Windows 11 dá a uma caixa marcada, de modo que o menu passa a concordar com
+o sistema em vez de discordar da própria janela.
+
+**A alternativa medida e recusada** foi pôr o tique **dentro** da face, como o Windows faz. O `✓` só
+entra numa folha de estilo por `url(…)`, que quer dizer arquivo ou recurso — e arquivo tem cor fixa,
+o que quebraria a pele escura. Fazê-lo direito exigiria um `QPixmap` desenhado fora da folha (como
+`qt/icones.py` faz), gravado em disco a cada troca de pele para o `url()` o alcançar, e a folha
+deixaria de ser afirmável por leitura de texto — que é como todo `qt/tema.py` é testado. O tique é um
+detalhe; a gramática única é o item.
+
+**Por que dois desenhos iguais em seguida não bastavam.** Foi a primeira escrita de `assentado`, e
+ela é a armadilha: **antes** do repintar os dois são iguais e velhos. O que separa "não mudou mais"
+de "ainda não mudou" é o período de quietude, e é por isso que a espera é declarada assim e não como
+um número de milissegundos — um prazo fixo mede a máquina, um período de quietude mede o desenho.
+
+Os três lugares que passaram a esperar o repintar: `IndicadorDaMarcaTests` (os quatro estados da
+caixa e do rádio), `tests/test_qt_barra_da_sala.py` (o foco e o apagado dos botões da fila) e
+`tests/test_qt_icones.py` (o botão só-ícone apagando nas três peles). São os três testes cujo verde
+não valeria nada se a fotografia viesse antes da folha ser aplicada.
+
+**Testes** (acréscimos): `test_o_item_de_menu_marcavel_usa_a_mesma_gramatica_da_caixa` — as quatro
+regras existem nas três peles, e o marcado do menu é idêntico ao da caixa — e
+`test_o_menu_marcado_desenha_diferente_do_desmarcado`, em pixel sobre o `QMenu`, fotografado depois
+do repintar.
+
 ## S-554 · O ícone desabilitado apaga também na pele escura — ✅ **implementada em 2026-09-04**
 
 ### Problema
@@ -4991,6 +5178,30 @@ três peles (`exec_final/fotos/`).
 
 O que o crítico **recusou** perto daqui foi o indicador da caixa de seleção e do rádio, que não são
 ícone e não passam por `qt/icones.py`: está na seção da S-553.
+
+### Rodada 3 (2026-09-05): três traços que não se liam no tamanho de uso
+
+O apagamento continua certo nas três peles. O que a rodada 3 achou é o outro lado do mesmo assunto —
+**um ícone que só se lê a 96 px não é um ícone**: a fita desenha a 20 px e a barra da sala a 16.
+
+| ícone | como estava | medido | o que mudou |
+|---|---|---|---|
+| `desfazer` / `refazer` | o mesmo arco nos dois, e o sentido dito por uma cotovelada de três segmentos | a 20 px eles diferiam em **24 px de 50 de traço** (48%) — dois rabiscos quase iguais | ponta de seta **fechada**, um triângulo do tamanho do traço. A 20 px: **52 de 62** (84%); a 16 px, 93%; a 24 px, 95% |
+| `limpar_tabuleiro` | retângulo com três traços horizontais paralelos ao lado | lia-se como "lista de texto", que é o que três linhas paralelas desenham em qualquer programa | o retângulo com uma **seta saindo**, reusando a ponta que os dois de cima acabaram de ganhar |
+
+**A cotovelada não era pouca tinta, era tinta na hora errada.** O arco é o mesmo em `desfazer` e em
+`refazer` de propósito — é o mesmo gesto em sentidos opostos, e desenhá-los diferentes diria que não
+são —, então tudo o que distingue os dois é a ponta. Três segmentos de 1,8 px sobrevivem à
+supressão de amostragem como um borrão; um triângulo fechado é maciço já a 16 px.
+
+**A seta de `limpar_tabuleiro` é a mesma ponta**, e isso é o item: um vocabulário de formas, e não
+três desenhos parecidos. Ele continua sem parecer com `apagar_casa` (que é uma casa com um X) e sem
+parecer com `ler_melhor` (que é um quadrado dividido).
+
+**Testes** (`tests/test_ui_icones.py::LegibilidadeNoTamanhoDeUsoTests`, novo): os dois se distinguem
+em mais de 80% do traço a 16, 20 e 24 px; `limpar_tabuleiro` não tem mais de um traço horizontal de
+dois pontos — a régua é a **forma declarada**, e não o pixel, porque o que se recusa é a leitura
+"linhas de texto" e não uma contagem; e os três têm exatamente uma ponta de seta fechada.
 
 ## S-580 · O fim da faixa reservada — não é item
 

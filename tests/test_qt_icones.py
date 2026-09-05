@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 import unittest
 
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, pixels_diferentes, renderizar, tinta
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, assentado, descartar, pixels_diferentes, tinta
 
 from chess_diagram_ocr.ui import pele, tokens
 
@@ -123,10 +123,9 @@ class IconeDesabilitadoTests(unittest.TestCase):
             qt_icones.limpar_cache()
             face = tema.cor_atual(tokens.SUPERFICIE_PADRAO)
             botao = self._botao(tema.cor_atual(tokens.TEXTO_PADRAO))
-            ligado = renderizar(botao)
+            ligado = assentado(botao)
             botao.setEnabled(False)
-            self.app.processEvents()
-            desligado = renderizar(botao)
+            desligado = assentado(botao)
             traco_ligado, quantos = tinta(ligado, face)
             traco_desligado, _quantos = tinta(desligado, face)
             com_tinta = tokens.razao_de_contraste(traco_ligado, face)

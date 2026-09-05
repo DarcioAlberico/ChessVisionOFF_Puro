@@ -84,6 +84,73 @@ class FracaoTests(unittest.TestCase):
         self.assertEqual(0.42, sala_declarada.fracao_para_o_tabuleiro(0, 800, minimo=MINIMO, fracao_atual=0.42))
 
 
+class EsteiraDaColunaTests(unittest.TestCase):
+    """A barra de avaliação mora na coluna esquerda, e a régua tem de saber (S-551, 3ª rodada).
+
+    **O número que este bloco existe para não deixar voltar**: medido na janela de verdade a
+    1024x768 com o motor ligado, o widget do tabuleiro tinha 240 px e **203** apareciam -- 36 px
+    fora da coluna, sem a coluna `h` e sem as duas réguas de coordenadas.
+    """
+
+    ESTEIRA = 42
+    """Os 42 px medidos na base de referência: 6 de margem da coluna, 26 da barra e 10 de vão."""
+
+    def test_a_esteira_sai_do_lado_do_tabuleiro(self) -> None:
+        """Sem descontá-la, a régua entrega ao tabuleiro largura que a barra já ocupa."""
+        sem = sala_declarada.lado_do_tabuleiro(1384, 735, minimo=MINIMO, alca=4)
+        com = sala_declarada.lado_do_tabuleiro(1384, 735, minimo=MINIMO, alca=4, esteira=self.ESTEIRA)
+        self.assertEqual(sem, com, "limitado pela altura, a esteira não muda o lado")
+        estreita = 700
+        self.assertEqual(
+            sala_declarada.lado_do_tabuleiro(estreita, 900, minimo=MINIMO, alca=4, esteira=self.ESTEIRA),
+            sala_declarada.lado_do_tabuleiro(estreita, 900, minimo=MINIMO, alca=4) - self.ESTEIRA,
+            "limitado pela largura, ela sai inteira do tabuleiro",
+        )
+
+    def test_a_alca_vai_para_o_tabuleiro_mais_a_esteira(self) -> None:
+        """A alça que ignorasse a barra ficaria 42 px cedo demais, e o tabuleiro sairia cortado."""
+        largura, alca = 1384, 4
+        fracao = sala_declarada.fracao_para_o_tabuleiro(
+            largura, 735, minimo=MINIMO, alca=alca, esteira=self.ESTEIRA
+        )
+        lado = sala_declarada.lado_do_tabuleiro(
+            largura, 735, minimo=MINIMO, alca=alca, esteira=self.ESTEIRA
+        )
+        self.assertEqual(int(largura * fracao), lado + self.ESTEIRA + alca)
+
+    def test_no_aperto_a_leitura_cede_e_o_tabuleiro_fica_inteiro(self) -> None:
+        """**É o caso de 1024**: os dois pisos somam 492 px numa aba de 480, e o `QSplitter` que
+        não consegue atender nenhum dos dois reparte meio a meio e corta o tabuleiro.
+
+        A ordem não é de gosto: a coluna de leitura reflui e rola, e o tabuleiro não.
+        """
+        largura, alca = 480, 4
+        piso = sala_declarada.piso_da_leitura(largura, minimo=MINIMO, alca=alca, esteira=self.ESTEIRA)
+        self.assertEqual(194, piso)
+        self.assertLess(piso, sala_declarada.LARGURA_MINIMA_DA_LEITURA)
+        fracao = sala_declarada.fracao_para_o_tabuleiro(
+            largura, 466, minimo=MINIMO, alca=alca, esteira=self.ESTEIRA
+        )
+        esquerda = int(largura * fracao)
+        self.assertGreaterEqual(esquerda - self.ESTEIRA, MINIMO, "o tabuleiro sairia cortado")
+        self.assertGreaterEqual(largura - esquerda, piso, "a alça passou do piso da leitura")
+
+    def test_com_largura_de_sobra_o_piso_da_leitura_e_o_declarado(self) -> None:
+        """Ele só cede onde não cabe: numa janela larga, os 210 px valem como sempre valeram."""
+        self.assertEqual(
+            sala_declarada.LARGURA_MINIMA_DA_LEITURA,
+            sala_declarada.piso_da_leitura(1384, minimo=MINIMO, alca=4, esteira=self.ESTEIRA),
+        )
+
+    def test_o_piso_da_leitura_nunca_e_zero_nem_negativo(self) -> None:
+        """Uma coluna de zero pixel é um `QSplitter` de que não há gesto de mouse que volte."""
+        for largura in (0, 100, 240, 300):
+            with self.subTest(largura=largura):
+                self.assertGreaterEqual(
+                    sala_declarada.piso_da_leitura(largura, minimo=MINIMO, alca=4, esteira=self.ESTEIRA), 1
+                )
+
+
 class PurezaTests(unittest.TestCase):
     def test_o_modulo_nao_importa_toolkit(self) -> None:
         arvore = ast.parse(Path(sala_declarada.__file__).read_text(encoding="utf-8"))

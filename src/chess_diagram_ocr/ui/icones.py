@@ -185,22 +185,32 @@ ICONES: dict[str, tuple[Traco, ...]] = {
     # desenhá-los diferentes seria dizer que não são o mesmo gesto em sentidos opostos. O arco vai
     # de 180 a 360 porque na Pillow o ângulo cresce no sentido horário com o eixo `y` para baixo:
     # 180 é a esquerda, 270 é o **topo**, 360 é a direita.
+    #
+    # **A ponta é um triângulo fechado, e não uma cotovelada** (S-554, terceira rodada). O crítico
+    # mediu o que a cotovelada valia: a 20 px `desfazer` e `refazer` diferiam em **24 px de 50 de
+    # traço**, e o que se via eram dois rabiscos quase iguais -- o arco é o mesmo nos dois, e a
+    # única coisa que dizia o sentido eram três segmentos de 1,8 px que o antialias comia. Um
+    # triângulo fechado no tamanho do traço é maciço já a 16 px, e é ele que carrega o sentido.
     "desfazer": (
         Arco((50, 58), 28, 180, 360),
-        Poli((10, 42), (22, 58), (34, 42)),
+        Poli((10, 38), (22, 63), (34, 38), fechado=True),
     ),
     "refazer": (
         Arco((50, 58), 28, 180, 360),
-        Poli((66, 42), (78, 58), (90, 42)),
+        Poli((66, 38), (78, 63), (90, 38), fechado=True),
     ),
     # O tabuleiro e o que sai dele. **Não é o `apagar_casa` com outro nome**: aquele é uma casa com
-    # um X, e este é a posição inteira indo embora -- a 20 px, a diferença que se lê primeiro é o
-    # traço de movimento ao lado, e não o desenho de dentro.
+    # um X, e este é a posição inteira indo embora -- a 20 px, a diferença que se lê primeiro é a
+    # seta ao lado, e não o desenho de dentro.
+    #
+    # **Eram três traços horizontais**, e o crítico leu o ícone como "lista de texto" -- que é
+    # exatamente o que três linhas paralelas ao lado de um retângulo desenham em qualquer outro
+    # programa. Elas queriam dizer movimento e diziam parágrafo. Uma seta apontando para fora diz
+    # o que elas queriam, e reusa a ponta que `desfazer` e `refazer` acabaram de ganhar.
     "limpar_tabuleiro": (
-        Poli((14, 24), (58, 24), (58, 76), (14, 76), fechado=True),
-        Poli((70, 36), (92, 36)),
-        Poli((70, 50), (92, 50)),
-        Poli((70, 64), (92, 64)),
+        Poli((10, 24), (54, 24), (54, 76), (10, 76), fechado=True),
+        Poli((62, 50), (84, 50)),
+        Poli((78, 38), (96, 50), (78, 62), fechado=True),
     ),
     # ----------------------------------------------------------------------- VISUALIZACAO
     # Lupa com sinal. O corpo é o mesmo nos dois: são o mesmo gesto em sentidos opostos, e

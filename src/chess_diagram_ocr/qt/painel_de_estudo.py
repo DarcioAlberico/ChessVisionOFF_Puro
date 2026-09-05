@@ -124,6 +124,7 @@ from chess_diagram_ocr.ui.sala_declarada import (
     decidir_sincronia,
     fracao_para_o_tabuleiro,
     nags_oferecidos,
+    piso_da_leitura,
 )
 
 logger = logging.getLogger(__name__)
@@ -253,6 +254,9 @@ class PainelDeEstudo(QWidget):
         self._fracao_do_tabuleiro = FRACAO_PADRAO_DO_TABULEIRO
         self._divisor_escolhido = False
         """A pessoa (ou a sessão anterior) decidiu onde fica a alça? Ver `_acomodar_o_tabuleiro`."""
+        self._faixa_do_tabuleiro: QHBoxLayout | None = None
+        """A fila "barra de avaliação + tabuleiro", quando há motor. Guardada porque é nela que se
+        mede a esteira da coluna esquerda -- ver `_esteira_da_coluna` (S-551, terceira rodada)."""
 
         self.sala = Sala()
         self.estudo = Estudo.de_posicao(PosicaoDeEstudo())
@@ -462,6 +466,7 @@ class PainelDeEstudo(QWidget):
             faixa.addWidget(self.vantagem)
             faixa.addWidget(self.tabuleiro, 1)
             pilha.addLayout(faixa)
+            self._faixa_do_tabuleiro = faixa
         pilha.addWidget(self._barra_de_navegacao())
 
         # A miniatura do diagrama (S-282). Ela nasce escondida: estudo sem âncora não mostra
@@ -635,6 +640,38 @@ class PainelDeEstudo(QWidget):
         ocupado += leiaute.spacing() * vizinhos
         return max(0, coluna.height() - ocupado)
 
+    def _caixa_minima_do_tabuleiro(self) -> int:
+        """O lado mínimo da **caixa** do tabuleiro: o piso do desenho mais a margem da coordenada.
+
+        **A régua trabalha na caixa, e não no quadriculado** (S-551, terceira rodada). Passar
+        `LADO_MINIMO` cru dava uma coluna de 245 px para um tabuleiro de 240: `BoardGeometry.fit`
+        desenha os 240 -- o `max(min_size, ...)` dela vence --, sobram 2,5 px de cada lado, e a
+        régua de linhas, escrita em `origin_x - 11`, cai **fora** do widget. Medido a 1024x768 com
+        o motor ligado: as letras `a`..`h` apareciam e os números `1`..`8` não.
+        """
+        return qt_tabuleiro.LADO_MINIMO + qt_tabuleiro.MARGEM
+
+    def _esteira_da_coluna(self) -> int:
+        """Quanto da coluna esquerda **não** é tabuleiro, na horizontal (S-551, terceira rodada).
+
+        As margens da coluna mais, quando há motor, a barra de avaliação e o vão até o tabuleiro.
+        Medida e não cravada: são 42 px na base de referência (0 + 6 de margem, 26 da barra e 10 de
+        vão), e quem aumentar a fonte do sistema ou trocar a densidade muda os dois últimos.
+
+        Vai por argumento para `sala_declarada`, que é onde a decisão mora: a régua precisa saber
+        que a coluna carrega essa esteira, e **de que ela é feita** é assunto do widget.
+        """
+        coluna = self.divisor.widget(0)
+        leiaute = coluna.layout() if coluna is not None else None
+        if leiaute is None:
+            return 0
+        margens = leiaute.contentsMargins()
+        esteira = margens.left() + margens.right()
+        faixa = self._faixa_do_tabuleiro
+        if self.vantagem is not None and faixa is not None:
+            esteira += self.vantagem.sizeHint().width() + max(0, faixa.spacing())
+        return esteira
+
     def _acomodar_o_tabuleiro(self) -> None:
         """Move a alça para o tabuleiro usar a altura que sobra, se ninguém escolheu a alça.
 
@@ -642,18 +679,33 @@ class PainelDeEstudo(QWidget):
         a fração de agora é o piso. Ela não roda depois de a pessoa arrastar a alça nem depois de
         `posicionar_divisor` restaurar a da sessão anterior -- ali a repartição já foi escolhida, e
         a fração guardada acompanha a largura sozinha, porque é fração e não pixel.
+
+        **O piso da coluna de leitura é aplicado antes, e fora da guarda** (S-551, terceira
+        rodada). Ele não é posição, é limite: os `QGroupBox` da leitura declaravam 266 px de mínimo
+        -- **386** com o motor ligado, porque o texto das linhas entra na conta --, e numa aba de
+        496 px nem esse mínimo nem o do tabuleiro cabiam. O `QSplitter` então não atendia nenhum
+        dos dois, repartia 240/240, e o tabuleiro saía **36 px cortado**: sem a coluna `h`, sem as
+        duas réguas, com a faixa de navegação em duas fileiras -- e sem volta, porque o mínimo do
+        `QGroupBox` não desce quando o motor é desligado. Quem declara o piso da leitura é
+        `sala_declarada`, e é ele que passa a valer aqui.
         """
-        if self._divisor_escolhido:
-            return
         largura = sum(self.divisor.sizes())
         if largura <= 0:
+            return
+        esteira = self._esteira_da_coluna()
+        alca = max(1, self.divisor.handleWidth())
+        self.divisor_vertical.setMinimumWidth(
+            piso_da_leitura(largura, minimo=self._caixa_minima_do_tabuleiro(), esteira=esteira, alca=alca)
+        )
+        if self._divisor_escolhido:
             return
         alvo = fracao_para_o_tabuleiro(
             largura,
             self._altura_livre_para_o_tabuleiro(),
-            minimo=qt_tabuleiro.LADO_MINIMO,
+            minimo=self._caixa_minima_do_tabuleiro(),
             fracao_atual=self.fracao_do_divisor,
-            alca=max(1, self.divisor.handleWidth()),
+            esteira=esteira,
+            alca=alca,
         )
         if abs(alvo - self.fracao_do_divisor) < 0.005:
             return
@@ -727,8 +779,12 @@ class PainelDeEstudo(QWidget):
         pilha = QVBoxLayout(caixa)
         pilha.setContentsMargins(*(espaco.linha(),) * 4)
 
-        linha = QHBoxLayout()
-        self.btn_analisar = QPushButton("Analisar posição", caixa)
+        # **Uma `BarraFluida` e não um `QHBoxLayout`** (S-551, terceira rodada): numa janela de
+        # 1024 a coluna de leitura cede para o tabuleiro caber inteiro, e um `QHBoxLayout` não
+        # reflui -- o botão saía com o rótulo cortado dos dois lados (`nalisar posiçã`). A fila põe
+        # a frase de estado na linha de baixo, que é o que este widget existe para fazer.
+        linha = BarraFluida(caixa)
+        self.btn_analisar = QPushButton("Analisar posição", linha)
         self.btn_analisar.clicked.connect(self.analyse)
         tema.aplicar_papel(self.btn_analisar, estilos.NEUTRO)
         dica_em(
@@ -736,10 +792,10 @@ class PainelDeEstudo(QWidget):
             "Fica cinza enquanto o motor está pensando nesta posição, e volta quando\n"
             "ele responde. Sem motor UCI instalado, esta seção inteira não aparece.",
         )
-        linha.addWidget(self.btn_analisar)
-        self.lbl_motor = QLabel("", caixa)
-        linha.addWidget(self.lbl_motor, 1)
-        pilha.addLayout(linha)
+        linha.adicionar(self.btn_analisar)
+        self.lbl_motor = QLabel("", linha)
+        linha.adicionar(self.lbl_motor)
+        pilha.addWidget(linha)
 
         self.lbl_linha_do_motor = LinhasDoMotor(caixa)
         self.lbl_linha_do_motor.escolhida.connect(self.inserir_linha_do_motor)

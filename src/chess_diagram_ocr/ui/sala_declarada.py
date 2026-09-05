@@ -46,6 +46,7 @@ __all__ = [
     "PAPEIS_COLADOS",
     "PARTIDAS_MAXIMAS_DE_PGN",
     "RECUO_POR_NIVEL",
+    "piso_da_leitura",
     "TAMANHO_MAXIMO_DE_PGN",
     "Sincronia",
     "cor_de_seta_por_modificador",
@@ -118,6 +119,7 @@ def lado_do_tabuleiro(
     altura_util: int,
     *,
     minimo: int,
+    esteira: int = 0,
     alca: int = ALCA_DO_DIVISOR,
     minimo_da_leitura: int = LARGURA_MINIMA_DA_LEITURA,
 ) -> int:
@@ -129,16 +131,50 @@ def lado_do_tabuleiro(
     Lichess não deixa esse vazio: lá o tabuleiro cresce até a altura acabar.
 
     A conta é `min(altura que sobra, largura que dá para tomar)`, e o teto de largura é o que
-    resta depois de a coluna de leitura ficar com o piso dela (`LARGURA_MINIMA_DA_LEITURA`) e a
-    alça com a sua. **O piso da leitura é o que impede a resposta óbvia e errada**: com altura
-    sobrando sempre -- e ela sobra sempre, porque a aba é mais alta que larga --, "cresça até a
-    altura" sozinho daria o tabuleiro inteiro e uma coluna de lances de 46 px.
+    resta depois de a coluna de leitura ficar com o piso dela (`LARGURA_MINIMA_DA_LEITURA`), a
+    alça com a sua e a **esteira** com a dela. **O piso da leitura é o que impede a resposta óbvia
+    e errada**: com altura sobrando sempre -- e ela sobra sempre, porque a aba é mais alta que
+    larga --, "cresça até a altura" sozinho daria o tabuleiro inteiro e uma coluna de lances de
+    46 px.
+
+    **A esteira é o que na coluna esquerda não é tabuleiro**, na horizontal: a barra de avaliação
+    da S-529 (26 px) mais o vão até o tabuleiro e as margens da coluna. Ela **não** estava na conta,
+    e é o defeito da terceira rodada: a régua entregava a coluna inteira ao tabuleiro, o tabuleiro
+    pedia o piso dele, e os 37 px da barra saíam pela borda -- medido na janela de verdade a
+    1024x768 com o motor ligado, o widget tinha 240 px e **203** apareciam. Some a coluna `h`,
+    somem as duas réguas de coordenadas, e a faixa de navegação quebra em duas fileiras.
 
     `minimo` é o piso do próprio tabuleiro (`qt/tabuleiro.LADO_MINIMO`), e vem por argumento porque
-    quem o declara é o widget que desenha.
+    quem o declara é o widget que desenha; a esteira vem pela mesma razão -- quem a mede é a coluna.
     """
-    teto = int(largura) - int(minimo_da_leitura) - int(alca)
+    teto = int(largura) - int(minimo_da_leitura) - int(alca) - int(esteira)
     return max(int(minimo), min(int(altura_util), teto))
+
+
+def piso_da_leitura(
+    largura: int,
+    *,
+    minimo: int,
+    esteira: int = 0,
+    alca: int = ALCA_DO_DIVISOR,
+    minimo_da_leitura: int = LARGURA_MINIMA_DA_LEITURA,
+) -> int:
+    """Quanto a coluna de leitura pode **exigir** sem cortar o tabuleiro. Pura (S-551).
+
+    **Piso não é o mesmo que exigência, e é essa a distinção que a terceira rodada trouxe.**
+    `LARGURA_MINIMA_DA_LEITURA` é o piso que o tabuleiro não invade *quando cresce*; numa janela em
+    que os dois pisos não cabem juntos ele deixa de ser exigível, e quem cede é a leitura. A ordem
+    não é de gosto: a coluna de leitura reflui e rola -- a lista de lances é um `QTextBrowser`, o
+    comentário um `QTextEdit` --, e o tabuleiro nem uma coisa nem outra. Coluna estreita é coluna
+    estreita; tabuleiro cortado é um tabuleiro sem a coluna `h`.
+
+    Medido na janela de verdade a 1024x768: a aba fica com 496 px, o divisor com 480, e os dois
+    pisos somam 240 + 42 de esteira + 210 = **492**. Enquanto a coluna de leitura exigia os 266 px
+    que os `QGroupBox` dela declaravam -- 386 com o motor ligado --, o `QSplitter` não conseguia
+    atender nenhum dos dois lados e repartia 240/240, cortando 36 px do tabuleiro.
+    """
+    sobra = int(largura) - int(alca) - int(esteira) - int(minimo)
+    return max(1, min(int(minimo_da_leitura), sobra))
 
 
 def fracao_para_o_tabuleiro(
@@ -147,6 +183,7 @@ def fracao_para_o_tabuleiro(
     *,
     minimo: int,
     fracao_atual: float = 0.0,
+    esteira: int = 0,
     alca: int = ALCA_DO_DIVISOR,
     minimo_da_leitura: int = LARGURA_MINIMA_DA_LEITURA,
 ) -> float:
@@ -158,13 +195,27 @@ def fracao_para_o_tabuleiro(
     aumentá-lo. Sem isso a mesma conta *encolheria* o tabuleiro em toda janela estreita: a 1400x950
     o teto de largura dá 481 px contra os 494 que os pesos do `QSplitter` já davam, e o item que
     pediu um tabuleiro maior o teria deixado 13 px menor.
+
+    **A alça vai para o lado do tabuleiro mais a esteira**, e não só para o lado: a barra de
+    avaliação mora na coluna esquerda, e a fração que a ignorasse poria a alça 37 px cedo demais.
+    O teto continua sendo `piso_da_leitura` -- a alça nunca passa dele --, e é o que impede a
+    correção de trocar o tabuleiro cortado por uma coluna de leitura de zero pixel.
     """
     if largura <= 0:
         return max(0.0, fracao_atual)
     lado = lado_do_tabuleiro(
-        largura, altura_util, minimo=minimo, alca=alca, minimo_da_leitura=minimo_da_leitura
+        largura,
+        altura_util,
+        minimo=minimo,
+        esteira=esteira,
+        alca=alca,
+        minimo_da_leitura=minimo_da_leitura,
     )
-    return max(fracao_atual, min(1.0, (lado + alca) / largura))
+    piso = piso_da_leitura(
+        largura, minimo=minimo, esteira=esteira, alca=alca, minimo_da_leitura=minimo_da_leitura
+    )
+    esquerda = min(int(largura) - piso, lado + int(esteira) + int(alca))
+    return max(fracao_atual, min(1.0, esquerda / largura))
 
 
 LADO_DO_RECORTE = 220
