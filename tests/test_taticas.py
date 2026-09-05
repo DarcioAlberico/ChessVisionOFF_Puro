@@ -78,6 +78,16 @@ class NumeroDoExercicioTests(unittest.TestCase):
         )
         self.assertEqual(97, taticas.numero_junto_ao_diagrama(pagina, 0))
 
+    def test_o_teto_da_distancia_e_quarenta_e_cinco_centesimos(self) -> None:
+        """O literal, cravado -- e não derivado (S-539).
+
+        A fixture do teste de baixo calcula a distância **a partir da constante**, então ela anda
+        junto com ela: dobrada para 0,90 a suíte fica inteira verde, e um diagrama sem número
+        impresso próprio passa a receber o número do **seguinte** (medido: `None` vira `31`, e o
+        `31` fica com dois diagramas). É um dos três defeitos que esta seção existiu para
+        consertar -- os 57 números que eram dados a dois diagramas."""
+        self.assertEqual(0.45, taticas.DISTANCIA_DO_NUMERO)
+
     def test_o_numero_longe_demais_nao_e_deste_diagrama(self) -> None:
         """O teto é `DISTANCIA_DO_NUMERO` da altura do tabuleiro: mais que isso é o número do
         diagrama seguinte, que está a uma altura inteira de distância."""

@@ -545,9 +545,28 @@ class AnelDeFocoTests(unittest.TestCase):
         self.app.processEvents()
         return desenho
 
+    def test_a_fila_do_anel_e_a_da_moldura_mais_os_dois_botoes(self) -> None:
+        """A relação que o módulo **declara** -- e que até esta rodada ninguém afirmava (S-553).
+
+        A guarda de baixo percorre `CONTROLES_COM_ANEL_DE_FOCO`, então ela pergunta ao próprio dado
+        que deveria travar: encolhida a tupla de oito para dois, ela confere dois e passa em verde,
+        e os seis controles que perdem o anel somem em silêncio -- `QComboBox` (o 0 → 218 px da
+        tabela de aceite), `QLineEdit`, `QSpinBox`, `QAbstractItemView`, `QTextEdit` e
+        `QPlainTextEdit`. Seriam 36 subtestes a menos e uma regressão de WCAG 2.4.7 AA em seis
+        classes, com a suíte inteira verde. Foi assim que um crítico a achou.
+        """
+        self.assertEqual(
+            ("QPushButton", "QToolButton", *tema.CONTROLES_COM_MOLDURA),
+            tema.CONTROLES_COM_ANEL_DE_FOCO,
+            "a fila do anel deixou de ser a da moldura mais os dois botões",
+        )
+
     def test_toda_classe_com_moldura_declara_o_anel(self) -> None:
         """Um anel que existisse em metade da fila seria pior que nenhum: quem usa o teclado
-        aprenderia a não procurá-lo. As oito são as que já têm moldura de 1 px."""
+        aprenderia a não procurá-lo. As oito são as que já têm moldura de 1 px.
+
+        **Esta guarda sozinha é vácua** -- ela itera a tupla que devia travar. Quem crava o
+        tamanho da fila é `test_a_fila_do_anel_e_a_da_moldura_mais_os_dois_botoes`, acima."""
         for uma in pele.PELES:
             regras = _regras_de_foco(tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade))
             for seletor in tema.CONTROLES_COM_ANEL_DE_FOCO:

@@ -5427,7 +5427,7 @@ Uma correção revertida de cada vez, suíte inteira (`--deselect tests/test_env
 | `self._largura_acomodada = largura` fora (`qt/painel_de_estudo.py:732`) | **2** (os dois subtestes de uma guarda) | `173 not greater than or equal to 210` e `190 …`, um por ciclo |
 | `_divisor_de_fabrica = True` (`qt/janela.py:296`) | **2** | `0,60 != 0,42` depois do `resize`, nas duas guardas corrigidas — e em nenhuma outra |
 | `LARGURA_MINIMA_DA_MENSAGEM = 900` | **4** | `1549 != 1000 : a zona declarada já está segurando o piso da janela` nas três peles, mais `ZonaDaMensagemTests::test_alargada_a_zona_mostra_o_que_passou_a_caber` |
-| `_repintar_mensagem` sem reelidir (`qt/rodape.py`) | **1** | `31 not less than 31` — o recorte ficou na fonte da pele anterior |
+| `_repintar_mensagem` sem reelidir (`qt/rodape.py`) | **1** | `51 not less than 51` — o recorte ficou na fonte da pele anterior. **O `31 not less than 31` que esta célula trazia era da rodada 6**, com o teste que travava só a largura e com o checkpoint no disco; em clone limpo aquela reversão dava **zero** falhas, e foi assim que a guarda vácua foi achada |
 | o `setCursorPosition(0)` da montagem fora (`:503`) | **0** | ele é redundante — ver acima |
 | os **dois** `setCursorPosition(0)` fora (`:503` e o do `refresh`) | **2** | `0 != 49` na guarda nova e `0 != 51` na da rodada 5 |
 

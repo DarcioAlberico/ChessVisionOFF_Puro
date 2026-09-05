@@ -18,6 +18,7 @@ from chess_diagram_ocr.estudo_paragrafos import DIAGRAMA, TITULO
 from chess_diagram_ocr.ui.impressao_do_estudo import (
     LARGURA_DO_DIAGRAMA,
     MARGEM_MM,
+    ORFAS,
     Pagina,
     blocos_do_estudo,
     cabecalho,
@@ -97,6 +98,31 @@ class PaginacaoTests(unittest.TestCase):
         paginas = paginar([[10.0] * 3, [10.0] * 4], altura_util=40.0)
         self.assertEqual([1], _onde(paginas, 0))
         self.assertEqual([2], _onde(paginas, 1))
+
+    def test_uma_linha_solta_no_pe_desce_com_o_paragrafo(self) -> None:
+        """A regra 3 (`ORFAS`) **chegando a ser consultada** (S-545).
+
+        A guarda de cima passa pela regra 1 antes: o grupo inteiro desce, e a paginação sai igual
+        com `ORFAS` valendo 2 ou 0 -- foi assim que um crítico a achou verde sobre o defeito. Aqui
+        a regra 1 está satisfeita e é a 3 que decide: com o mínimo em zero a página fecha com
+        **uma** linha do parágrafo seguinte no pé, que é o que a regra proíbe.
+
+        E o mínimo entra por argumento, e não trocando a constante: `orfas: int = ORFAS` é padrão
+        de função, amarrado quando o módulo é lido -- trocar `ORFAS` depois não muda nada, e um
+        teste que tentasse fazê-lo mediria a si mesmo."""
+        soltas = paginar([[10.0] * 2, [10.0] * 4], altura_util=30.0, orfas=0)
+        self.assertEqual(
+            [(1, 0, 1)],
+            [(p.bloco, p.de, p.ate) for p in soltas[0].pedacos[1:]],
+            "a fixture não chega à regra 3: sem ela a paginação já seria esta",
+        )
+        inteiras = paginar([[10.0] * 2, [10.0] * 4], altura_util=30.0)
+        self.assertEqual([0], [p.bloco for p in inteiras[0].pedacos], "a linha solta ficou no pé")
+        self.assertEqual([2, 3], _onde(inteiras, 1), "o parágrafo desceu inteiro e depois se partiu pela regra 1")
+
+    def test_o_minimo_de_linhas_soltas_e_duas(self) -> None:
+        """O literal, cravado. Ver o docstring de `ORFAS` para por que duas e não três."""
+        self.assertEqual(2, ORFAS)
 
     def test_o_espaco_entre_blocos_nao_e_cobrado_no_alto_da_pagina(self) -> None:
         """No alto quem responde pelo ar é a margem; um vão a mais ali desalinharia a primeira
