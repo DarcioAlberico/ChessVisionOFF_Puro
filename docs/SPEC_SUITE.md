@@ -5835,6 +5835,97 @@ em mais de 80% do traço a 16, 20 e 24 px; `limpar_tabuleiro` não tem mais de u
 dois pontos — a régua é a **forma declarada**, e não o pixel, porque o que se recusa é a leitura
 "linhas de texto" e não uma contagem; e os três têm exatamente uma ponta de seta fechada.
 
+## S-555 · O marcado do botão de ferramenta tem piso de contraste medido — ✅ **implementada em 2026-09-06**
+
+### Problema
+
+**A denúncia:** os três botões marcáveis da sala -- "Mostrar diagrama", "Análise contínua" e "Modo
+treino" -- praticamente não mostram que estão ligados. A medição que veio junto: razão **1,26** no
+cromo claro e **1,10** no escuro entre o aceso e o apagado, contra o piso de 3,0 que
+`tokens.AA_GRAFICO` fixa para elemento gráfico.
+
+**A denúncia reproduz. O diagnóstico não**, e três coisas não sobreviveram à conferência.
+
+**1. Os três não são `QPushButton`.** São `QAction` da barra compartilhada -- `btn_recorte`,
+`btn_continua` e `btn_treino` saem de `barra.acoes[...]` em `qt/painel_de_estudo.py:343` --,
+declaradas `marcavel=True` em `ui/barra_da_sala.py` e desenhadas como `QToolButton` por
+`setDefaultAction` (`qt/barra.py:460`). Fotografar um `QPushButton` marcável mediu uma classe que
+não está naquela fila: `QToolButton:checked` **nunca** se aplica a ele.
+
+**2. A regra na folha da aplicação já existe, e quem a escreveu foi a S-527** (`qt/tema.py:726`).
+A decisão que este item deveria tomar -- folha no widget ou folha da aplicação -- foi tomada há dois
+dias, e foi para a folha da aplicação, pelo achado 1 do crítico daquele item: "Seguir OCR" marcado
+desenhava **zero** pixels diferentes do desmarcado. `QPushButton:checked` também já está lá
+(`qt/tema.py:577`).
+
+**3. O conserto apontado como pronto não existe.** Não há `qt/paleta_de_pecas.py` nem
+`tests/test_qt_paleta_de_pecas.py` -- não na árvore, não em ramo nenhum, não em commit nenhum
+(`git log --all -- '*paleta_de_pecas*'` sai vazio). O que existe é `qt/paleta.py`, a paleta de
+comandos da S-503, que não tem `_repintar` e não escreve regra de botão marcado.
+
+**E a conta proposta reprova onde diz passar.** `mistura(superfície, texto, 0.45)` contra a face
+apagada dá **2,89** na clássica e na fita e 3,26 na foco: falha o próprio piso em duas das três
+peles. Para a face pagar 3,0 **sozinha** o peso teria de ser ≥ 0,465 na clara e ≥ 0,425 na escura --
+os 0,45 caem no vão entre as duas, que é o que se obtém medindo só a pele escura.
+
+**O que sobra de verdadeiro, e é o item.** A face sozinha realmente não paga o piso. Medida sobre o
+widget certo -- e o apagado de um `QToolButton` é a **superfície**, porque a regra base dele é
+`border: 1px solid transparent` e recheio nenhum -- a face acesa dá 1,78 na clara e 2,03 na escura.
+Só que num botão chato a face nunca foi quem carrega o sinal: quem carrega é a **moldura** de
+ênfase, e ela paga com folga.
+
+| pele | face acesa × apagada | **moldura × apagada** | **moldura × acesa** |
+|---|---|---|---|
+| Clássica | 1,78 | **5,65** | **3,17** |
+| Foco | 2,03 | **6,68** | **3,30** |
+| Fita | 1,78 | **5,65** | **3,17** |
+
+**O buraco era a guarda, e não o desenho.** O que a suíte cobrava do par aceso/apagado era
+`pixels_diferentes > 0` (`test_qt_barra_da_sala.py:110` e `test_qt_tema.py:639`) e a presença da cor
+de ênfase na regra (`test_qt_tema.py:335`). Nenhum dos três é um **piso**: os dois primeiros passam
+em verde a 1,78:1, e o terceiro passaria se a moldura fosse trocada por uma cor que se lê no botão
+ligado e some no resto da fila. Foi por isso que a denúncia pôde ser escrita contra uma janela cuja
+regra já estava certa -- não havia número travado para consultar.
+
+### Solução
+
+**Um teste, e nenhuma mudança de aparência.**
+`test_qt_tema.py::DesabilitadoSeVeTests::test_a_moldura_que_diz_marcado_se_ve_contra_as_duas_faces`
+cobra `AA_GRAFICO` da moldura de `QToolButton:checked` contra as **duas** faces contra as quais ela
+é desenhada, nas três peles. As duas, e não só a acesa: na fila da sala o olho compara o botão
+ligado com o desligado ao lado dele, e uma moldura medida só contra a face funda poderia sumir
+contra a superfície.
+
+É a mesma régua de `test_o_anel_se_ve_contra_toda_face_em_que_e_desenhado`, e de propósito -- o
+traço que carrega a informação passa o piso de elemento gráfico contra a face em que é desenhado.
+
+**Lê a folha, não recalcula a mistura.** A guarda arranca `background-color` e `border` da regra
+`QToolButton:checked` gerada e mede o que saiu dali. Recalcular `mistura(...)` a partir dos tokens
+mediria dois números que ninguém pintou, e ficaria verde sobre uma regra trocada -- que é a forma de
+vácuo que a S-549 já pagou uma vez.
+
+### Critério de aceite
+
+**Antes → depois: o par aceso/apagado tinha `pixels_diferentes > 0` e passa a ter razão medida.**
+
+| pele | moldura × superfície (apagado) | moldura × face acesa | piso |
+|---|---|---|---|
+| Clássica | 5,65 | 3,17 | 3,0 |
+| Foco | 6,68 | 3,30 | 3,0 |
+| Fita | 5,65 | 3,17 | 3,0 |
+
+**O controle**, porque uma guarda de contraste que nunca ficou vermelha não é guarda: trocando
+`border: 1px solid {primario}` por `{moldura}` na regra do marcado -- que é a borda do cromo, a
+troca mais plausível que alguém faria sem perceber --, o teste reprova nas três peles, a 1,70 na
+clara e 1,49 na escura.
+
+**O que este item não faz.** Não afunda a face marcada. Ela continua em `4 × RELEVO_DO_BOTAO` e
+continua sendo o **segundo** sinal, abaixo do piso sozinha; afundá-la até 0,465 escureceria todo
+`QToolButton` marcável da janela e reabriria a medição do anel de foco contra a face nova (S-553).
+E não fecha o caso **marcado + focado**, em que `:focus` vem por último de propósito e substitui a
+moldura de ênfase pelo anel, deixando o marcado dito só pela face a 1,78:1 -- decisão registrada na
+seção da S-553, e que continua valendo.
+
 ## S-580 · O fim da faixa reservada — não é item
 
 A mensagem do commit `eb3ba71` cita a faixa "S-527 a S-580", e a guarda `test_todo_item_entregue_tem_secao_em_algum_doc` lê

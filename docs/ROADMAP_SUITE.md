@@ -60,6 +60,7 @@ faixa por tarefa; o Lichess esconde o que não é do momento.
 - **S-552** · A janela cabe em 1024 px de largura (achado do crítico do S-527: pedida a 1000×800, a janela fica em 1245×902)
 - **S-553** · O foco de teclado se vê (achado do crítico do S-527, rodada 2: `hasFocus()` desenha 0 px diferentes nos 12 pontos de parada da barra)
 - **S-554** · O ícone desabilitado apaga também na pele escura (achado do crítico do S-527, rodada 2: razão 9,47 habilitado contra 9,82 desabilitado -- o desligado é mais claro)
+- **S-555** · O marcado do botão de ferramenta tem piso de contraste medido (denúncia de 2026-09-06: a face acesa paga 1,78 contra a apagada, mas quem diz "ligado" num botão chato é a moldura de ênfase, a 5,65 e 3,17 -- e nenhuma guarda travava o número)
 
 ## Fase 81 — a base de partidas de vários gigabytes
 
@@ -103,7 +104,7 @@ faixa por tarefa; o Lichess esconde o que não é do momento.
 
 | fase | estado | medido |
 |---|---|---|
-| 80 | ✅ 2026-09-05 | A barra da sala de 154 para 32 px e a do PDF de 118 para 32; o cabecalho da partida acima do tabuleiro; o tabuleiro cresce pela altura (616 para 662 px a 1920x1080); a janela deixou de crescer ao ler (piso de 902 para 553 px); foco de teclado e icone desabilitado visiveis nas tres peles |
+| 80 | ✅ 2026-09-05 | A barra da sala de 154 para 32 px e a do PDF de 118 para 32; o cabecalho da partida acima do tabuleiro; o tabuleiro cresce pela altura (616 para 662 px a 1920x1080); a janela deixou de crescer ao ler (piso de 902 para 553 px); foco de teclado e icone desabilitado visiveis nas tres peles; e, em 2026-09-06, o marcado do botao de ferramenta com piso medido em vez de pixels diferentes (moldura a 5,65 e 3,17 contra 3,0) |
 | 81 | ✅ 2026-09-05 | PGN comprimido em streaming; indice incremental (8,63 GB do zero em ~20 min, segunda rodada em 0,005 s); busca por doze filtros abaixo de 1 s sobre 10,3 milhoes de partidas; ECO a 86,39% contra o header; arvore de aberturas em 0,6 ms de mediana |
 | 82 | ✅ 2026-09-05 | Opcoes do motor sem reiniciar (setoption no processo aberto, 1,34 para 2,33 MN/s); barra de avaliacao que diz quem mateia; analise da partida por expectativa de vitoria, com as divergencias contra o Lichess caindo de 14 para 4 em 256 lances; Syzygy real a 123 us de mediana |
 | 83 | ✅ 2026-09-05 | S-539 de 24 exercicios com zero corretos para 913, com 891 conferidos contra a tabela impressa e 195 de 200 confirmados pelo motor; S-540 e FSRS-4.5 conferido caso a caso contra a formula publicada; S-541 com placar no disco |

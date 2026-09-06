@@ -348,6 +348,46 @@ class DesabilitadoSeVeTests(unittest.TestCase):
                 self.assertIn("QToolButton:hover", qss)
                 self.assertIn("QMenu::item:disabled", qss, "o cabeçalho de grupo do Mais é um item desabilitado")
 
+    def test_a_moldura_que_diz_marcado_se_ve_contra_as_duas_faces(self) -> None:
+        """**A medição de 2026-09-06** (S-555): fotografar o botão marcado contra o desmarcado e
+        comparar só o **fundo** dá 1,78 na pele clara e 2,03 na escura -- abaixo de `AA_GRAFICO`.
+        É a régua certa sobre o mecanismo errado. Num botão chato quem diz "ligado" é a **moldura**
+        de ênfase (S-527); a face funda é o segundo sinal, não o primeiro.
+
+        A régua é a de `test_o_anel_se_ve_contra_toda_face_em_que_e_desenhado`: o traço que carrega
+        a informação passa `AA_GRAFICO` contra a face em que é desenhado. As **duas** faces, porque
+        na fila da sala o olho compara o botão aceso com o apagado ao lado dele -- e o apagado de um
+        `QToolButton` é a **superfície**, que a regra base deixa aparecer (`border: 1px solid
+        transparent`, recheio nenhum). Medir a moldura só contra a face acesa deixaria passar uma
+        cor que se lê no botão ligado e some no resto da fila.
+
+        **E lê a folha em vez de recalcular a mistura**, senão a guarda mediria dois tokens que
+        ninguém pintou -- e ficaria verde sobre uma regra trocada.
+        """
+        for uma in pele.PELES:
+            escuro = uma.cromo_escuro
+            qss = tema.folha_de_estilo(cromo_escuro=escuro, densidade=uma.densidade)
+            regra = next((r for r in qss.splitlines() if r.startswith("QToolButton:checked")), "")
+            self.assertTrue(regra, "sem regra para QToolButton:checked")
+            face = re.search(r"background-color: (#[0-9a-f]{6})", regra)
+            traco = re.search(r"border: 1px solid (#[0-9a-f]{6})", regra)
+            self.assertTrue(face and traco, f"a regra do marcado não diz face e moldura: {regra}")
+            assert face is not None and traco is not None
+            faces = {
+                "apagada (a superfície)": tokens.cor(
+                    tokens.SUPERFICIE_PADRAO, None, cromo_escuro=escuro
+                ),
+                "acesa": face.group(1),
+            }
+            for onde, fundo in faces.items():
+                with self.subTest(pele=uma.nome, face=onde):
+                    razao = tokens.razao_de_contraste(traco.group(1), fundo)
+                    self.assertGreaterEqual(
+                        razao,
+                        tokens.AA_GRAFICO,
+                        f"a moldura do marcado sobre a face {onde}: {razao:.2f}:1",
+                    )
+
     def test_os_outros_dois_papeis_continuam_declarando_o_seu(self) -> None:
         """Estes dois já tinham o deles (S-444), e a regra nova não podia apagá-los."""
         seletores = _seletores_desabilitados(tema.folha_de_estilo())
