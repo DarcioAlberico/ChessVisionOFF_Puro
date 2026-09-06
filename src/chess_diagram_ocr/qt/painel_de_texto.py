@@ -80,7 +80,10 @@ from chess_diagram_ocr.ui.texto_declarado import (
     MOTORES,
     ZOOM_MAXIMO,
     ZOOM_MINIMO,
+    Lote,
+    abre_lote,
     fora_do_livro,
+    lote_apos,
 )
 
 logger = logging.getLogger(__name__)
@@ -92,6 +95,16 @@ LARGURA_DA_MINIATURA = 160
 
 Grande o bastante para reconhecer a posição, pequena o bastante para a linha seguinte caber na
 tela. É o mesmo alvo de `texto_panel._miniatura`."""
+
+SEPARADOR_DE_BLOCO = "\u2029"
+"""O que o Qt devolve no lugar da quebra de parágrafo, em `QTextCursor.selectedText` (S-521).
+
+Não é detalhe de apresentação: o documento guarda `\\n`, e deixar o `U+2029` entrar faria a
+comparação entre o widget e o documento falhar em toda folha com mais de um parágrafo -- e o
+texto salvo levaria um caractere que nenhum editor de fora lê como quebra."""
+
+MARCA_NAO_SE_EDITA = "A marca do diagrama não se edita: ela é a âncora do recorte na folha."
+"""O que o rodapé diz quando a edição é recusada. Ver `_recusar_edicao`."""
 
 
 @dataclass(frozen=True)
@@ -129,6 +142,12 @@ class _Mapa:
         self._trechos.clear()
         self._fim_documento = 0
 
+    def trechos(self) -> tuple[_Trecho, ...]:
+        """Os trechos de agora. É por eles que o painel monta o texto do widget **sem** a
+        miniatura e sem a quebra que o desenho pôs embaixo dela -- as duas coisas que estão na
+        tela e não no documento, e que fariam a comparação dos dois falhar sempre."""
+        return tuple(self._trechos)
+
     def deslocamento(self, posicao: int) -> int:
         """Da posição do cursor para o deslocamento do documento.
 
@@ -152,6 +171,106 @@ class _Mapa:
             return 0
         ultimo = self._trechos[-1]
         return ultimo.janela + ultimo.tamanho
+
+    def editar(self, posicao: int, removidos: int, acrescentados: int) -> None:
+        """Acompanha no mapa uma edição que o widget acabou de fazer (S-521).
+
+        **Existe para o mapa não precisar de um redesenho para voltar a valer.** A tabela nasce em
+        `_desenhar`, que é o único momento em que se sabem as duas coordenadas -- e digitar não
+        redesenha, de propósito: o redesenho manda o cursor para o zero e interrompe a composição
+        de acento. Sem isto, a primeira letra digitada faria toda seleção posterior cair no lugar
+        errado do documento, que é o segundo defeito da tabela da S-521.
+
+        **Duas passagens, porque uma edição do Qt é as duas coisas.** `contentsChange` entrega
+        remoção e acréscimo no mesmo evento (trocar uma seleção por uma letra é `removidos=n,
+        acrescentados=1`), e tratá-las juntas exigiria um caso para cada combinação de
+        sobreposição. Remover e depois acrescentar dá o mesmo resultado com dois casos simples.
+
+        **O texto novo herda o trecho da esquerda**, e é a mesma regra que `rico.inserir` aplica
+        ao atributo: digitar na emenda de dois blocos pertence ao da esquerda. As duas decisões
+        têm de concordar, senão o mapa diria um trecho e o documento carimbaria outro.
+        """
+        if removidos:
+            self._remover(posicao, removidos)
+        if acrescentados:
+            self._acrescentar(posicao, acrescentados)
+
+    def _remover(self, posicao: int, quantos: int) -> None:
+        """Tira do mapa os caracteres que o widget apagou em `[posicao, posicao + quantos)`.
+
+        O que sobra de um trecho cortado pode ser dois pedaços -- a remoção pode cair no meio
+        dele --, e por isso a lista é reconstruída em vez de corrigida no lugar.
+        """
+        fim = posicao + quantos
+        # Quantos caracteres **de documento** a remoção comeu. Não é `quantos`: o intervalo do
+        # widget pode incluir a miniatura e a quebra que o desenho pôs, que não são do documento.
+        no_documento = sum(
+            max(0, min(t.janela + t.tamanho, fim) - max(t.janela, posicao)) for t in self._trechos
+        )
+        novos: list[_Trecho] = []
+        for trecho in self._trechos:
+            inicio, termino = trecho.janela, trecho.janela + trecho.tamanho
+            if termino <= posicao:
+                novos.append(trecho)
+                continue
+            if inicio >= fim:
+                novos.append(
+                    _Trecho(trecho.documento - no_documento, inicio - quantos, trecho.tamanho)
+                )
+                continue
+            esquerda = max(0, posicao - inicio)
+            if esquerda:
+                novos.append(_Trecho(trecho.documento, inicio, esquerda))
+            direita = max(0, termino - fim)
+            if direita:
+                dentro = max(inicio, fim) - inicio
+                novos.append(
+                    _Trecho(
+                        trecho.documento + dentro - no_documento,
+                        inicio + dentro - quantos,
+                        direita,
+                    )
+                )
+        self._trechos = novos
+        self._fim_documento = max(0, self._fim_documento - no_documento)
+
+    def _acrescentar(self, posicao: int, quantos: int) -> None:
+        """Põe no mapa os caracteres que o widget escreveu em `posicao`.
+
+        O trecho que cresce é o **primeiro** que contém a posição, contando o próprio fim: numa
+        emenda, o da esquerda casa primeiro, e é ele que herda.
+        """
+        alvo = next(
+            (
+                i
+                for i, t in enumerate(self._trechos)
+                if t.janela <= posicao <= t.janela + t.tamanho
+            ),
+            None,
+        )
+        if alvo is None:
+            # Antes de todo trecho -- texto digitado acima da primeira miniatura, ou num mapa
+            # ainda vazio. Ele vira trecho próprio, no deslocamento que `deslocamento` já dava.
+            adiante = [t for t in self._trechos if t.janela > posicao]
+            base = adiante[0].documento if adiante else self._fim_documento
+            novos = [_Trecho(base, posicao, quantos)]
+            novos += [
+                _Trecho(t.documento + quantos, t.janela + quantos, t.tamanho)
+                if t.janela > posicao
+                else t
+                for t in self._trechos
+            ]
+            self._trechos = sorted(novos, key=lambda t: t.janela)
+        else:
+            self._trechos = [
+                _Trecho(t.documento, t.janela, t.tamanho + quantos)
+                if i == alvo
+                else _Trecho(t.documento + quantos, t.janela + quantos, t.tamanho)
+                if i > alvo
+                else t
+                for i, t in enumerate(self._trechos)
+            ]
+        self._fim_documento += quantos
 
 
 class PainelDeTexto(QWidget):
@@ -197,6 +316,12 @@ class PainelDeTexto(QWidget):
         self._refeitos: list[rico.DocumentoRico] = []
         self._mapa = _Mapa()
         self._redesenhando = False
+        self._lote: Lote | None = None
+        """A rodada de digitação em curso, ou `None` entre duas (S-521).
+
+        A pilha de desfazer é de documentos, e uma entrada por tecla estouraria o teto numa frase:
+        o lote junta o que foi digitado até a palavra fechar. Quem decide os fechos é
+        `ui/texto_declarado.abre_lote`, que é puro; aqui fica só o quarto, o de ferramenta."""
         self._tarefa: Tarefa | None = None
         self._caminho_do_documento: Path | None = None
         self._zoom_da_vista = 0
@@ -390,6 +515,11 @@ class PainelDeTexto(QWidget):
         aqui é escrever no cursor e pôr a miniatura. É a mesma fronteira do outro frontend.
         """
         self.documento = doc
+        # **O quarto fecho de lote da S-521**, e mora aqui porque aqui passam os quatro caminhos
+        # que não são digitação: ferramenta (`_aplicar`), desfazer, refazer e abrir outra folha.
+        # Sem ele, digitar, pôr negrito e digitar de novo juntaria as duas metades num lote só,
+        # com o negrito no meio -- e um `Ctrl+Z` desfaria as três coisas de uma vez.
+        self._lote = None
         self._desenhar()
         self.documento_mudou.emit()
 
@@ -418,6 +548,11 @@ class PainelDeTexto(QWidget):
                 deslocamento += len(corrida.texto)
 
             self.editor.setDocument(documento)
+            # **O ouvinte é do documento, e o documento é novo a cada desenho** (S-521). Ligá-lo
+            # no `_montar` valeria só até o primeiro redesenho: `setDocument` troca o objeto e o
+            # sinal do antigo vai embora com ele -- a mesma pegadinha que `setUndoRedoEnabled`
+            # acima já tinha custado um teste.
+            documento.contentsChange.connect(self._widget_mudou)
         finally:
             self._redesenhando = False
 
@@ -497,6 +632,93 @@ class PainelDeTexto(QWidget):
         self._edicao += 1
         self._refeitos.clear()
         self.desenhar_documento(novo)
+
+    # ------------------------------------------------------------------------------ digitação
+
+    def _texto_do_widget(self) -> str:
+        """O texto do widget na coordenada do **documento**: sem a miniatura, sem a quebra sob ela.
+
+        É o lado direito do invariante da S-521. Comparar com `toPlainText()` cru falharia em toda
+        folha com diagrama, e por uma diferença que não é defeito nenhum: a imagem é do widget e
+        nunca foi do texto. Quem sabe quais pedaços da tela são do documento é o mapa.
+        """
+        inteiro = self.editor.toPlainText().replace(SEPARADOR_DE_BLOCO, "\n")
+        return "".join(inteiro[t.janela : t.janela + t.tamanho] for t in self._mapa.trechos())
+
+    def _escrito(self, posicao: int, quantos: int) -> str:
+        """O que o widget acabou de receber, com o separador de bloco do Qt traduzido."""
+        if not quantos:
+            return ""
+        documento = self.editor.document()
+        if documento is None:
+            return ""
+        cursor = QTextCursor(documento)
+        cursor.setPosition(posicao)
+        cursor.setPosition(posicao + quantos, QTextCursor.MoveMode.KeepAnchor)
+        return cursor.selectedText().replace(SEPARADOR_DE_BLOCO, "\n")
+
+    def _widget_mudou(self, posicao: int, removidos: int, acrescentados: int) -> None:
+        """Toda mudança que o Qt faz no `QTextDocument` vira uma chamada pura sobre o documento.
+
+        **Um ouvinte para todos os gestos** (S-521). Tecla, tecla morta, IME, `Backspace`,
+        `Delete`, `Enter`, colar e recortar passam por `contentsChange` -- é por isso que `colar`
+        e `recortar` continuam sendo `paste()` e `cut()` do widget e mesmo assim chegam ao
+        documento. Antes disto o widget aceitava o texto e o documento ficava como estava: salvar
+        gravava a folha sem o que tinha sido digitado.
+
+        **Sem redesenho**, salvo quando os dois divergem. Redesenhar a cada tecla custaria 1,7 ms
+        e o cursor de volta ao começo da folha a cada letra -- o que o desenho custa não é tempo,
+        é o cursor.
+        """
+        if self._redesenhando:
+            return
+        # A tradução usa o mapa **de antes** da edição: é ele que descreve o widget em que o Qt
+        # mediu `posicao`. Só depois de ler os dois extremos é que o mapa acompanha a edição.
+        inicio = self._mapa.deslocamento(posicao)
+        fim = self._mapa.deslocamento(posicao + removidos)
+        novo = self._escrito(posicao, acrescentados)
+        self._mapa.editar(posicao, removidos, acrescentados)
+
+        if inicio == fim:
+            # Inserção pura herda **da esquerda** -- a regra que a paleta da S-248 já usa, aqui
+            # estendida à digitação e ao colar. Três caminhos de entrada, uma regra só.
+            candidato = rico.inserir(self.documento, inicio, novo)
+        else:
+            candidato = rico.substituir_intervalo(self.documento, inicio, fim, novo)
+
+        if candidato.para_texto() != self._texto_do_widget():
+            self._recusar_edicao(inicio)
+            return
+
+        inserindo = removidos == 0
+        if abre_lote(self._lote, inserindo=inserindo, junta=inicio if inserindo else fim):
+            self._historico.append(self.documento)
+            self._edicao += 1
+            self._refeitos.clear()
+        self.documento = candidato
+        self._lote = lote_apos(
+            inserindo=inserindo,
+            junta=inicio + len(novo) if inserindo else inicio,
+            escrito=novo,
+        )
+        if self._lote is None:
+            # O sinal é de fim de palavra, e não de tecla: a conferência do léxico (S-293) e o
+            # rascunho automático não têm o que fazer entre duas letras da mesma palavra.
+            self.documento_mudou.emit()
+
+    def _recusar_edicao(self, inicio: int) -> None:
+        """A edição tocou o que o documento não deixa tocar: a marca do diagrama, ou a quebra que
+        o desenho pôs embaixo da miniatura.
+
+        O widget volta ao documento, o cursor fica onde a pessoa o deixou e o rodapé diz por quê.
+        É o mesmo contrato de `rico.substituir_intervalo`: a estrutura do texto não é do teclado.
+        """
+        self._desenhar()
+        cursor = self.editor.textCursor()
+        cursor.setPosition(self._mapa.posicao(inicio))
+        self.editor.setTextCursor(cursor)
+        self._lote = None
+        self.estado.emit(MARCA_NAO_SE_EDITA)
 
     def alternar(self, atributo: str) -> None:
         """Liga o atributo no intervalo -- ou desliga, se ele já vale em todo ele (S-241)."""

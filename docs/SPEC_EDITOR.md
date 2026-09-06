@@ -2902,7 +2902,7 @@ gravar. O porte trouxe a primeira decisão e não trouxe a segunda nem o seu equ
 com um editor em que toda ferramenta passa pelo documento e a tecla mais comum de todas, a letra,
 passa por fora dele. É um item só, e ele é o maior defeito que a triagem encontrou.
 
-## S-521 · A digitação que chega ao documento, e o desfazer que a vê
+## S-521 · A digitação que chega ao documento, e o desfazer que a vê — ✅ **implementada em 2026-09-06**
 
 ### Problema
 
@@ -3043,6 +3043,49 @@ uma palavra.
 - **Tornar o editor somente-leitura no Qt até este item entrar.** Seria honesto e é o oposto do
   que a aba existe para fazer; e a S-511 já deixou o defeito escrito em três lugares, que é o que
   um item planejado precisa para não ser esquecido.
+
+### O que foi medido
+
+**Os quatro gestos da tabela do problema, refeitos depois do conserto** (`offscreen`, folha
+`"O bispo vai para c4."`, `QTest.keyClicks`):
+
+| gesto | o documento diz | antes |
+|---|---|---|
+| digitar `grande ` na posição 2 | `O grande bispo vai para c4.` | `O bispo vai para c4.` |
+| depois disso, negrito em `bispo` na tela | negrito em `bispo`, e o `grande` continua lá | negrito em `ai pa`, e o digitado sumia |
+| `Backspace` no meio de uma palavra | chega ao documento | não chegava |
+| a marca do diagrama sob o cursor | o widget volta e o rodapé explica | a marca sumia da tela e do texto |
+
+**O lote do desfazer:** `um dois tres` dá **3** entradas na pilha, e não 12 -- o critério pedia
+*"três palavras é três entradas, não quinze"*. A regra é pura (`ui/texto_declarado.abre_lote`), e
+`tests/test_ui_texto_lotes.py` a afirma sem abrir janela: `abc` é um lote, `a b` são dois.
+
+**Nenhum redesenho na digitação comum**, afirmado contando chamadas de `_desenhar`: zero em seis
+teclas. É o que mantém o cursor onde a pessoa o deixou.
+
+**Custo por tecla**, sobre o ouvinte, numa folha de 3.354 caracteres (80 teclas, `perf_counter`):
+
+| | mediana | p95 | pior |
+|---|---|---|---|
+| `_widget_mudou` | **0,037 ms** | 0,076 ms | 0,169 ms |
+
+O piso do critério era 1 ms. Medindo a tecla inteira -- com a síntese de evento do `QTest`, que
+não é custo do produto -- a mediana é 0,719 ms e o pior caso 1,26 ms; o número que o item promete
+é o do ouvinte, que é o que ele acrescentou.
+
+**O que ficou sem afirmação, e por quê.** `recortar` chega ao documento e está no teste; **`colar`
+não pôde ser medido aqui**, e é limitação da plataforma de teste e não do conserto. Sob
+`offscreen` a inserção vinda da área de transferência é inerte: `canPaste()` responde `True`, o
+`mimeData` traz `text/plain`, e `paste()` e `insertFromMimeData()` não mudam um caractere --
+enquanto `insertPlainText` no mesmo widget muda. Um teste de colar passaria em verde com e sem o
+ouvinte, que é exatamente a armadilha que a S-506 registrou. O mecanismo o alcança pela mesma porta
+de todos os outros gestos (`contentsChange` dispara para qualquer mudança do `QTextDocument`), e é
+o que o docstring de `colar` já prometia; o que falta é uma máquina com tela para cobrá-lo.
+
+**A divergência com a S-238 está afirmada e não escondida:** inserir na emenda de dois blocos
+pertence ao da **esquerda**, como o símbolo que a paleta insere
+(`test_inserir_na_emenda_pertence_ao_bloco_da_esquerda`). Lá não herdava bloco nenhum, porque era
+o que as etiquetas do Tk faziam.
 
 ---
 

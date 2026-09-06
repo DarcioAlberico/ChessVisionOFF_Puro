@@ -321,6 +321,40 @@ class EdicaoTests(unittest.TestCase):
         marcadas = [c.texto for c in depois.corridas if c.atributos.fora_do_modelo]
         self.assertEqual(marcadas, ["♞"])
 
+    def test_inserir_dentro_de_um_bloco_mantem_a_origem(self) -> None:
+        """**O que a S-238 travava com um `tk.Text` de verdade**, refeito sem widget (S-521).
+
+        O arquivo que afirmava isto saiu no corte do Tk junto com o widget que ele abria, e o que
+        sobrou media o documento -- nunca a digitação chegando nele. A correção humana tem de
+        ficar atada ao bloco que corrige: é por `bloco` que a fila da S-212 sabe o que revisar,
+        e um texto digitado com `SEM_BLOCO` sai da fila sem nunca ter entrado.
+        """
+        doc = rico.DocumentoRico(
+            corridas=(rico.Corrida(texto="o lance certo", bloco=7, procedencia="camada"),)
+        )
+        depois = rico.inserir(doc, 2, "grande ")
+        nova = next(c for c in depois.corridas if "grande" in c.texto)
+        self.assertEqual(nova.bloco, 7, "o texto digitado perdeu o bloco que corrige")
+        self.assertEqual(nova.procedencia, "humano")
+        self.assertEqual(depois.para_texto(), "o grande lance certo")
+
+    def test_inserir_na_emenda_pertence_ao_bloco_da_esquerda(self) -> None:
+        """**A divergência declarada com a S-238**, afirmada e não escondida (S-521).
+
+        Lá, digitar na emenda de dois blocos não herdava bloco nenhum, porque era o que as
+        etiquetas do Tk faziam. Aqui pertence ao da esquerda, como o símbolo que a paleta insere
+        -- três caminhos de entrada (digitar, colar, inserir símbolo) e uma regra só.
+        """
+        doc = rico.DocumentoRico(
+            corridas=(
+                rico.Corrida(texto="esquerda", bloco=1),
+                rico.Corrida(texto="direita", bloco=2),
+            )
+        )
+        depois = rico.inserir(doc, len("esquerda"), "XX")
+        nova = next(c for c in depois.corridas if "XX" in c.texto)
+        self.assertEqual(nova.bloco, 1, "na emenda o texto novo foi para o bloco da direita")
+
     def test_o_estilo_vale_para_o_paragrafo_inteiro(self) -> None:
         """Estilo é do parágrafo: marcar meia frase marcaria meio parágrafo, e o desenho ficaria
         com dois corpos de fonte na mesma linha."""
