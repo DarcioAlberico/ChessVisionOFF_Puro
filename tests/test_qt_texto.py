@@ -31,10 +31,12 @@ from chess_diagram_ocr.text.pagina import BlocoDeDiagrama, BlocoDeTexto, Coluna,
 from chess_diagram_ocr.ui import texto_cores, tipografia, tokens
 
 if TEM_PYQT:
+    from PyQt6.QtCore import Qt
     from PyQt6.QtGui import QFont, QTextCursor
+    from PyQt6.QtTest import QTest
 
     from chess_diagram_ocr.qt import tema, texto_formato
-    from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
+    from chess_diagram_ocr.qt.painel_de_texto import MARCA_NAO_SE_EDITA, PainelDeTexto, _Mapa
 
 def _tracos(formato: object) -> tuple[object, ...]:
     """As quatro propriedades que um booleano de `rico.Atributos` pode mexer.
@@ -448,6 +450,212 @@ class TecladoTests(PainelTests):
         self.assertTrue(qt_atalhos.cede_a_tecla(self.painel.editor, "<Control-b>"))
         self.assertFalse(qt_atalhos.cede_a_tecla(self.painel.editor, "<Control-h>"))
         self.assertFalse(qt_atalhos.cede_a_tecla(self.painel.editor, "<Control-s>"))
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class MapaEditadoTests(unittest.TestCase):
+    """`_Mapa.editar`: o mapa acompanha a digitação sem precisar de um redesenho (S-521).
+
+    **Separada de `MapaTests` de propósito: aqui não se abre janela.** O mapa é uma lista de três
+    inteiros e a edição é aritmética sobre ela; montar um painel para afirmar isto mediria o
+    desenho junto, que é o que o item existe para não fazer a cada tecla.
+
+    A montagem imita o que `_desenhar` registra numa folha com uma miniatura: dois trechos
+    contíguos **no documento** (0-5 e 5-10) e separados **no widget** (0-5 e 7-12), porque a
+    imagem e a quebra sob ela valem dois caracteres de tela e nenhum de texto.
+    """
+
+    def mapa(self) -> _Mapa:
+        mapa = _Mapa()
+        mapa.registrar(0, 0, 5)
+        mapa.registrar(5, 7, 5)
+        return mapa
+
+    def test_insercao_no_meio_de_um_trecho(self) -> None:
+        mapa = self.mapa()
+        mapa.editar(2, 0, 3)
+        self.assertEqual(mapa.deslocamento(2), 2, "o começo da inserção não se moveu")
+        self.assertEqual(mapa.deslocamento(5), 5, "o que foi escrito conta no documento")
+        # O trecho de depois da miniatura andou os três caracteres nas **duas** coordenadas: no
+        # widget porque há três letras a mais na tela, no documento porque há três no texto.
+        self.assertEqual(mapa.deslocamento(10), 8)
+        self.assertEqual(mapa.posicao(8), 10, "e a volta fecha")
+
+    def test_insercao_no_fim_de_um_trecho(self) -> None:
+        """No fim do primeiro trecho o texto novo é **dele**, e não do seguinte."""
+        mapa = self.mapa()
+        mapa.editar(5, 0, 2)
+        self.assertEqual(mapa.deslocamento(6), 6, "o caractere novo caiu no trecho da esquerda")
+        self.assertEqual(mapa.deslocamento(9), 7, "a miniatura continua valendo zero")
+
+    def test_insercao_na_emenda_de_dois_pertence_ao_da_esquerda(self) -> None:
+        """**A divergência declarada com a S-238**, do lado do mapa: na emenda, herda a esquerda.
+
+        Se herdasse a direita, o mapa diria um trecho e `rico.inserir` -- que herda da esquerda --
+        carimbaria outro; as duas decisões têm de concordar ou o bloco do texto digitado muda
+        conforme quem se pergunta.
+        """
+        mapa = _Mapa()
+        mapa.registrar(0, 0, 5)
+        mapa.registrar(5, 5, 5)
+        mapa.editar(5, 0, 2)
+        # **A afirmação é sobre qual trecho cresceu**, e não sobre o deslocamento: na emenda os
+        # dois dariam o mesmo número, e só o tamanho diz de quem o texto novo é.
+        cresceu = [t.tamanho for t in mapa.trechos()]
+        self.assertEqual(cresceu, [7, 5], "o texto novo foi para o trecho da direita")
+        self.assertEqual(mapa.deslocamento(6), 6, "e continua contíguo no documento")
+
+    def test_remocao_que_atravessa_dois_trechos(self) -> None:
+        """Apagar por cima da miniatura come pedaço dos dois lados -- e o widget passa a ter
+        tantos caracteres quanto o documento, porque a imagem foi junto."""
+        mapa = self.mapa()
+        mapa.editar(3, 6, 0)
+        self.assertEqual(mapa.deslocamento(0), 0)
+        self.assertEqual(mapa.deslocamento(3), 3, "sobraram três do primeiro trecho")
+        self.assertEqual(mapa.deslocamento(6), 6, "e três do segundo, agora colados")
+
+    def test_edicao_depois_da_miniatura(self) -> None:
+        """O caso que o mapa existe para não errar: digitar **depois** do diagrama."""
+        mapa = self.mapa()
+        mapa.editar(9, 0, 4)
+        self.assertEqual(mapa.deslocamento(9), 7, "a posição do widget vira deslocamento certo")
+        self.assertEqual(mapa.posicao(7), 9, "e volta")
+        self.assertEqual(mapa.deslocamento(0), 0, "o trecho antes da miniatura não se mexeu")
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class DigitacaoTests(PainelTests):
+    """A digitação chega ao documento (S-521).
+
+    **É a tabela do problema da S-521, linha a linha.** Antes disto o `QTextEdit` era editável,
+    ninguém escutava o que ele mudava, e `documento` ficava como estava: salvar gravava a folha
+    sem o que tinha sido digitado, e formatar depois de digitar marcava o trecho errado.
+
+    Nenhum dos 37 testes que já existiam neste arquivo digitava: as ferramentas eram chamadas
+    pelo método sobre um documento posto por `desenhar_documento`, que é exatamente o caminho que
+    funcionava.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.painel.desenhar_documento(rico.de_texto("O bispo vai para c4."))
+        self.app.processEvents()
+
+    def escrever(self, onde: int, texto: str) -> None:
+        """Põe o cursor num deslocamento do documento e digita, tecla a tecla."""
+        cursor = self.painel.editor.textCursor()
+        cursor.setPosition(self.painel._mapa.posicao(onde))
+        self.painel.editor.setTextCursor(cursor)
+        QTest.keyClicks(self.painel.editor, texto)
+        self.app.processEvents()
+
+    def test_o_que_se_digita_chega_ao_documento(self) -> None:
+        """**A primeira linha da tabela**, e a que fazia salvar gravar o texto velho."""
+        self.escrever(2, "grande ")
+        self.assertEqual(self.painel.documento.para_texto(), "O grande bispo vai para c4.")
+        self.assertEqual(self.painel.texto(), self.painel.editor.toPlainText())
+
+    def test_salvar_e_reabrir_devolve_o_que_foi_digitado(self) -> None:
+        """O ciclo da S-238, fechado no Qt: o defeito só se via relendo o arquivo."""
+        self.escrever(2, "grande ")
+        self.assertIn("grande", self.painel.texto())
+        redesenhado = rico.de_texto(self.painel.texto())
+        self.assertEqual(redesenhado.para_texto(), "O grande bispo vai para c4.")
+
+    def test_formatar_depois_de_digitar_marca_o_que_esta_na_tela(self) -> None:
+        """**A segunda linha da tabela.** A seleção da tela caía sete caracteres antes no
+        documento, e o redesenho apagava o que tinha sido digitado."""
+        self.escrever(2, "grande ")
+        alvo = self.painel.texto().index("bispo")
+        self.selecionar(alvo, alvo + len("bispo"))
+        self.painel.negrito()
+        marcadas = [c.texto for c in self.painel.documento.corridas if c.atributos.negrito]
+        self.assertEqual(marcadas, ["bispo"])
+        self.assertIn("grande", self.painel.texto(), "o redesenho apagou o que foi digitado")
+
+    def test_apagar_com_backspace_chega_ao_documento(self) -> None:
+        cursor = self.painel.editor.textCursor()
+        cursor.setPosition(self.painel._mapa.posicao(7))
+        self.painel.editor.setTextCursor(cursor)
+        QTest.keyClick(self.painel.editor, Qt.Key.Key_Backspace)
+        self.app.processEvents()
+        self.assertEqual(self.painel.documento.para_texto(), "O bisp vai para c4.")
+
+    def test_recortar_pelo_comando_chega_ao_documento(self) -> None:
+        """`recortar` continua sendo `cut()` do widget, e mesmo assim chega ao documento -- é o
+        ponto do ouvinte único: ele não sabe qual gesto foi, só que o documento do Qt mudou.
+
+        **`colar` não é afirmado aqui, e é limitação da plataforma de teste, não do conserto.**
+        Sob `offscreen` a inserção vinda da área de transferência é inerte: `canPaste()` responde
+        `True`, o `mimeData` tem `text/plain`, e `paste()` e `insertFromMimeData()` não mudam um
+        caractere -- enquanto `insertPlainText` no mesmo widget muda. Um teste de colar aqui
+        passaria em verde com e sem o conserto, que é a armadilha que a S-506 já registrou.
+        """
+        self.selecionar(0, 8)
+        self.painel.recortar()
+        self.app.processEvents()
+        self.assertEqual(self.painel.documento.para_texto(), "vai para c4.")
+        self.assertEqual(self.painel.texto(), self.painel.editor.toPlainText())
+
+    def test_o_texto_digitado_carimba_procedencia_humana(self) -> None:
+        """A correção fica atada ao bloco que corrige, que é o que a fila da S-212 lê."""
+        self.escrever(2, "grande")
+        procedencias = {c.procedencia for c in self.painel.documento.corridas if "grande" in c.texto}
+        self.assertEqual(procedencias, {"humano"})
+
+    def test_desfazer_tira_a_palavra_inteira_e_deixa_o_resto(self) -> None:
+        """**O lote.** Uma entrada por tecla daria cem entradas em cem letras."""
+        self.escrever(2, "grande ")
+        antes = self.painel.edicao
+        self.painel.desfazer()
+        self.assertEqual(self.painel.documento.para_texto(), "O bispo vai para c4.")
+        self.assertGreaterEqual(antes, 1)
+
+    def test_uma_frase_de_tres_palavras_e_tres_entradas_e_nao_quinze(self) -> None:
+        partida = self.painel.edicao
+        self.escrever(0, "um dois tres")
+        self.assertEqual(
+            self.painel.edicao - partida,
+            3,
+            "a pilha ganhou uma entrada por tecla em vez de uma por palavra",
+        )
+
+    def test_a_digitacao_comum_nao_redesenha(self) -> None:
+        """**O cursor é o que o redesenho custa**, e não o 1,7 ms: redesenhar a cada tecla manda
+        o cursor para o começo da folha e interrompe a composição de acento."""
+        desenhos = []
+        original = self.painel._desenhar
+        self.painel._desenhar = lambda: (desenhos.append(1), original())[1]  # type: ignore[method-assign]
+        self.escrever(2, "grande")
+        self.assertEqual(desenhos, [], "a digitação comum redesenhou")
+
+    def test_apagar_a_marca_do_diagrama_e_recusado(self) -> None:
+        """**O contrato de `substituir_intervalo`**: a estrutura do texto não é do teclado."""
+        self.painel.mostrar_pagina(pagina_com_diagrama())
+        self.app.processEvents()
+        antes = self.painel.texto()
+        marca = antes.index("[Diagrama 1]")
+        cursor = self.painel.editor.textCursor()
+        cursor.setPosition(self.painel._mapa.posicao(marca + 1))
+        self.painel.editor.setTextCursor(cursor)
+        QTest.keyClick(self.painel.editor, Qt.Key.Key_Backspace)
+        self.app.processEvents()
+        self.assertIn("[Diagrama 1]", self.painel.texto(), "a marca do diagrama foi apagada")
+        # **E diz por quê.** Recusar em silêncio é pior que recusar: a tecla não faz nada e quem
+        # digita fica sem saber se o editor travou.
+        self.assertIn(MARCA_NAO_SE_EDITA, self.recados)
+
+    def test_a_traducao_continua_certa_depois_de_digitar(self) -> None:
+        """O terceiro defeito da tabela, com miniatura antes e depois do que foi digitado."""
+        self.painel.mostrar_pagina(pagina_com_diagrama())
+        self.app.processEvents()
+        alvo = self.painel.texto().index("Depois")
+        self.escrever(alvo, "logo ")
+        texto = self.painel.texto()
+        self.assertIn("logo Depois", texto)
+        onde = texto.index("Depois")
+        self.selecionar(onde, onde + len("Depois"))
+        self.assertEqual(self.painel.editor.textCursor().selectedText(), "Depois")
 
 
 if __name__ == "__main__":  # pragma: no cover

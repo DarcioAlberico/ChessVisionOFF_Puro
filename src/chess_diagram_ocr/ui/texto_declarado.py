@@ -24,6 +24,7 @@ agora é `qt/painel_de_texto.py`, `qt/janela.py` e `cli/editor_inventario.py`.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from ..text import rico
@@ -44,8 +45,15 @@ __all__ = [
     "ROTULO_DO_CORPO_MISTO",
     "ZOOM_MAXIMO",
     "ZOOM_MINIMO",
+    "Lote",
+    "abre_lote",
     "fora_do_livro",
+    "lote_apos",
 ]
+# `PONTUACAO_DE_LOTE` e `separa_palavra` **não** entram: quem os usa é `lote_apos`, aqui dentro, e
+# ela é a API. Exportá-los seria oferecer a régua ao lado da decisão que já a aplica -- que é o
+# caso dos 62 nomes que a triagem de 2026-09-02 tirou do `__all__`, e o que a catraca de
+# `tests/test_ui_orfaos.py` cobra.
 
 ACOES_PROPRIAS: frozenset[str] = frozenset({"salvar", "desfazer", "refazer", "achar", "substituir"})
 """As ações globais que esta aba atende **enquanto tem o foco** (S-244).
@@ -188,3 +196,57 @@ Agora a janela **gera** as ligações desta tabela e o inventário a lê, e um c
 linha só. O nome do comando e o do método divergem em oito casos, e todos por bom motivo:
 `ler_folha` é `ler` porque o painel só lê folha, `exportar_txt` é `salvar` porque era assim antes do
 catálogo, e `cor_do_texto` é `escolher_cor` porque o comando abre uma lista em vez de pintar."""
+
+
+PONTUACAO_DE_LOTE = ".,;:!?()[]{}<>\"'"
+"""A pontuação que fecha um lote de digitação, além de todo espaço em branco (S-521).
+
+**A granularidade é a palavra, e não a tecla.** Uma entrada de desfazer por caractere daria cem
+entradas em cem letras e estouraria o teto da pilha numa frase -- e `Ctrl+Z` que devolve uma letra
+por vez não é o que ninguém espera de um editor. É a mesma régua do `edit_separator` do `tk.Text`
+e a do Word."""
+
+
+@dataclass(frozen=True)
+class Lote:
+    """Uma rodada de digitação contígua, que o desfazer trata como **uma** coisa (S-521).
+
+    `inserindo` separa escrever de apagar: alternar entre os dois fecha o lote, senão um `Ctrl+Z`
+    devolveria uma mistura que ninguém digitou. `junta` é onde o lote está encostado no documento
+    -- o fim do que foi escrito, ou o começo do que foi apagado --, e é o que decide se a próxima
+    edição continua a mesma ou começa outra.
+    """
+
+    inserindo: bool
+    junta: int
+
+
+def separa_palavra(caractere: str) -> bool:
+    """Se este caractere termina uma palavra, para efeito de lote."""
+    return caractere.isspace() or caractere in PONTUACAO_DE_LOTE
+
+
+def abre_lote(lote: Lote | None, *, inserindo: bool, junta: int) -> bool:
+    """Se esta edição começa um lote novo -- e portanto empurra o documento para a pilha.
+
+    Três dos quatro fechos da S-521 estão aqui: não há lote aberto, a edição mudou de tipo, ou ela
+    não encosta na anterior (o cursor andou). O quarto -- qualquer ferramenta passar por
+    `_aplicar` -- é do painel, porque é ele que sabe que a ferramenta rodou.
+    """
+    if lote is None:
+        return True
+    if lote.inserindo != inserindo:
+        return True
+    return junta != lote.junta
+
+
+def lote_apos(*, inserindo: bool, junta: int, escrito: str) -> Lote | None:
+    """O lote que fica valendo depois da edição, ou `None` quando ela mesma o fecha.
+
+    Escrever um separador fecha: `a b` são dois lotes e `abc` é um. O separador entra no lote que
+    ele fecha -- desfazer depois de `a b` tira o `b`, e o `Ctrl+Z` seguinte tira `a ` inteiro --,
+    que é o que dá a sensação de apagar palavra por palavra.
+    """
+    if inserindo and any(separa_palavra(c) for c in escrito):
+        return None
+    return Lote(inserindo=inserindo, junta=junta)
