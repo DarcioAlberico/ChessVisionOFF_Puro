@@ -63,6 +63,7 @@ from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.atalhos import sequencia_qt
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import DicaEmDesabilitado, dica_em
+from chess_diagram_ocr.qt.paleta_de_pecas import PaletaDePecas
 from chess_diagram_ocr.qt.tabuleiro_editavel import TabuleiroEditavel
 from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import OcrService, RecognitionOrigin, RecognizedDiagram
@@ -192,12 +193,24 @@ class PainelDeResultado(QWidget):
         # o que fazer com o widget que está dentro dele, e é a única frase do painel que não
         # nomeia um comando -- que é o critério de `ui/strings.py`.
         grupo = QGroupBox("Reconhecido (clique e arraste para corrigir)", self)
-        dentro = QVBoxLayout(grupo)
+        dentro = QHBoxLayout(grupo)
         self.tabuleiro = TabuleiroEditavel(grupo)
         self.tabuleiro.posicao_mudou.connect(self._tabuleiro_mudou)
         self.tabuleiro.selecao_mudou.connect(self._casa_selecionada)
         self.tabuleiro.recado.connect(self.estado)
         dentro.addWidget(self.tabuleiro, 1)
+        # **A paleta é do tabuleiro, e por isso ela mora dentro do mesmo grupo** (S-65). O rótulo
+        # do grupo diz "clique e arraste para corrigir", e escolher a peça é a outra metade
+        # daquela frase: sem ela, `definir_pincel` não tinha chamador no produto e a única
+        # correção possível era arrastar.
+        #
+        # **Ao lado e alinhada por cima**: a coluna de peças é mais baixa que o tabuleiro, e sem o
+        # `AlignTop` o layout a centraria na altura dele -- catorze botões flutuando no meio da
+        # borda direita. O preço da vizinhança é largura: o grupo passa a pedir o mínimo do
+        # tabuleiro (240 px) **mais** a coluna, e é o que o divisor da janela vai respeitar.
+        self.paleta = PaletaDePecas(grupo)
+        self.paleta.pincel.connect(self.tabuleiro.definir_pincel)
+        dentro.addWidget(self.paleta, 0, Qt.AlignmentFlag.AlignTop)
         caixa.addWidget(grupo, 3)
 
         self.legalidade = QLabel("", self)
@@ -950,6 +963,7 @@ class PainelDeResultado(QWidget):
         self.anterior.setEnabled(not vazio and self.modelo.clamped_index() > 0)
         self.proximo.setEnabled(not vazio and self.modelo.clamped_index() < len(self.modelo.items) - 1)
         self.seletor.setEnabled(not vazio)
+        self.paleta.habilitar(not vazio, motivo=MOTIVO_SEM_DIAGRAMA)
 
         for botao, acao, pode, sem in (
             (self.btn_desfazer, "desfazer", self.historico.pode_desfazer, MOTIVO_SEM_DESFAZER),

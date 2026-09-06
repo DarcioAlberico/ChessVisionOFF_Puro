@@ -26,7 +26,11 @@ from chess_diagram_ocr.service import RecognizedDiagram
 from chess_diagram_ocr.ui import atalhos, board_edit, comandos
 
 if TEM_PYQT:
-    from chess_diagram_ocr.qt.painel_de_resultado import MENSAGEM_VAZIA, PainelDeResultado
+    from chess_diagram_ocr.qt.painel_de_resultado import (
+        MENSAGEM_VAZIA,
+        MOTIVO_SEM_DIAGRAMA,
+        PainelDeResultado,
+    )
 
 LEGAL = "4k3/8/8/8/8/8/8/4K3"
 OUTRA = "8/8/8/4k3/8/8/8/4K3"
@@ -328,6 +332,57 @@ class SalvarTodosTests(PainelTests):
     def test_salvar_todos_sem_diagrama_avisa(self) -> None:
         self.painel.salvar_todos()
         self.assertIn("leia uma página", self.recados[-1])
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class PaletaTests(PainelTests):
+    """A paleta e o tabuleiro, ligados (S-65).
+
+    O que a paleta faz sozinha é de `tests/test_qt_paleta_de_pecas.py`. O que se afirma aqui é a
+    **fiação**: escolher na paleta arma o pincel do tabuleiro, e um clique numa casa deposita a
+    peça. Afirmar o efeito e não a chamada é o que a S-522 pede -- trocar o método depois do
+    `connect` não troca quem o sinal chama, e um teste com `mock` continuaria verde com o fio
+    cortado.
+    """
+
+    def test_escolher_na_paleta_arma_o_pincel_do_tabuleiro(self) -> None:
+        self.carregar()
+        self.painel.paleta._botoes["Q"].click()
+        self.assertEqual("Q", self.painel.tabuleiro.modelo.brush)
+
+    def test_largar_na_paleta_desarma_o_pincel_do_tabuleiro(self) -> None:
+        """O outro sentido do mesmo fio: sem ele o clique ficaria pintando para sempre."""
+        self.carregar()
+        self.painel.paleta._botoes["Q"].click()
+        self.painel.paleta._botoes["Q"].click()
+        self.assertIsNone(self.painel.tabuleiro.modelo.brush)
+
+    def test_a_frase_do_pincel_chega_a_barra_de_status(self) -> None:
+        self.carregar()
+        self.painel.paleta._botoes["Q"].click()
+        self.assertIn(board_edit.PIECE_NAMES_PT["Q"], self.recados[-1])
+
+    def test_a_paleta_fica_ao_lado_do_tabuleiro_e_alinhada_por_cima(self) -> None:
+        """A forma pedida: coluna à direita do desenho, e não fileira embaixo dele. Sem o
+        alinhamento por cima o layout centraria os catorze botões na altura do tabuleiro."""
+        self.painel.resize(400, 880)
+        # Mostrar é o que faz o Qt calcular a geometria dos filhos: `activate()` na camada de
+        # cima não desce até o layout do grupo, e as duas posições sairiam zeradas. Sob
+        # `offscreen` nada aparece na tela, e o `hide` devolve o painel ao estado em que estava.
+        self.painel.show()
+        self.addCleanup(self.painel.hide)
+        self.app.processEvents()
+        tabuleiro, paleta = self.painel.tabuleiro, self.painel.paleta
+        self.assertGreaterEqual(paleta.x(), tabuleiro.x() + tabuleiro.width())
+        self.assertEqual(paleta.y(), tabuleiro.y())
+
+    def test_sem_diagrama_a_paleta_fica_cinza(self) -> None:
+        """O painel vazio desenha um tabuleiro sem peças, e pintar nele produziria a tela que a
+        S-170 escolheu não deixar acontecer: um diagrama na cara de quem não abriu nenhum."""
+        self.assertFalse(self.painel.paleta._botoes["Q"].isEnabled())
+        self.assertEqual(MOTIVO_SEM_DIAGRAMA, self.painel.paleta._botoes["Q"].toolTip())
+        self.carregar()
+        self.assertTrue(self.painel.paleta._botoes["Q"].isEnabled())
 
 
 if __name__ == "__main__":  # pragma: no cover
