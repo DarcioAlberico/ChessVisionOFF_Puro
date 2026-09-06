@@ -71,9 +71,6 @@ from . import pele, tipografia
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "CLASSES",
-    "COM_INDICADOR",
-    "RECHEIO",
     "recheio",
     "vao_do_indicador",
 ]

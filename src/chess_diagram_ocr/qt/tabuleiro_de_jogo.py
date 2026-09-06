@@ -34,7 +34,12 @@ from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.tabuleiro import TabuleiroQt
 from chess_diagram_ocr.ui import tokens
 from chess_diagram_ocr.ui.board_model import BoardModel
-from chess_diagram_ocr.ui.desenho_do_tabuleiro import BoardGeometry
+from chess_diagram_ocr.ui.desenho_do_tabuleiro import (
+    LARGURA_DA_SETA,
+    PAPEL_DE_SETA,
+    PONTA_DA_SETA,
+    BoardGeometry,
+)
 from chess_diagram_ocr.ui.sala_declarada import cor_de_seta_por_modificador
 
 logger = logging.getLogger(__name__)
@@ -47,17 +52,17 @@ LADO_DO_ALVO = 0.28
 Ponto e não moldura: numa casa ocupada a moldura disputa com a peça, e o gesto que a marcação
 serve -- olhar para onde o bispo alcança -- é justamente o que a peça atrapalha."""
 
-COR_DA_SETA: dict[str, str] = {
-    "green": tokens.SETA_VERDE,
-    "red": tokens.SETA_VERMELHA,
-    "blue": tokens.SETA_AZUL,
-    "yellow": tokens.SETA_AMARELA,
-}
+COR_DA_SETA = PAPEL_DE_SETA
 """As quatro cores de `[%cal]` resolvidas nos papéis que `ui/tokens.py` já declara para elas.
 
 O nome no PGN é `G`/`R`/`B`/`Y` -- é o que `chess.svg.Arrow.pgn` sabe escrever, e não há escolha
 ali. O que existe é a pergunta de **qual verde**, e essa é da paleta: um `#15781b` cravado aqui
-seria o único hexadecimal deste pacote, e ele não acompanharia a troca de pele."""
+seria o único hexadecimal deste pacote, e ele não acompanharia a troca de pele.
+
+**Era uma cópia byte a byte de `desenho_do_tabuleiro.PAPEL_DE_SETA`** -- quatro pares mantidos em
+dois lugares, exatamente como a tabela de glifos que a S-501 já tinha desduplicado neste mesmo
+pacote. Passa a ser um apelido (S-510). O nome fica porque é por ele que este módulo e o teste se
+referem à tabela, e é a mesma forma de `GLIFOS` em `qt/tabuleiro.py`."""
 
 
 class TabuleiroDeJogo(TabuleiroQt):
@@ -94,16 +99,33 @@ class TabuleiroDeJogo(TabuleiroQt):
 
     # ------------------------------------------------------------------------------- estado
 
-    def mostrar_tabuleiro(self, tabuleiro: chess.Board, *, virado: bool = False, **opcoes: object) -> None:
+    def mostrar_tabuleiro(
+        self,
+        tabuleiro: chess.Board,
+        *,
+        virado: bool = False,
+        ultimo_lance: chess.Move | None = None,
+        **opcoes: object,
+    ) -> None:
         """Desenha uma posição de partida **e a carrega no modelo**, para poder ser jogada.
 
         Recebe o `chess.Board` inteiro, e não o campo de peças: quem joga precisa da vez, do
         roque e do en passant -- é a mesma correção que a S-269 fez na sala, onde o painel recebia
         `current_fen` e o que chegava era só o campo de peças.
+
+        **`ultimo_lance` vem por argumento, e não da pilha** (S-509). `copy(stack=False)` continua
+        certo -- a sala não quer a partida inteira dentro do modelo --, e quem tem a aresta que
+        chegou até aqui é quem chama: é `estudo.no.move`. Quem a traduz em duas casas é
+        `BoardModel.last_move_squares`, que é puro e estava sem chamador desde o porte.
+
+        `None` é a raiz, e ali nada é marcado: a posição do diagrama não veio de lance nenhum, e
+        pintar duas casas ali seria inventar uma jogada que o livro não imprimiu.
         """
         super().mostrar(tabuleiro.board_fen(), virado=virado, **opcoes)  # type: ignore[arg-type]
         self.modelo.board = tabuleiro.copy(stack=False)
         self.modelo.flipped = self._virado
+        self.modelo.last_move = ultimo_lance
+        self.definir_ultimo_lance(self.modelo.last_move_squares())
         self.modelo.select(None)
         self.update()
 
@@ -239,7 +261,10 @@ class TabuleiroDeJogo(TabuleiroQt):
             return
         raio = geo.cell * LADO_DO_ALVO / 2
         pintor.setPen(Qt.PenStyle.NoPen)
-        pintor.setBrush(QColor(tema.cor_atual(tokens.CONTORNO_DE_SELECAO)))
+        # **`ALVO` e não `CONTORNO_DE_SELECAO`** (S-510): a casa escolhida e as casas para onde ela
+        # pode ir são duas coisas diferentes, e pintá-las da mesma cor é o defeito que a S-145
+        # mediu. O papel existe desde sempre; o que faltava era chamá-lo.
+        pintor.setBrush(QColor(tema.cor_atual(tokens.ALVO)))
         for indice in alvos:
             pintor.drawEllipse(self._centro(geo, indice), raio, raio)
 
@@ -262,13 +287,15 @@ class TabuleiroDeJogo(TabuleiroQt):
         if comprimento <= 0:  # pragma: no cover - `_soltar_seta` já recusa a seta de tamanho zero
             return
         unidade = QPointF(vetor.x() / comprimento, vetor.y() / comprimento)
-        ponta = geo.cell * 0.34
+        # As duas medidas saem de `ui/desenho_do_tabuleiro.py` (S-510): eram `0.34` e `0.14`
+        # cravados aqui, ao lado de `LARGURA_DA_SETA = 0.16` declarada lá e nunca chamada.
+        ponta = geo.cell * PONTA_DA_SETA
         # A haste para **antes** da ponta, senão a linha aparece através dela quando a cor é
         # translúcida -- e as quatro do `[%cal]` são.
         fim = QPointF(para.x() - unidade.x() * ponta, para.y() - unidade.y() * ponta)
 
         caneta = QPen(tinta)
-        caneta.setWidthF(max(2.0, geo.cell * 0.14))
+        caneta.setWidthF(max(2.0, geo.cell * LARGURA_DA_SETA))
         caneta.setCapStyle(Qt.PenCapStyle.RoundCap)
         pintor.setPen(caneta)
         pintor.drawLine(de, fim)

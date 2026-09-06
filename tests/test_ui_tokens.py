@@ -293,5 +293,49 @@ class SemHexCravadoTests(unittest.TestCase):
         self.assertGreaterEqual(len(HEX.findall(texto)), len(PAPEIS))
 
 
+class MolduraSobreTests(unittest.TestCase):
+    """A moldura do cromo é derivada da superfície, e não um token de documento (S-522).
+
+    O número que motivou o item: a folha do Qt pintava a borda do botão comum e do `QGroupBox`
+    com `MOLDURA` -- o anel do tabuleiro, preso na paleta medida pela S-224 -- e sobre o cromo
+    escuro da pele "Foco" isso dava **1,04:1**. Um piso que uma superfície nova pudesse esquecer
+    seria o mesmo defeito de novo; por isso a cor é derivada, e o teste percorre todas.
+    """
+
+    def test_passa_no_piso_grafico_sobre_o_cromo_das_duas_peles(self) -> None:
+        for cromo_escuro in (False, True):
+            superficie = tokens.cor(tokens.SUPERFICIE_PADRAO, cromo_escuro=cromo_escuro)
+            with self.subTest(cromo_escuro=cromo_escuro):
+                moldura = tokens.moldura_sobre(superficie)
+                self.assertGreaterEqual(tokens.razao_de_contraste(moldura, superficie), tokens.AA_GRAFICO)
+
+    def test_nenhuma_superficie_pode_nascer_com_moldura_invisivel(self) -> None:
+        """Derivar em vez de declarar: uma superfície nova entra nesta varredura sozinha."""
+        for papel in (tokens.SUPERFICIE_PADRAO, *tokens.SUPERFICIES):
+            for cromo_escuro in (False, True):
+                superficie = tokens.cor(papel, cromo_escuro=cromo_escuro)
+                with self.subTest(papel=papel, cromo_escuro=cromo_escuro):
+                    moldura = tokens.moldura_sobre(superficie)
+                    self.assertGreaterEqual(tokens.razao_de_contraste(moldura, superficie), tokens.AA_GRAFICO)
+
+    def test_e_a_borda_mais_discreta_que_cruza_o_piso(self) -> None:
+        """O menor peso, e não a letra inteira: a linha quase preta (14,7:1) sobre o cromo claro
+        era o outro lado do mesmo token errado."""
+        superficie = tokens.cor(tokens.SUPERFICIE_PADRAO)
+        razao = tokens.razao_de_contraste(tokens.moldura_sobre(superficie), superficie)
+        self.assertLess(razao, tokens.AA_TEXTO)
+        self.assertLess(razao - tokens.AA_GRAFICO, 0.2, "a busca parou longe do piso")
+
+    def test_o_token_de_documento_nao_serve_de_moldura_no_cromo_escuro(self) -> None:
+        """O 1,04:1 medido, afirmado para que ninguém volte a ele por parecer 'a moldura'."""
+        escuro = tokens.cor(tokens.SUPERFICIE_PADRAO, cromo_escuro=True)
+        documento = tokens.cor(tokens.MOLDURA, cromo_escuro=True)
+        self.assertLess(tokens.razao_de_contraste(documento, escuro), 1.1)
+
+    def test_e_pura_e_determinista(self) -> None:
+        self.assertEqual(tokens.moldura_sobre("#f0f0f0"), tokens.moldura_sobre("#f0f0f0"))
+        self.assertRegex(tokens.moldura_sobre("#1f2124"), r"^#[0-9a-f]{6}$")
+
+
 if __name__ == "__main__":
     unittest.main()

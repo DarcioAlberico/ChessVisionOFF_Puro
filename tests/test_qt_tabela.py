@@ -17,6 +17,7 @@ O que só existe deste lado são as três coisas em que o Qt difere do Tk e que 
 from __future__ import annotations
 
 import unittest
+from typing import Any
 
 from qt_app import MOTIVO, TEM_PYQT, aplicacao
 
@@ -170,6 +171,87 @@ class MontagemTests(unittest.TestCase):
         self.assertIsInstance(tabela, qt_tabela.TabelaQt)
         self.assertIs(tabela.parent(), pai)
         self.assertIsNone(pai.layout(), "montar não pode escolher o leiaute do painel")
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class OrdenacaoEDicaTests(unittest.TestCase):
+    """Os dois gestos que faltavam na tabela (S-533, r2).
+
+    **Ordenar pelo cabeçalho** é o que se faz numa lista de partidas dez vezes por sessão, e
+    **a dica com o texto inteiro** é o que resolve a coluna estreita: dois nomes longos que só
+    diferem no fim ficam idênticos sob as reticências do Qt, e a fila da S-546 põe os dois lado a
+    lado dizendo que um deles falhou.
+    """
+
+    LINHAS = (
+        ("zebra.pdf", "posicao alta", "40"),
+        ("alfa.pdf", "posicao baixa", "7"),
+        ("meio.pdf", "sem prioridade", "—"),
+        ("beta.pdf", "posicao media", "300"),
+    )
+
+    def _tabela(self, *, ordenavel: bool) -> Any:
+        aplicacao()
+        tabela = qt_tabela.TabelaQt(COLUNAS, ordenavel=ordenavel)
+        self.addCleanup(tabela.deleteLater)
+        tabela.preencher(self.LINHAS)
+        return tabela
+
+    def _coluna(self, tabela: Any, indice: int) -> list[str]:
+        return [tabela.topLevelItem(n).text(indice) for n in range(tabela.topLevelItemCount())]
+
+    def test_de_fabrica_a_tabela_nao_ordena(self) -> None:
+        """A fila de livros tem ordem própria -- a de execução --, e reordená-la faria o livro em
+        leitura saltar de lugar enquanto a barra anda."""
+        tabela = self._tabela(ordenavel=False)
+        self.assertFalse(tabela.isSortingEnabled())
+        self.assertEqual([linha[0] for linha in self.LINHAS], self._coluna(tabela, 0))
+
+    def test_a_coluna_numerica_ordena_por_magnitude_e_nao_por_texto(self) -> None:
+        """`40` antes de `300` é o que a ordem alfabética faz, e é o defeito que `Coluna.numerica`
+        já sabia evitar no alinhamento."""
+        tabela = self._tabela(ordenavel=True)
+        tabela.sortItems(2, Qt.SortOrder.AscendingOrder)
+        self.assertEqual(["7", "40", "300", "—"], self._coluna(tabela, 2))
+
+    def test_a_celula_sem_numero_vai_para_o_fim_nos_dois_sentidos(self) -> None:
+        """Ela não é um valor pequeno: é a ausência de valor. Uma ordenação por Elo que começasse
+        pelas partidas sem Elo responderia a pergunta errada."""
+        tabela = self._tabela(ordenavel=True)
+        for sentido in (Qt.SortOrder.AscendingOrder, Qt.SortOrder.DescendingOrder):
+            with self.subTest(sentido=sentido):
+                tabela.sortItems(2, sentido)
+                self.assertEqual("—", self._coluna(tabela, 2)[-1])
+
+    def test_a_coluna_de_texto_ordena_alfabeticamente(self) -> None:
+        tabela = self._tabela(ordenavel=True)
+        tabela.sortItems(0, Qt.SortOrder.AscendingOrder)
+        self.assertEqual(["alfa.pdf", "beta.pdf", "meio.pdf", "zebra.pdf"], self._coluna(tabela, 0))
+
+    def test_a_posicao_de_chegada_sobrevive_a_ordenacao(self) -> None:
+        """Sem isto, o duplo clique numa tabela ordenada abre a partida da linha que **estava**
+        naquela altura -- outra partida, plausível, sem erro nenhum."""
+        tabela = self._tabela(ordenavel=True)
+        tabela.sortItems(0, Qt.SortOrder.AscendingOrder)
+        primeiro = tabela.topLevelItem(0)
+        self.assertEqual("alfa.pdf", primeiro.text(0))
+        self.assertEqual(1, tabela.posicao_de(primeiro), "alfa.pdf chegou na segunda posição")
+        self.assertEqual(-1, tabela.posicao_de(None))
+
+    def test_toda_celula_leva_o_proprio_texto_como_dica(self) -> None:
+        tabela = self._tabela(ordenavel=False)
+        for n, linha in enumerate(self.LINHAS):
+            item = tabela.topLevelItem(n)
+            for coluna, valor in enumerate(linha):
+                with self.subTest(linha=n, coluna=coluna):
+                    self.assertEqual(valor, item.toolTip(coluna))
+
+    def test_preencher_de_novo_nao_multiplica_as_linhas(self) -> None:
+        """Com a ordenação ligada o Qt reordena a cada inserção; o `clear` tem de continuar valendo."""
+        tabela = self._tabela(ordenavel=True)
+        tabela.preencher(self.LINHAS)
+        self.assertEqual(len(self.LINHAS), tabela.topLevelItemCount())
+
 
 
 if __name__ == "__main__":  # pragma: no cover

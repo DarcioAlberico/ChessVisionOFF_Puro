@@ -134,6 +134,57 @@ cvoff-field --model models/variante.pt --json docs/metrics/variante.json
 O relatório do `cvoff-field` traz as três medidas que um item de modelo precisa: taxa de
 exportação, casas que o `decode.py` teve de reparar, e custo por diagrama.
 
+## Republicar um relatório de campo
+
+O relatório declara **com que código e com que modelo** foi medido (S-218/S-219), e
+`test_todo_relatorio_corrente_mediu_o_codigo_de_hoje` reprova quando o caminho de medição mudou
+desde que ele foi gravado. Mexeu em `atomic_io`, `board_detection`, `decode`, `detection`,
+`preprocess`, `service` ou em qualquer um dos 30 que `measured_modules` lista? Os quatro de
+`docs/metrics/` venceram, e remedir é a única saída — o relatório antigo não descreve mais o programa.
+
+**Remeça num worktree limpo, no commit que vai carregar os JSON.** A receita acima grava em
+`docs/metrics/` do checkout onde se trabalha, e ali quase nunca há commit limpo: o resultado sai
+com `dirty: true` e com o digest da árvore como ela estava naquele minuto — inclusive o que outra
+pessoa tem sem commitar. Um relatório assim não reproduz, e remedir de novo produz outro igual.
+
+```bash
+git worktree add --detach /tmp/medicao <commit-que-vai-carregar-os-json>
+mkdir -p /tmp/medicao/models
+ln models/*.pt /tmp/medicao/models/            # veja a segunda armadilha
+cd /tmp/medicao
+python -m chess_diagram_ocr.cli.field \
+    --pdf-dir <checkout-principal>/PDF \
+    --model models/controle_20260816.pt \
+    --json /tmp/relatorios/controle.json       # veja a primeira armadilha
+git status --porcelain                          # tem de sair vazio ENTRE as rodadas
+```
+
+O `.pt` e o `PDF/` não existem no worktree e vêm por caminho explícito; `data/field_set.jsonl`,
+`labels.csv` e `splits.csv` vêm do próprio worktree, que é onde eles estão **como o commit os
+tem** — que é o que o relatório deve medir.
+
+**As duas armadilhas, e as duas mordem em silêncio.**
+
+*Gravar o relatório dentro da árvore medida suja a medição seguinte.* Com `--json
+docs/metrics/...` do worktree, o primeiro relatório sai `dirty: false` e do segundo em diante o
+`git status` deixou de ser vazio por causa do JSON do primeiro. Os três seguintes saem com o
+mesmo defeito que se foi consertar, e nada avisa. O `--json` aponta para **fora** da árvore, e
+os arquivos são copiados para `docs/metrics/` no fim.
+
+*Caminho absoluto de modelo publica a raiz do disco.* `measurement.model.path` guarda o que se
+passou em `--model`, e `--model /home/alguem/projeto/models/x.pt` entra no arquivo versionado.
+`test_nenhum_relatorio_publica_a_raiz_do_disco` acusa — ele existe para isso. Por isso o `ln`
+acima: os `.pt` entram no worktree como hardlink (`models/**/*.pt` é ignorado, então a árvore
+continua limpa) e o `--model` passa a ser relativo, que é o que `config.caminho_para_relatorio`
+sabe encurtar. `--pdf-dir` e `--set` podem seguir absolutos: nenhum dos dois entra no relatório.
+
+**Reproduza antes de republicar.** Remeça primeiro os relatórios cujo modelo **não** mudou: eles
+têm de sair iguais ao arquivado, número por número. Três dos quatro reproduzindo exato é o
+controle de que o conjunto, os parâmetros e a detecção são os mesmos — sem ele não há como saber
+se a diferença do quarto é do modelo ou da montagem. E `detected`, `matched` e
+`false_positives` não podem se mover entre modelos: detecção não depende de classificador, e um
+quarteto em que eles divergem é impossível numa medição sã (foi o achado da S-219).
+
 ## Mexer em detecção
 
 `cvoff-eval` e `cvoff-field` medem **leitura**. Nenhum dos dois vê o detector errar: um

@@ -40,7 +40,6 @@ __all__ = [
     "COMANDOS_DA_ABA",
     "COMANDO_DA_ESCOLHA",
     "ESCAPE_DA_PALETA",
-    "ETIQUETA_DO_LEXICO",
     "MOTORES",
     "ROTULO_DO_CORPO_MISTO",
     "ZOOM_MAXIMO",
@@ -81,14 +80,6 @@ COMANDO_DA_ESCOLHA: dict[str, dict[str, str]] = {
 **Existe para o rótulo do item da lista não ser escrito no painel.** `centro` é o nome que o
 documento guarda; "Centralizar" é como a interface o chama, e quem tem os rótulos é
 `ui/comandos.py`. Sem esta tabela, cada item de menu levaria um rótulo em literal."""
-
-ETIQUETA_DO_LEXICO = "fora_do_lexico"
-"""A marca de "o léxico não conhece esta palavra" (S-266).
-
-**Ela não é do documento, e é a única marca desta aba que não é.** Faixa, atributo, bloco e
-procedência descrevem o texto e sobrevivem à gravação; esta é **derivada** do texto e do léxico, e
-recalculá-la é mais barato e mais correto do que gravá-la -- um `.cvtxt` de ontem com marcas de um
-léxico que mudou seria pior que nenhuma marca."""
 
 ROTULO_DO_CORPO_MISTO = "–"
 """O que o mostrador de corpo diz quando não há **um** degrau no alvo (S-292).

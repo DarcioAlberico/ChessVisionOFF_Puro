@@ -402,3 +402,31 @@ LARGURA_DA_BARRA = 120
 **Estão aqui, e não em cada widget, porque não são de toolkit nenhum** (S-501): são a largura da
 barra de progresso e o vão entre as quatro zonas, e os dois frontends desenham o mesmo rodapé. Um
 par de cópias divergiria na primeira vez que alguém achasse a barra estreita numa das janelas."""
+
+LARGURA_MINIMA_DA_MENSAGEM = 100
+"""O que a zona de mensagem reserva para si, em pixel -- e o teto do que ela **exige** (S-552).
+
+**É o único número que impede a frase de virar piso de janela.** A zona é um rótulo de uma linha
+sem quebra, e o mínimo de um rótulo assim é a largura do texto inteiro: medido a 1024x768, uma
+frase de 120 caracteres punha o piso da janela em 1057 px, uma de 600 em 3457 e uma de 2000 em
+**10457** -- e `resize(1024, 768)` era recusado até chegar uma frase menor. A frase que o programa
+escreve para ensinar a consertar o modelo ausente tem ~600 caracteres, então era justamente o erro
+que tornava a janela maior que a tela e a própria mensagem ilegível.
+
+**Somado do que a frase precisa dizer para ser reconhecível, e não escolhido a olho.** O começo é
+o que importa numa frase de erro, e o começo mais longo que o projeto reconhece é
+`"não foi possível"` -- a maior das `MARCAS_DE_ERRO` --, que mede **82 px** na fonte `CORPO` das
+três peles, 91 com a reticência da elisão. Cem é esse número com a folga do arredondamento, pela
+razão de `galeria_declarada.LARGURA_DA_LATERAL`: reservar o valor exato de uma fonte deixa a zona
+curta na seguinte.
+
+**Ele não sobe o piso da janela**, e é o que faz dele um teto e não uma exigência nova. Remedido
+por pele em 2026-09-05, a 1024x768, porque **um número não serve às três**: o resto do rodapé pede
+**443 px** na clássica e na "Foco" e **431** na "Fita", contra um piso de divisor de **955** e
+**945**. A zona poderia pedir até **512 px** (514 na "Fita") antes de o piso começar a subir, e ela
+pede 100. Quem afirma isso é
+`tests/test_qt_tamanho_da_janela.py::RodapeNaoEPisoDeJanelaTests`, medindo o resto em vez de
+cravá-lo: até a sexta rodada da S-552 a frase acima estava na spec sem guarda nenhuma, e este
+número podia ir a 900 sem que a suíte acusasse.
+
+O que passar da zona é elidido à direita e vai inteiro para a dica -- ver `qt/rodape.py`."""

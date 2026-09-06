@@ -22,9 +22,6 @@ from . import formato
 __all__ = [
     "ABAS",
     "ABA_DE_TRABALHO",
-    "DO_ACERVO",
-    "DO_DIAGRAMA",
-    "RENOMEADAS",
     "contagem_no_rotulo",
     "nome_atual",
     "nome_base",
@@ -47,13 +44,18 @@ REVISAO = "Revisão"
 TEXTO = "Texto"
 DATASET = "Dataset"
 GALERIA = "Galeria"
-CONFIGURACAO = "Configuração"
 
 DO_DIAGRAMA: tuple[str, ...] = (RESULTADO, ESTUDO, REVISAO, TEXTO)
 """As abas que mudam de conteúdo quando se clica num retângulo da página."""
 
-DO_ACERVO: tuple[str, ...] = (DATASET, GALERIA, CONFIGURACAO)
-"""As que falam do livro inteiro. A Configuração fecha a fila: é a aba do primeiro dia."""
+DO_ACERVO: tuple[str, ...] = (DATASET, GALERIA)
+"""As que falam do livro inteiro.
+
+**A Configuração fechava a fila, e saiu no porte para o Qt (S-506).** Os controles dela foram
+para o menu (o conjunto de peças, `conjunto_de_pecas`) e para os diálogos de treino e de bases
+(`qt/dialogos.py`). Esta tupla continuou a declará-la até a triagem da S-511: descrevia uma aba
+que a janela não tinha, e nada acusava, porque a guarda que comparava a barra montada com ela
+morreu no corte junto com o `app_tkinter`."""
 
 ABAS: tuple[str, ...] = DO_DIAGRAMA + DO_ACERVO
 """As abas do painel esquerdo, **na ordem** -- e a ordem é o item (S-162).
@@ -61,9 +63,11 @@ ABAS: tuple[str, ...] = DO_DIAGRAMA + DO_ACERVO
 Elas misturavam dois níveis, e **o corte entre os dois grupos é onde a barra muda de assunto**.
 Seis abas de peso igual escondiam que quatro delas seguem o diagrama aberto e três não.
 
-**São sete, e não seis.** A S-162 arrumou seis; a S-211 acrescentou a `Texto`, do lado do diagrama
-aberto -- ela responde "o que está escrito nesta folha?", que é a mesma pergunta de contexto que o
-`Resultado` e a `Revisão` respondem. A spec da S-226 ainda dizia seis, e é este número que vale.
+**Foram sete, e voltaram a ser seis.** A S-162 arrumou seis; a S-211 acrescentou a `Texto`, do
+lado do diagrama aberto -- ela responde "o que está escrito nesta folha?", que é a mesma pergunta
+de contexto que o `Resultado` e a `Revisão` respondem. A Configuração saiu no porte para o Qt
+(ver `DO_ACERVO`), e é este número que vale: **o que a janela monta é o que esta tupla diz**, e
+`test_ui_abas` afirma a tupla enquanto a janela do Qt não a lê.
 
 **Declarada aqui porque uma pele não pode esconder aba nenhuma** (regra 2 da SPEC_APARENCIA). A
 Imagem 1 não desenha faixa de abas; o que a S-226 muda é o **peso** dela, não o conteúdo -- e o

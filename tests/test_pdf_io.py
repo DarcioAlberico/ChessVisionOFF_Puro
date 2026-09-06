@@ -14,10 +14,12 @@ from unittest.mock import patch
 
 import fitz
 import numpy as np
+from ambiente_de_teste import pasta_temporaria
 
 from chess_diagram_ocr import pdf_io
 from chess_diagram_ocr.pdf_io import OpenPdf, get_pdf_page_count, open_document, opened, render_pdf_page
 from chess_diagram_ocr.pdf_to_pgn import scan_pdf_positions
+from chess_diagram_ocr.ui import leitura_do_pdf
 
 EMPTY_BOARD = "8/8/8/8/8/8/8/8"
 
@@ -130,6 +132,59 @@ class ScanOpenCountTests(unittest.TestCase):
             with opened(caminho) as documento:
                 self.assertIsInstance(documento, OpenPdf)
                 self.assertEqual(documento.source, caminho)
+
+
+class FraseDeAberturaTests(unittest.TestCase):
+    """Por que o livro não abriu, em pt-BR (S-528, segunda rodada).
+
+    **O defeito medido pelo crítico em 2026-09-05**: um PDF truncado abria a caixa "Falha ao abrir
+    X.pdf" com o texto da biblioteca embaixo -- `Failed to open file 'C:\\Users\\AMD\\...'`, em
+    inglês, com o caminho escapado duas vezes e repetindo o nome que a primeira linha já dava. Um
+    arquivo vazio dizia `Cannot open empty file`.
+
+    Pura de propósito: as cinco frases são afirmáveis sem um PDF corrompido em disco -- e o caso de
+    baixo, que usa arquivos de verdade, é o que confere que as pistas são as que o PyMuPDF escreve.
+    """
+
+    def test_as_cinco_causas_saem_em_portugues_e_nomeiam_o_arquivo(self) -> None:
+        casos = {
+            "Cannot open empty file": leitura_do_pdf.SEM_CONTEUDO,
+            "no such file: 'x'": "não foi encontrado",
+            "Permission denied": "negou a permissão",
+            "Is a directory": "é uma pasta",
+            "Failed to open file 'C:\\Users\\AMD\\livro.pdf'": "corrompido",
+        }
+        for bruta, pedaco in casos.items():
+            with self.subTest(erro=bruta):
+                frase = leitura_do_pdf.frase_de_abertura("livro.pdf", RuntimeError(bruta))
+                self.assertTrue(frase.startswith("livro.pdf "), frase)
+                self.assertIn(pedaco, frase)
+                self.assertNotIn("C:\\Users", frase, "o caminho escapado voltou para a tela")
+
+    def test_causa_desconhecida_diz_o_tipo_e_nao_some(self) -> None:
+        """Uma frase genérica ainda é melhor que a da biblioteca, e o tipo é o que se pesquisa."""
+        frase = leitura_do_pdf.frase_de_abertura("livro.pdf", ZeroDivisionError("x"))
+        self.assertIn("ZeroDivisionError", frase)
+        self.assertTrue(frase.startswith("livro.pdf "))
+
+    def test_a_recusa_que_ja_e_nossa_passa_intacta(self) -> None:
+        """O PDF protegido por senha (S-331): `pdf_io` já escreve a frase em pt-BR, com o que
+        fazer a respeito. Reescrevê-la aqui trocaria uma instrução por uma categoria."""
+        nossa = "livro.pdf está protegido por senha. Este programa não tem onde pedi-la: …"
+        self.assertEqual(nossa, leitura_do_pdf.frase_de_abertura("livro.pdf", ValueError(nossa)))
+
+    def test_o_que_o_pymupdf_de_verdade_levanta_cai_nas_pistas(self) -> None:
+        """**A ponte com a biblioteca**, e é ela que envelhece: os nomes de exceção do PyMuPDF
+        mudam entre versões, e o que não muda é a frase que ele escreve."""
+        pasta = pasta_temporaria(self)
+        (pasta / "vazio.pdf").write_bytes(b"")
+        (pasta / "lixo.pdf").write_bytes(b"nao sou um pdf" * 40)
+        esperado = {"vazio.pdf": leitura_do_pdf.SEM_CONTEUDO, "lixo.pdf": "corrompido"}
+        for nome, pedaco in esperado.items():
+            with self.subTest(arquivo=nome):
+                with self.assertRaises(Exception) as caixa:  # noqa: B017 - o tipo é da biblioteca
+                    get_pdf_page_count(pasta / nome)
+                self.assertIn(pedaco, leitura_do_pdf.frase_de_abertura(nome, caixa.exception))
 
 
 if __name__ == "__main__":

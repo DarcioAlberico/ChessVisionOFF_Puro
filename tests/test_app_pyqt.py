@@ -407,9 +407,13 @@ class JanelaTests(unittest.TestCase):
         from chess_diagram_ocr.qt.janela import JanelaPrincipal
 
         janela = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=servico,  # type: ignore[arg-type]
             csv_de_rotulos=self.csv,
             caminho_do_cache=self.csv.parent / "posicoes.sqlite",
+            # **Sem isto o teste grava o estado da máquina de quem roda a suíte**: o
+            # `addCleanup(janela.close)` abaixo dispara o `closeEvent`, que grava.
+            caminho_do_estado=self.pasta / "janela.json",
         )
         self.addCleanup(janela.deleteLater)
         self.addCleanup(janela.close)
@@ -569,13 +573,17 @@ class JanelaTests(unittest.TestCase):
 
     def test_marcar_duas_vezes_nao_varre_a_pagina_duas_vezes(self) -> None:
         """O detector é determinístico e receberia a mesma entrada: a segunda varredura
-        devolveria caixa por caixa o que já está na tela, por ~1 s de espera."""
+        devolveria caixa por caixa o que já está na tela, por ~1 s de espera.
+
+        Desde a detecção ao virar a página (S-68) a página **já chega marcada**: o botão não
+        varre nem uma vez, e o que ele acha é o que o detector de fundo achou."""
         from unittest import mock
 
         import chess_diagram_ocr.qt.janela as modulo
 
         janela = self._janela()
         janela.abrir_pdf(self.pdf)
+        esperar(janela)  # a detecção de fundo da página que apareceu
         varreduras: list[int] = []
         real = modulo.detect_diagrams_in_pdf_page
 
@@ -589,7 +597,7 @@ class JanelaTests(unittest.TestCase):
             janela.marcar_diagramas()
             esperar(janela)
 
-        self.assertEqual(1, len(varreduras))
+        self.assertEqual(0, len(varreduras), "a página que apareceu já estava marcada")
         caixas = janela.pdf.visor.caixas
         assert caixas is not None
         self.assertEqual(1, len(caixas))
@@ -717,10 +725,21 @@ class SelftestTests(unittest.TestCase):
         self.pasta = pasta_temporaria(self)
 
     def test_com_um_pdf_de_verdade_o_auto_teste_passa(self) -> None:
-        """**Não exige o checkpoint**, e é deliberado: quem mede o pipeline é o auto-teste do
-        `app_tkinter.py`. O que falta responder aqui é se o Qt sobe, se a janela monta e se ela
-        renderiza e marca uma página -- que é a parte que um `.zip` quebra sem dizer nada."""
+        """O caminho inteiro: checkpoint, PDF, janela, render, reconhecimento, treino e as peles.
+
+        **Pula sem o checkpoint, e o pulo e a resposta honesta** (S-417). O `.pt` nao e
+        versionado -- ele nasce do treino de quem usa o programa --, e numa maquina sem ele a
+        pergunta que este auto-teste faz ("esta instalacao le um diagrama?") nao tem resposta.
+
+        **Era isto que fazia o teste passar aqui e reprovar na CI**, e o defeito e meu: ate a
+        S-506 o auto-teste nao abria o checkpoint, porque delegava o pipeline ao `--selftest` do
+        arquivo de entrada que o corte apagou. Quando ele voltou a medir o caminho inteiro, o
+        codigo 3 passou a ser a resposta certa numa maquina sem `.pt` -- e a maquina de quem
+        desenvolve tem um.
+        """
         app_pyqt = self._app_pyqt()
+        if not Path(app_pyqt.DEFAULT_MODEL_PATH).exists():
+            self.skipTest(f"sem checkpoint em {app_pyqt.DEFAULT_MODEL_PATH}: o pipeline nao roda")
         self.assertEqual(
             0,
             app_pyqt.selftest(
@@ -728,6 +747,20 @@ class SelftestTests(unittest.TestCase):
                 caminho_do_cache=self.pasta / "posicoes.sqlite",
             ),
         )
+
+    def test_sem_checkpoint_o_codigo_de_saida_e_o_do_arquivo_que_falta(self) -> None:
+        """O outro lado, e **este roda em toda maquina**: sem o `.pt` o programa abre e nao le.
+
+        Codigo proprio e nao o 1 generico: quem chega aqui conserta com um arquivo, e a
+        diferenca entre "o programa falhou" e "falta o modelo" e a diferenca entre abrir uma
+        issue e copiar um `.pt` para `models/`.
+        """
+        from unittest import mock
+
+        app_pyqt = self._app_pyqt()
+        ausente = self.pasta / "modelos" / "nao_existe.pt"
+        with mock.patch.object(app_pyqt, "DEFAULT_MODEL_PATH", ausente):
+            self.assertEqual(3, app_pyqt.selftest(pdf_de_teste(self.pasta / "livro.pdf")))
 
     def test_sem_pdf_o_codigo_de_saida_diz_o_que_falta(self) -> None:
         from unittest import mock
@@ -744,7 +777,35 @@ class SelftestTests(unittest.TestCase):
         app_pyqt = self._app_pyqt()
         with mock.patch.object(app_pyqt, "tem_pyqt", lambda: False):
             self.assertEqual(app_pyqt.CODIGO_SEM_QT, app_pyqt.selftest())
-        self.assertIn("uv sync --extra qt", app_pyqt.FALTA_O_PYQT)
+        # `uv sync` e nao `uv sync --extra qt`: o extra saiu no corte do Tk, quando o PyQt6
+        # virou dependencia de base -- e este assert fixava a instrucao quebrada (S-506).
+        self.assertIn("uv sync", app_pyqt.FALTA_O_PYQT)
+        self.assertNotIn("--extra qt", app_pyqt.FALTA_O_PYQT)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class JanelaDoAutoTesteTests(unittest.TestCase):
+    """O auto-teste monta a janela sem tocar na sessão de quem o roda (S-524).
+
+    A segunda revisão externa viu o `--selftest` apagar o livro e a página da pessoa numa árvore
+    em que a janela gravava a cada gesto. Aqui ela grava no `closeEvent`, que o auto-teste não
+    dispara -- e a afirmação abaixo é o que faz isso deixar de depender de quando ela grava.
+    """
+
+    def setUp(self) -> None:
+        aplicacao()
+        self.pasta = pasta_temporaria(self)
+
+    def test_o_estado_e_descartavel_e_nao_ha_motor(self) -> None:
+        from chess_diagram_ocr.qt.janela import CAMINHO_DO_ESTADO
+
+        app_pyqt = SelftestTests._app_pyqt()
+        janela = app_pyqt._janela_do_auto_teste(ServicoComLeituraFixa([]), self.pasta)
+        self.addCleanup(janela.deleteLater)
+        self.addCleanup(janela.close)
+        self.assertNotEqual(CAMINHO_DO_ESTADO, janela._caminho_do_estado)
+        self.assertEqual(self.pasta, janela._caminho_do_estado.parent)
+        self.assertFalse(janela.estudo.has_engine)
 
 
 if __name__ == "__main__":  # pragma: no cover - conveniência de quem roda o arquivo direto

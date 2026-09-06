@@ -47,10 +47,34 @@ __all__ = [
     "WIDGETS_DE_TEXTO",
     "GuardaDeAtalhos",
     "cede_a_tecla",
+    "contem",
     "e_campo_de_texto",
     "ligar",
     "sequencia_qt",
+    "teclas_proprias",
 ]
+
+
+def contem(painel: object, widget: object) -> bool:
+    """Aquele widget está dentro deste painel? É o `contem` de `ui/desfazivel.Desfazivel` (S-243).
+
+    **Um lugar só, e não um por painel.** Três painéis disputam o `Ctrl+Z` e os três precisam
+    responder isto; três laços iguais é onde um deles deixa de subir por `parentWidget` e a tecla
+    passa a fazer coisa diferente naquele painel, sem sintoma nenhum.
+
+    Sobe pelo `parentWidget` em vez de usar `isAncestorOf` porque este módulo é chamado com objetos
+    de mentira nos testes -- a mesma razão do duck typing de `ui/atalhos._cadeia`, e a razão de o
+    parâmetro ser `object`.
+    """
+    atual = widget
+    for _ in range(40):
+        if atual is None:
+            return False
+        if atual is painel:
+            return True
+        pai = getattr(atual, "parentWidget", None)
+        atual = pai() if callable(pai) else None
+    return False
 
 WIDGETS_DE_TEXTO: tuple[type, ...] = (
     QLineEdit,
@@ -90,6 +114,8 @@ TECLAS_NOMEADAS: dict[str, str] = {
     "space": "Space",
     "plus": "+",
     "minus": "-",
+    "bracketright": "]",
+    "bracketleft": "[",
 }
 """`nome do Tk -> nome do Qt`, para as teclas que os dois chamam de coisas diferentes.
 
@@ -98,7 +124,8 @@ tabela em que só cabe a exceção obriga quem lê a saber de cor quais são as 
 
 **As três que de fato mordem** são `Prior`/`Next` (o Tk herdou os nomes do X11; o Qt usa `PgUp`
 e `PgDown`), `Delete` (`Del` no Qt) e o par `plus`/`minus`, que no Tk são nomes e no Qt são o
-próprio caractere."""
+próprio caractere. `bracketright`/`bracketleft` são o par de `aumentar_corpo`/`diminuir_corpo`
+(`Ctrl+]`/`Ctrl+[`), que entrou quando as teclas do editor passaram a ser ligadas aqui (S-511)."""
 
 
 def sequencia_qt(sequencia: str) -> str:
@@ -157,14 +184,38 @@ def e_campo_de_texto(widget: object) -> bool:
     return isinstance(widget, WIDGETS_DE_TEXTO)
 
 
+def teclas_proprias(widget: object) -> frozenset[str]:
+    """As sequências que o widget em foco -- ou um pai dele -- declarou para si.
+
+    É a regra da S-117, *quem declarou a tecla fica com ela*, no lugar do `owns_key` do Tk: o
+    editor de texto põe `atalhos.teclas_cedidas_ao_editor()` no próprio `QTextEdit`, e é assim
+    que `Ctrl+R` dentro dele alinha à direita em vez de reler a página (S-511). Sobe pelo
+    `parentWidget` como `contem`, e pela mesma razão.
+    """
+    atual = widget
+    for _ in range(40):
+        if atual is None:
+            return frozenset()
+        declaradas = getattr(atual, "teclas_proprias", None)
+        if declaradas:
+            return frozenset(declaradas)
+        pai = getattr(atual, "parentWidget", None)
+        atual = pai() if callable(pai) else None
+    return frozenset()
+
+
 def cede_a_tecla(widget: object, sequencia: str) -> bool:
     """A guarda deve ceder **esta tecla** a este widget?
 
-    A decisão é `atalhos.cede_a_sequencia`, que é pura e vale nos dois frontends; o que este
-    módulo acrescenta são as duas listas de classe do Qt. É a mesma divisão de
+    Duas perguntas, nesta ordem. *O widget declarou esta tecla para si?* (`teclas_proprias`, S-117)
+    -- se sim, cede, e é por aqui que as teclas que o editor **divide** com a janela chegam ao
+    editor. Senão, a decisão é `atalhos.cede_a_sequencia`, que é pura e vale nos dois frontends;
+    o que este módulo acrescenta são as duas listas de classe do Qt. É a mesma divisão de
     `ui/shortcuts.cede_a_tecla`, e é o que garante que `Ctrl+S` salva com o cursor dentro do
     campo nas duas janelas -- ou em nenhuma.
     """
+    if sequencia and sequencia in teclas_proprias(widget):
+        return True
     return atalhos.cede_a_sequencia(
         sequencia,
         e_campo=e_campo_de_texto(widget),

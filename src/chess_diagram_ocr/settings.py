@@ -173,7 +173,13 @@ def _flutuante(data: Mapping[str, object], chave: str, padrao: float) -> float:
 
 @dataclass(frozen=True)
 class EngineSettings:
-    """Motor de análise UCI (S-33). Caminho vazio significa "procurar sozinho"."""
+    """Motor de análise UCI (S-33/S-536). Caminho vazio significa "procurar sozinho".
+
+    **As quatro últimas entraram na S-536, e são editáveis sem reiniciar.** `Hash` e `Threads` são
+    opções do protocolo e vão por `setoption` para o processo aberto; `multipv` e `movetime_ms`
+    entram em cada análise. Trocar `path` é a única mudança que derruba e sobe outro processo --
+    ver `ui/motor_declarado.plano_de_aplicacao`.
+    """
 
     path: str = ""
     """Binário informado pelo usuário. Vazio: `engine.find_engine` procura no PATH e nos
@@ -182,8 +188,41 @@ class EngineSettings:
     movetime_ms: int = 800
     threads: int = 1
 
+    hash_mb: int = 16
+    """Tabela de transposição, em MB. É o padrão do próprio Stockfish, e ele foi **medido**.
+
+    A tentação era subir: 128 MB não custam nada numa máquina que carrega um modelo de `torch`. O
+    número não sustentou (Stockfish dev-20230303, 1 thread, `scratchpad/medir_hash2.py`):
+
+    | Hash | a Imortal a profundidade 20 | uma posição a profundidade 26 |
+    |---|---|---|
+    | 16 MB | 37,3 s (50,5 Mnós) | 9,4 s (12,9 Mnós) |
+    | 128 MB | 41,7 s (54,3 Mnós) | — |
+    | 512 MB | 42,6 s (52,5 Mnós) | 13,0 s (16,2 Mnós) |
+
+    **Não há ganho, e a diferença que aparece é ruído com sinal trocado.** Uma busca de segundos
+    numa thread não enche 16 MB, e a tabela maior só acrescenta falha de cache. Quem analisa por
+    minutos com oito threads está no regime em que ela paga, e é para essa pessoa que a opção
+    existe -- o padrão fica onde a medição o deixou."""
+
+    multipv: int = 3
+    """Quantas linhas candidatas o painel do motor mostra (S-286/S-529). Três é a medida da S-286:
+    a quarta e a quinta de um motor a 800 ms já são ruído."""
+
+    syzygy_path: str = ""
+    """Pasta das tablebases Syzygy (S-538). Vazia: nenhum final é resolvido por tabela, e nada
+    muda. Sem padrão embutido pela mesma razão do endpoint remoto e do leitor local: um caminho
+    presumido faria o recurso parecer quebrado em toda máquina que não o tem."""
+
     def to_dict(self) -> dict[str, object]:
-        return {"path": self.path, "movetime_ms": self.movetime_ms, "threads": self.threads}
+        return {
+            "path": self.path,
+            "movetime_ms": self.movetime_ms,
+            "threads": self.threads,
+            "hash_mb": self.hash_mb,
+            "multipv": self.multipv,
+            "syzygy_path": self.syzygy_path,
+        }
 
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> EngineSettings:
@@ -191,6 +230,9 @@ class EngineSettings:
             path=str(data.get("path", "") or "").strip(),
             movetime_ms=_inteiro(data, "movetime_ms", 800),
             threads=_inteiro(data, "threads", 1),
+            hash_mb=_inteiro(data, "hash_mb", 16),
+            multipv=_inteiro(data, "multipv", 3),
+            syzygy_path=str(data.get("syzygy_path", "") or "").strip(),
         )
 
 

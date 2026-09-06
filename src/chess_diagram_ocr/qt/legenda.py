@@ -76,7 +76,9 @@ class JanelaDeAtalhos(QDialog):
         grade.setContentsMargins(0, 0, 0, 0)
         grade.setHorizontalSpacing(CALHA)
         grade.setVerticalSpacing(espaco.minima())
-        for linha, atalho in enumerate(atalhos.ATALHOS):
+        # As da janela e as da sala (S-527): uma tecla que não está escrita em lugar nenhum é o
+        # defeito da S-161, e as quatro da sala só apareciam na dica do botão.
+        for linha, atalho in enumerate((*atalhos.ATALHOS, *atalhos.TECLAS_DA_SALA)):
             tecla = QLabel(atalho.rotulo, corpo)
             tecla.setFont(tema.fonte_atual(tipografia.DADO))
             tecla.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)

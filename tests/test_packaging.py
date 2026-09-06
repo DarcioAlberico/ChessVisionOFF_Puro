@@ -250,8 +250,12 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1235
+    LIMITE = 2017
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.009 → 2.017 ao mesclar a `suite-de-treino` na `main`**, e as oito são o
+    `caminho_do_cache` da S-415, que a `main` acrescentou enquanto as sete fases corriam. Os dois
+    lados são aditivos e nenhuma linha foi escrita para a junção: a soma é a soma.
 
     **1.227 → 1.235 na S-415**. e as oito são o `caminho_do_cache` atravessando a janela até a
     Galeria e a sala de estudo. Não é recurso: é a válvula que mantém a suíte fora do `data/` de
@@ -259,6 +263,107 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     abre o cache de posições. então **qualquer** teste que abrisse um PDF criava o
     `games_positions.sqlite` no checkout — e foi a CI que cobrou. porque aqui o arquivo já existe
     de uso normal e a guarda não tinha o que reportar.
+
+    **1.956 → 2.009 na quinta rodada da S-552**, e as 53 são a repartição preferida deixando de
+    valer só na abertura. Trinta e duas são docstring: `resizeEvent` precisa registrar por que
+    reaplicar o preferido **não** sobrescreve escolha nenhuma (a alça arrastada e a fração do disco
+    desligam a regra), e `_anotar_arranjo` por que gravar uma fração que ninguém escolheu era a
+    mesma família do defeito da S-322. As outras vinte e uma são o atributo `_divisor_de_fabrica`,
+    o `connect` de `splitterMoved`, o slot de duas linhas que ele chama, o corpo do `resizeEvent` e
+    a condição acrescentada à gravação.
+
+    A decisão continua não estando aqui: quem responde "quanto o lado esquerdo prefere nesta
+    largura" é `geometria.divisor_da_primeira_abertura`, a mesma função pura que o `showEvent` já
+    chamava. O que a janela ganhou foi um segundo chamador dela e a memória de quem escolheu.
+
+    **1.905 → 1.956 na segunda rodada da S-552**, e as 51 são a janela cabendo em 1024 px. Vinte e
+    sete são docstring: os dois literais de piso passaram a ter um **par** de larguras preferidas
+    ao lado, e a distinção entre "onde a janela para de encolher" e "o que o lado pede quando há
+    espaço" é justamente o que a primeira rodada não tinha -- baixar o piso sem ela encolhia a aba
+    de trabalho em 135 px a 1400x950, medido. As outras vinte e quatro são o `REPARTICAO_INICIAL`
+    que virou o par de preferidas, o `if` do `showEvent` que separa fração guardada de repartição
+    de fábrica, e o `__all__` de uma linha que virou cinco.
+
+    A decisão em si **não** ficou aqui: `geometria.divisor_da_primeira_abertura` é pura e é quem
+    arbitra os dois preferidos -- o que sobrou na janela são os dois números e a chamada.
+
+    **1.891 → 1.905 na S-546**, e as catorze são a única coisa que só a janela podia fazer: a fila
+    de livros passou a ter chamador. Duas são o `import` e a entrada `"varrer_fila"` na tabela de
+    comandos; as outras doze são o método `abrir_fila_de_livros`, que empresta ao diálogo o
+    serviço (o modelo sob o lock da S-31), o `BusyRegistry` e a pasta de livros -- os três objetos
+    que a janela tem e o módulo da fila não conhece. Baixar isso para `ui/` não era opção: não há
+    decisão aqui, há três atributos da janela sendo passados adiante. A alternativa era a `lambda`
+    de uma linha na tabela, e ela custaria o teste: um `lambda` não tem nome para o critério de
+    aceite citar, e o docstring que diz **por que** o diálogo não é guardado em atributo não teria
+    onde morar.
+
+    **1.862 → 1.891 ao juntar as duas pilhas de PRs (#31 sobre o #27)**: os dois lados cresceram
+    sozinhos -- a S-523 (motor das preferências) de um lado, o duplo clique e a detecção ao virar a
+    página (S-68) do outro -- e a soma é a soma; nenhuma linha foi escrita para a junção além do
+    `closeEvent` que agora fecha o motor **e** para o detector.
+
+    **1.832 → 1.862 com a detecção ao virar a página (S-68)**, que o porte tinha deixado no
+    botão "Marcar diagramas": sem caixa, o duplo clique não acha nada. As trinta são o pedido ao
+    `DeteccaoDeFundo` de `qt/trabalho.py` (`_detectar_ao_fundo`) e a chegada do resultado
+    (`_chegou_a_deteccao_de_fundo`), que cai no mesmo `_chegaram_candidatos` do botão. A fila de
+    um pedido, a thread e a falha silenciosa ficaram lá, e não aqui.
+
+    **1.776 → 1.832 com o duplo clique no diagrama**, que o leva à sala de estudo. As cinquenta
+    e seis são um `connect`, o método que decide (`_estudar_a_caixa`, pela mesma
+    `decide_box_click` do clique simples), o que traz a aba (`_levar_ao_estudo`), o pedido
+    anotado para quando a página ainda não foi lida (`_estudar_ao_ler`, atendido em
+    `_chegaram_itens`) e a espera do clique simples pelo intervalo do duplo (`_leitura_adiada`):
+    a leitura tranca o visor, e um segundo aperto num widget desabilitado não chega a ninguém.
+    O gesto em si está em `qt/visor.py`, e a decisão de qual caixa ele acerta continua sendo
+    `page_overlay.index_at`; o que ficou aqui é o que só a janela sabe -- se a página já foi
+    lida, e se há leitura em curso.
+
+
+    **1.788 → 1.805 na S-523**, e o que subiu é fiação: o motor das preferências chega à sala
+    (`analyzer=`), é fechado no `closeEvent` -- um processo, não um widget --, e o serviço nasce com o
+    OCR de legenda que as preferências autorizam. A leitura das preferências e a montagem dos dois
+    objetos **não** ficaram aqui: moram em `qt/preferencias.py`, sem widget, afirmáveis sem
+    `QApplication`. O que sobrou na janela é passar o que ela recebeu a quem o usa, que é o que só
+    ela pode fazer.
+
+    **1.776 → 1.780 na S-512**, e as quatro são **uma** linha de fiação mais três de comentário: o
+    `connect` entre `painel.posicao_mudou` e `estudo.sync_with_ocr`, que é o fio que o porte do Tk
+    cortou. Não há o que baixar para `ui/` aqui -- a decisão de *se* a sala deve seguir é pura e
+    mora em `sala_declarada.decidir_sincronia`; o que ficou nesta janela é ligar um painel ao
+    outro, que é precisamente o que só ela pode fazer.
+
+    A subida foi cortada pela metade ao escrevê-la: o comentário tinha sete linhas explicando a
+    armadilha da pilha de desfazer, e o argumento inteiro mora na `SPEC_ESTUDO_QT.md`. Três linhas
+    dizem o que quem lê este arquivo precisa saber e apontam para onde está o resto.
+
+    **1.780 -> 1.788 nas S-518 e S-519**, e as oito são estado indo e voltando do disco: três
+    linhas em `_aplicar_estado` (o divisor vertical da sala, e o `board_zoom` que nunca teve
+    leitor) e cinco em `_gravar_estado`. **Extrair não era opção** pela mesma razão dos cinco
+    blocos acima: as duas metades leem e escrevem `self.estudo`, e a decisão de *quanto* vale cada
+    fração já é pura -- `ui/geometria.fracao_de_divisor` e
+    `ui/sala_declarada.FRACAO_PADRAO_DO_TABULEIRO`. O que sobra aqui é a ponte entre o `AppState` e
+    o widget, que é o que só a janela pode fazer.
+
+    **1.227 → 1.776 na S-506**, e as 549 são o que o corte do Tk tinha deixado sem chamador. Elas
+    são a maior subida da história desta catraca, e a razão de ela não ser um acidente é que cada
+    bloco tem um dono do outro lado -- nenhum deles é decisão reescrita aqui:
+
+    - **~180 linhas de estado** (`_ler_estado`, `_aplicar_estado`, `_restaurar_arranjo`,
+      `_anotar_arranjo`, `_gravar_estado`, `showEvent`): a decisão inteira é de `ui/state.py` e de
+      `ui/geometria.py`, que já existiam e não tinham quem os chamasse. O que está aqui é ler
+      widget e escrever widget, que é o que não dá para testar fora da janela;
+    - **~150 de aparência** (`_pele_atual`, `_densidade_atual`, `_montar_o_cromo`,
+      `_remontar_cromo`, `provar_as_peles` e os dois `_escolher_*`): `Ver ▸ Aparência` e
+      `Ver ▸ Densidade` eram `lambda: None`, e o cromo que elas montam mora em `qt/fila.py` e
+      `qt/fita.py`;
+    - **~55 do conjunto de peças**, cuja metade pura é `ui/conjuntos.py` mais `ui/pecas.py`;
+    - **~35 do árbitro do `Ctrl+Z`**, cuja regra é `ui/desfazivel.alvo_de_desfazer`;
+    - **~35 dos livros recentes**, que saem de `AppState.recentes`.
+
+    O resto é docstring. **Extrair não era opção para nenhum deles**: os cinco blocos leem e
+    escrevem widget desta janela -- `self.pdf`, `self.texto`, `self.estudo`, `self.divisor`,
+    `self.abas` --, e um módulo que recebesse a janela por parâmetro seria a mesma classe com um
+    salto de indireção no meio. É a fronteira que a S-31 fixou, e ela continua onde estava.
 
     **1.196 → 1.227 na S-506**, e as trinta e uma são a fiação dos cinco botões que voltaram ao
     visualizador: três `connect`, os dois métodos que os atendem (`_leitura_pedida` e

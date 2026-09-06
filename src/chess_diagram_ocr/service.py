@@ -421,10 +421,26 @@ class RecognitionOrigin:
 
         A página vai **1-based**: é o número que o usuário vê na interface e no leitor de
         PDF, e gravar o índice interno faria toda amostra apontar para a página anterior.
+
+        **E o livro vai pelo NOME, não pelo caminho.** É o que `saved_diagrams_by_page` diz por
+        escrito -- *"`source_pdf` é o nome do arquivo, não o caminho: é o que a S-19 grava"* -- e o
+        que `SavedSample.source_pdf` repete. Quem chega aqui traz o caminho inteiro: `document` é
+        também a **chave de cache** da janela, e ali ele precisa ser o caminho, porque dois livros
+        de mesmo nome em pastas diferentes são dois livros.
+
+        **O defeito que isto fecha estava no disco.** 72 linhas do `labels.csv` gravadas pela
+        janela traziam `C:\\Python-Chess2\\...\\PDF\\livro.pdf` em vez de `livro.pdf`, e o efeito é
+        silencioso duas vezes: aqueles diagramas não voltam marcados de verde ao reabrir a página
+        (o índice casa por `pdf.name`), e toda contagem "por livro" vê o mesmo livro duas vezes --
+        que é a duplicata que a medição por livro já paga em outro lugar.
+
+        Aqui e não na janela porque este é o **único** ponto onde a origem vira coluna de CSV. Pôr
+        o `.name` no chamador consertaria um chamador; os próximos escreveriam o caminho de novo.
         """
+        livro = Path(self.document).name if self.document else ""
         if self.kind == "image" or self.page_index is None:
-            return {"source_pdf": self.document, "source_page": ""}
-        return {"source_pdf": self.document, "source_page": self.page_index + 1}
+            return {"source_pdf": livro, "source_page": ""}
+        return {"source_pdf": livro, "source_page": self.page_index + 1}
 
 
 @dataclass(frozen=True)

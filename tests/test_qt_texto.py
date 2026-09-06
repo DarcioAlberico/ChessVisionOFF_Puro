@@ -21,6 +21,7 @@ O que só existe deste lado são três coisas, e as três quebram em silêncio:
 from __future__ import annotations
 
 import unittest
+from dataclasses import fields
 
 import numpy as np
 from qt_app import MOTIVO, TEM_PYQT, aplicacao
@@ -34,6 +35,20 @@ if TEM_PYQT:
 
     from chess_diagram_ocr.qt import tema, texto_formato
     from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
+
+def _tracos(formato: object) -> tuple[object, ...]:
+    """As quatro propriedades que um booleano de `rico.Atributos` pode mexer.
+
+    Existe para o teste parametrico: comparar `QTextCharFormat` inteiro traria a cor e a fonte
+    junto, e a pergunta ali e so "ligar este atributo mudou alguma coisa?".
+    """
+    return (
+        formato.fontWeight(),  # type: ignore[attr-defined]
+        formato.fontItalic(),  # type: ignore[attr-defined]
+        formato.fontUnderline(),  # type: ignore[attr-defined]
+        formato.fontStrikeOut(),  # type: ignore[attr-defined]
+    )
+
 
 BASE = (9, "Segoe UI", "Consolas")
 """A fonte do sistema fixada, para o teste não depender da máquina -- é a razão de
@@ -71,6 +86,38 @@ class FormatoTests(unittest.TestCase):
     def formato(self, **atributos: object):  # noqa: ANN201 - QTextCharFormat
         corrida = rico.Corrida("trecho", rico.Atributos(**atributos))  # type: ignore[arg-type]
         return texto_formato.formato_de(corrida, base=BASE)
+
+    def test_todo_booleano_de_atributo_foi_decidido(self) -> None:
+        """Ou se desenha, ou se declara que ainda nao (S-238/S-506).
+
+        **Esta guarda era do lado do Tk e veio junto com o dever dela.** La ela morava em
+        `test_ui_texto_etiquetas` e cobrava `ETIQUETA_DO_ATRIBUTO`; o modulo saiu com o toolkit que
+        traduzia, e apagar o teste no mesmo movimento deixaria o atributo novo entrar em silencio --
+        que e exatamente o modo de falha que uma guarda apagada junto com o codigo nao acusa.
+        """
+        booleanos = {c.name for c in fields(rico.Atributos) if c.type in ("bool", bool)}
+        decididos = set(texto_formato.BOOLEANOS_DESENHADOS) | set(texto_formato.BOOLEANOS_SEM_DESENHO)
+        self.assertEqual(booleanos, decididos)
+
+    def test_o_que_nao_se_desenha_nao_esta_entre_os_desenhados(self) -> None:
+        """As duas listas sao exclusivas: um nome nas duas e uma decisao que ninguem tomou."""
+        self.assertEqual(
+            set(texto_formato.BOOLEANOS_DESENHADOS) & set(texto_formato.BOOLEANOS_SEM_DESENHO), set()
+        )
+
+    def test_todo_booleano_declarado_como_desenhado_muda_o_formato(self) -> None:
+        """**A metade que a declaracao sozinha nao prova.** Parametrico sobre a lista.
+
+        Declarar um atributo como desenhado e nao desenha-lo passa nos dois testes acima e falha
+        na tela -- que e o unico lugar onde a pessoa descobre.
+        """
+        neutro = self.formato()
+        for nome in texto_formato.BOOLEANOS_DESENHADOS:
+            with self.subTest(atributo=nome):
+                ligado = self.formato(**{nome: True})
+                self.assertNotEqual(
+                    _tracos(ligado), _tracos(neutro), f"{nome} nao muda nada no formato"
+                )
 
     def test_negrito_italico_e_estilo_convivem_no_mesmo_trecho(self) -> None:
         """**É a economia inteira do porte.**
@@ -372,6 +419,35 @@ class TecladoTests(PainelTests):
         barras = self.painel.findChildren(BarraFluida)
         self.assertEqual(len(barras), 1)
         self.assertGreater(barras[0].linhas_em(160), 1)
+
+    def test_ctrl_b_no_editor_poe_o_trecho_em_negrito(self) -> None:
+        """`TECLAS_DO_EDITOR` era a única declaração das teclas do editor, e no Qt ninguém a lia:
+        `Ctrl+B` não fazia nada (medido em 2026-09-02, S-511). A tecla chega por um `QShortcut`
+        com alcance no editor, e o método é o de `COMANDOS_DA_ABA` -- o mesmo do botão."""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtTest import QTest
+
+        self.painel.desenhar_documento(rico.de_texto("O bispo vai para c4."))
+        self.painel.activateWindow()
+        self.painel.editor.setFocus()
+        self.app.processEvents()
+        self.selecionar(2, 7)
+        QTest.keyClick(self.painel.editor, Qt.Key.Key_B, Qt.KeyboardModifier.ControlModifier)
+        self.app.processEvents()
+        marcadas = [c.texto for c in self.painel.documento.corridas if c.atributos.negrito]
+        self.assertEqual(marcadas, ["bispo"])
+
+    def test_as_teclas_divididas_com_a_janela_sao_cedidas_ao_editor(self) -> None:
+        """`Ctrl+R` é "ler esta página" na janela e "alinhar à direita" no editor
+        (`CEDIDA_PELA_GUARDA`): a guarda cede. `Ctrl+H` é "substituir" nas duas e a janela ganha
+        (`GANHA_DO_TK`): a guarda a entrega ao painel por `acoes_proprias`. `Ctrl+S` não é do
+        editor: é da janela, atendida por este painel (S-244)."""
+        from chess_diagram_ocr.qt import atalhos as qt_atalhos
+
+        self.assertTrue(qt_atalhos.cede_a_tecla(self.painel.editor, "<Control-r>"))
+        self.assertTrue(qt_atalhos.cede_a_tecla(self.painel.editor, "<Control-b>"))
+        self.assertFalse(qt_atalhos.cede_a_tecla(self.painel.editor, "<Control-h>"))
+        self.assertFalse(qt_atalhos.cede_a_tecla(self.painel.editor, "<Control-s>"))
 
 
 if __name__ == "__main__":  # pragma: no cover

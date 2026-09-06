@@ -41,8 +41,11 @@ class LegendaTests(unittest.TestCase):
         return janela
 
     def test_a_legenda_mostra_todos_com_a_mesma_descricao_da_tabela(self) -> None:
-        esperado = [(a.rotulo, atalhos.descricao_completa(a)) for a in atalhos.ATALHOS]
+        """As da janela e, depois delas, as quatro da sala (S-527): uma tecla que a legenda não
+        lista é a S-161 de novo, e a dica do botão não é onde alguém a procura."""
+        esperado = [(a.rotulo, atalhos.descricao_completa(a)) for a in (*atalhos.ATALHOS, *atalhos.TECLAS_DA_SALA)]
         self.assertEqual(self.abrir().linhas(), esperado)
+        self.assertIn(("Ctrl+↑", "Promover a variante um nível"), esperado)
 
     def test_a_legenda_mostra_os_dois_destinos(self) -> None:
         """Uma tecla que faz duas coisas e uma legenda que só conta uma é pior que não ter

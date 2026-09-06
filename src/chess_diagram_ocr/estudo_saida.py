@@ -35,6 +35,7 @@ Nada de `tkinter` aqui, e nada de arquivo: quem escolhe o destino é o painel.
 
 from __future__ import annotations
 
+from chess_diagram_ocr import estudo_paragrafos
 from chess_diagram_ocr.estudo import Estudo, texto_do_comentario
 from chess_diagram_ocr.text import rico
 
@@ -98,8 +99,10 @@ def para_documento(estudo: Estudo) -> rico.DocumentoRico:
     """
     corridas: list[rico.Corrida] = []
 
-    titulo = estudo.ancora.rotulo() if estudo.ancora.valida else "Estudo avulso"
-    corridas.append(_corrida(f"{titulo}\n\n", rico.ESTILO_TITULO))
+    # **O título é o de `estudo_paragrafos`**, e não uma segunda regra: um estudo sem âncora mas com
+    # cabeçalho de partida é `Carlsen, M. × Nepomniachtchi, I., ...` no EPUB, e escrever "Estudo
+    # avulso" aqui seria o `.md` discordando do livro sobre o nome da mesma coisa (S-542, rodada 2).
+    corridas.append(_corrida(f"{estudo_paragrafos.titulo_do_estudo(estudo)}\n\n", rico.ESTILO_TITULO))
 
     # A marca do diagrama, e ela **nunca desaparece** -- é a regra que a S-250 escreveu para os
     # quatro formatos: "um diagrama desenhado sem marca correspondente seria invisível para o texto".

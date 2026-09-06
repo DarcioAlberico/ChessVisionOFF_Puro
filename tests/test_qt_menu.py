@@ -76,7 +76,7 @@ class MontagemTests(unittest.TestCase):
             item.acao
             for declarado in declaracao.MENUS
             for item in declarado.itens
-            if item.tipo in (declaracao.APARENCIA, declaracao.DENSIDADE)
+            if item.tipo in declaracao.TIPOS_DE_ESCOLHA
         }
         self.assertEqual(set(self.montada.grupos), escolhas)
 

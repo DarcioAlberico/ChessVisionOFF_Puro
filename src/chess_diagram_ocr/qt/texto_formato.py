@@ -39,12 +39,40 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "ALINHAMENTO_DO_QT",
+    "BOOLEANOS_DESENHADOS",
+    "BOOLEANOS_SEM_DESENHO",
     "PAPEL_DA_MARCA",
     "PAPEL_DO_ESTILO",
     "bloco_de",
     "formato_de",
     "recuo_de",
 ]
+
+BOOLEANOS_DESENHADOS: tuple[str, ...] = ("negrito", "italico", "sublinhado", "tachado")
+"""Os booleanos de `rico.Atributos` que `formato_de` desenha, um a um.
+
+**Declarados e não deduzidos, e é o que faz o teste valer.** Um atributo booleano novo em
+`rico.Atributos` que ninguém desenhasse atravessaria a gravação certo -- o documento é o estado, e
+`test_texto_inventario_editor` já cobra isso -- e simplesmente **não apareceria na tela**. A pessoa
+marcaria o trecho, veria nada acontecer e concluiria que o programa está quebrado.
+
+**Esta lista herda um dever que era do Tk** (S-238/S-506). Lá quem cobrava a decisão era
+`ui/texto_etiquetas.ETIQUETA_DO_ATRIBUTO`, e o defeito tinha o sinal invertido: o documento era
+reconstruído a partir das etiquetas do widget, então um atributo sem etiqueta desenhava certo e
+morria ao salvar. Aquele módulo saiu com o toolkit que ele traduzia; o dever ficou."""
+
+BOOLEANOS_SEM_DESENHO: tuple[str, ...] = ("fora_do_modelo",)
+"""Os booleanos que existem no documento e que a tela **não** desenha, de propósito.
+
+`fora_do_modelo` é declaração sobre a **procedência** de um caractere -- "isto não veio da página,
+foi inserido" (S-247) --, e não um pincel que se liga e desliga. Ele viaja com o documento, sai no
+arquivo e no relatório de correções; pintá-lo faria a marca competir com o negrito e o realce, que
+são escolhas de quem escreve.
+
+**E é o que o outro frontend fazia também**: `fora_do_modelo` tinha etiqueta no `tk.Text` para
+sobreviver à leitura de volta, e nenhum `tag_configure` -- a etiqueta era carregadora, não
+aparência. A tupla fica vazia no dia em que alguém decidir desenhá-lo; o que ela não pode é ficar
+sem a decisão."""
 
 PAPEL_DO_ESTILO: dict[str, str] = {
     rico.ESTILO_TITULO: tipografia.TITULO,

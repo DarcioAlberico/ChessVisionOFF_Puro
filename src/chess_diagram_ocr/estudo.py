@@ -83,6 +83,14 @@ ANOTADOR = "ChessVisionOFF"
 """O que vai no header `Annotator`. É o mesmo de `pdf_to_pgn.py:706`, e não é enfeite: ele é o que
 distingue, num PGN aberto no ChessBase, o que saiu daqui do que veio de outro lugar."""
 
+LOCAL = "Local"
+"""O que vai no header `Site` de um estudo que saiu de um diagrama, e não de um torneio.
+
+Era literal em `de_posicao`, e ganhou nome na S-530 por ter passado a ter **dois** leitores: o
+cabeçalho da sala precisa distinguir "o livro não disse onde foi" de um local de verdade, e a
+única maneira honesta de fazer isso é comparar com o que o próprio programa escreve. Ver
+`ui/cabecalho_da_partida.DE_FABRICA`."""
+
 EVENTO = "ChessVisionOFF Estudo"
 
 Caminho = tuple[int, ...]
@@ -461,7 +469,7 @@ class Estudo:
         # escreve, e o livro mora em `SourcePDF`, não aqui. Um PGN deste projeto aberto no ChessBase
         # tem de se parecer com os outros PGNs deste projeto.
         jogo.headers["Event"] = EVENTO
-        jogo.headers["Site"] = "Local"
+        jogo.headers["Site"] = LOCAL
         jogo.headers["Result"] = "*"
         jogo.headers["Annotator"] = ANOTADOR
         if ancora.valida:

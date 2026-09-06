@@ -760,6 +760,7 @@ CARDINAIS = {
     "uma": 1, "duas": 2, "três": 3, "quatro": 4, "cinco": 5, "seis": 6, "sete": 7,
     "oito": 8, "nove": 9, "dez": 10, "onze": 11, "doze": 12, "treze": 13, "catorze": 14,
     "quinze": 15, "dezesseis": 16, "dezessete": 17, "dezoito": 18, "dezenove": 19, "vinte": 20,
+    "vinte e uma": 21, "vinte e duas": 22, "vinte e três": 23, "vinte e quatro": 24,
 }
 """Os números que a prosa escreve por extenso, porque ela os escreve por extenso (S-410).
 
@@ -993,7 +994,10 @@ class NumerosVivosTests(unittest.TestCase):
             + arquivo.read_text(encoding="utf-8").count("Tarefa(")
             for arquivo in arquivos
         )
-        citado = _cardinal(self.arquitetura, r"\*\*(\w+)\*\* threads rodam fora")
+        # `[\w ]+` e nao `\w+`: acima de vinte o cardinal portugues tem espaco dentro ("vinte e
+        # duas"), e a prosa continua escrevendo por extenso -- e o teste que aprende a ler, que e
+        # a regra que `CARDINAIS` declara.
+        citado = _cardinal(self.arquitetura, r"\*\*([\w ]+)\*\* threads rodam fora")
         self.assertEqual(real, citado, "A ARCHITECTURE conta threads que o código não tem, ou vice-versa.")
 
     def test_os_tamanhos_de_artefato_citados_batem_com_o_disco(self) -> None:

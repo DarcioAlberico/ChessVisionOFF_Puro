@@ -21,6 +21,10 @@ jeito que só se percebe usando, e nenhuma delas deveria exigir uma janela para 
    padrão do `create_image(0, 0, anchor="nw")`, e ele custa caro aqui: em 40% de zoom numa
    janela de 1700, ~45% da área de visualização era vazio `#1c1c1c` à direita da página — a
    maior área contínua da janela, gasta em nada, no painel que existe para mostrar a página.
+   **No Qt isso não é conta, é propriedade**: `qt/visor.py` põe a folha no meio por
+   `setAlignment(AlignCenter)`, e `desvio_de_centralizacao` e `regiao_de_rolagem` -- a conta e
+   o `scrollregion` que o canvas do Tk pedia -- saíram na triagem da S-511. Quem afirma a
+   decisão agora é `test_qt_painel_do_pdf.test_a_pagina_fica_no_meio_da_area_visivel`.
 """
 
 from __future__ import annotations
@@ -30,19 +34,13 @@ from enum import Enum
 
 __all__ = [
     "LADO_DO_DESLIZADOR",
-    "MAX_ZOOM",
-    "MIN_ZOOM",
-    "PAGE_FLIP_COOLDOWN_S",
     "WheelAction",
-    "ZOOM_STEP",
     "anchor_after_zoom",
     "clamp_zoom",
     "decide_wheel",
-    "desvio_de_centralizacao",
     "fit_page_zoom",
     "fit_width_zoom",
     "posicao_do_zoom",
-    "regiao_de_rolagem",
     "wheel_direction",
     "zoom_da_posicao",
     "zoomed",
@@ -215,28 +213,3 @@ def fit_page_zoom(
     if largura is None or altura is None:
         return None
     return clamp_zoom(min(largura, altura))
-
-
-def desvio_de_centralizacao(conteudo_px: int, viewport_px: int) -> int:
-    """Quantos pixels deslocar o conteúdo para ele ficar no meio da área visível (S-157).
-
-    Zero quando o conteúdo é maior que a área — aí não há folga a repartir, e deslocar seria
-    esconder o começo da página atrás da borda esquerda.
-
-    A divisão inteira sobra 1 px para a direita numa folga ímpar, e isso é deliberado: alternar
-    o lado do arredondamento faria a página **tremer** 1 px ao redimensionar a janela, que é
-    mais visível do que o pixel de assimetria que ninguém mede.
-    """
-    folga = int(viewport_px) - int(conteudo_px)
-    return max(0, folga // 2)
-
-
-def regiao_de_rolagem(conteudo: tuple[int, int], viewport: tuple[int, int]) -> tuple[int, int, int, int]:
-    """O `scrollregion` do canvas: o maior entre o conteúdo e a área visível, nos dois eixos.
-
-    Existe por causa da centralização, e é o par dela. Com a região limitada ao tamanho da
-    página, deslocar a imagem para o meio a empurraria para **fora** da região rolável: o Tk
-    passaria a oferecer rolagem para uma faixa vazia à esquerda e a esconder a faixa à direita
-    onde a página de fato está.
-    """
-    return (0, 0, max(int(conteudo[0]), int(viewport[0])), max(int(conteudo[1]), int(viewport[1])))

@@ -36,11 +36,6 @@ from ..text import documento, rico
 from . import tokens
 
 __all__ = [
-    "PAPEIS_DA_FAIXA",
-    "PAPEL_DA_COR",
-    "PAPEL_DO_REALCE",
-    "etiqueta_de_cor",
-    "etiqueta_de_realce",
     "papel_de_cor",
     "papel_de_realce",
 ]
@@ -94,8 +89,12 @@ lugares sozinha."""
 
 PREFIXO_DE_COR = "cor:"
 PREFIXO_DE_REALCE = "realce:"
-"""Como os dois viram etiqueta do `tk.Text`. Ver `ui/texto_etiquetas.py`: nome de etiqueta é string,
-e atributo com valor precisa carregar o valor no nome."""
+"""Como os dois viravam etiqueta do `tk.Text`: nome de etiqueta é string, e atributo com valor
+precisa carregar o valor no nome.
+
+**Os prefixos sobreviveram ao toolkit que os pedia** (S-506). Quem traduzia era
+`ui/texto_etiquetas.py`, que saiu com o Tk; eles continuam aqui porque o formato `.cvtxt` os usa,
+e `text/arquivo.py` é quem os lê e escreve hoje."""
 
 
 def papel_de_cor(nome: str) -> str:
@@ -114,16 +113,6 @@ def papel_de_realce(nome: str) -> str:
     if nome not in PAPEL_DO_REALCE:
         raise KeyError(f"realce de autor desconhecido: {nome!r}. Os válidos estão em rico.CORES_DE_AUTOR.")
     return PAPEL_DO_REALCE[nome]
-
-
-def etiqueta_de_cor(nome: str) -> str:
-    """`"destaque"` -> `"cor:destaque"`, a etiqueta que o widget carrega."""
-    return f"{PREFIXO_DE_COR}{nome}"
-
-
-def etiqueta_de_realce(nome: str) -> str:
-    """`"destaque"` -> `"realce:destaque"`."""
-    return f"{PREFIXO_DE_REALCE}{nome}"
 
 
 def nomes() -> tuple[str, ...]:

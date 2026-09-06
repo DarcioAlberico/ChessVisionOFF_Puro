@@ -37,15 +37,10 @@ from . import atalhos, comandos, menu, tabela
 __all__ = [
     "ALTURA_EM_LINHAS",
     "COLUNAS",
-    "MOTIVO_NA_JANELA_DE_BUSCA",
-    "MOTIVO_NA_LINHA_DE_CAMPO",
-    "MOTIVO_SEM_FUNCAO",
-    "MOTIVO_SUBMENU",
     "TITULO",
     "Entrada",
     "filtrar",
     "inventario",
-    "motivos_declarados",
 ]
 
 TITULO = "Paleta de comandos"

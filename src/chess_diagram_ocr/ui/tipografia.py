@@ -28,23 +28,15 @@ from collections.abc import Iterable
 from . import pele
 
 __all__ = [
-    "ALTURA_DE_LINHA_NA_BASE",
     "AUXILIAR",
     "BASE_DE_REFERENCIA",
     "CORPO",
     "DADO",
-    "DEGRAUS",
     "FATOR_DE_FOLGA",
-    "FATOR_DE_LINHA",
     "FOLGA",
-    "FOLGAS",
     "FOLGA_DE_LINHA",
     "FOLGA_DE_MOLDURA",
     "FOLGA_MINIMA",
-    "LINHA_NA_BASE",
-    "MONOESPACADAS_PREFERIDAS",
-    "PAPEIS_DE_FOLGA",
-    "PAPEIS_DE_FONTE",
     "TITULO",
     "altura_de_linha",
     "corpo",

@@ -22,9 +22,10 @@ from PyQt6.QtCore import QPoint, QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap, QWheelEvent
 from PyQt6.QtWidgets import QScrollArea, QScrollBar, QWidget
 
+from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.imagens import pixmap_de_rgb
 from chess_diagram_ocr.ui import tokens
-from chess_diagram_ocr.ui.leitura_do_pdf import CLICK_SLOP_PX, MIN_SELECTION_PX
+from chess_diagram_ocr.ui.leitura_do_pdf import CLICK_SLOP_PX, MIN_SELECTION_PX, SELECTION_HALO_PX
 from chess_diagram_ocr.ui.page_overlay import (
     A_FAZER,
     DISPENSADO,
@@ -46,22 +47,28 @@ from chess_diagram_ocr.ui.viewport import (
     zoomed,
 )
 
-COR_POR_ESTADO: dict[str, str] = {
-    A_FAZER: tokens.RESERVA[tokens.A_FAZER],
-    LIDO: tokens.RESERVA[tokens.LIDO],
-    PRONTO: tokens.RESERVA[tokens.PRONTO],
-    DISPENSADO: tokens.RESERVA[tokens.DISPENSADO],
+PAPEL_DO_ESTADO: dict[str, str] = {
+    A_FAZER: tokens.A_FAZER,
+    LIDO: tokens.LIDO,
+    PRONTO: tokens.PRONTO,
+    DISPENSADO: tokens.DISPENSADO,
 }
-"""A mesma cor por estado que `pdf_panel.box_color` escolhe.
+"""Estado da caixa -> papel de cor. O estado e o papel têm o **mesmo nome** em `page_overlay` e em
+`tokens`, então isto é a resolução do papel, e não uma segunda escolha de matiz.
 
-Não é cópia da decisão: o estado e o papel de cor têm o **mesmo nome** em `page_overlay` e em
-`tokens`, então isto é a resolução do papel, e não uma segunda escolha de matiz. Se a paleta
-mudar em `tokens.RESERVA`, as duas telas mudam juntas."""
+**A tinta sai de `tema.cor_atual`, e no momento de pintar.** Saía de `tokens.RESERVA[...]` -- o
+hexadecimal de fábrica, que não acompanha a troca de pele -- e era o mesmo achado da S-510 sobre
+o glifo de reserva do tabuleiro, numa terceira tela. `RESERVA` é a paleta sem pele; quem responde
+é a pele em uso, e ela pode ter mudado desde a montagem. É a triagem da S-511."""
 
-HALO_DA_SELECAO = 4
-"""Folga da segunda borda do diagrama selecionado, **para fora** da caixa -- igual à do
-produto: uma borda por dentro cairia sobre a primeira fila de casas, que é o que a caixa
-existe para deixar conferir."""
+
+def cor_do_estado(estado: str) -> str:
+    """A cor da caixa naquele estado, contra a pele em uso."""
+    return tema.cor_atual(PAPEL_DO_ESTADO[estado])
+
+
+# A folga da segunda borda é `leitura_do_pdf.SELECTION_HALO_PX`: o número já existia, com o
+# motivo escrito, e este widget o reescrevia como `HALO_DA_SELECAO = 4` (S-511).
 
 ALTURA_DA_ETIQUETA = 18
 LARGURA_DA_ETIQUETA = 22
@@ -149,7 +156,7 @@ class _Folha(QWidget):
         self, pintor: QPainter, caixa: DiagramBox, retangulo: tuple[float, float, float, float], fonte: QFont
     ) -> None:
         x0, y0, x1, y1 = (int(round(valor)) for valor in retangulo)
-        cor = QColor(COR_POR_ESTADO[estado_da_caixa(caixa)])
+        cor = QColor(cor_do_estado(estado_da_caixa(caixa)))
         traco = traco_da_caixa(caixa)
 
         caneta = QPen(cor)
@@ -168,10 +175,10 @@ class _Folha(QWidget):
             pintor.setPen(halo)
             pintor.drawRect(
                 QRect(
-                    x0 - HALO_DA_SELECAO,
-                    y0 - HALO_DA_SELECAO,
-                    (x1 - x0) + 2 * HALO_DA_SELECAO,
-                    (y1 - y0) + 2 * HALO_DA_SELECAO,
+                    x0 - SELECTION_HALO_PX,
+                    y0 - SELECTION_HALO_PX,
+                    (x1 - x0) + 2 * SELECTION_HALO_PX,
+                    (y1 - y0) + 2 * SELECTION_HALO_PX,
                 )
             )
 
@@ -212,6 +219,19 @@ class _Folha(QWidget):
         ponto = a0.position()
         self._visor.soltou_em(ponto.x(), ponto.y())
 
+    def mouseDoubleClickEvent(self, a0: QMouseEvent | None) -> None:  # noqa: N802 - assinatura do Qt
+        """Duplo clique numa caixa: aquele diagrama vai para a sala de estudo.
+
+        **O primeiro clique do par já aconteceu, e fez o que sempre faz** -- selecionou o
+        diagrama, ou mandou ler a página. O Qt entrega o segundo aperto como este evento, e não
+        como `mousePressEvent`, então a soltura que vem depois não acha ponto marcado e não conta
+        um terceiro clique. O que este evento acrescenta é só o destino.
+        """
+        if a0 is None or a0.button() != Qt.MouseButton.LeftButton:
+            return
+        ponto = a0.position()
+        self._visor.estudar_em(ponto.x(), ponto.y())
+
     def wheelEvent(self, a0: QWheelEvent | None) -> None:  # noqa: N802 - assinatura do Qt
         """A roda é do visor, e não da folha.
 
@@ -240,6 +260,13 @@ class VisorDePagina(QScrollArea):
     Sinal separado de `caixa_clicada` porque as duas respostas ao mesmo retângulo são opostas:
     uma diz "leia isto", a outra diz "isto não é diagrama". Quem guarda a remoção é a janela; o
     visor desenha o que lhe entregam."""
+
+    caixa_para_estudo = pyqtSignal(int)
+    """Duplo clique num retângulo: **estude este**. O índice é o mesmo de `caixa_clicada`.
+
+    Sinal separado porque o primeiro clique do par já saiu como `caixa_clicada`: quem o recebeu
+    já selecionou o diagrama, ou já mandou ler a página. O que este acrescenta é o destino -- a
+    sala de estudo, e não o editor -- e a janela é quem sabe se a página já foi lida."""
 
     area_selecionada = pyqtSignal(object)
     """`(x0, y0, x1, y1)` em **pixel da página**, já ordenado e sem o zoom.
@@ -522,6 +549,18 @@ class VisorDePagina(QScrollArea):
         indice = self._caixas.index_at(x, y, self._zoom)
         if indice is not None:
             self.caixa_dispensada.emit(indice)
+
+    def estudar_em(self, x: float, y: float) -> None:
+        """Duplo clique sobre um retângulo: o diagrama de baixo vai para a sala de estudo.
+
+        A caixa é a mesma que `clicar_em` acertaria -- a menor sob o ponteiro --, e as caixas
+        escondidas não são alvo, como lá. No modo de seleção o botão significa outra coisa.
+        """
+        if self._caixas is None or not self._mostrar_caixas or self._selecionando:
+            return
+        indice = self._caixas.index_at(x, y, self._zoom)
+        if indice is not None:
+            self.caixa_para_estudo.emit(indice)
 
     def apertou_em(self, x: float, y: float) -> None:
         """Marca o ponto. **Não decide nada**: quem decide é o que o ponteiro fizer depois."""

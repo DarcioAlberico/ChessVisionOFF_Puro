@@ -44,6 +44,8 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "APARENCIA",
     "DENSIDADE",
+    "CONJUNTO",
+    "TIPOS_DE_ESCOLHA",
     "MENUS",
     "Item",
     "Menu",
@@ -67,6 +69,20 @@ Irmão de `APARENCIA` e não filho: os dois são eixos de aparência, e o que os
 **sugere** a densidade e a pessoa **decide**. Ver o comentário no catálogo sobre por que o caminho
 ficou `Ver > Densidade` e não `Ver > Aparência > Densidade`."""
 
+CONJUNTO = "CONJUNTO"
+"""Submenu de `radiobutton`, um por conjunto de peças registrado em `ui/conjuntos.py` (S-230/S-506).
+
+**O valor é `"CONJUNTO"` e não o nome da constante**, ao contrário dos dois irmãos, e a razão é o
+teste de acentuação: ele varre os literais visíveis dos módulos de interface, e a forma sem cedilha
+de "peças" está na lista que a S-06 proíbe na tela. Pôr essa forma na lista de exceções do teste
+abriria a porta para o texto que a pessoa **lê** -- e a etiqueta de tipo não precisa da palavra
+para ser clara.
+
+Terceiro irmão de `APARENCIA` e `DENSIDADE`, e pela mesma razão: pele decide arranjo, tema
+decide cor, densidade decide aperto e conjunto decide o desenho das peças. Qualquer um vale
+com qualquer outro, e aninhá-los faria "a fita clara com as peças de traço grosso" ser
+impossível sem que ninguém tivesse decidido isso."""
+
 APARENCIA = "APARENCIA"
 """Submenu de `radiobutton`, um por pele registrada em `ui/pele.py` (S-221).
 
@@ -74,6 +90,15 @@ APARENCIA = "APARENCIA"
 diferença: o acervo muda enquanto o programa roda e por isso o submenu de livros se refaz a cada
 abertura; o registro de peles é fixo na importação. O que varia aqui é a **marca**, e disso quem
 cuida é o `StringVar`."""
+
+
+TIPOS_DE_ESCOLHA: tuple[str, ...] = (APARENCIA, DENSIDADE, CONJUNTO)
+"""Os tipos de item que são um submenu de escolha exclusiva, num lugar só.
+
+**Declarados juntos porque três lugares perguntam a mesma coisa**: quem exige comando amarrado
+(`comandos_faltando`), quem desenha (`qt/menu.montar`) e o teste que confere um contra o outro. Um
+quarto eixo de aparência acrescentado a dois desses três é um submenu que o menu desenha e que
+ninguém cobra -- ou o contrário."""
 
 
 @dataclass(frozen=True)
@@ -162,6 +187,7 @@ MENUS: tuple[Menu, ...] = (
             _sep(),
             Item("aparencia", APARENCIA),
             Item("densidade", DENSIDADE),
+            Item("conjunto_de_pecas", CONJUNTO),
         ),
     ),
     Menu(
@@ -175,6 +201,9 @@ MENUS: tuple[Menu, ...] = (
             # revisão na mesma passada (S-119). Enquanto eram duas passadas, "Varrer a fila de
             # revisão" era um segundo item aqui, com o mesmo custo do primeiro.
             Item("varrer_livro"),
+            # A fila fica colada no livro só: são a mesma varredura, com um livro e com muitos, e
+            # quem procura "varrer" aqui tem de achar as duas de uma vez (S-546).
+            Item("varrer_fila"),
             _sep(),
             Item("recarregar_modelo"),
             Item("treinar"),
@@ -203,6 +232,7 @@ MENUS: tuple[Menu, ...] = (
             Item("apagar_continuacao"),
             _sep(),
             Item("simbolo_do_lance"),
+            Item("dobrar_variantes"),
             _sep(),
             Item("virar_tabuleiro"),
             Item("trocar_vez"),
@@ -216,9 +246,16 @@ MENUS: tuple[Menu, ...] = (
             Item("analisar_posicao"),
             Item("analise_continua"),
             Item("variante_do_motor"),
+            Item("analisar_partida"),
+            Item("opcoes_do_motor"),
             Item("partidas_da_posicao"),
+            Item("arvore_de_aberturas"),
+            Item("buscar_partidas"),
+            Item("indexar_base"),
             _sep(),
             Item("modo_treino"),
+            Item("taticas_do_livro"),
+            Item("treinar_agenda"),
             _sep(),
             Item("colar_estudo"),
             Item("abrir_pgn"),
@@ -228,7 +265,17 @@ MENUS: tuple[Menu, ...] = (
             Item("exportar_estudo_md"),
             Item("exportar_estudo_html"),
             Item("exportar_estudo_rtf"),
+            Item("exportar_estudo_pdf"),
+            Item("exportar_estudo_epub"),
+            Item("exportar_estudo_docx"),
             Item("estudo_para_o_texto"),
+            _sep(),
+            # Os dois que saem da folha e não do arquivo de texto (S-544/S-545): o lote de
+            # diagramas soltos e o estudo paginado como livro. Ficam depois do separador porque
+            # o de cima é "o estudo noutro formato" e estes dois são outra pergunta -- o que sai
+            # daqui não volta para dentro do programa.
+            Item("exportar_diagramas_lote"),
+            Item("imprimir_estudo"),
         ),
     ),
     Menu(
@@ -354,7 +401,7 @@ def comandos_faltando(comandos: Mapping[str, object]) -> list[str]:
         item.acao
         for menu in MENUS
         for item in menu.itens
-        if item.tipo in (COMANDO, INTERRUPTOR, APARENCIA, DENSIDADE)
+        if item.tipo in (COMANDO, INTERRUPTOR, *TIPOS_DE_ESCOLHA)
     }
     return sorted(exigidos - set(comandos))
 

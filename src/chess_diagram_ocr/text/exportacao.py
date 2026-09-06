@@ -326,6 +326,15 @@ class Html:
 
     Tamanho não entra: ele é degrau, mora em `corpos`, e vem de fora como a cor."""
 
+    def regras_de_css(self) -> list[tuple[str, str, str]]:
+        """As regras `(classe, propriedade, valor)` da folha de estilo, para quem monta outra folha.
+
+        O EPUB da S-542 escreve o mesmo `<span class="cor-nota">` que `corrida` escreve, e a classe
+        só quer dizer algo se a folha dele trouxer a mesma regra. Expor a lista -- e não copiá-la --
+        é o que mantém um lugar só decidindo o que `cor-nota` significa.
+        """
+        return self._regras()
+
     def _regras(self) -> list[tuple[str, str, str]]:
         regras = [("fora-do-modelo", "border-bottom", "1px dotted currentColor")]
         regras.extend(
