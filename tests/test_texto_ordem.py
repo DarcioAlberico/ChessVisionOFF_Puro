@@ -61,16 +61,37 @@ class DescidasTests(unittest.TestCase):
 
 
 class ReferenciaTests(unittest.TestCase):
-    """O guarda: uma coluna desce zero vezes, duas descem uma. Mais que isso é bloco fora de ordem."""
+    """O guarda: a referência pode descer uma vez por coluna além da primeira, **em cada região**.
 
-    def _pagina(self, *, colunas: int, descidas: int) -> ordem.Pagina:
-        return ordem.Pagina(pdf="x", pagina=1, linhas=20, tau=0.5, colunas=colunas, descidas_da_referencia=descidas)
+    A conta era por folha e passou a ser por região na S-507: numa folha com parágrafo de largura
+    inteira em cima de duas colunas, a régua de folha via **uma** coluna e permitia zero descidas
+    -- e descartava como "referência suspeita" justamente a folha que o item conserta.
+    """
+
+    def _pagina(self, *, colunas: int, subidas: int, descidas: int, regioes: int = 1) -> ordem.Pagina:
+        return ordem.Pagina(
+            pdf="x", pagina=1, linhas=20, tau=0.5, colunas=colunas, regioes=regioes,
+            subidas_previstas=subidas, descidas_da_referencia=descidas,
+        )
 
     def test_a_referencia_de_uma_coluna_em_ordem_e_confiavel(self) -> None:
-        self.assertTrue(self._pagina(colunas=1, descidas=0).referencia_confiavel)
+        self.assertTrue(self._pagina(colunas=1, subidas=0, descidas=0).referencia_confiavel)
 
     def test_a_referencia_de_duas_colunas_pode_descer_uma_vez(self) -> None:
-        self.assertTrue(self._pagina(colunas=2, descidas=1).referencia_confiavel)
+        self.assertTrue(self._pagina(colunas=2, subidas=1, descidas=1).referencia_confiavel)
+
+    def test_a_folha_de_bloco_largo_mais_duas_colunas_desce_uma_vez(self) -> None:
+        """**É a folha da S-507**, e é a que a conta por folha descartava.
+
+        Duas regiões: a de cima de largura inteira (nenhuma subida) e a de baixo de duas colunas
+        (uma). A camada desce uma vez, ao voltar da coluna da esquerda para o topo da direita.
+        """
+        pagina = self._pagina(colunas=2, subidas=1, descidas=1, regioes=2)
+        self.assertTrue(pagina.referencia_confiavel)
+
+    def test_duas_regioes_de_duas_colunas_podem_descer_duas_vezes(self) -> None:
+        self.assertTrue(self._pagina(colunas=2, subidas=2, descidas=2, regioes=3).referencia_confiavel)
+        self.assertFalse(self._pagina(colunas=2, subidas=2, descidas=3, regioes=3).referencia_confiavel)
 
     def test_a_referencia_com_blocos_fora_de_ordem_e_recusada(self) -> None:
         """**Ali o `tau` mede a referência, e não a nossa ordenação.**
@@ -78,8 +99,8 @@ class ReferenciaTests(unittest.TestCase):
         Sem este guarda o número publicado seria 0,0965 quando o real é 0,0096 -- e a conclusão
         seria "a ordenação está ruim" quando ela está certa.
         """
-        self.assertFalse(self._pagina(colunas=1, descidas=2).referencia_confiavel)
-        self.assertFalse(self._pagina(colunas=2, descidas=3).referencia_confiavel)
+        self.assertFalse(self._pagina(colunas=1, subidas=0, descidas=2).referencia_confiavel)
+        self.assertFalse(self._pagina(colunas=2, subidas=1, descidas=3).referencia_confiavel)
 
 
 class MedirPaginaTests(unittest.TestCase):

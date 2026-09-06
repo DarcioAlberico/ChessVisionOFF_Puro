@@ -419,6 +419,54 @@ Duas armadilhas que a F70 e a F61 de lá compraram com medição, e que esta fas
 - **coluna estreita demais não é coluna** — sem esse piso, uma margem virava coluna e a página
   saía em três.
 
+**Item S-507 (2026-09-06), o segundo acrescentado a esta fase depois de ela fechar.** A coluna não
+vale a folha inteira, e o bloco de largura inteira a apagava.
+
+> **A queixa.** "Ler folha" saía com as duas colunas intercaladas na folha que tem um parágrafo de
+> largura inteira em cima delas — a abertura de seção, que todo livro de finais usa. Medido na
+> folha 10 do `Nunn - Secrets of Minor Piece Endings`:
+>
+>     (1): This is a position of reciprocal zugzwang. [...] 2 lLig3 Knights are notoriously bad
+>     at fight- c8 3 lL!f5 c:Ji;c7 4 lL!e7 (or 4 lL!d6). ing against rook's pawns, so one
+>                      ^ coluna da direita          ^ coluna da esquerda
+>
+> **A causa não é o limiar, é a premissa.** `LINHAS_NA_CALHA` tolera uma linha cruzando a calha, e
+> esse número está medido — duas começam a partir o `Yusupov`. Um parágrafo de abertura tem quatro,
+> e com quatro a calha some: a folha inteira sai como **uma** coluna. Subir a tolerância
+> consertaria esta folha e quebraria as 456 páginas que fixaram a S-190. O que estava errado é a
+> premissa de que **a calha atravessa a folha**.
+>
+> **A régua nova é a região.** A folha é uma pilha de faixas horizontais e a coluna é propriedade
+> da faixa; ver `text/regioes.py`. A folha inteira é tentada primeiro, e é isso que preserva o
+> medido: a busca por região só roda onde a régua de hoje devolve "uma coluna".
+>
+> **Duas guardas, e as duas vieram de medição e não de projeto.**
+> A primeira é o **preenchimento**: sem ela, a lista de lances do `Melhores Finais de Capablanca`
+> vira "duas colunas" — a margem direita da prosa curta alinha com o começo da coluna dos lances
+> das pretas — e a folha sai com todos os lances das brancas antes de todos os das pretas.
+> A segunda é o critério de **banda transversal**: "tem tinta na calha" transformava em linha de
+> largura inteira a banda de duas colunas em que uma vírgula do fim da linha da esquerda entra na
+> calha (`Euwe, Kramer - Das Mittelspiel Band 7`, folha 15).
+>
+> **Medido em 420 folhas de 46 livros**, contra a ordem em que o próprio PDF emite as linhas, e
+> pareado folha a folha com a produção de hoje:
+>
+>     73 folhas que a régua parte em região      23 melhoram, 0 pioram, 5 empatam
+>     155 folhas que as duas réguas aceitam       0 melhoram, 0 pioram
+>     folhas em ordem exata                     109 -> 127
+>     tau médio                              0,0183 -> 0,0175
+>
+> O limiar de preenchimento foi varrido: **abaixo de 0,70 as regressões voltam** (2 folhas a 0,65,
+> 12 a 0,00) e **de 0,70 a 0,85 o resultado é o mesmo**. O número fica em 0,70, e o cabeçalho de
+> `regioes.py` registra que a folga dele é a mais estreita do módulo.
+>
+> **A própria régua da S-194 tinha dois defeitos, e os dois mudam a população medida** — o
+> `tau_medio` publicado antes desta data não é comparável ao de agora. Ela previa descidas por
+> folha, e não por região, o que descartava como "referência suspeita" justamente a folha desta
+> queixa; e alimentava `detectar_colunas` com o piso de **caractere** sobre caixas de **linha**,
+> que o multiplica por vinte (ver `leitor.calha_de_linhas`) — ela media a ordenação de livros que
+> ela achava serem de coluna única, diferente do que a produção faz.
+
 ---
 
 ## Fase 28 — Os casos que apagam texto ✅ **concluída (2026-08-23)**

@@ -43,11 +43,27 @@ lendo a página quase ao contrário.
 
 O guarda é geométrico e barato: numa página de **uma** coluna a ordem de leitura é, por definição,
 crescente em `y`; numa de duas ela desce uma vez, ao passar da primeira coluna para a segunda. Uma
-referência com mais descidas que `colunas - 1` está emitindo blocos fora de ordem, e o que ela mede
-não é a nossa ordenação.
+referência com mais descidas do que a nossa leitura prevê está emitindo blocos fora de ordem, e o
+que ela mede não é a nossa ordenação.
 
 Essas páginas não são descartadas em silêncio: elas entram no relatório em
 `paginas_com_referencia_suspeita`, com o número à vista.
+
+## A régua mudou de população em 2026-09-06 (S-507)
+
+Dois consertos, e os dois mexem em **quantas folhas entram na conta**, não na conta:
+
+- **A previsão de descidas passou a ser por região.** A folha com parágrafo de largura inteira em
+  cima de duas colunas desce uma vez -- ao voltar da coluna da esquerda para o topo da direita --,
+  e a régua de folha ali via *uma* coluna, porque a calha não atravessa o parágrafo: ela permitia
+  zero descidas e descartava como suspeita justamente a folha que a S-507 conserta.
+- **O piso da calha passou a ser o de linha.** As caixas aqui são **linhas** da camada, e o piso
+  de caractere as multiplica por vinte (ver `leitor.calha_de_linhas`). Com ele, esta régua via uma
+  coluna em quase toda folha de duas, e media a ordenação de um livro que ela achava ser de coluna
+  única -- diferente do que a produção faz, que é o pior defeito que uma régua pode ter.
+
+**O `tau_medio` deste relatório não é comparável ao publicado antes dessa data**, e a comparação
+que vale está registrada na Fase 27 do `docs/ROADMAP_TEXTO.md`: pareada, folha a folha.
 """
 
 from __future__ import annotations
@@ -91,13 +107,28 @@ class Pagina:
     """Fração de pares invertidos. 0,0 é ordem idêntica à da camada de texto."""
 
     colunas: int = 1
+    """As colunas da região mais dividida da folha. Ver `regioes.colunas_da_folha`."""
+
+    regioes: int = 1
+    """Em quantas faixas horizontais a folha foi partida (S-507)."""
+
+    subidas_previstas: int = 0
+    """Quantas vezes a **nossa** leitura sobe: uma por coluna além da primeira, em cada região."""
+
     descidas_da_referencia: int = 0
     """Quantas vezes a camada volta para cima. Ver "A referência nem sempre é a ordem de leitura"."""
 
     @property
     def referencia_confiavel(self) -> bool:
-        """Uma coluna desce zero vezes; duas colunas descem uma. Mais que isso é bloco fora de ordem."""
-        return self.descidas_da_referencia <= max(0, self.colunas - 1)
+        """Uma coluna desce zero vezes; duas colunas descem uma. Mais que isso é bloco fora de ordem.
+
+        **A conta é por região desde a S-507**, e antes disso ela era por folha. Numa folha com
+        parágrafo de largura inteira em cima de duas colunas, a camada desce uma vez -- ao voltar
+        da coluna da esquerda para o topo da direita --, mas a régua de folha via **uma** coluna
+        (a calha não atravessava o parágrafo) e permitia zero descidas: a folha era descartada
+        como "referência suspeita" justamente por ter a forma que a S-507 conserta.
+        """
+        return self.descidas_da_referencia <= self.subidas_previstas
 
 
 def kendall_tau(ordem: list[int]) -> float:
@@ -143,8 +174,9 @@ def medir_pagina(page: Any) -> Pagina | None:
     juntos.
     """
     from ..text.boxes import Caixa
-    from ..text.colunas import detectar_colunas
+    from ..text.leitor import calha_de_linhas
     from ..text.pagina import sequencia_de_leitura
+    from ..text.regioes import colunas_da_folha, detectar_regioes
 
     da_camada = _linhas_da_camada(page)
     if len(da_camada) < MIN_LINHAS:
@@ -153,7 +185,12 @@ def medir_pagina(page: Any) -> Pagina | None:
     caixas = [Caixa(int(b[0]), int(b[1]), int(b[2]), int(b[3])) for _, b in da_camada]
     posicao = {_centro(b): i for i, b in da_camada}
 
-    nossa = sequencia_de_leitura(caixas)
+    # **O piso é o de linha, e não o de caractere** (S-507). Aqui as caixas são **linhas** da
+    # camada, e `piso_de_calha` multiplicaria o piso por vinte -- ver `leitor.calha_de_linhas`,
+    # que traz a medição. Era o que esta régua fazia até aqui, e por isso ela via uma coluna em
+    # quase toda folha de duas: media a ordenação de um livro que ela achava ser de coluna única.
+    regioes = detectar_regioes(caixas, calha_minima=calha_de_linhas(caixas))
+    nossa = sequencia_de_leitura(caixas, regioes=regioes)
     ordem = []
     for elemento in nossa:
         if not isinstance(elemento, Caixa):  # pragma: no cover - sem diagramas nesta medição
@@ -172,7 +209,9 @@ def medir_pagina(page: Any) -> Pagina | None:
         pagina=0,
         linhas=len(ordem),
         tau=kendall_tau(ordem),
-        colunas=len(detectar_colunas(caixas)),
+        colunas=len(colunas_da_folha(regioes)),
+        regioes=len(regioes),
+        subidas_previstas=sum(max(0, len(r.colunas) - 1) for r in regioes),
         descidas_da_referencia=descidas([b[1] for _, b in da_camada]),
     )
 
@@ -212,6 +251,7 @@ def medir(pdfs: list[Path], *, por_livro: int) -> dict[str, Any]:
                     "pagina": indice + 1,
                     "linhas": resultado.linhas,
                     "colunas": resultado.colunas,
+                    "regioes": resultado.regioes,
                     "tau": resultado.tau,
                     "descidas_da_referencia": resultado.descidas_da_referencia,
                 }

@@ -110,6 +110,57 @@ def linhas_por_x(grupos: Sequence[Sequence[Caixa]], x_min: int, largura: int) ->
     return conta
 
 
+def piso_de_calha(caixas: Sequence[Caixa]) -> int:
+    """A largura mínima de calha derivada destas caixas. Ver `CALHA_EM_CARACTERES` e
+    `CALHA_DA_PAGINA`.
+
+    **Sai das caixas da página inteira, e não das de uma região** (S-507): a largura mediana de
+    caractere é uma propriedade do livro, e medi-la só nas quatro linhas de um cabeçalho daria um
+    piso que não descreve nada. Quem corta a página em regiões calcula o piso uma vez e o passa
+    para baixo.
+    """
+    if not caixas:
+        return CALHA_MINIMA_ABSOLUTA
+    largura = max(c.x2 for c in caixas) - min(c.x1 for c in caixas)
+    larguras = sorted(c.largura for c in caixas)
+    mediana = larguras[len(larguras) // 2] or 1
+    return max(
+        int(mediana * CALHA_EM_CARACTERES),
+        int(largura * CALHA_DA_PAGINA),
+        CALHA_MINIMA_ABSOLUTA,
+    )
+
+
+def vaos(livre: np.ndarray, x_min: int, calha_minima: int) -> list[tuple[int, int]]:
+    """Os trechos livres largos o bastante para serem calha, em pixels da imagem.
+
+    `livre[i]` é "nenhuma linha (fora a tolerada) cobre `x_min + i`". Está separado de `calha`
+    porque a região da S-507 projeta o mesmo `livre` sobre um pedaço da página, e duas cópias
+    deste laço seriam duas respostas para *"onde acaba a calha"*.
+
+    **Vetorizado, e o motivo é a S-507**: a busca por região chama isto uma vez por janela de
+    bandas, e um laço em Python sobre a largura da página custava mais que todo o resto da leitura
+    junta. O que ele decide é o mesmo de antes, e `test_text_colunas` compara os dois.
+    """
+    marcado = np.asarray(livre, dtype=bool)
+    if marcado.size == 0:
+        return []
+    bordas = np.diff(np.concatenate(([False], marcado, [False])).astype(np.int8))
+    inicios = np.flatnonzero(bordas == 1)
+    fins = np.flatnonzero(bordas == -1)
+    # **O vão que encosta na margem esquerda não é calha.** Com o `OR` ele não tinha como existir
+    # -- algum box começa em `x_min` por definição --, mas a tolerância o cria na página em que só
+    # o cabeçalho alcança a margem. Abrir faixa ali deixaria os boxes dele fora de toda coluna.
+    #
+    # **E o vão que chega ao fim do vetor também não**: `livre` é mais largo que o texto por
+    # construção (ver `linhas_por_x`), então a cauda está sempre livre e não é vão de nada.
+    aceitos = (inicios > 0) & (fins < marcado.size) & (fins - inicios >= calha_minima)
+    return [
+        (x_min + int(a), x_min + int(b))
+        for a, b in zip(inicios[aceitos], fins[aceitos], strict=True)
+    ]
+
+
 def calha(caixas: Sequence[Caixa], *, calha_minima: int | None = None) -> list[tuple[int, int]]:
     """As faixas verticais de `x` que separam colunas, em pixels da imagem. Vazio se não houver.
 
@@ -130,29 +181,9 @@ def calha(caixas: Sequence[Caixa], *, calha_minima: int | None = None) -> list[t
     livre = linhas_por_x(grupos, x_min, largura) <= tolerado
 
     if calha_minima is None:
-        larguras = sorted(c.largura for c in caixas)
-        mediana = larguras[len(larguras) // 2] or 1
-        calha_minima = max(
-            int(mediana * CALHA_EM_CARACTERES),
-            int(largura * CALHA_DA_PAGINA),
-            CALHA_MINIMA_ABSOLUTA,
-        )
+        calha_minima = piso_de_calha(caixas)
 
-    achadas: list[tuple[int, int]] = []
-    inicio: int | None = None
-    for i, vago in enumerate(livre):
-        if vago:
-            if inicio is None:
-                inicio = i
-        else:
-            # **O vão que encosta na margem esquerda não é calha.** Com o `OR` ele não tinha como
-            # existir -- algum box começa em `x_min` por definição --, mas a tolerância o cria na
-            # página em que só o cabeçalho alcança a margem. Abrir faixa ali deixaria os boxes
-            # dele fora de toda coluna.
-            if inicio is not None and inicio > 0 and i - inicio >= calha_minima:
-                achadas.append((x_min + inicio, x_min + i))
-            inicio = None
-    return achadas
+    return vaos(livre, x_min, calha_minima)
 
 
 def detectar_colunas(caixas: Sequence[Caixa], *, calha_minima: int | None = None) -> list[tuple[int, int]]:
@@ -168,7 +199,16 @@ def detectar_colunas(caixas: Sequence[Caixa], *, calha_minima: int | None = None
     cortes = calha(caixas, calha_minima=calha_minima)
     if not cortes:
         return [(x_min, x_max)]
+    return faixas_entre(cortes, x_min, x_max)
 
+
+def faixas_entre(cortes: Sequence[tuple[int, int]], x_min: int, x_max: int) -> list[tuple[int, int]]:
+    """As calhas viradas do avesso: o que sobra entre elas, já fundido pela `COLUNA_MINIMA`.
+
+    Separado de `detectar_colunas` pelo mesmo motivo de `vaos`: a região da S-507 acha as calhas
+    dela num pedaço da página e precisa da **mesma** conversão para faixa, incluindo a fusão da
+    faixa estreita demais para ser coluna.
+    """
     faixas: list[tuple[int, int]] = []
     anterior = x_min
     for inicio, fim in cortes:
@@ -235,5 +275,8 @@ __all__ = [
     "atribuir_coluna",
     "calha",
     "detectar_colunas",
+    "faixas_entre",
     "linhas_por_x",
+    "piso_de_calha",
+    "vaos",
 ]

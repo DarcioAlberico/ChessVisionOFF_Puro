@@ -171,6 +171,7 @@ from . import negrito as _negrito
 from . import notacao as _notacao
 from . import numero as _numero
 from . import paragrafos as _paragrafos
+from . import regioes as _regioes
 from .binarizacao import binarize
 from .grade import Arranjo
 from .pagina import (
@@ -252,6 +253,10 @@ class _Cru:
     confianca: float
     procedencia: Procedencia
     coluna: int = 0
+    regiao: int = 0
+    """Em que faixa horizontal da folha esta linha está (S-507). Mesma história de `coluna`: quem
+    leu a acha nas caixas de caractere, e quem monta não tem como redescobri-la nas linhas."""
+
     negrito: bool | None = None
     """`None` é "não se sabe" -- ver `text/negrito.py`. Quem preenche é `ler_pagina`, que é quem
     tem o documento na mão; `linhas_do_glifo` e `linhas_da_camada` deixam em `None`."""
@@ -380,8 +385,8 @@ def segmentar(
     *,
     escala: int | None = None,
     empilhados: bool = True,
-) -> tuple[np.ndarray, np.ndarray, int, list[_boxes.Caixa], list[tuple[int, int]]]:
-    """`(cinza, binaria, escala, caixas de caractere, faixas de coluna)` -- a página antes da linha.
+) -> tuple[np.ndarray, np.ndarray, int, list[_boxes.Caixa], list[_regioes.Regiao]]:
+    """`(cinza, binaria, escala, caixas de caractere, regiões)` -- a página antes da linha.
 
     **A ordem destas quatro coisas é o item, e ela estava invertida.** A primeira versão deste
     módulo mandava a página inteira para `GlyphRecognizer.read`, que é um leitor de **faixa**: ele
@@ -400,6 +405,9 @@ def segmentar(
     `colunas.calha` foi medida -- e por isso ela é chamada sem `calha_minima`: o piso de largura
     mediana de caractere é o certo quando as caixas são caracteres. Ver `calha_de_linhas`, que é o
     remendo do caminho da camada, onde só existem linhas.
+
+    **O que sai é região, e não coluna** (S-507): a folha de prosa em duas colunas quase sempre
+    traz um bloco de largura inteira, e a calha dele não atravessa a folha. Ver `text/regioes.py`.
     """
     import cv2
 
@@ -427,8 +435,7 @@ def segmentar(
         caixas = _boxes.excluir_diagramas(
             caixas, [_retangulo(r) for r in diagramas], escala=escala
         )
-    faixas = _colunas.detectar_colunas(caixas) if caixas else []
-    return (cinza, binaria, escala, caixas, faixas)
+    return (cinza, binaria, escala, caixas, _regioes.detectar_regioes(caixas) if caixas else [])
 
 
 def _arbitro_de_confianca(
@@ -466,8 +473,9 @@ def linhas_do_glifo(
     dicionario: bool = True,
     numeros: bool = True,
     juntar_lance: bool = True,
-) -> tuple[list[_Cru], list[tuple[int, int]]]:
-    """As linhas lidas pelo classificador de glifo, **coluna a coluna**, e as faixas achadas.
+) -> tuple[list[_Cru], list[_regioes.Regiao]]:
+    """As linhas lidas pelo classificador de glifo, **região a região e coluna a coluna**, e as
+    regiões achadas.
 
     `escala=None` a mede com `escala_fora_dos_diagramas`. `modo_bloco=True` liga a S-188 -- ler a
     linha, e não o caractere. **Desligado por padrão, e o número que decidiu isso está no cabeçalho
@@ -513,18 +521,18 @@ def linhas_do_glifo(
     léxico, uma vez. Antes das listas ele corrigia zero, e por isso vinha desligado. Ver
     `docs/metrics/texto_dicionario.json` e `text/dicionario.py`.
 
-    Devolve as faixas junto porque quem monta não pode redescobri-las: as caixas de caractere já
+    Devolve as regiões junto porque quem monta não pode redescobri-las: as caixas de caractere já
     foram consumidas aqui, e detectá-las de novo a partir das linhas é o defeito que `segmentar`
     documenta.
     """
     from .duas_linhas import descartar_fragmentos
     from .linhas import envolve, ordem_em_faixa, quebrar_em_linhas, texto_da_linha
 
-    cinza, binaria, escala, caixas, faixas = segmentar(
+    cinza, binaria, escala, caixas, regioes = segmentar(
         imagem_rgb, diagramas, escala=escala, empilhados=empilhados
     )
     if not caixas:
-        return ([], faixas)
+        return ([], regioes)
 
     if reconhecedor is None:
         from .recognizer import build_glyph_recognizer
@@ -550,14 +558,7 @@ def linhas_do_glifo(
         )
 
     cruas: list[_Cru] = []
-    for indice, _faixa in enumerate(faixas or [(0, 0)]):
-        desta = (
-            [c for c in caixas if max(0, _colunas.atribuir_coluna(c, faixas)) == indice]
-            if len(faixas) > 1
-            else list(caixas)
-        )
-        if not desta:
-            continue
+    for i_regiao, indice, desta in _tiras(caixas, regioes):
         grupos = descartar_fragmentos(quebrar_em_linhas(ordem_em_faixa(desta)), escala=escala)
         for grupo in grupos:
             recortes = [c.recortar(cinza) for c in grupo]
@@ -617,13 +618,43 @@ def linhas_do_glifo(
                     confianca=min(conf for _, conf in lidos),
                     procedencia="glifo",
                     coluna=indice,
+                    regiao=i_regiao,
                     # **Independente de `italico`**, que liga a *correção* de `/` para `l`. Declarar
                     # o pendor e trocar um caractere por causa dele são duas coisas, e quem mede o
                     # ganho da troca com ela desligada não deve perder o campo junto (S-236).
                     italico=pendor,
                 )
             )
-    return (sem_rotulos_de_eixo(cruas, diagramas), faixas)
+    return (sem_rotulos_de_eixo(cruas, diagramas), regioes)
+
+
+def _tiras(
+    caixas: Sequence[_boxes.Caixa], regioes: Sequence[_regioes.Regiao]
+) -> list[tuple[int, int, list[_boxes.Caixa]]]:
+    """`(região, coluna, caixas)` na ordem de leitura, cada tira pronta para virar linha (S-507).
+
+    **A tira é a unidade porque `quebrar_em_linhas` costura a banda inteira.** Numa folha de duas
+    colunas a banda recolhe a linha da esquerda e a da direita juntas; quebrar sem separar antes é
+    o defeito que `segmentar` documenta. E numa folha com bloco de largura inteira o inverso
+    também vale: separar por coluna o que é uma linha só a parte em duas metades.
+    """
+    saida: list[tuple[int, int, list[_boxes.Caixa]]] = []
+    for i_regiao, regiao in enumerate(regioes or [_regioes.Regiao(0, 0, ())]):
+        da_regiao = (
+            [c for c in caixas if _regioes.atribuir_regiao(c, regioes) == i_regiao]
+            if len(regioes) > 1
+            else list(caixas)
+        )
+        faixas = regiao.colunas
+        for indice, _faixa in enumerate(faixas or ((0, 0),)):
+            desta = (
+                [c for c in da_regiao if max(0, _colunas.atribuir_coluna(c, faixas)) == indice]
+                if len(faixas) > 1
+                else list(da_regiao)
+            )
+            if desta:
+                saida.append((i_regiao, indice, desta))
+    return saida
 
 
 def _para_pontos(caixa: _boxes.Caixa, escala_px: float) -> Retangulo:
@@ -759,13 +790,19 @@ def montar(
     confiancas: Sequence[float] = (),
     placements: Sequence[str] = (),
     faixas: Sequence[tuple[int, int]] | None = None,
+    regioes: Sequence[_regioes.Regiao] | None = None,
     lexico: frozenset[str] = frozenset(),
 ) -> tuple[Coluna, ...]:
-    """Linhas e diagramas -> colunas de blocos, na ordem em que a página se lê.
+    """Linhas e diagramas -> tiras de blocos, na ordem em que a página se lê.
 
     Os retângulos de diagrama vêm em **pixels**, como as linhas: a ordem de leitura e a atribuição
     de coluna são geometria, e geometria com duas unidades na mesma conta é o defeito que
     `_para_pontos` documenta.
+
+    `regioes` é o que o motor de glifo achou nas caixas de caractere (S-507). `faixas` é o atalho
+    de quem sabe que a folha é homogênea -- vale como uma região única com essas colunas --, e
+    nenhum dos dois é o caminho da camada, que redescobre as regiões nas linhas com o piso de
+    `calha_de_linhas`.
     """
     from .pagina import Diagrama, sequencia_de_leitura
 
@@ -778,17 +815,29 @@ def montar(
 
     # **Quem leu manda na coluna.** O caminho do glifo já a achou nas caixas de caractere, que é a
     # população certa (ver `segmentar`); redescobri-la aqui, a partir das linhas, é o defeito que
-    # produziu texto intercalado. `faixas=None` é o caminho da camada, onde só existem linhas -- e
-    # aí o piso da calha é o de `calha_de_linhas`.
-    if faixas is None:
-        faixas = _colunas.detectar_colunas(caixas, calha_minima=calha_de_linhas(caixas)) if caixas else []
-        de_linha = {id(c.caixa): max(0, _colunas.atribuir_coluna(c.caixa, faixas)) for c in cruas}
+    # produziu texto intercalado. Sem região nem faixa é o caminho da camada, onde só existem
+    # linhas -- e aí o piso da calha é o de `calha_de_linhas`.
+    if regioes is None and faixas is not None:
+        regioes = [_regiao_unica(caixas, diagramas, tuple(faixas))]
+    if regioes is None:
+        regioes = (
+            _regioes.detectar_regioes(caixas, calha_minima=calha_de_linhas(caixas)) if caixas else []
+        )
+        de_tira = {
+            id(c.caixa): _tira_da_caixa(c.caixa, regioes) for c in cruas
+        }
     else:
-        faixas = list(faixas)
-        de_linha = {id(c.caixa): c.coluna for c in cruas}
-    ordem = sequencia_de_leitura(caixas, objetos, colunas=faixas or None, arranjo=arranjo)
+        regioes = list(regioes)
+        de_tira = {id(c.caixa): (c.regiao, c.coluna) for c in cruas}
+    # **A métrica de recuo é por coluna, e a coluna aqui é a da região** (S-507). Medi-la contra a
+    # grade de colunas da folha poria a linha de largura inteira ora numa ora noutra -- o centro
+    # dela cai perto da calha, e um pixel decide --, e `paragrafos.cortar` abre parágrafo onde a
+    # coluna troca: o parágrafo de abertura saía picado em três. Com a coluna da região, ele é
+    # todo coluna 0, e divide a margem com a coluna da esquerda, que é a mesma margem.
+    de_linha = {chave: coluna for chave, (_, coluna) in de_tira.items()}
+    ordem = sequencia_de_leitura(caixas, objetos, regioes=regioes or None, arranjo=arranjo)
 
-    # **As métricas de recuo são da página inteira, e por coluna.** Ver o cabeçalho de
+    # **A margem é medida na página inteira**, e não dentro da tira. Ver o cabeçalho de
     # `paragrafos`: a mediana de cinco linhas entre dois diagramas não diz onde fica a margem.
     #
     # **O peso vem junto, e por isso `_com_negrito` roda antes de `montar`.** A quarta regra de
@@ -810,61 +859,67 @@ def montar(
         todas.append(linha)
     metricas = _paragrafos.metricas_por_coluna(todas) if todas else {}
 
-    # Uma tira por coluna, preservando a ordem de leitura dentro dela. O diagrama fecha a tira
-    # corrente: é o que o põe **entre** os parágrafos, e não no fim da coluna (S-193).
-    tiras: dict[int, list[list[_Cru] | Diagrama]] = {}
-    corrente: dict[int, list[_Cru]] = {}
+    # Uma tira por **(região, coluna)**, preservando a ordem de leitura dentro dela. O diagrama
+    # fecha a tira corrente: é o que o põe **entre** os parágrafos, e não no fim da coluna (S-193).
+    #
+    # **A tira é (região, coluna) e não coluna** (S-507). Numa folha com bloco de largura inteira
+    # em cima, a coluna da esquerda e o bloco cairiam na mesma tira, e o parágrafo de abertura
+    # sairia colado no primeiro parágrafo da coluna. A ordem entre tiras é a ordem da chave, que é
+    # a ordem de leitura: região de cima primeiro, e coluna da esquerda dentro dela.
+    tiras: dict[tuple[int, int], list[list[_Cru] | Diagrama]] = {}
+    corrente: dict[tuple[int, int], list[_Cru]] = {}
 
-    def coluna_de(caixa: _boxes.Caixa) -> int:
-        """A coluna de uma caixa: a que a linha já trouxe, ou a geometria para o diagrama."""
-        conhecida = de_linha.get(id(caixa))
-        if conhecida is not None:
-            return conhecida
-        return max(0, _colunas.atribuir_coluna(caixa, faixas)) if len(faixas) > 1 else 0
+    def tira_de(caixa: _boxes.Caixa) -> tuple[int, int]:
+        """A tira de uma caixa: a que a linha já trouxe, ou a geometria para o diagrama."""
+        conhecida = de_tira.get(id(caixa))
+        return conhecida if conhecida is not None else _tira_da_caixa(caixa, regioes)
 
-    def fechar(indice: int) -> None:
-        acumulado = corrente.pop(indice, None)
+    def fechar(chave: tuple[int, int]) -> None:
+        acumulado = corrente.pop(chave, None)
         if acumulado:
-            tiras.setdefault(indice, []).append(acumulado)
+            tiras.setdefault(chave, []).append(acumulado)
 
     for elemento in ordem:
         if isinstance(elemento, Diagrama):
-            # **O diagrama que atravessa a calha quebra as duas colunas (S-354).** `coluna_de`
+            # **O diagrama que atravessa a calha quebra as duas colunas (S-354).** `tira_de`
             # decide pelo **centro**, e o centro de um diagrama largo cai dentro da calha: a
             # coluna saía por desempate de proximidade -- esquerda ou direita conforme um pixel --,
             # e a tira da outra continuava aberta, juntando num parágrafo só o que está acima e o
             # que está abaixo dele. `sequencia_de_leitura` já trata o transversal desde a S-193; o
             # que se perdia era aqui, na remontagem por coluna.
             #
-            # A coluna dele passa a ser a **primeira que ele cobre**, que é determinística e é a
-            # que a leitura alcança antes. O que a `PaginaLida` ainda não sabe dizer é "este bloco
-            # não é de coluna nenhuma": a estrutura é por coluna, e um bloco fora delas seria
-            # outra forma -- fica registrado, e não é este item.
-            atravessando = len(faixas) > 1 and _colunas.atravessa(elemento.caixa, faixas)
+            # A coluna dele passa a ser a **primeira que ele cobre** *dentro da região dele*, que é
+            # determinística e é a que a leitura alcança antes.
+            i_regiao = _regioes.atribuir_regiao(elemento.caixa, regioes)
+            daqui = regioes[i_regiao].colunas if regioes else ()
+            atravessando = len(daqui) > 1 and _colunas.atravessa(elemento.caixa, daqui)
             if atravessando:
                 for aberta in list(corrente):
                     fechar(aberta)
-                indice = next(
-                    (i for i, (x1, x2) in enumerate(faixas) if elemento.caixa.x1 <= x2 and elemento.caixa.x2 >= x1),
-                    coluna_de(elemento.caixa),
+                chave = (
+                    i_regiao,
+                    next(
+                        (i for i, (x1, x2) in enumerate(daqui)
+                         if elemento.caixa.x1 <= x2 and elemento.caixa.x2 >= x1),
+                        tira_de(elemento.caixa)[1],
+                    ),
                 )
             else:
-                indice = coluna_de(elemento.caixa)
-                fechar(indice)
-            tiras.setdefault(indice, []).append(elemento)
+                chave = tira_de(elemento.caixa)
+                fechar(chave)
+            tiras.setdefault(chave, []).append(elemento)
             continue
         cru = por_id.get(id(elemento))
         if cru is None:
             continue
-        indice = coluna_de(elemento)
-        corrente.setdefault(indice, []).append(cru)
-    for indice in list(corrente):
-        fechar(indice)
+        corrente.setdefault(tira_de(elemento), []).append(cru)
+    for chave in list(corrente):
+        fechar(chave)
 
     saida: list[Coluna] = []
-    for indice in sorted(tiras):
+    for indice, chave in enumerate(sorted(tiras)):
         blocos: list[BlocoDeTexto | BlocoDeDiagrama] = []
-        for tira in tiras[indice]:
+        for tira in tiras[chave]:
             if isinstance(tira, Diagrama):
                 blocos.append(
                     BlocoDeDiagrama(
@@ -885,6 +940,32 @@ def montar(
                 )
             )
     return _atar_legendas(tuple(saida))
+
+
+def _regiao_unica(
+    caixas: Sequence[_boxes.Caixa],
+    diagramas: Sequence[Retangulo],
+    faixas: tuple[tuple[int, int], ...],
+) -> _regioes.Regiao:
+    """A folha inteira como uma região só, com as colunas que o chamador afirmou.
+
+    É o que `faixas=` quer dizer: *"já sei que esta folha é homogênea"*. Os cortes em `y` cobrem
+    tudo o que há na página, diagrama incluído, para que `atribuir_regiao` nunca deixe nada de
+    fora."""
+    topos = [c.y1 for c in caixas] + [int(r[1]) for r in diagramas]
+    bases = [c.y2 for c in caixas] + [int(r[3]) for r in diagramas]
+    return _regioes.Regiao(min(topos, default=0), max(bases, default=0), faixas)
+
+
+def _tira_da_caixa(
+    caixa: _boxes.Caixa, regioes: Sequence[_regioes.Regiao]
+) -> tuple[int, int]:
+    """`(região, coluna)` de uma caixa, só pela geometria. Ver `montar`."""
+    if not regioes:
+        return (0, 0)
+    indice = _regioes.atribuir_regiao(caixa, regioes)
+    faixas = regioes[indice].colunas
+    return (indice, max(0, _colunas.atribuir_coluna(caixa, faixas)) if len(faixas) > 1 else 0)
 
 
 def _atar_legendas(colunas: tuple[Coluna, ...]) -> tuple[Coluna, ...]:
@@ -1207,9 +1288,9 @@ def _ler_pagina_do_livro(
     ]
     confiancas = [float(c.detector_score) for c in candidatos]
 
-    faixas: list[tuple[int, int]] | None = None
+    regioes: list[_regioes.Regiao] | None = None
     if qual == "glifo":
-        cruas, faixas = linhas_do_glifo(
+        cruas, regioes = linhas_do_glifo(
             imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco, colados=colados, caixa_alta=caixa_alta, marca_fina=marca_fina,
             empilhados=empilhados, italico=italico,
             dicionario=dicionario, numeros=numeros,
@@ -1248,7 +1329,7 @@ def _ler_pagina_do_livro(
             escala_px=escala_px,
             arranjo=arranjo,
             confiancas=confiancas,
-            faixas=faixas,
+            regioes=regioes,
             # O léxico junta a hifenizada da quebra de linha (S-353). Vazio quando `dicionario`
             # está desligado, e aí `montar` não junta nada -- que é o comportamento de antes.
             lexico=_dicionario.carregar() if dicionario else frozenset(),
