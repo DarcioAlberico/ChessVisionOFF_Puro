@@ -628,6 +628,56 @@ o plano não esperava: **partir palavra colada, que o item prevê, dá 0 acertos
 neste acervo** — os nomes próprios são o que estraga (`carrying` → `carr ying`, de `Carr` e
 `Ying`). Está tudo em `docs/metrics/texto_dicionario.json`.
 
+**Item S-508 (2026-09-06).** O par `l`/`1`, e as guardas que impediam o dicionário de vê-lo.
+
+> **A queixa.** Na leitura de folha, `only` sai `on1y`, `Black` sai `B1ack`, `while` sai `whi1e`.
+> Depois do resize para 32x32 o `l` e o `1` são a mesma imagem, e o classificador escolhe pela
+> frequência da classe.
+>
+> **O modelo já tinha a resposta.** Medido na folha 11 do `Nunn - Secrets of Minor Piece Endings`:
+> em **todas** as 22 caixas em que ele escreveu `1` dentro de palavra, o `l` estava em rank 2. O
+> que faltava era deixar o dicionário olhar — e duas guardas o impediam.
+>
+> **A guarda do dígito foi estreitada, não removida.** *"Nada com dígito por perto"* é a cicatriz
+> da S-209: lance maltratado não pode virar palavra. O que a S-508 acrescenta é uma pergunta que a
+> S-209 não tinha à mão: **o dígito é do livro ou do classificador?** Se o modelo oferece uma letra
+> para aquela caixa, o dígito é palpite dele. A porta larga da S-208 (`lexico.suspeita`, com
+> `notacao.peso_de_notacao`) já estava escrita e reservada à marca — *"corrigir um lance por engano
+> custa um lance reescrito no PGN"* —, e é essa segunda condição que autoriza usá-la na correção.
+> `Rxd1` continua intocado: *"isto é notação?"* é perguntado sobre o que está escrito, e não sobre
+> a troca — `Rxdl` não é lance nenhum, e perguntar ali perderia justamente o lance.
+>
+> **A guarda de caixa desfez uma decisão da S-349.** Ela dizia que `Black` e `black` eram "duas
+> respostas de verdade". Não eram: `conhecida` dobra para minúscula antes de olhar o léxico, então
+> `reSult` e `result` chegavam à ambiguidade como duas — e 13 dos 22 tokens morriam aí, todos por
+> uma maiúscula no meio da palavra que palavra nenhuma tem. Quem decide caixa é a **altura do box**
+> (`caixa_alta`, CER 0,1434 → 0,1114), e ela já decidiu antes de o dicionário rodar.
+>
+> **Duas guardas nasceram da medição, e cada uma custou uma correção errada antes de existir.**
+> Meia palavra da quebra de linha (`interest-` virava `interest`, `sim-` virava `simI`) e o acento
+> (`façanha` virava `facanha`, porque a cedilha não está no léxico e `facanha` está). A cedilha é
+> **tinta na imagem** — ao contrário do tamanho, que o resize apaga —, então tirá-la seria desfazer
+> o que o classificador viu para acomodar uma falta do dicionário.
+>
+> **Medido em 44 folhas de 11 livros de camada editorada**, na receita da S-209:
+>
+>     CER                       0,12137 -> 0,12100
+>     correções                 19, sendo 15 confirmadas pela camada
+>     palavra certa quebrada    0        <- a barra da S-209, e ela decidiu duas guardas
+>     folhas                    9 melhoram, 0 pioram
+>
+> **E o ganho onde a queixa mora não entra nessa conta**, porque os dois `Nunn` e o `AAGAARD` têm
+> camada de **OCR** e ficam fora da referência. Ali vale o que não precisa de referência — token com
+> dígito no meio de letras quase nunca está certo em prosa —, sobre 35 folhas dos três:
+>
+>     tokens com dígito entre letras   512 -> 273
+>     tokens fora do léxico          2.415 -> 2.070
+>
+> **O que continua fora, e é o mesmo de sempre:** esta busca só **troca** letra. `sacrifi1ce` e
+> `fi1rst` precisam de remoção, `ofthe` de inserção de espaço, e `virtua1ly` de uma palavra que o
+> léxico não tem. E `a1so` continua `a1so` porque `aiso` **está** no léxico: ali `l` contra `i` é
+> ambiguidade de verdade, e a guarda 4 recusa, como deve.
+
 ---
 
 ## Fase 31 — O que faz a base crescer ✅ **completa em 2026-08-26**
