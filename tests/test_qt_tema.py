@@ -614,14 +614,24 @@ class AnelDeFocoTests(unittest.TestCase):
                     self.assertIn(f"{seletor}:focus", regras, "controle sem anel de foco na folha")
 
     def test_o_anel_nao_desloca_o_conteudo(self) -> None:
-        """**A moldura que já existe trocando de cor**, e nada mais: nem `padding` novo, nem
-        `border-width` maior. Os dois moveriam o conteúdo em um pixel a cada `Tab`."""
+        """**Trocar tinta, e nada mais**: nem `padding` novo, nem `border-width` maior. Os dois
+        moveriam o conteúdo em um pixel a cada `Tab`.
+
+        **Duas formas de corpo, e só duas.** A moldura que já existe trocando de cor é o anel; a
+        face trocando de cor é o quinto degrau do marcado focado (S-556), que não podia usar a
+        moldura porque o anel acabou de tomá-la. Nenhuma das duas é geometria, que é o que este
+        teste protege -- e continua sendo uma lista fechada, e não "qualquer coisa menos `padding`":
+        uma propriedade nova que mova o conteúdo tem de passar por aqui para entrar.
+        """
         for uma in pele.PELES:
             for seletor, corpo in _regras_de_foco(
                 tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
             ).items():
                 with self.subTest(pele=uma.nome, seletor=seletor):
-                    self.assertRegex(corpo.strip(), r"^border: 1px solid #[0-9a-f]{6}; \}$")
+                    self.assertRegex(
+                        corpo.strip(),
+                        r"^(?:border: 1px solid|background-color:) #[0-9a-f]{6}; \}$",
+                    )
 
     def test_o_anel_se_ve_contra_toda_face_em_que_e_desenhado(self) -> None:
         """A régua é a de elemento gráfico (`AA_GRAFICO`), e as faces são as quatro que a folha
@@ -703,6 +713,44 @@ class AnelDeFocoTests(unittest.TestCase):
                             0,
                             "dois estados do interruptor desenham igual",
                         )
+
+
+    def test_o_marcado_continua_dito_quando_o_botao_tem_o_foco(self) -> None:
+        """**O quinto degrau** (S-556). O par acima cobra os quatro estados distintos, mas por
+        `pixels_diferentes > 0` -- e o par que interessa aqui passa em verde a 1,78:1, porque a
+        regra do foco toma a borda que dizia "ligado" e sobra só a face.
+
+        São duas condições no mesmo número, e é por isso que ele não é livre: o marcado tem de se
+        ler contra o apagado (que num botão chato é a **superfície**, sem recheio nenhum) **e** o
+        anel tem de continuar se lendo sobre a face nova -- a régua da S-553 estendida à quarta
+        face. A janela que atende as duas nas três peles é 0,425 a 0,500; `8 * RELEVO_DO_BOTAO`
+        cai nela por 0,48.
+        """
+        for uma in pele.PELES:
+            escuro = uma.cromo_escuro
+            qss = tema.folha_de_estilo(cromo_escuro=escuro, densidade=uma.densidade)
+            regra = next(
+                (r for r in qss.splitlines() if r.startswith("QToolButton:checked:focus")), ""
+            )
+            self.assertTrue(regra, "sem regra para QToolButton:checked:focus")
+            achado = re.search(r"background-color: (#[0-9a-f]{6})", regra)
+            self.assertTrue(achado, f"a regra do marcado focado não diz face: {regra}")
+            assert achado is not None
+            face = achado.group(1)
+            # A borda focada é o anel, e esta regra não pode tocá-la: se ela repusesse a moldura de
+            # ênfase, o foco sumiria justamente no botão marcado -- que é o que a S-553 recusou.
+            self.assertNotIn("border", regra, "a regra do marcado focado mexeu na borda do anel")
+            medidas = {
+                "marcado sobre apagado, os dois focados": (
+                    face,
+                    tokens.cor(tokens.SUPERFICIE_PADRAO, None, cromo_escuro=escuro),
+                ),
+                "o anel sobre a face nova": (tema.anel_de_foco(cromo_escuro=escuro), face),
+            }
+            for oque, (tinta, fundo) in medidas.items():
+                with self.subTest(pele=uma.nome, medida=oque):
+                    razao = tokens.razao_de_contraste(tinta, fundo)
+                    self.assertGreaterEqual(razao, tokens.AA_GRAFICO, f"{oque}: {razao:.2f}:1")
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

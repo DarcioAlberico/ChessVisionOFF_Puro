@@ -764,6 +764,27 @@ def folha_de_estilo(
     # O botão de ferramenta só tem face no primário -- o destrutivo ali é cor de letra, e não face
     # --, então o anel do destrutivo é o do cromo e cai na regra de classe acima.
     regras.append(f"{ferramenta_primaria}:focus {{ border: 1px solid {na_enfase}; }}")
+
+    # **E o marcado que também tem o foco precisa de um quinto degrau** (S-556). Os dois sinais
+    # moram na mesma borda de 1 px, e a regra do foco acima acaba de tomá-la: enquanto o botão
+    # segura o teclado, "ligado" fica dito só pela face -- que mede **1,78** contra a superfície na
+    # pele clara e **2,03** na escura, abaixo de `AA_GRAFICO`. A S-553 registrou a troca de
+    # propósito, e estava certa em registrá-la; o que faltava era o número, e a S-555 o mediu.
+    #
+    # **Só a face, e nunca a borda:** o anel continua sendo o do foco, que é o ponto da S-553 --
+    # quem está com o teclado precisa saber onde ele está. E o peso é `8 *` porque a escala já
+    # existe: 1x parado, 2x sob o ponteiro, 4x pressionado e marcado. O quinto degrau continua o
+    # mesmo desenho em vez de virar uma sexta escolha de cor, que é o que `RELEVO_DO_BOTAO` existe
+    # para evitar.
+    #
+    # **O peso não é livre.** Ele tem de satisfazer duas condições ao mesmo tempo: o marcado se ler
+    # contra o apagado (que aqui é a superfície, porque o botão chato não tem recheio) e o anel
+    # continuar se lendo sobre a face nova. A janela que atende as duas nas três peles é 0,425 a
+    # 0,500, e 8x cai nela por 0,48. Mais fundo derruba o anel; mais raso derruba o marcado.
+    regras.append(
+        "QToolButton:checked:focus"
+        f" {{ background-color: {tokens.mistura(superficie, texto, 8 * RELEVO_DO_BOTAO)}; }}"
+    )
     return "\n".join(regras)
 
 

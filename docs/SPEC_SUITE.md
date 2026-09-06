@@ -5923,8 +5923,133 @@ clara e 1,49 na escura.
 continua sendo o **segundo** sinal, abaixo do piso sozinha; afundá-la até 0,465 escureceria todo
 `QToolButton` marcável da janela e reabriria a medição do anel de foco contra a face nova (S-553).
 E não fecha o caso **marcado + focado**, em que `:focus` vem por último de propósito e substitui a
-moldura de ênfase pelo anel, deixando o marcado dito só pela face a 1,78:1 -- decisão registrada na
-seção da S-553, e que continua valendo.
+moldura de ênfase pelo anel, deixando o marcado dito só pela face a 1,78:1. A S-553 registrou a
+troca como decisão consciente; o que faltava era o número, e ele saiu daqui. Com ele medido, o caso
+virou item próprio: **S-556**.
+
+## S-556 · O botão marcado continua dito quando ele tem o foco — ✅ **implementada em 2026-09-06**
+
+### Problema
+
+**Um dos quatro estados do interruptor perde o sinal, e é o único em que os dois desenhos se
+encostam.** O botão de ferramenta marcável tem quatro: apagado, apagado com foco, marcado, marcado
+com foco. Marcado se diz pela **moldura** de ênfase e o foco pela **moldura** do anel -- e as duas
+são a mesma borda de 1 px. `QToolButton:focus` e `QToolButton:checked` têm a mesma especificidade,
+e em QSS o empate é desfeito pela **ordem**: a regra do foco vem por último (`qt/tema.py:751`), de
+propósito, para que quem usa o teclado sempre veja onde ele está.
+
+A consequência é que, **enquanto o botão tem o foco, "ligado" fica dito só pela face** -- e a S-553
+registrou isso como decisão consciente: *"o marcado continua dito pela face funda, que esta regra
+não toca"*. O que faltava àquela frase era o número.
+
+**O número, medido na S-555:** a face marcada contra a apagada -- que num `QToolButton` chato é a
+**superfície**, porque a regra base é `border: 1px solid transparent` e recheio nenhum -- dá
+**1,78** na clássica e na fita e **2,03** na foco, contra o piso de 3,0 de `tokens.AA_GRAFICO`.
+Andando com `Tab` pela fila da sala, o botão que está sob o teclado não diz se está ligado.
+
+**E as guardas de hoje não pegam.** `test_o_foco_se_distingue_do_marcado_e_sobrevive_a_ele`
+(`tests/test_qt_tema.py`) cobra os quatro estados distintos **aos pares**, mas por
+`pixels_diferentes > 0` -- que passa em verde a 1,78:1. O piso que a S-555 travou é o da **moldura**
+de ênfase, e no estado focado ela não é quem desenha. Nenhuma das duas mede este par.
+
+### O que restringe a solução
+
+Três coisas, e as três já estão decididas em itens anteriores -- é por isso que este item é
+estreito:
+
+1. **O anel nunca pode ser a cor de ênfase** (S-553): senão "focado" e "ligado" viram o mesmo
+   desenho, e a fila da sala tem três interruptores.
+2. **A borda continua em 1 px** (S-553): nem `padding` novo, nem `border-width` maior, senão o
+   conteúdo anda um pixel a cada `Tab` e a fila inteira se mexe.
+3. **O anel tem de se ler sobre a face em que é desenhado** (S-553, `AA_GRAFICO`) -- inclusive
+   sobre a face nova, se ela mudar.
+
+Somando: quem tem de carregar "ligado" no estado focado é a **face**, e ela precisa passar 3,0
+contra a superfície **sem** derrubar o anel abaixo de 3,0 sobre ela mesma. Duas condições no mesmo
+número, e em três peles.
+
+### O caminho que a medição aponta
+
+**A janela existe, e não é apertada.** Varrendo o peso da mistura de 0 a 1 e exigindo as duas
+condições ao mesmo tempo:
+
+| pele | janela viável | por que fecha em cima |
+|---|---|---|
+| Clássica / Fita | 0,425 a 0,625 | acima disso o anel preto some na face escura |
+| Foco | 0,370 a 0,500 | acima disso a face passa da letra clara do anel |
+
+A interseção das três é **0,425 a 0,500** -- e dentro dela cai um número que a folha já usa:
+**8 × `RELEVO_DO_BOTAO` = 0,48**. A escala do botão neutro é 1× parado, 2× sob o ponteiro e 4×
+pressionado/marcado (`qt/tema.py:307`); o quinto degrau é o mesmo desenho continuado, e não uma
+sexta escolha de cor -- que é exatamente o que aquele token existe para evitar.
+
+**A regra seria uma, depois do bloco do foco:**
+
+```
+QToolButton:checked:focus { background-color: mistura(superfície, texto, 8 * RELEVO_DO_BOTAO); }
+```
+
+Ela não toca a borda -- o anel continua sendo o do foco, como a S-553 quer -- e vale só no estado
+em que os dois sinais colidem.
+
+| pele | face nova | marcado × apagado (piso 3,0) | anel sobre ela (piso 3,0) |
+|---|---|---|---|
+| Clássica | `#7d7d7d` | **3,61** | **5,10** |
+| Foco | `#808184` | **4,14** | **3,24** |
+| Fita | `#7d7d7d` | **3,61** | **5,10** |
+
+### Solução
+
+**Uma regra, e ela toca só a face** (`qt/tema.py`, depois do bloco do foco):
+
+```
+QToolButton:checked:focus { background-color: mistura(superfície, texto, 8 * RELEVO_DO_BOTAO); }
+```
+
+A borda continua sendo o anel -- é o ponto da S-553, e o teste cobra que esta regra **não** mexa
+nela: se ela repusesse a moldura de ênfase, o foco sumiria justamente no botão marcado, que é o que
+aquele item recusou. A especificidade resolve sozinha (dois pseudo-estados contra um), então a regra
+não depende da ordem para valer -- mas está escrita depois do bloco do foco assim mesmo, porque é
+onde se lê.
+
+**O peso é o quinto degrau de uma escala que já existia.** 1× parado, 2× sob o ponteiro, 4×
+pressionado e marcado, 8× marcado e focado. Continuar a escala em vez de escolher uma sexta cor é o
+que `RELEVO_DO_BOTAO` existe para garantir, e o número que sai (0,48) cai dentro da janela viável
+por construção, não por sorte.
+
+**O custo, registrado:** o botão marcado **escurece** enquanto segura o teclado -- a face nova se
+separa da face marcada normal por 2,03, então dá para ver a mudança ao dar `Tab`. É o mesmo evento
+dizendo-se duas vezes (a borda vira anel e a face afunda), e é o preço de os dois sinais morarem na
+mesma borda de 1 px. As alternativas estão medidas e descartadas na seção da S-553: `outline` não
+serve (o `QToolButton` desenha **0 px** de diferença com ele) e engrossar a borda move o conteúdo.
+
+**Uma guarda vizinha precisou ser alargada, e de propósito.**
+`test_o_anel_nao_desloca_o_conteudo` exigia que **toda** regra `:focus` fosse exatamente
+`border: 1px solid #xxxxxx`. A intenção escrita ali é geometria -- *"nem `padding` novo, nem
+`border-width` maior"* --, e trocar a face não é geometria. O corpo aceito passou a ser uma lista
+fechada de **duas** formas (a borda do anel ou a face), e não "qualquer coisa menos `padding`":
+uma propriedade nova que mova o conteúdo continua tendo de passar por ali para entrar.
+
+### Critério de aceite
+
+| medida | piso | Clássica | Foco | Fita |
+|---|---|---|---|---|
+| marcado+focado × apagado+focado | 3,0 | **3,61** | **4,14** | **3,61** |
+| o anel sobre a face nova | 3,0 | **5,10** | **3,24** | **5,10** |
+
+Antes, o primeiro par media **1,78 / 2,03 / 1,78** e nenhuma guarda o cobrava.
+
+Os quatro estados seguem distintos aos pares em pixel e o botão não muda de tamanho --
+`test_o_foco_se_distingue_do_marcado_e_sobrevive_a_ele`, que já existia e continua verde
+(`pixels_diferentes` levanta quando o tamanho muda).
+
+**Os dois controles**, porque guarda que nunca ficou vermelha não é guarda:
+
+- peso `4 *` no lugar de `8 *` (o degrau que não basta): reprova nas três peles, a 1,78 e 2,03 --
+  que é exatamente o defeito de origem;
+- `padding: 2px` acrescentado à regra nova: reprova nas três peles em
+  `test_o_anel_nao_desloca_o_conteudo`, ou seja, alargar o corpo aceito não cegou a guarda para
+  geometria.
 
 ## S-580 · O fim da faixa reservada — não é item
 
