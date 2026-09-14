@@ -47,12 +47,18 @@ REVISAO = "Revisão"
 TEXTO = "Texto"
 DATASET = "Dataset"
 GALERIA = "Galeria"
+ROTULAGEM = "Rotulagem"
+"""A bancada de rotulagem e treino por livro da suíte (`qt/painel_de_rotulagem.py`, 2026-09-14).
+
+Do acervo, e não do diagrama: ela fala de páginas inteiras de um livro -- o que o motor leu
+linha a linha, o que a pessoa confirmou, o modelo que saiu disso. Só existe quando a suíte
+está ao alcance; num checkout do tronco sem ela a barra tem as seis de antes."""
 CONFIGURACAO = "Configuração"
 
 DO_DIAGRAMA: tuple[str, ...] = (RESULTADO, ESTUDO, REVISAO, TEXTO)
 """As abas que mudam de conteúdo quando se clica num retângulo da página."""
 
-DO_ACERVO: tuple[str, ...] = (DATASET, GALERIA, CONFIGURACAO)
+DO_ACERVO: tuple[str, ...] = (DATASET, GALERIA, ROTULAGEM, CONFIGURACAO)
 """As que falam do livro inteiro. A Configuração fecha a fila: é a aba do primeiro dia."""
 
 ABAS: tuple[str, ...] = DO_DIAGRAMA + DO_ACERVO

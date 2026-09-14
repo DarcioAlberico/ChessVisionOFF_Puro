@@ -85,17 +85,18 @@ from chess_diagram_ocr.config import (
     find_default_pdf_path,
 )
 from chess_diagram_ocr.detection import DiagramCandidate, detect_diagrams_in_pdf_page
-from chess_diagram_ocr.labels import LabelStore, pages_with_training_samples, saved_diagrams_by_page
+from chess_diagram_ocr.qt import acessibilidade, dica, escala, fila, fita, legenda, menu, paleta, plataforma, tema
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
-from chess_diagram_ocr.qt import dica, fila, fita, legenda, menu, paleta, plataforma, tema
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
 from chess_diagram_ocr.qt.campo import PainelDeCampo
 from chess_diagram_ocr.qt.dialogos import ControladorDeTreino
 from chess_diagram_ocr.qt.exportador import Exportador
+from chess_diagram_ocr.qt.marcas import LeitorDeMarcas, paginas_com_amostra_de_treino
 from chess_diagram_ocr.qt.painel_da_galeria import PainelDaGaleria
 from chess_diagram_ocr.qt.painel_de_estudo import PainelDeEstudo
 from chess_diagram_ocr.qt.painel_de_resultado import PainelDeResultado
+from chess_diagram_ocr.qt import painel_de_rotulagem
 from chess_diagram_ocr.qt.painel_de_revisao import PainelDeRevisao
 from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
 from chess_diagram_ocr.qt.painel_do_dataset import PainelDoDataset
@@ -104,7 +105,6 @@ from chess_diagram_ocr.qt.rodape import RodapeDaJanela
 from chess_diagram_ocr.qt.trabalho import DeteccaoDeFundo, Tarefa
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
 from chess_diagram_ocr.service import OcrService, RecognitionOptions, RecognizedDiagram
-from chess_diagram_ocr.splits import load_splits
 from chess_diagram_ocr.ui import (
     abas,
     conjuntos,
@@ -118,6 +118,7 @@ from chess_diagram_ocr.ui import (
 from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.editor_model import DiagramEditorModel
 from chess_diagram_ocr.ui.exportacao_de_pgn import ExportSettings
+from chess_diagram_ocr.ui.galeria_declarada import LARGURA_MINIMA_DA_GALERIA
 from chess_diagram_ocr.ui.page_overlay import (
     BoxClick,
     DiagramBox,
@@ -131,8 +132,9 @@ from chess_diagram_ocr.ui.page_overlay import (
     decide_box_click,
     mark_saved,
 )
-from chess_diagram_ocr.ui.page_results import PageOcrParams
+from chess_diagram_ocr.ui.page_results import PageOcrParams, colocacoes_conferidas
 from chess_diagram_ocr.ui.pedido_de_treino import TrainingRequest
+from chess_diagram_ocr.ui import sala_declarada
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.state import AppState, load_state, save_state
 from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_TEXTO
@@ -142,12 +144,18 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["LARGURA_MINIMA_DAS_ABAS", "LARGURA_MINIMA_DO_VISOR", "JanelaPrincipal"]
 
-LARGURA_MINIMA_DAS_ABAS = 720
+LARGURA_MINIMA_DAS_ABAS = LARGURA_MINIMA_DA_GALERIA
 """O piso do lado esquerdo, somado das partes em `galeria_declarada.LARGURA_MINIMA_DA_GALERIA`.
 
-**É a aba mais exigente que decide o piso**, e não a média: a Galeria precisa de 420 px de recorte
-mais 260 de lateral mais a folga, e abaixo disso quem perde é a coluna de headers -- os controles
-que gravam a procedência de uma partida (S-154)."""
+**É a aba mais exigente que decide o piso**, e não a média: a Galeria precisa do recorte, mais
+260 px de lateral, mais a folga -- e abaixo disso quem perde é a coluna de headers, os controles
+que gravam a procedência de uma partida (S-154).
+
+**Era `720` cravado, e o número tinha se descolado da soma que ele diz ser** (F9-C2). A soma
+valia enquanto o recorte era fixo em 420; quando o item 4 do §7 o trocou por um recorte elástico
+de piso 240, o 720 continuou aqui sozinho -- e uma constante que só coincidia com a fórmula dela
+é uma constante que já divergiu uma vez sem ninguém ver. Agora ela **é** a fórmula, e o piso da
+janela caiu de 1243 px de largura junto com o recorte."""
 
 LARGURA_MINIMA_DO_VISOR = 520
 """O mesmo piso do visualizador do produto: abaixo disso a página não cabe nem no ajuste à
@@ -237,9 +245,16 @@ class JanelaPrincipal(QMainWindow):
         self._divisor_por_posicionar = bool(self._estado.sash_fraction)
         """A alça do divisor ainda espera a primeira aparição da janela. Ver `showEvent`."""
 
+        self.busy = BusyRegistry()
+        """Onde as operações longas se declaram (S-112). **Antes dos painéis** (F9-C3): quem lê
+        ao fundo precisa dela no construtor, e leitura sem registro é invisível ao rodapé."""
+
         self._pdf: Path | None = None
         self._itens: list[RecognizedDiagram] = []
         self._salvos: dict[int, set[int]] = {}
+        self._leitor_de_marcas = LeitorDeMarcas(lambda: self._csv_de_rotulos, self, ocupado=self.busy)
+        """Quem lê o `labels.csv` fora da thread da janela (F9-C2). Ver `qt/marcas.py`."""
+        self._leitor_de_marcas.prontas.connect(self._marcas_chegaram)
         self._caixas_por_pagina = PageBoxesCache()
         self._tiradas = DroppedBoxes()
         """As caixas que a pessoa tirou da página, por (livro, página) (S-177).
@@ -281,9 +296,9 @@ class JanelaPrincipal(QMainWindow):
         A espera custa ~400 ms antes de uma leitura de segundos; o clique numa caixa já lida não
         espera nada, porque selecionar não tranca."""
 
-        self.busy = BusyRegistry()
-        """Onde as operações longas se declaram (S-112). Uma por janela, e é ela que o rodapé
-        desenha e a pergunta de fechamento consulta."""
+        self._analisador = sala_declarada.motor_de_analise()
+        """O motor UCI, ou `None` (F9-C16). **Antes** dos painéis: `PainelDeEstudo` decide na
+        construção se desenha a seção do motor. Ver `ui/sala_declarada.motor_de_analise`."""
 
         self._montar()
         self._ligar()
@@ -328,11 +343,11 @@ class JanelaPrincipal(QMainWindow):
         # que a S-163 fixou -- mensagem à esquerda, estado do documento e operação em curso à
         # direita, altura fixa por construção.
         self.rodape = RodapeDaJanela(corpo, cancelar=self.busy.request_cancel)
-        # **O rodapé pergunta; as operações não avisam** (S-112). Um `BusyToken` que esquecesse de
-        # avisar deixaria a barra girando para sempre, e `release()` esquecido é o erro que de
-        # fato acontece. Os dispositivos entram no mesmo tique porque nenhum dos dois modelos
-        # torch avisa quando muda.
-        self.rodape.acompanhar(self.busy.running, dispositivos=self._dispositivos)
+        # **O rodapé pergunta (S-112) e também é avisado (F9-C4).** Perguntar é a rede contra o
+        # `release()` esquecido, que é o erro que de fato acontece; o aviso fecha os até 400 ms em
+        # que a mensagem já dizia "Lendo o dataset…" e a barra ao lado ainda estava escondida. Os
+        # dispositivos entram no mesmo tique: nenhum dos dois modelos torch avisa quando muda.
+        self.rodape.acompanhar(self.busy.running, dispositivos=self._dispositivos, avisos=self.busy.observe)
         pilha.addWidget(self.rodape)
         self.setCentralWidget(corpo)
 
@@ -348,13 +363,22 @@ class JanelaPrincipal(QMainWindow):
         # foram lidas antes dos widgets, e sem isto o menu abriria sem nada marcado -- que é o
         # mesmo que dizer "nenhuma delas está em uso".
         self._marcar_a_aparencia()
+        # **Um menu não promete o que o produto não faz** (F9-C15 §8 item 1). Ver `menu.impedir`.
+        if self._analisador is None:
+            self.menu.impedir(sala_declarada.COMANDOS_QUE_EXIGEM_MOTOR, motivo=strings.SEM_MOTOR_DICA)
         self._montar_o_cromo(escolhida)
+        acessibilidade.tornar_acessivel(self)  # o nome derivado, aqui e em todo diálogo (F9)
+        escala.aplicar_escala(self)  # o degrau tipográfico (F9-C2); ver o módulo
         self.resize(1440, 900)
 
     def _montar_paineis(self) -> None:
         self.divisor = QSplitter(Qt.Orientation.Horizontal, self)
 
         self.abas = QTabWidget(self.divisor)
+        # **"Abas" não nomeia nada** (F9-C2): é o eco do papel `PageTabList`, e um leitor de tela
+        # já anuncia o papel logo em seguida. O que a pessoa precisa saber é o que este conjunto
+        # de abas **é** dentro da janela -- o lado do trabalho, ao lado do lado do livro.
+        self.abas.setAccessibleName("Áreas de trabalho")
         self.abas.setMinimumWidth(LARGURA_MINIMA_DAS_ABAS)
 
         self.painel = PainelDeResultado(
@@ -365,6 +389,9 @@ class JanelaPrincipal(QMainWindow):
 
         self.estudo = PainelDeEstudo(
             self.abas,
+            # **O motor, se houver um** (F9-C16): sem esta linha os três comandos do menu
+            # Estudo nunca podiam funcionar. Ver `ui/sala_declarada.motor_de_analise`.
+            analyzer=self._analisador,
             # Vínculo de mão única: o estudo lê a posição do diagrama selecionado e nunca escreve
             # de volta. Um lance jogado no estudo não é uma correção do OCR.
             posicao=self._posicao_de_estudo,
@@ -407,6 +434,9 @@ class JanelaPrincipal(QMainWindow):
             busy=self.busy,
         )
         self.abas.addTab(self.galeria, abas.GALERIA)
+        self.rotulagem = painel_de_rotulagem.montar(self.abas)  # a bancada da suíte, se ao alcance
+        if self.rotulagem is not None:
+            self.abas.addTab(self.rotulagem, abas.ROTULAGEM)
 
         self.lado_do_livro = QWidget(self.divisor)
         self.pdf = PainelDoPdf(
@@ -441,6 +471,8 @@ class JanelaPrincipal(QMainWindow):
         self.divisor.addWidget(self.lado_do_livro)
         self.divisor.setStretchFactor(0, 2)
         self.divisor.setStretchFactor(1, 3)
+        # **A alça não apaga a navegação** (F9-C3): colapsar punha 21 de 36 botões fora da tela.
+        self.divisor.setChildrenCollapsible(False)
         # **Os tamanhos iniciais são declarados, e não deduzidos.** O `QSplitter` reparte pela
         # `sizeHint` de cada lado, e a de um `QTabWidget` cheio de rótulos com quebra de linha
         # pede toda a largura que lhe derem.
@@ -528,6 +560,8 @@ class JanelaPrincipal(QMainWindow):
         # restaurar: quem enquadra a primeira abertura é o ajuste à página da S-157.
         if estado.last_pdf:
             self.pdf.aplicar_zoom(estado.pdf_zoom)
+        # Depois do zoom (F9-C3): `aplicar_zoom` desliga o enquadramento.
+        self.pdf.definir_enquadramento(estado.pdf_enquadramento)
         self.pdf.marcar_diagramas.setChecked(estado.show_diagram_boxes)
         self.pdf.roda_vira_pagina.setChecked(estado.wheel_flips_page)
         self.painel.heatmap.setChecked(estado.show_heatmap)
@@ -646,6 +680,7 @@ class JanelaPrincipal(QMainWindow):
         estado.last_pdf = str(self._pdf) if self._pdf is not None else ""
         estado.last_page = self.pdf.page_index
         estado.pdf_zoom = float(self.pdf.zoom)
+        estado.pdf_enquadramento = self.pdf.enquadramento
         estado.show_diagram_boxes = bool(self.pdf.marcar_diagramas.isChecked())
         estado.wheel_flips_page = bool(self.pdf.roda_vira_pagina.isChecked())
         estado.show_heatmap = bool(self.painel.heatmap.isChecked())
@@ -770,6 +805,7 @@ class JanelaPrincipal(QMainWindow):
         self._pilha_do_cromo.setContentsMargins(folga, folga, folga, 0)
         self._pilha_do_cromo.addWidget(barra)
         self.cromo.setVisible(True)
+        self.pdf.nomear_o_que_o_cromo_nao_desenha(self.cromo)  # F9-C7 §3; ver o painel
         return ""
 
     def provar_as_peles(self) -> list[str]:
@@ -800,6 +836,7 @@ class JanelaPrincipal(QMainWindow):
             if widget is not None:
                 widget.setParent(None)
                 widget.deleteLater()
+        self.pdf.nomear_o_que_o_cromo_nao_desenha(None)  # cromo vazio = pele clássica (F9-C7 §3)
 
     def _escolher_pele(self) -> None:
         """`Ver ▸ Aparência`: guarda a pele marcada e remonta o cromo se ela mudou (S-221)."""
@@ -963,19 +1000,22 @@ class JanelaPrincipal(QMainWindow):
         self._atualizar_abas()
 
     def _carregar_marcas_salvas(self) -> None:
-        """Quais diagramas deste livro já têm amostra no CSV (S-71). Só leitura.
+        """Pede as marcas deste livro **fora da thread da janela** (F9-C2). Ver `qt/marcas.py`.
 
-        Vale antes de qualquer OCR, e é o que responde "onde eu parei neste livro?" -- a pergunta
-        que se faz ao abrir um livro pela quinta vez. CSV ausente não é falha: é um checkout sem
-        dados, e ali a resposta honesta é "nenhum".
+        Era leitura síncrona do `labels.csv` inteiro, e o arnês mediu **250 ms** de janela parada
+        na abertura de cada livro -- a pior pilha do "abrir PDF", e não o PyMuPDF que o ciclo 1
+        acusou. O dicionário fica vazio até a resposta chegar, que é a afirmação honesta sobre um
+        livro que acabou de abrir.
         """
         self._salvos = {}
-        if self._pdf is None:
+        if self._pdf is not None:
+            self._leitor_de_marcas.pedir(self._pdf)
+
+    def _marcas_chegaram(self, livro: str, marcas: object) -> None:
+        if self._pdf is None or livro != self._pdf.name:
             return
-        try:
-            self._salvos = saved_diagrams_by_page(LabelStore(self._csv_de_rotulos).read(), self._pdf.name)
-        except OSError as exc:
-            logger.warning("Marcas de salvo indisponíveis (%s): %s", self._csv_de_rotulos, exc)
+        self._salvos = dict(marcas or {})
+        self._atualizar_abas()
 
     def abrir_pdf(self, caminho: Path) -> None:
         """Abre um livro. Delegado ao painel, que é quem conta as páginas e rasteriza."""
@@ -1516,12 +1556,11 @@ class JanelaPrincipal(QMainWindow):
     # ------------------------------------------------------- o que os outros perguntam
 
     def _colocacoes_conferidas(self) -> dict[int, tuple[str, bool]]:
-        """Por diagrama da página exibida: a colocação **corrigida** e se alguém a conferiu (S-95).
+        """As duas listas paralelas da página exibida, entregues a
+        `ui/page_results.colocacoes_conferidas` -- que é onde o *porquê* de ler `fen_edits` mora.
 
-        **Vem de `fen_edits`, e não de `items[i].placement`.** As duas listas são paralelas de
-        propósito -- fundi-las perderia a leitura original --, e a anotação do conjunto de campo
-        já esteve lendo o lado errado: gravava o que o modelo leu como verdade **sobre** o modelo.
-        Corrigir o tabuleiro e anotar a página descartava a correção e gravava o erro.
+        A única parte que precisa da janela é achá-las: no modelo, se ele é desta página; no cache
+        de páginas, se não.
         """
         modelo = self.painel.modelo
         pagina = self.pdf.page_index
@@ -1534,33 +1573,19 @@ class JanelaPrincipal(QMainWindow):
             if guardado is None:
                 return {}
             itens, edicoes = list(guardado.items), list(guardado.fen_edits)
-
-        return {
-            item.index: (
-                edicoes[posicao] if posicao < len(edicoes) else item.placement,
-                bool(item.edited_by_hand),
-            )
-            for posicao, item in enumerate(itens)
-        }
+        return colocacoes_conferidas(itens, edicoes)
 
     def _aviso_de_treino(self) -> str:
         """" · N amostra(s) de treino desta página" quando houver, senão string vazia (S-97).
 
-        Lê o `labels.csv` e o `splits.csv` a cada troca de página, e isso é aceitável **aqui** pelo
-        mesmo motivo que não seria no `Ctrl+S` (S-116): virar página é um gesto por vez, e não o
-        laço interno.
+        **A leitura saiu daqui no F9-C3**, e o número desmente o argumento antigo ("virar página
+        é um gesto por vez"): eram **50,5 ms de 166,2 ms por virada, 30 % dela e 3,2x o portão**.
+        Quem guarda a resposta por `(tamanho, mtime)` é `qt/marcas.paginas_com_amostra_de_treino`.
         """
         if self._pdf is None:
             return ""
         csv_path, _amostras, splits_path = self._caminhos_do_dataset()
-        if not csv_path.exists() or not splits_path.exists():
-            return ""
-        try:
-            paginas = pages_with_training_samples(LabelStore(csv_path).read(), load_splits(splits_path))
-        except (OSError, ValueError) as erro:
-            # Aviso ausente é melhor que janela quebrada: é informação lateral.
-            logger.debug("Não foi possível checar amostras de treino da página: %s", erro)
-            return ""
+        paginas = paginas_com_amostra_de_treino(csv_path, splits_path)
         quantas = paginas.get((self._pdf.name, self.pdf.page_index), 0)
         return f" · ⚠ {quantas} amostra(s) de treino desta página" if quantas else ""
 
@@ -1656,6 +1681,9 @@ class JanelaPrincipal(QMainWindow):
             "proximo_diagrama": lambda: self.painel.andar(1),
             # --- as outras abas
             "proximo_da_fila": self.revisao.abrir_proximo_pendente,
+            # **As duas do F9-C3**: ganharam tecla global, e o motivo está em `ui/atalhos.ATALHOS`.
+            "corrigir_agora": self.revisao.corrigir_agora,
+            "anotar_pagina": self.campo.anotar_pagina,
             "varrer_livro": self.galeria.varrer,
             "exportar_pgn": lambda: self.exportador.comecar(self._pdf),
             "cancelar_exportacao": self.exportador.cancelar,
@@ -1757,29 +1785,25 @@ class JanelaPrincipal(QMainWindow):
                 self.abas.setTabText(indice, abas.rotulo(nome, contagens[nome]))
 
     def _dizer_o_que_ha_na_pagina(self) -> None:
-        """O estado da página no rodapé, e o dispositivo do modelo quando já há um.
-
-        A frase é a de `ui/estado_do_rodape.descricao_dos_diagramas`, que é pura e compartilhada
-        com o Tk -- e é por isso que as duas janelas contam a mesma coisa da mesma maneira.
-        """
+        """O estado da página no rodapé. A contagem e a frase são de `ui/estado_do_rodape.py`,
+        puras e compartilhadas com o Tk -- é por isso que as duas janelas contam igual."""
         if self._pdf is None:
             self.rodape.definir_documento("")
             return
         caixas = self.pdf.boxes
-        na_pagina = caixas.boxes if caixas is not None else ()
-        todos_salvos = bool(na_pagina) and all(caixa.saved for caixa in na_pagina)
+        conta = estado_do_rodape.contagem_das_caixas(caixas.boxes if caixas is not None else ())
         diagramas = estado_do_rodape.descricao_dos_diagramas(
-            len(na_pagina),
+            conta["total"],
             lidos=len(self._itens),
-            salvos=sum(1 for caixa in na_pagina if caixa.saved),
-            confirmados=sum(1 for caixa in na_pagina if caixa.confirmed),
-            todos_salvos=todos_salvos,
+            salvos=conta["salvos"],
+            confirmados=conta["confirmados"],
+            todos_salvos=conta["todos_salvos"],
         )
         self.rodape.definir_documento(
             estado_do_rodape.descricao_do_documento(
                 self._pdf.name, self.pdf.page_index, self.pdf.page_count, diagramas
             ),
-            todos_salvos,
+            conta["todos_salvos"],
         )
 
     def _atualizar_titulo(self) -> None:
@@ -1823,6 +1847,7 @@ class JanelaPrincipal(QMainWindow):
         # custar o último livro, a página e o divisor de quem já mandou fechar (S-156).
         self._gravar_estado()
         self._detector.parar(ESPERA_AO_FECHAR_MS)
+        sala_declarada.encerrar_o_motor(self._analisador)
         if self._tarefa is not None and not self._tarefa.wait(ESPERA_AO_FECHAR_MS):
             logger.warning("A janela fechou com uma tarefa ainda em andamento.")
         if a0 is not None:

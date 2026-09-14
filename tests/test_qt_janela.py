@@ -12,6 +12,7 @@ por construção.
 from __future__ import annotations
 
 import ast
+import re
 import unittest
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -20,7 +21,8 @@ from unittest import mock
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
-from chess_diagram_ocr.ui import abas, pele
+from chess_diagram_ocr.qt import painel_de_rotulagem
+from chess_diagram_ocr.ui import abas, estado_do_rodape, pele
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_TEXTO
 
@@ -124,9 +126,11 @@ class MontagemTests(unittest.TestCase):
         de assunto."""
         janela = self.janela()
         nomes = [abas.nome_base(janela.abas.tabText(i)) for i in range(janela.abas.count())]
-        self.assertEqual(
-            nomes, [abas.RESULTADO, abas.ESTUDO, abas.REVISAO, abas.TEXTO, abas.DATASET, abas.GALERIA]
-        )
+        esperadas = [abas.RESULTADO, abas.ESTUDO, abas.REVISAO, abas.TEXTO, abas.DATASET, abas.GALERIA]
+        # A sétima é da suíte e só existe quando ela está ao alcance (`qt/painel_de_rotulagem.py`).
+        if painel_de_rotulagem.disponivel():
+            esperadas.append(abas.ROTULAGEM)
+        self.assertEqual(nomes, esperadas)
 
     def test_o_visualizador_fica_ao_lado_das_abas_e_nao_dentro_delas(self) -> None:
         """É a repartição do produto: a página do livro à direita, o trabalho à esquerda.
@@ -499,6 +503,24 @@ class FiacaoTests(unittest.TestCase):
         self.assertTrue(releu.called, "o Dataset não foi avisado da amostra nova")
         self.assertTrue(recontou.called)
 
+    def test_a_janela_liga_o_rodape_ao_aviso_do_registro_e_nao_so_ao_relogio(self) -> None:
+        """A barra e o `Cancelar` acendem no mesmo turno da frase (F9-C4).
+
+        **A ligação é a metade que não tem teste de painel.** `RodapeDaJanela.assinar_ocupacao`
+        é afirmado em `test_qt_rodape.py`, e um rodapé que sabe assinar mas que ninguém assina
+        deixa o mesmo defeito na tela: o relógio de `acompanhar` é de 400 ms e a zona de mensagem
+        é escrita por sinal, então nesses 400 ms o rodapé diz "Lendo o dataset…" com a barra
+        escondida e o `Cancelar` cinzento -- fotografado em
+        `benchmarks/reports/ui/c4/c4_claro_1280x800_dataset.png`, 1 das 36 capturas.
+        """
+        janela = self.janela(com_livro=False)
+        self.assertFalse(janela.rodape._barra.isVisible(), "a barra apareceu sem operação")
+        ficha = janela.busy.register("leitura do dataset", loses_work=False, cancellable=True, cancel=lambda: None)
+        self.addCleanup(ficha.release)
+        # Sem `processEvents` e sem esperar tique nenhum: o aviso tem de bastar.
+        self.assertTrue(janela.rodape._btn_cancelar.isEnabled(), "o Cancelar ficou cinzento com operação viva")
+        self.assertEqual(janela.rodape._modo_da_barra, estado_do_rodape.INDETERMINADO)
+
     def test_salvar_um_item_da_fila_fecha_o_item(self) -> None:
         """`Ctrl+S` sobre um item da fila também o fecha (S-22), e quem fecha é a aba de Revisão."""
         janela = self.janela()
@@ -756,7 +778,10 @@ class FiacaoTests(unittest.TestCase):
         janela.exportador.controles.emit(False)
 
         self.assertTrue(janela.pdf.btn_cancelar_exportacao.isEnabled())
-        self.assertFalse(janela.pdf.btn_exportar.isEnabled(), "dá para começar duas exportações")
+        # **`Exportar PDF → PGN` saiu da barra para o menu `Arquivo`** (F9-C2, §7 item 11), e o
+        # bloco do cancelar entra em cena no lugar dele. O que este teste afirma é o fio do
+        # exportador até o painel, e ele continua igual.
+        self.assertTrue(janela.pdf._bloco_exportacao.isVisibleTo(janela.pdf))
         self.assertFalse(janela.abas.isEnabled(), "o resto da janela não trancou")
 
     def test_ler_melhor_e_ler_pagina_deixaram_de_ser_o_mesmo_comando(self) -> None:
@@ -1327,6 +1352,215 @@ class DesfazerTests(unittest.TestCase):
         self.app.processEvents()
         self.assertIs(janela.texto.editor, janela._foco())
         self.assertTrue(janela.texto.contem(janela._foco()))
+
+
+
+class EstadoVazioNaTelaTests(unittest.TestCase):
+    """O nome que o estado vazio manda apertar tem de estar **na tela**, e nao so no catalogo.
+
+    **Este e o item 2 do ciclo 5, na sua segunda forma.** O critico mediu que
+    `qt/painel_de_resultado.MENSAGEM_VAZIA` mandava usar *"Ler pagina"* -- 0 controles visiveis com
+    esse nome nas duas peles -- e o conserto do ciclo 6 trocou o literal por
+    `comandos.rotulo("ler_pagina")`, "Ler esta pagina". O teste de cruzamento com o catalogo
+    (`tests/test_ui_comandos.EstadoVazioNomeiaControleQueExisteTests`) ficou verde, porque o nome
+    esta mesmo no catalogo -- **e a tela continuou sem ele**: na pele Foco a pilula mostra "OCR
+    todos diagramas" e na classica o botao e so-de-icone e nao mostra nada. Um catalogo nao e uma
+    tela.
+
+    **E ela teve uma terceira forma, que esta guarda deixou passar** (F9-C7, §3). O conserto do
+    ciclo 6 pos o nome do botao na **dica** do botao so-de-icone, e a varredura abaixo aceitava
+    `toolTip()` como "na tela": o portao ficou verde com **zero** controles desenhando o nome na
+    pele padrao, enquanto `OCR melhor diagrama` -- **outro comando** -- estava em azul a 40 px.
+    Uma dica nao esta na tela. Ela exige que o ponteiro pouse sobre o icone certo, e quem le a
+    frase nao sabe qual e o icone certo -- e' justamente isso que a frase deveria dizer.
+
+    **Hoje a varredura le so o `text()` desenhado**, em **todas** as peles registradas e nas tres
+    larguras que o arnes captura. `accessibleName` nao vale, pela mesma razao de sempre -- ele e
+    para quem ouve, e a frase que se le manda procurar com os olhos --, e `toolTip()` nao vale
+    mais, pela razao de cima. A prova de vida esta em
+    `test_apagar_o_texto_do_botao_reprova_este_portao`, e ela reprovava **antes** do conserto:
+    com a regua do ciclo 6 apagar o texto do botao deixava a dica em pe, e o portao passava.
+    """
+
+    LARGURAS = ((1920, 1080), (1366, 768), (1280, 800))
+    """As tres do arnes de captura. Um nome pode caber a 1920 e sumir a 1280 -- o refluxo da
+    barra esconde controle, e um portao medido numa largura so nao veria isso."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not TEM_PYQT:  # pragma: no cover - venv sem binding
+            raise unittest.SkipTest(MOTIVO)
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+        from chess_diagram_ocr.qt import tema
+
+        self.addCleanup(tema.aplicar_tema)
+
+    def _janela(self, pele_nome: str) -> JanelaPrincipal:
+        estado = self.pasta / ("janela_" + pele_nome + ".json")
+        estado.write_text('{"version": 6, "skin": "' + pele_nome + '"}', encoding="utf-8")
+        montada = JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=self.pasta / "labels.csv",
+            pasta_de_estudos=self.pasta,
+            pasta_da_galeria=self.pasta,
+            caminho_do_estado=estado,
+        )
+        self.addCleanup(descartar, montada)
+        montada.resize(1400, 900)
+        montada.show()
+        self.app.processEvents()
+        return montada
+
+    @staticmethod
+    def _mensagens() -> dict[str, str]:
+        from chess_diagram_ocr.qt import painel_de_resultado
+        from chess_diagram_ocr.ui import strings
+
+        return {
+            "ui/strings.TEXTO_VAZIO_FRASE": strings.TEXTO_VAZIO_FRASE,
+            "ui/strings.EDITOR_VAZIO": strings.EDITOR_VAZIO,
+            "qt/painel_de_resultado.MENSAGEM_VAZIA": painel_de_resultado.MENSAGEM_VAZIA,
+        }
+
+    @staticmethod
+    def _lido_na_tela(janela: JanelaPrincipal) -> set[str]:
+        """So o que esta **desenhado**: o `text()` de um controle visivel, e mais nada.
+
+        **A dica saiu, e a saida dela e o conserto do ciclo 8** (F9-C7, §3). Ela entrava porque um
+        botao so-de-icone nao tinha outro canal visual -- e a consequencia foi que o produto
+        respondeu movendo o nome para a dica: a tela continuou sem ele e este portao ficou verde.
+        Uma regua que aceita o texto de uma dica como pixel desenhado nao mede a tela; ela mede a
+        intencao. O canal visual que faltava passou a existir de verdade, em
+        `qt/painel_do_pdf.PainelDoPdf.nomear_o_que_o_cromo_nao_desenha`.
+
+        **O espaco em branco e normalizado, e nao e afrouxamento**: a pele fita quebra o rotulo
+        em duas linhas (`ui/medidas_da_fita.quebrar_rotulo`), e "OCR todos" + quebra +
+        "diagramas" sao as mesmas palavras desenhadas na mesma pilula. O que continua nao vale
+        desenhado.
+        """
+        from PyQt6.QtWidgets import QAbstractButton
+
+        nomes: set[str] = set()
+        for controle in janela.findChildren(QAbstractButton):
+            if not controle.isVisible():
+                continue
+            texto = " ".join((controle.text() or "").replace("&", "").split())
+            if texto:
+                nomes.add(texto)
+        return nomes
+
+    def _ausentes(self, janela: JanelaPrincipal) -> list[tuple[str, str]]:
+        """Os `(onde, nome)` citados num estado vazio que nenhum controle visivel desenha.
+
+        **O corpo do portao mora aqui e nao no teste**, para que a prova de vida meça o mesmo
+        codigo que o portao mede. Uma prova de vida que reimplementasse a varredura provaria que
+        a copia dela reprova.
+        """
+        # **Os dois pares de aspas** (F9-C8). As três mensagens passaram a usar as tipográficas
+        # (`ui/strings.ASPA_ABRE`), e uma regex que só conhecesse a reta devolveria **zero**
+        # citações -- e um portão que não acha nada para cobrar passa em verde. Trocar aspas não
+        # pode apagar a cobrança; é a forma mais barata do defeito que este ciclo fechou.
+        citado = re.compile(r'["“]([^"“”]{3,60})["”]')
+        na_tela: set[str] = set()
+        for largura, altura in self.LARGURAS:
+            janela.resize(largura, altura)
+            self.app.processEvents()
+            # **Uma aba de cada vez, somando.** `isVisible()` e falso para o controle de uma
+            # aba que nao esta a frente: varrer uma vez so, depois do laco, leria a ultima aba
+            # e nenhuma outra -- e o estado vazio da aba Texto cita botoes da aba Texto.
+            for indice in range(janela.abas.count()):
+                janela.abas.setCurrentIndex(indice)
+                self.app.processEvents()
+                na_tela |= self._lido_na_tela(janela)
+        return [
+            (onde, nome)
+            for onde, texto in self._mensagens().items()
+            for nome in citado.findall(texto)
+            if nome not in na_tela
+        ]
+
+    def test_todo_nome_citado_num_estado_vazio_esta_desenhado_em_toda_pele(self) -> None:
+        for registro in pele.PELES:
+            with self.subTest(pele=registro.nome):
+                ausentes = self._ausentes(self._janela(registro.nome))
+                self.assertEqual(
+                    [],
+                    ausentes,
+                    "estado vazio citando nome que nenhum controle visivel DESENHA: "
+                    + ", ".join(f"{onde}: {nome!r}" for onde, nome in ausentes),
+                )
+
+    def test_apagar_o_texto_do_botao_reprova_este_portao(self) -> None:
+        """**A prova de vida**, e ela e a razao de este portao ter mudado (F9-C7, §3).
+
+        Apagar o texto do botao de `ler_pagina` e exatamente o estado do ciclo 7: o nome so na
+        dica, e nenhum controle o desenhando. Com a regua de entao -- que aceitava `toolTip()` --
+        este teste **passaria em verde**, porque a dica sobrevive ao `setText("")`. Aqui ele tem
+        de reprovar, e tem de reprovar nomeando `MENSAGEM_VAZIA` e o nome que sumiu.
+
+        A dica continua de pe de proposito: e o que faz esta sabotagem medir a regua e nao o
+        acaso.
+        """
+        janela = self._janela(pele.CLASSICA)
+        botao = janela.pdf.btn_ler_pagina
+        self.assertEqual("OCR todos diagramas", botao.text(), "a pele classica parou de nomear")
+
+        # **O estado do ciclo 7, reposto pelo caminho do proprio produto**: mentir que o cromo ja
+        # desenha o nome tira o texto do botao **e** repoe a dica de dois nomes. Sabotar so com
+        # `setText("")` seria uma sabotagem mais fraca -- ela tambem apagaria o nome da dica, e o
+        # portao reprovaria mesmo com a regua velha, provando nada sobre a regua.
+        from PyQt6.QtWidgets import QPushButton, QWidget
+
+        mentira = QWidget()
+        QPushButton("OCR todos diagramas", mentira)
+        janela.pdf.nomear_o_que_o_cromo_nao_desenha(mentira)
+        self.assertEqual("", botao.text(), "a sabotagem nao apagou o texto")
+        self.assertIn(
+            "OCR todos diagramas",
+            botao.toolTip(),
+            "a dica tem de carregar o nome: e' exatamente ela que a regua do ciclo 7 aceitava",
+        )
+
+        ausentes = self._ausentes(janela)
+
+        self.assertEqual(
+            [("qt/painel_de_resultado.MENSAGEM_VAZIA", "OCR todos diagramas")],
+            ausentes,
+            "apagar o texto do botao nao reprovou: a regua voltou a aceitar o que nao esta na tela",
+        )
+
+    def test_a_varredura_le_o_texto_desenhado_e_nao_a_dica(self) -> None:
+        """O controle da guarda acima -- uma varredura que devolvesse demais passaria por engano.
+
+        Se `_lido_na_tela` devolvesse vazio, o teste anterior falharia e alguem notaria. O risco
+        de verdade e o contrario: guardar a dica, ou o `accessibleName`, faz o cruzamento aceitar
+        nome que ninguem le. Aqui se afirma o que ela deve conter **e o que nao**.
+        """
+        janela = self._janela(pele.CLASSICA)
+        na_tela = self._lido_na_tela(janela)
+        self.assertIn("Abrir PDF", na_tela, "o rotulo visivel mais estavel da janela sumiu")
+        self.assertIn("OCR todos diagramas", na_tela, "a barra do visor parou de desenhar o nome")
+
+        botao = janela.pdf.btn_ler_pagina
+        dica = botao.toolTip()
+        self.assertNotIn(dica, na_tela, "a varredura guardou a dica inteira")
+        for pedaco in dica.replace(" — ", chr(10)).splitlines():
+            if pedaco.strip() and pedaco.strip() != botao.text():
+                self.assertNotIn(
+                    pedaco.strip(),
+                    na_tela,
+                    f"a varredura aceitou {pedaco.strip()!r}, que so existe na dica: uma dica nao "
+                    "esta na tela, e foi por aceita-la que o defeito do ciclo 7 passou em verde",
+                )
+        self.assertNotIn(
+            janela.pdf.btn_tirar_caixa.accessibleName(),
+            na_tela,
+            "a varredura aceitou o nome acessivel: ele e para quem ouve",
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover

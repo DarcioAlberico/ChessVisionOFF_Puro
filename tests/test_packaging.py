@@ -250,8 +250,52 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1862
+    LIMITE = 1887
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.883 -> 1.887 com a aba Rotulagem (2026-09-14), e as quatro linhas são a montagem de uma
+    aba que não é deste repositório.** O painel é da suíte (`caissa.ui.views.rotulagem`); a
+    pergunta "a suíte está ao alcance?" e o motivo de ela não estar moram em
+    `qt/painel_de_rotulagem.py`. Aqui ficam o `import`, a chamada e o `addTab` sob a guarda --
+    a janela é quem sabe onde a sétima aba entra na ordem da S-162.
+
+    **1.882 -> 1.883 no F9-C8, e a linha é uma só** -- o bloqueante do ciclo 7. `MENSAGEM_VAZIA`
+    manda apertar *"OCR todos diagramas"*, e a pele clássica, que é a padrão, desenhava esse nome
+    em **zero** controles visíveis nas três larguras, com `OCR melhor diagrama` -- outro comando
+    -- em azul a 40 px. Quem decide isso é a janela, porque é ela que monta o cromo de cada pele e
+    é ela quem sabe o que a fila ou a fita acabaram de escrever: a linha entrega o **contêiner do
+    cromo** ao painel do PDF, que responde se o botão de `ler_pagina` mostra o nome ou fica só com
+    o ícone. A regra inteira -- quais botões entram, por que a dica do ciclo 6 não bastava, e por
+    que dois controles com o mesmo rótulo é o defeito oposto -- está em
+    `qt/painel_do_pdf.nomear_o_que_o_cromo_nao_desenha`, que é onde ela pode ser testada sem abrir
+    janela. A primeira forma deste conserto punha 24 linhas aqui (um método com o docstring); esta
+    catraca as achou, e o que sobrou foi uma chamada. A segunda chamada mora em
+    `_esvaziar_o_cromo`, na linha que já existia para esvaziar o contêiner.
+
+    **1.863 -> 1.882 no F9-C2, e as 19 linhas são de três itens do §7 da crítica.** A catraca pede
+    que subir seja uma decisão escrita, então aqui está o que entrou e por que não coube em `ui/`:
+
+    - **duas linhas** de escala tipográfica (item 9): `escala.aplicar_escala(self)` no fim da
+      montagem, mais o `import`. Mesma forma da linha de `nomear_tudo` logo abaixo, e pela mesma
+      razão -- a decisão de que degrau cada widget ocupa está em `ui/tipografia.PAPEL_POR_CLASSE`,
+      a varredura em `qt/escala.py`, e aqui fica só o momento em que a montagem acabou;
+    - **quatro linhas** para o leitor de marcas (item 5): o objeto, o docstring dele e a ligação do
+      sinal. O trabalho inteiro -- ler o `labels.csv` fora da thread da janela e descartar a
+      resposta atrasada quando a pessoa troca de livro -- está em `qt/marcas.py`, que é novo;
+    - **as demais** são `_marcas_chegaram`, o slot que recebe aquela resposta. Ele mora aqui porque
+      ele mexe em `self._salvos` e chama `_atualizar_abas`, que são estado e desenho **da janela**;
+      pô-lo em `qt/marcas.py` faria aquele módulo conhecer o rótulo das abas.
+
+    O que saiu no mesmo item compensa parte: `_carregar_marcas_salvas` era um corpo de sete linhas
+    com `try/except` e agora são três, porque a leitura e a degradação dela mudaram de arquivo.
+
+    **1.862 → 1.863 com o nome acessível da janela inteira (F9)**, e a linha é uma só:
+    `acessibilidade.nomear_tudo(self)`, no fim da montagem. O arnês `caissa.ui.audit.teclado`
+    mediu, por aba, entre 4 e 15 controles chegando ao leitor de tela **sem nome nenhum** -- doze
+    campos de texto, seis réguas de zoom, cinco caixas de escolha --; depois dela são zero nas
+    seis abas. A decisão de como um controle sem rótulo é anunciado está em
+    `ui/nomes_acessiveis.py` e a varredura em `qt/acessibilidade.py`: aqui fica só a chamada,
+    porque é a janela que sabe quando a montagem acabou.
 
     **1.832 → 1.862 com a detecção ao virar a página (S-68)**, que o porte tinha deixado no
     botão "Marcar diagramas": sem caixa, o duplo clique não acha nada. As trinta são o pedido ao
