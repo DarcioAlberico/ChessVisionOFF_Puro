@@ -250,8 +250,17 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1887
+    LIMITE = 1902
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.887 -> 1.902 com *Exportar o livro para EPUB/DOCX* (2026-09-14), e as quinze linhas são
+    a montagem de um exportador que não é deste repositório.** O diálogo, a thread e a regra do
+    intervalo de páginas são da suíte (`caissa.ui.views.exportacao`, `caissa.export.book`); a
+    pergunta "a suíte está ao alcance?" e o motivo de ela não estar moram em
+    `qt/exportador_de_livro.py`. Aqui ficam o `import`, a montagem ligada ao rodapé e à tranca,
+    o `impedir` dos dois itens quando ela falta, as duas linhas da tabela de comandos e
+    `_exportar_livro` -- o slot que sabe qual PDF está aberto e em que página, que é estado da
+    janela.
 
     **1.883 -> 1.887 com a aba Rotulagem (2026-09-14), e as quatro linhas são a montagem de uma
     aba que não é deste repositório.** O painel é da suíte (`caissa.ui.views.rotulagem`); a

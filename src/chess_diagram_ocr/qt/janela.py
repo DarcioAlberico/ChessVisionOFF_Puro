@@ -96,7 +96,7 @@ from chess_diagram_ocr.qt.marcas import LeitorDeMarcas, paginas_com_amostra_de_t
 from chess_diagram_ocr.qt.painel_da_galeria import PainelDaGaleria
 from chess_diagram_ocr.qt.painel_de_estudo import PainelDeEstudo
 from chess_diagram_ocr.qt.painel_de_resultado import PainelDeResultado
-from chess_diagram_ocr.qt import painel_de_rotulagem
+from chess_diagram_ocr.qt import exportador_de_livro, painel_de_rotulagem
 from chess_diagram_ocr.qt.painel_de_revisao import PainelDeRevisao
 from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
 from chess_diagram_ocr.qt.painel_do_dataset import PainelDoDataset
@@ -366,6 +366,8 @@ class JanelaPrincipal(QMainWindow):
         # **Um menu não promete o que o produto não faz** (F9-C15 §8 item 1). Ver `menu.impedir`.
         if self._analisador is None:
             self.menu.impedir(sala_declarada.COMANDOS_QUE_EXIGEM_MOTOR, motivo=strings.SEM_MOTOR_DICA)
+        if self.exportador_de_livro is None:
+            self.menu.impedir(exportador_de_livro.COMANDOS, motivo=exportador_de_livro.MOTIVO_AUSENTE)
         self._montar_o_cromo(escolhida)
         acessibilidade.tornar_acessivel(self)  # o nome derivado, aqui e em todo diálogo (F9)
         escala.aplicar_escala(self)  # o degrau tipográfico (F9-C2); ver o módulo
@@ -482,6 +484,8 @@ class JanelaPrincipal(QMainWindow):
         self.exportador = Exportador(
             self, configuracao=self._configuracao_de_exportacao, servico=self._servico, busy=self.busy
         )
+        # EPUB/DOCX pela suíte, se ao alcance; sem ela os itens ficam cinza com o motivo na dica.
+        self.exportador_de_livro = exportador_de_livro.montar(self, dizer=self._dizer, trancar=self._trancar)
 
     @property
     def editor(self) -> DiagramEditorModel:
@@ -1617,6 +1621,15 @@ class JanelaPrincipal(QMainWindow):
             splits_path=splits,
         )
 
+    def _exportar_livro(self, formato: str) -> None:
+        """O diálogo da suíte (`qt/exportador_de_livro.py`); sem ela, o motivo vai ao rodapé."""
+        if self.exportador_de_livro is None:
+            self._dizer(exportador_de_livro.MOTIVO_AUSENTE.splitlines()[0])
+            return
+        self.exportador_de_livro.comecar(
+            self._pdf, self.pdf.page_count, formato=formato, pagina_atual=self.pdf.page_index
+        )
+
     def _configuracao_de_exportacao(self) -> ExportSettings:
         return ExportSettings(
             model_path=DEFAULT_MODEL_PATH,
@@ -1686,6 +1699,8 @@ class JanelaPrincipal(QMainWindow):
             "anotar_pagina": self.campo.anotar_pagina,
             "varrer_livro": self.galeria.varrer,
             "exportar_pgn": lambda: self.exportador.comecar(self._pdf),
+            "exportar_epub": lambda: self._exportar_livro("epub"),
+            "exportar_docx": lambda: self._exportar_livro("docx"),
             "cancelar_exportacao": self.exportador.cancelar,
             "treinar": self.treino.iniciar,
             "recarregar_modelo": self._recarregar_modelo,

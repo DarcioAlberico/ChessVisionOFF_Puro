@@ -138,6 +138,8 @@ MENUS: tuple[Menu, ...] = (
             Item("abrir_no_leitor"),
             _sep(),
             Item("exportar_pgn"),
+            Item("exportar_epub"),
+            Item("exportar_docx"),
             Item("cancelar_exportacao"),
             _sep(),
             Item("sair"),

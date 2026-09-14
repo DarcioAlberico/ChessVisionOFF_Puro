@@ -180,6 +180,13 @@ CATALOGO: tuple[Comando, ...] = (
         icone="exportar_pgn",
         rotulo_curto=f"Exportar PDF {strings.SETA} PGN",
     ),
+    # **O livro como EPUB ou DOCX, inteiro ou por intervalo de páginas** (2026-09-14). A regra e
+    # o diálogo são da suíte (`caissa.export.book`, `caissa.ui.views.exportacao`); o tronco só os
+    # monta (`qt/exportador_de_livro.py`), e sem a suíte ao alcance os dois itens ficam
+    # desabilitados com o motivo na dica. Sem ícone porque não vão à fita: exporta-se uma vez por
+    # livro, e a fita é dimensionada por frequência (S-223).
+    Comando("exportar_epub", "Exportar o livro para EPUB…", ARQUIVO, estilos.NEUTRO),
+    Comando("exportar_docx", "Exportar o livro para DOCX…", ARQUIVO, estilos.NEUTRO),
     # Sem item de menu hoje, e por isso ele **precisa** estar aqui: é o comando que só existe
     # como botão, e a S-233 mede exatamente esse caso quando for esconder controle.
     Comando(

@@ -21,7 +21,7 @@ from unittest import mock
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
-from chess_diagram_ocr.qt import painel_de_rotulagem
+from chess_diagram_ocr.qt import exportador_de_livro, painel_de_rotulagem
 from chess_diagram_ocr.ui import abas, estado_do_rodape, pele
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_TEXTO
@@ -131,6 +131,33 @@ class MontagemTests(unittest.TestCase):
         if painel_de_rotulagem.disponivel():
             esperadas.append(abas.ROTULAGEM)
         self.assertEqual(nomes, esperadas)
+
+    def test_exportar_epub_e_docx_so_prometem_o_que_a_suite_entrega(self) -> None:
+        """**Um menu não promete o que o produto não faz** (`menu.impedir`). Os dois itens de
+        Arquivo são da suíte (`qt/exportador_de_livro.py`): com ela ao alcance a janela tem o
+        exportador montado e o item chama o diálogo; sem ela os itens ficam cinza com o motivo na
+        dica, e o comando, se alcançado pela paleta, responde no rodapé em vez de levantar."""
+        janela = self.janela()
+        tabela = janela._comandos()
+        for acao in exportador_de_livro.COMANDOS:
+            with self.subTest(acao=acao):
+                self.assertIn(acao, tabela)
+                self.assertIn(acao, janela.menu.acoes)
+        if exportador_de_livro.disponivel():
+            self.assertIsNotNone(janela.exportador_de_livro)
+            for acao in exportador_de_livro.COMANDOS:
+                self.assertTrue(janela.menu.acoes[acao].isEnabled())
+            # Sem livro aberto o exportador responde no rodapé, sem abrir diálogo.
+            tabela["exportar_epub"]()
+            self.assertIn("Abra um PDF", janela.rodape.mensagem())
+            return
+        self.assertIsNone(janela.exportador_de_livro)
+        for acao in exportador_de_livro.COMANDOS:
+            with self.subTest(acao=acao):
+                self.assertFalse(janela.menu.acoes[acao].isEnabled())
+                self.assertEqual(janela.menu.acoes[acao].toolTip(), exportador_de_livro.MOTIVO_AUSENTE)
+        tabela["exportar_docx"]()
+        self.assertIn("suíte", janela.rodape.mensagem())
 
     def test_o_visualizador_fica_ao_lado_das_abas_e_nao_dentro_delas(self) -> None:
         """É a repartição do produto: a página do livro à direita, o trabalho à esquerda.
