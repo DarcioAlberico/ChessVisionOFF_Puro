@@ -96,7 +96,7 @@ from chess_diagram_ocr.qt.marcas import LeitorDeMarcas, paginas_com_amostra_de_t
 from chess_diagram_ocr.qt.painel_da_galeria import PainelDaGaleria
 from chess_diagram_ocr.qt.painel_de_estudo import PainelDeEstudo
 from chess_diagram_ocr.qt.painel_de_resultado import PainelDeResultado
-from chess_diagram_ocr.qt import exportador_de_livro, painel_de_rotulagem
+from chess_diagram_ocr.qt import exportador_de_livro, painel_de_revisao_de_texto, painel_de_rotulagem
 from chess_diagram_ocr.qt.painel_de_revisao import PainelDeRevisao
 from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
 from chess_diagram_ocr.qt.painel_do_dataset import PainelDoDataset
@@ -439,6 +439,9 @@ class JanelaPrincipal(QMainWindow):
         self.rotulagem = painel_de_rotulagem.montar(self.abas)  # a bancada da suíte, se ao alcance
         if self.rotulagem is not None:
             self.abas.addTab(self.rotulagem, abas.ROTULAGEM)
+        self.revisao_de_texto = painel_de_revisao_de_texto.montar(self.abas)  # idem, passo 14
+        if self.revisao_de_texto is not None:
+            self.abas.addTab(self.revisao_de_texto, abas.REVISAO_DE_TEXTO)
 
         self.lado_do_livro = QWidget(self.divisor)
         self.pdf = PainelDoPdf(

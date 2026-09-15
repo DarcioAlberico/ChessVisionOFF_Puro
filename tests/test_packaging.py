@@ -250,8 +250,14 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1902
+    LIMITE = 1905
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.902 -> 1.905 com a aba Revisão de texto (2026-09-15), e as três linhas são a montagem
+    de uma aba que não é deste repositório.** O painel é da suíte
+    (`caissa.ui.views.revisao_de_texto`, OCR_UI_ROADMAP passo 14); a guarda mora em
+    `qt/painel_de_revisao_de_texto.py`. Aqui ficam a chamada e o `addTab` sob a guarda, na
+    ordem da S-162 -- depois da Rotulagem, antes da Configuração.
 
     **1.887 -> 1.902 com *Exportar o livro para EPUB/DOCX* (2026-09-14), e as quinze linhas são
     a montagem de um exportador que não é deste repositório.** O diálogo, a thread e a regra do

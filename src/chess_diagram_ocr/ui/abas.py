@@ -53,12 +53,19 @@ ROTULAGEM = "Rotulagem"
 Do acervo, e não do diagrama: ela fala de páginas inteiras de um livro -- o que o motor leu
 linha a linha, o que a pessoa confirmou, o modelo que saiu disso. Só existe quando a suíte
 está ao alcance; num checkout do tronco sem ela a barra tem as seis de antes."""
+REVISAO_DE_TEXTO = "Revisão de texto"
+"""A revisão dos spans duvidosos do livro importado (`qt/painel_de_revisao_de_texto.py`,
+2026-09-15, OCR_UI_ROADMAP passo 14).
+
+Do acervo pela mesma razão da Rotulagem: a unidade é o livro importado, não o diagrama
+clicado. Não é a `Revisão` (S-22), que é a fila de diagramas -- ver o cabeçalho do módulo.
+Só existe quando a suíte está ao alcance."""
 CONFIGURACAO = "Configuração"
 
 DO_DIAGRAMA: tuple[str, ...] = (RESULTADO, ESTUDO, REVISAO, TEXTO)
 """As abas que mudam de conteúdo quando se clica num retângulo da página."""
 
-DO_ACERVO: tuple[str, ...] = (DATASET, GALERIA, ROTULAGEM, CONFIGURACAO)
+DO_ACERVO: tuple[str, ...] = (DATASET, GALERIA, ROTULAGEM, REVISAO_DE_TEXTO, CONFIGURACAO)
 """As que falam do livro inteiro. A Configuração fecha a fila: é a aba do primeiro dia."""
 
 ABAS: tuple[str, ...] = DO_DIAGRAMA + DO_ACERVO

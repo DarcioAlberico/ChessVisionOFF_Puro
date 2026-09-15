@@ -21,7 +21,7 @@ from unittest import mock
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
-from chess_diagram_ocr.qt import exportador_de_livro, painel_de_rotulagem
+from chess_diagram_ocr.qt import exportador_de_livro, painel_de_revisao_de_texto, painel_de_rotulagem
 from chess_diagram_ocr.ui import abas, estado_do_rodape, pele
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_TEXTO
@@ -127,9 +127,12 @@ class MontagemTests(unittest.TestCase):
         janela = self.janela()
         nomes = [abas.nome_base(janela.abas.tabText(i)) for i in range(janela.abas.count())]
         esperadas = [abas.RESULTADO, abas.ESTUDO, abas.REVISAO, abas.TEXTO, abas.DATASET, abas.GALERIA]
-        # A sétima é da suíte e só existe quando ela está ao alcance (`qt/painel_de_rotulagem.py`).
+        # A sétima e a oitava são da suíte e só existem quando ela está ao alcance
+        # (`qt/painel_de_rotulagem.py`, `qt/painel_de_revisao_de_texto.py`).
         if painel_de_rotulagem.disponivel():
             esperadas.append(abas.ROTULAGEM)
+        if painel_de_revisao_de_texto.disponivel():
+            esperadas.append(abas.REVISAO_DE_TEXTO)
         self.assertEqual(nomes, esperadas)
 
     def test_exportar_epub_e_docx_so_prometem_o_que_a_suite_entrega(self) -> None:
