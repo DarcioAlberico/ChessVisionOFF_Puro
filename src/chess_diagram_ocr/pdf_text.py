@@ -159,6 +159,14 @@ class DiagramContext:
     """Confiança do trecho que decidiu. 1,0 para a camada de texto, o que o motor disser
     para o OCR. Sobrevive até o `[SideToMoveConfidence]` do PGN quando não é 1,0."""
 
+    first_move_number: tuple[int, bool] | None = None
+    """`(número, é_das_pretas)` do primeiro lance impresso **sob** o diagrama (passo 7):
+    `22... ♖g8` → `(22, True)`; `23 ♘c4` → `(23, False)`. `None` quando não há."""
+
+    caption_after_move: tuple[int, bool] | None = None
+    """`(número, é_das_pretas)` da vez **depois** do lance que a legenda "após N.x" cita:
+    `after 23...Bd5` → `(24, False)`; `após 23.♘c4` → `(23, True)`."""
+
     exercise_number: int | None = None
     players: tuple[str, str] | None = None
     event: str | None = None
@@ -992,6 +1000,63 @@ class _SideDecision:
     confidence: float
 
 
+#: Passo 7: o primeiro lance sob o diagrama (`22... ♖g8`, `23 ♘c4`, `23.Nc4`) e a legenda
+#: "após/after/nach/después/после N.x". O lookahead exige peça ou casa depois do número, para
+#: "119 Bartrina - Ghitescu" (número de exercício) não passar por lance.
+_TOKEN_DE_LANCE = r"(?=[♔-♟]|[KQRBNDTLSCФЛКС][a-h]?[1-8x]|[a-h][1-8x]|O-O|0-0)"
+_INICIO_DE_LANCE = re.compile(r"^\s*(\d{1,3})\s*(\.{3}|…|\.)?\s*" + _TOKEN_DE_LANCE)
+_APOS_O_LANCE = re.compile(
+    r"\b(?:ap[oó]s|depois de|after|nach|despu[eé]s de|после|posle)\s+(\d{1,3})\s*(\.{3}|…|\.)\s*"
+    + _TOKEN_DE_LANCE,
+    re.IGNORECASE,
+)
+
+
+def inicio_de_lance(text: str) -> tuple[int, bool] | None:
+    """`(número, é_das_pretas)` quando o texto abre com um lance numerado."""
+    match = _INICIO_DE_LANCE.match(text)
+    if match is None:
+        return None
+    return int(match.group(1)), (match.group(2) or "") in ("...", "…")
+
+
+def apos_o_lance(text: str) -> tuple[int, bool] | None:
+    """`(número, é_das_pretas)` da vez depois do lance citado em "após N.x"."""
+    match = _APOS_O_LANCE.search(text)
+    if match is None:
+        return None
+    numero = int(match.group(1))
+    das_pretas = match.group(2) in ("...", "…")
+    return (numero + 1, False) if das_pretas else (numero, True)
+
+
+def _lado_pela_numeracao(
+    abaixo: Sequence[_ParsedLine], legenda: Sequence[_ParsedLine]
+) -> tuple[_SideDecision | None, tuple[int, bool] | None, tuple[int, bool] | None]:
+    """A decisão pela numeração (passo 7), mais os dois campos lidos, decidindo ou não."""
+    primeiro: tuple[int, bool] | None = None
+    texto_do_primeiro = ""
+    for item in abaixo:
+        primeiro = inicio_de_lance(item.text)
+        if primeiro is not None:
+            texto_do_primeiro = item.text
+            break
+    apos: tuple[int, bool] | None = None
+    texto_do_apos = ""
+    for item in legenda:
+        apos = apos_o_lance(item.text)
+        if apos is not None:
+            texto_do_apos = item.text
+            break
+    if primeiro is not None:
+        cor = chess.BLACK if primeiro[1] else chess.WHITE
+        return _SideDecision(cor, texto_do_primeiro.strip()[:40], "move-number", 0.9), primeiro, apos
+    if apos is not None:
+        cor = chess.BLACK if apos[1] else chess.WHITE
+        return _SideDecision(cor, texto_do_apos.strip()[:60], "caption-after", 0.85), primeiro, apos
+    return None, primeiro, apos
+
+
 def _side_from_tier(lines: Sequence[_ParsedLine]) -> _SideDecision | None:
     """Lado a jogar deste conjunto de linhas, ou `None` se ele disser as duas coisas.
 
@@ -1034,7 +1099,12 @@ def _side_from_tier(lines: Sequence[_ParsedLine]) -> _SideDecision | None:
     return next((item for item in found if item.origin == "text"), found[0])
 
 
-def _parse_lines(lines: Sequence[_ParsedLine], *, page_number: int | None) -> DiagramContext:
+def _parse_lines(
+    lines: Sequence[_ParsedLine],
+    *,
+    page_number: int | None,
+    abaixo: Sequence[_ParsedLine] = (),
+) -> DiagramContext:
     # A legenda decide; a vizinhanca so responde quando a legenda cala. Sao dois escaloes, e
     # a contradicao vale dentro de cada um: uma legenda que diz as duas coisas nao tem
     # resposta, mas uma legenda contradita pelo comentario do diagrama ao lado tem.
@@ -1042,6 +1112,12 @@ def _parse_lines(lines: Sequence[_ParsedLine], *, page_number: int | None) -> Di
     secondary = [item for item in lines if not item.primary]
 
     decision = _side_from_tier(primary) or _side_from_tier(secondary)
+    # Passo 7: quando nenhuma palavra declarou o lado, a numeração decide -- o primeiro
+    # lance sob o diagrama, depois a legenda "após N.x". `abaixo` vem do mais perto ao mais
+    # longe; o primeiro que abre com lance numerado é o que o leitor continua dali.
+    pela_numeracao, primeiro, apos = _lado_pela_numeracao(abaixo, [*primary, *secondary])
+    if decision is None:
+        decision = pela_numeracao
 
     captions = [item.text for item in [*primary, *secondary] if item.caption_like]
 
@@ -1070,6 +1146,8 @@ def _parse_lines(lines: Sequence[_ParsedLine], *, page_number: int | None) -> Di
         side_to_move_evidence="" if decision is None else decision.evidence,
         side_to_move_origin=None if decision is None else decision.origin,
         side_to_move_confidence=1.0 if decision is None else decision.confidence,
+        first_move_number=primeiro,
+        caption_after_move=apos,
         exercise_number=exercise_number,
         players=players,
         event=event,
@@ -1106,6 +1184,14 @@ def context_from_lines(nearby: Sequence[NearbyLine], *, page_number: int | None 
         return DiagramContext()
 
     has_primary = any(item.primary for item in nearby)
+    abaixo = [
+        _ParsedLine(text=item.text, caption_like=item.line.is_caption_like,
+                    primary=item.primary, origin=item.line.origin,
+                    confidence=item.line.confidence)
+        for item in sorted(
+            (i for i in nearby if i.placement == "below"), key=lambda i: i.line.bbox[1]
+        )
+    ]
     return _parse_lines(
         [
             _ParsedLine(
@@ -1118,6 +1204,7 @@ def context_from_lines(nearby: Sequence[NearbyLine], *, page_number: int | None 
             for item in nearby
         ],
         page_number=page_number,
+        abaixo=abaixo,
     )
 
 

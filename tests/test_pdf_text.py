@@ -540,3 +540,61 @@ class RunningPageNumberTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LadoPelaNumeracaoTests(unittest.TestCase):
+    """OCR_UI_ROADMAP passo 7: quando nenhuma palavra declara o lado, a numeração decide."""
+
+    def test_o_primeiro_lance_sob_o_diagrama_diz_de_quem_e_a_vez(self) -> None:
+        nearby = assign_lines_to_diagrams(
+            [
+                line("22... ♖g8", 10, 240, 200, 252, block_words=6),
+                line("23 ♘c4 ♗d5", 10, 252, 200, 264, block_words=6),
+            ],
+            [(10.0, 40.0, 200.0, 230.0)],
+        )
+        contexto = context_from_lines(nearby[0])
+        self.assertEqual(contexto.side_to_move, chess.BLACK)
+        self.assertEqual(contexto.side_to_move_origin, "move-number")
+        self.assertEqual(contexto.first_move_number, (22, True))
+        self.assertEqual(contexto.side_to_move_evidence, "22... ♖g8")
+
+    def test_a_legenda_apos_o_lance_da_a_vez_seguinte(self) -> None:
+        contexto = parse_context("Position after 23...Bd5")
+        self.assertEqual(contexto.side_to_move, chess.WHITE)
+        self.assertEqual(contexto.side_to_move_origin, "caption-after")
+        self.assertEqual(contexto.caption_after_move, (24, False))
+        self.assertEqual(parse_context("após 23.♘c4").side_to_move, chess.BLACK)
+
+    def test_a_palavra_vence_a_numeracao(self) -> None:
+        nearby = assign_lines_to_diagrams(
+            [
+                line("Black to move", 10, 240, 200, 252, block_words=3),
+                line("23 ♘c4", 10, 252, 200, 264, block_words=6),
+            ],
+            [(10.0, 40.0, 200.0, 230.0)],
+        )
+        contexto = context_from_lines(nearby[0])
+        self.assertEqual(contexto.side_to_move, chess.BLACK)
+        self.assertEqual(contexto.side_to_move_origin, "text")
+        self.assertEqual(contexto.first_move_number, (23, False))
+
+    def test_numero_de_exercicio_antes_de_um_nome_nao_e_lance(self) -> None:
+        from chess_diagram_ocr.pdf_text import inicio_de_lance
+
+        self.assertIsNone(inicio_de_lance("119 Bartrina - Ghitescu"))
+        self.assertEqual(inicio_de_lance("14... a6"), (14, True))
+        self.assertEqual(inicio_de_lance("5 O-O"), (5, False))
+
+    def test_a_cascata_da_semantics_registra_a_origem(self) -> None:
+        from chess_diagram_ocr.semantics import infer_side_to_move
+
+        nearby = assign_lines_to_diagrams(
+            [line("22... ♖g8", 10, 240, 200, 252, block_words=6)], [(10.0, 40.0, 200.0, 230.0)]
+        )
+        lado = infer_side_to_move(
+            "3q2rk/rb2bpp1/1p1pp2p/p3P3/Pn1P1PN1/6R1/1P1NQ1PP/1B3R1K", context_from_lines(nearby[0])
+        )
+        self.assertEqual(lado.color, chess.BLACK)
+        self.assertEqual(lado.source, "move-number")
+        self.assertIn("numeração", lado.source_label)

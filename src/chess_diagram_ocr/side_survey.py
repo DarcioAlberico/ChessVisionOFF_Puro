@@ -212,6 +212,8 @@ def source_label(source: str) -> str:
         "ocr": "OCR",
         "text-page-scope": "texto/página",
         "ocr-page-scope": "OCR/página",
+        "move-number": "numeração",
+        "caption-after": "após N",
         "legality": "legalidade",
         "manual": "à mão",
         "default": "assumido",
