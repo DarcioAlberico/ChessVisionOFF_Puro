@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "CLASSICA",
+    "PADRAO",
     "COMPACTA",
     "CONFORTAVEL",
     "CROMO_CLASSICO",
@@ -55,7 +56,8 @@ __all__ = [
 ]
 
 CLASSICA = "classica"
-"""A janela de hoje, e o padrão. Quem nunca abrir `Ver ▸ Aparência` tem exatamente ela."""
+"""A janela como era até o passo 16 da OCR_UI: cromo claro, barras de botões. Continua em
+`Ver ▸ Aparência`; deixou de ser o padrão em 2026-09-16 (ver `PADRAO`)."""
 
 COMPACTA = "compacta"
 CONFORTAVEL = "confortavel"
@@ -66,6 +68,19 @@ divergência que o catálogo de comandos veio fechar."""
 
 FOCO = "foco"
 """A proposta da Imagem 1: uma fila só de ações e o documento ocupando todo o resto (S-223)."""
+
+PADRAO = FOCO
+"""A pele de fábrica: quem nunca abrir `Ver ▸ Aparência` tem esta (OCR_UI passo 16, Q3).
+
+**Foco, desde 2026-09-16, por decisão de produto e não por medição.** A SPEC §10.2 pedia que a
+escura fosse **projetada** e não derivada da clara, e ela é: `ui/tokens.NO_CROMO_ESCURO` tem
+cada papel de cromo com valor próprio, matiz preservada ao grau, elevação invertida (o botão
+sobe, o campo desce) e contraste medido acima de 5,0:1 -- e o portão `contraste` a cobra em
+100 % dos pares nas duas polaridades. As três peles continuam no menu (R3.6); o que muda é o
+que a pessoa vê antes de escolher.
+
+**Só aqui.** `valida` e `escolhida` caem neste nome, e `AppState.skin` continua vazio para
+"nunca escolhida": cravar o padrão num segundo lugar é a fenda que a S-221 fechou."""
 
 FITA = "fita"
 """A proposta da Imagem 2: grupos nomeados, ícone grande com rótulo (S-227).
@@ -129,11 +144,12 @@ class Pele:
 
 
 PELES: tuple[Pele, ...] = (
-    Pele(CLASSICA, "Clássica", CROMO_CLASSICO),
     # Escura desde a S-224, e é a Imagem 1: cromo escuro com o documento claro. O que a pele
     # escurece é o cromo -- o tema `ttkbootstrap` que ela sugere, o fundo da dica, a superfície
     # de reserva e o texto sobre ela. A folha do livro e o tabuleiro ficam na paleta medida.
+    # **Primeira porque é o padrão** (OCR_UI passo 16): a ordem do menu é a regra 1 desta tabela.
     Pele(FOCO, "Foco", CROMO_FOCO, cromo_escuro=True),
+    Pele(CLASSICA, "Clássica", CROMO_CLASSICO),
     # Clara, e a Imagem 2 é clara: o que ela propõe é agrupamento nomeado, não cromo escuro. Uma
     # fita escura seria uma decisão que ninguém tomou -- e a S-221 separou os eixos justamente
     # para que "a fita clara com o tabuleiro escuro" continuasse sendo escolha de quem a faz.
@@ -147,8 +163,8 @@ PELES: tuple[Pele, ...] = (
 """As peles registradas, na ordem em que o menu as lista.
 
 Três desde a S-227, e é o pedido inteiro: *"o programa deve ter a opção da interface atual e essas
-duas das imagens"*. A clássica é a primeira porque é o padrão -- quem nunca abrir `Ver ▸ Aparência`
-tem a janela de sempre."""
+duas das imagens"*. A primeira é o padrão (`PADRAO`): era a clássica até 2026-09-16, é a Foco desde
+o passo 16 da OCR_UI (Q3)."""
 
 
 por_nome: dict[str, Pele] = {registro.nome: registro for registro in PELES}
@@ -162,24 +178,24 @@ def registrada(nome: str) -> Pele:
 
 
 def valida(nome: str) -> str:
-    """O nome, se ele existe; `CLASSICA` com um `warning` que **nomeia** o inválido, se não.
+    """O nome, se ele existe; `PADRAO` com um `warning` que **nomeia** o inválido, se não.
 
     Não levanta, ao contrário de `registrada`: este é o caminho por onde entra o que veio do
     disco ou do ambiente, e nem estado antigo nem variável escrita errada podem impedir a janela
     de abrir. É o contrato de degradação de `ui/theme.py`, agora com um dono a mais.
 
     **Nomear o inválido é metade do valor.** `CVOFF_SKIN=fita` numa versão que ainda não tem a
-    fita cai na clássica; sem o nome no log, quem a escreveu conclui que a variável não é lida.
+    fita cai no padrão; sem o nome no log, quem a escreveu conclui que a variável não é lida.
     """
     if nome in por_nome:
         return nome
     if nome:
-        logger.warning("Pele desconhecida: %r. Abrindo na %s.", nome, CLASSICA)
-    return CLASSICA
+        logger.warning("Pele desconhecida: %r. Abrindo na %s.", nome, PADRAO)
+    return PADRAO
 
 
 def escolhida(guardada: str = "", *, ambiente: Mapping[str, str] | None = None) -> str:
-    """A pele que vale ao abrir: `CVOFF_SKIN`, senão a guardada no estado, senão a clássica.
+    """A pele que vale ao abrir: `CVOFF_SKIN`, senão a guardada no estado, senão `PADRAO`.
 
     **O ambiente ganha da guardada**, e é a diferença em relação a `theme.apply_theme`, onde o
     argumento explícito ganha da variável. Lá o argumento é de quem chama, no código; aqui a

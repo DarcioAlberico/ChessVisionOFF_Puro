@@ -40,6 +40,7 @@ __all__ = [
     "ACOES_PROPRIAS",
     "BOARD_VIEW_SIZE",
     "LADO_MINIMO_DO_RECORTE",
+    "LINHAS_MINIMAS_DA_LEGENDA",
     "CAPTION_LINES",
     "FOLGA_DO_CORPO",
     "LARGURA_DA_LATERAL",
@@ -96,12 +97,18 @@ já tinha tomado o espaço com `expand=True`. Campos cortados, "Copiar headers p
 texto verde de procedência cortado."""
 
 CAPTION_LINES = 8
-"""Altura da legenda em linhas. O resto rola -- e **nada é cortado**.
+"""Altura da legenda em linhas, quando há tela para ela. O resto rola -- e **nada é cortado**.
 
 Ela era um `Label` com `caption[:220]`, o que bastava enquanto ela fosse só pista de contexto.
 Deixou de bastar quando o texto passou a ser matéria-prima: o que se copia de uma legenda truncada
 é uma legenda truncada, e o pedaço que falta costuma ser justamente o nome do segundo jogador ou o
 ano."""
+
+LINHAS_MINIMAS_DA_LEGENDA = 3
+"""Quantas linhas a legenda mantém quando a janela é baixa (OCR_UI passo 16).
+
+É a diferença entre a aba caber em 1366×768 e não caber: as oito linhas cravadas eram 168 px do
+piso da aba. Três porque é o mínimo em que jogadores, evento e ano ainda cabem à vista sem rolar."""
 
 LINK_CHOICES: tuple[tuple[str, str], ...] = (
     ("Padrão", ""),

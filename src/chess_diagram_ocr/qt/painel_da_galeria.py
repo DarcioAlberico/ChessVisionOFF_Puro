@@ -44,6 +44,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap, QShowEvent
 from PyQt6.QtWidgets import (
     QButtonGroup,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -52,6 +53,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QStackedLayout,
     QTextEdit,
     QVBoxLayout,
@@ -93,6 +95,7 @@ from chess_diagram_ocr.ui.galeria_declarada import (
     LADO_MINIMO_DO_RECORTE,
     LARGURA_DA_LATERAL,
     LARGURA_MINIMA_DA_GALERIA,
+    LINHAS_MINIMAS_DA_LEGENDA,
     LINK_CHOICES,
     SEM_BASE,
     LivroVarrido,
@@ -266,7 +269,21 @@ class PainelDaGaleria(QWidget):
         # A lateral com largura fixa: ela reserva o que pede, e o centro fica com o resto (S-154).
         lateral = self._lateral()
         lateral.setFixedWidth(LARGURA_DA_LATERAL)
-        corpo.addWidget(lateral)
+        # **Dentro de uma área de rolagem, e a razão é o piso da janela** (OCR_UI passo 16). Os
+        # dez campos de cabeçalho empilhados com os cinco botões pedem 531 px de altura mínima,
+        # e a lateral é a coluna mais alta desta aba: era ela que punha a Galeria em 674 px e a
+        # janela inteira em 793–827 -- acima dos 768 da tela que a F9-C2 tinha devolvido ao
+        # produto. Na rolagem o mínimo é o de duas linhas; quando há tela, ela nem aparece.
+        rolagem = QScrollArea(self)
+        rolagem.setWidgetResizable(True)
+        rolagem.setFrameShape(QFrame.Shape.NoFrame)
+        rolagem.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # A moldura não é um controle: quem o Tab visita são os campos dentro dela. Sem isto o
+        # portão `teclado` conta um focável sem nome nem papel.
+        rolagem.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        rolagem.setWidget(lateral)
+        rolagem.setFixedWidth(LARGURA_DA_LATERAL + rolagem.verticalScrollBar().sizeHint().width())
+        corpo.addWidget(rolagem)
         fora.addLayout(corpo, 1)
         fora.addWidget(self._rodape())
 
@@ -306,7 +323,12 @@ class PainelDaGaleria(QWidget):
         # O canvas da galeria era o único do `ui/` fora do sistema de cor da S-144: ele nascia
         # com o fundo de fábrica do Tk e escrevia o aviso num `#888` cravado. Aqui a superfície e
         # o texto vêm do token desde a primeira linha.
-        tema.pintar(self.recorte, "background-color", tokens.SUPERFICIE_TABULEIRO)
+        # **Com contorno neutro** (OCR_UI passo 16): a imagem do recorte acaba num fio de 1 px do
+        # `CONTORNO_DE_CROMO` da pele, como a página no visor -- sem ele, um recorte de fundo
+        # branco não tem borda sobre o vazio claro da Clássica.
+        tema.pintar_varios(
+            self.recorte, background_color=tokens.SUPERFICIE_TABULEIRO, border=tokens.CONTORNO_DE_CROMO
+        )
         # **Empilhados e não sobrepostos**, e a diferença é medível: `sobreposicao.py` conta pares
         # de controles que ocupam o mesmo pixel, e não tem como distinguir "cobre de propósito" de
         # "colidiu". Uma `QStackedLayout` mostra **um** dos dois, o que é a verdade do que a aba
@@ -376,7 +398,14 @@ class PainelDaGaleria(QWidget):
         # desenharia com a cor do texto a alpha 128 -- 3,96:1, abaixo do piso AA --, e uma dica
         # nova aqui teria nascido ilegível.
         self.legenda.setPlaceholderText(strings.GALERIA_LEGENDA_VAZIA)
-        self.legenda.setFixedHeight(CAPTION_LINES * tema.altura_de_linha_atual())
+        # **Oito linhas quando há tela, três quando não há** (OCR_UI passo 16). Era
+        # `setFixedHeight(8 linhas)`, e as oito linhas -- 168 px -- eram parte do piso da aba
+        # (674 px), que somado ao cromo, às abas e ao rodapé punha a janela em 793–827 px: a
+        # Galeria era um dos dois painéis por que a janela **recusava 1366×768** de novo, dois
+        # ciclos depois de a F9-C2 a ter devolvido a essa tela. O texto continua rolando e nada é
+        # cortado; o que muda é quantas linhas ficam à vista quando a janela é baixa.
+        self.legenda.setMinimumHeight(LINHAS_MINIMAS_DA_LEGENDA * tema.altura_de_linha_atual())
+        self.legenda.setMaximumHeight(CAPTION_LINES * tema.altura_de_linha_atual())
         centro.addWidget(self.legenda)
         centro.addWidget(
             self._botao(self, "Copiar legenda", self.copiar_legenda), 0, Qt.AlignmentFlag.AlignHCenter
@@ -1602,7 +1631,12 @@ class PainelDaGaleria(QWidget):
     def _dizer_no_lugar_do_recorte(self, frase: str) -> None:
         self.recorte.limpar_recorte()
         self.recorte.setText(frase)
-        tema.pintar(self.recorte, "color", tokens.TEXTO_SECUNDARIO)
+        tema.pintar_varios(
+            self.recorte,
+            color=tokens.TEXTO_SECUNDARIO,
+            background_color=tokens.SUPERFICIE_TABULEIRO,
+            border=tokens.CONTORNO_DE_CROMO,
+        )
 
 
 _ = atalhos  # noqa: B018 - a régua de foco que `acoes_proprias` cita; ver `ui/atalhos.py`

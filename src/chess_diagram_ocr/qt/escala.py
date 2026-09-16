@@ -72,6 +72,12 @@ def aplicar_escala(raiz: QWidget) -> int:
     for widget in [raiz, *raiz.findChildren(QWidget)]:
         try:
             papel = papel_do_widget(widget)
+            if widget.property(tipografia.PROPRIEDADE_TABULAR) in (True, "true"):
+                # O contador recebe o degrau dele (ou o corpo) **com** algarismos tabulares
+                # (OCR_UI passo 16). Aqui e não em cada painel, pela razão do cabeçalho.
+                widget.setFont(tema.tabular(tema.fonte_atual(papel or tipografia.CORPO)))
+                mudados += 1
+                continue
             if not papel or papel == tipografia.CORPO:
                 continue
             widget.setFont(tema.fonte_atual(papel))

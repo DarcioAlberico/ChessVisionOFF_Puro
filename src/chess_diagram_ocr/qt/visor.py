@@ -24,6 +24,7 @@ from PyQt6.QtCore import QPoint, QRect, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QImage, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap, QWheelEvent
 from PyQt6.QtWidgets import QScrollArea, QScrollBar, QWidget
 
+from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.imagens import qimage_de_rgb, reduzir_rgb
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.ui import tokens
@@ -177,9 +178,25 @@ class _Folha(QWidget):
                 # mais próximo de propósito -- é o quadro provisório, e o filtro custaria o que
                 # o reescalonamento ao fundo existe para não custar aqui.
                 pintor.drawPixmap(self.rect(), pagina)
+            self._desenhar_contorno(pintor)
             self._desenhar_caixas(pintor)
             self._desenhar_selecao(pintor)
         pintor.end()
+
+    def _desenhar_contorno(self, pintor: QPainter) -> None:
+        """Um fio neutro de 1 px na borda da folha (OCR_UI passo 16, «contorno neutro em imagens»).
+
+        Uma página de scan tem margem branca, e branco sobre o vazio claro da Clássica não tem
+        borda: a folha acaba onde o olho adivinha. O fio é o `CONTORNO_DE_CROMO` da pele em uso
+        -- o mesmo de botão e campo --, e fica **sobre** o pixel mais externo da página, e não
+        fora dela: a folha tem exatamente o tamanho da página, e crescê-la deslocaria todas as
+        caixas e todos os cliques em um pixel.
+        """
+        caneta = QPen(QColor(tema.cor_atual(tokens.CONTORNO_DE_CROMO)))
+        caneta.setWidth(1)
+        pintor.setPen(caneta)
+        pintor.setBrush(Qt.BrushStyle.NoBrush)
+        pintor.drawRect(self.rect().adjusted(0, 0, -1, -1))
 
     def _desenhar_selecao(self, pintor: QPainter) -> None:
         """O retângulo tracejado do arrasto, por cima de tudo.

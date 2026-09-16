@@ -1133,8 +1133,12 @@ class AparenciaTests(unittest.TestCase):
         janela._comandos()["aparencia"]()
 
     def test_a_classica_nao_desenha_cromo_nenhum(self) -> None:
-        """A fundacao se prova quando ela nao muda nada: a classica e a janela de sempre (S-221)."""
+        """A fundacao se prova quando ela nao muda nada: a classica e a janela de sempre (S-221).
+
+        Desde o passo 16 da OCR_UI ela nao e mais o padrao (Q3: a Foco e), entao o teste a pede
+        por nome -- a regra que ele afirma e da pele, nao da abertura."""
         janela = self.janela()
+        self._trocar(janela, pele.CLASSICA)
         self.assertEqual([], self._cromo(janela))
         self.assertTrue(janela.cromo.isHidden())
 
@@ -1152,7 +1156,7 @@ class AparenciaTests(unittest.TestCase):
     def test_o_menu_abre_com_a_pele_e_a_densidade_em_vigor_marcadas(self) -> None:
         """Submenu sem marca e o mesmo que dizer "nenhuma delas esta em uso"."""
         janela = self.janela()
-        self.assertEqual(pele.CLASSICA, janela.menu.escolhido("aparencia"))
+        self.assertEqual(pele.PADRAO, janela.menu.escolhido("aparencia"))
         self.assertEqual(pele.CONFORTAVEL, janela.menu.escolhido("densidade"))
 
     def test_a_pele_escolhida_sobrevive_ao_fechamento(self) -> None:
@@ -1196,6 +1200,7 @@ class AparenciaTests(unittest.TestCase):
         from chess_diagram_ocr.qt import tema
 
         janela = self.janela()
+        self._trocar(janela, pele.CLASSICA)
         self.assertFalse(tema.cromo_escuro_em_vigor(), "a classica nao e escura")
 
         self._trocar(janela, pele.FOCO)
@@ -1214,9 +1219,9 @@ class AparenciaTests(unittest.TestCase):
         self.assertEqual(["Fita"], self._cromo(janela))
 
     def test_uma_pele_escrita_errada_no_disco_nao_impede_a_janela_de_abrir(self) -> None:
-        """O contrato de degradacao: `pele.valida` nomeia a invalida no log e cai na classica."""
+        """O contrato de degradacao: `pele.valida` nomeia a invalida no log e cai no padrao."""
         self.estado.write_text('{"version": 6, "skin": "roxa"}', encoding="utf-8")
-        self.assertEqual(pele.CLASSICA, self.janela()._pele_atual().nome)
+        self.assertEqual(pele.PADRAO, self.janela()._pele_atual().nome)
 
     def test_o_conjunto_de_pecas_e_o_terceiro_eixo_e_e_trocavel(self) -> None:
         """Ate o corte ele era um controle da aba Configuracao, que esta janela nao tem (S-230)."""

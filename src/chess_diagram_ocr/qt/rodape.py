@@ -145,10 +145,12 @@ class RodapeDaJanela(QWidget):
         # largura mínima da janela; o que muda é que, havendo folga, ele a usa.
         self._lbl_documento = RotuloElidido("", self, largura_desejada=0)
         self._lbl_documento.setFont(auxiliar)
+        self._lbl_documento.setProperty(tipografia.PROPRIEDADE_TABULAR, "true")
         tema.pintar(self._lbl_documento, "color", tokens.TEXTO_SECUNDARIO)
         linha.addWidget(self._lbl_documento, 0)
 
         self._lbl_ocupacao = QLabel("", self)
+        self._lbl_ocupacao.setProperty(tipografia.PROPRIEDADE_TABULAR, "true")
         self._lbl_ocupacao.setFont(auxiliar)
         linha.addWidget(self._lbl_ocupacao, 0)
 

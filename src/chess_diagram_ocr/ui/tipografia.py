@@ -50,6 +50,7 @@ __all__ = [
     "PAPEL_POR_CLASSE",
     "PESOS",
     "PROPRIEDADE_DE_PAPEL_DE_FONTE",
+    "PROPRIEDADE_TABULAR",
     "TITULO",
     "altura_de_linha",
     "altura_do_texto",
@@ -101,6 +102,21 @@ PROPRIEDADE_DE_PAPEL_DE_FONTE = "papel_de_fonte"
 O caminho de escape da tabela de baixo: um `QLabel` que é título de estado vazio não tem classe
 própria, e criar uma subclasse por degrau seria caro. Quem sabe o papel o escreve na construção,
 e a varredura o obedece."""
+
+PROPRIEDADE_TABULAR = "tabular"
+"""A propriedade dinâmica com que um widget declara que **conta**: `p. 121 de 289`, `59 %`, a
+zona de documento do rodapé (OCR_UI passo 16).
+
+Um contador troca de dígito no lugar, e um dígito que não tem a largura do vizinho faz o texto
+inteiro dançar a cada página virada -- `de 99` mais estreito que `de 100`, e o rótulo ao lado
+pulando um pixel. A resposta tipográfica é `tabular-nums`: os algarismos com uma só largura, o
+recurso OpenType `tnum`. Quem o aplica é `qt/escala.aplicar_escala`, no mesmo passo em que aplica
+o degrau; a decisão de *quem conta* fica com quem monta o widget, e é dita por esta propriedade.
+
+**A Segoe UI já tem algarismos tabulares por padrão** (medido: `1111` e `0000` com a mesma
+largura, 28,0 px a 10 pt), então nesta máquina o recurso não muda um pixel. Ele existe para a
+família de reserva e para a máquina em que a fonte do sistema for outra -- que é a máquina em que
+o contador dançaria sem ninguém ter decidido isso."""
 
 PAPEL_POR_CLASSE: dict[str, str] = {
     "QGroupBox": TITULO,

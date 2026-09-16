@@ -160,6 +160,30 @@ def pintar(widget: _Pintavel, propriedade: str, papel: str) -> _Pintavel:
     return widget
 
 
+def pintar_varios(widget: _Pintavel, **propriedades: str) -> _Pintavel:
+    """`pintar` para mais de uma propriedade de uma vez: `pintar_varios(w, color=X, border=Y)`.
+
+    Existe porque `pintar` **substitui** a folha do widget (ver lá): dois `pintar` seguidos no
+    mesmo widget deixam só o segundo. Quem precisa de fundo **e** contorno -- o recorte da
+    Galeria, desde o passo 16 da OCR_UI -- declara os dois numa chamada. O valor de cada
+    propriedade é um papel de `tokens`; `border` e `outline` ganham `1px solid` na frente.
+    """
+
+    def aplicar() -> None:
+        regras = []
+        for propriedade, papel in propriedades.items():
+            nome = propriedade.replace("_", "-")
+            valor = cor_atual(papel)
+            if nome in ("border", "outline"):
+                valor = f"1px solid {valor}"
+            regras.append(f"{nome}: {valor};")
+        widget.setStyleSheet(" ".join(regras))
+
+    aplicar()
+    ao_repintar(aplicar)
+    return widget
+
+
 # ----------------------------------------------------------------------------- a tipografia
 
 FAMILIA_DE_RESERVA = ("Segoe UI", "Consolas")
@@ -215,6 +239,19 @@ def fonte_atual(papel: str, *, negrito: bool = False) -> QFont:
     # `negrito=True` continua ganhando, porque ele é do chamador: a linha escolhida numa lista
     # precisa de peso sem mudar de nível hierárquico.
     fonte.setWeight(QFont.Weight(700 if negrito else tipografia.peso(papel)))
+    return fonte
+
+
+def tabular(fonte: QFont) -> QFont:
+    """A mesma fonte com algarismos de largura única (`tnum`). Ver `tipografia.PROPRIEDADE_TABULAR`.
+
+    Tolerante: um Qt sem `setFeature` (anterior ao 6.7) devolve a fonte como veio, e o contador
+    continua legível -- só dança. Aparência não derruba ferramenta.
+    """
+    try:
+        fonte.setFeature(QFont.Tag("tnum"), 1)
+    except (AttributeError, TypeError):  # pragma: no cover - Qt antigo
+        pass
     return fonte
 
 

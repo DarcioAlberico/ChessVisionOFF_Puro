@@ -504,5 +504,52 @@ class DicaDoCampoNoPixelTests(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class PolimentoDoPasso16Tests(unittest.TestCase):
+    """Contadores tabulares e contorno neutro (OCR_UI passo 16): a decisão em `ui/`, a tinta aqui."""
+
+    def setUp(self) -> None:
+        aplicacao()
+
+    def test_um_widget_que_conta_recebe_algarismos_tabulares_na_varredura(self) -> None:
+        from PyQt6.QtGui import QFont
+        from PyQt6.QtWidgets import QLabel, QWidget
+
+        from chess_diagram_ocr.qt import escala
+
+        raiz = QWidget()
+        self.addCleanup(descartar, raiz)
+        contador = QLabel("p. 1 de 308", raiz)
+        contador.setProperty(tipografia.PROPRIEDADE_TABULAR, "true")
+        prosa = QLabel("Nenhum diagrama aberto.", raiz)
+        escala.aplicar_escala(raiz)
+
+        self.assertIn(QFont.Tag("tnum"), contador.font().featureTags(), "o contador não ganhou `tnum`")
+        self.assertNotIn(QFont.Tag("tnum"), prosa.font().featureTags(), "a prosa não conta e não muda")
+
+    def test_os_contadores_do_produto_estao_declarados(self) -> None:
+        """A régua vale para quem a janela mostra: página, total, zoom e o documento do rodapé."""
+        from chess_diagram_ocr.qt.painel_do_pdf import PainelDoPdf
+        from chess_diagram_ocr.qt.rodape import RodapeDaJanela
+
+        painel = PainelDoPdf(dpi=lambda: 220)
+        self.addCleanup(descartar, painel)
+        for widget in (painel.campo_pagina, painel.lbl_total, painel.lbl_zoom):
+            self.assertEqual("true", widget.property(tipografia.PROPRIEDADE_TABULAR))
+        rodape = RodapeDaJanela()
+        self.addCleanup(descartar, rodape)
+        self.assertEqual("true", rodape._lbl_documento.property(tipografia.PROPRIEDADE_TABULAR))
+
+    def test_pintar_varios_declara_todas_as_propriedades_de_uma_vez(self) -> None:
+        from PyQt6.QtWidgets import QLabel
+
+        rotulo = QLabel("recorte")
+        self.addCleanup(descartar, rotulo)
+        tema.pintar_varios(rotulo, background_color=tokens.SUPERFICIE_TABULEIRO, border=tokens.CONTORNO_DE_CROMO)
+        folha_do_widget = rotulo.styleSheet()
+        self.assertIn(f"background-color: {tema.cor_atual(tokens.SUPERFICIE_TABULEIRO)};", folha_do_widget)
+        self.assertIn(f"border: 1px solid {tema.cor_atual(tokens.CONTORNO_DE_CROMO)};", folha_do_widget)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

@@ -60,7 +60,7 @@ from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.rotulo import RotuloElidido, separador
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.qt.visor import FolhaPreparada, VisorDePagina, preparar_folha
-from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, folha_de_estilo, formato, strings
+from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, folha_de_estilo, formato, strings, tipografia
 from chess_diagram_ocr.ui.leitura_do_pdf import PASSO_DE_ZOOM, open_in_system_reader
 from chess_diagram_ocr.ui.page_overlay import PageBoxes
 from chess_diagram_ocr.ui.viewport import LADO_DO_DESLIZADOR, clamp_zoom, posicao_do_zoom, zoom_da_posicao
@@ -346,6 +346,7 @@ class PainelDoPdf(QWidget):
         # campo usa, e um campo vazio com teto zero é o que fazia a seta escrever o número que o
         # resto da tela nega.
         self.campo_pagina = QSpinBox(navegar)
+        self.campo_pagina.setProperty(tipografia.PROPRIEDADE_TABULAR, "true")
         self.campo_pagina.setRange(1, 1)
         # **O nome acessível diz a faixa, e nunca o valor** (F9-C2). `QSpinBox.text()` devolve
         # `"121"`, e sem nome próprio a cascata de `ui/nomes_acessiveis.py` cai nele: o leitor de
@@ -356,6 +357,7 @@ class PainelDoPdf(QWidget):
         self.campo_pagina.valueChanged.connect(self._pagina_digitada)
         navegar.layout().addWidget(self.campo_pagina)
         self.lbl_total = QLabel("de 0", navegar)
+        self.lbl_total.setProperty(tipografia.PROPRIEDADE_TABULAR, "true")
         # Contagem é texto de apoio, não dado: o degrau `AUXILIAR` da escala (item 9 do §7).
         self.lbl_total.setProperty(folha_de_estilo.PROPRIEDADE_DE_APOIO, "true")
         navegar.layout().addWidget(self.lbl_total)
@@ -669,6 +671,7 @@ class PainelDoPdf(QWidget):
         self.deslizador.valueChanged.connect(self._arrastou_o_zoom)
         linha.addWidget(self.deslizador, 1)
         self.lbl_zoom = QLabel("", self)
+        self.lbl_zoom.setProperty(tipografia.PROPRIEDADE_TABULAR, "true")
         linha.addWidget(self.lbl_zoom)
         self._sincronizar_deslizador()
         return linha
