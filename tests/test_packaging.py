@@ -250,8 +250,14 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1944
+    LIMITE = 1984
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.944 -> 1.984 com o trilho de páginas (OCR_UI passo 17, ramo `passo-17-trilho`), e as 40
+    linhas são o trilho montado à esquerda do visor, a ponte da importação
+    (`qt/importador_de_livro.montar`, que liga o importador da suíte ao trilho e guarda o
+    resultado -- fora daqui de propósito) e quatro comandos no dicionário. O passo muda a forma
+    da janela; a redução para modos do painel principal (tarefa 3) é o que este ramo ainda deve.
 
     **1.905 -> 1.944 com o passo 15 da OCR_UI (2026-09-16), e as 39 linhas são a bandeira e os
     fios dela.** `rasterizar_ao_fundo` entra pelo construtor e é repassada a três painéis

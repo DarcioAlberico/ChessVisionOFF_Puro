@@ -833,6 +833,39 @@ class FiacaoTests(unittest.TestCase):
         self.assertEqual(1, janela._opcoes(1).max_boards)
         self.assertEqual(DEFAULT_MAX_BOARDS, janela._opcoes().max_boards)
 
+    # ------------------------------------------------------------ o trilho de páginas (passo 17)
+
+    def test_o_trilho_acompanha_o_livro_e_a_pagina_e_manda_o_visor(self) -> None:
+        """Abrir o livro dá uma linha por página; virar a página marca a linha; clicar vira."""
+        janela = self.janela()
+        self.assertEqual(3, janela.trilho.paginas)
+        self.assertEqual(janela.pdf.page_index, janela.trilho.lista.currentRow())
+        janela.pdf.ir_para_pagina(2)
+        self.assertEqual(2, janela.trilho.lista.currentRow())
+        janela.trilho.lista.setCurrentRow(1)
+        self.assertEqual(1, janela.pdf.page_index)
+
+    def test_o_trilho_e_um_interruptor_do_menu_ver(self) -> None:
+        janela = self.janela(com_livro=False)
+        self.assertTrue(janela.trilho.isVisibleTo(janela))
+        self.assertEqual(True, janela.menu.acoes["trilho"].isChecked())
+        janela._alternar_trilho()
+        self.assertFalse(janela.trilho.isVisibleTo(janela))
+        self.assertEqual(False, janela.menu.acoes["trilho"].isChecked())
+
+    def test_sem_a_suite_os_comandos_de_importacao_ficam_impedidos_com_motivo(self) -> None:
+        from chess_diagram_ocr.qt import importador_de_livro
+
+        janela = self.janela(com_livro=False)
+        for acao in importador_de_livro.COMANDOS:
+            with self.subTest(acao=acao):
+                item = janela.menu.acoes[acao]
+                if janela.livro is None:
+                    self.assertFalse(item.isEnabled())
+                    self.assertIn("suíte", item.toolTip())
+                else:
+                    self.assertTrue(item.isEnabled())
+
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class EstadoEntreSessoesTests(unittest.TestCase):

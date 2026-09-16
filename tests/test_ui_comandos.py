@@ -439,6 +439,13 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 "exportar_estudo_md",
                 "exportar_estudo_rtf",
                 "modo_treino",
+                # Os três do trilho de páginas (OCR_UI passo 17): o menu diz "Importar o livro
+                # (ler todas as páginas)…" e o botão, numa coluna de 176 px, diz "Importar o
+                # livro"; "Cancelar a importação" vira "Cancelar" ao lado dele; "Ir à primeira
+                # página duvidosa" vira "Primeira duvidosa" sob a lista.
+                "importar_livro",
+                "cancelar_importacao",
+                "primeira_duvidosa",
             },
             divergem,
         )

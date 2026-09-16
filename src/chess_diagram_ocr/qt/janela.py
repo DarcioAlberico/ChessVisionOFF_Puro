@@ -65,6 +65,7 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
+    QHBoxLayout,
     QMainWindow,
     QMessageBox,
     QSplitter,
@@ -87,7 +88,9 @@ from chess_diagram_ocr.config import (
 from chess_diagram_ocr.detection import DiagramCandidate, detect_diagrams_in_pdf_page, detect_diagrams_rendering_page
 from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
 from chess_diagram_ocr.qt import acessibilidade, dica, escala, exportador_de_livro, fila, fita, legenda, menu
-from chess_diagram_ocr.qt import painel_de_revisao_de_texto, painel_de_rotulagem, painel_do_pdf, paleta, plataforma, tema
+from chess_diagram_ocr.qt import importador_de_livro, painel_de_revisao_de_texto, painel_de_rotulagem, painel_do_pdf
+from chess_diagram_ocr.qt import paleta, plataforma, tema
+from chess_diagram_ocr.qt.trilho import TrilhoDoLivro
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
@@ -381,6 +384,9 @@ class JanelaPrincipal(QMainWindow):
             self.menu.impedir(sala_declarada.COMANDOS_QUE_EXIGEM_MOTOR, motivo=strings.SEM_MOTOR_DICA)
         if self.exportador_de_livro is None:
             self.menu.impedir(exportador_de_livro.COMANDOS, motivo=exportador_de_livro.MOTIVO_AUSENTE)
+        if self.livro is None:
+            self.menu.impedir(importador_de_livro.COMANDOS, motivo=importador_de_livro.MOTIVO_AUSENTE)
+        self.menu.marcar("trilho", ligado=True)
         self._montar_o_cromo(escolhida)
         acessibilidade.tornar_acessivel(self)  # o nome derivado, aqui e em todo diálogo (F9)
         escala.aplicar_escala(self)  # o degrau tipográfico (F9-C2); ver o módulo
@@ -485,11 +491,22 @@ class JanelaPrincipal(QMainWindow):
             colocacoes=self._colocacoes_conferidas,
             aviso_de_treino=self._aviso_de_treino,
         )
-        coluna = QVBoxLayout(self.lado_do_livro)
+        # **O trilho de páginas à esquerda do visor** (OCR_UI passo 17): o mapa do livro, com o
+        # estado de cada página e os botões do fluxo principal (importar, primeira duvidosa,
+        # exportar). É um índice de largura fixa; a página continua com o resto.
+        self.trilho = TrilhoDoLivro(self.lado_do_livro, miniaturas_ao_fundo=self._rasterizar_ao_fundo)
+        self.trilho.pagina_pedida.connect(self.pdf.ir_para_pagina)
+        self.trilho.exportar_pedido.connect(lambda: self._exportar_livro("epub"))
+        coluna = QVBoxLayout()
         coluna.setContentsMargins(0, 0, 0, 0)
         coluna.setSpacing(espaco.linha())
         coluna.addWidget(self.pdf, 1)
         coluna.addWidget(self.campo)
+        lado = QHBoxLayout(self.lado_do_livro)
+        lado.setContentsMargins(0, 0, 0, 0)
+        lado.setSpacing(espaco.linha())
+        lado.addWidget(self.trilho)
+        lado.addLayout(coluna, 1)
 
         self.divisor.addWidget(self.abas)
         self.divisor.addWidget(self.lado_do_livro)
@@ -508,6 +525,17 @@ class JanelaPrincipal(QMainWindow):
         )
         # EPUB/DOCX pela suíte, se ao alcance; sem ela os itens ficam cinza com o motivo na dica.
         self.exportador_de_livro = exportador_de_livro.montar(self, dizer=self._dizer, trancar=self._trancar)
+        # A importação do livro inteiro, pela mesma suíte e com a mesma guarda (passo 17). A
+        # ponte liga o importador ao trilho e guarda o resultado; a janela só a segura.
+        self.livro = importador_de_livro.montar(
+            self,
+            dizer=self._dizer,
+            trancar=self._trancar,
+            ocupado=self.busy,
+            trilho=self.trilho,
+            pdf_atual=lambda: self._pdf,
+            paginas=lambda: self.pdf.page_count,
+        )
 
     @property
     def editor(self) -> DiagramEditorModel:
@@ -929,6 +957,8 @@ class JanelaPrincipal(QMainWindow):
 
         # --- o visualizador
         self.pdf.abriu_pdf.connect(self._abriu_livro)
+        self.pdf.abriu_pdf.connect(lambda caminho: self.trilho.abrir_livro(Path(str(caminho)), self.pdf.page_count))
+        self.pdf.pagina_desenhada.connect(self.trilho.marcar_pagina_atual)
         self.pdf.antes_de_trocar_de_pagina.connect(self.painel.lembrar_pagina)
         self.pdf.pagina_desenhada.connect(self._pagina_apareceu)
         self.pdf.caixa_clicada.connect(self._clicou_na_caixa)
@@ -1663,6 +1693,12 @@ class JanelaPrincipal(QMainWindow):
             splits_path=splits,
         )
 
+    def _alternar_trilho(self) -> None:
+        # `isHidden` e não `isVisible`: antes de a janela aparecer, `isVisible` é falso para tudo.
+        mostrar = self.trilho.isHidden()
+        self.trilho.setVisible(mostrar)
+        self.menu.marcar("trilho", ligado=mostrar)
+
     def _exportar_livro(self, formato: str) -> None:
         """O diálogo da suíte (`qt/exportador_de_livro.py`); sem ela, o motivo vai ao rodapé."""
         if self.exportador_de_livro is None:
@@ -1742,6 +1778,10 @@ class JanelaPrincipal(QMainWindow):
             "varrer_livro": self.galeria.varrer,
             "exportar_pgn": lambda: self.exportador.comecar(self._pdf),
             "exportar_epub": lambda: self._exportar_livro("epub"),
+            "importar_livro": lambda: self.livro.comecar() if self.livro else self._dizer(importador_de_livro.MOTIVO_AUSENTE.splitlines()[0]),
+            "cancelar_importacao": lambda: self.livro.cancelar() if self.livro else None,
+            "trilho": self._alternar_trilho,
+            "primeira_duvidosa": self.trilho._ir_para_a_primeira_duvidosa,
             "exportar_docx": lambda: self._exportar_livro("docx"),
             "cancelar_exportacao": self.exportador.cancelar,
             "treinar": self.treino.iniciar,

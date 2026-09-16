@@ -259,6 +259,12 @@ CATALOGO: tuple[Comando, ...] = (
     # livro, e a fita é dimensionada por frequência (S-223).
     Comando("exportar_epub", "Exportar o livro para EPUB…", ARQUIVO, estilos.NEUTRO),
     Comando("exportar_docx", "Exportar o livro para DOCX…", ARQUIVO, estilos.NEUTRO),
+    # **O livro como unidade** (OCR_UI passo 17). Importar é ler o livro inteiro pela suíte --
+    # camada de texto, OCR onde falta, diagramas -- para o trilho de páginas saber onde há
+    # trabalho; cancelar deixa o que já foi lido (R3.5). Neutros: a única ênfase da tela continua
+    # sendo `ler_melhor`. Sem ícone porque moram no trilho e no menu, não na fita.
+    Comando("importar_livro", "Importar o livro (ler todas as páginas)…", ARQUIVO, estilos.NEUTRO, rotulo_curto="Importar o livro"),
+    Comando("cancelar_importacao", "Cancelar a importação", ARQUIVO, estilos.NEUTRO, rotulo_curto="Cancelar"),
     # Sem item de menu hoje, e por isso ele **precisa** estar aqui: é o comando que só existe
     # como botão, e a S-233 mede exatamente esse caso quando for esconder controle.
     Comando(
@@ -567,6 +573,10 @@ CATALOGO: tuple[Comando, ...] = (
         estilos.NEUTRO,
         rotulo_curto="Roda vira a página",
     ),
+    # O trilho de páginas (OCR_UI passo 17): o mapa do livro ao lado do visor, e o atalho para
+    # a primeira página com trabalho -- é o passo 3 do fluxo principal (U6).
+    Comando("trilho", "Trilho de páginas", VISUALIZACAO, estilos.NEUTRO),
+    Comando("primeira_duvidosa", "Ir à primeira página duvidosa", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Primeira duvidosa"),
     # -------------------------------------------------------------------------------- OCR
     Comando(
         "ler_pagina",
