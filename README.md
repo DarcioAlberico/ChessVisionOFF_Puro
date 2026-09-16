@@ -55,6 +55,14 @@ Nao ha dependencia de plataforma: a aba "Leitura" (WebView2, so-Windows) saiu na
 ela o `pythonnet` e o `pywebview`. Para ler o livro com rolagem continua e busca de texto, o
 botao **Abrir no leitor do sistema** entrega o PDF ao leitor padrao da maquina.
 
+**A janela tem duas familias de abas** (OCR_UI passo 17, ramo `passo-17-trilho`): a aba **Livro**,
+com o trabalho sobre o livro aberto em quatro **modos** -- Resultado, Estudo, Revisao e Texto,
+uma barra de botoes exclusivos no topo dela (`qt/painel_principal.py`) --, e as abas do acervo
+(Dataset, Galeria e, com a suite ao alcance, Rotulagem e Revisao de texto). Os quatro modos eram
+abas ate o passo 17; nenhum painel saiu, quatro mudaram de casa (`ui/abas.py`,
+`qt/areas_de_trabalho.py`). O estado da sessao continua guardando o nome do modo (`Resultado`),
+e uma sessao anterior ao passo reabre no mesmo lugar.
+
 ## Como a interface chegou aqui (Tkinter -> PyQt6)
 
 O produto foi em Tkinter + `ttkbootstrap` ate 2026-08-31, num arquivo `app_tkinter.py` de 2.327
@@ -718,8 +726,9 @@ Isto **nao** e o OCR de legenda acima. Aquele le a faixa em volta de um diagrama
 lado a jogar; este le a **folha inteira** -- colunas, paragrafos, tabelas, com os diagramas no
 lugar em que eles aparecem no texto.
 
-Na janela, a aba **Texto** (entre a Revisao e o Dataset) abre um editor com o texto da folha e a
-miniatura de cada diagrama no meio dele. Sem janela, o mesmo caminho e o `cvoff-texto-pagina`.
+Na janela, o modo **Texto** da aba Livro (era a aba Texto, entre a Revisao e o Dataset, ate o
+passo 17 da OCR_UI) abre um editor com o texto da folha e a miniatura de cada diagrama no meio
+dele. Sem janela, o mesmo caminho e o `cvoff-texto-pagina`.
 
 **As ferramentas do editor** (Fases 37 e 41): negrito, italico, sublinhado e tachado; cor da letra
 e realce; estilo de paragrafo (titulo, prosa, notacao, legenda); **alinhamento** -- esquerda,

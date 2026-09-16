@@ -65,10 +65,10 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
+    QHBoxLayout,
     QMainWindow,
     QMessageBox,
     QSplitter,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -87,7 +87,10 @@ from chess_diagram_ocr.config import (
 from chess_diagram_ocr.detection import DiagramCandidate, detect_diagrams_in_pdf_page, detect_diagrams_rendering_page
 from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
 from chess_diagram_ocr.qt import acessibilidade, dica, escala, exportador_de_livro, fila, fita, legenda, menu
-from chess_diagram_ocr.qt import painel_de_revisao_de_texto, painel_de_rotulagem, painel_do_pdf, paleta, plataforma, tema
+from chess_diagram_ocr.qt import importador_de_livro, painel_de_revisao_de_texto, painel_de_rotulagem, painel_do_pdf
+from chess_diagram_ocr.qt import paleta, plataforma, tema
+from chess_diagram_ocr.qt.areas_de_trabalho import AreasDeTrabalho
+from chess_diagram_ocr.qt.trilho import TrilhoDoLivro
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
@@ -381,6 +384,9 @@ class JanelaPrincipal(QMainWindow):
             self.menu.impedir(sala_declarada.COMANDOS_QUE_EXIGEM_MOTOR, motivo=strings.SEM_MOTOR_DICA)
         if self.exportador_de_livro is None:
             self.menu.impedir(exportador_de_livro.COMANDOS, motivo=exportador_de_livro.MOTIVO_AUSENTE)
+        if self.livro is None:
+            self.menu.impedir(importador_de_livro.COMANDOS, motivo=importador_de_livro.MOTIVO_AUSENTE)
+        self.menu.marcar("trilho", ligado=True)
         self._montar_o_cromo(escolhida)
         acessibilidade.tornar_acessivel(self)  # o nome derivado, aqui e em todo diálogo (F9)
         escala.aplicar_escala(self)  # o degrau tipográfico (F9-C2); ver o módulo
@@ -389,21 +395,21 @@ class JanelaPrincipal(QMainWindow):
     def _montar_paineis(self) -> None:
         self.divisor = QSplitter(Qt.Orientation.Horizontal, self)
 
-        self.abas = QTabWidget(self.divisor)
-        # **"Abas" não nomeia nada** (F9-C2): é o eco do papel `PageTabList`, e um leitor de tela
-        # já anuncia o papel logo em seguida. O que a pessoa precisa saber é o que este conjunto
-        # de abas **é** dentro da janela -- o lado do trabalho, ao lado do lado do livro.
-        self.abas.setAccessibleName("Áreas de trabalho")
+        # **Os quatro painéis do diagrama são modos da aba `Livro`**, e não abas (OCR_UI passo
+        # 17, tarefa 3): quem sabe onde cada área mora é `qt/areas_de_trabalho.py`; aqui só se
+        # monta cada painel e se diz se ele é modo (`adicionar_modo`) ou aba (`addTab`).
+        self.abas = AreasDeTrabalho(self.divisor)
         self.abas.setMinimumWidth(LARGURA_MINIMA_DAS_ABAS)
+        self.principal = self.abas.principal
 
         self.painel = PainelDeResultado(
-            self._servico, csv_de_rotulos=self._csv_de_rotulos, parent=self.abas
+            self._servico, csv_de_rotulos=self._csv_de_rotulos, parent=self.principal
         )
         self.painel.declarar_contexto(documento=self._chave_do_documento, parametros=self._parametros_de_ocr)
-        self.abas.addTab(self.painel, abas.RESULTADO)
+        self.principal.adicionar_modo(abas.RESULTADO, self.painel)
 
         self.estudo = PainelDeEstudo(
-            self.abas,
+            self.principal,
             # **O motor, se houver um** (F9-C16): sem esta linha os três comandos do menu
             # Estudo nunca podiam funcionar. Ver `ui/sala_declarada.motor_de_analise`.
             analyzer=self._analisador,
@@ -419,19 +425,19 @@ class JanelaPrincipal(QMainWindow):
             abrir_pagina=self._abrir_pagina_do_estudo,
             para_o_texto=self._linha_para_o_texto,
         )
-        self.abas.addTab(self.estudo, abas.ESTUDO)
+        self.principal.adicionar_modo(abas.ESTUDO, self.estudo)
 
         self.revisao = PainelDeRevisao(
-            self.abas,
+            self.principal,
             pedido_de_varredura=self._pedido_de_varredura,
             # A fila que a sessão anterior abriu, e não sempre a do produto (S-22/S-156). Vazio no
             # estado é "nunca escolhi outra", e aí a do produto é a certa.
             queue_path=Path(self._estado.review_queue_path or DEFAULT_QUEUE_PATH),
         )
-        self.abas.addTab(self.revisao, abas.REVISAO)
+        self.principal.adicionar_modo(abas.REVISAO, self.revisao)
 
-        self.texto = PainelDeTexto(busy=self.busy, parent=self.abas)
-        self.abas.addTab(self.texto, abas.TEXTO)
+        self.texto = PainelDeTexto(busy=self.busy, parent=self.principal)
+        self.principal.adicionar_modo(abas.TEXTO, self.texto)
 
         self.dataset = PainelDoDataset(
             self.abas,
@@ -485,11 +491,22 @@ class JanelaPrincipal(QMainWindow):
             colocacoes=self._colocacoes_conferidas,
             aviso_de_treino=self._aviso_de_treino,
         )
-        coluna = QVBoxLayout(self.lado_do_livro)
+        # **O trilho de páginas à esquerda do visor** (OCR_UI passo 17): o mapa do livro, com o
+        # estado de cada página e os botões do fluxo principal (importar, primeira duvidosa,
+        # exportar). É um índice de largura fixa; a página continua com o resto.
+        self.trilho = TrilhoDoLivro(self.lado_do_livro, miniaturas_ao_fundo=self._rasterizar_ao_fundo)
+        self.trilho.pagina_pedida.connect(self.pdf.ir_para_pagina)
+        self.trilho.exportar_pedido.connect(lambda: self._exportar_livro("epub"))
+        coluna = QVBoxLayout()
         coluna.setContentsMargins(0, 0, 0, 0)
         coluna.setSpacing(espaco.linha())
         coluna.addWidget(self.pdf, 1)
         coluna.addWidget(self.campo)
+        lado = QHBoxLayout(self.lado_do_livro)
+        lado.setContentsMargins(0, 0, 0, 0)
+        lado.setSpacing(espaco.linha())
+        lado.addWidget(self.trilho)
+        lado.addLayout(coluna, 1)
 
         self.divisor.addWidget(self.abas)
         self.divisor.addWidget(self.lado_do_livro)
@@ -508,6 +525,17 @@ class JanelaPrincipal(QMainWindow):
         )
         # EPUB/DOCX pela suíte, se ao alcance; sem ela os itens ficam cinza com o motivo na dica.
         self.exportador_de_livro = exportador_de_livro.montar(self, dizer=self._dizer, trancar=self._trancar)
+        # A importação do livro inteiro, pela mesma suíte e com a mesma guarda (passo 17). A
+        # ponte liga o importador ao trilho e guarda o resultado; a janela só a segura.
+        self.livro = importador_de_livro.montar(
+            self,
+            dizer=self._dizer,
+            trancar=self._trancar,
+            ocupado=self.busy,
+            trilho=self.trilho,
+            pdf_atual=lambda: self._pdf,
+            paginas=lambda: self.pdf.page_count,
+        )
 
     @property
     def editor(self) -> DiagramEditorModel:
@@ -614,11 +642,10 @@ class JanelaPrincipal(QMainWindow):
         if lida is not None:
             self.setGeometry(lida.x, lida.y, lida.largura, lida.altura)
         # O divisor **não** vem aqui: ver `showEvent`.
-        # A aba de trabalho na primeira abertura, e a guardada nas seguintes (S-162). `nome_atual`
-        # traduz o nome que uma sessão antiga guardou e que desde então foi renomeado.
-        indice = self._indice_da_aba(abas.nome_atual(self._estado.active_tab) or abas.ABA_DE_TRABALHO)
-        if indice is not None:
-            self.abas.setCurrentIndex(indice)
+        # A área de trabalho na primeira abertura, e a guardada nas seguintes (S-162). `nome_atual`
+        # traduz o nome que uma sessão antiga guardou e que desde então foi renomeado; um nome de
+        # modo (`Resultado`, o que toda sessão anterior ao passo 17 guardou) abre a `Livro` nele.
+        self.abas.mostrar_area(abas.nome_atual(self._estado.active_tab) or abas.MODO_DE_TRABALHO)
 
     def showEvent(self, a0: Any) -> None:  # noqa: N802 - assinatura do Qt
         """Põe o divisor onde ele estava, **na primeira vez que a janela aparece** (S-156).
@@ -645,18 +672,6 @@ class JanelaPrincipal(QMainWindow):
         esquerda = max(1, int(largura * self._estado.sash_fraction))
         self.divisor.setSizes([esquerda, max(1, largura - esquerda)])
 
-    def _indice_da_aba(self, nome: str) -> int | None:
-        """Onde está a aba com aquele nome. `None` para a que não existe mais.
-
-        Pelo **nome** e não pelo índice, porque índice não sobrevive a reordenar as abas -- e a
-        S-162 é, literalmente, reordená-las. Compara com `nome_base` porque o rótulo na tela leva
-        a contagem junto: `"Revisão (129)"` guardado não casaria com `"Revisão (54)"`.
-        """
-        for indice in range(self.abas.count()):
-            if abas.nome_base(self.abas.tabText(indice)) == nome:
-                return indice
-        return None
-
     def _anotar_arranjo(self) -> None:
         """Lê da tela o arranjo de agora e o põe no estado (S-156/S-311).
 
@@ -669,11 +684,11 @@ class JanelaPrincipal(QMainWindow):
         maximizado e do minimizado, e é a única que faz sentido restaurar. Ela é o que substitui a
         recusa do `1x1+-32000+-32000` que o Tk devolvia para uma janela minimizada.
 
-        **A aba fica fora da guarda**, e é a diferença entre ela e as outras duas: qual aba está à
+        **A aba fica fora da guarda**, e é a diferença entre ela e as outras duas: qual área está à
         frente é verdade com a janela mostrada ou não, e é o `QTabWidget` que responde -- não há
-        medida de pixel envolvida.
+        medida de pixel envolvida. O nome é o da **área** (o modo `Revisão`, e não a aba `Livro`).
         """
-        nome = abas.nome_base(self.abas.tabText(self.abas.currentIndex()))
+        nome = self.abas.nome_da_area_atual()
         if nome:
             self._estado.active_tab = nome
         if not self.isVisible():
@@ -929,6 +944,8 @@ class JanelaPrincipal(QMainWindow):
 
         # --- o visualizador
         self.pdf.abriu_pdf.connect(self._abriu_livro)
+        self.pdf.abriu_pdf.connect(lambda caminho: self.trilho.abrir_livro(Path(str(caminho)), self.pdf.page_count))
+        self.pdf.pagina_desenhada.connect(self.trilho.marcar_pagina_atual)
         self.pdf.antes_de_trocar_de_pagina.connect(self.painel.lembrar_pagina)
         self.pdf.pagina_desenhada.connect(self._pagina_apareceu)
         self.pdf.caixa_clicada.connect(self._clicou_na_caixa)
@@ -1555,10 +1572,8 @@ class JanelaPrincipal(QMainWindow):
         self._atualizar_abas()
 
     def _focar_aba(self, painel: QWidget) -> None:
-        """Traz para a frente a aba que acabou de receber alguma coisa."""
-        indice = self.abas.indexOf(painel)
-        if indice >= 0:
-            self.abas.setCurrentIndex(indice)
+        """Traz para a frente o painel que acabou de receber alguma coisa -- aba ou modo."""
+        self.abas.mostrar(painel)
 
     # ---------------------------------------------------- o que a sala de estudo pergunta
 
@@ -1663,6 +1678,12 @@ class JanelaPrincipal(QMainWindow):
             splits_path=splits,
         )
 
+    def _alternar_trilho(self) -> None:
+        # `isHidden` e não `isVisible`: antes de a janela aparecer, `isVisible` é falso para tudo.
+        mostrar = self.trilho.isHidden()
+        self.trilho.setVisible(mostrar)
+        self.menu.marcar("trilho", ligado=mostrar)
+
     def _exportar_livro(self, formato: str) -> None:
         """O diálogo da suíte (`qt/exportador_de_livro.py`); sem ela, o motivo vai ao rodapé."""
         if self.exportador_de_livro is None:
@@ -1742,6 +1763,10 @@ class JanelaPrincipal(QMainWindow):
             "varrer_livro": self.galeria.varrer,
             "exportar_pgn": lambda: self.exportador.comecar(self._pdf),
             "exportar_epub": lambda: self._exportar_livro("epub"),
+            "importar_livro": lambda: self.livro.comecar() if self.livro else self._dizer(importador_de_livro.MOTIVO_AUSENTE.splitlines()[0]),
+            "cancelar_importacao": lambda: self.livro.cancelar() if self.livro else None,
+            "trilho": self._alternar_trilho,
+            "primeira_duvidosa": self.trilho._ir_para_a_primeira_duvidosa,
             "exportar_docx": lambda: self._exportar_livro("docx"),
             "cancelar_exportacao": self.exportador.cancelar,
             "treinar": self.treino.iniciar,
@@ -1825,21 +1850,19 @@ class JanelaPrincipal(QMainWindow):
     # ------------------------------------------------------------------------------ a tela
 
     def _atualizar_abas(self) -> None:
-        """Põe no rótulo de cada aba quanto trabalho ela carrega (S-162).
+        """Põe no rótulo de cada área quanto trabalho ela carrega (S-162) -- aba ou modo.
 
         Chamado nos pontos em que os números mudam -- abrir livro, salvar amostra, fechar item da
         fila --, e **não num relógio**: a contagem só muda quando alguém a muda, e um disparo
         periódico redesenharia a barra de abas para dizer o mesmo número.
         """
-        contagens = {
-            abas.REVISAO: len(self.revisao.queue.pending()),
-            abas.DATASET: self.dataset.contagem_de_amostras(),
-            abas.GALERIA: len(self.galeria.model),
-        }
-        for indice in range(self.abas.count()):
-            nome = abas.nome_base(self.abas.tabText(indice))
-            if nome in contagens:
-                self.abas.setTabText(indice, abas.rotulo(nome, contagens[nome]))
+        self.abas.definir_contagens(
+            {
+                abas.REVISAO: len(self.revisao.queue.pending()),
+                abas.DATASET: self.dataset.contagem_de_amostras(),
+                abas.GALERIA: len(self.galeria.model),
+            }
+        )
 
     def _dizer_o_que_ha_na_pagina(self) -> None:
         """O estado da página no rodapé. A contagem e a frase são de `ui/estado_do_rodape.py`,

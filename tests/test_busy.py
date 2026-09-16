@@ -1181,8 +1181,8 @@ class PortaoDeExecucaoTests(unittest.TestCase):
                 janela.show()
                 for _ in range(4):
                     app.processEvents()
-                for indice in range(janela.abas.count()):
-                    janela.abas.setCurrentIndex(indice)
+                for nome in janela.abas.areas():  # as abas do acervo e os modos da aba Livro
+                    janela.abas.mostrar_area(nome)
                     for _ in range(4):
                         app.processEvents()
                 for _ in range(8):

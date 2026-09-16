@@ -279,6 +279,11 @@ FORA_DO_REGISTRO: dict[tuple[str, str], str] = {
         "milissegundos num disco frio; até chegar, o botão de candidatas fica apagado, que é o "
         "que ele já era sem cache. Fechar no meio não perde nada: é só uma conexão."
     ),
+    ("trilho.py", "_proxima_miniatura"): (
+        "Uma miniatura de página do trilho (OCR_UI passo 17), a 18 DPI, pelo processo de "
+        "trabalho: alguns milissegundos cada, uma por vez, as visíveis primeiro. É enfeite -- a "
+        "linha da página já existe sem ela --, e fechar no meio não perde nada."
+    ),
 }
 """As threads de `qt/` que **não** entram no registro, e por quê -- uma linha cada.
 

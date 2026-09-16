@@ -253,9 +253,9 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**Dezessete** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**Dezoito** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
-exceção. Nove são operações longas e estão no `BusyRegistry`; as outras oito são declaradas
+exceção. Nove são operações longas e estão no `BusyRegistry`; as outras nove são declaradas
 em `ui/busy.py::FORA_DO_REGISTRO`, com o motivo de cada uma (S-112).
 
 **As três últimas são do passo 15 da OCR_UI (2026-09-16), e nenhuma delas é uma thread que
@@ -293,6 +293,8 @@ Contar só a primeira deixaria de fora a leitura da página, que é o laço inte
 | abrir o livro e rasterizar a página exibida (passo 15) | `qt/painel_do_pdf.py::_executar`, via o processo de trabalho | não (é rápido) | — declarada | não |
 | reduzir a página ao zoom novo (passo 15) | `qt/visor.py::_pedir_reescalonamento` | não (é rápido) | — declarada | não |
 | abrir o cache de posições ao abrir o livro (passo 15) | `qt/painel_da_galeria.py::_abrir_cache_de_posicoes` | não (é rápido) | — declarada | não |
+| a miniatura de uma página do trilho (passo 17) | `qt/trilho.py::_proxima_miniatura`, via o processo de trabalho | não (é rápido) | — declarada | não |
+| importar o livro inteiro pela suíte (passo 17) | `caissa.ui.views.importacao` (thread da suíte), registrada por `qt/importador_de_livro.py` | sim, entre páginas; o parcial fica (R3.5) | não, o que foi lido fica | não |
 
 O modelo é compartilhado entre elas e fica **sob lock durante o uso**, não só durante a
 carga: o treino reescreve o mesmo `.pt` que uma leitura concorrente estaria lendo (S-31).

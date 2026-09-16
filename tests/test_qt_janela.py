@@ -120,20 +120,53 @@ class MontagemTests(unittest.TestCase):
         montada.resize(1400, 900)
         return montada
 
-    def test_as_seis_abas_estao_na_ordem_da_spec(self) -> None:
-        """**A ordem é o item** (S-162): Resultado, Estudo e Revisão são do diagrama aberto agora;
-        Texto, Dataset e Galeria são do acervo. O corte entre os dois grupos é onde a barra muda
-        de assunto."""
+    def test_as_abas_estao_na_ordem_da_spec(self) -> None:
+        """**A ordem é o item** (S-162): o livro em trabalho primeiro, o acervo depois. Desde o
+        passo 17 da OCR_UI o corte entre os dois grupos é estrutura: os quatro painéis do diagrama
+        são **modos** da aba `Livro`, e a faixa só tem o livro e o acervo."""
         janela = self.janela()
         nomes = [abas.nome_base(janela.abas.tabText(i)) for i in range(janela.abas.count())]
-        esperadas = [abas.RESULTADO, abas.ESTUDO, abas.REVISAO, abas.TEXTO, abas.DATASET, abas.GALERIA]
-        # A sétima e a oitava são da suíte e só existem quando ela está ao alcance
+        esperadas = [abas.LIVRO, abas.DATASET, abas.GALERIA]
+        # As duas últimas são da suíte e só existem quando ela está ao alcance
         # (`qt/painel_de_rotulagem.py`, `qt/painel_de_revisao_de_texto.py`).
         if painel_de_rotulagem.disponivel():
             esperadas.append(abas.ROTULAGEM)
         if painel_de_revisao_de_texto.disponivel():
             esperadas.append(abas.REVISAO_DE_TEXTO)
         self.assertEqual(nomes, esperadas)
+
+    def test_os_quatro_paineis_do_diagrama_sao_modos_da_aba_livro(self) -> None:
+        """Resultado, Estudo, Revisão e Texto falam do mesmo diagrama; trocar entre eles é olhar o
+        mesmo trabalho de outro ângulo, e não ir a outro lugar (OCR_UI passo 17, tarefa 3). Um
+        botão marcável por modo, exclusivos entre si, na ordem de `ui/abas.MODOS`."""
+        janela = self.janela()
+        principal = janela.principal
+        self.assertEqual(principal.modos(), list(abas.MODOS))
+        self.assertEqual(
+            [principal.widget_do_modo(nome) for nome in abas.MODOS],
+            [janela.painel, janela.estudo, janela.revisao, janela.texto],
+        )
+        self.assertEqual(principal.modo_atual(), abas.MODO_DE_TRABALHO)
+        self.assertTrue(principal.botao(abas.RESULTADO).isChecked())
+        principal.botao(abas.TEXTO).click()
+        self.assertIs(janela.abas.area_atual(), janela.texto)
+        self.assertFalse(principal.botao(abas.RESULTADO).isChecked(), "exclusivos")
+
+    def test_toda_area_de_trabalho_e_alcancada_pelo_nome(self) -> None:
+        """`areas()` lista os modos e depois as abas do acervo -- a ordem que as oito abas tinham
+        -- e `mostrar_area` abre cada uma sem que quem chama saiba se é aba ou modo. É o laço que
+        os portões da suíte e as réguas dos testes fazem quando precisam de cada painel à frente."""
+        janela = self.janela()
+        self.assertEqual(janela.abas.areas()[:6], [*abas.MODOS, abas.DATASET, abas.GALERIA])
+        for nome in janela.abas.areas():
+            with self.subTest(nome=nome):
+                self.assertTrue(janela.abas.mostrar_area(nome))
+                aba = abas.nome_base(janela.abas.tabText(janela.abas.currentIndex()))
+                self.assertEqual(aba, abas.LIVRO if abas.e_modo(nome) else nome)
+                self.assertEqual(janela.abas.nome_da_area_atual(), nome)
+        self.assertFalse(janela.abas.mostrar_area("Inexistente"))
+        self.assertTrue(janela.abas.mostrar_area("Revisão (12)"), "o nome com contagem também serve")
+        self.assertIs(janela.abas.area_atual(), janela.revisao)
 
     def test_exportar_epub_e_docx_so_prometem_o_que_a_suite_entrega(self) -> None:
         """**Um menu não promete o que o produto não faz** (`menu.impedir`). Os dois itens de
@@ -359,7 +392,10 @@ class MontagemTests(unittest.TestCase):
         janela._atualizar_abas()
         rotulos = {abas.nome_base(janela.abas.tabText(i)): janela.abas.tabText(i) for i in range(janela.abas.count())}
         self.assertEqual(rotulos[abas.GALERIA], abas.rotulo(abas.GALERIA, 0))
-        self.assertEqual(rotulos[abas.RESULTADO], abas.RESULTADO, "aba sem contagem não ganha número")
+        self.assertEqual(rotulos[abas.LIVRO], abas.LIVRO, "aba sem contagem não ganha número")
+        # A fila de revisão é um modo: a contagem vai ao botão dela, pela mesma regra.
+        self.assertEqual(janela.principal.rotulo_do_modo(abas.REVISAO), abas.rotulo(abas.REVISAO, 0))
+        self.assertEqual(janela.principal.rotulo_do_modo(abas.RESULTADO), abas.RESULTADO)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -572,28 +608,28 @@ class FiacaoTests(unittest.TestCase):
         """Abrir a amostra numa aba que ninguém está vendo é a mesma classe de silêncio que a
         S-161 registra: a ação acontece e nada na tela diz que aconteceu."""
         janela = self.janela()
-        janela.abas.setCurrentIndex(janela.abas.indexOf(janela.dataset))
+        janela.abas.mostrar(janela.dataset)
         with mock.patch.object(janela.painel, "carregar_amostra", return_value=True) as abriu:
             janela.dataset.editar.emit(object())
         self.assertTrue(abriu.called)
-        self.assertIs(janela.abas.currentWidget(), janela.painel)
+        self.assertIs(janela.abas.area_atual(), janela.painel)
 
     def test_a_revisao_manda_corrigir_e_a_aba_resultado_vem_para_a_frente(self) -> None:
         janela = self.janela()
-        janela.abas.setCurrentIndex(janela.abas.indexOf(janela.revisao))
+        janela.abas.mostrar(janela.revisao)
         with mock.patch.object(janela.painel, "carregar_item_de_revisao", return_value=True) as abriu:
             janela.revisao.abriu.emit(object(), 2)
         abriu.assert_called_with(mock.ANY, 2)
-        self.assertIs(janela.abas.currentWidget(), janela.painel)
+        self.assertIs(janela.abas.area_atual(), janela.painel)
 
     def test_a_aba_que_falhou_em_abrir_nao_e_trazida_para_a_frente(self) -> None:
         """A miniatura pode ter sumido do disco. Trazer a aba mostraria o diagrama anterior como
         se fosse o item pedido."""
         janela = self.janela()
-        janela.abas.setCurrentIndex(janela.abas.indexOf(janela.revisao))
+        janela.abas.mostrar(janela.revisao)
         with mock.patch.object(janela.painel, "carregar_item_de_revisao", return_value=False):
             janela.revisao.abriu.emit(object(), 2)
-        self.assertIs(janela.abas.currentWidget(), janela.revisao)
+        self.assertIs(janela.abas.area_atual(), janela.revisao)
 
     def test_o_estudo_pergunta_a_posicao_ao_resultado_e_o_lance_a_galeria(self) -> None:
         """O vínculo é de mão única: o estudo **lê** o diagrama selecionado e nunca escreve de
@@ -607,7 +643,7 @@ class FiacaoTests(unittest.TestCase):
         janela = self.janela()
         self.assertTrue(janela._linha_para_o_texto("1. e4 e5"))
         self.assertIn("e4", janela.texto.texto())
-        self.assertIs(janela.abas.currentWidget(), janela.texto)
+        self.assertIs(janela.abas.area_atual(), janela.texto)
 
     def test_a_linha_impressa_do_estudo_vem_da_aba_de_texto(self) -> None:
         """Lá o parágrafo do livro vira variante; aqui a aba de Texto é quem o leu (S-283)."""
@@ -675,11 +711,11 @@ class FiacaoTests(unittest.TestCase):
         para a frente. A posição é a do Resultado, ancorada no livro, na página e no diagrama."""
         janela = self.janela()
         janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
-        self.assertIsNot(janela.abas.currentWidget(), janela.estudo)
+        self.assertIsNot(janela.abas.area_atual(), janela.estudo)
 
         janela.pdf.caixa_para_estudo.emit(1)
 
-        self.assertIs(janela.abas.currentWidget(), janela.estudo)
+        self.assertIs(janela.abas.area_atual(), janela.estudo)
         self.assertEqual(janela.painel.lista.currentRow(), 1)
         ancora = janela.estudo.estudo.ancora
         self.assertEqual((ancora.documento, ancora.pagina, ancora.diagrama), (str(self.livro), 0, 1))
@@ -691,10 +727,10 @@ class FiacaoTests(unittest.TestCase):
         with mock.patch.object(janela, "ler_pagina") as leu:
             janela.pdf.caixa_para_estudo.emit(0)
         leu.assert_called_once_with(selecionar_depois=0)
-        self.assertIsNot(janela.abas.currentWidget(), janela.estudo)
+        self.assertIsNot(janela.abas.area_atual(), janela.estudo)
 
         janela._chegaram_itens(0, [self._diagrama(0)], 0)
-        self.assertIs(janela.abas.currentWidget(), janela.estudo)
+        self.assertIs(janela.abas.area_atual(), janela.estudo)
         self.assertEqual(janela.estudo.estudo.ancora.diagrama, 0)
 
     def test_o_clique_simples_na_caixa_nao_lida_espera_o_intervalo_do_duplo_clique(self) -> None:
@@ -719,7 +755,7 @@ class FiacaoTests(unittest.TestCase):
         janela.pdf.caixa_clicada.emit(1)
         self.assertFalse(janela._leitura_adiada.isActive())
         self.assertEqual(janela.painel.lista.currentRow(), 1)
-        self.assertIs(janela.abas.currentWidget(), janela.painel)
+        self.assertIs(janela.abas.area_atual(), janela.painel)
 
     def test_o_duplo_clique_cancela_a_leitura_que_o_primeiro_clique_adiou_e_le_ele_mesmo(self) -> None:
         janela = self.janela()
@@ -755,7 +791,7 @@ class FiacaoTests(unittest.TestCase):
         self.assertIsNone(janela._tarefa)
         self.assertIsNone(janela._estudar_ao_ler, "o pedido morre com a tarefa")
         janela._chegaram_itens(0, [self._diagrama(0)], None)
-        self.assertIsNot(janela.abas.currentWidget(), janela.estudo)
+        self.assertIsNot(janela.abas.area_atual(), janela.estudo)
 
     def test_a_caixa_tirada_some_da_pagina_e_volta_com_o_comando(self) -> None:
         """A remoção é da pessoa e por (livro, página): ela não apaga nada no disco, e é isso que
@@ -832,6 +868,39 @@ class FiacaoTests(unittest.TestCase):
         janela = self.janela(com_livro=False)
         self.assertEqual(1, janela._opcoes(1).max_boards)
         self.assertEqual(DEFAULT_MAX_BOARDS, janela._opcoes().max_boards)
+
+    # ------------------------------------------------------------ o trilho de páginas (passo 17)
+
+    def test_o_trilho_acompanha_o_livro_e_a_pagina_e_manda_o_visor(self) -> None:
+        """Abrir o livro dá uma linha por página; virar a página marca a linha; clicar vira."""
+        janela = self.janela()
+        self.assertEqual(3, janela.trilho.paginas)
+        self.assertEqual(janela.pdf.page_index, janela.trilho.lista.currentRow())
+        janela.pdf.ir_para_pagina(2)
+        self.assertEqual(2, janela.trilho.lista.currentRow())
+        janela.trilho.lista.setCurrentRow(1)
+        self.assertEqual(1, janela.pdf.page_index)
+
+    def test_o_trilho_e_um_interruptor_do_menu_ver(self) -> None:
+        janela = self.janela(com_livro=False)
+        self.assertTrue(janela.trilho.isVisibleTo(janela))
+        self.assertEqual(True, janela.menu.acoes["trilho"].isChecked())
+        janela._alternar_trilho()
+        self.assertFalse(janela.trilho.isVisibleTo(janela))
+        self.assertEqual(False, janela.menu.acoes["trilho"].isChecked())
+
+    def test_sem_a_suite_os_comandos_de_importacao_ficam_impedidos_com_motivo(self) -> None:
+        from chess_diagram_ocr.qt import importador_de_livro
+
+        janela = self.janela(com_livro=False)
+        for acao in importador_de_livro.COMANDOS:
+            with self.subTest(acao=acao):
+                item = janela.menu.acoes[acao]
+                if janela.livro is None:
+                    self.assertFalse(item.isEnabled())
+                    self.assertIn("suíte", item.toolTip())
+                else:
+                    self.assertTrue(item.isEnabled())
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -947,19 +1016,34 @@ class EstadoEntreSessoesTests(unittest.TestCase):
     def test_a_aba_aberta_volta_pelo_nome_e_nao_pelo_indice(self) -> None:
         """Índice não sobrevive a reordenar as abas, e a S-162 é reordená-las."""
         primeira = self.janela()
-        primeira.abas.setCurrentIndex(primeira._indice_da_aba(abas.DATASET) or 0)
+        self.assertTrue(primeira.abas.mostrar_area(abas.DATASET))
         primeira.close()
 
         self.assertEqual(abas.DATASET, primeira._estado.active_tab)
         segunda = self.janela()
         self.assertEqual(abas.DATASET, abas.nome_base(segunda.abas.tabText(segunda.abas.currentIndex())))
 
+    def test_o_modo_aberto_volta_e_e_o_que_o_estado_guarda(self) -> None:
+        """O estado guarda o **modo** (`Revisão`), e não `Livro`: é o nome que toda sessão anterior
+        ao passo 17 já guardava, e reabri-lo é abrir a `Livro` naquele modo -- o mesmo lugar, com
+        outra casa (OCR_UI passo 17, tarefa 3)."""
+        primeira = self.janela()
+        primeira.abas.mostrar(primeira.revisao)
+        primeira.close()
+
+        self.assertEqual(abas.REVISAO, primeira._estado.active_tab)
+        segunda = self.janela()
+        self.assertEqual(abas.LIVRO, abas.nome_base(segunda.abas.tabText(segunda.abas.currentIndex())))
+        self.assertIs(segunda.abas.area_atual(), segunda.revisao)
+
     def test_a_primeira_abertura_cai_na_aba_de_trabalho(self) -> None:
-        """Sem nada guardado, a Resultado -- e não a primeira que o `QTabWidget` mostrar."""
+        """Sem nada guardado, a `Livro` no modo Resultado -- e não a primeira que o `QTabWidget`
+        mostrar nem o primeiro modo que a pilha tiver."""
         janela = self.janela()
         self.assertEqual(
             abas.ABA_DE_TRABALHO, abas.nome_base(janela.abas.tabText(janela.abas.currentIndex()))
         )
+        self.assertEqual(abas.MODO_DE_TRABALHO, janela.principal.modo_atual())
 
     def test_nada_e_gravado_antes_de_o_estado_chegar_aos_widgets(self) -> None:
         """A guarda da S-322, e o defeito que ela impede é o pior de todos aqui.
@@ -1380,7 +1464,7 @@ class DesfazerTests(unittest.TestCase):
         janela = self.janela()
         # A aba tem de estar a frente: `setFocus` num widget de aba escondida nao toma o foco, e o
         # Qt o entrega ao primeiro focavel da aba visivel.
-        janela.abas.setCurrentWidget(janela.texto)
+        janela.abas.mostrar(janela.texto)
         janela.show()
         janela.activateWindow()
         janela.texto.editor.setFocus()
@@ -1504,11 +1588,12 @@ class EstadoVazioNaTelaTests(unittest.TestCase):
         for largura, altura in self.LARGURAS:
             janela.resize(largura, altura)
             self.app.processEvents()
-            # **Uma aba de cada vez, somando.** `isVisible()` e falso para o controle de uma
+            # **Uma area de cada vez, somando.** `isVisible()` e falso para o controle de uma
             # aba que nao esta a frente: varrer uma vez so, depois do laco, leria a ultima aba
-            # e nenhuma outra -- e o estado vazio da aba Texto cita botoes da aba Texto.
-            for indice in range(janela.abas.count()):
-                janela.abas.setCurrentIndex(indice)
+            # e nenhuma outra -- e o estado vazio da aba Texto cita botoes da aba Texto. Os
+            # modos da aba Livro contam como abas aqui (`areas`): um por vez a frente.
+            for nome in janela.abas.areas():
+                janela.abas.mostrar_area(nome)
                 self.app.processEvents()
                 na_tela |= self._lido_na_tela(janela)
         return [
