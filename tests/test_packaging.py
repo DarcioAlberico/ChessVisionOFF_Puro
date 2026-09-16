@@ -250,8 +250,16 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1967
+    LIMITE = 1979
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.967 -> 1.979 com o estado «corrigido» das caixas da página (OCR_UI passo 13, tarefa 4), e
+    as doze linhas são um carimbo e um religamento.** `_publicar_caixas` passa a carimbar
+    `mark_edited` com o que o editor diz estar corrigido **nesta** página
+    (`DiagramEditorModel.hand_edited_indices`, regra pura), e `_recarimbar_caixas` republica as
+    caixas quando o painel avisa que mudou (`PainelDeResultado.mudou`). O recorte, a sincronia e
+    a tinta por margem moram no painel (`qt/painel_de_recorte.py`, `ui/recorte_do_diagrama.py`)
+    e não custaram linha aqui.
 
     **1.984 -> 1.967 com a tarefa 3 do passo 17 (as abas do diagrama viram modos), e a catraca
     desce junto.** A faixa de abas deixou de ser um `QTabWidget` cru montado aqui e passou a ser

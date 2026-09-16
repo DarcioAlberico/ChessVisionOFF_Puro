@@ -31,7 +31,9 @@ from chess_diagram_ocr.ui import tokens
 from chess_diagram_ocr.ui.leitura_do_pdf import CLICK_SLOP_PX, MIN_SELECTION_PX
 from chess_diagram_ocr.ui.page_overlay import (
     A_FAZER,
+    CORRIGIDO,
     DISPENSADO,
+    DUVIDOSO,
     LIDO,
     PRONTO,
     DiagramBox,
@@ -59,6 +61,8 @@ logger = logging.getLogger(__name__)
 COR_POR_ESTADO: dict[str, str] = {
     A_FAZER: tokens.RESERVA[tokens.A_FAZER],
     LIDO: tokens.RESERVA[tokens.LIDO],
+    DUVIDOSO: tokens.RESERVA[tokens.ATENCAO],
+    CORRIGIDO: tokens.RESERVA[tokens.CORRIGIDO],
     PRONTO: tokens.RESERVA[tokens.PRONTO],
     DISPENSADO: tokens.RESERVA[tokens.DISPENSADO],
 }

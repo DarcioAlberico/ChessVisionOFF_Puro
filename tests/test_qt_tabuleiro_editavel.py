@@ -195,7 +195,7 @@ class TabuleiroEditavelTests(unittest.TestCase):
         self.clicar(0)
         self.assertEqual(
             self.tabuleiro.casas_marcadas(),
-            {"selecionada": (0,), "corrigidas": (5, 12), "problematicas": (4,)},
+            {"selecionada": (0,), "apontada": (), "corrigidas": (5, 12), "problematicas": (4,)},
         )
 
     def test_desenhar_com_marcas_e_arrasto_nao_levanta(self) -> None:

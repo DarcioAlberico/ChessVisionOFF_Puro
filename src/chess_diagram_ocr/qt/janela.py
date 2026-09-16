@@ -135,6 +135,7 @@ from chess_diagram_ocr.ui.page_overlay import (
     boxes_from_diagrams,
     choose_boxes,
     decide_box_click,
+    mark_edited,
     mark_saved,
 )
 from chess_diagram_ocr.ui.page_results import PageOcrParams, colocacoes_conferidas
@@ -618,7 +619,7 @@ class JanelaPrincipal(QMainWindow):
         self.pdf.definir_enquadramento(estado.pdf_enquadramento)
         self.pdf.marcar_diagramas.setChecked(estado.show_diagram_boxes)
         self.pdf.roda_vira_pagina.setChecked(estado.wheel_flips_page)
-        self.painel.heatmap.setChecked(estado.show_heatmap)
+        self.painel.mostrar_incerteza = estado.show_heatmap
         self.texto.aplicar_zoom(estado.texto_zoom, avisar=False)
         self.texto.definir_quebra(estado.texto_quebra)
         self.estudo.posicionar_divisor(estado.estudo_divisor)
@@ -724,7 +725,7 @@ class JanelaPrincipal(QMainWindow):
         estado.pdf_enquadramento = self.pdf.enquadramento
         estado.show_diagram_boxes = bool(self.pdf.marcar_diagramas.isChecked())
         estado.wheel_flips_page = bool(self.pdf.roda_vira_pagina.isChecked())
-        estado.show_heatmap = bool(self.painel.heatmap.isChecked())
+        estado.show_heatmap = self.painel.mostrar_incerteza
         estado.texto_zoom = int(self.texto.zoom_da_vista)
         estado.texto_quebra = bool(self.texto.quebra)
         estado.review_queue_path = str(self.revisao.queue_path)
@@ -961,6 +962,7 @@ class JanelaPrincipal(QMainWindow):
         # foi salvo é a janela -- o painel não tem o carimbo por página.
         self.painel.diagramas_salvos = lambda _documento, pagina: self._salvos.get(pagina, set())
         self.painel.selecionou.connect(self.pdf.selecionar_caixa)
+        self.painel.mudou.connect(self._recarimbar_caixas)
         self.painel.salvou.connect(self._gravou_amostra)
         self.painel.revisou.connect(self._fechar_item_da_fila)
         self.painel.regravou.connect(self._dataset_mudou)
@@ -1428,7 +1430,17 @@ class JanelaPrincipal(QMainWindow):
             return
         visiveis = self._tiradas.apply(self._chave_do_documento(), caixas.page_index, caixas.boxes)
         salvos = self._salvos.get(caixas.page_index, set())
-        self.pdf.definir_caixas(PageBoxes(caixas.page_index, caixas.params, mark_saved(visiveis, salvos)))
+        # O «corrigido» (passo 13) vem do editor, e só quando ele está mostrando **esta** página.
+        na_pagina = self.painel.modelo.page_key == (self._chave_do_documento(), caixas.page_index)
+        editados = self.painel.modelo.hand_edited_indices() if na_pagina else frozenset()
+        marcadas = mark_edited(mark_saved(visiveis, salvos), editados)
+        self.pdf.definir_caixas(PageBoxes(caixas.page_index, caixas.params, marcadas))
+
+    def _recarimbar_caixas(self) -> None:
+        """Repõe as caixas da página com os carimbos de agora -- a correção acabou de acontecer."""
+        guardadas = self._caixas_por_pagina.get(self._chave_do_documento(), self.pdf.page_index, self._parametros())
+        if guardadas is not None:
+            self._publicar_caixas(guardadas)
 
     # -------------------------------------------------------------------------------- seleção
 

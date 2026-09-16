@@ -23,6 +23,15 @@ escala pela mesma razão que fez a S-31 tirar o editor do `ChessOcrTkApp`: com o
 do editor e o do estudo no mesmo objeto, um método de navegação de página mexe no que está sendo
 editado sem que nada diga. A janela passa a conversar com este painel por sinal.
 
+**O recorte ao lado do tabuleiro (OCR_UI passo 13, U1).** O lado direito da janela é a página
+inteira; para conferir uma casa a pessoa achava o diagrama nela, dava zoom e voltava. Desde o
+passo 13 o diagrama como o classificador o leu (`board_rgb`) fica ampliado ao lado do tabuleiro,
+num divisor; a casa sob o ponteiro e a selecionada se espelham nos dois, a dica de qualquer casa
+diz as três leituras e a margem, e um clique no recorte é um clique no tabuleiro
+(`TabuleiroEditavel.pressionar`: pinta com pincel, seleciona sem). A regra é de
+`ui/recorte_do_diagrama.py`; a pintura, de `qt/painel_de_recorte.py`. A tinta de incerteza passou
+a ser **por margem** e ligada por padrão -- a caixa virou «Esconder incerteza».
+
 **As quatro origens estão aqui (S-505).** Página de PDF (`carregar_pagina`), item da fila de
 revisão (`carregar_item_de_revisao`), amostra do dataset (`carregar_amostra`) e imagem avulsa
 (`carregar_avulsos`). Cada uma declara o seu vínculo, e é o vínculo que impede `Ctrl+S` de gravar
@@ -52,6 +61,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QSpinBox,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -61,15 +71,17 @@ from chess_diagram_ocr.fen_utils import is_valid_fen, square_name
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
-from chess_diagram_ocr.qt.rotulo import CampoQueAvisaQueContinua
 from chess_diagram_ocr.qt.atalhos import sequencia_qt
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import DicaEmDesabilitado, dica_em
+from chess_diagram_ocr.qt.painel_de_recorte import PainelDeRecorte
 from chess_diagram_ocr.qt.paleta_de_pecas import PaletaDePecas
+from chess_diagram_ocr.qt.rotulo import CampoQueAvisaQueContinua
 from chess_diagram_ocr.qt.tabuleiro_editavel import TabuleiroEditavel
 from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import OcrService, RecognitionOrigin, RecognizedDiagram
 from chess_diagram_ocr.ui import atalhos, board_edit, comandos, espaco, estilos, strings, tipografia, tokens
+from chess_diagram_ocr.ui import recorte_do_diagrama as regra_do_recorte
 from chess_diagram_ocr.ui.editor_model import DiagramEditorModel, EditorBinding, SaveKind, SaveTarget
 from chess_diagram_ocr.ui.historico import Historico
 from chess_diagram_ocr.ui.legality import ILLEGAL_SAVE_TITLE, explain_position, illegal_save_question
@@ -158,6 +170,12 @@ class PainelDeResultado(QWidget):
     regravou = pyqtSignal()
     """A linha de uma amostra do dataset foi regravada. A aba Dataset relê o que mudou."""
 
+    mudou = pyqtSignal()
+    """O que está na tela mudou -- posição, seleção, diagrama (OCR_UI passo 13).
+
+    A janela o usa para recarimbar as caixas da página: o diagrama corrigido e ainda não gravado
+    ganha o estado «corrigido» na hora, e não na próxima visita à página."""
+
     def __init__(
         self,
         servico: OcrService,
@@ -225,12 +243,24 @@ class PainelDeResultado(QWidget):
         # uma lista vazia de 1059x140 com anel de foco faz no topo da tela principal -- ela é o
         # elemento mais destacado da janela dizendo que não há nada. Ver `_repovoar_lista`.
         self.lista.setVisible(False)
+        # **Piso de um pixel, e não o do Qt** (OCR_UI passo 13): o `QAbstractScrollArea` pede 62 px
+        # de mínimo, e o painel com um diagrama lido somava 697 px de piso -- a janela deixava de
+        # caber em 768 na primeira página lida. A lista tem teto de 140 e esticamento zero: com
+        # espaço ela fica com o que pede; sem espaço, encolhe em vez de empurrar a janela.
+        self.lista.setMinimumHeight(1)
         caixa.addWidget(self.lista, 0)
+
+        # **O recorte à esquerda do tabuleiro, num divisor** (OCR_UI passo 13, tarefa 1): o diagrama
+        # impresso e o diagrama lido lado a lado, na mesma altura, e a pessoa decide quanto de cada.
+        self.divisor = QSplitter(Qt.Orientation.Horizontal, self)
+        self.divisor.setChildrenCollapsible(False)
+        self.recorte = PainelDeRecorte(self.divisor)
+        self.divisor.addWidget(self.recorte)
 
         # O mesmo texto do `LabelFrame` de `ui/result_panel.py`, literal nos dois lados: ele diz
         # o que fazer com o widget que está dentro dele, e é a única frase do painel que não
         # nomeia um comando -- que é o critério de `ui/strings.py`.
-        grupo = QGroupBox("Reconhecido (clique e arraste para corrigir)", self)
+        grupo = QGroupBox("Reconhecido (clique e arraste para corrigir)", self.divisor)
         dentro = QHBoxLayout(grupo)
         self.tabuleiro = TabuleiroEditavel(grupo)
         self.tabuleiro.posicao_mudou.connect(self._tabuleiro_mudou)
@@ -271,7 +301,18 @@ class PainelDeResultado(QWidget):
         # própria altura em `QVBoxLayout` (o `heightForWidth` clássico do Qt), e stretch zero a
         # deixaria à mercê desse `sizeHint`. Com 12 contra 1 ela continua recebendo folga -- um
         # treze avos em vez de um quarto -- e o texto longo continua cabendo.
-        caixa.addWidget(grupo, ESTICAMENTO_DO_CANVAS)
+        self.divisor.addWidget(grupo)
+        # **Ao lado, e sempre ao lado.** Uma versão empilhava os dois quadrados quando a coluna era
+        # estreita; a altura mínima do empilhado (recorte + tabuleiro + paleta) forçava a janela
+        # acima de 768 px, e a janela alta fazia a coluna parecer estreita -- um laço. Lado a lado o
+        # piso de altura não muda, e a 1366 × 768 (a tela da F9) o tabuleiro continua com os ~300 px
+        # que a altura já lhe dava; quem quiser mais recorte arrasta a alça. **1:1 sobre pisos
+        # iguais** é o que faz os dois quadrados saírem do mesmo tamanho -- ver
+        # `painel_de_recorte.LADO_PREFERIDO`.
+        self.divisor.setStretchFactor(0, 1)
+        self.divisor.setStretchFactor(1, 1)
+        caixa.addWidget(self.divisor, ESTICAMENTO_DO_CANVAS)
+        self._ligar_o_recorte()
 
         self.legalidade = QLabel("", self)
         self.legalidade.setWordWrap(True)
@@ -293,11 +334,38 @@ class PainelDeResultado(QWidget):
         # Texto selecionável recebe foco de clique, e foco sem nome é anúncio mudo (F9).
         self.detalhes.setAccessibleName(strings.DETALHES_DO_DIAGRAMA)
         self.detalhes.setAlignment(Qt.AlignmentFlag.AlignTop)
+        # O mesmo piso de um pixel da lista, e pela mesma medição: seis linhas de detalhes pediam
+        # 96 px de **mínimo**. Com folga o parágrafo aparece inteiro (ele tem esticamento); sem
+        # folga, é ele que cede, e não a janela.
+        self.detalhes.setMinimumHeight(1)
         caixa.addWidget(self.detalhes, 1)
 
         # Uma dica por painel, e não por botão: quem a mostra é o pai, porque um controle
         # desabilitado não recebe evento de ponteiro no Qt (S-32).
         self._dicas = DicaEmDesabilitado(self)
+
+    def _ligar_o_recorte(self) -> None:
+        """A sincronia entre o recorte e o tabuleiro, nos dois sentidos (passo 13, tarefa 2).
+
+        Ponteiro e seleção se espelham; o clique no recorte chega ao tabuleiro por `pressionar`,
+        que é o gesto inteiro -- pinta com pincel, seleciona sem. **É este último fio que
+        `ligar_recorte(False)` corta**, e é como o portão `percurso --sabotar sem_sincronia`
+        prova que sem ele a correção custa um clique a mais.
+        """
+        self._recorte_ligado = True
+        self.tabuleiro.casa_apontada.connect(self.recorte.apontar)
+        self.recorte.casa_apontada.connect(self.tabuleiro.apontar)
+        self.tabuleiro.selecao_mudou.connect(self.recorte.selecionar)
+        self.recorte.casa_clicada.connect(self._clicou_no_recorte)
+
+    def ligar_recorte(self, ligado: bool) -> None:
+        """Liga ou corta o clique do recorte. Existe para o portão medir a sabotagem; o produto
+        nasce ligado e nunca chama isto."""
+        self._recorte_ligado = bool(ligado)
+
+    def _clicou_no_recorte(self, casa: int) -> None:
+        if self._recorte_ligado and self.modelo.items:
+            self.tabuleiro.pressionar(casa)
 
     def _linha_de_navegacao(self) -> QHBoxLayout:
         linha = QHBoxLayout()
@@ -409,12 +477,26 @@ class PainelDeResultado(QWidget):
         # revista trabalhava com todas as casas duvidosas pintadas por baixo das pecas. Nao entra
         # em `conferir_barra` porque a regra dela e sobre enfase de **botao**, e uma caixa de
         # marcacao nao tem enfase.
-        self.heatmap = QCheckBox(strings.MAPA_DE_INCERTEZA, barra)
-        self.heatmap.setChecked(True)
-        self.heatmap.toggled.connect(self.tabuleiro.definir_heatmap)
-        dica_em(self.heatmap, "Tinge as casas de leitura duvidosa. Desligado, a peça lida aparece limpa.")
+        #
+        # **A caixa virou «Esconder incerteza»** (OCR_UI passo 13, tarefa 3): a tinta -- agora
+        # por margem -- é o padrão, e a caixa é o gesto de quem já conferiu. Nasce desmarcada;
+        # marcada, o tabuleiro mostra as peças limpas. O estado guarda `show_heatmap`, que é o
+        # inverso dela (`mostrar_incerteza`).
+        self.heatmap = QCheckBox(strings.ESCONDER_INCERTEZA, barra)
+        self.heatmap.setChecked(False)
+        self.heatmap.toggled.connect(lambda esconder: self.tabuleiro.definir_heatmap(not esconder))
+        dica_em(self.heatmap, "Esconde a tinta das casas em que o modelo hesitou: a peça lida aparece limpa.")
         barra.adicionar(self.heatmap)
         return barra
+
+    @property
+    def mostrar_incerteza(self) -> bool:
+        """Se a tinta de hesitação está à vista. É o inverso da caixa, e é o que o estado guarda."""
+        return not self.heatmap.isChecked()
+
+    @mostrar_incerteza.setter
+    def mostrar_incerteza(self, mostrar: bool) -> None:
+        self.heatmap.setChecked(not bool(mostrar))
 
     def _botao(self, barra: BarraFluida, acao: str, alvo: Callable[[], object], papel: str) -> QPushButton:
         """Um botão de comando: rótulo, papel e dica saem do catálogo e da tabela de teclas.
@@ -1017,6 +1099,8 @@ class PainelDeResultado(QWidget):
         try:
             if vazio:
                 self.tabuleiro.mostrar(board_edit.EMPTY_PLACEMENT)
+                self.tabuleiro.definir_probabilidades(None)
+                self.recorte.limpar()
                 self.campo_fen.setText("")
                 self.legalidade.setText(MENSAGEM_VAZIA)
                 self.material.setText("")
@@ -1026,6 +1110,7 @@ class PainelDeResultado(QWidget):
         finally:
             self._montando = False
         self._atualizar_botoes(vazio)
+        self.mudou.emit()
 
     def _pintar_diagrama(self) -> None:
         indice = self.modelo.clamped_index()
@@ -1033,10 +1118,18 @@ class PainelDeResultado(QWidget):
         corrigida = self.modelo.fen_at(indice)
         lado = self.modelo.side_at(indice)
 
-        self.tabuleiro.mostrar(
-            corrigida,
-            incertas=item.uncertain_squares,
-            confiancas=item.square_confidences,
+        # **A tinta é por margem quando há matriz** (passo 13, tarefa 3), e a mesma `Tinta` vai ao
+        # tabuleiro e ao recorte -- decidida uma vez, em `ui/recorte_do_diagrama`.
+        tinta = regra_do_recorte.tinta_do_diagrama(
+            item.probs, casas_incertas=item.uncertain_squares, confiancas=item.square_confidences
+        )
+        self.tabuleiro.mostrar(corrigida, incertas=tinta.casas, confiancas=tinta.valores, limiar=tinta.limiar)
+        self.tabuleiro.definir_probabilidades(item.probs)
+        self.recorte.mostrar(
+            getattr(item, "board_rgb", None),
+            virado=int(item.rotation or 0) == 180,
+            tinta=tinta,
+            leituras=item.probs,
         )
         self.tabuleiro.definir_casas_corrigidas(board_edit.differing_squares(item.placement, corrigida))
         explicacao = explain_position(compose_fen(corrigida, lado != "b"))
@@ -1108,7 +1201,8 @@ class PainelDeResultado(QWidget):
         if item.detection_source:
             linhas.append(f"Localizado por: {strings.detection_source_label(item.detection_source)}")
         if item.caption:
-            linhas.append(f"Legenda: {item.caption}")
+            # Uma linha, e não o parágrafo inteiro: ver `strings.LIMITE_DA_LEGENDA`.
+            linhas.append(f"Legenda: {strings.resumo_da_legenda(item.caption)}")
         return "\n".join(linhas)
 
     def _copiar_fen(self) -> None:

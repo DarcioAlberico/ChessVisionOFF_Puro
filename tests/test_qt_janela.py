@@ -559,6 +559,33 @@ class FiacaoTests(unittest.TestCase):
         janela = self.janela()
         self.assertEqual(janela.galeria._sumidouro_de_revisao, janela.revisao.sumidouro)
 
+    def test_a_caixa_da_pagina_diz_corrigido_enquanto_a_correcao_esta_so_na_tela(self) -> None:
+        """O estado «corrigido» das caixas (OCR_UI passo 13, tarefa 4): a correção feita no editor
+        recarimba a caixa na hora; desfazer a devolve a «lido»; gravar a leva a «pronto»."""
+        from chess_diagram_ocr.ui.page_overlay import estado_da_caixa
+
+        janela = self.janela()
+        item = self._diagrama(0)
+        item.bbox_pdf = (10.0, 10.0, 110.0, 110.0)
+        janela._chegaram_itens(0, [item], None)
+
+        def estado() -> str:
+            caixas = janela.pdf.boxes
+            assert caixas is not None and caixas.boxes
+            return estado_da_caixa(caixas.boxes[0])
+
+        self.assertEqual(estado(), "lido")
+        janela.painel.paleta._botoes["Q"].click()
+        janela.painel.recorte.casa_clicada.emit(27)
+        self.assertEqual(estado(), "corrigido")
+        janela.painel.desfazer()
+        self.assertEqual(estado(), "lido")
+        janela.painel.recorte.casa_clicada.emit(27)
+        self.assertEqual(estado(), "corrigido")
+        with mock.patch.object(janela.dataset, "reload"):
+            janela.painel.salvou.emit(0)
+        self.assertEqual(estado(), "pronto", "salvo vence corrigido")
+
     def test_gravar_uma_amostra_pinta_a_caixa_e_reconta_as_abas(self) -> None:
         janela = self.janela()
         with mock.patch.object(janela.dataset, "reload") as releu, mock.patch.object(
@@ -993,13 +1020,15 @@ class EstadoEntreSessoesTests(unittest.TestCase):
         baixo das pecas -- e nao havia como desligar.
         """
         primeira = self.janela()
-        self.assertTrue(primeira.painel.heatmap.isChecked(), "nasce ligado, que e como se descobre")
-        primeira.painel.heatmap.setChecked(False)
+        self.assertTrue(primeira.painel.mostrar_incerteza, "nasce ligado, que e como se descobre")
+        self.assertFalse(primeira.painel.heatmap.isChecked(), "a caixa e «Esconder incerteza»: nasce desmarcada")
+        primeira.painel.heatmap.setChecked(True)
         self.assertFalse(primeira.painel.tabuleiro._heatmap, "a caixa nao alcancou o tabuleiro")
         primeira.close()
 
         segunda = self.janela()
-        self.assertFalse(segunda.painel.heatmap.isChecked())
+        self.assertFalse(segunda.painel.mostrar_incerteza)
+        self.assertTrue(segunda.painel.heatmap.isChecked())
         self.assertFalse(segunda.painel.tabuleiro._heatmap)
 
     def test_o_zoom_e_a_quebra_da_aba_de_texto_voltam(self) -> None:

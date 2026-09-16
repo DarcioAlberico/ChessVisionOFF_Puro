@@ -334,6 +334,20 @@ class DiagramEditorModel:
             fen != item.placement for item, fen in zip(self.items, self.fen_edits, strict=False)
         )
 
+    def hand_edited_indices(self) -> frozenset[int]:
+        """Os diagramas cuja posição na tela difere da leitura (OCR_UI passo 13).
+
+        É o «corrigido» das caixas da página: a diferença entre o que o modelo leu e o que está no
+        editor **agora**, e não a marca `edited_by_hand` -- uma correção desfeita com `Ctrl+Z`
+        volta a ser a leitura, e a caixa volta a «lido». Gravar não muda esta resposta; muda a
+        cor, porque salvo tem precedência sobre corrigido em `page_overlay.estado_da_caixa`.
+        """
+        return frozenset(
+            indice
+            for indice, (item, fen) in enumerate(zip(self.items, self.fen_edits, strict=False))
+            if fen != item.placement
+        )
+
     # --------------------------------------------------------------------------- gravação
 
     def label_route(self, index: int, fen: str) -> str:

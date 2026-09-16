@@ -31,6 +31,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from chess_diagram_ocr.field_eval import MATCH_IOU, bbox_iou
+from chess_diagram_ocr.ui.recorte_do_diagrama import e_duvidoso
 
 if TYPE_CHECKING:  # pragma: no cover - só para os tipos
     from chess_diagram_ocr.detection import DiagramCandidate
@@ -58,6 +59,7 @@ __all__ = [
     "frase_de_caixas_devolvidas",
     "hit_test",
     "mark_confirmed",
+    "mark_edited",
     "mark_saved",
     "saved_on_page",
     "traco_da_caixa",
@@ -128,6 +130,23 @@ class DiagramBox:
     eu parei neste livro?", que é a pergunta que se faz ao abrir um livro pela quinta vez.
     """
 
+    doubtful: bool = False
+    """Se a leitura tem casa em que o modelo hesitou (OCR_UI passo 13, SPEC §10.4).
+
+    Decidido por `ui/recorte_do_diagrama.e_duvidoso` no momento em que a caixa nasce da leitura:
+    margem baixa entre a primeira e a segunda classe de alguma casa, ou -- sem a matriz -- casa
+    incerta pela régua antiga. É o «duvidoso» que a página passa a distinguir de «lido»: o olho
+    vai primeiro a estas.
+    """
+
+    edited: bool = False
+    """Se a pessoa corrigiu alguma casa deste diagrama no editor **e ainda não gravou**.
+
+    Carimbado na hora de desenhar, como `saved` -- e é o par dele: `saved` é o trabalho que já
+    está no disco, `edited` é o que está só na tela. Fechar o livro com uma caixa nesta cor é
+    perder uma correção, e é por isso que a cor existe.
+    """
+
     @property
     def label(self) -> str:
         """O número como o usuário o vê: base 1, igual ao seletor da aba Resultado."""
@@ -138,13 +157,20 @@ class DiagramBox:
 
 A_FAZER = "a_fazer"
 LIDO = "lido"
+DUVIDOSO = "duvidoso"
+CORRIGIDO = "corrigido"
 PRONTO = "pronto"
 DISPENSADO = "dispensado"
-ESTADOS: tuple[str, ...] = (A_FAZER, LIDO, PRONTO, DISPENSADO)
-"""Os quatro pontos em que um diagrama da página pode estar, na ordem do trabalho.
+ESTADOS: tuple[str, ...] = (A_FAZER, LIDO, DUVIDOSO, CORRIGIDO, PRONTO, DISPENSADO)
+"""Os seis pontos em que um diagrama da página pode estar, na ordem do trabalho.
 
 A mesma ordem de precedência de `box_color`, e é dela que sai `estado_da_caixa`: salvo antes de
-confirmado porque salvo é trabalho **seu** já feito."""
+confirmado porque salvo é trabalho **seu** já feito.
+
+**Eram quatro; «duvidoso» e «corrigido» entraram no passo 13 da OCR_UI** (SPEC §10.4: "caixas
+numeradas com estado (lido / duvidoso / corrigido)"). Lido-e-limpo, lido-com-hesitação e
+corrigido-sem-gravar eram o mesmo retângulo, e são as três perguntas que se fazem ao varrer a
+página: onde olhar primeiro, e o que se perde ao fechar."""
 
 
 @dataclass(frozen=True)
@@ -168,6 +194,8 @@ class Traco:
 TRACO_POR_ESTADO: dict[str, Traco] = {
     A_FAZER: Traco(espessura=2, tracejado=None, glifo=""),
     LIDO: Traco(espessura=2, tracejado=(2, 2), glifo="·"),
+    DUVIDOSO: Traco(espessura=3, tracejado=(2, 2), glifo="?"),
+    CORRIGIDO: Traco(espessura=3, tracejado=None, glifo="✎"),
     PRONTO: Traco(espessura=4, tracejado=None, glifo="✓"),
     DISPENSADO: Traco(espessura=1, tracejado=(6, 4), glifo="–"),
 }
@@ -198,7 +226,11 @@ def estado_da_caixa(box: DiagramBox) -> str:
         return PRONTO
     if box.confirmed:
         return DISPENSADO
-    return LIDO if box.recognized else A_FAZER
+    if box.edited:
+        return CORRIGIDO
+    if box.recognized:
+        return DUVIDOSO if box.doubtful else LIDO
+    return A_FAZER
 
 
 def traco_da_caixa(box: DiagramBox) -> Traco:
@@ -321,6 +353,16 @@ def saved_on_page(
     return set(por_pagina.get(int(page_index), ()))
 
 
+def mark_edited(boxes: Sequence[DiagramBox], edited: Collection[int]) -> tuple[DiagramBox, ...]:
+    """Carimba quais caixas têm correção **na tela e não no disco** (OCR_UI passo 13).
+
+    Na hora de desenhar, como `mark_saved`, e pela mesma razão: a correção acontece no editor a
+    cada clique, e um carimbo no cache só apareceria na próxima visita à página. Carimbo vazio
+    devolve as caixas como vieram -- e apaga o que houver, porque gravar tira a caixa deste estado.
+    """
+    return tuple(replace(box, edited=box.index in edited) for box in boxes)
+
+
 def mark_confirmed(boxes: Sequence[DiagramBox], confirmed: Collection[int]) -> tuple[DiagramBox, ...]:
     """Carimba quais posições a base de partidas reconheceu (S-75).
 
@@ -368,6 +410,7 @@ def boxes_from_diagrams(items: Sequence[RecognizedDiagram]) -> tuple[DiagramBox,
             bbox_pdf=tuple(item.bbox_pdf),  # type: ignore[arg-type]
             source=item.detection_source,
             recognized=True,
+            doubtful=e_duvidoso(item.probs, item.uncertain_squares),
         )
         for indice, item in enumerate(items)
         if item.bbox_pdf is not None

@@ -22,6 +22,7 @@ import numpy as np
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao
 
+from chess_diagram_ocr.config import PIECE_CLASSES
 from chess_diagram_ocr.service import RecognizedDiagram
 from chess_diagram_ocr.ui import atalhos, board_edit, comandos
 
@@ -36,7 +37,7 @@ LEGAL = "4k3/8/8/8/8/8/8/4K3"
 OUTRA = "8/8/8/4k3/8/8/8/4K3"
 
 
-def diagrama(placement: str = LEGAL, *, indice: int = 0) -> RecognizedDiagram:
+def diagrama(placement: str = LEGAL, *, indice: int = 0, probs: np.ndarray | None = None) -> RecognizedDiagram:
     return RecognizedDiagram(
         index=indice,
         board_rgb=np.full((64, 64, 3), 200, np.uint8),
@@ -44,7 +45,19 @@ def diagrama(placement: str = LEGAL, *, indice: int = 0) -> RecognizedDiagram:
         min_confidence=0.93,
         square_confidences=[0.99] * 64,
         side_to_move="w",
+        probs=probs,
     )
+
+
+def probs_que_hesitam_em(casa: int) -> np.ndarray:
+    """(64, 13) certa de «vazia» em tudo, menos na casa dada: 0,60 dama branca × 0,35 dama preta."""
+    probs = np.zeros((64, len(PIECE_CLASSES)))
+    probs[:, PIECE_CLASSES.index("empty")] = 1.0
+    probs[casa] = 0.0
+    probs[casa, PIECE_CLASSES.index("Q")] = 0.6
+    probs[casa, PIECE_CLASSES.index("q")] = 0.35
+    probs[casa, PIECE_CLASSES.index("empty")] = 0.05
+    return probs
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -383,6 +396,91 @@ class PaletaTests(PainelTests):
         self.assertEqual(MOTIVO_SEM_DIAGRAMA, self.painel.paleta._botoes["Q"].toolTip())
         self.carregar()
         self.assertTrue(self.painel.paleta._botoes["Q"].isEnabled())
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class RecorteTests(PainelTests):
+    """O recorte ao lado do tabuleiro e a sincronia entre os dois (OCR_UI passo 13, U1).
+
+    O que o recorte faz sozinho é de `tests/test_qt_painel_de_recorte.py`; a regra é de
+    `tests/test_ui_recorte_do_diagrama.py`. Aqui é a **fiação**: o clique no recorte chega ao
+    tabuleiro como gesto inteiro, o ponteiro e a seleção se espelham, a tinta é a mesma nos dois, e
+    o fio que o portão `percurso --sabotar sem_sincronia` corta corta de fato.
+    """
+
+    def test_o_recorte_mostra_o_diagrama_e_some_com_ele(self) -> None:
+        self.assertFalse(self.painel.recorte.tem_recorte())
+        self.carregar()
+        self.assertTrue(self.painel.recorte.tem_recorte())
+        self.painel.limpar()
+        self.assertFalse(self.painel.recorte.tem_recorte())
+
+    def test_o_clique_no_recorte_seleciona_a_casa_no_tabuleiro(self) -> None:
+        self.carregar()
+        self.painel.recorte.casa_clicada.emit(60)  # e1, o rei branco
+        self.assertEqual(self.painel.tabuleiro.selecionada(), 60)
+        self.assertEqual(self.painel.recorte.selecionada(), 60, "e a seleção volta espelhada")
+
+    def test_o_clique_no_recorte_com_pincel_pinta(self) -> None:
+        """O gesto inteiro, e não só a seleção: com a peça na mão, a casa do recorte recebe a peça
+        -- é o que faz o recorte valer um clique, e o que o portão do passo 13 conta."""
+        self.carregar()
+        self.painel.paleta._botoes["Q"].click()
+        self.painel.recorte.casa_clicada.emit(27)
+        self.assertEqual(board_edit.piece_at(self.painel.modelo.fen_at(0), 27), "Q")
+
+    def test_sem_sincronia_o_clique_no_recorte_nao_chega_ao_tabuleiro(self) -> None:
+        """A sabotagem do portão, e a prova de que ela corta o que diz cortar."""
+        self.carregar()
+        self.painel.ligar_recorte(False)
+        self.painel.recorte.casa_clicada.emit(60)
+        self.assertIsNone(self.painel.tabuleiro.selecionada())
+        self.painel.ligar_recorte(True)
+        self.painel.recorte.casa_clicada.emit(60)
+        self.assertEqual(self.painel.tabuleiro.selecionada(), 60)
+
+    def test_o_ponteiro_se_espelha_nos_dois_sentidos(self) -> None:
+        self.carregar()
+        self.painel.tabuleiro.casa_apontada.emit(9)
+        self.assertEqual(self.painel.recorte.apontada(), 9)
+        self.painel.recorte.casa_apontada.emit(18)
+        self.assertEqual(self.painel.tabuleiro.apontada(), 18)
+        self.painel.recorte.casa_apontada.emit(None)
+        self.assertIsNone(self.painel.tabuleiro.apontada())
+
+    def test_a_tinta_por_margem_vai_ao_tabuleiro_e_ao_recorte(self) -> None:
+        """Uma casa em que o modelo hesitou (0,60 × 0,35) fica âmbar nos dois; uma casa apenas
+        pouco confiante pela régua antiga não entra -- a tinta é por margem quando há matriz."""
+        itens = [diagrama(LEGAL, probs=probs_que_hesitam_em(12))]
+        self.painel.carregar_pagina(itens, chave="livro.pdf", pagina=0)
+        self.assertEqual(self.painel.tabuleiro.casas_incertas(), (12,))
+        self.assertEqual(self.painel.recorte.casas_marcadas()["hesitacao"], (12,))
+        self.assertTrue(self.painel.tabuleiro.dica_da_casa(12).startswith("e7 · dama branca 0,600"))
+
+    def test_sem_matriz_vale_a_regua_antiga(self) -> None:
+        item = diagrama(LEGAL)
+        item.uncertain_squares = [5]
+        self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+        self.assertEqual(self.painel.tabuleiro.casas_incertas(), (5,))
+
+    def test_a_caixa_esconder_incerteza_nasce_desmarcada_e_e_o_inverso_do_estado(self) -> None:
+        self.assertFalse(self.painel.heatmap.isChecked())
+        self.assertTrue(self.painel.mostrar_incerteza)
+        self.assertTrue(self.painel.tabuleiro._heatmap)
+        self.painel.mostrar_incerteza = False
+        self.assertTrue(self.painel.heatmap.isChecked())
+        self.assertFalse(self.painel.tabuleiro._heatmap)
+
+    def test_o_painel_avisa_que_mudou_a_cada_edicao(self) -> None:
+        """É o sinal que a janela usa para recarimbar a caixa da página como «corrigido»."""
+        mudou: list[int] = []
+        self.painel.mudou.connect(lambda: mudou.append(1))
+        self.carregar()
+        antes = len(mudou)
+        self.painel.paleta._botoes["Q"].click()
+        self.painel.recorte.casa_clicada.emit(27)
+        self.assertGreater(len(mudou), antes)
+        self.assertEqual(self.painel.modelo.hand_edited_indices(), frozenset({0}))
 
 
 if __name__ == "__main__":  # pragma: no cover

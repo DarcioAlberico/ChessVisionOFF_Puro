@@ -63,6 +63,17 @@ abas ate o passo 17; nenhum painel saiu, quatro mudaram de casa (`ui/abas.py`,
 `qt/areas_de_trabalho.py`). O estado da sessao continua guardando o nome do modo (`Resultado`),
 e uma sessao anterior ao passo reabre no mesmo lugar.
 
+**No modo Resultado, o recorte do diagrama fica ao lado do tabuleiro** (OCR_UI passo 13): o
+diagrama como o classificador o leu, ampliado, num divisor com o tabuleiro editavel. A casa sob o
+ponteiro e a selecionada se espelham nos dois, a dica de qualquer casa diz as tres leituras do
+modelo e a margem entre a primeira e a segunda, e um clique no recorte e um clique no tabuleiro
+(com pincel, pinta; sem, seleciona). A tinta de incerteza passou a ser **por margem** -- a casa em
+que o modelo hesitou entre duas pecas --, ligada por padrao; a caixa «Esconder incerteza» a
+desliga. Na pagina, as caixas numeradas ganharam dois estados: **duvidoso** (a leitura hesitou
+em alguma casa, ambar, `?`) e **corrigido** (correcao feita no editor e ainda nao gravada,
+`✎`), alem de lido, pronto e dispensado. Regra em `ui/recorte_do_diagrama.py` e
+`ui/page_overlay.py`; pintura em `qt/painel_de_recorte.py` e `qt/visor.py`.
+
 ## Como a interface chegou aqui (Tkinter -> PyQt6)
 
 O produto foi em Tkinter + `ttkbootstrap` ate 2026-08-31, num arquivo `app_tkinter.py` de 2.327

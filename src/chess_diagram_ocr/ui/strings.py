@@ -120,6 +120,11 @@ rodapé, não diz vez de quê."""
 MAPA_DE_INCERTEZA = "Mapa de incerteza"
 """Era "Heatmap de incerteza" -- metade em inglês, e a metade que nomeia a coisa."""
 
+ESCONDER_INCERTEZA = "Esconder incerteza"
+"""A caixa da aba Resultado desde o passo 13 da OCR_UI: a tinta de hesitação está **ligada por
+padrão**, e a caixa é o gesto de quem já conferiu a página e quer ver as peças limpas. Marcar
+para esconder, e não marcar para mostrar, é o sentido do padrão: a caixa nasce desmarcada."""
+
 ZOOM_DO_TABULEIRO = "Zoom do tabuleiro"
 """Era "Zoom board". "Zoom" fica: entrou no português e não tem substituto de uma palavra."""
 
@@ -514,6 +519,24 @@ def _encurtar(nome: str, limite: int = LIMITE_DO_LIVRO_NO_TITULO) -> str:
         return nome
     cabeca = (limite - 1) // FRACAO_DA_CABECA
     return f"{nome[:cabeca]}…{nome[len(nome) - (limite - 1 - cabeca) :]}"
+
+
+LIMITE_DA_LEGENDA = 120
+"""Quantos caracteres da legenda o parágrafo de detalhes do Resultado mostra (OCR_UI passo 13).
+
+**Medido: uma legenda inteira forçava a janela a 1.323 px de altura.** A legenda de um diagrama
+do Kemeri (p. 80) traz o parágrafo de análise inteiro -- dezenove linhas --, e o rótulo de
+detalhes, que quebra linha, pedia a altura de todas elas como **mínimo**: a janela deixava de caber
+em 768 (a régua da F9-C2) na primeira página lida com legenda longa. Uma linha basta para dizer
+de que diagrama se trata; o texto inteiro está no modo Texto, que é o lugar dele."""
+
+
+def resumo_da_legenda(legenda: str, limite: int = LIMITE_DA_LEGENDA) -> str:
+    """A legenda numa linha só, cortada no fim com reticências. Vazio continua vazio."""
+    plana = " ".join(str(legenda).split())
+    if len(plana) <= limite:
+        return plana
+    return plana[: max(0, limite - 1)].rstrip() + "…"
 
 
 def titulo_da_janela(livro: str = "", pagina: int | None = None, total: int | None = None) -> str:

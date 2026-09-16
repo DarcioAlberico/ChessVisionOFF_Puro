@@ -27,14 +27,16 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable
+from typing import Any
 
-from PyQt6.QtCore import QPoint, QRectF, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QPoint, QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QToolTip, QWidget
 
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.tabuleiro import TabuleiroQt
 from chess_diagram_ocr.ui import board_edit, tokens
+from chess_diagram_ocr.ui import recorte_do_diagrama as regra
 from chess_diagram_ocr.ui.board_model import BoardChange, BoardModel, ChangeKind
 from chess_diagram_ocr.ui.desenho_do_tabuleiro import BoardGeometry
 
@@ -69,6 +71,12 @@ class TabuleiroEditavel(TabuleiroQt):
     recado = pyqtSignal(str)
     """O que o modelo tem a dizer sem mudar nada -- `BoardChange.message`. Vai para o rodapé."""
 
+    casa_apontada = pyqtSignal(object)
+    """A casa sob o ponteiro, ou `None` quando ele saiu do tabuleiro (OCR_UI passo 13).
+
+    É o que o recorte ao lado espelha; o sentido inverso chega por `apontar`. `object` pelo
+    `None`, pela mesma razão de `selecao_mudou`."""
+
     def __init__(self, parent: QWidget | None = None, **opcoes: object) -> None:
         super().__init__(parent, **opcoes)  # type: ignore[arg-type]
         self.modelo = BoardModel(mode="edit")
@@ -78,7 +86,11 @@ class TabuleiroEditavel(TabuleiroQt):
         self._ponteiro = QPoint()
         self._inicio = QPoint()
         self._selecionou_agora = False
-        self.setMouseTracking(False)
+        self._apontada: int | None = None
+        """A casa apontada -- por este ponteiro ou pelo recorte ao lado (`apontar`)."""
+        # Ligado desde o passo 13: sem ele o Qt só entrega movimento com botão apertado, e a
+        # casa sob o ponteiro (e a dica das três leituras) só existiria durante um arrasto.
+        self.setMouseTracking(True)
 
     # ------------------------------------------------------------------------------ estado
 
@@ -134,6 +146,45 @@ class TabuleiroEditavel(TabuleiroQt):
         """`Del`: tira a peça da casa selecionada. `False` quando não havia o que apagar."""
         return self._aplicar(self.modelo.erase_selected())
 
+    def definir_probabilidades(self, probs: Any) -> None:
+        """A matriz (64, 13) da leitura, para a dica das três classes. `None` apaga a dica."""
+        try:
+            self.modelo.set_probabilities(probs)
+        except ValueError:
+            self.modelo.set_probabilities(None)
+
+    def selecionar_casa(self, casa: int | None) -> None:
+        """Seleciona de fora -- é como o recorte ao lado e a fila de revisão chegam a uma casa."""
+        self._aplicar(self.modelo.select(casa))
+
+    def pressionar(self, casa: int) -> None:
+        """O clique de um espelho -- o recorte ao lado -- como se fosse aqui (OCR_UI passo 13).
+
+        Passa por `BoardModel.press`, e é o item: com pincel na mão o clique **pinta** a casa,
+        sem pincel ele a **seleciona**. Um clique no recorte que só selecionasse obrigaria quem
+        já escolheu a peça a clicar de novo no tabuleiro -- a ação a mais que o portão
+        `percurso` mede.
+        """
+        if not 0 <= casa < 64:
+            return
+        self._aplicar(self.modelo.press(casa))
+
+    def apontar(self, casa: object) -> None:
+        """A casa que o recorte ao lado está apontando. `None` apaga. Não emite de volta."""
+        nova = casa if isinstance(casa, int) and 0 <= casa < 64 else None
+        if nova != self._apontada:
+            self._apontada = nova
+            self.update()
+
+    def apontada(self) -> int | None:
+        return self._apontada
+
+    def dica_da_casa(self, casa: int) -> str:
+        """O texto da dica: nome da casa, as três leituras e a margem (`ui/recorte_do_diagrama`)."""
+        leituras = regra.alternativas(self.modelo.probs, casa)
+        folga = regra.margem(self.modelo.probs, casa) if leituras else None
+        return regra.dica_da_casa(casa, leituras, folga)
+
     # ------------------------------------------------------------------------- interação
 
     def _casa_em(self, ponto: QPoint) -> int | None:
@@ -178,7 +229,10 @@ class TabuleiroEditavel(TabuleiroQt):
         self._aplicar(mudanca)
 
     def mouseMoveEvent(self, a0: QMouseEvent | None) -> None:  # noqa: N802 - assinatura do Qt
-        if a0 is None or not self._arrasto_simbolo or self._arrasto_de is None:
+        if a0 is None:
+            return
+        self._apontar_daqui(self._casa_em(a0.position().toPoint()))
+        if not self._arrasto_simbolo or self._arrasto_de is None:
             return
         self._ponteiro = a0.position().toPoint()
         if not self._arrastando:
@@ -190,6 +244,28 @@ class TabuleiroEditavel(TabuleiroQt):
                 return
             self._arrastando = True
         self.update()
+
+    def leaveEvent(self, a0: QEvent | None) -> None:  # noqa: N802 - assinatura do Qt
+        super().leaveEvent(a0)
+        self._apontar_daqui(None)
+
+    def event(self, a0: QEvent | None) -> bool:
+        """A dica é por casa: as três leituras e a margem da casa sob o ponteiro (passo 13)."""
+        if a0 is not None and a0.type() == QEvent.Type.ToolTip:
+            casa = self._casa_em(getattr(a0, "pos", lambda: QPoint())())
+            if casa is not None and self.modelo.probs is not None:
+                QToolTip.showText(getattr(a0, "globalPos", lambda: QPoint())(), self.dica_da_casa(casa), self)
+            else:
+                QToolTip.hideText()
+            return True
+        return super().event(a0)
+
+    def _apontar_daqui(self, casa: int | None) -> None:
+        if casa == self._apontada:
+            return
+        self._apontada = casa
+        self.update()
+        self.casa_apontada.emit(casa)
 
     def mouseReleaseEvent(self, a0: QMouseEvent | None) -> None:  # noqa: N802 - assinatura do Qt
         if a0 is None or a0.button() != Qt.MouseButton.LeftButton:
@@ -274,6 +350,10 @@ class TabuleiroEditavel(TabuleiroQt):
             self._anel(pintor, geo, indice, tema.cor_atual(tokens.CORRIGIDO), tracejado=True)
         for indice in sorted(self.modelo.problems):
             self._anel(pintor, geo, indice, tema.cor_atual(tokens.PROBLEMA))
+        if self._apontada is not None and self._apontada != self.modelo.selected:
+            # A casa sob o ponteiro -- deste lado ou do recorte --, tracejada para não se confundir
+            # com a seleção, que é cheia (OCR_UI passo 13).
+            self._anel(pintor, geo, self._apontada, tema.cor_atual(tokens.CONTORNO_DE_SELECAO), tracejado=True)
         if self.modelo.selected is not None:
             self._anel(pintor, geo, self.modelo.selected, tema.cor_atual(tokens.CONTORNO_DE_SELECAO))
 
@@ -312,6 +392,7 @@ class TabuleiroEditavel(TabuleiroQt):
         """O que está aceso agora, por papel. Existe para o teste afirmar o que a tela diz."""
         return {
             "selecionada": () if self.modelo.selected is None else (self.modelo.selected,),
+            "apontada": () if self._apontada is None else (self._apontada,),
             "corrigidas": tuple(sorted(self.modelo.changed)),
             "problematicas": tuple(sorted(self.modelo.problems)),
         }
