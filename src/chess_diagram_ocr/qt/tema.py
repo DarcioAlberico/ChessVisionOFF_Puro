@@ -35,13 +35,16 @@ mesma razão de `ui/tokens.py` não importar `tkinter`. O que precisa de aplica�
 from __future__ import annotations
 
 import logging
+import tempfile
 from collections.abc import Callable
+from pathlib import Path
 from typing import TypeVar
 
 from PyQt6.QtGui import QFont, QFontDatabase
 from PyQt6.QtWidgets import QApplication, QWidget
 
-from chess_diagram_ocr.ui import espaco, estilos, folha, pele, tipografia, tokens
+from chess_diagram_ocr.ui import espaco, estilos, icones, pele, tipografia, tokens
+from chess_diagram_ocr.ui import folha_de_estilo as folha_de_estilo_pura
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +52,23 @@ _Pintavel = TypeVar("_Pintavel", bound=QWidget)
 """Devolver o **mesmo** tipo é o que preserva `rotulo.setText(...)` no ponto de chamada -- a
 mesma razão de `theme.pintar` ser genérica."""
 
+# A folha, o recheio e o papel do botão **mudaram de casa** e continuam sendo lidos daqui (F9).
+# Eles são decisão de cor e de espaço, não desenho, e por isso moram em `ui/folha_de_estilo.py`
+# -- onde um teste consegue afirmá-los sem binding de Qt instalado, que é o que faz o portão de
+# contraste do §11.3 rodar no venv da suíte. O reexporte é para que os quinze pontos de chamada
+# e os testes já escritos não precisem saber que a fronteira se moveu.
+folha_de_estilo = folha_de_estilo_pura.folha_de_estilo
+RECHEIO_DO_TEMA = folha_de_estilo_pura.RECHEIO_DO_TEMA
+RECHEIO_DA_FOLHA = folha_de_estilo_pura.RECHEIO_DA_FOLHA
+
 __all__ = [
     "PROPRIEDADE_DE_PAPEL",
+    "RECHEIO_DA_FOLHA",
     "RECHEIO_DO_TEMA",
     "altura_de_linha_atual",
+    "altura_do_titulo_atual",
     "ao_repintar",
+    "aplicar_paleta",
     "aplicar_papel",
     "aplicar_tema",
     "cromo_escuro_em_vigor",
@@ -61,6 +76,9 @@ __all__ = [
     "folha_de_estilo",
     "fonte_atual",
     "fonte_base",
+    "fonte_pintada",
+    "gravar_marcas",
+    "pasta_das_marcas",
     "pintar",
     "repintar",
 ]
@@ -191,7 +209,12 @@ def fonte_atual(papel: str, *, negrito: bool = False) -> QFont:
         papel, base=base, familia=proporcional, mono=monoespacada, negrito=negrito
     )
     fonte = QFont(especificacao[0], especificacao[1])
-    fonte.setBold(len(especificacao) > 2)
+    # **Os dois eixos da escala, e não só o tamanho** (F9-C3). `tipografia.fonte` devolve a
+    # especificação do Tk, que só sabe dizer `"bold"`; o peso de verdade -- 700 no título, 600 no
+    # texto que se aperta, 400 no resto -- está em `tipografia.PESOS`, e é aqui que ele entra.
+    # `negrito=True` continua ganhando, porque ele é do chamador: a linha escolhida numa lista
+    # precisa de peso sem mudar de nível hierárquico.
+    fonte.setWeight(QFont.Weight(700 if negrito else tipografia.peso(papel)))
     return fonte
 
 
@@ -213,21 +236,70 @@ def altura_de_linha_atual(densidade: str = pele.CONFORTAVEL) -> int:
     return tipografia.altura_de_linha(linha, densidade=densidade)
 
 
+def fonte_pintada(seletor: str) -> QFont:
+    """A `QFont` com que aquele subcontrole é **desenhado**. Levanta para seletor que a folha não
+    pinta.
+
+    **É a pergunta que faltava nesta frente, e a falta dela custou o ciclo 13.** `QWidget.font()`
+    responde o que a varredura de `qt/escala.py` pôs no objeto; a folha declara outra coisa no
+    `QSS` de subcontrole. Toda régua e todo cálculo de reserva desta janela perguntava uma e media
+    a outra -- 9 pt contra 12 pt, peso 400 contra 700 -- e o resultado eram títulos com a metade
+    de baixo apagada e cabeçalhos escritos `Resultad·`.
+
+    **Qual das duas ganha depende do seletor, e está medido em `folha_de_estilo.QUEM_PINTA`**
+    (F9-C16): a folha ganha em `QHeaderView::section`, `QTabBar::tab:selected` e
+    `QLabel[apoio="true"]`, e **perde** em `QGroupBox::title`, onde o Qt desenha com a fonte do
+    widget. Esta função responde certo nos dois porque `folha_de_estilo.PAPEL_PINTADO` tira o
+    degrau do título de `tipografia.PAPEL_POR_CLASSE["QGroupBox"]` -- que é o mesmo degrau que
+    `qt/escala.aplicar_escala` põe no widget. Por construção, e não por as duas tabelas dizerem
+    `TITULO` uma ao lado da outra.
+
+    Levanta `KeyError` para seletor fora de `folha_de_estilo.PAPEL_PINTADO`, e é a disciplina de
+    `tokens.cor` e de `tipografia.fonte`: um seletor escrito errado que caísse no corpo devolveria
+    uma largura plausível e sem significado, que é exatamente o modo de falhar deste ciclo.
+    """
+    papel = folha_de_estilo_pura.PAPEL_PINTADO.get(seletor)
+    if papel is None:
+        raise KeyError(
+            f"a folha não pinta {seletor!r}. Os que ela pinta estão em "
+            f"folha_de_estilo.PAPEL_PINTADO: {sorted(folha_de_estilo_pura.PAPEL_PINTADO)}."
+        )
+    return fonte_atual(papel)
+
+
+def altura_do_titulo_atual() -> int:
+    """A altura em pixel da fonte com que a folha **pinta** `QGroupBox::title`. Nunca levanta.
+
+    **É a metade desta camada do bloqueante do ciclo 13.** A folha declara
+    `QGroupBox::title { font-size: 12pt; font-weight: bold }` e reserva a faixa em que ele cabe
+    com `margin-top`; enquanto a reserva saía de `espaco.linha()` -- 4 px na compacta -- o
+    primeiro filho do grupo subia para dentro do título e apagava a metade de baixo de cada
+    letra. Quem sabe quanto o desenho mede é `QFontMetrics` da fonte que o desenha, e é o que
+    esta função pergunta.
+
+    **Ela existe aqui e não em `ui/folha_de_estilo.py` pela fronteira de sempre**: a folha é pura
+    e roda no venv sem binding de Qt. Sem aplicação -- ou com fonte exótica --, a reserva é a
+    conta pura de `tipografia.altura_do_texto`, que é **por cima** de propósito: reservar de mais
+    é ar, reservar de menos é letra apagada.
+    """
+    base = fonte_base()[0]
+    papel = folha_de_estilo_pura.PAPEL_PINTADO["QGroupBox::title"]
+    reserva = tipografia.altura_do_texto(tipografia.escala(base)[papel])
+    try:
+        from PyQt6.QtGui import QFontMetrics
+
+        if QApplication.instance() is None:
+            return reserva
+        return int(QFontMetrics(fonte_pintada("QGroupBox::title")).height()) or reserva
+    except Exception as exc:  # noqa: BLE001 - sem aplicação ou fonte exótica: a reserva serve
+        logger.debug("Altura do título não medida (%s): reservando %s px.", exc, reserva)
+        return reserva
+
+
 # ------------------------------------------------------------------------- o papel do botão
 
-PROPRIEDADE_DE_PAPEL = "papel"
-"""A propriedade dinâmica que carrega o papel de `ui/estilos.py` até a folha de estilo.
-
-**É o `style="primary.TButton"` do Qt, e a tradução é obrigatória.** Lá o papel vira nome de
-estilo `ttk`; aqui vira propriedade que o seletor `QPushButton[papel="PRIMARIO"]` lê. O que
-**não** muda é quem decide o papel: `ui/estilos.py` continua sendo a única fonte, e
-`estilos.conferir_barra` -- que é pura -- continua cobrando uma ênfase por barra nos dois
-frontends.
-
-O valor é o próprio nome do papel (`"PRIMARIO"`, `"DESTRUTIVO"`) e não um segundo vocabulário:
-uma segunda tabela de nomes seria a divergência que `estilos.estilo_de_botao` existe para não
-deixar acontecer.
-"""
+PROPRIEDADE_DE_PAPEL = folha_de_estilo_pura.PROPRIEDADE_DE_PAPEL
+"""Reexportado de `ui/folha_de_estilo.py`, onde a decisão mora. Aqui fica quem a **aplica**."""
 
 
 def aplicar_papel(botao: QWidget, papel: str) -> QWidget:
@@ -252,172 +324,47 @@ def aplicar_papel(botao: QWidget, papel: str) -> QWidget:
     return botao
 
 
-# ------------------------------------------------------------------------ a folha de estilo
-
-RECHEIO_DO_TEMA: dict[str, tuple[int, int]] = {
-    "QPushButton": (10, 4),
-    "QToolButton": (10, 4),
-    "QLineEdit": (5, 5),
-    "QComboBox": (5, 4),
-}
-"""`seletor -> (horizontal, vertical)` em pixel na base 9, do que o **`ttkbootstrap` dava e o Qt
-não dá**.
-
-Os números não são novos: são a medição que está escrita em `ui/folha.py`, feita sob
-`bootstrap-light` e `bootstrap-dark`, e o docstring de lá explica por que a folha do Tk **não**
-os escreve -- naquele frontend o tema já os deu, e sobrescrevê-los foi medido e piorou (o botão
-de fita encolheu de 58 para 50 px).
-
-Aqui a conta inverte. Não há `ttkbootstrap`, então ninguém deu: um `QPushButton` sem folha sai
-com o recheio de fábrica do estilo da plataforma, que no `Fusion` é outro número e no `offscreen`
-da CI é outro ainda. **Herdar os quatro valores medidos é o que faz os dois frontends
-desenharem o mesmo botão** -- e é por isso que eles ficam aqui em vez de virar um quinto papel
-em `ui/tipografia.py`: eles não são uma escala nova, são o que o outro tema já entregava.
-
-`_escalado` os faz acompanhar a fonte do sistema e a densidade, que é o que `ui/folha.py`
-ganhou ao derivar tudo de `tipografia.FOLGAS` -- um pixel cravado aqui ignoraria quem aumentou a
-fonte do Windows, que é o defeito de DPI da S-148 num lugar menor.
-"""
-
-RECHEIO_DA_FOLHA: dict[str, str] = {
-    "QTabBar::tab": "TNotebook.Tab",
-    "QCheckBox": "TCheckbutton",
-    "QRadioButton": "TRadiobutton",
-    "QSpinBox": "TSpinbox",
-    "QDoubleSpinBox": "TSpinbox",
-    "QGroupBox": "TLabelframe",
-}
-"""`seletor Qt -> classe de `ui/folha.py``, para o recheio sair da mesma tabela nos dois frontends.
-
-**Nenhum número aqui, e é o item.** A folga da aba, a da caixa de seleção e a do grupo são
-decisões que já passaram por revisão na S-441 -- e `folha.recheio` é pura, então este módulo
-pergunta a ela em vez de repetir a resposta. Um dia em que a folga da aba mude, ela muda para as
-duas janelas.
-
-`QDoubleSpinBox` mapeia para a mesma classe do `QSpinBox` porque no Tk os dois são `TSpinbox`:
-dois campos de número lado a lado com recheio diferente é a inconsistência que aquela folha
-existe para não deixar acontecer.
-"""
 
 
-def _escalado(pixel: int, *, base: int, densidade: str) -> int:
-    """Um pixel medido na base de referência, reescrito para esta fonte e esta densidade.
+def aplicar_paleta(alvo: QApplication, *, cromo_escuro: bool) -> None:
+    """Põe os papéis na `QPalette` da aplicação, além da folha de estilo.
 
-    É a conta de `tipografia.folga` sem a tabela de papéis: os quatro valores de
-    `RECHEIO_DO_TEMA` não são papéis da escala, são o que o outro tema entregava. O piso de 1 é
-    o mesmo e vale pela mesma razão -- dois vizinhos colados viram um controle só para o olho.
+    **A folha não alcança tudo, e a prancha de controles é quem mostrou onde.** Um item de
+    `QListWidget` é desenhado por um *delegate*, que pinta o fundo do selecionado com
+    `QPalette.Highlight` -- `QStyle.drawPrimitive(PE_PanelItemViewItem)` lê `option.palette`, e
+    não a folha. A fotografia de `amostrario_claro.png` tinha a linha da lista no azul de fábrica
+    do Windows e a linha da tabela no `SELECAO` da paleta: **duas cores de "selecionado" na mesma
+    imagem**, que é exatamente o defeito que `ui/tokens.py` existe para não ter.
+
+    **Quem decide continua sendo `ui/`.** O mapa papel-de-paleta -> papel-de-token é
+    `folha_de_estilo.PAPEIS_DA_PALETA`, um dicionário de strings; aqui só se traduz o nome em
+    `QPalette.ColorRole` e se pinta. É a mesma fronteira da folha de estilo, e é o que permite
+    afirmar a paleta inteira num venv sem binding de Qt.
+
+    Nome público desde a F9: ela é chamada de `aplicar_tema` e do arnês de auditoria, e um
+    privado chamado de dois lugares é um público envergonhado.
     """
-    proporcional = pixel * base / tipografia.BASE_DE_REFERENCIA
-    return max(1, round(proporcional * tipografia.FATOR_DE_FOLGA[densidade]))
+    from PyQt6.QtGui import QColor, QPalette
 
+    def tinta(papel: str) -> QColor:
+        return QColor(tokens.cor(papel, None, cromo_escuro=cromo_escuro))
 
-def folha_de_estilo(
-    *,
-    cromo_escuro: bool = False,
-    base: int = tipografia.BASE_DE_REFERENCIA,
-    densidade: str = pele.CONFORTAVEL,
-) -> str:
-    """A folha de estilo inteira, como texto. **Pura: não toca `QApplication` nem widget.**
+    def papel_de(nome: str) -> object | None:
+        # `getattr` e não um `dict` de enums: um nome de papel que o Qt desta versão não tenha
+        # não pode custar a paleta inteira -- é o mesmo contrato de degradação de `aplicar_tema`.
+        return getattr(QPalette.ColorRole, nome, None)
 
-    É o que permite afirmar a paleta e o espaço das três peles e das duas densidades numa
-    máquina sem tela -- a mesma razão de `ui/tokens.py` não importar `tkinter`, e o que faz o
-    teste desta folha rodar na CI sem servidor gráfico.
-
-    Levanta `KeyError` para densidade desconhecida, por `tipografia.folga`.
-    """
-
-    def cor(papel: str) -> str:
-        return tokens.cor(papel, None, cromo_escuro=cromo_escuro)
-
-    def do_tema(seletor: str) -> str:
-        h, v = RECHEIO_DO_TEMA[seletor]
-        return f"{_escalado(v, base=base, densidade=densidade)}px {_escalado(h, base=base, densidade=densidade)}px"
-
-    def da_folha(seletor: str) -> str:
-        h, v = folha.recheio(RECHEIO_DA_FOLHA[seletor], base=base, densidade=densidade)
-        return f"{v}px {h}px"
-
-    superficie = cor(tokens.SUPERFICIE_PADRAO)
-    texto = cor(tokens.TEXTO_PADRAO)
-    secundario = cor(tokens.TEXTO_SECUNDARIO)
-    moldura = cor(tokens.MOLDURA)
-    dica = cor(tokens.SUPERFICIE_DICA)
-    linha = tipografia.folga(tipografia.FOLGA_DE_LINHA, base=base, densidade=densidade)
-    minima = tipografia.folga(tipografia.FOLGA_MINIMA, base=base, densidade=densidade)
-    vao = folha.vao_do_indicador(base=base, densidade=densidade)
-
-    regras = [
-        # A superfície e a letra de base. Em Qt é preciso dizê-las: sem folha, o `QWidget` sai
-        # com a cor do estilo da plataforma, e sob a pele "Foco" isso daria cromo claro com
-        # rótulos pintados para fundo escuro -- meia dúzia de rótulos ilegíveis, que é
-        # exatamente o defeito que a S-224 mediu no outro frontend.
-        f"QWidget {{ background-color: {superficie}; color: {texto}; }}",
-        # As superfícies de **documento** não são cromo e não seguem a pele: a folha do livro e
-        # o tabuleiro ficam na paleta medida, e é `tokens.SUPERFICIES_DE_DOCUMENTO` que
-        # garante isso. Aqui elas só não são sobrescritas -- quem as pinta é o `QPainter` de
-        # `qt/visor.py` e de `qt/tabuleiro.py`, com `cor_atual`.
-        f"QToolTip {{ background-color: {dica}; color: {tokens.sobre_superficie(dica)};"
-        f" border: 1px solid {moldura}; padding: {linha}px; }}",
-        f"QPushButton {{ padding: {do_tema('QPushButton')}; }}",
-        # **O botão comum desabilitado desenhava igual ao habilitado, e a medição é esta** (S-506):
-        # fotografei a barra do visualizador antes e durante a exportação e diferenciei as duas
-        # imagens -- a fileira com "OCR todos diagramas", "Exportar PDF → PGN" e "Cancelar
-        # exportação" saiu **pixel a pixel idêntica**, com três daqueles botões trocando de estado.
-        #
-        # A causa é a linha do `QWidget` acima: uma cor vinda de folha de estilo vale em todos os
-        # estados e anula o acinzentamento que o Qt faria pela paleta. `PRIMARIO` e `DESTRUTIVO`
-        # escapavam por terem `:disabled` próprio, logo abaixo; o comum não tinha nenhum -- e é o
-        # comum que o par exportar/cancelar usa para dizer qual dos dois está vivo.
-        f"QPushButton:disabled {{ color: {secundario}; }}",
-        f"QToolButton {{ padding: {do_tema('QToolButton')}; }}",
-        f"QLineEdit {{ padding: {do_tema('QLineEdit')}; }}",
-        f"QComboBox {{ padding: {do_tema('QComboBox')}; }}",
-    ]
-
-    # O recheio que sai de `ui/folha.py`, um seletor por classe. Um `try` por classe seria
-    # teatro aqui: `folha.recheio` é pura e só levanta para classe fora da tabela, que é erro
-    # deste módulo e não do ambiente -- e o `KeyError` dela é justamente o que o expõe.
-    regras += [f"{seletor} {{ padding: {da_folha(seletor)}; }}" for seletor in RECHEIO_DA_FOLHA]
-
-    # O vão entre o indicador e o rótulo (S-442). Em Qt ele é `spacing` e não
-    # `indicatormargin`, e é a propriedade que o `QCheckBox` de fato lê.
-    regras += [f"QCheckBox {{ spacing: {vao}px; }}", f"QRadioButton {{ spacing: {vao}px; }}"]
-
-    # A ênfase da S-444. **Também aqui o tema não dá de graça, e pela razão oposta à do Tk:**
-    # lá o `ttkbootstrap` pintava os três papéis do mesmo `#f0f0f0` e a folha corrigia; aqui
-    # não existe papel nenhum até esta linha. O `[papel="..."]` é o seletor de propriedade
-    # dinâmica, que é o mecanismo do Qt para o que `style="primary.TButton"` faz lá.
-    letra = cor(tokens.TEXTO_SOBRE_ENFASE)
-    for papel, token in (
-        (estilos.PRIMARIO, tokens.BOTAO_PRIMARIO),
-        (estilos.DESTRUTIVO, tokens.BOTAO_DESTRUTIVO),
-    ):
-        face = cor(token)
-        regras += [
-            f'QPushButton[{PROPRIEDADE_DE_PAPEL}="{papel}"]'
-            f" {{ background-color: {face}; color: {letra}; border: 1px solid {face}; }}",
-            f'QPushButton[{PROPRIEDADE_DE_PAPEL}="{papel}"]:hover'
-            f" {{ background-color: {tokens.mistura(face, letra, tokens.REALCE_DE_ENFASE)}; }}",
-            f'QPushButton[{PROPRIEDADE_DE_PAPEL}="{papel}"]:pressed'
-            f" {{ background-color: {tokens.mistura(face, letra, tokens.REALCE_DE_ENFASE * 2)}; }}",
-            # O desabilitado é o do cromo, e não a face apagada. "Limpar os headers" **nasce
-            # desabilitado**, e uma face vermelha sólida num botão que não responde é um pedido
-            # de cuidado sobre uma ação que não existe -- é a medição da S-444, e ela vale aqui.
-            f'QPushButton[{PROPRIEDADE_DE_PAPEL}="{papel}"]:disabled'
-            f" {{ background-color: {superficie}; color: {secundario}; border: 1px solid {moldura}; }}",
-        ]
-
-    # A faixa de abas discreta da pele "Foco" (S-226): a diferença é o **peso**, e a aba ativa se
-    # separa por cor e por negrito. Em Qt isto é seletor de estado e não `style.map`, e por isso
-    # cabe na folha em vez de precisar de um registro à parte.
-    regras += [
-        f"QTabBar::tab:selected {{ color: {texto}; font-weight: bold; }}",
-        f"QTabBar::tab:!selected {{ color: {secundario}; }}",
-        f"QGroupBox {{ margin-top: {linha}px; border: 1px solid {moldura};"
-        f" border-radius: {minima}px; }}",
-        f"QGroupBox::title {{ subcontrol-origin: margin; left: {linha}px; padding: 0 {minima}px; }}",
-    ]
-    return "\n".join(regras)
+    paleta = QPalette(alvo.palette())
+    for grupo in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive):
+        for nome, token in folha_de_estilo_pura.PAPEIS_DA_PALETA.items():
+            papel = papel_de(nome)
+            if papel is not None:
+                paleta.setColor(grupo, papel, tinta(token))
+    for nome, token in folha_de_estilo_pura.PAPEIS_DA_PALETA_MORTA.items():
+        papel = papel_de(nome)
+        if papel is not None:
+            paleta.setColor(QPalette.ColorGroup.Disabled, papel, tinta(token))
+    alvo.setPalette(paleta)
 
 
 def cromo_escuro_em_vigor() -> bool:
@@ -432,6 +379,60 @@ def cromo_escuro_em_vigor() -> bool:
     argumento e não fizer nada com ele.
     """
     return _cromo_escuro
+
+
+def pasta_das_marcas() -> Path:
+    """Onde os dois desenhos do indicador ficam. Uma pasta por usuário, estável entre sessões.
+
+    Estável e não `mkdtemp` de propósito: a folha de estilo é reconstruída a cada troca de pele e
+    de densidade, e uma pasta nova por troca encheria o temporário do usuário de pastas de dois
+    arquivos que ninguém apaga.
+    """
+    return Path(tempfile.gettempdir()) / "chessvisionoff-marcas"
+
+
+def gravar_marcas(
+    *,
+    cromo_escuro: bool,
+    base: int = tipografia.BASE_DE_REFERENCIA,
+    densidade: str = pele.CONFORTAVEL,
+) -> dict[str, str]:
+    """Desenha o visto e o traço do indicador em disco e devolve `{nome: caminho}` (F9-C2).
+
+    **Por que em disco.** `url()` de folha de estilo Qt lê arquivo ou recurso compilado, e nada
+    mais: não existe forma de entregar um `QPixmap` a um `QSS`. Compilar um `.rcc` poria arte
+    binária no repositório para um desenho que já é declarativo em `ui/icones.MARCAS` -- e que
+    precisa mudar de cor com a pele, o que um recurso compilado não faz.
+
+    **A tinta é `TEXTO_SOBRE_ENFASE`, e ela não é escolha nova.** É a letra que a folha já põe
+    sobre a face primária, e o portão `test_a_enfase_passa_no_piso` garante que ela fica acima de
+    4,5:1 contra aquela face nas duas peles. A marca é um rótulo desenhado: usar a mesma tinta é o
+    que a mantém sob o mesmo portão. `sobre_superficie` **não** serve aqui, e foi medido: ela
+    devolve a letra de cromo (`#5c5c5c` na pele escura), que sobre `#6ea8fe` some.
+
+    Devolve `{}` -- e a folha volta ao preenchimento sólido do ciclo 1 -- se a Pillow não estiver
+    lá ou se a pasta não puder ser escrita. Aparência não derruba ferramenta (S-53).
+    """
+    lado = max(8, round(14 * base / tipografia.BASE_DE_REFERENCIA))
+    tinta = tokens.cor(tokens.TEXTO_SOBRE_ENFASE, None, cromo_escuro=cromo_escuro)
+    caminhos: dict[str, str] = {}
+    try:
+        pasta = pasta_das_marcas()
+        pasta.mkdir(parents=True, exist_ok=True)
+        for nome in (icones.MARCA_VISTO, icones.MARCA_TRACO):
+            desenho = icones.imagem(nome, lado, tinta)
+            if desenho is None:
+                continue
+            # O nome carrega a cor e o lado: duas peles abertas na mesma sessão gravariam o mesmo
+            # arquivo com tintas diferentes, e a segunda leria o cache da primeira.
+            arquivo = pasta / f"{nome}_{tinta.lstrip('#')}_{lado}.png"
+            if not arquivo.exists():
+                desenho.save(arquivo)
+            caminhos[nome] = str(arquivo)
+    except Exception as exc:  # noqa: BLE001 - ver o docstring: sem marca, a face sólida serve
+        logger.warning("Marcas do indicador não gravadas (%s): a caixa fica só com a cor.", exc)
+        return {}
+    return caminhos
 
 
 def aplicar_tema(
@@ -470,10 +471,28 @@ def aplicar_tema(
         return "sem_folha"
 
     try:
-        alvo.setStyleSheet(folha_de_estilo(cromo_escuro=cromo_escuro, base=base, densidade=densidade))
+        alvo.setStyleSheet(
+            folha_de_estilo(
+                cromo_escuro=cromo_escuro,
+                base=base,
+                densidade=densidade,
+                marcas=gravar_marcas(cromo_escuro=cromo_escuro, base=base, densidade=densidade),
+                altura_do_titulo=altura_do_titulo_atual(),
+            )
+        )
     except Exception as exc:  # noqa: BLE001 - aparência não derruba a ferramenta
         logger.warning("Folha de estilo não aplicada (%s): a janela abre no cinza do sistema.", exc)
         return "sem_folha"
+
+    # **A paleta é a segunda camada, e sem esta chamada a primeira mente.** O `QStyle` desenha o
+    # item selecionado de toda `QAbstractItemView` a partir de `option.palette`, e não da folha:
+    # sem isto a lista sai no azul de fábrica do Windows e a tabela no `SELECAO` -- duas cores de
+    # "selecionado" na mesma janela, fotografado em `amostrario_claro.png`. Ela não pode derrubar
+    # a janela pela mesma razão da folha: aparência não derruba ferramenta.
+    try:
+        aplicar_paleta(alvo, cromo_escuro=cromo_escuro)
+    except Exception as exc:  # noqa: BLE001 - aparência não derruba a ferramenta
+        logger.warning("Paleta não aplicada (%s): o desenho nativo segue com a do sistema.", exc)
 
     logger.info(
         "Tema da interface: folha própria, cromo %s, densidade %s (Qt).",

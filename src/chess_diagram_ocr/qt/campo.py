@@ -107,9 +107,21 @@ class PainelDeCampo(QWidget):
         barra.setSpacing(espaco.linha())
         self.regime = QComboBox(self)
         self.regime.addItems(list(REGIMES))
+        # **O nome vem antes da dica, e a falta dele custou seis abas** (F9-C3). Sem
+        # `accessibleName` a cascata de `ui/nomes_acessiveis.py` cai na dica, e o leitor de tela
+        # anunciava este controle -- o 14º da ordem do `Tab` em **todas** as seis abas -- como
+        # "Em que condição esta página foi lida. Entra na anotação e separa as": 67 caracteres
+        # cortados no meio da frase. É prosa e não nome, e é o quinto motivo que
+        # `caissa.ui.audit.teclado` passou a cobrar.
+        self.regime.setAccessibleName("Regime de leitura da página")
         dica_em(self.regime, "Em que condição esta página foi lida. Entra na anotação e separa as\nmedições por regime.")
         barra.addWidget(self.regime)
-        self.btn_anotar = self._botao(barra, "anotar_pagina", self.anotar_pagina, estilos.PRIMARIO)
+        # **Neutro desde o F9-C2** (item 10 do §7). O painel de campo está visível nas seis abas,
+        # e o painel do PDF também: com `Anotar página` em azul, toda tela desta janela desenhava
+        # **duas** ações primárias, e três nas abas Resultado, Estudo e Revisão. Duas ênfases é o
+        # mesmo que nenhuma -- é o argumento de `estilos.PRIMARIO`, aplicado à tela em vez de à
+        # barra. A tecla continua declarada e o botão continua o primeiro da fila.
+        self.btn_anotar = self._botao(barra, "anotar_pagina", self.anotar_pagina, estilos.NEUTRO)
         self.btn_sem_diagrama = self._botao(barra, "anotar_sem_diagrama", self.anotar_sem_diagrama)
         self.btn_tirar = self._botao(barra, "tirar_do_campo", self.tirar_do_campo, estilos.DESTRUTIVO)
         barra.addStretch(1)
@@ -123,6 +135,11 @@ class PainelDeCampo(QWidget):
     def _botao(self, barra: QHBoxLayout, acao: str, alvo: Callable[[], object], papel: str = estilos.NEUTRO) -> QPushButton:
         """Rótulo, papel e dica do catálogo -- este arquivo não escreve texto de interface."""
         botao = QPushButton(comandos.rotulo_de_botao(acao), self)
+        # **O nome acessível é o rótulo por extenso, e não o texto do botão** (F9-C2).
+        # O crítico do ciclo 1 mediu 28 controles que chegavam ao leitor de tela como "-",
+        # "+", "|◀" ou ".md" -- o `rotulo_curto` passando pela cascata de
+        # `ui/nomes_acessiveis.py` no passo `text()`. Ver `comandos.Comando.no_leitor`.
+        botao.setAccessibleName(comandos.nome_acessivel(acao))
         botao.clicked.connect(lambda _marcado=False: alvo())
         tema.aplicar_papel(botao, papel)
         dica_em(botao, comandos.rotulo(acao))

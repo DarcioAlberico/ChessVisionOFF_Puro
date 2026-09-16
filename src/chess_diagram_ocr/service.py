@@ -43,7 +43,6 @@ from .config import (
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
 )
-from .dataset import append_training_sample
 from .detection import DiagramCandidate, detect_diagrams_in_pdf_page
 from .fen_utils import PositionCheck, check_position, square_name
 from .inference import (
@@ -792,6 +791,12 @@ class OcrService:
         repassada intacta: quem decide é a pessoa, e este método não tem o que acrescentar à
         decisão dela.
         """
+        # `dataset.py` define `class BoardFenDataset(Dataset)` no escopo de módulo e por isso
+        # NÃO pode adiar o próprio `import torch` sem reescrita. O que se adia é a ARESTA: o
+        # serviço só precisa de `append_training_sample` quando alguém salva uma correção de
+        # treino, e não quando a janela abre. Sem esta linha, abrir um PDF exige torch.
+        from .dataset import append_training_sample
+
         campos: dict[str, Any] = {"source_pdf": "", "source_page": ""}
         if origin is not None:
             campos = origin.sample_fields()

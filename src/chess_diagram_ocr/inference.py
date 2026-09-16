@@ -4,11 +4,10 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
-import torch
-import torch.nn as nn
 
 from .board_detection import split_board_into_cells
 from .checkpoint import load_checkpoint
@@ -31,7 +30,6 @@ from .fen_utils import (
     fen_from_class_indices,
     square_name,
 )
-from .model import DEFAULT_ARCH, ArchConfig, build_model, preprocess_cell_to_tensor, with_coordinate_channels
 from .orientation import (
     ConfidenceMarginRule,
     CoordinateRule,
@@ -43,6 +41,17 @@ from .orientation import (
     TightMarginFallback,
 )
 from .preprocess import IDENTITY, BoardNormalizer, NormalizerConfig
+
+if TYPE_CHECKING:  # pragma: no cover - só para as anotações
+    # `from __future__ import annotations` (linha 1) já transforma toda anotação em texto,
+    # então `nn.Module` e `ArchConfig` nas assinaturas não precisam de `nn` nem de `.model`
+    # em execução. Isto é o que permite este módulo -- que é o caminho da JANELA para o
+    # modelo, por `service.py` -- importar sem torch. `dataset.py`, `training.py`, `model.py`
+    # e `augment.py` continuam exigindo torch, e devem: são o treino e a rede. O que muda é
+    # que abrir a janela deixa de importá-los.
+    import torch.nn as nn
+
+    from .model import ArchConfig
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +65,8 @@ def describe_device(device: str) -> str:
     com o torch `+cpu` instalado treinava e inferia na CPU sem que nada dissesse isso --
     é a diferença entre 7,5 min e ~45 s por época, invisível.
     """
+    import torch
+
     if device.startswith("cuda") and torch.cuda.is_available():
         index = torch.cuda.current_device() if device == "cuda" else int(device.split(":")[1])
         return f"cuda:{index} ({torch.cuda.get_device_name(index)})"
@@ -84,6 +95,10 @@ def load_model(
     temperatura neutra e apenas **reporta** a que está gravada -- ver
     `config.APPLY_CALIBRATED_TEMPERATURE` para o que foi medido e por quê.
     """
+    import torch
+
+    from .model import DEFAULT_ARCH, ArchConfig, build_model
+
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
     model_path = Path(model_path)
 
@@ -320,6 +335,10 @@ def board_probabilities_batch(
     """
     if not boards_rgb:
         return []
+
+    import torch
+
+    from .model import DEFAULT_ARCH, preprocess_cell_to_tensor, with_coordinate_channels
 
     arch = getattr(model, "arch", DEFAULT_ARCH)
     temperature = float(getattr(model, "temperature", 1.0))

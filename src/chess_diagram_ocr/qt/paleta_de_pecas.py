@@ -35,6 +35,7 @@ from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import QGridLayout, QSizePolicy, QToolButton, QWidget
 
+from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.tabuleiro import (
@@ -45,7 +46,7 @@ from chess_diagram_ocr.qt.tabuleiro import (
     engrossada,
     pasta_do_conjunto,
 )
-from chess_diagram_ocr.ui import board_edit, conjuntos, espaco, tokens
+from chess_diagram_ocr.ui import board_edit, conjuntos, espaco, estilos, tokens
 
 __all__ = ["APAGAR", "LADO_DO_ICONE", "PaletaDePecas"]
 
@@ -155,6 +156,13 @@ class PaletaDePecas(QWidget):
         botao.setIconSize(QSize(LADO_DO_ICONE, LADO_DO_ICONE))
         if valor == APAGAR:
             botao.setText(ROTULO_APAGAR)
+            # **O desenho no lugar do glifo** (F9-C7, §4.7). O `✕` rendia **7×7 px de tinta**
+            # num botão de 72×25, no meio de doze botões que desenham peça a `LADO_DO_ICONE`:
+            # é o defeito do §9.4 do ciclo 5 -- *"um 'ícone' de 4×5 px num botão de 26 px"* --
+            # sobrevivendo no único botão da paleta que não é peça. `apagar_casa` já está no
+            # catálogo e é exatamente este gesto. O `ROTULO_APAGAR` fica como reserva: sem
+            # Pillow, `vestir` devolve `False` e o glifo continua na tela.
+            qt_icones.vestir(botao, "apagar_casa", estilos.NEUTRO, lado=LADO_DO_ICONE)
         dica_em(botao, self._dica(valor))
         botao.clicked.connect(lambda _marcado=False, escolhido=valor: self._clicou(escolhido))
         self._botoes[valor] = botao

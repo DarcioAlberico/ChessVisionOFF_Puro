@@ -60,7 +60,8 @@ from chess_diagram_ocr.games_db import DEFAULT_DATABASE_DIR, PositionHit, databa
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.tabela import Coluna, TabelaQt
-from chess_diagram_ocr.ui import espaco, estilos, strings, tipografia, tokens
+from chess_diagram_ocr.qt.vazio import EstadoVazio
+from chess_diagram_ocr.ui import espaco, estilos, folha_de_estilo, strings, tipografia, tokens
 from chess_diagram_ocr.ui.escolha_de_bases import cache_note, describe_size
 from chess_diagram_ocr.ui.escopo_da_varredura import (
     ABERTO,
@@ -441,7 +442,9 @@ class DialogoDePartidas(QDialog):
         fora.setSpacing(espaco.folga())
 
         topo = QHBoxLayout()
-        topo.addWidget(QLabel("filtro", self))
+        # `Filtro` e não `filtro`: era o único rótulo de campo dos treze diálogos que não começava
+        # com maiúscula (F9-C13, §5.8). Os outros treze usam capitalização de frase.
+        topo.addWidget(QLabel("Filtro", self))
         self.campo_filtro = QLineEdit(self)
         # A cada tecla, e não no Return: com 32 candidatas o filtro é para *reduzir enquanto se
         # olha*, e exigir confirmação a cada tentativa faria a pessoa digitar o nome inteiro.
@@ -457,13 +460,24 @@ class DialogoDePartidas(QDialog):
         self.tabela.itemDoubleClicked.connect(lambda *_: self.aplicar_selecionada())
         self.tabela.itemSelectionChanged.connect(self._atualizar_botao_de_vizinhos)
         fora.addWidget(self.tabela, 1)
+        # **O mesmo componente da janela principal, um andar abaixo** (F9-C14). A grade abria com
+        # 878x300 px em branco e um `0 partida(s)` num canto: o item 4 do §7 do ciclo 13.
+        self.vazio = EstadoVazio(
+            self.tabela,
+            titulo=strings.PARTIDAS_VAZIAS_TITULO,
+            frase=strings.PARTIDAS_VAZIAS_FRASE,
+            rotulo_do_botao="Procurar por nome",
+            nome_acessivel="Procurar partidas por nome na base",
+            acao=self.procurar_por_nome,
+        )
+        self.vazio.setVisible(False)
 
         rodape = QHBoxLayout()
         self.btn_aplicar = QPushButton("Aplicar", self)
         self.btn_aplicar.clicked.connect(self.aplicar_selecionada)
         self.btn_por_nome = QPushButton("Procurar por nome", self)
         self.btn_por_nome.clicked.connect(self.procurar_por_nome)
-        self.btn_vizinhos = QPushButton("Aplicar aos vizinhos...", self)
+        self.btn_vizinhos = QPushButton("Aplicar aos vizinhos…", self)
         self.btn_vizinhos.clicked.connect(self.aplicar_aos_vizinhos)
         self.btn_vizinhos.setEnabled(False)
         dica_em(
@@ -530,7 +544,44 @@ class DialogoDePartidas(QDialog):
             primeiro = self.tabela.topLevelItem(0)
             if primeiro is not None:
                 self.tabela.setCurrentItem(primeiro)
+        self._mostrar_vazio()
         self._atualizar_botao_de_vizinhos()
+
+    def _mostrar_vazio(self) -> None:
+        """O estado vazio aparece sobre a grade, e diz **qual** dos dois vazios é este.
+
+        Lista vazia porque não há partida guardada e lista vazia porque o filtro não casou são
+        duas situações com saídas diferentes -- procurar por nome numa, apagar o filtro na outra
+        --, e um vazio que não distingue as duas manda a pessoa para o lado errado.
+        """
+        vista = self.tabela.viewport()
+        self.vazio.setGeometry(vista.rect() if vista is not None else self.tabela.rect())
+        filtrando = bool(self.campo_filtro.text().strip()) and bool(self._todas)
+        self.vazio.titulo.setText(
+            strings.FILTRO_SEM_RESULTADO_TITULO if filtrando else strings.PARTIDAS_VAZIAS_TITULO
+        )
+        self.vazio.frase.setText(
+            strings.FILTRO_SEM_RESULTADO_FRASE if filtrando else strings.PARTIDAS_VAZIAS_FRASE
+        )
+        oferece_procurar = not self._visiveis and not filtrando
+        if self.vazio.botao is not None:
+            self.vazio.botao.setVisible(not filtrando)
+        self.vazio.setVisible(not self._visiveis)
+        # **Duas legendas iguais não convivem numa tela** (F9-C15 §5.1). Enquanto o estado vazio
+        # oferece `Procurar por nome` no meio da grade, o botão do rodapé desenha a **mesma
+        # palavra** ligada à **mesma ação**, e a tela saía com os dois ao mesmo tempo, a distinção
+        # dada só ao `accessibleName`: quem **ouve** recebia dois nomes e quem **vê**, a mesma
+        # palavra duas vezes. É a inversão que esta frente já consertou no par `outro` da Galeria
+        # (F9-C7 §1.8).
+        #
+        # Quem some é o do rodapé: o do vazio está onde o olho já está, dentro da região que
+        # explica por que não há nada. É o mesmo gesto de `_JanelaDePartidas`, que esconde a frase
+        # do topo enquanto o vazio diz a mesma coisa lá dentro.
+        #
+        # **A condição é a mesma que decide o vazio, e não `self.vazio.isVisible()`**: este método
+        # roda na construção, antes do `show()`, e ali `isVisible()` é `False` para tudo -- é a
+        # armadilha que fez a primeira forma deste conserto passar no teste e falhar na tela.
+        self.btn_por_nome.setVisible(not oferece_procurar)
 
     def _pintar(self, item: Any, papel: str) -> None:
         from PyQt6.QtGui import QBrush, QColor
@@ -552,7 +603,7 @@ class DialogoDePartidas(QDialog):
         )
         self.btn_vizinhos.setEnabled(bool(vizinhos))
         self.btn_vizinhos.setText(
-            f"Aplicar aos vizinhos ({len(vizinhos)})..." if vizinhos else "Aplicar aos vizinhos..."
+            f"Aplicar aos vizinhos ({len(vizinhos)})…" if vizinhos else "Aplicar aos vizinhos…"
         )
 
     # ------------------------------------------------------------------------------ a escolha
@@ -639,11 +690,12 @@ class DialogoDePartidas(QDialog):
 
 
 class DialogoDeTreino(QDialog):
-    """O modal do treino em curso: status, métricas e uma barra que não sabe quanto falta.
+    """O modal do treino em curso: status, métricas e uma barra que **sabe** quanto falta.
 
     **Fechar esconde em vez de destruir**, como do outro lado: o treino continua rodando, e
     destruir a janela deixaria a thread escrevendo em widgets que já não existem. `Esc` faz o
-    mesmo -- ele **esconde**, e não cancela nada: quem cancela o treino é o botão do rodapé.
+    mesmo -- ele **esconde**, e não cancela nada: quem cancela o treino é o botão do rodapé, e
+    agora a janela diz isso em vez de deixar a pessoa procurar.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -651,7 +703,7 @@ class DialogoDeTreino(QDialog):
 
         super().__init__(parent)
         self.setWindowTitle("Treinando modelo")
-        self.resize(520, 170)
+        self.resize(520, 190)
         fora = QVBoxLayout(self)
         fora.setContentsMargins(*(espaco.moldura(),) * 4)
         fora.setSpacing(espaco.linha())
@@ -662,11 +714,25 @@ class DialogoDeTreino(QDialog):
             alvo.setWordWrap(True)
             fora.addWidget(alvo)
         self.barra = QProgressBar(self)
-        # Mínimo e máximo em zero é a barra indeterminada do Qt -- o `mode="indeterminate"` do
-        # `ttk`. Ela não sabe quanto falta porque o treino também não: quem sabe é o rodapé, que
-        # conta épocas.
+        # **Ela nasce indeterminada e deixa de ser na primeira notícia** (F9-C14, item 7 do §7
+        # do ciclo 13). Antes ela ficava em `setRange(0, 0)` do começo ao fim -- a barra
+        # indeterminada do Qt, o `mode="indeterminate"` do `ttk` -- enquanto
+        # `ControladorDeTreino._progresso` escrevia `"Treinando... época 3/8"` **nesta mesma
+        # janela**, com numerador e denominador na mão. Uma barra que diz "não sei quanto falta"
+        # a 20 px de um rótulo que sabe é a interface se contradizendo na mesma tela.
+        #
+        # Antes da primeira época o total já é conhecido (`pedido.epochs`), e é `iniciar` quem o
+        # entrega; o zero-zero fica só para o caso em que ninguém disse nada.
         self.barra.setRange(0, 0)
         fora.addWidget(self.barra)
+        # Quem cancela é o rodapé, e a janela não é modal (`show()`, não `exec()`) -- mas nada
+        # na tela dizia isso, e uma janela sem saída visível se lê como travada.
+        self.lbl_saida = QLabel(
+            "Fechar esta janela não interrompe o treino: quem cancela é o rodapé.", self
+        )
+        self.lbl_saida.setProperty(folha_de_estilo.PROPRIEDADE_DE_APOIO, "true")
+        self.lbl_saida.setWordWrap(True)
+        fora.addWidget(self.lbl_saida)
 
     def reject(self) -> None:
         """`Esc` e o X escondem. O treino segue, e a janela volta inteira no próximo `mostrar`."""
@@ -675,6 +741,21 @@ class DialogoDeTreino(QDialog):
     def escrever(self, status: str, metricas: str = "") -> None:
         self.lbl_status.setText(status)
         self.lbl_metricas.setText(metricas)
+
+    def progresso(self, feito: int, total: int) -> None:
+        """A barra passa a contar épocas. `total` não positivo volta à indeterminada.
+
+        O formato é o mesmo texto do rótulo de status e do rodapé -- **época k de n** --, porque
+        três lugares dizendo a mesma coisa com três palavras diferentes é o que faz a pessoa
+        procurar a diferença que não existe.
+        """
+        if total <= 0:
+            self.barra.setRange(0, 0)
+            self.barra.setFormat("")
+            return
+        self.barra.setRange(0, int(total))
+        self.barra.setValue(max(0, min(int(feito), int(total))))
+        self.barra.setFormat("época %v de %m")
 
 
 class ControladorDeTreino(QDialog):
@@ -691,6 +772,12 @@ class ControladorDeTreino(QDialog):
 
     escreveu = pyqtSignal(str, str)
     """`(status, métricas)`, vindo da thread do treino."""
+
+    avancou = pyqtSignal(int, int)
+    """`(época feita, total de épocas)`, vindo da thread do treino. É o que determina a barra.
+
+    Sinal e não chamada direta pela mesma razão de `escreveu`: quem conta épocas é a thread do
+    treino, e mexer em widget fora da thread da janela é o defeito que o Qt não avisa."""
 
     estado = pyqtSignal(str)
     """Uma frase para a barra de status."""
@@ -719,6 +806,7 @@ class ControladorDeTreino(QDialog):
         self._total_de_epocas = 0
         self.dialogo: DialogoDeTreino | None = None
         self.escreveu.connect(self._escrever_agora)
+        self.avancou.connect(self._avancar_agora)
         self.falhou.connect(self._mostrar_falha)
 
     @property
@@ -747,8 +835,11 @@ class ControladorDeTreino(QDialog):
                 cancel=self.cancelar,
             )
         self.controles.emit(False)
-        self.escrever("Preparando treino...", "")
+        self.escrever("Preparando treino…", "")
         self.mostrar()
+        # O total é conhecido **antes** da primeira época: é `pedido.epochs`. A barra sai
+        # determinada desde a abertura, e não só a partir da segunda notícia.
+        self.avancou.emit(0, self._total_de_epocas)
         threading.Thread(target=self._trabalho, args=(pedido, self._cancelar), daemon=True).start()
 
     def cancelar(self) -> None:
@@ -756,7 +847,7 @@ class ControladorDeTreino(QDialog):
         if self._cancelar is None:
             return
         self._cancelar.set()
-        self.estado.emit("Cancelando treino... termina a época atual e para.")
+        self.estado.emit("Cancelando treino… termina a época atual e para.")
 
     # ---------------------------------------------------------------------------------- modal
 
@@ -787,6 +878,10 @@ class ControladorDeTreino(QDialog):
         if self.dialogo is not None:
             self.dialogo.escrever(status, metricas)
 
+    def _avancar_agora(self, feito: int, total: int) -> None:
+        if self.dialogo is not None:
+            self.dialogo.progresso(feito, total)
+
     def _mostrar_falha(self, detalhe: str) -> None:
         QMessageBox.critical(self.parentWidget(), "Erro no treino", detalhe)
 
@@ -794,9 +889,12 @@ class ControladorDeTreino(QDialog):
 
     def _progresso(self, row: dict[str, Any]) -> None:
         epoca = int(row.get("epoch", 0))
-        status = f"Treinando... época {epoca}/{self._total_de_epocas}"
+        status = f"Treinando… época {epoca}/{self._total_de_epocas}"
         self.estado.emit(status)
         self.escrever(status, format_metrics(row))
+        # A barra do modal recebe o mesmo par que o rodapé: o total é conhecido, e uma barra
+        # indeterminada ao lado de um rótulo que conta épocas é a carta §3.3 na mesma tela.
+        self.avancou.emit(epoca, self._total_de_epocas)
         if self._busy_token is not None:
             # Com o número, e não só com a frase: é o que faz a barra do rodapé ser determinada
             # (S-164). Época é a unidade em que o treino de verdade progride -- ~9 min cada em CPU.
@@ -808,8 +906,8 @@ class ControladorDeTreino(QDialog):
         from chess_diagram_ocr.training import train_model
 
         try:
-            self.estado.emit("Treinando modelo...")
-            self.escrever("Treinando modelo...", "")
+            self.estado.emit("Treinando modelo…")
+            self.escrever("Treinando modelo…", "")
             run = train_model(
                 csv_path=pedido.csv_path,
                 samples_dir=pedido.samples_dir,

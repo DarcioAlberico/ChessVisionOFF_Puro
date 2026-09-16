@@ -36,13 +36,19 @@ from chess_diagram_ocr.ui.page_overlay import (
     traco_da_caixa,
 )
 from chess_diagram_ocr.ui.viewport import (
+    ENQUADRAMENTO_LARGURA,
+    ENQUADRAMENTO_LIVRE,
+    ENQUADRAMENTO_PAGINA,
+    ENQUADRAMENTOS,
     WheelAction,
     anchor_after_zoom,
     clamp_zoom,
     decide_wheel,
+    enquadramento_apos_zoom_manual,
     fit_page_zoom,
     fit_width_zoom,
     wheel_direction,
+    zoom_do_enquadramento,
     zoomed,
 )
 
@@ -292,6 +298,12 @@ class VisorDePagina(QScrollArea):
         """Se a roda vira a página ao chegar à borda. Desligável porque nem todo mundo quer --
         é a mesma preferência do produto."""
 
+        self._enquadramento = ENQUADRAMENTO_LIVRE
+        """O ajuste que sobrevive ao redimensionamento (F9-C3). Ver `ui/viewport.ENQUADRAMENTOS`.
+
+        Comeca `LIVRE` porque o visor abre no zoom do estado gravado, e esse zoom e uma escolha
+        anterior da pessoa: reenquadrar na abertura seria desfaze-la sem que ninguem pedisse."""
+
         self._selecionando = False
         self._inicio_da_selecao: tuple[float, float] | None = None
         self._ponto_atual: tuple[float, float] | None = None
@@ -304,6 +316,17 @@ class VisorDePagina(QScrollArea):
     @property
     def zoom(self) -> float:
         return self._zoom
+
+    @property
+    def enquadramento(self) -> str:
+        """O ajuste em vigor -- `LIVRE`, `LARGURA` ou `PAGINA`. Ver `ui/viewport.ENQUADRAMENTOS`."""
+        return self._enquadramento
+
+    def definir_enquadramento(self, enquadramento: str) -> None:
+        """Repoe o ajuste gravado da sessao anterior, e ja o aplica se houver pagina."""
+        if enquadramento not in ENQUADRAMENTOS:
+            return
+        self._enquadrar(enquadramento)
 
     @property
     def caixas(self) -> PageBoxes | None:
@@ -366,6 +389,9 @@ class VisorDePagina(QScrollArea):
         self._selecionada = None
         self._dpi = int(dpi)
         self._ajustar_folha()
+        # A página nova pode ter outro tamanho -- capa, mapa dobrado, folha de errata -- e o
+        # enquadramento em vigor é uma pergunta sobre **esta** página (F9-C3).
+        self._reaplicar_enquadramento()
 
     def pagina_rgb(self) -> np.ndarray | None:
         """A página como o pipeline a devolveu. É ela que vai ao OCR, e não o `QPixmap`."""
@@ -388,6 +414,17 @@ class VisorDePagina(QScrollArea):
     # -------------------------------------------------------------------------------- zoom
 
     def definir_zoom(self, valor: float) -> None:
+        """Põe o zoom naquele valor. **Escolha à mão desliga o enquadramento** (F9-C3).
+
+        Quem chama daqui é a roda, o deslizador, `Ctrl++` e `Ctrl+-`; os dois ajustes automáticos
+        passam por `_enquadrar`, que repõe o modo depois. Sem esta linha, redimensionar a janela
+        desfaria, no instante seguinte, o zoom que a pessoa acabou de escolher.
+        """
+        self._enquadramento = enquadramento_apos_zoom_manual()
+        self._aplicar_zoom(valor)
+
+    def _aplicar_zoom(self, valor: float) -> None:
+        """A parte mecânica, sem tocar no enquadramento. Ver `definir_zoom` e `_enquadrar`."""
         novo = clamp_zoom(valor)
         if novo == self._zoom:
             return
@@ -396,18 +433,29 @@ class VisorDePagina(QScrollArea):
         self.zoom_mudou.emit(novo)
 
     def ajustar_a_largura(self) -> None:
-        if self._pagina is None:
-            return
-        largura, _altura = self._area_visivel()
-        alvo = fit_width_zoom(viewport_px=largura, page_px=self._pagina.width(), margin_px=MARGEM_DE_AJUSTE)
-        if alvo is not None:
-            self.definir_zoom(alvo)
+        self._enquadrar(ENQUADRAMENTO_LARGURA)
 
     def ajustar_a_pagina(self) -> None:
+        self._enquadrar(ENQUADRAMENTO_PAGINA)
+
+    def _enquadrar(self, enquadramento: str) -> None:
+        """Liga um enquadramento e o aplica agora. Ele fica valendo até alguém mexer no zoom."""
+        self._enquadramento = enquadramento
+        self._reaplicar_enquadramento()
+
+    def _reaplicar_enquadramento(self) -> None:
+        """Responde de novo a pergunta do enquadramento para a área de agora (F9-C3).
+
+        **É o conserto do §7.8 do ciclo 3**, e o defeito que ele fecha foi medido no pixel: a
+        página saía com `366 px` de largura a 1280, a 1366 **e** a 1920 -- idêntica nas três, 29 %
+        de um viewport de 819×850 na maior delas. `fit_width_zoom` estava certo; o que faltava era
+        alguém chamá-lo outra vez quando a área muda.
+        """
         if self._pagina is None:
             return
         largura, altura = self._area_visivel()
-        alvo = fit_page_zoom(
+        alvo = zoom_do_enquadramento(
+            self._enquadramento,
             viewport_w=largura,
             viewport_h=altura,
             page_w=self._pagina.width(),
@@ -415,7 +463,12 @@ class VisorDePagina(QScrollArea):
             margin_px=MARGEM_DE_AJUSTE,
         )
         if alvo is not None:
-            self.definir_zoom(alvo)
+            self._aplicar_zoom(alvo)
+
+    def resizeEvent(self, a0: object) -> None:  # noqa: N802 - assinatura do Qt
+        """A área mudou: o enquadramento em vigor é recalculado para ela. Ver `_reaplicar…`."""
+        super().resizeEvent(a0)  # type: ignore[arg-type]
+        self._reaplicar_enquadramento()
 
     def _ajustar_folha(self) -> None:
         if self._pagina is None:

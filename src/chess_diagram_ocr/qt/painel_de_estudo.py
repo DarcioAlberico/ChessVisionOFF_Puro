@@ -71,11 +71,23 @@ from chess_diagram_ocr.engine import EngineAnalyzer, Evaluation
 from chess_diagram_ocr.estudo import Ancora, Estudo, PosicaoDeEstudo, Sala
 from chess_diagram_ocr.fen_utils import is_valid_fen, reading_index_from_square, square_from_reading_index
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
+from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
+from chess_diagram_ocr.qt.rotulo import CampoQueAvisaQueContinua
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.tabuleiro_de_jogo import TabuleiroDeJogo
-from chess_diagram_ocr.ui import comandos, espaco, estilos, estudo_lista, geometria, tipografia, tokens
+from chess_diagram_ocr.qt.vazio import EstadoVazio
+from chess_diagram_ocr.ui import (
+    comandos,
+    espaco,
+    estilos,
+    estudo_lista,
+    geometria,
+    strings,
+    tipografia,
+    tokens,
+)
 from chess_diagram_ocr.ui.historico import Historico
 from chess_diagram_ocr.ui.sala_declarada import (
     ACOES_PROPRIAS,
@@ -170,7 +182,7 @@ class PainelDeEstudo(QWidget):
 
     def _montar(self) -> None:
         fora = QVBoxLayout(self)
-        fora.setContentsMargins(*(espaco.linha(),) * 4)
+        fora.setContentsMargins(*(espaco.margem_da_aba(),) * 4)
         fora.setSpacing(espaco.linha())
         for barra in self._barras():
             fora.addWidget(barra)
@@ -195,11 +207,22 @@ class PainelDeEstudo(QWidget):
         from chess_diagram_ocr.ui import atalhos
 
         botao = QPushButton(comandos.rotulo_de_botao(acao), barra)
+        # **O nome acessível é o rótulo por extenso, e não o texto do botão** (F9-C2).
+        # O crítico do ciclo 1 mediu 28 controles que chegavam ao leitor de tela como "-",
+        # "+", "|◀" ou ".md" -- o `rotulo_curto` passando pela cascata de
+        # `ui/nomes_acessiveis.py` no passo `text()`. Ver `comandos.Comando.no_leitor`.
+        botao.setAccessibleName(comandos.nome_acessivel(acao))
         botao.clicked.connect(lambda _marcado=False, nome=acao: self.executar(nome))
         tema.aplicar_papel(botao, comandos.papel(acao))
         motivo = comandos.rotulo(acao)
         tecla = atalhos.acelerador(acao)
         dica_em(botao, f"{motivo}\nTecla: {tecla}" if tecla else motivo)
+        # **Um glifo de texto nao e um icone** (F9-C7, §4.7). Quando o rotulo do botao nao tem
+        # letra nenhuma -- `◀`, `▶|` -- e o catalogo declara um desenho, o desenho entra e o
+        # glifo sai: medido, `◀` rendia 5x3 px de tinta contra 6x6 do `▶` ao lado, e "voltar um
+        # lance" ficava sem direcao legivel em tres paineis. Rotulo com letra continua texto.
+        if not any(letra.isalpha() for letra in botao.text()):
+            qt_icones.vestir(botao, comandos.comando(acao).icone, comandos.papel(acao))
         barra.adicionar(botao)
         return botao
 
@@ -327,9 +350,17 @@ class PainelDeEstudo(QWidget):
         pilha.addWidget(self.lbl_origem)
         pilha.addWidget(self.lbl_status)
 
-        self.campo_fen = QLineEdit(self.estudo.tabuleiro.fen(), coluna)
+        # **Um campo que avisa quando a FEN não cabe** (F9-C7, §4.5): a 1024 o campo tem 286 px
+        # e uma FEN de meio-jogo pede 504, e o que sumia sumia em silêncio. Ver
+        # `qt/rotulo.CampoQueAvisaQueContinua`.
+        self.campo_fen = CampoQueAvisaQueContinua(self.estudo.tabuleiro.fen(), coluna)
+        # **O nome não pode ser a FEN** (F9-C2): `QLineEdit.text()` aqui devolve
+        # `"rnbqkbnr/pppppppp/8/8/..."`, e era isso que o leitor de tela anunciava como o nome do
+        # campo -- 56 caracteres de conteúdo no lugar de duas palavras de identidade.
+        self.campo_fen.setAccessibleName("FEN da posição em estudo")
         self.campo_fen.setFont(tema.fonte_atual(tipografia.DADO))
         self.campo_fen.returnPressed.connect(self.apply_fen)
+        self.campo_fen.setCursorPosition(0)
         pilha.addWidget(self.campo_fen)
         return coluna
 
@@ -355,6 +386,7 @@ class PainelDeEstudo(QWidget):
         dentro = QVBoxLayout(anotacao)
         dentro.setContentsMargins(*(espaco.linha(),) * 4)
         self.comentario = QTextEdit(anotacao)
+        self.comentario.setAccessibleName("Comentário do lance")
         self.comentario.setFixedHeight(4 * tema.altura_de_linha_atual())
         # Grava ao **sair** do campo, e não a cada tecla: um sinal por letra faria a lista de
         # lances ser redesenhada trinta vezes por frase, e o cursor pularia junto.
@@ -512,13 +544,13 @@ class PainelDeEstudo(QWidget):
     def analyse(self) -> None:
         """Pede a análise da posição corrente. A resposta atrasada é descartada (S-285)."""
         if self._analyzer is None:
-            self.set_status("Sem motor UCI instalado: ponha o Stockfish em engines/ e reabra.")
+            self.set_status(strings.SEM_MOTOR_STATUS)
             return
         if self._analysing:
             return
         self._analysing = True
         self.btn_analisar.setEnabled(False)
-        self.lbl_motor.setText("pensando...")
+        self.lbl_motor.setText("pensando…")
         threading.Thread(
             target=self._trabalho_do_motor,
             args=(self._geracao, self.estudo.tabuleiro.copy(stack=False), self.estudo.no),
@@ -596,7 +628,7 @@ class PainelDeEstudo(QWidget):
     def alternar_analise_continua(self) -> None:
         """Liga e desliga o motor acompanhando o lance corrente."""
         if self._analyzer is None or self.btn_continua is None:
-            self.set_status("Sem motor UCI instalado: ponha o Stockfish em engines/ e reabra.")
+            self.set_status(strings.SEM_MOTOR_STATUS)
             return
         self.btn_continua.setChecked(not self.btn_continua.isChecked())
         if self.btn_continua.isChecked():
@@ -609,15 +641,35 @@ class PainelDeEstudo(QWidget):
 
     def set_status(self, texto: str = "") -> None:
         turno = "brancas" if self.estudo.tabuleiro.turn else "pretas"
-        frase = f"{texto} | vez: {turno}" if texto else f"Vez: {turno}"
+        # **Um separador só na interface** (F9-C12). O produto declara `" · "` em dez lugares
+        # (`ui/estado_do_rodape`, `ui/strings`, `qt/painel_de_resultado`, `qt/painel_da_galeria`,
+        # `qt/campo`, `qt/paleta`) e usava `" | "` em quatro, dois deles desenhados na tela em
+        # toda pele e largura. `tests/unit/ui/test_dialogos.py` cobra a grafia única.
+        frase = f"{texto} · vez: {turno}" if texto else f"Vez: {turno}"
         self.lbl_status.setText(frase)
         self.estado.emit(frase)
+
+    def _mostrar_fen_do_comeco(self) -> None:
+        """Rola o campo da FEN para o **inicio**, que e a parte que identifica a posicao.
+
+        **Achado olhando as capturas do ciclo 6, a 1280x800.** `QLineEdit.setText` deixa o cursor
+        no fim, e o campo passa a mostrar o fim: numa janela de 1280 a FEN inicial aparece como
+        `qkbnr/pppppppp/...` -- as tres primeiras casas somem, **sem reticencia e sem nenhum
+        sinal**. Quem le a FEN na tela para copiar a mao copia uma FEN invalida. A 1920 o campo
+        cabe inteiro e nada disso aparece, que e por que nenhuma medida de layout pegou: nao ha
+        rotulo espremido nem controle fora da janela, so texto rolado.
+
+        O comeco vale mais que o fim: `rnbqkbnr/...` e a colocacao das pecas, e o rabo
+        (`w KQkq - 0 1`) e o mesmo em quase toda posicao de abertura.
+        """
+        self.campo_fen.setCursorPosition(0)
 
     def refresh(self) -> None:
         """Põe na tela o que o estudo diz: posição, setas, lista, comentário e FEN."""
         self._montando = True
         try:
             self.campo_fen.setText(self.estudo.tabuleiro.fen())
+            self._mostrar_fen_do_comeco()
             self.tabuleiro.mostrar_tabuleiro(self.estudo.tabuleiro, virado=self.estudo.invertido)
             self._mostrar_setas()
             self._redesenhar_lista()
@@ -1377,7 +1429,7 @@ class PainelDeEstudo(QWidget):
         a forma padrão de dizê-lo é o comentário de entrada da variante.
         """
         if self._analyzer is None:
-            self.set_status("Sem motor UCI instalado: ponha o Stockfish em engines/ e reabra.")
+            self.set_status(strings.SEM_MOTOR_STATUS)
             return
         melhor = self._candidatos[0] if self._candidatos else None
         if melhor is None or not melhor.pv_san:
@@ -1825,10 +1877,19 @@ class _JanelaDeColar(QDialog):
         pilha.addWidget(QLabel("Cole aqui uma FEN ou um PGN. O texto diz qual dos dois é.", self))
         self.campo = QTextEdit(self)
         self.campo.setFont(tema.fonte_atual(tipografia.DADO))
+        # **Nome próprio, e não a frase de cima** (F9-C12). Sem ele a varredura de
+        # `qt/acessibilidade` acha o rótulo vizinho e o campo passa a anunciar a instrução
+        # inteira -- "Cole aqui uma FEN ou um PGN. O texto diz qual dos dois é." --, que é uma
+        # ajuda e não um nome. O rótulo continua na tela e continua sendo lido como texto.
+        self.campo.setAccessibleName("Posição ou partida colada")
         pilha.addWidget(self.campo, 1)
-        botoes = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, parent=self
-        )
+        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel, parent=self)
+        # **O botão diz o verbo, e por isso é feito à mão** (F9-C12). Um `Ok` padrão chega ao
+        # leitor de tela como "OK" -- duas letras, da mesma família do `-` e do `+` que o ciclo 1
+        # mediu --, e diz menos do que o botão faz. Feito com `addButton`, ele também escapa da
+        # tabela de `ui/strings.BOTOES_PADRAO`, que é o contrato de sempre: o explícito vence o
+        # derivado. O texto é o mesmo na tela e no anúncio, que é o que a WCAG 2.5.3 pede.
+        botoes.addButton("Colar", QDialogButtonBox.ButtonRole.AcceptRole)
         botoes.accepted.connect(self._confirmar)
         botoes.rejected.connect(self.reject)
         pilha.addWidget(botoes)
@@ -1853,12 +1914,33 @@ class _JanelaDeColecao(QDialog):
         self._escolher = escolher
         pilha = QVBoxLayout(self)
         pilha.setContentsMargins(*(espaco.moldura(),) * 4)
-        pilha.addWidget(QLabel(f"{len(achados)} partida(s) em {nome}. Escolha uma:", self))
+        # **A frase deixou de se contradizer** (F9-C14): ela dizia `"0 partida(s) em x.pgn.
+        # Escolha uma:"` sobre uma lista vazia, e a segunda oração pede o que a primeira acabou
+        # de dizer que não existe. Sem partida, quem fala é o estado vazio.
+        pilha.addWidget(
+            QLabel(
+                f"{len(achados)} partida(s) em {nome}. Escolha uma:"
+                if achados
+                else f"{nome}",
+                self,
+            )
+        )
         self.lista = QListWidget(self)
+        # Ver `_JanelaDeColar.campo`: sem nome próprio a lista herda a frase do rótulo acima.
+        self.lista.setAccessibleName("Partidas do arquivo")
         for estudo in achados:
             self.lista.addItem(estudo.ancora.rotulo() or f"{estudo.contagem_de_lances()} lance(s)")
         self.lista.itemDoubleClicked.connect(lambda *_: self._confirmar())
         pilha.addWidget(self.lista, 1)
+        self.vazio = EstadoVazio(
+            self.lista,
+            titulo=strings.COLECAO_VAZIA_TITULO,
+            frase=strings.COLECAO_VAZIA_FRASE,
+            rotulo_do_botao="Escolher outro arquivo",
+            nome_acessivel="Escolher outro arquivo PGN",
+            acao=self.reject,
+        )
+        self.vazio.setVisible(not achados)
         botoes = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Open | QDialogButtonBox.StandardButton.Cancel, parent=self
         )
@@ -1889,11 +1971,38 @@ class _JanelaDePartidas(QDialog):
         pilha.setContentsMargins(*(espaco.moldura(),) * 4)
         rotulo = QLabel(resposta.frase, self)
         rotulo.setWordWrap(True)
+        # **Uma frase, e não duas** (F9-C14). Quando a lista está vazia quem explica é o estado
+        # vazio, que diz a mesma coisa **dentro** do vazio e com o botão junto; deixar as duas na
+        # tela é a duplicação que o §7 do ciclo 2 mandou apagar na Galeria -- lá eram duas frases
+        # iguais a 320 px uma da outra.
+        rotulo.setVisible(bool(resposta.partidas))
         pilha.addWidget(rotulo)
         self.lista = QListWidget(self)
+        self.lista.setAccessibleName("Partidas que chegam a esta posição")
         for hit in resposta.partidas:
             self.lista.addItem(hit.label)
         pilha.addWidget(self.lista, 1)
+        # **Tinha a frase e não tinha o botão** (F9-C13, §5.3): a frase de `resposta` explicava,
+        # e a pessoa ficava olhando uma lista branca sem saída desenhada dentro dela.
+        # **Sem botão, e a ausência é a correção do §5.1 do ciclo 15.** Ele desenhava `Fechar`
+        # ligado a `self.reject` -- que é exatamente o que o `Fechar` do rodapé faz --, e a tela
+        # saía com **dois botões de mesma legenda** a 160 px um do outro numa janela de 560x400.
+        # A distinção tinha sido dada ao `accessibleName` (`Fechar e escolher outra posição`), de
+        # modo que quem **ouve** recebia dois nomes e quem **vê** recebia `Fechar` duas vezes: é a
+        # inversão que esta frente já nomeou e consertou uma vez, no par `outro` da Galeria
+        # (F9-C7 §1.8).
+        #
+        # Entre as duas saídas que o crítico ofereceu -- "faz alguma coisa, ou sai" --, sai: o
+        # gesto que resolve aqui é escolher outra posição no tabuleiro, e este diálogo não tem
+        # como oferecê-lo (quem sabe trocar de base é a Galeria, e a sala só **lê** a lista de
+        # bases). Um botão que repete o rodapé não é uma saída a mais; é a mesma saída desenhada
+        # duas vezes. O título e a frase continuam dizendo o que falta e por quê.
+        self.vazio = EstadoVazio(
+            self.lista,
+            titulo=strings.POSICAO_SEM_PARTIDA_TITULO,
+            frase=resposta.frase or strings.POSICAO_SEM_PARTIDA_FRASE,
+        )
+        self.vazio.setVisible(not resposta.partidas)
         if resposta.truncada:
             # **Quem exibe tem de dizer que a lista é menor que a base**: sem isto, escolher
             # achando que se viu tudo é o defeito que a Galeria já mede na sua própria lista.

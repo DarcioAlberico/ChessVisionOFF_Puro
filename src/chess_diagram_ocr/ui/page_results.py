@@ -26,9 +26,10 @@ from __future__ import annotations
 
 import logging
 from collections import OrderedDict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - só para os tipos
     from chess_diagram_ocr.service import RecognitionOrigin, RecognizedDiagram
@@ -185,6 +186,28 @@ class PageResultsCache:
 
     def clear(self) -> None:
         self._entries.clear()
+
+
+def colocacoes_conferidas(
+    itens: Sequence[Any], edicoes: Sequence[str]
+) -> dict[int, tuple[str, bool]]:
+    """Por diagrama: a colocação **corrigida** e se alguém a conferiu (S-95). Pura.
+
+    **Vem de `fen_edits`, e não de `items[i].placement`.** As duas listas são paralelas de
+    propósito -- fundi-las perderia a leitura original --, e a anotação do conjunto de campo já
+    esteve lendo o lado errado: gravava o que o modelo leu como verdade **sobre** o modelo.
+    Corrigir o tabuleiro e anotar a página descartava a correção e gravava o erro.
+
+    Morava em `qt/janela.py`, onde a única parte que precisava da janela era achar as duas listas
+    (F9-C16). Aqui ela é afirmável sem abrir tela.
+    """
+    return {
+        item.index: (
+            edicoes[posicao] if posicao < len(edicoes) else item.placement,
+            bool(item.edited_by_hand),
+        )
+        for posicao, item in enumerate(itens)
+    }
 
 
 class PageSwitch(str, Enum):

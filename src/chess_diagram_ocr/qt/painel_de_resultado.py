@@ -59,7 +59,9 @@ from PyQt6.QtWidgets import (
 from chess_diagram_ocr.config import DEFAULT_DPI, DEFAULT_MAX_BOARDS
 from chess_diagram_ocr.fen_utils import is_valid_fen, square_name
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
+from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
+from chess_diagram_ocr.qt.rotulo import CampoQueAvisaQueContinua
 from chess_diagram_ocr.qt.atalhos import sequencia_qt
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import DicaEmDesabilitado, dica_em
@@ -84,11 +86,32 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["MENSAGEM_VAZIA", "PainelDeResultado"]
 
-MENSAGEM_VAZIA = (
+MENSAGEM_VAZIA = strings.sem_orfa(
     "Nenhum diagrama aberto. Clique num diagrama marcado da página, "
-    'ou use "Ler página" para ler a página inteira.'
+    f"ou use {strings.ASPA_ABRE}{comandos.rotulo_de_botao('ler_pagina')}{strings.ASPA_FECHA} "
+    "para ler a página inteira."
 )
 """O mesmo texto de `ui/result_panel.MENSAGEM_VAZIA`, com o nome do botão desta janela.
+
+**O nome vem do catálogo, e o literal que estava aqui apontava para um botão inexistente**
+(F9-C5, §7 defeito 1). A frase mandava usar *"Ler página"*, e a sonda dos controles visíveis
+devolve **0** nas duas peles -- 0 por `text()`, 0 por `accessibleName()`, 0 por `toolTip()`, 0
+no menu. Estado vazio sem orientação é defeito da carta §3.3; orientação que aponta para o
+lugar errado é pior, porque o usuário procura e não acha.
+
+**É o `rotulo_de_botao`, e a frase só é honesta porque o botão passou a desenhá-lo** (F9-C7,
+§3). O ciclo 6 citou este nome e o pôs na **dica** do botão só-de-ícone da pele clássica -- e o
+crítico do ciclo 7 mediu o resultado: *"OCR todos diagramas"* desenhado por **zero** controles
+visíveis na pele padrão, nas três larguras, com `OCR melhor diagrama` -- `ler_melhor`, **outro
+comando** -- em azul a 40 px. A frase não deixou de orientar; passou a orientar para o controle
+errado. Uma dica não é a tela.
+
+Hoje o nome está desenhado em toda pele registrada, e a frase cita o que está desenhado: onde o
+cromo da pele não escreve o nome, a barra do visor escreve
+(`qt/painel_do_pdf.PainelDoPdf.nomear_o_que_o_cromo_nao_desenha`). Derivada, ela não volta a
+divergir: renomear o comando renomeia a frase, e `tests/test_qt_janela.EstadoVazioNaTelaTests`
+cobra o cruzamento contra o `text()` -- e **só** contra o `text()` -- de um controle visível, em
+cada pele e nas três larguras.
 
 **O estado vazio é um item, e não zelo** (S-170): sem ele o painel abre com um tabuleiro na
 posição inicial e o campo de FEN vazio -- parece um diagrama reconhecido, e quem clicasse em
@@ -104,6 +127,13 @@ anterior **neste** diagrama, que é a consequência de a pilha ser por diagrama.
 
 ALTURA_MAXIMA_DA_LISTA = 140
 """Cinco linhas. A página mais cheia do acervo tem nove diagramas, e a lista rola."""
+
+ESTICAMENTO_DO_CANVAS = 12
+"""Quanto da folga vertical do painel vai para o tabuleiro, contra o `1` do rótulo de detalhes.
+
+**Era `3`, e o `1` do outro lado valia 212 px de nada no pé da aba** (F9-C6, item 6). Ver o
+comentário em `_montar`: o tabuleiro é limitado pela altura, então a folga que ia para o rótulo
+saía do lado do quadrado -- e voltava como vazio à direita da paleta."""
 
 
 class PainelDeResultado(QWidget):
@@ -181,12 +211,20 @@ class PainelDeResultado(QWidget):
 
     def _montar(self) -> None:
         caixa = QVBoxLayout(self)
-        caixa.setContentsMargins(*(espaco.folga(),) * 4)
+        caixa.setContentsMargins(*(espaco.margem_da_aba(),) * 4)
         caixa.setSpacing(espaco.linha())
 
         self.lista = QListWidget(self)
         self.lista.setMaximumHeight(ALTURA_MAXIMA_DA_LISTA)
+        # **`"Lista"` não nomeia** (F9-C2, defeito nº 1): era o nome genérico da classe, e o portão
+        # do `teclado.py` passou a reprovar eco do papel -- "Lista, lista" gasta duas palavras
+        # para não dizer nada. O que ela guarda é o que a página tem.
+        self.lista.setAccessibleName(strings.DIAGRAMAS_DA_PAGINA)
         self.lista.currentRowChanged.connect(self._trocou_de_item)
+        # Nasce escondida: a aba abre **sem** diagrama nenhum, e o crítico do ciclo 1 mediu o que
+        # uma lista vazia de 1059x140 com anel de foco faz no topo da tela principal -- ela é o
+        # elemento mais destacado da janela dizendo que não há nada. Ver `_repovoar_lista`.
+        self.lista.setVisible(False)
         caixa.addWidget(self.lista, 0)
 
         # O mesmo texto do `LabelFrame` de `ui/result_panel.py`, literal nos dois lados: ele diz
@@ -211,7 +249,29 @@ class PainelDeResultado(QWidget):
         self.paleta = PaletaDePecas(grupo)
         self.paleta.pincel.connect(self.tabuleiro.definir_pincel)
         dentro.addWidget(self.paleta, 0, Qt.AlignmentFlag.AlignTop)
-        caixa.addWidget(grupo, 3)
+        # **A largura que sobra sai daqui e não fica entre os dois** (F9-C3, item 13). O canvas do
+        # tabuleiro ganhou teto de largura igual à altura
+        # (`ui/desenho_do_tabuleiro.largura_util_do_canvas`); sem este esticamento no fim o
+        # `QHBoxLayout` devolveria a folga ao próprio canvas, que é como os
+        # `180×580 = 104,4 kpx a 0,17 % de tinta` nasceram entre o tabuleiro e a paleta.
+        dentro.addStretch(0)
+        # **A folga vertical é do tabuleiro, e era dividida 3 para 1 com um rótulo de texto**
+        # (F9-C6, item 6). O `detalhes` lá embaixo é uma `QLabel` de três linhas com
+        # `AlignTop`: com `stretch=1` contra os 3 daqui, ele ficava com **um quarto** de toda a
+        # altura que sobra do painel -- e o crítico do ciclo 5 mediu o resultado com o algoritmo
+        # do maior retângulo exato: `960×212 = 203,5 kpx a 0 % de tinta` no pé da aba, a 1920.
+        #
+        # O tabuleiro é quadrado e limitado pela **altura** (`largura_util_do_canvas`), então
+        # aquela faixa não era só vazio: era o motivo de o tabuleiro parar em 552 px num painel
+        # de 991 px de altura, e de sobrarem `295×552 = 162,8 kpx` à direita da paleta. Dar a
+        # folga ao canvas fecha os dois vazios de uma vez -- o de baixo e o da direita --,
+        # porque a largura do canvas segue a altura dele.
+        #
+        # `12` e não `stretch=0` no `detalhes`: uma `QLabel` com `wordWrap` mente sobre a
+        # própria altura em `QVBoxLayout` (o `heightForWidth` clássico do Qt), e stretch zero a
+        # deixaria à mercê desse `sizeHint`. Com 12 contra 1 ela continua recebendo folga -- um
+        # treze avos em vez de um quarto -- e o texto longo continua cabendo.
+        caixa.addWidget(grupo, ESTICAMENTO_DO_CANVAS)
 
         self.legalidade = QLabel("", self)
         self.legalidade.setWordWrap(True)
@@ -230,6 +290,8 @@ class PainelDeResultado(QWidget):
         self.detalhes = QLabel("", self)
         self.detalhes.setWordWrap(True)
         self.detalhes.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        # Texto selecionável recebe foco de clique, e foco sem nome é anúncio mudo (F9).
+        self.detalhes.setAccessibleName(strings.DETALHES_DO_DIAGRAMA)
         self.detalhes.setAlignment(Qt.AlignmentFlag.AlignTop)
         caixa.addWidget(self.detalhes, 1)
 
@@ -240,17 +302,24 @@ class PainelDeResultado(QWidget):
     def _linha_de_navegacao(self) -> QHBoxLayout:
         linha = QHBoxLayout()
         self.anterior = QPushButton(strings.ANTERIOR, self)
+        # Os dois glifos ganham nome por extenso (F9-C2): ver `comandos.Comando.no_leitor`.
+        self.anterior.setAccessibleName("Diagrama anterior")
         self.anterior.clicked.connect(lambda: self.andar(-1))
         tema.aplicar_papel(self.anterior, estilos.NEUTRO)
+        # O desenho no lugar do glifo (F9-C7, §4.7): ver `qt/icones.vestir`.
+        qt_icones.vestir(self.anterior, "diagrama_anterior", estilos.NEUTRO)
         linha.addWidget(self.anterior)
         self.proximo = QPushButton(strings.PROXIMO, self)
+        self.proximo.setAccessibleName("Próximo diagrama")
         self.proximo.clicked.connect(lambda: self.andar(1))
         tema.aplicar_papel(self.proximo, estilos.NEUTRO)
+        qt_icones.vestir(self.proximo, "proximo_diagrama", estilos.NEUTRO)
         linha.addWidget(self.proximo)
         linha.addWidget(QLabel("Selecionado", self))
         self.seletor = QSpinBox(self)
         self.seletor.setMinimum(1)
         self.seletor.setMaximum(1)
+        self.seletor.setAccessibleName("Diagrama selecionado")
         self.seletor.valueChanged.connect(self._pediu_diagrama)
         linha.addWidget(self.seletor)
         linha.addStretch(1)
@@ -259,7 +328,10 @@ class PainelDeResultado(QWidget):
     def _linha_de_fen(self) -> QHBoxLayout:
         linha = QHBoxLayout()
         linha.addWidget(QLabel("FEN", self))
-        self.campo_fen = QLineEdit(self)
+        # **O mesmo campo que avisa quando a FEN nao cabe** da aba Estudo (F9-C7, §4.5). Aqui
+        # ele tem 592 px a 1920 e menos abaixo disso, e a FEN de meio-jogo pede 504.
+        self.campo_fen = CampoQueAvisaQueContinua("", self)
+        self.campo_fen.setAccessibleName("FEN do diagrama")
         self.campo_fen.setFont(tema.fonte_atual(tipografia.DADO))
         self.campo_fen.setPlaceholderText("a FEN do diagrama selecionado")
         # **A tecla é declarada no próprio campo**, e é o mecanismo da S-117: quem declara a
@@ -295,7 +367,9 @@ class PainelDeResultado(QWidget):
         linha = QHBoxLayout()
         linha.addWidget(QLabel(strings.LADO_A_JOGAR, self))
         self._lados = QButtonGroup(self)
-        for valor, rotulo in (("w", "Brancas"), ("b", "Pretas")):
+        # Do catálogo e não cravado, pela razão do §5.4 do ciclo 15: o outro par destes mesmos
+        # dois rádios morava em `qt/painel_da_galeria.py` em minúscula. Ver `ui/strings.SIDE_LABELS`.
+        for valor, rotulo in strings.SIDE_LABELS.items():
             botao = QRadioButton(rotulo, self)
             botao.setProperty("lado", valor)
             self._lados.addButton(botao)
@@ -312,7 +386,7 @@ class PainelDeResultado(QWidget):
         arrastado. A barra da S-151 existe exatamente para isso.
         """
         barra = BarraFluida(self)
-        self.btn_salvar = self._botao(barra, "salvar", self.salvar_atual, estilos.PRIMARIO)
+        self.btn_salvar = self._botao(barra, "salvar", self.salvar_atual, estilos.NEUTRO)
         self.btn_salvar_todos = self._botao(barra, "salvar_todos", self.salvar_todos, estilos.NEUTRO)
         self.btn_desfazer = self._botao(barra, "desfazer", self.desfazer, estilos.NEUTRO)
         self.btn_refazer = self._botao(barra, "refazer", self.refazer, estilos.NEUTRO)
@@ -320,8 +394,14 @@ class PainelDeResultado(QWidget):
         # **Uma ênfase por barra, cobrada aqui** (S-446). `estilos.conferir_barra` é pura e
         # recusa a segunda: duas ênfases numa barra é o mesmo que nenhuma, e o teste não tem como
         # saber qual das duas era para ser a ação.
+        # **E zero ênfases aqui, desde o F9-C2** (item 10 do §7): a tela inteira tem direito a
+        # uma, e ela é `ler_melhor`, no painel do PDF, que está visível em todas as seis abas.
+        # `Salvar a posição` continua sendo a ação desta barra -- ela tem `Ctrl+S`, tem o ícone e
+        # é a primeira da fila --, e o que ela deixou de ter é a única cor que a tela reserva para
+        # dizer "é aqui". Zero primário passa em `conferir_barra` de propósito: ver o docstring de
+        # lá, e o motivo é exatamente este.
         estilos.conferir_barra(
-            [estilos.PRIMARIO, estilos.NEUTRO, estilos.NEUTRO, estilos.NEUTRO, estilos.NEUTRO],
+            [estilos.NEUTRO, estilos.NEUTRO, estilos.NEUTRO, estilos.NEUTRO, estilos.NEUTRO],
             onde="a barra do painel de resultado",
         )
         # **O mapa de incerteza volta a ser desligavel (S-21/S-506).** Ele existia no painel do Tk
@@ -343,6 +423,11 @@ class PainelDeResultado(QWidget):
         S-165 -- este arquivo não escreve texto de interface nem sequência de tecla.
         """
         botao = QPushButton(comandos.rotulo_de_botao(acao), barra)
+        # **O nome acessível é o rótulo por extenso, e não o texto do botão** (F9-C2).
+        # O crítico do ciclo 1 mediu 28 controles que chegavam ao leitor de tela como "-",
+        # "+", "|◀" ou ".md" -- o `rotulo_curto` passando pela cascata de
+        # `ui/nomes_acessiveis.py` no passo `text()`. Ver `comandos.Comando.no_leitor`.
+        botao.setAccessibleName(comandos.nome_acessivel(acao))
         botao.clicked.connect(lambda _marcado=False: alvo())
         tema.aplicar_papel(botao, papel)
         self._explicar(botao, acao, comandos.rotulo(acao))
@@ -636,12 +721,21 @@ class PainelDeResultado(QWidget):
         self._atualizar_tudo()
 
     def _repovoar_lista(self) -> None:
+        """Repõe a lista, e **some com ela quando não há item** (F9-C2, §7 item 14).
+
+        O crítico do ciclo 1: *"a `QListWidget` de 1059×140 não pode ficar vazia e com anel de
+        foco"* -- 148 kpx do topo da tela principal ocupados pelo elemento mais destacado da
+        janela, que era uma lista sem nada dentro. O §7 dá duas saídas e esta é a segunda: a lista
+        **colapsa a zero** quando não há diagrama, e o que a pessoa vê no lugar dela é o tabuleiro,
+        que é onde ela vai trabalhar. Ela volta inteira no primeiro diagrama reconhecido.
+        """
         self._montando = True
         try:
             self.lista.clear()
             for posicao, item in enumerate(self.modelo.items):
                 self.lista.addItem(self._texto_do_item(item, posicao))
             self.seletor.setMaximum(max(1, len(self.modelo.items)))
+            self.lista.setVisible(bool(self.modelo.items))
         finally:
             self._montando = False
 
@@ -950,6 +1044,9 @@ class PainelDeResultado(QWidget):
         self.legalidade.setText(explicacao.summary())
         self.material.setText(explicacao.material_line())
         self.campo_fen.setText(compose_fen(corrigida, lado != "b"))
+        # Ver `painel_de_estudo._mostrar_fen_do_comeco`: o `setText` deixa o cursor no
+        # fim e o campo passa a mostrar o fim. A 1280x800 isso come as tres primeiras casas.
+        self.campo_fen.setCursorPosition(0)
         self.detalhes.setText(self._detalhes_do_item(item))
         self.seletor.setValue(indice + 1)
         for botao in self._lados.buttons():

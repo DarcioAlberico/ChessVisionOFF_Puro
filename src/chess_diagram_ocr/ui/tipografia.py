@@ -24,10 +24,12 @@ ignorá-la é o mesmo defeito de DPI da S-148 num lugar menor.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from math import ceil
 
 from . import pele
 
 __all__ = [
+    "ACAO",
     "ALTURA_DE_LINHA_NA_BASE",
     "AUXILIAR",
     "BASE_DE_REFERENCIA",
@@ -45,14 +47,20 @@ __all__ = [
     "MONOESPACADAS_PREFERIDAS",
     "PAPEIS_DE_FOLGA",
     "PAPEIS_DE_FONTE",
+    "PAPEL_POR_CLASSE",
+    "PESOS",
+    "PROPRIEDADE_DE_PAPEL_DE_FONTE",
     "TITULO",
     "altura_de_linha",
+    "altura_do_texto",
     "corpo",
     "escala",
     "familia_monoespacada",
     "folga",
     "folgas",
     "fonte",
+    "papel_de_fonte_por_classe",
+    "peso",
 ]
 
 TITULO = "TITULO"
@@ -62,7 +70,14 @@ Os dois canais juntos de propósito. Só o tamanho, e a diferença de 1 pt não 
 negrito, e o título compete com o rótulo em vez de mandar nele."""
 
 CORPO = "CORPO"
-"""Rótulo, botão, texto de linha. O Segoe UI 9 de hoje, e o que a escala inteira referencia."""
+"""Rótulo, texto de linha, célula de tabela. O Segoe UI 9 de hoje, e o que a escala referencia."""
+
+ACAO = "ACAO"
+"""**O texto que se aperta**: rótulo de botão (F9-C3). Tamanho do corpo, peso meio-negrito.
+
+Ele não é um degrau novo de tamanho -- é o segundo eixo. Ver `PESOS` para a medição que o pediu:
+31 dos 106 widgets visíveis da Galeria são `QPushButton`, e o rótulo de um botão saía pixel a
+pixel igual ao texto de uma célula de tabela."""
 
 AUXILIAR = "AUXILIAR"
 """Texto secundário: contagem, procedência, linha do motor, barra de status.
@@ -77,23 +92,118 @@ O papel existe pelo que a proporcional faz com estes quatro, e não por estilo: 
 `rnbqkbnr` têm a mesma largura em monoespaçada e larguras diferentes em proporcional. Comparar
 duas leituras é alinhar duas linhas, e alinhar exige largura igual por caractere."""
 
-PAPEIS_DE_FONTE: tuple[str, ...] = (TITULO, CORPO, AUXILIAR, DADO)
+PAPEIS_DE_FONTE: tuple[str, ...] = (TITULO, CORPO, ACAO, AUXILIAR, DADO)
 """Todos os papéis. Existe para o teste afirmar que a resolução é **total**."""
 
+PROPRIEDADE_DE_PAPEL_DE_FONTE = "papel_de_fonte"
+"""A propriedade dinâmica com que um widget declara em que degrau da escala ele está (F9-C2).
+
+O caminho de escape da tabela de baixo: um `QLabel` que é título de estado vazio não tem classe
+própria, e criar uma subclasse por degrau seria caro. Quem sabe o papel o escreve na construção,
+e a varredura o obedece."""
+
+PAPEL_POR_CLASSE: dict[str, str] = {
+    "QGroupBox": TITULO,
+    "QHeaderView": TITULO,
+    "QPushButton": ACAO,
+    "QToolButton": ACAO,
+}
+"""Classe do widget -> o degrau da escala que ela ocupa, quando ninguém declarou outro (F9-C2).
+
+**O crítico do ciclo 1 mediu a escala que não estava sendo usada:** 104 widgets visíveis, **dois
+tamanhos** (12 e 11 px) e **um peso** (400), com `TITULO` (10 pt/700) aplicado a **zero** widgets
+-- ou seja, a escala existia em `DEGRAUS` e não existia na tela. Uma escala de quatro papéis que
+resolve para duas combinações não ordena nada; ela só custa código.
+
+As duas classes daqui são as duas que **mandam** numa região sem serem o conteúdo dela: o título
+do grupo diz de que é o grupo, e o cabeçalho da coluna diz do que é a coluna. São os dois lugares
+onde um degrau acima é informação e não decoração -- e são os dois que o crítico nomeou.
+
+**A tabela é curta de propósito, e ela não menciona `QLabel`.** Rotular todo `QLabel` por classe
+faria o degrau perder o sentido: metade dos rótulos da janela é conteúdo, não cabeçalho. Quem é
+apoio se declara por `PROPRIEDADE_DE_PAPEL_DE_FONTE` ou pela propriedade `apoio` da folha de
+estilo, que é a mesma decisão dita do lado do desenho.
+
+**As duas linhas de botão são do F9-C3**, e elas são por classe justamente porque *toda* classe de
+botão é comando: não há `QPushButton` que seja conteúdo. `QCheckBox` e `QRadioButton` ficam de
+fora de propósito -- eles não são comandos, são o **estado** de uma opção, e o texto ao lado deles
+é a opção e não a ação. Ver `PESOS`."""
+
+
+def papel_de_fonte_por_classe(classes: tuple[str, ...]) -> str:
+    """O degrau declarado da primeira classe conhecida da hierarquia. `""` se nenhuma o for.
+
+    Recebe os **nomes** das classes e não as classes, pela razão de `nomes_acessiveis`: a decisão
+    tem de ser afirmável sem importar toolkit nenhum.
+    """
+    for classe in classes:
+        if classe in PAPEL_POR_CLASSE:
+            return PAPEL_POR_CLASSE[classe]
+    return ""
+
 DEGRAUS: dict[str, int] = {
-    TITULO: +1,
+    TITULO: +3,
     CORPO: 0,
+    ACAO: 0,
     AUXILIAR: -1,
     DADO: 0,
 }
-"""Quantos pontos cada papel fica **acima ou abaixo** da `TkDefaultFont` do sistema.
+"""Quantos pontos cada papel fica **acima ou abaixo** da fonte do sistema.
 
-Quatro papéis e três tamanhos: `DADO` tem o tamanho do corpo porque ele não é ênfase, é outra
-**família** — aumentá-lo faria a FEN gritar numa tela onde ela já ocupa a linha inteira.
+**O título subiu de +1 para +3 no F9-C3, e o motivo é uma medição feita duas vezes.** A escala era
+`8 / 9 / 10 pt` = **11 / 12 / 13 px**, dois degraus de **+9 %** e **+8 %** -- e o crítico do ciclo
+1 já tinha escrito, com estas palavras, que *"uma diferença de 1 px em 12 (8 %) não produz
+hierarquia"*. A resposta do ciclo 2 foi acrescentar um terceiro tamanho exatamente nesse degrau, e
+o ciclo 3 mediu o resultado: **99 de 107 widgets (92,5 %) numa única combinação tipográfica**.
 
-A escala é curta de propósito. Três degraus separados por 1 pt bastam para o olho ordenar
-título, corpo e apoio numa janela densa; uma escala tipográfica de razão 1,25 -- que é o que se
-usa em página web -- daria 7, 9, 11 e faria o auxiliar ficar ilegível a 100% de DPI."""
+Agora é `8 / 9 / 12 pt` = **11 / 12 / 16 px**: o degrau entre corpo e título passou de +8 % para
+**+33 %**. É mais que a razão 1,2 de uma escala de página, e é de propósito -- numa janela densa o
+título aparece três vezes por aba e precisa ser lido de relance, não comparado lado a lado.
+
+O degrau de baixo continua em -1 pt (11 px contra 12), e isso é decisão e não sobra: `AUXILIAR` se
+separa pela **cor** antes de se separar pelo tamanho (ele é o papel de `TEXTO_SECUNDARIO` desde a
+S-145), e descê-lo a 10 px esbarraria em `MINIMO_LEGIVEL` na primeira pessoa que pusesse a fonte
+do Windows em 10.
+
+`DADO` e `ACAO` ficam no tamanho do corpo porque nenhum dos dois é ênfase de nível: um é outra
+**família** -- a FEN monoespaçada gritaria se crescesse numa linha que ela já ocupa inteira -- e o
+outro é outro **peso**. Ver `PESOS`."""
+
+PESOS: dict[str, int] = {
+    TITULO: 700,
+    ACAO: 600,
+    CORPO: 400,
+    AUXILIAR: 400,
+    DADO: 400,
+}
+"""O peso de cada papel, na escala de 100 a 900 do CSS e do Qt (F9-C3).
+
+**O segundo eixo da escala, e ele existe porque o primeiro não bastava.** Dos oito papéis que o
+ciclo 1 listou como tipograficamente idênticos -- rótulo de menu, rótulo de aba, rótulo de botão,
+título de grupo, cabeçalho de coluna, dado da tabela, estado vazio, barra de status -- **cinco
+continuavam iguais** depois do ciclo 2, e o maior grupo deles é o rótulo de botão: **31 dos 106
+widgets visíveis da Galeria são `QPushButton`**, e o texto de um botão saía pixel a pixel igual ao
+texto de uma célula de tabela.
+
+`ACAO` a 600 diz a coisa mais simples que uma janela pode dizer sobre o próprio texto: **o que se
+aperta é mais pesado do que o que se lê.** Não é decoração; é a separação entre comando e
+conteúdo, que numa tela com 31 botões é a primeira pergunta que o olho faz.
+
+Meio-negrito e não negrito: 700 já é o título, e um botão com o peso do título competiria com o
+grupo que o contém. 600 é o degrau que existe entre os dois em toda família de sistema -- a Segoe
+UI tem Semibold desenhado, e não sintetizado."""
+
+
+def peso(papel: str) -> int:
+    """O peso daquele papel. Levanta para papel desconhecido, como `fonte` e `corpo`.
+
+    Separado de `fonte()` porque aquela devolve a especificação do Tk, que só sabe dizer
+    `"bold"`: um `600` na tupla do Tk seria um valor que o toolkit de origem não entende. Quem
+    consome os dois eixos é `qt/tema.fonte_atual`, e ele é o único que precisa do número.
+    """
+    if papel not in PESOS:
+        raise KeyError(f"papel de fonte desconhecido: {papel!r}. Os válidos estão em PAPEIS_DE_FONTE.")
+    return PESOS[papel]
 
 MINIMO_LEGIVEL = 7
 """Nenhum papel desce daqui, mesmo que a fonte do sistema esteja em 7.
@@ -143,6 +253,48 @@ def escala(base: int) -> dict[str, int]:
     if base <= 0:
         base = MINIMO_LEGIVEL
     return {papel: max(MINIMO_LEGIVEL, base + degrau) for papel, degrau in DEGRAUS.items()}
+
+
+ALTURA_POR_PONTO = 15 / 8
+"""Quantos pixels de altura ocupa **um ponto** de texto desenhado, a 96 dpi. Por cima.
+
+Medido nesta árvore, com a Segoe UI que `capture.impor_a_fonte_do_produto` impõe --
+`QFontMetrics.height()`, que é ascendente mais descendente, dividido pelo tamanho em ponto:
+
+    7pt->12   8pt->15   9pt->16  10pt->17  11pt->20  12pt->21  13pt->22
+   14pt->26  15pt->27  16pt->28  18pt->32  20pt->36  24pt->43
+
+A maior das razões é a de 8 pt, **15/8 = 1,875**, e é ela que está aqui. **Por cima de propósito:**
+quem reserva espaço para texto desenhado só tem um modo de errar que apaga letra, que é reservar
+de menos. Dois pixels sobrando são ar; dois pixels faltando são a metade de baixo de um `g`.
+"""
+
+
+def altura_do_texto(pontos: int) -> int:
+    """A altura em pixel de uma linha de texto daquele tamanho em ponto. Pura, e por cima.
+
+    **Existe porque a folha de estilo reservava com um token de espaçamento o lugar de um degrau
+    da escala tipográfica** (F9-C13, o bloqueante). `QGroupBox { margin-top: espaco.linha() }` --
+    4 px na compacta -- guardava a faixa em que `QGroupBox::title { font-size: 12pt; bold }`
+    desenha **21 px**, e o primeiro filho do grupo subia para dentro do que sobrava: `Lances`,
+    `Comentário do lance` e `Filtros` chegavam à tela com 8 dos seus 21 px apagados por baixo de
+    um `QTextBrowser`, de um `QTextEdit` e de um `QLineEdit`. Os dois números vinham de escalas
+    diferentes e por isso nunca podiam se encontrar.
+
+    **A resposta é fazer a reserva sair da mesma escala que pinta**, e é o que esta função
+    permite: `folha_de_estilo` reserva `altura_do_texto(escala(base)[TITULO])` e pinta
+    `escala(base)[TITULO]`. Um degrau a mais no título passa a mover a faixa junto -- a deriva
+    deixa de ser possível em vez de ser consertada de novo no ciclo seguinte.
+
+    **Pura, e por isso aproximada.** A altura exata é da fonte instalada e do dpi da tela, e quem
+    tem toolkit deve perguntá-la a `QFontMetrics` -- é o que `qt/tema.altura_do_titulo_atual` faz,
+    e o que a folha usa quando há aplicação. Esta conta é a reserva de quem não tem tela: ela
+    responde no venv sem binding de Qt, que é onde o teste desta folha roda.
+
+    Tamanho não positivo cai em zero pixel de reserva? Não: cai no piso de 1 px, pela mesma razão
+    de `folga` -- uma reserva de zero é uma reserva que não existe.
+    """
+    return max(1, ceil(max(0, int(pontos)) * ALTURA_POR_PONTO))
 
 
 def corpo(degrau: int, *, base: int, papel: str = CORPO) -> int:

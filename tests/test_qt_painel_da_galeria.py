@@ -98,8 +98,20 @@ class PainelTests(unittest.TestCase):
         return montado
 
     def test_o_estado_vazio_diz_o_que_falta_fazer(self) -> None:
+        """**Título, frase e o botão que resolve -- dentro do vazio** (F9-C2, §7 item 14).
+
+        Era uma frase escrita por cima do recorte. O crítico do ciclo 1 mediu a região: 514,7 kpx
+        de painel com **0,24 % de tinta**, com o botão `Varrer o livro` a 645 px de distância e uma
+        segunda frase dizendo a mesma coisa a 320 px da primeira.
+        """
+        from chess_diagram_ocr.ui import strings
+
         painel = self.painel()
-        self.assertEqual(painel.recorte.text(), "varra o livro para ver os diagramas")
+        self.assertTrue(painel.vazio.isVisibleTo(painel), "sem diagrama, o vazio aparece")
+        self.assertEqual(painel.vazio.titulo.text(), strings.GALERIA_VAZIA_TITULO)
+        self.assertEqual(painel.vazio.frase.text(), strings.GALERIA_VAZIA_FRASE)
+        assert painel.vazio.botao is not None
+        self.assertEqual(painel.vazio.botao.text(), strings.VARRER_LIVRO)
         self.assertFalse(painel.btn_limpar.isEnabled())
         self.assertFalse(painel.btn_candidatas.isEnabled())
         self.assertFalse(painel.btn_desfazer.isEnabled())
@@ -112,12 +124,27 @@ class PainelTests(unittest.TestCase):
         assert lateral is not None
         self.assertEqual(lateral.width(), galeria_declarada.LARGURA_DA_LATERAL)
 
-    def test_o_recorte_tem_o_lado_declarado(self) -> None:
-        """Fixo: a galeria é para percorrer, e um tamanho que muda faria a imagem pular sob o
-        ponteiro a cada avanço."""
+    def test_o_recorte_fica_entre_o_piso_e_o_teto_declarados(self) -> None:
+        """**Elástico entre dois números declarados, e quadrado** (F9-C2, §7 item 4).
+
+        Era `setFixedSize(BOARD_VIEW_SIZE)`, e o crítico do ciclo 1 isolou a linha: aqueles 420 px
+        cravados eram o piso da **janela**, que por causa deles recusava 1366×768. O argumento
+        original -- *a galeria é para percorrer, e um tamanho que muda faria a imagem pular sob o
+        ponteiro a cada avanço* -- continua valendo e continua cumprido: o lado só muda com a
+        janela, nunca com o diagrama.
+        """
         painel = self.painel()
-        self.assertEqual(painel.recorte.width(), galeria_declarada.BOARD_VIEW_SIZE)
-        self.assertEqual(painel.recorte.height(), galeria_declarada.BOARD_VIEW_SIZE)
+        # `lado` e o quadrado **desenhado**, e nao a caixa do widget: o leiaute pode dar alguns
+        # pixels a mais de largura, e a imagem fica centrada neles. O que precisa ser quadrado e
+        # estar entre os dois numeros e o recorte, nao a celula.
+        self.assertLessEqual(galeria_declarada.LADO_MINIMO_DO_RECORTE, painel.recorte.lado)
+        self.assertLessEqual(painel.recorte.lado, galeria_declarada.BOARD_VIEW_SIZE)
+        self.assertEqual(
+            galeria_declarada.LADO_MINIMO_DO_RECORTE, painel.recorte.minimumSize().width()
+        )
+        self.assertEqual(
+            galeria_declarada.BOARD_VIEW_SIZE, painel.recorte.maximumSize().width()
+        )
 
     def test_a_legenda_e_de_leitura_e_continua_selecionavel(self) -> None:
         """`state=DISABLED` do Tk recusaria a seleção junto e pintaria de cinza -- é por isso que

@@ -253,10 +253,15 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**Doze** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**Catorze** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
-exceção. Nove são operações longas e estão no `BusyRegistry`; as outras duas são declaradas em
-`tests/test_busy.py::SEM_REGISTRO`, com o motivo de cada uma (S-112).
+exceção. Nove são operações longas e estão no `BusyRegistry`; as outras cinco são declaradas
+em `tests/test_busy.py::SEM_REGISTRO`, com o motivo de cada uma (S-112).
+
+**As duas últimas entraram no F9-C2, e as duas são leitura de CSV que estava na thread da
+janela**: `qt/marcas.py` (250 ms na abertura de cada livro) e `qt/painel_do_dataset._reler_agora`
+(1.302 ms no primeiro clique da aba Dataset, medidos na execução fria). Nenhuma das duas grava
+nada, e por isso nenhuma entra no registro -- ver o motivo escrito ao lado de cada uma.
 
 A contagem é conferida por `tests/test_docs.py` contra `qt/*.py` (S-410/S-506). **Ela conta duas
 formas**: `threading.Thread(`, que veio do Tk, e `Tarefa(`, o `QThread` de `qt/trabalho.py`.

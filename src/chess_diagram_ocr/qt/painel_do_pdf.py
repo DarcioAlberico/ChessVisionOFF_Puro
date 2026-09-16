@@ -34,8 +34,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
+    QAbstractButton,
     QCheckBox,
     QFileDialog,
     QHBoxLayout,
@@ -49,11 +50,13 @@ from PyQt6.QtWidgets import (
 )
 
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
+from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
+from chess_diagram_ocr.qt.rotulo import RotuloElidido, separador
 from chess_diagram_ocr.qt.visor import VisorDePagina
-from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, formato
+from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, folha_de_estilo, formato, strings
 from chess_diagram_ocr.ui.leitura_do_pdf import PASSO_DE_ZOOM, open_in_system_reader
 from chess_diagram_ocr.ui.page_overlay import PageBoxes
 from chess_diagram_ocr.ui.viewport import LADO_DO_DESLIZADOR, clamp_zoom, posicao_do_zoom, zoom_da_posicao
@@ -64,6 +67,26 @@ __all__ = ["ESPERA_DO_DPI_MS", "PainelDoPdf"]
 
 ESPERA_DO_DPI_MS = 400
 """Quanto esperar o campo de DPI parar de mudar antes de re-rasterizar (S-329)."""
+
+
+def _e_outro_nome(no_botao: str, rotulo: str) -> bool:
+    """Se o rotulo do botao e um **nome diferente**, e nao um glifo nem um encurtamento.
+
+    Tres casos, e os tres apareceram relendo a saida do `c5_casos.py` depois da primeira versao
+    deste conserto:
+
+    * `zoom_mais` e `zoom_menos` tem `rotulo_curto` `"+"` e `"-"` -- o botao desenha o sinal, e nao
+      ha nome nenhum ali. A dica saia `"- — Diminuir o zoom da pagina"`, que e ruido.
+    * `tirar_caixa` mostra "Tirar a caixa" e se chama "Tirar a caixa do diagrama selecionado":
+      o curto e o comeco do longo, e repeti-lo antes do travessao nao acrescenta nada.
+    * `ler_pagina` mostra "OCR todos diagramas" e se chama "Ler esta pagina" -- **dois nomes sem
+      uma palavra em comum**. Este e o unico caso em que a dica precisa dizer os dois, porque e o
+      unico em que quem procura um deles nao acha o outro.
+    """
+    if len(no_botao) < 3 or not any(letra.isalpha() for letra in no_botao):
+        return False
+    comeco = no_botao.split(" (")[0].strip().lower()
+    return bool(comeco) and not rotulo.lower().startswith(comeco)
 
 
 class PainelDoPdf(QWidget):
@@ -140,6 +163,9 @@ class PainelDoPdf(QWidget):
         self._relogio_do_dpi.setSingleShot(True)
         self._relogio_do_dpi.timeout.connect(self._aplicar_dpi)
 
+        self._so_de_icone: dict[str, QPushButton] = {}
+        """Os botões da barra que nasceram sem texto, por ação. Ver `nomear_o_que_o_cromo_nao_desenha`."""
+
         self._montar()
 
     # ------------------------------------------------------------------------------ montagem
@@ -149,66 +175,124 @@ class PainelDoPdf(QWidget):
         fora.setContentsMargins(*(espaco.folga(),) * 4)
         fora.setSpacing(espaco.folga())
 
+        # ------------------------------------------------------ a barra, em blocos (F9-C2)
+        #
+        # **O que o crítico do ciclo 1 mediu:** 16 controles, **4 filas a 1920 px e 6 a 1243**, e
+        # **14 dos 16 (88 %) trocando de fila** entre as duas larguras. Uma barra assim não tem
+        # mapa espacial: ela flui como texto, e a pessoa reprocura o botão a cada vez que muda o
+        # tamanho da janela. O item 11 do §7 pede três a quatro **blocos nomeados**, separador de
+        # 1 px entre eles, e o resto fora de cena.
+        #
+        # **O bloco é um `QWidget` e não um vão maior**, e é o que faz a conta fechar: o
+        # `LeiauteFluido` passa a refluir três itens em vez de dezesseis, então um controle nunca
+        # troca de fila **em relação aos vizinhos do bloco dele**. Quatro píxeis de diferença de
+        # vão não são agrupamento; um retângulo que anda inteiro é.
+        #
+        # **O que saiu, e para onde.** `Exportar PDF → PGN` e `Cancelar exportação` para o menu
+        # Arquivo, `Marcar diagramas` e `Roda vira a página` para o menu Ver -- **os quatro já
+        # estavam lá**, o que faz da barra, nesses quatro, uma segunda cópia do menu. `Abrir no
+        # leitor do sistema` também: é o passo de saída do programa, não uma ação sobre a página.
+        # Nenhum comando perdeu alcance: `ui/menu.MENUS` os lista, e `ui/atalhos.py` mantém as
+        # teclas.
         barra = BarraFluida(self)
-        # **A ênfase da barra é do `ler_melhor`, e é o catálogo que decide** (S-324/S-506). Este
-        # botão vinha com `PRIMARIO` cravado aqui, divergindo do `NEUTRO` que o catálogo declara --
-        # e enquanto os botões de OCR estavam fora da barra ninguém via a divergência. A regra é
-        # uma ênfase por barra: abrir o livro é o passo de antes, ler a página é o que a tela faz.
-        self.btn_abrir = self._botao(barra, "abrir_pdf", self.abrir_pdf)
-        self.lbl_pdf = QLabel("nenhum PDF aberto", barra)
-        barra.adicionar(self.lbl_pdf)
-        self.btn_leitor = QPushButton(comandos.rotulo_de_botao("abrir_no_leitor"), barra)
-        self.btn_leitor.clicked.connect(self.abrir_no_leitor_do_sistema)
-        self.btn_leitor.setEnabled(False)
-        tema.aplicar_papel(self.btn_leitor, estilos.NEUTRO)
-        dica_em(
-            self.btn_leitor,
-            "Abre o livro no leitor de PDF do sistema, na janela dele: rolagem contínua e busca "
-            "de texto.\nFica cinza enquanto não há livro aberto.",
-        )
-        barra.adicionar(self.btn_leitor)
-        # **Os cinco que o porte tinha deixado só no menu** (S-506). Eles agem sobre a página
-        # exibida, e é ao lado dela que a S-77 os pôs -- a mesma razão da linha de campo.
+
+        livro = self._bloco(barra, "Livro", primeiro=True)
+        self.btn_abrir = self._botao(livro, "abrir_pdf", self.abrir_pdf)
+        # **O rótulo é elidido e pede zero de largura mínima** -- item 2 do §7. Ver
+        # `qt/rotulo.RotuloElidido`: um nome de livro de 149 caracteres subia a largura mínima da
+        # janela de 1243 para 1513 px e desenhava dois botões um sobre o outro.
+        self.lbl_pdf = RotuloElidido(strings.NENHUM_PDF_ABERTO, livro)
+        livro.layout().addWidget(self.lbl_pdf, 1)
+
+        reconhecer = self._bloco(barra, "Reconhecer")
+        # **A única ênfase da tela** (item 10 do §7): ler a página é o que esta janela faz.
         self.btn_ler_melhor = self._botao(
-            barra, "ler_melhor", lambda: self.leitura_pedida.emit(True), estilos.PRIMARIO
+            reconhecer, "ler_melhor", lambda: self.leitura_pedida.emit(True), estilos.PRIMARIO
         )
-        self.btn_ler_pagina = self._botao(barra, "ler_pagina", lambda: self.leitura_pedida.emit(False))
-        self.btn_tirar_caixa = self._botao(barra, "tirar_caixa", self.dispensar_a_selecionada)
-        self.btn_exportar = self._botao(barra, "exportar_pgn", self.exportacao_pedida.emit)
+        # Os três ao lado dela ficam **só com o ícone**: o rótulo por extenso somava 367 px de
+        # texto ao lado da ação que manda, e era ele que empurrava a barra para a terceira fila.
+        # O nome por extenso continua no `accessibleName`, na dica e no menu -- ver `_botao`.
+        self.btn_ler_pagina = self._botao(
+            reconhecer, "ler_pagina", lambda: self.leitura_pedida.emit(False), so_icone=True
+        )
+        self.btn_tirar_caixa = self._botao(
+            reconhecer, "tirar_caixa", self.dispensar_a_selecionada, so_icone=True,
+            glifo=strings.DISPENSAR,
+        )
+        # **Um modo desenha-se como modo** (S-396 relida no F9-C2): o rótulo trocava entre
+        # "Selecionar área (OCR)" e o alternado, o que muda a largura do botão **e da barra**
+        # quando a pessoa liga a seleção. Um botão marcável diz o mesmo estado sem mexer em
+        # pixel nenhum de leiaute, e o nome por extenso continua alternando no leitor de tela.
+        self.btn_selecionar = self._botao(
+            reconhecer, "selecionar_area", self.alternar_selecao, so_icone=True
+        )
+        self.btn_selecionar.setCheckable(True)
+        # **O bloco que só existe enquanto existe o que cancelar** (item 7 do §7). Ele fica
+        # escondido em repouso -- é a diferença entre uma barra com um botão cinza permanente e
+        # uma barra que ganha uma fila exatamente quando a pessoa precisa dela.
+        #
+        # **E ele mora na barra do livro, e não na de navegação**, porque a de navegação é
+        # desligada **em bloco** durante uma operação longa (`_reavaliar_controles`) -- e a
+        # exportação é justamente uma operação longa. O cancelar ali ficaria cinza exatamente no
+        # intervalo em que ele serve, que é o defeito que `test_o_cancelar_sobrevive_ao_trancamento`
+        # existe para pegar.
+        self._bloco_exportacao = self._bloco(barra, "Exportação")
         self.btn_cancelar_exportacao = self._botao(
-            barra, "cancelar_exportacao", self.exportacao_cancelada.emit
+            self._bloco_exportacao, "cancelar_exportacao", self.exportacao_cancelada.emit
         )
+        self._bloco_exportacao.setVisible(False)
         self._barra_do_livro = barra
         fora.addWidget(barra)
 
         navegacao = BarraFluida(self)
-        self._botao(navegacao, "pagina_anterior", self.pagina_anterior)
+        navegar = self._bloco(navegacao, "Navegar", primeiro=True)
+        self._botao(
+            navegar, "pagina_anterior", self.pagina_anterior, so_icone=True, glifo=strings.ANTERIOR
+        )
         # **Base 1, e a faixa nunca é `0..0`** (S-328): "página 0" não existe na contagem que o
         # campo usa, e um campo vazio com teto zero é o que fazia a seta escrever o número que o
         # resto da tela nega.
-        self.campo_pagina = QSpinBox(navegacao)
+        self.campo_pagina = QSpinBox(navegar)
         self.campo_pagina.setRange(1, 1)
+        # **O nome acessível diz a faixa, e nunca o valor** (F9-C2). `QSpinBox.text()` devolve
+        # `"121"`, e sem nome próprio a cascata de `ui/nomes_acessiveis.py` cai nele: o leitor de
+        # tela anunciava "121, campo de número" e o **nome do controle mudava a cada página**.
+        # `_nomear_o_campo_de_pagina` o reescreve quando o livro abre, porque a faixa é o que ele
+        # informa e ela só existe depois de contar as páginas.
+        self._nomear_o_campo_de_pagina()
         self.campo_pagina.valueChanged.connect(self._pagina_digitada)
-        navegacao.adicionar(self.campo_pagina)
-        self.lbl_total = QLabel("de 0", navegacao)
-        navegacao.adicionar(self.lbl_total)
-        self._botao(navegacao, "proxima_pagina", self.proxima_pagina)
-        self._botao(navegacao, "zoom_menos", self.diminuir_zoom)
-        self._botao(navegacao, "zoom_mais", self.aumentar_zoom)
-        self._botao(navegacao, "ajustar_largura", self.ajustar_a_largura)
-        self._botao(navegacao, "ajustar_pagina", self.ajustar_a_pagina)
-        self.btn_selecionar = self._botao(navegacao, "selecionar_area", self.alternar_selecao)
+        navegar.layout().addWidget(self.campo_pagina)
+        self.lbl_total = QLabel("de 0", navegar)
+        # Contagem é texto de apoio, não dado: o degrau `AUXILIAR` da escala (item 9 do §7).
+        self.lbl_total.setProperty(folha_de_estilo.PROPRIEDADE_DE_APOIO, "true")
+        navegar.layout().addWidget(self.lbl_total)
+        self._botao(
+            navegar, "proxima_pagina", self.proxima_pagina, so_icone=True, glifo=strings.PROXIMO
+        )
 
-        self.marcar_diagramas = QCheckBox(comandos.rotulo_de_botao("marcar_diagramas"), navegacao)
-        self.marcar_diagramas.setChecked(True)
-        self.marcar_diagramas.toggled.connect(self._alternou_caixas)
-        navegacao.adicionar(self.marcar_diagramas)
-        self.roda_vira_pagina = QCheckBox(comandos.rotulo_de_botao("roda_vira_pagina"), navegacao)
-        self.roda_vira_pagina.setChecked(True)
-        self.roda_vira_pagina.toggled.connect(self._alternou_virada)
-        navegacao.adicionar(self.roda_vira_pagina)
+        zoom = self._bloco(navegacao, "Zoom")
+        self._botao(zoom, "zoom_menos", self.diminuir_zoom, so_icone=True)
+        self._botao(zoom, "zoom_mais", self.aumentar_zoom, so_icone=True)
+        self._botao(zoom, "ajustar_largura", self.ajustar_a_largura, so_icone=True)
+        self._botao(zoom, "ajustar_pagina", self.ajustar_a_pagina, so_icone=True)
+
         self._barra_de_navegacao = navegacao
         fora.addWidget(navegacao)
+
+        # **As duas preferências de vista saíram da barra e ficaram no menu `Ver`** (item 11 do
+        # §7), onde elas já estavam declaradas em `ui/menu.MENUS`. As caixas continuam existindo
+        # porque elas **são** o estado: o item de menu é marcável e reflete o que está aqui, o
+        # estado da aplicação lê `isChecked()` ao fechar e repõe ao abrir, e `_alternou_*` é quem
+        # avisa o visor. O que saiu foi o desenho -- 252 px de barra por duas preferências que
+        # ninguém troca duas vezes na mesma sessão.
+        self.marcar_diagramas = QCheckBox(comandos.rotulo_de_botao("marcar_diagramas"), self)
+        self.marcar_diagramas.setChecked(True)
+        self.marcar_diagramas.setVisible(False)
+        self.marcar_diagramas.toggled.connect(self._alternou_caixas)
+        self.roda_vira_pagina = QCheckBox(comandos.rotulo_de_botao("roda_vira_pagina"), self)
+        self.roda_vira_pagina.setChecked(True)
+        self.roda_vira_pagina.setVisible(False)
+        self.roda_vira_pagina.toggled.connect(self._alternou_virada)
 
         self.visor = VisorDePagina(self)
         self.visor.caixa_clicada.connect(self.caixa_clicada)
@@ -238,14 +322,19 @@ class PainelDoPdf(QWidget):
         livro = self.source is not None
         util = livro and not self._trancado
         self.btn_abrir.setEnabled(not self._trancado)
-        self.btn_leitor.setEnabled(util)
-        for botao in (self.btn_ler_melhor, self.btn_ler_pagina, self.btn_tirar_caixa):
+        # `selecionar_area` entrou na lista no F9-C2: ele age sobre a **página exibida** como os
+        # outros três, e sem livro ele só sabia dizer "abra um PDF antes" pelo rodapé -- um botão
+        # aceso que responde com uma pré-condição é um botão que promete o que não tem.
+        for botao in (
+            self.btn_ler_melhor, self.btn_ler_pagina, self.btn_tirar_caixa, self.btn_selecionar
+        ):
             botao.setEnabled(util)
-        self.btn_exportar.setEnabled(util and not self._exportando)
         # **O cancelar não olha `_trancado`, e é o item.** Ele só existe durante a exportação, que
         # é justamente quando tudo o mais está trancado: obedecê-lo faria o botão ficar cinza
-        # exatamente na única situação em que ele serve.
+        # exatamente na única situação em que ele serve. E agora o bloco inteiro só **aparece**
+        # durante ela -- ver `_montar`.
         self.btn_cancelar_exportacao.setEnabled(self._exportando)
+        self._bloco_exportacao.setVisible(self._exportando)
         self._barra_de_navegacao.setEnabled(not self._trancado)
         self.visor.setEnabled(not self._trancado)
         self.deslizador.setEnabled(not self._trancado)
@@ -265,21 +354,212 @@ class PainelDoPdf(QWidget):
         self._exportando = em_curso
         self._reavaliar_controles()
 
-    def _botao(self, barra: BarraFluida, acao: str, funcao: Callable[[], object], papel: str = estilos.NEUTRO) -> QPushButton:
+    def _nomear_o_campo_de_pagina(self) -> None:
+        """O nome acessível do campo de página: "Página, 1 a 289". Chamado a cada livro aberto.
+
+        **Derivado da faixa e não do valor**, que é o defeito nº 1 da crítica do ciclo 1: um nome
+        que muda quando a pessoa vira a página não identifica o controle, identifica o conteúdo.
+        A faixa muda uma vez por livro; o valor muda a cada seta.
+        """
+        teto = self.campo_pagina.maximum()
+        self.campo_pagina.setAccessibleName(f"Página, 1 a {teto}")
+
+    def _bloco(self, barra: BarraFluida, nome: str, *, primeiro: bool = False) -> QWidget:
+        """Um bloco nomeado da barra: um retângulo que reflui inteiro. Ver `_montar`.
+
+        `primeiro` é o único que não desenha o traço de 1 px à esquerda -- um separador na borda
+        da barra separaria a barra de nada.
+        """
+        bloco = QWidget(barra)
+        # O nome do bloco é o que um leitor de tela anuncia ao entrar nele. Não é decoração:
+        # sem ele a pessoa ouve doze botões seguidos sem saber onde um grupo acaba.
+        bloco.setAccessibleName(nome)
+        linha = QHBoxLayout(bloco)
+        linha.setContentsMargins(0, 0, 0, 0)
+        linha.setSpacing(espaco.linha())
+        if not primeiro:
+            linha.addWidget(separador(bloco))
+        barra.adicionar(bloco)
+        return bloco
+
+    def _botao(
+        self,
+        barra: BarraFluida | QWidget,
+        acao: str,
+        funcao: Callable[[], object],
+        papel: str = estilos.NEUTRO,
+        *,
+        so_icone: bool = False,
+        glifo: str = "",
+    ) -> QPushButton:
         """Um botão do catálogo: rótulo, papel e **tecla** vêm da tabela, e não escritos aqui.
 
         É a regra da S-165 e da S-324 -- a mesma que `qt/janela.py` registra: antes dela, seis dos
         oito botões repetiam `ui/atalhos.py` literalmente, dois eram inventados, e **dois estavam
         trocados**.
+
+        `so_icone` desenha o botão sem texto. **Ele não tira nada de ninguém**: o nome por extenso
+        continua no `accessibleName` (é o que o leitor de tela anuncia), na dica com a tecla, e no
+        menu que o `ui/menu.MENUS` monta. O que ele tira é largura de barra -- ver `_montar`.
         """
-        botao = QPushButton(comandos.rotulo_de_botao(acao), barra)
+        rotulo_visivel = "" if so_icone else comandos.rotulo_de_botao(acao)
+        botao = QPushButton(rotulo_visivel, barra)
+        if so_icone:
+            self._so_de_icone[acao] = botao
+        # **O nome acessível é o rótulo por extenso, e não o texto do botão** (F9-C2).
+        # O crítico do ciclo 1 mediu 28 controles que chegavam ao leitor de tela como "-",
+        # "+", "|◀" ou ".md" -- o `rotulo_curto` passando pela cascata de
+        # `ui/nomes_acessiveis.py` no passo `text()`. Ver `comandos.Comando.no_leitor`.
+        botao.setAccessibleName(comandos.nome_acessivel(acao))
         botao.clicked.connect(funcao)
         tema.aplicar_papel(botao, papel)
         tecla = atalhos.acelerador(acao)
-        motivo = comandos.rotulo(acao)
+        motivo = self._dica_do_comando(acao, so_icone=so_icone)
         dica_em(botao, f"{motivo}\nTecla: {tecla}" if tecla else motivo)
-        barra.adicionar(botao)
+        if so_icone:
+            self._vestir_de_icone(botao, acao, papel, glifo)
+        leiaute = barra.layout()
+        if isinstance(barra, BarraFluida):
+            barra.adicionar(botao)
+        elif leiaute is not None:
+            leiaute.addWidget(botao)
         return botao
+
+    @staticmethod
+    def _dica_do_comando(acao: str, *, so_icone: bool) -> str:
+        """O texto da dica: por extenso, e -- no botao so-de-icone -- **com o nome do botao**.
+
+        **O item 2 do ciclo 6, e ele sobreviveu ao primeiro conserto.** `ler_pagina` carrega dois
+        nomes de proposito (`ui/comandos.Comando.rotulo_curto`): "Ler esta pagina" no menu e
+        "OCR todos diagramas" no botao. O estado vazio da aba principal passou a citar o do menu
+        -- um rotulo declarado, e o teste de cruzamento com o catalogo ficou verde --, mas a
+        pilula da pele Foco mostra o outro e aqui, na pele classica, o botao **nao mostra nenhum**.
+        Quem lia a frase e procurava "Ler esta pagina" na tela continuava nao achando: o defeito
+        que o critico do ciclo 5 mediu, com o literal trocado.
+
+        Agora a frase cita o nome do **botao**, e esta dica e o unico lugar em que ele pode
+        aparecer na pele classica. O rotulo por extenso nao some: continua na mesma dica, depois
+        do travessao, e no `accessibleName`, que e o que o leitor de tela anuncia (F9-C2).
+        """
+        rotulo = comandos.rotulo(acao)
+        no_botao = comandos.rotulo_de_botao(acao)
+        if so_icone and _e_outro_nome(no_botao, rotulo):
+            return f"{no_botao} — {rotulo}"
+        return rotulo
+
+    def nomear_o_que_o_cromo_nao_desenha(self, cromo: QWidget | None) -> list[str]:
+        """Põe **texto** no botão só-de-ícone cujo nome a pele corrente não desenha (F9-C7, §3).
+
+        Devolve as ações que passaram a mostrar o nome. Recebe o **contêiner do cromo** e lê dele
+        o que a fila ou a fita desenharam de verdade -- os `text()` dos botões montados, e não uma
+        segunda lista dizendo quem cada pele mostra. Uma lista dessas divergiria do cromo no dia
+        em que alguém tirasse um comando do destaque, que é a forma exata do defeito que este
+        método fecha. `None`, ou um contêiner vazio, é a pele clássica: ela não desenha nome
+        nenhum acima do divisor, e é por isso que é ela quem ganha o texto no botão.
+
+        **Por que existe.** `MENSAGEM_VAZIA` -- a primeira frase que o produto mostra -- manda
+        usar *"OCR todos diagramas"*, o nome de `ler_pagina` no botão. Na pele **Foco** a pílula
+        escreve esse nome; na **clássica**, que é o padrão, o botão da barra é só-de-ícone e
+        **zero controles visíveis o escrevem**, nas três larguras. O que o olho acha a 40 px, em
+        azul, é `OCR melhor diagrama` -- `ler_melhor`, **outro comando**: lê um diagrama, não a
+        página. A frase não deixava de orientar; ela orientava para o controle errado, que é a
+        forma cara do defeito (F9-C7, §3.1).
+
+        **O ciclo 6 tentou fechar isto pela dica, e a dica não é a tela**: ela exige que o
+        ponteiro pouse sobre o ícone certo, e quem lê a frase não sabe qual é o ícone certo --
+        é justamente isso que a frase deveria dizer. A régua que o mesmo ciclo escreveu aceitava
+        `toolTip()` como "na tela" e ficou verde com nada desenhado. Ver
+        `tests/test_qt_janela.EstadoVazioNaTelaTests`.
+
+        **A regra é `_e_outro_nome`, e ela é a mesma da dica**: só ganha texto o botão cujo nome
+        de botão é um **nome diferente** do rótulo por extenso -- não um glifo (`+`, `-`) nem um
+        encurtamento (`"Tirar a caixa"` de `"Tirar a caixa do diagrama selecionado"`). Hoje o
+        catálogo tem exatamente um caso, `ler_pagina`; a regra é escrita para o próximo.
+
+        **E ela não duplica nada**: onde o cromo já escreve o nome -- a pílula da Foco, o rótulo
+        da fita --, o botão da barra fica só com o ícone. Dois controles visíveis com o mesmo
+        rótulo é o defeito do §4 item 11 do mesmo ciclo, e fechar um item abrindo outro não é
+        fechar.
+        """
+        # **O espaço em branco é normalizado, e isso é uma medição e não zelo.** A fita quebra o
+        # rótulo em duas linhas (`ui/medidas_da_fita.quebrar_rotulo`), então o `text()` dela é
+        # `"OCR todos\ndiagramas"` -- o **mesmo nome**, com uma quebra no meio. Comparar o
+        # literal fazia a barra do visor escrever o nome uma segunda vez na pele fita, que é a
+        # duplicação que este método existe para não criar.
+        #
+        # **E o botão tem de estar VISÍVEL, e isto era o furo** (F9-C9, §1 critério 8). O
+        # crítico do ciclo 9 montou seis cromos de mentira e o método respondeu certo em cinco;
+        # o caso 5 -- *"um botão escondido com o nome"* -- fazia a barra **não** escrever o nome,
+        # porque o `text()` de um botão escondido continua lá. Hoje nenhum dos três cromos monta
+        # botão escondido (conferido em `fila.py`, `fita.py` e `barra.py`: nenhum chama `hide()`
+        # nem `setVisible(False)`), então o número publicado era verdade -- **e é por isso que
+        # esta linha é barata e obrigatória**: o que o portão que cobra este método pergunta é
+        # "quantos controles **visíveis** desenham o nome", e o método respondia sobre outra
+        # coisa. Um dia de diferença entre as duas perguntas é um estado vazio que manda apertar
+        # um nome que ninguém vê.
+        #
+        # **`isVisibleTo(cromo)` e não `isVisible()`, e a diferença foi medida**: este método é
+        # chamado de `_montar_o_cromo`, que corre no `__init__` da janela -- **antes** do
+        # `show()`. Com `isVisible()` todos os botões do cromo respondem `False` ali, o conjunto
+        # `desenhados` sai vazio, e a barra do visor escreve o nome que a fita já escreve --
+        # dois controles com o mesmo rótulo, que é exatamente o item que este método fecha.
+        # `isVisibleTo` pergunta o que importa: *este botão aparece quando o cromo aparecer?*
+        botoes = cromo.findChildren(QAbstractButton) if cromo is not None else []
+        desenhados = {
+            " ".join(botao.text().replace("&", "").split())
+            for botao in botoes
+            if botao.isVisibleTo(cromo)
+        }
+        nomeados: list[str] = []
+        for acao, botao in self._so_de_icone.items():
+            rotulo = comandos.rotulo(acao)
+            no_botao = comandos.rotulo_de_botao(acao)
+            if not _e_outro_nome(no_botao, rotulo):
+                continue
+            mostra = no_botao not in desenhados
+            botao.setText(no_botao if mostra else "")
+            tecla = atalhos.acelerador(acao)
+            motivo = self._dica_do_comando(acao, so_icone=not mostra)
+            dica_em(botao, f"{motivo}\nTecla: {tecla}" if tecla else motivo)
+            if mostra:
+                nomeados.append(acao)
+        return nomeados
+
+    def _vestir_de_icone(self, botao: QPushButton, acao: str, papel: str, glifo: str = "") -> None:
+        """Põe o ícone do catálogo no botão sem texto, e um piso de área de clique.
+
+        **Sem ícone o botão fica quadrado e vazio, e isso é pior que o rótulo largo** -- então o
+        `so_icone` só vale quando o catálogo declara um desenho. Um comando sem ícone volta ao
+        texto, que é a resposta legível. `zoom_menos` e `zoom_mais` têm rótulo de um caractere
+        (`-` e `+`) e ícone: nesses o texto vai embora e o desenho fica, que é a troca boa.
+        """
+        # O desenho ocupa uma linha de texto, e não duas: um ícone maior que o rótulo ao lado
+        # dele desequilibra a fila, e cada 12 px a mais em quatro botões é uma fila a mais na
+        # barra de 500 px -- que é a conta que o item 11 do §7 pede para fechar.
+        lado = espaco.folga() + espaco.linha()
+        nome_do_icone = comandos.comando(acao).icone
+        desenho = (
+            qt_icones.icone(
+                nome_do_icone, lado, tema.cor_atual(folha_de_estilo.tinta_do_papel(papel))
+            )
+            if nome_do_icone
+            else None
+        )
+        if desenho is None:
+            # Sem ícone declarado: o glifo, se houver, e o rótulo por extenso se não houver.
+            # `ui/icones.ICONES` é fechada contra o catálogo de comandos nos dois sentidos, então
+            # acrescentar um desenho aqui não é uma linha -- é uma linha em cada lado, e três
+            # comandos deste painel não têm arte. O glifo é `strings`, e vem do mesmo bloco
+            # Unicode que a S-506 escolheu justamente para desenhar em qualquer fonte.
+            botao.setText(glifo or comandos.rotulo_de_botao(acao))
+            if glifo:
+                botao.setMinimumWidth(lado + espaco.folga())
+            return
+        botao.setIcon(desenho)
+        botao.setIconSize(QSize(lado, lado))
+        # O alvo de clique não pode encolher com o rótulo: o piso da S-442 para um controle de
+        # ponteiro, e um botão de ícone sem piso sai com a largura do desenho.
+        botao.setMinimumWidth(lado + espaco.folga())
 
     def _rodape_de_zoom(self) -> QHBoxLayout:
         """O deslizador de zoom, em escala **logarítmica** (S-225).
@@ -320,6 +600,14 @@ class PainelDoPdf(QWidget):
 
     def ajustar_a_pagina(self) -> None:
         self.visor.ajustar_a_pagina()
+
+    @property
+    def enquadramento(self) -> str:
+        """O ajuste em vigor no visor. A janela o grava com o zoom (F9-C3)."""
+        return self.visor.enquadramento
+
+    def definir_enquadramento(self, enquadramento: str) -> None:
+        self.visor.definir_enquadramento(enquadramento)
 
     def _zoom_do_visor(self, valor: float) -> None:
         self._sincronizar_deslizador()
@@ -380,7 +668,10 @@ class PainelDoPdf(QWidget):
             self.source = pdf_path
             self.name = pdf_path.name
             self.page_count = page_count
-            self.lbl_pdf.setText(f"{self.name} ({self.page_count} págs)")
+            # **Só o nome do livro.** A contagem de páginas está a uma fila de distância, no
+            # `de 289` ao lado do campo de página, e repeti-la aqui custava 51 px da barra mais
+            # estreita da janela -- ver `qt/rotulo.LARGURA_DESEJADA`.
+            self.lbl_pdf.definir_texto(self.name)
             self.lbl_total.setText(f"de {self.page_count}")
             self._reavaliar_controles()
             self.abriu_pdf.emit(pdf_path)
@@ -407,6 +698,7 @@ class PainelDoPdf(QWidget):
         self._montando = True
         try:
             self.campo_pagina.setRange(1, max(self.page_count, 1))
+            self._nomear_o_campo_de_pagina()
             self.campo_pagina.setValue(self._page_index + 1)
         finally:
             self._montando = False
@@ -528,7 +820,7 @@ class PainelDoPdf(QWidget):
         # origem -- inclusive o texto que a pessoa acabou de digitar no campo de FEN.
         self.antes_de_trocar_de_pagina.emit()
         try:
-            self.estado.emit(f"Renderizando página {indice + 1}...")
+            self.estado.emit(f"Renderizando página {indice + 1}…")
             dpi = int(self._dpi())
             self.page_rgb = render_pdf_page(self.source, indice, dpi=dpi)
             self.page_loaded_for_index = indice
@@ -634,16 +926,31 @@ class PainelDoPdf(QWidget):
             self.estado.emit("Abra um PDF antes de selecionar uma área.")
             return
         self.visor.ativar_selecao(True)
-        self.btn_selecionar.setText(comandos.rotulo_alternado("selecionar_area"))
+        self._marcar_selecao(ligado=True)
         comandos.alternou("selecionar_area", ligado=True)
         self.estado.emit("Seleção ativa: arraste no PDF para reconhecer a área automaticamente.")
 
     def desligar_selecao(self, frase: str = "") -> None:
         self.visor.ativar_selecao(False)
-        self.btn_selecionar.setText(comandos.rotulo_de_botao("selecionar_area"))
+        self._marcar_selecao(ligado=False)
         comandos.alternou("selecionar_area", ligado=False)  # S-396
         if frase:
             self.estado.emit(frase)
+
+    def _marcar_selecao(self, *, ligado: bool) -> None:
+        """O estado do modo de seleção, no botão. Ver `alternar_selecao`.
+
+        O que muda é a marca e o **nome**, não o texto: o nome é o que um leitor de tela anuncia,
+        e é ele que precisa dizer "Sair da seleção de área" quando o modo está ligado.
+        """
+        self.btn_selecionar.setChecked(ligado)
+        nome = (
+            comandos.rotulo_alternado("selecionar_area")
+            if ligado
+            else comandos.nome_acessivel("selecionar_area")
+        )
+        self.btn_selecionar.setAccessibleName(nome)
+        dica_em(self.btn_selecionar, nome)
 
     def _area_selecionada(self, regiao: tuple[int, int, int, int]) -> None:
         """A área saiu do visor em pixel de página; o painel só a entrega com a folha junto."""

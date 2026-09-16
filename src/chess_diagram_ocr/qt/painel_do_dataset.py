@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from PyQt6.QtCore import QEvent, Qt, pyqtSignal
@@ -62,10 +62,13 @@ from chess_diagram_ocr.dataset_browser import (
     page_after_change,
     quarantine_rows,
 )
+from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.tabela import TabelaQt
+from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
+from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.ui import espaco, estilos, strings, tipografia
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.resumo_do_dataset import (
@@ -83,7 +86,20 @@ from chess_diagram_ocr.ui.resumo_do_dataset import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["JanelaDeEstatisticas", "PainelDoDataset"]
+__all__ = ["CANCELADA", "PASSO_DO_PROGRESSO", "JanelaDeEstatisticas", "PainelDoDataset"]
+
+CANCELADA = "cancelada"
+"""A "falha" que não é falha: a pessoa mandou parar. Ver `_falhou_duplicatas`."""
+
+PASSO_DO_PROGRESSO = 25
+"""De quantas em quantas imagens a barra de duplicatas anda (F9-C2).
+
+Uma atualização por imagem seriam 3.195 travessias de thread para uma barra de 200 px, em que
+25 imagens não chegam a um pixel. O passo é o que faz a barra ser progresso e não tráfego."""
+
+
+class _Desistiu(Exception):
+    """A pessoa cancelou. Levantada de dentro do gerador de rótulos -- ver `detectar_duplicatas`."""
 
 
 class JanelaDeEstatisticas(QDialog):
@@ -96,16 +112,30 @@ class JanelaDeEstatisticas(QDialog):
     """
 
     def __init__(self, corpo: str, parent: QWidget | None = None) -> None:
+        from PyQt6.QtWidgets import QDialogButtonBox
+
         super().__init__(parent)
         self.setWindowTitle("Estatísticas do dataset")
         self.resize(560, 520)
         fora = QVBoxLayout(self)
         fora.setContentsMargins(*(espaco.folga(),) * 4)
+        fora.setSpacing(espaco.linha())
+        # **Título desenhado e um botão que fecha** (F9-C13, §5.8). Ela era a única das treze
+        # telas sem botão nenhum: um despejo monoespaçado num quadro de 560x520 px, sem uma
+        # palavra em volta dizendo do que era a tabela. O `windowTitle` existe e a barra de
+        # título de um `QDialog` sem moldura de sistema não o mostra em toda plataforma.
+        titulo = QLabel("Estatísticas do dataset", self)
+        titulo.setProperty(tipografia.PROPRIEDADE_DE_PAPEL_DE_FONTE, tipografia.TITULO)
+        fora.addWidget(titulo)
         self.corpo = QPlainTextEdit(corpo, self)
+        self.corpo.setAccessibleName("Estatísticas do dataset")
         self.corpo.setReadOnly(True)
         self.corpo.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.corpo.setFont(tema.fonte_atual(tipografia.DADO))
-        fora.addWidget(self.corpo)
+        fora.addWidget(self.corpo, 1)
+        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=self)
+        botoes.rejected.connect(self.reject)
+        fora.addWidget(botoes)
 
 
 class PainelDoDataset(QWidget):
@@ -143,6 +173,26 @@ class PainelDoDataset(QWidget):
         self._busy_registry = busy
         self._busy_token: BusyToken | None = None
 
+        self._ficha_da_leitura: BusyToken | None = None
+        """O registro da leitura assíncrona do dataset (F9-C3). Ver `_registrar_a_leitura`.
+
+        Separado de `_busy_token` porque as duas operações podem correr juntas -- a detecção de
+        duplicatas chama `reload()` -- e um atributo só faria a segunda soltar a ficha da
+        primeira, deixando o rodapé falando de uma operação que já acabou."""
+
+        self._cancelou_a_leitura = False
+        """A pessoa desistiu da leitura pelo botão do rodapé. Ver `_cancelar_a_leitura`."""
+
+        self._contagem: tuple[tuple[str, int, int], int] | None = None
+        """A última contagem de linhas do CSV, com a marca do arquivo. Ver `contagem_de_amostras`."""
+
+        self._lendo: Tarefa | None = None
+        """A leitura do dataset que está correndo agora, se houver (F9-C2). Ver `_reler_agora`.
+
+        Guardada porque duas leituras simultâneas do mesmo CSV são trabalho jogado fora, e a
+        segunda chegaria depois da primeira com as mesmas linhas -- e reescreveria a seleção que
+        a pessoa já tinha refeito."""
+
         self._stale = True
         """Alguém gravou no `labels.csv` desde a última leitura desta aba (S-116).
 
@@ -157,7 +207,7 @@ class PainelDoDataset(QWidget):
 
     def _montar(self) -> None:
         fora = QVBoxLayout(self)
-        fora.setContentsMargins(*(espaco.linha(),) * 4)
+        fora.setContentsMargins(*(espaco.margem_da_aba(),) * 4)
         fora.setSpacing(espaco.linha())
 
         barra = BarraFluida(self)
@@ -182,13 +232,30 @@ class PainelDoDataset(QWidget):
         # serem comparadas.
         self.tabela.setFont(tema.fonte_atual(tipografia.DADO))
         self.tabela.itemDoubleClicked.connect(lambda *_: self.editar_selecionada())
+        # **A tabela deixou de encher sozinha, e um retângulo em branco não explica isso**
+        # (F9-C2). A leitura saiu da thread da janela no item 5 do §7, e o preço é 1,3 s em que a
+        # tabela existe e está vazia. Sem esta frase, quem abre a aba vê uma tabela de dataset
+        # vazia -- que é uma afirmação sobre o `labels.csv`, e não sobre a espera.
+        self.vazio = EstadoVazio(
+            self.tabela, titulo=strings.DATASET_LENDO_TITULO, frase=strings.DATASET_LENDO_FRASE
+        )
         fora.addWidget(self.tabela, 1)
 
         paginador = BarraFluida(self)
-        self._botao(paginador, "<", lambda: self.mudar_pagina(-1), estilos.NEUTRO).setMaximumWidth(40)
+        # **Os dois glifos ganham nome por extenso** (F9-C2): `"<"` e `">"` chegavam ao leitor de
+        # tela como o nome do controle, e um sinal de menor não é uma palavra.
+        anterior = self._botao(paginador, "<", lambda: self.mudar_pagina(-1), estilos.NEUTRO)
+        anterior.setMaximumWidth(40)
+        anterior.setAccessibleName("Página anterior da tabela")
+        # `<` e `>` rendiam 6x6 px de tinta num botao de 30x26 (F9-C7, §4.7): o desenho e o
+        # mesmo `pagina_anterior` da barra do visor, na mesma grade de 16x16.
+        qt_icones.vestir(anterior, "pagina_anterior", estilos.NEUTRO)
         self.lbl_pagina = QLabel("", paginador)
         paginador.adicionar(self.lbl_pagina)
-        self._botao(paginador, ">", lambda: self.mudar_pagina(1), estilos.NEUTRO).setMaximumWidth(40)
+        proxima = self._botao(paginador, ">", lambda: self.mudar_pagina(1), estilos.NEUTRO)
+        proxima.setMaximumWidth(40)
+        proxima.setAccessibleName("Próxima página da tabela")
+        qt_icones.vestir(proxima, "proxima_pagina", estilos.NEUTRO)
         fora.addWidget(paginador)
 
         acoes = BarraFluida(self)
@@ -266,12 +333,30 @@ class PainelDoDataset(QWidget):
         """
         csv_path, _amostras, _splits = self._caminhos()
         try:
+            marca = Path(csv_path).stat()
+        except OSError:
+            return None
+        # **A contagem é guardada por (tamanho, mtime), e a razão é uma medição** (F9-C2). Ela é
+        # chamada de `janela._atualizar_abas`, que roda a cada abertura de livro, a cada virada de
+        # página e a cada gravação -- e ela **lia o `labels.csv` inteiro** para responder um
+        # número. O arnês pegou o efeito: depois de o `_carregar_marcas_salvas` sair da thread da
+        # janela, esta linha virou a pior pilha do "abrir PDF", com 249 ms.
+        #
+        # O par tamanho/mtime é o mesmo critério de invalidação de `ui/games_cache.py`, e ele
+        # erra do lado seguro: um arquivo reescrito com o mesmo tamanho **e** o mesmo mtime é um
+        # arquivo que o sistema de arquivos diz não ter mudado.
+        chave = (str(csv_path), marca.st_size, marca.st_mtime_ns)
+        if self._contagem is not None and self._contagem[0] == chave:
+            return self._contagem[1]
+        try:
             with Path(csv_path).open("r", encoding="utf-8", errors="replace") as arquivo:
                 linhas = sum(1 for _ in arquivo)
         except OSError:
             return None
         # Menos o cabeçalho; um arquivo só com ele é dataset vazio, e não -1 amostras.
-        return max(0, linhas - 1)
+        total = max(0, linhas - 1)
+        self._contagem = (chave, total)
+        return total
 
     def showEvent(self, a0: QShowEvent | None) -> None:  # noqa: N802 - assinatura do Qt
         """A aba apareceu. Se alguém gravou enquanto ela estava escondida, é agora que se paga.
@@ -298,19 +383,174 @@ class PainelDoDataset(QWidget):
         self._reler_agora()
 
     def _reler_agora(self) -> None:
+        """Relê o dataset **fora da thread da janela** (F9-C2, §7 item 5).
+
+        **O congelamento que a mediana escondia.** O arnês do ciclo 1 tirava a mediana de três
+        execuções e publicava 14,6 ms com `viola: False`; as execuções de verdade foram
+        `1315 / 15 / 13` ms -- porque só a **primeira** troca para a aba dispara `showEvent`, e só
+        ela lê o CSV. A pessoa vive **1,3 segundo** de janela morta no primeiro clique da aba
+        Dataset, em toda sessão. A pilha é `load_rows -> labels.read -> csv.__next__`: disco e
+        `csv`, que é exatamente o que cabe numa `qt/trabalho.Tarefa`.
+
+        Enquanto a leitura corre, a aba fica cinza e o rodapé diz o que está acontecendo -- que é
+        o contrato do §11.3 para operação longa, e o que a versão síncrona não tinha como
+        oferecer.
+
+        **E ela se registra, desde o F9-C3.** O ciclo 2 escreveu o `estado.emit("Lendo o
+        dataset…")` acima e **não** chamou `busy.register`, e o resultado estava em doze das 36
+        capturas: a barra de status dizia "Lendo o dataset…" enquanto a barra de progresso ao
+        lado marcava **0 de 100 com o `Cancelar` desabilitado**. O registro é o único caminho
+        pelo qual o rodapé -- e o portão `caissa.ui.audit.progresso`, que varre os pontos de
+        registro -- ficam sabendo que há operação. Ver `_registrar_a_leitura`.
+        """
         self._stale = False
+        if self._lendo is not None:
+            return  # já há uma leitura correndo; a segunda leria as mesmas linhas
         # O lugar de quem estava conferindo, guardado antes da recarga (S-118). Por `filename` e
         # não por índice: a linha corrigida pode ter mudado de posição no filtro, e um índice
         # apontaria para a vizinha dela.
         selecionadas = {row.filename for row in self.linhas_selecionadas()}
         csv_path, samples_dir, splits_path = self._caminhos()
-        try:
-            self.rows = load_rows(
-                csv_path, samples_dir, splits_path=splits_path, duplicate_groups=self._grupos_duplicados
+        grupos = self._grupos_duplicados
+        # **Sem pai**, por `qt/trabalho.manter_viva`: ver lá o modo de falha que isso evita.
+        tarefa = manter_viva(
+            Tarefa(
+                lambda: load_rows(
+                    csv_path, samples_dir, splits_path=splits_path, duplicate_groups=grupos
+                ),
+                nome="dataset",
             )
-        except (OSError, ValueError) as exc:
-            QMessageBox.critical(self, "Dataset", f"Não foi possível ler o dataset:\n{exc}")
+        )
+        tarefa.pronto.connect(lambda linhas: self._dataset_chegou(linhas, selecionadas))
+        tarefa.falhou.connect(self._dataset_falhou)
+        self._lendo = tarefa
+        self.setEnabled(False)
+        self._mostrar_espera(True)
+        # **A frase do rodapé saiu, e a de dentro do painel ficou** (F9-C5, §7.15).
+        # `_mostrar_espera(True)` já escreve `strings.DATASET_LENDO_TITULO` -- "Lendo o
+        # dataset" -- **no centro da tabela**, e o `estado.emit` escrevia a mesma frase na zona
+        # de mensagem do rodapé, a ~500 px de distância na mesma captura. É a redundância que o
+        # §7.10 do ciclo 3 mandou apagar na Galeria, num painel diferente.
+        #
+        # Quem fica é a de dentro, por dois motivos: ela está **dentro do vazio que explica** e
+        # traz a segunda frase ("a tabela aparece assim que a leitura terminar"), que o rodapé
+        # não tem espaço para dizer. E o rodapé não fica mudo: `_registrar_a_leitura` põe a
+        # operação no `BusyRegistry`, e é ela que acende a barra, o `Cancelar` e o rótulo
+        # "leitura do dataset (N amostra(s))" da zona de ocupação -- que diz **quanto**, e não
+        # só que está lendo.
+        self._registrar_a_leitura()
+        tarefa.start()
+
+    def _registrar_a_leitura(self) -> None:
+        """Declara a leitura no `BusyRegistry`, com cancelamento (F9-C3, bloqueante nº 2).
+
+        **A pergunta que a exceção em `test_busy.SEM_REGISTRO` respondia era outra.** Ela diz
+        *"fechar a janela no meio não perde nada"*, e isso continua verdade -- e foi usada para
+        responder *"não precisa de indicação de progresso"*, que é uma segunda pergunta e tem a
+        resposta contrária: a pessoa **espera** por esta leitura, com a aba cinza.
+
+        **A barra é indeterminada, e o número saiu de perto dela** (F9-C7, §4.2).
+
+        O ciclo 6 escrevia `detail=f"{quantas} amostra(s)"` -- "5431" -- **ao lado de uma
+        marquise**, e defendia a escolha assim: *"o total é conhecido, o número vai para o
+        `detail`, onde ele é verdade; a barra anda, que é o que ela sabe"*. O crítico do ciclo 7
+        mediu o resultado no pixel das 36 capturas: um bloco azul de **59 px** que anda e dá a
+        volta na pista de 118 px, em **28** delas, com "5431" impresso a 200 px dele. A carta
+        §3.3 reprova *"barra de progresso indeterminada onde o total é conhecido"*, e imprimir a
+        contagem ali é afirmar exatamente o total que a barra não honra: quem lê conclui que o
+        programa sabe onde está e escolheu não dizer.
+
+        **A barra continua indeterminada porque a leitura não tem como andar.** Quem lê as
+        linhas é `dataset_browser.load_rows` -> `labels.LabelStore._load_rows`, e nenhum dos dois
+        aceita callback de progresso -- não há argumento por onde passá-la, e os dois módulos
+        estão fora do que esta frente escreve. Uma barra **determinada** com um `feito` que
+        ninguém pode incrementar fica parada em 0 % do começo ao fim, que é pior: ela parece
+        travada. O conserto de verdade é dar progresso ao leitor, e ele é uma linha em
+        `dataset_browser.load_rows` (o laço `for entry in entries`, que já é por amostra).
+
+        **O que muda aqui é o que se afirma.** O `detail` passa a ser o arquivo que está sendo
+        lido -- a mesma escolha de `qt/exportador.py`, `detail=pdf_path.name` --, e a contagem
+        continua na tela onde ela não é denominador de nada: o rótulo da aba, `Dataset (5431)`,
+        por `janela._atualizar_abas` -> `contagem_de_amostras`. Nada se perde e nada se promete.
+        """
+        if self._busy_registry is None:
             return
+        self._cancelou_a_leitura = False
+        csv_path, _amostras, _splits = self._caminhos()
+        self._ficha_da_leitura = self._busy_registry.register(
+            "leitura do dataset",
+            # Leitura: nada é gravado, e a próxima abertura da aba refaz a pergunta.
+            loses_work=False,
+            cancellable=True,
+            cancel=self._cancelar_a_leitura,
+            detail=Path(csv_path).name,
+        )
+
+    def _cancelar_a_leitura(self) -> None:
+        """Desiste da leitura: a aba volta agora e a resposta que chegar é descartada.
+
+        **O que este cancelamento faz, dito sem folga.** Ele devolve a aba e joga fora o
+        resultado; o `load_rows` em curso termina sozinho, porque a leitura do CSV não tem ponto
+        de interrupção público e `dataset_browser.py` não é desta frente. O que o botão do rodapé
+        promete -- *"parar limpo"* -- é o que ele entrega: nada gravado, nada pela metade, e a
+        janela deixa de esperar.
+        """
+        self._cancelou_a_leitura = True
+        self._soltar_a_leitura()
+        self._mostrar_espera(False)
+        self.setEnabled(True)
+        self.estado.emit("Leitura do dataset cancelada.")
+
+    def _soltar_a_leitura(self) -> None:
+        ficha, self._ficha_da_leitura = self._ficha_da_leitura, None
+        if ficha is not None:
+            ficha.release()
+
+    def aguardar_leitura(self, ms: int = 5000) -> bool:
+        """Espera a leitura em curso e **entrega o resultado**. Devolve se havia o que esperar.
+
+        Existe para o teste e para o fechamento, e as duas metades são necessárias: `wait()`
+        devolve quando a thread termina, mas o `pronto` dela é entregue pela fila de eventos do
+        Qt -- sem o `processEvents` o chamador acorda antes de `_dataset_chegou` rodar, e vê a
+        tabela de antes. É o mesmo par que `qt/trabalho.DeteccaoDeFundo.parar` faz.
+        """
+        from PyQt6.QtWidgets import QApplication
+
+        tarefa = self._lendo
+        if tarefa is None:
+            return False
+        tarefa.wait(ms)
+        aplicacao = QApplication.instance()
+        if aplicacao is not None:
+            for _ in range(4):
+                aplicacao.processEvents()
+        return True
+
+    def _mostrar_espera(self, esperando: bool) -> None:
+        """A frase sobre a tabela enquanto a leitura corre. Ver `_reler_agora`."""
+        self.vazio.setGeometry(self.tabela.viewport().rect())
+        self.vazio.setVisible(esperando)
+
+    def _dataset_falhou(self, mensagem: str, _excecao: object) -> None:
+        self._lendo = None
+        self._soltar_a_leitura()
+        self._mostrar_espera(False)
+        self.setEnabled(True)
+        if self._cancelou_a_leitura:
+            return  # quem desistiu não precisa de um modal dizendo que desistiu
+        QMessageBox.critical(self, "Dataset", f"Não foi possível ler o dataset:\n{mensagem}")
+
+    def _dataset_chegou(self, linhas: object, selecionadas: set[str]) -> None:
+        """A leitura terminou. Daqui para baixo é o corpo síncrono de antes, sem mudança."""
+        self._lendo = None
+        self._soltar_a_leitura()
+        if self._cancelou_a_leitura:
+            # Ver `_cancelar_a_leitura`: a resposta chegou depois de a pessoa desistir dela.
+            self._stale = True
+            return
+        self._mostrar_espera(False)
+        self.setEnabled(True)
+        self.rows = list(linhas or [])
 
         livros = sorted({row.source_pdf for row in self.rows if row.source_pdf})
         escolhido = self.combo_livro.currentText()
@@ -516,24 +756,49 @@ class PainelDoDataset(QWidget):
         if not self.rows:
             self.reload()
         _csv, samples_dir, _splits = self._caminhos()
-        self.estado.emit("Procurando duplicatas... isto lê todas as imagens do dataset.")
+        self.estado.emit("Procurando duplicatas… isto lê todas as imagens do dataset.")
         rotulos = [(row.filename, row.fen) for row in self.rows if row.image_exists]
 
+        # **Cancelável e determinada, desde o F9-C2** (§7 item 7). O ciclo 1 registrava
+        # `cancellable=False` com o argumento de que *"`find_duplicate_groups` não tem por onde"*,
+        # e a barra ficava indeterminada com o total escrito ao lado dela, em texto -- que é o
+        # defeito bloqueante que `caissa.ui.audit.progresso` acusou.
+        #
+        # **O "por onde" estava no argumento, e não na função.** `find_duplicate_groups` recebe um
+        # `Iterable` de rótulos: um gerador que conta o que já saiu **é** a barra determinada, e um
+        # gerador que levanta quando a bandeira sobe **é** o cancelamento. Nem uma linha de
+        # `audit.py` muda, e a resposta parcial nunca é entregue -- cancelar é desistir, não
+        # aceitar meia lista.
+        self._cancelar_duplicatas = threading.Event()
+        cancelar = self._cancelar_duplicatas
         if self._busy_registry is not None:
             self._busy_token = self._busy_registry.register(
                 "detecção de duplicatas",
                 # Derivada: o hash perceptual não grava nada, e refazer recomputa a mesma resposta
-                # a partir das mesmas imagens. Não é cancelável porque `find_duplicate_groups` não
-                # tem por onde -- e inventar um `Event` que ninguém consulta seria oferecer um
-                # botão que não para nada.
+                # a partir das mesmas imagens.
                 loses_work=False,
+                cancellable=True,
+                cancel=cancelar.set,
                 detail=f"{len(rotulos)} imagem(ns)",
+                total=len(rotulos),
             )
         self.btn_duplicatas.setEnabled(False)
+        token = self._busy_token
+
+        def _rotulos_contados() -> Iterator[tuple[str, str]]:
+            for feito, par in enumerate(rotulos, 1):
+                if cancelar.is_set():
+                    raise _Desistiu
+                if token is not None and feito % PASSO_DO_PROGRESSO == 0:
+                    token.update(f"{feito} de {len(rotulos)} imagem(ns)", feito=feito, total=len(rotulos))
+                yield par
 
         def _trabalho() -> None:
             try:
-                grupos = find_duplicate_groups(samples_dir, rotulos)
+                grupos = find_duplicate_groups(samples_dir, _rotulos_contados())
+            except _Desistiu:
+                self._duplicatas_falharam.emit(CANCELADA)
+                return
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Falha ao detectar duplicatas.")
                 self._duplicatas_falharam.emit(str(exc))

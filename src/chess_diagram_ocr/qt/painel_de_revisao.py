@@ -48,6 +48,7 @@ from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.tabela import TabelaQt
+from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.review_queue import (
     DEFAULT_CACHE_DIR,
     DEFAULT_QUEUE_PATH,
@@ -55,7 +56,7 @@ from chess_diagram_ocr.review_queue import (
     error_rate,
     merge_queues,
 )
-from chess_diagram_ocr.ui import espaco, estilos, formato, strings, tabela, tipografia
+from chess_diagram_ocr.ui import comandos, espaco, estilos, formato, strings, tabela, tipografia
 from chess_diagram_ocr.ui.varredura_de_revisao import AcumuladorDaFila, PedidoDeVarredura
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ COLUNAS: tuple[tabela.Coluna, ...] = (
     tabela.Coluna("prioridade", "Prio.", 60, numerica=True),
     tabela.Coluna("página", "Pag.", 50, numerica=True),
     tabela.Coluna("diagrama", "Diag.", 50, numerica=True),
-    tabela.Coluna("confiança", "Conf. min", 80, numerica=True),
+    tabela.Coluna("confiança", "Conf. mín", 80, numerica=True),
     tabela.Coluna("status", "Status", 80),
     tabela.Coluna("motivo", "Motivo", 460, elastica=True),
 )
@@ -113,7 +114,7 @@ class SumidouroDeRevisao(QObject):
         uma só desde a S-119. O que falta aqui é só a pessoa que está *nesta* aba não ficar
         olhando uma frase parada enquanto o livro roda.
         """
-        self.progrediu.emit(f"Varrendo o livro... página {pagina} de {total}")
+        self.progrediu.emit(f"Varrendo o livro… página {pagina} de {total}")
 
     def deliver(self, *, cancelled: bool) -> None:
         """A fila pronta, na tela. **Tem de ser chamado na thread da janela.**
@@ -182,7 +183,7 @@ class PainelDeRevisao(QWidget):
 
     def _montar(self) -> None:
         fora = QVBoxLayout(self)
-        fora.setContentsMargins(*(espaco.linha(),) * 4)
+        fora.setContentsMargins(*(espaco.margem_da_aba(),) * 4)
         fora.setSpacing(espaco.linha())
 
         barra = BarraFluida(self)
@@ -193,7 +194,13 @@ class PainelDeRevisao(QWidget):
             "livro com o mesmo modelo. Pergunta antes quais livros varrer; a fila desta aba\n"
             "só sai do PDF aberto -- é dele que ela declara a procedência.",
         )
-        self.btn_cancelar = self._botao(barra, "Cancelar", self.cancelar_varredura, estilos.NEUTRO)
+        # **Um rótulo, um controle** (F9-C7, §4 item 11). O rodapé tem um `Cancelar` genérico
+        # -- ele vale para toda operação registrada --, e este painel tinha outro com o
+        # **mesmo texto** na mesma tela: medido, os dois ficavam visíveis ao mesmo tempo com
+        # estados **divergentes** (um vivo, um cinza), e nada dizia qual era qual. O usuário
+        # que lê o cinza conclui que a ação não está disponível enquanto a de cima está viva.
+        # O do rodapé é o genérico e fica como está; este diz o que ele cancela.
+        self.btn_cancelar = self._botao(barra, "Cancelar a varredura", self.cancelar_varredura, estilos.NEUTRO)
         self.btn_cancelar.setEnabled(False)
         dica_em(
             self.btn_cancelar,
@@ -220,6 +227,18 @@ class PainelDeRevisao(QWidget):
         self.tabela.itemSelectionChanged.connect(self._mostrar_motivo)
         self.tabela.setMinimumHeight(ALTURA_EM_LINHAS * tema.altura_de_linha_atual())
         fora.addWidget(self.tabela, 1)
+        # **A região que o crítico mediu com 0,00 % de tinta** (F9-C2, §7 item 14): 409,3 kpx de
+        # tabela vazia abaixo da fila de botões, sem uma palavra dizendo o que enche a fila. O
+        # vazio cobre a tabela enquanto ela não tem linha, e traz `Varrer o livro` para dentro
+        # dele -- que é a ação que enfileira o que precisa de revisão.
+        self.vazio = EstadoVazio(
+            self.tabela,
+            titulo=strings.REVISAO_VAZIA_TITULO,
+            frase=strings.REVISAO_VAZIA_FRASE,
+            rotulo_do_botao=strings.VARRER_LIVRO,
+            nome_acessivel="Varrer o livro para montar a fila de revisão",
+            acao=self.iniciar_varredura,
+        )
 
         # O motivo **inteiro** do item selecionado, sob a tabela (S-153). Rolar para o lado numa
         # lista de 129 linhas custa a coluna de referência: a tabela dá a visão geral, o rodapé dá
@@ -230,7 +249,10 @@ class PainelDeRevisao(QWidget):
         fora.addWidget(self.lbl_motivo)
 
         acoes = BarraFluida(self)
-        self._botao(acoes, "Corrigir agora", self.abrir_selecionado, estilos.PRIMARIO)
+        # **O rótulo vem do catálogo, e não de um literal aqui** (F9-C3). Ele era escrito à
+        # mão, e por isso a ação que começa o trabalho desta aba não existia para a tecla,
+        # para o menu nem para a paleta -- ver `ui/comandos.CATALOGO`.
+        self._botao(acoes, comandos.rotulo("corrigir_agora"), self.corrigir_agora, estilos.NEUTRO)
         self._botao(acoes, "Marcar revisado", lambda: self.marcar_selecionado("done"), estilos.NEUTRO)
         self._botao(acoes, "Pular", lambda: self.marcar_selecionado("skipped"), estilos.NEUTRO)
         self._botao(acoes, "Reabrir", lambda: self.marcar_selecionado("pending"), estilos.NEUTRO)
@@ -246,9 +268,36 @@ class PainelDeRevisao(QWidget):
 
     # -------------------------------------------------------------------------------- tabela
 
+    def _esconder_o_status_redundante(self, so_pendentes: bool) -> None:
+        """Com `Só pendentes` marcado, a coluna `Status` desenha a mesma palavra em toda linha.
+
+        **A largura vai para onde há informação** (F9-C15 §5.6). Medido a 1280 px com o filtro
+        marcado, que é como esta aba abre: `Status` gastava ~70 px escrevendo `pendente` **27
+        vezes** -- zero bits, por construção: o filtro é o que garante que todas as linhas tenham
+        o mesmo status -- enquanto `Motivo`, a coluna que diz **o que conferir**, saía elidida em
+        **25 das 27 linhas**. O item de `Motivo` está aberto desde o ciclo 4; o que era novo no
+        ciclo 15 é que havia 70 px de redundância ao lado dele, e que a redundância era
+        consequência do filtro que a própria aba impõe.
+
+        Esconder e não estreitar: uma coluna de 20 px com `pende·` é pior que coluna nenhuma. E
+        ela **volta** ao desmarcar o filtro, que é quando o status volta a variar de linha para
+        linha -- é a mesma disciplina do rótulo do topo de `_JanelaDePartidas`, que some enquanto
+        outra coisa diz o mesmo.
+
+        `Motivo` é `elastica=True`, então o espaço liberado é dela por construção (`qt/tabela.py`:
+        quem estica é a coluna que `Coluna.elastica` declara). Nada precisa ser somado à mão.
+        """
+        indice = next(
+            (i for i, coluna in enumerate(COLUNAS) if coluna.chave == "status"), None
+        )
+        if indice is None:  # pragma: no cover - a coluna está na declaração acima
+            return
+        self.tabela.setColumnHidden(indice, so_pendentes)
+
     def refresh(self) -> None:
         """Redesenha a tabela a partir da fila, respeitando o filtro de pendentes."""
         so_pendentes = self.so_pendentes.isChecked()
+        self._esconder_o_status_redundante(so_pendentes)
         self._posicoes = [
             posicao
             for posicao, item in enumerate(self.queue.items)
@@ -268,9 +317,12 @@ class PainelDeRevisao(QWidget):
             )
             for item in (self.queue.items[posicao] for posicao in self._posicoes)
         )
+        self.vazio.setGeometry(self.tabela.viewport().rect())
+        self.vazio.setVisible(not self._posicoes)
         if self.queue.items:
             taxa = error_rate(self.queue.items)
-            self.lbl_resumo.setText(f"{self.queue.summary()} | {taxa:.0%} com sinal objetivo de erro")
+            # Ver `qt/painel_de_estudo.set_status`: a grafia do separador é `" · "`.
+            self.lbl_resumo.setText(f"{self.queue.summary()} · {taxa:.0%} com sinal objetivo de erro")
         else:
             self.lbl_resumo.setText(f"Fila vazia. Abra um PDF e use '{strings.VARRER_LIVRO}'.")
         self._mostrar_motivo()
@@ -308,6 +360,15 @@ class PainelDeRevisao(QWidget):
             self.tabela.setCurrentItem(alvo)
 
     # -------------------------------------------------------------------------------- gestos
+
+    def corrigir_agora(self) -> None:
+        """Abre o item selecionado da fila no editor. **É o nome do catálogo** (F9-C3).
+
+        Apelido de `abrir_selecionado`, que continua sendo o nome interno e o que os
+        testes desta aba chamam: o que mudou foi o comando ganhar nome público, tecla
+        (`Ctrl+Shift+N`) e item de menu, e o nome público é o do catálogo.
+        """
+        self.abrir_selecionado()
 
     def abrir_selecionado(self) -> None:
         posicao = self.posicao_selecionada()
@@ -361,7 +422,7 @@ class PainelDeRevisao(QWidget):
     def cancelar_varredura(self) -> None:
         if self.receivers(self.pediu_cancelamento):
             self.pediu_cancelamento.emit()
-            self.lbl_progresso.setText("Cancelando... (termina a página atual)")
+            self.lbl_progresso.setText("Cancelando… (termina a página atual)")
 
     def sumidouro(self) -> SumidouroDeRevisao | None:
         """O coletor que monta a fila a partir da varredura do livro (S-119).
@@ -379,7 +440,7 @@ class PainelDeRevisao(QWidget):
         self._varrendo = True
         self.btn_varrer.setEnabled(False)
         self.btn_cancelar.setEnabled(True)
-        self.lbl_progresso.setText("Varrendo o livro...")
+        self.lbl_progresso.setText("Varrendo o livro…")
         return SumidouroDeRevisao(self, pedido, cache_dir=self.cache_dir)
 
     def aplicar_varredura(

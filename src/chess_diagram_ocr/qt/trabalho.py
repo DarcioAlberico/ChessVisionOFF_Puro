@@ -24,7 +24,8 @@ from chess_diagram_ocr.cli import message_for
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["DeteccaoDeFundo", "Tarefa"]
+__all__ = [
+    "manter_viva","DeteccaoDeFundo", "Tarefa"]
 
 
 class Tarefa(QThread):
@@ -121,12 +122,10 @@ class DeteccaoDeFundo(QObject):
         documento, pagina, funcao = self._pedido
         self._pedido = None
         self._em_curso = (documento, pagina)
-        tarefa = Tarefa(funcao, nome=f"detecção da página {pagina + 1}")
+        tarefa = manter_viva(Tarefa(funcao, nome=f"detecção da página {pagina + 1}"))
         tarefa.pronto.connect(self._pronto)
         tarefa.falhou.connect(self._falhou)
         tarefa.finished.connect(self._terminou)
-        _VIVAS.add(tarefa)
-        tarefa.finished.connect(partial(_soltar, tarefa))
         self._tarefa = tarefa
         tarefa.start()
 
@@ -150,7 +149,25 @@ class DeteccaoDeFundo(QObject):
 
 
 _VIVAS: set[Tarefa] = set()
-"""As detecções em curso, seguras por referência até terminarem. Ver `DeteccaoDeFundo`."""
+"""As tarefas em curso, seguras por referência até terminarem. Ver `manter_viva`."""
+
+
+def manter_viva(tarefa: Tarefa) -> Tarefa:
+    """Segura a tarefa até ela terminar, **sem pai**. Devolve-a, para caber numa linha.
+
+    **Uma `Tarefa` com pai widget derruba o processo, e o modo de falha é este** (F9-C2): o Qt
+    destrói os filhos junto com o pai, e o destrutor de `QThread` **aborta** se a thread ainda
+    estiver rodando -- `STATUS_STACK_BUFFER_OVERRUN`, sem uma linha de traceback, porque a queda é
+    no C++. Fechar a janela com uma leitura de CSV em curso é o caso normal, não o exótico: o
+    arnês `caissa.ui.audit.bloqueio` fecha a janela seis vezes por execução e caiu nas seis.
+
+    Sem pai a thread não é destruída com o widget; a referência daqui é o que impede o coletor do
+    Python de fazer o mesmo. É o que `DeteccaoDeFundo` já fazia desde a S-68, agora com nome, para
+    o segundo e o terceiro chamador não terem de redescobri-lo.
+    """
+    _VIVAS.add(tarefa)
+    tarefa.finished.connect(partial(_soltar, tarefa))
+    return tarefa
 
 
 def _soltar(tarefa: Tarefa) -> None:

@@ -48,7 +48,21 @@ from . import degradacao
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["ICONES", "Arco", "Poli", "TRACO_RELATIVO", "cache_de_icones", "icone", "imagem", "limpar_cache"]
+__all__ = [
+    "ICONES",
+    "MARCAS",
+    "MARCA_TRACO",
+    "MARCA_VISTO",
+    "Arco",
+    "Poli",
+    "TRACO_RELATIVO",
+    "cache_de_icones",
+    "caixa_dos_tracos",
+    "icone",
+    "imagem",
+    "limpar_cache",
+    "na_grade",
+]
 
 Ponto = tuple[float, float]
 
@@ -118,6 +132,57 @@ class Arco:
 Traco = Poli | Arco
 
 
+def caixa_dos_tracos(tracos: tuple[Traco, ...]) -> tuple[float, float, float, float]:
+    """A caixa que **todos** os traços de um ícone ocupam juntos, na unidade `0..100`."""
+    limites = [traco.limites() for traco in tracos]
+    return (
+        min(item[0] for item in limites),
+        min(item[1] for item in limites),
+        max(item[2] for item in limites),
+        max(item[3] for item in limites),
+    )
+
+
+def na_grade(tracos: tuple[Traco, ...]) -> tuple[Traco, ...]:
+    """Os mesmos traços, **postos na grade única**: o lado maior enche a caixa, centrados.
+
+    **O item 4 do ciclo 6, e ele foi medido antes de ser consertado.** Os botões só-de-ícone da
+    barra do visor vinham de **cinco caixas de glifo diferentes** -- 11×11, 12×12, 12×14, 14×10,
+    14×12 -- porque cada desenho declarava a sua própria extensão dentro do `0..100`: a lupa vai
+    de 16 a 88, a folha de 10 a 90, as paredes da largura de 22 a 78 na vertical.
+    `TRACO_RELATIVO` já garantia **um peso** de traço; o que faltava era **uma extensão**, e sem
+    ela um ícone saía 27 % maior que o vizinho na mesma fila.
+
+    A escala é **isotrópica** e de propósito: esticar cada desenho até um quadrado faria a seta
+    da página anterior virar uma seta gorda e a lupa virar uma elipse. O que se iguala é o
+    **tamanho óptico** -- o lado maior --, e o que sobra de diferença entre as caixas é a
+    proporção da própria forma, que é o que distingue uma seta de um quadrado.
+
+    **Não vale para `MARCAS`**: o visto e o traço do indeterminado são deliberadamente de
+    tamanhos diferentes -- *"ele é horizontal e mais curto que o visto é largo"* --, e essa
+    diferença é a WCAG 1.4.1 que o ciclo 1 cobrou. Normalizá-los desfaria o conserto.
+    """
+    x0, y0, x1, y1 = caixa_dos_tracos(tracos)
+    largura, altura = x1 - x0, y1 - y0
+    maior = max(largura, altura)
+    if maior <= 0:
+        return tracos
+    escala = LADO_DA_CAIXA / maior
+    dx = (LADO_DA_CAIXA - largura * escala) / 2 - x0 * escala
+    dy = (LADO_DA_CAIXA - altura * escala) / 2 - y0 * escala
+
+    def mover(ponto: Ponto) -> Ponto:
+        return ponto[0] * escala + dx, ponto[1] * escala + dy
+
+    postos: list[Traco] = []
+    for traco in tracos:
+        if isinstance(traco, Poli):
+            postos.append(Poli(*(mover(ponto) for ponto in traco.pontos), fechado=traco.fechado))
+        else:
+            postos.append(Arco(mover(traco.centro), traco.raio * escala, traco.inicio, traco.fim))
+    return tuple(postos)
+
+
 ICONES: dict[str, tuple[Traco, ...]] = {
     # A chave é o nome do comando em `ui/comandos.py`. Dois comandos podem apontar para a mesma
     # chave -- hoje nenhum aponta, e é por isso que a ponte é testada nos dois sentidos.
@@ -139,8 +204,8 @@ ICONES: dict[str, tuple[Traco, ...]] = {
     # -------------------------------------------------------------------------------- OCR
     # Folha inteira com o facho atravessando: ler **a página**.
     "ler_pagina": (
-        Poli((26, 10), (74, 10), (74, 90), (26, 90), fechado=True),
-        Poli((12, 50), (88, 50)),
+        Poli((26, 14), (74, 14), (74, 86), (26, 86), fechado=True),
+        Poli((14, 50), (86, 50)),
     ),
     # Tabuleiro de quatro casas: ler **um diagrama**. O objeto é outro, e a 16 px é a diferença
     # entre os dois que se enxerga primeiro -- folha alta contra quadrado dividido.
@@ -150,11 +215,15 @@ ICONES: dict[str, tuple[Traco, ...]] = {
         Poli((50, 18), (50, 82)),
     ),
     # Os quatro cantos do recorte, que é o gesto que o comando pede.
+    # **Os cantos ficaram mais longos no F9-C6**, e a razão é a densidade medida: com braços de
+    # 20 unidades este era o desenho mais **fino** da fila do visor -- 25,0 % de tinta na caixa,
+    # contra 73,2 % do vizinho `ajustar_pagina`. Braços de 32 põem os dois na mesma vizinhança
+    # sem mexer no que o ícone diz: continua sendo o recorte pelos quatro cantos.
     "selecionar_area": (
-        Poli((14, 34), (14, 14), (34, 14)),
-        Poli((66, 14), (86, 14), (86, 34)),
-        Poli((86, 66), (86, 86), (66, 86)),
-        Poli((34, 86), (14, 86), (14, 66)),
+        Poli((14, 46), (14, 14), (46, 14)),
+        Poli((54, 14), (86, 14), (86, 46)),
+        Poli((86, 54), (86, 86), (54, 86)),
+        Poli((46, 86), (14, 86), (14, 54)),
     ),
     # ----------------------------------------------------------------------------- EDICAO
     "aplicar_fen": (Poli((18, 52), (40, 76), (82, 24)),),
@@ -164,19 +233,72 @@ ICONES: dict[str, tuple[Traco, ...]] = {
         Poli((34, 34), (66, 66)),
         Poli((66, 34), (34, 66)),
     ),
-    "diagrama_anterior": (Poli((62, 18), (30, 50), (62, 82)),),
-    "proximo_diagrama": (Poli((38, 18), (70, 50), (38, 82)),),
+    # **Quadradas, e o que separa as duas famílias passa a ser o preenchimento** (F9-C7, §4.7).
+    # Eram 32×64 -- estreitas e altas de propósito, para se distinguirem das setas de **página**,
+    # que são 60×60 -- e a proporção custava caro depois que elas saíram do catálogo e foram
+    # para a tela: `na_grade` enche o lado maior, então 32×64 vira uma caixa de tinta de **8×16**
+    # ao lado de irmãs de 16×16, e a "grade única" que o ciclo 6 conquistou na barra do visor
+    # deixaria de valer na janela.
+    #
+    # O que separa as duas famílias continua existindo e ficou mais forte a 16 px: estas são
+    # **abertas** (uma seta em V, traço) e as de página são **fechadas** (triângulo cheio).
+    # Preenchimento lê-se num relance; proporção de 2:1 contra 1:1 não.
+    "diagrama_anterior": (Poli((78, 20), (22, 50), (78, 80)),),
+    "proximo_diagrama": (Poli((22, 20), (78, 50), (22, 80)),),
+    # ------------------------------------------------------- os três que faltavam (F9-C6)
+    # **Eram caracteres de texto num botão só-de-ícone**, e o crítico do ciclo 5 mediu o pior
+    # deles: o `×` de `tirar_caixa` desenhava uma caixa de glifo de **4×5 px dentro de um botão
+    # de 26 px** -- um nono da massa visual do vizinho, na mesma fila. `strings.DISPENSAR`,
+    # `ANTERIOR` e `PROXIMO` continuam existindo como reserva (o caminho de `_vestir_de_icone`
+    # quando a Pillow falta), mas o desenho normal passa a vir da mesma grade que os outros seis.
+    #
+    # O `×` é o de `apagar_casa` **sem a casa**: o gesto é o mesmo -- tirar --, e o objeto é
+    # outro. As duas setas são as de diagrama espelhadas com a barra da margem, que é a
+    # convenção de "página" contra "item" em todo leitor de PDF.
+    "tirar_caixa": (
+        Poli((22, 22), (78, 78)),
+        Poli((78, 22), (22, 78)),
+    ),
+    # **Triângulo fechado e largo, e a barra de margem saiu.** A primeira forma deste ciclo era
+    # a seta com a barra -- `|◀` --, e `|◀` é a convenção universal de **primeira** página: um
+    # ícone que diz a coisa errada é pior que o `◀` de texto que ele veio substituir. Fechado
+    # porque a 16 px o contorno lê como triângulo cheio, que é o `◀` que estava ali; largo
+    # (60×60) porque as setas de **diagrama** são estreitas e altas (32×64) e as duas famílias
+    # ficam na mesma janela -- a proporção é o que as separa sem legenda.
+    "pagina_anterior": (Poli((80, 20), (20, 50), (80, 80), fechado=True),),
+    "proxima_pagina": (Poli((20, 20), (80, 50), (20, 80), fechado=True),),
+    # ------------------------------------------------- as pontas da linha (F9-C7, §4.7)
+    # **Onze glifos de texto ainda faziam papel de ícone na janela**, e o ciclo 6 só olhou a
+    # barra do visor: a varredura era `j.pdf.findChildren`, e nos outros quatro painéis o `◀`
+    # rendia **5×3 px de tinta** contra **6×6** do `▶` ao lado -- 2,4× de massa entre um par
+    # que deveria ser espelho, e ampliado a 10× o `◀` não tem ápice nenhum: é um traço
+    # horizontal chato. Segoe UI cobre um dos dois e degenera o outro.
+    #
+    # Aqui a barra **é** a informação: `|◀` é "primeiro" e `▶|` é "último", e é a convenção de
+    # todo leitor de mídia e de PDF. É a diferença para `pagina_anterior`, onde a barra saiu
+    # justamente porque ali ela diria "primeira página" no botão de "página anterior".
+    "inicio_da_linha": (
+        Poli((22, 18), (22, 82)),
+        Poli((84, 18), (36, 50), (84, 82), fechado=True),
+    ),
+    "fim_da_linha": (
+        Poli((16, 18), (64, 50), (16, 82), fechado=True),
+        Poli((78, 18), (78, 82)),
+    ),
     # A seta que dá a volta por cima e desce na ponta -- os dois são a mesma forma espelhada, e
     # desenhá-los diferentes seria dizer que não são o mesmo gesto em sentidos opostos. O arco vai
     # de 180 a 360 porque na Pillow o ângulo cresce no sentido horário com o eixo `y` para baixo:
     # 180 é a esquerda, 270 é o **topo**, 360 é a direita.
+    # Três quartos de volta com a ponta da seta: a 20 px a meia-volta de antes ocupava 9 dos 20
+    # px de altura e o botão parecia vazio (passo 12: caixa do desenho ≥ metade do lado nos dois
+    # eixos).
     "desfazer": (
-        Arco((50, 58), 28, 180, 360),
-        Poli((10, 42), (22, 58), (34, 42)),
+        Arco((50, 52), 30, 200, 470),
+        Poli((10, 40), (22, 60), (36, 42)),
     ),
     "refazer": (
-        Arco((50, 58), 28, 180, 360),
-        Poli((66, 42), (78, 58), (90, 42)),
+        Arco((50, 52), 30, 70, 340),
+        Poli((64, 42), (78, 60), (90, 40)),
     ),
     # O tabuleiro e o que sai dele. **Não é o `apagar_casa` com outro nome**: aquele é uma casa com
     # um X, e este é a posição inteira indo embora -- a 20 px, a diferença que se lê primeiro é o
@@ -203,16 +325,23 @@ ICONES: dict[str, tuple[Traco, ...]] = {
     ),
     # Duas paredes e a seta de dois sentidos entre elas: a largura é que manda.
     "ajustar_largura": (
-        Poli((10, 22), (10, 78)),
-        Poli((90, 22), (90, 78)),
+        Poli((10, 10), (10, 90)),
+        Poli((90, 10), (90, 90)),
         Poli((26, 50), (74, 50)),
         Poli((36, 40), (26, 50), (36, 60)),
         Poli((64, 40), (74, 50), (64, 60)),
     ),
     # A folha inteira dentro da moldura: o enquadramento de escolher qual diagrama abrir.
+    #
+    # **A folha de dentro encolheu no F9-C6.** Duas caixas fechadas quase encostadas faziam deste
+    # o desenho mais **sólido** do visor -- 73,2 % de tinta na caixa, contra 25,0 % do
+    # `selecionar_area` na mesma fila, que é a "densidade de 30,6 % a 65,7 %" que o crítico do
+    # ciclo 5 fotografou. A folha menor diz a mesma coisa (o que cabe **dentro** da moldura) com
+    # menos massa, e a moldura continua sendo a forma que se lê primeiro a 16 px.
     "ajustar_pagina": (
-        Poli((10, 18), (90, 18), (90, 82), (10, 82), fechado=True),
-        Poli((34, 30), (66, 30), (66, 70), (34, 70), fechado=True),
+        Poli((10, 10), (90, 10), (90, 90), (10, 90), fechado=True),
+        Poli((36, 40), (64, 40)),
+        Poli((36, 60), (64, 60)),
     ),
 }
 """Os dezessete ícones, e a razão de serem dezessete está na conta das duas imagens.
@@ -228,6 +357,31 @@ não é a `apagar_casa` -- aquele apaga **uma casa** e este esvazia a posição.
 não existiam, um ícone para eles seria arte órfã, e a ponte com `ui/comandos.py` é testada nos dois
 sentidos justamente para que isso falhe."""
 
+
+MARCA_VISTO = "marca_visto"
+MARCA_TRACO = "marca_traco"
+MARCAS: dict[str, tuple[Traco, ...]] = {
+    # O visto, em três quartos da caixa: a caixa de seleção tem 14 px e o traço precisa da folga
+    # da borda de 2 px para não encostar nela.
+    MARCA_VISTO: (Poli((20, 52), (42, 74), (80, 26)),),
+    # O traço do indeterminado. Ele é **horizontal e mais curto que o visto é largo**, que é a
+    # diferença de forma que a 1.4.1 pede: as duas marcas não se confundem em preto e branco.
+    MARCA_TRACO: (Poli((24, 50), (76, 50)),),
+}
+"""As duas marcas do indicador de seleção. **Não são ícones de comando** (F9-C2, §7 item 17).
+
+**O defeito, medido pelo crítico do ciclo 1:** "marcada" era um quadrado azul cheio e
+"indeterminada" um quadrado cinza cheio -- *mesma forma, mesmo tamanho, só a matiz separa*. É
+WCAG 1.4.1 nível A: a cor não pode ser o único canal que carrega a informação. Quem não distingue
+as duas matizes, ou quem imprime a tela, vê dois quadrados iguais.
+
+Elas moram fora de `ICONES` de propósito, e a razão é a ponte: `ICONES` é fechada contra
+`ui/comandos.CATALOGO` nos dois sentidos -- todo ícone é de um comando e todo comando com ícone
+tem o seu. Uma marca de indicador não é comando nenhum, e enfiá-la lá quebraria a única regra que
+faz aquela tabela não crescer sozinha.
+
+O traço vem de `TRACO_RELATIVO`, como todo o resto: a marca de uma caixa de 14 px é desenhada em
+100×100 e reduzida, e é o que a mantém nítida quando alguém aumenta a fonte do Windows."""
 
 SUPERAMOSTRA = 4
 """Fator de desenho antes de reduzir. A Pillow não suaviza traço, e a redução é que suaviza.
@@ -248,7 +402,13 @@ def imagem(nome: str, tamanho: int, cor: str) -> Image.Image | None:
     Existe separado de `icone` para que o desenho seja afirmável sem janela: é aqui que os testes
     de geometria olham, e é o que permite conferir o ícone num tamanho sem abrir um `Tk`.
     """
+    # **A grade única entra aqui e não na declaração** (F9-C6, item 4). Pôr as coordenadas já
+    # normalizadas na tabela faria a declaração deixar de ser legível -- `Poli((11.7, 3.2), …)`
+    # em vez de `Poli((10, 30), …)` --, e faria cada desenho novo ter de ser normalizado à mão
+    # para caber na fila, que é exatamente a disciplina que não sobreviveu quatro ciclos.
+    # `MARCAS` fica de fora: ver `na_grade`.
     tracos = ICONES.get(nome)
+    tracos = na_grade(tracos) if tracos else MARCAS.get(nome)
     if tracos is None:
         # **Uma vez por nome, e não uma por botão** (S-234). A fita pede o mesmo ícone a cada
         # remontagem de cromo e a cada mudança de densidade; sem isto, um nome errado escreve

@@ -11,9 +11,17 @@ cede espaço. No Tk isso é a ordem do `pack`; aqui é o `stretch` do `QHBoxLayo
 leva 1 e as outras 0, e por isso uma mensagem longa encolhe a si mesma em vez de empurrar para
 fora o livro e a página, que é o que a pessoa consulta o tempo todo.
 
-**A altura é fixa por construção, e não por pixel cravado.** Todo widget existe sempre; o que
-muda é texto, cor e estado. Nada aparece nem desaparece, então nada muda a altura -- e é por isso
-que a barra de progresso e o botão de cancelar ficam desabilitados em vez de escondidos.
+**A altura é fixa por construção, e não por pixel cravado.** A altura da linha é a do **botão de
+cancelar**, que existe sempre -- desabilitado quando não há o que cancelar. É por isso que o
+rodapé não muda de altura quando uma operação começa.
+
+**A barra de progresso é a exceção, e ela foi paga caro** (F9-C3). O parágrafo acima dizia "nada
+aparece nem desaparece" e a barra era o preço: ela nascia `visivel=True, 0 de 100, sem texto` e
+**nunca** se escondia -- não havia um `setVisible` neste arquivo. Nas 36 capturas do ciclo 2 ela é
+um retângulo vazio de 120×26 no canto inferior direito, com borda de 1 px e raio de 4, desenhado
+como um campo de texto vazio ao lado de um `Cancelar` cinzento. Ela some agora quando não há
+operação (`estado_do_rodape.Ocupacao.mostra_barra`), e a altura não muda porque quem a sustenta é
+o botão.
 
 ---
 
@@ -27,13 +35,16 @@ e essa é uma decisão do projeto que não pode virar um argumento que alguém e
 from __future__ import annotations
 
 import logging
+import weakref
 from collections.abc import Callable, Sequence
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6 import sip
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout, QWidget
 
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
+from chess_diagram_ocr.qt.rotulo import RotuloElidido
 from chess_diagram_ocr.ui import espaco, estilos, tipografia, tokens
 from chess_diagram_ocr.ui.busy import BusyOperation
 from chess_diagram_ocr.ui.estado_do_rodape import (
@@ -69,6 +80,15 @@ class RodapeDaJanela(QWidget):
 
     Quem o cria põe-o por último no leiaute vertical da janela -- é isso que faz dele o último a
     ser cortado quando ela encolhe, em vez do primeiro (defeito 5 da S-163).
+    """
+
+    ocupacao_mudou = pyqtSignal()
+    """O registro avisou que algo começou ou terminou. **Só existe para trocar de thread** (F9-C4).
+
+    `BusyRegistry.observe` chama de quem registrou -- e quem registra é a thread de trabalho.
+    Tocar num `QWidget` de lá é o erro clássico do Qt. Um sinal com conexão automática entre
+    threads diferentes é entregue **na fila da thread do receptor**, que é a da janela: é o menor
+    mecanismo que faz o aviso chegar no lugar certo, e é `qt/` fazendo o que só `qt/` pode fazer.
     """
 
     def __init__(self, parent: QWidget | None = None, *, cancelar: Callable[[], object] | None = None) -> None:
@@ -112,7 +132,18 @@ class RodapeDaJanela(QWidget):
         tema.pintar(self._lbl_dispositivos, "color", tokens.TEXTO_SECUNDARIO)
         linha.addWidget(self._lbl_dispositivos, 0)
 
-        self._lbl_documento = QLabel("", self)
+        # **Elidido, e é o mesmo defeito nº 2 da crítica do ciclo 1 num segundo lugar.** A zona
+        # do documento escreve `<livro> · p. 121 de 289 · ...`, e com o nome de 149 caracteres da
+        # pasta `PDF/` ela pedia **996 px** de largura mínima -- sozinha, ela ainda subia o
+        # `minimumSizeHint` da janela para 1513 px depois de a barra do visor já estar consertada.
+        # O nome inteiro fica na dica; a frase inteira está no `documento()`, que é o que o teste
+        # lê.
+        # **`largura_desejada=0`: peça o texto inteiro** (F9-C7, §4.1). Com o teto de 130 px --
+        # que é da barra do visor, onde ele evita refluxo -- este rótulo recebia 130 px, pedia
+        # 313 e desenhava `'1937 Kemeri…esta página'` **com 1534 px livres na mesma faixa**. O
+        # `minimumSizeHint` continua zero, então o nome de 149 caracteres continua sem decidir a
+        # largura mínima da janela; o que muda é que, havendo folga, ele a usa.
+        self._lbl_documento = RotuloElidido("", self, largura_desejada=0)
         self._lbl_documento.setFont(auxiliar)
         tema.pintar(self._lbl_documento, "color", tokens.TEXTO_SECUNDARIO)
         linha.addWidget(self._lbl_documento, 0)
@@ -126,6 +157,11 @@ class RodapeDaJanela(QWidget):
         self._barra.setTextVisible(False)
         self._barra.setRange(0, 100)
         self._barra.setValue(0)
+        # **Nasce escondida** (F9-C3). Ver `estado_do_rodape.Ocupacao.mostra_barra`: ela aparece
+        # em `aplicar_ocupacao` quando há operação e some quando a última termina. Quem sustenta a
+        # altura da linha é o botão de cancelar, que continua sempre visível -- então esconder a
+        # barra tira 120 px de largura e nenhum pixel de altura.
+        self._barra.setVisible(False)
         linha.addWidget(self._barra, 0)
 
         self._btn_cancelar = QPushButton("Cancelar", self)
@@ -202,12 +238,17 @@ class RodapeDaJanela(QWidget):
         Os dois parâmetros são posicionais para que o método **seja** o callback que o painel de
         PDF espera, sem um `lambda` de adaptação no meio -- é o contrato de `ui/rodape.py`.
         """
-        self._lbl_documento.setText(texto)
+        self._lbl_documento.definir_texto(texto)
         self._lbl_documento.setStyleSheet(f"color: {tema.cor_atual(papel_do_documento(todos_salvos))};")
 
     def documento(self) -> str:
-        """O que a zona mostra agora. Existe pelo mesmo motivo que `mensagem()`."""
-        return self._lbl_documento.text()
+        """O que a zona mostra agora. Existe pelo mesmo motivo que `mensagem()`.
+
+        Devolve a frase **inteira** e não a desenhada: o rótulo elide para caber na janela, e o
+        que o chamador (e o teste) perguntam é o que o rodapé está dizendo, não quantos pixels
+        ele teve. Ver `qt/rotulo.RotuloElidido.texto_inteiro`.
+        """
+        return self._lbl_documento.texto_inteiro
 
     # -------------------------------------------------------------- dispositivo dos modelos
 
@@ -230,6 +271,20 @@ class RodapeDaJanela(QWidget):
         """O que a zona mostra agora. Existe pelo mesmo motivo que `mensagem()`."""
         return self._lbl_dispositivos.text()
 
+    def barra_de_progresso(self) -> QProgressBar:
+        """A barra, para quem precisa **medir** o que ela ficou tendo (F9-C7, §4.2).
+
+        Existe pela mesma razão de `mensagem()` e `dispositivos()`, e ganhou um segundo usuário:
+        `caissa.ui.audit.progresso` lia `total=` no código e **deduzia** se a barra ficava
+        determinada. Uma dedução não é uma medida -- bastaria a troca de modo sumir daqui para o
+        portão continuar verde com a barra andando. Com este acessor ele pergunta ao widget:
+        `minimum()`/`maximum()`, e `(0, 0)` é a marquise do Qt.
+
+        Devolve o widget e não uma cópia do intervalo de propósito: quem mede quer o objeto de
+        que a captura tirou os 59 px do bloco, não um número que este módulo escolheu publicar.
+        """
+        return self._barra
+
     # -------------------------------------------------------------------- operação em curso
 
     def aplicar_ocupacao(self, operacoes: Sequence[BusyOperation]) -> None:
@@ -244,6 +299,9 @@ class RodapeDaJanela(QWidget):
         try:
             self._lbl_ocupacao.setText(atual.texto)
             self._btn_cancelar.setEnabled(atual.cancelavel)
+            # **Escondida sem operação** (F9-C3). Antes de `mostra_barra` esta linha não existia,
+            # e a barra ficava em `0/100` para sempre no canto de todas as capturas.
+            self._barra.setVisible(atual.mostra_barra)
             if atual.modo != self._modo_da_barra:
                 self._trocar_modo_da_barra(atual.modo)
             if atual.modo == DETERMINADO and atual.fracao is not None:
@@ -262,11 +320,51 @@ class RodapeDaJanela(QWidget):
         self._barra.setRange(0, 100)
         self._barra.setValue(0)
 
+    def assinar_ocupacao(
+        self,
+        assinar: Callable[[Callable[[], None]], None],
+        operacoes: Callable[[], Sequence[BusyOperation]],
+    ) -> None:
+        """Pede ao registro para avisar quando algo começa ou termina (F9-C4).
+
+        **Por que o relógio de `acompanhar` não bastava, com o número.** Ele relê a cada 400 ms
+        (`INTERVALO_DE_ACOMPANHAMENTO_MS`) e a zona de mensagem é escrita por sinal, no instante.
+        Nesses até 400 ms o rodapé **contradiz a si mesmo**: em
+        `benchmarks/reports/ui/c4/c4_claro_1280x800_dataset.png` ele diz "Lendo o dataset…" com a
+        barra escondida e o `Cancelar` desabilitado -- 1 das 36 capturas, e é a mesma frase com
+        que o defeito bloqueante nº 2 do ciclo 3 reprovou o ciclo 2.
+
+        O relógio **fica**: ele é a rede contra o `release()` esquecido da S-112. Esta assinatura
+        é o que faz as quatro zonas mudarem juntas.
+
+        **O que é assinado é uma função guardada, e não `self.ocupacao_mudou.emit`.** O registro
+        vive mais que o rodapé: uma leitura que termina depois de a janela ser destruída chama
+        `release()`, que avisa os observadores. Um sinal ligado guarda o ponteiro C++ do emissor, e
+        emitir por ele depois do destrutor **não levanta `RuntimeError` -- derruba o processo**
+        (`Windows fatal exception: access violation`, achado com a suíte do tronco inteira). O
+        `try` de `busy._avisar` não pega isso, porque não é exceção de Python. Quem sabe que um
+        `QObject` pode estar morto por baixo do embrulho é `qt/`, e `sip.isdeleted` é a pergunta.
+        """
+
+        referencia = weakref.ref(self)
+
+        def avisar() -> None:
+            rodape = referencia()
+            if rodape is None or sip.isdeleted(rodape):
+                return
+            rodape.ocupacao_mudou.emit()
+
+        assinar(avisar)
+        # Fila, e não `DirectConnection`: `register` é chamado da thread de trabalho, e o slot
+        # toca widget. Ver `ocupacao_mudou`.
+        self.ocupacao_mudou.connect(lambda: self.aplicar_ocupacao(operacoes()))
+
     def acompanhar(
         self,
         operacoes: Callable[[], Sequence[BusyOperation]],
         *,
         dispositivos: Callable[[], Dispositivos] | None = None,
+        avisos: Callable[[Callable[[], None]], None] | None = None,
         intervalo_ms: int = INTERVALO_DE_ACOMPANHAMENTO_MS,
     ) -> None:
         """Relê o registro a cada `intervalo_ms`, até o rodapé ser destruído.
@@ -275,9 +373,19 @@ class RodapeDaJanela(QWidget):
         esquecesse de avisar deixaria a barra girando para sempre, e a S-112 registra que
         `release()` esquecido é o erro que de fato acontece.
 
+        **E ele também é avisado, desde o F9-C4** (`assinar_ocupacao`): o relógio sozinho deixava
+        até 400 ms em que a zona de mensagem já dizia "Lendo o dataset…" e a barra ao lado ainda
+        estava escondida com o `Cancelar` cinzento. Os dois caminhos convivem porque respondem a
+        perguntas diferentes -- "mudou agora?" e "continua verdade?".
+
         `dispositivos` entra **no mesmo tique**, e não num segundo relógio, porque a pergunta é
         da mesma natureza: nenhum dos dois modelos avisa quando muda.
+
+        `avisos` é assinado **uma vez**, na primeira chamada -- a reagenda abaixo repassa `None`,
+        senão cada tique acrescentaria um observador e o registro acumularia 150 por minuto.
         """
+        if avisos is not None:
+            self.assinar_ocupacao(avisos, operacoes)
         self.aplicar_ocupacao(operacoes())
         if dispositivos is not None:
             self.definir_dispositivos(dispositivos())

@@ -347,6 +347,8 @@ SEM_TKINTER = {
     "barra.py": "o arranjo da barra fluida: quantas linhas os itens ocupam (S-151/S-506)",
     "degradacao.py": "o inventário de quedas de aparência e o aviso uma-vez-só (S-506)",
     "folha.py": "o recheio de cada superfície e o vão do indicador (S-506)",
+    "folha_de_estilo.py": "a folha de estilo e o mapa da QPalette, como texto e dicionario (F9)",
+    "nomes_acessiveis.py": "como um controle sem rotulo e anunciado por um leitor de tela (F9)",
     "menu.py": "a declaração dos menus e as conferências sobre o catálogo (S-506)",
     "tabela.py": "a coluna declarada, a largura mínima e quando a barra horizontal aparece (S-506)",
     "atalhos.py": "a tabela de atalhos: tecla, comando e descrição, sem widget (S-161/S-165)",

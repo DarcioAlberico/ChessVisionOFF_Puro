@@ -12,6 +12,7 @@ Estes testes são a comparação que faltava, e quase todos rodam sem abrir jane
 from __future__ import annotations
 
 import ast
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -549,12 +550,24 @@ class ComandosDoEditorTests(unittest.TestCase):
         self.assertEqual([], orfas, "rótulo declarado na isenção que já não existe no painel")
         self.assertEqual([], _rotulos_reconfigurados(arvore))
 
-    def test_edicao_continua_com_um_primario(self) -> None:
-        """`EDICAO` já tem o seu -- `salvar`, a posição do tabuleiro --, e nenhum comando do editor
-        pede ênfase: duas ações de salvar em grupos vizinhos, as duas em azul, é o mesmo que
-        nenhuma (`ui/estilos.py`)."""
-        self.assertEqual(comandos.primarios_por_grupo()[comandos.EDICAO], ["salvar"])
-        self.assertEqual(comandos.primarios_por_grupo()[comandos.ARQUIVO], [])
+    def test_a_tela_inteira_tem_uma_enfase_so(self) -> None:
+        """**A regra subiu da barra para a tela** (F9-C2, §7 item 10), e o catálogo é onde ela mora.
+
+        Era "um primário por grupo", e cada grupo obedecia: `EDICAO` tinha `salvar`, `OCR` tinha
+        `ler_melhor`, `ACERVO` tinha `anotar_pagina`, `ESTUDO` tinha `estudo_do_diagrama`. O
+        crítico do ciclo 1 mediu o que isso desenha: a janela mostra o painel do PDF, o painel de
+        campo e a aba **ao mesmo tempo**, então Resultado, Estudo e Revisão saíam com **três**
+        botões primários simultâneos e as outras três abas com dois. Uma barra correta vezes três
+        é uma tela errada.
+
+        Sobrou **um** primário no catálogo inteiro, e ele é `ler_melhor`: ler a página é o que esta
+        janela faz. Os outros três continuam com tecla, com ícone e com o primeiro lugar na fila --
+        o que eles deixaram de ter é a única cor que a tela reserva para dizer "é aqui".
+        """
+        primarios = {
+            grupo: acoes for grupo, acoes in comandos.primarios_por_grupo().items() if acoes
+        }
+        self.assertEqual({comandos.OCR: ["ler_melhor"]}, primarios)
 
     def test_desfazer_e_refazer_aparecem_uma_vez(self) -> None:
         """A S-229 os cria para o tabuleiro e a S-243 os aponta para o editor conforme o foco.
@@ -615,3 +628,130 @@ class RotuloAlternadoTests(unittest.TestCase):
                 self.assertTrue(comandos.rotulo_alternado(registro.acao).strip())
                 if not registro.rotulo_alternado:
                     self.assertEqual(registro.no_botao, registro.alternado)
+
+
+class EstadoVazioNomeiaControleQueExisteTests(unittest.TestCase):
+    """O estado vazio pode mandar apertar um botão -- **desde que o botão exista** (F9-C5 §7.1).
+
+    `qt/painel_de_resultado.MENSAGEM_VAZIA` mandava usar *"Ler página"*, e a sonda dos controles
+    visíveis devolveu **0** nas duas peles: 0 por `text()`, 0 por `accessibleName()`, 0 por
+    `toolTip()`, 0 no menu. O comando existe -- `ler_pagina` -- e aparece com **três** nomes,
+    nenhum deles esse: "Ler esta página" (menu e dica), "OCR todos diagramas" (pílula da pele
+    Foco) e, na pele clássica, um botão **só de ícone** sem rótulo nenhum.
+
+    Estado vazio sem orientação reprova sozinho pela carta §3.3. Orientação que aponta para um
+    nome que não existe é pior: quem lê procura, e não acha.
+
+    **A trava é o cruzamento, e não o literal.** Todo nome entre aspas numa mensagem de estado
+    vazio tem de ser um rótulo declarado no catálogo -- longo, curto, de botão ou de leitor. Um
+    literal novo escrito à mão falha aqui no minuto em que ele diverge, que é o mecanismo desta
+    suíte inteira (S-324) aplicado ao texto de orientação.
+    """
+
+    CITADO = re.compile(r'"([^"]{3,60})"')
+
+    def _mensagens(self) -> dict[str, str]:
+        """As frases de estado vazio que nomeiam um caminho de saída, e onde elas moram.
+
+        `qt/painel_de_resultado` entra por importação porque a constante é montada a partir do
+        catálogo; as de `ui/strings` são texto puro. Um estado vazio novo que nomeie controle
+        precisa entrar aqui -- e o teste seguinte é quem cobra isso.
+        """
+        from chess_diagram_ocr.ui import strings
+
+        mensagens = {
+            "ui/strings.TEXTO_VAZIO_FRASE": strings.TEXTO_VAZIO_FRASE,
+            "ui/strings.EDITOR_VAZIO": strings.EDITOR_VAZIO,
+        }
+        try:
+            from chess_diagram_ocr.qt import painel_de_resultado
+        except ImportError:  # pragma: no cover - venv sem binding de Qt
+            return mensagens
+        mensagens["qt/painel_de_resultado.MENSAGEM_VAZIA"] = painel_de_resultado.MENSAGEM_VAZIA
+        return mensagens
+
+    def _rotulos_do_catalogo(self) -> set[str]:
+        nomes: set[str] = set()
+        for registro in comandos.CATALOGO:
+            nomes |= {
+                registro.rotulo,
+                registro.no_botao,
+                registro.no_leitor,
+                registro.alternado,
+            }
+            if registro.rotulo_curto:
+                nomes.add(registro.rotulo_curto)
+        return {nome for nome in nomes if nome}
+
+    def test_estado_vazio_so_nomeia_controle_que_existe(self) -> None:
+        """Todo nome entre aspas é um rótulo que o catálogo declara."""
+        rotulos = self._rotulos_do_catalogo()
+        orfaos = [
+            (onde, nome)
+            for onde, texto in self._mensagens().items()
+            for nome in self.CITADO.findall(texto)
+            if nome not in rotulos
+        ]
+        self.assertEqual(
+            [],
+            orfaos,
+            "estado vazio citando nome que nenhum comando carrega: "
+            + ", ".join(f"{onde}: {nome!r}" for onde, nome in orfaos),
+        )
+
+    def test_a_varredura_acha_toda_frase_de_estado_vazio_que_cita_um_nome(self) -> None:
+        """A lista de mensagens não pode ficar para trás do código.
+
+        Uma frase nova com aspas em `ui/strings.py` que ninguém acrescentasse a `_mensagens`
+        passaria o teste acima **por ausência** -- que é o modo de falhar mais barato que existe
+        e o que o ciclo 5 chamou de portão cego. Aqui a varredura é do módulo inteiro.
+        """
+        from chess_diagram_ocr.ui import strings
+
+        com_aspas = {
+            nome
+            for nome in dir(strings)
+            if not nome.startswith("_")
+            and isinstance(getattr(strings, nome), str)
+            and self.CITADO.search(getattr(strings, nome))
+        }
+        cobertos = {
+            onde.split(".")[-1] for onde in self._mensagens() if onde.startswith("ui/strings.")
+        }
+        self.assertEqual(
+            set(),
+            com_aspas - cobertos,
+            f"frase de ui/strings.py com nome entre aspas fora da varredura: {com_aspas - cobertos}",
+        )
+
+    def test_a_mensagem_do_resultado_e_derivada_do_catalogo_e_nao_um_literal(self) -> None:
+        """Renomear o comando tem de renomear a frase. Um literal não faz isso.
+
+        **O rótulo cobrado aqui é o do botão, e não o do menu** (F9-C6, item 2). A frase citava
+        `rotulo("ler_pagina")` -- "Ler esta página" --, e este teste ficava verde porque o nome está
+        mesmo no catálogo; a **tela** é que não o tinha, em nenhuma das duas peles: a pílula da
+        Foco mostra "OCR todos diagramas" e o botão da clássica é só-de-ícone. Quem lê a frase
+        procura o texto do botão, então é o texto do botão que a frase tem de citar.
+        `tests/test_qt_janela.EstadoVazioNaTelaTests` cobra o outro lado -- que esse texto esteja
+        num controle visível --, e é lá que o cruzamento com a tela mora.
+        """
+        try:
+            from chess_diagram_ocr.qt import painel_de_resultado
+        except ImportError:  # pragma: no cover - venv sem binding de Qt
+            self.skipTest("sem binding de Qt neste venv")
+        self.assertIn(comandos.rotulo_de_botao("ler_pagina"), painel_de_resultado.MENSAGEM_VAZIA)
+        fonte = (RAIZ / "src" / "chess_diagram_ocr" / "qt" / "painel_de_resultado.py").read_text(
+            encoding="utf-8"
+        )
+        arvore = ast.parse(fonte)
+        for no in arvore.body:
+            if isinstance(no, ast.Assign) and any(
+                isinstance(alvo, ast.Name) and alvo.id == "MENSAGEM_VAZIA" for alvo in no.targets
+            ):
+                self.assertIsInstance(
+                    no.value,
+                    ast.JoinedStr | ast.BinOp | ast.Call,
+                    "MENSAGEM_VAZIA voltou a ser literal: o nome do botão pode divergir de novo",
+                )
+                return
+        self.fail("MENSAGEM_VAZIA não foi encontrada em qt/painel_de_resultado.py")

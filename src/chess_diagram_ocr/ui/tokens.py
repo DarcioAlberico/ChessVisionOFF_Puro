@@ -28,8 +28,11 @@ from __future__ import annotations
 from typing import Protocol
 
 __all__ = [
+    "BRANCO",
+    "CROMO",
     "NO_CROMO_ESCURO",
     "PAPEIS",
+    "PRETO",
     "REALCE_DE_ENFASE",
     "RESERVA",
     "SUPERFICIES",
@@ -41,6 +44,8 @@ __all__ = [
     "mistura",
     "razao_de_contraste",
     "saturacao",
+    "afastar",
+    "escurecer",
     "sobre_superficie",
     "tema_e_escuro",
 ]
@@ -55,6 +60,34 @@ class Estilo(Protocol):
 # --------------------------------------------------------------------------- os papéis
 
 TEXTO_SECUNDARIO = "TEXTO_SECUNDARIO"
+
+TEXTO_MORTO = "TEXTO_MORTO"
+"""A tinta de um rótulo **desabilitado**, e ela é papel próprio desde o F9-C10.
+
+**O defeito, medido pelo crítico do ciclo 9.** O estado morto usava `TEXTO_SECUNDARIO`, e a
+distância entre a tinta viva e a morta ficava em **2,82:1 na pele clássica e 1,88:1 na Foco** --
+com **22 de 22 rótulos mortos mais legíveis que o rótulo vivo mais fraco** daquela pele. O
+produto aplica **3,0:1** como piso para "informação que não é texto" -- uma listra de tabela, uma
+marca -- e aplicava 1,88:1 a *"você não pode apertar isto"*. Ampliada a 2×, a captura não deixava
+dizer qual `Salvar a posição` estava cinzento.
+
+**Por que um papel novo e não outro valor em `TEXTO_SECUNDARIO`.** São duas perguntas
+diferentes: o secundário é *"isto é apoio"* e vale para texto que a pessoa **deve** ler; o morto
+é *"isto não responde"*. Enquanto os dois compartilhavam valor, mexer num mexia no outro -- e o
+que este item precisa é justamente afastar o morto do vivo sem apagar o apoio.
+
+**A conta, e o que ela custa.** Com o cromo escuro (`#1f2124`) e a letra viva (`#e9eaec`), as
+duas exigências são incompatíveis por uma casa decimal: `morto ≥ 4,5:1 contra a superfície` pede
+luminância ≥ 0,2362 e `vivo↔morto ≥ 3,0:1` pede ≤ 0,2333. Escolhido o segundo, e o motivo é da
+própria WCAG: **1.4.3 isenta explicitamente o texto de componente inativo** do piso de 4,5, e não
+isenta ninguém de dizer que o controle está desligado. Os números publicados são os dois:
+
+| pele | vivo ↔ morto | morto ↔ superfície |
+|---|---|---|
+| clássica (`#666666`) | **3,66:1** | 5,04:1 |
+| Foco (`#7a818b`) | **3,27:1** | 4,10:1 |
+
+Antes: 2,82:1 e 1,88:1 de distância, com 6,54:1 e 7,14:1 de legibilidade."""
 """Texto de apoio: contagem, material, linha do motor. Um cinza, não dois."""
 
 PRONTO = "PRONTO"
@@ -270,6 +303,48 @@ Realce e não cor de letra é a decisão do item: o fundo é um canal livre naqu
 cair ali -- `PROBLEMA`, `ATENCAO` e o texto normal -- acima de 4,7:1. É por isso que eles são
 superfícies (`SUPERFICIES`) e escurecem com o tema, como a dica."""
 
+SUPERFICIE_ELEVADA = "SUPERFICIE_ELEVADA"
+SUPERFICIE_AFUNDADA = "SUPERFICIE_AFUNDADA"
+SUPERFICIE_SOBRE = "SUPERFICIE_SOBRE"
+SUPERFICIE_PRESSIONADA = "SUPERFICIE_PRESSIONADA"
+CONTORNO_DE_CROMO = "CONTORNO_DE_CROMO"
+SEPARADOR = "SEPARADOR"
+FOCO = "FOCO"
+SELECAO = "SELECAO"
+TEXTO_SOBRE_SELECAO = "TEXTO_SOBRE_SELECAO"
+TRILHO_DE_ROLAGEM = "TRILHO_DE_ROLAGEM"
+POLEGAR_DE_ROLAGEM = "POLEGAR_DE_ROLAGEM"
+"""Os onze papéis de **relevo do cromo** (F9).
+
+**O achado que os obriga, e ele é medido.** Até aqui a folha de estilo declarava uma cor de fundo
+e uma de letra e deixava o resto para o desenho nativo do Qt. Sob a pele escura isso não degrada,
+**quebra**: `QWidget { background-color: ... }` vale em todos os estados e em todas as subclasses,
+então botão, campo, lista e painel passam a ser o **mesmo** `#1f2124`. A fotografia da aba Estudo
+mostra quatro fileiras de botões sem face nenhuma -- lê-se uma lista de rótulos, não uma barra de
+controles -- e a moldura que deveria separá-los dava **1,04:1** (`MOLDURA` `#1f1d1b` contra
+`#1f2124`), que é uma linha desenhada e invisível.
+
+**`MOLDURA` não podia ser a saída, e é a lição do item.** Ela é `SUPERFICIES_DE_DOCUMENTO`: a
+moldura da folha do livro, presa à paleta medida pela S-224 justamente para que trocar de
+aparência não mexa no fundo contra o qual as doze marcações foram calibradas. Ela estava servindo
+a **dois donos** -- moldura de documento e borda de controle --, que é literalmente o defeito que
+a S-145 veio fechar. `CONTORNO_DE_CROMO` é o segundo dono, com nome próprio.
+
+**A elevação inverte entre as duas paletas, e é isso que faz o tema escuro ser projetado em vez de
+invertido.** Na clara o botão sobe para `#fbfbfc` e o campo sobe para `#f8f9fb`, os dois mais
+claros que o painel, como manda o costume de tema claro. Na escura o botão sobe para `#2c3036` e o
+campo **desce** para `#15171a`: em fundo escuro o poço é mais escuro que o painel e o relevo é mais
+claro. Inverter a paleta clara daria um campo mais claro que o painel, que é o tique
+inconfundível de tema escuro gerado por inversão.
+
+Os valores foram **procurados por medição**, não escolhidos: `CONTORNO_DE_CROMO` é o mais claro que
+ainda dá 3,0:1 contra as três superfícies em que ele encosta, com folga; `FOCO` passa 3,0:1 contra
+painel, botão e campo nas duas paletas, que é o que a WCAG 2.4.11 pede de um anel de foco;
+`POLEGAR_DE_ROLAGEM` passa 3,0:1 contra o trilho, porque barra de rolagem é elemento gráfico e não
+decoração. `SEPARADOR` é o único deliberadamente **abaixo** de qualquer piso (1,39 e 1,47): régua
+entre grupos é hierarquia, não informação, e uma que passasse 3:1 competiria com a borda dos
+controles."""
+
 BOTAO_PRIMARIO = "BOTAO_PRIMARIO"
 BOTAO_DESTRUTIVO = "BOTAO_DESTRUTIVO"
 """A **face** dos dois botões que têm ênfase: o primário e o destrutivo (S-444).
@@ -317,6 +392,7 @@ PAPEIS: tuple[str, ...] = (
     GLIFO_CLARO,
     GLIFO_ESCURO,
     TEXTO_SECUNDARIO,
+    TEXTO_MORTO,
     PRONTO,
     PRONTO_TEXTO,
     A_FAZER,
@@ -359,12 +435,52 @@ PAPEIS: tuple[str, ...] = (
     TEXTO_SOBRE_ENFASE,
     TEXTO_PADRAO,
     SUPERFICIE_PADRAO,
+    SUPERFICIE_ELEVADA,
+    SUPERFICIE_AFUNDADA,
+    SUPERFICIE_SOBRE,
+    SUPERFICIE_PRESSIONADA,
+    CONTORNO_DE_CROMO,
+    SEPARADOR,
+    FOCO,
+    SELECAO,
+    TEXTO_SOBRE_SELECAO,
+    TRILHO_DE_ROLAGEM,
+    POLEGAR_DE_ROLAGEM,
 )
 """Todos os papéis. A tupla existe para o teste poder afirmar que a resolução é **total**."""
 
 
+CROMO: tuple[str, ...] = (
+    SUPERFICIE_PADRAO,
+    SUPERFICIE_ELEVADA,
+    SUPERFICIE_AFUNDADA,
+    SUPERFICIE_SOBRE,
+    SUPERFICIE_PRESSIONADA,
+    CONTORNO_DE_CROMO,
+    SEPARADOR,
+    FOCO,
+    SELECAO,
+    TEXTO_SOBRE_SELECAO,
+    TRILHO_DE_ROLAGEM,
+    POLEGAR_DE_ROLAGEM,
+    TEXTO_PADRAO,
+    TEXTO_SECUNDARIO,
+    TEXTO_MORTO,
+    BOTAO_PRIMARIO,
+    BOTAO_DESTRUTIVO,
+    TEXTO_SOBRE_ENFASE,
+)
+"""Os papéis que pertencem ao **cromo** — a janela em volta do documento.
+
+Existem como tupla porque a regra deles é diferente da dos outros: **todo papel de cromo tem de
+ter valor nas duas paletas**. Um que só tivesse na clara resolveria para a cor clara sob a pele
+escura, que é exatamente como a moldura ficou invisível. `test_todo_papel_de_cromo_muda_de_pele`
+é quem cobra isso, e a lista é o que o faz não depender de alguém lembrar."""
+
+
 RESERVA: dict[str, str] = {
     TEXTO_SECUNDARIO: "#555555",
+    TEXTO_MORTO: "#666666",
     PRONTO: "#00c07a",
     PRONTO_TEXTO: "#146c43",
     A_FAZER: "#4da3ff",
@@ -409,6 +525,17 @@ RESERVA: dict[str, str] = {
     TEXTO_SOBRE_ENFASE: "#ffffff",
     TEXTO_PADRAO: "#000000",
     SUPERFICIE_PADRAO: "#f0f0f0",
+    SUPERFICIE_ELEVADA: "#fbfbfc",
+    SUPERFICIE_AFUNDADA: "#f8f9fb",
+    SUPERFICIE_SOBRE: "#e2e6eb",
+    SUPERFICIE_PRESSIONADA: "#cfd5dd",
+    CONTORNO_DE_CROMO: "#707781",
+    SEPARADOR: "#c9ced5",
+    FOCO: "#0b5ed7",
+    SELECAO: "#1e6ad7",
+    TEXTO_SOBRE_SELECAO: "#ffffff",
+    TRILHO_DE_ROLAGEM: "#e6e7ea",
+    POLEGAR_DE_ROLAGEM: "#787f8b",
 }
 """O valor de cada papel quando não há tema a consultar.
 
@@ -500,6 +627,10 @@ NO_CROMO_ESCURO: dict[str, str] = {
     BOTAO_DESTRUTIVO: "#e4665d",
     TEXTO_SOBRE_ENFASE: "#141013",
     TEXTO_SECUNDARIO: "#a7adb6",
+    # O morto sobe até **3,27:1** de distância da letra viva (`#e9eaec`), e desce até 4,10:1 de
+    # legibilidade contra a superfície. A matiz é a do secundário ao grau -- é o mesmo cinza
+    # azulado, só afastado do vivo. Ver o docstring de `TEXTO_MORTO`.
+    TEXTO_MORTO: "#7a818b",
     # Os cinco abaixo são a conta que registrar uma pele escura obriga a assinar. Sobre
     # `#1f2124` os valores da paleta clara dão 2,50, 2,97, 2,72, 2,75 e 2,81 -- todos abaixo do
     # piso AA de 4,5:1, porque foram escolhidos contra um fundo claro. Aqui eles sobem em
@@ -524,6 +655,21 @@ NO_CROMO_ESCURO: dict[str, str] = {
     REALCE_CITACAO: "#002529",
     REALCE_NOTA: "#002907",
     REALCE_VARIANTE: "#000729",
+    # Os onze do relevo (F9). **A elevação inverte**, e é o parágrafo do bloco de papéis: o
+    # botão sobe (`#2c3036` contra o painel `#1f2124`) e o campo **desce** (`#15171a`). Em
+    # tema claro os dois sobem; copiar aquele sentido para cá é o que produz o campo mais claro
+    # que o painel, que é o tique de tema escuro feito por inversão.
+    SUPERFICIE_ELEVADA: "#2c3036",
+    SUPERFICIE_AFUNDADA: "#15171a",
+    SUPERFICIE_SOBRE: "#383d45",
+    SUPERFICIE_PRESSIONADA: "#474d56",
+    CONTORNO_DE_CROMO: "#959ca3",
+    SEPARADOR: "#383d43",
+    FOCO: "#84b6ff",
+    SELECAO: "#3f73b8",
+    TEXTO_SOBRE_SELECAO: "#ffffff",
+    TRILHO_DE_ROLAGEM: "#191b1e",
+    POLEGAR_DE_ROLAGEM: "#646c76",
 }
 """O valor de cada papel de **cromo** quando a pele declara `cromo_escuro` (S-224).
 
@@ -821,6 +967,45 @@ def sobre_superficie(superficie: str, *, claro: str = "#e8e8e8", escuro: str = "
     do tema. Sob tema escuro, letra clara sobre `#ffffe0`.
     """
     return claro if razao_de_contraste(claro, superficie) >= razao_de_contraste(escuro, superficie) else escuro
+
+
+PRETO = "#000000"
+BRANCO = "#ffffff"
+"""Os dois extremos da escala. **Não são papéis: são o fim dela**, e por isso não estão em `CORES`.
+
+Um papel responde "com que cor a janela desenha isto"; estes dois respondem "para que lado se
+anda quando se quer mais contraste", que é outra pergunta e não muda com a pele. `afastar` já os
+escrevia aqui dentro; `escurecer` e `letra_do_pressionado` passaram a precisar deles do lado de
+fora (F9-C2), e `test_so_o_modulo_de_tokens_escreve_hexadecimal` é quem cobra que a resposta seja
+importar daqui em vez de escrever o hexadecimal lá."""
+
+
+def escurecer(cor_de_base: str, peso: float) -> str:
+    """A cor puxada `peso` na direção do preto. Pura.
+
+    **Existe porque `afastar` não serve para o `pressed`, e o crítico do ciclo 1 mediu o preço**:
+    `afastar` anda para longe da **letra**, e na pele escura a letra é quase preta -- então
+    pressionar **clareava** (`#6ea8fe -> #98c1fe` no primário, `#e4665d -> #ec928c` no
+    destrutivo), o que se lê como recuar. Pressionado escurece, nas duas peles, sempre; e essa é
+    uma direção só, o que faz dela uma função e não um caso de `afastar`."""
+    return mistura(cor_de_base, PRETO, peso)
+
+
+def afastar(cor_de_base: str, de: str, peso: float) -> str:
+    """A cor movida `peso` na direção **contrária** à de `de`: escurece se `de` for clara.
+
+    **Existe porque o realce de um botão com ênfase tem de aumentar o contraste do rótulo, e não
+    diminuí-lo** (F9). O realce anterior misturava a face com a **letra** -- literalmente andava
+    na direção que apaga o texto --, e a medição foi esta: `#ffffff` sobre a face primária clara
+    dava 4,47:1 sob o ponteiro e 3,09:1 pressionada. O botão mais importante da janela perdia o
+    piso AA no instante entre apontar e clicar.
+
+    O extremo para onde se anda é preto ou branco conforme a luminância de `de`, e os dois
+    hexadecimais moram aqui porque é aqui que hexadecimal mora -- `folha_de_estilo` pergunta em
+    vez de escrever, que é a mesma disciplina de `cor`.
+    """
+    extremo = PRETO if _luminancia(de) > 0.5 else BRANCO
+    return mistura(cor_de_base, extremo, peso)
 
 
 def mistura(a: str, b: str, peso: float) -> str:

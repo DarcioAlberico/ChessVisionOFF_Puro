@@ -27,13 +27,21 @@ agora é `qt/painel_de_estudo.py`, `qt/painel_de_resultado.py`, `qt/tabuleiro_de
 
 from __future__ import annotations
 
+import logging
+from typing import Any
+
 from ..estudo import Ancora, PosicaoDeEstudo
 from . import comandos as _comandos
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "ACOES_PROPRIAS",
     "CANDIDATOS_DO_MOTOR",
     "COMANDOS_DA_ABA",
+    "COMANDOS_QUE_EXIGEM_MOTOR",
+    "encerrar_o_motor",
+    "motor_de_analise",
     "LADO_AMPLIADO",
     "LADO_DO_RECORTE",
     "PARTIDAS_MAXIMAS_DE_PGN",
@@ -131,6 +139,83 @@ navegação são `undo_move`/`redo_move`/`go_to_*_of_line` porque era assim ante
 
 `comandos.acoes_fora_do_catalogo(COMANDOS_DA_ABA)` tem de ser vazio, e é o critério de aceite da
 S-280."""
+
+COMANDOS_QUE_EXIGEM_MOTOR: tuple[str, ...] = (
+    "analisar_posicao",
+    "analise_continua",
+    "variante_do_motor",
+)
+"""Os comandos desta aba que **não podem** ter efeito sem um binário UCI instalado (F9-C16).
+
+**Os três ficavam habilitados numa máquina sem motor e os três respondiam com uma receita que
+não resolvia** -- "ponha o Stockfish em `engines/` e reabra" --, porque a janela nunca procurava
+o binário (§6.1 da crítica do ciclo 15). Consertada a busca, sobra a outra metade: numa máquina
+que de fato não tem motor, o menu não pode continuar prometendo os três.
+
+`partidas_da_posicao` **não está aqui de propósito**: ela é a quarta linha do mesmo bloco de menu
+e parece do mesmo grupo, mas quem a atende é a base de partidas e não o motor -- ela funciona sem
+Stockfish nenhum. Um comando desabilitado por engano é o mesmo defeito com o sinal trocado.
+
+Quem lê esta tupla é `qt/janela._desabilitar_o_que_nao_tem_efeito`; quem confere que nada mais
+ficou habilitado sem poder funcionar é o portão `caissa.ui.audit.comandos`, que mede a janela
+montada e não esta lista."""
+
+def motor_de_analise() -> Any:
+    """O `EngineAnalyzer` desta sessão, ou `None` se não há binário UCI nesta máquina.
+
+    **É a ligação que faltava, e ela faltava desde a S-33** (F9-C15 §6.1). `engine.find_engine`
+    existe, `engine.EngineAnalyzer` existe, `settings.EngineSettings.path` existe, e
+    `PainelDeEstudo` aceita `analyzer=` desde sempre -- e nenhum dos quatro tinha **um chamador em
+    `src/`**. O `ROADMAP.md:901` marcava ✅ o item do motor; na janela, os três comandos do menu
+    Estudo diziam *"ponha o Stockfish em engines/ e reabra"* em toda máquina, e reabrir não
+    resolvia porque ninguém procurava o binário. Uma receita que não funciona é pior que um
+    comando ausente: a pessoa instala o Stockfish e volta ao mesmo lugar.
+
+    `EngineAnalyzer.__init__` **não abre processo nenhum** -- quem abre é `start()`, na primeira
+    análise --, então construí-lo aqui não custa os ~100-300 ms de inicialização do UCI a quem
+    nunca vai pedir uma análise.
+
+    **Nunca levanta.** Ausência de motor é o caso normal (o cabeçalho de `engine.py` chama isso de
+    "opcional de verdade"), e um `settings.json` com um caminho torto não pode custar a janela:
+    cai em `None`, que é a mesma tela de quem não tem o binário.
+
+    **Mora aqui e não em `qt/janela.py`** porque a decisão -- qual binário, com que tempo, com
+    quantas threads -- é da sala e não do toolkit; e porque `qt/janela.py` tem uma catraca de
+    tamanho (`tests/test_packaging.py`) cujo recado é justamente "baixe o que for possível para
+    `ui/`".
+    """
+    from chess_diagram_ocr import engine, settings as preferencias
+
+    try:
+        configurado = preferencias.load_settings().engine
+        caminho = engine.find_engine(configurado.path or None)
+        if caminho is None:
+            logger.info("Sem motor UCI: a seção de análise não será desenhada.")
+            return None
+        logger.info("Motor de análise: %s", caminho)
+        return engine.EngineAnalyzer(
+            caminho, movetime_ms=configurado.movetime_ms, threads=configurado.threads
+        )
+    except Exception:  # noqa: BLE001 - ver o docstring: nenhum motor derruba a janela
+        logger.exception("Não foi possível preparar o motor de análise; seguindo sem ele.")
+        return None
+
+
+def encerrar_o_motor(analisador: Any) -> None:
+    """Fecha o processo do motor, se houver um. Nunca levanta.
+
+    **O motor fica aberto entre as análises de propósito** (`engine.py`: abrir e fechar o
+    Stockfish a cada posição custa ~100-300 ms). O preço é ter de fechá-lo explicitamente: uma
+    janela que sai deixando o UCI vivo deixa um processo órfão por sessão, e num bundle isso não
+    aparece em lugar nenhum.
+    """
+    if analisador is None:
+        return
+    try:
+        analisador.close()
+    except Exception:  # noqa: BLE001 - encerrar binário de terceiro é best-effort
+        logger.debug("O motor de análise não encerrou limpo.", exc_info=True)
+
 
 ACOES_PROPRIAS: frozenset[str] = frozenset(
     {"diagrama_anterior", "proximo_diagrama", "primeira_pagina", "ultima_pagina"}

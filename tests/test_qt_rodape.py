@@ -23,9 +23,11 @@ from qt_app import MOTIVO, TEM_PYQT, aplicacao
 
 from chess_diagram_ocr.ui import estado_do_rodape as estado
 from chess_diagram_ocr.ui import tokens
-from chess_diagram_ocr.ui.busy import BusyOperation
+from chess_diagram_ocr.ui.busy import BusyOperation, BusyRegistry
 
 if TEM_PYQT:
+    from PyQt6 import sip
+
     from chess_diagram_ocr.qt import rodape, tema
 
 
@@ -251,6 +253,57 @@ class AcompanhamentoTests(unittest.TestCase):
         )
         self.assertIn("cuda", self.rodape.dispositivos())
 
+    def test_registrar_acende_a_barra_sem_esperar_o_relogio(self) -> None:
+        """**As quatro zonas do rodapé mudam no mesmo turno** (F9-C4).
+
+        O relógio de `acompanhar` é de 400 ms e a zona de mensagem é escrita por sinal, no
+        instante em que a operação começa. Nesses 400 ms o rodapé contradizia a si mesmo: em
+        `benchmarks/reports/ui/c4/c4_claro_1280x800_dataset.png` -- 1 das 36 capturas -- ele diz
+        "Lendo o dataset…" com a **barra escondida** e o **`Cancelar` desabilitado**, que é a
+        mesma frase com que o defeito bloqueante nº 2 do ciclo 3 reprovou o ciclo 2.
+
+        O relógio é posto em 10 s de propósito: se ele fosse quem acende a barra, este teste
+        falharia -- é a assinatura, e não o tique, que tem de ser suficiente.
+        """
+        registro = BusyRegistry()
+        self.rodape.acompanhar(registro.running, intervalo_ms=10_000)
+        self.rodape.assinar_ocupacao(registro.observe, registro.running)
+        self.assertFalse(self.rodape._barra.isVisible(), "a barra apareceu sem operação")
+
+        ficha = registro.register("leitura do dataset", loses_work=False, cancellable=True, cancel=lambda: None)
+        self.assertEqual(self.rodape._modo_da_barra, estado.INDETERMINADO)
+        self.assertTrue(self.rodape._btn_cancelar.isEnabled(), "o Cancelar ficou cinzento com operação viva")
+
+        ficha.release()
+        self.assertEqual(self.rodape._modo_da_barra, estado.PARADO)
+        self.assertFalse(self.rodape._btn_cancelar.isEnabled())
+
+    def test_soltar_depois_de_o_rodape_morrer_nao_derruba_o_processo(self) -> None:
+        """**O registro vive mais que o rodapé, e o Qt não perdoa isso** (F9-C4).
+
+        Uma leitura que termina depois de a janela ser destruída chama `release()`, que avisa os
+        observadores. Assinar `self.ocupacao_mudou.emit` guarda o ponteiro C++ do emissor, e emitir
+        por ele depois do destrutor **não levanta `RuntimeError` -- derruba o processo**: a suíte
+        do tronco inteira parou com `Windows fatal exception: access violation` em
+        `busy._avisar -> marcas._soltar -> test_box_drop.setUp`. O `try` de `_avisar` não pega
+        isso, porque não é exceção de Python.
+
+        **O que este teste prende é a sequência**, não a queda: isolado, o mesmo caminho sem guarda
+        pode degradar para um `AttributeError` que o `try` engole -- conferi. O que ele garante é
+        que soltar uma ficha depois de o rodapé morrer é um caminho **exercitado**, e que o
+        registro fica consistente; quem impede a queda é a guarda de `assinar_ocupacao`, e a
+        evidência dela é a suíte do tronco inteira passando.
+        """
+        registro = BusyRegistry()
+        rod = rodape.RodapeDaJanela()
+        rod.acompanhar(registro.running, avisos=registro.observe, intervalo_ms=10_000)
+        ficha = registro.register("leitura do dataset", loses_work=False)
+
+        sip.delete(rod)  # o objeto C++ morre; o embrulho de Python continua
+        ficha.release()  # a resposta atrasada chega ao registro que sobreviveu
+
+        self.assertEqual(registro.running(), [])
+
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class DocumentoTests(unittest.TestCase):
     """A zona do livro e da página."""
@@ -272,6 +325,107 @@ class DocumentoTests(unittest.TestCase):
         """Para o método **ser** o callback que o painel espera, sem um `lambda` no meio."""
         self.rodape.definir_documento("Aagaard.pdf", True)
         self.assertEqual(self.rodape.documento(), "Aagaard.pdf")
+
+    FRASE = "1937 Kemeri.pdf · p. 121 de 289 · nenhum diagrama nesta página"
+    """A frase das 36 capturas. 62 caracteres, e o rodapé desenhava 23 deles."""
+
+    def _largura(self, largura: int) -> None:
+        """Põe a faixa naquela largura **e força o leiaute a correr**.
+
+        `show()` e não só `resize()`, e a diferença foi medida: um `QWidget` escondido guarda o
+        `QResizeEvent` em `WA_PendingResizeEvent` e só o entrega quando aparece -- então
+        `RotuloElidido.resizeEvent` nunca corria, e o rótulo respondia com a elisão da largura de
+        construção. O teste mediria a ausência de leiaute, e não a régua. É a mesma razão de o
+        instrumento do crítico abrir a janela.
+        """
+        self.rodape.resize(largura, self.rodape.sizeHint().height())
+        self.rodape.show()
+        leiaute = self.rodape.layout()
+        if leiaute is not None:
+            leiaute.activate()
+        self.app.processEvents()
+
+    def _elididos(self, largura: int) -> list[tuple[str, str]]:
+        """`(inteiro, desenhado)` de cada rótulo elidido, com a faixa naquela largura.
+
+        **É o portão do §4.1 do F9-C7**, e a régua é a que o crítico prescreveu: comparar
+        `texto_inteiro` com `text()` e somar a folga da barra. Um teste que só olhasse o rótulo
+        não veria o item -- elidir é legítimo quando não há espaço; o defeito é elidir **com
+        1534 px livres na mesma faixa**.
+        """
+        from PyQt6.QtWidgets import QLabel
+
+        self._largura(largura)
+        return [
+            (rotulo.texto_inteiro, rotulo.text())
+            for rotulo in self.rodape.findChildren(QLabel)
+            if getattr(rotulo, "texto_inteiro", rotulo.text()) != rotulo.text()
+        ]
+
+    def _folga(self, largura: int) -> int:
+        """Quantos pixels da faixa nenhum rótulo está usando."""
+        from PyQt6.QtWidgets import QLabel
+
+        self._largura(largura)
+        tinta = sum(
+            rotulo.fontMetrics().horizontalAdvance(rotulo.text())
+            for rotulo in self.rodape.findChildren(QLabel)
+            if rotulo.isVisibleTo(self.rodape)
+        )
+        return largura - tinta
+
+    def test_nenhum_rotulo_elide_enquanto_ha_folga_na_mesma_faixa(self) -> None:
+        """**Carta §3.3, primeiro item**: texto com reticências onde caberia (F9-C7, §4.1).
+
+        Medido pelo crítico nas três larguras: `'1937 Kemeri…esta página'` no lugar da frase
+        inteira -- **39 de 62 caracteres perdidos** -- com **1534 px livres** a 1920, 980 a 1366
+        e 894 a 1280. A causa não era a elisão, que é um conserto legítimo do ciclo 1; era o
+        **teto de 130 px** que ela herdou da barra do visor, onde ele evita refluxo e onde o
+        rodapé não tem nenhum.
+        """
+        self.rodape.definir_documento(self.FRASE, False)
+        for largura in (1920, 1366, 1280):
+            with self.subTest(largura=largura):
+                folga = self._folga(largura)
+                elididos = self._elididos(largura)
+                self.assertEqual(
+                    [],
+                    elididos,
+                    f"rotulo elidido com {folga} px livres na mesma faixa: "
+                    + "; ".join(f"{i!r} -> {d!r}" for i, d in elididos),
+                )
+                self.assertGreater(folga, 0, "a faixa encheu: aqui elidir seria legitimo")
+
+    def test_sem_folga_ele_volta_a_elidir(self) -> None:
+        """O outro lado, e é o que impede o conserto de virar transbordo.
+
+        Um nome de 149 caracteres numa faixa de 320 px **tem** de ser cortado -- a alternativa é
+        empurrar as outras zonas para fora. O que este par de testes cobra é que a reticência
+        apareça por falta de espaço, e nunca por um teto herdado.
+        """
+        longo = (
+            "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid "
+            "Foolish Mistakes (Bastford, 2005) 2p 145 · p. 121 de 289"
+        )
+        self.rodape.definir_documento(longo, False)
+        elididos = self._elididos(320)
+        self.assertEqual(1, len(elididos), "a faixa de 320 px coube o nome de 149 caracteres?")
+        self.assertIn("\u2026", elididos[0][1])
+
+    def test_o_rotulo_do_documento_continua_sem_decidir_a_largura_minima(self) -> None:
+        """**O defeito do ciclo 1 não pode voltar** (crítica do ciclo 1, defeito nº 2).
+
+        Pedir o texto inteiro é `sizeHint`; a largura mínima é `minimumSizeHint`, e ela continua
+        zero. Sem esta separação, um nome de 149 caracteres voltaria a subir o
+        `minimumSizeHint` da janela de 1243 para 1513 px -- o nome de um arquivo decidindo qual é
+        a menor tela em que o programa cabe.
+        """
+        longo = "x" * 149
+        self.rodape.definir_documento(longo, False)
+        self.app.processEvents()
+        rotulo = self.rodape._lbl_documento
+        self.assertEqual(0, rotulo.minimumSizeHint().width())
+        self.assertGreater(rotulo.sizeHint().width(), 130, "o teto da barra voltou ao rodape")
 
 
 if __name__ == "__main__":  # pragma: no cover

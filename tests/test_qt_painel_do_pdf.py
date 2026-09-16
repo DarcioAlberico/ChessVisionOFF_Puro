@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
-from chess_diagram_ocr.ui import leitura_do_pdf
+from chess_diagram_ocr.ui import comandos, leitura_do_pdf
 from chess_diagram_ocr.ui.page_overlay import DiagramBox, OverlayParams, PageBoxes
 
 if TEM_PYQT:
@@ -113,8 +113,14 @@ class PainelTests(unittest.TestCase):
 
     def test_o_estado_vazio_nao_promete_o_que_nao_tem(self) -> None:
         painel = self.painel()
-        self.assertEqual(painel.lbl_pdf.text(), "nenhum PDF aberto")
-        self.assertFalse(painel.btn_leitor.isEnabled())
+        from chess_diagram_ocr.ui import strings
+
+        # **O rótulo do livro é elidido desde o F9-C2**: `text()` devolve o que está
+        # desenhado, que depende da largura que o leiaute deu; o que a frase promete é
+        # `texto_inteiro`. E `Abrir no leitor do sistema` saiu da barra para o menu `Arquivo`
+        # (§7 item 11), onde ele já estava declarado em `ui/menu.MENUS`.
+        self.assertEqual(painel.lbl_pdf.texto_inteiro, strings.NENHUM_PDF_ABERTO)
+        self.assertIsNone(painel.source, "sem livro não há o que abrir no leitor")
         self.assertFalse(painel.desenhar_pagina(), "sem livro não há o que rasterizar")
 
     def test_selecionar_area_sem_livro_avisa_no_rodape(self) -> None:
@@ -318,16 +324,30 @@ class PainelTests(unittest.TestCase):
         self.assertEqual(regioes, [])
         self.assertIn("Seleção muito pequena. Tente novamente.", vistos)
 
-    def test_o_modo_de_selecao_troca_o_rotulo_do_botao(self) -> None:
+    def test_o_modo_de_selecao_se_ve_marcado_e_se_ouve_alternado(self) -> None:
         """"Selecionar área" é um modo, e ligar e desligar não podem ter a mesma aparência (S-396)."""
         from chess_diagram_ocr.ui import comandos
 
+        # **O canal mudou no F9-C2, e a regra não.** O rótulo trocava entre dois textos de
+        # larguras diferentes, e largura de botão da barra é largura da **barra**: ligar a
+        # seleção reflowava a fila inteira, que é o defeito que o item 11 do §7 veio fechar.
+        # Um botão marcável diz o mesmo estado sem mexer em pixel de leiaute, e o nome por
+        # extenso continua alternando -- que é o que um leitor de tela anuncia.
         painel = self.com_pagina()
-        self.assertEqual(painel.btn_selecionar.text(), comandos.rotulo_de_botao("selecionar_area"))
+        self.assertFalse(painel.btn_selecionar.isChecked())
+        self.assertEqual(
+            painel.btn_selecionar.accessibleName(), comandos.nome_acessivel("selecionar_area")
+        )
         painel.alternar_selecao()
-        self.assertEqual(painel.btn_selecionar.text(), comandos.rotulo_alternado("selecionar_area"))
+        self.assertTrue(painel.btn_selecionar.isChecked())
+        self.assertEqual(
+            painel.btn_selecionar.accessibleName(), comandos.rotulo_alternado("selecionar_area")
+        )
         painel.alternar_selecao()
-        self.assertEqual(painel.btn_selecionar.text(), comandos.rotulo_de_botao("selecionar_area"))
+        self.assertFalse(painel.btn_selecionar.isChecked())
+        self.assertEqual(
+            painel.btn_selecionar.accessibleName(), comandos.nome_acessivel("selecionar_area")
+        )
 
     def test_os_dois_interruptores_saem_pelo_nome_do_comando(self) -> None:
         """Quem acrescentar uma terceira preferência a declara ao lado das outras duas (S-161)."""
@@ -370,18 +390,25 @@ class ControlesDoLivroTests(unittest.TestCase):
             "ler_melhor": painel.btn_ler_melhor,
             "ler_pagina": painel.btn_ler_pagina,
             "tirar_caixa": painel.btn_tirar_caixa,
-            "exportar_pgn": painel.btn_exportar,
+            # **`exportar_pgn` saiu da barra** (F9-C2, §7 item 11): começar a exportação é do
+            # menu `Arquivo`, onde ela já estava declarada. `selecionar_area` entrou no lugar --
+            # mesmo bloco, mesma pré-condição.
+            "selecionar_area": painel.btn_selecionar,
             "cancelar_exportacao": painel.btn_cancelar_exportacao,
         }
 
-    def test_os_cinco_tiram_o_rotulo_do_catalogo(self) -> None:
+    def test_os_cinco_tiram_o_nome_do_catalogo(self) -> None:
         """Nenhum texto escrito aqui: é a regra da S-324, e `test_ui_comandos` a varre por `ast`."""
         from chess_diagram_ocr.ui import comandos
 
         painel = self.painel()
         for acao, botao in self.os_cinco(painel).items():
             with self.subTest(acao=acao):
-                self.assertEqual(comandos.rotulo_de_botao(acao), botao.text())  # type: ignore[attr-defined]
+                # **A afirmação passou do rótulo para o nome** (F9-C2): três dos cinco desenham
+                # só o ícone, e o rótulo por extenso vive no `accessibleName` -- que é o que um
+                # leitor de tela anuncia e o que o portão `caissa.ui.audit.teclado` cobra.
+                # Perguntar `text()` a um botão de ícone aprovaria a string vazia.
+                self.assertEqual(comandos.nome_acessivel(acao), botao.accessibleName())  # type: ignore[attr-defined]
 
     def test_sem_livro_os_cinco_ficam_cinza(self) -> None:
         """A pré-condição é a mesma do "Abrir no leitor": não há página sobre a qual agir."""
@@ -393,20 +420,24 @@ class ControlesDoLivroTests(unittest.TestCase):
     def test_com_livro_acendem_quatro_e_o_cancelar_continua_cinza(self) -> None:
         """O cancelar não depende de haver livro, e sim de haver exportação."""
         painel = self.painel(com_livro=True)
-        for acao in ("ler_melhor", "ler_pagina", "tirar_caixa", "exportar_pgn"):
+        for acao in ("ler_melhor", "ler_pagina", "tirar_caixa", "selecionar_area"):
             with self.subTest(acao=acao):
                 self.assertTrue(self.os_cinco(painel)[acao].isEnabled())  # type: ignore[attr-defined]
         self.assertFalse(painel.btn_cancelar_exportacao.isEnabled())
 
-    def test_a_exportacao_troca_o_par_exportar_cancelar(self) -> None:
+    def test_a_exportacao_traz_o_bloco_do_cancelar_e_o_leva_embora(self) -> None:
         """Uma por vez: enquanto uma roda, começar outra não é oferta."""
+        # **O bloco só existe enquanto existe o que cancelar** (F9-C2, §7 itens 7 e 11). Era um
+        # par permanente na barra com um dos dois sempre cinza; começar a exportação é do menu
+        # agora, e o que a barra ganha -- só durante a exportação -- é o botão que para.
         painel = self.painel(com_livro=True)
+        self.assertFalse(painel._bloco_exportacao.isVisibleTo(painel))
         painel.exportacao_em_curso(True)
-        self.assertFalse(painel.btn_exportar.isEnabled())
+        self.assertTrue(painel._bloco_exportacao.isVisibleTo(painel))
         self.assertTrue(painel.btn_cancelar_exportacao.isEnabled())
 
         painel.exportacao_em_curso(False)
-        self.assertTrue(painel.btn_exportar.isEnabled())
+        self.assertFalse(painel._bloco_exportacao.isVisibleTo(painel))
         self.assertFalse(painel.btn_cancelar_exportacao.isEnabled())
 
     def test_o_cancelar_sobrevive_ao_trancamento(self) -> None:
@@ -423,7 +454,7 @@ class ControlesDoLivroTests(unittest.TestCase):
 
         self.assertTrue(painel.btn_cancelar_exportacao.isEnabled(), "o cancelar morreu no trancamento")
         self.assertTrue(painel.isEnabled(), "o painel foi desabilitado em bloco")
-        for acao in ("ler_melhor", "ler_pagina", "tirar_caixa", "exportar_pgn"):
+        for acao in ("ler_melhor", "ler_pagina", "tirar_caixa", "selecionar_area"):
             with self.subTest(acao=acao):
                 self.assertFalse(self.os_cinco(painel)[acao].isEnabled())  # type: ignore[attr-defined]
 
@@ -461,7 +492,10 @@ class ControlesDoLivroTests(unittest.TestCase):
 
         painel.btn_cancelar_exportacao.click()
         painel.exportacao_em_curso(False)
-        painel.btn_exportar.click()
+        # **Começar a exportação é do menu `Arquivo` desde o F9-C2** (§7 item 11), e a janela a
+        # liga pelo mesmo sinal: o que este teste afirma é que o painel avisa em vez de
+        # exportar sozinho, e isso não depende de qual controle emite.
+        painel.exportacao_pedida.emit()
 
         self.assertEqual(["cancelar", "comecar"], pedidos)
 
@@ -474,6 +508,132 @@ class ControlesDoLivroTests(unittest.TestCase):
         painel.btn_tirar_caixa.click()
 
         self.assertTrue(avisos, "o botão não chegou a `dispensar_a_selecionada`")
+
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class DicaDoBotaoSoDeIconeTests(unittest.TestCase):
+    """A dica do botão só-de-ícone diz o nome do **botão** quando ele é outro nome (F9-C6, item 2).
+
+    O estado vazio da aba Resultado manda usar "OCR todos diagramas", que é como o comando
+    `ler_pagina` se chama no botão. Na pele Foco isso está escrito na pílula; na clássica o botão
+    é só-de-ícone, e **a dica é o único canal visual que sobra**. Sem o nome do botão nela, a frase
+    manda procurar um texto que a tela não tem -- que é o defeito do §7.1 do ciclo 5 com o literal
+    trocado.
+
+    O oposto também é defeito: prefixar toda dica com o `rotulo_curto` põe `"- — Diminuir o zoom
+    da página"` nos botões de zoom e repete `"Tirar a caixa"` antes de "Tirar a caixa do diagrama
+    selecionado". Só um comando da barra tem dois nomes sem uma palavra em comum, e só ele precisa
+    dos dois.
+    """
+
+    def test_o_comando_de_dois_nomes_traz_os_dois(self) -> None:
+        dica = qt_pdf.PainelDoPdf._dica_do_comando("ler_pagina", so_icone=True)
+        self.assertEqual("OCR todos diagramas — Ler esta página", dica)
+
+    def test_um_glifo_nao_vira_nome(self) -> None:
+        """`zoom_mais` mostra `+`: `"+ — Aumentar o zoom da página"` seria ruído."""
+        for acao in ("zoom_mais", "zoom_menos"):
+            with self.subTest(acao=acao):
+                self.assertEqual(
+                    comandos.rotulo(acao), qt_pdf.PainelDoPdf._dica_do_comando(acao, so_icone=True)
+                )
+
+    def test_um_encurtamento_nao_se_repete(self) -> None:
+        """"Tirar a caixa" é o começo de "Tirar a caixa do diagrama selecionado"."""
+        self.assertEqual(
+            comandos.rotulo("tirar_caixa"),
+            qt_pdf.PainelDoPdf._dica_do_comando("tirar_caixa", so_icone=True),
+        )
+
+    def test_o_botao_com_rotulo_visivel_nao_ganha_prefixo(self) -> None:
+        """Quem mostra o nome não precisa repeti-lo na dica."""
+        self.assertEqual(
+            comandos.rotulo("ler_pagina"),
+            qt_pdf.PainelDoPdf._dica_do_comando("ler_pagina", so_icone=False),
+        )
+
+    def test_a_regra_separa_nome_de_encurtamento(self) -> None:
+        """O **controle** da regra, contra exemplos literais e não contra o catálogo de hoje."""
+        self.assertTrue(qt_pdf._e_outro_nome("OCR todos diagramas", "Ler esta página"))
+        self.assertFalse(qt_pdf._e_outro_nome("+", "Aumentar o zoom da página"))
+        self.assertFalse(qt_pdf._e_outro_nome("Tirar a caixa", "Tirar a caixa do diagrama"))
+        self.assertFalse(qt_pdf._e_outro_nome("Selecionar área (OCR)", "Selecionar área para ler"))
+
+
+class NomeDoBotaoQuandoOCromoNaoODesenhaTests(unittest.TestCase):
+    """A barra do visor escreve o nome que a pele corrente **não** escreve (F9-C7, §3).
+
+    O ciclo 6 tentou fechar isto pela dica, e a dica não é a tela: na pele clássica -- a padrão --
+    "OCR todos diagramas" era desenhado por **zero** controles visíveis, enquanto `MENSAGEM_VAZIA`
+    mandava apertá-lo e `OCR melhor diagrama`, outro comando, estava em azul ao lado.
+
+    Aqui se cobram os dois lados da regra: o nome aparece quando o cromo não o traz, e **não**
+    aparece quando ele traz -- dois controles visíveis com o mesmo rótulo é o outro defeito.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not TEM_PYQT:  # pragma: no cover - venv sem binding
+            raise unittest.SkipTest(MOTIVO)
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.painel = qt_pdf.PainelDoPdf(dpi=lambda: 200)
+        self.addCleanup(descartar, self.painel)
+
+    def _cromo(self, *rotulos: str):
+        """Um contêiner com botões escritos, como a fila ou a fita entregam.
+
+        **O método recebe o widget e não uma lista de nomes**, e é o item: uma lista seria uma
+        segunda declaração de quem cada pele desenha, e ela divergiria do cromo no dia em que
+        alguém tirasse um comando do destaque. O teste monta o widget pela mesma razão.
+        """
+        from PyQt6.QtWidgets import QPushButton, QWidget
+
+        caixa = QWidget()
+        self.addCleanup(descartar, caixa)
+        for rotulo in rotulos:
+            QPushButton(rotulo, caixa)
+        return caixa
+
+    def test_sem_o_nome_no_cromo_o_botao_o_desenha(self) -> None:
+        nomeados = self.painel.nomear_o_que_o_cromo_nao_desenha(self._cromo())
+        self.assertEqual(["ler_pagina"], nomeados)
+        self.assertEqual("OCR todos diagramas", self.painel.btn_ler_pagina.text())
+
+    def test_sem_cromo_nenhum_o_botao_o_desenha(self) -> None:
+        """`None` é a pele clássica: ela não tem cromo acima do divisor, por decisão da S-221."""
+        self.assertEqual(["ler_pagina"], self.painel.nomear_o_que_o_cromo_nao_desenha(None))
+        self.assertEqual("OCR todos diagramas", self.painel.btn_ler_pagina.text())
+
+    def test_com_o_nome_no_cromo_o_botao_fica_so_com_o_icone(self) -> None:
+        """A pílula da Foco já o escreve: escrevê-lo de novo é duplicar um rótulo."""
+        self.painel.nomear_o_que_o_cromo_nao_desenha(self._cromo("Abrir PDF", "OCR todos diagramas"))
+        self.assertEqual("", self.painel.btn_ler_pagina.text())
+        self.assertIn("OCR todos diagramas", self.painel.btn_ler_pagina.toolTip())
+
+    def test_a_quebra_de_linha_da_fita_conta_como_o_mesmo_nome(self) -> None:
+        """`quebrar_rotulo` desenha "OCR todos" + quebra + "diagramas" -- as mesmas palavras.
+
+        Comparar o literal fazia a barra escrever o nome uma segunda vez na pele fita, que é a
+        duplicação que esta regra existe para não criar. Medido: `text()` da fita a 1920.
+        """
+        self.painel.nomear_o_que_o_cromo_nao_desenha(self._cromo("OCR todos" + chr(10) + "diagramas"))
+        self.assertEqual("", self.painel.btn_ler_pagina.text())
+
+    def test_um_encurtamento_e_um_glifo_nao_ganham_texto(self) -> None:
+        """Só o comando de **dois nomes** entra. Os outros já dizem o que são pelo ícone."""
+        self.painel.nomear_o_que_o_cromo_nao_desenha(self._cromo())
+        self.assertEqual("", self.painel.btn_tirar_caixa.text())
+        self.assertEqual("", self.painel.btn_selecionar.text())
+
+    def test_a_dica_deixa_de_repetir_o_nome_que_o_botao_mostra(self) -> None:
+        """Quem mostra o nome não precisa dizê-lo duas vezes; quem não mostra, precisa."""
+        self.painel.nomear_o_que_o_cromo_nao_desenha(self._cromo())
+        self.assertNotIn("—", self.painel.btn_ler_pagina.toolTip())
+        self.painel.nomear_o_que_o_cromo_nao_desenha(self._cromo("OCR todos diagramas"))
+        self.assertIn("OCR todos diagramas — Ler esta página", self.painel.btn_ler_pagina.toolTip())
 
 
 if __name__ == "__main__":  # pragma: no cover

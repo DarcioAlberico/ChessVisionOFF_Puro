@@ -68,7 +68,22 @@ FOCO = "foco"
 """A proposta da Imagem 1: uma fila só de ações e o documento ocupando todo o resto (S-223)."""
 
 FITA = "fita"
-"""A proposta da Imagem 2: grupos nomeados, ícone grande com rótulo (S-227)."""
+"""A proposta da Imagem 2: grupos nomeados, ícone grande com rótulo (S-227).
+
+**Onde os grupos aparecem nomeados, medido** (F9-C12). O crítico do ciclo 11 cobrou esta frase
+com o cromo vivo e tinha razão em parte: `0 QLabel de cabeçalho visíveis` e `5 nomes de grupo`
+só no leitor de tela. O que faltava à frase era dizer **em qual arranjo**:
+
+* na **densidade Confortável a 1920** a fita está no modo pleno e desenha **5 de 5** cabeçalhos,
+  que é a Imagem 2 inteira;
+* na **Compacta** -- que é a densidade que esta pele traz -- o cabeçalho vira dica por decisão
+  medida da S-228: ele custa uma linha de texto por fita, e essa linha é a diferença entre a
+  fita caber e competir com a página. O que a S-228 **não** decidiu foi deixar o olho sem
+  fronteira nenhuma, e por isso o ciclo 12 acrescentou o filete vertical entre grupos: **4 de 4**
+  em toda largura, a 1 px de custo horizontal e zero de vertical.
+
+Ou seja: em todo arranjo o olho vê onde um grupo acaba -- pelo cabeçalho, no pleno, ou pelo
+filete, no compacto. Os números estão em `benchmarks/reports/ui/c12/c12_fita.py`."""
 
 PELE_ENV = "CVOFF_SKIN"
 """Acompanha `CVOFF_TTK_THEME`, para quem dirige o programa por script."""

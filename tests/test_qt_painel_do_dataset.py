@@ -100,6 +100,10 @@ class PainelTests(unittest.TestCase):
         if mostrar:
             montado.show()
             self.app.processEvents()
+            # **A leitura do dataset saiu da thread da janela** (F9-C2, §7 item 5): o primeiro
+            # `showEvent` dispara a leitura numa `qt/trabalho.Tarefa`, e o teste tem de esperá-la
+            # como a pessoa espera -- olhando a tela mudar. Ver `PainelDoDataset.aguardar_leitura`.
+            montado.aguardar_leitura()
         return montado
 
     def test_a_aba_so_le_o_csv_quando_aparece(self) -> None:
@@ -109,9 +113,11 @@ class PainelTests(unittest.TestCase):
         painel = self.painel(mostrar=False)
         self.assertEqual(painel.rows, [], "montar não pode ler o dataset")
         painel.reload()
+        painel.aguardar_leitura()
         self.assertEqual(painel.rows, [], "escondida, a aba só anota que mudou")
         painel.show()
         self.app.processEvents()
+        painel.aguardar_leitura()
         self.assertEqual(len(painel.rows), 1, "e paga quando aparece")
 
     def test_aparecer_de_novo_nao_rele_sem_motivo(self) -> None:
@@ -124,8 +130,10 @@ class PainelTests(unittest.TestCase):
         painel.hide()
         painel.show()
         self.app.processEvents()
+        painel.aguardar_leitura()
         self.assertEqual(len(painel.rows), 1, "sem aviso de mudança, a aba não relê")
         painel.reload()
+        painel.aguardar_leitura()
         self.assertEqual(len(painel.rows), 2, "com a aba à vista, `reload` lê na hora")
 
     def test_o_filtro_de_livro_nasce_do_que_o_csv_tem(self) -> None:
@@ -205,6 +213,7 @@ class PainelTests(unittest.TestCase):
         assert item is not None
         item.setSelected(True)
         painel.reload()
+        painel.aguardar_leitura()
         self.assertEqual([linha.filename for linha in painel.linhas_selecionadas()], ["b.png"])
 
     def test_a_pergunta_de_remocao_nomeia_as_tres_saidas(self) -> None:
@@ -241,6 +250,10 @@ class PainelTests(unittest.TestCase):
         painel = self.painel()
         painel.btn_duplicatas.setEnabled(False)
         painel._aplicar_duplicatas([["a.png", "b.png"]])
+        # `_aplicar_duplicatas` relê o dataset, e a releitura é assíncrona desde o F9-C2: o painel
+        # fica cinza **inteiro** enquanto ela corre, e um filho de widget desabilitado responde
+        # `False` a `isEnabled()`. O que o teste afirma é o desfecho, e o desfecho é depois dela.
+        painel.aguardar_leitura()
         self.assertTrue(painel.btn_duplicatas.isEnabled())
         self.assertEqual(painel._grupos_duplicados, [["a.png", "b.png"]])
 

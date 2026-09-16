@@ -36,12 +36,13 @@ pergunta. Ver `_Mapa`.
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QTextCursor, QTextDocument
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -69,9 +70,10 @@ from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.imagens import pixmap_de_rgb
 from chess_diagram_ocr.qt.texto_formato import bloco_de, formato_de
 from chess_diagram_ocr.qt.trabalho import Tarefa
+from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.text import busca, rico
 from chess_diagram_ocr.text.documento import PaginaLida
-from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, texto_cores, tokens
+from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, strings, texto_cores, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.texto_declarado import (
     ACOES_PROPRIAS,
@@ -84,7 +86,14 @@ from chess_diagram_ocr.ui.texto_declarado import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["LARGURA_DA_MINIATURA", "JanelaDeBusca", "PainelDeTexto"]
+__all__ = ["CANCELADA", "LARGURA_DA_MINIATURA", "JanelaDeBusca", "PainelDeTexto"]
+
+CANCELADA = "exportação cancelada pela pessoa"
+"""O que a tarefa de exportação devolve quando a pessoa desistiu (F9-C2, §7 item 7).
+
+Um valor de retorno e não uma exceção: desistir não é falhar, e uma exceção cairia em
+`_exportacao_falhou`, que abre caixa vermelha. O `\u0001` na frente é o que impede uma frase de
+relatório legítima de coincidir com ela."""
 
 LARGURA_DA_MINIATURA = 160
 """A miniatura do diagrama dentro do texto, em pixel.
@@ -218,21 +227,42 @@ class PainelDeTexto(QWidget):
 
     def _montar(self) -> None:
         caixa = QVBoxLayout(self)
-        caixa.setContentsMargins(*(espaco.folga(),) * 4)
+        caixa.setContentsMargins(*(espaco.margem_da_aba(),) * 4)
         caixa.setSpacing(espaco.linha())
         caixa.addWidget(self._barra_de_ferramentas())
 
         self.editor = QTextEdit(self)
+        self.editor.setAccessibleName("Folha transcrita")
         self._corpo_de_base = self.editor.font().pointSize()
         """O corpo da fonte antes de qualquer zoom da vista. `aplicar_zoom` soma o degrau **a
         ele**, e não ao que está na tela -- somar ao desenhado acumularia o degrau anterior a cada
         chamada, e a letra cresceria sozinha."""
         self.editor.setAcceptRichText(False)
+        # **O estado vazio deixou de ser `placeholderText`** (F9-C2, §7 item 3). A frase continua
+        # sendo texto de interface e continua em `ui/strings.py`; o que mudou é o desenho:
+        # `placeholderText` não elide **nem quebra linha**, e o crítico do ciclo 1 mediu a dica
+        # **cortada em 77 px** em toda janela de 1280 px ou menos -- inclusive no tamanho mínimo,
+        # ou seja, num tamanho em que ela nunca é legível. `EstadoVazio` quebra linha, tem título
+        # e traz o botão que resolve para dentro do vazio. Ele é sobreposto ao editor e some no
+        # primeiro caractere, então continua sem ser exportado com a folha.
         self.editor.setUndoRedoEnabled(False)
         """**O desfazer do Qt fica desligado de propósito.** A pilha deste painel é de
         *documentos* (`rico.DocumentoRico`), e não de edições de texto: uma ferramenta de formato
         não muda um caractere, e o desfazer nativo não a veria. Duas pilhas dariam um `Ctrl+Z` que
         às vezes desfaz o negrito e às vezes a palavra."""
+        self.vazio = EstadoVazio(
+            self.editor,
+            titulo=strings.TEXTO_VAZIO_TITULO,
+            # A frase **sem** o "Nenhuma folha lida." da frente: o título já o diz, e repeti-lo
+            # a 20 px de distância é a mesma duplicação que o §7 mandou apagar na Galeria.
+            # `EDITOR_VAZIO` continua inteiro, porque ele é a frase de quem não tem título.
+            frase=strings.TEXTO_VAZIO_FRASE,
+            rotulo_do_botao=comandos.rotulo_de_botao("ler_folha"),
+            nome_acessivel="Ler a folha da página aberta",
+            acao=self.ler,
+        )
+        self.editor.textChanged.connect(self._mostrar_vazio)
+        self.editor.viewport().installEventFilter(self)
         corpo = QHBoxLayout()
         corpo.addWidget(self.editor, 1)
         corpo.addWidget(self._montar_paleta())
@@ -251,6 +281,10 @@ class PainelDeTexto(QWidget):
         from chess_diagram_ocr.text import paleta as _paleta
 
         self.paleta_lateral = QListWidget(self)
+        # **`"Lista"` não nomeia** (F9-C2, defeito nº 1): era o nome genérico da classe, e o
+        # portão do `teclado.py` reprova eco do papel. O que esta lista guarda são os símbolos
+        # de anotação que se inserem no texto.
+        self.paleta_lateral.setAccessibleName("Símbolos de anotação")
         self.paleta_lateral.setFixedWidth(72)
         self.paleta_lateral.hide()
         for simbolo in _paleta.MINIMA:
@@ -271,6 +305,11 @@ class PainelDeTexto(QWidget):
             self._botao(barra, acao, alvo)
 
         self.escolha_de_estilo = QComboBox(barra)
+        # **As quatro escolhas desta barra não têm rótulo na tela** (F9-C2): elas são compactas
+        # de propósito, e o preço era que a cascata de `ui/nomes_acessiveis.py` caía no último
+        # degrau e o leitor de tela anunciava `"Escolha"` -- duas delas na mesma barra, sem nada
+        # que as distinga. O nome vai aqui, uma vez, ao lado de quem sabe o que a escolha escolhe.
+        self.escolha_de_estilo.setAccessibleName("Estilo do parágrafo")
         self.escolha_de_estilo.addItem("(sem estilo)", "")
         for estilo in rico.ESTILOS:
             self.escolha_de_estilo.addItem(estilo.capitalize(), estilo)
@@ -281,6 +320,7 @@ class PainelDeTexto(QWidget):
         barra.adicionar(self.escolha_de_estilo)
 
         self.escolha_de_cor = QComboBox(barra)
+        self.escolha_de_cor.setAccessibleName("Cor da letra")
         self.escolha_de_cor.addItem("(sem cor)", "")
         for nome in texto_cores.nomes():
             self.escolha_de_cor.addItem(nome.capitalize(), nome)
@@ -290,6 +330,7 @@ class PainelDeTexto(QWidget):
         barra.adicionar(self.escolha_de_cor)
 
         self.escolha_de_realce = QComboBox(barra)
+        self.escolha_de_realce.setAccessibleName("Cor do realce")
         self.escolha_de_realce.addItem("(sem realce)", "")
         # Os mesmos nomes da cor da letra: o realce é o **canal** do autor, e não uma
         # segunda paleta -- `texto_cores.papel_de_realce` resolve o mesmo nome noutro papel.
@@ -305,12 +346,15 @@ class PainelDeTexto(QWidget):
         # motor parecer configuração, que é o que a S-423 mostrou custar a primeira leitura de quem
         # instala o programa.
         self.campo_de_folha = QSpinBox(barra)
+        # O nome diz o que o número é, e não qual número é -- ver `nomes_acessiveis.CLASSES_COM_VALOR`.
+        self.campo_de_folha.setAccessibleName("Folha a ler")
         self.campo_de_folha.setMinimum(1)
         self.campo_de_folha.setMaximum(9999)
         self.campo_de_folha.setValue(self._pagina_indice + 1)
         barra.adicionar(self.campo_de_folha)
 
         self.escolha_de_motor = QComboBox(barra)
+        self.escolha_de_motor.setAccessibleName("Motor de leitura")
         for motor in MOTORES:
             self.escolha_de_motor.addItem(motor, motor)
         self.escolha_de_motor.activated.connect(
@@ -349,6 +393,12 @@ class PainelDeTexto(QWidget):
 
         rotulo = comandos.rotulo_de_botao(acao) if _no_catalogo(acao) else acao.capitalize()
         botao = QPushButton(rotulo, barra)
+        # **O nome acessível é o rótulo por extenso, e não o texto do botão** (F9-C2).
+        # O crítico do ciclo 1 mediu 28 controles que chegavam ao leitor de tela como "-",
+        # "+", "|◀" ou ".md" -- o `rotulo_curto` passando pela cascata de
+        # `ui/nomes_acessiveis.py` no passo `text()`. Ver `comandos.Comando.no_leitor`.
+        if _no_catalogo(acao):
+            botao.setAccessibleName(comandos.nome_acessivel(acao))
         botao.clicked.connect(lambda _marcado=False: alvo())
         tema.aplicar_papel(botao, estilos.NEUTRO)
         motivo = comandos.rotulo(acao) if _no_catalogo(acao) else rotulo
@@ -1069,28 +1119,62 @@ class PainelDeTexto(QWidget):
         caminho = Path(destino)
         doc = self.documento
 
+        # **Cancelável, e o ponto de corte é antes da escrita** (F9-C2, §7 item 7). A conversão
+        # do documento é a parte longa; escrever o arquivo é um `write` só. Então desistir tem um
+        # lugar seguro e um só: entre as duas. Cortar **durante** a escrita deixaria em disco o
+        # `.pdf` truncado que o comentário de `loses_work=True` descreve -- e um arquivo que abre
+        # e mente é pior que nenhum, que é a razão de o cancelamento não interromper o `escrever`.
+        desistir = threading.Event()
+        self._cancelar_exportacao = desistir
+
         def _trabalho() -> str:
             relatorio = exportacao.exportar(doc, formato)
+            if desistir.is_set():
+                return CANCELADA
             exportacao.escrever(caminho, relatorio)
             return exportacao.texto_do_relatorio(
                 caminho, relatorio, tamanho=caminho.stat().st_size
             )
 
-        self.estado.emit(f"Exportando para {caminho.name}...")
+        self.estado.emit(f"Exportando para {caminho.name}…")
         # `loses_work=True`: o arquivo de destino fica pela metade se a janela fechar no meio,
         # e um `.pdf` pesquisável truncado é pior que nenhum -- ele abre e mente.
-        self._registrar_ocupado(f"Exportando para {formato.nome}", loses_work=True, detail=caminho.name)
+        self._registrar_ocupado(
+            f"Exportando para {formato.nome}",
+            loses_work=True,
+            detail=caminho.name,
+            cancelar=desistir.set,
+        )
         self._tarefa = Tarefa(_trabalho, parent=self)
         self._tarefa.pronto.connect(self._exportacao_terminou)
         self._tarefa.falhou.connect(self._exportacao_falhou)
         self._tarefa.finished.connect(self._soltar_ocupado)
         self._tarefa.start()
 
-    def _registrar_ocupado(self, nome: str, *, loses_work: bool, detail: str = "") -> None:
-        """Põe a operação no registro, se a janela deu um. Ver o campo `_busy`."""
+    def _registrar_ocupado(
+        self,
+        nome: str,
+        *,
+        loses_work: bool,
+        detail: str = "",
+        cancelar: Callable[[], None] | None = None,
+    ) -> None:
+        """Põe a operação no registro, se a janela deu um. Ver o campo `_busy`.
+
+        `cancelar` é o que o botão do rodapé chama. `busy.register` faz
+        `cancellable and cancel is not None`, então passar `None` continua registrando uma
+        operação sem cancelamento -- prometer o botão sem a função seria oferecer um cancelamento
+        que não cancela.
+        """
         if self._busy is None:
             return
-        self._ocupado = self._busy.register(nome, loses_work=loses_work, detail=detail)
+        self._ocupado = self._busy.register(
+            nome,
+            loses_work=loses_work,
+            detail=detail,
+            cancellable=cancelar is not None,
+            cancel=cancelar,
+        )
 
     def _soltar_ocupado(self) -> None:
         """**Sai do registro sempre**, e por isso está no `finished` e não no `pronto` (S-112).
@@ -1102,7 +1186,11 @@ class PainelDeTexto(QWidget):
             self._ocupado = None
 
     def _exportacao_terminou(self, frase: object) -> None:
+        """O desfecho da exportação -- **e desistir é um desfecho, não um erro**."""
         self._tarefa = None
+        if str(frase) == CANCELADA:
+            self.estado.emit("Exportação cancelada. Nada foi gravado.")
+            return
         self.estado.emit(str(frase))
 
     def _exportacao_falhou(self, erro: str) -> None:
@@ -1154,7 +1242,7 @@ class PainelDeTexto(QWidget):
 
             return ler_pagina(caminho, indice, dpi=dpi, motor=motor, modo_bloco=bloco)
 
-        self.estado.emit(f"Lendo a folha {indice + 1}...")
+        self.estado.emit(f"Lendo a folha {indice + 1}…")
         self._registrar_ocupado(
             f"Lendo o texto da folha {indice + 1}",
             loses_work=False,
@@ -1227,6 +1315,22 @@ class PainelDeTexto(QWidget):
 
     # ------------------------------------------------------------------------------ teclado
 
+    def eventFilter(self, a0: object, a1: object) -> bool:  # noqa: N802 - assinatura do Qt
+        """O estado vazio acompanha o poço do editor que ele cobre. Ver `_mostrar_vazio`."""
+        if a0 is self.editor.viewport() and a1 is not None and a1.type() == QEvent.Type.Resize:
+            self.vazio.setGeometry(self.editor.viewport().rect())
+        return super().eventFilter(a0, a1)  # type: ignore[arg-type]
+
+    def _mostrar_vazio(self) -> None:
+        """Mostra o estado vazio enquanto não há folha nenhuma no editor (F9-C2, §7 item 14).
+
+        Some no primeiro caractere, e é isso que o mantém fora da exportação: o `EstadoVazio` é um
+        widget **sobre** o editor, e não texto dentro dele -- que era a razão de o ciclo 1 ter
+        escolhido `placeholderText`, e que continua valendo.
+        """
+        self.vazio.setGeometry(self.editor.viewport().rect())
+        self.vazio.setVisible(not self.editor.toPlainText().strip())
+
     def acoes_proprias(self) -> frozenset[str]:
         """As ações globais que este painel atende enquanto tem o foco (S-244).
 
@@ -1293,17 +1397,29 @@ class JanelaDeBusca(QDialog):
         pilha.setContentsMargins(*(espaco.moldura(),) * 4)
         pilha.setSpacing(espaco.folga())
 
+        # **Os dois campos dividem a mesma coluna** (F9-C13, §5.8). Eles não compartilhavam nem a
+        # borda esquerda (57 px contra 78) nem a direita (505 contra 396): num formulário de duas
+        # linhas, as duas caixas desalinhadas nas duas pontas. A esquerda vem dos dois rótulos
+        # com a **mesma** largura; a direita, de uma calha do tamanho do botão reservada na linha
+        # de cima -- e ela só existe enquanto a linha de baixo existe, porque alinhar com uma
+        # linha escondida seria um buraco no lugar de um alinhamento.
         linha = QHBoxLayout()
-        linha.addWidget(QLabel("Achar", self))
+        linha.setSpacing(espaco.linha())
+        rotulo_de_achar = QLabel("Achar", self)
+        linha.addWidget(rotulo_de_achar)
         self.campo_agulha = QLineEdit(self)
         self.campo_agulha.textChanged.connect(lambda _t: self.procurar())
         linha.addWidget(self.campo_agulha, 1)
+        self.calha_da_troca = QWidget(self)
+        linha.addWidget(self.calha_da_troca)
         pilha.addLayout(linha)
 
         self.linha_de_troca = QWidget(self)
         troca = QHBoxLayout(self.linha_de_troca)
         troca.setContentsMargins(0, 0, 0, 0)
-        troca.addWidget(QLabel("Trocar por", self.linha_de_troca))
+        troca.setSpacing(espaco.linha())
+        rotulo_de_troca = QLabel("Trocar por", self.linha_de_troca)
+        troca.addWidget(rotulo_de_troca)
         self.campo_novo = QLineEdit(self.linha_de_troca)
         troca.addWidget(self.campo_novo, 1)
         self.btn_trocar = QPushButton("Substituir todos", self.linha_de_troca)
@@ -1311,6 +1427,13 @@ class JanelaDeBusca(QDialog):
         tema.aplicar_papel(self.btn_trocar, estilos.NEUTRO)
         troca.addWidget(self.btn_trocar)
         pilha.addWidget(self.linha_de_troca)
+
+        largura_do_rotulo = max(
+            rotulo_de_achar.sizeHint().width(), rotulo_de_troca.sizeHint().width()
+        )
+        for etiqueta in (rotulo_de_achar, rotulo_de_troca):
+            etiqueta.setFixedWidth(largura_do_rotulo)
+        self.calha_da_troca.setFixedWidth(self.btn_trocar.sizeHint().width())
 
         opcoes = QHBoxLayout()
         self.caixa_de_caixa = QCheckBox("Diferenciar maiúsculas", self)
@@ -1327,8 +1450,18 @@ class JanelaDeBusca(QDialog):
         pilha.addLayout(opcoes)
 
         self.lista = QListWidget(self)
+        # Sem isto a cascata devolve `"Lista"` -- o eco do papel, que o portão do ciclo 2
+        # reprova e que o do ciclo 12 passou a ver porque passou a abrir os diálogos.
+        self.lista.setAccessibleName("Ocorrências achadas")
         self.lista.currentRowChanged.connect(self._mostrar)
         pilha.addWidget(self.lista, 1)
+        # **O mesmo componente da janela principal** (F9-C14, item 4 do §7 do ciclo 13). A lista
+        # abria em branco e a única pista era `Nada achado.` num rótulo abaixo dela.
+        self.vazio = EstadoVazio(
+            self.lista,
+            titulo=strings.BUSCA_SEM_AGULHA_TITULO,
+            frase=strings.BUSCA_SEM_AGULHA_FRASE,
+        )
 
         self.lbl_conta = QLabel("", self)
         pilha.addWidget(self.lbl_conta)
@@ -1337,11 +1470,32 @@ class JanelaDeBusca(QDialog):
         botoes.rejected.connect(self.reject)
         pilha.addWidget(botoes)
 
+        self._mostrar_vazio()
         self.mostrar(substituindo=substituindo)
 
+    def showEvent(self, a0: object) -> None:  # noqa: N802 - API do Qt
+        """Sincroniza a calha com a largura **de verdade** do botão (F9-C14).
+
+        A calha é medida por `sizeHint()` na montagem, e a escala tipográfica chega depois: o
+        filtro de `QEvent.Show` de `qt/acessibilidade` põe o degrau `ACAO` -- peso 600 -- no
+        `Substituir todos`, e um botão meio-negrito é 1 px mais largo. Um pixel é pouco e é
+        exatamente o tipo de diferença que este item existe para não ter: as duas caixas dividem
+        a mesma coluna ou não dividem.
+
+        O filtro da aplicação roda **antes** do `event()` do objeto, então aqui o `sizeHint` já é
+        o da fonte final.
+        """
+        super().showEvent(a0)  # type: ignore[arg-type]
+        self.calha_da_troca.setFixedWidth(self.btn_trocar.sizeHint().width())
+
     def mostrar(self, *, substituindo: bool) -> None:
-        """Traz a janela para a frente, com o campo de troca à mostra ou escondido."""
+        """Traz a janela para a frente, com o campo de troca à mostra ou escondido.
+
+        A calha some junto com a linha que ela alinha (F9-C14): sem a segunda caixa não há o que
+        alinhar, e uma calha sozinha é um buraco de 100 px à direita do campo `Achar`.
+        """
         self.linha_de_troca.setVisible(substituindo)
+        self.calha_da_troca.setVisible(substituindo)
         self.show()
         self.raise_()
         self.activateWindow()
@@ -1361,7 +1515,21 @@ class JanelaDeBusca(QDialog):
         self.lbl_conta.setText(
             "Nada achado." if not self._achadas else f"{len(self._achadas)} ocorrência(s)."
         )
+        self._mostrar_vazio()
         return self._achadas
+
+    def _mostrar_vazio(self) -> None:
+        """O vazio da lista, e **qual** vazio ele é: sem agulha digitada ou sem ocorrência."""
+        vista = self.lista.viewport()
+        self.vazio.setGeometry(vista.rect() if vista is not None else self.lista.rect())
+        procurando = bool(self.campo_agulha.text())
+        self.vazio.titulo.setText(
+            strings.BUSCA_SEM_ACHADO_TITULO if procurando else strings.BUSCA_SEM_AGULHA_TITULO
+        )
+        self.vazio.frase.setText(
+            strings.BUSCA_SEM_ACHADO_FRASE if procurando else strings.BUSCA_SEM_AGULHA_FRASE
+        )
+        self.vazio.setVisible(not self._achadas)
 
     def _mostrar(self, linha: int) -> None:
         if 0 <= linha < len(self._achadas):

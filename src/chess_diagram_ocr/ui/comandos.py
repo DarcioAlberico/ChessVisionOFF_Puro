@@ -49,11 +49,13 @@ __all__ = [
     "OCR",
     "VISUALIZACAO",
     "acoes_fora_do_catalogo",
+    "acoes_so_de_glifo",
     "comando",
     "do_grupo",
     "em_destaque",
     "estilo",
     "fila_de_destaque",
+    "nome_acessivel",
     "papel",
     "por_acao",
     "primarios_por_grupo",
@@ -61,6 +63,7 @@ __all__ = [
     "rotulo_alternado",
     "rotulo_de_botao",
     "rotulo_do_grupo",
+    "so_glifo",
 ]
 
 ARQUIVO = "ARQUIVO"
@@ -140,6 +143,17 @@ class Comando:
     **construtor**. Eram dois literais escritos à mão que o teste dava por limpos -- e, na
     remontagem de cromo, dois rótulos que voltariam errados com a seleção ainda ligada."""
 
+    rotulo_na_fita: str = ""
+    """O texto que a **fita** desenha quando o curto é um glifo (`-`, `+`, `◀`…). Vazio = `no_botao`
+    quando ele tem letra, `rotulo` quando não tem.
+
+    **Toda tecla da fita tem rótulo desenhado** (OCR_UI_ROADMAP passo 12, R3.4: dica não é rótulo).
+    Até o ciclo 16 os seis comandos de glifo saíam na fita só com o desenho — 6 de 24 sem palavra
+    —, porque o glifo era o único texto curto que existia e ele não podia ficar ao lado do ícone.
+    Aqui entra a palavra: os quatro de Estudo já a têm por extenso e curta ("Lance anterior"); os
+    dois de zoom ganham duas ("Menos zoom", "Mais zoom") porque "Diminuir o zoom da página" não
+    cabe em duas linhas de botão sem virar três."""
+
     rotulo_curto: str = ""
     """O texto que o **botão** mostra, quando ele difere do rótulo do menu. Vazio = são o mesmo.
 
@@ -165,6 +179,64 @@ class Comando:
     def no_botao(self) -> str:
         """O texto do botão: o curto quando ele existe, o do menu quando não."""
         return self.rotulo_curto or self.rotulo
+
+    @property
+    def na_fita(self) -> str:
+        """O texto que a fita desenha: **sempre uma palavra**, nunca um glifo (passo 12)."""
+        if self.rotulo_na_fita:
+            return self.rotulo_na_fita
+        return self.rotulo if self.so_glifo else self.no_botao
+
+    @property
+    def no_leitor(self) -> str:
+        """Como um leitor de tela anuncia este comando: **sempre o rótulo por extenso** (F9-C2).
+
+        **O botão de glifo é o defeito que isto fecha, e ele foi medido.** O crítico do ciclo 1
+        encontrou 28 controles anunciados por `"-"`, `"+"`, `"|◀"`, `"◀"`, `"▶"`, `"▶|"`, `"<"`,
+        `">"` e `".md"` -- o `rotulo_curto` chegando ao leitor de tela porque a cascata de
+        `ui/nomes_acessiveis.py` cai em `text()` no passo 2. Quem enxerga vê um triângulo e
+        entende "próximo"; quem ouve recebe "▶, botão", que não é uma palavra.
+
+        **O texto por extenso já existe, e é o `rotulo`** -- este módulo foi escrito com os dois
+        lado a lado exatamente para que o curto não apagasse o longo. Aqui o longo volta a
+        aparecer, no único canal em que ele nunca custa pixel.
+
+        As reticências saem porque elas são pontuação de leiaute -- "Abrir PDF…" diz a quem vê que
+        vem um diálogo, e um leitor que anuncia "Abrir PDF reticências" gasta duas sílabas para
+        não dizer nada. É a mesma regra de `nomes_acessiveis.limpar_rotulo` para os dois-pontos.
+
+        **E o aparte entre parênteses sai também, desde o F9-C3.** Quatro rótulos do catálogo
+        terminam com uma ressalva -- `"(não corrige nada)"`, `"(não muda o documento)"`,
+        `"(lento)"` -- e ela é uma nota a quem **lê o menu**, não parte do nome do comando. No
+        canal do leitor de tela ela vira o defeito que o quinto motivo do portão de nomes passou a
+        acusar: `"Marcar o que o léxico não conhece (não corrige nada)"` são 52 caracteres de prosa
+        anunciados como se fossem nome. Sem o aparte sobram 33, e o comando continua dizendo o que
+        faz. A ressalva não se perde -- ela está na dica, que é onde ela sempre esteve para quem vê.
+        """
+        limpo = self.rotulo.strip()
+        if limpo.endswith(")") and "(" in limpo:
+            limpo = limpo[: limpo.rindex("(")].rstrip()
+        while limpo.endswith(("…", ".", " ")):
+            limpo = limpo[:-1].rstrip()
+        return limpo or self.rotulo
+
+    @property
+    def so_glifo(self) -> bool:
+        """O texto do botão não tem **letra nenhuma**: `-`, `+`, `◀`, `▶`, `|◀`, `▶|` (F9-C9).
+
+        **É a regra que decide se o desenho substitui o texto ou fica ao lado dele**, e ela mora
+        aqui, no catálogo, pela razão de sempre: três cromos montam botão a partir da mesma linha,
+        e a pergunta "este rótulo é um glifo?" respondida em três lugares é a divergência que este
+        módulo veio fechar. O crítico do ciclo 9 mediu o preço de ela não existir: a fita punha o
+        desenho **e** o glifo lado a lado em seis botões, nas seis abas -- 36 ocorrências --, e o
+        glifo era o `◀` de 5×3 px que o ciclo 8 apagou em todo lugar menos ali.
+
+        **"Sem letra" e não uma lista de glifos**, e é a mesma régua de
+        `audit/teclado.nome_vazio_de_sentido` ("sem letras"): uma lista teria de ser lembrada no
+        dia em que alguém escrevesse `«` num rótulo curto, e o portão que cobra isto não consulta
+        lista nenhuma. `str.isalpha` cobre acento e cirílico, que é o que a régua do portão lê.
+        """
+        return not any(caractere.isalpha() for caractere in self.no_botao)
 
 
 CATALOGO: tuple[Comando, ...] = (
@@ -217,13 +289,24 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("sair", "Sair", ARQUIVO, estilos.NEUTRO),
     # ----------------------------------------------------------------------------- EDICAO
     Comando("aplicar_fen", "Aplicar a FEN digitada", EDICAO, estilos.NEUTRO, icone="aplicar_fen", destaque=True),
-    Comando("apagar_casa", "Apagar a peça da casa selecionada", EDICAO, estilos.NEUTRO, icone="apagar_casa"),
+    # `rotulo_na_fita`: com os seis botões de glifo rotulados (passo 12) a fita plena pedia
+    # 1.926 px e deixava de caber a 1.920 (o compacto assumia a tela Full HD). O botão mais largo
+    # era este, 122 px por "Apagar a peça da / casa selecionada"; "Apagar a peça" diz o mesmo ao
+    # lado da casa com o X e devolve o pleno a 1.920. Menu e botão continuam por extenso.
+    Comando(
+        "apagar_casa",
+        "Apagar a peça da casa selecionada",
+        EDICAO,
+        estilos.NEUTRO,
+        icone="apagar_casa",
+        rotulo_na_fita="Apagar a peça",
+    ),
     # O primário do grupo, e o critério de `estilos.PRIMARIO` o confirma: `Ctrl+S` salva.
     # **Em destaque no lugar do exportar** (S-223): a Imagem 1 desenhou "exportar" na fila e
     # omitiu "salvar", e a medida do fluxo diz o contrário -- exporta-se uma vez por livro e
     # salva-se uma vez por diagrama. Uma fila dimensionada por importância em vez de frequência
     # é a barra de 21 botões outra vez.
-    Comando("salvar", "Salvar a posição", EDICAO, estilos.PRIMARIO, icone="salvar", destaque=True),
+    Comando("salvar", "Salvar a posição", EDICAO, estilos.NEUTRO, icone="salvar", destaque=True),
     Comando("salvar_todos", "Salvar todas as posições da página", EDICAO, estilos.NEUTRO),
     Comando("diagrama_anterior", "Diagrama anterior", EDICAO, estilos.NEUTRO, icone="diagrama_anterior"),
     Comando("proximo_diagrama", "Próximo diagrama", EDICAO, estilos.NEUTRO, icone="proximo_diagrama", destaque=True),
@@ -399,8 +482,24 @@ CATALOGO: tuple[Comando, ...] = (
         estilos.NEUTRO,
         rotulo_curto="Quebrar linha",
     ),
-    Comando("pagina_anterior", "Página anterior", VISUALIZACAO, estilos.NEUTRO),
-    Comando("proxima_pagina", "Próxima página", VISUALIZACAO, estilos.NEUTRO),
+    # **Os três com ícone desde o F9-C6.** Sem desenho declarado, `qt/painel_do_pdf._vestir_de_icone`
+    # caía no glifo de texto -- e o crítico do ciclo 5 mediu o que isso desenha: uma caixa de
+    # **4×5 px dentro de um botão de 26 px** para o `×`, um nono da massa visual do vizinho na
+    # mesma fila. O glifo continua sendo a reserva de quando a Pillow falta.
+    Comando(
+        "pagina_anterior",
+        "Página anterior",
+        VISUALIZACAO,
+        estilos.NEUTRO,
+        icone="pagina_anterior",
+    ),
+    Comando(
+        "proxima_pagina",
+        "Próxima página",
+        VISUALIZACAO,
+        estilos.NEUTRO,
+        icone="proxima_pagina",
+    ),
     # **As duas da S-281**, e elas não nasceram de um pedido: nasceram do par de teclas que a sala
     # de estudo precisava. `Home` e `End` são "início e fim da linha" dentro do estudo, e a tabela
     # da S-161 não aceita tecla sem comando global -- então a pergunta virou *o que Home e End
@@ -420,6 +519,7 @@ CATALOGO: tuple[Comando, ...] = (
         estilos.NEUTRO,
         icone="zoom_menos",
         rotulo_curto="-",
+        rotulo_na_fita="Menos zoom",
     ),
     Comando(
         "zoom_mais",
@@ -428,6 +528,7 @@ CATALOGO: tuple[Comando, ...] = (
         estilos.NEUTRO,
         icone="zoom_mais",
         rotulo_curto="+",
+        rotulo_na_fita="Mais zoom",
     ),
     Comando(
         "marcar_diagramas",
@@ -441,6 +542,7 @@ CATALOGO: tuple[Comando, ...] = (
         "Tirar a caixa do diagrama selecionado",
         VISUALIZACAO,
         estilos.NEUTRO,
+        icone="tirar_caixa",
         rotulo_curto="Tirar a caixa",
     ),
     Comando("devolver_caixas", "Devolver as caixas tiradas desta página", VISUALIZACAO, estilos.NEUTRO),
@@ -537,12 +639,20 @@ CATALOGO: tuple[Comando, ...] = (
     ),
     # ----------------------------------------------------------------------------- ACERVO
     Comando("varrer_livro", strings.VARRER_LIVRO, ACERVO, estilos.NEUTRO),
+    # **A ação que faltava no catálogo, e a falta tinha consequência** (F9-C3). "Corrigir
+    # agora" -- a ação que começa o trabalho na aba Revisão -- era um `QPushButton` com o
+    # rótulo escrito à mão em `qt/painel_de_revisao.py`, fora do catálogo: sem tecla, sem
+    # item de menu e sem paleta. O ciclo 2 rebaixou-a de primária para neutra e o item 10
+    # do ciclo 1 pedia, com estas palavras, que o rebaixamento viesse "com atalho
+    # declarado". Ela entra aqui, ganha `Ctrl+Shift+N` e um item ao lado de
+    # `proximo_da_fila` no menu Edição -- que é o gesto seguinte ao dele.
+    Comando("corrigir_agora", "Corrigir agora", ACERVO, estilos.NEUTRO),
     Comando("recarregar_modelo", "Recarregar o modelo", ACERVO, estilos.NEUTRO),
     Comando("treinar", "Treinar o modelo", ACERVO, estilos.NEUTRO),
     # Os três da linha de conjunto de campo (S-77). Nenhum tem item de menu, e a S-223 decidiu
     # que eles **não** ganham um: anotar verdade de referência sobre a página que não está à
     # vista é como se grava métrica errada.
-    Comando("anotar_pagina", "Anotar página", ACERVO, estilos.PRIMARIO),
+    Comando("anotar_pagina", "Anotar página", ACERVO, estilos.NEUTRO),
     Comando("anotar_sem_diagrama", "Sem diagrama", ACERVO, estilos.NEUTRO),
     Comando("tirar_do_campo", "Tirar o selecionado", ACERVO, estilos.NEUTRO),
     # ----------------------------------------------------------------------------- ESTUDO
@@ -561,7 +671,7 @@ CATALOGO: tuple[Comando, ...] = (
         "estudo_do_diagrama",
         "Estudar o diagrama selecionado",
         ESTUDO,
-        estilos.PRIMARIO,
+        estilos.NEUTRO,
         rotulo_curto="Carregar OCR atual",
     ),
     Comando(
@@ -585,10 +695,48 @@ CATALOGO: tuple[Comando, ...] = (
     ),
     Comando("copiar_fen", "Copiar a FEN do estudo", ESTUDO, estilos.NEUTRO, rotulo_curto="Copiar FEN"),
     Comando("salvar_estudo", "Salvar o estudo em PGN…", ESTUDO, estilos.NEUTRO, rotulo_curto="Salvar PGN"),
-    Comando("lance_anterior", "Lance anterior", ESTUDO, estilos.NEUTRO, rotulo_curto=strings.ANTERIOR),
-    Comando("proximo_lance", "Próximo lance", ESTUDO, estilos.NEUTRO, rotulo_curto=strings.PROXIMO),
-    Comando("inicio_da_linha", "Início da linha", ESTUDO, estilos.NEUTRO, rotulo_curto=strings.PRIMEIRO),
-    Comando("fim_da_linha", "Fim da linha", ESTUDO, estilos.NEUTRO, rotulo_curto=strings.ULTIMO),
+    # **Os quatro ganham desenho no ciclo 8** (F9-C7, §4.7). O `rotulo_curto` continua sendo o
+    # glifo, e ele continua servindo: é a reserva de quando a Pillow falta (`_vestir_de_icone`).
+    # O que muda é o desenho normal, que passa a vir da mesma grade de 16×16 dos outros nove --
+    # medido: `◀` rendia 5×3 px de tinta ao lado de um `▶` de 6×6, e "voltar um lance" não tinha
+    # direção legível em três painéis.
+    #
+    # **`lance_anterior` e `proximo_lance` compartilham o desenho de `diagrama_anterior` e
+    # `proximo_diagrama`, e o compartilhamento é a resposta certa**: é a mesma seta e o mesmo
+    # gesto -- "um item para trás" --, e uma segunda cópia dos mesmos três pontos seria a mesma
+    # decisão declarada duas vezes, que é o que `ui/icones.py` existe para não ter.
+    Comando(
+        "lance_anterior",
+        "Lance anterior",
+        ESTUDO,
+        estilos.NEUTRO,
+        icone="diagrama_anterior",
+        rotulo_curto=strings.ANTERIOR,
+    ),
+    Comando(
+        "proximo_lance",
+        "Próximo lance",
+        ESTUDO,
+        estilos.NEUTRO,
+        icone="proximo_diagrama",
+        rotulo_curto=strings.PROXIMO,
+    ),
+    Comando(
+        "inicio_da_linha",
+        "Início da linha",
+        ESTUDO,
+        estilos.NEUTRO,
+        icone="inicio_da_linha",
+        rotulo_curto=strings.PRIMEIRO,
+    ),
+    Comando(
+        "fim_da_linha",
+        "Fim da linha",
+        ESTUDO,
+        estilos.NEUTRO,
+        icone="fim_da_linha",
+        rotulo_curto=strings.ULTIMO,
+    ),
     Comando(
         "promover_variante",
         "Promover a variante um nível",
@@ -726,22 +874,27 @@ estão aqui, mas o painel ainda escreve os rótulos dele à mão -- por isso os 
 
 
 NAS_BARRAS_DO_PDF: tuple[str, ...] = (
-    # a barra do livro: o que se faz **com** a página exibida
+    # bloco [Livro]: de que livro se trata
     "abrir_pdf",
-    "abrir_no_leitor",
+    # bloco [Reconhecer]: o que se faz **com** a página exibida
     "ler_melhor",
     "ler_pagina",
     "tirar_caixa",
-    "exportar_pgn",
-    "cancelar_exportacao",
-    # a barra de navegação: o que se faz **na** página
+    "selecionar_area",
+    # bloco [Navegar]: onde se está no livro
     "pagina_anterior",
     "proxima_pagina",
+    # bloco [Zoom]: de que tamanho se vê
     "zoom_menos",
     "zoom_mais",
     "ajustar_largura",
     "ajustar_pagina",
-    "selecionar_area",
+    # bloco [Exportação]: só aparece enquanto há exportação correndo
+    "cancelar_exportacao",
+    # as duas caixas continuam sendo o **estado** das preferências de vista, e o menu `Ver` é o
+    # controle visível delas -- ver `qt/painel_do_pdf._montar`. Elas ficam na lista porque a
+    # varredura por `ast` as acha (`rotulo_de_botao`), e tirá-las daqui seria mentir sobre o que
+    # o arquivo desenha.
     "roda_vira_pagina",
     "marcar_diagramas",
 )
@@ -824,6 +977,26 @@ def rotulo_de_botao(acao: str) -> str:
 def rotulo_alternado(acao: str) -> str:
     """O rótulo de **ligado** daquele comando. Igual ao normal quando ele não alterna."""
     return comando(acao).alternado
+
+
+def nome_acessivel(acao: str) -> str:
+    """O nome que um leitor de tela anuncia para aquele comando. Ver `Comando.no_leitor`."""
+    return comando(acao).no_leitor
+
+
+def so_glifo(acao: str) -> bool:
+    """Se o texto de botão daquele comando é um glifo sem letra. Ver `Comando.so_glifo`."""
+    return comando(acao).so_glifo
+
+
+def acoes_so_de_glifo() -> list[str]:
+    """Os comandos cujo rótulo de botão não tem letra. É a lista que o portão do ciclo 10 cobra.
+
+    Devolvida **calculada** e não declarada: uma constante com seis nomes seria a lista que
+    envelhece no dia em que o sétimo aparecer, e é exatamente a forma de defeito que a cegueira
+    por escopo do ciclo 9 tinha.
+    """
+    return [registro.acao for registro in CATALOGO if registro.so_glifo]
 
 
 _SEGUIDORES: dict[str, list[Callable[[str], object]]] = {}

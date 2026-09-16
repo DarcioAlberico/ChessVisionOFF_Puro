@@ -29,6 +29,10 @@ import math
 from enum import Enum
 
 __all__ = [
+    "ENQUADRAMENTOS",
+    "ENQUADRAMENTO_LARGURA",
+    "ENQUADRAMENTO_LIVRE",
+    "ENQUADRAMENTO_PAGINA",
     "LADO_DO_DESLIZADOR",
     "MAX_ZOOM",
     "MIN_ZOOM",
@@ -39,12 +43,14 @@ __all__ = [
     "clamp_zoom",
     "decide_wheel",
     "desvio_de_centralizacao",
+    "enquadramento_apos_zoom_manual",
     "fit_page_zoom",
     "fit_width_zoom",
     "posicao_do_zoom",
     "regiao_de_rolagem",
     "wheel_direction",
     "zoom_da_posicao",
+    "zoom_do_enquadramento",
     "zoomed",
 ]
 
@@ -215,6 +221,82 @@ def fit_page_zoom(
     if largura is None or altura is None:
         return None
     return clamp_zoom(min(largura, altura))
+
+
+ENQUADRAMENTO_LIVRE = "enquadramento_livre"
+ENQUADRAMENTO_LARGURA = "enquadramento_largura"
+ENQUADRAMENTO_PAGINA = "enquadramento_pagina"
+"""As três chaves gravadas em `pdf_enquadramento`, **e cada uma é o próprio nome em minúsculas**.
+
+A forma não é estilo: `tests/test_strings.AccentTests` varre os literais de `ui/` procurando
+palavra portuguesa sem acento, e `"PAGINA"` -- a forma com que estas três nasceram no F9-C3 --
+**entrou nessa lista**. A varredura tem uma regra estreita, escrita ali com o `PADRAO = "padrao"`
+da S-230: escapa o literal que é **exatamente** o nome MAIÚSCULO ao qual ele é atribuído, em
+minúsculas, porque isso é um identificador de formato gravado e não texto de tela. Estas três são
+esse caso -- vão para o `app_tkinter_state.json` e ninguém as lê na janela --, então a forma que
+diz isso é a que a regra reconhece.
+
+Um valor antigo no disco cai no padrão sem drama: `state._aplicar` e `visor.definir_enquadramento`
+só aceitam o que está em `ENQUADRAMENTOS`, e o campo nasceu neste mesmo ciclo."""
+
+ENQUADRAMENTOS: tuple[str, ...] = (
+    ENQUADRAMENTO_LIVRE,
+    ENQUADRAMENTO_LARGURA,
+    ENQUADRAMENTO_PAGINA,
+)
+"""Os três enquadramentos do visor -- e o item é que eles **sobrevivem ao redimensionamento**.
+
+**O defeito, medido no pixel sobre as 36 capturas do ciclo 2** (F9-C3): o retângulo sépia da
+página digitalizada tem `366 px de largura a 1280, a 1366 e a 1920` -- **idêntico ao pixel nas
+três**, com o zoom parado em 31 %. A 1366 a página ocupa 65 % da largura útil do visor; a 1920 ela
+ocupa **29 % de um viewport de 819×850**, e os outros 71 % são branco. Abrir o programa num monitor
+maior não dava mais página: dava mais branco.
+
+A causa não era o cálculo -- `fit_width_zoom` e `fit_page_zoom` estavam certos e os dois botões da
+barra os exerciam. A causa é que o resultado deles era um **número** e não um **modo**: depois de
+ajustar uma vez, qualquer mudança de tamanho da janela deixava o número onde estava.
+
+`LIVRE` é o zoom escolhido à mão, e é o único que não se reajusta -- quem digitou 137 % quer
+137 %. Os outros dois são perguntas ("caiba na largura", "caiba na página"), e uma pergunta se
+responde de novo quando a área muda."""
+
+
+def enquadramento_apos_zoom_manual() -> str:
+    """Que enquadramento fica valendo depois de a pessoa mexer no zoom. Sempre `LIVRE`.
+
+    Existe como função de uma linha, e não como um `if` dentro do widget, porque é uma **regra** e
+    não uma consequência: mexer no zoom desliga o ajuste automático, e é isso que impede o visor
+    de desfazer, no redimensionamento seguinte, a escolha que a pessoa acabou de fazer.
+    """
+    return ENQUADRAMENTO_LIVRE
+
+
+def zoom_do_enquadramento(
+    enquadramento: str,
+    *,
+    viewport_w: int,
+    viewport_h: int,
+    page_w: int,
+    page_h: int,
+    margin_px: int = 4,
+) -> float | None:
+    """O zoom que aquele enquadramento pede para esta área. `None` quando não há o que ajustar.
+
+    Existe para o widget ter **um** ponto de reaplicação: sem ela o `resizeEvent` repetiria o `if`
+    de qual ajuste chamar, e essa repetição é onde os dois lados divergem. `LIVRE` devolve `None`,
+    que é a resposta certa -- não há nada a reajustar.
+    """
+    if enquadramento == ENQUADRAMENTO_LARGURA:
+        return fit_width_zoom(viewport_px=viewport_w, page_px=page_w, margin_px=margin_px)
+    if enquadramento == ENQUADRAMENTO_PAGINA:
+        return fit_page_zoom(
+            viewport_w=viewport_w,
+            viewport_h=viewport_h,
+            page_w=page_w,
+            page_h=page_h,
+            margin_px=margin_px,
+        )
+    return None
 
 
 def desvio_de_centralizacao(conteudo_px: int, viewport_px: int) -> int:

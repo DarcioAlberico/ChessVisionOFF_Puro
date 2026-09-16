@@ -168,3 +168,132 @@ def __getattr__(nome: str) -> object:
     from importlib import import_module
 
     return getattr(import_module(f"{__name__}.{modulo}"), nome)
+
+
+BASE_DOS_DIALOGOS = "QDialog"
+"""A classe do Qt de onde toda janela de diálogo deste pacote desce. Ver `dialogos_do_produto`."""
+
+BASES_DE_DIALOGO_DO_QT: frozenset[str] = frozenset(
+    {
+        BASE_DOS_DIALOGOS,
+        "QColorDialog",
+        "QErrorMessage",
+        "QFileDialog",
+        "QFontDialog",
+        "QInputDialog",
+        "QMessageBox",
+        "QProgressDialog",
+        "QWizard",
+    }
+)
+"""Toda classe do Qt que **é** um `QDialog`, e não só a base direta (F9-C14).
+
+**Um dos três buracos que o crítico do ciclo 13 abriu na varredura.** Ele escreveu
+`class X(QMessageBox)` dentro de `qt/` e o portão de teclado passou calado: `QMessageBox` desce
+de `QDialog` no Qt, mas a árvore sintática só vê o nome escrito na linha da classe. Uma janela de
+mensagem com classe própria é uma tela de diálogo como qualquer outra.
+
+A lista é do Qt e não deste produto -- ela só cresce quando o Qt ganha um diálogo novo --, e é
+curta o bastante para ser lida inteira."""
+
+
+def dialogos_do_produto(pasta: object | None = None) -> tuple[str, ...]:
+    """Todo `QDialog` que este pacote define, **achado no código** e não declarado (F9-C12).
+
+    **Por que uma varredura e não uma tabela.** Uma tabela escrita à mão tem a doença que o
+    ciclo 9 e o ciclo 11 reprovaram nesta frente, um andar acima: quem acrescentar o décimo
+    terceiro diálogo não vem aqui atualizá-la, e o portão de teclado voltaria a publicar
+    `0 sem nome` sobre doze janelas de treze -- que é literalmente o defeito do ciclo 11 com o
+    número trocado. O portão lê **esta** lista (`caissa.ui.audit.teclado.dialogos_registrados`),
+    do mesmo jeito que lê `ui/pele.PELES` para saber quantas peles existem; a diferença é que
+    aqui não há um menu a ler, então a fonte é o próprio código.
+
+    **Lida da árvore sintática, e não por importação, e a razão é onde o portão roda.** O venv
+    da suíte que guarda esta frente **não tem binding de Qt nenhum** -- foi por isso que a folha
+    de estilo saiu de `qt/` para `ui/` --, e o teste que compara a lista do arnês com a do
+    produto tem de rodar lá. Uma varredura que importasse `PyQt6` deixaria esse teste pulado,
+    que é o mesmo que não existir. `ast` lê o arquivo; `class X(QDialog)` é um fato do texto.
+
+    O fecho é **transitivo dentro do pacote**: uma classe que herde de outra que herde de
+    `QDialog` entra. É o que faz a resposta continuar certa no dia em que alguém escrever uma
+    base comum de diálogo aqui dentro.
+
+    Devolve os nomes de classe em ordem alfabética, **incluindo os privados**: `_JanelaDeColar`
+    é uma janela que a pessoa abre por `Estudo ▸ Colar`, e o sublinhado diz de quem é o código,
+    não se a superfície existe.
+
+    **Os três buracos que o crítico do ciclo 13 abriu, e os três fechados** (F9-C14). Ele
+    sabotou a varredura de três jeitos e o portão passou calado nos três:
+
+    1. `Base = QDialog` no módulo e `class X(Base)` -- resolvido por `_apelidos`, que segue a
+       atribuição simples de nome para nome;
+    2. `class X(QMessageBox)` -- resolvido por `BASES_DE_DIALOGO_DO_QT`, que lista as classes do
+       Qt que **são** diálogos e não só a base direta;
+    3. um `QDialog` num submódulo (`qt/<pasta>/novo.py`) -- resolvido por `rglob`, porque
+       `glob("*.py")` não desce.
+
+    **O que ela continua não podendo achar, e o portão passou a dizer**: um `QDialog` construído
+    **em linha**, sem classe (`painel_de_estudo.ampliar_recorte`, S-282). Não há classe para a
+    árvore sintática ler, e por isso a frase que o portão publica diz "os N `QDialog` que o
+    produto declara **como classe**". Quem alcança essa tela é o filtro de `QEvent.Show` de
+    `qt/acessibilidade.py`, que não depende de lista nenhuma -- é a razão de a decisão morar lá.
+    """
+    import ast
+    from pathlib import Path
+
+    raiz = Path(pasta) if pasta is not None else Path(__file__).resolve().parent
+    bases_de: dict[str, set[str]] = {}
+    for arquivo in sorted(raiz.rglob("*.py")):
+        try:
+            arvore = ast.parse(arquivo.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError):  # pragma: no cover - árvore quebrada não é lista vazia
+            continue
+        apelidos = _apelidos(arvore)
+        for no in ast.walk(arvore):
+            if not isinstance(no, ast.ClassDef):
+                continue
+            nomes: set[str] = set()
+            for base in no.bases:
+                if isinstance(base, ast.Name):
+                    nomes.add(apelidos.get(base.id, base.id))
+                elif isinstance(base, ast.Attribute):  # `QtWidgets.QDialog`
+                    nomes.add(apelidos.get(base.attr, base.attr))
+            bases_de.setdefault(no.name, set()).update(nomes)
+
+    achados = {nome for nome, bases in bases_de.items() if bases & BASES_DE_DIALOGO_DO_QT}
+    while True:  # o fecho: quem herda de um diálogo também é um diálogo
+        crescido = {
+            nome for nome, bases in bases_de.items() if bases & achados
+        } | achados
+        if crescido == achados:
+            return tuple(sorted(achados))
+        achados = crescido
+
+
+def _apelidos(arvore: object) -> dict[str, str]:
+    """`apelido -> nome verdadeiro`, para `Base = QDialog` seguido de `class X(Base)`.
+
+    Só atribuição simples de **um nome a um nome**, no nível do módulo ou dentro dele: é a forma
+    que a sabotagem (d) do ciclo 13 usou, e é a única que se pode afirmar lendo o texto. Uma
+    cadeia (`A = QDialog; B = A`) é seguida até parar, com teto no tamanho da tabela para que um
+    ciclo escrito à mão (`A = B; B = A`) não vire laço infinito num portão.
+    """
+    import ast
+
+    direto: dict[str, str] = {}
+    for no in ast.walk(arvore):  # type: ignore[arg-type]
+        if not isinstance(no, ast.Assign) or len(no.targets) != 1:
+            continue
+        alvo, valor = no.targets[0], no.value
+        if isinstance(alvo, ast.Name) and isinstance(valor, ast.Name):
+            direto[alvo.id] = valor.id
+        elif isinstance(alvo, ast.Name) and isinstance(valor, ast.Attribute):
+            direto[alvo.id] = valor.attr
+    resolvidos: dict[str, str] = {}
+    for apelido in direto:
+        visto, atual = {apelido}, direto[apelido]
+        while atual in direto and atual not in visto and len(visto) <= len(direto):
+            visto.add(atual)
+            atual = direto[atual]
+        resolvidos[apelido] = atual
+    return resolvidos

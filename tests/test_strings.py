@@ -440,5 +440,65 @@ class NoDuplicateVocabularyTests(unittest.TestCase):
                 self.assertNotIn(strings.SIDE_SOURCE_LABELS["legality"], fonte)
 
 
+class SemOrfaTests(unittest.TestCase):
+    """A última palavra atada à anterior, e o que isso fecha (F9-C9 §4.7 / F9-C10).
+
+    **A pior órfã desta janela era a primeira frase que o produto mostra.** O crítico do ciclo 9
+    mediu `'inteira.'` sozinha numa linha, **5,7 % de uma medida de 627 px**, centrada -- a última
+    linha da `MENSAGEM_VAZIA`. Medido com o mesmo instrumento antes e depois
+    (`benchmarks/reports/ui/c10/c10_orfas.py`, 3 peles x 3 larguras x 2 estados): **6 de 24
+    parágrafos com órfã, e 0 depois**.
+    """
+
+    def test_a_ultima_palavra_fica_atada_a_anterior(self) -> None:
+        self.assertEqual(
+            strings.sem_orfa("ler a página inteira."),
+            f"ler a página{strings.ESPACO_INQUEBRAVEL}inteira.",
+        )
+
+    def test_so_a_ultima(self) -> None:
+        """Atar mais do que o necessário empurra a quebra para trás e afrouxa a linha anterior --
+        troca uma falta por outra."""
+        atada = strings.sem_orfa("uma frase de cinco palavras")
+        self.assertEqual(atada.count(strings.ESPACO_INQUEBRAVEL), 1)
+        self.assertTrue(atada.endswith(f"cinco{strings.ESPACO_INQUEBRAVEL}palavras"))
+
+    def test_uma_palavra_so_volta_inalterada(self) -> None:
+        """Não há a que atar, e inventar um espaço mudaria o texto."""
+        self.assertEqual(strings.sem_orfa("Salvar"), "Salvar")
+        self.assertEqual(strings.sem_orfa(""), "")
+
+    def test_o_texto_visivel_nao_muda(self) -> None:
+        """O espaço inquebrável **é** um espaço para quem lê: trocar por espaço comum devolve o
+        original. Se isto falhar, o conserto de composição virou uma mudança de redação."""
+        for frase in (
+            strings.GALERIA_VAZIA_FRASE,
+            strings.REVISAO_VAZIA_FRASE,
+            strings.TEXTO_VAZIO_FRASE,
+            strings.DATASET_LENDO_FRASE,
+        ):
+            with self.subTest(frase=frase[:32]):
+                self.assertIn(strings.ESPACO_INQUEBRAVEL, frase)
+                self.assertEqual(frase.split(), frase.replace(" ", " ").split())
+
+    def test_as_frases_de_estado_vazio_estao_atadas(self) -> None:
+        """A regra vale para as frases longas que o produto **desenha com quebra** -- são elas
+        que têm última linha. Um rótulo de botão não quebra e não entra."""
+        for nome in (
+            "GALERIA_VAZIA_FRASE",
+            "REVISAO_VAZIA_FRASE",
+            "TEXTO_VAZIO_FRASE",
+            "DATASET_LENDO_FRASE",
+            "GALERIA_LEGENDA_VAZIA",
+        ):
+            with self.subTest(constante=nome):
+                self.assertIn(strings.ESPACO_INQUEBRAVEL, getattr(strings, nome))
+
+    def test_a_mensagem_vazia_do_resultado_tambem(self) -> None:
+        from chess_diagram_ocr.qt import painel_de_resultado
+
+        self.assertIn(strings.ESPACO_INQUEBRAVEL, painel_de_resultado.MENSAGEM_VAZIA)
+
+
 if __name__ == "__main__":
     unittest.main()

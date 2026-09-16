@@ -21,9 +21,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..training import TrainingRun
+if TYPE_CHECKING:  # pragma: no cover - `TrainingRun` só é usado em anotação
+    # `training.py` importa `torch`, `torch.nn` e `torchvision.transforms.v2` no topo e
+    # define três `nn.Module` no escopo de módulo -- não dá para adiar lá dentro. Aqui o
+    # nome só aparece na assinatura de `summarize_run`, que o `from __future__ import
+    # annotations` já deixa como texto.
+    from ..training import TrainingRun
 
 __all__ = ["TrainingRequest", "format_metrics", "summarize_run"]
 @dataclass(frozen=True)
@@ -65,7 +70,7 @@ def format_metrics(row: dict[str, Any]) -> str:
             partes.append(f"{rotulo}={float(row[chave]):.4f}")
     if row.get("is_best"):
         partes.append("(melhor até agora)")
-    return " | ".join(partes)
+    return " · ".join(partes)
 
 
 def summarize_run(run: TrainingRun) -> str:

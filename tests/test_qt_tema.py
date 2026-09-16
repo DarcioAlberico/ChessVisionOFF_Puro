@@ -18,7 +18,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from qt_app import MOTIVO, TEM_PYQT, aplicacao
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
 from chess_diagram_ocr.ui import estilos, folha, pele, tipografia, tokens
 
@@ -351,6 +351,157 @@ class DesabilitadoSeVeTests(unittest.TestCase):
 
         com_o_comum = f"QPushButton {{ padding: 4px; }}\n{so_com_papel}\nQPushButton:disabled {{ color: #888; }}"
         self.assertIn("QPushButton:disabled", _seletores_desabilitados(com_o_comum))
+
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class DicaDoCampoNoPixelTests(unittest.TestCase):
+    """A dica de um campo **habilitado** contra o piso AA, medida no `grab()` (F9-C5, bloqueante).
+
+    O crítico do ciclo 5 fotografou o campo de busca do Dataset com a leitura concluída -- o
+    estado permanente da aba -- e mediu `rgb(124,124,126)` no núcleo do glifo sobre o poço
+    `#f8f9fb`: **3,96:1**, abaixo do piso de 4,5:1 da WCAG AA. O portão de contraste publicava
+    **7,08:1** para exatamente esse par, porque resolvia a cor pelo token opaco e nunca compunha o
+    **alpha 128** com que o Qt desenha uma dica que a folha não declara.
+
+    O conserto tem duas metades e as duas já têm guarda: a folha declara `placeholder-text-color`
+    (`tests/test_qt_tema.FolhaDeEstiloTests` e o arnês `caissa.ui.audit.contraste`), e o arnês
+    compõe o alfa antes de dividir. **Falta esta**, e foi ela que o crítico pediu com todas as
+    letras: *"o número tem de vir do pixel"*. Nenhuma das outras duas olha um pixel desenhado.
+
+    **Por que o `grab()` vale aqui, sendo que `DesabilitadoSeVeTests` diz que ele não vale lá.**
+    Lá o que se media era o acinzentamento que a **plataforma** faz por conta própria, e ele muda
+    entre `offscreen` e nativo. Aqui a cor vem de uma declaração da folha -- `placeholder-text-color:
+    #......` --, e a folha é a mesma nas duas plataformas: o que o `grab()` desenha é o que a
+    declaração manda, e apagá-la faz o Qt voltar a derivar a alpha 128. É o mesmo pixel que o
+    crítico fotografou.
+    """
+
+    PISO_AA = 4.5
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.addCleanup(self.app.processEvents)
+        self.addCleanup(tema.aplicar_tema, self.app)
+
+    @staticmethod
+    def _luminancia(cor: tuple[int, int, int]) -> float:
+        def canal(v: float) -> float:
+            v = v / 255.0
+            return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+
+        return 0.2126 * canal(cor[0]) + 0.7152 * canal(cor[1]) + 0.0722 * canal(cor[2])
+
+    def _razao(self, a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
+        la, lb = self._luminancia(a), self._luminancia(b)
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+    def _medir(self, cromo_escuro: bool) -> tuple[float, tuple[int, int, int], tuple[int, int, int]]:
+        """O par (tinta, fundo) que o campo desenha, e a razão entre eles.
+
+        A tinta é o pixel **mais afastado do fundo** que aparece ao menos 8 vezes **dentro da
+        moldura**: o núcleo do glifo. Um limiar menor pegaria antialias solto, e antialias não é o
+        que se lê. O recuo de 6 px tira a borda, e não é detalhe: sem ele o pixel mais afastado do
+        fundo era o azul do foco -- `rgb(11, 94, 215)`, 5,54:1 --, e a prova de vida abaixo passava
+        medindo a **moldura** de um campo cuja dica estava ilegível.
+        """
+        from collections import Counter
+
+        from PyQt6.QtCore import QRect
+        from PyQt6.QtWidgets import QLineEdit
+
+        tema.aplicar_tema(self.app, cromo_escuro=cromo_escuro)
+        campo = QLineEdit()
+        self.addCleanup(descartar, campo)
+        campo.setPlaceholderText("Arquivo, FEN ou livro")
+        campo.setEnabled(True)
+        campo.resize(320, 30)
+        # **Sem `show()`, e não é economia.** Um `QLineEdit` mostrado sozinho recebe o foco e
+        # desenha o **cursor de texto**: uma barra preta de 1x20 px que, na conta de "o pixel mais
+        # afastado do fundo", ganha da dica por 19,23:1 contra 6,54:1. Com ela na amostra a prova
+        # de vida abaixo passava em verde medindo o cursor, com a dica ilegível ao lado. O
+        # `ensurePolished` aplica a folha, que é o que este teste precisa que esteja aplicado.
+        campo.ensurePolished()
+        self.app.processEvents()
+        inteira = campo.grab().toImage()
+        recuo = 6
+        imagem = inteira.copy(
+            QRect(recuo, recuo, inteira.width() - 2 * recuo, inteira.height() - 2 * recuo)
+        )
+        contagem: Counter = Counter()
+        for y in range(imagem.height()):
+            for x in range(imagem.width()):
+                cor = imagem.pixelColor(x, y)
+                contagem[(cor.red(), cor.green(), cor.blue())] += 1
+        fundo = contagem.most_common(1)[0][0]
+        candidatas = [cor for cor, n in contagem.items() if n >= 8 and cor != fundo]
+        self.assertTrue(candidatas, "o campo saiu sem tinta nenhuma: a dica não foi desenhada")
+        tinta = max(candidatas, key=lambda cor: self._razao(cor, fundo))
+        return self._razao(tinta, fundo), tinta, fundo
+
+    def test_a_dica_do_campo_habilitado_passa_o_piso_aa_nas_duas_peles(self) -> None:
+        for cromo_escuro in (False, True):
+            with self.subTest(pele="escuro" if cromo_escuro else "claro"):
+                razao, tinta, fundo = self._medir(cromo_escuro)
+                self.assertGreaterEqual(
+                    razao,
+                    self.PISO_AA,
+                    f"a dica desenha {tinta} sobre {fundo} = {razao:.2f}:1, abaixo de "
+                    f"{self.PISO_AA}:1 -- é o bloqueante do ciclo 5 de volta",
+                )
+
+    def test_sem_a_declaracao_da_folha_o_pixel_volta_a_reprovar(self) -> None:
+        """**A prova de vida.** Apaga `placeholder-text-color` e exige que o pixel reprove.
+
+        Sem isto, o teste acima é uma promessa: ele passaria igual se o Qt, por qualquer motivo,
+        desenhasse a dica com a cor do texto cheia. Com a declaração fora, o Qt volta a derivar a
+        dica da cor de texto a alpha 128 -- o estado do ciclo 5 -- e a razão tem de cair abaixo do
+        piso na pele clara, que foi a que o crítico fotografou.
+
+        **As duas metades saem juntas, e descobri isso porque a primeira versão desta prova
+        falhou.** Tirar só a regra da folha ainda dava 7,08:1: o papel `PlaceholderText` também
+        entrou na `QPalette` no mesmo conserto, e ele sozinho já pinta a dica opaca. Uma prova de
+        vida que apagasse só uma das metades diria que o portão é vivo enquanto a outra metade o
+        segura -- que é a forma de cegueira que esta frente já encontrou cinco vezes.
+        """
+        import re
+
+        from chess_diagram_ocr.ui import folha_de_estilo as folha_pura
+
+        original = tema.folha_de_estilo
+        sem_a_dica = {
+            nome: token
+            for nome, token in folha_pura.PAPEIS_DA_PALETA.items()
+            if nome != "PlaceholderText"
+        }
+        self.assertIn(
+            "PlaceholderText",
+            folha_pura.PAPEIS_DA_PALETA,
+            "o papel saiu da paleta: esta prova está sabotando o que não existe mais",
+        )
+        try:
+            tema.folha_de_estilo = lambda **kw: re.sub(  # type: ignore[assignment]
+                r" placeholder-text-color: #[0-9a-fA-F]{6};", "", original(**kw)
+            )
+            with mock.patch.object(folha_pura, "PAPEIS_DA_PALETA", sem_a_dica):
+                razao, tinta, fundo = self._medir(False)
+        finally:
+            tema.folha_de_estilo = original  # type: ignore[assignment]
+        self.assertLess(
+            razao,
+            self.PISO_AA,
+            f"a folha sem `placeholder-text-color` ainda deu {razao:.2f}:1 ({tinta} sobre "
+            f"{fundo}): este teste não está medindo a declaração que diz medir",
+        )
+        # **O número do crítico, ao centésimo.** Ele fotografou `rgb(124, 124, 126)` sobre o poço
+        # e publicou 3,96:1; este `grab()` dá `rgb(124, 124, 125)` e a mesma razão. Cobrar o valor
+        # e não só "abaixo do piso" impede que um conserto futuro mude o alfa, continue reprovando
+        # por outro motivo, e deixe esta prova verde sem provar nada.
+        self.assertEqual(
+            3.96,
+            round(razao, 2),
+            f"o pixel do ciclo 5 era 3,96:1 e veio {razao:.2f}:1 ({tinta} sobre {fundo})",
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -163,6 +163,12 @@ MENUS: tuple[Menu, ...] = (
             Item("diagrama_anterior"),
             Item("proximo_diagrama"),
             Item("proximo_da_fila"),
+            # **A entrada do F9-C3**, ao lado da que abre o próximo pendente: uma abre o
+            # item, a outra manda corrigi-lo. `Corrigir agora` era um botão com rótulo
+            # literal, fora do catálogo -- e por isso sem tecla, sem menu e sem paleta,
+            # enquanto o item 10 do ciclo 1 pedia justamente que as ações rebaixadas de
+            # primário para neutro ganhassem alcance por tecla.
+            Item("corrigir_agora"),
         ),
     ),
     Menu(

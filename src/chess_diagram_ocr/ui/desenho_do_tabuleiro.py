@@ -198,3 +198,24 @@ class BoardGeometry:
         col = int((x - self.origin_x) // self.cell)
         row = int((y - self.origin_y) // self.cell)
         return (row, col) if 0 <= row <= 7 and 0 <= col <= 7 else None
+
+
+def largura_util_do_canvas(altura: int, disponivel: int) -> int:
+    """A largura que o canvas de um tabuleiro toma: **nunca mais do que ele desenha** (F9-C3).
+
+    **O item 13, e a resposta que o ciclo 2 não deu.** O tabuleiro é quadrado e centrado, então um
+    canvas mais largo que alto é, por construção, dois vãos vazios -- e o do painel Resultado
+    media `933×559` para desenhar um tabuleiro de `551`: **58,2 % de ocupação**, com
+    `180×580 = 104,4 kpx a 0,17 % de tinta` entre o tabuleiro e a paleta de peças, um vão de duas
+    vezes a largura da própria paleta.
+
+    O ciclo 2 respondeu que era geometria -- *"um quadrado não passa de 58 % de um retângulo
+    933×559"* -- e a aritmética estava certa e a premissa não: **o canvas é 933 porque o layout o
+    deixou ser 933.** Quem pede aquela largura é o `stretch` do `QHBoxLayout`, e não o tabuleiro.
+
+    Com o canvas limitado à própria altura, o quadrado passa a ocupar quase tudo o que lhe é dado
+    e a largura que sobra sai do canvas em vez de virar vão -- a paleta encosta no tabuleiro. É
+    `min` e não `=` porque num painel mais alto que largo quem manda continua sendo a largura: a
+    mesma regra de `BoardGeometry.fit`, aplicada uma etapa antes dela.
+    """
+    return max(1, min(int(disponivel), int(altura)))

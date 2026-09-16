@@ -30,7 +30,7 @@ from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
 from chess_diagram_ocr.estudo import Ancora, PosicaoDeEstudo
-from chess_diagram_ocr.ui import comandos, sala_declarada
+from chess_diagram_ocr.ui import comandos, sala_declarada, strings
 
 if TEM_PYQT:
     from chess_diagram_ocr.qt import painel_de_estudo as qt_estudo
@@ -90,6 +90,128 @@ class SalaTests(unittest.TestCase):
             if not callable(getattr(painel, metodo, None))
         ]
         self.assertEqual(faltando, [])
+
+    def test_o_campo_da_fen_mostra_o_comeco_e_nao_o_fim_num_painel_estreito(self) -> None:
+        """A FEN visivel comeca em `rnbqkbnr`, e nao em `qkbnr` (F9-C6, achado nas capturas).
+
+        **Este defeito foi achado olhando, e nenhuma medida de layout o pegava.** A 1280x800 o
+        campo da FEN da aba Estudo aparecia como `qkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq
+        - 0 1`: `QLineEdit.setText` deixa o cursor no fim, o campo rola para o fim, e as tres
+        primeiras casas somem **sem reticencia e sem nenhum sinal**. Nao ha rotulo espremido nem
+        controle fora da janela -- so texto rolado --, entao as varreduras de sobreposicao, de
+        colapso e de rotulo cortado passavam todas. Quem le a FEN na tela copia uma FEN invalida.
+
+        **A regua e o pixel, e nao o cursor.** `cursorPositionAt` responde qual caractere esta
+        desenhado numa coordenada da tela: pedir o caractere da **borda esquerda de dentro** do
+        campo e perguntar "o que o usuario ve primeiro?". Afirmar so `cursorPosition() == 0`
+        mediria a intencao; isto mede o desenho.
+        """
+        from PyQt6.QtCore import QPoint
+
+        painel = self.sala()
+        painel.resize(560, 700)
+        self.app.processEvents()
+        campo = painel.campo_fen
+        fen = campo.text()
+        self.assertTrue(fen.startswith("rnbqkbnr"), f"a FEN inicial mudou: {fen!r}")
+        self.assertGreater(
+            campo.fontMetrics().horizontalAdvance(fen),
+            campo.width(),
+            "o campo coube inteiro: neste tamanho o teste nao prova nada -- estreite-o mais",
+        )
+        dentro = QPoint(4, campo.height() // 2)
+        self.assertEqual(
+            0,
+            campo.cursorPositionAt(dentro),
+            "o campo esta desenhando o FIM da FEN: o comeco, que identifica a posicao, saiu da "
+            f"vista sem reticencia nenhuma -- ve-se {fen[campo.cursorPositionAt(dentro):][:12]!r}",
+        )
+
+    def test_a_fen_que_nao_cabe_desenha_a_reticencia_em_toda_largura(self) -> None:
+        """**A ponta direita nao pode sumir em silencio** (F9-C7, §4.5).
+
+        O teste acima monta o caso cortado -- ele **assegura** que o campo e' estreito demais --
+        e verifica so de que lado o corte cai. Enquanto a ponta direita sumisse sem sinal, ele
+        nao tinha como reprovar: e' o mesmo feitio de portao cego que fechou este ciclo, um
+        instrumento que mede metade da pergunta que ele mesmo escreveu.
+
+        O crítico mediu a outra metade em quatro larguras: **3 a 33 caracteres perdidos, sem
+        reticencia e sem sinal**, a 1366, 1280 e 1024. E o prefixo e' o caso perigoso --
+        `rnbqkbnr/.../RNBQ` **parece** uma FEN completa, enquanto o sufixo que se via antes do
+        ciclo 6 (`...RNBQKBNR w KQkq - 0 1`) nao parecia.
+
+        A regua e' o `grab()`: conta **tinta** na faixa da marca, e nao o estado interno do
+        widget. Um campo que ligasse a marca sem desenha-la passaria numa asserção sobre
+        `textMargins()`, e essa e' exatamente a forma de cegueira deste ciclo.
+        """
+        larguras = (720, 560, 460, 380)
+        painel = self.sala()
+        for largura in larguras:
+            with self.subTest(largura=largura):
+                painel.resize(largura, 700)
+                self.app.processEvents()
+                campo = painel.campo_fen
+                campo.setText("r1bq1rk1/pp2ppbp/2np1np1/2p5/2P1P3/2NP1NP1/PP2BP1P/R1BQ1RK1 w - - 12 129")
+                campo.setCursorPosition(0)
+                self.app.processEvents()
+                if not campo.texto_cortado():
+                    self.assertEqual(0, campo.textMargins().right(), "marca acesa sem corte")
+                    continue
+                faixa = campo.textMargins().right()
+                self.assertGreater(faixa, 0, "a FEN foi cortada e nenhuma faixa foi reservada")
+                imagem = campo.grab().toImage()
+                fundo = imagem.pixel(imagem.width() - 1, 1)
+                tinta = sum(
+                    1
+                    for x in range(imagem.width() - faixa, imagem.width())
+                    for y in range(imagem.height())
+                    if imagem.pixel(x, y) != fundo
+                )
+                self.assertGreater(
+                    tinta,
+                    0,
+                    "a faixa da marca esta reservada e VAZIA: a FEN continua sumindo em silencio",
+                )
+
+    def test_a_fen_que_cabe_nao_ganha_marca_nenhuma(self) -> None:
+        """O outro lado: um aviso permanente e ruido, e ruido permanente se aprende a nao ver."""
+        painel = self.sala()
+        painel.resize(900, 700)
+        self.app.processEvents()
+        campo = painel.campo_fen
+        campo.setText("8/8/8/4k3/8/4K3/8/8 w - - 0 1")
+        self.app.processEvents()
+        self.assertFalse(campo.texto_cortado())
+        self.assertEqual(0, campo.textMargins().right(), "marca acesa com a FEN inteira na tela")
+
+    def test_o_texto_do_campo_da_fen_nunca_e_elidido(self) -> None:
+        """A marca e' **desenho**; o `text()` continua inteiro, porque o campo e' editavel.
+
+        Elidir o `text()` de um campo editavel corromperia o que `apply_fen` le -- e a FEN
+        elidida seria gravada como se fosse a posicao. E' a razao de a reticencia ser pintada e
+        nao escrita.
+        """
+        fen = "r1bq1rk1/pp2ppbp/2np1np1/2p5/2P1P3/2NP1NP1/PP2BP1P/R1BQ1RK1 w - - 12 129"
+        painel = self.sala()
+        painel.resize(380, 700)
+        self.app.processEvents()
+        painel.campo_fen.setText(fen)
+        self.app.processEvents()
+        self.assertTrue(painel.campo_fen.texto_cortado())
+        self.assertEqual(fen, painel.campo_fen.text())
+        self.assertNotIn("\u2026", painel.campo_fen.text())
+
+    def test_o_campo_da_fen_continua_mostrando_o_comeco_depois_de_um_lance(self) -> None:
+        """`refresh()` reescreve a FEN, e era o `setText` dele que rolava o campo para o fim."""
+        from PyQt6.QtCore import QPoint
+
+        painel = self.sala()
+        painel.resize(560, 700)
+        painel.push_move(chess.Move.from_uci("e2e4"))
+        self.app.processEvents()
+        campo = painel.campo_fen
+        dentro = QPoint(4, campo.height() // 2)
+        self.assertEqual(0, campo.cursorPositionAt(dentro), campo.text())
 
     def test_jogar_um_lance_entra_na_arvore_e_na_lista(self) -> None:
         painel = self.sala()
@@ -254,7 +376,11 @@ class SalaTests(unittest.TestCase):
         painel.analyse()
         painel.alternar_analise_continua()
         painel.variante_do_motor()
-        self.assertEqual(len([f for f in vistos if "Sem motor UCI instalado" in f]), 3)
+        # **A frase saiu do literal e foi para o catálogo** (F9-C16): ela mandava "ponha o
+        # Stockfish em engines/ e reabra", que era uma receita que não resolvia -- nada em `src/`
+        # procurava o binário. Afirmar contra `strings.SEM_MOTOR_STATUS` é mais forte que afirmar
+        # contra uma cópia do texto: um dia em que o catálogo mudar e o painel não, isto cai.
+        self.assertEqual(len([f for f in vistos if strings.SEM_MOTOR_STATUS in f]), 3)
 
     def test_a_escrita_da_maquina_nao_adia_a_gravacao(self) -> None:
         """**Com a análise contínua ligada, a sala nunca era gravada** (S-345): o motor escreve a

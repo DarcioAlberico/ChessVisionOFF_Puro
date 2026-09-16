@@ -24,12 +24,38 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import torch
-
 from .atomic_io import atomic_write_bytes
 from .config import PIECE_CLASSES, PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
+
+
+def __getattr__(name: str) -> Any:
+    """`checkpoint.torch` continua resolvendo -- e só importa torch quando alguém o pede.
+
+    O `import torch` saiu do topo deste módulo para que `qt/janela.py` abra sem torch (o
+    instalador leve não o leva dentro; ver
+    `packaging/pendencias/0001-torch-fora-do-escopo-de-modulo.patch`). Tirá-lo do topo, porém,
+    tira o **nome** `checkpoint.torch`, e é por esse nome que a guarda da S-57 alcança o
+    `torch.save` para simular um disco cheio:
+
+        patch("chess_diagram_ocr.checkpoint.torch.save", side_effect=OSError("disco cheio"))
+
+    Esta é a forma que o PEP 562 dá para "atributo de módulo preguiçoso", e ela responde a
+    pergunta sem desfazer o conserto: o nome existe, o import acontece **na hora do acesso**, e
+    quem acessa recebe o mesmo objeto de `sys.modules["torch"]` que o `import torch` de dentro
+    de `_load_raw` e de `save_checkpoint` receberá depois. Por isso o remendo do teste é visto
+    lá dentro, e por isso a guarda continua cobrando o que cobrava.
+
+    **Não é um atalho para reintroduzir o torch no escopo de módulo**: importar este módulo não
+    dispara nada: só tocar em `checkpoint.torch` dispara.
+    """
+    if name == "torch":
+        import torch
+
+        return torch
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 CHECKPOINT_FORMAT = 2
 """1 = `{"model_state": ...}` cru (pré-Fase 5). 2 = com metadados."""
@@ -72,6 +98,13 @@ class Checkpoint:
 
 
 def _load_raw(path: Path, *, map_location: str) -> Any:
+    # `import torch` aqui dentro, e não no topo: este módulo não usa torch em NENHUM escopo
+    # de módulo (medido: 0 usos), e o topo dele é o que faz `qt/janela.py` exigir torch para
+    # abrir -- pela cadeia qt.campo -> field_eval -> checkpoint. Um import dentro de função
+    # custa uma consulta a `sys.modules` por chamada, e `torch.load` sozinho custa cinco
+    # ordens de grandeza mais do que isso.
+    import torch
+
     try:
         return torch.load(path, map_location=map_location, weights_only=True)
     except TypeError:
@@ -125,6 +158,8 @@ def save_checkpoint(
     estar lendo o mesmo caminho (a exportação de um livro leva dezenas de minutos, e o treino
     regrava uma vez por época que melhora).
     """
+    import torch
+
     payload = {
         "model_state": state,
         "metadata": {**metadata, "checkpoint_format": CHECKPOINT_FORMAT},
