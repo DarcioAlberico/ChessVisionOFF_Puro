@@ -24,8 +24,12 @@ __all__ = [
     "ABA_DE_TRABALHO",
     "DO_ACERVO",
     "DO_DIAGRAMA",
+    "LIVRO",
+    "MODOS",
+    "MODO_DE_TRABALHO",
     "RENOMEADAS",
     "contagem_no_rotulo",
+    "e_modo",
     "nome_atual",
     "nome_base",
     "rotulo",
@@ -62,32 +66,56 @@ clicado. Não é a `Revisão` (S-22), que é a fila de diagramas -- ver o cabeç
 Só existe quando a suíte está ao alcance."""
 CONFIGURACAO = "Configuração"
 
+LIVRO = "Livro"
+"""A aba que hospeda o painel principal (OCR_UI_ROADMAP passo 17, tarefa 3).
+
+**As quatro do diagrama deixaram de ser abas e viraram modos dela.** Resultado, Estudo, Revisão
+e Texto falam do mesmo objeto -- o diagrama e a página que estão à vista no visor, ao lado -- e
+trocar entre elas não é ir a outro lugar: é olhar o mesmo trabalho de outro ângulo. Como abas
+elas tinham o mesmo peso que Dataset e Galeria, que falam de outra coisa (o acervo inteiro), e o
+fluxo principal -- ler o diagrama, corrigi-lo, exportar -- obrigava a trocar de aba a cada passo
+(`OCR_UI_ANALISE.md` §5.1: "tabuleiro e página lado a lado, sem abas"). A barra de modos fica no
+topo do painel; o resto da aba é o painel do modo escolhido."""
+
 DO_DIAGRAMA: tuple[str, ...] = (RESULTADO, ESTUDO, REVISAO, TEXTO)
-"""As abas que mudam de conteúdo quando se clica num retângulo da página."""
+"""Os painéis que mudam de conteúdo quando se clica num retângulo da página -- **os modos** do
+painel principal (`LIVRO`), na ordem em que a barra de modos os lista."""
+
+MODOS: tuple[str, ...] = DO_DIAGRAMA
+"""O mesmo que `DO_DIAGRAMA`, com o nome do que eles são desde o passo 17."""
 
 DO_ACERVO: tuple[str, ...] = (DATASET, GALERIA, ROTULAGEM, REVISAO_DE_TEXTO, CONFIGURACAO)
 """As que falam do livro inteiro. A Configuração fecha a fila: é a aba do primeiro dia."""
 
-ABAS: tuple[str, ...] = DO_DIAGRAMA + DO_ACERVO
+ABAS: tuple[str, ...] = (LIVRO, *DO_ACERVO)
 """As abas do painel esquerdo, **na ordem** -- e a ordem é o item (S-162).
 
 Elas misturavam dois níveis, e **o corte entre os dois grupos é onde a barra muda de assunto**.
 Seis abas de peso igual escondiam que quatro delas seguem o diagrama aberto e três não.
 
-**São sete, e não seis.** A S-162 arrumou seis; a S-211 acrescentou a `Texto`, do lado do diagrama
-aberto -- ela responde "o que está escrito nesta folha?", que é a mesma pergunta de contexto que o
-`Resultado` e a `Revisão` respondem. A spec da S-226 ainda dizia seis, e é este número que vale.
+**Desde o passo 17 da OCR_UI o corte virou estrutura**: as quatro do diagrama são modos da aba
+`Livro`, e a faixa de abas só tem os dois níveis que sempre teve -- o livro em trabalho e o acervo.
+A história de sete e oito abas (S-162, S-211, Rotulagem e Revisão de texto da suíte) continua
+valendo para os **painéis**: nenhum saiu; quatro mudaram de casa.
 
 **Declarada aqui porque uma pele não pode esconder aba nenhuma** (regra 2 da SPEC_APARENCIA). A
 Imagem 1 não desenha faixa de abas; o que a S-226 muda é o **peso** dela, não o conteúdo -- e o
 teste compara a barra montada com esta tupla, em cada pele registrada."""
 
-ABA_DE_TRABALHO = RESULTADO
+ABA_DE_TRABALHO = LIVRO
 """Onde a janela abre num checkout novo (S-162).
 
 Era a Configuração: três caminhos de arquivo e os parâmetros de treino, isto é, a aba do primeiro
-dia e quase nunca depois. O trabalho começa no Resultado, que é onde o diagrama clicado na página
-aparece."""
+dia e quase nunca depois. O trabalho começa no livro, no modo Resultado, que é onde o diagrama
+clicado na página aparece (`MODO_DE_TRABALHO`)."""
+
+MODO_DE_TRABALHO = RESULTADO
+"""O modo em que a aba `Livro` abre num checkout novo."""
+
+
+def e_modo(nome: str) -> bool:
+    """Se aquele nome (com ou sem contagem) é um modo do painel principal, e não uma aba."""
+    return nome_base(nome) in MODOS
 
 
 def rotulo(nome: str, contagem: int | None = None) -> str:

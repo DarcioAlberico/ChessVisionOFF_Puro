@@ -250,14 +250,21 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1984
+    LIMITE = 1967
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.984 -> 1.967 com a tarefa 3 do passo 17 (as abas do diagrama viram modos), e a catraca
+    desce junto.** A faixa de abas deixou de ser um `QTabWidget` cru montado aqui e passou a ser
+    `qt/areas_de_trabalho.AreasDeTrabalho`: quem sabe se um nome é aba ou modo, onde cada área
+    mora, o que está à frente e como pôr a contagem no rótulo é ela. Saíram daqui o
+    `_indice_da_aba`, o laço das contagens e o `indexOf` do `_focar_aba`; a janela só monta cada
+    painel e diz se ele é modo (`principal.adicionar_modo`) ou aba (`addTab`). Os quatro modos
+    moram em `qt/painel_principal.py`.
 
     **1.944 -> 1.984 com o trilho de páginas (OCR_UI passo 17, ramo `passo-17-trilho`), e as 40
     linhas são o trilho montado à esquerda do visor, a ponte da importação
     (`qt/importador_de_livro.montar`, que liga o importador da suíte ao trilho e guarda o
-    resultado -- fora daqui de propósito) e quatro comandos no dicionário. O passo muda a forma
-    da janela; a redução para modos do painel principal (tarefa 3) é o que este ramo ainda deve.
+    resultado -- fora daqui de propósito) e quatro comandos no dicionário.
 
     **1.905 -> 1.944 com o passo 15 da OCR_UI (2026-09-16), e as 39 linhas são a bandeira e os
     fios dela.** `rasterizar_ao_fundo` entra pelo construtor e é repassada a três painéis
