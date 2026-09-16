@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 
 import cv2
 import fitz
@@ -833,6 +834,30 @@ def detect_diagrams_in_pdf_page(
             max_boards=max_boards,
             reading_order=reading_order,
         )
+
+
+def detect_diagrams_rendering_page(
+    pdf_path: Path,
+    page_index: int,
+    *,
+    dpi: int,
+    max_boards: int = DEFAULT_MAX_BOARDS,
+    reading_order: ReadingOrder = DEFAULT_READING_ORDER,
+) -> list[DiagramCandidate]:
+    """`detect_diagrams_in_pdf_page` rasterizando a página aqui mesmo, a partir do caminho.
+
+    Existe para o **processo de trabalho** da janela (OCR_UI passo 15): a detecção de fundo é
+    Python, numpy e OpenCV sobre a página inteira, e numa thread ela divide o GIL com a janela
+    por um segundo a cada virada. Mandar a página já rasterizada para o filho custaria 26 MB de
+    `pickle`; mandar o caminho e o índice custa nada, e o filho a rasteriza de novo em ~50 ms.
+    Argumentos simples e função de módulo, porque atravessam por `pickle`.
+    """
+    from ..pdf_io import render_pdf_page
+
+    page_rgb = render_pdf_page(pdf_path, page_index, dpi=dpi)
+    return detect_diagrams_in_pdf_page(
+        pdf_path, page_index, page_rgb, max_boards=max_boards, reading_order=reading_order
+    )
 
 
 def _order_candidates(

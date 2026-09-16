@@ -252,6 +252,10 @@ class TabelaQt(QTreeWidget):
         o dado está faltando quando o que houve foi a chamada errada.
         """
         self.clear()
+        # O alinhamento é da coluna, e resolvido uma vez por coluna e não uma vez por célula
+        # (OCR_UI passo 15): 200 linhas x 8 colunas eram 1.600 traduções de âncora por página,
+        # 5 ms de thread da janela a cada chegada do dataset.
+        alinhamentos = [alinhamento(coluna) for coluna in self.colunas]
         itens = []
         for linha in linhas:
             valores = list(linha)
@@ -261,8 +265,8 @@ class TabelaQt(QTreeWidget):
                     f"{valores!r}"
                 )
             item = QTreeWidgetItem([str(valor) for valor in valores])
-            for indice, coluna in enumerate(self.colunas):
-                item.setTextAlignment(indice, alinhamento(coluna))
+            for indice, flag in enumerate(alinhamentos):
+                item.setTextAlignment(indice, flag)
             itens.append(item)
         self.addTopLevelItems(itens)
 

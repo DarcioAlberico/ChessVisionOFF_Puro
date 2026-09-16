@@ -393,6 +393,64 @@ class VisorTests(unittest.TestCase):
         self.visor.mostrar_pagina(self.pagina, dpi=220)
         self.assertIsNone(self.visor.caixas)
 
+    # ------------------------------------------------------- reescalonamento ao fundo (passo 15)
+
+    def _esperar_a_nitida(self) -> None:
+        from PyQt6.QtTest import QTest
+
+        for _ in range(200):
+            if self.visor._reescalonamento is None:
+                return
+            QTest.qWait(10)
+
+    def test_em_linha_o_zoom_novo_ja_vem_nitido(self) -> None:
+        """A bandeira desligada (o resto desta classe): a pixmap acompanha o zoom na hora."""
+        self.visor.reescalar_ao_fundo = False
+        self.visor.mostrar_pagina(self.pagina, dpi=220)
+        self.visor.definir_zoom(0.5)
+        escalada = self.visor.pagina_escalada()
+        assert escalada is not None
+        self.assertEqual((400, 500), (escalada.width(), escalada.height()))
+
+    def test_ao_fundo_a_folha_anterior_serve_ate_a_nitida_chegar(self) -> None:
+        """Um quadro provisório, esticado pelo pintor; a nítida vem por sinal e repinta."""
+        self.visor.reescalar_ao_fundo = True
+        self.visor.mostrar_pagina(self.pagina, dpi=220)
+        antes = self.visor.pagina_escalada()
+        assert antes is not None
+        self.visor.definir_zoom(0.5)
+        provisoria = self.visor.pagina_escalada()
+        self.assertIs(antes, provisoria, "enquanto a nítida não vem, a que há é a que se desenha")
+        self.assertEqual((400, 500), (self.visor.widget().width(), self.visor.widget().height()))
+        self._esperar_a_nitida()
+        nitida = self.visor.pagina_escalada()
+        assert nitida is not None
+        self.assertEqual((400, 500), (nitida.width(), nitida.height()))
+
+    def test_a_nitida_de_um_zoom_que_ja_passou_e_descartada(self) -> None:
+        """Dois passos de zoom antes de a primeira nítida chegar: só o último vale."""
+        self.visor.reescalar_ao_fundo = True
+        self.visor.mostrar_pagina(self.pagina, dpi=220)
+        self.visor.definir_zoom(0.5)
+        self.visor.pagina_escalada()  # pede a de 0,5
+        self.visor.definir_zoom(0.25)
+        self.visor.pagina_escalada()  # e a de 0,25, antes da primeira chegar
+        self._esperar_a_nitida()
+        nitida = self.visor.pagina_escalada()
+        assert nitida is not None
+        self.assertEqual((200, 250), (nitida.width(), nitida.height()))
+
+    def test_a_folha_preparada_preve_o_zoom_do_enquadramento(self) -> None:
+        """`preparar_folha` responde à pergunta de "ajustar à página" antes de a folha chegar."""
+        from chess_diagram_ocr.qt.visor import preparar_folha
+        from chess_diagram_ocr.ui.viewport import ENQUADRAMENTO_PAGINA
+
+        folha = preparar_folha(self.pagina, zoom=1.0, enquadramento=ENQUADRAMENTO_PAGINA, area=(400, 500))
+        self.assertLess(folha.zoom, 1.0)
+        self.assertLessEqual(folha.escalada.width(), 400)
+        self.assertLessEqual(folha.escalada.height(), 500)
+        self.assertEqual((800, 1000), (folha.tamanho.width(), folha.tamanho.height()))
+
 
 class JanelaTests(unittest.TestCase):
     """A janela inteira: abrir, navegar, marcar, ler e selecionar."""

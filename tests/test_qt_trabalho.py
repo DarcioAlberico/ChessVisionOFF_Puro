@@ -68,3 +68,29 @@ class DeteccaoDeFundoTests(unittest.TestCase):
         self.assertFalse(self.detector.ocupado)
         QTest.qWait(50)
         self.assertEqual([p for _, p, _ in self.chegou], [0], "o pedido guardado não roda depois de parar")
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class CederAInterfaceTests(unittest.TestCase):
+    """O intervalo de troca do interpretador encurta com a primeira `Tarefa` (OCR_UI passo 15)."""
+
+    def test_a_primeira_tarefa_encurta_o_intervalo_e_nunca_o_alonga(self) -> None:
+        import sys
+
+        from chess_diagram_ocr.qt import trabalho
+
+        aplicacao()
+        anterior = sys.getswitchinterval()
+        try:
+            sys.setswitchinterval(0.005)
+            trabalho._cedeu = False
+            trabalho.Tarefa(lambda: None)
+            self.assertLessEqual(sys.getswitchinterval(), trabalho.INTERVALO_DE_TROCA_S)
+
+            sys.setswitchinterval(trabalho.INTERVALO_DE_TROCA_S / 2)
+            trabalho._cedeu = False
+            trabalho.ceder_a_interface()
+            self.assertAlmostEqual(trabalho.INTERVALO_DE_TROCA_S / 2, sys.getswitchinterval(), msg="não alonga")
+        finally:
+            sys.setswitchinterval(anterior)
+

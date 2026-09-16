@@ -96,6 +96,8 @@ class PainelDeCampo(QWidget):
         self._colocacoes = colocacoes
         self._aviso_de_treino = aviso_de_treino
         self._conjunto = caminho_do_conjunto or CAMINHO_DO_CONJUNTO
+        self._conjunto_lido: tuple[tuple[int, int], list] | None = None
+        """A última leitura do conjunto, com `(tamanho, mtime)` do arquivo. Ver `_ler`."""
         """`None` é o arquivo do produto. O parâmetro existe para o teste não anotar no conjunto
         de verdade -- é o mesmo motivo do `pasta_da_galeria` da Galeria."""
 
@@ -166,12 +168,28 @@ class PainelDeCampo(QWidget):
         self.lbl_estado.setText(f"{estado}{self._aviso_de_treino()}")
 
     def _ler(self) -> list:
+        """O conjunto de campo, relido só quando o arquivo mudou (`(tamanho, mtime)`, passo 15).
+
+        `atualizar` roda a cada virada de página, e reparsear 68 páginas anotadas custava 4 ms
+        de thread da janela por virada -- pouco, mas a virada tem 16 ms para tudo. A chave é a
+        mesma de `qt/marcas` e `contagem_de_amostras`: gravar uma anotação muda os dois valores.
+        """
         try:
-            return load_field_set(self._conjunto)
+            estado = Path(self._conjunto).stat()
+            chave: tuple[int, int] | None = (estado.st_size, estado.st_mtime_ns)
+        except OSError:
+            chave = None
+        if chave is not None and self._conjunto_lido is not None and self._conjunto_lido[0] == chave:
+            return self._conjunto_lido[1]
+        try:
+            paginas = load_field_set(self._conjunto)
         except (OSError, ValueError) as erro:
             # Conjunto ilegível não pode derrubar a janela: ele é informação lateral até o clique.
             logger.debug("Não foi possível ler o conjunto de campo: %s", erro)
             return []
+        if chave is not None:
+            self._conjunto_lido = (chave, paginas)
+        return paginas
 
     # ------------------------------------------------------------------- as três do catálogo
 

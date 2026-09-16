@@ -431,7 +431,7 @@ a ultima concluida -- desde que os parametros sejam os mesmos. Concluir apaga o 
 O lado a jogar sai da legenda do PDF quando ela declara, da legalidade da posicao quando
 ela impoe (o lado que nao joga nao pode estar em xeque), da partida que a base casou, da
 escolha de quem estava com o livro aberto, e do padrao "brancas" quando nenhuma das outras
-responde. O header `[SideToMoveSource]` diz **qual das 10** foi, sempre -- a maioria dos livros
+responde. O header `[SideToMoveSource]` diz **qual das 12** foi, sempre -- a maioria dos livros
 do acervo nao declara nada, e um palpite precisa parecer um palpite.
 
 | valor | de onde veio |
@@ -442,6 +442,8 @@ do acervo nao declara nada, e um palpite precisa parecer um palpite.
 | `text-page-scope` | declarado no cabecalho da pagina |
 | `ocr-page-scope` | lido por OCR do cabecalho da pagina |
 | `glifo-page-scope` | lido no cabecalho da pagina pelo classificador deste projeto (S-207) |
+| `move-number` | deduzido da numeracao do primeiro lance impresso sob o diagrama (OCR_UI passo 7) |
+| `caption-after` | deduzido da legenda «apos N.x» / «after N...x» sob o diagrama (OCR_UI passo 7) |
 | `legality` | deduzido da legalidade da posicao |
 | `database` | da partida que a base casou (S-72) |
 | `manual` | escolhido a mao na Galeria |
@@ -996,6 +998,7 @@ src/chess_diagram_ocr/
   dataset.py            dataset de treino, cache limitado e amostrador por tabuleiro
   dataset_browser.py    listar, filtrar, recorrigir e remover amostras
   decode.py             decodificacao sujeita as regras do xadrez
+  desenho_de_diagrama.py  o diagrama desenhado de novo (fonte Merida ou PNGs das pecas) para substituir no PDF
   detection_census.py   censo da deteccao: quantos diagramas cada regra achou, por livro
   engine.py             motor UCI opcional (Stockfish)
   estudo.py             a arvore de variantes da sala de estudo, e as regras de lance
@@ -1023,10 +1026,12 @@ src/chess_diagram_ocr/
   onnx_export.py        exportacao ONNX e conferencia de paridade com o torch
   orientation.py        a cascata de regras que decide a orientacao do diagrama
   pdf_io.py             render de paginas de PDF (PyMuPDF)
+  pdf_substituicao.py   as operacoes de escrita no PDF: apagar, substituir o diagrama, link do lichess
   pdf_text.py           legenda e metadados da camada de texto do PDF
   pdf_to_pgn.py         varredura de PDF e exportacao PGN
   preprocess.py         o recorte do tabuleiro virando as 64 casas que o modelo le
   procedencias.py       de onde veio cada amostra, e o que isso permite fazer com ela
+  processo_de_trabalho.py  o filho que rasteriza, le o CSV e detecta, porque o PyMuPDF e o Python seguram o GIL
   provenance.py         o registro de procedencia gravado ao lado de cada rotulo
   review_queue.py       fila de revisao ordenada por valor de informacao
   second_opinion.py     a segunda leitura local do tabuleiro, para conferir a primeira (S-66)

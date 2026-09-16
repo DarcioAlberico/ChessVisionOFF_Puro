@@ -253,10 +253,20 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**Catorze** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**Dezessete** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
-exceção. Nove são operações longas e estão no `BusyRegistry`; as outras cinco são declaradas
-em `tests/test_busy.py::SEM_REGISTRO`, com o motivo de cada uma (S-112).
+exceção. Nove são operações longas e estão no `BusyRegistry`; as outras oito são declaradas
+em `ui/busy.py::FORA_DO_REGISTRO`, com o motivo de cada uma (S-112).
+
+**As três últimas são do passo 15 da OCR_UI (2026-09-16), e nenhuma delas é uma thread que
+trabalha: são threads que esperam.** Abrir o livro e rasterizar a página (`qt/painel_do_pdf.py`),
+reduzir a página ao zoom novo (`qt/visor.py`) e abrir o SQLite do cache de posições
+(`qt/painel_da_galeria.py`) rodam numa `Tarefa`; a rasterização, a leitura do `labels.csv` e a
+detecção de fundo **atravessam dela para um processo filho** (`processo_de_trabalho.py`), porque o
+`get_pixmap` do PyMuPDF e a legalidade de 5.431 FENs em Python seguram o GIL, e uma thread que
+segura o GIL trava a janela do mesmo jeito -- medido: 51 ms por página numa thread, 3–6 ms com o
+filho. O intervalo de troca do interpretador cai para 0,1 ms na primeira `Tarefa`
+(`qt/trabalho.ceder_a_interface`), pela mesma medição.
 
 **As duas últimas entraram no F9-C2, e as duas são leitura de CSV que estava na thread da
 janela**: `qt/marcas.py` (250 ms na abertura de cada livro) e `qt/painel_do_dataset._reler_agora`
@@ -280,6 +290,9 @@ Contar só a primeira deixaria de fora a leitura da página, que é o laço inte
 | leitura do texto da página | `qt/painel_de_texto.py` | sim, entre páginas | não, o `.cvtxt` já está em disco | não (é o classificador de caractere) |
 | exportação do texto lido | `qt/painel_de_texto.py` | não | **sim**, o destino fica pela metade | não |
 | avaliação do motor sobre a posição | `qt/painel_de_estudo.py` | não | — declarada | não (é o Stockfish) |
+| abrir o livro e rasterizar a página exibida (passo 15) | `qt/painel_do_pdf.py::_executar`, via o processo de trabalho | não (é rápido) | — declarada | não |
+| reduzir a página ao zoom novo (passo 15) | `qt/visor.py::_pedir_reescalonamento` | não (é rápido) | — declarada | não |
+| abrir o cache de posições ao abrir o livro (passo 15) | `qt/painel_da_galeria.py::_abrir_cache_de_posicoes` | não (é rápido) | — declarada | não |
 
 O modelo é compartilhado entre elas e fica **sob lock durante o uso**, não só durante a
 carga: o treino reescreve o mesmo `.pt` que uma leitura concorrente estaria lendo (S-31).

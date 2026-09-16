@@ -82,6 +82,32 @@ def pytest_configure(config: pytest.Config) -> None:
     linhas.extend(["", f"    cd {RAIZ}", "    uv sync --extra dev", ""])
     raise pytest.UsageError("\n".join(linhas))
 
+
+@pytest.fixture(autouse=True, scope="session")
+def trabalho_em_linha() -> Iterator[None]:
+    """A suíte roda o passo 15 da OCR_UI **em linha**: sem processo filho e sem folha ao fundo.
+
+    O produto abre o livro, rasteriza a página, lê o `labels.csv` e detecta diagramas num
+    processo de trabalho (`chess_diagram_ocr.processo_de_trabalho`), e o visor troca de folha
+    quando ela chega por sinal. Na suíte isso seria (a) um `spawn` de um segundo por sessão com
+    threads de serviço que sobrevivem ao teste -- e `sem_thread_vazada` está certo em recusá-las
+    -- e (b) uma centena de testes de janela que perguntam pela folha na linha seguinte a
+    `abrir_pdf` e passariam a ver a página anterior. As duas bandeiras são desligadas uma vez,
+    aqui; os testes do próprio caminho ao fundo as ligam explicitamente na construção.
+    """
+    if importlib.util.find_spec("PyQt6") is None:
+        yield
+        return
+    from chess_diagram_ocr import processo_de_trabalho
+    from chess_diagram_ocr.qt import painel_do_pdf
+
+    processo_de_trabalho.processo_de_trabalho().em_processo = False
+    anterior = painel_do_pdf.RASTERIZAR_AO_FUNDO
+    painel_do_pdf.RASTERIZAR_AO_FUNDO = False
+    yield
+    painel_do_pdf.RASTERIZAR_AO_FUNDO = anterior
+
+
 # ------------------------------------------------------------------ o que vaza de um teste (S-413)
 
 ESPERA_POR_THREAD = 2.0

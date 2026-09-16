@@ -79,6 +79,7 @@ from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dialogos import DialogoDePartidas, perguntar_bases, perguntar_escopo
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.rotulo import RecorteElastico
+from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.service import OcrService
 from chess_diagram_ocr.ui import atalhos, espaco, estilos, folha_de_estilo, strings, tokens
@@ -183,6 +184,9 @@ class PainelDaGaleria(QWidget):
         self.model = GalleryModel()
         self._store: PositionStore | None = None
         """A conexão aberta com o cache de posições (S-140). Uma por painel, e não por livro."""
+        self._abrindo_o_cache: Tarefa | None = None
+        self._cache_pedido: tuple[Path, tuple[Path, ...]] | None = None
+        """A abertura do cache ao fundo, e para qual `(caminho, bases)` ela foi pedida (passo 15)."""
         self._cancelar = threading.Event()
         self._varrendo = False
         self._sincronizando = False
@@ -1117,7 +1121,7 @@ class PainelDaGaleria(QWidget):
         self.anotacoes_mudaram.emit()
         self.estado.emit(mensagem)
 
-    def _abrir_cache_de_posicoes(self) -> None:
+    def _abrir_cache_de_posicoes(self, *, ao_fundo: bool = False) -> None:
         """Deixa o cache de posições aberto e apontado à base de agora. Falha em silêncio.
 
         Sem cache o botão fica desligado e o resto da aba funciona igual: a lista é um caminho a
@@ -1126,22 +1130,79 @@ class PainelDaGaleria(QWidget):
         **Aberto uma vez, e não relido por livro (S-140).** A base é reconferida a cada chamada
         porque é a única coisa que pode ter mudado: um `.pgn` a mais na pasta muda as contagens de
         tudo que está guardado, e uma conexão aberta antes dele responderia o número de ontem.
+
+        **`ao_fundo` é o caminho de quem abre o livro** (OCR_UI passo 15): abrir o SQLite num
+        disco frio custou 25–60 ms medidos na thread da janela, na pior pilha do "abrir PDF". A
+        conexão é feita numa `Tarefa` e entregue em `_cache_abriu`; até lá `position_cache` fica
+        vazio e o botão de candidatas, apagado -- que é o que ele já era sem cache. Quem precisa
+        do cache **agora** (a busca por posição) chama sem `ao_fundo` e, se houver uma abertura
+        correndo, espera por ela em vez de abrir uma segunda.
         """
         bases = self._bases_atuais()
         caminho = self._caminho_do_cache(bases)
-        try:
-            if self._store is not None:
-                if self._store.path == caminho and self._store.matches(bases):
-                    self.model.position_cache = self._store
-                    return
-                self._store.close()
-                self._store = None
-            self._store = open_store(caminho, database=bases)
+        if self._store is not None and self._store.path == caminho and self._store.matches(bases):
             self.model.position_cache = self._store
+            return
+        if self._abrindo_o_cache is not None:
+            if self._cache_pedido == (caminho, tuple(bases)):
+                if not ao_fundo:
+                    self._esperar_o_cache()
+                return
+            # Pediram outra base no meio: a que está abrindo será descartada ao chegar.
+            self._cache_pedido = None
+        if ao_fundo:
+            self._cache_pedido = (caminho, tuple(bases))
+            tarefa = manter_viva(
+                Tarefa(
+                    lambda: open_store(caminho, database=bases, de_outra_thread=True),
+                    nome="cache de posições",
+                )
+            )
+            tarefa.pronto.connect(self._cache_abriu)
+            tarefa.falhou.connect(self._cache_nao_abriu)
+            self._abrindo_o_cache = tarefa
+            tarefa.start()
+            return
+        try:
+            self._trocar_o_cache(open_store(caminho, database=bases))
         except Exception:  # noqa: BLE001 - cache é material derivado; sem ele a aba segue
             logger.exception("Não foi possível ler o cache de posições.")
-            self._store = None
-            self.model.position_cache = None
+            self._trocar_o_cache(None)
+
+    def _trocar_o_cache(self, loja: PositionStore | None) -> None:
+        if self._store is not None and self._store is not loja:
+            self._store.close()
+        self._store = loja
+        self.model.position_cache = loja
+
+    def _cache_abriu(self, loja: object) -> None:
+        self._abrindo_o_cache = None
+        pedido, self._cache_pedido = self._cache_pedido, None
+        if pedido is None or not isinstance(loja, PositionStore):
+            # Pediram outra base enquanto esta abria: o que chegou não serve, e fecha.
+            if isinstance(loja, PositionStore):
+                loja.close()
+            return
+        self._trocar_o_cache(loja)
+        self._atualizar_botao_de_candidatas()
+
+    def _cache_nao_abriu(self, mensagem: str, _excecao: object) -> None:
+        self._abrindo_o_cache = None
+        self._cache_pedido = None
+        logger.warning("Não foi possível ler o cache de posições: %s", mensagem)
+        self._trocar_o_cache(None)
+
+    def _esperar_o_cache(self, limite_ms: int = 15_000) -> None:
+        """Roda a linha de eventos até a abertura ao fundo entregar. Só quem precisa do cache agora."""
+        from PyQt6.QtCore import QEventLoop, QTimer
+
+        laco = QEventLoop(self)
+        relogio = QTimer(self)
+        relogio.timeout.connect(lambda: laco.quit() if self._abrindo_o_cache is None else None)
+        relogio.start(5)
+        QTimer.singleShot(limite_ms, laco.quit)
+        laco.exec()
+        relogio.stop()
 
     def _atualizar_botao_de_candidatas(self) -> None:
         candidatas, total = self.model.current_candidates()
@@ -1180,7 +1241,7 @@ class PainelDaGaleria(QWidget):
             index_path=DEFAULT_INDEX_PATH,
             gallery_dir=self._pasta,
         )
-        self._abrir_cache_de_posicoes()
+        self._abrir_cache_de_posicoes(ao_fundo=True)
         if indice is None:
             # **A frase saiu daqui no F9-C3, e a razão é uma medição.** Ela dizia "livro ainda não
             # varrido" no topo da aba enquanto o estado vazio, 302 px abaixo, dizia "Nenhum

@@ -636,5 +636,94 @@ class NomeDoBotaoQuandoOCromoNaoODesenhaTests(unittest.TestCase):
         self.assertIn("OCR todos diagramas — Ler esta página", self.painel.btn_ler_pagina.toolTip())
 
 
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class RasterizacaoAoFundoTests(unittest.TestCase):
+    """O caminho do produto (OCR_UI passo 15): abrir e rasterizar fora da thread da janela.
+
+    A bandeira é ligada aqui, na construção, porque o `conftest` a desliga para o resto da
+    suíte. O processo de trabalho continua em linha (`processo_de_trabalho().em_processo` é
+    `False` na suíte), então a rasterização corre numa `Tarefa` -- que é o bastante para provar
+    a coreografia: pedido, folha anterior na tela, chegada por sinal, folha atrasada recusada.
+    """
+
+    def setUp(self) -> None:
+        import tempfile
+
+        from test_app_pyqt import pdf_de_teste
+
+        self.app = aplicacao()
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.livro = pdf_de_teste(Path(self.pasta.name) / "livro.pdf", paginas=3)
+        self.painel = qt_pdf.PainelDoPdf(dpi=lambda: 72, rasterizar_ao_fundo=True)
+        self.addCleanup(descartar, self.painel)
+        self.painel.resize(600, 500)
+        self.painel.show()
+        self.app.processEvents()
+        self.desenhadas: list[int] = []
+        self.painel.pagina_desenhada.connect(self.desenhadas.append)
+
+    def test_abrir_volta_antes_da_folha_e_a_folha_chega_por_sinal(self) -> None:
+        self.painel.load_pdf(self.livro)
+        self.assertTrue(self.painel.ocupado, "a contagem e a rasterização correm ao fundo")
+        self.assertIsNone(self.painel.page_rgb, "a folha ainda não chegou")
+
+        self.assertTrue(self.painel.aguardar_pagina())
+        self.assertEqual(3, self.painel.page_count)
+        self.assertIsNotNone(self.painel.page_rgb)
+        self.assertEqual(0, self.painel.page_loaded_for_index)
+        self.assertEqual([0], self.desenhadas)
+        self.assertIsNotNone(self.painel.visor.pagina_escalada())
+
+    def test_a_folha_anterior_fica_na_tela_ate_a_nova_chegar(self) -> None:
+        self.painel.load_pdf(self.livro)
+        self.painel.aguardar_pagina()
+        anterior = self.painel.visor.pagina_escalada()
+
+        self.assertTrue(self.painel.ir_para_pagina(1))
+        self.assertIs(anterior, self.painel.visor.pagina_escalada(), "a página 1 ainda está na tela")
+        self.assertIsNone(self.painel.page_loaded_for_index, "e o painel sabe que ela não é a pedida")
+        self.assertTrue(self.painel.aguardar_pagina())
+        self.assertEqual(1, self.painel.page_loaded_for_index)
+        self.assertEqual([0, 1], self.desenhadas)
+
+    def test_virar_duas_vezes_antes_da_folha_mostra_so_a_ultima(self) -> None:
+        """Dez giros da roda pedem dez folhas e só a última interessa (ver `FolhaRasterizada`)."""
+        self.painel.load_pdf(self.livro)
+        self.painel.aguardar_pagina()
+        self.painel.ir_para_pagina(2)
+        self.painel.ir_para_pagina(1)  # antes de a folha 3 chegar
+
+        self.assertTrue(self.painel.aguardar_pagina())
+        self.assertEqual(1, self.painel.page_loaded_for_index)
+        self.assertEqual(1, self.painel.page_index)
+        self.assertNotIn(2, self.desenhadas, "a folha atrasada da página 3 não pode ter aparecido")
+        self.assertEqual(1, self.desenhadas[-1])
+
+    def test_um_pdf_que_nao_abre_nao_troca_o_livro(self) -> None:
+        """S-123 continua valendo com a abertura ao fundo: o painel só aponta depois da contagem."""
+        from unittest import mock
+
+        self.painel.load_pdf(self.livro)
+        self.painel.aguardar_pagina()
+        quebrado = Path(self.pasta.name) / "quebrado.pdf"
+        quebrado.write_bytes(b"isto nao e um PDF")
+        with mock.patch("chess_diagram_ocr.qt.painel_do_pdf.QMessageBox.critical") as caixa:
+            self.painel.load_pdf(quebrado)
+            self.painel.aguardar_pagina()
+        self.assertTrue(caixa.called)
+        self.assertEqual(self.livro, self.painel.source)
+        self.assertEqual(0, self.painel.page_loaded_for_index)
+
+    def test_em_linha_a_folha_esta_na_tela_ao_voltar(self) -> None:
+        """A bandeira desligada é o caminho dos testes de janela: `abrir_pdf` já mostra a folha."""
+        painel = qt_pdf.PainelDoPdf(dpi=lambda: 72, rasterizar_ao_fundo=False)
+        self.addCleanup(descartar, painel)
+        painel.load_pdf(self.livro)
+        self.assertFalse(painel.ocupado)
+        self.assertIsNotNone(painel.page_rgb)
+        self.assertEqual(0, painel.page_loaded_for_index)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

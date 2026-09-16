@@ -14,6 +14,7 @@ linha usam -- a janela não deve ser a única superfície do projeto que erra em
 from __future__ import annotations
 
 import logging
+import sys
 from collections.abc import Callable
 from functools import partial
 from typing import Any
@@ -24,8 +25,42 @@ from chess_diagram_ocr.cli import message_for
 
 logger = logging.getLogger(__name__)
 
-__all__ = [
-    "manter_viva","DeteccaoDeFundo", "Tarefa"]
+__all__ = ["INTERVALO_DE_TROCA_S", "DeteccaoDeFundo", "Tarefa", "ceder_a_interface", "manter_viva"]
+
+INTERVALO_DE_TROCA_S = 0.0001
+"""De quanto em quanto o interpretador troca de thread enquanto há tarefa rodando (OCR_UI 15).
+
+**O padrão do Python é 5 ms, e ele é o que travava a aba Dataset por 55 ms.** A tarefa que lê o
+`labels.csv` roda numa `QThread`, mas roda **Python** (a legalidade de cada FEN, linha a linha), e
+Python segura o GIL. Cada evento que o Qt entrega à janela durante essa leitura -- e uma troca de
+aba são 442 chamadas de `eventFilter` -- precisa do GIL de volta, e espera até o próximo ponto de
+troca. Medido pelo arnês `caissa.ui.audit.bloqueio` sobre `1937 Kemeri.pdf` (2026-09-16):
+
+| intervalo | aba Dataset, 1.ª vez | trocar de aba durante a leitura | a leitura inteira |
+|---|---|---|---|
+| 5 ms (padrão) | **54,6 ms** | 7,0 ms | 678 ms |
+| 0,5 ms | 7,8 ms | 7,2 ms | 816 ms |
+| 0,1 ms | 6,0 ms | 2,6 ms | 814 ms |
+
+A leitura fica 20 % mais lenta e a interface deixa de travar. É a troca certa para um programa
+cujo trabalho pesado roda ao fundo justamente para a janela continuar respondendo; 0,5 ms porque
+0,1 ms não compra nada a mais e cobra o mesmo."""
+
+_cedeu = False
+
+
+def ceder_a_interface() -> None:
+    """Encurta o intervalo de troca do interpretador. Uma vez por processo; ver a tabela acima.
+
+    Chamada quando a primeira `Tarefa` é construída: antes dela não há concorrência pelo GIL, e
+    depois dela há sempre a possibilidade. Nunca **alonga** um intervalo que alguém já encurtou.
+    """
+    global _cedeu
+    if _cedeu:
+        return
+    _cedeu = True
+    if sys.getswitchinterval() > INTERVALO_DE_TROCA_S:
+        sys.setswitchinterval(INTERVALO_DE_TROCA_S)
 
 
 class Tarefa(QThread):
@@ -44,6 +79,10 @@ class Tarefa(QThread):
         super().__init__(parent)
         self._funcao = funcao
         self._nome = nome
+        # Na construção, e não num `start` sobrescrito: o vigia de `test_busy` e o portão
+        # `caissa.ui.audit.execucao` atribuem cada `QThread.start` ao arquivo de `qt/` que o
+        # chamou, e um `start` daqui seria o chamador de todas as threads do programa.
+        ceder_a_interface()
 
     def run(self) -> None:
         """O `except` largo é deliberado: aqui é a borda da thread.

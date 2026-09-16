@@ -157,7 +157,9 @@ def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
 
     aplicacao = QApplication.instance() or QApplication([])
     try:
-        janela = JanelaPrincipal(servico=servico)
+        # **Em linha** (OCR_UI passo 15): o auto-teste pergunta pela folha na linha seguinte, e um
+        # processo filho só para ele seria um segundo de `spawn` a mais numa conferência de instalação.
+        janela = JanelaPrincipal(servico=servico, rasterizar_ao_fundo=False)
         janela.abrir_pdf(Path(caminho))
         # **Ir à página pedida, e não à que o estado lembra** (S-506): desde que a janela restaura
         # o livro e a página da sessão anterior, abrir o livro não deixa mais o auto-teste na

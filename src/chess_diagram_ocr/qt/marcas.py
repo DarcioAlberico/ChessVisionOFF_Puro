@@ -48,6 +48,7 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from chess_diagram_ocr.labels import LabelStore, pages_with_training_samples, saved_diagrams_by_page
+from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.splits import load_splits
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
@@ -56,6 +57,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "LeitorDeMarcas",
+    "amostras_de_treino_guardadas",
+    "ler_marcas_e_treino",
     "limpar_memoria_de_treino",
     "marcas_do_livro",
     "paginas_com_amostra_de_treino",
@@ -118,6 +121,55 @@ def paginas_com_amostra_de_treino(csv: Path, splits: Path) -> dict[tuple[str, in
     return paginas
 
 
+def amostras_de_treino_guardadas(csv: Path, splits: Path) -> dict[tuple[str, int], int] | None:
+    """A resposta de `paginas_com_amostra_de_treino` **se já está guardada e vale**; senão `None`.
+
+    É o que a thread da janela pode perguntar (OCR_UI passo 15): a leitura fria custava 50 ms
+    na abertura do livro, e ela agora roda no processo de trabalho junto com as marcas
+    (`ler_marcas_e_treino`). `None` é "ainda não sei", e quem recebe escreve o aviso quando a
+    resposta chegar.
+    """
+    marca_do_csv, marca_dos_splits = _marca_de(Path(csv)), _marca_de(Path(splits))
+    if marca_do_csv is None or marca_dos_splits is None:
+        return {}
+    chave = (marca_do_csv, marca_dos_splits)
+    if _TREINO is not None and _TREINO[0] == chave:
+        return _TREINO[1]
+    return None
+
+
+def _guardar_treino(chave: object, paginas: object) -> None:
+    global _TREINO
+    if isinstance(chave, tuple) and isinstance(paginas, dict):
+        _TREINO = (chave, paginas)  # type: ignore[assignment]
+
+
+def ler_marcas_e_treino(
+    csv: Path, splits: Path, livro: str
+) -> tuple[dict[int, set[int]], tuple[_Marca, _Marca] | None, dict[tuple[str, int], int]]:
+    """As marcas do livro **e** as páginas com amostra de treino, numa passada só pelo CSV.
+
+    Função de módulo, com argumentos simples, porque roda no processo de trabalho: as duas
+    perguntas leem o mesmo `labels.csv`, e lê-lo uma vez fora do processo da janela é o que tira
+    de lá os 50 ms da abertura e a disputa pelo GIL que uma thread deixaria.
+    """
+    marca_do_csv, marca_dos_splits = _marca_de(Path(csv)), _marca_de(Path(splits))
+    try:
+        entradas = LabelStore(Path(csv)).read()
+    except OSError as exc:
+        logger.warning("Marcas de salvo indisponíveis (%s): %s", csv, exc)
+        return ({}, None, {})
+    marcas = saved_diagrams_by_page(entradas, livro)
+    if marca_do_csv is None or marca_dos_splits is None:
+        return (marcas, None, {})
+    try:
+        treino = pages_with_training_samples(entradas, load_splits(Path(splits)))
+    except (OSError, ValueError) as erro:
+        logger.debug("Não foi possível checar amostras de treino da página: %s", erro)
+        return (marcas, None, {})
+    return (marcas, (marca_do_csv, marca_dos_splits), treino)
+
+
 def marcas_do_livro(csv: Path, livro: str) -> dict[int, set[int]]:
     """As marcas de `livro` no CSV. **Pura o bastante para rodar em qualquer thread.**
 
@@ -144,9 +196,14 @@ class LeitorDeMarcas(QObject):
         parent: QObject | None = None,
         *,
         ocupado: BusyRegistry | None = None,
+        splits: Callable[[], Path] | None = None,
+        em_processo: bool = True,
     ) -> None:
         super().__init__(parent)
         self._csv = csv
+        self._splits = splits if splits is not None else (lambda: csv().parent / "splits.csv")
+        self._em_processo = em_processo
+        """Se a leitura roda no processo de trabalho (o produto) ou na própria thread (testes)."""
         self._tarefa: Tarefa | None = None
         self._pedido = ""
         self._ocupado = ocupado
@@ -157,11 +214,18 @@ class LeitorDeMarcas(QObject):
     def pedir(self, livro: Path) -> None:
         """Começa a leitura das marcas daquele livro. Substitui um pedido em curso."""
         self._pedido = livro.name
-        caminho = self._csv()
+        caminho, splits = self._csv(), self._splits()
         nome = livro.name
+        em_processo = self._em_processo
+
+        def ler() -> object:
+            if em_processo:
+                return processo_de_trabalho().executar(ler_marcas_e_treino, caminho, splits, nome)
+            return ler_marcas_e_treino(caminho, splits, nome)
+
         # **Sem pai**, e a referência viva é de `qt/trabalho.manter_viva`: uma `QThread` filha de
         # um widget é destruída com ele, e o destrutor aborta o processo se a thread ainda roda.
-        tarefa = manter_viva(Tarefa(lambda: marcas_do_livro(caminho, nome), nome="marcas salvas"))
+        tarefa = manter_viva(Tarefa(ler, nome="marcas salvas"))
         tarefa.pronto.connect(lambda resultado, quem=nome: self._chegou(quem, resultado))
         tarefa.falhou.connect(lambda mensagem, _exc, quem=nome: self._falhou(quem, mensagem))
         self._tarefa = tarefa
@@ -217,8 +281,11 @@ class LeitorDeMarcas(QObject):
         if ficha is not None:
             ficha.release()
 
-    def _chegou(self, livro: str, marcas: object) -> None:
+    def _chegou(self, livro: str, resultado: object) -> None:
         self._soltar()
+        marcas, chave, treino = resultado if isinstance(resultado, tuple) else (resultado, None, {})
+        # As amostras de treino valem para qualquer livro: são do CSV, e a chave é dele.
+        _guardar_treino(chave, treino)
         if livro != self._pedido or self._desistiu:
             # A pessoa já abriu outro livro, ou desistiu. Ver o cabeçalho e `_cancelar`: a
             # resposta que não é da pergunta de agora é descartada.

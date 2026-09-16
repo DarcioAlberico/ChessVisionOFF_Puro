@@ -34,6 +34,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable, Iterator
+from dataclasses import fields
 from pathlib import Path
 
 from PyQt6.QtCore import QEvent, Qt, pyqtSignal
@@ -62,6 +63,7 @@ from chess_diagram_ocr.dataset_browser import (
     page_after_change,
     quarantine_rows,
 )
+from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
@@ -138,6 +140,14 @@ class JanelaDeEstatisticas(QDialog):
         fora.addWidget(botoes)
 
 
+def _linhas_em_tuplas(
+    csv_path: Path, samples_dir: Path, *, splits_path: Path | None, duplicate_groups: list[list[str]]
+) -> list[tuple[object, ...]]:
+    """`load_rows` no processo de trabalho, devolvendo tuplas. Ver `_reler_agora`."""
+    linhas = load_rows(csv_path, samples_dir, splits_path=splits_path, duplicate_groups=duplicate_groups)
+    return [tuple(getattr(linha, campo.name) for campo in fields(DatasetRow)) for linha in linhas]
+
+
 class PainelDoDataset(QWidget):
     """Tabela paginada do `labels.csv` com filtros, estatísticas e ações."""
 
@@ -162,10 +172,16 @@ class PainelDoDataset(QWidget):
         caminhos: Callable[[], tuple[Path, Path, Path]],
         conferir: Callable[[DatasetRow], str] | None = None,
         busy: BusyRegistry | None = None,
+        em_processo: bool = True,
     ) -> None:
         super().__init__(parent)
         self._caminhos = caminhos
         self._conferir = conferir
+        self._em_processo = em_processo
+        """Se `load_rows` roda no processo de trabalho (o produto) ou na própria thread (testes).
+
+        Ver `processo_de_trabalho`: a legalidade de 5.431 FENs é Python, e Python numa thread
+        divide o GIL com a janela -- a primeira troca para esta aba travava 55 ms por isso."""
         self.rows: list[DatasetRow] = []
         self.visible: list[DatasetRow] = []
         self._grupos_duplicados: list[list[str]] = []
@@ -412,15 +428,22 @@ class PainelDoDataset(QWidget):
         selecionadas = {row.filename for row in self.linhas_selecionadas()}
         csv_path, samples_dir, splits_path = self._caminhos()
         grupos = self._grupos_duplicados
+        em_processo = self._em_processo
+
+        def ler() -> list[DatasetRow]:
+            if em_processo:
+                # **Tuplas atravessam o processo, e as linhas nascem aqui, na thread.** Despickar
+                # 5.431 `DatasetRow` no pai são 7,8 ms de GIL numa chamada C só; despickar as
+                # tuplas são 3,0 ms, e reconstruir as linhas é Python que o interpretador reveza
+                # com a janela a cada 0,5 ms (ver `qt/trabalho.INTERVALO_DE_TROCA_S`).
+                tuplas = processo_de_trabalho().executar(
+                    _linhas_em_tuplas, csv_path, samples_dir, splits_path=splits_path, duplicate_groups=grupos
+                )
+                return [DatasetRow(*tupla) for tupla in tuplas]
+            return load_rows(csv_path, samples_dir, splits_path=splits_path, duplicate_groups=grupos)
+
         # **Sem pai**, por `qt/trabalho.manter_viva`: ver lá o modo de falha que isso evita.
-        tarefa = manter_viva(
-            Tarefa(
-                lambda: load_rows(
-                    csv_path, samples_dir, splits_path=splits_path, duplicate_groups=grupos
-                ),
-                nome="dataset",
-            )
-        )
+        tarefa = manter_viva(Tarefa(ler, nome="dataset"))
         tarefa.pronto.connect(lambda linhas: self._dataset_chegou(linhas, selecionadas))
         tarefa.falhou.connect(self._dataset_falhou)
         self._lendo = tarefa

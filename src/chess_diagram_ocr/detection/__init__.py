@@ -28,6 +28,7 @@ from .hybrid import (
     contour_inside_candidate,
     detect_diagrams,
     detect_diagrams_in_pdf_page,
+    detect_diagrams_rendering_page,
     is_page_band,
     refine_candidate_with_contour,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "contour_inside_candidate",
     "detect_diagrams",
     "detect_diagrams_in_pdf_page",
+    "detect_diagrams_rendering_page",
     "is_page_band",
     "refine_candidate_with_contour",
     "trim_to_frame",

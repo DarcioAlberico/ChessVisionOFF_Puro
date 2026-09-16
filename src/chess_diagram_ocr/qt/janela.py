@@ -84,19 +84,20 @@ from chess_diagram_ocr.config import (
     PROJECT_ROOT,
     find_default_pdf_path,
 )
-from chess_diagram_ocr.detection import DiagramCandidate, detect_diagrams_in_pdf_page
-from chess_diagram_ocr.qt import acessibilidade, dica, escala, fila, fita, legenda, menu, paleta, plataforma, tema
+from chess_diagram_ocr.detection import DiagramCandidate, detect_diagrams_in_pdf_page, detect_diagrams_rendering_page
+from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
+from chess_diagram_ocr.qt import acessibilidade, dica, escala, exportador_de_livro, fila, fita, legenda, menu
+from chess_diagram_ocr.qt import painel_de_revisao_de_texto, painel_de_rotulagem, painel_do_pdf, paleta, plataforma, tema
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
 from chess_diagram_ocr.qt.campo import PainelDeCampo
 from chess_diagram_ocr.qt.dialogos import ControladorDeTreino
 from chess_diagram_ocr.qt.exportador import Exportador
-from chess_diagram_ocr.qt.marcas import LeitorDeMarcas, paginas_com_amostra_de_treino
+from chess_diagram_ocr.qt.marcas import LeitorDeMarcas, amostras_de_treino_guardadas
 from chess_diagram_ocr.qt.painel_da_galeria import PainelDaGaleria
 from chess_diagram_ocr.qt.painel_de_estudo import PainelDeEstudo
 from chess_diagram_ocr.qt.painel_de_resultado import PainelDeResultado
-from chess_diagram_ocr.qt import exportador_de_livro, painel_de_revisao_de_texto, painel_de_rotulagem
 from chess_diagram_ocr.qt.painel_de_revisao import PainelDeRevisao
 from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
 from chess_diagram_ocr.qt.painel_do_dataset import PainelDoDataset
@@ -113,6 +114,7 @@ from chess_diagram_ocr.ui import (
     estado_do_rodape,
     geometria,
     pele,
+    sala_declarada,
     strings,
 )
 from chess_diagram_ocr.ui.busy import BusyRegistry
@@ -134,7 +136,6 @@ from chess_diagram_ocr.ui.page_overlay import (
 )
 from chess_diagram_ocr.ui.page_results import PageOcrParams, colocacoes_conferidas
 from chess_diagram_ocr.ui.pedido_de_treino import TrainingRequest
-from chess_diagram_ocr.ui import sala_declarada
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.state import AppState, load_state, save_state
 from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_TEXTO
@@ -205,9 +206,15 @@ class JanelaPrincipal(QMainWindow):
         pasta_de_estudos: Path | None = None,
         pasta_da_galeria: Path | None = None,
         caminho_do_estado: Path | None = None,
+        rasterizar_ao_fundo: bool | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        if rasterizar_ao_fundo is None:
+            rasterizar_ao_fundo = painel_do_pdf.RASTERIZAR_AO_FUNDO
+        self._rasterizar_ao_fundo = rasterizar_ao_fundo
+        """Repassado ao `PainelDoPdf` (OCR_UI passo 15). Desligado nos testes de janela, que
+        perguntam pela folha na linha seguinte a `abrir_pdf`; o produto rasteriza ao fundo."""
         self._servico = servico if servico is not None else OcrService(model_path=DEFAULT_MODEL_PATH)
         self._csv_de_rotulos = Path(csv_de_rotulos)
         self._pasta_de_estudos = pasta_de_estudos
@@ -252,7 +259,13 @@ class JanelaPrincipal(QMainWindow):
         self._pdf: Path | None = None
         self._itens: list[RecognizedDiagram] = []
         self._salvos: dict[int, set[int]] = {}
-        self._leitor_de_marcas = LeitorDeMarcas(lambda: self._csv_de_rotulos, self, ocupado=self.busy)
+        self._leitor_de_marcas = LeitorDeMarcas(
+            lambda: self._csv_de_rotulos,
+            self,
+            ocupado=self.busy,
+            splits=lambda: self._caminhos_do_dataset()[2],
+            em_processo=self._rasterizar_ao_fundo,
+        )
         """Quem lê o `labels.csv` fora da thread da janela (F9-C2). Ver `qt/marcas.py`."""
         self._leitor_de_marcas.prontas.connect(self._marcas_chegaram)
         self._caixas_por_pagina = PageBoxesCache()
@@ -420,7 +433,12 @@ class JanelaPrincipal(QMainWindow):
         self.texto = PainelDeTexto(busy=self.busy, parent=self.abas)
         self.abas.addTab(self.texto, abas.TEXTO)
 
-        self.dataset = PainelDoDataset(self.abas, caminhos=self._caminhos_do_dataset, busy=self.busy)
+        self.dataset = PainelDoDataset(
+            self.abas,
+            caminhos=self._caminhos_do_dataset,
+            busy=self.busy,
+            em_processo=self._rasterizar_ao_fundo,
+        )
         self.abas.addTab(self.dataset, abas.DATASET)
 
         self.galeria = PainelDaGaleria(
@@ -451,6 +469,7 @@ class JanelaPrincipal(QMainWindow):
             # guarda 50, e é a pergunta que se faz ao voltar a um livro pela quinta vez.
             pagina_inicial_de=self._pagina_guardada_de,
             pasta_inicial=DEFAULT_PDF_DIR,
+            rasterizar_ao_fundo=self._rasterizar_ao_fundo,
         )
         self.pdf.setMinimumWidth(LARGURA_MINIMA_DO_VISOR)
 
@@ -1023,6 +1042,8 @@ class JanelaPrincipal(QMainWindow):
             return
         self._salvos = dict(marcas or {})
         self._atualizar_abas()
+        # O aviso de treino da página veio na mesma leitura (ver `_aviso_de_treino`).
+        self.campo.atualizar()
 
     def abrir_pdf(self, caminho: Path) -> None:
         """Abre um livro. Delegado ao painel, que é quem conta as páginas e rasteriza."""
@@ -1101,6 +1122,20 @@ class JanelaPrincipal(QMainWindow):
         """
         pdf, pagina_rgb, teto = self._pdf, self.pdf.page_rgb, DEFAULT_MAX_BOARDS
         if pdf is None or pagina_rgb is None:
+            return
+        if self._rasterizar_ao_fundo:
+            # **No processo de trabalho, e não na thread** (passo 15): a detecção é um segundo de
+            # Python, numpy e OpenCV que, numa thread, reveza o GIL com a janela e alonga cada
+            # troca de aba e cada virada enquanto corre. O filho rasteriza a página de novo em vez
+            # de receber os 26 MB dela -- ver `detect_diagrams_rendering_page`.
+            dpi = int(DEFAULT_DPI)
+            self._detector.pedir(
+                self._chave_do_documento(),
+                pagina,
+                lambda: processo_de_trabalho().executar(
+                    detect_diagrams_rendering_page, pdf, pagina, dpi=dpi, max_boards=teto
+                ),
+            )
             return
         self._detector.pedir(
             self._chave_do_documento(),
@@ -1592,7 +1627,11 @@ class JanelaPrincipal(QMainWindow):
         if self._pdf is None:
             return ""
         csv_path, _amostras, splits_path = self._caminhos_do_dataset()
-        paginas = paginas_com_amostra_de_treino(csv_path, splits_path)
+        # **Só a resposta guardada** (passo 15): a leitura fria roda no processo de trabalho com
+        # as marcas do livro, e `_marcas_chegaram` manda o campo escrever de novo quando ela vier.
+        paginas = amostras_de_treino_guardadas(csv_path, splits_path)
+        if paginas is None:
+            return ""
         quantas = paginas.get((self._pdf.name, self.pdf.page_index), 0)
         return f" · ⚠ {quantas} amostra(s) de treino desta página" if quantas else ""
 

@@ -263,6 +263,22 @@ FORA_DO_REGISTRO: dict[tuple[str, str], str] = {
         "Uma avaliação do motor sobre a posição na tela (S-33). Segundos, e derivada: a "
         "posição continua lá para pedir de novo."
     ),
+    ("painel_do_pdf.py", "_executar"): (
+        "Abrir o livro (contar as páginas) e rasterizar a página exibida, fora da thread da "
+        "janela (OCR_UI passo 15). Décimos de segundo, e o rodapé já diz «Renderizando página "
+        "N…» pela zona de mensagem; registrar faria a barra de progresso piscar a cada virada. "
+        "Fechar no meio não perde nada: a página continua no PDF."
+    ),
+    ("visor.py", "_pedir_reescalonamento"): (
+        "A página reduzida ao zoom novo, fora da thread da janela (OCR_UI passo 15). Quinze "
+        "milissegundos, derivada da página que já está em memória, e a folha anterior fica na "
+        "tela esticada enquanto ela não vem."
+    ),
+    ("painel_da_galeria.py", "_abrir_cache_de_posicoes"): (
+        "Abrir o SQLite do cache de posições quando o livro abre (OCR_UI passo 15). Dezenas de "
+        "milissegundos num disco frio; até chegar, o botão de candidatas fica apagado, que é o "
+        "que ele já era sem cache. Fechar no meio não perde nada: é só uma conexão."
+    ),
 }
 """As threads de `qt/` que **não** entram no registro, e por quê -- uma linha cada.
 

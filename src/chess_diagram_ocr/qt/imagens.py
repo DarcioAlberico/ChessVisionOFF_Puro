@@ -9,6 +9,7 @@ array que o alimentou.
 
 from __future__ import annotations
 
+import cv2
 import numpy as np
 from PyQt6.QtGui import QImage, QPixmap
 
@@ -34,3 +35,23 @@ def qimage_de_rgb(rgb: np.ndarray) -> QImage:
 def pixmap_de_rgb(rgb: np.ndarray) -> QPixmap:
     """O mesmo, já no formato que o `QPainter` desenha sem reconverter a cada quadro."""
     return QPixmap.fromImage(qimage_de_rgb(rgb))
+
+
+def reduzir_rgb(rgb: np.ndarray, zoom: float) -> np.ndarray:
+    """A página no zoom pedido, como array -- **pelo OpenCV, e não pelo `QImage.scaled`**.
+
+    A razão é o GIL (OCR_UI passo 15). `QImage.scaled` com filtro suave sobre uma página a
+    300 DPI custa 24 ms e **segura o interpretador** por 11 ms medidos enquanto roda numa
+    thread; `cv2.resize` custa 15 ms e solta o GIL (pior espera da thread da janela: 2,9 ms).
+    Como o reescalonamento passou a rodar fora da thread da interface, quem importa não é o
+    tempo total e sim quanto dele a janela não consegue usar.
+
+    `INTER_AREA` para reduzir (é o filtro que não deixa moiré nas casas do tabuleiro) e
+    `INTER_CUBIC` para ampliar. Devolve o próprio array quando o zoom é 1.
+    """
+    if zoom == 1.0:
+        return rgb
+    altura, largura = rgb.shape[:2]
+    alvo = (max(1, int(round(largura * zoom))), max(1, int(round(altura * zoom))))
+    filtro = cv2.INTER_AREA if zoom < 1.0 else cv2.INTER_CUBIC
+    return cv2.resize(np.ascontiguousarray(rgb[:, :, :3]), alvo, interpolation=filtro)

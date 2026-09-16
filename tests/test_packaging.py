@@ -250,8 +250,16 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1905
+    LIMITE = 1944
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.905 -> 1.944 com o passo 15 da OCR_UI (2026-09-16), e as 39 linhas são a bandeira e os
+    fios dela.** `rasterizar_ao_fundo` entra pelo construtor e é repassada a três painéis
+    (`PainelDoPdf`, `PainelDoDataset`, `LeitorDeMarcas`); a detecção de fundo ganha o ramo que a
+    manda ao processo de trabalho (`detect_diagrams_rendering_page`) em vez da thread, com o
+    motivo medido ao lado; `_aviso_de_treino` passa a ler só a resposta guardada e
+    `_marcas_chegaram` manda o campo escrever de novo quando ela vem. Nenhuma decisão nova de
+    tela: são ligações, e a conta que elas ligam mora em `processo_de_trabalho.py`.
 
     **1.902 -> 1.905 com a aba Revisão de texto (2026-09-15), e as três linhas são a montagem
     de uma aba que não é deste repositório.** O painel é da suíte
