@@ -236,6 +236,104 @@ def warp_from_quad(image_rgb: np.ndarray, quad: np.ndarray, target_size: int = B
     return cv2.warpPerspective(image_rgb, matrix, (target_size, target_size))
 
 
+INNER_GRID_MAX_INSET = 0.12
+"""Até onde, em fração do lado, a borda do tabuleiro pode estar para dentro do recorte."""
+
+INNER_GRID_MIN_GAIN = 1.15
+"""Quanto a grade ajustada tem de responder acima da uniforme para o eixo ser candidato a
+aperto. É só o primeiro filtro (barato); quem decide é `INNER_GRID_MIN_CHECKER_GAIN`."""
+
+INNER_GRID_MIN_CHECKER_GAIN = (0.10, 1.3)
+"""O aperto só entra se o contraste de xadrez (`_checker_score`) subir **pelo menos 0,10 e
+pelo menos 30 %** com ele.
+
+A energia de borda sozinha aceitava apertos de 2–13 px em recortes que já estavam certos e
+derrubava o conjunto de campo de 103 para 97 exatos (Gallagher p60/80/95/140, Flores Rios
+p50/p200). O contraste de xadrez é a régua certa para "a grade 8×8 está sobre as casas": nos
+recortes de moldura dupla ele dobra (Koblenz 0,31–0,39 → 0,58–0,67; Niemeijer 0,20 → 0,31),
+e num recorte já justo um aperto de 2 px o move em 0,00–0,07 -- abaixo dos dois pisos. O
+Burgess p60 é o caso que o piso pega do outro lado: a borda respondia mais, e o contraste caía
+de 0,61 para 0,39."""
+
+
+def _edge_profile(gray: np.ndarray, axis: int) -> np.ndarray:
+    """Energia de borda por coluna (`axis=1`) ou por linha (`axis=0`), suavizada em 5 px."""
+    perfil = np.abs(np.diff(gray, axis=axis)).sum(axis=1 - axis)
+    kernel = np.ones(5, dtype=np.float32) / 5.0
+    return np.convolve(perfil, kernel, mode="same")
+
+
+def _fit_grid_1d(profile: np.ndarray, *, max_inset: float, cells: int = 8) -> tuple[int, int, float, float]:
+    """Onde começa e termina a grade de `cells` casas neste eixo, e as duas respostas.
+
+    Devolve `(inicio, fim, resposta_ajustada, resposta_uniforme)`: o par que maximiza a soma da
+    energia de borda nas nove linhas da grade, procurado com o início em `[0, max_inset]` e o
+    fim em `[1 - max_inset, 1]` do comprimento. A resposta uniforme é a do par `(0, fim)`.
+    """
+    comprimento = len(profile) + 1
+    inset = max(1, int(comprimento * max_inset))
+    inicios = np.arange(0, inset)
+    fins = np.arange(comprimento - inset, comprimento)
+    ks = np.arange(cells + 1, dtype=np.float32)
+    # posições [n_inicios, n_fins, 9]
+    posicoes = inicios[:, None, None] + (fins[None, :, None] - inicios[:, None, None]) * ks / cells
+    indices = np.clip(np.rint(posicoes).astype(int), 0, len(profile) - 1)
+    respostas = profile[indices].sum(axis=2)
+    melhor = np.unravel_index(int(np.argmax(respostas)), respostas.shape)
+    uniforme = float(respostas[0, -1])
+    return int(inicios[melhor[0]]), int(fins[melhor[1]]), float(respostas[melhor]), uniforme
+
+
+def fit_inner_board(board_rgb: np.ndarray) -> tuple[int, int, int, int] | None:
+    """O retângulo do tabuleiro de verdade dentro de um recorte que pegou moldura, ou `None`.
+
+    O contorno de página acha o **quadro** do diagrama; nos livros de moldura dupla esse quadro
+    tem um filete de 1–2 % de cada lado, e a grade uniforme 8×8 sobre o recorte inteiro cai fora
+    das casas. Aqui a grade é reajustada eixo a eixo pela energia de borda: onde as nove linhas
+    respondem mais. Só é aceito o eixo em que a grade ajustada responde `INNER_GRID_MIN_GAIN`
+    vezes mais que a uniforme -- num recorte já justo a uniforme é a melhor e nada muda.
+    Devolve `(x0, y0, x1, y1)` em pixels do recorte.
+    """
+    if board_rgb is None or board_rgb.size == 0:
+        return None
+    gray = cv2.cvtColor(board_rgb, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    altura, largura = gray.shape
+    x0, x1, ganho_x, uniforme_x = _fit_grid_1d(_edge_profile(gray, axis=1), max_inset=INNER_GRID_MAX_INSET)
+    y0, y1, ganho_y, uniforme_y = _fit_grid_1d(_edge_profile(gray, axis=0), max_inset=INNER_GRID_MAX_INSET)
+    if not (uniforme_x > 0 and ganho_x >= INNER_GRID_MIN_GAIN * uniforme_x):
+        x0, x1 = 0, largura
+    if not (uniforme_y > 0 and ganho_y >= INNER_GRID_MIN_GAIN * uniforme_y):
+        y0, y1 = 0, altura
+    if (x0, y0, x1, y1) == (0, 0, largura, altura):
+        return None
+    return x0, y0, x1, y1
+
+
+def tighten_board(board_rgb: np.ndarray) -> np.ndarray:
+    """O recorte apertado ao tabuleiro de verdade (`fit_inner_board`), no mesmo tamanho.
+
+    Quando não há moldura a tirar, devolve o próprio recorte -- é o caso de todo livro que já
+    saía certo, e é por isso que esta função pode ficar no caminho de todos.
+    """
+    caixa = fit_inner_board(board_rgb)
+    if caixa is None:
+        return board_rgb
+    x0, y0, x1, y1 = caixa
+    altura, largura = board_rgb.shape[:2]
+    interior = board_rgb[y0:y1, x0:x1]
+    if interior.size == 0:
+        return board_rgb
+    apertado = cv2.resize(interior, (largura, altura), interpolation=cv2.INTER_LINEAR)
+    antes, depois = board_checker_score(board_rgb), board_checker_score(apertado)
+    minimo_absoluto, minimo_relativo = INNER_GRID_MIN_CHECKER_GAIN
+    if depois < antes + minimo_absoluto or depois < antes * minimo_relativo:
+        return board_rgb
+    logger.debug(
+        "Recorte apertado ao tabuleiro: caixa %s, contraste de xadrez %.3f -> %.3f.", caixa, antes, depois
+    )
+    return apertado
+
+
 def _quad_elongation(quad: np.ndarray) -> float:
     """Lado maior sobre lado menor do quad, na inclinação dele. Nunca menor que 1.
 
@@ -701,7 +799,9 @@ def detect_boards(
     _sort_selected_candidates(selected, reading_order)
     boards: list[tuple[np.ndarray, np.ndarray | None]] = []
     for quad, _, _ in selected:
-        boards.append((warp_from_quad(image_rgb, quad, target_size=target_size), quad))
+        # O quad e o quadro do diagrama; o tabuleiro pode estar um filete para dentro dele
+        # (moldura dupla). `tighten_board` so mexe quando a grade ajustada responde mais.
+        boards.append((tighten_board(warp_from_quad(image_rgb, quad, target_size=target_size)), quad))
     return boards
 
 
