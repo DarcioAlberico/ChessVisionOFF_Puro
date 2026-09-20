@@ -39,13 +39,23 @@ import weakref
 from collections.abc import Callable, Sequence
 
 from PyQt6 import sip
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtCore import Qt, QTime, QTimer, pyqtSignal
+from PyQt6.QtWidgets import (
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QProgressBar,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.rotulo import RotuloElidido
-from chess_diagram_ocr.ui import espaco, estilos, tipografia, tokens
+from chess_diagram_ocr.ui import espaco, estilos, strings, tipografia, tokens
 from chess_diagram_ocr.ui.busy import BusyOperation
 from chess_diagram_ocr.ui.estado_do_rodape import (
     DETERMINADO,
@@ -56,6 +66,7 @@ from chess_diagram_ocr.ui.estado_do_rodape import (
     PAPEL_DE_TEXTO,
     PARADO,
     Dispositivos,
+    Mensagens,
     compor,
     descricao_dos_dispositivos,
     expira_em_ms,
@@ -123,6 +134,22 @@ class RodapeDaJanela(QWidget):
         self._lbl_mensagem.setFont(tema.fonte_atual(tipografia.CORPO))
         self._lbl_mensagem.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         linha.addWidget(self._lbl_mensagem, 1)
+
+        # **As últimas cinquenta, atrás de um botão** (OCR_UI ciclo 2, passo A10). O que expirou
+        # da zona de mensagem deixava de existir; agora fica em `mensagens` e abre numa lista,
+        # sem modal -- é uma janela de consulta, e a pessoa a fecha quando quiser.
+        self.mensagens = Mensagens()
+        self._btn_mensagens = QPushButton(strings.MENSAGENS_ANTERIORES, self)
+        self._btn_mensagens.setAccessibleName(strings.MENSAGENS_ANTERIORES_TITULO)
+        tema.aplicar_papel(self._btn_mensagens, estilos.NEUTRO)
+        self._btn_mensagens.clicked.connect(self.abrir_mensagens)
+        dica_em(self._btn_mensagens, "As últimas mensagens desta sessão, inclusive as que já saíram daqui.")
+        # **Piso de um pixel, pela razão do rótulo do documento**: o rodapé é a faixa que cede, e
+        # um botão que exigisse os seus 90 px subiria a largura mínima da janela por causa de uma
+        # lista de consulta. Com folga ele tem o tamanho que pede; sem folga, encolhe.
+        self._btn_mensagens.setMinimumWidth(1)
+        linha.addWidget(self._btn_mensagens, 0)
+        self._janela_de_mensagens: QDialog | None = None
 
         # A quarta zona vem **à esquerda do documento** e não à direita: livro e página são o que
         # a pessoa consulta o tempo todo, e o dispositivo é o que ela olha uma vez por sessão.
@@ -198,6 +225,52 @@ class RodapeDaJanela(QWidget):
         self._lbl_mensagem.setText(estado.mensagem)
         self._repintar_mensagem()
         self._reagendar_expiracao(expira_em_ms(estado.severidade))
+        item = self.mensagens.registrar(
+            estado.mensagem, estado.severidade, quando=QTime.currentTime().toString("HH:mm:ss")
+        )
+        lista = self._lista_de_mensagens()
+        if item is not None and lista is not None:
+            lista.addItem(item.linha())
+            while lista.count() > len(self.mensagens):
+                lista.takeItem(0)
+            lista.scrollToBottom()
+
+    def abrir_mensagens(self) -> QDialog:
+        """Abre (ou traz à frente) a lista das últimas mensagens. Não modal, de propósito."""
+        if self._janela_de_mensagens is None or sip.isdeleted(self._janela_de_mensagens):
+            janela = QDialog(self.window())
+            janela.setWindowTitle(strings.MENSAGENS_ANTERIORES_TITULO)
+            janela.setModal(False)
+            pilha = QVBoxLayout(janela)
+            lista = QListWidget(janela)
+            lista.setObjectName("lista_de_mensagens")
+            lista.setAccessibleName(strings.MENSAGENS_ANTERIORES_TITULO)
+            lista.setFont(tema.fonte_atual(tipografia.DADO))
+            for mensagem in self.mensagens.todas():
+                lista.addItem(mensagem.linha())
+            if not self.mensagens.todas():
+                lista.addItem(strings.MENSAGENS_ANTERIORES_VAZIO)
+            pilha.addWidget(lista, 1)
+            janela.resize(720, 360)
+            self._janela_de_mensagens = janela
+        janela = self._janela_de_mensagens
+        lista = self._lista_de_mensagens()
+        if lista is not None and lista.count() == 1 and lista.item(0).text() == strings.MENSAGENS_ANTERIORES_VAZIO:
+            if self.mensagens.todas():
+                lista.clear()
+                for mensagem in self.mensagens.todas():
+                    lista.addItem(mensagem.linha())
+        janela.show()
+        janela.raise_()
+        if lista is not None:
+            lista.scrollToBottom()
+        return janela
+
+    def _lista_de_mensagens(self) -> QListWidget | None:
+        janela = self._janela_de_mensagens
+        if janela is None or sip.isdeleted(janela):
+            return None
+        return janela.findChild(QListWidget, "lista_de_mensagens")
 
     def _repintar_mensagem(self) -> None:
         """A mensagem que está na tela, na cor da pele de agora (S-393).

@@ -47,8 +47,15 @@ ARQUIVOS_DE_UI = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")
 )
 """Mesmo recorte do `test_strings` e do `test_busy`: a interface, e o que a monta."""
 
-LIMITE = 46
+LIMITE = 47
 """Quantas caixas modais a interface ainda abre.
+
+**46 -> 47 na fase 1 do OCR_UI ciclo 2 (A7)**, e a nova é decisão pela régua da linha 4 da tabela:
+`qt/dialogos.perguntar_descarte` pergunta antes de **apagar trabalho humano** -- fechar a janela ou
+trocar de livro com correções de casa ainda não gravadas (`PageResults.has_hand_edits`), que até
+aqui se perdiam em silêncio (a Carta §3.3 reprova "perda de trabalho ao fechar sem aviso"). A caixa
+de falha da leitura (`caixa_de_falha`, A10) substituiu a `QMessageBox.warning` de antes um por um:
+continua erro, continua modal, ganhou o detalhe e o botão «Copiar».
 
 **54 -> 46 no corte do Tk (S-506)**, e a queda não é uma conversão a mais: é o mesmo produto com
 uma janela só. As perguntas que a régua chama de decisão foram conferidas uma a uma contra as 20
@@ -118,8 +125,11 @@ dela seria a fricção que a S-164 removeu.
 Baixar este número é o item continuando; subi-lo exige vir aqui e escrever por que aquela caixa
 precisava ser modal."""
 
-MODAIS_DE_DECISAO = 14
+MODAIS_DE_DECISAO = 15
 """Quantas das que sobram fazem uma pergunta -- `QMessageBox.question` ou uma caixa montada.
+
+**14 -> 15 na fase 1 do OCR_UI ciclo 2 (A7):** a pergunta de descarte das correções não gravadas
+(`perguntar_descarte`), a mesma linha 4 da tabela que justifica as outras catorze.
 
 **19 -> 14 no corte do Tk (S-506), e a queda foi conferida uma a uma.** As 20 perguntas do lado
 que saiu foram listadas por `ast` sobre o `HEAD` e comparadas com as do Qt: dezenove tinham

@@ -586,6 +586,83 @@ def detection_source_label(source: str) -> str:
     return DETECTION_SOURCE_LABELS.get(source, source)
 
 
+# ------------------------------------------- os estados com ação do diagrama (OCR_UI C2, C1/X5)
+
+REPARADAS_MOSTRAR = "Mostrar as casas reparadas"
+REPARADAS_ESCONDER = "Esconder as casas reparadas"
+"""O botão do estado «reparado em N casas»: pinta no tabuleiro as casas em que o decodificador
+trocou a classe mais provável pela que fecha a posição (`changed_squares`), e desfaz a pintura."""
+
+ORIENTACAO_COMPARAR = "Ver girada 180°"
+ORIENTACAO_VOLTAR = "Voltar à leitura original"
+"""O botão do estado «orientação ambígua»: a outra leitura possível é a mesma posição girada de
+180°; o clique a põe no tabuleiro como edição (desfazível), e o segundo clique a tira."""
+
+
+def reparadas_em_casas(casas: Sequence[str]) -> str:
+    """«Reparado em N casas: a1, b2» -- o estado que a tela não dizia (análise §7.5)."""
+    quantas = len(casas)
+    if quantas == 0:
+        return ""
+    plural = "" if quantas == 1 else "s"
+    return f"Reparado em {quantas} casa{plural}: {', '.join(casas)}"
+
+
+def orientacao_ambigua(motivo: str) -> str:
+    """«Orientação ambígua: <motivo>», com o motivo que o serviço calculou."""
+    razao = str(motivo).strip()
+    return f"Orientação ambígua: {razao}" if razao else "Orientação ambígua"
+
+
+def trocar_o_lado_para(lado: str) -> str:
+    """O botão do rótulo de conflito: «Trocar para pretas» / «Trocar para brancas»."""
+    return f"Trocar para {SIDE_LABELS.get(lado, lado).casefold()}"
+
+
+# --------------------------------------- o que se perde ao fechar ou trocar de livro (OCR_UI C2, A7)
+
+DESCARTAR_EDICOES_TITULO = "Descartar as correções"
+"""O título da pergunta: nomeia a operação, como toda caixa (S-401)."""
+
+
+def frase_de_edicoes_nao_gravadas(paginas: Sequence[int], *, livro: str = "", ao_fechar: bool = True) -> str:
+    """A pergunta antes de perder correções feitas à mão e ainda não gravadas (análise §6.5).
+
+    As páginas vêm em base 0 e saem em base 1, como a tela as numera. `ao_fechar` escolhe o
+    fim da frase: fechar a janela perde tudo; abrir outro livro guarda as correções até o livro
+    ser reaberto -- e a resposta "não" tem consequência diferente nos dois casos.
+    """
+    numeros = ", ".join(str(int(p) + 1) for p in paginas)
+    plural = "" if len(paginas) == 1 else "s"
+    onde = f" de {livro}" if livro else ""
+    cabeca = f"A{plural} página{plural} {numeros}{onde} tem correções feitas à mão que não foram gravadas."
+    if ao_fechar:
+        return f"{cabeca}\n\nFechar agora perde essas correções. Fechar mesmo assim?"
+    return (
+        f"{cabeca}\n\nDescartar as correções? Responder {ASPA_ABRE}Não{ASPA_FECHA} as guarda até você "
+        "reabrir esse livro."
+    )
+
+
+# ---------------------------------------------------- a caixa de falha e o rodapé (OCR_UI C2, A10)
+
+COPIAR = "Copiar"
+"""O botão da caixa de falha: título, mensagem e o rastro completo vão para a área de transferência,
+para a pessoa colar num relato sem transcrever nada."""
+
+MENSAGENS_ANTERIORES = "Mensagens"
+"""O botão do rodapé que abre as últimas mensagens -- inclusive as que já expiraram."""
+
+MENSAGENS_ANTERIORES_TITULO = "Mensagens desta sessão"
+MENSAGENS_ANTERIORES_VAZIO = "Nenhuma mensagem ainda."
+
+
+def titulo_de_falha(nome: str) -> str:
+    """«A leitura não terminou», «A detecção não terminou»: a operação no título (S-401)."""
+    operacao = str(nome).strip() or "operação"
+    return f"A {operacao} não terminou"
+
+
 WORDS_REQUIRING_ACCENTS: tuple[str, ...] = (
     "analise",
     "apos",

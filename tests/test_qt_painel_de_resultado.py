@@ -19,18 +19,21 @@ from pathlib import Path
 from unittest import mock
 
 import numpy as np
+import pytest
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao
 
 from chess_diagram_ocr.config import PIECE_CLASSES
 from chess_diagram_ocr.service import RecognizedDiagram
-from chess_diagram_ocr.ui import atalhos, board_edit, comandos
+from chess_diagram_ocr.ui import atalhos, board_edit, comandos, strings
 
 if TEM_PYQT:
+    from chess_diagram_ocr.qt import decisoes_de_diagrama
     from chess_diagram_ocr.qt.painel_de_resultado import (
         MENSAGEM_VAZIA,
         MOTIVO_SEM_DIAGRAMA,
         PainelDeResultado,
+        _girar_180,
     )
 
 LEGAL = "4k3/8/8/8/8/8/8/4K3"
@@ -273,6 +276,42 @@ class HistoricoTests(PainelTests):
         self.painel.desfazer()
         self.assertEqual(self.painel.modelo.fen_at(0), LEGAL)
 
+    def _trocar_o_lado(self, lado: str) -> None:
+        for botao in self.painel._lados.buttons():
+            if botao.property("lado") == lado:
+                botao.setChecked(True)
+                self.painel._trocou_o_lado()
+
+    def test_trocar_o_lado_entra_na_pilha_e_desfazer_devolve(self) -> None:
+        """OCR_UI C2, A7 (análise §6.5): a troca de vez era a única das sete origens de mudança
+        fora do `Ctrl+Z`. Agora o estado da pilha é `(placement, side)`."""
+        self.carregar(LEGAL)
+        self._trocar_o_lado("b")
+        self.assertEqual(self.painel.modelo.side_at(0), "b")
+        self.assertTrue(self.painel.btn_desfazer.isEnabled(), "trocar o lado não acendeu o desfazer")
+        self.painel.desfazer()
+        self.assertEqual(self.painel.modelo.side_at(0), "w", "o desfazer não devolveu o lado")
+        self.assertEqual(self.painel.modelo.fen_at(0), LEGAL, "o desfazer mexeu numa peça")
+        self.painel.refazer()
+        self.assertEqual(self.painel.modelo.side_at(0), "b")
+
+    def test_desfazer_devolve_peca_e_lado_na_ordem_em_que_mudaram(self) -> None:
+        self.carregar(LEGAL)
+        corrigida = board_edit.set_piece(LEGAL, 27, "Q")
+        self.painel._tabuleiro_mudou(corrigida)
+        self._trocar_o_lado("b")
+        self.painel.desfazer()
+        self.assertEqual((self.painel.modelo.fen_at(0), self.painel.modelo.side_at(0)), (corrigida, "w"))
+        self.painel.desfazer()
+        self.assertEqual((self.painel.modelo.fen_at(0), self.painel.modelo.side_at(0)), (LEGAL, "w"))
+
+    @pytest.mark.xfail(strict=True, reason="o comportamento antigo (A7): desfazer não devolvia o lado")
+    def test_sabotagem_desfazer_nao_devolvia_o_lado(self) -> None:
+        self.carregar(LEGAL)
+        self._trocar_o_lado("b")
+        self.painel.desfazer()
+        self.assertEqual(self.painel.modelo.side_at(0), "b")
+
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class TecladoEBotoesTests(PainelTests):
@@ -313,8 +352,10 @@ class TecladoEBotoesTests(PainelTests):
         from chess_diagram_ocr.qt.barra import BarraFluida
 
         barras = self.painel.findChildren(BarraFluida)
-        self.assertEqual(len(barras), 1)
-        self.assertGreater(barras[0].linhas_em(200), 1)
+        # Duas desde C1/X5: a das ações e a dos estados com ação (que nasce vazia à vista).
+        self.assertEqual(len(barras), 2)
+        acoes = next(b for b in barras if self.painel.btn_salvar in b.findChildren(type(self.painel.btn_salvar)))
+        self.assertGreater(acoes.linhas_em(200), 1)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -485,3 +526,209 @@ class RecorteTests(PainelTests):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+def diagrama_com_estados(**campos: object) -> RecognizedDiagram:
+    """Um diagrama lido com os sinais que o serviço calcula e a tela não dizia (C1/X5)."""
+    item = diagrama(LEGAL)
+    for nome, valor in campos.items():
+        setattr(item, nome, valor)
+    return item
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class EstadosComAcaoTests(PainelTests):
+    """Os três estados com ação (OCR_UI C2, C1/X5; análise §7.5).
+
+    O serviço já calculava `changed_squares`, `orientation_ambiguous` e `side_conflicting`; a tela
+    mostrava só o rótulo do terceiro, sem nada a fazer. Cada um vira um botão que só existe com o
+    diagrama que o tem -- e a sabotagem, no fim, é o diagrama sem os campos: a tela volta ao
+    genérico e o teste que espera os botões reprova.
+    """
+
+    def _abrir(self, item: RecognizedDiagram) -> None:
+        self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+
+    def test_sem_os_sinais_nenhum_botao_de_estado_aparece(self) -> None:
+        self._abrir(diagrama(LEGAL))
+        for botao in (self.painel.btn_reparadas, self.painel.btn_orientacao, self.painel.btn_lado):
+            with self.subTest(botao=botao.text()):
+                self.assertFalse(botao.isVisibleTo(self.painel))
+
+    def test_reparado_em_n_casas_aparece_com_as_casas_e_o_botao_as_pinta(self) -> None:
+        self._abrir(diagrama_com_estados(changed_squares=[27, 36]))
+        self.assertTrue(self.painel.btn_reparadas.isVisibleTo(self.painel))
+        # Os índices são em ordem de leitura (a8 = 0), como `square_name` os lê: 27 = d5, 36 = e4.
+        self.assertIn("Reparado em 2 casas: d5, e4", self.painel.detalhes.text())
+        self.assertEqual(self.painel.btn_reparadas.text(), strings.REPARADAS_MOSTRAR)
+        self.assertNotIn(27, self.painel.tabuleiro.casas_marcadas()["corrigidas"])
+        self.painel.btn_reparadas.click()
+        marcadas = self.painel.tabuleiro.casas_marcadas()
+        self.assertEqual(marcadas["corrigidas"], (27, 36), "as casas reparadas não foram pintadas")
+        self.assertEqual(marcadas["selecionada"], (27,), "a primeira reparada não foi selecionada")
+        self.assertEqual(self.painel.btn_reparadas.text(), strings.REPARADAS_ESCONDER)
+        self.painel.btn_reparadas.click()
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["corrigidas"], ())
+
+    def test_a_pintura_das_reparadas_nao_confunde_a_correcao_humana(self) -> None:
+        self._abrir(diagrama_com_estados(changed_squares=[27]))
+        self.painel.btn_reparadas.click()
+        self.painel._tabuleiro_mudou(board_edit.set_piece(LEGAL, 0, "Q"))
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["corrigidas"], (0, 27))
+        self.painel.desfazer()
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["corrigidas"], (27,))
+
+    def test_orientacao_ambigua_aparece_com_o_motivo_e_compara_as_duas(self) -> None:
+        self._abrir(diagrama_com_estados(orientation_ambiguous=True, orientation_reason="margem 0,02"))
+        self.assertTrue(self.painel.btn_orientacao.isVisibleTo(self.painel))
+        self.assertIn("Orientação ambígua: margem 0,02", self.painel.detalhes.text())
+        self.assertEqual(self.painel.btn_orientacao.text(), strings.ORIENTACAO_COMPARAR)
+        self.painel.btn_orientacao.click()
+        self.assertEqual(self.painel.modelo.fen_at(0), _girar_180(LEGAL))
+        self.assertEqual(self.painel.btn_orientacao.text(), strings.ORIENTACAO_VOLTAR)
+        self.painel.btn_orientacao.click()
+        self.assertEqual(self.painel.modelo.fen_at(0), LEGAL, "girar duas vezes não devolveu a original")
+        self.painel.btn_orientacao.click()
+        self.painel.desfazer()
+        self.assertEqual(self.painel.modelo.fen_at(0), LEGAL, "a comparação não é desfazível")
+
+    def test_girar_180_e_a_ordem_inversa_das_casas(self) -> None:
+        self.assertEqual(_girar_180("K7/8/8/8/8/8/8/7k"), "k7/8/8/8/8/8/8/7K", "a8 vai parar em h1")
+        self.assertEqual(_girar_180("8/8/8/3K4/8/8/8/8"), "8/8/8/8/4K3/8/8/8", "d5 vai parar em e4")
+        self.assertEqual(_girar_180("ruim"), "ruim", "colocação malformada volta como veio")
+
+    def test_o_conflito_de_lado_ganha_a_acao_de_trocar(self) -> None:
+        item = diagrama_com_estados(side_conflicting=True, side_to_move_reason="a legenda diz «pretas jogam»")
+        self._abrir(item)
+        self.assertIn(strings.SIDE_SOURCE_CONFLICT, self.painel.detalhes.text(), "o rótulo que já existia")
+        self.assertTrue(self.painel.btn_lado.isVisibleTo(self.painel))
+        self.assertEqual(self.painel.btn_lado.text(), strings.trocar_o_lado_para("b"))
+        self.assertIn("legenda diz", self.painel.btn_lado.toolTip())
+        self.painel.btn_lado.click()
+        self.assertEqual(self.painel.modelo.side_at(0), "b")
+        self.assertFalse(item.side_conflicting, "decidido por um humano, não há mais duas fontes")
+        self.assertFalse(self.painel.btn_lado.isVisibleTo(self.painel), "o conflito resolvido some")
+        self.painel.desfazer()
+        self.assertEqual(self.painel.modelo.side_at(0), "w")
+
+    def test_os_estados_somem_com_o_diagrama(self) -> None:
+        self._abrir(diagrama_com_estados(changed_squares=[1], orientation_ambiguous=True, side_conflicting=True))
+        self.painel.limpar()
+        for botao in (self.painel.btn_reparadas, self.painel.btn_orientacao, self.painel.btn_lado):
+            self.assertFalse(botao.isVisibleTo(self.painel))
+
+    @pytest.mark.xfail(strict=True, reason="sabotagem (C1/X5): sem os campos a tela volta ao genérico")
+    def test_sabotagem_sem_os_campos_os_estados_nao_aparecem(self) -> None:
+        self._abrir(diagrama(LEGAL))
+        self.assertTrue(self.painel.btn_reparadas.isVisibleTo(self.painel))
+        self.assertTrue(self.painel.btn_orientacao.isVisibleTo(self.painel))
+        self.assertTrue(self.painel.btn_lado.isVisibleTo(self.painel))
+
+
+class _DecisaoFalsa:
+    """O `DiagramDecision` da suíte, como o contrato §1.1 o descreve."""
+
+    def __init__(self, **campos: object) -> None:
+        self.campos = campos
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class DecisaoDeDiagramaTests(PainelTests):
+    """A correção gravada chega ao livro (OCR_UI C2, A3; análise §6.2).
+
+    `_gravar_alvo` com sucesso chama `caissa.ocr.diagram_decisions.record` com o retângulo em
+    **pontos** e a FEN inteira. O módulo da suíte é resolvido por chamada em
+    `qt/decisoes_de_diagrama._contrato`, e é ele que o teste troca por um falso.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.gravadas: list[tuple[Path, _DecisaoFalsa]] = []
+
+        def record(pdf: Path, decisao: _DecisaoFalsa) -> Path:
+            self.gravadas.append((pdf, decisao))
+            return Path("labeling/diagramas/livro.json")
+
+        self.contrato = mock.patch.object(
+            decisoes_de_diagrama, "_contrato", return_value=(_DecisaoFalsa, record)
+        )
+        self.contrato.start()
+        self.addCleanup(self.contrato.stop)
+        self.painel._servico.save_sample.return_value = "amostra.png"
+
+    def test_gravar_a_amostra_registra_a_decisao_em_pontos(self) -> None:
+        item = diagrama(LEGAL)
+        item.bbox_pdf = (72.0, 100.0, 272.0, 300.0)
+        self.painel.carregar_pagina([item], chave="C:/livros/livro.pdf", pagina=16)
+        self.painel._tabuleiro_mudou(board_edit.set_piece(LEGAL, 27, "Q"))
+        self.painel.salvar_atual()
+        self.assertEqual(len(self.gravadas), 1, "a decisão não foi registrada")
+        pdf, decisao = self.gravadas[0]
+        self.assertEqual(pdf, Path("C:/livros/livro.pdf"))
+        self.assertEqual(decisao.campos["page_index"], 16)
+        self.assertEqual(decisao.campos["rect"], (72.0, 100.0, 272.0, 300.0))
+        self.assertTrue(str(decisao.campos["fen"]).startswith(board_edit.set_piece(LEGAL, 27, "Q") + " w "))
+        self.assertEqual(decisao.campos["side"], "w")
+        self.assertEqual(decisao.campos["source"], "janela")
+        self.assertRegex(str(decisao.campos["decided_at"]), r"^\d{4}-\d{2}-\d{2}T")
+
+    def test_o_lado_gravado_e_o_da_decisao(self) -> None:
+        item = diagrama(LEGAL)
+        item.bbox_pdf = (0.0, 0.0, 10.0, 10.0)
+        self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+        for botao in self.painel._lados.buttons():
+            if botao.property("lado") == "b":
+                botao.setChecked(True)
+                self.painel._trocou_o_lado()
+        self.painel.salvar_atual()
+        self.assertEqual(self.gravadas[0][1].campos["side"], "b")
+        self.assertIn(" b ", str(self.gravadas[0][1].campos["fen"]))
+
+    def test_sem_retangulo_na_pagina_nao_ha_decisao(self) -> None:
+        """Item da fila, amostra do dataset, recorte: sem `bbox_pdf` nem `quad` não há com que a
+        importação casar a decisão, e registrá-la seria inventar um lugar."""
+        self.painel.carregar_pagina([diagrama(LEGAL)], chave="livro.pdf", pagina=0)
+        self.painel.salvar_atual()
+        self.assertEqual(self.gravadas, [])
+
+    def test_sem_procedencia_de_pagina_nao_ha_decisao(self) -> None:
+        item = diagrama(LEGAL)
+        item.bbox_pdf = (0.0, 0.0, 10.0, 10.0)
+        self.painel.carregar_avulsos([item])
+        self.painel.salvar_atual()
+        self.assertEqual(self.gravadas, [])
+
+    def test_a_gravacao_que_falha_nao_registra_decisao(self) -> None:
+        item = diagrama(LEGAL)
+        item.bbox_pdf = (0.0, 0.0, 10.0, 10.0)
+        self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+        self.painel._servico.save_sample.side_effect = OSError("disco cheio")
+        with mock.patch("chess_diagram_ocr.qt.painel_de_resultado.QMessageBox.critical"):
+            self.painel.salvar_atual()
+        self.assertEqual(self.gravadas, [], "decisão registrada sobre uma amostra que não entrou")
+
+    def test_sem_a_suite_a_amostra_grava_e_a_decisao_fica_no_log(self) -> None:
+        self.contrato.stop()
+        with mock.patch.dict("sys.modules", {"caissa": None, "caissa.ocr": None, "caissa.ocr.diagram_decisions": None}):
+            item = diagrama(LEGAL)
+            item.bbox_pdf = (0.0, 0.0, 10.0, 10.0)
+            self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+            with self.assertLogs("chess_diagram_ocr.qt.decisoes_de_diagrama", level="INFO") as capturado:
+                self.painel.salvar_atual()
+        self.contrato.start()
+        self.assertTrue(self.painel._servico.save_sample.called, "a amostra deixou de ser gravada")
+        self.assertIn("suíte", "\n".join(capturado.output))
+
+    def test_o_quad_em_pixels_vira_pontos_pelo_dpi_do_render(self) -> None:
+        item = mock.Mock(bbox_pdf=None, quad=[[220.0, 440.0], [660.0, 440.0], [660.0, 880.0], [220.0, 880.0]])
+        self.assertEqual(decisoes_de_diagrama.retangulo_em_pontos(item, 220), (72.0, 144.0, 216.0, 288.0))
+        self.assertEqual(decisoes_de_diagrama.retangulo_em_pontos(mock.Mock(bbox_pdf=None, quad=None), 220), None)
+
+    @pytest.mark.xfail(strict=True, reason="sabotagem (A3): gravar sem registrar a decisão")
+    def test_sabotagem_gravar_sem_o_gancho_nao_registra(self) -> None:
+        item = diagrama(LEGAL)
+        item.bbox_pdf = (0.0, 0.0, 10.0, 10.0)
+        self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+        with mock.patch.object(self.painel, "_registrar_decisao"):
+            self.painel.salvar_atual()
+        self.assertEqual(len(self.gravadas), 1)

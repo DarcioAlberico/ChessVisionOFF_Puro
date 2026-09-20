@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import traceback
 from collections.abc import Callable
 from functools import partial
 from typing import Any
@@ -25,7 +26,7 @@ from chess_diagram_ocr.cli import message_for
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["INTERVALO_DE_TROCA_S", "DeteccaoDeFundo", "Tarefa", "ceder_a_interface", "manter_viva"]
+__all__ = ["INTERVALO_DE_TROCA_S", "DeteccaoDeFundo", "Tarefa", "ceder_a_interface", "manter_viva", "rastro_de"]
 
 INTERVALO_DE_TROCA_S = 0.0001
 """De quanto em quanto o interpretador troca de thread enquanto há tarefa rodando (OCR_UI 15).
@@ -70,6 +71,11 @@ class Tarefa(QThread):
     exceção original. As duas coisas porque quem mostra a mensagem e quem decide o que fazer
     são códigos diferentes: a barra de status quer a frase, e o tratamento de "nenhum tabuleiro
     detectado" quer o tipo -- que é informação e não erro, e não pode virar caixa vermelha.
+
+    **E o rastro completo fica em `rastro`** (OCR_UI ciclo 2, passo A10). A frase em pt-BR é o que
+    se lê; o traceback é o que se cola num relato -- e até aqui ele só existia no log, que a caixa
+    de erro mandava a pessoa ir procurar. Formatado **na thread**, no instante da falha, porque é
+    ali que a pilha está inteira; a caixa o mostra em «Detalhes» e o botão «Copiar» o leva junto.
     """
 
     pronto = pyqtSignal(object)
@@ -79,6 +85,8 @@ class Tarefa(QThread):
         super().__init__(parent)
         self._funcao = funcao
         self._nome = nome
+        self.rastro = ""
+        """O traceback formatado da falha, ou vazio enquanto a tarefa não falhou."""
         # Na construção, e não num `start` sobrescrito: o vigia de `test_busy` e o portão
         # `caissa.ui.audit.execucao` atribuem cada `QThread.start` ao arquivo de `qt/` que o
         # chamou, e um `start` daqui seria o chamador de todas as threads do programa.
@@ -96,9 +104,30 @@ class Tarefa(QThread):
             resultado = self._funcao()
         except Exception as exc:  # noqa: BLE001 - ver o docstring: é a borda da thread
             logger.exception("A tarefa %s falhou.", self._nome)
+            self.rastro = rastro_de(exc)
             self.falhou.emit(message_for(exc), exc)
             return
         self.pronto.emit(resultado)
+
+    @property
+    def nome(self) -> str:
+        """Como a tarefa se chama para a pessoa -- «leitura», «detecção» --; vai no título da caixa."""
+        return self._nome
+
+
+def rastro_de(excecao: object) -> str:
+    """O traceback formatado de uma exceção, ou a `repr` dela quando não há pilha.
+
+    A exceção guarda a própria pilha em `__traceback__`, então quem só tem o objeto -- o slot do
+    outro lado do sinal -- ainda consegue o rastro inteiro. Nunca levanta: um erro ao formatar o
+    erro seria a caixa de falha falhando.
+    """
+    if not isinstance(excecao, BaseException):
+        return repr(excecao)
+    try:
+        return "".join(traceback.format_exception(type(excecao), excecao, excecao.__traceback__)).strip()
+    except Exception:  # noqa: BLE001 - ver o docstring
+        return repr(excecao)
 
 
 class DeteccaoDeFundo(QObject):

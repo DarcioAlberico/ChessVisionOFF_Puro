@@ -250,8 +250,17 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1972
+    LIMITE = 1998
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.992 -> 1.998 na integração da fase 1**: cancelar a importação em curso ao abrir outro livro
+    (C7; o crítico provou que o resultado de A virava trilho e fila de B) e a contagem de páginas
+    passada às abas da suíte (`bloqueio`). Sete linhas de chamada; a lógica está na ponte.
+
+    **1.972 -> 1.992 com a fase 1 do OCR_UI ciclo 2** (A7 perguntas de estado sujo, A10 caixa de
+    falha com detalhe, C7 tranca seletiva e as abas da suíte avisadas, A3 `documento_para` na
+    exportação, C1/X5 estados com ação): a lógica nova foi para `qt/decisoes_de_diagrama.py`,
+    `qt/dialogos.py`, `ui/historico.py`, `ui/estado_do_rodape.py`; sobraram na janela as chamadas.
 
     **1.979 -> 1.972 com a janela de configurações (Ferramentas ▸ Configurações…).** O pedido de
     treino deixou de carregar três números escritos aqui (`epochs=8, batch_size=16, lr=1e-3`) e

@@ -22,11 +22,22 @@ bytes; cem estados são 7 KB. O custo de correção é decisivo a favor.
 
 **Sem `tkinter` aqui**, como em `ui/tokens.py` e `ui/comandos.py`: quem guarda o histórico não
 desenha nada, e é o que permite afirmar as sete origens de mudança sem abrir janela.
+
+**O estado é o que quem chama disser que é (OCR_UI ciclo 2, passo A7).** Era uma pilha de
+`str`, e o painel de Resultado guardava só o `placement`: trocar o lado a jogar não entrava, e
+`Ctrl+Z` depois de um clique no rádio errado devolvia a peça de trás em vez do lado de trás
+(análise §6.5). A pilha passou a guardar **qualquer valor comparável por `==`** -- o painel de
+Resultado põe `(placement, side)`, a sala de estudo continua pondo o PGN como texto -- e a
+regra de "posição que não mudou não entra" continua sendo a igualdade.
 """
 
 from __future__ import annotations
 
+from typing import Generic, TypeVar
+
 __all__ = ["TETO", "Historico"]
+
+T = TypeVar("T")
 
 TETO = 100
 """Quantas posições anteriores a pilha guarda, por diagrama.
@@ -37,7 +48,7 @@ um teto sem ter um comportamento a explicar. Passar dele descarta o **mais antig
 cem casas atrás não está querendo voltar para antes da primeira."""
 
 
-class Historico:
+class Historico(Generic[T]):
     """As duas pilhas de um diagrama: o que foi, e o que o desfazer tirou.
 
     **É por diagrama, e trocar de diagrama zera as duas** (`zerar`). Desfazer para dentro de outra
@@ -50,18 +61,18 @@ class Historico:
 
     __slots__ = ("_atual", "_futuro", "_passado", "_teto")
 
-    def __init__(self, atual: str = "", *, teto: int = TETO) -> None:
+    def __init__(self, atual: T = "", *, teto: int = TETO) -> None:  # type: ignore[assignment]
         if teto < 1:
             raise ValueError(f"o teto do histórico precisa ser pelo menos 1: {teto!r}")
         self._teto = int(teto)
-        self._atual = str(atual)
-        self._passado: list[str] = []
-        self._futuro: list[str] = []
+        self._atual: T = atual
+        self._passado: list[T] = []
+        self._futuro: list[T] = []
 
     # ------------------------------------------------------------------------------ leitura
 
     @property
-    def atual(self) -> str:
+    def atual(self) -> T:
         """A posição que está na tela, como o histórico a conhece."""
         return self._atual
 
@@ -84,13 +95,13 @@ class Historico:
 
     # ------------------------------------------------------------------------------ escrita
 
-    def zerar(self, atual: str = "") -> None:
+    def zerar(self, atual: T = "") -> None:  # type: ignore[assignment]
         """Recomeça o histórico naquela posição. É o que a troca de diagrama chama."""
-        self._atual = str(atual)
+        self._atual = atual
         self._passado.clear()
         self._futuro.clear()
 
-    def registrar(self, nova: str) -> bool:
+    def registrar(self, nova: T) -> bool:
         """Uma posição nova chegou. Devolve se ela foi de fato registrada.
 
         **Devolve `False` para a posição que não mudou**, e isso não é economia: um clique que
@@ -101,7 +112,6 @@ class Historico:
         **Uma edição nova descarta o refazer**, que é a regra de toda pilha de desfazer: o futuro
         que ela guardava é de uma linha do tempo que acabou de deixar de existir.
         """
-        nova = str(nova)
         if nova == self._atual:
             return False
         self._passado.append(self._atual)
@@ -111,7 +121,7 @@ class Historico:
         self._futuro.clear()
         return True
 
-    def desfazer(self) -> str | None:
+    def desfazer(self) -> T | None:
         """A posição anterior, ou `None` quando não há o que desfazer."""
         if not self._passado:
             return None
@@ -119,7 +129,7 @@ class Historico:
         self._atual = self._passado.pop()
         return self._atual
 
-    def refazer(self) -> str | None:
+    def refazer(self) -> T | None:
         """O que o desfazer tirou, ou `None` quando não há o que refazer."""
         if not self._futuro:
             return None

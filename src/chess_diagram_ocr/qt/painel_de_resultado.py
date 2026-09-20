@@ -69,8 +69,8 @@ from PyQt6.QtWidgets import (
 from chess_diagram_ocr.config import DEFAULT_DPI, DEFAULT_MAX_BOARDS
 from chess_diagram_ocr.fen_utils import is_valid_fen, square_name
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
+from chess_diagram_ocr.qt import decisoes_de_diagrama, tema
 from chess_diagram_ocr.qt import icones as qt_icones
-from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.atalhos import sequencia_qt
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import DicaEmDesabilitado, dica_em
@@ -148,6 +148,19 @@ comentário em `_montar`: o tabuleiro é limitado pela altura, então a folga qu
 saía do lado do quadrado -- e voltava como vazio à direita da paleta."""
 
 
+def _girar_180(placement: str) -> str:
+    """A mesma posição vista do outro lado da mesa: as 64 casas em ordem inversa.
+
+    É a leitura alternativa de um diagrama de orientação ambígua (C1/X5): o serviço decidiu
+    entre 0° e 180° por uma margem pequena, e a outra hipótese é esta. Colocação malformada
+    volta como veio -- quem chama já a validou.
+    """
+    try:
+        return board_edit.placement_from_squares(list(reversed(board_edit.squares_from_placement(placement))))
+    except ValueError:
+        return placement
+
+
 class PainelDeResultado(QWidget):
     """O editor inteiro: lista, tabuleiro, FEN, lado, legalidade, histórico e gravação."""
 
@@ -187,7 +200,11 @@ class PainelDeResultado(QWidget):
         self._servico = servico
         self._csv_de_rotulos = Path(csv_de_rotulos)
         self.modelo = DiagramEditorModel()
-        self.historico = Historico()
+        self.historico: Historico[tuple[str, str]] = Historico(("", "w"))
+        """A pilha de desfazer, **por diagrama e com o lado** (S-229; OCR_UI C2, A7): cada estado
+        é `(placement, side)`, então trocar a vez entra na pilha e `Ctrl+Z` a devolve."""
+        self._mostrando_reparadas = False
+        """Se as casas que o decodificador trocou estão pintadas no tabuleiro (C1/X5)."""
         self._edicao = 0
         """Quantas edições este painel recebeu. É o desempate do `Ctrl+Z` sem foco (S-243)."""
         """A pilha de desfazer, **por diagrama** (S-229): ela é zerada ao trocar de diagrama, e
@@ -339,10 +356,33 @@ class PainelDeResultado(QWidget):
         # folga, é ele que cede, e não a janela.
         self.detalhes.setMinimumHeight(1)
         caixa.addWidget(self.detalhes, 1)
+        caixa.addWidget(self._barra_de_estados())
 
         # Uma dica por painel, e não por botão: quem a mostra é o pai, porque um controle
         # desabilitado não recebe evento de ponteiro no Qt (S-32).
         self._dicas = DicaEmDesabilitado(self)
+
+    def _barra_de_estados(self) -> BarraFluida:
+        """Os três estados com ação (OCR_UI C2, C1/X5; análise §7.5).
+
+        O serviço já calculava `changed_squares`, `orientation_ambiguous` e `side_conflicting`, e a
+        tela mostrava só o terceiro -- como rótulo, sem nada a fazer. Cada estado vira um botão que
+        **nasce escondido** e aparece com o diagrama que o tem: mostrar as casas reparadas, ver a
+        posição girada de 180°, trocar o lado que a legenda contradiz. Escondido e não cinza: um
+        estado que não se aplica não é um botão desabilitado, é um botão que não existe.
+        """
+        barra = BarraFluida(self)
+        self.btn_reparadas = QPushButton(strings.REPARADAS_MOSTRAR, barra)
+        self.btn_reparadas.clicked.connect(self._alternar_reparadas)
+        self.btn_orientacao = QPushButton(strings.ORIENTACAO_COMPARAR, barra)
+        self.btn_orientacao.clicked.connect(self._girar_180)
+        self.btn_lado = QPushButton(strings.trocar_o_lado_para("b"), barra)
+        self.btn_lado.clicked.connect(self._trocar_o_lado_do_conflito)
+        for botao in (self.btn_reparadas, self.btn_orientacao, self.btn_lado):
+            tema.aplicar_papel(botao, estilos.NEUTRO)
+            botao.setVisible(False)
+            barra.adicionar(botao)
+        return barra
 
     def _ligar_o_recorte(self) -> None:
         """A sincronia entre o recorte e o tabuleiro, nos dois sentidos (passo 13, tarefa 2).
@@ -789,6 +829,7 @@ class PainelDeResultado(QWidget):
             QMessageBox.critical(self, "Dataset", f"Amostra não encontrada no CSV: {nome}")
             return False
         self.estado.emit(f"Rótulo de {nome} regravado.")
+        self.modelo.mark_saved(alvo.index)  # regravado é gravado (A7)
         # **Não emite `salvou`**, e é resposta: regravar a linha de uma amostra que já existia não
         # faz diagrama nenhum ficar verde na página -- ele já estava. O que mudou foi o rótulo, e
         # disso quem precisa saber é a aba Dataset.
@@ -845,9 +886,14 @@ class PainelDeResultado(QWidget):
         self.modelo.select(linha)
         # **A pilha é zerada na troca** (S-229): ela é por diagrama, e `Ctrl+Z` depois de andar
         # tem de devolver a posição anterior *deste* diagrama, não a correção do vizinho.
-        self.historico.zerar(self.modelo.fen_at(linha))
+        self.historico.zerar(self._estado_de(linha))
+        self._mostrando_reparadas = False
         self.selecionou.emit(linha)
         self._atualizar_tudo()
+
+    def _estado_de(self, indice: int | None = None) -> tuple[str, str]:
+        """O que entra na pilha: a colocação **e** o lado do diagrama (A7)."""
+        return (self.modelo.fen_at(indice), self.modelo.side_at(indice))
 
     # ---------------------------------------------------------------------------- edição
 
@@ -857,7 +903,7 @@ class PainelDeResultado(QWidget):
         if not self.modelo.items:
             return
         self.modelo.apply_placement(placement, linha)
-        self.historico.registrar(placement)
+        self.historico.registrar(self._estado_de(linha))
         # O contador que decide o `Ctrl+Z` quando o foco não está em desfazível nenhum (S-243).
         self._edicao += 1
         self._atualizar_tudo()
@@ -882,7 +928,7 @@ class PainelDeResultado(QWidget):
             return
         placement = board_edit.placement_of(texto)
         self.modelo.apply_placement(placement, self.modelo.clamped_index())
-        self.historico.registrar(placement)
+        self.historico.registrar(self._estado_de())
         self._atualizar_tudo()
 
     def _trocou_o_lado(self) -> None:
@@ -891,6 +937,10 @@ class PainelDeResultado(QWidget):
         botao = self._lados.checkedButton()
         if botao is None or not self.modelo.set_side(str(botao.property("lado"))):
             return
+        # **A troca entra na pilha** (A7): era a única das sete origens de mudança fora do
+        # `Ctrl+Z`, e um clique no rádio errado se desfazia pela peça de trás, não pelo lado.
+        self.historico.registrar(self._estado_de())
+        self._edicao += 1
         # A legalidade depende de quem joga: trocar a vez pode resolver o "xeque invertido" sem
         # mexer em nenhuma peça (S-17).
         self._atualizar_tudo()
@@ -913,11 +963,17 @@ class PainelDeResultado(QWidget):
         """`Ctrl+Y`: repõe o que o desfazer tirou."""
         self._voltar(self.historico.refazer(), MOTIVO_SEM_REFAZER)
 
-    def _voltar(self, placement: str | None, motivo: str) -> None:
-        if placement is None:
+    def _voltar(self, estado: tuple[str, str] | None, motivo: str) -> None:
+        """Repõe um estado da pilha: só a colocação, só o lado, ou os dois -- o que mudou."""
+        if estado is None:
             self.estado.emit(motivo)
             return
-        self.modelo.apply_placement(placement, self.modelo.clamped_index())
+        placement, lado = estado
+        indice = self.modelo.clamped_index()
+        if placement != self.modelo.fen_at(indice):
+            self.modelo.apply_placement(placement, indice)
+        if lado != self.modelo.side_at(indice):
+            self.modelo.set_side(lado, indice)
         self._atualizar_tudo()
 
     def limpar_tabuleiro(self) -> None:
@@ -925,9 +981,54 @@ class PainelDeResultado(QWidget):
         if not self.modelo.items:
             return
         self.modelo.apply_placement(board_edit.EMPTY_PLACEMENT, self.modelo.clamped_index())
-        self.historico.registrar(board_edit.EMPTY_PLACEMENT)
+        self.historico.registrar(self._estado_de())
         self._atualizar_tudo()
         self.estado.emit("Tabuleiro esvaziado. Ctrl+Z devolve a posição.")
+
+    # ------------------------------------------------------- os estados com ação (C1/X5)
+
+    def _alternar_reparadas(self) -> None:
+        """Pinta (ou despinta) as casas que o decodificador trocou, e seleciona a primeira."""
+        if not self.modelo.items:
+            return
+        self._mostrando_reparadas = not self._mostrando_reparadas
+        item = self.modelo.items[self.modelo.clamped_index()]
+        casas = [int(c) for c in item.changed_squares]
+        self._atualizar_tudo()
+        # Depois da repintura: `mostrar` zera a seleção, e a casa selecionada é o que o recorte
+        # ao lado espelha -- é assim que a pessoa acha a primeira reparada no diagrama impresso.
+        if self._mostrando_reparadas and casas:
+            self.tabuleiro.selecionar_casa(casas[0])
+        nomes = ", ".join(square_name(c) for c in casas)
+        self.estado.emit(
+            f"Casas reparadas pelo decodificador: {nomes}."
+            if self._mostrando_reparadas
+            else "Casas reparadas escondidas."
+        )
+
+    def _girar_180(self) -> None:
+        """A outra leitura possível: a posição girada de 180°, como edição desfazível."""
+        if not self.modelo.items:
+            return
+        indice = self.modelo.clamped_index()
+        girada = _girar_180(self.modelo.fen_at(indice))
+        self.modelo.apply_placement(girada, indice)
+        self.historico.registrar(self._estado_de(indice))
+        self._edicao += 1
+        self._atualizar_tudo()
+        self.estado.emit("Posição girada de 180°. Ctrl+Z desfaz.")
+
+    def _trocar_o_lado_do_conflito(self) -> None:
+        """O rótulo «texto e posição discordam» ganha ação: trocar a vez, desfazível."""
+        if not self.modelo.items:
+            return
+        indice = self.modelo.clamped_index()
+        outro = "b" if self.modelo.side_at(indice) != "b" else "w"
+        self.modelo.set_side(outro, indice)
+        self.historico.registrar(self._estado_de(indice))
+        self._edicao += 1
+        self._atualizar_tudo()
+        self.estado.emit(f"Diagrama {indice + 1}: lado a jogar definido. Ctrl+Z desfaz.")
 
     # -------------------------------------------------------------------------- gravação
 
@@ -1055,7 +1156,9 @@ class PainelDeResultado(QWidget):
                 QMessageBox.critical(self, "Erro ao salvar a amostra", f"Falha ao salvar:\n{exc}")
             return False
 
+        self.modelo.mark_saved(alvo.index)  # deixa de ser «não gravado» (A7)
         self.salvou.emit(alvo.index)
+        self._registrar_decisao(alvo)
         # **Fechar o item da fila vem depois da gravação, e só quando ela aconteceu** (S-22): um
         # item marcado como revisado sobre uma amostra que não entrou no CSV é a fila mentindo
         # sobre o trabalho feito.
@@ -1065,6 +1168,37 @@ class PainelDeResultado(QWidget):
         if not silencioso:
             self.estado.emit(f"Amostra gravada: {Path(caminho).name}")
         return True
+
+    def _registrar_decisao(self, alvo: SaveTarget) -> None:
+        """A posição gravada vira decisão do diagrama **no livro** (OCR_UI C2, A3; análise §6.2).
+
+        Só com procedência de página: item da fila, amostra do dataset e recorte de área não
+        têm retângulo na página, e sem retângulo não há com que a importação casar a decisão.
+        Depois do `salvou`, e nunca antes: a amostra é o que a gravação promete; a decisão é o
+        que ela passa a fazer a mais, e quem a lê é `qt/decisoes_de_diagrama.py`.
+        """
+        chave = self.modelo.page_key
+        if chave is None or not (0 <= alvo.index < len(self.modelo.items)):
+            return
+        # O DPI é o da leitura desta página (o cache sabe), não o de Configurações… agora:
+        # com o `quad` em pixels do render, um DPI trocado depois daria um retângulo que
+        # nunca casa. `bbox_pdf` (pontos) é a via normal e não depende disto.
+        lidos = self.paginas.params_of(chave[0], int(chave[1]))
+        caminho = decisoes_de_diagrama.gravar_decisao(
+            chave[0],
+            page_index=int(chave[1]),
+            item=self.modelo.items[alvo.index],
+            placement=alvo.fen,
+            side=alvo.side,
+            dpi=(lidos.dpi if lidos is not None else self._parametros().dpi),
+        )
+        if caminho is None:
+            # Dito, não engolido: a amostra entrou no dataset, mas o EPUB deste livro não vai
+            # trazer esta correção (sem retângulo na página, sem a suíte, ou a gravação falhou).
+            self.estado.emit(
+                "Amostra gravada, mas a correção não foi registrada para a exportação do livro "
+                "(ver o log)."
+            )
 
     def _confirmar_ilegal(self, alvo: SaveTarget) -> bool | None:
         """`None` quando a posição é legal, senão a resposta da pessoa.
@@ -1105,6 +1239,8 @@ class PainelDeResultado(QWidget):
                 self.legalidade.setText(MENSAGEM_VAZIA)
                 self.material.setText("")
                 self.detalhes.setText("")
+                self._mostrando_reparadas = False
+                self._pintar_estados(None)
             else:
                 self._pintar_diagrama()
         finally:
@@ -1131,7 +1267,13 @@ class PainelDeResultado(QWidget):
             tinta=tinta,
             leituras=item.probs,
         )
-        self.tabuleiro.definir_casas_corrigidas(board_edit.differing_squares(item.placement, corrigida))
+        corrigidas: set[int] = set(board_edit.differing_squares(item.placement, corrigida))
+        if self._mostrando_reparadas:
+            # As casas reparadas usam o mesmo anel tracejado do «corrigido» (C1/X5): nos dois
+            # casos a casa difere da leitura crua do classificador -- ali pela pessoa, aqui pelo
+            # decodificador -- e é o que a pessoa quer conferir.
+            corrigidas |= {int(c) for c in item.changed_squares}
+        self.tabuleiro.definir_casas_corrigidas(sorted(corrigidas))
         explicacao = explain_position(compose_fen(corrigida, lado != "b"))
         self.tabuleiro.definir_casas_problematicas(explicacao.highlight_squares)
         self.legalidade.setText(explicacao.summary())
@@ -1141,9 +1283,33 @@ class PainelDeResultado(QWidget):
         # fim e o campo passa a mostrar o fim. A 1280x800 isso come as tres primeiras casas.
         self.campo_fen.setCursorPosition(0)
         self.detalhes.setText(self._detalhes_do_item(item))
+        self._pintar_estados(item, lado=lado, corrigida=corrigida)
         self.seletor.setValue(indice + 1)
         for botao in self._lados.buttons():
             botao.setChecked(str(botao.property("lado")) == lado)
+
+    def _pintar_estados(self, item: RecognizedDiagram | None, *, lado: str = "w", corrigida: str = "") -> None:
+        """Mostra os botões dos estados que este diagrama tem, e esconde os outros (C1/X5)."""
+        reparadas = [int(c) for c in item.changed_squares] if item is not None else []
+        self.btn_reparadas.setVisible(bool(reparadas))
+        if reparadas:
+            self.btn_reparadas.setText(
+                strings.REPARADAS_ESCONDER if self._mostrando_reparadas else strings.REPARADAS_MOSTRAR
+            )
+            dica_em(self.btn_reparadas, strings.reparadas_em_casas([square_name(c) for c in reparadas]))
+        ambigua = item is not None and bool(item.orientation_ambiguous)
+        self.btn_orientacao.setVisible(ambigua)
+        if ambigua and item is not None:
+            girada = corrigida == _girar_180(item.placement)
+            self.btn_orientacao.setText(strings.ORIENTACAO_VOLTAR if girada else strings.ORIENTACAO_COMPARAR)
+            dica_em(self.btn_orientacao, strings.orientacao_ambigua(item.orientation_reason))
+        conflito = item is not None and bool(item.side_conflicting)
+        self.btn_lado.setVisible(conflito)
+        if conflito and item is not None:
+            self.btn_lado.setText(strings.trocar_o_lado_para("b" if lado != "b" else "w"))
+            motivo = item.side_to_move_reason or strings.SIDE_SOURCE_CONFLICT
+            legenda = f"\nLegenda: {strings.resumo_da_legenda(item.caption)}" if item.caption else ""
+            dica_em(self.btn_lado, f"{strings.SIDE_SOURCE_CONFLICT}: {motivo}{legenda}")
 
     def _atualizar_botoes(self, vazio: bool) -> None:
         """Acende, apaga e **diz por quê** -- a regra da S-165, que achou treze botões cinzas."""
@@ -1198,6 +1364,10 @@ class PainelDeResultado(QWidget):
             f"Confiança: mínima {item.min_confidence:.3f} · média {item.mean_confidence:.3f}"
             f" · {len(item.uncertain_squares)} casa(s) incerta(s)",
         ]
+        if item.changed_squares:
+            linhas.append(strings.reparadas_em_casas([square_name(int(c)) for c in item.changed_squares]))
+        if item.orientation_ambiguous:
+            linhas.append(strings.orientacao_ambigua(item.orientation_reason))
         if item.detection_source:
             linhas.append(f"Localizado por: {strings.detection_source_label(item.detection_source)}")
         if item.caption:

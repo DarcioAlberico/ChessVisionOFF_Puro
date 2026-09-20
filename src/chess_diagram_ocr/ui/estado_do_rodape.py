@@ -128,6 +128,54 @@ def expira_em_ms(severidade: str) -> int | None:
     return EXPIRACAO_MS[severidade]
 
 
+TETO_DE_MENSAGENS = 50
+"""Quantas mensagens o rodapé lembra depois de elas saírem da tela (OCR_UI ciclo 2, passo A10).
+
+Informação expira em 20 s e aviso em 40 s, e até aqui o que expirava sumia: quem estava olhando
+a página do livro no segundo em que "3 de 9 diagramas salvos" passou não tinha como lê-la
+depois. Cinquenta é mais que uma sessão de correção produz entre duas olhadas e é uma lista que
+ainda se lê inteira."""
+
+
+@dataclass(frozen=True)
+class Mensagem:
+    """Uma frase que passou pelo rodapé: quando, com que severidade e o texto."""
+
+    quando: str
+    """Hora local `HH:MM:SS` -- o que se lê numa lista; a data não muda dentro da sessão."""
+    severidade: str
+    texto: str
+
+    def linha(self) -> str:
+        """Como a lista a desenha: hora, severidade em minúsculas quando não é informação, texto."""
+        marca = "" if self.severidade == INFORMACAO else f" [{self.severidade.casefold()}]"
+        return f"{self.quando}{marca}  {self.texto}"
+
+
+class Mensagens:
+    """As últimas `teto` mensagens, da mais antiga para a mais recente. Pura; sem relógio."""
+
+    def __init__(self, teto: int = TETO_DE_MENSAGENS) -> None:
+        self._teto = max(1, int(teto))
+        self._itens: list[Mensagem] = []
+
+    def registrar(self, texto: str, severidade: str, *, quando: str) -> Mensagem | None:
+        """Guarda a frase. A vazia -- o rodapé limpo -- não é mensagem e não entra."""
+        frase = str(texto).strip()
+        if not frase:
+            return None
+        item = Mensagem(quando=str(quando), severidade=severidade, texto=frase)
+        self._itens.append(item)
+        del self._itens[: -self._teto]
+        return item
+
+    def todas(self) -> tuple[Mensagem, ...]:
+        return tuple(self._itens)
+
+    def __len__(self) -> int:
+        return len(self._itens)
+
+
 def com_origem(texto: str, origem: str = "") -> str:
     """A mensagem com o painel que a escreveu à frente, quando há um.
 

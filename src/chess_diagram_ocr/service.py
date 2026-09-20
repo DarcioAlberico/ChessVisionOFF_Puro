@@ -129,6 +129,10 @@ class RecognizedDiagram:
     side_to_move_reason: str = ""
     side_conflicting: bool = False
     edited_by_hand: bool = False
+    saved_placement: str | None = None
+    """A colocação gravada no dataset para este item (Ctrl+S), e o lado com ela: é o que
+    separa «corrigido» de «corrigido e ainda não gravado» (OCR_UI C2, A7). `None` = nunca gravado."""
+    saved_side: str | None = None
 
     prediction: BoardPrediction | None = None
     """A leitura completa, quando houve OCR. É de onde sai o tooltip das 3 classes."""

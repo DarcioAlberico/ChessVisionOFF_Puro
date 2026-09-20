@@ -17,7 +17,7 @@ faz, e um item cinza sem dica faria a pessoa procurar o defeito na própria máq
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -44,7 +44,8 @@ class ExportadorDeLivro(Protocol):
     rodando: bool
 
     def comecar(
-        self, pdf_path: Path | None, page_count: int, *, formato: str, pagina_atual: int
+        self, pdf_path: Path | None, page_count: int, *, formato: str, pagina_atual: int,
+        documento_para: Callable[[Sequence[int] | None], Any] | None = None,
     ) -> bool: ...
 
     def cancelar(self) -> None: ...

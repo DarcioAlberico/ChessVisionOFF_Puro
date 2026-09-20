@@ -39,6 +39,7 @@ from typing import Any
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
@@ -82,9 +83,91 @@ __all__ = [
     "DialogoDeEscopo",
     "DialogoDePartidas",
     "DialogoDeTreino",
+    "caixa_de_falha",
+    "ha_quem_responda",
+    "mostrar_falha",
     "perguntar_bases",
+    "perguntar_descarte",
     "perguntar_escopo",
 ]
+
+
+# ------------------------------------------- as duas caixas do ciclo 2 (OCR_UI passos A7 e A10)
+
+
+def ha_quem_responda() -> bool:
+    """Se há uma tela em que uma caixa modal pode ser respondida.
+
+    **Sob `QT_QPA_PLATFORM=offscreen` não há** -- e uma caixa modal ali não pergunta a ninguém:
+    o `exec()` espera para sempre um clique que não vem (regra 8 do roadmap C2; `tests/conftest`
+    reprova toda caixa de verdade pelo mesmo motivo). Os arneses de `caissa.ui.audit.*` abrem a
+    janela sem tela, editam um diagrama e chamam `close()`; a pergunta de A7 os travaria. Quem
+    consulta isto decide o que fazer sem resposta: fechar fecha, trocar de livro **guarda**.
+    """
+    aplicacao = QApplication.instance()
+    return aplicacao is not None and str(aplicacao.platformName()).casefold() != "offscreen"
+
+
+def perguntar_descarte(pai: QWidget | None, paginas: Sequence[int], *, livro: str = "", ao_fechar: bool = True) -> bool:
+    """«As páginas N têm correções não gravadas» -- `True` se a pessoa manda descartar (A7).
+
+    Sem tela não há pergunta (`ha_quem_responda`): ao fechar, o fechamento segue -- não há o
+    que fazer com uma janela que já está sendo destruída --; ao trocar de livro, a resposta é
+    «não descarte», que é a que não perde nada. Nos dois casos fica no log.
+    """
+    if not paginas:
+        return True
+    if not ha_quem_responda():
+        logger.warning(
+            "Correções não gravadas nas páginas %s e nenhuma tela para perguntar: %s.",
+            [int(p) + 1 for p in paginas],
+            "o fechamento segue" if ao_fechar else "as correções ficam guardadas",
+        )
+        return ao_fechar
+    resposta = QMessageBox.question(
+        pai,
+        strings.DESCARTAR_EDICOES_TITULO,
+        strings.frase_de_edicoes_nao_gravadas(paginas, livro=livro, ao_fechar=ao_fechar),
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.No,
+    )
+    return resposta == QMessageBox.StandardButton.Yes
+
+
+def caixa_de_falha(pai: QWidget | None, titulo: str, mensagem: str, detalhe: str = "") -> QMessageBox:
+    """A caixa de erro que diz o que fazer, **montada e não aberta** (A10; análise §6.8).
+
+    Três coisas que a `QMessageBox.warning` de antes não tinha: o título nomeia a operação
+    («A leitura não terminou»), o rastro inteiro fica em «Mostrar detalhes…» em vez de só no
+    log, e o botão «Copiar» leva título, mensagem e rastro para a área de transferência -- é o
+    que a pessoa cola num relato, sem transcrever. Devolve a caixa para o teste ler
+    `detailedText()` e clicar em «Copiar» sem `exec()`.
+    """
+    caixa = QMessageBox(pai)
+    caixa.setIcon(QMessageBox.Icon.Warning)
+    caixa.setWindowTitle(titulo)
+    caixa.setText(mensagem)
+    if detalhe:
+        caixa.setDetailedText(detalhe)
+    caixa.setStandardButtons(QMessageBox.StandardButton.Ok)
+    copiar = caixa.addButton(strings.COPIAR, QMessageBox.ButtonRole.ActionRole)
+    dica_em(copiar, "Copia o título, a mensagem e o rastro completo, para colar num relato.")
+
+    def _copiar() -> None:
+        area = QApplication.clipboard()
+        if area is not None:
+            area.setText("\n\n".join(parte for parte in (titulo, mensagem, detalhe) if parte))
+
+    copiar.clicked.connect(_copiar)
+    return caixa
+
+
+def mostrar_falha(pai: QWidget | None, titulo: str, mensagem: str, detalhe: str = "") -> None:
+    """Abre `caixa_de_falha` e espera. É o que `qt/janela._falhou` chama."""
+    caixa = caixa_de_falha(pai, titulo, mensagem, detalhe)
+    # «Copiar» não fecha a caixa: a pessoa copia e ainda lê. Reabrir depois do clique é o que
+    # o `exec()` faz sozinho quando o botão é de `ActionRole`.
+    caixa.exec()
 
 
 def _mesmo(um: Path, outro: Path) -> bool:
