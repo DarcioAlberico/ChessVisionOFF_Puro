@@ -318,6 +318,77 @@ class LocalReaderSettings:
 
 
 @dataclass(frozen=True)
+class TrainingSettings:
+    """Os parâmetros que o treino lê quando a pessoa clica em *Treinar*.
+
+    **Eram números escritos na janela** (`qt/janela._pedido_de_treino`: 8 épocas, lote 16,
+    taxa 1e-3) e no diálogo de ajuste fino do OCR da suíte (2.000 iterações). Quem queria
+    treinar por mais tempo não tinha onde dizer isso -- e treinar é a única coisa do programa
+    que custa dezenas de minutos por clique, então o número de épocas é a preferência que mais
+    muda o dia de quem rotula. Os padrões são os que estavam na janela, para que um arquivo
+    sem esta seção continue treinando exatamente como antes.
+    """
+
+    epochs: int = 8
+    """Épocas do classificador de peças (o modelo de `models/piece_classifier.pt`)."""
+    batch_size: int = 16
+    lr: float = 1e-3
+
+    ocr_iterations: int = 2000
+    """Iterações do ajuste fino do Tesseract por livro (`caissa-treinar`), na aba Rotulagem."""
+    ocr_learning_rate: float = 1e-3
+    ocr_negatives: int = 120
+    """Linhas de prosa degradadas que entram como negativos (OCR_UI passo 4)."""
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "epochs": self.epochs,
+            "batch_size": self.batch_size,
+            "lr": self.lr,
+            "ocr_iterations": self.ocr_iterations,
+            "ocr_learning_rate": self.ocr_learning_rate,
+            "ocr_negatives": self.ocr_negatives,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> TrainingSettings:
+        padrao = cls()
+        return cls(
+            epochs=max(1, _inteiro(data, "epochs", padrao.epochs)),
+            batch_size=max(1, _inteiro(data, "batch_size", padrao.batch_size)),
+            lr=_flutuante(data, "lr", padrao.lr),
+            ocr_iterations=max(100, _inteiro(data, "ocr_iterations", padrao.ocr_iterations)),
+            ocr_learning_rate=_flutuante(data, "ocr_learning_rate", padrao.ocr_learning_rate),
+            ocr_negatives=max(0, _inteiro(data, "ocr_negatives", padrao.ocr_negatives)),
+        )
+
+
+@dataclass(frozen=True)
+class RecognitionSettings:
+    """Como a página é rasterizada e quantos diagramas se procuram nela.
+
+    Os padrões são `config.DEFAULT_DPI` e `config.DEFAULT_MAX_BOARDS`, repetidos aqui como
+    número para que este módulo continue sem importar o `config` inteiro. O DPI muda o
+    tamanho do recorte que o classificador vê -- 220 é o que os relatórios de campo medem;
+    subir ajuda em scans fracos e custa tempo por página.
+    """
+
+    dpi: int = 220
+    max_boards: int = 12
+
+    def to_dict(self) -> dict[str, object]:
+        return {"dpi": self.dpi, "max_boards": self.max_boards}
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> RecognitionSettings:
+        padrao = cls()
+        return cls(
+            dpi=min(600, max(72, _inteiro(data, "dpi", padrao.dpi))),
+            max_boards=min(64, max(1, _inteiro(data, "max_boards", padrao.max_boards))),
+        )
+
+
+@dataclass(frozen=True)
 class Settings:
     """As preferências do usuário que não são estado de janela."""
 
@@ -325,6 +396,8 @@ class Settings:
     engine: EngineSettings = EngineSettings()
     ocr: OcrSettings = OcrSettings()
     local_reader: LocalReaderSettings = LocalReaderSettings()
+    training: TrainingSettings = TrainingSettings()
+    recognition: RecognitionSettings = RecognitionSettings()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -333,6 +406,8 @@ class Settings:
             "engine": self.engine.to_dict(),
             "ocr": self.ocr.to_dict(),
             "local_reader": self.local_reader.to_dict(),
+            "training": self.training.to_dict(),
+            "recognition": self.recognition.to_dict(),
         }
 
     @classmethod
@@ -346,6 +421,8 @@ class Settings:
             engine=EngineSettings.from_dict(_secao("engine")),
             ocr=OcrSettings.from_dict(_secao("ocr")),
             local_reader=LocalReaderSettings.from_dict(_secao("local_reader")),
+            training=TrainingSettings.from_dict(_secao("training")),
+            recognition=RecognitionSettings.from_dict(_secao("recognition")),
         )
 
 

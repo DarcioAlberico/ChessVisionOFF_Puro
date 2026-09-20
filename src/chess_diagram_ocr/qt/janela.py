@@ -76,8 +76,6 @@ from PyQt6.QtWidgets import (
 from chess_diagram_ocr.board_detection import NoBoardDetectedError
 from chess_diagram_ocr.config import (
     DEFAULT_DATASET_CSV,
-    DEFAULT_DPI,
-    DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
     DEFAULT_PDF_DIR,
@@ -86,7 +84,7 @@ from chess_diagram_ocr.config import (
 )
 from chess_diagram_ocr.detection import DiagramCandidate, detect_diagrams_in_pdf_page, detect_diagrams_rendering_page
 from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
-from chess_diagram_ocr.qt import acessibilidade, dica, escala, exportador_de_livro, fila, fita, legenda, menu
+from chess_diagram_ocr.qt import acessibilidade, dialogo_de_configuracoes, dica, escala, exportador_de_livro, fila, fita, legenda, menu
 from chess_diagram_ocr.qt import importador_de_livro, painel_de_revisao_de_texto, painel_de_rotulagem, painel_do_pdf
 from chess_diagram_ocr.qt import paleta, plataforma, tema
 from chess_diagram_ocr.qt.areas_de_trabalho import AreasDeTrabalho
@@ -139,7 +137,8 @@ from chess_diagram_ocr.ui.page_overlay import (
     mark_saved,
 )
 from chess_diagram_ocr.ui.page_results import PageOcrParams, colocacoes_conferidas
-from chess_diagram_ocr.ui.pedido_de_treino import TrainingRequest
+from chess_diagram_ocr.ui.configuracoes import dpi as _dpi, max_boards as _max_boards
+from chess_diagram_ocr.ui.pedido_de_treino import TrainingRequest, pedido_de_treino
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.state import AppState, load_state, save_state
 from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_TEXTO
@@ -453,7 +452,7 @@ class JanelaPrincipal(QMainWindow):
             service=self._servico,
             pdf_path=lambda: self._pdf,
             model_path=lambda: DEFAULT_MODEL_PATH,
-            max_boards=lambda: DEFAULT_MAX_BOARDS,
+            max_boards=_max_boards,
             # Uma varredura por livro (S-119): a Galeria varre, e a fila de revisão sai da mesma
             # passada. Quem liga as duas abas é esta janela -- nenhuma conhece a outra.
             sumidouro_de_revisao=self.revisao.sumidouro,
@@ -471,7 +470,7 @@ class JanelaPrincipal(QMainWindow):
         self.lado_do_livro = QWidget(self.divisor)
         self.pdf = PainelDoPdf(
             self.lado_do_livro,
-            dpi=lambda: DEFAULT_DPI,
+            dpi=_dpi,
             # Todo livro abre na página em que foi deixado, e não só o último (S-25). O histórico
             # guarda 50, e é a pergunta que se faz ao voltar a um livro pela quinta vez.
             pagina_inicial_de=self._pagina_guardada_de,
@@ -1139,7 +1138,7 @@ class JanelaPrincipal(QMainWindow):
         não achava caixa nenhuma. Só quando o cache não sabe da página -- uma página de prosa já
         visitada guarda a resposta vazia, e o detector não a percorre de novo.
         """
-        pdf, pagina_rgb, teto = self._pdf, self.pdf.page_rgb, DEFAULT_MAX_BOARDS
+        pdf, pagina_rgb, teto = self._pdf, self.pdf.page_rgb, _max_boards()
         if pdf is None or pagina_rgb is None:
             return
         if self._rasterizar_ao_fundo:
@@ -1147,7 +1146,7 @@ class JanelaPrincipal(QMainWindow):
             # Python, numpy e OpenCV que, numa thread, reveza o GIL com a janela e alonga cada
             # troca de aba e cada virada enquanto corre. O filho rasteriza a página de novo em vez
             # de receber os 26 MB dela -- ver `detect_diagrams_rendering_page`.
-            dpi = int(DEFAULT_DPI)
+            dpi = int(_dpi())
             self._detector.pedir(
                 self._chave_do_documento(),
                 pagina,
@@ -1171,7 +1170,7 @@ class JanelaPrincipal(QMainWindow):
     # ------------------------------------------------------------------------------ leitura
 
     def _parametros(self) -> OverlayParams:
-        return OverlayParams(dpi=DEFAULT_DPI, max_boards=DEFAULT_MAX_BOARDS)
+        return OverlayParams(dpi=_dpi(), max_boards=_max_boards())
 
     def _parametros_de_ocr(self) -> PageOcrParams:
         """Com que parâmetros a página foi lida. É a chave do cache do painel de Resultado.
@@ -1183,8 +1182,8 @@ class JanelaPrincipal(QMainWindow):
         return PageOcrParams(
             model_path=str(DEFAULT_MODEL_PATH),
             orientation=DEFAULT_ORIENTATION_MODE,
-            max_boards=DEFAULT_MAX_BOARDS,
-            dpi=DEFAULT_DPI,
+            max_boards=_max_boards(),
+            dpi=_dpi(),
         )
 
     def _opcoes(self, max_diagramas: int | None = None) -> RecognitionOptions:
@@ -1192,8 +1191,8 @@ class JanelaPrincipal(QMainWindow):
         return RecognitionOptions(
             model_path=DEFAULT_MODEL_PATH,
             orientation=DEFAULT_ORIENTATION_MODE,
-            max_boards=DEFAULT_MAX_BOARDS if max_diagramas is None else max_diagramas,
-            dpi=DEFAULT_DPI,
+            max_boards=_max_boards() if max_diagramas is None else max_diagramas,
+            dpi=_dpi(),
         )
 
     def _chave_do_documento(self) -> str:
@@ -1223,7 +1222,7 @@ class JanelaPrincipal(QMainWindow):
             self._chegaram_candidatos(self.pdf.page_index, guardados)
             return
 
-        pdf, pagina, teto = self._pdf, self.pdf.page_index, DEFAULT_MAX_BOARDS
+        pdf, pagina, teto = self._pdf, self.pdf.page_index, _max_boards()
         self._rodar(
             lambda: detect_diagrams_in_pdf_page(pdf, pagina, pagina_rgb, max_boards=teto),
             nome="detecção",
@@ -1674,21 +1673,14 @@ class JanelaPrincipal(QMainWindow):
             pdf_path=self._pdf,
             model_path=DEFAULT_MODEL_PATH,
             labels_csv=self._csv_de_rotulos,
-            dpi=DEFAULT_DPI,
-            max_boards_per_page=DEFAULT_MAX_BOARDS,
+            dpi=_dpi(),
+            max_boards_per_page=_max_boards(),
         )
 
     def _pedido_de_treino(self) -> TrainingRequest:
-        csv, amostras, splits = self._caminhos_do_dataset()
-        return TrainingRequest(
-            csv_path=csv,
-            samples_dir=amostras,
-            model_path=DEFAULT_MODEL_PATH,
-            epochs=8,
-            batch_size=16,
-            lr=1e-3,
-            splits_path=splits,
-        )
+        # Épocas, lote e taxa vêm de `data/settings.json` (Ferramentas ▸ Configurações…), lidos
+        # no clique: o que a pessoa mudou na janela vale para o próximo treino, não para este.
+        return pedido_de_treino(*self._caminhos_do_dataset(), model_path=DEFAULT_MODEL_PATH)
 
     def _alternar_trilho(self) -> None:
         # `isHidden` e não `isVisible`: antes de a janela aparecer, `isVisible` é falso para tudo.
@@ -1708,8 +1700,8 @@ class JanelaPrincipal(QMainWindow):
     def _configuracao_de_exportacao(self) -> ExportSettings:
         return ExportSettings(
             model_path=DEFAULT_MODEL_PATH,
-            dpi=DEFAULT_DPI,
-            max_boards_per_page=DEFAULT_MAX_BOARDS,
+            dpi=_dpi(),
+            max_boards_per_page=_max_boards(),
             orientation=DEFAULT_ORIENTATION_MODE,
         )
 
@@ -1782,6 +1774,7 @@ class JanelaPrincipal(QMainWindow):
             "exportar_docx": lambda: self._exportar_livro("docx"),
             "cancelar_exportacao": self.exportador.cancelar,
             "treinar": self.treino.iniciar,
+            "configuracoes": lambda: dialogo_de_configuracoes.abrir(self, dizer=self._dizer),
             "recarregar_modelo": self._recarregar_modelo,
             # --- a janela
             "aparencia": self._escolher_pele,

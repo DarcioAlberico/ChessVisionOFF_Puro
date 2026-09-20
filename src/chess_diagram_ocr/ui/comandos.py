@@ -659,6 +659,10 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("corrigir_agora", "Corrigir agora", ACERVO, estilos.NEUTRO),
     Comando("recarregar_modelo", "Recarregar o modelo", ACERVO, estilos.NEUTRO),
     Comando("treinar", "Treinar o modelo", ACERVO, estilos.NEUTRO),
+    # A janela que grava `data/settings.json` (épocas do treino, DPI, motor de OCR, motor UCI,
+    # segunda opinião). Até ela existir o arquivo só era lido, e as épocas eram uma constante
+    # em `qt/janela.py`. Ver `ui/configuracoes.py`.
+    Comando("configuracoes", "Configurações…", ACERVO, estilos.NEUTRO),
     # Os três da linha de conjunto de campo (S-77). Nenhum tem item de menu, e a S-223 decidiu
     # que eles **não** ganham um: anotar verdade de referência sobre a página que não está à
     # vista é como se grava métrica errada.

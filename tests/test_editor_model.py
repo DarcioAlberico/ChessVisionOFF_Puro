@@ -357,6 +357,7 @@ SEM_TKINTER = {
     "abas.py": "o rótulo de uma aba e a contagem dentro dele (S-162)",
     "barra.py": "o arranjo da barra fluida: quantas linhas os itens ocupam (S-151/S-506)",
     "biblioteca.py": "o acervo inteiro como uma decisão só: busca, facetas e a janela que se realiza (F9)",
+    "configuracoes.py": "a tabela da janela Configurações…: um campo por preferência de settings.Settings, DPI e teto relidos do arquivo",
     "cortina.py": "a cortina de comparação: onde está a divisa entre o antes e o depois (F9)",
     "degradacao.py": "o inventário de quedas de aparência e o aviso uma-vez-só (S-506)",
     "folha.py": "o recheio de cada superfície e o vão do indicador (S-506)",

@@ -250,8 +250,14 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1979
+    LIMITE = 1972
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.979 -> 1.972 com a janela de configurações (Ferramentas ▸ Configurações…).** O pedido de
+    treino deixou de carregar três números escritos aqui (`epochs=8, batch_size=16, lr=1e-3`) e
+    passou a vir de `ui/pedido_de_treino.pedido_de_treino`, que lê `data/settings.json`; o DPI e o
+    teto de diagramas passaram a `ui/configuracoes.dpi/max_boards` (relidos quando o arquivo muda).
+    A janela nova mora em `qt/dialogo_de_configuracoes.py` e custou aqui uma linha de tabela.
 
     **1.967 -> 1.979 com o estado «corrigido» das caixas da página (OCR_UI passo 13, tarefa 4), e
     as doze linhas são um carimbo e um religamento.** `_publicar_caixas` passa a carimbar

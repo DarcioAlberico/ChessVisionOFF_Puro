@@ -30,7 +30,7 @@ if TYPE_CHECKING:  # pragma: no cover - `TrainingRun` só é usado em anotação
     # annotations` já deixa como texto.
     from ..training import TrainingRun
 
-__all__ = ["TrainingRequest", "format_metrics", "summarize_run"]
+__all__ = ["TrainingRequest", "format_metrics", "pedido_de_treino", "summarize_run"]
 @dataclass(frozen=True)
 class TrainingRequest:
     """Os parâmetros do treino lidos da tela, para não viajarem soltos entre threads.
@@ -47,6 +47,38 @@ class TrainingRequest:
     lr: float
     fresh: bool = False
     splits_path: Path | None = None
+
+
+def pedido_de_treino(
+    csv_path: Path,
+    samples_dir: Path,
+    splits_path: Path | None,
+    *,
+    model_path: Path,
+    fresh: bool = False,
+) -> TrainingRequest:
+    """O pedido com épocas, lote e taxa de `data/settings.json` -- lidos agora, no clique.
+
+    Eram `epochs=8, batch_size=16, lr=1e-3` escritos em `qt/janela.py`; a janela de
+    configurações (`ui/configuracoes.py`) é onde a pessoa os muda, e este é o único lugar que
+    os transforma em pedido.
+    """
+    from .. import settings as preferencias
+
+    # O caminho é lido do módulo **agora**, e não congelado como valor-padrão de argumento:
+    # o teste aponta `DEFAULT_SETTINGS_PATH` para uma pasta temporária, e o bundle o resolve
+    # para a pasta do `.exe` -- nos dois casos o que vale é o valor no instante do clique.
+    treino = preferencias.load_settings(preferencias.DEFAULT_SETTINGS_PATH).training
+    return TrainingRequest(
+        csv_path=csv_path,
+        samples_dir=samples_dir,
+        model_path=model_path,
+        epochs=treino.epochs,
+        batch_size=treino.batch_size,
+        lr=treino.lr,
+        fresh=fresh,
+        splits_path=splits_path,
+    )
 
 
 def format_metrics(row: dict[str, Any]) -> str:

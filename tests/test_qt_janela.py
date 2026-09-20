@@ -889,12 +889,16 @@ class FiacaoTests(unittest.TestCase):
         self.assertIsNot(tabela["ler_melhor"], tabela["ler_pagina"])
 
     def test_o_teto_de_diagramas_e_o_que_separa_os_dois(self) -> None:
-        """`ocr_best` era `max_boards=1` e `ocr_all` era a preferência inteira, no Tk."""
-        from chess_diagram_ocr.qt.janela import DEFAULT_MAX_BOARDS
+        """`ocr_best` era `max_boards=1` e `ocr_all` era a preferência inteira, no Tk.
+
+        A preferência inteira vem de `data/settings.json` desde a janela de configurações
+        (`ui/configuracoes.max_boards`), e não mais da constante de `config`.
+        """
+        from chess_diagram_ocr.ui.configuracoes import max_boards
 
         janela = self.janela(com_livro=False)
         self.assertEqual(1, janela._opcoes(1).max_boards)
-        self.assertEqual(DEFAULT_MAX_BOARDS, janela._opcoes().max_boards)
+        self.assertEqual(max_boards(), janela._opcoes().max_boards)
 
     # ------------------------------------------------------------ o trilho de páginas (passo 17)
 
