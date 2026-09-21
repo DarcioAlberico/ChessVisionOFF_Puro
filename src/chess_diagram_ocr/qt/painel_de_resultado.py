@@ -129,6 +129,7 @@ cada pele e nas três larguras.
 posição inicial e o campo de FEN vazio -- parece um diagrama reconhecido, e quem clicasse em
 "Salvar" gravaria a posição inicial no `labels.csv` como se fosse leitura de uma página."""
 
+MOTIVO_LEITURA_EM_CURSO = "Gravar espera a leitura terminar: a amostra seria de uma página que está sendo substituída."
 MOTIVO_SEM_DIAGRAMA = "Não há diagrama aberto."
 MOTIVO_SEM_DESFAZER = "Não há mudança anterior neste diagrama."
 MOTIVO_SEM_REFAZER = "Não há o que refazer: nada foi desfeito."
@@ -146,6 +147,20 @@ ESTICAMENTO_DO_CANVAS = 12
 **Era `3`, e o `1` do outro lado valia 212 px de nada no pé da aba** (F9-C6, item 6). Ver o
 comentário em `_montar`: o tabuleiro é limitado pela altura, então a folga que ia para o rótulo
 saía do lado do quadrado -- e voltava como vazio à direita da paleta."""
+
+
+def _casas_a_conferir(item: RecognizedDiagram, tinta: Any, placement: str) -> tuple[int, ...]:
+    """A ordem do `Tab` (C8): âmbar por margem, senão incertas, senão ocupadas por confiança."""
+    probs = getattr(item, "probs", None)
+    if tinta.casas:
+        if probs is not None:
+            return tuple(sorted(tinta.casas, key=lambda c: regra_do_recorte.margem(probs, c)))
+        return tuple(tinta.casas)
+    if item.uncertain_squares:
+        return tuple(int(c) for c in item.uncertain_squares)
+    confiancas = list(item.square_confidences) or [1.0] * 64
+    ocupadas = [c for c in range(64) if board_edit.piece_at(placement, c)]
+    return tuple(sorted(ocupadas, key=lambda c: confiancas[c] if c < len(confiancas) else 1.0))
 
 
 def _girar_180(placement: str) -> str:
@@ -198,6 +213,7 @@ class PainelDeResultado(QWidget):
     ) -> None:
         super().__init__(parent)
         self._servico = servico
+        self._segunda_em_curso: Any = None
         self._csv_de_rotulos = Path(csv_de_rotulos)
         self.modelo = DiagramEditorModel()
         self.historico: Historico[tuple[str, str]] = Historico(("", "w"))
@@ -378,7 +394,9 @@ class PainelDeResultado(QWidget):
         self.btn_orientacao.clicked.connect(self._girar_180)
         self.btn_lado = QPushButton(strings.trocar_o_lado_para("b"), barra)
         self.btn_lado.clicked.connect(self._trocar_o_lado_do_conflito)
-        for botao in (self.btn_reparadas, self.btn_orientacao, self.btn_lado):
+        self.btn_segunda = QPushButton(strings.SEGUNDA_OPINIAO, barra)
+        self.btn_segunda.clicked.connect(self.segunda_opiniao)
+        for botao in (self.btn_reparadas, self.btn_orientacao, self.btn_lado, self.btn_segunda):
             tema.aplicar_papel(botao, estilos.NEUTRO)
             botao.setVisible(False)
             barra.adicionar(botao)
@@ -1006,6 +1024,109 @@ class PainelDeResultado(QWidget):
             else "Casas reparadas escondidas."
         )
 
+    def trancar_gravacao(self, trancado: bool) -> None:
+        """Só o gravar desligado durante uma leitura (passo C2): a lista, o tabuleiro e a
+        paleta continuam usáveis. Gravar no meio de uma leitura escreveria a amostra de uma
+        página que está sendo substituída -- é a única condição que a janela conhece."""
+        self._gravacao_trancada = bool(trancado)
+        vazio = not self.modelo.items
+        for botao in (self.btn_salvar, self.btn_salvar_todos):
+            botao.setEnabled(not trancado and not vazio)
+            if trancado and not vazio:
+                self._explicar(botao, "salvar", MOTIVO_LEITURA_EM_CURSO)
+
+    def mostrar_vazio_sem_modelo(self) -> None:
+        """O estado vazio quando o `.pt` falta (passo C2): a lista limpa e a frase dizendo
+        onde apontar o modelo, em vez de uma caixa de aviso que só nomeia o arquivo."""
+        self.modelo.clear()
+        self._atualizar_tudo()
+        self.estado.emit("Sem modelo de casas: aponte o arquivo .pt em Ferramentas ▸ Configurações…")
+
+    # ------------------------------------------------------------------- segunda opinião (C3)
+
+    def leitor_da_segunda_opiniao(self) -> Any:
+        """O segundo leitor que a configuração autoriza (`local_reader`), ou `None`."""
+        try:
+            from chess_diagram_ocr.settings import load_settings
+            from chess_diagram_ocr.tsoj_reader import build_local_provider
+
+            return build_local_provider(load_settings().local_reader)
+        except Exception:  # noqa: BLE001 - sem configuração legível não há segundo leitor
+            logger.exception("A configuração do segundo leitor não pôde ser lida.")
+            return None
+
+    def _segunda_opiniao_configurada(self) -> bool:
+        try:
+            from chess_diagram_ocr.settings import load_settings
+
+            return bool(load_settings().local_reader.is_usable)
+        except Exception:  # noqa: BLE001
+            return False
+
+    def motivo_sem_segunda_opiniao(self) -> str:
+        """Por que o botão está escondido: sem diagrama, ou sem leitor configurado (com o caminho)."""
+        if not self.modelo.items:
+            return MOTIVO_SEM_DIAGRAMA
+        try:
+            from chess_diagram_ocr.settings import load_settings
+
+            return load_settings().local_reader.disabled_reason()
+        except Exception:  # noqa: BLE001
+            return "Segunda opinião indisponível: a configuração não pôde ser lida."
+
+    def segunda_opiniao(self) -> None:
+        """Lê o diagrama selecionado com o segundo leitor, de **outra família** que o de produção
+        (C3, S-66): as casas em que os dois discordam ficam marcadas (`DIVERGENTE`) e o `Tab`
+        as percorre; a posição passa a ser a do segundo leitor, como edição desfazível, e a
+        amostra gravada leva `corrected_by=segunda-opiniao`. Um leitor que é cópia do primeiro
+        cobriria zero casas erradas -- é a sabotagem de `benchmarks/second_opinion_gate.py`."""
+        if not self.modelo.items:
+            return
+        leitor = self.leitor_da_segunda_opiniao()
+        if leitor is None:
+            self.estado.emit(self.motivo_sem_segunda_opiniao()
+                             or "Segunda opinião indisponível: o leitor configurado não pôde ser carregado.")
+            return
+        indice = self.modelo.clamped_index()
+        item = self.modelo.items[indice]
+        recorte = getattr(item, "board_rgb", None)
+        if recorte is None:
+            self.estado.emit("Este diagrama não tem recorte para o segundo leitor ler.")
+            return
+        if self._segunda_em_curso is not None:
+            self.estado.emit("A segunda opinião já está sendo lida.")
+            return
+        from chess_diagram_ocr.qt.trabalho import Tarefa
+
+        tarefa = Tarefa(lambda: leitor.predict(recorte), parent=self, nome="segunda opinião")
+        tarefa.pronto.connect(lambda placement, i=indice, nome=leitor.name: self._chegou_a_segunda(i, str(placement), nome))
+        tarefa.falhou.connect(lambda mensagem, _e: self.estado.emit(f"A segunda opinião falhou: {mensagem}"))
+        tarefa.finished.connect(self._terminou_a_segunda)
+        tarefa.finished.connect(tarefa.deleteLater)
+        self._segunda_em_curso = tarefa
+        self.btn_segunda.setEnabled(False)
+        self.estado.emit(f"Lendo o diagrama com {leitor.name}…")
+        tarefa.start()
+
+    def _terminou_a_segunda(self) -> None:
+        self._segunda_em_curso = None
+        self.btn_segunda.setEnabled(True)
+
+    def _chegou_a_segunda(self, indice: int, placement: str, nome: str) -> None:
+        if not (0 <= indice < len(self.modelo.items)):
+            return   # a página mudou no meio: o parecer é de um diagrama que não está mais aqui
+        try:
+            parecer = self.modelo.mark_second_opinion(indice, placement, reader=nome)
+        except ValueError as exc:
+            self.estado.emit(f"A segunda opinião veio malformada: {exc}")
+            return
+        if parecer is None:
+            return
+        self.historico.registrar(self._estado_de(indice))
+        self._edicao += 1
+        self._atualizar_tudo()
+        self.estado.emit(parecer.describe())
+
     def _girar_180(self) -> None:
         """A outra leitura possível: a posição girada de 180°, como edição desfazível."""
         if not self.modelo.items:
@@ -1259,7 +1380,15 @@ class PainelDeResultado(QWidget):
         tinta = regra_do_recorte.tinta_do_diagrama(
             item.probs, casas_incertas=item.uncertain_squares, confiancas=item.square_confidences
         )
-        self.tabuleiro.mostrar(corrigida, incertas=tinta.casas, confiancas=tinta.valores, limiar=tinta.limiar)
+        # Passo C10: impresso do ponto de vista das pretas, o tabuleiro é desenhado virado
+        # para bater com o recorte ao lado -- a posição continua canônica; só a vista gira.
+        # Vale também quando a orientação escolheu a leitura de cabeça para baixo
+        # (`rotation == 180`): o impresso é o mesmo, visto do outro lado, e é como o recorte
+        # já o mapeia (`virado`). Tabuleiro e recorte na mesma vista é o que deixa corrigir
+        # olhando para o livro (pedido do usuário, 2026-09-21).
+        pretas = bool(getattr(item, "black_point_of_view", False)) or int(item.rotation or 0) == 180
+        self.tabuleiro.mostrar(corrigida, incertas=tinta.casas, confiancas=tinta.valores,
+                               limiar=tinta.limiar, virado=pretas)
         self.tabuleiro.definir_probabilidades(item.probs)
         self.recorte.mostrar(
             getattr(item, "board_rgb", None),
@@ -1274,6 +1403,12 @@ class PainelDeResultado(QWidget):
             # decodificador -- e é o que a pessoa quer conferir.
             corrigidas |= {int(c) for c in item.changed_squares}
         self.tabuleiro.definir_casas_corrigidas(sorted(corrigidas))
+        # Passo C8: o `Tab` no tabuleiro percorre as casas que a pessoa ia conferir, a que mais
+        # merece o olho primeiro: as âmbar (a tinta por margem, da menor margem para a maior);
+        # sem elas, as incertas da leitura; sem elas, as ocupadas da menor confiança para a maior.
+        self.tabuleiro.definir_duvidosas(_casas_a_conferir(item, tinta, corrigida))
+        # C3: as casas em que a segunda opinião discorda, quando ela já leu este diagrama.
+        self.tabuleiro.definir_casas_disputadas(self.modelo.disputed_squares(indice))
         explicacao = explain_position(compose_fen(corrigida, lado != "b"))
         self.tabuleiro.definir_casas_problematicas(explicacao.highlight_squares)
         self.legalidade.setText(explicacao.summary())
@@ -1305,6 +1440,15 @@ class PainelDeResultado(QWidget):
             dica_em(self.btn_orientacao, strings.orientacao_ambigua(item.orientation_reason))
         conflito = item is not None and bool(item.side_conflicting)
         self.btn_lado.setVisible(conflito)
+        # C3: o botão existe quando há diagrama com recorte **e** um segundo leitor configurado;
+        # sem leitor ele some (um estado que não se aplica não é botão cinza), e o comando do
+        # catálogo diz o motivo pelo rodapé.
+        com_recorte = item is not None and getattr(item, "board_rgb", None) is not None
+        self.btn_segunda.setVisible(bool(com_recorte and self._segunda_opiniao_configurada()))
+        if item is not None and self.modelo.disputed_squares(self.modelo.clamped_index()):
+            dica_em(self.btn_segunda, "As casas marcadas são as em que o segundo leitor discorda; Tab as percorre.")
+        else:
+            dica_em(self.btn_segunda, strings.SEGUNDA_OPINIAO_DICA)
         if conflito and item is not None:
             self.btn_lado.setText(strings.trocar_o_lado_para("b" if lado != "b" else "w"))
             motivo = item.side_to_move_reason or strings.SIDE_SOURCE_CONFLICT
@@ -1315,6 +1459,9 @@ class PainelDeResultado(QWidget):
         """Acende, apaga e **diz por quê** -- a regra da S-165, que achou treze botões cinzas."""
         for botao in (self.btn_salvar, self.btn_salvar_todos, self.btn_limpar, self.btn_aplicar, self.copiar):
             botao.setEnabled(not vazio)
+        if getattr(self, "_gravacao_trancada", False):
+            for botao in (self.btn_salvar, self.btn_salvar_todos):   # passo C2: lendo, não se grava
+                botao.setEnabled(False)
         self.campo_fen.setEnabled(not vazio)
         self.anterior.setEnabled(not vazio and self.modelo.clamped_index() > 0)
         self.proximo.setEnabled(not vazio and self.modelo.clamped_index() < len(self.modelo.items) - 1)

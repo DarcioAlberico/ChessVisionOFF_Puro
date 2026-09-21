@@ -404,6 +404,7 @@ SEM_TKINTER = {
     "state.py": "o estado da aplicação em disco",
     "strings.py": "o vocabulário da interface (S-04)",
     "substituicao.py": "o que é uma substituição de diagrama dentro de um PDF, antes do PyMuPDF (F9)",
+    "teclado_do_tabuleiro.py": "o que cada tecla faz no tabuleiro e qual é a próxima duvidosa, sem widget (OCR_UI C8)",
     "texto_declarado.py": "a tabela comando->método da aba de texto e o zoom da vista (S-240/S-504)",
     "texto_cores.py": "a paleta do autor e o canal que a confiança não usa (S-242)",
     "tipografia.py": "a escala de fontes, derivada do sistema e sem widget (S-149)",

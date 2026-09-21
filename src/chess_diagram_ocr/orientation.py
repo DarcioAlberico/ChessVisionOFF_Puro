@@ -39,6 +39,8 @@ imagem estragaria a leitura. O sinal que resolveria são as coordenadas das bord
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
@@ -89,6 +91,14 @@ class OrientedPrediction:
     alternative: BoardPrediction | None = None
     """A leitura descartada. `None` quando a orientação foi imposta, não escolhida."""
 
+    black_point_of_view: bool = False
+    """O diagrama está impresso do ponto de vista das pretas (passo C10 do ciclo 2).
+
+    As peças estão de pé e a fila 1 fica em cima: `rotation` continua 0 -- girar a imagem
+    poria as peças de cabeça para baixo -- e o que girou foi o **mapeamento** casa→índice
+    da `prediction`, que já sai canônica (a8 no canto superior esquerdo do tabuleiro real).
+    A tela desenha o tabuleiro virado para bater com o recorte; a FEN gravada é a posição."""
+
 
 @dataclass(frozen=True)
 class BoardCoordinates:
@@ -97,27 +107,42 @@ class BoardCoordinates:
     `ranks_top_to_bottom` é o que a coluna da esquerda diz, de cima para baixo:
     `(8, 7, 6, 5, 4, 3, 2, 1)` é ponto de vista das brancas, `(1, 2, ..., 8)` é das pretas.
 
-    **Nada no projeto constrói isto hoje, e é de propósito.** A S-45 foi medida em 2026-08-09
-    e adiada: coordenadas legíveis na camada de texto em 52 de 380 diagramas (13,7%), das
-    quais 48 do `Polgar`, que já lê a 1,000 -- e dos 49 conclusivos, 49 apontam ponto de vista
-    das brancas e nenhum das pretas. A pendência que a regra existe para fechar não apareceu
-    uma vez no acervo. O tipo e a regra ficam porque o custo é vinte linhas e porque isso
-    transforma a S-45, quando ela voltar, num problema de **produzir o dado** em vez de um
-    problema de mexer na política.
+    A S-45 foi medida em 2026-08-09 e adiada: coordenadas legíveis na camada de texto em 52
+    de 380 diagramas (13,7%), das quais 48 do `Polgar`, que já lê a 1,000 -- e dos 49
+    conclusivos, 49 apontam ponto de vista das brancas e nenhum das pretas. Desde o passo C10
+    do ciclo 2 (2026-09-20) `pdf_text.board_coordinates_for` **produz** o dado a partir das
+    palavras curtas em volta do retângulo do diagrama, e `files_left_to_right` entrou porque
+    a linha `h..a` embaixo do tabuleiro diz o mesmo que a coluna `1..8` -- e um livro pode
+    imprimir só uma das duas.
     """
 
     ranks_top_to_bottom: tuple[int, ...]
+    files_left_to_right: tuple[str, ...] = ()
+    """A linha de letras embaixo (ou em cima) do tabuleiro, da esquerda para a direita."""
 
     @property
     def white_point_of_view(self) -> bool | None:
-        """`True`/`False` quando a leitura é conclusiva, `None` quando ela não diz nada."""
-        ranks = self.ranks_top_to_bottom
-        if len(ranks) < 2:
+        """`True`/`False` quando a leitura é conclusiva, `None` quando ela não diz nada.
+
+        As filas decidem quando existem; senão as colunas. Quando as duas existem e
+        discordam (um diagrama espelhado, ou uma leitura errada), a resposta é `None`: a
+        regra cala em vez de escolher.
+        """
+        by_ranks = self._direction(self.ranks_top_to_bottom, reverse_is_white=True)
+        by_files = self._direction(self.files_left_to_right, reverse_is_white=False)
+        if by_ranks is not None and by_files is not None and by_ranks != by_files:
             return None
-        if list(ranks) == sorted(ranks, reverse=True):
-            return True
-        if list(ranks) == sorted(ranks):
-            return False
+        return by_ranks if by_ranks is not None else by_files
+
+    @staticmethod
+    def _direction(run: tuple, *, reverse_is_white: bool) -> bool | None:
+        if len(run) < 2:
+            return None
+        ordered = list(run)
+        if ordered == sorted(ordered, reverse=True):
+            return reverse_is_white
+        if ordered == sorted(ordered):
+            return not reverse_is_white
         return None
 
 
@@ -172,6 +197,9 @@ class OrientationVerdict:
     upright: bool
     reason: str
     ambiguous: bool = False
+    black_point_of_view: bool = False
+    """As coordenadas dizem ponto de vista das pretas (passo C10): a leitura de pé é a
+    certa e o que gira é o mapeamento das casas, não a imagem."""
 
 
 class OrientationRule(Protocol):
@@ -209,9 +237,13 @@ class CoordinateRule:
         white_pov = ev.coordinates.white_point_of_view
         if white_pov is None:
             return None
+        # Ponto de vista das pretas não é "de cabeça para baixo": as peças estão de pé, a
+        # leitura de pé é a certa, e o que gira é a FEN (passo C10). `upright=True` para a
+        # política escolher `ev.upright`; `black_point_of_view` para ela girar o mapeamento.
         return OrientationVerdict(
-            upright=white_pov,
+            upright=True,
             reason="coordenadas da borda" + ("" if white_pov else " (ponto de vista das pretas)"),
+            black_point_of_view=not white_pov,
         )
 
 
@@ -335,10 +367,23 @@ class OrientationPolicy:
             "desempate que nunca cala -- ver TightMarginFallback."
         )
 
-    def resolve(self, ev: OrientationEvidence) -> OrientedPrediction:
-        """A leitura escolhida, com a orientação, a margem e o motivo em pt-BR."""
+    def resolve(
+        self,
+        ev: OrientationEvidence,
+        *,
+        turn: Callable[[BoardPrediction], BoardPrediction] | None = None,
+    ) -> OrientedPrediction:
+        """A leitura escolhida, com a orientação, a margem e o motivo em pt-BR.
+
+        `turn` é quem sabe girar o **mapeamento** de uma leitura (as 64 casas espelhadas
+        pelo centro, a FEN vista do outro lado) sem tocar nos pixels; a política o chama
+        quando as coordenadas dizem ponto de vista das pretas (passo C10). Sem `turn`, a
+        leitura de pé sai como está e o veredito registra o ponto de vista mesmo assim.
+        """
         _rule, verdict = self.decide(ev)
         chosen, discarded = (ev.upright, ev.flipped) if verdict.upright else (ev.flipped, ev.upright)
+        if verdict.black_point_of_view and turn is not None:
+            chosen = turn(chosen)
         return OrientedPrediction(
             prediction=chosen,
             rotation=0 if verdict.upright else 180,
@@ -346,6 +391,7 @@ class OrientationPolicy:
             ambiguous=verdict.ambiguous,
             reason=verdict.reason,
             alternative=discarded,
+            black_point_of_view=verdict.black_point_of_view,
         )
 
     def explain(self, ev: OrientationEvidence) -> list[tuple[str, str | None]]:

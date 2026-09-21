@@ -250,8 +250,17 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1998
+    LIMITE = 2058
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.998 -> 2.058 com os passos C2, C3 e C8 do OCR_UI ciclo 2** (ler a página com progresso, cancelamento
+    entre diagramas, tranca só do gravar, modelo aquecido ao abrir o livro, `.pt` ausente dito
+    com o caminho): a mecânica -- a ficha do rodapé, o gancho de cancelar, o aquecimento, as
+    frases -- foi para `qt/leitura.py`; o que ficou aqui são as chamadas, o fecho da leitura com
+    os dois ganchos, os dois ramos de `_falhou` (cancelada, sem modelo) e os dois parâmetros
+    novos de `_rodar`. C8: duas linhas da tabela de comandos (próxima/anterior duvidosa) e o
+    `atualizar_trilho` da ponte chamado depois de gravar (a lógica está em `caissa.ui.trilho` e
+    em `qt/importador_de_livro.py`).
 
     **1.992 -> 1.998 na integração da fase 1**: cancelar a importação em curso ao abrir outro livro
     (C7; o crítico provou que o resultado de A virava trilho e fila de B) e a contagem de páginas

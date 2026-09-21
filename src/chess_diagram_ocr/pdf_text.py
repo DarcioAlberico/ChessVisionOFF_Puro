@@ -66,6 +66,7 @@ import chess
 import fitz
 
 from .pdf_io import PdfSource
+from .orientation import BoardCoordinates
 from .procedencias import DA_CAMADA, DE_TERCEIROS, LineOrigin, SideOrigin, escopo_de_pagina
 
 logger = logging.getLogger(__name__)
@@ -166,6 +167,11 @@ class DiagramContext:
     caption_after_move: tuple[int, bool] | None = None
     """`(número, é_das_pretas)` da vez **depois** do lance que a legenda "após N.x" cita:
     `after 23...Bd5` → `(24, False)`; `após 23.♘c4` → `(23, True)`."""
+
+    coordinates: BoardCoordinates | None = None
+    """As coordenadas impressas na borda, quando a página as tem (passo C10): a coluna de
+    números à esquerda de cima para baixo e a linha de letras embaixo, lidas das palavras
+    curtas da camada de texto em volta do retângulo. `None` quando a página não as imprime."""
 
     exercise_number: int | None = None
     players: tuple[str, str] | None = None
@@ -1371,6 +1377,61 @@ def _lines_with_ocr(
     return [*text_lines, *extras]
 
 
+_FILES_ROW = "abcdefgh"
+_RANKS_COLUMN = "12345678"
+
+
+def board_coordinates_for(
+    page: fitz.Page, bbox: tuple[float, float, float, float]
+) -> BoardCoordinates | None:
+    """As coordenadas impressas em volta de `bbox`, ou `None` (passo C10 do ciclo 2).
+
+    Palavras de um caractere da camada de texto: a coluna de dígitos encostada à esquerda
+    (ou à direita) do retângulo, ordenada de cima para baixo, e a linha de letras embaixo
+    (ou em cima), da esquerda para a direita. Pelo menos quatro de cada para valer -- a
+    numeração de um exercício ao lado do diagrama é um dígito só. Uma linha impressa como
+    palavra única (`abcdefgh`) também conta.
+    """
+    x0, y0, x1, y1 = bbox
+    side = max(x1 - x0, y1 - y0)
+    if side <= 0:
+        return None
+    ring = min(30.0, max(9.0, side * 0.12))
+    ranks: list[tuple[float, int]] = []
+    files: list[tuple[float, str]] = []
+    try:
+        words = page.get_text("words")
+    except Exception:  # noqa: BLE001 - uma página sem camada de texto não tem coordenadas
+        return None
+    for word in words:
+        wx0, wy0, wx1, wy1, text = word[0], word[1], word[2], word[3], str(word[4]).strip().lower()
+        cx, cy = (wx0 + wx1) / 2.0, (wy0 + wy1) / 2.0
+        if x0 < cx < x1 and y0 < cy < y1:
+            continue  # dentro do tabuleiro: rótulo de casa ou peça, não coordenada
+        beside = (x0 - ring <= cx <= x0 or x1 <= cx <= x1 + ring) and y0 - ring <= cy <= y1 + ring
+        under = (y1 <= cy <= y1 + ring or y0 - ring <= cy <= y0) and x0 - ring <= cx <= x1 + ring
+        if text in (_FILES_ROW, _FILES_ROW[::-1]) and under:
+            files.extend((wx0 + (wx1 - wx0) * (i + 0.5) / 8, ch) for i, ch in enumerate(text))
+            continue
+        if len(text) != 1:
+            continue
+        if text in _RANKS_COLUMN and beside:
+            ranks.append((cy, int(text)))
+        elif text in _FILES_ROW and under:
+            files.append((cx, text))
+    ranks.sort()
+    files.sort()
+    ranks_run = tuple(r for _, r in ranks)
+    files_run = tuple(f for _, f in files)
+    if len(ranks_run) < 4:
+        ranks_run = ()
+    if len(files_run) < 4:
+        files_run = ()
+    if not ranks_run and not files_run:
+        return None
+    return BoardCoordinates(ranks_top_to_bottom=ranks_run, files_left_to_right=files_run)
+
+
 def contexts_for_page(
     page: fitz.Page,
     bboxes: Sequence[tuple[float, float, float, float]],
@@ -1394,6 +1455,12 @@ def contexts_for_page(
 
     buckets = assign_lines_to_diagrams(lines, bboxes, radius_pt=radius_pt)
     contexts = [context_from_lines(bucket, page_number=page_number) for bucket in buckets]
+    # Passo C10: as coordenadas da borda, quando a página as imprime. Uma leitura da
+    # camada de texto por diagrama; `None` na página digitalizada, e a política cala.
+    contexts = [
+        replace(context, coordinates=board_coordinates_for(page, bbox))
+        for context, bbox in zip(contexts, bboxes, strict=True)
+    ]
 
     # A faixa de margem so e consultada quando sobra diagrama sem lado a jogar. Nao e
     # otimizacao: e o que garante que a precedencia da legenda nunca seja disputada.

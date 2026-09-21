@@ -21,7 +21,7 @@ import logging
 
 from PyQt6.QtWidgets import QWidget
 
-__all__ = ["disponivel", "montar"]
+__all__ = ["comandos", "disponivel", "montar"]
 
 logger = logging.getLogger(__name__)
 
@@ -51,3 +51,18 @@ def montar(parent: QWidget) -> QWidget | None:
     except Exception:
         logger.exception("a aba Revisão de texto não pôde ser montada; a janela segue sem ela.")
         return None
+
+
+def comandos() -> dict[str, str]:
+    """A tabela ``comando -> método`` que a aba declara (passo C8), ou ``{}`` sem a suíte.
+
+    O molde é `ui/sala_declarada.COMANDOS_DA_ABA`: a janela gera as ligações a partir dela, e o
+    comando chega ao menu, à paleta e às teclas sem uma segunda declaração. Os nomes estão no
+    catálogo (`ui/comandos.py`) sempre -- com ou sem a suíte, para o menu ser o mesmo -- e sem a
+    aba o dono é a frase de ausência.
+    """
+    try:
+        from caissa.ui.views.declarados import COMANDOS_DA_REVISAO_DE_TEXTO
+    except Exception:  # noqa: BLE001 - sem a suíte não há aba, e o catálogo continua o mesmo
+        return {}
+    return dict(COMANDOS_DA_REVISAO_DE_TEXTO)

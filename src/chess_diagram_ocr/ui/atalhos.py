@@ -174,6 +174,10 @@ ATALHOS: tuple[Atalho, ...] = (
     Atalho("<Control-N>", "Ctrl+Shift+N", "corrigir_agora", "Corrigir agora o item selecionado da fila"),
     Atalho("<Prior>", "Page Up", "pagina_anterior", "Página anterior do livro"),
     Atalho("<Next>", "Page Down", "proxima_pagina", "Próxima página do livro"),
+    # Passo C8: a dúvida navegável. `Ctrl` sobre as mesmas teclas de virar a página, porque é a
+    # mesma direção com um filtro -- só as páginas com trabalho.
+    Atalho("<Control-Prior>", "Ctrl+Page Up", "anterior_duvidosa", "Página duvidosa anterior"),
+    Atalho("<Control-Next>", "Ctrl+Page Down", "proxima_duvidosa", "Próxima página duvidosa"),
     # **As duas da S-281**, e elas fecham o par que faltava: virar uma página tinha tecla desde a
     # S-70, e ir à primeira ou à última não tinha nenhuma. Ver `na_sala` para o outro motivo de
     # elas existirem -- e para por que ele veio primeiro.

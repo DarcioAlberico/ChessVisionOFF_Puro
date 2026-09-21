@@ -85,7 +85,7 @@ from chess_diagram_ocr.config import (
 from chess_diagram_ocr.detection import DiagramCandidate, detect_diagrams_in_pdf_page, detect_diagrams_rendering_page
 from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
 from chess_diagram_ocr.qt import acessibilidade, dialogo_de_configuracoes, dialogos, dica, escala, exportador_de_livro, fila, fita, legenda, menu
-from chess_diagram_ocr.qt import importador_de_livro, painel_de_revisao_de_texto, painel_de_rotulagem, painel_do_pdf
+from chess_diagram_ocr.qt import abas_da_suite, importador_de_livro, painel_de_revisao_de_texto, painel_de_rotulagem, painel_do_pdf
 from chess_diagram_ocr.qt import paleta, plataforma, tema
 from chess_diagram_ocr.qt.areas_de_trabalho import AreasDeTrabalho
 from chess_diagram_ocr.qt.trilho import TrilhoDoLivro
@@ -104,9 +104,11 @@ from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
 from chess_diagram_ocr.qt.painel_do_dataset import PainelDoDataset
 from chess_diagram_ocr.qt.painel_do_pdf import PainelDoPdf
 from chess_diagram_ocr.qt.rodape import RodapeDaJanela
+from chess_diagram_ocr.qt import leitura
+from chess_diagram_ocr.qt.leitura import Aquecimento, Ocupacao
 from chess_diagram_ocr.qt.trabalho import DeteccaoDeFundo, Tarefa, rastro_de
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
-from chess_diagram_ocr.service import OcrService, RecognitionOptions, RecognizedDiagram
+from chess_diagram_ocr.service import OcrService, RecognitionOptions, RecognizedDiagram, RecognitionCanceled
 from chess_diagram_ocr.ui import (
     abas,
     conjuntos,
@@ -251,6 +253,9 @@ class JanelaPrincipal(QMainWindow):
         """A alça do divisor ainda espera a primeira aparição da janela. Ver `showEvent`."""
 
         self.busy = BusyRegistry()
+        self._ocupacao = Ocupacao(self.busy)
+        self._aquecimento = Aquecimento(self._servico, self.busy, dizer=self._dizer,
+                                        ocupada=lambda: self._tarefa is not None)
         """Onde as operações longas se declaram (S-112). **Antes dos painéis** (F9-C3): quem lê
         ao fundo precisa dela no construtor, e leitura sem registro é invisível ao rodapé."""
 
@@ -1053,6 +1058,7 @@ class JanelaPrincipal(QMainWindow):
         self.texto.definir_livro(alvo, pagina=self.pdf.page_index)
         self._atualizar_titulo()
         self._atualizar_abas()
+        self._aquecimento.agendar(parent=self)  # o modelo carrega quando a janela ociar (C2)
 
     def _descartar_o_livro(self, anterior: Path) -> bool:
         """Pergunta antes de esquecer correções à mão do livro que saiu (A7). «Não» as guarda."""
@@ -1131,6 +1137,7 @@ class JanelaPrincipal(QMainWindow):
         self._itens = []
         self._estudar_ao_ler = None
         self._leitura_adiada.stop()
+        self._aquecimento.adiar()  # C2: a página virou; o aquecimento espera a janela ociar
         # **A página entra no histórico assim que aparece, e não só no fechamento** (S-25). É o
         # que faz a pergunta "onde eu parei neste livro?" continuar respondida depois de trocar de
         # livro no meio da sessão -- e é a mesma anotação que ordena o menu de recentes.
@@ -1284,13 +1291,23 @@ class JanelaPrincipal(QMainWindow):
             pagina + 1,
             f"{len(candidatos)} diagrama(s) já localizados" if candidatos is not None else "detectando por dentro",
         )
-        self._rodar(
-            lambda: self._servico.recognize_page(
-                pdf, pagina, pagina_rgb, options=opcoes, candidates=candidatos
-            ),
+        # C2: progresso por diagrama e cancelamento entre eles vão ao serviço (`qt/leitura.py`).
+        tarefa: Tarefa | None = None
+
+        def ler() -> list[RecognizedDiagram]:
+            return self._servico.recognize_page(
+                pdf, pagina, pagina_rgb, options=opcoes, candidates=candidatos,
+                progress=self._ocupacao.progresso(f"página {pagina + 1}"),
+                should_cancel=lambda: bool(tarefa is not None and tarefa.should_cancel()),
+            )
+
+        tarefa = self._rodar(
+            ler,
             nome="leitura",
             aviso=f"Lendo a página {pagina + 1}…",
             quando_pronto=lambda itens: self._chegaram_itens(pagina, itens, selecionar_depois),
+            total=len(candidatos) if candidatos is not None else 0,
+            cancelavel=True,
         )
 
     def _ler_regiao(self, pagina_rgb: object, regiao: object) -> None:
@@ -1328,16 +1345,21 @@ class JanelaPrincipal(QMainWindow):
         nome: str,
         aviso: str,
         quando_pronto: Callable[[Any], None],
-    ) -> None:
-        """Uma tarefa de cada vez, e os controles desligados enquanto ela corre.
+        total: int = 0,
+        cancelavel: bool = False,
+    ) -> Tarefa | None:
+        """Uma tarefa de cada vez, e só o **gravar** desligado enquanto ela corre.
 
         Não é cerimônia: duas leituras simultâneas disputariam o mesmo modelo (o `OcrService` as
         serializa no lock, então a segunda só esperaria) e a segunda a terminar sobrescreveria a
         lista da primeira -- que pode ser de outra página.
+
+        Registrada no rodapé desde o C2: barra com `total` quando a página já foi marcada, e o
+        «Cancelar» chega à tarefa, que o serviço consulta entre diagramas (`qt/leitura.py`).
         """
         if self._tarefa is not None:
             self._dizer("Já há uma tarefa em andamento.", estado_do_rodape.AVISO)
-            return
+            return None
         tarefa = Tarefa(funcao, parent=self, nome=nome)
         tarefa.pronto.connect(quando_pronto)
         tarefa.falhou.connect(self._falhou)
@@ -1346,13 +1368,21 @@ class JanelaPrincipal(QMainWindow):
         # uma sessão de trezentas páginas termina com trezentos threads mortos pendurados no pai.
         tarefa.finished.connect(tarefa.deleteLater)
         self._tarefa = tarefa
+        # O `register` fica aqui, e não na `Ocupacao`, porque o portão `caissa.ui.audit.progresso`
+        # atribui cada thread ao registro feito na mesma função -- e é ele que exige `total=`.
+        self._ocupacao.guardar(self.busy.register(
+            nome, loses_work=False, cancellable=cancelavel,
+            cancel=tarefa.cancelar if cancelavel else None, detail=aviso, total=total,
+        ))
         self.rodape.mostrar(aviso)
         self._atualizar_controles()
         tarefa.start()
+        return tarefa
 
     def _terminou(self) -> None:
         self._tarefa = None
         self._estudar_ao_ler = None
+        self._ocupacao.soltar()
         self._atualizar_controles()
 
     def _falhou(self, mensagem: str, excecao: object) -> None:
@@ -1363,6 +1393,16 @@ class JanelaPrincipal(QMainWindow):
         """
         if isinstance(excecao, NoBoardDetectedError):
             self._dizer("Nenhum diagrama encontrado nesta página.", estado_do_rodape.INFORMACAO)
+            return
+        if isinstance(excecao, RecognitionCanceled):  # C2: cancelar não é falha; o lido fica
+            lidos = list(excecao.partial)
+            if lidos and self._pdf is not None:
+                self._chegaram_itens(self.pdf.page_index, lidos, None)
+            self._dizer(leitura.frase_de_cancelamento(len(lidos)), estado_do_rodape.INFORMACAO)
+            return
+        if leitura.sem_modelo(excecao):  # C2: sem o `.pt`, a frase diz onde se aponta o arquivo
+            self._dizer(leitura.FRASE_SEM_MODELO, estado_do_rodape.ERRO)
+            self.painel.mostrar_vazio_sem_modelo()
             return
         tarefa = self._tarefa  # o rastro vai na caixa, atrás de «Detalhes», com «Copiar» (A10)
         rastro = (tarefa.rastro if tarefa is not None else "") or rastro_de(excecao)
@@ -1564,11 +1604,15 @@ class JanelaPrincipal(QMainWindow):
         self.dataset.reload()
         self._atualizar_abas()
         self._atualizar_controles()
+        if self.livro is not None:
+            self.livro.atualizar_trilho()  # C8: a decisão gravada tira a página da conta de dúvidas
 
     def _fechar_item_da_fila(self, posicao: int, fen: str, lado: str) -> None:
         """Fecha na fila o item que acabou de ser corrigido e salvo (S-22)."""
         self.revisao.aplicar_correcao(int(posicao), fen, lado)
         self._atualizar_abas()
+        if self.livro is not None:
+            self.livro.atualizar_trilho()  # C8
         self._dizer(f"Item da fila marcado como revisado. {self.revisao.queue.summary()}")
 
     def _abrir_item_da_fila(self, item: object, posicao: int) -> None:
@@ -1756,8 +1800,8 @@ class JanelaPrincipal(QMainWindow):
             "abrir_no_leitor": self.pdf.abrir_no_leitor_do_sistema,
             "sair": self.close,
             # --- navegar
-            "pagina_anterior": self.pdf.pagina_anterior,
-            "proxima_pagina": self.pdf.proxima_pagina,
+            "pagina_anterior": lambda: self._na_aba_ou(self.pdf.pagina_anterior, "pagina_anterior"),
+            "proxima_pagina": lambda: self._na_aba_ou(self.pdf.proxima_pagina, "proxima_pagina"),
             "primeira_pagina": lambda: self.pdf.ir_para_pagina(0),
             "ultima_pagina": lambda: self.pdf.ir_para_pagina(self.pdf.page_count - 1),
             "zoom_mais": self.pdf.aumentar_zoom,
@@ -1770,9 +1814,10 @@ class JanelaPrincipal(QMainWindow):
             "tirar_caixa": self.pdf.dispensar_a_selecionada,
             "devolver_caixas": self.devolver_caixas,
             # --- ler e gravar
-            "ler_pagina": self.ler_pagina,
+            "ler_pagina": lambda: self._na_aba_ou(self.ler_pagina, "recognise_page"),
+            "segunda_opiniao": self.painel.segunda_opiniao,  # C3
             "ler_melhor": self.ler_melhor,
-            "salvar": self.painel.salvar_atual,
+            "salvar": lambda: self._na_aba_ou(self.painel.salvar_atual, "save", "gravar"),
             "salvar_todos": self.painel.salvar_todos,
             "aplicar_fen": self.painel.aplicar_fen,
             "limpar_tabuleiro": self.painel.limpar_tabuleiro,
@@ -1794,6 +1839,8 @@ class JanelaPrincipal(QMainWindow):
             "cancelar_importacao": lambda: self.livro.cancelar() if self.livro else None,
             "trilho": self._alternar_trilho,
             "primeira_duvidosa": self.trilho._ir_para_a_primeira_duvidosa,
+            "proxima_duvidosa": self.trilho.ir_para_a_proxima_duvidosa,
+            "anterior_duvidosa": self.trilho.ir_para_a_anterior_duvidosa,
             "exportar_docx": lambda: self._exportar_livro("docx"),
             "cancelar_exportacao": self.exportador.cancelar,
             "treinar": self.treino.iniciar,
@@ -1812,7 +1859,14 @@ class JanelaPrincipal(QMainWindow):
         # aba, e não da janela -- é lá que o método está.
         tabela.update({acao: getattr(self.estudo, metodo) for acao, metodo in COMANDOS_DA_SALA.items()})
         tabela.update({acao: getattr(self.texto, metodo) for acao, metodo in COMANDOS_DO_TEXTO.items()})
+        tabela.update(abas_da_suite.donos(self.rotulagem, self.revisao_de_texto, dizer=self._dizer))  # C8
         return tabela
+
+    def _na_aba_ou(self, padrao: Callable[[], Any], *metodos: str) -> Any:
+        """O comando global roteado à aba da suíte à frente (C8), senão ao padrão: `Ctrl+S` com a
+        Rotulagem à frente grava os rótulos; com a Revisão de texto, as decisões (`qt/abas_da_suite`)."""
+        alvo = abas_da_suite.metodo_da_aba_a_frente(self.abas, (self.rotulagem, self.revisao_de_texto), metodos)
+        return alvo() if alvo is not None else padrao()
 
     def abrir_paleta(self) -> Any:
         """A paleta de comandos (S-231): um campo, uma lista filtrada, Enter executa."""
@@ -1930,7 +1984,10 @@ class JanelaPrincipal(QMainWindow):
         painel não: gravar no meio de uma leitura escreveria a amostra de uma página que está
         sendo substituída. O resto dos botões cada painel governa sozinho.
         """
-        self.painel.setEnabled(self._tarefa is None and not self._trancas)
+        # C2: só o gravar tranca durante a leitura; o painel inteiro cinza era a página anterior
+        # sumindo por segundos. As trancas por recurso (C7) continuam a valer para o painel todo.
+        self.painel.setEnabled(not self._trancas)
+        self.painel.trancar_gravacao(self._tarefa is not None)
 
     def closeEvent(self, a0: Any) -> None:  # noqa: N802 - assinatura do Qt
         """Espera a tarefa em curso, grava a sala de estudo e pergunta pelo que se perde.
@@ -1959,6 +2016,9 @@ class JanelaPrincipal(QMainWindow):
         self._gravar_estado()
         self._detector.parar(ESPERA_AO_FECHAR_MS)
         sala_declarada.encerrar_o_motor(self._analisador)
+        # O aquecimento do modelo (C2) é uma thread filha desta janela: destruí-la a correr
+        # derruba o processo sem rastro (foi o que o portão `comandos` mediu: exit 255, nada no log).
+        self._aquecimento.esperar(ESPERA_AO_FECHAR_MS)
         if self._tarefa is not None and not self._tarefa.wait(ESPERA_AO_FECHAR_MS):
             logger.warning("A janela fechou com uma tarefa ainda em andamento.")
         if a0 is not None:

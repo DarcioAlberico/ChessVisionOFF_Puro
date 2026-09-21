@@ -23,7 +23,9 @@ __all__ = [
     "MarcaDaPagina",
     "dica_da_pagina",
     "papel_da_pagina",
+    "anterior_duvidosa",
     "primeira_duvidosa",
+    "proxima_duvidosa",
     "rotulo_da_pagina",
 ]
 
@@ -49,6 +51,8 @@ class MarcaDaPagina:
     texto: bool = False
     duvidosos: int = 0
     revisada: bool = False
+    hesitantes: int = 0
+    """Dos lidos, quantos hesitam (casa < 0,90) e ninguém corrigiu (C8)."""
 
     @property
     def duvidosa(self) -> bool:
@@ -65,6 +69,7 @@ class MarcaDaPagina:
             texto=bool(getattr(estado, "texto", False)),
             duvidosos=int(getattr(estado, "duvidosos", 0)),
             revisada=bool(getattr(estado, "revisada", False)),
+            hesitantes=int(getattr(estado, "hesitantes", 0) or 0),
         )
 
 
@@ -122,3 +127,22 @@ def primeira_duvidosa(marcas: list[MarcaDaPagina]) -> int | None:
         if marca.duvidosa:
             return marca.pagina
     return None
+
+
+def proxima_duvidosa(marcas: list[MarcaDaPagina], atual: int) -> int | None:
+    """A primeira duvidosa **depois** de `atual` (passo C8); `None` quando não há mais."""
+    for marca in marcas:
+        if marca.pagina > atual and marca.duvidosa:
+            return marca.pagina
+    return None
+
+
+def anterior_duvidosa(marcas: list[MarcaDaPagina], atual: int) -> int | None:
+    """A última duvidosa **antes** de `atual`; `None` quando não há."""
+    alvo = None
+    for marca in marcas:
+        if marca.pagina >= atual:
+            break
+        if marca.duvidosa:
+            alvo = marca.pagina
+    return alvo

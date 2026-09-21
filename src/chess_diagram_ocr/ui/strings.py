@@ -594,6 +594,14 @@ REPARADAS_ESCONDER = "Esconder as casas reparadas"
 trocou a classe mais provável pela que fecha a posição (`changed_squares`), e desfaz a pintura."""
 
 ORIENTACAO_COMPARAR = "Ver girada 180°"
+SEGUNDA_OPINIAO = "Segunda opinião"
+SEGUNDA_OPINIAO_DICA = (
+    "Lê o diagrama com um segundo modelo, de outra família, e marca as casas em que os dois "
+    "discordam -- é onde os erros estão (23 das 27 casas erradas do conjunto de campo)."
+)
+"""O botão do C3: um segundo leitor, de outra família, lê o mesmo recorte e as casas em que
+ele discorda ficam marcadas -- medido no conjunto de campo, a disputa cobre 23 das 27 casas
+erradas (`benchmarks/second_opinion_gate.py`)."""
 ORIENTACAO_VOLTAR = "Voltar à leitura original"
 """O botão do estado «orientação ambígua»: a outra leitura possível é a mesma posição girada de
 180°; o clique a põe no tabuleiro como edição (desfazível), e o segundo clique a tira."""

@@ -22,6 +22,7 @@ from chess_diagram_ocr.ui import board_edit
 if TEM_PYQT:
     from PyQt6.QtCore import QEvent, QPoint, QPointF, Qt
     from PyQt6.QtGui import QMouseEvent
+    from PyQt6.QtWidgets import QWidget
 
     from chess_diagram_ocr.qt.tabuleiro_editavel import LIMIAR_DE_ARRASTO, TabuleiroEditavel
 
@@ -195,7 +196,8 @@ class TabuleiroEditavelTests(unittest.TestCase):
         self.clicar(0)
         self.assertEqual(
             self.tabuleiro.casas_marcadas(),
-            {"selecionada": (0,), "apontada": (), "corrigidas": (5, 12), "problematicas": (4,)},
+            {"selecionada": (0,), "apontada": (), "corrigidas": (5, 12), "problematicas": (4,),
+             "disputadas": ()},   # C3: a segunda opinião ainda não leu
         )
 
     def test_desenhar_com_marcas_e_arrasto_nao_levanta(self) -> None:
@@ -232,3 +234,157 @@ class TabuleiroEditavelTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class TecladoTests(unittest.TestCase):
+    """OCR_UI ciclo 2, passo C8: corrigir uma casa pelo teclado em duas teclas.
+
+    `Tab` vai à duvidosa, a letra põe a peça (Shift = branca), `Delete` esvazia, as setas andam.
+    A regra mora em `ui/teclado_do_tabuleiro`; aqui é o widget recebendo a tecla de verdade.
+    """
+
+    def setUp(self) -> None:
+        from PyQt6.QtTest import QTest
+
+        self.QTest = QTest
+        self.app = aplicacao()
+        self.tabuleiro = TabuleiroEditavel()
+        self.addCleanup(self.tabuleiro.deleteLater)
+        self.tabuleiro.resize(400, 400)
+        self.tabuleiro.show()
+        self.app.processEvents()
+        self.tabuleiro.mostrar(INICIAL)
+
+    def tecla(self, chave, modificador=Qt.KeyboardModifier.NoModifier, texto: str = "") -> None:
+        self.QTest.keyClick(self.tabuleiro, chave, modificador) if not texto else self.QTest.keyClick(
+            self.tabuleiro, texto, modificador)
+        self.app.processEvents()
+
+    def test_o_tabuleiro_aceita_foco(self) -> None:
+        self.assertEqual(self.tabuleiro.focusPolicy(), Qt.FocusPolicy.StrongFocus)
+
+    def test_tab_vai_a_duvidosa_e_a_letra_poe_a_peca_em_duas_teclas(self) -> None:
+        # a8 é o índice 0 na ordem de leitura; a torre preta está lá na posição inicial.
+        self.tabuleiro.definir_duvidosas([0, 12])
+        self.tecla(Qt.Key.Key_Tab)
+        self.assertEqual(self.tabuleiro.selecionada(), 0)
+        self.tecla(Qt.Key.Key_Q, texto="q")
+        self.assertEqual(board_edit.piece_at(self.tabuleiro.posicao(), 0), "q")
+        # Shift + letra: a branca.
+        self.tecla(Qt.Key.Key_Tab)
+        self.assertEqual(self.tabuleiro.selecionada(), 12)
+        self.tecla(Qt.Key.Key_N, Qt.KeyboardModifier.ShiftModifier, texto="N")
+        self.assertEqual(board_edit.piece_at(self.tabuleiro.posicao(), 12), "N")
+        # ...e o Tab dá a volta.
+        self.tecla(Qt.Key.Key_Tab)
+        self.assertEqual(self.tabuleiro.selecionada(), 0)
+
+    def test_sem_duvidosas_o_tab_percorre_as_ocupadas(self) -> None:
+        self.tecla(Qt.Key.Key_Tab)
+        self.assertEqual(self.tabuleiro.selecionada(), 0)
+        self.tecla(Qt.Key.Key_Tab)
+        self.assertEqual(self.tabuleiro.selecionada(), 1)
+        self.tecla(Qt.Key.Key_Backtab, Qt.KeyboardModifier.ShiftModifier)
+        self.assertEqual(self.tabuleiro.selecionada(), 0)
+
+    def test_setas_andam_e_delete_esvazia(self) -> None:
+        self.tabuleiro.selecionar_casa(8)   # a7, um peão preto
+        self.tecla(Qt.Key.Key_Right)
+        self.assertEqual(self.tabuleiro.selecionada(), 9)
+        self.tecla(Qt.Key.Key_Down)
+        self.assertEqual(self.tabuleiro.selecionada(), 17)
+        self.tecla(Qt.Key.Key_Up)
+        self.tecla(Qt.Key.Key_Left)
+        self.assertEqual(self.tabuleiro.selecionada(), 8)
+        self.tecla(Qt.Key.Key_Delete)
+        self.assertEqual(board_edit.piece_at(self.tabuleiro.posicao(), 8), "")
+
+    def _guarda_de_atalhos(self, chamadas: list[str]):
+        """A guarda de atalhos da janela, ligada na aplicação como `qt/janela.py` a liga.
+
+        É a condição real: `←`/`→`/`Del` são atalhos globais, e a guarda vê a tecla **antes** do
+        widget em foco. Sem ela o teste do widget sozinho passava e o produto não andava.
+        """
+        from chess_diagram_ocr.qt import atalhos as atalhos_qt
+
+        dona = QWidget()
+        self.addCleanup(dona.deleteLater)
+        guarda = atalhos_qt.ligar(
+            dona,
+            {
+                "diagrama_anterior": lambda: chamadas.append("diagrama_anterior"),
+                "proximo_diagrama": lambda: chamadas.append("proximo_diagrama"),
+                "apagar_casa": lambda: chamadas.append("apagar_casa"),
+            },
+            aplicacao=self.app,
+        )
+        self.addCleanup(self.app.removeEventFilter, guarda)
+        return guarda
+
+    def test_com_a_guarda_de_atalhos_ligada_as_setas_ainda_andam_no_tabuleiro_em_foco(self) -> None:
+        """S-244 aplicada ao tabuleiro: a seta é dele enquanto ele tem o foco; o diagrama vizinho
+        fica com os botões e com o foco fora daqui. A sabotagem (o tabuleiro sem `acoes_proprias`)
+        é o produto de antes: a guarda entregava a seta à janela e a seleção não saía do lugar."""
+        chamadas: list[str] = []
+        self._guarda_de_atalhos(chamadas)
+        self.tabuleiro.setFocus()
+        self.app.processEvents()
+        self.assertIs(self.app.focusWidget(), self.tabuleiro)
+
+        self.tabuleiro.selecionar_casa(8)
+        self.tecla(Qt.Key.Key_Right)
+        self.assertEqual(self.tabuleiro.selecionada(), 9, "a seta andou no tabuleiro")
+        self.tecla(Qt.Key.Key_Delete)
+        self.assertEqual(board_edit.piece_at(self.tabuleiro.posicao(), 9), "", "o Delete esvaziou aqui")
+        self.assertEqual(chamadas, [], "a janela não recebeu a seta nem o Delete")
+
+        # Com o foco fora do tabuleiro a mesma tecla continua sendo o atalho global.
+        outro = QWidget()
+        self.addCleanup(outro.deleteLater)
+        outro.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        outro.show()
+        outro.setFocus()
+        self.app.processEvents()
+        self.QTest.keyClick(outro, Qt.Key.Key_Right)
+        self.assertEqual(chamadas, ["proximo_diagrama"])
+
+    def test_sabotagem_sem_tomar_as_acoes_a_guarda_come_a_seta(self) -> None:
+        from unittest import mock
+
+        chamadas: list[str] = []
+        self._guarda_de_atalhos(chamadas)
+        self.tabuleiro.setFocus()
+        self.app.processEvents()
+        self.tabuleiro.selecionar_casa(8)
+        with mock.patch.object(TabuleiroEditavel, "acoes_proprias", lambda self: frozenset()):
+            self.tecla(Qt.Key.Key_Right)
+        self.assertEqual(self.tabuleiro.selecionada(), 8, "a seleção não saiu do lugar")
+        self.assertEqual(chamadas, ["proximo_diagrama"], "a janela ficou com a seta")
+
+    def test_a_letra_nao_muda_o_pincel_da_paleta(self) -> None:
+        self.tabuleiro.definir_pincel("R")
+        self.tabuleiro.selecionar_casa(8)
+        self.tecla(Qt.Key.Key_B, texto="b")
+        self.assertEqual(board_edit.piece_at(self.tabuleiro.posicao(), 8), "b")
+        self.assertEqual(self.tabuleiro.modelo.brush, "R")
+        # Enter aplica o pincel da paleta.
+        self.tecla(Qt.Key.Key_Return)
+        self.assertEqual(board_edit.piece_at(self.tabuleiro.posicao(), 8), "R")
+
+    def test_a_regra_sem_toolkit(self) -> None:
+        from chess_diagram_ocr.ui import teclado_do_tabuleiro as regra
+
+        self.assertEqual(regra.acao_da_tecla("k").simbolo, "k")
+        self.assertEqual(regra.acao_da_tecla("k", shift=True).simbolo, "K")
+        self.assertEqual(regra.acao_da_tecla("Tab").passo, 1)
+        self.assertEqual(regra.acao_da_tecla("Tab", shift=True).passo, -1)
+        self.assertIsNone(regra.acao_da_tecla("x"))
+        self.assertEqual(regra.proxima_duvidosa([5, 20, 40], None, 1), 5)
+        self.assertEqual(regra.proxima_duvidosa([5, 20, 40], 20, 1), 40)
+        self.assertEqual(regra.proxima_duvidosa([5, 20, 40], 40, 1), 5)
+        # A ordem é a da lista (a que mais merece o olho primeiro), não a do tabuleiro.
+        self.assertEqual(regra.proxima_duvidosa([40, 5, 20], None, 1), 40)
+        self.assertEqual(regra.proxima_duvidosa([40, 5, 20], 40, 1), 5)
+        self.assertEqual(regra.proxima_duvidosa([5, 20, 40], 21, -1), 40, "fora da lista: a última")
+        self.assertIsNone(regra.proxima_duvidosa([], 3, 1))

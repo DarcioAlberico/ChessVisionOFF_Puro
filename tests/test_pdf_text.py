@@ -598,3 +598,53 @@ class LadoPelaNumeracaoTests(unittest.TestCase):
         self.assertEqual(lado.color, chess.BLACK)
         self.assertEqual(lado.source, "move-number")
         self.assertIn("numeração", lado.source_label)
+
+
+class BoardCoordinatesTests(unittest.TestCase):
+    """Passo C10 do ciclo 2: as coordenadas da borda passam a ser produzidas."""
+
+    BOARD = (100.0, 100.0, 276.0, 276.0)
+
+    def _page(self, files: str, ranks: str) -> fitz.Page:
+        doc = fitz.open()
+        page = doc.new_page(width=PAGE_WIDTH, height=PAGE_HEIGHT)
+        x0, y0, x1, y1 = self.BOARD
+        cell = (x1 - x0) / 8
+        for i, letter in enumerate(files):
+            page.insert_text(fitz.Point(x0 + i * cell + cell * 0.35, y1 + 10), letter, fontsize=8)
+        for i, digit in enumerate(ranks):
+            page.insert_text(fitz.Point(x0 - 9, y0 + i * cell + cell * 0.65), digit, fontsize=8)
+        return page
+
+    def test_ponto_de_vista_das_brancas(self) -> None:
+        from chess_diagram_ocr.pdf_text import board_coordinates_for
+
+        coords = board_coordinates_for(self._page("abcdefgh", "87654321"), self.BOARD)
+        assert coords is not None
+        self.assertEqual(coords.ranks_top_to_bottom, (8, 7, 6, 5, 4, 3, 2, 1))
+        self.assertEqual(coords.files_left_to_right, tuple("abcdefgh"))
+        self.assertTrue(coords.white_point_of_view)
+
+    def test_ponto_de_vista_das_pretas(self) -> None:
+        from chess_diagram_ocr.pdf_text import board_coordinates_for
+
+        coords = board_coordinates_for(self._page("hgfedcba", "12345678"), self.BOARD)
+        assert coords is not None
+        self.assertFalse(coords.white_point_of_view)
+
+    def test_pagina_sem_coordenadas_devolve_none(self) -> None:
+        from chess_diagram_ocr.pdf_text import board_coordinates_for
+
+        doc = fitz.open()
+        page = doc.new_page(width=PAGE_WIDTH, height=PAGE_HEIGHT)
+        page.insert_text(fitz.Point(100, 300), "Diagram 12 White to move", fontsize=10)
+        self.assertIsNone(board_coordinates_for(page, self.BOARD))
+
+    def test_o_contexto_da_pagina_carrega_as_coordenadas(self) -> None:
+        from chess_diagram_ocr.pdf_text import contexts_for_page
+
+        page = self._page("hgfedcba", "12345678")
+        contexts = contexts_for_page(page, [self.BOARD])
+        self.assertEqual(len(contexts), 1)
+        assert contexts[0].coordinates is not None
+        self.assertFalse(contexts[0].coordinates.white_point_of_view)

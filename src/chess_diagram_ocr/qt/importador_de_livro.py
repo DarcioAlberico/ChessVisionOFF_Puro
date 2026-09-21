@@ -150,6 +150,20 @@ class Ponte:
             return
         self._trilho.definir_estados(estados, resumo=resumo)
 
+    def atualizar_trilho(self) -> bool:
+        """Reavalia as marcas do trilho sobre o resultado em mãos (passo C8): chamado depois de
+        uma correção gravada -- de diagrama ou de texto. `False` sem importação deste livro."""
+        resultado, pdf = self.resultado, self._pdf_importado
+        if resultado is None or pdf is None or pdf != self._pdf_atual():
+            return False
+        try:
+            estados, resumo = estados_do_trilho(resultado, pdf, self._paginas())
+        except Exception:  # noqa: BLE001 - o trilho é mapa; sem ele o livro continua aberto
+            logger.exception("O estado das páginas não pôde ser reavaliado.")
+            return False
+        self._trilho.definir_estados(estados, resumo=resumo)
+        return True
+
     def _entregar_a_revisao(self, resultado: Any, pdf: Path) -> None:
         """O resultado vai à aba de revisão, que monta a fila sem rodar o OCR de novo (C7)."""
         aba = self._revisao_de_texto
@@ -257,10 +271,20 @@ class _Registro:
 
 
 def estados_do_trilho(resultado: Any, pdf: Path | None, page_count: int) -> tuple[list[Any], str]:
-    """Os estados por página e a frase do resumo, pela regra da suíte (`caissa.ui.trilho`)."""
+    """Os estados por página e a frase do resumo, pela regra da suíte (`caissa.ui.trilho`).
+
+    Passo C8: as decisões de texto **e** de diagrama são relidas do disco a cada chamada, e o
+    documento importado entra para a conta de hesitantes -- é o que faz o trilho aprender com o
+    que a pessoa acabou de gravar (`Ponte.atualizar_trilho`).
+    """
+    from caissa.ocr.diagram_decisions import DiagramDecisions
     from caissa.ocr.review import ReviewDecisions
     from caissa.ui import trilho
 
     decisoes = ReviewDecisions.for_pdf(pdf) if pdf is not None else None
-    estados = trilho.estados(resultado.report, decisions=decisoes, page_count=page_count)
+    de_diagrama = DiagramDecisions.for_pdf(pdf) if pdf is not None else None
+    estados = trilho.estados(
+        resultado.report, decisions=decisoes, page_count=page_count,
+        document=getattr(resultado, "document", None), diagram_decisions=de_diagrama,
+    )
     return estados, trilho.resumo_pt(estados, resultado.report)

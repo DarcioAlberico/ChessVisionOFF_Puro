@@ -39,6 +39,7 @@ from .orientation import (
     PawnPriorRule,
     SingleLegalRule,
     TightMarginFallback,
+    BoardCoordinates,
 )
 from .preprocess import IDENTITY, BoardNormalizer, NormalizerConfig
 
@@ -403,6 +404,7 @@ def predict_with_orientation(
     tta: bool = TTA_ENABLED,
     normalizer: NormalizerConfig = IDENTITY,
     policy: OrientationPolicy | None = None,
+    coordinates: BoardCoordinates | None = None,
 ) -> OrientedPrediction:
     """Reconhece o diagrama decidindo a orientação por diagrama, não por checkbox global.
 
@@ -475,7 +477,20 @@ def predict_with_orientation(
                 TightMarginFallback(),
             )
         )
-    return policy.resolve(OrientationEvidence(upright=de_pe, flipped=de_cabeca))
+    def turn(prediction: BoardPrediction) -> BoardPrediction:
+        # Passo C10: a mesma matriz vista do outro lado -- a casa i vira 63 - i -- montada
+        # pela mesma função e com os mesmos parâmetros da leitura de pé, para que o reparo
+        # e o limiar de incerteza sejam os da produção e não uma cópia à parte.
+        return prediction_from_probs(
+            np.ascontiguousarray(prediction.probs[::-1]),
+            uncertain_threshold=uncertain_threshold,
+            constrained=constrained,
+        )
+
+    return policy.resolve(
+        OrientationEvidence(upright=de_pe, flipped=de_cabeca, coordinates=coordinates),
+        turn=turn,
+    )
 
 
 # `predict_fen_from_board` foi removida junto com o último chamador. Devolvia (FEN, média

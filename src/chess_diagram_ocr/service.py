@@ -66,6 +66,18 @@ Sem folga, o recorte cortaria a própria borda que o detector precisa enxergar p
 os quatro cantos; com folga demais, ele reencontra o diagrama vizinho."""
 
 
+class RecognitionCanceled(RuntimeError):
+    """A leitura parou a pedido de quem chamou (OCR_UI ciclo 2, passo C2).
+
+    `partial` é o que já estava lido quando o pedido chegou: diagramas inteiros, cada um com
+    a própria decisão de orientação e legalidade -- um resultado, não um rascunho. Quem cancela
+    escolhe se os mostra."""
+
+    def __init__(self, partial: list[RecognizedDiagram]) -> None:
+        super().__init__(f"Leitura cancelada com {len(partial)} diagrama(s) lidos.")
+        self.partial = partial
+
+
 @dataclass
 class RecognizedDiagram:
     """Um diagrama e tudo que a interface precisa saber sobre ele.
@@ -103,6 +115,10 @@ class RecognizedDiagram:
     rotation: int | None = None
     orientation_ambiguous: bool = False
     orientation_reason: str = ""
+    black_point_of_view: bool = False
+    """Impresso do ponto de vista das pretas, dito pelas coordenadas da borda (passo C10):
+    `placement` já é a posição canônica; a tela desenha o tabuleiro virado para bater com
+    o recorte."""
 
     quad: list[list[float]] | None = None
     """Os quatro cantos em pixels da página renderizada. `None` no caminho da S-12, que
@@ -151,6 +167,7 @@ class RecognizedDiagram:
         rotation: int = 0,
         orientation_ambiguous: bool = False,
         orientation_reason: str = "",
+        black_point_of_view: bool = False,
         quad: list[list[float]] | None = None,
         bbox_pdf: tuple[float, float, float, float] | None = None,
         context: DiagramContext | None = None,
@@ -173,6 +190,7 @@ class RecognizedDiagram:
             rotation=rotation,
             orientation_ambiguous=orientation_ambiguous,
             orientation_reason=orientation_reason,
+            black_point_of_view=black_point_of_view,
             quad=quad,
             bbox_pdf=bbox_pdf,
             context=context,
@@ -586,8 +604,15 @@ class OcrService:
         *,
         options: RecognitionOptions,
         candidates: Sequence[DiagramCandidate] | None = None,
+        progress: Callable[[int, int], None] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> list[RecognizedDiagram]:
         """Reconhece uma página de PDF pelo detector híbrido da S-12.
+
+        `progress(feito, total)` é chamado entre diagramas e `should_cancel()` consultado
+        antes de cada um (OCR_UI ciclo 2, passo C2): a leitura de uma página de nove
+        diagramas deixa de ser uma caixa preta de segundos, e cancelar devolve os já lidos
+        em `RecognitionCanceled.partial`.
 
         É o caminho que a exportação usa. Ter a interface num detector e o PGN noutro
         recriaria, no recorte, o mesmo desencontro que a S-14 corrigiu na numeração: a tela
@@ -639,6 +664,8 @@ class OcrService:
             # Onde cada diagrama está na página. O detector já sabia e o serviço jogava fora
             # -- e é o que o conjunto de campo da S-41 precisa para casar com a anotação.
             bboxes_pdf=[candidate.bbox_pdf for candidate in candidates],
+            progress=progress,
+            should_cancel=should_cancel,
         )
 
     def recognize_image(
@@ -716,6 +743,8 @@ class OcrService:
         detection_sources: Sequence[str],
         refine: bool,
         bboxes_pdf: Sequence[tuple[float, float, float, float]] = (),
+        progress: Callable[[int, int], None] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> list[RecognizedDiagram]:
         """O núcleo comum: prever, decidir orientação, inferir a vez, conferir legalidade."""
         if not boards:
@@ -728,20 +757,26 @@ class OcrService:
             raise NoBoardDetectedError("Nenhum tabuleiro foi detectado na imagem selecionada.")
 
         diagrams: list[RecognizedDiagram] = []
+        if progress is not None:
+            progress(0, len(boards))
         with self.model_session(options.model_path) as (model, device):
             for idx, (board_rgb, quad) in enumerate(boards):
+                if should_cancel is not None and should_cancel():
+                    raise RecognitionCanceled(diagrams)
                 board_for_pred, quad_for_item = (
                     refine_board_from_quad(image_rgb, quad) if refine else (board_rgb, quad)
                 )
+                context = contexts[idx] if idx < len(contexts) else None
                 oriented = predict_with_orientation(
                     board_for_pred,
                     model,
                     device,
                     mode=options.orientation,  # type: ignore[arg-type]
                     normalizer=options.normalizer,
+                    # Passo C10: as coordenadas da borda, quando a camada de texto as tem.
+                    coordinates=getattr(context, "coordinates", None),
                 )
                 prediction = oriented.prediction
-                context = contexts[idx] if idx < len(contexts) else None
                 side: SideToMove = infer_side_to_move(prediction.fen_board, context)
                 diagrams.append(
                     RecognizedDiagram.from_prediction(
@@ -753,12 +788,15 @@ class OcrService:
                         rotation=oriented.rotation,
                         orientation_ambiguous=oriented.ambiguous,
                         orientation_reason=oriented.reason,
+                        black_point_of_view=bool(getattr(oriented, "black_point_of_view", False)),
                         quad=quad_for_item.tolist() if quad_for_item is not None else None,
                         bbox_pdf=bboxes_pdf[idx] if idx < len(bboxes_pdf) else None,
                         context=context,
                         detection_source=detection_sources[idx] if idx < len(detection_sources) else "",
                     )
                 )
+                if progress is not None:
+                    progress(idx + 1, len(boards))
         return diagrams
 
     # ---------------------------------------------------------------------------- dataset

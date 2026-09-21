@@ -30,12 +30,13 @@ from collections.abc import Iterable
 from typing import Any
 
 from PyQt6.QtCore import QEvent, QPoint, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap
+from PyQt6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap
 from PyQt6.QtWidgets import QToolTip, QWidget
 
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.tabuleiro import TabuleiroQt
 from chess_diagram_ocr.ui import board_edit, tokens
+from chess_diagram_ocr.ui import teclado_do_tabuleiro as teclado
 from chess_diagram_ocr.ui import recorte_do_diagrama as regra
 from chess_diagram_ocr.ui.board_model import BoardChange, BoardModel, ChangeKind
 from chess_diagram_ocr.ui.desenho_do_tabuleiro import BoardGeometry
@@ -53,6 +54,21 @@ curto -- de e4 para e5 -- não ser reconhecido, e a peça volta para onde estava
 
 LARGURA_DO_CONTORNO = 0.06
 """Espessura dos anéis de seleção e de correção, em fração da casa. Acompanha o zoom."""
+
+
+def _nome_da_tecla(evento: QKeyEvent) -> str:
+    """`"Left"`, `"Tab"`, `"k"`… -- o nome que `ui/teclado_do_tabuleiro` entende."""
+    nomes = {
+        Qt.Key.Key_Left: "Left", Qt.Key.Key_Right: "Right", Qt.Key.Key_Up: "Up", Qt.Key.Key_Down: "Down",
+        Qt.Key.Key_Tab: "Tab", Qt.Key.Key_Backtab: "Backtab", Qt.Key.Key_Delete: "Delete",
+        Qt.Key.Key_Backspace: "Backspace", Qt.Key.Key_Space: "Space", Qt.Key.Key_Return: "Return",
+        Qt.Key.Key_Enter: "Enter",
+    }
+    nome = nomes.get(evento.key())
+    if nome is not None:
+        return nome
+    texto = evento.text()
+    return texto if len(texto) == 1 and texto.isalpha() else ""
 
 
 class TabuleiroEditavel(TabuleiroQt):
@@ -91,6 +107,10 @@ class TabuleiroEditavel(TabuleiroQt):
         # Ligado desde o passo 13: sem ele o Qt só entrega movimento com botão apertado, e a
         # casa sob o ponteiro (e a dica das três leituras) só existiria durante um arrasto.
         self.setMouseTracking(True)
+        # Passo C8: o tabuleiro recebe foco (clique ou Tab) e teclas -- ver `ui/teclado_do_tabuleiro`.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._duvidosas: tuple[int, ...] = ()
+        self._disputadas: tuple[int, ...] = ()
 
     # ------------------------------------------------------------------------------ estado
 
@@ -168,6 +188,88 @@ class TabuleiroEditavel(TabuleiroQt):
         if not 0 <= casa < 64:
             return
         self._aplicar(self.modelo.press(casa))
+
+    def definir_casas_disputadas(self, casas: Iterable[int]) -> None:
+        """As casas em que a segunda opinião discorda da leitura (C3); o `Tab` também as percorre."""
+        self._disputadas = tuple(int(c) for c in casas if 0 <= int(c) < 64)
+        if self._disputadas:
+            self._duvidosas = self._disputadas
+        self.update()
+
+    def definir_duvidosas(self, casas: Iterable[int]) -> None:
+        """As casas que o `Tab` percorre (passo C8): as âmbar da leitura, ou as incertas."""
+        self._duvidosas = tuple(int(c) for c in casas if 0 <= int(c) < 64)
+
+    def keyPressEvent(self, a0: QKeyEvent | None) -> None:  # noqa: N802 - assinatura do Qt
+        """Setas andam, `Tab` vai à duvidosa, `k q r b n p` põem a peça (Shift = branca),
+        `Delete` esvazia, `Espaço`/`Enter` aplicam o pincel. O resto sobe (passo C8)."""
+        if a0 is None or not self.modelo.items_ok():
+            super().keyPressEvent(a0)
+            return
+        acao = teclado.acao_da_tecla(_nome_da_tecla(a0), shift=bool(a0.modifiers() & Qt.KeyboardModifier.ShiftModifier))
+        if acao is None:
+            super().keyPressEvent(a0)
+            return
+        atual = self.modelo.selected
+        if acao.tipo == teclado.ANDAR:
+            self.andar_selecao(acao.passo)
+        elif acao.tipo == teclado.DUVIDOSA:
+            candidatas = self._duvidosas or tuple(
+                c for c in range(64) if board_edit.piece_at(self.modelo.placement, c))
+            alvo = teclado.proxima_duvidosa(candidatas, atual, acao.passo)
+            if alvo is not None:
+                self._aplicar(self.modelo.select(alvo))
+        elif acao.tipo == teclado.APAGAR:
+            self.apagar_selecionada()
+        elif acao.tipo == teclado.APLICAR:
+            if atual is not None and self.modelo.brush is not None:
+                self._aplicar(self.modelo.paint(atual))
+        elif acao.tipo == teclado.PECA and atual is not None:
+            # A peça vai direto na casa selecionada; o pincel da paleta não muda.
+            pincel = self.modelo.brush
+            self.modelo.brush = acao.simbolo
+            try:
+                self._aplicar(self.modelo.paint(atual))
+            finally:
+                self.modelo.brush = pincel
+        a0.accept()
+
+    def andar_selecao(self, passo: int) -> None:
+        """Move a seleção `passo` casas (±1 na fila, sem dar a volta; ±8 entre filas)."""
+        if not self.modelo.items_ok():
+            return
+        atual = self.modelo.selected
+        base = atual if atual is not None else 0
+        if passo in (-1, 1) and (base % 8) + passo not in range(8):
+            return
+        nova = base + passo
+        if 0 <= nova < 64:
+            self._aplicar(self.modelo.select(nova))
+
+    # As setas `←`/`→` são atalhos globais (diagrama anterior/próximo) e a guarda de atalhos as
+    # entrega à janela antes de o widget em foco as ver. Pela S-244 o tabuleiro em foco **toma
+    # para si** essas ações (`ui/teclado_do_tabuleiro.ACOES_DAS_SETAS`) -- é o que faz a seta
+    # andar uma casa aqui e continuar trocando de diagrama com o foco em qualquer outro lugar.
+    def acoes_proprias(self) -> frozenset[str]:
+        """As ações globais que o tabuleiro atende enquanto tem o foco (protocolo `DonoDeAcoes`)."""
+        if not self.modelo.items_ok():
+            return frozenset()
+        return frozenset(teclado.ACOES_DAS_SETAS) | {teclado.ACAO_DE_APAGAR}
+
+    def atender(self, acao: str):  # noqa: ANN201 - assinatura do protocolo `DonoDeAcoes`
+        """A função desta ação, ou `None`. O par de `acoes_proprias`."""
+        if not self.modelo.items_ok():
+            return None
+        if acao == teclado.ACAO_DE_APAGAR:
+            return self.apagar_selecionada
+        passo = teclado.ACOES_DAS_SETAS.get(acao)
+        return None if passo is None else (lambda: self.andar_selecao(passo))
+
+    def focusNextPrevChild(self, next: bool) -> bool:  # noqa: N802, A002 - assinatura do Qt
+        """`Tab` fica no tabuleiro enquanto há casas a percorrer (passo C8)."""
+        if self.modelo.items_ok() and (self._duvidosas or self.modelo.placement != board_edit.EMPTY_PLACEMENT):
+            return False
+        return super().focusNextPrevChild(next)
 
     def apontar(self, casa: object) -> None:
         """A casa que o recorte ao lado está apontando. `None` apaga. Não emite de volta."""
@@ -348,6 +450,10 @@ class TabuleiroEditavel(TabuleiroQt):
         """
         for indice in sorted(self.modelo.changed):
             self._anel(pintor, geo, indice, tema.cor_atual(tokens.CORRIGIDO), tracejado=True)
+        # As casas em que a segunda opinião discorda (C3): `DIVERGENTE` é, na tabela de
+        # significado, "as duas leituras discordam desta casa" -- o papel já existia para isto.
+        for indice in sorted(self._disputadas):
+            self._anel(pintor, geo, indice, tema.cor_atual(tokens.DIVERGENTE))
         for indice in sorted(self.modelo.problems):
             self._anel(pintor, geo, indice, tema.cor_atual(tokens.PROBLEMA))
         if self._apontada is not None and self._apontada != self.modelo.selected:
@@ -395,4 +501,5 @@ class TabuleiroEditavel(TabuleiroQt):
             "apontada": () if self._apontada is None else (self._apontada,),
             "corrigidas": tuple(sorted(self.modelo.changed)),
             "problematicas": tuple(sorted(self.modelo.problems)),
+            "disputadas": tuple(sorted(self._disputadas)),
         }

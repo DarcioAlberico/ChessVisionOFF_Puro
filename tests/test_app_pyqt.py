@@ -124,6 +124,8 @@ class ServicoComLeituraFixa:
         *,
         options: object,
         candidates: object = None,
+        progress: object = None,  # C2: a janela passa os dois; a leitura fixa não os usa
+        should_cancel: object = None,
     ) -> list[RecognizedDiagram]:
         self.paginas_lidas.append(page_index)
         self.candidatos_recebidos.append(candidates)

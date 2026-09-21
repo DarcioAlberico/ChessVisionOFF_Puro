@@ -446,6 +446,16 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 "importar_livro",
                 "cancelar_importacao",
                 "primeira_duvidosa",
+                "proxima_duvidosa",   # C8: os dois seguem o molde da «Primeira duvidosa»
+                "anterior_duvidosa",
+                # As cinco das abas da suíte (C8): o menu diz a aba por extenso, o botão da
+                # paleta só o gesto.
+                "segunda_opiniao",
+                "rotulagem_ler_pagina",
+                "rotulagem_salvar",
+                "rotulagem_desenhar",
+                "revisao_texto_gravar",
+                "revisao_texto_abrir",
             },
             divergem,
         )

@@ -264,6 +264,17 @@ CATALOGO: tuple[Comando, ...] = (
     # trabalho; cancelar deixa o que já foi lido (R3.5). Neutros: a única ênfase da tela continua
     # sendo `ler_melhor`. Sem ícone porque moram no trilho e no menu, não na fita.
     Comando("importar_livro", "Importar o livro (ler todas as páginas)…", ARQUIVO, estilos.NEUTRO, rotulo_curto="Importar o livro"),
+    # As abas da suíte (OCR_UI ciclo 2, passo C8): os comandos existem no catálogo com ou sem a
+    # suíte ao alcance, para o menu ser o mesmo; sem a aba, o dono é a frase de ausência. Os
+    # métodos estão em `caissa.ui.views.declarados`, no molde de `sala_declarada`.
+    # C3: a segunda opinião local (S-66), que o corte do Tk apagou e a preferência continuava a
+    # prometer. Nasce escondida no painel e aparece quando há diagrama e leitor configurado.
+    Comando("segunda_opiniao", "Segunda opinião: ler o diagrama com o segundo modelo", OCR, estilos.NEUTRO, rotulo_curto="Segunda opinião"),
+    Comando("rotulagem_ler_pagina", "Rotulagem: ler a página com o modelo do livro", OCR, estilos.NEUTRO, rotulo_curto="Ler (Rotulagem)"),
+    Comando("rotulagem_salvar", "Rotulagem: gravar os rótulos", OCR, estilos.NEUTRO, rotulo_curto="Salvar (Rotulagem)"),
+    Comando("rotulagem_desenhar", "Rotulagem: desenhar uma caixa de linha", OCR, estilos.NEUTRO, rotulo_curto="Desenhar caixa"),
+    Comando("revisao_texto_gravar", "Revisão de texto: gravar as decisões", OCR, estilos.NEUTRO, rotulo_curto="Gravar decisões"),
+    Comando("revisao_texto_abrir", "Revisão de texto: abrir outro PDF…", OCR, estilos.NEUTRO, rotulo_curto="Abrir PDF (revisão)"),
     Comando("cancelar_importacao", "Cancelar a importação", ARQUIVO, estilos.NEUTRO, rotulo_curto="Cancelar"),
     # Sem item de menu hoje, e por isso ele **precisa** estar aqui: é o comando que só existe
     # como botão, e a S-233 mede exatamente esse caso quando for esconder controle.
@@ -577,6 +588,10 @@ CATALOGO: tuple[Comando, ...] = (
     # a primeira página com trabalho -- é o passo 3 do fluxo principal (U6).
     Comando("trilho", "Trilho de páginas", VISUALIZACAO, estilos.NEUTRO),
     Comando("primeira_duvidosa", "Ir à primeira página duvidosa", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Primeira duvidosa"),
+    # As duas do passo C8 (OCR_UI ciclo 2): a dúvida navegável a partir da página atual, com
+    # tecla -- «primeira duvidosa» voltava sempre à mesma depois de a pessoa gravá-la.
+    Comando("proxima_duvidosa", "Ir à próxima página duvidosa", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Próxima duvidosa"),
+    Comando("anterior_duvidosa", "Ir à página duvidosa anterior", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Duvidosa anterior"),
     # -------------------------------------------------------------------------------- OCR
     Comando(
         "ler_pagina",

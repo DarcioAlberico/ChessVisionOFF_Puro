@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
 import traceback
 from collections.abc import Callable
 from functools import partial
@@ -87,6 +88,8 @@ class Tarefa(QThread):
         self._nome = nome
         self.rastro = ""
         """O traceback formatado da falha, ou vazio enquanto a tarefa não falhou."""
+        self._cancelar = threading.Event()
+        """Pedido de cancelamento (passo C2): a função lê `should_cancel` entre diagramas."""
         # Na construção, e não num `start` sobrescrito: o vigia de `test_busy` e o portão
         # `caissa.ui.audit.execucao` atribuem cada `QThread.start` ao arquivo de `qt/` que o
         # chamou, e um `start` daqui seria o chamador de todas as threads do programa.
@@ -113,6 +116,18 @@ class Tarefa(QThread):
     def nome(self) -> str:
         """Como a tarefa se chama para a pessoa -- «leitura», «detecção» --; vai no título da caixa."""
         return self._nome
+
+    def cancelar(self) -> None:
+        """Pede que a função pare no próximo ponto em que ela olha (passo C2). Não mata."""
+        self._cancelar.set()
+
+    def should_cancel(self) -> bool:
+        """O gancho que a função recebe: `True` depois de `cancelar()`."""
+        return self._cancelar.is_set()
+
+    @property
+    def cancelada(self) -> bool:
+        return self._cancelar.is_set()
 
 
 def rastro_de(excecao: object) -> str:

@@ -732,3 +732,62 @@ class DecisaoDeDiagramaTests(PainelTests):
         with mock.patch.object(self.painel, "_registrar_decisao"):
             self.painel.salvar_atual()
         self.assertEqual(len(self.gravadas), 1)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class SegundaOpiniaoTests(PainelTests):
+    """OCR_UI ciclo 2, passo C3: a segunda opinião volta à janela, com ação."""
+
+    class _Leitor:
+        name = "leitor de outra família"
+
+        def __init__(self, placement: str) -> None:
+            self.placement = placement
+            self.lidos = 0
+
+        def predict(self, image_rgb) -> str:
+            self.lidos += 1
+            return self.placement
+
+    def _esperar(self, condicao, ate_ms: int = 4000) -> None:
+        from PyQt6.QtTest import QTest
+
+        for _ in range(ate_ms // 10):
+            QTest.qWait(10)
+            if condicao():
+                return
+
+    def test_as_casas_em_disputa_ficam_marcadas_e_a_posicao_e_adotada(self) -> None:
+        self.carregar(LEGAL)
+        leitor = self._Leitor(OUTRA)   # discorda em e8/e5: o rei preto mudou de casa
+        with mock.patch.object(self.painel, "leitor_da_segunda_opiniao", return_value=leitor):
+            self.painel.segunda_opiniao()
+            self._esperar(lambda: self.painel._segunda_em_curso is None)
+        self.assertEqual(leitor.lidos, 1)
+        disputadas = self.painel.tabuleiro.casas_marcadas()["disputadas"]
+        self.assertEqual(disputadas, (4, 28))   # e8 e e5 na ordem de leitura
+        self.assertEqual(self.painel.modelo.fen_at(0), OUTRA, "a leitura do segundo é adotada")
+        self.assertIn("discorda em 2 casa(s)", self.recados[-1])
+        # A procedência da amostra diz de onde a posição veio.
+        self.assertEqual(self.painel.modelo.label_route(0, OUTRA), "segunda-opiniao")
+        # Ctrl+Z devolve a leitura do primeiro.
+        self.painel.desfazer()
+        self.assertEqual(self.painel.modelo.fen_at(0), LEGAL)
+
+    def test_sem_leitor_configurado_o_botao_some_e_o_comando_diz_por_que(self) -> None:
+        self.carregar(LEGAL)
+        with mock.patch.object(self.painel, "_segunda_opiniao_configurada", return_value=False):
+            self.painel._atualizar_tudo()
+            self.assertFalse(self.painel.btn_segunda.isVisible())
+        with mock.patch.object(self.painel, "leitor_da_segunda_opiniao", return_value=None):
+            self.painel.segunda_opiniao()
+        self.assertTrue(self.recados and "Segunda opinião" in self.recados[-1], self.recados)
+
+    def test_a_copia_do_primeiro_nao_marca_nada(self) -> None:
+        """O que o portão `second_opinion_gate --sabotar copia` mede, visto da janela."""
+        self.carregar(LEGAL)
+        with mock.patch.object(self.painel, "leitor_da_segunda_opiniao", return_value=self._Leitor(LEGAL)):
+            self.painel.segunda_opiniao()
+            self._esperar(lambda: self.painel._segunda_em_curso is None)
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["disputadas"], ())
+        self.assertIn("64 casas batem", self.recados[-1])

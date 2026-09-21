@@ -1903,6 +1903,19 @@ class PonteTests(unittest.TestCase):
         self.assertEqual(self.aba.recebidos, [], "meio livro não substitui a fila do livro")
         self.assertEqual(len(self.trilho.estados), 1, "mas o trilho recebe o parcial")
 
+    def test_o_trilho_e_reavaliado_depois_de_uma_gravacao(self) -> None:
+        """C8: `atualizar_trilho` relê as decisões e reavalia as marcas sobre o mesmo resultado;
+        um livro que mudou entretanto, ou sem importação, não é reavaliado."""
+        self.ponte.comecar((0, 1))
+        self._chegar(_resultado_falso(0, 1))
+        self.assertEqual(len(self.trilho.estados), 1)
+        with mock.patch.object(importador_de_livro, "estados_do_trilho", return_value=([1], "duas")) as relido:
+            self.assertTrue(self.ponte.atualizar_trilho())
+        relido.assert_called_once()
+        self.assertEqual(len(self.trilho.estados), 2, "as marcas novas chegaram ao trilho")
+        self.pdf = Path("outro.pdf")
+        self.assertFalse(self.ponte.atualizar_trilho(), "o livro mudou: as marcas são de outro")
+
     def test_o_documento_importado_serve_a_exportacao_quando_e_exatamente_as_paginas(self) -> None:
         """A3: `export_book(document=)` reaproveita o `ImportResult` quando as páginas pedidas
         são **exatamente** as importadas (o crítico provou que um subconjunto saía com o livro

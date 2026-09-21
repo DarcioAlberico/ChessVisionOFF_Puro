@@ -50,6 +50,8 @@ from chess_diagram_ocr.ui.trilho import (
     papel_da_pagina,
     primeira_duvidosa,
     rotulo_da_pagina,
+    anterior_duvidosa,
+    proxima_duvidosa,
 )
 
 logger = logging.getLogger(__name__)
@@ -284,6 +286,22 @@ class TrilhoDoLivro(QWidget):
         if alvo is not None:
             self.pagina_pedida.emit(alvo)
             self.marcar_pagina_atual(alvo)
+
+    def ir_para_a_proxima_duvidosa(self) -> int | None:
+        """A duvidosa depois da página atual (passo C8); devolve a página, ou `None`."""
+        alvo = proxima_duvidosa([self._marcas[p] for p in sorted(self._marcas)], self.lista.currentRow())
+        if alvo is not None:
+            self.pagina_pedida.emit(alvo)
+            self.marcar_pagina_atual(alvo)
+        return alvo
+
+    def ir_para_a_anterior_duvidosa(self) -> int | None:
+        """A duvidosa antes da página atual (passo C8); devolve a página, ou `None`."""
+        alvo = anterior_duvidosa([self._marcas[p] for p in sorted(self._marcas)], self.lista.currentRow())
+        if alvo is not None:
+            self.pagina_pedida.emit(alvo)
+            self.marcar_pagina_atual(alvo)
+        return alvo
 
     # ----------------------------------------------------------------------- a importação
 

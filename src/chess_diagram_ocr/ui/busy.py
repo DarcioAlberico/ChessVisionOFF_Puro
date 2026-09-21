@@ -249,10 +249,13 @@ class BusyRegistry:
 
 
 FORA_DO_REGISTRO: dict[tuple[str, str], str] = {
-    ("janela.py", "_rodar"): (
-        "Marcar os diagramas e reconhecer a página -- as duas passam por aqui. É o laço interno "
-        "do programa, limitado por `max_boards`, e o que ele produz aparece na tela: quem fecha "
-        "a janela durante ele está desistindo do resultado, não perdendo trabalho gravado."
+    # `("janela.py", "_rodar")` saiu daqui no passo C2 do ciclo 2: marcar e ler a página
+    # registram-se, com total (os diagramas já marcados) e «Cancelar» entre diagramas.
+    ("painel_de_resultado.py", "segunda_opiniao"): (
+        "A segunda leitura de um diagrama pelo leitor de outra família (OCR_UI ciclo 2, C3): "
+        "décimos de segundo por diagrama, e o botão fica cinza enquanto ela corre; a primeira "
+        "carga do leitor (~7 s) é dita pela frase do rodapé. O que ela produz é uma marcação "
+        "sobre a posição que já está na tela: fechar no meio não perde nada."
     ),
     ("trabalho.py", "_comecar"): (
         "A detecção dos diagramas da página que acabou de aparecer (S-68), ao fundo e sem "
