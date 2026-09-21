@@ -1390,9 +1390,13 @@ class PainelDeResultado(QWidget):
         self.tabuleiro.mostrar(corrigida, incertas=tinta.casas, confiancas=tinta.valores,
                                limiar=tinta.limiar, virado=pretas)
         self.tabuleiro.definir_probabilidades(item.probs)
+        # O recorte vira pelo **mesmo** critério: no ponto de vista das pretas a casa canônica
+        # `i` está impressa em `63 - i`, exatamente como na leitura de cabeça para baixo -- com
+        # `virado` só pela rotação, a tinta, o apontar e o clique no recorte caíam na casa
+        # espelhada (achado da revisão antes da crítica, 2026-09-21).
         self.recorte.mostrar(
             getattr(item, "board_rgb", None),
-            virado=int(item.rotation or 0) == 180,
+            virado=pretas,
             tinta=tinta,
             leituras=item.probs,
         )

@@ -735,6 +735,38 @@ class DecisaoDeDiagramaTests(PainelTests):
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
+class PontoDeVistaDasPretasTests(PainelTests):
+    """OCR_UI ciclo 2, passo C10: impresso do ponto de vista das pretas, o tabuleiro **e o
+    recorte** viram juntos -- a posição continua canônica, só a vista gira.
+
+    A casa canônica `i` está impressa em `63 - i`, como na leitura de cabeça para baixo; com o
+    recorte virando só pela rotação, a tinta e o clique no recorte caíam na casa espelhada.
+    """
+
+    def test_o_tabuleiro_e_o_recorte_viram_juntos_e_a_posicao_fica_canonica(self) -> None:
+        item = diagrama(LEGAL, probs=probs_que_hesitam_em(12))   # e7, na ordem de leitura
+        item.black_point_of_view = True
+        item.rotation = 0
+        self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+        self.assertTrue(self.painel.tabuleiro.virado, "tabuleiro na vista do impresso")
+        self.assertTrue(self.painel.recorte._virado, "recorte na mesma vista")
+        self.assertEqual(self.painel.tabuleiro.posicao(), LEGAL, "a posição continua canônica")
+        # A tinta é canônica nos dois; é o `virado` que a leva à casa impressa.
+        from chess_diagram_ocr.ui import recorte_do_diagrama as regra
+
+        x0, y0, _x1, _y1 = regra.retangulo_da_casa(12, 80.0, 80.0, virado=True)
+        self.assertEqual((x0, y0), (30.0, 60.0), "e7 canônica está impressa onde d2 estaria")
+        self.assertIn(12, self.painel.tabuleiro._incertas, "a dúvida fica na casa canônica")
+
+    def test_de_pe_e_das_brancas_nada_vira(self) -> None:
+        item = diagrama(LEGAL)
+        item.black_point_of_view = False
+        self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+        self.assertFalse(self.painel.tabuleiro.virado)
+        self.assertFalse(self.painel.recorte._virado)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
 class SegundaOpiniaoTests(PainelTests):
     """OCR_UI ciclo 2, passo C3: a segunda opinião volta à janela, com ação."""
 
