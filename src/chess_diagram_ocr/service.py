@@ -773,8 +773,9 @@ class OcrService:
                     device,
                     mode=options.orientation,  # type: ignore[arg-type]
                     normalizer=options.normalizer,
-                    # Passo C10: as coordenadas da borda, quando a camada de texto as tem.
-                    coordinates=getattr(context, "coordinates", None),
+                    # Passo C10: as coordenadas da borda, quando a camada de texto as tem. O
+                    # campo é de `DiagramContext`; sem contexto (imagem solta), não há borda.
+                    coordinates=context.coordinates if context is not None else None,
                 )
                 prediction = oriented.prediction
                 side: SideToMove = infer_side_to_move(prediction.fen_board, context)
@@ -788,7 +789,7 @@ class OcrService:
                         rotation=oriented.rotation,
                         orientation_ambiguous=oriented.ambiguous,
                         orientation_reason=oriented.reason,
-                        black_point_of_view=bool(getattr(oriented, "black_point_of_view", False)),
+                        black_point_of_view=oriented.black_point_of_view,
                         quad=quad_for_item.tolist() if quad_for_item is not None else None,
                         bbox_pdf=bboxes_pdf[idx] if idx < len(bboxes_pdf) else None,
                         context=context,

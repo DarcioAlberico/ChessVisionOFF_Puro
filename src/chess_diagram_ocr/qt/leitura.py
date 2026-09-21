@@ -121,6 +121,7 @@ class Aquecimento:
         self._relogio: Any = None
         self._parent: QObject | None = None
         self._ms = ESPERA_PARA_AQUECER_MS
+        self._cancelado = False
 
     @property
     def em_curso(self) -> bool:
@@ -148,7 +149,7 @@ class Aquecimento:
         registrada em curso adia mais uma vez."""
         from PyQt6.QtCore import QTimer
 
-        if self._feito or not callable(getattr(self._servico, "load", None)):
+        if self._feito or self._cancelado or not callable(getattr(self._servico, "load", None)):
             return
         if self._relogio is None:
             self._relogio = QTimer(parent)
@@ -160,11 +161,23 @@ class Aquecimento:
 
     def adiar(self) -> None:
         """A janela acabou de fazer algo (virar a página): a contagem de ócio recomeça."""
-        if self._relogio is not None and not self._feito:
+        if self._relogio is not None and not self._feito and not self._cancelado:
             self._relogio.start(self._ms)
 
+    def cancelar(self) -> None:
+        """A janela fechou: o que estava agendado não dispara mais.
+
+        Uma janela fechada mas ainda não destruída (o `deleteLater` espera o laço de eventos)
+        guardava um relógio armado, e ele disparava o aquecimento **depois** do fecho, numa
+        janela morta -- o portão de execução da suíte do tronco acusou duas threads que
+        nenhum ponto explicava. Fechar cancela; `adiar` e `_tentar` respeitam o cancelamento.
+        """
+        self._cancelado = True
+        if self._relogio is not None:
+            self._relogio.stop()
+
     def _tentar(self) -> None:
-        if self._feito:
+        if self._feito or self._cancelado:
             return
         if self._ocupada() or self._busy.running():
             self._relogio.start(self._ms) if self._relogio is not None else None

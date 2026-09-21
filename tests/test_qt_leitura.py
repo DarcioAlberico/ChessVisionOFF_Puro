@@ -23,7 +23,13 @@ if TEM_PYQT:
     from PyQt6.QtTest import QTest
 
     from chess_diagram_ocr.qt.janela import JanelaPrincipal
-    from chess_diagram_ocr.qt.leitura import Aquecimento, Ocupacao, frase_de_cancelamento, sem_modelo
+    from chess_diagram_ocr.qt.leitura import (
+        ESPERA_PARA_AQUECER_MS,
+        Aquecimento,
+        Ocupacao,
+        frase_de_cancelamento,
+        sem_modelo,
+    )
     from chess_diagram_ocr.qt.trabalho import Tarefa
     from test_qt_janela import _livro
 
@@ -186,6 +192,17 @@ class LeituraNaJanelaTests(unittest.TestCase):
         self.assertEqual(self.servico.carregado, 0, "ainda não: a janela acabou de abrir")
         self._esperar(lambda: self.servico.carregado >= 1, ate_ms=6000)
         self.assertEqual(self.servico.carregado, 1)
+
+    def test_fechar_a_janela_cancela_o_aquecimento_agendado(self) -> None:
+        """Fechada mas ainda não destruída, a janela guardava o relógio armado e o aquecimento
+        disparava depois do fecho, numa janela morta (o portão de execução do tronco acusou
+        duas threads sem dono). Fechar cancela o que estava agendado."""
+        janela = self.janela()
+        self.assertEqual(self.servico.carregado, 0)
+        janela.close()
+        self._esperar(lambda: False, ate_ms=ESPERA_PARA_AQUECER_MS + 1500)
+        self.assertEqual(self.servico.carregado, 0, "o relógio de uma janela fechada disparou")
+        self.assertFalse(janela._aquecimento.em_curso)
 
     def test_ler_a_pagina_registra_no_rodape_com_cancelar_e_tranca_so_o_gravar(self) -> None:
         janela = self.janela()

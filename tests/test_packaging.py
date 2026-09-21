@@ -250,8 +250,15 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2058
+    LIMITE = 2077
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.058 -> 2.077 na crítica da fase 2 (Codex, ciclo 1)**: a tarefa de `_rodar` deixa de ser
+    filha da janela (`manter_viva`) -- destruída a correr, o `QThread` abortava o processo se a
+    leitura passasse dos 15 s de espera do `closeEvent` -- e os três slots dela passam por
+    `_se_viva`, que pergunta se a janela ainda existe; e o `closeEvent` cancela o aquecimento
+    agendado (o relógio de uma janela fechada disparava numa janela morta). Dezenove linhas,
+    comentário, o guarda e uma chamada; a mecânica continua em `qt/trabalho.py` e `qt/leitura.py`.
 
     **1.998 -> 2.058 com os passos C2, C3 e C8 do OCR_UI ciclo 2** (ler a página com progresso, cancelamento
     entre diagramas, tranca só do gravar, modelo aquecido ao abrir o livro, `.pt` ausente dito
