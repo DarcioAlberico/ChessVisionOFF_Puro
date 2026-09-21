@@ -42,10 +42,12 @@ rótulo velho ao lado do novo -- ver `salvar_atual` e `ui/editor_model.save_targ
 from __future__ import annotations
 
 import logging
+import weakref
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+from PyQt6 import sip
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
@@ -1096,13 +1098,35 @@ class PainelDeResultado(QWidget):
         if self._segunda_em_curso is not None:
             self.estado.emit("A segunda opinião já está sendo lida.")
             return
-        from chess_diagram_ocr.qt.trabalho import Tarefa
+        from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 
-        tarefa = Tarefa(lambda: leitor.predict(recorte), parent=self, nome="segunda opinião")
-        tarefa.pronto.connect(lambda placement, i=indice, nome=leitor.name: self._chegou_a_segunda(i, str(placement), nome))
-        tarefa.falhou.connect(lambda mensagem, _e: self.estado.emit(f"A segunda opinião falhou: {mensagem}"))
-        tarefa.finished.connect(self._terminou_a_segunda)
-        tarefa.finished.connect(tarefa.deleteLater)
+        # **Sem pai, e viva até acabar** (`manter_viva`, F9-C2): uma `Tarefa` filha do painel é
+        # destruída com ele, e o destrutor de `QThread` aborta o processo se a thread ainda
+        # corre -- fechar a janela nos ~7 s da primeira carga do leitor era esse caso. Os slots
+        # abaixo perguntam se o painel ainda existe antes de o tocar, pelo mesmo motivo.
+        tarefa = manter_viva(Tarefa(lambda: leitor.predict(recorte), nome="segunda opinião"))
+        painel = weakref.ref(self)
+        item_lido = item   # o parecer é **deste** diagrama: se a página mudou, ele não vale mais
+        nome = leitor.name
+
+        def chegou(placement: object) -> None:
+            vivo = painel()
+            if vivo is not None and not sip.isdeleted(vivo):
+                vivo._chegou_a_segunda(indice, item_lido, str(placement), nome)
+
+        def falhou(mensagem: str, _excecao: object) -> None:
+            vivo = painel()
+            if vivo is not None and not sip.isdeleted(vivo):
+                vivo.estado.emit(f"A segunda opinião falhou: {mensagem}")
+
+        def terminou() -> None:
+            vivo = painel()
+            if vivo is not None and not sip.isdeleted(vivo):
+                vivo._terminou_a_segunda()
+
+        tarefa.pronto.connect(chegou)
+        tarefa.falhou.connect(falhou)
+        tarefa.finished.connect(terminou)
         self._segunda_em_curso = tarefa
         self.btn_segunda.setEnabled(False)
         self.estado.emit(f"Lendo o diagrama com {leitor.name}…")
@@ -1112,9 +1136,12 @@ class PainelDeResultado(QWidget):
         self._segunda_em_curso = None
         self.btn_segunda.setEnabled(True)
 
-    def _chegou_a_segunda(self, indice: int, placement: str, nome: str) -> None:
-        if not (0 <= indice < len(self.modelo.items)):
-            return   # a página mudou no meio: o parecer é de um diagrama que não está mais aqui
+    def _chegou_a_segunda(self, indice: int, item_lido: object, placement: str, nome: str) -> None:
+        # A página (ou a leitura) mudou no meio: o parecer é de um diagrama que não está mais
+        # aqui -- o índice sozinho não chega, porque outra página tem um diagrama nesse índice.
+        if not (0 <= indice < len(self.modelo.items)) or self.modelo.items[indice] is not item_lido:
+            self.estado.emit("A segunda opinião chegou depois de a página mudar e foi descartada.")
+            return
         try:
             parecer = self.modelo.mark_second_opinion(indice, placement, reader=nome)
         except ValueError as exc:

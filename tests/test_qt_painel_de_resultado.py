@@ -815,6 +815,57 @@ class SegundaOpiniaoTests(PainelTests):
             self.painel.segunda_opiniao()
         self.assertTrue(self.recados and "Segunda opinião" in self.recados[-1], self.recados)
 
+    class _LeitorLento(_Leitor):
+        """Demora o bastante para a página mudar (ou o painel fechar) no meio."""
+
+        def predict(self, image_rgb) -> str:
+            import time
+
+            time.sleep(0.4)
+            return super().predict(image_rgb)
+
+    def test_o_parecer_que_chega_depois_de_a_pagina_mudar_e_descartado(self) -> None:
+        """O índice sozinho não chega: a página seguinte tem um diagrama no mesmo índice, e o
+        parecer da anterior iria parar nele -- a mesma classe do defeito da detecção de outra
+        página (S-68). O parecer é **deste** diagrama, por identidade."""
+        self.carregar(LEGAL)
+        leitor = self._LeitorLento(OUTRA)
+        with mock.patch.object(self.painel, "leitor_da_segunda_opiniao", return_value=leitor):
+            self.painel.segunda_opiniao()
+            self.painel.carregar_pagina([diagrama(LEGAL)], chave="livro.pdf", pagina=1)
+            self._esperar(lambda: self.painel._segunda_em_curso is None)
+        self.assertEqual(leitor.lidos, 1)
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["disputadas"], ())
+        self.assertEqual(self.painel.modelo.fen_at(0), LEGAL, "a página nova ficou como estava")
+        self.assertTrue(any("descartada" in recado for recado in self.recados), self.recados)
+
+    def test_fechar_o_painel_com_a_segunda_opiniao_a_correr_nao_derruba_o_processo(self) -> None:
+        """Uma `Tarefa` filha do painel é destruída com ele e o destrutor de `QThread` aborta o
+        processo com a thread a correr (F9-C2). A tarefa fica sem pai (`manter_viva`) e os slots
+        perguntam se o painel ainda existe -- se isto passar, o processo sobreviveu."""
+        from PyQt6.QtTest import QTest
+
+        from chess_diagram_ocr.qt import trabalho
+        from qt_app import descartar
+
+        # Um painel só deste teste: é ele que morre no meio da leitura.
+        painel = PainelDeResultado(mock.MagicMock(), csv_de_rotulos=pasta_temporaria(self) / "m.csv")
+        painel.carregar_pagina([diagrama(LEGAL)], chave="livro.pdf", pagina=0)
+        leitor = self._LeitorLento(OUTRA)
+        with mock.patch.object(painel, "leitor_da_segunda_opiniao", return_value=leitor):
+            painel.segunda_opiniao()
+        tarefa = painel._segunda_em_curso
+        self.assertIsNotNone(tarefa)
+        self.assertIsNone(tarefa.parent(), "sem pai: não morre com o painel")
+        self.assertIn(tarefa, trabalho._VIVAS)
+        descartar(painel)
+        for _ in range(200):
+            QTest.qWait(10)
+            if tarefa not in trabalho._VIVAS:
+                break
+        self.assertNotIn(tarefa, trabalho._VIVAS, "a tarefa terminou e foi solta")
+        self.assertEqual(leitor.lidos, 1)
+
     def test_a_copia_do_primeiro_nao_marca_nada(self) -> None:
         """O que o portão `second_opinion_gate --sabotar copia` mede, visto da janela."""
         self.carregar(LEGAL)

@@ -24,7 +24,7 @@ from typing import Any
 
 from PyQt6.QtCore import QObject
 
-from chess_diagram_ocr.qt.trabalho import Tarefa
+from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.ui import estado_do_rodape
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 
@@ -179,7 +179,12 @@ class Aquecimento:
         ficha = self._busy.register(
             "aquecendo o modelo", loses_work=False, detail=str(getattr(self._servico, "model_path", ""))
         )
-        tarefa = Tarefa(carregar, parent=parent, nome="aquecimento do modelo")
+        # **Sem pai** (`manter_viva`, F9-C2): filha da janela, a `Tarefa` seria destruída com ela
+        # e o destrutor de `QThread` aborta o processo com a thread a correr -- o `closeEvent`
+        # espera `ESPERA_AO_FECHAR_MS`, mas uma carga que passe disso (disco frio, CUDA) não
+        # pode derrubar quem fecha. `parent` fica na assinatura por compatibilidade e não é usado.
+        del parent
+        tarefa = manter_viva(Tarefa(carregar, nome="aquecimento do modelo"))
 
         def terminou() -> None:
             ficha.release()
@@ -188,14 +193,16 @@ class Aquecimento:
         def falhou(mensagem: str, _excecao: object) -> None:
             logger.warning("O modelo não aqueceu: %s", mensagem)
             nome = getattr(getattr(self._servico, "model_path", None), "name", "") or "piece_classifier.pt"
-            self._dizer(
-                f"Modelo de casas indisponível ({nome}): aponte o arquivo .pt em Ferramentas ▸ Configurações…",
-                estado_do_rodape.AVISO,
-            )
+            try:
+                self._dizer(
+                    f"Modelo de casas indisponível ({nome}): aponte o arquivo .pt em Ferramentas ▸ Configurações…",
+                    estado_do_rodape.AVISO,
+                )
+            except RuntimeError:   # a janela já fechou: o aviso ficou no log, que é o que resta
+                logger.warning("A janela fechou antes de o aviso do modelo chegar ao rodapé.")
 
         tarefa.falhou.connect(falhou)
         tarefa.finished.connect(terminou)
-        tarefa.finished.connect(tarefa.deleteLater)
         self._tarefa = tarefa
         tarefa.start()
         return tarefa

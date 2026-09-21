@@ -115,6 +115,8 @@ class PecasTests(unittest.TestCase):
         tarefa = aquecimento.iniciar()
         assert tarefa is not None
         self.assertTrue(aquecimento.em_curso)
+        # Sem pai (`manter_viva`): fechar a janela numa carga longa não pode abortar o processo.
+        self.assertIsNone(tarefa.parent())
         for _ in range(200):
             QTest.qWait(10)
             if not aquecimento.em_curso:
