@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import random
 import warnings
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -13,9 +14,17 @@ import torch
 from torch.utils.data import Dataset, Sampler
 
 from .atomic_io import read_image, write_image
-from .config import BOARD_SIZE, BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE
+from .config import BOARD_SIZE, BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE, PIECE_CLASSES
 from .fen_utils import check_position, is_syntactically_valid_fen, labels_from_fen
-from .labels import ILLEGAL_OK, LABEL_COLUMNS, DatasetEntry, LabelStore
+from .labels import (
+    DATASET_RECORRIGIDO,
+    FILA_REVISAO,
+    ILLEGAL_OK,
+    LABEL_COLUMNS,
+    OCR_CORRIGIDO,
+    DatasetEntry,
+    LabelStore,
+)
 from .model import DEFAULT_ARCH, ArchConfig, preprocess_cell_to_tensor, with_coordinate_channels
 from .semantics import infer_side_to_move
 from .splits import Split
@@ -28,9 +37,12 @@ __all__ = [
     "BoardGroupedSampler",
     "BoardUnitDataset",
     "DatasetEntry",
+    "ROTAS_HUMANAS",
     "append_training_sample",
     "board_groups",
     "migrate_labels_csv",
+    "ruido_de_cor",
+    "tabuleiros_de_rota_humana",
 ]
 """`LABEL_COLUMNS` e `DatasetEntry` moraram aqui até a S-51 e agora moram em `labels.py`.
 Reexportados porque o nome deste módulo continua sendo o lugar onde se procura por eles, e
@@ -107,6 +119,12 @@ class BoardFenDataset(Dataset):
         # dataset inteiro) contra 1,83 MiB por tabuleiro de imagem. Limitá-los pagaria
         # complexidade para economizar 0,1% do que a S-26 mede.
         self._labels_cache: dict[int, list[int]] = {}
+        self.label_overrides: dict[tuple[int, int], int] = {}
+        """`(tabuleiro, casa)` -> classe que **substitui** o rótulo do CSV nesta casa (C16 do
+        ciclo 2 OCR/UI). Vazio em produção. É o mecanismo da sabotagem de ruído de rótulo
+        (`ruido_de_cor`): o treino recebe a classe trocada, o CSV não muda, e a validação -- que
+        é outro objeto -- nunca vê o mapa. Uma sabotagem que reescrevesse o CSV seria uma
+        sabotagem que alguém esquece de desfazer."""
         self._load_entries()
 
     def _load_entries(self) -> None:
@@ -249,8 +267,11 @@ class BoardFenDataset(Dataset):
         x = preprocess_cell_to_tensor(board[y0:y1, x0:x1], self.arch)
         if transform is not None:
             x = transform(x)
+        label = labels[square_idx]
+        if self.label_overrides:
+            label = self.label_overrides.get((entry_idx, square_idx), label)
         # Depois do aumento, de proposito: ver `with_coordinate_channels` (S-62a).
-        return with_coordinate_channels(x, square_idx, self.arch), labels[square_idx]
+        return with_coordinate_channels(x, square_idx, self.arch), label
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
         entry_idx, square_idx = self.index_map[idx]
@@ -298,6 +319,54 @@ class BoardUnitDataset(Dataset):
         # de ser exatamente os mesmos que a cabeca de hoje recebe.
         pares = [self.base.square(board_idx, square_idx, self.transform) for square_idx in range(64)]
         return torch.stack([x for x, _ in pares]), torch.tensor([y for _, y in pares], dtype=torch.long)
+
+
+ROTAS_HUMANAS: tuple[str, ...] = (OCR_CORRIGIDO, DATASET_RECORRIGIDO, FILA_REVISAO, "transcricao-manual")
+"""As rotas de `corrected_by` em que uma pessoa **mudou** o rótulo (C16 do ciclo 2 OCR/UI).
+
+`ocr-aceito` é conferido mas não mudado; `net-remoto` e `segunda-opiniao` são máquinas. A
+pergunta que `labels.py` deixou escrita -- "as corrigidas à mão treinam melhor que as aceitas?"
+-- é sobre estas quatro. `transcricao-manual` não está no vocabulário de `labels.py` porque o
+CSV é vocabulário e não validação: são 80 linhas gravadas por quem transcreveu, e ignorá-las
+seria responder à pergunta com metade dos tabuleiros."""
+
+
+def tabuleiros_de_rota_humana(entries: Sequence[DatasetEntry]) -> list[int]:
+    """Índices dos tabuleiros cujo `corrected_by` é uma rota humana (`ROTAS_HUMANAS`)."""
+    return [index for index, entry in enumerate(entries) if entry.corrected_by.strip() in ROTAS_HUMANAS]
+
+
+def ruido_de_cor(
+    dataset: BoardFenDataset,
+    board_indices: Iterable[int],
+    fraction: float,
+    *,
+    seed: int = 42,
+) -> dict[tuple[int, int], int]:
+    """A sabotagem honesta do C4: troca a **cor** do rótulo em `fraction` das casas ocupadas.
+
+    Devolve o mapa para `BoardFenDataset.label_overrides`. Só casas ocupadas entram no sorteio
+    (uma casa vazia não tem cor a trocar), e a troca é `X↔x` da mesma peça -- o erro que o campo
+    mede (10 das 27 casas erradas, análise §3.1). As sabotagens `i`/`i50` da fase 3 invertiam o
+    contraste **sem** trocar o rótulo e foram inertes; esta troca o rótulo e nada mais, para que
+    um instrumento que não a acuse seja dito sem resolução. Sorteio com semente própria, para a
+    mesma fração dar o mesmo mapa em duas execuções.
+    """
+    if not 0.0 <= fraction <= 1.0:
+        raise ValueError(f"fraction tem de estar em [0, 1]; veio {fraction}.")
+    ocupadas: list[tuple[int, int, int]] = []
+    for board in sorted({int(b) for b in board_indices}):
+        for square, classe in enumerate(dataset._labels(board)):  # noqa: SLF001 - o dataset é o dono do rótulo
+            if PIECE_CLASSES[classe] != "empty":
+                ocupadas.append((board, square, classe))
+    quantas = round(fraction * len(ocupadas))
+    if quantas <= 0:
+        return {}
+    escolhidas = random.Random(seed).sample(ocupadas, quantas)
+    return {
+        (board, square): PIECE_CLASSES.index(PIECE_CLASSES[classe].swapcase())
+        for board, square, classe in escolhidas
+    }
 
 
 def board_groups(

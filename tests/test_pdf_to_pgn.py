@@ -99,6 +99,30 @@ class PdfToPgnTests(unittest.TestCase):
             build_pgn_text(positions, source_name="book.pdf", reading_order="row"),
         )
 
+    def test_headers_carry_the_stipulation_and_its_verdict(self) -> None:
+        """C12 do ciclo 2: `[Stipulation "#2"]` e `[StipulationCheck ...]` nos três estados, e o
+        reparo pela exigência em `[OCRStipulation]` com a confiança que o gate julgou."""
+        fecha = DiagramPosition(page_index=0, diagram_index=1, fen=KINGS_ONLY, confidence=0.9,
+                                stipulation="#2", stipulation_closes=True, stipulation_keys=("Qd1+",))
+        nao_fecha = DiagramPosition(page_index=0, diagram_index=2, fen=KINGS_ONLY, confidence=0.9,
+                                    stipulation="#3", stipulation_closes=False)
+        sem_motor = DiagramPosition(page_index=0, diagram_index=3, fen=KINGS_ONLY, confidence=0.9,
+                                    stipulation="#4", stipulation_closes=None)
+        reparado = DiagramPosition(page_index=1, diagram_index=1, fen=KINGS_ONLY, confidence=0.9,
+                                   stipulation="#2", stipulation_closes=True, stipulation_keys=("Qd1+",),
+                                   stipulation_repairs=("d6",), gate_confidence=0.97)
+        payload = build_pgn_text([fecha, nao_fecha, sem_motor, reparado], source_name="book.pdf")
+        self.assertIn('[Stipulation "#2"]', payload)
+        self.assertIn('[StipulationCheck "fecha: 1.Qd1+"]', payload)
+        self.assertIn('[Stipulation "#3"]', payload)
+        self.assertIn('[StipulationCheck "não fecha"]', payload)
+        self.assertIn('[StipulationCheck "não verificada"]', payload)
+        self.assertIn('[OCRStipulation "#2 prova d6; gate 0.970"]', payload)
+        sem = build_pgn_text(
+            [DiagramPosition(page_index=0, diagram_index=1, fen=KINGS_ONLY, confidence=0.9)],
+            source_name="book.pdf")
+        self.assertNotIn("Stipulation", sem)
+
     def test_headers_omit_unmeasured_fields(self) -> None:
         """Posição montada à mão não afirma legalidade nem confiança mínima."""
         payload = build_pgn_text(

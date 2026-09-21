@@ -43,7 +43,9 @@ from .config import (
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
 )
+from .cor_por_livro import CalibradorDeCor, TrocaDeCor, apply_colour, calibrador_do_livro
 from .detection import DiagramCandidate, detect_diagrams_in_pdf_page
+from .estipulacao import ReparoPelaEstipulacao, apply_stipulation, motor_padrao
 from .fen_utils import PositionCheck, check_position, square_name
 from .inference import (
     BoardPrediction,
@@ -52,7 +54,6 @@ from .inference import (
     predict_board,
     predict_with_orientation,
 )
-from .cor_por_livro import CalibradorDeCor, TrocaDeCor, apply_colour, calibrador_do_livro
 from .lance_seguinte import ReparoPeloLance, apply_next_move
 from .pdf_io import get_pdf_page_count, render_pdf_page
 from .pdf_text import DiagramContext, contexts_for_pdf_page
@@ -178,10 +179,29 @@ class RecognizedDiagram:
     colour_reason: str = ""
     """Em pt-BR: o que o calibrador de cor trocou, ou por que não aplicou."""
 
+    stipulation: str = ""
+    """A exigência impressa para este diagrama, na forma do PGN (`#2`), quando a página a tem
+    (C12 do ciclo 2). Vazio = nada a verificar."""
+
+    stipulation_closes: bool | None = None
+    """`True`: a leitura cumpre a exigência; `False`: não cumpre (nem com trocas); `None`: não
+    havia exigência, ou não foi verificável (sem motor para mate em 3+, posição ilegal)."""
+
+    stipulation_keys: tuple[str, ...] = ()
+    """A(s) chave(s) achada(s), em SAN -- a solução, quando fecha."""
+
+    stipulation_repairs: list[int] = field(default_factory=list)
+    """As casas (ordem de leitura) trocadas porque **só assim** a exigência fecha. Também em
+    `changed_squares`; separadas pelo mesmo motivo das do lance seguinte."""
+
+    stipulation_reason: str = ""
+    """Em pt-BR: fecha e com que chave, o que foi trocado, ou por que não fecha."""
+
     @property
     def external_repairs(self) -> list[int]:
-        """As casas trocadas por evidência externa à matriz: lance seguinte e cor pela tinta."""
-        return sorted(set(self.next_move_repairs) | set(self.colour_repairs))
+        """As casas trocadas por evidência externa à matriz: lance seguinte, cor pela tinta e a
+        exigência do problema."""
+        return sorted(set(self.next_move_repairs) | set(self.colour_repairs) | set(self.stipulation_repairs))
 
     @property
     def gate_confidence(self) -> float:
@@ -220,6 +240,7 @@ class RecognizedDiagram:
         detection_source: str = "",
         next_move: ReparoPeloLance | None = None,
         colour: tuple[list[TrocaDeCor], str] | None = None,
+        stipulation: ReparoPelaEstipulacao | None = None,
     ) -> RecognizedDiagram:
         decode = prediction.decode
         return cls(
@@ -249,6 +270,12 @@ class RecognizedDiagram:
             next_move_reason=next_move.motivo if next_move is not None else "",
             colour_repairs=[t.casa for t in colour[0]] if colour is not None else [],
             colour_reason=colour[1] if colour is not None else "",
+            stipulation=(stipulation.estipulacao.rotulo
+                         if stipulation is not None and stipulation.estipulacao is not None else ""),
+            stipulation_closes=stipulation.fecha if stipulation is not None else None,
+            stipulation_keys=stipulation.chaves if stipulation is not None else (),
+            stipulation_repairs=list(stipulation.casas) if stipulation is not None else [],
+            stipulation_reason=stipulation.motivo if stipulation is not None else "",
             side_to_move="w" if side.color else "b",
             side_to_move_source=str(side.source),
             side_to_move_reason=side.reason,
@@ -546,6 +573,16 @@ class RecognitionOptions:
     (`cor_por_livro`), com as amostras do perfil do livro e as casas seguras do próprio
     tabuleiro. `False` é o antes -- a sabotagem do `field_exact --sabotar sem_cor`."""
 
+    stipulation: bool = True
+    """C12 do ciclo 2: a exigência impressa («mate em N») é jogada sobre a leitura; se não fecha,
+    as mesmas candidatas do C11 são tentadas e a troca única que a faz fechar é adotada
+    (`estipulacao`). `False` é o antes -- a sabotagem do `field_exact --sabotar sem_estipulacao`."""
+
+    stipulation_engine: Callable[[], Any] | None = None
+    """De onde vem o motor UCI para mate em 3+ (`estipulacao.motor_padrao`: as configurações e
+    `engine.find_engine`); um teste ou benchmark injeta o seu, ou `lambda: None` para nunca abrir
+    um processo. Sem motor, mate em 3+ fica «não verificado» -- dito, nunca inventado."""
+
     colour_calibrator: Callable[[Any], CalibradorDeCor | None] | None = None
     """De onde vem o calibrador do livro para um `pdf_source`: por padrão o perfil do livro da
     suíte (`cor_por_livro.calibrador_do_livro`); um teste ou um benchmark injeta o seu. Uma
@@ -750,6 +787,21 @@ class OcrService:
             logger.warning("perfil de cor do livro ilegível; o tabuleiro responde sozinho", exc_info=True)
             return None
 
+    @staticmethod
+    def _stipulation_engine(options: RecognitionOptions, context: DiagramContext | None) -> Any:
+        """O motor UCI para a exigência deste diagrama (C12), só quando ela precisa de um."""
+        from .estipulacao import LANCES_DA_BUSCA
+
+        exigencia = getattr(context, "stipulation", None) if context is not None else None
+        if exigencia is None or exigencia.lances <= LANCES_DA_BUSCA:
+            return None
+        resolver = options.stipulation_engine or motor_padrao
+        try:
+            return resolver()
+        except Exception:  # noqa: BLE001 - o motor é opcional; sem ele a exigência fica «não verificada»
+            logger.warning("motor UCI indisponível para a exigência; mate em 3+ fica sem verificar", exc_info=True)
+            return None
+
     def recognize_image(
         self,
         image_rgb: np.ndarray,
@@ -875,6 +927,14 @@ class OcrService:
                     prediction, reparo = apply_next_move(prediction, context, side)
                     if reparo is not None and reparo.trocas:
                         side = infer_side_to_move(prediction.fen_board, context)
+                exigencia: ReparoPelaEstipulacao | None = None
+                if options.stipulation:
+                    # C12: a exigência depois do lance e da cor -- ela julga a leitura já
+                    # corrigida pelas outras evidências, e só então tenta as suas trocas.
+                    prediction, exigencia = apply_stipulation(
+                        prediction, context, side, motor=self._stipulation_engine(options, context))
+                    if exigencia is not None and exigencia.trocas:
+                        side = infer_side_to_move(prediction.fen_board, context)
                 diagrams.append(
                     RecognizedDiagram.from_prediction(
                         idx,
@@ -892,6 +952,7 @@ class OcrService:
                         detection_source=detection_sources[idx] if idx < len(detection_sources) else "",
                         next_move=reparo,
                         colour=cor,
+                        stipulation=exigencia,
                     )
                 )
                 if progress is not None:

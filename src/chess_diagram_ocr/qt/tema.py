@@ -71,6 +71,7 @@ __all__ = [
     "aplicar_paleta",
     "aplicar_papel",
     "aplicar_tema",
+    "alto_contraste_em_vigor",
     "cromo_escuro_em_vigor",
     "cor_atual",
     "folha_de_estilo",
@@ -84,6 +85,7 @@ __all__ = [
 ]
 
 _cromo_escuro = False
+_alto_contraste = False
 """Se a pele em uso declara cromo escuro. Módulo e não parâmetro pela razão de `ui/theme.py`:
 `cor_atual` é chamada de quinze lugares que não conhecem pele nenhuma -- e não deviam conhecer."""
 
@@ -404,6 +406,12 @@ def aplicar_paleta(alvo: QApplication, *, cromo_escuro: bool) -> None:
     alvo.setPalette(paleta)
 
 
+def alto_contraste_em_vigor() -> bool:
+    """Se `aplicar_tema` deixou o alto contraste do sistema valendo (C14): quem desenha à mão --
+    o tabuleiro, o visor -- pergunta aqui para trocar cor por contorno."""
+    return _alto_contraste
+
+
 def cromo_escuro_em_vigor() -> bool:
     """Se o cromo desta sessão está escuro. É o que `aplicar_tema` deixou valendo.
 
@@ -489,7 +497,7 @@ def aplicar_tema(
     função do frontend que conhece fonte **e** densidade sem que ninguém as passe adiante -- é o
     argumento de `theme.registrar_estilos`, e ele não muda de toolkit.
     """
-    global _cromo_escuro
+    global _cromo_escuro, _alto_contraste
     _cromo_escuro = cromo_escuro
 
     base = fonte_base()[0]
@@ -506,6 +514,20 @@ def aplicar_tema(
     if not isinstance(alvo, QApplication):
         logger.info("Sem QApplication: a folha de estilo não foi aplicada (S-501).")
         return "sem_folha"
+
+    # C14 do ciclo 2: com o alto contraste do Windows ligado, a pele **não** entra. A paleta que
+    # a pessoa escolheu no sistema é a que vale (Carta §3.2); folha e paleta próprias por cima
+    # dela seriam exatamente o que o modo existe para impedir. A folha que estivesse aplicada
+    # é retirada, para a troca de pele em sessão respeitar a mesma regra.
+    from chess_diagram_ocr.qt.plataforma import alto_contraste_ativo
+
+    _alto_contraste = alto_contraste_ativo()
+    if _alto_contraste:
+        alvo.setStyleSheet("")
+        alvo.setPalette(alvo.style().standardPalette())
+        logger.info("Alto contraste do sistema ativo: folha e paleta próprias não aplicadas (C14).")
+        repintar()
+        return "alto_contraste"
 
     try:
         alvo.setStyleSheet(

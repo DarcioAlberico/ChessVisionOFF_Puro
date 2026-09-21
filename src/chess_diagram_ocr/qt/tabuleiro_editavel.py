@@ -33,11 +33,12 @@ from PyQt6.QtCore import QEvent, QPoint, QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFocusEvent, QKeyEvent, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap
 from PyQt6.QtWidgets import QToolTip, QWidget
 
+from chess_diagram_ocr.fen_utils import square_name
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.tabuleiro import TabuleiroQt
 from chess_diagram_ocr.ui import board_edit, tokens
-from chess_diagram_ocr.ui import teclado_do_tabuleiro as teclado
 from chess_diagram_ocr.ui import recorte_do_diagrama as regra
+from chess_diagram_ocr.ui import teclado_do_tabuleiro as teclado
 from chess_diagram_ocr.ui.board_model import BoardChange, BoardModel, ChangeKind
 from chess_diagram_ocr.ui.desenho_do_tabuleiro import BoardGeometry
 
@@ -431,14 +432,37 @@ class TabuleiroEditavel(TabuleiroQt):
             return False
         self.update()
         if mudanca.kind is ChangeKind.SELECTION:
+            self._anunciar()
             self.selecao_mudou.emit(self.modelo.selected)
             return False
         if mudanca.touched_position:
             self._classes = self._classes_do_modelo()
+            self._anunciar()
             self.selecao_mudou.emit(self.modelo.selected)
             self.posicao_mudou.emit(self.modelo.placement)
             return True
         return False
+
+    def _anunciar(self) -> None:
+        """O nome acessível diz a casa selecionada e a peça nela (C14 do ciclo 2).
+
+        O rodapé continua a receber a frase pelo `recado`; sem isto, «casa e2 selecionada» ia ao
+        rodapé e nenhum leitor de tela ouvia. `QWidget.setAccessibleName` é o que transforma a
+        mudança num anúncio: o próprio Qt emite o evento `NameChanged` de acessibilidade dentro
+        dele (o PyQt6 não expõe `QAccessible`, então não há como emitir à parte -- e não é
+        preciso). Só quando muda, para não anunciar a mesma casa a cada redesenho."""
+        from chess_diagram_ocr.ui import strings
+
+        casa = self.modelo.selected
+        nome = None
+        if casa is not None:
+            simbolo = board_edit.piece_at(self.modelo.placement, casa) or None
+            nome = board_edit.PIECE_NAMES_PT.get(simbolo, None) if simbolo else None
+        frase = strings.nome_acessivel_do_tabuleiro(
+            square_name(casa) if casa is not None else None, nome, duvidosas=len(self._duvidosas))
+        if frase == self.accessibleName():
+            return
+        self.setAccessibleName(frase)
 
     def _classes_do_modelo(self) -> list[str]:
         """As 64 classes que a base desenha, tiradas do modelo.

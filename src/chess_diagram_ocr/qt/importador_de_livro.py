@@ -59,7 +59,7 @@ class ImportadorDoLivro(Protocol):
         self, pdf_path: Path | None, page_count: int, *, paginas: tuple[int, ...] | None = None
     ) -> bool: ...
 
-    def cancelar(self) -> None: ...
+    def cancelar(self, *, motivo: str = "") -> None: ...
 
 
 def disponivel() -> bool:
@@ -122,9 +122,14 @@ class Ponte:
             self._pdf_importado = Path(pdf)
             self._trilho.importacao_comecou(2 * quantas)
 
-    def cancelar(self) -> None:
+    def cancelar(self, *, motivo: str = "") -> None:
+        """`motivo="troca_de_livro"` (A13 do ciclo 2): o resultado vai ser descartado por `_chegou`,
+        e o importador da suíte cala a frase «podem ser exportadas» -- um rodapé só."""
         if self.importador.rodando:
-            self.importador.cancelar()
+            try:
+                self.importador.cancelar(motivo=motivo)
+            except TypeError:  # um importador mais antigo, sem o motivo
+                self.importador.cancelar()
 
     def _chegou(self, resultado: object) -> None:
         """O relatório da importação (inteiro ou parcial) vira o estado das páginas no trilho."""

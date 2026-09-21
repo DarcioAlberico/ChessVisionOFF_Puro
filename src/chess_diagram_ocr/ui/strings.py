@@ -616,6 +616,38 @@ def reparadas_em_casas(casas: Sequence[str]) -> str:
     return f"Reparado em {quantas} casa{plural}: {', '.join(casas)}"
 
 
+def nome_acessivel_do_tabuleiro(casa: str | None, peca: str | None, *, duvidosas: int = 0) -> str:
+    """O que o leitor de tela ouve do tabuleiro (C14 do ciclo 2): «Tabuleiro, casa e2 selecionada:
+    dama branca» / «Tabuleiro, casa e2 selecionada: vazia» / «Tabuleiro, nenhuma casa selecionada».
+
+    A frase mora aqui e não no widget pela mesma razão de `side_source_label`: o rodapé e o
+    nome acessível têm de dizer a mesma coisa, e um lugar só é o que impede dois vocabulários.
+    """
+    if casa is None:
+        frase = "Tabuleiro, nenhuma casa selecionada"
+    else:
+        frase = f"Tabuleiro, casa {casa} selecionada: {peca or 'vazia'}"
+    if duvidosas:
+        plural = "" if duvidosas == 1 else "s"
+        frase += f"; {duvidosas} casa{plural} em dúvida"
+    return frase
+
+
+def estipulacao_conferida(rotulo: str, fecha: bool | None, motivo: str) -> str:
+    """«Exigência #2: fecha (1.♕h7#)» / «Exigência #2: não fecha nesta leitura» (C12).
+
+    Três estados, ditos como três: fecha, não fecha e **não verificada** -- o terceiro existe
+    para que «não fecha» nunca seja a tradução de «não olhei» (sem motor para mate em 3+)."""
+    razao = str(motivo).strip()
+    if fecha is True:
+        estado = "fecha"
+    elif fecha is False:
+        estado = "não fecha nesta leitura — confira"
+    else:
+        estado = "não verificada"
+    return f"Exigência {rotulo}: {estado}" + (f" — {razao}" if razao else "")
+
+
 def orientacao_ambigua(motivo: str) -> str:
     """«Orientação ambígua: <motivo>», com o motivo que o serviço calculou."""
     razao = str(motivo).strip()

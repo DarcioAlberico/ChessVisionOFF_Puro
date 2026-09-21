@@ -74,6 +74,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Processos de carregamento. Padrao: min(4, cpus//2). 0 carrega no processo principal.",
     )
+    parser.add_argument(
+        "--corrected-repeat",
+        type=int,
+        default=1,
+        help="C16 do ciclo 2 OCR/UI: quantas vezes por epoca um tabuleiro corrigido a mao "
+        "(rotas humanas de `corrected_by`) entra no amostrador. 1 e o treino de sempre; "
+        "a ablacao mede 3. Gravado no checkpoint.",
+    )
+    parser.add_argument(
+        "--label-noise",
+        type=float,
+        default=0.0,
+        help="SABOTAGEM (C16): fracao das casas ocupadas de treino cujo rotulo troca de cor "
+        "(X<->x). Serve para medir se o laboratorio e o campo acusam um dano conhecido; "
+        "nunca para produzir um checkpoint de producao. Gravado no checkpoint.",
+    )
     parser.add_argument("--no-calibrate", action="store_true", help="Pula a calibracao de temperatura (S-28).")
     parser.add_argument(
         "--keep-ties",
@@ -228,6 +244,8 @@ def main(argv: list[str] | None = None) -> int:
         num_workers=args.num_workers,
         calibrate=not args.no_calibrate,
         augment=augment,
+        label_noise=args.label_noise,
+        corrected_repeat=args.corrected_repeat,
         boards_per_batch=args.boards_per_batch,
         keep_ties=args.keep_ties,
     )

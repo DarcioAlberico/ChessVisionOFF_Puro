@@ -1022,6 +1022,7 @@ src/chess_diagram_ocr/
   desenho_de_diagrama.py  o diagrama desenhado de novo (fonte Merida ou PNGs das pecas) para substituir no PDF
   detection_census.py   censo da deteccao: quantos diagramas cada regra achou, por livro
   engine.py             motor UCI opcional (Stockfish)
+  estipulacao.py        a exigencia do problema («mate em N») jogada sobre a leitura: busca exaustiva, motor UCI, e a troca unica que a faz fechar (C12)
   estudo.py             a arvore de variantes da sala de estudo, e as regras de lance
   estudo_arquivo.py     leitura e escrita dos estudos em disco, um arquivo por posicao
   estudo_partidas.py    a partida da base carregada como linha principal do estudo

@@ -553,3 +553,48 @@ class PolimentoDoPasso16Tests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class AltoContrasteTests(unittest.TestCase):
+    """C14 do ciclo 2 OCR/UI: com o alto contraste do Windows ligado, a pele não entra.
+
+    `grep HighContrast` não achava nada: a folha e a paleta próprias eram aplicadas por cima do
+    esquema que a pessoa escolheu no sistema -- o que o modo existe para impedir (Carta §3.2).
+    A variável `CVOFF_ALTO_CONTRASTE` força a resposta do sistema, para o teste e o arnês.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+
+    def tearDown(self) -> None:
+        import os
+
+        os.environ.pop("CVOFF_ALTO_CONTRASTE", None)
+        tema.aplicar_tema(self.app)
+
+    def test_com_alto_contraste_a_folha_e_a_paleta_ficam_de_fora(self) -> None:
+        import os
+
+        from chess_diagram_ocr.qt import plataforma
+
+        os.environ["CVOFF_ALTO_CONTRASTE"] = "1"
+        self.assertTrue(plataforma.alto_contraste_ativo())
+        resultado = tema.aplicar_tema(self.app, cromo_escuro=True)
+        self.assertEqual(resultado, "alto_contraste")
+        self.assertTrue(tema.alto_contraste_em_vigor())
+        self.assertEqual(self.app.styleSheet(), "", "a folha própria não pode ficar por cima do sistema")
+
+        os.environ["CVOFF_ALTO_CONTRASTE"] = "0"
+        self.assertFalse(plataforma.alto_contraste_ativo())
+        self.assertEqual(tema.aplicar_tema(self.app), "qss")
+        self.assertFalse(tema.alto_contraste_em_vigor())
+        self.assertNotEqual(self.app.styleSheet(), "")
+
+    def test_a_pergunta_ao_sistema_nunca_levanta(self) -> None:
+        import os
+
+        from chess_diagram_ocr.qt import plataforma
+
+        os.environ.pop("CVOFF_ALTO_CONTRASTE", None)
+        self.assertIn(plataforma.alto_contraste_ativo(), (True, False))

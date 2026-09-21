@@ -1028,7 +1028,7 @@ class JanelaPrincipal(QMainWindow):
         if self.livro is not None and self.livro.rodando and anterior is not None and anterior != alvo:
             # A importação era do livro anterior: cancelada, e a ponte descarta o resultado
             # que ainda chegar dele (C7 -- a tranca deixou de segurar o «Abrir PDF…»).
-            self.livro.cancelar()
+            self.livro.cancelar(motivo="troca_de_livro")
             self._dizer(f"A importação de {anterior.name} foi cancelada ao abrir outro livro.")
         self._pdf = alvo
         # As caixas são de um arquivo que pode ter mudado no disco. A chave já inclui o documento,

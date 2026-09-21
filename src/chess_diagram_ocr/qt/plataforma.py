@@ -45,8 +45,10 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "CAMINHO_DO_ICONE",
     "DPI_DE_REFERENCIA",
+    "ENV_ALTO_CONTRASTE",
     "ID_NA_BARRA_DE_TAREFAS",
     "Preparo",
+    "alto_contraste_ativo",
     "aplicar_icone",
     "identificar_na_barra_de_tarefas",
     "monitores",
@@ -227,3 +229,44 @@ def monitores() -> tuple[tuple[int, int, int, int], ...]:
     except Exception as exc:  # noqa: BLE001 - Qt sem tela, duplo de teste, offscreen exótico
         logger.info("Telas não enumeradas (%s): a geometria guardada é aplicada como veio.", exc)
         return ()
+
+
+ENV_ALTO_CONTRASTE = "CVOFF_ALTO_CONTRASTE"
+"""`1`/`true` força o modo de alto contraste (o arnês de auditoria e os testes, que não ligam o
+do Windows); `0`/`false` força o desligado. Vazio: pergunta ao sistema."""
+
+
+def alto_contraste_ativo() -> bool:
+    """Se o Windows está em alto contraste (`SPI_GETHIGHCONTRAST`), ou o ambiente o força
+    (C14 do ciclo 2 OCR/UI).
+
+    A Carta §3.2 pede que o produto respeite o alto contraste do sistema, e `grep HighContrast`
+    achava nada: a pele era aplicada por cima. Quem lê a resposta é `tema.aplicar_tema`, que com
+    ela **não** aplica folha nem paleta -- a paleta do sistema, que a pessoa escolheu, vale. Fora
+    do Windows, `False`; qualquer falha da chamada de sistema, `False` e uma linha de log -- o
+    contrato da S-53.
+    """
+    forcado = os.environ.get(ENV_ALTO_CONTRASTE, "").strip().lower()
+    if forcado in ("1", "true"):
+        return True
+    if forcado in ("0", "false"):
+        return False
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class HIGHCONTRAST(ctypes.Structure):
+            _fields_ = [("cbSize", wintypes.UINT), ("dwFlags", wintypes.DWORD),
+                        ("lpszDefaultScheme", wintypes.LPWSTR)]
+
+        SPI_GETHIGHCONTRAST = 0x0042
+        HCF_HIGHCONTRASTON = 0x00000001
+        dados = HIGHCONTRAST()
+        dados.cbSize = ctypes.sizeof(HIGHCONTRAST)
+        ok = ctypes.windll.user32.SystemParametersInfoW(SPI_GETHIGHCONTRAST, dados.cbSize, ctypes.byref(dados), 0)
+        return bool(ok) and bool(dados.dwFlags & HCF_HIGHCONTRASTON)
+    except Exception:  # noqa: BLE001 - uma pergunta ao sistema que falha não derruba a janela
+        logger.debug("Não foi possível perguntar o alto contraste ao sistema.", exc_info=True)
+        return False

@@ -65,8 +65,9 @@ from typing import Literal, Protocol, runtime_checkable
 import chess
 import fitz
 
-from .pdf_io import PdfSource
+from .estipulacao import Estipulacao, estipulacao_de_pagina, parse_estipulacao
 from .orientation import BoardCoordinates
+from .pdf_io import PdfSource
 from .procedencias import DA_CAMADA, DE_TERCEIROS, LineOrigin, SideOrigin, escopo_de_pagina
 
 logger = logging.getLogger(__name__)
@@ -177,6 +178,11 @@ class DiagramContext:
     """As coordenadas impressas na borda, quando a página as tem (passo C10): a coluna de
     números à esquerda de cima para baixo e a linha de letras embaixo, lidas das palavras
     curtas da camada de texto em volta do retângulo. `None` quando a página não as imprime."""
+
+    stipulation: Estipulacao | None = None
+    """A exigência impressa -- «mate em N» -- lida da legenda (C12 do ciclo 2), ou da faixa de
+    margem quando a legenda cala (`estipulacao_de_pagina`, origem `pagina`). `None` = a página
+    não exige nada verificável. É o que `estipulacao.apply_stipulation` joga sobre a leitura."""
 
     exercise_number: int | None = None
     players: tuple[str, str] | None = None
@@ -1159,6 +1165,14 @@ def _parse_lines(
             if line_year is not None:
                 event, year = line_event, line_year
 
+    # C12: a exigência só sai de linha com formato de legenda -- em prosa, «mate em 2» é uma
+    # afirmação sobre uma variante, não uma exigência sobre o diagrama.
+    stipulation: Estipulacao | None = None
+    for text in captions:
+        stipulation = parse_estipulacao(text)
+        if stipulation is not None:
+            break
+
     return DiagramContext(
         caption="\n".join(item.text for item in lines),
         side_to_move=None if decision is None else decision.color,
@@ -1172,6 +1186,7 @@ def _parse_lines(
         players=players,
         event=event,
         year=year,
+        stipulation=stipulation,
     )
 
 
@@ -1482,7 +1497,35 @@ def contexts_for_page(
         scope = page_scope_declaration(page, caption_reader=caption_reader)
         if scope is not None:
             contexts = [_apply_page_scope(context, scope) for context in contexts]
+    # C12: a exigência da faixa de margem («2.2 Combinations #2 (451-3514)» no topo do Polgar)
+    # vale para os diagramas cuja legenda não exige nada -- a mesma precedência do lado.
+    if any(context.stipulation is None for context in contexts):
+        exigencia = page_stipulation_declaration(page, caption_reader=caption_reader)
+        if exigencia is not None:
+            contexts = [
+                context if context.stipulation is not None else replace(context, stipulation=exigencia)
+                for context in contexts
+            ]
     return contexts
+
+
+def page_stipulation_declaration(
+    page: fitz.Page, *, caption_reader: CaptionSource | None = None
+) -> Estipulacao | None:
+    """A exigência que a faixa de margem declara para a página inteira, ou `None` (C12).
+
+    **Só a camada de texto.** O escopo do lado a jogar consulta o OCR da margem quando a camada
+    cala, mas ele só é consultado quando sobra diagrama sem lado; a exigência sobra em quase
+    toda página (a maioria dos livros não exige nada), e pagar OCR de margem em cada uma
+    quebraria a economia da S-61 (`test_onde_a_camada_de_texto_respondeu_o_ocr_nao_roda`). O
+    `caption_reader` fica na assinatura para o dia em que um livro de problemas digitalizado
+    justificar o custo -- medido, não suposto.
+    """
+    del caption_reader  # ver o docstring: a margem por OCR não é consultada
+    exigencia = estipulacao_de_pagina([line.text for line in page_margin_lines(page)])
+    if exigencia is not None:
+        logger.info("exigência de escopo de página: %r", exigencia.texto)
+    return exigencia
 
 
 def contexts_for_pdf_page(

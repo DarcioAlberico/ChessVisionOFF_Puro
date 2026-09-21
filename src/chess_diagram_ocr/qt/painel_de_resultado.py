@@ -1546,6 +1546,8 @@ class PainelDeResultado(QWidget):
             linhas.append(strings.reparadas_em_casas([square_name(int(c)) for c in item.changed_squares]))
         if item.orientation_ambiguous:
             linhas.append(strings.orientacao_ambigua(item.orientation_reason))
+        if item.stipulation:
+            linhas.append(strings.estipulacao_conferida(item.stipulation, item.stipulation_closes, item.stipulation_reason))
         if item.detection_source:
             linhas.append(f"Localizado por: {strings.detection_source_label(item.detection_source)}")
         if item.caption:

@@ -736,6 +736,12 @@ class FieldReport:
     contaminated_exported: int = 0
     """Dos contaminados, os que saíram. É o que a taxa limpa tira do numerador."""
 
+    contaminated_exported_comparable: int = 0
+    """Dos contaminados exportados, os com referência anotada (C15 do ciclo 2)."""
+
+    contaminated_exported_exact: int = 0
+    """Dos anteriores, os exatos -- o que `field_exact_clean` tira do numerador."""
+
     repaired_squares: int = 0
     """Casas que `decode_constrained` teve de consertar no que o argmax devolveu (S-62).
 
@@ -794,6 +800,42 @@ class FieldReport:
     colour_repaired_wrong: int = 0
     """Dos trocados pela cor e comparáveis, os que ficaram diferentes -- o número que diz se
     a tinta está inventando."""
+
+    stipulation_checked: int = 0
+    """Diagramas lidos com uma exigência impressa («mate em N») para conferir (C12)."""
+
+    stipulation_closed: int = 0
+    """Dos conferidos, os em que a leitura final cumpre a exigência."""
+
+    stipulation_failed: int = 0
+    """Dos conferidos, os em que a exigência não fecha nem com trocas -- o sinal de revisão."""
+
+    stipulation_unverified: int = 0
+    """Dos conferidos, os que ficaram sem resposta (sem motor para mate em 3+, posição ilegal,
+    orçamento). Publicado para o «não fecha» nunca esconder um «não olhei»."""
+
+    stipulation_repaired: int = 0
+    """Dos conferidos, os em que só uma troca (≤ 2 casas) fez a exigência fechar, e foi adotada."""
+
+    stipulation_repaired_exact: int = 0
+    """Dos reparados pela exigência e comparáveis, os que ficaram iguais à anotação."""
+
+    stipulation_repaired_wrong: int = 0
+    """Dos reparados pela exigência e comparáveis, os que ficaram diferentes -- o número que
+    diz se a exigência está inventando."""
+
+    stipulation_ambiguous: int = 0
+    """Dos conferidos, os em que mais de uma troca fecha (nenhuma adotada)."""
+
+    stipulation_truth_checked: int = 0
+    """Anotados comparáveis com exigência lida: a **verdade** foi jogada contra a exigência."""
+
+    stipulation_truth_closes: int = 0
+    """Dos anteriores, os em que a verdade anotada cumpre a exigência. Se um não cumpre, ou a
+    gramática leu a exigência errada, ou a anotação está errada -- e o relatório diz qual."""
+
+    stipulation_truth_failed: list[str] = field(default_factory=list)
+    """Cada verdade que não fecha, com endereço, para alguém olhar."""
 
     seconds: float = 0.0
     """Tempo de `recognize_page` somado. Com `detected`, dá o custo por diagrama.
@@ -861,6 +903,20 @@ class FieldReport:
         cima. Aqui a diferença entre as duas é o tamanho do viés -- e ela é publicada, e não
         estimada."""
         return (self.exported - self.contaminated_exported) / self.clean_annotated if self.clean_annotated else 0.0
+
+    @property
+    def clean_exported_comparable(self) -> int:
+        return self.exported_comparable - self.contaminated_exported_comparable
+
+    @property
+    def field_exact_clean(self) -> float:
+        """`field_exact` sobre os diagramas de páginas **sem** amostra de treino (C15, S-96 × S-97).
+
+        O número cheio inclui páginas que o próximo modelo terá visto no treino; este é o que
+        vale para dizer «o modelo lê o que nunca viu». Publicados lado a lado, sempre: a diferença
+        entre os dois é o tamanho do viés, medido e não estimado."""
+        limpos = self.clean_exported_comparable
+        return (self.exported_exact - self.contaminated_exported_exact) / limpos if limpos else 0.0
 
     @property
     def field_exact(self) -> float:
@@ -941,8 +997,12 @@ class FieldReport:
             # S-97: o vies que o conjunto carrega, publicado ao lado do numero que ele afeta.
             "contaminated": self.contaminated,
             "contaminated_exported": self.contaminated_exported,
+            "contaminated_exported_comparable": self.contaminated_exported_comparable,
+            "contaminated_exported_exact": self.contaminated_exported_exact,
             "clean_annotated": self.clean_annotated,
             "clean_export_rate": round(self.clean_export_rate, 4),
+            "clean_exported_comparable": self.clean_exported_comparable,
+            "field_exact_clean": round(self.field_exact_clean, 4),
             "repaired_squares": self.repaired_squares,
             "repaired_diagrams": self.repaired_diagrams,
             "repaired_exported": self.repaired_exported,
@@ -957,6 +1017,17 @@ class FieldReport:
             "colour_repaired_squares": self.colour_repaired_squares,
             "colour_repaired_exact": self.colour_repaired_exact,
             "colour_repaired_wrong": self.colour_repaired_wrong,
+            "stipulation_checked": self.stipulation_checked,
+            "stipulation_closed": self.stipulation_closed,
+            "stipulation_failed": self.stipulation_failed,
+            "stipulation_unverified": self.stipulation_unverified,
+            "stipulation_repaired": self.stipulation_repaired,
+            "stipulation_repaired_exact": self.stipulation_repaired_exact,
+            "stipulation_repaired_wrong": self.stipulation_repaired_wrong,
+            "stipulation_ambiguous": self.stipulation_ambiguous,
+            "stipulation_truth_checked": self.stipulation_truth_checked,
+            "stipulation_truth_closes": self.stipulation_truth_closes,
+            "stipulation_truth_failed": list(self.stipulation_truth_failed),
             "repairs_per_diagram": round(self.repairs_per_diagram, 4),
             "seconds": round(self.seconds, 3),
             "seconds_per_diagram": round(self.seconds_per_diagram, 4),
@@ -975,7 +1046,11 @@ class FieldReport:
             if self.has_enough_comparable
             else f"exatidão não medida ({self.comparable} de {self.annotated} conferidos)"
         )
-        sujeira = f" (limpa {self.clean_export_rate:.3f}, {self.contaminated} contaminados)" if self.contaminated else ""
+        sujeira = (
+            f" (limpa {self.clean_export_rate:.3f}, exatidão limpa {self.field_exact_clean:.3f} "
+            f"n={self.clean_exported_comparable}, {self.contaminated} contaminados)"
+            if self.contaminated else ""
+        )
         return (
             f"{self.annotated} diagramas anotados em {self.pages} páginas "
             f"({self.pages_without_diagram} sem diagrama) | "
@@ -1000,6 +1075,8 @@ def _accumulate(alvo: FieldReport, parcela: FieldReport) -> None:
     alvo.exported_exact += parcela.exported_exact
     alvo.contaminated += parcela.contaminated
     alvo.contaminated_exported += parcela.contaminated_exported
+    alvo.contaminated_exported_comparable += parcela.contaminated_exported_comparable
+    alvo.contaminated_exported_exact += parcela.contaminated_exported_exact
     alvo.repaired_squares += parcela.repaired_squares
     alvo.repaired_diagrams += parcela.repaired_diagrams
     alvo.repaired_exported += parcela.repaired_exported
@@ -1014,10 +1091,43 @@ def _accumulate(alvo: FieldReport, parcela: FieldReport) -> None:
     alvo.colour_repaired_squares += parcela.colour_repaired_squares
     alvo.colour_repaired_exact += parcela.colour_repaired_exact
     alvo.colour_repaired_wrong += parcela.colour_repaired_wrong
+    alvo.stipulation_checked += parcela.stipulation_checked
+    alvo.stipulation_closed += parcela.stipulation_closed
+    alvo.stipulation_failed += parcela.stipulation_failed
+    alvo.stipulation_unverified += parcela.stipulation_unverified
+    alvo.stipulation_repaired += parcela.stipulation_repaired
+    alvo.stipulation_repaired_exact += parcela.stipulation_repaired_exact
+    alvo.stipulation_repaired_wrong += parcela.stipulation_repaired_wrong
+    alvo.stipulation_ambiguous += parcela.stipulation_ambiguous
+    alvo.stipulation_truth_checked += parcela.stipulation_truth_checked
+    alvo.stipulation_truth_closes += parcela.stipulation_truth_closes
+    alvo.stipulation_truth_failed.extend(parcela.stipulation_truth_failed)
     alvo.seconds += parcela.seconds
     alvo.misses.extend(parcela.misses)
     alvo.wrong.extend(parcela.wrong)
     alvo.contaminated_pages.extend(parcela.contaminated_pages)
+
+
+def _truth_closes(placement: str, lido: Any, stipulation_engine: Any) -> bool | None:
+    """A verdade anotada jogada contra a exigência que a leitura carrega (C12). `None` = não
+    verificável (sem motor para mate em 3+, exigência mal formada, posição ilegal)."""
+    import chess
+
+    from .estipulacao import LANCES_DA_BUSCA, Estipulacao, motor_padrao, verificar
+
+    rotulo = str(getattr(lido, "stipulation", "") or "")
+    if not rotulo.startswith("#") or not rotulo[1:].isdigit():
+        return None
+    exigencia = Estipulacao(int(rotulo[1:]), texto=rotulo)
+    motor = None
+    if exigencia.lances > LANCES_DA_BUSCA:
+        resolver = stipulation_engine or motor_padrao
+        try:
+            motor = resolver()
+        except Exception:  # noqa: BLE001 - sem motor a verdade fica sem verificar, e é dito
+            motor = None
+    turn = chess.WHITE if str(getattr(lido, "side_to_move", "w")) != "b" else chess.BLACK
+    return verificar(placement, turn, exigencia, motor=motor).fecha
 
 
 def _match(annotated: Sequence[AnnotatedDiagram], read: Sequence[RecognizedDiagram]) -> dict[int, int]:
@@ -1052,6 +1162,7 @@ def evaluate_page(
     accept_threshold: float = ACCEPT_MIN_CONFIDENCE,
     seconds: float = 0.0,
     training_samples: int = 0,
+    stipulation_engine: Any = None,
 ) -> FieldReport:
     """Compara o que o pipeline leu numa página com o que a anotação diz que ela tem.
 
@@ -1076,6 +1187,12 @@ def evaluate_page(
         next_move_ambiguous=sum(1 for lido in read if "trocas diferentes" in lido.next_move_reason),
         colour_repaired=sum(1 for lido in read if lido.colour_repairs),
         colour_repaired_squares=sum(len(lido.colour_repairs) for lido in read),
+        stipulation_checked=sum(1 for lido in read if lido.stipulation),
+        stipulation_closed=sum(1 for lido in read if lido.stipulation and lido.stipulation_closes is True),
+        stipulation_failed=sum(1 for lido in read if lido.stipulation and lido.stipulation_closes is False),
+        stipulation_unverified=sum(1 for lido in read if lido.stipulation and lido.stipulation_closes is None),
+        stipulation_repaired=sum(1 for lido in read if lido.stipulation_repairs),
+        stipulation_ambiguous=sum(1 for lido in read if "trocas diferentes" in lido.stipulation_reason),
     )
 
     casados = _match(page.diagrams, read)
@@ -1129,6 +1246,20 @@ def evaluate_page(
         if lido.colour_repairs:
             relatorio.colour_repaired_exact += int(certo)
             relatorio.colour_repaired_wrong += int(not certo)
+        if lido.stipulation_repairs:
+            relatorio.stipulation_repaired_exact += int(certo)
+            relatorio.stipulation_repaired_wrong += int(not certo)
+        if lido.stipulation:
+            # C12 (portão a): a verdade anotada tem de cumprir a exigência lida. Se não cumpre,
+            # a gramática ou a anotação está errada -- e é isto que o relatório aponta.
+            fecha_na_verdade = _truth_closes(anotado.placement, lido, stipulation_engine)
+            if fecha_na_verdade is not None:
+                relatorio.stipulation_truth_checked += 1
+                relatorio.stipulation_truth_closes += int(fecha_na_verdade)
+                if not fecha_na_verdade:
+                    relatorio.stipulation_truth_failed.append(
+                        f"{page.pdf} p{page.page} d{indice}: {lido.stipulation} não fecha na anotação "
+                        f"{anotado.placement} ({lido.side_to_move})")
 
         # S-96: exportado e errado e a categoria que mais custa, e por isso ela e contada
         # separada em vez de sair no complemento de uma taxa. O que nao sai vai para o
@@ -1136,6 +1267,9 @@ def evaluate_page(
         if exportado:
             relatorio.exported_comparable += 1
             relatorio.exported_exact += int(certo)
+            if contaminada:
+                relatorio.contaminated_exported_comparable += 1
+                relatorio.contaminated_exported_exact += int(certo)
             if not certo:
                 relatorio.wrong.append(
                     f"{page.pdf} p{page.page}: exportado e errado "
@@ -1336,6 +1470,7 @@ def evaluate_field(
             accept_threshold=accept_threshold,
             seconds=decorrido,
             training_samples=(training_pages or {}).get((pagina.pdf, pagina.page), 0),
+            stipulation_engine=getattr(options, "stipulation_engine", None),
         )
         _accumulate(total, parcela)
         _accumulate(total.per_book.setdefault(pagina.pdf, FieldReport()), parcela)

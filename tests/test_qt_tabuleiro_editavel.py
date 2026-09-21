@@ -99,6 +99,28 @@ class TabuleiroEditavelTests(unittest.TestCase):
         self.clicar(0)
         self.assertIsNone(self.tabuleiro.selecionada())
 
+    def test_o_nome_acessivel_diz_a_casa_selecionada_e_a_peca(self) -> None:
+        """C14 do ciclo 2: «casa a8 selecionada» ia ao rodapé e nenhum leitor de tela ouvia. O
+        nome acessível muda com a seleção (o Qt emite `NameChanged` dentro de `setAccessibleName`)
+        e diz a peça; ao desmarcar, diz que nada está selecionado."""
+        self.clicar(0)  # a8, a torre preta
+        self.assertEqual(self.tabuleiro.accessibleName(), "Tabuleiro, casa a8 selecionada: torre preta")
+        self.tabuleiro.selecionar_casa(27)  # d5, vazia
+        self.assertEqual(self.tabuleiro.accessibleName(), "Tabuleiro, casa d5 selecionada: vazia")
+        self.tabuleiro.definir_duvidosas((27, 28))
+        self.tabuleiro.selecionar_casa(28)
+        self.assertEqual(self.tabuleiro.accessibleName(),
+                         "Tabuleiro, casa e5 selecionada: vazia; 2 casas em dúvida")
+        self.tabuleiro.selecionar_casa(None)
+        self.assertEqual(self.tabuleiro.accessibleName(),
+                         "Tabuleiro, nenhuma casa selecionada; 2 casas em dúvida")
+
+    def test_a_sabotagem_um_tabuleiro_que_nao_anuncia_reprova(self) -> None:
+        """O que o portão `audit.teclado` da suíte mede: sem `_anunciar`, o nome não muda."""
+        self.tabuleiro._anunciar = lambda: None  # noqa: SLF001 - a sabotagem
+        self.clicar(0)
+        self.assertNotIn("a8", self.tabuleiro.accessibleName())
+
     def test_clicar_fora_do_tabuleiro_nao_levanta(self) -> None:
         fora = QPoint(2, 2)
         self.tabuleiro.mousePressEvent(

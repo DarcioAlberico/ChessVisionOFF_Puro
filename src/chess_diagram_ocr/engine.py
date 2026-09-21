@@ -231,6 +231,26 @@ class EngineAnalyzer:
         return _avaliacao_de(board, info, elapsed_s=time.monotonic() - inicio)
 
 
+    def mate_in(self, board: chess.Board, lances: int, *, time_s: float = 3.0) -> Evaluation:
+        """``go mate N`` com teto de tempo (C12 do ciclo 2 OCR/UI).
+
+        O motor para assim que acha um mate em até `lances`; quando **não há**, é o teto de tempo
+        que responde -- e é essa a resposta que a estipulação precisa. `Evaluation.mate_in` vem
+        do ponto de vista das brancas, como em `analyse`; quem chama vira para o lado que joga.
+        """
+        import time
+
+        limite = chess.engine.Limit(mate=max(1, int(lances)), time=max(0.1, float(time_s)))
+        inicio = time.monotonic()
+        with self._lock:
+            self.start()
+            assert self._engine is not None
+            try:
+                info = self._engine.analyse(board, limite)
+            except chess.engine.EngineError as exc:
+                raise RuntimeError(f"O motor de análise falhou: {exc}") from exc
+        return _avaliacao_de(board, info, elapsed_s=time.monotonic() - inicio)
+
     def analyse_multi(
         self, board: chess.Board, *, count: int = 3, movetime_ms: int | None = None
     ) -> list[Evaluation]:

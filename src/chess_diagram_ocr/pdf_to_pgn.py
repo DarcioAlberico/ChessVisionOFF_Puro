@@ -13,16 +13,18 @@ import numpy as np
 
 from .checkpoint import checkpoint_identity
 from .config import (
-    PIECE_CLASSES,
     ACCEPT_MIN_CONFIDENCE,
     DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
     DEFAULT_READING_ORDER,
+    PIECE_CLASSES,
     PROJECT_ROOT,
     OrientationMode,
     ReadingOrder,
 )
+from .cor_por_livro import apply_colour, calibrador_do_livro
+from .estipulacao import apply_stipulation
 from .export_checkpoint import (
     DEFAULT_CHECKPOINT_EVERY,
     CheckpointWriter,
@@ -33,12 +35,11 @@ from .export_checkpoint import (
 from .fen_utils import check_position, square_name
 from .gallery import DiagramAnnotation, lichess_analysis_url, load_annotations
 from .inference import BoardPrediction, load_model, predict_with_orientation
+from .lance_seguinte import apply_next_move
 from .pdf_io import PdfSource as _PdfSource
 from .pdf_text import DiagramContext
-from .proveniencia import Cabecalho, chave, hash_do_arquivo, write_sidecar
 from .provenance import hash_board_rgb
-from .cor_por_livro import apply_colour, calibrador_do_livro
-from .lance_seguinte import apply_next_move
+from .proveniencia import Cabecalho, chave, hash_do_arquivo, write_sidecar
 from .semantics import SideToMove, compose_fen, infer_castling_rights, infer_side_to_move
 
 if TYPE_CHECKING:
@@ -121,9 +122,25 @@ class DiagramPosition:
     """As casas (`e5`) trocadas para a segunda opção porque só assim o lance impresso replica.
     Vão ao PGN em `[OCRNextMove]`; o gate as julga por `gate_confidence`."""
 
+    stipulation: str = ""
+    """A exigência impressa (`#2`), quando a página a tem (C12)."""
+
+    stipulation_closes: bool | None = None
+    """`True` fecha, `False` não fecha (nem com trocas), `None` não verificável (C12)."""
+
+    stipulation_keys: tuple[str, ...] = ()
+    """A(s) chave(s) em SAN, quando fecha (C12)."""
+
+    stipulation_repairs: tuple[str, ...] = ()
+    """As casas (`e5`) trocadas porque só assim a exigência fecha (C12). Vão ao PGN em
+    `[OCRStipulation]`; o gate as julga por `gate_confidence`."""
+
+    stipulation_reason: str = ""
+
     gate_confidence: float | None = None
-    """A confiança que o gate julga (C11): `min_confidence` sem as casas provadas pelo lance
-    seguinte. `None` quando não há reparo pelo lance -- e aí o gate usa `min_confidence`."""
+    """A confiança que o gate julga (C11/C12): `min_confidence` sem as casas provadas pelo lance
+    seguinte ou pela exigência. `None` quando não há reparo externo -- e aí o gate usa
+    `min_confidence`."""
 
     bbox_pdf: tuple[float, float, float, float] | None = None
     """Onde o diagrama está na página, em pontos do PDF (A11): a chave geométrica que o A3
@@ -567,6 +584,17 @@ def _own_model_session(model_path: Path, device: str | None) -> Iterator[tuple[A
     yield load_model(model_path, device=device)
 
 
+def _motor_para(context: Any) -> Any:
+    """O motor UCI só quando a exigência deste diagrama precisa de um (mate em 3+), como em
+    `OcrService._stipulation_engine`; `None` nos outros casos e quando a máquina não tem motor."""
+    from .estipulacao import LANCES_DA_BUSCA, motor_padrao
+
+    exigencia = getattr(context, "stipulation", None) if context is not None else None
+    if exigencia is None or exigencia.lances <= LANCES_DA_BUSCA:
+        return None
+    return motor_padrao()
+
+
 def _scan_pages(
     pdf_source: PdfSource,
     model: Any,
@@ -628,6 +656,11 @@ def _scan_pages(
             prediction, reparo = apply_next_move(prediction, context, side)
             if reparo is not None and reparo.trocas:
                 side = infer_side_to_move(prediction.fen_board, context)
+            # C12: a exigência do problema, pelo mesmo caminho da janela (`_stipulation_engine`).
+            prediction, exigencia = apply_stipulation(
+                prediction, context, side, motor=_motor_para(context))
+            if exigencia is not None and exigencia.trocas:
+                side = infer_side_to_move(prediction.fen_board, context)
 
             # Legalidade re-avaliada com o lado a jogar decidido, e nao com o "w" fixo que a
             # inferencia usou: e o que faz o xeque invertido deixar de ser "ilegal" quando a
@@ -635,7 +668,8 @@ def _scan_pages(
             resolved = check_position(compose_fen(prediction.fen_board, side))
 
             gate_confidence: float | None = None
-            excluded = set(reparo.casas if reparo is not None else []) | {t.casa for t in trocas_cor}
+            excluded = (set(reparo.casas if reparo is not None else []) | {t.casa for t in trocas_cor}
+                        | set(exigencia.casas if exigencia is not None else []))
             if excluded:
                 others = [float(c) for i, c in enumerate(prediction.square_confidences) if i not in excluded]
                 gate_confidence = min(others) if others else None
@@ -657,6 +691,13 @@ def _scan_pages(
                 colour_repairs=tuple(square_name(t.casa) for t in trocas_cor),
                 next_move=reparo.lance if reparo is not None else "",
                 next_move_repairs=tuple(square_name(c) for c in reparo.casas) if reparo is not None else (),
+                stipulation=(exigencia.estipulacao.rotulo
+                             if exigencia is not None and exigencia.estipulacao is not None else ""),
+                stipulation_closes=exigencia.fecha if exigencia is not None else None,
+                stipulation_keys=exigencia.chaves if exigencia is not None else (),
+                stipulation_repairs=(tuple(square_name(c) for c in exigencia.casas)
+                                     if exigencia is not None else ()),
+                stipulation_reason=exigencia.motivo if exigencia is not None else "",
                 gate_confidence=gate_confidence,
                 is_legal=resolved.is_legal,
                 is_fatal=resolved.is_fatal,
@@ -824,6 +865,22 @@ def build_pgn_games(
         if position.colour_repairs:
             # C5: a cor que a tinta contradisse, trocada pelo calibrador do livro.
             game.headers["OCRColour"] = "tinta trocou " + " ".join(position.colour_repairs)
+        if position.stipulation:
+            # C12: a exigência impressa e o que ela disse da leitura. `Stipulation` é o header
+            # que os leitores de PGN de problemas já conhecem (`#2`); `StipulationCheck` diz
+            # se a posição exportada a cumpre -- «fecha», «não fecha» ou «não verificada».
+            game.headers["Stipulation"] = position.stipulation
+            if position.stipulation_closes is True:
+                veredito = "fecha" + (f": 1.{position.stipulation_keys[0]}" if position.stipulation_keys else "")
+            elif position.stipulation_closes is False:
+                veredito = "não fecha"
+            else:
+                veredito = "não verificada"
+            game.headers["StipulationCheck"] = veredito
+            if position.stipulation_repairs:
+                game.headers["OCRStipulation"] = (
+                    f"{position.stipulation} prova {' '.join(position.stipulation_repairs)}"
+                    + (f"; gate {position.gate_confidence:.3f}" if position.gate_confidence is not None else ""))
         if provenance_file:
             # A11: o PGN aponta para o sidecar; a chave é a mesma identidade do `[Diagram]`.
             game.headers["ProvenanceFile"] = provenance_file
