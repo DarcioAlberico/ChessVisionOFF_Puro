@@ -6,6 +6,8 @@ só o recorte andava por setas. A régua do passo é **três teclas por casa**, 
 
 * **`Tab` / `Shift+Tab`** vão à próxima / anterior casa **duvidosa** (as âmbar da leitura, ou as
   incertas; sem nenhuma, as ocupadas) -- a casa que a pessoa ia conferir de qualquer modo.
+  **Depois da última, o `Tab` sai do tabuleiro** (e o `Shift+Tab`, antes da primeira): a lista
+  não dá a volta. Entrar pelo teclado já seleciona a primeira (a última, entrando de trás).
 * **Setas** andam uma casa, como no recorte ao lado.
 * **`k q r b n p`** põem a peça **preta** na casa selecionada; com `Shift`, a **branca**.
   `Delete`/`Backspace` esvaziam; `Espaço`/`Enter` aplicam o pincel da paleta, quando há um.
@@ -22,6 +24,14 @@ ligado a guarda. A saída é a da S-244, o ceder tipado: enquanto tem o foco, o 
 **toma para si** as ações que as setas pedem (`ACOES_DAS_SETAS`), e o ir ao diagrama vizinho
 fica com os botões do painel e com o foco fora do tabuleiro -- a mesma regra que dá `←` ao
 campo de texto em foco.
+
+**O `Tab` que dava a volta era uma armadilha de teclado** (WCAG 2.1.2): com uma posição na
+tela o tabuleiro consumia todo `Tab` e todo `Shift+Tab`, e `Ctrl+Tab` também caía aqui -- quem
+não usa o mouse não saía dele nunca. A auditoria `teclado` não o via porque mede a cadeia pelo
+`focusNextPrevChild` da **janela**, não pela tecla entregue ao widget. Por isso a lista das
+duvidosas é percorrida **uma vez** e o foco segue para o controle seguinte; é o padrão de
+widget composto (a grade da ARIA): `Tab` entra e sai, o que anda por dentro são as setas -- com
+a concessão do passo, que o `Tab` por dentro visite as duvidosas antes de sair.
 """
 
 from __future__ import annotations
@@ -81,14 +91,18 @@ def acao_da_tecla(tecla: str, *, shift: bool = False) -> Acao | None:
     return None
 
 
-def proxima_duvidosa(duvidosas: Sequence[int], atual: int | None, passo: int) -> int | None:
-    """A duvidosa seguinte (`passo=1`) ou anterior (`-1`) a `atual`, dando a volta; `None` sem
-    duvidosas.
+def proxima_duvidosa(
+    duvidosas: Sequence[int], atual: int | None, passo: int, *, dar_a_volta: bool = True
+) -> int | None:
+    """A duvidosa seguinte (`passo=1`) ou anterior (`-1`) a `atual`; `None` sem duvidosas.
 
     **A ordem é a da lista, não a do tabuleiro**: quem a monta põe primeiro a casa que mais
     merece o olho (a de menor margem, a de menor confiança), e o primeiro `Tab` vai a ela --
     é o que faz a correção caber em duas teclas. `atual=None` ou fora da lista começa na
     primeira (ou na última, andando para trás).
+
+    Com `dar_a_volta=False` a lista **acaba**: depois da última (ou antes da primeira) devolve
+    `None`, e é assim que o `Tab` do tabuleiro sabe que é hora de sair para o controle seguinte.
     """
     lista: list[int] = []
     for casa in duvidosas:
@@ -99,5 +113,7 @@ def proxima_duvidosa(duvidosas: Sequence[int], atual: int | None, passo: int) ->
         return None
     if atual is None or atual not in lista:
         return lista[0] if passo > 0 else lista[-1]
-    indice = lista.index(atual)
-    return lista[(indice + (1 if passo > 0 else -1)) % len(lista)]
+    indice = lista.index(atual) + (1 if passo > 0 else -1)
+    if dar_a_volta:
+        return lista[indice % len(lista)]
+    return lista[indice] if 0 <= indice < len(lista) else None

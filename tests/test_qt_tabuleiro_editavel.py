@@ -276,9 +276,80 @@ class TecladoTests(unittest.TestCase):
         self.assertEqual(self.tabuleiro.selecionada(), 12)
         self.tecla(Qt.Key.Key_N, Qt.KeyboardModifier.ShiftModifier, texto="N")
         self.assertEqual(board_edit.piece_at(self.tabuleiro.posicao(), 12), "N")
-        # ...e o Tab dá a volta.
+        # ...e depois da última o Tab **não** dá a volta: a lista acabou (o foco sai; sozinho na
+        # janela, o tabuleiro fica onde está).
         self.tecla(Qt.Key.Key_Tab)
-        self.assertEqual(self.tabuleiro.selecionada(), 0)
+        self.assertEqual(self.tabuleiro.selecionada(), 12)
+
+    def test_o_tab_sai_do_tabuleiro_depois_da_ultima_duvidosa_e_entra_na_primeira(self) -> None:
+        """WCAG 2.1.2: com uma posição na tela o `Tab` dava a volta para sempre e `Ctrl+Tab`
+        caía no mesmo lugar -- ninguém saía do tabuleiro sem o mouse. A auditoria `teclado` mede
+        a cadeia pelo `focusNextPrevChild` da janela e não via a armadilha."""
+        from PyQt6.QtWidgets import QLineEdit, QVBoxLayout
+
+        janela = QWidget()
+        self.addCleanup(janela.deleteLater)
+        coluna = QVBoxLayout(janela)
+        campo = QLineEdit(janela)
+        coluna.addWidget(campo)
+        tabuleiro = TabuleiroEditavel(janela)
+        coluna.addWidget(tabuleiro)
+        janela.show()
+        self.app.processEvents()
+        tabuleiro.mostrar(INICIAL)
+        tabuleiro.definir_duvidosas([12, 0])   # e7 primeiro: a ordem é a da dúvida
+
+        campo.setFocus()
+        self.app.processEvents()
+        # Entrar pelo Tab pousa na primeira duvidosa: correção = Tab + letra, como o passo mede.
+        self.QTest.keyClick(campo, Qt.Key.Key_Tab)
+        self.app.processEvents()
+        self.assertIs(janela.focusWidget(), tabuleiro)
+        self.assertEqual(tabuleiro.selecionada(), 12)
+        self.QTest.keyClick(tabuleiro, Qt.Key.Key_Tab)
+        self.app.processEvents()
+        self.assertEqual(tabuleiro.selecionada(), 0)
+        # Depois da última, o Tab sai -- para o campo, que é o único outro focável.
+        self.QTest.keyClick(tabuleiro, Qt.Key.Key_Tab)
+        self.app.processEvents()
+        self.assertIs(janela.focusWidget(), campo, "o Tab saiu do tabuleiro")
+        # Shift+Tab entra de trás, na última; antes da primeira, sai de novo.
+        self.QTest.keyClick(campo, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ShiftModifier)
+        self.app.processEvents()
+        self.assertIs(janela.focusWidget(), tabuleiro)
+        self.assertEqual(tabuleiro.selecionada(), 0)
+        self.QTest.keyClick(tabuleiro, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ShiftModifier)
+        self.app.processEvents()
+        self.assertEqual(tabuleiro.selecionada(), 12)
+        self.QTest.keyClick(tabuleiro, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ShiftModifier)
+        self.app.processEvents()
+        self.assertIs(janela.focusWidget(), campo, "o Shift+Tab saiu do tabuleiro")
+
+    def test_sabotagem_o_tab_que_da_a_volta_prende_o_teclado(self) -> None:
+        """A sabotagem é a primeira versão do passo: `focusNextPrevChild` devolvia `False` com
+        qualquer casa na tela. Com ela o foco nunca chega ao campo."""
+        from unittest import mock
+
+        from PyQt6.QtWidgets import QLineEdit, QVBoxLayout
+
+        janela = QWidget()
+        self.addCleanup(janela.deleteLater)
+        coluna = QVBoxLayout(janela)
+        campo = QLineEdit(janela)
+        coluna.addWidget(campo)
+        tabuleiro = TabuleiroEditavel(janela)
+        coluna.addWidget(tabuleiro)
+        janela.show()
+        self.app.processEvents()
+        tabuleiro.mostrar(INICIAL)
+        tabuleiro.definir_duvidosas([12, 0])
+        tabuleiro.setFocus()
+        self.app.processEvents()
+        with mock.patch.object(TabuleiroEditavel, "focusNextPrevChild", lambda self, next: False):
+            for _ in range(8):
+                self.QTest.keyClick(tabuleiro, Qt.Key.Key_Tab)
+                self.app.processEvents()
+            self.assertIs(janela.focusWidget(), tabuleiro, "preso: oito Tab e o foco não saiu")
 
     def test_sem_duvidosas_o_tab_percorre_as_ocupadas(self) -> None:
         self.tecla(Qt.Key.Key_Tab)
@@ -388,3 +459,8 @@ class TecladoTests(unittest.TestCase):
         self.assertEqual(regra.proxima_duvidosa([40, 5, 20], 40, 1), 5)
         self.assertEqual(regra.proxima_duvidosa([5, 20, 40], 21, -1), 40, "fora da lista: a última")
         self.assertIsNone(regra.proxima_duvidosa([], 3, 1))
+        # Sem dar a volta: a lista acaba nas duas pontas.
+        self.assertEqual(regra.proxima_duvidosa([5, 20, 40], 20, 1, dar_a_volta=False), 40)
+        self.assertIsNone(regra.proxima_duvidosa([5, 20, 40], 40, 1, dar_a_volta=False))
+        self.assertIsNone(regra.proxima_duvidosa([5, 20, 40], 5, -1, dar_a_volta=False))
+        self.assertEqual(regra.proxima_duvidosa([5, 20, 40], None, -1, dar_a_volta=False), 40)

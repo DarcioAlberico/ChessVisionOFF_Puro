@@ -30,7 +30,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from PyQt6.QtCore import QEvent, QPoint, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap
+from PyQt6.QtGui import QColor, QFocusEvent, QKeyEvent, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap
 from PyQt6.QtWidgets import QToolTip, QWidget
 
 from chess_diagram_ocr.qt import tema
@@ -214,11 +214,10 @@ class TabuleiroEditavel(TabuleiroQt):
         if acao.tipo == teclado.ANDAR:
             self.andar_selecao(acao.passo)
         elif acao.tipo == teclado.DUVIDOSA:
-            candidatas = self._duvidosas or tuple(
-                c for c in range(64) if board_edit.piece_at(self.modelo.placement, c))
-            alvo = teclado.proxima_duvidosa(candidatas, atual, acao.passo)
-            if alvo is not None:
-                self._aplicar(self.modelo.select(alvo))
+            # Só chega aqui com modificador (`Ctrl+Tab`): o `Tab` puro passa por
+            # `focusNextPrevChild`, que o Qt chama antes de `keyPressEvent`. Mesma regra.
+            if not self._tab(acao.passo):
+                super().focusNextPrevChild(acao.passo > 0)
         elif acao.tipo == teclado.APAGAR:
             self.apagar_selecionada()
         elif acao.tipo == teclado.APLICAR:
@@ -265,11 +264,45 @@ class TabuleiroEditavel(TabuleiroQt):
         passo = teclado.ACOES_DAS_SETAS.get(acao)
         return None if passo is None else (lambda: self.andar_selecao(passo))
 
-    def focusNextPrevChild(self, next: bool) -> bool:  # noqa: N802, A002 - assinatura do Qt
-        """`Tab` fica no tabuleiro enquanto há casas a percorrer (passo C8)."""
-        if self.modelo.items_ok() and (self._duvidosas or self.modelo.placement != board_edit.EMPTY_PLACEMENT):
+    def _candidatas_do_tab(self) -> tuple[int, ...]:
+        """As casas que o `Tab` percorre: as duvidosas; sem elas, as ocupadas."""
+        if self._duvidosas:
+            return self._duvidosas
+        return tuple(c for c in range(64) if board_edit.piece_at(self.modelo.placement, c))
+
+    def _tab(self, passo: int) -> bool:
+        """`Tab` (`passo=1`) / `Shift+Tab` (`-1`): seleciona a duvidosa seguinte e devolve `True`;
+        `False` quando a lista acabou -- e aí o foco sai do tabuleiro (passo C8)."""
+        if not self.modelo.items_ok():
             return False
+        alvo = teclado.proxima_duvidosa(self._candidatas_do_tab(), self.modelo.selected, passo, dar_a_volta=False)
+        if alvo is None:
+            return False
+        self._aplicar(self.modelo.select(alvo))
+        return True
+
+    def focusNextPrevChild(self, next: bool) -> bool:  # noqa: N802, A002 - assinatura do Qt
+        """`Tab` percorre as duvidosas **uma vez** e depois sai (passo C8; ver o docstring de
+        `ui/teclado_do_tabuleiro`: a volta era uma armadilha de teclado)."""
+        if self._tab(1 if next else -1):
+            return True
         return super().focusNextPrevChild(next)
+
+    def focusInEvent(self, a0: QFocusEvent | None) -> None:  # noqa: N802 - assinatura do Qt
+        """Entrar pelo teclado já pousa na primeira duvidosa (na última, entrando de trás), para
+        que a seleção velha não faça o próximo `Tab` sair sem visitar nenhuma."""
+        super().focusInEvent(a0)
+        if a0 is None or not self.modelo.items_ok():
+            return
+        motivo = a0.reason()
+        if motivo not in (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason):
+            return
+        candidatas = self._candidatas_do_tab()
+        if not candidatas:
+            return
+        alvo = candidatas[0] if motivo == Qt.FocusReason.TabFocusReason else candidatas[-1]
+        if self.modelo.selected != alvo:
+            self._aplicar(self.modelo.select(alvo))
 
     def apontar(self, casa: object) -> None:
         """A casa que o recorte ao lado está apontando. `None` apaga. Não emite de volta."""
