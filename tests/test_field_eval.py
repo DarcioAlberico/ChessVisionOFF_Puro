@@ -181,6 +181,44 @@ class PageMetricTests(unittest.TestCase):
         self.assertEqual((r.matched, r.legal, r.above_gate, r.exported), (1, 1, 0, 0))
         self.assertIn("confiança 0.400", r.misses[0])
 
+    def test_o_gate_julga_as_casas_que_a_evidencia_externa_nao_provou(self) -> None:
+        """C5/C11 (ciclo 2): a casa trocada pela tinta ou pelo lance carrega a confiança da
+        segunda opção (≤ 0,5), e o gate julga as outras -- `gate_confidence` -- em vez de
+        barrar por construção o que a evidência externa consertou."""
+        pagina = FieldPage(pdf="a.pdf", page=1, reviewed=True,
+                           diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10), placement=LEGAL),))
+        trocada = lido((0, 0, 10, 10), conf=0.30)
+        trocada.square_confidences = [0.99] * 63 + [0.30]
+        trocada.colour_repairs = [63]
+        trocada.changed_squares = [63]
+        self.assertAlmostEqual(trocada.gate_confidence, 0.99)
+        self.assertEqual(trocada.external_repairs, [63])
+        r = evaluate_page(pagina, [trocada], accept_threshold=0.8)
+        self.assertEqual((r.above_gate, r.exported, r.exact), (1, 1, 1))
+        self.assertEqual((r.colour_repaired, r.colour_repaired_squares, r.colour_repaired_exact, r.colour_repaired_wrong),
+                         (1, 1, 1, 0))
+        # Sem evidência externa, a mesma confiança barra -- o que a S-132 descreve.
+        barrada = lido((0, 0, 10, 10), conf=0.30, reparadas=(63,))
+        barrada.square_confidences = [0.99] * 63 + [0.30]
+        self.assertAlmostEqual(barrada.gate_confidence, 0.30)
+        self.assertEqual(evaluate_page(pagina, [barrada], accept_threshold=0.8).exported, 0)
+
+    def test_o_lance_seguinte_e_contado(self) -> None:
+        pagina = FieldPage(pdf="a.pdf", page=1, reviewed=True,
+                           diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10), placement=LEGAL),))
+        replicou = lido((0, 0, 10, 10))
+        replicou.next_move_replays = True
+        reparou = lido((0, 0, 10, 10), conf=0.2)
+        reparou.next_move_replays = False
+        reparou.next_move_repairs = [5]
+        reparou.square_confidences = [0.99] * 5 + [0.2] + [0.99] * 58
+        r = evaluate_page(pagina, [replicou], accept_threshold=0.8)
+        self.assertEqual((r.next_move_checked, r.next_move_replayed, r.next_move_repaired), (1, 1, 0))
+        r = evaluate_page(pagina, [reparou], accept_threshold=0.8)
+        self.assertEqual((r.next_move_checked, r.next_move_replayed, r.next_move_repaired, r.exported),
+                         (1, 0, 1, 1))
+        self.assertEqual((r.next_move_repaired_exact, r.next_move_repaired_wrong), (1, 0))
+
     def test_recorte_deslocado_ainda_casa(self) -> None:
         """O que se mede é achou ou não achou; a qualidade do recorte é a `min_confidence`."""
         pagina = FieldPage(pdf="a.pdf", page=1, reviewed=True, diagrams=(AnnotatedDiagram(bbox=(0, 0, 100, 100)),))

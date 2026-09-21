@@ -164,6 +164,11 @@ class DiagramContext:
     """`(número, é_das_pretas)` do primeiro lance impresso **sob** o diagrama (passo 7):
     `22... ♖g8` → `(22, True)`; `23 ♘c4` → `(23, False)`. `None` quando não há."""
 
+    first_moves_text: str = ""
+    """A linha inteira de onde `first_move_number` saiu -- os primeiros lances impressos sob o
+    diagrama, como o livro os escreveu (C11 do ciclo 2): é o que `lance_seguinte.conferir`
+    joga sobre a posição lida. Vazio quando não há linha de lances."""
+
     caption_after_move: tuple[int, bool] | None = None
     """`(número, é_das_pretas)` da vez **depois** do lance que a legenda "após N.x" cita:
     `after 23...Bd5` → `(24, False)`; `após 23.♘c4` → `(23, True)`."""
@@ -1036,6 +1041,14 @@ def apos_o_lance(text: str) -> tuple[int, bool] | None:
     return (numero + 1, False) if das_pretas else (numero, True)
 
 
+def _linha_do_primeiro_lance(abaixo: Sequence[_ParsedLine]) -> str:
+    """A linha sob o diagrama que abre com lance numerado, como impressa (C11)."""
+    for item in abaixo:
+        if inicio_de_lance(item.text) is not None:
+            return item.text.strip()
+    return ""
+
+
 def _lado_pela_numeracao(
     abaixo: Sequence[_ParsedLine], legenda: Sequence[_ParsedLine]
 ) -> tuple[_SideDecision | None, tuple[int, bool] | None, tuple[int, bool] | None]:
@@ -1153,6 +1166,7 @@ def _parse_lines(
         side_to_move_origin=None if decision is None else decision.origin,
         side_to_move_confidence=1.0 if decision is None else decision.confidence,
         first_move_number=primeiro,
+        first_moves_text=_linha_do_primeiro_lance(abaixo),
         caption_after_move=apos,
         exercise_number=exercise_number,
         players=players,

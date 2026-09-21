@@ -47,6 +47,13 @@ class TrainingRequest:
     lr: float
     fresh: bool = False
     splits_path: Path | None = None
+    augment: str = "aug0"
+    """O regime de aumento (`AugmentConfig.version`, letras `mhspie`) com que treinar (C4).
+
+    Lido do checkpoint de produção no clique: retreinar continua o regime que produziu o
+    modelo, e um retreino do zero também parte dele. Antes era sempre o genérico
+    (`AugmentConfig()`), e um `.pt` de produção treinado com `mhsp` seria retreinado sem a
+    hachura que o fez -- `docs/OCR_UI_ANALISE_C2.md` §3.4."""
 
 
 def pedido_de_treino(
@@ -69,6 +76,8 @@ def pedido_de_treino(
     # o teste aponta `DEFAULT_SETTINGS_PATH` para uma pasta temporária, e o bundle o resolve
     # para a pasta do `.exe` -- nos dois casos o que vale é o valor no instante do clique.
     treino = preferencias.load_settings(preferencias.DEFAULT_SETTINGS_PATH).training
+    from ..augment import version_of_checkpoint
+
     return TrainingRequest(
         csv_path=csv_path,
         samples_dir=samples_dir,
@@ -78,6 +87,7 @@ def pedido_de_treino(
         lr=treino.lr,
         fresh=fresh,
         splits_path=splits_path,
+        augment=version_of_checkpoint(model_path),
     )
 
 

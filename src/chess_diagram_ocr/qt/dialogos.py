@@ -986,6 +986,7 @@ class ControladorDeTreino(QDialog):
             )
 
     def _trabalho(self, pedido: TrainingRequest, cancelar: threading.Event) -> None:
+        from chess_diagram_ocr.augment import from_letters
         from chess_diagram_ocr.training import train_model
 
         try:
@@ -1003,6 +1004,8 @@ class ControladorDeTreino(QDialog):
                 fresh=pedido.fresh,
                 # O `Event` que o botão "Cancelar" do rodapé aciona (S-309).
                 cancel_event=cancelar,
+                # C4: o regime do checkpoint de produção, não o genérico de sempre.
+                augment=from_letters(pedido.augment),
             )
             resumo = summarize_run(run)
             # Sem caixa modal ao fim (S-164): o modal do treino **já está aberto** e mostra o

@@ -12,6 +12,14 @@ entre as que respeitam as regras? Como o argmax é o ótimo irrestrito, a respos
 
 As restrições são todas verificáveis sem saber o lado a jogar -- que o diagrama de livro
 não carrega. Xeque não entra aqui por isso (ver `fen_utils`, S-05).
+
+**Duas regras a mais (C11 do ciclo 2 OCR/UI, `docs/OCR_UI_ANALISE_C2.md` §3.9).** Reis
+adjacentes é violação absoluta -- nenhuma posição legal os tem -- e nunca estava aqui. E dois
+bispos do mesmo lado em casas da mesma cor não são violação por si (uma promoção explica), mas
+consomem um peão ausente **do mesmo modo que o excesso de promoção já modela**: o lado começa
+com um bispo em cada cor, logo cada bispo a mais numa cor veio de um peão. Com oito peões no
+tabuleiro, dois bispos brancos em casas claras são impossíveis, e é esse o caso da dúvida do
+Stefaniu f1. As duas ficam em `DecodeRules`, com `CLASSIC_RULES` para medir sem elas.
 """
 
 from __future__ import annotations
@@ -48,6 +56,23 @@ MAX_PIECES = 16
 # Quantas peças de cada tipo o lado começa tendo. O que passa disso só pode ter vindo de
 # promoção, e cada promoção consome um peão.
 _INITIAL_COUNT = {"N": 2, "B": 2, "R": 2, "Q": 1}
+
+
+@dataclass(frozen=True)
+class DecodeRules:
+    """Quais regras além das da S-11 o decodificador aplica (C11).
+
+    `bishop_colors`: bispos de um lado em casas da mesma cor contam como promovidos na
+    conta de peões ausentes. `adjacent_kings`: reis que se tocam são uma violação.
+    """
+
+    bishop_colors: bool = True
+    adjacent_kings: bool = True
+
+
+DEFAULT_RULES = DecodeRules()
+CLASSIC_RULES = DecodeRules(bishop_colors=False, adjacent_kings=False)
+"""O decodificador de antes do C11 -- a sabotagem do `lab_gate --rules classic`."""
 
 
 @dataclass(frozen=True)
@@ -100,7 +125,40 @@ def _promotion_excess(counts: Counter[int], upper: bool) -> int:
     return excess
 
 
-def _find_violations(state: tuple[int, ...]) -> list[_Violation]:
+def _square_is_light(square: int) -> bool:
+    """Em ordem de leitura (0 = a8): a8 é clara, e a paridade alterna."""
+    row, col = divmod(square, 8)
+    return (row + col) % 2 == 0
+
+
+def _bishop_promotion_excess(state: tuple[int, ...], upper: bool) -> int:
+    """Bispos promovidos que a cor das casas denuncia, além dos que a contagem já denuncia.
+
+    O lado começa com um bispo claro e um escuro: `max(0, claros − 1) + max(0, escuros − 1)`
+    é o mínimo de bispos promovidos, sempre ≥ `max(0, bispos − 2)` (que `_promotion_excess`
+    já conta). Devolve só a diferença, para não contar duas vezes.
+    """
+    bishop = PIECE_TO_IDX["B" if upper else "b"]
+    light = sum(1 for square in range(64) if state[square] == bishop and _square_is_light(square))
+    dark = sum(1 for square in range(64) if state[square] == bishop and not _square_is_light(square))
+    by_colour = max(0, light - 1) + max(0, dark - 1)
+    by_count = max(0, light + dark - 2)
+    return by_colour - by_count
+
+
+def _adjacent_kings(state: tuple[int, ...]) -> tuple[int, ...]:
+    """As casas dos dois reis quando se tocam (distância de Chebyshev ≤ 1), senão vazio."""
+    whites = [square for square in range(64) if state[square] == WHITE_KING]
+    blacks = [square for square in range(64) if state[square] == BLACK_KING]
+    touching: list[int] = []
+    for white in whites:
+        for black in blacks:
+            if abs(white // 8 - black // 8) <= 1 and abs(white % 8 - black % 8) <= 1:
+                touching.extend((white, black))
+    return tuple(sorted(set(touching)))
+
+
+def _find_violations(state: tuple[int, ...], rules: DecodeRules = DEFAULT_RULES) -> list[_Violation]:
     counts = _color_counts(state)
     violations: list[_Violation] = []
 
@@ -144,7 +202,10 @@ def _find_violations(state: tuple[int, ...]) -> list[_Violation]:
             continue
 
         pawn = WHITE_PAWN if upper else BLACK_PAWN
-        if counts[pawn] + _promotion_excess(counts, upper) > MAX_PAWNS:
+        promoted = _promotion_excess(counts, upper)
+        if rules.bishop_colors:
+            promoted += _bishop_promotion_excess(state, upper)
+        if counts[pawn] + promoted > MAX_PAWNS:
             violations.append(
                 _Violation(
                     f"peças {color} promovidas demais para o número de peões",
@@ -152,6 +213,11 @@ def _find_violations(state: tuple[int, ...]) -> list[_Violation]:
                     None,
                 )
             )
+
+    if rules.adjacent_kings:
+        touching = _adjacent_kings(state)
+        if touching:
+            violations.append(_Violation("os reis se tocam", touching, None))
 
     return violations
 
@@ -232,6 +298,7 @@ def decode_constrained(
     max_expansions: int = 5000,
     alternatives_per_square: int = 4,
     max_seconds: float = SEGUNDOS_MAXIMOS,
+    rules: DecodeRules = DEFAULT_RULES,
 ) -> DecodeResult:
     """Atribuição de maior probabilidade que respeita as regras verificáveis do xadrez.
 
@@ -278,7 +345,7 @@ def decode_constrained(
     logp = np.log(np.clip(probs, _EPS, None))
     base: tuple[int, ...] = tuple(int(index) for index in probs.argmax(axis=1))
 
-    if not _find_violations(base):
+    if not _find_violations(base, rules):
         return _build_result(base, base, logp, satisfied=True)
 
     heap: list[tuple[float, int, tuple[int, ...]]] = [(0.0, 0, base)]
@@ -287,7 +354,7 @@ def decode_constrained(
     expansions = 0
 
     best_state = base
-    best_key = (len(_find_violations(base)), 0.0)
+    best_key = (len(_find_violations(base, rules)), 0.0)
 
     prazo = time.monotonic() + max_seconds if max_seconds > 0 else None
     while heap and expansions < max_expansions:
@@ -299,7 +366,7 @@ def decode_constrained(
         cost, _, state = heapq.heappop(heap)
         expansions += 1
 
-        violations = _find_violations(state)
+        violations = _find_violations(state, rules)
         if not violations:
             return _build_result(state, base, logp, satisfied=True)
 
@@ -325,5 +392,5 @@ def decode_constrained(
             delta = float(logp[square, state[square]] - logp[square, target])
             heapq.heappush(heap, (cost + delta, counter, successor))
 
-    problems = tuple(violation.description for violation in _find_violations(best_state))
+    problems = tuple(violation.description for violation in _find_violations(best_state, rules))
     return _build_result(best_state, base, logp, satisfied=False, problems=problems)

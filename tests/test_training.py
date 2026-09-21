@@ -244,6 +244,36 @@ class CacheSizeSplitTests(unittest.TestCase):
                 )
             self.assertEqual(fake.call_args.kwargs["cache_size"], 64)
 
+    def test_the_per_process_cache_never_drops_below_the_sampler_window(self) -> None:
+        """C4 do ciclo 2 OCR/UI: 128 // 5 = 25 tabuleiros para uma janela de 64 era quase so
+        falta -- cada casa reabria o PNG e a epoca custava 10 min em vez de 3."""
+        from chess_diagram_ocr.config import BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE
+
+        with patch("chess_diagram_ocr.training.load_splits", return_value={}),              patch("chess_diagram_ocr.training.BoardFenDataset") as fake:
+            fake.side_effect = ValueError("parar antes de treinar")
+            from chess_diagram_ocr.training import train_model
+
+            with self.assertRaises(ValueError):
+                train_model(
+                    csv_path=__file__,  # type: ignore[arg-type]
+                    samples_dir=__file__,  # type: ignore[arg-type]
+                    model_path=__file__,  # type: ignore[arg-type]
+                    cache_size=DEFAULT_BOARD_CACHE_SIZE,
+                    num_workers=4,
+                )
+            self.assertEqual(fake.call_args.kwargs["cache_size"], BOARDS_PER_CHUNK)
+
+            # `cache_size=0` continua desligando o cache: o piso nao pode religa-lo.
+            with self.assertRaises(ValueError):
+                train_model(
+                    csv_path=__file__,  # type: ignore[arg-type]
+                    samples_dir=__file__,  # type: ignore[arg-type]
+                    model_path=__file__,  # type: ignore[arg-type]
+                    cache_size=0,
+                    num_workers=4,
+                )
+            self.assertEqual(fake.call_args.kwargs["cache_size"], 0)
+
 
 class SplitAssignmentTests(unittest.TestCase):
     """S-56: a amostra que você salva tem de chegar ao treino.

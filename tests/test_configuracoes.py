@@ -93,6 +93,8 @@ class TreinoTests(unittest.TestCase):
         preferencias.DEFAULT_SETTINGS_PATH = caminho
         try:
             pedido = pedido_de_treino(Path("l.csv"), Path("s"), None, model_path=Path("m.pt"))
+            # C4: sem checkpoint legível o regime é o genérico, e o pedido o carrega.
+            self.assertEqual(pedido.augment, "aug0")
         finally:
             preferencias.DEFAULT_SETTINGS_PATH = original
         self.assertEqual((pedido.epochs, pedido.lr, pedido.batch_size), (3, 0.01, 16))
@@ -165,3 +167,27 @@ class DialogoTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RegimeDeAumentoTests(unittest.TestCase):
+    """C4 do ciclo 2: a janela retreina no regime que produziu o checkpoint de produção."""
+
+    def test_o_pedido_le_o_regime_do_checkpoint(self) -> None:
+        import tempfile
+
+        import torch
+
+        from chess_diagram_ocr.augment import AugmentConfig, from_letters
+        from chess_diagram_ocr.checkpoint import save_checkpoint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            modelo = Path(tmp) / "m.pt"
+            save_checkpoint(modelo, {"w": torch.zeros(1)}, metadata={"augment_version": "augmhsp"})
+            original = preferencias.DEFAULT_SETTINGS_PATH
+            preferencias.DEFAULT_SETTINGS_PATH = Path(tmp) / "settings.json"
+            try:
+                pedido = pedido_de_treino(Path("l.csv"), Path("s"), None, model_path=modelo)
+            finally:
+                preferencias.DEFAULT_SETTINGS_PATH = original
+            self.assertEqual(pedido.augment, "augmhsp")
+            self.assertEqual(from_letters(pedido.augment), AugmentConfig(hflip=0.5, hatch=0.30, speckle=0.25, paper=0.30))

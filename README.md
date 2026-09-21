@@ -1015,6 +1015,7 @@ src/chess_diagram_ocr/
   calibration.py        temperature scaling e curva de confiabilidade
   checkpoint.py         leitura e escrita de checkpoints, com metadados de treino
   config.py             classes de pecas, tamanhos, limiares e caminhos padrao
+  cor_por_livro.py      calibrador de cor por livro: a tinta do centro da casa contra as pecas corrigidas do mesmo livro (C5)
   dataset.py            dataset de treino, cache limitado e amostrador por tabuleiro
   dataset_browser.py    listar, filtrar, recorrigir e remover amostras
   decode.py             decodificacao sujeita as regras do xadrez
@@ -1038,6 +1039,7 @@ src/chess_diagram_ocr/
   games_index.py        o indice sqlite da base, por nome e por posicao
   inference.py          carga do modelo, predicao de FEN e TTA
   labels.py             a porta unica do labels.csv: LabelStore (S-51)
+  lance_seguinte.py     o primeiro lance impresso sob o diagrama jogado sobre a leitura, e a troca unica que o faz fechar (C11)
   logging_setup.py      configuracao de logging
   model.py              arquitetura do classificador, configuravel por ArchConfig
   net_correction.py     cliente da correcao remota de FEN (opcional, opt-in)
@@ -1053,6 +1055,7 @@ src/chess_diagram_ocr/
   procedencias.py       de onde veio cada amostra, e o que isso permite fazer com ela
   processo_de_trabalho.py  o filho que rasteriza, le o CSV e detecta, porque o PyMuPDF e o Python seguram o GIL
   provenance.py         o registro de procedencia gravado ao lado de cada rotulo
+  proveniencia.py       o sidecar .proveniencia.jsonl ao lado do PGN: retangulo, hash, confiancas, reparos e veredito por diagrama (A11)
   review_queue.py       fila de revisao ordenada por valor de informacao
   second_opinion.py     a segunda leitura local do tabuleiro, para conferir a primeira (S-66)
   semantics.py          lado a jogar e direitos de roque

@@ -762,6 +762,39 @@ class FieldReport:
     repaired_blocked: int = 0
     """Dos reparados e casados, os que o gate barrou. Hoje é o total dos casados reparados."""
 
+    next_move_checked: int = 0
+    """Diagramas lidos com um lance impresso sob eles para conferir (C11)."""
+
+    next_move_replayed: int = 0
+    """Dos conferidos, os em que o lance impresso replica na posição lida como está."""
+
+    next_move_repaired: int = 0
+    """Dos conferidos, os em que só uma troca (≤ 2 casas, segundas opções) fez o lance replicar,
+    e foi adotada. A evidência é externa à matriz: é o reparo que o gate deixa passar."""
+
+    next_move_repaired_exact: int = 0
+    """Dos reparados pelo lance e comparáveis, os que ficaram **iguais** à anotação."""
+
+    next_move_repaired_wrong: int = 0
+    """Dos reparados pelo lance e comparáveis, os que ficaram diferentes da anotação -- o
+    número que diz se a evidência externa está inventando."""
+
+    next_move_ambiguous: int = 0
+    """Dos conferidos, os em que mais de uma troca fecha a linha (nenhuma adotada)."""
+
+    colour_repaired: int = 0
+    """Diagramas lidos em que o calibrador de cor trocou pelo menos uma casa (C5)."""
+
+    colour_repaired_squares: int = 0
+    """Casas trocadas pelo calibrador de cor, em tudo que foi lido."""
+
+    colour_repaired_exact: int = 0
+    """Dos trocados pela cor e comparáveis, os que ficaram iguais à anotação."""
+
+    colour_repaired_wrong: int = 0
+    """Dos trocados pela cor e comparáveis, os que ficaram diferentes -- o número que diz se
+    a tinta está inventando."""
+
     seconds: float = 0.0
     """Tempo de `recognize_page` somado. Com `detected`, dá o custo por diagrama.
 
@@ -914,6 +947,16 @@ class FieldReport:
             "repaired_diagrams": self.repaired_diagrams,
             "repaired_exported": self.repaired_exported,
             "repaired_blocked": self.repaired_blocked,
+            "next_move_checked": self.next_move_checked,
+            "next_move_replayed": self.next_move_replayed,
+            "next_move_repaired": self.next_move_repaired,
+            "next_move_repaired_exact": self.next_move_repaired_exact,
+            "next_move_repaired_wrong": self.next_move_repaired_wrong,
+            "next_move_ambiguous": self.next_move_ambiguous,
+            "colour_repaired": self.colour_repaired,
+            "colour_repaired_squares": self.colour_repaired_squares,
+            "colour_repaired_exact": self.colour_repaired_exact,
+            "colour_repaired_wrong": self.colour_repaired_wrong,
             "repairs_per_diagram": round(self.repairs_per_diagram, 4),
             "seconds": round(self.seconds, 3),
             "seconds_per_diagram": round(self.seconds_per_diagram, 4),
@@ -961,6 +1004,16 @@ def _accumulate(alvo: FieldReport, parcela: FieldReport) -> None:
     alvo.repaired_diagrams += parcela.repaired_diagrams
     alvo.repaired_exported += parcela.repaired_exported
     alvo.repaired_blocked += parcela.repaired_blocked
+    alvo.next_move_checked += parcela.next_move_checked
+    alvo.next_move_replayed += parcela.next_move_replayed
+    alvo.next_move_repaired += parcela.next_move_repaired
+    alvo.next_move_repaired_exact += parcela.next_move_repaired_exact
+    alvo.next_move_repaired_wrong += parcela.next_move_repaired_wrong
+    alvo.next_move_ambiguous += parcela.next_move_ambiguous
+    alvo.colour_repaired += parcela.colour_repaired
+    alvo.colour_repaired_squares += parcela.colour_repaired_squares
+    alvo.colour_repaired_exact += parcela.colour_repaired_exact
+    alvo.colour_repaired_wrong += parcela.colour_repaired_wrong
     alvo.seconds += parcela.seconds
     alvo.misses.extend(parcela.misses)
     alvo.wrong.extend(parcela.wrong)
@@ -1017,6 +1070,12 @@ def evaluate_page(
         # que o decodificador teve, e ele teve esse trabalho ali tambem (S-62).
         repaired_squares=sum(len(lido.changed_squares) for lido in read),
         repaired_diagrams=sum(1 for lido in read if lido.changed_squares),
+        next_move_checked=sum(1 for lido in read if lido.next_move_replays is not None),
+        next_move_replayed=sum(1 for lido in read if lido.next_move_replays is True),
+        next_move_repaired=sum(1 for lido in read if lido.next_move_repairs),
+        next_move_ambiguous=sum(1 for lido in read if "trocas diferentes" in lido.next_move_reason),
+        colour_repaired=sum(1 for lido in read if lido.colour_repairs),
+        colour_repaired_squares=sum(len(lido.colour_repairs) for lido in read),
     )
 
     casados = _match(page.diagrams, read)
@@ -1039,7 +1098,9 @@ def evaluate_page(
 
         lido = read[alvo]
         legal = lido.is_fatal is not True
-        acima = lido.min_confidence >= accept_threshold
+        # C11: a confiança que o gate julga exclui as casas que o lance seguinte provou
+        # (`RecognizedDiagram.gate_confidence`); sem reparo pelo lance é a `min_confidence`.
+        acima = lido.gate_confidence >= accept_threshold
         exportado = legal and acima
         relatorio.legal += int(legal)
         relatorio.above_gate += int(acima)
@@ -1062,6 +1123,12 @@ def evaluate_page(
         certo = lido.placement == anotado.placement
         relatorio.comparable += 1
         relatorio.exact += int(certo)
+        if lido.next_move_repairs:
+            relatorio.next_move_repaired_exact += int(certo)
+            relatorio.next_move_repaired_wrong += int(not certo)
+        if lido.colour_repairs:
+            relatorio.colour_repaired_exact += int(certo)
+            relatorio.colour_repaired_wrong += int(not certo)
 
         # S-96: exportado e errado e a categoria que mais custa, e por isso ela e contada
         # separada em vez de sair no complemento de uma taxa. O que nao sai vai para o

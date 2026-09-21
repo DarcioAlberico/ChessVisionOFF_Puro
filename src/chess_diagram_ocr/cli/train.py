@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from ..audit import audit_dataset
-from ..augment import AugmentConfig
+from ..augment import AugmentConfig, from_letters
 from ..config import (
     DEFAULT_BOARD_CACHE_SIZE,
 )
@@ -48,7 +48,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="aug0",
         help=(
             "Aumento dirigido ao acervo (S-40), como as letras de `AugmentConfig.version`: "
-            "m=espelhar, h=hachura, s=granulacao, p=papel, i=inversao. Ex.: --augment mhsp. "
+            "m=espelhar, h=hachura, s=granulacao, p=papel, i=inversao, e=espessura do traco "
+            "(C4 do ciclo 2 OCR/UI). Ex.: --augment mhsp, --augment mhspe. "
             "'aug0' (padrao) e o conjunto generico de antes da S-40. NAO MEDIDO ainda: ligar "
             "muda o modelo, e a comparacao honesta e treinar as duas variantes com a mesma "
             "semente e medir com `cvoff-field`."
@@ -146,24 +147,8 @@ def _log_epoch(row: dict[str, object]) -> None:
 
 
 def _augment_from_letters(texto: str) -> AugmentConfig:
-    """`"mhsp"` ou `"augmhsp"` -> `AugmentConfig`. Probabilidades fixas, ligado ou desligado.
-
-    Uma letra liga a transformacao na probabilidade que a S-40 propos; afinar valor por
-    valor pela linha de comando seria oferecer um espaco de busca que ninguem mediu.
-    """
-    letras = texto[3:] if texto.startswith("aug") else texto
-    if letras in ("", "0"):
-        return AugmentConfig()
-    desconhecidas = set(letras) - set("mhspi")
-    if desconhecidas:
-        raise ValueError(f"Letras desconhecidas em --augment: {''.join(sorted(desconhecidas))} (validas: mhspi)")
-    return AugmentConfig(
-        hflip=0.5 if "m" in letras else 0.0,
-        hatch=0.30 if "h" in letras else 0.0,
-        speckle=0.25 if "s" in letras else 0.0,
-        paper=0.30 if "p" in letras else 0.0,
-        invert=0.03 if "i" in letras else 0.0,
-    )
+    """`"mhsp"` ou `"augmhsp"` -> `AugmentConfig` (`augment.from_letters`)."""
+    return from_letters(texto)
 
 
 def _audit_gate(args: argparse.Namespace) -> int | None:

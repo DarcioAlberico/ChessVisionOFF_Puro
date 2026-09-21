@@ -37,7 +37,7 @@ from .audit import duplicate_groups_touching, read_label_rows
 from .augment import DEFAULT_AUGMENT, AugmentConfig, build_augmentations
 from .calibration import expected_calibration_error, fit_temperature, negative_log_likelihood
 from .checkpoint import Checkpoint, check_compatible, git_commit, load_checkpoint, save_checkpoint
-from .config import DEFAULT_BOARD_CACHE_SIZE, PIECE_CLASSES, VAL_BOARD_CACHE_SIZE
+from .config import BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE, PIECE_CLASSES, VAL_BOARD_CACHE_SIZE
 from .dataset import BoardFenDataset, BoardGroupedSampler, BoardUnitDataset, board_groups
 from .fen_utils import labels_from_fen
 from .labels import DatasetEntry, filenames_with_provenance, label_origins
@@ -827,7 +827,17 @@ class Trainer:
 
         # Com num_workers > 0 o cache e por processo: o teto vale W+1 vezes, e o criterio de
         # aceite da S-26 (< 2 GiB por epoca) e sobre o treino inteiro, nao sobre o pai.
-        per_process_cache = max(1, data.cache_size // (workers + 1)) if workers else data.cache_size
+        #
+        # **Piso na janela do amostrador (C4 do ciclo 2 OCR/UI).** Dividir 128 por 5 dava 25
+        # tabuleiros por processo para uma janela de BOARDS_PER_CHUNK = 64: cada worker
+        # percorre a janela inteira, o cache virava quase so falta e cada casa reabria o PNG
+        # de 800x800. Medido nesta maquina com 4 workers e o aumento `mhsp`: 10,1 min por
+        # epoca com 25, 3,2 min com 64 -- "o disco e ~7% da epoca" (BoardGroupedSampler) so
+        # vale com o cache >= a janela. Sao 64 x 1,83 MiB = 117 MiB por processo, 5 processos
+        # = 586 MiB, dentro do criterio.
+        per_process_cache = data.cache_size
+        if workers and data.cache_size:
+            per_process_cache = max(BOARDS_PER_CHUNK, data.cache_size // (workers + 1))
 
         common = {"cache_size": per_process_cache, "arch": arch}
         if splits_map:

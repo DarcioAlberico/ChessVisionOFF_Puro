@@ -23,7 +23,7 @@ from .config import (
     UNCERTAIN_SQUARE_THRESHOLD,
     OrientationMode,
 )
-from .decode import DecodeResult, decode_constrained
+from .decode import DEFAULT_RULES, DecodeRules, DecodeResult, decode_constrained
 from .fen_utils import (
     PositionCheck,
     check_position,
@@ -248,6 +248,7 @@ def prediction_from_probs(
     uncertain_threshold: float = UNCERTAIN_SQUARE_THRESHOLD,
     constrained: bool = False,
     max_changes: int = MAX_DECODE_CHANGES,
+    rules: DecodeRules = DEFAULT_RULES,
 ) -> BoardPrediction:
     """Monta a `BoardPrediction` a partir da matriz (64, 13) já normalizada.
 
@@ -267,7 +268,7 @@ def prediction_from_probs(
 
     probs = np.asarray(probs, dtype=np.float64)
 
-    decode = decode_constrained(probs, max_changes=max_changes) if constrained else None
+    decode = decode_constrained(probs, max_changes=max_changes, rules=rules) if constrained else None
     class_indices = decode.class_indices if decode is not None else [int(idx) for idx in probs.argmax(axis=1)]
     confidences = probs[np.arange(64), class_indices]
     entropy = -(probs * np.log(np.clip(probs, _EPS, None))).sum(axis=1)
@@ -286,6 +287,55 @@ def prediction_from_probs(
         mean_confidence=float(confidences.mean()),
         min_confidence=float(confidences.min()),
         mean_entropy=float(entropy.mean()),
+        uncertain_squares=uncertain,
+        position=check_position(fen_board),
+        decode=decode,
+    )
+
+
+def prediction_with_squares(
+    prediction: BoardPrediction,
+    changes: Sequence[tuple[int, int, int]],
+    *,
+    uncertain_threshold: float = UNCERTAIN_SQUARE_THRESHOLD,
+) -> BoardPrediction:
+    """A mesma leitura com as casas de `changes` (`(casa, de, para)`) trocadas (C11).
+
+    É o que `lance_seguinte` devolve à posição: as trocas vêm das segundas opções do modelo,
+    e a confiança de cada casa trocada passa a ser a da classe adotada -- a verdade sobre o
+    que foi escolhido, como no reparo do decodificador. `decode` acumula as trocas em
+    `changed_squares` para a tela pintá-las como reparadas; a matriz não muda.
+    """
+    if not changes:
+        return prediction
+    class_indices = list(prediction.class_indices)
+    for square, before, after in changes:
+        if class_indices[square] != before:
+            raise ValueError(f"a casa {square} está em {class_indices[square]}, não em {before}.")
+        class_indices[square] = int(after)
+    probs = prediction.probs
+    confidences = probs[np.arange(64), class_indices]
+    ordered = np.argsort(confidences, kind="stable")
+    uncertain = [int(idx) for idx in ordered if confidences[idx] < uncertain_threshold]
+    fen_board = fen_from_class_indices(class_indices)
+    previous = prediction.decode
+    changed = list(previous.changed_squares) if previous is not None else []
+    changed.extend((int(s), int(b), int(a)) for s, b, a in changes)
+    decode = DecodeResult(
+        class_indices=class_indices,
+        fen_board=fen_board,
+        log_prob=float(np.log(np.clip(confidences, _EPS, None)).sum()),
+        changed_squares=changed,
+        constraints_satisfied=previous.constraints_satisfied if previous is not None else True,
+        remaining_problems=previous.remaining_problems if previous is not None else (),
+    )
+    return BoardPrediction(
+        probs=probs,
+        class_indices=class_indices,
+        fen_board=fen_board,
+        mean_confidence=float(confidences.mean()),
+        min_confidence=float(confidences.min()),
+        mean_entropy=prediction.mean_entropy,
         uncertain_squares=uncertain,
         position=check_position(fen_board),
         decode=decode,

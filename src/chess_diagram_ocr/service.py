@@ -52,6 +52,8 @@ from .inference import (
     predict_board,
     predict_with_orientation,
 )
+from .cor_por_livro import CalibradorDeCor, TrocaDeCor, apply_colour, calibrador_do_livro
+from .lance_seguinte import ReparoPeloLance, apply_next_move
 from .pdf_io import get_pdf_page_count, render_pdf_page
 from .pdf_text import DiagramContext, contexts_for_pdf_page
 from .preprocess import IDENTITY, NormalizerConfig
@@ -153,6 +155,50 @@ class RecognizedDiagram:
     prediction: BoardPrediction | None = None
     """A leitura completa, quando houve OCR. É de onde sai o tooltip das 3 classes."""
 
+    next_move: str = ""
+    """O primeiro lance impresso sob o diagrama, quando a página o tem (C11)."""
+
+    next_move_replays: bool | None = None
+    """`True`: o lance impresso replica na posição; `False`: não replica (mesmo depois de
+    tentar as segundas opções); `None`: não havia lance para conferir."""
+
+    next_move_repairs: list[int] = field(default_factory=list)
+    """As casas (ordem de leitura) trocadas para a segunda opção porque **só assim** o lance
+    impresso replica. Estão também em `changed_squares`; aqui ficam separadas porque a
+    evidência é externa à matriz -- o gate de exportação as julga por `gate_confidence`."""
+
+    next_move_reason: str = ""
+    """Em pt-BR: por que replicou, o que foi trocado, ou por que não (`ReparoPeloLance.motivo`)."""
+
+    colour_repairs: list[int] = field(default_factory=list)
+    """As casas (ordem de leitura) cuja cor a tinta contradisse e o calibrador do livro trocou
+    (C5, `cor_por_livro`). Também em `changed_squares`; separadas pelo mesmo motivo das do
+    lance seguinte: a evidência é externa à matriz."""
+
+    colour_reason: str = ""
+    """Em pt-BR: o que o calibrador de cor trocou, ou por que não aplicou."""
+
+    @property
+    def external_repairs(self) -> list[int]:
+        """As casas trocadas por evidência externa à matriz: lance seguinte e cor pela tinta."""
+        return sorted(set(self.next_move_repairs) | set(self.colour_repairs))
+
+    @property
+    def gate_confidence(self) -> float:
+        """A confiança que o gate de exportação julga (C11, C5).
+
+        `min_confidence` sobre as casas que **não** foram trocadas por evidência externa (o
+        lance seguinte, a tinta). Uma casa trocada assim carrega a confiança da segunda opção
+        (≤ 0,5, e é a verdade sobre o que o modelo achava), mas o que a barra em
+        `ACCEPT_MIN_CONFIDENCE` é a matriz -- e a matriz não é a única evidência que existe
+        sobre ela. Sem reparo externo, é `min_confidence`.
+        """
+        excluded = set(self.external_repairs)
+        if not excluded or not self.square_confidences:
+            return float(self.min_confidence)
+        others = [float(c) for i, c in enumerate(self.square_confidences) if i not in excluded]
+        return min(others) if others else float(self.min_confidence)
+
     # ------------------------------------------------------------------------ construtores
 
     @classmethod
@@ -172,6 +218,8 @@ class RecognizedDiagram:
         bbox_pdf: tuple[float, float, float, float] | None = None,
         context: DiagramContext | None = None,
         detection_source: str = "",
+        next_move: ReparoPeloLance | None = None,
+        colour: tuple[list[TrocaDeCor], str] | None = None,
     ) -> RecognizedDiagram:
         decode = prediction.decode
         return cls(
@@ -195,6 +243,12 @@ class RecognizedDiagram:
             bbox_pdf=bbox_pdf,
             context=context,
             detection_source=detection_source,
+            next_move=next_move.lance if next_move is not None else "",
+            next_move_replays=next_move.replicou if next_move is not None else None,
+            next_move_repairs=list(next_move.casas) if next_move is not None else [],
+            next_move_reason=next_move.motivo if next_move is not None else "",
+            colour_repairs=[t.casa for t in colour[0]] if colour is not None else [],
+            colour_reason=colour[1] if colour is not None else "",
             side_to_move="w" if side.color else "b",
             side_to_move_source=str(side.source),
             side_to_move_reason=side.reason,
@@ -481,6 +535,21 @@ class RecognitionOptions:
     `NormalizerConfig.version`."""
 
     refine_detected_boards: bool = False
+    next_move: bool = True
+    """C11 do ciclo 2: o primeiro lance impresso sob o diagrama é jogado na posição lida; se
+    não replica, as segundas opções do modelo nas casas hesitantes são tentadas (≤ 2 trocas)
+    e a troca **única** que faz a linha fechar é adotada (`lance_seguinte`). `False` é o
+    antes -- a sabotagem do `field_exact --sabotar sem_lance`."""
+
+    colour: bool = True
+    """C5 do ciclo 2: a cor de uma casa em que só a cor está em dúvida é conferida na tinta
+    (`cor_por_livro`), com as amostras do perfil do livro e as casas seguras do próprio
+    tabuleiro. `False` é o antes -- a sabotagem do `field_exact --sabotar sem_cor`."""
+
+    colour_calibrator: Callable[[Any], CalibradorDeCor | None] | None = None
+    """De onde vem o calibrador do livro para um `pdf_source`: por padrão o perfil do livro da
+    suíte (`cor_por_livro.calibrador_do_livro`); um teste ou um benchmark injeta o seu. Uma
+    imagem solta não tem livro, e o tabuleiro responde sozinho."""
     """Rodar o detector de contorno dentro do quad para alinhar melhor o recorte.
 
     Vale para imagem solta e para a página renderizada; **não** vale para candidato vindo
@@ -666,7 +735,20 @@ class OcrService:
             bboxes_pdf=[candidate.bbox_pdf for candidate in candidates],
             progress=progress,
             should_cancel=should_cancel,
+            colour=self._colour_calibrator(pdf_source, options),
         )
+
+    @staticmethod
+    def _colour_calibrator(pdf_source: Any, options: RecognitionOptions) -> CalibradorDeCor | None:
+        """O calibrador de cor do livro deste PDF (C5), ou `None` sem perfil ou desligado."""
+        if not options.colour:
+            return None
+        resolver = options.colour_calibrator or calibrador_do_livro
+        try:
+            return resolver(pdf_source)
+        except Exception:  # noqa: BLE001 - um perfil ilegível não pode derrubar a leitura
+            logger.warning("perfil de cor do livro ilegível; o tabuleiro responde sozinho", exc_info=True)
+            return None
 
     def recognize_image(
         self,
@@ -745,8 +827,10 @@ class OcrService:
         bboxes_pdf: Sequence[tuple[float, float, float, float]] = (),
         progress: Callable[[int, int], None] | None = None,
         should_cancel: Callable[[], bool] | None = None,
+        colour: CalibradorDeCor | None = None,
     ) -> list[RecognizedDiagram]:
-        """O núcleo comum: prever, decidir orientação, inferir a vez, conferir legalidade."""
+        """O núcleo comum: prever, decidir orientação, conferir a cor na tinta, inferir a vez,
+        conferir o lance seguinte, conferir legalidade."""
         if not boards:
             # `NoBoardDetectedError` e nao `ValueError` (S-125): quem chama precisa distinguir
             # "esta pagina nao tem diagrama" -- que e resposta, e a mais comum num livro -- de
@@ -778,7 +862,19 @@ class OcrService:
                     coordinates=context.coordinates if context is not None else None,
                 )
                 prediction = oriented.prediction
+                cor: tuple[list[TrocaDeCor], str] | None = None
+                if options.colour:
+                    # C5: a tinta antes do lado e do lance -- a cor certa é o que os dois
+                    # precisam para julgar.
+                    prediction, trocas_cor, motivo_cor = apply_colour(
+                        prediction, board_for_pred, oriented, colour)
+                    cor = (trocas_cor, motivo_cor)
                 side: SideToMove = infer_side_to_move(prediction.fen_board, context)
+                reparo: ReparoPeloLance | None = None
+                if options.next_move:
+                    prediction, reparo = apply_next_move(prediction, context, side)
+                    if reparo is not None and reparo.trocas:
+                        side = infer_side_to_move(prediction.fen_board, context)
                 diagrams.append(
                     RecognizedDiagram.from_prediction(
                         idx,
@@ -794,6 +890,8 @@ class OcrService:
                         bbox_pdf=bboxes_pdf[idx] if idx < len(bboxes_pdf) else None,
                         context=context,
                         detection_source=detection_sources[idx] if idx < len(detection_sources) else "",
+                        next_move=reparo,
+                        colour=cor,
                     )
                 )
                 if progress is not None:
