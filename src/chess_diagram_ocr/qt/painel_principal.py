@@ -20,7 +20,16 @@ marcado", e o Tab alcança os quatro na ordem da barra -- que é o que o portão
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QButtonGroup, QHBoxLayout, QStackedWidget, QToolButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QButtonGroup,
+    QFrame,
+    QHBoxLayout,
+    QScrollArea,
+    QStackedWidget,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.ui import abas, espaco, estilos
@@ -37,6 +46,8 @@ class PainelPrincipal(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._nomes: list[str] = []
+        self._paineis: list[QWidget] = []
+        """Os painéis dos modos, na ordem da pilha -- a pilha guarda a rolagem de cada um."""
         self._contagens: dict[str, int | None] = {}
         self._botoes: dict[str, QToolButton] = {}
         coluna = QVBoxLayout(self)
@@ -80,10 +91,30 @@ class PainelPrincipal(QWidget):
         self._nomes.append(nome)
         self._botoes[nome] = botao
         self._contagens[nome] = None
-        self.pilha.addWidget(painel)
+        self._paineis.append(painel)
+        self.pilha.addWidget(self._rolagem_de(painel))
         if indice == 0:
             botao.setChecked(True)
             self.pilha.setCurrentIndex(0)
+
+    @staticmethod
+    def _rolagem_de(painel: QWidget) -> QScrollArea:
+        """O modo dentro de uma rolagem **vertical** (OCR_UI ciclo 2, C18).
+
+        O Resultado pede 520 px de altura com um livro aberto, e era ele -- o painel mais alto da
+        pilha -- que decidia a altura mínima da janela: 659 a 695 px lógicos, contra os 641 que
+        sobram num portátil 1920×1080 a 150 % com a barra de tarefas. Numa rolagem o modo fica com
+        a altura que a janela tiver, e o que não couber rola; é o que a lateral da Galeria e o
+        cartão da Rotulagem já fazem desde o passo 16 do ciclo 1. A horizontal fica desligada: na
+        largura nada muda, o que não cabe continua sendo decidido pelo piso das abas.
+        """
+        rolagem = QScrollArea()
+        rolagem.setWidgetResizable(True)
+        rolagem.setFrameShape(QFrame.Shape.NoFrame)
+        rolagem.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        rolagem.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        rolagem.setWidget(painel)
+        return rolagem
 
     # -------------------------------------------------------------------------------- perguntas
 
@@ -97,15 +128,18 @@ class PainelPrincipal(QWidget):
     def widget_do_modo(self, nome: str) -> QWidget | None:
         if nome not in self._botoes:
             return None
-        return self.pilha.widget(self._nomes.index(nome))
+        return self._paineis[self._nomes.index(nome)]
 
     def modo_de(self, painel: QWidget) -> str | None:
         """O nome do modo que aquele painel é, ou `None` se ele não mora aqui."""
-        indice = self.pilha.indexOf(painel)
-        return self._nomes[indice] if indice >= 0 else None
+        for indice, dono in enumerate(self._paineis):
+            if dono is painel:
+                return self._nomes[indice]
+        return None
 
     def painel_atual(self) -> QWidget | None:
-        return self.pilha.currentWidget()
+        indice = self.pilha.currentIndex()
+        return self._paineis[indice] if 0 <= indice < len(self._paineis) else None
 
     def botao(self, nome: str) -> QToolButton:
         return self._botoes[nome]

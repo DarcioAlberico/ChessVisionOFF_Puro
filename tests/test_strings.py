@@ -83,6 +83,40 @@ def _literais_visiveis(caminho: Path) -> list[str]:
         for item in ast.walk(no):
             if isinstance(item, ast.Constant) and isinstance(item.value, str):
                 ignorados.add(id(item))
+    # **Identificadores nas posições em que só identificador cabe** (OCR_UI ciclo 2, A15). A
+    # varredura reprovou por fases seguidas em seis literais que nenhuma pessoa lê: o id de comando
+    # (`Comando("configuracoes", "Configurações…", …)`, `Item("configuracoes")`), a chave do JSON
+    # gravado em disco (`{"pagina": …}`, `item["pagina"]`), o token cujo valor é o próprio nome em
+    # maiúsculas (`SELECAO = "SELECAO"`) e a lista de palavras **dobradas** que casa títulos sem
+    # acento (`"… quebra cabecas …".split()`). Nenhuma regra abaixo é por palavra: cada uma olha a
+    # **posição** do literal, e só um literal com forma de identificador (`^[a-z_][a-z0-9_]*$`)
+    # escapa nas três primeiras -- um `{"Página": …}` ou um `Comando("abrir", "Configuracoes")`
+    # continuam varridos.
+    identificador = re.compile(r"^[a-z_][a-z0-9_]*$")
+    for no in ast.walk(arvore):
+        if isinstance(no, ast.Dict):
+            for chave in no.keys:
+                if isinstance(chave, ast.Constant) and isinstance(chave.value, str) and identificador.match(chave.value):
+                    ignorados.add(id(chave))
+        elif isinstance(no, ast.Subscript):
+            fatia = no.slice
+            if isinstance(fatia, ast.Constant) and isinstance(fatia.value, str) and identificador.match(fatia.value):
+                ignorados.add(id(fatia))
+        elif isinstance(no, ast.Call):
+            funcao = no.func
+            nome = funcao.id if isinstance(funcao, ast.Name) else (funcao.attr if isinstance(funcao, ast.Attribute) else "")
+            if nome in ("Comando", "Item") and no.args:
+                primeiro = no.args[0]
+                if isinstance(primeiro, ast.Constant) and isinstance(primeiro.value, str) and identificador.match(primeiro.value):
+                    ignorados.add(id(primeiro))
+            if isinstance(funcao, ast.Attribute) and funcao.attr == "split" and isinstance(funcao.value, ast.Constant):
+                ignorados.add(id(funcao.value))
+        else:
+            alvos = getattr(no, "targets", None) or ([no.target] if isinstance(no, ast.AnnAssign) else [])
+            nomes = {alvo.id for alvo in alvos if isinstance(alvo, ast.Name) and alvo.id.isupper()}
+            valor = getattr(no, "value", None)
+            if nomes and isinstance(valor, ast.Constant) and valor.value in nomes:
+                ignorados.add(id(valor))
 
     return [
         no.value
@@ -112,6 +146,31 @@ class AccentTests(unittest.TestCase):
                     faltas.append(f"{caminho.name}: {achado.group(0)!r} em {texto[:60]!r}")
 
         self.assertEqual(faltas, [], "Strings de UI sem acento:\n" + "\n".join(faltas[:20]))
+
+    def test_os_identificadores_escapam_e_o_texto_de_tela_nas_mesmas_posicoes_nao(self) -> None:
+        """A15 do ciclo 2: as regras por posição não abrem brecha para texto de interface."""
+        import tempfile
+
+        fonte = (
+            'SELECAO = "SELECAO"\n'
+            'dados = {"pagina": 1, "Pagina seguinte": 2}\n'
+            'valor = item["pagina"]\n'
+            'c = Comando("configuracoes", "Configuracoes da pagina")\n'
+            'm = Item("configuracoes")\n'
+            'vazias = "quebra cabecas".split()\n'
+            'rotulo = QLabel("pagina")\n'
+            'erro = {"pagina": "Ir para a pagina"}\n'
+        )
+        with tempfile.TemporaryDirectory() as pasta:
+            caminho = Path(pasta) / "modulo.py"
+            caminho.write_text(fonte, encoding="utf-8")
+            vistos = _literais_visiveis(caminho)
+        for escapa in ("SELECAO", "quebra cabecas"):
+            self.assertNotIn(escapa, vistos)
+        self.assertEqual(vistos.count("pagina"), 1, "só o `QLabel(\"pagina\")` é texto de tela")
+        self.assertEqual(vistos.count("configuracoes"), 0)
+        for varrido in ("Pagina seguinte", "Configuracoes da pagina", "Ir para a pagina"):
+            self.assertIn(varrido, vistos)
 
     def test_nenhuma_excecao_de_produto_usa_forma_sem_acento(self) -> None:
         """A varredura de cima olha `ui/`, e a mensagem de exceção **também é interface** (S-392).

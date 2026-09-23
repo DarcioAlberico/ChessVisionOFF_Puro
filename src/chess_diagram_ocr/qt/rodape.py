@@ -44,7 +44,6 @@ from PyQt6.QtWidgets import (
     QDialog,
     QFrame,
     QHBoxLayout,
-    QLabel,
     QListWidget,
     QProgressBar,
     QPushButton,
@@ -130,7 +129,12 @@ class RodapeDaJanela(QWidget):
 
         # **A mensagem primeiro, e com `stretch=1`.** No Tk a ordem do `pack` é o que decide quem
         # cede espaço; aqui é o esticamento, e por isso a mensagem pode vir na ordem de leitura.
-        self._lbl_mensagem = QLabel("", self)
+        # **Elidida, e é o defeito do nome do livro no terceiro lugar** (OCR_UI ciclo 2, C18). Um
+        # `QLabel` comum pede como largura mínima a frase inteira, e a frase do rodapé é o texto
+        # mais variável da janela: medido com um livro aberto, uma frase sozinha subia o mínimo da
+        # janela para 1.246 px -- cada mensagem longa empurrava a janela para fora de um portátil
+        # a 150 %. A frase inteira fica na dica, em `mensagem()` e na lista das últimas cinquenta.
+        self._lbl_mensagem = RotuloElidido("", self, largura_desejada=0)
         self._lbl_mensagem.setFont(tema.fonte_atual(tipografia.CORPO))
         self._lbl_mensagem.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         linha.addWidget(self._lbl_mensagem, 1)
@@ -154,7 +158,9 @@ class RodapeDaJanela(QWidget):
         # A quarta zona vem **à esquerda do documento** e não à direita: livro e página são o que
         # a pessoa consulta o tempo todo, e o dispositivo é o que ela olha uma vez por sessão.
         # Quem fica mais perto da mensagem é quem cede espaço primeiro.
-        self._lbl_dispositivos = QLabel("", self)
+        # Elidido pelo mesmo motivo da mensagem (C18): a descrição dos dispositivos cresce com o
+        # motivo de uma ausência, e nenhum texto do rodapé decide a largura da janela.
+        self._lbl_dispositivos = RotuloElidido("", self, largura_desejada=0)
         self._lbl_dispositivos.setFont(auxiliar)
         tema.pintar(self._lbl_dispositivos, "color", tokens.TEXTO_SECUNDARIO)
         linha.addWidget(self._lbl_dispositivos, 0)
@@ -176,7 +182,7 @@ class RodapeDaJanela(QWidget):
         tema.pintar(self._lbl_documento, "color", tokens.TEXTO_SECUNDARIO)
         linha.addWidget(self._lbl_documento, 0)
 
-        self._lbl_ocupacao = QLabel("", self)
+        self._lbl_ocupacao = RotuloElidido("", self, largura_desejada=0)
         self._lbl_ocupacao.setProperty(tipografia.PROPRIEDADE_TABULAR, "true")
         self._lbl_ocupacao.setFont(auxiliar)
         linha.addWidget(self._lbl_ocupacao, 0)
@@ -222,7 +228,7 @@ class RodapeDaJanela(QWidget):
         """
         estado = compor(mensagem=texto, origem=origem, severidade=severidade)
         self._severidade = estado.severidade
-        self._lbl_mensagem.setText(estado.mensagem)
+        self._lbl_mensagem.definir_texto(estado.mensagem)
         self._repintar_mensagem()
         self._reagendar_expiracao(expira_em_ms(estado.severidade))
         item = self.mensagens.registrar(
@@ -294,7 +300,7 @@ class RodapeDaJanela(QWidget):
         Existe para o roteiro headless do `CONTRIBUTING.md`, pela mesma razão de `ui/rodape.py`:
         um roteiro documentado que não roda é pior que nenhum.
         """
-        return self._lbl_mensagem.text()
+        return self._lbl_mensagem.texto_inteiro
 
     def _reagendar_expiracao(self, prazo: int | None) -> None:
         self._expiracao.stop()
@@ -302,7 +308,7 @@ class RodapeDaJanela(QWidget):
             self._expiracao.start(prazo)
 
     def _expirar(self) -> None:
-        self._lbl_mensagem.setText("")
+        self._lbl_mensagem.definir_texto("")
         self._severidade = ""
 
     # ------------------------------------------------------------------ estado do documento
@@ -339,12 +345,12 @@ class RodapeDaJanela(QWidget):
             motivo=dispositivos.motivo,
             ausencia=dispositivos.ausencia,
         )
-        self._lbl_dispositivos.setText(texto)
+        self._lbl_dispositivos.definir_texto(texto)
         dica_em(self._lbl_dispositivos, dica)
 
     def dispositivos(self) -> str:
         """O que a zona mostra agora. Existe pelo mesmo motivo que `mensagem()`."""
-        return self._lbl_dispositivos.text()
+        return self._lbl_dispositivos.texto_inteiro
 
     def barra_de_progresso(self) -> QProgressBar:
         """A barra, para quem precisa **medir** o que ela ficou tendo (F9-C7, §4.2).
@@ -372,7 +378,7 @@ class RodapeDaJanela(QWidget):
         """
         atual = ocupacao(operacoes)
         try:
-            self._lbl_ocupacao.setText(atual.texto)
+            self._lbl_ocupacao.definir_texto(atual.texto)
             self._btn_cancelar.setEnabled(atual.cancelavel)
             # **Escondida sem operação** (F9-C3). Antes de `mostra_barra` esta linha não existia,
             # e a barra ficava em `0/100` para sempre no canto de todas as capturas.

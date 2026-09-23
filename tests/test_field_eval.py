@@ -404,6 +404,29 @@ class ExatidaoDeCampoTests(unittest.TestCase):
         self.assertAlmostEqual(r.field_exact, 0.0, msg="sem denominador, a taxa é 0 e não 1")
         self.assertFalse(r.has_enough_comparable)
 
+    def test_uma_linha_por_diagrama_casado_refaz_o_gate_em_qualquer_limiar(self) -> None:
+        """C17 do ciclo 2: as linhas deixam a curva risco × cobertura cortar onde quiser -- e a
+        soma de duas páginas carrega as linhas das duas."""
+        r = evaluate_page(
+            self._pagina(LEGAL, LEGAL, ""),
+            self._leituras((self.OUTRA, 0.99), (LEGAL, 0.40), (LEGAL, 0.97)),
+            accept_threshold=0.8,
+            training_samples=1,
+        )
+        self.assertEqual([d["index"] for d in r.diagrams], [0, 1, 2])
+        self.assertEqual([d["exact"] for d in r.diagrams], [False, True, None])
+        self.assertEqual([d["gate_confidence"] for d in r.diagrams], [0.99, 0.4, 0.97])
+        self.assertTrue(all(d["legal"] and d["contaminated"] for d in r.diagrams))
+        # o gate de 0,80 refeito a partir das linhas dá o mesmo que o relatório contou
+        exportados = [d for d in r.diagrams if d["legal"] and d["gate_confidence"] >= 0.8]
+        self.assertEqual(len(exportados), r.exported)
+        self.assertEqual(sum(1 for d in exportados if d["exact"] is False), r.exported_wrong)
+        total = FieldReport()
+        _accumulate(total, r)
+        _accumulate(total, evaluate_page(self._pagina(LEGAL), self._leituras((LEGAL, 0.99))))
+        self.assertEqual(len(total.diagrams), 4)
+        self.assertNotIn("diagrams", total.as_dict(), "as linhas não enchem o JSON dos sub-relatórios")
+
     def test_a_exatidao_de_campo_separa_do_condicional(self) -> None:
         """Um exportado errado e um barrado errado: as duas taxas respondem coisas diferentes."""
         r = evaluate_page(

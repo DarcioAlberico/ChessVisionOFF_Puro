@@ -852,6 +852,15 @@ class FieldReport:
     contaminated_pages: list[str] = field(default_factory=list)
     """Que páginas têm amostra de treino, para quem for crescer o conjunto saber de onde fugir."""
 
+    diagrams: list[dict[str, Any]] = field(default_factory=list)
+    """Uma linha por diagrama anotado **casado** com uma leitura (C17 do ciclo 2 OCR/UI).
+
+    `pdf`, `page`, `index`, `legal`, `gate_confidence`, `min_confidence`, `exact` (`None` sem
+    posição de referência) e `contaminated`. É a entrada da curva risco × cobertura: comparar
+    dois modelos num gate fixo é comparar duas escalas de confiança -- o `x10` da fase 4 exporta
+    72 em vez de 104 com o **mesmo** laboratório --, e só as linhas deixam refazer o corte em
+    qualquer limiar. Os sub-relatórios por regime e por livro não as repetem (`as_dict`)."""
+
     wrong: list[str] = field(default_factory=list)
     """Os que **saíram errados**: passaram o gate e a FEN não bate com a referência (S-96).
 
@@ -1104,6 +1113,7 @@ def _accumulate(alvo: FieldReport, parcela: FieldReport) -> None:
     alvo.stipulation_truth_failed.extend(parcela.stipulation_truth_failed)
     alvo.seconds += parcela.seconds
     alvo.misses.extend(parcela.misses)
+    alvo.diagrams.extend(parcela.diagrams)
     alvo.wrong.extend(parcela.wrong)
     alvo.contaminated_pages.extend(parcela.contaminated_pages)
 
@@ -1233,6 +1243,16 @@ def evaluate_page(
         else:
             motivo = "ilegal" if not legal else f"confiança {lido.min_confidence:.3f}"
             relatorio.misses.append(f"{page.pdf} p{page.page}: detectado mas barrado ({motivo})")
+
+        # C17: a linha do diagrama, para a curva risco × cobertura refazer o gate em qualquer
+        # limiar -- `exact` é `None` quando a anotação não traz posição.
+        relatorio.diagrams.append({
+            "pdf": page.pdf, "page": page.page, "index": indice, "legal": legal,
+            "gate_confidence": round(float(lido.gate_confidence), 4),
+            "min_confidence": round(float(lido.min_confidence), 4),
+            "exact": (lido.placement == anotado.placement) if anotado.placement else None,
+            "contaminated": contaminada,
+        })
 
         if not anotado.placement:
             continue
