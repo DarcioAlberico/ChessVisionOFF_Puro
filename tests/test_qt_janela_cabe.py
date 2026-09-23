@@ -73,7 +73,7 @@ class RodapeNaoDecideALarguraTests(unittest.TestCase):
     def test_sem_mensagem_o_nome_do_livro_fica_com_o_espaco(self) -> None:
         self.rodape.mostrar(FRASE)
         self.rodape._expirar()
-        self.assertEqual(self.rodape._lbl_mensagem.minimumWidth(), 0)
+        self.assertEqual(self.rodape._lbl_mensagem.minimumSizeHint().width(), 0)
 
     def test_a_sabotagem_sem_o_piso_a_mensagem_some(self) -> None:
         original = rodape.LARGURA_DA_MENSAGEM
@@ -106,6 +106,50 @@ class RodapeNaoDecideALarguraTests(unittest.TestCase):
         self.rodape._btn_mensagens.setMinimumWidth(1)
         botao = self._linha_cheia()
         self.assertLess(botao.width(), 0.9 * botao.minimumSizeHint().width())
+
+    def _zonas_curtas(self, teto: int) -> dict[str, tuple[int, int]]:
+        """A linha cheia com os dispositivos da queda para a CPU, a 1248 px: por zona curta, a
+        largura desenhada e a garantida -- o texto inteiro até ``teto``. Medido na fonte que o
+        teste tiver: a garantia não depende dela, os números do produto são do portão da suíte
+        (`caissa.ui.audit.minimo`, com a fonte do produto imposta)."""
+        from chess_diagram_ocr.ui.estado_do_rodape import Dispositivos
+
+        self.rodape.show()
+        self.app.processEvents()   # o estilo entra ao mostrar: a fonte da zona muda aqui
+        self.rodape.definir_dispositivos(Dispositivos(pecas="cpu", caracteres=None))
+        self._linha_cheia()
+        return {nome: (rotulo.width(), min(teto, rotulo.sizeHint().width())) for nome, rotulo in (
+            ("dispositivos", self.rodape._lbl_dispositivos), ("ocupacao", self.rodape._lbl_ocupacao))}
+
+    def test_as_quatro_zonas_ficam_a_vista_com_a_linha_cheia(self) -> None:
+        """Crítico da fase 5, ciclo 2: os 480 px da mensagem saíam das zonas curtas -- no aperto o
+        leiaute tira de cada item não fixo a mesma parte, e os dispositivos chegavam a 0 px antes
+        do nome do livro (cortados em 46 dos 46 livros do acervo a 1248 px). Agora as duas zonas
+        ficam com o texto inteiro até `LARGURA_DA_ZONA`, a mensagem com a reserva dela, e quem
+        cede é o nome do livro, elidido no meio."""
+        for nome, (desenhada, garantida) in self._zonas_curtas(rodape.LARGURA_DA_ZONA).items():
+            self.assertGreater(garantida, 0, nome)
+            self.assertGreaterEqual(desenhada, garantida, f"a zona de {nome} foi cortada")
+        mensagem = self.rodape._lbl_mensagem
+        self.assertGreaterEqual(mensagem.width(),
+                                min(rodape.LARGURA_DA_MENSAGEM, mensagem.sizeHint().width()))
+
+    def test_uma_frase_curta_reserva_so_a_largura_dela(self) -> None:
+        self.rodape.mostrar("Página 121 lida.")
+        largura = self.rodape._lbl_mensagem.sizeHint().width()
+        self.assertLess(largura, rodape.LARGURA_DA_MENSAGEM)
+        self.assertEqual(self.rodape._lbl_mensagem.minimumSizeHint().width(), largura)
+
+    def test_a_sabotagem_a_reserva_do_ciclo_2_corta_as_zonas_curtas(self) -> None:
+        teto = rodape.LARGURA_DA_ZONA
+        self.addCleanup(setattr, rodape, "LARGURA_DA_MENSAGEM", rodape.LARGURA_DA_MENSAGEM)
+        self.addCleanup(setattr, rodape, "LARGURA_DA_ZONA", rodape.LARGURA_DA_ZONA)
+        rodape.LARGURA_DA_MENSAGEM = 480
+        rodape.LARGURA_DA_ZONA = 0
+        self.rodape = rodape.RodapeDaJanela()   # o piso das zonas é lido ao construí-las
+        self.addCleanup(self.rodape.deleteLater)
+        zonas = self._zonas_curtas(teto)
+        self.assertTrue(any(desenhada < garantida for desenhada, garantida in zonas.values()))
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

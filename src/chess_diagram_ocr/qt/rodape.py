@@ -6,10 +6,13 @@ produto não podem discordar sobre o que é um erro. Copiar a tabela de `MARCAS_
 janela dizendo "isto falhou" em vermelho e a outra dizendo o mesmo em cinza -- que é o defeito 3
 do cabeçalho de `ui/rodape.py`, agora entre frontends.
 
-**As quatro zonas e a ordem delas são as de lá**, e a razão é a mesma: a mensagem é a única que
-cede espaço. No Tk isso é a ordem do `pack`; aqui é o `stretch` do `QHBoxLayout` -- a mensagem
+**As quatro zonas e a ordem delas são as de lá**, e a razão é a mesma: a mensagem é a primeira a
+ceder espaço. No Tk isso é a ordem do `pack`; aqui é o `stretch` do `QHBoxLayout` -- a mensagem
 leva 1 e as outras 0, e por isso uma mensagem longa encolhe a si mesma em vez de empurrar para
-fora o livro e a página, que é o que a pessoa consulta o tempo todo.
+fora o livro e a página, que é o que a pessoa consulta o tempo todo. **Até a reserva dela**
+(`LARGURA_DA_MENSAGEM`): abaixo disso quem cede é o nome do livro, elidido no meio, e as zonas de
+dispositivos e de ocupação ficam inteiras (`LARGURA_DA_ZONA`) -- OCR_UI ciclo 2, fase 5, os dois
+ciclos do crítico sobre o rodapé.
 
 **A altura é fixa por construção, e não por pixel cravado.** A altura da linha é a do **botão de
 cancelar**, que existe sempre -- desabilitado quando não há o que cancelar. É por isso que o
@@ -75,16 +78,32 @@ from chess_diagram_ocr.ui.estado_do_rodape import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["DICA_DO_CANCELAR", "LARGURA_DA_MENSAGEM", "RodapeDaJanela"]
+__all__ = ["DICA_DO_CANCELAR", "LARGURA_DA_MENSAGEM", "LARGURA_DA_ZONA", "RodapeDaJanela"]
 
-LARGURA_DA_MENSAGEM = 480
-"""Quanto a mensagem **tem garantido** enquanto está na tela: cerca de setenta caracteres.
+LARGURA_DA_MENSAGEM = 320
+"""Quanto a mensagem **tem garantido** enquanto está na tela, no máximo: cerca de quarenta e
+cinco caracteres -- o começo de qualquer frase de erro. Uma frase mais curta tem garantida a
+largura dela, e não a reserva: espaço vazio ao lado de uma zona em reticências é o defeito.
 
 Com `stretch=1` o Qt a encolhe **primeiro**: no leiaute de caixa, um item esticável entra no
 aperto com o mínimo como largura desejada (`QLayoutStruct.smartSizeHint`), e o mínimo dela era
-zero. O crítico da fase 5 do ciclo 2 mediu: com o livro de nome de 149 caracteres, a 1248x640 e a
+zero. O crítico da fase 5 mediu (ciclo 1): com o livro de nome de 149 caracteres, a 1248x640 e a
 1366x728, a mensagem ficava com **0 px** e o nome do livro com 985 -- toda mensagem de erro
-sumia. Sem mensagem, o mínimo volta a zero e o nome do livro fica com o espaço."""
+sumia. A primeira reserva, 480 px, saiu das zonas curtas (ciclo 2): no aperto o leiaute tira de
+cada item não fixo a mesma parte, e as zonas de dispositivos e de ocupação chegavam a zero antes
+do nome do livro -- dispositivos cortados em 46 dos 46 livros do acervo a 1248 px, e a queda para
+a CPU de novo em silêncio. Sem mensagem, o mínimo volta a zero e o nome do livro fica com o
+espaço."""
+
+LARGURA_DA_ZONA = 240
+"""Quanto as zonas de **dispositivos** e de **ocupação** têm garantido: o texto inteiro delas até
+este teto. São textos curtos e de forma conhecida (``peças cpu · texto sem pesos``, 135 px;
+``Importando o livro (p. 121 de 289)``, 163), e o que dizem só vale inteiro: a zona de
+dispositivos existe porque uma máquina com placa e o torch ``+cpu`` roda na CPU em silêncio
+(`ui/dispositivos.py`). Quem cede no aperto é o nome do livro, elidido no meio -- o começo do
+nome e o fim da frase (a página e os diagramas) ficam. Com a mensagem na reserva, as duas zonas
+no teto, a barra e os botões, o rodapé ainda pede menos que a largura mínima da janela: quem a
+decide continua sendo o modo."""
 
 DICA_DO_CANCELAR = (
     "Só fica ativo quando há operação longa que sabe parar limpo.\n"
@@ -172,7 +191,7 @@ class RodapeDaJanela(QWidget):
         # Quem fica mais perto da mensagem é quem cede espaço primeiro.
         # Elidido pelo mesmo motivo da mensagem (C18): a descrição dos dispositivos cresce com o
         # motivo de uma ausência, e nenhum texto do rodapé decide a largura da janela.
-        self._lbl_dispositivos = RotuloElidido("", self, largura_desejada=0)
+        self._lbl_dispositivos = RotuloElidido("", self, largura_desejada=0, piso=LARGURA_DA_ZONA)
         self._lbl_dispositivos.setFont(auxiliar)
         tema.pintar(self._lbl_dispositivos, "color", tokens.TEXTO_SECUNDARIO)
         linha.addWidget(self._lbl_dispositivos, 0)
@@ -194,7 +213,7 @@ class RodapeDaJanela(QWidget):
         tema.pintar(self._lbl_documento, "color", tokens.TEXTO_SECUNDARIO)
         linha.addWidget(self._lbl_documento, 0)
 
-        self._lbl_ocupacao = RotuloElidido("", self, largura_desejada=0)
+        self._lbl_ocupacao = RotuloElidido("", self, largura_desejada=0, piso=LARGURA_DA_ZONA)
         self._lbl_ocupacao.setProperty(tipografia.PROPRIEDADE_TABULAR, "true")
         self._lbl_ocupacao.setFont(auxiliar)
         linha.addWidget(self._lbl_ocupacao, 0)
@@ -241,7 +260,9 @@ class RodapeDaJanela(QWidget):
         estado = compor(mensagem=texto, origem=origem, severidade=severidade)
         self._severidade = estado.severidade
         self._lbl_mensagem.definir_texto(estado.mensagem)
-        self._lbl_mensagem.setMinimumWidth(LARGURA_DA_MENSAGEM if estado.mensagem else 0)
+        # a reserva é o piso do rótulo: a largura da frase até `LARGURA_DA_MENSAGEM`, medida com
+        # a fonte de agora (`RotuloElidido.minimumSizeHint`)
+        self._lbl_mensagem.definir_piso(LARGURA_DA_MENSAGEM if estado.mensagem else 0)
         self._repintar_mensagem()
         self._reagendar_expiracao(expira_em_ms(estado.severidade))
         item = self.mensagens.registrar(
@@ -322,7 +343,7 @@ class RodapeDaJanela(QWidget):
 
     def _expirar(self) -> None:
         self._lbl_mensagem.definir_texto("")
-        self._lbl_mensagem.setMinimumWidth(0)
+        self._lbl_mensagem.definir_piso(0)
         self._severidade = ""
 
     # ------------------------------------------------------------------ estado do documento

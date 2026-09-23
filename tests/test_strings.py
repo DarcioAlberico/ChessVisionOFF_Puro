@@ -38,6 +38,16 @@ PERMITIDOS = {
 o usuário lê errada."""
 
 
+CHAMADAS_DE_TELA = frozenset({
+    "addItems", "addItem", "insertItems", "insertItem", "setItems", "setText", "setPlaceholderText",
+    "setToolTip", "setWindowTitle", "setHorizontalHeaderLabels", "setVerticalHeaderLabels",
+    "showMessage", "mostrar", "QLabel", "QPushButton", "QCheckBox", "QRadioButton", "QListWidgetItem",
+    "QTableWidgetItem", "QTreeWidgetItem",
+})
+"""As chamadas que escrevem o que recebem na tela: uma lista de palavras passada direto a uma delas
+é texto de interface, por mais minúsculas que sejam (crítico da fase 5, ciclo 2)."""
+
+
 def _literais_visiveis(caminho: Path) -> list[str]:
     """Strings do módulo que não são docstring nem nome de símbolo exportado.
 
@@ -98,15 +108,26 @@ def _literais_visiveis(caminho: Path) -> list[str]:
     # `combo.addItems(D)`) vai para a tela -- `REGIMES = {"pagina": 1}` com
     # `combo.addItems(list(REGIMES))` escapava; e o `.split()` só isenta a lista de palavras
     # minúsculas partida por espaço (`"… quebra cabecas …".split()`), não
-    # `"Pagina anterior|Proxima pagina".split("|")`.
+    # `"Pagina anterior|Proxima pagina".split("|")`. **Ciclo 2 do crítico**: enumerar é também
+    # `", ".join(D)` e `[*D]`; e a lista de palavras não escapa quando vai direto a uma chamada que
+    # escreve na tela (`combo.addItems("pagina posicao".split())`) -- guardada num nome, num
+    # `frozenset(...)` de palavras dobradas, ela continua sendo identificador.
     identificador = re.compile(r"^[a-z_][a-z0-9_]*$")
     palavras_minusculas = re.compile(r"^[a-z0-9 ]+$")
     enumerados: set[str] = set()
+    para_a_tela: set[int] = set()   # os nós passados direto a uma chamada que escreve na tela
     for no in ast.walk(arvore):
+        if isinstance(no, ast.Call):
+            chamada = no.func.id if isinstance(no.func, ast.Name) else getattr(no.func, "attr", "")
+            if chamada in CHAMADAS_DE_TELA:
+                para_a_tela.update(id(arg) for arg in no.args)
+                para_a_tela.update(id(kw.value) for kw in no.keywords)
+        if isinstance(no, ast.Starred) and isinstance(no.value, ast.Name):
+            enumerados.add(no.value.id)
         if isinstance(no, ast.Call) and no.args and isinstance(no.args[0], ast.Name):
             funcao = no.func
             if (isinstance(funcao, ast.Name) and funcao.id in {"list", "sorted", "tuple", "set", "iter", "enumerate"}) or (
-                    isinstance(funcao, ast.Attribute) and funcao.attr in {"addItems", "extend", "setItems"}):
+                    isinstance(funcao, ast.Attribute) and funcao.attr in {"addItems", "extend", "setItems", "join"}):
                 enumerados.add(no.args[0].id)
         elif (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)
               and no.func.attr in {"keys", "items", "values"} and isinstance(no.func.value, ast.Name)):
@@ -139,7 +160,7 @@ def _literais_visiveis(caminho: Path) -> list[str]:
                     ignorados.add(id(primeiro))
             if (isinstance(funcao, ast.Attribute) and funcao.attr == "split" and not no.args
                     and isinstance(funcao.value, ast.Constant) and isinstance(funcao.value.value, str)
-                    and palavras_minusculas.match(funcao.value.value)):
+                    and palavras_minusculas.match(funcao.value.value) and id(no) not in para_a_tela):
                 ignorados.add(id(funcao.value))
         else:
             alvos = getattr(no, "targets", None) or ([no.target] if isinstance(no, ast.AnnAssign) else [])
@@ -195,6 +216,12 @@ class AccentTests(unittest.TestCase):
             'combo.addItems("Posicao Pagina Revisao".split())\n'
             'REGIMES = {"posicao": 1, "revisao": 2}\n'
             'combo.addItems(list(REGIMES))\n'
+            # e os três do ciclo 2 do crítico
+            'combo.addItems("selecao posicoes".split())\n'
+            'REG1 = {"notacao": 1, "diagnostico": 2}\n'
+            'QLabel(", ".join(REG1))\n'
+            'REG2 = {"botao": 1, "tabuleiros": 2}\n'
+            'combo.addItems([*REG2])\n'
         )
         with tempfile.TemporaryDirectory() as pasta:
             caminho = Path(pasta) / "modulo.py"
@@ -202,6 +229,8 @@ class AccentTests(unittest.TestCase):
             vistos = _literais_visiveis(caminho)
         for escapa in ("SELECAO", "quebra cabecas"):
             self.assertNotIn(escapa, vistos)
+        for varrido in ("selecao posicoes", "notacao", "diagnostico", "botao", "tabuleiros"):
+            self.assertIn(varrido, vistos, "texto de tela em posição de identificador escapou")
         self.assertEqual(vistos.count("pagina"), 1, "só o `QLabel(\"pagina\")` é texto de tela")
         self.assertEqual(vistos.count("configuracoes"), 0)
         for varrido in ("Pagina seguinte", "Configuracoes da pagina", "Ir para a pagina",

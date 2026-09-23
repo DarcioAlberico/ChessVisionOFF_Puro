@@ -47,11 +47,15 @@ class RotuloElidido(QLabel):
         parent: QWidget | None = None,
         *,
         largura_desejada: int | None = None,
+        piso: int = 0,
     ) -> None:
         super().__init__(parent)
         self._inteiro = ""
         self._teto = LARGURA_DESEJADA if largura_desejada is None else largura_desejada
         """Quanto o rótulo **pede**, no máximo. `0` é "peça o texto inteiro" -- ver `sizeHint`."""
+        self._piso = piso
+        """Até quanto o rótulo **garante** o texto inteiro: ver `minimumSizeHint`. `0`, o padrão,
+        é o rótulo que cede tudo."""
         # `Preferred` na horizontal, com `sizeHint` **com teto** e `minimumSizeHint` **zero**:
         # o rótulo pede o que cabe e aceita encolher até sumir. `Ignored` foi tentado antes e é
         # forte demais -- o leiaute passa a não pedir largura nenhuma por ele, e o bloco inteiro
@@ -65,6 +69,13 @@ class RotuloElidido(QLabel):
         self._inteiro = texto or ""
         self.setToolTip(self._inteiro)
         self._reelidir()
+        if self._piso > 0:
+            self.updateGeometry()
+
+    def definir_piso(self, piso: int) -> None:
+        """Muda o que o rótulo garante (ver `minimumSizeHint`) e avisa o leiaute."""
+        self._piso = max(0, piso)
+        self.updateGeometry()
 
     @property
     def texto_inteiro(self) -> str:
@@ -89,8 +100,18 @@ class RotuloElidido(QLabel):
         `QLabel.minimumSizeHint` devolve a largura do texto inteiro quando não há quebra de
         linha, e é ela que sobe pela árvore de leiautes até virar a largura mínima da janela.
         A altura continua sendo a da fonte: um rótulo de altura zero desaparece.
+
+        **Salvo o piso** (OCR_UI ciclo 2, fase 5, crítico do ciclo 2): quem o pede tem o texto
+        inteiro garantido até ele -- a largura do texto, com teto, e **medida com a fonte de
+        agora**. Um `setMinimumWidth` calculado quando o texto chega mede com a fonte de antes
+        do estilo: no rodapé, a zona de dispositivos saiu «peças cpu … sem pesos» com o mínimo
+        que devia caber o texto inteiro.
         """
-        return QSize(0, super().minimumSizeHint().height())
+        altura = super().minimumSizeHint().height()
+        if self._piso <= 0 or not self._inteiro:
+            return QSize(0, altura)
+        texto = QFontMetrics(self.font()).horizontalAdvance(self._inteiro)
+        return QSize(min(self._piso, texto), altura)
 
     def sizeHint(self) -> QSize:  # noqa: N802 - assinatura do Qt
         """A largura **desejada**: a do texto inteiro, com teto.
