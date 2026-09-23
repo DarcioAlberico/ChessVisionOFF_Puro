@@ -377,6 +377,13 @@ class PainelDeEstudo(QWidget):
         # por `anchorClicked` -- que é o `tag_bind` do outro lado sem o mapa de tags à mão.
         self.lista = QTextBrowser(lances)
         self.lista.setOpenLinks(False)
+        # Uma parada do Tab, e não uma por lance: o `QTextBrowser` anda de âncora em âncora com o
+        # Tab (180 teclas numa partida de 120 lances), e de volta, com o Shift+Tab, não sai mais
+        # dela -- medido: 2.000 teclas (OCR_UI ciclo 2, fase 5, crítico do ciclo 4, o portão
+        # `teclado` com a tecla de verdade). Os lances se percorrem pelas setas da sala, e o clique
+        # num lance continua levando a ele.
+        self.lista.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse
+                                           | Qt.TextInteractionFlag.LinksAccessibleByMouse)
         self.lista.anchorClicked.connect(self._clique_na_lista)
         self.lista.setFont(tema.fonte_atual(tipografia.CORPO))
         dentro.addWidget(self.lista)

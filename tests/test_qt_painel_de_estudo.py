@@ -452,6 +452,46 @@ class SalaTests(unittest.TestCase):
         self.assertIs(QApplication.focusWidget(), painel.comentario)
         self.assertIn("\t", painel.comentario.toPlainText())
 
+    def test_a_lista_de_lances_e_uma_parada_do_tab_nos_dois_sentidos(self) -> None:
+        """Com a tecla de verdade, numa partida de 40 lances: o `Shift+Tab` do comentário passa
+        pela lista e sai dela na tecla seguinte, e o `Tab` sai dela de uma vez (portão `teclado`
+        da suíte, crítico da fase 5, ciclo 4). A sabotagem é a lista andando de âncora em âncora
+        pelo teclado, como antes: o `Shift+Tab` não sai mais dela."""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtTest import QTest
+        from PyQt6.QtWidgets import QApplication
+
+        painel = self.sala()
+        tabuleiro = chess.Board()
+        for _ in range(40):
+            lance = sorted(tabuleiro.legal_moves, key=lambda m: m.uci())[0]
+            painel.push_move(lance)
+            tabuleiro.push(lance)
+        painel.activateWindow()
+
+        def na_lista_de_volta() -> int:
+            painel.comentario.setFocus(Qt.FocusReason.TabFocusReason)
+            self.app.processEvents()
+            vezes = 0
+            for _ in range(200):
+                QTest.keyClick(QApplication.focusWidget(), Qt.Key.Key_Backtab,
+                               Qt.KeyboardModifier.ShiftModifier)
+                self.app.processEvents()
+                if QApplication.focusWidget() is painel.lista:
+                    vezes += 1
+                elif vezes:
+                    break
+            return vezes
+
+        self.assertEqual(na_lista_de_volta(), 1)
+        painel.lista.setFocus(Qt.FocusReason.TabFocusReason)
+        self.app.processEvents()
+        QTest.keyClick(painel.lista, Qt.Key.Key_Tab)
+        self.app.processEvents()
+        self.assertIsNot(QApplication.focusWidget(), painel.lista)
+        painel.lista.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        self.assertGreater(na_lista_de_volta(), 60)
+
     def test_com_o_cursor_num_campo_a_sala_cede_a_tecla(self) -> None:
         """A sala tem o campo de FEN, a lista e a caixa de anotação: ali `←` é do texto (S-323)."""
         from PyQt6.QtWidgets import QApplication
