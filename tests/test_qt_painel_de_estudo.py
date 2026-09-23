@@ -492,6 +492,35 @@ class SalaTests(unittest.TestCase):
         painel.lista.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         self.assertGreater(na_lista_de_volta(), 60)
 
+    def test_o_tab_sai_do_campo_de_colar_sem_escrever_tabulacao(self) -> None:
+        """A caixa de colar posição ou partida: com a tecla de verdade, o `Tab` no campo leva o
+        foco ao «Colar» e não escreve tabulação (portão `teclado` da suíte, crítico da fase 5,
+        ciclo 4). A sabotagem é o campo guardando o `Tab`, como antes."""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtTest import QTest
+        from PyQt6.QtWidgets import QApplication
+
+        from chess_diagram_ocr.qt.painel_de_estudo import _JanelaDeColar
+
+        painel = self.sala()
+        janela = _JanelaDeColar(painel, lambda texto: None)
+        self.addCleanup(descartar, janela)
+        janela.show()
+        janela.activateWindow()
+        janela.campo.setFocus(Qt.FocusReason.TabFocusReason)
+        self.app.processEvents()
+        QTest.keyClick(janela.campo, Qt.Key.Key_Tab)
+        self.app.processEvents()
+        self.assertIsNot(QApplication.focusWidget(), janela.campo)
+        self.assertNotIn("\t", janela.campo.toPlainText())
+        janela.campo.setTabChangesFocus(False)
+        janela.campo.setFocus(Qt.FocusReason.TabFocusReason)
+        self.app.processEvents()
+        QTest.keyClick(janela.campo, Qt.Key.Key_Tab)
+        self.app.processEvents()
+        self.assertIs(QApplication.focusWidget(), janela.campo)
+        self.assertIn("\t", janela.campo.toPlainText())
+
     def test_com_o_cursor_num_campo_a_sala_cede_a_tecla(self) -> None:
         """A sala tem o campo de FEN, a lista e a caixa de anotação: ali `←` é do texto (S-323)."""
         from PyQt6.QtWidgets import QApplication

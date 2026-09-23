@@ -1893,6 +1893,10 @@ class _JanelaDeColar(QDialog):
         # inteira -- "Cole aqui uma FEN ou um PGN. O texto diz qual dos dois é." --, que é uma
         # ajuda e não um nome. O rótulo continua na tela e continua sendo lido como texto.
         self.campo.setAccessibleName("Posição ou partida colada")
+        # O `Tab` sai do campo, para o «Colar»: uma FEN ou um PGN colados não pedem tabulação, e
+        # guardado pelo campo ele a escrevia e prendia a tecla ali (o portão `teclado` da suíte
+        # com a tecla de verdade, OCR_UI ciclo 2, fase 5, crítico do ciclo 4).
+        self.campo.setTabChangesFocus(True)
         pilha.addWidget(self.campo, 1)
         botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel, parent=self)
         # **O botão diz o verbo, e por isso é feito à mão** (F9-C12). Um `Ok` padrão chega ao
