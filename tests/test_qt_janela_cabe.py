@@ -25,6 +25,9 @@ if TEM_PYQT:
 
 FRASE = ("A importação de 1937 Kemeri.pdf terminou depois de o livro mudar e foi descartada; as "
          "páginas lidas continuam no cache e podem ser exportadas quando o livro voltar. ") * 3
+NOME_LONGO = ("Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid "
+              "Foolish Mistakes (Bastford, 2005) 2p 145p_OCR_Aprimorar_Aprimorar.pdf · p. 1 de 289 · "
+              "nenhum diagrama nesta página")
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -50,6 +53,59 @@ class RodapeNaoDecideALarguraTests(unittest.TestCase):
     def test_dispositivos_e_ocupacao_tambem_elidem(self) -> None:
         self.assertEqual(self.rodape._lbl_dispositivos.minimumSizeHint().width(), 0)
         self.assertEqual(self.rodape._lbl_ocupacao.minimumSizeHint().width(), 0)
+
+    def _larguras(self, largura: int) -> tuple[int, int]:
+        self.rodape.definir_documento(NOME_LONGO)
+        self.rodape.resize(largura, 30)
+        self.rodape.show()
+        for _ in range(4):
+            self.app.processEvents()
+        return self.rodape._lbl_mensagem.width(), self.rodape._lbl_documento.width()
+
+    def test_a_mensagem_tem_largura_garantida_ao_lado_de_um_nome_longo(self) -> None:
+        """Crítico da fase 5: com o nome de 149 caracteres a mensagem ficava com 0 px -- o Qt
+        encolhe primeiro o item esticável, e o mínimo dela era zero."""
+        self.rodape.mostrar(FRASE)
+        mensagem, documento = self._larguras(1248)
+        self.assertGreaterEqual(mensagem, rodape.LARGURA_DA_MENSAGEM)
+        self.assertGreater(documento, 0, "o nome do livro continua à vista, elidido")
+
+    def test_sem_mensagem_o_nome_do_livro_fica_com_o_espaco(self) -> None:
+        self.rodape.mostrar(FRASE)
+        self.rodape._expirar()
+        self.assertEqual(self.rodape._lbl_mensagem.minimumWidth(), 0)
+
+    def test_a_sabotagem_sem_o_piso_a_mensagem_some(self) -> None:
+        original = rodape.LARGURA_DA_MENSAGEM
+        rodape.LARGURA_DA_MENSAGEM = 0
+        self.addCleanup(setattr, rodape, "LARGURA_DA_MENSAGEM", original)
+        self.rodape.mostrar(FRASE)
+        mensagem, _documento = self._larguras(1248)
+        self.assertLess(mensagem, 50)
+
+    def _linha_cheia(self) -> QPushButton:
+        """A mensagem no piso, o nome longo e uma importação em curso, com a barra na linha."""
+        from chess_diagram_ocr.ui.busy import BusyOperation
+
+        self.rodape.mostrar(FRASE)
+        self.rodape.aplicar_ocupacao([BusyOperation(
+            name="Importando o livro", loses_work=False, cancellable=True,
+            detail="p. 12 de 289", feito=12, total=289)])
+        self._larguras(1248)
+        return self.rodape._btn_mensagens
+
+    def test_o_botao_de_mensagens_fica_com_o_seu_minimo_com_a_linha_cheia(self) -> None:
+        """O portão da janela estendido (fase 5): com a mensagem no piso e a importação em curso,
+        o piso de um pixel deixava o botão com 27 dos 82 px."""
+        botao = self._linha_cheia()
+        self.assertGreaterEqual(botao.width(), botao.minimumSizeHint().width())
+        self.assertLess(self.rodape.minimumSizeHint().width(), 1248,
+                        "o rodapé continua sem decidir a largura mínima da janela")
+
+    def test_a_sabotagem_o_piso_de_um_pixel_espreme_o_botao(self) -> None:
+        self.rodape._btn_mensagens.setMinimumWidth(1)
+        botao = self._linha_cheia()
+        self.assertLess(botao.width(), 0.9 * botao.minimumSizeHint().width())
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -110,6 +166,23 @@ class ModosRolamTests(unittest.TestCase):
 
         rolagem = self.principal.pilha.widget(0)
         self.assertEqual(rolagem.focusPolicy(), Qt.FocusPolicy.NoFocus)
+
+    def test_a_barra_horizontal_aparece_quando_o_modo_nao_cabe(self) -> None:
+        """Crítico da fase 5: desligada, o que passava da largura ficava sem caminho -- o
+        Resultado pede 550 px e a rolagem mostra 526 com a janela no mínimo."""
+        from PyQt6.QtCore import Qt
+
+        largo = QWidget()
+        largo.setMinimumSize(600, 100)
+        self.principal.adicionar_modo("Texto", largo)
+        self.principal.definir_modo("Texto")
+        rolagem = self.principal.pilha.currentWidget()
+        self.assertEqual(rolagem.horizontalScrollBarPolicy(), Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.principal.resize(400, 300)
+        self.principal.show()
+        for _ in range(4):
+            self.app.processEvents()
+        self.assertTrue(rolagem.horizontalScrollBar().isVisible())
 
 
 if __name__ == "__main__":

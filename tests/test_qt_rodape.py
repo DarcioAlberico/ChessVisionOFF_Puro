@@ -399,17 +399,21 @@ class DocumentoTests(unittest.TestCase):
     def test_sem_folga_ele_volta_a_elidir(self) -> None:
         """O outro lado, e é o que impede o conserto de virar transbordo.
 
-        Um nome de 149 caracteres numa faixa de 320 px **tem** de ser cortado -- a alternativa é
+        Um nome de 149 caracteres com 320 px para ele **tem** de ser cortado -- a alternativa é
         empurrar as outras zonas para fora. O que este par de testes cobra é que a reticência
         apareça por falta de espaço, e nunca por um teto herdado.
+
+        Os 320 px são **do nome**, somados ao mínimo da faixa: desde que o botão das mensagens
+        guarda o seu mínimo (OCR_UI ciclo 2, fase 5), uma faixa inteira de 320 px -- que a
+        janela, de 1248 px no mínimo, nunca tem -- deixava ao nome menos que uma reticência.
         """
         longo = (
             "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid "
             "Foolish Mistakes (Bastford, 2005) 2p 145 · p. 121 de 289"
         )
         self.rodape.definir_documento(longo, False)
-        elididos = self._elididos(320)
-        self.assertEqual(1, len(elididos), "a faixa de 320 px coube o nome de 149 caracteres?")
+        elididos = self._elididos(self.rodape.minimumSizeHint().width() + 320)
+        self.assertEqual(1, len(elididos), "320 px couberam o nome de 149 caracteres?")
         self.assertIn("\u2026", elididos[0][1])
 
     def test_o_rotulo_do_documento_continua_sem_decidir_a_largura_minima(self) -> None:

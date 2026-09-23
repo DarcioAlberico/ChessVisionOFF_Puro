@@ -92,9 +92,37 @@ def _literais_visiveis(caminho: Path) -> list[str]:
     # **posição** do literal, e só um literal com forma de identificador (`^[a-z_][a-z0-9_]*$`)
     # escapa nas três primeiras -- um `{"Página": …}` ou um `Comando("abrir", "Configuracoes")`
     # continuam varridos.
+    #
+    # **E a posição tem de ser de identificador de verdade** (crítico da fase 5): a chave de um
+    # dicionário que o módulo **enumera** (`list(D)`, `sorted(D)`, `D.keys()`, `for x in D`,
+    # `combo.addItems(D)`) vai para a tela -- `REGIMES = {"pagina": 1}` com
+    # `combo.addItems(list(REGIMES))` escapava; e o `.split()` só isenta a lista de palavras
+    # minúsculas partida por espaço (`"… quebra cabecas …".split()`), não
+    # `"Pagina anterior|Proxima pagina".split("|")`.
     identificador = re.compile(r"^[a-z_][a-z0-9_]*$")
+    palavras_minusculas = re.compile(r"^[a-z0-9 ]+$")
+    enumerados: set[str] = set()
+    for no in ast.walk(arvore):
+        if isinstance(no, ast.Call) and no.args and isinstance(no.args[0], ast.Name):
+            funcao = no.func
+            if (isinstance(funcao, ast.Name) and funcao.id in {"list", "sorted", "tuple", "set", "iter", "enumerate"}) or (
+                    isinstance(funcao, ast.Attribute) and funcao.attr in {"addItems", "extend", "setItems"}):
+                enumerados.add(no.args[0].id)
+        elif (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)
+              and no.func.attr in {"keys", "items", "values"} and isinstance(no.func.value, ast.Name)):
+            enumerados.add(no.func.value.id)
+        elif isinstance(no, (ast.For, ast.comprehension)) and isinstance(no.iter, ast.Name):
+            enumerados.add(no.iter.id)
+    dicionarios_enumerados: set[int] = set()
+    for no in ast.walk(arvore):
+        alvos = getattr(no, "targets", None) or ([no.target] if isinstance(no, ast.AnnAssign) else [])
+        valor = getattr(no, "value", None)
+        if isinstance(valor, ast.Dict) and any(isinstance(a, ast.Name) and a.id in enumerados for a in alvos):
+            dicionarios_enumerados.add(id(valor))
     for no in ast.walk(arvore):
         if isinstance(no, ast.Dict):
+            if id(no) in dicionarios_enumerados:
+                continue
             for chave in no.keys:
                 if isinstance(chave, ast.Constant) and isinstance(chave.value, str) and identificador.match(chave.value):
                     ignorados.add(id(chave))
@@ -109,7 +137,9 @@ def _literais_visiveis(caminho: Path) -> list[str]:
                 primeiro = no.args[0]
                 if isinstance(primeiro, ast.Constant) and isinstance(primeiro.value, str) and identificador.match(primeiro.value):
                     ignorados.add(id(primeiro))
-            if isinstance(funcao, ast.Attribute) and funcao.attr == "split" and isinstance(funcao.value, ast.Constant):
+            if (isinstance(funcao, ast.Attribute) and funcao.attr == "split" and not no.args
+                    and isinstance(funcao.value, ast.Constant) and isinstance(funcao.value.value, str)
+                    and palavras_minusculas.match(funcao.value.value)):
                 ignorados.add(id(funcao.value))
         else:
             alvos = getattr(no, "targets", None) or ([no.target] if isinstance(no, ast.AnnAssign) else [])
@@ -160,6 +190,11 @@ class AccentTests(unittest.TestCase):
             'vazias = "quebra cabecas".split()\n'
             'rotulo = QLabel("pagina")\n'
             'erro = {"pagina": "Ir para a pagina"}\n'
+            # os três casos do crítico da fase 5: texto de tela em posição de identificador
+            'ROTULOS = "Pagina anterior|Proxima pagina|Configuracoes".split("|")\n'
+            'combo.addItems("Posicao Pagina Revisao".split())\n'
+            'REGIMES = {"posicao": 1, "revisao": 2}\n'
+            'combo.addItems(list(REGIMES))\n'
         )
         with tempfile.TemporaryDirectory() as pasta:
             caminho = Path(pasta) / "modulo.py"
@@ -169,7 +204,9 @@ class AccentTests(unittest.TestCase):
             self.assertNotIn(escapa, vistos)
         self.assertEqual(vistos.count("pagina"), 1, "só o `QLabel(\"pagina\")` é texto de tela")
         self.assertEqual(vistos.count("configuracoes"), 0)
-        for varrido in ("Pagina seguinte", "Configuracoes da pagina", "Ir para a pagina"):
+        for varrido in ("Pagina seguinte", "Configuracoes da pagina", "Ir para a pagina",
+                        "Pagina anterior|Proxima pagina|Configuracoes", "Posicao Pagina Revisao",
+                        "posicao", "revisao"):
             self.assertIn(varrido, vistos)
 
     def test_nenhuma_excecao_de_produto_usa_forma_sem_acento(self) -> None:

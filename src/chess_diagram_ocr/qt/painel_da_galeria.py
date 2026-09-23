@@ -359,8 +359,10 @@ class PainelDaGaleria(QWidget):
         self.lbl_posicao.setProperty(folha_de_estilo.PROPRIEDADE_DE_APOIO, "true")
         centro.addWidget(self.lbl_posicao, 0, Qt.AlignmentFlag.AlignHCenter)
 
-        navegacao = QHBoxLayout()
-        navegacao.addStretch(1)
+        # **Fluida** (OCR_UI ciclo 2, fase 5, C18): numa `QHBoxLayout` os quatro botões somavam mais
+        # que a coluna central tem com a janela no mínimo de 1248x640, e o Qt os espremia abaixo do
+        # texto (33 de 42 px, «Anterior» 77 de 86) -- medido por `caissa.ui.audit.minimo`.
+        navegacao = BarraFluida(self)
         # **Os dois das pontas ganham desenho** (F9-C7, §4.7): `|◀` e `▶|` rendiam caixas de
         # tinta de 8x12 e 9x12 px, de duas familias tipograficas diferentes, e o par que deveria
         # ser espelho nao era. Os dois do meio continuam com palavra -- eles **tem** texto
@@ -374,11 +376,9 @@ class PainelDaGaleria(QWidget):
             ("Próximo", "Próximo diagrama", 1, False, "proximo_diagrama"),
             ("", "Último diagrama", -1, True, "fim_da_linha"),
         ):
-            botao = self._botao(self, rotulo, partial(self._ir, passo, absoluto=absoluto), nome=nome)
+            botao = self._botao(navegacao, rotulo, partial(self._ir, passo, absoluto=absoluto), nome=nome)
             qt_icones.vestir(botao, desenho, estilos.NEUTRO, manter_texto=bool(rotulo))
-            navegacao.addWidget(botao)
-        navegacao.addStretch(1)
-        centro.addLayout(navegacao)
+        centro.addWidget(navegacao, 0, Qt.AlignmentFlag.AlignHCenter)
 
         # A legenda impressa, inteira e **selecionável**: ela é a fonte do que a pessoa digita nos
         # campos ao lado, e enquanto foi um rótulo era a única coisa da tela que não se podia

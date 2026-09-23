@@ -75,7 +75,16 @@ from chess_diagram_ocr.ui.estado_do_rodape import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["DICA_DO_CANCELAR", "RodapeDaJanela"]
+__all__ = ["DICA_DO_CANCELAR", "LARGURA_DA_MENSAGEM", "RodapeDaJanela"]
+
+LARGURA_DA_MENSAGEM = 480
+"""Quanto a mensagem **tem garantido** enquanto está na tela: cerca de setenta caracteres.
+
+Com `stretch=1` o Qt a encolhe **primeiro**: no leiaute de caixa, um item esticável entra no
+aperto com o mínimo como largura desejada (`QLayoutStruct.smartSizeHint`), e o mínimo dela era
+zero. O crítico da fase 5 do ciclo 2 mediu: com o livro de nome de 149 caracteres, a 1248x640 e a
+1366x728, a mensagem ficava com **0 px** e o nome do livro com 985 -- toda mensagem de erro
+sumia. Sem mensagem, o mínimo volta a zero e o nome do livro fica com o espaço."""
 
 DICA_DO_CANCELAR = (
     "Só fica ativo quando há operação longa que sabe parar limpo.\n"
@@ -148,10 +157,13 @@ class RodapeDaJanela(QWidget):
         tema.aplicar_papel(self._btn_mensagens, estilos.NEUTRO)
         self._btn_mensagens.clicked.connect(self.abrir_mensagens)
         dica_em(self._btn_mensagens, "As últimas mensagens desta sessão, inclusive as que já saíram daqui.")
-        # **Piso de um pixel, pela razão do rótulo do documento**: o rodapé é a faixa que cede, e
-        # um botão que exigisse os seus 90 px subiria a largura mínima da janela por causa de uma
-        # lista de consulta. Com folga ele tem o tamanho que pede; sem folga, encolhe.
-        self._btn_mensagens.setMinimumWidth(1)
+        # **O mínimo do botão é o dele** (OCR_UI ciclo 2, fase 5, portão da janela estendido).
+        # Havia um piso de um pixel, para o botão não subir a largura mínima da janela; mas quem
+        # cede nesta linha são os rótulos elididos, e um botão de 27 px não mostra o que abre.
+        # Com a mensagem no piso dela e uma importação em curso (ocupação e barra na linha), o
+        # portão mediu o botão com 27 dos 82 px, com a janela no mínimo e em todas as áreas. Sem o
+        # piso de um pixel, o mínimo do rodapé sobe a largura do botão e continua abaixo de 950 px
+        # com tudo à vista; quem decide a largura mínima da janela continua sendo o modo (1248).
         linha.addWidget(self._btn_mensagens, 0)
         self._janela_de_mensagens: QDialog | None = None
 
@@ -229,6 +241,7 @@ class RodapeDaJanela(QWidget):
         estado = compor(mensagem=texto, origem=origem, severidade=severidade)
         self._severidade = estado.severidade
         self._lbl_mensagem.definir_texto(estado.mensagem)
+        self._lbl_mensagem.setMinimumWidth(LARGURA_DA_MENSAGEM if estado.mensagem else 0)
         self._repintar_mensagem()
         self._reagendar_expiracao(expira_em_ms(estado.severidade))
         item = self.mensagens.registrar(
@@ -309,6 +322,7 @@ class RodapeDaJanela(QWidget):
 
     def _expirar(self) -> None:
         self._lbl_mensagem.definir_texto("")
+        self._lbl_mensagem.setMinimumWidth(0)
         self._severidade = ""
 
     # ------------------------------------------------------------------ estado do documento

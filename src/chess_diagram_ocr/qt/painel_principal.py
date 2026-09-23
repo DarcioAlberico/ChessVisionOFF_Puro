@@ -105,13 +105,18 @@ class PainelPrincipal(QWidget):
         pilha -- que decidia a altura mínima da janela: 659 a 695 px lógicos, contra os 641 que
         sobram num portátil 1920×1080 a 150 % com a barra de tarefas. Numa rolagem o modo fica com
         a altura que a janela tiver, e o que não couber rola; é o que a lateral da Galeria e o
-        cartão da Rotulagem já fazem desde o passo 16 do ciclo 1. A horizontal fica desligada: na
-        largura nada muda, o que não cabe continua sendo decidido pelo piso das abas.
+        cartão da Rotulagem já fazem desde o passo 16 do ciclo 1.
+
+        **A horizontal aparece quando precisa.** A primeira versão a desligava dizendo que «na
+        largura nada muda», e mudava: o Resultado pede 550 px (o recorte e o tabuleiro lado a
+        lado, pisos declarados) e, com a janela no mínimo de 1248x640, a rolagem mostra 526 --
+        a barra de ações e o «Copiar FEN» ficavam com 0 px à vista, sem barra que dissesse que
+        havia mais (crítico da fase 5 do ciclo 2).
         """
         rolagem = QScrollArea()
         rolagem.setWidgetResizable(True)
         rolagem.setFrameShape(QFrame.Shape.NoFrame)
-        rolagem.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        rolagem.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         rolagem.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         rolagem.setWidget(painel)
         return rolagem
