@@ -968,6 +968,10 @@ class JanelaPrincipal(QMainWindow):
         # A S-451: "Salvar todos" pergunta antes de gravar a segunda cópia, e quem sabe o que já
         # foi salvo é a janela -- o painel não tem o carimbo por página.
         self.painel.diagramas_salvos = lambda _documento, pagina: self._salvos.get(pagina, set())
+        # O número do lance é anotação da Galeria (S-71/S-67): o painel lê e grava lá, e nunca
+        # guarda cópia. É o mesmo par que `_posicao_de_estudo` já usa para a sala.
+        self.painel.lance_de = self.galeria.move_number_at
+        self.painel.gravar_lance = self.galeria.set_move_number
         self.painel.selecionou.connect(self.pdf.selecionar_caixa)
         self.painel.mudou.connect(self._recarimbar_caixas)
         self.painel.salvou.connect(self._gravou_amostra)
@@ -1663,6 +1667,8 @@ class JanelaPrincipal(QMainWindow):
             self._caixas_por_pagina.get(self._chave_do_documento(), self.pdf.page_index, self._parametros())
         )
         self._atualizar_abas()
+        # O campo de lance do Resultado mostra a mesma anotação: se a Galeria a mudou, ele relê.
+        self.painel.sincronizar_lance()
 
     def _focar_aba(self, painel: QWidget) -> None:
         """Traz para a frente o painel que acabou de receber alguma coisa -- aba ou modo."""

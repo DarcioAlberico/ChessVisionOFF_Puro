@@ -250,8 +250,13 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2077
+    LIMITE = 2083
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.077 -> 2.083 com o campo «Lance» de volta ao Resultado (S-71, 2026-09-22)**: o Tk tinha
+    o campo e o porte do Qt não o trouxe. Seis linhas: a janela entrega ao painel os dois
+    ganchos da Galeria (`move_number_at`, `set_move_number`), que é a dona da anotação, e manda
+    o painel reler quando a Galeria escreve. A lógica do campo mora em `qt/painel_de_resultado`.
 
     **2.058 -> 2.077 na crítica da fase 2 (Codex, ciclo 1)**: a tarefa de `_rodar` deixa de ser
     filha da janela (`manter_viva`) -- destruída a correr, o `QThread` abortava o processo se a
