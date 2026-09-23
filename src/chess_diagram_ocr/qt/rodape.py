@@ -81,9 +81,13 @@ logger = logging.getLogger(__name__)
 __all__ = ["DICA_DO_CANCELAR", "LARGURA_DA_MENSAGEM", "LARGURA_DA_ZONA", "RodapeDaJanela"]
 
 LARGURA_DA_MENSAGEM = 320
-"""Quanto a mensagem **tem garantido** enquanto está na tela, no máximo: cerca de quarenta e
-cinco caracteres -- o começo de qualquer frase de erro. Uma frase mais curta tem garantida a
-largura dela, e não a reserva: espaço vazio ao lado de uma zona em reticências é o defeito.
+"""Quanto a mensagem **tem garantido** enquanto está na tela, no máximo: cerca de 57 caracteres
+na fonte do produto (5,6 px cada, medido pelo crítico da fase 5, ciclo 3) -- o começo de qualquer
+frase de erro. Uma frase mais curta tem garantida a largura dela, e não a reserva: espaço vazio ao
+lado de uma zona em reticências é o defeito. **O custo, medido:** uma frase mais longa sai elidida
+no meio, com a inteira na dica -- a do próprio produto sem o modelo de casas
+(`leitura.FRASE_SEM_MODELO`, 84 caracteres, 474 px) sai assim nos 46 livros do acervo de 1246 a
+1440 px de largura, e o estado vazio do Resultado (73 caracteres, 409 px) também.
 
 Com `stretch=1` o Qt a encolhe **primeiro**: no leiaute de caixa, um item esticável entra no
 aperto com o mínimo como largura desejada (`QLayoutStruct.smartSizeHint`), e o mínimo dela era
@@ -97,13 +101,17 @@ espaço."""
 
 LARGURA_DA_ZONA = 240
 """Quanto as zonas de **dispositivos** e de **ocupação** têm garantido: o texto inteiro delas até
-este teto. São textos curtos e de forma conhecida (``peças cpu · texto sem pesos``, 135 px;
-``Importando o livro (p. 121 de 289)``, 163), e o que dizem só vale inteiro: a zona de
-dispositivos existe porque uma máquina com placa e o torch ``+cpu`` roda na CPU em silêncio
-(`ui/dispositivos.py`). Quem cede no aperto é o nome do livro, elidido no meio -- o começo do
-nome e o fim da frase (a página e os diagramas) ficam. Com a mensagem na reserva, as duas zonas
-no teto, a barra e os botões, o rodapé ainda pede menos que a largura mínima da janela: quem a
-decide continua sendo o modo."""
+este teto. A de dispositivos é curta e de forma conhecida (``peças cpu · texto sem pesos``,
+135 px), e o que diz só vale inteiro: ela existe porque uma máquina com placa e o torch ``+cpu``
+roda na CPU em silêncio (`ui/dispositivos.py`). A de ocupação é curta no caso comum
+(``Importando o livro (p. 121 de 289)``, 163 px), **mas não tem forma fixa**: ``aquecendo o
+modelo (<caminho do .pt>)`` e ``Exportando para EPUB (<nome>.epub)`` passam do teto e saem
+elididas no meio, com a inteira na dica (crítico da fase 5, ciclo 3: 46 de 46 livros com a
+primeira, 36 a 45 com a segunda). Quem cede no aperto é o nome do livro, elidido no meio -- o
+começo do nome e o fim da frase (a página e os diagramas) ficam; com a ocupação no teto, a
+1246 px, ele chega a ~95 px. Com a mensagem na reserva, as duas zonas no teto, a barra e os
+botões, o rodapé ainda pede menos que a largura mínima da janela: quem a decide continua sendo o
+modo."""
 
 DICA_DO_CANCELAR = (
     "Só fica ativo quando há operação longa que sabe parar limpo.\n"
