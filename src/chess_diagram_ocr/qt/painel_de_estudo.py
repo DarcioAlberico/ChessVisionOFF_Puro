@@ -387,6 +387,10 @@ class PainelDeEstudo(QWidget):
         dentro.setContentsMargins(*(espaco.linha(),) * 4)
         self.comentario = QTextEdit(anotacao)
         self.comentario.setAccessibleName("Comentário do lance")
+        # O `Tab` sai da caixa, e sair grava (abaixo). Guardado pela caixa, ele escrevia uma
+        # tabulação no comentário e a tecla nunca passava dali: quem anda pelo teclado não
+        # alcançava o resto da sala (OCR_UI ciclo 2, fase 5, crítico do ciclo 4, portão `teclado`).
+        self.comentario.setTabChangesFocus(True)
         self.comentario.setFixedHeight(4 * tema.altura_de_linha_atual())
         # Grava ao **sair** do campo, e não a cada tecla: um sinal por letra faria a lista de
         # lances ser redesenhada trinta vezes por frase, e o cursor pularia junto.

@@ -424,6 +424,34 @@ class SalaTests(unittest.TestCase):
         self.assertEqual(painel.estudo.contagem_de_lances(), 1)
         self.assertFalse(painel.reabrir_por_chave("nao-existe"))
 
+    def test_o_tab_sai_do_comentario_e_grava_sem_escrever_tabulacao(self) -> None:
+        """Com a tecla de verdade: o `Tab` na caixa do comentário leva o foco adiante (e sair grava
+        o comentário no lance), em vez de escrever uma tabulação e prender quem anda pelo teclado
+        (portão `teclado` da suíte, crítico da fase 5, ciclo 4). A sabotagem é a caixa guardando o
+        `Tab`, como antes: o foco fica, e o texto ganha a tabulação."""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtTest import QTest
+        from PyQt6.QtWidgets import QApplication
+
+        painel = self.sala()
+        painel.push_move(chess.Move.from_uci("e2e4"))
+        painel.activateWindow()
+        painel.comentario.setFocus(Qt.FocusReason.TabFocusReason)
+        self.app.processEvents()
+        painel.comentario.setPlainText("uma nota")
+        QTest.keyClick(painel.comentario, Qt.Key.Key_Tab)
+        self.app.processEvents()
+        self.assertIsNot(QApplication.focusWidget(), painel.comentario)
+        self.assertNotIn("\t", painel.comentario.toPlainText())
+        self.assertIn("uma nota", painel.estudo.no.comment)
+        painel.comentario.setTabChangesFocus(False)
+        painel.comentario.setFocus(Qt.FocusReason.TabFocusReason)
+        self.app.processEvents()
+        QTest.keyClick(painel.comentario, Qt.Key.Key_Tab)
+        self.app.processEvents()
+        self.assertIs(QApplication.focusWidget(), painel.comentario)
+        self.assertIn("\t", painel.comentario.toPlainText())
+
     def test_com_o_cursor_num_campo_a_sala_cede_a_tecla(self) -> None:
         """A sala tem o campo de FEN, a lista e a caixa de anotação: ali `←` é do texto (S-323)."""
         from PyQt6.QtWidgets import QApplication
