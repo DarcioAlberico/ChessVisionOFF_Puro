@@ -440,6 +440,61 @@ class DialogoDeBasesTests(unittest.TestCase):
         self.pasta = pasta_temporaria(self)
         self.addCleanup(self.app.processEvents)
 
+    def test_o_seguidor_da_rolagem_destruida_nao_pergunta_nada_a_ela(self) -> None:
+        """Achado pelo construtor (fase 5, ciclo 8) com a sonda da rolagem morta do crítico: a
+        rolagem destruída com o foco dentro -- o diálogo de bases depois da pergunta -- limpa o foco no
+        destrutor, quando a rolagem já se foi e o seguidor, filho dela, ainda não; a primeira versão do
+        ciclo 8 perguntava à rolagem morta pelo conteúdo antes de perguntar se havia foco novo:
+        «wrapped C/C++ object of type QScrollArea has been deleted», 20 vezes em 20 perguntas, e um
+        access violation no fim. O seguidor pergunta primeiro se há foco novo e se a rolagem vive. A
+        sabotagem: a ordem daquela primeira versão."""
+        import sys
+
+        from PyQt6.QtCore import QCoreApplication, QEvent
+
+        from chess_diagram_ocr.qt.foco_a_vista import RolagemSegueOFoco
+
+        def montar_e_destruir() -> None:
+            janela = QWidget()
+            self.addCleanup(descartar, janela)
+            coluna = QVBoxLayout(janela)
+            rolagem = QScrollArea(janela)
+            conteudo = QWidget(rolagem)
+            campo = QLineEdit(conteudo)
+            QVBoxLayout(conteudo).addWidget(campo)
+            rolagem.setWidget(conteudo)
+            coluna.addWidget(rolagem)
+            RolagemSegueOFoco(rolagem)
+            janela.show()
+            self.app.processEvents()
+            campo.setFocus()
+            self.app.processEvents()
+            self.assertIs(self.app.focusWidget(), campo)
+            rolagem.deleteLater()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
+            self.app.processEvents()
+
+        erros: list[str] = []
+
+        def anotar(tipo: type[BaseException], valor: BaseException, _tb: object) -> None:
+            erros.append(f"{tipo.__name__}: {valor}")
+
+        with mock.patch.object(sys, "excepthook", anotar):
+            montar_e_destruir()
+        self.assertEqual(erros, [])
+
+        def primeira_versao(seguidor: RolagemSegueOFoco, _antigo: QWidget | None, novo: QWidget | None) -> None:
+            conteudo = seguidor._rolagem.widget()  # antes de perguntar se há foco novo
+            if (not seguidor._ligado or novo is None or conteudo is None or not conteudo.isAncestorOf(novo)
+                    or foco_a_vista.veio_do_mouse(novo)):
+                return
+            foco_a_vista.mostrar(seguidor._rolagem, novo)
+
+        with (mock.patch.object(sys, "excepthook", anotar),
+              mock.patch.object(RolagemSegueOFoco, "_foco_mudou", primeira_versao)):
+            montar_e_destruir()
+        self.assertTrue(any("has been deleted" in erro for erro in erros), ("sabotado", erros))
+
     def test_vinte_perguntas_nao_deixam_seguidores_vivos(self) -> None:
         """O crítico da fase 5 (ciclo 6): cada abertura podia deixar um diálogo filho da janela, com
         o seguidor ligado à aplicação -- 7 → 16 seguidores em 20 aberturas (quantos sobram varia:

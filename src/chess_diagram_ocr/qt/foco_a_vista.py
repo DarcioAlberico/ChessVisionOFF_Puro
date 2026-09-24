@@ -130,9 +130,13 @@ class RolagemSegueOFoco(QObject):
 
     @pyqtSlot(QWidget, QWidget)
     def _foco_mudou(self, _antigo: QWidget | None, novo: QWidget | None) -> None:
+        # Primeiro se há foco novo e se a rolagem vive: a rolagem destruída com o foco dentro (o
+        # diálogo de bases depois da pergunta) limpa o foco no destrutor, quando a rolagem já se foi
+        # e este seguidor, filho dela, ainda não.
+        if not self._ligado or novo is None or sip.isdeleted(self._rolagem):
+            return
         conteudo = self._rolagem.widget()
-        if (not self._ligado or novo is None or conteudo is None or not conteudo.isAncestorOf(novo)
-                or veio_do_mouse(novo)):
+        if conteudo is None or not conteudo.isAncestorOf(novo) or veio_do_mouse(novo):
             return
         if no_meio_do_clique():
             self._esperar_o_soltar(novo)
@@ -161,7 +165,7 @@ class RolagemSegueOFoco(QObject):
     def _mostrar_o_pendente(self) -> None:
         controle, self._pendente = self._pendente, None
         if (controle is None or not self._ligado or sip.isdeleted(controle)
-                or QApplication.focusWidget() is not controle):
+                or sip.isdeleted(self._rolagem) or QApplication.focusWidget() is not controle):
             return
         mostrar(self._rolagem, controle)
 
