@@ -60,6 +60,7 @@ from chess_diagram_ocr.config import DEFAULT_PDF_DIR
 from chess_diagram_ocr.games_db import DEFAULT_DATABASE_DIR, PositionHit, database_paths
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
+from chess_diagram_ocr.qt.foco_a_vista import seguir_o_foco
 from chess_diagram_ocr.qt.tabela import Coluna, TabelaQt
 from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.ui import espaco, estilos, folha_de_estilo, strings, tipografia, tokens
@@ -229,6 +230,9 @@ class DialogoDeBases(QDialog):
         rolagem = QScrollArea(self)
         rolagem.setWidget(self._corpo)
         rolagem.setWidgetResizable(True)
+        # A caixa que recebe o foco vindo de fora da lista -- o Shift+Tab de «Marcar todas», logo
+        # abaixo -- fica à vista, também as que a lista redesenha depois (ver `foco_a_vista`).
+        seguir_o_foco(rolagem)
         fora.addWidget(rolagem, 1)
         self._desenhar_lista()
 

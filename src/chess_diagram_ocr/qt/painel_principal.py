@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
 )
 
 from chess_diagram_ocr.qt import tema
+from chess_diagram_ocr.qt.foco_a_vista import seguir_o_foco
 from chess_diagram_ocr.ui import abas, espaco, estilos
 
 __all__ = ["PainelPrincipal"]
@@ -112,6 +113,10 @@ class PainelPrincipal(QWidget):
         lado, pisos declarados) e, com a janela no mínimo de 1248x640, a rolagem mostra 526 --
         a barra de ações e o «Copiar FEN» ficavam com 0 px à vista, sem barra que dissesse que
         havia mais (crítico da fase 5 do ciclo 2).
+
+        **E ela mostra o controle que recebe o foco, venha ele de onde vier** (`foco_a_vista`): a
+        rolagem do Qt só segue o foco que anda dentro dela, e o Shift+Tab da barra de modos punha
+        «Esconder incerteza» do Resultado com 0 px à vista a 1280x641 (crítico, ciclo 5).
         """
         rolagem = QScrollArea()
         rolagem.setWidgetResizable(True)
@@ -119,7 +124,7 @@ class PainelPrincipal(QWidget):
         rolagem.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         rolagem.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         rolagem.setWidget(painel)
-        return rolagem
+        return seguir_o_foco(rolagem)
 
     # -------------------------------------------------------------------------------- perguntas
 

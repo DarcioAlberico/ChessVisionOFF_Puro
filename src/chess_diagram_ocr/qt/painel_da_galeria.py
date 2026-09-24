@@ -80,6 +80,7 @@ from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dialogos import DialogoDePartidas, perguntar_bases, perguntar_escopo
 from chess_diagram_ocr.qt.dica import dica_em
+from chess_diagram_ocr.qt.foco_a_vista import seguir_o_foco
 from chess_diagram_ocr.qt.rotulo import RecorteElastico
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.qt.vazio import EstadoVazio
@@ -283,6 +284,10 @@ class PainelDaGaleria(QWidget):
         rolagem.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         rolagem.setWidget(lateral)
         rolagem.setFixedWidth(LARGURA_DA_LATERAL + rolagem.verticalScrollBar().sizeHint().width())
+        # E ela mostra o campo que recebe o foco vindo de fora dela: o Shift+Tab do rodapé punha
+        # «Copiar cabeçalhos para todos» com 0 px à vista a 1280x641, nas três peles (crítico da
+        # fase 5 do ciclo 2 OCR/UI, ciclo 5). Ver `foco_a_vista`.
+        seguir_o_foco(rolagem)
         corpo.addWidget(rolagem)
         fora.addLayout(corpo, 1)
         fora.addWidget(self._rodape())
