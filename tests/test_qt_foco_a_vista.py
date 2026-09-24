@@ -104,6 +104,27 @@ def _guarda_do_ciclo_7(controle: QWidget) -> bool:
     return controle.focusPolicy() == Qt.FocusPolicy.WheelFocus and controle.underMouse()
 
 
+def _guarda_do_ponteiro(controle: QWidget) -> bool:
+    """A guarda da primeira versão do ciclo 8, para a sabotagem: o ponteiro, e não a razão do foco -- o
+    controle (ou quem o tem por procurador do foco) sob o ponteiro com um botão apertado, ou a caixa de
+    escolha sob o ponteiro parado."""
+    from PyQt6.QtWidgets import QApplication
+
+    def sob(atual: QWidget | None) -> bool:
+        while atual is not None:
+            if atual.underMouse():
+                return True
+            pai = atual.parentWidget()
+            if pai is None or pai.focusProxy() is not atual:
+                return False
+            atual = pai
+        return False
+
+    if QApplication.mouseButtons() != Qt.MouseButton.NoButton:
+        return sob(controle)
+    return controle.focusPolicy() == Qt.FocusPolicy.WheelFocus and controle.underMouse()
+
+
 def _depois_de(rolagem: QScrollArea) -> QWidget:
     """O primeiro controle que o Tab alcança depois do último da rolagem -- fora dela."""
     conteudo = rolagem.widget()
@@ -351,6 +372,150 @@ class SeguidorTests(unittest.TestCase):
         with _sem_a_guarda_do_mouse():
             antes, depois = a_roda_na_caixa()
         self.assertNotEqual(depois, antes, "sabotado, a caixa salta debaixo da roda")
+
+    def test_o_foco_que_a_janela_devolve_ao_voltar_espera_o_clique_que_a_reativou(self) -> None:
+        """Achado pelo construtor no ciclo 8 (fase 5): quando a janela volta a ser a ativa, o Qt devolve o
+        foco ao controle que o tinha (`ActiveWindowFocusReason`), e o Windows ativa a janela antes de
+        entregar o pressionar do clique que a reativou. Com a vista levada pela roda para longe daquele
+        controle, o seguidor rolava até ele, e o pressionar caía noutro lugar (a sonda
+        `c8/sonda_ativacao.py`: a rolagem de 242 a 3, o «Aceitar» sem o clique). Aqui o foco da volta e o
+        pressionar saem um atrás do outro, sem o laço de eventos no meio, como no Windows (o
+        `activateWindow` do offscreen entra na fila, e o `QTest` entregaria o pressionar antes dela): o
+        botão recebe o clique, e nada rola. Sem clique -- a janela reativada de verdade, pelo
+        `activateWindow` --, o campo aparece inteiro em seguida. A sabotagem: o foco da volta mostrado
+        na hora, e o clique se perde."""
+        from PyQt6.QtWidgets import QApplication
+
+        aceitar = QPushButton("Aceitar embaixo", self.conteudo)
+        layout = self.conteudo.layout()
+        assert layout is not None
+        layout.addWidget(aceitar)  # type: ignore[attr-defined]
+        clicados: list[bool] = []
+        aceitar.clicked.connect(lambda: clicados.append(True))
+        for _vez in range(2):  # o layout cresce o conteúdo, depois a rolagem o toma
+            self.app.processEvents()
+        primeiro = self.conteudo.findChildren(QLineEdit)[0]
+        barra = self.rolagem.verticalScrollBar()
+
+        def a_roda_leva_a_vista_ao_fim() -> None:
+            primeiro.setFocus(Qt.FocusReason.TabFocusReason)
+            self.app.processEvents()
+            barra.setValue(barra.maximum())  # o foco fica no primeiro campo, fora da vista
+            self.app.processEvents()
+            self.assertTrue(primeiro.visibleRegion().isEmpty())
+
+        def a_volta_com_um_clique() -> tuple[int, int]:
+            clicados.clear()
+            a_roda_leva_a_vista_ao_fim()
+            antes = barra.value()
+            ponto = aceitar.mapTo(self.janela, aceitar.rect().center())
+            primeiro.clearFocus()  # a janela deixou de ser a ativa
+            self.app.processEvents()
+            primeiro.setFocus(Qt.FocusReason.ActiveWindowFocusReason)  # a janela voltou
+            _clique_pela_janela(self.app, self.janela, ponto)  # e o pressionar vem logo atrás
+            for _vez in range(3):
+                self.app.processEvents()
+            return antes, barra.value()
+
+        antes, depois = a_volta_com_um_clique()
+        self.assertEqual(clicados, [True], "o clique que reativou a janela vale onde foi dado")
+        self.assertEqual(depois, antes, "nada rola debaixo do ponteiro")
+        self.assertIs(self.app.focusWidget(), aceitar)
+
+        outra = QWidget()
+        self.addCleanup(descartar, outra)
+        outra.resize(120, 80)
+        outra.show()
+        a_roda_leva_a_vista_ao_fim()
+        outra.activateWindow()
+        for _vez in range(3):
+            self.app.processEvents()
+        self.assertIsNot(QApplication.activeWindow(), self.janela)
+        self.janela.activateWindow()
+        for _vez in range(3):
+            self.app.processEvents()
+        self.assertIs(self.app.focusWidget(), primeiro, "a janela devolve o foco ao primeiro campo")
+        self.assertTrue(_inteiro(self.rolagem, primeiro), "sem clique, o foco da volta aparece em seguida")
+
+        with mock.patch.object(foco_a_vista, "voltou_com_a_janela", lambda _controle: False):
+            antes, depois = a_volta_com_um_clique()
+        self.assertEqual(clicados, [], "sabotado, o clique que reativou a janela se perde")
+        self.assertNotEqual(depois, antes, "sabotado, a vista rola debaixo do ponteiro")
+
+    def test_a_razao_do_foco_e_nao_o_ponteiro_diz_de_quem_e_o_foco(self) -> None:
+        """Achado pelo construtor com o clique que deixa a ação rodar, do portão do teclado da suíte
+        (fase 5, ciclo 8): depois de um clique na caixa -- o clique engolido do portão na «Verdade da
+        linha» -- o ponteiro saiu da janela, e o Qt offscreen não manda o evento de saída: a caixa
+        ficou com a marca «sob o mouse». O clique seguinte numa linha da lista manda o foco à caixa no
+        pressionar, e a guarda que perguntava o `underMouse` da caixa tomava esse foco pelo do próprio
+        clique: a caixa ficava meio à vista. A guarda pergunta a razão do foco (o `setFocus()` do
+        programa não é o do mouse): a caixa aparece inteira depois do soltar. E o Tab que vem de fora
+        da rolagem para uma caixa de escolha sob o ponteiro parado rola até ela. A sabotagem: a guarda
+        do ponteiro, a da primeira versão do ciclo 8 -- a caixa fica meio à vista, a caixa de escolha
+        com 9 px."""
+        from PyQt6.QtWidgets import QComboBox, QListWidget
+
+        linhas = QListWidget(self.conteudo)
+        linhas.addItems(["linha 1", "linha 2", "linha 3"])
+        linhas.setFixedHeight(90)
+        pele = QComboBox(self.conteudo)
+        pele.addItems(["Foco", "Fita", "Clássica"])
+        layout = self.conteudo.layout()
+        assert layout is not None
+        layout.insertWidget(0, linhas)  # type: ignore[attr-defined]
+        layout.insertWidget(12, pele)  # type: ignore[attr-defined]
+        QWidget.setTabOrder(self.botao, pele)
+        # os painéis: a linha escolhida no pressionar manda o foco à verdade
+        linhas.currentRowChanged.connect(lambda _r: self.caixa.setFocus(Qt.FocusReason.OtherFocusReason))
+        for _vez in range(2):  # o layout cresce o conteúdo, depois a rolagem o toma
+            self.app.processEvents()
+        alca = self.janela.windowHandle()
+        assert alca is not None
+        barra = self.rolagem.verticalScrollBar()
+
+        def clicar_a_linha_com_a_marca_velha() -> None:
+            # o ponteiro sobre a caixa, depois fora da janela: sem o evento de saída no offscreen
+            barra.setValue(barra.maximum())
+            self.app.processEvents()
+            QTest.mouseMove(alca, self.caixa.mapTo(self.janela, QPoint(8, 8)))
+            QTest.mouseMove(alca, QPoint(-20, -20))
+            self.app.processEvents()
+            self.assertTrue(self.caixa.underMouse(), "a marca velha que o portão deixa")
+            linhas.setCurrentRow(0)
+            _no_topo(self.rolagem, self.app)
+            self.botao.setFocus(Qt.FocusReason.OtherFocusReason)
+            self.app.processEvents()
+            item = linhas.item(1)
+            assert item is not None
+            ponto = linhas.viewport().mapTo(self.janela, linhas.visualItemRect(item).center())
+            _clique_pela_janela(self.app, self.janela, ponto)
+            for _vez in range(3):  # o soltar, e a rolagem depois dele
+                self.app.processEvents()
+            self.assertIs(self.app.focusWidget(), self.caixa)
+
+        def tab_de_fora_ate_a_caixa_de_escolha_sob_o_ponteiro() -> int:
+            # o Tab de fora da rolagem: o de dentro passa pelo focusNextPrevChild dela, que chama o
+            # ensureWidgetVisible
+            self.botao.setFocus(Qt.FocusReason.OtherFocusReason)
+            self.app.processEvents()
+            _a_vista_embaixo(self.app, self.rolagem, pele, 9)
+            QTest.mouseMove(alca, QPoint(2, 2))
+            QTest.mouseMove(alca, pele.mapTo(self.janela, QPoint(8, 4)))
+            self.app.processEvents()
+            self.assertTrue(pele.underMouse())
+            QTest.keyClick(self.botao, Qt.Key.Key_Tab)
+            self.app.processEvents()
+            self.assertIs(self.app.focusWidget(), pele)
+            ret = QRect(pele.mapTo(self.rolagem.viewport(), QPoint(0, 0)), pele.size())
+            return ret.intersected(self.rolagem.viewport().rect()).height()
+
+        clicar_a_linha_com_a_marca_velha()
+        self.assertTrue(_inteiro(self.rolagem, self.caixa), "o foco do programa aparece depois do soltar")
+        self.assertEqual(tab_de_fora_ate_a_caixa_de_escolha_sob_o_ponteiro(), pele.height(), "o Tab a mostra inteira")
+        with mock.patch.object(foco_a_vista, "veio_do_mouse", _guarda_do_ponteiro):
+            clicar_a_linha_com_a_marca_velha()
+            self.assertFalse(_inteiro(self.rolagem, self.caixa), "sabotado, a marca velha esconde o foco do programa")
+            self.assertEqual(tab_de_fora_ate_a_caixa_de_escolha_sob_o_ponteiro(), 9, "sabotado, o Tab a deixa com 9 px")
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
