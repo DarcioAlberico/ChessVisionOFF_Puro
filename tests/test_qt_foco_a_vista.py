@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import unittest
+from collections.abc import Iterator
 from unittest import mock
 
 from ambiente_de_teste import pasta_temporaria
@@ -85,9 +86,22 @@ def _a_vista_embaixo(app: object, rolagem: QScrollArea, controle: QWidget, px: i
     assert ret.intersected(rolagem.viewport().rect()).height() == px, "a rolagem não chega lá"
 
 
-def _sem_a_guarda_do_mouse() -> contextlib.AbstractContextManager[object]:
-    """A sabotagem: o seguidor rola também no foco que o mouse dá, como no ciclo 6."""
-    return mock.patch.object(foco_a_vista, "veio_do_mouse", lambda _controle: False)
+@contextlib.contextmanager
+def _sem_a_guarda_do_mouse() -> Iterator[None]:
+    """A sabotagem: o seguidor rola também no foco que o mouse dá, e no pressionar, como no ciclo 6."""
+    with (mock.patch.object(foco_a_vista, "veio_do_mouse", lambda _controle: False),
+          mock.patch.object(foco_a_vista, "no_meio_do_clique", lambda: False)):
+        yield
+
+
+def _guarda_do_ciclo_7(controle: QWidget) -> bool:
+    """A guarda do ciclo 7, para a sabotagem: todo foco com um botão apertado é do mouse -- também o
+    que o programa manda a outro controle no pressionar."""
+    from PyQt6.QtWidgets import QApplication
+
+    if QApplication.mouseButtons() != Qt.MouseButton.NoButton:
+        return True
+    return controle.focusPolicy() == Qt.FocusPolicy.WheelFocus and controle.underMouse()
 
 
 def _depois_de(rolagem: QScrollArea) -> QWidget:
@@ -191,6 +205,93 @@ class SeguidorTests(unittest.TestCase):
                 self.assertEqual(depois, antes, "o clique não rola")
                 self.assertTrue(self.marca.isChecked())
                 self.assertIs(self.app.focusWidget(), self.marca)
+
+    def test_o_controle_que_cabe_por_pouco_aparece_inteiro(self) -> None:
+        """Um controle 1 px menor que a vista cabe nela, mas não com a folga em volta: aparece
+        inteiro, com menos folga -- a «Verdade da linha» da Rotulagem da suíte tem 549 px numa vista de
+        550, e a folga inteira a deixava com 3 px cortados (crítico da fase 5, ciclo 7). A sabotagem:
+        o encaixe do ciclo 7, que mostrava o começo com a folga e cortava o fim."""
+        self.caixa.setFixedHeight(self.rolagem.viewport().height() - 1)
+        for _vez in range(2):
+            self.app.processEvents()
+
+        def de_volta_do_botao() -> bool:
+            _no_topo(self.rolagem, self.app)
+            self.assertIs(_de_volta(self.app, self.botao), self.caixa)
+            return _inteiro(self.rolagem, self.caixa)
+
+        self.assertTrue(de_volta_do_botao(), "o controle que cabe aparece inteiro")
+
+        def encaixe_do_ciclo_7(barra: object, inicio: int, fim: int, vista: int) -> None:
+            folga = foco_a_vista.FOLGA
+            atual = barra.value()  # type: ignore[attr-defined]
+            if fim - inicio + 2 * folga > vista or inicio - folga < atual:
+                alvo = inicio - folga
+            elif fim + folga > atual + vista:
+                alvo = fim + folga - vista
+            else:
+                return
+            barra.setValue(max(barra.minimum(), min(barra.maximum(), alvo)))  # type: ignore[attr-defined]
+
+        with mock.patch.object(foco_a_vista, "_encaixar", encaixe_do_ciclo_7):
+            self.assertFalse(de_volta_do_botao(), "sabotado, a folga corta o fim")
+
+    def test_o_foco_que_o_programa_move_no_clique_aparece_depois_do_soltar(self) -> None:
+        """Crítico da fase 5, ciclo 7: a linha da tabela da Rotulagem e da Revisão de texto manda o foco
+        à «Verdade da linha» no *pressionar*, e a guarda do ciclo 7 (um botão apertado) tomava esse foco
+        pelo do mouse -- a verdade ficava fora da vista (0x0 px a 1280x641), e o que se digitava ia
+        para lá. Aqui uma lista no alto da rolagem manda o foco à caixa do fim quando a linha muda, no
+        pressionar: o clique termina onde foi dado (a linha clicada uma vez), a caixa aparece inteira
+        depois, e o que se digita entra nela. As sabotagens: a guarda do ciclo 7 (a caixa fica
+        escondida); o seguidor do ciclo 6, que rolava no pressionar (a lista sai de baixo do ponteiro e
+        o clique se perde)."""
+        from PyQt6.QtWidgets import QListWidget
+
+        linhas = QListWidget(self.conteudo)
+        linhas.addItems(["linha 1", "linha 2", "linha 3"])
+        linhas.setFixedHeight(90)
+        layout = self.conteudo.layout()
+        assert layout is not None
+        layout.insertWidget(0, linhas)  # type: ignore[attr-defined]
+        # os painéis: a linha escolhida no pressionar manda o foco à verdade
+        linhas.currentRowChanged.connect(lambda _r: self.caixa.setFocus(Qt.FocusReason.OtherFocusReason))
+        clicado: list[int] = []
+        linhas.clicked.connect(lambda indice: clicado.append(indice.row()))
+        for _vez in range(2):  # o layout cresce o conteúdo, depois a rolagem o toma
+            self.app.processEvents()
+
+        def clicar_a_linha() -> None:
+            clicado.clear()
+            linhas.setCurrentRow(0)
+            self.caixa.setPlainText("uma leitura")
+            _no_topo(self.rolagem, self.app)
+            self.botao.setFocus(Qt.FocusReason.OtherFocusReason)
+            self.app.processEvents()
+            self.assertTrue(self.caixa.visibleRegion().isEmpty(), "a caixa começa abaixo da dobra")
+            item = linhas.item(1)
+            assert item is not None
+            ponto = linhas.viewport().mapTo(self.janela, linhas.visualItemRect(item).center())
+            _clique_pela_janela(self.app, self.janela, ponto)
+            for _vez in range(3):  # o soltar, e a rolagem depois dele
+                self.app.processEvents()
+            foco = self.app.focusWidget()
+            assert foco is not None
+            QTest.keyClicks(foco, "XYZ")
+            self.app.processEvents()
+
+        clicar_a_linha()
+        self.assertEqual(clicado, [1], "o clique termina onde foi dado")
+        self.assertEqual(linhas.currentRow(), 1)
+        self.assertIs(self.app.focusWidget(), self.caixa)
+        self.assertTrue(_inteiro(self.rolagem, self.caixa), "o foco que o programa moveu aparece depois do soltar")
+        self.assertIn("XYZ", self.caixa.toPlainText(), "e o que se digita vai para onde os olhos estão")
+        with mock.patch.object(foco_a_vista, "veio_do_mouse", _guarda_do_ciclo_7):
+            clicar_a_linha()
+        self.assertIs(self.app.focusWidget(), self.caixa)
+        self.assertTrue(self.caixa.visibleRegion().isEmpty(), "sabotado (ciclo 7), o foco fica fora da vista")
+        with _sem_a_guarda_do_mouse():
+            clicar_a_linha()
+        self.assertEqual(clicado, [], "sabotado (ciclo 6), a rolagem no pressionar perde o clique")
 
     def test_o_ponteiro_parado_nao_e_o_mouse_mas_a_roda_e(self) -> None:
         """A guarda do mouse é o pressionar e a roda, e não o ponteiro: o Tab que cai num botão sob
