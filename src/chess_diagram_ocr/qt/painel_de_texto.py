@@ -233,6 +233,11 @@ class PainelDeTexto(QWidget):
 
         self.editor = QTextEdit(self)
         self.editor.setAccessibleName("Folha transcrita")
+        # O `Tab` sai da folha, como da caixa do comentário do Estudo. Guardado pelo editor, ele
+        # escrevia uma tabulação no texto e a tecla nunca passava dali: quem anda pelo teclado não
+        # alcançava o resto da aba (OCR_UI ciclo 2, fase 5, crítico do ciclo 4, portão `teclado`).
+        # A tabulação que precisar entrar na folha entra colada.
+        self.editor.setTabChangesFocus(True)
         self._corpo_de_base = self.editor.font().pointSize()
         """O corpo da fonte antes de qualquer zoom da vista. `aplicar_zoom` soma o degrau **a
         ele**, e não ao que está na tela -- somar ao desenhado acumularia o degrau anterior a cada

@@ -420,6 +420,42 @@ class TecladoTests(PainelTests):
         self.assertEqual(len(barras), 1)
         self.assertGreater(barras[0].linhas_em(160), 1)
 
+    def test_o_tab_sai_da_folha_nos_dois_sentidos_sem_escrever_tabulacao(self) -> None:
+        """Com a tecla de verdade: o `Tab` na «Folha transcrita» leva o foco adiante, e o `Shift+Tab`
+        de volta, em vez de escrever uma tabulação e prender quem anda pelo teclado -- o portão
+        `teclado` da suíte dizia "EMPACA em 'Folha transcrita', escreve" (crítico da fase 5, ciclo 4).
+        O `Shift+Tab` já saía -- o editor recusa o `Backtab` e o painel o leva adiante --, e fica
+        aqui porque o portão anda nos dois sentidos. A sabotagem é a folha guardando o `Tab`, como
+        antes: o foco fica, e o texto ganha a tabulação."""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtTest import QTest
+        from PyQt6.QtWidgets import QApplication
+
+        self.painel.desenhar_documento(rico.de_texto("O bispo vai para c4."))
+        editor = self.painel.editor
+        self.painel.activateWindow()
+        for tecla, modificador in (
+            (Qt.Key.Key_Tab, Qt.KeyboardModifier.NoModifier),
+            (Qt.Key.Key_Backtab, Qt.KeyboardModifier.ShiftModifier),
+        ):
+            with self.subTest(tecla=tecla.name):
+                editor.setFocus(Qt.FocusReason.TabFocusReason)
+                self.app.processEvents()
+                antes = editor.toPlainText()
+                QTest.keyClick(editor, tecla, modificador)
+                self.app.processEvents()
+                foco = QApplication.focusWidget()
+                self.assertIsNot(foco, editor)
+                self.assertTrue(self.painel.isAncestorOf(foco), f"o foco foi para {foco!r}")
+                self.assertEqual(editor.toPlainText(), antes)
+        editor.setTabChangesFocus(False)
+        editor.setFocus(Qt.FocusReason.TabFocusReason)
+        self.app.processEvents()
+        QTest.keyClick(editor, Qt.Key.Key_Tab)
+        self.app.processEvents()
+        self.assertIs(QApplication.focusWidget(), editor)
+        self.assertIn("\t", editor.toPlainText())
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
