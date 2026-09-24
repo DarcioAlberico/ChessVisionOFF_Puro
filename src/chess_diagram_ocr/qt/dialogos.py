@@ -359,10 +359,18 @@ def perguntar_bases(
     escolher: Callable[[], Sequence[str]] | None = None,
     nota: Callable[[Sequence[Path]], str] = cache_note,
 ) -> tuple[Path, ...] | None:
-    """Abre o diálogo modal e devolve as bases marcadas, ou `None` se a pessoa desistiu."""
+    """Abre o diálogo modal e devolve as bases marcadas, ou `None` se a pessoa desistiu.
+
+    **O diálogo morre com a pergunta.** Filho da janela, ele ficava vivo depois de fechado, e o
+    seguidor de foco da lista dele (`qt/foco_a_vista`), ligado à aplicação inteira, também: 7 → 16
+    seguidores em 20 aberturas (crítico da fase 5 do ciclo 2 OCR/UI, ciclo 6).
+    """
     dialogo = DialogoDeBases(pai, selected=selected, folder=folder, escolher=escolher, nota=nota)
-    dialogo.exec()
-    return dialogo.escolhidas
+    try:
+        dialogo.exec()
+        return dialogo.escolhidas
+    finally:
+        dialogo.deleteLater()
 
 
 class DialogoDeEscopo(QDialog):
