@@ -2020,7 +2020,7 @@ class JanelaPrincipal(QMainWindow):
         editadas = paginas_editadas(self.painel.paginas, self.painel.modelo)  # correções à mão (A7)
         if (perdidas and not self._confirmar_fechamento(perdidas)) or (
             editadas and not dialogos.perguntar_descarte(self, editadas, ao_fechar=True)
-        ):
+        ) or not self.texto.confirmar_fechamento():  # o texto digitado e não gravado na aba Texto
             if a0 is not None:
                 a0.ignore()
             return

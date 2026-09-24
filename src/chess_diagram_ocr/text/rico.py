@@ -49,14 +49,14 @@ adivinhou" seriam a mesma informação -- e é a colisão que a S-242 vai ter de
 
 Da S-241 em diante este módulo deixou de ser só uma estrutura e passou a ter **verbos**:
 `alternar`, `aplicar`, `aplicar_no_paragrafo`, `mudar_corpo`, `mudar_caixa`, `inserir`,
-`substituir_intervalo`. Todos são puros, todos falam em **deslocamento de caractere** -- e nenhum
-sabe o que é um índice do Tk.
+`substituir_intervalo` -- e, com a digitação do editor do Qt, `apagar`, `editar` e `mover`. Todos
+são puros, todos falam em **deslocamento de caractere** -- e nenhum sabe o que é um índice do Tk.
 
 Eles se dividem em três, e a divisão decide o que o painel faz depois de chamar cada um:
 
     do trecho       alternar, aplicar, limpar_formato, limpar_cor, mudar_corpo
     do parágrafo    aplicar_no_paragrafo -- e com ela aplicar_estilo e aplicar_alinhamento
-    do texto        mudar_caixa, substituir_intervalo, inserir
+    do texto        mudar_caixa, substituir_intervalo, inserir, apagar, editar, mover
 
 Os dois primeiros grupos não mudam um caractere, e o painel os desenha por etiqueta, sem redesenhar.
 O terceiro muda, e ali o painel guarda um instantâneo antes -- porque o redesenho zera a pilha de
@@ -1086,37 +1086,79 @@ def substituir_intervalo(doc: DocumentoRico, inicio: int, fim: int, novo: str) -
 
 
 def inserir(doc: DocumentoRico, posicao: int, texto: str, *, fora_do_modelo: bool = False) -> DocumentoRico:
-    """Insere texto na posição, herdando os atributos de quem está à esquerda (S-248).
+    """Insere texto na posição, herdando os atributos da corrida vizinha (S-248).
 
     **Herda da esquerda, e não do padrão**, pela mesma regra que o Tk já usa para a digitação: quem
-    põe uma figurina no meio de um lance em negrito quer a figurina em negrito. `fora_do_modelo`
-    entra por cima, porque é declaração sobre o que foi inserido e não sobre o que estava lá.
+    põe uma figurina no meio de um lance em negrito quer a figurina em negrito. **Sem vizinha de
+    texto à esquerda, herda da direita**: é o começo da folha e o começo de um parágrafo logo depois
+    do separador, e ali quem escreve está escrevendo *naquele* parágrafo -- o padrão sem bloco faria
+    a palavra nova virar um parágrafo de ninguém, que a exportação avisa como "corrida sem bloco" e
+    que `text/correcao.py` não conta como correção do bloco em que ela caiu.
+
+    **A faixa é a da mão, e não a da vizinha.** O que entra foi escrito por alguém, e
+    `documento.faixa_de_confianca` diz que a correção humana nunca pede revisão: herdar o `revisar`
+    de uma vizinha adivinhada pintaria de vermelho a palavra que a pessoa acabou de escrever.
+
+    `fora_do_modelo` é **declaração sobre o que foi inserido, e não herança**: digitar `Nf3` logo
+    depois de um `♞` que o modelo não lê não faz o `Nf3` sair do modelo.
+
+    Dentro da marca do diagrama não se insere nada, e o documento volta como veio: ver
+    `alcance_da_edicao`.
     """
     if not texto:
         return doc
     posicao = max(0, min(int(posicao), len(doc.para_texto())))
-    esquerda = None
-    caminhado = 0
-    for corrida in doc.corridas:
-        caminhado += len(corrida.texto)
-        if _editavel(corrida) and caminhado >= posicao > caminhado - len(corrida.texto):
-            esquerda = corrida
-            break
-    atributos = esquerda.atributos if esquerda is not None else PADRAO
-    if fora_do_modelo:
-        atributos = replace(atributos, fora_do_modelo=True)
-    nova = Corrida(
+    if dentro_de_marca(doc, posicao):
+        return doc
+    return _com_corrida(doc, posicao, _da_mao(texto, _vizinha_editavel(doc, posicao), fora_do_modelo=fora_do_modelo))
+
+
+def _da_mao(texto: str, modelo: Corrida | None, *, fora_do_modelo: bool = False) -> Corrida:
+    """A corrida de um texto escrito à mão: atributo e bloco do `modelo`, a faixa e a procedência da mão.
+
+    A faixa é perguntada a quem decide faixa (`text/documento.py`), e não escrita aqui: a regra
+    "a correção humana nunca pede revisão" tem um dono só.
+    """
+    atributos = replace(modelo.atributos if modelo is not None else PADRAO, fora_do_modelo=bool(fora_do_modelo))
+    return Corrida(
         texto=texto,
         atributos=atributos,
-        faixa=esquerda.faixa if esquerda is not None else documento.TRANQUILO,
-        bloco=esquerda.bloco if esquerda is not None else SEM_BLOCO,
+        faixa=documento.faixa_de_confianca(1.0, "humano"),
+        bloco=modelo.bloco if modelo is not None else SEM_BLOCO,
         procedencia="humano",
     )
-    partido = _fatiado(doc, posicao, posicao)
+
+
+def _vizinha_editavel(doc: DocumentoRico, posicao: int) -> Corrida | None:
+    """De quem herda o texto posto em `posicao`: a corrida de texto à esquerda, senão a da direita.
+
+    Só as **imediatas**. Pular um separador para herdar do parágrafo de cima faria a linha em branco
+    entre dois parágrafos, quando alguém escreve nela, virar continuação do parágrafo de cima -- com
+    o estilo e o bloco dele.
+    """
+    esquerda: Corrida | None = None
+    direita: Corrida | None = None
+    comeco = 0
+    for corrida in doc.corridas:
+        fim = comeco + len(corrida.texto)
+        if comeco < posicao <= fim:
+            esquerda = corrida
+        if comeco <= posicao < fim:
+            direita = corrida
+            break
+        comeco = fim
+    for candidata in (esquerda, direita):
+        if candidata is not None and _editavel(candidata):
+            return candidata
+    return None
+
+
+def _com_corrida(doc: DocumentoRico, posicao: int, nova: Corrida) -> DocumentoRico:
+    """O documento com `nova` posta em `posicao`, partindo a corrida que estiver ali."""
     novas: list[Corrida] = []
     caminhado = 0
     inseriu = False
-    for corrida, _esta in partido:
+    for corrida, _esta in _fatiado(doc, posicao, posicao):
         if not inseriu and caminhado == posicao:
             novas.append(nova)
             inseriu = True
@@ -1124,6 +1166,141 @@ def inserir(doc: DocumentoRico, posicao: int, texto: str, *, fora_do_modelo: boo
         caminhado += len(corrida.texto)
     if not inseriu:
         novas.append(nova)
+    return DocumentoRico(corridas=fundir(novas), origem=doc.origem)
+
+
+# ------------------------------------------------------------------ a digitação (a folha editada)
+
+
+def _marcas_de_diagrama(doc: DocumentoRico) -> list[tuple[int, int]]:
+    """Onde está cada `[Diagrama N]`, em deslocamento: `(começo, fim)`."""
+    intervalos: list[tuple[int, int]] = []
+    comeco = 0
+    for corrida in doc.corridas:
+        fim = comeco + len(corrida.texto)
+        if corrida.e_diagrama:
+            intervalos.append((comeco, fim))
+        comeco = fim
+    return intervalos
+
+
+def alcance_de_apagar(doc: DocumentoRico, inicio: int, fim: int) -> tuple[int, int]:
+    """O intervalo que apagar `[inicio, fim)` de fato apaga: **a marca do diagrama sai inteira**.
+
+    A marca é o vínculo entre o texto e a figura -- é por ela que a exportação põe a imagem e que o
+    editor desenha a miniatura. Meia marca não é marca: `[Diagr` ainda traria a miniatura na tela e
+    sairia como texto quebrado em todo formato de exportação. Então quem apaga um pedaço dela apaga
+    ela toda, como qualquer editor faz com a imagem que o `Backspace` alcança -- e o `Ctrl+Z` a
+    devolve inteira.
+
+    O separador **não** tem esta regra: apagar uma das duas quebras entre dois parágrafos é juntar
+    as linhas, e é o gesto de quem corrige um parágrafo que a leitura partiu em dois.
+    """
+    total = len(doc.para_texto())
+    inicio, fim = sorted((max(0, min(int(inicio), total)), max(0, min(int(fim), total))))
+    if inicio == fim:
+        return (inicio, fim)
+    for comeco, termino in _marcas_de_diagrama(doc):
+        if comeco < fim and termino > inicio:
+            inicio, fim = min(inicio, comeco), max(fim, termino)
+    return (inicio, fim)
+
+
+def dentro_de_marca(doc: DocumentoRico, posicao: int) -> bool:
+    """A posição cai **dentro** de uma marca de diagrama -- e não na borda dela?"""
+    return any(comeco < posicao < termino for comeco, termino in _marcas_de_diagrama(doc))
+
+
+def apagar(doc: DocumentoRico, inicio: int, fim: int) -> DocumentoRico:
+    """Tira o texto do intervalo. A marca do diagrama sai inteira ou não sai -- ver `alcance_de_apagar`.
+
+    **Não carimba `humano` em ninguém**, e é de propósito: o que sobra continua sendo o que o motor
+    leu, e a correção é derivada comparando o texto do bloco com a `PaginaLida` (`text/correcao.py`)
+    -- apagar uma letra do bloco já aparece lá como `("x", "")`. Carimbar seria dizer que a mão
+    escreveu uma palavra que ela só encurtou.
+    """
+    inicio, fim = alcance_de_apagar(doc, inicio, fim)
+    if inicio == fim:
+        return doc
+    ficam = [corrida for corrida, esta in _fatiado(doc, inicio, fim) if not esta]
+    return DocumentoRico(corridas=fundir(ficam), origem=doc.origem)
+
+
+def alcance_da_edicao(doc: DocumentoRico, inicio: int, fim: int, novo: str) -> tuple[int, int] | None:
+    """O intervalo que trocar `[inicio, fim)` por `novo` de fato troca -- ou `None` quando não cabe.
+
+    Não cabe **escrever dentro da marca** do diagrama: `[Diag♞rama 1]` seria duas marcas partidas,
+    duas miniaturas na tela e duas figuras na exportação. Escrever nas bordas dela cabe, e apagar
+    qualquer pedaço dela a leva inteira (`alcance_de_apagar`).
+    """
+    total = len(doc.para_texto())
+    inicio, fim = sorted((max(0, min(int(inicio), total)), max(0, min(int(fim), total))))
+    if inicio == fim:
+        return None if novo and dentro_de_marca(doc, inicio) else (inicio, fim)
+    return alcance_de_apagar(doc, inicio, fim)
+
+
+def editar(doc: DocumentoRico, inicio: int, fim: int, novo: str) -> DocumentoRico:
+    """Troca `[inicio, fim)` por `novo` como a digitação troca: é o que o editor faz com cada tecla.
+
+    Três casos, e as funções que já existiam cobrem dois:
+
+        só escrever    `inserir` -- herda da vizinha, com a faixa da mão
+        só apagar      `apagar` -- a marca do diagrama sai inteira
+        escrever por cima de uma seleção
+                       apaga, e o texto novo herda da **primeira corrida de texto que estava
+                       selecionada**: trocar uma palavra em negrito devolve a palavra nova em
+                       negrito, que é o critério de `substituir_intervalo` e o de todo editor.
+
+    Devolve o próprio `doc` quando a edição não cabe (ver `alcance_da_edicao`).
+    """
+    alcance = alcance_da_edicao(doc, inicio, fim, novo)
+    if alcance is None:
+        return doc
+    comeco, termino = alcance
+    modelo = next(
+        (corrida for corrida, esta in _fatiado(doc, comeco, termino) if esta and _editavel(corrida)),
+        None,
+    )
+    apagado = apagar(doc, comeco, termino)
+    if not novo:
+        return apagado
+    if modelo is None:
+        return inserir(apagado, comeco, novo)
+    return _com_corrida(apagado, comeco, _da_mao(novo, modelo))
+
+
+def mover(doc: DocumentoRico, inicio: int, fim: int, destino: int) -> DocumentoRico:
+    """Leva as corridas de `[inicio, fim)` para `destino`, **inteiras**: é o arrastar-e-soltar.
+
+    Inteiras quer dizer com atributo, faixa, bloco e procedência -- e com a marca do diagrama sendo
+    marca. É o que `text/documento.py` promete dela ("é o que permite mover o diagrama de lugar no
+    texto"): arrastar `[Diagrama 3]` para outro parágrafo leva a figura junto. Tratar o arrasto
+    como apagar e escrever faria a marca chegar como texto comum, e o diagrama sumiria.
+
+    `destino` é deslocamento do documento **antes** do arrasto. Soltar dentro do próprio trecho ou
+    dentro de uma marca não move nada -- a marca não se parte, nem para receber texto.
+    """
+    inicio, fim = alcance_de_apagar(doc, inicio, fim)
+    total = len(doc.para_texto())
+    destino = max(0, min(int(destino), total))
+    if inicio == fim or inicio <= destino <= fim or dentro_de_marca(doc, destino):
+        return doc
+    pedacos = _fatiado(doc, inicio, fim)
+    levadas = [corrida for corrida, esta in pedacos if esta]
+    restante = DocumentoRico(corridas=tuple(c for c, esta in pedacos if not esta), origem=doc.origem)
+    alvo = destino if destino < inicio else destino - (fim - inicio)
+    novas: list[Corrida] = []
+    caminhado = 0
+    pos = False
+    for corrida, _esta in _fatiado(restante, alvo, alvo):
+        if not pos and caminhado == alvo:
+            novas.extend(levadas)
+            pos = True
+        novas.append(corrida)
+        caminhado += len(corrida.texto)
+    if not pos:
+        novas.extend(levadas)
     return DocumentoRico(corridas=fundir(novas), origem=doc.origem)
 
 
@@ -1159,7 +1336,10 @@ __all__ = [
     "CAIXA_INICIAIS",
     "CORPO_MAXIMO",
     "CORPO_MINIMO",
+    "alcance_da_edicao",
+    "alcance_de_apagar",
     "alternar",
+    "apagar",
     "aplicar",
     "aplicar_alinhamento",
     "aplicar_corpo",
@@ -1169,6 +1349,8 @@ __all__ = [
     "corridas_de_texto",
     "de_pagina",
     "de_texto",
+    "dentro_de_marca",
+    "editar",
     "estilo_do_segmento",
     "fundir",
     "inserir",
@@ -1177,6 +1359,7 @@ __all__ = [
     "substituir_intervalo",
     "limpar_cor",
     "limpar_formato",
+    "mover",
     "mudar_caixa",
     "mudar_corpo",
     "palavra_em",

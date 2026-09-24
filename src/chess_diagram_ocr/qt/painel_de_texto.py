@@ -31,19 +31,31 @@ enquanto o widget existir.
 diagrama vale um caractere para o Qt e nenhum para o documento -- exatamente o que
 `ui/texto_etiquetas.deslocamento` resolvia do outro lado, percorrendo o `dump` do widget a cada
 pergunta. Ver `_Mapa`.
+
+**A digitação atravessa a mesma fronteira, no outro sentido.** O editor é editável, e o que se
+digita nele acontece primeiro no widget. O porte deixou só essa metade: a letra ficava na tela e
+fora do documento, e o primeiro redesenho -- o negrito seguinte, o `Ctrl+Z`, o zoom -- a apagava
+sem dizer nada; gravar e exportar levavam a folha de antes. Agora cada mudança do texto chega por
+`QTextDocument.contentsChange` e vira uma função pura de `rico` (`editar`, `mover`), pela mesma
+tradução de `_Mapa`. Quem decide o que a tecla faz com a corrida -- de quem herda, que faixa leva, o
+que acontece com a marca do diagrama -- é `rico`; quando a tecla fecha um passo de desfazer é
+`ui/texto_declarado`. Aqui fica o vaivém -- e **sem redesenho por tecla**: o widget já tem a letra,
+o mapa anda junto com ela e só o trecho digitado é repintado. Redesenhar a folha inteira, com as
+miniaturas, é o que o portão de bloqueio da thread da janela não deixaria passar a cada tecla.
 """
 
 from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 from PyQt6.QtCore import QEvent, Qt, pyqtSignal
-from PyQt6.QtGui import QTextCursor, QTextDocument
+from PyQt6.QtGui import QKeyEvent, QKeySequence, QTextCursor, QTextDocument
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -81,6 +93,9 @@ from chess_diagram_ocr.ui.texto_declarado import (
     MOTORES,
     ZOOM_MAXIMO,
     ZOOM_MINIMO,
+    Digitacao,
+    continua_a_digitacao,
+    digitacao_depois,
     fora_do_livro,
 )
 
@@ -100,6 +115,20 @@ LARGURA_DA_MINIATURA = 160
 
 Grande o bastante para reconhecer a posição, pequena o bastante para a linha seguinte caber na
 tela. É o mesmo alvo de `texto_panel._miniatura`."""
+
+OBJETO = "\ufffc"
+"""Como o texto do widget conta a miniatura: um caractere que **nunca** entra no documento.
+
+Chega também colado: o texto que o `QTextEdit` põe na área de transferência traz a miniatura
+copiada como este caractere solto, sem imagem nenhuma atrás dele."""
+
+TECLAS_DO_HISTORICO: tuple[str, ...] = ("desfazer", "refazer")
+"""As ações cuja tecla, **dentro do editor**, é deste painel e não do `QTextEdit`.
+
+A guarda de atalhos cede `Ctrl+Z` a todo campo de texto (`ui/atalhos.ACOES_DO_CAMPO`), porque o
+campo tem o desfazer dele -- e este não tem: ele está desligado de propósito (ver `_montar`). Sem
+pegar a tecla aqui, `Ctrl+Z` no meio da folha chegaria a um desfazer desligado e não faria nada.
+A tecla sai da tabela (`ui/atalhos.por_acao`), e não daqui."""
 
 
 @dataclass(frozen=True)
@@ -161,6 +190,49 @@ class _Mapa:
         ultimo = self._trechos[-1]
         return ultimo.janela + ultimo.tamanho
 
+    def trocar(self, janela: int, removidos: int, deslocamento: int, tamanho: int) -> None:
+        """Acompanha uma digitação **fiel**, sem redesenho: `removidos` saíram em `janela`, `tamanho` entraram.
+
+        Fiel é a troca em que todo caractere que saiu e todo que entrou é do documento -- nenhuma
+        miniatura, nenhuma quebra do desenho. Aí as duas coordenadas andam juntas: o que está antes
+        da troca não se mexe, o que está depois anda o mesmo tanto nas duas, e o texto novo vira um
+        trecho em `(deslocamento, janela)`. Os trechos que ficam colados nas duas coordenadas se
+        fundem de novo -- sem isso cada tecla deixaria um trecho de uma letra, e a tabela que se
+        percorre a cada pergunta cresceria com a digitação.
+        """
+        fim = janela + removidos
+        passo = tamanho - removidos
+        novos: list[_Trecho] = []
+        for trecho in self._trechos:
+            termino = trecho.janela + trecho.tamanho
+            if termino <= janela:
+                novos.append(trecho)
+                continue
+            if trecho.janela >= fim:
+                novos.append(_Trecho(trecho.documento + passo, trecho.janela + passo, trecho.tamanho))
+                continue
+            if trecho.janela < janela:
+                novos.append(_Trecho(trecho.documento, trecho.janela, janela - trecho.janela))
+            if termino > fim:
+                corte = fim - trecho.janela
+                novos.append(_Trecho(trecho.documento + corte + passo, fim + passo, termino - fim))
+        if tamanho > 0:
+            novos.append(_Trecho(deslocamento, janela, tamanho))
+        novos.sort(key=lambda trecho: trecho.janela)
+        self._trechos = []
+        for trecho in novos:
+            anterior = self._trechos[-1] if self._trechos else None
+            if (
+                anterior is not None
+                and anterior.documento + anterior.tamanho == trecho.documento
+                and anterior.janela + anterior.tamanho == trecho.janela
+            ):
+                self._trechos[-1] = _Trecho(anterior.documento, anterior.janela, anterior.tamanho + trecho.tamanho)
+                continue
+            self._trechos.append(trecho)
+        ultimo = self._trechos[-1] if self._trechos else None
+        self._fim_documento = ultimo.documento + ultimo.tamanho if ultimo is not None else 0
+
 
 class PainelDeTexto(QWidget):
     """O editor da página lida: desenha o documento e devolve cada gesto a `text/rico.py`."""
@@ -199,6 +271,10 @@ class PainelDeTexto(QWidget):
         self.documento = rico.DocumentoRico()
         """**O estado é o documento, e não o widget.** É a diferença de fundo com o lado do Tk,
         onde gravar exigia reler o `dump` do editor etiqueta por etiqueta (`de_despejo`)."""
+        self._documento_gravado = self.documento
+        """O documento como está no disco -- ou como a leitura o entregou. É contra ele que
+        `tem_alteracoes` compara, e não contra a pilha: gravar não esvazia a pilha, e desfazer até
+        o que foi gravado não deixa nada a perder."""
         self._historico: list[rico.DocumentoRico] = []
         self._edicao = 0
         """Quantas edições esta aba recebeu. É o desempate do `Ctrl+Z` sem foco (S-243)."""
@@ -219,6 +295,23 @@ class PainelDeTexto(QWidget):
         """O motor de leitura. O primeiro da lista é o padrão, e a S-423 explica por que ele é o
         `auto` e não o `glifo`."""
         self._modo_bloco = False
+        self._tela = ""
+        """O texto do widget na última mudança vista -- o `antes` de cada tecla. `contentsChange`
+        diz onde mudou; é comparando com isto que se sabe **o que** saiu, e se o Qt disse a
+        verdade sobre onde."""
+        self._digitacao: Digitacao | None = None
+        """O passo de desfazer que a digitação deixou aberto. Toda ferramenta o fecha."""
+        self._relogio: Callable[[], float] = time.monotonic
+        """De onde vem o "agora" da pausa que fecha o passo. Atributo para o teste poder parar o
+        tempo -- esperar um segundo de verdade numa suíte é o teste que ninguém quer rodar."""
+        self._sincronizando = False
+        """O painel está repintando o que acabou de ser digitado: a mudança de formato que isso
+        gera não é digitação."""
+        self._base: tuple[int, str, str] | None = None
+        """A fonte de base do último desenho. O trecho digitado é pintado com **a mesma** -- a
+        tecla não relê as famílias do sistema, e o redesenho seguinte não muda o que já estava."""
+        self._documento_ao_ler: rico.DocumentoRico | None = None
+        """O documento na tela quando a leitura em curso partiu. Ver `_leitura_terminou`."""
 
         self._montar()
         self._desenhar()
@@ -268,6 +361,9 @@ class PainelDeTexto(QWidget):
         )
         self.editor.textChanged.connect(self._mostrar_vazio)
         self.editor.viewport().installEventFilter(self)
+        # O `Ctrl+Z` de dentro da folha. Ver `TECLAS_DO_HISTORICO`.
+        self.editor.installEventFilter(self)
+        self._teclas_do_historico = _teclas_da_tabela(TECLAS_DO_HISTORICO)
         corpo = QHBoxLayout()
         corpo.addWidget(self.editor, 1)
         corpo.addWidget(self._montar_paleta())
@@ -414,17 +510,30 @@ class PainelDeTexto(QWidget):
 
     # ------------------------------------------------------------------------------ desenho
 
-    def desenhar_documento(self, doc: rico.DocumentoRico) -> None:
+    def desenhar_documento(self, doc: rico.DocumentoRico, *, selecao: tuple[int, int] | None = None) -> None:
         """Troca o documento e o desenha. **Este laço não decide nada.**
 
         Faixa, ordem, separador e atributo já vieram decididos por `text/rico.py`; o que sobra
         aqui é escrever no cursor e pôr a miniatura. É a mesma fronteira do outro frontend.
+
+        `selecao` é `(âncora, ponta)` em deslocamento do documento novo: onde o cursor fica depois
+        do desenho. `None` é folha nova -- o cursor volta ao começo, que é o certo para a leitura
+        e para o arquivo aberto, e o errado para o negrito no meio da página.
         """
         self.documento = doc
-        self._desenhar()
+        self._desenhar(selecao=selecao)
         self.documento_mudou.emit()
 
-    def _desenhar(self) -> None:
+    def _desenhar(self, *, selecao: tuple[int, int] | None = None) -> None:
+        """Refaz o `QTextDocument` inteiro a partir das corridas -- e devolve o cursor a `selecao`.
+
+        **Devolver o cursor é o que torna o redesenho compatível com a digitação.** O documento
+        novo nasce com o cursor no começo e a rolagem no topo; com o texto digitado agora sendo
+        documento, um `Ctrl+Z` ou um negrito no meio da folha que jogasse o cursor para o título
+        faria a tecla seguinte escrever lá -- e ela passaria a ficar.
+        """
+        barra = self.editor.verticalScrollBar()
+        rolagem = barra.value() if selecao is not None and barra is not None else None
         self._redesenhando = True
         try:
             self._mapa.limpar()
@@ -437,6 +546,7 @@ class PainelDeTexto(QWidget):
             documento.setUndoRedoEnabled(False)
             cursor = QTextCursor(documento)
             base = tema.fonte_base()
+            self._base = base
             deslocamento = 0
 
             for corrida in self.documento.corridas:
@@ -448,9 +558,41 @@ class PainelDeTexto(QWidget):
                 self._mapa.registrar(deslocamento, inicio, len(corrida.texto))
                 deslocamento += len(corrida.texto)
 
+            # O `setDocument` só apaga o documento que é filho do controle interno do editor -- o da
+            # montagem, e na hora --, e os deste painel são filhos do editor: sem soltá-los, cada
+            # redesenho deixava a folha anterior inteira, com as miniaturas, pendurada até a janela
+            # fechar. Quem é de quem se pergunta **antes** da troca, porque depois dela o da
+            # montagem já não existe; e `deleteLater`, e não já, porque o redesenho pode estar
+            # acontecendo de dentro de um sinal do documento que sai (`_trocado`).
+            anterior = self.editor.document()
+            nosso = anterior if anterior is not None and anterior.parent() is self.editor else None
             self.editor.setDocument(documento)
+            if nosso is not None:
+                nosso.deleteLater()
+            # Ligado **depois** de montar: o que o laço acima escreveu é desenho, e não digitação.
+            documento.contentsChange.connect(self._digitado)
+            self._tela = _texto_da_tela(documento)
         finally:
             self._redesenhando = False
+        if selecao is not None:
+            self._devolver_selecao(selecao, rolagem)
+
+    def _selecao_atual(self) -> tuple[int, int]:
+        """`(âncora, ponta)` do cursor, em deslocamento do documento."""
+        cursor = self.editor.textCursor()
+        return (self._mapa.deslocamento(cursor.anchor()), self._mapa.deslocamento(cursor.position()))
+
+    def _devolver_selecao(self, selecao: tuple[int, int], rolagem: int | None) -> None:
+        """Põe o cursor em `selecao` e a rolagem onde estava; o cursor fora da tela a traz até ele."""
+        ancora, ponta = selecao
+        cursor = self.editor.textCursor()
+        cursor.setPosition(self._mapa.posicao(ancora))
+        cursor.setPosition(self._mapa.posicao(ponta), QTextCursor.MoveMode.KeepAnchor)
+        self.editor.setTextCursor(cursor)
+        barra = self.editor.verticalScrollBar()
+        if rolagem is not None and barra is not None:
+            barra.setValue(rolagem)
+        self.editor.ensureCursorVisible()
 
     def _inserir_miniatura(self, cursor: QTextCursor, corrida: rico.Corrida) -> None:
         """A imagem do diagrama, **antes** da marca -- e a marca continua no texto.
@@ -515,19 +657,25 @@ class PainelDeTexto(QWidget):
             self._mapa.deslocamento(cursor.selectionEnd()),
         )
 
-    def _aplicar(self, novo: rico.DocumentoRico) -> None:
+    def _aplicar(self, novo: rico.DocumentoRico, *, selecao: tuple[int, int] | None = None) -> None:
         """Guarda o documento anterior na pilha e desenha o novo.
 
         A pilha é de **documentos**, e é o que faz `Ctrl+Z` desfazer um negrito -- que não muda
         caractere nenhum e que uma pilha de texto não veria.
+
+        **Toda ferramenta fecha o passo da digitação**: `Ctrl+Z` depois de "digitar, negritar,
+        digitar" desfaz a segunda digitação, e não as duas com o negrito no meio. A seleção fica
+        onde estava (ou em `selecao`), para o segundo pincel cair no mesmo trecho que o primeiro.
         """
+        self._digitacao = None
         if novo is self.documento:
             return
+        selecao = self._selecao_atual() if selecao is None else selecao
         self._historico.append(self.documento)
         # O contador que decide o `Ctrl+Z` quando o foco não está em desfazível nenhum (S-243).
         self._edicao += 1
         self._refeitos.clear()
-        self.desenhar_documento(novo)
+        self.desenhar_documento(novo, selecao=selecao)
 
     def alternar(self, atributo: str) -> None:
         """Liga o atributo no intervalo -- ou desliga, se ele já vale em todo ele (S-241)."""
@@ -609,20 +757,35 @@ class PainelDeTexto(QWidget):
         return self._edicao
 
     def desfazer(self) -> None:
-        """`Ctrl+Z`: devolve o documento anterior."""
+        """`Ctrl+Z`: devolve o documento anterior -- a palavra digitada inteira é **um** passo."""
         if not self._historico:
             self.estado.emit("Não há mudança anterior nesta folha para desfazer.")
             return
+        self._digitacao = None
         self._refeitos.append(self.documento)
-        self.desenhar_documento(self._historico.pop())
+        self._voltar_a(self._historico.pop())
 
     def refazer(self) -> None:
         """`Ctrl+Y`: repõe o que o desfazer tirou."""
         if not self._refeitos:
             self.estado.emit("Não há o que refazer: nada foi desfeito.")
             return
+        self._digitacao = None
         self._historico.append(self.documento)
-        self.desenhar_documento(self._refeitos.pop())
+        self._voltar_a(self._refeitos.pop())
+
+    def _voltar_a(self, doc: rico.DocumentoRico) -> None:
+        """Desenha `doc` com o cursor **onde o texto mudou** -- o fim do trecho que voltou ou saiu.
+
+        É onde qualquer editor põe o cursor depois de desfazer, e é onde a pessoa vai continuar
+        escrevendo. Se o texto não mudou (desfazer um negrito), a seleção fica onde estava.
+        """
+        troca = _janela_da_troca(self.documento.para_texto(), doc.para_texto())
+        if troca is None:
+            self.desenhar_documento(doc, selecao=self._selecao_atual())
+            return
+        alvo = troca[0] + troca[2]
+        self.desenhar_documento(doc, selecao=(alvo, alvo))
 
     @property
     def pode_desfazer(self) -> bool:
@@ -635,12 +798,15 @@ class PainelDeTexto(QWidget):
     # -------------------------------------------------------------------------------- carga
 
     def mostrar_pagina(self, pagina: PaginaLida, *, folha_rgb: np.ndarray | None = None) -> None:
-        """Abre uma `PaginaLida` no editor. É o que a leitura entrega."""
+        """Abre uma `PaginaLida` no editor. É o que a leitura entrega -- e é o ponto de partida
+        contra o qual `tem_alteracoes` compara: a folha recém-lida não tem nada por gravar."""
         self._pagina = pagina
         self._pagina_rgb = folha_rgb
         self._historico.clear()
         self._refeitos.clear()
+        self._digitacao = None
         self.desenhar_documento(rico.de_pagina(pagina))
+        self._documento_gravado = self.documento
 
     def texto(self) -> str:
         """O texto puro do documento -- **do documento, e não do widget**.
@@ -817,10 +983,11 @@ class PainelDeTexto(QWidget):
 
         degraus = max(ZOOM_MINIMO, min(ZOOM_MAXIMO, int(degraus)))
         self._zoom_da_vista = degraus
+        selecao = self._selecao_atual()
         fonte = self.editor.font()
         fonte.setPointSize(tipografia.corpo(degraus, base=self._corpo_de_base))
         self.editor.setFont(fonte)
-        self._desenhar()
+        self._desenhar(selecao=selecao)
         if avisar:
             self.estado.emit(f"Zoom do texto: {degraus:+d} degrau(s).")
 
@@ -961,7 +1128,8 @@ class PainelDeTexto(QWidget):
             return
         inicio, _fim = self._intervalo()
         fora = bool(self._paleta_de_glifos().marca(simbolo))  # type: ignore[attr-defined]
-        self._aplicar(rico.inserir(self.documento, inicio, simbolo, fora_do_modelo=fora))
+        depois = inicio + len(simbolo)
+        self._aplicar(rico.inserir(self.documento, inicio, simbolo, fora_do_modelo=fora), selecao=(depois, depois))
         self.editor.setFocus()
 
     def _menu_de_simbolos(self, simbolos: tuple[str, ...]) -> QMenu:
@@ -1025,7 +1193,9 @@ class PainelDeTexto(QWidget):
             return
         self._historico.clear()
         self._refeitos.clear()
+        self._digitacao = None
         self.desenhar_documento(doc)
+        self._documento_gravado = self.documento
         self._caminho_do_documento = Path(origem)  # `Salvar` grava de volta aqui (S-343)
 
     def salvar_documento(self) -> None:
@@ -1055,25 +1225,58 @@ class PainelDeTexto(QWidget):
             if not escolhido:
                 return
             caminho = Path(escolhido)
+        gravado = self.documento
         try:
-            arquivo.gravar(caminho, self.documento)
+            arquivo.gravar(caminho, gravado)
         except OSError as erro:
             QMessageBox.critical(self, "Texto", f"Não foi possível gravar:\n{erro}")
             return
+        self._documento_gravado = gravado
         self._caminho_do_documento = caminho
         self.estado.emit(f"Texto gravado em {caminho.name}.")
 
-    def _confirmar_descarte(self, o_que: str) -> bool:
-        """Pergunta antes de jogar fora o que foi editado. Sem edição, não pergunta."""
-        if not self._historico:
+    @property
+    def tem_alteracoes(self) -> bool:
+        """A folha tem edição que ainda não está no disco? É o que o fechamento e a releitura perguntam.
+
+        **Comparada com o que foi gravado, e não com a pilha.** A pilha dizia "editado" também
+        depois de gravar -- e aí a pergunta "descarta as alterações?" chegava sobre um texto que já
+        estava salvo, que é o jeito de ensinar a clicar "Sim" sem ler. Desfazer até o que estava
+        gravado também não deixa nada a perder, e a comparação por valor vê isso.
+        """
+        return self.documento != self._documento_gravado
+
+    def confirmar_fechamento(self) -> bool:
+        """A janela vai fechar: `True` se pode, perguntando antes quando há texto por gravar."""
+        return self._confirmar_descarte("Fechar a janela descarta as alterações.", ao_fechar=True)
+
+    def _confirmar_descarte(self, o_que: str, *, ao_fechar: bool = False) -> bool:
+        """Pergunta antes de jogar fora o que foi editado e não foi gravado. Sem isso, não pergunta.
+
+        **Sem tela não há quem responda** (`dialogos.ha_quem_responda`), e a resposta é a mesma de
+        `dialogos.perguntar_descarte`: fechar fecha -- não há o que fazer com uma janela que já
+        está sendo destruída --, e ler ou abrir outra folha **não** descarta, que é a resposta que
+        não perde nada. As duas ficam no log.
+        """
+        from chess_diagram_ocr.qt import dialogos
+
+        if not self.tem_alteracoes:
             return True
-        caixa = QMessageBox(self)
-        caixa.setIcon(QMessageBox.Icon.Question)
-        caixa.setWindowTitle("Texto")
-        caixa.setText(f"O texto desta aba foi editado. {o_que} Continuar?")
-        caixa.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        caixa.setDefaultButton(QMessageBox.StandardButton.No)
-        return caixa.exec() == QMessageBox.StandardButton.Yes
+        if not dialogos.ha_quem_responda():
+            logger.warning(
+                "O texto da aba Texto tem alterações não gravadas e nenhuma tela para perguntar: %s.",
+                "o fechamento segue" if ao_fechar else "as alterações ficam",
+            )
+            return ao_fechar
+        onde = "da aba Texto" if ao_fechar else "desta aba"
+        resposta = QMessageBox.question(
+            self,
+            "Texto",
+            f"O texto {onde} foi editado e não foi gravado. {o_que} Continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return resposta == QMessageBox.StandardButton.Yes
 
 
     # ------------------------------------------------------------- a exportação (S-254)
@@ -1235,6 +1438,9 @@ class PainelDeTexto(QWidget):
             return
         if not self._confirmar_descarte("Ler de novo descarta as alterações."):
             return
+        # O que está na tela quando a leitura parte: o que for digitado **durante** ela não foi
+        # confirmado por ninguém, e `_leitura_terminou` pergunta de novo antes de trocá-lo.
+        self._documento_ao_ler = self.documento
 
         indice = int(self.campo_de_folha.value()) - 1
         motor = self._motor
@@ -1262,12 +1468,21 @@ class PainelDeTexto(QWidget):
     def _leitura_terminou(self, pagina: object) -> None:
         self._tarefa = None
         assert isinstance(pagina, PaginaLida)
+        partida = self._documento_ao_ler
+        self._documento_ao_ler = None
+        editado_na_leitura = partida is not None and self.documento is not partida
+        if editado_na_leitura and not self._confirmar_descarte(
+            "A folha lida substitui o que foi editado durante a leitura."
+        ):
+            self.estado.emit("A folha lida ficou de lado: o texto editado durante a leitura continua na tela.")
+            return
         self._pagina_indice = int(self.campo_de_folha.value()) - 1
         self.mostrar_pagina(pagina)
         self.estado.emit(f"Folha lida: {len(self.documento.corridas)} trecho(s).")
 
     def _leitura_falhou(self, erro: str) -> None:
         self._tarefa = None
+        self._documento_ao_ler = None
         QMessageBox.critical(self, "Ler a folha", f"Não foi possível ler a folha:\n{erro}")
 
     # ------------------------------------------------------ o que a janela pergunta (S-283)
@@ -1318,10 +1533,157 @@ class PainelDeTexto(QWidget):
         ]
         return " ".join(trechos).strip()
 
+    # ------------------------------------------------------------------------------ a digitação
+
+    def _digitado(self, posicao: int, removidos: int, acrescidos: int) -> None:
+        """Uma mudança do texto na tela -- tecla, colar, recortar, arrastar -- vira mudança do documento.
+
+        `contentsChange` diz **onde** mudou; o que saiu vem de `_tela`, o texto como estava. Os
+        números do Qt são conferidos contra os dois textos antes de serem usados, e a conta é
+        refeita dos dois quando não batem: uma troca de formato chega pelo mesmo sinal sem mudar
+        letra nenhuma, e um arrasto dentro da folha chega como **uma** janela que cobre a origem e
+        o destino.
+        """
+        documento = self.editor.document()
+        if self._redesenhando or self._sincronizando or documento is None:
+            return
+        antes, depois = self._tela, _texto_da_tela(documento)
+        self._tela = depois
+        janela = _janela_informada(antes, depois, posicao, removidos, acrescidos)
+        if janela is None:
+            return
+        inicio, removido, acrescido = janela
+        velho, novo = antes[inicio : inicio + removido], depois[inicio : inicio + acrescido]
+        giro = _giro(velho, novo)
+        if giro:
+            self._arrastado(inicio, len(velho), giro)
+            return
+        if velho and len(novo) > 1:
+            # Colar por cima de uma seleção, ou o Qt anunciando mais do que mudou: o que começa e
+            # termina igual não foi trocado, e continua sendo o que era -- com atributo e marca.
+            miolo = _janela_da_troca(velho, novo)
+            if miolo is None:
+                return
+            inicio, removido, acrescido = inicio + miolo[0], miolo[1], miolo[2]
+            novo = depois[inicio : inicio + acrescido]
+        self._trocado(inicio, removido, novo)
+
+    def _trocado(self, inicio: int, removido: int, novo: str) -> None:
+        """Os `removido` caracteres em `inicio` deram lugar a `novo`: o documento acompanha, por `rico.editar`.
+
+        **Fiel** é a troca que o documento aceitou como a tela a mostra: nenhuma miniatura saiu, nada
+        que não é texto entrou, e `rico` não alargou nem recusou a troca. Aí o mapa anda junto e só o
+        trecho novo é repintado -- é o caminho de toda tecla comum. O resto -- a marca do diagrama que
+        sai inteira, a letra escrita dentro dela, a miniatura apagada sozinha -- redesenha a folha a
+        partir do documento, que é quem manda, com o cursor no lugar da troca.
+        """
+        de = self._mapa.deslocamento(inicio)
+        ate = self._mapa.deslocamento(inicio + removido)
+        escrito = novo.replace(OBJETO, "")
+        alcance = rico.alcance_da_edicao(self.documento, de, ate, escrito)
+        if alcance is None:
+            self.estado.emit(
+                "A marca do diagrama não se edita por dentro: escreva antes ou depois dela, "
+                "ou apague-a inteira."
+            )
+            self._desenhar(selecao=(de, de))
+            return
+        editado = rico.editar(self.documento, de, ate, escrito)
+        mudou = editado is not self.documento
+        if mudou:
+            agora = self._relogio()
+            passo = not continua_a_digitacao(self._digitacao, alcance[0], alcance[1], escrito, agora=agora)
+            self._guardar_digitado(editado, passo=passo)
+            self._digitacao = digitacao_depois(alcance[0], alcance[1], escrito, agora=agora)
+        if removido == ate - de and escrito == novo and alcance == (de, ate):
+            self._mapa.trocar(inicio, removido, de, len(escrito))
+            self._pintar_o_digitado(inicio, len(escrito), de)
+            return
+        if alcance != (de, ate):
+            self.estado.emit("O diagrama saiu da folha junto com a marca inteira; desfazer o devolve.")
+        elif not mudou and removido > ate - de:
+            # Só o desenho saiu -- a miniatura, a quebra embaixo dela --, e ele volta no redesenho.
+            self.estado.emit(
+                "A miniatura é desenho, e não texto: para tirar o diagrama da folha, apague a marca dele."
+            )
+        cursor = alcance[0] + len(escrito)
+        self._desenhar(selecao=(cursor, cursor))
+
+    def _arrastado(self, inicio: int, tamanho: int, giro: int) -> None:
+        """Um trecho arrastado dentro da folha: o documento o leva inteiro, por `rico.mover`.
+
+        A janela `[inicio, inicio + tamanho)` saiu girada de `giro`: os `giro` primeiros caracteres
+        foram para o fim, ou os outros vieram para o começo -- as duas leituras dão a mesma tela, e
+        a que se usa é a do trecho **menor**, que é o que a pessoa arrastou. Tratar o arrasto como
+        apagar e escrever faria o trecho perder o que o Qt também perde ao soltar texto puro -- o
+        atributo e, pior, a marca do diagrama, que chegaria como texto comum. Por isso a folha é
+        redesenhada a partir do documento: o trecho volta com o que era.
+        """
+        if giro <= tamanho - giro:
+            origem, destino = (inicio, inicio + giro), inicio + tamanho
+        else:
+            origem, destino = (inicio + giro, inicio + tamanho), inicio
+        de, ate = rico.alcance_de_apagar(
+            self.documento, self._mapa.deslocamento(origem[0]), self._mapa.deslocamento(origem[1])
+        )
+        para = self._mapa.deslocamento(destino)
+        movido = rico.mover(self.documento, de, ate, para)
+        self._digitacao = None
+        if movido is self.documento:
+            self.estado.emit("O trecho não pode ser solto ali: a marca do diagrama não se parte.")
+            self._desenhar(selecao=(de, ate))
+            return
+        self._guardar_digitado(movido, passo=True)
+        fim = para if para >= ate else para + (ate - de)
+        self._desenhar(selecao=(fim - (ate - de), fim))
+
+    def _guardar_digitado(self, novo: rico.DocumentoRico, *, passo: bool) -> None:
+        """Põe `novo` no lugar do documento; `passo` empilha o anterior -- a tecla abriu um passo novo."""
+        if passo:
+            self._historico.append(self.documento)
+            self._refeitos.clear()
+        # Cresce a cada tecla, e não a cada passo: a pergunta de `ui/desfazivel` é "quem foi editado
+        # por último", e a última tecla é a resposta mesmo dentro de um passo aberto (S-243).
+        self._edicao += 1
+        self.documento = novo
+        self.documento_mudou.emit()
+
+    def _pintar_o_digitado(self, inicio: int, tamanho: int, deslocamento: int) -> None:
+        """Repinta só o trecho digitado, com o formato da corrida em que o documento o pôs.
+
+        O Qt escreve a letra com o formato da vizinha **da tela**, e o documento escolheu outro
+        quando as regras divergem: a faixa da mão no lugar do `revisar` herdado, o negrito da
+        seleção que foi trocada. Sem isto a tela mostraria uma coisa e o arquivo gravaria outra até o
+        próximo redesenho.
+        """
+        corrida = _corrida_em(self.documento, deslocamento)
+        documento = self.editor.document()
+        if tamanho <= 0 or corrida is None or documento is None:
+            return
+        cursor = QTextCursor(documento)
+        cursor.setPosition(inicio)
+        cursor.setPosition(inicio + tamanho, QTextCursor.MoveMode.KeepAnchor)
+        self._sincronizando = True
+        try:
+            cursor.setCharFormat(formato_de(corrida, base=self._base))
+        finally:
+            self._sincronizando = False
+
     # ------------------------------------------------------------------------------ teclado
 
     def eventFilter(self, a0: object, a1: object) -> bool:  # noqa: N802 - assinatura do Qt
-        """O estado vazio acompanha o poço do editor que ele cobre. Ver `_mostrar_vazio`."""
+        """`Ctrl+Z` e `Ctrl+Y` dentro da folha são deste painel; o estado vazio acompanha o poço.
+
+        A tecla de desfazer chega ao editor porque a guarda de atalhos a cede a todo campo de
+        texto -- e o desfazer do `QTextEdit` está desligado. Ver `TECLAS_DO_HISTORICO`.
+        """
+        if a0 is self.editor and isinstance(a1, QKeyEvent) and a1.type() == QEvent.Type.KeyPress:
+            combinacao = QKeySequence(a1.keyCombination())
+            for acao, tecla in self._teclas_do_historico.items():
+                alvo = self.atender(acao) if tecla == combinacao else None
+                if alvo is not None:
+                    alvo()
+                    return True
         if a0 is self.editor.viewport() and a1 is not None and a1.type() == QEvent.Type.Resize:
             self.vazio.setGeometry(self.editor.viewport().rect())
         return super().eventFilter(a0, a1)  # type: ignore[arg-type]
@@ -1377,6 +1739,115 @@ def _url(nome: str):  # noqa: ANN202 - QUrl, importado tarde para o módulo abri
     from PyQt6.QtCore import QUrl
 
     return QUrl(nome)
+
+
+def _teclas_da_tabela(acoes: Iterable[str]) -> dict[str, QKeySequence]:
+    """`ação -> QKeySequence`, **da tabela** (`ui/atalhos`). Ação sem tecla fica de fora, sem levantar.
+
+    Uma tecla que não traduz não pode custar o painel: ela sai no log, e o botão da barra continua
+    desfazendo -- é a disciplina de `qt/menu._acao`.
+    """
+    teclas: dict[str, QKeySequence] = {}
+    for acao in acoes:
+        atalho = atalhos.por_acao.get(acao)
+        if atalho is None:
+            continue
+        try:
+            teclas[acao] = QKeySequence(qt_atalhos.sequencia_qt(atalho.sequencia))
+        except ValueError as erro:
+            logger.warning("A tecla de %s não traduziu para o Qt (%s).", acao, erro)
+    return teclas
+
+
+def _texto_da_tela(documento: QTextDocument) -> str:
+    """O texto do widget **posição por posição**, com as quebras escritas como `\\n`.
+
+    `toRawText` e não `toPlainText`: o segundo troca o espaço inseparável por espaço comum, e a
+    letra que a pessoa não tocou sairia trocada no documento. As duas quebras do Qt -- a de
+    parágrafo (`Enter`) e a de linha (`Shift+Enter`) -- viram a quebra do documento; todas valem um
+    caractere, e é isso que mantém as posições.
+    """
+    return documento.toRawText().replace("\u2029", "\n").replace("\u2028", "\n")
+
+
+def _comum_no_comeco(a: str, b: str) -> int:
+    """Quantos caracteres do começo `a` e `b` dividem. Busca binária sobre fatias: quem compara é o C."""
+    baixo, alto = 0, min(len(a), len(b))
+    while baixo < alto:
+        meio = (baixo + alto + 1) // 2
+        if a[:meio] == b[:meio]:
+            baixo = meio
+        else:
+            alto = meio - 1
+    return baixo
+
+
+def _comum_no_fim(a: str, b: str, limite: int) -> int:
+    """Quantos caracteres do fim `a` e `b` dividem, até `limite`."""
+    baixo, alto = 0, limite
+    while baixo < alto:
+        meio = (baixo + alto + 1) // 2
+        if a[len(a) - meio :] == b[len(b) - meio :]:
+            baixo = meio
+        else:
+            alto = meio - 1
+    return baixo
+
+
+def _janela_da_troca(antes: str, depois: str) -> tuple[int, int, int] | None:
+    """`(início, removidos, acrescidos)` da menor janela que leva `antes` a `depois`; `None` se iguais."""
+    if antes == depois:
+        return None
+    comeco = _comum_no_comeco(antes, depois)
+    fim = _comum_no_fim(antes, depois, min(len(antes), len(depois)) - comeco)
+    return comeco, len(antes) - comeco - fim, len(depois) - comeco - fim
+
+
+def _janela_informada(
+    antes: str, depois: str, posicao: int, removidos: int, acrescidos: int
+) -> tuple[int, int, int] | None:
+    """A janela que o Qt anunciou, **se ela bate com os dois textos** -- senão a que os dois dizem.
+
+    Bater é: o que vem antes dela e o que vem depois dela são iguais nos dois textos. É o caso de
+    toda tecla medida no Qt 6.11; a conta de reserva existe para a versão que anunciar o documento
+    inteiro. `None` quando nenhuma letra mudou -- é a troca de formato, que chega pelo mesmo sinal.
+    """
+    fim_antes, fim_depois = posicao + removidos, posicao + acrescidos
+    if (
+        0 <= posicao
+        and fim_antes <= len(antes)
+        and fim_depois <= len(depois)
+        and antes[:posicao] == depois[:posicao]
+        and antes[fim_antes:] == depois[fim_depois:]
+    ):
+        if antes[posicao:fim_antes] == depois[posicao:fim_depois]:
+            return None
+        return posicao, removidos, acrescidos
+    return _janela_da_troca(antes, depois)
+
+
+def _giro(velho: str, novo: str) -> int:
+    """Se `novo` é `velho` girado -- o que um arrasto dentro da mesma janela produz --, de quanto.
+
+    `0` quando não é giro. O espaço inseparável é comparado como espaço: o texto que o `QTextEdit`
+    arrasta passa pela área de transferência como texto puro, e ali ele já virou espaço comum.
+    """
+    if len(velho) != len(novo) or len(velho) < 2 or velho == novo:
+        return 0
+    a, b = velho.replace("\xa0", " "), novo.replace("\xa0", " ")
+    giro = (a + a).find(b)
+    return giro if 0 < giro < len(a) else 0
+
+
+def _corrida_em(doc: rico.DocumentoRico, deslocamento: int) -> rico.Corrida | None:
+    """A corrida que contém aquele deslocamento, ou `None` fora do texto."""
+    comeco = 0
+    for corrida in doc.corridas:
+        fim = comeco + len(corrida.texto)
+        if comeco <= deslocamento < fim:
+            return corrida
+        comeco = fim
+    return None
 
 
 class JanelaDeBusca(QDialog):
