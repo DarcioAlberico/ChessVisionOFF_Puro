@@ -13,16 +13,20 @@ partidas» se redesenha, e um filtro posto nos controles de quando a rolagem nas
 caixas novas. **O controle inteiro, e não o cursor**: `ensureWidgetVisible` rola até a `microFocus`
 de um campo de texto, e não rola nada quando o cursor já está à vista com o resto do campo cortado.
 
-**O clique não rola; o que o programa foca durante ele, depois dele.** O Qt dá o foco ao controle no
-*pressionar* do clique, antes de entregar o evento; rolar ali tirava o controle de baixo do ponteiro,
-e o *soltar* caía noutro lugar -- medido pelo crítico no ciclo 6: na pele Foco a 1280x641, um clique
-na parte de baixo da casa e7 do Estudo, com as pretas a jogar, rolava 19 px e jogava 1...e6; o rádio
-«Pretas» do Resultado não marcava. O foco que o clique dá ao controle clicado fica onde está
-(:func:`veio_do_mouse`): o controle já está à vista, onde o ponteiro está. Mas no mesmo pressionar um
-painel pode mandar o foco a **outro** controle -- a linha da tabela da Rotulagem e da Revisão de texto
-da suíte manda o foco à «Verdade da linha» (crítico, ciclo 7: com o seguidor calado ali, a verdade
-ficava com 0x0 px a 1280x641). Esse foco é mostrado **depois do soltar** (:func:`no_meio_do_clique`):
-o clique termina onde foi dado, e a rolagem vem em seguida.
+**O clique não rola; o que o programa foca durante ele, quando o mouse sossega.** O Qt dá o foco ao
+controle no *pressionar* do clique, antes de entregar o evento; rolar ali tirava o controle de baixo do
+ponteiro, e o *soltar* caía noutro lugar -- medido pelo crítico no ciclo 6: na pele Foco a 1280x641, um
+clique na parte de baixo da casa e7 do Estudo, com as pretas a jogar, rolava 19 px e jogava 1...e6; o
+rádio «Pretas» do Resultado não marcava. O foco que o clique dá ao controle clicado fica onde está
+(:func:`veio_do_mouse`): o controle já está à vista, onde o ponteiro está. Mas no mesmo clique um painel
+pode mandar o foco a **outro** controle -- a linha da tabela da Rotulagem e da Revisão de texto da suíte
+manda o foco à «Verdade da linha» (crítico, ciclo 7: com o seguidor calado ali, a verdade ficava com 0x0
+px a 1280x641). E mostrá-lo logo depois do soltar mexia o conteúdo debaixo do ponteiro parado antes do
+segundo clique de um duplo clique: na Rotulagem, com a rolagem no fim, o segundo clique na linha 4 caía
+em «Aceitar leitura» e aceitava uma leitura que ninguém aceitou (crítico, ciclo 8). Esse foco aparece
+**quando o mouse sossega** (:func:`mouse_sossegado`) -- nenhum botão apertado, e o intervalo do duplo
+clique da plataforma passado desde o último soltar: o segundo clique cai onde o primeiro caiu --, ou na
+primeira tecla, antes de ela chegar ao controle.
 
 **A razão do foco, e não o ponteiro.** Quem diz qual foco é o do mouse é a razão do `QFocusEvent`
 (:class:`_RazaoDoFoco`): o clique e a roda dão `MouseFocusReason`, o Tab dá a dele, o `setFocus()` do
@@ -31,14 +35,15 @@ programa dá `OtherFocusReason`. Perguntar ao `underMouse` do controle, como a p
 que se mexe sob o ponteiro parado --: a verdade, clicada antes, parecia «sob o ponteiro» no clique da
 linha, e ficava fora da vista (o portão do teclado da suíte, com o clique que deixa a ação rodar).
 
-**O foco que a janela devolve ao voltar espera o clique que a reativou.** Quando a janela volta a ser a
-ativa, o Qt devolve o foco ao controle que o tinha (`ActiveWindowFocusReason`), e o Windows ativa a
-janela **antes** de entregar o pressionar do clique que a reativou: se a roda tinha levado a vista para
-longe daquele controle, rolar até ele ali tirava de baixo do ponteiro o controle clicado (achado pelo
-construtor no ciclo 8, a sonda `c8/sonda_ativacao.py`: o «Aceitar» não recebia o clique). Esse foco é
-mostrado depois dos eventos que chegam com a volta (:func:`voltou_com_a_janela`): com um clique no
-meio, depois do soltar, e só se o clique não levou o foco a outro controle; sem clique (o Alt+Tab, o
-diálogo que fechou), em seguida.
+**O foco que a janela devolve ao voltar espera o mesmo sossego.** Quando a janela volta a ser a ativa, o
+Qt devolve o foco ao controle que o tinha (`ActiveWindowFocusReason`), e o Windows ativa a janela
+**antes** de entregar o pressionar do clique que a reativou: se a roda tinha levado a vista para longe
+daquele controle, rolar até ele ali tirava de baixo do ponteiro o controle clicado (achado pelo
+construtor no ciclo 8, a sonda `c8/sonda_ativacao.py`: o «Aceitar» não recebia o clique). Esse foco
+espera o intervalo do duplo clique inteiro (:func:`voltou_com_a_janela`): o clique que reativou a janela
+chega dentro dele, e o foco da volta só aparece se o clique não o levou a outro controle; sem clique (o
+Alt+Tab, o diálogo que fechou), aparece passado o intervalo, ou na primeira tecla. O Tab e o Shift+Tab
+rolam na hora (:func:`veio_do_teclado`).
 
 O gêmeo deste arquivo na suíte é `caissa.ui.widgets.foco_a_vista` (a suíte depende do tronco, não o
 contrário).
@@ -46,22 +51,36 @@ contrário).
 
 from __future__ import annotations
 
+import time
+
 from PyQt6 import sip
 from PyQt6.QtCore import QEvent, QObject, QPoint, QRect, Qt, QTimer, pyqtSlot
 from PyQt6.QtWidgets import QApplication, QScrollArea, QScrollBar, QWidget
 
 __all__ = [
     "RolagemSegueOFoco",
+    "intervalo_do_duplo_clique",
     "mostrar",
+    "mouse_sossegado",
     "no_meio_do_clique",
     "seguidor_de",
     "seguir_o_foco",
     "veio_do_mouse",
+    "veio_do_teclado",
     "voltou_com_a_janela",
 ]
 
 #: A folga em volta do controle que a rolagem mostra, em px: a moldura do foco fica à vista.
 FOLGA = 6
+
+#: O intervalo do duplo clique do Qt, em ms, quando a aplicação não diz o dela.
+INTERVALO_PADRAO_DO_DUPLO_CLIQUE = 400
+
+#: As teclas que só modificam o clique ou a tecla seguinte: não mostram o foco que espera.
+_MODIFICADORES = frozenset(tecla.value for tecla in (
+    Qt.Key.Key_Shift, Qt.Key.Key_Control, Qt.Key.Key_Alt, Qt.Key.Key_Meta, Qt.Key.Key_AltGr,
+    Qt.Key.Key_CapsLock, Qt.Key.Key_NumLock, Qt.Key.Key_ScrollLock,
+))
 
 
 def _encaixar(barra: QScrollBar, inicio: int, fim: int, vista: int) -> None:
@@ -91,7 +110,8 @@ class _RazaoDoFoco(QObject):
     sinal: o clique dá o foco ao controle clicado (ou a quem aceita o foco acima dele) com
     `MouseFocusReason`, e a roda também; o Tab e o Shift+Tab, com as deles; o `setFocus()` do programa,
     com `OtherFocusReason`. Um filtro só, na aplicação, para todos os seguidores, e ele só anota: o
-    controle e a razão (o `FocusIn` vai também ao estilo, que não é um controle).
+    controle e a razão (o `FocusIn` vai também ao estilo, que não é um controle), e a hora do último
+    soltar de um botão do mouse (:func:`mouse_sossegado`).
     """
 
     def __init__(self, aplicacao: QApplication) -> None:
@@ -99,12 +119,18 @@ class _RazaoDoFoco(QObject):
         self.aplicacao = aplicacao
         self.controle: QWidget | None = None
         self.razao = Qt.FocusReason.OtherFocusReason
+        self.soltou_em = float("-inf")
         aplicacao.installEventFilter(self)
 
     def eventFilter(self, objeto: QObject | None, evento: QEvent | None) -> bool:  # noqa: N802 - assinatura do Qt
-        if evento is not None and evento.type() == QEvent.Type.FocusIn and isinstance(objeto, QWidget):
+        if evento is None:
+            return False
+        tipo = evento.type()
+        if tipo == QEvent.Type.FocusIn and isinstance(objeto, QWidget):
             self.controle = objeto
             self.razao = evento.reason()  # type: ignore[attr-defined]  # o FocusIn é um QFocusEvent
+        elif tipo == QEvent.Type.MouseButtonRelease:
+            self.soltou_em = time.monotonic()
         return False
 
 
@@ -126,12 +152,31 @@ def no_meio_do_clique() -> bool:
     return QApplication.mouseButtons() != Qt.MouseButton.NoButton
 
 
+def intervalo_do_duplo_clique() -> int:
+    """O intervalo do duplo clique da plataforma, em ms (`QStyleHints.mouseDoubleClickInterval`): o
+    segundo clique de um duplo clique chega dentro dele, e até lá o que está sob o ponteiro não muda."""
+    dicas = QApplication.styleHints()
+    if dicas is None:
+        return INTERVALO_PADRAO_DO_DUPLO_CLIQUE
+    return dicas.mouseDoubleClickInterval()
+
+
+def mouse_sossegado() -> bool:
+    """Nenhum botão apertado, e o intervalo do duplo clique passado desde o último soltar."""
+    if no_meio_do_clique():
+        return False
+    razao = _razao_do_foco()
+    if razao is None:
+        return True
+    return (time.monotonic() - razao.soltou_em) * 1000 >= intervalo_do_duplo_clique()
+
+
 def veio_do_mouse(controle: QWidget) -> bool:
     """O foco que ``controle`` acaba de receber é o do mouse sobre ele, e a rolagem não se mexe: o
     clique nele, ou a roda -- a razão do `QFocusEvent` dele é `MouseFocusReason` (:class:`_RazaoDoFoco`).
-    O foco que o programa manda a outro controle no mesmo pressionar tem outra razão (o `setFocus()`,
-    `OtherFocusReason`), e é mostrado depois do soltar; o Tab e o Shift+Tab rolam até o controle, também
-    quando ele está sob o ponteiro parado."""
+    O foco que o programa manda a outro controle no mesmo clique tem outra razão (o `setFocus()`,
+    `OtherFocusReason`), e é mostrado quando o mouse sossega; o Tab e o Shift+Tab rolam até o controle,
+    também quando ele está sob o ponteiro parado."""
     razao = _razao_do_foco()
     return razao is not None and razao.controle is controle and razao.razao == Qt.FocusReason.MouseFocusReason
 
@@ -143,6 +188,13 @@ def voltou_com_a_janela(controle: QWidget) -> bool:
     razao = _razao_do_foco()
     return (razao is not None and razao.controle is controle
             and razao.razao == Qt.FocusReason.ActiveWindowFocusReason)
+
+
+def veio_do_teclado(controle: QWidget) -> bool:
+    """O foco que ``controle`` acaba de receber é o do Tab ou do Shift+Tab: a rolagem vai na hora."""
+    razao = _razao_do_foco()
+    return (razao is not None and razao.controle is controle
+            and razao.razao in (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason))
 
 
 def mostrar(rolagem: QScrollArea, controle: QWidget) -> None:
@@ -167,6 +219,10 @@ class RolagemSegueOFoco(QObject):
         self._ligado = True
         self._pendente: QWidget | None = None
         self._esperando = False
+        self._sossego = QTimer(self)
+        self._sossego.setSingleShot(True)
+        self._sossego.setTimerType(Qt.TimerType.PreciseTimer)
+        self._sossego.timeout.connect(self._sossegou)
         aplicacao = QApplication.instance()
         if isinstance(aplicacao, QApplication):
             _razao_do_foco()
@@ -179,51 +235,58 @@ class RolagemSegueOFoco(QObject):
         # e este seguidor, filho dela, ainda não.
         if not self._ligado or novo is None or sip.isdeleted(self._rolagem):
             return
+        if self._esperando and novo is not self._pendente:
+            self._parar_de_esperar()  # o foco que esperava saiu dele
         conteudo = self._rolagem.widget()
         if conteudo is None or not conteudo.isAncestorOf(novo) or veio_do_mouse(novo):
             return
-        if no_meio_do_clique():
-            self._esperar_o_soltar(novo)
-            return
-        if voltou_com_a_janela(novo):
-            # o pressionar do clique que reativou a janela, se houve um, vem logo atrás deste foco
-            self._pendente = novo
-            QTimer.singleShot(0, self._depois_da_volta)
+        if not veio_do_teclado(novo) and (voltou_com_a_janela(novo) or not mouse_sossegado()):
+            self._esperar_o_sossego(novo)
             return
         mostrar(self._rolagem, novo)
 
-    def _depois_da_volta(self) -> None:
-        """O foco que a janela devolveu, depois dos eventos que chegaram com a volta dela: com o botão
-        apertado (o clique que a reativou), depois do soltar; sem clique, agora."""
-        controle = self._pendente
-        if controle is None or not self._ligado or sip.isdeleted(controle) or sip.isdeleted(self._rolagem):
-            return
-        if no_meio_do_clique():
-            self._esperar_o_soltar(controle)
-            return
-        self._mostrar_o_pendente()
-
-    def _esperar_o_soltar(self, controle: QWidget) -> None:
-        """O foco que o programa moveu no meio do clique é mostrado quando o botão sobe. O filtro fica
-        na aplicação só entre o pressionar e o soltar."""
+    def _esperar_o_sossego(self, controle: QWidget) -> None:
+        """Mostra ``controle`` quando o mouse sossegar -- nenhum botão apertado e o intervalo do duplo
+        clique passado desde o último soltar (o relógio para no pressionar e recomeça no soltar) --, ou
+        na primeira tecla que não é só um modificador, antes de ela chegar a ele. O filtro fica na
+        aplicação só durante a espera."""
         self._pendente = controle
         aplicacao = QApplication.instance()
         if not self._esperando and aplicacao is not None:
             aplicacao.installEventFilter(self)
             self._esperando = True
+        if no_meio_do_clique():
+            self._sossego.stop()  # o soltar arma o relógio
+        else:
+            self._sossego.start(intervalo_do_duplo_clique())
 
     def eventFilter(self, objeto: QObject | None, evento: QEvent | None) -> bool:  # noqa: N802 - assinatura do Qt
-        if evento is not None and evento.type() == QEvent.Type.MouseButtonRelease and self._esperando:
-            aplicacao = QApplication.instance()
-            if aplicacao is not None:
-                aplicacao.removeEventFilter(self)
-            self._esperando = False
-            # depois de o soltar chegar ao controle clicado: o clique termina onde foi dado
-            QTimer.singleShot(0, self._mostrar_o_pendente)
+        if self._esperando and evento is not None:
+            tipo = evento.type()
+            if tipo in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick):
+                self._sossego.stop()
+            elif tipo == QEvent.Type.MouseButtonRelease:
+                self._sossego.start(intervalo_do_duplo_clique())
+            elif tipo == QEvent.Type.KeyPress and evento.key() not in _MODIFICADORES:  # type: ignore[attr-defined]
+                self._mostrar_o_pendente()
         return super().eventFilter(objeto, evento)
 
-    def _mostrar_o_pendente(self) -> None:
+    def _sossegou(self) -> None:
+        if not no_meio_do_clique():
+            self._mostrar_o_pendente()
+
+    def _parar_de_esperar(self) -> QWidget | None:
+        """Tira o filtro e o relógio, e devolve o controle que esperava."""
+        self._sossego.stop()
+        aplicacao = QApplication.instance()
+        if self._esperando and aplicacao is not None:
+            aplicacao.removeEventFilter(self)
+        self._esperando = False
         controle, self._pendente = self._pendente, None
+        return controle
+
+    def _mostrar_o_pendente(self) -> None:
+        controle = self._parar_de_esperar()
         if (controle is None or not self._ligado or sip.isdeleted(controle)
                 or sip.isdeleted(self._rolagem) or QApplication.focusWidget() is not controle):
             return

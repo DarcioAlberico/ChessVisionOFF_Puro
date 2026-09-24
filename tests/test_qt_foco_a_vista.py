@@ -28,6 +28,7 @@ if TEM_PYQT:
     from PyQt6.QtWidgets import (
         QCheckBox,
         QLineEdit,
+        QListWidget,
         QPushButton,
         QScrollArea,
         QTextEdit,
@@ -75,6 +76,51 @@ def _clique_pela_janela(app: object, janela: QWidget, ponto: QPoint) -> None:
     app.processEvents()  # type: ignore[attr-defined]
 
 
+def _sossegar(app: object) -> None:
+    """O mouse sossegado: o intervalo do duplo clique e um pouco mais, com o laço de eventos rodando."""
+    from PyQt6.QtCore import QEventLoop, QTimer
+    from PyQt6.QtWidgets import QApplication
+
+    dicas = QApplication.styleHints()
+    assert dicas is not None
+    laco = QEventLoop()
+    QTimer.singleShot(dicas.mouseDoubleClickInterval() + 100, laco.quit)
+    laco.exec()
+    app.processEvents()  # type: ignore[attr-defined]
+
+
+def _mouse_sossegado_desde_ja() -> None:
+    """Cada teste começa com o mouse sossegado: o último soltar do teste de antes, que o anotador da
+    aplicação guarda, não faz o foco do seguinte esperar."""
+    razao = foco_a_vista._razao_do_foco()
+    if razao is not None:
+        razao.soltou_em = float("-inf")
+
+
+def _segundo_clique_de_um_duplo(app: object, janela: QWidget, ponto: QPoint) -> None:
+    """O segundo clique de um duplo clique como o Qt o entrega: o pressionar, o duplo clique ao
+    controle sob o ponteiro, o soltar. O `QTest` põe o intervalo do duplo clique entre dois cliques
+    dele, para nunca fazer um duplo clique por acaso: o duplo clique vai à mão, como na sonda do
+    crítico (fase 5, ciclo 8)."""
+    from PyQt6.QtCore import QEvent, QPointF
+    from PyQt6.QtGui import QMouseEvent
+    from PyQt6.QtWidgets import QApplication
+
+    alca = janela.windowHandle()
+    assert alca is not None
+    QTest.mousePress(alca, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, ponto)
+    app.processEvents()  # type: ignore[attr-defined]
+    alvo = janela.childAt(ponto)
+    assert alvo is not None
+    duplo = QMouseEvent(QEvent.Type.MouseButtonDblClick, QPointF(alvo.mapFrom(janela, ponto)),
+                        QPointF(janela.mapToGlobal(ponto)), Qt.MouseButton.LeftButton,
+                        Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(alvo, duplo)
+    app.processEvents()  # type: ignore[attr-defined]
+    QTest.mouseRelease(alca, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, ponto)
+    app.processEvents()  # type: ignore[attr-defined]
+
+
 def _a_vista_embaixo(app: object, rolagem: QScrollArea, controle: QWidget, px: int) -> None:
     """Rola ``rolagem`` até ``controle`` ficar com ``px`` à vista, cortado pela borda de baixo."""
     conteudo = rolagem.widget()
@@ -90,7 +136,8 @@ def _a_vista_embaixo(app: object, rolagem: QScrollArea, controle: QWidget, px: i
 def _sem_a_guarda_do_mouse() -> Iterator[None]:
     """A sabotagem: o seguidor rola também no foco que o mouse dá, e no pressionar, como no ciclo 6."""
     with (mock.patch.object(foco_a_vista, "veio_do_mouse", lambda _controle: False),
-          mock.patch.object(foco_a_vista, "no_meio_do_clique", lambda: False)):
+          mock.patch.object(foco_a_vista, "no_meio_do_clique", lambda: False),
+          mock.patch.object(foco_a_vista, "mouse_sossegado", lambda: True)):
         yield
 
 
@@ -149,6 +196,7 @@ class SeguidorTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.app = aplicacao()
+        _mouse_sossegado_desde_ja()
         from chess_diagram_ocr.qt.foco_a_vista import RolagemSegueOFoco
 
         self.janela = QWidget()
@@ -257,15 +305,15 @@ class SeguidorTests(unittest.TestCase):
         with mock.patch.object(foco_a_vista, "_encaixar", encaixe_do_ciclo_7):
             self.assertFalse(de_volta_do_botao(), "sabotado, a folga corta o fim")
 
-    def test_o_foco_que_o_programa_move_no_clique_aparece_depois_do_soltar(self) -> None:
+    def test_o_foco_que_o_programa_move_no_clique_aparece_quando_o_mouse_sossega(self) -> None:
         """Crítico da fase 5, ciclo 7: a linha da tabela da Rotulagem e da Revisão de texto manda o foco
         à «Verdade da linha» no *pressionar*, e a guarda do ciclo 7 (um botão apertado) tomava esse foco
         pelo do mouse -- a verdade ficava fora da vista (0x0 px a 1280x641), e o que se digitava ia
         para lá. Aqui uma lista no alto da rolagem manda o foco à caixa do fim quando a linha muda, no
         pressionar: o clique termina onde foi dado (a linha clicada uma vez), a caixa aparece inteira
-        depois, e o que se digita entra nela. As sabotagens: a guarda do ciclo 7 (a caixa fica
-        escondida); o seguidor do ciclo 6, que rolava no pressionar (a lista sai de baixo do ponteiro e
-        o clique se perde)."""
+        quando o mouse sossega (o intervalo do duplo clique depois do soltar), e o que se digita entra
+        nela. As sabotagens: a guarda do ciclo 7 (a caixa fica escondida); o seguidor do ciclo 6, que
+        rolava no pressionar (a lista sai de baixo do ponteiro e o clique se perde)."""
         from PyQt6.QtWidgets import QListWidget
 
         linhas = QListWidget(self.conteudo)
@@ -293,18 +341,19 @@ class SeguidorTests(unittest.TestCase):
             assert item is not None
             ponto = linhas.viewport().mapTo(self.janela, linhas.visualItemRect(item).center())
             _clique_pela_janela(self.app, self.janela, ponto)
-            for _vez in range(3):  # o soltar, e a rolagem depois dele
-                self.app.processEvents()
+            _sossegar(self.app)  # o soltar, o intervalo do duplo clique, e a rolagem
+            vistas.append(_inteiro(self.rolagem, self.caixa))
             foco = self.app.focusWidget()
             assert foco is not None
             QTest.keyClicks(foco, "XYZ")
             self.app.processEvents()
 
+        vistas: list[bool] = []
         clicar_a_linha()
         self.assertEqual(clicado, [1], "o clique termina onde foi dado")
         self.assertEqual(linhas.currentRow(), 1)
         self.assertIs(self.app.focusWidget(), self.caixa)
-        self.assertTrue(_inteiro(self.rolagem, self.caixa), "o foco que o programa moveu aparece depois do soltar")
+        self.assertEqual(vistas, [True], "o foco que o programa moveu aparece quando o mouse sossega")
         self.assertIn("XYZ", self.caixa.toPlainText(), "e o que se digita vai para onde os olhos estão")
         with mock.patch.object(foco_a_vista, "veio_do_mouse", _guarda_do_ciclo_7):
             clicar_a_linha()
@@ -381,9 +430,10 @@ class SeguidorTests(unittest.TestCase):
         `c8/sonda_ativacao.py`: a rolagem de 242 a 3, o «Aceitar» sem o clique). Aqui o foco da volta e o
         pressionar saem um atrás do outro, sem o laço de eventos no meio, como no Windows (o
         `activateWindow` do offscreen entra na fila, e o `QTest` entregaria o pressionar antes dela): o
-        botão recebe o clique, e nada rola. Sem clique -- a janela reativada de verdade, pelo
-        `activateWindow` --, o campo aparece inteiro em seguida. A sabotagem: o foco da volta mostrado
-        na hora, e o clique se perde."""
+        botão recebe o clique, e nada rola -- o foco da volta espera o intervalo do duplo clique, e o
+        clique o levou a outro controle. Sem clique -- a janela reativada de verdade, pelo
+        `activateWindow` --, o campo aparece inteiro passado o intervalo. A sabotagem: o foco da volta
+        mostrado na hora, e o clique se perde."""
         from PyQt6.QtWidgets import QApplication
 
         aceitar = QPushButton("Aceitar embaixo", self.conteudo)
@@ -413,8 +463,7 @@ class SeguidorTests(unittest.TestCase):
             self.app.processEvents()
             primeiro.setFocus(Qt.FocusReason.ActiveWindowFocusReason)  # a janela voltou
             _clique_pela_janela(self.app, self.janela, ponto)  # e o pressionar vem logo atrás
-            for _vez in range(3):
-                self.app.processEvents()
+            _sossegar(self.app)
             return antes, barra.value()
 
         antes, depois = a_volta_com_um_clique()
@@ -432,12 +481,12 @@ class SeguidorTests(unittest.TestCase):
             self.app.processEvents()
         self.assertIsNot(QApplication.activeWindow(), self.janela)
         self.janela.activateWindow()
-        for _vez in range(3):
-            self.app.processEvents()
+        _sossegar(self.app)
         self.assertIs(self.app.focusWidget(), primeiro, "a janela devolve o foco ao primeiro campo")
         self.assertTrue(_inteiro(self.rolagem, primeiro), "sem clique, o foco da volta aparece em seguida")
 
-        with mock.patch.object(foco_a_vista, "voltou_com_a_janela", lambda _controle: False):
+        with (mock.patch.object(foco_a_vista, "voltou_com_a_janela", lambda _controle: False),
+              mock.patch.object(foco_a_vista, "mouse_sossegado", lambda: True)):
             antes, depois = a_volta_com_um_clique()
         self.assertEqual(clicados, [], "sabotado, o clique que reativou a janela se perde")
         self.assertNotEqual(depois, antes, "sabotado, a vista rola debaixo do ponteiro")
@@ -489,8 +538,7 @@ class SeguidorTests(unittest.TestCase):
             assert item is not None
             ponto = linhas.viewport().mapTo(self.janela, linhas.visualItemRect(item).center())
             _clique_pela_janela(self.app, self.janela, ponto)
-            for _vez in range(3):  # o soltar, e a rolagem depois dele
-                self.app.processEvents()
+            _sossegar(self.app)
             self.assertIs(self.app.focusWidget(), self.caixa)
 
         def tab_de_fora_ate_a_caixa_de_escolha_sob_o_ponteiro() -> int:
@@ -510,12 +558,167 @@ class SeguidorTests(unittest.TestCase):
             return ret.intersected(self.rolagem.viewport().rect()).height()
 
         clicar_a_linha_com_a_marca_velha()
-        self.assertTrue(_inteiro(self.rolagem, self.caixa), "o foco do programa aparece depois do soltar")
+        self.assertTrue(_inteiro(self.rolagem, self.caixa), "o foco do programa aparece quando o mouse sossega")
         self.assertEqual(tab_de_fora_ate_a_caixa_de_escolha_sob_o_ponteiro(), pele.height(), "o Tab a mostra inteira")
         with mock.patch.object(foco_a_vista, "veio_do_mouse", _guarda_do_ponteiro):
             clicar_a_linha_com_a_marca_velha()
             self.assertFalse(_inteiro(self.rolagem, self.caixa), "sabotado, a marca velha esconde o foco do programa")
             self.assertEqual(tab_de_fora_ate_a_caixa_de_escolha_sob_o_ponteiro(), 9, "sabotado, o Tab a deixa com 9 px")
+
+
+    def _lista_no_alto(self) -> QListWidget:
+        """Uma lista de três linhas no alto da rolagem, cuja linha escolhida no pressionar manda o foco
+        à caixa do fim -- as tabelas da Rotulagem e da Revisão de texto e a «Verdade da linha»; os
+        campos com nome, para dizer onde um clique caiu."""
+        for k, campo in enumerate(self.conteudo.findChildren(QLineEdit)):
+            campo.setObjectName(f"campo {k}")
+        linhas = QListWidget(self.conteudo)
+        linhas.addItems(["linha 1", "linha 2", "linha 3"])
+        linhas.setFixedHeight(90)
+        layout = self.conteudo.layout()
+        assert layout is not None
+        layout.insertWidget(0, linhas)  # type: ignore[attr-defined]
+        linhas.currentRowChanged.connect(lambda _r: self.caixa.setFocus(Qt.FocusReason.OtherFocusReason))
+        for _vez in range(2):  # o layout cresce o conteúdo, depois a rolagem o toma
+            self.app.processEvents()
+        return linhas
+
+    def _na_linha(self, linhas: QListWidget) -> QPoint:
+        """A lista na primeira linha, a rolagem no topo, o foco fora: um ponto da segunda linha."""
+        linhas.setCurrentRow(0)
+        _no_topo(self.rolagem, self.app)
+        self.botao.setFocus(Qt.FocusReason.OtherFocusReason)
+        self.app.processEvents()
+        item = linhas.item(1)
+        assert item is not None
+        return linhas.viewport().mapTo(self.janela, linhas.visualItemRect(item).center())
+
+    def test_o_segundo_clique_de_um_duplo_clique_cai_onde_o_primeiro_caiu(self) -> None:
+        """Crítico da fase 5, ciclo 8: a rolagem que mostrava o foco que o programa moveu no clique vinha
+        logo depois do soltar e mexia o conteúdo debaixo do ponteiro parado antes do segundo clique de
+        um duplo clique -- na Rotulagem, com a rolagem no fim, o segundo clique na linha 4 caía em
+        «Aceitar leitura» e aceitava uma leitura que ninguém aceitou. Aqui o duplo clique pelo
+        `QWindow` na segunda linha da lista (pressionar, soltar, 80 ms, o segundo pressionar e soltar
+        no mesmo ponto): nada se mexe debaixo do ponteiro entre os dois cliques, os dois caem na lista,
+        que recebe o duplo clique naquela linha -- e manda o foco à caixa, como o duplo clique na linha
+        da Rotulagem --; e, sossegado o mouse, a caixa aparece inteira. A sabotagem: a rolagem logo
+        depois do soltar (o intervalo do duplo clique a 0) -- o conteúdo se mexe, e o segundo clique cai
+        fora da lista."""
+        from PyQt6.QtCore import QEvent, QObject
+
+        linhas = self._lista_no_alto()
+        duplos: list[int] = []
+        linhas.doubleClicked.connect(lambda indice: duplos.append(indice.row()))
+        linhas.doubleClicked.connect(lambda _i: self.caixa.setFocus(Qt.FocusReason.OtherFocusReason))
+
+        class Receptores(QObject):
+            """O primeiro controle a que cada pressionar é entregue."""
+
+            def __init__(self) -> None:
+                super().__init__()
+                self.controles: list[QWidget] = []
+                self._visto = False
+
+            def eventFilter(self, objeto: QObject | None, evento: QEvent | None) -> bool:  # noqa: N802 - Qt
+                tipo = evento.type() if evento is not None else None
+                if tipo == QEvent.Type.MouseButtonPress and isinstance(objeto, QWidget) and not self._visto:
+                    self.controles.append(objeto)
+                    self._visto = True
+                elif tipo == QEvent.Type.MouseButtonRelease:
+                    self._visto = False
+                return False
+
+        receptores = Receptores()
+        self.app.installEventFilter(receptores)
+        self.addCleanup(self.app.removeEventFilter, receptores)
+
+        def duplo_clique() -> tuple[QWidget | None, QWidget | None]:
+            duplos.clear()
+            receptores.controles.clear()
+            ponto = self._na_linha(linhas)
+            self.assertTrue(self.caixa.visibleRegion().isEmpty(), "a caixa começa abaixo da dobra")
+            sob = self.janela.childAt(ponto)
+            _clique_pela_janela(self.app, self.janela, ponto)
+            QTest.qWait(80)  # o tempo entre os dois cliques de um duplo clique
+            sob_no_segundo = self.janela.childAt(ponto)
+            _segundo_clique_de_um_duplo(self.app, self.janela, ponto)
+            _sossegar(self.app)
+            return sob, sob_no_segundo
+
+        sob, sob_no_segundo = duplo_clique()
+        self.assertIs(sob_no_segundo, sob, "nada se mexe debaixo do ponteiro entre os dois cliques")
+        self.assertEqual(receptores.controles, [linhas.viewport()] * 2, "os dois pressionares na lista")
+        self.assertEqual(duplos, [1], "a lista recebe o duplo clique na segunda linha")
+        self.assertTrue(_inteiro(self.rolagem, self.caixa), "sossegado o mouse, a caixa aparece inteira")
+        with mock.patch.object(foco_a_vista, "intervalo_do_duplo_clique", lambda: 0):
+            sob, sob_no_segundo = duplo_clique()
+        self.assertIsNot(sob_no_segundo, sob, "sabotado, o conteúdo se mexeu debaixo do ponteiro")
+        self.assertEqual(duplos, [], "sabotado, a lista não recebe o duplo clique")
+        self.assertIsNot(receptores.controles[1], linhas.viewport(), "sabotado, o segundo clique cai fora")
+
+    def test_uma_tecla_mostra_na_hora_o_foco_que_espera(self) -> None:
+        """O foco que o programa moveu no clique espera o mouse sossegar -- ou a primeira tecla: quem
+        clica na linha e digita logo vê a caixa antes de a letra chegar, e a letra entra na caixa à
+        vista. Um modificador sozinho (o Shift antes de um Shift+clique) não a mostra. A sabotagem:
+        toda tecla tomada por modificador -- a letra entra na caixa abaixo da dobra."""
+        linhas = self._lista_no_alto()
+
+        class TodasModificam:
+            def __contains__(self, _tecla: object) -> bool:
+                return True
+
+        def clique_e_tecla() -> tuple[bool, bool, bool]:
+            self.caixa.setPlainText("")
+            _clique_pela_janela(self.app, self.janela, self._na_linha(linhas))
+            self.assertIs(self.app.focusWidget(), self.caixa)
+            QTest.keyClick(self.caixa, Qt.Key.Key_Shift)
+            self.app.processEvents()
+            so_o_modificador = self.caixa.visibleRegion().isEmpty()
+            QTest.keyClicks(self.caixa, "X")
+            self.app.processEvents()
+            return so_o_modificador, _inteiro(self.rolagem, self.caixa), self.caixa.toPlainText() == "X"
+
+        so_o_modificador, inteira, digitado = clique_e_tecla()
+        self.assertTrue(so_o_modificador, "o Shift sozinho não mostra a caixa")
+        self.assertTrue(inteira, "a primeira tecla mostra a caixa antes de a letra chegar")
+        self.assertTrue(digitado)
+        _sossegar(self.app)
+        with mock.patch.object(foco_a_vista, "_MODIFICADORES", TodasModificam()):
+            _so, inteira, digitado = clique_e_tecla()
+        self.assertFalse(inteira, "sabotado, a letra entra na caixa abaixo da dobra")
+        self.assertTrue(digitado)
+        _sossegar(self.app)
+
+    def test_o_foco_que_o_programa_move_no_soltar_tambem_espera(self) -> None:
+        """Um botão dentro da rolagem cujo `clicked` -- no soltar -- manda o foco à caixa do fim: o botão
+        não está mais apertado, mas o segundo clique de um duplo clique nele ainda vem. Logo depois do
+        soltar nada se mexe debaixo do ponteiro; sossegado o mouse, a caixa aparece inteira. A
+        sabotagem: o intervalo do duplo clique a 0 -- a rolagem vem na hora, e o botão sai de baixo do
+        ponteiro."""
+        proxima = QPushButton("Próxima", self.conteudo)
+        layout = self.conteudo.layout()
+        assert layout is not None
+        layout.insertWidget(0, proxima)  # type: ignore[attr-defined]
+        proxima.clicked.connect(lambda: self.caixa.setFocus(Qt.FocusReason.OtherFocusReason))
+        for _vez in range(2):  # o layout cresce o conteúdo, depois a rolagem o toma
+            self.app.processEvents()
+
+        def clique_no_botao() -> QWidget | None:
+            _no_topo(self.rolagem, self.app)
+            self.botao.setFocus(Qt.FocusReason.OtherFocusReason)
+            self.app.processEvents()
+            ponto = proxima.mapTo(self.janela, proxima.rect().center())
+            _clique_pela_janela(self.app, self.janela, ponto)
+            for _vez in range(3):
+                self.app.processEvents()
+            self.assertIs(self.app.focusWidget(), self.caixa)
+            return self.janela.childAt(ponto)
+
+        self.assertIs(clique_no_botao(), proxima, "logo depois do soltar, o botão ainda está sob o ponteiro")
+        _sossegar(self.app)
+        self.assertTrue(_inteiro(self.rolagem, self.caixa), "sossegado o mouse, a caixa aparece inteira")
+        with mock.patch.object(foco_a_vista, "intervalo_do_duplo_clique", lambda: 0):
+            self.assertIsNot(clique_no_botao(), proxima, "sabotado, a rolagem na hora tira o botão dali")
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -524,6 +727,7 @@ class RolagensDoProdutoTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.app = aplicacao()
+        _mouse_sossegado_desde_ja()
         self.pasta = pasta_temporaria(self)
         self.addCleanup(self.app.processEvents)
 
@@ -602,6 +806,7 @@ class DialogoDeBasesTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.app = aplicacao()
+        _mouse_sossegado_desde_ja()
         self.pasta = pasta_temporaria(self)
         self.addCleanup(self.app.processEvents)
 
@@ -699,6 +904,7 @@ class CliqueNosModosTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.app = aplicacao()
+        _mouse_sossegado_desde_ja()
         self.pasta = pasta_temporaria(self)
         self.addCleanup(self.app.processEvents)
 
