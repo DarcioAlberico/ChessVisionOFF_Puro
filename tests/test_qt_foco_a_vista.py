@@ -689,6 +689,44 @@ class SeguidorTests(unittest.TestCase):
         self.assertTrue(digitado)
         _sossegar(self.app)
 
+    def test_a_roda_durante_a_espera_fica_e_a_primeira_tecla_mostra_a_caixa(self) -> None:
+        """Crítico da fase 5, ciclo 9 (não bloqueante 3): o clique numa linha manda o foco à caixa abaixo
+        da dobra, que espera o mouse sossegar; a roda 100 ms depois do clique levava a barra, e no
+        sossego o seguidor a trazia de volta para a caixa -- a roda da pessoa desfeita. Aqui, depois do
+        clique, um passo da barra para baixo (a ação da roda): no sossego a barra está onde a pessoa a
+        deixou, e a caixa não é mostrada; a primeira tecla a mostra, e a letra entra nela. A sabotagem: o
+        seguidor surdo à rolagem da pessoa -- no sossego a barra vai à caixa."""
+        from PyQt6.QtWidgets import QAbstractSlider
+
+        linhas = self._lista_no_alto()
+        barra = self.rolagem.verticalScrollBar()
+        assert barra is not None
+
+        def roda_na_espera() -> tuple[int, int, bool, bool]:
+            self.caixa.setPlainText("")
+            _clique_pela_janela(self.app, self.janela, self._na_linha(linhas))
+            self.assertIs(self.app.focusWidget(), self.caixa)
+            barra.triggerAction(QAbstractSlider.SliderAction.SliderSingleStepAdd)
+            self.app.processEvents()
+            rolou = barra.value()
+            _sossegar(self.app)
+            depois = barra.value()
+            escondida = not _inteiro(self.rolagem, self.caixa)
+            QTest.keyClick(self.caixa, Qt.Key.Key_X)
+            self.app.processEvents()
+            mostrada = _inteiro(self.rolagem, self.caixa) and self.caixa.toPlainText() == "x"
+            return rolou, depois, escondida, mostrada
+
+        rolou, depois, escondida, mostrada = roda_na_espera()
+        self.assertGreater(rolou, 0)
+        self.assertEqual(depois, rolou, "no sossego a barra está onde a pessoa a deixou")
+        self.assertTrue(escondida, "a caixa não é trazida de volta")
+        self.assertTrue(mostrada, "a primeira tecla mostra a caixa, e a letra entra nela")
+        _sossegar(self.app)
+        barra.actionTriggered.disconnect(self.seguidor._a_pessoa_rolou)
+        rolou, depois, _escondida, _mostrada = roda_na_espera()
+        self.assertNotEqual(depois, rolou, "sabotado, no sossego o seguidor leva a barra à caixa")
+
     def test_o_foco_que_o_programa_move_no_soltar_tambem_espera(self) -> None:
         """Um botão dentro da rolagem cujo `clicked` -- no soltar -- manda o foco à caixa do fim: o botão
         não está mais apertado, mas o segundo clique de um duplo clique nele ainda vem. Logo depois do

@@ -43,7 +43,9 @@ construtor no ciclo 8, a sonda `c8/sonda_ativacao.py`: o «Aceitar» não recebi
 espera o intervalo do duplo clique inteiro (:func:`voltou_com_a_janela`): o clique que reativou a janela
 chega dentro dele, e o foco da volta só aparece se o clique não o levou a outro controle; sem clique (o
 Alt+Tab, o diálogo que fechou), aparece passado o intervalo, ou na primeira tecla. O Tab e o Shift+Tab
-rolam na hora (:func:`veio_do_teclado`).
+rolam na hora (:func:`veio_do_teclado`). E a roda, a barra ou as teclas da rolagem durante a espera
+ficam: o foco que espera não é mais mostrado quando o mouse sossega (a vista voltaria para ele meio
+segundo depois, desfazendo a roda: crítico da fase 5, ciclo 9), só na primeira tecla.
 
 O gêmeo deste arquivo na suíte é `caissa.ui.widgets.foco_a_vista` (a suíte depende do tronco, não o
 contrário).
@@ -219,10 +221,14 @@ class RolagemSegueOFoco(QObject):
         self._ligado = True
         self._pendente: QWidget | None = None
         self._esperando = False
+        self._so_na_tecla = False
         self._sossego = QTimer(self)
         self._sossego.setSingleShot(True)
         self._sossego.setTimerType(Qt.TimerType.PreciseTimer)
         self._sossego.timeout.connect(self._sossegou)
+        for barra in (rolagem.verticalScrollBar(), rolagem.horizontalScrollBar()):
+            if barra is not None:
+                barra.actionTriggered.connect(self._a_pessoa_rolou)
         aplicacao = QApplication.instance()
         if isinstance(aplicacao, QApplication):
             _razao_do_foco()
@@ -251,6 +257,7 @@ class RolagemSegueOFoco(QObject):
         na primeira tecla que não é só um modificador, antes de ela chegar a ele. O filtro fica na
         aplicação só durante a espera."""
         self._pendente = controle
+        self._so_na_tecla = False
         aplicacao = QApplication.instance()
         if not self._esperando and aplicacao is not None:
             aplicacao.installEventFilter(self)
@@ -260,24 +267,36 @@ class RolagemSegueOFoco(QObject):
         else:
             self._sossego.start(intervalo_do_duplo_clique())
 
+    def _a_pessoa_rolou(self, _acao: int) -> None:
+        """A roda, a barra ou as teclas da rolagem durante a espera: o que a pessoa rola fica.
+
+        O foco que espera deixa de ser mostrado quando o mouse sossega -- a vista voltaria para ele meio
+        segundo depois do clique, desfazendo a roda (crítico da fase 5, ciclo 9: a 1280×641, a roda
+        levava a barra de 473 a 413, e o sossego a punha em 298) --, e passa a esperar só a primeira
+        tecla: o que se digita continua à vista."""
+        if self._esperando:
+            self._so_na_tecla = True
+            self._sossego.stop()
+
     def eventFilter(self, objeto: QObject | None, evento: QEvent | None) -> bool:  # noqa: N802 - assinatura do Qt
         if self._esperando and evento is not None:
             tipo = evento.type()
             if tipo in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick):
                 self._sossego.stop()
-            elif tipo == QEvent.Type.MouseButtonRelease:
+            elif tipo == QEvent.Type.MouseButtonRelease and not self._so_na_tecla:
                 self._sossego.start(intervalo_do_duplo_clique())
             elif tipo == QEvent.Type.KeyPress and evento.key() not in _MODIFICADORES:  # type: ignore[attr-defined]
                 self._mostrar_o_pendente()
         return super().eventFilter(objeto, evento)
 
     def _sossegou(self) -> None:
-        if not no_meio_do_clique():
+        if not no_meio_do_clique() and not self._so_na_tecla:
             self._mostrar_o_pendente()
 
     def _parar_de_esperar(self) -> QWidget | None:
         """Tira o filtro e o relógio, e devolve o controle que esperava."""
         self._sossego.stop()
+        self._so_na_tecla = False
         aplicacao = QApplication.instance()
         if self._esperando and aplicacao is not None:
             aplicacao.removeEventFilter(self)
