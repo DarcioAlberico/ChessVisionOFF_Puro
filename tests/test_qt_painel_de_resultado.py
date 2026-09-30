@@ -874,3 +874,98 @@ class SegundaOpiniaoTests(PainelTests):
             self._esperar(lambda: self.painel._segunda_em_curso is None)
         self.assertEqual(self.painel.tabuleiro.casas_marcadas()["disputadas"], ())
         self.assertIn("64 casas batem", self.recados[-1])
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class NumeroDoLanceTests(PainelTests):
+    """O campo «Lance» ao lado do lado a jogar (S-71). O Tk o tinha e o porte não o trouxe;
+    voltou a pedido do usuário (2026-09-22).
+
+    O dono do número é a Galeria: o painel lê por `lance_de` e grava por `gravar_lance`, e o que
+    se afirma aqui é o contrato dos dois -- quando grava, quando **não** grava, e para qual
+    diagrama.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.anotado: dict[tuple[int, int], int] = {}
+        self.painel.lance_de = lambda pagina, diagrama: self.anotado.get((pagina, diagrama))
+        self.gravacoes: list[tuple[int, int, int | None]] = []
+
+        def gravar(pagina: int, diagrama: int, valor: int | None) -> None:
+            self.gravacoes.append((pagina, diagrama, valor))
+            if valor is None:
+                self.anotado.pop((pagina, diagrama), None)
+            else:
+                self.anotado[(pagina, diagrama)] = valor
+
+        self.painel.gravar_lance = gravar
+
+    def digitar(self, texto: str) -> None:
+        self.painel.campo_lance.setText(texto)
+        self.painel.campo_lance.editingFinished.emit()
+
+    def test_sem_diagrama_o_campo_fica_cinza(self) -> None:
+        self.assertFalse(self.painel.campo_lance.isEnabled())
+        self.assertEqual(self.painel.campo_lance.text(), "")
+
+    def test_o_campo_mostra_o_lance_anotado_do_diagrama_selecionado(self) -> None:
+        self.anotado[(0, 1)] = 23
+        self.carregar(LEGAL, OUTRA)
+        self.assertTrue(self.painel.campo_lance.isEnabled())
+        self.assertEqual(self.painel.campo_lance.text(), "")
+        self.painel.andar(1)
+        self.assertEqual(self.painel.campo_lance.text(), "23")
+
+    def test_digitar_grava_na_galeria_para_o_diagrama_certo(self) -> None:
+        self.carregar(LEGAL, OUTRA)
+        self.painel.andar(1)
+        self.digitar("31")
+        self.assertEqual(self.gravacoes, [(0, 1, 31)])
+        self.assertIn("lance 31", self.recados[-1])
+
+    def test_em_branco_apaga_e_o_mesmo_numero_nao_regrava(self) -> None:
+        self.anotado[(0, 0)] = 12
+        self.carregar(LEGAL)
+        self.digitar("12")
+        self.assertEqual(self.gravacoes, [], "regravar o mesmo número reescreveria o JSON do livro")
+        self.digitar("")
+        self.assertEqual(self.gravacoes, [(0, 0, None)])
+
+    def test_texto_invalido_avisa_e_devolve_o_valor_gravado(self) -> None:
+        self.anotado[(0, 0)] = 12
+        self.carregar(LEGAL)
+        self.digitar("abc")
+        self.assertEqual(self.gravacoes, [])
+        self.assertEqual(self.painel.campo_lance.text(), "12")
+        self.assertIn("inválido", self.recados[-1])
+        self.digitar("0")
+        self.assertEqual(self.gravacoes, [])
+
+    def test_trocar_de_diagrama_recolhe_o_que_estava_digitado(self) -> None:
+        """`→` com o foco fora do campo não dispara `editingFinished`; o que a pessoa digitou
+        tem de ir para o diagrama que estava aberto, e não para o vizinho."""
+        self.carregar(LEGAL, OUTRA)
+        self.painel.campo_lance.setText("7")
+        self.painel.andar(1)
+        self.assertEqual(self.gravacoes, [(0, 0, 7)])
+        self.assertEqual(self.painel.campo_lance.text(), "")
+
+    def test_virar_a_pagina_nao_leva_o_numero_para_a_pagina_seguinte(self) -> None:
+        """A lista dispara `currentRowChanged` depois de o modelo já ter trocado de página:
+        gravar "no selecionado" ali poria o número da página 0 no diagrama 0 da página 1."""
+        self.carregar(LEGAL)
+        self.painel.campo_lance.setText("9")
+        self.painel.carregar_pagina([diagrama(OUTRA)], chave="livro.pdf", pagina=1)
+        self.assertNotIn((1, 0, 9), self.gravacoes)
+        self.assertEqual(self.painel.campo_lance.text(), "")
+
+    def test_avulso_e_amostra_do_dataset_deixam_o_campo_cinza(self) -> None:
+        self.painel.carregar_avulsos([diagrama(LEGAL)])
+        self.assertFalse(self.painel.campo_lance.isEnabled())
+
+    def test_a_galeria_mudou_e_o_campo_rele(self) -> None:
+        self.carregar(LEGAL)
+        self.anotado[(0, 0)] = 40
+        self.painel.sincronizar_lance()
+        self.assertEqual(self.painel.campo_lance.text(), "40")

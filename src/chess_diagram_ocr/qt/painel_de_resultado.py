@@ -135,6 +135,10 @@ MOTIVO_LEITURA_EM_CURSO = "Gravar espera a leitura terminar: a amostra seria de 
 MOTIVO_SEM_DIAGRAMA = "Não há diagrama aberto."
 MOTIVO_SEM_DESFAZER = "Não há mudança anterior neste diagrama."
 MOTIVO_SEM_REFAZER = "Não há o que refazer: nada foi desfeito."
+MOTIVO_SEM_LANCE = (
+    "O número do lance da legenda impressa, para a exportação. Fica cinza quando o diagrama "
+    "não veio de uma página do livro -- uma imagem solta não tem onde gravá-lo."
+)
 """As três razões de um botão estar cinza, ditas na dica -- a regra da S-165, que achou treze
 botões cinzas e mudos. As duas do histórico são diferentes entre si, e quem olha precisa saber
 qual é a sua: sem diagrama não há posição nenhuma; com diagrama e pilha vazia, não há mudança
@@ -256,6 +260,20 @@ class PainelDeResultado(QWidget):
         o preço é uma linha e um PNG duplicados por diagrama, num arquivo que este projeto existe
         para fazer crescer limpo."""
         """A chave do livro aberto. Mesma razão do de cima."""
+        self.lance_de: Callable[[int, int], int | None] = lambda _pagina, _diagrama: None
+        self.gravar_lance: Callable[[int, int, int | None], None] = lambda _p, _d, _v: None
+        """Leitura e gravação do número do lance, por (página, diagrama) (S-71).
+
+        Moram fora porque o dono da anotação é a aba Galeria: ela já edita o mesmo campo, do
+        mesmo diagrama, no mesmo arquivo. Duas cópias em memória do `data/gallery/<livro>.json`
+        divergiriam, e a última a gravar apagaria o que a outra tivesse escrito. A janela
+        substitui os dois pelos da galeria; o padrão deixa o campo cinza -- que é melhor que
+        gravar no lugar errado."""
+        self._alvo_do_lance: tuple[int, int] | None = None
+        """(página, diagrama) de quem o campo de lance está mostrando **agora**. É o que
+        `_gravar_lance` grava, e não o diagrama selecionado: a lista dispara `currentRowChanged`
+        depois de o modelo já ter trocado de página, e gravar "no selecionado" ali poria o
+        número digitado para o diagrama anterior no primeiro diagrama da página seguinte."""
 
         self._montar()
         self._atualizar_tudo()
@@ -503,6 +521,20 @@ class PainelDeResultado(QWidget):
             self._lados.addButton(botao)
             linha.addWidget(botao)
         self._lados.buttonClicked.connect(self._trocou_o_lado)
+        # Número do lance (S-71), ao lado do lado a jogar porque é a mesma leitura: os dois saem
+        # da legenda impressa, e quem está com o livro aberto declara os dois de uma vez. O Tk
+        # tinha este campo e o porte não o trouxe (pedido do usuário, 2026-09-22). A gravação vai
+        # para a anotação da galeria -- ver `_gravar_lance` -- e o campo é o mesmo da aba Galeria:
+        # `QLineEdit` de 60 px, gravado no `editingFinished`.
+        linha.addSpacing(espaco.folga())
+        linha.addWidget(QLabel("Lance", self))
+        self.campo_lance = QLineEdit(self)
+        self.campo_lance.setFixedWidth(60)
+        self.campo_lance.setAccessibleName("Número do lance")
+        self.campo_lance.setFont(tema.fonte_atual(tipografia.DADO))
+        self.campo_lance.editingFinished.connect(self._gravar_lance)
+        dica_em(self.campo_lance, MOTIVO_SEM_LANCE)
+        linha.addWidget(self.campo_lance)
         linha.addStretch(1)
         return linha
 
@@ -900,6 +932,10 @@ class PainelDeResultado(QWidget):
         self.lista.setCurrentRow(min(len(self.modelo.items), max(1, numero)) - 1)
 
     def _trocou_de_item(self, linha: int) -> None:
+        # O lance digitado entra **antes** de a seleção mudar, e não só no `editingFinished`:
+        # `→` com o foco no campo de FEN não tira o foco do campo de lance, e o que a pessoa
+        # digitou iria embora sem aviso. Grava em `_alvo_do_lance`, que é quem o campo mostra.
+        self._gravar_lance()
         if not 0 <= linha < len(self.modelo.items):
             self._atualizar_tudo()
             return
@@ -950,6 +986,78 @@ class PainelDeResultado(QWidget):
         self.modelo.apply_placement(placement, self.modelo.clamped_index())
         self.historico.registrar(self._estado_de())
         self._atualizar_tudo()
+
+    # ---------------------------------------------------------------- número do lance (S-71)
+
+    def _alvo_do_lance_atual(self) -> tuple[int, int] | None:
+        """(página, diagrama) do que está no editor, ou `None` se não é resultado de página.
+
+        Item da fila e amostra do dataset não têm par: a anotação é do diagrama **daquele livro
+        naquela página**, e uma amostra solta do `labels.csv` não sabe mais de onde veio com essa
+        precisão. Ali o campo fica cinza, em vez de gravar no diagrama errado.
+        """
+        if self.modelo.page_key is None or not self.modelo.items:
+            return None
+        return (int(self.modelo.page_key[1]), self.modelo.clamped_index())
+
+    def sincronizar_lance(self) -> None:
+        """Traz para o campo o lance do diagrama selecionado, como a galeria o tem agora.
+
+        Público porque a Galeria edita o mesmo número: a janela chama isto quando a anotação do
+        livro muda, e o `showEvent` chama ao voltar para este modo.
+        """
+        # Guarda e devolve `_montando` em vez de zerá-lo: `_atualizar_tudo` chama isto de dentro
+        # do próprio bloco de montagem, e zerar aqui abriria o laço que ele fecha.
+        montando = self._montando
+        self._montando = True
+        try:
+            self._alvo_do_lance = self._alvo_do_lance_atual()
+            if self._alvo_do_lance is None:
+                self.campo_lance.setText("")
+                self.campo_lance.setEnabled(False)
+                return
+            self.campo_lance.setEnabled(True)
+            numero = self.lance_de(*self._alvo_do_lance)
+            self.campo_lance.setText("" if numero is None else str(numero))
+        finally:
+            self._montando = montando
+
+    def _gravar_lance(self) -> None:
+        """Grava o que está no campo. Em branco **apaga** a declaração.
+
+        Só grava quando o valor muda de fato: o campo confirma no `editingFinished`, que dispara
+        a cada passagem do foco, e regravar o mesmo número reescreveria o JSON do livro inteiro a
+        cada clique fora do campo.
+        """
+        alvo = self._alvo_do_lance
+        if self._montando or alvo is None:
+            return
+        digitado = self.campo_lance.text().strip()
+        atual = self.lance_de(*alvo)
+        if not digitado:
+            if atual is not None:
+                self.gravar_lance(alvo[0], alvo[1], None)
+                self.estado.emit(f"Diagrama {alvo[1] + 1}: número do lance apagado.")
+            return
+        try:
+            numero = int(digitado)
+        except ValueError:
+            numero = 0
+        if numero <= 0:
+            # Devolver o campo ao valor gravado e não abrir caixa: digitar e apagar é normal,
+            # e um diálogo por tecla errada tornaria o painel insuportável.
+            self.estado.emit(f"Número de lance inválido: {digitado!r}. Use um inteiro positivo.")
+            self.campo_lance.setText("" if atual is None else str(atual))
+            return
+        if numero == atual:
+            return
+        self.gravar_lance(alvo[0], alvo[1], numero)
+        self.estado.emit(f"Diagrama {alvo[1] + 1}: lance {numero}.")
+
+    def showEvent(self, evento: Any) -> None:  # noqa: N802 - nome do Qt
+        """Ao voltar a este modo, o campo relê a galeria: ela pode ter editado o mesmo lance."""
+        super().showEvent(evento)
+        self.sincronizar_lance()
 
     def _trocou_o_lado(self) -> None:
         if self._montando:
@@ -1391,6 +1499,9 @@ class PainelDeResultado(QWidget):
                 self._pintar_estados(None)
             else:
                 self._pintar_diagrama()
+            # O lance vem da galeria e não do modelo, mas depende do mesmo estado: qual
+            # diagrama de qual página está aberto. Cinza nas outras três origens (S-71).
+            self.sincronizar_lance()
         finally:
             self._montando = False
         self._atualizar_botoes(vazio)
