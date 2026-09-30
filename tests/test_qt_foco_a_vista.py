@@ -98,20 +98,34 @@ def _mouse_sossegado_desde_ja() -> None:
 
 
 def _segundo_clique_de_um_duplo(app: object, janela: QWidget, ponto: QPoint) -> None:
-    """O segundo clique de um duplo clique como o Qt o entrega: o pressionar, o duplo clique ao
-    controle sob o ponteiro, o soltar. O `QTest` põe o intervalo do duplo clique entre dois cliques
-    dele, para nunca fazer um duplo clique por acaso: o duplo clique vai à mão, como na sonda do
-    crítico (fase 5, ciclo 8)."""
-    from PyQt6.QtCore import QEvent, QPointF
+    """O segundo clique de um duplo clique como a plataforma o entrega ao controle: o
+    `QGuiApplication` marca o segundo pressionar como duplo clique e o manda à janela com um
+    `MouseButtonDblClick` logo atrás, e a `QWidgetWindow` não repassa esse pressionar ao controle
+    (QTBUG-25831) -- o controle recebe o duplo clique e o soltar (o `QTest.mouseDClick` pelo
+    `QWindow` mostra: pressionar, soltar, duplo clique, soltar). O `QTest` põe o intervalo do duplo
+    clique entre dois cliques dele, para nunca fazer um duplo clique por acaso: o pressionar vai à
+    janela com um filtro na aplicação que o engole no controle, e o duplo clique vai à mão ao
+    controle sob o ponteiro, como no `teclado._segundo_clique` da suíte (fase 5, ciclo 10: até ali
+    o pressionar chegava também ao controle, como na sonda do crítico do ciclo 8)."""
+    from PyQt6.QtCore import QEvent, QObject, QPointF
     from PyQt6.QtGui import QMouseEvent
     from PyQt6.QtWidgets import QApplication
 
+    class _SoAJanela(QObject):
+        def eventFilter(self, objeto: QObject | None, evento: QEvent | None) -> bool:  # noqa: N802 - Qt
+            return (evento is not None and evento.type() == QEvent.Type.MouseButtonPress
+                    and isinstance(objeto, QWidget))
+
     alca = janela.windowHandle()
     assert alca is not None
-    QTest.mousePress(alca, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, ponto)
-    app.processEvents()  # type: ignore[attr-defined]
     alvo = janela.childAt(ponto)
     assert alvo is not None
+    filtro = _SoAJanela()
+    QApplication.instance().installEventFilter(filtro)  # type: ignore[union-attr]
+    try:
+        QTest.mousePress(alca, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, ponto)
+    finally:
+        QApplication.instance().removeEventFilter(filtro)  # type: ignore[union-attr]
     duplo = QMouseEvent(QEvent.Type.MouseButtonDblClick, QPointF(alvo.mapFrom(janela, ponto)),
                         QPointF(janela.mapToGlobal(ponto)), Qt.MouseButton.LeftButton,
                         Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
@@ -598,8 +612,9 @@ class SeguidorTests(unittest.TestCase):
         logo depois do soltar e mexia o conteúdo debaixo do ponteiro parado antes do segundo clique de
         um duplo clique -- na Rotulagem, com a rolagem no fim, o segundo clique na linha 4 caía em
         «Aceitar leitura» e aceitava uma leitura que ninguém aceitou. Aqui o duplo clique pelo
-        `QWindow` na segunda linha da lista (pressionar, soltar, 80 ms, o segundo pressionar e soltar
-        no mesmo ponto): nada se mexe debaixo do ponteiro entre os dois cliques, os dois caem na lista,
+        `QWindow` na segunda linha da lista (pressionar, soltar, 80 ms, o segundo clique no mesmo
+        ponto, como a plataforma o entrega: o duplo clique e o soltar): nada se mexe debaixo do
+        ponteiro entre os dois cliques, os dois caem na lista,
         que recebe o duplo clique naquela linha -- e manda o foco à caixa, como o duplo clique na linha
         da Rotulagem --; e, sossegado o mouse, a caixa aparece inteira. A sabotagem: a rolagem logo
         depois do soltar (o intervalo do duplo clique a 0) -- o conteúdo se mexe, e o segundo clique cai
@@ -612,7 +627,8 @@ class SeguidorTests(unittest.TestCase):
         linhas.doubleClicked.connect(lambda _i: self.caixa.setFocus(Qt.FocusReason.OtherFocusReason))
 
         class Receptores(QObject):
-            """O primeiro controle a que cada pressionar é entregue."""
+            """O primeiro controle a que cada clique é entregue: o pressionar do primeiro, o duplo
+            clique do segundo."""
 
             def __init__(self) -> None:
                 super().__init__()
@@ -621,7 +637,8 @@ class SeguidorTests(unittest.TestCase):
 
             def eventFilter(self, objeto: QObject | None, evento: QEvent | None) -> bool:  # noqa: N802 - Qt
                 tipo = evento.type() if evento is not None else None
-                if tipo == QEvent.Type.MouseButtonPress and isinstance(objeto, QWidget) and not self._visto:
+                clique = tipo in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick)
+                if clique and isinstance(objeto, QWidget) and not self._visto:
                     self.controles.append(objeto)
                     self._visto = True
                 elif tipo == QEvent.Type.MouseButtonRelease:
@@ -647,7 +664,7 @@ class SeguidorTests(unittest.TestCase):
 
         sob, sob_no_segundo = duplo_clique()
         self.assertIs(sob_no_segundo, sob, "nada se mexe debaixo do ponteiro entre os dois cliques")
-        self.assertEqual(receptores.controles, [linhas.viewport()] * 2, "os dois pressionares na lista")
+        self.assertEqual(receptores.controles, [linhas.viewport()] * 2, "os dois cliques na lista")
         self.assertEqual(duplos, [1], "a lista recebe o duplo clique na segunda linha")
         self.assertTrue(_inteiro(self.rolagem, self.caixa), "sossegado o mouse, a caixa aparece inteira")
         with mock.patch.object(foco_a_vista, "intervalo_do_duplo_clique", lambda: 0):
