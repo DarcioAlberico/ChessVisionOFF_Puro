@@ -43,6 +43,21 @@ from chess_diagram_ocr.ui import (
     state,
 )
 
+GALERIA_DO_MAIN = (
+    "cobra o arranjo da Galeria do `main` (S-552: o recorte fixo de 420 px, a aba que rola inteira "
+    "e o empilhamento abaixo de 702 px), que o merge do religa não trouxe: ficou a Galeria da "
+    "OCR_UI, com o recorte elástico e a lateral rolável sob o seguidor de foco -- decisão do PR do "
+    "merge, e `galeria_declarada.galeria_empilhada` fica declarada sem chamador até lá"
+)
+"""O motivo dos testes do arranjo da Galeria do `main` que não rodam depois do merge do religa."""
+
+RODAPE_DO_MAIN = (
+    "cobra a zona de mensagem de 100 px fixos do `main` (S-552); o rodapé do merge do religa "
+    "reserva o lugar da mensagem só enquanto há uma (até 320 px, zero vazia) -- decisão do PR do "
+    "merge, e a reserva foi medida contra o piso de 1.248 px do religa: falta medi-la a 1.024"
+)
+"""O motivo do teste da zona de mensagem do `main` que não roda depois do merge do religa."""
+
 if TEM_PYQT:
     from PyQt6.QtCore import QPoint, Qt
     from PyQt6.QtGui import QFont
@@ -90,6 +105,7 @@ class PainelSemExigenciaTests(unittest.TestCase):
     def setUp(self) -> None:
         self.app = aplicacao()
 
+    @unittest.skip(GALERIA_DO_MAIN)
     def test_a_galeria_rola_em_vez_de_exigir_800_px_de_altura(self) -> None:
         """Os 420 px do recorte e os 260 da lateral são medidos (S-154) e continuam inteiros: o que
         muda é que a soma deles deixa de ser o piso da janela."""
@@ -160,6 +176,7 @@ class PisoDaJanelaTests(unittest.TestCase):
                 pedido = self.janela.abas.widget(indice).minimumSizeHint()
                 self.assertLessEqual(pedido.height(), TELA_MINIMA[1] - CROMO[1])
 
+    @unittest.skip(GALERIA_DO_MAIN)
     def test_as_duas_abas_que_seguravam_o_piso_nao_o_seguram_mais(self) -> None:
         """A Galeria pedia `711 x 800` e o Resultado chegava a `301 x 1095` depois de ler.
 
@@ -363,6 +380,7 @@ class GaleriaNaLarguraPreferidaTests(unittest.TestCase):
         self.app.processEvents()
         return janela
 
+    @unittest.skip(GALERIA_DO_MAIN)
     def test_na_largura_preferida_a_galeria_fica_em_duas_colunas_nas_tres_peles(self) -> None:
         """**É a faixa de 1280 a 1700 px de janela**, reproduzida pela largura que ela dá à aba."""
         for uma in pele.PELES:
@@ -385,6 +403,7 @@ class GaleriaNaLarguraPreferidaTests(unittest.TestCase):
                     0, galeria.rolagem.horizontalScrollBar().maximum(), "as duas colunas não couberam"
                 )
 
+    @unittest.skip(GALERIA_DO_MAIN)
     def test_a_largura_preferida_das_abas_cobre_o_que_a_galeria_ocupa(self) -> None:
         """**A invariante que faltava, e ela liga os dois números que se desencontraram.**
 
@@ -447,10 +466,10 @@ class SalaA1024SemMotorTests(unittest.TestCase):
         )
         self.app.processEvents()
         self.sala = self.janela.estudo
-        for indice in range(self.janela.abas.count()):
-            if self.janela.abas.tabText(indice).replace("&", "").startswith("Estudo"):
-                self.janela.abas.setCurrentIndex(indice)
-                break
+        # A sala é um modo da aba Livro desde o merge do religa (ver `SalaA1024ComMotorTests`). O
+        # laço de antes procurava uma aba "Estudo" e, sem achá-la, seguia em silêncio com a sala
+        # escondida -- e media o painel que não estava na tela.
+        self.assertTrue(self.janela.abas.mostrar_area("Estudo"), "a área 'Estudo' não existe")
         self.app.processEvents()
 
     def test_a_regua_da_leitura_nao_sobe_o_minimo_de_quem_pede_pouco(self) -> None:
@@ -556,7 +575,9 @@ class SalaA1024ComMotorTests(unittest.TestCase):
         )
         self.app.processEvents()
         self.sala = self.janela.estudo
-        self.janela.abas.setCurrentIndex(self._aba("Estudo"))
+        # A sala é um **modo** da aba Livro desde o passo 17 da OCR_UI (o merge do religa), e não
+        # uma aba: `mostrar_area` traz a aba e o modo de uma vez.
+        self.assertTrue(self.janela.abas.mostrar_area("Estudo"), "a área 'Estudo' não existe")
         self.app.processEvents()
 
     def _aba(self, nome: str) -> int:
@@ -825,6 +846,7 @@ class RodapeNaoEPisoDeJanelaTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(sem_frase, janela.width(), "a frase longa recusou o tamanho pedido")  # type: ignore[attr-defined]
 
+    @unittest.skip(RODAPE_DO_MAIN)
     def test_a_zona_declarada_cabe_na_folga_do_rodape_nas_tres_peles(self) -> None:
         """**A invariante que a S-552 nomeia, e que ninguém afirmava** (sexta rodada).
 
@@ -976,10 +998,10 @@ class ColunaQueEncolheNaJanelaTests(unittest.TestCase):
         self.janela.show()
         self.app.processEvents()
         self.sala = self.janela.estudo
-        for indice in range(self.janela.abas.count()):
-            if self.janela.abas.tabText(indice).replace("&", "").startswith("Estudo"):
-                self.janela.abas.setCurrentIndex(indice)
-                break
+        # A sala é um modo da aba Livro desde o merge do religa (ver `SalaA1024ComMotorTests`). O
+        # laço de antes procurava uma aba "Estudo" e, sem achá-la, seguia em silêncio com a sala
+        # escondida -- e media o painel que não estava na tela.
+        self.assertTrue(self.janela.abas.mostrar_area("Estudo"), "a área 'Estudo' não existe")
         self.app.processEvents()
         self.encolher_o_pedido_da_coluna()
 

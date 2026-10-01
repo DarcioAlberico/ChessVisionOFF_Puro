@@ -244,6 +244,36 @@ class CacheSizeSplitTests(unittest.TestCase):
                 )
             self.assertEqual(fake.call_args.kwargs["cache_size"], 64)
 
+    def test_the_per_process_cache_never_drops_below_the_sampler_window(self) -> None:
+        """C4 do ciclo 2 OCR/UI: 128 // 5 = 25 tabuleiros para uma janela de 64 era quase so
+        falta -- cada casa reabria o PNG e a epoca custava 10 min em vez de 3."""
+        from chess_diagram_ocr.config import BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE
+
+        with patch("chess_diagram_ocr.training.load_splits", return_value={}),              patch("chess_diagram_ocr.training.BoardFenDataset") as fake:
+            fake.side_effect = ValueError("parar antes de treinar")
+            from chess_diagram_ocr.training import train_model
+
+            with self.assertRaises(ValueError):
+                train_model(
+                    csv_path=__file__,  # type: ignore[arg-type]
+                    samples_dir=__file__,  # type: ignore[arg-type]
+                    model_path=__file__,  # type: ignore[arg-type]
+                    cache_size=DEFAULT_BOARD_CACHE_SIZE,
+                    num_workers=4,
+                )
+            self.assertEqual(fake.call_args.kwargs["cache_size"], BOARDS_PER_CHUNK)
+
+            # `cache_size=0` continua desligando o cache: o piso nao pode religa-lo.
+            with self.assertRaises(ValueError):
+                train_model(
+                    csv_path=__file__,  # type: ignore[arg-type]
+                    samples_dir=__file__,  # type: ignore[arg-type]
+                    model_path=__file__,  # type: ignore[arg-type]
+                    cache_size=0,
+                    num_workers=4,
+                )
+            self.assertEqual(fake.call_args.kwargs["cache_size"], 0)
+
 
 class SplitAssignmentTests(unittest.TestCase):
     """S-56: a amostra que você salva tem de chegar ao treino.
@@ -319,6 +349,48 @@ class SplitAssignmentTests(unittest.TestCase):
                 self.assertEqual(mapa[nome], split)
             gravado = load_splits(splits_path)
             self.assertEqual({n: gravado[n] for n in registrados}, registrados)
+
+    def test_um_rotulo_de_pagina_do_campo_nunca_cai_em_train(self) -> None:
+        """C15 do ciclo 2 OCR/UI: o campo mede, nunca alimenta. O rótulo novo tirado de uma
+        página do `field_set.jsonl` (base 0; o CSV grava base 1) vai para `test`, dito; os já
+        registrados não mudam (S-07); a página que não é de campo segue o sorteio."""
+        import json
+        import tempfile
+
+        from chess_diagram_ocr.splits import load_splits
+        from chess_diagram_ocr.training import resolve_splits
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            samples = root / "samples"
+            samples.mkdir()
+            import numpy as np
+
+            rng = np.random.default_rng(0)
+            cabecalho = "filename,fen,side_to_move,source_pdf,source_page,source_diagram,detection_source,created_at,corrected_by,illegal_ok"
+            linhas = [cabecalho]
+            for nome, livro, pagina in (("campo.png", "Livro.pdf", "51"), ("fora.png", "Livro.pdf", "12"),
+                                        ("velho.png", "Livro.pdf", "51")):
+                write_image(samples / nome, rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
+                linhas.append(f"{nome},{LEGAL},w,{livro},{pagina},1,,,,")
+            csv_path = root / "labels.csv"
+            csv_path.write_text("\n".join(linhas) + "\n", encoding="utf-8")
+            (root / "field_set.jsonl").write_text(
+                json.dumps({"pdf": "Livro.pdf", "page": 50, "reviewed": True, "regime": "scan-puro",
+                            "diagrams": [{"bbox": [0, 0, 10, 10], "placement": LEGAL}]}) + "\n",
+                encoding="utf-8")
+            splits_path = root / "splits.csv"
+            from chess_diagram_ocr.splits import save_splits
+
+            save_splits(splits_path, {"velho.png": "train"})  # type: ignore[arg-type]
+
+            with self.assertLogs("chess_diagram_ocr.training", level="WARNING") as registro:
+                mapa = resolve_splits(csv_path, samples, splits_path)
+            self.assertEqual(mapa["campo.png"], "test")
+            self.assertEqual(mapa["velho.png"], "train", "a fronteira registrada nunca muda")
+            self.assertIn(mapa["fora.png"], ("train", "val", "test"))
+            self.assertTrue(any("página do conjunto de campo" in linha for linha in registro.output))
+            self.assertEqual(load_splits(splits_path)["campo.png"], "test", "gravado, não só em memória")
 
     def test_assign_new_false_le_e_nao_escreve(self) -> None:
         import tempfile
@@ -1266,3 +1338,128 @@ class ProbabilidadeDasGenericasTests(unittest.TestCase):
 
     def test_probabilidade_intermediaria_envolve_em_random_apply(self) -> None:
         self.assertEqual(self._tipos(jitter=0.5), ["RandomApply", "RandomApply", "RandomAffine", "Lambda"])
+
+
+class RuidoDeRotuloETrocaHumanaTests(unittest.TestCase):
+    """C16 do ciclo 2 OCR/UI: a sabotagem honesta do C4 e o peso da correção humana.
+
+    As sabotagens `i`/`i50` da fase 3 invertiam o contraste sem trocar o rótulo e foram
+    inertes. `ruido_de_cor` troca o **rótulo** (`X↔x`) em uma fração das casas ocupadas -- só
+    nos tabuleiros de treino, só no mapa `label_overrides`, nunca no CSV. E `corrected_repeat`
+    repete no amostrador os tabuleiros de rota humana (`ROTAS_HUMANAS`), para a pergunta de
+    `labels.py` ganhar um número.
+    """
+
+    def _dataset(self, root: Path, linhas_extra: list[str]) -> tuple[Path, Path]:
+        import numpy as np
+
+        samples = root / "samples"
+        samples.mkdir(parents=True)
+        rng = np.random.default_rng(0)
+        cabecalho = "filename,fen,side_to_move,source_pdf,source_page,source_diagram,detection_source,created_at,corrected_by,illegal_ok"
+        linhas = [cabecalho]
+        for linha in linhas_extra:
+            nome = linha.split(",", 1)[0]
+            write_image(samples / nome, rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
+            linhas.append(linha)
+        csv_path = root / "labels.csv"
+        csv_path.write_text("\n".join(linhas) + "\n", encoding="utf-8")
+        return csv_path, samples
+
+    def test_o_ruido_troca_a_cor_de_uma_fracao_das_casas_ocupadas_e_nada_mais(self) -> None:
+        from chess_diagram_ocr.dataset import BoardFenDataset, ruido_de_cor
+
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path, samples = self._dataset(Path(tmp), [f"a.png,{PAWNS},w,,,,,,,", f"b.png,{PAWNS},w,,,,,,,"])
+            dataset = BoardFenDataset(csv_path, samples, cache_size=0)
+            mapa = ruido_de_cor(dataset, [0, 1], 0.5, seed=7)
+            # 18 casas ocupadas por tabuleiro (16 peoes + 2 reis), 36 no total, metade = 18.
+            self.assertEqual(len(mapa), 18)
+            for (board, square), classe in mapa.items():
+                original = PIECE_CLASSES[dataset._labels(board)[square]]  # noqa: SLF001
+                self.assertNotEqual(original, "empty", "uma casa vazia não tem cor a trocar")
+                self.assertEqual(PIECE_CLASSES[classe], original.swapcase())
+            self.assertEqual(mapa, ruido_de_cor(dataset, [0, 1], 0.5, seed=7), "mesma semente, mesmo mapa")
+            self.assertEqual(ruido_de_cor(dataset, [0, 1], 0.0), {})
+
+            # O mapa vale no `square()`; o CSV e o rótulo em cache não mudam.
+            dataset.label_overrides = mapa
+            (board, square), classe = next(iter(mapa.items()))
+            _x, rotulo = dataset.square(board, square, None)
+            self.assertEqual(rotulo, classe)
+            self.assertEqual(dataset._labels(board)[square], PIECE_CLASSES.index(PIECE_CLASSES[classe].swapcase()))  # noqa: SLF001
+            self.assertIn(PAWNS, csv_path.read_text(encoding="utf-8"))
+
+    def test_o_ruido_so_toca_tabuleiros_de_treino_e_o_checkpoint_diz_a_fracao(self) -> None:
+        """Com validação sorteada, o tabuleiro que caiu na validação fica limpo."""
+        from chess_diagram_ocr.training import DataPlan, OptimPlan, OutputPlan, Trainer, TrainingPlan
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            linhas = [f"t{i}.png,{PAWNS},w,,,,,,," for i in range(10)]
+            csv_path, samples = self._dataset(root, linhas)
+            plan = TrainingPlan(
+                data=DataPlan(csv_path=csv_path, samples_dir=samples, splits_path=None,
+                              val_ratio=0.2, cache_size=0, num_workers=0),
+                output=OutputPlan(model_path=root / "m.pt", fresh=True, calibrate=False, pretrained=False),
+                optim=OptimPlan(epochs=0, batch_size=64, seed=3, label_noise=0.25),
+            )
+            trainer = Trainer(plan)
+            trainer.prepare()
+            dataset = trainer.dataset
+            assert dataset is not None
+            self.assertTrue(dataset.label_overrides, "a sabotagem tem de ter tocado alguma casa")
+            assert trainer.val_loader is not None
+            val_boards = {dataset.index_map[i][0] for i in trainer.val_loader.dataset.indices}  # type: ignore[attr-defined]
+            self.assertEqual(len(val_boards), 2, "val_ratio=0.2 de 10 tabuleiros")
+            tocados = {board for board, _ in dataset.label_overrides}
+            self.assertTrue(tocados, "a sabotagem tem de ter tocado alguma casa")
+            self.assertTrue(tocados.isdisjoint(val_boards), "a validação nunca vê o ruído")
+            self.assertEqual(trainer.metadata_base["label_noise"], 0.25)
+            self.assertEqual(trainer.metadata_base["corrected_repeat"], 1)
+
+    def test_a_repeticao_so_conta_as_rotas_humanas(self) -> None:
+        from chess_diagram_ocr.dataset import BoardFenDataset, tabuleiros_de_rota_humana
+        from chess_diagram_ocr.training import DataPlan, OptimPlan, OutputPlan, Trainer, TrainingPlan
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            linhas = [
+                f"h1.png,{PAWNS},w,,,,,,ocr-corrigido,",
+                f"h2.png,{PAWNS},w,,,,,,transcricao-manual,",
+                f"m1.png,{PAWNS},w,,,,,,ocr-aceito,",
+                f"m2.png,{PAWNS},w,,,,,,segunda-opiniao,",
+                f"m3.png,{PAWNS},w,,,,,,,",
+            ]
+            csv_path, samples = self._dataset(root, linhas)
+            dataset = BoardFenDataset(csv_path, samples, cache_size=0)
+            self.assertEqual(tabuleiros_de_rota_humana(dataset.entries), [0, 1])
+
+            # Split persistido com os cinco em `train`: a validacao fica vazia de proposito,
+            # para a conta dos grupos ser sobre os cinco tabuleiros.
+            from chess_diagram_ocr.splits import save_splits
+
+            splits_path = root / "splits.csv"
+            save_splits(splits_path, {linha.split(",", 1)[0]: "train" for linha in linhas})  # type: ignore[arg-type]
+            plan = TrainingPlan(
+                data=DataPlan(csv_path=csv_path, samples_dir=samples, splits_path=splits_path,
+                              assign_splits=False, cache_size=0, num_workers=0),
+                output=OutputPlan(model_path=root / "m.pt", fresh=True, calibrate=False, pretrained=False),
+                optim=OptimPlan(epochs=0, batch_size=64, seed=3, corrected_repeat=3),
+            )
+            trainer = Trainer(plan)
+            trainer.prepare()
+            assert trainer.train_loader is not None
+            sampler = trainer.train_loader.sampler
+            # 5 tabuleiros + 2 humanos x 2 repeticoes extras = 9 grupos de 64 casas por epoca.
+            self.assertEqual(len(sampler), 9 * 64)
+            self.assertEqual(len(sampler.groups), 9)
+            self.assertEqual(trainer.metadata_base["corrected_repeat"], 3)
+
+    def test_os_dois_botoes_recusam_valores_fora_do_sentido(self) -> None:
+        from chess_diagram_ocr.training import OptimPlan
+
+        with self.assertRaises(ValueError):
+            OptimPlan(label_noise=1.5)
+        with self.assertRaises(ValueError):
+            OptimPlan(corrected_repeat=0)

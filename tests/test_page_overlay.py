@@ -337,6 +337,8 @@ class CanalRedundanteTests(unittest.TestCase):
         casos = {
             "a_fazer": self._caixa(),
             "lido": self._caixa(recognized=True),
+            "duvidoso": self._caixa(recognized=True, doubtful=True),
+            "corrigido": self._caixa(recognized=True, doubtful=True, edited=True),
             "dispensado": self._caixa(confirmed=True),
             "pronto": self._caixa(saved=True),
         }
@@ -349,12 +351,47 @@ class CanalRedundanteTests(unittest.TestCase):
         caixa = self._caixa(saved=True, confirmed=True, recognized=True)
         self.assertEqual(page_overlay.estado_da_caixa(caixa), "pronto")
 
+    def test_corrigido_e_so_na_tela_e_gravar_o_tira_dali(self) -> None:
+        """«Corrigido» é a correção que ainda não está no disco (OCR_UI passo 13): salvo vence."""
+        editada = self._caixa(recognized=True, edited=True)
+        self.assertEqual(page_overlay.estado_da_caixa(editada), "corrigido")
+        self.assertEqual(page_overlay.estado_da_caixa(page_overlay.mark_saved([editada], {0})[0]), "pronto")
+        (limpa,) = page_overlay.mark_edited([editada], set())
+        self.assertEqual(page_overlay.estado_da_caixa(limpa), "lido", "desfazer a correção devolve o lido")
+
+    def test_duvidoso_vem_da_leitura(self) -> None:
+        """A caixa nasce sabendo se a leitura hesitou: é `recorte_do_diagrama.e_duvidoso`."""
+        import numpy as np
+
+        from chess_diagram_ocr.config import PIECE_CLASSES
+        from chess_diagram_ocr.service import RecognizedDiagram
+
+        probs = np.zeros((64, len(PIECE_CLASSES)))
+        probs[:, PIECE_CLASSES.index("empty")] = 1.0
+        limpo = RecognizedDiagram(index=0, board_rgb=np.zeros((8, 8, 3), np.uint8), placement="8/8/8/8/8/8/8/8", bbox_pdf=(0, 0, 1, 1), probs=probs)
+        hesitante = probs.copy()
+        hesitante[3] = 0.0
+        hesitante[3, PIECE_CLASSES.index("Q")] = 0.55
+        hesitante[3, PIECE_CLASSES.index("q")] = 0.45
+        duvidoso = RecognizedDiagram(index=1, board_rgb=np.zeros((8, 8, 3), np.uint8), placement="8/8/8/8/8/8/8/8", bbox_pdf=(0, 0, 1, 1), probs=hesitante)
+        caixas = page_overlay.boxes_from_diagrams([limpo, duvidoso])
+        self.assertEqual([page_overlay.estado_da_caixa(c) for c in caixas], ["lido", "duvidoso"])
+
     def test_o_par_critico_se_distingue_sem_cor(self) -> None:
         """"A fazer" contra "não precisa": o par de 1,20:1, e o que custa confundir."""
         a_fazer = page_overlay.traco_da_caixa(self._caixa())
         dispensado = page_overlay.traco_da_caixa(self._caixa(confirmed=True))
         self.assertNotEqual(a_fazer.assinatura, dispensado.assinatura)
         self.assertNotEqual(a_fazer.tracejado, dispensado.tracejado, "os dois dependeriam do glifo sozinho")
+
+    def test_os_seis_estados_tem_seis_cores_no_visor(self) -> None:
+        """A tabela de cor do desenho tem de ser total como a de traço: um estado sem cor é um
+        `KeyError` no meio da pintura da página."""
+        try:
+            from chess_diagram_ocr.qt.visor import COR_POR_ESTADO
+        except ImportError:  # pragma: no cover - sem PyQt6
+            self.skipTest("sem PyQt6")
+        self.assertEqual(set(COR_POR_ESTADO), set(page_overlay.ESTADOS))
 
     def test_so_o_estado_inicial_dispensa_glifo(self) -> None:
         """"Ainda não mexi nisto" é a ausência de marca, e marcar o nada é ruído em toda página."""

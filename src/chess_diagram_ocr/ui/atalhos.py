@@ -155,8 +155,27 @@ ATALHOS: tuple[Atalho, ...] = (
     Atalho("<Control-f>", "Ctrl+F", "achar", "Achar no texto da folha"),
     Atalho("<Control-h>", "Ctrl+H", "substituir", "Achar e substituir no texto da folha"),
     Atalho("<Control-n>", "Ctrl+N", "proximo_da_fila", "Abrir o próximo item pendente da fila de revisão"),
+    # ------------------------------------------------------------------ as quatro do F9-C3
+    #
+    # **O item 10 do ciclo 1 pediu que as ações rebaixadas de primário para neutro ficassem
+    # "neutras com atalho declarado", e a compensação não foi entregue.** Medido pelo crítico do
+    # ciclo 3 sobre `por_acao`: das cinco ações rebaixadas, **quatro não tinham tecla nenhuma** --
+    # só `salvar` tinha. Um botão que deixa de ser azul e não ganha tecla perdeu ênfase e não
+    # ganhou alcance, que é o oposto do que a troca prometia.
+    #
+    # As quatro teclas são livres na tabela e mnemônicas em pt-BR. `Ctrl+Shift+N` fica ao lado de
+    # `Ctrl+N` de propósito: uma abre o próximo item pendente da fila, a outra manda corrigir o
+    # que está aberto -- é o mesmo gesto em dois tempos.
+    Atalho("<Control-d>", "Ctrl+D", "ler_melhor", "Ler o melhor diagrama da página"),
+    Atalho("<Control-e>", "Ctrl+E", "estudo_do_diagrama", "Abrir o diagrama na sala de estudo"),
+    Atalho("<Control-g>", "Ctrl+G", "anotar_pagina", "Anotar esta página no conjunto de campo"),
+    Atalho("<Control-N>", "Ctrl+Shift+N", "corrigir_agora", "Corrigir agora o item selecionado da fila"),
     Atalho("<Prior>", "Page Up", "pagina_anterior", "Página anterior do livro"),
     Atalho("<Next>", "Page Down", "proxima_pagina", "Próxima página do livro"),
+    # Passo C8: a dúvida navegável. `Ctrl` sobre as mesmas teclas de virar a página, porque é a
+    # mesma direção com um filtro -- só as páginas com trabalho.
+    Atalho("<Control-Prior>", "Ctrl+Page Up", "anterior_duvidosa", "Página duvidosa anterior"),
+    Atalho("<Control-Next>", "Ctrl+Page Down", "proxima_duvidosa", "Próxima página duvidosa"),
     # **As duas da S-281**, e elas fecham o par que faltava: virar uma página tinha tecla desde a
     # S-70, e ir à primeira ou à última não tinha nenhuma. Ver `na_sala` para o outro motivo de
     # elas existirem -- e para por que ele veio primeiro.
@@ -204,7 +223,10 @@ ATALHOS: tuple[Atalho, ...] = (
     # o Tk entrega a maiúscula, e o modificador escrito à mão nunca chega no Windows (S-20).
     Atalho("<Control-P>", "Ctrl+Shift+P", "paleta_de_comandos", "Abrir a paleta de comandos e procurar pelo nome"),
 )
-"""Os dezoito atalhos do ciclo corrigir → salvar → próximo (S-20/S-70/S-223/S-229/S-231/S-267/S-281).
+"""Os atalhos do ciclo corrigir → salvar → próximo (S-20/S-70/S-223/S-229/S-231/S-267/S-281/F9-C3).
+
+**Eram dezoito e são vinte e cinco**; as quatro últimas entraram no F9-C3 e estão comentadas no
+lugar delas, com a medição que as pediu.
 
 A ordem é a do gesto, e não a alfabética: navegar entre diagramas, aplicar a FEN, salvar, reler,
 corrigir casa, desfazer, puxar da fila, virar página, enquadrar. É a mesma ordem em que a legenda
@@ -349,6 +371,10 @@ SOBREPOSICOES_NO_EDITOR: dict[str, str] = {
     # widget, e ali a da janela está morta.
     "<Control-plus>": CEDIDA_PELA_GUARDA,
     "<Control-minus>": CEDIDA_PELA_GUARDA,
+    # A da F9 (`8b61a3e`, chegada ao `main` no merge do religa): `Ctrl+E` abre o diagrama na sala de
+    # estudo em toda a janela, e dentro do editor é «centralizar» desde a Fase 41 -- o mesmo par do
+    # `Ctrl+R`, e cedida pelo mesmo motivo.
+    "<Control-e>": CEDIDA_PELA_GUARDA,
 }
 """Sequências que estão nas **duas** tabelas, e por que cada uma pode estar (S-259/S-267).
 

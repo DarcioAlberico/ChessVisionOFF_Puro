@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_json
+from . import viewport
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,24 @@ class AppState:
     de tamanho fixo e a fração era do canvas; aqui o tabuleiro **é** a coluna, e o padrão certo é
     ocupá-la -- `BoardGeometry.fit` já desconta a margem das coordenadas antes de enquadrar. Quem
     quiser menor troca aqui, e o valor sobrevive à sessão."""
+
+    pdf_enquadramento: str = viewport.ENQUADRAMENTO_LARGURA
+    """Como o visor enquadra a folha: `LARGURA`, `PAGINA` ou `LIVRE` (F9-C3).
+
+    **O zoom sozinho não bastava, e o número diz por quê.** Até aqui a sessão guardava
+    apenas `pdf_zoom`, e um zoom é a resposta a uma pergunta feita numa janela de um
+    tamanho: reaberto noutro tamanho, ele desenha a mesma página em 31 % da largura útil
+    tanto a 1280 quanto a 1920. Medido nas 36 capturas do ciclo 2: **366 px de página nas
+    três resoluções, idênticos ao pixel** -- a 1920 são 29 % de um viewport de 819×850, e
+    os outros 71 % são branco.
+
+    O que se guarda agora é a **pergunta**, e ela se responde de novo a cada mudança de
+    área. `LIVRE` é a resposta de quem escolheu o zoom à mão, e ela continua sendo
+    respeitada -- ver `ui/viewport.ENQUADRAMENTOS`.
+
+    O padrão é `LARGURA` e não `LIVRE`: um estado gravado antes deste campo não tem
+    enquadramento nenhum a restaurar, e "caiba na largura" é a resposta que uma janela de
+    leitura dá quando ninguém disse outra coisa."""
 
     pdf_history: dict[str, int] = field(default_factory=dict)
     """Última página vista por PDF, indexado pelo caminho absoluto."""
@@ -244,6 +263,7 @@ class AppState:
             "last_pdf": self.last_pdf,
             "last_page": int(self.last_page),
             "pdf_zoom": float(self.pdf_zoom),
+            "pdf_enquadramento": str(self.pdf_enquadramento),
             "board_zoom": float(self.board_zoom),
             "pdf_history": {str(key): int(value) for key, value in self.pdf_history.items()},
             "show_heatmap": bool(self.show_heatmap),
@@ -308,6 +328,11 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     pdf_zoom = raw.get("pdf_zoom")
     if isinstance(pdf_zoom, (int, float)) and not isinstance(pdf_zoom, bool):
         state.pdf_zoom = _clamp(float(pdf_zoom), 0.25, 2.0)
+    enquadramento = raw.get("pdf_enquadramento")
+    # Valor fora da lista cai no padrão, como todo campo deste arquivo: um estado de disco
+    # corrompido não pode abrir a janela num modo que não existe.
+    if enquadramento in viewport.ENQUADRAMENTOS:
+        state.pdf_enquadramento = str(enquadramento)
 
     board_zoom = raw.get("board_zoom")
     if isinstance(board_zoom, (int, float)) and not isinstance(board_zoom, bool):

@@ -43,6 +43,7 @@ __all__ = [
     "folga",
     "linha",
     "minima",
+    "margem_da_aba",
     "moldura",
     "vigente",
 ]
@@ -67,6 +68,24 @@ def ajustar(*, base: int, densidade: str) -> None:
 def vigente() -> tuple[int, str]:
     """`(base, densidade)` em vigor. Existe para o teste afirmar o que foi fixado."""
     return _base, _densidade
+
+
+def margem_da_aba() -> int:
+    """A margem esquerda -- e as outras três -- do corpo de **toda** aba (F9-C2, §7 item 15).
+
+    **Eram quatro valores.** O crítico do ciclo 1 mediu as filas começando em `x = 8, 9, 12 e 13`
+    conforme a aba: cada painel escolhia entre `folga()` e `linha()` na linha de montagem dele, e
+    nenhuma das duas escolhas tinha razão escrita. Quatro margens numa janela de seis abas é a
+    borda esquerda mudando de lugar quando a pessoa troca de aba -- o alinhamento vertical que o
+    §2.3 cobra não sobrevive a isso.
+
+    **É `folga()` e não `moldura()`, e o número foi buscado.** `moldura()` (14 px) é a margem de
+    um diálogo, e ela é generosa por ser a borda de uma janela inteira; aplicada às seis abas ela
+    somava 16 px de altura por painel e punha o piso da pele "Foco" em **776 px**, oito acima dos
+    768 da tela que o item 4 do §7 existe para caber. `folga()` (10 px) é a mesma margem em todas
+    as seis, é a folga de painel que o resto da janela já usa, e cabe.
+    """
+    return folga()
 
 
 def moldura() -> int:

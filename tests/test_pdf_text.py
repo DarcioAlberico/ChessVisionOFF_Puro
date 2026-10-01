@@ -540,3 +540,111 @@ class RunningPageNumberTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LadoPelaNumeracaoTests(unittest.TestCase):
+    """OCR_UI_ROADMAP passo 7: quando nenhuma palavra declara o lado, a numeração decide."""
+
+    def test_o_primeiro_lance_sob_o_diagrama_diz_de_quem_e_a_vez(self) -> None:
+        nearby = assign_lines_to_diagrams(
+            [
+                line("22... ♖g8", 10, 240, 200, 252, block_words=6),
+                line("23 ♘c4 ♗d5", 10, 252, 200, 264, block_words=6),
+            ],
+            [(10.0, 40.0, 200.0, 230.0)],
+        )
+        contexto = context_from_lines(nearby[0])
+        self.assertEqual(contexto.side_to_move, chess.BLACK)
+        self.assertEqual(contexto.side_to_move_origin, "move-number")
+        self.assertEqual(contexto.first_move_number, (22, True))
+        self.assertEqual(contexto.side_to_move_evidence, "22... ♖g8")
+
+    def test_a_legenda_apos_o_lance_da_a_vez_seguinte(self) -> None:
+        contexto = parse_context("Position after 23...Bd5")
+        self.assertEqual(contexto.side_to_move, chess.WHITE)
+        self.assertEqual(contexto.side_to_move_origin, "caption-after")
+        self.assertEqual(contexto.caption_after_move, (24, False))
+        self.assertEqual(parse_context("após 23.♘c4").side_to_move, chess.BLACK)
+
+    def test_a_palavra_vence_a_numeracao(self) -> None:
+        nearby = assign_lines_to_diagrams(
+            [
+                line("Black to move", 10, 240, 200, 252, block_words=3),
+                line("23 ♘c4", 10, 252, 200, 264, block_words=6),
+            ],
+            [(10.0, 40.0, 200.0, 230.0)],
+        )
+        contexto = context_from_lines(nearby[0])
+        self.assertEqual(contexto.side_to_move, chess.BLACK)
+        self.assertEqual(contexto.side_to_move_origin, "text")
+        self.assertEqual(contexto.first_move_number, (23, False))
+
+    def test_numero_de_exercicio_antes_de_um_nome_nao_e_lance(self) -> None:
+        from chess_diagram_ocr.pdf_text import inicio_de_lance
+
+        self.assertIsNone(inicio_de_lance("119 Bartrina - Ghitescu"))
+        self.assertEqual(inicio_de_lance("14... a6"), (14, True))
+        self.assertEqual(inicio_de_lance("5 O-O"), (5, False))
+
+    def test_a_cascata_da_semantics_registra_a_origem(self) -> None:
+        from chess_diagram_ocr.semantics import infer_side_to_move
+
+        nearby = assign_lines_to_diagrams(
+            [line("22... ♖g8", 10, 240, 200, 252, block_words=6)], [(10.0, 40.0, 200.0, 230.0)]
+        )
+        lado = infer_side_to_move(
+            "3q2rk/rb2bpp1/1p1pp2p/p3P3/Pn1P1PN1/6R1/1P1NQ1PP/1B3R1K", context_from_lines(nearby[0])
+        )
+        self.assertEqual(lado.color, chess.BLACK)
+        self.assertEqual(lado.source, "move-number")
+        self.assertIn("numeração", lado.source_label)
+
+
+class BoardCoordinatesTests(unittest.TestCase):
+    """Passo C10 do ciclo 2: as coordenadas da borda passam a ser produzidas."""
+
+    BOARD = (100.0, 100.0, 276.0, 276.0)
+
+    def _page(self, files: str, ranks: str) -> fitz.Page:
+        doc = fitz.open()
+        page = doc.new_page(width=PAGE_WIDTH, height=PAGE_HEIGHT)
+        x0, y0, x1, y1 = self.BOARD
+        cell = (x1 - x0) / 8
+        for i, letter in enumerate(files):
+            page.insert_text(fitz.Point(x0 + i * cell + cell * 0.35, y1 + 10), letter, fontsize=8)
+        for i, digit in enumerate(ranks):
+            page.insert_text(fitz.Point(x0 - 9, y0 + i * cell + cell * 0.65), digit, fontsize=8)
+        return page
+
+    def test_ponto_de_vista_das_brancas(self) -> None:
+        from chess_diagram_ocr.pdf_text import board_coordinates_for
+
+        coords = board_coordinates_for(self._page("abcdefgh", "87654321"), self.BOARD)
+        assert coords is not None
+        self.assertEqual(coords.ranks_top_to_bottom, (8, 7, 6, 5, 4, 3, 2, 1))
+        self.assertEqual(coords.files_left_to_right, tuple("abcdefgh"))
+        self.assertTrue(coords.white_point_of_view)
+
+    def test_ponto_de_vista_das_pretas(self) -> None:
+        from chess_diagram_ocr.pdf_text import board_coordinates_for
+
+        coords = board_coordinates_for(self._page("hgfedcba", "12345678"), self.BOARD)
+        assert coords is not None
+        self.assertFalse(coords.white_point_of_view)
+
+    def test_pagina_sem_coordenadas_devolve_none(self) -> None:
+        from chess_diagram_ocr.pdf_text import board_coordinates_for
+
+        doc = fitz.open()
+        page = doc.new_page(width=PAGE_WIDTH, height=PAGE_HEIGHT)
+        page.insert_text(fitz.Point(100, 300), "Diagram 12 White to move", fontsize=10)
+        self.assertIsNone(board_coordinates_for(page, self.BOARD))
+
+    def test_o_contexto_da_pagina_carrega_as_coordenadas(self) -> None:
+        from chess_diagram_ocr.pdf_text import contexts_for_page
+
+        page = self._page("hgfedcba", "12345678")
+        contexts = contexts_for_page(page, [self.BOARD])
+        self.assertEqual(len(contexts), 1)
+        assert contexts[0].coordinates is not None
+        self.assertFalse(contexts[0].coordinates.white_point_of_view)

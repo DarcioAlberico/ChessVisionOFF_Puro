@@ -15,20 +15,25 @@ afirmada por teste em vez de por clique.
 
 from __future__ import annotations
 
+import logging
 import time
+from dataclasses import dataclass
 
 import numpy as np
-from PyQt6.QtCore import QPoint, QRect, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap, QWheelEvent
+from PyQt6.QtCore import QPoint, QRect, QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QImage, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap, QWheelEvent
 from PyQt6.QtWidgets import QScrollArea, QScrollBar, QWidget
 
 from chess_diagram_ocr.qt import tema
-from chess_diagram_ocr.qt.imagens import pixmap_de_rgb
+from chess_diagram_ocr.qt.imagens import qimage_de_rgb, reduzir_rgb
+from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.ui import tokens
 from chess_diagram_ocr.ui.leitura_do_pdf import CLICK_SLOP_PX, MIN_SELECTION_PX, SELECTION_HALO_PX
 from chess_diagram_ocr.ui.page_overlay import (
     A_FAZER,
+    CORRIGIDO,
     DISPENSADO,
+    DUVIDOSO,
     LIDO,
     PRONTO,
     DiagramBox,
@@ -37,29 +42,42 @@ from chess_diagram_ocr.ui.page_overlay import (
     traco_da_caixa,
 )
 from chess_diagram_ocr.ui.viewport import (
+    ENQUADRAMENTO_LARGURA,
+    ENQUADRAMENTO_LIVRE,
+    ENQUADRAMENTO_PAGINA,
+    ENQUADRAMENTOS,
     WheelAction,
     anchor_after_zoom,
     clamp_zoom,
     decide_wheel,
-    fit_page_zoom,
-    fit_width_zoom,
+    enquadramento_apos_zoom_manual,
     wheel_direction,
+    zoom_do_enquadramento,
     zoomed,
 )
+
+logger = logging.getLogger(__name__)
 
 PAPEL_DO_ESTADO: dict[str, str] = {
     A_FAZER: tokens.A_FAZER,
     LIDO: tokens.LIDO,
+    DUVIDOSO: tokens.ATENCAO,
+    CORRIGIDO: tokens.CORRIGIDO,
     PRONTO: tokens.PRONTO,
     DISPENSADO: tokens.DISPENSADO,
 }
 """Estado da caixa -> papel de cor. O estado e o papel têm o **mesmo nome** em `page_overlay` e em
-`tokens`, então isto é a resolução do papel, e não uma segunda escolha de matiz.
+`tokens`, então isto é a resolução do papel, e não uma segunda escolha de matiz -- salvo o
+`DUVIDOSO` do passo 13 da OCR_UI, que pinta com `ATENCAO`.
 
 **A tinta sai de `tema.cor_atual`, e no momento de pintar.** Saía de `tokens.RESERVA[...]` -- o
 hexadecimal de fábrica, que não acompanha a troca de pele -- e era o mesmo achado da S-510 sobre
 o glifo de reserva do tabuleiro, numa terceira tela. `RESERVA` é a paleta sem pele; quem responde
 é a pele em uso, e ela pode ter mudado desde a montagem. É a triagem da S-511."""
+
+COR_POR_ESTADO = PAPEL_DO_ESTADO
+"""O nome antigo da tabela, mantido como apelido: é por ele que `tests/test_page_overlay` cobra
+que os seis estados têm cor no visor. Hoje ela devolve o **papel**, e a cor é `cor_do_estado`."""
 
 
 def cor_do_estado(estado: str) -> str:
@@ -85,6 +103,53 @@ e herdá-lo do `singleStep` do `QScrollBar` daria um giro quatro vezes menor que
 MARGEM_DE_AJUSTE = 4
 """Desconto de barra de rolagem nos dois "ajustar". Sem ele, o ajuste à largura acende a barra
 horizontal que ele existe para apagar."""
+
+
+@dataclass(frozen=True)
+class FolhaPreparada:
+    """A página já reduzida ao zoom em que vai aparecer, convertida para o Qt.
+
+    **É o que a thread de rasterização entrega ao visor** (OCR_UI passo 15). Reescalar a página
+    para o zoom e convertê-la em `QImage` são as contas que o visor fazia na thread da janela a
+    cada virada: 5,7 ms a 220 DPI, mais a 300. Um `QImage` pode ser construído fora da thread da
+    interface -- o que não pode é o `QPixmap`, e é por isso que a conversão para ele fica em
+    `mostrar_pagina`, sobre a imagem **já escalada**, que é pequena.
+
+    `zoom` diz para qual zoom `escalada` foi feita, e o visor só a aproveita se ainda for esse;
+    `tamanho` é o da página inteira, em pixel do DPI de rasterização.
+    """
+
+    escalada: QImage
+    zoom: float
+    tamanho: QSize
+
+
+def preparar_folha(
+    pagina_rgb: np.ndarray,
+    *,
+    zoom: float,
+    enquadramento: str = ENQUADRAMENTO_LIVRE,
+    area: tuple[int, int] = (0, 0),
+) -> FolhaPreparada:
+    """A conversão e o reescalonamento de uma página, prontos para `mostrar_pagina`.
+
+    Função de módulo, e não método, de propósito: ela roda na thread de rasterização, e uma
+    função sem `self` não tem como tocar num widget por engano. `enquadramento` e `area` são a
+    foto do que o visor vai perguntar quando a folha chegar (`_reaplicar_enquadramento`): com
+    elas o zoom de "ajustar à página" é previsto aqui, e a folha chega já no tamanho certo.
+    """
+    altura, largura = pagina_rgb.shape[:2]
+    alvo = zoom_do_enquadramento(
+        enquadramento,
+        viewport_w=area[0],
+        viewport_h=area[1],
+        page_w=largura,
+        page_h=altura,
+        margin_px=MARGEM_DE_AJUSTE,
+    )
+    zoom_final = clamp_zoom(alvo) if alvo is not None else zoom
+    escalada = qimage_de_rgb(reduzir_rgb(pagina_rgb, zoom_final))
+    return FolhaPreparada(escalada=escalada, zoom=zoom_final, tamanho=QSize(largura, altura))
 
 
 def fracoes_da_vista(valor: int, passo: int, maximo: int) -> tuple[float, float]:
@@ -120,10 +185,33 @@ class _Folha(QWidget):
         pintor.fillRect(self.rect(), QColor(tokens.RESERVA[tokens.VAZIO_DE_CANVAS]))
         pagina = self._visor.pagina_escalada()
         if pagina is not None:
-            pintor.drawPixmap(0, 0, pagina)
+            if pagina.size() == self.size():
+                pintor.drawPixmap(0, 0, pagina)
+            else:
+                # A nítida deste zoom ainda está sendo feita ao fundo (ver `pagina_escalada`):
+                # a que há é esticada pelo pintor, sem filtro, por um quadro ou dois. Vizinho
+                # mais próximo de propósito -- é o quadro provisório, e o filtro custaria o que
+                # o reescalonamento ao fundo existe para não custar aqui.
+                pintor.drawPixmap(self.rect(), pagina)
+            self._desenhar_contorno(pintor)
             self._desenhar_caixas(pintor)
             self._desenhar_selecao(pintor)
         pintor.end()
+
+    def _desenhar_contorno(self, pintor: QPainter) -> None:
+        """Um fio neutro de 1 px na borda da folha (OCR_UI passo 16, «contorno neutro em imagens»).
+
+        Uma página de scan tem margem branca, e branco sobre o vazio claro da Clássica não tem
+        borda: a folha acaba onde o olho adivinha. O fio é o `CONTORNO_DE_CROMO` da pele em uso
+        -- o mesmo de botão e campo --, e fica **sobre** o pixel mais externo da página, e não
+        fora dela: a folha tem exatamente o tamanho da página, e crescê-la deslocaria todas as
+        caixas e todos os cliques em um pixel.
+        """
+        caneta = QPen(QColor(tema.cor_atual(tokens.CONTORNO_DE_CROMO)))
+        caneta.setWidth(1)
+        pintor.setPen(caneta)
+        pintor.setBrush(Qt.BrushStyle.NoBrush)
+        pintor.drawRect(self.rect().adjusted(0, 0, -1, -1))
 
     def _desenhar_selecao(self, pintor: QPainter) -> None:
         """O retângulo tracejado do arrasto, por cima de tudo.
@@ -286,10 +374,23 @@ class VisorDePagina(QScrollArea):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._pagina_rgb: np.ndarray | None = None
-        self._pagina: QPixmap | None = None
+        self._pagina: QSize | None = None
+        """O tamanho da página em pixel do DPI de rasterização. A imagem inteira mora só em
+        `_pagina_rgb`: é dela que se reescala quando o zoom muda (`reduzir_rgb`), e um `QPixmap`
+        dela inteira -- 35 MB a 300 DPI -- não serviria para nada além de ser reescalado."""
         self._escalada: QPixmap | None = None
         self._zoom_da_escalada = 0.0
         self._zoom = 1.0
+        self.reescalar_ao_fundo = True
+        """Se a página é reescalada numa `Tarefa` quando o zoom muda (passo 15), ou em linha.
+
+        Em linha nos testes, que perguntam pelo tamanho na linha seguinte. Ao fundo no produto:
+        `cv2.resize` de uma página a 300 DPI custa 15 ms, e é o que cada passo de zoom pagava na
+        thread da janela; enquanto a nítida não vem, a folha anterior é esticada pelo pintor."""
+        self._geracao = 0
+        """Sobe a cada `mostrar_pagina`: um reescalonamento de uma página que já saiu é lixo."""
+        self._reescalonamento: Tarefa | None = None
+        self._reescalar_de_novo = False
         self._dpi = 220
         self._caixas: PageBoxes | None = None
         self._selecionada: int | None = None
@@ -298,6 +399,12 @@ class VisorDePagina(QScrollArea):
         self.virar_paginas = True
         """Se a roda vira a página ao chegar à borda. Desligável porque nem todo mundo quer --
         é a mesma preferência do produto."""
+
+        self._enquadramento = ENQUADRAMENTO_LIVRE
+        """O ajuste que sobrevive ao redimensionamento (F9-C3). Ver `ui/viewport.ENQUADRAMENTOS`.
+
+        Comeca `LIVRE` porque o visor abre no zoom do estado gravado, e esse zoom e uma escolha
+        anterior da pessoa: reenquadrar na abertura seria desfaze-la sem que ninguem pedisse."""
 
         self._selecionando = False
         self._inicio_da_selecao: tuple[float, float] | None = None
@@ -311,6 +418,17 @@ class VisorDePagina(QScrollArea):
     @property
     def zoom(self) -> float:
         return self._zoom
+
+    @property
+    def enquadramento(self) -> str:
+        """O ajuste em vigor -- `LIVRE`, `LARGURA` ou `PAGINA`. Ver `ui/viewport.ENQUADRAMENTOS`."""
+        return self._enquadramento
+
+    def definir_enquadramento(self, enquadramento: str) -> None:
+        """Repoe o ajuste gravado da sessao anterior, e ja o aplica se houver pagina."""
+        if enquadramento not in ENQUADRAMENTOS:
+            return
+        self._enquadrar(enquadramento)
 
     @property
     def caixas(self) -> PageBoxes | None:
@@ -330,17 +448,55 @@ class VisorDePagina(QScrollArea):
         Escalar 1.700x2.200 px a cada `paintEvent` é o que faz a rolagem engasgar: o Qt repinta
         a folha inteira a cada pixel de barra, e a conta do reescalonamento é a mesma toda vez.
         """
-        if self._pagina is None:
+        if self._pagina is None or self._pagina_rgb is None:
             return None
         if self._escalada is None or self._zoom_da_escalada != self._zoom:
-            tamanho = self._pagina.size() * self._zoom
-            self._escalada = self._pagina.scaled(
-                tamanho,
-                Qt.AspectRatioMode.IgnoreAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            self._zoom_da_escalada = self._zoom
+            if self.reescalar_ao_fundo and self._escalada is not None:
+                # A que há serve por enquanto (esticada pelo pintor); a nítida vem por sinal.
+                self._pedir_reescalonamento()
+            else:
+                self._escalada = QPixmap.fromImage(qimage_de_rgb(reduzir_rgb(self._pagina_rgb, self._zoom)))
+                self._zoom_da_escalada = self._zoom
         return self._escalada
+
+    def _pedir_reescalonamento(self) -> None:
+        """Uma redução de cada vez, e só o último zoom espera -- como a rasterização."""
+        if self._reescalonamento is not None:
+            self._reescalar_de_novo = True
+            return
+        if self._pagina_rgb is None:
+            return
+        pagina_rgb, zoom, geracao = self._pagina_rgb, self._zoom, self._geracao
+        self._reescalar_de_novo = False
+        tarefa = manter_viva(
+            Tarefa(lambda: (geracao, zoom, qimage_de_rgb(reduzir_rgb(pagina_rgb, zoom))), nome="zoom")
+        )
+        tarefa.pronto.connect(self._reescalada_chegou)
+        tarefa.falhou.connect(self._reescalada_falhou)
+        self._reescalonamento = tarefa
+        tarefa.start()
+
+    def _reescalada_chegou(self, resultado: object) -> None:
+        self._reescalonamento = None
+        de_novo, self._reescalar_de_novo = self._reescalar_de_novo, False
+        if isinstance(resultado, tuple) and len(resultado) == 3:
+            geracao, zoom, imagem = resultado
+            if geracao == self._geracao and isinstance(imagem, QImage):
+                self._escalada = QPixmap.fromImage(imagem)
+                self._zoom_da_escalada = float(zoom)
+                self._folha.update()
+        # O zoom pode ter andado de novo enquanto esta era feita.
+        if self._pagina_rgb is not None and (de_novo or self._zoom_da_escalada != self._zoom):
+            self._pedir_reescalonamento()
+
+    def _reescalada_falhou(self, mensagem: str, _excecao: object) -> None:
+        self._reescalonamento = None
+        self._reescalar_de_novo = False
+        logger.warning("O reescalonamento da página falhou: %s", mensagem)
+
+    def foto_do_enquadramento(self) -> tuple[str, tuple[int, int]]:
+        """O que `preparar_folha` precisa saber para prever o zoom: o ajuste e a área de agora."""
+        return (self._enquadramento, self._area_visivel())
 
     def _area_visivel(self) -> tuple[int, int]:
         """Largura e altura da área visível.
@@ -364,15 +520,31 @@ class VisorDePagina(QScrollArea):
             raise RuntimeError("O QScrollArea está sem barras de rolagem.")
         return horizontal, vertical
 
-    def mostrar_pagina(self, pagina_rgb: np.ndarray, *, dpi: int) -> None:
-        """Troca a página exibida. As caixas caem junto: elas eram da página anterior."""
+    def mostrar_pagina(
+        self, pagina_rgb: np.ndarray, *, dpi: int, folha: FolhaPreparada | None = None
+    ) -> None:
+        """Troca a página exibida. As caixas caem junto: elas eram da página anterior.
+
+        Com `folha` a conversão já veio feita de outra thread (passo 15), e o que sobra aqui é o
+        `QPixmap` da imagem escalada -- ou nada, se o zoom mudou entre a previsão e a chegada, e
+        aí `pagina_escalada` reescala no primeiro quadro como sempre fez.
+        """
         self._pagina_rgb = pagina_rgb
-        self._pagina = pixmap_de_rgb(pagina_rgb)
-        self._escalada = None
+        if folha is None:
+            folha = preparar_folha(
+                pagina_rgb, zoom=self._zoom, enquadramento=self._enquadramento, area=self._area_visivel()
+            )
+        self._pagina = folha.tamanho
+        self._geracao += 1
+        self._escalada = QPixmap.fromImage(folha.escalada)
+        self._zoom_da_escalada = folha.zoom
         self._caixas = None
         self._selecionada = None
         self._dpi = int(dpi)
         self._ajustar_folha()
+        # A página nova pode ter outro tamanho -- capa, mapa dobrado, folha de errata -- e o
+        # enquadramento em vigor é uma pergunta sobre **esta** página (F9-C3).
+        self._reaplicar_enquadramento()
 
     def pagina_rgb(self) -> np.ndarray | None:
         """A página como o pipeline a devolveu. É ela que vai ao OCR, e não o `QPixmap`."""
@@ -395,6 +567,17 @@ class VisorDePagina(QScrollArea):
     # -------------------------------------------------------------------------------- zoom
 
     def definir_zoom(self, valor: float) -> None:
+        """Põe o zoom naquele valor. **Escolha à mão desliga o enquadramento** (F9-C3).
+
+        Quem chama daqui é a roda, o deslizador, `Ctrl++` e `Ctrl+-`; os dois ajustes automáticos
+        passam por `_enquadrar`, que repõe o modo depois. Sem esta linha, redimensionar a janela
+        desfaria, no instante seguinte, o zoom que a pessoa acabou de escolher.
+        """
+        self._enquadramento = enquadramento_apos_zoom_manual()
+        self._aplicar_zoom(valor)
+
+    def _aplicar_zoom(self, valor: float) -> None:
+        """A parte mecânica, sem tocar no enquadramento. Ver `definir_zoom` e `_enquadrar`."""
         novo = clamp_zoom(valor)
         if novo == self._zoom:
             return
@@ -403,18 +586,29 @@ class VisorDePagina(QScrollArea):
         self.zoom_mudou.emit(novo)
 
     def ajustar_a_largura(self) -> None:
-        if self._pagina is None:
-            return
-        largura, _altura = self._area_visivel()
-        alvo = fit_width_zoom(viewport_px=largura, page_px=self._pagina.width(), margin_px=MARGEM_DE_AJUSTE)
-        if alvo is not None:
-            self.definir_zoom(alvo)
+        self._enquadrar(ENQUADRAMENTO_LARGURA)
 
     def ajustar_a_pagina(self) -> None:
+        self._enquadrar(ENQUADRAMENTO_PAGINA)
+
+    def _enquadrar(self, enquadramento: str) -> None:
+        """Liga um enquadramento e o aplica agora. Ele fica valendo até alguém mexer no zoom."""
+        self._enquadramento = enquadramento
+        self._reaplicar_enquadramento()
+
+    def _reaplicar_enquadramento(self) -> None:
+        """Responde de novo a pergunta do enquadramento para a área de agora (F9-C3).
+
+        **É o conserto do §7.8 do ciclo 3**, e o defeito que ele fecha foi medido no pixel: a
+        página saía com `366 px` de largura a 1280, a 1366 **e** a 1920 -- idêntica nas três, 29 %
+        de um viewport de 819×850 na maior delas. `fit_width_zoom` estava certo; o que faltava era
+        alguém chamá-lo outra vez quando a área muda.
+        """
         if self._pagina is None:
             return
         largura, altura = self._area_visivel()
-        alvo = fit_page_zoom(
+        alvo = zoom_do_enquadramento(
+            self._enquadramento,
             viewport_w=largura,
             viewport_h=altura,
             page_w=self._pagina.width(),
@@ -422,13 +616,18 @@ class VisorDePagina(QScrollArea):
             margin_px=MARGEM_DE_AJUSTE,
         )
         if alvo is not None:
-            self.definir_zoom(alvo)
+            self._aplicar_zoom(alvo)
+
+    def resizeEvent(self, a0: object) -> None:  # noqa: N802 - assinatura do Qt
+        """A área mudou: o enquadramento em vigor é recalculado para ela. Ver `_reaplicar…`."""
+        super().resizeEvent(a0)  # type: ignore[arg-type]
+        self._reaplicar_enquadramento()
 
     def _ajustar_folha(self) -> None:
         if self._pagina is None:
             self._folha.resize(1, 1)
             return
-        self._folha.resize(self._pagina.size() * self._zoom)
+        self._folha.resize(self._pagina * self._zoom)
         self._folha.update()
 
     # -------------------------------------------------------------------------------- roda

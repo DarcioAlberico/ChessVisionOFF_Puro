@@ -249,7 +249,8 @@ class VarreduraTests(unittest.TestCase):
         self.app.processEvents()
 
         self.assertNotEqual(de_onde[0], painel.thread(), "o teste precisa de duas threads")
-        self.assertEqual(painel.lbl_progresso.text(), "Varrendo o livro... página 3 de 10")
+        # `…` e não `...` desde o F9-C16 (§8 item 8). A asserção é a mesma.
+        self.assertEqual(painel.lbl_progresso.text(), "Varrendo o livro… página 3 de 10")
 
     def test_cancelar_avisa_e_diz_que_termina_a_pagina(self) -> None:
         painel = self.painel([])

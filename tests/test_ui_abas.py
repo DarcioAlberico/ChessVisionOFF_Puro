@@ -57,23 +57,41 @@ class OrdemTests(unittest.TestCase):
 
     Seis abas de peso igual escondiam que quatro delas mudam de conteúdo quando se clica num
     retângulo da página e duas não. A ordem é o corte: primeiro o diagrama aberto agora, depois o
-    acervo.
+    acervo -- e, desde o passo 17 da OCR_UI, o corte é estrutura: as do diagrama são os **modos**
+    da aba `Livro`, e a faixa de abas é o livro seguido do acervo.
     """
 
     def test_as_do_diagrama_vem_antes_das_do_acervo(self) -> None:
-        self.assertEqual(abas.ABAS, abas.DO_DIAGRAMA + abas.DO_ACERVO)
+        self.assertEqual(abas.ABAS, (abas.LIVRO, *abas.DO_ACERVO))
+        self.assertEqual(abas.MODOS, abas.DO_DIAGRAMA)
+        paineis = abas.MODOS + abas.DO_ACERVO
         self.assertEqual(len(set(abas.ABAS)), len(abas.ABAS), "aba declarada duas vezes")
+        self.assertEqual(len(set(paineis)), len(paineis), "painel declarado duas vezes")
+        self.assertNotIn(abas.LIVRO, paineis, "o Livro é a casa dos modos, e não um deles")
 
     def test_a_janela_abre_na_aba_de_trabalho(self) -> None:
-        """O critério de aceite: a primeira abertura cai onde o trabalho começa."""
-        self.assertEqual(abas.ABA_DE_TRABALHO, abas.RESULTADO)
+        """O critério de aceite: a primeira abertura cai onde o trabalho começa -- o Livro, no modo
+        Resultado."""
+        self.assertEqual(abas.ABA_DE_TRABALHO, abas.LIVRO)
         self.assertEqual(abas.ABAS[0], abas.ABA_DE_TRABALHO)
+        self.assertEqual(abas.MODO_DE_TRABALHO, abas.RESULTADO)
+        self.assertEqual(abas.MODOS[0], abas.MODO_DE_TRABALHO)
+
+    def test_os_modos_sao_reconhecidos_e_as_abas_nao(self) -> None:
+        for modo in abas.MODOS:
+            with self.subTest(modo=modo):
+                self.assertTrue(abas.e_modo(modo))
+                self.assertTrue(abas.e_modo(abas.rotulo(modo, 129)), "a contagem não muda o que ele é")
+        for aba in abas.ABAS:
+            with self.subTest(aba=aba):
+                self.assertFalse(abas.e_modo(aba))
 
     def test_a_configuracao_nao_e_mais_declarada(self) -> None:
         """A aba saiu no porte para o Qt (S-506): o conjunto de peças foi para o menu e o treino e
         as bases para diálogos. A tupla a declarou por mais um mês, sem que nada acusasse."""
         self.assertNotIn("Configuração", abas.ABAS)
-        self.assertEqual(len(abas.ABAS), 6)
+        self.assertNotIn("Configuração", abas.MODOS)
+        self.assertEqual(len(abas.MODOS + abas.DO_ACERVO), 8, "os seis de antes, mais os dois da suíte")
 
 
 class AbaLembradaTests(unittest.TestCase):

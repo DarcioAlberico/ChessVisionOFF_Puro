@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from ..audit import audit_dataset
-from ..augment import AugmentConfig
+from ..augment import AugmentConfig, from_letters
 from ..config import (
     DEFAULT_BOARD_CACHE_SIZE,
 )
@@ -48,7 +48,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="aug0",
         help=(
             "Aumento dirigido ao acervo (S-40), como as letras de `AugmentConfig.version`: "
-            "m=espelhar, h=hachura, s=granulacao, p=papel, i=inversao. Ex.: --augment mhsp. "
+            "m=espelhar, h=hachura, s=granulacao, p=papel, i=inversao, e=espessura do traco "
+            "(C4 do ciclo 2 OCR/UI). Ex.: --augment mhsp, --augment mhspe. "
             "'aug0' (padrao) e o conjunto generico de antes da S-40. NAO MEDIDO ainda: ligar "
             "muda o modelo, e a comparacao honesta e treinar as duas variantes com a mesma "
             "semente e medir com `cvoff-field`."
@@ -72,6 +73,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=int,
         default=None,
         help="Processos de carregamento. Padrao: min(4, cpus//2). 0 carrega no processo principal.",
+    )
+    parser.add_argument(
+        "--corrected-repeat",
+        type=int,
+        default=1,
+        help="C16 do ciclo 2 OCR/UI: quantas vezes por epoca um tabuleiro corrigido a mao "
+        "(rotas humanas de `corrected_by`) entra no amostrador. 1 e o treino de sempre; "
+        "a ablacao mede 3. Gravado no checkpoint.",
+    )
+    parser.add_argument(
+        "--label-noise",
+        type=float,
+        default=0.0,
+        help="SABOTAGEM (C16): fracao das casas ocupadas de treino cujo rotulo troca de cor "
+        "(X<->x). Serve para medir se o laboratorio e o campo acusam um dano conhecido; "
+        "nunca para produzir um checkpoint de producao. Gravado no checkpoint.",
     )
     parser.add_argument("--no-calibrate", action="store_true", help="Pula a calibracao de temperatura (S-28).")
     parser.add_argument(
@@ -146,24 +163,8 @@ def _log_epoch(row: dict[str, object]) -> None:
 
 
 def _augment_from_letters(texto: str) -> AugmentConfig:
-    """`"mhsp"` ou `"augmhsp"` -> `AugmentConfig`. Probabilidades fixas, ligado ou desligado.
-
-    Uma letra liga a transformacao na probabilidade que a S-40 propos; afinar valor por
-    valor pela linha de comando seria oferecer um espaco de busca que ninguem mediu.
-    """
-    letras = texto[3:] if texto.startswith("aug") else texto
-    if letras in ("", "0"):
-        return AugmentConfig()
-    desconhecidas = set(letras) - set("mhspi")
-    if desconhecidas:
-        raise ValueError(f"Letras desconhecidas em --augment: {''.join(sorted(desconhecidas))} (validas: mhspi)")
-    return AugmentConfig(
-        hflip=0.5 if "m" in letras else 0.0,
-        hatch=0.30 if "h" in letras else 0.0,
-        speckle=0.25 if "s" in letras else 0.0,
-        paper=0.30 if "p" in letras else 0.0,
-        invert=0.03 if "i" in letras else 0.0,
-    )
+    """`"mhsp"` ou `"augmhsp"` -> `AugmentConfig` (`augment.from_letters`)."""
+    return from_letters(texto)
 
 
 def _audit_gate(args: argparse.Namespace) -> int | None:
@@ -243,6 +244,8 @@ def main(argv: list[str] | None = None) -> int:
         num_workers=args.num_workers,
         calibrate=not args.no_calibrate,
         augment=augment,
+        label_noise=args.label_noise,
+        corrected_repeat=args.corrected_repeat,
         boards_per_batch=args.boards_per_batch,
         keep_ties=args.keep_ties,
     )

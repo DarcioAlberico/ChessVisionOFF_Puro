@@ -23,6 +23,15 @@ escala pela mesma razão que fez a S-31 tirar o editor do `ChessOcrTkApp`: com o
 do editor e o do estudo no mesmo objeto, um método de navegação de página mexe no que está sendo
 editado sem que nada diga. A janela passa a conversar com este painel por sinal.
 
+**O recorte ao lado do tabuleiro (OCR_UI passo 13, U1).** O lado direito da janela é a página
+inteira; para conferir uma casa a pessoa achava o diagrama nela, dava zoom e voltava. Desde o
+passo 13 o diagrama como o classificador o leu (`board_rgb`) fica ampliado ao lado do tabuleiro,
+num divisor; a casa sob o ponteiro e a selecionada se espelham nos dois, a dica de qualquer casa
+diz as três leituras e a margem, e um clique no recorte é um clique no tabuleiro
+(`TabuleiroEditavel.pressionar`: pinta com pincel, seleciona sem). A regra é de
+`ui/recorte_do_diagrama.py`; a pintura, de `qt/painel_de_recorte.py`. A tinta de incerteza passou
+a ser **por margem** e ligada por padrão -- a caixa virou «Esconder incerteza».
+
 **As quatro origens estão aqui (S-505).** Página de PDF (`carregar_pagina`), item da fila de
 revisão (`carregar_item_de_revisao`), amostra do dataset (`carregar_amostra`) e imagem avulsa
 (`carregar_avulsos`). Cada uma declara o seu vínculo, e é o vínculo que impede `Ctrl+S` de gravar
@@ -33,23 +42,27 @@ rótulo velho ao lado do novo -- ver `salvar_atual` e `ui/editor_model.save_targ
 from __future__ import annotations
 
 import logging
+import weakref
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+from PyQt6 import sip
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QCheckBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListWidget,
     QMessageBox,
+    QPushButton,
     QRadioButton,
     QSpinBox,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -57,11 +70,14 @@ from PyQt6.QtWidgets import (
 from chess_diagram_ocr.config import DEFAULT_DPI, DEFAULT_MAX_BOARDS
 from chess_diagram_ocr.fen_utils import is_valid_fen, square_name
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
-from chess_diagram_ocr.qt import tema
+from chess_diagram_ocr.qt import decisoes_de_diagrama, tema
+from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt.atalhos import sequencia_qt
-from chess_diagram_ocr.qt.barra import BarraEmFila
-from chess_diagram_ocr.qt.dica import DicaEmDesabilitado
-from chess_diagram_ocr.qt.rolagem import em_rolagem
+from chess_diagram_ocr.qt.barra import BarraFluida
+from chess_diagram_ocr.qt.dica import DicaEmDesabilitado, dica_em
+from chess_diagram_ocr.qt.painel_de_recorte import PainelDeRecorte
+from chess_diagram_ocr.qt.paleta_de_pecas import PaletaDePecas
+from chess_diagram_ocr.qt.rotulo import CampoQueAvisaQueContinua
 from chess_diagram_ocr.qt.tabuleiro_editavel import TabuleiroEditavel
 from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import OcrService, RecognitionOrigin, RecognizedDiagram
@@ -76,6 +92,7 @@ from chess_diagram_ocr.ui import (
     tipografia,
     tokens,
 )
+from chess_diagram_ocr.ui import recorte_do_diagrama as regra_do_recorte
 from chess_diagram_ocr.ui.editor_model import DiagramEditorModel, EditorBinding, SaveKind, SaveTarget
 from chess_diagram_ocr.ui.historico import Historico
 from chess_diagram_ocr.ui.legality import ILLEGAL_SAVE_TITLE, explain_position, illegal_save_question
@@ -92,16 +109,38 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["MENSAGEM_VAZIA", "PainelDeResultado"]
 
-MENSAGEM_VAZIA = (
+MENSAGEM_VAZIA = strings.sem_orfa(
     "Nenhum diagrama aberto. Clique num diagrama marcado da página, "
-    'ou use "Ler página" para ler a página inteira.'
+    f"ou use {strings.ASPA_ABRE}{comandos.rotulo_de_botao('ler_pagina')}{strings.ASPA_FECHA} "
+    "para ler a página inteira."
 )
 """O mesmo texto de `ui/result_panel.MENSAGEM_VAZIA`, com o nome do botão desta janela.
+
+**O nome vem do catálogo, e o literal que estava aqui apontava para um botão inexistente**
+(F9-C5, §7 defeito 1). A frase mandava usar *"Ler página"*, e a sonda dos controles visíveis
+devolve **0** nas duas peles -- 0 por `text()`, 0 por `accessibleName()`, 0 por `toolTip()`, 0
+no menu. Estado vazio sem orientação é defeito da carta §3.3; orientação que aponta para o
+lugar errado é pior, porque o usuário procura e não acha.
+
+**É o `rotulo_de_botao`, e a frase só é honesta porque o botão passou a desenhá-lo** (F9-C7,
+§3). O ciclo 6 citou este nome e o pôs na **dica** do botão só-de-ícone da pele clássica -- e o
+crítico do ciclo 7 mediu o resultado: *"OCR todos diagramas"* desenhado por **zero** controles
+visíveis na pele padrão, nas três larguras, com `OCR melhor diagrama` -- `ler_melhor`, **outro
+comando** -- em azul a 40 px. A frase não deixou de orientar; passou a orientar para o controle
+errado. Uma dica não é a tela.
+
+Hoje o nome está desenhado em toda pele registrada, e a frase cita o que está desenhado: onde o
+cromo da pele não escreve o nome, a barra do visor escreve
+(`qt/painel_do_pdf.PainelDoPdf.nomear_o_que_o_cromo_nao_desenha`). Derivada, ela não volta a
+divergir: renomear o comando renomeia a frase, e `tests/test_qt_janela.EstadoVazioNaTelaTests`
+cobra o cruzamento contra o `text()` -- e **só** contra o `text()` -- de um controle visível, em
+cada pele e nas três larguras.
 
 **O estado vazio é um item, e não zelo** (S-170): sem ele o painel abre com um tabuleiro na
 posição inicial e o campo de FEN vazio -- parece um diagrama reconhecido, e quem clicasse em
 "Salvar" gravaria a posição inicial no `labels.csv` como se fosse leitura de uma página."""
 
+MOTIVO_LEITURA_EM_CURSO = "Gravar espera a leitura terminar: a amostra seria de uma página que está sendo substituída."
 MOTIVO_SEM_DIAGRAMA = "Não há diagrama aberto."
 MOTIVO_SEM_DESFAZER = "Não há mudança anterior neste diagrama."
 MOTIVO_SEM_REFAZER = "Não há o que refazer: nada foi desfeito."
@@ -112,6 +151,40 @@ anterior **neste** diagrama, que é a consequência de a pilha ser por diagrama.
 
 ALTURA_MAXIMA_DA_LISTA = 140
 """Cinco linhas. A página mais cheia do acervo tem nove diagramas, e a lista rola."""
+
+ESTICAMENTO_DO_CANVAS = 12
+"""Quanto da folga vertical do painel vai para o tabuleiro, contra o `1` do rótulo de detalhes.
+
+**Era `3`, e o `1` do outro lado valia 212 px de nada no pé da aba** (F9-C6, item 6). Ver o
+comentário em `_montar`: o tabuleiro é limitado pela altura, então a folga que ia para o rótulo
+saía do lado do quadrado -- e voltava como vazio à direita da paleta."""
+
+
+def _casas_a_conferir(item: RecognizedDiagram, tinta: Any, placement: str) -> tuple[int, ...]:
+    """A ordem do `Tab` (C8): âmbar por margem, senão incertas, senão ocupadas por confiança."""
+    probs = getattr(item, "probs", None)
+    if tinta.casas:
+        if probs is not None:
+            return tuple(sorted(tinta.casas, key=lambda c: regra_do_recorte.margem(probs, c)))
+        return tuple(tinta.casas)
+    if item.uncertain_squares:
+        return tuple(int(c) for c in item.uncertain_squares)
+    confiancas = list(item.square_confidences) or [1.0] * 64
+    ocupadas = [c for c in range(64) if board_edit.piece_at(placement, c)]
+    return tuple(sorted(ocupadas, key=lambda c: confiancas[c] if c < len(confiancas) else 1.0))
+
+
+def _girar_180(placement: str) -> str:
+    """A mesma posição vista do outro lado da mesa: as 64 casas em ordem inversa.
+
+    É a leitura alternativa de um diagrama de orientação ambígua (C1/X5): o serviço decidiu
+    entre 0° e 180° por uma margem pequena, e a outra hipótese é esta. Colocação malformada
+    volta como veio -- quem chama já a validou.
+    """
+    try:
+        return board_edit.placement_from_squares(list(reversed(board_edit.squares_from_placement(placement))))
+    except ValueError:
+        return placement
 
 
 class PainelDeResultado(QWidget):
@@ -149,6 +222,12 @@ class PainelDeResultado(QWidget):
     regravou = pyqtSignal()
     """A linha de uma amostra do dataset foi regravada. A aba Dataset relê o que mudou."""
 
+    mudou = pyqtSignal()
+    """O que está na tela mudou -- posição, seleção, diagrama (OCR_UI passo 13).
+
+    A janela o usa para recarimbar as caixas da página: o diagrama corrigido e ainda não gravado
+    ganha o estado «corrigido» na hora, e não na próxima visita à página."""
+
     def __init__(
         self,
         servico: OcrService,
@@ -158,9 +237,14 @@ class PainelDeResultado(QWidget):
     ) -> None:
         super().__init__(parent)
         self._servico = servico
+        self._segunda_em_curso: Any = None
         self._csv_de_rotulos = Path(csv_de_rotulos)
         self.modelo = DiagramEditorModel()
-        self.historico = Historico()
+        self.historico: Historico[tuple[str, str]] = Historico(("", "w"))
+        """A pilha de desfazer, **por diagrama e com o lado** (S-229; OCR_UI C2, A7): cada estado
+        é `(placement, side)`, então trocar a vez entra na pilha e `Ctrl+Z` a devolve."""
+        self._mostrando_reparadas = False
+        """Se as casas que o decodificador trocou estão pintadas no tabuleiro (C1/X5)."""
         self._edicao = 0
         """Quantas edições este painel recebeu. É o desempate do `Ctrl+Z` sem foco (S-243)."""
         """A pilha de desfazer, **por diagrama** (S-229): ela é zerada ao trocar de diagrama, e
@@ -202,33 +286,91 @@ class PainelDeResultado(QWidget):
     # ------------------------------------------------------------------------------ montagem
 
     def _montar(self) -> None:
-        # **A aba rola, e não exige a altura dela da janela** (S-552, a metade perdida da S-150).
-        # `detalhes` quebra linha, e um `QLabel` com `wordWrap` responde a altura mínima calculada
-        # para a largura mais estreita possível: medido em 2026-09-04, ler uma página levava o
-        # mínimo desta aba de 551 para **1095 px** e o da janela para 1218 -- mais alto que a tela
-        # de um notebook de 1366x768, e sem volta na sessão. Ver `qt/rolagem.py`.
-        corpo = QWidget(self)
-        self.rolagem = em_rolagem(self, corpo)
-        caixa = QVBoxLayout(corpo)
-        caixa.setContentsMargins(*(espaco.folga(),) * 4)
+        caixa = QVBoxLayout(self)
+        caixa.setContentsMargins(*(espaco.margem_da_aba(),) * 4)
         caixa.setSpacing(espaco.linha())
 
         self.lista = QListWidget(self)
         self.lista.setMaximumHeight(ALTURA_MAXIMA_DA_LISTA)
+        # **`"Lista"` não nomeia** (F9-C2, defeito nº 1): era o nome genérico da classe, e o portão
+        # do `teclado.py` passou a reprovar eco do papel -- "Lista, lista" gasta duas palavras
+        # para não dizer nada. O que ela guarda é o que a página tem.
+        self.lista.setAccessibleName(strings.DIAGRAMAS_DA_PAGINA)
         self.lista.currentRowChanged.connect(self._trocou_de_item)
+        # Nasce escondida: a aba abre **sem** diagrama nenhum, e o crítico do ciclo 1 mediu o que
+        # uma lista vazia de 1059x140 com anel de foco faz no topo da tela principal -- ela é o
+        # elemento mais destacado da janela dizendo que não há nada. Ver `_repovoar_lista`.
+        self.lista.setVisible(False)
+        # **Piso de um pixel, e não o do Qt** (OCR_UI passo 13): o `QAbstractScrollArea` pede 62 px
+        # de mínimo, e o painel com um diagrama lido somava 697 px de piso -- a janela deixava de
+        # caber em 768 na primeira página lida. A lista tem teto de 140 e esticamento zero: com
+        # espaço ela fica com o que pede; sem espaço, encolhe em vez de empurrar a janela.
+        self.lista.setMinimumHeight(1)
         caixa.addWidget(self.lista, 0)
+
+        # **O recorte à esquerda do tabuleiro, num divisor** (OCR_UI passo 13, tarefa 1): o diagrama
+        # impresso e o diagrama lido lado a lado, na mesma altura, e a pessoa decide quanto de cada.
+        self.divisor = QSplitter(Qt.Orientation.Horizontal, self)
+        self.divisor.setChildrenCollapsible(False)
+        self.recorte = PainelDeRecorte(self.divisor)
+        self.divisor.addWidget(self.recorte)
 
         # O mesmo texto do `LabelFrame` de `ui/result_panel.py`, literal nos dois lados: ele diz
         # o que fazer com o widget que está dentro dele, e é a única frase do painel que não
         # nomeia um comando -- que é o critério de `ui/strings.py`.
-        grupo = QGroupBox("Reconhecido (clique e arraste para corrigir)", self)
-        dentro = QVBoxLayout(grupo)
+        grupo = QGroupBox("Reconhecido (clique e arraste para corrigir)", self.divisor)
+        dentro = QHBoxLayout(grupo)
         self.tabuleiro = TabuleiroEditavel(grupo)
         self.tabuleiro.posicao_mudou.connect(self._tabuleiro_mudou)
         self.tabuleiro.selecao_mudou.connect(self._casa_selecionada)
         self.tabuleiro.recado.connect(self.estado)
         dentro.addWidget(self.tabuleiro, 1)
-        caixa.addWidget(grupo, 3)
+        # **A paleta é do tabuleiro, e por isso ela mora dentro do mesmo grupo** (S-65). O rótulo
+        # do grupo diz "clique e arraste para corrigir", e escolher a peça é a outra metade
+        # daquela frase: sem ela, `definir_pincel` não tinha chamador no produto e a única
+        # correção possível era arrastar.
+        #
+        # **Ao lado e alinhada por cima**: a coluna de peças é mais baixa que o tabuleiro, e sem o
+        # `AlignTop` o layout a centraria na altura dele -- catorze botões flutuando no meio da
+        # borda direita. O preço da vizinhança é largura: o grupo passa a pedir o mínimo do
+        # tabuleiro (240 px) **mais** a coluna, e é o que o divisor da janela vai respeitar.
+        self.paleta = PaletaDePecas(grupo)
+        self.paleta.pincel.connect(self.tabuleiro.definir_pincel)
+        dentro.addWidget(self.paleta, 0, Qt.AlignmentFlag.AlignTop)
+        # **A largura que sobra sai daqui e não fica entre os dois** (F9-C3, item 13). O canvas do
+        # tabuleiro ganhou teto de largura igual à altura
+        # (`ui/desenho_do_tabuleiro.largura_util_do_canvas`); sem este esticamento no fim o
+        # `QHBoxLayout` devolveria a folga ao próprio canvas, que é como os
+        # `180×580 = 104,4 kpx a 0,17 % de tinta` nasceram entre o tabuleiro e a paleta.
+        dentro.addStretch(0)
+        # **A folga vertical é do tabuleiro, e era dividida 3 para 1 com um rótulo de texto**
+        # (F9-C6, item 6). O `detalhes` lá embaixo é uma `QLabel` de três linhas com
+        # `AlignTop`: com `stretch=1` contra os 3 daqui, ele ficava com **um quarto** de toda a
+        # altura que sobra do painel -- e o crítico do ciclo 5 mediu o resultado com o algoritmo
+        # do maior retângulo exato: `960×212 = 203,5 kpx a 0 % de tinta` no pé da aba, a 1920.
+        #
+        # O tabuleiro é quadrado e limitado pela **altura** (`largura_util_do_canvas`), então
+        # aquela faixa não era só vazio: era o motivo de o tabuleiro parar em 552 px num painel
+        # de 991 px de altura, e de sobrarem `295×552 = 162,8 kpx` à direita da paleta. Dar a
+        # folga ao canvas fecha os dois vazios de uma vez -- o de baixo e o da direita --,
+        # porque a largura do canvas segue a altura dele.
+        #
+        # `12` e não `stretch=0` no `detalhes`: uma `QLabel` com `wordWrap` mente sobre a
+        # própria altura em `QVBoxLayout` (o `heightForWidth` clássico do Qt), e stretch zero a
+        # deixaria à mercê desse `sizeHint`. Com 12 contra 1 ela continua recebendo folga -- um
+        # treze avos em vez de um quarto -- e o texto longo continua cabendo.
+        self.divisor.addWidget(grupo)
+        # **Ao lado, e sempre ao lado.** Uma versão empilhava os dois quadrados quando a coluna era
+        # estreita; a altura mínima do empilhado (recorte + tabuleiro + paleta) forçava a janela
+        # acima de 768 px, e a janela alta fazia a coluna parecer estreita -- um laço. Lado a lado o
+        # piso de altura não muda, e a 1366 × 768 (a tela da F9) o tabuleiro continua com os ~300 px
+        # que a altura já lhe dava; quem quiser mais recorte arrasta a alça. **1:1 sobre pisos
+        # iguais** é o que faz os dois quadrados saírem do mesmo tamanho -- ver
+        # `painel_de_recorte.LADO_PREFERIDO`.
+        self.divisor.setStretchFactor(0, 1)
+        self.divisor.setStretchFactor(1, 1)
+        caixa.addWidget(self.divisor, ESTICAMENTO_DO_CANVAS)
+        self._ligar_o_recorte()
 
         self.legalidade = QLabel("", self)
         self.legalidade.setWordWrap(True)
@@ -239,32 +381,112 @@ class PainelDeResultado(QWidget):
         tema.pintar(self.material, "color", tokens.TEXTO_SECUNDARIO)
         caixa.addWidget(self.material)
 
-        # **Uma fila, agrupada por tarefa** (S-528, terceira barra). Eram **nove botões de texto
-        # em quatro fileiras** -- navegação, FEN, lado a jogar e uma `BarraFluida` com cinco --,
-        # nenhum com ícone, na aba que abre primeiro. Ao lado, na mesma tela, o painel do PDF
-        # desenha catorze traços de 16 px numa fila de 32. Quem decide grupo, principal, ícone,
-        # dica e quem cabe é `ui/barra_do_resultado.py`; o widget é o mesmo `BarraEmFila`.
-        #
-        # As duas linhas que sobraram **não são botões**: o campo de FEN é o conteúdo, e o par de
-        # rádios é uma pergunta de duas respostas exclusivas. Ver o cabeçalho daquele módulo.
-        caixa.addWidget(self._barra_de_acoes())
+        caixa.addLayout(self._linha_de_navegacao())
         caixa.addLayout(self._linha_de_fen())
         caixa.addLayout(self._linha_de_lado())
+        caixa.addWidget(self._barra_de_acoes())
 
         self.detalhes = QLabel("", self)
         self.detalhes.setWordWrap(True)
         self.detalhes.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        # Texto selecionável recebe foco de clique, e foco sem nome é anúncio mudo (F9).
+        self.detalhes.setAccessibleName(strings.DETALHES_DO_DIAGRAMA)
         self.detalhes.setAlignment(Qt.AlignmentFlag.AlignTop)
+        # O mesmo piso de um pixel da lista, e pela mesma medição: seis linhas de detalhes pediam
+        # 96 px de **mínimo**. Com folga o parágrafo aparece inteiro (ele tem esticamento); sem
+        # folga, é ele que cede, e não a janela.
+        self.detalhes.setMinimumHeight(1)
         caixa.addWidget(self.detalhes, 1)
+        caixa.addWidget(self._barra_de_estados())
 
         # Uma dica por painel, e não por botão: quem a mostra é o pai, porque um controle
         # desabilitado não recebe evento de ponteiro no Qt (S-32).
         self._dicas = DicaEmDesabilitado(self)
 
+    def _barra_de_estados(self) -> BarraFluida:
+        """Os três estados com ação (OCR_UI C2, C1/X5; análise §7.5).
+
+        O serviço já calculava `changed_squares`, `orientation_ambiguous` e `side_conflicting`, e a
+        tela mostrava só o terceiro -- como rótulo, sem nada a fazer. Cada estado vira um botão que
+        **nasce escondido** e aparece com o diagrama que o tem: mostrar as casas reparadas, ver a
+        posição girada de 180°, trocar o lado que a legenda contradiz. Escondido e não cinza: um
+        estado que não se aplica não é um botão desabilitado, é um botão que não existe.
+        """
+        barra = BarraFluida(self)
+        self.btn_reparadas = QPushButton(strings.REPARADAS_MOSTRAR, barra)
+        self.btn_reparadas.clicked.connect(self._alternar_reparadas)
+        self.btn_orientacao = QPushButton(strings.ORIENTACAO_COMPARAR, barra)
+        self.btn_orientacao.clicked.connect(self._girar_180)
+        self.btn_lado = QPushButton(strings.trocar_o_lado_para("b"), barra)
+        self.btn_lado.clicked.connect(self._trocar_o_lado_do_conflito)
+        self.btn_segunda = QPushButton(strings.SEGUNDA_OPINIAO, barra)
+        self.btn_segunda.clicked.connect(self.segunda_opiniao)
+        for botao in (self.btn_reparadas, self.btn_orientacao, self.btn_lado, self.btn_segunda):
+            tema.aplicar_papel(botao, estilos.NEUTRO)
+            botao.setVisible(False)
+            barra.adicionar(botao)
+        return barra
+
+    def _ligar_o_recorte(self) -> None:
+        """A sincronia entre o recorte e o tabuleiro, nos dois sentidos (passo 13, tarefa 2).
+
+        Ponteiro e seleção se espelham; o clique no recorte chega ao tabuleiro por `pressionar`,
+        que é o gesto inteiro -- pinta com pincel, seleciona sem. **É este último fio que
+        `ligar_recorte(False)` corta**, e é como o portão `percurso --sabotar sem_sincronia`
+        prova que sem ele a correção custa um clique a mais.
+        """
+        self._recorte_ligado = True
+        self.tabuleiro.casa_apontada.connect(self.recorte.apontar)
+        self.recorte.casa_apontada.connect(self.tabuleiro.apontar)
+        self.tabuleiro.selecao_mudou.connect(self.recorte.selecionar)
+        self.recorte.casa_clicada.connect(self._clicou_no_recorte)
+
+    def ligar_recorte(self, ligado: bool) -> None:
+        """Liga ou corta o clique do recorte. Existe para o portão medir a sabotagem; o produto
+        nasce ligado e nunca chama isto."""
+        self._recorte_ligado = bool(ligado)
+
+    def _clicou_no_recorte(self, casa: int) -> None:
+        if self._recorte_ligado and self.modelo.items:
+            self.tabuleiro.pressionar(casa)
+
+    def _linha_de_navegacao(self) -> QHBoxLayout:
+        linha = QHBoxLayout()
+        self.anterior = QPushButton(strings.ANTERIOR, self)
+        # Os dois glifos ganham nome por extenso (F9-C2): ver `comandos.Comando.no_leitor`.
+        self.anterior.setAccessibleName("Diagrama anterior")
+        # O método que `ui/barra_do_resultado.METODOS_DO_PAINEL` nomeia (S-528), e não um `lambda`.
+        self.anterior.clicked.connect(self.diagrama_anterior)
+        tema.aplicar_papel(self.anterior, estilos.NEUTRO)
+        # O desenho no lugar do glifo (F9-C7, §4.7): ver `qt/icones.vestir`.
+        qt_icones.vestir(self.anterior, "diagrama_anterior", estilos.NEUTRO)
+        linha.addWidget(self.anterior)
+        self.proximo = QPushButton(strings.PROXIMO, self)
+        self.proximo.setAccessibleName("Próximo diagrama")
+        self.proximo.clicked.connect(self.proximo_diagrama)
+        tema.aplicar_papel(self.proximo, estilos.NEUTRO)
+        qt_icones.vestir(self.proximo, "proximo_diagrama", estilos.NEUTRO)
+        linha.addWidget(self.proximo)
+        linha.addWidget(QLabel("Selecionado", self))
+        self.seletor = QSpinBox(self)
+        self.seletor.setMinimum(1)
+        self.seletor.setMaximum(1)
+        # O total é o **sufixo** do campo (S-528, terceira barra): "Selecionado" sozinho não dizia
+        # de quantos, e para saber quantos diagramas a página tinha era preciso contar a lista.
+        self.seletor.setSuffix(barra_do_resultado.sufixo_de_diagramas(0))
+        self.seletor.setAccessibleName("Diagrama selecionado")
+        self.seletor.valueChanged.connect(self._pediu_diagrama)
+        linha.addWidget(self.seletor)
+        linha.addStretch(1)
+        return linha
+
     def _linha_de_fen(self) -> QHBoxLayout:
         linha = QHBoxLayout()
         linha.addWidget(QLabel("FEN", self))
-        self.campo_fen = QLineEdit(self)
+        # **O mesmo campo que avisa quando a FEN nao cabe** da aba Estudo (F9-C7, §4.5). Aqui
+        # ele tem 592 px a 1920 e menos abaixo disso, e a FEN de meio-jogo pede 504.
+        self.campo_fen = CampoQueAvisaQueContinua("", self)
+        self.campo_fen.setAccessibleName("FEN do diagrama")
         self.campo_fen.setFont(tema.fonte_atual(tipografia.DADO))
         self.campo_fen.setPlaceholderText("a FEN do diagrama selecionado")
         # **A tecla é declarada no próprio campo**, e é o mecanismo da S-117: quem declara a
@@ -276,11 +498,16 @@ class PainelDeResultado(QWidget):
             atalho = QKeySequence(sequencia_qt(aplicar.sequencia))
             self.campo_fen.addAction(self._acao_local("aplicar_fen", atalho, self.aplicar_fen))
         linha.addWidget(self.campo_fen, 1)
-        # **Os dois botões desta linha subiram para a fila** (S-528, terceira barra), no grupo
-        # `FEN`, e o campo ficou sozinho na linha dele -- que é o que ele sempre foi: uma FEN de
-        # setenta caracteres num campo espremido entre dois botões era o motivo de a linha inteira
-        # existir. "Copiar" continua **longe** das que gravam ou apagam: ele é o segundo botão do
-        # grupo `FEN`, e as cinco que mudam alguma coisa estão em `CORRECAO` e `GRAVAR`.
+        self.btn_aplicar = QPushButton(comandos.rotulo_de_botao("aplicar_fen"), self)
+        self.btn_aplicar.clicked.connect(self.aplicar_fen)
+        tema.aplicar_papel(self.btn_aplicar, comandos.papel("aplicar_fen"))
+        linha.addWidget(self.btn_aplicar)
+        # Copiar fica ao lado da FEN e **fora** da barra de ações: ele não muda nada, e uma ação
+        # inócua no meio de cinco que gravam ou apagam é a que se clica por engano.
+        self.copiar = QPushButton("Copiar FEN", self)
+        self.copiar.clicked.connect(self.copiar_fen_lida)
+        tema.aplicar_papel(self.copiar, estilos.NEUTRO)
+        linha.addWidget(self.copiar)
         return linha
 
     def _acao_local(self, acao: str, tecla: QKeySequence, alvo: Callable[[], object]) -> QAction:
@@ -295,7 +522,9 @@ class PainelDeResultado(QWidget):
         linha = QHBoxLayout()
         linha.addWidget(QLabel(strings.LADO_A_JOGAR, self))
         self._lados = QButtonGroup(self)
-        for valor, rotulo in (("w", "Brancas"), ("b", "Pretas")):
+        # Do catálogo e não cravado, pela razão do §5.4 do ciclo 15: o outro par destes mesmos
+        # dois rádios morava em `qt/painel_da_galeria.py` em minúscula. Ver `ui/strings.SIDE_LABELS`.
+        for valor, rotulo in strings.SIDE_LABELS.items():
             botao = QRadioButton(rotulo, self)
             botao.setProperty("lado", valor)
             self._lados.addButton(botao)
@@ -304,77 +533,87 @@ class PainelDeResultado(QWidget):
         linha.addStretch(1)
         return linha
 
-    def _barra_de_acoes(self) -> BarraEmFila:
-        """As nove ações numa fila só, com o seletor de diagrama encaixado (S-528, terceira barra).
+    def _barra_de_acoes(self) -> BarraFluida:
+        """As ações, numa `BarraFluida` -- que quebra em vez de cortar (S-151).
 
-        **O que havia**, medido em 2026-09-05 a 1024x768: quatro fileiras de botões de texto sem
-        ícone nenhum, ao lado de um painel do PDF que desenha catorze traços de 16 px numa fila de
-        32. A `BarraFluida` da S-151 resolvia o defeito de *esconder botão sem avisar* -- e o
-        resolvia empilhando fileiras, que é o que a barra em fila faz sem gastar altura.
-
-        Os nomes pelos quais o resto do painel, a janela e os testes chamam estes controles
-        apontam agora para as `QAction`s da fila: `setEnabled`, `isEnabled`, `setChecked`,
-        `isChecked` e `setToolTip` são os mesmos, e é isso que deixa `qt/janela.py` inalterado --
-        ele faz `painel.heatmap.setChecked(...)` e continua funcionando.
+        Seis botões numa coluna de 360 px não cabem numa linha, e o `QHBoxLayout` responderia
+        com uma largura mínima maior que o painel: o divisor da janela deixaria de poder ser
+        arrastado. A barra da S-151 existe exatamente para isso.
         """
-        self.barra = BarraEmFila(
-            self,
-            tabela=barra_do_resultado,
-            registros=barra_do_resultado.ACOES,
-            executar=self.executar,
-        )
-        self.anterior = self.barra.acoes["diagrama_anterior"]
-        self.proximo = self.barra.acoes["proximo_diagrama"]
-        self.btn_aplicar = self.barra.acoes["aplicar_fen"]
-        self.copiar = self.barra.acoes[barra_do_resultado.COPIAR_FEN_LIDA]
-        self.btn_desfazer = self.barra.acoes["desfazer"]
-        self.btn_refazer = self.barra.acoes["refazer"]
-        self.btn_limpar = self.barra.acoes["limpar_tabuleiro"]
-        self.btn_salvar = self.barra.acoes["salvar"]
-        self.btn_salvar_todos = self.barra.acoes["salvar_todos"]
-        # **O mapa de incerteza volta a ser desligável (S-21/S-506)**, e desde a S-528 ele é um
-        # item marcável do "Mais" e não um `QCheckBox` de ~180 px na fila: liga-se uma vez e
-        # esquece-se, que é a régua de "marcar diagramas" no painel do livro.
-        #
-        # Nasce marcado **sem avisar**: o `toggled` já está ligado ao método, e o tabuleiro tem o
-        # mesmo padrão e ainda não precisa ouvir nada.
-        self.heatmap = self.barra.acoes[barra_do_resultado.MAPA_DE_INCERTEZA]
-        self.heatmap.blockSignals(True)
-        self.heatmap.setChecked(True)
-        self.heatmap.blockSignals(False)
-
-        # **O seletor fica na mesma fila**, pendurado depois de "Diagrama anterior": a seta, o
-        # número e a outra seta são um controle só. O total é o **sufixo** do campo e não um
-        # `QLabel` ao lado -- eram dois widgets para um número, e o de fora dizia "Selecionado"
-        # sem dizer de quantos.
-        self.seletor = QSpinBox(self.barra)
-        self.seletor.setMinimum(1)
-        self.seletor.setMaximum(1)
-        self.seletor.setSuffix(barra_do_resultado.sufixo_de_diagramas(0))
-        self.seletor.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
-        self.seletor.valueChanged.connect(self._pediu_diagrama)
-        self.barra.encaixar(self.seletor, depois_de="diagrama_anterior")
-
+        barra = BarraFluida(self)
+        self.btn_salvar = self._botao(barra, "salvar", self.salvar_atual, estilos.NEUTRO)
+        self.btn_salvar_todos = self._botao(barra, "salvar_todos", self.salvar_todos, estilos.NEUTRO)
+        self.btn_desfazer = self._botao(barra, "desfazer", self.desfazer, estilos.NEUTRO)
+        self.btn_refazer = self._botao(barra, "refazer", self.refazer, estilos.NEUTRO)
+        self.btn_limpar = self._botao(barra, "limpar_tabuleiro", self.limpar_tabuleiro, estilos.NEUTRO)
         # **Uma ênfase por barra, cobrada aqui** (S-446). `estilos.conferir_barra` é pura e
         # recusa a segunda: duas ênfases numa barra é o mesmo que nenhuma, e o teste não tem como
         # saber qual das duas era para ser a ação.
+        # **E zero ênfases aqui, desde o F9-C2** (item 10 do §7): a tela inteira tem direito a
+        # uma, e ela é `ler_melhor`, no painel do PDF, que está visível em todas as seis abas.
+        # `Salvar a posição` continua sendo a ação desta barra -- ela tem `Ctrl+S`, tem o ícone e
+        # é a primeira da fila --, e o que ela deixou de ter é a única cor que a tela reserva para
+        # dizer "é aqui". Zero primário passa em `conferir_barra` de propósito: ver o docstring de
+        # lá, e o motivo é exatamente este.
         estilos.conferir_barra(
-            [registro.papel for registro in barra_do_resultado.principais()],
+            [estilos.NEUTRO, estilos.NEUTRO, estilos.NEUTRO, estilos.NEUTRO, estilos.NEUTRO],
             onde="a barra do painel de resultado",
         )
-        # A dica de um botão **desabilitado** não aparece sozinha (S-32), e os botões agora moram
-        # num filho: o Qt entrega o evento ao ancestral habilitado mais próximo, que é a fila e
-        # não o painel. Um filtro por widget que tenha filhos que nascem cinzas.
-        self._dicas_da_barra = DicaEmDesabilitado(self.barra)
-        return self.barra
+        # **O mapa de incerteza volta a ser desligavel (S-21/S-506).** Ele existia no painel do Tk
+        # e o porte nao o trouxe: a tinta ficava ligada para sempre, e quem confere uma pagina ja
+        # revista trabalhava com todas as casas duvidosas pintadas por baixo das pecas. Nao entra
+        # em `conferir_barra` porque a regra dela e sobre enfase de **botao**, e uma caixa de
+        # marcacao nao tem enfase.
+        #
+        # **A caixa virou «Esconder incerteza»** (OCR_UI passo 13, tarefa 3): a tinta -- agora
+        # por margem -- é o padrão, e a caixa é o gesto de quem já conferiu. Nasce desmarcada;
+        # marcada, o tabuleiro mostra as peças limpas. O estado guarda `show_heatmap`, que é o
+        # inverso dela (`mostrar_incerteza`).
+        self.heatmap = QCheckBox(strings.ESCONDER_INCERTEZA, barra)
+        self.heatmap.setChecked(False)
+        self.heatmap.toggled.connect(self.alternou_mapa_de_incerteza)
+        dica_em(self.heatmap, "Esconde a tinta das casas em que o modelo hesitou: a peça lida aparece limpa.")
+        barra.adicionar(self.heatmap)
+        return barra
+
+    @property
+    def mostrar_incerteza(self) -> bool:
+        """Se a tinta de hesitação está à vista. É o inverso da caixa, e é o que o estado guarda."""
+        return not self.heatmap.isChecked()
+
+    @mostrar_incerteza.setter
+    def mostrar_incerteza(self, mostrar: bool) -> None:
+        self.heatmap.setChecked(not bool(mostrar))
+
+    def _botao(self, barra: BarraFluida, acao: str, alvo: Callable[[], object], papel: str) -> QPushButton:
+        """Um botão de comando: rótulo, papel e dica saem do catálogo e da tabela de teclas.
+
+        O rótulo vem de `ui/comandos.py` e a tecla de `ui/atalhos.py`, pela razão da S-324 e da
+        S-165 -- este arquivo não escreve texto de interface nem sequência de tecla.
+        """
+        botao = QPushButton(comandos.rotulo_de_botao(acao), barra)
+        # **O nome acessível é o rótulo por extenso, e não o texto do botão** (F9-C2).
+        # O crítico do ciclo 1 mediu 28 controles que chegavam ao leitor de tela como "-",
+        # "+", "|◀" ou ".md" -- o `rotulo_curto` passando pela cascata de
+        # `ui/nomes_acessiveis.py` no passo `text()`. Ver `comandos.Comando.no_leitor`.
+        botao.setAccessibleName(comandos.nome_acessivel(acao))
+        botao.clicked.connect(lambda _marcado=False: alvo())
+        tema.aplicar_papel(botao, papel)
+        self._explicar(botao, acao, comandos.rotulo(acao))
+        barra.adicionar(botao)
+        return botao
+
+    def _explicar(self, botao: QPushButton, acao: str, motivo: str) -> None:
+        """A dica do botão: o que ele faz (ou por que está cinza) e a tecla dele."""
+        tecla = atalhos.acelerador(acao)
+        dica_em(botao, f"{motivo}\nTecla: {tecla}" if tecla else motivo)
 
     def executar(self, acao: str) -> None:
         """Roda o método que `barra_do_resultado.METODOS_DO_PAINEL` liga àquela ação.
 
-        É o único caminho de volta da fila ao painel, e é a mesma forma de `PainelDoPdf.executar`
-        (S-528) e de `PainelDeEstudo.executar` (S-280): o par ação-método é declarado **uma** vez,
-        na tabela, e não num `lambda` escrito no meio da montagem. Levanta para ação que a tabela
-        não tem.
+        É a mesma forma de `PainelDoPdf.executar` (S-528) e de `PainelDeEstudo.executar` (S-280):
+        o par ação-método é declarado **uma** vez, na tabela, e não num `lambda` escrito no meio da
+        montagem. Levanta para ação que a tabela não tem.
         """
         getattr(self, barra_do_resultado.METODOS_DO_PAINEL[acao])()
 
@@ -392,18 +631,10 @@ class PainelDeResultado(QWidget):
         """O interruptor da tinta de dúvida mudou.
 
         O método **lê** o estado e não o inverte -- ver `ui/barra.Acao.alterna_no_metodo`: quem
-        alterna é o próprio item, como no `QCheckBox` que ele substitui.
+        alterna é o próprio item. A caixa é «Esconder incerteza» (OCR_UI passo 13): marcada, a
+        tinta some, e por isso quem decide o que o tabuleiro desenha é `mostrar_incerteza`.
         """
-        self.tabuleiro.definir_heatmap(self.heatmap.isChecked())
-
-    def _explicar(self, acao_da_fila: QAction, acao: str, motivo: str) -> None:
-        """A dica: o que o botão faz (ou **por que está cinza**) e a tecla dele -- a regra da S-165.
-
-        Na `QAction` e não no `QToolButton`, e a diferença importa: a ação leva a dica junto quando
-        vai para o menu "Mais", e o botão a recebe dela quando volta para a fila.
-        """
-        tecla = atalhos.acelerador(acao)
-        acao_da_fila.setToolTip(f"{motivo}\nTecla: {tecla}" if tecla else motivo)
+        self.tabuleiro.definir_heatmap(self.mostrar_incerteza)
 
     # ------------------------------------------------------------------------------ carga
 
@@ -673,6 +904,7 @@ class PainelDeResultado(QWidget):
             QMessageBox.critical(self, "Dataset", f"Amostra não encontrada no CSV: {nome}")
             return False
         self.estado.emit(f"Rótulo de {nome} regravado.")
+        self.modelo.mark_saved(alvo.index)  # regravado é gravado (A7)
         # **Não emite `salvou`**, e é resposta: regravar a linha de uma amostra que já existia não
         # faz diagrama nenhum ficar verde na página -- ele já estava. O que mudou foi o rótulo, e
         # disso quem precisa saber é a aba Dataset.
@@ -687,12 +919,21 @@ class PainelDeResultado(QWidget):
         self._atualizar_tudo()
 
     def _repovoar_lista(self) -> None:
+        """Repõe a lista, e **some com ela quando não há item** (F9-C2, §7 item 14).
+
+        O crítico do ciclo 1: *"a `QListWidget` de 1059×140 não pode ficar vazia e com anel de
+        foco"* -- 148 kpx do topo da tela principal ocupados pelo elemento mais destacado da
+        janela, que era uma lista sem nada dentro. O §7 dá duas saídas e esta é a segunda: a lista
+        **colapsa a zero** quando não há diagrama, e o que a pessoa vê no lugar dela é o tabuleiro,
+        que é onde ela vai trabalhar. Ela volta inteira no primeiro diagrama reconhecido.
+        """
         self._montando = True
         try:
             self.lista.clear()
             for posicao, item in enumerate(self.modelo.items):
                 self.lista.addItem(self._texto_do_item(item, posicao))
             self.seletor.setMaximum(max(1, len(self.modelo.items)))
+            self.lista.setVisible(bool(self.modelo.items))
         finally:
             self._montando = False
 
@@ -720,9 +961,14 @@ class PainelDeResultado(QWidget):
         self.modelo.select(linha)
         # **A pilha é zerada na troca** (S-229): ela é por diagrama, e `Ctrl+Z` depois de andar
         # tem de devolver a posição anterior *deste* diagrama, não a correção do vizinho.
-        self.historico.zerar(self.modelo.fen_at(linha))
+        self.historico.zerar(self._estado_de(linha))
+        self._mostrando_reparadas = False
         self.selecionou.emit(linha)
         self._atualizar_tudo()
+
+    def _estado_de(self, indice: int | None = None) -> tuple[str, str]:
+        """O que entra na pilha: a colocação **e** o lado do diagrama (A7)."""
+        return (self.modelo.fen_at(indice), self.modelo.side_at(indice))
 
     # ---------------------------------------------------------------------------- edição
 
@@ -732,7 +978,7 @@ class PainelDeResultado(QWidget):
         if not self.modelo.items:
             return
         self.modelo.apply_placement(placement, linha)
-        self.historico.registrar(placement)
+        self.historico.registrar(self._estado_de(linha))
         # O contador que decide o `Ctrl+Z` quando o foco não está em desfazível nenhum (S-243).
         self._edicao += 1
         self._atualizar_tudo()
@@ -757,7 +1003,7 @@ class PainelDeResultado(QWidget):
             return
         placement = board_edit.placement_of(texto)
         self.modelo.apply_placement(placement, self.modelo.clamped_index())
-        self.historico.registrar(placement)
+        self.historico.registrar(self._estado_de())
         self._atualizar_tudo()
 
     def _trocou_o_lado(self) -> None:
@@ -766,6 +1012,10 @@ class PainelDeResultado(QWidget):
         botao = self._lados.checkedButton()
         if botao is None or not self.modelo.set_side(str(botao.property("lado"))):
             return
+        # **A troca entra na pilha** (A7): era a única das sete origens de mudança fora do
+        # `Ctrl+Z`, e um clique no rádio errado se desfazia pela peça de trás, não pelo lado.
+        self.historico.registrar(self._estado_de())
+        self._edicao += 1
         # A legalidade depende de quem joga: trocar a vez pode resolver o "xeque invertido" sem
         # mexer em nenhuma peça (S-17).
         self._atualizar_tudo()
@@ -788,11 +1038,17 @@ class PainelDeResultado(QWidget):
         """`Ctrl+Y`: repõe o que o desfazer tirou."""
         self._voltar(self.historico.refazer(), MOTIVO_SEM_REFAZER)
 
-    def _voltar(self, placement: str | None, motivo: str) -> None:
-        if placement is None:
+    def _voltar(self, estado: tuple[str, str] | None, motivo: str) -> None:
+        """Repõe um estado da pilha: só a colocação, só o lado, ou os dois -- o que mudou."""
+        if estado is None:
             self.estado.emit(motivo)
             return
-        self.modelo.apply_placement(placement, self.modelo.clamped_index())
+        placement, lado = estado
+        indice = self.modelo.clamped_index()
+        if placement != self.modelo.fen_at(indice):
+            self.modelo.apply_placement(placement, indice)
+        if lado != self.modelo.side_at(indice):
+            self.modelo.set_side(lado, indice)
         self._atualizar_tudo()
 
     def limpar_tabuleiro(self) -> None:
@@ -800,9 +1056,182 @@ class PainelDeResultado(QWidget):
         if not self.modelo.items:
             return
         self.modelo.apply_placement(board_edit.EMPTY_PLACEMENT, self.modelo.clamped_index())
-        self.historico.registrar(board_edit.EMPTY_PLACEMENT)
+        self.historico.registrar(self._estado_de())
         self._atualizar_tudo()
         self.estado.emit("Tabuleiro esvaziado. Ctrl+Z devolve a posição.")
+
+    # ------------------------------------------------------- os estados com ação (C1/X5)
+
+    def _alternar_reparadas(self) -> None:
+        """Pinta (ou despinta) as casas que o decodificador trocou, e seleciona a primeira."""
+        if not self.modelo.items:
+            return
+        self._mostrando_reparadas = not self._mostrando_reparadas
+        item = self.modelo.items[self.modelo.clamped_index()]
+        casas = [int(c) for c in item.changed_squares]
+        self._atualizar_tudo()
+        # Depois da repintura: `mostrar` zera a seleção, e a casa selecionada é o que o recorte
+        # ao lado espelha -- é assim que a pessoa acha a primeira reparada no diagrama impresso.
+        if self._mostrando_reparadas and casas:
+            self.tabuleiro.selecionar_casa(casas[0])
+        nomes = ", ".join(square_name(c) for c in casas)
+        self.estado.emit(
+            f"Casas reparadas pelo decodificador: {nomes}."
+            if self._mostrando_reparadas
+            else "Casas reparadas escondidas."
+        )
+
+    def trancar_gravacao(self, trancado: bool) -> None:
+        """Só o gravar desligado durante uma leitura (passo C2): a lista, o tabuleiro e a
+        paleta continuam usáveis. Gravar no meio de uma leitura escreveria a amostra de uma
+        página que está sendo substituída -- é a única condição que a janela conhece."""
+        self._gravacao_trancada = bool(trancado)
+        vazio = not self.modelo.items
+        for botao in (self.btn_salvar, self.btn_salvar_todos):
+            botao.setEnabled(not trancado and not vazio)
+            if trancado and not vazio:
+                self._explicar(botao, "salvar", MOTIVO_LEITURA_EM_CURSO)
+
+    def mostrar_vazio_sem_modelo(self) -> None:
+        """O estado vazio quando o `.pt` falta (passo C2): a lista limpa e a frase dizendo
+        onde apontar o modelo, em vez de uma caixa de aviso que só nomeia o arquivo."""
+        self.modelo.clear()
+        self._atualizar_tudo()
+        self.estado.emit("Sem modelo de casas: aponte o arquivo .pt em Ferramentas ▸ Configurações…")
+
+    # ------------------------------------------------------------------- segunda opinião (C3)
+
+    def leitor_da_segunda_opiniao(self) -> Any:
+        """O segundo leitor que a configuração autoriza (`local_reader`), ou `None`."""
+        try:
+            from chess_diagram_ocr.settings import load_settings
+            from chess_diagram_ocr.tsoj_reader import build_local_provider
+
+            return build_local_provider(load_settings().local_reader)
+        except Exception:  # noqa: BLE001 - sem configuração legível não há segundo leitor
+            logger.exception("A configuração do segundo leitor não pôde ser lida.")
+            return None
+
+    def _segunda_opiniao_configurada(self) -> bool:
+        try:
+            from chess_diagram_ocr.settings import load_settings
+
+            return bool(load_settings().local_reader.is_usable)
+        except Exception:  # noqa: BLE001
+            return False
+
+    def motivo_sem_segunda_opiniao(self) -> str:
+        """Por que o botão está escondido: sem diagrama, ou sem leitor configurado (com o caminho)."""
+        if not self.modelo.items:
+            return MOTIVO_SEM_DIAGRAMA
+        try:
+            from chess_diagram_ocr.settings import load_settings
+
+            return load_settings().local_reader.disabled_reason()
+        except Exception:  # noqa: BLE001
+            return "Segunda opinião indisponível: a configuração não pôde ser lida."
+
+    def segunda_opiniao(self) -> None:
+        """Lê o diagrama selecionado com o segundo leitor, de **outra família** que o de produção
+        (C3, S-66): as casas em que os dois discordam ficam marcadas (`DIVERGENTE`) e o `Tab`
+        as percorre; a posição passa a ser a do segundo leitor, como edição desfazível, e a
+        amostra gravada leva `corrected_by=segunda-opiniao`. Um leitor que é cópia do primeiro
+        cobriria zero casas erradas -- é a sabotagem de `benchmarks/second_opinion_gate.py`."""
+        if not self.modelo.items:
+            return
+        leitor = self.leitor_da_segunda_opiniao()
+        if leitor is None:
+            self.estado.emit(self.motivo_sem_segunda_opiniao()
+                             or "Segunda opinião indisponível: o leitor configurado não pôde ser carregado.")
+            return
+        indice = self.modelo.clamped_index()
+        item = self.modelo.items[indice]
+        recorte = getattr(item, "board_rgb", None)
+        if recorte is None:
+            self.estado.emit("Este diagrama não tem recorte para o segundo leitor ler.")
+            return
+        if self._segunda_em_curso is not None:
+            self.estado.emit("A segunda opinião já está sendo lida.")
+            return
+        from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
+
+        # **Sem pai, e viva até acabar** (`manter_viva`, F9-C2): uma `Tarefa` filha do painel é
+        # destruída com ele, e o destrutor de `QThread` aborta o processo se a thread ainda
+        # corre -- fechar a janela nos ~7 s da primeira carga do leitor era esse caso. Os slots
+        # abaixo perguntam se o painel ainda existe antes de o tocar, pelo mesmo motivo.
+        tarefa = manter_viva(Tarefa(lambda: leitor.predict(recorte), nome="segunda opinião"))
+        painel = weakref.ref(self)
+        item_lido = item   # o parecer é **deste** diagrama: se a página mudou, ele não vale mais
+        nome = leitor.name
+
+        def chegou(placement: object) -> None:
+            vivo = painel()
+            if vivo is not None and not sip.isdeleted(vivo):
+                vivo._chegou_a_segunda(indice, item_lido, str(placement), nome)
+
+        def falhou(mensagem: str, _excecao: object) -> None:
+            vivo = painel()
+            if vivo is not None and not sip.isdeleted(vivo):
+                vivo.estado.emit(f"A segunda opinião falhou: {mensagem}")
+
+        def terminou() -> None:
+            vivo = painel()
+            if vivo is not None and not sip.isdeleted(vivo):
+                vivo._terminou_a_segunda()
+
+        tarefa.pronto.connect(chegou)
+        tarefa.falhou.connect(falhou)
+        tarefa.finished.connect(terminou)
+        self._segunda_em_curso = tarefa
+        self.btn_segunda.setEnabled(False)
+        self.estado.emit(f"Lendo o diagrama com {leitor.name}…")
+        tarefa.start()
+
+    def _terminou_a_segunda(self) -> None:
+        self._segunda_em_curso = None
+        self.btn_segunda.setEnabled(True)
+
+    def _chegou_a_segunda(self, indice: int, item_lido: object, placement: str, nome: str) -> None:
+        # A página (ou a leitura) mudou no meio: o parecer é de um diagrama que não está mais
+        # aqui -- o índice sozinho não chega, porque outra página tem um diagrama nesse índice.
+        if not (0 <= indice < len(self.modelo.items)) or self.modelo.items[indice] is not item_lido:
+            self.estado.emit("A segunda opinião chegou depois de a página mudar e foi descartada.")
+            return
+        try:
+            parecer = self.modelo.mark_second_opinion(indice, placement, reader=nome)
+        except ValueError as exc:
+            self.estado.emit(f"A segunda opinião veio malformada: {exc}")
+            return
+        if parecer is None:
+            return
+        self.historico.registrar(self._estado_de(indice))
+        self._edicao += 1
+        self._atualizar_tudo()
+        self.estado.emit(parecer.describe())
+
+    def _girar_180(self) -> None:
+        """A outra leitura possível: a posição girada de 180°, como edição desfazível."""
+        if not self.modelo.items:
+            return
+        indice = self.modelo.clamped_index()
+        girada = _girar_180(self.modelo.fen_at(indice))
+        self.modelo.apply_placement(girada, indice)
+        self.historico.registrar(self._estado_de(indice))
+        self._edicao += 1
+        self._atualizar_tudo()
+        self.estado.emit("Posição girada de 180°. Ctrl+Z desfaz.")
+
+    def _trocar_o_lado_do_conflito(self) -> None:
+        """O rótulo «texto e posição discordam» ganha ação: trocar a vez, desfazível."""
+        if not self.modelo.items:
+            return
+        indice = self.modelo.clamped_index()
+        outro = "b" if self.modelo.side_at(indice) != "b" else "w"
+        self.modelo.set_side(outro, indice)
+        self.historico.registrar(self._estado_de(indice))
+        self._edicao += 1
+        self._atualizar_tudo()
+        self.estado.emit(f"Diagrama {indice + 1}: lado a jogar definido. Ctrl+Z desfaz.")
 
     # -------------------------------------------------------------------------- gravação
 
@@ -930,7 +1359,9 @@ class PainelDeResultado(QWidget):
                 QMessageBox.critical(self, "Erro ao salvar a amostra", f"Falha ao salvar:\n{exc}")
             return False
 
+        self.modelo.mark_saved(alvo.index)  # deixa de ser «não gravado» (A7)
         self.salvou.emit(alvo.index)
+        self._registrar_decisao(alvo)
         # **Fechar o item da fila vem depois da gravação, e só quando ela aconteceu** (S-22): um
         # item marcado como revisado sobre uma amostra que não entrou no CSV é a fila mentindo
         # sobre o trabalho feito.
@@ -940,6 +1371,37 @@ class PainelDeResultado(QWidget):
         if not silencioso:
             self.estado.emit(f"Amostra gravada: {Path(caminho).name}")
         return True
+
+    def _registrar_decisao(self, alvo: SaveTarget) -> None:
+        """A posição gravada vira decisão do diagrama **no livro** (OCR_UI C2, A3; análise §6.2).
+
+        Só com procedência de página: item da fila, amostra do dataset e recorte de área não
+        têm retângulo na página, e sem retângulo não há com que a importação casar a decisão.
+        Depois do `salvou`, e nunca antes: a amostra é o que a gravação promete; a decisão é o
+        que ela passa a fazer a mais, e quem a lê é `qt/decisoes_de_diagrama.py`.
+        """
+        chave = self.modelo.page_key
+        if chave is None or not (0 <= alvo.index < len(self.modelo.items)):
+            return
+        # O DPI é o da leitura desta página (o cache sabe), não o de Configurações… agora:
+        # com o `quad` em pixels do render, um DPI trocado depois daria um retângulo que
+        # nunca casa. `bbox_pdf` (pontos) é a via normal e não depende disto.
+        lidos = self.paginas.params_of(chave[0], int(chave[1]))
+        caminho = decisoes_de_diagrama.gravar_decisao(
+            chave[0],
+            page_index=int(chave[1]),
+            item=self.modelo.items[alvo.index],
+            placement=alvo.fen,
+            side=alvo.side,
+            dpi=(lidos.dpi if lidos is not None else self._parametros().dpi),
+        )
+        if caminho is None:
+            # Dito, não engolido: a amostra entrou no dataset, mas o EPUB deste livro não vai
+            # trazer esta correção (sem retângulo na página, sem a suíte, ou a gravação falhou).
+            self.estado.emit(
+                "Amostra gravada, mas a correção não foi registrada para a exportação do livro "
+                "(ver o log)."
+            )
 
     def _confirmar_ilegal(self, alvo: SaveTarget) -> bool | None:
         """`None` quando a posição é legal, senão a resposta da pessoa.
@@ -974,15 +1436,20 @@ class PainelDeResultado(QWidget):
         try:
             if vazio:
                 self.tabuleiro.mostrar(board_edit.EMPTY_PLACEMENT)
+                self.tabuleiro.definir_probabilidades(None)
+                self.recorte.limpar()
                 self.campo_fen.setText("")
                 self.legalidade.setText(MENSAGEM_VAZIA)
                 self.material.setText("")
                 self.detalhes.setText("")
+                self._mostrando_reparadas = False
+                self._pintar_estados(None)
             else:
                 self._pintar_diagrama()
         finally:
             self._montando = False
         self._atualizar_botoes(vazio)
+        self.mudou.emit()
         self.posicao_mudou.emit()
 
     def _pintar_diagrama(self) -> None:
@@ -991,34 +1458,104 @@ class PainelDeResultado(QWidget):
         corrigida = self.modelo.fen_at(indice)
         lado = self.modelo.side_at(indice)
 
-        self.tabuleiro.mostrar(
-            corrigida,
-            incertas=item.uncertain_squares,
-            confiancas=item.square_confidences,
+        # **A tinta é por margem quando há matriz** (passo 13, tarefa 3), e a mesma `Tinta` vai ao
+        # tabuleiro e ao recorte -- decidida uma vez, em `ui/recorte_do_diagrama`.
+        tinta = regra_do_recorte.tinta_do_diagrama(
+            item.probs, casas_incertas=item.uncertain_squares, confiancas=item.square_confidences
         )
-        self.tabuleiro.definir_casas_corrigidas(board_edit.differing_squares(item.placement, corrigida))
+        # Passo C10: impresso do ponto de vista das pretas, o tabuleiro é desenhado virado
+        # para bater com o recorte ao lado -- a posição continua canônica; só a vista gira.
+        # Vale também quando a orientação escolheu a leitura de cabeça para baixo
+        # (`rotation == 180`): o impresso é o mesmo, visto do outro lado, e é como o recorte
+        # já o mapeia (`virado`). Tabuleiro e recorte na mesma vista é o que deixa corrigir
+        # olhando para o livro (pedido do usuário, 2026-09-21).
+        pretas = bool(getattr(item, "black_point_of_view", False)) or int(item.rotation or 0) == 180
+        self.tabuleiro.mostrar(corrigida, incertas=tinta.casas, confiancas=tinta.valores,
+                               limiar=tinta.limiar, virado=pretas)
+        self.tabuleiro.definir_probabilidades(item.probs)
+        # O recorte vira pelo **mesmo** critério: no ponto de vista das pretas a casa canônica
+        # `i` está impressa em `63 - i`, exatamente como na leitura de cabeça para baixo -- com
+        # `virado` só pela rotação, a tinta, o apontar e o clique no recorte caíam na casa
+        # espelhada (achado da revisão antes da crítica, 2026-09-21).
+        self.recorte.mostrar(
+            getattr(item, "board_rgb", None),
+            virado=pretas,
+            tinta=tinta,
+            leituras=item.probs,
+        )
+        corrigidas: set[int] = set(board_edit.differing_squares(item.placement, corrigida))
+        if self._mostrando_reparadas:
+            # As casas reparadas usam o mesmo anel tracejado do «corrigido» (C1/X5): nos dois
+            # casos a casa difere da leitura crua do classificador -- ali pela pessoa, aqui pelo
+            # decodificador -- e é o que a pessoa quer conferir.
+            corrigidas |= {int(c) for c in item.changed_squares}
+        self.tabuleiro.definir_casas_corrigidas(sorted(corrigidas))
+        # Passo C8: o `Tab` no tabuleiro percorre as casas que a pessoa ia conferir, a que mais
+        # merece o olho primeiro: as âmbar (a tinta por margem, da menor margem para a maior);
+        # sem elas, as incertas da leitura; sem elas, as ocupadas da menor confiança para a maior.
+        self.tabuleiro.definir_duvidosas(_casas_a_conferir(item, tinta, corrigida))
+        # C3: as casas em que a segunda opinião discorda, quando ela já leu este diagrama.
+        self.tabuleiro.definir_casas_disputadas(self.modelo.disputed_squares(indice))
         explicacao = explain_position(compose_fen(corrigida, lado != "b"))
         self.tabuleiro.definir_casas_problematicas(explicacao.highlight_squares)
         self.legalidade.setText(explicacao.summary())
         self.material.setText(explicacao.material_line())
         self.campo_fen.setText(compose_fen(corrigida, lado != "b"))
-        # O começo da FEN é o que se confere; `setText` deixaria o cursor no fim e a caixa
-        # estreita rolaria até lá. Mesma razão da sala de estudo (S-552, quinta rodada).
+        # Ver `painel_de_estudo._mostrar_fen_do_comeco`: o `setText` deixa o cursor no
+        # fim e o campo passa a mostrar o fim. A 1280x800 isso come as tres primeiras casas.
+        # O começo da FEN é o que se confere -- mesma razão da sala de estudo (S-552, quinta rodada).
         self.campo_fen.setCursorPosition(0)
         self.detalhes.setText(self._detalhes_do_item(item))
+        self._pintar_estados(item, lado=lado, corrigida=corrigida)
         self.seletor.setValue(indice + 1)
         for botao in self._lados.buttons():
             botao.setChecked(str(botao.property("lado")) == lado)
+
+    def _pintar_estados(self, item: RecognizedDiagram | None, *, lado: str = "w", corrigida: str = "") -> None:
+        """Mostra os botões dos estados que este diagrama tem, e esconde os outros (C1/X5)."""
+        reparadas = [int(c) for c in item.changed_squares] if item is not None else []
+        self.btn_reparadas.setVisible(bool(reparadas))
+        if reparadas:
+            self.btn_reparadas.setText(
+                strings.REPARADAS_ESCONDER if self._mostrando_reparadas else strings.REPARADAS_MOSTRAR
+            )
+            dica_em(self.btn_reparadas, strings.reparadas_em_casas([square_name(c) for c in reparadas]))
+        ambigua = item is not None and bool(item.orientation_ambiguous)
+        self.btn_orientacao.setVisible(ambigua)
+        if ambigua and item is not None:
+            girada = corrigida == _girar_180(item.placement)
+            self.btn_orientacao.setText(strings.ORIENTACAO_VOLTAR if girada else strings.ORIENTACAO_COMPARAR)
+            dica_em(self.btn_orientacao, strings.orientacao_ambigua(item.orientation_reason))
+        conflito = item is not None and bool(item.side_conflicting)
+        self.btn_lado.setVisible(conflito)
+        # C3: o botão existe quando há diagrama com recorte **e** um segundo leitor configurado;
+        # sem leitor ele some (um estado que não se aplica não é botão cinza), e o comando do
+        # catálogo diz o motivo pelo rodapé.
+        com_recorte = item is not None and getattr(item, "board_rgb", None) is not None
+        self.btn_segunda.setVisible(bool(com_recorte and self._segunda_opiniao_configurada()))
+        if item is not None and self.modelo.disputed_squares(self.modelo.clamped_index()):
+            dica_em(self.btn_segunda, "As casas marcadas são as em que o segundo leitor discorda; Tab as percorre.")
+        else:
+            dica_em(self.btn_segunda, strings.SEGUNDA_OPINIAO_DICA)
+        if conflito and item is not None:
+            self.btn_lado.setText(strings.trocar_o_lado_para("b" if lado != "b" else "w"))
+            motivo = item.side_to_move_reason or strings.SIDE_SOURCE_CONFLICT
+            legenda = f"\nLegenda: {strings.resumo_da_legenda(item.caption)}" if item.caption else ""
+            dica_em(self.btn_lado, f"{strings.SIDE_SOURCE_CONFLICT}: {motivo}{legenda}")
 
     def _atualizar_botoes(self, vazio: bool) -> None:
         """Acende, apaga e **diz por quê** -- a regra da S-165, que achou treze botões cinzas."""
         for botao in (self.btn_salvar, self.btn_salvar_todos, self.btn_limpar, self.btn_aplicar, self.copiar):
             botao.setEnabled(not vazio)
+        if getattr(self, "_gravacao_trancada", False):
+            for botao in (self.btn_salvar, self.btn_salvar_todos):   # passo C2: lendo, não se grava
+                botao.setEnabled(False)
         self.campo_fen.setEnabled(not vazio)
         self.anterior.setEnabled(not vazio and self.modelo.clamped_index() > 0)
         self.proximo.setEnabled(not vazio and self.modelo.clamped_index() < len(self.modelo.items) - 1)
         self.seletor.setEnabled(not vazio)
         self.seletor.setSuffix(barra_do_resultado.sufixo_de_diagramas(len(self.modelo.items)))
+        self.paleta.habilitar(not vazio, motivo=MOTIVO_SEM_DIAGRAMA)
 
         for botao, acao, pode, sem in (
             (self.btn_desfazer, "desfazer", self.historico.pode_desfazer, MOTIVO_SEM_DESFAZER),
@@ -1068,10 +1605,17 @@ class PainelDeResultado(QWidget):
             f"Confiança: mínima {item.min_confidence:.3f} · média {item.mean_confidence:.3f}"
             f" · {len(item.uncertain_squares)} casa(s) incerta(s)",
         ]
+        if item.changed_squares:
+            linhas.append(strings.reparadas_em_casas([square_name(int(c)) for c in item.changed_squares]))
+        if item.orientation_ambiguous:
+            linhas.append(strings.orientacao_ambigua(item.orientation_reason))
+        if item.stipulation:
+            linhas.append(strings.estipulacao_conferida(item.stipulation, item.stipulation_closes, item.stipulation_reason))
         if item.detection_source:
             linhas.append(f"Localizado por: {strings.detection_source_label(item.detection_source)}")
         if item.caption:
-            linhas.append(f"Legenda: {item.caption}")
+            # Uma linha, e não o parágrafo inteiro: ver `strings.LIMITE_DA_LEGENDA`.
+            linhas.append(f"Legenda: {strings.resumo_da_legenda(item.caption)}")
         return "\n".join(linhas)
 
     def copiar_fen_lida(self) -> None:

@@ -43,8 +43,9 @@ from .config import (
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
 )
-from .dataset import append_training_sample
+from .cor_por_livro import CalibradorDeCor, TrocaDeCor, apply_colour, calibrador_do_livro
 from .detection import DiagramCandidate, detect_diagrams_in_pdf_page
+from .estipulacao import ReparoPelaEstipulacao, apply_stipulation, motor_padrao
 from .fen_utils import PositionCheck, check_position, square_name
 from .inference import (
     BoardPrediction,
@@ -53,6 +54,7 @@ from .inference import (
     predict_board,
     predict_with_orientation,
 )
+from .lance_seguinte import ReparoPeloLance, apply_next_move
 from .pdf_io import get_pdf_page_count, render_pdf_page
 from .pdf_text import DiagramContext, contexts_for_pdf_page
 from .preprocess import IDENTITY, NormalizerConfig
@@ -65,6 +67,18 @@ REFINE_PAD_RATIO = 0.08
 
 Sem folga, o recorte cortaria a própria borda que o detector precisa enxergar para achar
 os quatro cantos; com folga demais, ele reencontra o diagrama vizinho."""
+
+
+class RecognitionCanceled(RuntimeError):
+    """A leitura parou a pedido de quem chamou (OCR_UI ciclo 2, passo C2).
+
+    `partial` é o que já estava lido quando o pedido chegou: diagramas inteiros, cada um com
+    a própria decisão de orientação e legalidade -- um resultado, não um rascunho. Quem cancela
+    escolhe se os mostra."""
+
+    def __init__(self, partial: list[RecognizedDiagram]) -> None:
+        super().__init__(f"Leitura cancelada com {len(partial)} diagrama(s) lidos.")
+        self.partial = partial
 
 
 @dataclass
@@ -104,6 +118,10 @@ class RecognizedDiagram:
     rotation: int | None = None
     orientation_ambiguous: bool = False
     orientation_reason: str = ""
+    black_point_of_view: bool = False
+    """Impresso do ponto de vista das pretas, dito pelas coordenadas da borda (passo C10):
+    `placement` já é a posição canônica; a tela desenha o tabuleiro virado para bater com
+    o recorte."""
 
     quad: list[list[float]] | None = None
     """Os quatro cantos em pixels da página renderizada. `None` no caminho da S-12, que
@@ -130,9 +148,76 @@ class RecognizedDiagram:
     side_to_move_reason: str = ""
     side_conflicting: bool = False
     edited_by_hand: bool = False
+    saved_placement: str | None = None
+    """A colocação gravada no dataset para este item (Ctrl+S), e o lado com ela: é o que
+    separa «corrigido» de «corrigido e ainda não gravado» (OCR_UI C2, A7). `None` = nunca gravado."""
+    saved_side: str | None = None
 
     prediction: BoardPrediction | None = None
     """A leitura completa, quando houve OCR. É de onde sai o tooltip das 3 classes."""
+
+    next_move: str = ""
+    """O primeiro lance impresso sob o diagrama, quando a página o tem (C11)."""
+
+    next_move_replays: bool | None = None
+    """`True`: o lance impresso replica na posição; `False`: não replica (mesmo depois de
+    tentar as segundas opções); `None`: não havia lance para conferir."""
+
+    next_move_repairs: list[int] = field(default_factory=list)
+    """As casas (ordem de leitura) trocadas para a segunda opção porque **só assim** o lance
+    impresso replica. Estão também em `changed_squares`; aqui ficam separadas porque a
+    evidência é externa à matriz -- o gate de exportação as julga por `gate_confidence`."""
+
+    next_move_reason: str = ""
+    """Em pt-BR: por que replicou, o que foi trocado, ou por que não (`ReparoPeloLance.motivo`)."""
+
+    colour_repairs: list[int] = field(default_factory=list)
+    """As casas (ordem de leitura) cuja cor a tinta contradisse e o calibrador do livro trocou
+    (C5, `cor_por_livro`). Também em `changed_squares`; separadas pelo mesmo motivo das do
+    lance seguinte: a evidência é externa à matriz."""
+
+    colour_reason: str = ""
+    """Em pt-BR: o que o calibrador de cor trocou, ou por que não aplicou."""
+
+    stipulation: str = ""
+    """A exigência impressa para este diagrama, na forma do PGN (`#2`), quando a página a tem
+    (C12 do ciclo 2). Vazio = nada a verificar."""
+
+    stipulation_closes: bool | None = None
+    """`True`: a leitura cumpre a exigência; `False`: não cumpre (nem com trocas); `None`: não
+    havia exigência, ou não foi verificável (sem motor para mate em 3+, posição ilegal)."""
+
+    stipulation_keys: tuple[str, ...] = ()
+    """A(s) chave(s) achada(s), em SAN -- a solução, quando fecha."""
+
+    stipulation_repairs: list[int] = field(default_factory=list)
+    """As casas (ordem de leitura) trocadas porque **só assim** a exigência fecha. Também em
+    `changed_squares`; separadas pelo mesmo motivo das do lance seguinte."""
+
+    stipulation_reason: str = ""
+    """Em pt-BR: fecha e com que chave, o que foi trocado, ou por que não fecha."""
+
+    @property
+    def external_repairs(self) -> list[int]:
+        """As casas trocadas por evidência externa à matriz: lance seguinte, cor pela tinta e a
+        exigência do problema."""
+        return sorted(set(self.next_move_repairs) | set(self.colour_repairs) | set(self.stipulation_repairs))
+
+    @property
+    def gate_confidence(self) -> float:
+        """A confiança que o gate de exportação julga (C11, C5).
+
+        `min_confidence` sobre as casas que **não** foram trocadas por evidência externa (o
+        lance seguinte, a tinta). Uma casa trocada assim carrega a confiança da segunda opção
+        (≤ 0,5, e é a verdade sobre o que o modelo achava), mas o que a barra em
+        `ACCEPT_MIN_CONFIDENCE` é a matriz -- e a matriz não é a única evidência que existe
+        sobre ela. Sem reparo externo, é `min_confidence`.
+        """
+        excluded = set(self.external_repairs)
+        if not excluded or not self.square_confidences:
+            return float(self.min_confidence)
+        others = [float(c) for i, c in enumerate(self.square_confidences) if i not in excluded]
+        return min(others) if others else float(self.min_confidence)
 
     # ------------------------------------------------------------------------ construtores
 
@@ -148,10 +233,14 @@ class RecognizedDiagram:
         rotation: int = 0,
         orientation_ambiguous: bool = False,
         orientation_reason: str = "",
+        black_point_of_view: bool = False,
         quad: list[list[float]] | None = None,
         bbox_pdf: tuple[float, float, float, float] | None = None,
         context: DiagramContext | None = None,
         detection_source: str = "",
+        next_move: ReparoPeloLance | None = None,
+        colour: tuple[list[TrocaDeCor], str] | None = None,
+        stipulation: ReparoPelaEstipulacao | None = None,
     ) -> RecognizedDiagram:
         decode = prediction.decode
         return cls(
@@ -170,10 +259,23 @@ class RecognizedDiagram:
             rotation=rotation,
             orientation_ambiguous=orientation_ambiguous,
             orientation_reason=orientation_reason,
+            black_point_of_view=black_point_of_view,
             quad=quad,
             bbox_pdf=bbox_pdf,
             context=context,
             detection_source=detection_source,
+            next_move=next_move.lance if next_move is not None else "",
+            next_move_replays=next_move.replicou if next_move is not None else None,
+            next_move_repairs=list(next_move.casas) if next_move is not None else [],
+            next_move_reason=next_move.motivo if next_move is not None else "",
+            colour_repairs=[t.casa for t in colour[0]] if colour is not None else [],
+            colour_reason=colour[1] if colour is not None else "",
+            stipulation=(stipulation.estipulacao.rotulo
+                         if stipulation is not None and stipulation.estipulacao is not None else ""),
+            stipulation_closes=stipulation.fecha if stipulation is not None else None,
+            stipulation_keys=stipulation.chaves if stipulation is not None else (),
+            stipulation_repairs=list(stipulation.casas) if stipulation is not None else [],
+            stipulation_reason=stipulation.motivo if stipulation is not None else "",
             side_to_move="w" if side.color else "b",
             side_to_move_source=str(side.source),
             side_to_move_reason=side.reason,
@@ -460,6 +562,31 @@ class RecognitionOptions:
     `NormalizerConfig.version`."""
 
     refine_detected_boards: bool = False
+    next_move: bool = True
+    """C11 do ciclo 2: o primeiro lance impresso sob o diagrama é jogado na posição lida; se
+    não replica, as segundas opções do modelo nas casas hesitantes são tentadas (≤ 2 trocas)
+    e a troca **única** que faz a linha fechar é adotada (`lance_seguinte`). `False` é o
+    antes -- a sabotagem do `field_exact --sabotar sem_lance`."""
+
+    colour: bool = True
+    """C5 do ciclo 2: a cor de uma casa em que só a cor está em dúvida é conferida na tinta
+    (`cor_por_livro`), com as amostras do perfil do livro e as casas seguras do próprio
+    tabuleiro. `False` é o antes -- a sabotagem do `field_exact --sabotar sem_cor`."""
+
+    stipulation: bool = True
+    """C12 do ciclo 2: a exigência impressa («mate em N») é jogada sobre a leitura; se não fecha,
+    as mesmas candidatas do C11 são tentadas e a troca única que a faz fechar é adotada
+    (`estipulacao`). `False` é o antes -- a sabotagem do `field_exact --sabotar sem_estipulacao`."""
+
+    stipulation_engine: Callable[[], Any] | None = None
+    """De onde vem o motor UCI para mate em 3+ (`estipulacao.motor_padrao`: as configurações e
+    `engine.find_engine`); um teste ou benchmark injeta o seu, ou `lambda: None` para nunca abrir
+    um processo. Sem motor, mate em 3+ fica «não verificado» -- dito, nunca inventado."""
+
+    colour_calibrator: Callable[[Any], CalibradorDeCor | None] | None = None
+    """De onde vem o calibrador do livro para um `pdf_source`: por padrão o perfil do livro da
+    suíte (`cor_por_livro.calibrador_do_livro`); um teste ou um benchmark injeta o seu. Uma
+    imagem solta não tem livro, e o tabuleiro responde sozinho."""
     """Rodar o detector de contorno dentro do quad para alinhar melhor o recorte.
 
     Vale para imagem solta e para a página renderizada; **não** vale para candidato vindo
@@ -583,8 +710,15 @@ class OcrService:
         *,
         options: RecognitionOptions,
         candidates: Sequence[DiagramCandidate] | None = None,
+        progress: Callable[[int, int], None] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> list[RecognizedDiagram]:
         """Reconhece uma página de PDF pelo detector híbrido da S-12.
+
+        `progress(feito, total)` é chamado entre diagramas e `should_cancel()` consultado
+        antes de cada um (OCR_UI ciclo 2, passo C2): a leitura de uma página de nove
+        diagramas deixa de ser uma caixa preta de segundos, e cancelar devolve os já lidos
+        em `RecognitionCanceled.partial`.
 
         É o caminho que a exportação usa. Ter a interface num detector e o PGN noutro
         recriaria, no recorte, o mesmo desencontro que a S-14 corrigiu na numeração: a tela
@@ -636,7 +770,37 @@ class OcrService:
             # Onde cada diagrama está na página. O detector já sabia e o serviço jogava fora
             # -- e é o que o conjunto de campo da S-41 precisa para casar com a anotação.
             bboxes_pdf=[candidate.bbox_pdf for candidate in candidates],
+            progress=progress,
+            should_cancel=should_cancel,
+            colour=self._colour_calibrator(pdf_source, options),
         )
+
+    @staticmethod
+    def _colour_calibrator(pdf_source: Any, options: RecognitionOptions) -> CalibradorDeCor | None:
+        """O calibrador de cor do livro deste PDF (C5), ou `None` sem perfil ou desligado."""
+        if not options.colour:
+            return None
+        resolver = options.colour_calibrator or calibrador_do_livro
+        try:
+            return resolver(pdf_source)
+        except Exception:  # noqa: BLE001 - um perfil ilegível não pode derrubar a leitura
+            logger.warning("perfil de cor do livro ilegível; o tabuleiro responde sozinho", exc_info=True)
+            return None
+
+    @staticmethod
+    def _stipulation_engine(options: RecognitionOptions, context: DiagramContext | None) -> Any:
+        """O motor UCI para a exigência deste diagrama (C12), só quando ela precisa de um."""
+        from .estipulacao import LANCES_DA_BUSCA
+
+        exigencia = getattr(context, "stipulation", None) if context is not None else None
+        if exigencia is None or exigencia.lances <= LANCES_DA_BUSCA:
+            return None
+        resolver = options.stipulation_engine or motor_padrao
+        try:
+            return resolver()
+        except Exception:  # noqa: BLE001 - o motor é opcional; sem ele a exigência fica «não verificada»
+            logger.warning("motor UCI indisponível para a exigência; mate em 3+ fica sem verificar", exc_info=True)
+            return None
 
     def recognize_image(
         self,
@@ -713,8 +877,12 @@ class OcrService:
         detection_sources: Sequence[str],
         refine: bool,
         bboxes_pdf: Sequence[tuple[float, float, float, float]] = (),
+        progress: Callable[[int, int], None] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
+        colour: CalibradorDeCor | None = None,
     ) -> list[RecognizedDiagram]:
-        """O núcleo comum: prever, decidir orientação, inferir a vez, conferir legalidade."""
+        """O núcleo comum: prever, decidir orientação, conferir a cor na tinta, inferir a vez,
+        conferir o lance seguinte, conferir legalidade."""
         if not boards:
             # `NoBoardDetectedError` e nao `ValueError` (S-125): quem chama precisa distinguir
             # "esta pagina nao tem diagrama" -- que e resposta, e a mais comum num livro -- de
@@ -725,21 +893,48 @@ class OcrService:
             raise NoBoardDetectedError("Nenhum tabuleiro foi detectado na imagem selecionada.")
 
         diagrams: list[RecognizedDiagram] = []
+        if progress is not None:
+            progress(0, len(boards))
         with self.model_session(options.model_path) as (model, device):
             for idx, (board_rgb, quad) in enumerate(boards):
+                if should_cancel is not None and should_cancel():
+                    raise RecognitionCanceled(diagrams)
                 board_for_pred, quad_for_item = (
                     refine_board_from_quad(image_rgb, quad) if refine else (board_rgb, quad)
                 )
+                context = contexts[idx] if idx < len(contexts) else None
                 oriented = predict_with_orientation(
                     board_for_pred,
                     model,
                     device,
                     mode=options.orientation,  # type: ignore[arg-type]
                     normalizer=options.normalizer,
+                    # Passo C10: as coordenadas da borda, quando a camada de texto as tem. O
+                    # campo é de `DiagramContext`; sem contexto (imagem solta), não há borda.
+                    coordinates=context.coordinates if context is not None else None,
                 )
                 prediction = oriented.prediction
-                context = contexts[idx] if idx < len(contexts) else None
+                cor: tuple[list[TrocaDeCor], str] | None = None
+                if options.colour:
+                    # C5: a tinta antes do lado e do lance -- a cor certa é o que os dois
+                    # precisam para julgar.
+                    prediction, trocas_cor, motivo_cor = apply_colour(
+                        prediction, board_for_pred, oriented, colour)
+                    cor = (trocas_cor, motivo_cor)
                 side: SideToMove = infer_side_to_move(prediction.fen_board, context)
+                reparo: ReparoPeloLance | None = None
+                if options.next_move:
+                    prediction, reparo = apply_next_move(prediction, context, side)
+                    if reparo is not None and reparo.trocas:
+                        side = infer_side_to_move(prediction.fen_board, context)
+                exigencia: ReparoPelaEstipulacao | None = None
+                if options.stipulation:
+                    # C12: a exigência depois do lance e da cor -- ela julga a leitura já
+                    # corrigida pelas outras evidências, e só então tenta as suas trocas.
+                    prediction, exigencia = apply_stipulation(
+                        prediction, context, side, motor=self._stipulation_engine(options, context))
+                    if exigencia is not None and exigencia.trocas:
+                        side = infer_side_to_move(prediction.fen_board, context)
                 diagrams.append(
                     RecognizedDiagram.from_prediction(
                         idx,
@@ -750,12 +945,18 @@ class OcrService:
                         rotation=oriented.rotation,
                         orientation_ambiguous=oriented.ambiguous,
                         orientation_reason=oriented.reason,
+                        black_point_of_view=oriented.black_point_of_view,
                         quad=quad_for_item.tolist() if quad_for_item is not None else None,
                         bbox_pdf=bboxes_pdf[idx] if idx < len(bboxes_pdf) else None,
                         context=context,
                         detection_source=detection_sources[idx] if idx < len(detection_sources) else "",
+                        next_move=reparo,
+                        colour=cor,
+                        stipulation=exigencia,
                     )
                 )
+                if progress is not None:
+                    progress(idx + 1, len(boards))
         return diagrams
 
     # ---------------------------------------------------------------------------- dataset
@@ -792,6 +993,12 @@ class OcrService:
         repassada intacta: quem decide é a pessoa, e este método não tem o que acrescentar à
         decisão dela.
         """
+        # `dataset.py` define `class BoardFenDataset(Dataset)` no escopo de módulo e por isso
+        # NÃO pode adiar o próprio `import torch` sem reescrita. O que se adia é a ARESTA: o
+        # serviço só precisa de `append_training_sample` quando alguém salva uma correção de
+        # treino, e não quando a janela abre. Sem esta linha, abrir um PDF exige torch.
+        from .dataset import append_training_sample
+
         campos: dict[str, Any] = {"source_pdf": "", "source_page": ""}
         if origin is not None:
             campos = origin.sample_fields()

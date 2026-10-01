@@ -55,6 +55,25 @@ Nao ha dependencia de plataforma: a aba "Leitura" (WebView2, so-Windows) saiu na
 ela o `pythonnet` e o `pywebview`. Para ler o livro com rolagem continua e busca de texto, o
 botao **Abrir no leitor do sistema** entrega o PDF ao leitor padrao da maquina.
 
+**A janela tem duas familias de abas** (OCR_UI passo 17, ramo `passo-17-trilho`): a aba **Livro**,
+com o trabalho sobre o livro aberto em quatro **modos** -- Resultado, Estudo, Revisao e Texto,
+uma barra de botoes exclusivos no topo dela (`qt/painel_principal.py`) --, e as abas do acervo
+(Dataset, Galeria e, com a suite ao alcance, Rotulagem e Revisao de texto). Os quatro modos eram
+abas ate o passo 17; nenhum painel saiu, quatro mudaram de casa (`ui/abas.py`,
+`qt/areas_de_trabalho.py`). O estado da sessao continua guardando o nome do modo (`Resultado`),
+e uma sessao anterior ao passo reabre no mesmo lugar.
+
+**No modo Resultado, o recorte do diagrama fica ao lado do tabuleiro** (OCR_UI passo 13): o
+diagrama como o classificador o leu, ampliado, num divisor com o tabuleiro editavel. A casa sob o
+ponteiro e a selecionada se espelham nos dois, a dica de qualquer casa diz as tres leituras do
+modelo e a margem entre a primeira e a segunda, e um clique no recorte e um clique no tabuleiro
+(com pincel, pinta; sem, seleciona). A tinta de incerteza passou a ser **por margem** -- a casa em
+que o modelo hesitou entre duas pecas --, ligada por padrao; a caixa «Esconder incerteza» a
+desliga. Na pagina, as caixas numeradas ganharam dois estados: **duvidoso** (a leitura hesitou
+em alguma casa, ambar, `?`) e **corrigido** (correcao feita no editor e ainda nao gravada,
+`✎`), alem de lido, pronto e dispensado. Regra em `ui/recorte_do_diagrama.py` e
+`ui/page_overlay.py`; pintura em `qt/painel_de_recorte.py` e `qt/visor.py`.
+
 ## Como a interface chegou aqui (Tkinter -> PyQt6)
 
 O produto foi em Tkinter + `ttkbootstrap` ate 2026-08-31, num arquivo `app_tkinter.py` de 2.327
@@ -433,7 +452,7 @@ a ultima concluida -- desde que os parametros sejam os mesmos. Concluir apaga o 
 O lado a jogar sai da legenda do PDF quando ela declara, da legalidade da posicao quando
 ela impoe (o lado que nao joga nao pode estar em xeque), da partida que a base casou, da
 escolha de quem estava com o livro aberto, e do padrao "brancas" quando nenhuma das outras
-responde. O header `[SideToMoveSource]` diz **qual das 10** foi, sempre -- a maioria dos livros
+responde. O header `[SideToMoveSource]` diz **qual das 12** foi, sempre -- a maioria dos livros
 do acervo nao declara nada, e um palpite precisa parecer um palpite.
 
 | valor | de onde veio |
@@ -444,6 +463,8 @@ do acervo nao declara nada, e um palpite precisa parecer um palpite.
 | `text-page-scope` | declarado no cabecalho da pagina |
 | `ocr-page-scope` | lido por OCR do cabecalho da pagina |
 | `glifo-page-scope` | lido no cabecalho da pagina pelo classificador deste projeto (S-207) |
+| `move-number` | deduzido da numeracao do primeiro lance impresso sob o diagrama (OCR_UI passo 7) |
+| `caption-after` | deduzido da legenda «apos N.x» / «after N...x» sob o diagrama (OCR_UI passo 7) |
 | `legality` | deduzido da legalidade da posicao |
 | `database` | da partida que a base casou (S-72) |
 | `manual` | escolhido a mao na Galeria |
@@ -724,8 +745,9 @@ Isto **nao** e o OCR de legenda acima. Aquele le a faixa em volta de um diagrama
 lado a jogar; este le a **folha inteira** -- colunas, paragrafos, tabelas, com os diagramas no
 lugar em que eles aparecem no texto.
 
-Na janela, a aba **Texto** (entre a Revisao e o Dataset) abre um editor com o texto da folha e a
-miniatura de cada diagrama no meio dele. Sem janela, o mesmo caminho e o `cvoff-texto-pagina`.
+Na janela, o modo **Texto** da aba Livro (era a aba Texto, entre a Revisao e o Dataset, ate o
+passo 17 da OCR_UI) abre um editor com o texto da folha e a miniatura de cada diagrama no meio
+dele. Sem janela, o mesmo caminho e o `cvoff-texto-pagina`.
 
 **As ferramentas do editor** (Fases 37 e 41): negrito, italico, sublinhado e tachado; cor da letra
 e realce; estilo de paragrafo (titulo, prosa, notacao, legenda); **alinhamento** -- esquerda,
@@ -1003,9 +1025,11 @@ src/chess_diagram_ocr/
   calibration.py        temperature scaling e curva de confiabilidade
   checkpoint.py         leitura e escrita de checkpoints, com metadados de treino
   config.py             classes de pecas, tamanhos, limiares e caminhos padrao
+  cor_por_livro.py      calibrador de cor por livro: a tinta do centro da casa contra as pecas corrigidas do mesmo livro (C5)
   dataset.py            dataset de treino, cache limitado e amostrador por tabuleiro
   dataset_browser.py    listar, filtrar, recorrigir e remover amostras
   decode.py             decodificacao sujeita as regras do xadrez
+  desenho_de_diagrama.py  o diagrama desenhado de novo (fonte Merida ou PNGs das pecas) para substituir no PDF
   detection_census.py   censo da deteccao: quantos diagramas cada regra achou, por livro
   diagrama_png.py       o diagrama em PNG a partir da FEN, com as pecas de assets/ (S-543)
   diagrama_svg.py       o diagrama vetorial a partir da FEN, com as pecas do python-chess (S-542)
@@ -1014,6 +1038,7 @@ src/chess_diagram_ocr/
   eco.py                a tabela ECO embutida: classifica a abertura por posicao ou por lance (S-534)
   engine.py             motor UCI opcional (Stockfish)
   epub.py               o estudo e o texto em EPUB 3, um SVG por diagrama (S-542)
+  estipulacao.py        a exigencia do problema («mate em N») jogada sobre a leitura: busca exaustiva, motor UCI, e a troca unica que a faz fechar (C12)
   estudo.py             a arvore de variantes da sala de estudo, e as regras de lance
   estudo_arquivo.py     leitura e escrita dos estudos em disco, um arquivo por posicao
   estudo_paragrafos.py  o estudo em paragrafos de livro: lance, variante recuada, comentario, [%D]
@@ -1032,6 +1057,7 @@ src/chess_diagram_ocr/
   games_index.py        o indice sqlite da base, por nome e por posicao
   inference.py          carga do modelo, predicao de FEN e TTA
   labels.py             a porta unica do labels.csv: LabelStore (S-51)
+  lance_seguinte.py     o primeiro lance impresso sob o diagrama jogado sobre a leitura, e a troca unica que o faz fechar (C11)
   logging_setup.py      configuracao de logging
   model.py              arquitetura do classificador, configuravel por ArchConfig
   net_correction.py     cliente da correcao remota de FEN (opcional, opt-in)
@@ -1040,12 +1066,15 @@ src/chess_diagram_ocr/
   onnx_export.py        exportacao ONNX e conferencia de paridade com o torch
   orientation.py        a cascata de regras que decide a orientacao do diagrama
   pdf_io.py             render de paginas de PDF (PyMuPDF)
+  pdf_substituicao.py   as operacoes de escrita no PDF: apagar, substituir o diagrama, link do lichess
   pdf_text.py           legenda e metadados da camada de texto do PDF
   pdf_to_pgn.py         varredura de PDF e exportacao PGN
   placar.py             o placar do treino: por livro e por sessao, em tres baldes (S-541)
   preprocess.py         o recorte do tabuleiro virando as 64 casas que o modelo le, e o caminho de pagina de scan (S-547)
   procedencias.py       de onde veio cada amostra, e o que isso permite fazer com ela
+  processo_de_trabalho.py  o filho que rasteriza, le o CSV e detecta, porque o PyMuPDF e o Python seguram o GIL
   provenance.py         o registro de procedencia gravado ao lado de cada rotulo
+  proveniencia.py       o sidecar .proveniencia.jsonl ao lado do PGN: retangulo, hash, confiancas, reparos e veredito por diagrama (A11)
   review_queue.py       fila de revisao ordenada por valor de informacao
   revisao_arquivo.py    o baralho da repeticao espacada no disco, um para o acervo (S-540)
   revisao_espacada.py   a repeticao espacada dos estudos e das taticas: FSRS e a agenda (S-540)

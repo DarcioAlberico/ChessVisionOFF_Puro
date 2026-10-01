@@ -77,6 +77,34 @@ class BarraDeMenus:
         if item is not None and item.isCheckable():
             item.setChecked(ligado)
 
+    def impedir(self, acoes: Sequence[str], *, motivo: str) -> int:
+        """Desabilita estes comandos e põe `motivo` na dica de cada um. Devolve quantos achou.
+
+        **Um menu não promete o que o produto não faz** (F9-C15 §8 item 1). Três comandos do menu
+        Estudo ficavam habilitados numa máquina sem motor UCI e os três respondiam com uma receita
+        que não resolvia -- *"ponha o Stockfish em engines/ e reabra"* --, porque a janela nunca
+        procurava o binário. Consertada a busca, sobra a outra metade: onde o recurso de fato não
+        existe, o item sai do alcance.
+
+        **A dica não é enfeite, é a única superfície que sobra.** Uma `QAction` desabilitada não
+        recebe clique e não mostra mensagem; sem a dica, um item cinza faz a pessoa procurar o
+        defeito na própria máquina -- que é o mesmo defeito com o sinal trocado. É a razão de
+        `motivo` ser obrigatório e não opcional.
+
+        Ignora ação que este menu não desenha, pela razão de `marcar`: quem levanta por comando
+        inexistente é `montar`, na montagem, onde o erro é do programa e não do momento. Quem
+        confere que nenhum comando habilitado ficou solto é `caissa.ui.audit.comandos`.
+        """
+        impedidos = 0
+        for acao in acoes:
+            item = self.acoes.get(acao)
+            if item is None:
+                continue
+            item.setEnabled(False)
+            item.setToolTip(motivo)
+            impedidos += 1
+        return impedidos
+
     def escolher(self, acao: str, valor: str) -> None:
         """Marca o valor em vigor num submenu de escolha (pele, densidade, conjunto de peças).
 

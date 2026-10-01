@@ -44,6 +44,8 @@ SideSource = Literal[
     "text-page-scope",
     "ocr-page-scope",
     "glifo-page-scope",
+    "move-number",
+    "caption-after",
     "legality",
     "database",
     "manual",
@@ -57,6 +59,8 @@ _SOURCE_LABELS: dict[SideSource, str] = {
     "text-page-scope": "declarado no cabeçalho da página",
     "ocr-page-scope": "lido por OCR do cabeçalho da página",
     "glifo-page-scope": "lido pelo classificador deste projeto, no cabeçalho da página",
+    "move-number": "pela numeração do primeiro lance sob o diagrama",
+    "caption-after": "pela legenda «após N.lance»",
     "legality": "deduzido da legalidade da posição",
     "database": "da partida que a base casou",
     "manual": "declarado à mão na galeria",
@@ -72,7 +76,8 @@ a Fase 3 pede: o header existe para que um palpite pareça um palpite.
 """
 
 _TEXT_SOURCES: frozenset[str] = frozenset(
-    {"text", "ocr", "glifo", "text-page-scope", "ocr-page-scope", "glifo-page-scope"}
+    {"text", "ocr", "glifo", "text-page-scope", "ocr-page-scope", "glifo-page-scope",
+     "move-number", "caption-after"}
 )
 """As procedências que vêm de texto lido, seja qual for a fonte. A cascata as trata igual --
 o que muda é só o que fica registrado."""

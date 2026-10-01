@@ -53,7 +53,7 @@ class TabelaDasQuedasTests(unittest.TestCase):
     def _quedas(self) -> dict[str, tuple[logging.Logger, object, object]]:
         """`chave → (logger, o que fazer, o que tem de sair)`. Uma entrada por linha da tabela."""
         quedas: dict[str, tuple[logging.Logger, object, object]] = {
-            "pele": (pele.logger, lambda: pele.valida("pele_que_nao_existe"), pele.CLASSICA),
+            "pele": (pele.logger, lambda: pele.valida("pele_que_nao_existe"), pele.PADRAO),
             # A fita sugere compacta: a queda tem de dar **confortável** mesmo assim, que é o que
             # a tabela declara -- quem escreveu um nome errado não pediu nada apertado.
             "densidade": (

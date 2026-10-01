@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QLabel,
     QScrollArea,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -92,6 +93,20 @@ class JanelaDeAtalhos(QDialog):
         rolagem.setWidget(corpo)
         rolagem.setWidgetResizable(True)
         rolagem.setFrameShape(QScrollArea.Shape.NoFrame)
+        # **A janela abre no tamanho do próprio conteúdo** (F9-C14, item 5 do §7 do ciclo 13).
+        # Ela abria com o quadro de 459 px sobre uma grade que pede 471: **12 px** de rolagem
+        # horizontal, e a linha do `Ctrl+Shift+S` terminava em `...no arquivo do editor (.cvt`.
+        # Uma legenda de atalhos é a janela que mais se abre para ler de relance, e é o pior
+        # lugar possível para uma barra horizontal.
+        #
+        # `QScrollArea` **não** pede largura pelo widget que ela embrulha: o `sizeHint` dela é o
+        # do próprio quadro, e sem esta linha o `adjustSize` da janela nunca vê a grade. A conta
+        # é a grade mais a moldura dos dois lados mais a barra vertical, que a legenda sempre tem.
+        rolagem.setMinimumWidth(
+            corpo.sizeHint().width()
+            + 2 * rolagem.frameWidth()
+            + rolagem.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, None, rolagem)
+        )
         fora.addWidget(rolagem, 1)
 
         nota = QLabel(NOTA, self)
@@ -103,6 +118,8 @@ class JanelaDeAtalhos(QDialog):
         botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=self)
         botoes.rejected.connect(self.reject)
         fora.addWidget(botoes)
+        # Depois de tudo montado: é aqui que a largura mínima da rolagem alcança a janela.
+        self.adjustSize()
 
     def linhas(self) -> list[tuple[str, str]]:
         """(tecla, descrição) de cada linha desenhada. É o que o teste percorre.

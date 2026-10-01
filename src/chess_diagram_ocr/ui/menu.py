@@ -138,7 +138,21 @@ MENUS: tuple[Menu, ...] = (
             Item("abrir_no_leitor"),
             _sep(),
             Item("exportar_pgn"),
+            Item("exportar_epub"),
+            Item("exportar_docx"),
             Item("cancelar_exportacao"),
+            _sep(),
+            Item("importar_livro"),
+            Item("cancelar_importacao"),
+            _sep(),
+            Item("segunda_opiniao"),
+            _sep(),
+            # As abas da suíte (C8): o que a pele esconde, o menu alcança.
+            Item("rotulagem_ler_pagina"),
+            Item("rotulagem_salvar"),
+            Item("rotulagem_desenhar"),
+            Item("revisao_texto_gravar"),
+            Item("revisao_texto_abrir"),
             _sep(),
             Item("sair"),
         ),
@@ -161,6 +175,12 @@ MENUS: tuple[Menu, ...] = (
             Item("diagrama_anterior"),
             Item("proximo_diagrama"),
             Item("proximo_da_fila"),
+            # **A entrada do F9-C3**, ao lado da que abre o próximo pendente: uma abre o
+            # item, a outra manda corrigi-lo. `Corrigir agora` era um botão com rótulo
+            # literal, fora do catálogo -- e por isso sem tecla, sem menu e sem paleta,
+            # enquanto o item 10 do ciclo 1 pedia justamente que as ações rebaixadas de
+            # primário para neutro ganhassem alcance por tecla.
+            Item("corrigir_agora"),
         ),
     ),
     Menu(
@@ -185,6 +205,11 @@ MENUS: tuple[Menu, ...] = (
             _sep(),
             Item("roda_vira_pagina", INTERRUPTOR),
             _sep(),
+            Item("trilho", INTERRUPTOR),
+            Item("primeira_duvidosa"),
+            Item("proxima_duvidosa"),
+            Item("anterior_duvidosa"),
+            _sep(),
             Item("aparencia", APARENCIA),
             Item("densidade", DENSIDADE),
             Item("conjunto_de_pecas", CONJUNTO),
@@ -207,6 +232,8 @@ MENUS: tuple[Menu, ...] = (
             _sep(),
             Item("recarregar_modelo"),
             Item("treinar"),
+            _sep(),
+            Item("configuracoes"),
         ),
     ),
     Menu(

@@ -250,8 +250,135 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2017
+    LIMITE = 2226
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.077 -> 2.226 no merge do `religa-as-decisoes-orfas` com o `main` (2026-10-01)**: os dois
+    ramos cresceram o arquivo em paralelo desde o `cde8ea5` (1.862) -- o religa a 2.077 (o trilho
+    de páginas, os modos da aba Livro, as abas da suíte, o ciclo 2 da OCR_UI), o `main` a 2.017 (o
+    motor das preferências, a ordem das abas lida da tupla, o duplo clique para a sala, a detecção
+    ao virar a página) -- e o merge soma as duas contas: +215 e +155, menos as linhas que os dois
+    escreveram iguais. Nenhuma linha é nova do merge; subir é a decisão que a revisão do PR toma, e
+    baixar é o de sempre: levar a `ui/` o que for decisão.
+
+    **2.058 -> 2.077 na crítica da fase 2 (Codex, ciclo 1)**: a tarefa de `_rodar` deixa de ser
+    filha da janela (`manter_viva`) -- destruída a correr, o `QThread` abortava o processo se a
+    leitura passasse dos 15 s de espera do `closeEvent` -- e os três slots dela passam por
+    `_se_viva`, que pergunta se a janela ainda existe; e o `closeEvent` cancela o aquecimento
+    agendado (o relógio de uma janela fechada disparava numa janela morta). Dezenove linhas,
+    comentário, o guarda e uma chamada; a mecânica continua em `qt/trabalho.py` e `qt/leitura.py`.
+
+    **1.998 -> 2.058 com os passos C2, C3 e C8 do OCR_UI ciclo 2** (ler a página com progresso, cancelamento
+    entre diagramas, tranca só do gravar, modelo aquecido ao abrir o livro, `.pt` ausente dito
+    com o caminho): a mecânica -- a ficha do rodapé, o gancho de cancelar, o aquecimento, as
+    frases -- foi para `qt/leitura.py`; o que ficou aqui são as chamadas, o fecho da leitura com
+    os dois ganchos, os dois ramos de `_falhou` (cancelada, sem modelo) e os dois parâmetros
+    novos de `_rodar`. C8: duas linhas da tabela de comandos (próxima/anterior duvidosa) e o
+    `atualizar_trilho` da ponte chamado depois de gravar (a lógica está em `caissa.ui.trilho` e
+    em `qt/importador_de_livro.py`).
+
+    **1.992 -> 1.998 na integração da fase 1**: cancelar a importação em curso ao abrir outro livro
+    (C7; o crítico provou que o resultado de A virava trilho e fila de B) e a contagem de páginas
+    passada às abas da suíte (`bloqueio`). Sete linhas de chamada; a lógica está na ponte.
+
+    **1.972 -> 1.992 com a fase 1 do OCR_UI ciclo 2** (A7 perguntas de estado sujo, A10 caixa de
+    falha com detalhe, C7 tranca seletiva e as abas da suíte avisadas, A3 `documento_para` na
+    exportação, C1/X5 estados com ação): a lógica nova foi para `qt/decisoes_de_diagrama.py`,
+    `qt/dialogos.py`, `ui/historico.py`, `ui/estado_do_rodape.py`; sobraram na janela as chamadas.
+
+    **1.979 -> 1.972 com a janela de configurações (Ferramentas ▸ Configurações…).** O pedido de
+    treino deixou de carregar três números escritos aqui (`epochs=8, batch_size=16, lr=1e-3`) e
+    passou a vir de `ui/pedido_de_treino.pedido_de_treino`, que lê `data/settings.json`; o DPI e o
+    teto de diagramas passaram a `ui/configuracoes.dpi/max_boards` (relidos quando o arquivo muda).
+    A janela nova mora em `qt/dialogo_de_configuracoes.py` e custou aqui uma linha de tabela.
+
+    **1.967 -> 1.979 com o estado «corrigido» das caixas da página (OCR_UI passo 13, tarefa 4), e
+    as doze linhas são um carimbo e um religamento.** `_publicar_caixas` passa a carimbar
+    `mark_edited` com o que o editor diz estar corrigido **nesta** página
+    (`DiagramEditorModel.hand_edited_indices`, regra pura), e `_recarimbar_caixas` republica as
+    caixas quando o painel avisa que mudou (`PainelDeResultado.mudou`). O recorte, a sincronia e
+    a tinta por margem moram no painel (`qt/painel_de_recorte.py`, `ui/recorte_do_diagrama.py`)
+    e não custaram linha aqui.
+
+    **1.984 -> 1.967 com a tarefa 3 do passo 17 (as abas do diagrama viram modos), e a catraca
+    desce junto.** A faixa de abas deixou de ser um `QTabWidget` cru montado aqui e passou a ser
+    `qt/areas_de_trabalho.AreasDeTrabalho`: quem sabe se um nome é aba ou modo, onde cada área
+    mora, o que está à frente e como pôr a contagem no rótulo é ela. Saíram daqui o
+    `_indice_da_aba`, o laço das contagens e o `indexOf` do `_focar_aba`; a janela só monta cada
+    painel e diz se ele é modo (`principal.adicionar_modo`) ou aba (`addTab`). Os quatro modos
+    moram em `qt/painel_principal.py`.
+
+    **1.944 -> 1.984 com o trilho de páginas (OCR_UI passo 17, ramo `passo-17-trilho`), e as 40
+    linhas são o trilho montado à esquerda do visor, a ponte da importação
+    (`qt/importador_de_livro.montar`, que liga o importador da suíte ao trilho e guarda o
+    resultado -- fora daqui de propósito) e quatro comandos no dicionário.
+
+    **1.905 -> 1.944 com o passo 15 da OCR_UI (2026-09-16), e as 39 linhas são a bandeira e os
+    fios dela.** `rasterizar_ao_fundo` entra pelo construtor e é repassada a três painéis
+    (`PainelDoPdf`, `PainelDoDataset`, `LeitorDeMarcas`); a detecção de fundo ganha o ramo que a
+    manda ao processo de trabalho (`detect_diagrams_rendering_page`) em vez da thread, com o
+    motivo medido ao lado; `_aviso_de_treino` passa a ler só a resposta guardada e
+    `_marcas_chegaram` manda o campo escrever de novo quando ela vem. Nenhuma decisão nova de
+    tela: são ligações, e a conta que elas ligam mora em `processo_de_trabalho.py`.
+
+    **1.902 -> 1.905 com a aba Revisão de texto (2026-09-15), e as três linhas são a montagem
+    de uma aba que não é deste repositório.** O painel é da suíte
+    (`caissa.ui.views.revisao_de_texto`, OCR_UI_ROADMAP passo 14); a guarda mora em
+    `qt/painel_de_revisao_de_texto.py`. Aqui ficam a chamada e o `addTab` sob a guarda, na
+    ordem da S-162 -- depois da Rotulagem, antes da Configuração.
+
+    **1.887 -> 1.902 com *Exportar o livro para EPUB/DOCX* (2026-09-14), e as quinze linhas são
+    a montagem de um exportador que não é deste repositório.** O diálogo, a thread e a regra do
+    intervalo de páginas são da suíte (`caissa.ui.views.exportacao`, `caissa.export.book`); a
+    pergunta "a suíte está ao alcance?" e o motivo de ela não estar moram em
+    `qt/exportador_de_livro.py`. Aqui ficam o `import`, a montagem ligada ao rodapé e à tranca,
+    o `impedir` dos dois itens quando ela falta, as duas linhas da tabela de comandos e
+    `_exportar_livro` -- o slot que sabe qual PDF está aberto e em que página, que é estado da
+    janela.
+
+    **1.883 -> 1.887 com a aba Rotulagem (2026-09-14), e as quatro linhas são a montagem de uma
+    aba que não é deste repositório.** O painel é da suíte (`caissa.ui.views.rotulagem`); a
+    pergunta "a suíte está ao alcance?" e o motivo de ela não estar moram em
+    `qt/painel_de_rotulagem.py`. Aqui ficam o `import`, a chamada e o `addTab` sob a guarda --
+    a janela é quem sabe onde a sétima aba entra na ordem da S-162.
+
+    **1.882 -> 1.883 no F9-C8, e a linha é uma só** -- o bloqueante do ciclo 7. `MENSAGEM_VAZIA`
+    manda apertar *"OCR todos diagramas"*, e a pele clássica, que é a padrão, desenhava esse nome
+    em **zero** controles visíveis nas três larguras, com `OCR melhor diagrama` -- outro comando
+    -- em azul a 40 px. Quem decide isso é a janela, porque é ela que monta o cromo de cada pele e
+    é ela quem sabe o que a fila ou a fita acabaram de escrever: a linha entrega o **contêiner do
+    cromo** ao painel do PDF, que responde se o botão de `ler_pagina` mostra o nome ou fica só com
+    o ícone. A regra inteira -- quais botões entram, por que a dica do ciclo 6 não bastava, e por
+    que dois controles com o mesmo rótulo é o defeito oposto -- está em
+    `qt/painel_do_pdf.nomear_o_que_o_cromo_nao_desenha`, que é onde ela pode ser testada sem abrir
+    janela. A primeira forma deste conserto punha 24 linhas aqui (um método com o docstring); esta
+    catraca as achou, e o que sobrou foi uma chamada. A segunda chamada mora em
+    `_esvaziar_o_cromo`, na linha que já existia para esvaziar o contêiner.
+
+    **1.863 -> 1.882 no F9-C2, e as 19 linhas são de três itens do §7 da crítica.** A catraca pede
+    que subir seja uma decisão escrita, então aqui está o que entrou e por que não coube em `ui/`:
+
+    - **duas linhas** de escala tipográfica (item 9): `escala.aplicar_escala(self)` no fim da
+      montagem, mais o `import`. Mesma forma da linha de `nomear_tudo` logo abaixo, e pela mesma
+      razão -- a decisão de que degrau cada widget ocupa está em `ui/tipografia.PAPEL_POR_CLASSE`,
+      a varredura em `qt/escala.py`, e aqui fica só o momento em que a montagem acabou;
+    - **quatro linhas** para o leitor de marcas (item 5): o objeto, o docstring dele e a ligação do
+      sinal. O trabalho inteiro -- ler o `labels.csv` fora da thread da janela e descartar a
+      resposta atrasada quando a pessoa troca de livro -- está em `qt/marcas.py`, que é novo;
+    - **as demais** são `_marcas_chegaram`, o slot que recebe aquela resposta. Ele mora aqui porque
+      ele mexe em `self._salvos` e chama `_atualizar_abas`, que são estado e desenho **da janela**;
+      pô-lo em `qt/marcas.py` faria aquele módulo conhecer o rótulo das abas.
+
+    O que saiu no mesmo item compensa parte: `_carregar_marcas_salvas` era um corpo de sete linhas
+    com `try/except` e agora são três, porque a leitura e a degradação dela mudaram de arquivo.
+
+    **1.862 → 1.863 com o nome acessível da janela inteira (F9)**, e a linha é uma só:
+    `acessibilidade.nomear_tudo(self)`, no fim da montagem. O arnês `caissa.ui.audit.teclado`
+    mediu, por aba, entre 4 e 15 controles chegando ao leitor de tela **sem nome nenhum** -- doze
+    campos de texto, seis réguas de zoom, cinco caixas de escolha --; depois dela são zero nas
+    seis abas. A decisão de como um controle sem rótulo é anunciado está em
+    `ui/nomes_acessiveis.py` e a varredura em `qt/acessibilidade.py`: aqui fica só a chamada,
+    porque é a janela que sabe quando a montagem acabou.
 
     **2.009 → 2.017 ao mesclar a `suite-de-treino` na `main`**, e as oito são o
     `caminho_do_cache` da S-415, que a `main` acrescentou enquanto as sete fases corriam. Os dois

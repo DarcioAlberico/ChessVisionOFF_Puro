@@ -78,7 +78,9 @@ SEM_CHAMADOR: dict[str, str] = {
     "menu.Menu": E_O_TIPO,
     "varredura_de_revisao.ScanRequest": E_O_TIPO,
     # --- os instrumentos: o que a guarda usa para medir, e o produto não
-    "tokens.razao_de_contraste": INSTRUMENTO + " (o piso de contraste das S-145/S-159, em `test_board_model` e `test_qt_tema`)",
+    # `tokens.razao_de_contraste` estava aqui como instrumento e saiu no merge do religa **por ter
+    # ganhado chamador**: `ui/folha_de_estilo.letra_do_pressionado` escolhe a letra do botão
+    # pressionado pela maior razão de contraste com a face dele (F9-C2).
     "tokens.matiz": INSTRUMENTO + " (a distância de matiz da S-159)",
     "tokens.saturacao": INSTRUMENTO + " (a saturação da S-159)",
     "tokens.distancia_de_matiz": INSTRUMENTO + " (a distância de matiz da S-159)",
@@ -188,7 +190,11 @@ SEM_CHAMADOR: dict[str, str] = {
         "é o valor que a função responde quando ninguém diz. Um chamador no produto seria o "
         "painel usando o padrão em vez de medir a alça que ele tem"
     ),
-    "cabecalho_da_partida.Campo": E_O_TIPO,
+    # `cabecalho_da_partida.Campo` estava aqui como tipo e saiu no merge do religa **pelo
+    # detector, e não pela decisão**: `ui/configuracoes.Campo` (Ferramentas ▸ Configurações…) é
+    # homônimo e `qt/dialogo_de_configuracoes.py` o nomeia, e a varredura por identificador não
+    # distingue os dois -- a limitação do `barra_da_sala.ACOES`, logo acima. O tipo continua sem
+    # quem o nomeie, pelo motivo de `E_O_TIPO`.
     "barra_do_pdf.LEITURA": (
         "o grupo do OCR: o produto o lê pelo campo `grupo` de cada linha da tabela, e só o teste o "
         "nomeia. `VISTA` é a exceção, e por isso não está aqui -- `interruptores_de_vista` filtra por ele"
@@ -249,6 +255,101 @@ de 134 para o número abaixo (2026-09-02): o **tipo** que os clientes usam sem n
 dos três é "falta cliente"; cada um é uma declaração certa que a varredura por identificador não
 tem como ver. O que sobra fora deste mapa é pergunta em aberto de verdade.
 """
+
+GUARDADO_SEM_O_PAINEL = (
+    "decisão pura da F9 (ciclos 9 a 16), guardada no `8b61a3e` com o trabalho não commitado de outra "
+    "sessão e **sem o painel do Qt que a chamaria**: o módulo inteiro não tem importador em `src/`, "
+    "e quem o cobra é o teste dele. Chegou ao `main` no merge do ramo `religa-as-decisoes-orfas`, "
+    "que nasceu antes desta guarda; a pergunta -- dar o painel ou apagar o módulo -- é de quem "
+    "retomar a F9, e isentar nome a nome aqui é o que mantém a catraca em zero até lá"
+)
+"""O quarto motivo, e o único que é pergunta adiada e não resposta: ver o texto dele."""
+
+SEM_CHAMADOR.update(
+    {
+        # --- o merge do `religa-as-decisoes-orfas` (2026-10-01): o que o ramo trouxe sem chamador em
+        # `src/` e não é pergunta adiada. Os que o próprio módulo usa saíram do `__all__` (vinte, em
+        # oito módulos); estes são os que sobraram, com o motivo.
+        "abas.ABA_DE_TRABALHO": (
+            "a janela abre pelo **modo** (`MODO_DE_TRABALHO`, que já leva à aba `Livro`: OCR_UI passo "
+            "17), e não pela aba. Ela fica declarada porque `ABAS[0]` tem de ser ela, e quem confere "
+            "os dois é o teste (`test_ui_abas`)"
+        ),
+        "configuracoes.FORA_DA_JANELA": (
+            TABELA_PERCORRIDA + " -- `test_configuracoes` cobra que todo campo de `Settings` esteja nela "
+            "ou em `CAMPOS`, que é como uma preferência nova sem lugar declarado aparece"
+        ),
+        "tokens.CROMO": (
+            TABELA_PERCORRIDA + " (os papéis do cromo que `NO_CROMO_ESCURO` tem de cobrir; `test_qt_tema` "
+            "aqui, e o `test_tema_escuro` da suíte)"
+        ),
+        "galeria_declarada.galeria_empilhada": (
+            "o merge do religa ficou com o arranjo da Galeria da OCR_UI (a imagem elástica e a lateral "
+            "rolável com o seguidor de foco), e o empilhamento da S-552 supõe a imagem fixa de 420 px "
+            "-- o porte não o trouxe. Fica declarada para quando for, como `LARGURA_DO_CIRCULO`"
+        ),
+        "substituicao.SEM_ROTACAO": GUARDADO_SEM_O_PAINEL,
+        "substituicao.PilhaDeSubstituicoes": GUARDADO_SEM_O_PAINEL,
+        # --- os que têm cliente fora de `src/`: os portões e as medições da suíte (`caissa`), que lê
+        # o tronco como biblioteca -- o mesmo caso de `plataforma.gravar_icone`
+        "folha_de_estilo.QUEM_PINTA": (
+            "o portão `caissa.ui.audit.texto_pintado` da suíte pergunta a ela quem pinta cada seletor "
+            "(a folha ou o widget) antes de medir o contraste; o produto a cumpre, e não a consulta"
+        ),
+        "recorte_do_diagrama.casas_ambar": (
+            "o percurso `caissa.ui.audit.percurso` da suíte confere com ela as casas âmbar que a tela "
+            "desenhou; no produto ela é a regra que `recorte` aplica"
+        ),
+        "recorte_do_diagrama.nome_da_classe": "o mesmo percurso da suíte, pelo mesmo motivo",
+        "comandos.acoes_so_de_glifo": (
+            "a lista que a prova de vida do ciclo 10 da F9 cobra "
+            "(`benchmarks/reports/ui/c10/c10_prova_de_vida.py`, na suíte): calculada do catálogo, "
+            "para não envelhecer"
+        ),
+        "estilos.conferir_tela": (
+            "o veredito da medição da F9-C2 (`benchmarks/reports/ui/medir_c2.py`, na suíte): a ênfase "
+            "da **tela inteira**, que a janela viva cumpre pelo catálogo (`ler_melhor` é o único "
+            "primário, cobrado por `test_ui_comandos`) e a medição confere de fora"
+        ),
+        **{
+            f"{modulo}.{nome}": GUARDADO_SEM_O_PAINEL
+            for modulo, nomes in (
+                (
+                    "biblioteca",
+                    (
+                        "COM_RESULTADO", "DIAGRAMAS_ROTULOS", "DO_METADADO", "EIXOS", "EIXO_DIAGRAMAS",
+                        "EIXO_EDITORA", "EIXO_ERA", "EIXO_ESTADO", "EIXO_IDIOMA", "IDIOMAS", "ORDENS",
+                        "ORDEM_ANO", "ORDEM_AUTOR", "ORDEM_DIAGRAMAS", "ORDEM_RECENTE", "ORDEM_TITULO",
+                        "PROCESSADO", "ROTULOS_DE_EIXO", "ROTULOS_DE_ORDEM", "SEM_ANO", "SEM_EDITORA",
+                        "SEM_IDIOMA", "SEM_RESULTADO", "SOBRA", "Faceta", "FaixaVisivel",
+                        "IndiceDaBiblioteca", "ItemDaBiblioteca", "NAO_PROCESSADO", "ValorDeFaceta",
+                        "ano_no_titulo", "casa_com", "colunas_que_cabem", "dobrar", "editora_no_titulo",
+                        "era_de", "faixa_de_diagramas", "idioma_provavel", "item_de", "janela_visivel",
+                        "peso_no_disco", "resumo_de", "titulo_do_arquivo",
+                    ),
+                ),
+                (
+                    "selecao_de_area",
+                    (
+                        "ALCAS", "LADO_DA_ALCA", "LADO_MINIMO_PARA_ALCAS_DE_BORDA", "PASSO_FINO_PT",
+                        "PASSO_PT", "TOLERANCIA_DA_ALCA", "Gesto", "alca_em", "centros_das_alcas",
+                        "decidir_gesto", "e_clique", "grampeado_ponto", "redimensionado",
+                        "selecao_pequena_demais",
+                    ),
+                ),
+                (
+                    "cortina",
+                    (
+                        "ANTES", "DEPOIS", "FOLGA_DO_ROTULO", "FRACAO_INICIAL",
+                        "LARGURA_MINIMA_PARA_ROTULOS", "MEIA_ALCA", "TOLERANCIA_DE_CLIQUE", "Cortina",
+                        "Rotulo",
+                    ),
+                ),
+            )
+            for nome in nomes
+        },
+    }
+)
 
 TETO_DE_ORFAOS = 0
 """Quantos nomes exportados por `ui/` ainda não têm chamador em `src/` **nem resposta escrita**.

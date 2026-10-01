@@ -65,6 +65,8 @@ from typing import Literal, Protocol, runtime_checkable
 import chess
 import fitz
 
+from .estipulacao import Estipulacao, estipulacao_de_pagina, parse_estipulacao
+from .orientation import BoardCoordinates
 from .pdf_io import PdfSource
 from .procedencias import DA_CAMADA, DE_TERCEIROS, LineOrigin, SideOrigin, escopo_de_pagina
 
@@ -158,6 +160,29 @@ class DiagramContext:
     side_to_move_confidence: float = 1.0
     """Confiança do trecho que decidiu. 1,0 para a camada de texto, o que o motor disser
     para o OCR. Sobrevive até o `[SideToMoveConfidence]` do PGN quando não é 1,0."""
+
+    first_move_number: tuple[int, bool] | None = None
+    """`(número, é_das_pretas)` do primeiro lance impresso **sob** o diagrama (passo 7):
+    `22... ♖g8` → `(22, True)`; `23 ♘c4` → `(23, False)`. `None` quando não há."""
+
+    first_moves_text: str = ""
+    """A linha inteira de onde `first_move_number` saiu -- os primeiros lances impressos sob o
+    diagrama, como o livro os escreveu (C11 do ciclo 2): é o que `lance_seguinte.conferir`
+    joga sobre a posição lida. Vazio quando não há linha de lances."""
+
+    caption_after_move: tuple[int, bool] | None = None
+    """`(número, é_das_pretas)` da vez **depois** do lance que a legenda "após N.x" cita:
+    `after 23...Bd5` → `(24, False)`; `após 23.♘c4` → `(23, True)`."""
+
+    coordinates: BoardCoordinates | None = None
+    """As coordenadas impressas na borda, quando a página as tem (passo C10): a coluna de
+    números à esquerda de cima para baixo e a linha de letras embaixo, lidas das palavras
+    curtas da camada de texto em volta do retângulo. `None` quando a página não as imprime."""
+
+    stipulation: Estipulacao | None = None
+    """A exigência impressa -- «mate em N» -- lida da legenda (C12 do ciclo 2), ou da faixa de
+    margem quando a legenda cala (`estipulacao_de_pagina`, origem `pagina`). `None` = a página
+    não exige nada verificável. É o que `estipulacao.apply_stipulation` joga sobre a leitura."""
 
     exercise_number: int | None = None
     players: tuple[str, str] | None = None
@@ -992,6 +1017,71 @@ class _SideDecision:
     confidence: float
 
 
+#: Passo 7: o primeiro lance sob o diagrama (`22... ♖g8`, `23 ♘c4`, `23.Nc4`) e a legenda
+#: "após/after/nach/después/после N.x". O lookahead exige peça ou casa depois do número, para
+#: "119 Bartrina - Ghitescu" (número de exercício) não passar por lance.
+_TOKEN_DE_LANCE = r"(?=[♔-♟]|[KQRBNDTLSCФЛКС][a-h]?[1-8x]|[a-h][1-8x]|O-O|0-0)"
+_INICIO_DE_LANCE = re.compile(r"^\s*(\d{1,3})\s*(\.{3}|…|\.)?\s*" + _TOKEN_DE_LANCE)
+_APOS_O_LANCE = re.compile(
+    r"\b(?:ap[oó]s|depois de|after|nach|despu[eé]s de|после|posle)\s+(\d{1,3})\s*(\.{3}|…|\.)\s*"
+    + _TOKEN_DE_LANCE,
+    re.IGNORECASE,
+)
+
+
+def inicio_de_lance(text: str) -> tuple[int, bool] | None:
+    """`(número, é_das_pretas)` quando o texto abre com um lance numerado."""
+    match = _INICIO_DE_LANCE.match(text)
+    if match is None:
+        return None
+    return int(match.group(1)), (match.group(2) or "") in ("...", "…")
+
+
+def apos_o_lance(text: str) -> tuple[int, bool] | None:
+    """`(número, é_das_pretas)` da vez depois do lance citado em "após N.x"."""
+    match = _APOS_O_LANCE.search(text)
+    if match is None:
+        return None
+    numero = int(match.group(1))
+    das_pretas = match.group(2) in ("...", "…")
+    return (numero + 1, False) if das_pretas else (numero, True)
+
+
+def _linha_do_primeiro_lance(abaixo: Sequence[_ParsedLine]) -> str:
+    """A linha sob o diagrama que abre com lance numerado, como impressa (C11)."""
+    for item in abaixo:
+        if inicio_de_lance(item.text) is not None:
+            return item.text.strip()
+    return ""
+
+
+def _lado_pela_numeracao(
+    abaixo: Sequence[_ParsedLine], legenda: Sequence[_ParsedLine]
+) -> tuple[_SideDecision | None, tuple[int, bool] | None, tuple[int, bool] | None]:
+    """A decisão pela numeração (passo 7), mais os dois campos lidos, decidindo ou não."""
+    primeiro: tuple[int, bool] | None = None
+    texto_do_primeiro = ""
+    for item in abaixo:
+        primeiro = inicio_de_lance(item.text)
+        if primeiro is not None:
+            texto_do_primeiro = item.text
+            break
+    apos: tuple[int, bool] | None = None
+    texto_do_apos = ""
+    for item in legenda:
+        apos = apos_o_lance(item.text)
+        if apos is not None:
+            texto_do_apos = item.text
+            break
+    if primeiro is not None:
+        cor = chess.BLACK if primeiro[1] else chess.WHITE
+        return _SideDecision(cor, texto_do_primeiro.strip()[:40], "move-number", 0.9), primeiro, apos
+    if apos is not None:
+        cor = chess.BLACK if apos[1] else chess.WHITE
+        return _SideDecision(cor, texto_do_apos.strip()[:60], "caption-after", 0.85), primeiro, apos
+    return None, primeiro, apos
+
+
 def _side_from_tier(lines: Sequence[_ParsedLine]) -> _SideDecision | None:
     """Lado a jogar deste conjunto de linhas, ou `None` se ele disser as duas coisas.
 
@@ -1034,7 +1124,12 @@ def _side_from_tier(lines: Sequence[_ParsedLine]) -> _SideDecision | None:
     return next((item for item in found if item.origin == "text"), found[0])
 
 
-def _parse_lines(lines: Sequence[_ParsedLine], *, page_number: int | None) -> DiagramContext:
+def _parse_lines(
+    lines: Sequence[_ParsedLine],
+    *,
+    page_number: int | None,
+    abaixo: Sequence[_ParsedLine] = (),
+) -> DiagramContext:
     # A legenda decide; a vizinhanca so responde quando a legenda cala. Sao dois escaloes, e
     # a contradicao vale dentro de cada um: uma legenda que diz as duas coisas nao tem
     # resposta, mas uma legenda contradita pelo comentario do diagrama ao lado tem.
@@ -1042,6 +1137,12 @@ def _parse_lines(lines: Sequence[_ParsedLine], *, page_number: int | None) -> Di
     secondary = [item for item in lines if not item.primary]
 
     decision = _side_from_tier(primary) or _side_from_tier(secondary)
+    # Passo 7: quando nenhuma palavra declarou o lado, a numeração decide -- o primeiro
+    # lance sob o diagrama, depois a legenda "após N.x". `abaixo` vem do mais perto ao mais
+    # longe; o primeiro que abre com lance numerado é o que o leitor continua dali.
+    pela_numeracao, primeiro, apos = _lado_pela_numeracao(abaixo, [*primary, *secondary])
+    if decision is None:
+        decision = pela_numeracao
 
     captions = [item.text for item in [*primary, *secondary] if item.caption_like]
 
@@ -1064,16 +1165,28 @@ def _parse_lines(lines: Sequence[_ParsedLine], *, page_number: int | None) -> Di
             if line_year is not None:
                 event, year = line_event, line_year
 
+    # C12: a exigência só sai de linha com formato de legenda -- em prosa, «mate em 2» é uma
+    # afirmação sobre uma variante, não uma exigência sobre o diagrama.
+    stipulation: Estipulacao | None = None
+    for text in captions:
+        stipulation = parse_estipulacao(text)
+        if stipulation is not None:
+            break
+
     return DiagramContext(
         caption="\n".join(item.text for item in lines),
         side_to_move=None if decision is None else decision.color,
         side_to_move_evidence="" if decision is None else decision.evidence,
         side_to_move_origin=None if decision is None else decision.origin,
         side_to_move_confidence=1.0 if decision is None else decision.confidence,
+        first_move_number=primeiro,
+        first_moves_text=_linha_do_primeiro_lance(abaixo),
+        caption_after_move=apos,
         exercise_number=exercise_number,
         players=players,
         event=event,
         year=year,
+        stipulation=stipulation,
     )
 
 
@@ -1106,6 +1219,14 @@ def context_from_lines(nearby: Sequence[NearbyLine], *, page_number: int | None 
         return DiagramContext()
 
     has_primary = any(item.primary for item in nearby)
+    abaixo = [
+        _ParsedLine(text=item.text, caption_like=item.line.is_caption_like,
+                    primary=item.primary, origin=item.line.origin,
+                    confidence=item.line.confidence)
+        for item in sorted(
+            (i for i in nearby if i.placement == "below"), key=lambda i: i.line.bbox[1]
+        )
+    ]
     return _parse_lines(
         [
             _ParsedLine(
@@ -1118,6 +1239,7 @@ def context_from_lines(nearby: Sequence[NearbyLine], *, page_number: int | None 
             for item in nearby
         ],
         page_number=page_number,
+        abaixo=abaixo,
     )
 
 
@@ -1284,6 +1406,61 @@ def _lines_with_ocr(
     return [*text_lines, *extras]
 
 
+_FILES_ROW = "abcdefgh"
+_RANKS_COLUMN = "12345678"
+
+
+def board_coordinates_for(
+    page: fitz.Page, bbox: tuple[float, float, float, float]
+) -> BoardCoordinates | None:
+    """As coordenadas impressas em volta de `bbox`, ou `None` (passo C10 do ciclo 2).
+
+    Palavras de um caractere da camada de texto: a coluna de dígitos encostada à esquerda
+    (ou à direita) do retângulo, ordenada de cima para baixo, e a linha de letras embaixo
+    (ou em cima), da esquerda para a direita. Pelo menos quatro de cada para valer -- a
+    numeração de um exercício ao lado do diagrama é um dígito só. Uma linha impressa como
+    palavra única (`abcdefgh`) também conta.
+    """
+    x0, y0, x1, y1 = bbox
+    side = max(x1 - x0, y1 - y0)
+    if side <= 0:
+        return None
+    ring = min(30.0, max(9.0, side * 0.12))
+    ranks: list[tuple[float, int]] = []
+    files: list[tuple[float, str]] = []
+    try:
+        words = page.get_text("words")
+    except Exception:  # noqa: BLE001 - uma página sem camada de texto não tem coordenadas
+        return None
+    for word in words:
+        wx0, wy0, wx1, wy1, text = word[0], word[1], word[2], word[3], str(word[4]).strip().lower()
+        cx, cy = (wx0 + wx1) / 2.0, (wy0 + wy1) / 2.0
+        if x0 < cx < x1 and y0 < cy < y1:
+            continue  # dentro do tabuleiro: rótulo de casa ou peça, não coordenada
+        beside = (x0 - ring <= cx <= x0 or x1 <= cx <= x1 + ring) and y0 - ring <= cy <= y1 + ring
+        under = (y1 <= cy <= y1 + ring or y0 - ring <= cy <= y0) and x0 - ring <= cx <= x1 + ring
+        if text in (_FILES_ROW, _FILES_ROW[::-1]) and under:
+            files.extend((wx0 + (wx1 - wx0) * (i + 0.5) / 8, ch) for i, ch in enumerate(text))
+            continue
+        if len(text) != 1:
+            continue
+        if text in _RANKS_COLUMN and beside:
+            ranks.append((cy, int(text)))
+        elif text in _FILES_ROW and under:
+            files.append((cx, text))
+    ranks.sort()
+    files.sort()
+    ranks_run = tuple(r for _, r in ranks)
+    files_run = tuple(f for _, f in files)
+    if len(ranks_run) < 4:
+        ranks_run = ()
+    if len(files_run) < 4:
+        files_run = ()
+    if not ranks_run and not files_run:
+        return None
+    return BoardCoordinates(ranks_top_to_bottom=ranks_run, files_left_to_right=files_run)
+
+
 def contexts_for_page(
     page: fitz.Page,
     bboxes: Sequence[tuple[float, float, float, float]],
@@ -1307,6 +1484,12 @@ def contexts_for_page(
 
     buckets = assign_lines_to_diagrams(lines, bboxes, radius_pt=radius_pt)
     contexts = [context_from_lines(bucket, page_number=page_number) for bucket in buckets]
+    # Passo C10: as coordenadas da borda, quando a página as imprime. Uma leitura da
+    # camada de texto por diagrama; `None` na página digitalizada, e a política cala.
+    contexts = [
+        replace(context, coordinates=board_coordinates_for(page, bbox))
+        for context, bbox in zip(contexts, bboxes, strict=True)
+    ]
 
     # A faixa de margem so e consultada quando sobra diagrama sem lado a jogar. Nao e
     # otimizacao: e o que garante que a precedencia da legenda nunca seja disputada.
@@ -1314,7 +1497,35 @@ def contexts_for_page(
         scope = page_scope_declaration(page, caption_reader=caption_reader)
         if scope is not None:
             contexts = [_apply_page_scope(context, scope) for context in contexts]
+    # C12: a exigência da faixa de margem («2.2 Combinations #2 (451-3514)» no topo do Polgar)
+    # vale para os diagramas cuja legenda não exige nada -- a mesma precedência do lado.
+    if any(context.stipulation is None for context in contexts):
+        exigencia = page_stipulation_declaration(page, caption_reader=caption_reader)
+        if exigencia is not None:
+            contexts = [
+                context if context.stipulation is not None else replace(context, stipulation=exigencia)
+                for context in contexts
+            ]
     return contexts
+
+
+def page_stipulation_declaration(
+    page: fitz.Page, *, caption_reader: CaptionSource | None = None
+) -> Estipulacao | None:
+    """A exigência que a faixa de margem declara para a página inteira, ou `None` (C12).
+
+    **Só a camada de texto.** O escopo do lado a jogar consulta o OCR da margem quando a camada
+    cala, mas ele só é consultado quando sobra diagrama sem lado; a exigência sobra em quase
+    toda página (a maioria dos livros não exige nada), e pagar OCR de margem em cada uma
+    quebraria a economia da S-61 (`test_onde_a_camada_de_texto_respondeu_o_ocr_nao_roda`). O
+    `caption_reader` fica na assinatura para o dia em que um livro de problemas digitalizado
+    justificar o custo -- medido, não suposto.
+    """
+    del caption_reader  # ver o docstring: a margem por OCR não é consultada
+    exigencia = estipulacao_de_pagina([line.text for line in page_margin_lines(page)])
+    if exigencia is not None:
+        logger.info("exigência de escopo de página: %r", exigencia.texto)
+    return exigencia
 
 
 def contexts_for_pdf_page(

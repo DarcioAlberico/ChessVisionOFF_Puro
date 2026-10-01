@@ -19,20 +19,28 @@ from pathlib import Path
 from unittest import mock
 
 import numpy as np
+import pytest
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao
 
+from chess_diagram_ocr.config import PIECE_CLASSES
 from chess_diagram_ocr.service import RecognizedDiagram
-from chess_diagram_ocr.ui import atalhos, barra_do_resultado, board_edit, comandos
+from chess_diagram_ocr.ui import atalhos, barra_do_resultado, board_edit, comandos, strings
 
 if TEM_PYQT:
-    from chess_diagram_ocr.qt.painel_de_resultado import MENSAGEM_VAZIA, PainelDeResultado
+    from chess_diagram_ocr.qt import decisoes_de_diagrama
+    from chess_diagram_ocr.qt.painel_de_resultado import (
+        MENSAGEM_VAZIA,
+        MOTIVO_SEM_DIAGRAMA,
+        PainelDeResultado,
+        _girar_180,
+    )
 
 LEGAL = "4k3/8/8/8/8/8/8/4K3"
 OUTRA = "8/8/8/4k3/8/8/8/4K3"
 
 
-def diagrama(placement: str = LEGAL, *, indice: int = 0) -> RecognizedDiagram:
+def diagrama(placement: str = LEGAL, *, indice: int = 0, probs: np.ndarray | None = None) -> RecognizedDiagram:
     return RecognizedDiagram(
         index=indice,
         board_rgb=np.full((64, 64, 3), 200, np.uint8),
@@ -40,7 +48,19 @@ def diagrama(placement: str = LEGAL, *, indice: int = 0) -> RecognizedDiagram:
         min_confidence=0.93,
         square_confidences=[0.99] * 64,
         side_to_move="w",
+        probs=probs,
     )
+
+
+def probs_que_hesitam_em(casa: int) -> np.ndarray:
+    """(64, 13) certa de «vazia» em tudo, menos na casa dada: 0,60 dama branca × 0,35 dama preta."""
+    probs = np.zeros((64, len(PIECE_CLASSES)))
+    probs[:, PIECE_CLASSES.index("empty")] = 1.0
+    probs[casa] = 0.0
+    probs[casa, PIECE_CLASSES.index("Q")] = 0.6
+    probs[casa, PIECE_CLASSES.index("q")] = 0.35
+    probs[casa, PIECE_CLASSES.index("empty")] = 0.05
+    return probs
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -286,6 +306,42 @@ class HistoricoTests(PainelTests):
         self.painel.desfazer()
         self.assertEqual(self.painel.modelo.fen_at(0), LEGAL)
 
+    def _trocar_o_lado(self, lado: str) -> None:
+        for botao in self.painel._lados.buttons():
+            if botao.property("lado") == lado:
+                botao.setChecked(True)
+                self.painel._trocou_o_lado()
+
+    def test_trocar_o_lado_entra_na_pilha_e_desfazer_devolve(self) -> None:
+        """OCR_UI C2, A7 (análise §6.5): a troca de vez era a única das sete origens de mudança
+        fora do `Ctrl+Z`. Agora o estado da pilha é `(placement, side)`."""
+        self.carregar(LEGAL)
+        self._trocar_o_lado("b")
+        self.assertEqual(self.painel.modelo.side_at(0), "b")
+        self.assertTrue(self.painel.btn_desfazer.isEnabled(), "trocar o lado não acendeu o desfazer")
+        self.painel.desfazer()
+        self.assertEqual(self.painel.modelo.side_at(0), "w", "o desfazer não devolveu o lado")
+        self.assertEqual(self.painel.modelo.fen_at(0), LEGAL, "o desfazer mexeu numa peça")
+        self.painel.refazer()
+        self.assertEqual(self.painel.modelo.side_at(0), "b")
+
+    def test_desfazer_devolve_peca_e_lado_na_ordem_em_que_mudaram(self) -> None:
+        self.carregar(LEGAL)
+        corrigida = board_edit.set_piece(LEGAL, 27, "Q")
+        self.painel._tabuleiro_mudou(corrigida)
+        self._trocar_o_lado("b")
+        self.painel.desfazer()
+        self.assertEqual((self.painel.modelo.fen_at(0), self.painel.modelo.side_at(0)), (corrigida, "w"))
+        self.painel.desfazer()
+        self.assertEqual((self.painel.modelo.fen_at(0), self.painel.modelo.side_at(0)), (LEGAL, "w"))
+
+    @pytest.mark.xfail(strict=True, reason="o comportamento antigo (A7): desfazer não devolvia o lado")
+    def test_sabotagem_desfazer_nao_devolvia_o_lado(self) -> None:
+        self.carregar(LEGAL)
+        self._trocar_o_lado("b")
+        self.painel.desfazer()
+        self.assertEqual(self.painel.modelo.side_at(0), "b")
+
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class TecladoEBotoesTests(PainelTests):
@@ -308,18 +364,28 @@ class TecladoEBotoesTests(PainelTests):
                 self.assertIn(acao, atalhos.por_acao)
 
     def test_o_rotulo_dos_botoes_vem_do_catalogo(self) -> None:
-        """A fronteira da S-324: este painel não escreve texto de interface.
+        """A fronteira da S-324: este painel não escreve texto de interface."""
+        for botao, acao in (
+            (self.painel.btn_salvar, "salvar"),
+            (self.painel.btn_salvar_todos, "salvar_todos"),
+            (self.painel.btn_desfazer, "desfazer"),
+            (self.painel.btn_refazer, "refazer"),
+            (self.painel.btn_limpar, "limpar_tabuleiro"),
+            (self.painel.btn_aplicar, "aplicar_fen"),
+        ):
+            with self.subTest(acao=acao):
+                self.assertEqual(botao.text(), comandos.rotulo_de_botao(acao))
 
-        **Dois rótulos por ação desde a fila** (S-528, terceira barra): o botão com texto mostra o
-        curto (`Salvar`) e o item do "Mais" mostra o longo (`Salvar a posição`), que é o do menu.
-        Quem escolhe é `com_texto` na tabela, e é essa escolha que se afirma aqui -- os dois textos
-        continuam vindo do catálogo, e nenhum deles é escrito neste painel.
-        """
-        for nome in ("salvar", "salvar_todos", "desfazer", "refazer", "limpar_tabuleiro", "aplicar_fen"):
-            registro = barra_do_resultado.acao(nome)
-            esperado = comandos.rotulo_de_botao(nome) if registro.com_texto else comandos.rotulo(nome)
-            with self.subTest(acao=nome):
-                self.assertEqual(esperado, self.painel.barra.acoes[nome].text())
+    def test_a_barra_de_acoes_quebra_em_vez_de_cortar(self) -> None:
+        """Cinco botões numa coluna de 360 px não cabem numa linha, e o `QHBoxLayout` responderia
+        com uma largura mínima maior que o painel -- o divisor deixaria de poder ser arrastado."""
+        from chess_diagram_ocr.qt.barra import BarraFluida
+
+        barras = self.painel.findChildren(BarraFluida)
+        # Duas desde C1/X5: a das ações e a dos estados com ação (que nasce vazia à vista).
+        self.assertEqual(len(barras), 2)
+        acoes = next(b for b in barras if self.painel.btn_salvar in b.findChildren(type(self.painel.btn_salvar)))
+        self.assertGreater(acoes.linhas_em(200), 1)
 
     def test_a_S_233_fecha_e_os_tres_rotulos_curtos_existem(self) -> None:
         """`ui/comandos.py` registrava que "Aplicar FEN", "Salvar posição reconhecida" e "Salvar
@@ -332,39 +398,20 @@ class TecladoEBotoesTests(PainelTests):
                 self.assertTrue(curto)
                 self.assertNotEqual(comandos.rotulo(nome), curto, "o rótulo curto não encurtou nada")
 
-    def test_a_fila_enfileira_em_vez_de_quebrar(self) -> None:
-        """**É o que mudou.** A `BarraFluida` da S-151 resolvia "esconder botão sem avisar"
-        empilhando fileiras: cinco botões de texto numa coluna de 360 px viravam três linhas, e a
-        aba que abre primeiro gastava isso em cromo. A fila resolve o mesmo sem gastar altura --
-        continua sendo **uma** linha em qualquer largura, e o que não cabe está no "Mais".
-
-        A propriedade afirmada é a da S-151, e ela não mudou: **nenhuma ação é descartada**.
-        """
-        for largura in (1200, 700, 494, 300, 160):
-            self.painel.barra.resize(largura, self.painel.barra.height())
-            self.app.processEvents()
-            with self.subTest(largura=largura):
-                self.assertEqual(1, self.painel.barra.linhas)
-                declaradas = {registro.acao for registro in barra_do_resultado.ACOES}
-                mostradas = set(self.painel.barra.na_fila()) | set(self.painel.barra.no_mais())
-                self.assertEqual(declaradas, mostradas, "uma ação sumiu da fila e do menu")
-
-    def test_o_mapa_de_incerteza_e_um_item_marcavel_do_mais(self) -> None:
-        """Preferência e não gesto: liga-se uma vez e esquece-se, e eram ~180 px permanentes de
-        `QCheckBox` com texto numa coluna de 494. É a régua de "marcar diagramas" no livro."""
-        self.assertIn(barra_do_resultado.MAPA_DE_INCERTEZA, self.painel.barra.no_mais())
-        self.assertTrue(self.painel.heatmap.isCheckable())
-        self.assertTrue(self.painel.heatmap.isChecked(), "a tinta de dúvida nasce ligada")
-        self.painel.heatmap.setChecked(False)
-        self.app.processEvents()
-        self.assertFalse(self.painel.tabuleiro._heatmap, "a tinta continuou ligada no tabuleiro")
-
-    def test_o_seletor_diz_de_quantos_e_anda_com_as_setas(self) -> None:
+    def test_o_seletor_diz_de_quantos(self) -> None:
         """Era um `QLabel` "Selecionado" e um campo sem total: para saber quantos diagramas a
-        página tinha era preciso contar a lista acima."""
+        página tinha era preciso contar a lista acima (S-528, terceira barra)."""
         self.carregar(LEGAL, OUTRA)
         self.assertEqual(barra_do_resultado.sufixo_de_diagramas(2), self.painel.seletor.suffix())
-        self.assertIn(self.painel.seletor, self.painel.barra.findChildren(type(self.painel.seletor)))
+
+    def test_o_disparo_chega_ao_metodo_da_tabela(self) -> None:
+        """Os dois de navegação e `executar` chegam ao mesmo método, o que
+        `ui/barra_do_resultado.METODOS_DO_PAINEL` nomeia (S-528): afirmado pelo efeito."""
+        self.carregar(LEGAL, OUTRA)
+        self.painel.proximo.click()
+        self.assertEqual(self.painel.lista.currentRow(), 1)
+        self.painel.executar("diagrama_anterior")
+        self.assertEqual(self.painel.lista.currentRow(), 0)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -397,5 +444,489 @@ class SalvarTodosTests(PainelTests):
         self.assertIn("leia uma página", self.recados[-1])
 
 
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class PaletaTests(PainelTests):
+    """A paleta e o tabuleiro, ligados (S-65).
+
+    O que a paleta faz sozinha é de `tests/test_qt_paleta_de_pecas.py`. O que se afirma aqui é a
+    **fiação**: escolher na paleta arma o pincel do tabuleiro, e um clique numa casa deposita a
+    peça. Afirmar o efeito e não a chamada é o que a S-522 pede -- trocar o método depois do
+    `connect` não troca quem o sinal chama, e um teste com `mock` continuaria verde com o fio
+    cortado.
+    """
+
+    def test_escolher_na_paleta_arma_o_pincel_do_tabuleiro(self) -> None:
+        self.carregar()
+        self.painel.paleta._botoes["Q"].click()
+        self.assertEqual("Q", self.painel.tabuleiro.modelo.brush)
+
+    def test_largar_na_paleta_desarma_o_pincel_do_tabuleiro(self) -> None:
+        """O outro sentido do mesmo fio: sem ele o clique ficaria pintando para sempre."""
+        self.carregar()
+        self.painel.paleta._botoes["Q"].click()
+        self.painel.paleta._botoes["Q"].click()
+        self.assertIsNone(self.painel.tabuleiro.modelo.brush)
+
+    def test_a_frase_do_pincel_chega_a_barra_de_status(self) -> None:
+        self.carregar()
+        self.painel.paleta._botoes["Q"].click()
+        self.assertIn(board_edit.PIECE_NAMES_PT["Q"], self.recados[-1])
+
+    def test_a_paleta_fica_ao_lado_do_tabuleiro_e_alinhada_por_cima(self) -> None:
+        """A forma pedida: coluna à direita do desenho, e não fileira embaixo dele. Sem o
+        alinhamento por cima o layout centraria os catorze botões na altura do tabuleiro."""
+        self.painel.resize(400, 880)
+        # Mostrar é o que faz o Qt calcular a geometria dos filhos: `activate()` na camada de
+        # cima não desce até o layout do grupo, e as duas posições sairiam zeradas. Sob
+        # `offscreen` nada aparece na tela, e o `hide` devolve o painel ao estado em que estava.
+        self.painel.show()
+        self.addCleanup(self.painel.hide)
+        self.app.processEvents()
+        tabuleiro, paleta = self.painel.tabuleiro, self.painel.paleta
+        self.assertGreaterEqual(paleta.x(), tabuleiro.x() + tabuleiro.width())
+        self.assertEqual(paleta.y(), tabuleiro.y())
+
+    def test_sem_diagrama_a_paleta_fica_cinza(self) -> None:
+        """O painel vazio desenha um tabuleiro sem peças, e pintar nele produziria a tela que a
+        S-170 escolheu não deixar acontecer: um diagrama na cara de quem não abriu nenhum."""
+        self.assertFalse(self.painel.paleta._botoes["Q"].isEnabled())
+        self.assertEqual(MOTIVO_SEM_DIAGRAMA, self.painel.paleta._botoes["Q"].toolTip())
+        self.carregar()
+        self.assertTrue(self.painel.paleta._botoes["Q"].isEnabled())
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class RecorteTests(PainelTests):
+    """O recorte ao lado do tabuleiro e a sincronia entre os dois (OCR_UI passo 13, U1).
+
+    O que o recorte faz sozinho é de `tests/test_qt_painel_de_recorte.py`; a regra é de
+    `tests/test_ui_recorte_do_diagrama.py`. Aqui é a **fiação**: o clique no recorte chega ao
+    tabuleiro como gesto inteiro, o ponteiro e a seleção se espelham, a tinta é a mesma nos dois, e
+    o fio que o portão `percurso --sabotar sem_sincronia` corta corta de fato.
+    """
+
+    def test_o_recorte_mostra_o_diagrama_e_some_com_ele(self) -> None:
+        self.assertFalse(self.painel.recorte.tem_recorte())
+        self.carregar()
+        self.assertTrue(self.painel.recorte.tem_recorte())
+        self.painel.limpar()
+        self.assertFalse(self.painel.recorte.tem_recorte())
+
+    def test_o_clique_no_recorte_seleciona_a_casa_no_tabuleiro(self) -> None:
+        self.carregar()
+        self.painel.recorte.casa_clicada.emit(60)  # e1, o rei branco
+        self.assertEqual(self.painel.tabuleiro.selecionada(), 60)
+        self.assertEqual(self.painel.recorte.selecionada(), 60, "e a seleção volta espelhada")
+
+    def test_o_clique_no_recorte_com_pincel_pinta(self) -> None:
+        """O gesto inteiro, e não só a seleção: com a peça na mão, a casa do recorte recebe a peça
+        -- é o que faz o recorte valer um clique, e o que o portão do passo 13 conta."""
+        self.carregar()
+        self.painel.paleta._botoes["Q"].click()
+        self.painel.recorte.casa_clicada.emit(27)
+        self.assertEqual(board_edit.piece_at(self.painel.modelo.fen_at(0), 27), "Q")
+
+    def test_sem_sincronia_o_clique_no_recorte_nao_chega_ao_tabuleiro(self) -> None:
+        """A sabotagem do portão, e a prova de que ela corta o que diz cortar."""
+        self.carregar()
+        self.painel.ligar_recorte(False)
+        self.painel.recorte.casa_clicada.emit(60)
+        self.assertIsNone(self.painel.tabuleiro.selecionada())
+        self.painel.ligar_recorte(True)
+        self.painel.recorte.casa_clicada.emit(60)
+        self.assertEqual(self.painel.tabuleiro.selecionada(), 60)
+
+    def test_o_ponteiro_se_espelha_nos_dois_sentidos(self) -> None:
+        self.carregar()
+        self.painel.tabuleiro.casa_apontada.emit(9)
+        self.assertEqual(self.painel.recorte.apontada(), 9)
+        self.painel.recorte.casa_apontada.emit(18)
+        self.assertEqual(self.painel.tabuleiro.apontada(), 18)
+        self.painel.recorte.casa_apontada.emit(None)
+        self.assertIsNone(self.painel.tabuleiro.apontada())
+
+    def test_a_tinta_por_margem_vai_ao_tabuleiro_e_ao_recorte(self) -> None:
+        """Uma casa em que o modelo hesitou (0,60 × 0,35) fica âmbar nos dois; uma casa apenas
+        pouco confiante pela régua antiga não entra -- a tinta é por margem quando há matriz."""
+        itens = [diagrama(LEGAL, probs=probs_que_hesitam_em(12))]
+        self.painel.carregar_pagina(itens, chave="livro.pdf", pagina=0)
+        self.assertEqual(self.painel.tabuleiro.casas_incertas(), (12,))
+        self.assertEqual(self.painel.recorte.casas_marcadas()["hesitacao"], (12,))
+        self.assertTrue(self.painel.tabuleiro.dica_da_casa(12).startswith("e7 · dama branca 0,600"))
+
+    def test_sem_matriz_vale_a_regua_antiga(self) -> None:
+        item = diagrama(LEGAL)
+        item.uncertain_squares = [5]
+        self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+        self.assertEqual(self.painel.tabuleiro.casas_incertas(), (5,))
+
+    def test_a_caixa_esconder_incerteza_nasce_desmarcada_e_e_o_inverso_do_estado(self) -> None:
+        self.assertFalse(self.painel.heatmap.isChecked())
+        self.assertTrue(self.painel.mostrar_incerteza)
+        self.assertTrue(self.painel.tabuleiro._heatmap)
+        self.painel.mostrar_incerteza = False
+        self.assertTrue(self.painel.heatmap.isChecked())
+        self.assertFalse(self.painel.tabuleiro._heatmap)
+
+    def test_o_painel_avisa_que_mudou_a_cada_edicao(self) -> None:
+        """É o sinal que a janela usa para recarimbar a caixa da página como «corrigido»."""
+        mudou: list[int] = []
+        self.painel.mudou.connect(lambda: mudou.append(1))
+        self.carregar()
+        antes = len(mudou)
+        self.painel.paleta._botoes["Q"].click()
+        self.painel.recorte.casa_clicada.emit(27)
+        self.assertGreater(len(mudou), antes)
+        self.assertEqual(self.painel.modelo.hand_edited_indices(), frozenset({0}))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+def diagrama_com_estados(**campos: object) -> RecognizedDiagram:
+    """Um diagrama lido com os sinais que o serviço calcula e a tela não dizia (C1/X5)."""
+    item = diagrama(LEGAL)
+    for nome, valor in campos.items():
+        setattr(item, nome, valor)
+    return item
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class EstadosComAcaoTests(PainelTests):
+    """Os três estados com ação (OCR_UI C2, C1/X5; análise §7.5).
+
+    O serviço já calculava `changed_squares`, `orientation_ambiguous` e `side_conflicting`; a tela
+    mostrava só o rótulo do terceiro, sem nada a fazer. Cada um vira um botão que só existe com o
+    diagrama que o tem -- e a sabotagem, no fim, é o diagrama sem os campos: a tela volta ao
+    genérico e o teste que espera os botões reprova.
+    """
+
+    def _abrir(self, item: RecognizedDiagram) -> None:
+        self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+
+    def test_sem_os_sinais_nenhum_botao_de_estado_aparece(self) -> None:
+        self._abrir(diagrama(LEGAL))
+        for botao in (self.painel.btn_reparadas, self.painel.btn_orientacao, self.painel.btn_lado):
+            with self.subTest(botao=botao.text()):
+                self.assertFalse(botao.isVisibleTo(self.painel))
+
+    def test_reparado_em_n_casas_aparece_com_as_casas_e_o_botao_as_pinta(self) -> None:
+        self._abrir(diagrama_com_estados(changed_squares=[27, 36]))
+        self.assertTrue(self.painel.btn_reparadas.isVisibleTo(self.painel))
+        # Os índices são em ordem de leitura (a8 = 0), como `square_name` os lê: 27 = d5, 36 = e4.
+        self.assertIn("Reparado em 2 casas: d5, e4", self.painel.detalhes.text())
+        self.assertEqual(self.painel.btn_reparadas.text(), strings.REPARADAS_MOSTRAR)
+        self.assertNotIn(27, self.painel.tabuleiro.casas_marcadas()["corrigidas"])
+        self.painel.btn_reparadas.click()
+        marcadas = self.painel.tabuleiro.casas_marcadas()
+        self.assertEqual(marcadas["corrigidas"], (27, 36), "as casas reparadas não foram pintadas")
+        self.assertEqual(marcadas["selecionada"], (27,), "a primeira reparada não foi selecionada")
+        self.assertEqual(self.painel.btn_reparadas.text(), strings.REPARADAS_ESCONDER)
+        self.painel.btn_reparadas.click()
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["corrigidas"], ())
+
+    def test_a_pintura_das_reparadas_nao_confunde_a_correcao_humana(self) -> None:
+        self._abrir(diagrama_com_estados(changed_squares=[27]))
+        self.painel.btn_reparadas.click()
+        self.painel._tabuleiro_mudou(board_edit.set_piece(LEGAL, 0, "Q"))
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["corrigidas"], (0, 27))
+        self.painel.desfazer()
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["corrigidas"], (27,))
+
+    def test_orientacao_ambigua_aparece_com_o_motivo_e_compara_as_duas(self) -> None:
+        self._abrir(diagrama_com_estados(orientation_ambiguous=True, orientation_reason="margem 0,02"))
+        self.assertTrue(self.painel.btn_orientacao.isVisibleTo(self.painel))
+        self.assertIn("Orientação ambígua: margem 0,02", self.painel.detalhes.text())
+        self.assertEqual(self.painel.btn_orientacao.text(), strings.ORIENTACAO_COMPARAR)
+        self.painel.btn_orientacao.click()
+        self.assertEqual(self.painel.modelo.fen_at(0), _girar_180(LEGAL))
+        self.assertEqual(self.painel.btn_orientacao.text(), strings.ORIENTACAO_VOLTAR)
+        self.painel.btn_orientacao.click()
+        self.assertEqual(self.painel.modelo.fen_at(0), LEGAL, "girar duas vezes não devolveu a original")
+        self.painel.btn_orientacao.click()
+        self.painel.desfazer()
+        self.assertEqual(self.painel.modelo.fen_at(0), LEGAL, "a comparação não é desfazível")
+
+    def test_girar_180_e_a_ordem_inversa_das_casas(self) -> None:
+        self.assertEqual(_girar_180("K7/8/8/8/8/8/8/7k"), "k7/8/8/8/8/8/8/7K", "a8 vai parar em h1")
+        self.assertEqual(_girar_180("8/8/8/3K4/8/8/8/8"), "8/8/8/8/4K3/8/8/8", "d5 vai parar em e4")
+        self.assertEqual(_girar_180("ruim"), "ruim", "colocação malformada volta como veio")
+
+    def test_o_conflito_de_lado_ganha_a_acao_de_trocar(self) -> None:
+        item = diagrama_com_estados(side_conflicting=True, side_to_move_reason="a legenda diz «pretas jogam»")
+        self._abrir(item)
+        self.assertIn(strings.SIDE_SOURCE_CONFLICT, self.painel.detalhes.text(), "o rótulo que já existia")
+        self.assertTrue(self.painel.btn_lado.isVisibleTo(self.painel))
+        self.assertEqual(self.painel.btn_lado.text(), strings.trocar_o_lado_para("b"))
+        self.assertIn("legenda diz", self.painel.btn_lado.toolTip())
+        self.painel.btn_lado.click()
+        self.assertEqual(self.painel.modelo.side_at(0), "b")
+        self.assertFalse(item.side_conflicting, "decidido por um humano, não há mais duas fontes")
+        self.assertFalse(self.painel.btn_lado.isVisibleTo(self.painel), "o conflito resolvido some")
+        self.painel.desfazer()
+        self.assertEqual(self.painel.modelo.side_at(0), "w")
+
+    def test_os_estados_somem_com_o_diagrama(self) -> None:
+        self._abrir(diagrama_com_estados(changed_squares=[1], orientation_ambiguous=True, side_conflicting=True))
+        self.painel.limpar()
+        for botao in (self.painel.btn_reparadas, self.painel.btn_orientacao, self.painel.btn_lado):
+            self.assertFalse(botao.isVisibleTo(self.painel))
+
+    @pytest.mark.xfail(strict=True, reason="sabotagem (C1/X5): sem os campos a tela volta ao genérico")
+    def test_sabotagem_sem_os_campos_os_estados_nao_aparecem(self) -> None:
+        self._abrir(diagrama(LEGAL))
+        self.assertTrue(self.painel.btn_reparadas.isVisibleTo(self.painel))
+        self.assertTrue(self.painel.btn_orientacao.isVisibleTo(self.painel))
+        self.assertTrue(self.painel.btn_lado.isVisibleTo(self.painel))
+
+
+class _DecisaoFalsa:
+    """O `DiagramDecision` da suíte, como o contrato §1.1 o descreve."""
+
+    def __init__(self, **campos: object) -> None:
+        self.campos = campos
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class DecisaoDeDiagramaTests(PainelTests):
+    """A correção gravada chega ao livro (OCR_UI C2, A3; análise §6.2).
+
+    `_gravar_alvo` com sucesso chama `caissa.ocr.diagram_decisions.record` com o retângulo em
+    **pontos** e a FEN inteira. O módulo da suíte é resolvido por chamada em
+    `qt/decisoes_de_diagrama._contrato`, e é ele que o teste troca por um falso.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.gravadas: list[tuple[Path, _DecisaoFalsa]] = []
+
+        def record(pdf: Path, decisao: _DecisaoFalsa) -> Path:
+            self.gravadas.append((pdf, decisao))
+            return Path("labeling/diagramas/livro.json")
+
+        self.contrato = mock.patch.object(
+            decisoes_de_diagrama, "_contrato", return_value=(_DecisaoFalsa, record)
+        )
+        self.contrato.start()
+        self.addCleanup(self.contrato.stop)
+        self.painel._servico.save_sample.return_value = "amostra.png"
+
+    def test_gravar_a_amostra_registra_a_decisao_em_pontos(self) -> None:
+        item = diagrama(LEGAL)
+        item.bbox_pdf = (72.0, 100.0, 272.0, 300.0)
+        self.painel.carregar_pagina([item], chave="C:/livros/livro.pdf", pagina=16)
+        self.painel._tabuleiro_mudou(board_edit.set_piece(LEGAL, 27, "Q"))
+        self.painel.salvar_atual()
+        self.assertEqual(len(self.gravadas), 1, "a decisão não foi registrada")
+        pdf, decisao = self.gravadas[0]
+        self.assertEqual(pdf, Path("C:/livros/livro.pdf"))
+        self.assertEqual(decisao.campos["page_index"], 16)
+        self.assertEqual(decisao.campos["rect"], (72.0, 100.0, 272.0, 300.0))
+        self.assertTrue(str(decisao.campos["fen"]).startswith(board_edit.set_piece(LEGAL, 27, "Q") + " w "))
+        self.assertEqual(decisao.campos["side"], "w")
+        self.assertEqual(decisao.campos["source"], "janela")
+        self.assertRegex(str(decisao.campos["decided_at"]), r"^\d{4}-\d{2}-\d{2}T")
+
+    def test_o_lado_gravado_e_o_da_decisao(self) -> None:
+        item = diagrama(LEGAL)
+        item.bbox_pdf = (0.0, 0.0, 10.0, 10.0)
+        self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+        for botao in self.painel._lados.buttons():
+            if botao.property("lado") == "b":
+                botao.setChecked(True)
+                self.painel._trocou_o_lado()
+        self.painel.salvar_atual()
+        self.assertEqual(self.gravadas[0][1].campos["side"], "b")
+        self.assertIn(" b ", str(self.gravadas[0][1].campos["fen"]))
+
+    def test_sem_retangulo_na_pagina_nao_ha_decisao(self) -> None:
+        """Item da fila, amostra do dataset, recorte: sem `bbox_pdf` nem `quad` não há com que a
+        importação casar a decisão, e registrá-la seria inventar um lugar."""
+        self.painel.carregar_pagina([diagrama(LEGAL)], chave="livro.pdf", pagina=0)
+        self.painel.salvar_atual()
+        self.assertEqual(self.gravadas, [])
+
+    def test_sem_procedencia_de_pagina_nao_ha_decisao(self) -> None:
+        item = diagrama(LEGAL)
+        item.bbox_pdf = (0.0, 0.0, 10.0, 10.0)
+        self.painel.carregar_avulsos([item])
+        self.painel.salvar_atual()
+        self.assertEqual(self.gravadas, [])
+
+    def test_a_gravacao_que_falha_nao_registra_decisao(self) -> None:
+        item = diagrama(LEGAL)
+        item.bbox_pdf = (0.0, 0.0, 10.0, 10.0)
+        self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+        self.painel._servico.save_sample.side_effect = OSError("disco cheio")
+        with mock.patch("chess_diagram_ocr.qt.painel_de_resultado.QMessageBox.critical"):
+            self.painel.salvar_atual()
+        self.assertEqual(self.gravadas, [], "decisão registrada sobre uma amostra que não entrou")
+
+    def test_sem_a_suite_a_amostra_grava_e_a_decisao_fica_no_log(self) -> None:
+        self.contrato.stop()
+        with mock.patch.dict("sys.modules", {"caissa": None, "caissa.ocr": None, "caissa.ocr.diagram_decisions": None}):
+            item = diagrama(LEGAL)
+            item.bbox_pdf = (0.0, 0.0, 10.0, 10.0)
+            self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+            with self.assertLogs("chess_diagram_ocr.qt.decisoes_de_diagrama", level="INFO") as capturado:
+                self.painel.salvar_atual()
+        self.contrato.start()
+        self.assertTrue(self.painel._servico.save_sample.called, "a amostra deixou de ser gravada")
+        self.assertIn("suíte", "\n".join(capturado.output))
+
+    def test_o_quad_em_pixels_vira_pontos_pelo_dpi_do_render(self) -> None:
+        item = mock.Mock(bbox_pdf=None, quad=[[220.0, 440.0], [660.0, 440.0], [660.0, 880.0], [220.0, 880.0]])
+        self.assertEqual(decisoes_de_diagrama.retangulo_em_pontos(item, 220), (72.0, 144.0, 216.0, 288.0))
+        self.assertEqual(decisoes_de_diagrama.retangulo_em_pontos(mock.Mock(bbox_pdf=None, quad=None), 220), None)
+
+    @pytest.mark.xfail(strict=True, reason="sabotagem (A3): gravar sem registrar a decisão")
+    def test_sabotagem_gravar_sem_o_gancho_nao_registra(self) -> None:
+        item = diagrama(LEGAL)
+        item.bbox_pdf = (0.0, 0.0, 10.0, 10.0)
+        self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+        with mock.patch.object(self.painel, "_registrar_decisao"):
+            self.painel.salvar_atual()
+        self.assertEqual(len(self.gravadas), 1)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class PontoDeVistaDasPretasTests(PainelTests):
+    """OCR_UI ciclo 2, passo C10: impresso do ponto de vista das pretas, o tabuleiro **e o
+    recorte** viram juntos -- a posição continua canônica, só a vista gira.
+
+    A casa canônica `i` está impressa em `63 - i`, como na leitura de cabeça para baixo; com o
+    recorte virando só pela rotação, a tinta e o clique no recorte caíam na casa espelhada.
+    """
+
+    def test_o_tabuleiro_e_o_recorte_viram_juntos_e_a_posicao_fica_canonica(self) -> None:
+        item = diagrama(LEGAL, probs=probs_que_hesitam_em(12))   # e7, na ordem de leitura
+        item.black_point_of_view = True
+        item.rotation = 0
+        self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+        self.assertTrue(self.painel.tabuleiro.virado, "tabuleiro na vista do impresso")
+        self.assertTrue(self.painel.recorte._virado, "recorte na mesma vista")
+        self.assertEqual(self.painel.tabuleiro.posicao(), LEGAL, "a posição continua canônica")
+        # A tinta é canônica nos dois; é o `virado` que a leva à casa impressa.
+        from chess_diagram_ocr.ui import recorte_do_diagrama as regra
+
+        x0, y0, _x1, _y1 = regra.retangulo_da_casa(12, 80.0, 80.0, virado=True)
+        self.assertEqual((x0, y0), (30.0, 60.0), "e7 canônica está impressa onde d2 estaria")
+        self.assertIn(12, self.painel.tabuleiro._incertas, "a dúvida fica na casa canônica")
+
+    def test_de_pe_e_das_brancas_nada_vira(self) -> None:
+        item = diagrama(LEGAL)
+        item.black_point_of_view = False
+        self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+        self.assertFalse(self.painel.tabuleiro.virado)
+        self.assertFalse(self.painel.recorte._virado)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class SegundaOpiniaoTests(PainelTests):
+    """OCR_UI ciclo 2, passo C3: a segunda opinião volta à janela, com ação."""
+
+    class _Leitor:
+        name = "leitor de outra família"
+
+        def __init__(self, placement: str) -> None:
+            self.placement = placement
+            self.lidos = 0
+
+        def predict(self, image_rgb) -> str:
+            self.lidos += 1
+            return self.placement
+
+    def _esperar(self, condicao, ate_ms: int = 4000) -> None:
+        from PyQt6.QtTest import QTest
+
+        for _ in range(ate_ms // 10):
+            QTest.qWait(10)
+            if condicao():
+                return
+
+    def test_as_casas_em_disputa_ficam_marcadas_e_a_posicao_e_adotada(self) -> None:
+        self.carregar(LEGAL)
+        leitor = self._Leitor(OUTRA)   # discorda em e8/e5: o rei preto mudou de casa
+        with mock.patch.object(self.painel, "leitor_da_segunda_opiniao", return_value=leitor):
+            self.painel.segunda_opiniao()
+            self._esperar(lambda: self.painel._segunda_em_curso is None)
+        self.assertEqual(leitor.lidos, 1)
+        disputadas = self.painel.tabuleiro.casas_marcadas()["disputadas"]
+        self.assertEqual(disputadas, (4, 28))   # e8 e e5 na ordem de leitura
+        self.assertEqual(self.painel.modelo.fen_at(0), OUTRA, "a leitura do segundo é adotada")
+        self.assertIn("discorda em 2 casa(s)", self.recados[-1])
+        # A procedência da amostra diz de onde a posição veio.
+        self.assertEqual(self.painel.modelo.label_route(0, OUTRA), "segunda-opiniao")
+        # Ctrl+Z devolve a leitura do primeiro.
+        self.painel.desfazer()
+        self.assertEqual(self.painel.modelo.fen_at(0), LEGAL)
+
+    def test_sem_leitor_configurado_o_botao_some_e_o_comando_diz_por_que(self) -> None:
+        self.carregar(LEGAL)
+        with mock.patch.object(self.painel, "_segunda_opiniao_configurada", return_value=False):
+            self.painel._atualizar_tudo()
+            self.assertFalse(self.painel.btn_segunda.isVisible())
+        with mock.patch.object(self.painel, "leitor_da_segunda_opiniao", return_value=None):
+            self.painel.segunda_opiniao()
+        self.assertTrue(self.recados and "Segunda opinião" in self.recados[-1], self.recados)
+
+    class _LeitorLento(_Leitor):
+        """Demora o bastante para a página mudar (ou o painel fechar) no meio."""
+
+        def predict(self, image_rgb) -> str:
+            import time
+
+            time.sleep(0.4)
+            return super().predict(image_rgb)
+
+    def test_o_parecer_que_chega_depois_de_a_pagina_mudar_e_descartado(self) -> None:
+        """O índice sozinho não chega: a página seguinte tem um diagrama no mesmo índice, e o
+        parecer da anterior iria parar nele -- a mesma classe do defeito da detecção de outra
+        página (S-68). O parecer é **deste** diagrama, por identidade."""
+        self.carregar(LEGAL)
+        leitor = self._LeitorLento(OUTRA)
+        with mock.patch.object(self.painel, "leitor_da_segunda_opiniao", return_value=leitor):
+            self.painel.segunda_opiniao()
+            self.painel.carregar_pagina([diagrama(LEGAL)], chave="livro.pdf", pagina=1)
+            self._esperar(lambda: self.painel._segunda_em_curso is None)
+        self.assertEqual(leitor.lidos, 1)
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["disputadas"], ())
+        self.assertEqual(self.painel.modelo.fen_at(0), LEGAL, "a página nova ficou como estava")
+        self.assertTrue(any("descartada" in recado for recado in self.recados), self.recados)
+
+    def test_fechar_o_painel_com_a_segunda_opiniao_a_correr_nao_derruba_o_processo(self) -> None:
+        """Uma `Tarefa` filha do painel é destruída com ele e o destrutor de `QThread` aborta o
+        processo com a thread a correr (F9-C2). A tarefa fica sem pai (`manter_viva`) e os slots
+        perguntam se o painel ainda existe -- se isto passar, o processo sobreviveu."""
+        from PyQt6.QtTest import QTest
+        from qt_app import descartar
+
+        from chess_diagram_ocr.qt import trabalho
+
+        # Um painel só deste teste: é ele que morre no meio da leitura.
+        painel = PainelDeResultado(mock.MagicMock(), csv_de_rotulos=pasta_temporaria(self) / "m.csv")
+        painel.carregar_pagina([diagrama(LEGAL)], chave="livro.pdf", pagina=0)
+        leitor = self._LeitorLento(OUTRA)
+        with mock.patch.object(painel, "leitor_da_segunda_opiniao", return_value=leitor):
+            painel.segunda_opiniao()
+        tarefa = painel._segunda_em_curso
+        self.assertIsNotNone(tarefa)
+        self.assertIsNone(tarefa.parent(), "sem pai: não morre com o painel")
+        self.assertIn(tarefa, trabalho._VIVAS)
+        descartar(painel)
+        for _ in range(200):
+            QTest.qWait(10)
+            if tarefa not in trabalho._VIVAS:
+                break
+        self.assertNotIn(tarefa, trabalho._VIVAS, "a tarefa terminou e foi solta")
+        self.assertEqual(leitor.lidos, 1)
+
+    def test_a_copia_do_primeiro_nao_marca_nada(self) -> None:
+        """O que o portão `second_opinion_gate --sabotar copia` mede, visto da janela."""
+        self.carregar(LEGAL)
+        with mock.patch.object(self.painel, "leitor_da_segunda_opiniao", return_value=self._Leitor(LEGAL)):
+            self.painel.segunda_opiniao()
+            self._esperar(lambda: self.painel._segunda_em_curso is None)
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["disputadas"], ())
+        self.assertIn("64 casas batem", self.recados[-1])

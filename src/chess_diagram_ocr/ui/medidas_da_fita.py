@@ -61,7 +61,9 @@ PLENO = "pleno"
 """Ícone grande, rótulo embaixo, cabeçalho de grupo à vista. É a Imagem 2 desenhada."""
 
 COMPACTO = "compacto"
-"""Ícone pequeno, rótulo ao lado, cabeçalho na dica. É a mesma fita numa janela que não a comporta."""
+"""Ícone pequeno, rótulo ao lado, cabeçalho desenhado (passo 12). É a mesma fita numa janela que
+não a comporta -- e, desde o passo 12 do OCR_UI_ROADMAP, com o nome do grupo à vista também aqui:
+a dica não é rótulo (R3.4), e a linha auxiliar cabe no orçamento."""
 
 MODOS: tuple[str, ...] = (PLENO, COMPACTO)
 
@@ -73,13 +75,14 @@ reconhecimento sozinho, e 32 px é o tamanho em que o traço de `ui/icones.py` (
 ainda se lê como desenho. No compacto ele volta a ser marca ao lado do texto, como a pílula da
 pele "Foco" -- e 20 px é o que não faz o botão crescer além da linha de texto."""
 
-ORCAMENTO: dict[str, int] = {PLENO: 120, COMPACTO: 64}
+ORCAMENTO: dict[str, int] = {PLENO: 120, COMPACTO: 72}
 """Quanta altura cada modo pode gastar, em pixel. **Declarado, e verificado na suíte.**
 
 Os dois números não são gosto. **120 px é 12%** de uma janela de 1000 de altura -- abaixo dos 20%
 que a S-151 chamou de defeito, e acima dos ~56 px das duas barras de hoje, que é o que a fita custa
-a mais em troca de legibilidade. **64 px** é o que cabe sem a fita competir com a página num
-1366×768, que é a tela em que a S-151 mediu o problema original."""
+a mais em troca de legibilidade. **72 px** (era 64) é o compacto **com o cabeçalho desenhado**
+(passo 12): a fila de botões de 43–45 px mais a linha auxiliar do nome do grupo; 9 % de 800 px,
+ainda abaixo dos 20 % da S-151 e do que cabe sem a fita competir com a página num 1366×768."""
 
 LINHAS_DO_ROTULO = 2
 """Em quantas linhas o rótulo do botão pode quebrar. **Duas nos dois modos**, e isso foi medido.
@@ -219,13 +222,15 @@ def altura_da_fita(
 
     lado = LADO_DO_ICONE[modo]
     rotulo = LINHAS_DO_ROTULO * linha_de_texto
+    cabecalho = espaco_ate_o_cabecalho(densidade, base=base) + linha_de_apoio + MOLDURA_DO_CABECALHO
     if modo == COMPACTO:
-        # Ícone **ao lado** do rótulo: a altura é a do mais alto dos dois, e não a soma. E o
-        # cabeçalho não entra porque ele virou dica -- é daí que vem quase toda a economia.
-        return max(lado, rotulo) + MOLDURA_DO_BOTAO
+        # Ícone **ao lado** do rótulo: a altura é a do mais alto dos dois, e não a soma. O
+        # cabeçalho entra (passo 12): a economia do compacto é a do ícone ao lado, não a do nome
+        # do grupo escondido na dica.
+        return max(lado, rotulo) + MOLDURA_DO_BOTAO + cabecalho
 
     botao = lado + FOLGA_ACIMA_DO_ROTULO + rotulo + MOLDURA_DO_BOTAO
-    return botao + espaco_ate_o_cabecalho(densidade, base=base) + linha_de_apoio + MOLDURA_DO_CABECALHO
+    return botao + cabecalho
 
 
 @dataclass(frozen=True)

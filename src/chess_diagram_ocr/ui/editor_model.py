@@ -89,6 +89,14 @@ class SaveTarget:
     """Valor de `corrected_by` (S-52): **como** a amostra chegou ao rótulo."""
 
 
+def unsaved_hand_edit(item: RecognizedDiagram, fen: str, side: str) -> bool:
+    """Se este diagrama tem correção à mão que ainda não foi gravada (A7). Pura."""
+    edited = item.edited_by_hand or fen != item.placement or item.side_to_move_source == "manual"
+    if not edited:
+        return False
+    return item.saved_placement != fen or (item.saved_side is not None and item.saved_side != side)
+
+
 @dataclass
 class DiagramEditorModel:
     """As três listas paralelas, o índice selecionado e o vínculo -- sem Tk."""
@@ -332,6 +340,38 @@ class DiagramEditorModel:
         """Alguma FEN difere do que o modelo leu, ou alguma peça foi arrastada."""
         return any(item.edited_by_hand for item in self.items) or any(
             fen != item.placement for item, fen in zip(self.items, self.fen_edits, strict=False)
+        )
+
+    def mark_saved(self, index: int) -> None:
+        """O item `index` foi gravado com o que está no editor agora (A7).
+
+        A partir daqui ele deixa de contar como «não gravado» até ser editado de novo; a
+        marca vive no item, que vai por referência ao cache da página junto com as listas.
+        """
+        if 0 <= index < len(self.items):
+            self.items[index].saved_placement = self.fen_edits[index]
+            self.items[index].saved_side = self.side_edits[index] if index < len(self.side_edits) else None
+
+    @property
+    def has_unsaved_hand_edits(self) -> bool:
+        """Alguma correção à mão que ainda não foi gravada -- a pergunta honesta antes de
+        fechar ou trocar de livro (A7): uma correção gravada (Ctrl+S) está no dataset e não
+        se perde; a que difere do último gravado, sim."""
+        return any(unsaved_hand_edit(item, fen, side) for item, fen, side in zip(
+            self.items, self.fen_edits, self.side_edits, strict=False))
+
+    def hand_edited_indices(self) -> frozenset[int]:
+        """Os diagramas cuja posição na tela difere da leitura (OCR_UI passo 13).
+
+        É o «corrigido» das caixas da página: a diferença entre o que o modelo leu e o que está no
+        editor **agora**, e não a marca `edited_by_hand` -- uma correção desfeita com `Ctrl+Z`
+        volta a ser a leitura, e a caixa volta a «lido». Gravar não muda esta resposta; muda a
+        cor, porque salvo tem precedência sobre corrigido em `page_overlay.estado_da_caixa`.
+        """
+        return frozenset(
+            indice
+            for indice, (item, fen) in enumerate(zip(self.items, self.fen_edits, strict=False))
+            if fen != item.placement
         )
 
     # --------------------------------------------------------------------------- gravação

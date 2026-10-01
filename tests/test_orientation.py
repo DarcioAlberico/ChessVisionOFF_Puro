@@ -75,15 +75,40 @@ class CoordinateRuleTests(unittest.TestCase):
         A confiança aponta a leitura de pé com margem folgada; as coordenadas dizem que o
         diagrama está impresso do ponto de vista das pretas, e elas vêm primeiro na cascata
         porque são evidência direta e não prior.
+
+        Passo C10 do ciclo 2: ponto de vista das pretas **não** é de cabeça para baixo -- as
+        peças estão de pé, a leitura de pé é a certa, e o que gira é o mapeamento das casas.
+        `rotation` fica 0, `black_point_of_view` acende, e a `prediction` é a leitura de pé
+        vista do outro lado quando a política recebe quem sabe girá-la.
         """
         ev = OrientationEvidence(
-            upright=self.ev.upright,
+            upright=_prediction(PEOES_DE_PE),
             flipped=self.ev.flipped,
             coordinates=BoardCoordinates((1, 2, 3, 4, 5, 6, 7, 8)),
         )
         resolvido = OrientationPolicy().resolve(ev)
-        self.assertEqual(resolvido.rotation, 180)
+        self.assertEqual(resolvido.rotation, 0)
+        self.assertTrue(resolvido.black_point_of_view)
         self.assertIn("pretas", resolvido.reason)
+        # Sem `turn`, a leitura sai como está...
+        self.assertEqual(resolvido.prediction.fen_board, PEOES_DE_PE)
+        # ...e com `turn` ela é a posição vista do outro lado, sem tocar nos pixels.
+        girada = OrientationPolicy().resolve(
+            ev, turn=lambda p: prediction_from_probs(np.ascontiguousarray(p.probs[::-1]))
+        )
+        self.assertEqual(girada.prediction.fen_board, _rotated(PEOES_DE_PE))
+        self.assertEqual(girada.rotation, 0)
+
+    def test_a_linha_de_letras_decide_quando_nao_ha_coluna_de_numeros(self) -> None:
+        coords = BoardCoordinates((), files_left_to_right=tuple("hgfedcba"))
+        self.assertFalse(coords.white_point_of_view)
+        self.assertTrue(BoardCoordinates((), files_left_to_right=tuple("abcdefgh")).white_point_of_view)
+
+    def test_letras_e_numeros_discordando_calam_a_regra(self) -> None:
+        coords = BoardCoordinates((8, 7, 6, 5, 4, 3, 2, 1), files_left_to_right=tuple("hgfedcba"))
+        self.assertIsNone(coords.white_point_of_view)
+        ev = OrientationEvidence(upright=self.ev.upright, flipped=self.ev.flipped, coordinates=coords)
+        self.assertIsNone(CoordinateRule().decide(ev))
 
     def test_leitura_inconclusiva_das_coordenadas_faz_a_regra_calar(self) -> None:
         for ranks in ((8, 3, 6, 1), (5,), ()):

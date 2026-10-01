@@ -39,6 +39,8 @@ from ..logging_setup import onde_esta_o_rastro
 __all__ = [
     "ACOES_PROPRIAS",
     "BOARD_VIEW_SIZE",
+    "LADO_MINIMO_DO_RECORTE",
+    "LINHAS_MINIMAS_DA_LEGENDA",
     "CAPTION_LINES",
     "LARGURA_DA_LATERAL",
     "LARGURA_MINIMA_DA_GALERIA",
@@ -51,8 +53,24 @@ __all__ = [
 ]
 
 BOARD_VIEW_SIZE = 420
-"""Lado do recorte na tela. Fixo: a galeria é para percorrer, e um tamanho que muda a cada
-diagrama faria a imagem pular sob o ponteiro a cada avanço."""
+"""Lado do recorte na tela **quando há tela para ele**: o teto, e não mais um valor fixo.
+
+O argumento original continua de pé -- *a galeria é para percorrer, e um tamanho que muda a cada
+diagrama faria a imagem pular sob o ponteiro a cada avanço* --, e ele é sobre o **diagrama**: o
+lado não muda com o item, só com a janela. Ver `LADO_MINIMO_DO_RECORTE` para o que mudou e por
+quê."""
+
+LADO_MINIMO_DO_RECORTE = 240
+"""O piso do recorte, em pixel. **É ele que devolve a janela para 1366×768** (F9-C2, §7 item 4).
+
+`setFixedSize(420, 420)` não era preferência de desenho: era o piso da janela inteira. O crítico
+do ciclo 1 isolou a linha e mediu a consequência -- a janela **recusava 1366×768**, e numa tela
+desse tamanho de 13 % a 37 % dos controles de cada aba ficavam abaixo da borda inferior, sem
+barra de rolagem, incluindo a ação primária da Revisão e do Dataset.
+
+240 é o lado em que um diagrama de xadrez ainda se lê: 30 px por casa, que é o dobro do piso de
+`ui/desenho_do_tabuleiro.py` para a peça desenhada. Abaixo disso a galeria deixa de servir para
+percorrer, que é para o que ela existe."""
 
 LARGURA_DA_LATERAL = 260
 """Largura reservada para a coluna "Headers do PGN", **medida** e não estimada (S-154).
@@ -80,7 +98,7 @@ número só somava a largura *preferida* da aba, superestimá-lo em 18 px não c
 custar quando a S-552 fez dele o **limiar do empilhamento**: uma folga que não existe na tela vira
 uma aba que empilha com espaço de sobra -- ver `galeria_empilhada`."""
 
-LARGURA_MINIMA_DA_GALERIA = BOARD_VIEW_SIZE + LARGURA_DA_LATERAL + FOLGA_DO_CORPO
+LARGURA_MINIMA_DA_GALERIA = LADO_MINIMO_DO_RECORTE + LARGURA_DA_LATERAL + FOLGA_DO_CORPO
 """O que esta aba de fato precisa de largura, somado das partes (S-154).
 
 **É este número que o painel esquerdo passou a ter de piso.** Os 420 de `LARGURA_MINIMA_ESQUERDA`
@@ -138,15 +156,29 @@ def galeria_empilhada(largura: int, *, minimo: int = LARGURA_MINIMA_DA_GALERIA) 
 
 
 CAPTION_LINES = 8
-"""Altura da legenda em linhas. O resto rola -- e **nada é cortado**.
+"""Altura da legenda em linhas, quando há tela para ela. O resto rola -- e **nada é cortado**.
 
 Ela era um `Label` com `caption[:220]`, o que bastava enquanto ela fosse só pista de contexto.
 Deixou de bastar quando o texto passou a ser matéria-prima: o que se copia de uma legenda truncada
 é uma legenda truncada, e o pedaço que falta costuma ser justamente o nome do segundo jogador ou o
 ano."""
 
-LINK_CHOICES: tuple[tuple[str, str], ...] = (("padrão", ""), ("com link", "sim"), ("sem link", "não"))
-"""Tri-estado na tela, igual ao do arquivo. "padrão" é o que a exportação decidir."""
+LINHAS_MINIMAS_DA_LEGENDA = 3
+"""Quantas linhas a legenda mantém quando a janela é baixa (OCR_UI passo 16).
+
+É a diferença entre a aba caber em 1366×768 e não caber: as oito linhas cravadas eram 168 px do
+piso da aba. Três porque é o mínimo em que jogadores, evento e ano ainda cabem à vista sem rolar."""
+
+LINK_CHOICES: tuple[tuple[str, str], ...] = (
+    ("Padrão", ""),
+    ("Com link", "sim"),
+    ("Sem link", "não"),
+)
+"""Tri-estado na tela, igual ao do arquivo. "Padrão" é o que a exportação decidir.
+
+**Maiúscula inicial desde o F9-C16.** Os três estavam em minúscula numa aba cujos outros rótulos
+são capitalizados -- o mesmo defeito de `outro` que o item 6 do §8 do ciclo 15 nomeia, achado ao
+alargar a conta da população dos treze diálogos para a janela (`c16_rotulos_de_campo.py`)."""
 
 ACOES_PROPRIAS: frozenset[str] = frozenset(
     {"diagrama_anterior", "proximo_diagrama", "primeira_pagina", "ultima_pagina"}

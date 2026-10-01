@@ -27,7 +27,16 @@ class CoberturaTests(unittest.TestCase):
         declarados = set(comandos.NAS_BARRAS_DO_PDF)
         na_barra = {registro.acao for registro in barra_do_pdf.ACOES}
         self.assertEqual(set(), declarados - na_barra, "comando do painel sem lugar na barra")
-        self.assertEqual(set(), na_barra - declarados, "ação da barra que o painel não declara")
+        # **Dois a mais na tabela, e a diferença é do merge do religa.** O painel que ficou é o dos
+        # blocos da OCR_UI, e o F9-C2 levou "Abrir no leitor do sistema" e "Exportar PGN" da barra
+        # para o menu Arquivo (o passo de saída do programa não é ação sobre a página). A tabela
+        # continua dizendo o método de cada um -- `executar` e o menu passam por ela --, mas o
+        # painel não os desenha, e `NAS_BARRAS_DO_PDF` é o que ele desenha.
+        self.assertEqual(
+            {"abrir_no_leitor", "exportar_pgn"},
+            na_barra - declarados,
+            "ação da barra que o painel não declara",
+        )
 
     def test_toda_acao_esta_no_catalogo_e_tem_metodo_do_painel(self) -> None:
         """Nada aqui é ação própria: ao contrário da sala, o painel do PDF não tem interruptor

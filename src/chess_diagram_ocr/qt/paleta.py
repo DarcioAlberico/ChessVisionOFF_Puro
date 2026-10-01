@@ -124,12 +124,20 @@ class JanelaDaPaleta(QDialog):
 
         self.campo = QLineEdit(self)
         self.campo.setPlaceholderText("Digite para achar um comando")
+        # **O nome acessível é escrito aqui, e a razão é o ciclo 12.** A varredura de
+        # `qt/acessibilidade` alcança este campo desde que o filtro de diálogo existe, mas o
+        # último degrau da cascata devolve `"Campo de texto"` -- o nome genérico da classe --,
+        # porque não há rótulo vizinho nem dica de onde tirar coisa melhor. Um leitor de tela
+        # diria "Campo de texto, caixa de edição": o papel duas vezes e o nome nenhuma. E esta
+        # é **a** superfície de quem não usa o mouse.
+        self.campo.setAccessibleName("Comando a procurar")
         fora.addWidget(self.campo)
 
         # `TabelaQt` e não um `QTreeWidget` à mão: a largura mínima por seção e a coluna que
         # estica são as regras da S-153, e escrevê-las de novo aqui é como o projeto chegou a
         # duas tabelas com o mesmo defeito.
         self.lista = TabelaQt(COLUNAS, self)
+        self.lista.setAccessibleName("Comandos achados")
         self.lista.setSelectionMode(TabelaQt.SelectionMode.SingleSelection)
         fora.addWidget(self.lista, 1)
 

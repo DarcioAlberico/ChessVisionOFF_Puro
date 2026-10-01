@@ -33,7 +33,7 @@ class PonteComOCatalogoTests(unittest.TestCase):
         usados = {registro.icone for registro in comandos.CATALOGO if registro.icone}
         self.assertEqual([], sorted(set(icones.ICONES) - usados))
 
-    def test_sao_dezenove_e_a_conta_e_das_duas_imagens_mais_a_sala(self) -> None:
+    def test_sao_vinte_e_dois_e_a_conta_diz_de_onde_veio_cada_um(self) -> None:
         """Quatro da Imagem 1 e treze da Imagem 2; a união, restrita ao que existia, dava treze.
 
         O décimo quarto é `diagrama_anterior`, que a Imagem 1 não desenha -- uma seta que só
@@ -42,14 +42,29 @@ class PonteComOCatalogoTests(unittest.TestCase):
         Os três seguintes são os que a Imagem 2 pedia e o programa não tinha: a S-229 criou
         Desfazer, Refazer e Limpar, e só então o ícone deles deixou de ser arte órfã.
 
-        **Os dois últimos são as pontas da linha da sala** (S-520), e a razão deles não é estética:
-        `⏮` e `⏭` não existem na fonte da interface -- `QFontMetrics.inFont` responde `False` para
-        os quatro glifos de navegação em Segoe UI --, então o botão desenhava com uma fonte de
-        queda, que não é a da janela. `lance_anterior` e `proximo_lance` **não** ganharam desenho
+        **Os três últimos são do F9-C6, e eles fecham um defeito medido.** `tirar_caixa`,
+        `pagina_anterior` e `proxima_pagina` eram botões só-de-ícone **sem desenho**: o
+        `_vestir_de_icone` caía no glifo de texto de `ui/strings.py`, e o crítico do ciclo 5
+        mediu o resultado na captura -- o `×` desenhava uma caixa de glifo de **4×5 px dentro de
+        um botão de 26 px**, um nono da massa visual do vizinho na mesma fila do visor.
+
+        **Os dois últimos são do F9-C7 (§4.7), e fecham o mesmo defeito nos outros painéis.** A
+        varredura do ciclo 6 lia `j.pdf.findChildren` -- a barra do visor e mais nada --, e na
+        janela inteira sobravam **onze** glifos de texto fazendo papel de ícone, com caixas de
+        tinta de 5x3 a 9x12 px. `inicio_da_linha` e `fim_da_linha` são os dois desenhos que
+        faltavam (`|<` e `>|`, primeiro e último); os outros nove botões passaram a usar
+        desenhos que já existiam -- `diagrama_anterior` e `proximo_diagrama` chegaram a **quatro**
+        comandos, e é por isso que a conta de ícones sobe 2 enquanto a de botões vestidos sobe 11.
+
+        **As mesmas duas chaves nasceram também na sala de estudo** (S-520), e lá a razão não era
+        estética: `⏮` e `⏭` não existem na fonte da interface -- `QFontMetrics.inFont` responde
+        `False` para os quatro glifos de navegação em Segoe UI --, então o botão desenhava com uma
+        fonte de queda, que não é a da janela. Os dois lados chegaram às mesmas duas chaves, e por
+        isso elas contam uma vez só. `lance_anterior` e `proximo_lance` **não** ganharam desenho
         próprio: apontam para as setas que já existiam, e são o primeiro caso do que o cabeçalho de
         `ICONES` previa -- dois comandos na mesma chave.
         """
-        self.assertEqual(19, len(icones.ICONES))
+        self.assertEqual(22, len(icones.ICONES))
         for nome in ("inicio_da_linha", "fim_da_linha"):
             with self.subTest(icone=nome):
                 self.assertIn(nome, icones.ICONES)
@@ -60,6 +75,72 @@ class PonteComOCatalogoTests(unittest.TestCase):
             with self.subTest(icone=nome):
                 self.assertIn(nome, icones.ICONES)
                 self.assertEqual(nome, comandos.comando(nome).icone)
+        for nome in ("tirar_caixa", "pagina_anterior", "proxima_pagina"):
+            with self.subTest(icone=nome):
+                self.assertIn(nome, icones.ICONES)
+                self.assertEqual(nome, comandos.comando(nome).icone)
+
+
+class GradeUnicaTests(unittest.TestCase):
+    """**Um peso de traço já havia; faltava uma extensão** (F9-C6, item 4).
+
+    O crítico do ciclo 5 mediu os botões só-de-ícone da barra do visor e achou **cinco caixas de
+    glifo diferentes** -- 11×11, 12×12, 12×14, 14×10, 14×12 --, porque cada desenho declarava a
+    sua própria extensão dentro do `0..100`: a lupa de 16 a 88, a folha de 10 a 90, as paredes
+    do "ajustar à largura" de 22 a 78 na vertical. Um ícone saía 27 % maior que o vizinho ao
+    lado dele.
+
+    `na_grade` põe todos na mesma extensão, isotropicamente. O que sobra de diferença entre as
+    caixas é a **proporção da forma** -- uma seta é mais estreita que um quadrado --, e essa
+    diferença é o desenho, não a grade.
+    """
+
+    def test_todo_icone_enche_a_caixa_no_lado_maior(self) -> None:
+        for nome, tracos in icones.ICONES.items():
+            with self.subTest(icone=nome):
+                x0, y0, x1, y1 = icones.caixa_dos_tracos(icones.na_grade(tracos))
+                maior = max(x1 - x0, y1 - y0)
+                self.assertAlmostEqual(icones.LADO_DA_CAIXA, maior, places=6)
+                self.assertGreaterEqual(min(x0, y0), -1e-6)
+                self.assertLessEqual(max(x1, y1), icones.LADO_DA_CAIXA + 1e-6)
+
+    def test_a_grade_e_centrada_e_isotropica(self) -> None:
+        """Centrada: a folga do lado curto é a mesma dos dois lados. Isotrópica: a proporção fica.
+
+        Sem a segunda metade, "grade única" viraria esticar cada desenho até o quadrado -- e a
+        seta da página anterior sairia gorda.
+        """
+        for nome, tracos in icones.ICONES.items():
+            with self.subTest(icone=nome):
+                ax0, ay0, ax1, ay1 = icones.caixa_dos_tracos(tracos)
+                dx0, dy0, dx1, dy1 = icones.caixa_dos_tracos(icones.na_grade(tracos))
+                antes = (ax1 - ax0) / max(1e-9, ay1 - ay0)
+                depois = (dx1 - dx0) / max(1e-9, dy1 - dy0)
+                self.assertAlmostEqual(antes, depois, places=6)
+                self.assertAlmostEqual(dx0, icones.LADO_DA_CAIXA - dx1, places=6)
+                self.assertAlmostEqual(dy0, icones.LADO_DA_CAIXA - dy1, places=6)
+
+    def test_as_marcas_ficam_fora_da_grade(self) -> None:
+        """O visto e o traço do indeterminado são de tamanhos diferentes **de propósito**.
+
+        *"Ele é horizontal e mais curto que o visto é largo"* -- é a WCAG 1.4.1 que o ciclo 1
+        cobrou: duas marcas que só a matiz separasse seriam dois quadrados iguais no papel.
+        Normalizá-las desfaria o conserto, e por isso `imagem` só passa `ICONES` por `na_grade`.
+        """
+        visto = icones.imagem(icones.MARCA_VISTO, 48, PRETO)
+        traco = icones.imagem(icones.MARCA_TRACO, 48, PRETO)
+        assert visto is not None and traco is not None
+        self.assertNotEqual(visto.getchannel("A").getbbox(), traco.getchannel("A").getbbox())
+
+    def test_o_desenho_sai_maior_do_que_saia_antes(self) -> None:
+        """A grade não é só uniformidade: ela devolve os pixels que a declaração estreita perdia.
+
+        `zoom_mais` ia de 16 a 88 na caixa de 100 -- **72 %** do que o botão lhe dava.
+        """
+        posto = icones.na_grade(icones.ICONES["zoom_mais"])
+        x0, y0, x1, y1 = icones.caixa_dos_tracos(posto)
+        antes = icones.caixa_dos_tracos(icones.ICONES["zoom_mais"])
+        self.assertGreater((x1 - x0), (antes[2] - antes[0]))
 
     def test_limpar_nao_reusa_o_traco_do_apagar_casa(self) -> None:
         """Os dois ficam lado a lado no grupo Edição da fita, e apagam coisas diferentes: um
@@ -212,3 +293,69 @@ class CorDoChamadorTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class UmaGradeSoNaBarraDoVisorTests(unittest.TestCase):
+    """Os botões só-de-ícone da barra do visor vêm todos da mesma grade óptica (F9-C6, item 4).
+
+    **O defeito medido pelo crítico do ciclo 5, na captura:** sete botões só-de-ícone,
+    **cinco caixas de glifo** (14×10, 14×8, 12×14, 12×12, 11×11) e tinta de 30,6 % a 65,7 % --
+    *"traço fino e sólido lado a lado, e um 'ícone' de 4×5 px num botão de 26 px"*. Carta §3.3,
+    *"ícones de origens diferentes misturados (peso, estilo, grade)"*.
+
+    Três coisas passam a ser afirmadas aqui, e as três eram falsas: todo botão só-de-ícone da
+    barra tem **desenho declarado** (três caíam no caractere de texto), todo desenho enche a
+    grade no lado maior, e a caixa de glifo dos nove é **quadrada** -- é ela que decide o tamanho
+    óptico que o olho compara na fila.
+    """
+
+    SO_DE_ICONE = (
+        "ler_pagina",
+        "tirar_caixa",
+        "selecionar_area",
+        "pagina_anterior",
+        "proxima_pagina",
+        "zoom_menos",
+        "zoom_mais",
+        "ajustar_largura",
+        "ajustar_pagina",
+    )
+
+    def test_todo_botao_so_de_icone_da_barra_tem_desenho(self) -> None:
+        """Sem desenho, `qt/painel_do_pdf._vestir_de_icone` cai no glifo de texto -- 4×5 px."""
+        sem_desenho = [nome for nome in self.SO_DE_ICONE if not comandos.comando(nome).icone]
+        self.assertEqual([], sem_desenho)
+
+    def test_os_nove_partilham_a_mesma_caixa_de_glifo(self) -> None:
+        """Quadrada e do mesmo tamanho: é o que faz um ícone não sair maior que o vizinho.
+
+        A tolerância é de uma unidade em cem -- meio pixel a 16 px --, e não zero, porque as
+        coordenadas são declaradas em números redondos e a normalização é aritmética de ponto
+        flutuante.
+        """
+        for nome in self.SO_DE_ICONE:
+            with self.subTest(icone=nome):
+                x0, y0, x1, y1 = icones.caixa_dos_tracos(icones.na_grade(icones.ICONES[nome]))
+                self.assertAlmostEqual(x1 - x0, y1 - y0, delta=1.0)
+                self.assertAlmostEqual(icones.LADO_DA_CAIXA, x1 - x0, delta=1.0)
+
+    def test_a_seta_de_pagina_nao_e_a_seta_de_diagrama(self) -> None:
+        """Duas famílias de seta na mesma janela, e a proporção é o que as separa.
+
+        A de **página** é larga e fechada (lê como o `◀` que ela substituiu); a de **diagrama**
+        é estreita e alta. Iguais, seriam dois botões que a pessoa clica para descobrir qual é
+        qual -- a mesma razão pela qual `limpar_tabuleiro` não reusa o traço de `apagar_casa`.
+        """
+        for pagina, diagrama in (
+            ("pagina_anterior", "diagrama_anterior"),
+            ("proxima_pagina", "proximo_diagrama"),
+        ):
+            with self.subTest(par=(pagina, diagrama)):
+                self.assertNotEqual(icones.ICONES[pagina], icones.ICONES[diagrama])
+                px0, py0, px1, py1 = icones.caixa_dos_tracos(icones.ICONES[pagina])
+                dx0, dy0, dx1, dy1 = icones.caixa_dos_tracos(icones.ICONES[diagrama])
+                self.assertGreater(
+                    (px1 - px0) / (py1 - py0),
+                    (dx1 - dx0) / (dy1 - dy0),
+                    "a seta de página deixou de ser mais larga que a de diagrama",
+                )

@@ -761,6 +761,8 @@ CARDINAIS = {
     "oito": 8, "nove": 9, "dez": 10, "onze": 11, "doze": 12, "treze": 13, "catorze": 14,
     "quinze": 15, "dezesseis": 16, "dezessete": 17, "dezoito": 18, "dezenove": 19, "vinte": 20,
     "vinte e uma": 21, "vinte e duas": 22, "vinte e três": 23, "vinte e quatro": 24,
+    "vinte e cinco": 25, "vinte e seis": 26, "vinte e sete": 27, "vinte e oito": 28,
+    "vinte e nove": 29, "trinta": 30,
 }
 """Os números que a prosa escreve por extenso, porque ela os escreve por extenso (S-410).
 

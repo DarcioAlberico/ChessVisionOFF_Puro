@@ -465,9 +465,18 @@ def _acrescenta(indice: PositionIndex, colocacao: str, linha: Sequence[Any]) -> 
 
 
 def open_store(
-    path: Path = DEFAULT_STORE_PATH, *, database: Path | Sequence[Path] | None = None
+    path: Path = DEFAULT_STORE_PATH,
+    *,
+    database: Path | Sequence[Path] | None = None,
+    de_outra_thread: bool = False,
 ) -> PositionStore:
     """Abre o cache de posições, criando-o se não houver. **Nunca levanta por causa do disco.**
+
+    `de_outra_thread` é para quem abre o cache numa thread de trabalho e o **usa** na thread da
+    janela (OCR_UI passo 15: abrir custou 25–60 ms medidos no disco frio, na thread da
+    interface). O `sqlite3` recusa por padrão uma conexão usada por outra thread; a conexão
+    continua sendo de uma thread por vez -- a da janela, depois de entregue --, só não é a que a
+    criou. Quem a usa de duas threads ao mesmo tempo continua errado, com ou sem este parâmetro.
 
     **Falhar para o lado do vazio é a decisão certa aqui**, e pelo mesmo motivo do
     `load_annotations`: o vazio significa "varra", que é o comportamento anterior ao módulo. Um
@@ -483,7 +492,9 @@ def open_store(
     try:
         caminho.parent.mkdir(parents=True, exist_ok=True)
         criar = not caminho.exists()
-        conexao = sqlite3.connect(str(caminho), timeout=BUSY_TIMEOUT)
+        conexao = sqlite3.connect(
+            str(caminho), timeout=BUSY_TIMEOUT, check_same_thread=not de_outra_thread
+        )
     except (OSError, sqlite3.Error) as exc:
         logger.warning("Cache de posições ilegível em %s (%s); seguindo em memória.", caminho, exc)
         return PositionStore.in_memory(atual)

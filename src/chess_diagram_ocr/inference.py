@@ -4,11 +4,10 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
-import torch
-import torch.nn as nn
 
 from .board_detection import split_board_into_cells
 from .checkpoint import load_checkpoint
@@ -24,14 +23,13 @@ from .config import (
     UNCERTAIN_SQUARE_THRESHOLD,
     OrientationMode,
 )
-from .decode import DecodeResult, decode_constrained
+from .decode import DEFAULT_RULES, DecodeRules, DecodeResult, decode_constrained
 from .fen_utils import (
     PositionCheck,
     check_position,
     fen_from_class_indices,
     square_name,
 )
-from .model import DEFAULT_ARCH, ArchConfig, build_model, preprocess_cell_to_tensor, with_coordinate_channels
 from .orientation import (
     ConfidenceMarginRule,
     CoordinateRule,
@@ -41,8 +39,20 @@ from .orientation import (
     PawnPriorRule,
     SingleLegalRule,
     TightMarginFallback,
+    BoardCoordinates,
 )
 from .preprocess import IDENTITY, BoardNormalizer, NormalizerConfig
+
+if TYPE_CHECKING:  # pragma: no cover - só para as anotações
+    # `from __future__ import annotations` (linha 1) já transforma toda anotação em texto,
+    # então `nn.Module` e `ArchConfig` nas assinaturas não precisam de `nn` nem de `.model`
+    # em execução. Isto é o que permite este módulo -- que é o caminho da JANELA para o
+    # modelo, por `service.py` -- importar sem torch. `dataset.py`, `training.py`, `model.py`
+    # e `augment.py` continuam exigindo torch, e devem: são o treino e a rede. O que muda é
+    # que abrir a janela deixa de importá-los.
+    import torch.nn as nn
+
+    from .model import ArchConfig
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +66,8 @@ def describe_device(device: str) -> str:
     com o torch `+cpu` instalado treinava e inferia na CPU sem que nada dissesse isso --
     é a diferença entre 7,5 min e ~45 s por época, invisível.
     """
+    import torch
+
     if device.startswith("cuda") and torch.cuda.is_available():
         index = torch.cuda.current_device() if device == "cuda" else int(device.split(":")[1])
         return f"cuda:{index} ({torch.cuda.get_device_name(index)})"
@@ -84,6 +96,10 @@ def load_model(
     temperatura neutra e apenas **reporta** a que está gravada -- ver
     `config.APPLY_CALIBRATED_TEMPERATURE` para o que foi medido e por quê.
     """
+    import torch
+
+    from .model import DEFAULT_ARCH, ArchConfig, build_model
+
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
     model_path = Path(model_path)
 
@@ -232,6 +248,7 @@ def prediction_from_probs(
     uncertain_threshold: float = UNCERTAIN_SQUARE_THRESHOLD,
     constrained: bool = False,
     max_changes: int = MAX_DECODE_CHANGES,
+    rules: DecodeRules = DEFAULT_RULES,
 ) -> BoardPrediction:
     """Monta a `BoardPrediction` a partir da matriz (64, 13) já normalizada.
 
@@ -251,7 +268,7 @@ def prediction_from_probs(
 
     probs = np.asarray(probs, dtype=np.float64)
 
-    decode = decode_constrained(probs, max_changes=max_changes) if constrained else None
+    decode = decode_constrained(probs, max_changes=max_changes, rules=rules) if constrained else None
     class_indices = decode.class_indices if decode is not None else [int(idx) for idx in probs.argmax(axis=1)]
     confidences = probs[np.arange(64), class_indices]
     entropy = -(probs * np.log(np.clip(probs, _EPS, None))).sum(axis=1)
@@ -270,6 +287,55 @@ def prediction_from_probs(
         mean_confidence=float(confidences.mean()),
         min_confidence=float(confidences.min()),
         mean_entropy=float(entropy.mean()),
+        uncertain_squares=uncertain,
+        position=check_position(fen_board),
+        decode=decode,
+    )
+
+
+def prediction_with_squares(
+    prediction: BoardPrediction,
+    changes: Sequence[tuple[int, int, int]],
+    *,
+    uncertain_threshold: float = UNCERTAIN_SQUARE_THRESHOLD,
+) -> BoardPrediction:
+    """A mesma leitura com as casas de `changes` (`(casa, de, para)`) trocadas (C11).
+
+    É o que `lance_seguinte` devolve à posição: as trocas vêm das segundas opções do modelo,
+    e a confiança de cada casa trocada passa a ser a da classe adotada -- a verdade sobre o
+    que foi escolhido, como no reparo do decodificador. `decode` acumula as trocas em
+    `changed_squares` para a tela pintá-las como reparadas; a matriz não muda.
+    """
+    if not changes:
+        return prediction
+    class_indices = list(prediction.class_indices)
+    for square, before, after in changes:
+        if class_indices[square] != before:
+            raise ValueError(f"a casa {square} está em {class_indices[square]}, não em {before}.")
+        class_indices[square] = int(after)
+    probs = prediction.probs
+    confidences = probs[np.arange(64), class_indices]
+    ordered = np.argsort(confidences, kind="stable")
+    uncertain = [int(idx) for idx in ordered if confidences[idx] < uncertain_threshold]
+    fen_board = fen_from_class_indices(class_indices)
+    previous = prediction.decode
+    changed = list(previous.changed_squares) if previous is not None else []
+    changed.extend((int(s), int(b), int(a)) for s, b, a in changes)
+    decode = DecodeResult(
+        class_indices=class_indices,
+        fen_board=fen_board,
+        log_prob=float(np.log(np.clip(confidences, _EPS, None)).sum()),
+        changed_squares=changed,
+        constraints_satisfied=previous.constraints_satisfied if previous is not None else True,
+        remaining_problems=previous.remaining_problems if previous is not None else (),
+    )
+    return BoardPrediction(
+        probs=probs,
+        class_indices=class_indices,
+        fen_board=fen_board,
+        mean_confidence=float(confidences.mean()),
+        min_confidence=float(confidences.min()),
+        mean_entropy=prediction.mean_entropy,
         uncertain_squares=uncertain,
         position=check_position(fen_board),
         decode=decode,
@@ -320,6 +386,10 @@ def board_probabilities_batch(
     """
     if not boards_rgb:
         return []
+
+    import torch
+
+    from .model import DEFAULT_ARCH, preprocess_cell_to_tensor, with_coordinate_channels
 
     arch = getattr(model, "arch", DEFAULT_ARCH)
     temperature = float(getattr(model, "temperature", 1.0))
@@ -384,6 +454,7 @@ def predict_with_orientation(
     tta: bool = TTA_ENABLED,
     normalizer: NormalizerConfig = IDENTITY,
     policy: OrientationPolicy | None = None,
+    coordinates: BoardCoordinates | None = None,
 ) -> OrientedPrediction:
     """Reconhece o diagrama decidindo a orientação por diagrama, não por checkbox global.
 
@@ -456,7 +527,20 @@ def predict_with_orientation(
                 TightMarginFallback(),
             )
         )
-    return policy.resolve(OrientationEvidence(upright=de_pe, flipped=de_cabeca))
+    def turn(prediction: BoardPrediction) -> BoardPrediction:
+        # Passo C10: a mesma matriz vista do outro lado -- a casa i vira 63 - i -- montada
+        # pela mesma função e com os mesmos parâmetros da leitura de pé, para que o reparo
+        # e o limiar de incerteza sejam os da produção e não uma cópia à parte.
+        return prediction_from_probs(
+            np.ascontiguousarray(prediction.probs[::-1]),
+            uncertain_threshold=uncertain_threshold,
+            constrained=constrained,
+        )
+
+    return policy.resolve(
+        OrientationEvidence(upright=de_pe, flipped=de_cabeca, coordinates=coordinates),
+        turn=turn,
+    )
 
 
 # `predict_fen_from_board` foi removida junto com o último chamador. Devolvia (FEN, média

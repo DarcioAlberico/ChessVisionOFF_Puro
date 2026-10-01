@@ -620,3 +620,52 @@ class SquareForcedCropTests(unittest.TestCase):
             places=4,
             msg="o score entregue tem de ser o do quad original, e não o da variante",
         )
+
+
+def _tabuleiro_sintetico(lado: int = 800, filete: int = 0, claro: int = 235, escuro: int = 120) -> np.ndarray:
+    """Um tabuleiro 8×8 de `lado` px; com `filete` > 0, uma moldura escura dessa largura em volta
+    -- o recorte que o contorno entrega num livro de moldura dupla."""
+    interior = lado - 2 * filete
+    casa = interior / 8.0
+    imagem = np.full((lado, lado, 3), 255, dtype=np.uint8)
+    for linha in range(8):
+        for coluna in range(8):
+            y0, y1 = filete + int(round(linha * casa)), filete + int(round((linha + 1) * casa))
+            x0, x1 = filete + int(round(coluna * casa)), filete + int(round((coluna + 1) * casa))
+            imagem[y0:y1, x0:x1] = escuro if (linha + coluna) % 2 else claro
+    if filete:
+        imagem[:filete, :] = 30
+        imagem[-filete:, :] = 30
+        imagem[:, :filete] = 30
+        imagem[:, -filete:] = 30
+    return imagem
+
+
+class TighteningTests(unittest.TestCase):
+    """`tighten_board`: a moldura dupla sai; o recorte já justo fica como está."""
+
+    def test_o_filete_de_moldura_e_tirado_e_a_grade_volta_a_cair_nas_casas(self) -> None:
+        from chess_diagram_ocr.board_detection import board_checker_score, fit_inner_board, tighten_board
+
+        com_filete = _tabuleiro_sintetico(filete=18)
+        caixa = fit_inner_board(com_filete)
+        self.assertIsNotNone(caixa)
+        x0, y0, x1, y1 = caixa
+        for medido, esperado in zip((x0, y0, x1, y1), (18, 18, 782, 782), strict=True):
+            self.assertLessEqual(abs(medido - esperado), 3, caixa)
+        apertado = tighten_board(com_filete)
+        self.assertGreater(board_checker_score(apertado), board_checker_score(com_filete) + 0.1)
+        self.assertEqual(apertado.shape, com_filete.shape)
+
+    def test_o_recorte_justo_nao_muda(self) -> None:
+        from chess_diagram_ocr.board_detection import tighten_board
+
+        justo = _tabuleiro_sintetico(filete=0)
+        self.assertIs(tighten_board(justo), justo)
+
+    def test_sem_tabuleiro_nada_e_apertado(self) -> None:
+        from chess_diagram_ocr.board_detection import tighten_board
+
+        rng = np.random.default_rng(7)
+        ruido = rng.integers(0, 255, size=(800, 800, 3), dtype=np.uint8)
+        self.assertIs(tighten_board(ruido), ruido)

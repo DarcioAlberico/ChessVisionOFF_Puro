@@ -26,6 +26,7 @@ from chess_diagram_ocr.ui.tabela import Coluna
 
 if TEM_PYQT:
     from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QFontMetrics
     from PyQt6.QtWidgets import QHeaderView
 
     from chess_diagram_ocr.qt import tabela as qt_tabela
@@ -110,14 +111,77 @@ class MontagemTests(unittest.TestCase):
         Sem o limite por seção, arrastar o separador de "Motivo" até 5 px é possível -- e o texto
         que diz o que conferir volta a ser o que não se pode ler, que é o defeito da S-153
         chegando pela mão em vez de pelo layout.
+
+        **O piso é o maior entre o declarado e o que o próprio título pede** (F9-C4). Enquanto a
+        folha de estilo não mexia na fonte do cabeçalho os dois eram o mesmo número, e a
+        expectativa podia ser só `largura_minima`. Com o cabeçalho em 12 px peso 700 eles
+        divergem, e o piso que interessa é o que impede o título de ser cortado -- ver
+        `TabelaQt.alargar_o_que_corta_o_titulo`, escrita porque "Conf. mín" aparecia como
+        "onf. min" em 6 das 36 capturas do ciclo 4.
         """
         cabecalho = self.cabecalho()
         for indice, coluna in enumerate(COLUNAS):
             if coluna.elastica:
                 continue  # a elástica é governada pelo modo `Stretch`
             with self.subTest(coluna=coluna.chave):
+                pedido_pelo_titulo = (
+                    QFontMetrics(cabecalho.font()).horizontalAdvance(coluna.titulo)
+                    + qt_tabela.RECHEIO_DO_TITULO
+                )
                 cabecalho.resizeSection(indice, 5)
-                self.assertEqual(cabecalho.sectionSize(indice), tabela_pura.largura_minima(coluna))
+                self.assertEqual(
+                    cabecalho.sectionSize(indice),
+                    max(tabela_pura.largura_minima(coluna), pedido_pelo_titulo),
+                )
+
+    def test_a_fonte_maior_do_cabecalho_alarga_a_coluna_em_vez_de_cortar_o_titulo(self) -> None:
+        """**Medir uma vez no construtor mede a fonte errada** (F9-C4).
+
+        `_largura_da_secao` usa `header().font()`, e no construtor essa é a fonte de fábrica: a
+        folha de estilo do produto chega depois e dá ao cabeçalho 12 px em peso 700. O resultado
+        estava em **6 das 36 capturas** do ciclo 4 -- a aba Revisão nas três larguras e nas duas
+        peles --, onde `"Conf. mín"` (80 px declarados, 100 pedidos) aparece como **"onf. min"**:
+        a coluna é numérica, alinha à direita, e o que a sobra come é a **primeira** letra.
+        """
+        cabecalho = self.cabecalho()
+        estreita = 2  # "Prioridade", 90 px declarados e alinhada à direita, como a "Conf. mín"
+        antes = cabecalho.sectionSize(estreita)
+
+        fonte = cabecalho.font()
+        fonte.setPointSize(fonte.pointSize() + 12)
+        fonte.setBold(True)
+        cabecalho.setFont(fonte)
+        self.app.processEvents()
+
+        precisa = QFontMetrics(cabecalho.font()).horizontalAdvance(COLUNAS[estreita].titulo)
+        precisa += qt_tabela.RECHEIO_DO_TITULO
+        self.assertGreater(precisa, antes, "a fonte não cresceu o bastante para o caso valer")
+        self.assertGreaterEqual(
+            cabecalho.sectionSize(estreita),
+            precisa,
+            "o título do cabeçalho continua sendo cortado depois de a fonte crescer",
+        )
+
+    def test_alargar_pela_fonte_nao_desfaz_o_arrasto_de_quem_alargou_mais(self) -> None:
+        """Quem arrastou uma coluna para 400 px quer 400 px. A remedida **só alarga**."""
+        cabecalho = self.cabecalho()
+        cabecalho.resizeSection(0, 400)
+        self.tabela.alargar_o_que_corta_o_titulo()
+        self.assertEqual(cabecalho.sectionSize(0), 400)
+
+    def test_o_piso_da_secao_sobe_junto_com_a_fonte(self) -> None:
+        """Senão a mesma alça devolveria o corte pela mão, que é o defeito da S-153 de novo."""
+        cabecalho = self.cabecalho()
+        fonte = cabecalho.font()
+        fonte.setPointSize(fonte.pointSize() + 12)
+        fonte.setBold(True)
+        cabecalho.setFont(fonte)
+        self.app.processEvents()
+
+        precisa = QFontMetrics(cabecalho.font()).horizontalAdvance(COLUNAS[2].titulo)
+        precisa += qt_tabela.RECHEIO_DO_TITULO
+        cabecalho.resizeSection(2, 5)
+        self.assertGreaterEqual(cabecalho.sectionSize(2), precisa)
 
     def test_o_limite_nao_impede_alargar(self) -> None:
         cabecalho = self.cabecalho()

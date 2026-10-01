@@ -257,6 +257,11 @@ class BoardModel:
 
     # ---------------------------------------------------------------------- interações
 
+    def items_ok(self) -> bool:
+        """Há um campo de peças carregado para o teclado operar (passo C8)? O modelo nasce com o
+        tabuleiro vazio, e uma tecla sobre ele não tem em que agir."""
+        return self.mode == "edit"
+
     def select(self, index: int | None) -> BoardChange:
         """Seleciona de fora -- é como a fila de revisão abre o item já na casa suspeita."""
         if index is not None and not 0 <= index < 64:

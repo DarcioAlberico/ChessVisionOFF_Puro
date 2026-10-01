@@ -26,9 +26,10 @@ from __future__ import annotations
 
 import logging
 from collections import OrderedDict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - só para os tipos
     from chess_diagram_ocr.service import RecognitionOrigin, RecognizedDiagram
@@ -111,6 +112,14 @@ class PageResults:
             item.edited_by_hand or item.side_to_move_source == "manual" for item in self.items
         )
 
+    @property
+    def has_unsaved_hand_edits(self) -> bool:
+        """Correção à mão ainda não gravada nesta página (A7): é o que se perde ao descartar."""
+        from chess_diagram_ocr.ui.editor_model import unsaved_hand_edit
+
+        return any(unsaved_hand_edit(item, fen, side) for item, fen, side in zip(
+            self.items, self.fen_edits, self.side_edits, strict=False))
+
     def clamped_index(self) -> int:
         if not self.items:
             return 0
@@ -136,24 +145,59 @@ class PageResultsCache:
         return list(self._entries)
 
     def put(self, document: str, results: PageResults) -> None:
+        """Guarda a página e, passado o teto, descarta a mais antiga **sem correção à mão**.
+
+        **Uma página corrigida à mão nunca sai daqui por causa do teto** (OCR_UI ciclo 2, passo
+        A7; análise §6.5). Era o contrário: a 9.ª página lida expulsava a 1.ª com as correções
+        dentro e um `logger.warning` que ninguém lê -- "só ficam guardadas quando a amostra é
+        salva" era a mesma classe de perda silenciosa da S-76. O teto é de **memória** (cada
+        item carrega o recorte 800×800), e a correção humana custa mais que a memória: quem sai
+        é a leitura do modelo mais antiga sem edição, que se refaz rodando o OCR de novo. Se
+        toda página guardada tem edição, nenhuma sai e o cache passa do teto -- e isso fica no
+        log, uma vez por gravação, porque é a situação em que a memória de fato cresce.
+        """
         key = (document, results.page_index)
         self._entries[key] = results
         self._entries.move_to_end(key)
 
         while len(self._entries) > self.max_pages:
-            (descartado_doc, descartada), saindo = self._entries.popitem(last=False)
-            if saindo.has_hand_edits:
-                # Aviso, não bloqueio: quem quer guardar correção salva a amostra no
-                # dataset (Ctrl+S). Este cache e conveniencia de navegacao, não persistencia
-                # -- e prometer o contrario seria pior que o teto.
+            # A recém-guardada nunca é a candidata: é a página de que a pessoa acabou de sair, e
+            # descartá-la faria a volta a ela custar um OCR por causa da própria virada.
+            candidata = next(
+                (
+                    chave
+                    for chave, guardada in self._entries.items()
+                    if chave != key and not guardada.has_unsaved_hand_edits
+                ),
+                None,
+            )
+            if candidata is None:
                 logger.warning(
-                    "Página %d de %s saiu do cache de navegacao e tinha correção feita a mao. "
-                    "Correções só ficam guardadas quando a amostra e salva no dataset.",
-                    descartada,
-                    descartado_doc,
+                    "O cache de navegacao passou do teto (%d páginas guardadas, teto %d): todas as "
+                    "guardadas têm correção feita à mão e nenhuma é descartada.",
+                    len(self._entries),
+                    self.max_pages,
                 )
-            else:
-                logger.debug("Página %d de %s saiu do cache de navegacao.", descartada, descartado_doc)
+                return
+            del self._entries[candidata]
+            logger.debug("Página %d de %s saiu do cache de navegacao.", candidata[1], candidata[0])
+
+    def pages_with_hand_edits(self, document: str | None = None) -> list[int]:
+        """As páginas guardadas com correção à mão -- de um livro, ou de todos (`None`).
+
+        É o que a janela pergunta antes de fechar e antes de descartar um livro (passo A7): a
+        pergunta "vai perder trabalho?" só é honesta se alguém souber responder.
+        """
+        return sorted(
+            pagina
+            for (documento, pagina), guardada in self._entries.items()
+            if (document is None or documento == document) and guardada.has_unsaved_hand_edits
+        )
+
+    def params_of(self, document: str, page_index: int) -> PageOcrParams | None:
+        """Com que parâmetros (DPI…) a página guardada foi lida, ou `None` se não está no cache."""
+        guardada = self._entries.get((document, page_index))
+        return guardada.params if guardada is not None else None
 
     def get(self, document: str, page_index: int, params: PageOcrParams) -> PageResults | None:
         """Resultado guardado da página, ou `None` se não há ou se os parâmetros mudaram."""
@@ -185,6 +229,44 @@ class PageResultsCache:
 
     def clear(self) -> None:
         self._entries.clear()
+
+
+def paginas_editadas(cache: PageResultsCache, modelo: Any, document: str | None = None) -> list[int]:
+    """Páginas com correção à mão ainda só na memória: as do cache e a que está no editor (A7).
+
+    O editor guarda a página no cache **ao virar** (`lembrar_pagina`), então a página que está na
+    tela pode não estar lá ainda; sem esta segunda pergunta a janela fecharia sobre a única
+    correção que ainda não foi copiada para lugar nenhum. `modelo` é um `DiagramEditorModel`
+    (`page_key`, `has_hand_edits`), passado como objeto para este módulo não importá-lo.
+    """
+    paginas = set(cache.pages_with_hand_edits(document))
+    chave = getattr(modelo, "page_key", None)
+    if chave is not None and getattr(modelo, "has_unsaved_hand_edits", False):
+        if document is None or chave[0] == document:
+            paginas.add(int(chave[1]))
+    return sorted(paginas)
+
+
+def colocacoes_conferidas(
+    itens: Sequence[Any], edicoes: Sequence[str]
+) -> dict[int, tuple[str, bool]]:
+    """Por diagrama: a colocação **corrigida** e se alguém a conferiu (S-95). Pura.
+
+    **Vem de `fen_edits`, e não de `items[i].placement`.** As duas listas são paralelas de
+    propósito -- fundi-las perderia a leitura original --, e a anotação do conjunto de campo já
+    esteve lendo o lado errado: gravava o que o modelo leu como verdade **sobre** o modelo.
+    Corrigir o tabuleiro e anotar a página descartava a correção e gravava o erro.
+
+    Morava em `qt/janela.py`, onde a única parte que precisava da janela era achar as duas listas
+    (F9-C16). Aqui ela é afirmável sem abrir tela.
+    """
+    return {
+        item.index: (
+            edicoes[posicao] if posicao < len(edicoes) else item.placement,
+            bool(item.edited_by_hand),
+        )
+        for posicao, item in enumerate(itens)
+    }
 
 
 class PageSwitch(str, Enum):

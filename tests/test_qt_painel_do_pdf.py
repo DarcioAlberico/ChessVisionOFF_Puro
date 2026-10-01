@@ -17,9 +17,9 @@ O que só existe deste lado são as coisas em que o Qt difere do Tk e que quebra
 5. **O deslizador de zoom não pode se realimentar** (S-225).
 6. **A folha fica no meio da área visível** (S-157): no Tk era uma conta de `ui/viewport.py`,
    aqui é uma propriedade do `QScrollArea` -- e a conta saiu na triagem da S-511.
-7. **O cromo é uma fila só** (S-528), e os dezesseis controles são `QAction`s dela: eram duas
-   `BarraFluida` que quebravam em três fileiras a 520 px. O que se afirma aqui é a altura, o
-   transbordo e o campo de página que acompanha as duas setas.
+7. **O cromo são blocos nomeados** (F9-C2), e quem diz o que fica cinza em cada modo é a tabela
+   de `ui/barra_do_pdf.py` (S-528): sem livro, ler, virar e enquadrar ficam cinza; trancado, só o
+   cancelar da exportação continua vivo. Cada botão chega ao método que a tabela nomeia.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
-from chess_diagram_ocr.ui import barra_do_pdf, comandos, leitura_do_pdf
+from chess_diagram_ocr.ui import comandos, leitura_do_pdf
 from chess_diagram_ocr.ui.page_overlay import DiagramBox, OverlayParams, PageBoxes
 
 if TEM_PYQT:
@@ -121,12 +121,18 @@ class PainelTests(unittest.TestCase):
         return painel
 
     def test_o_estado_vazio_nao_promete_o_que_nao_tem(self) -> None:
-        """O rótulo "nenhum PDF aberto" saiu da barra na S-528 -- o rodapé da janela já nomeia o
-        livro aberto --, e quem responde "não há livro" agora é o campo de página com o total
-        zerado e o grupo inteiro cinza."""
+        """Sem livro o rótulo do livro diz que não há nenhum, e o campo de página fica cinza com o
+        bloco de navegação inteiro -- o modo `SEM_LIVRO` de `ui/barra_do_pdf` desliga `PAGINA` e
+        `VISTA` (S-528)."""
         painel = self.painel()
-        self.assertEqual(qt_pdf.sufixo_de_paginas(0), painel.campo_pagina.suffix())
-        self.assertFalse(painel.btn_leitor.isEnabled())
+        from chess_diagram_ocr.ui import strings
+
+        # **O rótulo do livro é elidido desde o F9-C2**: `text()` devolve o que está
+        # desenhado, que depende da largura que o leiaute deu; o que a frase promete é
+        # `texto_inteiro`. E `Abrir no leitor do sistema` saiu da barra para o menu `Arquivo`
+        # (§7 item 11), onde ele já estava declarado em `ui/menu.MENUS`.
+        self.assertEqual(painel.lbl_pdf.texto_inteiro, strings.NENHUM_PDF_ABERTO)
+        self.assertIsNone(painel.source, "sem livro não há o que abrir no leitor")
         self.assertFalse(painel.campo_pagina.isEnabled())
         self.assertFalse(painel.desenhar_pagina(), "sem livro não há o que rasterizar")
 
@@ -331,29 +337,36 @@ class PainelTests(unittest.TestCase):
         self.assertEqual(regioes, [])
         self.assertIn("Seleção muito pequena. Tente novamente.", vistos)
 
-    def test_o_modo_de_selecao_se_ve_no_botao_pressionado(self) -> None:
-        """"Selecionar área" é um modo, e ligar e desligar não podem ter a mesma aparência (S-396).
+    def test_o_modo_de_selecao_se_ve_marcado_e_se_ouve_alternado(self) -> None:
+        """"Selecionar área" é um modo, e ligar e desligar não podem ter a mesma aparência (S-396)."""
+        from chess_diagram_ocr.ui import comandos
 
-        **Desde a S-528 o sinal principal é o botão pressionado**, e não o rótulo: na fila ele
-        desenha só o ícone, e um texto que troca onde não há texto não é sinal nenhum. O texto
-        continua trocando porque a mesma ação é item do menu "Mais".
-        """
+        # **O canal mudou no F9-C2, e a regra não.** O rótulo trocava entre dois textos de
+        # larguras diferentes, e largura de botão da barra é largura da **barra**: ligar a
+        # seleção reflowava a fila inteira, que é o defeito que o item 11 do §7 veio fechar.
+        # Um botão marcável diz o mesmo estado sem mexer em pixel de leiaute, e o nome por
+        # extenso continua alternando -- que é o que um leitor de tela anuncia.
         painel = self.com_pagina()
         self.assertFalse(painel.btn_selecionar.isChecked())
-        self.assertEqual(comandos.rotulo("selecionar_area"), painel.btn_selecionar.text())
+        self.assertEqual(
+            painel.btn_selecionar.accessibleName(), comandos.nome_acessivel("selecionar_area")
+        )
         painel.alternar_selecao()
         self.assertTrue(painel.btn_selecionar.isChecked())
-        self.assertEqual(comandos.rotulo_alternado("selecionar_area"), painel.btn_selecionar.text())
+        self.assertEqual(
+            painel.btn_selecionar.accessibleName(), comandos.rotulo_alternado("selecionar_area")
+        )
         painel.alternar_selecao()
         self.assertFalse(painel.btn_selecionar.isChecked())
-        self.assertEqual(comandos.rotulo("selecionar_area"), painel.btn_selecionar.text())
+        self.assertEqual(
+            painel.btn_selecionar.accessibleName(), comandos.nome_acessivel("selecionar_area")
+        )
 
     def test_o_clique_no_botao_de_selecao_liga_o_modo_uma_vez_so(self) -> None:
-        """Um `QToolButton` marcável alterna **antes** de emitir, e o método alterna de novo: era o
+        """Um botão marcável alterna **antes** de emitir, e o método alterna de novo: era o
         defeito que a S-527 mediu em "Treinar", e "Selecionar área" tem a mesma forma."""
         painel = self.com_pagina()
-        botao = painel.barra.botao_de("selecionar_area")
-        assert botao is not None
+        botao = painel.btn_selecionar
         botao.click()
         self.assertTrue(painel.visor.selecionando, "o clique ligou e desligou no mesmo gesto")
         self.assertTrue(painel.btn_selecionar.isChecked())
@@ -425,22 +438,25 @@ class ControlesDoLivroTests(unittest.TestCase):
             "ler_melhor": painel.btn_ler_melhor,
             "ler_pagina": painel.btn_ler_pagina,
             "tirar_caixa": painel.btn_tirar_caixa,
-            "exportar_pgn": painel.btn_exportar,
+            # **`exportar_pgn` saiu da barra** (F9-C2, §7 item 11): começar a exportação é do
+            # menu `Arquivo`, onde ela já estava declarada. `selecionar_area` entrou no lugar --
+            # mesmo bloco, mesma pré-condição.
+            "selecionar_area": painel.btn_selecionar,
             "cancelar_exportacao": painel.btn_cancelar_exportacao,
         }
 
-    def test_os_cinco_tiram_o_rotulo_do_catalogo(self) -> None:
-        """Nenhum texto escrito aqui: é a regra da S-324, e `test_ui_comandos` a varre por `ast`.
+    def test_os_cinco_tiram_o_nome_do_catalogo(self) -> None:
+        """Nenhum texto escrito aqui: é a regra da S-324, e `test_ui_comandos` a varre por `ast`."""
+        from chess_diagram_ocr.ui import comandos
 
-        Desde a S-528 o texto de uma `QAction` da fila é o **curto** só em quem o escreve no botão
-        (`com_texto`); nos outros ele é o longo, que é o que o menu "Mais" mostra.
-        """
         painel = self.painel()
         for acao, botao in self.os_cinco(painel).items():
             with self.subTest(acao=acao):
-                registro = barra_do_pdf.acao(acao)
-                esperado = registro.rotulo_curto if registro.com_texto else registro.rotulo_longo
-                self.assertEqual(esperado, botao.text())  # type: ignore[attr-defined]
+                # **A afirmação passou do rótulo para o nome** (F9-C2): três dos cinco desenham
+                # só o ícone, e o rótulo por extenso vive no `accessibleName` -- que é o que um
+                # leitor de tela anuncia e o que o portão `caissa.ui.audit.teclado` cobra.
+                # Perguntar `text()` a um botão de ícone aprovaria a string vazia.
+                self.assertEqual(comandos.nome_acessivel(acao), botao.accessibleName())  # type: ignore[attr-defined]
 
     def test_sem_livro_os_cinco_ficam_cinza(self) -> None:
         """A pré-condição é a mesma do "Abrir no leitor": não há página sobre a qual agir."""
@@ -452,20 +468,24 @@ class ControlesDoLivroTests(unittest.TestCase):
     def test_com_livro_acendem_quatro_e_o_cancelar_continua_cinza(self) -> None:
         """O cancelar não depende de haver livro, e sim de haver exportação."""
         painel = self.painel(com_livro=True)
-        for acao in ("ler_melhor", "ler_pagina", "tirar_caixa", "exportar_pgn"):
+        for acao in ("ler_melhor", "ler_pagina", "tirar_caixa", "selecionar_area"):
             with self.subTest(acao=acao):
                 self.assertTrue(self.os_cinco(painel)[acao].isEnabled())  # type: ignore[attr-defined]
         self.assertFalse(painel.btn_cancelar_exportacao.isEnabled())
 
-    def test_a_exportacao_troca_o_par_exportar_cancelar(self) -> None:
+    def test_a_exportacao_traz_o_bloco_do_cancelar_e_o_leva_embora(self) -> None:
         """Uma por vez: enquanto uma roda, começar outra não é oferta."""
+        # **O bloco só existe enquanto existe o que cancelar** (F9-C2, §7 itens 7 e 11). Era um
+        # par permanente na barra com um dos dois sempre cinza; começar a exportação é do menu
+        # agora, e o que a barra ganha -- só durante a exportação -- é o botão que para.
         painel = self.painel(com_livro=True)
+        self.assertFalse(painel._bloco_exportacao.isVisibleTo(painel))
         painel.exportacao_em_curso(True)
-        self.assertFalse(painel.btn_exportar.isEnabled())
+        self.assertTrue(painel._bloco_exportacao.isVisibleTo(painel))
         self.assertTrue(painel.btn_cancelar_exportacao.isEnabled())
 
         painel.exportacao_em_curso(False)
-        self.assertTrue(painel.btn_exportar.isEnabled())
+        self.assertFalse(painel._bloco_exportacao.isVisibleTo(painel))
         self.assertFalse(painel.btn_cancelar_exportacao.isEnabled())
 
     def test_o_cancelar_sobrevive_ao_trancamento(self) -> None:
@@ -482,39 +502,30 @@ class ControlesDoLivroTests(unittest.TestCase):
 
         self.assertTrue(painel.btn_cancelar_exportacao.isEnabled(), "o cancelar morreu no trancamento")
         self.assertTrue(painel.isEnabled(), "o painel foi desabilitado em bloco")
-        for acao in ("ler_melhor", "ler_pagina", "tirar_caixa", "exportar_pgn"):
+        for acao in ("ler_melhor", "ler_pagina", "tirar_caixa", "selecionar_area"):
             with self.subTest(acao=acao):
                 self.assertFalse(self.os_cinco(painel)[acao].isEnabled())  # type: ignore[attr-defined]
 
     def test_o_trancamento_apaga_a_navegacao_e_o_visor(self) -> None:
         """O que o `setEnabled` em bloco fazia antes, agora nomeado item a item.
 
-        **A barra inteira nunca é desabilitada**, e é o item: no Qt um filho de widget desabilitado
-        não pode ser reabilitado, e o cancelar da exportação morreria junto com o resto. Quem
-        desliga é o modo `TRANCADO`, que poupa o grupo `EXPORTAR`.
+        **A barra do livro nunca é desabilitada**, e é o item: no Qt um filho de widget
+        desabilitado não pode ser reabilitado, e o cancelar da exportação -- que mora nela --
+        morreria junto com o resto. Quem se apaga inteira é a barra de navegação, e é o modo
+        `TRANCADO` de `ui/barra_do_pdf` que o decide (S-528).
         """
         painel = self.painel(com_livro=True)
         painel.trancar(False)
-        self.assertFalse(painel.barra.acoes["pagina_anterior"].isEnabled())
-        self.assertFalse(painel.barra.acoes["proxima_pagina"].isEnabled())
+        self.assertFalse(painel._barra_de_navegacao.isEnabled())
         self.assertFalse(painel.campo_pagina.isEnabled())
         self.assertFalse(painel.visor.isEnabled())
         self.assertFalse(painel.deslizador.isEnabled())
-        self.assertTrue(painel.barra.isEnabled(), "a barra inteira cinza mata o cancelar")
+        self.assertTrue(painel._barra_do_livro.isEnabled(), "a barra do livro cinza mata o cancelar")
 
         painel.trancar(True)
-        self.assertTrue(painel.barra.acoes["pagina_anterior"].isEnabled())
+        self.assertTrue(painel._barra_de_navegacao.isEnabled())
         self.assertTrue(painel.campo_pagina.isEnabled())
         self.assertTrue(painel.visor.isEnabled())
-
-    def test_o_cancelar_continua_vivo_com_o_painel_trancado(self) -> None:
-        """Exportar tranca o painel, e cancelar é a única saída: o grupo `EXPORTAR` fica de fora
-        do modo `TRANCADO` justamente por isso."""
-        painel = self.painel(com_livro=True)
-        painel.exportacao_em_curso(True)
-        painel.trancar(False)
-        self.assertTrue(painel.btn_cancelar_exportacao.isEnabled())
-        self.assertFalse(painel.btn_exportar.isEnabled())
 
     def test_os_dois_botoes_de_ocr_pedem_tetos_diferentes(self) -> None:
         """**A diferença que o porte tinha perdido.** "OCR melhor diagrama" e "OCR todos" eram o
@@ -523,10 +534,23 @@ class ControlesDoLivroTests(unittest.TestCase):
         pedidos: list[bool] = []
         painel.leitura_pedida.connect(pedidos.append)
 
-        painel.btn_ler_melhor.trigger()
-        painel.btn_ler_pagina.trigger()
+        painel.btn_ler_melhor.click()
+        painel.btn_ler_pagina.click()
 
         self.assertEqual([True, False], pedidos)
+
+    def test_o_disparo_chega_ao_metodo_da_tabela(self) -> None:
+        """Afirmado pelo **efeito**, e não por `patch` depois do `connect` -- que não intercepta.
+
+        O botão do bloco e `executar` chegam ao mesmo método, o que `ui/barra_do_pdf` nomeia para
+        a ação (S-528): o par comando-método é declarado uma vez, na tabela.
+        """
+        painel = self.painel(com_livro=True)
+        pedidos: list[bool] = []
+        painel.leitura_pedida.connect(pedidos.append)
+        painel.btn_ler_melhor.click()
+        painel.executar("ler_melhor")
+        self.assertEqual([True, True], pedidos)
 
     def test_exportar_e_cancelar_avisam_a_janela(self) -> None:
         """Quem exporta é o controlador da janela: este painel não conhece o serviço."""
@@ -536,9 +560,13 @@ class ControlesDoLivroTests(unittest.TestCase):
         painel.exportacao_pedida.connect(lambda: pedidos.append("comecar"))
         painel.exportacao_cancelada.connect(lambda: pedidos.append("cancelar"))
 
-        painel.btn_cancelar_exportacao.trigger()
+        painel.btn_cancelar_exportacao.click()
         painel.exportacao_em_curso(False)
-        painel.btn_exportar.trigger()
+        # **Começar a exportação é do menu `Arquivo` desde o F9-C2** (§7 item 11), e a janela a
+        # liga pelo mesmo sinal: o que este teste afirma é que o painel avisa em vez de
+        # exportar sozinho, e isso não depende de qual controle emite. O pedido passa pelo
+        # método que `ui/barra_do_pdf` nomeia para `exportar_pgn` (S-528).
+        painel.executar("exportar_pgn")
 
         self.assertEqual(["cancelar", "comecar"], pedidos)
 
@@ -548,119 +576,224 @@ class ControlesDoLivroTests(unittest.TestCase):
         avisos: list[str] = []
         painel.estado.connect(avisos.append)
 
-        painel.btn_tirar_caixa.trigger()
+        painel.btn_tirar_caixa.click()
 
         self.assertTrue(avisos, "o botão não chegou a `dispensar_a_selecionada`")
 
 
-@unittest.skipUnless(TEM_PYQT, MOTIVO)
-class FilaDoPdfTests(unittest.TestCase):
-    """A barra do painel na gramática da sala: uma fila, e o que não cabe no "Mais" (S-528).
 
-    **O que se mede aqui é altura e transbordo.** Antes eram duas `BarraFluida` empilhadas -- 118 px
-    a 675 de largura e 176 a 520, o piso do painel --, e a diferença de gramática ao lado da barra
-    da sala foi o que o crítico da S-527 registrou. A régua não é "parece melhor": é `linhas == 1`
-    em toda largura, e a altura devolvida à folha.
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class DicaDoBotaoSoDeIconeTests(unittest.TestCase):
+    """A dica do botão só-de-ícone diz o nome do **botão** quando ele é outro nome (F9-C6, item 2).
+
+    O estado vazio da aba Resultado manda usar "OCR todos diagramas", que é como o comando
+    `ler_pagina` se chama no botão. Na pele Foco isso está escrito na pílula; na clássica o botão
+    é só-de-ícone, e **a dica é o único canal visual que sobra**. Sem o nome do botão nela, a frase
+    manda procurar um texto que a tela não tem -- que é o defeito do §7.1 do ciclo 5 com o literal
+    trocado.
+
+    O oposto também é defeito: prefixar toda dica com o `rotulo_curto` põe `"- — Diminuir o zoom
+    da página"` nos botões de zoom e repete `"Tirar a caixa"` antes de "Tirar a caixa do diagrama
+    selecionado". Só um comando da barra tem dois nomes sem uma palavra em comum, e só ele precisa
+    dos dois.
     """
+
+    def test_o_comando_de_dois_nomes_traz_os_dois(self) -> None:
+        dica = qt_pdf.PainelDoPdf._dica_do_comando("ler_pagina", so_icone=True)
+        self.assertEqual("OCR todos diagramas — Ler esta página", dica)
+
+    def test_um_glifo_nao_vira_nome(self) -> None:
+        """`zoom_mais` mostra `+`: `"+ — Aumentar o zoom da página"` seria ruído."""
+        for acao in ("zoom_mais", "zoom_menos"):
+            with self.subTest(acao=acao):
+                self.assertEqual(
+                    comandos.rotulo(acao), qt_pdf.PainelDoPdf._dica_do_comando(acao, so_icone=True)
+                )
+
+    def test_um_encurtamento_nao_se_repete(self) -> None:
+        """"Tirar a caixa" é o começo de "Tirar a caixa do diagrama selecionado"."""
+        self.assertEqual(
+            comandos.rotulo("tirar_caixa"),
+            qt_pdf.PainelDoPdf._dica_do_comando("tirar_caixa", so_icone=True),
+        )
+
+    def test_o_botao_com_rotulo_visivel_nao_ganha_prefixo(self) -> None:
+        """Quem mostra o nome não precisa repeti-lo na dica."""
+        self.assertEqual(
+            comandos.rotulo("ler_pagina"),
+            qt_pdf.PainelDoPdf._dica_do_comando("ler_pagina", so_icone=False),
+        )
+
+    def test_a_regra_separa_nome_de_encurtamento(self) -> None:
+        """O **controle** da regra, contra exemplos literais e não contra o catálogo de hoje."""
+        self.assertTrue(qt_pdf._e_outro_nome("OCR todos diagramas", "Ler esta página"))
+        self.assertFalse(qt_pdf._e_outro_nome("+", "Aumentar o zoom da página"))
+        self.assertFalse(qt_pdf._e_outro_nome("Tirar a caixa", "Tirar a caixa do diagrama"))
+        self.assertFalse(qt_pdf._e_outro_nome("Selecionar área (OCR)", "Selecionar área para ler"))
+
+
+class NomeDoBotaoQuandoOCromoNaoODesenhaTests(unittest.TestCase):
+    """A barra do visor escreve o nome que a pele corrente **não** escreve (F9-C7, §3).
+
+    O ciclo 6 tentou fechar isto pela dica, e a dica não é a tela: na pele clássica -- a padrão --
+    "OCR todos diagramas" era desenhado por **zero** controles visíveis, enquanto `MENSAGEM_VAZIA`
+    mandava apertá-lo e `OCR melhor diagrama`, outro comando, estava em azul ao lado.
+
+    Aqui se cobram os dois lados da regra: o nome aparece quando o cromo não o traz, e **não**
+    aparece quando ele traz -- dois controles visíveis com o mesmo rótulo é o outro defeito.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not TEM_PYQT:  # pragma: no cover - venv sem binding
+            raise unittest.SkipTest(MOTIVO)
 
     def setUp(self) -> None:
         self.app = aplicacao()
-        self.painel = qt_pdf.PainelDoPdf(dpi=lambda: 220)
+        self.painel = qt_pdf.PainelDoPdf(dpi=lambda: 200)
         self.addCleanup(descartar, self.painel)
-        self.painel.resize(675, 600)
+
+    def _cromo(self, *rotulos: str):
+        """Um contêiner com botões escritos, como a fila ou a fita entregam.
+
+        **O método recebe o widget e não uma lista de nomes**, e é o item: uma lista seria uma
+        segunda declaração de quem cada pele desenha, e ela divergiria do cromo no dia em que
+        alguém tirasse um comando do destaque. O teste monta o widget pela mesma razão.
+        """
+        from PyQt6.QtWidgets import QPushButton, QWidget
+
+        caixa = QWidget()
+        self.addCleanup(descartar, caixa)
+        for rotulo in rotulos:
+            QPushButton(rotulo, caixa)
+        return caixa
+
+    def test_sem_o_nome_no_cromo_o_botao_o_desenha(self) -> None:
+        nomeados = self.painel.nomear_o_que_o_cromo_nao_desenha(self._cromo())
+        self.assertEqual(["ler_pagina"], nomeados)
+        self.assertEqual("OCR todos diagramas", self.painel.btn_ler_pagina.text())
+
+    def test_sem_cromo_nenhum_o_botao_o_desenha(self) -> None:
+        """`None` é a pele clássica: ela não tem cromo acima do divisor, por decisão da S-221."""
+        self.assertEqual(["ler_pagina"], self.painel.nomear_o_que_o_cromo_nao_desenha(None))
+        self.assertEqual("OCR todos diagramas", self.painel.btn_ler_pagina.text())
+
+    def test_com_o_nome_no_cromo_o_botao_fica_so_com_o_icone(self) -> None:
+        """A pílula da Foco já o escreve: escrevê-lo de novo é duplicar um rótulo."""
+        self.painel.nomear_o_que_o_cromo_nao_desenha(self._cromo("Abrir PDF", "OCR todos diagramas"))
+        self.assertEqual("", self.painel.btn_ler_pagina.text())
+        self.assertIn("OCR todos diagramas", self.painel.btn_ler_pagina.toolTip())
+
+    def test_a_quebra_de_linha_da_fita_conta_como_o_mesmo_nome(self) -> None:
+        """`quebrar_rotulo` desenha "OCR todos" + quebra + "diagramas" -- as mesmas palavras.
+
+        Comparar o literal fazia a barra escrever o nome uma segunda vez na pele fita, que é a
+        duplicação que esta regra existe para não criar. Medido: `text()` da fita a 1920.
+        """
+        self.painel.nomear_o_que_o_cromo_nao_desenha(self._cromo("OCR todos" + chr(10) + "diagramas"))
+        self.assertEqual("", self.painel.btn_ler_pagina.text())
+
+    def test_um_encurtamento_e_um_glifo_nao_ganham_texto(self) -> None:
+        """Só o comando de **dois nomes** entra. Os outros já dizem o que são pelo ícone."""
+        self.painel.nomear_o_que_o_cromo_nao_desenha(self._cromo())
+        self.assertEqual("", self.painel.btn_tirar_caixa.text())
+        self.assertEqual("", self.painel.btn_selecionar.text())
+
+    def test_a_dica_deixa_de_repetir_o_nome_que_o_botao_mostra(self) -> None:
+        """Quem mostra o nome não precisa dizê-lo duas vezes; quem não mostra, precisa."""
+        self.painel.nomear_o_que_o_cromo_nao_desenha(self._cromo())
+        self.assertNotIn("—", self.painel.btn_ler_pagina.toolTip())
+        self.painel.nomear_o_que_o_cromo_nao_desenha(self._cromo("OCR todos diagramas"))
+        self.assertIn("OCR todos diagramas — Ler esta página", self.painel.btn_ler_pagina.toolTip())
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class RasterizacaoAoFundoTests(unittest.TestCase):
+    """O caminho do produto (OCR_UI passo 15): abrir e rasterizar fora da thread da janela.
+
+    A bandeira é ligada aqui, na construção, porque o `conftest` a desliga para o resto da
+    suíte. O processo de trabalho continua em linha (`processo_de_trabalho().em_processo` é
+    `False` na suíte), então a rasterização corre numa `Tarefa` -- que é o bastante para provar
+    a coreografia: pedido, folha anterior na tela, chegada por sinal, folha atrasada recusada.
+    """
+
+    def setUp(self) -> None:
+        import tempfile
+
+        from test_app_pyqt import pdf_de_teste
+
+        self.app = aplicacao()
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.livro = pdf_de_teste(Path(self.pasta.name) / "livro.pdf", paginas=3)
+        self.painel = qt_pdf.PainelDoPdf(dpi=lambda: 72, rasterizar_ao_fundo=True)
+        self.addCleanup(descartar, self.painel)
+        self.painel.resize(600, 500)
         self.painel.show()
         self.app.processEvents()
+        self.desenhadas: list[int] = []
+        self.painel.pagina_desenhada.connect(self.desenhadas.append)
 
-    def test_a_barra_e_uma_fila_em_qualquer_largura(self) -> None:
-        """É a S-151 sem quebrar: nada some sem ter para onde ir, e nada vira segunda fileira."""
-        for largura in (400, 520, 675, 900, 1400):
-            with self.subTest(largura=largura):
-                self.painel.resize(largura, 600)
-                self.app.processEvents()
-                self.assertEqual(1, self.painel.barra.linhas)
-                self.assertLessEqual(self.painel.barra.height(), 2 * self.painel.barra.btn_mais.sizeHint().height())
+    def test_abrir_volta_antes_da_folha_e_a_folha_chega_por_sinal(self) -> None:
+        self.painel.load_pdf(self.livro)
+        self.assertTrue(self.painel.ocupado, "a contagem e a rasterização correm ao fundo")
+        self.assertIsNone(self.painel.page_rgb, "a folha ainda não chegou")
 
-    def test_nenhuma_acao_some_sem_ir_para_o_mais(self) -> None:
-        """Em toda largura, tela mais menu é a tabela inteira -- e nenhum nome nos dois lugares."""
-        declaradas = {registro.acao for registro in barra_do_pdf.ACOES}
-        for largura in (300, 400, 520, 675, 900, 1400):
-            with self.subTest(largura=largura):
-                self.painel.resize(largura, 600)
-                self.app.processEvents()
-                na_fila = set(self.painel.barra.na_fila())
-                no_mais = set(self.painel.barra.no_mais())
-                self.assertEqual(declaradas, na_fila | no_mais, "ação que sumiu da tela e do menu")
-                self.assertEqual(set(), na_fila & no_mais)
-                self.assertFalse(self.painel.barra.btn_mais.isHidden())
+        self.assertTrue(self.painel.aguardar_pagina())
+        self.assertEqual(3, self.painel.page_count)
+        self.assertIsNotNone(self.painel.page_rgb)
+        self.assertEqual(0, self.painel.page_loaded_for_index)
+        self.assertEqual([0], self.desenhadas)
+        self.assertIsNotNone(self.painel.visor.pagina_escalada())
 
-    def test_o_primario_e_o_ultimo_a_sair_da_fila(self) -> None:
-        """Sob `offscreen` a fonte é outra e cada botão mede mais: a largura de corte sai da própria
-        barra -- reserva mais o botão --, e não de um número de tela."""
-        barra = self.painel.barra
-        botao = barra.botao_de("ler_melhor")
-        assert botao is not None
-        # As margens são do **leiaute** do painel, e não do widget: `QWidget.contentsMargins()`
-        # devolve zero aqui, e a barra é mais estreita que o painel por elas.
-        leiaute = self.painel.layout()
-        assert leiaute is not None
-        margens = leiaute.contentsMargins()
-        cabe = barra.minimumSizeHint().width() + botao.sizeHint().width() + barra._fila.spacing()
-        self.painel.resize(cabe + margens.left() + margens.right(), 600)
-        self.app.processEvents()
-        self.assertEqual(("ler_melhor",), barra.na_fila(), "só o primário, e ele fica")
+    def test_a_folha_anterior_fica_na_tela_ate_a_nova_chegar(self) -> None:
+        self.painel.load_pdf(self.livro)
+        self.painel.aguardar_pagina()
+        anterior = self.painel.visor.pagina_escalada()
 
-    def test_o_campo_de_pagina_acompanha_as_duas_setas(self) -> None:
-        """`◀ [21 de 289] ▶` é um controle só. Encaixado na fila, ele entra e sai com o par."""
-        self.painel.resize(self.painel.barra.largura_para_todas() + 60, 600)
-        self.app.processEvents()
-        self.assertIn("pagina_anterior", self.painel.barra.na_fila())
-        self.assertTrue(self.painel.campo_pagina.isVisible())
-        # O "Mais" sozinho: nem o par de página cabe, e o campo some com ele.
-        self.painel.resize(self.painel.barra.btn_mais.sizeHint().width() + 20, 600)
-        self.app.processEvents()
-        self.assertNotIn("pagina_anterior", self.painel.barra.na_fila())
-        self.assertFalse(self.painel.campo_pagina.isVisible())
+        self.assertTrue(self.painel.ir_para_pagina(1))
+        self.assertIs(anterior, self.painel.visor.pagina_escalada(), "a página 1 ainda está na tela")
+        self.assertIsNone(self.painel.page_loaded_for_index, "e o painel sabe que ela não é a pedida")
+        self.assertTrue(self.painel.aguardar_pagina())
+        self.assertEqual(1, self.painel.page_loaded_for_index)
+        self.assertEqual([0, 1], self.desenhadas)
 
-    def test_o_total_de_paginas_e_o_sufixo_do_campo(self) -> None:
-        """Eram dois widgets para um número, e o de fora não sabia sumir junto com as setas."""
-        self.assertEqual(" de 0", qt_pdf.sufixo_de_paginas(0))
-        self.assertEqual(" de 289", qt_pdf.sufixo_de_paginas(289))
+    def test_virar_duas_vezes_antes_da_folha_mostra_so_a_ultima(self) -> None:
+        """Dez giros da roda pedem dez folhas e só a última interessa (ver `FolhaRasterizada`)."""
+        self.painel.load_pdf(self.livro)
+        self.painel.aguardar_pagina()
+        self.painel.ir_para_pagina(2)
+        self.painel.ir_para_pagina(1)  # antes de a folha 3 chegar
 
-    def test_toda_acao_da_tabela_virou_qaction_com_icone_e_dica(self) -> None:
-        """Ícone nulo seria um botão de texto no meio de botões com desenho; dica sem a tecla é a
-        S-161 -- o atalho existe e não está escrito em lugar nenhum."""
-        for registro in barra_do_pdf.ACOES:
-            with self.subTest(acao=registro.acao):
-                acao = self.painel.barra.acoes[registro.acao]
-                self.assertFalse(acao.icon().isNull(), "ação sem ícone")
-                self.assertEqual(barra_do_pdf.dica_de(registro), acao.toolTip())
-                self.assertEqual(registro.marcavel, acao.isCheckable())
+        self.assertTrue(self.painel.aguardar_pagina())
+        self.assertEqual(1, self.painel.page_loaded_for_index)
+        self.assertEqual(1, self.painel.page_index)
+        self.assertNotIn(2, self.desenhadas, "a folha atrasada da página 3 não pode ter aparecido")
+        self.assertEqual(1, self.desenhadas[-1])
 
-    def test_a_barra_nao_registra_tecla_nenhuma(self) -> None:
-        """As dezesseis são comandos da janela e já têm dono no menu: registrá-las de novo aqui
-        daria duas donas para a mesma tecla, que é a colisão de `atalhos.conferir_dono`."""
-        for acao in self.painel.barra.acoes.values():
-            with self.subTest(acao=acao.property("acao")):
-                self.assertTrue(acao.shortcut().isEmpty())
+    def test_um_pdf_que_nao_abre_nao_troca_o_livro(self) -> None:
+        """S-123 continua valendo com a abertura ao fundo: o painel só aponta depois da contagem."""
+        from unittest import mock
 
-    def test_o_disparo_chega_ao_metodo_da_tabela(self) -> None:
-        """Afirmado pelo **efeito**, e não por `patch` depois do `connect` -- que não intercepta."""
-        pedidos: list[bool] = []
-        self.painel.leitura_pedida.connect(pedidos.append)
-        self.painel.source = Path("livro.pdf")
-        self.painel._reavaliar_controles()
-        botao = self.painel.barra.botao_de("ler_melhor")
-        assert botao is not None
-        botao.click()
-        self.assertEqual([True], pedidos)
+        self.painel.load_pdf(self.livro)
+        self.painel.aguardar_pagina()
+        quebrado = Path(self.pasta.name) / "quebrado.pdf"
+        quebrado.write_bytes(b"isto nao e um PDF")
+        with mock.patch("chess_diagram_ocr.qt.painel_do_pdf.QMessageBox.critical") as caixa:
+            self.painel.load_pdf(quebrado)
+            self.painel.aguardar_pagina()
+        self.assertTrue(caixa.called)
+        self.assertEqual(self.livro, self.painel.source)
+        self.assertEqual(0, self.painel.page_loaded_for_index)
 
-    def test_o_cromo_do_painel_cabe_numa_fila_de_32_px(self) -> None:
-        """**O número do item.** A 520 px -- o piso do painel -- as duas barras antigas somavam
-        176 px antes da folha. A fila tem a altura de um `QToolButton` de ícone, que é a mesma da
-        barra da sala ao lado: é o que a diferença de gramática custava em pixel."""
-        self.painel.resize(520, 600)
-        self.app.processEvents()
-        self.assertLessEqual(self.painel.barra.height(), 40)
+    def test_em_linha_a_folha_esta_na_tela_ao_voltar(self) -> None:
+        """A bandeira desligada é o caminho dos testes de janela: `abrir_pdf` já mostra a folha."""
+        painel = qt_pdf.PainelDoPdf(dpi=lambda: 72, rasterizar_ao_fundo=False)
+        self.addCleanup(descartar, painel)
+        painel.load_pdf(self.livro)
+        self.assertFalse(painel.ocupado)
+        self.assertIsNotNone(painel.page_rgb)
+        self.assertEqual(0, painel.page_loaded_for_index)
 
 
 if __name__ == "__main__":  # pragma: no cover

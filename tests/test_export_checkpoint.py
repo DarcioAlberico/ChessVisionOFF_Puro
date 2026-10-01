@@ -305,9 +305,11 @@ class CancelAndResumeTests(unittest.TestCase):
             self.assertFalse(retomado.cancelled)
             self.assertEqual(retomado.resumed_from_page, 3)
             self.assertEqual(len(retomado.accepted), len(report_inteiro.accepted))
+            # O header `[ProvenanceFile]` (A11) leva o nome do sidecar, que segue o nome do PGN:
+            # os dois arquivos têm nomes diferentes de propósito, e é o único header que difere.
             self.assertEqual(
-                interrompido.read_text(encoding="utf-8"),
-                inteiro.read_text(encoding="utf-8"),
+                interrompido.read_text(encoding="utf-8").replace("retomado.proveniencia", "X"),
+                inteiro.read_text(encoding="utf-8").replace("inteiro.proveniencia", "X"),
             )
             self.assertFalse(partial_path_for(interrompido).exists())
 

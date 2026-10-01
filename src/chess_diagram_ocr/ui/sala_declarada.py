@@ -27,17 +27,23 @@ agora é `qt/painel_de_estudo.py`, `qt/painel_de_resultado.py`, `qt/tabuleiro_de
 
 from __future__ import annotations
 
+import logging
 from enum import Enum
+from typing import Any
 
 from ..estudo import Ancora, PosicaoDeEstudo
 from . import comandos as _comandos
 from . import estudo_lista as _lista
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "ACOES_PROPRIAS",
     "ALCA_DO_DIVISOR",
     "CANDIDATOS_DO_MOTOR",
     "COMANDOS_DA_ABA",
+    "COMANDOS_QUE_EXIGEM_MOTOR",
+    "encerrar_o_motor",
     "LARGURA_MINIMA_DA_LEITURA",
     "fracao_para_o_tabuleiro",
     "LADO_AMPLIADO",
@@ -346,6 +352,42 @@ navegação são `undo_move`/`redo_move`/`go_to_*_of_line` porque era assim ante
 
 `comandos.acoes_fora_do_catalogo(COMANDOS_DA_ABA)` tem de ser vazio, e é o critério de aceite da
 S-280."""
+
+COMANDOS_QUE_EXIGEM_MOTOR: tuple[str, ...] = (
+    "analisar_posicao",
+    "analise_continua",
+    "variante_do_motor",
+)
+"""Os comandos desta aba que **não podem** ter efeito sem um binário UCI instalado (F9-C16).
+
+**Os três ficavam habilitados numa máquina sem motor e os três respondiam com uma receita que
+não resolvia** -- "ponha o Stockfish em `engines/` e reabra" --, porque a janela nunca procurava
+o binário (§6.1 da crítica do ciclo 15). Consertada a busca, sobra a outra metade: numa máquina
+que de fato não tem motor, o menu não pode continuar prometendo os três.
+
+`partidas_da_posicao` **não está aqui de propósito**: ela é a quarta linha do mesmo bloco de menu
+e parece do mesmo grupo, mas quem a atende é a base de partidas e não o motor -- ela funciona sem
+Stockfish nenhum. Um comando desabilitado por engano é o mesmo defeito com o sinal trocado.
+
+Quem lê esta tupla é `qt/janela._desabilitar_o_que_nao_tem_efeito`; quem confere que nada mais
+ficou habilitado sem poder funcionar é o portão `caissa.ui.audit.comandos`, que mede a janela
+montada e não esta lista."""
+
+def encerrar_o_motor(analisador: Any) -> None:
+    """Fecha o processo do motor, se houver um. Nunca levanta.
+
+    **O motor fica aberto entre as análises de propósito** (`engine.py`: abrir e fechar o
+    Stockfish a cada posição custa ~100-300 ms). O preço é ter de fechá-lo explicitamente: uma
+    janela que sai deixando o UCI vivo deixa um processo órfão por sessão, e num bundle isso não
+    aparece em lugar nenhum.
+    """
+    if analisador is None:
+        return
+    try:
+        analisador.close()
+    except Exception:  # noqa: BLE001 - encerrar binário de terceiro é best-effort
+        logger.debug("O motor de análise não encerrou limpo.", exc_info=True)
+
 
 class Sincronia(str, Enum):
     """O que "seguir o OCR selecionado" faz quando o painel de resultado muda (S-512)."""

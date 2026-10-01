@@ -71,6 +71,36 @@ SIDE_LABELS: dict[str, str] = {"w": "Brancas", "b": "Pretas"}
 Existia escrito à mão no rádio do Resultado e no cabeçalho da lista de partidas, e a coluna
 "Lado" do Dataset publicava a letra crua do CSV -- três grafias do mesmo par."""
 
+SEM_MOTOR_STATUS = (
+    "Nenhum motor UCI foi encontrado nesta máquina, e os comandos de análise estão desligados."
+)
+"""O que a barra de status diz quando um comando de motor é alcançado sem motor (F9-C16).
+
+**A frase de antes era uma receita que não funcionava**: *"Sem motor UCI instalado: ponha o
+Stockfish em engines/ e reabra."* Instalar o Stockfish e reabrir **não mudava nada**, porque nada
+em `src/` procurava o binário -- `engine.find_engine` não tinha um único chamador (F9-C15 §6.1).
+A carta §3.3 cobra que a mensagem de erro diga o que fazer a seguir; esta dizia, e mandava fazer o
+que não resolve, que é pior do que não dizer.
+
+Hoje a janela procura (`qt/preferencias.motor_das_preferencias`) e, quando não acha, **desabilita os três
+comandos** -- de modo que esta frase é a rede de segurança de um caminho que o menu já não oferece,
+e não a explicação principal. Quem explica é `SEM_MOTOR_DICA`, na dica do item desabilitado."""
+
+SEM_MOTOR_DICA = (
+    "Precisa de um motor UCI, e nenhum foi encontrado nesta máquina.\n"
+    "Ponha o binário do Stockfish na pasta engines/ do projeto, ou informe o caminho\n"
+    "em «engine.path» no settings.json, e abra o programa de novo."
+)
+"""Por que aqueles três itens do menu estão cinza. **A dica é a única superfície que sobra.**
+
+Uma `QAction` desabilitada não recebe clique e não mostra mensagem: a dica é o único lugar em que
+o motivo cabe. Sem ela, um item cinza faz procurar o defeito na própria máquina.
+
+**Os dois caminhos escritos aqui são os dois que `engine.find_engine` de fato percorre**, e essa é
+a diferença para a frase de antes: `CANDIDATE_DIRS` começa por `engines/`, e
+`settings.EngineSettings.path` é lido em `qt/preferencias.motor_das_preferencias`. A instrução é executável, e
+foi executada -- ver o §1 do relatório do ciclo 16."""
+
 # ------------------------------------------------------- um conceito, um nome (S-166)
 
 VARRER_LIVRO = "Varrer o livro"
@@ -95,6 +125,11 @@ do estudo, e as duas escrevem a mesma coisa no botão -- que é o critério dest
 
 MAPA_DE_INCERTEZA = "Mapa de incerteza"
 """Era "Heatmap de incerteza" -- metade em inglês, e a metade que nomeia a coisa."""
+
+ESCONDER_INCERTEZA = "Esconder incerteza"
+"""A caixa da aba Resultado desde o passo 13 da OCR_UI: a tinta de hesitação está **ligada por
+padrão**, e a caixa é o gesto de quem já conferiu a página e quer ver as peças limpas. Marcar
+para esconder, e não marcar para mostrar, é o sentido do padrão: a caixa nasce desmarcada."""
 
 ZOOM_DO_TABULEIRO = "Zoom do tabuleiro"
 """Era "Zoom board". "Zoom" fica: entrou no português e não tem substituto de uma palavra."""
@@ -132,10 +167,207 @@ STATUS_DA_FILA: dict[str, str] = {"pending": "pendente", "done": "revisado", "sk
 `pending` aparecia **em 129 linhas** da coluna Status enquanto o filtro ao lado dizia "Só
 pendentes". A chave continua sendo o valor gravado no arquivo -- o que muda é o que se lê."""
 
-PRIMEIRO = "⏮"
+PRIMEIRO = "|◀"
 ANTERIOR = "◀"
 PROXIMO = "▶"
-ULTIMO = "⏭"
+ULTIMO = "▶|"
+"""Os quatro glifos de navegação, e **os quatro saem do mesmo bloco Unicode** (F9).
+
+`PRIMEIRO` e `ULTIMO` eram `⏮` e `⏭` (U+23EE/U+23ED, *Media Controls*). Segoe UI não tem os dois:
+a captura `depois_escuro_1280x800_galeria.png` mostra os botões de extremidade da Galeria com uma
+**caixa vazia** -- o glifo de reserva do Qt para "não existe nessa fonte" -- ao lado de dois
+triângulos que desenham. Dois botões de uma fileira de quatro sem símbolo nenhum.
+
+A troca não é por outro glifo exótico: `◀` e `▶` (U+25C0/U+25B6, *Geometric Shapes*) já estavam
+desenhando, e a barra é um `|` de ASCII. "Ir para o primeiro" continua se lendo, e passa a se
+ler em qualquer fonte -- que é o que um símbolo de interface tem de fazer.
+"""
+ESPACO_INQUEBRAVEL = "\u00a0"
+"""U+00A0. Quem o desenha não quebra a linha nele -- é o que ata a última palavra à anterior."""
+
+
+def sem_orfa(frase: str) -> str:
+    """A frase com a **última** palavra atada à anterior por espaço inquebrável (F9-C9, §4.7).
+
+    **Uma órfã é a última linha de um parágrafo com uma palavra só**, e o crítico do ciclo 9
+    mediu a pior desta janela: `'inteira.'`, sozinha numa linha, **5,7 % de uma medida de
+    627 px**, centrada -- e ela é a última linha da `MENSAGEM_VAZIA`, *a primeira frase que o
+    produto mostra*. Um parágrafo que termina assim parece cortado; o olho lê a palavra solta
+    como um erro antes de a ler como texto.
+
+    **O conserto é de composição e não de redação**, e é por isso que ele mora aqui e não em cada
+    frase: quem escreve a frase não sabe em que largura ela vai quebrar, e o mesmo texto é
+    desenhado em três peles e em quatro larguras. O espaço inquebrável diz ao compositor *"estas
+    duas palavras andam juntas"*, que é a regra tipográfica de sempre, e o `QTextLayout` a
+    respeita sem que nenhum painel precise saber dela.
+
+    **Só a última**, e não todas: atar mais do que o necessário empurra a quebra para trás e
+    produz uma linha anterior frouxa -- troca uma falta por outra. Frase de uma palavra volta
+    inalterada; não há a que atar.
+
+    Pura, e por isso afirmável sem abrir janela -- que é a fronteira deste módulo.
+    """
+    partes = str(frase).rsplit(" ", 1)
+    if len(partes) < 2 or not partes[0].strip():
+        return str(frase)
+    return f"{partes[0]}{ESPACO_INQUEBRAVEL}{partes[1]}"
+
+
+GALERIA_VAZIA_TITULO = "Nenhum diagrama ainda"
+GALERIA_VAZIA_FRASE = sem_orfa(
+    "A Galeria mostra os diagramas que uma varredura já encontrou neste livro. "
+    "Varra o livro para começar; a varredura pode ser interrompida e continua de onde parou."
+)
+REVISAO_VAZIA_TITULO = "Nenhum item na fila"
+REVISAO_VAZIA_FRASE = sem_orfa(
+    "A fila de revisão junta os diagramas em que a leitura ficou duvidosa. "
+    "Varre um livro para enfileirar o que precisar de olho, ou abre uma fila já gravada."
+)
+GALERIA_LEGENDA_VAZIA = sem_orfa(
+    "A legenda impressa do diagrama aparece aqui depois da varredura."
+)
+"""O que o poço da legenda da Galeria diz enquanto está vazio (F9-C5, §7.14).
+
+**Era o único poço grande da janela que não dizia o que espera receber:** `782x170 px` cujo
+interior mede `770x158 = 121,7 kpx a 0,00 % de tinta`, sem rótulo e sem `placeholderText`,
+entre a fila de navegação e `Copiar legenda`. O `accessibleName` existia -- um leitor de tela
+anunciava "Legenda impressa do diagrama" --, e quem **olha** não via nada.
+
+A frase diz as duas coisas: **o que** cai ali (a legenda impressa) e **quando** (depois da
+varredura), que é o que separa "vazio porque ainda não" de "vazio porque não tem"."""
+
+PARTIDAS_VAZIAS_TITULO = "Nenhuma partida guardada"
+PARTIDAS_VAZIAS_FRASE = sem_orfa(
+    "A lista traz as partidas que a varredura guardou para este diagrama. "
+    "Procure por nome para trazer candidatas da base sem varrer de novo."
+)
+FILTRO_SEM_RESULTADO_TITULO = "Nenhuma partida com esse filtro"
+FILTRO_SEM_RESULTADO_FRASE = sem_orfa(
+    "O filtro casa com jogador, evento e resultado. Apague o que está escrito para ver as "
+    "guardadas de novo."
+)
+COLECAO_VAZIA_TITULO = "Nenhuma partida neste arquivo"
+COLECAO_VAZIA_FRASE = sem_orfa(
+    # **As duas crases eram desenhadas** (F9-C15 §5.5): `.pgn` chegava à tela com os acentos
+    # graves, num retrato ampliado do próprio ciclo 14. É marcação de Markdown vazando para texto
+    # de interface -- a mesma família das aspas retas que esta frente caçou no ciclo 12. Aspas
+    # angulares são o que este arquivo já usa para citar («Bases…», logo abaixo).
+    "O arquivo abriu, e não há partida legível dentro dele. Escolha outro arquivo .pgn, ou abra "
+    "este num editor para ver o que ele traz."
+)
+BUSCA_SEM_AGULHA_TITULO = "Digite o que procurar"
+BUSCA_SEM_AGULHA_FRASE = sem_orfa(
+    "As ocorrências aparecem aqui enquanto você digita, com o trecho em volta de cada uma."
+)
+BUSCA_SEM_ACHADO_TITULO = "Nada achado"
+BUSCA_SEM_ACHADO_FRASE = sem_orfa(
+    "Nenhuma ocorrência na folha lida. Diferenciar maiúsculas e casar a figurina mudam o que "
+    "conta como igual."
+)
+POSICAO_SEM_PARTIDA_TITULO = "Nenhuma partida chega aqui"
+POSICAO_SEM_PARTIDA_FRASE = sem_orfa(
+    "A base não tem partida que passe por esta posição. Feche e escolha outra posição no "
+    "tabuleiro, ou troque a base em «Bases…»."
+)
+"""Os cinco estados vazios das telas de diálogo (F9-C14, item 4 do §7 do ciclo 13).
+
+**A janela principal tinha o componente em quatro lugares e os treze diálogos em nenhum.** Medido
+pelo crítico do ciclo 13: cinco diálogos abrem com uma vista vazia na tela e **0 de 5** usavam
+`qt/vazio.EstadoVazio` -- `DialogoDePartidas` abria com uma grade de 878x300 px em branco e um
+`0 partida(s)` num canto, e `_JanelaDeColecao` escrevia `"0 partida(s) em colecao.pgn. Escolha
+uma:"` sobre uma lista vazia, uma frase que se contradiz na segunda oração.
+
+Cada uma tem as mesmas três partes das da janela: **o título diz o que falta, a frase diz por que
+está vazio e o que enche, e o botão faz** -- e onde não há botão que resolva (a busca sem agulha
+digitada) as duas primeiras continuam obrigatórias. É o mesmo contrato de `GALERIA_VAZIA_TITULO`,
+um andar abaixo."""
+
+DATASET_LENDO_TITULO = "Lendo o dataset"
+DATASET_LENDO_FRASE = sem_orfa(
+    "As amostras estão sendo lidas do disco. A tabela aparece assim que a leitura terminar."
+)
+"""A espera da aba Dataset, dita **dentro da tabela** (F9-C2).
+
+A leitura do `labels.csv` saiu da thread da janela no item 5 do §7 -- eram 1.302 ms de janela
+morta no primeiro clique da aba --, e o preço da troca é um intervalo em que a tabela existe e
+está vazia. Uma tabela de dataset em branco é uma afirmação sobre o arquivo; esta frase diz que a
+afirmação ainda não foi feita."""
+
+ASPA_ABRE = "“"
+ASPA_FECHA = "”"
+"""As aspas **tipográficas** que envolvem um nome de controle citado numa frase (F9-C7, §4.10).
+
+Carta §3.3, bloco Tipografia. As três mensagens de estado vazio citam o rótulo de um botão, e o
+`"` reto -- aspas de máquina de escrever -- estava em **12 das 36 capturas**.
+
+**Declaradas, e não digitadas em cada frase**, por duas razões que já custaram caro nesta frente:
+o par tem de ser o mesmo nas três mensagens, e quem procura *"que nomes esta frase cita"* precisa
+de um par estável para procurar. `tests/test_qt_janela.EstadoVazioNaTelaTests` aceita os **dois**
+pares -- reto e tipográfico --, para que trocar as aspas nunca possa *apagar* a cobrança em vez de
+a manter: uma regex de aspa reta contra uma frase de aspa curva devolve zero citações e passa em
+verde. `benchmarks/reports/ui/c8/c8_vazio_na_tela.py` faz o mesmo do lado do arnês, e é por isso
+que ele existe ao lado do `c7_vazio_na_tela.py` do crítico, que só conhece a reta."""
+
+TEXTO_VAZIO_TITULO = "Nenhuma folha lida"
+TEXTO_VAZIO_FRASE = sem_orfa(
+    f"Use {ASPA_ABRE}Ler folha{ASPA_FECHA} para transcrever a página aberta no visualizador, "
+    f"ou {ASPA_ABRE}Achar no texto…{ASPA_FECHA} para procurar numa folha já lida."
+)
+"""Os três estados vazios de verdade, do item 14 do §7 (F9-C2).
+
+**O crítico do ciclo 1 mediu a tinta:** Galeria 514,7 kpx a **0,24 %**, Texto a **0,57 %** e
+Revisão 409,3 kpx a **0,00 %** -- e, na Galeria, duas frases dizendo a mesma coisa a 320 px uma da
+outra, com o botão que resolve a 645 px do vazio que ele preenche.
+
+Cada um tem **três** partes, e as três são obrigatórias: o título diz o que falta, a frase diz por
+que a região está vazia e o que a enche, e o botão faz. A frase de Texto continua sendo
+`EDITOR_VAZIO`, que já nomeava os dois caminhos de saída pelos rótulos que estão nos botões -- ela
+só deixou de ser `placeholderText`, que não quebra linha e era cortada em 77 px em qualquer janela
+abaixo de 1350 px."""
+
+DISPENSAR = "×"
+"""O glifo de "tirar isto de cena", no botão que dispensa o retângulo selecionado (F9-C2).
+
+`U+00D7` (sinal de multiplicação) e **não** `U+2715` nem `U+2717`: é a mesma lição da S-506 --
+os dois do bloco *Dingbats* faltam no Segoe UI e saem como caixa vazia, enquanto o de Latin-1
+desenha em qualquer fonte que exista num Windows. O nome por extenso fica no `accessibleName` e
+na dica; o glifo é só a forma."""
+
+NENHUM_PDF_ABERTO = "nenhum livro aberto"
+"""O que o rótulo do bloco [Livro] diz enquanto não há PDF. Era literal no painel (F9-C2).
+
+"PDF" é o formato do arquivo; "livro" é o que a pessoa abriu. O resto da janela já diz livro --
+`LIVRO_EM_PDF`, `VARRER_LIVRO`, o rodapé --, e esta era a última frase que dizia a sigla."""
+
+EDITOR_VAZIO = (
+    f"Nenhuma folha lida. Use {ASPA_ABRE}Ler folha{ASPA_FECHA} para transcrever a página aberta "
+    f"no visualizador, ou {ASPA_ABRE}Achar no texto…{ASPA_FECHA} para procurar numa folha já lida."
+)
+"""O que o editor de texto diz quando não há folha nenhuma nele (F9).
+
+**Estado vazio sem orientação reprova sozinho** (carta dos críticos, §3.3), e a aba Texto era
+exatamente isso: um retângulo branco de 940x880 px sem uma palavra -- a captura
+`depois_claro_1920x1080_texto.png` é meio ecrã de nada. A frase nomeia os **dois** caminhos de
+saída, e nomeia-os pelo rótulo que está no botão logo acima: quem lê a frase não precisa procurar
+o que ela quer dizer.
+"""
+
+DIAGRAMAS_DA_PAGINA = "Diagramas reconhecidos nesta página"
+"""O nome acessível da lista do topo da aba Resultado (F9-C2, defeito nº 1).
+
+Ela se anunciava como `"Lista"` -- o último degrau da cascata de `ui/nomes_acessiveis.py`, que é
+genérico de propósito. Um leitor de tela lê o nome e **em seguida** o papel: "Lista, lista". O
+portão do ciclo 2 (`teclado.nome_vazio_de_sentido`, motivo *eco do papel*) reprova exatamente
+isso, e o conserto é dizer o que a lista guarda."""
+
+DETALHES_DO_DIAGRAMA = "Detalhes do diagrama"
+"""O nome acessível do painel de texto selecionável da aba Resultado (F9).
+
+Ele recebe foco porque o texto dele é **selecionável** -- é de onde a pessoa copia a explicação
+de por que a posição é ilegal --, e um controle que recebe foco e não tem nome é anunciado como
+"texto estático" e mais nada. A derivação automática de `qt/acessibilidade.py` não o alcança de
+propósito: nomear todo `QLabel` por classe encheria a janela de "texto" repetido."""
+
 CONJUNTO_DE_PECAS = "Conjunto de peças"
 """O rótulo da escolha da S-230, na Configuração.
 
@@ -295,6 +527,24 @@ def _encurtar(nome: str, limite: int = LIMITE_DO_LIVRO_NO_TITULO) -> str:
     return f"{nome[:cabeca]}…{nome[len(nome) - (limite - 1 - cabeca) :]}"
 
 
+LIMITE_DA_LEGENDA = 120
+"""Quantos caracteres da legenda o parágrafo de detalhes do Resultado mostra (OCR_UI passo 13).
+
+**Medido: uma legenda inteira forçava a janela a 1.323 px de altura.** A legenda de um diagrama
+do Kemeri (p. 80) traz o parágrafo de análise inteiro -- dezenove linhas --, e o rótulo de
+detalhes, que quebra linha, pedia a altura de todas elas como **mínimo**: a janela deixava de caber
+em 768 (a régua da F9-C2) na primeira página lida com legenda longa. Uma linha basta para dizer
+de que diagrama se trata; o texto inteiro está no modo Texto, que é o lugar dele."""
+
+
+def resumo_da_legenda(legenda: str, limite: int = LIMITE_DA_LEGENDA) -> str:
+    """A legenda numa linha só, cortada no fim com reticências. Vazio continua vazio."""
+    plana = " ".join(str(legenda).split())
+    if len(plana) <= limite:
+        return plana
+    return plana[: max(0, limite - 1)].rstrip() + "…"
+
+
 def titulo_da_janela(livro: str = "", pagina: int | None = None, total: int | None = None) -> str:
     """O título da janela: o que mudou primeiro, o produto no fim (S-167).
 
@@ -340,6 +590,123 @@ def sobre_o_produto(tema: str = "", *, versao: str = VERSAO) -> str:
 def detection_source_label(source: str) -> str:
     """Rótulo da fonte de detecção. Devolve o valor cru se for um que não conhecemos."""
     return DETECTION_SOURCE_LABELS.get(source, source)
+
+
+# ------------------------------------------- os estados com ação do diagrama (OCR_UI C2, C1/X5)
+
+REPARADAS_MOSTRAR = "Mostrar as casas reparadas"
+REPARADAS_ESCONDER = "Esconder as casas reparadas"
+"""O botão do estado «reparado em N casas»: pinta no tabuleiro as casas em que o decodificador
+trocou a classe mais provável pela que fecha a posição (`changed_squares`), e desfaz a pintura."""
+
+ORIENTACAO_COMPARAR = "Ver girada 180°"
+SEGUNDA_OPINIAO = "Segunda opinião"
+SEGUNDA_OPINIAO_DICA = (
+    "Lê o diagrama com um segundo modelo, de outra família, e marca as casas em que os dois "
+    "discordam -- é onde os erros estão (23 das 27 casas erradas do conjunto de campo)."
+)
+"""O botão do C3: um segundo leitor, de outra família, lê o mesmo recorte e as casas em que
+ele discorda ficam marcadas -- medido no conjunto de campo, a disputa cobre 23 das 27 casas
+erradas (`benchmarks/second_opinion_gate.py`)."""
+ORIENTACAO_VOLTAR = "Voltar à leitura original"
+"""O botão do estado «orientação ambígua»: a outra leitura possível é a mesma posição girada de
+180°; o clique a põe no tabuleiro como edição (desfazível), e o segundo clique a tira."""
+
+
+def reparadas_em_casas(casas: Sequence[str]) -> str:
+    """«Reparado em N casas: a1, b2» -- o estado que a tela não dizia (análise §7.5)."""
+    quantas = len(casas)
+    if quantas == 0:
+        return ""
+    plural = "" if quantas == 1 else "s"
+    return f"Reparado em {quantas} casa{plural}: {', '.join(casas)}"
+
+
+def nome_acessivel_do_tabuleiro(casa: str | None, peca: str | None, *, duvidosas: int = 0) -> str:
+    """O que o leitor de tela ouve do tabuleiro (C14 do ciclo 2): «Tabuleiro, casa e2 selecionada:
+    dama branca» / «Tabuleiro, casa e2 selecionada: vazia» / «Tabuleiro, nenhuma casa selecionada».
+
+    A frase mora aqui e não no widget pela mesma razão de `side_source_label`: o rodapé e o
+    nome acessível têm de dizer a mesma coisa, e um lugar só é o que impede dois vocabulários.
+    """
+    if casa is None:
+        frase = "Tabuleiro, nenhuma casa selecionada"
+    else:
+        frase = f"Tabuleiro, casa {casa} selecionada: {peca or 'vazia'}"
+    if duvidosas:
+        plural = "" if duvidosas == 1 else "s"
+        frase += f"; {duvidosas} casa{plural} em dúvida"
+    return frase
+
+
+def estipulacao_conferida(rotulo: str, fecha: bool | None, motivo: str) -> str:
+    """«Exigência #2: fecha (1.♕h7#)» / «Exigência #2: não fecha nesta leitura» (C12).
+
+    Três estados, ditos como três: fecha, não fecha e **não verificada** -- o terceiro existe
+    para que «não fecha» nunca seja a tradução de «não olhei» (sem motor para mate em 3+)."""
+    razao = str(motivo).strip()
+    if fecha is True:
+        estado = "fecha"
+    elif fecha is False:
+        estado = "não fecha nesta leitura — confira"
+    else:
+        estado = "não verificada"
+    return f"Exigência {rotulo}: {estado}" + (f" — {razao}" if razao else "")
+
+
+def orientacao_ambigua(motivo: str) -> str:
+    """«Orientação ambígua: <motivo>», com o motivo que o serviço calculou."""
+    razao = str(motivo).strip()
+    return f"Orientação ambígua: {razao}" if razao else "Orientação ambígua"
+
+
+def trocar_o_lado_para(lado: str) -> str:
+    """O botão do rótulo de conflito: «Trocar para pretas» / «Trocar para brancas»."""
+    return f"Trocar para {SIDE_LABELS.get(lado, lado).casefold()}"
+
+
+# --------------------------------------- o que se perde ao fechar ou trocar de livro (OCR_UI C2, A7)
+
+DESCARTAR_EDICOES_TITULO = "Descartar as correções"
+"""O título da pergunta: nomeia a operação, como toda caixa (S-401)."""
+
+
+def frase_de_edicoes_nao_gravadas(paginas: Sequence[int], *, livro: str = "", ao_fechar: bool = True) -> str:
+    """A pergunta antes de perder correções feitas à mão e ainda não gravadas (análise §6.5).
+
+    As páginas vêm em base 0 e saem em base 1, como a tela as numera. `ao_fechar` escolhe o
+    fim da frase: fechar a janela perde tudo; abrir outro livro guarda as correções até o livro
+    ser reaberto -- e a resposta "não" tem consequência diferente nos dois casos.
+    """
+    numeros = ", ".join(str(int(p) + 1) for p in paginas)
+    plural = "" if len(paginas) == 1 else "s"
+    onde = f" de {livro}" if livro else ""
+    cabeca = f"A{plural} página{plural} {numeros}{onde} tem correções feitas à mão que não foram gravadas."
+    if ao_fechar:
+        return f"{cabeca}\n\nFechar agora perde essas correções. Fechar mesmo assim?"
+    return (
+        f"{cabeca}\n\nDescartar as correções? Responder {ASPA_ABRE}Não{ASPA_FECHA} as guarda até você "
+        "reabrir esse livro."
+    )
+
+
+# ---------------------------------------------------- a caixa de falha e o rodapé (OCR_UI C2, A10)
+
+COPIAR = "Copiar"
+"""O botão da caixa de falha: título, mensagem e o rastro completo vão para a área de transferência,
+para a pessoa colar num relato sem transcrever nada."""
+
+MENSAGENS_ANTERIORES = "Mensagens"
+"""O botão do rodapé que abre as últimas mensagens -- inclusive as que já expiraram."""
+
+MENSAGENS_ANTERIORES_TITULO = "Mensagens desta sessão"
+MENSAGENS_ANTERIORES_VAZIO = "Nenhuma mensagem ainda."
+
+
+def titulo_de_falha(nome: str) -> str:
+    """«A leitura não terminou», «A detecção não terminou»: a operação no título (S-401)."""
+    operacao = str(nome).strip() or "operação"
+    return f"A {operacao} não terminou"
 
 
 WORDS_REQUIRING_ACCENTS: tuple[str, ...] = (
@@ -409,3 +776,93 @@ WORDS_REQUIRING_ACCENTS: tuple[str, ...] = (
 
 Serve ao teste que impede a regressão da pendência 0.7. É uma lista de raízes: o teste
 compara ignorando plural e gênero, para que "posicoes" e "invalidos" também sejam pegos."""
+
+
+TRADUZIDOS_PELO_QT: dict[str, str] = {
+    "Abort": "Cancelar",
+    "Apply": "Aplicar",
+    "Cancel": "Cancelar",
+    "Close": "Fechar",
+    "Discard": "Descartar",
+    "Help": "Ajuda",
+    "Ignore": "Ignorar",
+    "No": "Não",
+    "NoToAll": "Não para tudo",
+    "Ok": "OK",
+    "Open": "Abrir",
+    "Reset": "Restaurar",
+    "RestoreDefaults": "Restaurar padrões",
+    "Retry": "Repetir",
+    "Save": "Salvar",
+    "SaveAll": "Salvar tudo",
+    "Yes": "Sim",
+    "YesToAll": "Sim para tudo",
+}
+"""O que o **catálogo do próprio Qt** escreve em cada botão padrão em pt-BR. Medido, não suposto.
+
+Lido de `PyQt6/Qt6/translations/qtbase_pt_BR.qm`, que esta árvore já traz, por
+`benchmarks/reports/ui/c14/c14_catalogo_do_qt.py`: **18 de 18** dos `StandardButton` têm palavra
+lá. Está escrito aqui, e não perguntado ao Qt em tempo de execução, porque o venv que guarda esta
+decisão **não tem binding de Qt nenhum** -- é a mesma fronteira de `ui/folha_de_estilo.py`, e é o
+que permite o teste afirmar a regra sem tela. O instrumento remede o `.qm` e diz se alguma palavra
+mudou de versão, então a cópia envelhece **em voz alta**."""
+
+DIVERGENCIAS_DECLARADAS: dict[str, str] = {
+    "Abort": (
+        "o catálogo do Qt escreve `Cancelar`, que é a MESMA palavra que ele dá ao `Cancel` -- e "
+        "a única caixa de três botões do produto (`qt/exportador.py:104`) desenha os dois lado a "
+        "lado. Duas legendas iguais na mesma caixa é pior do que uma palavra fora do catálogo."
+    ),
+}
+"""Onde o produto escreve **outra** palavra que a do catálogo do Qt, e por quê. Uma entrada, hoje.
+
+**A regra é: onde o Qt tem palavra, a palavra é do Qt.** Ela nasceu de uma regressão minha que o
+crítico do ciclo 13 mediu: o `Ok` saía desenhado **`Confirmar`** em **32** caixas de aviso de um
+botão só, inclusive a de *Sobre o produto* e vinte e tantas de erro. O argumento escrito era a
+régua `LETRAS_MINIMAS` do portão de nome acessível -- que nasceu para reprovar `-`, `+` e `◀`,
+**glifos que não anunciam nada**. `OK` não é glifo: é a palavra que o Windows em pt-BR usa, que o
+catálogo do próprio Qt usa e que todo leitor de tela pronuncia. Uma régua de nome foi aplicada a
+texto desenhado e escreveu a palavra errada em 32 telas.
+
+Uma divergência só se sustenta com um motivo escrito aqui, e o teste cobra isso."""
+
+BOTOES_PADRAO: dict[str, str] = {
+    "Ok": "OK",
+    "Cancel": "Cancelar",
+    "Close": "Fechar",
+    "Open": "Abrir",
+    "Save": "Salvar",
+    "SaveAll": "Salvar tudo",
+    "Yes": "Sim",
+    "YesToAll": "Sim para tudo",
+    "No": "Não",
+    "NoToAll": "Não para tudo",
+    "Apply": "Aplicar",
+    "Reset": "Restaurar",
+    "RestoreDefaults": "Restaurar padrões",
+    "Discard": "Descartar",
+    "Retry": "Repetir",
+    "Ignore": "Ignorar",
+    "Abort": "Interromper",
+    "Help": "Ajuda",
+}
+"""`QDialogButtonBox.StandardButton` -> o que ele diz **em português** (F9-C12).
+
+**O olho achou o que a régua não procurava.** O portão de teclado do ciclo 12 passou a abrir os
+doze diálogos do produto e todos passaram -- `0 sem nome, 0 sem papel, 0 nome vazio`. Fotografados
+os treze, a primeira imagem mostrou um botão escrito **`Close`**: os botões padrão de um
+`QDialogButtonBox` vêm traduzidos pelo Qt, e sem catálogo de tradução instalado o Qt fala inglês.
+Medido nos treze diálogos: **7 de 12** botões padrão desenhados em inglês -- `Close` ×3, `Cancel`
+×2, `Open` ×1 -- num produto inteiramente em pt-BR. Nenhuma régua desta frente olhava para
+idioma, porque `Close` tem cinco letras, não é eco do papel e não é o valor do controle.
+
+**A chave é o nome do enum e não o texto inglês**, de propósito: uma tabela `"Close" -> "Fechar"`
+seria uma lista de palavras que envelhece com a versão do Qt e com o idioma da máquina. O enum é
+estável, e é o que `qt/acessibilidade` consulta ao preparar cada diálogo. É isso que faz o produto
+falar pt-BR numa máquina cujo Qt fala alemão -- medido: com o catálogo `de` instalado o Qt desenha
+`['OK','Schließen','Abbrechen','Ja','Nein']` e o filtro devolve `['OK','Fechar','Cancelar','Sim','Não']`.
+
+**As palavras são as do Qt** (`TRADUZIDOS_PELO_QT`), e a exceção se declara em
+`DIVERGENCIAS_DECLARADAS`. A tabela existe para o caso em que o Qt **não** traduz -- nenhum, neste
+`.qm`, e todos, numa máquina sem catálogo. Ela não existe para reescrever o vocabulário de quem já
+tem um: foi assim que `Ok` virou `Confirmar` em 32 telas no ciclo 12."""

@@ -34,9 +34,18 @@ from chess_diagram_ocr.ui import degradacao, icones, tokens
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["PAPEL_APAGADO", "cache_de_icones", "icone", "limpar_cache", "pixmap", "tinta_apagada"]
+__all__ = [
+    "PAPEL_APAGADO",
+    "cache_de_icones",
+    "icone",
+    "limpar_cache",
+    "pixmap",
+    "tinta_apagada",
+    "vestir",
+    "vestiu_de_icone",
+]
 
-PAPEL_APAGADO = tokens.TEXTO_SECUNDARIO
+PAPEL_APAGADO = tokens.TEXTO_MORTO
 """O papel da tinta de um ícone **desabilitado** -- e é o mesmo com que a folha pinta a letra dele
 (S-554).
 
@@ -56,9 +65,13 @@ contra a `QPalette` e desloca para o claro. Numa paleta clara, clarear é apagar
 
 **A saída é desenhar o estado, e não deixar o toolkit adivinhá-lo.** `icone()` registra um segundo
 pixmap para `QIcon.Mode.Disabled`, na cor que este papel resolve contra a pele em uso -- que é
-**exatamente** a que `QToolButton:disabled` e `QPushButton:disabled` já dão à letra ao lado
-(`TEXTO_SECUNDARIO`). Ícone e rótulo apagam juntos porque apagam pela mesma decisão, e não por duas
-que por enquanto concordam.
+**exatamente** a que `QToolButton:disabled` e `QPushButton:disabled` já dão à letra ao lado. Ícone e
+rótulo apagam juntos porque apagam pela mesma decisão, e não por duas que por enquanto concordam.
+
+**`TEXTO_MORTO`, e não mais `TEXTO_SECUNDARIO`**, e é a mesma regra lida de novo: desde o F9-C10 a
+letra do controle morto é papel próprio (`ui/folha_de_estilo.py`, ver `tokens.TEXTO_MORTO`), e um
+ícone apagado no secundário ao lado de um rótulo apagado no morto seriam as duas decisões que este
+papel existe para não ter.
 
 **Vale para toda a janela**, e é por isso que mora aqui e não na barra da sala: os quatro lugares
 que desenham ícone em botão -- a barra da sala, a fila, a fita e a navegação da sala de estudo --
@@ -66,6 +79,61 @@ passam por esta função, e um segundo caminho seria a divergência que este mó
 ter."""
 
 _cache: dict[tuple[str, int, str, str, float], QIcon] = {}
+
+
+def vestir(
+    botao: object, nome_do_icone: str, papel: str, *, lado: int = 0, manter_texto: bool = False
+) -> bool:
+    """Põe o desenho no botão e **apaga o glifo de texto**. `False` se não havia desenho.
+
+    **É o item 4 do §9 do ciclo 5 com o escopo do §4.7 do ciclo 7.** O ciclo 6 pôs os nove
+    botões da barra do visor numa grade única de 16×16 -- e a varredura que o mediu lia
+    `j.pdf.findChildren`, o painel do visualizador e mais nada. Na janela inteira sobravam
+    **onze** caracteres de texto fazendo papel de ícone, com caixas de tinta de 5×3 a 9×12 px, e
+    o par que mais dói: `◀` com **15 px²** de tinta ao lado de `▶` com **36** -- 2,4×, entre dois
+    botões que deveriam ser espelho. Ampliado a 10×, o `◀` do Segoe UI não tem ápice: é um traço
+    horizontal chato, e "voltar um lance" fica sem direção legível.
+
+    **O texto sai, e é por isso que este ajudante existe em vez de um `setIcon` em cada painel.**
+    Um botão com ícone **e** glifo desenha os dois lado a lado, com o dobro da largura e a mesma
+    ambiguidade.
+
+    **`manter_texto` é para o botão que tem palavra, e ele foi achado olhando a captura.** O
+    paginador da Galeria escrevia `"◀ anterior"` -- glifo **mais** palavra --, e o censo o
+    contava como "tem letra, logo não é glifo-ícone". Ampliada, a captura mostra o defeito
+    inteiro: o `◀` do Segoe UI rende um traço horizontal chato de 5×3 px, e o botão lê-se
+    `"- anterior"`. Com `manter_texto`, o glifo sai e o desenho entra **ao lado da palavra**, que
+    é o que o botão sempre quis dizer. `False` -- Pillow ausente, nome desconhecido -- deixa o glifo onde está, que é a
+    degradação da regra 4 da SPEC_APARENCIA: nenhum ícone pode impedir a janela de abrir.
+
+    O lado padrão é o mesmo de `qt/painel_do_pdf._vestir_de_icone` (`folga + linha`), e vem de lá
+    pela razão de sempre: dois tamanhos de ícone na mesma janela são duas famílias.
+
+    **`lado` existe para a família que não é cromo, e ele foi achado olhando a captura.** A paleta
+    de peças desenha *peça* a `paleta_de_pecas.LADO_DO_ICONE` = 26 px; o `✕` vestido com o lado do
+    cromo saía com **16 px no meio de doze vizinhos de 26**, que é o defeito do item 4 em
+    miniatura -- o mesmo que este método veio fechar, um botão adiante.
+    """
+    from chess_diagram_ocr.qt import tema
+    from chess_diagram_ocr.ui import espaco, folha_de_estilo
+
+    lado = lado or espaco.folga() + espaco.linha()
+    desenho = icone(nome_do_icone, lado, tema.cor_atual(folha_de_estilo.tinta_do_papel(papel)))
+    if desenho is None:
+        return False
+    if not manter_texto:
+        botao.setText("")  # type: ignore[attr-defined]
+    botao.setIcon(desenho)  # type: ignore[attr-defined]
+    botao.setIconSize(QSize(lado, lado))  # type: ignore[attr-defined]
+    # O alvo de clique não pode encolher com o rótulo: o piso da S-442 para um controle de
+    # ponteiro, e um botão de ícone sem piso sai com a largura do desenho.
+    botao.setMinimumWidth(lado + espaco.folga())  # type: ignore[attr-defined]
+    return True
+
+
+def vestiu_de_icone(botao: object) -> bool:
+    """Se aquele botão está mostrando desenho e nenhum texto. É o que o portão do item 4 lê."""
+    return bool(botao.icon().availableSizes()) and not botao.text()  # type: ignore[attr-defined]
 
 
 def pixmap(nome: str, tamanho: int, cor: str) -> QPixmap | None:

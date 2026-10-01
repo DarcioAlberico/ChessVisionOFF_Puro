@@ -181,6 +181,103 @@ class PageMetricTests(unittest.TestCase):
         self.assertEqual((r.matched, r.legal, r.above_gate, r.exported), (1, 1, 0, 0))
         self.assertIn("confiança 0.400", r.misses[0])
 
+    def test_o_gate_julga_as_casas_que_a_evidencia_externa_nao_provou(self) -> None:
+        """C5/C11 (ciclo 2): a casa trocada pela tinta ou pelo lance carrega a confiança da
+        segunda opção (≤ 0,5), e o gate julga as outras -- `gate_confidence` -- em vez de
+        barrar por construção o que a evidência externa consertou."""
+        pagina = FieldPage(pdf="a.pdf", page=1, reviewed=True,
+                           diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10), placement=LEGAL),))
+        trocada = lido((0, 0, 10, 10), conf=0.30)
+        trocada.square_confidences = [0.99] * 63 + [0.30]
+        trocada.colour_repairs = [63]
+        trocada.changed_squares = [63]
+        self.assertAlmostEqual(trocada.gate_confidence, 0.99)
+        self.assertEqual(trocada.external_repairs, [63])
+        r = evaluate_page(pagina, [trocada], accept_threshold=0.8)
+        self.assertEqual((r.above_gate, r.exported, r.exact), (1, 1, 1))
+        self.assertEqual((r.colour_repaired, r.colour_repaired_squares, r.colour_repaired_exact, r.colour_repaired_wrong),
+                         (1, 1, 1, 0))
+        # Sem evidência externa, a mesma confiança barra -- o que a S-132 descreve.
+        barrada = lido((0, 0, 10, 10), conf=0.30, reparadas=(63,))
+        barrada.square_confidences = [0.99] * 63 + [0.30]
+        self.assertAlmostEqual(barrada.gate_confidence, 0.30)
+        self.assertEqual(evaluate_page(pagina, [barrada], accept_threshold=0.8).exported, 0)
+
+    def test_o_lance_seguinte_e_contado(self) -> None:
+        pagina = FieldPage(pdf="a.pdf", page=1, reviewed=True,
+                           diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10), placement=LEGAL),))
+        replicou = lido((0, 0, 10, 10))
+        replicou.next_move_replays = True
+        reparou = lido((0, 0, 10, 10), conf=0.2)
+        reparou.next_move_replays = False
+        reparou.next_move_repairs = [5]
+        reparou.square_confidences = [0.99] * 5 + [0.2] + [0.99] * 58
+        r = evaluate_page(pagina, [replicou], accept_threshold=0.8)
+        self.assertEqual((r.next_move_checked, r.next_move_replayed, r.next_move_repaired), (1, 1, 0))
+        r = evaluate_page(pagina, [reparou], accept_threshold=0.8)
+        self.assertEqual((r.next_move_checked, r.next_move_replayed, r.next_move_repaired, r.exported),
+                         (1, 0, 1, 1))
+        self.assertEqual((r.next_move_repaired_exact, r.next_move_repaired_wrong), (1, 0))
+
+    def test_a_estipulacao_e_contada_e_a_verdade_e_conferida(self) -> None:
+        """C12 do ciclo 2: os contadores da exigência, e a verdade anotada jogada contra ela --
+        a anotação que não fecha é apontada com endereço (foi assim que o Niemeijer p20 d0
+        apareceu)."""
+        mate2 = "6k1/5ppp/3q4/4R3/8/8/5PPP/6K1"  # pretas: 1...♛d1+ 2.♖e1 ♛xe1#
+        pagina = FieldPage(pdf="a.pdf", page=1, reviewed=True,
+                           diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10), placement=mate2),))
+        fecha = lido((0, 0, 10, 10), placement=mate2)
+        fecha.side_to_move = "b"
+        fecha.stipulation, fecha.stipulation_closes = "#2", True
+        r = evaluate_page(pagina, [fecha], accept_threshold=0.8)
+        self.assertEqual((r.stipulation_checked, r.stipulation_closed, r.stipulation_failed, r.stipulation_unverified),
+                         (1, 1, 0, 0))
+        self.assertEqual((r.stipulation_truth_checked, r.stipulation_truth_closes), (1, 1))
+
+        # A leitura errada (dama branca) não fecha; e a anotação, conferida com a exigência
+        # certa, fecha -- o sinal de revisão apontou a leitura, não a verdade.
+        errada = lido((0, 0, 10, 10), placement="6k1/5ppp/3Q4/4R3/8/8/5PPP/6K1")
+        errada.side_to_move = "b"
+        errada.stipulation, errada.stipulation_closes = "#2", False
+        errada.stipulation_reason = "Mate em 2 não fecha nesta leitura"
+        r = evaluate_page(pagina, [errada], accept_threshold=0.8)
+        self.assertEqual((r.stipulation_checked, r.stipulation_failed, r.stipulation_truth_closes), (1, 1, 1))
+        self.assertEqual(r.stipulation_truth_failed, [])
+
+        # Uma verdade anotada que não cumpre a exigência lida é apontada com endereço.
+        outra = FieldPage(pdf="a.pdf", page=7, reviewed=True,
+                          diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10), placement=LEGAL),))
+        r = evaluate_page(outra, [fecha], accept_threshold=0.8)
+        self.assertEqual((r.stipulation_truth_checked, r.stipulation_truth_closes), (1, 0))
+        self.assertEqual(len(r.stipulation_truth_failed), 1)
+        self.assertIn("a.pdf p7 d0: #2 não fecha na anotação", r.stipulation_truth_failed[0])
+        # O reparo pela exigência entra na conta dos exatos como o do lance seguinte.
+        reparado = lido((0, 0, 10, 10), placement=mate2)
+        reparado.side_to_move = "b"
+        reparado.stipulation, reparado.stipulation_closes = "#2", False
+        reparado.stipulation_repairs = [19]
+        r = evaluate_page(pagina, [reparado], accept_threshold=0.8)
+        self.assertEqual((r.stipulation_repaired, r.stipulation_repaired_exact, r.stipulation_repaired_wrong), (1, 1, 0))
+
+    def test_a_exatidao_limpa_tira_as_paginas_com_amostra_de_treino(self) -> None:
+        """C15 do ciclo 2: `field_exact_clean` é a exatidão sobre as páginas sem amostra de
+        treino, publicada ao lado do número cheio."""
+        pagina = FieldPage(pdf="a.pdf", page=1, reviewed=True,
+                           diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10), placement=LEGAL),))
+        limpo = evaluate_page(pagina, [lido((0, 0, 10, 10))], accept_threshold=0.8)
+        self.assertEqual((limpo.exported_comparable, limpo.exported_exact), (1, 1))
+        self.assertEqual((limpo.contaminated_exported_comparable, limpo.clean_exported_comparable), (0, 1))
+        self.assertAlmostEqual(limpo.field_exact_clean, 1.0)
+        sujo = evaluate_page(pagina, [lido((0, 0, 10, 10), placement=VAZIO.replace("8/8/8/8/8/8/8/8", "4k3/8/8/8/8/8/8/4KQ2"))],
+                             accept_threshold=0.8, training_samples=2)
+        self.assertEqual((sujo.contaminated, sujo.contaminated_exported_comparable, sujo.contaminated_exported_exact), (1, 1, 0))
+        self.assertEqual(sujo.clean_exported_comparable, 0)
+        self.assertEqual(sujo.field_exact_clean, 0.0)
+        # A sabotagem: a mesma página marcada como de treino sai do número limpo.
+        limpo_marcado = evaluate_page(pagina, [lido((0, 0, 10, 10))], accept_threshold=0.8, training_samples=1)
+        self.assertEqual((limpo_marcado.field_exact, limpo_marcado.clean_exported_comparable), (1.0, 0))
+        self.assertIn("field_exact_clean", limpo_marcado.as_dict())
+
     def test_recorte_deslocado_ainda_casa(self) -> None:
         """O que se mede é achou ou não achou; a qualidade do recorte é a `min_confidence`."""
         pagina = FieldPage(pdf="a.pdf", page=1, reviewed=True, diagrams=(AnnotatedDiagram(bbox=(0, 0, 100, 100)),))
@@ -306,6 +403,29 @@ class ExatidaoDeCampoTests(unittest.TestCase):
         self.assertEqual((r.comparable, r.exported_comparable), (0, 0))
         self.assertAlmostEqual(r.field_exact, 0.0, msg="sem denominador, a taxa é 0 e não 1")
         self.assertFalse(r.has_enough_comparable)
+
+    def test_uma_linha_por_diagrama_casado_refaz_o_gate_em_qualquer_limiar(self) -> None:
+        """C17 do ciclo 2: as linhas deixam a curva risco × cobertura cortar onde quiser -- e a
+        soma de duas páginas carrega as linhas das duas."""
+        r = evaluate_page(
+            self._pagina(LEGAL, LEGAL, ""),
+            self._leituras((self.OUTRA, 0.99), (LEGAL, 0.40), (LEGAL, 0.97)),
+            accept_threshold=0.8,
+            training_samples=1,
+        )
+        self.assertEqual([d["index"] for d in r.diagrams], [0, 1, 2])
+        self.assertEqual([d["exact"] for d in r.diagrams], [False, True, None])
+        self.assertEqual([d["gate_confidence"] for d in r.diagrams], [0.99, 0.4, 0.97])
+        self.assertTrue(all(d["legal"] and d["contaminated"] for d in r.diagrams))
+        # o gate de 0,80 refeito a partir das linhas dá o mesmo que o relatório contou
+        exportados = [d for d in r.diagrams if d["legal"] and d["gate_confidence"] >= 0.8]
+        self.assertEqual(len(exportados), r.exported)
+        self.assertEqual(sum(1 for d in exportados if d["exact"] is False), r.exported_wrong)
+        total = FieldReport()
+        _accumulate(total, r)
+        _accumulate(total, evaluate_page(self._pagina(LEGAL), self._leituras((LEGAL, 0.99))))
+        self.assertEqual(len(total.diagrams), 4)
+        self.assertNotIn("diagrams", total.as_dict(), "as linhas não enchem o JSON dos sub-relatórios")
 
     def test_a_exatidao_de_campo_separa_do_condicional(self) -> None:
         """Um exportado errado e um barrado errado: as duas taxas respondem coisas diferentes."""
@@ -1244,6 +1364,30 @@ class ImpressaoDaMedicaoTests(unittest.TestCase):
         """Nada no caminho da medição importa `ui/`, então mexer nela não torna um relatório
         obsoleto. Um digest que incluísse a interface pediria remedição por mudança de botão."""
         self.assertFalse([m for m in measured_modules() if m.startswith("chess_diagram_ocr.ui")])
+
+    def test_o_texto_de_tela_importado_tarde_nao_entra_e_o_do_topo_entra(self) -> None:
+        """A poda do merge do religa: o `import` de `ui/` dentro de uma função de um módulo medido
+        é texto de tela (a frase do motor que não fala UCI) e fica fora do fecho; o do topo entra,
+        e é ele que a guarda de cima pegaria. Contra fonte de mentira, para não se apagar junto."""
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            pacote = raiz / "src" / "chess_diagram_ocr"
+            (pacote / "cli").mkdir(parents=True)
+            (pacote / "ui").mkdir()
+            for vazio in ("__init__.py", "cli/__init__.py", "ui/__init__.py", "ui/frase.py", "ui/cor.py"):
+                (pacote / vazio).write_text("", encoding="utf-8")
+            (pacote / "cli" / "field.py").write_text(
+                "from ..motor import abrir\nfrom ..medido import ler\n", encoding="utf-8"
+            )
+            (pacote / "motor.py").write_text(
+                "def abrir():\n    from chess_diagram_ocr.ui.frase import dizer\n    return dizer\n",
+                encoding="utf-8",
+            )
+            (pacote / "medido.py").write_text("from .ui import cor\n\ndef ler():\n    return cor\n", encoding="utf-8")
+            modulos = measured_modules(root=raiz)
+        self.assertIn("chess_diagram_ocr.motor", modulos)
+        self.assertNotIn("chess_diagram_ocr.ui.frase", modulos, "o import tardio de texto de tela entrou")
+        self.assertIn("chess_diagram_ocr.ui.cor", modulos, "o import de ui/ no topo saiu do fecho")
 
     def test_o_motor_desligado_fica_fora_do_digest(self) -> None:
         """`--ocr` nasce `off`, e o glifo entra por import tardio dentro de `build_recognizer`.

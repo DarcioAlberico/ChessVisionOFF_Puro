@@ -335,6 +335,17 @@ class SecondOpinionTests(unittest.TestCase):
         self.assertEqual(model.second_opinion, {})
         self.assertEqual(model.disputed_squares(0), ())
 
+    def test_as_casas_corrigidas_a_mao_sao_as_que_diferem_da_leitura_agora(self) -> None:
+        """`hand_edited_indices` é o «corrigido» da caixa na página (OCR_UI passo 13): a diferença
+        de agora, e não a marca `edited_by_hand` -- desfazer devolve o lido."""
+        model = self._carregado()
+        self.assertEqual(model.hand_edited_indices(), frozenset())
+        model.apply_placement(OUTRO, 0)
+        self.assertEqual(model.hand_edited_indices(), frozenset({0}))
+        model.apply_placement(PLACEMENT, 0)
+        self.assertEqual(model.hand_edited_indices(), frozenset(), "voltou à leitura: não está corrigido")
+        self.assertTrue(model.items[0].edited_by_hand, "a marca de que alguém mexeu continua")
+
     def test_leitura_identica_marca_zero_casas_e_ainda_registra_a_rota(self) -> None:
         model = self._carregado()
         parecer = model.mark_second_opinion(0, PLACEMENT, reader="leitor")
@@ -353,8 +364,13 @@ SEM_TKINTER = {
     "analise_da_partida.py": "os cortes de imprecisão/erro/erro grave e onde o gráfico põe cada ply (S-537)",
     "finais.py": "quando perguntar à tabela de finais e o que a resposta dela diz (S-538)",
     "motor_declarado.py": "os tetos das opções do motor, a barra de avaliação e as linhas do MultiPV (S-529/S-536)",
+    "biblioteca.py": "o acervo inteiro como uma decisão só: busca, facetas e a janela que se realiza (F9)",
+    "configuracoes.py": "a tabela da janela Configurações…: um campo por preferência de settings.Settings, DPI e teto relidos do arquivo",
+    "cortina.py": "a cortina de comparação: onde está a divisa entre o antes e o depois (F9)",
     "degradacao.py": "o inventário de quedas de aparência e o aviso uma-vez-só (S-506)",
     "folha.py": "o recheio de cada superfície e o vão do indicador (S-506)",
+    "folha_de_estilo.py": "a folha de estilo e o mapa da QPalette, como texto e dicionario (F9)",
+    "nomes_acessiveis.py": "como um controle sem rotulo e anunciado por um leitor de tela (F9)",
     "menu.py": "a declaração dos menus e as conferências sobre o catálogo (S-506)",
     "tabela.py": "a coluna declarada, a largura mínima e quando a barra horizontal aparece (S-506)",
     "atalhos.py": "a tabela de atalhos: tecla, comando e descrição, sem widget (S-161/S-165)",
@@ -395,15 +411,20 @@ SEM_TKINTER = {
     "page_results.py": "os resultados de uma página, sem tela",
     "pedido_de_treino.py": "os parâmetros do treino e a ordem das métricas (S-27/S-503)",
     "pele.py": "o registro de aparências: qual pele existe e qual é a padrão (S-221)",
+    "recorte_do_diagrama.py": "casa ↔ pixel do recorte, as três leituras da casa e o âmbar por margem (OCR_UI passo 13)",
     "resumo_do_dataset.py": "as colunas, a paginação e os textos da aba Dataset (S-23/S-503)",
     "sala_declarada.py": "a tabela comando->método da sala e as seis medidas (S-280/S-503)",
+    "selecao_de_area.py": "o retângulo vivo sobre a página: alça, arrasto, ajuste fino e grampeamento (F9)",
     "state.py": "o estado da aplicação em disco",
     "strings.py": "o vocabulário da interface (S-04)",
+    "substituicao.py": "o que é uma substituição de diagrama dentro de um PDF, antes do PyMuPDF (F9)",
+    "teclado_do_tabuleiro.py": "o que cada tecla faz no tabuleiro e qual é a próxima duvidosa, sem widget (OCR_UI C8)",
     "texto_declarado.py": "a tabela comando->método da aba de texto e o zoom da vista (S-240/S-504)",
     "texto_cores.py": "a paleta do autor e o canal que a confiança não usa (S-242)",
     "treino_declarado.py": "o balde do lance jogado, o andamento do exercício e as frases (S-541)",
     "tipografia.py": "a escala de fontes, derivada do sistema e sem widget (S-149)",
     "tokens.py": "a paleta e o contraste, sem widget (S-145/S-146)",
+    "trilho.py": "o estado de cada página do trilho, o rótulo, o papel e a dica (OCR_UI passo 17)",
     "varredura_de_revisao.py": "o pedido de varredura e o acumulador da fila (S-116/S-119/S-503)",
     "viewport.py": "o zoom e a rolagem, como aritmética",
 }

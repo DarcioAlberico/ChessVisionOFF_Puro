@@ -18,10 +18,13 @@ from .config import (
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
     DEFAULT_READING_ORDER,
+    PIECE_CLASSES,
     PROJECT_ROOT,
     OrientationMode,
     ReadingOrder,
 )
+from .cor_por_livro import apply_colour, calibrador_do_livro
+from .estipulacao import apply_stipulation
 from .export_checkpoint import (
     DEFAULT_CHECKPOINT_EVERY,
     CheckpointWriter,
@@ -29,11 +32,14 @@ from .export_checkpoint import (
     load_partial,
     partial_path_for,
 )
-from .fen_utils import check_position
+from .fen_utils import check_position, square_name
 from .gallery import DiagramAnnotation, lichess_analysis_url, load_annotations
 from .inference import BoardPrediction, load_model, predict_with_orientation
+from .lance_seguinte import apply_next_move
 from .pdf_io import PdfSource as _PdfSource
 from .pdf_text import DiagramContext
+from .provenance import hash_board_rgb
+from .proveniencia import Cabecalho, chave, hash_do_arquivo, write_sidecar
 from .semantics import SideToMove, compose_fen, infer_castling_rights, infer_side_to_move
 
 if TYPE_CHECKING:
@@ -105,6 +111,50 @@ class DiagramPosition:
 
     duplicate_of: tuple[int, int] | None = None
     """(página, diagrama) da primeira ocorrência desta mesma posição no PDF (S-18)."""
+
+    colour_repairs: tuple[str, ...] = ()
+    """As casas (`e5`) cuja cor a tinta contradisse e o calibrador do livro trocou (C5)."""
+
+    next_move: str = ""
+    """O primeiro lance impresso sob o diagrama, quando conferido (C11)."""
+
+    next_move_repairs: tuple[str, ...] = ()
+    """As casas (`e5`) trocadas para a segunda opção porque só assim o lance impresso replica.
+    Vão ao PGN em `[OCRNextMove]`; o gate as julga por `gate_confidence`."""
+
+    stipulation: str = ""
+    """A exigência impressa (`#2`), quando a página a tem (C12)."""
+
+    stipulation_closes: bool | None = None
+    """`True` fecha, `False` não fecha (nem com trocas), `None` não verificável (C12)."""
+
+    stipulation_keys: tuple[str, ...] = ()
+    """A(s) chave(s) em SAN, quando fecha (C12)."""
+
+    stipulation_repairs: tuple[str, ...] = ()
+    """As casas (`e5`) trocadas porque só assim a exigência fecha (C12). Vão ao PGN em
+    `[OCRStipulation]`; o gate as julga por `gate_confidence`."""
+
+    stipulation_reason: str = ""
+
+    gate_confidence: float | None = None
+    """A confiança que o gate julga (C11/C12): `min_confidence` sem as casas provadas pelo lance
+    seguinte ou pela exigência. `None` quando não há reparo externo -- e aí o gate usa
+    `min_confidence`."""
+
+    bbox_pdf: tuple[float, float, float, float] | None = None
+    """Onde o diagrama está na página, em pontos do PDF (A11): a chave geométrica que o A3
+    usa para casar a decisão humana com o diagrama."""
+
+    image_hash: str = ""
+    """dHash do recorte lido (`provenance.hash_board_rgb`), para reconhecer o mesmo diagrama
+    noutra exportação ou noutro livro (A11)."""
+
+    square_confidences: tuple[float, ...] = ()
+    """A confiança das 64 casas, em ordem de leitura (A11). Vazio numa posição montada à mão."""
+
+    repairs: tuple[tuple[str, str, str], ...] = ()
+    """`(casa, lida, final)` de cada troca do decodificador, da tinta ou do lance (A11)."""
 
     @property
     def full_fen(self) -> str:
@@ -217,6 +267,9 @@ class ExportReport:
     resumed_from_page: int | None = None
     """Página em que esta execução retomou um parcial anterior. `None` = varredura nova."""
 
+    provenance_path: Path | None = None
+    """O sidecar de proveniência gravado ao lado do PGN (A11), quando houve."""
+
     @property
     def total(self) -> int:
         return len(self.accepted) + len(self.needs_review) + len(self.rejected) + len(self.duplicates)
@@ -270,8 +323,12 @@ def classify_position(
         # posicoes ilegais das *duas* formas, que nenhuma escolha de lado a jogar conserta.
         return "needs_review", "lado a jogar assumido errado: " + ("; ".join(position.problems) or "xeque invertido")
 
-    if position.min_confidence is not None and position.min_confidence < accept_threshold:
-        return "needs_review", f"confiança mínima {position.min_confidence:.3f} < {accept_threshold:.2f}"
+    # C11: com reparo pelo lance seguinte, a barra julga as outras casas -- a casa trocada
+    # carrega a confiança da segunda opção (a verdade sobre a matriz), mas o lance impresso é
+    # evidência que a matriz não tem.
+    judged = position.gate_confidence if position.gate_confidence is not None else position.min_confidence
+    if judged is not None and judged < accept_threshold:
+        return "needs_review", f"confiança mínima {judged:.3f} < {accept_threshold:.2f}"
 
     return "accepted", ""
 
@@ -301,6 +358,11 @@ def review_output_path(output_path: Path) -> Path:
     """`PGN/livro.pgn` -> `PGN/livro.review.pgn`."""
     output_path = Path(output_path)
     return output_path.with_suffix(f".review{output_path.suffix}")
+
+
+def _piece_letter(class_index: int) -> str:
+    name = PIECE_CLASSES[int(class_index)]
+    return "" if name == "empty" else name
 
 
 def _normalize_fen_for_pgn(fen: str) -> str:
@@ -522,6 +584,17 @@ def _own_model_session(model_path: Path, device: str | None) -> Iterator[tuple[A
     yield load_model(model_path, device=device)
 
 
+def _motor_para(context: Any) -> Any:
+    """O motor UCI só quando a exigência deste diagrama precisa de um (mate em 3+), como em
+    `OcrService._stipulation_engine`; `None` nos outros casos e quando a máquina não tem motor."""
+    from .estipulacao import LANCES_DA_BUSCA, motor_padrao
+
+    exigencia = getattr(context, "stipulation", None) if context is not None else None
+    if exigencia is None or exigencia.lances <= LANCES_DA_BUSCA:
+        return None
+    return motor_padrao()
+
+
 def _scan_pages(
     pdf_source: PdfSource,
     model: Any,
@@ -541,6 +614,9 @@ def _scan_pages(
     page_callback: PageCallback | None,
 ) -> Iterator[ScannedDiagram]:
     """O laço de páginas, com o modelo já em mãos. Separado só para manter o `with` legível."""
+    # C5: o calibrador de cor do livro, uma vez por PDF (o perfil da suíte quando
+    # ela está importável; `None` sem perfil -- e o tabuleiro responde sozinho).
+    calibrador_de_cor = calibrador_do_livro(pdf_source)
     seen = 0
 
     for page_index in range(start_page, last_page_exclusive):
@@ -572,19 +648,57 @@ def _scan_pages(
             )
             prediction = oriented.prediction
             context = contexts[diagram_index - 1] if diagram_index - 1 < len(contexts) else None
+            # C5: a cor pela tinta, pelo mesmo caminho da janela (`OcrService._predict_boards`).
+            prediction, trocas_cor, _motivo_cor = apply_colour(
+                prediction, candidate.board_rgb, oriented, calibrador_de_cor)
             side = infer_side_to_move(prediction.fen_board, context)
+            # C11: o lance seguinte devolvido à posição, pelo mesmo caminho da janela.
+            prediction, reparo = apply_next_move(prediction, context, side)
+            if reparo is not None and reparo.trocas:
+                side = infer_side_to_move(prediction.fen_board, context)
+            # C12: a exigência do problema, pelo mesmo caminho da janela (`_stipulation_engine`).
+            prediction, exigencia = apply_stipulation(
+                prediction, context, side, motor=_motor_para(context))
+            if exigencia is not None and exigencia.trocas:
+                side = infer_side_to_move(prediction.fen_board, context)
 
             # Legalidade re-avaliada com o lado a jogar decidido, e nao com o "w" fixo que a
             # inferencia usou: e o que faz o xeque invertido deixar de ser "ilegal" quando a
             # S-17 descobre que a vez era das pretas.
             resolved = check_position(compose_fen(prediction.fen_board, side))
 
+            gate_confidence: float | None = None
+            excluded = (set(reparo.casas if reparo is not None else []) | {t.casa for t in trocas_cor}
+                        | set(exigencia.casas if exigencia is not None else []))
+            if excluded:
+                others = [float(c) for i, c in enumerate(prediction.square_confidences) if i not in excluded]
+                gate_confidence = min(others) if others else None
+
+            decode = prediction.decode
             position = DiagramPosition(
                 page_index=page_index,
                 diagram_index=diagram_index,
                 fen=prediction.fen_board,
                 confidence=prediction.mean_confidence,
                 min_confidence=prediction.min_confidence,
+                bbox_pdf=candidate.bbox_pdf,
+                image_hash=hash_board_rgb(candidate.board_rgb),
+                square_confidences=tuple(round(float(c), 4) for c in prediction.square_confidences),
+                repairs=tuple(
+                    (square_name(sq), _piece_letter(before), _piece_letter(after))
+                    for sq, before, after in (decode.changed_squares if decode is not None else [])
+                ),
+                colour_repairs=tuple(square_name(t.casa) for t in trocas_cor),
+                next_move=reparo.lance if reparo is not None else "",
+                next_move_repairs=tuple(square_name(c) for c in reparo.casas) if reparo is not None else (),
+                stipulation=(exigencia.estipulacao.rotulo
+                             if exigencia is not None and exigencia.estipulacao is not None else ""),
+                stipulation_closes=exigencia.fecha if exigencia is not None else None,
+                stipulation_keys=exigencia.chaves if exigencia is not None else (),
+                stipulation_repairs=(tuple(square_name(c) for c in exigencia.casas)
+                                     if exigencia is not None else ()),
+                stipulation_reason=exigencia.motivo if exigencia is not None else "",
+                gate_confidence=gate_confidence,
                 is_legal=resolved.is_legal,
                 is_fatal=resolved.is_fatal,
                 problems=resolved.problems,
@@ -673,6 +787,7 @@ def build_pgn_games(
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     annotations: Mapping[tuple[int, int], DiagramAnnotation] | None = None,
     lichess_links: bool = False,
+    provenance_file: str = "",
 ) -> list[chess.pgn.Game]:
     """Um jogo por posição, só com headers -- o diagrama é a posição inicial.
 
@@ -741,6 +856,35 @@ def build_pgn_games(
             game.headers["DuplicateOf"] = f"{page_number}.{diagram_index}"
         if position.min_confidence is not None:
             game.headers["OCRMinConfidence"] = f"{position.min_confidence:.3f}"
+        if position.next_move_repairs:
+            # C11: a casa trocada por evidência externa e a confiança que o gate julgou. A
+            # `OCRMinConfidence` acima continua sendo a da matriz -- o PGN não mente sobre ela.
+            game.headers["OCRNextMove"] = (
+                f"{position.next_move} prova {' '.join(position.next_move_repairs)}"
+                + (f"; gate {position.gate_confidence:.3f}" if position.gate_confidence is not None else ""))
+        if position.colour_repairs:
+            # C5: a cor que a tinta contradisse, trocada pelo calibrador do livro.
+            game.headers["OCRColour"] = "tinta trocou " + " ".join(position.colour_repairs)
+        if position.stipulation:
+            # C12: a exigência impressa e o que ela disse da leitura. `Stipulation` é o header
+            # que os leitores de PGN de problemas já conhecem (`#2`); `StipulationCheck` diz
+            # se a posição exportada a cumpre -- «fecha», «não fecha» ou «não verificada».
+            game.headers["Stipulation"] = position.stipulation
+            if position.stipulation_closes is True:
+                veredito = "fecha" + (f": 1.{position.stipulation_keys[0]}" if position.stipulation_keys else "")
+            elif position.stipulation_closes is False:
+                veredito = "não fecha"
+            else:
+                veredito = "não verificada"
+            game.headers["StipulationCheck"] = veredito
+            if position.stipulation_repairs:
+                game.headers["OCRStipulation"] = (
+                    f"{position.stipulation} prova {' '.join(position.stipulation_repairs)}"
+                    + (f"; gate {position.gate_confidence:.3f}" if position.gate_confidence is not None else ""))
+        if provenance_file:
+            # A11: o PGN aponta para o sidecar; a chave é a mesma identidade do `[Diagram]`.
+            game.headers["ProvenanceFile"] = provenance_file
+            game.headers["ProvenanceKey"] = chave(position.page_index, position.diagram_index)
         if position.is_legal is not None:
             game.headers["OCRLegality"] = position.legality_label
             if not position.is_legal and position.problems:
@@ -788,6 +932,7 @@ def build_pgn_text(
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     annotations: Mapping[tuple[int, int], DiagramAnnotation] | None = None,
     lichess_links: bool = False,
+    provenance_file: str = "",
 ) -> str:
     payloads = [
         game.accept(chess.pgn.StringExporter(headers=True, variations=True, comments=True)).strip()
@@ -799,9 +944,14 @@ def build_pgn_text(
             reading_order=reading_order,
             annotations=annotations,
             lichess_links=lichess_links,
+            provenance_file=provenance_file,
         )
     ]
     return "\n\n".join(payload for payload in payloads if payload).strip()
+
+
+def replace_cabecalho(cabecalho: Cabecalho, *, accept_threshold: float) -> Cabecalho:
+    return replace(cabecalho, accept_threshold=float(accept_threshold))
 
 
 def write_gated_pgn(
@@ -819,8 +969,12 @@ def write_gated_pgn(
     resumed_from_page: int | None = None,
     annotations: Mapping[tuple[int, int], DiagramAnnotation] | None = None,
     lichess_links: bool = False,
+    provenance: Cabecalho | None = None,
 ) -> ExportReport:
     """Escreve o PGN principal só com o que passou no gate, e o resto no `.review.pgn`.
+
+    Com `provenance` (A11) escreve também o sidecar `<nome>.proveniencia.jsonl` -- aceitas e
+    de revisão numa lista só, com o veredito de cada uma -- e os dois PGNs apontam para ele.
 
     `dedupe` omite do PGN principal as repetições de uma posição já exportada. Elas ficam
     no relatório, em `report.duplicates`: sem `dedupe` o header `[DuplicateOf]` já diz qual
@@ -840,6 +994,19 @@ def write_gated_pgn(
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    sidecar_name = ""
+    sidecar: Path | None = None
+    if provenance is not None:
+        sidecar = write_sidecar(
+            [(position, "accepted", "") for position in accepted]
+            + [(position, "needs_review", reason) for position, reason in needs_review]
+            + [(position, "rejected", reason) for position, reason in rejected]
+            + [(position, "duplicate", "") for position in duplicates],
+            output_path,
+            cabecalho=replace_cabecalho(provenance, accept_threshold=accept_threshold),
+            annotations=annotations,
+        )
+        sidecar_name = sidecar.name
     payload = build_pgn_text(
         accepted,
         source_name=source_name,
@@ -847,6 +1014,7 @@ def write_gated_pgn(
         reading_order=reading_order,
         annotations=annotations,
         lichess_links=lichess_links,
+        provenance_file=sidecar_name,
     )
     output_path.write_text(payload + "\n" if payload else "", encoding="utf-8")
 
@@ -865,6 +1033,7 @@ def write_gated_pgn(
             reading_order=reading_order,
             annotations=annotations,
             lichess_links=lichess_links,
+            provenance_file=sidecar_name,
         )
         review_path.write_text(review_payload + "\n" if review_payload else "", encoding="utf-8")
 
@@ -879,6 +1048,7 @@ def write_gated_pgn(
         cancelled=cancelled,
         partial_path=partial_path,
         resumed_from_page=resumed_from_page,
+        provenance_path=sidecar,
     )
 
 
@@ -1031,7 +1201,34 @@ def save_pdf_positions_to_pgn(
         resumed_from_page=resumed_from_page,
         annotations=anotacoes,
         lichess_links=lichess_links,
+        provenance=Cabecalho(
+            source_name=source_name,
+            source_hash=hash_do_arquivo(pdf_source if isinstance(pdf_source, (str, Path)) else None),
+            model_identity=checkpoint_identity(Path(model_path)),
+            model_path=str(model_path),
+            profile=_profile_summary(pdf_source),
+            dpi=dpi,
+        ),
     )
+
+
+def _profile_summary(pdf_source: PdfSource) -> dict[str, Any]:
+    """O que o perfil do livro da suíte (C5/X3) diz deste PDF, quando ela está importável."""
+    if not isinstance(pdf_source, (str, Path)):
+        return {}
+    try:
+        from caissa.ocr.book_profile import BookProfile
+    except ImportError:
+        return {}
+    try:
+        profile = BookProfile.for_pdf(Path(pdf_source))
+    except Exception:  # noqa: BLE001 - um perfil ilegível não pode parar a exportação
+        return {}
+    if profile is None:
+        return {}
+    return {"fingerprint": profile.fingerprint, "closures": profile.closures,
+            "model_identity": profile.model_identity, "dataset_version": profile.dataset_version,
+            "colour_diagrams": (profile.colour or {}).get("diagramas", 0)}
 
 
 def default_pgn_output_path(pdf_path: Path) -> Path:

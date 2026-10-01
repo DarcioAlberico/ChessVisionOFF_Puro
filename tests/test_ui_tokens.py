@@ -53,6 +53,16 @@ resolve contra o fundo real, que é o teste logo abaixo.
 Manter os pares falsos custava mais do que não medir nada: com a esteira escura da S-147 eles
 reprovariam, e a correção seria clarear a esteira por causa de um texto que não existe."""
 
+PARES_DE_ESTADO = ((tokens.TEXTO_PADRAO, tokens.TEXTO_MORTO),)
+"""A distância entre a tinta do rótulo **vivo** e a do **morto**. Piso de 3,0:1 (F9-C10).
+
+**O defeito, medido pelo crítico do ciclo 9:** 2,82:1 na pele clássica e **1,88:1 na Foco**, com
+22 de 22 rótulos mortos mais legíveis que o rótulo vivo mais fraco daquela pele. Nenhum portão
+cobria isto -- o de contraste media `:disabled` contra a superfície e o declarava isento (e a
+isenção está certa para a WCAG 1.4.3), e o do ciclo 7 media *quantos pixels mudam*, que não é
+*o quanto*. O produto usa 3,0:1 como piso para uma listra de tabela; "você não pode apertar
+isto" é a mesma classe de informação."""
+
 PARES_DE_MARCACAO = (
     (tokens.PRONTO, tokens.SUPERFICIE_PAGINA),
     (tokens.A_FAZER, tokens.SUPERFICIE_PAGINA),
@@ -92,6 +102,52 @@ class ContrasteTests(unittest.TestCase):
             if razao_de_contraste(RESERVA[marca], RESERVA[fundo]) < AA_GRAFICO
         ]
         self.assertEqual([], reprovados, f"marcações abaixo de {AA_GRAFICO}:1")
+
+    def test_o_estado_morto_se_le_como_morto_nas_duas_paletas(self) -> None:
+        """A distância vivo↔morto passa o piso de elemento gráfico em **toda** paleta.
+
+        Nas duas, e não só na clara: a pele Foco era a pior das duas (1,88:1) e era justamente a
+        que nenhum instrumento fotografava.
+        """
+        for cromo_escuro in (False, True):
+            for vivo, morto in PARES_DE_ESTADO:
+                with self.subTest(escuro=cromo_escuro, par=(vivo, morto)):
+                    razao = razao_de_contraste(
+                        cor(vivo, cromo_escuro=cromo_escuro), cor(morto, cromo_escuro=cromo_escuro)
+                    )
+                    self.assertGreaterEqual(
+                        razao,
+                        AA_GRAFICO,
+                        f"{vivo} contra {morto} dá {razao:.2f}:1 -- um estado que o olho não "
+                        f"separa não é um estado",
+                    )
+
+    def test_o_rotulo_morto_continua_legivel(self) -> None:
+        """O outro lado, e ele tem de ser afirmado junto: afastar o morto do vivo até ele sumir
+        contra a face trocaria um defeito por outro. O piso aqui é o de elemento gráfico, e a
+        isenção do piso de texto é a da WCAG 1.4.3 (componente inativo) -- ver
+        `tokens.TEXTO_MORTO`, onde a conta e o que ela custou estão escritas.
+        """
+        for cromo_escuro in (False, True):
+            with self.subTest(escuro=cromo_escuro):
+                razao = razao_de_contraste(
+                    cor(tokens.TEXTO_MORTO, cromo_escuro=cromo_escuro),
+                    cor(tokens.SUPERFICIE_PADRAO, cromo_escuro=cromo_escuro),
+                )
+                self.assertGreaterEqual(razao, AA_GRAFICO, f"o morto sumiu: {razao:.2f}:1")
+
+    def test_o_morto_e_o_secundario_sao_papeis_diferentes(self) -> None:
+        """São duas perguntas: o secundário é *"isto é apoio"* e o morto é *"isto não responde"*.
+
+        Enquanto compartilhavam valor, mexer num mexia no outro -- e o que o item precisa é
+        afastar o morto do vivo **sem** apagar o apoio.
+        """
+        for cromo_escuro in (False, True):
+            with self.subTest(escuro=cromo_escuro):
+                self.assertNotEqual(
+                    cor(tokens.TEXTO_MORTO, cromo_escuro=cromo_escuro),
+                    cor(tokens.TEXTO_SECUNDARIO, cromo_escuro=cromo_escuro),
+                )
 
     def test_o_verde_de_marcacao_reprovaria_como_texto(self) -> None:
         """A razão de `PRONTO` e `PRONTO_TEXTO` serem dois papéis, dita com número.
@@ -146,8 +202,18 @@ class PaletaTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             cor("VERDE_BONITO")
 
-    COINCIDEM_DE_PROPOSITO: tuple[frozenset[str], ...] = ()
-    """Os pares que **devem** ter a mesma cor na paleta clara. **Vazio desde a S-295.**
+    COINCIDEM_DE_PROPOSITO: tuple[frozenset[str], ...] = (
+        frozenset({"TEXTO_SOBRE_ENFASE", "TEXTO_SOBRE_SELECAO"}),
+    )
+    """Os pares que **devem** ter a mesma cor na paleta clara. **Um desde a F9.**
+
+    `TEXTO_SOBRE_ENFASE` e `TEXTO_SOBRE_SELECAO` dizem literalmente a mesma coisa -- "letra sobre
+    um preenchimento saturado" --, e a F9 os fez coincidir por medicao e nao por descuido: a
+    selecao deixou de ser o azul palido `#aac8f3` (1,63:1 contra o poco, uma linha selecionada
+    que mal se via) e passou a ser `#1e6ad7`, solido, como a face de enfase ja era. Duas letras
+    diferentes sobre dois azuis solidos seriam duas respostas para a mesma pergunta.
+
+    O que segue separado e o **papel**: no dia em que a selecao mudar de tom, so ela muda.
 
     Ele existia com dois pares -- `PROBLEMA`/`PROBLEMA_TEXTO` e `DIVERGENTE`/`DIVERGENTE_TEXTO` --,
     separados na S-224 quando o cromo escuro pediu valores opostos: a letra precisa clarear para

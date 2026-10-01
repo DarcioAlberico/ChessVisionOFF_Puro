@@ -14,6 +14,9 @@ linha usam -- a janela não deve ser a única superfície do projeto que erra em
 from __future__ import annotations
 
 import logging
+import sys
+import threading
+import traceback
 from collections.abc import Callable
 from functools import partial
 from typing import Any
@@ -24,7 +27,42 @@ from chess_diagram_ocr.cli import message_for
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["DeteccaoDeFundo", "Tarefa"]
+__all__ = ["INTERVALO_DE_TROCA_S", "DeteccaoDeFundo", "Tarefa", "ceder_a_interface", "manter_viva", "rastro_de"]
+
+INTERVALO_DE_TROCA_S = 0.0001
+"""De quanto em quanto o interpretador troca de thread enquanto há tarefa rodando (OCR_UI 15).
+
+**O padrão do Python é 5 ms, e ele é o que travava a aba Dataset por 55 ms.** A tarefa que lê o
+`labels.csv` roda numa `QThread`, mas roda **Python** (a legalidade de cada FEN, linha a linha), e
+Python segura o GIL. Cada evento que o Qt entrega à janela durante essa leitura -- e uma troca de
+aba são 442 chamadas de `eventFilter` -- precisa do GIL de volta, e espera até o próximo ponto de
+troca. Medido pelo arnês `caissa.ui.audit.bloqueio` sobre `1937 Kemeri.pdf` (2026-09-16):
+
+| intervalo | aba Dataset, 1.ª vez | trocar de aba durante a leitura | a leitura inteira |
+|---|---|---|---|
+| 5 ms (padrão) | **54,6 ms** | 7,0 ms | 678 ms |
+| 0,5 ms | 7,8 ms | 7,2 ms | 816 ms |
+| 0,1 ms | 6,0 ms | 2,6 ms | 814 ms |
+
+A leitura fica 20 % mais lenta e a interface deixa de travar. É a troca certa para um programa
+cujo trabalho pesado roda ao fundo justamente para a janela continuar respondendo; 0,5 ms porque
+0,1 ms não compra nada a mais e cobra o mesmo."""
+
+_cedeu = False
+
+
+def ceder_a_interface() -> None:
+    """Encurta o intervalo de troca do interpretador. Uma vez por processo; ver a tabela acima.
+
+    Chamada quando a primeira `Tarefa` é construída: antes dela não há concorrência pelo GIL, e
+    depois dela há sempre a possibilidade. Nunca **alonga** um intervalo que alguém já encurtou.
+    """
+    global _cedeu
+    if _cedeu:
+        return
+    _cedeu = True
+    if sys.getswitchinterval() > INTERVALO_DE_TROCA_S:
+        sys.setswitchinterval(INTERVALO_DE_TROCA_S)
 
 
 class Tarefa(QThread):
@@ -34,6 +72,11 @@ class Tarefa(QThread):
     exceção original. As duas coisas porque quem mostra a mensagem e quem decide o que fazer
     são códigos diferentes: a barra de status quer a frase, e o tratamento de "nenhum tabuleiro
     detectado" quer o tipo -- que é informação e não erro, e não pode virar caixa vermelha.
+
+    **E o rastro completo fica em `rastro`** (OCR_UI ciclo 2, passo A10). A frase em pt-BR é o que
+    se lê; o traceback é o que se cola num relato -- e até aqui ele só existia no log, que a caixa
+    de erro mandava a pessoa ir procurar. Formatado **na thread**, no instante da falha, porque é
+    ali que a pilha está inteira; a caixa o mostra em «Detalhes» e o botão «Copiar» o leva junto.
     """
 
     pronto = pyqtSignal(object)
@@ -43,6 +86,14 @@ class Tarefa(QThread):
         super().__init__(parent)
         self._funcao = funcao
         self._nome = nome
+        self.rastro = ""
+        """O traceback formatado da falha, ou vazio enquanto a tarefa não falhou."""
+        self._cancelar = threading.Event()
+        """Pedido de cancelamento (passo C2): a função lê `should_cancel` entre diagramas."""
+        # Na construção, e não num `start` sobrescrito: o vigia de `test_busy` e o portão
+        # `caissa.ui.audit.execucao` atribuem cada `QThread.start` ao arquivo de `qt/` que o
+        # chamou, e um `start` daqui seria o chamador de todas as threads do programa.
+        ceder_a_interface()
 
     def run(self) -> None:
         """O `except` largo é deliberado: aqui é a borda da thread.
@@ -56,9 +107,42 @@ class Tarefa(QThread):
             resultado = self._funcao()
         except Exception as exc:  # noqa: BLE001 - ver o docstring: é a borda da thread
             logger.exception("A tarefa %s falhou.", self._nome)
+            self.rastro = rastro_de(exc)
             self.falhou.emit(message_for(exc), exc)
             return
         self.pronto.emit(resultado)
+
+    @property
+    def nome(self) -> str:
+        """Como a tarefa se chama para a pessoa -- «leitura», «detecção» --; vai no título da caixa."""
+        return self._nome
+
+    def cancelar(self) -> None:
+        """Pede que a função pare no próximo ponto em que ela olha (passo C2). Não mata."""
+        self._cancelar.set()
+
+    def should_cancel(self) -> bool:
+        """O gancho que a função recebe: `True` depois de `cancelar()`."""
+        return self._cancelar.is_set()
+
+    @property
+    def cancelada(self) -> bool:
+        return self._cancelar.is_set()
+
+
+def rastro_de(excecao: object) -> str:
+    """O traceback formatado de uma exceção, ou a `repr` dela quando não há pilha.
+
+    A exceção guarda a própria pilha em `__traceback__`, então quem só tem o objeto -- o slot do
+    outro lado do sinal -- ainda consegue o rastro inteiro. Nunca levanta: um erro ao formatar o
+    erro seria a caixa de falha falhando.
+    """
+    if not isinstance(excecao, BaseException):
+        return repr(excecao)
+    try:
+        return "".join(traceback.format_exception(type(excecao), excecao, excecao.__traceback__)).strip()
+    except Exception:  # noqa: BLE001 - ver o docstring
+        return repr(excecao)
 
 
 class DeteccaoDeFundo(QObject):
@@ -121,12 +205,10 @@ class DeteccaoDeFundo(QObject):
         documento, pagina, funcao = self._pedido
         self._pedido = None
         self._em_curso = (documento, pagina)
-        tarefa = Tarefa(funcao, nome=f"detecção da página {pagina + 1}")
+        tarefa = manter_viva(Tarefa(funcao, nome=f"detecção da página {pagina + 1}"))
         tarefa.pronto.connect(self._pronto)
         tarefa.falhou.connect(self._falhou)
         tarefa.finished.connect(self._terminou)
-        _VIVAS.add(tarefa)
-        tarefa.finished.connect(partial(_soltar, tarefa))
         self._tarefa = tarefa
         tarefa.start()
 
@@ -150,7 +232,25 @@ class DeteccaoDeFundo(QObject):
 
 
 _VIVAS: set[Tarefa] = set()
-"""As detecções em curso, seguras por referência até terminarem. Ver `DeteccaoDeFundo`."""
+"""As tarefas em curso, seguras por referência até terminarem. Ver `manter_viva`."""
+
+
+def manter_viva(tarefa: Tarefa) -> Tarefa:
+    """Segura a tarefa até ela terminar, **sem pai**. Devolve-a, para caber numa linha.
+
+    **Uma `Tarefa` com pai widget derruba o processo, e o modo de falha é este** (F9-C2): o Qt
+    destrói os filhos junto com o pai, e o destrutor de `QThread` **aborta** se a thread ainda
+    estiver rodando -- `STATUS_STACK_BUFFER_OVERRUN`, sem uma linha de traceback, porque a queda é
+    no C++. Fechar a janela com uma leitura de CSV em curso é o caso normal, não o exótico: o
+    arnês `caissa.ui.audit.bloqueio` fecha a janela seis vezes por execução e caiu nas seis.
+
+    Sem pai a thread não é destruída com o widget; a referência daqui é o que impede o coletor do
+    Python de fazer o mesmo. É o que `DeteccaoDeFundo` já fazia desde a S-68, agora com nome, para
+    o segundo e o terceiro chamador não terem de redescobri-lo.
+    """
+    _VIVAS.add(tarefa)
+    tarefa.finished.connect(partial(_soltar, tarefa))
+    return tarefa
 
 
 def _soltar(tarefa: Tarefa) -> None:

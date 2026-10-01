@@ -43,8 +43,8 @@ from typing import Any
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap, QShowEvent
 from PyQt6.QtWidgets import (
-    QBoxLayout,
     QButtonGroup,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -53,6 +53,8 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
+    QScrollArea,
+    QStackedLayout,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -63,6 +65,7 @@ from chess_diagram_ocr.gallery import DiagramAnnotation, load_annotations
 from chess_diagram_ocr.gallery_scan import build_gallery_index, load_index, save_index
 from chess_diagram_ocr.games_cache import PositionStore, open_store
 from chess_diagram_ocr.games_db import (
+    DEFAULT_DATABASE_DIR,
     DiagramMatch,
     database_paths,
     match_entries,
@@ -72,13 +75,17 @@ from chess_diagram_ocr.games_db import (
 )
 from chess_diagram_ocr.games_index import DEFAULT_INDEX_PATH
 from chess_diagram_ocr.logging_setup import onde_esta_o_rastro
+from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dialogos import DialogoDePartidas, perguntar_bases, perguntar_escopo
 from chess_diagram_ocr.qt.dica import dica_em
-from chess_diagram_ocr.qt.rolagem import em_rolagem
+from chess_diagram_ocr.qt.foco_a_vista import seguir_o_foco
+from chess_diagram_ocr.qt.rotulo import RecorteElastico
+from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
+from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.service import OcrService
-from chess_diagram_ocr.ui import atalhos, espaco, estilos, strings, tokens
+from chess_diagram_ocr.ui import atalhos, espaco, estilos, folha_de_estilo, strings, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.escolha_de_bases import store_path_for
 from chess_diagram_ocr.ui.escopo_da_varredura import ScanScope
@@ -86,12 +93,13 @@ from chess_diagram_ocr.ui.galeria_declarada import (
     ACOES_PROPRIAS,
     BOARD_VIEW_SIZE,
     CAPTION_LINES,
+    LADO_MINIMO_DO_RECORTE,
     LARGURA_DA_LATERAL,
     LARGURA_MINIMA_DA_GALERIA,
+    LINHAS_MINIMAS_DA_LEGENDA,
     LINK_CHOICES,
     SEM_BASE,
     LivroVarrido,
-    galeria_empilhada,
     mesmo_arquivo,
     resumo_do_lote,
 )
@@ -100,10 +108,6 @@ from chess_diagram_ocr.ui.gallery_model import HEADER_FIELDS, GalleryModel, desc
 logger = logging.getLogger(__name__)
 
 __all__ = ["LARGURA_MINIMA_DA_GALERIA", "PainelDaGaleria"]
-
-LARGURA_MAXIMA_DO_WIDGET = 16_777_215
-"""O `QWIDGETSIZE_MAX` do Qt, que o PyQt6 não exporta. É o valor com que `setMaximumWidth` volta a
-dizer "sem teto" -- `setFixedWidth` cravou os dois lados, e desfazê-lo pede o número."""
 
 
 class PainelDaGaleria(QWidget):
@@ -163,17 +167,22 @@ class PainelDaGaleria(QWidget):
         Injetável porque uma janela modal não se dirige de um roteiro de teste."""
         self._perguntar_bases = perguntar_bases_de_partidas
         self._pasta = pasta_da_galeria
-        self._cache_pedido = caminho_do_cache
+        self._caminho_do_cache_pedido = caminho_do_cache
         """Onde o cache de posições desta sessão mora. `None` é o padrão do produto, que é por
         conjunto de bases (`escolha_de_bases.store_path_for`).
 
         **Existe pela S-415**, e foi a CI que o cobrou: `load_pdf` abre o cache, então qualquer
         teste que abra um livro criava `data/games_positions.sqlite` no checkout de quem roda a
         suíte. Na máquina de quem usa o programa o arquivo já existe, e a guarda não tinha o que
-        reportar -- por isso o defeito atravessou nove rodadas locais limpas."""
+        reportar -- por isso o defeito atravessou nove rodadas locais limpas.
+
+        **Não é `_cache_pedido`**, que é o par `(caminho, bases)` da abertura ao fundo (passo 15):
+        os dois nasceram com o mesmo nome em ramos diferentes."""
         """Quem pergunta **em quais bases** procurar. `None` abre o diálogo de verdade."""
 
         self._bases: tuple[Path, ...] | None = None
+        self._bases_da_pasta: tuple[int, list[Path]] | None = None
+        """A varredura da pasta de bases, com a `mtime` dela. Ver `_bases_atuais` (F9-C2)."""
         """As bases escolhidas nesta sessão. `None` é "ninguém escolheu ainda" -- e aí valem todos
         os `.pgn` da pasta, que é o que a S-93 fixou.
 
@@ -191,6 +200,9 @@ class PainelDaGaleria(QWidget):
         self.model = GalleryModel()
         self._store: PositionStore | None = None
         """A conexão aberta com o cache de posições (S-140). Uma por painel, e não por livro."""
+        self._abrindo_o_cache: Tarefa | None = None
+        self._cache_pedido: tuple[Path, tuple[Path, ...]] | None = None
+        """A abertura do cache ao fundo, e para qual `(caminho, bases)` ela foi pedida (passo 15)."""
         self._cancelar = threading.Event()
         self._varrendo = False
         self._sincronizando = False
@@ -219,17 +231,11 @@ class PainelDaGaleria(QWidget):
     # ------------------------------------------------------------------------------ montagem
 
     def _montar(self) -> None:
-        # **A aba rola, e não exige a altura dela da janela** (S-552, a metade perdida da S-150).
-        # Os 420 px do recorte e os 260 da lateral são medidos (S-154) e continuam inteiros; o que
-        # muda é que a soma deles -- `711 x 800`, o maior mínimo das seis abas -- deixa de ser o
-        # piso da janela. Era ela quem punha a altura mínima em 902 px. Ver `qt/rolagem.py`.
-        corpo = QWidget(self)
-        self.rolagem = em_rolagem(self, corpo)
-        fora = QVBoxLayout(corpo)
-        fora.setContentsMargins(*(espaco.linha(),) * 4)
+        fora = QVBoxLayout(self)
+        fora.setContentsMargins(*(espaco.margem_da_aba(),) * 4)
         fora.setSpacing(espaco.linha())
 
-        topo = BarraFluida(corpo)
+        topo = BarraFluida(self)
         self.btn_varrer = self._botao(topo, strings.VARRER_LIVRO, self.varrer)
         dica_em(
             self.btn_varrer,
@@ -237,7 +243,13 @@ class PainelDaGaleria(QWidget):
             f"ou todos os .pdf de {DEFAULT_PDF_DIR.name}. Com mais de um livro, os que já têm "
             "índice completo são pulados.",
         )
-        self.btn_cancelar = self._botao(topo, "Cancelar", self.cancelar_varredura)
+        # **Um rótulo, um controle** (F9-C7, §4 item 11). O rodapé tem um `Cancelar` genérico
+        # -- ele vale para toda operação registrada --, e este painel tinha outro com o
+        # **mesmo texto** na mesma tela: medido, os dois ficavam visíveis ao mesmo tempo com
+        # estados **divergentes** (um vivo, um cinza), e nada dizia qual era qual. O usuário
+        # que lê o cinza conclui que a ação não está disponível enquanto a de cima está viva.
+        # O do rodapé é o genérico e fica como está; este diz o que ele cancela.
+        self.btn_cancelar = self._botao(topo, "Cancelar a varredura", self.cancelar_varredura)
         self.btn_cancelar.setEnabled(False)
         dica_em(
             self.btn_cancelar,
@@ -277,24 +289,53 @@ class PainelDaGaleria(QWidget):
         topo.adicionar(self.lbl_varredura)
         fora.addWidget(topo)
 
-        # **Uma fila que muda de sentido** (S-552, terceira rodada). `QBoxLayout` em vez de
-        # `QHBoxLayout` porque é o mesmo leiaute em duas direções: `setDirection` troca lado a lado
-        # por um sobre o outro sem remontar widget nenhum, e sem uma segunda montagem que
-        # divergiria da primeira. Quem decide *quando* é `galeria_declarada.galeria_empilhada`.
-        meio = QBoxLayout(QBoxLayout.Direction.LeftToRight)
-        meio.setSpacing(espaco.folga())
-        meio.addLayout(self._centro(), 1)
+        corpo = QHBoxLayout()
+        corpo.setSpacing(espaco.folga())
+        corpo.addLayout(self._centro(), 1)
         # A lateral com largura fixa: ela reserva o que pede, e o centro fica com o resto (S-154).
-        self.lateral = self._lateral()
-        self.lateral.setFixedWidth(LARGURA_DA_LATERAL)
-        meio.addWidget(self.lateral)
-        self._meio = meio
-        fora.addLayout(meio, 1)
+        lateral = self._lateral()
+        lateral.setFixedWidth(LARGURA_DA_LATERAL)
+        # **Dentro de uma área de rolagem, e a razão é o piso da janela** (OCR_UI passo 16). Os
+        # dez campos de cabeçalho empilhados com os cinco botões pedem 531 px de altura mínima,
+        # e a lateral é a coluna mais alta desta aba: era ela que punha a Galeria em 674 px e a
+        # janela inteira em 793–827 -- acima dos 768 da tela que a F9-C2 tinha devolvido ao
+        # produto. Na rolagem o mínimo é o de duas linhas; quando há tela, ela nem aparece.
+        rolagem = QScrollArea(self)
+        rolagem.setWidgetResizable(True)
+        rolagem.setFrameShape(QFrame.Shape.NoFrame)
+        rolagem.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # A moldura não é um controle: quem o Tab visita são os campos dentro dela. Sem isto o
+        # portão `teclado` conta um focável sem nome nem papel.
+        rolagem.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        rolagem.setWidget(lateral)
+        rolagem.setFixedWidth(LARGURA_DA_LATERAL + rolagem.verticalScrollBar().sizeHint().width())
+        # E ela mostra o campo que recebe o foco vindo de fora dela: o Shift+Tab do rodapé punha
+        # «Copiar cabeçalhos para todos» com 0 px à vista a 1280x641, nas três peles (crítico da
+        # fase 5 do ciclo 2 OCR/UI, ciclo 5). Ver `foco_a_vista`.
+        seguir_o_foco(rolagem)
+        corpo.addWidget(rolagem)
+        fora.addLayout(corpo, 1)
         fora.addWidget(self._rodape())
-        self._arranjar(self._largura_do_viewport())
 
-    def _botao(self, pai: QWidget, rotulo: str, funcao: Callable[[], object], papel: str = estilos.NEUTRO) -> QPushButton:
+    def _botao(
+        self,
+        pai: QWidget,
+        rotulo: str,
+        funcao: Callable[[], object],
+        papel: str = estilos.NEUTRO,
+        *,
+        nome: str = "",
+    ) -> QPushButton:
+        """Um botão do painel. `nome` é o que o **leitor de tela** anuncia, quando difere do texto.
+
+        **Existe porque quatro destes botões são glifos** (F9-C2): o crítico do ciclo 1 mediu
+        `"|◀"` e `"▶|"` chegando ao leitor de tela como o nome do controle, porque a cascata de
+        `ui/nomes_acessiveis.py` cai em `text()` e o texto é um triângulo. Quem enxerga vê "ir
+        para o primeiro"; quem ouve recebe uma barra e um triângulo.
+        """
         botao = QPushButton(rotulo, pai)
+        if nome:
+            botao.setAccessibleName(nome)
         botao.clicked.connect(funcao)
         tema.aplicar_papel(botao, papel)
         if isinstance(pai, BarraFluida):
@@ -305,37 +346,96 @@ class PainelDaGaleria(QWidget):
         centro = QVBoxLayout()
         centro.setSpacing(espaco.linha())
 
-        self.recorte = QLabel("", self)
-        self.recorte.setFixedSize(BOARD_VIEW_SIZE, BOARD_VIEW_SIZE)
-        self.recorte.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # **Elástico, e não `setFixedSize`** -- ver `qt/rotulo.RecorteElastico` e o item 4 do §7:
+        # os 420 px cravados eram o piso da janela inteira, e é por eles que ela recusava
+        # 1366×768.
+        self.recorte = RecorteElastico(self, minimo=LADO_MINIMO_DO_RECORTE, maximo=BOARD_VIEW_SIZE)
         # O canvas da galeria era o único do `ui/` fora do sistema de cor da S-144: ele nascia
         # com o fundo de fábrica do Tk e escrevia o aviso num `#888` cravado. Aqui a superfície e
         # o texto vêm do token desde a primeira linha.
-        tema.pintar(self.recorte, "background-color", tokens.SUPERFICIE_TABULEIRO)
-        centro.addWidget(self.recorte, 0, Qt.AlignmentFlag.AlignHCenter)
+        # **Com contorno neutro** (OCR_UI passo 16): a imagem do recorte acaba num fio de 1 px do
+        # `CONTORNO_DE_CROMO` da pele, como a página no visor -- sem ele, um recorte de fundo
+        # branco não tem borda sobre o vazio claro da Clássica.
+        tema.pintar_varios(
+            self.recorte, background_color=tokens.SUPERFICIE_TABULEIRO, border=tokens.CONTORNO_DE_CROMO
+        )
+        # **Empilhados e não sobrepostos**, e a diferença é medível: `sobreposicao.py` conta pares
+        # de controles que ocupam o mesmo pixel, e não tem como distinguir "cobre de propósito" de
+        # "colidiu". Uma `QStackedLayout` mostra **um** dos dois, o que é a verdade do que a aba
+        # faz -- ou há diagrama, ou há o convite para varrer -- e deixa o instrumento certo.
+        self._pilha_do_recorte = QStackedLayout()
+        # Margem zero: a pilha não é uma moldura, é um seletor. O padrão do Qt acrescenta uma
+        # borda que, medida, pôs o piso da pele "Foco" em 769 px -- **um** acima dos 768 que o
+        # item 4 do §7 existe para caber.
+        self._pilha_do_recorte.setContentsMargins(0, 0, 0, 0)
+        self._pilha_do_recorte.addWidget(self.recorte)
+        centro.addLayout(self._pilha_do_recorte)
 
+        # **O estado vazio, dentro do vazio** (F9-C2, §7 item 14). O crítico do ciclo 1 mediu
+        # 514,7 kpx de painel com **0,24 %** de tinta, com o botão que resolve a 645 px de
+        # distância e **duas frases dizendo a mesma coisa** a 320 px uma da outra. Ele é
+        # sobreposto ao recorte, some assim que há diagrama, e traz `Varrer o livro` para dentro
+        # da região que ele preenche.
+        self.vazio = EstadoVazio(
+            None,
+            titulo=strings.GALERIA_VAZIA_TITULO,
+            frase=strings.GALERIA_VAZIA_FRASE,
+            rotulo_do_botao=strings.VARRER_LIVRO,
+            nome_acessivel="Varrer o livro para encher a galeria",
+            acao=self.varrer,
+        )
+        self._pilha_do_recorte.addWidget(self.vazio)
         self.lbl_posicao = QLabel("nenhum diagrama varrido", self)
+        self.lbl_posicao.setProperty(folha_de_estilo.PROPRIEDADE_DE_APOIO, "true")
         centro.addWidget(self.lbl_posicao, 0, Qt.AlignmentFlag.AlignHCenter)
 
-        navegacao = QHBoxLayout()
-        navegacao.addStretch(1)
-        for rotulo, passo, absoluto in (
-            (strings.PRIMEIRO, 0, True),
-            (f"{strings.ANTERIOR} anterior", -1, False),
-            (f"próximo {strings.PROXIMO}", 1, False),
-            (strings.ULTIMO, -1, True),
+        # **Fluida** (OCR_UI ciclo 2, fase 5, C18): numa `QHBoxLayout` os quatro botões somavam mais
+        # que a coluna central tem com a janela no mínimo de 1248x640, e o Qt os espremia abaixo do
+        # texto (33 de 42 px, «Anterior» 77 de 86) -- medido por `caissa.ui.audit.minimo`.
+        navegacao = BarraFluida(self)
+        # **Os dois das pontas ganham desenho** (F9-C7, §4.7): `|◀` e `▶|` rendiam caixas de
+        # tinta de 8x12 e 9x12 px, de duas familias tipograficas diferentes, e o par que deveria
+        # ser espelho nao era. Os dois do meio continuam com palavra -- eles **tem** texto
+        # legivel, e trocar "◀ anterior" por um triangulo mudo seria o defeito ao contrario.
+        for rotulo, nome, passo, absoluto, desenho in (
+            ("", "Primeiro diagrama", 0, True, "inicio_da_linha"),
+            # **Maiúscula inicial, como todo rótulo desenhado desta janela** (F9-C16): a conta
+            # de rótulo de campo do item 10 do §7 do ciclo 13 só visitava os treze diálogos, e
+            # esta aba tinha cinco em minúscula. Ver `c16_rotulos_de_campo.py`.
+            ("Anterior", "Diagrama anterior", -1, False, "diagrama_anterior"),
+            ("Próximo", "Próximo diagrama", 1, False, "proximo_diagrama"),
+            ("", "Último diagrama", -1, True, "fim_da_linha"),
         ):
-            navegacao.addWidget(self._botao(self, rotulo, partial(self._ir, passo, absoluto=absoluto)))
-        navegacao.addStretch(1)
-        centro.addLayout(navegacao)
+            botao = self._botao(navegacao, rotulo, partial(self._ir, passo, absoluto=absoluto), nome=nome)
+            qt_icones.vestir(botao, desenho, estilos.NEUTRO, manter_texto=bool(rotulo))
+        centro.addWidget(navegacao, 0, Qt.AlignmentFlag.AlignHCenter)
 
         # A legenda impressa, inteira e **selecionável**: ela é a fonte do que a pessoa digita nos
         # campos ao lado, e enquanto foi um rótulo era a única coisa da tela que não se podia
         # aproveitar. `setReadOnly` é exatamente o que o outro frontend consegue filtrando `<Key>`
         # tecla a tecla -- lá `state=DISABLED` também recusaria a seleção e pintaria de cinza.
         self.legenda = QTextEdit(self)
+        self.legenda.setAccessibleName("Legenda impressa do diagrama")
         self.legenda.setReadOnly(True)
-        self.legenda.setFixedHeight(CAPTION_LINES * tema.altura_de_linha_atual())
+        # **Era o único poço grande da janela que não dizia o que espera receber** (F9-C5,
+        # §7.14): `782×170 px` cujo interior mede `770×158 = 121,7 kpx a 0,00 % de tinta`, sem
+        # rótulo e sem `placeholderText`, entre a fila de navegação e `Copiar legenda`. O nome
+        # acessível existia desde sempre e um leitor de tela o anunciava; quem **olha** não via
+        # nada. A dica diz as duas coisas que faltavam: o que cai aqui, e por que está vazio.
+        #
+        # Ela é legível porque a folha declara `placeholder-text-color` (F9-C6, bloqueante):
+        # **7,08:1** sobre o poço claro e **7,95:1** sobre o escuro. Antes deste ciclo o Qt a
+        # desenharia com a cor do texto a alpha 128 -- 3,96:1, abaixo do piso AA --, e uma dica
+        # nova aqui teria nascido ilegível.
+        self.legenda.setPlaceholderText(strings.GALERIA_LEGENDA_VAZIA)
+        # **Oito linhas quando há tela, três quando não há** (OCR_UI passo 16). Era
+        # `setFixedHeight(8 linhas)`, e as oito linhas -- 168 px -- eram parte do piso da aba
+        # (674 px), que somado ao cromo, às abas e ao rodapé punha a janela em 793–827 px: a
+        # Galeria era um dos dois painéis por que a janela **recusava 1366×768** de novo, dois
+        # ciclos depois de a F9-C2 a ter devolvido a essa tela. O texto continua rolando e nada é
+        # cortado; o que muda é quantas linhas ficam à vista quando a janela é baixa.
+        self.legenda.setMinimumHeight(LINHAS_MINIMAS_DA_LEGENDA * tema.altura_de_linha_atual())
+        self.legenda.setMaximumHeight(CAPTION_LINES * tema.altura_de_linha_atual())
         centro.addWidget(self.legenda)
         centro.addWidget(
             self._botao(self, "Copiar legenda", self.copiar_legenda), 0, Qt.AlignmentFlag.AlignHCenter
@@ -359,17 +459,49 @@ class PainelDaGaleria(QWidget):
             self.campos_de_header[nome] = campo
 
         livre = len(HEADER_FIELDS)
-        grade.addWidget(QLabel("outro", lateral), livre, 0)
+        # **`Outro`, e não `outro`** (F9-C15 §5.3): oito rótulos de campo capitalizados nesta
+        # coluna e este em minúscula, visível na captura `c14_escuro_1920x1080_galeria.png`. O
+        # item 10 do §7 do ciclo 13 fechou `filtro` -> `Filtro` **nos treze diálogos**, porque o
+        # instrumento daquele ciclo percorria `teclado.RECEITAS`; a janela principal ficou fora da
+        # conta e o defeito sobreviveu nela. Agora a conta inclui a janela -- ver
+        # `benchmarks/reports/ui/c16/c16_rotulos_de_campo.py`.
+        grade.addWidget(QLabel("Outro", lateral), livre, 0)
+        # **O par "outro" tem um rótulo para dois campos**, e a grade só associa o de cima (F9-C2):
+        # o de baixo chegava ao leitor de tela como `"Campo de texto"`, o nome genérico da classe.
+        # Dois campos empilhados sob uma palavra são claros para quem vê a coluna e mudos para
+        # quem ouve o campo.
+        # **E era o contrário: quem ouve recebia a distinção e quem vê, não** (F9-C7, §1.8). O
+        # comentário acima dizia que a dupla é "clara para quem vê a coluna e muda para quem ouve
+        # o campo"; medido na captura, os dois campos são **idênticos e empilhados** sob a palavra
+        # `outro`, e nada na tela diz que o de cima é o nome e o de baixo o valor. A dica de
+        # conteúdo diz -- ela é desenhada, ao contrário do `accessibleName`, e some ao digitar,
+        # que é quando ela já não é necessária.
         self.campo_livre_nome = QLineEdit(lateral)
+        self.campo_livre_nome.setAccessibleName("Nome do header extra")
+        self.campo_livre_nome.setPlaceholderText("nome do cabeçalho")
         self.campo_livre_valor = QLineEdit(lateral)
+        self.campo_livre_valor.setAccessibleName("Valor do header extra")
+        self.campo_livre_valor.setPlaceholderText("valor")
         grade.addWidget(self.campo_livre_nome, livre, 1)
         grade.addWidget(self.campo_livre_valor, livre + 1, 1)
-        grade.addWidget(self._botao(lateral, "Gravar", self._gravar_header_livre), livre + 2, 1)
+        # **Nas duas colunas, como os quatro botões abaixo dele** (F9-C3). Ele ficava só na coluna
+        # dos campos, e a pilha de cinco saía com **63 px de desalinho e 63 px de diferença de
+        # largura** (x=892 contra 829; 155 contra 218) -- visível a olho nu nas capturas da
+        # Galeria. A coluna 0 é a dos rótulos, e nenhum dos outros quatro botões a respeita: o
+        # alinhamento certo era o deles.
+        gravar = self._botao(lateral, "Gravar", self._gravar_header_livre)
+        grade.addWidget(gravar, livre + 2, 0, 1, 2)
 
         # Junto dos campos que ele limpa, e não com os dois de baixo: aqueles agem sobre o livro
         # inteiro, e este só sobre este diagrama. A distância na tela é a diferença de alcance --
         # foi confundir as duas que espalhou quatro campos por 1.405 diagramas (S-76).
-        self.btn_limpar = self._botao(lateral, "Limpar os headers", self.limpar_headers, estilos.DESTRUTIVO)
+        # **`headers` é inglês no meio do português** (F9-C7, §1.6). O grupo já se chama
+        # "Cabeçalhos do PGN"; os botões diziam outra palavra para a mesma coisa. As oito **tags**
+        # (`White`, `Black`, …) ficam em inglês e não são tradução esquecida: elas são o formato do
+        # arquivo, e traduzi-las gravaria um PGN que nenhum outro programa lê.
+        self.btn_limpar = self._botao(
+            lateral, "Limpar os cabeçalhos", self.limpar_headers, estilos.DESTRUTIVO
+        )
         self.btn_limpar.setEnabled(False)
         dica_em(
             self.btn_limpar,
@@ -399,7 +531,7 @@ class PainelDaGaleria(QWidget):
 
         # O rótulo diz a **direção** da cópia. "Aplicar a todos" foi lido como "salvar os headers
         # deste diagrama" -- e o clique espalhou quatro campos por 1.405 diagramas.
-        copiar = self._botao(lateral, "Copiar headers para todos", self.copiar_para_todos)
+        copiar = self._botao(lateral, "Copiar cabeçalhos para todos", self.copiar_para_todos)
         dica_em(
             copiar,
             "Copia os headers deste diagrama para TODOS os outros do livro, sobrescrevendo o que "
@@ -421,46 +553,55 @@ class PainelDaGaleria(QWidget):
         return lateral
 
     def _rodape(self) -> QGroupBox:
-        """"Este diagrama": lance, lado a jogar, link, e o botão de copiar.
+        """A fileira de "Este diagrama", **fluida** e não deitada em linha fixa (F9).
 
-        **Uma `BarraFluida` e não um `QHBoxLayout`** (S-552, terceira rodada), pela razão que o
-        cabeçalho de `qt/barra.py` já escreve: `QHBoxLayout` não reflui, e onze controles em fila
-        davam **694 px** de largura mínima ao rodapé -- os mesmos 706 px de conteúdo que punham a
-        barra de rolagem horizontal na aba, mesmo depois de as duas colunas passarem a empilhar.
-        Fila que quebra em fileiras é o widget que este projeto já tem para isto, e é o mesmo da
-        barra de cima desta aba.
+        **O defeito medido.** Onze controles num `QHBoxLayout` pedem mais largura do que o painel
+        esquerdo tem a 1280 px, e um `QHBoxLayout` que não cabe não avisa: ele espreme cada item
+        até o mínimo que o estilo aceitar. A captura `depois_escuro_1280x800_galeria.png` mostra o
+        último deles desenhado como **"opiar linl"** -- o rótulo "Copiar link" cortado dos dois
+        lados dentro da própria moldura do botão. Texto cortado é o primeiro item do §3.3 da carta
+        dos críticos, e ele estava na tela em 1280 px, que não é um tamanho exótico.
+
+        `BarraFluida` é a resposta que este projeto já tinha: os controles quebram para a linha de
+        baixo quando não cabem, e a barra não abre mão da altura que a quebra pediu. Ela é a mesma
+        classe que a barra do visualizador usa, então a fileira que quebra aqui quebra igual lá.
         """
         rodape = QGroupBox("Este diagrama", self)
-        fora = QVBoxLayout(rodape)
-        fora.setContentsMargins(*(espaco.folga(),) * 4)
-        deitado = BarraFluida(rodape)
-        fora.addWidget(deitado)
+        deitado = QVBoxLayout(rodape)
+        deitado.setContentsMargins(*(espaco.folga(),) * 4)
+        barra = BarraFluida(rodape)
+        deitado.addWidget(barra)
 
-        deitado.adicionar(QLabel("Lance", rodape))
-        self.campo_lance = QLineEdit(rodape)
+        barra.adicionar(QLabel("Lance", barra))
+        self.campo_lance = QLineEdit(barra)
         self.campo_lance.setFixedWidth(60)
         self.campo_lance.editingFinished.connect(self._gravar_lance)
-        deitado.adicionar(self.campo_lance)
+        barra.adicionar(self.campo_lance)
 
-        deitado.adicionar(QLabel(strings.LADO_A_JOGAR, rodape))
+        barra.adicionar(QLabel(strings.LADO_A_JOGAR, barra))
         self.lado = QButtonGroup(rodape)
-        for rotulo, valor in (("brancas", "w"), ("pretas", "b")):
-            botao = QRadioButton(rotulo, rodape)
+        # **O par sai de `ui/strings.SIDE_LABELS`** (F9-C15 §5.4): estava cravado aqui em
+        # minúscula e cravado em `qt/painel_de_resultado.py` capitalizado, e as duas abas
+        # desenhavam os mesmos dois rádios sob o mesmo rótulo `Lado a jogar` com grafias
+        # diferentes. `ui/formato.py:12` escreve a regra que os dois violavam: *"`ui/strings.py`
+        # existe desde a S-04 justamente para 'brancas' ter um nome só"*.
+        for valor, rotulo in strings.SIDE_LABELS.items():
+            botao = QRadioButton(rotulo, barra)
             botao.setProperty("valor", valor)
             self.lado.addButton(botao)
-            deitado.adicionar(botao)
+            barra.adicionar(botao)
         self.lado.buttonClicked.connect(lambda _botao: self._gravar_lado())
 
-        deitado.adicionar(QLabel("Lichess", rodape))
+        barra.adicionar(QLabel("Lichess", barra))
         self.link = QButtonGroup(rodape)
         for rotulo, valor in LINK_CHOICES:
-            botao = QRadioButton(rotulo, rodape)
+            botao = QRadioButton(rotulo, barra)
             botao.setProperty("valor", valor)
             self.link.addButton(botao)
-            deitado.adicionar(botao)
+            barra.adicionar(botao)
         self.link.buttonClicked.connect(lambda _botao: self._gravar_link())
 
-        deitado.adicionar(self._botao(rodape, "Copiar link", self.copiar_link))
+        self._botao(barra, "Copiar link", self.copiar_link)
         return rodape
 
     def showEvent(self, a0: QShowEvent | None) -> None:  # noqa: N802 - assinatura do Qt
@@ -473,40 +614,6 @@ class PainelDaGaleria(QWidget):
         super().showEvent(a0)
         self.recorte.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.recorte.setFocus()
-        # **E o arranjo se decide aqui também** (S-552, terceira rodada), pela razão da S-551: numa
-        # janela que já nasce no tamanho final a aba nunca é redimensionada depois de aparecer, e
-        # uma regra que morasse só no `resizeEvent` rodaria uma vez, com o viewport ainda em zero.
-        self._arranjar(self._largura_do_viewport())
-
-    def resizeEvent(self, a0: Any) -> None:  # noqa: N802 - assinatura do Qt
-        super().resizeEvent(a0)
-        self._arranjar(self._largura_do_viewport())
-
-    def _largura_do_viewport(self) -> int:
-        """A largura que a aba tem **sem rolar**. Zero antes do primeiro desenho, e é o que
-        `galeria_empilhada` lê como "ainda não há decisão"."""
-        area = self.rolagem.viewport()
-        return area.width() if area is not None else 0
-
-    def _arranjar(self, largura: int) -> None:
-        """Duas colunas, ou o cabeçalho sob o recorte. Quem decide é `galeria_empilhada` (S-552).
-
-        **A lateral perde a largura fixa ao empilhar, e é o que faz o arranjo valer a pena**: os
-        260 px da S-154 são o que ela precisa *ao lado* do recorte; embaixo dele ela tem a coluna
-        inteira, e os dez pares rótulo/campo deixam de disputar 260 px com nada.
-        """
-        empilha = galeria_empilhada(largura)
-        direcao = (
-            QBoxLayout.Direction.TopToBottom if empilha else QBoxLayout.Direction.LeftToRight
-        )
-        if self._meio.direction() == direcao:
-            return
-        self._meio.setDirection(direcao)
-        if empilha:
-            self.lateral.setMinimumWidth(0)
-            self.lateral.setMaximumWidth(LARGURA_MAXIMA_DO_WIDGET)
-        else:
-            self.lateral.setFixedWidth(LARGURA_DA_LATERAL)
 
     # ----------------------------------------------------------------------------- varredura
 
@@ -583,7 +690,7 @@ class PainelDaGaleria(QWidget):
         detalhe = escopo.books[0].name if len(escopo.books) == 1 else f"{len(escopo.books)} livros"
         self._registrar_ocupado("varredura do livro", loses_work=False, detail=detalhe)
         self._ocupado(True)
-        self.lbl_varredura.setText("varrendo...")
+        self.lbl_varredura.setText("varrendo…")
         threading.Thread(
             target=self._trabalho_de_varredura, args=(escopo, coletor, aberto), daemon=True
         ).start()
@@ -596,7 +703,7 @@ class PainelDaGaleria(QWidget):
         preencher é honesto.
         """
         self._cancelar.set()
-        self.lbl_varredura.setText("cancelando...")
+        self.lbl_varredura.setText("cancelando…")
 
     def _trabalho_de_varredura(self, escopo: ScanScope, coletor: Any, aberto: Path | None) -> None:
         """Os livros do escopo, um a um, na mesma thread e com o mesmo modelo carregado.
@@ -668,9 +775,9 @@ class PainelDaGaleria(QWidget):
             # varredura é uma desde a S-119, e dois registros dariam duas barras contando o mesmo.
             self._busy_token.update(f"{onde}página {pagina} de {total}", feito=pagina, total=total)
         self._progrediu.emit(
-            f"varrendo {onde}página {pagina} de {total}..."
+            f"varrendo {onde}página {pagina} de {total}…"
             if livros == 1
-            else f"{onde}{nome[:24]}: página {pagina} de {total}..."
+            else f"{onde}{nome[:24]}: página {pagina} de {total}…"
         )
         if coletor is not None:
             coletor.progress(pagina, total)
@@ -747,17 +854,42 @@ class PainelDaGaleria(QWidget):
     # ------------------------------------------------------------------- busca na base (S-72)
 
     def _bases_atuais(self) -> list[Path]:
-        """As bases que valem agora: as escolhidas, ou a pasta inteira enquanto ninguém escolheu."""
-        return database_paths() if self._bases is None else list(self._bases)
+        """As bases que valem agora: as escolhidas, ou a pasta inteira enquanto ninguém escolheu.
+
+        **A varredura da pasta é guardada pela `mtime` dela** (F9-C2). `database_paths()` faz um
+        `glob("*.pgn")` sobre a pasta das gigabases, e o arnês `caissa.ui.audit.bloqueio` a pegou
+        como a **pior pilha do "abrir PDF"** depois que as duas leituras de CSV saíram da thread da
+        janela: 283 ms, em `pathlib.glob`. Ela é chamada três vezes por abertura de livro, com o
+        mesmo resultado nas três.
+
+        A chave é a `mtime` do diretório, e é ela que preserva a garantia da S-140 -- *"um `.pgn`
+        a mais na pasta muda as contagens de tudo que está guardado"*: acrescentar ou tirar um
+        arquivo muda a `mtime` do diretório, e a varredura roda de novo. Uma pasta que o sistema
+        de arquivos diz não ter mudado tem o mesmo conjunto de arquivos.
+        """
+        if self._bases is not None:
+            return list(self._bases)
+        try:
+            marca = DEFAULT_DATABASE_DIR.stat().st_mtime_ns
+        except OSError:
+            marca = -1
+        if self._bases_da_pasta is None or self._bases_da_pasta[0] != marca:
+            self._bases_da_pasta = (marca, database_paths())
+        return list(self._bases_da_pasta[1])
 
     def _caminho_do_cache(self, bases: Sequence[Path]) -> Path:
         """O arquivo de cache **deste** conjunto de bases. Ver `escolha_de_bases.store_path_for`.
 
-        O pedido explícito ganha: é ele que mantém a suíte fora do `data/` de quem a roda.
+        O `default_bases` sai do mesmo cache de `_bases_atuais`: pedi-lo a `database_paths()` aqui
+        refaria o `glob` que aquele acabou de guardar, e era a segunda das três varreduras que o
+        arnês contou numa abertura de livro.
+
+        O pedido explícito ganha (S-415): é ele que mantém a suíte fora do `data/` de quem a roda.
         """
-        if self._cache_pedido is not None:
-            return self._cache_pedido
-        return store_path_for(bases, default_bases=database_paths())
+        if self._caminho_do_cache_pedido is not None:
+            return self._caminho_do_cache_pedido
+        guardado = self._bases_da_pasta
+        return store_path_for(bases, default_bases=guardado[1] if guardado else database_paths())
 
     def _escolher_bases(self) -> list[Path] | None:
         """Pergunta em quais bases procurar. `None` é "desistiu", e aí nada acontece.
@@ -818,7 +950,7 @@ class PainelDaGaleria(QWidget):
         # esse tempo de novo, e nada além dele.
         self._registrar_ocupado("busca por nome na base", loses_work=False, detail=f"{len(pares)} par(es)")
         self._ocupado(True)
-        self.lbl_varredura.setText(f"procurando {len(pares)} par(es) em {len(bases)} base(s)...")
+        self.lbl_varredura.setText(f"procurando {len(pares)} par(es) em {len(bases)} base(s)…")
         threading.Thread(target=self._trabalho_por_nome, args=(bases, pares), daemon=True).start()
 
     def _trabalho_por_nome(self, bases: list[Path], pares: set[tuple[str, str]]) -> None:
@@ -826,7 +958,7 @@ class PainelDaGaleria(QWidget):
             partidas = scan_by_players(
                 bases,
                 pares,
-                progress=lambda lidas: self._progrediu.emit(f"base: {lidas / 1e6:.1f} M partidas lidas..."),
+                progress=lambda lidas: self._progrediu.emit(f"base: {lidas / 1e6:.1f} M partidas lidas…"),
                 cancel=self._cancelar,
             )
             casamentos = match_entries(self.model.index.entries, partidas)
@@ -915,7 +1047,7 @@ class PainelDaGaleria(QWidget):
             "busca por posição na base", loses_work=True, detail=f"{len(faltando)} posição(ões)"
         )
         self._ocupado(True)
-        self.lbl_varredura.setText(f"base: {len(faltando)} posição(ões) a procurar...")
+        self.lbl_varredura.setText(f"base: {len(faltando)} posição(ões) a procurar…")
         threading.Thread(
             target=self._trabalho_por_posicao,
             args=(bases, alvos, faltando, self._caminho_do_cache(bases)),
@@ -957,7 +1089,7 @@ class PainelDaGaleria(QWidget):
             # A mais cara do programa -- ~56 min medidos na Fase 13 -- e a que mais precisa de uma
             # fração: só o número diz se vale esperar ou cancelar agora (S-164).
             self._busy_token.update(f"pedaço {feitos} de {total}", feito=feitos, total=total)
-        self._progrediu.emit(f"base: pedaço {feitos} de {total}...")
+        self._progrediu.emit(f"base: pedaço {feitos} de {total}…")
 
     def _posicoes_terminaram(self, alvos: set[str], games_read: int) -> None:
         """Aplica o que a base respondeu e **deixa o cache em pé** para a lista de candidatas.
@@ -1052,7 +1184,7 @@ class PainelDaGaleria(QWidget):
         self.anotacoes_mudaram.emit()
         self.estado.emit(mensagem)
 
-    def _abrir_cache_de_posicoes(self) -> None:
+    def _abrir_cache_de_posicoes(self, *, ao_fundo: bool = False) -> None:
         """Deixa o cache de posições aberto e apontado à base de agora. Falha em silêncio.
 
         Sem cache o botão fica desligado e o resto da aba funciona igual: a lista é um caminho a
@@ -1061,22 +1193,79 @@ class PainelDaGaleria(QWidget):
         **Aberto uma vez, e não relido por livro (S-140).** A base é reconferida a cada chamada
         porque é a única coisa que pode ter mudado: um `.pgn` a mais na pasta muda as contagens de
         tudo que está guardado, e uma conexão aberta antes dele responderia o número de ontem.
+
+        **`ao_fundo` é o caminho de quem abre o livro** (OCR_UI passo 15): abrir o SQLite num
+        disco frio custou 25–60 ms medidos na thread da janela, na pior pilha do "abrir PDF". A
+        conexão é feita numa `Tarefa` e entregue em `_cache_abriu`; até lá `position_cache` fica
+        vazio e o botão de candidatas, apagado -- que é o que ele já era sem cache. Quem precisa
+        do cache **agora** (a busca por posição) chama sem `ao_fundo` e, se houver uma abertura
+        correndo, espera por ela em vez de abrir uma segunda.
         """
         bases = self._bases_atuais()
         caminho = self._caminho_do_cache(bases)
-        try:
-            if self._store is not None:
-                if self._store.path == caminho and self._store.matches(bases):
-                    self.model.position_cache = self._store
-                    return
-                self._store.close()
-                self._store = None
-            self._store = open_store(caminho, database=bases)
+        if self._store is not None and self._store.path == caminho and self._store.matches(bases):
             self.model.position_cache = self._store
+            return
+        if self._abrindo_o_cache is not None:
+            if self._cache_pedido == (caminho, tuple(bases)):
+                if not ao_fundo:
+                    self._esperar_o_cache()
+                return
+            # Pediram outra base no meio: a que está abrindo será descartada ao chegar.
+            self._cache_pedido = None
+        if ao_fundo:
+            self._cache_pedido = (caminho, tuple(bases))
+            tarefa = manter_viva(
+                Tarefa(
+                    lambda: open_store(caminho, database=bases, de_outra_thread=True),
+                    nome="cache de posições",
+                )
+            )
+            tarefa.pronto.connect(self._cache_abriu)
+            tarefa.falhou.connect(self._cache_nao_abriu)
+            self._abrindo_o_cache = tarefa
+            tarefa.start()
+            return
+        try:
+            self._trocar_o_cache(open_store(caminho, database=bases))
         except Exception:  # noqa: BLE001 - cache é material derivado; sem ele a aba segue
             logger.exception("Não foi possível ler o cache de posições.")
-            self._store = None
-            self.model.position_cache = None
+            self._trocar_o_cache(None)
+
+    def _trocar_o_cache(self, loja: PositionStore | None) -> None:
+        if self._store is not None and self._store is not loja:
+            self._store.close()
+        self._store = loja
+        self.model.position_cache = loja
+
+    def _cache_abriu(self, loja: object) -> None:
+        self._abrindo_o_cache = None
+        pedido, self._cache_pedido = self._cache_pedido, None
+        if pedido is None or not isinstance(loja, PositionStore):
+            # Pediram outra base enquanto esta abria: o que chegou não serve, e fecha.
+            if isinstance(loja, PositionStore):
+                loja.close()
+            return
+        self._trocar_o_cache(loja)
+        self._atualizar_botao_de_candidatas()
+
+    def _cache_nao_abriu(self, mensagem: str, _excecao: object) -> None:
+        self._abrindo_o_cache = None
+        self._cache_pedido = None
+        logger.warning("Não foi possível ler o cache de posições: %s", mensagem)
+        self._trocar_o_cache(None)
+
+    def _esperar_o_cache(self, limite_ms: int = 15_000) -> None:
+        """Roda a linha de eventos até a abertura ao fundo entregar. Só quem precisa do cache agora."""
+        from PyQt6.QtCore import QEventLoop, QTimer
+
+        laco = QEventLoop(self)
+        relogio = QTimer(self)
+        relogio.timeout.connect(lambda: laco.quit() if self._abrindo_o_cache is None else None)
+        relogio.start(5)
+        QTimer.singleShot(limite_ms, laco.quit)
+        laco.exec()
+        relogio.stop()
 
     def _atualizar_botao_de_candidatas(self) -> None:
         candidatas, total = self.model.current_candidates()
@@ -1115,9 +1304,18 @@ class PainelDaGaleria(QWidget):
             index_path=DEFAULT_INDEX_PATH,
             gallery_dir=self._pasta,
         )
-        self._abrir_cache_de_posicoes()
+        self._abrir_cache_de_posicoes(ao_fundo=True)
         if indice is None:
-            self.lbl_varredura.setText("livro ainda não varrido")
+            # **A frase saiu daqui no F9-C3, e a razão é uma medição.** Ela dizia "livro ainda não
+            # varrido" no topo da aba enquanto o estado vazio, 302 px abaixo, dizia "Nenhum
+            # diagrama ainda" e explicava a mesma coisa em duas linhas -- **duas afirmações
+            # independentes do mesmo fato na mesma tela**, que é o que o §7 do ciclo 1 mandou
+            # apagar e o ciclo 2 apagou pela metade (eram três).
+            #
+            # Quem fica é o estado vazio, e não este rótulo: ele tem título, frase e **o botão que
+            # resolve** dentro dele. Este rótulo é a zona de progresso da varredura, e "não houve
+            # varredura" é a ausência de progresso, não um progresso a relatar.
+            self.lbl_varredura.setText("")
         self.refresh(request_page=request_page)
 
     # ---------------------------------------------------------------- onde o livro é gravado
@@ -1423,6 +1621,15 @@ class PainelDaGaleria(QWidget):
             atual = self.model.current
             self.lbl_posicao.setText(self.model.describe_position())
             self._desenhar_recorte(atual)
+            # O vazio cobre o recorte enquanto não há diagrama nenhum. `setGeometry` a cada
+            # passada porque o recorte é elástico desde o item 4 do §7: ele muda de lado com a
+            # janela, e um vazio de tamanho fixo sobre ele sairia do lugar.
+            self._pilha_do_recorte.setCurrentWidget(self.vazio if atual is None else self.recorte)
+            # **E a segunda mensagem some** (F9-C2, §7 item 14). O crítico do ciclo 1 mediu duas
+            # frases dizendo a mesma coisa a 320 px uma da outra; com o estado vazio no lugar
+            # seriam três. `lbl_posicao` é a legenda de "onde estou na varredura", e sem varredura
+            # ela não tem o que dizer.
+            self.lbl_posicao.setVisible(atual is not None)
 
             anotacao = self.model.current_annotation
             self.campo_lance.setText("" if anotacao.move_number is None else str(anotacao.move_number))
@@ -1478,20 +1685,20 @@ class PainelDaGaleria(QWidget):
             logger.warning("Não foi possível abrir o recorte %s.", caminho)
             self._dizer_no_lugar_do_recorte("recorte ilegível")
             return
-        # O `QLabel` é dono do pixmap: não há a referência a segurar que o Tk exige.
-        self.recorte.setPixmap(
-            pixmap.scaled(
-                BOARD_VIEW_SIZE,
-                BOARD_VIEW_SIZE,
-                Qt.AspectRatioMode.IgnoreAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-        )
+        # O `QLabel` é dono do pixmap: não há a referência a segurar que o Tk exige. O recorte
+        # guarda o **original** e reescala sozinho a cada mudança de tamanho -- reescalar o já
+        # reescalado perderia definição a cada gesto de janela.
+        self.recorte.definir_recorte(pixmap)
 
     def _dizer_no_lugar_do_recorte(self, frase: str) -> None:
-        self.recorte.setPixmap(QPixmap())
+        self.recorte.limpar_recorte()
         self.recorte.setText(frase)
-        tema.pintar(self.recorte, "color", tokens.TEXTO_SECUNDARIO)
+        tema.pintar_varios(
+            self.recorte,
+            color=tokens.TEXTO_SECUNDARIO,
+            background_color=tokens.SUPERFICIE_TABULEIRO,
+            border=tokens.CONTORNO_DE_CROMO,
+        )
 
 
 _ = atalhos  # noqa: B018 - a régua de foco que `acoes_proprias` cita; ver `ui/atalhos.py`

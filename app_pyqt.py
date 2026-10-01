@@ -91,6 +91,9 @@ def _janela_do_auto_teste(servico: Any, descartavel: Path, caminho_do_cache: Pat
         motor=None,
         caminho_do_estado=descartavel / "janela.json",
         caminho_do_cache=caminho_do_cache,
+        # **Em linha** (OCR_UI passo 15): o auto-teste pergunta pela folha na linha seguinte, e um
+        # processo filho só para ele seria um segundo de `spawn` a mais numa conferência de instalação.
+        rasterizar_ao_fundo=False,
     )
 
 def selftest(

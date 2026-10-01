@@ -33,11 +33,17 @@ from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
-from chess_diagram_ocr.ui import atalhos, comandos, tokens
+from chess_diagram_ocr.ui import atalhos, comandos
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["LADO_DO_ICONE", "Fila", "acoes_da_fila", "montar"]
+__all__ = ["LADO_DO_ICONE", "REGIAO", "Fila", "acoes_da_fila", "montar"]
+
+REGIAO = "Ações em destaque"
+"""Como a fila se anuncia a um leitor de tela. É o nome que a S-223 dá a ela.
+
+Texto de interface, e por isso escrito por extenso e acentuado -- ele é lido em voz alta, não
+gravado em disco (a mesma separação da S-166 que `pele.ROTULOS_DE_DENSIDADE` faz)."""
 
 LADO_DO_ICONE = 18
 """Lado do ícone da pílula, em pixel.
@@ -63,6 +69,12 @@ class Fila(BarraFluida):
         lado_do_icone: int = LADO_DO_ICONE,
     ) -> None:
         super().__init__(parent)
+        # **A fila é uma região, e ela tem de se anunciar como uma** (F9-C9) -- a mesma linha que
+        # `qt/painel_do_pdf._bloco` tem desde o ciclo 2. Sem ela as pílulas chegavam ao leitor de
+        # tela como comandos soltos, indistinguíveis do botão do painel que faz a mesma coisa:
+        # medido, `"Ler esta página"` era anunciado por **dois** controles em cada uma das seis
+        # abas, e `"Próximo diagrama"` por dois na Galeria, sem nada que dissesse qual é qual.
+        self.setAccessibleName(REGIAO)
         self._amarrados = dict(amarrados or {})
         self._lado = int(lado_do_icone)
         self.botoes: dict[str, QPushButton] = {}
@@ -77,18 +89,29 @@ class Fila(BarraFluida):
                 self.botoes[registro.acao] = self.adicionar(self._pilula(registro))  # type: ignore[assignment]
 
     def _pilula(self, registro: comandos.Comando) -> QPushButton:
-        """Um comando em destaque: ícone à esquerda, rótulo à direita, tecla na dica."""
+        """Um comando em destaque: ícone à esquerda, rótulo à direita, tecla na dica.
+
+        **O nome acessível é o rótulo por extenso, e não o texto do botão** (F9-C9) -- a mesma
+        linha que `qt/painel_do_pdf._botao` tem desde o ciclo 2. Nenhum comando em destaque tem
+        rótulo de glifo hoje, então o número desta pele não muda; o que muda é que ele deixa de
+        depender disso. A pílula que amanhã mostrasse `▶` já chegaria ao leitor de tela como
+        "Próximo lance", em vez de virar o defeito nº 1 do ciclo 1 numa terceira montagem.
+        """
         botao = QPushButton(registro.no_botao, self)
+        botao.setAccessibleName(comandos.nome_acessivel(registro.acao))
         botao.clicked.connect(lambda _marcado=False, f=self._amarrados[registro.acao]: f())
         tema.aplicar_papel(botao, comandos.papel(registro.acao))
         if registro.icone:
             # A cor sai do token na hora de desenhar, e é o que faz o mesmo traço servir ao cromo
-            # claro e ao escuro (S-220). Ícone que não desenhou vira pílula só com texto, e não
-            # pílula sem nada: `icones.icone` devolve `None` em vez de levantar.
-            desenho = qt_icones.icone(registro.icone, self._lado, tema.cor_atual(tokens.TEXTO_PADRAO))
-            if desenho is not None:
-                botao.setIcon(desenho)
-                botao.setIconSize(qt_icones.tamanho(self._lado))
+            # claro e ao escuro (S-220). `vestir` devolve `False` quando não há desenho, e aí a
+            # pílula fica só com texto -- nunca sem nada.
+            qt_icones.vestir(
+                botao,
+                registro.icone,
+                comandos.papel(registro.acao),
+                lado=self._lado,
+                manter_texto=not registro.so_glifo,
+            )
         tecla = atalhos.acelerador(registro.acao)
         dica_em(botao, f"{registro.rotulo}\nTecla: {tecla}" if tecla else registro.rotulo)
         if registro.rotulo_alternado:

@@ -243,10 +243,35 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**Vinte e duas** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**Trinta** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
-exceção. Catorze são operações longas e estão no `BusyRegistry`; as outras oito são declaradas em
-`tests/test_busy.py::SEM_REGISTRO`, com o motivo de cada uma (S-112).
+exceção. Dezoito são operações longas e estão no `BusyRegistry`; as outras doze são declaradas
+em `ui/busy.py::FORA_DO_REGISTRO`, com o motivo de cada uma (S-112).
+
+**As duas últimas são do ciclo 2 da OCR_UI, fase 2 (2026-09-21).** O aquecimento do modelo
+(`qt/leitura.py::Aquecimento.iniciar`) carrega o `.pt` numa `Tarefa` própria **3 s de ócio
+depois de abrir o livro** -- e não ao abrir: a carga é C que segura o GIL, e disparada na hora
+custava 28–84 ms de bloqueio na abertura e na primeira virada (`bloqueio` VIOLA); adiada, 3/3
+PASSOU e o primeiro «Ler» cai de 2 s para 0,6 s. A segunda opinião
+(`qt/painel_de_resultado.py::segunda_opiniao`) roda o leitor de outra família sobre o recorte
+e não empresta o modelo do serviço. A leitura da página (`_rodar`) **saiu de
+`FORA_DO_REGISTRO`**: registrada com total e Cancelar, o cancelamento chega entre diagramas e
+o que foi lido fica na lista.
+
+**As três últimas são do passo 15 da OCR_UI (2026-09-16), e nenhuma delas é uma thread que
+trabalha: são threads que esperam.** Abrir o livro e rasterizar a página (`qt/painel_do_pdf.py`),
+reduzir a página ao zoom novo (`qt/visor.py`) e abrir o SQLite do cache de posições
+(`qt/painel_da_galeria.py`) rodam numa `Tarefa`; a rasterização, a leitura do `labels.csv` e a
+detecção de fundo **atravessam dela para um processo filho** (`processo_de_trabalho.py`), porque o
+`get_pixmap` do PyMuPDF e a legalidade de 5.431 FENs em Python seguram o GIL, e uma thread que
+segura o GIL trava a janela do mesmo jeito -- medido: 51 ms por página numa thread, 3–6 ms com o
+filho. O intervalo de troca do interpretador cai para 0,1 ms na primeira `Tarefa`
+(`qt/trabalho.ceder_a_interface`), pela mesma medição.
+
+**As duas últimas entraram no F9-C2, e as duas são leitura de CSV que estava na thread da
+janela**: `qt/marcas.py` (250 ms na abertura de cada livro) e `qt/painel_do_dataset._reler_agora`
+(1.302 ms no primeiro clique da aba Dataset, medidos na execução fria). Nenhuma das duas grava
+nada, e por isso nenhuma entra no registro -- ver o motivo escrito ao lado de cada uma.
 
 **As duas últimas são da Fase 83** (S-539/S-541): a extração de táticas de um livro inteiro, que se
 registra porque leva minutos e grava um arquivo, e a medição do custo do lance no treino, que não
@@ -275,7 +300,7 @@ Contar só a primeira deixaria de fora a leitura da página, que é o laço inte
 
 | operação | onde | cancelável | perde trabalho ao fechar | empresta o modelo do serviço |
 |---|---|---|---|---|
-| marcar e reconhecer a página | `qt/janela.py::_rodar` | não (é rápido) | — declarada | sim (S-31) |
+| marcar e reconhecer a página | `qt/janela.py::_rodar` | sim, entre diagramas (OCR_UI C2); o lido fica | não, o lido fica na lista | sim (S-31) |
 | marcar a página que acabou de aparecer (S-68) | `qt/trabalho.py::DeteccaoDeFundo`, sem trancar nada; só o último pedido espera | não (é rápido) | — declarada | não (o detector não usa o modelo) |
 | exportação de um livro | `qt/exportador.py` | sim, entre páginas (S-24) | não, tem parcial | sim (S-57) |
 | treino | `qt/dialogos.py::ControladorDeTreino` | sim, entre épocas (S-60) | sim, desde a melhor época | escreve o `.pt` |
@@ -292,6 +317,13 @@ Contar só a primeira deixaria de fora a leitura da página, que é o laço inte
 | lote de diagramas (S-544) | `qt/lote_de_diagramas.py::ExportacaoDoLote`, uma thread para o lote inteiro | sim, entre arquivos | não: cada diagrama pronto já está no disco | não (desenha da FEN) |
 | árvore de aberturas: a consulta (S-535) | `qt/arvore_de_aberturas.py::DialogoDaArvore` | não (é uma sonda de chave primária) | — declarada: nada é gravado | não |
 | árvore de aberturas: a passada (S-535) | `qt/arvore_de_aberturas.py::ConstrutorDaArvore`, dez processos sob uma thread | sim, entre pedaços | **sim**, a passada inteira: cada linha é uma soma, e não há parcial a retomar | não |
+| abrir o livro e rasterizar a página exibida (passo 15) | `qt/painel_do_pdf.py::_executar`, via o processo de trabalho | não (é rápido) | — declarada | não |
+| reduzir a página ao zoom novo (passo 15) | `qt/visor.py::_pedir_reescalonamento` | não (é rápido) | — declarada | não |
+| abrir o cache de posições ao abrir o livro (passo 15) | `qt/painel_da_galeria.py::_abrir_cache_de_posicoes` | não (é rápido) | — declarada | não |
+| a miniatura de uma página do trilho (passo 17) | `qt/trilho.py::_proxima_miniatura`, via o processo de trabalho | não (é rápido) | — declarada | não |
+| importar o livro inteiro pela suíte (passo 17) | `caissa.ui.views.importacao` (thread da suíte), registrada por `qt/importador_de_livro.py` | sim, entre páginas; o parcial fica (R3.5) | não, o que foi lido fica | não |
+| aquecer o modelo depois de abrir o livro (OCR_UI C2) | `qt/leitura.py::Aquecimento.iniciar`, 3 s de ócio depois da abertura | não (é a carga, uma vez por processo) | não, é derivada | é a carga do modelo (sob o mesmo lock) |
+| segunda opinião sobre o diagrama (OCR_UI C3) | `qt/painel_de_resultado.py::segunda_opiniao` | não (é um diagrama) | — declarada | não (é o leitor tsoj, outra família) |
 
 O modelo é compartilhado entre elas e fica **sob lock durante o uso**, não só durante a
 carga: o treino reescreve o mesmo `.pt` que uma leitura concorrente estaria lendo (S-31).

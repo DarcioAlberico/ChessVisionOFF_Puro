@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 
 import numpy as np
+import pytest
 
 from chess_diagram_ocr.service import RecognizedDiagram
 from chess_diagram_ocr.ui.page_results import (
@@ -14,6 +15,7 @@ from chess_diagram_ocr.ui.page_results import (
     PageResultsCache,
     PageSwitch,
     decide_page_switch,
+    paginas_editadas,
 )
 
 DOC = "livro.pdf"
@@ -164,13 +166,44 @@ class EvictionTests(unittest.TestCase):
         self.assertIsNone(cache.get(DOC, 2, PARAMS))
         self.assertIsNotNone(cache.get(DOC, 3, PARAMS))
 
-    def test_evicting_hand_corrected_work_is_warned_not_silent(self) -> None:
-        """Perder leitura do modelo custa rodar o OCR; perder correcao custa o trabalho."""
+    def test_a_page_with_hand_edits_survives_the_limit(self) -> None:
+        """OCR_UI C2, A7: a 9.a pagina lida nao expulsa a 1.a com a correcao dentro. Quem sai e a
+        leitura do modelo mais antiga sem edicao -- a 2.a -- e a 1.a continua no cache."""
+        cache = PageResultsCache(max_pages=DEFAULT_MAX_CACHED_PAGES)
+        cache.put(DOC, _results(1, hand=True))
+        for page in range(2, 10):
+            cache.put(DOC, _results(page))
+        self.assertLessEqual(len(cache), DEFAULT_MAX_CACHED_PAGES)
+        self.assertIsNotNone(cache.get(DOC, 1, PARAMS), "a pagina corrigida a mao saiu do cache")
+        self.assertIsNone(cache.get(DOC, 2, PARAMS), "a leitura sem edicao mais antiga e a que sai")
+        self.assertEqual(cache.pages_with_hand_edits(DOC), [1])
+
+    @pytest.mark.xfail(strict=True, reason="o comportamento antigo (A7): a LRU expulsava a pagina editada")
+    def test_sabotagem_the_oldest_page_is_evicted_even_with_hand_edits(self) -> None:
+        cache = PageResultsCache(max_pages=DEFAULT_MAX_CACHED_PAGES)
+        cache.put(DOC, _results(1, hand=True))
+        for page in range(2, 10):
+            cache.put(DOC, _results(page))
+        self.assertIsNone(cache.get(DOC, 1, PARAMS))
+
+    def test_when_every_page_is_hand_edited_none_is_evicted_and_it_is_logged(self) -> None:
+        """Perder leitura do modelo custa rodar o OCR; perder correcao custa o trabalho. Se toda
+        pagina guardada tem correcao, o cache passa do teto -- e diz isso no log."""
         cache = PageResultsCache(max_pages=1)
         cache.put(DOC, _results(1, hand=True))
         with self.assertLogs("chess_diagram_ocr.ui.page_results", level="WARNING") as capturado:
-            cache.put(DOC, _results(2))
-        self.assertIn("mao", "\n".join(capturado.output))
+            cache.put(DOC, _results(2, hand=True))
+        self.assertIn("teto", "\n".join(capturado.output))
+        self.assertEqual(len(cache), 2)
+        self.assertEqual(cache.pages_with_hand_edits(), [1, 2])
+
+    def test_the_page_just_stored_is_never_the_one_evicted(self) -> None:
+        """E a pagina de que a pessoa acabou de sair: descarta-la faria a volta custar um OCR."""
+        cache = PageResultsCache(max_pages=1)
+        cache.put(DOC, _results(1, hand=True))
+        cache.put(DOC, _results(2))
+        self.assertIsNotNone(cache.get(DOC, 2, PARAMS))
+        self.assertIsNotNone(cache.get(DOC, 1, PARAMS))
 
     def test_evicting_untouched_results_is_quiet(self) -> None:
         cache = PageResultsCache(max_pages=1)
@@ -185,6 +218,49 @@ class EvictionTests(unittest.TestCase):
         # 9 diagramas x 1,83 MiB por pagina: o teto tem de manter isso na casa das centenas
         # de MiB, nao dos gigabytes.
         self.assertLessEqual(DEFAULT_MAX_CACHED_PAGES * 9 * 1.83, 300)
+
+
+class PaginasEditadasTests(unittest.TestCase):
+    """O que a janela pergunta antes de fechar e antes de trocar de livro (A7)."""
+
+    class _Modelo:
+        def __init__(self, page_key: tuple[str, int] | None, edits: bool) -> None:
+            self.page_key = page_key
+            self.has_hand_edits = edits
+            self.has_unsaved_hand_edits = edits  # a pergunta é sobre o que não foi gravado
+
+    def test_junta_o_cache_e_a_pagina_que_esta_no_editor(self) -> None:
+        cache = PageResultsCache()
+        cache.put(DOC, _results(3, hand=True))
+        cache.put(DOC, _results(4))
+        editor = self._Modelo((DOC, 7), True)
+        self.assertEqual(paginas_editadas(cache, editor), [3, 7])
+
+    def test_o_editor_sem_edicao_ou_sem_pagina_nao_conta(self) -> None:
+        cache = PageResultsCache()
+        self.assertEqual(paginas_editadas(cache, self._Modelo((DOC, 7), False)), [])
+        self.assertEqual(paginas_editadas(cache, self._Modelo(None, True)), [])
+
+    def test_uma_correcao_gravada_nao_conta(self) -> None:
+        """Crítico (fase 1, ciclo 1): a página com correção **gravada** não se perde ao fechar."""
+        cache = PageResultsCache()
+        gravada = _results(3, hand=True)
+        for item, fen, side in zip(gravada.items, gravada.fen_edits, gravada.side_edits, strict=False):
+            item.saved_placement, item.saved_side = fen, side
+        cache.put(DOC, gravada)
+        cache.put(DOC, _results(4, hand=True))
+        self.assertEqual(paginas_editadas(cache, self._Modelo(None, False)), [4])
+        gravada.fen_edits[0] = "8/8/8/8/8/8/8/K6k"  # editada de novo depois de gravar
+        self.assertEqual(paginas_editadas(cache, self._Modelo(None, False)), [3, 4])
+
+    def test_filtra_pelo_livro(self) -> None:
+        cache = PageResultsCache()
+        cache.put(DOC, _results(3, hand=True))
+        cache.put("outro.pdf", _results(5, hand=True))
+        editor = self._Modelo(("outro.pdf", 9), True)
+        self.assertEqual(paginas_editadas(cache, editor, DOC), [3])
+        self.assertEqual(paginas_editadas(cache, editor, "outro.pdf"), [5, 9])
+        self.assertEqual(paginas_editadas(cache, editor), [3, 5, 9])
 
 
 class PageSwitchDecisionTests(unittest.TestCase):

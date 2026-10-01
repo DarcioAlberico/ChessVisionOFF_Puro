@@ -70,11 +70,13 @@ class CoberturaTests(unittest.TestCase):
 class EnfaseEPrioridadeTests(unittest.TestCase):
     """Quem manda na fila quando falta largura."""
 
-    def test_ha_uma_enfase_so_e_ela_e_a_de_gravar(self) -> None:
-        """A regra da S-446: duas ênfases numa barra é o mesmo que nenhuma. A tela existe para
-        conferir uma leitura, e gravar a leitura conferida é o que ela faz."""
+    def test_esta_barra_nao_tem_enfase_porque_a_janela_ja_tem_uma(self) -> None:
+        """A regra da S-446 -- duas ênfases numa barra é o mesmo que nenhuma -- levada à janela
+        inteira (F9-C2 da OCR_UI): o Resultado mora na aba Livro, ao lado do visor, e a barra do
+        visor já tem a ênfase da tela (`ler_melhor`). Gravar com o mesmo azul daria duas na mesma
+        vista, e o `test_ui_comandos` cobra que `ler_melhor` seja a única do catálogo."""
         primarias = [r.acao for r in barra_do_resultado.principais() if r.papel == estilos.PRIMARIO]
-        self.assertEqual(["salvar"], primarias)
+        self.assertEqual([], primarias)
         estilos.conferir_barra(
             [registro.papel for registro in barra_do_resultado.principais()],
             onde="a barra do painel de resultado",

@@ -36,7 +36,7 @@ from chess_diagram_ocr import tablebase
 from chess_diagram_ocr.engine import EngineAnalyzer, Evaluation
 from chess_diagram_ocr.settings import EngineSettings
 from chess_diagram_ocr.ui import analise_da_partida as declarada
-from chess_diagram_ocr.ui import motor_declarado, tokens
+from chess_diagram_ocr.ui import motor_declarado, strings, tokens
 
 if TEM_PYQT:
     from PyQt6.QtGui import QFontMetrics
@@ -68,6 +68,14 @@ class BarraDeAvaliacaoTests(unittest.TestCase):
     def setUp(self) -> None:
         self.app = aplicacao()
         self.addCleanup(self.app.processEvents)
+        # **O cromo claro é dito, e não suposto** (o merge do religa). Os testes desta classe medem
+        # o fio no cromo claro e depois no escuro, e supunham o claro valendo ao começar -- que era
+        # o padrão enquanto a pele padrão era a clássica. Desde o passo 16 da OCR_UI a padrão é a
+        # Foco, de cromo escuro, e o teste que a aplica antes destes deixa `tema._cromo_escuro`
+        # ligado: na suíte inteira o fio saía na tinta do escuro e o teste caía, sozinho passava.
+        anterior = tema.cromo_escuro_em_vigor()
+        tema.aplicar_tema(None, cromo_escuro=False)
+        self.addCleanup(tema.aplicar_tema, None, cromo_escuro=anterior)
 
     def barra(self) -> Any:
         widget = qt_motor.BarraDeAvaliacao()
@@ -907,7 +915,10 @@ class PartidaAnalisadaNaSalaTests(_Sala):
         vistos: list[str] = []
         painel.estado.connect(vistos.append)
         self.assertIsNone(painel.analisar_partida())
-        self.assertTrue(any("Sem motor UCI" in frase for frase in vistos))
+        # A frase da F9-C16 (`strings.SEM_MOTOR_STATUS`), que o merge do religa pôs no lugar da
+        # receita "ponha o Stockfish em engines/ e reabra": a sala diz que não há motor e que os
+        # comandos de análise estão desligados.
+        self.assertTrue(any(strings.SEM_MOTOR_STATUS in frase for frase in vistos), vistos)
 
 
 class SemPyQtTests(unittest.TestCase):

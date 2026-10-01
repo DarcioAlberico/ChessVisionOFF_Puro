@@ -17,18 +17,22 @@ from chess_diagram_ocr.ui.state import STATE_VERSION, AppState, load_state, save
 
 
 class RegistroTests(unittest.TestCase):
-    def test_a_pele_padrao_e_a_classica(self) -> None:
-        """Sem `skin` no disco e sem a variável, a pele é a clássica -- e ela é a janela de hoje."""
-        self.assertEqual(pele.CLASSICA, pele.escolhida("", ambiente={}))
-        self.assertEqual(pele.CLASSICA, pele.escolhida(ambiente={}))
+    def test_a_pele_padrao_e_a_foco(self) -> None:
+        """Sem `skin` no disco e sem a variável, a pele é a de fábrica -- a Foco, desde o passo 16
+        da OCR_UI (Q3). Era a clássica; a decisão mora em `pele.PADRAO`, e só lá."""
+        self.assertEqual(pele.FOCO, pele.PADRAO)
+        self.assertEqual(pele.PADRAO, pele.escolhida("", ambiente={}))
+        self.assertEqual(pele.PADRAO, pele.escolhida(ambiente={}))
         self.assertEqual("", AppState().skin, "o padrão do estado é 'nunca escolhida'")
 
-    def test_a_classica_e_a_primeira_e_o_padrao(self) -> None:
-        """O que não muda quando o registro cresce. Quando esta S foi escrita havia **uma** pele,
-        e o teste dizia isso; a S-223 acrescentou a "Foco" e a S-227 acrescenta a "Fita". O que
-        continua valendo é a regra 1: quem nunca abrir `Ver ▸ Aparência` tem a janela de hoje."""
-        self.assertEqual(pele.CLASSICA, pele.PELES[0].nome)
-        self.assertEqual(pele.CLASSICA, pele.escolhida("", ambiente={}))
+    def test_a_primeira_do_registro_e_o_padrao(self) -> None:
+        """O que não muda quando o registro cresce ou o padrão troca. Quando esta S foi escrita
+        havia **uma** pele; a S-223 acrescentou a "Foco", a S-227 a "Fita", e o passo 16 da OCR_UI
+        pôs a Foco na frente. A regra 1 continua: a primeira do menu é a que quem nunca abriu
+        `Ver ▸ Aparência` tem -- e a clássica continua registrada, para quem a quiser."""
+        self.assertEqual(pele.PADRAO, pele.PELES[0].nome)
+        self.assertEqual(pele.PADRAO, pele.escolhida("", ambiente={}))
+        self.assertIn(pele.CLASSICA, pele.por_nome)
 
     def test_toda_pele_tem_nome_de_chave_e_rotulo_de_gente(self) -> None:
         """Chave e texto de interface não são a mesma coisa, e a S-166 já fixou isso."""
@@ -39,7 +43,7 @@ class RegistroTests(unittest.TestCase):
                 self.assertTrue(registro.rotulo.strip())
                 self.assertIn(registro.densidade, pele.DENSIDADES)
 
-    def test_pele_desconhecida_cai_na_classica_com_aviso(self) -> None:
+    def test_pele_desconhecida_cai_no_padrao_com_aviso(self) -> None:
         """E o aviso **nomeia** a inválida: sem o nome, quem escreveu `CVOFF_SKIN=mosaico` conclui
         que a variável não é lida.
 
@@ -48,19 +52,20 @@ class RegistroTests(unittest.TestCase):
         registro de peles para manter o teste de pé.
         """
         with self.assertLogs(pele.logger, level="WARNING") as registro:
-            self.assertEqual(pele.CLASSICA, pele.valida("mosaico"))
+            self.assertEqual(pele.PADRAO, pele.valida("mosaico"))
         self.assertIn("mosaico", "\n".join(registro.output))
         self.assertNotIn("mosaico", pele.por_nome, "escolha um nome que continue inválido")
 
     def test_nome_vazio_nao_avisa_nada(self) -> None:
         """"Nunca escolheu" não é erro, e um aviso a cada abertura é ruído que ensina a ignorar."""
         with self.assertNoLogs(pele.logger, level="WARNING"):
-            self.assertEqual(pele.CLASSICA, pele.valida(""))
+            self.assertEqual(pele.PADRAO, pele.valida(""))
 
     def test_registrada_levanta_para_quem_ja_devia_saber(self) -> None:
         """`valida` é para o que vem de fora; `registrada` é para o código, e aí um nome errado
         é defeito e não entrada."""
-        self.assertIs(pele.PELES[0], pele.registrada(pele.CLASSICA))
+        self.assertIs(pele.PELES[0], pele.registrada(pele.PADRAO))
+        self.assertIs(pele.PELES[1], pele.registrada(pele.CLASSICA))
         with self.assertRaises(KeyError):
             pele.registrada("mosaico")
 

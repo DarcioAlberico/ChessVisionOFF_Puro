@@ -1192,13 +1192,27 @@ class CheckerContrastGuardTests(unittest.TestCase):
         )
 
     def test_a_declaracao_do_pdf_nao_e_alcancada(self) -> None:
-        """Imagem embutida continua ganhando (S-12): ela tem as guardas dela."""
+        """A guarda da S-143 (`checker_contrast_floor`) é só do caminho de contorno (S-12).
+
+        A imagem embutida tem a guarda **dela** -- `RecallOptions.embedded_floor`, OCR_UI
+        ciclo 2 passo A1 --, que é um interruptor separado: desligado, a fotografia declarada
+        pelo PDF continua entrando por mais que o piso de contorno esteja ligado; ligado (o
+        padrão), ela sai por contraste de casa zero, e não pela guarda da S-143.
+        """
+        from chess_diagram_ocr.config import RecallOptions
+
         rect = fitz.Rect(120, 160, 420, 460)
         doc = self._pagina_com(photo_like(400), rect)
         try:
             page = doc[0]
-            embutidos = [c for c in detect_diagrams(page, render(page)) if c.source == "embedded"]
+            pagina = render(page)
+            sem_piso = RecallOptions(embedded_floor=None)
+            embutidos = [c for c in detect_diagrams(page, pagina, recall=sem_piso) if c.source == "embedded"]
             self.assertTrue(embutidos, "a guarda da S-143 é só do caminho de contorno")
+            crus = [c for c in detect_diagrams(page, pagina, recall=None) if c.source == "embedded"]
+            self.assertTrue(crus, "o detector cru é o de antes do passo A1")
+            com_piso = [c for c in detect_diagrams(page, pagina) if c.source == "embedded"]
+            self.assertEqual(com_piso, [], "a foto embutida tem contraste de casa zero e o piso do embutido a recusa")
         finally:
             doc.close()
 

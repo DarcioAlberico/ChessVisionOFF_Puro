@@ -145,7 +145,7 @@ class Exportador(QObject):
                 cancel=self.cancelar,
             )
         self.controles.emit(False)
-        self.estado.emit("Iniciando exportação do PDF para PGN...")
+        self.estado.emit("Iniciando exportação do PDF para PGN…")
         threading.Thread(
             target=self._trabalho,
             args=(pdf_path, destino, self._configuracao(), retomar, self._cancelar),
@@ -157,7 +157,7 @@ class Exportador(QObject):
         if self._cancelar is None:
             return
         self._cancelar.set()
-        self.estado.emit("Cancelando exportação... o progresso da página atual será preservado.")
+        self.estado.emit("Cancelando exportação… o progresso da página atual será preservado.")
 
     def _trabalho(
         self,
@@ -175,7 +175,7 @@ class Exportador(QObject):
             if self._busy_token is not None:
                 self._busy_token.update(f"página {pagina + 1} de {total}", feito=pagina + 1, total=total)
             self.estado.emit(
-                f"Exportando PDF -> PGN... página {pagina + 1}/{total} | "
+                f"Exportando PDF -> PGN… página {pagina + 1}/{total} | "
                 f"diagramas na página: {na_pagina} | total: {posicoes}"
             )
 

@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from . import tokens
 from .busy import BusyOperation
@@ -127,6 +128,54 @@ def expira_em_ms(severidade: str) -> int | None:
     return EXPIRACAO_MS[severidade]
 
 
+TETO_DE_MENSAGENS = 50
+"""Quantas mensagens o rodapé lembra depois de elas saírem da tela (OCR_UI ciclo 2, passo A10).
+
+Informação expira em 20 s e aviso em 40 s, e até aqui o que expirava sumia: quem estava olhando
+a página do livro no segundo em que "3 de 9 diagramas salvos" passou não tinha como lê-la
+depois. Cinquenta é mais que uma sessão de correção produz entre duas olhadas e é uma lista que
+ainda se lê inteira."""
+
+
+@dataclass(frozen=True)
+class Mensagem:
+    """Uma frase que passou pelo rodapé: quando, com que severidade e o texto."""
+
+    quando: str
+    """Hora local `HH:MM:SS` -- o que se lê numa lista; a data não muda dentro da sessão."""
+    severidade: str
+    texto: str
+
+    def linha(self) -> str:
+        """Como a lista a desenha: hora, severidade em minúsculas quando não é informação, texto."""
+        marca = "" if self.severidade == INFORMACAO else f" [{self.severidade.casefold()}]"
+        return f"{self.quando}{marca}  {self.texto}"
+
+
+class Mensagens:
+    """As últimas `teto` mensagens, da mais antiga para a mais recente. Pura; sem relógio."""
+
+    def __init__(self, teto: int = TETO_DE_MENSAGENS) -> None:
+        self._teto = max(1, int(teto))
+        self._itens: list[Mensagem] = []
+
+    def registrar(self, texto: str, severidade: str, *, quando: str) -> Mensagem | None:
+        """Guarda a frase. A vazia -- o rodapé limpo -- não é mensagem e não entra."""
+        frase = str(texto).strip()
+        if not frase:
+            return None
+        item = Mensagem(quando=str(quando), severidade=severidade, texto=frase)
+        self._itens.append(item)
+        del self._itens[: -self._teto]
+        return item
+
+    def todas(self) -> tuple[Mensagem, ...]:
+        return tuple(self._itens)
+
+    def __len__(self) -> int:
+        return len(self._itens)
+
+
 def com_origem(texto: str, origem: str = "") -> str:
     """A mensagem com o painel que a escreveu à frente, quando há um.
 
@@ -140,6 +189,24 @@ def com_origem(texto: str, origem: str = "") -> str:
 
 
 # ------------------------------------------------------- o estado do documento (zona 2)
+
+
+def contagem_das_caixas(caixas: Sequence[Any]) -> dict[str, Any]:
+    """`{total, salvos, confirmados, todos_salvos}` das caixas desenhadas na página. Pura.
+
+    Estava escrita dentro de `qt/janela._dizer_o_que_ha_na_pagina`, em quatro somas seguidas, e é
+    decisão de contagem e não de toolkit -- a mesma fronteira que trouxe `descricao_dos_diagramas`
+    para cá (F9-C16). `todos_salvos` só é verdadeiro com pelo menos uma caixa: uma página sem
+    diagrama não está "concluída", e `all(())` diria que sim.
+    """
+    total = len(caixas)
+    salvos = sum(1 for caixa in caixas if caixa.saved)
+    return {
+        "total": total,
+        "salvos": salvos,
+        "confirmados": sum(1 for caixa in caixas if caixa.confirmed),
+        "todos_salvos": bool(total) and salvos == total,
+    }
 
 
 def descricao_dos_diagramas(
@@ -324,6 +391,28 @@ class Ocupacao:
     fracao: float | None
     texto: str
     cancelavel: bool
+
+    @property
+    def mostra_barra(self) -> bool:
+        """A barra de progresso tem alguma coisa a dizer? (F9-C3)
+
+        **O defeito que isto fecha, com o número.** A barra era construída
+        `visivel=True, faixa 0..100, valor=0, texto escondido` e **nunca** se escondia -- não havia
+        `setVisible` nenhum em `qt/rodape.py`. Nas 36 capturas do ciclo 2 ela é um retângulo
+        arredondado vazio de 120×26 no canto inferior direito, com borda de 1 px e raio de 4:
+        **desenhado exatamente como um campo de texto vazio**, ao lado de um `Cancelar`
+        desabilitado. Uma barra parada em zero afirma "esta operação não andou"; a verdade era
+        "não há operação".
+
+        O argumento antigo -- *"a altura é fixa porque nada aparece nem desaparece"* -- continua
+        valendo para o **botão**, que é quem sustenta a altura da linha, e deixa de valer para a
+        barra: com ela escondida a linha do rodapé mede o mesmo, e é isso que o teste de
+        `qt/rodape` afirma.
+
+        Mora aqui, e não no widget, pelo motivo do cabeçalho: as duas janelas do mesmo produto não
+        podem discordar sobre quando o rodapé mostra progresso.
+        """
+        return self.modo != PARADO
 
 
 def ocupacao(operacoes: Sequence[BusyOperation]) -> Ocupacao:

@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 
 import cv2
 import fitz
@@ -47,7 +48,7 @@ from ..board_detection import (
     board_checker_score,
     detect_boards,
 )
-from ..config import BOARD_SIZE, DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, ReadingOrder
+from ..config import BOARD_SIZE, DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, DEFAULT_RECALL, ReadingOrder, RecallOptions, recall_em_vigor
 from ..pdf_io import PdfSource
 from .embedded import DiagramCandidate, _pixels_for_bbox, candidates_from_embedded_images
 
@@ -588,6 +589,7 @@ def detect_diagrams(
     checker_contrast_floor: float | None = MIN_CHECKER_CONTRAST,
     band_board_fill: float | None = BAND_BOARD_FILL,
     rejected: list[RejectedQuad] | None = None,
+    recall: RecallOptions | None = DEFAULT_RECALL,
 ) -> list[DiagramCandidate]:
     """Todos os diagramas da página, das duas fontes, sem duplicar e em ordem de leitura.
 
@@ -625,12 +627,24 @@ def detect_diagrams(
     daqui: prior de tamanho (S-79), disputa perdida com uma união de ladrilhos (S-81), faixa
     de página (S-176) e o corte final por `max_boards`. É o instrumento da S-131, e as guardas
     deste laço só deixavam rastro em `logger.info`, que ninguém agrega.
+
+    `recall` são as recuperações de recall do OCR_UI ciclo 2 (passo A1): as duas de contorno
+    viajam para `detect_boards`, e o piso de contraste da imagem embutida
+    (`RecallOptions.embedded_floor`) roda aqui, sobre `candidates_from_embedded_images`, pelo
+    mesmo motivo que a S-160 moveu o piso da S-143 para dentro do `detect_boards`: a guarda que
+    julga **o que a coisa é** vem antes da guarda que julga **com quem ela compete** -- uma
+    fotografia que sobrevive até a disputa vence por tamanho e suprime por IoU o diagrama de
+    verdade da mesma página. Não contradiz a S-12: o PDF declarou uma *imagem* ali, e nunca
+    declarou que ela é um diagrama (o argumento da S-176). `None` é o detector cru.
     """
     scale_x = page_rgb.shape[1] / page.rect.width if page.rect.width else 1.0
     scale_y = page_rgb.shape[0] / page.rect.height if page.rect.height else 1.0
     scale = (scale_x + scale_y) / 2.0
 
     embedded = candidates_from_embedded_images(page)
+    recall = recall_em_vigor(recall)
+    if recall is not None and recall.embedded_floor is not None:
+        embedded = [c for c in embedded if board_checker_contrast(c.board_rgb) > recall.embedded_floor]
     if refine_embedded or band_board_fill is not None:
         # Uma passada de contorno por candidato, dois consumidores dela (S-176): a guarda de
         # faixa pergunta *o que a imagem e* e o refino pergunta *onde a grade esta*. Medir duas
@@ -713,6 +727,7 @@ def detect_diagrams(
         reading_order=reading_order,
         rejected=rejected,
         checker_floor=checker_contrast_floor,
+        recall=recall,
     ):
         box = _caixa_do_quad(quad)
 
@@ -833,6 +848,30 @@ def detect_diagrams_in_pdf_page(
             max_boards=max_boards,
             reading_order=reading_order,
         )
+
+
+def detect_diagrams_rendering_page(
+    pdf_path: Path,
+    page_index: int,
+    *,
+    dpi: int,
+    max_boards: int = DEFAULT_MAX_BOARDS,
+    reading_order: ReadingOrder = DEFAULT_READING_ORDER,
+) -> list[DiagramCandidate]:
+    """`detect_diagrams_in_pdf_page` rasterizando a página aqui mesmo, a partir do caminho.
+
+    Existe para o **processo de trabalho** da janela (OCR_UI passo 15): a detecção de fundo é
+    Python, numpy e OpenCV sobre a página inteira, e numa thread ela divide o GIL com a janela
+    por um segundo a cada virada. Mandar a página já rasterizada para o filho custaria 26 MB de
+    `pickle`; mandar o caminho e o índice custa nada, e o filho a rasteriza de novo em ~50 ms.
+    Argumentos simples e função de módulo, porque atravessam por `pickle`.
+    """
+    from ..pdf_io import render_pdf_page
+
+    page_rgb = render_pdf_page(pdf_path, page_index, dpi=dpi)
+    return detect_diagrams_in_pdf_page(
+        pdf_path, page_index, page_rgb, max_boards=max_boards, reading_order=reading_order
+    )
 
 
 def _order_candidates(

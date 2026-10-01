@@ -35,19 +35,30 @@ mesma razão de `ui/tokens.py` não importar `tkinter`. O que precisa de aplica�
 from __future__ import annotations
 
 import logging
+import tempfile
 from collections.abc import Callable
+from pathlib import Path
 from typing import TypeVar
 
 from PyQt6.QtGui import QFont, QFontDatabase
 from PyQt6.QtWidgets import QApplication, QWidget
 
-from chess_diagram_ocr.ui import espaco, estilos, folha, pele, tipografia, tokens
+from chess_diagram_ocr.ui import espaco, estilos, icones, pele, tipografia, tokens
+from chess_diagram_ocr.ui import folha_de_estilo as folha_de_estilo_pura
 
 logger = logging.getLogger(__name__)
 
 _Pintavel = TypeVar("_Pintavel", bound=QWidget)
 """Devolver o **mesmo** tipo é o que preserva `rotulo.setText(...)` no ponto de chamada -- a
 mesma razão de `theme.pintar` ser genérica."""
+
+# A folha, o recheio e o papel do botão **mudaram de casa** e continuam sendo lidos daqui (F9).
+# Eles são decisão de cor e de espaço, não desenho, e por isso moram em `ui/folha_de_estilo.py`
+# -- onde um teste consegue afirmá-los sem binding de Qt instalado, que é o que faz o portão de
+# contraste do §11.3 rodar no venv da suíte. O reexporte é para que os quinze pontos de chamada
+# e os testes já escritos não precisem saber que a fronteira se moveu. `folha_de_estilo` e
+# `RECHEIO_DO_TEMA` são definidos adiante: a folha pura mais as regras da barra em fila.
+RECHEIO_DA_FOLHA = folha_de_estilo_pura.RECHEIO_DA_FOLHA
 
 __all__ = [
     "CONTROLES_COM_ANEL_DE_FOCO",
@@ -57,10 +68,14 @@ __all__ = [
     "LADO_DO_INDICADOR",
     "MARCA_DO_MENU",
     "PROPRIEDADE_DE_PAPEL",
+    "RECHEIO_DA_FOLHA",
     "RECHEIO_DO_TEMA",
     "altura_de_linha_atual",
+    "altura_do_titulo_atual",
+    "alto_contraste_em_vigor",
     "anel_de_foco",
     "ao_repintar",
+    "aplicar_paleta",
     "aplicar_papel",
     "aplicar_tema",
     "cor_atual",
@@ -68,13 +83,17 @@ __all__ = [
     "folha_de_estilo",
     "fonte_atual",
     "fonte_base",
+    "fonte_pintada",
+    "gravar_marcas",
     "lado_do_indicador",
+    "pasta_das_marcas",
     "pintar",
     "ponto_do_radio",
     "repintar",
 ]
 
 _cromo_escuro = False
+_alto_contraste = False
 """Se a pele em uso declara cromo escuro. Módulo e não parâmetro pela razão de `ui/theme.py`:
 `cor_atual` é chamada de quinze lugares que não conhecem pele nenhuma -- e não deviam conhecer."""
 
@@ -151,6 +170,30 @@ def pintar(widget: _Pintavel, propriedade: str, papel: str) -> _Pintavel:
     return widget
 
 
+def pintar_varios(widget: _Pintavel, **propriedades: str) -> _Pintavel:
+    """`pintar` para mais de uma propriedade de uma vez: `pintar_varios(w, color=X, border=Y)`.
+
+    Existe porque `pintar` **substitui** a folha do widget (ver lá): dois `pintar` seguidos no
+    mesmo widget deixam só o segundo. Quem precisa de fundo **e** contorno -- o recorte da
+    Galeria, desde o passo 16 da OCR_UI -- declara os dois numa chamada. O valor de cada
+    propriedade é um papel de `tokens`; `border` e `outline` ganham `1px solid` na frente.
+    """
+
+    def aplicar() -> None:
+        regras = []
+        for propriedade, papel in propriedades.items():
+            nome = propriedade.replace("_", "-")
+            valor = cor_atual(papel)
+            if nome in ("border", "outline"):
+                valor = f"1px solid {valor}"
+            regras.append(f"{nome}: {valor};")
+        widget.setStyleSheet(" ".join(regras))
+
+    aplicar()
+    ao_repintar(aplicar)
+    return widget
+
+
 # ----------------------------------------------------------------------------- a tipografia
 
 FAMILIA_DE_RESERVA = ("Segoe UI", "Consolas")
@@ -200,7 +243,25 @@ def fonte_atual(papel: str, *, negrito: bool = False) -> QFont:
         papel, base=base, familia=proporcional, mono=monoespacada, negrito=negrito
     )
     fonte = QFont(especificacao[0], especificacao[1])
-    fonte.setBold(len(especificacao) > 2)
+    # **Os dois eixos da escala, e não só o tamanho** (F9-C3). `tipografia.fonte` devolve a
+    # especificação do Tk, que só sabe dizer `"bold"`; o peso de verdade -- 700 no título, 600 no
+    # texto que se aperta, 400 no resto -- está em `tipografia.PESOS`, e é aqui que ele entra.
+    # `negrito=True` continua ganhando, porque ele é do chamador: a linha escolhida numa lista
+    # precisa de peso sem mudar de nível hierárquico.
+    fonte.setWeight(QFont.Weight(700 if negrito else tipografia.peso(papel)))
+    return fonte
+
+
+def tabular(fonte: QFont) -> QFont:
+    """A mesma fonte com algarismos de largura única (`tnum`). Ver `tipografia.PROPRIEDADE_TABULAR`.
+
+    Tolerante: um Qt sem `setFeature` (anterior ao 6.7) devolve a fonte como veio, e o contador
+    continua legível -- só dança. Aparência não derruba ferramenta.
+    """
+    try:
+        fonte.setFeature(QFont.Tag("tnum"), 1)
+    except (AttributeError, TypeError):  # pragma: no cover - Qt antigo
+        pass
     return fonte
 
 
@@ -222,21 +283,70 @@ def altura_de_linha_atual(densidade: str = pele.CONFORTAVEL) -> int:
     return tipografia.altura_de_linha(linha, densidade=densidade)
 
 
+def fonte_pintada(seletor: str) -> QFont:
+    """A `QFont` com que aquele subcontrole é **desenhado**. Levanta para seletor que a folha não
+    pinta.
+
+    **É a pergunta que faltava nesta frente, e a falta dela custou o ciclo 13.** `QWidget.font()`
+    responde o que a varredura de `qt/escala.py` pôs no objeto; a folha declara outra coisa no
+    `QSS` de subcontrole. Toda régua e todo cálculo de reserva desta janela perguntava uma e media
+    a outra -- 9 pt contra 12 pt, peso 400 contra 700 -- e o resultado eram títulos com a metade
+    de baixo apagada e cabeçalhos escritos `Resultad·`.
+
+    **Qual das duas ganha depende do seletor, e está medido em `folha_de_estilo.QUEM_PINTA`**
+    (F9-C16): a folha ganha em `QHeaderView::section`, `QTabBar::tab:selected` e
+    `QLabel[apoio="true"]`, e **perde** em `QGroupBox::title`, onde o Qt desenha com a fonte do
+    widget. Esta função responde certo nos dois porque `folha_de_estilo.PAPEL_PINTADO` tira o
+    degrau do título de `tipografia.PAPEL_POR_CLASSE["QGroupBox"]` -- que é o mesmo degrau que
+    `qt/escala.aplicar_escala` põe no widget. Por construção, e não por as duas tabelas dizerem
+    `TITULO` uma ao lado da outra.
+
+    Levanta `KeyError` para seletor fora de `folha_de_estilo.PAPEL_PINTADO`, e é a disciplina de
+    `tokens.cor` e de `tipografia.fonte`: um seletor escrito errado que caísse no corpo devolveria
+    uma largura plausível e sem significado, que é exatamente o modo de falhar deste ciclo.
+    """
+    papel = folha_de_estilo_pura.PAPEL_PINTADO.get(seletor)
+    if papel is None:
+        raise KeyError(
+            f"a folha não pinta {seletor!r}. Os que ela pinta estão em "
+            f"folha_de_estilo.PAPEL_PINTADO: {sorted(folha_de_estilo_pura.PAPEL_PINTADO)}."
+        )
+    return fonte_atual(papel)
+
+
+def altura_do_titulo_atual() -> int:
+    """A altura em pixel da fonte com que a folha **pinta** `QGroupBox::title`. Nunca levanta.
+
+    **É a metade desta camada do bloqueante do ciclo 13.** A folha declara
+    `QGroupBox::title { font-size: 12pt; font-weight: bold }` e reserva a faixa em que ele cabe
+    com `margin-top`; enquanto a reserva saía de `espaco.linha()` -- 4 px na compacta -- o
+    primeiro filho do grupo subia para dentro do título e apagava a metade de baixo de cada
+    letra. Quem sabe quanto o desenho mede é `QFontMetrics` da fonte que o desenha, e é o que
+    esta função pergunta.
+
+    **Ela existe aqui e não em `ui/folha_de_estilo.py` pela fronteira de sempre**: a folha é pura
+    e roda no venv sem binding de Qt. Sem aplicação -- ou com fonte exótica --, a reserva é a
+    conta pura de `tipografia.altura_do_texto`, que é **por cima** de propósito: reservar de mais
+    é ar, reservar de menos é letra apagada.
+    """
+    base = fonte_base()[0]
+    papel = folha_de_estilo_pura.PAPEL_PINTADO["QGroupBox::title"]
+    reserva = tipografia.altura_do_texto(tipografia.escala(base)[papel])
+    try:
+        from PyQt6.QtGui import QFontMetrics
+
+        if QApplication.instance() is None:
+            return reserva
+        return int(QFontMetrics(fonte_pintada("QGroupBox::title")).height()) or reserva
+    except Exception as exc:  # noqa: BLE001 - sem aplicação ou fonte exótica: a reserva serve
+        logger.debug("Altura do título não medida (%s): reservando %s px.", exc, reserva)
+        return reserva
+
+
 # ------------------------------------------------------------------------- o papel do botão
 
-PROPRIEDADE_DE_PAPEL = "papel"
-"""A propriedade dinâmica que carrega o papel de `ui/estilos.py` até a folha de estilo.
-
-**É o `style="primary.TButton"` do Qt, e a tradução é obrigatória.** Lá o papel vira nome de
-estilo `ttk`; aqui vira propriedade que o seletor `QPushButton[papel="PRIMARIO"]` lê. O que
-**não** muda é quem decide o papel: `ui/estilos.py` continua sendo a única fonte, e
-`estilos.conferir_barra` -- que é pura -- continua cobrando uma ênfase por barra nos dois
-frontends.
-
-O valor é o próprio nome do papel (`"PRIMARIO"`, `"DESTRUTIVO"`) e não um segundo vocabulário:
-uma segunda tabela de nomes seria a divergência que `estilos.estilo_de_botao` existe para não
-deixar acontecer.
-"""
+PROPRIEDADE_DE_PAPEL = folha_de_estilo_pura.PROPRIEDADE_DE_PAPEL
+"""Reexportado de `ui/folha_de_estilo.py`, onde a decisão mora. Aqui fica quem a **aplica**."""
 
 
 def aplicar_papel(botao: QWidget, papel: str) -> QWidget:
@@ -262,6 +372,15 @@ def aplicar_papel(botao: QWidget, papel: str) -> QWidget:
 
 
 # ------------------------------------------------------------------------ a folha de estilo
+#
+# **A folha em vigor é a de `ui/folha_de_estilo.py` (F9)**, e as declarações abaixo são as da
+# barra em fila e do indicador (S-520/S-522/S-527/S-553), que nasceram nesta casa quando a folha
+# ainda morava aqui. Entram na folha, por `_regras_da_barra_em_fila`, só as que a folha pura não
+# tem: o recheio do botão só-ícone, o indicador de menu do "Mais", o traço entre os grupos da fila,
+# o papel no `QToolButton`, o marcado do botão comum e o anel de foco no indicador da caixa e do
+# rádio. As que dizem o mesmo que a folha pura com outro desenho -- `RELEVO_DO_BOTAO`,
+# `CONTROLES_COM_MOLDURA`, `CONTROLES_COM_ANEL_DE_FOCO`, `INDICADOR_DA_MARCA` e `MARCA_DO_MENU` --
+# ficam declaradas e **não** entram: a face, a moldura, o anel e o indicador que valem são os do F9.
 
 PROPRIEDADE_DE_NIVEL = "nivel"
 """A propriedade do `QToolButton` que diz se ele desenha só o ícone (`NIVEL_ICONE`) ou ícone e texto
@@ -276,33 +395,15 @@ NIVEL_TEXTO = "texto"
 SELETOR_DO_NIVEL_ICONE = f'QToolButton[{PROPRIEDADE_DE_NIVEL}="{NIVEL_ICONE}"]'
 
 RECHEIO_DO_TEMA: dict[str, tuple[int, int]] = {
-    "QPushButton": (10, 4),
-    "QToolButton": (10, 4),
+    **folha_de_estilo_pura.RECHEIO_DO_TEMA,
     # O botão só com ícone: quatro pixels de recheio horizontal (o mesmo vertical -- a fila tem uma
     # altura). Medido em 2026-09-04: com 10 cabiam 8 botões a 702 px; com 5, 10; com 4, as catorze
     # principais cabem na aba de 804 px que a janela de 1920×1080 abre.
     SELETOR_DO_NIVEL_ICONE: (4, 4),
-    "QLineEdit": (5, 5),
-    "QComboBox": (5, 4),
 }
-"""`seletor -> (horizontal, vertical)` em pixel na base 9, do que o **`ttkbootstrap` dava e o Qt
-não dá**.
-
-Os números não são novos: são a medição que está escrita em `ui/folha.py`, feita sob
-`bootstrap-light` e `bootstrap-dark`, e o docstring de lá explica por que a folha do Tk **não**
-os escreve -- naquele frontend o tema já os deu, e sobrescrevê-los foi medido e piorou (o botão
-de fita encolheu de 58 para 50 px).
-
-Aqui a conta inverte. Não há `ttkbootstrap`, então ninguém deu: um `QPushButton` sem folha sai
-com o recheio de fábrica do estilo da plataforma, que no `Fusion` é outro número e no `offscreen`
-da CI é outro ainda. **Herdar os quatro valores medidos é o que faz os dois frontends
-desenharem o mesmo botão** -- e é por isso que eles ficam aqui em vez de virar um quinto papel
-em `ui/tipografia.py`: eles não são uma escala nova, são o que o outro tema já entregava.
-
-`_escalado` os faz acompanhar a fonte do sistema e a densidade, que é o que `ui/folha.py`
-ganhou ao derivar tudo de `tipografia.FOLGAS` -- um pixel cravado aqui ignoraria quem aumentou a
-fonte do Windows, que é o defeito de DPI da S-148 num lugar menor.
-"""
+"""`seletor -> (horizontal, vertical)` em pixel na base 9: os quatro de `ui/folha_de_estilo.py` --
+o que o `ttkbootstrap` dava e o Qt não dá, com a medição escrita lá -- mais o do botão só-ícone da
+barra em fila (S-527), que é a única entrada que a folha pura ainda não declara."""
 
 RELEVO_DO_BOTAO = 0.06
 """Quanto do texto entra na face do botão neutro, de 0 a 1 (S-520).
@@ -468,36 +569,83 @@ def anel_de_foco(*, cromo_escuro: bool = False, sobre_enfase: bool = False) -> s
 ID_DO_SEPARADOR = "separador-da-fila"
 """`objectName` do traço entre grupos da fila, que a folha pinta com a moldura do cromo (S-522)."""
 
-RECHEIO_DA_FOLHA: dict[str, str] = {
-    "QTabBar::tab": "TNotebook.Tab",
-    "QCheckBox": "TCheckbutton",
-    "QRadioButton": "TRadiobutton",
-    "QSpinBox": "TSpinbox",
-    "QDoubleSpinBox": "TSpinbox",
-    "QGroupBox": "TLabelframe",
-}
-"""`seletor Qt -> classe de `ui/folha.py``, para o recheio sair da mesma tabela nos dois frontends.
 
-**Nenhum número aqui, e é o item.** A folga da aba, a da caixa de seleção e a do grupo são
-decisões que já passaram por revisão na S-441 -- e `folha.recheio` é pura, então este módulo
-pergunta a ela em vez de repetir a resposta. Um dia em que a folga da aba mude, ela muda para as
-duas janelas.
+def _regras_da_barra_em_fila(
+    *, cromo_escuro: bool, base: int, densidade: str
+) -> tuple[list[str], list[str]]:
+    """As regras que a folha pura não tem, como `(antes, depois)` dela. **Pura.**
 
-`QDoubleSpinBox` mapeia para a mesma classe do `QSpinBox` porque no Tk os dois são `TSpinbox`:
-dois campos de número lado a lado com recheio diferente é a inconsistência que aquela folha
-existe para não deixar acontecer.
-"""
+    **Antes** vai o que tem seletor próprio: o empate de especificidade com um estado da folha pura
+    (`QToolButton:checked`, `:disabled`, `:hover`) tem de ser desfeito a favor do estado, que vem
+    depois -- é a mesma ordem em que a S-527 as escreveu. **Depois** vai o que tem de ganhar de
+    uma regra da folha pura com o mesmo peso: o marcado do botão comum ganha do `:hover`, e o anel
+    no indicador ganha da moldura dele.
 
-
-def _escalado(pixel: int, *, base: int, densidade: str) -> int:
-    """Um pixel medido na base de referência, reescrito para esta fonte e esta densidade.
-
-    É a conta de `tipografia.folga` sem a tabela de papéis: os quatro valores de
-    `RECHEIO_DO_TEMA` não são papéis da escala, são o que o outro tema entregava. O piso de 1 é
-    o mesmo e vale pela mesma razão -- dois vizinhos colados viram um controle só para o olho.
+    **O papel no `QToolButton` fala a gramática da folha pura** (`QPushButton[papel=...]` em
+    `ui/folha_de_estilo.py`): o realce anda para longe da letra, o pressionado escurece e o
+    desabilitado apaga para `TEXTO_MORTO` -- a mesma tinta de `qt/icones.PAPEL_APAGADO`, para o
+    ícone e o rótulo do botão apagarem juntos (S-554). O destrutivo ganha a **cor**, e não a face:
+    dois blocos vermelhos sólidos numa fila de botões chatos pediriam cuidado o tempo todo (S-527).
     """
-    proporcional = pixel * base / tipografia.BASE_DE_REFERENCIA
-    return max(1, round(proporcional * tipografia.FATOR_DE_FOLGA[densidade]))
+
+    def cor(papel: str) -> str:
+        return tokens.cor(papel, None, cromo_escuro=cromo_escuro)
+
+    def escalado(pixel: int) -> int:
+        return folha_de_estilo_pura._escalado(pixel, base=base, densidade=densidade)
+
+    superficie = cor(tokens.SUPERFICIE_PADRAO)
+    morto = cor(tokens.TEXTO_MORTO)
+    separador = cor(tokens.SEPARADOR)
+    letra = cor(tokens.TEXTO_SOBRE_ENFASE)
+    horizontal, vertical = RECHEIO_DO_TEMA[SELETOR_DO_NIVEL_ICONE]
+
+    # Os dois papéis com face, **nomeados uma vez**: a guarda de `test_ui_estilos` conta por `ast`
+    # quantas vezes um arquivo cita o papel primário.
+    (papel_primario, token_primario), (papel_destrutivo, token_destrutivo) = (
+        (estilos.PRIMARIO, tokens.BOTAO_PRIMARIO),
+        (estilos.DESTRUTIVO, tokens.BOTAO_DESTRUTIVO),
+    )
+    face = cor(token_primario)
+    sob_o_ponteiro = tokens.afastar(face, letra, tokens.REALCE_DE_ENFASE)
+    pressionado = tokens.escurecer(face, folha_de_estilo_pura.ESCURECIMENTO_DO_PRESSIONADO)
+    letra_pressionada = folha_de_estilo_pura.letra_do_pressionado(pressionado, letra)
+    ferramenta_primaria = f'QToolButton[{PROPRIEDADE_DE_PAPEL}="{papel_primario}"]'
+    anel = anel_de_foco(cromo_escuro=cromo_escuro)
+
+    antes = [
+        f"{SELETOR_DO_NIVEL_ICONE} {{ padding: {escalado(vertical)}px {escalado(horizontal)}px; }}",
+        # O indicador de menu **na linha do texto**, e não no canto de baixo: é o chevron do
+        # "Mais ▾", que o crítico da S-527 mediu solto ~8 px abaixo da base da letra. O botão com
+        # menu instantâneo (`popupMode` 2) reserva o recheio à direita para ele.
+        "QToolButton::menu-indicator { subcontrol-origin: padding; subcontrol-position: center right; }",
+        f'QToolButton[popupMode="2"] {{ padding-right: {escalado(16)}px; }}',
+        # O separador da fila é um `QWidget` de 1 px pintado aqui, e não um `QFrame.VLine`: o
+        # `VLine` desenha com a cor de **texto** da paleta, e não com a da folha (S-522).
+        f"QWidget#{ID_DO_SEPARADOR} {{ background-color: {tokens.moldura_sobre(superficie)}; }}",
+        f"{ferramenta_primaria} {{ background-color: {face}; color: {letra}; border: 1px solid {face}; }}",
+        f"{ferramenta_primaria}:hover {{ background-color: {sob_o_ponteiro}; border: 1px solid {sob_o_ponteiro}; }}",
+        f"{ferramenta_primaria}:pressed {{ background-color: {pressionado}; color: {letra_pressionada};"
+        f" border: 1px solid {pressionado}; }}",
+        f"{ferramenta_primaria}:disabled {{ background-color: {superficie}; color: {morto};"
+        f" border: 1px solid {separador}; }}",
+        f"{ferramenta_primaria}:focus {{ border: 2px solid {letra}; }}",
+        f'QToolButton[{PROPRIEDADE_DE_PAPEL}="{papel_destrutivo}"] {{ color: {cor(token_destrutivo)}; }}',
+    ]
+    depois = [
+        # **O botão comum marcado se vê** (S-520): o marcado do `QPushButton` não tinha regra, e um
+        # modo ligado num botão marcável desenhava igual ao desligado. A tinta é a do
+        # `QToolButton:checked` da folha pura -- uma gramática de "ligado" para os dois botões.
+        f"QPushButton:checked {{ background-color: {cor(tokens.SELECAO)}; color: {cor(tokens.TEXTO_SOBRE_SELECAO)};"
+        f" border: 1px solid {cor(tokens.FOCO)}; }}",
+        # **O anel de foco da caixa e do rádio vai no indicador** (S-553, segunda rodada): no
+        # widget ele cercaria o rótulo inteiro. É a moldura de 2 px do indicador da folha pura
+        # trocando de cor -- nenhum pixel a mais --, na tinta de `anel_de_foco`, que se lê sobre o
+        # campo e sobre a face de ênfase do marcado, onde o azul de foco sumiria.
+        f"QCheckBox::indicator:focus, QRadioButton::indicator:focus {{ border: 2px solid {anel}; }}",
+        f"QCheckBox::indicator:checked:focus, QRadioButton::indicator:checked:focus {{ border: 2px solid {anel}; }}",
+    ]
+    return antes, depois
 
 
 def folha_de_estilo(
@@ -505,266 +653,71 @@ def folha_de_estilo(
     cromo_escuro: bool = False,
     base: int = tipografia.BASE_DE_REFERENCIA,
     densidade: str = pele.CONFORTAVEL,
+    marcas: dict[str, str] | None = None,
+    altura_do_titulo: int | None = None,
 ) -> str:
-    """A folha de estilo inteira, como texto. **Pura: não toca `QApplication` nem widget.**
+    """A folha de estilo inteira, como texto: a de `ui/folha_de_estilo.py` e a da barra em fila.
 
-    É o que permite afirmar a paleta e o espaço das três peles e das duas densidades numa
-    máquina sem tela -- a mesma razão de `ui/tokens.py` não importar `tkinter`, e o que faz o
-    teste desta folha rodar na CI sem servidor gráfico.
-
-    Levanta `KeyError` para densidade desconhecida, por `tipografia.folga`.
+    **Pura, como a de lá**: não toca `QApplication` nem widget, e levanta `KeyError` para densidade
+    desconhecida. `marcas` e `altura_do_titulo` vão direto para a folha pura -- ver lá. As regras
+    próprias desta casa e a ordem delas estão em `_regras_da_barra_em_fila`.
     """
-
-    def cor(papel: str) -> str:
-        return tokens.cor(papel, None, cromo_escuro=cromo_escuro)
-
-    def do_tema(seletor: str) -> str:
-        h, v = RECHEIO_DO_TEMA[seletor]
-        return f"{_escalado(v, base=base, densidade=densidade)}px {_escalado(h, base=base, densidade=densidade)}px"
-
-    def da_folha(seletor: str) -> str:
-        h, v = folha.recheio(RECHEIO_DA_FOLHA[seletor], base=base, densidade=densidade)
-        return f"{v}px {h}px"
-
-    superficie = cor(tokens.SUPERFICIE_PADRAO)
-    texto = cor(tokens.TEXTO_PADRAO)
-    secundario = cor(tokens.TEXTO_SECUNDARIO)
-    # **A moldura do cromo é derivada da superfície, e não o token de documento** (S-522). Até
-    # aqui era `cor(tokens.MOLDURA)` -- o anel do tabuleiro, preso na paleta medida pela S-224 --,
-    # e sobre o cromo escuro da pele "Foco" isso dava `#1f1d1b` sobre `#1f2124`: **1,04:1**, borda
-    # invisível no botão comum e no `QGroupBox`. Ver `tokens.moldura_sobre`.
-    moldura = tokens.moldura_sobre(superficie)
-    dica = cor(tokens.SUPERFICIE_DICA)
-    linha = tipografia.folga(tipografia.FOLGA_DE_LINHA, base=base, densidade=densidade)
-    minima = tipografia.folga(tipografia.FOLGA_MINIMA, base=base, densidade=densidade)
-    vao = folha.vao_do_indicador(base=base, densidade=densidade)
-
-    regras = [
-        # A superfície e a letra de base. Em Qt é preciso dizê-las: sem folha, o `QWidget` sai
-        # com a cor do estilo da plataforma, e sob a pele "Foco" isso daria cromo claro com
-        # rótulos pintados para fundo escuro -- meia dúzia de rótulos ilegíveis, que é
-        # exatamente o defeito que a S-224 mediu no outro frontend.
-        f"QWidget {{ background-color: {superficie}; color: {texto}; }}",
-        # As superfícies de **documento** não são cromo e não seguem a pele: a folha do livro e
-        # o tabuleiro ficam na paleta medida, e é `tokens.SUPERFICIES_DE_DOCUMENTO` que
-        # garante isso. Aqui elas só não são sobrescritas -- quem as pinta é o `QPainter` de
-        # `qt/visor.py` e de `qt/tabuleiro.py`, com `cor_atual`.
-        f"QToolTip {{ background-color: {dica}; color: {tokens.sobre_superficie(dica)};"
-        f" border: 1px solid {tokens.moldura_sobre(dica)}; padding: {linha}px; }}",
-        # **O botão comum desabilitado desenhava igual ao habilitado, e a medição é esta** (S-506):
-        # fotografei a barra do visualizador antes e durante a exportação e diferenciei as duas
-        # imagens -- a fileira com "OCR todos diagramas", "Exportar PDF → PGN" e "Cancelar
-        # exportação" saiu **pixel a pixel idêntica**, com três daqueles botões trocando de estado.
-        #
-        # A causa é a linha do `QWidget` acima: uma cor vinda de folha de estilo vale em todos os
-        # estados e anula o acinzentamento que o Qt faria pela paleta. `PRIMARIO` e `DESTRUTIVO`
-        # escapavam por terem `:disabled` próprio, logo abaixo; o comum não tinha nenhum -- e é o
-        # comum que o par exportar/cancelar usa para dizer qual dos dois está vivo.
-        #
-        # **A S-520 alargou o item, e o `:disabled` de uma linha virou os quatro estados.** O
-        # desabilitado era o único que a S-506 precisava para o par exportar/cancelar; o resto do
-        # botão comum continuava sendo o estilo da plataforma -- `windowsvista` na máquina de quem
-        # usa e `fusion` na CI --, dois desenhos para o mesmo botão e nenhum dos dois escolhido. É
-        # também o que fazia a fotografia da CI não poder ser comparada com a da máquina.
-        #
-        # A face é a mistura do painel com o texto, e não um papel novo: um botão que se separa do
-        # fundo por um degrau é o desenho que as três peles já sugerem, e um papel a mais seria a
-        # décima superfície de `tokens.py` para dizer "quase o fundo".
-        f"QPushButton {{ padding: {do_tema('QPushButton')};"
-        f" background-color: {tokens.mistura(superficie, texto, RELEVO_DO_BOTAO)};"
-        f" border: 1px solid {moldura}; border-radius: {minima}px; }}",
-        f"QPushButton:hover {{ background-color: {tokens.mistura(superficie, texto, 2 * RELEVO_DO_BOTAO)}; }}",
-        f"QPushButton:pressed, QPushButton:checked {{"
-        f" background-color: {tokens.mistura(superficie, texto, 4 * RELEVO_DO_BOTAO)};"
-        f" border: 1px solid {cor(tokens.TEXTO_SECUNDARIO)}; }}",
-        f"QPushButton:disabled {{ background-color: {superficie}; color: {secundario};"
-        f" border: 1px solid {moldura}; }}",
-        # **O botão de ferramenta é desenhado inteiro pela folha, e pela mesma razão do comum**
-        # (S-527): com só o recheio declarado, a face sob o ponteiro, a pressionada e a marcada
-        # eram do estilo da plataforma -- e no `windows11` o marcado desenhava **zero** pixels
-        # diferentes do desmarcado (medido pelo crítico: "Seguir OCR" ligado e desligado saíam
-        # idênticos). A moldura transparente está sempre lá para que ligar a cor de um estado não
-        # mova o conteúdo em um pixel; a face marcada é a do botão comum marcado, e a moldura dela
-        # é a cor de ênfase -- um interruptor ligado tem de ser lido de longe, e cinza sobre cinza
-        # não é lido.
-        f"QToolButton {{ padding: {do_tema('QToolButton')}; border: 1px solid transparent;"
-        f" border-radius: {minima}px; }}",
-        f"{SELETOR_DO_NIVEL_ICONE} {{ padding: {do_tema(SELETOR_DO_NIVEL_ICONE)}; }}",
-        f"QToolButton:hover {{ background-color: {tokens.mistura(superficie, texto, 2 * RELEVO_DO_BOTAO)}; }}",
-        f"QToolButton:pressed {{ background-color: {tokens.mistura(superficie, texto, 4 * RELEVO_DO_BOTAO)}; }}",
-        # O indicador de menu **na linha do texto**, e não no canto de baixo: é o chevron do
-        # "Mais ▾", que o crítico da S-527 mediu solto ~8 px abaixo da base da letra. O botão com
-        # menu instantâneo (`popupMode` 2) reserva o recheio à direita para ele.
-        "QToolButton::menu-indicator { subcontrol-origin: padding; subcontrol-position: center right; }",
-        f'QToolButton[popupMode="2"] {{ padding-right: {_escalado(16, base=base, densidade=densidade)}px; }}',
-        # O item desabilitado do menu cinza, pela razão de sempre: a cor de `QWidget` acima vale
-        # em todo estado e anulava o acinzentamento da paleta. É também o que pinta o **cabeçalho
-        # de grupo** do menu "Mais" (um item desabilitado em negrito, `qt/barra_da_sala.py`).
-        f"QMenu::item:disabled {{ color: {secundario}; }}",
-        f"QLineEdit {{ padding: {do_tema('QLineEdit')}; }}",
-        f"QComboBox {{ padding: {do_tema('QComboBox')}; }}",
-    ]
-
-    # A moldura que o estilo da plataforma não dá (S-522): ver `CONTROLES_COM_MOLDURA`. O raio
-    # vai só nos três controles de uma linha, que é onde ele já está no botão comum; lista e
-    # editor são retângulos de conteúdo, e um canto arredondado ali cortaria a primeira letra.
-    regras += [f"{seletor} {{ border: 1px solid {moldura}; }}" for seletor in CONTROLES_COM_MOLDURA]
-    regras += [
-        f"QComboBox, QLineEdit, QSpinBox {{ border-radius: {minima}px; }}",
-        # O separador da fila é um `QWidget` de 1 px pintado aqui, e não um `QFrame.VLine`: o
-        # `VLine` desenha com a cor de **texto** da paleta, e não com a da folha -- medido, 2 px
-        # em `#848688` na "Foco", mais claro que a borda das pílulas ao lado (S-522).
-        f"QWidget#{ID_DO_SEPARADOR} {{ background-color: {moldura}; }}",
-    ]
-
-    # O recheio que sai de `ui/folha.py`, um seletor por classe. Um `try` por classe seria
-    # teatro aqui: `folha.recheio` é pura e só levanta para classe fora da tabela, que é erro
-    # deste módulo e não do ambiente -- e o `KeyError` dela é justamente o que o expõe.
-    regras += [f"{seletor} {{ padding: {da_folha(seletor)}; }}" for seletor in RECHEIO_DA_FOLHA]
-
-    # O vão entre o indicador e o rótulo (S-442). Em Qt ele é `spacing` e não
-    # `indicatormargin`, e é a propriedade que o `QCheckBox` de fato lê.
-    regras += [f"QCheckBox {{ spacing: {vao}px; }}", f"QRadioButton {{ spacing: {vao}px; }}"]
-
-    # **E o indicador que essas duas linhas apagaram** (S-553, segunda rodada). Ver
-    # `INDICADOR_DA_MARCA` para o defeito fotografado e para por que a marca não é um glifo.
-    #
-    # A ordem dentro do bloco é a que desfaz os empates de QSS: repouso, ponteiro, desabilitado e
-    # foco têm um pseudo-estado cada, e o marcado também -- então o marcado vem depois deles, e os
-    # pares (`:checked:disabled`, `:checked:focus`) vêm por último, ganhando por especificidade.
-    # Um indicador marcado e focado tem de mostrar as duas coisas, e é a regra da S-553.
-    lado = lado_do_indicador(base)
-    enfase = cor(tokens.BOTAO_PRIMARIO)
-    anel = anel_de_foco(cromo_escuro=cromo_escuro)
-    for classe in INDICADOR_DA_MARCA:
-        # O rádio é redondo, e o raio conta a moldura de 1 px de cada lado; a caixa usa o mesmo
-        # canto do botão comum, que é o que faz as duas parecerem do mesmo desenho.
-        raio = (lado + 2) // 2 if classe == "QRadioButton" else minima
-        regras += [
-            f"{classe}::indicator {{ width: {lado}px; height: {lado}px;"
-            f" border: 1px solid {moldura}; border-radius: {raio}px;"
-            f" background-color: {superficie}; }}",
-            f"{classe}::indicator:hover {{ border: 1px solid {texto}; }}",
-            f"{classe}::indicator:disabled {{ border: 1px solid {moldura};"
-            f" background-color: {superficie}; }}",
-            f"{classe}::indicator:focus {{ border: 1px solid {anel}; }}",
-        ]
-    marcado = {
-        "QCheckBox": lambda tinta: f"background-color: {tinta}; border: 1px solid {tinta};",
-        "QRadioButton": lambda tinta: (
-            f"background-color: {ponto_do_radio(tinta, superficie)}; border: 1px solid {tinta};"
-        ),
-    }
-    for classe, desenho in marcado.items():
-        regras += [
-            f"{classe}::indicator:checked {{ {desenho(enfase)} }}",
-            f"{classe}::indicator:checked:hover"
-            f" {{ {desenho(tokens.mistura(enfase, cor(tokens.TEXTO_SOBRE_ENFASE), tokens.REALCE_DE_ENFASE))} }}",
-            f"{classe}::indicator:checked:disabled {{ {desenho(secundario)} }}",
-            f"{classe}::indicator:checked:focus {{ border: 1px solid {anel}; }}",
-        ]
-
-    # **E o item de menu marcável usa a mesma gramática** (S-553, terceira rodada). Ver
-    # `MARCA_DO_MENU`: o `✓` nativo era a segunda gramática de "marcado" na mesma janela.
-    regras += [
-        f"{MARCA_DO_MENU}::indicator {{ width: {lado}px; height: {lado}px;"
-        f" border: 1px solid {moldura}; border-radius: {minima}px;"
-        f" background-color: {superficie}; }}",
-        f"{MARCA_DO_MENU}::indicator:checked {{ {marcado['QCheckBox'](enfase)} }}",
-        f"{MARCA_DO_MENU}::indicator:disabled {{ border: 1px solid {moldura};"
-        f" background-color: {superficie}; }}",
-        f"{MARCA_DO_MENU}::indicator:checked:disabled {{ {marcado['QCheckBox'](secundario)} }}",
-    ]
-
-    # A ênfase da S-444. **Também aqui o tema não dá de graça, e pela razão oposta à do Tk:**
-    # lá o `ttkbootstrap` pintava os três papéis do mesmo `#f0f0f0` e a folha corrigia; aqui
-    # não existe papel nenhum até esta linha. O `[papel="..."]` é o seletor de propriedade
-    # dinâmica, que é o mecanismo do Qt para o que `style="primary.TButton"` faz lá.
-    letra = cor(tokens.TEXTO_SOBRE_ENFASE)
-    # Os dois papéis com face, **nomeados uma vez**: a guarda de `test_ui_estilos` conta por `ast`
-    # quantas vezes um arquivo cita o papel primário, e o `QToolButton` abaixo lê daqui.
-    faces = (
-        (estilos.PRIMARIO, tokens.BOTAO_PRIMARIO),
-        (estilos.DESTRUTIVO, tokens.BOTAO_DESTRUTIVO),
+    antes, depois = _regras_da_barra_em_fila(cromo_escuro=cromo_escuro, base=base, densidade=densidade)
+    pura = folha_de_estilo_pura.folha_de_estilo(
+        cromo_escuro=cromo_escuro,
+        base=base,
+        densidade=densidade,
+        marcas=marcas,
+        altura_do_titulo=altura_do_titulo,
     )
-    for papel, token in faces:
-        face = cor(token)
-        regras += [
-            f'QPushButton[{PROPRIEDADE_DE_PAPEL}="{papel}"]'
-            f" {{ background-color: {face}; color: {letra}; border: 1px solid {face}; }}",
-            f'QPushButton[{PROPRIEDADE_DE_PAPEL}="{papel}"]:hover'
-            f" {{ background-color: {tokens.mistura(face, letra, tokens.REALCE_DE_ENFASE)}; }}",
-            f'QPushButton[{PROPRIEDADE_DE_PAPEL}="{papel}"]:pressed'
-            f" {{ background-color: {tokens.mistura(face, letra, tokens.REALCE_DE_ENFASE * 2)}; }}",
-            # O desabilitado é o do cromo, e não a face apagada. "Limpar os headers" **nasce
-            # desabilitado**, e uma face vermelha sólida num botão que não responde é um pedido
-            # de cuidado sobre uma ação que não existe -- é a medição da S-444, e ela vale aqui.
-            f'QPushButton[{PROPRIEDADE_DE_PAPEL}="{papel}"]:disabled'
-            f" {{ background-color: {superficie}; color: {secundario}; border: 1px solid {moldura}; }}",
-        ]
+    return "\n".join([*antes, pura, *depois])
 
-    # **O papel chega ao `QToolButton` por outro desenho** (S-527). A barra da sala é de botões
-    # chatos (`autoRaise`), como toda barra de ferramentas: a face só aparece sob o ponteiro. Ali o
-    # primário ganha a face inteira, que é o que "Carregar OCR atual" já tinha como `QPushButton`;
-    # o destrutivo ganha a **cor** -- letra e traço em `BOTAO_DESTRUTIVO` --, e não a face: dois
-    # blocos vermelhos sólidos numa fila de botões chatos pediriam cuidado o tempo todo, e o
-    # ChessBase não pinta "apagar variante" de vermelho por isso. O ícone acompanha porque quem o
-    # desenha pede a cor ao mesmo token (`qt/barra_da_sala.py`).
-    #
-    # E o `:disabled` é obrigatório pela mesma razão do botão comum: a cor de `QWidget` vinda da
-    # folha vale em todos os estados e anula o acinzentamento da paleta.
-    (papel_primario, token_primario), (papel_destrutivo, token_destrutivo) = faces
-    primario = cor(token_primario)
-    ferramenta_primaria = f'QToolButton[{PROPRIEDADE_DE_PAPEL}="{papel_primario}"]'
-    regras += [
-        f"{ferramenta_primaria}"
-        f" {{ background-color: {primario}; color: {letra}; border: 1px solid {primario};"
-        f" border-radius: {minima}px; }}",
-        f"{ferramenta_primaria}:hover"
-        f" {{ background-color: {tokens.mistura(primario, letra, tokens.REALCE_DE_ENFASE)}; }}",
-        f'QToolButton[{PROPRIEDADE_DE_PAPEL}="{papel_destrutivo}"] {{ color: {cor(token_destrutivo)}; }}',
-        f"QToolButton:checked {{ background-color: {tokens.mistura(superficie, texto, 4 * RELEVO_DO_BOTAO)};"
-        f" border: 1px solid {primario}; }}",
-        f"QToolButton:disabled {{ color: {secundario}; }}",
-        f"{ferramenta_primaria}:disabled"
-        f" {{ background-color: {superficie}; color: {secundario}; border: 1px solid {moldura}; }}",
-    ]
 
-    # A faixa de abas discreta da pele "Foco" (S-226): a diferença é o **peso**, e a aba ativa se
-    # separa por cor e por negrito. Em Qt isto é seletor de estado e não `style.map`, e por isso
-    # cabe na folha em vez de precisar de um registro à parte.
-    regras += [
-        f"QTabBar::tab:selected {{ color: {texto}; font-weight: bold; }}",
-        f"QTabBar::tab:!selected {{ color: {secundario}; }}",
-        f"QGroupBox {{ margin-top: {linha}px; border: 1px solid {moldura};"
-        f" border-radius: {minima}px; }}",
-        f"QGroupBox::title {{ subcontrol-origin: margin; left: {linha}px; padding: 0 {minima}px; }}",
-    ]
+def aplicar_paleta(alvo: QApplication, *, cromo_escuro: bool) -> None:
+    """Põe os papéis na `QPalette` da aplicação, além da folha de estilo.
 
-    # **O anel de foco de teclado, e ele vem por último de propósito** (S-553). Ver
-    # `CONTROLES_COM_ANEL_DE_FOCO` para o defeito medido e para por que `outline` não serve.
-    #
-    # Último porque `QToolButton:focus` e `QToolButton:checked` têm a mesma especificidade -- um
-    # tipo e um pseudo-estado --, e em QSS o empate é desfeito pela ordem. Um botão marcado **e**
-    # focado tem de mostrar o foco: quem está com o teclado precisa saber onde ele está, e o
-    # marcado continua dito pela face funda, que esta regra não toca.
-    #
-    # A moldura é a que já existe trocando de cor -- 1 px, o mesmo de sempre --, e por isso o anel
-    # não desloca um pixel de conteúdo. O seletor com propriedade (`[papel="PRIMARIO"]`) ganha do
-    # seletor de classe por especificidade, então a ordem entre os dois blocos abaixo não importa.
-    regras += [
-        f"{seletor}:focus {{ border: 1px solid {anel_de_foco(cromo_escuro=cromo_escuro)}; }}"
-        for seletor in CONTROLES_COM_ANEL_DE_FOCO
-    ]
-    na_enfase = anel_de_foco(cromo_escuro=cromo_escuro, sobre_enfase=True)
-    regras += [
-        f'QPushButton[{PROPRIEDADE_DE_PAPEL}="{papel}"]:focus {{ border: 1px solid {na_enfase}; }}'
-        for papel, _token in faces
-    ]
-    # O botão de ferramenta só tem face no primário -- o destrutivo ali é cor de letra, e não face
-    # --, então o anel do destrutivo é o do cromo e cai na regra de classe acima.
-    regras.append(f"{ferramenta_primaria}:focus {{ border: 1px solid {na_enfase}; }}")
-    return "\n".join(regras)
+    **A folha não alcança tudo, e a prancha de controles é quem mostrou onde.** Um item de
+    `QListWidget` é desenhado por um *delegate*, que pinta o fundo do selecionado com
+    `QPalette.Highlight` -- `QStyle.drawPrimitive(PE_PanelItemViewItem)` lê `option.palette`, e
+    não a folha. A fotografia de `amostrario_claro.png` tinha a linha da lista no azul de fábrica
+    do Windows e a linha da tabela no `SELECAO` da paleta: **duas cores de "selecionado" na mesma
+    imagem**, que é exatamente o defeito que `ui/tokens.py` existe para não ter.
+
+    **Quem decide continua sendo `ui/`.** O mapa papel-de-paleta -> papel-de-token é
+    `folha_de_estilo.PAPEIS_DA_PALETA`, um dicionário de strings; aqui só se traduz o nome em
+    `QPalette.ColorRole` e se pinta. É a mesma fronteira da folha de estilo, e é o que permite
+    afirmar a paleta inteira num venv sem binding de Qt.
+
+    Nome público desde a F9: ela é chamada de `aplicar_tema` e do arnês de auditoria, e um
+    privado chamado de dois lugares é um público envergonhado.
+    """
+    from PyQt6.QtGui import QColor, QPalette
+
+    def tinta(papel: str) -> QColor:
+        return QColor(tokens.cor(papel, None, cromo_escuro=cromo_escuro))
+
+    def papel_de(nome: str) -> object | None:
+        # `getattr` e não um `dict` de enums: um nome de papel que o Qt desta versão não tenha
+        # não pode custar a paleta inteira -- é o mesmo contrato de degradação de `aplicar_tema`.
+        return getattr(QPalette.ColorRole, nome, None)
+
+    paleta = QPalette(alvo.palette())
+    for grupo in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive):
+        for nome, token in folha_de_estilo_pura.PAPEIS_DA_PALETA.items():
+            papel = papel_de(nome)
+            if papel is not None:
+                paleta.setColor(grupo, papel, tinta(token))
+    for nome, token in folha_de_estilo_pura.PAPEIS_DA_PALETA_MORTA.items():
+        papel = papel_de(nome)
+        if papel is not None:
+            paleta.setColor(QPalette.ColorGroup.Disabled, papel, tinta(token))
+    alvo.setPalette(paleta)
+
+
+def alto_contraste_em_vigor() -> bool:
+    """Se `aplicar_tema` deixou o alto contraste do sistema valendo (C14): quem desenha à mão --
+    o tabuleiro, o visor -- pergunta aqui para trocar cor por contorno."""
+    return _alto_contraste
 
 
 def cromo_escuro_em_vigor() -> bool:
@@ -779,6 +732,60 @@ def cromo_escuro_em_vigor() -> bool:
     argumento e não fizer nada com ele.
     """
     return _cromo_escuro
+
+
+def pasta_das_marcas() -> Path:
+    """Onde os dois desenhos do indicador ficam. Uma pasta por usuário, estável entre sessões.
+
+    Estável e não `mkdtemp` de propósito: a folha de estilo é reconstruída a cada troca de pele e
+    de densidade, e uma pasta nova por troca encheria o temporário do usuário de pastas de dois
+    arquivos que ninguém apaga.
+    """
+    return Path(tempfile.gettempdir()) / "chessvisionoff-marcas"
+
+
+def gravar_marcas(
+    *,
+    cromo_escuro: bool,
+    base: int = tipografia.BASE_DE_REFERENCIA,
+    densidade: str = pele.CONFORTAVEL,
+) -> dict[str, str]:
+    """Desenha o visto e o traço do indicador em disco e devolve `{nome: caminho}` (F9-C2).
+
+    **Por que em disco.** `url()` de folha de estilo Qt lê arquivo ou recurso compilado, e nada
+    mais: não existe forma de entregar um `QPixmap` a um `QSS`. Compilar um `.rcc` poria arte
+    binária no repositório para um desenho que já é declarativo em `ui/icones.MARCAS` -- e que
+    precisa mudar de cor com a pele, o que um recurso compilado não faz.
+
+    **A tinta é `TEXTO_SOBRE_ENFASE`, e ela não é escolha nova.** É a letra que a folha já põe
+    sobre a face primária, e o portão `test_a_enfase_passa_no_piso` garante que ela fica acima de
+    4,5:1 contra aquela face nas duas peles. A marca é um rótulo desenhado: usar a mesma tinta é o
+    que a mantém sob o mesmo portão. `sobre_superficie` **não** serve aqui, e foi medido: ela
+    devolve a letra de cromo (`#5c5c5c` na pele escura), que sobre `#6ea8fe` some.
+
+    Devolve `{}` -- e a folha volta ao preenchimento sólido do ciclo 1 -- se a Pillow não estiver
+    lá ou se a pasta não puder ser escrita. Aparência não derruba ferramenta (S-53).
+    """
+    lado = max(8, round(14 * base / tipografia.BASE_DE_REFERENCIA))
+    tinta = tokens.cor(tokens.TEXTO_SOBRE_ENFASE, None, cromo_escuro=cromo_escuro)
+    caminhos: dict[str, str] = {}
+    try:
+        pasta = pasta_das_marcas()
+        pasta.mkdir(parents=True, exist_ok=True)
+        for nome in (icones.MARCA_VISTO, icones.MARCA_TRACO):
+            desenho = icones.imagem(nome, lado, tinta)
+            if desenho is None:
+                continue
+            # O nome carrega a cor e o lado: duas peles abertas na mesma sessão gravariam o mesmo
+            # arquivo com tintas diferentes, e a segunda leria o cache da primeira.
+            arquivo = pasta / f"{nome}_{tinta.lstrip('#')}_{lado}.png"
+            if not arquivo.exists():
+                desenho.save(arquivo)
+            caminhos[nome] = str(arquivo)
+    except Exception as exc:  # noqa: BLE001 - ver o docstring: sem marca, a face sólida serve
+        logger.warning("Marcas do indicador não gravadas (%s): a caixa fica só com a cor.", exc)
+        return {}
+    return caminhos
 
 
 def aplicar_tema(
@@ -798,7 +805,7 @@ def aplicar_tema(
     função do frontend que conhece fonte **e** densidade sem que ninguém as passe adiante -- é o
     argumento de `theme.registrar_estilos`, e ele não muda de toolkit.
     """
-    global _cromo_escuro
+    global _cromo_escuro, _alto_contraste
     _cromo_escuro = cromo_escuro
 
     base = fonte_base()[0]
@@ -816,11 +823,43 @@ def aplicar_tema(
         logger.info("Sem QApplication: a folha de estilo não foi aplicada (S-501).")
         return "sem_folha"
 
+    # C14 do ciclo 2: com o alto contraste do Windows ligado, a pele **não** entra. A paleta que
+    # a pessoa escolheu no sistema é a que vale (Carta §3.2); folha e paleta próprias por cima
+    # dela seriam exatamente o que o modo existe para impedir. A folha que estivesse aplicada
+    # é retirada, para a troca de pele em sessão respeitar a mesma regra.
+    from chess_diagram_ocr.qt.plataforma import alto_contraste_ativo
+
+    _alto_contraste = alto_contraste_ativo()
+    if _alto_contraste:
+        alvo.setStyleSheet("")
+        alvo.setPalette(alvo.style().standardPalette())
+        logger.info("Alto contraste do sistema ativo: folha e paleta próprias não aplicadas (C14).")
+        repintar()
+        return "alto_contraste"
+
     try:
-        alvo.setStyleSheet(folha_de_estilo(cromo_escuro=cromo_escuro, base=base, densidade=densidade))
+        alvo.setStyleSheet(
+            folha_de_estilo(
+                cromo_escuro=cromo_escuro,
+                base=base,
+                densidade=densidade,
+                marcas=gravar_marcas(cromo_escuro=cromo_escuro, base=base, densidade=densidade),
+                altura_do_titulo=altura_do_titulo_atual(),
+            )
+        )
     except Exception as exc:  # noqa: BLE001 - aparência não derruba a ferramenta
         logger.warning("Folha de estilo não aplicada (%s): a janela abre no cinza do sistema.", exc)
         return "sem_folha"
+
+    # **A paleta é a segunda camada, e sem esta chamada a primeira mente.** O `QStyle` desenha o
+    # item selecionado de toda `QAbstractItemView` a partir de `option.palette`, e não da folha:
+    # sem isto a lista sai no azul de fábrica do Windows e a tabela no `SELECAO` -- duas cores de
+    # "selecionado" na mesma janela, fotografado em `amostrario_claro.png`. Ela não pode derrubar
+    # a janela pela mesma razão da folha: aparência não derruba ferramenta.
+    try:
+        aplicar_paleta(alvo, cromo_escuro=cromo_escuro)
+    except Exception as exc:  # noqa: BLE001 - aparência não derruba a ferramenta
+        logger.warning("Paleta não aplicada (%s): o desenho nativo segue com a do sistema.", exc)
 
     logger.info(
         "Tema da interface: folha própria, cromo %s, densidade %s (Qt).",

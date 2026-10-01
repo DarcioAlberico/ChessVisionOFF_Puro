@@ -31,11 +31,12 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QComboBox, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from chess_diagram_ocr.config import PROJECT_ROOT
 from chess_diagram_ocr.field_eval import load_field_set, upsert_page
 from chess_diagram_ocr.qt import tema
+from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.ui import comandos, espaco, estilos
 from chess_diagram_ocr.ui.field_draft import REGIMES, FieldDraft, diagramas_ja_anotados
@@ -96,6 +97,8 @@ class PainelDeCampo(QWidget):
         self._colocacoes = colocacoes
         self._aviso_de_treino = aviso_de_treino
         self._conjunto = caminho_do_conjunto or CAMINHO_DO_CONJUNTO
+        self._conjunto_lido: tuple[tuple[int, int], list] | None = None
+        """A última leitura do conjunto, com `(tamanho, mtime)` do arquivo. Ver `_ler`."""
         """`None` é o arquivo do produto. O parâmetro existe para o teste não anotar no conjunto
         de verdade -- é o mesmo motivo do `pasta_da_galeria` da Galeria."""
 
@@ -103,30 +106,49 @@ class PainelDeCampo(QWidget):
         fora.setContentsMargins(0, 0, 0, 0)
         fora.setSpacing(espaco.linha())
 
-        barra = QHBoxLayout()
-        barra.setSpacing(espaco.linha())
-        self.regime = QComboBox(self)
+        # **Fluida, e não uma linha que soma** (OCR_UI ciclo 2, C18). O combo e os três botões
+        # numa `QHBoxLayout` somavam 810 px na pele Foco, e esta barra fica sob o visor: era ela,
+        # e não o visor, que decidia a largura mínima da janela (1.538 px medidos). Na barra
+        # fluida os botões descem para a linha de baixo quando não cabem, como na barra do visor.
+        barra = BarraFluida(self, espaco=espaco.linha())
+        self.regime = QComboBox(barra)
         self.regime.addItems(list(REGIMES))
+        # **O nome vem antes da dica, e a falta dele custou seis abas** (F9-C3). Sem
+        # `accessibleName` a cascata de `ui/nomes_acessiveis.py` cai na dica, e o leitor de tela
+        # anunciava este controle -- o 14º da ordem do `Tab` em **todas** as seis abas -- como
+        # "Em que condição esta página foi lida. Entra na anotação e separa as": 67 caracteres
+        # cortados no meio da frase. É prosa e não nome, e é o quinto motivo que
+        # `caissa.ui.audit.teclado` passou a cobrar.
+        self.regime.setAccessibleName("Regime de leitura da página")
         dica_em(self.regime, "Em que condição esta página foi lida. Entra na anotação e separa as\nmedições por regime.")
-        barra.addWidget(self.regime)
-        self.btn_anotar = self._botao(barra, "anotar_pagina", self.anotar_pagina, estilos.PRIMARIO)
+        barra.adicionar(self.regime)
+        # **Neutro desde o F9-C2** (item 10 do §7). O painel de campo está visível nas seis abas,
+        # e o painel do PDF também: com `Anotar página` em azul, toda tela desta janela desenhava
+        # **duas** ações primárias, e três nas abas Resultado, Estudo e Revisão. Duas ênfases é o
+        # mesmo que nenhuma -- é o argumento de `estilos.PRIMARIO`, aplicado à tela em vez de à
+        # barra. A tecla continua declarada e o botão continua o primeiro da fila.
+        self.btn_anotar = self._botao(barra, "anotar_pagina", self.anotar_pagina, estilos.NEUTRO)
         self.btn_sem_diagrama = self._botao(barra, "anotar_sem_diagrama", self.anotar_sem_diagrama)
         self.btn_tirar = self._botao(barra, "tirar_do_campo", self.tirar_do_campo, estilos.DESTRUTIVO)
-        barra.addStretch(1)
-        fora.addLayout(barra)
+        fora.addWidget(barra)
 
         self.lbl_estado = QLabel("", self)
         self.lbl_estado.setWordWrap(True)
         fora.addWidget(self.lbl_estado)
         self.atualizar()
 
-    def _botao(self, barra: QHBoxLayout, acao: str, alvo: Callable[[], object], papel: str = estilos.NEUTRO) -> QPushButton:
+    def _botao(self, barra: BarraFluida, acao: str, alvo: Callable[[], object], papel: str = estilos.NEUTRO) -> QPushButton:
         """Rótulo, papel e dica do catálogo -- este arquivo não escreve texto de interface."""
-        botao = QPushButton(comandos.rotulo_de_botao(acao), self)
+        botao = QPushButton(comandos.rotulo_de_botao(acao), barra)
+        # **O nome acessível é o rótulo por extenso, e não o texto do botão** (F9-C2).
+        # O crítico do ciclo 1 mediu 28 controles que chegavam ao leitor de tela como "-",
+        # "+", "|◀" ou ".md" -- o `rotulo_curto` passando pela cascata de
+        # `ui/nomes_acessiveis.py` no passo `text()`. Ver `comandos.Comando.no_leitor`.
+        botao.setAccessibleName(comandos.nome_acessivel(acao))
         botao.clicked.connect(lambda _marcado=False: alvo())
         tema.aplicar_papel(botao, papel)
         dica_em(botao, comandos.rotulo(acao))
-        barra.addWidget(botao)
+        barra.adicionar(botao)
         return botao
 
     # ------------------------------------------------------------------------ o que a tela diz
@@ -149,12 +171,28 @@ class PainelDeCampo(QWidget):
         self.lbl_estado.setText(f"{estado}{self._aviso_de_treino()}")
 
     def _ler(self) -> list:
+        """O conjunto de campo, relido só quando o arquivo mudou (`(tamanho, mtime)`, passo 15).
+
+        `atualizar` roda a cada virada de página, e reparsear 68 páginas anotadas custava 4 ms
+        de thread da janela por virada -- pouco, mas a virada tem 16 ms para tudo. A chave é a
+        mesma de `qt/marcas` e `contagem_de_amostras`: gravar uma anotação muda os dois valores.
+        """
         try:
-            return load_field_set(self._conjunto)
+            estado = Path(self._conjunto).stat()
+            chave: tuple[int, int] | None = (estado.st_size, estado.st_mtime_ns)
+        except OSError:
+            chave = None
+        if chave is not None and self._conjunto_lido is not None and self._conjunto_lido[0] == chave:
+            return self._conjunto_lido[1]
+        try:
+            paginas = load_field_set(self._conjunto)
         except (OSError, ValueError) as erro:
             # Conjunto ilegível não pode derrubar a janela: ele é informação lateral até o clique.
             logger.debug("Não foi possível ler o conjunto de campo: %s", erro)
             return []
+        if chave is not None:
+            self._conjunto_lido = (chave, paginas)
+        return paginas
 
     # ------------------------------------------------------------------- as três do catálogo
 

@@ -38,6 +38,16 @@ PERMITIDOS = {
 o usuário lê errada."""
 
 
+CHAMADAS_DE_TELA = frozenset({
+    "addItems", "addItem", "insertItems", "insertItem", "setItems", "setText", "setPlaceholderText",
+    "setToolTip", "setWindowTitle", "setHorizontalHeaderLabels", "setVerticalHeaderLabels",
+    "showMessage", "mostrar", "QLabel", "QPushButton", "QCheckBox", "QRadioButton", "QListWidgetItem",
+    "QTableWidgetItem", "QTreeWidgetItem",
+})
+"""As chamadas que escrevem o que recebem na tela: uma lista de palavras passada direto a uma delas
+é texto de interface, por mais minúsculas que sejam (crítico da fase 5, ciclo 2)."""
+
+
 def _literais_visiveis(caminho: Path) -> list[str]:
     """Strings do módulo que não são docstring nem nome de símbolo exportado.
 
@@ -83,6 +93,81 @@ def _literais_visiveis(caminho: Path) -> list[str]:
         for item in ast.walk(no):
             if isinstance(item, ast.Constant) and isinstance(item.value, str):
                 ignorados.add(id(item))
+    # **Identificadores nas posições em que só identificador cabe** (OCR_UI ciclo 2, A15). A
+    # varredura reprovou por fases seguidas em seis literais que nenhuma pessoa lê: o id de comando
+    # (`Comando("configuracoes", "Configurações…", …)`, `Item("configuracoes")`), a chave do JSON
+    # gravado em disco (`{"pagina": …}`, `item["pagina"]`), o token cujo valor é o próprio nome em
+    # maiúsculas (`SELECAO = "SELECAO"`) e a lista de palavras **dobradas** que casa títulos sem
+    # acento (`"… quebra cabecas …".split()`). Nenhuma regra abaixo é por palavra: cada uma olha a
+    # **posição** do literal, e só um literal com forma de identificador (`^[a-z_][a-z0-9_]*$`)
+    # escapa nas três primeiras -- um `{"Página": …}` ou um `Comando("abrir", "Configuracoes")`
+    # continuam varridos.
+    #
+    # **E a posição tem de ser de identificador de verdade** (crítico da fase 5): a chave de um
+    # dicionário que o módulo **enumera** (`list(D)`, `sorted(D)`, `D.keys()`, `for x in D`,
+    # `combo.addItems(D)`) vai para a tela -- `REGIMES = {"pagina": 1}` com
+    # `combo.addItems(list(REGIMES))` escapava; e o `.split()` só isenta a lista de palavras
+    # minúsculas partida por espaço (`"… quebra cabecas …".split()`), não
+    # `"Pagina anterior|Proxima pagina".split("|")`. **Ciclo 2 do crítico**: enumerar é também
+    # `", ".join(D)` e `[*D]`; e a lista de palavras não escapa quando vai direto a uma chamada que
+    # escreve na tela (`combo.addItems("pagina posicao".split())`) -- guardada num nome, num
+    # `frozenset(...)` de palavras dobradas, ela continua sendo identificador.
+    identificador = re.compile(r"^[a-z_][a-z0-9_]*$")
+    palavras_minusculas = re.compile(r"^[a-z0-9 ]+$")
+    enumerados: set[str] = set()
+    para_a_tela: set[int] = set()   # os nós passados direto a uma chamada que escreve na tela
+    for no in ast.walk(arvore):
+        if isinstance(no, ast.Call):
+            chamada = no.func.id if isinstance(no.func, ast.Name) else getattr(no.func, "attr", "")
+            if chamada in CHAMADAS_DE_TELA:
+                para_a_tela.update(id(arg) for arg in no.args)
+                para_a_tela.update(id(kw.value) for kw in no.keywords)
+        if isinstance(no, ast.Starred) and isinstance(no.value, ast.Name):
+            enumerados.add(no.value.id)
+        if isinstance(no, ast.Call) and no.args and isinstance(no.args[0], ast.Name):
+            funcao = no.func
+            if (isinstance(funcao, ast.Name) and funcao.id in {"list", "sorted", "tuple", "set", "iter", "enumerate"}) or (
+                    isinstance(funcao, ast.Attribute) and funcao.attr in {"addItems", "extend", "setItems", "join"}):
+                enumerados.add(no.args[0].id)
+        elif (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)
+              and no.func.attr in {"keys", "items", "values"} and isinstance(no.func.value, ast.Name)):
+            enumerados.add(no.func.value.id)
+        elif isinstance(no, (ast.For, ast.comprehension)) and isinstance(no.iter, ast.Name):
+            enumerados.add(no.iter.id)
+    dicionarios_enumerados: set[int] = set()
+    for no in ast.walk(arvore):
+        alvos = getattr(no, "targets", None) or ([no.target] if isinstance(no, ast.AnnAssign) else [])
+        valor = getattr(no, "value", None)
+        if isinstance(valor, ast.Dict) and any(isinstance(a, ast.Name) and a.id in enumerados for a in alvos):
+            dicionarios_enumerados.add(id(valor))
+    for no in ast.walk(arvore):
+        if isinstance(no, ast.Dict):
+            if id(no) in dicionarios_enumerados:
+                continue
+            for chave in no.keys:
+                if isinstance(chave, ast.Constant) and isinstance(chave.value, str) and identificador.match(chave.value):
+                    ignorados.add(id(chave))
+        elif isinstance(no, ast.Subscript):
+            fatia = no.slice
+            if isinstance(fatia, ast.Constant) and isinstance(fatia.value, str) and identificador.match(fatia.value):
+                ignorados.add(id(fatia))
+        elif isinstance(no, ast.Call):
+            funcao = no.func
+            nome = funcao.id if isinstance(funcao, ast.Name) else (funcao.attr if isinstance(funcao, ast.Attribute) else "")
+            if nome in ("Comando", "Item") and no.args:
+                primeiro = no.args[0]
+                if isinstance(primeiro, ast.Constant) and isinstance(primeiro.value, str) and identificador.match(primeiro.value):
+                    ignorados.add(id(primeiro))
+            if (isinstance(funcao, ast.Attribute) and funcao.attr == "split" and not no.args
+                    and isinstance(funcao.value, ast.Constant) and isinstance(funcao.value.value, str)
+                    and palavras_minusculas.match(funcao.value.value) and id(no) not in para_a_tela):
+                ignorados.add(id(funcao.value))
+        else:
+            alvos = getattr(no, "targets", None) or ([no.target] if isinstance(no, ast.AnnAssign) else [])
+            nomes = {alvo.id for alvo in alvos if isinstance(alvo, ast.Name) and alvo.id.isupper()}
+            valor = getattr(no, "value", None)
+            if nomes and isinstance(valor, ast.Constant) and valor.value in nomes:
+                ignorados.add(id(valor))
 
     return [
         no.value
@@ -112,6 +197,46 @@ class AccentTests(unittest.TestCase):
                     faltas.append(f"{caminho.name}: {achado.group(0)!r} em {texto[:60]!r}")
 
         self.assertEqual(faltas, [], "Strings de UI sem acento:\n" + "\n".join(faltas[:20]))
+
+    def test_os_identificadores_escapam_e_o_texto_de_tela_nas_mesmas_posicoes_nao(self) -> None:
+        """A15 do ciclo 2: as regras por posição não abrem brecha para texto de interface."""
+        import tempfile
+
+        fonte = (
+            'SELECAO = "SELECAO"\n'
+            'dados = {"pagina": 1, "Pagina seguinte": 2}\n'
+            'valor = item["pagina"]\n'
+            'c = Comando("configuracoes", "Configuracoes da pagina")\n'
+            'm = Item("configuracoes")\n'
+            'vazias = "quebra cabecas".split()\n'
+            'rotulo = QLabel("pagina")\n'
+            'erro = {"pagina": "Ir para a pagina"}\n'
+            # os três casos do crítico da fase 5: texto de tela em posição de identificador
+            'ROTULOS = "Pagina anterior|Proxima pagina|Configuracoes".split("|")\n'
+            'combo.addItems("Posicao Pagina Revisao".split())\n'
+            'REGIMES = {"posicao": 1, "revisao": 2}\n'
+            'combo.addItems(list(REGIMES))\n'
+            # e os três do ciclo 2 do crítico
+            'combo.addItems("selecao posicoes".split())\n'
+            'REG1 = {"notacao": 1, "diagnostico": 2}\n'
+            'QLabel(", ".join(REG1))\n'
+            'REG2 = {"botao": 1, "tabuleiros": 2}\n'
+            'combo.addItems([*REG2])\n'
+        )
+        with tempfile.TemporaryDirectory() as pasta:
+            caminho = Path(pasta) / "modulo.py"
+            caminho.write_text(fonte, encoding="utf-8")
+            vistos = _literais_visiveis(caminho)
+        for escapa in ("SELECAO", "quebra cabecas"):
+            self.assertNotIn(escapa, vistos)
+        for varrido in ("selecao posicoes", "notacao", "diagnostico", "botao", "tabuleiros"):
+            self.assertIn(varrido, vistos, "texto de tela em posição de identificador escapou")
+        self.assertEqual(vistos.count("pagina"), 1, "só o `QLabel(\"pagina\")` é texto de tela")
+        self.assertEqual(vistos.count("configuracoes"), 0)
+        for varrido in ("Pagina seguinte", "Configuracoes da pagina", "Ir para a pagina",
+                        "Pagina anterior|Proxima pagina|Configuracoes", "Posicao Pagina Revisao",
+                        "posicao", "revisao"):
+            self.assertIn(varrido, vistos)
 
     def test_nenhuma_excecao_de_produto_usa_forma_sem_acento(self) -> None:
         """A varredura de cima olha `ui/`, e a mensagem de exceção **também é interface** (S-392).
@@ -438,6 +563,66 @@ class NoDuplicateVocabularyTests(unittest.TestCase):
                 fonte = caminho.read_text(encoding="utf-8")
                 # A frase completa só pode aparecer no vocabulário compartilhado.
                 self.assertNotIn(strings.SIDE_SOURCE_LABELS["legality"], fonte)
+
+
+class SemOrfaTests(unittest.TestCase):
+    """A última palavra atada à anterior, e o que isso fecha (F9-C9 §4.7 / F9-C10).
+
+    **A pior órfã desta janela era a primeira frase que o produto mostra.** O crítico do ciclo 9
+    mediu `'inteira.'` sozinha numa linha, **5,7 % de uma medida de 627 px**, centrada -- a última
+    linha da `MENSAGEM_VAZIA`. Medido com o mesmo instrumento antes e depois
+    (`benchmarks/reports/ui/c10/c10_orfas.py`, 3 peles x 3 larguras x 2 estados): **6 de 24
+    parágrafos com órfã, e 0 depois**.
+    """
+
+    def test_a_ultima_palavra_fica_atada_a_anterior(self) -> None:
+        self.assertEqual(
+            strings.sem_orfa("ler a página inteira."),
+            f"ler a página{strings.ESPACO_INQUEBRAVEL}inteira.",
+        )
+
+    def test_so_a_ultima(self) -> None:
+        """Atar mais do que o necessário empurra a quebra para trás e afrouxa a linha anterior --
+        troca uma falta por outra."""
+        atada = strings.sem_orfa("uma frase de cinco palavras")
+        self.assertEqual(atada.count(strings.ESPACO_INQUEBRAVEL), 1)
+        self.assertTrue(atada.endswith(f"cinco{strings.ESPACO_INQUEBRAVEL}palavras"))
+
+    def test_uma_palavra_so_volta_inalterada(self) -> None:
+        """Não há a que atar, e inventar um espaço mudaria o texto."""
+        self.assertEqual(strings.sem_orfa("Salvar"), "Salvar")
+        self.assertEqual(strings.sem_orfa(""), "")
+
+    def test_o_texto_visivel_nao_muda(self) -> None:
+        """O espaço inquebrável **é** um espaço para quem lê: trocar por espaço comum devolve o
+        original. Se isto falhar, o conserto de composição virou uma mudança de redação."""
+        for frase in (
+            strings.GALERIA_VAZIA_FRASE,
+            strings.REVISAO_VAZIA_FRASE,
+            strings.TEXTO_VAZIO_FRASE,
+            strings.DATASET_LENDO_FRASE,
+        ):
+            with self.subTest(frase=frase[:32]):
+                self.assertIn(strings.ESPACO_INQUEBRAVEL, frase)
+                self.assertEqual(frase.split(), frase.replace(" ", " ").split())
+
+    def test_as_frases_de_estado_vazio_estao_atadas(self) -> None:
+        """A regra vale para as frases longas que o produto **desenha com quebra** -- são elas
+        que têm última linha. Um rótulo de botão não quebra e não entra."""
+        for nome in (
+            "GALERIA_VAZIA_FRASE",
+            "REVISAO_VAZIA_FRASE",
+            "TEXTO_VAZIO_FRASE",
+            "DATASET_LENDO_FRASE",
+            "GALERIA_LEGENDA_VAZIA",
+        ):
+            with self.subTest(constante=nome):
+                self.assertIn(strings.ESPACO_INQUEBRAVEL, getattr(strings, nome))
+
+    def test_a_mensagem_vazia_do_resultado_tambem(self) -> None:
+        from chess_diagram_ocr.qt import painel_de_resultado
+
+        self.assertIn(strings.ESPACO_INQUEBRAVEL, painel_de_resultado.MENSAGEM_VAZIA)
 
 
 if __name__ == "__main__":

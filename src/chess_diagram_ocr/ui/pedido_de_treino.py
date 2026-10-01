@@ -21,11 +21,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..training import TrainingRun
+if TYPE_CHECKING:  # pragma: no cover - `TrainingRun` só é usado em anotação
+    # `training.py` importa `torch`, `torch.nn` e `torchvision.transforms.v2` no topo e
+    # define três `nn.Module` no escopo de módulo -- não dá para adiar lá dentro. Aqui o
+    # nome só aparece na assinatura de `summarize_run`, que o `from __future__ import
+    # annotations` já deixa como texto.
+    from ..training import TrainingRun
 
-__all__ = ["TrainingRequest", "format_metrics", "summarize_run"]
+__all__ = ["TrainingRequest", "format_metrics", "pedido_de_treino", "summarize_run"]
 @dataclass(frozen=True)
 class TrainingRequest:
     """Os parâmetros do treino lidos da tela, para não viajarem soltos entre threads.
@@ -42,6 +47,48 @@ class TrainingRequest:
     lr: float
     fresh: bool = False
     splits_path: Path | None = None
+    augment: str = "aug0"
+    """O regime de aumento (`AugmentConfig.version`, letras `mhspie`) com que treinar (C4).
+
+    Lido do checkpoint de produção no clique: retreinar continua o regime que produziu o
+    modelo, e um retreino do zero também parte dele. Antes era sempre o genérico
+    (`AugmentConfig()`), e um `.pt` de produção treinado com `mhsp` seria retreinado sem a
+    hachura que o fez -- `docs/OCR_UI_ANALISE_C2.md` §3.4."""
+
+
+def pedido_de_treino(
+    csv_path: Path,
+    samples_dir: Path,
+    splits_path: Path | None,
+    *,
+    model_path: Path,
+    fresh: bool = False,
+) -> TrainingRequest:
+    """O pedido com épocas, lote e taxa de `data/settings.json` -- lidos agora, no clique.
+
+    Eram `epochs=8, batch_size=16, lr=1e-3` escritos em `qt/janela.py`; a janela de
+    configurações (`ui/configuracoes.py`) é onde a pessoa os muda, e este é o único lugar que
+    os transforma em pedido.
+    """
+    from .. import settings as preferencias
+
+    # O caminho é lido do módulo **agora**, e não congelado como valor-padrão de argumento:
+    # o teste aponta `DEFAULT_SETTINGS_PATH` para uma pasta temporária, e o bundle o resolve
+    # para a pasta do `.exe` -- nos dois casos o que vale é o valor no instante do clique.
+    treino = preferencias.load_settings(preferencias.DEFAULT_SETTINGS_PATH).training
+    from ..augment import version_of_checkpoint
+
+    return TrainingRequest(
+        csv_path=csv_path,
+        samples_dir=samples_dir,
+        model_path=model_path,
+        epochs=treino.epochs,
+        batch_size=treino.batch_size,
+        lr=treino.lr,
+        fresh=fresh,
+        splits_path=splits_path,
+        augment=version_of_checkpoint(model_path),
+    )
 
 
 def format_metrics(row: dict[str, Any]) -> str:
@@ -65,7 +112,7 @@ def format_metrics(row: dict[str, Any]) -> str:
             partes.append(f"{rotulo}={float(row[chave]):.4f}")
     if row.get("is_best"):
         partes.append("(melhor até agora)")
-    return " | ".join(partes)
+    return " · ".join(partes)
 
 
 def summarize_run(run: TrainingRun) -> str:

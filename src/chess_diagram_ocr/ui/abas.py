@@ -22,7 +22,11 @@ from . import formato
 __all__ = [
     "ABAS",
     "ABA_DE_TRABALHO",
+    "LIVRO",
+    "MODOS",
+    "MODO_DE_TRABALHO",
     "contagem_no_rotulo",
+    "e_modo",
     "nome_atual",
     "nome_base",
     "rotulo",
@@ -44,11 +48,39 @@ REVISAO = "Revisão"
 TEXTO = "Texto"
 DATASET = "Dataset"
 GALERIA = "Galeria"
+ROTULAGEM = "Rotulagem"
+"""A bancada de rotulagem e treino por livro da suíte (`qt/painel_de_rotulagem.py`, 2026-09-14).
+
+Do acervo, e não do diagrama: ela fala de páginas inteiras de um livro -- o que o motor leu
+linha a linha, o que a pessoa confirmou, o modelo que saiu disso. Só existe quando a suíte
+está ao alcance; num checkout do tronco sem ela a barra tem as seis de antes."""
+REVISAO_DE_TEXTO = "Revisão de texto"
+"""A revisão dos spans duvidosos do livro importado (`qt/painel_de_revisao_de_texto.py`,
+2026-09-15, OCR_UI_ROADMAP passo 14).
+
+Do acervo pela mesma razão da Rotulagem: a unidade é o livro importado, não o diagrama
+clicado. Não é a `Revisão` (S-22), que é a fila de diagramas -- ver o cabeçalho do módulo.
+Só existe quando a suíte está ao alcance."""
+
+LIVRO = "Livro"
+"""A aba que hospeda o painel principal (OCR_UI_ROADMAP passo 17, tarefa 3).
+
+**As quatro do diagrama deixaram de ser abas e viraram modos dela.** Resultado, Estudo, Revisão
+e Texto falam do mesmo objeto -- o diagrama e a página que estão à vista no visor, ao lado -- e
+trocar entre elas não é ir a outro lugar: é olhar o mesmo trabalho de outro ângulo. Como abas
+elas tinham o mesmo peso que Dataset e Galeria, que falam de outra coisa (o acervo inteiro), e o
+fluxo principal -- ler o diagrama, corrigi-lo, exportar -- obrigava a trocar de aba a cada passo
+(`OCR_UI_ANALISE.md` §5.1: "tabuleiro e página lado a lado, sem abas"). A barra de modos fica no
+topo do painel; o resto da aba é o painel do modo escolhido."""
 
 DO_DIAGRAMA: tuple[str, ...] = (RESULTADO, ESTUDO, REVISAO, TEXTO)
-"""As abas que mudam de conteúdo quando se clica num retângulo da página."""
+"""Os painéis que mudam de conteúdo quando se clica num retângulo da página -- **os modos** do
+painel principal (`LIVRO`), na ordem em que a barra de modos os lista."""
 
-DO_ACERVO: tuple[str, ...] = (DATASET, GALERIA)
+MODOS: tuple[str, ...] = DO_DIAGRAMA
+"""O mesmo que `DO_DIAGRAMA`, com o nome do que eles são desde o passo 17."""
+
+DO_ACERVO: tuple[str, ...] = (DATASET, GALERIA, ROTULAGEM, REVISAO_DE_TEXTO)
 """As que falam do livro inteiro.
 
 **A Configuração fechava a fila, e saiu no porte para o Qt (S-506).** Os controles dela foram
@@ -57,7 +89,7 @@ para o menu (o conjunto de peças, `conjunto_de_pecas`) e para os diálogos de t
 que a janela não tinha, e nada acusava, porque a guarda que comparava a barra montada com ela
 morreu no corte junto com o `app_tkinter`."""
 
-ABAS: tuple[str, ...] = DO_DIAGRAMA + DO_ACERVO
+ABAS: tuple[str, ...] = (LIVRO, *DO_ACERVO)
 """As abas do painel esquerdo, **na ordem** -- e a ordem é o item (S-162).
 
 Elas misturavam dois níveis, e **o corte entre os dois grupos é onde a barra muda de assunto**.
@@ -69,16 +101,29 @@ de contexto que o `Resultado` e a `Revisão` respondem. A Configuração saiu no
 (ver `DO_ACERVO`), e é este número que vale: **o que a janela monta é o que esta tupla diz**, e
 `test_ui_abas` afirma a tupla enquanto a janela do Qt não a lê.
 
+**Desde o passo 17 da OCR_UI o corte virou estrutura**: as quatro do diagrama são modos da aba
+`Livro`, e a faixa de abas só tem os dois níveis que sempre teve -- o livro em trabalho e o acervo.
+A história de sete e oito abas (S-162, S-211, Rotulagem e Revisão de texto da suíte) continua
+valendo para os **painéis**: nenhum saiu; quatro mudaram de casa.
+
 **Declarada aqui porque uma pele não pode esconder aba nenhuma** (regra 2 da SPEC_APARENCIA). A
 Imagem 1 não desenha faixa de abas; o que a S-226 muda é o **peso** dela, não o conteúdo -- e o
 teste compara a barra montada com esta tupla, em cada pele registrada."""
 
-ABA_DE_TRABALHO = RESULTADO
+ABA_DE_TRABALHO = LIVRO
 """Onde a janela abre num checkout novo (S-162).
 
 Era a Configuração: três caminhos de arquivo e os parâmetros de treino, isto é, a aba do primeiro
-dia e quase nunca depois. O trabalho começa no Resultado, que é onde o diagrama clicado na página
-aparece."""
+dia e quase nunca depois. O trabalho começa no livro, no modo Resultado, que é onde o diagrama
+clicado na página aparece (`MODO_DE_TRABALHO`)."""
+
+MODO_DE_TRABALHO = RESULTADO
+"""O modo em que a aba `Livro` abre num checkout novo."""
+
+
+def e_modo(nome: str) -> bool:
+    """Se aquele nome (com ou sem contagem) é um modo do painel principal, e não uma aba."""
+    return nome_base(nome) in MODOS
 
 
 def rotulo(nome: str, contagem: int | None = None) -> str:

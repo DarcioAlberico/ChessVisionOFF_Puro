@@ -17,15 +17,35 @@ modelo, e uma letra que ele não considerou nunca entra.
     p/ayer     o modelo já tem `l` em rank 2 naquela caixa  ->  player
     Nimzowitsch   nenhuma troca do top-k forma palavra       ->  sai idêntica
 
-## Quatro guardas, e cada uma tem um caso concreto atrás
+## Seis guardas, e cada uma tem um caso concreto atrás
 
-1. **Nada com dígito por perto.** É a cicatriz que a S-209 registra: lance maltratado não pode
-   virar palavra. Um token com dígito, ou colado a um, não é palavra e não é tocado.
+1. **Dígito só passa quando o modelo o desmente.** Era *"nada com dígito por perto"*, pela
+   cicatriz que a S-209 registra -- lance maltratado não pode virar palavra. A S-508 estreitou:
+   o dígito é perdoado quando o **próprio classificador** oferece uma letra para aquela caixa, e
+   o token não é notação por `notacao.peso_de_notacao`. Ver `candidata`.
 2. **Nada com menos de `MIN_TAMANHO` letras.** `Kf`, `Nc`, `Re` são notação, não palavra -- e elas
    estavam no léxico bruto extraído do acervo até esta régua entrar.
 3. **No máximo `MAX_TROCAS` posições mudam.** Sem teto, uma palavra longa alcança meio dicionário.
 4. **Ambiguidade não corrige.** Se duas combinações diferentes formam palavras conhecidas, o
    token fica como está: escolher entre elas seria exatamente o palpite que este módulo evita.
+5. **Meia palavra não é palavra.** Token terminado em hífen é a metade que a quebra de linha
+   deixou; quem junta as duas é `lexico.juntar_hifenizadas` (S-353), e só então há o que corrigir.
+6. **Caixa não é decisão de dicionário.** A alternativa que é a mesma letra em outra caixa sai da
+   busca: quem decide maiúscula é a altura do box, em `caixa_alta`, e ela já decidiu. Ver
+   `sem_troca_de_caixa`.
+
+## O par `l`/`1`, e por que ele precisou das guardas 1 e 6 (S-508)
+
+Depois do resize para 32x32 o `l` e o `1` são a mesma imagem, e o classificador escolhe por
+frequência. Medido na folha 11 do `Nunn - Secrets of Minor Piece Endings`, o modelo põe `l` em
+**rank 2 em todas** as 22 caixas em que escreveu `1` dentro de palavra -- a resposta certa sempre
+esteve à mão, e duas guardas a barravam:
+
+    on1y  B1ack  whi1e  resu1t  sett1e  va1id  b1ockading  actua11y  natura1  de1ay
+
+A guarda 1 barrava o token inteiro, por causa do dígito. A guarda 4 barrava o resto: `conhecida`
+dobra para minúscula antes de olhar o léxico, então `reSult` e `result` chegavam à ambiguidade
+como duas respostas, e 13 dos 22 morriam aí.
 
 ## De onde vem o léxico: três arquivos, três procedências
 
@@ -73,6 +93,7 @@ lista conserta isso; a caixa do pingo, sim.
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -94,6 +115,7 @@ from .lexico import (
     CAMINHO_PADRAO,
     EMPACOTADOS,
     FRACAO_DE_LETRAS,
+    HIFENS,
     MIN_TAMANHO,
     PALAVRA,
     PASTA_DO_LEXICO,
@@ -102,6 +124,7 @@ from .lexico import (
     desconhecidas,
     e_palavra,
     palavras_de,
+    suspeita,
 )
 
 __all__ = [
@@ -123,6 +146,7 @@ __all__ = [
     "PONTUACAO_DE_BORDA",
     "TOPO",
     "alternativas",
+    "candidata",
     "carregar",
     "conhecida",
     "corrigir",
@@ -131,6 +155,7 @@ __all__ = [
     "escolher",
     "palavras",
     "palavras_de",
+    "sem_troca_de_caixa",
     "variantes",
 ]
 
@@ -215,6 +240,123 @@ def variantes(palavra: str, candidatos: Sequence[Sequence[str]], *, max_trocas: 
     return achadas
 
 
+def candidata(palavra: str, candidatos: Sequence[Sequence[str]]) -> bool:
+    """Este token é candidato a correção? Ver as guardas 1 e 5 do cabeçalho (S-508).
+
+    Duas portas. A de sempre é `e_palavra`, que proíbe **qualquer** dígito. A segunda abre só para
+    o dígito que **o próprio classificador escreveu**: se o modelo oferece uma letra para aquela
+    caixa, o dígito é palpite dele e não tinta do livro, e o token volta a ser palavra.
+
+    A porta larga é a de `lexico.suspeita` -- comprimento, fração de letras e `peso_de_notacao`,
+    que é a régua de notação medida pela S-208. Ela não bastava sozinha para a correção, e o
+    cabeçalho de lá diz por quê: *"corrigir um lance por engano custa um lance reescrito no PGN"*.
+    O que autoriza usá-la aqui é a segunda condição, que a S-208 não tinha à mão -- ela é sobre o
+    modelo, e não sobre o texto.
+    """
+    if _meia_palavra(palavra):
+        return False
+    if e_palavra(palavra):
+        return True
+    return _digito_do_classificador(palavra, candidatos)
+
+
+def _meia_palavra(palavra: str) -> bool:
+    """Termina em hífen? Então é a metade que a quebra de linha deixou, e não uma palavra.
+
+    **Meia palavra não está no dicionário, e o que se alcança a partir dela é lixo.** Medido em 4
+    folhas do `Nunn`: `interest-` virava `interest`, `combina-` virava `combina` e `sim-` virava
+    `simI` -- o hífen sumia ou virava letra. Quem junta as duas metades é `lexico.juntar_hifenizadas`
+    (S-353), depois, e ali a palavra inteira passa por este mesmo dicionário.
+    """
+    return bool(palavra) and palavra.strip(PONTUACAO_DE_BORDA).endswith(tuple(HIFENS))
+
+
+def _digito_do_classificador(palavra: str, candidatos: Sequence[Sequence[str]]) -> bool:
+    """Todo dígito deste token tem uma **letra** entre os candidatos do modelo para aquela caixa?
+
+    É o que separa `on1y` de `e5.knight`: no primeiro o modelo põe `l` em rank 2 na caixa do `1`;
+    no segundo o `5` é o único candidato, e é tinta do livro.
+
+    **As duas perguntas são feitas sobre strings diferentes, e é isso que faz a régua funcionar.**
+    Comprimento e fração de letras são sobre a palavra que o modelo oferece -- `wi11` tem metade de
+    dígitos e seria recusada pela fração, enquanto `will` passa. *Isto é notação?* é sobre o que
+    está escrito na folha: `Rxd1` vira `Rxdl` ao trocar o dígito, e `Rxdl` não é lance nenhum --
+    perguntar sobre a troca perderia justamente o lance que a guarda existe para proteger.
+    """
+    from .notacao import peso_de_notacao
+
+    provavel = _desmentindo_os_digitos(palavra, candidatos)
+    return provavel is not None and peso_de_notacao(palavra) == 0 and suspeita(provavel)
+
+
+def _desmentindo_os_digitos(
+    palavra: str, candidatos: Sequence[Sequence[str]]
+) -> str | None:
+    """O token com cada dígito trocado pela melhor letra que o modelo ofereceu para a caixa dele.
+
+    `None` quando algum dígito não tem letra nenhuma no topo -- aí ele é do livro --, e também
+    quando não há dígito: sem dígito a pergunta é de `e_palavra`, e ela já foi feita.
+    """
+    deslocamento = len(palavra) - len(palavra.lstrip(PONTUACAO_DE_BORDA))
+    limpo = palavra.strip(PONTUACAO_DE_BORDA)
+    saida: list[str] = []
+    achou = False
+    for i, char in enumerate(limpo):
+        if not char.isdigit():
+            saida.append(char)
+            continue
+        achou = True
+        posicao = deslocamento + i
+        alternativas = candidatos[posicao] if posicao < len(candidatos) else ()
+        letra = next((a for a in alternativas if a.isalpha()), None)
+        if letra is None:
+            return None
+        saida.append(letra)
+    return "".join(saida) if achou else None
+
+
+def sem_troca_de_caixa(
+    palavra: str, candidatos: Sequence[Sequence[str]]
+) -> list[list[str]]:
+    """Os mesmos candidatos, sem a alternativa que é a **mesma letra** com outra caixa ou outro
+    acento (S-508).
+
+    **Quem decide maiúscula é a altura do box, e ela já decidiu.** `caixa_alta.decidir` roda antes
+    deste módulo, com uma régua medida (CER 0,1434 -> 0,1114); o dicionário decide *qual letra*, e
+    desfazer a decisão de caixa numa posição que ninguém perguntou não é resposta dele.
+
+    **O que isso destrava é a maioria das correções.** `conhecida` dobra para minúscula antes de
+    olhar o léxico, então `reSult` e `result` são as duas "conhecidas" -- e a guarda da ambiguidade
+    recusava as duas. Medido em 4 folhas do `Nunn`: 13 dos 22 tokens com dígito eram recusados
+    assim, todos por uma maiúscula no meio da palavra que palavra nenhuma tem.
+
+    **O acento entrou junto, e ele custou a única palavra certa quebrada da medição.** Ao destravar
+    a caixa, `façanha` virou `facanha` na folha 47 do `Xadrez Vitorioso`: a cedilha não está no
+    léxico e `facanha` está. Só que a cedilha é **tinta na imagem** -- ao contrário do tamanho, que
+    o resize para 32x32 apaga --, então tirá-la é desfazer o que o classificador viu para
+    acomodar uma falta do dicionário. Com esta linha, `quebraram_palavra_certa` volta a zero.
+    """
+    return [
+        [a for a in alternativas if _outra_letra(a, palavra[i])]
+        if i < len(palavra)
+        else list(alternativas)
+        for i, alternativas in enumerate(candidatos)
+    ]
+
+
+def _outra_letra(alternativa: str, atual: str) -> bool:
+    """São letras diferentes, e não a mesma com outra caixa ou outro acento?"""
+    return _cru(alternativa) != _cru(atual)
+
+
+def _cru(char: str) -> str:
+    """O caractere sem acento e em minúscula. `Ç`, `ç` e `c` viram o mesmo."""
+    sem_marca = "".join(
+        c for c in unicodedata.normalize("NFD", char) if not unicodedata.combining(c)
+    )
+    return sem_marca.casefold()
+
+
 def escolher(
     palavra: str,
     candidatos: Sequence[Sequence[str]],
@@ -232,10 +374,12 @@ def escolher(
     repassava: quem pedisse um teto diferente recebia o teto padrão em silêncio, e a medição que
     varresse o teto mediria sempre a mesma coisa.
     """
-    if not lexico or not e_palavra(palavra) or conhecida(palavra, lexico):
+    if not lexico or conhecida(palavra, lexico) or not candidata(palavra, candidatos):
         return None
     conhecidas = {
-        v for v in variantes(palavra, candidatos, max_trocas=max_trocas) if conhecida(v, lexico)
+        v
+        for v in variantes(palavra, sem_troca_de_caixa(palavra, candidatos), max_trocas=max_trocas)
+        if conhecida(v, lexico)
     }
     if not conhecidas:
         return None

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, fields
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -61,6 +62,7 @@ class AugmentConfig:
     speckle: float = 0.0
     paper: float = 0.0
     invert: float = 0.0
+    stroke: float = 0.0
 
     hatch_period_px: tuple[int, int] = (4, 12)
     """Período da hachura em pixels da **casa** (64×64 na entrada do modelo).
@@ -68,6 +70,22 @@ class AugmentConfig:
     Medido no acervo: a hachura do `Euwe` tem ~12,5 px numa casa de 100 px no tabuleiro de
     800, o que dá ~8 px numa casa reamostrada para 64. A faixa cobre isso com folga dos dois
     lados, porque outros livros hachuram mais fino."""
+
+    stroke_px: tuple[int, int] = (1, 1)
+    """Quanto o traço engrossa ou afina, em pixels da casa de 64 (C4 do ciclo 2 OCR/UI).
+
+    **Um pixel, e é medido, não gosto.** A proposta dizia "1–2 px"; olhando 36 casas reais do
+    Koblenz, do Burgess e do Euwe antes e depois (`scratchpad/stroke_view.py` do ciclo 2), a
+    dilatação de 2 px **fecha** o contorno das brancas -- a fração clara dentro da caixa do
+    glifo cai de 0,84 (mediana) para 0,34, mínimo 0,04: uma torre branca em casa hachurada
+    vira um bloco preto -- e a erosão de 2 px apaga as pretas (preenchimento mínimo 0,03).
+    Com 1 px o contorno continua contorno (0,84 → 0,57, mínimo 0,20) e a preta continua
+    preta (0,34 → 0,32, mínimo 0,07). Dois pixels trocariam o rótulo; um não."""
+
+    stroke_margin_px: int = 3
+    """Anel da borda da casa que `RandomStroke` não toca: são as linhas da grade e a
+    hachura da casa vizinha, não o glifo -- engrossá-las ensinaria uma grade que nenhum
+    livro tem."""
 
     @property
     def version(self) -> str:
@@ -90,6 +108,7 @@ class AugmentConfig:
                 ("s", self.speckle),
                 ("p", self.paper),
                 ("i", self.invert),
+                ("e", self.stroke),
             )
             if valor > 0.0
         )
@@ -103,10 +122,60 @@ class AugmentConfig:
         )
         if self.hatch > 0.0 and self.hatch_period_px != padrao["hatch_period_px"]:
             fora_do_padrao += "t{}x{}".format(*self.hatch_period_px)
+        if self.stroke > 0.0 and (
+            self.stroke_px != padrao["stroke_px"] or self.stroke_margin_px != padrao["stroke_margin_px"]
+        ):
+            fora_do_padrao += "e{}x{}m{}".format(*self.stroke_px, self.stroke_margin_px)
         return f"{base}-{fora_do_padrao}" if fora_do_padrao else base
 
 
 DEFAULT_AUGMENT = AugmentConfig()
+
+LETRAS = "mhspie"
+"""As letras do regime, na ordem de `AugmentConfig.version`: m=espelhar, h=hachura,
+s=granulação, p=papel, i=inversão, e=espessura do traço (C4)."""
+
+
+def from_letters(texto: str) -> AugmentConfig:
+    """`"mhsp"`, `"augmhsp"` ou `"aug0"` → `AugmentConfig`, nas probabilidades da S-40.
+
+    Uma letra liga a transformação na probabilidade que a S-40 propôs; afinar valor por
+    valor seria oferecer um espaço de busca que ninguém mediu. É a leitura inversa de
+    `AugmentConfig.version` para os regimes de letras: `from_letters(config.version)` devolve
+    o regime do checkpoint, que é como a janela retreina no **mesmo** regime que produziu o
+    modelo de produção (C4) em vez de sempre no genérico.
+    """
+    letras = texto[3:] if texto.startswith("aug") else texto
+    letras = letras.split("-", 1)[0]
+    if letras in ("", "0"):
+        return AugmentConfig()
+    desconhecidas = set(letras) - set(LETRAS)
+    if desconhecidas:
+        raise ValueError(f"Letras desconhecidas no regime de aumento: {''.join(sorted(desconhecidas))} (válidas: {LETRAS})")
+    return AugmentConfig(
+        hflip=0.5 if "m" in letras else 0.0,
+        hatch=0.30 if "h" in letras else 0.0,
+        speckle=0.25 if "s" in letras else 0.0,
+        paper=0.30 if "p" in letras else 0.0,
+        invert=0.03 if "i" in letras else 0.0,
+        stroke=0.30 if "e" in letras else 0.0,
+    )
+
+
+def version_of_checkpoint(model_path: Path | str) -> str:
+    """O `augment_version` gravado no checkpoint, ou `"aug0"` quando não há como saber.
+
+    `"aug0"` para um checkpoint anterior à S-40 (que não gravava o regime) ou ausente: é o
+    regime que o produziu.
+    """
+    from .checkpoint import load_checkpoint
+
+    try:
+        checkpoint = load_checkpoint(Path(model_path))
+    except Exception:  # noqa: BLE001 - .pt ausente, truncado ou de outro torch: o genérico
+        return "aug0"
+    versao = str(checkpoint.metadata.get("augment_version", "") or "aug0")
+    return versao
 
 
 class _Sometimes(nn.Module):
@@ -205,6 +274,71 @@ class RandomInvert(_Sometimes):
         return 1.0 - x if self._should() else x
 
 
+class RandomStroke(_Sometimes):
+    """Espessura do traço: a tinta engrossa ou afina 1–2 px, só no interior da casa (C4).
+
+    **O eixo que nenhum outro aumento cobria.** Hachura, papel, granulação e inversão mudam o
+    fundo e o contraste; nenhum muda a **espessura do glifo** -- e é nela que o campo erra
+    cor: o Koblenz imprime as pretas em traço grosso e as brancas em contorno fino, o Burgess
+    e5 e as 10 casas de cor do ciclo 2 (`docs/OCR_UI_ANALISE_C2.md` §3.1, §3.4) são um
+    `q→Q` a 0,71–1,00 num livro cujo traço o treino nunca viu. Um contorno mais grosso não é
+    uma peça preta, e o modelo só aprende isso vendo contornos grossos rotulados de brancos.
+
+    **Morfologia em `max_pool2d`, sem `cv2` no `DataLoader`.** A tinta é escura (0) sobre papel
+    claro (1): engrossar a tinta é o mínimo local (`-max_pool2d(-x)`), afinar é o máximo local.
+    Raio sorteado em `px`, sentido sorteado ao meio. Tudo com o RNG do torch, pelo motivo de
+    `_Sometimes`.
+
+    **Rótulo-preservante por medição, não por sorte.** Um pixel a 64 px é o que as casas
+    reais aguentam (ver `AugmentConfig.stroke_px`): com 2 px a torre branca em casa hachurada
+    do Koblenz vira um bloco preto. "Contorno → preenchido" -- que trocaria a cor da peça e
+    portanto o rótulo -- é exatamente o que este módulo **não** faz, pelo mesmo motivo que
+    `RandomInvert` não troca o rótulo: `synthgen._flip_case` da suíte inverte **com** troca
+    de rótulo, e ligar as duas semânticas no mesmo treino ensinaria o oposto.
+
+    **Só no interior.** O anel de `margin` px na borda fica intacto: ali estão as linhas da
+    grade e a hachura da casa vizinha, e engrossá-las produziria uma grade que livro nenhum
+    tem -- o modelo aprenderia a ignorar um artefato do aumento, não do acervo.
+    """
+
+    def __init__(self, p: float, px: tuple[int, int] = (1, 1), margin: int = 3) -> None:
+        super().__init__(p)
+        self.px = (max(1, int(px[0])), max(1, int(px[1])))
+        self.margin = max(0, int(margin))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not self._should():
+            return x
+        baixo, alto = self.px
+        raio = int(torch.randint(baixo, alto + 1, ()).item())
+        engrossar = bool(torch.rand(()) < 0.5)
+        return stroke(x, raio, engrossar=engrossar, margin=self.margin)
+
+
+def stroke(x: torch.Tensor, raio: int, *, engrossar: bool, margin: int = 3) -> torch.Tensor:
+    """A operação de `RandomStroke` sem sorteio: `raio` px, engrossar ou afinar a tinta.
+
+    Exposta para a medição (o teste que confere que um contorno dilatado em 1 px continua
+    com vão, e a inspeção de casas reais antes e depois) -- e é dela que a sabotagem do C4
+    parte: `raio=2` é o que o teste mostra fechar o contorno.
+    """
+    if raio <= 0:
+        return x
+    tamanho = 2 * raio + 1
+    entrada = x.unsqueeze(0) if x.dim() == 3 else x
+    if engrossar:
+        saida = -torch.nn.functional.max_pool2d(-entrada, tamanho, stride=1, padding=raio)
+    else:
+        saida = torch.nn.functional.max_pool2d(entrada, tamanho, stride=1, padding=raio)
+    saida = saida.squeeze(0) if x.dim() == 3 else saida
+    altura, largura = x.shape[-2], x.shape[-1]
+    if margin <= 0 or 2 * margin >= min(altura, largura):
+        return saida
+    interior = torch.zeros((altura, largura), dtype=torch.bool, device=x.device)
+    interior[margin : altura - margin, margin : largura - margin] = True
+    return torch.where(interior, saida, x)
+
+
 def _clamp01(x: torch.Tensor) -> torch.Tensor:
     return torch.clamp(x, 0.0, 1.0)
 
@@ -222,13 +356,18 @@ def build_augmentations(config: AugmentConfig = DEFAULT_AUGMENT) -> list[nn.Modu
 
     A ordem importa e não é arbitrária: o papel amarela **antes** de a tinta da hachura ser
     impressa em cima, e a granulação do scanner vem por último porque ela é do scanner, não
-    da página. Inverter isso produziria uma hachura amarelada, que nenhum livro tem.
+    da página. Inverter isso produziria uma hachura amarelada, que nenhum livro tem. A
+    espessura do traço (`RandomStroke`) vem antes de tudo isso: é a impressão do glifo.
     """
     etapas: list[nn.Module] = []
     if config.hflip > 0:
         etapas.append(RandomHorizontalFlipCell(config.hflip))
     if config.invert > 0:
         etapas.append(RandomInvert(config.invert))
+    if config.stroke > 0:
+        # Antes do papel e da hachura: a espessura é da impressão, e a hachura e o papel
+        # são o que acontece em volta dela -- engrossar a hachura seria outro aumento.
+        etapas.append(RandomStroke(config.stroke, config.stroke_px, config.stroke_margin_px))
     if config.paper > 0:
         etapas.append(RandomPaper(config.paper))
     if config.hatch > 0:

@@ -46,9 +46,14 @@ LineOrigin = Literal["text", "ocr", "glifo"]
 """De onde a linha veio. Ver "As três procedências" no cabeçalho."""
 
 SideOrigin = Literal[
-    "text", "ocr", "glifo", "text-page-scope", "ocr-page-scope", "glifo-page-scope"
+    "text", "ocr", "glifo", "text-page-scope", "ocr-page-scope", "glifo-page-scope",
+    "move-number", "caption-after",
 ]
-"""As seis procedências textuais do lado a jogar: três fontes x dois escopos."""
+"""As seis procedências textuais do lado a jogar (três fontes x dois escopos) mais as duas
+da **numeração** (OCR_UI_ROADMAP passo 7, SPEC R2.5): `move-number` -- o primeiro lance impresso
+sob o diagrama diz de quem é a vez (`22...` pretas, `23 ♘c4` brancas) -- e `caption-after` --
+a legenda "após/after N.x" diz a posição *depois* daquele lance, logo a vez é do outro lado.
+Entram na cascata depois do texto declarado e antes do escopo de página."""
 
 DE_TERCEIROS: LineOrigin = "ocr"
 DA_CAMADA: LineOrigin = "text"

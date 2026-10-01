@@ -1040,6 +1040,15 @@ Na sétima, no fecho do corte do Tk (S-506), **três dos quatro** voltaram idên
 quarto, a produção, não pôde ser reproduzido: o checkpoint dele foi sobrescrito por um retreino
 e não existe mais. Ele foi remedido com o `piece_classifier.pt` de hoje, e deu 0,8696.
 
+Na oitava (OCR_UI ciclo 2, fase 5, 2026-09-23 -- commit `36d6f65`, árvore limpa efêmera,
+`dirty=false`) **os quatro mudaram, e na mesma direção**: desde o `7bcb396` dezoito módulos do
+caminho de medição se moveram (a detecção entre eles), e hoje a detecção casa 114 dos 115
+diagramas anotados (eram 109) sem falso positivo (eram 3). Taxa de exportação: produção 0,8957,
+controle 0,8087, `s108` 0,7652, `mhsp` 0,7478; exatidão de campo 0,9709 (3 exportados errados --
+um deles, Niemeijer p20, é a anotação errada que a fase 4 do ciclo 2 achou), 1,0000, 0,9886 e
+0,9884. Não é reprodução, é medição nova: o relatório da suíte
+(`docs/quality/OCR_UI_REPORT_C2_FASE5.md` §A15) tem os pares antes → depois.
+
 ## S-326 · A largura da fita plena é derivada, e não escolhida
 
 **Problema.** Três testes de `ModoDaFitaTests` montavam a fita em `self._em(2200)` -- 2.200 px é

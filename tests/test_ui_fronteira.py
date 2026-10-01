@@ -263,11 +263,17 @@ class FronteiraTests(unittest.TestCase):
         toolkit -- montava serviço e motor a partir do arquivo de preferências (S-523) --, e ganhou
         o formulário que edita as opções do motor e o `MotorVivo` que as aplica numa `Tarefa`. As
         duas coisas são widget e thread de Qt; a decisão delas continua em `ui/motor_declarado.py`.
+
+        **`qt/decisoes_de_diagrama.py` entrou na isenção no merge do religa** (OCR_UI ciclo 2,
+        passo A3). É a ponte que grava a decisão de diagrama no contrato da suíte, e mora em `qt/`
+        e não em `ui/` pelo motivo escrito no cabeçalho dela: é uma ponte para outro pacote, como
+        `qt/importador_de_livro.py`, e `ui/` é a camada pura que `SEM_TKINTER` enumera. Não
+        desenha nada, e por isso não importa o toolkit.
         """
         achados = violacoes(QT, RAIZ)
         com_toolkit = {relativo for relativo in achados if relativo.startswith("qt/")}
         modulos_do_qt = {c.relative_to(RAIZ).as_posix() for c in QT.glob("*.py")}
-        sem_widget = {"qt/__init__.py"}
+        sem_widget = {"qt/__init__.py", "qt/decisoes_de_diagrama.py"}
         self.assertEqual(modulos_do_qt - sem_widget, com_toolkit)
         self.assertGreater(len(com_toolkit), 25)
 

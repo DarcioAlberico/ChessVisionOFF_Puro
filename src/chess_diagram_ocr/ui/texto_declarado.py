@@ -1,7 +1,8 @@
 """O que a aba de texto declara fora do widget (S-240/S-262/S-264/S-266/S-423/S-504).
 
 A tabela `comando -> método`, as duas listas de escolha exclusiva, os limites do zoom da vista, os
-três motores de leitura e o que a conferência de léxico pula. Nada aqui toca toolkit.
+três motores de leitura, o que a conferência de léxico pula e quando a digitação fecha um passo de
+desfazer. Nada aqui toca toolkit.
 
 **A tabela é a parte que mais importa, e a razão é a mesma da sala de estudo.** A janela gera as
 ligações a partir dela: um comando novo entra numa linha e chega ao menu, à paleta e às três peles
@@ -24,6 +25,7 @@ agora é `qt/painel_de_texto.py`, `qt/janela.py` e `cli/editor_inventario.py`.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from ..text import rico
@@ -44,6 +46,9 @@ __all__ = [
     "ROTULO_DO_CORPO_MISTO",
     "ZOOM_MAXIMO",
     "ZOOM_MINIMO",
+    "Digitacao",
+    "continua_a_digitacao",
+    "digitacao_depois",
     "fora_do_livro",
 ]
 
@@ -123,6 +128,63 @@ def fora_do_livro(doc: rico.DocumentoRico) -> tuple[tuple[int, int], ...]:
             intervalos.append((posicao, fim))
         posicao = fim
     return tuple(intervalos)
+
+
+PAUSA_DA_DIGITACAO = 1.0
+"""Segundos sem tecla que fecham o passo de desfazer da digitação.
+
+Mais que o intervalo entre duas teclas de quem digita devagar, menos que a parada de quem terminou
+a palavra e foi conferir a folha: o `Ctrl+Z` depois da pausa desfaz o que veio depois dela, e não a
+tarde inteira. Não é relógio de gravação -- esse é `text/rascunho.ESPERA_SEGUNDOS`, e responde a
+outra pergunta."""
+
+
+@dataclass(frozen=True)
+class Digitacao:
+    """O passo de desfazer que a digitação mantém aberto: as teclas seguintes entram nele.
+
+    **Sem isto cada tecla seria um passo**, e desfazer a palavra `cavalo` custaria seis `Ctrl+Z`.
+    Com o passo aberto para sempre, um `Ctrl+Z` apagaria o parágrafo inteiro que a pessoa escreveu
+    em dez minutos. O passo fecha no que muda a intenção: o cursor que pulou, a pausa, trocar
+    escrever por apagar, colar, e toda ferramenta -- quem chama zera o passo nelas.
+    """
+
+    cursor: int
+    """Onde a última tecla deixou o cursor, em deslocamento do documento."""
+
+    apagando: bool
+    """O passo é de apagar (`Backspace`, `Delete`), e não de escrever."""
+
+    quando: float
+    """O relógio monotônico da última tecla, em segundos."""
+
+
+def continua_a_digitacao(
+    aberta: Digitacao | None, inicio: int, fim: int, novo: str, *, agora: float
+) -> bool:
+    """Esta edição -- `[inicio, fim)` trocado por `novo` -- entra no passo aberto? Pura.
+
+    Entra quando continua o gesto: escrever exatamente onde a última tecla deixou o cursor, ou
+    apagar encostado nele -- `Backspace` apaga o que termina no cursor, `Delete` o que começa nele.
+    Não entra depois de `PAUSA_DA_DIGITACAO`, nem quando se troca escrever por apagar, nem quando
+    ela escreve por cima de uma seleção (o cursor pulou para selecionar) ou traz mais de uma letra
+    de uma vez (colar é um passo só dele).
+    """
+    if aberta is None or agora - aberta.quando > PAUSA_DA_DIGITACAO or len(novo) > 1:
+        return False
+    apagando = not novo
+    if apagando != aberta.apagando:
+        return False
+    if apagando:
+        return aberta.cursor in (inicio, fim)
+    return inicio == fim == aberta.cursor
+
+
+def digitacao_depois(inicio: int, fim: int, novo: str, *, agora: float) -> Digitacao | None:
+    """O passo que fica aberto depois desta edição -- `None` quando ela mesma o fecha (colar)."""
+    if len(novo) > 1:
+        return None
+    return Digitacao(cursor=inicio + len(novo), apagando=not novo, quando=agora)
 
 
 COMANDOS_DA_ABA: dict[str, str] = {

@@ -31,7 +31,9 @@ __all__ = [
     "NEUTRO",
     "PRIMARIO",
     "conferir_barra",
+    "conferir_tela",
     "estilo_de_botao",
+    "tem_enfase",
 ]
 
 PRIMARIO = "PRIMARIO"
@@ -54,6 +56,27 @@ NEUTRO = "NEUTRO"
 
 PAPEIS_DE_BOTAO: tuple[str, ...] = (PRIMARIO, DESTRUTIVO, NEUTRO)
 
+COM_ENFASE: frozenset[str] = frozenset({PRIMARIO, DESTRUTIVO})
+"""Os papéis que ganham **face** própria -- fundo saturado e letra clara sobre ele.
+
+Existe porque a pergunta "este botão tem face de ênfase?" é feita de fora, e a resposta é daqui:
+`ui/folha_de_estilo.tinta_do_papel` precisa dela para decidir em que cor o **ícone** do botão é
+desenhado, e enquanto ela era uma tupla escrita no ponto de chamada, o papel estava declarado em
+dois lugares. O neutro fica de fora por definição -- ele é a ausência de ênfase, e não uma
+terceira face."""
+
+
+def tem_enfase(papel: str) -> bool:
+    """Se um botão daquele papel é desenhado com face própria. Papel desconhecido é `False`.
+
+    Não levanta, ao contrário de `estilo_de_botao`: quem pergunta isto está escolhendo uma cor de
+    desenho, e um papel novo que ainda não tenha face merece o tratamento neutro em vez de uma
+    janela que não abre. Quem cobra papel escrito errado é `estilo_de_botao`, no caminho em que o
+    erro é do chamador.
+    """
+    return papel in COM_ENFASE
+
+
 _ESTILOS: dict[str, str] = {
     PRIMARIO: "primary.TButton",
     DESTRUTIVO: "danger.TButton",
@@ -71,6 +94,31 @@ def estilo_de_botao(papel: str) -> str:
     if papel not in _ESTILOS:
         raise KeyError(f"papel de botão desconhecido: {papel!r}. Os válidos estão em PAPEIS_DE_BOTAO.")
     return _ESTILOS[papel]
+
+
+def conferir_tela(papeis: Iterable[str], *, onde: str = "esta tela") -> list[str]:
+    """Os excessos de ênfase de uma **tela inteira**. Pura, e **não levanta** (F9-C2, §7 item 10).
+
+    **A regra da barra não alcançava a tela, e o crítico do ciclo 1 mediu a diferença**: cada
+    barra tinha a sua ênfase e obedecia `conferir_barra`, mas a janela desenha o painel do PDF, o
+    painel de campo e a aba ao mesmo tempo -- então Resultado, Estudo e Revisão saíam com **três**
+    botões primários simultâneos, e as outras três abas com dois. Uma barra correta vezes três é
+    uma tela errada.
+
+    **Devolve em vez de levantar, e é a diferença de contrato com `conferir_barra`.** Aquela é
+    chamada na montagem de uma barra, onde o excesso é erro de programação e tem de doer; esta é
+    chamada com a janela viva, e uma janela que se recusa a abrir porque um botão está da cor
+    errada troca um defeito de aparência por uma queda -- que é o contrato de degradação da S-53.
+    Quem chama registra a lista; o número entra no relatório da frente.
+
+    Levanta `KeyError` para papel desconhecido, pela mesma razão de `conferir_barra`: um papel
+    escrito errado passaria a contar como neutro, e a tela com duas ênfases passaria no portão.
+    """
+    vistos = list(papeis)
+    for papel in vistos:
+        if papel not in _ESTILOS:
+            raise KeyError(f"papel de botão desconhecido: {papel!r}. Os válidos estão em PAPEIS_DE_BOTAO.")
+    return [papel for papel in vistos if papel == PRIMARIO][1:]
 
 
 def conferir_barra(papeis: Iterable[str], *, onde: str = "esta barra") -> None:

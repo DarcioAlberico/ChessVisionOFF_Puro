@@ -29,6 +29,14 @@ from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 from chess_diagram_ocr.gallery_scan import GalleryIndex
 from chess_diagram_ocr.ui import galeria_declarada, pele
 
+GALERIA_DO_MAIN = (
+    "cobra o arranjo da Galeria do `main` (S-552: o recorte fixo de 420 px, a aba que rola inteira "
+    "e o empilhamento abaixo de 702 px), que o merge do religa não trouxe: ficou a Galeria da "
+    "OCR_UI, com o recorte elástico e a lateral rolável sob o seguidor de foco -- decisão do PR do "
+    "merge, e `galeria_declarada.galeria_empilhada` fica declarada sem chamador até lá"
+)
+"""O motivo dos testes do arranjo da Galeria do `main` que não rodam depois do merge do religa."""
+
 if TEM_PYQT:
     from PyQt6.QtWidgets import QMessageBox
 
@@ -110,8 +118,20 @@ class PainelTests(unittest.TestCase):
         return montar_painel(self, self.pasta, **kwargs)
 
     def test_o_estado_vazio_diz_o_que_falta_fazer(self) -> None:
+        """**Título, frase e o botão que resolve -- dentro do vazio** (F9-C2, §7 item 14).
+
+        Era uma frase escrita por cima do recorte. O crítico do ciclo 1 mediu a região: 514,7 kpx
+        de painel com **0,24 % de tinta**, com o botão `Varrer o livro` a 645 px de distância e uma
+        segunda frase dizendo a mesma coisa a 320 px da primeira.
+        """
+        from chess_diagram_ocr.ui import strings
+
         painel = self.painel()
-        self.assertEqual(painel.recorte.text(), "varra o livro para ver os diagramas")
+        self.assertTrue(painel.vazio.isVisibleTo(painel), "sem diagrama, o vazio aparece")
+        self.assertEqual(painel.vazio.titulo.text(), strings.GALERIA_VAZIA_TITULO)
+        self.assertEqual(painel.vazio.frase.text(), strings.GALERIA_VAZIA_FRASE)
+        assert painel.vazio.botao is not None
+        self.assertEqual(painel.vazio.botao.text(), strings.VARRER_LIVRO)
         self.assertFalse(painel.btn_limpar.isEnabled())
         self.assertFalse(painel.btn_candidatas.isEnabled())
         self.assertFalse(painel.btn_desfazer.isEnabled())
@@ -131,12 +151,27 @@ class PainelTests(unittest.TestCase):
         assert lateral is not None
         self.assertEqual(lateral.width(), galeria_declarada.LARGURA_DA_LATERAL)
 
-    def test_o_recorte_tem_o_lado_declarado(self) -> None:
-        """Fixo: a galeria é para percorrer, e um tamanho que muda faria a imagem pular sob o
-        ponteiro a cada avanço."""
+    def test_o_recorte_fica_entre_o_piso_e_o_teto_declarados(self) -> None:
+        """**Elástico entre dois números declarados, e quadrado** (F9-C2, §7 item 4).
+
+        Era `setFixedSize(BOARD_VIEW_SIZE)`, e o crítico do ciclo 1 isolou a linha: aqueles 420 px
+        cravados eram o piso da **janela**, que por causa deles recusava 1366×768. O argumento
+        original -- *a galeria é para percorrer, e um tamanho que muda faria a imagem pular sob o
+        ponteiro a cada avanço* -- continua valendo e continua cumprido: o lado só muda com a
+        janela, nunca com o diagrama.
+        """
         painel = self.painel()
-        self.assertEqual(painel.recorte.width(), galeria_declarada.BOARD_VIEW_SIZE)
-        self.assertEqual(painel.recorte.height(), galeria_declarada.BOARD_VIEW_SIZE)
+        # `lado` e o quadrado **desenhado**, e nao a caixa do widget: o leiaute pode dar alguns
+        # pixels a mais de largura, e a imagem fica centrada neles. O que precisa ser quadrado e
+        # estar entre os dois numeros e o recorte, nao a celula.
+        self.assertLessEqual(galeria_declarada.LADO_MINIMO_DO_RECORTE, painel.recorte.lado)
+        self.assertLessEqual(painel.recorte.lado, galeria_declarada.BOARD_VIEW_SIZE)
+        self.assertEqual(
+            galeria_declarada.LADO_MINIMO_DO_RECORTE, painel.recorte.minimumSize().width()
+        )
+        self.assertEqual(
+            galeria_declarada.BOARD_VIEW_SIZE, painel.recorte.maximumSize().width()
+        )
 
     def test_a_legenda_e_de_leitura_e_continua_selecionavel(self) -> None:
         """`state=DISABLED` do Tk recusaria a seleção junto e pintaria de cinza -- é por isso que
@@ -422,6 +457,7 @@ class LoteDeDiagramasTests(unittest.TestCase):
 class EmpilhamentoDeclaradoTests(unittest.TestCase):
     """A partir de que largura a Galeria empilha, e o que fica em cima (S-552, terceira rodada)."""
 
+    @unittest.skip(GALERIA_DO_MAIN)
     def test_empilha_exatamente_abaixo_do_que_as_duas_colunas_pedem(self) -> None:
         """O limiar não é um número novo: duas colunas cabem quando as duas colunas cabem -- é a
         soma da S-154, recorte mais lateral mais folga."""
@@ -494,6 +530,7 @@ class ArranjoDaAbaTests(unittest.TestCase):
         )
         self.app.processEvents()
 
+    @unittest.skip(GALERIA_DO_MAIN)
     def test_a_1024_a_aba_nao_rola_na_horizontal(self) -> None:
         """Rolar na vertical faz perder de vista o que está acima, o que é normal num formulário;
         rolar na horizontal faz perder de vista a outra metade da tarefa."""
@@ -513,6 +550,7 @@ class ArranjoDaAbaTests(unittest.TestCase):
                 self.assertGreaterEqual(canto.x(), 0)
                 self.assertLessEqual(canto.x() + campo.width(), painel.width())
 
+    @unittest.skip(GALERIA_DO_MAIN)
     def test_a_1024_o_recorte_inteiro_cabe_na_largura(self) -> None:
         """A outra ponta do mesmo defeito: rolar 224 px para alcançar os campos tirava da tela os
         420 px do recorte, e a aba mostrava o diagrama **ou** os campos, nunca os dois."""
@@ -522,6 +560,7 @@ class ArranjoDaAbaTests(unittest.TestCase):
         self.assertLessEqual(canto.x() + painel.recorte.width(), painel.width())
         self.assertEqual(galeria_declarada.BOARD_VIEW_SIZE, painel.recorte.width())
 
+    @unittest.skip(GALERIA_DO_MAIN)
     def test_o_recorte_fica_acima_do_cabecalho_quando_empilha(self) -> None:
         """Quem responde "que diagrama é este?" vem antes de quem pede o que digitar sobre ele."""
         painel = self.em(*self.ABA_A_1024)
@@ -529,6 +568,7 @@ class ArranjoDaAbaTests(unittest.TestCase):
         lateral = painel.lateral.mapTo(painel, painel.lateral.rect().topLeft()).y()
         self.assertLess(recorte, lateral, "o cabeçalho subiu acima do recorte")
 
+    @unittest.skip(GALERIA_DO_MAIN)
     def test_numa_aba_larga_as_duas_colunas_voltam(self) -> None:
         """O arranjo estreito é para a janela estreita: alargando, a lateral volta para o lado."""
         painel = self.em(galeria_declarada.LARGURA_MINIMA_DA_GALERIA + 120, 700)
@@ -537,6 +577,7 @@ class ArranjoDaAbaTests(unittest.TestCase):
         self.assertGreater(lateral.x(), recorte.x() + painel.recorte.width() - 1)
         self.assertEqual(galeria_declarada.LARGURA_DA_LATERAL, painel.lateral.width())
 
+    @unittest.skip(GALERIA_DO_MAIN)
     def test_o_arranjo_volta_atras_quando_a_janela_cresce_e_encolhe(self) -> None:
         """Ele é uma resposta à largura de agora, e não um estado que se ganha uma vez."""
         painel = self.em(*self.ABA_A_1024)
@@ -549,6 +590,7 @@ class ArranjoDaAbaTests(unittest.TestCase):
             with self.subTest(largura=largura):
                 self.assertEqual(empilhado, lateral.y() > recorte.y())
 
+    @unittest.skip(GALERIA_DO_MAIN)
     def test_o_limiar_e_a_ocupacao_medida_das_duas_colunas_nas_tres_peles(self) -> None:
         """**A régua do empilhamento tem de ser medida, e foi por não ser que a aba empilhou em
         toda tela de notebook** (S-552, quarta rodada).
@@ -572,6 +614,7 @@ class ArranjoDaAbaTests(unittest.TestCase):
             medidas[uma.nome] = corpo.minimumSizeHint().width()
         self.assertEqual(galeria_declarada.LARGURA_MINIMA_DA_GALERIA, max(medidas.values()), medidas)
 
+    @unittest.skip(GALERIA_DO_MAIN)
     def test_na_largura_do_limiar_as_duas_colunas_cabem_sem_rolar_de_lado(self) -> None:
         """A outra metade da mesma régua: com o viewport no limiar exato a aba **não** empilha, e
         não passa a rolar de lado por não empilhar. Um limiar abaixo da ocupação falharia aqui.

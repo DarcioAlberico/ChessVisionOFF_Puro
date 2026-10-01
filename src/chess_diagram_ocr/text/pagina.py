@@ -13,6 +13,17 @@ embaralha a página. Eles servem de **separador horizontal**: o que está acima 
 coluna, depois vem o elemento, depois o que está abaixo. É a regra do projeto de origem, e ela
 resolve os dois casos com a mesma linha de raciocínio.
 
+## A região vem antes da coluna (S-507)
+
+O parágrafo acima resolve o elemento transversal **dentro** de uma grade de colunas que já existe.
+Falta o caso em que ele impede a grade de existir: um bloco de largura inteira de quatro linhas
+cobre a calha em todas elas, e `colunas.detectar_colunas` devolve *uma* coluna para a folha
+inteira -- as duas colunas de baixo saem intercaladas linha a linha.
+
+Por isso a folha é primeiro partida em **regiões** horizontais, cada uma com as colunas que valem
+dentro dela, e a ordem é região a região. Ver `text/regioes.py`, que traz a medição. Dentro de
+cada região vale tudo o que está escrito acima, sem mudança.
+
 ## Exclusão e reinserção usam o mesmo retângulo
 
 O diagrama sai da segmentação em `boxes.excluir_diagramas` e volta aqui na sequência de leitura.
@@ -38,9 +49,10 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from .boxes import Caixa
-from .colunas import atravessa, atribuir_coluna, detectar_colunas
+from .colunas import atravessa, atribuir_coluna
 from .grade import Arranjo, cortes_de_fileira
 from .linhas import ordem_em_faixa
+from .regioes import Regiao, atribuir_regiao, detectar_regioes
 
 
 @dataclass(frozen=True)
@@ -74,25 +86,57 @@ def sequencia_de_leitura(
     diagramas: Sequence[Diagrama] = (),
     *,
     colunas: Sequence[tuple[int, int]] | None = None,
+    regioes: Sequence[Regiao] | None = None,
     arranjo: Arranjo = "prosa",
 ) -> list[Elemento]:
     """Caixas de caractere e diagramas na ordem em que um humano os lê.
 
-    `colunas=None` as detecta com `colunas.detectar_colunas` sobre as **caixas de caractere**:
-    o diagrama não entra na projeção da calha, e não deveria -- um diagrama largo encostado na
-    calha a apagaria, que é o mesmo defeito da letra do cabeçalho um nível acima.
+    Sem `colunas` nem `regioes`, a folha é partida por `regioes.detectar_regioes` sobre as
+    **caixas de caractere**: o diagrama não entra na projeção da calha, e não deveria -- um
+    diagrama largo encostado na calha a apagaria, que é o mesmo defeito da letra do cabeçalho um
+    nível acima.
 
-    `arranjo="grade"` parte a página em fileiras antes de ler cada uma coluna a coluna, que é a
-    ordem de uma folha de exercícios numerada atravessando as colunas (S-216). O padrão é
-    `"prosa"`, e **não há detecção automática**: a direção da grade é constante por livro e sai da
-    numeração impressa, não da geometria da página.
+    `colunas=` é o atalho de quem já sabe que a folha é homogênea: vale como uma região única com
+    essas colunas. `regioes=` é o caminho de quem já as achou -- o motor de glifo, que consumiu as
+    caixas de caractere para segmentar e não pode redescobri-las a partir das linhas.
+
+    `arranjo="grade"` parte a região em fileiras antes de lê-la coluna a coluna, que é a ordem de
+    uma folha de exercícios numerada atravessando as colunas (S-216). O padrão é `"prosa"`, e
+    **não há detecção automática**: a direção da grade é constante por livro e sai da numeração
+    impressa, não da geometria da página.
     """
     elementos: list[Elemento] = [*caixas, *diagramas]
     if not elementos:
         return []
 
+    if regioes is None and colunas is None:
+        regioes = detectar_regioes(caixas) if caixas else []
+    if regioes is not None and len(regioes) > 1:
+        # **A região vem antes da coluna** (S-507): o parágrafo de largura inteira não pertence a
+        # coluna nenhuma, e lê-lo dentro da grade de colunas da região de baixo é o que embaralha
+        # a folha. Dentro de cada região vale tudo o que a S-193 já decidiu.
+        #
+        # **`atribuir_regiao`, e não o intervalo.** O diagrama não entrou na conta que cortou a
+        # folha, então o topo dele pode cair acima da primeira região; quem ficasse de fora sairia
+        # no fim da página, que é o defeito que a S-190 registra para a caixa fora de toda coluna.
+        por_regiao: dict[int, list[Elemento]] = {}
+        for elemento in elementos:
+            por_regiao.setdefault(atribuir_regiao(_como_caixa(elemento), regioes), []).append(elemento)
+        por_ordem: list[Elemento] = []
+        for indice, regiao in enumerate(regioes):
+            desta = por_regiao.get(indice)
+            if desta:
+                por_ordem.extend(
+                    sequencia_de_leitura(
+                        [e for e in desta if isinstance(e, Caixa)],
+                        [e for e in desta if isinstance(e, Diagrama)],
+                        colunas=regiao.colunas,
+                        arranjo=arranjo,
+                    )
+                )
+        return por_ordem
     if colunas is None:
-        colunas = detectar_colunas(caixas) if caixas else []
+        colunas = regioes[0].colunas if regioes else []
     if len(colunas) <= 1:
         return _ordenar_faixa_unica(elementos)
 
@@ -687,9 +731,20 @@ def bloco_de_json(dados: Any, onde: str = "bloco") -> Bloco:
 
 @dataclass(frozen=True)
 class Coluna:
-    """Uma faixa vertical da página, com os blocos dela em ordem de leitura."""
+    """Uma tira da página, com os blocos dela em ordem de leitura.
+
+    **Era "uma faixa vertical da página", e desde a S-507 é uma tira de uma região.** Numa folha
+    homogênea -- a esmagadora maioria -- as duas leituras coincidem, e o `indice` sai igual ao de
+    antes. Numa folha com bloco de largura inteira em cima de duas colunas, a tira do bloco cobre
+    a folha toda e não é faixa vertical de nada: forçá-la a ser uma das colunas é justamente o que
+    embaralhava a página.
+    """
 
     indice: int = 0
+    """A posição desta tira **na ordem de leitura**, contada de cima para baixo e da esquerda para
+    a direita. Não é a coluna geométrica: numa folha de três regiões de duas colunas ela vai de 0
+    a 5. Quem quer a coluna geométrica pergunta ao `bbox`."""
+
     blocos: tuple[Bloco, ...] = ()
     bbox: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
 

@@ -228,7 +228,96 @@ class PontuacaoNaoEAmbiguidadeTests(unittest.TestCase):
             dic.escolher("blaek", candidatos, frozenset({"black", "block"}))
         )
 
-    def test_a_caixa_continua_sendo_ambiguidade(self) -> None:
-        """`Black` e `black` são duas respostas de verdade, e decidir entre elas é palpite."""
+    def test_a_caixa_deixou_de_ser_ambiguidade(self) -> None:
+        """**Isto era `assertIsNone`, e a S-508 desfez a decisão. Ver `sem_troca_de_caixa`.**
+
+        A S-349 escreveu que `Black` e `black` eram "duas respostas de verdade". Não eram: o
+        original chegou com `b` minúsculo porque `caixa_alta.decidir` mediu a **altura** daquele
+        box, e trocar por `B` desfaria uma decisão que ninguém pediu para rever. Não havia escolha
+        a fazer, e recusar a correção custava as 13 palavras por folha que a S-508 mediu.
+        """
         candidatos = [["b", "B"], ["l"], ["a"], ["e", "c"], ["k"]]
-        self.assertIsNone(dic.escolher("blaek", candidatos, frozenset({"black"})))
+        self.assertEqual(dic.escolher("blaek", candidatos, frozenset({"black"})), "black")
+
+    def test_duas_letras_diferentes_no_mesmo_box_continuam_ambiguas(self) -> None:
+        """O que a guarda recusa é escolher **letra**, e isso não mudou: `l` contra `i`."""
+        candidatos = [["a"], ["1", "l", "i"], ["s"], ["o"]]
+        self.assertIsNone(dic.escolher("a1so", candidatos, frozenset({"also", "aiso"})))
+
+
+class ParELEUmTests(unittest.TestCase):
+    """O `l` que sai `1`, e as duas guardas que barravam a correção (S-508).
+
+    Depois do resize para 32x32 o `l` e o `1` são a mesma imagem. O modelo põe `l` em rank 2 em
+    **todas** as caixas em que escreveu `1` dentro de palavra, medido na folha 11 do `Nunn`; o que
+    faltava era deixar o dicionário olhar.
+    """
+
+    LEXICO = frozenset({"only", "black", "result", "while", "natural", "also", "aiso"})
+
+    def test_o_digito_que_o_modelo_desmente_deixa_de_barrar_o_token(self) -> None:
+        candidatos = _cand("o", "n", "1li", "y")
+        self.assertEqual(dic.escolher("on1y", candidatos, self.LEXICO), "only")
+
+    def test_a_fracao_de_letras_e_medida_na_palavra_que_o_modelo_oferece(self) -> None:
+        """`wi11` tem metade de dígitos e a fração de `lexico.suspeita` a recusaria; `will`, não.
+
+        As duas perguntas são feitas sobre strings diferentes de propósito -- ver
+        `_digito_do_classificador`.
+        """
+        candidatos = _cand("w", "i", "1li", "1li")
+        self.assertEqual(dic.escolher("wi11", candidatos, self.LEXICO | {"will"}), "will")
+
+    def test_o_digito_no_comeco_da_palavra_tambem(self) -> None:
+        candidatos = _cand("1li", "e", "s", "s")
+        self.assertEqual(dic.escolher("1ess", candidatos, self.LEXICO | {"less"}), "less")
+
+    def test_o_digito_no_fim_de_palavra_tambem(self) -> None:
+        """`natura1` não é notação, e o `1` final é do classificador como qualquer outro."""
+        candidatos = _cand("n", "a", "t", "u", "r", "a", "1li")
+        self.assertEqual(dic.escolher("natura1", candidatos, self.LEXICO), "natural")
+
+    def test_o_lance_continua_intocado_mesmo_com_a_letra_no_topo(self) -> None:
+        """**A guarda que importa.** `Rxd1` tem `l` em rank 2 no `1` como qualquer outro dígito,
+        e mesmo assim não é palavra: quem diz isso é `notacao.peso_de_notacao` (S-208)."""
+        candidatos = _cand("R", "x", "d", "1li")
+        self.assertFalse(dic.candidata("Rxd1", candidatos))
+        self.assertIsNone(dic.escolher("Rxd1", candidatos, self.LEXICO | {"rxdl"}))
+
+    def test_o_digito_que_o_modelo_confirma_barra_o_token(self) -> None:
+        """`e5.knight`: o `5` é o único candidato daquela caixa, e é tinta do livro."""
+        candidatos = _cand("e", "5", ".", "k", "n", "i", "g", "h", "t")
+        self.assertFalse(dic.candidata("e5.knight", candidatos))
+
+    def test_meia_palavra_da_quebra_de_linha_fica_de_fora(self) -> None:
+        """`interest-` virava `interest` e `sim-` virava `simI`: o hífen sumia ou virava letra."""
+        self.assertFalse(dic.candidata("interest-", _cand("i", "n", "t", "e", "r", "e", "s", "t", "-.")))
+
+    def test_a_troca_de_caixa_sai_da_busca(self) -> None:
+        """`S` na caixa do `s` não é alternativa: quem decide caixa é a altura, em `caixa_alta`.
+
+        A alternativa igual ao que já está lá some junto, e é inócuo: `variantes` nunca a usaria.
+        """
+        self.assertEqual(
+            dic.sem_troca_de_caixa("resu1t", _cand("r", "e", "sS", "u", "1li", "t")),
+            [[], [], [], [], ["l", "i"], []],
+        )
+
+    def test_sem_a_troca_de_caixa_a_correcao_deixa_de_ser_ambigua(self) -> None:
+        """O par: com `S` na busca, `reSult` e `result` empatam e o token fica errado."""
+        candidatos = _cand("r", "e", "sS", "u", "1li", "t")
+        self.assertEqual(dic.escolher("resu1t", candidatos, self.LEXICO), "result")
+
+    def test_o_acento_nao_e_trocado_pela_falta_no_lexico(self) -> None:
+        """**A única palavra certa que a medição viu quebrada.**
+
+        `façanha` não está no léxico e `facanha` está, e sem esta guarda o dicionário trocava uma
+        pela outra. A cedilha é tinta na imagem -- ao contrário do tamanho, que o resize apaga --,
+        e tirá-la seria desfazer o que o classificador viu para acomodar uma falta do dicionário.
+        """
+        candidatos = _cand("f", "a", "çc", "a", "n", "h", "a")
+        self.assertIsNone(dic.escolher("façanha", candidatos, frozenset({"facanha"})))
+
+    def test_a_ambiguidade_de_letra_continua_recusando(self) -> None:
+        """O que a guarda 4 recusa é escolher **letra**: `also` contra `aiso`, os dois no léxico."""
+        self.assertIsNone(dic.escolher("a1so", _cand("a", "1li", "s", "o"), self.LEXICO))

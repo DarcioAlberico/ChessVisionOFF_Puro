@@ -1,6 +1,8 @@
 import sys
+from contextvars import ContextVar
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 PIECE_CLASSES = [
     "empty",
@@ -100,6 +102,69 @@ APPLY_CALIBRATED_TEMPERATURE = False
 # Ou seja, subir o teto nao admite lixo -- quem filtra e o piso de score de `detect_boards`,
 # nao este numero. 12 cobre grade 3x3 e 3x4 com folga.
 DEFAULT_MAX_BOARDS = 12
+
+
+@dataclass(frozen=True)
+class RecallOptions:
+    """As três recuperações de recall do detector de contorno (OCR_UI ciclo 2, passo A1).
+
+    Moravam na suíte (`caissa.vision.detect.recall`, F3) como *monkeypatch* de duas funções
+    deste pacote, e por isso a janela detectava sem elas e a importação da suíte com elas -- e
+    as duas no mesmo processo se pisavam (`OCR_UI_ANALISE_C2.md` §3.3). Agora são um parâmetro
+    explícito de `detect_boards`/`_extract_candidate_quads` e de `detect_diagrams`, com este
+    padrão ligado; `None` no parâmetro é o detector cru.
+
+    Medidas no conjunto de campo (68 páginas, 115 diagramas; `field_set.jsonl`), cada uma
+    sozinha e as três juntas:
+
+    | variante | recall | precisão |
+    |---|---|---|
+    | tronco cru | 0,9478 | 0,9732 |
+    | só multiescala (somando) | 0,9826 | 0,9741 |
+    | só resgate de quadrado | 0,9652 | 0,9737 |
+    | só piso de contraste no embutido | 0,9478 | 1,0000 |
+    | as três | **0,9913** | **1,0000** |
+
+    Os números e o porquê de cada valor estão em `board_detection` ao lado do código que os
+    usa (`_extract_candidate_quads`, `square_anchors`) e em `detection.hybrid.detect_diagrams`.
+    """
+
+    scales: tuple[float, ...] = (0.5,)
+    """Escalas **extras** em que a busca de contorno roda, somando à escala 1,0.
+
+    0,5 e não 0,66 nem 0,35: somando uma escala só, 0,66 dá recall 0,9739, 0,35 dá 0,9739 e
+    0,5 dá 0,9826. Acrescentar 0,35 junto com 0,5 não muda número nenhum. Vazio desliga."""
+
+    rescue_squares: bool = True
+    """Oferecer o maior quadrado que cabe numa recusa por `sem-contraste-de-casa` à mesma
+    guarda (o `Reinfeld`: contorno que emenda o tabuleiro com a legenda)."""
+
+    embedded_floor: float | None = 0.0
+    """Piso de contraste de casa para uma **imagem embutida** ser candidata; `None` desliga.
+
+    É o zero da S-143 aplicado à fonte que nunca o teve: das 42 imagens embutidas candidatas
+    do conjunto de campo, 6 dão contraste exatamente 0,0000 e nenhuma é diagrama."""
+
+
+DEFAULT_RECALL = RecallOptions()
+"""O pacote ligado, com os valores medidos. É o padrão de `detect_boards` e `detect_diagrams`."""
+
+_SEM_SOBREPOSICAO: Any = object()
+RECALL_EM_VIGOR: ContextVar[Any] = ContextVar("recall_em_vigor", default=_SEM_SOBREPOSICAO)
+"""Sobreposição **de arnês** das opções de recall, por contexto de execução.
+
+O produto nunca a toca: `detect_boards`/`detect_diagrams` recebem `recall=` como parâmetro. O
+benchmark (`caissa.vision.detect.recall.recall_pack(variante)`) precisa medir uma variante por
+um caminho que não expõe o parâmetro (`field_eval`), e o faz por aqui -- um `ContextVar`, não
+uma troca de atributo de módulo: cada thread/tarefa vê só a própria sobreposição e o `reset`
+do token devolve o estado anterior. Ver `recall_em_vigor`.
+"""
+
+
+def recall_em_vigor(recall: RecallOptions | None) -> RecallOptions | None:
+    """As opções que valem nesta chamada: a sobreposição do arnês, se houver, senão `recall`."""
+    sobreposto = RECALL_EM_VIGOR.get()
+    return recall if sobreposto is _SEM_SOBREPOSICAO else sobreposto
 
 ReadingOrder = Literal["row", "column"]
 

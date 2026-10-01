@@ -30,7 +30,7 @@ from .calibration import expected_calibration_error, reliability_table
 from .checkpoint import load_checkpoint
 from .config import BOARD_SIZE, CONSTRAINED_DECODING, IDX_TO_CLASS, PIECE_CLASSES, TTA_ENABLED
 from .dataset import BoardFenDataset
-from .decode import DecodeResult
+from .decode import DEFAULT_RULES, DecodeResult, DecodeRules
 from .fen_utils import check_position, fen_from_class_indices, labels_from_fen
 from .inference import board_probabilities, load_model, prediction_from_probs
 from .model import DEFAULT_ARCH, preprocess_cell_to_tensor, with_coordinate_channels
@@ -89,6 +89,9 @@ class EvaluationReport:
     ressalva junto é exatamente como uma medição contaminada vira baseline."""
 
     constrained_decoding: bool = False
+    decode_rules: str = ""
+    """As regras do decodificador em vigor (C11), para o JSON dizer com que regras mediu."""
+
     decoder_repaired_boards: int = 0
     """Tabuleiros em que a decodificação com restrições alterou pelo menos uma casa."""
 
@@ -261,6 +264,7 @@ class EvaluationReport:
             "temperature": self.temperature,
             "tta": self.tta,
             "constrained_decoding": self.constrained_decoding,
+            "decode_rules": self.decode_rules,
             "decoder_repaired_boards": self.decoder_repaired_boards,
             "decoder_repaired_squares": self.decoder_repaired_squares,
             "decoder_helped": self.decoder_helped,
@@ -296,12 +300,14 @@ def evaluate_dataset(
     boards_per_batch: int = 8,
     constrained: bool = CONSTRAINED_DECODING,
     tta: bool = TTA_ENABLED,
+    rules: DecodeRules = DEFAULT_RULES,
 ) -> EvaluationReport:
     """Avalia o modelo sobre os tabuleiros de um dataset já filtrado por split.
 
     `constrained` liga a decodificação com restrições (S-11). Avaliar com e sem é o que
     permite afirmar se ela ajuda -- por isso o relatório carrega o flag e conta reparos
-    que ajudaram e que atrapalharam separadamente.
+    que ajudaram e que atrapalharam separadamente. `rules` escolhe as regras do
+    decodificador (C11: `CLASSIC_RULES` é o de antes, para a ablação).
     """
     report = EvaluationReport(
         split=split_name,
@@ -309,6 +315,7 @@ def evaluate_dataset(
         device=device,
         constrained_decoding=constrained,
     )
+    report.decode_rules = f"bishop_colors={rules.bishop_colors},adjacent_kings={rules.adjacent_kings}"
 
     arch = getattr(model, "arch", DEFAULT_ARCH)
     temperature = float(getattr(model, "temperature", 1.0))
@@ -334,7 +341,7 @@ def evaluate_dataset(
             matrices = probs.cpu().numpy().astype(np.float64).reshape(len(pending), 64, NUM_CLASSES)
 
         for row, (filename, _board, true_labels, expected_fen) in enumerate(pending):
-            prediction = prediction_from_probs(matrices[row], constrained=constrained)
+            prediction = prediction_from_probs(matrices[row], constrained=constrained, rules=rules)
             _record(
                 report,
                 filename,

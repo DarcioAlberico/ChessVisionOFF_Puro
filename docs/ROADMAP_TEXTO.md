@@ -422,6 +422,54 @@ Duas armadilhas que a F70 e a F61 de lá compraram com medição, e que esta fas
 - **coluna estreita demais não é coluna** — sem esse piso, uma margem virava coluna e a página
   saía em três.
 
+**Item S-507 (2026-09-06), o segundo acrescentado a esta fase depois de ela fechar.** A coluna não
+vale a folha inteira, e o bloco de largura inteira a apagava.
+
+> **A queixa.** "Ler folha" saía com as duas colunas intercaladas na folha que tem um parágrafo de
+> largura inteira em cima delas — a abertura de seção, que todo livro de finais usa. Medido na
+> folha 10 do `Nunn - Secrets of Minor Piece Endings`:
+>
+>     (1): This is a position of reciprocal zugzwang. [...] 2 lLig3 Knights are notoriously bad
+>     at fight- c8 3 lL!f5 c:Ji;c7 4 lL!e7 (or 4 lL!d6). ing against rook's pawns, so one
+>                      ^ coluna da direita          ^ coluna da esquerda
+>
+> **A causa não é o limiar, é a premissa.** `LINHAS_NA_CALHA` tolera uma linha cruzando a calha, e
+> esse número está medido — duas começam a partir o `Yusupov`. Um parágrafo de abertura tem quatro,
+> e com quatro a calha some: a folha inteira sai como **uma** coluna. Subir a tolerância
+> consertaria esta folha e quebraria as 456 páginas que fixaram a S-190. O que estava errado é a
+> premissa de que **a calha atravessa a folha**.
+>
+> **A régua nova é a região.** A folha é uma pilha de faixas horizontais e a coluna é propriedade
+> da faixa; ver `text/regioes.py`. A folha inteira é tentada primeiro, e é isso que preserva o
+> medido: a busca por região só roda onde a régua de hoje devolve "uma coluna".
+>
+> **Duas guardas, e as duas vieram de medição e não de projeto.**
+> A primeira é o **preenchimento**: sem ela, a lista de lances do `Melhores Finais de Capablanca`
+> vira "duas colunas" — a margem direita da prosa curta alinha com o começo da coluna dos lances
+> das pretas — e a folha sai com todos os lances das brancas antes de todos os das pretas.
+> A segunda é o critério de **banda transversal**: "tem tinta na calha" transformava em linha de
+> largura inteira a banda de duas colunas em que uma vírgula do fim da linha da esquerda entra na
+> calha (`Euwe, Kramer - Das Mittelspiel Band 7`, folha 15).
+>
+> **Medido em 420 folhas de 46 livros**, contra a ordem em que o próprio PDF emite as linhas, e
+> pareado folha a folha com a produção de hoje:
+>
+>     73 folhas que a régua parte em região      23 melhoram, 0 pioram, 5 empatam
+>     155 folhas que as duas réguas aceitam       0 melhoram, 0 pioram
+>     folhas em ordem exata                     109 -> 127
+>     tau médio                              0,0183 -> 0,0175
+>
+> O limiar de preenchimento foi varrido: **abaixo de 0,70 as regressões voltam** (2 folhas a 0,65,
+> 12 a 0,00) e **de 0,70 a 0,85 o resultado é o mesmo**. O número fica em 0,70, e o cabeçalho de
+> `regioes.py` registra que a folga dele é a mais estreita do módulo.
+>
+> **A própria régua da S-194 tinha dois defeitos, e os dois mudam a população medida** — o
+> `tau_medio` publicado antes desta data não é comparável ao de agora. Ela previa descidas por
+> folha, e não por região, o que descartava como "referência suspeita" justamente a folha desta
+> queixa; e alimentava `detectar_colunas` com o piso de **caractere** sobre caixas de **linha**,
+> que o multiplica por vinte (ver `leitor.calha_de_linhas`) — ela media a ordenação de livros que
+> ela achava serem de coluna única, diferente do que a produção faz.
+
 ---
 
 ## Fase 28 — Os casos que apagam texto ✅ **concluída (2026-08-23)**
@@ -582,6 +630,56 @@ editorada, nenhuma palavra certa quebrada, ao custo de 1% do tempo de página. E
 o plano não esperava: **partir palavra colada, que o item prevê, dá 0 acertos contra 5 erros
 neste acervo** — os nomes próprios são o que estraga (`carrying` → `carr ying`, de `Carr` e
 `Ying`). Está tudo em `docs/metrics/texto_dicionario.json`.
+
+**Item S-508 (2026-09-06).** O par `l`/`1`, e as guardas que impediam o dicionário de vê-lo.
+
+> **A queixa.** Na leitura de folha, `only` sai `on1y`, `Black` sai `B1ack`, `while` sai `whi1e`.
+> Depois do resize para 32x32 o `l` e o `1` são a mesma imagem, e o classificador escolhe pela
+> frequência da classe.
+>
+> **O modelo já tinha a resposta.** Medido na folha 11 do `Nunn - Secrets of Minor Piece Endings`:
+> em **todas** as 22 caixas em que ele escreveu `1` dentro de palavra, o `l` estava em rank 2. O
+> que faltava era deixar o dicionário olhar — e duas guardas o impediam.
+>
+> **A guarda do dígito foi estreitada, não removida.** *"Nada com dígito por perto"* é a cicatriz
+> da S-209: lance maltratado não pode virar palavra. O que a S-508 acrescenta é uma pergunta que a
+> S-209 não tinha à mão: **o dígito é do livro ou do classificador?** Se o modelo oferece uma letra
+> para aquela caixa, o dígito é palpite dele. A porta larga da S-208 (`lexico.suspeita`, com
+> `notacao.peso_de_notacao`) já estava escrita e reservada à marca — *"corrigir um lance por engano
+> custa um lance reescrito no PGN"* —, e é essa segunda condição que autoriza usá-la na correção.
+> `Rxd1` continua intocado: *"isto é notação?"* é perguntado sobre o que está escrito, e não sobre
+> a troca — `Rxdl` não é lance nenhum, e perguntar ali perderia justamente o lance.
+>
+> **A guarda de caixa desfez uma decisão da S-349.** Ela dizia que `Black` e `black` eram "duas
+> respostas de verdade". Não eram: `conhecida` dobra para minúscula antes de olhar o léxico, então
+> `reSult` e `result` chegavam à ambiguidade como duas — e 13 dos 22 tokens morriam aí, todos por
+> uma maiúscula no meio da palavra que palavra nenhuma tem. Quem decide caixa é a **altura do box**
+> (`caixa_alta`, CER 0,1434 → 0,1114), e ela já decidiu antes de o dicionário rodar.
+>
+> **Duas guardas nasceram da medição, e cada uma custou uma correção errada antes de existir.**
+> Meia palavra da quebra de linha (`interest-` virava `interest`, `sim-` virava `simI`) e o acento
+> (`façanha` virava `facanha`, porque a cedilha não está no léxico e `facanha` está). A cedilha é
+> **tinta na imagem** — ao contrário do tamanho, que o resize apaga —, então tirá-la seria desfazer
+> o que o classificador viu para acomodar uma falta do dicionário.
+>
+> **Medido em 44 folhas de 11 livros de camada editorada**, na receita da S-209:
+>
+>     CER                       0,12137 -> 0,12100
+>     correções                 19, sendo 15 confirmadas pela camada
+>     palavra certa quebrada    0        <- a barra da S-209, e ela decidiu duas guardas
+>     folhas                    9 melhoram, 0 pioram
+>
+> **E o ganho onde a queixa mora não entra nessa conta**, porque os dois `Nunn` e o `AAGAARD` têm
+> camada de **OCR** e ficam fora da referência. Ali vale o que não precisa de referência — token com
+> dígito no meio de letras quase nunca está certo em prosa —, sobre 35 folhas dos três:
+>
+>     tokens com dígito entre letras   512 -> 273
+>     tokens fora do léxico          2.415 -> 2.070
+>
+> **O que continua fora, e é o mesmo de sempre:** esta busca só **troca** letra. `sacrifi1ce` e
+> `fi1rst` precisam de remoção, `ofthe` de inserção de espaço, e `virtua1ly` de uma palavra que o
+> léxico não tem. E `a1so` continua `a1so` porque `aiso` **está** no léxico: ali `l` contra `i` é
+> ambiguidade de verdade, e a guarda 4 recusa, como deve.
 
 ---
 

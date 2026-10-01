@@ -230,6 +230,14 @@ def position_to_dict(position: DiagramPosition) -> dict[str, Any]:
         "context": _context_to_dict(position.context),
         "detection_source": position.detection_source,
         "duplicate_of": list(position.duplicate_of) if position.duplicate_of else None,
+        "bbox_pdf": list(position.bbox_pdf) if position.bbox_pdf else None,
+        "image_hash": position.image_hash,
+        "square_confidences": list(position.square_confidences),
+        "repairs": [list(r) for r in position.repairs],
+        "colour_repairs": list(position.colour_repairs),
+        "next_move": position.next_move,
+        "next_move_repairs": list(position.next_move_repairs),
+        "gate_confidence": position.gate_confidence,
     }
 
 
@@ -253,6 +261,14 @@ def position_from_dict(raw: dict[str, Any]) -> DiagramPosition:
         context=_context_from_dict(raw.get("context")),
         detection_source=raw.get("detection_source"),
         duplicate_of=(int(duplicate[0]), int(duplicate[1])) if duplicate and len(duplicate) == 2 else None,
+        bbox_pdf=tuple(float(v) for v in raw["bbox_pdf"]) if raw.get("bbox_pdf") else None,
+        image_hash=str(raw.get("image_hash", "") or ""),
+        square_confidences=tuple(float(v) for v in raw.get("square_confidences", ()) or ()),
+        repairs=tuple(tuple(str(x) for x in r) for r in raw.get("repairs", ()) or ()),
+        colour_repairs=tuple(str(x) for x in raw.get("colour_repairs", ()) or ()),
+        next_move=str(raw.get("next_move", "") or ""),
+        next_move_repairs=tuple(str(x) for x in raw.get("next_move_repairs", ()) or ()),
+        gate_confidence=None if raw.get("gate_confidence") is None else float(raw["gate_confidence"]),
     )
 
 

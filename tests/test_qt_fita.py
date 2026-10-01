@@ -132,20 +132,20 @@ class MontagemTests(unittest.TestCase):
                 self.assertEqual(botao.iconSize(), qt_icones.tamanho(lado))
                 self.assertIn(qt_icones.tamanho(lado), botao.icon().availableSizes())
 
-    def test_o_cabecalho_do_grupo_vira_dica_no_compacto(self) -> None:
-        """Ele custa uma linha de texto por fita, e no compacto essa linha é a diferença entre
-        caber e competir com a página. O nome do grupo não se perde."""
+    def test_o_cabecalho_do_grupo_e_desenhado_nos_dois_modos(self) -> None:
+        """Passo 12 do OCR_UI_ROADMAP: o nome do grupo é desenhado também no compacto.
+
+        A S-228 o mandava para a dica para caber em 64 px; a dica não é rótulo (R3.4), e a linha
+        auxiliar cabe: o orçamento compacto passou a contá-la (72 px)."""
         grupo = medidas_da_fita.grupos()[0]
         acao = grupo.itens[0].acao
 
-        pleno = self.fita(medidas_da_fita.PLENO)
-        cabecalhos = {rotulo.text() for rotulo in pleno.findChildren(QLabel)}
-        self.assertIn(grupo.rotulo, cabecalhos)
-        self.assertNotIn(grupo.rotulo, pleno.botao(acao).toolTip())
-
-        compacto = self.fita(medidas_da_fita.COMPACTO)
-        self.assertNotIn(grupo.rotulo, {rotulo.text() for rotulo in compacto.findChildren(QLabel)})
-        self.assertIn(grupo.rotulo, compacto.botao(acao).toolTip())
+        for modo in medidas_da_fita.MODOS:
+            with self.subTest(modo=modo):
+                fita = self.fita(modo)
+                cabecalhos = {rotulo.text() for rotulo in fita.findChildren(QLabel)}
+                self.assertIn(grupo.rotulo, cabecalhos)
+                self.assertNotIn(grupo.rotulo, fita.botao(acao).toolTip())
 
     def test_a_tecla_vai_na_dica_quando_existe(self) -> None:
         from chess_diagram_ocr.ui import atalhos
@@ -153,15 +153,93 @@ class MontagemTests(unittest.TestCase):
         botao = self.fita(medidas_da_fita.PLENO).botao("ler_pagina")
         self.assertIn(atalhos.acelerador("ler_pagina"), botao.toolTip())
 
-    def test_o_rotulo_quebra_pela_funcao_pura(self) -> None:
-        """O `QToolButton` não quebra sozinho: quem reparte é `quebrar_rotulo`, como no Tk."""
+    def test_o_rotulo_quebra_pela_funcao_pura_e_todo_botao_tem_palavra(self) -> None:
+        """O `QToolButton` não quebra sozinho: quem reparte é `quebrar_rotulo`, como no Tk.
+
+        **E todo botão da fita desenha uma palavra** (OCR_UI_ROADMAP passo 12; R3.4: a dica não é
+        rótulo). Do ciclo 10 ao 16 o botão de glifo escrevia nada -- o desenho substituía o `-`,
+        `◀`, `▶|` -- e a fita saía com 6 de 24 botões sem rótulo. Agora o catálogo dá a palavra
+        (`Comando.na_fita`: "Menos zoom", "Lance anterior"…) e o glifo não chega à fita.
+        """
         from chess_diagram_ocr.ui import comandos
 
         fita = self.fita(medidas_da_fita.PLENO)
         for acao in fita.acoes_desenhadas:
             with self.subTest(acao=acao):
-                esperado = medidas_da_fita.quebrar_rotulo(comandos.comando(acao).no_botao)
-                self.assertEqual(fita.botao(acao).text(), esperado)
+                registro = comandos.comando(acao)
+                botao = fita.botao(acao)
+                self.assertEqual(botao.text(), medidas_da_fita.quebrar_rotulo(registro.na_fita))
+                self.assertTrue(any(ch.isalpha() for ch in botao.text()), f"{acao}: sem palavra")
+                if registro.so_glifo:
+                    self.assertNotIn(registro.rotulo_curto, botao.text())
+                self.assertTrue(botao.icon().availableSizes(), f"{acao}: sem desenho")
+
+    def test_todo_botao_da_fita_anuncia_o_rotulo_por_extenso(self) -> None:
+        """O defeito nº 1 do ciclo 1, reposto pela fita e vivo até o ciclo 9 (F9-C9).
+
+        O crítico mediu **36 controles** desta fita chegando ao leitor de tela como `-`, `+`,
+        `◀`, `▶`, `|◀`, `▶|` -- seis por aba, nas seis abas. `qt/painel_do_pdf._botao` chama
+        `setAccessibleName(comandos.nome_acessivel(acao))` desde o ciclo 2; a fita nasceu depois
+        e não chamava.
+        """
+        from chess_diagram_ocr.ui import comandos
+
+        for modo in medidas_da_fita.MODOS:
+            fita = self.fita(modo)
+            for acao in fita.acoes_desenhadas:
+                with self.subTest(modo=modo, acao=acao):
+                    self.assertEqual(
+                        fita.botao(acao).accessibleName(), comandos.nome_acessivel(acao)
+                    )
+
+    def test_nenhum_nome_acessivel_da_fita_carrega_quebra_de_linha(self) -> None:
+        """Uma quebra de linha num nome acessível é o **leiaute vazando para o anúncio**.
+
+        `quebrar_rotulo` reparte o rótulo em duas linhas porque o botão tem duas linhas de
+        altura; um leitor de tela que caísse no `text()` leria "Abrir, PDF" com uma pausa no
+        meio. É o motivo `quebra de linha no nome` do portão `caissa.ui.audit.teclado`, e ele
+        entrou lá porque a prova de vida deste ciclo mostrou que sem ele o portão continuava
+        verde com o `setAccessibleName` da fita apagado.
+        """
+        fita = self.fita(medidas_da_fita.PLENO)
+        com_quebra = [
+            acao for acao in fita.acoes_desenhadas if "\n" in fita.botao(acao).accessibleName()
+        ]
+        self.assertEqual([], com_quebra)
+
+    def test_o_grupo_da_fita_se_anuncia_pelo_nome(self) -> None:
+        """`qt/painel_do_pdf._bloco` põe o nome do bloco no contêiner desde o ciclo 2 -- *"sem ele
+        a pessoa ouve doze botões seguidos sem saber onde um grupo acaba"*. A fita não punha, e
+        por isso os onze comandos que ela repete da barra do visor chegavam ao leitor de tela sem
+        nada que dissesse qual dos dois se tinha alcançado.
+        """
+        fita = self.fita(medidas_da_fita.PLENO)
+        molduras = fita.findChildren(QWidget, "grupo-da-fita")
+        self.assertEqual(len(molduras), len(medidas_da_fita.grupos()))
+        self.assertEqual(
+            sorted(m.accessibleName() for m in molduras),
+            sorted(grupo.rotulo for grupo in medidas_da_fita.grupos()),
+        )
+
+    def test_o_seguidor_de_estado_nao_repoe_o_glifo_num_botao_vestido(self) -> None:
+        """A porta de trás do defeito: `setText` num botão cujo glifo o desenho substituiu.
+
+        Nenhum dos seis comandos de glifo alterna hoje; se um passar a alternar e o estado
+        escrever um glifo, a fita o ignora -- ela desenha palavra (passo 12). Uma palavra
+        escrita pelo estado entra, como em qualquer outro botão.
+        """
+        from chess_diagram_ocr.ui import comandos
+
+        fita = self.fita(medidas_da_fita.COMPACTO)
+        glifos = [acao for acao in fita.acoes_desenhadas if comandos.comando(acao).so_glifo]
+        self.assertTrue(glifos, "o catálogo deixou de ter comando de glifo: o teste perdeu o alvo")
+        for acao in glifos:
+            with self.subTest(acao=acao):
+                antes = fita.botao(acao).text()
+                fita._alternado(acao)("▶|")
+                self.assertEqual(fita.botao(acao).text(), antes)
+                fita._alternado(acao)("um rótulo qualquer")
+                self.assertEqual(fita.botao(acao).text(), medidas_da_fita.quebrar_rotulo("um rótulo qualquer"))
 
     def test_comando_sem_funcao_levanta_nomeando(self) -> None:
         """Um botão grande, com ícone e rótulo, que não faz nada é pior que a ausência dele."""

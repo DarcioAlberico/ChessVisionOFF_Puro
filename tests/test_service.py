@@ -558,3 +558,39 @@ class PaginaComCandidatosProntosTests(unittest.TestCase):
 
         with self.assertRaises(NoBoardDetectedError):
             service.recognize_page(self._pdf(), 0, options=_upright(), candidates=[])
+
+
+class ProgressoECancelamentoTests(unittest.TestCase):
+    """OCR_UI ciclo 2, passo C2: a leitura anda diagrama a diagrama e para quando se pede."""
+
+    def _ler(self, boards, *, progress=None, should_cancel=None):
+        service, _ = _service()
+        return service._predict_boards(
+            image_rgb=_board_image(), boards=boards, options=_upright(), contexts=[],
+            detection_sources=[], refine=False, progress=progress, should_cancel=should_cancel,
+        )
+
+    def test_o_progresso_e_avisado_antes_e_depois_de_cada_diagrama(self) -> None:
+        boards = [(_board_image(), None)] * 3
+        avisos: list[tuple[int, int]] = []
+        self._ler(boards, progress=lambda feito, total: avisos.append((feito, total)))
+        self.assertEqual(avisos, [(0, 3), (1, 3), (2, 3), (3, 3)])
+
+    def test_cancelar_devolve_o_que_ja_foi_lido(self) -> None:
+        from chess_diagram_ocr.service import RecognitionCanceled
+
+        boards = [(_board_image(), None)] * 3
+        pedidos = {"n": 0}
+
+        def should_cancel() -> bool:
+            pedidos["n"] += 1
+            return pedidos["n"] > 2   # o terceiro diagrama não é lido
+
+        with self.assertRaises(RecognitionCanceled) as ctx:
+            self._ler(boards, should_cancel=should_cancel)
+        self.assertEqual(len(ctx.exception.partial), 2)
+        self.assertEqual(ctx.exception.partial[0].index, 0)
+
+    def test_sem_ganchos_a_leitura_e_a_de_sempre(self) -> None:
+        boards = [(_board_image(), None)] * 2
+        self.assertEqual(len(self._ler(boards)), 2)

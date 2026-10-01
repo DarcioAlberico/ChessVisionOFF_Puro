@@ -1951,6 +1951,32 @@ gatilhos registrados no ARCHITECTURE.md, onde a próxima pessoa os encontre.
 
 ## S-65 · A paleta de edição: imagens, pincel visível e clique que desfaz ✅ implementada (2026-08-09)
 
+> **Ela saiu no corte do Tk e voltou no Qt (2026-09-06).** A paleta morava em
+> `ui/board_widget.py::_build_palette`, e o arquivo inteiro saiu na S-506 -- com ele foram os
+> catorze botões e o `tests/test_board_palette.py` que o critério de aceite abaixo cita. O porte
+> trouxe `TabuleiroEditavel.definir_pincel` e **nenhum chamador**: o pincel existia no modelo e
+> no widget, e não havia como escolher a peça -- corrigir uma classe mal lida voltou a ser
+> arrastar a errada para fora sem ter como pôr a certa. Hoje é `qt/paleta_de_pecas.py`, coberta
+> por `tests/test_qt_paleta_de_pecas.py`, e as três decisões abaixo valem sem tradução.
+>
+> **A forma mudou de eixo, e a escolha é do usuário.** No Tk eram duas fileiras de seis sob o
+> tabuleiro, porque lá o tabuleiro ocupava a largura do painel. No Qt é uma coluna **ao lado**
+> dele, aos pares -- a peça branca e a preta dela lado a lado, que é como os editores de posição
+> a desenham e o que faz "trocar a cor desta peça" ser o clique vizinho em vez de um salto para o
+> outro lado da paleta. O preço é largura: o grupo passa a pedir o mínimo do tabuleiro somado ao
+> da coluna, e é por isso que os dois controles de baixo têm rótulo curto (`✕` e `Largar`) --
+> um rótulo mais largo que as duas colunas empurraria o tabuleiro para trás sem nada em troca.
+>
+> **O primeiro achado se repete no Qt, e a medição é outra.** Lá o `Toolbutton` não desenhava
+> estado selecionado num botão com imagem e sem texto, e o aceso saía idêntico ao apagado. Aqui o
+> Qt **desenha** o `:checked` -- de leve demais: fotografado sob a folha de `qt/tema.py` no estilo
+> `Fusion`, o aceso separa-se do apagado por **1,26** no cromo claro e **1,11** no escuro, contra
+> o piso de 3,0 que `tokens.AA_GRAFICO` fixa para elemento gráfico. E o programa não fixa estilo
+> -- ele embrulha o da plataforma em `qt/dica._EstiloComAtrasoDeDica` --, então o quanto aquele
+> afundado aparece dependeria da máquina. A regra `:checked` da paleta é escrita à mão, com as
+> cores tiradas do tema e os dois pesos (0,45 e 0,15) vindos da S-65 inteiros: com ela são **3,28**
+> e **3,81**, e `tests/test_qt_paleta_de_pecas.py` cobra o piso nas duas peles.
+
 **Problema.** Os 12 botões de peça desenhavam os símbolos Unicode `♙♘♗`. Isso tem três
 defeitos, e nenhum é estético:
 

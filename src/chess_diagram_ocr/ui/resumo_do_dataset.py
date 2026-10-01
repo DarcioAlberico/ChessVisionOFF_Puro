@@ -64,10 +64,10 @@ SPLIT_CHOICES: tuple[str, ...] = (TODOS, "train", "val", "test")
 COLUNAS: tuple[tabela.Coluna, ...] = (
     tabela.Coluna("arquivo", "Arquivo", 210),
     tabela.Coluna("fen", "FEN", 330, elastica=True),
-    tabela.Coluna("lado", "Lado", 45),
+    tabela.Coluna("lado", "Lado", 72),
     tabela.Coluna("legalidade", "Legalidade", 95),
     tabela.Coluna("split", strings.CONJUNTO, 55),
-    tabela.Coluna("origem", "Livro", 150),
+    tabela.Coluna("origem", "Livro", 120),
     tabela.Coluna("página", "Pag.", 50, numerica=True),
     tabela.Coluna("criado", "Criado em", 130),
 )
@@ -75,7 +75,13 @@ COLUNAS: tuple[tabela.Coluna, ...] = (
 
 Eram três dicionários paralelos -- `COLUMNS`, `HEADINGS`, `WIDTHS` --, e paralelo é o problema:
 nada ligava a largura ao título, nada dizia que "Pag." é número, e a nona coluna entraria em três
-lugares ou em dois."""
+lugares ou em dois.
+
+**"Lado" foi de 45 para 72 px por medição** (F9). O conteúdo dela é "Brancas" ou "Pretas", e 45 px
+cabem em cinco letras: a captura `depois_escuro_1280x800_dataset.png` mostra a coluna inteira
+escrita **"Bran…"**, em 5.431 linhas, ao lado de uma coluna "Livro" de 150 px em que todas as
+células dizem "—". A folga estava na tela; estava no lugar errado. `Livro` desceu para 120, que é
+o que devolve os 27 px sem tirar espaço de um nome de livro de verdade."""
 
 PAGE_SIZE = 200
 """Linhas por página da tabela.
@@ -146,7 +152,7 @@ def linha_de_estatisticas(linhas: Sequence[DatasetRow]) -> str:
     faltando = sum(1 for row in linhas if not row.image_exists)
     if faltando:
         partes.append(f"{faltando} sem imagem no disco")
-    return " | ".join(partes)
+    return " · ".join(partes)
 
 
 def texto_de_estatisticas(linhas: Sequence[DatasetRow]) -> str:

@@ -12,15 +12,23 @@ por construção.
 from __future__ import annotations
 
 import ast
+import re
 import unittest
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest import mock
 
+import pytest
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, esperar
 
-from chess_diagram_ocr.ui import abas, geometria, pele
+from chess_diagram_ocr.qt import (
+    exportador_de_livro,
+    importador_de_livro,
+    painel_de_revisao_de_texto,
+    painel_de_rotulagem,
+)
+from chess_diagram_ocr.ui import abas, estado_do_rodape, geometria, pele, strings
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_TEXTO
 
@@ -122,17 +130,87 @@ class MontagemTests(unittest.TestCase):
         montada.resize(1400, 900)
         return montada
 
-    def test_as_seis_abas_estao_na_ordem_da_spec(self) -> None:
-        """**A ordem é o item** (S-162): Resultado, Estudo e Revisão são do diagrama aberto agora;
-        Texto, Dataset e Galeria são do acervo. O corte entre os dois grupos é onde a barra muda
-        de assunto.
+    def test_as_abas_estao_na_ordem_da_spec(self) -> None:
+        """**A ordem é o item** (S-162): o livro em trabalho primeiro, o acervo depois. Desde o
+        passo 17 da OCR_UI o corte entre os dois grupos é estrutura: os quatro painéis do diagrama
+        são **modos** da aba `Livro`, e a faixa só tem o livro e o acervo.
 
         **Contra a tupla declarada, e não contra uma cópia dela** (S-511): comparando com a cópia,
         `abas.ABAS` seguiu declarando a Configuração por um mês depois de ela sair no porte, e
         nada acusou. A janela agora lê a tupla; o que se afirma aqui é que ela a lê inteira."""
         janela = self.janela()
         nomes = [abas.nome_base(janela.abas.tabText(i)) for i in range(janela.abas.count())]
-        self.assertEqual(nomes, list(abas.ABAS))
+        esperadas = [abas.LIVRO, abas.DATASET, abas.GALERIA]
+        # As duas últimas são da suíte e só existem quando ela está ao alcance
+        # (`qt/painel_de_rotulagem.py`, `qt/painel_de_revisao_de_texto.py`).
+        if painel_de_rotulagem.disponivel():
+            esperadas.append(abas.ROTULAGEM)
+        if painel_de_revisao_de_texto.disponivel():
+            esperadas.append(abas.REVISAO_DE_TEXTO)
+        self.assertEqual(nomes, esperadas)
+        # E é a tupla declarada, lida inteira (S-511): fora dela só as da suíte, quando ela falta.
+        ausentes = {abas.ROTULAGEM, abas.REVISAO_DE_TEXTO} - set(esperadas)
+        self.assertEqual(nomes, [nome for nome in abas.ABAS if nome not in ausentes])
+
+    def test_os_quatro_paineis_do_diagrama_sao_modos_da_aba_livro(self) -> None:
+        """Resultado, Estudo, Revisão e Texto falam do mesmo diagrama; trocar entre eles é olhar o
+        mesmo trabalho de outro ângulo, e não ir a outro lugar (OCR_UI passo 17, tarefa 3). Um
+        botão marcável por modo, exclusivos entre si, na ordem de `ui/abas.MODOS`."""
+        janela = self.janela()
+        principal = janela.principal
+        self.assertEqual(principal.modos(), list(abas.MODOS))
+        self.assertEqual(
+            [principal.widget_do_modo(nome) for nome in abas.MODOS],
+            [janela.painel, janela.estudo, janela.revisao, janela.texto],
+        )
+        self.assertEqual(principal.modo_atual(), abas.MODO_DE_TRABALHO)
+        self.assertTrue(principal.botao(abas.RESULTADO).isChecked())
+        principal.botao(abas.TEXTO).click()
+        self.assertIs(janela.abas.area_atual(), janela.texto)
+        self.assertFalse(principal.botao(abas.RESULTADO).isChecked(), "exclusivos")
+
+    def test_toda_area_de_trabalho_e_alcancada_pelo_nome(self) -> None:
+        """`areas()` lista os modos e depois as abas do acervo -- a ordem que as oito abas tinham
+        -- e `mostrar_area` abre cada uma sem que quem chama saiba se é aba ou modo. É o laço que
+        os portões da suíte e as réguas dos testes fazem quando precisam de cada painel à frente."""
+        janela = self.janela()
+        self.assertEqual(janela.abas.areas()[:6], [*abas.MODOS, abas.DATASET, abas.GALERIA])
+        for nome in janela.abas.areas():
+            with self.subTest(nome=nome):
+                self.assertTrue(janela.abas.mostrar_area(nome))
+                aba = abas.nome_base(janela.abas.tabText(janela.abas.currentIndex()))
+                self.assertEqual(aba, abas.LIVRO if abas.e_modo(nome) else nome)
+                self.assertEqual(janela.abas.nome_da_area_atual(), nome)
+        self.assertFalse(janela.abas.mostrar_area("Inexistente"))
+        self.assertTrue(janela.abas.mostrar_area("Revisão (12)"), "o nome com contagem também serve")
+        self.assertIs(janela.abas.area_atual(), janela.revisao)
+
+    def test_exportar_epub_e_docx_so_prometem_o_que_a_suite_entrega(self) -> None:
+        """**Um menu não promete o que o produto não faz** (`menu.impedir`). Os dois itens de
+        Arquivo são da suíte (`qt/exportador_de_livro.py`): com ela ao alcance a janela tem o
+        exportador montado e o item chama o diálogo; sem ela os itens ficam cinza com o motivo na
+        dica, e o comando, se alcançado pela paleta, responde no rodapé em vez de levantar."""
+        janela = self.janela()
+        tabela = janela._comandos()
+        for acao in exportador_de_livro.COMANDOS:
+            with self.subTest(acao=acao):
+                self.assertIn(acao, tabela)
+                self.assertIn(acao, janela.menu.acoes)
+        if exportador_de_livro.disponivel():
+            self.assertIsNotNone(janela.exportador_de_livro)
+            for acao in exportador_de_livro.COMANDOS:
+                self.assertTrue(janela.menu.acoes[acao].isEnabled())
+            # Sem livro aberto o exportador responde no rodapé, sem abrir diálogo.
+            tabela["exportar_epub"]()
+            self.assertIn("Abra um PDF", janela.rodape.mensagem())
+            return
+        self.assertIsNone(janela.exportador_de_livro)
+        for acao in exportador_de_livro.COMANDOS:
+            with self.subTest(acao=acao):
+                self.assertFalse(janela.menu.acoes[acao].isEnabled())
+                self.assertEqual(janela.menu.acoes[acao].toolTip(), exportador_de_livro.MOTIVO_AUSENTE)
+        tabela["exportar_docx"]()
+        self.assertIn("suíte", janela.rodape.mensagem())
 
     def test_o_divisor_abre_na_fracao_declarada_quando_nada_foi_guardado(self) -> None:
         """`geometria.FRACAO_PADRAO_DO_DIVISOR` é o padrão da primeira execução (S-156), e a
@@ -170,13 +248,17 @@ class MontagemTests(unittest.TestCase):
         self.assertIs(janela.pdf.parent(), janela.lado_do_livro)
         self.assertIs(janela.campo.parent(), janela.lado_do_livro)
 
-    def test_o_titulo_diz_qual_das_duas_janelas_e_esta(self) -> None:
-        """As duas escrevem no mesmo `labels.csv`, e o título é o único lugar que responde
-        "qual das duas é esta?" no Alt-Tab."""
+    def test_o_titulo_diz_o_produto_e_nao_o_toolkit(self) -> None:
+        """A marca do Alt-Tab era `"PyQt"`, de quando havia duas janelas escrevendo no mesmo
+        `labels.csv`. O corte aconteceu (S-506) e a barra ainda dizia "— ChessVisionOFF — PyQt"
+        (OCR_UI C2, A10; análise §6.8). O título é o de `strings.titulo_da_janela`, inteiro."""
         from chess_diagram_ocr.qt.janela import TITULO_DA_JANELA
 
         janela = self.janela()
         self.assertIn(TITULO_DA_JANELA, janela.windowTitle())
+        self.assertTrue(janela.windowTitle().endswith(strings.PRODUTO), janela.windowTitle())
+        for toolkit in ("PyQt", "Qt", "Tk"):
+            self.assertNotRegex(janela.windowTitle(), rf"\b{toolkit}\b")
 
     def test_a_tabela_de_comandos_e_a_soma_de_tres(self) -> None:
         """A desta janela mais as duas `COMANDOS_DA_ABA`. Uma segunda tabela seria o lugar onde
@@ -353,12 +435,19 @@ class MontagemTests(unittest.TestCase):
         janela._atualizar_abas()
         rotulos = {abas.nome_base(janela.abas.tabText(i)): janela.abas.tabText(i) for i in range(janela.abas.count())}
         self.assertEqual(rotulos[abas.GALERIA], abas.rotulo(abas.GALERIA, 0))
-        self.assertEqual(rotulos[abas.RESULTADO], abas.RESULTADO, "aba sem contagem não ganha número")
+        self.assertEqual(rotulos[abas.LIVRO], abas.LIVRO, "aba sem contagem não ganha número")
+        # A fila de revisão é um modo: a contagem vai ao botão dela, pela mesma regra.
+        self.assertEqual(janela.principal.rotulo_do_modo(abas.REVISAO), abas.rotulo(abas.REVISAO, 0))
+        self.assertEqual(janela.principal.rotulo_do_modo(abas.RESULTADO), abas.RESULTADO)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
-class FiacaoTests(unittest.TestCase):
-    """As setas entre painéis. **Uma ligação que falta não quebra teste de painel nenhum.**"""
+class _JanelaComLivro(unittest.TestCase):
+    """A base: a janela com um livro de três páginas em branco e o detector de fundo mudo.
+
+    Sem teste próprio de propósito -- as classes que herdam dela são as que afirmam, e uma
+    classe de teste que herdasse de `FiacaoTests` rodaria os testes de fiação de novo.
+    """
 
     def setUp(self) -> None:
         self.app = aplicacao()
@@ -402,17 +491,6 @@ class FiacaoTests(unittest.TestCase):
             self._esperar_o_detector(montada)
         return montada
 
-    def test_devolver_sem_nada_tirado_diz_a_frase_declarada(self) -> None:
-        """As frases de tirar e devolver caixa são de `page_overlay` desde a S-177, e puras; a
-        janela do Qt as reescrevia inline, com outro texto (S-511)."""
-        from chess_diagram_ocr.ui.page_overlay import frase_de_caixas_devolvidas
-
-        janela = self.janela()
-        janela.devolver_caixas()
-        # `mensagem()` e nao `_lbl_mensagem.text()`: desde a quinta rodada da S-552 o que esta na
-        # tela pode estar elidido, e comparar com a tela mediria a largura do rodape.
-        self.assertEqual(janela.rodape.mensagem(), frase_de_caixas_devolvidas(0, janela.pdf.page_index + 1))
-
     def _varrido(self, *paginas: int) -> None:
         """Deixa o livro com um índice de galeria já varrido, um diagrama por página."""
         from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex, save_index
@@ -450,6 +528,23 @@ class FiacaoTests(unittest.TestCase):
             square_confidences=[0.99] * 64,
             side_to_move="w",
         )
+
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class FiacaoTests(_JanelaComLivro):
+    """As setas entre painéis. **Uma ligação que falta não quebra teste de painel nenhum.**"""
+
+    def test_devolver_sem_nada_tirado_diz_a_frase_declarada(self) -> None:
+        """As frases de tirar e devolver caixa são de `page_overlay` desde a S-177, e puras; a
+        janela do Qt as reescrevia inline, com outro texto (S-511)."""
+        from chess_diagram_ocr.ui.page_overlay import frase_de_caixas_devolvidas
+
+        janela = self.janela()
+        janela.devolver_caixas()
+        # `mensagem()` e nao `_lbl_mensagem.text()`: desde a quinta rodada da S-552 o que esta na
+        # tela pode estar elidido, e comparar com a tela mediria a largura do rodape.
+        self.assertEqual(janela.rodape.mensagem(), frase_de_caixas_devolvidas(0, janela.pdf.page_index + 1))
 
     def test_abrir_o_livro_chega_a_galeria_ao_estudo_e_ao_texto(self) -> None:
         """**As três precisam do livro antes de qualquer varredura.**
@@ -530,6 +625,33 @@ class FiacaoTests(unittest.TestCase):
         janela = self.janela()
         self.assertEqual(janela.galeria._sumidouro_de_revisao, janela.revisao.sumidouro)
 
+    def test_a_caixa_da_pagina_diz_corrigido_enquanto_a_correcao_esta_so_na_tela(self) -> None:
+        """O estado «corrigido» das caixas (OCR_UI passo 13, tarefa 4): a correção feita no editor
+        recarimba a caixa na hora; desfazer a devolve a «lido»; gravar a leva a «pronto»."""
+        from chess_diagram_ocr.ui.page_overlay import estado_da_caixa
+
+        janela = self.janela()
+        item = self._diagrama(0)
+        item.bbox_pdf = (10.0, 10.0, 110.0, 110.0)
+        janela._chegaram_itens(0, [item], None)
+
+        def estado() -> str:
+            caixas = janela.pdf.boxes
+            assert caixas is not None and caixas.boxes
+            return estado_da_caixa(caixas.boxes[0])
+
+        self.assertEqual(estado(), "lido")
+        janela.painel.paleta._botoes["Q"].click()
+        janela.painel.recorte.casa_clicada.emit(27)
+        self.assertEqual(estado(), "corrigido")
+        janela.painel.desfazer()
+        self.assertEqual(estado(), "lido")
+        janela.painel.recorte.casa_clicada.emit(27)
+        self.assertEqual(estado(), "corrigido")
+        with mock.patch.object(janela.dataset, "reload"):
+            janela.painel.salvou.emit(0)
+        self.assertEqual(estado(), "pronto", "salvo vence corrigido")
+
     def test_gravar_uma_amostra_pinta_a_caixa_e_reconta_as_abas(self) -> None:
         janela = self.janela()
         with mock.patch.object(janela.dataset, "reload") as releu, mock.patch.object(
@@ -539,6 +661,24 @@ class FiacaoTests(unittest.TestCase):
         self.assertIn(0, janela._salvos.get(janela.pdf.page_index, set()))
         self.assertTrue(releu.called, "o Dataset não foi avisado da amostra nova")
         self.assertTrue(recontou.called)
+
+    def test_a_janela_liga_o_rodape_ao_aviso_do_registro_e_nao_so_ao_relogio(self) -> None:
+        """A barra e o `Cancelar` acendem no mesmo turno da frase (F9-C4).
+
+        **A ligação é a metade que não tem teste de painel.** `RodapeDaJanela.assinar_ocupacao`
+        é afirmado em `test_qt_rodape.py`, e um rodapé que sabe assinar mas que ninguém assina
+        deixa o mesmo defeito na tela: o relógio de `acompanhar` é de 400 ms e a zona de mensagem
+        é escrita por sinal, então nesses 400 ms o rodapé diz "Lendo o dataset…" com a barra
+        escondida e o `Cancelar` cinzento -- fotografado em
+        `benchmarks/reports/ui/c4/c4_claro_1280x800_dataset.png`, 1 das 36 capturas.
+        """
+        janela = self.janela(com_livro=False)
+        self.assertFalse(janela.rodape._barra.isVisible(), "a barra apareceu sem operação")
+        ficha = janela.busy.register("leitura do dataset", loses_work=False, cancellable=True, cancel=lambda: None)
+        self.addCleanup(ficha.release)
+        # Sem `processEvents` e sem esperar tique nenhum: o aviso tem de bastar.
+        self.assertTrue(janela.rodape._btn_cancelar.isEnabled(), "o Cancelar ficou cinzento com operação viva")
+        self.assertEqual(janela.rodape._modo_da_barra, estado_do_rodape.INDETERMINADO)
 
     def test_salvar_um_item_da_fila_fecha_o_item(self) -> None:
         """`Ctrl+S` sobre um item da fila também o fecha (S-22), e quem fecha é a aba de Revisão."""
@@ -561,28 +701,28 @@ class FiacaoTests(unittest.TestCase):
         """Abrir a amostra numa aba que ninguém está vendo é a mesma classe de silêncio que a
         S-161 registra: a ação acontece e nada na tela diz que aconteceu."""
         janela = self.janela()
-        janela.abas.setCurrentIndex(janela.abas.indexOf(janela.dataset))
+        janela.abas.mostrar(janela.dataset)
         with mock.patch.object(janela.painel, "carregar_amostra", return_value=True) as abriu:
             janela.dataset.editar.emit(object())
         self.assertTrue(abriu.called)
-        self.assertIs(janela.abas.currentWidget(), janela.painel)
+        self.assertIs(janela.abas.area_atual(), janela.painel)
 
     def test_a_revisao_manda_corrigir_e_a_aba_resultado_vem_para_a_frente(self) -> None:
         janela = self.janela()
-        janela.abas.setCurrentIndex(janela.abas.indexOf(janela.revisao))
+        janela.abas.mostrar(janela.revisao)
         with mock.patch.object(janela.painel, "carregar_item_de_revisao", return_value=True) as abriu:
             janela.revisao.abriu.emit(object(), 2)
         abriu.assert_called_with(mock.ANY, 2)
-        self.assertIs(janela.abas.currentWidget(), janela.painel)
+        self.assertIs(janela.abas.area_atual(), janela.painel)
 
     def test_a_aba_que_falhou_em_abrir_nao_e_trazida_para_a_frente(self) -> None:
         """A miniatura pode ter sumido do disco. Trazer a aba mostraria o diagrama anterior como
         se fosse o item pedido."""
         janela = self.janela()
-        janela.abas.setCurrentIndex(janela.abas.indexOf(janela.revisao))
+        janela.abas.mostrar(janela.revisao)
         with mock.patch.object(janela.painel, "carregar_item_de_revisao", return_value=False):
             janela.revisao.abriu.emit(object(), 2)
-        self.assertIs(janela.abas.currentWidget(), janela.revisao)
+        self.assertIs(janela.abas.area_atual(), janela.revisao)
 
     def test_o_estudo_pergunta_a_posicao_ao_resultado_e_o_lance_a_galeria(self) -> None:
         """O vínculo é de mão única: o estudo **lê** o diagrama selecionado e nunca escreve de
@@ -596,7 +736,7 @@ class FiacaoTests(unittest.TestCase):
         janela = self.janela()
         self.assertTrue(janela._linha_para_o_texto("1. e4 e5"))
         self.assertIn("e4", janela.texto.texto())
-        self.assertIs(janela.abas.currentWidget(), janela.texto)
+        self.assertIs(janela.abas.area_atual(), janela.texto)
 
     def test_a_linha_impressa_do_estudo_vem_da_aba_de_texto(self) -> None:
         """Lá o parágrafo do livro vira variante; aqui a aba de Texto é quem o leu (S-283)."""
@@ -664,11 +804,11 @@ class FiacaoTests(unittest.TestCase):
         para a frente. A posição é a do Resultado, ancorada no livro, na página e no diagrama."""
         janela = self.janela()
         janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
-        self.assertIsNot(janela.abas.currentWidget(), janela.estudo)
+        self.assertIsNot(janela.abas.area_atual(), janela.estudo)
 
         janela.pdf.caixa_para_estudo.emit(1)
 
-        self.assertIs(janela.abas.currentWidget(), janela.estudo)
+        self.assertIs(janela.abas.area_atual(), janela.estudo)
         self.assertEqual(janela.painel.lista.currentRow(), 1)
         ancora = janela.estudo.estudo.ancora
         self.assertEqual((ancora.documento, ancora.pagina, ancora.diagrama), (str(self.livro), 0, 1))
@@ -680,10 +820,10 @@ class FiacaoTests(unittest.TestCase):
         with mock.patch.object(janela, "ler_pagina") as leu:
             janela.pdf.caixa_para_estudo.emit(0)
         leu.assert_called_once_with(selecionar_depois=0)
-        self.assertIsNot(janela.abas.currentWidget(), janela.estudo)
+        self.assertIsNot(janela.abas.area_atual(), janela.estudo)
 
         janela._chegaram_itens(0, [self._diagrama(0)], 0)
-        self.assertIs(janela.abas.currentWidget(), janela.estudo)
+        self.assertIs(janela.abas.area_atual(), janela.estudo)
         self.assertEqual(janela.estudo.estudo.ancora.diagrama, 0)
 
     def test_o_clique_simples_na_caixa_nao_lida_espera_o_intervalo_do_duplo_clique(self) -> None:
@@ -708,7 +848,7 @@ class FiacaoTests(unittest.TestCase):
         janela.pdf.caixa_clicada.emit(1)
         self.assertFalse(janela._leitura_adiada.isActive())
         self.assertEqual(janela.painel.lista.currentRow(), 1)
-        self.assertIs(janela.abas.currentWidget(), janela.painel)
+        self.assertIs(janela.abas.area_atual(), janela.painel)
 
     def test_o_duplo_clique_cancela_a_leitura_que_o_primeiro_clique_adiou_e_le_ele_mesmo(self) -> None:
         janela = self.janela()
@@ -744,7 +884,7 @@ class FiacaoTests(unittest.TestCase):
         self.assertIsNone(janela._tarefa)
         self.assertIsNone(janela._estudar_ao_ler, "o pedido morre com a tarefa")
         janela._chegaram_itens(0, [self._diagrama(0)], None)
-        self.assertIsNot(janela.abas.currentWidget(), janela.estudo)
+        self.assertIsNot(janela.abas.area_atual(), janela.estudo)
 
     def test_a_caixa_tirada_some_da_pagina_e_volta_com_o_comando(self) -> None:
         """A remoção é da pessoa e por (livro, página): ela não apaga nada no disco, e é isso que
@@ -797,8 +937,20 @@ class FiacaoTests(unittest.TestCase):
         janela.exportador.controles.emit(False)
 
         self.assertTrue(janela.pdf.btn_cancelar_exportacao.isEnabled())
-        self.assertFalse(janela.pdf.btn_exportar.isEnabled(), "dá para começar duas exportações")
-        self.assertFalse(janela.abas.isEnabled(), "o resto da janela não trancou")
+        # **`Exportar PDF → PGN` saiu da barra para o menu `Arquivo`** (F9-C2, §7 item 11), e o
+        # bloco do cancelar entra em cena no lugar dele. O que este teste afirma é o fio do
+        # exportador até o painel, e ele continua igual.
+        self.assertTrue(janela.pdf._bloco_exportacao.isVisibleTo(janela.pdf))
+        # **A tranca é seletiva desde C7** (OCR_UI C2; análise §6.4): só quem disputa o modelo ou
+        # o `labels.csv` fica cinza. As abas continuam vivas; o estudo e o texto, editáveis.
+        self.assertTrue(janela.abas.isEnabled(), "a janela inteira trancou")
+        self.assertFalse(janela.painel.isEnabled(), "o Resultado grava amostra: tranca")
+        self.assertFalse(janela.dataset.isEnabled())
+        self.assertFalse(janela.galeria.isEnabled())
+        self.assertTrue(janela.estudo.isEnabled())
+        self.assertTrue(janela.texto.isEnabled())
+        janela.exportador.controles.emit(True)
+        self.assertTrue(janela.painel.isEnabled())
 
     def test_ler_melhor_e_ler_pagina_deixaram_de_ser_o_mesmo_comando(self) -> None:
         """**A regressão que o porte tinha deixado passar** (S-506).
@@ -812,12 +964,49 @@ class FiacaoTests(unittest.TestCase):
         self.assertIsNot(tabela["ler_melhor"], tabela["ler_pagina"])
 
     def test_o_teto_de_diagramas_e_o_que_separa_os_dois(self) -> None:
-        """`ocr_best` era `max_boards=1` e `ocr_all` era a preferência inteira, no Tk."""
-        from chess_diagram_ocr.qt.janela import DEFAULT_MAX_BOARDS
+        """`ocr_best` era `max_boards=1` e `ocr_all` era a preferência inteira, no Tk.
+
+        A preferência inteira vem de `data/settings.json` desde a janela de configurações
+        (`ui/configuracoes.max_boards`), e não mais da constante de `config`.
+        """
+        from chess_diagram_ocr.ui.configuracoes import max_boards
 
         janela = self.janela(com_livro=False)
         self.assertEqual(1, janela._opcoes(1).max_boards)
-        self.assertEqual(DEFAULT_MAX_BOARDS, janela._opcoes().max_boards)
+        self.assertEqual(max_boards(), janela._opcoes().max_boards)
+
+    # ------------------------------------------------------------ o trilho de páginas (passo 17)
+
+    def test_o_trilho_acompanha_o_livro_e_a_pagina_e_manda_o_visor(self) -> None:
+        """Abrir o livro dá uma linha por página; virar a página marca a linha; clicar vira."""
+        janela = self.janela()
+        self.assertEqual(3, janela.trilho.paginas)
+        self.assertEqual(janela.pdf.page_index, janela.trilho.lista.currentRow())
+        janela.pdf.ir_para_pagina(2)
+        self.assertEqual(2, janela.trilho.lista.currentRow())
+        janela.trilho.lista.setCurrentRow(1)
+        self.assertEqual(1, janela.pdf.page_index)
+
+    def test_o_trilho_e_um_interruptor_do_menu_ver(self) -> None:
+        janela = self.janela(com_livro=False)
+        self.assertTrue(janela.trilho.isVisibleTo(janela))
+        self.assertEqual(True, janela.menu.acoes["trilho"].isChecked())
+        janela._alternar_trilho()
+        self.assertFalse(janela.trilho.isVisibleTo(janela))
+        self.assertEqual(False, janela.menu.acoes["trilho"].isChecked())
+
+    def test_sem_a_suite_os_comandos_de_importacao_ficam_impedidos_com_motivo(self) -> None:
+        from chess_diagram_ocr.qt import importador_de_livro
+
+        janela = self.janela(com_livro=False)
+        for acao in importador_de_livro.COMANDOS:
+            with self.subTest(acao=acao):
+                item = janela.menu.acoes[acao]
+                if janela.livro is None:
+                    self.assertFalse(item.isEnabled())
+                    self.assertIn("suíte", item.toolTip())
+                else:
+                    self.assertTrue(item.isEnabled())
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -911,13 +1100,15 @@ class EstadoEntreSessoesTests(unittest.TestCase):
         baixo das pecas -- e nao havia como desligar.
         """
         primeira = self.janela()
-        self.assertTrue(primeira.painel.heatmap.isChecked(), "nasce ligado, que e como se descobre")
-        primeira.painel.heatmap.setChecked(False)
+        self.assertTrue(primeira.painel.mostrar_incerteza, "nasce ligado, que e como se descobre")
+        self.assertFalse(primeira.painel.heatmap.isChecked(), "a caixa e «Esconder incerteza»: nasce desmarcada")
+        primeira.painel.heatmap.setChecked(True)
         self.assertFalse(primeira.painel.tabuleiro._heatmap, "a caixa nao alcancou o tabuleiro")
         primeira.close()
 
         segunda = self.janela()
-        self.assertFalse(segunda.painel.heatmap.isChecked())
+        self.assertFalse(segunda.painel.mostrar_incerteza)
+        self.assertTrue(segunda.painel.heatmap.isChecked())
         self.assertFalse(segunda.painel.tabuleiro._heatmap)
 
     def test_o_zoom_e_a_quebra_da_aba_de_texto_voltam(self) -> None:
@@ -934,19 +1125,34 @@ class EstadoEntreSessoesTests(unittest.TestCase):
     def test_a_aba_aberta_volta_pelo_nome_e_nao_pelo_indice(self) -> None:
         """Índice não sobrevive a reordenar as abas, e a S-162 é reordená-las."""
         primeira = self.janela()
-        primeira.abas.setCurrentIndex(primeira._indice_da_aba(abas.DATASET) or 0)
+        self.assertTrue(primeira.abas.mostrar_area(abas.DATASET))
         primeira.close()
 
         self.assertEqual(abas.DATASET, primeira._estado.active_tab)
         segunda = self.janela()
         self.assertEqual(abas.DATASET, abas.nome_base(segunda.abas.tabText(segunda.abas.currentIndex())))
 
+    def test_o_modo_aberto_volta_e_e_o_que_o_estado_guarda(self) -> None:
+        """O estado guarda o **modo** (`Revisão`), e não `Livro`: é o nome que toda sessão anterior
+        ao passo 17 já guardava, e reabri-lo é abrir a `Livro` naquele modo -- o mesmo lugar, com
+        outra casa (OCR_UI passo 17, tarefa 3)."""
+        primeira = self.janela()
+        primeira.abas.mostrar(primeira.revisao)
+        primeira.close()
+
+        self.assertEqual(abas.REVISAO, primeira._estado.active_tab)
+        segunda = self.janela()
+        self.assertEqual(abas.LIVRO, abas.nome_base(segunda.abas.tabText(segunda.abas.currentIndex())))
+        self.assertIs(segunda.abas.area_atual(), segunda.revisao)
+
     def test_a_primeira_abertura_cai_na_aba_de_trabalho(self) -> None:
-        """Sem nada guardado, a Resultado -- e não a primeira que o `QTabWidget` mostrar."""
+        """Sem nada guardado, a `Livro` no modo Resultado -- e não a primeira que o `QTabWidget`
+        mostrar nem o primeiro modo que a pilha tiver."""
         janela = self.janela()
         self.assertEqual(
             abas.ABA_DE_TRABALHO, abas.nome_base(janela.abas.tabText(janela.abas.currentIndex()))
         )
+        self.assertEqual(abas.MODO_DE_TRABALHO, janela.principal.modo_atual())
 
     def test_nada_e_gravado_antes_de_o_estado_chegar_aos_widgets(self) -> None:
         """A guarda da S-322, e o defeito que ela impede é o pior de todos aqui.
@@ -1151,8 +1357,12 @@ class AparenciaTests(unittest.TestCase):
         janela._comandos()["aparencia"]()
 
     def test_a_classica_nao_desenha_cromo_nenhum(self) -> None:
-        """A fundacao se prova quando ela nao muda nada: a classica e a janela de sempre (S-221)."""
+        """A fundacao se prova quando ela nao muda nada: a classica e a janela de sempre (S-221).
+
+        Desde o passo 16 da OCR_UI ela nao e mais o padrao (Q3: a Foco e), entao o teste a pede
+        por nome -- a regra que ele afirma e da pele, nao da abertura."""
         janela = self.janela()
+        self._trocar(janela, pele.CLASSICA)
         self.assertEqual([], self._cromo(janela))
         self.assertTrue(janela.cromo.isHidden())
 
@@ -1170,7 +1380,7 @@ class AparenciaTests(unittest.TestCase):
     def test_o_menu_abre_com_a_pele_e_a_densidade_em_vigor_marcadas(self) -> None:
         """Submenu sem marca e o mesmo que dizer "nenhuma delas esta em uso"."""
         janela = self.janela()
-        self.assertEqual(pele.CLASSICA, janela.menu.escolhido("aparencia"))
+        self.assertEqual(pele.PADRAO, janela.menu.escolhido("aparencia"))
         self.assertEqual(pele.CONFORTAVEL, janela.menu.escolhido("densidade"))
 
     def test_a_pele_escolhida_sobrevive_ao_fechamento(self) -> None:
@@ -1214,6 +1424,7 @@ class AparenciaTests(unittest.TestCase):
         from chess_diagram_ocr.qt import tema
 
         janela = self.janela()
+        self._trocar(janela, pele.CLASSICA)
         self.assertFalse(tema.cromo_escuro_em_vigor(), "a classica nao e escura")
 
         self._trocar(janela, pele.FOCO)
@@ -1232,9 +1443,9 @@ class AparenciaTests(unittest.TestCase):
         self.assertEqual(["Fita"], self._cromo(janela))
 
     def test_uma_pele_escrita_errada_no_disco_nao_impede_a_janela_de_abrir(self) -> None:
-        """O contrato de degradacao: `pele.valida` nomeia a invalida no log e cai na classica."""
+        """O contrato de degradacao: `pele.valida` nomeia a invalida no log e cai no padrao."""
         self.estado.write_text('{"version": 6, "skin": "roxa"}', encoding="utf-8")
-        self.assertEqual(pele.CLASSICA, self.janela()._pele_atual().nome)
+        self.assertEqual(pele.PADRAO, self.janela()._pele_atual().nome)
 
     def test_o_conjunto_de_pecas_e_o_terceiro_eixo_e_e_trocavel(self) -> None:
         """Ate o corte ele era um controle da aba Configuracao, que esta janela nao tem (S-230)."""
@@ -1394,7 +1605,7 @@ class DesfazerTests(unittest.TestCase):
         janela = self.janela()
         # A aba tem de estar a frente: `setFocus` num widget de aba escondida nao toma o foco, e o
         # Qt o entrega ao primeiro focavel da aba visivel.
-        janela.abas.setCurrentWidget(janela.texto)
+        janela.abas.mostrar(janela.texto)
         janela.show()
         janela.activateWindow()
         janela.texto.editor.setFocus()
@@ -1403,8 +1614,647 @@ class DesfazerTests(unittest.TestCase):
         self.assertTrue(janela.texto.contem(janela._foco()))
 
 
+
+class EstadoVazioNaTelaTests(unittest.TestCase):
+    """O nome que o estado vazio manda apertar tem de estar **na tela**, e nao so no catalogo.
+
+    **Este e o item 2 do ciclo 5, na sua segunda forma.** O critico mediu que
+    `qt/painel_de_resultado.MENSAGEM_VAZIA` mandava usar *"Ler pagina"* -- 0 controles visiveis com
+    esse nome nas duas peles -- e o conserto do ciclo 6 trocou o literal por
+    `comandos.rotulo("ler_pagina")`, "Ler esta pagina". O teste de cruzamento com o catalogo
+    (`tests/test_ui_comandos.EstadoVazioNomeiaControleQueExisteTests`) ficou verde, porque o nome
+    esta mesmo no catalogo -- **e a tela continuou sem ele**: na pele Foco a pilula mostra "OCR
+    todos diagramas" e na classica o botao e so-de-icone e nao mostra nada. Um catalogo nao e uma
+    tela.
+
+    **E ela teve uma terceira forma, que esta guarda deixou passar** (F9-C7, §3). O conserto do
+    ciclo 6 pos o nome do botao na **dica** do botao so-de-icone, e a varredura abaixo aceitava
+    `toolTip()` como "na tela": o portao ficou verde com **zero** controles desenhando o nome na
+    pele padrao, enquanto `OCR melhor diagrama` -- **outro comando** -- estava em azul a 40 px.
+    Uma dica nao esta na tela. Ela exige que o ponteiro pouse sobre o icone certo, e quem le a
+    frase nao sabe qual e o icone certo -- e' justamente isso que a frase deveria dizer.
+
+    **Hoje a varredura le so o `text()` desenhado**, em **todas** as peles registradas e nas tres
+    larguras que o arnes captura. `accessibleName` nao vale, pela mesma razao de sempre -- ele e
+    para quem ouve, e a frase que se le manda procurar com os olhos --, e `toolTip()` nao vale
+    mais, pela razao de cima. A prova de vida esta em
+    `test_apagar_o_texto_do_botao_reprova_este_portao`, e ela reprovava **antes** do conserto:
+    com a regua do ciclo 6 apagar o texto do botao deixava a dica em pe, e o portao passava.
+    """
+
+    LARGURAS = ((1920, 1080), (1366, 768), (1280, 800))
+    """As tres do arnes de captura. Um nome pode caber a 1920 e sumir a 1280 -- o refluxo da
+    barra esconde controle, e um portao medido numa largura so nao veria isso."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not TEM_PYQT:  # pragma: no cover - venv sem binding
+            raise unittest.SkipTest(MOTIVO)
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+        from chess_diagram_ocr.qt import tema
+
+        self.addCleanup(tema.aplicar_tema)
+
+    def _janela(self, pele_nome: str) -> JanelaPrincipal:
+        estado = self.pasta / ("janela_" + pele_nome + ".json")
+        estado.write_text('{"version": 6, "skin": "' + pele_nome + '"}', encoding="utf-8")
+        montada = JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=self.pasta / "labels.csv",
+            pasta_de_estudos=self.pasta,
+            pasta_da_galeria=self.pasta,
+            caminho_do_estado=estado,
+        )
+        self.addCleanup(descartar, montada)
+        montada.resize(1400, 900)
+        montada.show()
+        self.app.processEvents()
+        return montada
+
+    @staticmethod
+    def _mensagens() -> dict[str, str]:
+        from chess_diagram_ocr.qt import painel_de_resultado
+        from chess_diagram_ocr.ui import strings
+
+        return {
+            "ui/strings.TEXTO_VAZIO_FRASE": strings.TEXTO_VAZIO_FRASE,
+            "ui/strings.EDITOR_VAZIO": strings.EDITOR_VAZIO,
+            "qt/painel_de_resultado.MENSAGEM_VAZIA": painel_de_resultado.MENSAGEM_VAZIA,
+        }
+
+    @staticmethod
+    def _lido_na_tela(janela: JanelaPrincipal) -> set[str]:
+        """So o que esta **desenhado**: o `text()` de um controle visivel, e mais nada.
+
+        **A dica saiu, e a saida dela e o conserto do ciclo 8** (F9-C7, §3). Ela entrava porque um
+        botao so-de-icone nao tinha outro canal visual -- e a consequencia foi que o produto
+        respondeu movendo o nome para a dica: a tela continuou sem ele e este portao ficou verde.
+        Uma regua que aceita o texto de uma dica como pixel desenhado nao mede a tela; ela mede a
+        intencao. O canal visual que faltava passou a existir de verdade, em
+        `qt/painel_do_pdf.PainelDoPdf.nomear_o_que_o_cromo_nao_desenha`.
+
+        **O espaco em branco e normalizado, e nao e afrouxamento**: a pele fita quebra o rotulo
+        em duas linhas (`ui/medidas_da_fita.quebrar_rotulo`), e "OCR todos" + quebra +
+        "diagramas" sao as mesmas palavras desenhadas na mesma pilula. O que continua nao vale
+        desenhado.
+        """
+        from PyQt6.QtWidgets import QAbstractButton
+
+        nomes: set[str] = set()
+        for controle in janela.findChildren(QAbstractButton):
+            if not controle.isVisible():
+                continue
+            texto = " ".join((controle.text() or "").replace("&", "").split())
+            if texto:
+                nomes.add(texto)
+        return nomes
+
+    def _ausentes(self, janela: JanelaPrincipal) -> list[tuple[str, str]]:
+        """Os `(onde, nome)` citados num estado vazio que nenhum controle visivel desenha.
+
+        **O corpo do portao mora aqui e nao no teste**, para que a prova de vida meça o mesmo
+        codigo que o portao mede. Uma prova de vida que reimplementasse a varredura provaria que
+        a copia dela reprova.
+        """
+        # **Os dois pares de aspas** (F9-C8). As três mensagens passaram a usar as tipográficas
+        # (`ui/strings.ASPA_ABRE`), e uma regex que só conhecesse a reta devolveria **zero**
+        # citações -- e um portão que não acha nada para cobrar passa em verde. Trocar aspas não
+        # pode apagar a cobrança; é a forma mais barata do defeito que este ciclo fechou.
+        citado = re.compile(r'["“]([^"“”]{3,60})["”]')
+        na_tela: set[str] = set()
+        for largura, altura in self.LARGURAS:
+            janela.resize(largura, altura)
+            self.app.processEvents()
+            # **Uma area de cada vez, somando.** `isVisible()` e falso para o controle de uma
+            # aba que nao esta a frente: varrer uma vez so, depois do laco, leria a ultima aba
+            # e nenhuma outra -- e o estado vazio da aba Texto cita botoes da aba Texto. Os
+            # modos da aba Livro contam como abas aqui (`areas`): um por vez a frente.
+            for nome in janela.abas.areas():
+                janela.abas.mostrar_area(nome)
+                self.app.processEvents()
+                na_tela |= self._lido_na_tela(janela)
+        return [
+            (onde, nome)
+            for onde, texto in self._mensagens().items()
+            for nome in citado.findall(texto)
+            if nome not in na_tela
+        ]
+
+    def test_todo_nome_citado_num_estado_vazio_esta_desenhado_em_toda_pele(self) -> None:
+        for registro in pele.PELES:
+            with self.subTest(pele=registro.nome):
+                ausentes = self._ausentes(self._janela(registro.nome))
+                self.assertEqual(
+                    [],
+                    ausentes,
+                    "estado vazio citando nome que nenhum controle visivel DESENHA: "
+                    + ", ".join(f"{onde}: {nome!r}" for onde, nome in ausentes),
+                )
+
+    def test_apagar_o_texto_do_botao_reprova_este_portao(self) -> None:
+        """**A prova de vida**, e ela e a razao de este portao ter mudado (F9-C7, §3).
+
+        Apagar o texto do botao de `ler_pagina` e exatamente o estado do ciclo 7: o nome so na
+        dica, e nenhum controle o desenhando. Com a regua de entao -- que aceitava `toolTip()` --
+        este teste **passaria em verde**, porque a dica sobrevive ao `setText("")`. Aqui ele tem
+        de reprovar, e tem de reprovar nomeando `MENSAGEM_VAZIA` e o nome que sumiu.
+
+        A dica continua de pe de proposito: e o que faz esta sabotagem medir a regua e nao o
+        acaso.
+        """
+        janela = self._janela(pele.CLASSICA)
+        botao = janela.pdf.btn_ler_pagina
+        self.assertEqual("OCR todos diagramas", botao.text(), "a pele classica parou de nomear")
+
+        # **O estado do ciclo 7, reposto pelo caminho do proprio produto**: mentir que o cromo ja
+        # desenha o nome tira o texto do botao **e** repoe a dica de dois nomes. Sabotar so com
+        # `setText("")` seria uma sabotagem mais fraca -- ela tambem apagaria o nome da dica, e o
+        # portao reprovaria mesmo com a regua velha, provando nada sobre a regua.
+        from PyQt6.QtWidgets import QPushButton, QWidget
+
+        mentira = QWidget()
+        QPushButton("OCR todos diagramas", mentira)
+        janela.pdf.nomear_o_que_o_cromo_nao_desenha(mentira)
+        self.assertEqual("", botao.text(), "a sabotagem nao apagou o texto")
+        self.assertIn(
+            "OCR todos diagramas",
+            botao.toolTip(),
+            "a dica tem de carregar o nome: e' exatamente ela que a regua do ciclo 7 aceitava",
+        )
+
+        ausentes = self._ausentes(janela)
+
+        self.assertEqual(
+            [("qt/painel_de_resultado.MENSAGEM_VAZIA", "OCR todos diagramas")],
+            ausentes,
+            "apagar o texto do botao nao reprovou: a regua voltou a aceitar o que nao esta na tela",
+        )
+
+    def test_a_varredura_le_o_texto_desenhado_e_nao_a_dica(self) -> None:
+        """O controle da guarda acima -- uma varredura que devolvesse demais passaria por engano.
+
+        Se `_lido_na_tela` devolvesse vazio, o teste anterior falharia e alguem notaria. O risco
+        de verdade e o contrario: guardar a dica, ou o `accessibleName`, faz o cruzamento aceitar
+        nome que ninguem le. Aqui se afirma o que ela deve conter **e o que nao**.
+        """
+        janela = self._janela(pele.CLASSICA)
+        na_tela = self._lido_na_tela(janela)
+        self.assertIn("Abrir PDF", na_tela, "o rotulo visivel mais estavel da janela sumiu")
+        self.assertIn("OCR todos diagramas", na_tela, "a barra do visor parou de desenhar o nome")
+
+        botao = janela.pdf.btn_ler_pagina
+        dica = botao.toolTip()
+        self.assertNotIn(dica, na_tela, "a varredura guardou a dica inteira")
+        for pedaco in dica.replace(" — ", chr(10)).splitlines():
+            if pedaco.strip() and pedaco.strip() != botao.text():
+                self.assertNotIn(
+                    pedaco.strip(),
+                    na_tela,
+                    f"a varredura aceitou {pedaco.strip()!r}, que so existe na dica: uma dica nao "
+                    "esta na tela, e foi por aceita-la que o defeito do ciclo 7 passou em verde",
+                )
+        self.assertNotIn(
+            janela.pdf.btn_tirar_caixa.accessibleName(),
+            na_tela,
+            "a varredura aceitou o nome acessivel: ele e para quem ouve",
+        )
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class TrancaSeletivaTests(_JanelaComLivro):
+    """A tranca por quem tranca (OCR_UI C2, C7; análise §6.4)."""
+
+    def test_duas_operacoes_e_a_que_termina_primeiro_nao_destranca_a_outra(self) -> None:
+        janela = self.janela(com_livro=False)
+        janela._trancar(False, quem="treino")
+        janela._trancar(False, quem="exportação PGN")
+        janela._trancar(True, quem="exportação PGN")
+        self.assertFalse(janela.painel.isEnabled(), "o treino ainda corre e o Resultado destrancou")
+        janela._trancar(True, quem="treino")
+        self.assertTrue(janela.painel.isEnabled())
+        self.assertTrue(janela.dataset.isEnabled())
+
+    def test_a_importacao_do_livro_nao_tranca_nada(self) -> None:
+        """`Ponte` é montada com uma tranca vazia: a importação só lê o PDF. Sem a suíte a ponte
+        não existe, e a afirmação é sobre a fonte da montagem -- é ela que o `--sabotar
+        trancar_tudo` do `caissa.ui.audit.paralelo` religa."""
+        fonte = _FONTE_DA_JANELA.read_text(encoding="utf-8")
+        montagem = fonte.split("self.livro = importador_de_livro.montar(", 1)[1].split(")", 1)[0]
+        self.assertIn("trancar=lambda _liberado: None", montagem)
+        self.assertIn("revisao_de_texto=self.revisao_de_texto", montagem)
+
+    @pytest.mark.xfail(strict=True, reason="o comportamento antigo (C7): a exportação trancava as abas")
+    def test_sabotagem_a_exportacao_trancava_a_janela_inteira(self) -> None:
+        janela = self.janela(com_livro=False)
+        janela.exportador.controles.emit(False)
+        self.assertFalse(janela.abas.isEnabled())
+
+
+class _ImportadorFalso:
+    """A face de `caissa.ui.views.importacao.ImportadorDoLivro` que a `Ponte` usa."""
+
+    def __init__(self) -> None:
+        from PyQt6.QtCore import QObject, pyqtSignal
+
+        class _Sinais(QObject):
+            progresso = pyqtSignal(int, int)
+            pagina_montada = pyqtSignal(int)
+            terminou = pyqtSignal(object)
+
+        self._sinais = _Sinais()
+        self.progresso = self._sinais.progresso
+        self.pagina_montada = self._sinais.pagina_montada
+        self.terminou = self._sinais.terminou
+        self.rodando = False
+        self.comecos: list[tuple[Path, tuple[int, ...] | None]] = []
+
+    def comecar(self, pdf_path: Path, page_count: int, *, paginas: tuple[int, ...] | None = None) -> bool:
+        self.comecos.append((pdf_path, paginas))
+        self.rodando = True
+        return True
+
+    def cancelar(self) -> None:
+        self.rodando = False
+
+
+class _TrilhoFalso:
+    def __init__(self) -> None:
+        from PyQt6.QtCore import QObject, pyqtSignal
+
+        class _Sinais(QObject):
+            importar_pedido = pyqtSignal(object)
+            cancelar_pedido = pyqtSignal()
+
+        self._sinais = _Sinais()
+        self.importar_pedido = self._sinais.importar_pedido
+        self.cancelar_pedido = self._sinais.cancelar_pedido
+        self.estados: list[object] = []
+
+    def importacao_avancou(self, *_a: object) -> None: ...
+    def marcar_montada(self, *_a: object) -> None: ...
+    def importacao_comecou(self, *_a: object) -> None: ...
+    def importacao_terminou(self) -> None: ...
+    def definir_estados(self, estados: object, *, resumo: str = "") -> None:
+        self.estados.append(estados)
+
+
+class _AbaDeRevisaoFalsa:
+    def __init__(self) -> None:
+        self.recebidos: list[tuple[object, object]] = []
+
+    def receber_importacao(self, resultado: object, *, pdf: object = None) -> bool:
+        self.recebidos.append((resultado, pdf))
+        return True
+
+
+def _resultado_falso(*paginas: int, cancelado: bool = False) -> mock.Mock:
+    relatorio = mock.Mock(pages=[mock.Mock(index=p) for p in paginas], canceled=cancelado)
+    return mock.Mock(report=relatorio, document=object())
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class PonteTests(unittest.TestCase):
+    """A ponte da importação: um OCR por livro, e o resultado entregue a quem o revisa (C7, A3)."""
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pdf = Path("livro.pdf")
+        self.importador = _ImportadorFalso()
+        self.trilho = _TrilhoFalso()
+        self.aba = _AbaDeRevisaoFalsa()
+        self.frases: list[str] = []
+        self.ponte = importador_de_livro.Ponte(
+            self.importador,
+            self.trilho,
+            pdf_atual=lambda: self.pdf,
+            paginas=lambda: 5,
+            dizer=self.frases.append,
+            revisao_de_texto=self.aba,
+        )
+
+    def _chegar(self, resultado: mock.Mock) -> None:
+        self.importador.rodando = False
+        with mock.patch.object(importador_de_livro, "estados_do_trilho", return_value=([], "")):
+            self.ponte._chegou(resultado)
+
+    def test_o_ocr_do_livro_roda_uma_vez_e_a_aba_de_revisao_recebe_o_resultado(self) -> None:
+        self.ponte.comecar((0, 1, 2))
+        self.assertEqual(self.ponte.importacoes, 1)
+        resultado = _resultado_falso(0, 1, 2)
+        self._chegar(resultado)
+        self.assertEqual(self.aba.recebidos, [(resultado, self.pdf)], "a aba não recebeu a importação")
+        self.assertEqual(self.ponte.importacoes, 1, "a entrega fez o OCR rodar de novo")
+
+    def test_sem_aba_de_revisao_a_ponte_segue(self) -> None:
+        ponte = importador_de_livro.Ponte(
+            self.importador, self.trilho, pdf_atual=lambda: self.pdf, paginas=lambda: 5, dizer=self.frases.append
+        )
+        ponte.comecar((0,))  # um resultado só chega de uma importação que começou
+        with mock.patch.object(importador_de_livro, "estados_do_trilho", return_value=([], "")):
+            ponte._chegou(_resultado_falso(0))
+        self.assertEqual(len(self.trilho.estados), 1)
+
+    def test_o_resultado_de_outro_livro_e_descartado(self) -> None:
+        """Crítico (fase 1, ciclo 1): importar A, abrir B, A termina -- a fila de A não pode
+        virar `labeling/revisao/B.json` nem o trilho de B receber os estados de A."""
+        self.ponte.comecar((0,))
+        self.pdf = Path("outro.pdf")
+        with mock.patch.object(importador_de_livro, "estados_do_trilho", return_value=([], "")):
+            self.ponte._chegou(_resultado_falso(0))
+        self.assertEqual(self.trilho.estados, [])
+        self.assertEqual(self.aba.recebidos, [])
+        self.assertIsNone(self.ponte.resultado)
+        self.assertTrue(any("descartada" in f for f in self.frases))
+
+    def test_o_parcial_cancelado_nao_vai_a_fila_de_revisao(self) -> None:
+        self.ponte.comecar((0, 1, 2))
+        with mock.patch.object(importador_de_livro, "estados_do_trilho", return_value=([], "")):
+            self.ponte._chegou(_resultado_falso(0, cancelado=True))
+        self.assertEqual(self.aba.recebidos, [], "meio livro não substitui a fila do livro")
+        self.assertEqual(len(self.trilho.estados), 1, "mas o trilho recebe o parcial")
+
+    def test_o_trilho_e_reavaliado_depois_de_uma_gravacao(self) -> None:
+        """C8: `atualizar_trilho` relê as decisões e reavalia as marcas sobre o mesmo resultado;
+        um livro que mudou entretanto, ou sem importação, não é reavaliado."""
+        self.ponte.comecar((0, 1))
+        self._chegar(_resultado_falso(0, 1))
+        self.assertEqual(len(self.trilho.estados), 1)
+        with mock.patch.object(importador_de_livro, "estados_do_trilho", return_value=([1], "duas")) as relido:
+            self.assertTrue(self.ponte.atualizar_trilho())
+        relido.assert_called_once()
+        self.assertEqual(len(self.trilho.estados), 2, "as marcas novas chegaram ao trilho")
+        self.pdf = Path("outro.pdf")
+        self.assertFalse(self.ponte.atualizar_trilho(), "o livro mudou: as marcas são de outro")
+
+    def test_o_documento_importado_serve_a_exportacao_quando_e_exatamente_as_paginas(self) -> None:
+        """A3: `export_book(document=)` reaproveita o `ImportResult` quando as páginas pedidas
+        são **exatamente** as importadas (o crítico provou que um subconjunto saía com o livro
+        inteiro) -- e nunca um parcial cancelado."""
+        self.ponte.comecar((0, 1, 2))
+        resultado = _resultado_falso(0, 1, 2)
+        self._chegar(resultado)
+        self.assertIsNone(self.ponte.documento_para((0, 1)), "subconjunto: reimporta, não escreve as 3")
+        self.assertIs(self.ponte.documento_para((0, 1, 2)), resultado, "o ImportResult inteiro")
+        self.assertIsNone(self.ponte.documento_para((0, 3)), "página não importada")
+        self.assertIsNone(self.ponte.documento_para(None), "o livro tem 5 páginas e só 3 foram importadas")
+        self.ponte.comecar(None)
+        self._chegar(_resultado_falso(0, 1, 2, 3, 4))
+        self.assertIsNotNone(self.ponte.documento_para(None))
+
+    def test_o_parcial_cancelado_nao_serve_a_exportacao(self) -> None:
+        self.ponte.comecar((0, 1, 2))
+        self._chegar(_resultado_falso(0, cancelado=True))
+        self.assertIsNone(self.ponte.documento_para((0,)))
+
+    def test_o_documento_e_de_outro_livro_nao_serve(self) -> None:
+        self.ponte.comecar((0,))
+        self._chegar(_resultado_falso(0))
+        self.pdf = Path("outro.pdf")
+        self.assertIsNone(self.ponte.documento_para((0,)))
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class CorrecoesNaoGravadasTests(_JanelaComLivro):
+    """Fechar e trocar de livro perguntam antes de perder correções à mão (OCR_UI C2, A7)."""
+
+    def _editar(self, janela: JanelaPrincipal) -> None:
+        from chess_diagram_ocr.ui import board_edit
+
+        item = self._diagrama(0)
+        janela._chegaram_itens(0, [item], None)
+        janela.painel._tabuleiro_mudou(board_edit.set_piece(item.placement, 27, "Q"))
+
+    def _fechar(self, janela: JanelaPrincipal) -> bool:
+        """`closeEvent` com um evento de verdade; devolve se o fechamento foi aceito."""
+        from PyQt6.QtGui import QCloseEvent
+
+        evento = QCloseEvent()
+        evento.ignore()
+        janela.closeEvent(evento)
+        return evento.isAccepted()
+
+    def test_fechar_com_correcao_nao_gravada_pergunta_e_nao_ignora(self) -> None:
+        from PyQt6.QtWidgets import QMessageBox
+
+        from chess_diagram_ocr.qt import dialogos
+
+        janela = self.janela()
+        self._editar(janela)
+        with mock.patch.object(dialogos, "ha_quem_responda", return_value=True), mock.patch.object(
+            QMessageBox, "question", return_value=QMessageBox.StandardButton.No
+        ) as pergunta:
+            self.assertFalse(self._fechar(janela), "respondeu Não e a janela fechou")
+        pergunta.assert_called_once()
+        self.assertIn("página 1", pergunta.call_args.args[2])
+        with mock.patch.object(dialogos, "ha_quem_responda", return_value=True), mock.patch.object(
+            QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
+        ):
+            self.assertTrue(self._fechar(janela))
+
+    def test_gravar_a_correcao_e_fechar_nao_pergunta(self) -> None:
+        """Crítico (fase 1, ciclo 1): a pergunta é sobre trabalho que se perde; gravado não se perde."""
+        from PyQt6.QtWidgets import QMessageBox
+
+        from chess_diagram_ocr.qt import dialogos
+        from chess_diagram_ocr.ui.page_results import paginas_editadas
+
+        janela = self.janela()
+        self._editar(janela)
+        self.assertEqual(paginas_editadas(janela.painel.paginas, janela.painel.modelo), [0])
+        with mock.patch.object(janela.painel, "_gravar_no_dataset", return_value=True, create=True):
+            janela.painel.modelo.mark_saved(0)  # o que `_gravar_alvo` faz depois de gravar
+        self.assertEqual(paginas_editadas(janela.painel.paginas, janela.painel.modelo), [])
+        with mock.patch.object(dialogos, "ha_quem_responda", return_value=True), mock.patch.object(
+            QMessageBox, "question", return_value=QMessageBox.StandardButton.No
+        ) as pergunta:
+            self.assertTrue(self._fechar(janela), "gravou: fecha sem perguntar")
+        pergunta.assert_not_called()
+        # Editar de novo depois de gravar volta a contar.
+        from chess_diagram_ocr.ui import board_edit
+
+        janela2 = self.janela()
+        self._editar(janela2)
+        janela2.painel.modelo.mark_saved(0)
+        item = janela2.painel.modelo.items[0]
+        janela2.painel._tabuleiro_mudou(board_edit.set_piece(item.placement, 35, "R"))
+        self.assertEqual(paginas_editadas(janela2.painel.paginas, janela2.painel.modelo), [0])
+
+    def test_sem_correcao_fechar_nao_pergunta(self) -> None:
+        from PyQt6.QtWidgets import QMessageBox
+
+        from chess_diagram_ocr.qt import dialogos
+
+        janela = self.janela()
+        janela._chegaram_itens(0, [self._diagrama(0)], None)
+        with mock.patch.object(dialogos, "ha_quem_responda", return_value=True), mock.patch.object(
+            QMessageBox, "question"
+        ) as pergunta:
+            self.assertTrue(self._fechar(janela))
+        pergunta.assert_not_called()
+
+    def test_sem_tela_nao_ha_pergunta_e_o_fechamento_segue(self) -> None:
+        """Os arneses (`caissa.ui.audit.*`) editam e chamam `close()` sob `offscreen`; uma caixa
+        modal ali esperaria para sempre. `ha_quem_responda` é o que decide -- e fica no log."""
+        from chess_diagram_ocr.qt import dialogos
+
+        janela = self.janela()
+        self._editar(janela)
+        self.assertFalse(dialogos.ha_quem_responda())
+        with self.assertLogs("chess_diagram_ocr.qt.dialogos", level="WARNING"):
+            self.assertTrue(self._fechar(janela))
+
+    def test_abrir_outro_livro_pergunta_e_nao_guarda_as_correcoes(self) -> None:
+        from chess_diagram_ocr.qt import dialogos
+
+        janela = self.janela()
+        self._editar(janela)
+        outro = _livro(self.pasta, "outro.pdf")
+        with mock.patch.object(dialogos, "perguntar_descarte", return_value=False) as pergunta:
+            janela.abrir_pdf(outro)
+            self.app.processEvents()
+            self._esperar_o_detector(janela)
+        self.assertEqual(pergunta.call_args.args[1], [0])
+        self.assertEqual(pergunta.call_args.kwargs["ao_fechar"], False)
+        self.assertEqual(janela.painel.paginas.pages_with_hand_edits(str(self.livro)), [0], "a correção sumiu")
+
+    def test_abrir_outro_livro_e_responder_sim_descarta(self) -> None:
+        from chess_diagram_ocr.qt import dialogos
+
+        janela = self.janela()
+        self._editar(janela)
+        outro = _livro(self.pasta, "outro.pdf")
+        with mock.patch.object(dialogos, "perguntar_descarte", return_value=True):
+            janela.abrir_pdf(outro)
+            self.app.processEvents()
+            self._esperar_o_detector(janela)
+        self.assertEqual(janela.painel.paginas.pages_with_hand_edits(str(self.livro)), [])
+        self.assertEqual(janela.painel.modelo.items, [], "o editor ficou com a página do livro descartado")
+
+    def test_sem_tela_trocar_de_livro_guarda_as_correcoes(self) -> None:
+        from chess_diagram_ocr.qt import dialogos
+
+        self.assertFalse(dialogos.perguntar_descarte(None, [0], ao_fechar=False))
+        self.assertTrue(dialogos.perguntar_descarte(None, [0], ao_fechar=True))
+        self.assertTrue(dialogos.perguntar_descarte(None, [], ao_fechar=False), "sem página não há o que perguntar")
+
+    @pytest.mark.xfail(strict=True, reason="o comportamento antigo (A7): fechar não perguntava pelas correções")
+    def test_sabotagem_fechar_ignorava_as_correcoes(self) -> None:
+        from PyQt6.QtWidgets import QMessageBox
+
+        from chess_diagram_ocr.qt import dialogos
+
+        janela = self.janela()
+        self._editar(janela)
+        with mock.patch.object(dialogos, "ha_quem_responda", return_value=True), mock.patch.object(
+            QMessageBox, "question", return_value=QMessageBox.StandardButton.No
+        ):
+            self.assertTrue(self._fechar(janela))
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class FalhaComRastroTests(_JanelaComLivro):
+    """A caixa de erro diz o que fazer: título com a operação, rastro em «Detalhes», «Copiar»
+    (OCR_UI C2, A10; análise §6.8)."""
+
+    def test_a_tarefa_que_falha_abre_a_caixa_com_o_rastro(self) -> None:
+        from chess_diagram_ocr.qt import dialogos
+
+        janela = self.janela(com_livro=False)
+
+        def _quebra() -> None:
+            raise ValueError("o modelo não abriu")
+
+        with mock.patch.object(dialogos, "mostrar_falha") as caixa:
+            janela._rodar(_quebra, nome="leitura", aviso="Lendo…", quando_pronto=lambda _r: None)
+            esperar(janela)
+            self.app.processEvents()
+        caixa.assert_called_once()
+        _pai, titulo, mensagem, detalhe = caixa.call_args.args
+        self.assertEqual(titulo, strings.titulo_de_falha("leitura"))
+        self.assertIn("ValueError", detalhe)
+        self.assertIn("o modelo não abriu", detalhe)
+        self.assertIn("_quebra", detalhe, "o rastro não tem a pilha")
+        self.assertEqual(janela.rodape._severidade, estado_do_rodape.ERRO)
+        self.assertIn(mensagem, janela.rodape.mensagem())
+
+    def test_a_caixa_tem_detalhes_e_copiar_leva_tudo_a_area_de_transferencia(self) -> None:
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+
+        from chess_diagram_ocr.qt import dialogos
+
+        janela = self.janela(com_livro=False)
+        caixa = dialogos.caixa_de_falha(janela, "A leitura não terminou", "Falhou.", "Traceback…\nValueError")
+        self.addCleanup(caixa.deleteLater)
+        self.assertEqual(caixa.detailedText(), "Traceback…\nValueError")
+        copiar = next(b for b in caixa.buttons() if b.text() == strings.COPIAR)
+        self.assertEqual(caixa.buttonRole(copiar), QMessageBox.ButtonRole.ActionRole)
+        copiar.click()
+        area = QApplication.clipboard()
+        assert area is not None
+        self.assertEqual(area.text(), "A leitura não terminou\n\nFalhou.\n\nTraceback…\nValueError")
+
+    def test_nenhum_diagrama_na_pagina_e_informacao_e_nao_caixa(self) -> None:
+        from chess_diagram_ocr.board_detection import NoBoardDetectedError
+        from chess_diagram_ocr.qt import dialogos
+
+        janela = self.janela(com_livro=False)
+        with mock.patch.object(dialogos, "mostrar_falha") as caixa:
+            janela._falhou("Nenhum tabuleiro", NoBoardDetectedError("nada"))
+        caixa.assert_not_called()
+        self.assertEqual(janela.rodape._severidade, estado_do_rodape.INFORMACAO)
+
+    def test_o_rodape_lembra_as_ultimas_mensagens_e_as_mostra_numa_lista(self) -> None:
+        from PyQt6.QtWidgets import QListWidget
+
+        janela = self.janela(com_livro=False)
+        janela._dizer("Primeira coisa.")
+        janela._dizer("Segunda coisa, um aviso.", estado_do_rodape.AVISO)
+        textos = [m.texto for m in janela.rodape.mensagens.todas()]
+        self.assertEqual(textos[-2:], ["Primeira coisa.", "Segunda coisa, um aviso."])
+        popup = janela.rodape.abrir_mensagens()
+        self.addCleanup(popup.deleteLater)
+        self.assertFalse(popup.isModal())
+        lista = popup.findChild(QListWidget)
+        assert lista is not None
+        self.assertEqual(lista.count(), len(janela.rodape.mensagens))
+        self.assertIn("[aviso]  Segunda coisa", lista.item(lista.count() - 1).text())
+        janela._dizer("Terceira.")
+        self.assertEqual(lista.count(), len(janela.rodape.mensagens), "a lista aberta não acompanhou")
+
+    @pytest.mark.xfail(strict=True, reason="o comportamento antigo (A10): a caixa não tinha detalhe nenhum")
+    def test_sabotagem_a_caixa_sem_detalhes(self) -> None:
+        from chess_diagram_ocr.qt import dialogos
+
+        janela = self.janela(com_livro=False)
+        caixa = dialogos.caixa_de_falha(janela, "A leitura não terminou", "Falhou.", "")
+        self.addCleanup(caixa.deleteLater)
+        self.assertTrue(caixa.detailedText())
+
+
+@unittest.skipUnless(TEM_PYQT and painel_de_revisao_de_texto.disponivel(), "precisa das abas da suíte")
+class AbasDaSuiteAcompanhamOLivroTests(_JanelaComLivro):
+    """Abrir o PDF abre-o também na Revisão de texto e na Rotulagem (OCR_UI C2, C7)."""
+
+    def test_abrir_o_pdf_chega_a_aba_de_revisao_de_texto(self) -> None:
+        janela = self.janela()
+        assert janela.revisao_de_texto is not None
+        self.assertEqual(janela.revisao_de_texto.pdf, janela._pdf)
+        self.assertEqual(janela.revisao_de_texto.page_count, janela.pdf.page_count)
+
+    def test_abrir_o_pdf_chega_a_rotulagem_sem_gravar_o_projeto(self) -> None:
+        janela = self.janela()
+        if janela.rotulagem is None:
+            self.skipTest("a aba Rotulagem não montou")
+        self.assertEqual(janela.rotulagem.document, self.livro.stem)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -1498,7 +2348,8 @@ class SincroniaDaSalaTests(unittest.TestCase):
         janela._chegaram_itens(janela.pdf.page_index, [self._diagrama(0, "8/8/8/8/8/8/8/K6k")], None)
         janela._clicou_na_caixa(0)
         self.app.processEvents()
-        self.assertIs(janela.painel, janela.abas.currentWidget())
+        # Desde o passo 17 o Resultado é um modo da aba `Livro`: o que está à frente é a área.
+        self.assertIs(janela.painel, janela.abas.area_atual())
 
 
 class _MotorFalso:

@@ -75,7 +75,7 @@ def _enfases(caminho: Path, papel: str) -> int:
 class SemNomeCravadoTests(unittest.TestCase):
     """O nome do estilo mora no módulo, e em nenhum painel."""
 
-    TRADUTORES = ("estilos.py", "tema.py")
+    TRADUTORES = ("estilos.py", "tema.py", "folha_de_estilo.py")
     """Quem **pode** escrever nome de estilo: `ui/estilos.py`, que os declara, e `qt/tema.py`, que
     os traduz em folha de estilo do Qt. Os dois citam `primary.TButton` na prosa que explica a
     tradução, e uma varredura por linha não distingue prosa de código."""
@@ -213,7 +213,12 @@ class UmaEnfasePorBarraTests(unittest.TestCase):
             "que os relatórios medem -- e ele não pergunta nem desfaz (S-506)"
         ),
         "comandos.py": "o catálogo declara o papel como **dado**; a propriedade é afirmada por nome acima",
-        "tema.py": "registra a face do papel destrutivo; é o estilo, e não um botão (S-444)",
+        "folha_de_estilo.py": "registra a face do papel destrutivo; é o estilo, e não um botão (S-444/F9)",
+        "tema.py": (
+            "registra a cor do papel destrutivo no `QToolButton` da barra em fila; é o estilo, e não "
+            "um botão (S-444/S-527). A face do `QPushButton` destrutivo mudou-se para "
+            "`folha_de_estilo.py` no F9"
+        ),
         "barra.py": (
             "desenha, na cor do papel, o que o catálogo declara destrutivo -- 'Apagar variante' e "
             "'Apagar daqui' --; ele compara `registro.papel`, não declara papel a botão nenhum. "

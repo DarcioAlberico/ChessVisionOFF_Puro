@@ -6,7 +6,7 @@ import numpy as np
 from test_inference import probs_for_fen
 
 from chess_diagram_ocr.config import ACCEPT_MIN_CONFIDENCE, PIECE_CLASSES, PIECE_TO_IDX
-from chess_diagram_ocr.decode import decode_constrained
+from chess_diagram_ocr.decode import CLASSIC_RULES, DecodeRules, decode_constrained
 from chess_diagram_ocr.fen_utils import check_position, labels_from_fen, square_name
 from chess_diagram_ocr.inference import prediction_from_probs
 
@@ -315,3 +315,87 @@ class PrazoDaBuscaTests(unittest.TestCase):
 
         self.assertTrue(resultado.constraints_satisfied)
         self.assertEqual(resultado.changed_square_count, 0)
+
+
+class BishopColourTests(unittest.TestCase):
+    """C11 (ciclo 2 OCR/UI): dois bispos de um lado na mesma cor consomem um peão ausente."""
+
+    #: Brancas com os oito peões e dois bispos em casas claras (c4 e f1 são claras): impossível.
+    TWO_LIGHT_BISHOPS_ALL_PAWNS = "4k3/8/8/8/2B5/8/PPPPPPPP/4KB2"
+    #: O mesmo com um bispo em cada cor (c4 clara, c1 escura): a posição de sempre.
+    ONE_OF_EACH = "4k3/8/8/8/2B5/8/PPPPPPPP/2B1K3"
+    #: Dois bispos claros com sete peões: uma promoção explica, e nada é violado.
+    TWO_LIGHT_BISHOPS_SEVEN_PAWNS = "4k3/8/8/8/2B5/8/PPPPPPP1/4KB2"
+
+    def test_two_same_colour_bishops_with_all_pawns_are_repaired(self) -> None:
+        probs = probs_for_fen(self.TWO_LIGHT_BISHOPS_ALL_PAWNS, confidence=0.99)
+        f1 = square_index("f1")
+        probs[f1] = 0.0
+        probs[f1, PIECE_TO_IDX["B"]] = 0.55
+        probs[f1, PIECE_TO_IDX["b"]] = 0.45  # a cor trocada -- a dúvida do Stefaniu f1
+
+        result = decode_constrained(probs)
+
+        self.assertTrue(result.constraints_satisfied)
+        self.assertEqual(result.changed_squares, [(f1, PIECE_TO_IDX["B"], PIECE_TO_IDX["b"])])
+
+    def test_the_classic_rules_let_it_pass(self) -> None:
+        """A sabotagem: sem a regra, a posição passa intacta (o antes do C11)."""
+        probs = probs_for_fen(self.TWO_LIGHT_BISHOPS_ALL_PAWNS, confidence=0.99)
+        result = decode_constrained(probs, rules=CLASSIC_RULES)
+        self.assertTrue(result.constraints_satisfied)
+        self.assertEqual(result.changed_squares, [])
+        self.assertEqual(decode_constrained(probs, rules=DecodeRules(bishop_colors=False)).changed_squares, [])
+
+    def test_one_bishop_of_each_colour_is_left_alone(self) -> None:
+        result = decode_constrained(probs_for_fen(self.ONE_OF_EACH))
+        self.assertTrue(result.constraints_satisfied)
+        self.assertEqual(result.changed_squares, [])
+
+    def test_a_missing_pawn_explains_the_second_bishop(self) -> None:
+        """Não é violação absoluta: com um peão a menos a promoção é possível."""
+        result = decode_constrained(probs_for_fen(self.TWO_LIGHT_BISHOPS_SEVEN_PAWNS))
+        self.assertTrue(result.constraints_satisfied)
+        self.assertEqual(result.changed_squares, [])
+
+    def test_the_colour_rule_does_not_double_count_the_third_bishop(self) -> None:
+        """Três bispos, dois claros: dois promovidos (não três) -- seis peões bastam."""
+        three = "4k3/8/8/8/2B5/1B6/PPPPPP2/4KB2"  # c4 clara, b3 escura, f1 clara
+        result = decode_constrained(probs_for_fen(three))
+        self.assertTrue(result.constraints_satisfied)
+        self.assertEqual(result.changed_squares, [])
+
+
+class AdjacentKingsTests(unittest.TestCase):
+    """C11: reis que se tocam nunca são uma posição -- e o de antes deixava passar."""
+
+    TOUCHING = "8/8/8/3kK3/8/8/8/2q5"
+
+    def test_touching_kings_are_repaired_through_the_cheapest_squares(self) -> None:
+        """O rei preto lido em d5 era a dama, e a "dama" de c1 era o rei -- o par de trocas
+        mais barato que separa os reis (o de antes do C11 devolvia a posição intacta)."""
+        probs = probs_for_fen(self.TOUCHING, confidence=0.99)
+        d5, c1 = square_index("d5"), square_index("c1")
+        probs[d5] = 0.0
+        probs[d5, PIECE_TO_IDX["k"]] = 0.60
+        probs[d5, PIECE_TO_IDX["q"]] = 0.40
+        probs[c1] = 0.0
+        probs[c1, PIECE_TO_IDX["q"]] = 0.55
+        probs[c1, PIECE_TO_IDX["k"]] = 0.45
+
+        result = decode_constrained(probs)
+
+        self.assertTrue(result.constraints_satisfied)
+        self.assertEqual(sorted(square for square, _, _ in result.changed_squares), sorted([d5, c1]))
+        self.assertEqual(result.class_indices[d5], PIECE_TO_IDX["q"])
+        self.assertEqual(result.class_indices[c1], PIECE_TO_IDX["k"])
+
+    def test_the_classic_rules_let_touching_kings_pass(self) -> None:
+        result = decode_constrained(probs_for_fen(self.TOUCHING), rules=CLASSIC_RULES)
+        self.assertTrue(result.constraints_satisfied)
+        self.assertEqual(result.changed_squares, [])
+
+    def test_kings_a_knights_move_apart_are_fine(self) -> None:
+        result = decode_constrained(probs_for_fen("8/8/8/3k4/8/4K3/8/8"))
+        self.assertTrue(result.constraints_satisfied)
+        self.assertEqual(result.changed_squares, [])

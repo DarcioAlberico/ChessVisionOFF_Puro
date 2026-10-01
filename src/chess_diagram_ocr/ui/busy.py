@@ -104,7 +104,49 @@ class BusyRegistry:
         self._lock = threading.RLock()
         self._operations: dict[int, BusyOperation] = {}
         self._cancels: dict[int, Callable[[], None]] = {}
+        self._observers: list[Callable[[], None]] = []
         self._next = 0
+
+    # ------------------------------------------------------------------ quem quer saber já
+
+    def observe(self, observador: Callable[[], None]) -> None:
+        """Chama `observador()` sempre que o conjunto de operações muda (F9-C4).
+
+        **O defeito que isto fecha, medido numa das 36 capturas.** O rodapé lia o registro por
+        relógio, a cada `estado_do_rodape.INTERVALO_DE_ACOMPANHAMENTO_MS` = **400 ms**, e a zona de
+        mensagem é escrita por sinal direto no instante em que a operação começa. As duas zonas são
+        do mesmo rodapé e discordavam por até 400 ms: em
+        `benchmarks/reports/ui/c4/c4_claro_1280x800_dataset.png` o rodapé diz **"Lendo o
+        dataset…"** com a **barra escondida** e o **`Cancelar` desabilitado** -- que é, palavra por
+        palavra, o sintoma com que o defeito bloqueante nº 2 do ciclo 3 reprovou o ciclo 2, agora
+        reduzido a uma janela de 400 ms e ainda assim visível em 1 de 36 capturas.
+
+        **O relógio não sai, e o motivo é o da S-112:** um `release()` esquecido deixaria a barra
+        girando para sempre, e é por isso que o rodapé pergunta em vez de esperar aviso. O aviso
+        fecha a janela de 400 ms; o relógio continua sendo a rede.
+
+        **Sem toolkit, e a assinatura é o que garante isso:** o observador não recebe argumento
+        nenhum -- ele é um "algo mudou, releia". Quem sabe em que thread o registro foi escrito, e
+        como pular daí para a da janela, é `qt/`; aqui não há como uma decisão depender disso.
+        """
+        with self._lock:
+            self._observers.append(observador)
+
+    def _avisar(self) -> None:
+        """Avisa os observadores, **fora do lock** e sem deixar um derrubar o outro.
+
+        Fora do lock porque um observador que perguntasse `running()` de dentro dele travaria com
+        um `Lock` simples -- o `RLock` salva a mesma thread, não a de trabalho que registra
+        enquanto a da janela lê. E cada aviso é isolado pelo mesmo motivo de `request_cancel`:
+        avisar é best-effort e não pode derrubar quem registrou.
+        """
+        with self._lock:
+            observadores = list(self._observers)
+        for observador in observadores:
+            try:
+                observador()
+            except Exception:  # pragma: no cover - o mesmo contrato de `request_cancel`
+                logger.exception("Falha ao avisar um observador do registro de ocupação.")
 
     def register(
         self,
@@ -128,9 +170,12 @@ class BusyRegistry:
             )
             if cancel is not None:
                 self._cancels[key] = cancel
+        # Depois do `with`, e não dentro: ver `_avisar`.
+        self._avisar()
         return BusyToken(self, key)
 
     def _update(self, key: int, detail: str, *, feito: int = 0, total: int = 0) -> None:
+        mudou = False
         with self._lock:
             atual = self._operations.get(key)
             if atual is not None:
@@ -138,11 +183,18 @@ class BusyRegistry:
                 # `dataclass` campo a campo -- o campo novo que ninguém copiou volta ao padrão, e
                 # aqui isso apagaria o total a cada atualização de detalhe.
                 self._operations[key] = replace(atual, detail=detail, feito=feito, total=total or atual.total)
+                mudou = self._operations[key] != atual
+        # Só quando **muda**: a barra determinada é atualizada por callback de progresso, e avisar
+        # a cada tique idêntico faria o rodapé repintar sem nada novo para dizer.
+        if mudou:
+            self._avisar()
 
     def _release(self, key: int) -> None:
         with self._lock:
-            self._operations.pop(key, None)
+            saiu = self._operations.pop(key, None) is not None
             self._cancels.pop(key, None)
+        if saiu:
+            self._avisar()
 
     def running(self) -> list[BusyOperation]:
         with self._lock:
@@ -194,3 +246,101 @@ class BusyRegistry:
         linhas.append("")
         linhas.append("Fechar mesmo assim?")
         return "\n".join(linhas)
+
+
+FORA_DO_REGISTRO: dict[tuple[str, str], str] = {
+    # `("janela.py", "_rodar")` saiu daqui no passo C2 do ciclo 2: marcar e ler a página
+    # registram-se, com total (os diagramas já marcados) e «Cancelar» entre diagramas.
+    ("painel_de_resultado.py", "segunda_opiniao"): (
+        "A segunda leitura de um diagrama pelo leitor de outra família (OCR_UI ciclo 2, C3): "
+        "décimos de segundo por diagrama, e o botão fica cinza enquanto ela corre; a primeira "
+        "carga do leitor (~7 s) é dita pela frase do rodapé. O que ela produz é uma marcação "
+        "sobre a posição que já está na tela: fechar no meio não perde nada."
+    ),
+    ("trabalho.py", "_comecar"): (
+        "A detecção dos diagramas da página que acabou de aparecer (S-68), ao fundo e sem "
+        "trancar nada. Ninguém a pediu, ela custa décimos de segundo, e o que produz é um "
+        "conjunto de retângulos que a próxima visita à página refaz."
+    ),
+    ("painel_de_estudo.py", "analyse"): (
+        "Uma avaliação do motor sobre a posição na tela (S-33). Segundos, e derivada: a "
+        "posição continua lá para pedir de novo."
+    ),
+    ("painel_do_pdf.py", "_executar"): (
+        "Abrir o livro (contar as páginas) e rasterizar a página exibida, fora da thread da "
+        "janela (OCR_UI passo 15). Décimos de segundo, e o rodapé já diz «Renderizando página "
+        "N…» pela zona de mensagem; registrar faria a barra de progresso piscar a cada virada. "
+        "Fechar no meio não perde nada: a página continua no PDF."
+    ),
+    ("visor.py", "_pedir_reescalonamento"): (
+        "A página reduzida ao zoom novo, fora da thread da janela (OCR_UI passo 15). Quinze "
+        "milissegundos, derivada da página que já está em memória, e a folha anterior fica na "
+        "tela esticada enquanto ela não vem."
+    ),
+    ("painel_da_galeria.py", "_abrir_cache_de_posicoes"): (
+        "Abrir o SQLite do cache de posições quando o livro abre (OCR_UI passo 15). Dezenas de "
+        "milissegundos num disco frio; até chegar, o botão de candidatas fica apagado, que é o "
+        "que ele já era sem cache. Fechar no meio não perde nada: é só uma conexão."
+    ),
+    ("trilho.py", "_proxima_miniatura"): (
+        "Uma miniatura de página do trilho (OCR_UI passo 17), a 18 DPI, pelo processo de "
+        "trabalho: alguns milissegundos cada, uma por vez, as visíveis primeiro. É enfeite -- a "
+        "linha da página já existe sem ela --, e fechar no meio não perde nada."
+    ),
+    ("preferencias.py", "aplicar"): (
+        "A troca das opções do motor (S-536): `setoption` sobre o processo aberto, ou derrubá-lo "
+        "e subir outro -- 140 ms medidos. Ela sai da linha de eventos porque o `close()` de um "
+        "motor que está pensando espera ele responder, e **não** entra no registro porque não há "
+        "o que perder ao fechar: as preferências já foram gravadas antes de a thread começar, e o "
+        "que a thread faz é com um processo que o fechamento da janela encerraria de qualquer "
+        "forma."
+    ),
+    ("painel_de_treino.py", "pedir"): (
+        "Quanto o lance jogado custou, no treino (S-541): duas buscas de 700 ms, e a resposta é "
+        "um número que aparece ao lado de um veredicto que **já** chegou sem ela. Não entra no "
+        "registro porque não há o que perder ao fechar -- o placar do lance foi contado com o "
+        "que se sabia, e a mesma pergunta se refaz na tentativa seguinte."
+    ),
+    ("arvore_de_aberturas.py", "_perguntar"): (
+        "Uma sonda de chave primária na árvore de aberturas (S-535): milissegundos com o arquivo "
+        "quente, e disco na primeira leitura de um SQLite de gigabytes. Ela sai da linha de "
+        "eventos porque a árvore acompanha a posição da sala a cada lance, e **não** entra no "
+        "registro porque não há o que perder ao fechar: nada é gravado, e a pergunta se refaz "
+        "sozinha na posição seguinte. Quem grava é a passada ao lado (`iniciar`), que se registra."
+    ),
+    ("busca_de_partidas.py", "buscar"): (
+        "Uma consulta ao índice por nome (S-533): dezenas de milissegundos na gigabase, e até "
+        "~1 s quando o filtro pede a posição corrente e ela relê dois mil candidatas. Ela sai da "
+        "linha de eventos porque a janela não pode parar, e **não** entra no registro porque não "
+        "há o que perder ao fechar: nada é gravado, e a mesma pergunta se refaz com um clique. É "
+        "o oposto do índice (`indice_da_base.py`), que grava e por isso se registra."
+    ),
+}
+"""As threads de `qt/` que **não** entram no registro, e por quê -- uma linha cada.
+
+Perguntar "fechar mesmo assim?" por causa de uma análise de dois segundos treina o usuário a
+responder "sim" sem ler, e aí ele responde "sim" também para a busca por posição, que custa
+56 minutos. O registro só vale enquanto quem for avisado tiver motivo para parar.
+
+**Uma thread nova em `qt/` falha a suíte até estar registrada ou declarada aqui** -- é o que a
+S-60 não teve: ela cobriu as duas operações longas que existiam então, e as dez que vieram
+depois entraram em silêncio. `tests/test_busy.py` é quem cobra.
+
+---
+
+**Por que esta tabela mudou de `tests/test_busy.py` para cá no F9-C3, e por que ela encolheu.**
+
+Ela morava só no teste, e por isso **só o teste** a enxergava. O ciclo 2 pôs aqui as duas leituras
+assíncronas que criou (`marcas.pedir` e `painel_do_dataset._reler_agora`) com um motivo correto --
+*"é leitura, fechar no meio não perde nada"* --, e o portão `caissa.ui.audit.progresso`, que varre
+os pontos de chamada de `register`, **não tinha como ver nem uma nem outra**: uma operação que
+nunca se registra é invisível para quem procura registros. O usuário via o resultado: com a
+leitura correndo, o rodapé escrevia "Lendo o dataset…" e a barra ao lado ficava em 0 de 100 com o
+`Cancelar` cinzento.
+
+A declaração responde *"perde trabalho ao fechar?"*. Ela **não** responde *"precisa de indicação
+de progresso?"* -- são duas perguntas, e as duas leituras tinham respostas opostas. As duas
+registram desde o F9-C3, e por isso saíram desta tabela: cinco entradas viraram três.
+
+Aqui, em `ui/`, ela é a decisão que o teste cobra **e** que o arnês lê -- e um portão que não
+enxerga a operação que ele existe para achar deixa de ser possível."""

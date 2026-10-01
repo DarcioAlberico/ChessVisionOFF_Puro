@@ -25,11 +25,13 @@ from chess_diagram_ocr.augment import (
     RandomInvert,
     RandomPaper,
     RandomSpeckle,
+    RandomStroke,
     build_augmentations,
+    stroke,
 )
 from chess_diagram_ocr.training import build_train_transform
 
-TODAS = AugmentConfig(hflip=0.5, hatch=0.5, speckle=0.5, paper=0.5, invert=0.5)
+TODAS = AugmentConfig(hflip=0.5, hatch=0.5, speckle=0.5, paper=0.5, invert=0.5, stroke=0.5)
 
 
 def cell(value: float = 0.5) -> torch.Tensor:
@@ -57,8 +59,9 @@ class ConfigTests(unittest.TestCase):
             AugmentConfig(speckle=0.5).version,
             AugmentConfig(paper=0.5).version,
             AugmentConfig(invert=0.5).version,
+            AugmentConfig(stroke=0.5).version,
         }
-        self.assertEqual(len(versoes), 6, f"versões colidiram: {versoes}")
+        self.assertEqual(len(versoes), 7, f"versões colidiram: {versoes}")
 
     def test_o_jitter_e_o_afim_tambem_mudam_a_versao(self) -> None:
         """Dois regimes que treinam modelos diferentes saíam ambos como `aug0` (S-376)."""
@@ -75,6 +78,15 @@ class ConfigTests(unittest.TestCase):
         aparece quando algum genérico sai do padrão, ou a comparação histórica se perde."""
         self.assertEqual(AugmentConfig().version, "aug0")
         self.assertEqual(AugmentConfig(hflip=0.5, hatch=0.3, speckle=0.25, paper=0.3).version, "augmhsp")
+        self.assertEqual(
+            AugmentConfig(hflip=0.5, hatch=0.3, speckle=0.25, paper=0.3, stroke=0.3).version, "augmhspe"
+        )
+
+    def test_o_raio_do_traco_entra_quando_o_traco_esta_ligado(self) -> None:
+        """Como o período da hachura: raio ou margem diferentes são outro regime (C4)."""
+        self.assertNotEqual(AugmentConfig(stroke=0.3).version, AugmentConfig(stroke=0.3, stroke_px=(1, 2)).version)
+        self.assertNotEqual(AugmentConfig(stroke=0.3).version, AugmentConfig(stroke=0.3, stroke_margin_px=0).version)
+        self.assertEqual(AugmentConfig(stroke_px=(1, 2)).version, "aug0")
 
     def test_o_periodo_da_hachura_entra_quando_a_hachura_esta_ligada(self) -> None:
         """Período diferente é regime diferente; com a hachura desligada ele não diz nada."""
@@ -101,7 +113,7 @@ class ConfigTests(unittest.TestCase):
         tipos = [type(etapa).__name__ for etapa in build_augmentations(TODAS)]
         self.assertEqual(
             tipos,
-            ["RandomHorizontalFlipCell", "RandomInvert", "RandomPaper", "RandomHatch", "RandomSpeckle"],
+            ["RandomHorizontalFlipCell", "RandomInvert", "RandomStroke", "RandomPaper", "RandomHatch", "RandomSpeckle"],
         )
 
 
@@ -134,10 +146,83 @@ class LabelPreservationTests(unittest.TestCase):
             self.assertLessEqual(float(saida.max()), 1.0)
 
 
+def outlined_piece(gap: int = 6, stroke_px: int = 2) -> torch.Tensor:
+    """Um "contorno" sintético: anel de tinta de `stroke_px` com um vão claro de `gap` px.
+
+    É o que uma peça branca é para o modelo -- tinta em volta, papel dentro. O rótulo só
+    sobrevive enquanto o vão sobreviver.
+    """
+    x = torch.ones(1, 64, 64)
+    lado = gap + 2 * stroke_px
+    inicio = (64 - lado) // 2
+    fim = inicio + lado
+    x[:, inicio:fim, inicio:fim] = 0.0
+    x[:, inicio + stroke_px : fim - stroke_px, inicio + stroke_px : fim - stroke_px] = 1.0
+    return x
+
+
+class StrokeTests(unittest.TestCase):
+    """C4 do ciclo 2 OCR/UI: espessura do traço, o eixo que os outros aumentos não cobrem."""
+
+    def test_engrossar_escurece_e_afinar_clareia(self) -> None:
+        peca = outlined_piece()
+        grossa = stroke(peca, 1, engrossar=True)
+        fina = stroke(peca, 1, engrossar=False)
+        self.assertLess(float(grossa.mean()), float(peca.mean()))
+        self.assertGreater(float(fina.mean()), float(peca.mean()))
+
+    def test_um_pixel_preserva_o_vao_do_contorno(self) -> None:
+        """A peça branca continua branca: o interior do contorno continua claro com 1 px."""
+        peca = outlined_piece(gap=6, stroke_px=2)
+        grossa = stroke(peca, 1, engrossar=True)
+        # O anel vai de 27 a 36 e o vão de 29 a 34; dilatado 1 px, o vão fica de 30 a 33.
+        centro = grossa[0, 30:34, 30:34]
+        self.assertTrue(bool((centro == 1.0).all()), "o vão de 6 px fechou com 1 px")
+        self.assertTrue(bool((grossa[0, 29, 29:35] == 0.0).all()), "o anel não engrossou para dentro")
+
+    def test_a_sabotagem_dois_pixels_fecha_o_contorno(self) -> None:
+        """O motivo de `stroke_px=(1, 1)`: a 2 px um vão pequeno fecha e o rótulo vira preta.
+
+        Medido em casas reais (docstring de `AugmentConfig.stroke_px`); aqui o vão de 4 px é
+        o caso sintético mínimo que reproduz o fechamento.
+        """
+        peca = outlined_piece(gap=4, stroke_px=2)
+        grossa = stroke(peca, 2, engrossar=True)
+        # Anel de 28 a 35, vão de 30 a 33: dilatado 2 px, não sobra pixel claro.
+        self.assertTrue(bool((grossa[0, 28:36, 28:36] == 0.0).all()), "2 px deveriam fechar o vão de 4 px")
+        self.assertEqual(AugmentConfig().stroke_px, (1, 1))
+
+    def test_a_borda_da_casa_fica_como_esta(self) -> None:
+        """As linhas da grade e a hachura da casa vizinha não são glifo."""
+        x = torch.ones(1, 64, 64)
+        x[:, 0, :] = 0.0  # linha da grade no alto
+        x[:, :, 63] = 0.0  # e à direita
+        grossa = stroke(x, 1, engrossar=True, margin=3)
+        self.assertTrue(torch.equal(grossa[:, :3, :], x[:, :3, :]))
+        self.assertTrue(torch.equal(grossa[:, :, 61:], x[:, :, 61:]))
+        # Sem margem a grade engrossaria: é o que a margem existe para impedir.
+        sem_margem = stroke(x, 1, engrossar=True, margin=0)
+        self.assertFalse(torch.equal(sem_margem[:, :3, :], x[:, :3, :]))
+
+    def test_raio_zero_e_identidade(self) -> None:
+        peca = outlined_piece()
+        self.assertTrue(torch.equal(stroke(peca, 0, engrossar=True), peca))
+
+    def test_o_modulo_sorteia_raio_e_sentido_com_o_rng_do_torch(self) -> None:
+        torch.manual_seed(7)
+        saidas = {float(RandomStroke(1.0)(outlined_piece()).mean()) for _ in range(12)}
+        self.assertGreaterEqual(len(saidas), 2, "nunca variou o sentido")
+        self.assertEqual(RandomStroke(1.0).px, (1, 1))
+
+    def test_probabilidade_zero_e_identidade(self) -> None:
+        x = outlined_piece()
+        self.assertTrue(torch.equal(RandomStroke(0.0)(x), x))
+
+
 class BehaviourTests(unittest.TestCase):
     def test_probabilidade_zero_e_identidade(self) -> None:
         x = cell()
-        for classe in (RandomHorizontalFlipCell, RandomHatch, RandomSpeckle, RandomPaper, RandomInvert):
+        for classe in (RandomHorizontalFlipCell, RandomHatch, RandomSpeckle, RandomPaper, RandomInvert, RandomStroke):
             with self.subTest(classe=classe.__name__):
                 self.assertTrue(torch.equal(classe(0.0)(x), x))
 

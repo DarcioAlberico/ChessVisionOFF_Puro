@@ -34,7 +34,18 @@ from typing import Any, cast
 
 from PIL import Image
 from PyQt6.QtCore import QRectF, Qt
-from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPaintEvent, QPen, QPixmap
+from PyQt6.QtGui import (
+    QColor,
+    QFont,
+    QFontMetricsF,
+    QImage,
+    QPainter,
+    QPainterPath,
+    QPaintEvent,
+    QPen,
+    QPixmap,
+    QResizeEvent,
+)
 from PyQt6.QtWidgets import QWidget
 
 from chess_diagram_ocr.config import BUNDLE_ROOT, IDX_TO_CLASS, UNCERTAIN_SQUARE_THRESHOLD
@@ -47,6 +58,7 @@ from chess_diagram_ocr.ui.desenho_do_tabuleiro import (
     UNICODE_PIECES,
     BoardGeometry,
     heatmap_color,
+    largura_util_do_canvas,
     margem_de_coordenada,
     reguas,
 )
@@ -67,6 +79,13 @@ diferentes a mesma posição na mesma área desenharia um tabuleiro de tamanho d
 janela -- o que faz "comparar as duas telas lado a lado" deixar de responder, que é justamente
 para o que a versão de teste existe."""
 
+LARGURA_DO_TRACO = 0.022
+"""Largura do contorno do glifo, como fração do lado da casa.
+
+2,2 % de uma casa de 70 px são 1,5 px -- grosso o bastante para o traço se ver a 100 % e fino o
+bastante para não engordar a letra. Fração e não pixel porque o tabuleiro vai de 240 a 560 px de
+lado: um valor cravado sumiria no grande e engoliria o glifo no pequeno."""
+
 MARGEM = margem_de_coordenada()
 """A folga em volta: o que as coordenadas precisam para caberem inteiras (S-508).
 
@@ -77,6 +96,13 @@ a medição de por que `28` cortava a base de "a b c d e f g h" (S-155).
 
 A conta é `2 x (deslocamento + meia altura da fonte)`, e `BoardGeometry.fit` a divide entre os dois
 lados -- então o que sobra de cada lado é metade disto."""
+
+MAXIMO_DO_QT = 16777215
+"""O teto de largura que o Qt trata como "sem teto" (`QWIDGETSIZE_MAX`).
+
+Existe nomeado porque `resizeEvent` **repõe** o teto a cada passada, e ler o teto anterior para
+recalculá-lo o faria só encolher: uma janela que volta a crescer nunca devolveria a largura ao
+canvas."""
 
 GLIFOS = UNICODE_PIECES
 """O desenho de reserva, quando o PNG da peça não está no disco.
@@ -420,6 +446,33 @@ class TabuleiroQt(QWidget):
         """
         return self._classes[indice]
 
+    def resizeEvent(self, a0: QResizeEvent | None) -> None:  # noqa: N802 - assinatura do Qt
+        """O canvas nunca fica mais largo que alto (F9-C3, item 13).
+
+        Quem decide é `ui/desenho_do_tabuleiro.largura_util_do_canvas`, e o porquê está lá: num
+        tabuleiro quadrado e centrado, um canvas mais largo que alto é por construção dois vãos
+        vazios -- e o do painel Resultado media 933×559 para desenhar 551, com
+        `180×580 = 104,4 kpx a 0,17 % de tinta` entre o tabuleiro e a paleta de peças.
+
+        **Um teto, e não um tamanho fixo**, porque é o teto que o `QHBoxLayout` respeita ao
+        repartir a largura: o que sobra sai deste widget e vai para quem estiver ao lado. E ele é
+        derivado da **altura**, que o layout horizontal não mexe -- então a passada extra converge
+        de primeira, sem oscilar entre duas larguras.
+
+        **Só vale para quem não pediu altura pela largura** (o merge do religa com o `main`). A sala
+        de estudo e a de treino declaram `setHeightForWidth` (S-517): ali a altura sai da largura e o
+        canvas já é quadrado por construção, e o teto pela altura prendia os dois um ao outro -- a
+        largura à altura, a altura à largura --, e o tabuleiro não crescia nunca: 252 px numa sala
+        de 1400×1400, com a alça da S-551 movida e a coluna vazia ao lado.
+        """
+        super().resizeEvent(a0)
+        if self.sizePolicy().hasHeightForWidth():
+            teto = MAXIMO_DO_QT
+        else:
+            teto = largura_util_do_canvas(self.height(), MAXIMO_DO_QT)
+        if self.maximumWidth() != teto:
+            self.setMaximumWidth(teto)
+
     def definir_ultimo_lance(self, casas: Iterable[int] = ()) -> None:
         """As casas do último lance, em índice de leitura. Sem argumento, apaga a marca (S-509)."""
         novas = frozenset(int(casa) for casa in casas)
@@ -439,6 +492,12 @@ class TabuleiroQt(QWidget):
         A folga sai de `MARGEM`, que sai de `margem_de_coordenada()`: a esteira é exatamente o que
         a coordenada precisa, porque é **sobre ela** que a coordenada é desenhada -- é o que dá
         11,03:1 à letra, e a razão de a S-147 tê-la escolhido escura.
+
+        **O F9-C2 achou o mesmo defeito pelo outro lado**: numa janela de 1920×1080 a esteira
+        ocupava 10,9 % da janela contra 9,4 % do tabuleiro, e a resposta de lá foi um tapete de
+        12 px em volta do tabuleiro, com a superfície do painel embaixo. As duas respostas viraram
+        esta, e a largura ficou a da coordenada: um tapete de 12 px cortaria a letra que a S-508
+        desenha a `COORD_OFFSET_PX` da borda.
         """
         geo = self.geometria()
         folga = MARGEM / 2
@@ -488,6 +547,11 @@ class TabuleiroQt(QWidget):
         casa precisa saber onde a casa está, e recalculá-la do lado de fora é como se escreve um
         teste que continua passando depois de o enquadramento mudar.
         """
+        # **O teto acompanha o painel onde o painel o pede** (S-518; F9-C2, §7 item 13). Com
+        # `MAX_DO_TABULEIRO` cravado, a sala de estudo dava um tabuleiro de 560 px num canvas de
+        # 759 px de altura -- 65 % de ocupação, com o resto virando esteira inerte. A sala declara
+        # a fração (`definir_fracao`); sem fração fica o teto fixo, que é a aba Resultado, onde o
+        # tabuleiro divide a coluna com a lista de casas e a legenda.
         teto = MAX_DO_TABULEIRO
         if self._fracao > 0:
             teto = max(LADO_MINIMO, int(min(self.width(), self.height()) * self._fracao))
@@ -570,16 +634,55 @@ class TabuleiroQt(QWidget):
         if mapa is not None:
             pintor.drawPixmap(casa.toRect(), self._preparada(classe, mapa, max(1, int(casa.width()))))
             return
-        fonte = QFont(pintor.font())
-        fonte.setPointSizeF(max(6.0, casa.height() * 0.72))
-        pintor.setFont(fonte)
+        self._desenhar_glifo(pintor, casa, classe)
+
+    def _desenhar_glifo(self, pintor: QPainter, casa: QRectF, classe: str) -> None:
+        """O glifo de reserva, **contornado** -- e o contorno é o item, não enfeite (F9).
+
+        **A medição.** O corpo da peça branca é `GLIFO_CLARO` (`#f8f8f8`) e a casa clara é
+        `CASA_CLARA` (`#f0d9b5`): **1,29:1**. Um rei branco desenhado assim é uma peça que existe
+        no FEN e não existe na tela em metade do tabuleiro -- e a metade é literal, são as 32
+        casas claras. Na casa de último lance (`#cdd26a`) dá 1,52:1, e na casa escura 2,97:1, que
+        ainda é abaixo do piso gráfico de 3,0.
+
+        **O contorno resolve porque ele é a cor do outro glifo.** Peça branca com traço
+        `GLIFO_ESCURO` dá 13,4:1 contra a casa clara; peça preta com traço `GLIFO_CLARO` dá
+        16,3:1 contra a casa escura. É a mesma solução do xadrez impresso desde sempre -- a peça
+        branca é um contorno preto com o miolo branco --, e é por isso que ela não precisa de
+        nenhuma cor nova: as duas já estão na paleta, uma em cada peça.
+
+        **`QPainterPath` e não quatro `drawText` deslocados.** O truque do texto repetido engrossa
+        de forma diferente em cada direção e pisa no glifo vizinho quando a casa é pequena; o
+        traço de `QPainterPath` acompanha a forma da letra e escala com ela. A largura sai de
+        `LARGURA_DO_TRACO` * lado da casa, com piso de 1 px: um traço fixo some no tabuleiro
+        grande e engole o glifo no pequeno.
+        """
         # **A tinta do glifo vem do tema, e não da reserva** (S-511). Eram os apelidos
         # `GLIFO_ESCURO`/`GLIFO_CLARO` de `desenho_do_tabuleiro`, que são o valor de `RESERVA` --
         # o hexadecimal de fábrica, que não acompanha a troca de pele. O papel é o mesmo; o que
         # muda é perguntar ao tema em vez de ler a reserva.
-        papel = tokens.GLIFO_ESCURO if classe.islower() else tokens.GLIFO_CLARO
-        pintor.setPen(QPen(QColor(tema.cor_atual(papel))))
-        pintor.drawText(casa, int(Qt.AlignmentFlag.AlignCenter), GLIFOS[classe])
+        escuro = QColor(tema.cor_atual(tokens.GLIFO_ESCURO))
+        claro = QColor(tema.cor_atual(tokens.GLIFO_CLARO))
+        corpo = escuro if classe.islower() else claro
+        traco = claro if classe.islower() else escuro
+        fonte = QFont(pintor.font())
+        fonte.setPointSizeF(max(6.0, casa.height() * 0.72))
+
+        caminho = QPainterPath()
+        metricas = QFontMetricsF(fonte)
+        texto = GLIFOS[classe]
+        largura = metricas.horizontalAdvance(texto)
+        linha_de_base = casa.center().y() + (metricas.ascent() - metricas.height() / 2.0)
+        caminho.addText(casa.center().x() - largura / 2.0, linha_de_base, fonte, texto)
+
+        pintor.save()
+        pintor.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        caneta = QPen(traco, max(1.0, casa.width() * LARGURA_DO_TRACO))
+        caneta.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        pintor.setPen(caneta)
+        pintor.setBrush(corpo)
+        pintor.drawPath(caminho)
+        pintor.restore()
 
     def _desenhar_incerteza(self, pintor: QPainter, casa: QRectF, indice: int) -> None:
         """A casa duvidosa tingida com a rampa de calor, e contornada na mesma cor (S-501).

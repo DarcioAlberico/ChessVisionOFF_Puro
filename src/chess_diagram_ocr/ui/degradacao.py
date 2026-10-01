@@ -63,7 +63,9 @@ class Queda:
 
 
 QUEDAS: tuple[Queda, ...] = (
-    Queda("pele", "pele desconhecida no disco ou em CVOFF_SKIN", "a pele clássica", "pele.valida"),
+    # A queda da pele é a padrão, e a padrão é a Foco desde o passo 16 da OCR_UI (2026-09-16):
+    # era a clássica até ali, e o texto desta linha ficou dizendo isso até o merge do religa.
+    Queda("pele", "pele desconhecida no disco ou em CVOFF_SKIN", "a pele padrão (a Foco)", "pele.valida"),
     Queda("densidade", "densidade desconhecida", "a densidade confortável", "pele.densidade_em_vigor"),
     Queda("icone", "ícone sem traço declarado", "o botão só com texto", "icones.imagem"),
     Queda("desenho", "Pillow indisponível ou desenho falho", "o botão só com texto", "icones.imagem"),

@@ -271,7 +271,9 @@ class TreinoTests(unittest.TestCase):
         controlador.estado.connect(vistos.append)
         controlador.cancelar()
         self.assertTrue(controlador._cancelar.is_set())
-        self.assertEqual(vistos, ["Cancelando treino... termina a época atual e para."])
+        # A reticência é o caractere `…` desde o F9-C16 (§8 item 8): 13 textos desenhados usavam
+        # três pontos ASCII contra 19 que usavam o caractere certo. A asserção é a mesma.
+        self.assertEqual(vistos, ["Cancelando treino… termina a época atual e para."])
 
     def test_concluir_devolve_os_controles_e_fecha_o_modal(self) -> None:
         controlador = self.controlador()
