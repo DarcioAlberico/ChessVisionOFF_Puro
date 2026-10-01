@@ -34,27 +34,25 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 __all__ = [
-    "ACOES_DO_CAMPO",
-    "ACOES_SO_DO_MULTILINHA",
     "ATALHOS",
-    "CEDIDAS_A_TODO_CAMPO",
-    "CEDIDAS_SO_AO_MULTILINHA",
     "CEDIDA_PELA_GUARDA",
     "GANHA_DO_TK",
     "SOBREPOSICOES_NO_EDITOR",
-    "TECLAS_DE_EDICAO",
+    "TECLAS_DA_SALA",
     "TECLAS_DO_EDITOR",
     "Atalho",
     "DonoDeAcoes",
     "acao_de",
     "acelerador",
+    "atalho_de",
     "cede_a_sequencia",
     "conferir_dono",
     "descricao_completa",
     "destino",
-    "ligacoes",
     "por_acao",
-    "por_sequencia",
+    "sequencia_da_sala",
+    "sobreposicao",
+    "teclas_cedidas_ao_editor",
 ]
 
 
@@ -303,6 +301,44 @@ declaração da mesma tecla -- o defeito que esta tabela existe para impedir. O 
 **comando**, e não tecla: ver `ui/comandos.py`."""
 
 
+TECLAS_DA_SALA: tuple[Atalho, ...] = (
+    Atalho("<Control-Up>", "Ctrl+↑", "promover_variante", "Promover a variante um nível"),
+    Atalho("<Control-Down>", "Ctrl+↓", "rebaixar_variante", "Rebaixar a variante um nível"),
+    Atalho("<Control-Delete>", "Ctrl+Del", "apagar_variante", "Apagar a variante do lance corrente"),
+    Atalho("<Control-m>", "Ctrl+M", "simbolo_do_lance", "Escolher o símbolo do lance corrente"),
+)
+"""As teclas próprias da sala de estudo (S-527) -- **e por que são uma terceira tabela**.
+
+`ATALHOS` é a tabela da janela: toda linha vale em qualquer aba e passa pela guarda de foco. Estas
+quatro não são isso: promover, rebaixar e apagar uma variante e escolher o símbolo só existem com a
+árvore de um estudo na frente, e prometê-las na Galeria seria a promessa vazia que `TECLAS_DO_EDITOR`
+recusou pelo mesmo motivo. São irmãs daquelas -- teclas que vivem **dentro** de um painel --, e por
+isso moram aqui e não no painel: só esta tabela escreve tecla, e `qt/atalhos.py` só traduz.
+
+**Por que existem.** O crítico da S-527 mediu a barra da sala: nenhuma ação da árvore tinha tecla,
+e os quatro gestos que se fazem a cada lance de um livro -- subir a variante, descer, apagar, anotar
+-- exigiam o mouse. A dica do botão (`barra_da_sala.dica_de`) e a legenda passam a dizer a tecla.
+
+**As teclas, e de onde vêm.** `Ctrl+↑`/`Ctrl+↓` são as setas com o modificador: a variante sobe ou
+desce um nível, que é o que "promover" e "rebaixar" querem dizer, e é o par que o ChessBase mostra
+no menu da notação. `Ctrl+Del` apaga a variante como `Del` apaga a peça da casa (`apagar_casa`, na
+tabela da janela): o mesmo gesto, com o modificador dizendo que o alvo é maior. `Ctrl+M` -- M de
+marca -- abre a escolha do símbolo; o ChessBase não tem tecla para esse menu (lá o símbolo se
+digita direto na notação), então esta é decisão nossa, e está registrada aqui.
+
+**São `Atalho`, com rótulo, e não `dict` como as do editor**, porque a dica precisa escrever a tecla
+("Promover · Ctrl+↑") e a legenda precisa da linha -- as do editor não aparecem em lugar nenhum, e
+é uma dívida daquela tabela, não um modelo. Nenhuma das quatro sequências está em `ATALHOS` nem em
+`TECLAS_DO_EDITOR`, e o teste cobra isso: uma tecla em duas tabelas sem sobreposição declarada é o
+que `SOBREPOSICOES_NO_EDITOR` existe para impedir.
+
+**Quem as liga é a `QAction` da barra** (`qt/barra_da_sala.py`), com alcance no painel da sala e
+nos filhos dele: a ação desabilitada não dispara, então treinando -- quando o grupo Variante está
+cinza -- `Ctrl+↑` não faz nada, que é a regra do modo valendo também para o teclado. Dentro de um
+campo de texto o widget que usa a tecla fica com ela (`Ctrl+Del` apaga a palavra numa caixa de
+anotação), pelo mecanismo próprio do Qt de sobreposição de atalho."""
+
+
 CEDIDA_PELA_GUARDA = "cedida-pela-guarda"
 """A tecla é da janela, e dentro do editor ela é do editor: ali a da janela está morta.
 
@@ -312,11 +348,19 @@ CEDIDA_PELA_GUARDA = "cedida-pela-guarda"
 widget, e a regra da S-117 -- quem declarou a tecla fica com ela -- é o que a segura.
 
 A troca é para melhor, e a diferença aparece se alguém tirar a tecla do editor: antes ela
-continuaria morta ali (o cobertor cedia de qualquer jeito), e agora ela volta a ser da janela."""
+continuaria morta ali (o cobertor cedia de qualquer jeito), e agora ela volta a ser da janela.
+
+**No Qt quem cede é `qt/atalhos.cede_a_tecla`**, lendo no widget em foco as teclas que o editor
+declarou para si -- e o editor declara exatamente `teclas_cedidas_ao_editor()`. O `bind` no widget
+virou um `QShortcut` com alcance no editor; a regra é a mesma (S-511)."""
 
 GANHA_DO_TK = "ganha-do-tk"
 """A tecla é da janela e a aba a toma para si; o `bind` no widget existe para vencer a **classe**
-`Text`, que roda antes de todo `bind_all` e faria outra coisa com ela."""
+`Text`, que roda antes de todo `bind_all` e faria outra coisa com ela.
+
+**No Qt não há classe `Text`, e o valor continua certo pelo outro lado**: a tecla é da janela, a
+guarda a entrega à aba por `acoes_proprias` (S-244), e o editor **não** a reclama para si -- é a
+que `teclas_cedidas_ao_editor` deixa de fora, para a mesma tecla não ter dois donos."""
 
 SOBREPOSICOES_NO_EDITOR: dict[str, str] = {
     "<Control-r>": CEDIDA_PELA_GUARDA,
@@ -327,6 +371,10 @@ SOBREPOSICOES_NO_EDITOR: dict[str, str] = {
     # widget, e ali a da janela está morta.
     "<Control-plus>": CEDIDA_PELA_GUARDA,
     "<Control-minus>": CEDIDA_PELA_GUARDA,
+    # A da F9 (`8b61a3e`, chegada ao `main` no merge do religa): `Ctrl+E` abre o diagrama na sala de
+    # estudo em toda a janela, e dentro do editor é «centralizar» desde a Fase 41 -- o mesmo par do
+    # `Ctrl+R`, e cedida pelo mesmo motivo.
+    "<Control-e>": CEDIDA_PELA_GUARDA,
 }
 """Sequências que estão nas **duas** tabelas, e por que cada uma pode estar (S-259/S-267).
 
@@ -473,27 +521,39 @@ def descricao_completa(atalho: Atalho) -> str:
     return chr(10).join(linhas)
 
 
+por_acao_da_sala: dict[str, Atalho] = {atalho.acao: atalho for atalho in TECLAS_DA_SALA}
+"""Índice por comando das teclas da sala. Separado de `por_acao` de propósito: a guarda de foco lê
+`por_acao` para saber que ação uma tecla **da janela** pede, e uma tecla da sala não é da janela."""
+
+
+def atalho_de(acao: str) -> Atalho | None:
+    """O atalho daquele comando -- da janela ou da sala --, ou `None` quando ele não tem tecla.
+
+    É o que mostra a tecla: o menu, a dica e a legenda. Quem **liga** a tecla continua lendo a
+    tabela certa (`ATALHOS` pela guarda, `TECLAS_DA_SALA` pela barra da sala), e a distinção
+    importa: mostrar é seguro nos dois casos, ligar não.
+    """
+    return por_acao.get(acao) or por_acao_da_sala.get(acao)
+
+
 def acelerador(acao: str) -> str:
     """O rótulo da tecla daquele comando, ou `""` quando ele não tem uma.
 
     Devolve vazio em vez de levantar: a maioria dos itens de menu **não** tem atalho, e essa é a
     resposta certa para eles -- ao contrário de `tokens.cor`, onde não haver cor é um defeito.
     """
-    atalho = por_acao.get(acao)
+    atalho = atalho_de(acao)
     return atalho.rotulo if atalho is not None else ""
 
 
-def ligacoes(comandos: Mapping[str, Callable[[], None]]) -> dict[str, Callable[[], None]]:
-    """O mapa `sequência → função` que `bind_shortcuts` consome, montado da tabela.
+def sequencia_da_sala(acao: str) -> str:
+    """A sequência (do Tk) da tecla que a **sala** liga para aquele comando, ou `""`.
 
-    Levanta `KeyError` nomeando os comandos que faltam. Um atalho declarado e não ligado é uma
-    tecla que não faz nada e que a legenda promete -- pior que não tê-lo, porque a pessoa conclui
-    que apertou errado.
+    Só `TECLAS_DA_SALA`: uma tecla da janela nunca sai por aqui, senão a barra da sala a ligaria
+    uma segunda vez e a guarda de foco e a `QAction` responderiam ao mesmo gesto.
     """
-    faltando = sorted(atalho.acao for atalho in ATALHOS if atalho.acao not in comandos)
-    if faltando:
-        raise KeyError(f"atalho declarado sem comando: {', '.join(faltando)}")
-    return {atalho.sequencia: comandos[atalho.acao] for atalho in ATALHOS}
+    atalho = por_acao_da_sala.get(acao)
+    return atalho.sequencia if atalho is not None else ""
 
 
 # ------------------------------------------------- o destino conforme o foco (S-244)
@@ -600,3 +660,32 @@ def acao_de(sequencia: str) -> str:
     """Que ação aquela tecla pede, ou `""` para uma sequência que a tabela não declara."""
     atalho = por_sequencia.get(sequencia)
     return atalho.acao if atalho is not None else ""
+
+
+# ------------------------------------------------ as teclas que o editor divide com a janela
+
+
+def sobreposicao(sequencia: str) -> str | None:
+    """Como a janela e o editor dividem esta tecla do editor, ou `None` quando só o editor a declara.
+
+    `CEDIDA_PELA_GUARDA` ou `GANHA_DO_TK`, lidos de `SOBREPOSICOES_NO_EDITOR`. Levanta `KeyError`
+    para uma tecla que está nas **duas** tabelas sem linha ali: é "a sobreposição seguinte", que a
+    tabela existe para impedir de entrar em silêncio -- e ela reprova na montagem do painel de
+    texto, e não só no teste (S-511).
+    """
+    if sequencia not in por_sequencia:
+        return None
+    tipo = SOBREPOSICOES_NO_EDITOR.get(sequencia)
+    if tipo is None:
+        raise KeyError(f"{sequencia} está em ATALHOS e em TECLAS_DO_EDITOR sem sobreposição declarada")
+    return tipo
+
+
+def teclas_cedidas_ao_editor() -> frozenset[str]:
+    """As sequências que o editor toma para si enquanto tem o foco: as só dele, e as cedidas.
+
+    Fica de fora a que a janela ganha (`GANHA_DO_TK`): ali a guarda entrega a ação à aba por
+    `acoes_proprias`, e o editor reclamá-la seria a mesma tecla com dois donos. É o que
+    `qt/painel_de_texto.py` declara no próprio widget, e o que `qt/atalhos.cede_a_tecla` lê.
+    """
+    return frozenset(sequencia for sequencia in TECLAS_DO_EDITOR.values() if sobreposicao(sequencia) != GANHA_DO_TK)

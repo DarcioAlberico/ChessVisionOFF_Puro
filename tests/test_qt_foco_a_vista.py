@@ -989,7 +989,9 @@ class CliqueNosModosTests(unittest.TestCase):
 
         for sabotado in (False, True):
             estudo = PainelDeEstudo(pasta_inicial=self.pasta, pasta_de_estudos=self.pasta)
-            janela, rolagem = self._no_modo("Estudo", estudo, 420)
+            # 360 e não 420 desde o merge com o `main`: o tabuleiro da sala segue a altura (S-551) e
+            # numa janela de 420 ele cabe inteiro, sem a borda de baixo para cortar.
+            janela, rolagem = self._no_modo("Estudo", estudo, 360)
             estudo.push_move(chess.Move.from_uci("e2e4"))
             self.app.processEvents()
             tabuleiro = estudo.tabuleiro

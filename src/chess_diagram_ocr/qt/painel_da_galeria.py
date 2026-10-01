@@ -146,6 +146,7 @@ class PainelDaGaleria(QWidget):
         perguntar_escopo_de_varredura: Callable[[Path | None], ScanScope | None] | None = None,
         perguntar_bases_de_partidas: Callable[[Sequence[Path]], Sequence[Path] | None] | None = None,
         pasta_da_galeria: Path | None = None,
+        caminho_do_cache: Path | None = None,
     ) -> None:
         """`pasta_da_galeria` é onde o índice e as anotações deste livro moram. `None` é
         `data/gallery/`, que é o do produto.
@@ -166,6 +167,17 @@ class PainelDaGaleria(QWidget):
         Injetável porque uma janela modal não se dirige de um roteiro de teste."""
         self._perguntar_bases = perguntar_bases_de_partidas
         self._pasta = pasta_da_galeria
+        self._caminho_do_cache_pedido = caminho_do_cache
+        """Onde o cache de posições desta sessão mora. `None` é o padrão do produto, que é por
+        conjunto de bases (`escolha_de_bases.store_path_for`).
+
+        **Existe pela S-415**, e foi a CI que o cobrou: `load_pdf` abre o cache, então qualquer
+        teste que abra um livro criava `data/games_positions.sqlite` no checkout de quem roda a
+        suíte. Na máquina de quem usa o programa o arquivo já existe, e a guarda não tinha o que
+        reportar -- por isso o defeito atravessou nove rodadas locais limpas.
+
+        **Não é `_cache_pedido`**, que é o par `(caminho, bases)` da abertura ao fundo (passo 15):
+        os dois nasceram com o mesmo nome em ramos diferentes."""
         """Quem pergunta **em quais bases** procurar. `None` abre o diálogo de verdade."""
 
         self._bases: tuple[Path, ...] | None = None
@@ -214,6 +226,7 @@ class PainelDaGaleria(QWidget):
         self._posicoes_prontas.connect(self._posicoes_terminaram)
         self._posicoes_paradas.connect(self._posicoes_pararam)
         self.refresh()
+        atalhos.conferir_dono(self, "PainelDaGaleria")
 
     # ------------------------------------------------------------------------------ montagem
 
@@ -259,6 +272,18 @@ class PainelDaGaleria(QWidget):
             "meia hora na primeira vez, segundos nas seguintes, porque a resposta fica guardada. "
             "Dá para cancelar. Pergunta antes em quais .pgn procurar -- e cada conjunto de bases "
             "guarda as respostas dele em separado.",
+        )
+        # O lote de diagramas mora aqui, e não no menu (S-544): a origem dele é **o livro
+        # varrido**, e é esta aba que tem o índice da varredura na mão. O comando de menu do lote
+        # exporta a sala de estudo, que é a outra origem -- as duas existem porque quem diagrama
+        # um livro inteiro quer os 500 diagramas dele, e quem prepara uma aula quer os oito que
+        # analisou.
+        self.btn_diagramas = self._botao(topo, "Exportar os diagramas", self.exportar_diagramas)
+        dica_em(
+            self.btn_diagramas,
+            "Grava um arquivo de imagem por diagrama deste livro -- PNG ou SVG, no tamanho e na "
+            "pele escolhidos --, com o nome dizendo livro, página e diagrama.\n"
+            "Fica cinza enquanto o livro não tiver sido varrido.",
         )
         self.lbl_varredura = QLabel("", topo)
         topo.adicionar(self.lbl_varredura)
@@ -858,7 +883,11 @@ class PainelDaGaleria(QWidget):
         O `default_bases` sai do mesmo cache de `_bases_atuais`: pedi-lo a `database_paths()` aqui
         refaria o `glob` que aquele acabou de guardar, e era a segunda das três varreduras que o
         arnês contou numa abertura de livro.
+
+        O pedido explícito ganha (S-415): é ele que mantém a suíte fora do `data/` de quem a roda.
         """
+        if self._caminho_do_cache_pedido is not None:
+            return self._caminho_do_cache_pedido
         guardado = self._bases_da_pasta
         return store_path_for(bases, default_bases=guardado[1] if guardado else database_paths())
 
@@ -1539,6 +1568,31 @@ class PainelDaGaleria(QWidget):
             area.setText(conteudo)
         self.estado.emit("Legenda copiada.")
 
+    def exportar_diagramas(self) -> object:
+        """Os diagramas varridos deste livro como arquivos soltos, um por posição (S-544).
+
+        **A origem é o índice da varredura, e não a sala de estudo.** São as duas metades do
+        mesmo item: aqui saem os quinhentos diagramas de um livro digitalizado, com a FEN que o
+        modelo leu e a página impressa no nome do arquivo; do lado da sala saem os que alguém
+        analisou. A decisão de o que vira `ItemDoLote` é de `ui/lote_de_diagramas.da_galeria`.
+        """
+        from chess_diagram_ocr.qt.lote_de_diagramas import abrir_lote_de_diagramas
+        from chess_diagram_ocr.ui.lote_de_diagramas import da_galeria
+
+        aberto = self.model.pdf_path
+        livro = Path(aberto).stem if aberto else ""
+        itens = da_galeria(self.model.index.entries, livro=livro)
+        if not itens:
+            self.estado.emit("Varra o livro antes: não há diagrama indexado para exportar.")
+            return None
+        return abrir_lote_de_diagramas(
+            self,
+            itens=itens,
+            origem=f"{len(itens)} diagrama(s) varrido(s) de {livro or 'este livro'}.",
+            pasta=Path(aberto).parent if aberto else DEFAULT_PDF_DIR,
+            busy=self._busy_registry,
+        )
+
     def copiar_link(self) -> None:
         from PyQt6.QtWidgets import QApplication
 
@@ -1591,6 +1645,9 @@ class PainelDaGaleria(QWidget):
             # Desligado onde não há header: um botão que responde "não há o que limpar" é um botão
             # que mente sobre estar disponível, e a pergunta que ele abriria seria vazia.
             self.btn_limpar.setEnabled(bool(anotacao.headers))
+            # Cinza sem índice: exportar zero diagramas abriria um diálogo para dizer que não há
+            # nada, e a resposta certa a "varra o livro antes" é o botão não convidar ao clique.
+            self.btn_diagramas.setEnabled(not self.model.is_empty)
             self._atualizar_botao_de_candidatas()
         finally:
             self._montando = False

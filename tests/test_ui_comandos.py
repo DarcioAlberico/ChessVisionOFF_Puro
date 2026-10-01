@@ -24,6 +24,9 @@ if str(RAIZ) not in sys.path:
 from chess_diagram_ocr.ui import atalhos, comandos, estilos, menu  # noqa: E402
 
 PDF_PANEL = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "painel_do_pdf.py"
+"""Onde os controles do painel do PDF são montados. Na S-528 o `main` passou a declará-los em
+`ui/barra_do_pdf.py` (a barra em fila com o "Mais"); o merge do religa ficou com os blocos nomeados
+da OCR_UI, montados à mão pelo `_botao`, e a guarda voltou a varrer o painel."""
 TEXTO_PANEL = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "painel_de_texto.py"
 JANELA = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "janela.py"
 CAMPO = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "campo.py"
@@ -157,7 +160,12 @@ def _acoes_desenhadas(no: ast.AST) -> set[str]:
 
     Duas formas, e são as duas que o painel do PDF usa: o `acao` do ajudante `_botao` -- segundo
     posicional, depois da barra -- e o argumento de `comandos.rotulo_de_botao(...)`, que é como os
-    dois `QCheckBox` e o botão do leitor pegam o rótulo sem passar pelo ajudante.
+    dois `QCheckBox` pegam o rótulo sem passar pelo ajudante.
+
+    **O padrão mudou duas vezes, e traduzi-lo é obrigação.** No `main`, desde a S-528, as ações
+    eram linhas `Acao(...)` de `ui/barra_do_pdf.ACOES`; o merge do religa ficou com os blocos da
+    OCR_UI, e elas voltaram a ser chamadas de `_botao` no painel. Uma guarda ancorada no arquivo
+    errado passaria em **verde sobre lista vazia** -- que é o que a S-506 mediu vinte vezes.
 
     **Só constante conta.** Dentro do próprio `_botao` o argumento é o parâmetro `acao`, um `Name`;
     contá-lo faria a varredura declarar que existe uma ação chamada "acao".
@@ -306,10 +314,13 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
 
         Quem a cobrava era `test_a_declaracao_das_barras_bate_com_o_que_o_painel_desenha` de
         `tests/test_ui_alcance.py`, que varria o `_montar_barras` de `ui/pdf_panel.py`. O padrão
-        mudou com o toolkit -- lá era `ttk.Button(text=...)`, aqui é o ajudante `_botao` e o
-        `rotulo_de_botao` dos dois `QCheckBox` --, e é o padrão traduzido que esta guarda usa.
+        mudou três vezes -- lá era `ttk.Button(text=...)`, depois o ajudante `_botao` de
+        `qt/painel_do_pdf.py`, no `main` da S-528 a linha `Acao(...)` de `ui/barra_do_pdf.py`, e
+        desde o merge do religa o `_botao` de novo --, e é o padrão traduzido que esta guarda usa.
+        Ver `_acoes_desenhadas`.
         """
         desenhadas = _acoes_desenhadas(ast.parse(PDF_PANEL.read_text(encoding="utf-8")))
+        self.assertTrue(desenhadas, "a varredura não achou controle nenhum: o padrão mudou de novo")
         self.assertEqual(sorted(comandos.NAS_BARRAS_DO_PDF), sorted(desenhadas))
 
     def test_a_varredura_das_barras_acha_os_dois_jeitos_de_desenhar(self) -> None:
@@ -318,7 +329,8 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
         Ancorá-lo no painel de verdade o faria se apagar junto com o defeito: uma varredura que
         deixasse de reconhecer o `_botao` acharia zero ação, a lista declarada teria de encolher
         para zero para o teste passar, e as duas ficariam de acordo sobre nada. Os dois trechos
-        abaixo são as duas formas que o painel usa, escritas à mão aqui.
+        abaixo são as duas formas que o painel usa, escritas à mão aqui -- com o parâmetro `acao`
+        do próprio `_botao`, que **não** conta.
         """
         arvore = ast.parse(
             "class Painel:\n"
@@ -357,6 +369,9 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 # aba sem pedido, que é o achado 1 do ROADMAP_APARENCIA.
                 "abrir_texto",
                 "afastar_texto",
+                # A S-516: o menu diz "Dobrar todas as variantes" porque é onde cabe dizê-lo, e o
+                # botão diz "Dobrar" porque ele fica numa fileira que a Fase 76 já vai apertar.
+                "dobrar_variantes",
                 "alinhar_centro",
                 "alinhar_direita",
                 "alinhar_esquerda",
@@ -409,6 +424,11 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 # mesmas que a aba já mostrava antes de haver catálogo.
                 "analisar_posicao",
                 "analise_continua",
+                # Os dois da Fase 82: o menu diz "Analisar a partida inteira com o motor…" e
+                # "Opções do motor de análise…" porque é onde cabe dizê-lo, e a barra da sala tem
+                # de caber num botão de 16 px com o rótulo na dica (S-536/S-537).
+                "analisar_partida",
+                "opcoes_do_motor",
                 "apagar_continuacao",
                 "apagar_variante",
                 "copiar_fen",
@@ -439,6 +459,42 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 "exportar_estudo_md",
                 "exportar_estudo_rtf",
                 "modo_treino",
+                # A S-527/S-532: o menu diz "Indexar a base de partidas por nome…" e o botão do
+                # "Mais" da sala diz "Indexar base", pela mesma razão dos vinte e três acima.
+                "indexar_base",
+                # E a S-533: o menu diz por que campos se busca ("por jogador, evento, ano, Elo e
+                # ECO…") porque é ali que a lista de campos cabe; o botão diz "Buscar partidas".
+                "buscar_partidas",
+                # E os dois da Fase 83 (S-539/S-540): o menu diz o que o comando faz com o
+                # livro inteiro, e o botão do "Mais" diz o nome curto -- "Táticas do livro" e
+                # "Revisar hoje", que são como se fala deles.
+                "taticas_do_livro",
+                "treinar_agenda",
+                # E os três da Fase 84 (S-544/S-545), pela razão dos formatos acima: o menu diz
+                # "Exportar o estudo para PDF…" e o item do agrupador diz ".pdf", ao lado dos
+                # outros três; "Imprimir o estudo…" e "Exportar os diagramas em lote…" viram
+                # "Imprimir" e "Diagramas em lote" no "Mais", onde o rótulo longo não caberia.
+                "exportar_estudo_pdf",
+                "imprimir_estudo",
+                "exportar_diagramas_lote",
+                # E os dois da segunda rodada da S-542/S-543, pela razão idêntica: o menu diz
+                # "Exportar o estudo para EPUB…" e o item do agrupador diz ".epub". Eles chegaram
+                # ao catálogo três dias depois dos módulos que os escrevem -- até aqui não havia
+                # gesto nenhum que chamasse `epub.py` nem `docx_saida.py`.
+                "exportar_estudo_epub",
+                "exportar_estudo_docx",
+                # E os três que a S-233 registrou como dívida e a terceira barra em fila pagou: o
+                # menu diz "Salvar a posição" e o botão da fila diz "Salvar". Enquanto o painel de
+                # Resultado escrevia os rótulos à mão eles não declaravam `rotulo_curto`, "que
+                # seria uma promessa que ninguém cumpre".
+                "salvar",
+                "salvar_todos",
+                "aplicar_fen",
+                # E o da Fase 81 (S-535), pelo mesmo motivo: o menu diz "Árvore de aberturas desta
+                # posição" porque é onde cabe dizer de que posição se fala, e o botão do grupo Base
+                # diz "Árvore" -- ao lado de "Partidas", que responde a outra pergunta sobre a
+                # mesma posição.
+                "arvore_de_aberturas",
                 # Os três do trilho de páginas (OCR_UI passo 17): o menu diz "Importar o livro
                 # (ler todas as páginas)…" e o botão, numa coluna de 176 px, diz "Importar o
                 # livro"; "Cancelar a importação" vira "Cancelar" ao lado dele; "Ir à primeira
@@ -623,7 +679,7 @@ class RotuloAlternadoTests(unittest.TestCase):
     """O texto de "ligado", para os comandos que alternam (S-222)."""
 
     def test_so_alterna_quem_precisa(self) -> None:
-        """Quatro, e os três da sala são interruptores que **não** viraram `Checkbutton`
+        """Cinco, e os quatro da sala são interruptores que **não** viraram `Checkbutton`
         (S-222/S-280/S-290).
 
         Os dois da sala de estudo entraram por uma razão de alcance, e não de estética: um
@@ -634,7 +690,17 @@ class RotuloAlternadoTests(unittest.TestCase):
         """
         alternam = {registro.acao for registro in comandos.CATALOGO if registro.rotulo_alternado}
         self.assertEqual(
-            {"selecionar_area", "mostrar_diagrama", "analise_continua", "modo_treino"}, alternam
+            {
+                "selecionar_area",
+                "mostrar_diagrama",
+                "analise_continua",
+                "modo_treino",
+                # A quinta é a S-516, e ela entra pela mesma razão de alcance das três da sala: a
+                # dobra é estado de vista, mas quem a liga tem de poder ligá-la pelo menu e pela
+                # paleta também -- e ali não há botão de onde ler o estado de antes.
+                "dobrar_variantes",
+            },
+            alternam,
         )
 
     def test_quem_nao_alterna_responde_o_proprio_rotulo(self) -> None:

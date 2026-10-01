@@ -287,6 +287,34 @@ FORA_DO_REGISTRO: dict[tuple[str, str], str] = {
         "trabalho: alguns milissegundos cada, uma por vez, as visíveis primeiro. É enfeite -- a "
         "linha da página já existe sem ela --, e fechar no meio não perde nada."
     ),
+    ("preferencias.py", "aplicar"): (
+        "A troca das opções do motor (S-536): `setoption` sobre o processo aberto, ou derrubá-lo "
+        "e subir outro -- 140 ms medidos. Ela sai da linha de eventos porque o `close()` de um "
+        "motor que está pensando espera ele responder, e **não** entra no registro porque não há "
+        "o que perder ao fechar: as preferências já foram gravadas antes de a thread começar, e o "
+        "que a thread faz é com um processo que o fechamento da janela encerraria de qualquer "
+        "forma."
+    ),
+    ("painel_de_treino.py", "pedir"): (
+        "Quanto o lance jogado custou, no treino (S-541): duas buscas de 700 ms, e a resposta é "
+        "um número que aparece ao lado de um veredicto que **já** chegou sem ela. Não entra no "
+        "registro porque não há o que perder ao fechar -- o placar do lance foi contado com o "
+        "que se sabia, e a mesma pergunta se refaz na tentativa seguinte."
+    ),
+    ("arvore_de_aberturas.py", "_perguntar"): (
+        "Uma sonda de chave primária na árvore de aberturas (S-535): milissegundos com o arquivo "
+        "quente, e disco na primeira leitura de um SQLite de gigabytes. Ela sai da linha de "
+        "eventos porque a árvore acompanha a posição da sala a cada lance, e **não** entra no "
+        "registro porque não há o que perder ao fechar: nada é gravado, e a pergunta se refaz "
+        "sozinha na posição seguinte. Quem grava é a passada ao lado (`iniciar`), que se registra."
+    ),
+    ("busca_de_partidas.py", "buscar"): (
+        "Uma consulta ao índice por nome (S-533): dezenas de milissegundos na gigabase, e até "
+        "~1 s quando o filtro pede a posição corrente e ela relê dois mil candidatas. Ela sai da "
+        "linha de eventos porque a janela não pode parar, e **não** entra no registro porque não "
+        "há o que perder ao fechar: nada é gravado, e a mesma pergunta se refaz com um clique. É "
+        "o oposto do índice (`indice_da_base.py`), que grava e por isso se registra."
+    ),
 }
 """As threads de `qt/` que **não** entram no registro, e por quê -- uma linha cada.
 

@@ -27,10 +27,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 __all__ = [
-    "COM_ENFASE",
     "DESTRUTIVO",
     "NEUTRO",
-    "PAPEIS_DE_BOTAO",
     "PRIMARIO",
     "conferir_barra",
     "conferir_tela",

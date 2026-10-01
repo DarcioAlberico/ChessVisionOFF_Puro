@@ -28,7 +28,7 @@ from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.imagens import qimage_de_rgb, reduzir_rgb
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.ui import tokens
-from chess_diagram_ocr.ui.leitura_do_pdf import CLICK_SLOP_PX, MIN_SELECTION_PX
+from chess_diagram_ocr.ui.leitura_do_pdf import CLICK_SLOP_PX, MIN_SELECTION_PX, SELECTION_HALO_PX
 from chess_diagram_ocr.ui.page_overlay import (
     A_FAZER,
     CORRIGIDO,
@@ -58,24 +58,35 @@ from chess_diagram_ocr.ui.viewport import (
 
 logger = logging.getLogger(__name__)
 
-COR_POR_ESTADO: dict[str, str] = {
-    A_FAZER: tokens.RESERVA[tokens.A_FAZER],
-    LIDO: tokens.RESERVA[tokens.LIDO],
-    DUVIDOSO: tokens.RESERVA[tokens.ATENCAO],
-    CORRIGIDO: tokens.RESERVA[tokens.CORRIGIDO],
-    PRONTO: tokens.RESERVA[tokens.PRONTO],
-    DISPENSADO: tokens.RESERVA[tokens.DISPENSADO],
+PAPEL_DO_ESTADO: dict[str, str] = {
+    A_FAZER: tokens.A_FAZER,
+    LIDO: tokens.LIDO,
+    DUVIDOSO: tokens.ATENCAO,
+    CORRIGIDO: tokens.CORRIGIDO,
+    PRONTO: tokens.PRONTO,
+    DISPENSADO: tokens.DISPENSADO,
 }
-"""A mesma cor por estado que `pdf_panel.box_color` escolhe.
+"""Estado da caixa -> papel de cor. O estado e o papel têm o **mesmo nome** em `page_overlay` e em
+`tokens`, então isto é a resolução do papel, e não uma segunda escolha de matiz -- salvo o
+`DUVIDOSO` do passo 13 da OCR_UI, que pinta com `ATENCAO`.
 
-Não é cópia da decisão: o estado e o papel de cor têm o **mesmo nome** em `page_overlay` e em
-`tokens`, então isto é a resolução do papel, e não uma segunda escolha de matiz. Se a paleta
-mudar em `tokens.RESERVA`, as duas telas mudam juntas."""
+**A tinta sai de `tema.cor_atual`, e no momento de pintar.** Saía de `tokens.RESERVA[...]` -- o
+hexadecimal de fábrica, que não acompanha a troca de pele -- e era o mesmo achado da S-510 sobre
+o glifo de reserva do tabuleiro, numa terceira tela. `RESERVA` é a paleta sem pele; quem responde
+é a pele em uso, e ela pode ter mudado desde a montagem. É a triagem da S-511."""
 
-HALO_DA_SELECAO = 4
-"""Folga da segunda borda do diagrama selecionado, **para fora** da caixa -- igual à do
-produto: uma borda por dentro cairia sobre a primeira fila de casas, que é o que a caixa
-existe para deixar conferir."""
+COR_POR_ESTADO = PAPEL_DO_ESTADO
+"""O nome antigo da tabela, mantido como apelido: é por ele que `tests/test_page_overlay` cobra
+que os seis estados têm cor no visor. Hoje ela devolve o **papel**, e a cor é `cor_do_estado`."""
+
+
+def cor_do_estado(estado: str) -> str:
+    """A cor da caixa naquele estado, contra a pele em uso."""
+    return tema.cor_atual(PAPEL_DO_ESTADO[estado])
+
+
+# A folga da segunda borda é `leitura_do_pdf.SELECTION_HALO_PX`: o número já existia, com o
+# motivo escrito, e este widget o reescrevia como `HALO_DA_SELECAO = 4` (S-511).
 
 ALTURA_DA_ETIQUETA = 18
 LARGURA_DA_ETIQUETA = 22
@@ -233,7 +244,7 @@ class _Folha(QWidget):
         self, pintor: QPainter, caixa: DiagramBox, retangulo: tuple[float, float, float, float], fonte: QFont
     ) -> None:
         x0, y0, x1, y1 = (int(round(valor)) for valor in retangulo)
-        cor = QColor(COR_POR_ESTADO[estado_da_caixa(caixa)])
+        cor = QColor(cor_do_estado(estado_da_caixa(caixa)))
         traco = traco_da_caixa(caixa)
 
         caneta = QPen(cor)
@@ -252,10 +263,10 @@ class _Folha(QWidget):
             pintor.setPen(halo)
             pintor.drawRect(
                 QRect(
-                    x0 - HALO_DA_SELECAO,
-                    y0 - HALO_DA_SELECAO,
-                    (x1 - x0) + 2 * HALO_DA_SELECAO,
-                    (y1 - y0) + 2 * HALO_DA_SELECAO,
+                    x0 - SELECTION_HALO_PX,
+                    y0 - SELECTION_HALO_PX,
+                    (x1 - x0) + 2 * SELECTION_HALO_PX,
+                    (y1 - y0) + 2 * SELECTION_HALO_PX,
                 )
             )
 

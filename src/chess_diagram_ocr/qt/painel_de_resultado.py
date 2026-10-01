@@ -57,7 +57,6 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListWidget,
     QMessageBox,
     QPushButton,
@@ -82,7 +81,17 @@ from chess_diagram_ocr.qt.rotulo import CampoQueAvisaQueContinua
 from chess_diagram_ocr.qt.tabuleiro_editavel import TabuleiroEditavel
 from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import OcrService, RecognitionOrigin, RecognizedDiagram
-from chess_diagram_ocr.ui import atalhos, board_edit, comandos, espaco, estilos, strings, tipografia, tokens
+from chess_diagram_ocr.ui import (
+    atalhos,
+    barra_do_resultado,
+    board_edit,
+    comandos,
+    espaco,
+    estilos,
+    strings,
+    tipografia,
+    tokens,
+)
 from chess_diagram_ocr.ui import recorte_do_diagrama as regra_do_recorte
 from chess_diagram_ocr.ui.editor_model import DiagramEditorModel, EditorBinding, SaveKind, SaveTarget
 from chess_diagram_ocr.ui.historico import Historico
@@ -190,6 +199,19 @@ class PainelDeResultado(QWidget):
     selecionou = pyqtSignal(int)
     """O diagrama que passou a estar em edição, para o visor destacar a caixa dele."""
 
+    posicao_mudou = pyqtSignal()
+    """A posição mostrada aqui mudou -- por troca de diagrama, por casa corrigida ou por desfazer.
+
+    **É o `on_sync_study` do outro frontend, com um sinal no lugar de três chamadas** (S-512). Lá o
+    `result_panel` o chamava em três pontos e `app_tkinter.py:1537` o repassava à sala; o porte para
+    o Qt não trouxe nenhum dos três, e a caixa "Seguir OCR selecionado" -- marcada de fábrica --
+    deixou de seguir qualquer coisa.
+
+    Sai de `_atualizar_tudo` porque é ali que os três pontos do Tk se encontram: um lugar só, que é
+    a mesma razão de aquele método existir. Quem escuta é a sala, e **quem decide se há o que
+    fazer** é `ui/sala_declarada.decidir_sincronia` -- este sinal dispara a cada casa corrigida, e
+    reabrir o estudo a cada uma apagaria a pilha de desfazer de quem o estava analisando."""
+
     revisou = pyqtSignal(int, str, str)
     """`(posição na fila, FEN, lado)` -- o item da fila que acabou de ser corrigido e gravado.
 
@@ -259,6 +281,7 @@ class PainelDeResultado(QWidget):
 
         self._montar()
         self._atualizar_tudo()
+        atalhos.conferir_dono(self, "PainelDeResultado")
 
     # ------------------------------------------------------------------------------ montagem
 
@@ -432,14 +455,15 @@ class PainelDeResultado(QWidget):
         self.anterior = QPushButton(strings.ANTERIOR, self)
         # Os dois glifos ganham nome por extenso (F9-C2): ver `comandos.Comando.no_leitor`.
         self.anterior.setAccessibleName("Diagrama anterior")
-        self.anterior.clicked.connect(lambda: self.andar(-1))
+        # O método que `ui/barra_do_resultado.METODOS_DO_PAINEL` nomeia (S-528), e não um `lambda`.
+        self.anterior.clicked.connect(self.diagrama_anterior)
         tema.aplicar_papel(self.anterior, estilos.NEUTRO)
         # O desenho no lugar do glifo (F9-C7, §4.7): ver `qt/icones.vestir`.
         qt_icones.vestir(self.anterior, "diagrama_anterior", estilos.NEUTRO)
         linha.addWidget(self.anterior)
         self.proximo = QPushButton(strings.PROXIMO, self)
         self.proximo.setAccessibleName("Próximo diagrama")
-        self.proximo.clicked.connect(lambda: self.andar(1))
+        self.proximo.clicked.connect(self.proximo_diagrama)
         tema.aplicar_papel(self.proximo, estilos.NEUTRO)
         qt_icones.vestir(self.proximo, "proximo_diagrama", estilos.NEUTRO)
         linha.addWidget(self.proximo)
@@ -447,6 +471,9 @@ class PainelDeResultado(QWidget):
         self.seletor = QSpinBox(self)
         self.seletor.setMinimum(1)
         self.seletor.setMaximum(1)
+        # O total é o **sufixo** do campo (S-528, terceira barra): "Selecionado" sozinho não dizia
+        # de quantos, e para saber quantos diagramas a página tinha era preciso contar a lista.
+        self.seletor.setSuffix(barra_do_resultado.sufixo_de_diagramas(0))
         self.seletor.setAccessibleName("Diagrama selecionado")
         self.seletor.valueChanged.connect(self._pediu_diagrama)
         linha.addWidget(self.seletor)
@@ -478,7 +505,7 @@ class PainelDeResultado(QWidget):
         # Copiar fica ao lado da FEN e **fora** da barra de ações: ele não muda nada, e uma ação
         # inócua no meio de cinco que gravam ou apagam é a que se clica por engano.
         self.copiar = QPushButton("Copiar FEN", self)
-        self.copiar.clicked.connect(self._copiar_fen)
+        self.copiar.clicked.connect(self.copiar_fen_lida)
         tema.aplicar_papel(self.copiar, estilos.NEUTRO)
         linha.addWidget(self.copiar)
         return linha
@@ -544,7 +571,7 @@ class PainelDeResultado(QWidget):
         # inverso dela (`mostrar_incerteza`).
         self.heatmap = QCheckBox(strings.ESCONDER_INCERTEZA, barra)
         self.heatmap.setChecked(False)
-        self.heatmap.toggled.connect(lambda esconder: self.tabuleiro.definir_heatmap(not esconder))
+        self.heatmap.toggled.connect(self.alternou_mapa_de_incerteza)
         dica_em(self.heatmap, "Esconde a tinta das casas em que o modelo hesitou: a peça lida aparece limpa.")
         barra.adicionar(self.heatmap)
         return barra
@@ -580,6 +607,34 @@ class PainelDeResultado(QWidget):
         """A dica do botão: o que ele faz (ou por que está cinza) e a tecla dele."""
         tecla = atalhos.acelerador(acao)
         dica_em(botao, f"{motivo}\nTecla: {tecla}" if tecla else motivo)
+
+    def executar(self, acao: str) -> None:
+        """Roda o método que `barra_do_resultado.METODOS_DO_PAINEL` liga àquela ação.
+
+        É a mesma forma de `PainelDoPdf.executar` (S-528) e de `PainelDeEstudo.executar` (S-280):
+        o par ação-método é declarado **uma** vez, na tabela, e não num `lambda` escrito no meio da
+        montagem. Levanta para ação que a tabela não tem.
+        """
+        getattr(self, barra_do_resultado.METODOS_DO_PAINEL[acao])()
+
+    # ------------------------------------------- o que cada ação da fila faz (S-528, 3ª barra)
+
+    def diagrama_anterior(self) -> None:
+        """O diagrama de cima da lista desta página."""
+        self.andar(-1)
+
+    def proximo_diagrama(self) -> None:
+        """O de baixo."""
+        self.andar(1)
+
+    def alternou_mapa_de_incerteza(self) -> None:
+        """O interruptor da tinta de dúvida mudou.
+
+        O método **lê** o estado e não o inverte -- ver `ui/barra.Acao.alterna_no_metodo`: quem
+        alterna é o próprio item. A caixa é «Esconder incerteza» (OCR_UI passo 13): marcada, a
+        tinta some, e por isso quem decide o que o tabuleiro desenha é `mostrar_incerteza`.
+        """
+        self.tabuleiro.definir_heatmap(self.mostrar_incerteza)
 
     # ------------------------------------------------------------------------------ carga
 
@@ -1395,6 +1450,7 @@ class PainelDeResultado(QWidget):
             self._montando = False
         self._atualizar_botoes(vazio)
         self.mudou.emit()
+        self.posicao_mudou.emit()
 
     def _pintar_diagrama(self) -> None:
         indice = self.modelo.clamped_index()
@@ -1447,6 +1503,7 @@ class PainelDeResultado(QWidget):
         self.campo_fen.setText(compose_fen(corrigida, lado != "b"))
         # Ver `painel_de_estudo._mostrar_fen_do_comeco`: o `setText` deixa o cursor no
         # fim e o campo passa a mostrar o fim. A 1280x800 isso come as tres primeiras casas.
+        # O começo da FEN é o que se confere -- mesma razão da sala de estudo (S-552, quinta rodada).
         self.campo_fen.setCursorPosition(0)
         self.detalhes.setText(self._detalhes_do_item(item))
         self._pintar_estados(item, lado=lado, corrigida=corrigida)
@@ -1497,6 +1554,7 @@ class PainelDeResultado(QWidget):
         self.anterior.setEnabled(not vazio and self.modelo.clamped_index() > 0)
         self.proximo.setEnabled(not vazio and self.modelo.clamped_index() < len(self.modelo.items) - 1)
         self.seletor.setEnabled(not vazio)
+        self.seletor.setSuffix(barra_do_resultado.sufixo_de_diagramas(len(self.modelo.items)))
         self.paleta.habilitar(not vazio, motivo=MOTIVO_SEM_DIAGRAMA)
 
         for botao, acao, pode, sem in (
@@ -1532,13 +1590,18 @@ class PainelDeResultado(QWidget):
         legenda e "pretas jogam" assumido pelo padrão têm o mesmo texto e valores completamente
         diferentes para quem vai conferir. O rótulo vem de `ui/strings.py`, que existe para que
         as duas telas do projeto não digam isso de dois jeitos.
+
+        **A legalidade e o material saíam daqui também, e o crítico fotografou o resultado**
+        (S-551, segunda rodada): "Posição legal." e a contagem de peças apareciam **duas vezes**
+        na mesma coluna, uma nos rótulos `legalidade` e `material` -- que ficam logo acima, e cuja
+        única razão de existir é essa -- e outra na primeira metade deste parágrafo. Uma frase
+        repetida a dois centímetros de distância não é redundância inofensiva: ela faz procurar a
+        diferença entre as duas. Este parágrafo ficou com o que **só** ele diz: procedência,
+        confiança, detecção e legenda.
         """
-        explicacao = explain_position(compose_fen(item.placement, item.side_is_white))
         linhas = [
             f"Lado a jogar: {'brancas' if item.side_is_white else 'pretas'}"
             f" — {strings.side_source_label(item.side_to_move_source, conflicting=item.side_conflicting)}",
-            explicacao.summary(),
-            explicacao.material_line(),
             f"Confiança: mínima {item.min_confidence:.3f} · média {item.mean_confidence:.3f}"
             f" · {len(item.uncertain_squares)} casa(s) incerta(s)",
         ]
@@ -1555,7 +1618,12 @@ class PainelDeResultado(QWidget):
             linhas.append(f"Legenda: {strings.resumo_da_legenda(item.caption)}")
         return "\n".join(linhas)
 
-    def _copiar_fen(self) -> None:
+    def copiar_fen_lida(self) -> None:
+        """A FEN que o modelo leu, já com as correções feitas aqui, na área de transferência.
+
+        **Não é `copiar_fen` do catálogo**, e a distinção é real: aquele copia a posição da sala de
+        estudo, com os lances jogados por cima. Ver `barra_do_resultado.COPIAR_FEN_LIDA`.
+        """
         texto = self.campo_fen.text().strip()
         if not texto:
             return
@@ -1584,6 +1652,6 @@ class PainelDeResultado(QWidget):
             "desfazer": self.desfazer,
             "refazer": self.refazer,
             "aplicar_fen": self.aplicar_fen,
-            "diagrama_anterior": lambda: self.andar(-1),
-            "proximo_diagrama": lambda: self.andar(1),
+            "diagrama_anterior": self.diagrama_anterior,
+            "proximo_diagrama": self.proximo_diagrama,
         }.get(acao)

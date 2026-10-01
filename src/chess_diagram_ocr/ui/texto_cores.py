@@ -36,11 +36,6 @@ from ..text import documento, rico
 from . import tokens
 
 __all__ = [
-    "PAPEIS_DA_FAIXA",
-    "PAPEL_DA_COR",
-    "PAPEL_DO_REALCE",
-    "etiqueta_de_cor",
-    "etiqueta_de_realce",
     "papel_de_cor",
     "papel_de_realce",
 ]
@@ -118,16 +113,6 @@ def papel_de_realce(nome: str) -> str:
     if nome not in PAPEL_DO_REALCE:
         raise KeyError(f"realce de autor desconhecido: {nome!r}. Os válidos estão em rico.CORES_DE_AUTOR.")
     return PAPEL_DO_REALCE[nome]
-
-
-def etiqueta_de_cor(nome: str) -> str:
-    """`"destaque"` -> `"cor:destaque"`, a etiqueta que o widget carrega."""
-    return f"{PREFIXO_DE_COR}{nome}"
-
-
-def etiqueta_de_realce(nome: str) -> str:
-    """`"destaque"` -> `"realce:destaque"`."""
-    return f"{PREFIXO_DE_REALCE}{nome}"
 
 
 def nomes() -> tuple[str, ...]:

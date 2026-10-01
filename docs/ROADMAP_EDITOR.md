@@ -18,17 +18,20 @@ estilos, catálogo de comandos, ícones — está em [SPEC_UI.md](SPEC_UI.md) e
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175, S-176 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176, S-454, S-455 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-267, S-291 a S-293, S-521 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-430, S-451 a S-453 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
+> | S-507 a S-520 | [SPEC_ESTUDO_QT.md](SPEC_ESTUDO_QT.md) |
+> | S-522 a S-526 | [SPEC_REVISAO_EXTERNA_2.md](SPEC_REVISAO_EXTERNA_2.md) |
+> | S-500 a S-506, S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
 
 ---
 
@@ -252,7 +255,7 @@ uma régua que o editor já usa.
 | item | estado | o que ela disse |
 |---|---|---|
 | **S-257** · a margem da coluna: mediana ou quantil baixo | ✅ medida e **recusada** | dois acertos em 323 separam os dois candidatos — a mediana fica. No caminho, achou a régua vizinha que **tem** vão |
-| **S-258** · o limiar de recuo é 0,8, e a medição diz 0,4 | ⬜ planejada | 25 cortes certos a mais por um falso a mais. Mexe no texto que o leitor entrega, e por isso é item com remedição junto |
+| **S-258** · o limiar de recuo é 0,8, e a medição diz 0,4 | ✅ **trocado para 0,4** (2026-08-26) | quatro cortes certos a mais, e sem um falso a mais, na referência ampliada. No caminho achou o item maior: onde o glifo lê, a população de "linha" não é a que estas regras descrevem |
 
 A referência de parágrafo que as duas usam está versionada em
 `docs/metrics/texto_paragrafo_referencia.jsonl`, e a de notação, que fechou a dívida da S-249, em
@@ -358,6 +361,16 @@ e o que mudou é que existe um documento para as ferramentas editarem.
 
 - **S-255** · O rascunho automático, e a recuperação depois do fechamento
 - **S-256** · O inventário do editor: nada de recurso sem comando, atalho e teste
+
+## Fase 78 — A digitação que chega ao documento
+
+Não estava neste plano, e é o maior defeito que a aba tem hoje. A triagem da S-511 (2026-09-02),
+ao ligar as teclas do editor que o porte para o Qt tinha deixado sem `bind`, mediu que **o que se
+digita no editor do Qt não chega ao documento**: o `QTextEdit` recebe o texto, `documento` fica
+como estava, e salvar grava a folha sem a correção — o ciclo que a S-238 fechou no Tk e o porte não
+refez. A spec está em [SPEC_EDITOR.md](SPEC_EDITOR.md), com a tabela dos quatro gestos medidos.
+
+- **S-521** · A digitação que chega ao documento, e o desfazer que a vê
 
 ---
 

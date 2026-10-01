@@ -30,10 +30,7 @@ ESCRITAS_DIRETAS = {"write_text", "write_bytes"}
 
 PERMITIDAS = {
     "atomic_io.py": "é a implementação da escrita atômica; é aqui que o temporário é escrito",
-    "detection_census.py": "o censo de detecção: derivado do acervo, refeito com cvoff-census",
-    "experiments.py": "os resultados da grade: derivados dos treinos, e o .pt de cada variante sobrevive",
     "pdf_to_pgn.py": "o PGN exportado e o .review.pgn: saída do produto, e a S-24 já grava parcial a cada 5 páginas",
-    "side_survey.py": "o levantamento de procedência do lado a jogar: medição derivada, refeita com cvoff-sides",
 }
 """Onde a escrita direta é aceitável, **com o motivo de cada uma**.
 
@@ -49,11 +46,42 @@ mesmo nos baratos a escrita atômica não custa nada: são as mesmas três linha
 truncado é pior que um JSON ausente, porque `json.load` falha longe de onde a interrupção
 aconteceu.
 
+**Mais tres saíram na S-453** -- `detection_census.py`, `experiments.py` e `side_survey.py` --,
+e por um motivo que o critério de cima não previa: eles não saíram por serem valiosos, e sim
+porque `atomic_write_text` é também o único jeito de garantir LF. Ver `SEM_LF_DECLARADO`.
+
 O `labels.py` esteve nesta lista, e saiu na S-375. A escrita direta dele era a do **backup**,
 não a do destino -- o original fica intacto enquanto a cópia é feita, que é o oposto do
 defeito. Mas um `.bak-` truncado se parece com um backup e não é, e o `write_bytes` deixava
 exatamente isso quando a cópia era interrompida. Hoje o backup nasce por `O_EXCL` e some no
 caminho da exceção, e o módulo não precisa mais de exceção nenhuma.
+"""
+
+
+SEM_LF_DECLARADO = {
+    "pdf_to_pgn.py": (
+        "PGN exportado e .review.pgn: saída de produto, e o padrão PGN especifica CR/LF como "
+        "terminador -- nenhum .pgn é versionado neste repositório"
+    ),
+}
+"""Onde `write_text` pode gravar a quebra de linha da plataforma, **com o motivo de cada uma**.
+
+Fora daqui, texto sai por `atomic_write_text`, que abre o temporário com `newline="\n"`.
+`Path.write_text` sem `newline` traduz `\n` para `os.linesep`, que no Windows é `CR LF` -- e
+todo relatório deste projeto vai para `docs/metrics/`, que o `.gitattributes` declara
+`*.json text eol=lf`.
+
+**O estrago não aparece no `git status`, e foi por isso que durou.** O git normaliza na leitura:
+um arquivo com CRLF no disco casa com um blob em LF e a árvore parece limpa. Foi assim que os
+`.py` do checkout principal ficaram com CRLF sem ninguém notar, até que o `_digest_of` -- que
+hasheava os bytes crus -- começou a dar digests diferentes para o mesmo commit e a guarda da
+S-218 passou a reprovar relatório correto num clone limpo. A cura lá foi normalizar antes de
+hashear (S-325); a cura aqui é **não semear CRLF na árvore**, que é a metade que evita o
+próximo caso.
+
+**E ela foi cobrada em campo, não em teoria.** Na S-454 o `cvoff-census` gravou
+`docs/metrics/deteccao_base.csv` e `.json` com CRLF, e foi preciso normalizá-los à mão antes do
+commit. `write_census_json` era uma das cinco chamadas desta lista.
 """
 
 
@@ -101,6 +129,52 @@ class EscritaAtomicaTests(unittest.TestCase):
             with self.subTest(modulo=nome):
                 self.assertNotIn(nome, PERMITIDAS)
 
+    def _sem_lf_explicito(self) -> list[str]:
+        achados = []
+        for caminho in sorted(SRC.rglob("*.py")):
+            nome = _relativo(caminho)
+            if nome in SEM_LF_DECLARADO:
+                continue
+            arvore = ast.parse(caminho.read_text(encoding="utf-8"))
+            for no in ast.walk(arvore):
+                if not (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)):
+                    continue
+                if no.func.attr != "write_text":
+                    continue
+                quebra = next((k.value for k in no.keywords if k.arg == "newline"), None)
+                if not (isinstance(quebra, ast.Constant) and quebra.value == "\n"):
+                    achados.append(f"{nome}:{no.lineno}: write_text sem newline explícito")
+        return achados
+
+    def test_todo_write_text_grava_lf(self) -> None:
+        """**O critério de aceite.** `Path.write_text` sem `newline` traduz `\n` para
+        `os.linesep`, e no Windows isso é `CR LF`.
+
+        Cinco chamadas gravavam assim, e três delas eram relatório para `docs/metrics/` -- que o
+        `.gitattributes` declara `*.json text eol=lf`. O git normaliza na leitura, então o
+        `git status` seguia limpo e nada apontava para o problema. É a mesma mecânica que encheu
+        de CRLF os `.py` do checkout principal e fez a guarda da S-218 reprovar relatório correto
+        num clone limpo.
+
+        As três foram para o `atomic_write_text`, que abre o temporário com `newline="\n"` --
+        então o conserto e a escrita atômica são o mesmo movimento, e elas saíram de `PERMITIDAS`
+        no mesmo commit. Um caminho novo que grave a quebra da plataforma ou entra em
+        `SEM_LF_DECLARADO` com o motivo escrito, ou falha aqui.
+        """
+        self.assertEqual(
+            self._sem_lf_explicito(),
+            [],
+            "Escrita de texto sem LF explícito. Use `atomic_write_text`, ou declare o arquivo "
+            "em SEM_LF_DECLARADO com o motivo.",
+        )
+
+    def test_a_lista_de_lf_nao_guarda_arquivo_que_nao_existe_mais(self) -> None:
+        ausentes = [nome for nome in SEM_LF_DECLARADO if not (SRC / nome).exists()]
+        self.assertEqual(ausentes, [])
+
+    def test_cada_excecao_de_lf_diz_por_que(self) -> None:
+        for nome, motivo in SEM_LF_DECLARADO.items():
+            self.assertGreater(len(motivo), 20, f"{nome} está na lista de LF sem justificativa")
 
 class SubstituicaoTravadaTests(unittest.TestCase):
     """O `os.replace` que o Windows recusa, e o que o usuário lê (S-373).

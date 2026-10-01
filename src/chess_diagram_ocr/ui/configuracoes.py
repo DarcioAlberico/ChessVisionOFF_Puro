@@ -24,7 +24,7 @@ from typing import Any
 
 from chess_diagram_ocr import settings as preferencias
 
-__all__ = ["ABAS", "CAMPOS", "FORA_DA_JANELA", "Campo", "dpi", "ler", "max_boards", "reconhecimento", "trocar"]
+__all__ = ["ABAS", "CAMPOS", "FORA_DA_JANELA", "Campo", "dpi", "ler", "max_boards", "trocar"]
 
 INTEIRO = "inteiro"
 DECIMAL = "decimal"
@@ -129,6 +129,11 @@ CAMPOS: tuple[Campo, ...] = (
 
 FORA_DA_JANELA: dict[str, str] = {
     "remote_fen.acknowledged_host": "é o consentimento gravado ao aceitar o aviso, não uma escolha",
+    # As três do `main` (S-536), chegadas no merge do religa: quem as edita é o formulário do motor
+    # (`qt/preferencias.py`), que as aplica ao motor aberto sem reabrir a janela.
+    "engine.hash_mb": "editada no formulário do motor (`qt/preferencias.py`, S-536), que a aplica sem reabrir",
+    "engine.multipv": "editada no formulário do motor (`qt/preferencias.py`, S-536), que a aplica sem reabrir",
+    "engine.syzygy_path": "editada no formulário do motor (`qt/preferencias.py`, S-536), que a aplica sem reabrir",
 }
 """Campos de `Settings` que a janela não mostra, com o motivo. O teste cobra que todo campo
 esteja aqui ou em `CAMPOS` -- uma preferência nova sem lugar declarado é o defeito de origem."""

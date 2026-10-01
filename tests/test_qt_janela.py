@@ -28,7 +28,7 @@ from chess_diagram_ocr.qt import (
     painel_de_revisao_de_texto,
     painel_de_rotulagem,
 )
-from chess_diagram_ocr.ui import abas, estado_do_rodape, pele, strings
+from chess_diagram_ocr.ui import abas, estado_do_rodape, geometria, pele, strings
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_TEXTO
 
@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from chess_diagram_ocr.service import RecognizedDiagram
 
 if TEM_PYQT:
+    from chess_diagram_ocr.qt import janela as janela_mod
     from chess_diagram_ocr.qt.janela import JanelaPrincipal
 
 
@@ -117,9 +118,12 @@ class MontagemTests(unittest.TestCase):
 
     def janela(self) -> JanelaPrincipal:
         montada = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
+            pasta_da_galeria=self.pasta,
+            caminho_do_cache=self.pasta / "posicoes.sqlite",
             caminho_do_estado=self.pasta / "janela.json",
         )
         self.addCleanup(descartar, montada)
@@ -129,7 +133,11 @@ class MontagemTests(unittest.TestCase):
     def test_as_abas_estao_na_ordem_da_spec(self) -> None:
         """**A ordem é o item** (S-162): o livro em trabalho primeiro, o acervo depois. Desde o
         passo 17 da OCR_UI o corte entre os dois grupos é estrutura: os quatro painéis do diagrama
-        são **modos** da aba `Livro`, e a faixa só tem o livro e o acervo."""
+        são **modos** da aba `Livro`, e a faixa só tem o livro e o acervo.
+
+        **Contra a tupla declarada, e não contra uma cópia dela** (S-511): comparando com a cópia,
+        `abas.ABAS` seguiu declarando a Configuração por um mês depois de ela sair no porte, e
+        nada acusou. A janela agora lê a tupla; o que se afirma aqui é que ela a lê inteira."""
         janela = self.janela()
         nomes = [abas.nome_base(janela.abas.tabText(i)) for i in range(janela.abas.count())]
         esperadas = [abas.LIVRO, abas.DATASET, abas.GALERIA]
@@ -140,6 +148,9 @@ class MontagemTests(unittest.TestCase):
         if painel_de_revisao_de_texto.disponivel():
             esperadas.append(abas.REVISAO_DE_TEXTO)
         self.assertEqual(nomes, esperadas)
+        # E é a tupla declarada, lida inteira (S-511): fora dela só as da suíte, quando ela falta.
+        ausentes = {abas.ROTULAGEM, abas.REVISAO_DE_TEXTO} - set(esperadas)
+        self.assertEqual(nomes, [nome for nome in abas.ABAS if nome not in ausentes])
 
     def test_os_quatro_paineis_do_diagrama_sao_modos_da_aba_livro(self) -> None:
         """Resultado, Estudo, Revisão e Texto falam do mesmo diagrama; trocar entre eles é olhar o
@@ -200,6 +211,28 @@ class MontagemTests(unittest.TestCase):
                 self.assertEqual(janela.menu.acoes[acao].toolTip(), exportador_de_livro.MOTIVO_AUSENTE)
         tabela["exportar_docx"]()
         self.assertIn("suíte", janela.rodape.mensagem())
+
+    def test_o_divisor_abre_na_fracao_declarada_quando_nada_foi_guardado(self) -> None:
+        """`geometria.FRACAO_PADRAO_DO_DIVISOR` é o padrão da primeira execução (S-156), e a
+        janela do Qt não a lia: o padrão era um par de pixels da montagem (S-511). A largura fica
+        acima do piso das abas de propósito -- abaixo dele o `QSplitter` grampeia, e o teste
+        mediria o piso em vez da fração."""
+        janela = self.janela()
+        janela.resize(2200, 900)
+        janela.show()
+        self.app.processEvents()
+        tamanhos = janela.divisor.sizes()
+        self.assertAlmostEqual(tamanhos[0] / sum(tamanhos), geometria.FRACAO_PADRAO_DO_DIVISOR, delta=0.02)
+
+    def test_o_rodape_diz_por_que_nao_ha_classificador_de_caracteres(self) -> None:
+        """A regra de `dispositivos_da_janela` (S-182): motivo não vazio é "os pesos não estão no
+        disco", vazio é "o motor é outro", e a palavra do rodapé acompanha. A janela do Qt cravava
+        `motivo=""` e dizia os dois estados com a mesma palavra (S-511)."""
+        from chess_diagram_ocr.ui.estado_do_rodape import DESLIGADO, SEM_PESOS
+
+        janela = self.janela()
+        lidos = janela._dispositivos()
+        self.assertEqual(lidos.ausencia, SEM_PESOS if lidos.motivo else DESLIGADO)
 
     def test_o_visualizador_fica_ao_lado_das_abas_e_nao_dentro_delas(self) -> None:
         """É a repartição do produto: a página do livro à direita, o trabalho à esquerda.
@@ -440,6 +473,7 @@ class _JanelaComLivro(unittest.TestCase):
 
     def janela(self, *, com_livro: bool = True) -> JanelaPrincipal:
         montada = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
@@ -447,6 +481,7 @@ class _JanelaComLivro(unittest.TestCase):
             # **Sem isto o teste lê e grava em `data/gallery/` de verdade** -- o mesmo defeito que
             # o painel da galeria já tinha, agora fechado na ponta da janela.
             pasta_da_galeria=self.pasta,
+            caminho_do_cache=self.pasta / "posicoes.sqlite",
         )
         self.addCleanup(descartar, montada)
         montada.resize(1400, 900)
@@ -499,6 +534,17 @@ class _JanelaComLivro(unittest.TestCase):
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class FiacaoTests(_JanelaComLivro):
     """As setas entre painéis. **Uma ligação que falta não quebra teste de painel nenhum.**"""
+
+    def test_devolver_sem_nada_tirado_diz_a_frase_declarada(self) -> None:
+        """As frases de tirar e devolver caixa são de `page_overlay` desde a S-177, e puras; a
+        janela do Qt as reescrevia inline, com outro texto (S-511)."""
+        from chess_diagram_ocr.ui.page_overlay import frase_de_caixas_devolvidas
+
+        janela = self.janela()
+        janela.devolver_caixas()
+        # `mensagem()` e nao `_lbl_mensagem.text()`: desde a quinta rodada da S-552 o que esta na
+        # tela pode estar elidido, e comparar com a tela mediria a largura do rodape.
+        self.assertEqual(janela.rodape.mensagem(), frase_de_caixas_devolvidas(0, janela.pdf.page_index + 1))
 
     def test_abrir_o_livro_chega_a_galeria_ao_estudo_e_ao_texto(self) -> None:
         """**As três precisam do livro antes de qualquer varredura.**
@@ -982,6 +1028,7 @@ class EstadoEntreSessoesTests(unittest.TestCase):
     def janela(self, *, tamanho: tuple[int, int] | None = (1400, 900)) -> JanelaPrincipal:
         """`tamanho=None` deixa a janela com a geometria que ela mesma restaurou do estado."""
         montada = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
@@ -1137,7 +1184,16 @@ class EstadoEntreSessoesTests(unittest.TestCase):
 
         A fracao e lida da tela e nao cravada no teste: os dois lados tem largura minima, e o
         `QSplitter` grampeia o que se pede a elas -- cravar um numero mediria o grampo.
+
+        **A area de trabalho e declarada** (S-552, quarta rodada): desde ela a geometria restaurada
+        e grampeada no que os monitores comportam, e sob `offscreen` a tela virtual tem 800x800. Sem
+        declarar um desktop que comporte os 2200 px, o que este teste mediria seria o grampo -- que
+        e assunto de `tests/test_ui_geometria.py` -- em vez do divisor arrastado.
         """
+        mock.patch(
+            "chess_diagram_ocr.qt.janela.plataforma.monitores", return_value=((0, 0, 3840, 1600),)
+        ).start()
+        self.addCleanup(mock.patch.stopall)
         primeira = self.janela()
         # **2200 e nao os 1400 das outras**, e o numero e medido: com 1534 px a janela esta no
         # piso dos dois lados -- `[720, 810]` -- e o divisor nao tem folga nenhuma para arrastar.
@@ -1147,6 +1203,12 @@ class EstadoEntreSessoesTests(unittest.TestCase):
         padrao = _fracao(primeira)
         largura = sum(primeira.divisor.sizes())
         primeira.divisor.setSizes([int(largura * 0.6), largura - int(largura * 0.6)])
+        # **O sinal vai junto, e desde a quinta rodada ele e a metade que importa** (S-552):
+        # `setSizes` nao emite `splitterMoved` -- so o gesto do mouse emite --, e e por esse sinal
+        # que a janela distingue "alguem escolheu" de "o programa repartiu". Sem ele, o que este
+        # teste simula nao e um arrasto: e a janela repartindo sozinha, que e o caso em que a
+        # fracao **nao** e gravada.
+        primeira.divisor.splitterMoved.emit(int(largura * 0.6), 1)
         self.app.processEvents()
         arrastado = _fracao(primeira)
         self.assertNotAlmostEqual(padrao, arrastado, places=2, msg="o arrasto nao moveu nada")
@@ -1160,6 +1222,20 @@ class EstadoEntreSessoesTests(unittest.TestCase):
         self.app.processEvents()
         self.assertAlmostEqual(arrastado, _fracao(segunda), places=2)
         self.assertGreater(segunda.width(), 2000, "a geometria da sessao anterior nao voltou")
+        # **E ela continua ali depois do primeiro redimensionamento** (S-552, sexta rodada). Ate
+        # esta rodada o teste parava na linha de cima, e ali a fracao guardada ainda esta viva mesmo
+        # sem a fiacao: quem a poe e o `showEvent`, que roda de qualquer jeito. O que a fiacao
+        # (`_divisor_de_fabrica = not self._estado.sash_fraction`) decide e o **resize** seguinte --
+        # trocada por `True`, a escolha da sessao anterior era substituida pelos 720 px preferidos
+        # no primeiro arrasto de borda, e a suite inteira ficava verde.
+        segunda.resize(2600, 1000)
+        self.app.processEvents()
+        self.assertAlmostEqual(
+            arrastado,
+            _fracao(segunda),
+            places=2,
+            msg="a fracao arrastada morreu no primeiro redimensionamento da sessao seguinte",
+        )
 
     def test_a_geometria_guardada_e_a_de_fora_do_maximizado(self) -> None:
         """`normalGeometry` é o que substitui a recusa do `1x1+-32000+-32000` do Tk (S-156)."""
@@ -1215,6 +1291,7 @@ class EstadoEntreSessoesTests(unittest.TestCase):
             mock.patch.object(modulo, "CAMINHO_HERDADO_DO_ESTADO", herdado),
         ):
             montada = JanelaPrincipal(
+                motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
                 servico=_ServicoFalso(),  # type: ignore[arg-type]
                 csv_de_rotulos=self.pasta / "labels.csv",
                 pasta_de_estudos=self.pasta,
@@ -1250,6 +1327,7 @@ class AparenciaTests(unittest.TestCase):
 
     def janela(self) -> JanelaPrincipal:
         montada = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
@@ -1446,6 +1524,7 @@ class DesfazerTests(unittest.TestCase):
 
     def janela(self) -> JanelaPrincipal:
         montada = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
             servico=_ServicoFalso(),  # type: ignore[arg-type]
             csv_de_rotulos=self.pasta / "labels.csv",
             pasta_de_estudos=self.pasta,
@@ -2176,3 +2255,246 @@ class AbasDaSuiteAcompanhamOLivroTests(_JanelaComLivro):
         if janela.rotulagem is None:
             self.skipTest("a aba Rotulagem não montou")
         self.assertEqual(janela.rotulagem.document, self.livro.stem)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class SincroniaDaSalaTests(unittest.TestCase):
+    """O fio que o porte cortou, e o clique que passou a chegar por ele (S-512/S-513).
+
+    **Nenhum teste de painel pega isto**, e é a razão de este arquivo existir: o painel de estudo
+    tem `sync_with_ocr`, o de resultado tem o que emitir, e durante um mês ninguém ligou os dois.
+    A caixa "Seguir OCR selecionado" nasce marcada, então a aba prometia de fábrica o que não fazia.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.livro = _livro(self.pasta)
+        self.addCleanup(self.app.processEvents)
+
+    def janela(self) -> JanelaPrincipal:
+        montada = JanelaPrincipal(
+            motor=None,  # a suíte não procura binário na máquina de quem a roda (S-523)
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=self.pasta / "labels.csv",
+            pasta_de_estudos=self.pasta,
+            caminho_do_estado=self.pasta / "janela.json",
+            pasta_da_galeria=self.pasta,
+        )
+        self.addCleanup(descartar, montada)
+        montada.resize(1400, 900)
+        montada.abrir_pdf(self.livro)
+        self.app.processEvents()
+        return montada
+
+    def _diagrama(self, indice: int, placement: str) -> object:
+        import numpy as np
+
+        from chess_diagram_ocr.service import RecognizedDiagram
+
+        return RecognizedDiagram(
+            index=indice,
+            board_rgb=np.full((64, 64, 3), 200, np.uint8),
+            placement=placement,
+            min_confidence=0.93,
+            square_confidences=[0.99] * 64,
+            side_to_move="w",
+        )
+
+    def test_selecionar_um_diagrama_leva_a_posicao_ao_tabuleiro_de_estudo(self) -> None:
+        janela = self.janela()
+        janela._chegaram_itens(
+            janela.pdf.page_index,
+            [self._diagrama(0, "8/8/8/8/8/8/8/K6k"), self._diagrama(1, "8/8/8/8/8/8/8/K5nk")],
+            None,
+        )
+
+        janela.painel.lista.setCurrentRow(0)
+        self.app.processEvents()
+        self.assertEqual(0, janela.estudo.estudo.ancora.diagrama, "a sala não seguiu o primeiro")
+
+        janela.painel.lista.setCurrentRow(1)
+        self.app.processEvents()
+        self.assertEqual(1, janela.estudo.estudo.ancora.diagrama, "a sala não trocou de mesa")
+        self.assertEqual("8/8/8/8/8/8/8/K5nk", janela.estudo.estudo.tabuleiro.board_fen())
+
+    def test_o_clique_na_caixa_da_pagina_chega_a_sala(self) -> None:
+        """**S-513, e ela não precisou de gesto novo.**
+
+        `decide_box_click` continua devolvendo `SELECT`, o `SELECT` continua selecionando o
+        diagrama na aba Resultado, e é a seleção que chega à sala pelo fio da S-512. Uma terceira
+        resposta ao clique -- duplo-clique, `Ctrl`+clique -- teria cobrado aprendizado por um fio
+        que estava cortado.
+        """
+        janela = self.janela()
+        janela._chegaram_itens(
+            janela.pdf.page_index,
+            [self._diagrama(0, "8/8/8/8/8/8/8/K6k"), self._diagrama(1, "8/8/8/8/8/8/8/K5nk")],
+            None,
+        )
+
+        janela._clicou_na_caixa(1)
+        self.app.processEvents()
+        self.assertEqual(1, janela.estudo.estudo.ancora.diagrama)
+        self.assertEqual("8/8/8/8/8/8/8/K5nk", janela.estudo.estudo.tabuleiro.board_fen())
+
+    def test_a_aba_que_vem_para_a_frente_continua_sendo_a_do_resultado(self) -> None:
+        """O clique numa caixa é o gesto de **conferir o que o modelo leu**, e isso não mudou.
+
+        Quem está na aba Estudo vê o tabuleiro trocar, que é o pedido; quem está corrigindo
+        continua sendo levado ao editor.
+        """
+        janela = self.janela()
+        janela._chegaram_itens(janela.pdf.page_index, [self._diagrama(0, "8/8/8/8/8/8/8/K6k")], None)
+        janela._clicou_na_caixa(0)
+        self.app.processEvents()
+        # Desde o passo 17 o Resultado é um modo da aba `Livro`: o que está à frente é a área.
+        self.assertIs(janela.painel, janela.abas.area_atual())
+
+
+class _MotorFalso:
+    """Um `EngineAnalyzer` sem processo: só o que a sala e o fechamento tocam."""
+
+    def __init__(self) -> None:
+        self.path = Path("stockfish-falso.exe")
+        self.fechado = False
+
+    @property
+    def name(self) -> str:
+        """O `id name` do UCI, que o título da seção mostra desde a S-529.
+
+        Responde o nome do arquivo porque é o que o `EngineAnalyzer` de verdade responde enquanto o
+        processo não subiu -- e este dublê não sobe nenhum.
+        """
+        return self.path.name
+
+    def close(self) -> None:
+        self.fechado = True
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class MotorDasPreferenciasTests(unittest.TestCase):
+    """O motor chega à sala pelas preferências, e é fechado com a janela (S-523).
+
+    **O que estava desligado.** `PainelDeEstudo` aceita `analyzer` desde o porte e a janela nunca
+    passava um; `None` esconde a seção inteira (S-33), então uma máquina com Stockfish mostrava o que
+    uma máquina sem ele mostraria. Nenhum teste de painel podia pegar: cada um sabia a sua parte.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+
+    def _janela(self, **extras: object) -> JanelaPrincipal:
+        montada = JanelaPrincipal(
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=self.pasta / "labels.csv",
+            pasta_de_estudos=self.pasta,
+            caminho_do_estado=self.pasta / "janela.json",
+            **extras,  # type: ignore[arg-type]
+        )
+        self.addCleanup(descartar, montada)
+        return montada
+
+    def test_o_motor_injetado_chega_a_sala(self) -> None:
+        self.assertTrue(self._janela(motor=_MotorFalso()).estudo.has_engine)
+
+    def test_sem_motor_a_secao_nao_existe(self) -> None:
+        self.assertFalse(self._janela(motor=None).estudo.has_engine)
+
+    def test_o_padrao_e_o_motor_das_preferencias(self) -> None:
+        """`motor` omitido é o produto: a janela pergunta às preferências, e não a `None`."""
+        motor = _MotorFalso()
+        with mock.patch.object(janela_mod, "motor_das_preferencias", return_value=motor) as procura:
+            janela = self._janela()
+        procura.assert_called_once()
+        self.assertTrue(janela.estudo.has_engine)
+
+    def test_fechar_a_janela_encerra_o_motor(self) -> None:
+        """Um motor é um processo, não um widget: sem isto cada abertura deixaria um `stockfish.exe` vivo."""
+        motor = _MotorFalso()
+        janela = self._janela(motor=motor)
+        janela.close()
+        self.app.processEvents()
+        self.assertTrue(motor.fechado)
+
+    def test_o_servico_padrao_vem_das_preferencias(self) -> None:
+        """Sem `servico`, o produto: o `OcrService` nasce com o OCR de legenda que as preferências
+        autorizam (S-43), e não sem `caption_reader` como desde o porte."""
+        servico = _ServicoFalso()
+        with mock.patch.object(janela_mod, "servico_das_preferencias", return_value=servico) as monta:
+            montada = JanelaPrincipal(
+                motor=None,
+                csv_de_rotulos=self.pasta / "labels.csv",
+                pasta_de_estudos=self.pasta,
+                caminho_do_estado=self.pasta / "janela.json",
+            )
+        self.addCleanup(descartar, montada)
+        monta.assert_called_once()
+        self.assertIs(servico, montada._servico)
+
+
+class FilaDeLivrosNaJanelaTests(unittest.TestCase):
+    """A fila da S-546 passou a ser alcançável de dentro da janela (S-546, r2).
+
+    **O crítico não achou chamador nenhum.** `abrir_fila_de_livros` estava pronta e nem
+    `ui/comandos.py`, nem `ui/menu.py`, nem `qt/janela.py` a citavam -- o item chama-se "na
+    janela" e não havia como chegar nela sem escrever código.
+
+    **O teste dispara a ação e olha o efeito**, e não a fiação: depois de um `connect`, trocar o
+    método não troca quem o sinal chama, então um `mock.patch.object` sobre
+    `abrir_fila_de_livros` mediria uma ligação que não existe mais. O que se afirma é que o
+    diálogo **apareceu** filho da janela, com o serviço e o registro de ocupação dela.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+
+    def _janela(self) -> JanelaPrincipal:
+        montada = JanelaPrincipal(
+            motor=None,
+            servico=_ServicoFalso(),  # type: ignore[arg-type]
+            csv_de_rotulos=self.pasta / "labels.csv",
+            pasta_de_estudos=self.pasta,
+            caminho_do_estado=self.pasta / "janela.json",
+            pasta_da_galeria=self.pasta,
+        )
+        self.addCleanup(descartar, montada)
+        return montada
+
+    def _filas(self, janela: JanelaPrincipal) -> list[object]:
+        from chess_diagram_ocr.qt.fila_de_livros import DialogoDaFila
+
+        return list(janela.findChildren(DialogoDaFila))
+
+    def test_a_acao_do_menu_abre_o_dialogo_da_fila(self) -> None:
+        janela = self._janela()
+        acao = janela.menu.acoes["varrer_fila"]
+        self.assertEqual([], self._filas(janela))
+
+        acao.trigger()
+        self.app.processEvents()
+
+        (dialogo,) = self._filas(janela)
+        self.addCleanup(descartar, dialogo)
+        self.assertIs(janela, dialogo.parent())
+        self.assertIs(janela._servico, dialogo.varredura._servico)
+        self.assertIs(janela.busy, dialogo.varredura._busy)
+
+    def test_o_comando_esta_no_catalogo_e_tem_dono_na_janela(self) -> None:
+        """Um `Comando` sem dono na tabela é um item de menu que não faz nada."""
+        janela = self._janela()
+        self.assertIn("varrer_fila", janela._comandos())
+
+    def test_o_dialogo_nao_e_guardado_na_janela(self) -> None:
+        """Ele não é modal, não é reusado e sabe se fechar: um segundo dono só criaria
+        divergência sobre quem o destrói."""
+        janela = self._janela()
+        janela.menu.acoes["varrer_fila"].trigger()
+        self.app.processEvents()
+        (dialogo,) = self._filas(janela)
+        self.addCleanup(descartar, dialogo)
+        self.assertNotIn(dialogo, vars(janela).values())

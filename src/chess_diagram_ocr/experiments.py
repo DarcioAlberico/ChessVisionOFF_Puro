@@ -21,6 +21,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .atomic_io import atomic_write_text
 from .evaluation import evaluate_split
 from .model import ArchConfig, build_model, count_parameters
 from .training import ClassWeighting, train_model
@@ -187,11 +188,7 @@ def run_variant(
 
 
 def save_results(results: list[VariantResult], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps([result.as_dict() for result in results], indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    atomic_write_text(path, json.dumps([result.as_dict() for result in results], indent=2, ensure_ascii=False))
     logger.info("Resultados da grade em %s", path)
 
 

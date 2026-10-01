@@ -35,24 +35,17 @@ from dataclasses import dataclass
 from . import estilos, strings
 
 __all__ = [
-    "ACERVO",
-    "AJUDA",
-    "ARQUIVO",
     "CATALOGO",
     "Comando",
-    "EDICAO",
     "ESTUDO",
     "GRUPOS",
     "NAS_BARRAS_DO_PDF",
     "NA_JANELA_DE_BUSCA",
     "NA_LINHA_DE_CAMPO",
-    "OCR",
-    "VISUALIZACAO",
     "acoes_fora_do_catalogo",
     "acoes_so_de_glifo",
     "comando",
     "do_grupo",
-    "em_destaque",
     "estilo",
     "fila_de_destaque",
     "nome_acessivel",
@@ -133,7 +126,7 @@ class Comando:
     a promessa que a S-161 registra como o defeito de item de menu sem comando."""
 
     destaque: bool = False
-    """Entra na fila curta da pele "Foco" (S-223). Ver `em_destaque` antes de ligar um novo."""
+    """Entra na fila curta da pele "Foco" (S-223). Ver `fila_de_destaque` antes de ligar um novo."""
 
     rotulo_alternado: str = ""
     """O texto do botão **enquanto o comando está ligado**, para os que alternam. Vazio = não alterna.
@@ -305,7 +298,15 @@ CATALOGO: tuple[Comando, ...] = (
     ),
     Comando("sair", "Sair", ARQUIVO, estilos.NEUTRO),
     # ----------------------------------------------------------------------------- EDICAO
-    Comando("aplicar_fen", "Aplicar a FEN digitada", EDICAO, estilos.NEUTRO, icone="aplicar_fen", destaque=True),
+    Comando(
+        "aplicar_fen",
+        "Aplicar a FEN digitada",
+        EDICAO,
+        estilos.NEUTRO,
+        icone="aplicar_fen",
+        destaque=True,
+        rotulo_curto="Aplicar FEN",
+    ),
     # `rotulo_na_fita`: com os seis botões de glifo rotulados (passo 12) a fita plena pedia
     # 1.926 px e deixava de caber a 1.920 (o compacto assumia a tela Full HD). O botão mais largo
     # era este, 122 px por "Apagar a peça da / casa selecionada"; "Apagar a peça" diz o mesmo ao
@@ -323,8 +324,22 @@ CATALOGO: tuple[Comando, ...] = (
     # omitiu "salvar", e a medida do fluxo diz o contrário -- exporta-se uma vez por livro e
     # salva-se uma vez por diagrama. Uma fila dimensionada por importância em vez de frequência
     # é a barra de 21 botões outra vez.
-    Comando("salvar", "Salvar a posição", EDICAO, estilos.NEUTRO, icone="salvar", destaque=True),
-    Comando("salvar_todos", "Salvar todas as posições da página", EDICAO, estilos.NEUTRO),
+    Comando(
+        "salvar",
+        "Salvar a posição",
+        EDICAO,
+        estilos.NEUTRO,
+        icone="salvar",
+        destaque=True,
+        rotulo_curto="Salvar",
+    ),
+    Comando(
+        "salvar_todos",
+        "Salvar todas as posições da página",
+        EDICAO,
+        estilos.NEUTRO,
+        rotulo_curto="Salvar todos",
+    ),
     Comando("diagrama_anterior", "Diagrama anterior", EDICAO, estilos.NEUTRO, icone="diagrama_anterior"),
     Comando("proximo_diagrama", "Próximo diagrama", EDICAO, estilos.NEUTRO, icone="proximo_diagrama", destaque=True),
     Comando("proximo_da_fila", "Próximo item da fila de revisão", EDICAO, estilos.NEUTRO),
@@ -664,6 +679,10 @@ CATALOGO: tuple[Comando, ...] = (
     ),
     # ----------------------------------------------------------------------------- ACERVO
     Comando("varrer_livro", strings.VARRER_LIVRO, ACERVO, estilos.NEUTRO),
+    # A fila da S-546 é ACERVO pela mesma pergunta do vizinho de cima -- ela age sobre livros
+    # inteiros --, e as reticências dizem que ela abre uma janela em vez de começar a varrer:
+    # é o mesmo contrato de "Indexar base…" e "Treinar o modelo".
+    Comando("varrer_fila", "Varrer uma fila de livros…", ACERVO, estilos.NEUTRO),
     # **A ação que faltava no catálogo, e a falta tinha consequência** (F9-C3). "Corrigir
     # agora" -- a ação que começa o trabalho na aba Revisão -- era um `QPushButton` com o
     # rótulo escrito à mão em `qt/painel_de_revisao.py`, fora do catálogo: sem tecla, sem
@@ -723,7 +742,10 @@ CATALOGO: tuple[Comando, ...] = (
         rotulo_curto="Aplicar FEN",
     ),
     Comando("copiar_fen", "Copiar a FEN do estudo", ESTUDO, estilos.NEUTRO, rotulo_curto="Copiar FEN"),
-    Comando("salvar_estudo", "Salvar o estudo em PGN…", ESTUDO, estilos.NEUTRO, rotulo_curto="Salvar PGN"),
+    # "Salvar" e não "Salvar PGN" desde a segunda rodada da S-527: o botão mora no grupo Exportar da
+    # barra da sala, com o disquete ao lado e a dica dizendo o formato, e os 26 px de "PGN" eram o que
+    # faltava para as catorze principais caberem a 1920 px. O menu continua dizendo o formato.
+    Comando("salvar_estudo", "Salvar o estudo em PGN…", ESTUDO, estilos.NEUTRO, rotulo_curto="Salvar"),
     # **Os quatro ganham desenho no ciclo 8** (F9-C7, §4.7). O `rotulo_curto` continua sendo o
     # glifo, e ele continua servindo: é a reserva de quando a Pillow falta (`_vestir_de_icone`).
     # O que muda é o desenho normal, que passa a vir da mesma grade de 16×16 dos outros nove --
@@ -800,6 +822,14 @@ CATALOGO: tuple[Comando, ...] = (
         rotulo_curto="Apagar daqui",
     ),
     Comando("simbolo_do_lance", "Símbolo do lance…", ESTUDO, estilos.NEUTRO, rotulo_curto="Símbolo"),
+    Comando(
+        "dobrar_variantes",
+        "Dobrar todas as variantes",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Dobrar",
+        rotulo_alternado="Desdobrar",
+    ),
     # ------------------------------------------------------- o livro dentro da sala (Fase 47)
     Comando(
         "mostrar_diagrama",
@@ -846,12 +876,62 @@ CATALOGO: tuple[Comando, ...] = (
         estilos.NEUTRO,
         rotulo_curto="Linha do motor",
     ),
+    # A partida inteira pelo motor (S-537): cada lance avaliado, o gráfico e os erros marcados.
+    # Mora no grupo Motor da barra da sala, dentro do "Mais" -- analisa-se uma partida por sessão,
+    # e a operação leva minutos.
+    Comando(
+        "analisar_partida",
+        "Analisar a partida inteira com o motor…",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Analisar partida",
+    ),
+    # As opções do motor (S-536). **É o único comando do grupo Motor que existe sem motor**, e
+    # tem de ser: é por ele que se informa onde o binário está numa máquina em que a procura
+    # automática não achou nada.
+    Comando(
+        "opcoes_do_motor",
+        "Opções do motor de análise…",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Opções do motor",
+    ),
     Comando(
         "partidas_da_posicao",
         "Partidas que chegaram a esta posição",
         ESTUDO,
         estilos.NEUTRO,
         rotulo_curto="Partidas",
+    ),
+    # A outra metade da janela de aberturas do ChessBase (S-535): `partidas_da_posicao` diz
+    # **quais** partidas passam por aqui, e esta diz **o que se joga daqui** -- cada lance com
+    # quantas partidas, como elas terminaram, com que Elo e em que ano.
+    Comando(
+        "arvore_de_aberturas",
+        "Árvore de aberturas desta posição",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Árvore",
+    ),
+    # A pergunta que não nasce de um diagrama (S-533): "as partidas de Carlsen em 2019 com Elo
+    # acima de 2700 na Najdorf". `partidas_da_posicao` responde pela posição do tabuleiro e só por
+    # ela; esta abre o formulário de seis campos sobre o índice por nome.
+    Comando(
+        "buscar_partidas",
+        "Buscar partidas na base por jogador, evento, ano, Elo e ECO…",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Buscar partidas",
+    ),
+    # O índice por nome construído de dentro da janela (S-532), que até a S-527 só existia como
+    # `cvoff-games --build-index` num terminal: a busca por nome de "Partidas" o recusa quando ele
+    # está atrasado, e a saída tem de ser um comando da sala e não uma frase de aviso.
+    Comando(
+        "indexar_base",
+        "Indexar a base de partidas por nome…",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Indexar base",
     ),
     # ----------------------------------------------------- o que entra e o que sai (Fase 49)
     Comando("colar_estudo", "Colar posição ou partida…", ESTUDO, estilos.NEUTRO, rotulo_curto="Colar"),
@@ -862,6 +942,36 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("exportar_estudo_md", "Exportar o estudo para Markdown…", ESTUDO, estilos.NEUTRO, rotulo_curto=".md"),
     Comando("exportar_estudo_html", "Exportar o estudo para HTML…", ESTUDO, estilos.NEUTRO, rotulo_curto=".html"),
     Comando("exportar_estudo_rtf", "Exportar o estudo para RTF…", ESTUDO, estilos.NEUTRO, rotulo_curto=".rtf"),
+    # O quarto formato é da S-545, e entra na mesma fileira porque é a mesma pergunta -- "em que
+    # formato?". A diferença dele é que a página existe: os três de cima entregam o estudo como
+    # texto marcado, e quem pagina é o programa que abrir o arquivo; o PDF sai **já paginado**,
+    # com margem, cabeçalho e número de página, e é por isso que a decisão da paginação é nossa.
+    Comando("exportar_estudo_pdf", "Exportar o estudo para PDF…", ESTUDO, estilos.NEUTRO, rotulo_curto=".pdf"),
+    # O quinto e o sexto (S-542/S-543), e eles chegaram ao catálogo **três dias depois do módulo
+    # que os escreve**: `epub.py` e `docx_saida.py` estavam prontos, validados pelo `epubcheck` e
+    # abertos pelo LibreOffice, e não havia gesto nenhum que os chamasse -- o agrupador "Exportar
+    # ▾" oferecia .md, .html, .rtf e .pdf. É o defeito da S-518 outra vez, do outro lado: lá um
+    # campo era gravado e ninguém o lia; aqui um exportador é escrito e ninguém o chama.
+    #
+    # Entram no mesmo agrupador porque são a mesma pergunta -- "em que formato?" --, e não dois
+    # gestos novos: o EPUB é o formato do leitor de livro, e o DOCX é o do Word de quem vai
+    # continuar escrevendo por cima.
+    Comando("exportar_estudo_epub", "Exportar o estudo para EPUB…", ESTUDO, estilos.NEUTRO, rotulo_curto=".epub"),
+    Comando("exportar_estudo_docx", "Exportar o estudo para DOCX…", ESTUDO, estilos.NEUTRO, rotulo_curto=".docx"),
+    # Imprimir **não** é um quinto formato, e por isso não está no agrupador "Exportar": o gesto
+    # termina no papel e passa pela pré-visualização, que é onde se confere a quebra antes de
+    # gastar folha. O PDF e a impressão desenham a mesma paginação, e é a mesma decisão pura.
+    Comando("imprimir_estudo", "Imprimir o estudo…", ESTUDO, estilos.NEUTRO, rotulo_curto="Imprimir"),
+    # O lote de diagramas (S-544) sai do grupo ESTUDO pela pergunta do grupo -- ele age sobre a
+    # análise que está aberta --, e é o único comando da sala cujo produto não é **um** arquivo:
+    # uma sala de quinhentos estudos vira quinhentos PNGs, um por diagrama.
+    Comando(
+        "exportar_diagramas_lote",
+        "Exportar os diagramas em lote…",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Diagramas em lote",
+    ),
     Comando(
         "estudo_para_o_texto",
         "Levar a linha do estudo para a aba Texto",
@@ -877,6 +987,23 @@ CATALOGO: tuple[Comando, ...] = (
         estilos.NEUTRO,
         rotulo_curto="Treinar",
         rotulo_alternado="Parar o treino",
+    ),
+    # Os dois da Fase 83, e os dois moram no "Mais" da barra pela régua de `fila_de_destaque`:
+    # extrai-se uma vez por livro e abre-se a agenda uma vez por sessão -- nenhum dos dois é gesto
+    # de lance. `modo_treino` acima continua sendo o do lance a lance, e por isso continua na fila.
+    Comando(
+        "taticas_do_livro",
+        "Extrair as táticas deste livro…",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Táticas do livro",
+    ),
+    Comando(
+        "treinar_agenda",
+        "Treinar a agenda de hoje…",
+        ESTUDO,
+        estilos.NEUTRO,
+        rotulo_curto="Revisar hoje",
     ),
     # ------------------------------------------------------------------------------ AJUDA
     # Antes da legenda porque as duas são a mesma pergunta em duas metades -- "o que existe"
@@ -896,10 +1023,12 @@ lugares que a S-324 nomeia, e o teste cobra os quatro.
 **O que não entrou, e por quê.** Os controles de dentro de uma aba -- Galeria, Dataset, Revisão,
 Configuração -- não são comandos da *janela*: eles pertencem ao painel que os desenha e não
 mudam de lugar quando a pele muda. É a mesma linha que `menu.MENUS` já traçava ao deixar de fora
-os botões de navegação da Galeria. `ui/result_panel.py` é o caso de fronteira: os três botões
-dele ("Aplicar FEN", "Salvar posição reconhecida", "Salvar todos") **são** comandos da janela e
-estão aqui, mas o painel ainda escreve os rótulos dele à mão -- por isso os três não declaram
-`rotulo_curto`, que seria uma promessa que ninguém cumpre. Registrado para a S-233."""
+os botões de navegação da Galeria. O painel de Resultado era o caso de fronteira: os três botões
+dele ("Aplicar FEN", "Salvar", "Salvar todos") **são** comandos da janela e estavam aqui, mas o
+painel escrevia os rótulos dele à mão -- por isso os três não declaravam `rotulo_curto`, "que seria
+uma promessa que ninguém cumpre". **Registrado para a S-233, e fechado na terceira barra em fila**
+(S-528): desde que aquele painel passou a montar `ui/barra_do_resultado.ACOES` num `BarraEmFila`,
+quem escreve os três rótulos é este catálogo, e a promessa tem quem a cumpra."""
 
 
 NAS_BARRAS_DO_PDF: tuple[str, ...] = (
@@ -1093,22 +1222,16 @@ def do_grupo(grupo: str) -> tuple[Comando, ...]:
     return tuple(registro for registro in CATALOGO if registro.grupo == grupo)
 
 
-def em_destaque() -> tuple[Comando, ...]:
-    """Os comandos da fila curta da pele "Foco" (S-223), na ordem de declaração.
+def fila_de_destaque() -> tuple[tuple[Comando, ...], ...]:
+    """A fila da pele "Foco", já agrupada: uma tupla por grupo, na ordem de `GRUPOS` (S-223).
 
     **Quatro, e todos têm atalho de teclado** -- que é o critério da S-223, e não o gosto: a
     mesma lógica com que `estilos.PRIMARIO` é definido como *"a ação que o atalho também faz"*.
-
     Não são exatamente os quatro da Imagem 1. Ela desenhou "exportar" e omitiu "salvar", e a
     medida do fluxo inverte os dois: exporta-se uma vez por livro e salva-se uma vez por
     diagrama. O quarto lugar foi para `salvar`; `aplicar_fen` ganhou `Ctrl+Enter`, que lhe
-    faltava, e a razão está em `ui/atalhos.py`.
-    """
-    return tuple(registro for registro in CATALOGO if registro.destaque)
-
-
-def fila_de_destaque() -> tuple[tuple[Comando, ...], ...]:
-    """A fila da pele "Foco", já agrupada: uma tupla por grupo, na ordem de `GRUPOS`.
+    faltava, e a razão está em `ui/atalhos.py`. (Havia uma `em_destaque()` plana ao lado desta,
+    que ninguém chamava; saiu na triagem da S-511 e o argumento dela veio para cá.)
 
     **O separador não está aqui, e é de propósito.** Devolver grupos em vez de uma lista plana
     com marcas faz "separador só entre grupos, nunca na ponta" deixar de ser regra a cobrar e

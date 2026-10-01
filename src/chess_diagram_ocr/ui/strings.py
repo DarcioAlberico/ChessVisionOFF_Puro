@@ -82,7 +82,7 @@ em `src/` procurava o binário -- `engine.find_engine` não tinha um único cham
 A carta §3.3 cobra que a mensagem de erro diga o que fazer a seguir; esta dizia, e mandava fazer o
 que não resolve, que é pior do que não dizer.
 
-Hoje a janela procura (`qt/janela._motor_de_analise`) e, quando não acha, **desabilita os três
+Hoje a janela procura (`qt/preferencias.motor_das_preferencias`) e, quando não acha, **desabilita os três
 comandos** -- de modo que esta frase é a rede de segurança de um caminho que o menu já não oferece,
 e não a explicação principal. Quem explica é `SEM_MOTOR_DICA`, na dica do item desabilitado."""
 
@@ -98,7 +98,7 @@ o motivo cabe. Sem ela, um item cinza faz procurar o defeito na própria máquin
 
 **Os dois caminhos escritos aqui são os dois que `engine.find_engine` de fato percorre**, e essa é
 a diferença para a frase de antes: `CANDIDATE_DIRS` começa por `engines/`, e
-`settings.EngineSettings.path` é lido em `qt/janela._motor_de_analise`. A instrução é executável, e
+`settings.EngineSettings.path` é lido em `qt/preferencias.motor_das_preferencias`. A instrução é executável, e
 foi executada -- ver o §1 do relatório do ciclo 16."""
 
 # ------------------------------------------------------- um conceito, um nome (S-166)
@@ -116,6 +116,12 @@ LADO_A_JOGAR = "Lado a jogar"
 
 "Lado a jogar" ganha porque é o nome do conceito no PGN (`SideToMove`) e porque "Vez" sozinho, num
 rodapé, não diz vez de quê."""
+
+COPIAR_FEN = "Copiar FEN"
+"""O rótulo do botão que põe a FEN na área de transferência.
+
+Aqui porque duas telas o dizem: o painel de Resultado copia a FEN **lida** e a sala copia a
+do estudo, e as duas escrevem a mesma coisa no botão -- que é o critério deste módulo."""
 
 MAPA_DE_INCERTEZA = "Mapa de incerteza"
 """Era "Heatmap de incerteza" -- metade em inglês, e a metade que nomeia a coisa."""

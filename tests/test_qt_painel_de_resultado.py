@@ -25,7 +25,7 @@ from qt_app import MOTIVO, TEM_PYQT, aplicacao
 
 from chess_diagram_ocr.config import PIECE_CLASSES
 from chess_diagram_ocr.service import RecognizedDiagram
-from chess_diagram_ocr.ui import atalhos, board_edit, comandos, strings
+from chess_diagram_ocr.ui import atalhos, barra_do_resultado, board_edit, comandos, strings
 
 if TEM_PYQT:
     from chess_diagram_ocr.qt import decisoes_de_diagrama
@@ -194,6 +194,36 @@ class FenTests(PainelTests):
         self.painel._tabuleiro_mudou(corrigida)
         self.assertIn(corrigida, self.painel.campo_fen.text())
 
+    def test_a_fen_reescrita_pelo_tabuleiro_mostra_o_comeco(self) -> None:
+        """A mesma guarda da sala (S-552, quinta rodada): `setText` põe o cursor no fim e o campo
+        estreito rola até lá, mostrando o meio da FEN como se fosse a posição inteira.
+
+        **O painel é mostrado, e sem isso a guarda é vácua**: um `QLineEdit` que nunca foi criado
+        não rola, então `cursorPositionAt` responde 0 com o defeito de pé. É a mesma armadilha de
+        `tests/qt_app.py` -- medir o silêncio do Qt em vez do comportamento.
+        """
+        from PyQt6.QtCore import QPoint, Qt
+
+        self.painel.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.painel.resize(600, 500)
+        self.painel.show()
+        self.app.processEvents()
+        self.carregar(LEGAL)
+        self.painel.campo_fen.setFixedWidth(90)
+        self.app.processEvents()
+        self.painel._tabuleiro_mudou(board_edit.set_piece(LEGAL, 27, "Q"))
+        self.app.processEvents()
+        # **O desenho é onde o `QLineEdit` resolve o deslocamento horizontal.** Sem pintar, o
+        # `hscroll` dele fica em zero e a guarda passa com o defeito de pé -- de novo o silêncio
+        # do Qt no lugar do comportamento.
+        self.painel.campo_fen.grab()
+        meio = self.painel.campo_fen.height() // 2
+        self.assertEqual(
+            0,
+            self.painel.campo_fen.cursorPositionAt(QPoint(1, meio)),
+            "o campo rolou para a direita e o começo da FEN saiu da tela",
+        )
+
     def test_a_tecla_de_aplicar_e_a_da_tabela(self) -> None:
         """`Ctrl+Enter` é declarada no próprio campo, que é o mecanismo da S-117: quem declara
         a sequência fica com ela, e a guarda de foco cede."""
@@ -356,6 +386,32 @@ class TecladoEBotoesTests(PainelTests):
         self.assertEqual(len(barras), 2)
         acoes = next(b for b in barras if self.painel.btn_salvar in b.findChildren(type(self.painel.btn_salvar)))
         self.assertGreater(acoes.linhas_em(200), 1)
+
+    def test_a_S_233_fecha_e_os_tres_rotulos_curtos_existem(self) -> None:
+        """`ui/comandos.py` registrava que "Aplicar FEN", "Salvar posição reconhecida" e "Salvar
+        todos" eram comandos da janela cujos rótulos o painel escrevia **à mão** -- e por isso os
+        três não declaravam `rotulo_curto`, "que seria uma promessa que ninguém cumpre". Com a fila
+        quem os escreve é o catálogo, e a promessa passou a ter quem a cumpra."""
+        for nome in ("salvar", "salvar_todos", "aplicar_fen"):
+            with self.subTest(acao=nome):
+                curto = comandos.rotulo_de_botao(nome)
+                self.assertTrue(curto)
+                self.assertNotEqual(comandos.rotulo(nome), curto, "o rótulo curto não encurtou nada")
+
+    def test_o_seletor_diz_de_quantos(self) -> None:
+        """Era um `QLabel` "Selecionado" e um campo sem total: para saber quantos diagramas a
+        página tinha era preciso contar a lista acima (S-528, terceira barra)."""
+        self.carregar(LEGAL, OUTRA)
+        self.assertEqual(barra_do_resultado.sufixo_de_diagramas(2), self.painel.seletor.suffix())
+
+    def test_o_disparo_chega_ao_metodo_da_tabela(self) -> None:
+        """Os dois de navegação e `executar` chegam ao mesmo método, o que
+        `ui/barra_do_resultado.METODOS_DO_PAINEL` nomeia (S-528): afirmado pelo efeito."""
+        self.carregar(LEGAL, OUTRA)
+        self.painel.proximo.click()
+        self.assertEqual(self.painel.lista.currentRow(), 1)
+        self.painel.executar("diagrama_anterior")
+        self.assertEqual(self.painel.lista.currentRow(), 0)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -844,9 +900,9 @@ class SegundaOpiniaoTests(PainelTests):
         processo com a thread a correr (F9-C2). A tarefa fica sem pai (`manter_viva`) e os slots
         perguntam se o painel ainda existe -- se isto passar, o processo sobreviveu."""
         from PyQt6.QtTest import QTest
+        from qt_app import descartar
 
         from chess_diagram_ocr.qt import trabalho
-        from qt_app import descartar
 
         # Um painel só deste teste: é ele que morre no meio da leitura.
         painel = PainelDeResultado(mock.MagicMock(), csv_de_rotulos=pasta_temporaria(self) / "m.csv")

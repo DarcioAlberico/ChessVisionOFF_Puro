@@ -38,8 +38,6 @@ from chess_diagram_ocr.fen_utils import square_name
 from chess_diagram_ocr.ui.board_edit import PIECE_NAMES_PT
 
 __all__ = [
-    "LIMIAR_DE_MARGEM",
-    "Alternativa",
     "Tinta",
     "alternativas",
     "casa_em",

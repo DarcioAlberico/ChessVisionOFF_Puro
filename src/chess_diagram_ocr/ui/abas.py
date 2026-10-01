@@ -22,12 +22,9 @@ from . import formato
 __all__ = [
     "ABAS",
     "ABA_DE_TRABALHO",
-    "DO_ACERVO",
-    "DO_DIAGRAMA",
     "LIVRO",
     "MODOS",
     "MODO_DE_TRABALHO",
-    "RENOMEADAS",
     "contagem_no_rotulo",
     "e_modo",
     "nome_atual",
@@ -64,7 +61,6 @@ REVISAO_DE_TEXTO = "Revisão de texto"
 Do acervo pela mesma razão da Rotulagem: a unidade é o livro importado, não o diagrama
 clicado. Não é a `Revisão` (S-22), que é a fila de diagramas -- ver o cabeçalho do módulo.
 Só existe quando a suíte está ao alcance."""
-CONFIGURACAO = "Configuração"
 
 LIVRO = "Livro"
 """A aba que hospeda o painel principal (OCR_UI_ROADMAP passo 17, tarefa 3).
@@ -84,14 +80,26 @@ painel principal (`LIVRO`), na ordem em que a barra de modos os lista."""
 MODOS: tuple[str, ...] = DO_DIAGRAMA
 """O mesmo que `DO_DIAGRAMA`, com o nome do que eles são desde o passo 17."""
 
-DO_ACERVO: tuple[str, ...] = (DATASET, GALERIA, ROTULAGEM, REVISAO_DE_TEXTO, CONFIGURACAO)
-"""As que falam do livro inteiro. A Configuração fecha a fila: é a aba do primeiro dia."""
+DO_ACERVO: tuple[str, ...] = (DATASET, GALERIA, ROTULAGEM, REVISAO_DE_TEXTO)
+"""As que falam do livro inteiro.
+
+**A Configuração fechava a fila, e saiu no porte para o Qt (S-506).** Os controles dela foram
+para o menu (o conjunto de peças, `conjunto_de_pecas`) e para os diálogos de treino e de bases
+(`qt/dialogos.py`). Esta tupla continuou a declará-la até a triagem da S-511: descrevia uma aba
+que a janela não tinha, e nada acusava, porque a guarda que comparava a barra montada com ela
+morreu no corte junto com o `app_tkinter`."""
 
 ABAS: tuple[str, ...] = (LIVRO, *DO_ACERVO)
 """As abas do painel esquerdo, **na ordem** -- e a ordem é o item (S-162).
 
 Elas misturavam dois níveis, e **o corte entre os dois grupos é onde a barra muda de assunto**.
 Seis abas de peso igual escondiam que quatro delas seguem o diagrama aberto e três não.
+
+**Foram sete, e voltaram a ser seis.** A S-162 arrumou seis; a S-211 acrescentou a `Texto`, do
+lado do diagrama aberto -- ela responde "o que está escrito nesta folha?", que é a mesma pergunta
+de contexto que o `Resultado` e a `Revisão` respondem. A Configuração saiu no porte para o Qt
+(ver `DO_ACERVO`), e é este número que vale: **o que a janela monta é o que esta tupla diz**, e
+`test_ui_abas` afirma a tupla enquanto a janela do Qt não a lê.
 
 **Desde o passo 17 da OCR_UI o corte virou estrutura**: as quatro do diagrama são modos da aba
 `Livro`, e a faixa de abas só tem os dois níveis que sempre teve -- o livro em trabalho e o acervo.
