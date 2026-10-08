@@ -65,7 +65,7 @@ from pathlib import Path
 
 import numpy as np
 from PyQt6.QtCore import QEvent, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QKeyEvent, QKeySequence, QTextCursor, QTextDocument, QTextImageFormat
+from PyQt6.QtGui import QKeyEvent, QKeySequence, QPixmap, QTextCursor, QTextDocument, QTextImageFormat
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -424,7 +424,7 @@ class PainelDeTexto(QWidget):
                 folha=None if self._pagina is None else int(self._pagina.pagina),
                 trechos=len(self.documento.corridas),
                 diagramas=len(diagramas),
-                miniaturas=sum(1 for c in diagramas if self._recorte(c) is not None),
+                miniaturas=sum(1 for c in diagramas if self._tem_miniatura(c)),
                 por_gravar=self.tem_alteracoes,
             )
         )
@@ -678,12 +678,10 @@ class PainelDeTexto(QWidget):
         A imagem **não** entra no mapa: ela não é do documento, e é justamente por isso que
         `_Mapa` existe.
         """
-        recorte = self._recorte(corrida)
-        if recorte is None:
+        figura = self._imagem_do_diagrama(corrida)
+        if figura is None:
             return
-        mapa = pixmap_de_rgb(recorte).scaledToWidth(
-            self._largura_da_miniatura(), Qt.TransformationMode.SmoothTransformation
-        )
+        mapa = figura.scaledToWidth(self._largura_da_miniatura(), Qt.TransformationMode.SmoothTransformation)
         nome = f"diagrama:{corrida.bloco}"
         documento = cursor.document()
         if documento is not None:
@@ -696,6 +694,28 @@ class PainelDeTexto(QWidget):
         imagem.setHeight(mapa.height())
         cursor.insertImage(imagem)
         cursor.insertBlock()
+
+    def _imagem_do_diagrama(self, corrida: rico.Corrida) -> QPixmap | None:
+        """A figura da miniatura: **o recorte da folha, ou o desenho da posição lida**.
+
+        O recorte é a verdade impressa e vem primeiro. Sem folha -- o `.cvtxt` aberto com o livro
+        fora do lugar, ou noutra máquina -- a miniatura nascia vazia mesmo quando o OCR de
+        diagramas do produto já tinha lido a posição (item 6). Aí ela é desenhada da FEN, com as
+        peças que o próprio programa desenha (`desenho_de_diagrama`), e a pessoa vê o diagrama em
+        vez de uma marca solta. É desenho e não leitura: quem corrige a posição corrige na aba Livro.
+        """
+        recorte = self._recorte(corrida)
+        if recorte is not None:
+            return pixmap_de_rgb(recorte)
+        png = _png_da_posicao(_posicao_de(self.documento, corrida), lado_px=self._largura_da_miniatura())
+        if png is None:
+            return None
+        mapa = QPixmap()
+        return mapa if mapa.loadFromData(png, "PNG") and not mapa.isNull() else None
+
+    def _tem_miniatura(self, corrida: rico.Corrida) -> bool:
+        """Há figura para esta marca -- recorte da folha ou posição lida -- sem desenhá-la."""
+        return self._recorte(corrida) is not None or bool(_posicao_de(self.documento, corrida))
 
     def _largura_da_miniatura(self) -> int:
         """A miniatura **acompanha o zoom da vista** (S-264): a mesma razão que a letra.
@@ -1322,7 +1342,7 @@ class PainelDeTexto(QWidget):
         self._rascunho.stop()  # como em `mostrar_pagina`: o que veio do disco não tem o que gravar
         self._atualizar_status()
         diagramas = len(self.documento.diagramas)
-        figuras = sum(1 for c in self.documento.diagramas if self._recorte(c) is not None)
+        figuras = sum(1 for c in self.documento.diagramas if self._tem_miniatura(c))
         resumo = f"Texto aberto: {len(self.documento.corridas)} trecho(s), {diagramas} diagrama(s)"
         if diagramas and not aviso:
             resumo += f" ({figuras} com miniatura)"
@@ -2091,7 +2111,7 @@ def _gravar_recortes(
     Pillow. O `import` fica fora do laço: ele é o mais caro desta função na primeira vez.
     """
     blocos = [(corrida.bloco, doc.bloco_de(corrida)) for corrida in doc.corridas if corrida.e_diagrama]
-    if not blocos or folha is None:
+    if not blocos:
         return {}
     from PIL import Image
 
@@ -2100,18 +2120,51 @@ def _gravar_recortes(
     for chave, bloco in blocos:
         if not isinstance(bloco, BlocoDeDiagrama):
             continue
-        imagem = _recorte_da_folha(folha, bloco, dpi=dpi)
-        if imagem is None:
+        imagem = _recorte_da_folha(folha, bloco, dpi=dpi) if folha is not None else None
+        # Sem folha, o desenho da posição lida (item 7) -- a mesma reserva da miniatura na tela.
+        desenho = _png_da_posicao(bloco.placement, lado_px=LADO_DO_RECORTE_DESENHADO) if imagem is None else None
+        if imagem is None and desenho is None:
             continue
         try:
             pasta.mkdir(parents=True, exist_ok=True)
             arquivo_png = pasta / f"{destino.stem}_d{bloco.indice + 1}.png"
-            Image.fromarray(np.ascontiguousarray(imagem)).convert("RGB").save(arquivo_png)
+            if imagem is not None:
+                Image.fromarray(np.ascontiguousarray(imagem)).convert("RGB").save(arquivo_png)
+            else:
+                arquivo_png.write_bytes(desenho or b"")
         except Exception as erro:  # noqa: BLE001 - recorte é conforto, e a marca sai sem ele
             logger.debug("Recorte do diagrama %d não gravado: %s", bloco.indice + 1, erro)
             continue
         recortes[chave] = arquivo_png
     return recortes
+
+
+LADO_DO_RECORTE_DESENHADO = 400
+"""O lado, em pixel, do diagrama desenhado da FEN para a exportação: perto do que um recorte a
+220 dpi mede, para o `.html` não trocar de escala conforme a origem da figura."""
+
+
+def _posicao_de(doc: rico.DocumentoRico, corrida: rico.Corrida) -> str:
+    """O campo de peças do bloco desta marca, ou `""` quando ninguém o leu."""
+    return str(getattr(doc.bloco_de(corrida), "placement", "") or "")
+
+
+def _png_da_posicao(placement: str, *, lado_px: int) -> bytes | None:
+    """O diagrama desenhado da FEN, em PNG, ou `None` sem posição ou quando o desenho falha.
+
+    Desenha com as peças do próprio programa (`desenho_de_diagrama`, sem Qt): a mesma figura que
+    a exportação do livro usa. O `import` é tardio porque ele carrega a Pillow e o conjunto de
+    peças, e a aba abre sem precisar deles.
+    """
+    if not placement:
+        return None
+    try:
+        from chess_diagram_ocr.desenho_de_diagrama import png_do_diagrama
+
+        return png_do_diagrama(placement, lado_px=lado_px)
+    except Exception as erro:  # noqa: BLE001 - a figura é conforto; a marca fica
+        logger.debug("Diagrama não desenhado da posição %r: %s", placement, erro)
+        return None
 
 
 def _no_catalogo(acao: str) -> bool:

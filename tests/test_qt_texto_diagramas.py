@@ -432,6 +432,50 @@ class PosicoesDoProdutoTests(_Aba):
         self.assertIn(f"<!-- FEN: {FEN} -->", md.read_text(encoding="utf-8"))
 
 
+class DesenhadaDaPosicaoTests(_Aba):
+    """Sem folha, a miniatura e o recorte exportado nascem da posição lida (item 7)."""
+
+    def test_sem_folha_a_miniatura_e_desenhada_da_fen(self) -> None:
+        self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]))
+        self.assertEqual(self.miniaturas(), 1)
+        self.assertNotIn("com miniatura", self.painel.status.text(), "o rodapé não conta falta nenhuma")
+
+    def test_a_posicao_que_chega_depois_desenha_a_miniatura_que_faltava(self) -> None:
+        self.painel.mostrar_pagina(_pagina())
+        self.assertEqual(self.miniaturas(), 0)
+        self.painel.definir_posicoes(0, [FEN])
+        self.assertEqual(self.miniaturas(), 1)
+
+    def test_o_recorte_da_folha_vem_primeiro(self) -> None:
+        self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]), folha_rgb=_folha())
+        with mock.patch.object(qt_texto, "_png_da_posicao") as desenhar:
+            self.painel.aplicar_zoom(+1, avisar=False)
+        desenhar.assert_not_called()
+        self.assertEqual(self.miniaturas(), 1)
+
+    def test_o_md_sem_folha_leva_o_diagrama_desenhado(self) -> None:
+        self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]))
+        destino = self.pasta / "desenhado.md"
+        with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(destino), "")):
+            self.painel.exportar_md()
+        self.esperar_a_tarefa()
+        conteudo = destino.read_text(encoding="utf-8")
+        self.assertIn("diagramas/desenhado_d1.png", conteudo)
+        self.assertIn(f"<!-- FEN: {FEN} -->", conteudo)
+        png = self.pasta / "diagramas" / "desenhado_d1.png"
+        self.assertTrue(png.exists())
+        from PIL import Image
+
+        with Image.open(png) as imagem:
+            self.assertEqual(imagem.size, (qt_texto.LADO_DO_RECORTE_DESENHADO, qt_texto.LADO_DO_RECORTE_DESENHADO))
+        self.assertNotIn("sem recorte", self.recados[-1])
+
+    def test_sem_folha_e_sem_posicao_continua_sem_figura(self) -> None:
+        self.painel.mostrar_pagina(_pagina())
+        self.assertEqual(self.miniaturas(), 0)
+        self.assertIsNone(qt_texto._png_da_posicao("", lado_px=100))
+
+
 class ConfiguracoesDaLeituraTests(unittest.TestCase):
     """A leitura da aba pergunta o DPI e o teto de diagramas às Configurações, como o visualizador.
 
