@@ -53,6 +53,7 @@ from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 from typing import Any
 
+from .documento import TRANQUILO
 from .pagina import BlocoDeDiagrama, Procedencia
 from .rico import SEM_BLOCO, TEXTO, Corrida, DocumentoRico
 
@@ -178,8 +179,14 @@ def com_procedencia_humana(doc: DocumentoRico) -> DocumentoRico:
 
     O separador fica de fora dos dois: ele é estrutura que o leitor produziu, e ninguém o escreveu.
 
-    **É idempotente**, e precisa ser: `documento_atual` a aplica a cada gravação, e a comparação que
-    a decide é contra a `PaginaLida`, que a marcação não toca.
+    **E a faixa vai junto.** `faixa_de_confianca` já responde `tranquilo` a toda procedência
+    `humano` -- mas ela só é consultada quando a página vira documento, e a corrida carrega a faixa
+    consigo desde então. Trocar só a procedência deixava a tinta de "revisar" sobre o trecho que a
+    pessoa acabou de conferir, na tela e no `.cvtxt` reaberto: a marcação dizia uma coisa e a cor
+    outra.
+
+    **É idempotente**, e precisa ser: a aba a aplica a cada gravação, e a comparação que a decide é
+    contra a `PaginaLida`, que a marcação não toca.
     """
     editados = blocos_editados(doc)
     if not editados and all(c.procedencia is not None or c.bloco != SEM_BLOCO for c in doc.corridas):
@@ -190,9 +197,9 @@ def com_procedencia_humana(doc: DocumentoRico) -> DocumentoRico:
 
 def _marcada(corrida: Corrida, editados: frozenset[int]) -> Corrida:
     if corrida.bloco in editados:
-        return replace(corrida, procedencia="humano")
+        return replace(corrida, procedencia="humano", faixa=TRANQUILO)
     if corrida.bloco == SEM_BLOCO and corrida.tipo == TEXTO:
-        return replace(corrida, procedencia="humano")
+        return replace(corrida, procedencia="humano", faixa=TRANQUILO)
     return corrida
 
 
