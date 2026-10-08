@@ -3,7 +3,7 @@
   "dpi": 220,
   "paginas_anotadas": 43,
   "paginas_medidas": 43,
-  "acertos": 42,
+  "acertos": 43,
   "por_grupo": {
     "coluna_unica": {
       "paginas": 4,
@@ -23,7 +23,7 @@
     },
     "prosa": {
       "paginas": 8,
-      "acertos": 7
+      "acertos": 8
     },
     "scoring": {
       "paginas": 8,
@@ -294,6 +294,9 @@
       "esperado": 2,
       "achado": 2,
       "regioes": [
+        2,
+        1,
+        2,
         1,
         2,
         1
@@ -539,11 +542,11 @@
       "pagina": 40,
       "grupo": "prosa",
       "esperado": 2,
-      "achado": 3,
+      "achado": 2,
       "regioes": [
-        3
+        2
       ],
-      "acerto": false,
+      "acerto": true,
       "motivo": "",
       "nota": "duas colunas de lances e prosa; a folha inteira nao achava a calha"
     },

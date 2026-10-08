@@ -354,3 +354,45 @@ anotado (grupo «legenda», uma coluna).
 o número do lance e o lance na tabela de lances da coluna da direita, e a terceira «coluna» (44 pt,
 à margem) é sujeira de scan -- riscos de um ou dois pixels em várias bandas. Os dois são de
 conteúdo e de tinta, não de geometria da calha: é o passo 3.
+
+### S-526 · A poeira de scan não cobre x nenhum na calha ✅ implementada (2026-10-08)
+
+**O que é.** No caminho do glifo, `detectar_regioes(escala=)` tira da projeção da calha a caixa
+mais estreita que `RISCO_EM_ESCALAS` (1/6) da escala -- poeira de scan. A camada, cujas caixas são
+linhas, não passa escala e fica como estava. **Tirar também a banda de dois caracteres soltos foi
+medido e recusado:** com o fólio sem voto, a régua de folha inteira achava a calha sozinha, a
+borda da S-523 deixava de rodar, e o título com um vão interno ia parar dentro das colunas, partido
+(uma linha da camada partida a mais em 90 páginas de exercício do Yusupov, 18 folhas confiáveis
+piorando a ordem contra 15 melhorando). A banda solta na borda é da S-523; a do meio, da S-190.
+
+**Critério de aceite.** A Neumann p. 40 sai em duas colunas pelo glifo (a calha de verdade era
+fechada por um risco de 3 x 3 px dentro de uma banda de texto, além do título tolerado); o
+conjunto anotado pelo glifo não perde página nenhuma; nas 559 páginas da medição, contra o código
+fundido, nenhuma página com referência confiável piora a ordem.
+
+**Sonda.** `tests/test_text_regioes.py::BandaIsoladaNaBordaTests::test_a_poeira_de_scan_nao_fecha_a_calha`
+e o conjunto anotado (`cvoff-texto-colunas --motor glifo --baseline docs/metrics/texto_colunas_glifo.json`).
+
+## 11. A poeira de scan (S-526) e o voto por banda, medido e recusado
+
+A Neumann p. 40 pelo glifo: a calha de verdade (209–221 pt) era fechada pelo título centrado
+(tolerado) e por um risco de 3 x 3 px dentro de uma banda de texto; com a segunda banda a folha
+perdia a calha, caía no vão alinhado entre o número do lance e o lance (248–254) e ganhava uma
+«coluna» de riscos à margem (11 bandas, 4 px de tinta mediana). Duas regras foram testadas:
+
+- **Poeira por caixa** (`RISCO_EM_ESCALAS` = 1/6: a caixa de até 3 px numa escala de 20 não cobre
+  `x` nenhum) -- **adotada**. Conjunto anotado pelo glifo **43 de 43**. Nas 559 páginas, contra o
+  código fundido (junto com a guarda das larguras, §10): 20 mudam de estrutura; nas 259 com
+  referência confiável, 1 melhora e 1 piora (Yusupov p. 2232, 0 → 0,08, três linhas da camada
+  partidas); oito páginas do *Secrets of Chess Training* perdem uma terceira coluna de sujeira,
+  a Yusupov p. 754 vai de 0,22 para 0,013.
+- **Voto por banda** (banda com menos de 3 escalas de tinta não vota) -- **recusada**. Pelo
+  conjunto anotado também dava 43 de 43, mas nas 559 páginas: 106 mudanças de estrutura, 18
+  folhas confiáveis piorando contra 15 melhorando, e linhas da camada partidas de 31 para 118.
+  A causa: com o fólio sem voto, a régua de folha inteira achava a calha sozinha, a borda da S-523
+  deixava de rodar, e o título -- que tem um vão interno -- ia parar dentro das colunas, partido
+  («Solu | tions»), em 90 páginas de exercício do Yusupov. A banda de dois caracteres soltos na
+  borda é assunto da S-523; a do meio da folha, da tolerância da S-190.
+
+Dados: `glifo_fundido_04623bf.jsonl` (o código fundido), `glifo_passo5_poeira.jsonl` (adotado) e
+`glifo_passo5_voto_recusado.jsonl` (recusado), comparáveis com `comparar_glifo.py`.

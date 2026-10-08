@@ -194,6 +194,17 @@ LARGURAS_DO_CORPO = 1.5
 A legenda de estrelas do `Aagaard - A Matter of Endgame Technique` (p. 546) cortava em 2,8; as
 soluções do Yusupov e a prosa de duas colunas do acervo ficam entre 1,0 e 1,15."""
 
+RISCO_EM_ESCALAS = 1 / 6
+"""A caixa mais estreita que isto (3 px numa escala de 20) é poeira de scan, e não cobre `x`
+nenhum na projeção da calha, no caminho do glifo (S-526). Ver `escala` em `detectar_regioes`.
+
+Medido na p. 40 do `Neumann - Traité élémentaire du jeu des échecs` (1870, scan): a calha de
+verdade era cruzada por um título centrado (legítimo, tolerado), por um par de caixas soltas na
+borda (que a S-523 tira) e por um risco de 3 x 3 px **dentro de uma banda de texto** -- e com ele
+a folha perdia a calha, caía no vão alinhado entre o número do lance e o lance, e ganhava uma
+«coluna» de riscos à margem. Há 38 caixas de 1 a 3 px nessa página; o `i` e o `l` de corpo 20 px
+têm 4 a 6."""
+
 VAO_DE_BORDA = 1.5
 """O vão que isola uma banda de borda, em passos medianos entre as bandas da folha (S-523).
 
@@ -228,6 +239,7 @@ def detectar_regioes(
     *,
     calha_minima: int | None = None,
     quadros: Sequence[tuple[int, int]] = (),
+    escala: int = 0,
 ) -> list[Regiao]:
     """As regiões horizontais da folha, de cima para baixo. Uma só quando a folha é homogênea.
 
@@ -238,6 +250,11 @@ def detectar_regioes(
     `quadros` são intervalos de `y` (na unidade das caixas) de quadros de largura inteira já
     achados -- `text/quadros.py` (S-525). A banda cujo topo cai num quadro é região de uma
     coluna, e cada trecho da folha entre quadros passa pela régua de sempre por conta própria.
+
+    `escala` é a altura de caractere do caminho do glifo (S-526): a caixa mais estreita que
+    `RISCO_EM_ESCALAS` da escala é poeira de scan e não cobre `x` nenhum na projeção da calha.
+    Zero (o padrão) é a projeção de sempre, e é o que o caminho da camada passa: ali as caixas
+    são linhas, e não há escala de caractere.
     """
     if not caixas:
         return []
@@ -254,7 +271,8 @@ def detectar_regioes(
     if calha_minima is None:
         calha_minima = piso_de_calha(caixas)
 
-    mascaras = [_mascara(grupo, x_min, largura) for grupo in grupos]
+    risco = int(RISCO_EM_ESCALAS * escala)
+    mascaras = [_mascara(grupo, x_min, largura, risco=risco) for grupo in grupos]
     cortadas: list[tuple[int, int, tuple[tuple[int, int], ...]]] = []
     topos = [min(c.y1 for c in grupo) for grupo in grupos]
     no_quadro = [any(y1 <= topo <= y2 for y1, y2 in quadros) for topo in topos]
@@ -378,10 +396,21 @@ def colunas_da_folha(regioes: Sequence[Regiao]) -> list[tuple[int, int]]:
     return list(max(regioes, key=lambda r: len(r.colunas)).colunas)
 
 
-def _mascara(grupo: Sequence[Caixa], x_min: int, largura: int) -> np.ndarray:
-    """Que `x` esta banda cobre. É uma linha da projeção de `colunas.linhas_por_x`."""
+def _mascara(grupo: Sequence[Caixa], x_min: int, largura: int, *, risco: int = 0) -> np.ndarray:
+    """Que `x` esta banda cobre. É uma linha da projeção de `colunas.linhas_por_x`.
+
+    A caixa de largura até `risco` é poeira de scan e não cobre nada (S-526): na p. 40 do
+    Neumann um risco de 3 x 3 px numa banda de texto fechava a calha de verdade. **A banda de
+    dois caracteres soltos continua votando**, de propósito: tirá-la da projeção foi medido e
+    recusado -- com o fólio sem voto, a régua de folha inteira achava a calha sozinha, a borda
+    da S-523 deixava de rodar, e o título com um vão interno ia parar dentro das colunas, partido
+    (uma linha da camada partida a mais em 90 páginas de exercício do Yusupov). A banda solta na
+    borda é da S-523; a do meio da folha é a tolerância da S-190.
+    """
     desta = np.zeros(largura + 2, dtype=bool)
     for caixa in grupo:
+        if caixa.largura <= risco:
+            continue
         desta[max(0, caixa.x1 - x_min) : max(0, caixa.x2 - x_min) + 1] = True
     return desta
 
@@ -598,6 +627,7 @@ __all__ = [
     "BANDAS_NA_REGIAO",
     "BORDA_MAX",
     "PREENCHIMENTO_DA_COLUNA",
+    "RISCO_EM_ESCALAS",
     "LARGURAS_DO_CORPO",
     "VAO_DE_BORDA",
     "Regiao",

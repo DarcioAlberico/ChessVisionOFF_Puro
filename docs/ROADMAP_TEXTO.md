@@ -31,7 +31,7 @@ A especificação item a item está em [SPEC_TEXTO.md](SPEC_TEXTO.md). O verific
 > | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
-> | S-523 a S-525 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
+> | S-523 a S-526 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
 
 ---
 
@@ -468,9 +468,9 @@ vale a folha inteira, e o bloco de largura inteira a apagava.
 > que o multiplica por vinte (ver `leitor.calha_de_linhas`) — ela media a ordenação de livros que
 > ela achava serem de coluna única, diferente do que a produção faz.
 
-**Itens S-523, S-524 e S-525 (2026-10-08), acrescentados a esta fase.** A página de soluções, a
-régua que a S-194 não alcança, e o quadro de largura inteira. Medição e plano em
-`docs/PLANO_COLUNAS_SOLUCOES.md`.
+**Itens S-523 a S-526 (2026-10-08), acrescentados a esta fase.** A página de soluções, a régua
+que a S-194 não alcança, o quadro de largura inteira, e a poeira de scan que fechava a calha.
+Medição, plano e a spec dos quatro itens em `docs/PLANO_COLUNAS_SOLUCOES.md`.
 
 > **A queixa.** A aba Texto lê as páginas «Solutions» do `Yusupov - Build Up Your Chess` como uma
 > coluna só, com as duas intercaladas linha a linha -- ou picadas em tiras estreitas. Medido em
@@ -515,6 +515,17 @@ régua que a S-194 não alcança, e o quadro de largura inteira. Medição e pla
 > duas colunas numa linha, ou está quebrada). A régua da S-194, nas mesmas 1.090 folhas: nenhuma
 > piora contra a produção de antes; contra a S-523 sozinha, duas folhas mudam de estrutura e
 > nenhuma muda de distância.
+>
+> **S-526: a poeira de scan não cobre `x` nenhum na calha** (spec em `PLANO_COLUNAS_SOLUCOES.md`).
+> A única página que restava errada pelo glifo, a Neumann p. 40, tinha a calha de verdade fechada
+> por um risco de 3 x 3 px dentro de uma banda de texto (além do título tolerado) -- e a folha caía
+> no vão alinhado entre o número do lance e o lance, mais uma «coluna» de riscos à margem. No
+> caminho do glifo, a caixa mais estreita que 1/6 da escala não cobre `x` nenhum; a camada não
+> muda. Tirar da projeção também a banda de dois caracteres soltos foi medido e recusado: sem o
+> voto do fólio a régua de folha achava a calha sozinha, a borda da S-523 não rodava, e o título
+> ia parar dentro das colunas, partido. Conjunto anotado pelo glifo: **43 de 43**. Junto, a guarda da S-523 que a legenda de
+> estrelas do Aagaard pedia: as colunas do corpo sem as bordas têm de ter larguras parecidas
+> (`LARGURAS_DO_CORPO`).
 
 ---
 
