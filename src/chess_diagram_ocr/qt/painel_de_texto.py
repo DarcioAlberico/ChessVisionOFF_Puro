@@ -259,7 +259,7 @@ class PainelDeTexto(QWidget):
         *,
         pdf: Path | None = None,
         pagina: int = 0,
-        dpi: int = 220,
+        dpi: int | None = None,
         busy: BusyRegistry | None = None,
         pasta_de_rascunhos: Path | None = None,
         parent: QWidget | None = None,
@@ -286,7 +286,15 @@ class PainelDeTexto(QWidget):
         self._ocupado: BusyToken | None = None
         self._pdf = pdf
         self._pagina_indice = pagina
-        self._dpi = dpi
+        self._dpi_fixo = dpi
+        """O DPI cravado por quem montou o painel -- o teste, que dá a folha sintética. `None` é o
+        produto: a leitura pergunta às Configurações (`ui/configuracoes.dpi`), como o visualizador
+        e a leitura dos diagramas fazem, em vez de um 220 cravado que ignorava a janela
+        «Ferramentas ▸ Configurações…»."""
+        self._dpi = dpi or 220
+        """O DPI da folha que está na tela -- o que liga ponto a pixel nos recortes. Muda quando
+        uma folha chega (leitura ou arquivo), e **não** quando a configuração muda: a folha já
+        renderizada continua na escala em que foi renderizada."""
         self._pagina: PaginaLida | None = None
         self._pagina_rgb: np.ndarray | None = None
 
@@ -828,11 +836,18 @@ class PainelDeTexto(QWidget):
 
     # -------------------------------------------------------------------------------- carga
 
-    def mostrar_pagina(self, pagina: PaginaLida, *, folha_rgb: np.ndarray | None = None) -> None:
+    def mostrar_pagina(
+        self, pagina: PaginaLida, *, folha_rgb: np.ndarray | None = None, dpi: int | None = None
+    ) -> None:
         """Abre uma `PaginaLida` no editor. É o que a leitura entrega -- e é o ponto de partida
-        contra o qual `tem_alteracoes` compara: a folha recém-lida não tem nada por gravar."""
+        contra o qual `tem_alteracoes` compara: a folha recém-lida não tem nada por gravar.
+
+        `dpi` é o da `folha_rgb`, quando ela vem: é o que liga os pontos do `bbox` aos pixels dela.
+        """
         self._pagina = pagina
         self._pagina_rgb = folha_rgb
+        if dpi:
+            self._dpi = int(dpi)
         self._historico.clear()
         self._refeitos.clear()
         self._digitacao = None
@@ -1251,6 +1266,7 @@ class PainelDeTexto(QWidget):
         caminho = arquivo.pdf_de(doc)
         if folha_rgb is None and caminho is not None and doc.origem is not None:
             if caminho.exists():
+                self._dpi = self._dpi_para_ler()
                 self._pagina_rgb = _renderizar(caminho, doc.origem.pagina, dpi=self._dpi)
             else:
                 aviso = f" · o livro {caminho.name} não está no lugar de antes: sem miniaturas"
@@ -1613,15 +1629,18 @@ class PainelDeTexto(QWidget):
         motor = self._motor
         bloco = self._modo_bloco
         caminho = self._pdf
-        dpi = self._dpi
+        dpi = self._dpi_para_ler()
+        teto = self._teto_de_diagramas()
 
-        def _trabalho() -> tuple[PaginaLida, np.ndarray | None]:
+        def _trabalho() -> tuple[PaginaLida, np.ndarray | None, int]:
             # **A folha é rasterizada uma vez, e aqui (S-352).** `ler_pagina` a renderiza sozinha
             # quando ninguém lhe dá a imagem, e as miniaturas precisariam dela de novo -- na thread
             # da janela, que congelava ~355 ms por leitura no outro frontend. O mesmo `dpi` dos
-            # dois lados é o que liga pixel a ponto.
+            # dois lados é o que liga pixel a ponto -- e ele viaja com a folha, porque a
+            # configuração pode mudar enquanto a leitura corre.
             imagem = _renderizar(caminho, indice, dpi=dpi)
-            return _ler(caminho, indice, dpi=dpi, motor=motor, modo_bloco=bloco, imagem_rgb=imagem), imagem
+            lida = _ler(caminho, indice, dpi=dpi, motor=motor, modo_bloco=bloco, imagem_rgb=imagem, max_boards=teto)
+            return lida, imagem, dpi
 
         self.estado.emit(f"Lendo a folha {indice + 1}…")
         self._registrar_ocupado(
@@ -1635,10 +1654,30 @@ class PainelDeTexto(QWidget):
         self._tarefa.finished.connect(self._soltar_ocupado)
         self._tarefa.start()
 
+    def _dpi_para_ler(self) -> int:
+        """O DPI da próxima leitura: o cravado pelo teste, ou o das Configurações (o produto)."""
+        if self._dpi_fixo:
+            return int(self._dpi_fixo)
+        from chess_diagram_ocr.ui import configuracoes
+
+        return int(configuracoes.dpi())
+
+    def _teto_de_diagramas(self) -> int | None:
+        """Quantos diagramas o leitor procura na folha: o mesmo teto das Configurações que o
+        visualizador usa. Sem ele a aba Texto e a aba Livro discordavam sobre quantos há na página."""
+        if self._dpi_fixo:
+            return None  # o teste dá a folha sintética e não lê de verdade
+        from chess_diagram_ocr.ui import configuracoes
+
+        return int(configuracoes.max_boards())
+
     def _leitura_terminou(self, resultado: object) -> None:
-        """A folha lida voltou da thread -- **e a imagem vem com ela** (S-352)."""
+        """A folha lida voltou da thread -- **e a imagem vem com ela** (S-352), com o DPI dela."""
         self._tarefa = None
-        pagina, imagem = resultado if isinstance(resultado, tuple) else (resultado, None)
+        if isinstance(resultado, tuple):
+            pagina, imagem, dpi = (*resultado, None)[:3]
+        else:
+            pagina, imagem, dpi = resultado, None, None
         assert isinstance(pagina, PaginaLida)
         partida = self._documento_ao_ler
         self._documento_ao_ler = None
@@ -1649,7 +1688,7 @@ class PainelDeTexto(QWidget):
             self.estado.emit("A folha lida ficou de lado: o texto editado durante a leitura continua na tela.")
             return
         self._pagina_indice = int(self.campo_de_folha.value()) - 1
-        self.mostrar_pagina(pagina, folha_rgb=imagem)
+        self.mostrar_pagina(pagina, folha_rgb=imagem, dpi=dpi)
         diagramas = len(pagina.diagramas)
         figuras = f", {diagramas} diagrama(s)" if diagramas else ""
         self.estado.emit(f"Folha lida: {len(self.documento.corridas)} trecho(s){figuras}.")
@@ -1919,12 +1958,21 @@ def _renderizar(caminho: Path, indice: int, *, dpi: int) -> np.ndarray | None:
 
 
 def _ler(
-    caminho: Path, indice: int, *, dpi: int, motor: str, modo_bloco: bool, imagem_rgb: np.ndarray | None
+    caminho: Path,
+    indice: int,
+    *,
+    dpi: int,
+    motor: str,
+    modo_bloco: bool,
+    imagem_rgb: np.ndarray | None,
+    max_boards: int | None = None,
 ) -> PaginaLida:
     """`ler_pagina` com a folha já renderizada. **O `import` do leitor mora aqui** -- ver `ler`."""
     from chess_diagram_ocr.text.leitor import ler_pagina
 
-    return ler_pagina(caminho, indice, dpi=dpi, motor=motor, modo_bloco=modo_bloco, imagem_rgb=imagem_rgb)  # type: ignore[arg-type]
+    return ler_pagina(
+        caminho, indice, dpi=dpi, motor=motor, modo_bloco=modo_bloco, imagem_rgb=imagem_rgb, max_boards=max_boards  # type: ignore[arg-type]
+    )
 
 
 def _recorte_da_folha(folha: np.ndarray, bloco: object, *, dpi: int) -> np.ndarray | None:

@@ -2913,6 +2913,14 @@ gravar; outra folha não é oferecida; salvar apaga o rascunho e carimba arquivo
 não entra na pilha; o rascunho e a exportação saem carimbados sem tocar na tela);
 `tests/test_texto_correcoes.py::CarimboTests::test_a_corrida_editada_deixa_de_pedir_revisao`.
 
+## Dez itens da aba Texto no Qt (2026-10-08, à tarde)
+
+Cada linha é um commit, com o teste que a tranca.
+
+| item | o que faltava | o que entrou | teste |
+|---|---|---|---|
+| **1. a leitura respeita as Configurações** | o painel nascia com `dpi=220` cravado e lia sem teto de diagramas: a aba Livro e a aba Texto discordavam sobre a escala da folha e sobre quantos diagramas há na página, e «Ferramentas ▸ Configurações…» não alcançava esta aba | `_dpi_para_ler` e `_teto_de_diagramas` perguntam a `ui/configuracoes` (o teste continua cravando `dpi=`); o DPI viaja com a folha lida (`mostrar_pagina(dpi=)`), porque a configuração pode mudar enquanto a leitura corre, e o recorte fica na escala em que a folha foi renderizada | `test_qt_texto_diagramas.py::ConfiguracoesDaLeituraTests` |
+
 ---
 
 # O que esta spec deliberadamente não faz

@@ -264,5 +264,68 @@ class LexicoSobreviveAoRedesenhoTests(_Aba):
         self.assertEqual(self.painel.editor.extraSelections(), [], "desligada, ela não volta")
 
 
+class ConfiguracoesDaLeituraTests(unittest.TestCase):
+    """A leitura da aba pergunta o DPI e o teto de diagramas às Configurações, como o visualizador.
+
+    Antes o painel nascia com `dpi=220` cravado e lia sem teto: a aba Livro e a aba Texto
+    discordavam sobre a escala da folha e sobre quantos diagramas há na página, e a janela
+    «Ferramentas ▸ Configurações…» não alcançava esta aba.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        tema.aplicar_tema(self.app)
+        self.pasta = pasta_temporaria(self)
+        self.recados: list[str] = []
+
+    def painel(self, **argumentos: object) -> PainelDeTexto:
+        painel = PainelDeTexto(pasta_de_rascunhos=self.pasta / "rascunhos", **argumentos)  # type: ignore[arg-type]
+        self.addCleanup(descartar, painel)
+        painel.show()
+        self.app.processEvents()
+        return painel
+
+    def ler(self, painel: PainelDeTexto) -> tuple[mock.MagicMock, mock.MagicMock]:
+        from chess_diagram_ocr.ui import configuracoes
+
+        painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
+        with mock.patch.object(configuracoes, "dpi", return_value=150), mock.patch.object(
+            configuracoes, "max_boards", return_value=2
+        ), mock.patch.object(qt_texto, "_renderizar", return_value=_folha()) as renderizar, mock.patch.object(
+            qt_texto, "_ler", return_value=_pagina()
+        ) as ler:
+            painel.ler()
+            tarefa = painel._tarefa
+            assert tarefa is not None
+            self.assertTrue(tarefa.wait(10_000))
+            self.app.processEvents()
+        return renderizar, ler
+
+    def test_o_produto_le_com_o_dpi_e_o_teto_das_configuracoes(self) -> None:
+        painel = self.painel()
+        renderizar, ler = self.ler(painel)
+        self.assertEqual(renderizar.call_args.kwargs["dpi"], 150)
+        self.assertEqual(ler.call_args.kwargs["dpi"], 150)
+        self.assertEqual(ler.call_args.kwargs["max_boards"], 2)
+        self.assertEqual(painel._dpi, 150, "o DPI da folha na tela é o da leitura")
+
+    def test_o_dpi_cravado_pelo_teste_vence_e_nao_poe_teto(self) -> None:
+        painel = self.painel(dpi=72)
+        renderizar, ler = self.ler(painel)
+        self.assertEqual(renderizar.call_args.kwargs["dpi"], 72)
+        self.assertIsNone(ler.call_args.kwargs["max_boards"])
+        self.assertEqual(painel._dpi, 72)
+
+    def test_a_folha_na_tela_guarda_o_dpi_com_que_foi_renderizada(self) -> None:
+        """A configuração muda depois da leitura: o recorte continua na escala da folha."""
+        from chess_diagram_ocr.ui import configuracoes
+
+        painel = self.painel()
+        self.ler(painel)
+        with mock.patch.object(configuracoes, "dpi", return_value=300):
+            self.assertEqual(painel._dpi, 150)
+            self.assertEqual(painel._dpi_para_ler(), 300)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
