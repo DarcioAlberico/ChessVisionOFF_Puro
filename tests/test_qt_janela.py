@@ -542,6 +542,12 @@ class FiacaoTests(_JanelaComLivro):
         janela.pdf.ir_para_pagina(0)
         self.assertEqual(janela.texto.campo_de_folha.value(), 1)
 
+    def test_a_posicao_de_cada_diagrama_lido_chega_a_aba_texto(self) -> None:
+        """A aba Livro lê a posição; a aba Texto só sabia onde o diagrama está (item 6)."""
+        janela = self.janela()
+        janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
+        self.assertEqual(janela.texto._posicoes[0], ("8/8/8/8/8/8/8/K6k", "8/8/8/8/8/8/8/K6k"))
+
     def test_virar_a_pagina_avisa_a_galeria_e_guarda_o_que_estava_no_editor(self) -> None:
         """As duas pontas da virada: o editor guarda **antes**, a galeria acompanha **depois**.
 

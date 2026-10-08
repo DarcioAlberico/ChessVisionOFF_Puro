@@ -341,6 +341,9 @@ class PainelDeTexto(QWidget):
         self._base: tuple[int, str, str] | None = None
         """A fonte de base do último desenho. O trecho digitado é pintado com **a mesma** -- a
         tecla não relê as famílias do sistema, e o redesenho seguinte não muda o que já estava."""
+        self._posicoes: dict[int, tuple[str, ...]] = {}
+        """O campo de peças de cada diagrama, por folha, como o OCR de diagramas do produto leu.
+        Guardado por folha porque a leitura dos diagramas e a do texto chegam em qualquer ordem."""
         self._documento_ao_ler: rico.DocumentoRico | None = None
         """O documento na tela quando a leitura em curso partiu. Ver `_leitura_terminou`."""
 
@@ -882,6 +885,8 @@ class PainelDeTexto(QWidget):
 
         `dpi` é o da `folha_rgb`, quando ela vem: é o que liga os pontos do `bbox` aos pixels dela.
         """
+        if int(pagina.pagina) in self._posicoes:
+            pagina = pagina.com_posicoes(self._posicoes[int(pagina.pagina)])
         self._pagina = pagina
         self._pagina_rgb = folha_rgb
         if dpi:
@@ -1772,6 +1777,29 @@ class PainelDeTexto(QWidget):
                 self.campo_de_folha.setValue(self._pagina_indice + 1)
             finally:
                 self._montando = False
+
+    def definir_posicoes(self, pagina: int, posicoes: Sequence[str]) -> None:
+        """O campo de peças de cada diagrama da folha, como o OCR de diagramas do produto leu.
+
+        A aba Livro lê a posição com o classificador de peças; esta aba só sabia **onde** cada
+        diagrama está. Com a FEN no bloco, o `.cvtxt` a guarda, o `.md` e o `.html` a escrevem
+        (item 5) e a miniatura pode nascer dela quando o livro não está. Chega pela janela a cada
+        leitura de diagramas (`_chegaram_itens`), em qualquer ordem em relação à leitura do texto:
+        a folha que já está na tela recebe na hora, **sem virar alteração por gravar** -- a posição
+        é leitura, não edição.
+        """
+        self._posicoes[int(pagina)] = tuple(str(p or "") for p in posicoes)
+        if self._pagina is None or int(self._pagina.pagina) != int(pagina):
+            return
+        nova = self._pagina.com_posicoes(self._posicoes[int(pagina)])
+        if nova is self._pagina:
+            return
+        self._pagina = nova
+        self.documento = rico.DocumentoRico(corridas=self.documento.corridas, origem=nova)
+        if self._documento_gravado.origem is not None:
+            self._documento_gravado = rico.DocumentoRico(corridas=self._documento_gravado.corridas, origem=nova)
+        self._desenhar(selecao=self._selecao_atual())
+        self._atualizar_status()
 
     def notacao_do_diagrama(self, pagina: int, diagrama: int) -> str:
         """A notação que o livro imprimiu ao lado daquele diagrama, ou `""` (S-283).

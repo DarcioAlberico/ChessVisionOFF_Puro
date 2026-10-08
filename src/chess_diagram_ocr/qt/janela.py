@@ -1467,6 +1467,7 @@ class JanelaPrincipal(QMainWindow):
             self._dizer(f"A leitura da página {pagina + 1} terminou, mas a tela já está em outra.")
             return
         self._itens = list(itens)
+        self.texto.definir_posicoes(pagina, [d.placement for d in self._itens])  # a FEN de cada diagrama vai à aba Texto
         # **O ponto único de troca de vínculo** (S-49), dentro do painel: o vínculo é `PAGE` e a
         # âncora é o par (documento, página), e é ela que faz `Ctrl+S` gravar amostra nova em vez
         # de regravar a linha de um dataset que não está aberto.

@@ -366,6 +366,72 @@ class RodapeDaAbaTests(_Aba):
         self.assertIn("1 diagrama(s), 0 com miniatura", self.painel.status.text())
 
 
+FEN = "r1bqkbnr/pppppppp/2n5/8/4P3/8/PPPP1PPP/RNBQKBNR"
+
+
+class ComPosicoesTests(unittest.TestCase):
+    """`PaginaLida.com_posicoes`: a FEN do OCR de diagramas entra no bloco pelo `indice`, pura."""
+
+    def test_preenche_pelo_indice_e_devolve_a_propria_pagina_quando_nada_muda(self) -> None:
+        pagina = _pagina()
+        nova = pagina.com_posicoes([FEN])
+        self.assertEqual(nova.diagramas[0].placement, FEN)
+        self.assertEqual(nova.texto(), pagina.texto(), "só o campo de peças muda")
+        self.assertIs(nova.com_posicoes([FEN]), nova)
+        self.assertIs(pagina.com_posicoes([]), pagina)
+        self.assertIs(pagina.com_posicoes([""]), pagina, "não lido não apaga nem muda")
+
+    def test_o_vazio_nao_apaga_o_que_o_bloco_ja_tinha(self) -> None:
+        com = _pagina().com_posicoes([FEN])
+        self.assertEqual(com.com_posicoes([""]).diagramas[0].placement, FEN)
+
+    def test_sobrevive_ao_arquivo(self) -> None:
+        pagina = _pagina().com_posicoes([FEN])
+        volta = PaginaLida.de_json(pagina.para_json())
+        self.assertEqual(volta.diagramas[0].placement, FEN)
+
+
+class PosicoesDoProdutoTests(_Aba):
+    """`definir_posicoes`: a leitura dos diagramas e a do texto chegam em qualquer ordem."""
+
+    def test_a_posicao_que_chega_depois_entra_na_folha_sem_virar_alteracao(self) -> None:
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        self.painel.definir_posicoes(0, [FEN])
+        assert self.painel._pagina is not None
+        self.assertEqual(self.painel._pagina.diagramas[0].placement, FEN)
+        self.assertEqual(self.painel.documento.bloco_de(self.painel.documento.diagramas[0]).placement, FEN)
+        self.assertFalse(self.painel.tem_alteracoes, "a posição é leitura, não edição")
+        self.assertEqual(self.miniaturas(), 1, "o redesenho manteve a miniatura")
+
+    def test_a_posicao_que_chega_antes_espera_a_folha(self) -> None:
+        self.painel.definir_posicoes(0, [FEN])
+        self.painel.definir_posicoes(3, ["8/8/8/8/8/8/8/K6k"])
+        self.painel.mostrar_pagina(_pagina())
+        assert self.painel._pagina is not None
+        self.assertEqual(self.painel._pagina.diagramas[0].placement, FEN, "a folha 1 pega a posição da folha 1")
+
+    def test_outra_folha_nao_mexe_na_que_esta_na_tela(self) -> None:
+        self.painel.mostrar_pagina(_pagina())
+        self.painel.definir_posicoes(5, [FEN])
+        assert self.painel._pagina is not None
+        self.assertEqual(self.painel._pagina.diagramas[0].placement, "")
+
+    def test_a_fen_vai_para_o_cvtxt_e_para_o_md(self) -> None:
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        self.painel.definir_posicoes(0, [FEN])
+        destino = self.pasta / "folha.cvtxt"
+        with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(destino), "")):
+            self.painel.salvar_documento_como()
+        gravado = arquivo.carregar(destino)
+        assert gravado.origem is not None
+        self.assertEqual(gravado.origem.diagramas[0].placement, FEN)
+        md = self.pasta / "folha.md"
+        with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(md), "")):
+            self.painel.exportar_md()
+        self.esperar_a_tarefa()
+        self.assertIn(f"<!-- FEN: {FEN} -->", md.read_text(encoding="utf-8"))
+
+
 class ConfiguracoesDaLeituraTests(unittest.TestCase):
     """A leitura da aba pergunta o DPI e o teto de diagramas às Configurações, como o visualizador.
 

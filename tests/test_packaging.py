@@ -250,8 +250,12 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2078
+    LIMITE = 2079
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.078 -> 2.079 no item 6 da aba Texto (2026-10-08)**: uma linha em `_chegaram_itens` leva
+    o campo de peças de cada diagrama lido à aba Texto (`definir_posicoes`), que até aqui só
+    sabia onde o diagrama está -- é o que põe a FEN no `.cvtxt`, no `.md` e no `.html`.
 
     **2.077 -> 2.078 no porte dos diagramas da aba Texto (2026-10-08)**: uma linha em
     `_pagina_apareceu` -- a aba Texto só sabia a página do visualizador na abertura do livro, e
