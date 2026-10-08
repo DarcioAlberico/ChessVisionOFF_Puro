@@ -31,6 +31,7 @@ A especificação item a item está em [SPEC_TEXTO.md](SPEC_TEXTO.md). O verific
 > | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
+> | S-523 a S-525 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
 
 ---
 
@@ -466,6 +467,54 @@ vale a folha inteira, e o bloco de largura inteira a apagava.
 > queixa; e alimentava `detectar_colunas` com o piso de **caractere** sobre caixas de **linha**,
 > que o multiplica por vinte (ver `leitor.calha_de_linhas`) — ela media a ordenação de livros que
 > ela achava serem de coluna única, diferente do que a produção faz.
+
+**Itens S-523, S-524 e S-525 (2026-10-08), acrescentados a esta fase.** A página de soluções, a
+régua que a S-194 não alcança, e o quadro de largura inteira. Medição e plano em
+`docs/PLANO_COLUNAS_SOLUCOES.md`.
+
+> **A queixa.** A aba Texto lê as páginas «Solutions» do `Yusupov - Build Up Your Chess` como uma
+> coluna só, com as duas intercaladas linha a linha -- ou picadas em tiras estreitas. Medido em
+> 559 páginas de 12 livros: das 84 páginas de soluções, **15** saíam em duas colunas. Nos outros
+> livros a prosa de duas colunas sai certa.
+>
+> **A causa tem duas metades.** O título centralizado e o número de página cruzam a calha -- duas
+> bandas, e a folha tolera uma (`LINHAS_NA_CALHA`) --, e a busca por região reprova o corpo no
+> preenchimento, porque coluna de solução é feita de linha curta; a tira estreita, que se enche com
+> pouco, passa.
+>
+> **S-523: a banda isolada da borda não vota na calha** (spec em `SPEC_TEXTO.md`). Quando a folha
+> inteira não tem calha, até
+> duas bandas em cada borda, isoladas da vizinha por 1,5 passos de entrelinha, saem da projeção, e
+> o corpo é tentado com a mesma régua da folha -- sem preenchimento. Onde a folha acha calha, nada
+> muda. Medido contra a régua da S-194 em 1.090 folhas de 36 livros: **nenhuma piora**, 15 mudam
+> de estrutura (as olhadas são duas colunas de verdade que a folha não achava). Nas soluções do
+> Yusupov, pelo motor da aba: **15 de 84 → 79 de 81**. A regressão conhecida é a legenda de estrelas
+> do `Aagaard - A Matter of Endgame Technique` (p. 546), partida em duas colunas.
+>
+> **S-524: a estrutura de colunas medida contra páginas anotadas à mão** (`cvoff-texto-colunas`,
+> `docs/metrics/colunas_anotadas.json`; spec em `SPEC_TEXTO.md`). A régua da S-194 é cega no Yusupov -- a camada emite as
+> linhas em zigue-zague, e o guarda a descarta --, e foi assim que o defeito ficou meses sem número.
+> Aqui a referência é a diagramação: 42 páginas olhadas com as colunas desenhadas sobre elas, e o
+> portão é **por página** (nenhuma certa pode passar a errar), não por média. Só com a S-523:
+> `camada` 33 de 40, `glifo` 34 de 42 -- e o que faltava estava à vista no relatório: as 8 páginas
+> com o quadro «Scoring» de largura inteira (1 de 8 nos dois motores), as p. 1201/1021 picadas pelo
+> mesmo quadro, e a Neumann p. 40 em três colunas.
+>
+> **S-525: o quadro de largura inteira é região de uma coluna, e corta a folha em trechos**
+> (`text/quadros.py` + `detectar_regioes(quadros=)`; spec em `SPEC_TEXTO.md`). O «Scoring» tem
+> cinco bandas cruzando a calha; a borda cede duas. Tratar
+> qualquer bloco isolado da borda como título foi medido e recusado -- a lista de lances do Chernev
+> também é um bloco separado por espaço. O que só o quadro tem é a **moldura**: no glifo ela chega
+> como uma caixa larga, alta e oca (252 x 87 pt com 9 % de tinta, contra ~45 % de um tabuleiro);
+> na camada é um bloco de imagem largo com linhas dentro que cruzam o meio dela, são a maioria e
+> têm palavras -- as três réguas, cada uma barrando uma imagem larga que não é quadro (a tira de
+> dois diagramas do Nunn, a imagem de fundo de uma lição, o lixo de OCR de um tabuleiro). O trecho
+> curto que o corte deixa (as duas linhas em itálico e o fólio sob o quadro) é de uma coluna.
+> Baseline final (`docs/metrics/texto_colunas{,_glifo}.json`): `glifo` **41 de 42** (Scoring 8 de 8;
+> resta a Neumann p. 40), `camada` 37 de 40 (Scoring 5 de 8: nas outras três a camada junta as
+> duas colunas numa linha, ou está quebrada). A régua da S-194, nas mesmas 1.090 folhas: nenhuma
+> piora contra a produção de antes; contra a S-523 sozinha, duas folhas mudam de estrutura e
+> nenhuma muda de distância.
 
 ---
 

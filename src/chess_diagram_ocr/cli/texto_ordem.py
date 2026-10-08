@@ -176,6 +176,7 @@ def medir_pagina(page: Any) -> Pagina | None:
     from ..text.boxes import Caixa
     from ..text.leitor import calha_de_linhas
     from ..text.pagina import sequencia_de_leitura
+    from ..text.quadros import quadros_da_camada
     from ..text.regioes import colunas_da_folha, detectar_regioes
 
     da_camada = _linhas_da_camada(page)
@@ -189,7 +190,9 @@ def medir_pagina(page: Any) -> Pagina | None:
     # camada, e `piso_de_calha` multiplicaria o piso por vinte -- ver `leitor.calha_de_linhas`,
     # que traz a medição. Era o que esta régua fazia até aqui, e por isso ela via uma coluna em
     # quase toda folha de duas: media a ordenação de um livro que ela achava ser de coluna única.
-    regioes = detectar_regioes(caixas, calha_minima=calha_de_linhas(caixas))
+    # Os quadros de largura inteira da camada entram como na produção (S-525).
+    quadros = [(int(y0), int(y1)) for y0, y1 in quadros_da_camada(page)]
+    regioes = detectar_regioes(caixas, calha_minima=calha_de_linhas(caixas), quadros=quadros)
     nossa = sequencia_de_leitura(caixas, regioes=regioes)
     ordem = []
     for elemento in nossa:

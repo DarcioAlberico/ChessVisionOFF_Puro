@@ -127,6 +127,9 @@ cvoff-texto-transcrever = "chess_diagram_ocr.cli.texto_transcrever:main"
 # PDF. Independente da nossa medicao -- mas em parte do acervo a camada e de OCR, e nao da
 # diagramacao, e ali ela nao arbitra grade de exercicio (S-216).
 cvoff-texto-ordem = "chess_diagram_ocr.cli.texto_ordem:main"
+# A estrutura de colunas contra paginas anotadas a mao (S-524): a regua acima e cega onde a
+# camada e zigue-zague (as solucoes do Yusupov), e o portao daqui e por pagina, nao por media.
+cvoff-texto-colunas = "chess_diagram_ocr.cli.texto_colunas:main"
 # O treino do classificador de caracteres (S-204): varre training_data/, parte por grupo de
 # copia exata, treina, calibra na validacao e grava o par pinado que text/modelo.py exige.
 # O inventario da base de caractere (S-200): varre training_data/, grava o manifesto e o

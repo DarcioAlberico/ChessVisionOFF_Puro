@@ -171,6 +171,7 @@ from . import negrito as _negrito
 from . import notacao as _notacao
 from . import numero as _numero
 from . import paragrafos as _paragrafos
+from . import quadros as _quadros
 from . import regioes as _regioes
 from .binarizacao import binarize
 from .grade import Arranjo
@@ -435,7 +436,12 @@ def segmentar(
         caixas = _boxes.excluir_diagramas(
             caixas, [_retangulo(r) for r in diagramas], escala=escala
         )
-    return (cinza, binaria, escala, caixas, _regioes.detectar_regioes(caixas) if caixas else [])
+    if not caixas:
+        return (cinza, binaria, escala, caixas, [])
+    # **O quadro emoldurado é região de uma coluna** (S-525): a moldura chega aqui como uma caixa
+    # larga, alta e oca, e sem isto ela fecha a calha das soluções em cima dela.
+    quadros = _quadros.molduras_nas_caixas(caixas, binaria, escala=escala)
+    return (cinza, binaria, escala, caixas, _regioes.detectar_regioes(caixas, quadros=quadros))
 
 
 def _arbitro_de_confianca(
@@ -792,6 +798,7 @@ def montar(
     faixas: Sequence[tuple[int, int]] | None = None,
     regioes: Sequence[_regioes.Regiao] | None = None,
     lexico: frozenset[str] = frozenset(),
+    quadros: Sequence[tuple[int, int]] = (),
 ) -> tuple[Coluna, ...]:
     """Linhas e diagramas -> tiras de blocos, na ordem em que a página se lê.
 
@@ -802,7 +809,8 @@ def montar(
     `regioes` é o que o motor de glifo achou nas caixas de caractere (S-507). `faixas` é o atalho
     de quem sabe que a folha é homogênea -- vale como uma região única com essas colunas --, e
     nenhum dos dois é o caminho da camada, que redescobre as regiões nas linhas com o piso de
-    `calha_de_linhas`.
+    `calha_de_linhas` -- e com os `quadros` da camada (`quadros.quadros_da_camada`, em pixels),
+    que só esse caminho usa (S-525).
     """
     from .pagina import Diagrama, sequencia_de_leitura
 
@@ -821,7 +829,9 @@ def montar(
         regioes = [_regiao_unica(caixas, diagramas, tuple(faixas))]
     if regioes is None:
         regioes = (
-            _regioes.detectar_regioes(caixas, calha_minima=calha_de_linhas(caixas)) if caixas else []
+            _regioes.detectar_regioes(caixas, calha_minima=calha_de_linhas(caixas), quadros=quadros)
+            if caixas
+            else []
         )
         de_tira = {
             id(c.caixa): _tira_da_caixa(c.caixa, regioes) for c in cruas
@@ -1249,6 +1259,12 @@ def _ler_pagina_do_livro(
         largura = float(page.rect.width)
         altura = float(page.rect.height)
         cruas = linhas_da_camada(page, escala_px=escala_px) if qual == "camada" else []
+        # Os quadros de largura inteira da camada, para `montar` cortar a folha em volta (S-525).
+        quadros = (
+            [(int(y0 * escala_px), int(y1 * escala_px)) for y0, y1 in _quadros.quadros_da_camada(page)]
+            if qual == "camada"
+            else []
+        )
         margem = [linha for linha in page_margin_lines(page) if linha.text.strip()]
         numero = running_page_number(doc, indice)
         documento = str(getattr(doc, "name", "") or "")
@@ -1330,6 +1346,7 @@ def _ler_pagina_do_livro(
             arranjo=arranjo,
             confiancas=confiancas,
             regioes=regioes,
+            quadros=quadros,
             # O léxico junta a hifenizada da quebra de linha (S-353). Vazio quando `dicionario`
             # está desligado, e aí `montar` não junta nada -- que é o comportamento de antes.
             lexico=_dicionario.carregar() if dicionario else frozenset(),

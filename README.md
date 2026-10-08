@@ -177,7 +177,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **40 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **41 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -309,6 +309,7 @@ cvoff-texto-status --exigir S-181   # portao: codigo 1 se o item nao esta inteir
 # leitura e contada a parte, nao descartada.
 cvoff-texto-ordem --por-livro 5
 cvoff-texto-ordem --baseline docs/metrics/texto_ordem.json   # regressao de ordem e regressao
+cvoff-texto-colunas --baseline docs/metrics/texto_colunas.json   # a estrutura de colunas, pagina a pagina (S-524)
 
 # A direcao em que cada livro numera a grade de exercicios (S-216). A referencia e o numero
 # impresso na pagina, e nao a ordem de emissao: nos livros de grade do acervo a camada e do
@@ -1156,6 +1157,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
 | S-431 a S-440 | [docs/SPEC_REVISAO_EXTERNA.md](docs/SPEC_REVISAO_EXTERNA.md) |
 | S-441 a S-450 | [docs/SPEC_ACABAMENTO.md](docs/SPEC_ACABAMENTO.md) |
+| S-523 a S-525 | [docs/PLANO_COLUNAS_SOLUCOES.md](docs/PLANO_COLUNAS_SOLUCOES.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1209,6 +1211,11 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   o que os pesos treinados em `training_data/` destravaram, as dez etapas ate a pagina lida, o
   portao que decide se as tres ultimas acontecem, e as duas dividas que so a origem dos
   recortes pode pagar -- procedencia e livro
+- [docs/PLANO_COLUNAS_SOLUCOES.md](docs/PLANO_COLUNAS_SOLUCOES.md) -- as colunas da pagina de
+  solucoes (S-523 a S-525): a medicao em 559 paginas de 12 livros, a causa em duas metades (o
+  titulo e o folio na calha; o preenchimento que reprova a coluna de linha curta), as variantes
+  medidas e recusadas, e a execucao -- a borda isolada, a regua anotada `cvoff-texto-colunas` e
+  o quadro de largura inteira
 - [docs/ROADMAP_APARENCIA.md](docs/ROADMAP_APARENCIA.md) -- **Fases 32 a 35**, a leitura das duas
   propostas de interface de `Proposta de interface/` e o plano para adota-las sem aposentar a
   interface de hoje: as duas imagens mostram 4 e 13 comandos onde a janela tem 21 nas barras do
