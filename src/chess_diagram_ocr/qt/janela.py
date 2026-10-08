@@ -1151,6 +1151,7 @@ class JanelaPrincipal(QMainWindow):
         # A galeria acompanha a página, e ela mesma ignora o aviso quando foi ela quem pediu a
         # virada -- senão as duas se chamariam em círculo (S-67).
         self.galeria.sync_to_page(pagina)
+        self.texto.definir_livro(self._pdf, pagina=pagina)  # «Ler folha» lê a folha que está na tela, não a da abertura
         # A anotação de campo é sobre a página exibida: virou a página, ela diz de novo se esta
         # já está anotada e se há amostra de treino dela (S-97).
         self.campo.atualizar()

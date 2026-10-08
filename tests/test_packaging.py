@@ -250,8 +250,12 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2077
+    LIMITE = 2078
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.077 -> 2.078 no porte dos diagramas da aba Texto (2026-10-08)**: uma linha em
+    `_pagina_apareceu` -- a aba Texto só sabia a página do visualizador na abertura do livro, e
+    «Ler folha» lia a folha 1 com a folha 14 na tela; agora cada página desenhada chega à aba.
 
     **2.058 -> 2.077 na crítica da fase 2 (Codex, ciclo 1)**: a tarefa de `_rodar` deixa de ser
     filha da janela (`manter_viva`) -- destruída a correr, o `QThread` abortava o processo se a

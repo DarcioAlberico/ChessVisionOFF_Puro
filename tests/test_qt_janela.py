@@ -532,6 +532,16 @@ class FiacaoTests(_JanelaComLivro):
         janela.galeria.pediu_pagina.emit(0)
         self.assertEqual(janela.pdf.page_index, 0)
 
+    def test_virar_a_pagina_chega_a_aba_texto(self) -> None:
+        """«Ler folha» lê a folha que o visualizador mostra. A aba só sabia a página da abertura
+        do livro: com a folha 14 na tela, lia a 1 -- e a pessoa via o texto da capa."""
+        janela = self.janela()
+        janela.pdf.ir_para_pagina(2)
+        self.assertEqual(janela.texto._pagina_indice, 2)
+        self.assertEqual(janela.texto.campo_de_folha.value(), 3)
+        janela.pdf.ir_para_pagina(0)
+        self.assertEqual(janela.texto.campo_de_folha.value(), 1)
+
     def test_virar_a_pagina_avisa_a_galeria_e_guarda_o_que_estava_no_editor(self) -> None:
         """As duas pontas da virada: o editor guarda **antes**, a galeria acompanha **depois**.
 
