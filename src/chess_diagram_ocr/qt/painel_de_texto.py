@@ -42,6 +42,16 @@ que acontece com a marca do diagrama -- é `rico`; quando a tecla fecha um passo
 `ui/texto_declarado`. Aqui fica o vaivém -- e **sem redesenho por tecla**: o widget já tem a letra,
 o mapa anda junto com ela e só o trecho digitado é repintado. Redesenhar a folha inteira, com as
 miniaturas, é o que o portão de bloqueio da thread da janela não deixaria passar a cada tecla.
+
+**O diagrama é recorte da folha, e a folha vem da leitura.** `ler_pagina` rasteriza a página para
+ler o texto, e a miniatura de cada `[Diagrama N]` é o pedaço dessa mesma imagem no `bbox` do bloco
+-- em pontos, convertidos pelo mesmo DPI dos dois lados (`_recorte_da_folha`). O porte inicial
+descartava a imagem na volta da thread, e a aba mostrava a marca sem figura nenhuma; agora a folha
+é rasterizada **uma vez**, na thread de trabalho (S-352), entregue a `ler_pagina` por `imagem_rgb`
+e guardada para as miniaturas, para os recortes da exportação (`_gravar_recortes`, S-338) e para o
+`.cvtxt` reaberto, que a refaz do livro se ele ainda estiver onde estava (`abrir`). O rascunho
+automático (S-255) e a procedência humana ao gravar (S-239) vieram no mesmo movimento: eles moram
+em `text/rascunho.py` e `text/correcao.py`, e aqui ficam só o relógio de inatividade e a pergunta.
 """
 
 from __future__ import annotations
@@ -54,7 +64,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from PyQt6.QtCore import QEvent, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QKeyEvent, QKeySequence, QTextCursor, QTextDocument
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -83,8 +93,9 @@ from chess_diagram_ocr.qt.imagens import pixmap_de_rgb
 from chess_diagram_ocr.qt.texto_formato import bloco_de, formato_de
 from chess_diagram_ocr.qt.trabalho import Tarefa
 from chess_diagram_ocr.qt.vazio import EstadoVazio
-from chess_diagram_ocr.text import busca, rico
+from chess_diagram_ocr.text import busca, correcao, rascunho, rico
 from chess_diagram_ocr.text.documento import PaginaLida
+from chess_diagram_ocr.text.pagina import BlocoDeDiagrama
 from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, strings, texto_cores, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.texto_declarado import (
@@ -250,10 +261,21 @@ class PainelDeTexto(QWidget):
         pagina: int = 0,
         dpi: int = 220,
         busy: BusyRegistry | None = None,
+        pasta_de_rascunhos: Path | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._busy = busy
+        self._pasta_de_rascunhos: Path | None = pasta_de_rascunhos
+        """Onde o rascunho da S-255 é gravado. `None` usa `text/rascunho.PASTA_PADRAO`; o teste
+        passa uma pasta própria, senão leria `data/rascunhos/` da máquina de quem o roda -- e um
+        rascunho ali abriria a pergunta de recuperação no meio da suíte."""
+        self._rascunho = QTimer(self)
+        """O relógio de **inatividade** do rascunho: cada edição o reinicia, e ele grava alguns
+        segundos depois da última (S-255). Um relógio fixo gravaria no meio da digitação."""
+        self._rascunho.setSingleShot(True)
+        self._rascunho.setInterval(int(rascunho.ESPERA_SEGUNDOS * 1000))
+        self._rascunho.timeout.connect(self.gravar_rascunho)
         """O registro de ocupação (S-112). `None` é a aba montada sozinha num teste.
 
         **As duas operações longas desta aba precisam estar nele**, e no corte do Tk elas quase
@@ -315,6 +337,10 @@ class PainelDeTexto(QWidget):
 
         self._montar()
         self._desenhar()
+        # Toda edição -- tecla ou ferramenta -- reinicia o relógio do rascunho. É o único ouvinte
+        # deste sinal dentro do painel; o `desenhar_documento` de uma folha recém-lida também o
+        # emite, e aí `gravar_rascunho` não grava: não há alteração.
+        self.documento_mudou.connect(self._agendar_rascunho)
 
     # ------------------------------------------------------------------------------ montagem
 
@@ -545,7 +571,7 @@ class PainelDeTexto(QWidget):
             # `Ctrl+Z` teria duas pilhas disputando. Foi um teste que pegou.
             documento.setUndoRedoEnabled(False)
             cursor = QTextCursor(documento)
-            base = tema.fonte_base()
+            base = self._base_da_vista()
             self._base = base
             deslocamento = 0
 
@@ -576,6 +602,23 @@ class PainelDeTexto(QWidget):
             self._redesenhando = False
         if selecao is not None:
             self._devolver_selecao(selecao, rolagem)
+        # A marcação do léxico não é do documento e morre com o `QTextDocument` que saiu: com a
+        # conferência ligada, ela se refaz sobre a folha nova (S-293).
+        if self._conferindo_lexico:
+            self._conferir_lexico(avisar=False)
+
+    def _base_da_vista(self) -> tuple[int, str, str]:
+        """A fonte de base **com o zoom da vista** (S-264).
+
+        O zoom é um degrau somado ao corpo do sistema, e é aqui que ele entra na folha: toda
+        corrida é desenhada por `formato_de` a partir desta base, então aplicá-lo só à fonte do
+        editor -- como o porte fazia -- não mudava letra nenhuma, porque cada trecho sai com o seu
+        corpo explícito. O degrau parte sempre da origem, nunca do que está na tela.
+        """
+        from chess_diagram_ocr.ui import tipografia
+
+        tamanho, proporcional, monoespacada = tema.fonte_base()
+        return tipografia.corpo(self._zoom_da_vista, base=tamanho), proporcional, monoespacada
 
     def _selecao_atual(self) -> tuple[int, int]:
         """`(âncora, ponta)` do cursor, em deslocamento do documento."""
@@ -629,19 +672,7 @@ class PainelDeTexto(QWidget):
         """
         if self._pagina_rgb is None:
             return None
-        bloco = self.documento.bloco_de(corrida)
-        bbox = getattr(bloco, "bbox", None)
-        if bbox is None:
-            return None
-        fator = self._dpi / 72.0
-        altura, largura = self._pagina_rgb.shape[:2]
-        x0 = max(0, int(bbox[0] * fator))
-        y0 = max(0, int(bbox[1] * fator))
-        x1 = min(largura, int(bbox[2] * fator))
-        y1 = min(altura, int(bbox[3] * fator))
-        if x1 <= x0 or y1 <= y0:
-            return None
-        return self._pagina_rgb[y0:y1, x0:x1]
+        return _recorte_da_folha(self._pagina_rgb, self.documento.bloco_de(corrida), dpi=self._dpi)
 
     # -------------------------------------------------------------------------- ferramentas
 
@@ -807,6 +838,7 @@ class PainelDeTexto(QWidget):
         self._digitacao = None
         self.desenhar_documento(rico.de_pagina(pagina))
         self._documento_gravado = self.documento
+        self._rascunho.stop()  # o desenho emitiu `documento_mudou`; a folha recém-lida não tem o que gravar
 
     def texto(self) -> str:
         """O texto puro do documento -- **do documento, e não do widget**.
@@ -1191,12 +1223,49 @@ class PainelDeTexto(QWidget):
             logger.debug("Documento não abriu (%s): %s", origem, erro)
             QMessageBox.critical(self, "Texto", str(erro))
             return
+        self.abrir(doc)
+        self._caminho_do_documento = Path(origem)  # `Salvar` grava de volta aqui (S-343)
+
+    def abrir(self, doc: rico.DocumentoRico, *, folha_rgb: np.ndarray | None = None) -> None:
+        """Põe o documento na tela e recupera o que só o PDF pode dar: as miniaturas (S-238).
+
+        **O PDF ausente não é erro.** O texto abre igual, as miniaturas faltam, e o rodapé diz
+        qual livro não foi encontrado -- a regra de degradação de `ui/theme.py`. O contrário faria
+        uma pasta de trabalho movida de lugar bloquear o acesso ao que se corrigiu nela.
+
+        `folha_rgb` é a folha já renderizada, quando quem chama a tem -- o rascunho recuperado é
+        da folha que acabou de ser lida, e renderizá-la de novo seria pagar duas vezes.
+        """
+        from chess_diagram_ocr.text import arquivo
+
+        self._pagina = doc.origem
+        self._pagina_rgb = folha_rgb
         self._historico.clear()
         self._refeitos.clear()
         self._digitacao = None
+        # Documento novo na tela, arquivo de destino zerado: gravar aqui é a **primeira** vez
+        # deste documento, e "Salvar" volta a perguntar onde (S-343). Quem abriu de um arquivo
+        # repõe o caminho logo depois, em `abrir_documento`.
+        self._caminho_do_documento = None
+        aviso = ""
+        caminho = arquivo.pdf_de(doc)
+        if folha_rgb is None and caminho is not None and doc.origem is not None:
+            if caminho.exists():
+                self._pagina_rgb = _renderizar(caminho, doc.origem.pagina, dpi=self._dpi)
+            else:
+                aviso = f" · o livro {caminho.name} não está no lugar de antes: sem miniaturas"
+        if doc.origem is not None:
+            self._pagina_indice = int(doc.origem.pagina)
+            self.campo_de_folha.setValue(self._pagina_indice + 1)
         self.desenhar_documento(doc)
         self._documento_gravado = self.documento
-        self._caminho_do_documento = Path(origem)  # `Salvar` grava de volta aqui (S-343)
+        self._rascunho.stop()  # como em `mostrar_pagina`: o que veio do disco não tem o que gravar
+        diagramas = len(self.documento.diagramas)
+        figuras = sum(1 for c in self.documento.diagramas if self._recorte(c) is not None)
+        resumo = f"Texto aberto: {len(self.documento.corridas)} trecho(s), {diagramas} diagrama(s)"
+        if diagramas and not aviso:
+            resumo += f" ({figuras} com miniatura)"
+        self.estado.emit(resumo + aviso + ".")
 
     def salvar_documento(self) -> None:
         """Grava o `.cvtxt` **no arquivo já escolhido**, e só pergunta na primeira vez (S-343).
@@ -1225,15 +1294,32 @@ class PainelDeTexto(QWidget):
             if not escolhido:
                 return
             caminho = Path(escolhido)
-        gravado = self.documento
+        # **A marcação é aplicada aqui, e não só no arquivo** (S-239): o que se grava é o que fica
+        # na tela. Ela é derivada da `PaginaLida`, é idempotente, e não toca no que o motor leu --
+        # e o que a mão corrigiu deixa de ser pintado como palpite do motor.
+        gravado = correcao.com_procedencia_humana(self.documento)
         try:
             arquivo.gravar(caminho, gravado)
         except OSError as erro:
             QMessageBox.critical(self, "Texto", f"Não foi possível gravar:\n{erro}")
             return
+        if gravado is not self.documento:
+            # Sem passar pela pilha: a procedência não é edição de ninguém, e um `Ctrl+Z` que a
+            # tirasse devolveria a tinta de "revisar" a um trecho já conferido e gravado.
+            self._digitacao = None
+            self.documento = gravado
+            self._desenhar(selecao=self._selecao_atual())
         self._documento_gravado = gravado
         self._caminho_do_documento = caminho
-        self.estado.emit(f"Texto gravado em {caminho.name}.")
+        # O trabalho chegou a um lugar melhor: o rascunho da S-255 sai.
+        self._rascunho.stop()
+        if self._pagina is not None:
+            rascunho.descartar(self._pagina.documento, self._pagina.pagina, pasta=self._pasta_de_rascunhos)
+        # A conta aparece porque a correção é o que o `.cvtxt` tem de mais caro -- e porque um
+        # número no rodapé é o que faz alguém notar quando ele vem zerado (S-239).
+        feitas = len(correcao.correcoes(gravado))
+        quanto = f" · {feitas} correção(ões) sobre o que o motor leu" if feitas else ""
+        self.estado.emit(f"Texto gravado em {caminho.name}{quanto}.")
 
     @property
     def tem_alteracoes(self) -> bool:
@@ -1247,8 +1333,81 @@ class PainelDeTexto(QWidget):
         return self.documento != self._documento_gravado
 
     def confirmar_fechamento(self) -> bool:
-        """A janela vai fechar: `True` se pode, perguntando antes quando há texto por gravar."""
+        """A janela vai fechar: `True` se pode, perguntando antes quando há texto por gravar.
+
+        **O rascunho vai para o disco antes da pergunta** (S-255): o relógio de inatividade pode
+        não ter disparado, e fechar -- com "Sim", sem tela, ou pela falha que vem a seguir -- é
+        exatamente o momento para o qual ele existe. Gravar de novo o que já está lá não custa.
+        """
+        self.gravar_rascunho()
         return self._confirmar_descarte("Fechar a janela descarta as alterações.", ao_fechar=True)
+
+    # ----------------------------------------------------------- o rascunho automático (S-255)
+
+    def _agendar_rascunho(self) -> None:
+        """Reinicia o relógio: o rascunho é gravado alguns segundos depois da **última** edição."""
+        self._rascunho.start()
+
+    def gravar_rascunho(self) -> Path | None:
+        """Grava o rascunho **se houver o que gravar**. Devolve o caminho, ou `None`.
+
+        Só com alteração por gravar: reescrever o mesmo arquivo a cada quatro segundos é desgaste
+        de disco por nada. E só com folha de origem -- documento sem folha não tem chave estável,
+        e `rascunho.gravar` devolve `None` para ele.
+        """
+        self._rascunho.stop()
+        if not self.tem_alteracoes or self._pagina is None:
+            return None
+        try:
+            return rascunho.gravar(correcao.com_procedencia_humana(self.documento), pasta=self._pasta_de_rascunhos)
+        except OSError as erro:  # noqa: BLE001 - rascunho é rede de segurança, não função
+            logger.debug("Rascunho não pôde ser gravado: %s", erro)
+            return None
+
+    def oferecer_rascunho(self, pagina: PaginaLida) -> bool:
+        """Se houver rascunho daquela folha, **oferece** recuperá-lo. Devolve se recuperou.
+
+        Oferece e não aplica: sobrescrever o que a pessoa acabou de ler com um rascunho de ontem é
+        o contrário do que ela quer. E recusar **não apaga** -- na próxima abertura a oferta volta.
+        Sem tela não há quem responda, e a resposta que não perde nada é a mesma: o rascunho fica.
+        """
+        from chess_diagram_ocr.qt import dialogos
+
+        achado = rascunho.achar(pagina.documento, pagina.pagina, pasta=self._pasta_de_rascunhos)
+        if achado is None:
+            return False
+        if not dialogos.ha_quem_responda():
+            logger.warning("Há um rascunho da folha %d e nenhuma tela para oferecê-lo: ele fica.", pagina.pagina + 1)
+            return False
+        resposta = QMessageBox.question(
+            self,
+            "Texto",
+            rascunho.frase_de_recuperacao(achado),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return False
+        try:
+            doc = rascunho.carregar(achado)
+        except (OSError, ValueError) as erro:  # `arquivo.ArquivoInvalido` é um `ValueError`
+            logger.debug("Rascunho não abriu (%s): %s", achado.caminho, erro)
+            self.estado.emit(f"O rascunho não pôde ser aberto: {erro}")
+            return False
+        # A folha é a que acabou de ser lida: a imagem dela serve, e não se renderiza de novo.
+        self.abrir(doc, folha_rgb=self._pagina_rgb)
+        # **Recuperado é trabalho por gravar, e não trabalho gravado (S-308).** `abrir` iguala o
+        # gravado ao que está na tela -- o certo para um arquivo do disco, e o errado para este,
+        # que veio de um arquivo que a linha seguinte apaga. Sem isto, o texto resgatado de um
+        # travamento voltaria a existir só na memória: as guardas que perguntam antes de descartar
+        # passariam direto, e `gravar_rascunho` sairia sem reescrever nada. O segundo travamento
+        # perderia tudo -- e o recurso existe exatamente para o segundo travamento.
+        self._documento_gravado = rico.de_pagina(pagina)
+        # Recuperado é trabalho que chegou a um lugar melhor -- a tela --, e o arquivo sai.
+        rascunho.descartar(pagina.documento, pagina.pagina, pasta=self._pasta_de_rascunhos)
+        self._agendar_rascunho()
+        self.estado.emit(f"Rascunho de {achado.data_legivel} recuperado.")
+        return True
 
     def _confirmar_descarte(self, o_que: str, *, ao_fechar: bool = False) -> bool:
         """Pergunta antes de jogar fora o que foi editado e não foi gravado. Sem isso, não pergunta.
@@ -1325,7 +1484,12 @@ class PainelDeTexto(QWidget):
         if not destino:
             return
         caminho = Path(destino)
-        doc = self.documento
+        # O que se exporta é o que se grava: com a procedência da mão (S-239) -- o cabeçalho do
+        # `.txt` a declara -- e sem tocar no que está na tela.
+        doc = correcao.com_procedencia_humana(self.documento)
+        folha = self._pagina_rgb
+        dpi = self._dpi
+        com_imagens = bool(getattr(formato, "pasta_de_imagens", ""))
 
         # **Cancelável, e o ponto de corte é antes da escrita** (F9-C2, §7 item 7). A conversão
         # do documento é a parte longa; escrever o arquivo é um `write` só. Então desistir tem um
@@ -1336,7 +1500,10 @@ class PainelDeTexto(QWidget):
         self._cancelar_exportacao = desistir
 
         def _trabalho() -> str:
-            relatorio = exportacao.exportar(doc, formato)
+            # Os recortes dos diagramas saem **antes** do arquivo, na mesma thread: são o que o
+            # `.md` e o `.html` apontam (S-338). Sem folha renderizada a marca sai sozinha.
+            recortes = _gravar_recortes(doc, caminho, folha, dpi=dpi) if com_imagens else {}
+            relatorio = exportacao.exportar(doc, formato, recortes=recortes)
             if desistir.is_set():
                 return CANCELADA
             exportacao.escrever(caminho, relatorio)
@@ -1448,10 +1615,13 @@ class PainelDeTexto(QWidget):
         caminho = self._pdf
         dpi = self._dpi
 
-        def _trabalho() -> PaginaLida:
-            from chess_diagram_ocr.text.leitor import ler_pagina
-
-            return ler_pagina(caminho, indice, dpi=dpi, motor=motor, modo_bloco=bloco)
+        def _trabalho() -> tuple[PaginaLida, np.ndarray | None]:
+            # **A folha é rasterizada uma vez, e aqui (S-352).** `ler_pagina` a renderiza sozinha
+            # quando ninguém lhe dá a imagem, e as miniaturas precisariam dela de novo -- na thread
+            # da janela, que congelava ~355 ms por leitura no outro frontend. O mesmo `dpi` dos
+            # dois lados é o que liga pixel a ponto.
+            imagem = _renderizar(caminho, indice, dpi=dpi)
+            return _ler(caminho, indice, dpi=dpi, motor=motor, modo_bloco=bloco, imagem_rgb=imagem), imagem
 
         self.estado.emit(f"Lendo a folha {indice + 1}…")
         self._registrar_ocupado(
@@ -1465,8 +1635,10 @@ class PainelDeTexto(QWidget):
         self._tarefa.finished.connect(self._soltar_ocupado)
         self._tarefa.start()
 
-    def _leitura_terminou(self, pagina: object) -> None:
+    def _leitura_terminou(self, resultado: object) -> None:
+        """A folha lida voltou da thread -- **e a imagem vem com ela** (S-352)."""
         self._tarefa = None
+        pagina, imagem = resultado if isinstance(resultado, tuple) else (resultado, None)
         assert isinstance(pagina, PaginaLida)
         partida = self._documento_ao_ler
         self._documento_ao_ler = None
@@ -1477,8 +1649,13 @@ class PainelDeTexto(QWidget):
             self.estado.emit("A folha lida ficou de lado: o texto editado durante a leitura continua na tela.")
             return
         self._pagina_indice = int(self.campo_de_folha.value()) - 1
-        self.mostrar_pagina(pagina)
-        self.estado.emit(f"Folha lida: {len(self.documento.corridas)} trecho(s).")
+        self.mostrar_pagina(pagina, folha_rgb=imagem)
+        diagramas = len(pagina.diagramas)
+        figuras = f", {diagramas} diagrama(s)" if diagramas else ""
+        self.estado.emit(f"Folha lida: {len(self.documento.corridas)} trecho(s){figuras}.")
+        # **Depois de desenhar, e não antes**: se a pessoa recusar a oferta, o que fica na tela é
+        # a leitura que ela acabou de pedir (S-255).
+        self.oferecer_rascunho(pagina)
 
     def _leitura_falhou(self, erro: str) -> None:
         self._tarefa = None
@@ -1724,6 +1901,87 @@ class PainelDeTexto(QWidget):
         na paleta e nas três peles -- sem fazer nada, e sem nada acusar (S-240).
         """
         getattr(self, COMANDOS_DA_ABA[acao])()
+
+
+def _renderizar(caminho: Path, indice: int, *, dpi: int) -> np.ndarray | None:
+    """A folha renderizada, de onde saem as miniaturas. `None` quando ela não pôde ser aberta.
+
+    Função do módulo, e não método, por dois motivos: ela roda na thread de trabalho, onde nada
+    do widget pode ser tocado; e o teste a troca por uma folha sintética sem abrir PDF nenhum.
+    """
+    try:
+        from chess_diagram_ocr.pdf_io import render_pdf_page
+
+        return render_pdf_page(caminho, indice, dpi=dpi)
+    except Exception as erro:  # noqa: BLE001 - miniatura é conforto, não função
+        logger.debug("Sem imagem da folha %d para as miniaturas: %s", indice + 1, erro)
+        return None
+
+
+def _ler(
+    caminho: Path, indice: int, *, dpi: int, motor: str, modo_bloco: bool, imagem_rgb: np.ndarray | None
+) -> PaginaLida:
+    """`ler_pagina` com a folha já renderizada. **O `import` do leitor mora aqui** -- ver `ler`."""
+    from chess_diagram_ocr.text.leitor import ler_pagina
+
+    return ler_pagina(caminho, indice, dpi=dpi, motor=motor, modo_bloco=modo_bloco, imagem_rgb=imagem_rgb)  # type: ignore[arg-type]
+
+
+def _recorte_da_folha(folha: np.ndarray, bloco: object, *, dpi: int) -> np.ndarray | None:
+    """O pedaço da folha renderizada em que o bloco está, ou `None` sem `bbox` útil.
+
+    **O bbox do bloco está em pontos e a folha em pixels**, e o fator entre os dois é o DPI com
+    que ela foi renderizada. Usar outro aqui recortaria o lugar errado da folha em silêncio.
+    Pura, e sem Qt: é a mesma função para a miniatura na tela e para o PNG da exportação.
+    """
+    bbox = getattr(bloco, "bbox", None)
+    if bbox is None:
+        return None
+    fator = dpi / 72.0
+    altura, largura = folha.shape[:2]
+    x0 = max(0, int(bbox[0] * fator))
+    y0 = max(0, int(bbox[1] * fator))
+    x1 = min(largura, int(bbox[2] * fator))
+    y1 = min(altura, int(bbox[3] * fator))
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return folha[y0:y1, x0:x1]
+
+
+def _gravar_recortes(
+    doc: rico.DocumentoRico, destino: Path, folha: np.ndarray | None, *, dpi: int
+) -> dict[int, Path]:
+    """Um PNG por diagrama da folha, ao lado do arquivo, e o mapa que `exportar` quer (S-338).
+
+    `diagramas/` ao lado do destino porque é a pasta que os formatos escrevem no caminho da imagem
+    (`Markdown.pasta_de_imagens`). Sem folha renderizada -- documento aberto de arquivo, sem o
+    livro na tela -- devolve `{}`, e a marca sai sozinha, como o relatório conta.
+
+    **Roda na thread de trabalho, e por isso nada de Qt aqui**: o recorte é numpy e o PNG é da
+    Pillow. O `import` fica fora do laço: ele é o mais caro desta função na primeira vez.
+    """
+    blocos = [(corrida.bloco, doc.bloco_de(corrida)) for corrida in doc.corridas if corrida.e_diagrama]
+    if not blocos or folha is None:
+        return {}
+    from PIL import Image
+
+    pasta = destino.parent / "diagramas"
+    recortes: dict[int, Path] = {}
+    for chave, bloco in blocos:
+        if not isinstance(bloco, BlocoDeDiagrama):
+            continue
+        imagem = _recorte_da_folha(folha, bloco, dpi=dpi)
+        if imagem is None:
+            continue
+        try:
+            pasta.mkdir(parents=True, exist_ok=True)
+            arquivo_png = pasta / f"{destino.stem}_d{bloco.indice + 1}.png"
+            Image.fromarray(np.ascontiguousarray(imagem)).convert("RGB").save(arquivo_png)
+        except Exception as erro:  # noqa: BLE001 - recorte é conforto, e a marca sai sem ele
+            logger.debug("Recorte do diagrama %d não gravado: %s", bloco.indice + 1, erro)
+            continue
+        recortes[chave] = arquivo_png
+    return recortes
 
 
 def _no_catalogo(acao: str) -> bool:

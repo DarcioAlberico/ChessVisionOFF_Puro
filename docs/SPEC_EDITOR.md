@@ -2890,6 +2890,31 @@ não só uma limpeza.
 
 ---
 
+## O que o porte para o Qt deixou para trás, e voltou em 2026-10-08
+
+O corte do Tk (S-506) portou a aba Texto para `qt/painel_de_texto.py` com o documento como estado,
+e deixou cinco itens desta spec pela metade. Nenhum deles acusava: a tela estava certa.
+
+| item | o que faltava no Qt | o que entrou |
+|---|---|---|
+| **S-211/S-238 — o diagrama na folha** | `ler` jogava fora a imagem da folha na volta da thread: `mostrar_pagina` só recebia `folha_rgb` dos testes, e no produto todo `[Diagrama N]` aparecia **sem miniatura**. O `.cvtxt` reaberto também não a refazia do livro | a folha é rasterizada **uma vez**, na thread de trabalho (S-352), dada a `ler_pagina` por `imagem_rgb` e guardada; `abrir(doc)` renderiza a folha do livro quando ele ainda está onde estava, e o rodapé diz qual livro falta quando não está. O recorte é uma função pura (`_recorte_da_folha`), a mesma para a tela e para a exportação |
+| **S-250/S-338 — os recortes na exportação** | `exportar` recebia `recortes=` vazio: o `.md` e o `.html` saíam com `![Diagrama 1]()` de alvo vazio, e o relatório contava "sem recorte" sobre uma folha que estava na tela | `_gravar_recortes` escreve um PNG por diagrama em `diagramas/` ao lado do arquivo, na thread de exportação, só para os formatos com `pasta_de_imagens` |
+| **S-255 — o rascunho automático** | não existia no Qt: o texto digitado vivia só na memória até o Salvar | `QTimer` de inatividade (`ESPERA_SEGUNDOS`) reiniciado por `documento_mudou`; `gravar_rascunho` só com `tem_alteracoes` e folha de origem; `oferecer_rascunho` depois da leitura, sem tela o rascunho fica; recuperar apaga o arquivo e deixa o texto **por gravar** (S-308); `confirmar_fechamento` grava antes de perguntar; salvar apaga. O painel recebeu `pasta_de_rascunhos=`, pela razão de sempre |
+| **S-239 — a procedência da mão** | o `.cvtxt` gravado dizia `glifo` sobre o que a pessoa tinha corrigido, e o rodapé não contava correção nenhuma | `_salvar_documento_em`, `gravar_rascunho` e `_exportar` passam por `correcao.com_procedencia_humana`; o gravado **fica na tela** (sem entrar na pilha), e o rodapé conta as correções. **E a faixa vai junto**: `com_procedencia_humana` passou a pôr `tranquilo` na corrida que carimba de `humano` -- antes a tinta de "revisar" ficava sobre o trecho conferido, na tela e no arquivo reaberto, porque a faixa é decidida uma vez em `de_pagina` |
+| **S-264 e S-293 — o zoom e o léxico** | o zoom trocava a fonte do editor e redesenhava, mas cada trecho sai com corpo explícito de `formato_de`: **nenhuma letra mudava**. A conferência do léxico tinha o interruptor e nenhum redesenho a chamava | `_base_da_vista` soma o degrau à fonte do sistema e é a base de todo desenho e de toda tecla; `_desenhar` refaz a marcação do léxico quando ela está ligada |
+
+**Testes.** `tests/test_qt_texto_diagramas.py` (a leitura traz a miniatura; sem imagem a marca fica;
+reabrir com e sem o livro; `.md`/`.html` com o PNG e `.txt` sem; o recorte puro; o zoom chega à
+letra desenhada e à digitada; o negrito não apaga as marcas do léxico);
+`tests/test_qt_texto_rascunho.py` (grava só com o que gravar; a tecla e a ferramenta reagendam; o
+relógio grava; sem folha de origem não há rascunho; fechar grava antes de perguntar, com e sem tela;
+reabrir oferece e não aplica; aceitar traz e apaga; recusar não apaga; o recuperado continua por
+gravar; outra folha não é oferecida; salvar apaga o rascunho e carimba arquivo e tela; a marcação
+não entra na pilha; o rascunho e a exportação saem carimbados sem tocar na tela);
+`tests/test_texto_correcoes.py::CarimboTests::test_a_corrida_editada_deixa_de_pedir_revisao`.
+
+---
+
 # O que esta spec deliberadamente não faz
 
 | não faz | por quê |

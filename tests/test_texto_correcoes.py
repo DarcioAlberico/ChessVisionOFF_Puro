@@ -49,6 +49,15 @@ class CarimboTests(unittest.TestCase):
         marcado = correcao.com_procedencia_humana(_editado(doc, 0, "Black's move"))
         self.assertEqual(marcado.corridas[0].procedencia, "humano")
 
+    def test_a_corrida_editada_deixa_de_pedir_revisao(self) -> None:
+        """A faixa vai junto: a cor da letra é a faixa, e ela não pode dizer "revisar" sobre o
+        que uma pessoa acabou de conferir -- nem na tela, nem no `.cvtxt` reaberto."""
+        doc = rico.de_pagina(_pagina(_texto("Black,s move", confianca=0.1), _texto("intacto", confianca=0.1)))
+        self.assertEqual([c.faixa for c in doc.corridas if c.tipo == rico.TEXTO], ["revisar", "revisar"])
+        marcado = correcao.com_procedencia_humana(_editado(doc, 0, "Black's move"))
+        por_bloco = {c.bloco: c.faixa for c in marcado.corridas if c.tipo == rico.TEXTO}
+        self.assertEqual(por_bloco, {0: "tranquilo", 1: "revisar"})
+
     def test_a_corrida_intocada_mantem_o_motor(self) -> None:
         doc = rico.de_pagina(_pagina(_texto("intacto")))
         self.assertEqual(correcao.com_procedencia_humana(doc).corridas[0].procedencia, "glifo")

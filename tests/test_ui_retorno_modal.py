@@ -47,8 +47,15 @@ ARQUIVOS_DE_UI = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")
 )
 """Mesmo recorte do `test_strings` e do `test_busy`: a interface, e o que a monta."""
 
-LIMITE = 47
+LIMITE = 48
 """Quantas caixas modais a interface ainda abre.
+
+**47 -> 48 no porte do rascunho da aba Texto para o Qt (2026-10-08)**, e a nova é a pergunta de
+recuperação do rascunho da S-255 -- a mesma que o `texto_panel` do Tk fazia (ver "48 -> 49 na
+S-255" abaixo) e que o corte da S-506 tinha deixado para trás junto com o rascunho inteiro. Ela
+é decisão pela régua da tabela: o que está na tela muda conforme a resposta, e a resposta não pode
+ser adivinhada -- por isso a pergunta diz a data, e por isso recusar não apaga nada. Sem tela
+(`dialogos.ha_quem_responda`) ela não aparece, e o rascunho fica.
 
 **46 -> 47 na fase 1 do OCR_UI ciclo 2 (A7)**, e a nova é decisão pela régua da linha 4 da tabela:
 `qt/dialogos.perguntar_descarte` pergunta antes de **apagar trabalho humano** -- fechar a janela ou
