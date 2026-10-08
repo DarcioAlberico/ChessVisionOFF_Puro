@@ -441,6 +441,7 @@ class JanelaPrincipal(QMainWindow):
         self.principal.adicionar_modo(abas.REVISAO, self.revisao)
 
         self.texto = PainelDeTexto(busy=self.busy, parent=self.principal)
+        self.texto.diagrama_ativado.connect(self._estudar_do_texto)  # duplo clique na miniatura (item 8)
         self.principal.adicionar_modo(abas.TEXTO, self.texto)
 
         self.dataset = PainelDoDataset(
@@ -1563,6 +1564,13 @@ class JanelaPrincipal(QMainWindow):
         self._estudar_ao_ler = (self.pdf.page_index, indice)
         if self._tarefa is None:
             self.ler_pagina(selecionar_depois=indice)
+
+    def _estudar_do_texto(self, pagina: int, indice: int) -> None:
+        """Duplo clique numa miniatura da aba Texto: o mesmo destino do duplo clique na caixa (item 8)."""
+        if pagina == self.pdf.page_index:
+            self._estudar_a_caixa(indice)
+        else:
+            self._dizer(f"A folha da aba Texto é a {pagina + 1}; a tela está na {self.pdf.page_index + 1}.")
 
     def _levar_ao_estudo(self) -> None:
         """Abre na sala o diagrama selecionado no Resultado e traz a aba -- se houver posição."""

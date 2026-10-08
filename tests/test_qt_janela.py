@@ -542,6 +542,22 @@ class FiacaoTests(_JanelaComLivro):
         janela.pdf.ir_para_pagina(0)
         self.assertEqual(janela.texto.campo_de_folha.value(), 1)
 
+    def test_o_duplo_clique_na_miniatura_da_aba_texto_leva_o_diagrama_a_sala(self) -> None:
+        """O mesmo destino do duplo clique na caixa do visualizador (item 8)."""
+        janela = self.janela()
+        janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
+        janela.texto.diagrama_ativado.emit(0, 1)
+        self.assertIs(janela.abas.area_atual(), janela.estudo)
+        self.assertEqual(janela.painel.lista.currentRow(), 1)
+
+    def test_a_miniatura_de_outra_folha_nao_estuda_nada_e_diz_por_que(self) -> None:
+        janela = self.janela()
+        janela._chegaram_itens(0, [self._diagrama(0)], None)
+        with mock.patch.object(janela, "_estudar_a_caixa") as estudar:
+            janela.texto.diagrama_ativado.emit(2, 0)
+        estudar.assert_not_called()
+        self.assertIn("folha da aba Texto é a 3", janela.rodape.mensagem())
+
     def test_a_posicao_de_cada_diagrama_lido_chega_a_aba_texto(self) -> None:
         """A aba Livro lê a posição; a aba Texto só sabia onde o diagrama está (item 6)."""
         janela = self.janela()

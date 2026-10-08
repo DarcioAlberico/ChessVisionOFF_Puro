@@ -25,6 +25,7 @@ from chess_diagram_ocr.text import arquivo, rico
 from chess_diagram_ocr.text.pagina import BlocoDeDiagrama, BlocoDeTexto, Coluna, LinhaLida, PaginaLida
 
 if TEM_PYQT:
+    from PyQt6.QtCore import Qt
     from PyQt6.QtGui import QTextCursor
     from PyQt6.QtWidgets import QFileDialog
 
@@ -474,6 +475,45 @@ class DesenhadaDaPosicaoTests(_Aba):
         self.painel.mostrar_pagina(_pagina())
         self.assertEqual(self.miniaturas(), 0)
         self.assertIsNone(qt_texto._png_da_posicao("", lado_px=100))
+
+
+class CliqueNaMiniaturaTests(_Aba):
+    """O clique na miniatura seleciona a marca; o duplo clique pede o diagrama na sala (item 8)."""
+
+    def ponto_da_miniatura(self) -> object:
+        from PyQt6.QtCore import QPoint
+
+        texto = self.painel.editor.toPlainText()
+        cursor = QTextCursor(self.painel.editor.document())
+        cursor.setPosition(texto.index(OBJETO))
+        caixa = self.painel.editor.cursorRect(cursor)
+        return QPoint(caixa.left() + 12, caixa.top() + 12)
+
+    def test_o_clique_seleciona_a_marca_do_diagrama(self) -> None:
+        from PyQt6.QtTest import QTest
+
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        QTest.mouseClick(self.painel.editor.viewport(), Qt.MouseButton.LeftButton, pos=self.ponto_da_miniatura())
+        self.assertEqual(self.painel.editor.textCursor().selectedText(), "[Diagrama 1]")
+        self.assertEqual(self.painel._selecao_atual(), (self.painel.texto().index("[Diagrama 1]"), self.painel.texto().index("]") + 1))
+
+    def test_o_clique_fora_da_miniatura_e_do_editor(self) -> None:
+        from PyQt6.QtCore import QPoint
+        from PyQt6.QtTest import QTest
+
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        QTest.mouseClick(self.painel.editor.viewport(), Qt.MouseButton.LeftButton, pos=QPoint(4, 4))
+        self.assertEqual(self.painel.editor.textCursor().selectedText(), "")
+        self.assertIsNone(self.painel._marca_sob(QPoint(4, 4)))
+
+    def test_o_duplo_clique_pede_o_diagrama_na_sala(self) -> None:
+        from PyQt6.QtTest import QTest
+
+        self.painel.mostrar_pagina(_pagina(livro="livro.pdf"), folha_rgb=_folha())
+        pedidos: list[tuple[int, int]] = []
+        self.painel.diagrama_ativado.connect(lambda folha, indice: pedidos.append((folha, indice)))
+        QTest.mouseDClick(self.painel.editor.viewport(), Qt.MouseButton.LeftButton, pos=self.ponto_da_miniatura())
+        self.assertEqual(pedidos, [(0, 0)])
 
 
 class ConfiguracoesDaLeituraTests(unittest.TestCase):

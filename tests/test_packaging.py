@@ -250,8 +250,13 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2079
+    LIMITE = 2087
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.079 -> 2.087 no item 8 da aba Texto (2026-10-08)**: o duplo clique numa miniatura da aba
+    Texto leva o diagrama à sala de estudo pelo mesmo caminho do duplo clique na caixa do
+    visualizador (`_estudar_do_texto`, que confere se a folha é a da tela e senão diz qual é
+    qual) -- a ligação do sinal e o método de seis linhas.
 
     **2.078 -> 2.079 no item 6 da aba Texto (2026-10-08)**: uma linha em `_chegaram_itens` leva
     o campo de peças de cada diagrama lido à aba Texto (`definir_posicoes`), que até aqui só

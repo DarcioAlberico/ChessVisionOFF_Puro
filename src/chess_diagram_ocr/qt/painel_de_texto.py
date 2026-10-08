@@ -64,8 +64,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from PyQt6.QtCore import QEvent, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QKeyEvent, QKeySequence, QPixmap, QTextCursor, QTextDocument, QTextImageFormat
+from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import (
+    QKeyEvent,
+    QKeySequence,
+    QMouseEvent,
+    QPixmap,
+    QTextCursor,
+    QTextDocument,
+    QTextImageFormat,
+)
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -254,6 +262,10 @@ class PainelDeTexto(QWidget):
 
     documento_mudou = pyqtSignal()
     """A folha foi editada. A janela usa para saber que há o que gravar."""
+
+    diagrama_ativado = pyqtSignal(int, int)
+    """Duplo clique numa miniatura: `(folha 0-based, índice do diagrama)`. A janela leva o
+    diagrama à sala de estudo, como o duplo clique na caixa do visualizador (item 8)."""
 
     def __init__(
         self,
@@ -2004,7 +2016,71 @@ class PainelDeTexto(QWidget):
                     return True
         if a0 is self.editor.viewport() and a1 is not None and a1.type() == QEvent.Type.Resize:
             self.vazio.setGeometry(self.editor.viewport().rect())
+        if a0 is self.editor.viewport() and isinstance(a1, QMouseEvent) and a1.button() == Qt.MouseButton.LeftButton:
+            ponto = a1.position().toPoint()
+            if a1.type() == QEvent.Type.MouseButtonPress and self._clicou_na_miniatura(ponto):
+                return True
+            if a1.type() == QEvent.Type.MouseButtonDblClick and self._ativou_a_miniatura(ponto):
+                return True
         return super().eventFilter(a0, a1)  # type: ignore[arg-type]
+
+    # ------------------------------------------------------------------- a miniatura (item 8)
+
+    def _marca_sob(self, ponto: QPoint) -> tuple[int, int, rico.Corrida] | None:
+        """A marca `[Diagrama N]` da miniatura que está sob o ponto: `(começo, fim, corrida)`.
+
+        A miniatura é um caractere do widget que não existe no documento (`_Mapa`); a marca dela
+        vem logo depois, no bloco seguinte. O cursor que o Qt dá para o ponto cai antes ou depois
+        do caractere da imagem, e por isso se sondam os dois.
+        """
+        documento = self.editor.document()
+        if documento is None:
+            return None
+        posicao = self.editor.cursorForPosition(ponto).position()
+        for p in (posicao, posicao - 1):
+            if p < 0:
+                continue
+            sonda = QTextCursor(documento)
+            sonda.setPosition(p + 1)  # `charFormat` é o do caractere **antes** do cursor: o `p`
+            if sonda.position() != p + 1 or not sonda.charFormat().isImageFormat():
+                continue
+            deslocamento = self._mapa.deslocamento(p + 2)
+            comeco = 0
+            for corrida in self.documento.corridas:
+                fim = comeco + len(corrida.texto)
+                if corrida.e_diagrama and comeco <= deslocamento < fim:
+                    return comeco, fim, corrida
+                comeco = fim
+        return None
+
+    def _clicou_na_miniatura(self, ponto: QPoint) -> bool:
+        """O clique na miniatura seleciona a marca dela: é a marca que se apaga, move e copia.
+
+        Sem isto o clique punha o cursor ao lado de um caractere invisível, e a pessoa apagava a
+        figura sem apagar o diagrama (`_trocado` avisa, mas avisar é o segundo melhor).
+        """
+        achado = self._marca_sob(ponto)
+        if achado is None:
+            return False
+        comeco, fim, _corrida = achado
+        cursor = self.editor.textCursor()
+        cursor.setPosition(self._mapa.posicao(comeco))
+        cursor.setPosition(self._mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
+        self.editor.setTextCursor(cursor)
+        self.editor.setFocus()
+        return True
+
+    def _ativou_a_miniatura(self, ponto: QPoint) -> bool:
+        """O duplo clique na miniatura pede o diagrama na sala de estudo (`diagrama_ativado`)."""
+        achado = self._marca_sob(ponto)
+        if achado is None or self._pagina is None:
+            return False
+        bloco = self.documento.bloco_de(achado[2])
+        indice = getattr(bloco, "indice", None)
+        if indice is None:
+            return False
+        self.diagrama_ativado.emit(int(self._pagina.pagina), int(indice))
+        return True
 
     def _mostrar_vazio(self) -> None:
         """Mostra o estado vazio enquanto não há folha nenhuma no editor (F9-C2, §7 item 14).
