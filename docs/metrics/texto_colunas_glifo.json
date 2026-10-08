@@ -1,0 +1,631 @@
+{
+  "motor": "glifo",
+  "dpi": 220,
+  "paginas_anotadas": 42,
+  "paginas_medidas": 42,
+  "acertos": 41,
+  "por_grupo": {
+    "coluna_unica": {
+      "paginas": 4,
+      "acertos": 4
+    },
+    "lances": {
+      "paginas": 6,
+      "acertos": 6
+    },
+    "picada": {
+      "paginas": 3,
+      "acertos": 3
+    },
+    "prosa": {
+      "paginas": 8,
+      "acertos": 7
+    },
+    "scoring": {
+      "paginas": 8,
+      "acertos": 8
+    },
+    "solucoes": {
+      "paginas": 13,
+      "acertos": 13
+    }
+  },
+  "paginas": [
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 1917,
+      "grupo": "solucoes",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": "a pagina da queixa: titulo e folio cruzam a calha"
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 1020,
+      "grupo": "solucoes",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 2422,
+      "grupo": "solucoes",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 2367,
+      "grupo": "solucoes",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 744,
+      "grupo": "solucoes",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 2217,
+      "grupo": "solucoes",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 2378,
+      "grupo": "solucoes",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 2423,
+      "grupo": "solucoes",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 2002,
+      "grupo": "solucoes",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 64,
+      "grupo": "solucoes",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": "a camada e zigue-zague: a regua da S-194 nao a mede"
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 966,
+      "grupo": "solucoes",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 1337,
+      "grupo": "solucoes",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 2501,
+      "grupo": "solucoes",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 622,
+      "grupo": "picada",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": "saia em 6 tiras"
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 1446,
+      "grupo": "picada",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": "a corrida de baixo, de 12 bandas, saia com 4 faixas"
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 2003,
+      "grupo": "picada",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 1201,
+      "grupo": "scoring",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": "soluções em cima, quadro Scoring de largura inteira embaixo; saia em 7 tiras"
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 1021,
+      "grupo": "scoring",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 837,
+      "grupo": "scoring",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 131,
+      "grupo": "scoring",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 1229,
+      "grupo": "scoring",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 1351,
+      "grupo": "scoring",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 2232,
+      "grupo": "scoring",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": "poucas soluções em cima do quadro"
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 2269,
+      "grupo": "scoring",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 74,
+      "grupo": "lances",
+      "esperado": 1,
+      "achado": 1,
+      "regioes": [
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": "prosa de coluna unica com lista de lances; a margem da prosa alinha com a coluna das pretas (o caso do PREENCHIMENTO_DA_COLUNA)"
+    },
+    {
+      "pdf": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 172,
+      "grupo": "lances",
+      "esperado": 1,
+      "achado": 1,
+      "regioes": [
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 184,
+      "grupo": "lances",
+      "esperado": 1,
+      "achado": 1,
+      "regioes": [
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+      "pagina": 196,
+      "grupo": "lances",
+      "esperado": 1,
+      "achado": 1,
+      "regioes": [
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "La_Combinacion_En_El_Ajedrez_Constantin_Dobonov_83p,1974_OCR.pdf",
+      "pagina": 13,
+      "grupo": "lances",
+      "esperado": 1,
+      "achado": 1,
+      "regioes": [
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": "lista de lances em duas colunas de lance, centrada, dentro de prosa de coluna unica"
+    },
+    {
+      "pdf": "La_Combinacion_En_El_Ajedrez_Constantin_Dobonov_83p,1974_OCR.pdf",
+      "pagina": 79,
+      "grupo": "lances",
+      "esperado": 1,
+      "achado": 1,
+      "regioes": [
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Nunn J. Secrets of Minor Piece Endings.pdf",
+      "pagina": 41,
+      "grupo": "prosa",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        2
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Nunn J. Secrets of Minor Piece Endings.pdf",
+      "pagina": 91,
+      "grupo": "prosa",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        2
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "Koblenz - El dominio del arte de la combinacion (1978).pdf",
+      "pagina": 51,
+      "grupo": "prosa",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        2
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": "scan"
+    },
+    {
+      "pdf": "Koblenz - El dominio del arte de la combinacion (1978).pdf",
+      "pagina": 31,
+      "grupo": "prosa",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        2
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "AAGAARD - Practical Chess Defence.pdf",
+      "pagina": 247,
+      "grupo": "prosa",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "Neumann - Traité élémentaire du jeu des échecs (1870).pdf",
+      "pagina": 40,
+      "grupo": "prosa",
+      "esperado": 2,
+      "achado": 3,
+      "regioes": [
+        3
+      ],
+      "acerto": false,
+      "motivo": "",
+      "nota": "duas colunas de lances e prosa; a folha inteira nao achava a calha"
+    },
+    {
+      "pdf": "Neumann - Traité élémentaire du jeu des échecs (1870).pdf",
+      "pagina": 61,
+      "grupo": "prosa",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "Gunderam - Neue Eröffnungswege Ein Schach-Praktikum (1961).pdf",
+      "pagina": 26,
+      "grupo": "prosa",
+      "esperado": 2,
+      "achado": 2,
+      "regioes": [
+        1,
+        2,
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": ""
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 61,
+      "grupo": "coluna_unica",
+      "esperado": 1,
+      "achado": 1,
+      "regioes": [
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": "licao"
+    },
+    {
+      "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+      "pagina": 8,
+      "grupo": "coluna_unica",
+      "esperado": 1,
+      "achado": 1,
+      "regioes": [
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": "chave de simbolos"
+    },
+    {
+      "pdf": "📚Silman J. The Complete Book of Chess Strategy.pdf",
+      "pagina": 41,
+      "grupo": "coluna_unica",
+      "esperado": 1,
+      "achado": 1,
+      "regioes": [
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": "sem camada de texto: so o glifo mede"
+    },
+    {
+      "pdf": "Simple Chess - Stean, M_.pdf",
+      "pagina": 31,
+      "grupo": "coluna_unica",
+      "esperado": 1,
+      "achado": 1,
+      "regioes": [
+        1
+      ],
+      "acerto": true,
+      "motivo": "",
+      "nota": "sem camada de texto: so o glifo mede"
+    }
+  ],
+  "sem_medida": [],
+  "nao_encontradas": []
+}

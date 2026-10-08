@@ -97,6 +97,46 @@ que calham de se alinhar vira coluna. A busca por região multiplica as chances 
 **toda** janela de bandas da folha, e não só a folha --, então o piso de bandas é o mesmo 12 e a
 faixa achada ainda tem de sobreviver à `COLUNA_MINIMA`. Uma corrida cuja calha se funde de volta
 numa coluna só é descartada: partir a folha para não achar coluna nenhuma é custo sem ganho.
+
+## A banda isolada da borda não vota na calha (S-523)
+
+A folha inteira tolera **uma** banda na calha, e a página de soluções do `Yusupov - Build Up Your
+Chess` tem **duas**: o título centralizado («Solutions») e o número de página, que cai no meio da
+calha. A folha é recusada, a busca por região acha o corpo -- e o reprova no preenchimento, porque
+coluna de solução é feita de linha curta («1.♗h3!», «(1 point)» encostado à direita). Medido em
+2026-10-06 (`docs/PLANO_COLUNAS_SOLUCOES.md`): das 84 páginas de soluções medidas, **15** saíam em
+duas colunas; as outras saíam com as colunas intercaladas, ou picadas em tiras estreitas, que o
+preenchimento aprova por se encherem com pouco.
+
+A régua: quando a folha inteira não tem calha, até `BORDA_MAX` bandas em cada borda que estejam
+**isoladas** -- separadas da vizinha por um vão de `VAO_DE_BORDA` passos medianos entre bandas --
+saem da projeção, e o corpo que sobra é tentado com a **mesma** régua da folha inteira, sem
+preenchimento. As bandas de borda viram regiões de uma coluna. Onde a folha inteira acha calha, nada
+muda: é o mesmo princípio que preservou a S-190 na S-507.
+
+    Yusupov, páginas de soluções em duas colunas     15 de 84  ->  79 de 81   (vão 1,5)
+                                                                  77 de 81   (vão 2,0)
+    régua da S-194, 1.090 folhas de 36 livros         0 pioram; 15 mudam de estrutura (vão 1,5)
+
+Das 15 que mudam, as olhadas são duas colunas de verdade que a folha não achava (Neumann p. 40 e
+61, Gunderam p. 26) e uma grade de diagramas (Журавлев p. 88), assunto da S-216. **A regressão
+conhecida** é a legenda de estrelas do `Aagaard - A Matter of Endgame Technique` (p. 546): as
+estrelas numa coluna e a descrição noutra -- o que a régua de folha já fazia em qualquer página
+assim sem título; esta régua só estende a dela ao corpo. O que a borda **não** resolve é o quadro de
+largura inteira com muitas bandas: o «Scoring» de fim de capítulo, que é a S-525.
+
+## O quadro já achado corta a folha em trechos (S-525)
+
+O quadro de largura inteira -- o «Scoring», cinco bandas emolduradas cruzando a calha -- chega aqui
+já achado por `text/quadros.py` (a moldura oca no glifo, a imagem com linhas centradas na camada),
+como intervalo de `y`. A banda cujo topo cai nele é região de uma coluna, e cada trecho da folha
+entre quadros passa pela régua de sempre por conta própria: folha (o trecho) inteira, depois a
+borda da S-523, depois a busca por região. **O trecho curto que o corte deixa é de uma coluna**:
+abaixo do «Scoring» sobram duas linhas em itálico e o fólio, e com três bandas o espaço entre
+palavras que calha de se alinhar vira calha -- é o piso de `BANDAS_NA_REGIAO` pelo mesmo motivo.
+Medido no conjunto anotado da S-524: pelo glifo, o motor da aba, as páginas com «Scoring» vão de
+2 de 8 a **8 de 8** (41 de 42 no conjunto); pela camada, 5 de 8 -- nas outras três a própria camada
+junta as duas colunas numa linha, ou está quebrada. A régua da S-194 não piora folha nenhuma.
 """
 
 from __future__ import annotations
@@ -136,6 +176,21 @@ divergir seria duas respostas para ela.
 é frouxidão: a janela de doze é a população sobre a qual a tolerância da S-190 foi medida, e
 descontá-la aqui mediria a calha com uma régua e a região com outra."""
 
+BORDA_MAX = 2
+"""Quantas bandas, no máximo, cada borda da folha pode ceder ao corpo (S-523). Ver o cabeçalho.
+
+Duas: o título e, quando há, um subtítulo ou o cabeçalho corrente. Um **bloco** na borda -- o
+quadro «Scoring», uma lista de lances separada do texto por espaço -- não é título, e tratá-lo como
+tal parte a lista de lances do `Melhores Finais de Capablanca` (p. 172) em duas colunas: medido e
+recusado no plano."""
+
+VAO_DE_BORDA = 1.5
+"""O vão que isola uma banda de borda, em passos medianos entre as bandas da folha (S-523).
+
+Varrido em 1,5, 2,0 e 2,5 contra a régua da S-194: nenhum piora folha com referência confiável. O
+1,5 é o que alcança as três páginas de duas colunas olhadas que o 2,0 não alcança (Neumann p. 40 e
+61, Gunderam p. 26), e leva as soluções do Yusupov a 79 de 81."""
+
 
 @dataclass(frozen=True)
 class Regiao:
@@ -158,12 +213,21 @@ class Regiao:
         return len(self.colunas) < 2
 
 
-def detectar_regioes(caixas: Sequence[Caixa], *, calha_minima: int | None = None) -> list[Regiao]:
+def detectar_regioes(
+    caixas: Sequence[Caixa],
+    *,
+    calha_minima: int | None = None,
+    quadros: Sequence[tuple[int, int]] = (),
+) -> list[Regiao]:
     """As regiões horizontais da folha, de cima para baixo. Uma só quando a folha é homogênea.
 
     `calha_minima=None` deriva o piso de `colunas.piso_de_calha`, que é o certo quando as caixas
     são **caracteres**. Quem só tem caixas de linha passa o piso de `leitor.calha_de_linhas` --
     ver a docstring de lá, que traz o número.
+
+    `quadros` são intervalos de `y` (na unidade das caixas) de quadros de largura inteira já
+    achados -- `text/quadros.py` (S-525). A banda cujo topo cai num quadro é região de uma
+    coluna, e cada trecho da folha entre quadros passa pela régua de sempre por conta própria.
     """
     if not caixas:
         return []
@@ -182,8 +246,98 @@ def detectar_regioes(caixas: Sequence[Caixa], *, calha_minima: int | None = None
 
     mascaras = [_mascara(grupo, x_min, largura) for grupo in grupos]
     cortadas: list[tuple[int, int, tuple[tuple[int, int], ...]]] = []
-    _cortar(mascaras, 0, len(grupos), x_min, x_max, calha_minima, cortadas)
+    topos = [min(c.y1 for c in grupo) for grupo in grupos]
+    no_quadro = [any(y1 <= topo <= y2 for y1, y2 in quadros) for topo in topos]
+    cortada = any(no_quadro)
+    k = 0
+    while k < len(grupos):
+        m = k + 1
+        while m < len(grupos) and no_quadro[m] == no_quadro[k]:
+            m += 1
+        # **O trecho curto que um quadro deixa é de uma coluna.** Abaixo do «Scoring» sobram
+        # duas linhas em itálico e o fólio: com três bandas, o espaço entre palavras que calha
+        # de se alinhar vira calha, e o rodapé saía em quatro "colunas". É o mesmo piso de
+        # `BANDAS_NA_REGIAO`, pelo mesmo motivo; a folha sem quadro nenhum não passa por aqui.
+        if no_quadro[k] or (cortada and m - k < BANDAS_NA_REGIAO):
+            cortadas.append((k, m, ((x_min, x_max),)))
+        else:
+            _trecho(mascaras, grupos, k, m, x_min, x_max, calha_minima, cortadas)
+        k = m
     return _com_cortes_em_y(_fundir_iguais(cortadas), grupos, y_min, y_max)
+
+
+def _trecho(
+    mascaras: list[np.ndarray],
+    grupos: Sequence[Sequence[Caixa]],
+    a: int,
+    b: int,
+    x_min: int,
+    x_max: int,
+    calha_minima: int,
+    saida: list[tuple[int, int, tuple[tuple[int, int], ...]]],
+) -> None:
+    """As regiões das bandas `[a, b)`, pela régua de sempre: a folha (aqui, o trecho) inteira
+    primeiro; sem calha nela, o corpo sem as bordas isoladas (S-523); sem calha nele, a busca
+    por região (S-507)."""
+    corpo = _corpo_sem_as_bordas(mascaras[a:b], grupos[a:b], x_min, x_max, calha_minima)
+    if corpo is None:
+        _cortar(mascaras, a, b, x_min, x_max, calha_minima, saida)
+        return
+    i, j, cortes, faixas = corpo
+    if i:
+        saida.append((a, a + i, ((x_min, x_max),)))
+    _quebrar_nas_transversais(mascaras, a + i, a + j, x_min, x_max, cortes, faixas, calha_minima, saida)
+    if a + j < b:
+        saida.append((a + j, b, ((x_min, x_max),)))
+
+
+def _bandas_isoladas_nas_bordas(grupos: Sequence[Sequence[Caixa]]) -> tuple[int, int]:
+    """`[a, b)`: as bandas do corpo, sem as isoladas do topo e da base. Ver "A banda isolada".
+
+    O passo é a mediana da distância entre topos de bandas vizinhas -- o entrelinha do corpo --, e
+    uma banda de borda é isolada quando o vão até a vizinha é `VAO_DE_BORDA` vezes isso. Cada
+    borda cede no máximo `BORDA_MAX` bandas, uma de cada vez: a segunda só sai se também estiver
+    isolada da que vem depois dela.
+    """
+    n = len(grupos)
+    if n < 2 * BORDA_MAX:
+        return 0, n
+    topos = [min(caixa.y1 for caixa in grupo) for grupo in grupos]
+    passo = float(np.median(np.diff(topos)))
+    if passo <= 0:
+        return 0, n
+    vao = VAO_DE_BORDA * passo
+    a = 0
+    while a < BORDA_MAX and a + 1 < n and topos[a + 1] - topos[a] >= vao:
+        a += 1
+    b = n
+    while n - b < BORDA_MAX and b - 1 > a and topos[b - 1] - topos[b - 2] >= vao:
+        b -= 1
+    return a, b
+
+
+def _corpo_sem_as_bordas(
+    mascaras: Sequence[np.ndarray], grupos: Sequence[Sequence[Caixa]], x_min: int, x_max: int,
+    calha_minima: int,
+) -> tuple[int, int, list[tuple[int, int]], tuple[tuple[int, int], ...]] | None:
+    """`(a, b, calhas, colunas)` do corpo sem as bordas, ou `None` para seguir o caminho de sempre.
+
+    Os índices são relativos a `grupos` -- que pode ser um trecho da folha (S-525). `None` em três
+    casos, e os três são "nada a fazer aqui": o trecho inteiro já tem calha (e aí a régua da S-190
+    responde, como sempre); nenhuma banda de borda está isolada; o corpo sem elas também não tem
+    calha -- e então é a busca por região da S-507 que decide.
+    """
+    n = len(grupos)
+    _, faixas = _calhas(np.sum(mascaras, axis=0), x_min, x_max, calha_minima, n)
+    if faixas:
+        return None
+    a, b = _bandas_isoladas_nas_bordas(grupos)
+    if (a, b) == (0, n):
+        return None
+    cortes, faixas = _calhas(np.sum(mascaras[a:b], axis=0), x_min, x_max, calha_minima, b - a)
+    if not faixas:
+        return None
+    return a, b, cortes, faixas
 
 
 def atribuir_regiao(caixa: Caixa, regioes: Sequence[Regiao]) -> int:
@@ -424,7 +578,9 @@ def _com_cortes_em_y(
 
 __all__ = [
     "BANDAS_NA_REGIAO",
+    "BORDA_MAX",
     "PREENCHIMENTO_DA_COLUNA",
+    "VAO_DE_BORDA",
     "Regiao",
     "atribuir_regiao",
     "colunas_da_folha",
