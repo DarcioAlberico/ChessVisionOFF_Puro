@@ -248,6 +248,41 @@ class BandaIsoladaNaBordaTests(unittest.TestCase):
         base = [*corpo, *_folio(ultima + 3 * PASSO_Y), *_titulo(ultima + 6 * PASSO_Y)]
         self.assertEqual([2, 1], [len(r.colunas) for r in detectar_regioes(base)])
 
+    def test_o_corpo_de_colunas_desiguais_nao_e_cortado(self) -> None:
+        """A legenda de estrelas (Aagaard *Matter*, p. 546): «★★☆☆☆ | Easy…», cinco linhas com o
+        mesmo vão entre a etiqueta estreita e a descrição larga. Sem título e rodapé, o corpo tem
+        calha -- e colunas de 60 contra 300 px não são colunas de texto."""
+        estrelas = [c for i in range(8) for c in _linha_de(ESQUERDA, 120 + i * PASSO_Y, 3)]
+        descricao = [c for i in range(8) for c in _linha_de(ESQUERDA + 6 * PASSO_X, 120 + i * PASSO_Y, 20)]
+        ultima = 120 + 7 * PASSO_Y
+        titulo = _linha_de(ESQUERDA + 2 * PASSO_X, 120 - 3 * PASSO_Y, 12)  # cruza o vão
+        rodape = _linha_de(ESQUERDA + 2 * PASSO_X, ultima + 3 * PASSO_Y, 12)
+        caixas = [*titulo, *estrelas, *descricao, *rodape]
+        regioes = detectar_regioes(caixas)
+        self.assertEqual([1], sorted({len(r.colunas) for r in regioes}), f"cortou a tabela: {regioes}")
+
+    def test_a_poeira_de_scan_nao_fecha_a_calha(self) -> None:
+        """S-526, a p. 40 do Neumann: a calha de verdade era cruzada por um título (tolerado) e
+        por um risco de 3 x 3 px dentro de uma banda de texto -- a segunda banda, e a folha
+        perdia a calha. Com a escala, a caixa mais estreita que um sexto dela não cobre nada."""
+        corpo = colunas_de_solucao(30)
+        titulo = _titulo(120 + 7 * PASSO_Y + 10)  # cruza a calha no meio: a banda tolerada
+        y = 120 + 12 * PASSO_Y + 5
+        # Três riscos de 2 x 2 px espalhados pela calha estreita, dentro da linha 12: entre eles
+        # não sobra vão do tamanho do piso. (Na p. 40 bastou um, numa calha de 12 px.)
+        poeira = [Caixa(x, y, x + 2, y + 2) for x in (MEIO - 12, MEIO - 4, MEIO + 4)]
+        caixas = [*corpo, *titulo, *poeira]
+        # Com a calha achada, a folha é colunas / o título (transversal, S-507) / colunas.
+        certo = [2, 1, 2]
+        sem = detectar_regioes(caixas)
+        self.assertNotEqual(certo, [len(r.colunas) for r in sem], f"a premissa: com a poeira a folha perde a calha; veio {sem}")
+        com = detectar_regioes(caixas, escala=ALTURA_DA_LETRA)
+        self.assertEqual(certo, [len(r.colunas) for r in com], f"veio {com}")
+        # E letras finas de verdade (`l` de 5 px) nos mesmos lugares continuam cobrindo o seu x.
+        letras = [Caixa(x, y, x + 5, y + ALTURA_DA_LETRA) for x in (MEIO - 12, MEIO - 4, MEIO + 4)]
+        com_letras = detectar_regioes([*corpo, *titulo, *letras], escala=ALTURA_DA_LETRA)
+        self.assertNotEqual(certo, [len(r.colunas) for r in com_letras], f"a letra não é poeira; veio {com_letras}")
+
     def test_cada_borda_cede_no_maximo_duas_bandas(self) -> None:
         corpo = colunas_de_solucao()
         topo = 120

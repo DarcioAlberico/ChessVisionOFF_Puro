@@ -441,7 +441,10 @@ def segmentar(
     # **O quadro emoldurado é região de uma coluna** (S-525): a moldura chega aqui como uma caixa
     # larga, alta e oca, e sem isto ela fecha a calha das soluções em cima dela.
     quadros = _quadros.molduras_nas_caixas(caixas, binaria, escala=escala)
-    return (cinza, binaria, escala, caixas, _regioes.detectar_regioes(caixas, quadros=quadros))
+    # **A poeira de scan não cobre x nenhum na calha** (S-526): aqui as caixas são caracteres, e
+    # a escala diz o que é letra e o que é risco.
+    regioes = _regioes.detectar_regioes(caixas, quadros=quadros, escala=escala)
+    return (cinza, binaria, escala, caixas, regioes)
 
 
 def _arbitro_de_confianca(

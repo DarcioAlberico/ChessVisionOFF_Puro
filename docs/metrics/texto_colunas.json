@@ -1,8 +1,8 @@
 {
   "motor": "camada",
   "dpi": 220,
-  "paginas_anotadas": 42,
-  "paginas_medidas": 40,
+  "paginas_anotadas": 43,
+  "paginas_medidas": 41,
   "acertos": 37,
   "por_grupo": {
     "coluna_unica": {
@@ -12,6 +12,10 @@
     "lances": {
       "paginas": 6,
       "acertos": 6
+    },
+    "legenda": {
+      "paginas": 1,
+      "acertos": 0
     },
     "picada": {
       "paginas": 3,
@@ -579,6 +583,19 @@
       "acerto": true,
       "motivo": "",
       "nota": ""
+    },
+    {
+      "pdf": "A Matter of Endgame Technique – Jacob Aagaard.pdf",
+      "pagina": 546,
+      "grupo": "legenda",
+      "esperado": 1,
+      "achado": 2,
+      "regioes": [
+        2
+      ],
+      "acerto": false,
+      "motivo": "",
+      "nota": "folha de exercicios: a legenda de estrelas (★★☆☆☆ | Easy...) e uma tabela de 5 linhas, lida linha a linha; a regressao conhecida da S-523"
     },
     {
       "pdf": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",

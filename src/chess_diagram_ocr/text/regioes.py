@@ -119,11 +119,15 @@ muda: é o mesmo princípio que preservou a S-190 na S-507.
     régua da S-194, 1.090 folhas de 36 livros         0 pioram; 15 mudam de estrutura (vão 1,5)
 
 Das 15 que mudam, as olhadas são duas colunas de verdade que a folha não achava (Neumann p. 40 e
-61, Gunderam p. 26) e uma grade de diagramas (Журавлев p. 88), assunto da S-216. **A regressão
-conhecida** é a legenda de estrelas do `Aagaard - A Matter of Endgame Technique` (p. 546): as
-estrelas numa coluna e a descrição noutra -- o que a régua de folha já fazia em qualquer página
-assim sem título; esta régua só estende a dela ao corpo. O que a borda **não** resolve é o quadro de
-largura inteira com muitas bandas: o «Scoring» de fim de capítulo, que é a S-525.
+61, Gunderam p. 26) e uma grade de diagramas (Журавлев p. 88), assunto da S-216. **A regressão que
+esta régua trouxe, e a guarda que a tirou:** a legenda de estrelas do `Aagaard - A Matter of
+Endgame Technique` (p. 546) saía com as estrelas numa coluna e a descrição noutra -- as colunas do
+corpo têm de ter larguras parecidas (`LARGURAS_DO_CORPO`); pelo glifo a folha volta a uma coluna,
+e a régua da S-194 não muda de distância em folha nenhuma. Pela **camada** essa página já saía em
+duas colunas antes de tudo, pela régua de folha inteira (doze linhas, o título tolerado), e
+continua: a régua de folha não ganha a guarda, porque foi medida em 456 páginas sem ela. O que a
+borda **não** resolve é o quadro de largura inteira com muitas bandas: o «Scoring» de fim de
+capítulo, que é a S-525.
 
 ## O quadro já achado corta a folha em trechos (S-525)
 
@@ -184,6 +188,23 @@ quadro «Scoring», uma lista de lances separada do texto por espaço -- não é
 tal parte a lista de lances do `Melhores Finais de Capablanca` (p. 172) em duas colunas: medido e
 recusado no plano."""
 
+LARGURAS_DO_CORPO = 1.5
+"""Quanto a coluna mais larga do corpo sem as bordas pode exceder a mais estreita (S-523).
+
+A legenda de estrelas do `Aagaard - A Matter of Endgame Technique` (p. 546) cortava em 2,8; as
+soluções do Yusupov e a prosa de duas colunas do acervo ficam entre 1,0 e 1,15."""
+
+RISCO_EM_ESCALAS = 1 / 6
+"""A caixa mais estreita que isto (3 px numa escala de 20) é poeira de scan, e não cobre `x`
+nenhum na projeção da calha, no caminho do glifo (S-526). Ver `escala` em `detectar_regioes`.
+
+Medido na p. 40 do `Neumann - Traité élémentaire du jeu des échecs` (1870, scan): a calha de
+verdade era cruzada por um título centrado (legítimo, tolerado), por um par de caixas soltas na
+borda (que a S-523 tira) e por um risco de 3 x 3 px **dentro de uma banda de texto** -- e com ele
+a folha perdia a calha, caía no vão alinhado entre o número do lance e o lance, e ganhava uma
+«coluna» de riscos à margem. Há 38 caixas de 1 a 3 px nessa página; o `i` e o `l` de corpo 20 px
+têm 4 a 6."""
+
 VAO_DE_BORDA = 1.5
 """O vão que isola uma banda de borda, em passos medianos entre as bandas da folha (S-523).
 
@@ -218,6 +239,7 @@ def detectar_regioes(
     *,
     calha_minima: int | None = None,
     quadros: Sequence[tuple[int, int]] = (),
+    escala: int = 0,
 ) -> list[Regiao]:
     """As regiões horizontais da folha, de cima para baixo. Uma só quando a folha é homogênea.
 
@@ -228,6 +250,11 @@ def detectar_regioes(
     `quadros` são intervalos de `y` (na unidade das caixas) de quadros de largura inteira já
     achados -- `text/quadros.py` (S-525). A banda cujo topo cai num quadro é região de uma
     coluna, e cada trecho da folha entre quadros passa pela régua de sempre por conta própria.
+
+    `escala` é a altura de caractere do caminho do glifo (S-526): a caixa mais estreita que
+    `RISCO_EM_ESCALAS` da escala é poeira de scan e não cobre `x` nenhum na projeção da calha.
+    Zero (o padrão) é a projeção de sempre, e é o que o caminho da camada passa: ali as caixas
+    são linhas, e não há escala de caractere.
     """
     if not caixas:
         return []
@@ -244,7 +271,8 @@ def detectar_regioes(
     if calha_minima is None:
         calha_minima = piso_de_calha(caixas)
 
-    mascaras = [_mascara(grupo, x_min, largura) for grupo in grupos]
+    risco = int(RISCO_EM_ESCALAS * escala)
+    mascaras = [_mascara(grupo, x_min, largura, risco=risco) for grupo in grupos]
     cortadas: list[tuple[int, int, tuple[tuple[int, int], ...]]] = []
     topos = [min(c.y1 for c in grupo) for grupo in grupos]
     no_quadro = [any(y1 <= topo <= y2 for y1, y2 in quadros) for topo in topos]
@@ -337,6 +365,14 @@ def _corpo_sem_as_bordas(
     cortes, faixas = _calhas(np.sum(mascaras[a:b], axis=0), x_min, x_max, calha_minima, b - a)
     if not faixas:
         return None
+    # **As colunas do corpo têm de ter larguras parecidas.** A legenda de estrelas de uma folha de
+    # exercícios (`Aagaard - A Matter of Endgame Technique`, p. 546) é uma tabela de cinco linhas,
+    # «★★☆☆☆ | Easy…», e o corpo sem título e rodapé a cortava no vão da tabela: 100 pt contra
+    # 279. A coluna de solução é 191 contra 191; a prosa de duas colunas, idem. A régua de folha
+    # inteira não tem esta guarda, e não ganha: ela foi medida em 456 páginas sem ela.
+    larguras = [x2 - x1 for x1, x2 in faixas]
+    if max(larguras) > LARGURAS_DO_CORPO * min(larguras):
+        return None
     return a, b, cortes, faixas
 
 
@@ -360,10 +396,21 @@ def colunas_da_folha(regioes: Sequence[Regiao]) -> list[tuple[int, int]]:
     return list(max(regioes, key=lambda r: len(r.colunas)).colunas)
 
 
-def _mascara(grupo: Sequence[Caixa], x_min: int, largura: int) -> np.ndarray:
-    """Que `x` esta banda cobre. É uma linha da projeção de `colunas.linhas_por_x`."""
+def _mascara(grupo: Sequence[Caixa], x_min: int, largura: int, *, risco: int = 0) -> np.ndarray:
+    """Que `x` esta banda cobre. É uma linha da projeção de `colunas.linhas_por_x`.
+
+    A caixa de largura até `risco` é poeira de scan e não cobre nada (S-526): na p. 40 do
+    Neumann um risco de 3 x 3 px numa banda de texto fechava a calha de verdade. **A banda de
+    dois caracteres soltos continua votando**, de propósito: tirá-la da projeção foi medido e
+    recusado -- com o fólio sem voto, a régua de folha inteira achava a calha sozinha, a borda
+    da S-523 deixava de rodar, e o título com um vão interno ia parar dentro das colunas, partido
+    (uma linha da camada partida a mais em 90 páginas de exercício do Yusupov). A banda solta na
+    borda é da S-523; a do meio da folha é a tolerância da S-190.
+    """
     desta = np.zeros(largura + 2, dtype=bool)
     for caixa in grupo:
+        if caixa.largura <= risco:
+            continue
         desta[max(0, caixa.x1 - x_min) : max(0, caixa.x2 - x_min) + 1] = True
     return desta
 
@@ -580,6 +627,8 @@ __all__ = [
     "BANDAS_NA_REGIAO",
     "BORDA_MAX",
     "PREENCHIMENTO_DA_COLUNA",
+    "RISCO_EM_ESCALAS",
+    "LARGURAS_DO_CORPO",
     "VAO_DE_BORDA",
     "Regiao",
     "atribuir_regiao",
