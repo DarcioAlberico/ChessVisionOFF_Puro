@@ -108,6 +108,7 @@ from chess_diagram_ocr.ui.texto_declarado import (
     continua_a_digitacao,
     digitacao_depois,
     fora_do_livro,
+    frase_do_rodape,
 )
 
 logger = logging.getLogger(__name__)
@@ -349,6 +350,7 @@ class PainelDeTexto(QWidget):
         # deste sinal dentro do painel; o `desenhar_documento` de uma folha recém-lida também o
         # emite, e aí `gravar_rascunho` não grava: não há alteração.
         self.documento_mudou.connect(self._agendar_rascunho)
+        self.documento_mudou.connect(self._atualizar_status)
 
     # ------------------------------------------------------------------------------ montagem
 
@@ -404,7 +406,25 @@ class PainelDeTexto(QWidget):
         caixa.addLayout(corpo, 1)
 
         self.status = QLabel("", self)
+        self.status.setAccessibleName("Estado da folha")
         caixa.addWidget(self.status)
+
+    def _atualizar_status(self) -> None:
+        """O rodapé da aba, refeito a cada mudança do documento e a cada gravação.
+
+        A frase é de `ui/texto_declarado.frase_do_rodape`; aqui só se contam as miniaturas, que
+        são do desenho e não do documento.
+        """
+        diagramas = self.documento.diagramas
+        self.status.setText(
+            frase_do_rodape(
+                folha=None if self._pagina is None else int(self._pagina.pagina),
+                trechos=len(self.documento.corridas),
+                diagramas=len(diagramas),
+                miniaturas=sum(1 for c in diagramas if self._recorte(c) is not None),
+                por_gravar=self.tem_alteracoes,
+            )
+        )
 
     def _montar_paleta(self) -> QListWidget:
         """O painel lateral de glifos (S-248). Nasce escondido: ele é um caminho a mais.
@@ -854,6 +874,7 @@ class PainelDeTexto(QWidget):
         self.desenhar_documento(rico.de_pagina(pagina))
         self._documento_gravado = self.documento
         self._rascunho.stop()  # o desenho emitiu `documento_mudou`; a folha recém-lida não tem o que gravar
+        self._atualizar_status()
 
     def texto(self) -> str:
         """O texto puro do documento -- **do documento, e não do widget**.
@@ -1276,6 +1297,7 @@ class PainelDeTexto(QWidget):
         self.desenhar_documento(doc)
         self._documento_gravado = self.documento
         self._rascunho.stop()  # como em `mostrar_pagina`: o que veio do disco não tem o que gravar
+        self._atualizar_status()
         diagramas = len(self.documento.diagramas)
         figuras = sum(1 for c in self.documento.diagramas if self._recorte(c) is not None)
         resumo = f"Texto aberto: {len(self.documento.corridas)} trecho(s), {diagramas} diagrama(s)"
@@ -1335,6 +1357,7 @@ class PainelDeTexto(QWidget):
         # número no rodapé é o que faz alguém notar quando ele vem zerado (S-239).
         feitas = len(correcao.correcoes(gravado))
         quanto = f" · {feitas} correção(ões) sobre o que o motor leu" if feitas else ""
+        self._atualizar_status()
         self.estado.emit(f"Texto gravado em {caminho.name}{quanto}.")
 
     @property

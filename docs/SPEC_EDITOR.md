@@ -2920,6 +2920,7 @@ Cada linha é um commit, com o teste que a tranca.
 | item | o que faltava | o que entrou | teste |
 |---|---|---|---|
 | **1. a leitura respeita as Configurações** | o painel nascia com `dpi=220` cravado e lia sem teto de diagramas: a aba Livro e a aba Texto discordavam sobre a escala da folha e sobre quantos diagramas há na página, e «Ferramentas ▸ Configurações…» não alcançava esta aba | `_dpi_para_ler` e `_teto_de_diagramas` perguntam a `ui/configuracoes` (o teste continua cravando `dpi=`); o DPI viaja com a folha lida (`mostrar_pagina(dpi=)`), porque a configuração pode mudar enquanto a leitura corre, e o recorte fica na escala em que a folha foi renderizada | `test_qt_texto_diagramas.py::ConfiguracoesDaLeituraTests` |
+| **2. o rodapé da aba diz a folha, o que ela tem e se há o que gravar** | o `QLabel` de estado existia e ficava vazio desde o porte: quem voltava à aba não sabia se era a folha certa, se os diagramas estavam lá nem se tinha gravado | `ui/texto_declarado.frase_do_rodape` (pura) e `_atualizar_status`, refeito a cada `documento_mudou`, a cada folha e a cada gravação; a contagem de miniaturas só aparece quando falta alguma | `FraseDoRodapeTests`, `RodapeDaAbaTests` |
 
 ---
 

@@ -264,6 +264,61 @@ class LexicoSobreviveAoRedesenhoTests(_Aba):
         self.assertEqual(self.painel.editor.extraSelections(), [], "desligada, ela não volta")
 
 
+class FraseDoRodapeTests(unittest.TestCase):
+    """A frase pura do rodapé da aba (`ui/texto_declarado.frase_do_rodape`)."""
+
+    def test_folha_com_tudo_no_lugar(self) -> None:
+        from chess_diagram_ocr.ui.texto_declarado import frase_do_rodape
+
+        self.assertEqual(
+            frase_do_rodape(folha=13, trechos=43, diagramas=3, miniaturas=3, por_gravar=False),
+            "Folha 14 · 43 trecho(s) · 3 diagrama(s)",
+        )
+
+    def test_a_miniatura_que_falta_e_dita_e_o_por_gravar_tambem(self) -> None:
+        from chess_diagram_ocr.ui.texto_declarado import frase_do_rodape
+
+        self.assertEqual(
+            frase_do_rodape(folha=0, trechos=5, diagramas=2, miniaturas=0, por_gravar=True),
+            "Folha 1 · 5 trecho(s) · 2 diagrama(s), 0 com miniatura · por gravar",
+        )
+
+    def test_sem_texto_nao_ha_frase_e_sem_folha_ela_diz(self) -> None:
+        from chess_diagram_ocr.ui.texto_declarado import frase_do_rodape
+
+        self.assertEqual(frase_do_rodape(folha=None, trechos=0, diagramas=0, miniaturas=0, por_gravar=False), "")
+        self.assertTrue(
+            frase_do_rodape(folha=None, trechos=1, diagramas=0, miniaturas=0, por_gravar=False).startswith(
+                "Texto sem folha de origem"
+            )
+        )
+
+
+class RodapeDaAbaTests(_Aba):
+    """O rótulo de estado da aba existia e ficava vazio desde o porte."""
+
+    def test_o_rodape_acompanha_a_folha_a_edicao_e_a_gravacao(self) -> None:
+        from PyQt6.QtTest import QTest
+
+        self.assertEqual(self.painel.status.text(), "")
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        trechos = len(self.painel.documento.corridas)
+        self.assertEqual(self.painel.status.text(), f"Folha 1 · {trechos} trecho(s) · 1 diagrama(s)")
+        self.painel.editor.setFocus()
+        cursor = self.painel.editor.textCursor()
+        cursor.setPosition(0)
+        self.painel.editor.setTextCursor(cursor)
+        QTest.keyClicks(self.painel.editor, "x")
+        self.assertTrue(self.painel.status.text().endswith(" · por gravar"))
+        with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(self.pasta / "f.cvtxt"), "")):
+            self.painel.salvar_documento_como()
+        self.assertFalse(self.painel.status.text().endswith("por gravar"))
+
+    def test_sem_miniatura_o_rodape_diz_quantas_faltam(self) -> None:
+        self.painel.mostrar_pagina(_pagina())
+        self.assertIn("1 diagrama(s), 0 com miniatura", self.painel.status.text())
+
+
 class ConfiguracoesDaLeituraTests(unittest.TestCase):
     """A leitura da aba pergunta o DPI e o teto de diagramas às Configurações, como o visualizador.
 
