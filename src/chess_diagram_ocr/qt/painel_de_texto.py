@@ -276,7 +276,7 @@ class PainelDeTexto(QWidget):
         segundos depois da última (S-255). Um relógio fixo gravaria no meio da digitação."""
         self._rascunho.setSingleShot(True)
         self._rascunho.setInterval(int(rascunho.ESPERA_SEGUNDOS * 1000))
-        self._rascunho.timeout.connect(self.gravar_rascunho)
+        self._rascunho.timeout.connect(self._depois_da_pausa)
         """O registro de ocupação (S-112). `None` é a aba montada sozinha num teste.
 
         **As duas operações longas desta aba precisam estar nele**, e no corte do Tk elas quase
@@ -1404,6 +1404,19 @@ class PainelDeTexto(QWidget):
     def _agendar_rascunho(self) -> None:
         """Reinicia o relógio: o rascunho é gravado alguns segundos depois da **última** edição."""
         self._rascunho.start()
+
+    def _depois_da_pausa(self) -> None:
+        """A pausa da digitação: o rascunho vai ao disco e, com a conferência ligada, o léxico se refaz.
+
+        A tecla comum não redesenha a folha (é o caminho rápido de `_trocado`), então a palavra
+        recém-escrita só era conferida no redesenho seguinte -- e a conferência ligada prometia o
+        contrário (S-293). Reconferir a cada tecla seria carregar e varrer o léxico por letra; na
+        pausa, uma vez, é o mesmo relógio do rascunho, e pelo mesmo motivo: quem parou de digitar
+        é quem vai olhar a folha.
+        """
+        self.gravar_rascunho()
+        if self._conferindo_lexico:
+            self._conferir_lexico(avisar=False)
 
     def gravar_rascunho(self) -> Path | None:
         """Grava o rascunho **se houver o que gravar**. Devolve o caminho, ou `None`.

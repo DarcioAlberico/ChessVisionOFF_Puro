@@ -289,6 +289,27 @@ class LexicoSobreviveAoRedesenhoTests(_Aba):
         self.painel.desfazer()
         self.assertEqual(self.painel.editor.extraSelections(), [], "desligada, ela não volta")
 
+    def test_a_palavra_digitada_e_conferida_na_pausa(self) -> None:
+        """A tecla comum não redesenha; a conferência ligada se refaz quando a digitação para."""
+        from PyQt6.QtTest import QTest
+
+        self.painel.desenhar_documento(rico.de_texto("uma palavra aqui"))
+        self.painel.marcar_fora_do_lexico()
+        self.assertEqual(self.painel.editor.extraSelections(), [], "o texto de partida tem palavra desconhecida")
+        self.painel.editor.setFocus()
+        cursor = self.painel.editor.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self.painel.editor.setTextCursor(cursor)
+        QTest.keyClicks(self.painel.editor, " qzxvk")
+        self.assertEqual(self.painel.editor.extraSelections(), [], "a tecla não reconfere (caminho rápido)")
+        self.assertTrue(self.painel._rascunho.isActive(), "a tecla não armou a pausa")
+        self.painel._rascunho.timeout.emit()
+        marcadas = self.painel.editor.extraSelections()
+        self.assertEqual([s.cursor.selectedText() for s in marcadas], ["qzxvk"])
+        self.painel.limpar_marcas_do_lexico()
+        self.painel._rascunho.timeout.emit()
+        self.assertEqual(self.painel.editor.extraSelections(), [], "desligada, a pausa não marca")
+
 
 class FraseDoRodapeTests(unittest.TestCase):
     """A frase pura do rodapé da aba (`ui/texto_declarado.frase_do_rodape`)."""
