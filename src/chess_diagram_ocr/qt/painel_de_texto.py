@@ -65,7 +65,7 @@ from pathlib import Path
 
 import numpy as np
 from PyQt6.QtCore import QEvent, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QKeyEvent, QKeySequence, QTextCursor, QTextDocument
+from PyQt6.QtGui import QKeyEvent, QKeySequence, QTextCursor, QTextDocument, QTextImageFormat
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -679,14 +679,32 @@ class PainelDeTexto(QWidget):
         if recorte is None:
             return
         mapa = pixmap_de_rgb(recorte).scaledToWidth(
-            LARGURA_DA_MINIATURA, Qt.TransformationMode.SmoothTransformation
+            self._largura_da_miniatura(), Qt.TransformationMode.SmoothTransformation
         )
         nome = f"diagrama:{corrida.bloco}"
         documento = cursor.document()
         if documento is not None:
             documento.addResource(QTextDocument.ResourceType.ImageResource.value, _url(nome), mapa)
-        cursor.insertImage(nome)
+        # Com a medida escrita no formato, e não só no pixmap: é o que o Qt usa para o leiaute, e é
+        # o que um teste consegue ler de volta sem desenhar a tela.
+        imagem = QTextImageFormat()
+        imagem.setName(nome)
+        imagem.setWidth(mapa.width())
+        imagem.setHeight(mapa.height())
+        cursor.insertImage(imagem)
         cursor.insertBlock()
+
+    def _largura_da_miniatura(self) -> int:
+        """A miniatura **acompanha o zoom da vista** (S-264): a mesma razão que a letra.
+
+        `LARGURA_DA_MINIATURA` é a largura no corpo do sistema; com a vista em +3 degraus sobre
+        um corpo de 9 pt a miniatura cresce um terço, e com a vista em -2 ela encolhe. Sem isto,
+        aproximar a folha deixava a letra do tamanho que a pessoa pediu e o diagrama do tamanho de
+        antes -- cada vez menor em relação ao texto que fala dele.
+        """
+        corpo_do_sistema = max(1, tema.fonte_base()[0])
+        corpo_da_vista = self._base[0] if self._base is not None else corpo_do_sistema
+        return max(48, round(LARGURA_DA_MINIATURA * corpo_da_vista / corpo_do_sistema))
 
     def _recorte(self, corrida: rico.Corrida) -> np.ndarray | None:
         """O pedaço da folha em que o diagrama está, ou `None` sem folha renderizada.

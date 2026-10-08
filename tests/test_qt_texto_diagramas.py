@@ -245,6 +245,32 @@ class ZoomDaVistaTests(_Aba):
         self.assertEqual(self.corpo_do_primeiro_trecho(), corpo)
 
 
+class MiniaturaAcompanhaOZoomTests(_Aba):
+    """A miniatura cresce e encolhe com a vista, na mesma razão que a letra (S-264)."""
+
+    def largura_da_miniatura(self) -> int:
+        texto = self.painel.editor.toPlainText()
+        cursor = QTextCursor(self.painel.editor.document())
+        cursor.setPosition(texto.index(OBJETO) + 1)
+        formato = cursor.charFormat().toImageFormat()
+        self.assertTrue(formato.isValid(), "não há imagem onde o OBJETO está")
+        return int(formato.width())
+
+    def test_aproximar_alarga_a_miniatura_e_voltar_a_devolve(self) -> None:
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        normal = self.largura_da_miniatura()
+        self.assertEqual(normal, qt_texto.LARGURA_DA_MINIATURA)
+        self.painel.aplicar_zoom(+4, avisar=False)
+        maior = self.largura_da_miniatura()
+        self.assertGreater(maior, normal)
+        corpo = tema.fonte_base()[0]
+        self.assertEqual(maior, round(qt_texto.LARGURA_DA_MINIATURA * (corpo + 4) / corpo))
+        self.painel.aplicar_zoom(-2, avisar=False)
+        self.assertLess(self.largura_da_miniatura(), normal)
+        self.painel.aplicar_zoom(0, avisar=False)
+        self.assertEqual(self.largura_da_miniatura(), normal)
+
+
 class LexicoSobreviveAoRedesenhoTests(_Aba):
     """A conferência ligada se refaz depois de cada redesenho (S-293)."""
 
