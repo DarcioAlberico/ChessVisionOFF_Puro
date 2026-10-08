@@ -283,3 +283,56 @@ regressão registrada no cabeçalho de `regioes.py`.
 
 **Evidência**: `docs/metrics/colunas_solucoes_2026-10-06/` (sondas, `regua_passo1/4.jsonl`,
 `glifo_passo1/4.jsonl`, imagens) e os baselines `docs/metrics/texto_colunas{,_glifo}.json`.
+
+## 9. Os itens
+
+As três seções abaixo são a spec dos itens entregues neste plano, no lugar que a tabela «Onde
+mora a spec de cada item» do README declara para a faixa S-523 a S-525. O ROADMAP_TEXTO (Fase 27)
+traz o relato; aqui fica o critério de aceite e a sonda de cada um.
+
+### S-523 · A banda isolada da borda não vota na calha ✅ implementada (2026-10-08)
+
+**O que é.** Quando a projeção da folha inteira não acha calha, até `BORDA_MAX` (2) bandas em cada
+borda que estejam isoladas da vizinha por `VAO_DE_BORDA` (1,5) passos medianos de entrelinha saem
+da projeção, e o corpo que sobra é tentado com a **mesma** régua da folha -- sem o preenchimento
+da busca por região. As bandas de borda viram regiões de uma coluna. Onde a folha inteira acha
+calha, nada muda (`text/regioes.py`, `_corpo_sem_as_bordas`).
+
+**Critério de aceite.** No conjunto anotado da S-524, as páginas «solucoes» do Yusupov saem com
+duas colunas pelos dois motores; a régua da S-194 não piora nenhuma folha com referência
+confiável contra a produção anterior. Medido: 13 de 13 e 0 pioras em 1.090 folhas.
+
+**Sonda.** `tests/test_text_regioes.py::BandaIsoladaNaBordaTests` (a folha sintética de título +
+fólio + colunas de linha curta) e `PaginaDeSolucoesDoYusupovTests` (a p. 1917 real, pela camada).
+
+### S-524 · A estrutura de colunas medida contra páginas anotadas à mão ✅ implementada (2026-10-08)
+
+**O que é.** `cvoff-texto-colunas` lê `docs/metrics/colunas_anotadas.json` -- para cada página,
+quantas colunas tem a região mais dividida, anotado depois de olhar a página com as colunas
+desenhadas sobre ela -- e mede o acerto pelos motores `camada` (linhas da camada de texto) e
+`glifo` (caixas de caractere, como a aba Texto). O `--baseline` reprova se **qualquer** página
+certa no relatório anterior estiver errada agora: o portão é por página, não por média.
+
+**Critério de aceite.** O relatório diz, por grupo, quantas páginas acertam, nomeia as erradas
+com o esperado e o achado, e separa «sem camada» e «livro ausente» de erro. Baselines publicados:
+`docs/metrics/texto_colunas.json` (camada, 37 de 40) e `texto_colunas_glifo.json` (glifo, 41 de 42).
+
+**Sonda.** `tests/test_texto_colunas.py` (medição, regressão por página, os códigos de saída) e o
+comando com `--baseline` contra os dois arquivos acima.
+
+### S-525 · O quadro de largura inteira é região de uma coluna, e corta a folha em trechos ✅ implementada (2026-10-08)
+
+**O que é.** `text/quadros.py` acha o quadro emoldurado -- no glifo, uma caixa larga
+(≥ 0,4 do texto), alta (≥ 3 escalas) e oca (≤ 0,25 de tinta) com bandas dentro; na camada, um
+bloco de imagem largo cujas linhas de dentro cruzam o meio, são a maioria e têm palavras -- e
+`detectar_regioes(quadros=)` faz dele uma região de uma coluna, tratando cada trecho entre quadros
+pela régua de sempre. O trecho curto que o corte deixa (menos de `BANDAS_NA_REGIAO` bandas) é de
+uma coluna.
+
+**Critério de aceite.** As páginas «scoring» do conjunto anotado saem com duas colunas pelo glifo
+(8 de 8); as listas de lances do Chernev e do Dobonov continuam de uma coluna (6 de 6); a tira de
+dois diagramas do Nunn, a imagem de fundo de uma lição e o lixo de OCR de um tabuleiro **não**
+viram quadro; a régua da S-194 não piora folha nenhuma.
+
+**Sonda.** `tests/test_text_quadros.py` (a moldura oca contra o tabuleiro cheio; a imagem com e
+sem linhas cruzando o meio) e `tests/test_text_regioes.py::QuadroDeLarguraInteiraTests`.

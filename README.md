@@ -1157,6 +1157,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
 | S-431 a S-440 | [docs/SPEC_REVISAO_EXTERNA.md](docs/SPEC_REVISAO_EXTERNA.md) |
 | S-441 a S-450 | [docs/SPEC_ACABAMENTO.md](docs/SPEC_ACABAMENTO.md) |
+| S-523 a S-525 | [docs/PLANO_COLUNAS_SOLUCOES.md](docs/PLANO_COLUNAS_SOLUCOES.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
