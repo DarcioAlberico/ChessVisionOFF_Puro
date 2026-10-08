@@ -481,7 +481,9 @@ régua que a S-194 não alcança, e o quadro de largura inteira. Medição e pla
 > preenchimento, porque coluna de solução é feita de linha curta; a tira estreita, que se enche com
 > pouco, passa.
 >
-> **S-523: a banda isolada da borda não vota na calha.** Quando a folha inteira não tem calha, até
+### S-523 · A banda isolada da borda não vota na calha ✅ implementada (2026-10-08)
+
+> Quando a folha inteira não tem calha, até
 > duas bandas em cada borda, isoladas da vizinha por 1,5 passos de entrelinha, saem da projeção, e
 > o corpo é tentado com a mesma régua da folha -- sem preenchimento. Onde a folha acha calha, nada
 > muda. Medido contra a régua da S-194 em 1.090 folhas de 36 livros: **nenhuma piora**, 15 mudam
@@ -489,8 +491,9 @@ régua que a S-194 não alcança, e o quadro de largura inteira. Medição e pla
 > Yusupov, pelo motor da aba: **15 de 84 → 79 de 81**. A regressão conhecida é a legenda de estrelas
 > do `Aagaard - A Matter of Endgame Technique` (p. 546), partida em duas colunas.
 >
-> **S-524: a estrutura medida contra páginas anotadas à mão** (`cvoff-texto-colunas`,
-> `docs/metrics/colunas_anotadas.json`). A régua da S-194 é cega no Yusupov -- a camada emite as
+### S-524 · A estrutura de colunas medida contra páginas anotadas à mão ✅ implementada (2026-10-08)
+
+> `cvoff-texto-colunas` e `docs/metrics/colunas_anotadas.json`. A régua da S-194 é cega no Yusupov -- a camada emite as
 > linhas em zigue-zague, e o guarda a descarta --, e foi assim que o defeito ficou meses sem número.
 > Aqui a referência é a diagramação: 42 páginas olhadas com as colunas desenhadas sobre elas, e o
 > portão é **por página** (nenhuma certa pode passar a errar), não por média. Só com a S-523:
@@ -498,8 +501,10 @@ régua que a S-194 não alcança, e o quadro de largura inteira. Medição e pla
 > com o quadro «Scoring» de largura inteira (1 de 8 nos dois motores), as p. 1201/1021 picadas pelo
 > mesmo quadro, e a Neumann p. 40 em três colunas.
 >
-> **S-525: o quadro de largura inteira é região de uma coluna, e corta a folha em trechos**
-> (`text/quadros.py`). O «Scoring» tem cinco bandas cruzando a calha; a borda cede duas. Tratar
+### S-525 · O quadro de largura inteira é região de uma coluna, e corta a folha em trechos ✅ implementada (2026-10-08)
+
+> `text/quadros.py` + `detectar_regioes(quadros=)`. O «Scoring» tem cinco bandas cruzando a calha;
+> a borda cede duas. Tratar
 > qualquer bloco isolado da borda como título foi medido e recusado -- a lista de lances do Chernev
 > também é um bloco separado por espaço. O que só o quadro tem é a **moldura**: no glifo ela chega
 > como uma caixa larga, alta e oca (252 x 87 pt com 9 % de tinta, contra ~45 % de um tabuleiro);
