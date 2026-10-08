@@ -119,11 +119,15 @@ muda: é o mesmo princípio que preservou a S-190 na S-507.
     régua da S-194, 1.090 folhas de 36 livros         0 pioram; 15 mudam de estrutura (vão 1,5)
 
 Das 15 que mudam, as olhadas são duas colunas de verdade que a folha não achava (Neumann p. 40 e
-61, Gunderam p. 26) e uma grade de diagramas (Журавлев p. 88), assunto da S-216. **A regressão
-conhecida** é a legenda de estrelas do `Aagaard - A Matter of Endgame Technique` (p. 546): as
-estrelas numa coluna e a descrição noutra -- o que a régua de folha já fazia em qualquer página
-assim sem título; esta régua só estende a dela ao corpo. O que a borda **não** resolve é o quadro de
-largura inteira com muitas bandas: o «Scoring» de fim de capítulo, que é a S-525.
+61, Gunderam p. 26) e uma grade de diagramas (Журавлев p. 88), assunto da S-216. **A regressão que
+esta régua trouxe, e a guarda que a tirou:** a legenda de estrelas do `Aagaard - A Matter of
+Endgame Technique` (p. 546) saía com as estrelas numa coluna e a descrição noutra -- as colunas do
+corpo têm de ter larguras parecidas (`LARGURAS_DO_CORPO`); pelo glifo a folha volta a uma coluna,
+e a régua da S-194 não muda de distância em folha nenhuma. Pela **camada** essa página já saía em
+duas colunas antes de tudo, pela régua de folha inteira (doze linhas, o título tolerado), e
+continua: a régua de folha não ganha a guarda, porque foi medida em 456 páginas sem ela. O que a
+borda **não** resolve é o quadro de largura inteira com muitas bandas: o «Scoring» de fim de
+capítulo, que é a S-525.
 
 ## O quadro já achado corta a folha em trechos (S-525)
 
@@ -183,6 +187,12 @@ Duas: o título e, quando há, um subtítulo ou o cabeçalho corrente. Um **bloc
 quadro «Scoring», uma lista de lances separada do texto por espaço -- não é título, e tratá-lo como
 tal parte a lista de lances do `Melhores Finais de Capablanca` (p. 172) em duas colunas: medido e
 recusado no plano."""
+
+LARGURAS_DO_CORPO = 1.5
+"""Quanto a coluna mais larga do corpo sem as bordas pode exceder a mais estreita (S-523).
+
+A legenda de estrelas do `Aagaard - A Matter of Endgame Technique` (p. 546) cortava em 2,8; as
+soluções do Yusupov e a prosa de duas colunas do acervo ficam entre 1,0 e 1,15."""
 
 VAO_DE_BORDA = 1.5
 """O vão que isola uma banda de borda, em passos medianos entre as bandas da folha (S-523).
@@ -336,6 +346,14 @@ def _corpo_sem_as_bordas(
         return None
     cortes, faixas = _calhas(np.sum(mascaras[a:b], axis=0), x_min, x_max, calha_minima, b - a)
     if not faixas:
+        return None
+    # **As colunas do corpo têm de ter larguras parecidas.** A legenda de estrelas de uma folha de
+    # exercícios (`Aagaard - A Matter of Endgame Technique`, p. 546) é uma tabela de cinco linhas,
+    # «★★☆☆☆ | Easy…», e o corpo sem título e rodapé a cortava no vão da tabela: 100 pt contra
+    # 279. A coluna de solução é 191 contra 191; a prosa de duas colunas, idem. A régua de folha
+    # inteira não tem esta guarda, e não ganha: ela foi medida em 456 páginas sem ela.
+    larguras = [x2 - x1 for x1, x2 in faixas]
+    if max(larguras) > LARGURAS_DO_CORPO * min(larguras):
         return None
     return a, b, cortes, faixas
 
@@ -580,6 +598,7 @@ __all__ = [
     "BANDAS_NA_REGIAO",
     "BORDA_MAX",
     "PREENCHIMENTO_DA_COLUNA",
+    "LARGURAS_DO_CORPO",
     "VAO_DE_BORDA",
     "Regiao",
     "atribuir_regiao",

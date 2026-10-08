@@ -336,3 +336,21 @@ viram quadro; a régua da S-194 não piora folha nenhuma.
 
 **Sonda.** `tests/test_text_quadros.py` (a moldura oca contra o tabuleiro cheio; a imagem com e
 sem linhas cruzando o meio) e `tests/test_text_regioes.py::QuadroDeLarguraInteiraTests`.
+
+## 10. Depois da fusão (2026-10-08): a legenda de estrelas
+
+A regressão registrada em §8 foi tirada: `LARGURAS_DO_CORPO = 1,5` em `regioes.py` -- as colunas
+que o corpo sem as bordas acha têm de ter larguras parecidas (a legenda cortava em 2,8; as
+soluções do Yusupov e a prosa de duas colunas ficam entre 1,0 e 1,15). A p. 546 entrou no conjunto
+anotado (grupo «legenda», uma coluna).
+
+    conjunto anotado, glifo (o motor da aba)     41/42 -> 42/43   só a Neumann p. 40 resta
+    conjunto anotado, camada                     37/40 -> 37/41   a p. 546 sai em duas pela régua de
+                                                                  folha inteira (12 linhas, título
+                                                                  tolerado) -- como já saía antes de tudo
+    régua S-194, contra o código fundido         0 mudam de distância, 2 de estrutura
+
+**Neumann p. 40** (três colunas numa folha de duas, pelo glifo): o corte cai no vão alinhado entre
+o número do lance e o lance na tabela de lances da coluna da direita, e a terceira «coluna» (44 pt,
+à margem) é sujeira de scan -- riscos de um ou dois pixels em várias bandas. Os dois são de
+conteúdo e de tinta, não de geometria da calha: é o passo 3.

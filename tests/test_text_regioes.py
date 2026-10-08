@@ -248,6 +248,19 @@ class BandaIsoladaNaBordaTests(unittest.TestCase):
         base = [*corpo, *_folio(ultima + 3 * PASSO_Y), *_titulo(ultima + 6 * PASSO_Y)]
         self.assertEqual([2, 1], [len(r.colunas) for r in detectar_regioes(base)])
 
+    def test_o_corpo_de_colunas_desiguais_nao_e_cortado(self) -> None:
+        """A legenda de estrelas (Aagaard *Matter*, p. 546): «★★☆☆☆ | Easy…», cinco linhas com o
+        mesmo vão entre a etiqueta estreita e a descrição larga. Sem título e rodapé, o corpo tem
+        calha -- e colunas de 60 contra 300 px não são colunas de texto."""
+        estrelas = [c for i in range(8) for c in _linha_de(ESQUERDA, 120 + i * PASSO_Y, 3)]
+        descricao = [c for i in range(8) for c in _linha_de(ESQUERDA + 6 * PASSO_X, 120 + i * PASSO_Y, 20)]
+        ultima = 120 + 7 * PASSO_Y
+        titulo = _linha_de(ESQUERDA + 2 * PASSO_X, 120 - 3 * PASSO_Y, 12)  # cruza o vão
+        rodape = _linha_de(ESQUERDA + 2 * PASSO_X, ultima + 3 * PASSO_Y, 12)
+        caixas = [*titulo, *estrelas, *descricao, *rodape]
+        regioes = detectar_regioes(caixas)
+        self.assertEqual([1], sorted({len(r.colunas) for r in regioes}), f"cortou a tabela: {regioes}")
+
     def test_cada_borda_cede_no_maximo_duas_bandas(self) -> None:
         corpo = colunas_de_solucao()
         topo = 120
