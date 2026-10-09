@@ -111,6 +111,16 @@ class LeituraEntregaAFolhaTests(_Aba):
         self.painel._leitura_terminou((_pagina(), None))  # o formato antigo, sem tempo, continua a valer
         self.assertTrue(self.recados[-1].startswith("Folha lida: "))
 
+    def test_a_folha_sem_texto_diz_o_que_tentar(self) -> None:
+        """Capa, figura inteira, scan que o glifo não leu: não é «0 trecho(s)» (item 26)."""
+        self.painel._leitura_terminou((PaginaLida(documento="livro.pdf", pagina=3), None, None, 2.04))
+        self.assertEqual(
+            self.recados[-1],
+            "A folha 4 não tem texto lido (motor auto, 2,0 s): tente outro motor ou o modo bloco.",
+        )
+        self.assertEqual(self.painel.texto(), "")
+        self.assertTrue(self.painel.vazio.isVisible(), "o estado vazio continua na tela")
+
     def test_sem_imagem_a_folha_abre_igual_e_a_marca_fica(self) -> None:
         """A miniatura é conforto: um PDF que não renderiza não impede a leitura do texto."""
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)

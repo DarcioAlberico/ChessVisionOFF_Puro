@@ -1916,6 +1916,16 @@ class PainelDeTexto(QWidget):
         figuras = f", {diagramas} diagrama(s)" if diagramas else ""
         # «em 3,9 s»: a pessoa escolhe o motor e o modo bloco pelo preço, e o preço tem de ser dito.
         tempo = "" if segundos is None else f" em {segundos:.1f} s".replace(".", ",")
+        if not self.documento.para_texto().strip():
+            # A folha vazia não é falha nem é «0 trecho(s)» (item 26): é uma página sem texto para
+            # este motor -- capa, figura inteira, ou scan que o glifo não leu --, e a frase diz o
+            # que tentar. O estado vazio do editor já está na tela.
+            como = f"motor {self._motor}" + (", modo bloco" if self._modo_bloco else "")
+            self.estado.emit(
+                f"A folha {pagina.pagina + 1} não tem texto lido ({como}{tempo.replace(' em ', ', ')}): "
+                "tente outro motor ou o modo bloco."
+            )
+            return
         self.estado.emit(f"Folha lida{tempo}: {len(self.documento.corridas)} trecho(s){figuras}.")
         # **Depois de desenhar, e não antes**: se a pessoa recusar a oferta, o que fica na tela é
         # a leitura que ela acabou de pedir (S-255).
