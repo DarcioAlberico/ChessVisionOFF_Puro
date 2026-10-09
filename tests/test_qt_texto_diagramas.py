@@ -338,6 +338,25 @@ class RodaComCtrlTests(_Aba):
         self.assertGreater(barra.value(), 0, "a roda sem Ctrl continua rolando a folha")
 
 
+class TextoAlternativoDaMiniaturaTests(_Aba):
+    """A figura diz por si o que é: `alt` e `title` no formato da imagem (item 14)."""
+
+    def formato_da_miniatura(self) -> object:
+        texto = self.painel.editor.toPlainText()
+        cursor = QTextCursor(self.painel.editor.document())
+        cursor.setPosition(texto.index(OBJETO) + 1)
+        return cursor.charFormat().toImageFormat()
+
+    def test_a_miniatura_tem_texto_alternativo_e_titulo(self) -> None:
+        from PyQt6.QtGui import QTextFormat
+
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        formato = self.formato_da_miniatura()
+        self.assertEqual(formato.property(QTextFormat.Property.ImageAltText), "Diagrama 1")  # type: ignore[attr-defined]
+        self.assertEqual(formato.property(QTextFormat.Property.ImageTitle), "Diagrama 1 da folha 1")  # type: ignore[attr-defined]
+        self.assertIn('alt="Diagrama 1"', self.painel.editor.toHtml())
+
+
 class LexicoSobreviveAoRedesenhoTests(_Aba):
     """A conferência ligada se refaz depois de cada redesenho (S-293)."""
 

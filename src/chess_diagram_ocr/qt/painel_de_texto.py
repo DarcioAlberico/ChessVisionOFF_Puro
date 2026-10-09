@@ -73,6 +73,7 @@ from PyQt6.QtGui import (
     QPixmap,
     QTextCursor,
     QTextDocument,
+    QTextFormat,
     QTextImageFormat,
     QWheelEvent,
 )
@@ -717,6 +718,13 @@ class PainelDeTexto(QWidget):
         imagem.setName(nome)
         imagem.setWidth(mapa.width())
         imagem.setHeight(mapa.height())
+        # O texto alternativo (item 14): é o que o leitor de tela diz no lugar da figura, e o que
+        # o `toHtml` escreve no `alt`. A marca vem logo abaixo, mas a marca é texto do documento, e
+        # a figura precisa dizer por si o que é.
+        numero = int(getattr(self.documento.bloco_de(corrida), "indice", corrida.bloco)) + 1
+        folha = "" if self._pagina is None else f" da folha {int(self._pagina.pagina) + 1}"
+        imagem.setProperty(QTextFormat.Property.ImageAltText, f"Diagrama {numero}")
+        imagem.setProperty(QTextFormat.Property.ImageTitle, f"Diagrama {numero}{folha}")
         cursor.insertImage(imagem)
         cursor.insertBlock()
 

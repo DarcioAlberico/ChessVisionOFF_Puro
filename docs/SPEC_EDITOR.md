@@ -2937,6 +2937,7 @@ Cada linha é um commit, com o teste que a tranca.
 | **11. as posições são do livro** | o item 6 guardava as posições só pela folha: trocar de livro levava as posições do anterior para as folhas do novo | chave `(livro resolvido, folha)` (`_chave_de_livro`); `definir_livro` para outro livro esquece tudo, a mesma grafia diferente do mesmo livro não | `PosicoesDoProdutoTests::test_as_posicoes_sao_do_livro_e_trocar_de_livro_as_esquece` |
 | **12. o clique e o menu valem também sobre o texto da marca** | `_marca_sob` só reconhecia a figura: sem miniatura (livro fora do lugar, posição não lida) a marca `[Diagrama N]` não tinha clique nem menu | `_marca_em(deslocamento)`: a marca que contém o ponto, figura ou texto | `CliqueNaMiniaturaTests::test_o_clique_no_texto_da_marca_tambem_a_seleciona` |
 | **13. Ctrl+roda é o zoom da vista** | o `QTextEdit` respondia ao Ctrl+roda mudando a fonte do editor, que nenhuma letra segue (S-264): a pessoa rodava e nada acontecia | o filtro de eventos do editor traduz Ctrl+roda em `_mudar_zoom(±1)`, os mesmos degraus dos comandos; a roda sem Ctrl continua rolando | `RodaComCtrlTests` |
+| **14. a miniatura tem texto alternativo** | a figura era muda para o leitor de tela e para o `toHtml`: um caractere-objeto sem nome | `ImageAltText` = «Diagrama N» e `ImageTitle` = «Diagrama N da folha F» no `QTextImageFormat` -- o `alt` que o `toHtml` escreve e o que a acessibilidade lê | `TextoAlternativoDaMiniaturaTests` |
 
 ---
 
