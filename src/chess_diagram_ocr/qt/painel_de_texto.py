@@ -103,7 +103,7 @@ from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.imagens import pixmap_de_rgb
 from chess_diagram_ocr.qt.texto_formato import bloco_de, formato_de
-from chess_diagram_ocr.qt.trabalho import Tarefa
+from chess_diagram_ocr.qt.trabalho import Tarefa, rastro_de
 from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.text import busca, correcao, rascunho, rico
 from chess_diagram_ocr.text.documento import PaginaLida
@@ -1710,9 +1710,22 @@ class PainelDeTexto(QWidget):
             return
         self.estado.emit(str(frase))
 
-    def _exportacao_falhou(self, erro: str) -> None:
-        self._tarefa = None
-        QMessageBox.critical(self, "Exportar", f"Falha ao exportar:\n{erro}")
+    def _exportacao_falhou(self, erro: str, excecao: object = None) -> None:
+        self._falha("Exportar", f"Falha ao exportar:\n{erro}", excecao)
+
+    def _falha(self, titulo: str, mensagem: str, excecao: object) -> None:
+        """A caixa de falha com o rastro atrás de «Detalhes» e o botão «Copiar» (A10, item 21).
+
+        As duas falhas desta aba abriam um `QMessageBox.critical` com a frase e nada mais: o
+        rastro ficava no log, que a caixa mandava a pessoa ir procurar. É a mesma caixa de
+        `qt/janela._falhou`, e o rastro é o que a `Tarefa` formatou **na thread**, no instante da
+        falha -- é ali que a pilha está inteira.
+        """
+        from chess_diagram_ocr.qt import dialogos
+
+        tarefa, self._tarefa = self._tarefa, None
+        rastro = str(getattr(tarefa, "rastro", "") or "") or rastro_de(excecao)
+        dialogos.mostrar_falha(self, titulo, mensagem, rastro)
 
     # ---------------------------------------------------------- a leitura, em thread
 
@@ -1851,10 +1864,9 @@ class PainelDeTexto(QWidget):
         # a leitura que ela acabou de pedir (S-255).
         self.oferecer_rascunho(pagina)
 
-    def _leitura_falhou(self, erro: str) -> None:
-        self._tarefa = None
+    def _leitura_falhou(self, erro: str, excecao: object = None) -> None:
         self._documento_ao_ler = None
-        QMessageBox.critical(self, "Ler a folha", f"Não foi possível ler a folha:\n{erro}")
+        self._falha("Ler a folha", f"Não foi possível ler a folha:\n{erro}", excecao)
 
     # ------------------------------------------------------ o que a janela pergunta (S-283)
 

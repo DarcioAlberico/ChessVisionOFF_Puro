@@ -2945,6 +2945,12 @@ Cada linha é um commit, com o teste que a tranca.
 | **19. gravar a folha vazia recusa no rodapé** | o Tk recusava; o porte abria o diálogo, gravava um `.cvtxt` vazio e dizia «Texto gravado» | `_salvar_documento_em` sai antes do diálogo com a frase do rodapé, como a exportação já fazia | `GravarCarimbaAMaoTests::test_salvar_a_folha_vazia_recusa_no_rodape_sem_abrir_dialogo` |
 | **20. copiar o diagrama leva a FEN como texto** | «Copiar a imagem» punha só o pixmap na área de transferência: colar num programa de xadrez ou num e-mail não dava nada | `QMimeData` com a imagem **e** o texto da FEN quando se sabe; sem figura, a FEN sozinha ainda é copiada | `MenuDaMiniaturaTests::test_copiar_leva_a_fen_como_texto_quando_se_sabe` e `…::test_sem_figura_a_fen_ainda_e_copiada` |
 
+## Itens 21 a 30 da aba Texto no Qt (2026-10-09)
+
+| item | o que faltava | o que entrou | teste |
+|---|---|---|---|
+| **21. as falhas da aba trazem o rastro** | a leitura e a exportação que falhavam abriam um `QMessageBox.critical` só com a frase; o rastro ficava no log (A10) | `_falha`: a mesma `dialogos.mostrar_falha` da janela, com o rastro que a `Tarefa` formatou na thread atrás de «Detalhes» e o botão «Copiar»; duas caixas modais a menos na contagem | `FalhaComRastroTests` |
+
 ---
 
 # O que esta spec deliberadamente não faz

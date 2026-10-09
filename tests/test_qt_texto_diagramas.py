@@ -776,6 +776,38 @@ class MotorEModoBlocoTests(_Aba):
         self.assertEqual((lido.texto_motor, lido.texto_bloco), ("glifo", True))
 
 
+class FalhaComRastroTests(_Aba):
+    """A leitura e a exportação que falham abrem a caixa com o rastro e «Copiar» (A10, item 21)."""
+
+    def test_a_leitura_que_quebra_na_thread_traz_o_rastro(self) -> None:
+        from chess_diagram_ocr.qt import dialogos
+
+        self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
+        with mock.patch.object(dialogos, "mostrar_falha") as caixa, mock.patch.object(
+            qt_texto, "_renderizar", return_value=None
+        ), mock.patch.object(qt_texto, "_ler", side_effect=RuntimeError("o motor caiu")):
+            self.painel.ler()
+            self.esperar_a_tarefa()
+        caixa.assert_called_once()
+        pai, titulo, mensagem, detalhe = caixa.call_args.args
+        self.assertIs(pai, self.painel)
+        self.assertEqual(titulo, "Ler a folha")
+        self.assertIn("o motor caiu", mensagem)
+        self.assertIn("Traceback", detalhe)
+        self.assertIn("RuntimeError: o motor caiu", detalhe)
+        self.assertIsNone(self.painel._tarefa, "a tarefa quebrada ficou pendurada")
+
+    def test_a_exportacao_que_quebra_traz_o_rastro(self) -> None:
+        from chess_diagram_ocr.qt import dialogos
+
+        with mock.patch.object(dialogos, "mostrar_falha") as caixa:
+            self.painel._exportacao_falhou("disco cheio", OSError("disco cheio"))
+        _pai, titulo, mensagem, detalhe = caixa.call_args.args
+        self.assertEqual(titulo, "Exportar")
+        self.assertIn("disco cheio", mensagem)
+        self.assertIn("OSError", detalhe)
+
+
 class ConfiguracoesDaLeituraTests(unittest.TestCase):
     """A leitura da aba pergunta o DPI e o teto de diagramas às Configurações, como o visualizador.
 
