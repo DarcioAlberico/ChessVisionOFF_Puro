@@ -66,6 +66,7 @@ from pathlib import Path
 import numpy as np
 from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (
+    QAction,
     QKeyEvent,
     QKeySequence,
     QMouseEvent,
@@ -75,6 +76,7 @@ from PyQt6.QtGui import (
     QTextImageFormat,
 )
 from PyQt6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -391,6 +393,9 @@ class PainelDeTexto(QWidget):
         ele**, e não ao que está na tela -- somar ao desenhado acumularia o degrau anterior a cada
         chamada, e a letra cresceria sozinha."""
         self.editor.setAcceptRichText(False)
+        # O menu do botão direito é o do próprio editor, mais o que a miniatura sabe fazer (item 10).
+        self.editor.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.editor.customContextMenuRequested.connect(self._abrir_menu_de_contexto)
         # **O estado vazio deixou de ser `placeholderText`** (F9-C2, §7 item 3). A frase continua
         # sendo texto de interface e continua em `ui/strings.py`; o que mudou é o desenho:
         # `placeholderText` não elide **nem quebra linha**, e o crítico do ciclo 1 mediu a dica
@@ -2078,6 +2083,50 @@ class PainelDeTexto(QWidget):
         self.editor.setTextCursor(cursor)
         self.editor.setFocus()
         return True
+
+    def _abrir_menu_de_contexto(self, ponto: QPoint) -> None:
+        menu = self._menu_de_contexto(ponto)
+        menu.exec(self.editor.viewport().mapToGlobal(ponto))
+        menu.deleteLater()
+
+    def _menu_de_contexto(self, ponto: QPoint) -> QMenu:
+        """O menu do botão direito: o padrão do editor e, sobre uma miniatura, o que ela sabe fazer.
+
+        Três ações, e as três já existiam por outro caminho -- é o que as mantém fora do catálogo
+        de comandos (S-256): abrir na sala é o duplo clique (item 8), copiar a imagem é o que a
+        aba Livro faz com o recorte, apagar o diagrama é apagar a marca, que o clique já
+        seleciona. O menu é onde quem não sabe do duplo clique descobre que a miniatura é viva.
+        """
+        menu = self.editor.createStandardContextMenu(ponto)
+        achado = self._marca_sob(ponto)
+        if achado is None:
+            return menu
+        comeco, fim, corrida = achado
+        numero = int(getattr(self.documento.bloco_de(corrida), "indice", -1)) + 1
+        menu.addSeparator()
+        estudar = QAction(f"Abrir o diagrama {numero} no Estudo", menu)
+        estudar.triggered.connect(lambda: self._ativou_a_miniatura(ponto))
+        copiar = QAction(f"Copiar a imagem do diagrama {numero}", menu)
+        copiar.triggered.connect(lambda: self._copiar_miniatura(corrida))
+        apagar = QAction(f"Apagar o diagrama {numero} da folha", menu)
+        apagar.triggered.connect(lambda: self._apagar_diagrama(comeco, fim, numero))
+        for acao in (estudar, copiar, apagar):
+            menu.addAction(acao)
+        return menu
+
+    def _copiar_miniatura(self, corrida: rico.Corrida) -> None:
+        """A figura do diagrama -- recorte ou desenho -- vai para a área de transferência."""
+        figura = self._imagem_do_diagrama(corrida)
+        if figura is None:
+            self.estado.emit("Este diagrama não tem figura para copiar.")
+            return
+        QApplication.clipboard().setPixmap(figura)
+        self.estado.emit("Imagem do diagrama copiada.")
+
+    def _apagar_diagrama(self, comeco: int, fim: int, numero: int) -> None:
+        """Tira a marca inteira -- e com ela a figura. É uma edição: `Ctrl+Z` a devolve."""
+        self._aplicar(rico.apagar(self.documento, comeco, fim), selecao=(comeco, comeco))
+        self.estado.emit(f"O diagrama {numero} saiu da folha; desfazer o devolve.")
 
     def _ativou_a_miniatura(self, ponto: QPoint) -> bool:
         """O duplo clique na miniatura pede o diagrama na sala de estudo (`diagrama_ativado`)."""

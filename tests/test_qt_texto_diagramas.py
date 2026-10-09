@@ -536,6 +536,64 @@ class CliqueNaMiniaturaTests(_Aba):
         self.assertEqual(pedidos, [(0, 0)])
 
 
+class MenuDaMiniaturaTests(_Aba):
+    """O botão direito sobre a miniatura: abrir na sala, copiar a imagem, apagar o diagrama (item 10)."""
+
+    ponto_da_miniatura = CliqueNaMiniaturaTests.ponto_da_miniatura
+
+    def acoes(self, ponto: object) -> list[str]:
+        menu = self.painel._menu_de_contexto(ponto)  # type: ignore[arg-type]
+        self.addCleanup(descartar, menu)
+        self.menu = menu
+        return [a.text() for a in menu.actions() if a.text()]
+
+    def test_sobre_a_miniatura_o_menu_ganha_as_tres_acoes(self) -> None:
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        textos = self.acoes(self.ponto_da_miniatura())
+        self.assertIn("Abrir o diagrama 1 no Estudo", textos)
+        self.assertIn("Copiar a imagem do diagrama 1", textos)
+        self.assertIn("Apagar o diagrama 1 da folha", textos)
+        self.assertGreater(len(textos), 3, "o menu padrão do editor continua lá")
+
+    def test_fora_da_miniatura_o_menu_e_o_do_editor(self) -> None:
+        from PyQt6.QtCore import QPoint
+
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        textos = self.acoes(QPoint(4, 4))
+        self.assertFalse([t for t in textos if "diagrama" in t])
+
+    def test_copiar_poe_a_figura_na_area_de_transferencia(self) -> None:
+        from PyQt6.QtWidgets import QApplication
+
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        QApplication.clipboard().clear()
+        self.acoes(self.ponto_da_miniatura())
+        copiar = next(a for a in self.menu.actions() if a.text().startswith("Copiar"))
+        copiar.trigger()
+        self.assertFalse(QApplication.clipboard().pixmap().isNull())
+        self.assertIn("copiada", self.recados[-1])
+
+    def test_apagar_tira_a_marca_e_desfazer_a_devolve(self) -> None:
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        self.acoes(self.ponto_da_miniatura())
+        apagar = next(a for a in self.menu.actions() if a.text().startswith("Apagar"))
+        apagar.trigger()
+        self.assertNotIn("[Diagrama 1]", self.painel.texto())
+        self.assertEqual(self.miniaturas(), 0)
+        self.assertTrue(self.painel.tem_alteracoes)
+        self.painel.desfazer()
+        self.assertIn("[Diagrama 1]", self.painel.texto())
+        self.assertEqual(self.miniaturas(), 1)
+
+    def test_abrir_no_estudo_pelo_menu_pede_o_diagrama(self) -> None:
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        pedidos: list[tuple[int, int]] = []
+        self.painel.diagrama_ativado.connect(lambda folha, indice: pedidos.append((folha, indice)))
+        self.acoes(self.ponto_da_miniatura())
+        next(a for a in self.menu.actions() if a.text().startswith("Abrir")).trigger()
+        self.assertEqual(pedidos, [(0, 0)])
+
+
 class ConfiguracoesDaLeituraTests(unittest.TestCase):
     """A leitura da aba pergunta o DPI e o teto de diagramas às Configurações, como o visualizador.
 
