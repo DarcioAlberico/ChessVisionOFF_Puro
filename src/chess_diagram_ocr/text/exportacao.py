@@ -149,7 +149,7 @@ class Formato(Protocol):
 
     def corrida(self, c: Corrida) -> str: ...
 
-    def diagrama(self, c: Corrida, recorte: Path | None) -> str: ...
+    def diagrama(self, c: Corrida, recorte: Path | None, placement: str = "") -> str: ...
 
     def rodape(self, doc: DocumentoRico) -> str: ...
 
@@ -180,7 +180,7 @@ class Texto:
     def corrida(self, c: Corrida) -> str:
         return c.texto
 
-    def diagrama(self, c: Corrida, recorte: Path | None) -> str:
+    def diagrama(self, c: Corrida, recorte: Path | None, placement: str = "") -> str:
         # A marca e nada mais: no texto puro ela é a única referência que sobra ao diagrama.
         return c.texto
 
@@ -243,12 +243,19 @@ class Markdown:
         """
         return atributo != "estilo" or valor == "titulo"
 
-    def diagrama(self, c: Corrida, recorte: Path | None) -> str:
+    def diagrama(self, c: Corrida, recorte: Path | None, placement: str = "") -> str:
+        """A imagem, e **a FEN num comentário** que o Markdown ignora e o olho lê (S-250).
+
+        A tabela do cabeçalho prometia o comentário desde a S-250 e nada o escrevia: o campo de
+        peças só chega ao bloco quando a leitura dos diagramas do produto o entrega (item 6 de
+        2026-10-08), e até lá ele estava sempre vazio. Vazio continua sem comentário.
+        """
         alvo = f"{self.pasta_de_imagens}/{recorte.name}" if recorte is not None else ""
         marca = c.texto
-        if not alvo:
-            return marca
-        return f"![{marca}]({alvo})"
+        saida = f"![{marca}]({alvo})" if alvo else marca
+        if placement:
+            saida += f"\n<!-- FEN: {placement} -->"
+        return saida
 
     def rodape(self, doc: DocumentoRico) -> str:
         return ""
@@ -381,11 +388,18 @@ class Html:
             classes.append(classe_de_corpo(c.atributos.corpo))
         return classes
 
-    def diagrama(self, c: Corrida, recorte: Path | None) -> str:
+    def diagrama(self, c: Corrida, recorte: Path | None, placement: str = "") -> str:
+        """`<img>` com a marca no `alt` e, quando se sabe, a FEN no `data-fen` (S-250).
+
+        `data-fen` no `<img>` e no `<span>` sem imagem: é o atributo que o contrato `cb-*` do
+        editor HTML/CSS lê (`cb-diagram`, `data-fen`), e é por ele que um diagrama exportado
+        daqui volta a ser posição, e não só figura.
+        """
         marca = _html.escape(c.texto)
+        fen = f' data-fen="{_html.escape(placement, quote=True)}"' if placement else ""
         if recorte is None:
-            return marca
-        return f'<img class="diagrama" src="{self.pasta_de_imagens}/{recorte.name}" alt="{marca}">'
+            return f'<span class="diagrama"{fen}>{marca}</span>' if fen else marca
+        return f'<img class="diagrama" src="{self.pasta_de_imagens}/{recorte.name}" alt="{marca}"{fen}>'
 
     def paragrafo(self, alinhamento: str, corpo: str) -> str:
         """O trecho alinhado num `<div>` (S-259). **Bloco, porque `text-align` não é de inline.**
@@ -469,7 +483,7 @@ class Rtf:
         controle = CONTROLE_DE_ALINHAMENTO_RTF.get(alinhamento, "")
         return f"{{{controle} {corpo}}}" if controle else corpo
 
-    def diagrama(self, c: Corrida, recorte: Path | None) -> str:
+    def diagrama(self, c: Corrida, recorte: Path | None, placement: str = "") -> str:
         """A marca, e **não** a imagem. O `recorte` é ignorado de propósito (S-341).
 
         Embutir figura em RTF é o `pict` com o PNG em hexadecimal, e ela viajaria dentro do
@@ -610,7 +624,9 @@ def exportar(
                 sem_recorte += 1
             elif not desenha_imagem:
                 imagem_descartada += 1
-            partes.append((corrida.atributos.alinhamento, formato.diagrama(corrida, recorte)))
+            # O campo de peças, quando a leitura dos diagramas já o deu ao bloco; `""` é "não lido".
+            placement = str(getattr(doc.bloco_de(corrida), "placement", "") or "")
+            partes.append((corrida.atributos.alinhamento, formato.diagrama(corrida, recorte, placement=placement)))
             continue
         partes.append((corrida.atributos.alinhamento, formato.corrida(corrida)))
     montar = getattr(formato, "montar", None)

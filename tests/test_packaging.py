@@ -250,8 +250,20 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2078
+    LIMITE = 2088
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.087 -> 2.088 no item 9 da aba Texto (2026-10-08)**: a ligação `folha_pedida` →
+    `ir_para_pagina` -- o `.cvtxt` aberto na aba Texto leva o visualizador à folha dele.
+
+    **2.079 -> 2.087 no item 8 da aba Texto (2026-10-08)**: o duplo clique numa miniatura da aba
+    Texto leva o diagrama à sala de estudo pelo mesmo caminho do duplo clique na caixa do
+    visualizador (`_estudar_do_texto`, que confere se a folha é a da tela e senão diz qual é
+    qual) -- a ligação do sinal e o método de seis linhas.
+
+    **2.078 -> 2.079 no item 6 da aba Texto (2026-10-08)**: uma linha em `_chegaram_itens` leva
+    o campo de peças de cada diagrama lido à aba Texto (`definir_posicoes`), que até aqui só
+    sabia onde o diagrama está -- é o que põe a FEN no `.cvtxt`, no `.md` e no `.html`.
 
     **2.077 -> 2.078 no porte dos diagramas da aba Texto (2026-10-08)**: uma linha em
     `_pagina_apareceu` -- a aba Texto só sabia a página do visualizador na abertura do livro, e

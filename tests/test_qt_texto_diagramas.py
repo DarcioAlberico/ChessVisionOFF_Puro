@@ -25,6 +25,7 @@ from chess_diagram_ocr.text import arquivo, rico
 from chess_diagram_ocr.text.pagina import BlocoDeDiagrama, BlocoDeTexto, Coluna, LinhaLida, PaginaLida
 
 if TEM_PYQT:
+    from PyQt6.QtCore import Qt
     from PyQt6.QtGui import QTextCursor
     from PyQt6.QtWidgets import QFileDialog
 
@@ -137,6 +138,26 @@ class ReabrirOArquivoTests(_Aba):
         self.assertEqual(self.painel.campo_de_folha.value(), 1)
         self.assertIn("1 com miniatura", self.recados[-1])
 
+    def test_o_cvtxt_do_livro_aberto_pede_a_folha_dele_e_o_de_outro_livro_nao(self) -> None:
+        """`folha_pedida` só sai para o livro que está na janela (item 9)."""
+        livro = self.pasta / "livro.pdf"
+        livro.write_bytes(b"%PDF-1.4 de mentira")
+        pedidas: list[int] = []
+        self.painel.folha_pedida.connect(pedidas.append)
+        self.painel.definir_livro(livro, pagina=0)
+        destino = self.pasta / "folha3.cvtxt"
+        arquivo.gravar(destino, rico.de_pagina(PaginaLida(documento=str(livro), pagina=2)))
+        with mock.patch.object(qt_texto, "_renderizar", return_value=None), mock.patch.object(
+            QFileDialog, "getOpenFileName", return_value=(str(destino), "")
+        ):
+            self.painel.abrir_documento()
+        self.assertEqual(pedidas, [2])
+        outro = self.pasta / "outro.cvtxt"
+        arquivo.gravar(outro, rico.de_pagina(PaginaLida(documento=str(self.pasta / "outro.pdf"), pagina=5)))
+        with mock.patch.object(QFileDialog, "getOpenFileName", return_value=(str(outro), "")):
+            self.painel.abrir_documento()
+        self.assertEqual(pedidas, [2], "o .cvtxt de outro livro não pede folha nenhuma")
+
     def test_sem_o_livro_o_texto_abre_e_o_rodape_diz_qual_falta(self) -> None:
         destino = self.gravar(self.pasta / "sumiu" / "livro.pdf")
         with mock.patch.object(qt_texto, "_renderizar") as renderizar, mock.patch.object(
@@ -245,6 +266,32 @@ class ZoomDaVistaTests(_Aba):
         self.assertEqual(self.corpo_do_primeiro_trecho(), corpo)
 
 
+class MiniaturaAcompanhaOZoomTests(_Aba):
+    """A miniatura cresce e encolhe com a vista, na mesma razão que a letra (S-264)."""
+
+    def largura_da_miniatura(self) -> int:
+        texto = self.painel.editor.toPlainText()
+        cursor = QTextCursor(self.painel.editor.document())
+        cursor.setPosition(texto.index(OBJETO) + 1)
+        formato = cursor.charFormat().toImageFormat()
+        self.assertTrue(formato.isValid(), "não há imagem onde o OBJETO está")
+        return int(formato.width())
+
+    def test_aproximar_alarga_a_miniatura_e_voltar_a_devolve(self) -> None:
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        normal = self.largura_da_miniatura()
+        self.assertEqual(normal, qt_texto.LARGURA_DA_MINIATURA)
+        self.painel.aplicar_zoom(+4, avisar=False)
+        maior = self.largura_da_miniatura()
+        self.assertGreater(maior, normal)
+        corpo = tema.fonte_base()[0]
+        self.assertEqual(maior, round(qt_texto.LARGURA_DA_MINIATURA * (corpo + 4) / corpo))
+        self.painel.aplicar_zoom(-2, avisar=False)
+        self.assertLess(self.largura_da_miniatura(), normal)
+        self.painel.aplicar_zoom(0, avisar=False)
+        self.assertEqual(self.largura_da_miniatura(), normal)
+
+
 class LexicoSobreviveAoRedesenhoTests(_Aba):
     """A conferência ligada se refaz depois de cada redesenho (S-293)."""
 
@@ -262,6 +309,352 @@ class LexicoSobreviveAoRedesenhoTests(_Aba):
         self.painel.limpar_marcas_do_lexico()
         self.painel.desfazer()
         self.assertEqual(self.painel.editor.extraSelections(), [], "desligada, ela não volta")
+
+    def test_a_palavra_digitada_e_conferida_na_pausa(self) -> None:
+        """A tecla comum não redesenha; a conferência ligada se refaz quando a digitação para."""
+        from PyQt6.QtTest import QTest
+
+        self.painel.desenhar_documento(rico.de_texto("uma palavra aqui"))
+        self.painel.marcar_fora_do_lexico()
+        self.assertEqual(self.painel.editor.extraSelections(), [], "o texto de partida tem palavra desconhecida")
+        self.painel.editor.setFocus()
+        cursor = self.painel.editor.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self.painel.editor.setTextCursor(cursor)
+        QTest.keyClicks(self.painel.editor, " qzxvk")
+        self.assertEqual(self.painel.editor.extraSelections(), [], "a tecla não reconfere (caminho rápido)")
+        self.assertTrue(self.painel._rascunho.isActive(), "a tecla não armou a pausa")
+        self.painel._rascunho.timeout.emit()
+        marcadas = self.painel.editor.extraSelections()
+        self.assertEqual([s.cursor.selectedText() for s in marcadas], ["qzxvk"])
+        self.painel.limpar_marcas_do_lexico()
+        self.painel._rascunho.timeout.emit()
+        self.assertEqual(self.painel.editor.extraSelections(), [], "desligada, a pausa não marca")
+
+
+class FraseDoRodapeTests(unittest.TestCase):
+    """A frase pura do rodapé da aba (`ui/texto_declarado.frase_do_rodape`)."""
+
+    def test_folha_com_tudo_no_lugar(self) -> None:
+        from chess_diagram_ocr.ui.texto_declarado import frase_do_rodape
+
+        self.assertEqual(
+            frase_do_rodape(folha=13, trechos=43, diagramas=3, miniaturas=3, por_gravar=False),
+            "Folha 14 · 43 trecho(s) · 3 diagrama(s)",
+        )
+
+    def test_a_miniatura_que_falta_e_dita_e_o_por_gravar_tambem(self) -> None:
+        from chess_diagram_ocr.ui.texto_declarado import frase_do_rodape
+
+        self.assertEqual(
+            frase_do_rodape(folha=0, trechos=5, diagramas=2, miniaturas=0, por_gravar=True),
+            "Folha 1 · 5 trecho(s) · 2 diagrama(s), 0 com miniatura · por gravar",
+        )
+
+    def test_sem_texto_nao_ha_frase_e_sem_folha_ela_diz(self) -> None:
+        from chess_diagram_ocr.ui.texto_declarado import frase_do_rodape
+
+        self.assertEqual(frase_do_rodape(folha=None, trechos=0, diagramas=0, miniaturas=0, por_gravar=False), "")
+        self.assertTrue(
+            frase_do_rodape(folha=None, trechos=1, diagramas=0, miniaturas=0, por_gravar=False).startswith(
+                "Texto sem folha de origem"
+            )
+        )
+
+
+class RodapeDaAbaTests(_Aba):
+    """O rótulo de estado da aba existia e ficava vazio desde o porte."""
+
+    def test_o_rodape_acompanha_a_folha_a_edicao_e_a_gravacao(self) -> None:
+        from PyQt6.QtTest import QTest
+
+        self.assertEqual(self.painel.status.text(), "")
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        trechos = len(self.painel.documento.corridas)
+        self.assertEqual(self.painel.status.text(), f"Folha 1 · {trechos} trecho(s) · 1 diagrama(s)")
+        self.painel.editor.setFocus()
+        cursor = self.painel.editor.textCursor()
+        cursor.setPosition(0)
+        self.painel.editor.setTextCursor(cursor)
+        QTest.keyClicks(self.painel.editor, "x")
+        self.assertTrue(self.painel.status.text().endswith(" · por gravar"))
+        with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(self.pasta / "f.cvtxt"), "")):
+            self.painel.salvar_documento_como()
+        self.assertFalse(self.painel.status.text().endswith("por gravar"))
+
+    def test_sem_miniatura_o_rodape_diz_quantas_faltam(self) -> None:
+        self.painel.mostrar_pagina(_pagina())
+        self.assertIn("1 diagrama(s), 0 com miniatura", self.painel.status.text())
+
+
+FEN = "r1bqkbnr/pppppppp/2n5/8/4P3/8/PPPP1PPP/RNBQKBNR"
+
+
+class ComPosicoesTests(unittest.TestCase):
+    """`PaginaLida.com_posicoes`: a FEN do OCR de diagramas entra no bloco pelo `indice`, pura."""
+
+    def test_preenche_pelo_indice_e_devolve_a_propria_pagina_quando_nada_muda(self) -> None:
+        pagina = _pagina()
+        nova = pagina.com_posicoes([FEN])
+        self.assertEqual(nova.diagramas[0].placement, FEN)
+        self.assertEqual(nova.texto(), pagina.texto(), "só o campo de peças muda")
+        self.assertIs(nova.com_posicoes([FEN]), nova)
+        self.assertIs(pagina.com_posicoes([]), pagina)
+        self.assertIs(pagina.com_posicoes([""]), pagina, "não lido não apaga nem muda")
+
+    def test_o_vazio_nao_apaga_o_que_o_bloco_ja_tinha(self) -> None:
+        com = _pagina().com_posicoes([FEN])
+        self.assertEqual(com.com_posicoes([""]).diagramas[0].placement, FEN)
+
+    def test_sobrevive_ao_arquivo(self) -> None:
+        pagina = _pagina().com_posicoes([FEN])
+        volta = PaginaLida.de_json(pagina.para_json())
+        self.assertEqual(volta.diagramas[0].placement, FEN)
+
+
+class PosicoesDoProdutoTests(_Aba):
+    """`definir_posicoes`: a leitura dos diagramas e a do texto chegam em qualquer ordem."""
+
+    def test_a_posicao_que_chega_depois_entra_na_folha_sem_virar_alteracao(self) -> None:
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        self.painel.definir_posicoes(0, [FEN])
+        assert self.painel._pagina is not None
+        self.assertEqual(self.painel._pagina.diagramas[0].placement, FEN)
+        self.assertEqual(self.painel.documento.bloco_de(self.painel.documento.diagramas[0]).placement, FEN)
+        self.assertFalse(self.painel.tem_alteracoes, "a posição é leitura, não edição")
+        self.assertEqual(self.miniaturas(), 1, "o redesenho manteve a miniatura")
+
+    def test_a_posicao_que_chega_antes_espera_a_folha(self) -> None:
+        self.painel.definir_posicoes(0, [FEN])
+        self.painel.definir_posicoes(3, ["8/8/8/8/8/8/8/K6k"])
+        self.painel.mostrar_pagina(_pagina())
+        assert self.painel._pagina is not None
+        self.assertEqual(self.painel._pagina.diagramas[0].placement, FEN, "a folha 1 pega a posição da folha 1")
+
+    def test_outra_folha_nao_mexe_na_que_esta_na_tela(self) -> None:
+        self.painel.mostrar_pagina(_pagina())
+        self.painel.definir_posicoes(5, [FEN])
+        assert self.painel._pagina is not None
+        self.assertEqual(self.painel._pagina.diagramas[0].placement, "")
+
+    def test_a_fen_vai_para_o_cvtxt_e_para_o_md(self) -> None:
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        self.painel.definir_posicoes(0, [FEN])
+        destino = self.pasta / "folha.cvtxt"
+        with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(destino), "")):
+            self.painel.salvar_documento_como()
+        gravado = arquivo.carregar(destino)
+        assert gravado.origem is not None
+        self.assertEqual(gravado.origem.diagramas[0].placement, FEN)
+        md = self.pasta / "folha.md"
+        with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(md), "")):
+            self.painel.exportar_md()
+        self.esperar_a_tarefa()
+        self.assertIn(f"<!-- FEN: {FEN} -->", md.read_text(encoding="utf-8"))
+
+
+class DesenhadaDaPosicaoTests(_Aba):
+    """Sem folha, a miniatura e o recorte exportado nascem da posição lida (item 7)."""
+
+    def test_sem_folha_a_miniatura_e_desenhada_da_fen(self) -> None:
+        self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]))
+        self.assertEqual(self.miniaturas(), 1)
+        self.assertNotIn("com miniatura", self.painel.status.text(), "o rodapé não conta falta nenhuma")
+
+    def test_a_posicao_que_chega_depois_desenha_a_miniatura_que_faltava(self) -> None:
+        self.painel.mostrar_pagina(_pagina())
+        self.assertEqual(self.miniaturas(), 0)
+        self.painel.definir_posicoes(0, [FEN])
+        self.assertEqual(self.miniaturas(), 1)
+
+    def test_o_recorte_da_folha_vem_primeiro(self) -> None:
+        self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]), folha_rgb=_folha())
+        with mock.patch.object(qt_texto, "_png_da_posicao") as desenhar:
+            self.painel.aplicar_zoom(+1, avisar=False)
+        desenhar.assert_not_called()
+        self.assertEqual(self.miniaturas(), 1)
+
+    def test_o_md_sem_folha_leva_o_diagrama_desenhado(self) -> None:
+        self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]))
+        destino = self.pasta / "desenhado.md"
+        with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(destino), "")):
+            self.painel.exportar_md()
+        self.esperar_a_tarefa()
+        conteudo = destino.read_text(encoding="utf-8")
+        self.assertIn("diagramas/desenhado_d1.png", conteudo)
+        self.assertIn(f"<!-- FEN: {FEN} -->", conteudo)
+        png = self.pasta / "diagramas" / "desenhado_d1.png"
+        self.assertTrue(png.exists())
+        from PIL import Image
+
+        with Image.open(png) as imagem:
+            self.assertEqual(imagem.size, (qt_texto.LADO_DO_RECORTE_DESENHADO, qt_texto.LADO_DO_RECORTE_DESENHADO))
+        self.assertNotIn("sem recorte", self.recados[-1])
+
+    def test_sem_folha_e_sem_posicao_continua_sem_figura(self) -> None:
+        self.painel.mostrar_pagina(_pagina())
+        self.assertEqual(self.miniaturas(), 0)
+        self.assertIsNone(qt_texto._png_da_posicao("", lado_px=100))
+
+
+class CliqueNaMiniaturaTests(_Aba):
+    """O clique na miniatura seleciona a marca; o duplo clique pede o diagrama na sala (item 8)."""
+
+    def ponto_da_miniatura(self) -> object:
+        from PyQt6.QtCore import QPoint
+
+        texto = self.painel.editor.toPlainText()
+        cursor = QTextCursor(self.painel.editor.document())
+        cursor.setPosition(texto.index(OBJETO))
+        caixa = self.painel.editor.cursorRect(cursor)
+        return QPoint(caixa.left() + 12, caixa.top() + 12)
+
+    def test_o_clique_seleciona_a_marca_do_diagrama(self) -> None:
+        from PyQt6.QtTest import QTest
+
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        QTest.mouseClick(self.painel.editor.viewport(), Qt.MouseButton.LeftButton, pos=self.ponto_da_miniatura())
+        self.assertEqual(self.painel.editor.textCursor().selectedText(), "[Diagrama 1]")
+        self.assertEqual(self.painel._selecao_atual(), (self.painel.texto().index("[Diagrama 1]"), self.painel.texto().index("]") + 1))
+
+    def test_o_clique_fora_da_miniatura_e_do_editor(self) -> None:
+        from PyQt6.QtCore import QPoint
+        from PyQt6.QtTest import QTest
+
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        QTest.mouseClick(self.painel.editor.viewport(), Qt.MouseButton.LeftButton, pos=QPoint(4, 4))
+        self.assertEqual(self.painel.editor.textCursor().selectedText(), "")
+        self.assertIsNone(self.painel._marca_sob(QPoint(4, 4)))
+
+    def test_o_duplo_clique_pede_o_diagrama_na_sala(self) -> None:
+        from PyQt6.QtTest import QTest
+
+        self.painel.mostrar_pagina(_pagina(livro="livro.pdf"), folha_rgb=_folha())
+        pedidos: list[tuple[int, int]] = []
+        self.painel.diagrama_ativado.connect(lambda folha, indice: pedidos.append((folha, indice)))
+        QTest.mouseDClick(self.painel.editor.viewport(), Qt.MouseButton.LeftButton, pos=self.ponto_da_miniatura())
+        self.assertEqual(pedidos, [(0, 0)])
+
+
+class MenuDaMiniaturaTests(_Aba):
+    """O botão direito sobre a miniatura: abrir na sala, copiar a imagem, apagar o diagrama (item 10)."""
+
+    ponto_da_miniatura = CliqueNaMiniaturaTests.ponto_da_miniatura
+
+    def acoes(self, ponto: object) -> list[str]:
+        menu = self.painel._menu_de_contexto(ponto)  # type: ignore[arg-type]
+        self.addCleanup(descartar, menu)
+        self.menu = menu
+        return [a.text() for a in menu.actions() if a.text()]
+
+    def test_sobre_a_miniatura_o_menu_ganha_as_tres_acoes(self) -> None:
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        textos = self.acoes(self.ponto_da_miniatura())
+        self.assertIn("Abrir o diagrama 1 no Estudo", textos)
+        self.assertIn("Copiar a imagem do diagrama 1", textos)
+        self.assertIn("Apagar o diagrama 1 da folha", textos)
+        self.assertGreater(len(textos), 3, "o menu padrão do editor continua lá")
+
+    def test_fora_da_miniatura_o_menu_e_o_do_editor(self) -> None:
+        from PyQt6.QtCore import QPoint
+
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        textos = self.acoes(QPoint(4, 4))
+        self.assertFalse([t for t in textos if "diagrama" in t])
+
+    def test_copiar_poe_a_figura_na_area_de_transferencia(self) -> None:
+        from PyQt6.QtWidgets import QApplication
+
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        QApplication.clipboard().clear()
+        self.acoes(self.ponto_da_miniatura())
+        copiar = next(a for a in self.menu.actions() if a.text().startswith("Copiar"))
+        copiar.trigger()
+        self.assertFalse(QApplication.clipboard().pixmap().isNull())
+        self.assertIn("copiada", self.recados[-1])
+
+    def test_apagar_tira_a_marca_e_desfazer_a_devolve(self) -> None:
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        self.acoes(self.ponto_da_miniatura())
+        apagar = next(a for a in self.menu.actions() if a.text().startswith("Apagar"))
+        apagar.trigger()
+        self.assertNotIn("[Diagrama 1]", self.painel.texto())
+        self.assertEqual(self.miniaturas(), 0)
+        self.assertTrue(self.painel.tem_alteracoes)
+        self.painel.desfazer()
+        self.assertIn("[Diagrama 1]", self.painel.texto())
+        self.assertEqual(self.miniaturas(), 1)
+
+    def test_abrir_no_estudo_pelo_menu_pede_o_diagrama(self) -> None:
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        pedidos: list[tuple[int, int]] = []
+        self.painel.diagrama_ativado.connect(lambda folha, indice: pedidos.append((folha, indice)))
+        self.acoes(self.ponto_da_miniatura())
+        next(a for a in self.menu.actions() if a.text().startswith("Abrir")).trigger()
+        self.assertEqual(pedidos, [(0, 0)])
+
+
+class ConfiguracoesDaLeituraTests(unittest.TestCase):
+    """A leitura da aba pergunta o DPI e o teto de diagramas às Configurações, como o visualizador.
+
+    Antes o painel nascia com `dpi=220` cravado e lia sem teto: a aba Livro e a aba Texto
+    discordavam sobre a escala da folha e sobre quantos diagramas há na página, e a janela
+    «Ferramentas ▸ Configurações…» não alcançava esta aba.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        tema.aplicar_tema(self.app)
+        self.pasta = pasta_temporaria(self)
+        self.recados: list[str] = []
+
+    def painel(self, **argumentos: object) -> PainelDeTexto:
+        painel = PainelDeTexto(pasta_de_rascunhos=self.pasta / "rascunhos", **argumentos)  # type: ignore[arg-type]
+        self.addCleanup(descartar, painel)
+        painel.show()
+        self.app.processEvents()
+        return painel
+
+    def ler(self, painel: PainelDeTexto) -> tuple[mock.MagicMock, mock.MagicMock]:
+        from chess_diagram_ocr.ui import configuracoes
+
+        painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
+        with mock.patch.object(configuracoes, "dpi", return_value=150), mock.patch.object(
+            configuracoes, "max_boards", return_value=2
+        ), mock.patch.object(qt_texto, "_renderizar", return_value=_folha()) as renderizar, mock.patch.object(
+            qt_texto, "_ler", return_value=_pagina()
+        ) as ler:
+            painel.ler()
+            tarefa = painel._tarefa
+            assert tarefa is not None
+            self.assertTrue(tarefa.wait(10_000))
+            self.app.processEvents()
+        return renderizar, ler
+
+    def test_o_produto_le_com_o_dpi_e_o_teto_das_configuracoes(self) -> None:
+        painel = self.painel()
+        renderizar, ler = self.ler(painel)
+        self.assertEqual(renderizar.call_args.kwargs["dpi"], 150)
+        self.assertEqual(ler.call_args.kwargs["dpi"], 150)
+        self.assertEqual(ler.call_args.kwargs["max_boards"], 2)
+        self.assertEqual(painel._dpi, 150, "o DPI da folha na tela é o da leitura")
+
+    def test_o_dpi_cravado_pelo_teste_vence_e_nao_poe_teto(self) -> None:
+        painel = self.painel(dpi=72)
+        renderizar, ler = self.ler(painel)
+        self.assertEqual(renderizar.call_args.kwargs["dpi"], 72)
+        self.assertIsNone(ler.call_args.kwargs["max_boards"])
+        self.assertEqual(painel._dpi, 72)
+
+    def test_a_folha_na_tela_guarda_o_dpi_com_que_foi_renderizada(self) -> None:
+        """A configuração muda depois da leitura: o recorte continua na escala da folha."""
+        from chess_diagram_ocr.ui import configuracoes
+
+        painel = self.painel()
+        self.ler(painel)
+        with mock.patch.object(configuracoes, "dpi", return_value=300):
+            self.assertEqual(painel._dpi, 150)
+            self.assertEqual(painel._dpi_para_ler(), 300)
 
 
 if __name__ == "__main__":  # pragma: no cover

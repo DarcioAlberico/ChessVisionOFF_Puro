@@ -52,6 +52,7 @@ __all__ = [
     "continua_a_digitacao",
     "digitacao_depois",
     "fora_do_livro",
+    "frase_do_rodape",
 ]
 
 ACOES_PROPRIAS: frozenset[str] = frozenset({"salvar", "desfazer", "refazer", "achar", "substituir"})
@@ -260,3 +261,29 @@ Agora a janela **gera** as ligações desta tabela e o inventário a lê, e um c
 linha só. O nome do comando e o do método divergem em oito casos, e todos por bom motivo:
 `ler_folha` é `ler` porque o painel só lê folha, `exportar_txt` é `salvar` porque era assim antes do
 catálogo, e `cor_do_texto` é `escolher_cor` porque o comando abre uma lista em vez de pintar."""
+
+
+def frase_do_rodape(
+    *, folha: int | None, trechos: int, diagramas: int, miniaturas: int, por_gravar: bool
+) -> str:
+    """O rodapé da aba: que folha está na tela, o que ela tem e se há o que gravar. Pura.
+
+    **O rótulo existia e ficava vazio** desde o porte para o Qt. A frase responde às três
+    perguntas de quem volta à aba depois de um tempo -- "é a folha certa?", "os diagramas estão
+    aqui?", "eu gravei?" -- sem obrigar a olhar o campo da folha, rolar até o fim ou tentar fechar.
+    A contagem de miniaturas só aparece quando falta alguma: "3 diagramas" já diz que estão.
+
+    `folha` é o índice 0-based da página, ou `None` para texto sem página de origem.
+    """
+    if trechos == 0:
+        return ""
+    partes = [f"Folha {folha + 1}" if folha is not None else "Texto sem folha de origem"]
+    partes.append(f"{trechos} trecho(s)")
+    if diagramas:
+        quantos = f"{diagramas} diagrama(s)"
+        if miniaturas < diagramas:
+            quantos += f", {miniaturas} com miniatura"
+        partes.append(quantos)
+    if por_gravar:
+        partes.append("por gravar")
+    return " · ".join(partes)

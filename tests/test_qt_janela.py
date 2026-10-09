@@ -542,6 +542,46 @@ class FiacaoTests(_JanelaComLivro):
         janela.pdf.ir_para_pagina(0)
         self.assertEqual(janela.texto.campo_de_folha.value(), 1)
 
+    def test_o_duplo_clique_na_miniatura_da_aba_texto_leva_o_diagrama_a_sala(self) -> None:
+        """O mesmo destino do duplo clique na caixa do visualizador (item 8)."""
+        janela = self.janela()
+        janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
+        janela.texto.diagrama_ativado.emit(0, 1)
+        self.assertIs(janela.abas.area_atual(), janela.estudo)
+        self.assertEqual(janela.painel.lista.currentRow(), 1)
+
+    def test_a_miniatura_de_outra_folha_nao_estuda_nada_e_diz_por_que(self) -> None:
+        janela = self.janela()
+        janela._chegaram_itens(0, [self._diagrama(0)], None)
+        with mock.patch.object(janela, "_estudar_a_caixa") as estudar:
+            janela.texto.diagrama_ativado.emit(2, 0)
+        estudar.assert_not_called()
+        self.assertIn("folha da aba Texto é a 3", janela.rodape.mensagem())
+
+    def test_abrir_um_cvtxt_do_livro_leva_o_visualizador_a_folha_dele(self) -> None:
+        """O texto da folha 3 na tela com o visualizador na folha 1 fazia a pessoa procurar a
+        página à mão (item 9)."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        from chess_diagram_ocr.text import arquivo, rico
+        from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
+
+        janela = self.janela()
+        self.assertEqual(janela.pdf.page_index, 0)
+        bloco = BlocoDeTexto.de_linhas([LinhaLida("uma folha", (0.0, 0.0, 100.0, 9.0), 1.0, "camada")])  # type: ignore[arg-type]
+        pagina = PaginaLida(documento=str(self.livro), pagina=2, colunas=(Coluna(indice=0, blocos=(bloco,)),))
+        cvtxt = arquivo.gravar(self.pasta / "folha3.cvtxt", rico.de_pagina(pagina))
+        with mock.patch.object(QFileDialog, "getOpenFileName", return_value=(str(cvtxt), "")):
+            janela.texto.abrir_documento()
+        self.assertEqual(janela.pdf.page_index, 2)
+        self.assertEqual(janela.texto.campo_de_folha.value(), 3)
+
+    def test_a_posicao_de_cada_diagrama_lido_chega_a_aba_texto(self) -> None:
+        """A aba Livro lê a posição; a aba Texto só sabia onde o diagrama está (item 6)."""
+        janela = self.janela()
+        janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
+        self.assertEqual(janela.texto._posicoes[0], ("8/8/8/8/8/8/8/K6k", "8/8/8/8/8/8/8/K6k"))
+
     def test_virar_a_pagina_avisa_a_galeria_e_guarda_o_que_estava_no_editor(self) -> None:
         """As duas pontas da virada: o editor guarda **antes**, a galeria acompanha **depois**.
 
