@@ -67,6 +67,7 @@ import numpy as np
 from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (
     QAction,
+    QHelpEvent,
     QKeyEvent,
     QKeySequence,
     QMouseEvent,
@@ -93,6 +94,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QTextEdit,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -2158,6 +2160,14 @@ class PainelDeTexto(QWidget):
                     return True
         if a0 is self.editor.viewport() and a1 is not None and a1.type() == QEvent.Type.Resize:
             self.vazio.setGeometry(self.editor.viewport().rect())
+        if a0 is self.editor.viewport() and isinstance(a1, QHelpEvent) and a1.type() == QEvent.Type.ToolTip:
+            # A dica sobre a miniatura (item 23): o que ela é, a posição, e o que o clique faz.
+            dica = self._dica_da_marca(a1.pos())
+            if dica:
+                QToolTip.showText(a1.globalPos(), dica, self.editor.viewport())
+            else:
+                QToolTip.hideText()
+            return True
         if a0 is self.editor.viewport() and isinstance(a1, QWheelEvent) and a1.modifiers() & Qt.KeyboardModifier.ControlModifier:
             # Ctrl+roda é o zoom da vista (item 13). O `QTextEdit` responderia mudando a fonte do
             # editor -- que nenhuma letra segue, porque cada trecho sai com corpo explícito (S-264).
@@ -2209,6 +2219,25 @@ class PainelDeTexto(QWidget):
                 return comeco, fim, corrida
             comeco = fim
         return None
+
+    def _dica_da_marca(self, ponto: QPoint) -> str:
+        """O texto da dica sobre a miniatura ou a marca, ou `""` fora delas (item 23).
+
+        Três linhas: o que é («Diagrama 3 da folha 14»), a posição quando se sabe (a FEN, que o
+        item 20 também copia) e o que o gesto faz -- a dica é onde quem passa o mouse descobre o
+        duplo clique e o botão direito sem ter de adivinhar.
+        """
+        achado = self._marca_sob(ponto)
+        if achado is None:
+            return ""
+        corrida = achado[2]
+        numero = int(getattr(self.documento.bloco_de(corrida), "indice", corrida.bloco)) + 1
+        folha = "" if self._pagina is None else f" da folha {int(self._pagina.pagina) + 1}"
+        linhas = [f"Diagrama {numero}{folha}"]
+        posicao = _posicao_de(self.documento, corrida)
+        linhas.append(f"FEN: {posicao}" if posicao else "Posição ainda não lida (OCR dos diagramas na aba Livro)")
+        linhas.append("Duplo clique abre no Estudo · botão direito: copiar, apagar")
+        return "\n".join(linhas)
 
     def _clicou_na_miniatura(self, ponto: QPoint) -> bool:
         """O clique na miniatura seleciona a marca dela: é a marca que se apaga, move e copia.

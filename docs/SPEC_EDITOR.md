@@ -2951,6 +2951,7 @@ Cada linha é um commit, com o teste que a tranca.
 |---|---|---|---|
 | **21. as falhas da aba trazem o rastro** | a leitura e a exportação que falhavam abriam um `QMessageBox.critical` só com a frase; o rastro ficava no log (A10) | `_falha`: a mesma `dialogos.mostrar_falha` da janela, com o rastro que a `Tarefa` formatou na thread atrás de «Detalhes» e o botão «Copiar»; duas caixas modais a menos na contagem | `FalhaComRastroTests` |
 | **22. a barra segue o cursor** | a S-292 era do Tk; no porte as caixas de estilo, cor e realce ficavam paradas em «(sem …)» com o cursor num título | `_seguir_o_cursor` em `cursorPositionChanged`: `rico.valor_em_todo` sobre a seleção (ou o caractere sob o cursor), vazio quando mistura; as caixas disparam só por `activated`, então repô-las não aplica nada | `BarraSegueOCursorTests` |
+| **23. a dica sobre a miniatura** | a miniatura não dizia o que é nem o que o gesto faz; o duplo clique e o botão direito eram de quem adivinhasse | `_dica_da_marca` no evento `ToolTip` do editor: «Diagrama 3 da folha 14», a FEN (ou «Posição ainda não lida…») e «Duplo clique abre no Estudo · botão direito: copiar, apagar» | `DicaDaMiniaturaTests` |
 
 ---
 

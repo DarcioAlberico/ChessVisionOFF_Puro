@@ -845,6 +845,37 @@ class BarraSegueOCursorTests(_Aba):
         self.assertFalse(self.painel.pode_desfazer)
 
 
+class DicaDaMiniaturaTests(_Aba):
+    """A dica sobre a miniatura diz o que ela é, a posição e o que o gesto faz (item 23)."""
+
+    ponto_da_miniatura = CliqueNaMiniaturaTests.ponto_da_miniatura
+    ponto_da_marca = CliqueNaMiniaturaTests.ponto_da_marca
+
+    def test_a_dica_tem_as_tres_linhas(self) -> None:
+        from PyQt6.QtCore import QPoint
+
+        self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]), folha_rgb=_folha())
+        dica = self.painel._dica_da_marca(self.ponto_da_miniatura())  # type: ignore[arg-type]
+        self.assertEqual(dica.split("\n")[0], "Diagrama 1 da folha 1")
+        self.assertIn(f"FEN: {FEN}", dica)
+        self.assertIn("Duplo clique", dica)
+        self.assertEqual(self.painel._dica_da_marca(QPoint(4, 4)), "", "fora da miniatura não há dica")
+        self.painel.mostrar_pagina(_pagina())
+        self.assertIn("ainda não lida", self.painel._dica_da_marca(self.ponto_da_marca()))  # type: ignore[arg-type]
+
+    def test_o_evento_de_dica_mostra_o_texto(self) -> None:
+        from PyQt6.QtCore import QEvent
+        from PyQt6.QtGui import QHelpEvent
+        from PyQt6.QtWidgets import QApplication, QToolTip
+
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        ponto = self.ponto_da_miniatura()
+        viewport = self.painel.editor.viewport()
+        evento = QHelpEvent(QEvent.Type.ToolTip, ponto, viewport.mapToGlobal(ponto))  # type: ignore[arg-type]
+        self.assertTrue(QApplication.sendEvent(viewport, evento))
+        self.assertTrue(QToolTip.text().startswith("Diagrama 1"))
+
+
 class ConfiguracoesDaLeituraTests(unittest.TestCase):
     """A leitura da aba pergunta o DPI e o teto de diagramas às Configurações, como o visualizador.
 
