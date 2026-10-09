@@ -1839,7 +1839,12 @@ class PainelDeTexto(QWidget):
         if _chave_de_livro(novo) != _chave_de_livro(self._pdf):
             self._posicoes.clear()  # as posições são do livro que saiu (item 11)
         self._pdf = novo
-        self.campo_de_folha.setMaximum(max(1, int(paginas)) if paginas else TETO_DE_FOLHAS)
+        # O teto só muda quando se sabe o número ou quando o livro fecha: a virada de página chama
+        # isto sem `paginas`, e não pode devolver o campo ao teto largo.
+        if paginas:
+            self.campo_de_folha.setMaximum(max(1, int(paginas)))
+        elif novo is None:
+            self.campo_de_folha.setMaximum(TETO_DE_FOLHAS)
         if pagina is not None:
             self._pagina_indice = int(pagina)
             self._montando = True

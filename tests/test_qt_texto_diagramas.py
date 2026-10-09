@@ -704,6 +704,8 @@ class TetoDoCampoDeFolhaTests(_Aba):
         self.assertEqual(self.painel.campo_de_folha.maximum(), 289)
         self.painel.campo_de_folha.setValue(500)
         self.assertEqual(self.painel.campo_de_folha.value(), 289, "o campo grampeia no teto")
+        self.painel.definir_livro(self.pasta / "livro.pdf", pagina=5)  # a virada de página não sabe o número
+        self.assertEqual(self.painel.campo_de_folha.maximum(), 289, "e não devolve o teto largo")
         self.painel.definir_livro(None)
         self.assertEqual(self.painel.campo_de_folha.maximum(), qt_texto.TETO_DE_FOLHAS)
 

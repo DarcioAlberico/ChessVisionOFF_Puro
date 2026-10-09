@@ -585,7 +585,10 @@ class FiacaoTests(_JanelaComLivro):
         """A aba Livro lê a posição; a aba Texto só sabia onde o diagrama está (item 6)."""
         janela = self.janela()
         janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
-        self.assertEqual(janela.texto._posicoes[0], ("8/8/8/8/8/8/8/K6k", "8/8/8/8/8/8/8/K6k"))
+        from chess_diagram_ocr.qt.painel_de_texto import _chave_de_livro
+
+        chave = (_chave_de_livro(self.livro), 0)  # por livro e folha (item 11)
+        self.assertEqual(janela.texto._posicoes[chave], ("8/8/8/8/8/8/8/K6k", "8/8/8/8/8/8/8/K6k"))
 
     def test_virar_a_pagina_avisa_a_galeria_e_guarda_o_que_estava_no_editor(self) -> None:
         """As duas pontas da virada: o editor guarda **antes**, a galeria acompanha **depois**.
