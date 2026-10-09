@@ -122,6 +122,7 @@ from chess_diagram_ocr.ui.texto_declarado import (
     continua_a_digitacao,
     digitacao_depois,
     fora_do_livro,
+    frase_do_lexico,
     frase_do_rodape,
 )
 
@@ -1266,9 +1267,7 @@ class PainelDeTexto(QWidget):
         self._pintar_lexico([(inicio, fim) for inicio, fim, _palavra in achadas])
         if avisar:
             total = len(dicionario.palavras_de(conteudo))
-            self.estado.emit(
-                f"{len(achadas)} de {total} palavra(s) fora do léxico. Nada foi corrigido (S-209)."
-            )
+            self.estado.emit(frase_do_lexico([palavra for _inicio, _fim, palavra in achadas], total))
 
     def _pintar_lexico(self, intervalos: Iterable[tuple[int, int]]) -> None:
         """A marca é uma **borda ondulada**, e o canal estava livre (S-266).

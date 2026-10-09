@@ -418,6 +418,21 @@ class LexicoSobreviveAoRedesenhoTests(_Aba):
         self.painel.desfazer()
         self.assertEqual(self.painel.editor.extraSelections(), [], "desligada, ela não volta")
 
+    def test_a_frase_do_lexico_nomeia_as_primeiras_palavras(self) -> None:
+        """Do rodapé a pessoa decide se vale olhar: erro de OCR ou nome próprio (item 29)."""
+        from chess_diagram_ocr.ui.texto_declarado import PALAVRAS_NA_FRASE, frase_do_lexico
+
+        self.assertEqual(
+            frase_do_lexico(["qwv", "zzt", "qwv"], 40),
+            "3 de 40 palavra(s) fora do léxico (qwv, zzt). Nada foi corrigido (S-209).",
+        )
+        muitas = [f"p{i}" for i in range(PALAVRAS_NA_FRASE + 2)]
+        self.assertIn(", p4…). Nada foi corrigido (S-209).", frase_do_lexico(muitas, 99))
+        self.assertEqual(frase_do_lexico([], 12), "Nenhuma das 12 palavra(s) está fora do léxico. Nada foi corrigido (S-209).")
+        self.painel.desenhar_documento(rico.de_texto("uma palavra xyzqk aqui"))
+        self.painel.marcar_fora_do_lexico()
+        self.assertIn("(xyzqk)", self.recados[-1])
+
     def test_a_palavra_digitada_e_conferida_na_pausa(self) -> None:
         """A tecla comum não redesenha; a conferência ligada se refaz quando a digitação para."""
         from PyQt6.QtTest import QTest

@@ -25,6 +25,7 @@ agora é `qt/painel_de_texto.py`, `qt/janela.py` e `cli/editor_inventario.py`.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
@@ -52,8 +53,30 @@ __all__ = [
     "continua_a_digitacao",
     "digitacao_depois",
     "fora_do_livro",
+    "frase_do_lexico",
     "frase_do_rodape",
 ]
+
+PALAVRAS_NA_FRASE = 5
+"""Quantas das palavras fora do léxico a frase do rodapé nomeia (item 29). Cinco cabem no rodapé
+e já dizem se a conta é de erro de OCR (`qwv`, `zzt`) ou de nome próprio (`Capablanca`)."""
+
+
+def frase_do_lexico(achadas: Sequence[str], total: int) -> str:
+    """A frase da conferência do léxico (S-209/S-266), **com as primeiras palavras** (item 29).
+
+    «3 de 120 palavra(s) fora do léxico» obrigava a rolar a folha atrás das marcas para saber se
+    valia a pena olhar; com `(qwv, zzt, Capablanca)` a pessoa decide do rodapé. Repetidas uma
+    vez só, na ordem em que aparecem; mais que `PALAVRAS_NA_FRASE` ganham reticências.
+    """
+    if not achadas:
+        return f"Nenhuma das {total} palavra(s) está fora do léxico. Nada foi corrigido (S-209)."
+    unicas: list[str] = []
+    for palavra in achadas:
+        if palavra not in unicas:
+            unicas.append(palavra)
+    mostradas = ", ".join(unicas[:PALAVRAS_NA_FRASE]) + ("…" if len(unicas) > PALAVRAS_NA_FRASE else "")
+    return f"{len(achadas)} de {total} palavra(s) fora do léxico ({mostradas}). Nada foi corrigido (S-209)."
 
 ACOES_PROPRIAS: frozenset[str] = frozenset({"salvar", "desfazer", "refazer", "achar", "substituir"})
 """As ações globais que esta aba atende **enquanto tem o foco** (S-244).
