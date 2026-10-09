@@ -2265,7 +2265,10 @@ def _gravar_recortes(
             if imagem is not None:
                 Image.fromarray(np.ascontiguousarray(imagem)).convert("RGB").save(arquivo_png)
             else:
-                arquivo_png.write_bytes(desenho or b"")
+                # Atômica, como toda gravação do projeto (`tests/test_atomic_writes.py`).
+                from chess_diagram_ocr.atomic_io import atomic_write_bytes
+
+                atomic_write_bytes(arquivo_png, desenho or b"")
         except Exception as erro:  # noqa: BLE001 - recorte é conforto, e a marca sai sem ele
             logger.debug("Recorte do diagrama %d não gravado: %s", bloco.indice + 1, erro)
             continue
