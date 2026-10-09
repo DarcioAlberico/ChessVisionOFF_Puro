@@ -359,9 +359,12 @@ class PainelDeTexto(QWidget):
         self._base: tuple[int, str, str] | None = None
         """A fonte de base do último desenho. O trecho digitado é pintado com **a mesma** -- a
         tecla não relê as famílias do sistema, e o redesenho seguinte não muda o que já estava."""
-        self._posicoes: dict[int, tuple[str, ...]] = {}
-        """O campo de peças de cada diagrama, por folha, como o OCR de diagramas do produto leu.
-        Guardado por folha porque a leitura dos diagramas e a do texto chegam em qualquer ordem."""
+        self._posicoes: dict[tuple[str, int], tuple[str, ...]] = {}
+        """O campo de peças de cada diagrama, por `(livro, folha)`, como o OCR de diagramas do
+        produto leu. Por folha porque a leitura dos diagramas e a do texto chegam em qualquer
+        ordem; **por livro** porque a folha 14 de um livro não é a folha 14 do outro -- com a chave
+        só pela folha, trocar de livro levava as posições do anterior para as folhas do novo
+        (item 11). `definir_livro` para outro livro esquece tudo."""
         self._documento_ao_ler: rico.DocumentoRico | None = None
         """O documento na tela quando a leitura em curso partiu. Ver `_leitura_terminou`."""
 
@@ -926,8 +929,9 @@ class PainelDeTexto(QWidget):
 
         `dpi` é o da `folha_rgb`, quando ela vem: é o que liga os pontos do `bbox` aos pixels dela.
         """
-        if int(pagina.pagina) in self._posicoes:
-            pagina = pagina.com_posicoes(self._posicoes[int(pagina.pagina)])
+        guardadas = self._posicoes.get((_chave_de_livro(pagina.documento), int(pagina.pagina)))
+        if guardadas:
+            pagina = pagina.com_posicoes(guardadas)
         self._pagina = pagina
         self._pagina_rgb = folha_rgb
         if dpi:
@@ -1815,7 +1819,10 @@ class PainelDeTexto(QWidget):
         na tela e ainda por gravar jogaria fora o trabalho sem perguntar. Quem descarta é `ler`,
         que pergunta antes.
         """
-        self._pdf = None if pdf is None else Path(pdf)
+        novo = None if pdf is None else Path(pdf)
+        if _chave_de_livro(novo) != _chave_de_livro(self._pdf):
+            self._posicoes.clear()  # as posições são do livro que saiu (item 11)
+        self._pdf = novo
         if pagina is not None:
             self._pagina_indice = int(pagina)
             self._montando = True
@@ -1834,10 +1841,15 @@ class PainelDeTexto(QWidget):
         a folha que já está na tela recebe na hora, **sem virar alteração por gravar** -- a posição
         é leitura, não edição.
         """
-        self._posicoes[int(pagina)] = tuple(str(p or "") for p in posicoes)
-        if self._pagina is None or int(self._pagina.pagina) != int(pagina):
+        chave = (_chave_de_livro(self._pdf), int(pagina))
+        self._posicoes[chave] = tuple(str(p or "") for p in posicoes)
+        if (
+            self._pagina is None
+            or int(self._pagina.pagina) != int(pagina)
+            or _chave_de_livro(self._pagina.documento) != chave[0]
+        ):
             return
-        nova = self._pagina.com_posicoes(self._posicoes[int(pagina)])
+        nova = self._pagina.com_posicoes(self._posicoes[chave])
         if nova is self._pagina:
             return
         self._pagina = nova
@@ -2279,6 +2291,16 @@ def _gravar_recortes(
 LADO_DO_RECORTE_DESENHADO = 400
 """O lado, em pixel, do diagrama desenhado da FEN para a exportação: perto do que um recorte a
 220 dpi mede, para o `.html` não trocar de escala conforme a origem da figura."""
+
+
+def _chave_de_livro(caminho: Path | str | None) -> str:
+    """A identidade de um livro para a aba: o caminho resolvido, ou `""` sem livro."""
+    if not caminho:
+        return ""
+    try:
+        return str(Path(caminho).resolve()).casefold()
+    except OSError:  # pragma: no cover - caminho que o sistema recusa resolver
+        return str(caminho).casefold()
 
 
 def _mesmo_livro(um: Path, outro: Path) -> bool:

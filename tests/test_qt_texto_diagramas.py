@@ -73,6 +73,8 @@ class _Aba(unittest.TestCase):
         self.app.processEvents()
         self.recados: list[str] = []
         self.painel.estado.connect(self.recados.append)
+        # O livro das folhas de `_pagina()`: as posições são por livro (item 11).
+        self.painel.definir_livro(Path("livro.pdf"), pagina=0)
 
     def miniaturas(self) -> int:
         """Quantas imagens o editor desenhou: cada uma é um `OBJETO` no texto do widget."""
@@ -425,11 +427,26 @@ class PosicoesDoProdutoTests(_Aba):
         self.assertEqual(self.miniaturas(), 1, "o redesenho manteve a miniatura")
 
     def test_a_posicao_que_chega_antes_espera_a_folha(self) -> None:
+        self.painel.definir_livro(Path("livro.pdf"), pagina=0)
         self.painel.definir_posicoes(0, [FEN])
         self.painel.definir_posicoes(3, ["8/8/8/8/8/8/8/K6k"])
         self.painel.mostrar_pagina(_pagina())
         assert self.painel._pagina is not None
         self.assertEqual(self.painel._pagina.diagramas[0].placement, FEN, "a folha 1 pega a posição da folha 1")
+
+    def test_as_posicoes_sao_do_livro_e_trocar_de_livro_as_esquece(self) -> None:
+        """A folha 1 de um livro não é a folha 1 do outro (item 11)."""
+        self.painel.definir_livro(Path("livro.pdf"), pagina=0)
+        self.painel.definir_posicoes(0, [FEN])
+        self.painel.mostrar_pagina(_pagina(livro="outro.pdf"))
+        assert self.painel._pagina is not None
+        self.assertEqual(self.painel._pagina.diagramas[0].placement, "", "a posição de um livro não vai à folha do outro")
+        self.painel.definir_livro(Path("outro.pdf"), pagina=0)
+        self.assertEqual(self.painel._posicoes, {}, "trocar de livro esquece as posições do anterior")
+        self.painel.definir_livro(Path("outro.pdf"), pagina=3)
+        self.painel.definir_posicoes(3, [FEN])
+        self.painel.definir_livro(Path("OUTRO.pdf"), pagina=3)
+        self.assertTrue(self.painel._posicoes, "o mesmo livro com outra grafia não esquece nada")
 
     def test_outra_folha_nao_mexe_na_que_esta_na_tela(self) -> None:
         self.painel.mostrar_pagina(_pagina())

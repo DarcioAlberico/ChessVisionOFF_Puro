@@ -2930,6 +2930,12 @@ Cada linha é um commit, com o teste que a tranca.
 | **9. o `.cvtxt` aberto leva o visualizador à folha dele** | o texto da folha 14 na tela com o visualizador na folha 3 fazia a pessoa procurar a página à mão | `abrir` emite `folha_pedida(folha)` quando o `.cvtxt` é do livro aberto (`_mesmo_livro`, a regra de `dialogos._mesmo`), e a janela liga o sinal a `ir_para_pagina` (+1 linha, catraca 2.088); um `.cvtxt` de outro livro não troca o livro de ninguém | `ReabrirOArquivoTests::test_o_cvtxt_do_livro_aberto_pede_a_folha_dele_e_o_de_outro_livro_nao`; `test_qt_janela.py::…::test_abrir_um_cvtxt_do_livro_leva_o_visualizador_a_folha_dele` |
 | **10. o botão direito sobre a miniatura** | a miniatura não dizia o que sabe fazer; quem não conhece o duplo clique a tomava por decoração | `_menu_de_contexto`: o menu padrão do editor mais «Abrir o diagrama N no Estudo» (o duplo clique do item 8), «Copiar a imagem do diagrama N» (recorte ou desenho, para a área de transferência) e «Apagar o diagrama N da folha» (a marca inteira, por `rico.apagar`; `Ctrl+Z` devolve). Fora do catálogo de comandos (S-256) porque as três já existem por outro caminho | `MenuDaMiniaturaTests` |
 
+## Mais dez itens da aba Texto no Qt (2026-10-09)
+
+| item | o que faltava | o que entrou | teste |
+|---|---|---|---|
+| **11. as posições são do livro** | o item 6 guardava as posições só pela folha: trocar de livro levava as posições do anterior para as folhas do novo | chave `(livro resolvido, folha)` (`_chave_de_livro`); `definir_livro` para outro livro esquece tudo, a mesma grafia diferente do mesmo livro não | `PosicoesDoProdutoTests::test_as_posicoes_sao_do_livro_e_trocar_de_livro_as_esquece` |
+
 ---
 
 # O que esta spec deliberadamente não faz
