@@ -576,6 +576,20 @@ class FiacaoTests(_JanelaComLivro):
         self.assertEqual(janela.pdf.page_index, 2)
         self.assertEqual(janela.texto.campo_de_folha.value(), 3)
 
+    def test_o_visualizador_empresta_a_folha_rasterizada_a_aba_texto(self) -> None:
+        """A página aberta já custou a rasterização; a aba Texto a reaproveita (item 28)."""
+        janela = self.janela()
+        fornecedor = janela.texto._fornecedor_de_folha
+        assert fornecedor is not None
+        self.assertIs(getattr(fornecedor, "__self__", None), janela.pdf)
+        self.assertEqual(getattr(fornecedor, "__name__", ""), "folha_renderizada")
+        pronta = janela.pdf.folha_renderizada(janela.pdf.page_index)
+        self.assertIsNotNone(pronta, "a página desenhada não está disponível")
+        assert pronta is not None
+        self.assertEqual(pronta[0].ndim, 3)
+        self.assertGreater(pronta[1], 0)
+        self.assertIsNone(janela.pdf.folha_renderizada(janela.pdf.page_index + 1), "outra folha não é esta")
+
     def test_a_aba_texto_sabe_quantas_folhas_o_livro_tem(self) -> None:
         """O campo «Folha a ler» grampeia no número de folhas do livro (item 15)."""
         janela = self.janela()

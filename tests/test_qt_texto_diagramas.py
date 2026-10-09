@@ -111,6 +111,42 @@ class LeituraEntregaAFolhaTests(_Aba):
         self.painel._leitura_terminou((_pagina(), None))  # o formato antigo, sem tempo, continua a valer
         self.assertTrue(self.recados[-1].startswith("Folha lida: "))
 
+    def test_a_folha_do_visualizador_serve_a_leitura_no_mesmo_dpi(self) -> None:
+        """A página aberta já custou a rasterização; a leitura não paga de novo (item 28)."""
+        folha = _folha()
+        self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
+        self.painel.definir_fornecedor_de_folha(lambda indice: (folha, 72) if indice == 0 else None)
+        with mock.patch.object(qt_texto, "_renderizar") as renderizar, mock.patch.object(
+            qt_texto, "_ler", return_value=_pagina()
+        ) as ler:
+            self.painel.ler()
+            self.esperar_a_tarefa()
+        renderizar.assert_not_called()
+        usada = ler.call_args.kwargs["imagem_rgb"]
+        self.assertIsNot(usada, folha, "copiada: o visualizador pode trocar a dele no meio")
+        self.assertTrue((usada == folha).all())
+        self.assertEqual(self.miniaturas(), 1)
+
+    def test_a_folha_do_visualizador_noutro_dpi_nao_serve(self) -> None:
+        self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
+        self.painel.definir_fornecedor_de_folha(lambda _indice: (_folha(), 220))
+        with mock.patch.object(qt_texto, "_renderizar", return_value=None) as renderizar, mock.patch.object(
+            qt_texto, "_ler", return_value=_pagina()
+        ):
+            self.painel.ler()
+            self.esperar_a_tarefa()
+        renderizar.assert_called_once()
+
+    def test_a_folha_sem_texto_diz_o_que_tentar(self) -> None:
+        """Capa, figura inteira, scan que o glifo não leu: não é «0 trecho(s)» (item 26)."""
+        self.painel._leitura_terminou((PaginaLida(documento="livro.pdf", pagina=3), None, None, 2.04))
+        self.assertEqual(
+            self.recados[-1],
+            "A folha 4 não tem texto lido (motor auto, 2,0 s): tente outro motor ou o modo bloco.",
+        )
+        self.assertEqual(self.painel.texto(), "")
+        self.assertTrue(self.painel.vazio.isVisible(), "o estado vazio continua na tela")
+
     def test_sem_imagem_a_folha_abre_igual_e_a_marca_fica(self) -> None:
         """A miniatura é conforto: um PDF que não renderiza não impede a leitura do texto."""
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
@@ -382,6 +418,21 @@ class LexicoSobreviveAoRedesenhoTests(_Aba):
         self.painel.desfazer()
         self.assertEqual(self.painel.editor.extraSelections(), [], "desligada, ela não volta")
 
+    def test_a_frase_do_lexico_nomeia_as_primeiras_palavras(self) -> None:
+        """Do rodapé a pessoa decide se vale olhar: erro de OCR ou nome próprio (item 29)."""
+        from chess_diagram_ocr.ui.texto_declarado import PALAVRAS_NA_FRASE, frase_do_lexico
+
+        self.assertEqual(
+            frase_do_lexico(["qwv", "zzt", "qwv"], 40),
+            "3 de 40 palavra(s) fora do léxico (qwv, zzt). Nada foi corrigido (S-209).",
+        )
+        muitas = [f"p{i}" for i in range(PALAVRAS_NA_FRASE + 2)]
+        self.assertIn(", p4…). Nada foi corrigido (S-209).", frase_do_lexico(muitas, 99))
+        self.assertEqual(frase_do_lexico([], 12), "Nenhuma das 12 palavra(s) está fora do léxico. Nada foi corrigido (S-209).")
+        self.painel.desenhar_documento(rico.de_texto("uma palavra xyzqk aqui"))
+        self.painel.marcar_fora_do_lexico()
+        self.assertIn("(xyzqk)", self.recados[-1])
+
     def test_a_palavra_digitada_e_conferida_na_pausa(self) -> None:
         """A tecla comum não redesenha; a conferência ligada se refaz quando a digitação para."""
         from PyQt6.QtTest import QTest
@@ -453,6 +504,34 @@ class RodapeDaAbaTests(_Aba):
         with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(self.pasta / "f.cvtxt"), "")):
             self.painel.salvar_documento_como()
         self.assertFalse(self.painel.status.text().endswith("por gravar"))
+
+    def test_o_rodape_conta_as_correcoes_na_pausa_na_gravacao_e_na_abertura(self) -> None:
+        """O número que o `.cvtxt` tem de mais caro, contado quando a digitação para (item 24)."""
+        from PyQt6.QtTest import QTest
+
+        from chess_diagram_ocr.ui.texto_declarado import frase_do_rodape
+
+        self.assertIn("2 correção(ões)", frase_do_rodape(folha=0, trechos=3, diagramas=0, miniaturas=0, por_gravar=True, correcoes=2))
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        self.painel.editor.setFocus()
+        cursor = self.painel.editor.textCursor()
+        cursor.setPosition(self.painel._mapa.posicao(self.painel.texto().index("Antes") + 5))
+        self.painel.editor.setTextCursor(cursor)
+        QTest.keyClicks(self.painel.editor, "x")
+        self.assertNotIn("correção", self.painel.status.text(), "a tecla não conta")
+        self.painel._rascunho.timeout.emit()
+        self.assertIn("1 correção(ões)", self.painel.status.text())
+        destino = self.pasta / "f.cvtxt"
+        with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(destino), "")):
+            self.painel.salvar_documento_como()
+        self.assertIn("1 correção(ões)", self.painel.status.text())
+        outro = PainelDeTexto(dpi=72, pasta_de_rascunhos=self.pasta / "r2")
+        self.addCleanup(descartar, outro)
+        with mock.patch.object(qt_texto, "_renderizar", return_value=None), mock.patch.object(
+            QFileDialog, "getOpenFileName", return_value=(str(destino), "")
+        ):
+            outro.abrir_documento()
+        self.assertIn("1 correção(ões)", outro.status.text(), "o arquivo traz a correção de ontem")
 
     def test_sem_miniatura_o_rodape_diz_quantas_faltam(self) -> None:
         self.painel.mostrar_pagina(_pagina())
@@ -634,6 +713,32 @@ class CliqueNaMiniaturaTests(_Aba):
         self.addCleanup(descartar, menu)
         self.assertIn("Apagar o diagrama 1 da folha", [a.text() for a in menu.actions()])
 
+    def test_enter_com_a_marca_selecionada_pede_o_diagrama_na_sala(self) -> None:
+        """O duplo clique do item 8 para quem anda pelo teclado (item 30)."""
+        from PyQt6.QtTest import QTest
+
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        pedidos: list[tuple[int, int]] = []
+        self.painel.diagrama_ativado.connect(lambda folha, indice: pedidos.append((folha, indice)))
+        self.painel.editor.setFocus()
+        texto = self.painel.texto()
+        inicio = texto.index("[Diagrama 1]")
+        cursor = self.painel.editor.textCursor()
+        cursor.setPosition(self.painel._mapa.posicao(inicio))
+        cursor.setPosition(self.painel._mapa.posicao(inicio + len("[Diagrama 1]")), QTextCursor.MoveMode.KeepAnchor)
+        self.painel.editor.setTextCursor(cursor)
+        antes = self.painel.texto()
+        QTest.keyClick(self.painel.editor, Qt.Key.Key_Return)
+        self.assertEqual(pedidos, [(0, 0)])
+        self.assertEqual(self.painel.texto(), antes, "o Enter não escreveu nada no lugar da marca")
+        # Com outra seleção, o Enter é o Enter: troca o selecionado por uma quebra de linha.
+        cursor.setPosition(self.painel._mapa.posicao(0))
+        cursor.setPosition(self.painel._mapa.posicao(5), QTextCursor.MoveMode.KeepAnchor)
+        self.painel.editor.setTextCursor(cursor)
+        QTest.keyClick(self.painel.editor, Qt.Key.Key_Return)
+        self.assertEqual(pedidos, [(0, 0)])
+        self.assertNotEqual(self.painel.texto(), antes)
+
     def test_o_duplo_clique_pede_o_diagrama_na_sala(self) -> None:
         from PyQt6.QtTest import QTest
 
@@ -741,6 +846,22 @@ class TetoDoCampoDeFolhaTests(_Aba):
         self.painel.definir_livro(None)
         self.assertEqual(self.painel.campo_de_folha.maximum(), qt_texto.TETO_DE_FOLHAS)
 
+    def test_enter_no_campo_le_a_folha_digitada(self) -> None:
+        """Digitar o número e ter de ir ao botão com o mouse era o atrito de quem lê folha a folha (item 27)."""
+        from PyQt6.QtTest import QTest
+
+        self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0, paginas=50)
+        linha = self.painel.campo_de_folha.lineEdit()
+        assert linha is not None
+        self.painel.campo_de_folha.setValue(7)
+        with mock.patch.object(qt_texto, "_renderizar", return_value=None), mock.patch.object(
+            qt_texto, "_ler", return_value=_pagina()
+        ) as ler:
+            QTest.keyClick(linha, Qt.Key.Key_Return)
+            self.esperar_a_tarefa()
+        self.assertEqual(ler.call_args.args[1], 6, "a folha lida é a digitada, 0-based")
+        self.assertTrue(self.recados[-1].startswith("Folha lida"))
+
     def test_sem_o_numero_o_teto_fica_largo(self) -> None:
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
         self.assertEqual(self.painel.campo_de_folha.maximum(), qt_texto.TETO_DE_FOLHAS)
@@ -774,6 +895,106 @@ class MotorEModoBlocoTests(_Aba):
         save_state(caminho, estado)
         lido = load_state(caminho)
         self.assertEqual((lido.texto_motor, lido.texto_bloco), ("glifo", True))
+
+
+class FalhaComRastroTests(_Aba):
+    """A leitura e a exportação que falham abrem a caixa com o rastro e «Copiar» (A10, item 21)."""
+
+    def test_a_leitura_que_quebra_na_thread_traz_o_rastro(self) -> None:
+        from chess_diagram_ocr.qt import dialogos
+
+        self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
+        with mock.patch.object(dialogos, "mostrar_falha") as caixa, mock.patch.object(
+            qt_texto, "_renderizar", return_value=None
+        ), mock.patch.object(qt_texto, "_ler", side_effect=RuntimeError("o motor caiu")):
+            self.painel.ler()
+            self.esperar_a_tarefa()
+        caixa.assert_called_once()
+        pai, titulo, mensagem, detalhe = caixa.call_args.args
+        self.assertIs(pai, self.painel)
+        self.assertEqual(titulo, "Ler a folha")
+        self.assertIn("o motor caiu", mensagem)
+        self.assertIn("Traceback", detalhe)
+        self.assertIn("RuntimeError: o motor caiu", detalhe)
+        self.assertIsNone(self.painel._tarefa, "a tarefa quebrada ficou pendurada")
+
+    def test_a_exportacao_que_quebra_traz_o_rastro(self) -> None:
+        from chess_diagram_ocr.qt import dialogos
+
+        with mock.patch.object(dialogos, "mostrar_falha") as caixa:
+            self.painel._exportacao_falhou("disco cheio", OSError("disco cheio"))
+        _pai, titulo, mensagem, detalhe = caixa.call_args.args
+        self.assertEqual(titulo, "Exportar")
+        self.assertIn("disco cheio", mensagem)
+        self.assertIn("OSError", detalhe)
+
+
+class BarraSegueOCursorTests(_Aba):
+    """A barra diz o estilo, a cor e o realce que valem sob o cursor (S-292 no Qt, item 22)."""
+
+    def cursor_em(self, inicio: int, fim: int | None = None) -> None:
+        cursor = self.painel.editor.textCursor()
+        cursor.setPosition(self.painel._mapa.posicao(inicio))
+        if fim is not None:
+            cursor.setPosition(self.painel._mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
+        self.painel.editor.setTextCursor(cursor)
+
+    def test_as_caixas_mostram_o_que_vale_sob_o_cursor(self) -> None:
+        doc = rico.de_pagina(_pagina())  # dois parágrafos de texto, com a marca entre eles
+        doc = rico.aplicar_estilo(doc, 0, 2, "titulo")
+        texto = doc.para_texto()
+        doc = rico.aplicar(doc, texto.index("Depois"), texto.index("Depois") + 6, cor="nota", realce="destaque")
+        self.painel.desenhar_documento(doc)
+        self.cursor_em(3)
+        self.assertEqual(self.painel.escolha_de_estilo.currentData(), "titulo")
+        self.cursor_em(texto.index("Depois") + 1)
+        self.assertEqual(self.painel.escolha_de_estilo.currentData(), "")
+        self.assertEqual(self.painel.escolha_de_cor.currentData(), "nota")
+        self.assertEqual(self.painel.escolha_de_realce.currentData(), "destaque")
+        self.cursor_em(texto.index("diagrama."))
+        self.assertEqual(self.painel.escolha_de_cor.currentData(), "")
+
+    def test_a_selecao_mista_volta_ao_vazio_e_repor_nao_aplica(self) -> None:
+        doc = rico.aplicar(rico.de_texto("abc def"), 0, 3, cor="nota")
+        self.painel.desenhar_documento(doc)
+        antes = self.painel.documento
+        self.cursor_em(1, 6)
+        self.assertEqual(self.painel.escolha_de_cor.currentData(), "", "metade com cor, metade sem: a caixa não escolhe")
+        self.cursor_em(0, 3)
+        self.assertEqual(self.painel.escolha_de_cor.currentData(), "nota")
+        self.assertIs(self.painel.documento, antes, "seguir o cursor não aplica nada")
+        self.assertFalse(self.painel.pode_desfazer)
+
+
+class DicaDaMiniaturaTests(_Aba):
+    """A dica sobre a miniatura diz o que ela é, a posição e o que o gesto faz (item 23)."""
+
+    ponto_da_miniatura = CliqueNaMiniaturaTests.ponto_da_miniatura
+    ponto_da_marca = CliqueNaMiniaturaTests.ponto_da_marca
+
+    def test_a_dica_tem_as_tres_linhas(self) -> None:
+        from PyQt6.QtCore import QPoint
+
+        self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]), folha_rgb=_folha())
+        dica = self.painel._dica_da_marca(self.ponto_da_miniatura())  # type: ignore[arg-type]
+        self.assertEqual(dica.split("\n")[0], "Diagrama 1 da folha 1")
+        self.assertIn(f"FEN: {FEN}", dica)
+        self.assertIn("Duplo clique", dica)
+        self.assertEqual(self.painel._dica_da_marca(QPoint(4, 4)), "", "fora da miniatura não há dica")
+        self.painel.mostrar_pagina(_pagina())
+        self.assertIn("ainda não lida", self.painel._dica_da_marca(self.ponto_da_marca()))  # type: ignore[arg-type]
+
+    def test_o_evento_de_dica_mostra_o_texto(self) -> None:
+        from PyQt6.QtCore import QEvent
+        from PyQt6.QtGui import QHelpEvent
+        from PyQt6.QtWidgets import QApplication, QToolTip
+
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        ponto = self.ponto_da_miniatura()
+        viewport = self.painel.editor.viewport()
+        evento = QHelpEvent(QEvent.Type.ToolTip, ponto, viewport.mapToGlobal(ponto))  # type: ignore[arg-type]
+        self.assertTrue(QApplication.sendEvent(viewport, evento))
+        self.assertTrue(QToolTip.text().startswith("Diagrama 1"))
 
 
 class ConfiguracoesDaLeituraTests(unittest.TestCase):

@@ -25,6 +25,7 @@ agora é `qt/painel_de_texto.py`, `qt/janela.py` e `cli/editor_inventario.py`.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
@@ -52,8 +53,30 @@ __all__ = [
     "continua_a_digitacao",
     "digitacao_depois",
     "fora_do_livro",
+    "frase_do_lexico",
     "frase_do_rodape",
 ]
+
+PALAVRAS_NA_FRASE = 5
+"""Quantas das palavras fora do léxico a frase do rodapé nomeia (item 29). Cinco cabem no rodapé
+e já dizem se a conta é de erro de OCR (`qwv`, `zzt`) ou de nome próprio (`Capablanca`)."""
+
+
+def frase_do_lexico(achadas: Sequence[str], total: int) -> str:
+    """A frase da conferência do léxico (S-209/S-266), **com as primeiras palavras** (item 29).
+
+    «3 de 120 palavra(s) fora do léxico» obrigava a rolar a folha atrás das marcas para saber se
+    valia a pena olhar; com `(qwv, zzt, Capablanca)` a pessoa decide do rodapé. Repetidas uma
+    vez só, na ordem em que aparecem; mais que `PALAVRAS_NA_FRASE` ganham reticências.
+    """
+    if not achadas:
+        return f"Nenhuma das {total} palavra(s) está fora do léxico. Nada foi corrigido (S-209)."
+    unicas: list[str] = []
+    for palavra in achadas:
+        if palavra not in unicas:
+            unicas.append(palavra)
+    mostradas = ", ".join(unicas[:PALAVRAS_NA_FRASE]) + ("…" if len(unicas) > PALAVRAS_NA_FRASE else "")
+    return f"{len(achadas)} de {total} palavra(s) fora do léxico ({mostradas}). Nada foi corrigido (S-209)."
 
 ACOES_PROPRIAS: frozenset[str] = frozenset({"salvar", "desfazer", "refazer", "achar", "substituir"})
 """As ações globais que esta aba atende **enquanto tem o foco** (S-244).
@@ -264,7 +287,7 @@ catálogo, e `cor_do_texto` é `escolher_cor` porque o comando abre uma lista em
 
 
 def frase_do_rodape(
-    *, folha: int | None, trechos: int, diagramas: int, miniaturas: int, por_gravar: bool
+    *, folha: int | None, trechos: int, diagramas: int, miniaturas: int, por_gravar: bool, correcoes: int = 0
 ) -> str:
     """O rodapé da aba: que folha está na tela, o que ela tem e se há o que gravar. Pura.
 
@@ -273,7 +296,9 @@ def frase_do_rodape(
     aqui?", "eu gravei?" -- sem obrigar a olhar o campo da folha, rolar até o fim ou tentar fechar.
     A contagem de miniaturas só aparece quando falta alguma: "3 diagramas" já diz que estão.
 
-    `folha` é o índice 0-based da página, ou `None` para texto sem página de origem.
+    `folha` é o índice 0-based da página, ou `None` para texto sem página de origem. `correcoes`
+    é quantos pares antes/depois a mão fez sobre o que o motor leu (`text/correcao`), contados na
+    pausa da digitação e na gravação -- é o número que o `.cvtxt` tem de mais caro (item 24).
     """
     if trechos == 0:
         return ""
@@ -284,6 +309,8 @@ def frase_do_rodape(
         if miniaturas < diagramas:
             quantos += f", {miniaturas} com miniatura"
         partes.append(quantos)
+    if correcoes:
+        partes.append(f"{correcoes} correção(ões)")
     if por_gravar:
         partes.append("por gravar")
     return " · ".join(partes)

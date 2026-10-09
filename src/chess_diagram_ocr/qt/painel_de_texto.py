@@ -67,6 +67,7 @@ import numpy as np
 from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (
     QAction,
+    QHelpEvent,
     QKeyEvent,
     QKeySequence,
     QMouseEvent,
@@ -93,6 +94,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QTextEdit,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -103,7 +105,7 @@ from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.imagens import pixmap_de_rgb
 from chess_diagram_ocr.qt.texto_formato import bloco_de, formato_de
-from chess_diagram_ocr.qt.trabalho import Tarefa
+from chess_diagram_ocr.qt.trabalho import Tarefa, rastro_de
 from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.text import busca, correcao, rascunho, rico
 from chess_diagram_ocr.text.documento import PaginaLida
@@ -120,6 +122,7 @@ from chess_diagram_ocr.ui.texto_declarado import (
     continua_a_digitacao,
     digitacao_depois,
     fora_do_livro,
+    frase_do_lexico,
     frase_do_rodape,
 )
 
@@ -364,6 +367,12 @@ class PainelDeTexto(QWidget):
         self._base: tuple[int, str, str] | None = None
         """A fonte de base do último desenho. O trecho digitado é pintado com **a mesma** -- a
         tecla não relê as famílias do sistema, e o redesenho seguinte não muda o que já estava."""
+        self._correcoes = 0
+        """Quantas correções a mão fez sobre o que o motor leu, contadas na pausa e na gravação
+        (item 24). Não a cada tecla: `correcao.correcoes` compara bloco a bloco por `difflib`."""
+        self._fornecedor_de_folha: Callable[[int], tuple[np.ndarray, int] | None] | None = None
+        """Quem já tem a folha rasterizada -- o visualizador --, perguntado antes de rasterizar
+        de novo (item 28). `None` é a aba sozinha, que renderiza por conta própria."""
         self._posicoes: dict[tuple[str, int], tuple[str, ...]] = {}
         """O campo de peças de cada diagrama, por `(livro, folha)`, como o OCR de diagramas do
         produto leu. Por folha porque a leitura dos diagramas e a do texto chegam em qualquer
@@ -428,6 +437,8 @@ class PainelDeTexto(QWidget):
             acao=self.ler,
         )
         self.editor.textChanged.connect(self._mostrar_vazio)
+        # A barra diz o estilo, a cor e o realce que valem sob o cursor (S-292, item 22).
+        self.editor.cursorPositionChanged.connect(self._seguir_o_cursor)
         self.editor.viewport().installEventFilter(self)
         # O `Ctrl+Z` de dentro da folha. Ver `TECLAS_DO_HISTORICO`.
         self.editor.installEventFilter(self)
@@ -440,6 +451,29 @@ class PainelDeTexto(QWidget):
         self.status = QLabel("", self)
         self.status.setAccessibleName("Estado da folha")
         caixa.addWidget(self.status)
+
+    def _seguir_o_cursor(self) -> None:
+        """As três escolhas da barra mostram o que vale sob o cursor -- ou na seleção inteira.
+
+        O Tk tinha isto desde a S-292 e o porte deixou as caixas paradas em «(sem estilo)»: a
+        pessoa punha o cursor num título e a barra dizia que não havia estilo. `valor_em_todo`
+        responde `None` quando a seleção mistura valores, e aí a caixa volta ao vazio -- a mesma
+        regra do negrito misto. As caixas disparam só por `activated` (o clique da pessoa), então
+        repô-las aqui não aplica nada.
+        """
+        if self._redesenhando:
+            return
+        inicio, fim = self._intervalo()
+        if inicio == fim:
+            fim = min(len(self.documento.para_texto()), inicio + 1)
+        for caixa, atributo in (
+            (self.escolha_de_estilo, "estilo"),
+            (self.escolha_de_cor, "cor"),
+            (self.escolha_de_realce, "realce"),
+        ):
+            valor = rico.valor_em_todo(self.documento, inicio, fim, atributo) if fim > inicio else None
+            indice = caixa.findData(valor or "")
+            caixa.setCurrentIndex(indice if indice >= 0 else 0)
 
     def _atualizar_status(self) -> None:
         """O rodapé da aba, refeito a cada mudança do documento e a cada gravação.
@@ -455,8 +489,14 @@ class PainelDeTexto(QWidget):
                 diagramas=len(diagramas),
                 miniaturas=sum(1 for c in diagramas if self._tem_miniatura(c)),
                 por_gravar=self.tem_alteracoes,
+                correcoes=self._correcoes,
             )
         )
+
+    def _contar_correcoes(self) -> None:
+        """Refaz a conta das correções e o rodapé. Na pausa, na gravação e na abertura -- não por tecla."""
+        self._correcoes = len(correcao.correcoes(self.documento)) if self.documento.origem is not None else 0
+        self._atualizar_status()
 
     def _montar_paleta(self) -> QListWidget:
         """O painel lateral de glifos (S-248). Nasce escondido: ele é um caminho a mais.
@@ -537,6 +577,12 @@ class PainelDeTexto(QWidget):
         self.campo_de_folha.setAccessibleName("Folha a ler")
         self.campo_de_folha.setMinimum(1)
         self.campo_de_folha.setMaximum(TETO_DE_FOLHAS)  # até a janela dizer quantas folhas o livro tem
+        # Enter no campo lê a folha digitada (item 27): digitar o número e ter de ir ao botão com
+        # o mouse era o atrito de quem lê folha a folha. `returnPressed` e não `editingFinished`:
+        # este também dispara ao sair do campo com o Tab, e ler por perder o foco seria surpresa.
+        linha = self.campo_de_folha.lineEdit()
+        if linha is not None:
+            linha.returnPressed.connect(self.ler)
         self.campo_de_folha.setValue(self._pagina_indice + 1)
         barra.adicionar(self.campo_de_folha)
 
@@ -954,6 +1000,7 @@ class PainelDeTexto(QWidget):
         self.desenhar_documento(rico.de_pagina(pagina))
         self._documento_gravado = self.documento
         self._rascunho.stop()  # o desenho emitiu `documento_mudou`; a folha recém-lida não tem o que gravar
+        self._correcoes = 0  # a folha recém-lida não tem correção nenhuma
         self._atualizar_status()
 
     def texto(self) -> str:
@@ -1220,9 +1267,7 @@ class PainelDeTexto(QWidget):
         self._pintar_lexico([(inicio, fim) for inicio, fim, _palavra in achadas])
         if avisar:
             total = len(dicionario.palavras_de(conteudo))
-            self.estado.emit(
-                f"{len(achadas)} de {total} palavra(s) fora do léxico. Nada foi corrigido (S-209)."
-            )
+            self.estado.emit(frase_do_lexico([palavra for _inicio, _fim, palavra in achadas], total))
 
     def _pintar_lexico(self, intervalos: Iterable[tuple[int, int]]) -> None:
         """A marca é uma **borda ondulada**, e o canal estava livre (S-266).
@@ -1377,7 +1422,7 @@ class PainelDeTexto(QWidget):
         self.desenhar_documento(doc)
         self._documento_gravado = self.documento
         self._rascunho.stop()  # como em `mostrar_pagina`: o que veio do disco não tem o que gravar
-        self._atualizar_status()
+        self._contar_correcoes()  # o arquivo pode trazer correções gravadas ontem
         # O texto da folha 14 na tela com o visualizador na folha 3 é o que fazia a pessoa
         # procurar a página à mão (item 9). Só para o livro que está aberto: um `.cvtxt` de outro
         # livro não troca o livro de ninguém -- é a mesma regra de `definir_livro`.
@@ -1447,6 +1492,7 @@ class PainelDeTexto(QWidget):
         # número no rodapé é o que faz alguém notar quando ele vem zerado (S-239).
         feitas = len(correcao.correcoes(gravado))
         quanto = f" · {feitas} correção(ões) sobre o que o motor leu" if feitas else ""
+        self._correcoes = feitas
         self._atualizar_status()
         self.estado.emit(f"Texto gravado em {caminho.name}{quanto}.")
 
@@ -1489,6 +1535,7 @@ class PainelDeTexto(QWidget):
         self.gravar_rascunho()
         if self._conferindo_lexico:
             self._conferir_lexico(avisar=False)
+        self._contar_correcoes()
 
     def gravar_rascunho(self) -> Path | None:
         """Grava o rascunho **se houver o que gravar**. Devolve o caminho, ou `None`.
@@ -1530,6 +1577,24 @@ class PainelDeTexto(QWidget):
         )
         if resposta != QMessageBox.StandardButton.Yes:
             return False
+        return self._recuperar(achado, pagina)
+
+    def recuperar_rascunho(self) -> bool:
+        """Pelo menu do botão direito (item 25): o rascunho da folha na tela, para quem recusou a
+        oferta na leitura e mudou de ideia -- sem ter de ler a folha de novo (até 40 s) para a
+        pergunta voltar. Pergunta antes de descartar o que foi editado desde então."""
+        if self._pagina is None:
+            return False
+        achado = rascunho.achar(self._pagina.documento, self._pagina.pagina, pasta=self._pasta_de_rascunhos)
+        if achado is None:
+            self.estado.emit("Não há rascunho desta folha por recuperar.")
+            return False
+        if not self._confirmar_descarte("Recuperar o rascunho descarta as alterações."):
+            return False
+        return self._recuperar(achado, self._pagina)
+
+    def _recuperar(self, achado: rascunho.Rascunho, pagina: PaginaLida) -> bool:
+        """Põe o rascunho na tela como trabalho por gravar e apaga o arquivo dele."""
         try:
             doc = rascunho.carregar(achado)
         except (OSError, ValueError) as erro:  # `arquivo.ArquivoInvalido` é um `ValueError`
@@ -1710,9 +1775,22 @@ class PainelDeTexto(QWidget):
             return
         self.estado.emit(str(frase))
 
-    def _exportacao_falhou(self, erro: str) -> None:
-        self._tarefa = None
-        QMessageBox.critical(self, "Exportar", f"Falha ao exportar:\n{erro}")
+    def _exportacao_falhou(self, erro: str, excecao: object = None) -> None:
+        self._falha("Exportar", f"Falha ao exportar:\n{erro}", excecao)
+
+    def _falha(self, titulo: str, mensagem: str, excecao: object) -> None:
+        """A caixa de falha com o rastro atrás de «Detalhes» e o botão «Copiar» (A10, item 21).
+
+        As duas falhas desta aba abriam um `QMessageBox.critical` com a frase e nada mais: o
+        rastro ficava no log, que a caixa mandava a pessoa ir procurar. É a mesma caixa de
+        `qt/janela._falhou`, e o rastro é o que a `Tarefa` formatou **na thread**, no instante da
+        falha -- é ali que a pilha está inteira.
+        """
+        from chess_diagram_ocr.qt import dialogos
+
+        tarefa, self._tarefa = self._tarefa, None
+        rastro = str(getattr(tarefa, "rastro", "") or "") or rastro_de(excecao)
+        dialogos.mostrar_falha(self, titulo, mensagem, rastro)
 
     # ---------------------------------------------------------- a leitura, em thread
 
@@ -1782,6 +1860,10 @@ class PainelDeTexto(QWidget):
         caminho = self._pdf
         dpi = self._dpi_para_ler()
         teto = self._teto_de_diagramas()
+        # A folha que o visualizador já rasterizou serve, se for esta e no mesmo DPI (item 28):
+        # copiada aqui, na thread da janela, porque o visualizador pode trocá-la enquanto se lê.
+        pronta = self._fornecedor_de_folha(indice) if self._fornecedor_de_folha is not None else None
+        imagem_pronta = np.array(pronta[0], copy=True) if pronta is not None and int(pronta[1]) == dpi else None
 
         def _trabalho() -> tuple[PaginaLida, np.ndarray | None, int, float]:
             # **A folha é rasterizada uma vez, e aqui (S-352).** `ler_pagina` a renderiza sozinha
@@ -1791,7 +1873,7 @@ class PainelDeTexto(QWidget):
             # configuração pode mudar enquanto a leitura corre. O tempo vai junto (item 16): é o
             # número que decide entre o motor rápido e o modo bloco de 40 s.
             inicio = time.perf_counter()
-            imagem = _renderizar(caminho, indice, dpi=dpi)
+            imagem = imagem_pronta if imagem_pronta is not None else _renderizar(caminho, indice, dpi=dpi)
             lida = _ler(caminho, indice, dpi=dpi, motor=motor, modo_bloco=bloco, imagem_rgb=imagem, max_boards=teto)
             return lida, imagem, dpi, time.perf_counter() - inicio
 
@@ -1806,6 +1888,10 @@ class PainelDeTexto(QWidget):
         self._tarefa.falhou.connect(self._leitura_falhou)
         self._tarefa.finished.connect(self._soltar_ocupado)
         self._tarefa.start()
+
+    def definir_fornecedor_de_folha(self, fornecedor: Callable[[int], tuple[np.ndarray, int] | None] | None) -> None:
+        """Quem responde «a folha N já está rasterizada, e em que DPI?» -- o visualizador (item 28)."""
+        self._fornecedor_de_folha = fornecedor
 
     def _dpi_para_ler(self) -> int:
         """O DPI da próxima leitura: o cravado pelo teste, ou o das Configurações (o produto)."""
@@ -1846,15 +1932,24 @@ class PainelDeTexto(QWidget):
         figuras = f", {diagramas} diagrama(s)" if diagramas else ""
         # «em 3,9 s»: a pessoa escolhe o motor e o modo bloco pelo preço, e o preço tem de ser dito.
         tempo = "" if segundos is None else f" em {segundos:.1f} s".replace(".", ",")
+        if not self.documento.para_texto().strip():
+            # A folha vazia não é falha nem é «0 trecho(s)» (item 26): é uma página sem texto para
+            # este motor -- capa, figura inteira, ou scan que o glifo não leu --, e a frase diz o
+            # que tentar. O estado vazio do editor já está na tela.
+            como = f"motor {self._motor}" + (", modo bloco" if self._modo_bloco else "")
+            self.estado.emit(
+                f"A folha {pagina.pagina + 1} não tem texto lido ({como}{tempo.replace(' em ', ', ')}): "
+                "tente outro motor ou o modo bloco."
+            )
+            return
         self.estado.emit(f"Folha lida{tempo}: {len(self.documento.corridas)} trecho(s){figuras}.")
         # **Depois de desenhar, e não antes**: se a pessoa recusar a oferta, o que fica na tela é
         # a leitura que ela acabou de pedir (S-255).
         self.oferecer_rascunho(pagina)
 
-    def _leitura_falhou(self, erro: str) -> None:
-        self._tarefa = None
+    def _leitura_falhou(self, erro: str, excecao: object = None) -> None:
         self._documento_ao_ler = None
-        QMessageBox.critical(self, "Ler a folha", f"Não foi possível ler a folha:\n{erro}")
+        self._falha("Ler a folha", f"Não foi possível ler a folha:\n{erro}", excecao)
 
     # ------------------------------------------------------ o que a janela pergunta (S-283)
 
@@ -2119,8 +2214,21 @@ class PainelDeTexto(QWidget):
                 if alvo is not None:
                     alvo()
                     return True
+            # Enter com a marca inteira selecionada abre o diagrama no Estudo (item 30): é o
+            # duplo clique do item 8 para quem anda pelo teclado -- o clique (ou Shift+setas)
+            # seleciona a marca, o Enter a ativa. Com qualquer outra seleção o Enter é o Enter.
+            if a1.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not a1.modifiers() and self._ativar_marca_selecionada():
+                return True
         if a0 is self.editor.viewport() and a1 is not None and a1.type() == QEvent.Type.Resize:
             self.vazio.setGeometry(self.editor.viewport().rect())
+        if a0 is self.editor.viewport() and isinstance(a1, QHelpEvent) and a1.type() == QEvent.Type.ToolTip:
+            # A dica sobre a miniatura (item 23): o que ela é, a posição, e o que o clique faz.
+            dica = self._dica_da_marca(a1.pos())
+            if dica:
+                QToolTip.showText(a1.globalPos(), dica, self.editor.viewport())
+            else:
+                QToolTip.hideText()
+            return True
         if a0 is self.editor.viewport() and isinstance(a1, QWheelEvent) and a1.modifiers() & Qt.KeyboardModifier.ControlModifier:
             # Ctrl+roda é o zoom da vista (item 13). O `QTextEdit` responderia mudando a fonte do
             # editor -- que nenhuma letra segue, porque cada trecho sai com corpo explícito (S-264).
@@ -2173,6 +2281,25 @@ class PainelDeTexto(QWidget):
             comeco = fim
         return None
 
+    def _dica_da_marca(self, ponto: QPoint) -> str:
+        """O texto da dica sobre a miniatura ou a marca, ou `""` fora delas (item 23).
+
+        Três linhas: o que é («Diagrama 3 da folha 14»), a posição quando se sabe (a FEN, que o
+        item 20 também copia) e o que o gesto faz -- a dica é onde quem passa o mouse descobre o
+        duplo clique e o botão direito sem ter de adivinhar.
+        """
+        achado = self._marca_sob(ponto)
+        if achado is None:
+            return ""
+        corrida = achado[2]
+        numero = int(getattr(self.documento.bloco_de(corrida), "indice", corrida.bloco)) + 1
+        folha = "" if self._pagina is None else f" da folha {int(self._pagina.pagina) + 1}"
+        linhas = [f"Diagrama {numero}{folha}"]
+        posicao = _posicao_de(self.documento, corrida)
+        linhas.append(f"FEN: {posicao}" if posicao else "Posição ainda não lida (OCR dos diagramas na aba Livro)")
+        linhas.append("Duplo clique abre no Estudo · botão direito: copiar, apagar")
+        return "\n".join(linhas)
+
     def _clicou_na_miniatura(self, ponto: QPoint) -> bool:
         """O clique na miniatura seleciona a marca dela: é a marca que se apaga, move e copia.
 
@@ -2204,6 +2331,18 @@ class PainelDeTexto(QWidget):
         seleciona. O menu é onde quem não sabe do duplo clique descobre que a miniatura é viva.
         """
         menu = self.editor.createStandardContextMenu(ponto)
+        # O rascunho da folha na tela, quando há um (item 25): a oferta recusada na leitura volta
+        # a estar à mão, sem reler a folha.
+        guardado = (
+            None
+            if self._pagina is None
+            else rascunho.achar(self._pagina.documento, self._pagina.pagina, pasta=self._pasta_de_rascunhos)
+        )
+        if guardado is not None:
+            menu.addSeparator()
+            recuperar = QAction(f"Recuperar o rascunho de {guardado.data_legivel}", menu)
+            recuperar.triggered.connect(lambda: self.recuperar_rascunho())
+            menu.addAction(recuperar)
         achado = self._marca_sob(ponto)
         if achado is None:
             return menu
@@ -2249,6 +2388,18 @@ class PainelDeTexto(QWidget):
         """Tira a marca inteira -- e com ela a figura. É uma edição: `Ctrl+Z` a devolve."""
         self._aplicar(rico.apagar(self.documento, comeco, fim), selecao=(comeco, comeco))
         self.estado.emit(f"O diagrama {numero} saiu da folha; desfazer o devolve.")
+
+    def _ativar_marca_selecionada(self) -> bool:
+        """Se a seleção é exatamente uma marca `[Diagrama N]`, pede o diagrama na sala."""
+        inicio, fim = self._intervalo()
+        achado = self._marca_em(inicio) if fim > inicio else None
+        if achado is None or (achado[0], achado[1]) != (inicio, fim) or self._pagina is None:
+            return False
+        indice = getattr(self.documento.bloco_de(achado[2]), "indice", None)
+        if indice is None:
+            return False
+        self.diagrama_ativado.emit(int(self._pagina.pagina), int(indice))
+        return True
 
     def _ativou_a_miniatura(self, ponto: QPoint) -> bool:
         """O duplo clique na miniatura pede o diagrama na sala de estudo (`diagrama_ativado`)."""
