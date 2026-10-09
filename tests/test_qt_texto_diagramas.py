@@ -713,6 +713,32 @@ class CliqueNaMiniaturaTests(_Aba):
         self.addCleanup(descartar, menu)
         self.assertIn("Apagar o diagrama 1 da folha", [a.text() for a in menu.actions()])
 
+    def test_enter_com_a_marca_selecionada_pede_o_diagrama_na_sala(self) -> None:
+        """O duplo clique do item 8 para quem anda pelo teclado (item 30)."""
+        from PyQt6.QtTest import QTest
+
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        pedidos: list[tuple[int, int]] = []
+        self.painel.diagrama_ativado.connect(lambda folha, indice: pedidos.append((folha, indice)))
+        self.painel.editor.setFocus()
+        texto = self.painel.texto()
+        inicio = texto.index("[Diagrama 1]")
+        cursor = self.painel.editor.textCursor()
+        cursor.setPosition(self.painel._mapa.posicao(inicio))
+        cursor.setPosition(self.painel._mapa.posicao(inicio + len("[Diagrama 1]")), QTextCursor.MoveMode.KeepAnchor)
+        self.painel.editor.setTextCursor(cursor)
+        antes = self.painel.texto()
+        QTest.keyClick(self.painel.editor, Qt.Key.Key_Return)
+        self.assertEqual(pedidos, [(0, 0)])
+        self.assertEqual(self.painel.texto(), antes, "o Enter não escreveu nada no lugar da marca")
+        # Com outra seleção, o Enter é o Enter: troca o selecionado por uma quebra de linha.
+        cursor.setPosition(self.painel._mapa.posicao(0))
+        cursor.setPosition(self.painel._mapa.posicao(5), QTextCursor.MoveMode.KeepAnchor)
+        self.painel.editor.setTextCursor(cursor)
+        QTest.keyClick(self.painel.editor, Qt.Key.Key_Return)
+        self.assertEqual(pedidos, [(0, 0)])
+        self.assertNotEqual(self.painel.texto(), antes)
+
     def test_o_duplo_clique_pede_o_diagrama_na_sala(self) -> None:
         from PyQt6.QtTest import QTest
 

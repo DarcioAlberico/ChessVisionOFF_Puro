@@ -2214,6 +2214,11 @@ class PainelDeTexto(QWidget):
                 if alvo is not None:
                     alvo()
                     return True
+            # Enter com a marca inteira selecionada abre o diagrama no Estudo (item 30): é o
+            # duplo clique do item 8 para quem anda pelo teclado -- o clique (ou Shift+setas)
+            # seleciona a marca, o Enter a ativa. Com qualquer outra seleção o Enter é o Enter.
+            if a1.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not a1.modifiers() and self._ativar_marca_selecionada():
+                return True
         if a0 is self.editor.viewport() and a1 is not None and a1.type() == QEvent.Type.Resize:
             self.vazio.setGeometry(self.editor.viewport().rect())
         if a0 is self.editor.viewport() and isinstance(a1, QHelpEvent) and a1.type() == QEvent.Type.ToolTip:
@@ -2383,6 +2388,18 @@ class PainelDeTexto(QWidget):
         """Tira a marca inteira -- e com ela a figura. É uma edição: `Ctrl+Z` a devolve."""
         self._aplicar(rico.apagar(self.documento, comeco, fim), selecao=(comeco, comeco))
         self.estado.emit(f"O diagrama {numero} saiu da folha; desfazer o devolve.")
+
+    def _ativar_marca_selecionada(self) -> bool:
+        """Se a seleção é exatamente uma marca `[Diagrama N]`, pede o diagrama na sala."""
+        inicio, fim = self._intervalo()
+        achado = self._marca_em(inicio) if fim > inicio else None
+        if achado is None or (achado[0], achado[1]) != (inicio, fim) or self._pagina is None:
+            return False
+        indice = getattr(self.documento.bloco_de(achado[2]), "indice", None)
+        if indice is None:
+            return False
+        self.diagrama_ativado.emit(int(self._pagina.pagina), int(indice))
+        return True
 
     def _ativou_a_miniatura(self, ponto: QPoint) -> bool:
         """O duplo clique na miniatura pede o diagrama na sala de estudo (`diagrama_ativado`)."""
