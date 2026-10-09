@@ -111,6 +111,32 @@ class LeituraEntregaAFolhaTests(_Aba):
         self.painel._leitura_terminou((_pagina(), None))  # o formato antigo, sem tempo, continua a valer
         self.assertTrue(self.recados[-1].startswith("Folha lida: "))
 
+    def test_a_folha_do_visualizador_serve_a_leitura_no_mesmo_dpi(self) -> None:
+        """A página aberta já custou a rasterização; a leitura não paga de novo (item 28)."""
+        folha = _folha()
+        self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
+        self.painel.definir_fornecedor_de_folha(lambda indice: (folha, 72) if indice == 0 else None)
+        with mock.patch.object(qt_texto, "_renderizar") as renderizar, mock.patch.object(
+            qt_texto, "_ler", return_value=_pagina()
+        ) as ler:
+            self.painel.ler()
+            self.esperar_a_tarefa()
+        renderizar.assert_not_called()
+        usada = ler.call_args.kwargs["imagem_rgb"]
+        self.assertIsNot(usada, folha, "copiada: o visualizador pode trocar a dele no meio")
+        self.assertTrue((usada == folha).all())
+        self.assertEqual(self.miniaturas(), 1)
+
+    def test_a_folha_do_visualizador_noutro_dpi_nao_serve(self) -> None:
+        self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
+        self.painel.definir_fornecedor_de_folha(lambda _indice: (_folha(), 220))
+        with mock.patch.object(qt_texto, "_renderizar", return_value=None) as renderizar, mock.patch.object(
+            qt_texto, "_ler", return_value=_pagina()
+        ):
+            self.painel.ler()
+            self.esperar_a_tarefa()
+        renderizar.assert_called_once()
+
     def test_a_folha_sem_texto_diz_o_que_tentar(self) -> None:
         """Capa, figura inteira, scan que o glifo não leu: não é «0 trecho(s)» (item 26)."""
         self.painel._leitura_terminou((PaginaLida(documento="livro.pdf", pagina=3), None, None, 2.04))

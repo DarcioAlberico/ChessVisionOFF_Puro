@@ -1067,6 +1067,17 @@ class PainelDoPdf(QWidget):
         except (TypeError, ValueError):
             return None
 
+    def folha_renderizada(self, indice: int) -> tuple[np.ndarray, int] | None:
+        """A folha que está na tela e o DPI dela, se for a de `indice` -- senão `None`.
+
+        É o que a aba Texto pergunta antes de rasterizar a mesma página por conta própria (S-352
+        do outro lado, item 28 de 2026-10-09): a página aberta já custou os ~200 ms de
+        rasterização, e lê-la de novo para o texto era pagar duas vezes.
+        """
+        if self.page_loaded_for_index != indice or self.page_rgb is None or not self._dpi_rasterizado:
+            return None
+        return self.page_rgb, int(self._dpi_rasterizado)
+
     def _mostrar(self, folha: FolhaRasterizada) -> None:
         self.page_rgb = folha.page_rgb
         self.page_loaded_for_index = folha.indice

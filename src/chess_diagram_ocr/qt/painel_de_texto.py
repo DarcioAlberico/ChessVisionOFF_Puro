@@ -369,6 +369,9 @@ class PainelDeTexto(QWidget):
         self._correcoes = 0
         """Quantas correções a mão fez sobre o que o motor leu, contadas na pausa e na gravação
         (item 24). Não a cada tecla: `correcao.correcoes` compara bloco a bloco por `difflib`."""
+        self._fornecedor_de_folha: Callable[[int], tuple[np.ndarray, int] | None] | None = None
+        """Quem já tem a folha rasterizada -- o visualizador --, perguntado antes de rasterizar
+        de novo (item 28). `None` é a aba sozinha, que renderiza por conta própria."""
         self._posicoes: dict[tuple[str, int], tuple[str, ...]] = {}
         """O campo de peças de cada diagrama, por `(livro, folha)`, como o OCR de diagramas do
         produto leu. Por folha porque a leitura dos diagramas e a do texto chegam em qualquer
@@ -1858,6 +1861,10 @@ class PainelDeTexto(QWidget):
         caminho = self._pdf
         dpi = self._dpi_para_ler()
         teto = self._teto_de_diagramas()
+        # A folha que o visualizador já rasterizou serve, se for esta e no mesmo DPI (item 28):
+        # copiada aqui, na thread da janela, porque o visualizador pode trocá-la enquanto se lê.
+        pronta = self._fornecedor_de_folha(indice) if self._fornecedor_de_folha is not None else None
+        imagem_pronta = np.array(pronta[0], copy=True) if pronta is not None and int(pronta[1]) == dpi else None
 
         def _trabalho() -> tuple[PaginaLida, np.ndarray | None, int, float]:
             # **A folha é rasterizada uma vez, e aqui (S-352).** `ler_pagina` a renderiza sozinha
@@ -1867,7 +1874,7 @@ class PainelDeTexto(QWidget):
             # configuração pode mudar enquanto a leitura corre. O tempo vai junto (item 16): é o
             # número que decide entre o motor rápido e o modo bloco de 40 s.
             inicio = time.perf_counter()
-            imagem = _renderizar(caminho, indice, dpi=dpi)
+            imagem = imagem_pronta if imagem_pronta is not None else _renderizar(caminho, indice, dpi=dpi)
             lida = _ler(caminho, indice, dpi=dpi, motor=motor, modo_bloco=bloco, imagem_rgb=imagem, max_boards=teto)
             return lida, imagem, dpi, time.perf_counter() - inicio
 
@@ -1882,6 +1889,10 @@ class PainelDeTexto(QWidget):
         self._tarefa.falhou.connect(self._leitura_falhou)
         self._tarefa.finished.connect(self._soltar_ocupado)
         self._tarefa.start()
+
+    def definir_fornecedor_de_folha(self, fornecedor: Callable[[int], tuple[np.ndarray, int] | None] | None) -> None:
+        """Quem responde «a folha N já está rasterizada, e em que DPI?» -- o visualizador (item 28)."""
+        self._fornecedor_de_folha = fornecedor
 
     def _dpi_para_ler(self) -> int:
         """O DPI da próxima leitura: o cravado pelo teste, ou o das Configurações (o produto)."""
