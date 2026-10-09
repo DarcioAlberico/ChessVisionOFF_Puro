@@ -428,6 +428,8 @@ class PainelDeTexto(QWidget):
             acao=self.ler,
         )
         self.editor.textChanged.connect(self._mostrar_vazio)
+        # A barra diz o estilo, a cor e o realce que valem sob o cursor (S-292, item 22).
+        self.editor.cursorPositionChanged.connect(self._seguir_o_cursor)
         self.editor.viewport().installEventFilter(self)
         # O `Ctrl+Z` de dentro da folha. Ver `TECLAS_DO_HISTORICO`.
         self.editor.installEventFilter(self)
@@ -440,6 +442,29 @@ class PainelDeTexto(QWidget):
         self.status = QLabel("", self)
         self.status.setAccessibleName("Estado da folha")
         caixa.addWidget(self.status)
+
+    def _seguir_o_cursor(self) -> None:
+        """As três escolhas da barra mostram o que vale sob o cursor -- ou na seleção inteira.
+
+        O Tk tinha isto desde a S-292 e o porte deixou as caixas paradas em «(sem estilo)»: a
+        pessoa punha o cursor num título e a barra dizia que não havia estilo. `valor_em_todo`
+        responde `None` quando a seleção mistura valores, e aí a caixa volta ao vazio -- a mesma
+        regra do negrito misto. As caixas disparam só por `activated` (o clique da pessoa), então
+        repô-las aqui não aplica nada.
+        """
+        if self._redesenhando:
+            return
+        inicio, fim = self._intervalo()
+        if inicio == fim:
+            fim = min(len(self.documento.para_texto()), inicio + 1)
+        for caixa, atributo in (
+            (self.escolha_de_estilo, "estilo"),
+            (self.escolha_de_cor, "cor"),
+            (self.escolha_de_realce, "realce"),
+        ):
+            valor = rico.valor_em_todo(self.documento, inicio, fim, atributo) if fim > inicio else None
+            indice = caixa.findData(valor or "")
+            caixa.setCurrentIndex(indice if indice >= 0 else 0)
 
     def _atualizar_status(self) -> None:
         """O rodapé da aba, refeito a cada mudança do documento e a cada gravação.

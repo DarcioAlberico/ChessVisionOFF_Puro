@@ -2950,6 +2950,7 @@ Cada linha é um commit, com o teste que a tranca.
 | item | o que faltava | o que entrou | teste |
 |---|---|---|---|
 | **21. as falhas da aba trazem o rastro** | a leitura e a exportação que falhavam abriam um `QMessageBox.critical` só com a frase; o rastro ficava no log (A10) | `_falha`: a mesma `dialogos.mostrar_falha` da janela, com o rastro que a `Tarefa` formatou na thread atrás de «Detalhes» e o botão «Copiar»; duas caixas modais a menos na contagem | `FalhaComRastroTests` |
+| **22. a barra segue o cursor** | a S-292 era do Tk; no porte as caixas de estilo, cor e realce ficavam paradas em «(sem …)» com o cursor num título | `_seguir_o_cursor` em `cursorPositionChanged`: `rico.valor_em_todo` sobre a seleção (ou o caractere sob o cursor), vazio quando mistura; as caixas disparam só por `activated`, então repô-las não aplica nada | `BarraSegueOCursorTests` |
 
 ---
 

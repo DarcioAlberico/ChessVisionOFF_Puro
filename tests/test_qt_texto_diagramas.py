@@ -808,6 +808,43 @@ class FalhaComRastroTests(_Aba):
         self.assertIn("OSError", detalhe)
 
 
+class BarraSegueOCursorTests(_Aba):
+    """A barra diz o estilo, a cor e o realce que valem sob o cursor (S-292 no Qt, item 22)."""
+
+    def cursor_em(self, inicio: int, fim: int | None = None) -> None:
+        cursor = self.painel.editor.textCursor()
+        cursor.setPosition(self.painel._mapa.posicao(inicio))
+        if fim is not None:
+            cursor.setPosition(self.painel._mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
+        self.painel.editor.setTextCursor(cursor)
+
+    def test_as_caixas_mostram_o_que_vale_sob_o_cursor(self) -> None:
+        doc = rico.de_pagina(_pagina())  # dois parágrafos de texto, com a marca entre eles
+        doc = rico.aplicar_estilo(doc, 0, 2, "titulo")
+        texto = doc.para_texto()
+        doc = rico.aplicar(doc, texto.index("Depois"), texto.index("Depois") + 6, cor="nota", realce="destaque")
+        self.painel.desenhar_documento(doc)
+        self.cursor_em(3)
+        self.assertEqual(self.painel.escolha_de_estilo.currentData(), "titulo")
+        self.cursor_em(texto.index("Depois") + 1)
+        self.assertEqual(self.painel.escolha_de_estilo.currentData(), "")
+        self.assertEqual(self.painel.escolha_de_cor.currentData(), "nota")
+        self.assertEqual(self.painel.escolha_de_realce.currentData(), "destaque")
+        self.cursor_em(texto.index("diagrama."))
+        self.assertEqual(self.painel.escolha_de_cor.currentData(), "")
+
+    def test_a_selecao_mista_volta_ao_vazio_e_repor_nao_aplica(self) -> None:
+        doc = rico.aplicar(rico.de_texto("abc def"), 0, 3, cor="nota")
+        self.painel.desenhar_documento(doc)
+        antes = self.painel.documento
+        self.cursor_em(1, 6)
+        self.assertEqual(self.painel.escolha_de_cor.currentData(), "", "metade com cor, metade sem: a caixa não escolhe")
+        self.cursor_em(0, 3)
+        self.assertEqual(self.painel.escolha_de_cor.currentData(), "nota")
+        self.assertIs(self.painel.documento, antes, "seguir o cursor não aplica nada")
+        self.assertFalse(self.painel.pode_desfazer)
+
+
 class ConfiguracoesDaLeituraTests(unittest.TestCase):
     """A leitura da aba pergunta o DPI e o teto de diagramas às Configurações, como o visualizador.
 
