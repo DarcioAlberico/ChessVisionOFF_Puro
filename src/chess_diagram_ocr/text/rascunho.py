@@ -56,6 +56,7 @@ __all__ = [
     "chave_de",
     "descartar",
     "gravar",
+    "listar",
     "podar",
 ]
 
@@ -184,16 +185,7 @@ def podar(documento: str | Path, *, pasta: Path | None = None, teto: int = TETO_
     A poda é por documento e não pela pasta inteira: quem trabalha em dois livros na mesma semana
     não pode perder o rascunho de um porque abriu muitas folhas do outro.
     """
-    raiz = Path(pasta) if pasta is not None else PASTA_PADRAO
-    if not raiz.exists():
-        return []
-    prefixo = chave_de(documento, 0).rsplit("_f", 1)[0]
-    impressao = chave_de(documento, 0).rsplit("_", 1)[-1]
-    do_livro = [
-        caminho
-        for caminho in raiz.glob(f"*{arquivo.EXTENSAO}")
-        if caminho.name.startswith(prefixo) and impressao in caminho.name
-    ]
+    do_livro = _do_livro(documento, pasta)
     if len(do_livro) <= teto:
         return []
     por_idade = sorted(do_livro, key=lambda c: c.stat().st_mtime)
@@ -205,6 +197,52 @@ def podar(documento: str | Path, *, pasta: Path | None = None, teto: int = TETO_
         except OSError as erro:  # pragma: no cover - arquivo em uso
             logger.debug("Rascunho antigo não pôde ser apagado (%s): %s", caminho, erro)
     return apagados
+
+
+def _nome_e_impressao(chave: str) -> tuple[str, str]:
+    """`"livro_f1_f36a81cc42"` -> `("livro", "f36a81cc42")`: as duas pontas da chave de uma folha.
+
+    **Pela forma, e não por `rsplit("_f")`.** A poda fazia `rsplit("_f", 1)` e caía quando a
+    impressão do caminho começava por `f` -- um caso em dezesseis --: o prefixo saía `livro_f1`,
+    nenhum rascunho de outra folha casava, e a pasta daquele livro nunca era podada (achado ao
+    escrever `listar`, 2026-10-09).
+    """
+    impressao = chave.rsplit("_", 1)[-1]
+    sufixo = f"_f1_{impressao}"
+    return (chave[: -len(sufixo)] if chave.endswith(sufixo) else chave), impressao
+
+
+def _do_livro(documento: str | Path, pasta: Path | None) -> list[Path]:
+    """Os arquivos de rascunho daquele livro, pela impressão do caminho no nome."""
+    raiz = Path(pasta) if pasta is not None else PASTA_PADRAO
+    if not raiz.exists():
+        return []
+    nome, impressao = _nome_e_impressao(chave_de(documento, 0))
+    return [
+        caminho
+        for caminho in raiz.glob(f"*{arquivo.EXTENSAO}")
+        if caminho.name.startswith(f"{nome}_f") and caminho.name.endswith(f"_{impressao}{arquivo.EXTENSAO}")
+    ]
+
+
+def listar(documento: str | Path, *, pasta: Path | None = None) -> list[Rascunho]:
+    """Os rascunhos daquele livro, por folha crescente. **Não os abre** (item 18 de 2026-10-09).
+
+    A oferta de recuperação só acontece ao ler a folha certa; quem abre o livro sem saber que
+    deixou trabalho por gravar em três folhas não tem como saber quais. Esta lista é o que a aba
+    diz na abertura do livro.
+    """
+    achados: list[Rascunho] = []
+    for caminho in _do_livro(documento, pasta):
+        folha = re.search(r"_f(\d+)_[0-9a-f]+$", caminho.stem)
+        if folha is None:
+            continue
+        try:
+            quando = datetime.fromtimestamp(caminho.stat().st_mtime)
+        except OSError:  # pragma: no cover - arquivo sumiu entre o `glob` e o `stat`
+            continue
+        achados.append(Rascunho(caminho=caminho, quando=quando, folha=int(folha.group(1)) - 1))
+    return sorted(achados, key=lambda r: r.folha)
 
 
 def frase_de_recuperacao(rascunho: Rascunho) -> str:

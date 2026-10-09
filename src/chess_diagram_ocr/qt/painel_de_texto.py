@@ -1867,6 +1867,7 @@ class PainelDeTexto(QWidget):
         novo = None if pdf is None else Path(pdf)
         if _chave_de_livro(novo) != _chave_de_livro(self._pdf):
             self._posicoes.clear()  # as posições são do livro que saiu (item 11)
+            self._anunciar_rascunhos(novo)
         self._pdf = novo
         # O teto só muda quando se sabe o número ou quando o livro fecha: a virada de página chama
         # isto sem `paginas`, e não pode devolver o campo ao teto largo.
@@ -1881,6 +1882,28 @@ class PainelDeTexto(QWidget):
                 self.campo_de_folha.setValue(self._pagina_indice + 1)
             finally:
                 self._montando = False
+
+    def _anunciar_rascunhos(self, livro: Path | None) -> None:
+        """Na troca de livro, diz quantos rascunhos dele há por recuperar e em que folhas (item 18).
+
+        A oferta de recuperação (S-255) só acontece ao ler a folha certa: quem fecha o programa
+        com três folhas corrigidas e volta no dia seguinte não tinha como saber que elas existem,
+        nem quais são. Rodapé e não caixa: é informação, e a decisão continua sendo ler a folha.
+        """
+        if livro is None:
+            return
+        try:
+            achados = rascunho.listar(livro, pasta=self._pasta_de_rascunhos)
+        except OSError as erro:  # noqa: BLE001 - a lista é conforto; o livro abre igual
+            logger.debug("Rascunhos de %s não listados: %s", livro, erro)
+            return
+        if not achados:
+            return
+        folhas = ", ".join(str(r.folha + 1) for r in achados[:6]) + ("…" if len(achados) > 6 else "")
+        self.estado.emit(
+            f"{len(achados)} rascunho(s) deste livro por recuperar (folha {folhas}): "
+            "leia a folha e a aba oferece."
+        )
 
     def definir_posicoes(self, pagina: int, posicoes: Sequence[str]) -> None:
         """O campo de peças de cada diagrama da folha, como o OCR de diagramas do produto leu.

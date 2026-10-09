@@ -143,6 +143,48 @@ class GravaPorInatividadeTests(_Aba):
         self.assertIsNotNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta))
 
 
+class ListarTests(unittest.TestCase):
+    """`rascunho.listar`: os rascunhos de um livro, por folha, sem abri-los (item 18)."""
+
+    def setUp(self) -> None:
+        self.pasta = pasta_temporaria(self)
+
+    def test_lista_por_folha_e_so_do_livro(self) -> None:
+        rascunho.gravar(rico.de_pagina(_pagina(folha=4)), pasta=self.pasta)
+        rascunho.gravar(rico.de_pagina(_pagina(folha=1)), pasta=self.pasta)
+        rascunho.gravar(rico.de_pagina(_pagina(livro="outro.pdf", folha=0)), pasta=self.pasta)
+        achados = rascunho.listar("livro.pdf", pasta=self.pasta)
+        self.assertEqual([r.folha for r in achados], [1, 4])
+        self.assertEqual([r.folha for r in rascunho.listar("outro.pdf", pasta=self.pasta)], [0])
+        self.assertEqual(rascunho.listar("ninguem.pdf", pasta=self.pasta), [])
+        self.assertEqual(rascunho.listar("livro.pdf", pasta=self.pasta / "nao-existe"), [])
+
+    def test_a_poda_vale_tambem_quando_a_impressao_comeca_por_f(self) -> None:
+        """`rsplit("_f")` partia a chave na impressão: um livro em dezesseis nunca era podado."""
+        self.assertEqual(rascunho._nome_e_impressao("livro_f1_f36a81cc42"), ("livro", "f36a81cc42"))
+        self.assertEqual(rascunho._nome_e_impressao("meu_f_livro_f1_0a1b2c3d4e"), ("meu_f_livro", "0a1b2c3d4e"))
+        for folha in range(10):
+            rascunho.gravar(rico.de_pagina(_pagina(folha=folha)), pasta=self.pasta)
+        self.assertEqual(len(rascunho.listar("livro.pdf", pasta=self.pasta)), rascunho.TETO_POR_DOCUMENTO)
+
+
+class AnuncioNaAberturaTests(_Aba):
+    """Ao trocar de livro, a aba diz quantos rascunhos dele há por recuperar (item 18)."""
+
+    def test_o_livro_com_rascunhos_e_anunciado_uma_vez(self) -> None:
+        livro = self.pasta / "livro.pdf"
+        rascunho.gravar(rico.de_pagina(_pagina(livro=str(livro), folha=2)), pasta=self.pasta)
+        rascunho.gravar(rico.de_pagina(_pagina(livro=str(livro), folha=0)), pasta=self.pasta)
+        self.painel.definir_livro(livro, pagina=0)
+        self.assertEqual(self.recados[-1], "2 rascunho(s) deste livro por recuperar (folha 1, 3): leia a folha e a aba oferece.")
+        self.painel.definir_livro(livro, pagina=5)  # a virada de página não repete o anúncio
+        self.assertEqual(len(self.recados), 1)
+
+    def test_sem_rascunho_nada_e_dito(self) -> None:
+        self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
+        self.assertEqual(self.recados, [])
+
+
 class ReabrirOfereceTests(_Aba):
     def setUp(self) -> None:
         super().setUp()
