@@ -779,6 +779,22 @@ class TetoDoCampoDeFolhaTests(_Aba):
         self.painel.definir_livro(None)
         self.assertEqual(self.painel.campo_de_folha.maximum(), qt_texto.TETO_DE_FOLHAS)
 
+    def test_enter_no_campo_le_a_folha_digitada(self) -> None:
+        """Digitar o número e ter de ir ao botão com o mouse era o atrito de quem lê folha a folha (item 27)."""
+        from PyQt6.QtTest import QTest
+
+        self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0, paginas=50)
+        linha = self.painel.campo_de_folha.lineEdit()
+        assert linha is not None
+        self.painel.campo_de_folha.setValue(7)
+        with mock.patch.object(qt_texto, "_renderizar", return_value=None), mock.patch.object(
+            qt_texto, "_ler", return_value=_pagina()
+        ) as ler:
+            QTest.keyClick(linha, Qt.Key.Key_Return)
+            self.esperar_a_tarefa()
+        self.assertEqual(ler.call_args.args[1], 6, "a folha lida é a digitada, 0-based")
+        self.assertTrue(self.recados[-1].startswith("Folha lida"))
+
     def test_sem_o_numero_o_teto_fica_largo(self) -> None:
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
         self.assertEqual(self.painel.campo_de_folha.maximum(), qt_texto.TETO_DE_FOLHAS)

@@ -573,6 +573,12 @@ class PainelDeTexto(QWidget):
         self.campo_de_folha.setAccessibleName("Folha a ler")
         self.campo_de_folha.setMinimum(1)
         self.campo_de_folha.setMaximum(TETO_DE_FOLHAS)  # até a janela dizer quantas folhas o livro tem
+        # Enter no campo lê a folha digitada (item 27): digitar o número e ter de ir ao botão com
+        # o mouse era o atrito de quem lê folha a folha. `returnPressed` e não `editingFinished`:
+        # este também dispara ao sair do campo com o Tab, e ler por perder o foco seria surpresa.
+        linha = self.campo_de_folha.lineEdit()
+        if linha is not None:
+            linha.returnPressed.connect(self.ler)
         self.campo_de_folha.setValue(self._pagina_indice + 1)
         barra.adicionar(self.campo_de_folha)
 
