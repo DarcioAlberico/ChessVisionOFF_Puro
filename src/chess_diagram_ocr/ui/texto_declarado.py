@@ -264,7 +264,7 @@ catálogo, e `cor_do_texto` é `escolher_cor` porque o comando abre uma lista em
 
 
 def frase_do_rodape(
-    *, folha: int | None, trechos: int, diagramas: int, miniaturas: int, por_gravar: bool
+    *, folha: int | None, trechos: int, diagramas: int, miniaturas: int, por_gravar: bool, correcoes: int = 0
 ) -> str:
     """O rodapé da aba: que folha está na tela, o que ela tem e se há o que gravar. Pura.
 
@@ -273,7 +273,9 @@ def frase_do_rodape(
     aqui?", "eu gravei?" -- sem obrigar a olhar o campo da folha, rolar até o fim ou tentar fechar.
     A contagem de miniaturas só aparece quando falta alguma: "3 diagramas" já diz que estão.
 
-    `folha` é o índice 0-based da página, ou `None` para texto sem página de origem.
+    `folha` é o índice 0-based da página, ou `None` para texto sem página de origem. `correcoes`
+    é quantos pares antes/depois a mão fez sobre o que o motor leu (`text/correcao`), contados na
+    pausa da digitação e na gravação -- é o número que o `.cvtxt` tem de mais caro (item 24).
     """
     if trechos == 0:
         return ""
@@ -284,6 +286,8 @@ def frase_do_rodape(
         if miniaturas < diagramas:
             quantos += f", {miniaturas} com miniatura"
         partes.append(quantos)
+    if correcoes:
+        partes.append(f"{correcoes} correção(ões)")
     if por_gravar:
         partes.append("por gravar")
     return " · ".join(partes)

@@ -366,6 +366,9 @@ class PainelDeTexto(QWidget):
         self._base: tuple[int, str, str] | None = None
         """A fonte de base do último desenho. O trecho digitado é pintado com **a mesma** -- a
         tecla não relê as famílias do sistema, e o redesenho seguinte não muda o que já estava."""
+        self._correcoes = 0
+        """Quantas correções a mão fez sobre o que o motor leu, contadas na pausa e na gravação
+        (item 24). Não a cada tecla: `correcao.correcoes` compara bloco a bloco por `difflib`."""
         self._posicoes: dict[tuple[str, int], tuple[str, ...]] = {}
         """O campo de peças de cada diagrama, por `(livro, folha)`, como o OCR de diagramas do
         produto leu. Por folha porque a leitura dos diagramas e a do texto chegam em qualquer
@@ -482,8 +485,14 @@ class PainelDeTexto(QWidget):
                 diagramas=len(diagramas),
                 miniaturas=sum(1 for c in diagramas if self._tem_miniatura(c)),
                 por_gravar=self.tem_alteracoes,
+                correcoes=self._correcoes,
             )
         )
+
+    def _contar_correcoes(self) -> None:
+        """Refaz a conta das correções e o rodapé. Na pausa, na gravação e na abertura -- não por tecla."""
+        self._correcoes = len(correcao.correcoes(self.documento)) if self.documento.origem is not None else 0
+        self._atualizar_status()
 
     def _montar_paleta(self) -> QListWidget:
         """O painel lateral de glifos (S-248). Nasce escondido: ele é um caminho a mais.
@@ -981,6 +990,7 @@ class PainelDeTexto(QWidget):
         self.desenhar_documento(rico.de_pagina(pagina))
         self._documento_gravado = self.documento
         self._rascunho.stop()  # o desenho emitiu `documento_mudou`; a folha recém-lida não tem o que gravar
+        self._correcoes = 0  # a folha recém-lida não tem correção nenhuma
         self._atualizar_status()
 
     def texto(self) -> str:
@@ -1404,7 +1414,7 @@ class PainelDeTexto(QWidget):
         self.desenhar_documento(doc)
         self._documento_gravado = self.documento
         self._rascunho.stop()  # como em `mostrar_pagina`: o que veio do disco não tem o que gravar
-        self._atualizar_status()
+        self._contar_correcoes()  # o arquivo pode trazer correções gravadas ontem
         # O texto da folha 14 na tela com o visualizador na folha 3 é o que fazia a pessoa
         # procurar a página à mão (item 9). Só para o livro que está aberto: um `.cvtxt` de outro
         # livro não troca o livro de ninguém -- é a mesma regra de `definir_livro`.
@@ -1474,6 +1484,7 @@ class PainelDeTexto(QWidget):
         # número no rodapé é o que faz alguém notar quando ele vem zerado (S-239).
         feitas = len(correcao.correcoes(gravado))
         quanto = f" · {feitas} correção(ões) sobre o que o motor leu" if feitas else ""
+        self._correcoes = feitas
         self._atualizar_status()
         self.estado.emit(f"Texto gravado em {caminho.name}{quanto}.")
 
@@ -1516,6 +1527,7 @@ class PainelDeTexto(QWidget):
         self.gravar_rascunho()
         if self._conferindo_lexico:
             self._conferir_lexico(avisar=False)
+        self._contar_correcoes()
 
     def gravar_rascunho(self) -> Path | None:
         """Grava o rascunho **se houver o que gravar**. Devolve o caminho, ou `None`.

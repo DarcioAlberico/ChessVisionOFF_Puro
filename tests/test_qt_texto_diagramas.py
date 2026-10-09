@@ -454,6 +454,34 @@ class RodapeDaAbaTests(_Aba):
             self.painel.salvar_documento_como()
         self.assertFalse(self.painel.status.text().endswith("por gravar"))
 
+    def test_o_rodape_conta_as_correcoes_na_pausa_na_gravacao_e_na_abertura(self) -> None:
+        """O número que o `.cvtxt` tem de mais caro, contado quando a digitação para (item 24)."""
+        from PyQt6.QtTest import QTest
+
+        from chess_diagram_ocr.ui.texto_declarado import frase_do_rodape
+
+        self.assertIn("2 correção(ões)", frase_do_rodape(folha=0, trechos=3, diagramas=0, miniaturas=0, por_gravar=True, correcoes=2))
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        self.painel.editor.setFocus()
+        cursor = self.painel.editor.textCursor()
+        cursor.setPosition(self.painel._mapa.posicao(self.painel.texto().index("Antes") + 5))
+        self.painel.editor.setTextCursor(cursor)
+        QTest.keyClicks(self.painel.editor, "x")
+        self.assertNotIn("correção", self.painel.status.text(), "a tecla não conta")
+        self.painel._rascunho.timeout.emit()
+        self.assertIn("1 correção(ões)", self.painel.status.text())
+        destino = self.pasta / "f.cvtxt"
+        with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(destino), "")):
+            self.painel.salvar_documento_como()
+        self.assertIn("1 correção(ões)", self.painel.status.text())
+        outro = PainelDeTexto(dpi=72, pasta_de_rascunhos=self.pasta / "r2")
+        self.addCleanup(descartar, outro)
+        with mock.patch.object(qt_texto, "_renderizar", return_value=None), mock.patch.object(
+            QFileDialog, "getOpenFileName", return_value=(str(destino), "")
+        ):
+            outro.abrir_documento()
+        self.assertIn("1 correção(ões)", outro.status.text(), "o arquivo traz a correção de ontem")
+
     def test_sem_miniatura_o_rodape_diz_quantas_faltam(self) -> None:
         self.painel.mostrar_pagina(_pagina())
         self.assertIn("1 diagrama(s), 0 com miniatura", self.painel.status.text())
