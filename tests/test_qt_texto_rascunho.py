@@ -246,6 +246,15 @@ class GravarCarimbaAMaoTests(_Aba):
             self.painel.salvar_documento_como()
         return destino
 
+    def test_salvar_a_folha_vazia_recusa_no_rodape_sem_abrir_dialogo(self) -> None:
+        """O porte gravava um `.cvtxt` vazio e dizia «Texto gravado» (item 19)."""
+        with mock.patch.object(QFileDialog, "getSaveFileName") as dialogo:
+            self.painel.salvar_documento_como()
+            self.painel.salvar_documento()
+        dialogo.assert_not_called()
+        self.assertEqual(self.recados[-1], "Não há texto nesta aba para salvar: leia uma folha ou abra um arquivo.")
+        self.assertEqual(list(self.pasta.glob("*.cvtxt")), [])
+
     def test_salvar_apaga_o_rascunho(self) -> None:
         self.painel.mostrar_pagina(_pagina())
         self.digitar_no_fim(" corrigido")

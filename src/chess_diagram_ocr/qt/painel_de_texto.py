@@ -1407,6 +1407,11 @@ class PainelDeTexto(QWidget):
     def _salvar_documento_em(self, caminho: Path | None) -> None:
         from chess_diagram_ocr.text import arquivo
 
+        if not self.documento.para_texto().strip():
+            # Rodapé e não caixa, como a exportação: é um passo que falta, não uma escolha. O Tk
+            # já recusava; o porte gravava um `.cvtxt` vazio e dizia «Texto gravado» (item 19).
+            self.estado.emit("Não há texto nesta aba para salvar: leia uma folha ou abra um arquivo.")
+            return
         if caminho is None:
             escolhido, _filtro = QFileDialog.getSaveFileName(
                 self,
