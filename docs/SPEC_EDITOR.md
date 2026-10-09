@@ -2939,6 +2939,7 @@ Cada linha é um commit, com o teste que a tranca.
 | **13. Ctrl+roda é o zoom da vista** | o `QTextEdit` respondia ao Ctrl+roda mudando a fonte do editor, que nenhuma letra segue (S-264): a pessoa rodava e nada acontecia | o filtro de eventos do editor traduz Ctrl+roda em `_mudar_zoom(±1)`, os mesmos degraus dos comandos; a roda sem Ctrl continua rolando | `RodaComCtrlTests` |
 | **14. a miniatura tem texto alternativo** | a figura era muda para o leitor de tela e para o `toHtml`: um caractere-objeto sem nome | `ImageAltText` = «Diagrama N» e `ImageTitle` = «Diagrama N da folha F» no `QTextImageFormat` -- o `alt` que o `toHtml` escreve e o que a acessibilidade lê | `TextoAlternativoDaMiniaturaTests` |
 | **15. o campo «Folha a ler» sabe quantas folhas o livro tem** | teto de 9.999 cravado: quem digitava 500 num livro de 289 folhas só descobria o erro na leitura, com a caixa vermelha do PyMuPDF | `definir_livro(paginas=)` põe o teto do campo; a janela passa `page_count` na abertura do livro (na mesma linha); sem o número o teto fica largo (`TETO_DE_FOLHAS`) | `TetoDoCampoDeFolhaTests`; `test_qt_janela.py::…::test_a_aba_texto_sabe_quantas_folhas_o_livro_tem` |
+| **16. o rodapé diz quanto a leitura custou** | «Folha lida: 43 trecho(s)» não dizia se foram 2 s ou 40: a pessoa escolhe o motor e o modo bloco pelo preço | o tempo é medido na thread e viaja com a folha: «Folha lida em 3,9 s: …» | `LeituraEntregaAFolhaTests::test_o_rodape_diz_quanto_a_leitura_custou` |
 
 ---
 

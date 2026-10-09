@@ -1753,15 +1753,17 @@ class PainelDeTexto(QWidget):
         dpi = self._dpi_para_ler()
         teto = self._teto_de_diagramas()
 
-        def _trabalho() -> tuple[PaginaLida, np.ndarray | None, int]:
+        def _trabalho() -> tuple[PaginaLida, np.ndarray | None, int, float]:
             # **A folha é rasterizada uma vez, e aqui (S-352).** `ler_pagina` a renderiza sozinha
             # quando ninguém lhe dá a imagem, e as miniaturas precisariam dela de novo -- na thread
             # da janela, que congelava ~355 ms por leitura no outro frontend. O mesmo `dpi` dos
             # dois lados é o que liga pixel a ponto -- e ele viaja com a folha, porque a
-            # configuração pode mudar enquanto a leitura corre.
+            # configuração pode mudar enquanto a leitura corre. O tempo vai junto (item 16): é o
+            # número que decide entre o motor rápido e o modo bloco de 40 s.
+            inicio = time.perf_counter()
             imagem = _renderizar(caminho, indice, dpi=dpi)
             lida = _ler(caminho, indice, dpi=dpi, motor=motor, modo_bloco=bloco, imagem_rgb=imagem, max_boards=teto)
-            return lida, imagem, dpi
+            return lida, imagem, dpi, time.perf_counter() - inicio
 
         self.estado.emit(f"Lendo a folha {indice + 1}…")
         self._registrar_ocupado(
@@ -1796,9 +1798,9 @@ class PainelDeTexto(QWidget):
         """A folha lida voltou da thread -- **e a imagem vem com ela** (S-352), com o DPI dela."""
         self._tarefa = None
         if isinstance(resultado, tuple):
-            pagina, imagem, dpi = (*resultado, None)[:3]
+            pagina, imagem, dpi, segundos = (*resultado, None, None)[:4]
         else:
-            pagina, imagem, dpi = resultado, None, None
+            pagina, imagem, dpi, segundos = resultado, None, None, None
         assert isinstance(pagina, PaginaLida)
         partida = self._documento_ao_ler
         self._documento_ao_ler = None
@@ -1812,7 +1814,9 @@ class PainelDeTexto(QWidget):
         self.mostrar_pagina(pagina, folha_rgb=imagem, dpi=dpi)
         diagramas = len(pagina.diagramas)
         figuras = f", {diagramas} diagrama(s)" if diagramas else ""
-        self.estado.emit(f"Folha lida: {len(self.documento.corridas)} trecho(s){figuras}.")
+        # «em 3,9 s»: a pessoa escolhe o motor e o modo bloco pelo preço, e o preço tem de ser dito.
+        tempo = "" if segundos is None else f" em {segundos:.1f} s".replace(".", ",")
+        self.estado.emit(f"Folha lida{tempo}: {len(self.documento.corridas)} trecho(s){figuras}.")
         # **Depois de desenhar, e não antes**: se a pessoa recusar a oferta, o que fica na tela é
         # a leitura que ela acabou de pedir (S-255).
         self.oferecer_rascunho(pagina)

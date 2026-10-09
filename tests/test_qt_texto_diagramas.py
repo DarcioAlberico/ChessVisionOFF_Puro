@@ -104,6 +104,13 @@ class LeituraEntregaAFolhaTests(_Aba):
         self.assertIsNotNone(self.painel._pagina_rgb)
         self.assertIn("1 diagrama(s)", self.recados[-1])
 
+    def test_o_rodape_diz_quanto_a_leitura_custou(self) -> None:
+        """A pessoa escolhe o motor e o modo bloco pelo preço, e o preço tem de ser dito (item 16)."""
+        self.painel._leitura_terminou((_pagina(), None, None, 3.94))
+        self.assertEqual(self.recados[-1], f"Folha lida em 3,9 s: {len(self.painel.documento.corridas)} trecho(s), 1 diagrama(s).")
+        self.painel._leitura_terminou((_pagina(), None))  # o formato antigo, sem tempo, continua a valer
+        self.assertTrue(self.recados[-1].startswith("Folha lida: "))
+
     def test_sem_imagem_a_folha_abre_igual_e_a_marca_fica(self) -> None:
         """A miniatura é conforto: um PDF que não renderiza não impede a leitura do texto."""
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
