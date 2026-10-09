@@ -2938,6 +2938,7 @@ Cada linha é um commit, com o teste que a tranca.
 | **12. o clique e o menu valem também sobre o texto da marca** | `_marca_sob` só reconhecia a figura: sem miniatura (livro fora do lugar, posição não lida) a marca `[Diagrama N]` não tinha clique nem menu | `_marca_em(deslocamento)`: a marca que contém o ponto, figura ou texto | `CliqueNaMiniaturaTests::test_o_clique_no_texto_da_marca_tambem_a_seleciona` |
 | **13. Ctrl+roda é o zoom da vista** | o `QTextEdit` respondia ao Ctrl+roda mudando a fonte do editor, que nenhuma letra segue (S-264): a pessoa rodava e nada acontecia | o filtro de eventos do editor traduz Ctrl+roda em `_mudar_zoom(±1)`, os mesmos degraus dos comandos; a roda sem Ctrl continua rolando | `RodaComCtrlTests` |
 | **14. a miniatura tem texto alternativo** | a figura era muda para o leitor de tela e para o `toHtml`: um caractere-objeto sem nome | `ImageAltText` = «Diagrama N» e `ImageTitle` = «Diagrama N da folha F» no `QTextImageFormat` -- o `alt` que o `toHtml` escreve e o que a acessibilidade lê | `TextoAlternativoDaMiniaturaTests` |
+| **15. o campo «Folha a ler» sabe quantas folhas o livro tem** | teto de 9.999 cravado: quem digitava 500 num livro de 289 folhas só descobria o erro na leitura, com a caixa vermelha do PyMuPDF | `definir_livro(paginas=)` põe o teto do campo; a janela passa `page_count` na abertura do livro (na mesma linha); sem o número o teto fica largo (`TETO_DE_FOLHAS`) | `TetoDoCampoDeFolhaTests`; `test_qt_janela.py::…::test_a_aba_texto_sabe_quantas_folhas_o_livro_tem` |
 
 ---
 

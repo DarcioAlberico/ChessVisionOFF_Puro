@@ -576,6 +576,11 @@ class FiacaoTests(_JanelaComLivro):
         self.assertEqual(janela.pdf.page_index, 2)
         self.assertEqual(janela.texto.campo_de_folha.value(), 3)
 
+    def test_a_aba_texto_sabe_quantas_folhas_o_livro_tem(self) -> None:
+        """O campo «Folha a ler» grampeia no número de folhas do livro (item 15)."""
+        janela = self.janela()
+        self.assertEqual(janela.texto.campo_de_folha.maximum(), 3)
+
     def test_a_posicao_de_cada_diagrama_lido_chega_a_aba_texto(self) -> None:
         """A aba Livro lê a posição; a aba Texto só sabia onde o diagrama está (item 6)."""
         janela = self.janela()

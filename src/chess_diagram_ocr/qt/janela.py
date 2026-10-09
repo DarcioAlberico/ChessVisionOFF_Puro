@@ -1059,7 +1059,7 @@ class JanelaPrincipal(QMainWindow):
         if self._estudo_a_reabrir:
             self.estudo.reabrir_por_chave(self._estudo_a_reabrir)
             self._estudo_a_reabrir = ""
-        self.texto.definir_livro(alvo, pagina=self.pdf.page_index)
+        self.texto.definir_livro(alvo, pagina=self.pdf.page_index, paginas=self.pdf.page_count)
         self._atualizar_titulo()
         self._atualizar_abas()
         self._aquecimento.agendar(parent=self)  # o modelo carrega quando a janela ociar (C2)

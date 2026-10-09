@@ -695,6 +695,23 @@ class MenuDaMiniaturaTests(_Aba):
         self.assertEqual(pedidos, [(0, 0)])
 
 
+class TetoDoCampoDeFolhaTests(_Aba):
+    """O campo «Folha a ler» não aceita folha que o livro não tem (item 15)."""
+
+    def test_o_livro_poe_o_teto_e_fechar_o_tira(self) -> None:
+        self.assertEqual(self.painel.campo_de_folha.maximum(), qt_texto.TETO_DE_FOLHAS)
+        self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0, paginas=289)
+        self.assertEqual(self.painel.campo_de_folha.maximum(), 289)
+        self.painel.campo_de_folha.setValue(500)
+        self.assertEqual(self.painel.campo_de_folha.value(), 289, "o campo grampeia no teto")
+        self.painel.definir_livro(None)
+        self.assertEqual(self.painel.campo_de_folha.maximum(), qt_texto.TETO_DE_FOLHAS)
+
+    def test_sem_o_numero_o_teto_fica_largo(self) -> None:
+        self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
+        self.assertEqual(self.painel.campo_de_folha.maximum(), qt_texto.TETO_DE_FOLHAS)
+
+
 class ConfiguracoesDaLeituraTests(unittest.TestCase):
     """A leitura da aba pergunta o DPI e o teto de diagramas às Configurações, como o visualizador.
 

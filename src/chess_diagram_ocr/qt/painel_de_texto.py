@@ -140,6 +140,9 @@ LARGURA_DA_MINIATURA = 160
 Grande o bastante para reconhecer a posição, pequena o bastante para a linha seguinte caber na
 tela. É o mesmo alvo de `texto_panel._miniatura`."""
 
+TETO_DE_FOLHAS = 9999
+"""O teto do campo \u00abFolha a ler\u00bb enquanto a aba n\u00e3o sabe quantas folhas o livro tem (item 15)."""
+
 OBJETO = "\ufffc"
 """Como o texto do widget conta a miniatura: um caractere que **nunca** entra no documento.
 
@@ -533,7 +536,7 @@ class PainelDeTexto(QWidget):
         # O nome diz o que o número é, e não qual número é -- ver `nomes_acessiveis.CLASSES_COM_VALOR`.
         self.campo_de_folha.setAccessibleName("Folha a ler")
         self.campo_de_folha.setMinimum(1)
-        self.campo_de_folha.setMaximum(9999)
+        self.campo_de_folha.setMaximum(TETO_DE_FOLHAS)  # até a janela dizer quantas folhas o livro tem
         self.campo_de_folha.setValue(self._pagina_indice + 1)
         barra.adicionar(self.campo_de_folha)
 
@@ -1821,17 +1824,22 @@ class PainelDeTexto(QWidget):
 
     # ------------------------------------------------------ o que a janela pergunta (S-283)
 
-    def definir_livro(self, pdf: Path | None, *, pagina: int | None = None) -> None:
-        """Diz à aba qual livro está aberto e em que folha o visualizador está.
+    def definir_livro(self, pdf: Path | None, *, pagina: int | None = None, paginas: int | None = None) -> None:
+        """Diz à aba qual livro está aberto, em que folha o visualizador está e quantas folhas há.
 
         **A folha lida não cai junto**, e é de propósito: trocar de livro com uma folha corrigida
         na tela e ainda por gravar jogaria fora o trabalho sem perguntar. Quem descarta é `ler`,
         que pergunta antes.
+
+        `paginas` é o teto do campo «Folha a ler» (item 15): com 9.999 cravado, quem digitava 500
+        num livro de 289 folhas só descobria o erro na leitura, com a caixa vermelha do PyMuPDF.
+        Sem o número (livro fechado, ou chamada antiga) o teto fica largo, como era.
         """
         novo = None if pdf is None else Path(pdf)
         if _chave_de_livro(novo) != _chave_de_livro(self._pdf):
             self._posicoes.clear()  # as posições são do livro que saiu (item 11)
         self._pdf = novo
+        self.campo_de_folha.setMaximum(max(1, int(paginas)) if paginas else TETO_DE_FOLHAS)
         if pagina is not None:
             self._pagina_indice = int(pagina)
             self._montando = True
