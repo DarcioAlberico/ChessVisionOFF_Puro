@@ -576,11 +576,19 @@ class FiacaoTests(_JanelaComLivro):
         self.assertEqual(janela.pdf.page_index, 2)
         self.assertEqual(janela.texto.campo_de_folha.value(), 3)
 
+    def test_a_aba_texto_sabe_quantas_folhas_o_livro_tem(self) -> None:
+        """O campo «Folha a ler» grampeia no número de folhas do livro (item 15)."""
+        janela = self.janela()
+        self.assertEqual(janela.texto.campo_de_folha.maximum(), 3)
+
     def test_a_posicao_de_cada_diagrama_lido_chega_a_aba_texto(self) -> None:
         """A aba Livro lê a posição; a aba Texto só sabia onde o diagrama está (item 6)."""
         janela = self.janela()
         janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
-        self.assertEqual(janela.texto._posicoes[0], ("8/8/8/8/8/8/8/K6k", "8/8/8/8/8/8/8/K6k"))
+        from chess_diagram_ocr.qt.painel_de_texto import _chave_de_livro
+
+        chave = (_chave_de_livro(self.livro), 0)  # por livro e folha (item 11)
+        self.assertEqual(janela.texto._posicoes[chave], ("8/8/8/8/8/8/8/K6k", "8/8/8/8/8/8/8/K6k"))
 
     def test_virar_a_pagina_avisa_a_galeria_e_guarda_o_que_estava_no_editor(self) -> None:
         """As duas pontas da virada: o editor guarda **antes**, a galeria acompanha **depois**.
@@ -1124,6 +1132,21 @@ class EstadoEntreSessoesTests(unittest.TestCase):
         segunda = self.janela()
         self.assertEqual(2, segunda.texto.zoom_da_vista)
         self.assertFalse(segunda.texto.quebra)
+
+    def test_o_motor_e_o_modo_bloco_da_aba_de_texto_voltam(self) -> None:
+        """Quem liga o modo bloco paga 40 s por folha de propósito, e não quer religá-lo (item 17)."""
+        from chess_diagram_ocr.ui.texto_declarado import MOTORES
+
+        primeira = self.janela()
+        primeira.texto.definir_motor(MOTORES[-1])
+        primeira.texto.caixa_de_bloco.setChecked(True)
+        primeira.close()
+
+        segunda = self.janela()
+        self.assertEqual(MOTORES[-1], segunda.texto.motor)
+        self.assertEqual(MOTORES[-1], segunda.texto.escolha_de_motor.currentData())
+        self.assertTrue(segunda.texto.modo_bloco)
+        self.assertTrue(segunda.texto.caixa_de_bloco.isChecked())
 
     def test_a_aba_aberta_volta_pelo_nome_e_nao_pelo_indice(self) -> None:
         """Índice não sobrevive a reordenar as abas, e a S-162 é reordená-las."""

@@ -73,7 +73,9 @@ from PyQt6.QtGui import (
     QPixmap,
     QTextCursor,
     QTextDocument,
+    QTextFormat,
     QTextImageFormat,
+    QWheelEvent,
 )
 from PyQt6.QtWidgets import (
     QApplication,
@@ -137,6 +139,9 @@ LARGURA_DA_MINIATURA = 160
 
 Grande o bastante para reconhecer a posição, pequena o bastante para a linha seguinte caber na
 tela. É o mesmo alvo de `texto_panel._miniatura`."""
+
+TETO_DE_FOLHAS = 9999
+"""O teto do campo \u00abFolha a ler\u00bb enquanto a aba n\u00e3o sabe quantas folhas o livro tem (item 15)."""
 
 OBJETO = "\ufffc"
 """Como o texto do widget conta a miniatura: um caractere que **nunca** entra no documento.
@@ -359,9 +364,12 @@ class PainelDeTexto(QWidget):
         self._base: tuple[int, str, str] | None = None
         """A fonte de base do último desenho. O trecho digitado é pintado com **a mesma** -- a
         tecla não relê as famílias do sistema, e o redesenho seguinte não muda o que já estava."""
-        self._posicoes: dict[int, tuple[str, ...]] = {}
-        """O campo de peças de cada diagrama, por folha, como o OCR de diagramas do produto leu.
-        Guardado por folha porque a leitura dos diagramas e a do texto chegam em qualquer ordem."""
+        self._posicoes: dict[tuple[str, int], tuple[str, ...]] = {}
+        """O campo de peças de cada diagrama, por `(livro, folha)`, como o OCR de diagramas do
+        produto leu. Por folha porque a leitura dos diagramas e a do texto chegam em qualquer
+        ordem; **por livro** porque a folha 14 de um livro não é a folha 14 do outro -- com a chave
+        só pela folha, trocar de livro levava as posições do anterior para as folhas do novo
+        (item 11). `definir_livro` para outro livro esquece tudo."""
         self._documento_ao_ler: rico.DocumentoRico | None = None
         """O documento na tela quando a leitura em curso partiu. Ver `_leitura_terminou`."""
 
@@ -528,7 +536,7 @@ class PainelDeTexto(QWidget):
         # O nome diz o que o número é, e não qual número é -- ver `nomes_acessiveis.CLASSES_COM_VALOR`.
         self.campo_de_folha.setAccessibleName("Folha a ler")
         self.campo_de_folha.setMinimum(1)
-        self.campo_de_folha.setMaximum(9999)
+        self.campo_de_folha.setMaximum(TETO_DE_FOLHAS)  # até a janela dizer quantas folhas o livro tem
         self.campo_de_folha.setValue(self._pagina_indice + 1)
         barra.adicionar(self.campo_de_folha)
 
@@ -713,6 +721,13 @@ class PainelDeTexto(QWidget):
         imagem.setName(nome)
         imagem.setWidth(mapa.width())
         imagem.setHeight(mapa.height())
+        # O texto alternativo (item 14): é o que o leitor de tela diz no lugar da figura, e o que
+        # o `toHtml` escreve no `alt`. A marca vem logo abaixo, mas a marca é texto do documento, e
+        # a figura precisa dizer por si o que é.
+        numero = int(getattr(self.documento.bloco_de(corrida), "indice", corrida.bloco)) + 1
+        folha = "" if self._pagina is None else f" da folha {int(self._pagina.pagina) + 1}"
+        imagem.setProperty(QTextFormat.Property.ImageAltText, f"Diagrama {numero}")
+        imagem.setProperty(QTextFormat.Property.ImageTitle, f"Diagrama {numero}{folha}")
         cursor.insertImage(imagem)
         cursor.insertBlock()
 
@@ -926,8 +941,9 @@ class PainelDeTexto(QWidget):
 
         `dpi` é o da `folha_rgb`, quando ela vem: é o que liga os pontos do `bbox` aos pixels dela.
         """
-        if int(pagina.pagina) in self._posicoes:
-            pagina = pagina.com_posicoes(self._posicoes[int(pagina.pagina)])
+        guardadas = self._posicoes.get((_chave_de_livro(pagina.documento), int(pagina.pagina)))
+        if guardadas:
+            pagina = pagina.com_posicoes(guardadas)
         self._pagina = pagina
         self._pagina_rgb = folha_rgb
         if dpi:
@@ -1391,6 +1407,11 @@ class PainelDeTexto(QWidget):
     def _salvar_documento_em(self, caminho: Path | None) -> None:
         from chess_diagram_ocr.text import arquivo
 
+        if not self.documento.para_texto().strip():
+            # Rodapé e não caixa, como a exportação: é um passo que falta, não uma escolha. O Tk
+            # já recusava; o porte gravava um `.cvtxt` vazio e dizia «Texto gravado» (item 19).
+            self.estado.emit("Não há texto nesta aba para salvar: leia uma folha ou abra um arquivo.")
+            return
         if caminho is None:
             escolhido, _filtro = QFileDialog.getSaveFileName(
                 self,
@@ -1695,6 +1716,31 @@ class PainelDeTexto(QWidget):
 
     # ---------------------------------------------------------- a leitura, em thread
 
+    @property
+    def motor(self) -> str:
+        """O motor de leitura escolhido -- o que a janela grava no estado (item 17)."""
+        return str(self._motor)
+
+    @property
+    def modo_bloco(self) -> bool:
+        return bool(self._modo_bloco)
+
+    def definir_motor(self, nome: str) -> None:
+        """Repõe o motor gravado na sessão anterior; um nome que a aba não conhece é ignorado."""
+        if nome not in MOTORES:
+            return
+        self._motor = nome
+        self.escolha_de_motor.setCurrentIndex(MOTORES.index(nome))
+
+    def definir_modo_bloco(self, ligado: bool) -> None:
+        """Repõe o modo bloco gravado -- sem a frase do rodapé, que é para quem acabou de clicar."""
+        self._modo_bloco = bool(ligado)
+        self.caixa_de_bloco.blockSignals(True)
+        try:
+            self.caixa_de_bloco.setChecked(bool(ligado))
+        finally:
+            self.caixa_de_bloco.blockSignals(False)
+
     def modo_bloco_mudou(self) -> None:
         """Liga e desliga o modo bloco. **O comando não inverte a caixa**: quem a inverte é ela."""
         self._modo_bloco = self.caixa_de_bloco.isChecked()
@@ -1737,15 +1783,17 @@ class PainelDeTexto(QWidget):
         dpi = self._dpi_para_ler()
         teto = self._teto_de_diagramas()
 
-        def _trabalho() -> tuple[PaginaLida, np.ndarray | None, int]:
+        def _trabalho() -> tuple[PaginaLida, np.ndarray | None, int, float]:
             # **A folha é rasterizada uma vez, e aqui (S-352).** `ler_pagina` a renderiza sozinha
             # quando ninguém lhe dá a imagem, e as miniaturas precisariam dela de novo -- na thread
             # da janela, que congelava ~355 ms por leitura no outro frontend. O mesmo `dpi` dos
             # dois lados é o que liga pixel a ponto -- e ele viaja com a folha, porque a
-            # configuração pode mudar enquanto a leitura corre.
+            # configuração pode mudar enquanto a leitura corre. O tempo vai junto (item 16): é o
+            # número que decide entre o motor rápido e o modo bloco de 40 s.
+            inicio = time.perf_counter()
             imagem = _renderizar(caminho, indice, dpi=dpi)
             lida = _ler(caminho, indice, dpi=dpi, motor=motor, modo_bloco=bloco, imagem_rgb=imagem, max_boards=teto)
-            return lida, imagem, dpi
+            return lida, imagem, dpi, time.perf_counter() - inicio
 
         self.estado.emit(f"Lendo a folha {indice + 1}…")
         self._registrar_ocupado(
@@ -1780,9 +1828,9 @@ class PainelDeTexto(QWidget):
         """A folha lida voltou da thread -- **e a imagem vem com ela** (S-352), com o DPI dela."""
         self._tarefa = None
         if isinstance(resultado, tuple):
-            pagina, imagem, dpi = (*resultado, None)[:3]
+            pagina, imagem, dpi, segundos = (*resultado, None, None)[:4]
         else:
-            pagina, imagem, dpi = resultado, None, None
+            pagina, imagem, dpi, segundos = resultado, None, None, None
         assert isinstance(pagina, PaginaLida)
         partida = self._documento_ao_ler
         self._documento_ao_ler = None
@@ -1796,7 +1844,9 @@ class PainelDeTexto(QWidget):
         self.mostrar_pagina(pagina, folha_rgb=imagem, dpi=dpi)
         diagramas = len(pagina.diagramas)
         figuras = f", {diagramas} diagrama(s)" if diagramas else ""
-        self.estado.emit(f"Folha lida: {len(self.documento.corridas)} trecho(s){figuras}.")
+        # «em 3,9 s»: a pessoa escolhe o motor e o modo bloco pelo preço, e o preço tem de ser dito.
+        tempo = "" if segundos is None else f" em {segundos:.1f} s".replace(".", ",")
+        self.estado.emit(f"Folha lida{tempo}: {len(self.documento.corridas)} trecho(s){figuras}.")
         # **Depois de desenhar, e não antes**: se a pessoa recusar a oferta, o que fica na tela é
         # a leitura que ela acabou de pedir (S-255).
         self.oferecer_rascunho(pagina)
@@ -1808,14 +1858,28 @@ class PainelDeTexto(QWidget):
 
     # ------------------------------------------------------ o que a janela pergunta (S-283)
 
-    def definir_livro(self, pdf: Path | None, *, pagina: int | None = None) -> None:
-        """Diz à aba qual livro está aberto e em que folha o visualizador está.
+    def definir_livro(self, pdf: Path | None, *, pagina: int | None = None, paginas: int | None = None) -> None:
+        """Diz à aba qual livro está aberto, em que folha o visualizador está e quantas folhas há.
 
         **A folha lida não cai junto**, e é de propósito: trocar de livro com uma folha corrigida
         na tela e ainda por gravar jogaria fora o trabalho sem perguntar. Quem descarta é `ler`,
         que pergunta antes.
+
+        `paginas` é o teto do campo «Folha a ler» (item 15): com 9.999 cravado, quem digitava 500
+        num livro de 289 folhas só descobria o erro na leitura, com a caixa vermelha do PyMuPDF.
+        Sem o número (livro fechado, ou chamada antiga) o teto fica largo, como era.
         """
-        self._pdf = None if pdf is None else Path(pdf)
+        novo = None if pdf is None else Path(pdf)
+        if _chave_de_livro(novo) != _chave_de_livro(self._pdf):
+            self._posicoes.clear()  # as posições são do livro que saiu (item 11)
+            self._anunciar_rascunhos(novo)
+        self._pdf = novo
+        # O teto só muda quando se sabe o número ou quando o livro fecha: a virada de página chama
+        # isto sem `paginas`, e não pode devolver o campo ao teto largo.
+        if paginas:
+            self.campo_de_folha.setMaximum(max(1, int(paginas)))
+        elif novo is None:
+            self.campo_de_folha.setMaximum(TETO_DE_FOLHAS)
         if pagina is not None:
             self._pagina_indice = int(pagina)
             self._montando = True
@@ -1823,6 +1887,28 @@ class PainelDeTexto(QWidget):
                 self.campo_de_folha.setValue(self._pagina_indice + 1)
             finally:
                 self._montando = False
+
+    def _anunciar_rascunhos(self, livro: Path | None) -> None:
+        """Na troca de livro, diz quantos rascunhos dele há por recuperar e em que folhas (item 18).
+
+        A oferta de recuperação (S-255) só acontece ao ler a folha certa: quem fecha o programa
+        com três folhas corrigidas e volta no dia seguinte não tinha como saber que elas existem,
+        nem quais são. Rodapé e não caixa: é informação, e a decisão continua sendo ler a folha.
+        """
+        if livro is None:
+            return
+        try:
+            achados = rascunho.listar(livro, pasta=self._pasta_de_rascunhos)
+        except OSError as erro:  # noqa: BLE001 - a lista é conforto; o livro abre igual
+            logger.debug("Rascunhos de %s não listados: %s", livro, erro)
+            return
+        if not achados:
+            return
+        folhas = ", ".join(str(r.folha + 1) for r in achados[:6]) + ("…" if len(achados) > 6 else "")
+        self.estado.emit(
+            f"{len(achados)} rascunho(s) deste livro por recuperar (folha {folhas}): "
+            "leia a folha e a aba oferece."
+        )
 
     def definir_posicoes(self, pagina: int, posicoes: Sequence[str]) -> None:
         """O campo de peças de cada diagrama da folha, como o OCR de diagramas do produto leu.
@@ -1834,10 +1920,15 @@ class PainelDeTexto(QWidget):
         a folha que já está na tela recebe na hora, **sem virar alteração por gravar** -- a posição
         é leitura, não edição.
         """
-        self._posicoes[int(pagina)] = tuple(str(p or "") for p in posicoes)
-        if self._pagina is None or int(self._pagina.pagina) != int(pagina):
+        chave = (_chave_de_livro(self._pdf), int(pagina))
+        self._posicoes[chave] = tuple(str(p or "") for p in posicoes)
+        if (
+            self._pagina is None
+            or int(self._pagina.pagina) != int(pagina)
+            or _chave_de_livro(self._pagina.documento) != chave[0]
+        ):
             return
-        nova = self._pagina.com_posicoes(self._posicoes[int(pagina)])
+        nova = self._pagina.com_posicoes(self._posicoes[chave])
         if nova is self._pagina:
             return
         self._pagina = nova
@@ -2030,6 +2121,13 @@ class PainelDeTexto(QWidget):
                     return True
         if a0 is self.editor.viewport() and a1 is not None and a1.type() == QEvent.Type.Resize:
             self.vazio.setGeometry(self.editor.viewport().rect())
+        if a0 is self.editor.viewport() and isinstance(a1, QWheelEvent) and a1.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            # Ctrl+roda é o zoom da vista (item 13). O `QTextEdit` responderia mudando a fonte do
+            # editor -- que nenhuma letra segue, porque cada trecho sai com corpo explícito (S-264).
+            passo = a1.angleDelta().y()
+            if passo:
+                self._mudar_zoom(+1 if passo > 0 else -1)
+            return True
         if a0 is self.editor.viewport() and isinstance(a1, QMouseEvent) and a1.button() == Qt.MouseButton.LeftButton:
             ponto = a1.position().toPoint()
             if a1.type() == QEvent.Type.MouseButtonPress and self._clicou_na_miniatura(ponto):
@@ -2058,13 +2156,21 @@ class PainelDeTexto(QWidget):
             sonda.setPosition(p + 1)  # `charFormat` é o do caractere **antes** do cursor: o `p`
             if sonda.position() != p + 1 or not sonda.charFormat().isImageFormat():
                 continue
-            deslocamento = self._mapa.deslocamento(p + 2)
-            comeco = 0
-            for corrida in self.documento.corridas:
-                fim = comeco + len(corrida.texto)
-                if corrida.e_diagrama and comeco <= deslocamento < fim:
-                    return comeco, fim, corrida
-                comeco = fim
+            achado = self._marca_em(self._mapa.deslocamento(p + 2))
+            if achado is not None:
+                return achado
+        # Sobre o texto da própria marca (item 12): `[Diagrama 3]` é o diagrama tanto quanto a
+        # figura -- e é tudo o que há dele quando não há figura nenhuma.
+        return self._marca_em(self._mapa.deslocamento(posicao))
+
+    def _marca_em(self, deslocamento: int) -> tuple[int, int, rico.Corrida] | None:
+        """A marca de diagrama que contém o deslocamento do documento, ou `None`."""
+        comeco = 0
+        for corrida in self.documento.corridas:
+            fim = comeco + len(corrida.texto)
+            if corrida.e_diagrama and comeco <= deslocamento < fim:
+                return comeco, fim, corrida
+            comeco = fim
         return None
 
     def _clicou_na_miniatura(self, ponto: QPoint) -> bool:
@@ -2115,13 +2221,29 @@ class PainelDeTexto(QWidget):
         return menu
 
     def _copiar_miniatura(self, corrida: rico.Corrida) -> None:
-        """A figura do diagrama -- recorte ou desenho -- vai para a área de transferência."""
+        """A figura do diagrama -- recorte ou desenho -- vai para a área de transferência, **e a
+        FEN vai junto como texto** quando se sabe (item 20).
+
+        Um só gesto para os dois destinos: quem cola num editor de imagens recebe a figura; quem
+        cola numa caixa de texto -- um programa de xadrez, um e-mail -- recebe o campo de peças.
+        """
+        from PyQt6.QtCore import QMimeData
+
         figura = self._imagem_do_diagrama(corrida)
-        if figura is None:
-            self.estado.emit("Este diagrama não tem figura para copiar.")
+        posicao = _posicao_de(self.documento, corrida)
+        if figura is None and not posicao:
+            self.estado.emit("Este diagrama não tem figura nem posição para copiar.")
             return
-        QApplication.clipboard().setPixmap(figura)
-        self.estado.emit("Imagem do diagrama copiada.")
+        conteudo = QMimeData()
+        if figura is not None:
+            conteudo.setImageData(figura.toImage())
+        if posicao:
+            conteudo.setText(posicao)
+        QApplication.clipboard().setMimeData(conteudo)
+        o_que = "Imagem e FEN do diagrama copiadas." if figura is not None and posicao else (
+            "Imagem do diagrama copiada." if figura is not None else "FEN do diagrama copiada."
+        )
+        self.estado.emit(o_que)
 
     def _apagar_diagrama(self, comeco: int, fim: int, numero: int) -> None:
         """Tira a marca inteira -- e com ela a figura. É uma edição: `Ctrl+Z` a devolve."""
@@ -2279,6 +2401,16 @@ def _gravar_recortes(
 LADO_DO_RECORTE_DESENHADO = 400
 """O lado, em pixel, do diagrama desenhado da FEN para a exportação: perto do que um recorte a
 220 dpi mede, para o `.html` não trocar de escala conforme a origem da figura."""
+
+
+def _chave_de_livro(caminho: Path | str | None) -> str:
+    """A identidade de um livro para a aba: o caminho resolvido, ou `""` sem livro."""
+    if not caminho:
+        return ""
+    try:
+        return str(Path(caminho).resolve()).casefold()
+    except OSError:  # pragma: no cover - caminho que o sistema recusa resolver
+        return str(caminho).casefold()
 
 
 def _mesmo_livro(um: Path, outro: Path) -> bool:

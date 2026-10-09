@@ -26,7 +26,7 @@ from chess_diagram_ocr.text.pagina import BlocoDeDiagrama, BlocoDeTexto, Coluna,
 
 if TEM_PYQT:
     from PyQt6.QtCore import Qt
-    from PyQt6.QtGui import QTextCursor
+    from PyQt6.QtGui import QTextCursor, QWheelEvent
     from PyQt6.QtWidgets import QFileDialog
 
     from chess_diagram_ocr.qt import painel_de_texto as qt_texto
@@ -73,6 +73,8 @@ class _Aba(unittest.TestCase):
         self.app.processEvents()
         self.recados: list[str] = []
         self.painel.estado.connect(self.recados.append)
+        # O livro das folhas de `_pagina()`: as posições são por livro (item 11).
+        self.painel.definir_livro(Path("livro.pdf"), pagina=0)
 
     def miniaturas(self) -> int:
         """Quantas imagens o editor desenhou: cada uma é um `OBJETO` no texto do widget."""
@@ -101,6 +103,13 @@ class LeituraEntregaAFolhaTests(_Aba):
         self.assertIn("[Diagrama 1]", self.painel.texto())
         self.assertIsNotNone(self.painel._pagina_rgb)
         self.assertIn("1 diagrama(s)", self.recados[-1])
+
+    def test_o_rodape_diz_quanto_a_leitura_custou(self) -> None:
+        """A pessoa escolhe o motor e o modo bloco pelo preço, e o preço tem de ser dito (item 16)."""
+        self.painel._leitura_terminou((_pagina(), None, None, 3.94))
+        self.assertEqual(self.recados[-1], f"Folha lida em 3,9 s: {len(self.painel.documento.corridas)} trecho(s), 1 diagrama(s).")
+        self.painel._leitura_terminou((_pagina(), None))  # o formato antigo, sem tempo, continua a valer
+        self.assertTrue(self.recados[-1].startswith("Folha lida: "))
 
     def test_sem_imagem_a_folha_abre_igual_e_a_marca_fica(self) -> None:
         """A miniatura é conforto: um PDF que não renderiza não impede a leitura do texto."""
@@ -292,6 +301,69 @@ class MiniaturaAcompanhaOZoomTests(_Aba):
         self.assertEqual(self.largura_da_miniatura(), normal)
 
 
+class RodaComCtrlTests(_Aba):
+    """Ctrl+roda é o zoom da vista, em degraus -- e não a fonte do editor, que nenhuma letra segue (item 13)."""
+
+    def rodar(self, passo: int, *, ctrl: bool = True) -> bool:
+        from PyQt6.QtCore import QPoint, QPointF
+        from PyQt6.QtWidgets import QApplication
+
+        viewport = self.painel.editor.viewport()
+        modificador = Qt.KeyboardModifier.ControlModifier if ctrl else Qt.KeyboardModifier.NoModifier
+        evento = QWheelEvent(
+            QPointF(30, 30),
+            QPointF(viewport.mapToGlobal(QPoint(30, 30))),
+            QPoint(0, 0),
+            QPoint(0, passo),
+            Qt.MouseButton.NoButton,
+            modificador,
+            Qt.ScrollPhase.NoScrollPhase,
+            False,
+        )
+        return QApplication.sendEvent(viewport, evento)
+
+    def test_ctrl_roda_aproxima_e_afasta_por_degrau(self) -> None:
+        self.painel.desenhar_documento(rico.de_texto("Uma frase."))
+        corpo = self.painel.editor.font().pointSize()
+        self.rodar(+120)
+        self.assertEqual(self.painel.zoom_da_vista, 1)
+        self.rodar(+120)
+        self.rodar(-120)
+        self.assertEqual(self.painel.zoom_da_vista, 1)
+        self.assertEqual(self.painel._base[0], tema.fonte_base()[0] + 1, "o degrau chegou à base do desenho")  # type: ignore[index]
+        self.assertIn("Zoom do texto: +1", self.recados[-1])
+        self.rodar(-120)
+        self.assertEqual(self.painel.zoom_da_vista, 0)
+        self.assertGreaterEqual(corpo, 1)
+
+    def test_a_roda_sem_ctrl_e_rolagem(self) -> None:
+        self.painel.desenhar_documento(rico.de_texto("\n".join(f"linha {i}" for i in range(200))))
+        barra = self.painel.editor.verticalScrollBar()
+        assert barra is not None
+        self.rodar(-120, ctrl=False)
+        self.assertEqual(self.painel.zoom_da_vista, 0)
+        self.assertGreater(barra.value(), 0, "a roda sem Ctrl continua rolando a folha")
+
+
+class TextoAlternativoDaMiniaturaTests(_Aba):
+    """A figura diz por si o que é: `alt` e `title` no formato da imagem (item 14)."""
+
+    def formato_da_miniatura(self) -> object:
+        texto = self.painel.editor.toPlainText()
+        cursor = QTextCursor(self.painel.editor.document())
+        cursor.setPosition(texto.index(OBJETO) + 1)
+        return cursor.charFormat().toImageFormat()
+
+    def test_a_miniatura_tem_texto_alternativo_e_titulo(self) -> None:
+        from PyQt6.QtGui import QTextFormat
+
+        self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
+        formato = self.formato_da_miniatura()
+        self.assertEqual(formato.property(QTextFormat.Property.ImageAltText), "Diagrama 1")  # type: ignore[attr-defined]
+        self.assertEqual(formato.property(QTextFormat.Property.ImageTitle), "Diagrama 1 da folha 1")  # type: ignore[attr-defined]
+        self.assertIn('alt="Diagrama 1"', self.painel.editor.toHtml())
+
+
 class LexicoSobreviveAoRedesenhoTests(_Aba):
     """A conferência ligada se refaz depois de cada redesenho (S-293)."""
 
@@ -425,11 +497,26 @@ class PosicoesDoProdutoTests(_Aba):
         self.assertEqual(self.miniaturas(), 1, "o redesenho manteve a miniatura")
 
     def test_a_posicao_que_chega_antes_espera_a_folha(self) -> None:
+        self.painel.definir_livro(Path("livro.pdf"), pagina=0)
         self.painel.definir_posicoes(0, [FEN])
         self.painel.definir_posicoes(3, ["8/8/8/8/8/8/8/K6k"])
         self.painel.mostrar_pagina(_pagina())
         assert self.painel._pagina is not None
         self.assertEqual(self.painel._pagina.diagramas[0].placement, FEN, "a folha 1 pega a posição da folha 1")
+
+    def test_as_posicoes_sao_do_livro_e_trocar_de_livro_as_esquece(self) -> None:
+        """A folha 1 de um livro não é a folha 1 do outro (item 11)."""
+        self.painel.definir_livro(Path("livro.pdf"), pagina=0)
+        self.painel.definir_posicoes(0, [FEN])
+        self.painel.mostrar_pagina(_pagina(livro="outro.pdf"))
+        assert self.painel._pagina is not None
+        self.assertEqual(self.painel._pagina.diagramas[0].placement, "", "a posição de um livro não vai à folha do outro")
+        self.painel.definir_livro(Path("outro.pdf"), pagina=0)
+        self.assertEqual(self.painel._posicoes, {}, "trocar de livro esquece as posições do anterior")
+        self.painel.definir_livro(Path("outro.pdf"), pagina=3)
+        self.painel.definir_posicoes(3, [FEN])
+        self.painel.definir_livro(Path("OUTRO.pdf"), pagina=3)
+        self.assertTrue(self.painel._posicoes, "o mesmo livro com outra grafia não esquece nada")
 
     def test_outra_folha_nao_mexe_na_que_esta_na_tela(self) -> None:
         self.painel.mostrar_pagina(_pagina())
@@ -526,6 +613,27 @@ class CliqueNaMiniaturaTests(_Aba):
         self.assertEqual(self.painel.editor.textCursor().selectedText(), "")
         self.assertIsNone(self.painel._marca_sob(QPoint(4, 4)))
 
+    def ponto_da_marca(self) -> object:
+        """Um ponto sobre o texto `[Diagrama 1]`, e não sobre a figura."""
+        from PyQt6.QtCore import QPoint
+
+        cursor = QTextCursor(self.painel.editor.document())
+        cursor.setPosition(self.painel._mapa.posicao(self.painel.texto().index("[Diagrama 1]") + 3))
+        caixa = self.painel.editor.cursorRect(cursor)
+        return QPoint(caixa.left() + 1, caixa.center().y())
+
+    def test_o_clique_no_texto_da_marca_tambem_a_seleciona(self) -> None:
+        """Sem figura, a marca é tudo o que há do diagrama (item 12)."""
+        from PyQt6.QtTest import QTest
+
+        self.painel.mostrar_pagina(_pagina())
+        self.assertEqual(self.miniaturas(), 0)
+        QTest.mouseClick(self.painel.editor.viewport(), Qt.MouseButton.LeftButton, pos=self.ponto_da_marca())
+        self.assertEqual(self.painel.editor.textCursor().selectedText(), "[Diagrama 1]")
+        menu = self.painel._menu_de_contexto(self.ponto_da_marca())  # type: ignore[arg-type]
+        self.addCleanup(descartar, menu)
+        self.assertIn("Apagar o diagrama 1 da folha", [a.text() for a in menu.actions()])
+
     def test_o_duplo_clique_pede_o_diagrama_na_sala(self) -> None:
         from PyQt6.QtTest import QTest
 
@@ -540,6 +648,7 @@ class MenuDaMiniaturaTests(_Aba):
     """O botão direito sobre a miniatura: abrir na sala, copiar a imagem, apagar o diagrama (item 10)."""
 
     ponto_da_miniatura = CliqueNaMiniaturaTests.ponto_da_miniatura
+    ponto_da_marca = CliqueNaMiniaturaTests.ponto_da_marca
 
     def acoes(self, ponto: object) -> list[str]:
         menu = self.painel._menu_de_contexto(ponto)  # type: ignore[arg-type]
@@ -573,6 +682,30 @@ class MenuDaMiniaturaTests(_Aba):
         self.assertFalse(QApplication.clipboard().pixmap().isNull())
         self.assertIn("copiada", self.recados[-1])
 
+    def test_copiar_leva_a_fen_como_texto_quando_se_sabe(self) -> None:
+        """Um gesto, dois destinos: a figura para o editor de imagens, a FEN para a caixa de texto (item 20)."""
+        from PyQt6.QtWidgets import QApplication
+
+        self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]), folha_rgb=_folha())
+        QApplication.clipboard().clear()
+        self.acoes(self.ponto_da_miniatura())
+        next(a for a in self.menu.actions() if a.text().startswith("Copiar")).trigger()
+        self.assertFalse(QApplication.clipboard().pixmap().isNull())
+        self.assertEqual(QApplication.clipboard().text(), FEN)
+        self.assertIn("Imagem e FEN", self.recados[-1])
+
+    def test_sem_figura_a_fen_ainda_e_copiada(self) -> None:
+        from PyQt6.QtWidgets import QApplication
+
+        self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]))
+        with mock.patch.object(qt_texto, "_png_da_posicao", return_value=None):
+            self.painel.desenhar_documento(self.painel.documento)
+            QApplication.clipboard().clear()
+            self.acoes(self.ponto_da_marca())
+            next(a for a in self.menu.actions() if a.text().startswith("Copiar")).trigger()
+        self.assertEqual(QApplication.clipboard().text(), FEN)
+        self.assertIn("FEN do diagrama copiada", self.recados[-1])
+
     def test_apagar_tira_a_marca_e_desfazer_a_devolve(self) -> None:
         self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
         self.acoes(self.ponto_da_miniatura())
@@ -592,6 +725,55 @@ class MenuDaMiniaturaTests(_Aba):
         self.acoes(self.ponto_da_miniatura())
         next(a for a in self.menu.actions() if a.text().startswith("Abrir")).trigger()
         self.assertEqual(pedidos, [(0, 0)])
+
+
+class TetoDoCampoDeFolhaTests(_Aba):
+    """O campo «Folha a ler» não aceita folha que o livro não tem (item 15)."""
+
+    def test_o_livro_poe_o_teto_e_fechar_o_tira(self) -> None:
+        self.assertEqual(self.painel.campo_de_folha.maximum(), qt_texto.TETO_DE_FOLHAS)
+        self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0, paginas=289)
+        self.assertEqual(self.painel.campo_de_folha.maximum(), 289)
+        self.painel.campo_de_folha.setValue(500)
+        self.assertEqual(self.painel.campo_de_folha.value(), 289, "o campo grampeia no teto")
+        self.painel.definir_livro(self.pasta / "livro.pdf", pagina=5)  # a virada de página não sabe o número
+        self.assertEqual(self.painel.campo_de_folha.maximum(), 289, "e não devolve o teto largo")
+        self.painel.definir_livro(None)
+        self.assertEqual(self.painel.campo_de_folha.maximum(), qt_texto.TETO_DE_FOLHAS)
+
+    def test_sem_o_numero_o_teto_fica_largo(self) -> None:
+        self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
+        self.assertEqual(self.painel.campo_de_folha.maximum(), qt_texto.TETO_DE_FOLHAS)
+
+
+class MotorEModoBlocoTests(_Aba):
+    """`definir_motor`/`definir_modo_bloco`: o que a janela repõe da sessão anterior (item 17)."""
+
+    def test_repor_o_motor_e_o_modo_bloco_sem_frase_no_rodape(self) -> None:
+        from chess_diagram_ocr.ui.texto_declarado import MOTORES
+
+        self.painel.definir_motor(MOTORES[-1])
+        self.assertEqual(self.painel.motor, MOTORES[-1])
+        self.assertEqual(self.painel.escolha_de_motor.currentData(), MOTORES[-1])
+        self.painel.definir_motor("motor-que-nao-existe")
+        self.assertEqual(self.painel.motor, MOTORES[-1], "um nome desconhecido é ignorado")
+        self.painel.definir_modo_bloco(True)
+        self.assertTrue(self.painel.modo_bloco)
+        self.assertTrue(self.painel.caixa_de_bloco.isChecked())
+        self.assertEqual(self.recados, [], "repor não é clicar: nada no rodapé")
+        self.painel.caixa_de_bloco.setChecked(False)
+        self.assertFalse(self.painel.modo_bloco)
+        self.assertIn("Modo linha", self.recados[-1])
+
+    def test_o_estado_grava_e_le_o_motor_e_o_modo_bloco(self) -> None:
+        from chess_diagram_ocr.ui.state import AppState, load_state, save_state
+
+        estado = AppState()
+        estado.texto_motor, estado.texto_bloco = "glifo", True
+        caminho = self.pasta / "janela.json"
+        save_state(caminho, estado)
+        lido = load_state(caminho)
+        self.assertEqual((lido.texto_motor, lido.texto_bloco), ("glifo", True))
 
 
 class ConfiguracoesDaLeituraTests(unittest.TestCase):
