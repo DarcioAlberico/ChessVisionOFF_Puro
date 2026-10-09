@@ -267,6 +267,10 @@ class PainelDeTexto(QWidget):
     """Duplo clique numa miniatura: `(folha 0-based, índice do diagrama)`. A janela leva o
     diagrama à sala de estudo, como o duplo clique na caixa do visualizador (item 8)."""
 
+    folha_pedida = pyqtSignal(int)
+    """Um `.cvtxt` do livro aberto acabou de entrar na tela: a folha dele (0-based), para o
+    visualizador ir até ela (item 9). Não sai para um `.cvtxt` de outro livro."""
+
     def __init__(
         self,
         *,
@@ -1353,6 +1357,11 @@ class PainelDeTexto(QWidget):
         self._documento_gravado = self.documento
         self._rascunho.stop()  # como em `mostrar_pagina`: o que veio do disco não tem o que gravar
         self._atualizar_status()
+        # O texto da folha 14 na tela com o visualizador na folha 3 é o que fazia a pessoa
+        # procurar a página à mão (item 9). Só para o livro que está aberto: um `.cvtxt` de outro
+        # livro não troca o livro de ninguém -- é a mesma regra de `definir_livro`.
+        if doc.origem is not None and caminho is not None and self._pdf is not None and _mesmo_livro(caminho, self._pdf):
+            self.folha_pedida.emit(self._pagina_indice)
         diagramas = len(self.documento.diagramas)
         figuras = sum(1 for c in self.documento.diagramas if self._tem_miniatura(c))
         resumo = f"Texto aberto: {len(self.documento.corridas)} trecho(s), {diagramas} diagrama(s)"
@@ -2218,6 +2227,14 @@ def _gravar_recortes(
 LADO_DO_RECORTE_DESENHADO = 400
 """O lado, em pixel, do diagrama desenhado da FEN para a exportação: perto do que um recorte a
 220 dpi mede, para o `.html` não trocar de escala conforme a origem da figura."""
+
+
+def _mesmo_livro(um: Path, outro: Path) -> bool:
+    """O mesmo PDF apesar da grafia do caminho -- a regra de `qt/dialogos._mesmo`."""
+    try:
+        return Path(um).resolve() == Path(outro).resolve()
+    except OSError:  # pragma: no cover - caminho que o sistema recusa resolver
+        return str(um).lower() == str(outro).lower()
 
 
 def _posicao_de(doc: rico.DocumentoRico, corrida: rico.Corrida) -> str:

@@ -558,6 +558,24 @@ class FiacaoTests(_JanelaComLivro):
         estudar.assert_not_called()
         self.assertIn("folha da aba Texto é a 3", janela.rodape.mensagem())
 
+    def test_abrir_um_cvtxt_do_livro_leva_o_visualizador_a_folha_dele(self) -> None:
+        """O texto da folha 3 na tela com o visualizador na folha 1 fazia a pessoa procurar a
+        página à mão (item 9)."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        from chess_diagram_ocr.text import arquivo, rico
+        from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
+
+        janela = self.janela()
+        self.assertEqual(janela.pdf.page_index, 0)
+        bloco = BlocoDeTexto.de_linhas([LinhaLida("uma folha", (0.0, 0.0, 100.0, 9.0), 1.0, "camada")])  # type: ignore[arg-type]
+        pagina = PaginaLida(documento=str(self.livro), pagina=2, colunas=(Coluna(indice=0, blocos=(bloco,)),))
+        cvtxt = arquivo.gravar(self.pasta / "folha3.cvtxt", rico.de_pagina(pagina))
+        with mock.patch.object(QFileDialog, "getOpenFileName", return_value=(str(cvtxt), "")):
+            janela.texto.abrir_documento()
+        self.assertEqual(janela.pdf.page_index, 2)
+        self.assertEqual(janela.texto.campo_de_folha.value(), 3)
+
     def test_a_posicao_de_cada_diagrama_lido_chega_a_aba_texto(self) -> None:
         """A aba Livro lê a posição; a aba Texto só sabia onde o diagrama está (item 6)."""
         janela = self.janela()

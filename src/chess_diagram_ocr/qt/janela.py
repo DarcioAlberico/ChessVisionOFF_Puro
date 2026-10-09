@@ -961,6 +961,7 @@ class JanelaPrincipal(QMainWindow):
         self.pdf.caixa_dispensada.connect(self._tirar_caixa)
         self.pdf.caixa_para_estudo.connect(self._estudar_a_caixa)
         self.pdf.regiao_pedida.connect(self._ler_regiao)
+        self.texto.folha_pedida.connect(self.pdf.ir_para_pagina)  # o .cvtxt aberto leva o visualizador à folha dele (item 9)
         self.pdf.leitura_pedida.connect(self._leitura_pedida)
         self.pdf.exportacao_pedida.connect(lambda: self.exportador.comecar(self._pdf))
         self.pdf.exportacao_cancelada.connect(self.exportador.cancelar)

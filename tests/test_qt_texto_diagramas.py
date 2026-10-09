@@ -138,6 +138,26 @@ class ReabrirOArquivoTests(_Aba):
         self.assertEqual(self.painel.campo_de_folha.value(), 1)
         self.assertIn("1 com miniatura", self.recados[-1])
 
+    def test_o_cvtxt_do_livro_aberto_pede_a_folha_dele_e_o_de_outro_livro_nao(self) -> None:
+        """`folha_pedida` só sai para o livro que está na janela (item 9)."""
+        livro = self.pasta / "livro.pdf"
+        livro.write_bytes(b"%PDF-1.4 de mentira")
+        pedidas: list[int] = []
+        self.painel.folha_pedida.connect(pedidas.append)
+        self.painel.definir_livro(livro, pagina=0)
+        destino = self.pasta / "folha3.cvtxt"
+        arquivo.gravar(destino, rico.de_pagina(PaginaLida(documento=str(livro), pagina=2)))
+        with mock.patch.object(qt_texto, "_renderizar", return_value=None), mock.patch.object(
+            QFileDialog, "getOpenFileName", return_value=(str(destino), "")
+        ):
+            self.painel.abrir_documento()
+        self.assertEqual(pedidas, [2])
+        outro = self.pasta / "outro.cvtxt"
+        arquivo.gravar(outro, rico.de_pagina(PaginaLida(documento=str(self.pasta / "outro.pdf"), pagina=5)))
+        with mock.patch.object(QFileDialog, "getOpenFileName", return_value=(str(outro), "")):
+            self.painel.abrir_documento()
+        self.assertEqual(pedidas, [2], "o .cvtxt de outro livro não pede folha nenhuma")
+
     def test_sem_o_livro_o_texto_abre_e_o_rodape_diz_qual_falta(self) -> None:
         destino = self.gravar(self.pasta / "sumiu" / "livro.pdf")
         with mock.patch.object(qt_texto, "_renderizar") as renderizar, mock.patch.object(
