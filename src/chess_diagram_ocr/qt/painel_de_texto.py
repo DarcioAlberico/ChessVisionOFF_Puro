@@ -2221,13 +2221,29 @@ class PainelDeTexto(QWidget):
         return menu
 
     def _copiar_miniatura(self, corrida: rico.Corrida) -> None:
-        """A figura do diagrama -- recorte ou desenho -- vai para a área de transferência."""
+        """A figura do diagrama -- recorte ou desenho -- vai para a área de transferência, **e a
+        FEN vai junto como texto** quando se sabe (item 20).
+
+        Um só gesto para os dois destinos: quem cola num editor de imagens recebe a figura; quem
+        cola numa caixa de texto -- um programa de xadrez, um e-mail -- recebe o campo de peças.
+        """
+        from PyQt6.QtCore import QMimeData
+
         figura = self._imagem_do_diagrama(corrida)
-        if figura is None:
-            self.estado.emit("Este diagrama não tem figura para copiar.")
+        posicao = _posicao_de(self.documento, corrida)
+        if figura is None and not posicao:
+            self.estado.emit("Este diagrama não tem figura nem posição para copiar.")
             return
-        QApplication.clipboard().setPixmap(figura)
-        self.estado.emit("Imagem do diagrama copiada.")
+        conteudo = QMimeData()
+        if figura is not None:
+            conteudo.setImageData(figura.toImage())
+        if posicao:
+            conteudo.setText(posicao)
+        QApplication.clipboard().setMimeData(conteudo)
+        o_que = "Imagem e FEN do diagrama copiadas." if figura is not None and posicao else (
+            "Imagem do diagrama copiada." if figura is not None else "FEN do diagrama copiada."
+        )
+        self.estado.emit(o_que)
 
     def _apagar_diagrama(self, comeco: int, fim: int, numero: int) -> None:
         """Tira a marca inteira -- e com ela a figura. É uma edição: `Ctrl+Z` a devolve."""

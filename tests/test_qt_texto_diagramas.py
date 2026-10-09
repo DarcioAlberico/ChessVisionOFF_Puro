@@ -648,6 +648,7 @@ class MenuDaMiniaturaTests(_Aba):
     """O botão direito sobre a miniatura: abrir na sala, copiar a imagem, apagar o diagrama (item 10)."""
 
     ponto_da_miniatura = CliqueNaMiniaturaTests.ponto_da_miniatura
+    ponto_da_marca = CliqueNaMiniaturaTests.ponto_da_marca
 
     def acoes(self, ponto: object) -> list[str]:
         menu = self.painel._menu_de_contexto(ponto)  # type: ignore[arg-type]
@@ -680,6 +681,30 @@ class MenuDaMiniaturaTests(_Aba):
         copiar.trigger()
         self.assertFalse(QApplication.clipboard().pixmap().isNull())
         self.assertIn("copiada", self.recados[-1])
+
+    def test_copiar_leva_a_fen_como_texto_quando_se_sabe(self) -> None:
+        """Um gesto, dois destinos: a figura para o editor de imagens, a FEN para a caixa de texto (item 20)."""
+        from PyQt6.QtWidgets import QApplication
+
+        self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]), folha_rgb=_folha())
+        QApplication.clipboard().clear()
+        self.acoes(self.ponto_da_miniatura())
+        next(a for a in self.menu.actions() if a.text().startswith("Copiar")).trigger()
+        self.assertFalse(QApplication.clipboard().pixmap().isNull())
+        self.assertEqual(QApplication.clipboard().text(), FEN)
+        self.assertIn("Imagem e FEN", self.recados[-1])
+
+    def test_sem_figura_a_fen_ainda_e_copiada(self) -> None:
+        from PyQt6.QtWidgets import QApplication
+
+        self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]))
+        with mock.patch.object(qt_texto, "_png_da_posicao", return_value=None):
+            self.painel.desenhar_documento(self.painel.documento)
+            QApplication.clipboard().clear()
+            self.acoes(self.ponto_da_marca())
+            next(a for a in self.menu.actions() if a.text().startswith("Copiar")).trigger()
+        self.assertEqual(QApplication.clipboard().text(), FEN)
+        self.assertIn("FEN do diagrama copiada", self.recados[-1])
 
     def test_apagar_tira_a_marca_e_desfazer_a_devolve(self) -> None:
         self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
