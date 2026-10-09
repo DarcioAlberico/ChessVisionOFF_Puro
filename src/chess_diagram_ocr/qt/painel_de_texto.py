@@ -1569,6 +1569,24 @@ class PainelDeTexto(QWidget):
         )
         if resposta != QMessageBox.StandardButton.Yes:
             return False
+        return self._recuperar(achado, pagina)
+
+    def recuperar_rascunho(self) -> bool:
+        """Pelo menu do botão direito (item 25): o rascunho da folha na tela, para quem recusou a
+        oferta na leitura e mudou de ideia -- sem ter de ler a folha de novo (até 40 s) para a
+        pergunta voltar. Pergunta antes de descartar o que foi editado desde então."""
+        if self._pagina is None:
+            return False
+        achado = rascunho.achar(self._pagina.documento, self._pagina.pagina, pasta=self._pasta_de_rascunhos)
+        if achado is None:
+            self.estado.emit("Não há rascunho desta folha por recuperar.")
+            return False
+        if not self._confirmar_descarte("Recuperar o rascunho descarta as alterações."):
+            return False
+        return self._recuperar(achado, self._pagina)
+
+    def _recuperar(self, achado: rascunho.Rascunho, pagina: PaginaLida) -> bool:
+        """Põe o rascunho na tela como trabalho por gravar e apaga o arquivo dele."""
         try:
             doc = rascunho.carregar(achado)
         except (OSError, ValueError) as erro:  # `arquivo.ArquivoInvalido` é um `ValueError`
@@ -2282,6 +2300,18 @@ class PainelDeTexto(QWidget):
         seleciona. O menu é onde quem não sabe do duplo clique descobre que a miniatura é viva.
         """
         menu = self.editor.createStandardContextMenu(ponto)
+        # O rascunho da folha na tela, quando há um (item 25): a oferta recusada na leitura volta
+        # a estar à mão, sem reler a folha.
+        guardado = (
+            None
+            if self._pagina is None
+            else rascunho.achar(self._pagina.documento, self._pagina.pagina, pasta=self._pasta_de_rascunhos)
+        )
+        if guardado is not None:
+            menu.addSeparator()
+            recuperar = QAction(f"Recuperar o rascunho de {guardado.data_legivel}", menu)
+            recuperar.triggered.connect(lambda: self.recuperar_rascunho())
+            menu.addAction(recuperar)
         achado = self._marca_sob(ponto)
         if achado is None:
             return menu

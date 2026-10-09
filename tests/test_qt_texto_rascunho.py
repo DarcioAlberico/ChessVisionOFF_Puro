@@ -231,6 +231,31 @@ class ReabrirOfereceTests(_Aba):
         self.assertIn("recém-lida", self.painel.texto())
         self.assertIsNotNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta))
 
+    def test_a_oferta_recusada_volta_pelo_menu_do_botao_direito(self) -> None:
+        """Quem recusou na leitura e mudou de ideia não precisa reler a folha (item 25)."""
+        from PyQt6.QtCore import QPoint
+
+        self.chegou(_pagina(texto="versão recém-lida"), resposta=False)
+        menu = self.painel._menu_de_contexto(QPoint(4, 4))
+        self.addCleanup(descartar, menu)
+        recuperar = next(a for a in menu.actions() if a.text().startswith("Recuperar o rascunho de "))
+        recuperar.trigger()
+        self.assertIn("rascunho", self.painel.texto())
+        self.assertTrue(self.painel.tem_alteracoes, "recuperado é trabalho por gravar")
+        self.assertIsNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta), "recuperar apaga o arquivo")
+        depois = self.painel._menu_de_contexto(QPoint(4, 4))
+        self.addCleanup(descartar, depois)
+        self.assertFalse([a for a in depois.actions() if a.text().startswith("Recuperar")], "sem rascunho, sem ação")
+
+    def test_recuperar_pelo_menu_pergunta_antes_de_descartar_o_editado(self) -> None:
+        self.chegou(_pagina(texto="versão recém-lida"), resposta=False)
+        self.digitar_no_fim(" editado depois")
+        with _Respondendo(QMessageBox.StandardButton.No) as pergunta:
+            self.assertFalse(self.painel.recuperar_rascunho())
+        self.assertIn("Recuperar o rascunho descarta", pergunta.call_args.args[2])
+        self.assertIn("editado depois", self.painel.texto())
+        self.assertIsNotNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta))
+
     def test_outra_folha_nao_e_oferecida(self) -> None:
         with _Respondendo(QMessageBox.StandardButton.Yes) as pergunta:
             self.painel._leitura_terminou((_pagina(folha=3), None))
