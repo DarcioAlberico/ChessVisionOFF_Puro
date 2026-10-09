@@ -250,8 +250,12 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2088
+    LIMITE = 2092
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.088 -> 2.092 no item 17 da aba Texto (2026-10-09)**: o motor de leitura e o modo bloco
+    da aba Texto voltam na abertura seguinte -- duas linhas para repor e duas para gravar, ao
+    lado do zoom e da quebra da S-291.
 
     **2.087 -> 2.088 no item 9 da aba Texto (2026-10-08)**: a ligação `folha_pedida` →
     `ir_para_pagina` -- o `.cvtxt` aberto na aba Texto leva o visualizador à folha dele.

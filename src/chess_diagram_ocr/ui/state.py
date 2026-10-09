@@ -163,6 +163,15 @@ class AppState:
     pergunta de quem vai aplicá-la, e `pele.densidade_em_vigor` responde nomeando no log a que não
     existe."""
 
+    texto_motor: str = ""
+    """O motor de leitura escolhido na aba Texto (`ui/texto_declarado.MOTORES`), ou `""` para o
+    padrão da aba (item 17 de 2026-10-09). Não é validado aqui, pela razão de `skin`: quem o
+    aplica é `PainelDeTexto.definir_motor`, que ignora um nome que não conhece."""
+
+    texto_bloco: bool = False
+    """O modo bloco da aba Texto estava ligado? (item 17) Quem o liga paga ~40 s por folha de
+    propósito, e não quer religá-lo a cada abertura."""
+
     texto_zoom: int = 0
     """Degraus de zoom da aba de texto (S-291). `0` = tamanho normal.
 
@@ -262,6 +271,8 @@ class AppState:
             "piece_dir": self.piece_dir,
             "texto_zoom": int(self.texto_zoom),
             "texto_quebra": bool(self.texto_quebra),
+            "texto_motor": str(self.texto_motor),
+            "texto_bloco": bool(self.texto_bloco),
             "estudo_aberto": self.estudo_aberto,
             "estudo_divisor": float(self.estudo_divisor),
         }
@@ -387,6 +398,14 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     texto_quebra = raw.get("texto_quebra")
     if isinstance(texto_quebra, bool):
         state.texto_quebra = texto_quebra
+
+    texto_motor = raw.get("texto_motor")
+    if isinstance(texto_motor, str):
+        state.texto_motor = texto_motor
+
+    texto_bloco = raw.get("texto_bloco")
+    if isinstance(texto_bloco, bool):
+        state.texto_bloco = texto_bloco
 
     estudo_aberto = raw.get("estudo_aberto")
     if isinstance(estudo_aberto, str):

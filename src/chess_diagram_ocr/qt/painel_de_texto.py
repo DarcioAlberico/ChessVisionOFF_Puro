@@ -1711,6 +1711,31 @@ class PainelDeTexto(QWidget):
 
     # ---------------------------------------------------------- a leitura, em thread
 
+    @property
+    def motor(self) -> str:
+        """O motor de leitura escolhido -- o que a janela grava no estado (item 17)."""
+        return str(self._motor)
+
+    @property
+    def modo_bloco(self) -> bool:
+        return bool(self._modo_bloco)
+
+    def definir_motor(self, nome: str) -> None:
+        """Repõe o motor gravado na sessão anterior; um nome que a aba não conhece é ignorado."""
+        if nome not in MOTORES:
+            return
+        self._motor = nome
+        self.escolha_de_motor.setCurrentIndex(MOTORES.index(nome))
+
+    def definir_modo_bloco(self, ligado: bool) -> None:
+        """Repõe o modo bloco gravado -- sem a frase do rodapé, que é para quem acabou de clicar."""
+        self._modo_bloco = bool(ligado)
+        self.caixa_de_bloco.blockSignals(True)
+        try:
+            self.caixa_de_bloco.setChecked(bool(ligado))
+        finally:
+            self.caixa_de_bloco.blockSignals(False)
+
     def modo_bloco_mudou(self) -> None:
         """Liga e desliga o modo bloco. **O comando não inverte a caixa**: quem a inverte é ela."""
         self._modo_bloco = self.caixa_de_bloco.isChecked()

@@ -630,6 +630,8 @@ class JanelaPrincipal(QMainWindow):
         self.painel.mostrar_incerteza = estado.show_heatmap
         self.texto.aplicar_zoom(estado.texto_zoom, avisar=False)
         self.texto.definir_quebra(estado.texto_quebra)
+        self.texto.definir_motor(estado.texto_motor)  # o motor e o modo bloco da sessão anterior (item 17)
+        self.texto.definir_modo_bloco(estado.texto_bloco)
         self.estudo.posicionar_divisor(estado.estudo_divisor)
         # Daqui para baixo o disco já está nos widgets, e gravar volta a ser honesto (S-322).
         self._estado_aplicado = True
@@ -736,6 +738,8 @@ class JanelaPrincipal(QMainWindow):
         estado.show_heatmap = self.painel.mostrar_incerteza
         estado.texto_zoom = int(self.texto.zoom_da_vista)
         estado.texto_quebra = bool(self.texto.quebra)
+        estado.texto_motor = self.texto.motor
+        estado.texto_bloco = bool(self.texto.modo_bloco)
         estado.review_queue_path = str(self.revisao.queue_path)
         estado.estudo_aberto = self.estudo.chave_do_estudo_aberto
         # `or` o guardado: o divisor devolve `0.0` enquanto não há geometria medida, e zero

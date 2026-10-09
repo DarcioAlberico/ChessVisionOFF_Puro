@@ -1133,6 +1133,21 @@ class EstadoEntreSessoesTests(unittest.TestCase):
         self.assertEqual(2, segunda.texto.zoom_da_vista)
         self.assertFalse(segunda.texto.quebra)
 
+    def test_o_motor_e_o_modo_bloco_da_aba_de_texto_voltam(self) -> None:
+        """Quem liga o modo bloco paga 40 s por folha de propósito, e não quer religá-lo (item 17)."""
+        from chess_diagram_ocr.ui.texto_declarado import MOTORES
+
+        primeira = self.janela()
+        primeira.texto.definir_motor(MOTORES[-1])
+        primeira.texto.caixa_de_bloco.setChecked(True)
+        primeira.close()
+
+        segunda = self.janela()
+        self.assertEqual(MOTORES[-1], segunda.texto.motor)
+        self.assertEqual(MOTORES[-1], segunda.texto.escolha_de_motor.currentData())
+        self.assertTrue(segunda.texto.modo_bloco)
+        self.assertTrue(segunda.texto.caixa_de_bloco.isChecked())
+
     def test_a_aba_aberta_volta_pelo_nome_e_nao_pelo_indice(self) -> None:
         """Índice não sobrevive a reordenar as abas, e a S-162 é reordená-las."""
         primeira = self.janela()

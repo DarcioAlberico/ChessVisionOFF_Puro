@@ -721,6 +721,36 @@ class TetoDoCampoDeFolhaTests(_Aba):
         self.assertEqual(self.painel.campo_de_folha.maximum(), qt_texto.TETO_DE_FOLHAS)
 
 
+class MotorEModoBlocoTests(_Aba):
+    """`definir_motor`/`definir_modo_bloco`: o que a janela repõe da sessão anterior (item 17)."""
+
+    def test_repor_o_motor_e_o_modo_bloco_sem_frase_no_rodape(self) -> None:
+        from chess_diagram_ocr.ui.texto_declarado import MOTORES
+
+        self.painel.definir_motor(MOTORES[-1])
+        self.assertEqual(self.painel.motor, MOTORES[-1])
+        self.assertEqual(self.painel.escolha_de_motor.currentData(), MOTORES[-1])
+        self.painel.definir_motor("motor-que-nao-existe")
+        self.assertEqual(self.painel.motor, MOTORES[-1], "um nome desconhecido é ignorado")
+        self.painel.definir_modo_bloco(True)
+        self.assertTrue(self.painel.modo_bloco)
+        self.assertTrue(self.painel.caixa_de_bloco.isChecked())
+        self.assertEqual(self.recados, [], "repor não é clicar: nada no rodapé")
+        self.painel.caixa_de_bloco.setChecked(False)
+        self.assertFalse(self.painel.modo_bloco)
+        self.assertIn("Modo linha", self.recados[-1])
+
+    def test_o_estado_grava_e_le_o_motor_e_o_modo_bloco(self) -> None:
+        from chess_diagram_ocr.ui.state import AppState, load_state, save_state
+
+        estado = AppState()
+        estado.texto_motor, estado.texto_bloco = "glifo", True
+        caminho = self.pasta / "janela.json"
+        save_state(caminho, estado)
+        lido = load_state(caminho)
+        self.assertEqual((lido.texto_motor, lido.texto_bloco), ("glifo", True))
+
+
 class ConfiguracoesDaLeituraTests(unittest.TestCase):
     """A leitura da aba pergunta o DPI e o teto de diagramas às Configurações, como o visualizador.
 
