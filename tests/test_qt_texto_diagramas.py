@@ -543,6 +543,27 @@ class CliqueNaMiniaturaTests(_Aba):
         self.assertEqual(self.painel.editor.textCursor().selectedText(), "")
         self.assertIsNone(self.painel._marca_sob(QPoint(4, 4)))
 
+    def ponto_da_marca(self) -> object:
+        """Um ponto sobre o texto `[Diagrama 1]`, e não sobre a figura."""
+        from PyQt6.QtCore import QPoint
+
+        cursor = QTextCursor(self.painel.editor.document())
+        cursor.setPosition(self.painel._mapa.posicao(self.painel.texto().index("[Diagrama 1]") + 3))
+        caixa = self.painel.editor.cursorRect(cursor)
+        return QPoint(caixa.left() + 1, caixa.center().y())
+
+    def test_o_clique_no_texto_da_marca_tambem_a_seleciona(self) -> None:
+        """Sem figura, a marca é tudo o que há do diagrama (item 12)."""
+        from PyQt6.QtTest import QTest
+
+        self.painel.mostrar_pagina(_pagina())
+        self.assertEqual(self.miniaturas(), 0)
+        QTest.mouseClick(self.painel.editor.viewport(), Qt.MouseButton.LeftButton, pos=self.ponto_da_marca())
+        self.assertEqual(self.painel.editor.textCursor().selectedText(), "[Diagrama 1]")
+        menu = self.painel._menu_de_contexto(self.ponto_da_marca())  # type: ignore[arg-type]
+        self.addCleanup(descartar, menu)
+        self.assertIn("Apagar o diagrama 1 da folha", [a.text() for a in menu.actions()])
+
     def test_o_duplo_clique_pede_o_diagrama_na_sala(self) -> None:
         from PyQt6.QtTest import QTest
 

@@ -2070,13 +2070,21 @@ class PainelDeTexto(QWidget):
             sonda.setPosition(p + 1)  # `charFormat` é o do caractere **antes** do cursor: o `p`
             if sonda.position() != p + 1 or not sonda.charFormat().isImageFormat():
                 continue
-            deslocamento = self._mapa.deslocamento(p + 2)
-            comeco = 0
-            for corrida in self.documento.corridas:
-                fim = comeco + len(corrida.texto)
-                if corrida.e_diagrama and comeco <= deslocamento < fim:
-                    return comeco, fim, corrida
-                comeco = fim
+            achado = self._marca_em(self._mapa.deslocamento(p + 2))
+            if achado is not None:
+                return achado
+        # Sobre o texto da própria marca (item 12): `[Diagrama 3]` é o diagrama tanto quanto a
+        # figura -- e é tudo o que há dele quando não há figura nenhuma.
+        return self._marca_em(self._mapa.deslocamento(posicao))
+
+    def _marca_em(self, deslocamento: int) -> tuple[int, int, rico.Corrida] | None:
+        """A marca de diagrama que contém o deslocamento do documento, ou `None`."""
+        comeco = 0
+        for corrida in self.documento.corridas:
+            fim = comeco + len(corrida.texto)
+            if corrida.e_diagrama and comeco <= deslocamento < fim:
+                return comeco, fim, corrida
+            comeco = fim
         return None
 
     def _clicou_na_miniatura(self, ponto: QPoint) -> bool:
