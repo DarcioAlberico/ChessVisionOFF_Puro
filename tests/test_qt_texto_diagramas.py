@@ -26,7 +26,7 @@ from chess_diagram_ocr.text.pagina import BlocoDeDiagrama, BlocoDeTexto, Coluna,
 
 if TEM_PYQT:
     from PyQt6.QtCore import Qt
-    from PyQt6.QtGui import QTextCursor
+    from PyQt6.QtGui import QTextCursor, QWheelEvent
     from PyQt6.QtWidgets import QFileDialog
 
     from chess_diagram_ocr.qt import painel_de_texto as qt_texto
@@ -292,6 +292,50 @@ class MiniaturaAcompanhaOZoomTests(_Aba):
         self.assertLess(self.largura_da_miniatura(), normal)
         self.painel.aplicar_zoom(0, avisar=False)
         self.assertEqual(self.largura_da_miniatura(), normal)
+
+
+class RodaComCtrlTests(_Aba):
+    """Ctrl+roda é o zoom da vista, em degraus -- e não a fonte do editor, que nenhuma letra segue (item 13)."""
+
+    def rodar(self, passo: int, *, ctrl: bool = True) -> bool:
+        from PyQt6.QtCore import QPoint, QPointF
+        from PyQt6.QtWidgets import QApplication
+
+        viewport = self.painel.editor.viewport()
+        modificador = Qt.KeyboardModifier.ControlModifier if ctrl else Qt.KeyboardModifier.NoModifier
+        evento = QWheelEvent(
+            QPointF(30, 30),
+            QPointF(viewport.mapToGlobal(QPoint(30, 30))),
+            QPoint(0, 0),
+            QPoint(0, passo),
+            Qt.MouseButton.NoButton,
+            modificador,
+            Qt.ScrollPhase.NoScrollPhase,
+            False,
+        )
+        return QApplication.sendEvent(viewport, evento)
+
+    def test_ctrl_roda_aproxima_e_afasta_por_degrau(self) -> None:
+        self.painel.desenhar_documento(rico.de_texto("Uma frase."))
+        corpo = self.painel.editor.font().pointSize()
+        self.rodar(+120)
+        self.assertEqual(self.painel.zoom_da_vista, 1)
+        self.rodar(+120)
+        self.rodar(-120)
+        self.assertEqual(self.painel.zoom_da_vista, 1)
+        self.assertEqual(self.painel._base[0], tema.fonte_base()[0] + 1, "o degrau chegou à base do desenho")  # type: ignore[index]
+        self.assertIn("Zoom do texto: +1", self.recados[-1])
+        self.rodar(-120)
+        self.assertEqual(self.painel.zoom_da_vista, 0)
+        self.assertGreaterEqual(corpo, 1)
+
+    def test_a_roda_sem_ctrl_e_rolagem(self) -> None:
+        self.painel.desenhar_documento(rico.de_texto("\n".join(f"linha {i}" for i in range(200))))
+        barra = self.painel.editor.verticalScrollBar()
+        assert barra is not None
+        self.rodar(-120, ctrl=False)
+        self.assertEqual(self.painel.zoom_da_vista, 0)
+        self.assertGreater(barra.value(), 0, "a roda sem Ctrl continua rolando a folha")
 
 
 class LexicoSobreviveAoRedesenhoTests(_Aba):

@@ -74,6 +74,7 @@ from PyQt6.QtGui import (
     QTextCursor,
     QTextDocument,
     QTextImageFormat,
+    QWheelEvent,
 )
 from PyQt6.QtWidgets import (
     QApplication,
@@ -2042,6 +2043,13 @@ class PainelDeTexto(QWidget):
                     return True
         if a0 is self.editor.viewport() and a1 is not None and a1.type() == QEvent.Type.Resize:
             self.vazio.setGeometry(self.editor.viewport().rect())
+        if a0 is self.editor.viewport() and isinstance(a1, QWheelEvent) and a1.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            # Ctrl+roda é o zoom da vista (item 13). O `QTextEdit` responderia mudando a fonte do
+            # editor -- que nenhuma letra segue, porque cada trecho sai com corpo explícito (S-264).
+            passo = a1.angleDelta().y()
+            if passo:
+                self._mudar_zoom(+1 if passo > 0 else -1)
+            return True
         if a0 is self.editor.viewport() and isinstance(a1, QMouseEvent) and a1.button() == Qt.MouseButton.LeftButton:
             ponto = a1.position().toPoint()
             if a1.type() == QEvent.Type.MouseButtonPress and self._clicou_na_miniatura(ponto):
