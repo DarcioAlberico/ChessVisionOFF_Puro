@@ -24,6 +24,7 @@ motiva cada item: [ROADMAP_FASE7.md](ROADMAP_FASE7.md).
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 > | S-523 a S-526 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
+> | S-527 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 
 > **Ressalva de 2026-08-16.** Quatro itens deste documento — **S-38b, S-40, S-62a e S-62b** —
 > foram reprovados pela taxa de exportação do conjunto de campo. A avaliação registrada em

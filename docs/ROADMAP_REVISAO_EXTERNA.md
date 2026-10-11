@@ -22,6 +22,7 @@ Uma revisão técnica independente do repositório, feita por terceiro em 2026-0
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
 > | S-523 a S-526 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
+> | S-527 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 
 Este documento não propõe recurso novo. Ele é o que sobrou de dez achados de fora **depois de
 cada um ser conferido contra este ramo** -- que está 17 commits à frente do que a revisão viu.

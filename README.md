@@ -1158,6 +1158,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-431 a S-440 | [docs/SPEC_REVISAO_EXTERNA.md](docs/SPEC_REVISAO_EXTERNA.md) |
 | S-441 a S-450 | [docs/SPEC_ACABAMENTO.md](docs/SPEC_ACABAMENTO.md) |
 | S-523 a S-526 | [docs/PLANO_COLUNAS_SOLUCOES.md](docs/PLANO_COLUNAS_SOLUCOES.md) |
+| S-527 | [docs/PLANO_FAIXAS_REVERSAS.md](docs/PLANO_FAIXAS_REVERSAS.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1216,6 +1217,10 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   titulo e o folio na calha; o preenchimento que reprova a coluna de linha curta), as variantes
   medidas e recusadas, e a execucao -- a borda isolada, a regua anotada `cvoff-texto-colunas` e
   o quadro de largura inteira
+- [docs/PLANO_FAIXAS_REVERSAS.md](docs/PLANO_FAIXAS_REVERSAS.md) -- o texto claro sobre faixa
+  preta (S-527): o cabecalho das solucoes do Yusupov achado por geometria fisica, virado em tinta
+  sobre papel antes da binaria, a franja do scanner apagada, e as iscas (titulo, filete,
+  diagrama) deixadas em paz
 - [docs/ROADMAP_APARENCIA.md](docs/ROADMAP_APARENCIA.md) -- **Fases 32 a 35**, a leitura das duas
   propostas de interface de `Proposta de interface/` e o plano para adota-las sem aposentar a
   interface de hoje: as duas imagens mostram 4 e 13 comandos onde a janela tem 21 nas barras do
