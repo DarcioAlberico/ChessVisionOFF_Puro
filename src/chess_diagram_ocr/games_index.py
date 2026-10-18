@@ -41,7 +41,7 @@ import sqlite3
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
-from .config import PROJECT_ROOT
+from .config import DATA_DIR
 from .games_db import _KEPT_HEADERS, _RE_HEADER, GameRecord, PlayerPair, as_databases, occupancy, surname
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ __all__ = [
     "positions_of",
 ]
 
-DEFAULT_INDEX_PATH = PROJECT_ROOT / "data" / "games_index.sqlite"
+DEFAULT_INDEX_PATH = DATA_DIR / "games_index.sqlite"
 
 INDEX_VERSION = 3
 """O formato do arquivo. **3** desde a S-140, quando a tabela deixou de existir duas vezes.

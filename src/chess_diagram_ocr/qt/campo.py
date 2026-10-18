@@ -33,7 +33,7 @@ from pathlib import Path
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QComboBox, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
-from chess_diagram_ocr.config import PROJECT_ROOT
+from chess_diagram_ocr.config import DATA_DIR
 from chess_diagram_ocr.field_eval import load_field_set, upsert_page
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
@@ -61,7 +61,7 @@ SEM_CAIXA = (
 )
 """A mesma frase de tirar a caixa da página: dois comandos de tirar não ensinam dois gestos."""
 
-CAMINHO_DO_CONJUNTO = PROJECT_ROOT / "data" / "field_set.jsonl"
+CAMINHO_DO_CONJUNTO = DATA_DIR / "field_set.jsonl"
 """O mesmo arquivo que `cvoff-field --set` lê de fábrica. Um caminho e não dois, porque anotar
 num arquivo e medir noutro é o defeito que não dá sintoma: as duas pontas funcionam."""
 

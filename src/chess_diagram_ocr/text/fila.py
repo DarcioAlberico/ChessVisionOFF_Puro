@@ -72,7 +72,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
-from ..config import PROJECT_ROOT
+from ..config import DATA_DIR
 from .documento import faixa_de_confianca
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ logger = logging.getLogger(__name__)
 VERSAO = 1
 """Versão do arquivo da fila. Sobe quando um campo muda de significado, não quando nasce um."""
 
-CAMINHO_PADRAO = PROJECT_ROOT / "data" / "fila_caractere.json"
+CAMINHO_PADRAO = DATA_DIR / "fila_caractere.json"
 
 Estado = Literal["pendente", "revisado", "descartado"]
 ESTADOS: tuple[Estado, ...] = ("pendente", "revisado", "descartado")

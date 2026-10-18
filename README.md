@@ -901,6 +901,15 @@ Os testes que dependem de `data/samples/` sao pulados automaticamente quando a p
 esta vazia, entao a suite roda em um clone limpo. Os testes de ONNX sao pulados quando o
 extra `onnx` nao esta instalado.
 
+A suite nao mexe nos dados de quem a roda. O `tests/conftest.py` aponta `CVOFF_DATA_DIR` e
+`CVOFF_PGN_DATABASE_DIR` para uma pasta temporaria antes de importar o pacote: o programa,
+rodado pelos testes, nao le nem grava o seu `data/` (rotulos, estado da janela, rascunhos, os
+caches) e nao enxerga as suas bases em `pgn_database/`. Um teste que crie ou grave um
+`data/games_positions*.sqlite` de verdade reprova com o caminho na mensagem -- o cache de
+posicoes do acervo custa ~56 min de varredura para refazer. Os testes de numeros vivos continuam
+lendo, so para leitura, os arquivos versionados de `data/`. As duas variaveis valem tambem para o
+programa, para quem quiser os dados em outro lugar.
+
 ## Desempenho: CPU, GPU e ONNX
 
 O `torch` das dependencias e `+cpu`. Na inicializacao o log e a barra de status dizem

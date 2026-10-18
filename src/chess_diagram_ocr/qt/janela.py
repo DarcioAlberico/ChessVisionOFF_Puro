@@ -77,11 +77,11 @@ from PyQt6.QtWidgets import (
 
 from chess_diagram_ocr.board_detection import NoBoardDetectedError
 from chess_diagram_ocr.config import (
+    DATA_DIR,
     DEFAULT_DATASET_CSV,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
     DEFAULT_PDF_DIR,
-    PROJECT_ROOT,
     find_default_pdf_path,
 )
 from chess_diagram_ocr.detection import DiagramCandidate, detect_diagrams_in_pdf_page, detect_diagrams_rendering_page
@@ -180,7 +180,7 @@ TITULO_DE_TESTE = TITULO_DA_JANELA
 ESPERA_AO_FECHAR_MS = 15_000
 """Quanto o fechamento espera pela tarefa em curso, em milissegundos."""
 
-CAMINHO_DO_ESTADO = PROJECT_ROOT / "data" / "janela.json"
+CAMINHO_DO_ESTADO = DATA_DIR / "janela.json"
 """Onde o que a janela lembra entre execuções fica (S-25/S-156).
 
 **O nome mudou com o corte (S-506), e a razão é a mesma dos dezessete ponteiros que o corte
@@ -188,7 +188,7 @@ deixou apontando para o nada:** o arquivo se chamava `app_tkinter_state.json`, e
 nomeia não existe mais. O estado nunca foi do Tk -- é da janela --, e um arquivo que nomeia o
 toolkit errado é a próxima pessoa concluindo que ele é lixo de uma versão anterior."""
 
-CAMINHO_HERDADO_DO_ESTADO = PROJECT_ROOT / "data" / "app_tkinter_state.json"
+CAMINHO_HERDADO_DO_ESTADO = DATA_DIR / "app_tkinter_state.json"
 """O nome antigo, lido uma vez quando o novo ainda não existe.
 
 **A migração é de uma linha e vale o preço.** Este arquivo guarda o histórico de 50 livros com a

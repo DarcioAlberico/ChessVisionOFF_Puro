@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from ..config import PROJECT_ROOT
+from ..config import DATA_DIR
 from . import arquivo
 from .rico import DocumentoRico
 
@@ -60,7 +60,7 @@ __all__ = [
     "podar",
 ]
 
-PASTA_PADRAO = PROJECT_ROOT / "data" / "rascunhos"
+PASTA_PADRAO = DATA_DIR / "rascunhos"
 """Onde os rascunhos moram. Em `data/`, como todo artefato de trabalho deste projeto."""
 
 ESPERA_SEGUNDOS = 4.0

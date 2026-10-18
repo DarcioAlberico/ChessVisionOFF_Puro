@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 import sys
 import tempfile
 import unittest
@@ -26,13 +27,19 @@ class FrozenRootTests(unittest.TestCase):
     """`data/`, `models/`, `PDF/` e `PGN/` ficam **ao lado** do executável, não dentro dele."""
 
     def _config_congelado(self, executavel: str, meipass: str | None):
-        """Reimporta `config` fingindo um bundle. É a única forma de exercitar o ramo."""
+        """Reimporta `config` fingindo um bundle. É a única forma de exercitar o ramo.
+
+        Sem as variáveis de pasta que o `conftest` põe: com elas, `data/` congelado apontaria para
+        a pasta temporária da suíte, e não para o lado do `.exe` que estes testes conferem.
+        """
         import chess_diagram_ocr.config as config
 
         patches = {"frozen": True, "executable": executavel}
         if meipass is not None:
             patches["_MEIPASS"] = meipass
-        with patch.multiple(sys, create=True, **patches):
+        with patch.multiple(sys, create=True, **patches), patch.dict("os.environ"):
+            os.environ.pop(config.ENV_DATA_DIR, None)
+            os.environ.pop(config.ENV_PGN_DATABASE_DIR, None)
             return importlib.reload(config)
 
     def tearDown(self) -> None:

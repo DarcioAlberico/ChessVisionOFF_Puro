@@ -27,11 +27,11 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .atomic_io import atomic_write_json
-from .config import PROJECT_ROOT
+from .config import DATA_DIR
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SETTINGS_PATH = PROJECT_ROOT / "data" / "settings.json"
+DEFAULT_SETTINGS_PATH = DATA_DIR / "settings.json"
 
 ENV_REMOTE_URL = "CVOFF_REMOTE_FEN_URL"
 ENV_REMOTE_ENABLED = "CVOFF_REMOTE_FEN_ENABLED"

@@ -73,7 +73,7 @@ from typing import Any
 
 import chess
 
-from .config import PROJECT_ROOT
+from .config import PGN_DATABASE_DIR
 from .pdf_text import fold, parse_context
 
 logger = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ __all__ = [
     "surname",
 ]
 
-DEFAULT_DATABASE_DIR = PROJECT_ROOT / "pgn_database"
+DEFAULT_DATABASE_DIR = PGN_DATABASE_DIR
 """Onde procurar a base quando ninguém disser. Fora do git, como todo material de terceiro."""
 
 MAX_GAMES_PER_PAIR = 40

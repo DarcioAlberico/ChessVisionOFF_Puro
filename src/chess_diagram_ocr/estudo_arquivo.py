@@ -43,7 +43,7 @@ from typing import TextIO
 import chess.pgn
 
 from .atomic_io import atomic_write_text
-from .config import PROJECT_ROOT
+from .config import DATA_DIR
 from .estudo import Estudo, Sala
 
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ __all__ = [
     "gravar",
 ]
 
-PASTA_PADRAO = PROJECT_ROOT / "data" / "estudos"
+PASTA_PADRAO = DATA_DIR / "estudos"
 """Onde as salas moram. Em `data/`, como todo artefato de trabalho deste projeto, e fora do git:
 é análise de alguém sobre um livro que nem está no repositório."""
 
