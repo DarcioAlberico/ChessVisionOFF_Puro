@@ -1047,6 +1047,13 @@ um deles, Niemeijer p20, é a anotação errada que a fase 4 do ciclo 2 achou), 
 0,9884. Não é reprodução, é medição nova: o relatório da suíte
 (`docs/quality/OCR_UI_REPORT_C2_FASE5.md` §A15) tem os pares antes → depois.
 
+Na nona (2026-10-18 -- commit `1c308be`, árvore limpa efêmera, `dirty=false`) **os quatro
+voltaram idênticos**. O commit tirou os caminhos de `data/` e `pgn_database/` de onde eram
+montados à mão e os pôs em `config.DATA_DIR` e `config.PGN_DATABASE_DIR`, para a suíte poder
+desviá-los; `cli.field`, `config` e `settings` mudaram de digest sem mudar o que a medição lê --
+sem as variáveis de ambiente, as pastas são as de sempre. Das 2.071 chaves de cada relatório só
+mudaram os segundos e a procedência.
+
 ## S-326 · A largura da fita plena é derivada, e não escolhida
 
 **Problema.** Três testes de `ModoDaFitaTests` montavam a fita em `self._em(2200)` -- 2.200 px é

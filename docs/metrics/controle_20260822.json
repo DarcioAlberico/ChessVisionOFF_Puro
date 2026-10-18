@@ -13,7 +13,7 @@
     },
     "accept_threshold": 0.8,
     "dpi": 220,
-    "code_commit": "36d6f65",
+    "code_commit": "1c308be",
     "code_dirty": false
   },
   "pages": 68,
@@ -71,8 +71,8 @@
   "stipulation_truth_closes": 6,
   "stipulation_truth_failed": [],
   "repairs_per_diagram": 0.2105,
-  "seconds": 91.896,
-  "seconds_per_diagram": 0.8061,
+  "seconds": 90.8,
+  "seconds_per_diagram": 0.7965,
   "per_regime": {
     "fonte": {
       "pages": 6,
@@ -130,8 +130,8 @@
       "stipulation_truth_closes": 6,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 12.844,
-      "seconds_per_diagram": 0.7136,
+      "seconds": 12.83,
+      "seconds_per_diagram": 0.7128,
       "per_regime": {},
       "per_book": {}
     },
@@ -191,8 +191,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 1.0,
-      "seconds": 14.726,
-      "seconds_per_diagram": 0.7013,
+      "seconds": 14.495,
+      "seconds_per_diagram": 0.6902,
       "per_regime": {},
       "per_book": {}
     },
@@ -252,8 +252,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0682,
-      "seconds": 34.597,
-      "seconds_per_diagram": 0.7863,
+      "seconds": 33.77,
+      "seconds_per_diagram": 0.7675,
       "per_regime": {},
       "per_book": {}
     },
@@ -313,7 +313,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 5.414,
+      "seconds": 5.386,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -374,8 +374,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 24.315,
-      "seconds_per_diagram": 0.7844,
+      "seconds": 24.319,
+      "seconds_per_diagram": 0.7845,
       "per_regime": {},
       "per_book": {}
     }
@@ -437,8 +437,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 1.398,
-      "seconds_per_diagram": 0.3494,
+      "seconds": 1.499,
+      "seconds_per_diagram": 0.3746,
       "per_regime": {},
       "per_book": {}
     },
@@ -498,8 +498,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 3.326,
-      "seconds_per_diagram": 1.6632,
+      "seconds": 3.52,
+      "seconds_per_diagram": 1.7598,
       "per_regime": {},
       "per_book": {}
     },
@@ -559,8 +559,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 2.439,
-      "seconds_per_diagram": 1.2195,
+      "seconds": 2.788,
+      "seconds_per_diagram": 1.3942,
       "per_regime": {},
       "per_book": {}
     },
@@ -620,8 +620,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 4.782,
-      "seconds_per_diagram": 0.3985,
+      "seconds": 5.035,
+      "seconds_per_diagram": 0.4196,
       "per_regime": {},
       "per_book": {}
     },
@@ -681,8 +681,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 1.81,
-      "seconds_per_diagram": 0.9052,
+      "seconds": 1.796,
+      "seconds_per_diagram": 0.8981,
       "per_regime": {},
       "per_book": {}
     },
@@ -742,8 +742,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 3.0,
-      "seconds": 2.199,
-      "seconds_per_diagram": 1.0994,
+      "seconds": 2.177,
+      "seconds_per_diagram": 1.0883,
       "per_regime": {},
       "per_book": {}
     },
@@ -803,8 +803,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 1.2,
-      "seconds": 3.127,
-      "seconds_per_diagram": 0.6254,
+      "seconds": 2.873,
+      "seconds_per_diagram": 0.5747,
       "per_regime": {},
       "per_book": {}
     },
@@ -864,8 +864,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 4.574,
-      "seconds_per_diagram": 0.9148,
+      "seconds": 4.15,
+      "seconds_per_diagram": 0.8299,
       "per_regime": {},
       "per_book": {}
     },
@@ -925,8 +925,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.62,
-      "seconds_per_diagram": 0.6201,
+      "seconds": 0.569,
+      "seconds_per_diagram": 0.5689,
       "per_regime": {},
       "per_book": {}
     },
@@ -986,8 +986,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 10.484,
-      "seconds_per_diagram": 0.8736,
+      "seconds": 9.611,
+      "seconds_per_diagram": 0.8009,
       "per_regime": {},
       "per_book": {}
     },
@@ -1047,7 +1047,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.717,
+      "seconds": 0.727,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1108,7 +1108,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.224,
+      "seconds": 0.239,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1169,8 +1169,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.75,
-      "seconds": 1.327,
-      "seconds_per_diagram": 0.3318,
+      "seconds": 1.426,
+      "seconds_per_diagram": 0.3564,
       "per_regime": {},
       "per_book": {}
     },
@@ -1230,8 +1230,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 1.334,
-      "seconds_per_diagram": 1.3343,
+      "seconds": 1.332,
+      "seconds_per_diagram": 1.3318,
       "per_regime": {},
       "per_book": {}
     },
@@ -1291,8 +1291,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 1.5,
-      "seconds": 1.303,
-      "seconds_per_diagram": 0.6516,
+      "seconds": 1.152,
+      "seconds_per_diagram": 0.5761,
       "per_regime": {},
       "per_book": {}
     },
@@ -1352,8 +1352,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 7.818,
-      "seconds_per_diagram": 1.5636,
+      "seconds": 8.035,
+      "seconds_per_diagram": 1.607,
       "per_regime": {},
       "per_book": {}
     },
@@ -1413,7 +1413,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.216,
+      "seconds": 0.218,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1474,7 +1474,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.208,
+      "seconds": 0.161,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1535,7 +1535,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.131,
+      "seconds": 0.115,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1596,8 +1596,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 10.414,
-      "seconds_per_diagram": 1.3017,
+      "seconds": 9.984,
+      "seconds_per_diagram": 1.248,
       "per_regime": {},
       "per_book": {}
     },
@@ -1657,8 +1657,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.75,
-      "seconds": 1.263,
-      "seconds_per_diagram": 0.3158,
+      "seconds": 1.352,
+      "seconds_per_diagram": 0.338,
       "per_regime": {},
       "per_book": {}
     },
@@ -1718,8 +1718,8 @@
       "stipulation_truth_closes": 6,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 1.764,
-      "seconds_per_diagram": 0.2939,
+      "seconds": 1.856,
+      "seconds_per_diagram": 0.3093,
       "per_regime": {},
       "per_book": {}
     },
@@ -1779,8 +1779,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 8.432,
-      "seconds_per_diagram": 0.7027,
+      "seconds": 8.554,
+      "seconds_per_diagram": 0.7128,
       "per_regime": {},
       "per_book": {}
     },
@@ -1840,8 +1840,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 3.959,
-      "seconds_per_diagram": 0.6598,
+      "seconds": 4.09,
+      "seconds_per_diagram": 0.6817,
       "per_regime": {},
       "per_book": {}
     },
@@ -1901,8 +1901,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 3.0,
-      "seconds": 0.782,
-      "seconds_per_diagram": 0.7824,
+      "seconds": 0.799,
+      "seconds_per_diagram": 0.7995,
       "per_regime": {},
       "per_book": {}
     },
@@ -1962,8 +1962,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.505,
-      "seconds_per_diagram": 0.5053,
+      "seconds": 0.517,
+      "seconds_per_diagram": 0.5165,
       "per_regime": {},
       "per_book": {}
     },
@@ -2023,8 +2023,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 8.223,
-      "seconds_per_diagram": 1.0278,
+      "seconds": 8.123,
+      "seconds_per_diagram": 1.0154,
       "per_regime": {},
       "per_book": {}
     },
@@ -2084,8 +2084,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 2.858,
-      "seconds_per_diagram": 0.7145,
+      "seconds": 2.851,
+      "seconds_per_diagram": 0.7128,
       "per_regime": {},
       "per_book": {}
     },
@@ -2145,7 +2145,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.235,
+      "seconds": 0.247,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -2206,8 +2206,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 5.424,
-      "seconds_per_diagram": 1.0848,
+      "seconds": 5.005,
+      "seconds_per_diagram": 1.001,
       "per_regime": {},
       "per_book": {}
     }
@@ -2217,12 +2217,12 @@
       "path": "models/controle_20260816.pt",
       "digest": "f5e19f9b9a427580"
     },
-    "commit": "36d6f65457d2e15b2c95aa17e45bee15042a65af",
+    "commit": "1c308beb26c9aea03c830f436e355bdae0c559ec",
     "dirty": false,
     "ocr": "off",
-    "note": "remedicao OCR_UI ciclo 2 fase 5 (A15) numa arvore limpa efemera (commit 36d6f65, dirty=false), maquina com testes de outras sessoes rodando (so os tempos carregam a contencao)",
+    "note": "remedicao depois do desvio de data/ e pgn_database/ (commit 1c308be) numa arvore limpa efemera (dirty=false); outras sessoes podem estar usando a maquina (so os tempos carregam a contencao)",
     "code": {
-      "digest": "144290fc3ad091b7",
+      "digest": "932cab5467440161",
       "entry": "chess_diagram_ocr.cli.field",
       "modules": {
         "chess_diagram_ocr": "0e8f11cfdf9354d6",
@@ -2231,8 +2231,8 @@
         "checkpoint": "5683de91d38ef14a",
         "cli": "abd1adbe0f277ee5",
         "cli._ocr": "90a255f7cc40b3b1",
-        "cli.field": "f0d3865eb0f9e46e",
-        "config": "4545c696f320d6b6",
+        "cli.field": "df6a68113a980466",
+        "config": "f43f7da1c8ba4413",
         "cor_por_livro": "31c91dcd6a0e27fa",
         "dataset": "d7f081d6f33eff59",
         "decode": "0ab6f66c78653940",
@@ -2257,7 +2257,7 @@
         "procedencias": "2411e5c98cef5dd8",
         "semantics": "7b35fb0542b24a47",
         "service": "57fc6d80133be751",
-        "settings": "9c8fd1e64ef132a3",
+        "settings": "e0d6c6a7a02fc149",
         "splits": "58ebc469016defb5"
       }
     }
