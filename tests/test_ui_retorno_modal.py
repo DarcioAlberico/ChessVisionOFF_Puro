@@ -47,8 +47,15 @@ ARQUIVOS_DE_UI = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")
 )
 """Mesmo recorte do `test_strings` e do `test_busy`: a interface, e o que a monta."""
 
-LIMITE = 48
+LIMITE = 49
 """Quantas caixas modais a interface ainda abre.
+
+**48 -> 49 na importação de imagens (2026-10-23)**, e a nova é a mesma pergunta de posição ilegal
+que o editor faz (`ui/legality.illegal_save_question`), agora na conferência de
+`qt/importador_de_imagens.py`: é decisão pela régua da tabela -- gravar um diagrama de estrutura
+sem rei é certo, gravar um rei que o modelo não viu é erro, e só quem olha a imagem distingue. As
+outras quatro notícias da janela (pasta que não abre, FEN mal digitada, amostra recusada, lote que
+parou) são uma linha na própria janela, e não caixa.
 
 **47 -> 48 no porte do rascunho da aba Texto para o Qt (2026-10-08)**, e a nova é a pergunta de
 recuperação do rascunho da S-255 -- a mesma que o `texto_panel` do Tk fazia (ver "48 -> 49 na

@@ -253,10 +253,15 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**Vinte** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**22** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
-exceção. Onze são operações longas e estão no `BusyRegistry`; as outras nove são declaradas
+exceção. Doze são operações longas e estão no `BusyRegistry`; as outras dez são declaradas
 em `ui/busy.py::FORA_DO_REGISTRO`, com o motivo de cada uma (S-112).
+
+**As duas últimas são da importação de imagens (2026-10-23, `qt/importador_de_imagens.py`).** O
+lote que grava os diagramas do relatório do ChessMeridaOCR confirmados pelo modelo (~0,55 s por
+imagem, 5.600 imagens) registra-se, com total e «Cancelar», e grava o andamento a cada 25; a
+leitura da imagem que está na tela da conferência é meio segundo, não grava nada e fica declarada.
 
 **As duas últimas são do ciclo 2 da OCR_UI, fase 2 (2026-09-21).** O aquecimento do modelo
 (`qt/leitura.py::Aquecimento.iniciar`) carrega o `.pt` numa `Tarefa` própria **3 s de ócio

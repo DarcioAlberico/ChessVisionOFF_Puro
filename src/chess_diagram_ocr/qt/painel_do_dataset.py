@@ -55,6 +55,7 @@ from PyQt6.QtWidgets import (
 )
 
 from chess_diagram_ocr.audit import find_duplicate_groups
+from chess_diagram_ocr.config import DEFAULT_MODEL_PATH
 from chess_diagram_ocr.dataset_browser import (
     DatasetRow,
     delete_rows,
@@ -68,6 +69,7 @@ from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
+from chess_diagram_ocr.qt.importador_de_imagens import JanelaDeImportacao
 from chess_diagram_ocr.qt.tabela import TabelaQt
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.qt.vazio import EstadoVazio
@@ -209,6 +211,9 @@ class PainelDoDataset(QWidget):
         segunda chegaria depois da primeira com as mesmas linhas -- e reescreveria a seleção que
         a pessoa já tinha refeito."""
 
+        self.importador: JanelaDeImportacao | None = None
+        """A janela de importação de imagens, enquanto aberta. Uma só: duas mexeriam no mesmo lote."""
+
         self._stale = True
         """Alguém gravou no `labels.csv` desde a última leitura desta aba (S-116).
 
@@ -237,6 +242,12 @@ class PainelDoDataset(QWidget):
             "mesmo tempo leem o disco duas vezes para dar a mesma resposta.",
         )
         self._botao(barra, "Estatísticas", self.mostrar_estatisticas, estilos.NEUTRO)
+        self.btn_importar = self._botao(barra, "Importar imagens…", self.importar_imagens, estilos.NEUTRO)
+        dica_em(
+            self.btn_importar,
+            "Traz diagramas de fora do programa para o dataset: o relatório do ChessMeridaOCR "
+            "(imagens com FEN) ou uma pasta de imagens para conferir uma a uma.",
+        )
         fora.addWidget(barra)
 
         fora.addWidget(self._filtros())
@@ -758,6 +769,37 @@ class PainelDoDataset(QWidget):
         janela = JanelaDeEstatisticas(texto_de_estatisticas(self.rows), self)
         janela.show()
         return janela
+
+    def importar_imagens(self) -> JanelaDeImportacao:
+        """Abre (ou traz para a frente) a janela que importa imagens de fora para o dataset.
+
+        Não modal: a conferência de uma pasta leva horas, e a janela principal continua usável.
+        O dataset é relido quando ela fecha -- a cada `Ctrl+S` lá seria reler 5 mil linhas por
+        amostra, o defeito que a S-116 tirou do caminho.
+        """
+        if self.importador is None:
+            csv_path, _amostras, _splits = self._caminhos()
+            self.importador = JanelaDeImportacao(
+                self,
+                caminhos=self._caminhos,
+                modelo=lambda: DEFAULT_MODEL_PATH,
+                diretorio_dos_lotes=Path(csv_path).parent / "importacao",
+                busy=self._busy_registry,
+            )
+            self.importador.amostras_gravadas.connect(self._marcar_desatualizado)
+            self.importador.finished.connect(self._importador_fechou)
+        self.importador.show()
+        self.importador.raise_()
+        self.importador.activateWindow()
+        return self.importador
+
+    def _marcar_desatualizado(self, _quantas: int) -> None:
+        self._stale = True
+
+    def _importador_fechou(self) -> None:
+        self.importador = None
+        if self._stale:
+            self.reload()
 
     # ---------------------------------------------------------------------------- duplicatas
 

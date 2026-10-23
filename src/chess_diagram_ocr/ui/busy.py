@@ -249,6 +249,12 @@ class BusyRegistry:
 
 
 FORA_DO_REGISTRO: dict[tuple[str, str], str] = {
+    ("importador_de_imagens.py", "_ler"): (
+        "Recortar e ler com o modelo a imagem que está na tela da conferência (importação de "
+        "imagens): meio segundo por imagem, e a resposta só vale se ainda for o item na tela. "
+        "Não grava nada -- quem grava é o «Salvar no dataset», na thread da janela --, então "
+        "fechar no meio não perde nada. O lote da mesma janela registra-se."
+    ),
     # `("janela.py", "_rodar")` saiu daqui no passo C2 do ciclo 2: marcar e ler a página
     # registram-se, com total (os diagramas já marcados) e «Cancelar» entre diagramas.
     ("painel_de_resultado.py", "segunda_opiniao"): (

@@ -1048,6 +1048,7 @@ src/chess_diagram_ocr/
   games_census.py       censo da base de partidas: quanto ha, e quanto disso e alcancavel
   games_db.py           leitura dos .pgn e a busca por nome e por posicao
   games_index.py        o indice sqlite da base, por nome e por posicao
+  importacao_de_imagens.py  imagens de fora (relatorio do ChessMeridaOCR, pastas soltas) para o dataset, com conferencia
   inference.py          carga do modelo, predicao de FEN e TTA
   labels.py             a porta unica do labels.csv: LabelStore (S-51)
   lance_seguinte.py     o primeiro lance impresso sob o diagrama jogado sobre a leitura, e a troca unica que o faz fechar (C11)
@@ -1125,6 +1126,30 @@ estrutura estao rotuladas certas), o `cvoff-audit` a lista a parte em vez de cha
 problema, e o `cvoff-audit --fix` nao a manda para a quarentena. Sem isso, o "sim" seria
 uma pergunta sem consequencia: o comando seguinte tiraria a linha do arquivo. Corrigir o
 rotulo depois, ja com os dois reis no lugar, limpa a marca sozinho.
+
+## Importar imagens de outros programas
+
+A aba Dataset tem o botao **Importar imagens...**, que traz diagramas de fora do programa
+para o `labels.csv`. Duas fontes:
+
+- **Relatorio do ChessMeridaOCR** (plugin do Sigil): a pasta com um `.html` e a pasta
+  `imagens/` por livro, ou a pasta que junta varios livros. A FEN vem do relatorio, mas so
+  entra sozinha quando o nosso modelo le a mesma posicao no recorte -- **Importar os que o
+  modelo confirma**. O que discorda, o tabuleiro vazio e a imagem com duas FENs diferentes no
+  relatorio ficam pendentes, com o aviso, para conferir.
+- **Pasta de imagens sem FEN** (o `chessvision-jbc`, por exemplo): nada entra sem conferencia.
+  A proposta e a leitura do modelo; corrija no tabuleiro e salve, pule ou descarte. Um
+  `index.csv` com as colunas `png` e `to_move` na raiz da pasta da o lado a jogar e a legenda.
+
+O recorte tira coordenadas, numero do diagrama e seta de quem joga: o detector so vale quando
+o quadro cobre boa parte da imagem; senao a imagem inteira e o tabuleiro (o caso das imagens
+ja recortadas rente as casas). **Usar a imagem inteira** troca um pelo outro na conferencia.
+
+O andamento de cada pasta fica em `data/importacao/`: reabrir a mesma pasta continua de onde
+parou, e uma imagem ja gravada nao e gravada de novo. A coluna `source_pdf` da amostra leva a
+fonte e o livro (`ChessMeridaOCR: <livro>`), e `corrected_by` diz o caminho:
+`importado-com-fen` (relatorio e modelo concordaram, ninguem olhou), `ocr-aceito` ou
+`ocr-corrigido` (conferida com a leitura do modelo ao lado).
 
 ## Dados e artefatos
 
