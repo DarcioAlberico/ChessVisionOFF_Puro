@@ -177,7 +177,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **41 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **42 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -398,6 +398,12 @@ cvoff-texto-semelhanca --amostras 3000 --curva
 # 146 diagramas assumidos (2,1%), e o motivo de nao ser mais e que os livros que declaram o lado
 # por diagrama ja tem camada de texto, onde o motor nem chega a ser chamado.
 cvoff-texto-lado --livros 10 --paginas 8
+
+# Quanto do negrito e do italico que a camada do PDF declara chega ao documento em cada motor
+# (S-660). A referencia e o motor `camada`; o `auto` e o `glifo` leem a mesma folha e os textos sao
+# casados por `difflib`. Livro sem estilo declarado nas folhas lidas fica fora. Precisa de
+# models/char_classifier.pt -- sem ele os dois leriam pela camada e a medida nao diria nada.
+cvoff-texto-estilo-motor --folhas 4 --json docs/metrics/texto_estilo_por_motor.json
 
 # O livro com a camada de texto invisivel do que o motor leu (S-210). A pagina nao muda um pixel
 # -- `render_mode=3` --, e a camada e por LINHA para o retangulo da busca cobrir a palavra, e nao
