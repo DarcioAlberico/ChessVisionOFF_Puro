@@ -253,10 +253,15 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**22** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**23** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
-exceção. Doze são operações longas e estão no `BusyRegistry`; as outras dez são declaradas
+exceção. Treze são operações longas e estão no `BusyRegistry`; as outras dez são declaradas
 em `ui/busy.py::FORA_DO_REGISTRO`, com o motivo de cada uma (S-112).
+
+**A última é a exportação do caderno do livro (2026-10-24, S-614, `qt/painel_de_texto.py`).** Ela
+renderiza de novo cada folha com diagrama para tirar as miniaturas, e num livro de centenas de
+folhas isso é minuto: registra-se como a exportação de uma folha, com «Cancelar» entre duas folhas
+e `loses_work`, porque o arquivo de destino ficaria pela metade.
 
 **As duas últimas são da importação de imagens (2026-10-23, `qt/importador_de_imagens.py`).** O
 lote que grava os diagramas do relatório do ChessMeridaOCR confirmados pelo modelo (~0,55 s por
