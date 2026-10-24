@@ -192,7 +192,8 @@ usados estao abaixo; `--help` lista o resto.
 cvoff-train --epochs 12 --batch-size 128 --lr 0.001
 cvoff-train --fresh --seed 42            # reproduzivel: mesma semente, mesmas metricas
 cvoff-train --num-workers 4              # medido: nao compensa nesta maquina (EXPERIMENTS.md)
-# Aumento dirigido ao acervo (S-40): m=espelhar h=hachura s=granulacao p=papel i=inversao.
+# Aumento dirigido ao acervo (S-40): m=espelhar h=hachura s=granulacao p=papel i=inversao
+# e=espessura do traco x=marca de casa (estrela, X, ponto ou cruz sobre a casa vazia).
 # Desligado por padrao e AINDA NAO MEDIDO -- ligar muda o modelo. A comparacao honesta e
 # treinar as duas variantes com a mesma semente e medir com `cvoff-field`.
 cvoff-train --fresh --epochs 3 --seed 42 --augment mhsp --model models/experiments/s40.pt

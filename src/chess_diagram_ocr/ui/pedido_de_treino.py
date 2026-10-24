@@ -48,7 +48,7 @@ class TrainingRequest:
     fresh: bool = False
     splits_path: Path | None = None
     augment: str = "aug0"
-    """O regime de aumento (`AugmentConfig.version`, letras `mhspie`) com que treinar (C4).
+    """O regime de aumento (`AugmentConfig.version`, letras `mhspiex`) com que treinar (C4).
 
     Lido do checkpoint de produção no clique: retreinar continua o regime que produziu o
     modelo, e um retreino do zero também parte dele. Antes era sempre o genérico
