@@ -104,17 +104,15 @@ def divergencias(painel: PainelDeTexto) -> list[str]:
         if OBJETO in texto:
             # A figura mora no bloco da marca que vem logo abaixo dela (S-602).
             seguinte = bloco.next()
-            marca = _corrida_em(doc, painel._mapa.deslocamento(seguinte.position())) if seguinte.isValid() else None
-            atributos = marca.atributos if marca is not None else rico.PADRAO
+            corrida = _corrida_em(doc, painel._mapa.deslocamento(seguinte.position())) if seguinte.isValid() else None
             onde = f"bloco {bloco.blockNumber()} (miniatura)"
         elif not texto:
-            atributos = rico.PADRAO  # a linha em branco do separador (S-601)
+            corrida = None  # a linha em branco do separador (S-601)
             onde = f"bloco {bloco.blockNumber()} (em branco)"
         else:
             corrida = _corrida_em(doc, painel._mapa.deslocamento(bloco.position()))
-            atributos = corrida.atributos if corrida is not None else rico.PADRAO
             onde = f"bloco {bloco.blockNumber()} ({texto[:20]!r})"
-        esperado = painel.formato_de_bloco(atributos)
+        esperado = painel.formato_de_bloco(corrida)
         erros.extend(f"{onde}: {erro}" for erro in _do_bloco(esperado, bloco.blockFormat()))
         bloco = bloco.next()
     return erros

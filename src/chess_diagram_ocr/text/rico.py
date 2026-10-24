@@ -145,6 +145,14 @@ entregou assim. `esquerda` é uma escolha: alguém centralizou e voltou atrás, 
 sobrevive ao arquivo em vez de virar indistinguível do que nunca foi tocado. É a mesma fronteira que
 `cor` mantém entre "sem cor" e "cor que o autor escolheu"."""
 
+ALINHAMENTO_DO_DIAGRAMA = ALINHAMENTO_CENTRO
+"""Onde fica o diagrama que ninguém alinhou (S-620): **no centro**, que é como os livros o imprimem.
+
+É a distinção de `ALINHAMENTOS` posta para trabalhar. Para o parágrafo, `""` se desenha à esquerda
+porque é assim que texto se desenha; para a figura, à esquerda era só o que o desenho fazia por
+falta de decisão, e o dono do projeto pediu o centro como padrão. Quem escreveu `esquerda` na marca
+continua à esquerda -- a escolha escrita vence o padrão."""
+
 CORPO_MINIMO = -3
 CORPO_MAXIMO = 6
 """Os limites do degrau de corpo (S-260). **A faixa é curta, e os dois lados têm razão diferente.**
@@ -1304,6 +1312,19 @@ def mover(doc: DocumentoRico, inicio: int, fim: int, destino: int) -> DocumentoR
     return DocumentoRico(corridas=fundir(novas), origem=doc.origem)
 
 
+def alinhamento_efetivo(corrida: Corrida, *, padrao_do_diagrama: str = ALINHAMENTO_DO_DIAGRAMA) -> str:
+    """O alinhamento com que esta corrida se desenha e se exporta (S-620). Pura.
+
+    O escrito vale sempre. Sem nada escrito, a marca do diagrama vai para `padrao_do_diagrama`, e o
+    texto continua `""` -- à esquerda, como texto se desenha. **É a única resposta a essa pergunta**:
+    a tela (`qt/painel_de_texto.formato_de_bloco`) e os exportadores (`exportacao`) chamam esta
+    função, e é o que impede a figura de sair centralizada na tela e à esquerda no `.html`.
+    """
+    if corrida.atributos.alinhamento or not corrida.e_diagrama:
+        return corrida.atributos.alinhamento
+    return padrao_do_diagrama
+
+
 __all__ = [
     "BOOLEANOS",
     "CORES_DE_AUTOR",
@@ -1327,6 +1348,7 @@ __all__ = [
     "ALINHAMENTOS",
     "ALINHAMENTO_CENTRO",
     "ALINHAMENTO_DIREITA",
+    "ALINHAMENTO_DO_DIAGRAMA",
     "ALINHAMENTO_ESQUERDA",
     "ALINHAMENTO_JUSTIFICADO",
     "ATRIBUTOS_DA_MARCA",
@@ -1338,6 +1360,7 @@ __all__ = [
     "CORPO_MINIMO",
     "alcance_da_edicao",
     "alcance_de_apagar",
+    "alinhamento_efetivo",
     "alternar",
     "apagar",
     "aplicar",

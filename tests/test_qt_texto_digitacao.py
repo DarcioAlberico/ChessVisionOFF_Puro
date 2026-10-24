@@ -72,7 +72,7 @@ class _Folha(unittest.TestCase):
     def setUp(self) -> None:
         self.app = aplicacao()
         tema.aplicar_tema(self.app)
-        self.painel = PainelDeTexto(dpi=72)
+        self.painel = PainelDeTexto(dpi=72, pasta_de_rascunhos=pasta_temporaria(self) / "rascunhos")
         self.addCleanup(descartar, self.painel)
         self.painel.resize(700, 500)
         self.painel.show()
@@ -241,7 +241,7 @@ class GravarEExportarTests(_Folha):
             self.painel.salvar_documento_como()
         self.assertIn("c4 e Nf3.", arquivo.carregar(destino).para_texto())
 
-        outro = PainelDeTexto(dpi=72)
+        outro = PainelDeTexto(dpi=72, pasta_de_rascunhos=pasta_temporaria(self) / "r2")
         self.addCleanup(descartar, outro)
         with mock.patch.object(QFileDialog, "getOpenFileName", return_value=(str(destino), "")):
             outro.abrir_documento()

@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import Protocol
 
 from . import documento
-from .rico import Atributos, Corrida, DocumentoRico
+from .rico import Atributos, Corrida, DocumentoRico, alinhamento_efetivo
 
 __all__ = [
     "ALINHAMENTOS_DO_HTML",
@@ -626,7 +626,8 @@ def exportar(
                 imagem_descartada += 1
             # O campo de peças, quando a leitura dos diagramas já o deu ao bloco; `""` é "não lido".
             placement = str(getattr(doc.bloco_de(corrida), "placement", "") or "")
-            partes.append((corrida.atributos.alinhamento, formato.diagrama(corrida, recorte, placement=placement)))
+            # O alinhamento **efetivo** (S-620): o diagrama que ninguém alinhou sai no centro, como na tela.
+            partes.append((alinhamento_efetivo(corrida), formato.diagrama(corrida, recorte, placement=placement)))
             continue
         partes.append((corrida.atributos.alinhamento, formato.corrida(corrida)))
     montar = getattr(formato, "montar", None)

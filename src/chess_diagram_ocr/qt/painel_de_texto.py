@@ -60,7 +60,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -758,18 +758,24 @@ class PainelDeTexto(QWidget):
                 corrida = _corrida_em(self.documento, self._mapa.deslocamento(bloco.position()))
             else:
                 corrida = None
-            formato = self.formato_de_bloco(corrida.atributos if corrida is not None else rico.PADRAO)
+            formato = self.formato_de_bloco(corrida)
             if bloco.blockFormat() != formato:
                 cursor.setPosition(bloco.position())
                 cursor.setBlockFormat(formato)
             bloco = bloco.next()
 
-    def formato_de_bloco(self, atributos: rico.Atributos) -> QTextBlockFormat:
-        """O formato de bloco que estes atributos dão **nesta vista** -- o único lugar que o responde.
+    def formato_de_bloco(self, corrida: rico.Corrida | None) -> QTextBlockFormat:
+        """O formato do bloco em que `corrida` começa, **nesta vista** -- o único lugar que o responde.
 
-        O desenho escreve isto e a guarda de paridade (S-603) lê a tela contra isto; os dois
-        perguntando a uma função só é o que impede o teste de concordar com um desenho errado.
+        `None` é a linha em branco, que sai sem formato. O alinhamento é o **efetivo**
+        (`rico.alinhamento_efetivo`, S-620): o diagrama que ninguém alinhou vai para o centro, e é a
+        mesma função que a exportação chama. O desenho escreve isto e a guarda de paridade (S-603) lê
+        a tela contra isto; os dois perguntando a uma função só é o que impede o teste de concordar
+        com um desenho errado.
         """
+        if corrida is None:
+            return bloco_de(rico.PADRAO, base=self._base)
+        atributos = replace(corrida.atributos, alinhamento=rico.alinhamento_efetivo(corrida))
         return bloco_de(atributos, base=self._base)
 
     def _selecao_atual(self) -> tuple[int, int]:
