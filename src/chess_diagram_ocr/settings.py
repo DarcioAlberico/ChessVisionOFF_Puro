@@ -389,6 +389,27 @@ class RecognitionSettings:
 
 
 @dataclass(frozen=True)
+class TextoSettings:
+    """A aba Texto: onde a mesa de texto se arma (S-640).
+
+    `mesa` é `ui/mesa.MESAS` -- `texto` (o PDF vai para a esquerda com a aba Texto à frente),
+    `sempre` ou `nunca`. **Não é validada aqui além do tipo**, pela razão de `skin` no estado da
+    janela: o conjunto é de quem o aplica, e `mesa.vale_a_mesa` trata o nome que não conhece como o
+    padrão. Repetir a tupla neste módulo a declararia num segundo lugar.
+    """
+
+    mesa: str = "texto"
+
+    def to_dict(self) -> dict[str, object]:
+        return {"mesa": self.mesa}
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> TextoSettings:
+        mesa = data.get("mesa")
+        return cls(mesa=mesa) if isinstance(mesa, str) and mesa else cls()
+
+
+@dataclass(frozen=True)
 class Settings:
     """As preferências do usuário que não são estado de janela."""
 
@@ -398,6 +419,7 @@ class Settings:
     local_reader: LocalReaderSettings = LocalReaderSettings()
     training: TrainingSettings = TrainingSettings()
     recognition: RecognitionSettings = RecognitionSettings()
+    texto: TextoSettings = TextoSettings()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -408,6 +430,7 @@ class Settings:
             "local_reader": self.local_reader.to_dict(),
             "training": self.training.to_dict(),
             "recognition": self.recognition.to_dict(),
+            "texto": self.texto.to_dict(),
         }
 
     @classmethod
@@ -423,6 +446,7 @@ class Settings:
             local_reader=LocalReaderSettings.from_dict(_secao("local_reader")),
             training=TrainingSettings.from_dict(_secao("training")),
             recognition=RecognitionSettings.from_dict(_secao("recognition")),
+            texto=TextoSettings.from_dict(_secao("texto")),
         )
 
 

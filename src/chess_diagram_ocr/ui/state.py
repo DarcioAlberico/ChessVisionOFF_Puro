@@ -189,6 +189,13 @@ class AppState:
     **notação** -- uma linha de lances quebrada deixa de ser uma linha de lances --, e essa escolha
     dura tanto quanto a de `wheel_flips_page`, que é o interruptor vizinho com o mesmo argumento."""
 
+    mesa_fraction: float = 0.0
+    """A parte da largura que o PDF ocupa **na mesa de texto** (S-640). `0` = nunca guardada.
+
+    Separada de `sash_fraction` porque a mesa troca os lados do divisor: gravar a fração dela por cima
+    da outra faria a janela abrir, na sessão seguinte, com a coluna do trabalho do tamanho que o PDF
+    tinha na mesa. As duas disposições lembram cada uma a sua alça."""
+
     estudo_aberto: str = ""
     """A chave do diagrama cujo estudo estava aberto na sala (S-271). Vazio = nenhum.
 
@@ -273,6 +280,7 @@ class AppState:
             "texto_quebra": bool(self.texto_quebra),
             "texto_motor": str(self.texto_motor),
             "texto_bloco": bool(self.texto_bloco),
+            "mesa_fraction": float(self.mesa_fraction),
             "estudo_aberto": self.estudo_aberto,
             "estudo_divisor": float(self.estudo_divisor),
         }
@@ -406,6 +414,10 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     texto_bloco = raw.get("texto_bloco")
     if isinstance(texto_bloco, bool):
         state.texto_bloco = texto_bloco
+
+    mesa = raw.get("mesa_fraction")
+    if isinstance(mesa, (int, float)) and not isinstance(mesa, bool):
+        state.mesa_fraction = _clamp(float(mesa), 0.0, 1.0)
 
     estudo_aberto = raw.get("estudo_aberto")
     if isinstance(estudo_aberto, str):

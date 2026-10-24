@@ -392,6 +392,7 @@ SEM_TKINTER = {
     "leitura_do_pdf.py": "os três números medidos do visualizador e o leitor do sistema (S-330/S-503)",
     "legality.py": "a explicação de por que a posição é ilegal",
     "medidas_da_fita.py": "os modos, o orçamento e os grupos da fita (S-227/S-228/S-503)",
+    "mesa.py": "quando a mesa de texto se arma, e com que fração (S-640)",
     "lista_de_partidas.py": "a candidata como linha de tabela, e o travessão (S-86/S-503)",
     "page_overlay.py": "a geometria das caixas sobre a página",
     "page_results.py": "os resultados de uma página, sem tela",
