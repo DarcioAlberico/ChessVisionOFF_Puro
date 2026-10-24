@@ -189,6 +189,10 @@ class AppState:
     **notação** -- uma linha de lances quebrada deixa de ser uma linha de lances --, e essa escolha
     dura tanto quanto a de `wheel_flips_page`, que é o interruptor vizinho com o mesmo argumento."""
 
+    texto_mesa: str = ""
+    """A mesa de texto se arma ao abrir o Texto? (S-640) `ui/mesa`: `""` e `texto` ligam, `nunca`
+    desliga. Não é validada aqui além do tipo, pela razão de `skin`: quem a aplica é `mesa.ligada`."""
+
     mesa_fraction: float = 0.0
     """A parte da largura que o PDF ocupa **na mesa de texto** (S-640). `0` = nunca guardada.
 
@@ -280,6 +284,7 @@ class AppState:
             "texto_quebra": bool(self.texto_quebra),
             "texto_motor": str(self.texto_motor),
             "texto_bloco": bool(self.texto_bloco),
+            "texto_mesa": str(self.texto_mesa),
             "mesa_fraction": float(self.mesa_fraction),
             "estudo_aberto": self.estudo_aberto,
             "estudo_divisor": float(self.estudo_divisor),
@@ -414,6 +419,10 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     texto_bloco = raw.get("texto_bloco")
     if isinstance(texto_bloco, bool):
         state.texto_bloco = texto_bloco
+
+    texto_mesa = raw.get("texto_mesa")
+    if isinstance(texto_mesa, str):
+        state.texto_mesa = texto_mesa
 
     mesa = raw.get("mesa_fraction")
     if isinstance(mesa, (int, float)) and not isinstance(mesa, bool):

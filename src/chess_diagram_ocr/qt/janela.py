@@ -86,48 +86,32 @@ from chess_diagram_ocr.config import (
 )
 from chess_diagram_ocr.detection import DiagramCandidate, detect_diagrams_in_pdf_page, detect_diagrams_rendering_page
 from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
-from chess_diagram_ocr.qt import (
-    abas_da_suite,
-    acessibilidade,
-    dialogo_de_configuracoes,
-    dialogos,
-    dica,
-    escala,
-    exportador_de_livro,
-    fila,
-    fita,
-    importador_de_livro,
-    legenda,
-    leitura,
-    menu,
-    painel_de_revisao_de_texto,
-    painel_de_rotulagem,
-    painel_do_pdf,
-    paleta,
-    plataforma,
-    tema,
-)
+from chess_diagram_ocr.qt import acessibilidade, dialogo_de_configuracoes, dialogos, dica, escala, exportador_de_livro, fila, fita, legenda, menu
+from chess_diagram_ocr.qt import abas_da_suite, importador_de_livro, painel_de_revisao_de_texto, painel_de_rotulagem, painel_do_pdf
+from chess_diagram_ocr.qt import paleta, plataforma, tema
+from chess_diagram_ocr.qt.areas_de_trabalho import AreasDeTrabalho
+from chess_diagram_ocr.qt.trilho import TrilhoDoLivro
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
-from chess_diagram_ocr.qt.areas_de_trabalho import AreasDeTrabalho
 from chess_diagram_ocr.qt.campo import PainelDeCampo
 from chess_diagram_ocr.qt.dialogos import ControladorDeTreino
 from chess_diagram_ocr.qt.exportador import Exportador
-from chess_diagram_ocr.qt.leitura import Aquecimento, Ocupacao
 from chess_diagram_ocr.qt.marcas import LeitorDeMarcas, amostras_de_treino_guardadas
 from chess_diagram_ocr.qt.painel_da_galeria import PainelDaGaleria
 from chess_diagram_ocr.qt.painel_de_estudo import PainelDeEstudo
 from chess_diagram_ocr.qt.painel_de_resultado import PainelDeResultado
 from chess_diagram_ocr.qt.painel_de_revisao import PainelDeRevisao
+from chess_diagram_ocr.qt.disposicao_de_mesa import DisposicaoDeMesa
 from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
 from chess_diagram_ocr.qt.painel_do_dataset import PainelDoDataset
 from chess_diagram_ocr.qt.painel_do_pdf import PainelDoPdf
 from chess_diagram_ocr.qt.rodape import RodapeDaJanela
+from chess_diagram_ocr.qt import leitura
+from chess_diagram_ocr.qt.leitura import Aquecimento, Ocupacao
 from chess_diagram_ocr.qt.trabalho import DeteccaoDeFundo, Tarefa, manter_viva, rastro_de
-from chess_diagram_ocr.qt.trilho import TrilhoDoLivro
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
-from chess_diagram_ocr.service import OcrService, RecognitionCanceled, RecognitionOptions, RecognizedDiagram
+from chess_diagram_ocr.service import OcrService, RecognitionOptions, RecognizedDiagram, RecognitionCanceled
 from chess_diagram_ocr.ui import (
     abas,
     conjuntos,
@@ -135,15 +119,11 @@ from chess_diagram_ocr.ui import (
     espaco,
     estado_do_rodape,
     geometria,
-    mesa,
     pele,
     sala_declarada,
     strings,
 )
 from chess_diagram_ocr.ui.busy import BusyRegistry
-from chess_diagram_ocr.ui.configuracoes import dpi as _dpi
-from chess_diagram_ocr.ui.configuracoes import max_boards as _max_boards
-from chess_diagram_ocr.ui.configuracoes import mesa_de_texto
 from chess_diagram_ocr.ui.editor_model import DiagramEditorModel
 from chess_diagram_ocr.ui.exportacao_de_pgn import ExportSettings
 from chess_diagram_ocr.ui.galeria_declarada import LARGURA_MINIMA_DA_GALERIA
@@ -162,6 +142,7 @@ from chess_diagram_ocr.ui.page_overlay import (
     mark_saved,
 )
 from chess_diagram_ocr.ui.page_results import PageOcrParams, colocacoes_conferidas, paginas_editadas
+from chess_diagram_ocr.ui.configuracoes import dpi as _dpi, max_boards as _max_boards
 from chess_diagram_ocr.ui.pedido_de_treino import TrainingRequest, pedido_de_treino
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.state import AppState, load_state, save_state
@@ -273,10 +254,6 @@ class JanelaPrincipal(QMainWindow):
 
         self._divisor_por_posicionar = bool(self._estado.sash_fraction)
         """A alça do divisor ainda espera a primeira aparição da janela. Ver `showEvent`."""
-        self._em_mesa = False
-        """O divisor está na disposição de mesa -- o PDF à esquerda, o trabalho à direita (S-640)."""
-        self._fracao_fora_da_mesa: float | None = None
-        """A fração da alça na disposição de antes, guardada ao entrar na mesa para voltar a ela."""
 
         self.busy = BusyRegistry()
         self._ocupacao = Ocupacao(self.busy)
@@ -547,6 +524,10 @@ class JanelaPrincipal(QMainWindow):
         # `sizeHint` de cada lado, e a de um `QTabWidget` cheio de rótulos com quebra de linha
         # pede toda a largura que lhe derem.
         self.divisor.setSizes([LARGURA_MINIMA_DAS_ABAS, 760])
+        self.mesa = DisposicaoDeMesa(  # o PDF à esquerda com a aba Texto à frente (S-640)
+            self.divisor, trabalho=self.abas, livro=self.lado_do_livro, visor=self.pdf.visor, estado=self._estado,
+            texto_a_frente=lambda: self.abas.area_atual() is self.texto,
+        )
 
         self.treino = ControladorDeTreino(self, pedido=self._pedido_de_treino, busy=self.busy)
         self.exportador = Exportador(
@@ -656,6 +637,7 @@ class JanelaPrincipal(QMainWindow):
         self.texto.definir_quebra(estado.texto_quebra)
         self.texto.definir_motor(estado.texto_motor)  # o motor e o modo bloco da sessão anterior (item 17)
         self.texto.definir_modo_bloco(estado.texto_bloco)
+        self.menu.marcar("mesa_de_texto", ligado=self.mesa.ligada)
         self.estudo.posicionar_divisor(estado.estudo_divisor)
         # Daqui para baixo o disco já está nos widgets, e gravar volta a ser honesto (S-322).
         self._estado_aplicado = True
@@ -699,7 +681,7 @@ class JanelaPrincipal(QMainWindow):
         """
         super().showEvent(a0)
         if not self._divisor_por_posicionar:
-            self.arrumar_a_mesa()  # a primeira aparição sem alça guardada também decide a mesa
+            self.mesa.arrumar()  # a primeira aparição sem alça guardada também decide a mesa
             return
         self._divisor_por_posicionar = False
         largura = sum(self.divisor.sizes()) or self.divisor.width()
@@ -707,69 +689,7 @@ class JanelaPrincipal(QMainWindow):
             return
         esquerda = max(1, int(largura * self._estado.sash_fraction))
         self.divisor.setSizes([esquerda, max(1, largura - esquerda)])
-        self.arrumar_a_mesa()
-
-    # ------------------------------------------------------------------------- a mesa (S-640)
-
-    def preferencia_da_mesa(self) -> str:
-        """`texto`, `sempre` ou `nunca` (`ui/mesa.MESAS`), das Configurações, lida na hora de usar."""
-        return mesa_de_texto()
-
-    def _area_mudou_para_a_mesa(self, *_: object) -> None:
-        """Slot da troca de modo e de aba. Nome sem acento: o `connect` do PyQt cai com acento."""
-        self.arrumar_a_mesa()
-
-    def arrumar_a_mesa(self) -> None:
-        """Arma ou desarma a mesa de texto conforme a área à frente e a preferência (S-640/S-645).
-
-        **Só com a janela mostrada**: antes do `show()` a largura é a da montagem, e a decisão de
-        `mesa.vale_a_mesa` olha a largura. A primeira aparição chama isto de novo (`showEvent`).
-        """
-        if not self.isVisible():
-            return
-        quer = mesa.vale_a_mesa(
-            self.preferencia_da_mesa(),
-            texto_a_frente=self.abas.area_atual() is self.texto,
-            largura=self.width(),
-        )
-        if quer != self._em_mesa:
-            self._trocar_os_lados(para_a_mesa=quer)
-
-    @property
-    def em_mesa(self) -> bool:
-        return self._em_mesa
-
-    def _trocar_os_lados(self, *, para_a_mesa: bool) -> None:
-        """Põe o visualizador à esquerda (mesa) ou de volta à direita, **sem desorientar quem lê**.
-
-        Os dois widgets são os mesmos -- o `QSplitter` só muda a ordem --, então a página aberta
-        e o zoom ficam; a rolagem do visualizador é devolvida pela fração em que estava, porque a
-        largura nova reflui a página. Cada disposição lembra a sua alça: a da mesa vai para
-        `mesa_fraction`, a de antes é guardada aqui e devolvida ao sair.
-        """
-        tamanhos = self.divisor.sizes()
-        total = sum(tamanhos) or self.divisor.width()
-        barra = self.pdf.visor.verticalScrollBar()
-        rolagem = barra.value() / barra.maximum() if barra is not None and barra.maximum() > 0 else None
-        if para_a_mesa:
-            if total > 0 and len(tamanhos) >= 2:
-                self._fracao_fora_da_mesa = geometria.fracao_de_divisor(tamanhos[0], total)
-            self.divisor.insertWidget(0, self.lado_do_livro)
-            fracao = mesa.fracao_da_mesa(self._estado.mesa_fraction)
-        else:
-            if total > 0 and len(tamanhos) >= 2:
-                self._estado.mesa_fraction = geometria.fracao_de_divisor(tamanhos[0], total)
-            self.divisor.insertWidget(0, self.abas)
-            fracao = self._fracao_fora_da_mesa or self._estado.sash_fraction or LARGURA_MINIMA_DAS_ABAS / max(1, total)
-        # O lado do trabalho continua o que cresce menos, como na montagem: o fator segue o widget.
-        self.divisor.setStretchFactor(self.divisor.indexOf(self.abas), 2)
-        self.divisor.setStretchFactor(self.divisor.indexOf(self.lado_do_livro), 3)
-        if total > 0:
-            esquerda = max(1, int(total * fracao))
-            self.divisor.setSizes([esquerda, max(1, total - esquerda)])
-        self._em_mesa = para_a_mesa
-        if rolagem is not None and barra is not None:
-            barra.setValue(round(rolagem * barra.maximum()))
+        self.mesa.arrumar()
 
     def _anotar_arranjo(self) -> None:
         """Lê da tela o arranjo de agora e o põe no estado (S-156/S-311).
@@ -796,17 +716,7 @@ class JanelaPrincipal(QMainWindow):
         atual = normal if not normal.isEmpty() else self.geometry()
         texto = f"{atual.width()}x{atual.height()}{atual.x():+d}{atual.y():+d}"
         self._estado.window_geometry = geometria.geometria_gravavel(texto) or self._estado.window_geometry
-        tamanhos = self.divisor.sizes()
-        if len(tamanhos) >= 2 and sum(tamanhos) > 0:
-            fracao = geometria.fracao_de_divisor(tamanhos[0], sum(tamanhos))
-            # Na mesa a alça à esquerda é a do PDF: ela vai para a chave dela, e a de antes fica
-            # a que a disposição normal tinha (S-640).
-            if self._em_mesa:
-                self._estado.mesa_fraction = fracao
-                if self._fracao_fora_da_mesa:
-                    self._estado.sash_fraction = self._fracao_fora_da_mesa
-            else:
-                self._estado.sash_fraction = fracao
+        self.mesa.anotar()  # as duas alças, cada uma na sua chave (S-640)
 
     def _gravar_estado(self) -> None:
         """Anota o que a próxima sessão precisa e grava. Nunca levanta -- `save_state` registra.
@@ -1090,8 +1000,8 @@ class JanelaPrincipal(QMainWindow):
         self.dataset.editar.connect(self._abrir_amostra)
 
         # --- a mesa de texto (S-640): a troca de área é o único momento em que ela se decide
-        self.principal.modo_mudou.connect(self._area_mudou_para_a_mesa)
-        self.abas.currentChanged.connect(self._area_mudou_para_a_mesa)
+        self.principal.modo_mudou.connect(self.mesa.arrumar)
+        self.abas.currentChanged.connect(self.mesa.arrumar)
 
     def _dizer(self, frase: str, severidade: str | None = None) -> None:
         """A frase de qualquer painel no rodapé. Quem emite declara a severidade quando sabe (A10);
@@ -1970,6 +1880,7 @@ class JanelaPrincipal(QMainWindow):
             "importar_livro": lambda: self.livro.comecar() if self.livro else self._dizer(importador_de_livro.MOTIVO_AUSENTE.splitlines()[0]),
             "cancelar_importacao": lambda: self.livro.cancelar() if self.livro else None,
             "trilho": self._alternar_trilho,
+            "mesa_de_texto": lambda: self.menu.marcar("mesa_de_texto", ligado=self.mesa.alternar()),
             "primeira_duvidosa": self.trilho._ir_para_a_primeira_duvidosa,
             "proxima_duvidosa": self.trilho.ir_para_a_proxima_duvidosa,
             "anterior_duvidosa": self.trilho.ir_para_a_anterior_duvidosa,

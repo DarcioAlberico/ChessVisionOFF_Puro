@@ -9,7 +9,7 @@ dos diagramas e o sincronismo de folha que já funcionam. Uma janela separada fi
 pergunta em que janela está o foco.
 
 Este módulo é a decisão, sem toolkit: **quando** a mesa vale, e com que fração. Quem troca os lados
-é `qt/janela.py`.
+é `qt/disposicao_de_mesa.py`.
 """
 
 from __future__ import annotations
@@ -17,25 +17,22 @@ from __future__ import annotations
 __all__ = [
     "FRACAO_PADRAO",
     "LARGURA_MINIMA",
-    "MESAS",
     "MESA_AO_ABRIR_O_TEXTO",
     "MESA_NUNCA",
-    "MESA_SEMPRE",
     "fracao_da_mesa",
+    "ligada",
     "vale_a_mesa",
 ]
 
 MESA_AO_ABRIR_O_TEXTO = "texto"
-MESA_SEMPRE = "sempre"
 MESA_NUNCA = "nunca"
+"""As duas posições da preferência (`AppState.texto_mesa`), e `""` -- nunca escolhida -- é a primeira.
 
-MESAS: tuple[str, ...] = (MESA_AO_ABRIR_O_TEXTO, MESA_SEMPRE, MESA_NUNCA)
-"""As três posições da preferência, a primeira é o padrão. Conjunto fechado.
-
-**Três e não um interruptor**, e a razão é a da segunda revisão do plano: trocar o divisor a cada
-troca de modo reflui a janela inteira, e quem alterna entre o Texto e o Resultado o tempo todo
-pode preferir que o PDF **fique** à esquerda (`sempre`) -- ou nunca saia da direita (`nunca`,
-a disposição de antes)."""
+**Mora no estado da sessão, e não em `settings.py`**, e a razão é medida: `settings` está no caminho
+de medição dos relatórios de campo (S-218), e uma seção nova ali muda a impressão do código que os
+quatro relatórios declaram. A segunda revisão do plano propôs uma terceira posição, `sempre` (o PDF
+à esquerda em toda área); ela espera a decisão R1 do dono, e uma posição que só se alcança editando
+o JSON seria peso morto."""
 
 LARGURA_MINIMA = 1000
 """Abaixo desta largura de janela, em pixel, a mesa não se arma.
@@ -50,6 +47,11 @@ O PDF está ali para ser **conferido**, e uma coluna de página inteira se lê e
 se trabalha, e é ele que precisa das linhas compridas."""
 
 
+def ligada(preferencia: str) -> bool:
+    """A preferência guardada liga a mesa? `""` (nunca escolhida) e nome desconhecido valem o padrão. Pura."""
+    return preferencia != MESA_NUNCA
+
+
 def vale_a_mesa(preferencia: str, *, texto_a_frente: bool, largura: int) -> bool:
     """A mesa deve estar armada agora? Pura.
 
@@ -57,15 +59,9 @@ def vale_a_mesa(preferencia: str, *, texto_a_frente: bool, largura: int) -> bool
     e a primeira aparição da janela. Arrastar a borda da janela não pode trocar os lados no meio do
     trabalho; a largura aqui é a do instante em que a pessoa entrou na área.
 
-    Preferência desconhecida (um `settings.json` de outra versão) vale como o padrão.
+    Preferência desconhecida (o estado gravado por outra versão) vale como o padrão.
     """
-    if largura < LARGURA_MINIMA:
-        return False
-    if preferencia == MESA_NUNCA:
-        return False
-    if preferencia == MESA_SEMPRE:
-        return True
-    return texto_a_frente
+    return largura >= LARGURA_MINIMA and ligada(preferencia) and texto_a_frente
 
 
 def fracao_da_mesa(guardada: float) -> float:

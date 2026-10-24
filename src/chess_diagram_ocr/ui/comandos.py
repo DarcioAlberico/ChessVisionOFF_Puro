@@ -492,6 +492,9 @@ CATALOGO: tuple[Comando, ...] = (
         estilos.NEUTRO,
         rotulo_curto="Zoom normal",
     ),
+    # A mesa de texto (S-640): o PDF vai para a esquerda e a aba Texto, larga, para a direita ao
+    # abrir o Texto. Interruptor porque a preferência é ligada/desligada; o padrão é ligada.
+    Comando("mesa_de_texto", "Mesa de texto: o PDF à esquerda ao abrir o Texto", VISUALIZACAO, estilos.NEUTRO),
     Comando(
         "quebrar_linha",
         "Quebrar as linhas na largura da janela",

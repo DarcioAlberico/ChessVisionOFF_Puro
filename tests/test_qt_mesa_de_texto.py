@@ -2,21 +2,19 @@
 
 O pedido foi "quando clicar no botão Texto, uma janela com o PDF à esquerda e o editor à direita".
 A janela já tinha os dois, na ordem contrária e com a aba espremida na coluna estreita. Estes testes
-cobram a troca de lados ao entrar no Texto, a volta ao sair, as três posições da preferência, o
-limiar de largura decidido só ao entrar, que a página e o zoom do visualizador sobrevivem, e que
-cada disposição lembra a sua alça.
+cobram a troca de lados ao entrar no Texto, a volta ao sair, o interruptor do menu, o limiar de
+largura decidido só ao entrar, que a página e o zoom do visualizador sobrevivem, e que cada
+disposição lembra a sua alça.
 """
 
 from __future__ import annotations
 
 import unittest
-from unittest import mock
 
-from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT
 
-from chess_diagram_ocr import settings
-from chess_diagram_ocr.ui import abas, configuracoes, mesa
+from chess_diagram_ocr.ui import abas, mesa
+from chess_diagram_ocr.ui.state import AppState, load_state, save_state
 
 if TEM_PYQT:
     from test_qt_janela import _JanelaComLivro
@@ -28,20 +26,20 @@ else:  # pragma: no cover - sem o PyQt6 as classes pulam, mas precisam de uma ba
 
 class DecisaoTests(unittest.TestCase):
     def test_com_o_texto_a_frente_a_mesa_vale(self) -> None:
-        self.assertTrue(mesa.vale_a_mesa(mesa.MESA_AO_ABRIR_O_TEXTO, texto_a_frente=True, largura=1400))
-        self.assertFalse(mesa.vale_a_mesa(mesa.MESA_AO_ABRIR_O_TEXTO, texto_a_frente=False, largura=1400))
+        self.assertTrue(mesa.vale_a_mesa("", texto_a_frente=True, largura=1400))
+        self.assertFalse(mesa.vale_a_mesa("", texto_a_frente=False, largura=1400))
 
-    def test_sempre_e_nunca(self) -> None:
-        self.assertTrue(mesa.vale_a_mesa(mesa.MESA_SEMPRE, texto_a_frente=False, largura=1400))
+    def test_desligada_nunca_vale(self) -> None:
         self.assertFalse(mesa.vale_a_mesa(mesa.MESA_NUNCA, texto_a_frente=True, largura=1400))
 
     def test_abaixo_da_largura_minima_nao_vale(self) -> None:
-        self.assertFalse(mesa.vale_a_mesa(mesa.MESA_SEMPRE, texto_a_frente=True, largura=mesa.LARGURA_MINIMA - 1))
-        self.assertTrue(mesa.vale_a_mesa(mesa.MESA_SEMPRE, texto_a_frente=True, largura=mesa.LARGURA_MINIMA))
+        self.assertFalse(mesa.vale_a_mesa("", texto_a_frente=True, largura=mesa.LARGURA_MINIMA - 1))
+        self.assertTrue(mesa.vale_a_mesa("", texto_a_frente=True, largura=mesa.LARGURA_MINIMA))
 
     def test_preferencia_desconhecida_vale_como_o_padrao(self) -> None:
-        self.assertTrue(mesa.vale_a_mesa("de outra versão", texto_a_frente=True, largura=1400))
-        self.assertFalse(mesa.vale_a_mesa("de outra versão", texto_a_frente=False, largura=1400))
+        self.assertTrue(mesa.ligada("de outra versão"))
+        self.assertTrue(mesa.ligada(""), "nunca escolhida é ligada")
+        self.assertFalse(mesa.ligada(mesa.MESA_NUNCA))
 
     def test_a_fracao_guardada_ou_a_de_fabrica(self) -> None:
         self.assertEqual(mesa.fracao_da_mesa(0.0), mesa.FRACAO_PADRAO)
@@ -49,25 +47,21 @@ class DecisaoTests(unittest.TestCase):
         self.assertEqual(mesa.fracao_da_mesa(0.3), 0.3)
 
 
-class PreferenciaTests(unittest.TestCase):
-    def test_o_padrao_e_ao_abrir_o_texto(self) -> None:
-        self.assertEqual(settings.Settings().texto.mesa, mesa.MESA_AO_ABRIR_O_TEXTO)
+class EstadoTests(unittest.TestCase):
+    def test_a_preferencia_e_a_alca_vao_e_voltam_do_arquivo(self) -> None:
+        from ambiente_de_teste import pasta_temporaria
 
-    def test_vai_e_volta_do_arquivo(self) -> None:
-        caminho = pasta_temporaria(self) / "settings.json"
-        settings.save_settings(caminho, settings.Settings(texto=settings.TextoSettings(mesa=mesa.MESA_NUNCA)))
-        self.assertEqual(configuracoes.mesa_de_texto(caminho), mesa.MESA_NUNCA)
-
-    def test_a_janela_de_configuracoes_oferece_as_tres(self) -> None:
-        campo = next(c for c in configuracoes.CAMPOS if c.chave == "texto.mesa")
-        self.assertEqual(campo.opcoes, mesa.MESAS)
+        caminho = pasta_temporaria(self) / "estado.json"
+        save_state(caminho, AppState(texto_mesa=mesa.MESA_NUNCA, mesa_fraction=0.4))
+        lido = load_state(caminho)
+        self.assertEqual((lido.texto_mesa, lido.mesa_fraction), (mesa.MESA_NUNCA, 0.4))
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class DisposicaoTests(_JanelaComLivro):
-    def montar(self, preferencia: str = mesa.MESA_AO_ABRIR_O_TEXTO, *, largura: int = 1400) -> JanelaPrincipal:
-        mock.patch.object(JanelaPrincipal, "preferencia_da_mesa", return_value=preferencia).start()
+    def montar(self, preferencia: str = "", *, largura: int = 1400) -> JanelaPrincipal:
         janela = self.janela()
+        janela._estado.texto_mesa = preferencia
         janela.resize(largura, 900)
         janela.show()
         self.app.processEvents()
@@ -84,7 +78,7 @@ class DisposicaoTests(_JanelaComLivro):
     def test_entrar_no_texto_poe_o_pdf_a_esquerda(self) -> None:
         janela = self.montar()
         self.ir_para(janela, abas.TEXTO)
-        self.assertTrue(janela.em_mesa)
+        self.assertTrue(janela.mesa.armada)
         self.assertIs(janela.divisor.widget(0), janela.lado_do_livro)
         self.assertIs(janela.divisor.widget(1), janela.abas)
         # A fração de fábrica, ou o mínimo do visualizador quando ela não cabe: o divisor respeita
@@ -99,7 +93,7 @@ class DisposicaoTests(_JanelaComLivro):
         antes = self.fracao_da_esquerda(janela)
         self.ir_para(janela, abas.TEXTO)
         self.ir_para(janela, abas.RESULTADO)
-        self.assertFalse(janela.em_mesa)
+        self.assertFalse(janela.mesa.armada)
         self.assertIs(janela.divisor.widget(0), janela.abas)
         self.assertAlmostEqual(self.fracao_da_esquerda(janela), antes, delta=0.02)
 
@@ -114,22 +108,28 @@ class DisposicaoTests(_JanelaComLivro):
         self.ir_para(janela, abas.RESULTADO)
         self.assertEqual((janela.pdf.page_index, janela.pdf.zoom), (pagina, zoom))
 
-    def test_nunca_deixa_como_era(self) -> None:
+    def test_desligada_deixa_como_era(self) -> None:
         janela = self.montar(mesa.MESA_NUNCA)
         self.ir_para(janela, abas.TEXTO)
-        self.assertFalse(janela.em_mesa)
+        self.assertFalse(janela.mesa.armada)
         self.assertIs(janela.divisor.widget(0), janela.abas)
 
-    def test_sempre_arma_a_mesa_fora_do_texto(self) -> None:
-        janela = self.montar(mesa.MESA_SEMPRE)
-        self.ir_para(janela, abas.RESULTADO)
-        self.assertTrue(janela.em_mesa)
+    def test_o_interruptor_do_menu_desarma_e_rearma(self) -> None:
+        janela = self.montar()
+        self.ir_para(janela, abas.TEXTO)
+        janela._comandos()["mesa_de_texto"]()
+        self.assertFalse(janela.mesa.armada, "desligar com o Texto à frente devolve a disposição de antes")
+        self.assertEqual(janela._estado.texto_mesa, mesa.MESA_NUNCA)
+        self.assertFalse(janela.menu.acoes["mesa_de_texto"].isChecked(), "o menu mostra o que vale")
+        janela._comandos()["mesa_de_texto"]()
+        self.assertTrue(janela.mesa.armada)
+        self.assertTrue(janela.menu.acoes["mesa_de_texto"].isChecked())
 
     def test_janela_estreita_nao_arma_a_mesa(self) -> None:
         janela = self.montar(largura=mesa.LARGURA_MINIMA - 1)
         self.ir_para(janela, abas.TEXTO)
         if janela.width() < mesa.LARGURA_MINIMA:  # o piso da janela pode alargá-la sozinho
-            self.assertFalse(janela.em_mesa)
+            self.assertFalse(janela.mesa.armada)
 
     def test_estreitar_a_janela_com_a_mesa_armada_nao_troca_os_lados(self) -> None:
         """O limiar é decidido ao entrar na área, e não a cada redimensionamento (S-645)."""
@@ -137,7 +137,7 @@ class DisposicaoTests(_JanelaComLivro):
         self.ir_para(janela, abas.TEXTO)
         janela.resize(mesa.LARGURA_MINIMA - 50, 900)
         self.app.processEvents()
-        self.assertTrue(janela.em_mesa)
+        self.assertTrue(janela.mesa.armada)
 
     def test_cada_disposicao_lembra_a_sua_alca(self) -> None:
         janela = self.montar()

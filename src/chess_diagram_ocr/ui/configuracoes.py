@@ -23,9 +23,8 @@ from pathlib import Path
 from typing import Any
 
 from chess_diagram_ocr import settings as preferencias
-from chess_diagram_ocr.ui import mesa
 
-__all__ = ["ABAS", "CAMPOS", "FORA_DA_JANELA", "Campo", "dpi", "ler", "max_boards", "mesa_de_texto", "reconhecimento", "trocar"]
+__all__ = ["ABAS", "CAMPOS", "FORA_DA_JANELA", "Campo", "dpi", "ler", "max_boards", "reconhecimento", "trocar"]
 
 INTEIRO = "inteiro"
 DECIMAL = "decimal"
@@ -65,7 +64,6 @@ ABAS: tuple[tuple[str, str], ...] = (
     ("ocr", "OCR"),
     ("engine", "Motor de análise"),
     ("remote_fen", "Segunda opinião"),
-    ("texto", "Texto"),
 )
 """`(seção, título da aba)`, na ordem em que aparecem. A seção `local_reader` entra na aba
 da segunda opinião: as duas são a mesma pergunta (quem mais lê o diagrama) com respostas
@@ -127,12 +125,6 @@ CAMPOS: tuple[Campo, ...] = (
     Campo("remote_fen.endpoint", "Endereço do serviço remoto", TEXTO,
           "https://… — sem endereço o recurso não existe, de propósito."),
     Campo("remote_fen.timeout", "Tempo limite (s)", DECIMAL, "", 1.0, 300.0, 1.0, decimais=1),
-    # --- a aba Texto
-    Campo("texto.mesa", "Mesa de texto (PDF à esquerda, editor à direita)", ESCOLHA,
-          "texto: a janela troca os lados com a aba Texto à frente e destroca ao sair dela; "
-          "sempre: o PDF fica à esquerda em todas as áreas; nunca: a disposição de antes. "
-          "Abaixo de 1000 px de largura a mesa não se arma.",
-          opcoes=mesa.MESAS),
 )
 
 FORA_DA_JANELA: dict[str, str] = {
@@ -181,11 +173,6 @@ def reconhecimento(caminho: Path = preferencias.DEFAULT_SETTINGS_PATH) -> prefer
     lido = preferencias.load_settings(Path(caminho)).recognition
     _RECONHECIMENTO = (chave, lido)
     return lido
-
-
-def mesa_de_texto(caminho: Path = preferencias.DEFAULT_SETTINGS_PATH) -> str:
-    """A preferência da mesa (S-640), lida na hora de usar -- a troca de área é rara, e não há cache."""
-    return preferencias.load_settings(Path(caminho)).texto.mesa
 
 
 def dpi() -> int:

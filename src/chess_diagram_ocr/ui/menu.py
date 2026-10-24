@@ -355,6 +355,7 @@ MENUS: tuple[Menu, ...] = (
             Item("afastar_texto"),
             Item("zoom_do_texto_normal"),
             Item("quebrar_linha", INTERRUPTOR),
+            Item("mesa_de_texto", INTERRUPTOR),
             _sep(),
             Item("exportar_txt"),
             Item("exportar_md"),

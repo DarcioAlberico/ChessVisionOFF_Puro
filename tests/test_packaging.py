@@ -257,8 +257,13 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2093
+    LIMITE = 2104
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.093 -> 2.104 na S-640 (2026-10-24)**: a mesa de texto -- o PDF à esquerda com a aba Texto
+    à frente. A troca de lados, as duas alças e o interruptor moram em `qt/disposicao_de_mesa.py`;
+    aqui ficaram a construção dela, as duas ligações de troca de área, a chamada na primeira
+    aparição, a anotação da alça e a linha do comando no menu.
 
     **2.092 -> 2.093 no item 28 da aba Texto (2026-10-09)**: a folha que o visualizador já
     rasterizou serve à leitura do texto (`definir_fornecedor_de_folha`), uma ligação.
