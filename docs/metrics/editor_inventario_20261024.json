@@ -1,7 +1,7 @@
 {
   "item": "S-256 · o inventário do editor de texto",
   "quando": "2026-10-24",
-  "commit": "767ba838a0b1ba40e0330f5531255a70bada17b8",
+  "commit": "5cc3fb72422a7c59677cab7d2beb256465905d45",
   "atributos_do_documento": [
     "negrito",
     "italico",
@@ -115,6 +115,11 @@
     "exportar_rtf",
     "exportar_pdf_pesquisavel",
     "exportar_caderno",
+    "diagramas_a_esquerda",
+    "tamanho_da_miniatura",
+    "diagramas_da_folha_a_esquerda",
+    "diagramas_da_folha_ao_centro",
+    "diagramas_da_folha_como_a_preferencia",
     "indice_do_caderno",
     "marcar_folha_conferida"
   ],
