@@ -47,8 +47,16 @@ ARQUIVOS_DE_UI = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")
 )
 """Mesmo recorte do `test_strings` e do `test_busy`: a interface, e o que a monta."""
 
-LIMITE = 49
+LIMITE = 50
 """Quantas caixas modais a interface ainda abre.
+
+**49 -> 50 no caderno do livro da aba Texto (2026-10-24, Fases 91 e 92)**, e as três perguntas que
+ele trouxe são decisões sobre trabalho humano, a linha 4 da tabela: «Ler de novo» uma folha com
+correções (diz quantas se perdem, S-612), «Descartar as correções desta folha» (S-616) e «Alinhar
+N diagramas de M folhas» no caderno inteiro (S-621). As duas primeiras couberam na folga que o
+corte deixava; a terceira é a que passou dele. Em troca, a pergunta «descarta as alterações?»
+saiu de ler outra folha, abrir um arquivo, trocar de livro e fechar quando há caderno (S-611): as
+chamadas continuam no código para a aba sem caderno, e por isso a conta não caiu.
 
 **48 -> 49 na importação de imagens (2026-10-23)**, e a nova é a mesma pergunta de posição ilegal
 que o editor faz (`ui/legality.illegal_save_question`), agora na conferência de
