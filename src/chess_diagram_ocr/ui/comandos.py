@@ -297,6 +297,8 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("exportar_md", "Exportar o texto para Markdown…", ARQUIVO, estilos.NEUTRO),
     Comando("exportar_html", "Exportar o texto para HTML…", ARQUIVO, estilos.NEUTRO),
     Comando("exportar_rtf", "Exportar o texto para RTF…", ARQUIVO, estilos.NEUTRO),
+    # O caderno inteiro, folha a folha (S-614): o mesmo exportador de cada folha, com o número dela.
+    Comando("exportar_caderno", "Exportar o caderno do livro…", ARQUIVO, estilos.NEUTRO),
     Comando(
         "exportar_pdf_pesquisavel",
         "Exportar a folha como PDF pesquisável…",
@@ -495,6 +497,10 @@ CATALOGO: tuple[Comando, ...] = (
     # A mesa de texto (S-640): o PDF vai para a esquerda e a aba Texto, larga, para a direita ao
     # abrir o Texto. Interruptor porque a preferência é ligada/desligada; o padrão é ligada.
     Comando("mesa_de_texto", "Mesa de texto: o PDF à esquerda ao abrir o Texto", VISUALIZACAO, estilos.NEUTRO),
+    # O caderno do livro (S-613): o índice das folhas e a marca de conferida. O índice abre e fecha
+    # como a paleta de glifos, e não é interruptor pelo mesmo motivo: ele não é preferência guardada.
+    Comando("indice_do_caderno", "Índice das folhas do caderno", VISUALIZACAO, estilos.NEUTRO),
+    Comando("marcar_folha_conferida", "Marcar a folha como conferida no caderno", VISUALIZACAO, estilos.NEUTRO),
     Comando(
         "quebrar_linha",
         "Quebrar as linhas na largura da janela",

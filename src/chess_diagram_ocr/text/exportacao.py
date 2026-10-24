@@ -60,7 +60,9 @@ __all__ = [
     "Texto",
     "classe_de_corpo",
     "exportar",
+    "exportar_folhas",
     "formato_de",
+    "intervalos",
     "suporte_por_formato",
 ]
 
@@ -595,8 +597,100 @@ def exportar(
     imagem escrevem só a marca -- e o relatório conta quantos ficaram sem recorte, que é a diferença
     entre "não havia diagrama" e "havia e não veio".
     """
+    perdas = dict.fromkeys(ATRIBUTOS, 0)
+    partes, diagramas, sem_recorte, imagem_descartada = _partes(doc, doc.corridas, formato, recortes or {}, perdas)
+    montar = getattr(formato, "montar", None)
+    corpo = _juntar(partes, formato)
+    cabecalho, rodape = formato.cabecalho(doc), formato.rodape(doc)
+    conteudo = montar(cabecalho, corpo, rodape) if montar else cabecalho + corpo + rodape
+    return Relatorio(
+        conteudo=conteudo,
+        perdas={atributo: quantos for atributo, quantos in perdas.items() if quantos},
+        avisos=_avisos(doc, formato, sem_recorte, imagem_descartada),
+        diagramas=diagramas,
+        sem_recorte=sem_recorte,
+    )
+
+
+def exportar_folhas(
+    folhas: Sequence[DocumentoRico],
+    formato: Formato,
+    *,
+    titulo: str = "",
+    recortes: Mapping[int, Mapping[int, Path]] | None = None,
+    faltam: Sequence[int] = (),
+) -> Relatorio:
+    """O caderno inteiro num arquivo só: as folhas em ordem, cada uma aberta pelo número dela (S-614).
+
+    **Os formatos não mudam.** Cada folha passa pelo mesmo caminho de `exportar` -- é por folha que
+    `bloco_de` acha o bloco do diagrama e que o recorte é procurado, e um documento só com as
+    corridas de todas as folhas apontaria a folha 12 para os blocos da folha 1. O que separa as
+    folhas é um título «Folha N» escrito pelo próprio formato, que o `.md`, o `.html` e o `.rtf` já
+    sabem desenhar. `recortes` é `folha (0-based) -> diagrama -> imagem`; `faltam` são as folhas
+    (0-based) que não têm caderno, e o relatório as lista em intervalos.
+    """
     imagens = recortes or {}
     perdas = dict.fromkeys(ATRIBUTOS, 0)
+    partes: list[tuple[str, str]] = []
+    diagramas = sem_recorte = imagem_descartada = 0
+    if titulo:
+        partes.append(("", formato.corrida(Corrida(titulo, Atributos(estilo="titulo"))) + _QUEBRA))
+    for doc in folhas:
+        pagina = -1 if doc.origem is None else int(doc.origem.pagina)
+        partes.append(("", formato.corrida(Corrida(f"Folha {pagina + 1}", Atributos(estilo="titulo"))) + _QUEBRA))
+        dela, d, s, i = _partes(doc, doc.corridas, formato, imagens.get(pagina, {}), perdas)
+        partes.extend(dela)
+        partes.append(("", _QUEBRA))
+        diagramas, sem_recorte, imagem_descartada = diagramas + d, sem_recorte + s, imagem_descartada + i
+    montar = getattr(formato, "montar", None)
+    corpo = _juntar(partes, formato)
+    vazio = DocumentoRico()
+    cabecalho, rodape = formato.cabecalho(vazio), formato.rodape(vazio)
+    # As contas do relatório sobre **todas** as corridas, e não uma linha por folha: 300 folhas com
+    # um trecho fora do modelo cada seriam 300 avisos de "1 trecho".
+    todas = DocumentoRico(corridas=tuple(c for doc in folhas for c in doc.corridas))
+    avisos = list(_avisos(todas, formato, sem_recorte, imagem_descartada))
+    if faltam:
+        avisos.append(f"faltam as folhas {intervalos(faltam)}")
+    return Relatorio(
+        conteudo=montar(cabecalho, corpo, rodape) if montar else cabecalho + corpo + rodape,
+        perdas={atributo: quantos for atributo, quantos in perdas.items() if quantos},
+        avisos=tuple(avisos),
+        diagramas=diagramas,
+        sem_recorte=sem_recorte,
+    )
+
+
+_QUEBRA = "\n\n"
+
+
+def intervalos(paginas: Iterable[int]) -> str:
+    """`(0, 1, 2, 3, 16)` -> `"1-4, 17"`: as folhas (0-based) como a pessoa as diz."""
+    numeros = sorted({int(p) + 1 for p in paginas})
+    saida: list[str] = []
+    inicio = anterior = None
+    for numero in [*numeros, None]:
+        if numero is not None and anterior is not None and numero == anterior + 1:
+            anterior = numero
+            continue
+        if inicio is not None:
+            saida.append(str(inicio) if inicio == anterior else f"{inicio}-{anterior}")
+        inicio = anterior = numero
+    return ", ".join(saida)
+
+
+def _partes(
+    doc: DocumentoRico,
+    corridas: Iterable[Corrida],
+    formato: Formato,
+    imagens: Mapping[int, Path],
+    perdas: dict[str, int],
+) -> tuple[list[tuple[str, str]], int, int, int]:
+    """Cada corrida no formato, com o alinhamento dela; soma as perdas em `perdas`.
+
+    Devolve as partes e as três contas do relatório: diagramas, sem recorte e com recorte que o
+    formato não carrega.
+    """
     partes: list[tuple[str, str]] = []
     diagramas = 0
     sem_recorte = 0
@@ -606,7 +700,7 @@ def exportar(
     # nenhum diagrama ficou sem imagem, num arquivo em que todos ficaram (S-341).
     desenha_imagem = bool(getattr(formato, "pasta_de_imagens", ""))
     aceita_valor = getattr(formato, "suporta_valor", None)
-    for corrida in doc.corridas:
+    for corrida in corridas:
         for atributo in ATRIBUTOS:
             valor = getattr(corrida.atributos, atributo)
             if not valor:
@@ -630,17 +724,7 @@ def exportar(
             partes.append((alinhamento_efetivo(corrida), formato.diagrama(corrida, recorte, placement=placement)))
             continue
         partes.append((corrida.atributos.alinhamento, formato.corrida(corrida)))
-    montar = getattr(formato, "montar", None)
-    corpo = _juntar(partes, formato)
-    cabecalho, rodape = formato.cabecalho(doc), formato.rodape(doc)
-    conteudo = montar(cabecalho, corpo, rodape) if montar else cabecalho + corpo + rodape
-    return Relatorio(
-        conteudo=conteudo,
-        perdas={atributo: quantos for atributo, quantos in perdas.items() if quantos},
-        avisos=_avisos(doc, formato, sem_recorte, imagem_descartada),
-        diagramas=diagramas,
-        sem_recorte=sem_recorte,
-    )
+    return partes, diagramas, sem_recorte, imagem_descartada
 
 
 def _juntar(partes: Sequence[tuple[str, str]], formato: Formato) -> str:

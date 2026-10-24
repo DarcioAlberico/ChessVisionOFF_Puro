@@ -319,6 +319,10 @@ que a região está vazia e o que a enche, e o botão faz. A frase de Texto cont
 só deixou de ser `placeholderText`, que não quebra linha e era cortada em 77 px em qualquer janela
 abaixo de 1350 px."""
 
+ABRIR_FOLHA_DO_CADERNO = "Abrir folha"
+"""O botão «Ler folha» quando a folha do campo já está no caderno do livro (S-612): abrir não
+chama o motor, e o rótulo diz isso. Ler de novo fica no menu do botão direito da folha."""
+
 DISPENSAR = "×"
 """O glifo de "tirar isto de cena", no botão que dispensa o retângulo selecionado (F9-C2).
 

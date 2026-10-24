@@ -43,7 +43,9 @@ __all__ = [
     "COMANDOS_DA_ABA",
     "COMANDO_DA_ESCOLHA",
     "ESCAPE_DA_PALETA",
+    "ESTADO_POR_EXTENSO",
     "ETIQUETA_DO_LEXICO",
+    "MARCA_DO_ESTADO",
     "MOTORES",
     "PAUSA_DA_DIGITACAO",
     "ROTULO_DO_CORPO_MISTO",
@@ -55,6 +57,7 @@ __all__ = [
     "fora_do_livro",
     "frase_do_lexico",
     "frase_do_rodape",
+    "linha_do_indice",
     "paradas_do_zoom",
     "porcentagem_do_zoom",
 ]
@@ -303,6 +306,9 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "exportar_html": "exportar_html",
     "exportar_rtf": "exportar_rtf",
     "exportar_pdf_pesquisavel": "exportar_pdf_pesquisavel",
+    "exportar_caderno": "exportar_caderno",
+    "indice_do_caderno": "alternar_indice",
+    "marcar_folha_conferida": "marcar_conferida",
 }
 """Comando do catálogo -> método desta classe que o atende (S-240/S-256).
 
@@ -320,7 +326,15 @@ catálogo, e `cor_do_texto` é `escolher_cor` porque o comando abre uma lista em
 
 
 def frase_do_rodape(
-    *, folha: int | None, trechos: int, diagramas: int, miniaturas: int, por_gravar: bool, correcoes: int = 0
+    *,
+    folha: int | None,
+    trechos: int,
+    diagramas: int,
+    miniaturas: int,
+    por_gravar: bool,
+    correcoes: int = 0,
+    do_caderno: bool = False,
+    conferidas: tuple[int, int] | None = None,
 ) -> str:
     """O rodapé da aba: que folha está na tela, o que ela tem e se há o que gravar. Pura.
 
@@ -332,10 +346,16 @@ def frase_do_rodape(
     `folha` é o índice 0-based da página, ou `None` para texto sem página de origem. `correcoes`
     é quantos pares antes/depois a mão fez sobre o que o motor leu (`text/correcao`), contados na
     pausa da digitação e na gravação -- é o número que o `.cvtxt` tem de mais caro (item 24).
+    `do_caderno` diz que a folha está guardada no caderno do livro (S-612): «Folha 3 do caderno».
+    `conferidas` é `(conferidas, folhas do livro)` (S-613), e só aparece com uma conferida ao menos:
+    "0 de 289" no rodapé de quem nunca marcou nada seria ruído.
     """
     if trechos == 0:
         return ""
-    partes = [f"Folha {folha + 1}" if folha is not None else "Texto sem folha de origem"]
+    if folha is None:
+        partes = ["Texto sem folha de origem"]
+    else:
+        partes = [f"Folha {folha + 1} do caderno" if do_caderno else f"Folha {folha + 1}"]
     partes.append(f"{trechos} trecho(s)")
     if diagramas:
         quantos = f"{diagramas} diagrama(s)"
@@ -346,4 +366,26 @@ def frase_do_rodape(
         partes.append(f"{correcoes} correção(ões)")
     if por_gravar:
         partes.append("por gravar")
+    if conferidas is not None and conferidas[0]:
+        partes.append(f"{conferidas[0]} de {conferidas[1]} folhas conferidas")
+    return " · ".join(partes)
+
+
+ESTADO_POR_EXTENSO: dict[str, str] = {"lida": "lida", "editada": "corrigida", "conferida": "conferida"}
+"""Como o índice do caderno diz o estado de uma folha (S-613). `editada` é «corrigida» na tela:
+é a palavra de quem corrige, e a do índice em disco fica sendo a do código."""
+
+MARCA_DO_ESTADO: dict[str, str] = {"lida": "○", "editada": "●", "conferida": "√"}
+"""A marca da frente de cada linha: círculo vazio, círculo cheio, visto. **O visto é `U+221A`**, e
+não o `U+2713` dos *Dingbats*: medido em 2026-10-24 com `QRawFont.supportsCharacter`, o Segoe UI
+não tem o `U+2713` nem o `U+2714` -- a lição da S-506 com o `U+2715` --, e tem os três daqui."""
+
+
+def linha_do_indice(pagina: int, estado: str, correcoes: int, gravada_em: str) -> str:
+    """Uma linha do índice das folhas (S-613): `"√ Folha 12 · conferida · 7 correções · 24/10 14:02"`."""
+    partes = [f"{MARCA_DO_ESTADO.get(estado, '○')} Folha {pagina + 1}", ESTADO_POR_EXTENSO.get(estado, estado)]
+    if correcoes:
+        partes.append(f"{correcoes} correção" if correcoes == 1 else f"{correcoes} correções")
+    if len(gravada_em) >= 16:  # ISO: `2026-10-24T14:02:11`
+        partes.append(f"{gravada_em[8:10]}/{gravada_em[5:7]} {gravada_em[11:16]}")
     return " · ".join(partes)

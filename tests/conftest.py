@@ -299,6 +299,29 @@ def _vivas(antes: frozenset[int]) -> list[threading.Thread]:
     ]
 
 
+_CADERNOS_DA_SUITE = iter(range(1 << 30))
+
+
+@pytest.fixture(autouse=True)
+def caderno_de_cada_teste() -> Iterator[None]:
+    """Cada teste tem a sua pasta de cadernos (S-610), e não a da suíte inteira.
+
+    **O `CVOFF_DATA_DIR` desvia a pasta, mas é um só para a corrida toda**, e o caderno acha o
+    livro pelo conteúdo: dois testes de janela que abrem o mesmo PDF de fixture -- mesmo copiado
+    para pastas diferentes -- abririam o mesmo caderno, e o segundo veria «Abrir folha» com a
+    folha que o primeiro leu. É o vazamento do rascunho entre testes, só que com memória melhor.
+    A pasta não é criada aqui: só nasce no teste que grava.
+    """
+    from chess_diagram_ocr.text import caderno
+
+    original = caderno.PASTA_PADRAO
+    caderno.PASTA_PADRAO = Path(DADOS_DA_SUITE.name) / "cadernos" / f"t{next(_CADERNOS_DA_SUITE)}"
+    try:
+        yield
+    finally:
+        caderno.PASTA_PADRAO = original
+
+
 @pytest.fixture(autouse=True)
 def sem_thread_vazada(request: pytest.FixtureRequest) -> Iterator[None]:
     """Falha **no teste que a deixou**, e não no vizinho que a herdou (S-413).

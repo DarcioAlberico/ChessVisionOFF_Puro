@@ -105,10 +105,11 @@ from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.imagens import pixmap_de_rgb
+from chess_diagram_ocr.qt.indice_do_caderno import IndiceDoCaderno
 from chess_diagram_ocr.qt.texto_formato import bloco_de, formato_de
 from chess_diagram_ocr.qt.trabalho import Tarefa, rastro_de
 from chess_diagram_ocr.qt.vazio import EstadoVazio
-from chess_diagram_ocr.text import busca, correcao, rascunho, rico
+from chess_diagram_ocr.text import busca, caderno, correcao, rascunho, rico
 from chess_diagram_ocr.text.documento import PaginaLida
 from chess_diagram_ocr.text.pagina import BlocoDeDiagrama
 from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, strings, texto_cores, tokens
@@ -292,6 +293,8 @@ class PainelDeTexto(QWidget):
         dpi: int | None = None,
         busy: BusyRegistry | None = None,
         pasta_de_rascunhos: Path | None = None,
+        pasta_de_cadernos: Path | None = None,
+        com_caderno: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -300,6 +303,19 @@ class PainelDeTexto(QWidget):
         """Onde o rascunho da S-255 é gravado. `None` usa `text/rascunho.PASTA_PADRAO`; o teste
         passa uma pasta própria, senão leria `data/rascunhos/` da máquina de quem o roda -- e um
         rascunho ali abriria a pergunta de recuperação no meio da suíte."""
+        self._pasta_de_cadernos: Path | None = (
+            pasta_de_cadernos if pasta_de_cadernos is not None else (caderno.PASTA_PADRAO if com_caderno else None)
+        )
+        """Onde o caderno do livro mora (S-610). `None` é a aba sem caderno -- a de teste que não o
+        pede --, que guarda o trabalho só no rascunho, como antes da Fase 91. A janela liga
+        `com_caderno`, e a pasta é a de `text/caderno.PASTA_PADRAO` lida **agora**: é o que deixa a
+        suíte dar a cada teste uma pasta própria."""
+        self._caderno: caderno.Caderno | None = None
+        self._livro_do_caderno: Path | None = None
+        self._vai_ao_caderno = False
+        """A folha da tela é trabalho do caderno: lida pelo motor, aberta dele ou editada. Um
+        `.cvtxt` avulso aberto e não tocado não é -- abri-lo para olhar não troca a folha do caderno
+        (S-616)."""
         self._rascunho = QTimer(self)
         """O relógio de **inatividade** do rascunho: cada edição o reinicia, e ele grava alguns
         segundos depois da última (S-255). Um relógio fixo gravaria no meio da digitação."""
@@ -364,6 +380,12 @@ class PainelDeTexto(QWidget):
         self._relogio: Callable[[], float] = time.monotonic
         """De onde vem o "agora" da pausa que fecha o passo. Atributo para o teste poder parar o
         tempo -- esperar um segundo de verdade numa suíte é o teste que ninguém quer rodar."""
+        self._mudou_em = 0.0
+        self._cursor_em = 0.0
+        """Quando o documento mudou e quando o cursor mexeu pela última vez: a régua do salvamento
+        no caderno pede os dois parados (`caderno.espera_restante`, S-612)."""
+        self._leitura_de: tuple[str, bool] = ("", False)
+        """O motor e o modo bloco da leitura em curso, como eram quando ela partiu."""
         self._sincronizando = False
         """O painel está repintando o que acabou de ser digitado: a mudança de formato que isso
         gera não é digitação."""
@@ -392,6 +414,8 @@ class PainelDeTexto(QWidget):
         # emite, e aí `gravar_rascunho` não grava: não há alteração.
         self.documento_mudou.connect(self._agendar_rascunho)
         self.documento_mudou.connect(self._atualizar_status)
+        self.editor.cursorPositionChanged.connect(self._anotar_cursor)
+        self.campo_de_folha.valueChanged.connect(lambda _valor: self._rotular_leitura())
 
     # ------------------------------------------------------------------------------ montagem
 
@@ -447,6 +471,11 @@ class PainelDeTexto(QWidget):
         self.editor.installEventFilter(self)
         self._teclas_do_historico = _teclas_da_tabela(TECLAS_DO_HISTORICO)
         corpo = QHBoxLayout()
+        # O índice das folhas do caderno à esquerda da folha (S-613), como o painel de navegação do
+        # WordCraft; nasce escondido, como a paleta.
+        self.indice = IndiceDoCaderno(self)
+        self.indice.folha_escolhida.connect(self._abrir_do_indice)
+        corpo.addWidget(self.indice)
         corpo.addWidget(self.editor, 1)
         corpo.addWidget(self._montar_paleta())
         caixa.addLayout(corpo, 1)
@@ -554,6 +583,7 @@ class PainelDeTexto(QWidget):
         são do desenho e não do documento.
         """
         diagramas = self.documento.diagramas
+        cad = self._caderno_da_tela()
         self.status.setText(
             frase_do_rodape(
                 folha=None if self._pagina is None else int(self._pagina.pagina),
@@ -562,8 +592,18 @@ class PainelDeTexto(QWidget):
                 miniaturas=sum(1 for c in diagramas if self._tem_miniatura(c)),
                 por_gravar=self.tem_alteracoes,
                 correcoes=self._correcoes,
+                do_caderno=cad is not None and self._pagina is not None and cad.estado(self._pagina.pagina) is not None,
+                conferidas=None if cad is None else (cad.conferidas(), self._folhas_do_livro()),
             )
         )
+
+    def _folhas_do_livro(self) -> int:
+        """Quantas folhas o livro tem, pelo teto do campo; sem ele, até a última folha do caderno."""
+        teto = int(self.campo_de_folha.maximum())
+        if teto < TETO_DE_FOLHAS:
+            return teto
+        folhas = () if self._caderno is None else self._caderno.folhas()
+        return folhas[-1].pagina + 1 if folhas else 0
 
     def _contar_correcoes(self) -> None:
         """Refaz a conta das correções e o rodapé. Na pausa, na gravação e na abertura -- não por tecla."""
@@ -685,7 +725,9 @@ class PainelDeTexto(QWidget):
             ("refazer", self.refazer),
         )
         for acao, alvo in alvos:
-            self._botao(barra, acao, alvo)
+            feito = self._botao(barra, acao, alvo)
+            if acao == "ler_folha":
+                self.botao_de_ler = feito
         return barra
 
     def _botao(self, barra: BarraFluida, acao: str, alvo: Callable[[], object]) -> QWidget:
@@ -1528,10 +1570,9 @@ class PainelDeTexto(QWidget):
         """Abre um `.cvtxt` gravado antes, com os diagramas de volta se o livro ainda estiver lá."""
         from chess_diagram_ocr.text import arquivo
 
-        # O rascunho vai ao disco **antes** da pergunta (S-605), como em `confirmar_fechamento`: o
-        # relógio de inatividade pode não ter disparado, e o «Sim» apagaria a última correção.
-        self.gravar_rascunho()
-        if not self._confirmar_descarte("Abrir outro arquivo descarta as alterações."):
+        # A folha vai ao caderno **antes** de trocar (S-611), e a pergunta só sobra sem ele -- e aí
+        # o rascunho já foi ao disco, como em `confirmar_fechamento` (S-605).
+        if not self._guardar_a_folha() and not self._confirmar_descarte("Abrir outro arquivo descarta as alterações."):
             return
         origem, _filtro = QFileDialog.getOpenFileName(
             self, "Abrir texto de folha", "", f"{arquivo.NOME_DO_FORMATO} (*{arquivo.EXTENSAO});;Todos (*.*)"
@@ -1546,6 +1587,12 @@ class PainelDeTexto(QWidget):
             return
         self.abrir(doc)
         self._caminho_do_documento = Path(origem)  # `Salvar` grava de volta aqui (S-343)
+        # Abrir para olhar não troca a folha do caderno; a primeira edição troca, e a folha que o
+        # caderno tinha fica como `anterior` (S-616).
+        self._vai_ao_caderno = False
+        cad = self._caderno_da_tela()
+        if cad is not None and doc.origem is not None:
+            cad.visitar(doc.origem.pagina)
 
     def abrir(self, doc: rico.DocumentoRico, *, folha_rgb: np.ndarray | None = None) -> None:
         """Põe o documento na tela e recupera o que só o PDF pode dar: as miniaturas (S-238).
@@ -1673,15 +1720,352 @@ class PainelDeTexto(QWidget):
         **O rascunho vai para o disco antes da pergunta** (S-255): o relógio de inatividade pode
         não ter disparado, e fechar -- com "Sim", sem tela, ou pela falha que vem a seguir -- é
         exatamente o momento para o qual ele existe. Gravar de novo o que já está lá não custa.
+
+        Com o caderno (S-611) não há pergunta: a folha vai para ele, e a trava sai.
         """
-        self.gravar_rascunho()
+        if self._guardar_a_folha():
+            self.fechar_caderno()
+            return True
         return self._confirmar_descarte("Fechar a janela descarta as alterações.", ao_fechar=True)
+
+    # ----------------------------------------------------------- o caderno do livro (S-610)
+
+    def _caderno_da_tela(self) -> caderno.Caderno | None:
+        """O caderno em que a folha da tela mora: o do livro aberto, se ela for dele."""
+        origem = self.documento.origem
+        if self._caderno is None or origem is None:
+            return None
+        if _chave_de_livro(origem.documento) != _chave_de_livro(self._livro_do_caderno):
+            return None
+        return self._caderno
+
+    @property
+    def caderno_aberto(self) -> caderno.Caderno | None:
+        """O caderno do livro aberto, para quem pergunta por ele -- o índice das folhas (S-613)."""
+        return self._caderno
+
+    def _guardar_a_folha(self) -> bool:
+        """Guarda a folha da tela no caderno, se ela mudou (S-611). Devolve se o trabalho está a salvo.
+
+        Toda troca do que está na tela -- ler outra folha, abrir um arquivo, trocar de livro,
+        fechar -- passa por aqui antes, e por isso a pergunta "descarta as alterações?" saiu desses
+        caminhos: não há mais o que descartar. **Sem caderno** -- a aba de teste, o livro que não
+        abre, o caderno que outra janela trava -- a rede é o rascunho de antes, e `False` com
+        alteração por gravar diz a quem chama que a pergunta continua.
+        """
+        self._rascunho.stop()
+        cad = self._caderno_da_tela()
+        if cad is None or cad.somente_leitura:
+            self.gravar_rascunho()
+            return not self.tem_alteracoes
+        if not self._vai_ao_caderno:
+            return not self.tem_alteracoes
+        pagina = int(self.documento.origem.pagina)  # type: ignore[union-attr] - `_caderno_da_tela` viu a origem
+        feitas = len(correcao.correcoes(self.documento))
+        try:
+            feito = cad.gravar(correcao.com_procedencia_humana(self.documento), correcoes=feitas)
+        except OSError as erro:
+            logger.warning("O caderno não gravou a folha %d: %s", pagina + 1, erro)
+            self.estado.emit(f"O caderno não gravou a folha {pagina + 1}: {erro}. O texto continua na tela.")
+            self.gravar_rascunho()
+            return False
+        if feito == caderno.RECUSADA_VAZIA:
+            self.estado.emit(f"A folha {pagina + 1} vazia não foi gravada por cima do texto que o caderno tem dela.")
+            return True
+        self._documento_gravado = self.documento
+        self._correcoes = feitas
+        self._atualizar_status()
+        self._rotular_leitura()
+        self._mostrar_indice()
+        return True
+
+    def _abrir_caderno(self, livro: Path | None) -> None:
+        """Troca o caderno pelo do livro que chegou. A folha da tela vai antes ao do livro que sai."""
+        self._guardar_a_folha()
+        self.fechar_caderno()
+        if self._pasta_de_cadernos is None or livro is None or not livro.exists():
+            return
+        self._caderno = caderno.abrir(livro, pasta=self._pasta_de_cadernos)
+        self._livro_do_caderno = livro
+        if self._caderno is None:
+            return
+        if self._caderno.somente_leitura:
+            self.estado.emit(self._caderno.motivo)
+        else:
+            self._trazer_rascunhos(livro)
+        self._mostrar_indice()
+
+    def fechar_caderno(self) -> None:
+        """Solta a trava do caderno aberto. Na troca de livro e no fechamento da janela."""
+        if self._caderno is not None:
+            self._caderno.fechar()
+        self._caderno = None
+        self._livro_do_caderno = None
+        self._mostrar_indice()
+
+    def _trazer_rascunhos(self, livro: Path) -> None:
+        """Os rascunhos de antes do caderno entram nele (S-615), e só então saem da pasta deles."""
+        cad = self._caderno
+        assert cad is not None
+        try:
+            achados = rascunho.listar(livro, pasta=self._pasta_de_rascunhos)
+        except OSError as erro:  # noqa: BLE001 - os rascunhos continuam onde estão
+            logger.debug("Rascunhos de %s não listados: %s", livro, erro)
+            return
+        trazidas: list[int] = []
+        for achado in achados:
+            try:
+                doc = _no_livro(rascunho.carregar(achado), livro)
+                entrou = cad.trazer_rascunho(doc, achado.quando, correcoes=len(correcao.correcoes(doc)))
+            except (OSError, ValueError) as erro:  # `ArquivoInvalido` é um `ValueError`; o rascunho fica
+                logger.debug("Rascunho %s não entrou no caderno: %s", achado.caminho, erro)
+                continue
+            if entrou:
+                trazidas.append(achado.folha + 1)
+            else:
+                logger.info("Rascunho da folha %d mais velho que o caderno: descartado.", achado.folha + 1)
+            rascunho.descartar(livro, achado.folha, pasta=self._pasta_de_rascunhos)
+        if trazidas:
+            self.estado.emit(
+                f"{len(trazidas)} rascunho(s) deste livro entraram no caderno (folha "
+                f"{', '.join(map(str, trazidas[:6]))}{'…' if len(trazidas) > 6 else ''})."
+            )
+
+    def _rotular_leitura(self) -> None:
+        """«Abrir folha» quando a folha do campo tem caderno, «Ler folha» quando o motor vai ler."""
+        if not hasattr(self, "botao_de_ler"):
+            return
+        guardada = None if self._caderno is None else self._caderno.estado(int(self.campo_de_folha.value()) - 1)
+        abre = guardada is not None and caderno.abre_do_caderno(guardada, motor=self._motor, modo_bloco=self._modo_bloco)
+        self.botao_de_ler.setText(strings.ABRIR_FOLHA_DO_CADERNO if abre else comandos.rotulo_de_botao("ler_folha"))
+
+    def _abrir_do_caderno(self, indice: int) -> bool:
+        """Põe na tela a folha que o caderno tem, sem motor (S-612). `False` se o arquivo não abriu."""
+        cad = self._caderno
+        doc = None if cad is None else cad.folha(indice)
+        if cad is None or doc is None:
+            return False
+        dpi = self._dpi_para_ler()
+        pronta = self._fornecedor_de_folha(indice) if self._fornecedor_de_folha is not None else None
+        folha_rgb = np.array(pronta[0], copy=True) if pronta is not None and int(pronta[1]) == dpi else None
+        if folha_rgb is not None:
+            self._dpi = dpi
+        self.abrir(_no_livro(doc, self._livro_do_caderno), folha_rgb=folha_rgb)
+        cad.visitar(indice)
+        self._vai_ao_caderno = True
+        guardada = cad.estado(indice)
+        feitas = 0 if guardada is None else guardada.correcoes
+        self.estado.emit(
+            f"Folha {indice + 1} aberta do caderno"
+            + (f", com {caderno.correcoes_por_extenso(feitas)}" if feitas else "")
+            + ". «Ler a folha de novo» fica no menu do botão direito."
+        )
+        return True
+
+    def _confirmar_releitura(self, indice: int, correcoes: int) -> bool:
+        from chess_diagram_ocr.qt import dialogos
+
+        if not dialogos.ha_quem_responda():
+            logger.warning("Ler de novo a folha %d com correções pede resposta, e não há tela: fica como está.", indice + 1)
+            return False
+        resposta = QMessageBox.question(
+            self,
+            "Texto",
+            caderno.frase_de_releitura(indice, correcoes),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return resposta == QMessageBox.StandardButton.Yes
+
+    def ler_de_novo(self) -> None:
+        """O motor lê de novo a folha da tela, mesmo com caderno -- e pergunta se há correção a perder."""
+        if self._pagina is not None:
+            self.campo_de_folha.setValue(int(self._pagina.pagina) + 1)
+        self._ler_folha(de_novo=True)
+
+    def voltar_a_anterior(self) -> bool:
+        """Põe na tela a versão de quando a pessoa chegou da última vez à folha (S-611). `Ctrl+Z` desfaz."""
+        cad = self._caderno_da_tela()
+        anterior = None if cad is None else cad.anterior(self.documento.origem.pagina)  # type: ignore[union-attr]
+        if anterior is None:
+            self.estado.emit("Esta folha não tem versão anterior no caderno.")
+            return False
+        self._aplicar(_no_livro(anterior, self._livro_do_caderno))
+        self._contar_correcoes()
+        self.estado.emit("A versão anterior da folha está na tela; Ctrl+Z volta à de agora.")
+        return True
+
+    def descartar_correcoes(self) -> bool:
+        """Devolve a folha ao que o motor leu (S-616). A corrigida fica como `anterior`, e `Ctrl+Z` a traz.
+
+        É o único caminho em que a pergunta "descarta?" continua, porque aqui ela é o gesto pedido.
+        """
+        from chess_diagram_ocr.qt import dialogos
+
+        cad = self._caderno_da_tela()
+        if cad is None:
+            return False
+        pagina = int(self.documento.origem.pagina)  # type: ignore[union-attr]
+        lida = cad.lida(pagina)
+        if lida is None:
+            self.estado.emit("O caderno não tem a leitura do motor desta folha.")
+            return False
+        if not dialogos.ha_quem_responda():
+            return False
+        resposta = QMessageBox.question(
+            self,
+            "Texto",
+            f"Descartar as correções da folha {pagina + 1}? A folha volta ao que o motor leu; a versão "
+            "corrigida fica como anterior, e Ctrl+Z a traz de volta.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return False
+        self._guardar_a_folha()  # a corrigida está no caderno antes de sair da tela
+        cad.visitar(pagina)  # e vira `anterior` na gravação que vem
+        self._aplicar(_no_livro(lida, self._livro_do_caderno))
+        self._guardar_a_folha()
+        self._contar_correcoes()
+        self.estado.emit(f"A folha {pagina + 1} voltou ao que o motor leu; Ctrl+Z traz as correções de volta.")
+        return True
+
+    def marcar_conferida(self) -> bool:
+        """Marca a folha da tela como conferida no índice do caderno -- ou desmarca, se ela já está."""
+        cad = self._caderno_da_tela()
+        if cad is None:
+            return False
+        pagina = int(self.documento.origem.pagina)  # type: ignore[union-attr]
+        self._guardar_a_folha()
+        guardada = cad.estado(pagina)
+        if guardada is None:
+            return False
+        conferida = guardada.estado != caderno.CONFERIDA
+        novo = caderno.CONFERIDA if conferida else (caderno.EDITADA if guardada.correcoes else caderno.LIDA)
+        if not cad.marcar(pagina, novo):
+            return False
+        self._mostrar_indice()
+        self._atualizar_status()
+        self.estado.emit(
+            f"Folha {pagina + 1} {'conferida' if conferida else 'desmarcada'}: "
+            f"{cad.conferidas()} folha(s) conferida(s) neste caderno."
+        )
+        return True
+
+    def alternar_indice(self) -> None:
+        """Abre ou fecha o índice das folhas do caderno (S-613). O foco não sai do texto, como na paleta."""
+        if self.indice.isVisible():
+            self.indice.hide()
+        else:
+            self.indice.show()
+            self._mostrar_indice()
+            if self._caderno is None:
+                self.estado.emit("O índice lista as folhas do caderno do livro aberto: abra um livro e leia uma folha.")
+        self.editor.setFocus()
+
+    def _mostrar_indice(self) -> None:
+        """Redesenha o índice, se ele está à vista. Escondido não custa nada: ele se refaz ao abrir."""
+        if not hasattr(self, "indice") or not self.indice.isVisible():
+            return
+        folhas = () if self._caderno is None else self._caderno.folhas()
+        self.indice.mostrar(folhas, atual=None if self._pagina is None else int(self._pagina.pagina))
+
+    def _abrir_do_indice(self, pagina: int) -> None:
+        """O clique numa linha do índice: a folha abre como pelo «Abrir folha» (S-612)."""
+        self.campo_de_folha.setValue(int(pagina) + 1)
+        self.ler()
+
+    def exportar_caderno(self) -> None:
+        """O caderno inteiro num `.md`, `.html` ou `.rtf`, folha a folha (S-614), fora da thread da janela.
+
+        As folhas sem caderno são puladas e o relatório as lista. As miniaturas saem de cada folha
+        renderizada de novo -- é a parte longa, e por isso a exportação é cancelável entre duas
+        folhas, como a de uma folha é antes da escrita.
+        """
+        from chess_diagram_ocr.text import exportacao
+
+        cad = self._caderno
+        if cad is None or self._livro_do_caderno is None:
+            self.estado.emit("Abra um livro e leia uma folha: o caderno é do livro aberto.")
+            return
+        if self._tarefa is not None:
+            self.estado.emit("Já há uma leitura ou exportação em curso nesta aba.")
+            return
+        self._guardar_a_folha()  # a folha da tela entra como está
+        estados = cad.folhas()
+        if not estados:
+            self.estado.emit("O caderno deste livro ainda não tem folha nenhuma.")
+            return
+        livro = self._livro_do_caderno
+        destino, filtro = QFileDialog.getSaveFileName(
+            self,
+            "Exportar o caderno do livro",
+            f"{livro.stem}_caderno.md",
+            "Markdown (*.md);;HTML (*.html);;RTF (*.rtf)",
+        )
+        if not destino:
+            return
+        caminho = Path(destino)
+        extensao = caminho.suffix.lower()
+        if extensao not in (".md", ".html", ".rtf"):
+            extensao = {"HTML": ".html", "RTF": ".rtf"}.get(filtro.split(" ", 1)[0], ".md")
+            caminho = caminho.with_suffix(extensao)
+        formato = exportacao.formato_de(extensao)
+        documentos = [d for d in (cad.folha(e.pagina) for e in estados) if d is not None]
+        documentos = [_no_livro(d, livro) for d in documentos]
+        presentes = {int(d.origem.pagina) for d in documentos if d.origem is not None}
+        faltam = [p for p in range(self._folhas_do_livro()) if p not in presentes]
+        com_imagens = bool(getattr(formato, "pasta_de_imagens", "")) and livro.exists()
+        dpi = self._dpi_para_ler()
+        desistir = threading.Event()
+        self._cancelar_exportacao = desistir
+
+        def _trabalho() -> str:
+            recortes: dict[int, dict[int, Path]] = {}
+            for doc in documentos if com_imagens else ():
+                if desistir.is_set():
+                    return CANCELADA
+                if not doc.diagramas or doc.origem is None:
+                    continue
+                pagina = int(doc.origem.pagina)
+                folha = _renderizar(livro, pagina, dpi=dpi)
+                nome = caminho.with_name(f"{caminho.stem}_f{pagina + 1:04d}{caminho.suffix}")
+                recortes[pagina] = _gravar_recortes(doc, nome, folha, dpi=dpi)
+            relatorio = exportacao.exportar_folhas(
+                documentos, formato, titulo=f"{livro.name} — caderno", recortes=recortes, faltam=faltam
+            )
+            if desistir.is_set():
+                return CANCELADA
+            exportacao.escrever(caminho, relatorio)
+            return exportacao.texto_do_relatorio(caminho, relatorio, tamanho=caminho.stat().st_size)
+
+        self.estado.emit(f"Exportando o caderno ({len(documentos)} folha(s)) para {caminho.name}…")
+        self._registrar_ocupado(
+            f"Exportando o caderno para {formato.nome}",
+            loses_work=True,
+            detail=caminho.name,
+            cancelar=desistir.set,
+        )
+        self._tarefa = Tarefa(_trabalho, parent=self)
+        self._tarefa.pronto.connect(self._exportacao_terminou)
+        self._tarefa.falhou.connect(self._exportacao_falhou)
+        self._tarefa.finished.connect(self._soltar_ocupado)
+        self._tarefa.start()
 
     # ----------------------------------------------------------- o rascunho automático (S-255)
 
+    def _anotar_cursor(self) -> None:
+        self._cursor_em = self._relogio()
+
     def _agendar_rascunho(self) -> None:
-        """Reinicia o relógio: o rascunho é gravado alguns segundos depois da **última** edição."""
-        self._rascunho.start()
+        """Reinicia o relógio: a folha é gravada alguns segundos depois da **última** edição.
+
+        No caderno é a régua do WordCraft (2,5 s, e o cursor parado), sem ele os 4 s do rascunho.
+        """
+        self._mudou_em = self._relogio()
+        self._vai_ao_caderno = True
+        espera = caderno.ESPERA_DA_MUDANCA if self._caderno is not None else rascunho.ESPERA_SEGUNDOS
+        self._rascunho.start(int(espera * 1000))
 
     def _depois_da_pausa(self) -> None:
         """A pausa da digitação: o rascunho vai ao disco e, com a conferência ligada, o léxico se refaz.
@@ -1691,8 +2075,16 @@ class PainelDeTexto(QWidget):
         contrário (S-293). Reconferir a cada tecla seria carregar e varrer o léxico por letra; na
         pausa, uma vez, é o mesmo relógio do rascunho, e pelo mesmo motivo: quem parou de digitar
         é quem vai olhar a folha.
+
+        No caderno, a pausa só grava com o cursor parado também; senão o relógio volta a contar o
+        que falta (`caderno.espera_restante`).
         """
-        self.gravar_rascunho()
+        if self._caderno is not None:
+            falta = caderno.espera_restante(self._relogio(), mudou_em=self._mudou_em, cursor_em=self._cursor_em)
+            if falta > 0:
+                self._rascunho.start(max(1, int(falta * 1000)))
+                return
+        self._guardar_a_folha()
         if self._conferindo_lexico:
             self._conferir_lexico(avisar=False)
         self._contar_correcoes()
@@ -2000,7 +2392,14 @@ class PainelDeTexto(QWidget):
         alcança o **torch**, e esta aba é construída na abertura da janela. Pagar o carregamento de
         um framework de aprendizado para desenhar uma barra de botões atrasaria a janela inteira
         por uma aba que talvez ninguém abra.
+
+        **A folha que já tem caderno abre dele, sem motor** (S-612) -- salvo quando a pessoa trocou
+        o motor ou o modo bloco e a folha não tem correção: aí ela quer a leitura nova. Ler de novo
+        uma folha corrigida é `ler_de_novo`, que pergunta.
         """
+        self._ler_folha(de_novo=False)
+
+    def _ler_folha(self, *, de_novo: bool) -> None:
         if self._tarefa is not None:
             self.estado.emit("Já há uma leitura em curso nesta aba.")
             return
@@ -2008,16 +2407,25 @@ class PainelDeTexto(QWidget):
             # Rodapé e não caixa: é um passo que falta, e não uma escolha.
             self.estado.emit("Abra um PDF antes de ler o texto da folha.")
             return
-        self.gravar_rascunho()  # antes da pergunta, pela razão de `abrir_documento` (S-605)
-        if not self._confirmar_descarte("Ler de novo descarta as alterações."):
+        # A folha da tela vai ao caderno antes (S-611); sem caderno o rascunho vai ao disco e a
+        # pergunta continua, pela razão de `abrir_documento` (S-605).
+        if not self._guardar_a_folha() and not self._confirmar_descarte("Ler de novo descarta as alterações."):
             return
+        indice = int(self.campo_de_folha.value()) - 1
+        guardada = None if self._caderno is None else self._caderno.estado(indice)
+        if guardada is not None:
+            if not de_novo and caderno.abre_do_caderno(guardada, motor=self._motor, modo_bloco=self._modo_bloco):
+                if self._abrir_do_caderno(indice):
+                    return
+            elif de_novo and guardada.correcoes and not self._confirmar_releitura(indice, guardada.correcoes):
+                return
         # O que está na tela quando a leitura parte: o que for digitado **durante** ela não foi
         # confirmado por ninguém, e `_leitura_terminou` pergunta de novo antes de trocá-lo.
         self._documento_ao_ler = self.documento
 
-        indice = int(self.campo_de_folha.value()) - 1
         motor = self._motor
         bloco = self._modo_bloco
+        self._leitura_de = (motor, bloco)
         caminho = self._pdf
         dpi = self._dpi_para_ler()
         teto = self._teto_de_diagramas()
@@ -2082,13 +2490,16 @@ class PainelDeTexto(QWidget):
         partida = self._documento_ao_ler
         self._documento_ao_ler = None
         editado_na_leitura = partida is not None and self.documento is not partida
-        if editado_na_leitura and not self._confirmar_descarte(
-            "A folha lida substitui o que foi editado durante a leitura."
+        if (
+            editado_na_leitura
+            and not self._guardar_a_folha()
+            and not self._confirmar_descarte("A folha lida substitui o que foi editado durante a leitura.")
         ):
             self.estado.emit("A folha lida ficou de lado: o texto editado durante a leitura continua na tela.")
             return
         self._pagina_indice = int(self.campo_de_folha.value()) - 1
         self.mostrar_pagina(pagina, folha_rgb=imagem, dpi=dpi)
+        self._guardar_leitura()
         diagramas = len(pagina.diagramas)
         figuras = f", {diagramas} diagrama(s)" if diagramas else ""
         # «em 3,9 s»: a pessoa escolhe o motor e o modo bloco pelo preço, e o preço tem de ser dito.
@@ -2107,6 +2518,21 @@ class PainelDeTexto(QWidget):
         # **Depois de desenhar, e não antes**: se a pessoa recusar a oferta, o que fica na tela é
         # a leitura que ela acabou de pedir (S-255).
         self.oferecer_rascunho(pagina)
+
+    def _guardar_leitura(self) -> None:
+        """A leitura do motor vai ao caderno na hora: é a folha `lida`, e a que se descarta para (S-616)."""
+        cad = self._caderno_da_tela()
+        if cad is None:
+            return
+        motor, bloco = self._leitura_de
+        try:
+            cad.guardar_leitura(self.documento, motor=motor or self._motor, modo_bloco=bloco)
+        except OSError as erro:
+            logger.warning("A leitura da folha não foi ao caderno: %s", erro)
+            self.estado.emit(f"A folha lida não foi ao caderno: {erro}.")
+        self._atualizar_status()
+        self._rotular_leitura()
+        self._mostrar_indice()
 
     def _leitura_falhou(self, erro: str, excecao: object = None) -> None:
         self._documento_ao_ler = None
@@ -2128,7 +2554,10 @@ class PainelDeTexto(QWidget):
         novo = None if pdf is None else Path(pdf)
         if _chave_de_livro(novo) != _chave_de_livro(self._pdf):
             self._posicoes.clear()  # as posições são do livro que saiu (item 11)
-            self._anunciar_rascunhos(novo)
+            self._abrir_caderno(novo)
+            if self._caderno is None:
+                self._anunciar_rascunhos(novo)
+            self._rotular_leitura()
         self._pdf = novo
         # O teto só muda quando se sabe o número ou quando o livro fecha: a virada de página chama
         # isto sem `paginas`, e não pode devolver o campo ao teto largo.
@@ -2508,6 +2937,7 @@ class PainelDeTexto(QWidget):
             recuperar = QAction(f"Recuperar o rascunho de {guardado.data_legivel}", menu)
             recuperar.triggered.connect(lambda: self.recuperar_rascunho())
             menu.addAction(recuperar)
+        self._menu_do_caderno(menu)
         achado = self._marca_sob(ponto)
         if achado is None:
             return menu
@@ -2523,6 +2953,31 @@ class PainelDeTexto(QWidget):
         for acao in (estudar, copiar, apagar):
             menu.addAction(acao)
         return menu
+
+    def _menu_do_caderno(self, menu: QMenu) -> None:
+        """O que o caderno sabe fazer com a folha da tela (S-611, S-612, S-616).
+
+        No menu do botão direito, e não no catálogo, até a fita (S-650) e o índice (S-613) lhes darem
+        lugar: são gestos sobre **esta** folha, e o menu dela é onde a pessoa os procura.
+        """
+        cad = self._caderno_da_tela()
+        if cad is None or cad.somente_leitura:
+            return
+        pagina = int(self.documento.origem.pagina)  # type: ignore[union-attr]
+        guardada = cad.estado(pagina)
+        menu.addSeparator()
+        acoes: list[tuple[str, Callable[[], object]]] = [("Ler a folha de novo", self.ler_de_novo)]
+        if cad.caminho(pagina, tipo="anterior").exists():
+            acoes.append(("Voltar à versão anterior desta folha", self.voltar_a_anterior))
+        if cad.caminho(pagina, tipo="lida").exists() and (guardada is None or guardada.correcoes or self._correcoes):
+            acoes.append(("Descartar as correções desta folha", self.descartar_correcoes))
+        if guardada is not None:
+            conferida = guardada.estado == caderno.CONFERIDA
+            acoes.append(("Desmarcar a folha como conferida" if conferida else "Marcar a folha como conferida", self.marcar_conferida))
+        for rotulo, alvo in acoes:
+            acao = QAction(rotulo, menu)
+            acao.triggered.connect(lambda _marcado=False, alvo=alvo: alvo())
+            menu.addAction(acao)
 
     def _copiar_miniatura(self, corrida: rico.Corrida) -> None:
         """A figura do diagrama -- recorte ou desenho -- vai para a área de transferência, **e a
@@ -2727,6 +3182,19 @@ def _chave_de_livro(caminho: Path | str | None) -> str:
         return str(Path(caminho).resolve()).casefold()
     except OSError:  # pragma: no cover - caminho que o sistema recusa resolver
         return str(caminho).casefold()
+
+
+def _no_livro(doc: rico.DocumentoRico, livro: Path | None) -> rico.DocumentoRico:
+    """O documento apontando para o livro onde ele está agora.
+
+    O caderno acha o livro pelo conteúdo (S-610), e a folha guardada pode ter sido lida quando o
+    PDF morava noutra pasta: com a origem velha, as miniaturas procurariam o livro no lugar de
+    antes, e a folha deixaria de parecer do livro aberto.
+    """
+    origem = doc.origem
+    if origem is None or livro is None or origem.documento == str(livro):
+        return doc
+    return replace(doc, origem=replace(origem, documento=str(livro)))
 
 
 def _mesmo_livro(um: Path, outro: Path) -> bool:
