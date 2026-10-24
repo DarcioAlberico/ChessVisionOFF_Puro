@@ -250,6 +250,17 @@ plano de execução recomendado:
 torna aceitável adiar o caderno uma semana: ele fecha os caminhos 1 e 2 do D3, e o caminho 3 (voltar
 à folha) continua como hoje, pela oferta do rascunho.
 
+### Estado da primeira entrega (2026-10-24, ramo `mesa-de-texto-primeira-entrega`)
+
+| item | estado | onde, e o que mudou em relação ao plano |
+|---|---|---|
+| S-601 a S-604 | ✅ | `_formatar_blocos` em `qt/painel_de_texto.py`: o texto entra primeiro e cada bloco recebe o formato da corrida em que começa, também no caminho rápido da digitação. A guarda é `tests/paridade_do_texto.py`; contra o desenho antigo ela reprovou com «alinhamento 1 na tela, 4 no documento» |
+| S-605 | ✅ | `ler`/`abrir_documento` gravam o rascunho antes de perguntar. **A poda saiu inteira**, e não só para documento com folha: documento sem folha nem tem rascunho |
+| S-620 (o padrão) | ✅ | `rico.alinhamento_efetivo`, chamado pela tela e pela exportação; a marca sem escolha sai centralizada também no `.html` e no `.rtf` |
+| S-630 | ✅ | `−`, régua, `+` e porcentagem no rodapé; a régua tem uma parada por letra diferente (`paradas_do_zoom`), e `Ctrl+roda` deixa parada a linha sob o ponteiro |
+| S-640 e S-645 | ✅ com desvio | `qt/disposicao_de_mesa.py` e `ui/mesa.py`. **A preferência é um interruptor do menu Texto («Mesa de texto»), guardado no estado da sessão (`texto_mesa`), e não uma escolha de três posições em Configurações**: `settings.py` está no caminho de medição dos relatórios de campo (S-218), e a seção nova mudava a impressão que os quatro declaram. A posição «sempre» espera o R1 |
+| S-660 | ✅ medido | `cvoff-texto-estilo-motor`, relatório em `docs/metrics/texto_estilo_por_motor.json` — o resultado está na seção da S-660 |
+
 ## Custo, risco e ordem
 
 | fase | esforço | risco | o que fica se ela parar no meio |
@@ -1049,6 +1060,25 @@ S-661 só abre para o que sobrar — as folhas sem camada. Esta medição vai na
 **Critério de aceite.** O relatório lista, por livro e por motor, os caracteres com negrito e com
 itálico na camada e os que chegam ao `DocumentoRico` e ao desenho (o leitor da S-603), e nomeia os
 livros onde a diferença passa de 1%.
+
+**Medido em 2026-10-24** (4 folhas de cada um dos 51 PDFs; 18 livros com estilo declarado nas folhas
+lidas, 58 folhas, 42.989 caracteres casados). `auto` e `glifo` dão o mesmo número, porque com o
+classificador presente o `auto` **é** o glifo:
+
+| estilo | declarado pela camada | chegou | perda | a mais (o motor marca, a camada não) |
+|---|---|---|---|---|
+| negrito | 2.489 | 2.256 | **9,4%** | 24 |
+| itálico | 504 | 331 | **34,3%** | **1.159** |
+
+**O negrito quase chega; o itálico não.** O itálico a mais é 2,3 vezes o declarado: a régua de linha
+do pendor (S-211) decide a linha inteira, e a S-429 só desce ao caractere no motor `camada`. Em 5 dos
+15 livros com itálico declarado ele some por inteiro (Gunderam, Koblenz, Yusupov 4, Mieses, Seirawan).
+**A consequência para o plano:** antes da Fase 96 vem um conserto barato — o itálico de **metadado
+de fonte** (nome com `Italic`/`Oblique`, bit de `flags`) valer por caractere também no glifo, onde a
+camada existe, como o negrito já vale. A perda de 9,4% do negrito, que também não tem segunda fonte,
+pede o mesmo olhar; a suspeita, **ainda não medida**, é o casamento por geometria entre a linha da
+camada e a linha que o glifo segmenta.
+A Fase 96 continua sendo só para as folhas **sem** camada.
 
 ### S-661 · O conjunto rotulado
 
