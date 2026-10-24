@@ -282,5 +282,52 @@ class CamadaExistenteTests(unittest.TestCase):
         self.assertEqual((), linhas_da_camada(pagina)[0])
 
 
+
+class CadernoNaCamadaTests(unittest.TestCase):
+    """S-614 sobre a S-253: a folha corrigida no caderno vence a leitura do motor na camada."""
+
+    def corrigida(self, origem: Path, numero: int, texto: str):  # noqa: ANN201 - DocumentoRico
+        from chess_diagram_ocr.text import rico
+
+        lida = pagina_lida(("o que o motor leu", 0.9, (20.0, 30.0, 200.0, 45.0)), documento=str(origem), numero=numero)
+        doc = rico.de_pagina(lida)
+        return rico.editar(doc, 0, len(doc.para_texto()), texto)
+
+    def test_a_folha_do_caderno_vence_a_do_motor(self) -> None:
+        import fitz
+
+        with TemporaryDirectory() as raiz:
+            origem = livro(Path(raiz) / "livro.pdf", folhas=3)
+            destino = Path(raiz) / "saida.pdf"
+            do_motor = pagina_lida(("lido pelo motor", 0.9, (20.0, 30.0, 200.0, 45.0)), documento=str(origem), numero=1)
+            outra = pagina_lida(("outra folha", 0.9, (20.0, 30.0, 200.0, 45.0)), documento=str(origem), numero=2)
+            relatorio = escrever_camada(
+                [do_motor, outra], destino, origem=origem, corrigidas={1: self.corrigida(origem, 1, "corrigido a mao")}
+            )
+            self.assertEqual((relatorio.paginas, relatorio.do_caderno), (2, 1))
+            saida = fitz.open(destino)
+            try:
+                self.assertIn("corrigido a mao", saida[1].get_text())
+                self.assertNotIn("lido pelo motor", saida[1].get_text())
+                self.assertIn("outra folha", saida[2].get_text())
+                self.assertIn("caderno", saida.metadata.get("keywords", ""))
+            finally:
+                saida.close()
+
+    def test_so_o_caderno_basta(self) -> None:
+        with TemporaryDirectory() as raiz:
+            origem = livro(Path(raiz) / "livro.pdf", folhas=2)
+            relatorio = escrever_camada([], Path(raiz) / "s.pdf", origem=origem, corrigidas={0: self.corrigida(origem, 0, "Nf3 e5")})
+        self.assertEqual((relatorio.paginas, relatorio.do_caderno, relatorio.linhas), (1, 1, 1))
+
+    def test_a_figurina_do_caderno_vira_letra(self) -> None:
+        with TemporaryDirectory() as raiz:
+            origem = livro(Path(raiz) / "livro.pdf")
+            relatorio = escrever_camada(
+                [], Path(raiz) / "s.pdf", origem=origem, corrigidas={0: self.corrigida(origem, 0, "1.♘f3")}, seco=True
+            )
+        self.assertEqual((relatorio.figurinas, relatorio.fora_da_fonte), (1, 0))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

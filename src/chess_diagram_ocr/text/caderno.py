@@ -337,6 +337,10 @@ class Caderno:
 
     # ------------------------------------------------------------------------- consultas
 
+    def corrigidas(self) -> tuple[EstadoDaFolha, ...]:
+        """As folhas em que uma pessoa mexeu: corrigidas ou conferidas. As só lidas são o motor."""
+        return tuple(f for f in self.folhas() if f.estado != LIDA)
+
     def folhas(self) -> tuple[EstadoDaFolha, ...]:
         """As folhas que têm caderno, por ordem. **Do índice**: nenhum `.cvtxt` é aberto."""
         return tuple(self._folhas[p] for p in sorted(self._folhas))
@@ -530,13 +534,21 @@ def _pasta_do_livro(raiz: Path, pdf: Path, identidade: str) -> Path:
     return raiz / f"{nome}_{identidade}"
 
 
-def abrir(pdf: str | Path, *, pasta: Path | None = None) -> Caderno | None:
-    """O caderno do livro `pdf`, com a trava tomada. `None` quando o livro não pode ser lido."""
+def abrir(pdf: str | Path, *, pasta: Path | None = None, travar: bool = True) -> Caderno | None:
+    """O caderno do livro `pdf`, com a trava tomada. `None` quando o livro não pode ser lido.
+
+    `travar=False` é de quem só lê -- o `cvoff-texto-pesquisavel` --: o caderno abre só para
+    leitura e a janela que estiver corrigindo o livro continua gravando.
+    """
     raiz = Path(pasta) if pasta is not None else PASTA_PADRAO
     identidade = identidade_de(pdf)
     if identidade is None:
         return None
     caderno = Caderno(_pasta_do_livro(raiz, Path(pdf), identidade), identidade)
+    if not travar:
+        caderno.somente_leitura = True
+        caderno.motivo = "Aberto só para leitura por quem o pediu."
+        return caderno
     try:
         caderno._travar()
     except OSError as erro:

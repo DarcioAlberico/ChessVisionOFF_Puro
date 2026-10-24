@@ -300,5 +300,22 @@ class IndiceDeFrasesTests(unittest.TestCase):
         self.assertTrue(frase_do_rodape(**base).startswith("Folha 3 do caderno"))  # type: ignore[arg-type]
 
 
+
+class PesquisavelLeOCadernoTests(_ComLivro):
+    def test_o_cvoff_pega_so_as_folhas_corrigidas_pedidas_e_sem_travar(self) -> None:
+        from chess_diagram_ocr.cli import texto_pesquisavel
+
+        livro = caderno.abrir(self.livro)  # a janela que está corrigindo o livro
+        assert livro is not None
+        self.addCleanup(livro.fechar)
+        livro.gravar(_doc(self.livro, 0, "só lida"))
+        livro.gravar(_editado(_doc(self.livro, 1), " corrigida"), correcoes=1)
+        livro.gravar(_editado(_doc(self.livro, 7), " fora do pedido"), correcoes=1)
+        achadas = texto_pesquisavel._corrigidas_do_caderno(self.livro, [0, 1, 2])
+        self.assertEqual(sorted(achadas), [1])
+        self.assertIn("corrigida", achadas[1].para_texto())
+        self.assertFalse(livro.somente_leitura, "o cvoff tomou a trava da janela")
+
+
 if __name__ == "__main__":
     unittest.main()

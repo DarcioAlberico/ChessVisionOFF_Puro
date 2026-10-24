@@ -385,6 +385,9 @@ class PainelDeTexto(QWidget):
         """Quando o documento mudou e quando o cursor mexeu pela última vez: a régua do salvamento
         no caderno pede os dois parados (`caderno.espera_restante`, S-612)."""
         self._leitura_de: tuple[str, bool] = ("", False)
+        self._folha_pedida_ao_fundo: int | None = None
+        self._renderizacao: Tarefa | None = None
+        """A folha do caderno sendo rasterizada ao fundo, para as miniaturas (`_renderizar_ao_fundo`)."""
         """O motor e o modo bloco da leitura em curso, como eram quando ela partiu."""
         self._sincronizando = False
         """O painel está repintando o que acabou de ser digitado: a mudança de formato que isso
@@ -1594,7 +1597,7 @@ class PainelDeTexto(QWidget):
         if cad is not None and doc.origem is not None:
             cad.visitar(doc.origem.pagina)
 
-    def abrir(self, doc: rico.DocumentoRico, *, folha_rgb: np.ndarray | None = None) -> None:
+    def abrir(self, doc: rico.DocumentoRico, *, folha_rgb: np.ndarray | None = None, renderizar: bool = True) -> None:
         """Põe o documento na tela e recupera o que só o PDF pode dar: as miniaturas (S-238).
 
         **O PDF ausente não é erro.** O texto abre igual, as miniaturas faltam, e o rodapé diz
@@ -1603,6 +1606,7 @@ class PainelDeTexto(QWidget):
 
         `folha_rgb` é a folha já renderizada, quando quem chama a tem -- o rascunho recuperado é
         da folha que acabou de ser lida, e renderizá-la de novo seria pagar duas vezes.
+        `renderizar=False` é de quem vai rasterizá-la fora da thread da janela (`_abrir_do_caderno`).
         """
         from chess_diagram_ocr.text import arquivo
 
@@ -1619,8 +1623,9 @@ class PainelDeTexto(QWidget):
         caminho = arquivo.pdf_de(doc)
         if folha_rgb is None and caminho is not None and doc.origem is not None:
             if caminho.exists():
-                self._dpi = self._dpi_para_ler()
-                self._pagina_rgb = _renderizar(caminho, doc.origem.pagina, dpi=self._dpi)
+                if renderizar:
+                    self._dpi = self._dpi_para_ler()
+                    self._pagina_rgb = _renderizar(caminho, doc.origem.pagina, dpi=self._dpi)
             else:
                 aviso = f" · o livro {caminho.name} não está no lugar de antes: sem miniaturas"
         if doc.origem is not None:
@@ -1850,7 +1855,9 @@ class PainelDeTexto(QWidget):
         folha_rgb = np.array(pronta[0], copy=True) if pronta is not None and int(pronta[1]) == dpi else None
         if folha_rgb is not None:
             self._dpi = dpi
-        self.abrir(_no_livro(doc, self._livro_do_caderno), folha_rgb=folha_rgb)
+        self.abrir(_no_livro(doc, self._livro_do_caderno), folha_rgb=folha_rgb, renderizar=False)
+        if folha_rgb is None:
+            self._renderizar_ao_fundo(indice)
         cad.visitar(indice)
         self._vai_ao_caderno = True
         guardada = cad.estado(indice)
@@ -1861,6 +1868,39 @@ class PainelDeTexto(QWidget):
             + ". «Ler a folha de novo» fica no menu do botão direito."
         )
         return True
+
+    def _renderizar_ao_fundo(self, indice: int) -> None:
+        """A folha aberta do caderno, rasterizada **fora** da thread da janela (S-612).
+
+        O texto entra na hora; as miniaturas chegam quando a folha chegar. Renderizar aqui, como o
+        `abrir` de um `.cvtxt` faz, congelava a troca de folha por um a três décimos de segundo a
+        cada «Abrir folha» -- o gesto que a aba mais repete. A resposta que chegar para uma folha
+        que já saiu da tela é jogada fora.
+        """
+        livro = self._livro_do_caderno
+        if livro is None or not livro.exists():
+            return
+        dpi = self._dpi_para_ler()
+        self._folha_pedida_ao_fundo = indice
+        tarefa = Tarefa(lambda: (indice, dpi, _renderizar(livro, indice, dpi=dpi)), parent=self, nome="folha do caderno")
+        tarefa.pronto.connect(self._folha_chegou)
+        self._renderizacao = tarefa
+        tarefa.start()
+
+    def _folha_chegou(self, resultado: object) -> None:
+        """A folha rasterizada ao fundo: as miniaturas entram, sem mexer no texto, na seleção nem na pilha."""
+        indice, dpi, imagem = resultado  # type: ignore[misc]
+        if imagem is None or indice != self._folha_pedida_ao_fundo:
+            return
+        if self._pagina is None or int(self._pagina.pagina) != indice or self._caderno_da_tela() is None:
+            return
+        self._pagina_rgb = imagem
+        self._dpi = int(dpi)
+        if self.documento.diagramas:
+            rolagem = self.editor.verticalScrollBar().value()
+            self._desenhar(selecao=self._selecao_atual())
+            self.editor.verticalScrollBar().setValue(rolagem)
+        self._atualizar_status()
 
     def _confirmar_releitura(self, indice: int, correcoes: int) -> bool:
         from chess_diagram_ocr.qt import dialogos
@@ -2001,15 +2041,18 @@ class PainelDeTexto(QWidget):
             self,
             "Exportar o caderno do livro",
             f"{livro.stem}_caderno.md",
-            "Markdown (*.md);;HTML (*.html);;RTF (*.rtf)",
+            "Markdown (*.md);;HTML (*.html);;RTF (*.rtf);;PDF pesquisável (*.pdf)",
         )
         if not destino:
             return
         caminho = Path(destino)
         extensao = caminho.suffix.lower()
-        if extensao not in (".md", ".html", ".rtf"):
-            extensao = {"HTML": ".html", "RTF": ".rtf"}.get(filtro.split(" ", 1)[0], ".md")
+        if extensao not in (".md", ".html", ".rtf", ".pdf"):
+            extensao = {"HTML": ".html", "RTF": ".rtf", "PDF": ".pdf"}.get(filtro.split(" ", 1)[0], ".md")
             caminho = caminho.with_suffix(extensao)
+        if extensao == ".pdf":
+            self._exportar_caderno_pesquisavel(cad, livro, caminho)
+            return
         formato = exportacao.formato_de(extensao)
         documentos = [d for d in (cad.folha(e.pagina) for e in estados) if d is not None]
         documentos = [_no_livro(d, livro) for d in documentos]
@@ -2045,6 +2088,40 @@ class PainelDeTexto(QWidget):
             loses_work=True,
             detail=caminho.name,
             cancelar=desistir.set,
+        )
+        self._tarefa = Tarefa(_trabalho, parent=self)
+        self._tarefa.pronto.connect(self._exportacao_terminou)
+        self._tarefa.falhou.connect(self._exportacao_falhou)
+        self._tarefa.finished.connect(self._soltar_ocupado)
+        self._tarefa.start()
+
+    def _exportar_caderno_pesquisavel(self, cad: caderno.Caderno, livro: Path, caminho: Path) -> None:
+        """O livro inteiro com a camada invisível do **caderno** (S-253 sobre a S-614).
+
+        Todas as folhas do original saem, e as que o caderno tem ganham a camada do texto dele -- as
+        lidas e as corrigidas, porque aqui o motor não roda: o caderno é tudo o que a aba sabe. As
+        demais ficam como estão, que é o que a camada do motor (`cvoff-texto-pesquisavel`) também faz.
+        """
+        from chess_diagram_ocr.text import pdf_pesquisavel
+
+        if not livro.exists():
+            self.estado.emit(f"O livro {livro.name} não está no lugar de antes: o PDF pesquisável sai dele.")
+            return
+        corrigidas = {e.pagina: d for e in cad.folhas() if (d := cad.folha(e.pagina)) is not None}
+        corrigidas = {p: _no_livro(d, livro) for p, d in corrigidas.items()}
+        desistir = threading.Event()
+        self._cancelar_exportacao = desistir
+
+        def _trabalho() -> str:
+            if desistir.is_set():
+                return CANCELADA
+            relatorio = pdf_pesquisavel.escrever_camada([], caminho, origem=livro, corrigidas=corrigidas)
+            avisos = "".join(f" Aviso: {aviso}." for aviso in relatorio.avisos)
+            return f"PDF pesquisável do caderno em {caminho.name}: {relatorio.resumo()}.{avisos}"
+
+        self.estado.emit(f"Escrevendo o PDF pesquisável do caderno ({len(corrigidas)} folha(s))…")
+        self._registrar_ocupado(
+            "Exportando o caderno para PDF pesquisável", loses_work=True, detail=caminho.name, cancelar=desistir.set
         )
         self._tarefa = Tarefa(_trabalho, parent=self)
         self._tarefa.pronto.connect(self._exportacao_terminou)

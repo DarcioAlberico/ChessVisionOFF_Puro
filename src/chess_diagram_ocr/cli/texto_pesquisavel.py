@@ -85,6 +85,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Pula as folhas que já têm texto, em vez de somar a nossa camada à delas.",
     )
+    parser.add_argument(
+        "--sem-caderno",
+        action="store_true",
+        help=(
+            "Não usa o caderno do livro da aba Texto. Por padrão, a folha corrigida à mão no caderno "
+            "entra no lugar da leitura do motor, e o motor nem a lê (S-614)."
+        ),
+    )
     parser.add_argument("--seco", "--dry-run", action="store_true", help="Diz o que faria e não grava nada.")
     add_verbose(parser)
     args = parser.parse_args(argv)
@@ -103,11 +111,16 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("--paginas não selecionou nenhuma página.")
         return EXIT_BAD_INPUT
 
+    corrigidas = {} if args.sem_caderno else _corrigidas_do_caderno(args.pdf, indices)
+    if corrigidas:
+        logger.info("%d folha(s) saem do caderno, corrigidas à mão: o motor não as lê.", len(corrigidas))
+    indices = [i for i in indices if i not in corrigidas]
+
     from ..text.leitor import ler_pagina
     from ..text.recognizer import ModeloInvalido, build_glyph_recognizer
 
     reconhecedor = None
-    if args.motor != "camada":
+    if args.motor != "camada" and indices:
         try:
             # Um reconhecedor para o livro inteiro: carregá-lo custa ~3 s, e por página um livro
             # de 60 folhas gastaria três minutos só abrindo o mesmo arquivo.
@@ -129,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
         except (ValueError, RuntimeError, OSError) as exc:
             logger.warning("A folha %d não pôde ser lida (%s); ela fica sem camada.", indice + 1, exc)
 
-    if not lidas:
+    if not lidas and not corrigidas:
         logger.error("Nenhuma folha foi lida: não há camada a escrever.")
         return EXIT_BAD_INPUT
 
@@ -142,6 +155,7 @@ def main(argv: list[str] | None = None) -> int:
         figurinas=not args.sem_figurinas,
         so_sem_camada=args.so_sem_camada,
         seco=args.seco,
+        corrigidas=corrigidas,
     )
 
     print(relatorio.resumo())
@@ -160,6 +174,27 @@ def main(argv: list[str] | None = None) -> int:
     elif args.seco:
         print("--seco: nada foi gravado.")
     return EXIT_OK
+
+
+def _corrigidas_do_caderno(pdf: Path, indices: list[int]) -> dict[int, Any]:
+    """As folhas pedidas que o caderno do livro tem corrigidas à mão. Sem caderno, nenhuma.
+
+    Sem trava (`travar=False`): este comando só lê, e a janela que estiver corrigindo o livro
+    continua dona do caderno.
+    """
+    from ..text import caderno
+
+    aberto = caderno.abrir(pdf, travar=False)
+    if aberto is None:
+        return {}
+    pedidas = set(indices)
+    achadas: dict[int, Any] = {}
+    for estado in aberto.corrigidas():
+        if estado.pagina in pedidas:
+            doc = aberto.folha(estado.pagina)
+            if doc is not None:
+                achadas[estado.pagina] = doc
+    return achadas
 
 
 if __name__ == "__main__":  # pragma: no cover

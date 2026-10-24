@@ -54,13 +54,20 @@ class _Sinal:
 class _TarefaNaHora:
     """A `Tarefa` sem thread: o trabalho roda no `start`, e os sinais saem na hora."""
 
-    def __init__(self, trabalho: Callable[[], object], parent: object = None) -> None:
+    rodando = False
+    """Verdade enquanto um trabalho roda: é como o teste sabe que algo foi feito "na thread"."""
+
+    def __init__(self, trabalho: Callable[[], object], parent: object = None, nome: str = "tarefa") -> None:
         self._trabalho = trabalho
         self.pronto, self.falhou, self.finished = _Sinal(), _Sinal(), _Sinal()
 
     def start(self) -> None:
         try:
-            resultado = self._trabalho()
+            _TarefaNaHora.rodando = True
+            try:
+                resultado = self._trabalho()
+            finally:
+                _TarefaNaHora.rodando = False
         except Exception as erro:  # noqa: BLE001 - o teste quer ver a falha pelo sinal, como na thread
             self.falhou.emit(str(erro), erro)
         else:
@@ -234,6 +241,34 @@ class VoltarAbreOCadernoTests(_Aba):
         self.assertIn("corrigida", self.painel.documento.para_texto())
 
 
+class RenderizarAoFundoTests(_Aba):
+    """A folha aberta do caderno é rasterizada numa `Tarefa`, e não na thread da janela (S-612)."""
+
+    def test_abrir_do_caderno_rasteriza_dentro_de_uma_tarefa(self) -> None:
+        import numpy as np
+
+        self.ler(3)
+        self.ler(4)
+        chamadas: list[tuple[int, bool]] = []
+
+        def renderizar(_caminho: Path, indice: int, *, dpi: int) -> np.ndarray:
+            chamadas.append((indice, _TarefaNaHora.rodando))
+            return np.full((400, 400, 3), 200, np.uint8)
+
+        with mock.patch.object(painel_de_texto, "_renderizar", renderizar):
+            self.ler(3)
+        self.assertEqual(chamadas, [(2, True)], "a folha foi rasterizada fora da tarefa, ou duas vezes")
+        self.assertIsNotNone(self.painel._pagina_rgb)
+
+    def test_a_folha_que_chega_depois_de_outra_e_jogada_fora(self) -> None:
+        import numpy as np
+
+        self.ler(3)
+        self.painel._folha_pedida_ao_fundo = 5
+        self.painel._folha_chegou((2, 72, np.zeros((10, 10, 3), np.uint8)))
+        self.assertIsNone(self.painel._pagina_rgb)
+
+
 class DescartarTests(_Aba):
     def test_descartar_mostra_a_leitura_e_ctrl_z_traz_as_correcoes(self) -> None:
         self.ler(2)
@@ -359,6 +394,34 @@ class ExportarCadernoTests(_Aba):
         self.assertEqual(texto.count("# Folha "), 2)
         self.assertIn("corrigida", texto, "a folha da tela não entrou como estava")
         self.assertTrue(any("faltam as folhas 1, 3-4, 6-20" in r for r in self.recados), self.recados[-3:])
+
+
+class PdfPesquisavelDoCadernoTests(_Aba):
+    def test_o_livro_sai_com_a_camada_das_folhas_do_caderno(self) -> None:
+        import fitz
+        from PyQt6.QtWidgets import QFileDialog
+
+        livro = self.pasta / "livros" / "verdadeiro.pdf"
+        documento = fitz.open()
+        for _ in range(4):
+            documento.new_page(width=300, height=200)
+        documento.save(str(livro))
+        documento.close()
+        self.painel.definir_livro(livro, pagina=0, paginas=4)
+        self.ler(2)
+        self.digitar_no_fim(" corrigida")
+        destino = self.pasta / "saida" / "caderno.pdf"
+        destino.parent.mkdir()
+        with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(destino), "PDF pesquisável (*.pdf)")):
+            self.painel.exportar_caderno()
+        saida = fitz.open(destino)
+        try:
+            self.assertEqual(saida.page_count, 4, "o livro saiu sem as folhas que o caderno não tem")
+            self.assertIn("corrigida", saida[1].get_text())
+            self.assertEqual(saida[0].get_text().strip(), "")
+        finally:
+            saida.close()
+        self.assertIn("do caderno", self.recados[-1])
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

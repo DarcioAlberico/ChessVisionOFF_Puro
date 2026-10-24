@@ -45,7 +45,7 @@ caractere fora dela sai da camada e entra na contagem.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -382,12 +382,17 @@ class RelatorioDaCamada:
     ja_tinham_camada: int = 0
     """Páginas cujo PDF já traz texto. A nossa **soma** à delas -- ver `escrever_camada`."""
 
+    do_caderno: int = 0
+    """Páginas cuja camada veio do caderno do livro, corrigida à mão, e não do motor (S-614)."""
+
     escrito: Path | None = None
     seco: bool = False
     avisos: tuple[str, ...] = field(default_factory=tuple)
 
     def resumo(self) -> str:
         partes = [f"{self.paginas} página(s), {self.linhas} linha(s), {self.caracteres} caractere(s)"]
+        if self.do_caderno:
+            partes.append(f"{self.do_caderno} do caderno, corrigida(s) à mão")
         if self.figurinas:
             partes.append(f"{self.figurinas} figurina(s) como letra")
         if self.abaixo_do_piso:
@@ -492,8 +497,14 @@ def escrever_camada(
     so_sem_camada: bool = False,
     quando: str = "",
     seco: bool = False,
+    corrigidas: Mapping[int, DocumentoRico] | None = None,
 ) -> RelatorioDaCamada:
     """Escreve o livro com a camada de texto invisível do que o **motor** leu (S-210).
+
+    `corrigidas` são as folhas do caderno do livro (`folha 0-based -> DocumentoRico`, S-614): **onde
+    há uma, ela vence a leitura do motor**, porque é a melhor versão que aquela página vai ter. Ela
+    entra por bloco, como a S-253 da folha avulsa -- o caderno sabe o bloco de cada trecho, e não a
+    linha --, sem o piso de confiança: quem corrigiu é a confiança. A figurina vira letra igual.
 
     `paginas` são `PaginaLida` do mesmo livro. O PDF de saída tem **todas** as folhas do original
     -- as que não foram lidas simplesmente não ganham camada --, porque um livro pesquisável pela
@@ -517,10 +528,12 @@ def escrever_camada(
     import fitz
 
     lidas = [p for p in paginas if p is not None]
-    if not lidas:
+    do_caderno = {int(k): v for k, v in (corrigidas or {}).items() if v.origem is not None}
+    if not lidas and not do_caderno:
         return RelatorioDaCamada(avisos=("nenhuma página lida: não há camada a escrever",), seco=seco)
 
-    caminho = Path(origem) if origem is not None else Path(str(getattr(lidas[0], "documento", "")))
+    primeira = str(getattr(lidas[0], "documento", "")) if lidas else str(next(iter(do_caderno.values())).origem.documento)  # type: ignore[union-attr]
+    caminho = Path(origem) if origem is not None else Path(primeira)
     if not caminho.name:
         return RelatorioDaCamada(avisos=("sem livro de origem: a PaginaLida não guarda o caminho",), seco=seco)
     if not caminho.exists():
@@ -530,8 +543,10 @@ def escrever_camada(
     avisos: list[str] = []
     livro = fitz.open(caminho)
     try:
-        for lida in lidas:
-            indice = int(getattr(lida, "pagina", -1))
+        fontes: dict[int, object] = {int(getattr(lida, "pagina", -1)): lida for lida in lidas}
+        fontes.update(do_caderno)
+        for indice in sorted(fontes):
+            lida = fontes[indice]
             if not 0 <= indice < livro.page_count:
                 avisos.append(f"a folha {indice + 1} não existe em {caminho.name}")
                 continue
@@ -541,7 +556,10 @@ def escrever_camada(
                 total = _somar(total, RelatorioDaCamada(ja_tinham_camada=1))
                 continue
 
-            linhas, parcial = linhas_da_camada(lida, piso=piso, figurinas=figurinas)
+            if isinstance(lida, DocumentoRico):
+                linhas, parcial = _linhas_do_caderno(lida, figurinas=figurinas)
+            else:
+                linhas, parcial = linhas_da_camada(lida, piso=piso, figurinas=figurinas)
             escritas = 0
             for linha in linhas:
                 x0, y0, x1, y1 = linha.bbox
@@ -559,10 +577,11 @@ def escrever_camada(
                     fora_da_fonte=parcial.fora_da_fonte,
                     abaixo_do_piso=parcial.abaixo_do_piso,
                     ja_tinham_camada=1 if tinha else 0,
+                    do_caderno=1 if isinstance(lida, DocumentoRico) else 0,
                 ),
             )
 
-        livro.set_metadata(_metadado_da_camada(livro, quando, piso, figurinas))
+        livro.set_metadata(_metadado_da_camada(livro, quando, piso, figurinas, do_caderno=total.do_caderno))
         if not seco:
             Path(destino).parent.mkdir(parents=True, exist_ok=True)
             livro.save(str(destino))
@@ -588,6 +607,24 @@ def escrever_camada(
     return _somar(total, RelatorioDaCamada(escrito=None if seco else Path(destino), seco=seco, avisos=tuple(avisos)))
 
 
+def _linhas_do_caderno(doc: DocumentoRico, *, figurinas: bool) -> tuple[list[Linha], RelatorioDaCamada]:
+    """A camada de uma folha do caderno: um trecho por bloco, como `camada`, com a figurina como letra."""
+    trocadas = 0
+    if figurinas:
+        corridas = []
+        for corrida in doc.corridas:
+            texto, quantas = transliterar(corrida.texto)
+            trocadas += quantas
+            corridas.append(replace(corrida, texto=texto) if quantas else corrida)
+        doc = replace(doc, corridas=tuple(corridas))
+    trechos, parcial = camada(doc)
+    pagina = int(doc.origem.pagina) if doc.origem is not None else -1
+    linhas = [Linha(texto=t.texto, bbox=t.bbox, pagina=pagina, procedencia="humano") for t in trechos]
+    return linhas, RelatorioDaCamada(
+        caracteres=parcial.caracteres, figurinas=trocadas, fora_da_fonte=parcial.fora_da_fonte
+    )
+
+
 def _somar(a: RelatorioDaCamada, b: RelatorioDaCamada) -> RelatorioDaCamada:
     """Acumula duas parciais. Os campos que não somam -- destino, seco, avisos -- vêm de `b`."""
     return RelatorioDaCamada(
@@ -598,13 +635,16 @@ def _somar(a: RelatorioDaCamada, b: RelatorioDaCamada) -> RelatorioDaCamada:
         fora_da_fonte=a.fora_da_fonte + b.fora_da_fonte,
         abaixo_do_piso=a.abaixo_do_piso + b.abaixo_do_piso,
         ja_tinham_camada=a.ja_tinham_camada + b.ja_tinham_camada,
+        do_caderno=a.do_caderno + b.do_caderno,
         escrito=b.escrito or a.escrito,
         seco=b.seco or a.seco,
         avisos=b.avisos or a.avisos,
     )
 
 
-def _metadado_da_camada(livro: object, quando: str, piso: float, figurinas: bool) -> Mapping[str, str]:
+def _metadado_da_camada(
+    livro: object, quando: str, piso: float, figurinas: bool, *, do_caderno: int = 0
+) -> Mapping[str, str]:
     """A procedência da camada, no metadado do PDF.
 
     **É a S-219 outra vez.** Um PDF cuja camada saiu do classificador deste projeto é um documento
@@ -615,6 +655,8 @@ def _metadado_da_camada(livro: object, quando: str, piso: float, figurinas: bool
     marca = f"ChessVisionOFF S-210: camada de glifo, piso {piso:.2f}"
     if figurinas:
         marca += ", figurina como letra"
+    if do_caderno:
+        marca += f", {do_caderno} folha(s) do caderno corrigidas à mão"
     if quando:
         marca += f", {quando}"
     atual["keywords"] = " · ".join(x for x in (atual.get("keywords", ""), marca) if x)

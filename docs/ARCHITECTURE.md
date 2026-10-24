@@ -253,15 +253,18 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**23** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**25** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
-exceção. Treze são operações longas e estão no `BusyRegistry`; as outras dez são declaradas
+exceção. Catorze são operações longas e estão no `BusyRegistry`; as outras onze são declaradas
 em `ui/busy.py::FORA_DO_REGISTRO`, com o motivo de cada uma (S-112).
 
-**A última é a exportação do caderno do livro (2026-10-24, S-614, `qt/painel_de_texto.py`).** Ela
-renderiza de novo cada folha com diagrama para tirar as miniaturas, e num livro de centenas de
-folhas isso é minuto: registra-se como a exportação de uma folha, com «Cancelar» entre duas folhas
-e `loses_work`, porque o arquivo de destino ficaria pela metade.
+**As três últimas são do caderno do livro (2026-10-24, `qt/painel_de_texto.py`).** A folha aberta
+do caderno é rasterizada ao fundo para as miniaturas (S-612), décimos de segundo com o texto já na
+tela, e fica declarada. A exportação do caderno (S-614) renderiza de novo cada folha com diagrama
+para tirar as miniaturas, e num livro de centenas de folhas isso é minuto: registra-se como a
+exportação de uma folha, com «Cancelar» entre duas folhas e `loses_work`, porque o arquivo de
+destino ficaria pela metade. O PDF pesquisável do caderno (a camada do caderno sobre o livro
+inteiro) é a terceira, e registra-se pelo mesmo motivo.
 
 **As duas últimas são da importação de imagens (2026-10-23, `qt/importador_de_imagens.py`).** O
 lote que grava os diagramas do relatório do ChessMeridaOCR confirmados pelo modelo (~0,55 s por
