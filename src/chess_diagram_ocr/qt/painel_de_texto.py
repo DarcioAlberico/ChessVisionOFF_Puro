@@ -125,6 +125,8 @@ from chess_diagram_ocr.ui.texto_declarado import (
     fora_do_livro,
     frase_do_lexico,
     frase_do_rodape,
+    paradas_do_zoom,
+    porcentagem_do_zoom,
 )
 
 logger = logging.getLogger(__name__)
@@ -449,9 +451,78 @@ class PainelDeTexto(QWidget):
         corpo.addWidget(self._montar_paleta())
         caixa.addLayout(corpo, 1)
 
+        rodape = QHBoxLayout()
         self.status = QLabel("", self)
         self.status.setAccessibleName("Estado da folha")
-        caixa.addWidget(self.status)
+        rodape.addWidget(self.status, 1)
+        rodape.addWidget(self._montar_zoom())
+        caixa.addLayout(rodape)
+
+    def _montar_zoom(self) -> QWidget:
+        """O zoom à vista, no rodapé (S-630): `−`, a régua, `+` e a porcentagem.
+
+        **O zoom já existia e ninguém o achava** -- `Ctrl+roda`, `Ctrl++`, `Ctrl+-` e três itens de
+        menu (S-264) --, e o pedido "opção para aumentar e diminuir a fonte da aba" foi a medida
+        disso. O desenho é o da barra de estado do WordCraft. A régua tem uma parada por **letra
+        diferente** (`paradas_do_zoom`), e não uma por degrau; a porcentagem é a letra da vista
+        sobre a letra sem zoom, e o clique nela volta a 100%. Os nomes que o leitor de tela anuncia
+        vêm do catálogo, e o catálogo diz que o zoom "não muda o documento" -- é o que separa este
+        controle do corpo do parágrafo, que muda.
+        """
+        from PyQt6.QtWidgets import QSlider, QToolButton
+
+        zoom = QWidget(self)
+        linha = QHBoxLayout(zoom)
+        linha.setContentsMargins(0, 0, 0, 0)
+        linha.setSpacing(2)
+        self._paradas_do_zoom = paradas_do_zoom(tema.fonte_base()[0])
+
+        def botao(texto: str, acao: str, alvo: Callable[[], object]) -> QToolButton:
+            feito = QToolButton(zoom)
+            feito.setText(texto)
+            feito.setAccessibleName(comandos.nome_acessivel(acao))
+            tecla = atalhos.acelerador(acao)
+            dica_em(feito, f"{comandos.rotulo(acao)}\nTecla: {tecla}" if tecla else comandos.rotulo(acao))
+            feito.clicked.connect(lambda _marcado=False: alvo())
+            return feito
+
+        self.botao_de_afastar = botao("−", "afastar_texto", self.afastar_texto)
+        self.regua_do_zoom = QSlider(Qt.Orientation.Horizontal, zoom)
+        self.regua_do_zoom.setRange(0, len(self._paradas_do_zoom) - 1)
+        self.regua_do_zoom.setPageStep(1)
+        self.regua_do_zoom.setAccessibleName("Zoom do texto")
+        self.regua_do_zoom.setMaximumWidth(self.fontMetrics().horizontalAdvance("M") * 10)
+        self.regua_do_zoom.valueChanged.connect(self._zoom_pela_regua)
+        self.botao_de_aproximar = botao("+", "aproximar_texto", self.aproximar_texto)
+        self.porcentagem_do_zoom = botao("100%", "zoom_do_texto_normal", self.zoom_do_texto_normal)
+        # Largura do maior valor possível: o rodapé não pula quando o número ganha um dígito.
+        self.porcentagem_do_zoom.setMinimumWidth(self.fontMetrics().horizontalAdvance("000%") + 12)
+        for parte in (self.botao_de_afastar, self.regua_do_zoom, self.botao_de_aproximar, self.porcentagem_do_zoom):
+            linha.addWidget(parte)
+        self._mostrar_zoom()
+        return zoom
+
+    def _zoom_pela_regua(self, indice: int) -> None:
+        """A régua mexida pela pessoa. A régua reposta por `_mostrar_zoom` chega com o sinal bloqueado."""
+        self.aplicar_zoom(self._paradas_do_zoom[max(0, min(indice, len(self._paradas_do_zoom) - 1))])
+
+    def _mostrar_zoom(self) -> None:
+        """Põe a régua, a porcentagem e os dois botões no zoom que vale -- sem disparar nada."""
+        base = tema.fonte_base()[0]
+        paradas = self._paradas_do_zoom
+        # O degrau gravado pode não ser parada (empatou com um vizinho no piso de legibilidade):
+        # a régua mostra a parada de mesma letra, que é a mais próxima.
+        indice = min(range(len(paradas)), key=lambda i: abs(paradas[i] - self._zoom_da_vista))
+        self.regua_do_zoom.blockSignals(True)
+        try:
+            self.regua_do_zoom.setValue(indice)
+        finally:
+            self.regua_do_zoom.blockSignals(False)
+        porcentagem = porcentagem_do_zoom(self._zoom_da_vista, base)
+        self.porcentagem_do_zoom.setText(f"{porcentagem}%")
+        self.regua_do_zoom.setAccessibleDescription(f"{porcentagem} por cento")
+        self.botao_de_afastar.setEnabled(self._zoom_da_vista > paradas[0])
+        self.botao_de_aproximar.setEnabled(self._zoom_da_vista < paradas[-1])
 
     def _seguir_o_cursor(self) -> None:
         """As três escolhas da barra mostram o que vale sob o cursor -- ou na seleção inteira.
@@ -1212,12 +1283,40 @@ class PainelDeTexto(QWidget):
         self.aplicar_zoom(0)
 
     def _mudar_zoom(self, passo: int) -> None:
-        alvo = max(ZOOM_MINIMO, min(ZOOM_MAXIMO, self._zoom_da_vista + passo))
-        if alvo == self._zoom_da_vista:
-            limite = ZOOM_MAXIMO if passo > 0 else ZOOM_MINIMO
+        """Um passo de zoom, **de parada em parada** (S-630): o degrau que não muda a letra é pulado.
+
+        Andar degrau a degrau fazia o `−` não mudar nada perto do piso de legibilidade, onde dois
+        degraus dão a mesma letra -- e um clique que não muda nada parece controle quebrado.
+        """
+        atual = self._zoom_da_vista
+        adiante = [parada for parada in self._paradas_do_zoom if (parada > atual if passo > 0 else parada < atual)]
+        if not adiante:
+            limite = self._paradas_do_zoom[-1] if passo > 0 else self._paradas_do_zoom[0]
             self.estado.emit(f"O zoom do texto já está no limite ({limite:+d} degraus).")
             return
-        self.aplicar_zoom(alvo)
+        self.aplicar_zoom(adiante[0] if passo > 0 else adiante[-1])
+
+    def _zoom_ancorado(self, ponto: QPoint, passo: int) -> None:
+        """O zoom da roda, **com a linha sob o ponteiro parada sob ele** (S-630).
+
+        Sem âncora a folha cresce a partir do topo e o que a pessoa estava olhando foge para baixo
+        a cada passo -- é a regra da roda do WordCraft. O caractere sob o ponteiro é lembrado antes
+        e, depois do redesenho, a rolagem é acertada para ele voltar à mesma altura.
+        """
+        sob = self.editor.cursorForPosition(ponto)
+        posicao = sob.position()
+        antes = self.editor.cursorRect(sob)
+        # Em que altura da linha o ponteiro estava: o meio da linha continua sendo o meio dela.
+        fracao = (ponto.y() - antes.top()) / max(1, antes.height())
+        self._mudar_zoom(passo)
+        documento = self.editor.document()
+        barra = self.editor.verticalScrollBar()
+        if documento is None or barra is None or posicao >= documento.characterCount():
+            return
+        cursor = QTextCursor(documento)
+        cursor.setPosition(posicao)
+        depois = self.editor.cursorRect(cursor)
+        barra.setValue(barra.value() + round(depois.top() + fracao * depois.height()) - ponto.y())
 
     def aplicar_zoom(self, degraus: int, *, avisar: bool = True) -> None:
         """Troca a fonte de base do editor e redesenha.
@@ -1240,6 +1339,7 @@ class PainelDeTexto(QWidget):
         fonte.setPointSize(tipografia.corpo(degraus, base=self._corpo_de_base))
         self.editor.setFont(fonte)
         self._desenhar(selecao=selecao)
+        self._mostrar_zoom()
         if avisar:
             self.estado.emit(f"Zoom do texto: {degraus:+d} degrau(s).")
 
@@ -2299,7 +2399,7 @@ class PainelDeTexto(QWidget):
             # editor -- que nenhuma letra segue, porque cada trecho sai com corpo explícito (S-264).
             passo = a1.angleDelta().y()
             if passo:
-                self._mudar_zoom(+1 if passo > 0 else -1)
+                self._zoom_ancorado(a1.position().toPoint(), +1 if passo > 0 else -1)
             return True
         if a0 is self.editor.viewport() and isinstance(a1, QMouseEvent) and a1.button() == Qt.MouseButton.LeftButton:
             ponto = a1.position().toPoint()

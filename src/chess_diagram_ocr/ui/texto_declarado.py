@@ -55,6 +55,8 @@ __all__ = [
     "fora_do_livro",
     "frase_do_lexico",
     "frase_do_rodape",
+    "paradas_do_zoom",
+    "porcentagem_do_zoom",
 ]
 
 PALAVRAS_NA_FRASE = 5
@@ -135,6 +137,37 @@ Sobe mais que `rico.CORPO_MAXIMO` porque a pergunta é outra: o corpo de um trec
 dentro da folha, e oito degraus ali seriam outro documento; o zoom é **acuidade de quem lê**, e
 quem está conferindo um scan ruim de perto quer o dobro da letra sem mudar nada do que vai ser
 gravado."""
+
+
+def paradas_do_zoom(base: int) -> tuple[int, ...]:
+    """Os degraus de zoom que **mudam a letra**, do menor ao maior (S-630). Pura.
+
+    A régua do rodapé tem uma parada por degrau que dá um corpo diferente, e não uma por degrau:
+    `tipografia.corpo` não desce de `MINIMO_LEGIVEL`, então numa fonte de sistema de 9 pt os degraus
+    −3 e −2 dão os mesmos 7 pt. Uma régua com as doze posições teria duas que não fazem nada, e a
+    pessoa concluiria que o controle travou. Dos degraus que empatam, fica o mais perto de zero --
+    é o que `aplicar_zoom` grava, e voltar a ele não pula a letra.
+    """
+    from chess_diagram_ocr.ui import tipografia
+
+    por_corpo: dict[int, int] = {}
+    for degrau in range(ZOOM_MINIMO, ZOOM_MAXIMO + 1):
+        corpo = tipografia.corpo(degrau, base=base)
+        if corpo not in por_corpo or abs(degrau) < abs(por_corpo[corpo]):
+            por_corpo[corpo] = degrau
+    return tuple(sorted(por_corpo.values()))
+
+
+def porcentagem_do_zoom(degrau: int, base: int) -> int:
+    """O zoom em porcentagem, como o rodapé o escreve: a letra da vista sobre a letra sem zoom. Pura.
+
+    Porcentagem porque é a unidade que todo editor usa para isto (o WordCraft escreve `135%` ao lado
+    da régua), e **derivada do corpo**, e não um número novo: é a mesma conta de `tipografia.corpo`
+    que o desenho faz, então `100%` é sempre a letra de sem zoom, em qualquer fonte de sistema.
+    """
+    from chess_diagram_ocr.ui import tipografia
+
+    return round(100 * tipografia.corpo(degrau, base=base) / tipografia.corpo(0, base=base))
 
 ESCAPE_DA_PALETA = "\\"
 """O prefixo das sequências de teclado da S-248. Ver `text/paleta.SEQUENCIAS_DECLARADAS`."""
