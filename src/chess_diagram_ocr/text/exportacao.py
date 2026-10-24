@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import Protocol
 
 from . import documento
-from .rico import Atributos, Corrida, DocumentoRico, alinhamento_efetivo
+from .rico import ALINHAMENTO_DO_DIAGRAMA, Atributos, Corrida, DocumentoRico, alinhamento_efetivo
 
 __all__ = [
     "ALINHAMENTOS_DO_HTML",
@@ -255,6 +255,22 @@ class Markdown:
         alvo = f"{self.pasta_de_imagens}/{recorte.name}" if recorte is not None else ""
         marca = c.texto
         saida = f"![{marca}]({alvo})" if alvo else marca
+        if placement:
+            saida += f"\n<!-- FEN: {placement} -->"
+        return saida
+
+    def diagrama_alinhado(self, alinhamento: str, c: Corrida, recorte: Path | None, placement: str = "") -> str:
+        """A figura no alinhamento que a tela mostra (S-622). **O Markdown não tem alinhamento**, e o
+        que os visualizadores respeitam é o `<p align>` em volta de um `<img>` -- a sintaxe `![]()`
+        dentro dele não é lida. À esquerda (e sem imagem) fica a sintaxe de sempre, que diffa melhor.
+        """
+        if alinhamento in ("", "esquerda") or recorte is None:
+            return self.diagrama(c, recorte, placement=placement)
+        lado = "right" if alinhamento == "direita" else "center"
+        saida = (
+            f'<p align="{lado}"><img src="{self.pasta_de_imagens}/{recorte.name}" '
+            f'alt="{_html.escape(c.texto, quote=True)}"></p>'
+        )
         if placement:
             saida += f"\n<!-- FEN: {placement} -->"
         return saida
@@ -590,6 +606,7 @@ def exportar(
     formato: Formato,
     *,
     recortes: Mapping[int, Path] | None = None,
+    diagramas: str = ALINHAMENTO_DO_DIAGRAMA,
 ) -> Relatorio:
     """O documento naquele formato, com a conta do que se perdeu.
 
@@ -598,7 +615,9 @@ def exportar(
     entre "não havia diagrama" e "havia e não veio".
     """
     perdas = dict.fromkeys(ATRIBUTOS, 0)
-    partes, diagramas, sem_recorte, imagem_descartada = _partes(doc, doc.corridas, formato, recortes or {}, perdas)
+    partes, contados, sem_recorte, imagem_descartada = _partes(
+        doc, doc.corridas, formato, recortes or {}, perdas, diagramas=diagramas
+    )
     montar = getattr(formato, "montar", None)
     corpo = _juntar(partes, formato)
     cabecalho, rodape = formato.cabecalho(doc), formato.rodape(doc)
@@ -607,7 +626,7 @@ def exportar(
         conteudo=conteudo,
         perdas={atributo: quantos for atributo, quantos in perdas.items() if quantos},
         avisos=_avisos(doc, formato, sem_recorte, imagem_descartada),
-        diagramas=diagramas,
+        diagramas=contados,
         sem_recorte=sem_recorte,
     )
 
@@ -619,6 +638,7 @@ def exportar_folhas(
     titulo: str = "",
     recortes: Mapping[int, Mapping[int, Path]] | None = None,
     faltam: Sequence[int] = (),
+    diagramas: str = ALINHAMENTO_DO_DIAGRAMA,
 ) -> Relatorio:
     """O caderno inteiro num arquivo só: as folhas em ordem, cada uma aberta pelo número dela (S-614).
 
@@ -632,16 +652,16 @@ def exportar_folhas(
     imagens = recortes or {}
     perdas = dict.fromkeys(ATRIBUTOS, 0)
     partes: list[tuple[str, str]] = []
-    diagramas = sem_recorte = imagem_descartada = 0
+    contados = sem_recorte = imagem_descartada = 0
     if titulo:
         partes.append(("", formato.corrida(Corrida(titulo, Atributos(estilo="titulo"))) + _QUEBRA))
     for doc in folhas:
         pagina = -1 if doc.origem is None else int(doc.origem.pagina)
         partes.append(("", formato.corrida(Corrida(f"Folha {pagina + 1}", Atributos(estilo="titulo"))) + _QUEBRA))
-        dela, d, s, i = _partes(doc, doc.corridas, formato, imagens.get(pagina, {}), perdas)
+        dela, d, s, i = _partes(doc, doc.corridas, formato, imagens.get(pagina, {}), perdas, diagramas=diagramas)
         partes.extend(dela)
         partes.append(("", _QUEBRA))
-        diagramas, sem_recorte, imagem_descartada = diagramas + d, sem_recorte + s, imagem_descartada + i
+        contados, sem_recorte, imagem_descartada = contados + d, sem_recorte + s, imagem_descartada + i
     montar = getattr(formato, "montar", None)
     corpo = _juntar(partes, formato)
     vazio = DocumentoRico()
@@ -656,7 +676,7 @@ def exportar_folhas(
         conteudo=montar(cabecalho, corpo, rodape) if montar else cabecalho + corpo + rodape,
         perdas={atributo: quantos for atributo, quantos in perdas.items() if quantos},
         avisos=tuple(avisos),
-        diagramas=diagramas,
+        diagramas=contados,
         sem_recorte=sem_recorte,
     )
 
@@ -685,6 +705,8 @@ def _partes(
     formato: Formato,
     imagens: Mapping[int, Path],
     perdas: dict[str, int],
+    *,
+    diagramas: str = ALINHAMENTO_DO_DIAGRAMA,
 ) -> tuple[list[tuple[str, str]], int, int, int]:
     """Cada corrida no formato, com o alinhamento dela; soma as perdas em `perdas`.
 
@@ -692,9 +714,10 @@ def _partes(
     formato não carrega.
     """
     partes: list[tuple[str, str]] = []
-    diagramas = 0
+    contados = 0
     sem_recorte = 0
     imagem_descartada = 0
+    alinhado = getattr(formato, "diagrama_alinhado", None)
     # **Formato que não declara pasta de imagens não carrega imagem** -- é o caso do `.txt` e do
     # `.rtf`. Sem isto, passar o recorte a eles zerava `sem_recorte` e o relatório dizia que
     # nenhum diagrama ficou sem imagem, num arquivo em que todos ficaram (S-341).
@@ -712,7 +735,7 @@ def _partes(
             if atributo not in formato.suporta or (aceita_valor and not aceita_valor(atributo, valor)):
                 perdas[atributo] += 1
         if corrida.e_diagrama:
-            diagramas += 1
+            contados += 1
             recorte = imagens.get(corrida.bloco)
             if recorte is None:
                 sem_recorte += 1
@@ -721,10 +744,15 @@ def _partes(
             # O campo de peças, quando a leitura dos diagramas já o deu ao bloco; `""` é "não lido".
             placement = str(getattr(doc.bloco_de(corrida), "placement", "") or "")
             # O alinhamento **efetivo** (S-620): o diagrama que ninguém alinhou sai no centro, como na tela.
-            partes.append((alinhamento_efetivo(corrida), formato.diagrama(corrida, recorte, placement=placement)))
+            efetivo = alinhamento_efetivo(corrida, padrao_do_diagrama=diagramas)
+            if alinhado is not None:
+                # O formato que não agrupa parágrafo, e sabe alinhar a figura por conta própria (S-622).
+                partes.append(("", alinhado(efetivo, corrida, recorte, placement=placement)))
+            else:
+                partes.append((efetivo, formato.diagrama(corrida, recorte, placement=placement)))
             continue
         partes.append((corrida.atributos.alinhamento, formato.corrida(corrida)))
-    return partes, diagramas, sem_recorte, imagem_descartada
+    return partes, contados, sem_recorte, imagem_descartada
 
 
 def _juntar(partes: Sequence[tuple[str, str]], formato: Formato) -> str:

@@ -184,6 +184,7 @@ class _Folha(QWidget):
                 pintor.drawPixmap(self.rect(), pagina)
             self._desenhar_contorno(pintor)
             self._desenhar_caixas(pintor)
+            self._desenhar_destaque(pintor)
             self._desenhar_selecao(pintor)
         pintor.end()
 
@@ -201,6 +202,17 @@ class _Folha(QWidget):
         pintor.setPen(caneta)
         pintor.setBrush(Qt.BrushStyle.NoBrush)
         pintor.drawRect(self.rect().adjusted(0, 0, -1, -1))
+
+    def _desenhar_destaque(self, pintor: QPainter) -> None:
+        """O bloco de texto sob o cursor do editor, com a mesa armada (S-642)."""
+        retangulo = self._visor.retangulo_do_destaque()
+        if retangulo is None:
+            return
+        caneta = QPen(QColor(tema.cor_atual(tokens.FOCO)))
+        caneta.setWidth(2)
+        pintor.setPen(caneta)
+        pintor.setBrush(Qt.BrushStyle.NoBrush)
+        pintor.drawRect(retangulo.adjusted(-2, -2, 2, 2))
 
     def _desenhar_selecao(self, pintor: QPainter) -> None:
         """O retângulo tracejado do arrasto, por cima de tudo.
@@ -353,6 +365,10 @@ class VisorDePagina(QScrollArea):
     parte que depende do zoom."""
 
     selecao_pequena = pyqtSignal()
+
+    ponto_clicado = pyqtSignal(float, float)
+    """O clique na folha, em **pontos** da página (o `bbox` do texto lido está em pontos): é o que a
+    aba Texto usa para pôr o cursor no bloco clicado, com a mesa armada (S-642)."""
     """O arrasto foi menor que `MIN_SELECTION_PX` **na folha** (S-330)."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -381,6 +397,8 @@ class VisorDePagina(QScrollArea):
         self._reescalonamento: Tarefa | None = None
         self._reescalar_de_novo = False
         self._dpi = 220
+        self._destaque: tuple[float, ...] | None = None
+        """O bloco de texto contornado, em pontos da página (S-642)."""
         self._caixas: PageBoxes | None = None
         self._selecionada: int | None = None
         self._mostrar_caixas = True
@@ -529,6 +547,7 @@ class VisorDePagina(QScrollArea):
         self._zoom_da_escalada = folha.zoom
         self._caixas = None
         self._selecionada = None
+        self._destaque = None
         self._dpi = int(dpi)
         self._ajustar_folha()
         # A página nova pode ter outro tamanho -- capa, mapa dobrado, folha de errata -- e o
@@ -538,6 +557,28 @@ class VisorDePagina(QScrollArea):
     def pagina_rgb(self) -> np.ndarray | None:
         """A página como o pipeline a devolveu. É ela que vai ao OCR, e não o `QPixmap`."""
         return self._pagina_rgb
+
+    def definir_destaque(self, bbox: tuple[float, float, float, float] | None) -> None:
+        """Contorna na folha o bloco de texto sob o cursor do editor (S-642), em pontos da página.
+
+        Fino e na cor do foco, e não uma caixa de diagrama: é onde o olho está, e não um estado da
+        página. A folha rola até ele quando ele sai da vista. `None` apaga.
+        """
+        self._destaque = None if bbox is None else tuple(float(v) for v in bbox)
+        retangulo = self.retangulo_do_destaque()
+        if retangulo is not None:
+            centro = retangulo.center()
+            self.ensureVisible(centro.x(), centro.y(), retangulo.width() // 2 + 8, retangulo.height() // 2 + 8)
+        self._folha.update()
+
+    def retangulo_do_destaque(self) -> QRect | None:
+        """O destaque em pixels da folha desenhada: pontos -> pixel pelo DPI da página, vezes o zoom."""
+        destaque = self._destaque
+        if destaque is None or self._pagina_rgb is None:
+            return None
+        fator = self._dpi / 72.0 * self._zoom
+        x0, y0, x1, y1 = (int(round(v * fator)) for v in destaque)
+        return QRect(x0, y0, max(1, x1 - x0), max(1, y1 - y0))
 
     def definir_caixas(self, caixas: PageBoxes | None) -> None:
         self._caixas = caixas
@@ -690,6 +731,9 @@ class VisorDePagina(QScrollArea):
         detector às vezes acha a moldura do exercício **e** o tabuleiro dentro dela, e devolver
         a maior abriria a moldura, que é o candidato que o modelo lê pior.
         """
+        if self._pagina_rgb is not None and self._zoom > 0:
+            fator = 72.0 / (self._dpi * self._zoom)
+            self.ponto_clicado.emit(x * fator, y * fator)
         if self._caixas is None or not self._mostrar_caixas:
             return
         indice = self._caixas.index_at(x, y, self._zoom)

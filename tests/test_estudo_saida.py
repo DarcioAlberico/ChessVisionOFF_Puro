@@ -118,7 +118,8 @@ class ExportacaoTests(unittest.TestCase):
             exportacao.formato_de(".md"),
             recortes={estudo_saida.BLOCO_DO_DIAGRAMA: Path("diagramas/Secrets_p143_d2.png")},
         )
-        self.assertIn("![[Diagrama 1]](diagramas/Secrets_p143_d2.png)", relatorio.conteudo)
+        # Centralizada, como a tela a mostra (S-620/S-622): o `.md` a põe num `<img>` dentro de `<p align>`.
+        self.assertIn('<img src="diagramas/Secrets_p143_d2.png" alt="[Diagrama 1]">', relatorio.conteudo)
         self.assertEqual(relatorio.sem_recorte, 0)
 
     def test_os_tres_formatos_aceitam_o_documento_do_estudo(self) -> None:

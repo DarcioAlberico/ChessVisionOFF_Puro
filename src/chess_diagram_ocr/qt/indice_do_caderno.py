@@ -14,7 +14,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QWidget
+from PyQt6.QtGui import QAction
+from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QMenu, QWidget
 
 from chess_diagram_ocr.text.caderno import EstadoDaFolha
 from chess_diagram_ocr.ui.texto_declarado import linha_do_indice
@@ -30,6 +31,11 @@ class IndiceDoCaderno(QListWidget):
     folha_escolhida = pyqtSignal(int)
     """A folha clicada ou ativada pelo teclado, 0-based como `PaginaLida.pagina`."""
 
+    alinhar_pedido = pyqtSignal(str)
+    """«Alinhar todos os diagramas do caderno» (S-621), pelo menu do botão direito do índice:
+    `"esquerda"`, `"centro"` ou `""` (como a preferência). É um comando do caderno inteiro, e é aqui,
+    na lista das folhas, que o caderno inteiro está à vista."""
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setAccessibleName("Folhas do caderno")
@@ -37,7 +43,27 @@ class IndiceDoCaderno(QListWidget):
         # O clique, e o `Enter` pelo teclado (`keyPressEvent`). **Não** o `itemActivated`: no
         # Windows ele é o duplo clique, que chega junto com o `itemClicked` e abriria a folha duas vezes.
         self.itemClicked.connect(self._escolheu)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._abrir_menu)
         self.hide()
+
+    def menu(self) -> QMenu:
+        """O menu do botão direito: alinhar os diagramas do caderno inteiro."""
+        menu = QMenu(self)
+        for rotulo, alinhamento in (
+            ("Alinhar todos os diagramas do caderno à esquerda", "esquerda"),
+            ("Alinhar todos os diagramas do caderno ao centro", "centro"),
+            ("Diagramas do caderno como a preferência", ""),
+        ):
+            acao = QAction(rotulo, menu)
+            acao.triggered.connect(lambda _marcado=False, a=alinhamento: self.alinhar_pedido.emit(a))
+            menu.addAction(acao)
+        return menu
+
+    def _abrir_menu(self, ponto: object) -> None:
+        menu = self.menu()
+        menu.exec(self.viewport().mapToGlobal(ponto))  # type: ignore[union-attr,arg-type]
+        menu.deleteLater()
 
     def keyPressEvent(self, e: object) -> None:  # noqa: N802 - API do Qt
         from PyQt6.QtGui import QKeyEvent

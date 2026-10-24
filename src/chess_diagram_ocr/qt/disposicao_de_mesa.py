@@ -10,11 +10,15 @@ além dos três widgets.
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import QAbstractScrollArea, QSplitter, QWidget
 
 from chess_diagram_ocr.ui import geometria, mesa
 from chess_diagram_ocr.ui.state import AppState
+
+if TYPE_CHECKING:
+    from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
 
 __all__ = ["DisposicaoDeMesa"]
 
@@ -31,8 +35,18 @@ class DisposicaoDeMesa:
         visor: QAbstractScrollArea,
         estado: AppState,
         texto_a_frente: Callable[[], bool],
+        texto: PainelDeTexto | None = None,
     ) -> None:
         self._divisor = divisor
+        self._texto = texto
+        """A aba Texto. Com a mesa armada ela acompanha a página do visualizador e mostra o bloco
+        impresso (S-643, S-644), e a folha e o texto apontam um para o outro (S-642): o bloco sob o
+        cursor ganha contorno na folha, e o clique na folha põe o cursor no bloco."""
+        if texto is not None:
+            texto.bloco_destacado.connect(self._destacar)
+            ponto = getattr(visor, "ponto_clicado", None)
+            if ponto is not None:
+                ponto.connect(self._clicou_na_folha)
         self._texto_a_frente = texto_a_frente
         """A pergunta "a aba Texto está à frente?" -- é da janela, que sabe onde cada área mora."""
         self._trabalho = trabalho
@@ -68,6 +82,15 @@ class DisposicaoDeMesa:
         self._estado.texto_mesa = mesa.MESA_AO_ABRIR_O_TEXTO if ligada else mesa.MESA_NUNCA
         self.arrumar()
         return ligada
+
+    def _destacar(self, bbox: object) -> None:
+        destacar = getattr(self._visor, "definir_destaque", None)
+        if destacar is not None:
+            destacar(bbox if self.armada else None)
+
+    def _clicou_na_folha(self, x: float, y: float) -> None:
+        if self.armada and self._texto is not None:
+            self._texto.ir_ao_ponto(x, y)
 
     def anotar(self) -> None:
         """Põe as duas alças no estado, cada uma na sua chave (S-156/S-640).
@@ -116,5 +139,9 @@ class DisposicaoDeMesa:
             esquerda = max(1, int(total * fracao))
             self._divisor.setSizes([esquerda, max(1, total - esquerda)])
         self.armada = para_a_mesa
+        if self._texto is not None:
+            self._texto.definir_mesa(para_a_mesa)
+            if not para_a_mesa:
+                self._destacar(None)
         if rolagem is not None and barra is not None:
             barra.setValue(round(rolagem * barra.maximum()))

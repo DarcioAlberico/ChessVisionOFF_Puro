@@ -317,5 +317,81 @@ class PesquisavelLeOCadernoTests(_ComLivro):
         self.assertFalse(livro.somente_leitura, "o cvoff tomou a trava da janela")
 
 
+
+class BlocoEmTests(unittest.TestCase):
+    """S-642/S-643: do deslocamento no texto ao bloco da página, e de volta."""
+
+    def test_ida_e_volta_por_bloco(self) -> None:
+        from chess_diagram_ocr.text.pagina import BlocoDeTexto as Bloco
+
+        blocos = tuple(Bloco.de_linhas([LinhaLida(t, (0.0, 0.0, 9.0, 9.0), 1.0, "glifo")]) for t in ("um", "dois", "três"))  # type: ignore[arg-type]
+        doc = rico.de_pagina(PaginaLida(documento="l.pdf", pagina=0, colunas=(Coluna(indice=0, blocos=blocos),)))
+        for bloco in range(3):
+            comeco = rico.deslocamento_do_bloco(doc, bloco)
+            assert comeco is not None
+            self.assertEqual(rico.bloco_em(doc, comeco), bloco)
+            self.assertEqual(rico.bloco_em(doc, comeco + 1), bloco)
+        fim_do_primeiro = len("um")
+        self.assertEqual(rico.bloco_em(doc, fim_do_primeiro), 0, "o cursor no fim do parágrafo é dele")
+        self.assertEqual(rico.bloco_em(doc, len(doc.para_texto())), 2)
+        self.assertIsNone(rico.deslocamento_do_bloco(doc, 9))
+
+    def test_sem_origem_nao_ha_bloco(self) -> None:
+        self.assertIsNone(rico.bloco_em(rico.DocumentoRico(), 0))
+
+
+
+class DiagramasNoTextoTests(unittest.TestCase):
+    """Fase 92, o que é puro: a preferência, o tamanho e alinhar todos os diagramas da folha."""
+
+    def test_a_preferencia_decide_so_a_marca_sem_escolha(self) -> None:
+        from chess_diagram_ocr.ui import texto_declarado as td
+
+        self.assertEqual(td.alinhamento_dos_diagramas(td.DIAGRAMAS_AO_CENTRO), "centro")
+        self.assertEqual(td.alinhamento_dos_diagramas(td.DIAGRAMAS_A_ESQUERDA), "esquerda")
+        self.assertEqual(td.alinhamento_dos_diagramas("de outra versão"), "centro")
+
+    def test_o_tamanho_anda_em_roda_e_o_padrao_e_o_medio(self) -> None:
+        from chess_diagram_ocr.ui import texto_declarado as td
+
+        self.assertEqual(td.largura_da_miniatura(""), 240)
+        self.assertEqual([td.largura_da_miniatura(t) for t in ("pequeno", "medio", "grande")], [160, 240, 320])
+        self.assertEqual(td.proximo_tamanho_da_miniatura("grande"), "pequeno")
+        self.assertEqual(td.proximo_tamanho_da_miniatura("medio"), "grande")
+
+    def test_alinhar_os_diagramas_da_folha_e_limpar_a_escolha(self) -> None:
+        doc = _com_diagrama("livro.pdf", 0)
+        a_esquerda = rico.alinhar_diagramas(doc, "esquerda")
+        self.assertEqual([c.atributos.alinhamento for c in a_esquerda.diagramas], ["esquerda"])
+        self.assertIs(rico.alinhar_diagramas(a_esquerda, "esquerda"), a_esquerda, "nada mudou e o documento é outro")
+        self.assertEqual(rico.diagramas_a_alinhar(a_esquerda, ""), 1)
+        self.assertEqual([c.atributos.alinhamento for c in rico.alinhar_diagramas(a_esquerda, "").diagramas], [""])
+        texto = [c for c in a_esquerda.corridas if not c.e_diagrama]
+        self.assertTrue(all(not c.atributos.alinhamento for c in texto), "o texto em volta foi alinhado junto")
+
+    def test_a_direita_escrita_na_marca_vence_as_duas_preferencias(self) -> None:
+        doc = rico.alinhar_diagramas(_com_diagrama("livro.pdf", 0), "direita")
+        marca = doc.diagramas[0]
+        for padrao in ("centro", "esquerda"):
+            self.assertEqual(rico.alinhamento_efetivo(marca, padrao_do_diagrama=padrao), "direita")
+
+    def test_cada_formato_marca_o_centro_e_a_esquerda(self) -> None:
+        """S-622: um diagrama centralizado e um à esquerda, em cada formato que alinha."""
+        from chess_diagram_ocr.text import exportacao
+
+        doc = _com_diagrama("livro.pdf", 0)
+        recortes = {1: Path("d.png")}
+        casos = {
+            ".html": ('class="alinhar-centro"', 'class="alinhar-esquerda"'),
+            ".rtf": ("\\qc", "\\ql"),
+            ".md": ('<p align="center">', "![[Diagrama 1]](diagramas/d.png)"),
+        }
+        for extensao, (centro, esquerda) in casos.items():
+            with self.subTest(formato=extensao):
+                formato = exportacao.formato_de(extensao)
+                self.assertIn(centro, exportacao.exportar(doc, formato, recortes=recortes).conteudo)
+                self.assertIn(esquerda, exportacao.exportar(doc, formato, recortes=recortes, diagramas="esquerda").conteudo)
+
+
 if __name__ == "__main__":
     unittest.main()

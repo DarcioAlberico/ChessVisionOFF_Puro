@@ -48,6 +48,14 @@ class DecisaoTests(unittest.TestCase):
 
 
 class EstadoTests(unittest.TestCase):
+    def test_os_diagramas_e_a_miniatura_vao_e_voltam_do_arquivo(self) -> None:
+        from ambiente_de_teste import pasta_temporaria
+
+        caminho = pasta_temporaria(self) / "estado.json"
+        save_state(caminho, AppState(texto_diagramas="esquerda", texto_miniatura="grande"))
+        lido = load_state(caminho)
+        self.assertEqual((lido.texto_diagramas, lido.texto_miniatura), ("esquerda", "grande"))
+
     def test_a_preferencia_e_a_alca_vao_e_voltam_do_arquivo(self) -> None:
         from ambiente_de_teste import pasta_temporaria
 
@@ -138,6 +146,18 @@ class DisposicaoTests(_JanelaComLivro):
         janela.resize(mesa.LARGURA_MINIMA - 50, 900)
         self.app.processEvents()
         self.assertTrue(janela.mesa.armada)
+
+    def test_a_aba_texto_sabe_que_a_mesa_armou(self) -> None:
+        """S-643/S-644: a janela avisa o painel, que passa a acompanhar a página."""
+        janela = self.montar()
+        self.assertFalse(janela.texto._na_mesa)
+        self.ir_para(janela, abas.TEXTO)
+        self.assertTrue(janela.texto._na_mesa)
+        janela.pdf.ir_para_pagina(2)
+        self.app.processEvents()
+        self.assertEqual(janela.texto._folha_por_ler, 2, "virar a página com a mesa não levou a aba junto")
+        self.ir_para(janela, abas.RESULTADO)
+        self.assertFalse(janela.texto._na_mesa)
 
     def test_cada_disposicao_lembra_a_sua_alca(self) -> None:
         janela = self.montar()

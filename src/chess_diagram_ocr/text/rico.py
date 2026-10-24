@@ -1325,6 +1325,63 @@ def alinhamento_efetivo(corrida: Corrida, *, padrao_do_diagrama: str = ALINHAMEN
     return padrao_do_diagrama
 
 
+def alinhar_diagramas(doc: DocumentoRico, alinhamento: str) -> DocumentoRico:
+    """Todos os diagramas da folha naquele alinhamento -- `""` limpa o escrito e volta à preferência (S-621).
+
+    É o mesmo documento quando nenhum muda, e é isso que deixa o chamador saber se há o que gravar
+    sem comparar a folha inteira. Só a marca muda: o parágrafo de texto em volta fica como estava.
+    """
+    if alinhamento and alinhamento not in ALINHAMENTOS:
+        raise KeyError(f"alinhamento desconhecido: {alinhamento!r}. Os válidos estão em ALINHAMENTOS.")
+    if not any(c.e_diagrama and c.atributos.alinhamento != alinhamento for c in doc.corridas):
+        return doc
+    corridas = tuple(
+        replace(c, atributos=replace(c.atributos, alinhamento=alinhamento)) if c.e_diagrama else c
+        for c in doc.corridas
+    )
+    return DocumentoRico(corridas=corridas, origem=doc.origem)
+
+
+def diagramas_a_alinhar(doc: DocumentoRico, alinhamento: str) -> int:
+    """Quantos diagramas da folha `alinhar_diagramas` mudaria: a conta que a pergunta do caderno diz."""
+    return sum(1 for c in doc.corridas if c.e_diagrama and c.atributos.alinhamento != alinhamento)
+
+
+def bloco_em(doc: DocumentoRico, deslocamento: int) -> int | None:
+    """O bloco da página de onde veio o trecho naquele deslocamento, ou `None` (S-642, S-643).
+
+    É o que liga o cursor do editor à folha: a `Corrida` não sabe a linha nem o `bbox`, mas sabe o
+    `bloco`, e o `bbox` do bloco está em `origem.blocos`. O cursor no **fim** de um parágrafo -- o
+    lugar mais comum de ele estar -- fica entre o trecho e o separador, e conta como do trecho.
+    Trecho escrito do zero (`SEM_BLOCO`) e separador não têm bloco.
+    """
+    if doc.origem is None:
+        return None
+    comeco = 0
+    anterior: Corrida | None = None
+    for corrida in doc.corridas:
+        fim = comeco + len(corrida.texto)
+        if comeco <= deslocamento < fim:
+            if corrida.da_pagina and corrida.texto.strip():
+                return corrida.bloco
+            if deslocamento == comeco and anterior is not None and anterior.da_pagina:
+                return anterior.bloco
+            return None
+        comeco = fim
+        anterior = corrida
+    return anterior.bloco if anterior is not None and anterior.da_pagina and deslocamento == comeco else None
+
+
+def deslocamento_do_bloco(doc: DocumentoRico, bloco: int) -> int | None:
+    """Onde começa, no texto, o primeiro trecho que veio daquele bloco da página. `None` se nenhum veio."""
+    comeco = 0
+    for corrida in doc.corridas:
+        if corrida.da_pagina and corrida.bloco == bloco and corrida.texto.strip():
+            return comeco
+        comeco += len(corrida.texto)
+    return None
+
+
 __all__ = [
     "BOOLEANOS",
     "CORES_DE_AUTOR",
@@ -1361,6 +1418,7 @@ __all__ = [
     "alcance_da_edicao",
     "alcance_de_apagar",
     "alinhamento_efetivo",
+    "alinhar_diagramas",
     "alternar",
     "apagar",
     "aplicar",
@@ -1368,11 +1426,14 @@ __all__ = [
     "aplicar_corpo",
     "aplicar_estilo",
     "aplicar_no_paragrafo",
+    "bloco_em",
     "corpo_no_limite",
     "corridas_de_texto",
     "de_pagina",
     "de_texto",
     "dentro_de_marca",
+    "diagramas_a_alinhar",
+    "deslocamento_do_bloco",
     "editar",
     "estilo_do_segmento",
     "fundir",

@@ -500,6 +500,17 @@ CATALOGO: tuple[Comando, ...] = (
     # O caderno do livro (S-613): o índice das folhas e a marca de conferida. O índice abre e fecha
     # como a paleta de glifos, e não é interruptor pelo mesmo motivo: ele não é preferência guardada.
     Comando("indice_do_caderno", "Índice das folhas do caderno", VISUALIZACAO, estilos.NEUTRO),
+    # Os diagramas no texto (Fase 92): a preferência e o tamanho são vista; alinhar os da folha é edição.
+    Comando("diagramas_a_esquerda", "Diagramas no texto à esquerda (o padrão é ao centro)", VISUALIZACAO, estilos.NEUTRO),
+    Comando("tamanho_da_miniatura", "Tamanho das miniaturas dos diagramas", VISUALIZACAO, estilos.NEUTRO),
+    Comando("diagramas_da_folha_a_esquerda", "Alinhar os diagramas desta folha à esquerda", EDICAO, estilos.NEUTRO),
+    Comando("diagramas_da_folha_ao_centro", "Alinhar os diagramas desta folha ao centro", EDICAO, estilos.NEUTRO),
+    Comando(
+        "diagramas_da_folha_como_a_preferencia",
+        "Diagramas desta folha como a preferência",
+        EDICAO,
+        estilos.NEUTRO,
+    ),
     Comando("marcar_folha_conferida", "Marcar a folha como conferida no caderno", VISUALIZACAO, estilos.NEUTRO),
     Comando(
         "quebrar_linha",

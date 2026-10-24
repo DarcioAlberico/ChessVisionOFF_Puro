@@ -189,6 +189,10 @@ class AppState:
     **notação** -- uma linha de lances quebrada deixa de ser uma linha de lances --, e essa escolha
     dura tanto quanto a de `wheel_flips_page`, que é o interruptor vizinho com o mesmo argumento."""
 
+    texto_diagramas: str = ""
+    """«Diagramas no texto» (S-620): `""` centralizados, `"esquerda"` à esquerda."""
+    texto_miniatura: str = ""
+    """O tamanho da miniatura do diagrama no texto (S-623): `pequeno`, `medio` ou `grande`; `""` é o padrão."""
     texto_mesa: str = ""
     """A mesa de texto se arma ao abrir o Texto? (S-640) `ui/mesa`: `""` e `texto` ligam, `nunca`
     desliga. Não é validada aqui além do tipo, pela razão de `skin`: quem a aplica é `mesa.ligada`."""
@@ -284,6 +288,8 @@ class AppState:
             "texto_quebra": bool(self.texto_quebra),
             "texto_motor": str(self.texto_motor),
             "texto_bloco": bool(self.texto_bloco),
+            "texto_diagramas": str(self.texto_diagramas),
+            "texto_miniatura": str(self.texto_miniatura),
             "texto_mesa": str(self.texto_mesa),
             "mesa_fraction": float(self.mesa_fraction),
             "estudo_aberto": self.estudo_aberto,
@@ -420,6 +426,10 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     if isinstance(texto_bloco, bool):
         state.texto_bloco = texto_bloco
 
+    for chave in ("texto_diagramas", "texto_miniatura"):
+        valor = raw.get(chave)
+        if isinstance(valor, str):
+            setattr(state, chave, valor)
     texto_mesa = raw.get("texto_mesa")
     if isinstance(texto_mesa, str):
         state.texto_mesa = texto_mesa

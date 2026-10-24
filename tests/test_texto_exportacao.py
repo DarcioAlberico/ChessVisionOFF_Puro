@@ -57,8 +57,15 @@ class FenDoDiagramaTests(unittest.TestCase):
         )
 
     def test_o_md_escreve_a_fen_em_comentario_com_e_sem_imagem(self) -> None:
+        # Centralizado, porque ninguém o alinhou (S-620): o `.md` o põe num `<p align>` (S-622).
         com = exportacao.exportar(self.documento(), exportacao.Markdown(), recortes={1: Path("d.png")}).conteudo
-        self.assertIn("![[Diagrama 1]](diagramas/d.png)\n<!-- FEN: " + self.FEN + " -->", com)
+        self.assertIn(
+            '<p align="center"><img src="diagramas/d.png" alt="[Diagrama 1]"></p>\n<!-- FEN: ' + self.FEN + " -->", com
+        )
+        a_esquerda = exportacao.exportar(
+            self.documento(), exportacao.Markdown(), recortes={1: Path("d.png")}, diagramas="esquerda"
+        ).conteudo
+        self.assertIn("![[Diagrama 1]](diagramas/d.png)\n<!-- FEN: " + self.FEN + " -->", a_esquerda)
         sem = exportacao.exportar(self.documento(), exportacao.Markdown()).conteudo
         self.assertIn("[Diagrama 1]\n<!-- FEN: " + self.FEN + " -->", sem)
 

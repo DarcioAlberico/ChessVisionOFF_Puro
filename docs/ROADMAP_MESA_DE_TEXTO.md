@@ -277,6 +277,23 @@ O caderno do livro: a Fase 91 inteira. Testes em
 | S-615 | ✅ | Na abertura do livro, cada rascunho dele entra no caderno se a folha não tem caderno mais novo, e só então sai da pasta |
 | S-616 | ✅ com desvio | «Descartar as correções desta folha» devolve a leitura do motor como edição (`Ctrl+Z` traz as correções) e guarda a corrigida como `anterior`. **O `.lida.cvtxt` é a leitura mais recente do motor**, e não a primeira: ler de novo com outro motor é pedir outra leitura, e descartar deve voltar a ela. Abrir um `.cvtxt` avulso do livro aberto **não** pergunta «trazer para o caderno?»: abri-lo para olhar não muda nada, e a primeira edição o leva ao caderno com a folha de antes como `anterior` |
 
+### Estado da terceira entrega (2026-10-24, ramo `mesa-de-texto-caderno`)
+
+O resto da Fase 94 que não pede a janela própria, e a Fase 92 menos a flutuação com portão.
+
+| item | estado | onde, e o que mudou em relação ao plano |
+|---|---|---|
+| S-641 | ✅ | Já vinha do `folha_pedida` de hoje: abrir uma folha do caderno leva o visualizador a ela, e um `.cvtxt` de outro livro não mexe nele. Coberto pelo teste da S-644 na janela |
+| S-642 (etapa 1) | ✅ | `rico.bloco_em` e `rico.deslocamento_do_bloco` (puros); o painel diz o `bbox` do bloco sob o cursor (`bloco_destacado`), o visualizador o contorna na cor do foco e rola até ele (`VisorDePagina.definir_destaque`), e o clique na folha sai em **pontos** (`ponto_clicado`) e põe o cursor no começo do menor bloco que o contém. Quem liga os dois é `qt/disposicao_de_mesa.py`, e só com a mesa armada. A etapa 2 (por linha) continua esperando a etapa 1 provar valor |
+| S-643 | ✅ | A faixa acima do editor com o recorte do bloco sob o cursor (`_recorte_da_folha`, o mesmo da miniatura), na largura do editor e até um terço da altura dele; só na mesa e com a folha rasterizada |
+| S-644 | ✅ com desvio | A janela avisa a aba quando a mesa arma (`definir_mesa`); virar a página guarda a folha que sai, abre a que entra do caderno, ou mostra o vazio «A folha 13 ainda não foi lida» com o botão «Ler a folha 13» — e não lê. **A preferência «Ler ao chegar numa folha sem caderno» não entrou**: é uma linha no menu e uma no estado, e fica para quando alguém a pedir |
+| S-646 | ⏳ | Os três pré-requisitos (a guarda de atalhos por janela, o painel fora da `QScrollArea`, o `_focar_aba`) seguem como estavam; o R1 decide se ela é pedida |
+| S-620 | ✅ com desvio | «Diagramas no texto à esquerda (o padrão é ao centro)», interruptor do menu Texto, guardado em `AppState.texto_diagramas` (e não em Configurações, pelo motivo da S-640). Trocar redesenha sem tornar a folha «por gravar», e a marca com alinhamento escrito vence as duas. A guarda S-603 lê o alinhamento efetivo pela mesma função |
+| S-621 | ✅ com desvio | Três comandos do menu Texto para a folha (à esquerda, ao centro, como a preferência), um passo de desfazer. O do caderno inteiro está no **menu do botão direito do índice**, com a pergunta «Alinhar 41 diagrama(s) de 23 folha(s) à esquerda?» e a versão de antes de cada folha como `anterior` |
+| S-622 | ✅ | O `.html` e o `.rtf` já seguiam o efetivo; o `.md` põe a figura num `<p align="center"><img …></p>` quando ela não está à esquerda, e mantém o `![…](…)` à esquerda. A exportação recebe a preferência (`exportar(…, diagramas=…)`) |
+| S-623 | ✅ com desvio | Pequenas · médias · grandes (160 · 240 · 320 px no corpo do sistema), **médias por padrão** — a miniatura de hoje cresceu de 160 para 240. Um comando que anda em roda, «Tamanho das miniaturas dos diagramas», em vez de três; guardado em `AppState.texto_miniatura` |
+| S-624 | ⏳ | O portão pede o protótipo medido em dez folhas reais de cinco livros, com o código declarado (S-218); não foi feito |
+
 ## Custo, risco e ordem
 
 | fase | esforço | risco | o que fica se ela parar no meio |

@@ -424,6 +424,251 @@ class PdfPesquisavelDoCadernoTests(_Aba):
         self.assertIn("do caderno", self.recados[-1])
 
 
+def _tres_blocos(livro: str, folha: int) -> PaginaLida:
+    """Uma folha de três parágrafos com `bbox` conhecidos, em pontos."""
+    blocos = tuple(
+        BlocoDeTexto.de_linhas([LinhaLida(texto, caixa, 0.9, "glifo")])  # type: ignore[arg-type]
+        for texto, caixa in (
+            ("primeiro bloco", (10.0, 10.0, 90.0, 30.0)),
+            ("segundo bloco", (10.0, 40.0, 120.0, 70.0)),
+            ("terceiro bloco", (10.0, 80.0, 60.0, 95.0)),
+        )
+    )
+    return PaginaLida(documento=livro, pagina=folha, colunas=(Coluna(indice=0, blocos=blocos),))
+
+
+class MesaAcompanhaTests(_Aba):
+    """S-644: com a mesa armada, virar a página guarda a folha que sai e abre a que entra."""
+
+    def test_virar_para_folha_sem_caderno_mostra_ler_e_nao_le(self) -> None:
+        self.ler(3)
+        self.digitar_no_fim(" corrigida")
+        self.painel.definir_mesa(True)
+        self.lidas.clear()
+        self.painel.definir_livro(self.livro, pagina=12)
+        self.assertEqual(self.lidas, [], "virar a página leu a folha")
+        self.assertEqual(self.painel.documento.para_texto(), "")
+        self.assertEqual(self.painel.vazio.botao.text(), strings.ler_a_folha(13))  # type: ignore[union-attr]
+        self.assertIn("corrigida", self.no_caderno(3), "a folha que saiu não foi ao caderno")
+        self.painel.ler()  # o botão do vazio
+        self.assertEqual(self.lidas, [12])
+
+    def test_virar_para_folha_do_caderno_abre_o_texto_dela(self) -> None:
+        self.ler(3)
+        self.digitar_no_fim(" corrigida")
+        self.ler(5)
+        self.painel.definir_mesa(True)
+        self.lidas.clear()
+        self.painel.definir_livro(self.livro, pagina=2)
+        self.assertEqual(self.lidas, [])
+        self.assertIn("corrigida", self.painel.documento.para_texto())
+
+    def test_sem_a_mesa_virar_a_pagina_nao_troca_a_folha(self) -> None:
+        self.ler(3)
+        self.painel.definir_livro(self.livro, pagina=12)
+        self.assertIn("folha 3", self.painel.documento.para_texto())
+
+
+class FaixaImpressaTests(_Aba):
+    """S-643: a faixa acima do editor com o recorte impresso do bloco sob o cursor."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        import numpy as np
+
+        self.folha = (np.arange(400 * 400 * 3, dtype=np.uint32) % 251).astype(np.uint8).reshape(400, 400, 3)
+        self.painel.mostrar_pagina(_tres_blocos(str(self.livro), 0), folha_rgb=self.folha, dpi=72)
+
+    def por_o_cursor_no(self, bloco: int) -> None:
+        deslocamento = rico.deslocamento_do_bloco(self.painel.documento, bloco)
+        assert deslocamento is not None
+        cursor = self.painel.editor.textCursor()
+        cursor.setPosition(self.painel._mapa.posicao(deslocamento + 2))
+        self.painel.editor.setTextCursor(cursor)
+
+    def test_o_cursor_no_segundo_bloco_mostra_o_recorte_dele(self) -> None:
+        import numpy as np
+
+        from chess_diagram_ocr.qt.painel_de_texto import _recorte_da_folha
+
+        self.painel.definir_mesa(True)
+        self.por_o_cursor_no(1)
+        self.assertFalse(self.painel.faixa_impressa.isHidden())
+        esperado = _recorte_da_folha(self.folha, self.painel.documento.origem.blocos[1], dpi=72)  # type: ignore[union-attr]
+        self.assertTrue(np.array_equal(self.painel.recorte_na_faixa, esperado))
+        self.por_o_cursor_no(2)
+        self.assertEqual(self.painel.recorte_na_faixa.shape[:2], (15, 50))  # type: ignore[union-attr]
+
+    def test_fora_da_mesa_ou_sem_folha_a_faixa_some(self) -> None:
+        self.por_o_cursor_no(1)
+        self.assertTrue(self.painel.faixa_impressa.isHidden(), "a faixa apareceu fora da mesa")
+        self.painel.definir_mesa(True)
+        self.painel.abrir(rico.DocumentoRico())
+        self.painel.definir_mesa(True)
+        self.assertTrue(self.painel.faixa_impressa.isHidden())
+
+
+class ApontarTests(_Aba):
+    """S-642, etapa 1: o bloco sob o cursor ganha contorno na folha; o clique na folha leva o cursor."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.painel.definir_livro(self.livro, pagina=0)
+        self.painel.mostrar_pagina(_tres_blocos(str(self.livro), 0))
+        self.avisados: list[object] = []
+        self.painel.bloco_destacado.connect(self.avisados.append)
+        self.painel.definir_mesa(True)
+
+    def cursor_em(self, deslocamento: int) -> None:
+        cursor = self.painel.editor.textCursor()
+        cursor.setPosition(self.painel._mapa.posicao(deslocamento))
+        self.painel.editor.setTextCursor(cursor)
+
+    def test_o_cursor_em_cada_bloco_contorna_o_bbox_dele(self) -> None:
+        blocos = self.painel.documento.origem.blocos  # type: ignore[union-attr]
+        for indice in range(3):
+            comeco = rico.deslocamento_do_bloco(self.painel.documento, indice)
+            assert comeco is not None
+            self.cursor_em(comeco + 1)
+            self.assertEqual(self.avisados[-1], tuple(blocos[indice].bbox))
+
+    def test_o_clique_no_centro_de_cada_bloco_poe_o_cursor_no_comeco_dele(self) -> None:
+        for indice, bloco in enumerate(self.painel.documento.origem.blocos):  # type: ignore[union-attr]
+            x0, y0, x1, y1 = bloco.bbox
+            self.assertTrue(self.painel.ir_ao_ponto((x0 + x1) / 2, (y0 + y1) / 2))
+            posicao = self.painel._mapa.deslocamento(self.painel.editor.textCursor().position())
+            self.assertEqual(posicao, rico.deslocamento_do_bloco(self.painel.documento, indice))
+        self.assertFalse(self.painel.ir_ao_ponto(250.0, 250.0), "o clique fora de todo bloco moveu o cursor")
+
+    def test_sem_origem_nada_e_contornado_e_nada_levanta(self) -> None:
+        self.painel.abrir(rico.DocumentoRico())
+        self.painel._avisar_bloco()
+        self.assertIsNone(self.avisados[-1])
+        self.assertFalse(self.painel.ir_ao_ponto(20.0, 20.0))
+
+    def test_fora_da_mesa_o_contorno_some(self) -> None:
+        self.cursor_em(1)
+        self.assertIsNotNone(self.avisados[-1])
+        self.painel.definir_mesa(False)
+        self.assertIsNone(self.avisados[-1])
+
+
+class VisorDestacaTests(unittest.TestCase):
+    """O visualizador desenha o contorno pelo DPI e pelo zoom, e diz o clique em pontos (S-642)."""
+
+    @unittest.skipUnless(TEM_PYQT, MOTIVO)
+    def test_pontos_viram_pixel_e_o_clique_volta_a_pontos(self) -> None:
+        import numpy as np
+
+        from chess_diagram_ocr.qt.visor import VisorDePagina
+
+        aplicacao()
+        visor = VisorDePagina()
+        self.addCleanup(descartar, visor)
+        visor.mostrar_pagina(np.full((300, 300, 3), 250, np.uint8), dpi=144)
+        visor.definir_zoom(1.0)
+        visor.definir_destaque((10.0, 20.0, 40.0, 50.0))
+        retangulo = visor.retangulo_do_destaque()
+        assert retangulo is not None
+        self.assertEqual((retangulo.x(), retangulo.y(), retangulo.width(), retangulo.height()), (20, 40, 60, 60))
+        pontos: list[tuple[float, float]] = []
+        visor.ponto_clicado.connect(lambda x, y: pontos.append((x, y)))
+        visor.clicar_em(60.0, 100.0)
+        self.assertEqual(pontos, [(30.0, 50.0)])
+        visor.definir_destaque(None)
+        self.assertIsNone(visor.retangulo_do_destaque())
+
+
+def _com_diagramas(livro: str, folha: int, quantos: int = 3) -> PaginaLida:
+    from chess_diagram_ocr.text.pagina import BlocoDeDiagrama
+
+    blocos: list[object] = []
+    for indice in range(quantos):
+        blocos.append(BlocoDeTexto.de_linhas([LinhaLida(f"texto {indice}", (0.0, 0.0, 9.0, 9.0), 0.9, "glifo")]))  # type: ignore[arg-type]
+        blocos.append(BlocoDeDiagrama(indice=indice, bbox=(10.0, 10.0 + 60 * indice, 60.0, 60.0 + 60 * indice)))
+    return PaginaLida(documento=livro, pagina=folha, colunas=(Coluna(indice=0, blocos=tuple(blocos)),))  # type: ignore[arg-type]
+
+
+class DiagramasNaTelaTests(_Aba):
+    """Fase 92 na tela: a preferência redesenha sem gravar, e alinhar todos é um passo de desfazer."""
+
+    def alinhamentos_desenhados(self) -> list[Qt.AlignmentFlag]:
+        documento = self.painel.editor.document()
+        bloco = documento.begin()
+        achados = []
+        while bloco.isValid():
+            iterador = bloco.begin()
+            while not iterador.atEnd():
+                if iterador.fragment().charFormat().isImageFormat():
+                    achados.append(bloco.blockFormat().alignment() & Qt.AlignmentFlag.AlignHorizontal_Mask)
+                    break
+                iterador += 1
+            bloco = bloco.next()
+        return achados
+
+    def test_tres_diagramas_ao_centro_e_a_preferencia_os_leva_a_esquerda_sem_gravar(self) -> None:
+        from paridade_do_texto import divergencias
+
+        import numpy as np
+
+        folha = np.full((400, 400, 3), 210, np.uint8)  # 72 dpi: os três bbox cabem nela
+        self.painel.mostrar_pagina(_com_diagramas(str(self.livro), 0), folha_rgb=folha, dpi=72)
+        centro = Qt.AlignmentFlag.AlignHCenter
+        esquerda = Qt.AlignmentFlag.AlignLeft
+        self.assertEqual(self.alinhamentos_desenhados(), [centro] * 3)
+        self.painel.definir_diagramas("esquerda")
+        self.assertEqual(self.alinhamentos_desenhados(), [esquerda] * 3)
+        self.assertFalse(self.painel.tem_alteracoes, "a preferência tornou a folha por gravar")
+        self.assertEqual(divergencias(self.painel), [])
+
+    def test_a_preferencia_vale_para_a_guarda_de_paridade(self) -> None:
+        from paridade_do_texto import divergencias
+
+        self.painel.mostrar_pagina(_com_diagramas(str(self.livro), 0))
+        self.painel.definir_diagramas("esquerda")
+        self.assertEqual(divergencias(self.painel), [])
+        self.assertFalse(self.painel.tem_alteracoes)
+
+    def test_alinhar_os_da_folha_e_um_passo_de_desfazer(self) -> None:
+        self.painel.mostrar_pagina(_com_diagramas(str(self.livro), 0))
+        self.painel.diagramas_da_folha_a_esquerda()
+        self.assertEqual([c.atributos.alinhamento for c in self.painel.documento.diagramas], ["esquerda"] * 3)
+        self.painel.desfazer()
+        self.assertEqual([c.atributos.alinhamento for c in self.painel.documento.diagramas], [""] * 3)
+
+    def test_grande_com_zoom_mais_dois(self) -> None:
+        from chess_diagram_ocr.qt import tema as qt_tema
+
+        self.painel.mostrar_pagina(_com_diagramas(str(self.livro), 0))
+        self.painel.definir_tamanho_da_miniatura("grande")
+        self.painel.aplicar_zoom(2, avisar=False)
+        corpo_do_sistema = qt_tema.fonte_base()[0]
+        corpo_da_vista = self.painel._base[0]  # type: ignore[index]
+        self.assertEqual(self.painel._largura_da_miniatura(), round(320 * corpo_da_vista / corpo_do_sistema))
+        self.assertFalse(self.painel.tem_alteracoes, "o tamanho tornou a folha por gravar")
+
+    def test_alinhar_o_caderno_inteiro_conta_antes_e_guarda_a_anterior_de_cada_folha(self) -> None:
+        from chess_diagram_ocr.text import arquivo
+
+        for folha in (1, 4):
+            doc = rico.de_pagina(_com_diagramas(str(self.livro), folha, quantos=2))
+            self.cad.gravar(doc)
+        self.ler(9)  # uma folha sem diagrama, na tela
+        with _Respondendo(QMessageBox.StandardButton.Yes) as caixa:
+            mudadas = self.painel.alinhar_diagramas_do_caderno("esquerda")
+        self.assertIn("4 diagrama(s) de 2 folha(s)", caixa.call_args.args[2])
+        self.assertEqual(mudadas, 2)
+        for folha in (1, 4):
+            depois = arquivo.carregar(self.cad.caminho(folha))
+            self.assertEqual({c.atributos.alinhamento for c in depois.diagramas}, {"esquerda"})
+            self.assertTrue(self.cad.caminho(folha, tipo="anterior").exists(), f"a folha {folha + 1} ficou sem anterior")
+
+    def test_o_indice_tem_o_menu_do_caderno(self) -> None:
+        rotulos = [acao.text() for acao in self.painel.indice.menu().actions()]
+        self.assertEqual(len(rotulos), 3)
+        self.assertTrue(all("diagramas do caderno" in r.lower() for r in rotulos))
+
+
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class JanelaTests(_JanelaComLivro):
     def test_a_janela_abre_o_caderno_do_livro_aberto(self) -> None:

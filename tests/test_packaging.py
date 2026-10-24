@@ -257,8 +257,13 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2104
+    LIMITE = 2099
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.104 -> 2.099 na Fase 92 (2026-10-24)**: a vista da aba Texto -- zoom, quebra, motor, modo
+    bloco, e agora os diagramas e a miniatura -- passou a ir e voltar do estado por
+    `PainelDeTexto.aplicar_estado`/`anotar_estado`, oito linhas a menos aqui, e uma a mais para
+    marcar o interruptor «Diagramas no texto à esquerda».
 
     **2.093 -> 2.104 na S-640 (2026-10-24)**: a mesa de texto -- o PDF à esquerda com a aba Texto
     à frente. A troca de lados, as duas alças e o interruptor moram em `qt/disposicao_de_mesa.py`;

@@ -526,7 +526,7 @@ class JanelaPrincipal(QMainWindow):
         self.divisor.setSizes([LARGURA_MINIMA_DAS_ABAS, 760])
         self.mesa = DisposicaoDeMesa(  # o PDF à esquerda com a aba Texto à frente (S-640)
             self.divisor, trabalho=self.abas, livro=self.lado_do_livro, visor=self.pdf.visor, estado=self._estado,
-            texto_a_frente=lambda: self.abas.area_atual() is self.texto,
+            texto_a_frente=lambda: self.abas.area_atual() is self.texto, texto=self.texto,
         )
 
         self.treino = ControladorDeTreino(self, pedido=self._pedido_de_treino, busy=self.busy)
@@ -633,11 +633,9 @@ class JanelaPrincipal(QMainWindow):
         self.pdf.marcar_diagramas.setChecked(estado.show_diagram_boxes)
         self.pdf.roda_vira_pagina.setChecked(estado.wheel_flips_page)
         self.painel.mostrar_incerteza = estado.show_heatmap
-        self.texto.aplicar_zoom(estado.texto_zoom, avisar=False)
-        self.texto.definir_quebra(estado.texto_quebra)
-        self.texto.definir_motor(estado.texto_motor)  # o motor e o modo bloco da sessão anterior (item 17)
-        self.texto.definir_modo_bloco(estado.texto_bloco)
+        self.texto.aplicar_estado(estado)  # zoom, quebra, motor, modo bloco e os diagramas (S-620, S-623)
         self.menu.marcar("mesa_de_texto", ligado=self.mesa.ligada)
+        self.menu.marcar("diagramas_a_esquerda", ligado=self.texto.diagramas_a_esquerda)
         self.estudo.posicionar_divisor(estado.estudo_divisor)
         # Daqui para baixo o disco já está nos widgets, e gravar volta a ser honesto (S-322).
         self._estado_aplicado = True
@@ -742,10 +740,7 @@ class JanelaPrincipal(QMainWindow):
         estado.show_diagram_boxes = bool(self.pdf.marcar_diagramas.isChecked())
         estado.wheel_flips_page = bool(self.pdf.roda_vira_pagina.isChecked())
         estado.show_heatmap = self.painel.mostrar_incerteza
-        estado.texto_zoom = int(self.texto.zoom_da_vista)
-        estado.texto_quebra = bool(self.texto.quebra)
-        estado.texto_motor = self.texto.motor
-        estado.texto_bloco = bool(self.texto.modo_bloco)
+        self.texto.anotar_estado(estado)
         estado.review_queue_path = str(self.revisao.queue_path)
         estado.estudo_aberto = self.estudo.chave_do_estudo_aberto
         # `or` o guardado: o divisor devolve `0.0` enquanto não há geometria medida, e zero

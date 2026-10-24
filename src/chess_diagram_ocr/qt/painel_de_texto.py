@@ -117,17 +117,25 @@ from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.texto_declarado import (
     ACOES_PROPRIAS,
     COMANDOS_DA_ABA,
+    DIAGRAMAS_A_ESQUERDA,
+    DIAGRAMAS_AO_CENTRO,
     MOTORES,
+    NOME_DO_TAMANHO,
+    TAMANHO_DA_MINIATURA_PADRAO,
+    TAMANHOS_DA_MINIATURA,
     ZOOM_MAXIMO,
     ZOOM_MINIMO,
     Digitacao,
+    alinhamento_dos_diagramas,
     continua_a_digitacao,
     digitacao_depois,
     fora_do_livro,
     frase_do_lexico,
     frase_do_rodape,
+    largura_da_miniatura,
     paradas_do_zoom,
     porcentagem_do_zoom,
+    proximo_tamanho_da_miniatura,
 )
 
 logger = logging.getLogger(__name__)
@@ -141,7 +149,7 @@ Um valor de retorno e não uma exceção: desistir não é falhar, e uma exceç�
 `_exportacao_falhou`, que abre caixa vermelha. O `\u0001` na frente é o que impede uma frase de
 relatório legítima de coincidir com ela."""
 
-LARGURA_DA_MINIATURA = 160
+LARGURA_DA_MINIATURA = TAMANHOS_DA_MINIATURA[TAMANHO_DA_MINIATURA_PADRAO]
 """A miniatura do diagrama dentro do texto, em pixel.
 
 Grande o bastante para reconhecer a posição, pequena o bastante para a linha seguinte caber na
@@ -281,6 +289,10 @@ class PainelDeTexto(QWidget):
     """Duplo clique numa miniatura: `(folha 0-based, índice do diagrama)`. A janela leva o
     diagrama à sala de estudo, como o duplo clique na caixa do visualizador (item 8)."""
 
+    bloco_destacado = pyqtSignal(object)
+    """O `bbox`, em pontos, do bloco da página de onde veio o trecho sob o cursor -- ou `None` (S-642).
+    A mesa o contorna no visualizador. Sai só quando o bloco muda, e não a cada tecla."""
+
     folha_pedida = pyqtSignal(int)
     """Um `.cvtxt` do livro aberto acabou de entrar na tela: a folha dele (0-based), para o
     visualizador ir até ela (item 9). Não sai para um `.cvtxt` de outro livro."""
@@ -385,6 +397,19 @@ class PainelDeTexto(QWidget):
         """Quando o documento mudou e quando o cursor mexeu pela última vez: a régua do salvamento
         no caderno pede os dois parados (`caderno.espera_restante`, S-612)."""
         self._leitura_de: tuple[str, bool] = ("", False)
+        self._diagramas = DIAGRAMAS_AO_CENTRO
+        """«Diagramas no texto» (S-620). É vista e preferência, e não documento: trocar não grava nada."""
+        self._tamanho_da_miniatura = TAMANHO_DA_MINIATURA_PADRAO
+        """O tamanho da miniatura (S-623): `ui/texto_declarado.TAMANHOS_DA_MINIATURA`."""
+        self._na_mesa = False
+        """A mesa de texto está armada (S-640): a aba acompanha a página do visualizador (S-644) e
+        mostra o bloco impresso sob o cursor (S-643). Quem diz é a janela, por `definir_mesa`."""
+        self._bloco_avisado: tuple[float, ...] | None = None
+        self._folha_por_ler: int | None = None
+        """A folha que a mesa mostrou sem texto, porque ela não está no caderno (S-644)."""
+        self._bloco_na_faixa: tuple[int, int] | None = None
+        self.recorte_na_faixa: np.ndarray | None = None
+        """O recorte da folha que a faixa do bloco impresso mostra, antes da escala (S-643)."""
         self._folha_pedida_ao_fundo: int | None = None
         self._renderizacao: Tarefa | None = None
         """A folha do caderno sendo rasterizada ao fundo, para as miniaturas (`_renderizar_ao_fundo`)."""
@@ -427,6 +452,13 @@ class PainelDeTexto(QWidget):
         caixa.setContentsMargins(*(espaco.margem_da_aba(),) * 4)
         caixa.setSpacing(espaco.linha())
         caixa.addWidget(self._barra_de_ferramentas())
+        # O bloco impresso sob o cursor, na largura do editor (S-643): quem corrige OCR compara a
+        # letra impressa e a lida sem atravessar a tela com os olhos. Só na mesa, e só com a folha.
+        self.faixa_impressa = QLabel(self)
+        self.faixa_impressa.setAccessibleName("Bloco impresso sob o cursor")
+        self.faixa_impressa.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.faixa_impressa.hide()
+        caixa.addWidget(self.faixa_impressa)
 
         self.editor = QTextEdit(self)
         self.editor.setAccessibleName("Folha transcrita")
@@ -478,6 +510,7 @@ class PainelDeTexto(QWidget):
         # WordCraft; nasce escondido, como a paleta.
         self.indice = IndiceDoCaderno(self)
         self.indice.folha_escolhida.connect(self._abrir_do_indice)
+        self.indice.alinhar_pedido.connect(self.alinhar_diagramas_do_caderno)
         corpo.addWidget(self.indice)
         corpo.addWidget(self.editor, 1)
         corpo.addWidget(self._montar_paleta())
@@ -891,8 +924,8 @@ class PainelDeTexto(QWidget):
         """
         if corrida is None:
             return bloco_de(rico.PADRAO, base=self._base)
-        atributos = replace(corrida.atributos, alinhamento=rico.alinhamento_efetivo(corrida))
-        return bloco_de(atributos, base=self._base)
+        efetivo = rico.alinhamento_efetivo(corrida, padrao_do_diagrama=alinhamento_dos_diagramas(self._diagramas))
+        return bloco_de(replace(corrida.atributos, alinhamento=efetivo), base=self._base)
 
     def _selecao_atual(self) -> tuple[int, int]:
         """`(âncora, ponta)` do cursor, em deslocamento do documento."""
@@ -982,7 +1015,7 @@ class PainelDeTexto(QWidget):
         """
         corpo_do_sistema = max(1, tema.fonte_base()[0])
         corpo_da_vista = self._base[0] if self._base is not None else corpo_do_sistema
-        return max(48, round(LARGURA_DA_MINIATURA * corpo_da_vista / corpo_do_sistema))
+        return max(48, round(largura_da_miniatura(self._tamanho_da_miniatura) * corpo_da_vista / corpo_do_sistema))
 
     def _recorte(self, corrida: rico.Corrida) -> np.ndarray | None:
         """O pedaço da folha em que o diagrama está, ou `None` sem folha renderizada.
@@ -1165,6 +1198,7 @@ class PainelDeTexto(QWidget):
             pagina = pagina.com_posicoes(guardadas)
         self._pagina = pagina
         self._pagina_rgb = folha_rgb
+        self._folha_por_ler = None
         if dpi:
             self._dpi = int(dpi)
         self._historico.clear()
@@ -1612,6 +1646,7 @@ class PainelDeTexto(QWidget):
 
         self._pagina = doc.origem
         self._pagina_rgb = folha_rgb
+        self._folha_por_ler = None
         self._historico.clear()
         self._refeitos.clear()
         self._digitacao = None
@@ -1901,6 +1936,7 @@ class PainelDeTexto(QWidget):
             self._desenhar(selecao=self._selecao_atual())
             self.editor.verticalScrollBar().setValue(rolagem)
         self._atualizar_status()
+        self._mostrar_impresso()
 
     def _confirmar_releitura(self, indice: int, correcoes: int) -> bool:
         from chess_diagram_ocr.qt import dialogos
@@ -2133,6 +2169,267 @@ class PainelDeTexto(QWidget):
 
     def _anotar_cursor(self) -> None:
         self._cursor_em = self._relogio()
+        self._mostrar_impresso()
+        self._avisar_bloco()
+
+    def _avisar_bloco(self) -> None:
+        """Diz à mesa qual bloco da folha está sob o cursor (S-642). Fora da mesa, nenhum."""
+        bbox = None
+        doc = self.documento
+        if self._na_mesa and doc.origem is not None and int(doc.origem.pagina) == self._pagina_indice:
+            indice = rico.bloco_em(doc, self._mapa.deslocamento(self.editor.textCursor().position()))
+            blocos = doc.origem.blocos
+            if indice is not None and 0 <= indice < len(blocos):
+                caixa = getattr(blocos[indice], "bbox", None)
+                bbox = None if caixa is None else tuple(float(v) for v in caixa)
+        if bbox != self._bloco_avisado:
+            self._bloco_avisado = bbox
+            self.bloco_destacado.emit(bbox)
+
+    def ir_ao_ponto(self, x: float, y: float) -> bool:
+        """O clique na folha, em pontos (S-642): o cursor vai ao começo do bloco clicado. Devolve se foi.
+
+        O menor bloco que contém o ponto ganha, como a menor caixa de diagrama ganha no
+        visualizador. Só vale para a folha que está no editor -- o clique na folha 7 com a folha 3
+        no texto não tem para onde levar o cursor.
+        """
+        doc = self.documento
+        if doc.origem is None or int(doc.origem.pagina) != self._pagina_indice:
+            return False
+        dentro = [
+            (indice, bloco.bbox)
+            for indice, bloco in enumerate(doc.origem.blocos)
+            if getattr(bloco, "bbox", None) is not None
+            and bloco.bbox[0] <= x <= bloco.bbox[2]
+            and bloco.bbox[1] <= y <= bloco.bbox[3]
+        ]
+        for indice, _caixa in sorted(dentro, key=lambda par: (par[1][2] - par[1][0]) * (par[1][3] - par[1][1])):
+            comeco = rico.deslocamento_do_bloco(doc, indice)
+            if comeco is None:
+                continue
+            cursor = self.editor.textCursor()
+            cursor.setPosition(self._mapa.posicao(comeco))
+            self.editor.setTextCursor(cursor)
+            self.editor.ensureCursorVisible()
+            self.editor.setFocus()
+            return True
+        return False
+
+    # ------------------------------------------------------------- a mesa (S-643, S-644)
+
+    # ------------------------------------------------------- os diagramas no texto (Fase 92)
+
+    @property
+    def diagramas_a_esquerda(self) -> bool:
+        return self._diagramas == DIAGRAMAS_A_ESQUERDA
+
+    def definir_diagramas(self, preferencia: str) -> None:
+        """«Diagramas no texto» (S-620). Redesenha **sem** tornar a folha "por gravar": não é edição."""
+        preferencia = DIAGRAMAS_A_ESQUERDA if preferencia == DIAGRAMAS_A_ESQUERDA else DIAGRAMAS_AO_CENTRO
+        if preferencia == self._diagramas:
+            return
+        self._diagramas = preferencia
+        self._redesenhar_a_vista()
+
+    def alternar_diagramas_a_esquerda(self) -> None:
+        self.definir_diagramas(DIAGRAMAS_AO_CENTRO if self.diagramas_a_esquerda else DIAGRAMAS_A_ESQUERDA)
+        self.estado.emit(
+            "Os diagramas que ninguém alinhou ficam à esquerda do texto."
+            if self.diagramas_a_esquerda
+            else "Os diagramas que ninguém alinhou voltam ao centro do texto."
+        )
+
+    def definir_tamanho_da_miniatura(self, tamanho: str) -> None:
+        """O tamanho da miniatura (S-623). Vista, e não documento: não grava nada nem muda a exportação."""
+        tamanho = tamanho if tamanho in TAMANHOS_DA_MINIATURA else TAMANHO_DA_MINIATURA_PADRAO
+        if tamanho == self._tamanho_da_miniatura:
+            return
+        self._tamanho_da_miniatura = tamanho
+        self._redesenhar_a_vista()
+
+    def mudar_tamanho_da_miniatura(self) -> None:
+        self.definir_tamanho_da_miniatura(proximo_tamanho_da_miniatura(self._tamanho_da_miniatura))
+        self.estado.emit(
+            f"Miniaturas {NOME_DO_TAMANHO[self._tamanho_da_miniatura]} "
+            f"({TAMANHOS_DA_MINIATURA[self._tamanho_da_miniatura]} px no corpo do sistema)."
+        )
+
+    def _redesenhar_a_vista(self) -> None:
+        """Redesenha a folha como está, por uma mudança de vista: nem pilha, nem rascunho, nem caderno."""
+        rolagem = self.editor.verticalScrollBar().value()
+        self._desenhar(selecao=self._selecao_atual())
+        self.editor.verticalScrollBar().setValue(rolagem)
+        self._atualizar_status()
+
+    def _alinhar_os_diagramas_da_folha(self, alinhamento: str) -> None:
+        """Todos os diagramas desta folha num passo só de desfazer (S-621)."""
+        novo = rico.alinhar_diagramas(self.documento, alinhamento)
+        if novo is self.documento:
+            self.estado.emit("Os diagramas desta folha já estão assim.")
+            return
+        quantos = rico.diagramas_a_alinhar(self.documento, alinhamento)
+        self._aplicar(novo)
+        self.estado.emit(f"{quantos} diagrama(s) desta folha realinhado(s); Ctrl+Z desfaz os {quantos} de uma vez.")
+
+    def diagramas_da_folha_a_esquerda(self) -> None:
+        self._alinhar_os_diagramas_da_folha(rico.ALINHAMENTO_ESQUERDA)
+
+    def diagramas_da_folha_ao_centro(self) -> None:
+        self._alinhar_os_diagramas_da_folha(rico.ALINHAMENTO_CENTRO)
+
+    def diagramas_da_folha_como_a_preferencia(self) -> None:
+        self._alinhar_os_diagramas_da_folha("")
+
+    def alinhar_diagramas_do_caderno(self, alinhamento: str) -> int:
+        """Todos os diagramas de todas as folhas do caderno (S-621), com a conta antes. Devolve quantas folhas mudaram.
+
+        A pergunta diz quantos diagramas de quantas folhas, e cada folha mudada guarda a de antes como
+        `anterior` (S-611). A folha da tela muda pela pilha, para `Ctrl+Z` desfazê-la como as outras edições.
+        """
+        from chess_diagram_ocr.qt import dialogos
+
+        cad = self._caderno
+        if cad is None or cad.somente_leitura:
+            self.estado.emit("Abra um livro com caderno para alinhar os diagramas dele.")
+            return 0
+        self._guardar_a_folha()
+        mudar: list[tuple[int, rico.DocumentoRico, int]] = []
+        for estado in cad.folhas():
+            doc = cad.folha(estado.pagina)
+            if doc is not None and (quantos := rico.diagramas_a_alinhar(doc, alinhamento)):
+                mudar.append((estado.pagina, doc, quantos))
+        if not mudar:
+            self.estado.emit("Nenhum diagrama do caderno muda com isso.")
+            return 0
+        total = sum(q for _p, _d, q in mudar)
+        destino = {"esquerda": "à esquerda", "centro": "ao centro"}.get(alinhamento, "como a preferência")
+        if not dialogos.ha_quem_responda():
+            return 0
+        resposta = QMessageBox.question(
+            self,
+            "Texto",
+            f"Alinhar {total} diagrama(s) de {len(mudar)} folha(s) {destino}? A versão de antes de cada folha "
+            "fica como anterior no caderno.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return 0
+        na_tela = None if self._caderno_da_tela() is None else int(self.documento.origem.pagina)  # type: ignore[union-attr]
+        for pagina, doc, _quantos in mudar:
+            if pagina == na_tela:
+                cad.visitar(pagina)
+                self._aplicar(rico.alinhar_diagramas(self.documento, alinhamento))
+                self._guardar_a_folha()
+                continue
+            guardada = cad.estado(pagina)
+            cad.visitar(pagina)
+            cad.gravar(
+                rico.alinhar_diagramas(doc, alinhamento),
+                estado=None if guardada is None else guardada.estado,
+                correcoes=0 if guardada is None else guardada.correcoes,
+            )
+        self._mostrar_indice()
+        self.estado.emit(f"{total} diagrama(s) de {len(mudar)} folha(s) alinhado(s) {destino}.")
+        return len(mudar)
+
+    def aplicar_estado(self, estado: object) -> None:
+        """A vista da aba como a sessão anterior a deixou: zoom, quebra, motor, modo bloco e os diagramas."""
+        self.aplicar_zoom(int(getattr(estado, "texto_zoom", 0)), avisar=False)
+        self.definir_quebra(bool(getattr(estado, "texto_quebra", True)))
+        self.definir_motor(str(getattr(estado, "texto_motor", "")))  # o motor e o modo bloco da sessão anterior (item 17)
+        self.definir_modo_bloco(bool(getattr(estado, "texto_bloco", False)))
+        self.definir_diagramas(str(getattr(estado, "texto_diagramas", "")))
+        self.definir_tamanho_da_miniatura(str(getattr(estado, "texto_miniatura", "")))
+
+    def anotar_estado(self, estado: object) -> None:
+        """O contrário de `aplicar_estado`: a vista da aba vai ao estado que a janela grava."""
+        estado.texto_zoom = int(self.zoom_da_vista)  # type: ignore[attr-defined]
+        estado.texto_quebra = bool(self.quebra)  # type: ignore[attr-defined]
+        estado.texto_motor = self.motor  # type: ignore[attr-defined]
+        estado.texto_bloco = bool(self.modo_bloco)  # type: ignore[attr-defined]
+        estado.texto_diagramas = self._diagramas  # type: ignore[attr-defined]
+        estado.texto_miniatura = self._tamanho_da_miniatura  # type: ignore[attr-defined]
+
+    def definir_mesa(self, ligada: bool) -> None:
+        """A janela armou ou desarmou a mesa. A aba passa a acompanhar a página, e a faixa aparece."""
+        self._na_mesa = bool(ligada)
+        self._mostrar_impresso()
+        self._avisar_bloco()
+
+    def _seguir_a_pagina(self, pagina: int) -> None:
+        """A página do visualizador virou com a mesa armada (S-644).
+
+        Guarda a folha que sai (S-611), abre a que entra do caderno se ela tiver (S-612), ou mostra o
+        vazio «Ler a folha N» -- e **não** lê sozinha: ler custa de 1 s a 40 s, e é decisão de quem
+        lê. Uma folha que não pôde ir ao caderno não sai da tela.
+        """
+        if self._tarefa is not None or pagina == self._folha_por_ler:
+            return
+        origem = self.documento.origem
+        if (
+            origem is not None
+            and int(origem.pagina) == pagina
+            and _chave_de_livro(origem.documento) == _chave_de_livro(self._pdf)
+        ):
+            return
+        if not self._guardar_a_folha():
+            self.estado.emit("A folha na tela tem alterações que não foram ao caderno: ela fica, e só a página virou.")
+            return
+        if self._caderno is not None and self._caderno.estado(pagina) is not None and self._abrir_do_caderno(pagina):
+            return
+        self._mostrar_folha_por_ler(pagina)
+
+    def _mostrar_folha_por_ler(self, pagina: int) -> None:
+        """O editor vazio, com o botão que lê **esta** folha."""
+        self._pagina = None
+        self._pagina_rgb = None
+        self._historico.clear()
+        self._refeitos.clear()
+        self._digitacao = None
+        self._caminho_do_documento = None
+        self._folha_por_ler = pagina
+        self.desenhar_documento(rico.DocumentoRico())
+        self._documento_gravado = self.documento
+        self._rascunho.stop()
+        self._vai_ao_caderno = False
+        self._correcoes = 0
+        self._mostrar_vazio()
+        self._atualizar_status()
+
+    def _mostrar_impresso(self) -> None:
+        """A faixa do bloco impresso (S-643): o recorte da folha do bloco sob o cursor, ou nada."""
+        if not hasattr(self, "faixa_impressa"):
+            return
+        doc = self.documento
+        folha = self._pagina_rgb
+        bloco = None
+        if self._na_mesa and folha is not None and doc.origem is not None:
+            indice = rico.bloco_em(doc, self._mapa.deslocamento(self.editor.textCursor().position()))
+            blocos = doc.origem.blocos
+            if indice is not None and 0 <= indice < len(blocos) and not isinstance(blocos[indice], BlocoDeDiagrama):
+                bloco = indice
+        imagem = None
+        if bloco is not None and folha is not None and doc.origem is not None:
+            imagem = _recorte_da_folha(folha, doc.origem.blocos[bloco], dpi=self._dpi)
+        if bloco is None or imagem is None:
+            self.faixa_impressa.hide()
+            self._bloco_na_faixa = None
+            self.recorte_na_faixa = None
+            return
+        chave = (bloco, id(folha))
+        if chave == self._bloco_na_faixa and self.faixa_impressa.isVisible():
+            return
+        self._bloco_na_faixa = chave
+        self.recorte_na_faixa = imagem
+        largura = max(1, self.editor.viewport().width())
+        altura = max(24, self.editor.height() // 3)
+        self.faixa_impressa.setPixmap(
+            pixmap_de_rgb(np.ascontiguousarray(imagem)).scaled(
+                largura, altura, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            )
+        )
+        self.faixa_impressa.show()
 
     def _agendar_rascunho(self) -> None:
         """Reinicia o relógio: a folha é gravada alguns segundos depois da **última** edição.
@@ -2649,6 +2946,8 @@ class PainelDeTexto(QWidget):
                 self.campo_de_folha.setValue(self._pagina_indice + 1)
             finally:
                 self._montando = False
+            if self._na_mesa and novo is not None:
+                self._seguir_a_pagina(int(pagina))
 
     def _anunciar_rascunhos(self, livro: Path | None) -> None:
         """Na troca de livro, diz quantos rascunhos dele há por recuperar e em que folhas (item 18).
@@ -3118,6 +3417,14 @@ class PainelDeTexto(QWidget):
         escolhido `placeholderText`, e que continua valendo.
         """
         self.vazio.setGeometry(self.editor.viewport().rect())
+        # O vazio da mesa que virou a página para uma folha sem caderno diz **qual** folha (S-644).
+        por_ler = self._folha_por_ler
+        self.vazio.titulo.setText(strings.TEXTO_VAZIO_TITULO if por_ler is None else strings.folha_por_ler(por_ler + 1))
+        self.vazio.frase.setText(strings.TEXTO_VAZIO_FRASE if por_ler is None else strings.FOLHA_POR_LER_FRASE)
+        if self.vazio.botao is not None:
+            self.vazio.botao.setText(
+                comandos.rotulo_de_botao("ler_folha") if por_ler is None else strings.ler_a_folha(por_ler + 1)
+            )
         self.vazio.setVisible(not self.editor.toPlainText().strip())
 
     def acoes_proprias(self) -> frozenset[str]:

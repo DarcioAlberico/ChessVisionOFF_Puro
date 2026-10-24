@@ -319,6 +319,21 @@ que a região está vazia e o que a enche, e o botão faz. A frase de Texto cont
 só deixou de ser `placeholderText`, que não quebra linha e era cortada em 77 px em qualquer janela
 abaixo de 1350 px."""
 
+def folha_por_ler(numero: int) -> str:
+    """O título do vazio da aba quando a mesa acompanha a página e a folha não está no caderno (S-644)."""
+    return f"A folha {numero} ainda não foi lida"
+
+
+def ler_a_folha(numero: int) -> str:
+    """O botão desse vazio: o número no rótulo, porque o campo de folha está longe dele."""
+    return f"Ler a folha {numero}"
+
+
+FOLHA_POR_LER_FRASE = sem_orfa(
+    "A aba acompanha a página do livro e não lê sozinha: ler custa de 1 s a 40 s, e quem decide "
+    "é quem lê. As folhas já lidas abrem do caderno."
+)
+
 ABRIR_FOLHA_DO_CADERNO = "Abrir folha"
 """O botão «Ler folha» quando a folha do campo já está no caderno do livro (S-612): abrir não
 chama o motor, e o rótulo diz isso. Ler de novo fica no menu do botão direito da folha."""

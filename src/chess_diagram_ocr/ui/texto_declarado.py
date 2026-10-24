@@ -42,24 +42,32 @@ __all__ = [
     "CAIXA",
     "COMANDOS_DA_ABA",
     "COMANDO_DA_ESCOLHA",
+    "DIAGRAMAS_AO_CENTRO",
+    "DIAGRAMAS_A_ESQUERDA",
     "ESCAPE_DA_PALETA",
     "ESTADO_POR_EXTENSO",
     "ETIQUETA_DO_LEXICO",
     "MARCA_DO_ESTADO",
     "MOTORES",
+    "NOME_DO_TAMANHO",
+    "TAMANHOS_DA_MINIATURA",
+    "TAMANHO_DA_MINIATURA_PADRAO",
     "PAUSA_DA_DIGITACAO",
     "ROTULO_DO_CORPO_MISTO",
     "ZOOM_MAXIMO",
     "ZOOM_MINIMO",
     "Digitacao",
+    "alinhamento_dos_diagramas",
     "continua_a_digitacao",
     "digitacao_depois",
     "fora_do_livro",
     "frase_do_lexico",
     "frase_do_rodape",
+    "largura_da_miniatura",
     "linha_do_indice",
     "paradas_do_zoom",
     "porcentagem_do_zoom",
+    "proximo_tamanho_da_miniatura",
 ]
 
 PALAVRAS_NA_FRASE = 5
@@ -307,6 +315,11 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "exportar_rtf": "exportar_rtf",
     "exportar_pdf_pesquisavel": "exportar_pdf_pesquisavel",
     "exportar_caderno": "exportar_caderno",
+    "diagramas_a_esquerda": "alternar_diagramas_a_esquerda",
+    "tamanho_da_miniatura": "mudar_tamanho_da_miniatura",
+    "diagramas_da_folha_a_esquerda": "diagramas_da_folha_a_esquerda",
+    "diagramas_da_folha_ao_centro": "diagramas_da_folha_ao_centro",
+    "diagramas_da_folha_como_a_preferencia": "diagramas_da_folha_como_a_preferencia",
     "indice_do_caderno": "alternar_indice",
     "marcar_folha_conferida": "marcar_conferida",
 }
@@ -369,6 +382,39 @@ def frase_do_rodape(
     if conferidas is not None and conferidas[0]:
         partes.append(f"{conferidas[0]} de {conferidas[1]} folhas conferidas")
     return " · ".join(partes)
+
+
+DIAGRAMAS_AO_CENTRO = ""
+DIAGRAMAS_A_ESQUERDA = "esquerda"
+"""A preferência «Diagramas no texto» (S-620): centralizados (o padrão, `""`) ou à esquerda. Ela
+decide só a marca que ninguém alinhou; o alinhamento escrito na marca vence as duas."""
+
+
+def alinhamento_dos_diagramas(preferencia: str) -> str:
+    """O alinhamento que a marca sem escolha recebe sob esta preferência. Desconhecida vale o padrão."""
+    return "esquerda" if preferencia == DIAGRAMAS_A_ESQUERDA else "centro"
+
+
+TAMANHOS_DA_MINIATURA: dict[str, int] = {"pequeno": 160, "medio": 240, "grande": 320}
+"""O tamanho da miniatura do diagrama no texto (S-623), em pixel no corpo do sistema, antes do zoom
+da vista. **O padrão é o médio**: na mesa o editor tem metade da tela, e 160 px é pequeno para
+conferir uma posição. É vista, e não documento: não vai ao `.cvtxt` nem muda a exportação."""
+
+TAMANHO_DA_MINIATURA_PADRAO = "medio"
+
+NOME_DO_TAMANHO: dict[str, str] = {"pequeno": "pequenas", "medio": "médias", "grande": "grandes"}
+
+
+def largura_da_miniatura(tamanho: str) -> int:
+    """A largura daquele tamanho, em pixel no corpo do sistema. Desconhecido vale o padrão."""
+    return TAMANHOS_DA_MINIATURA.get(tamanho, TAMANHOS_DA_MINIATURA[TAMANHO_DA_MINIATURA_PADRAO])
+
+
+def proximo_tamanho_da_miniatura(tamanho: str) -> str:
+    """O comando do menu anda em roda: pequenas, médias, grandes, pequenas."""
+    nomes = tuple(TAMANHOS_DA_MINIATURA)
+    atual = tamanho if tamanho in TAMANHOS_DA_MINIATURA else TAMANHO_DA_MINIATURA_PADRAO
+    return nomes[(nomes.index(atual) + 1) % len(nomes)]
 
 
 ESTADO_POR_EXTENSO: dict[str, str] = {"lida": "lida", "editada": "corrigida", "conferida": "conferida"}
