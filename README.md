@@ -1274,6 +1274,13 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   e troca de caixa. A **Fase 42** saiu da leitura de dois editores de texto guardados como
   referencia -- area de transferencia, zoom de leitura, modo de quebra de linha --, mais o unico
   item do corretor ortografico deles que cabia aqui: o lexico que **confere e nao troca**
+- [docs/ROADMAP_MESA_DE_TEXTO.md](docs/ROADMAP_MESA_DE_TEXTO.md) -- **Fases 90 a 96**, plano e
+  especificacao (S-601 a S-668) da mesa de texto: a folha impressa a esquerda e o editor a
+  direita, a fita por abas lida do WordCraft, o caderno do livro que guarda cada folha corrigida
+  sem poda, os diagramas centralizados por padrao, o zoom a vista e o negrito da folha sem camada
+  com portao de medicao -- e os tres defeitos medidos no widget antes de tudo: o alinhamento e o
+  estilo de paragrafo que nao chegam a tela, a miniatura que nao segue a marca, e o rascunho podado
+  a oito que apaga a correcao da primeira folha
 - [docs/ROADMAP_ESTUDO.md](docs/ROADMAP_ESTUDO.md) -- **Fases 43 a 50**, o que a aba
   Analise e hoje, por que ela nao e uma sala de estudo e a leitura da pasta de referencia
 - [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) -- especificacao das Fases 43 a 50 (S-268 a S-290):
