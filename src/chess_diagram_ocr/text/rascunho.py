@@ -49,7 +49,6 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "ESPERA_SEGUNDOS",
     "PASTA_PADRAO",
-    "TETO_POR_DOCUMENTO",
     "Rascunho",
     "achar",
     "caminho_de",
@@ -57,7 +56,6 @@ __all__ = [
     "descartar",
     "gravar",
     "listar",
-    "podar",
 ]
 
 PASTA_PADRAO = DATA_DIR / "rascunhos"
@@ -70,11 +68,11 @@ Quatro segundos é mais longo que a pausa entre duas palavras e mais curto que a
 parágrafos: quem está digitando não é interrompido, e quem parou para pensar já tem o trabalho no
 disco. Não é relógio -- ver o cabeçalho."""
 
-TETO_POR_DOCUMENTO = 8
-"""Quantos rascunhos de um mesmo livro a pasta guarda. O mais antigo sai primeiro.
-
-Oito é o que cabe numa sessão de trabalho sobre um livro sem a pasta virar depósito: quem corrige
-folha a folha volta às anteriores, e quem passou de oito folhas atrás já salvou as primeiras."""
+# **Não há teto de rascunhos por livro** (S-605). Havia um, de oito, com o mais antigo saindo
+# primeiro -- escrito para o rascunho como rede de segurança, "quem passou de oito folhas atrás já
+# salvou as primeiras". O uso desmentiu: quem corrige um livro folha a folha deixa o trabalho no
+# rascunho, e a correção da folha 1 sumia quando a folha 9 gravava o dela. Um rascunho é uma folha
+# de texto, poucos KB; o que sai da pasta sai porque chegou a um lugar melhor (`descartar`).
 
 _SUFIXO_DA_CHAVE = 10
 """Quantos caracteres da impressão do caminho entram no nome do arquivo.
@@ -140,7 +138,6 @@ def gravar(doc: DocumentoRico, *, pasta: Path | None = None) -> Path | None:
     destino = caminho_de(origem[0], origem[1], pasta=pasta)
     destino.parent.mkdir(parents=True, exist_ok=True)
     arquivo.gravar(destino, doc)
-    podar(origem[0], pasta=pasta)
     return destino
 
 
@@ -177,26 +174,6 @@ def descartar(documento: str | Path, folha: int, *, pasta: Path | None = None) -
         logger.debug("Rascunho não pôde ser apagado (%s): %s", destino, erro)
         return False
     return True
-
-
-def podar(documento: str | Path, *, pasta: Path | None = None, teto: int = TETO_POR_DOCUMENTO) -> list[Path]:
-    """Deixa no máximo `teto` rascunhos daquele livro, **e o mais antigo sai primeiro**.
-
-    A poda é por documento e não pela pasta inteira: quem trabalha em dois livros na mesma semana
-    não pode perder o rascunho de um porque abriu muitas folhas do outro.
-    """
-    do_livro = _do_livro(documento, pasta)
-    if len(do_livro) <= teto:
-        return []
-    por_idade = sorted(do_livro, key=lambda c: c.stat().st_mtime)
-    apagados: list[Path] = []
-    for caminho in por_idade[: len(do_livro) - teto]:
-        try:
-            caminho.unlink()
-            apagados.append(caminho)
-        except OSError as erro:  # pragma: no cover - arquivo em uso
-            logger.debug("Rascunho antigo não pôde ser apagado (%s): %s", caminho, erro)
-    return apagados
 
 
 def _nome_e_impressao(chave: str) -> tuple[str, str]:

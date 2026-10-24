@@ -435,8 +435,8 @@ cita a S-603.
 **Decisão.** Dois consertos pequenos, que a Fase 91 depois absorve:
 - `ler()` e `abrir_documento()` chamam `gravar_rascunho()` **antes** de perguntar, como
   `confirmar_fechamento` já faz — a pergunta continua, e o "Sim" deixa de apagar a última correção;
-- `rascunho.gravar` deixa de podar rascunhos que têm folha de origem: a poda a oito continua só para
-  documento sem livro, que é onde ela fazia sentido.
+- `rascunho.gravar` deixa de podar. A poda saiu inteira (`podar` e `TETO_POR_DOCUMENTO`): documento
+  sem folha de origem nem chega a ter rascunho, então não havia rascunho que ela devesse cortar.
 
 **Critério de aceite.** Corrigir uma palavra e, antes dos 4 s, ler outra folha respondendo "Sim":
 o rascunho da folha corrigida existe. Gravar rascunhos de 12 folhas do mesmo livro deixa 12.

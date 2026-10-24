@@ -135,6 +135,32 @@ class GravaPorInatividadeTests(_Aba):
             self.assertTrue(self.painel.confirmar_fechamento())
         self.assertIsNotNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta))
 
+    def test_ler_outra_folha_grava_o_rascunho_antes_de_perguntar(self) -> None:
+        """S-605: o «Sim» de «Ler de novo descarta as alterações» apagava a última correção.
+
+        Corrigida a palavra e lida a folha seguinte antes dos 4 s do relógio, não havia rascunho
+        nenhum: `confirmar_fechamento` gravava antes de perguntar e `ler` não. A resposta aqui é
+        «Não» só para a leitura não partir -- o que se afirma é o que já está no disco na hora da
+        pergunta.
+        """
+        self.painel.mostrar_pagina(_pagina())
+        self.painel.definir_livro(Path("livro.pdf"), pagina=0)
+        self.digitar_no_fim(" corrigido agora")
+        with _Respondendo(QMessageBox.StandardButton.No) as caixa:
+            self.painel.ler()
+        caixa.assert_called_once()
+        achado = rascunho.achar("livro.pdf", 0, pasta=self.pasta)
+        self.assertIsNotNone(achado)
+        self.assertIn("corrigido agora", rascunho.carregar(achado).para_texto())
+
+    def test_abrir_outro_arquivo_grava_o_rascunho_antes_de_perguntar(self) -> None:
+        self.painel.mostrar_pagina(_pagina())
+        self.digitar_no_fim(" corrigido agora")
+        with _Respondendo(QMessageBox.StandardButton.No) as caixa:
+            self.painel.abrir_documento()
+        caixa.assert_called_once()
+        self.assertIsNotNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta))
+
     def test_sem_tela_o_fechamento_tambem_deixa_o_rascunho(self) -> None:
         self.painel.mostrar_pagina(_pagina())
         self.digitar_no_fim(" trabalho nao salvo")
@@ -159,13 +185,16 @@ class ListarTests(unittest.TestCase):
         self.assertEqual(rascunho.listar("ninguem.pdf", pasta=self.pasta), [])
         self.assertEqual(rascunho.listar("livro.pdf", pasta=self.pasta / "nao-existe"), [])
 
-    def test_a_poda_vale_tambem_quando_a_impressao_comeca_por_f(self) -> None:
-        """`rsplit("_f")` partia a chave na impressão: um livro em dezesseis nunca era podado."""
+    def test_a_chave_se_parte_tambem_quando_a_impressao_comeca_por_f(self) -> None:
+        """`rsplit("_f")` partia a chave na impressão: um livro em dezesseis não era achado."""
         self.assertEqual(rascunho._nome_e_impressao("livro_f1_f36a81cc42"), ("livro", "f36a81cc42"))
         self.assertEqual(rascunho._nome_e_impressao("meu_f_livro_f1_0a1b2c3d4e"), ("meu_f_livro", "0a1b2c3d4e"))
-        for folha in range(10):
+
+    def test_nenhum_rascunho_de_folha_e_podado(self) -> None:
+        """S-605: com teto de oito, a folha 9 apagava a correção da folha 1 de quem corrige o livro em ordem."""
+        for folha in range(12):
             rascunho.gravar(rico.de_pagina(_pagina(folha=folha)), pasta=self.pasta)
-        self.assertEqual(len(rascunho.listar("livro.pdf", pasta=self.pasta)), rascunho.TETO_POR_DOCUMENTO)
+        self.assertEqual([r.folha for r in rascunho.listar("livro.pdf", pasta=self.pasta)], list(range(12)))
 
 
 class AnuncioNaAberturaTests(_Aba):

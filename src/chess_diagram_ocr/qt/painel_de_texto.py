@@ -1422,6 +1422,9 @@ class PainelDeTexto(QWidget):
         """Abre um `.cvtxt` gravado antes, com os diagramas de volta se o livro ainda estiver lá."""
         from chess_diagram_ocr.text import arquivo
 
+        # O rascunho vai ao disco **antes** da pergunta (S-605), como em `confirmar_fechamento`: o
+        # relógio de inatividade pode não ter disparado, e o «Sim» apagaria a última correção.
+        self.gravar_rascunho()
         if not self._confirmar_descarte("Abrir outro arquivo descarta as alterações."):
             return
         origem, _filtro = QFileDialog.getOpenFileName(
@@ -1899,6 +1902,7 @@ class PainelDeTexto(QWidget):
             # Rodapé e não caixa: é um passo que falta, e não uma escolha.
             self.estado.emit("Abra um PDF antes de ler o texto da folha.")
             return
+        self.gravar_rascunho()  # antes da pergunta, pela razão de `abrir_documento` (S-605)
         if not self._confirmar_descarte("Ler de novo descarta as alterações."):
             return
         # O que está na tela quando a leitura parte: o que for digitado **durante** ela não foi
