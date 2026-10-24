@@ -31,6 +31,9 @@ from .splits import Split
 
 logger = logging.getLogger(__name__)
 
+EMPTY_LABEL = PIECE_CLASSES.index("empty")
+"""O rótulo da casa vazia: a única em que `augment.MarcaEmVazia` desenha."""
+
 __all__ = [
     "LABEL_COLUMNS",
     "BoardFenDataset",
@@ -246,7 +249,13 @@ class BoardFenDataset(Dataset):
         self._labels_cache[entry_idx] = labels
         return labels
 
-    def square(self, entry_idx: int, square_idx: int, transform: Callable | None) -> tuple[torch.Tensor, int]:
+    def square(
+        self,
+        entry_idx: int,
+        square_idx: int,
+        transform: Callable | None,
+        marca: Callable | None = None,
+    ) -> tuple[torch.Tensor, int]:
         """Uma casa preprocessada e o seu rótulo, com o aumento que quem chama pedir.
 
         Separado de `__getitem__` porque o `BoardUnitDataset` da S-62b precisa exatamente
@@ -254,6 +263,9 @@ class BoardFenDataset(Dataset):
         vindo dele, e não do atributo deste objeto. Sem a separação ele teria de reimplementar
         o corte, e o dia em que os dois divergissem o treino por tabuleiro passaria a ver uma
         imagem diferente da que a inferência monta, em silêncio.
+
+        `marca` (`augment.MarcaEmVazia`) só toca a casa cujo rótulo é vazio, e antes do aumento:
+        a marca é tinta da página, e o desfoque e a hachura acontecem por cima dela.
         """
         board = self._load_board(entry_idx)
         labels = self._labels(entry_idx)
@@ -265,11 +277,13 @@ class BoardFenDataset(Dataset):
         x0, x1 = col * step, (col + 1) * step
 
         x = preprocess_cell_to_tensor(board[y0:y1, x0:x1], self.arch)
-        if transform is not None:
-            x = transform(x)
         label = labels[square_idx]
         if self.label_overrides:
             label = self.label_overrides.get((entry_idx, square_idx), label)
+        if marca is not None and label == EMPTY_LABEL:
+            x = marca(x)
+        if transform is not None:
+            x = transform(x)
         # Depois do aumento, de proposito: ver `with_coordinate_channels` (S-62a).
         return with_coordinate_channels(x, square_idx, self.arch), label
 
@@ -300,9 +314,11 @@ class BoardUnitDataset(Dataset):
         base: BoardFenDataset,
         board_indices: Sequence[int] | None = None,
         transform: Callable | None = None,
+        marca: Callable | None = None,
     ) -> None:
         self.base = base
         self.transform = transform
+        self.marca = marca
         self.board_indices = list(range(len(base.entries)) if board_indices is None else board_indices)
 
     def __len__(self) -> int:
@@ -317,7 +333,7 @@ class BoardUnitDataset(Dataset):
         board_idx = self.board_indices[idx]
         # Por `base.square` de proposito: o cache, o corte e a ordem dos canais da S-62a tem
         # de ser exatamente os mesmos que a cabeca de hoje recebe.
-        pares = [self.base.square(board_idx, square_idx, self.transform) for square_idx in range(64)]
+        pares = [self.base.square(board_idx, square_idx, self.transform, self.marca) for square_idx in range(64)]
         return torch.stack([x for x, _ in pares]), torch.tensor([y for _, y in pares], dtype=torch.long)
 
 

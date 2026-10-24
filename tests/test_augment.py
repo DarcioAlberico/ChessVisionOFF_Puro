@@ -19,7 +19,9 @@ import torch
 
 from chess_diagram_ocr.augment import (
     DEFAULT_AUGMENT,
+    TIPOS_DE_MARCA,
     AugmentConfig,
+    MarcaEmVazia,
     RandomHatch,
     RandomHorizontalFlipCell,
     RandomInvert,
@@ -27,6 +29,9 @@ from chess_diagram_ocr.augment import (
     RandomSpeckle,
     RandomStroke,
     build_augmentations,
+    build_marca,
+    desenhar_marca,
+    from_letters,
     stroke,
 )
 from chess_diagram_ocr.training import build_train_transform
@@ -306,6 +311,62 @@ class DeterminismTests(unittest.TestCase):
         fonte = inspect.getsource(augment)
         self.assertNotIn("random.random()", fonte)
         self.assertIn("torch.rand", fonte)
+
+
+class MarcaTests(unittest.TestCase):
+    """A marca de casa sintética: tinta sobre a casa vazia, com o rótulo continuando vazio."""
+
+    def test_desligada_por_padrao_e_fora_da_versao(self) -> None:
+        self.assertIsNone(build_marca(DEFAULT_AUGMENT))
+        self.assertEqual(DEFAULT_AUGMENT.version, "aug0")
+
+    def test_a_letra_x_liga_a_marca_e_entra_na_versao(self) -> None:
+        config = from_letters("x")
+        self.assertEqual(config.marca, 0.15)
+        self.assertEqual(config.version, "augx")
+        self.assertEqual(from_letters(config.version), config)
+        self.assertIsInstance(build_marca(config), MarcaEmVazia)
+
+    def test_cada_tipo_escurece_o_centro_e_deixa_a_borda(self) -> None:
+        for tipo in TIPOS_DE_MARCA:
+            with self.subTest(tipo=tipo):
+                x = desenhar_marca(cell(0.9), tipo, largura=0.5, tinta=0.0)
+                self.assertLess(float(x[0, 26:38, 26:38].mean()), 0.6)
+                self.assertTrue(torch.equal(x[0, :6, :], cell(0.9)[0, :6, :]), "a marca vazou para a borda da casa")
+                self.assertGreaterEqual(float(x.min()), 0.0)
+
+    def test_as_formas_sao_distintas(self) -> None:
+        """Quatro tipos que saíssem iguais seriam um tipo só, com quatro nomes."""
+        desenhos = [desenhar_marca(cell(1.0), tipo, largura=0.6) for tipo in TIPOS_DE_MARCA]
+        for i in range(len(desenhos)):
+            for j in range(i + 1, len(desenhos)):
+                self.assertGreater(float((desenhos[i] - desenhos[j]).abs().mean()), 0.02)
+
+    def test_o_x_e_a_cruz_girada(self) -> None:
+        x = desenhar_marca(cell(1.0), "x", largura=0.6)
+        self.assertLess(float(x[0, 20, 20]), 0.5, "o X tem tinta na diagonal")
+        self.assertGreater(float(x[0, 32, 14]), 0.9, "e não no meio da borda, onde a cruz teria")
+        cruz = desenhar_marca(cell(1.0), "cruz", largura=0.6)
+        self.assertLess(float(cruz[0, 32, 14]), 0.5)
+
+    def test_tipo_desconhecido_e_recusado(self) -> None:
+        with self.assertRaises(ValueError):
+            desenhar_marca(cell(), "seta", largura=0.5)
+
+    def test_probabilidade_zero_e_identidade(self) -> None:
+        x = cell(0.8)
+        self.assertTrue(torch.equal(MarcaEmVazia(0.0)(x), x))
+
+    def test_mesma_semente_mesma_marca(self) -> None:
+        marca = MarcaEmVazia(1.0)
+        torch.manual_seed(5)
+        primeira = marca(cell(0.9))
+        torch.manual_seed(5)
+        self.assertTrue(torch.equal(primeira, marca(cell(0.9))))
+
+    def test_e_piclavel(self) -> None:
+        marca = pickle.loads(pickle.dumps(MarcaEmVazia(0.15)))
+        self.assertEqual(marca.p, 0.15)
 
 
 if __name__ == "__main__":
