@@ -1054,6 +1054,13 @@ desviá-los; `cli.field`, `config` e `settings` mudaram de digest sem mudar o qu
 sem as variáveis de ambiente, as pastas são as de sempre. Das 2.071 chaves de cada relatório só
 mudaram os segundos e a procedência.
 
+Na décima (2026-10-24 -- commit `a4683a8`, árvore limpa efêmera, `dirty=false`) **os quatro
+voltaram idênticos** de novo. A marca de casa sintética no treino (letra `x` do `--augment`)
+acrescentou a `dataset` a constante `EMPTY_LABEL` e um parâmetro `marca`, que vale `None` por
+padrão. Sem marca, o caminho da casa é o mesmo, e a medição de campo não passa marca nenhuma. Só
+`dataset` mudou de digest, e das 2.071 chaves de cada relatório só mudaram os segundos e a
+procedência. Taxa de exportação: produção 0,8957, controle 0,8087, `mhsp` 0,7478, `s108` 0,7652.
+
 ## S-326 · A largura da fita plena é derivada, e não escolhida
 
 **Problema.** Três testes de `ModoDaFitaTests` montavam a fita em `self._em(2200)` -- 2.200 px é
