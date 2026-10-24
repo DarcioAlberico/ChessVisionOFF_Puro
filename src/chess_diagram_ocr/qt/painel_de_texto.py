@@ -72,6 +72,7 @@ from PyQt6.QtGui import (
     QKeySequence,
     QMouseEvent,
     QPixmap,
+    QTextBlockFormat,
     QTextCursor,
     QTextDocument,
     QTextFormat,
@@ -684,11 +685,15 @@ class PainelDeTexto(QWidget):
             for corrida in self.documento.corridas:
                 if corrida.e_diagrama:
                     self._inserir_miniatura(cursor, corrida)
-                cursor.setBlockFormat(bloco_de(corrida.atributos, base=base))
                 inicio = cursor.position()
                 cursor.insertText(corrida.texto, formato_de(corrida, base=base))
                 self._mapa.registrar(deslocamento, inicio, len(corrida.texto))
                 deslocamento += len(corrida.texto)
+            # **O formato de parágrafo é escrito depois do texto, bloco a bloco** (S-601). Escrito
+            # no laço, antes de cada corrida, ele caía no bloco em que o cursor estava -- e a corrida
+            # separadora (`"\n\n"`, sem atributos) chegava com o cursor ainda no parágrafo anterior:
+            # o formato vazio dela apagava o centro e o título que ele acabara de receber.
+            self._formatar_blocos(documento)
 
             # O `setDocument` só apaga o documento que é filho do controle interno do editor -- o da
             # montagem, e na hora --, e os deste painel são filhos do editor: sem soltá-los, cada
@@ -725,6 +730,47 @@ class PainelDeTexto(QWidget):
 
         tamanho, proporcional, monoespacada = tema.fonte_base()
         return tipografia.corpo(self._zoom_da_vista, base=tamanho), proporcional, monoespacada
+
+    def _formatar_blocos(self, documento: QTextDocument, inicio: int = 0, fim: int | None = None) -> None:
+        """Dá a cada bloco da tela entre `inicio` e `fim` (posições do Qt) o formato que o documento pede.
+
+        **Quem decide o formato de um bloco é a corrida em que ele começa**, porque em `rico` o
+        parágrafo é o bloco de `rico`, e não o do Qt: depois de um `Enter` no meio de um parágrafo
+        lido, os dois blocos do Qt continuam no mesmo parágrafo e levam o mesmo formato. Duas
+        exceções, e as duas são desenho:
+
+        - **a linha em branco** sai com o formato vazio. Se herdasse o centro e a margem de título
+          do parágrafo de cima, o `Enter` dado nela seria engolido -- o Qt, num bloco vazio com
+          formato, só o redefine (a primeira revisão do plano mediu);
+        - **o bloco da miniatura** leva o formato da marca logo abaixo dele (S-602): a figura anda
+          com o alinhamento do diagrama, e não com o da prosa de cima.
+
+        A pergunta "que formato?" é `formato_de_bloco`, a mesma que a guarda de paridade faz.
+        """
+        bloco = documento.findBlock(inicio)
+        cursor = QTextCursor(documento)
+        while bloco.isValid() and (fim is None or bloco.position() <= fim):
+            texto = bloco.text()
+            if OBJETO in texto:
+                seguinte = bloco.next()
+                corrida = _corrida_em(self.documento, self._mapa.deslocamento(seguinte.position())) if seguinte.isValid() else None
+            elif texto:
+                corrida = _corrida_em(self.documento, self._mapa.deslocamento(bloco.position()))
+            else:
+                corrida = None
+            formato = self.formato_de_bloco(corrida.atributos if corrida is not None else rico.PADRAO)
+            if bloco.blockFormat() != formato:
+                cursor.setPosition(bloco.position())
+                cursor.setBlockFormat(formato)
+            bloco = bloco.next()
+
+    def formato_de_bloco(self, atributos: rico.Atributos) -> QTextBlockFormat:
+        """O formato de bloco que estes atributos dão **nesta vista** -- o único lugar que o responde.
+
+        O desenho escreve isto e a guarda de paridade (S-603) lê a tela contra isto; os dois
+        perguntando a uma função só é o que impede o teste de concordar com um desenho errado.
+        """
+        return bloco_de(atributos, base=self._base)
 
     def _selecao_atual(self) -> tuple[int, int]:
         """`(âncora, ponta)` do cursor, em deslocamento do documento."""
@@ -774,6 +820,11 @@ class PainelDeTexto(QWidget):
         folha = "" if self._pagina is None else f" da folha {int(self._pagina.pagina) + 1}"
         imagem.setProperty(QTextFormat.Property.ImageAltText, f"Diagrama {numero}")
         imagem.setProperty(QTextFormat.Property.ImageTitle, f"Diagrama {numero}{folha}")
+        # **A figura tem bloco próprio** (S-602): é ele que `_formatar_blocos` alinha com a marca.
+        # Depois de um separador ela já começa um bloco em branco; sem separador antes -- `rico.editar`
+        # deixa apagá-lo e escrever `Antes.[Diagrama 1]` -- ela cairia no meio da prosa.
+        if cursor.positionInBlock() > 0:
+            cursor.insertBlock()
         cursor.insertImage(imagem)
         cursor.insertBlock()
 
@@ -2196,6 +2247,10 @@ class PainelDeTexto(QWidget):
         self._sincronizando = True
         try:
             cursor.setCharFormat(formato_de(corrida, base=self._base))
+            # O `Enter` cria um bloco que herda o formato do de cima; os blocos que a tecla tocou
+            # recebem o que o documento pede, pela mesma regra do desenho inteiro (S-601).
+            if "\n" in self._tela[inicio : inicio + tamanho]:
+                self._formatar_blocos(documento, max(0, inicio - 1), inicio + tamanho + 1)
         finally:
             self._sincronizando = False
 

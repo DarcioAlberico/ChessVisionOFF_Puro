@@ -55,6 +55,11 @@ Três hábitos que valem mais que o número de testes:
 - **Quando um comportamento não pôde ser medido, diga isso** em vez de escrever um teste que
   finge medi-lo. Há exemplos no ROADMAP de critérios de aceite declarados como não
   atingidos, e isso é preferível a um número inventado.
+- **Afirme o que o widget desenhou, e não só o que a função pura devolve.** O alinhamento de
+  parágrafo da aba Texto ficou, desde o porte para o Qt, certo no documento e errado na tela, com
+  `texto_formato.bloco_de` testado e verde: o chamador apagava o formato logo depois de
+  escrevê-lo. Ferramenta de formato da aba Texto só se dá por entregue com a guarda de paridade
+  (`tests/paridade_do_texto.py`, S-603) lendo o atributo dela de volta da tela.
 
 ## Rodar a interface sem clicar
 
