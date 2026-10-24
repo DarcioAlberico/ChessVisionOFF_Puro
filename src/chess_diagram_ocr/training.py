@@ -34,11 +34,12 @@ from torch.utils.data import DataLoader, Subset
 from torchvision.transforms import v2
 
 from .audit import duplicate_groups_touching, read_label_rows
-from .augment import DEFAULT_AUGMENT, AugmentConfig, build_augmentations
+from .augment import DEFAULT_AUGMENT, AugmentConfig, build_augmentations, build_marca
 from .calibration import expected_calibration_error, fit_temperature, negative_log_likelihood
 from .checkpoint import Checkpoint, check_compatible, git_commit, load_checkpoint, save_checkpoint
 from .config import BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE, PIECE_CLASSES, VAL_BOARD_CACHE_SIZE
 from .dataset import (
+    EMPTY_LABEL,
     BoardFenDataset,
     BoardGroupedSampler,
     BoardUnitDataset,
@@ -86,12 +87,16 @@ porque num dataset com classe genuinamente ausente do treino a conta pode virar.
 
 
 class TransformSubset(torch.utils.data.Dataset):
-    def __init__(self, subset: Subset, transform: Callable | None = None):
+    def __init__(self, subset: Subset, transform: Callable | None = None, marca: Callable | None = None):
         self.subset = subset
         self.transform = transform
+        self.marca = marca
 
     def __getitem__(self, idx: int):
         x, y = self.subset[idx]
+        # A marca antes do aumento, e só na vazia: ver `BoardFenDataset.square`.
+        if self.marca is not None and int(y) == EMPTY_LABEL:
+            x = self.marca(x)
         if self.transform is not None:
             x = self.transform(x)
         return x, y
@@ -997,6 +1002,8 @@ class Trainer:
         # Um so aumento para os dois caminhos: o guarda de `ImageChannelsOnly` o torna
         # transparente quando nao ha canal de coordenada para proteger.
         aumento = ImageChannelsOnly(build_train_transform(optim.augment), arch.image_channels)
+        marca_de_casa = build_marca(optim.augment)
+        marca = ImageChannelsOnly(marca_de_casa, arch.image_channels) if marca_de_casa is not None else None
 
         if arch.head == "board":
             # A cabeca da S-62b decide as 64 casas juntas, entao a unidade de amostragem passa
@@ -1007,7 +1014,7 @@ class Trainer:
             for board in sorted(repetidos):
                 unidades.extend([board] * (optim.corrected_repeat - 1))
             self.train_loader = DataLoader(
-                BoardUnitDataset(dataset, unidades, transform=aumento),
+                BoardUnitDataset(dataset, unidades, transform=aumento, marca=marca),
                 batch_size=optim.boards_per_batch,
                 shuffle=True,
                 generator=torch.Generator().manual_seed(optim.seed),
@@ -1030,7 +1037,7 @@ class Trainer:
                 optim.boards_per_batch * 64,
             )
         else:
-            train_ds = TransformSubset(Subset(dataset, train_indices), transform=aumento)
+            train_ds = TransformSubset(Subset(dataset, train_indices), transform=aumento, marca=marca)
             grupos = board_groups(dataset.index_map, train_indices)
             if repetidos:
                 # O grupo de um tabuleiro de rota humana entra k vezes na lista do amostrador:

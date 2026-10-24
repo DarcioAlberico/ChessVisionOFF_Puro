@@ -63,6 +63,9 @@ class AugmentConfig:
     paper: float = 0.0
     invert: float = 0.0
     stroke: float = 0.0
+    marca: float = 0.0
+    """Probabilidade de uma casa **vazia** receber uma marca de casa sintética (estrela, X,
+    ponto ou cruz), com o rótulo continuando vazio. Ver `MarcaEmVazia`."""
 
     hatch_period_px: tuple[int, int] = (4, 12)
     """Período da hachura em pixels da **casa** (64×64 na entrada do modelo).
@@ -109,6 +112,7 @@ class AugmentConfig:
                 ("p", self.paper),
                 ("i", self.invert),
                 ("e", self.stroke),
+                ("x", self.marca),
             )
             if valor > 0.0
         )
@@ -131,9 +135,9 @@ class AugmentConfig:
 
 DEFAULT_AUGMENT = AugmentConfig()
 
-LETRAS = "mhspie"
+LETRAS = "mhspiex"
 """As letras do regime, na ordem de `AugmentConfig.version`: m=espelhar, h=hachura,
-s=granulação, p=papel, i=inversão, e=espessura do traço (C4)."""
+s=granulação, p=papel, i=inversão, e=espessura do traço (C4), x=marca de casa."""
 
 
 def from_letters(texto: str) -> AugmentConfig:
@@ -159,6 +163,7 @@ def from_letters(texto: str) -> AugmentConfig:
         paper=0.30 if "p" in letras else 0.0,
         invert=0.03 if "i" in letras else 0.0,
         stroke=0.30 if "e" in letras else 0.0,
+        marca=0.15 if "x" in letras else 0.0,
     )
 
 
@@ -337,6 +342,150 @@ def stroke(x: torch.Tensor, raio: int, *, engrossar: bool, margin: int = 3) -> t
     interior = torch.zeros((altura, largura), dtype=torch.bool, device=x.device)
     interior[margin : altura - margin, margin : largura - margin] = True
     return torch.where(interior, saida, x)
+
+
+TIPOS_DE_MARCA: tuple[str, ...] = ("estrela", "x", "ponto", "cruz")
+"""As marcas de casa que `MarcaEmVazia` desenha: as quatro que o censo de 2026-10-24 achou
+centradas na casa (estrela no Nunn, X no Yusupov/Dvoretsky/Silman/Seirawan, ponto e cruz no
+Levenfis)."""
+
+_SUPERAMOSTRA = 4
+"""A marca é rasterizada numa grade 4x mais fina e reduzida por média: borda suavizada como a
+de um glifo impresso e reamostrado, em vez da escada de um teste de pertinência por pixel."""
+
+
+def _cobertura_de_marca(
+    tipo: str,
+    tamanho: int,
+    *,
+    largura: float,
+    espessura: float,
+    centro: tuple[float, float],
+    angulo: float,
+    miolo: float,
+) -> torch.Tensor:
+    """A fração de cada pixel de uma casa `tamanho x tamanho` coberta pela marca, em [0, 1].
+
+    Medidas em fração do lado da casa: `largura` é a extensão da marca (o diâmetro do ponto,
+    a envergadura da estrela, o lado da caixa do X e da cruz), `espessura` é a do traço do X
+    e da cruz, `centro` é o deslocamento `(dx, dy)` do centro da casa, `angulo` gira a marca em
+    radianos e `miolo` é a razão entre o raio interno e o externo da estrela.
+    """
+    n = tamanho * _SUPERAMOSTRA
+    passo = 1.0 / n
+    eixo = torch.arange(n, dtype=torch.float32) * passo + passo / 2 - 0.5
+    v, u = torch.meshgrid(eixo, eixo, indexing="ij")
+    u = u - centro[0]
+    v = v - centro[1]
+    cos, sen = float(torch.cos(torch.tensor(angulo))), float(torch.sin(torch.tensor(angulo)))
+    u, v = cos * u + sen * v, -sen * u + cos * v
+
+    if tipo == "ponto":
+        dentro = u * u + v * v <= (largura / 2) ** 2
+    elif tipo in ("cruz", "x"):
+        if tipo == "x":
+            u, v = (u + v) / 2**0.5, (v - u) / 2**0.5
+            meio = largura * 2**0.5 / 2
+        else:
+            meio = largura / 2
+        meia_espessura = espessura / 2
+        dentro = ((u.abs() <= meia_espessura) & (v.abs() <= meio)) | (
+            (v.abs() <= meia_espessura) & (u.abs() <= meio)
+        )
+    elif tipo == "estrela":
+        # Cinco pontas, uma para cima. Dobrado num setor de 36°, entre a ponta (raio R no
+        # ângulo 0) e a reentrância (raio r a 36°): dentro é o lado da origem da aresta.
+        externo = largura / (2 * float(torch.cos(torch.tensor(torch.pi / 10))))
+        interno = externo * miolo
+        rho = torch.sqrt(u * u + v * v)
+        fi = torch.remainder(torch.atan2(u, -v), 2 * torch.pi / 5)
+        beta = torch.minimum(fi, 2 * torch.pi / 5 - fi)
+        px, py = rho * torch.cos(beta), rho * torch.sin(beta)
+        bx, by = interno * float(torch.cos(torch.tensor(torch.pi / 5))), interno * float(torch.sin(torch.tensor(torch.pi / 5)))
+        ax, ay = externo, 0.0
+        cruzado = (bx - ax) * (py - ay) - (by - ay) * (px - ax)
+        origem = (bx - ax) * (0.0 - ay) - (by - ay) * (0.0 - ax)
+        dentro = cruzado * origem >= 0
+    else:
+        raise ValueError(f"Marca desconhecida: {tipo!r} (válidas: {', '.join(TIPOS_DE_MARCA)})")
+
+    cobertura = dentro.to(torch.float32).unsqueeze(0).unsqueeze(0)
+    return torch.nn.functional.avg_pool2d(cobertura, _SUPERAMOSTRA).squeeze(0).squeeze(0)
+
+
+def desenhar_marca(
+    x: torch.Tensor,
+    tipo: str,
+    *,
+    largura: float,
+    espessura: float = 0.09,
+    centro: tuple[float, float] = (0.0, 0.0),
+    angulo: float = 0.0,
+    miolo: float = 0.42,
+    tinta: float = 0.05,
+) -> torch.Tensor:
+    """A operação de `MarcaEmVazia` sem sorteio: a marca `tipo` impressa na casa em tinta `tinta`.
+
+    Exposta para os testes e para a inspeção a olho das casas sintéticas. A tinta substitui o
+    fundo na proporção da cobertura -- é o que a tinta preta faz sobre a casa clara e sobre a
+    hachura da escura, e é por isso que o desenho vem **antes** de papel, hachura e granulação.
+    """
+    altura, largura_px = x.shape[-2], x.shape[-1]
+    if altura != largura_px:
+        raise ValueError(f"A casa precisa ser quadrada, veio {altura}x{largura_px}.")
+    alfa = _cobertura_de_marca(
+        tipo, altura, largura=largura, espessura=espessura, centro=centro, angulo=angulo, miolo=miolo
+    ).to(dtype=x.dtype, device=x.device)
+    return x * (1.0 - alfa) + tinta * alfa
+
+
+class MarcaEmVazia(_Sometimes):
+    """Uma marca de casa sintética sobre a casa **vazia**: o rótulo continua vazio.
+
+    **O erro que conserta**, medido no censo de 2026-10-24: nas 383 casas com estrela do Nunn
+    (*Secrets of Minor Piece Endings* e *of Pawnless Endings*) o modelo leu peão branco em 171,
+    bispo preto em 48 e peão preto em 36 -- uma estrela derruba a FEN do diagrama. As marcas
+    reais são 51 diagramas em 34.346, poucas demais para treinar: servem de teste, e o treino
+    sai daqui.
+
+    **Quem decide que a casa é vazia é quem chama**, porque o aumento só recebe a imagem. Ver
+    `TransformSubset` e `BoardFenDataset.square`, que aplicam isto antes do aumento genérico
+    -- a marca é tinta da página, e o desfoque, o afim e a hachura acontecem por cima dela.
+
+    **As faixas vêm do censo.** A estrela real ocupa ~45% do lado da casa e o X ~52%; o ponto vai
+    de um pingo a ~40%. As faixas cobrem isso com folga, e o tipo é sorteado por igual entre os
+    quatro de `TIPOS_DE_MARCA`.
+    """
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not self._should():
+            return x
+        tipo = TIPOS_DE_MARCA[int(torch.randint(len(TIPOS_DE_MARCA), ()).item())]
+
+        def faixa(baixo: float, alto: float) -> float:
+            return float(baixo + (alto - baixo) * torch.rand(()))
+
+        largura = {"estrela": faixa(0.30, 0.70), "x": faixa(0.30, 0.75), "ponto": faixa(0.08, 0.40), "cruz": faixa(0.30, 0.75)}[tipo]
+        giro = 0.21 if tipo == "estrela" else 0.14
+        return desenhar_marca(
+            x,
+            tipo,
+            largura=largura,
+            espessura=faixa(0.05, 0.13),
+            centro=(faixa(-0.05, 0.05), faixa(-0.05, 0.05)),
+            angulo=faixa(-giro, giro),
+            miolo=faixa(0.38, 0.50),
+            tinta=faixa(0.0, 0.15),
+        )
+
+
+def build_marca(config: AugmentConfig = DEFAULT_AUGMENT) -> MarcaEmVazia | None:
+    """A marca de casa do regime, ou `None` quando desligada.
+
+    Fora de `build_augmentations` porque não é uma degradação da casa e sim uma troca de
+    conteúdo que só vale onde o rótulo é vazio -- quem a aplica precisa do rótulo.
+    """
+    return MarcaEmVazia(config.marca) if config.marca > 0 else None
 
 
 def _clamp01(x: torch.Tensor) -> torch.Tensor:
