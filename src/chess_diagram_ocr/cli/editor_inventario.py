@@ -109,9 +109,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"atributos do documento ...... {len(dados['atributos_do_documento'])}")
     print(f"formatos de exportação ...... {len(dados['suporte_por_formato'])}")
     print(f"símbolos na paleta .......... {dados['paleta']['simbolos']}")
-    perdidos = dados["peles_que_perdem_comando"]
-    print(f"peles que perdem comando .... {len(perdidos)}")
-    return EXIT_FAILURE if perdidos or dados["comandos_do_editor_fora_do_menu"] else EXIT_OK
+    # `peles_que_perdem_comando` saiu do inventário no corte do Tk (S-506), e esta linha ficou
+    # pedindo a chave: o arquivo era gravado e o comando terminava em `KeyError` (achado em 2026-10-24).
+    fora = dados["comandos_do_editor_fora_do_menu"]
+    print(f"fora do menu ................ {len(fora)}")
+    return EXIT_FAILURE if fora else EXIT_OK
 
 
 if __name__ == "__main__":  # pragma: no cover

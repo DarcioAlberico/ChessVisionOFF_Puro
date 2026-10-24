@@ -188,6 +188,13 @@ class InventarioPublicadoTests(unittest.TestCase):
         self.assertEqual(dados["atributos_sem_formato_que_os_suporte"], [])
         self.assertNotIn("peles_que_perdem_comando", dados, "a chave voltou sem quem a responda")
 
+    def test_o_comando_grava_e_termina_sem_falha(self) -> None:
+        """O `main` ainda pedia `peles_que_perdem_comando` depois de a chave sair: gravava o arquivo e
+        terminava em `KeyError` (2026-10-24). Nenhum teste chamava o comando, só a função."""
+        destino = pasta_temporaria(self) / "inventario.json"
+        self.assertEqual(editor_inventario.main(["--json", str(destino)]), 0)
+        self.assertTrue(json.loads(destino.read_text(encoding="utf-8"))["comandos_do_editor"])
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
