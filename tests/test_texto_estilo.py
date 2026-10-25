@@ -141,6 +141,42 @@ class ConjuntoNoDiscoTests(unittest.TestCase):
         self.assertEqual(manifesto[0], "identidade,arquivo,folha,palavra,rotulo,particao,altura_px")
         self.assertEqual(len(manifesto), 13)
 
+    def test_o_classificador_corre_as_rodadas_de_ponta_a_ponta(self) -> None:
+        import json
+
+        rng = np.random.default_rng(0)
+        textos = ("um livro de aberturas com muitas variantes", "outro livro de finais de torre e peão", "um terceiro de problemas")
+        coleta = {
+            "recortes": {
+                f"livro{i}.pdf": [
+                    (rng.integers(0, 256, (estilo.ALTURA, estilo.LARGURA_MAXIMA), dtype=np.uint8), 100, 30 + k % 5, classe, 1, "w")
+                    for k, classe in enumerate(["normal"] * 6 + ["negrito", "italico"])
+                ]
+                for i in range(3)
+            },
+            "textos": {f"livro{i}.pdf": estilo.sequencias(texto, 3) for i, texto in enumerate(textos)},
+            "fora": {},
+        }
+        pasta = pasta_temporaria(self)
+        conjunto.gravar(coleta, pasta)
+        relatorio = pasta / "relatorio.json"
+        classificador.main(["--conjunto", str(pasta / "palavras.npz"), "--epocas", "1", "--pesos", str(pasta / "p.pt"), "--json", str(relatorio)])
+        dados = json.loads(relatorio.read_text(encoding="utf-8"))
+        self.assertEqual(len(dados["rodadas"]), 3, "uma rodada por livro")
+        self.assertEqual(sum(r["palavras_no_teste"] for r in dados["rodadas"]), 24, "cada palavra testada uma vez")
+        self.assertEqual(dados["populacoes"]["limpo"]["por_classe"]["negrito"]["no_teste"], 3)
+        self.assertIn("decisao", dados["veredito"])
+
+    def test_julgar_soma_as_rodadas_com_o_corte_de_cada_uma(self) -> None:
+        certa = (np.array([[0.05, 0.95, 0, 0]] * 15), np.array([1] * 15))
+        errada = (np.array([[0.4, 0.6, 0, 0]] * 15), np.array([0] * 15))
+        dobra_boa = (*certa, *certa)
+        dobra_sem_corte = (*errada, np.array([[0.05, 0.95, 0, 0]] * 15), np.array([1] * 15))
+        julgado = classificador.julgar_dobras([dobra_boa, dobra_sem_corte])["negrito"]
+        self.assertEqual(julgado["no_teste"], 30)
+        self.assertEqual(julgado["sugerir"]["cortes"], [0.95, None])
+        self.assertEqual((julgado["sugerir"]["marcadas"], julgado["sugerir"]["cobertura"]), (15, 0.5))
+
     def test_as_folhas_espacadas(self) -> None:
         self.assertEqual(conjunto.folhas_de(100, 3), [25, 50, 75])
         self.assertEqual(conjunto.folhas_de(0, 3), [])

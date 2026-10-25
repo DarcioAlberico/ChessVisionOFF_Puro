@@ -6,6 +6,15 @@ Treina uma rede pequena no conjunto da S-661 (`data/estilo/palavras.npz`) e a ju
 livro**, nas duas populações que a S-663 pede: o render limpo do teste, e o mesmo teste degradado
 como um scan (`estilo.degradar`, com semente fixa).
 
+## Um livro de fora por rodada, e não a divisão fixa
+
+O acervo dá sete livros com os dois estilos na camada. A divisão fixa da S-661 (70/10/20 por livro)
+deixava o teste com **um** livro e 15 itálicos -- abaixo do que o portão julga --, e nenhum
+negrito-itálico. O protocolo é o da medição de 2026-08-29 (`text/negrito.py`): **um livro de fora
+por rodada**. Em cada rodada um livro é o teste, o seguinte na ordem é a validação -- onde o corte
+de confiança é escolhido -- e os outros treinam; cada palavra é testada uma vez, sempre por uma
+rede que nunca viu o livro dela, e as contas das rodadas se somam.
+
 ## O que decide
 
 A régua é **precisão por classe**, com o corte de confiança escolhido na **validação** -- que também
@@ -119,8 +128,10 @@ def degradado(imagens: np.ndarray, semente: int) -> np.ndarray:
     return np.stack([estilo.degradar(img, aleatorio) for img in imagens]) if len(imagens) else imagens
 
 
-def treinar(dados: dict[str, np.ndarray], *, epocas: int, semente: int) -> tuple[Any, list[dict[str, float]]]:
-    """Treina na partição de treino, guarda o melhor estado pela perda na validação."""
+def treinar(
+    dados: dict[str, np.ndarray], treino: np.ndarray, validacao: np.ndarray, *, epocas: int, semente: int
+) -> tuple[Any, list[dict[str, float]]]:
+    """Treina nos índices de `treino` e guarda o melhor estado pela perda em `validacao` (sem ela, o último)."""
     import torch
     from torch import nn
 
@@ -128,8 +139,6 @@ def treinar(dados: dict[str, np.ndarray], *, epocas: int, semente: int) -> tuple
     aleatorio = np.random.default_rng(semente)
     rede = _rede()
     otimizador = torch.optim.Adam(rede.parameters(), lr=1e-3, weight_decay=1e-4)
-    treino = np.flatnonzero(dados["particao"] == "treino")
-    validacao = np.flatnonzero(dados["particao"] == "validacao")
     classes = dados["classes"]
     contagem = np.bincount(classes[treino], minlength=len(estilo.CLASSES)).astype(np.float64)
     peso = torch.tensor(1.0 / np.sqrt(np.maximum(contagem, 1.0)), dtype=torch.float32)
@@ -166,29 +175,42 @@ def treinar(dados: dict[str, np.ndarray], *, epocas: int, semente: int) -> tuple
              "acerto_validacao": round(acerto_val, 4), "segundos": round(time.perf_counter() - comeco, 1)}
         )
         logger.info("época %d: %s", epoca + 1, historico[-1])
-        if perda_val < melhor:
+        if perda_val < melhor or not len(validacao):
             melhor, estado = perda_val, {k: v.clone() for k, v in rede.state_dict().items()}
     if estado is not None:
         rede.load_state_dict(estado)
     return rede, historico
 
 
+Dobra = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+"""Uma rodada: `(probabilidades na validação, verdade na validação, no teste, verdade no teste)`."""
+
+
 def julgar(p_val: np.ndarray, y_val: np.ndarray, p_teste: np.ndarray, y_teste: np.ndarray) -> dict[str, Any]:
-    """As duas réguas, por classe de estilo, com o corte da validação. Pura (sobre arrays)."""
+    """As duas réguas numa rodada só. Ver `julgar_dobras`."""
+    return julgar_dobras([(p_val, y_val, p_teste, y_teste)])
+
+
+def julgar_dobras(dobras: list[Dobra]) -> dict[str, Any]:
+    """As duas réguas, por classe de estilo, somadas sobre as rodadas. Pura (sobre arrays).
+
+    Em cada rodada o corte sai da validação **dela**, e é aplicado ao teste dela; as marcadas, as
+    certas e as que havia se somam. A rodada cuja validação não chega à régua não marca nada no
+    teste dela -- as palavras daquele livro contam como não sugeridas, que é o que aconteceria.
+    """
     saida: dict[str, Any] = {}
     for indice, nome in enumerate(estilo.CLASSES):
         if indice == 0:
             continue
-        havia = int((y_teste == indice).sum())
-        linha: dict[str, Any] = {"no_teste": havia}
-        maior = estilo.regua(p_teste, y_teste, indice, 0.0)
-        linha["sem_corte"] = {"precisao": _r(maior.precisao), "cobertura": _r(maior.cobertura)}
+        havia = sum(int((y == indice).sum()) for _pv, _yv, _p, y in dobras)
+        sem_corte = _somar(estilo.regua(p, y, indice, 0.0) for _pv, _yv, p, y in dobras)
+        linha: dict[str, Any] = {"no_teste": havia, "sem_corte": {"precisao": _r(sem_corte.precisao), "cobertura": _r(sem_corte.cobertura)}}
         for uso, regua in (("sugerir", estilo.REGUA_DE_SUGERIR), ("aplicar", estilo.REGUA_DE_APLICAR)):
-            corte = estilo.corte_para(p_val, y_val, indice, regua)
-            if corte is None:
-                linha[uso] = {"corte": None, "passa": False, "motivo": "nenhum corte chega a régua na validação"}
-                continue
-            medida = estilo.regua(p_teste, y_teste, indice, corte)
+            cortes = [estilo.corte_para(pv, yv, indice, regua) for pv, yv, _p, _y in dobras]
+            medida = _somar(
+                estilo.regua(p, y, indice, corte) if corte is not None else estilo.Regua(0, 0, int((y == indice).sum()))
+                for corte, (_pv, _yv, p, y) in zip(cortes, dobras, strict=True)
+            )
             passa = (
                 havia >= SUPORTE_MINIMO
                 and medida.precisao is not None
@@ -196,7 +218,7 @@ def julgar(p_val: np.ndarray, y_val: np.ndarray, p_teste: np.ndarray, y_teste: n
                 and (uso == "aplicar" or (medida.cobertura or 0.0) >= estilo.COBERTURA_DE_SUGERIR)
             )
             linha[uso] = {
-                "corte": round(corte, 4),
+                "cortes": [None if c is None else round(c, 4) for c in cortes],
                 "marcadas": medida.marcadas,
                 "precisao": _r(medida.precisao),
                 "cobertura": _r(medida.cobertura),
@@ -206,6 +228,11 @@ def julgar(p_val: np.ndarray, y_val: np.ndarray, p_teste: np.ndarray, y_teste: n
                 linha[uso]["motivo"] = f"sem amostra: {havia} no teste, o mínimo é {SUPORTE_MINIMO}"
         saida[nome] = linha
     return saida
+
+
+def _somar(reguas: Any) -> estilo.Regua:
+    lista = list(reguas)
+    return estilo.Regua(sum(r.marcadas for r in lista), sum(r.certas for r in lista), sum(r.havia for r in lista))
 
 
 def _r(valor: float | None) -> float | None:
@@ -221,6 +248,8 @@ def carregar(caminho: Path) -> dict[str, np.ndarray]:
         "larguras": bruto["larguras"],
         "alturas": bruto["alturas"],
         "classes": bruto["classes"].astype(np.int64),
+        "livros": bruto["livros"].astype(np.int64),
+        "identidades": identidades,
         "particao": np.asarray([particoes[identidades[i]] for i in bruto["livros"]]),
     }
 
@@ -228,7 +257,7 @@ def carregar(caminho: Path) -> dict[str, np.ndarray]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--conjunto", type=Path, default=CONJUNTO_PADRAO, help="O npz da S-661 (padrao: data/estilo/palavras.npz).")
-    parser.add_argument("--epocas", type=int, default=10, help="Epocas de treino (padrao: 10).")
+    parser.add_argument("--epocas", type=int, default=6, help="Epocas de treino por rodada (padrao: 6).")
     parser.add_argument("--pesos", type=Path, default=PESOS_PADRAO, help="Onde gravar os pesos (padrao: models/estilo_palavra.pt).")
     parser.add_argument("--json", type=Path, help="Grava o relatorio neste caminho.")
     add_verbose(parser)
@@ -249,32 +278,51 @@ def main(argv: list[str] | None = None) -> int:
     torch.set_num_threads(max(1, torch.get_num_threads()))
     dados = carregar(Path(args.conjunto))
     resumo = hashlib.sha1(Path(args.conjunto).read_bytes()).hexdigest()[:12]
-    rede, historico = treinar(dados, epocas=args.epocas, semente=SEMENTE)
+    classes, alturas, livros = dados["classes"], dados["alturas"], dados["livros"]
+    total = len(dados["identidades"])
 
-    classes, alturas, particao = dados["classes"], dados["alturas"], dados["particao"]
-    val, teste, treino = (np.flatnonzero(particao == p) for p in ("validacao", "teste", "treino"))
-    p_val = probabilidades(rede, dados["imagens"][val], dados["larguras"][val])
-    p_val_deg = probabilidades(rede, degradado(dados["imagens"][val], SEMENTE + 1), dados["larguras"][val])
-    comeco = time.perf_counter()
-    p_limpo = probabilidades(rede, dados["imagens"][teste], dados["larguras"][teste])
-    por_palavra_ms = 1000 * (time.perf_counter() - comeco) / max(1, len(teste))
-    p_deg = probabilidades(rede, degradado(dados["imagens"][teste], SEMENTE + 2), dados["larguras"][teste])
-    y_val, y_teste = classes[val], classes[teste]
+    limpas: list[Dobra] = []
+    degradadas: list[Dobra] = []
+    acertos = {"limpo": [], "degradado": []}
+    altura_prevista: list[str] = []
+    verdade_toda: list[str] = []
+    rodadas = []
+    por_palavra_ms = 0.0
+    for k in range(total):
+        teste = np.flatnonzero(livros == k)
+        val = np.flatnonzero(livros == (k + 1) % total)
+        treino = np.flatnonzero((livros != k) & (livros != (k + 1) % total))
+        rede, historico = treinar(dados, treino, val, epocas=args.epocas, semente=SEMENTE + k)
+        p_val = probabilidades(rede, dados["imagens"][val], dados["larguras"][val])
+        p_val_deg = probabilidades(rede, degradado(dados["imagens"][val], SEMENTE + 100 + k), dados["larguras"][val])
+        comeco = time.perf_counter()
+        p_limpo = probabilidades(rede, dados["imagens"][teste], dados["larguras"][teste])
+        por_palavra_ms = max(por_palavra_ms, 1000 * (time.perf_counter() - comeco) / max(1, len(teste)))
+        p_deg = probabilidades(rede, degradado(dados["imagens"][teste], SEMENTE + 200 + k), dados["larguras"][teste])
+        y_val, y_teste = classes[val], classes[teste]
+        limpas.append((p_val, y_val, p_limpo, y_teste))
+        degradadas.append((p_val_deg, y_val, p_deg, y_teste))
+        acertos["limpo"].extend((p_limpo.argmax(1) == y_teste).tolist())
+        acertos["degradado"].extend((p_deg.argmax(1) == y_teste).tolist())
+        nomes_treino = [estilo.CLASSES[c] for c in classes[treino]]
+        altura_prevista.extend(estilo.chutar_pela_altura(alturas[treino].tolist(), nomes_treino, alturas[teste].tolist()))
+        verdade_toda.extend(estilo.CLASSES[c] for c in y_teste)
+        rodadas.append({
+            "teste": str(dados["identidades"][k]),
+            "validacao": str(dados["identidades"][(k + 1) % total]),
+            "palavras_no_teste": len(teste),
+            "acerto_limpo": round(float((p_limpo.argmax(1) == y_teste).mean()), 4) if len(teste) else None,
+            "treino": historico,
+        })
+        logger.info("rodada %d de %d: %s", k + 1, total, {c: v for c, v in rodadas[-1].items() if c != "treino"})
 
-    nomes = [estilo.CLASSES[c] for c in y_teste]
     controle = {
-        "chutar_normal": round(estilo.acerto(["normal"] * len(nomes), nomes), 4),
-        "chutar_pela_altura": round(
-            estilo.acerto(
-                estilo.chutar_pela_altura(alturas[treino].tolist(), [estilo.CLASSES[c] for c in classes[treino]], alturas[teste].tolist()),
-                nomes,
-            ),
-            4,
-        ),
+        "chutar_normal": round(estilo.acerto(["normal"] * len(verdade_toda), verdade_toda), 4),
+        "chutar_pela_altura": round(estilo.acerto(altura_prevista, verdade_toda), 4),
     }
     populacoes = {
-        "limpo": {"acerto": round(float((p_limpo.argmax(1) == y_teste).mean()), 4), "por_classe": julgar(p_val, y_val, p_limpo, y_teste)},
-        "degradado": {"acerto": round(float((p_deg.argmax(1) == y_teste).mean()), 4), "por_classe": julgar(p_val_deg, y_val, p_deg, y_teste)},
+        "limpo": {"acerto": round(float(np.mean(acertos["limpo"])), 4), "por_classe": julgar_dobras(limpas)},
+        "degradado": {"acerto": round(float(np.mean(acertos["degradado"])), 4), "por_classe": julgar_dobras(degradadas)},
     }
     vence_o_controle = all(pop["acerto"] > max(controle.values()) for pop in populacoes.values())
     julgaveis = [n for n in estilo.CLASSES[1:] if populacoes["limpo"]["por_classe"][n]["no_teste"] >= SUPORTE_MINIMO]
@@ -299,25 +347,34 @@ def main(argv: list[str] | None = None) -> int:
         ),
     }
 
-    args.pesos.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(
-        {"estado": rede.state_dict(), "classes": list(estilo.CLASSES), "altura": estilo.ALTURA,
-         "largura_maxima": estilo.LARGURA_MAXIMA, "semente": SEMENTE, "conjunto": resumo, "commit": git_commit()},
-        args.pesos,
-    )
+    pesos = None
+    if passam:
+        # Só quem passou ganha pesos: a rede final treina com **todos** os livros, o número de épocas
+        # das rodadas e sem validação -- o portão já foi medido acima, fora do livro.
+        rede, _ = treinar(dados, np.arange(len(classes)), np.zeros(0, np.int64), epocas=args.epocas, semente=SEMENTE)
+        args.pesos.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {"estado": rede.state_dict(), "classes": list(estilo.CLASSES), "altura": estilo.ALTURA,
+             "largura_maxima": estilo.LARGURA_MAXIMA, "semente": SEMENTE, "conjunto": resumo, "commit": git_commit()},
+            args.pesos,
+        )
+        pesos = str(args.pesos.name)
     relatorio = {
         "item": "S-662 e S-663 · o classificador de estilo da palavra e o portão",
         "medido_em": date.today().isoformat(),
         "codigo": {"commit": git_commit(), "arvore_suja": git_worktree_dirty()},
-        "conjunto": {"arquivo": str(args.conjunto.name), "resumo": resumo, "treino": len(treino), "validacao": len(val), "teste": len(teste)},
+        "conjunto": {"arquivo": str(args.conjunto.name), "resumo": resumo, "palavras": len(classes), "livros": total},
+        "protocolo": "um livro de fora por rodada: o livro k e o teste, o k+1 a validacao (o corte), os outros treinam; as contas se somam",
         "semente": SEMENTE,
-        "treino": historico,
+        "epocas_por_rodada": args.epocas,
+        "rodadas": rodadas,
+        "pesos": pesos,
         "custo_ms_por_palavra_cpu": round(por_palavra_ms, 3),
         "controle": controle,
         "populacoes": populacoes,
         "veredito": veredito,
     }
-    print(f"teste: {len(teste)} palavras; acerto limpo {populacoes['limpo']['acerto']}, degradado {populacoes['degradado']['acerto']}; "
+    print(f"teste: {len(classes)} palavras em {total} rodadas; acerto limpo {populacoes['limpo']['acerto']}, degradado {populacoes['degradado']['acerto']}; "
           f"controle {controle}")
     for nome in estilo.CLASSES[1:]:
         linha = populacoes["limpo"]["por_classe"][nome]
