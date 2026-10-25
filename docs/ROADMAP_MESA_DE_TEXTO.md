@@ -292,7 +292,7 @@ O resto da Fase 94 que não pede a janela própria, e a Fase 92 menos a flutuaç
 | S-621 | ✅ com desvio | Três comandos do menu Texto para a folha (à esquerda, ao centro, como a preferência), um passo de desfazer. O do caderno inteiro está no **menu do botão direito do índice**, com a pergunta «Alinhar 41 diagrama(s) de 23 folha(s) à esquerda?» e a versão de antes de cada folha como `anterior` |
 | S-622 | ✅ | O `.html` e o `.rtf` já seguiam o efetivo; o `.md` põe a figura num `<p align="center"><img …></p>` quando ela não está à esquerda, e mantém o `![…](…)` à esquerda. A exportação recebe a preferência (`exportar(…, diagramas=…)`) |
 | S-623 | ✅ com desvio | Pequenas · médias · grandes (160 · 240 · 320 px no corpo do sistema), **médias por padrão** — a miniatura de hoje cresceu de 160 para 240. Um comando que anda em roda, «Tamanho das miniaturas dos diagramas», em vez de três; guardado em `AppState.texto_miniatura` |
-| S-624 | ⏳ | O portão pede o protótipo medido em dez folhas reais de cinco livros, com o código declarado (S-218); não foi feito |
+| S-624 | ⏳ → ✅ na quinta entrega | Ver a quinta entrega |
 
 ### Estado da quarta entrega (2026-10-24, ramo `mesa-de-texto-caderno`): o itálico e a Fase 95
 
@@ -327,6 +327,15 @@ parágrafo não tinha tecla. O índice passou a marcar a folha que se abriu por 
 | item | estado | onde, e o que mudou em relação ao plano |
 |---|---|---|
 | S-632 | ✅ com desvio | «Letra da folha: proporcional, serifada ou monoespaçada», um comando que anda em roda (menu Texto e grupo Zoom da aba Exibir), como o das miniaturas, em vez de três; guardado em `AppState.texto_familia`. Troca só a proporcional da base da vista (`_base_da_vista`): a notação fica na monoespaçada nas três, e a guarda S-603 lê a família contra a mesma base. A serifada é a primeira de `tipografia.SERIFADAS_PREFERIDAS` que o sistema tem (Georgia no Windows); sem nenhuma, a proporcional. Testes em `tests/test_qt_texto_letra.py` |
+| S-624 | ✅ com desvio, portão passou | **Interruptor de vista, e não uma terceira opção na marca**: «Texto ao lado dos diagramas à esquerda» (`AppState.texto_ao_lado`) faz flutuar toda figura que se desenha à esquerda -- a da preferência e a que a pessoa alinhou à esquerda. Um terceiro valor de alinhamento na marca seria mudança de formato (R5): `Atributos` recusa alinhamento desconhecido ao carregar. **O custo conhecido não veio**: a figura entra pelo importador de HTML do Qt (`<img align=left>`), que registra o quadro flutuante sem pôr `U+FDD0`/`U+FDD1` no texto cru; o `QTextFrame` do cursor os poria, e `createObject` chamado do Python dá um quadro que o leiaute ignora. O `.md` e o `.html` flutuam a figura; o `.rtf` e o `.txt` não sabem, e a deixam à esquerda numa linha própria. Portão em `docs/metrics/texto_flutuante.json` (`cvoff-texto-flutuante`): 10 folhas de 5 livros, 21 figuras, as 21 flutuam e nenhuma no controle, editor certo nas duas vistas |
+
+**O que o portão achou no caminho.** A primeira corrida reprovou a folha 132 do Kemeri **também no
+controle**, sem figura nenhuma flutuando: o OCR devolveu `🗸` (`U+1F5F8`), que o Qt conta como duas
+posições e o `_Mapa` contava como uma, e toda posição depois dela ficava deslocada -- a letra digitada
+ia ao lugar certo no documento, e a tela era lida e repintada no vizinho. Defeito do editor de antes,
+consertado (`_Mapa.registrar_texto`, `_texto_da_tela` em unidades UTF-16, `_do_qt`). **E a exportação
+da aba não levava a preferência «à esquerda»** que a S-622 dizia levar: `exportar` aceitava
+`diagramas=`, e o painel não o passava. Leva agora, com o texto ao lado.
 
 ## Custo, risco e ordem
 
@@ -735,6 +744,9 @@ em `docs/metrics/texto_flutuante.json`, com o código declarado como manda a S-2
 no texto cru do documento, e `_texto_da_tela` só traduz `U+2029`/`U+2028` — sem tratá-los,
 `_digitado` e `_trocado` os leriam como texto digitado. Se o protótipo não passar, a opção sai do
 plano e a razão fica escrita aqui.
+
+**Passou (2026-10-25).** O custo conhecido não veio, porque a figura entra pelo `<img align=left>` do
+importador de HTML, e não pelo `QTextFrame` -- ver a quinta entrega, com o número.
 
 ## Fase 93 — A letra da aba
 
