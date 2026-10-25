@@ -337,6 +337,15 @@ consertado (`_Mapa.registrar_texto`, `_texto_da_tela` em unidades UTF-16, `_do_q
 da aba não levava a preferência «à esquerda»** que a S-622 dizia levar: `exportar` aceitava
 `diagramas=`, e o painel não o passava. Leva agora, com o texto ao lado.
 
+**A Fase 96, até o portão (S-661 a S-663), e onde ela parou.**
+
+| item | estado | onde, e o que mudou em relação ao plano |
+|---|---|---|
+| S-661 | ✅ com desvio | `cvoff-texto-estilo-conjunto` e `text/estilo.py`; relatório em `docs/metrics/texto_estilo_conjunto.json`, o conjunto em `data/estilo/` (fora do git). 40 folhas espaçadas de cada PDF, só as tipográficas, a palavra rotulada pelo nome da fonte ou o bit **de cada caractere** (a que mistura fica fora), recorte a 300 dpi em 32x192. **Só entra livro cuja camada registra os dois estilos** nas folhas lidas -- um livro que não marca itálico rotularia o itálico como normal --, e sobraram **7 livros (11 arquivos), 51.064 palavras**: 2.441 negrito, 1.604 itálico, 302 negrito-itálico. **A identidade é o texto do livro inteiro** (sequências de cinco palavras), e não as folhas lidas: pelas amostras os dois «400 Quebra-cabeças» não se juntavam e caíam na validação e no teste. As degradações são aplicadas à palavra já normalizada, e não ao recorte de 300 dpi |
+| S-662 | ✅ | `cvoff-texto-estilo-classificador`: quatro convoluções, média e máximo **só sobre a largura útil** (senão a rede aprende o comprimento da palavra), treino com as degradações em metade das palavras, semente fixa. Custo: 1 ms por palavra na CPU |
+| S-663 | ✅ medido, **não passa** | `docs/metrics/texto_estilo_classificador.json`, sobre `5ba4ace` em árvore limpa. **Um livro de fora por rodada**, e não a divisão fixa: com 7 livros ela deixava o teste com um livro e 15 itálicos. O número está na seção da S-663 |
+| S-664 a S-667 | ✖ fechados pelo portão | A sugestão, o itálico por palavra, a frase do rodapé e a remedição dependiam de um classificador que passasse. O pincel manual (S-241) continua sendo a resposta, e `negrito=None` continua sendo o que a folha sem camada diz |
+
 ## Custo, risco e ordem
 
 | fase | esforço | risco | o que fica se ela parar no meio |
@@ -395,7 +404,7 @@ Duas recusas da ROADMAP_EDITOR são revistas por este plano. As duas com o motiv
 | recusa de antes | o motivo de antes | o que mudou |
 |---|---|---|
 | **Editar o livro inteiro numa aba só** | "A aba é da folha aberta, por decisão de custo" | A Fase 91 **não** desfaz isso: a aba continua mostrando uma folha. O que muda é que a folha que sai fica guardada. O custo da recusa era o da leitura, e ele não muda. |
-| **Um segundo modelo para negrito e itálico** | "A resposta é geometria sobre a binária, como o pendor do itálico já é — não uma segunda rede" | A geometria foi medida em 2026-08-29 sobre 20.156 palavras de 14 livros, com o corte aprendido fora do livro: precisão máxima utilizável 0,839, e **apertar o corte não compra precisão** (`text/negrito.py`, `docs/metrics/texto_negrito_imagem.json`). A premissa da recusa caiu. A Fase 96 reabre a pergunta com portão: se o classificador não passar, a recusa volta com número novo. |
+| **Um segundo modelo para negrito e itálico** | "A resposta é geometria sobre a binária, como o pendor do itálico já é — não uma segunda rede" | A geometria foi medida em 2026-08-29 sobre 20.156 palavras de 14 livros, com o corte aprendido fora do livro: precisão máxima utilizável 0,839, e **apertar o corte não compra precisão** (`text/negrito.py`, `docs/metrics/texto_negrito_imagem.json`). A premissa da recusa caiu. A Fase 96 reabre a pergunta com portão: se o classificador não passar, a recusa volta com número novo. **Voltou (2026-10-25)**: fora do livro a rede não chega a 0,95 em classe nenhuma, e no scan simulado perde do acaso (S-663). |
 
 E três recusas **continuam de pé**: `.docx` **exportado pela aba** (o `.rtf` cobre a folha com
 zero dependências; o DOCX do livro vem da suíte, R7), editor HTML de
@@ -1222,6 +1231,25 @@ resultado: o classificador tem de vencer "chutar pela altura da palavra" (que ac
 `docs/metrics/texto_estilo_classificador.json`. **Se não passar na régua de sugerir, a fase termina
 aqui**, a recusa da ROADMAP_EDITOR volta com o número novo, e o pincel manual (S-241) continua sendo
 a resposta.
+
+**Medido em 2026-10-25: não passa.** 51.064 palavras de 7 livros, cada uma testada por uma rede que
+nunca viu o livro dela (sete rodadas, o corte escolhido no livro da validação de cada rodada):
+
+| | render limpo | degradado como scan |
+|---|---|---|
+| acerto global | 0,9403 | **0,9023** |
+| chutar normal / chutar pela altura | 0,9149 / 0,9141 | 0,9149 / 0,9141 |
+| negrito: precisão sem corte (cobertura) | 0,628 (0,497) | 0,314 (0,473) |
+| itálico: precisão sem corte (cobertura) | 0,674 (0,610) | 0,654 (0,506) |
+| negrito-itálico | nunca marcado | nunca marcado |
+| régua de sugerir (0,95 e 0,50) | nenhuma classe | nenhuma classe |
+
+No degradado -- o scan, que é a população-alvo -- a rede **perde do acaso**. E o corte não salva:
+o que dá 0,95 na validação de um livro dá 0,42 (negrito) e 0,67 (itálico) no livro de teste,
+porque a fonte de cada livro é o que ela aprende -- o acerto por livro vai de 0,832 a 0,992. A
+geometria de 2026-08-29 chegou a 0,839 de precisão no negrito, em duas classes e só no render limpo;
+a rede não a supera. **A recusa da ROADMAP_EDITOR volta, com este número.** O que mudaria a resposta é
+mais livros com os dois estilos na camada -- são sete hoje --, e não outra rede sobre os mesmos sete.
 
 ### S-664 · A sugestão, e não a aplicação
 
