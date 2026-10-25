@@ -500,6 +500,23 @@ CATALOGO: tuple[Comando, ...] = (
     # O caderno do livro (S-613): o índice das folhas e a marca de conferida. O índice abre e fecha
     # como a paleta de glifos, e não é interruptor pelo mesmo motivo: ele não é preferência guardada.
     Comando("indice_do_caderno", "Índice das folhas do caderno", VISUALIZACAO, estilos.NEUTRO),
+    # A fita da mesa e o que ela trouxe do WordCraft (Fase 95, S-650 a S-659).
+    Comando("pincel_de_formatacao", "Pincel de formatação (duplo clique fixa, Esc desarma)", EDICAO, estilos.NEUTRO),
+    Comando("copiar_formato", "Copiar a formatação do trecho", EDICAO, estilos.NEUTRO),
+    Comando("colar_formato", "Colar a formatação copiada", EDICAO, estilos.NEUTRO),
+    Comando("marcas_de_formatacao", "Marcas de formatação (¶ e espaços)", VISUALIZACAO, estilos.NEUTRO),
+    Comando("painel_de_navegacao", "Painel de navegação: títulos, folhas, resultados e correções", VISUALIZACAO, estilos.NEUTRO),
+    Comando("bloco_impresso", "Mostrar o bloco impresso sob o cursor na mesa", VISUALIZACAO, estilos.NEUTRO),
+    Comando("modo_foco", "Modo foco: só a folha (Esc sai)", VISUALIZACAO, estilos.NEUTRO),
+    Comando("recolher_fita", "Recolher a fita do Texto", VISUALIZACAO, estilos.NEUTRO),
+    Comando("proxima_fora_do_lexico", "Ir à próxima palavra fora do léxico", OCR, estilos.NEUTRO),
+    Comando("lista_de_correcoes", "Lista das correções desta folha", OCR, estilos.NEUTRO),
+    Comando("mover_paragrafo_acima", "Mover o parágrafo para cima", EDICAO, estilos.NEUTRO),
+    Comando("mover_paragrafo_abaixo", "Mover o parágrafo para baixo", EDICAO, estilos.NEUTRO),
+    Comando("codigo_unicode", "Trocar o caractere pelo código Unicode, e de volta", EDICAO, estilos.NEUTRO),
+    Comando("ler_folha_de_novo", "Ler a folha de novo (o motor relê o que está no caderno)", OCR, estilos.NEUTRO),
+    Comando("voltar_a_versao_anterior", "Voltar à versão anterior desta folha", EDICAO, estilos.NEUTRO),
+    Comando("descartar_correcoes", "Descartar as correções desta folha…", EDICAO, estilos.NEUTRO),
     # Os diagramas no texto (Fase 92): a preferência e o tamanho são vista; alinhar os da folha é edição.
     Comando("diagramas_a_esquerda", "Diagramas no texto à esquerda (o padrão é ao centro)", VISUALIZACAO, estilos.NEUTRO),
     Comando("tamanho_da_miniatura", "Tamanho das miniaturas dos diagramas", VISUALIZACAO, estilos.NEUTRO),

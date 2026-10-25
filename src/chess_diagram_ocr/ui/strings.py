@@ -334,6 +334,27 @@ FOLHA_POR_LER_FRASE = sem_orfa(
     "é quem lê. As folhas já lidas abrem do caderno."
 )
 
+MODO_FOCO_BARRA = "Modo foco: só a folha. Esc volta à mesa."
+"""A barra fina que sobra no lugar da fita no modo foco (S-658)."""
+
+NOME_DO_ESTILO: dict[str, str] = {
+    "": "Normal",
+    "titulo": "Título",
+    "prosa": "Prosa",
+    "notacao": "Notação",
+    "legenda": "Legenda",
+}
+"""Como a galeria de estilos (S-651) chama cada estilo de `rico.ESTILOS`. `""` é o sem estilo."""
+
+DICA_DO_CORPO_EM_PONTOS = (
+    "O corpo do parágrafo, em pontos. Muda o documento e a exportação -- o zoom, no rodapé, muda só a tela."
+)
+"""A dica da caixa de corpo (S-631): é ela que separa o corpo do zoom, que o pedido «aumentar a fonte» confunde."""
+
+BUSCA_PALAVRA_INTEIRA = "Palavra inteira"
+BUSCA_CURINGAS = "Curingas"
+"""As duas opções da busca do painel de navegação (S-654, S-659)."""
+
 ABRIR_FOLHA_DO_CADERNO = "Abrir folha"
 """O botão «Ler folha» quando a folha do campo já está no caderno do livro (S-612): abrir não
 chama o motor, e o rótulo diz isso. Ler de novo fica no menu do botão direito da folha."""

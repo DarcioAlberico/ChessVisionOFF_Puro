@@ -257,8 +257,12 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2099
+    LIMITE = 2100
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.099 -> 2.100 na Fase 95 (2026-10-24)**: a fita da aba Texto pede à janela os comandos que
+    são dela (a mesa, por exemplo) pelo menu -- `definir_executor`, uma linha. O resto da fita mora
+    em `qt/fita_do_texto.py`, `qt/painel_de_navegacao.py` e no painel.
 
     **2.104 -> 2.099 na Fase 92 (2026-10-24)**: a vista da aba Texto -- zoom, quebra, motor, modo
     bloco, e agora os diagramas e a miniatura -- passou a ir e voltar do estado por

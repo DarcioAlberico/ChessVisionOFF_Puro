@@ -259,6 +259,15 @@ TECLAS_DO_EDITOR: dict[str, str] = {
     # A marca de conferida do caderno (S-613). `Ctrl+Enter` é o `aplicar_fen` da janela; com o
     # `Shift` a tecla estava livre na tabela em 2026-10-24, e é o «terminei esta folha».
     "marcar_folha_conferida": "<Control-Shift-Return>",
+    # As da Fase 95, todas livres na tabela em 2026-10-24 (S-653, S-652, S-657, S-659). O pincel é
+    # `Ctrl+Shift+C`/`Ctrl+Shift+V`, do Word; a maiúscula é o `Shift`, como no `<Control-S>`.
+    "copiar_formato": "<Control-C>",
+    "colar_formato": "<Control-V>",
+    "recolher_fita": "<Control-F1>",
+    "proxima_fora_do_lexico": "<F7>",
+    "mover_paragrafo_acima": "<Alt-Shift-Up>",
+    "mover_paragrafo_abaixo": "<Alt-Shift-Down>",
+    "codigo_unicode": "<Alt-x>",
     # **`Ctrl+H` está aqui e em `ATALHOS`, e a duplicata é obrigatória** (S-267). Medido: em
     # `tk8.6/text.tcl` o `Ctrl+H` da **classe** `Text` é backspace -- herança de terminal --, e um
     # `bind_all` roda **depois** dela (bindtags: widget, classe, toplevel, all). Ligada só na

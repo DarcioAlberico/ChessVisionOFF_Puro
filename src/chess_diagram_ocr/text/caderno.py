@@ -275,6 +275,32 @@ class Caderno:
 
     # --------------------------------------------------------------------------- caminhos
 
+    # ----------------------------------------------------------------- o léxico do livro (S-657)
+
+    def lexico(self) -> frozenset[str]:
+        """As palavras que este livro acrescentou ao léxico: os nomes próprios dele, em caixa baixa."""
+        try:
+            linhas = (self.pasta / "lexico.txt").read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return frozenset()
+        return frozenset(linha.strip().lower() for linha in linhas if linha.strip())
+
+    def acrescentar_ao_lexico(self, palavra: str) -> bool:
+        """Acrescenta a palavra ao léxico do livro. **Relê e mescla antes de gravar**, ordenado.
+
+        A regra do dicionário do usuário do WordCraft: duas gravações seguidas não se apagam, porque
+        a segunda parte do que está no disco, e não do que esta instância leu na abertura.
+        """
+        palavra = palavra.strip().lower()
+        if not palavra or self.somente_leitura:
+            return False
+        atuais = self.lexico()
+        if palavra in atuais:
+            return False
+        self.pasta.mkdir(parents=True, exist_ok=True)
+        _gravar_conferido(self.pasta / "lexico.txt", "".join(f"{p}\n" for p in sorted(atuais | {palavra})))
+        return True
+
     def caminho(self, pagina: int, *, tipo: str = "") -> Path:
         """`folha-0012.cvtxt`, ou `folha-0012.<tipo>.cvtxt` para `anterior` e `lida`."""
         meio = f".{tipo}" if tipo else ""

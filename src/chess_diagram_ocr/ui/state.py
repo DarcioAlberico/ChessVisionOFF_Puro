@@ -193,6 +193,10 @@ class AppState:
     """«Diagramas no texto» (S-620): `""` centralizados, `"esquerda"` à esquerda."""
     texto_miniatura: str = ""
     """O tamanho da miniatura do diagrama no texto (S-623): `pequeno`, `medio` ou `grande`; `""` é o padrão."""
+    texto_fita_recolhida: bool = False
+    """A fita do Texto recolhida com `Ctrl+F1` (S-652)."""
+    texto_glifos_recentes: list[str] = field(default_factory=list)
+    """Os glifos usados por último na paleta (S-650), do mais novo ao mais velho."""
     texto_mesa: str = ""
     """A mesa de texto se arma ao abrir o Texto? (S-640) `ui/mesa`: `""` e `texto` ligam, `nunca`
     desliga. Não é validada aqui além do tipo, pela razão de `skin`: quem a aplica é `mesa.ligada`."""
@@ -290,6 +294,8 @@ class AppState:
             "texto_bloco": bool(self.texto_bloco),
             "texto_diagramas": str(self.texto_diagramas),
             "texto_miniatura": str(self.texto_miniatura),
+            "texto_fita_recolhida": bool(self.texto_fita_recolhida),
+            "texto_glifos_recentes": [str(g) for g in self.texto_glifos_recentes][:20],
             "texto_mesa": str(self.texto_mesa),
             "mesa_fraction": float(self.mesa_fraction),
             "estudo_aberto": self.estudo_aberto,
@@ -430,6 +436,12 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
         valor = raw.get(chave)
         if isinstance(valor, str):
             setattr(state, chave, valor)
+    recolhida = raw.get("texto_fita_recolhida")
+    if isinstance(recolhida, bool):
+        state.texto_fita_recolhida = recolhida
+    glifos = raw.get("texto_glifos_recentes")
+    if isinstance(glifos, list):
+        state.texto_glifos_recentes = [g for g in glifos if isinstance(g, str) and g][:20]
     texto_mesa = raw.get("texto_mesa")
     if isinstance(texto_mesa, str):
         state.texto_mesa = texto_mesa

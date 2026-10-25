@@ -294,6 +294,26 @@ O resto da Fase 94 que não pede a janela própria, e a Fase 92 menos a flutuaç
 | S-623 | ✅ com desvio | Pequenas · médias · grandes (160 · 240 · 320 px no corpo do sistema), **médias por padrão** — a miniatura de hoje cresceu de 160 para 240. Um comando que anda em roda, «Tamanho das miniaturas dos diagramas», em vez de três; guardado em `AppState.texto_miniatura` |
 | S-624 | ⏳ | O portão pede o protótipo medido em dez folhas reais de cinco livros, com o código declarado (S-218); não foi feito |
 
+### Estado da quarta entrega (2026-10-24, ramo `mesa-de-texto-caderno`): o itálico e a Fase 95
+
+O conserto barato do itálico (S-660, remedido: ver a seção dela) e a Fase 95 inteira. Testes em
+`tests/test_qt_texto_fita.py` (30, um por critério de aceite, e os puros ao lado).
+
+| item | estado | onde, e o que mudou em relação ao plano |
+|---|---|---|
+| S-650 | ✅ com desvio | `ui/fita_do_texto.py` declara as abas (Arquivo, Página inicial, Inserir, Leitura, Revisão, Exibir) e `qt/fita_do_texto.py` as desenha; o inventário do editor ganhou `comandos_do_editor_fora_da_fita`, lido da declaração. A barra de acesso rápido mora no canto das abas. **As cores continuam listas** (a cor e o realce sob o cursor à vista), e não botões partidos que lembram a última cor. **Achado no caminho:** as teclas próprias do editor (`Ctrl+B`, `Ctrl+I`, `Ctrl+L`…) estavam declaradas em `TECLAS_DO_EDITOR` e não ligadas no Qt — `Ctrl+B` não negritava nada. O painel passou a atendê-las, e as dicas da fita as mostram |
+| S-631 | ✅ | «Corpo do parágrafo (pt)», no grupo Fonte: o corpo do parágrafo sob o cursor, vazio no misto; o valor digitado vira o degrau mais próximo, num passo de desfazer |
+| S-651 | ✅ | A galeria desenha cada estilo com a fonte de `texto_formato.formato_de`, a mesma da folha, e marca o do cursor. A lista de estilos da barra antiga saiu |
+| S-652 | ✅ com desvio | `Ctrl+F1` recolhe a fita deixando só as abas, e o estado guarda. A compacta é a aba que não cabe numa linha perder os nomes dos grupos; o orçamento de altura da S-228 não é cobrado aqui |
+| S-653 | ✅ | O pincel arma num clique, fixa no segundo clique logo depois, `Esc` desarma; `Ctrl+Shift+C`/`Ctrl+Shift+V`. A faixa de confiança não vai (`rico.ATRIBUTOS_DE_TRECHO`) |
+| S-654 | ✅ com desvio | `qt/painel_de_navegacao.py`: Títulos, Folhas (o índice da S-613), Resultados (com «palavra inteira» e «curingas») e **Correções**, a quarta aba, que é a lista da Revisão › Correções |
+| S-655 | ✅ com desvio | Palavras («12 de 357 palavras») e léxico («2 fora do léxico», o clique é o `F7») em caixas próprias; folha, diagramas, correções e caderno ficam na frase de `frase_do_rodape`; o recado some em 6 s. **Não entraram** o «gravado às 14:32» nem o clique na folha que abre o campo |
+| S-656 | ✅ | Cada passo da pilha tem o nome do comando que o fez (`executar` o põe), e a lista do desfazer, na barra de acesso rápido, desfaz até o escolhido num redesenho só |
+| S-657 | ✅ | `F7`; as sugestões em `text/sugestao.py`, com a tabela de trocas de OCR e onde cada uma foi vista; o léxico do livro em `data/cadernos/<livro>/lexico.txt`, relido e mesclado antes de gravar; «Ignorar nesta folha»; a palavra em digitação não é marcada |
+| S-658 | ✅ | O modo foco esconde a fita, o painel de navegação e, na mesa, o visualizador; `Esc` volta. As marcas ¶ são reaplicadas a cada `QTextDocument` novo e não vão ao texto copiado. Sem tecla, como o plano pedia |
+| S-659 | ✅ | Busca por palavra inteira e com curinga (`busca.curinga_para_regex`, que recusa repetir grupo inteiro), troca com `\1` a `\9`; `Alt+Shift+↑/↓` move o parágrafo; `Alt+X` só com quatro dígitos sem `U+`, porque as letras de `a` a `f` também são hexadecimais |
+| os confortos | ✅ | A paleta de glifos mostra primeiro os 20 usados por último, guardados no estado da sessão |
+
 ## Custo, risco e ordem
 
 | fase | esforço | risco | o que fica se ela parar no meio |

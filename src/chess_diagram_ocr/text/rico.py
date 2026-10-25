@@ -1325,6 +1325,83 @@ def alinhamento_efetivo(corrida: Corrida, *, padrao_do_diagrama: str = ALINHAMEN
     return padrao_do_diagrama
 
 
+ATRIBUTOS_DE_TRECHO = ("negrito", "italico", "sublinhado", "tachado", "cor", "realce")
+ATRIBUTOS_DE_PARAGRAFO = ("estilo", "alinhamento", "corpo")
+"""O que o pincel de formatação leva (S-653). **A faixa de confiança e o `fora_do_modelo` não vão**:
+são do motor e do modelo, e não do autor (S-242) -- pincelá-los seria dizer que a palavra pintada foi
+lida com a mesma confiança da outra."""
+
+
+def atributos_em(doc: DocumentoRico, deslocamento: int) -> Atributos | None:
+    """Os atributos do trecho naquele deslocamento -- ou do anterior, no fim do texto. `None` sem texto."""
+    comeco = 0
+    ultima: Corrida | None = None
+    for corrida in doc.corridas:
+        fim = comeco + len(corrida.texto)
+        if comeco <= deslocamento < fim and corrida.texto.strip():
+            return corrida.atributos
+        if corrida.texto.strip():
+            ultima = corrida
+        comeco = fim
+    return None if ultima is None else ultima.atributos
+
+
+def pintar(doc: DocumentoRico, inicio: int, fim: int, atributos: Atributos, *, paragrafo: bool) -> DocumentoRico:
+    """O pincel de formatação (S-653): os atributos de trecho no intervalo, e os de parágrafo se pedido.
+
+    Sem seleção o alvo é a palavra (`intervalo_alvo`), como no negrito. Os de parágrafo só entram
+    quando quem chama diz que a seleção cobre parágrafos inteiros -- pincelar um título sobre meia
+    frase não a transforma em título, que é a regra do WordCraft (`cmd/edit.rs:776-826`).
+    """
+    alvo_inicio, alvo_fim = intervalo_alvo(doc, inicio, fim)
+    novo = doc
+    if alvo_inicio < alvo_fim:
+        novo = aplicar(novo, alvo_inicio, alvo_fim, **{a: getattr(atributos, a) for a in ATRIBUTOS_DE_TRECHO})
+    if paragrafo:
+        novo = aplicar_no_paragrafo(novo, inicio, fim, **{a: getattr(atributos, a) for a in ATRIBUTOS_DE_PARAGRAFO})
+    return novo
+
+
+def _linhas(texto: str) -> list[tuple[int, int]]:
+    """Os parágrafos do texto como o editor os vê -- o que há entre duas quebras de linha --, com o começo e o fim."""
+    saida: list[tuple[int, int]] = []
+    comeco = 0
+    for pedaco in texto.split("\n"):
+        saida.append((comeco, comeco + len(pedaco)))
+        comeco += len(pedaco) + 1
+    return saida
+
+
+def _entre(doc: DocumentoRico, inicio: int, fim: int) -> list[Corrida]:
+    if inicio >= fim:
+        return []
+    return [corrida for corrida, dentro in _fatiado(doc, inicio, fim) if dentro]
+
+
+def mover_paragrafo(doc: DocumentoRico, deslocamento: int, passo: int) -> tuple[DocumentoRico, int]:
+    """Troca o parágrafo sob o cursor com o vizinho de cima (`-1`) ou de baixo (`+1`) (S-659).
+
+    A ordem de leitura é erro conhecido do OCR desta aba, e consertá-la era recortar e colar. As
+    linhas em branco entre os dois ficam onde estavam, e o diagrama anda com a marca -- a marca é
+    um parágrafo. Devolve o documento e onde o parágrafo movido começa agora; o mesmo documento e
+    o mesmo deslocamento quando não há vizinho.
+    """
+    linhas = _linhas(doc.para_texto())
+    atual = next((i for i, (a, b) in enumerate(linhas) if a <= deslocamento <= b), None)
+    if atual is None or linhas[atual][0] == linhas[atual][1]:
+        return doc, deslocamento
+    vizinho = atual + passo
+    while 0 <= vizinho < len(linhas) and linhas[vizinho][0] == linhas[vizinho][1]:
+        vizinho += passo
+    if not 0 <= vizinho < len(linhas):
+        return doc, deslocamento
+    (a1, b1), (a2, b2) = sorted((linhas[atual], linhas[vizinho]))
+    total = len(doc.para_texto())
+    corridas = _entre(doc, 0, a1) + _entre(doc, a2, b2) + _entre(doc, b1, a2) + _entre(doc, a1, b1) + _entre(doc, b2, total)
+    novo = DocumentoRico(corridas=fundir(corridas), origem=doc.origem)
+    return novo, (a1 if passo < 0 else a1 + (b2 - a2) + (a2 - b1))
+
+
 def alinhar_diagramas(doc: DocumentoRico, alinhamento: str) -> DocumentoRico:
     """Todos os diagramas da folha naquele alinhamento -- `""` limpa o escrito e volta à preferência (S-621).
 
@@ -1345,6 +1422,36 @@ def alinhar_diagramas(doc: DocumentoRico, alinhamento: str) -> DocumentoRico:
 def diagramas_a_alinhar(doc: DocumentoRico, alinhamento: str) -> int:
     """Quantos diagramas da folha `alinhar_diagramas` mudaria: a conta que a pergunta do caderno diz."""
     return sum(1 for c in doc.corridas if c.e_diagrama and c.atributos.alinhamento != alinhamento)
+
+
+def titulos(doc: DocumentoRico) -> tuple[tuple[int, str], ...]:
+    """Os parágrafos de estilo `titulo` da folha, com onde cada um começa (S-654). Pura.
+
+    Um título é a sequência de corridas de estilo `titulo` até a quebra de linha: um título com uma
+    palavra em itálico são três corridas e um título só.
+    """
+    achados: list[tuple[int, str]] = []
+    comeco = 0
+    atual: list[str] = []
+    inicio_do_atual = 0
+    for corrida in doc.corridas:
+        if corrida.atributos.estilo == ESTILO_TITULO and not corrida.e_diagrama:
+            partes = corrida.texto.split("\n")
+            for indice, parte in enumerate(partes):
+                if indice > 0 and atual:
+                    achados.append((inicio_do_atual, "".join(atual)))
+                    atual = []
+                if parte:
+                    if not atual:
+                        inicio_do_atual = comeco + sum(len(p) + 1 for p in partes[:indice])
+                    atual.append(parte)
+        elif atual:
+            achados.append((inicio_do_atual, "".join(atual)))
+            atual = []
+        comeco += len(corrida.texto)
+    if atual:
+        achados.append((inicio_do_atual, "".join(atual)))
+    return tuple((onde, texto.strip()) for onde, texto in achados if texto.strip())
 
 
 def bloco_em(doc: DocumentoRico, deslocamento: int) -> int | None:
@@ -1408,6 +1515,8 @@ __all__ = [
     "ALINHAMENTO_DO_DIAGRAMA",
     "ALINHAMENTO_ESQUERDA",
     "ALINHAMENTO_JUSTIFICADO",
+    "ATRIBUTOS_DE_PARAGRAFO",
+    "ATRIBUTOS_DE_TRECHO",
     "ATRIBUTOS_DA_MARCA",
     "CAIXAS",
     "CAIXA_ALTA",
@@ -1419,6 +1528,7 @@ __all__ = [
     "alcance_de_apagar",
     "alinhamento_efetivo",
     "alinhar_diagramas",
+    "atributos_em",
     "alternar",
     "apagar",
     "aplicar",
@@ -1441,12 +1551,15 @@ __all__ = [
     "intervalo_alvo",
     "intervalo_de_paragrafo",
     "substituir_intervalo",
+    "titulos",
     "limpar_cor",
     "limpar_formato",
     "mover",
+    "mover_paragrafo",
     "mudar_caixa",
     "mudar_corpo",
     "palavra_em",
+    "pintar",
     "vale_em_todo",
     "valor_em_todo",
 ]

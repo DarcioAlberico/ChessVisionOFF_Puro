@@ -442,6 +442,7 @@ class JanelaPrincipal(QMainWindow):
         self.principal.adicionar_modo(abas.REVISAO, self.revisao)
 
         self.texto = PainelDeTexto(busy=self.busy, com_caderno=True, parent=self.principal)
+        self.texto.definir_executor(lambda acao: self.menu.acoes[acao].trigger())  # o que a fita pede à janela
         self.texto.diagrama_ativado.connect(self._estudar_do_texto)  # duplo clique na miniatura (item 8)
         self.principal.adicionar_modo(abas.TEXTO, self.texto)
 

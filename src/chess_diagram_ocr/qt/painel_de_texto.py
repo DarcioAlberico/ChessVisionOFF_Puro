@@ -57,6 +57,7 @@ em `text/rascunho.py` e `text/correcao.py`, e aqui ficam só o relógio de inati
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from collections.abc import Callable, Iterable, Sequence
@@ -95,6 +96,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QTextEdit,
+    QToolButton,
     QToolTip,
     QVBoxLayout,
     QWidget,
@@ -104,15 +106,16 @@ from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
+from chess_diagram_ocr.qt.fita_do_texto import FitaDoTexto
 from chess_diagram_ocr.qt.imagens import pixmap_de_rgb
-from chess_diagram_ocr.qt.indice_do_caderno import IndiceDoCaderno
+from chess_diagram_ocr.qt.painel_de_navegacao import CORRECOES, FOLHAS, RESULTADOS, PainelDeNavegacao
 from chess_diagram_ocr.qt.texto_formato import bloco_de, formato_de
 from chess_diagram_ocr.qt.trabalho import Tarefa, rastro_de
 from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.text import busca, caderno, correcao, rascunho, rico
 from chess_diagram_ocr.text.documento import PaginaLida
 from chess_diagram_ocr.text.pagina import BlocoDeDiagrama
-from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, strings, texto_cores, tokens
+from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, strings, texto_cores, tipografia, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.texto_declarado import (
     ACOES_PROPRIAS,
@@ -127,9 +130,12 @@ from chess_diagram_ocr.ui.texto_declarado import (
     ZOOM_MINIMO,
     Digitacao,
     alinhamento_dos_diagramas,
+    codigo_unicode,
+    contar_palavras,
     continua_a_digitacao,
     digitacao_depois,
     fora_do_livro,
+    frase_das_palavras,
     frase_do_lexico,
     frase_do_rodape,
     largura_da_miniatura,
@@ -150,6 +156,12 @@ Um valor de retorno e não uma exceção: desistir não é falhar, e uma exceç�
 relatório legítima de coincidir com ela."""
 
 LARGURA_DA_MINIATURA = TAMANHOS_DA_MINIATURA[TAMANHO_DA_MINIATURA_PADRAO]
+GLIFOS_RECENTES = 20
+"""Quantos glifos usados por último a paleta mostra primeiro (S-650), gravados no estado da sessão."""
+
+SEGUNDOS_DO_RECADO = 6.0
+"""Quanto o recado transitório fica na barra de estado (S-655): a regra do WordCraft. O texto
+inteiro fica na dica, para quem não o leu a tempo."""
 """A miniatura do diagrama dentro do texto, em pixel.
 
 Grande o bastante para reconhecer a posição, pequena o bastante para a linha seguinte caber na
@@ -293,6 +305,9 @@ class PainelDeTexto(QWidget):
     """O `bbox`, em pontos, do bloco da página de onde veio o trecho sob o cursor -- ou `None` (S-642).
     A mesa o contorna no visualizador. Sai só quando o bloco muda, e não a cada tecla."""
 
+    foco_mudou = pyqtSignal(bool)
+    """O modo foco ligou ou desligou (S-658): a mesa esconde ou devolve o visualizador."""
+
     folha_pedida = pyqtSignal(int)
     """Um `.cvtxt` do livro aberto acabou de entrar na tela: a folha dele (0-based), para o
     visualizador ir até ela (item 9). Não sai para um `.cvtxt` de outro livro."""
@@ -364,6 +379,12 @@ class PainelDeTexto(QWidget):
         `tem_alteracoes` compara, e não contra a pilha: gravar não esvazia a pilha, e desfazer até
         o que foi gravado não deixa nada a perder."""
         self._historico: list[rico.DocumentoRico] = []
+        self._rotulos_do_historico: list[str] = []
+        """O nome do passo de cada documento empilhado (S-656), na mesma ordem de `_historico`."""
+        self._rotulos_refeitos: list[str] = []
+        self._rotulo_corrente = ""
+        """O nome do comando em curso: `executar` o põe, e `_aplicar` o leva para a pilha."""
+        self._executor: Callable[[str], object] | None = None
         self._edicao = 0
         """Quantas edições esta aba recebeu. É o desempate do `Ctrl+Z` sem foco (S-243)."""
         self._refeitos: list[rico.DocumentoRico] = []
@@ -401,6 +422,20 @@ class PainelDeTexto(QWidget):
         """«Diagramas no texto» (S-620). É vista e preferência, e não documento: trocar não grava nada."""
         self._tamanho_da_miniatura = TAMANHO_DA_MINIATURA_PADRAO
         """O tamanho da miniatura (S-623): `ui/texto_declarado.TAMANHOS_DA_MINIATURA`."""
+        self._pincel: rico.Atributos | None = None
+        """A formatação que o pincel leva (S-653), ou `None` desarmado."""
+        self._pincel_fixo = False
+        self._pincel_armado_em = 0.0
+        self._modo_foco = False
+        self._navegacao_antes_do_foco = False
+        self._marcas_de_formatacao = False
+        self._faixa_ligada = True
+        self._fora_do_lexico: list[tuple[int, int]] = []
+        """As palavras marcadas pela conferência, em ordem -- o `F7` anda por elas (S-657)."""
+        self._ignoradas: set[str] = set()
+        """As palavras que a pessoa mandou ignorar nesta folha. Saem com a folha."""
+        self._glifos_recentes: list[str] = []
+        self._palavras_cache: tuple[object, int] = (None, 0)
         self._na_mesa = False
         """A mesa de texto está armada (S-640): a aba acompanha a página do visualizador (S-644) e
         mostra o bloco impresso sob o cursor (S-643). Quem diz é a janela, por `definir_mesa`."""
@@ -451,7 +486,29 @@ class PainelDeTexto(QWidget):
         caixa = QVBoxLayout(self)
         caixa.setContentsMargins(*(espaco.margem_da_aba(),) * 4)
         caixa.setSpacing(espaco.linha())
-        caixa.addWidget(self._barra_de_ferramentas())
+        self._montar_controles()
+        self.fita = FitaDoTexto(
+            self,
+            alvo=self._alvo_da_fita,
+            controles={
+                "@corpo": self.caixa_de_corpo,
+                "@cor": self.escolha_de_cor,
+                "@realce": self.escolha_de_realce,
+                "@galeria": self.galeria,
+                "@folha": self.campo_de_folha,
+                "@motor": self.escolha_de_motor,
+                "@modo_bloco": self.caixa_de_bloco,
+            },
+            rotulos_do_desfazer=lambda: list(reversed(self._rotulos_do_historico)),
+            desfazer_ate=self.desfazer_ate,
+        )
+        self.botao_de_ler = self.fita.botao("ler_folha")
+        caixa.addWidget(self.fita)
+        # A barra fina do modo foco (S-658): o que sobra no lugar da fita, e como sair dele.
+        self.barra_do_foco = QLabel(strings.MODO_FOCO_BARRA, self)
+        self.barra_do_foco.setAccessibleName("Modo foco")
+        self.barra_do_foco.hide()
+        caixa.addWidget(self.barra_do_foco)
         # O bloco impresso sob o cursor, na largura do editor (S-643): quem corrige OCR compara a
         # letra impressa e a lida sem atravessar a tela com os olhos. Só na mesa, e só com a folha.
         self.faixa_impressa = QLabel(self)
@@ -505,23 +562,52 @@ class PainelDeTexto(QWidget):
         # O `Ctrl+Z` de dentro da folha. Ver `TECLAS_DO_HISTORICO`.
         self.editor.installEventFilter(self)
         self._teclas_do_historico = _teclas_da_tabela(TECLAS_DO_HISTORICO)
+        self._teclas_do_editor = _teclas_do_editor()
+        """As teclas que só valem dentro da folha (`atalhos.TECLAS_DO_EDITOR`): `Ctrl+B`, `Ctrl+I`,
+        `F7`, `Alt+X`... **Declaradas e não ligadas** desde o porte para o Qt -- medido em
+        2026-10-24, `Ctrl+B` com o texto selecionado não negritava nada. Agora é este painel quem as
+        atende, pela mesma tabela que a legenda e as dicas leem."""
         corpo = QHBoxLayout()
-        # O índice das folhas do caderno à esquerda da folha (S-613), como o painel de navegação do
-        # WordCraft; nasce escondido, como a paleta.
-        self.indice = IndiceDoCaderno(self)
+        # O painel de navegação à esquerda da folha (S-654), com o índice das folhas do caderno
+        # numa das abas (S-613); nasce escondido, como a paleta.
+        self.navegacao = PainelDeNavegacao(self)
+        self.indice = self.navegacao.indice
         self.indice.folha_escolhida.connect(self._abrir_do_indice)
         self.indice.alinhar_pedido.connect(self.alinhar_diagramas_do_caderno)
-        corpo.addWidget(self.indice)
+        self.navegacao.ir_para.connect(self._ir_para_intervalo)
+        self.navegacao.busca_mudou.connect(self._refazer_resultados)
+        self.navegacao.currentChanged.connect(lambda _i: self._refazer_navegacao())
+        corpo.addWidget(self.navegacao)
         corpo.addWidget(self.editor, 1)
         corpo.addWidget(self._montar_paleta())
         caixa.addLayout(corpo, 1)
 
+        # A barra de estado da mesa (S-655): a folha e o que ela tem, as palavras, o léxico, e o
+        # zoom na ponta direita. O recado transitório toma o lugar das do meio por 6 s.
         rodape = QHBoxLayout()
         self.status = QLabel("", self)
         self.status.setAccessibleName("Estado da folha")
         rodape.addWidget(self.status, 1)
+        self.caixa_de_palavras = QLabel("", self)
+        self.caixa_de_palavras.setAccessibleName("Palavras da folha")
+        rodape.addWidget(self.caixa_de_palavras)
+        self.caixa_do_lexico = QToolButton(self)
+        self.caixa_do_lexico.setAccessibleName(comandos.nome_acessivel("proxima_fora_do_lexico"))
+        self.caixa_do_lexico.setAutoRaise(True)
+        self.caixa_do_lexico.clicked.connect(lambda _marcado=False: self.proxima_fora_do_lexico())
+        self.caixa_do_lexico.hide()
+        rodape.addWidget(self.caixa_do_lexico)
+        self.recado = QLabel("", self)
+        self.recado.setAccessibleName("Recado da aba")
+        self.recado.hide()
+        rodape.addWidget(self.recado, 1)
         rodape.addWidget(self._montar_zoom())
         caixa.addLayout(rodape)
+        self._relogio_do_recado = QTimer(self)
+        self._relogio_do_recado.setSingleShot(True)
+        self._relogio_do_recado.setInterval(int(SEGUNDOS_DO_RECADO * 1000))
+        self._relogio_do_recado.timeout.connect(self._apagar_recado)
+        self.estado.connect(self._mostrar_recado)
 
     def _montar_zoom(self) -> QWidget:
         """O zoom à vista, no rodapé (S-630): `−`, a régua, `+` e a porcentagem.
@@ -603,14 +689,25 @@ class PainelDeTexto(QWidget):
         inicio, fim = self._intervalo()
         if inicio == fim:
             fim = min(len(self.documento.para_texto()), inicio + 1)
-        for caixa, atributo in (
-            (self.escolha_de_estilo, "estilo"),
-            (self.escolha_de_cor, "cor"),
-            (self.escolha_de_realce, "realce"),
-        ):
+        for caixa, atributo in ((self.escolha_de_cor, "cor"), (self.escolha_de_realce, "realce")):
             valor = rico.valor_em_todo(self.documento, inicio, fim, atributo) if fim > inicio else None
             indice = caixa.findData(valor or "")
             caixa.setCurrentIndex(indice if indice >= 0 else 0)
+        doc = self.documento
+        estilo = rico.valor_em_todo(doc, inicio, fim, "estilo") if fim > inicio else ""
+        for nome, amostra in self.amostras.items():
+            amostra.setChecked(estilo is not None and nome == (estilo or ""))
+        # Os botões de estado (S-650): marcados com o que vale em todo o trecho, desmarcados no misto.
+        estados = {a: fim > inicio and rico.vale_em_todo(doc, inicio, fim, a) for a in ("negrito", "italico", "sublinhado", "tachado")}
+        alinhamento = rico.valor_em_todo(doc, inicio, fim, "alinhamento") if fim > inicio else None
+        marca = self._marca_em(inicio)
+        if marca is not None:  # `valor_em_todo` pula a marca do diagrama: sobre ela vale o efetivo (S-620)
+            alinhamento = rico.alinhamento_efetivo(marca[2], padrao_do_diagrama=alinhamento_dos_diagramas(self._diagramas))
+        for nome, valor in (("alinhar_esquerda", "esquerda"), ("alinhar_centro", "centro"), ("alinhar_direita", "direita"), ("justificar", "justificado")):
+            estados[nome] = alinhamento == valor or (valor == "esquerda" and alinhamento == "")
+        self.fita.marcar(estados)
+        self._mostrar_corpo(inicio, fim)
+        self._contar_palavras_da_selecao()
 
     def _atualizar_status(self) -> None:
         """O rodapé da aba, refeito a cada mudança do documento e a cada gravação.
@@ -662,37 +759,27 @@ class PainelDeTexto(QWidget):
         self.paleta_lateral.setAccessibleName("Símbolos de anotação")
         self.paleta_lateral.setFixedWidth(72)
         self.paleta_lateral.hide()
-        for simbolo in _paleta.MINIMA:
-            self.paleta_lateral.addItem(simbolo)
+        self._simbolos_da_paleta = tuple(_paleta.MINIMA)
+        self._encher_a_paleta()
         self.paleta_lateral.itemClicked.connect(lambda item: self.inserir_simbolo(item.text()))
         return self.paleta_lateral
 
-    def _barra_de_ferramentas(self) -> BarraFluida:
-        barra = BarraFluida(self)
-        botoes_de_estilo: tuple[tuple[str, Callable[[], object]], ...] = (
-            ("negrito", self.negrito),
-            ("italico", self.italico),
-            ("sublinhado", self.sublinhado),
-            ("tachado", self.tachado),
-            ("limpar_formato", self.limpar_formato),
-        )
-        for acao, alvo in botoes_de_estilo:
-            self._botao(barra, acao, alvo)
+    def _encher_a_paleta(self) -> None:
+        """Os 20 usados por último primeiro, e depois os de sempre (o conforto do WordCraft, S-650)."""
+        self.paleta_lateral.clear()
+        recentes = list(getattr(self, "_glifos_recentes", []))
+        for simbolo in [*recentes, *(s for s in self._simbolos_da_paleta if s not in recentes)]:
+            self.paleta_lateral.addItem(simbolo)
 
-        self.escolha_de_estilo = QComboBox(barra)
-        # **As quatro escolhas desta barra não têm rótulo na tela** (F9-C2): elas são compactas
-        # de propósito, e o preço era que a cascata de `ui/nomes_acessiveis.py` caía no último
-        # degrau e o leitor de tela anunciava `"Escolha"` -- duas delas na mesma barra, sem nada
-        # que as distinga. O nome vai aqui, uma vez, ao lado de quem sabe o que a escolha escolhe.
-        self.escolha_de_estilo.setAccessibleName("Estilo do parágrafo")
-        self.escolha_de_estilo.addItem("(sem estilo)", "")
-        for estilo in rico.ESTILOS:
-            self.escolha_de_estilo.addItem(estilo.capitalize(), estilo)
-        self.escolha_de_estilo.activated.connect(
-            lambda _i: self.aplicar_estilo(str(self.escolha_de_estilo.currentData()))
-        )
-        dica_em(self.escolha_de_estilo, "O estilo do parágrafo inteiro, e não do trecho selecionado.")
-        barra.adicionar(self.escolha_de_estilo)
+    def _lembrar_glifo(self, simbolo: str) -> None:
+        self._glifos_recentes = [simbolo, *(s for s in self._glifos_recentes if s != simbolo)][:GLIFOS_RECENTES]
+        self._encher_a_paleta()
+
+    def _montar_controles(self) -> None:
+        """Os controles que colhem valor, que a fita põe nos grupos dela (S-650). Ver `ui/fita_do_texto`."""
+        barra = self
+        self.galeria = self._montar_galeria()
+        self.caixa_de_corpo = self._montar_caixa_de_corpo()
 
         self.escolha_de_cor = QComboBox(barra)
         self.escolha_de_cor.setAccessibleName("Cor da letra")
@@ -702,7 +789,6 @@ class PainelDeTexto(QWidget):
         self.escolha_de_cor.activated.connect(
             lambda _i: self.pintar_letra(str(self.escolha_de_cor.currentData()))
         )
-        barra.adicionar(self.escolha_de_cor)
 
         self.escolha_de_realce = QComboBox(barra)
         self.escolha_de_realce.setAccessibleName("Cor do realce")
@@ -714,7 +800,6 @@ class PainelDeTexto(QWidget):
         self.escolha_de_realce.activated.connect(
             lambda _i: self.pintar_realce(str(self.escolha_de_realce.currentData()))
         )
-        barra.adicionar(self.escolha_de_realce)
 
         # **A folha, o motor e o modo bloco ficam na mesma barra que o "Ler".** É a linha do gesto:
         # escolher a folha, escolher como lê-la, e ler -- e separá-la em duas faria a escolha do
@@ -732,7 +817,6 @@ class PainelDeTexto(QWidget):
         if linha is not None:
             linha.returnPressed.connect(self.ler)
         self.campo_de_folha.setValue(self._pagina_indice + 1)
-        barra.adicionar(self.campo_de_folha)
 
         self.escolha_de_motor = QComboBox(barra)
         self.escolha_de_motor.setAccessibleName("Motor de leitura")
@@ -746,25 +830,113 @@ class PainelDeTexto(QWidget):
             "auto é o glifo com a camada do PDF como reserva. O glifo sozinho precisa de "
             "models/char_classifier.pt, que não vem no repositório.",
         )
-        barra.adicionar(self.escolha_de_motor)
 
         self.caixa_de_bloco = QCheckBox(comandos.rotulo_de_botao("modo_bloco"), barra)
         self.caixa_de_bloco.toggled.connect(lambda _ligado: self.modo_bloco_mudou())
-        barra.adicionar(self.caixa_de_bloco)
 
-        alvos: tuple[tuple[str, Callable[[], object]], ...] = (
-            ("ler_folha", self.ler),
-            ("achar", self.achar),
-            ("marcar_fora_do_lexico", self.marcar_fora_do_lexico),
-            ("inserir_figurina", self.inserir_figurina),
-            ("desfazer", self.desfazer),
-            ("refazer", self.refazer),
-        )
-        for acao, alvo in alvos:
-            feito = self._botao(barra, acao, alvo)
-            if acao == "ler_folha":
-                self.botao_de_ler = feito
-        return barra
+    def _alvo_da_fita(self, acao: str) -> Callable[[], object]:
+        """Quem atende um botão da fita: o painel (pela tabela ou pelas ações próprias), ou a janela."""
+        if acao in COMANDOS_DA_ABA:
+            return lambda: self.executar(acao)
+        proprio = self.atender(acao)
+        if proprio is not None:
+            return proprio
+        return lambda: self._executar_fora(acao)
+
+    def definir_executor(self, executor: Callable[[str], object] | None) -> None:
+        """Quem roda os comandos da fita que são da janela -- a mesa, por exemplo. `None` os desliga."""
+        self._executor = executor
+
+    def _executar_fora(self, acao: str) -> None:
+        if self._executor is None:
+            self.estado.emit(f"«{comandos.rotulo(acao)}» é da janela, e esta aba está sozinha.")
+            return
+        self._executor(acao)
+
+    def _montar_galeria(self) -> QWidget:
+        """A galeria de estilos (S-651): cada amostra desenhada **no próprio estilo**, pela função da folha.
+
+        A fonte de cada botão sai de `texto_formato.formato_de`, a mesma que desenha a folha: a galeria
+        não pode mostrar um estilo que a folha não desenha, que é a guarda S-603 aplicada à amostra.
+        """
+        from PyQt6.QtWidgets import QButtonGroup, QToolButton
+
+        galeria = QWidget(self)
+        galeria.setAccessibleName("Galeria de estilos")
+        linha = QHBoxLayout(galeria)
+        linha.setContentsMargins(0, 0, 0, 0)
+        linha.setSpacing(2)
+        grupo = QButtonGroup(galeria)
+        grupo.setExclusive(True)
+        self.amostras: dict[str, QToolButton] = {}
+        for estilo in ("", *rico.ESTILOS):
+            amostra = QToolButton(galeria)
+            amostra.setText(strings.NOME_DO_ESTILO.get(estilo, estilo.capitalize()))
+            amostra.setAccessibleName(f"Estilo {strings.NOME_DO_ESTILO.get(estilo, estilo)}")
+            amostra.setCheckable(True)
+            amostra.setAutoRaise(True)
+            amostra.setFont(formato_de(rico.Corrida(estilo or "Normal", rico.Atributos(estilo=estilo))).font())
+            amostra.clicked.connect(lambda _marcado=False, e=estilo: self.aplicar_estilo(e))
+            grupo.addButton(amostra)
+            linha.addWidget(amostra)
+            self.amostras[estilo] = amostra
+        return galeria
+
+    def estilo_na_galeria(self) -> str | None:
+        """O estilo marcado na galeria, ou `None` quando a seleção mistura estilos."""
+        for estilo, amostra in self.amostras.items():
+            if amostra.isChecked():
+                return estilo
+        return None
+
+    def _papel_e_base(self, estilo: str) -> tuple[str, int]:
+        from chess_diagram_ocr.qt.texto_formato import PAPEL_DO_ESTILO
+
+        base = self._base[0] if self._base is not None else tema.fonte_base()[0]
+        return (PAPEL_DO_ESTILO[estilo] if estilo else tipografia.CORPO), base
+
+    def _mostrar_corpo(self, inicio: int, fim: int) -> None:
+        """A caixa mostra o corpo do parágrafo sob o cursor em pontos -- vazia quando a seleção mistura (S-631)."""
+        comeco, final = rico.intervalo_de_paragrafo(self.documento, inicio, fim)
+        degrau = rico.valor_em_todo(self.documento, comeco, final, "corpo") if final > comeco else None
+        estilo = rico.valor_em_todo(self.documento, comeco, final, "estilo") if final > comeco else ""
+        self.caixa_de_corpo.blockSignals(True)
+        try:
+            if degrau is None or estilo is None:
+                self.caixa_de_corpo.setValue(self.caixa_de_corpo.minimum())
+            else:
+                papel, base = self._papel_e_base(estilo)
+                self.caixa_de_corpo.setValue(tipografia.corpo(int(degrau), base=base, papel=papel))
+        finally:
+            self.caixa_de_corpo.blockSignals(False)
+        self._corpo_mostrado = self.caixa_de_corpo.value()
+
+    def _corpo_digitado(self) -> None:
+        """O valor digitado vira o degrau mais próximo, no parágrafo inteiro, num passo de desfazer."""
+        valor = self.caixa_de_corpo.value()
+        if valor == getattr(self, "_corpo_mostrado", None) or valor < tipografia.MINIMO_LEGIVEL:
+            return
+        inicio, fim = self._intervalo()
+        comeco, final = rico.intervalo_de_paragrafo(self.documento, inicio, fim)
+        estilo = rico.valor_em_todo(self.documento, comeco, final, "estilo") or ""
+        papel, base = self._papel_e_base(estilo)
+        degrau = rico.corpo_no_limite(valor - tipografia.corpo(0, base=base, papel=papel))
+        self._rotulo_corrente = "Corpo do parágrafo"
+        try:
+            self._aplicar(rico.aplicar_no_paragrafo(self.documento, inicio, fim, corpo=degrau))
+        finally:
+            self._rotulo_corrente = ""
+
+    def _montar_caixa_de_corpo(self) -> QSpinBox:
+        """O corpo do **parágrafo** em pontos (S-631). Não é o zoom: ele muda o documento e a exportação."""
+        caixa = QSpinBox(self)
+        caixa.setAccessibleName("Corpo do parágrafo (pt)")
+        caixa.setRange(tipografia.MINIMO_LEGIVEL - 1, 96)
+        caixa.setSpecialValueText(" ")  # o valor de baixo é "misto": a caixa vazia, como o negrito misto
+        caixa.setSuffix(" pt")
+        dica_em(caixa, strings.DICA_DO_CORPO_EM_PONTOS)
+        caixa.editingFinished.connect(self._corpo_digitado)
+        return caixa
 
     def _botao(self, barra: BarraFluida, acao: str, alvo: Callable[[], object]) -> QWidget:
         """Um botão de ferramenta: rótulo e dica do catálogo, tecla da tabela.
@@ -857,6 +1029,7 @@ class PainelDeTexto(QWidget):
                 nosso.deleteLater()
             # Ligado **depois** de montar: o que o laço acima escreveu é desenho, e não digitação.
             documento.contentsChange.connect(self._digitado)
+            self._aplicar_marcas()
             self._tela = _texto_da_tela(documento)
         finally:
             self._redesenhando = False
@@ -1060,6 +1233,8 @@ class PainelDeTexto(QWidget):
             return
         selecao = self._selecao_atual() if selecao is None else selecao
         self._historico.append(self.documento)
+        self._rotulos_do_historico.append(self._rotulo_corrente or "Edição")
+        self._rotulos_refeitos.clear()
         # O contador que decide o `Ctrl+Z` quando o foco não está em desfazível nenhum (S-243).
         self._edicao += 1
         self._refeitos.clear()
@@ -1151,7 +1326,22 @@ class PainelDeTexto(QWidget):
             return
         self._digitacao = None
         self._refeitos.append(self.documento)
+        self._rotulos_refeitos.append(self._rotulos_do_historico.pop() if self._rotulos_do_historico else "Edição")
         self._voltar_a(self._historico.pop())
+
+    def desfazer_ate(self, passos: int) -> None:
+        """Desfaz `passos` de uma vez, pela lista da barra de acesso rápido (S-656). Um redesenho só."""
+        passos = min(int(passos), len(self._historico))
+        if passos <= 0:
+            return
+        self._digitacao = None
+        alvo = self.documento
+        for _ in range(passos):
+            self._refeitos.append(alvo)
+            self._rotulos_refeitos.append(self._rotulos_do_historico.pop() if self._rotulos_do_historico else "Edição")
+            alvo = self._historico.pop()
+        self._voltar_a(alvo)
+        self.estado.emit(f"{passos} passo(s) desfeito(s).")
 
     def refazer(self) -> None:
         """`Ctrl+Y`: repõe o que o desfazer tirou."""
@@ -1160,6 +1350,7 @@ class PainelDeTexto(QWidget):
             return
         self._digitacao = None
         self._historico.append(self.documento)
+        self._rotulos_do_historico.append(self._rotulos_refeitos.pop() if self._rotulos_refeitos else "Edição")
         self._voltar_a(self._refeitos.pop())
 
     def _voltar_a(self, doc: rico.DocumentoRico) -> None:
@@ -1199,10 +1390,13 @@ class PainelDeTexto(QWidget):
         self._pagina = pagina
         self._pagina_rgb = folha_rgb
         self._folha_por_ler = None
+        self._ignoradas.clear()
         if dpi:
             self._dpi = int(dpi)
         self._historico.clear()
         self._refeitos.clear()
+        self._rotulos_do_historico.clear()
+        self._rotulos_refeitos.clear()
         self._digitacao = None
         self.desenhar_documento(rico.de_pagina(pagina))
         self._documento_gravado = self.documento
@@ -1499,7 +1693,16 @@ class PainelDeTexto(QWidget):
             logger.debug("Léxico não carregou: %s", erro)
             self.estado.emit(f"O léxico não pôde ser carregado: {erro}")
             return
+        if self._caderno is not None:
+            lexico = lexico | self._caderno.lexico()
         achadas = dicionario.desconhecidas(conteudo, lexico, ignorar=fora_do_livro(self.documento))
+        achadas = tuple(a for a in achadas if a[2].lower() not in self._ignoradas)
+        # **A palavra em digitação não é marcada até terminar** (S-657): com o cursor colado no fim
+        # dela e nada que a feche, ela ainda está sendo escrita.
+        cursor = self._mapa.deslocamento(self.editor.textCursor().position())
+        achadas = tuple(
+            a for a in achadas if not (a[0] <= cursor == a[1] and (a[1] == len(conteudo) or conteudo[a[1]].isalnum()))
+        )
         self._pintar_lexico([(inicio, fim) for inicio, fim, _palavra in achadas])
         if avisar:
             total = len(dicionario.palavras_de(conteudo))
@@ -1518,6 +1721,11 @@ class PainelDeTexto(QWidget):
         from PyQt6.QtGui import QColor, QTextCharFormat
 
         seletores: list[QTextEdit.ExtraSelection] = []
+        intervalos = list(intervalos)
+        self._fora_do_lexico = sorted(intervalos)
+        if hasattr(self, "caixa_do_lexico"):
+            self.caixa_do_lexico.setText(f"{len(intervalos)} fora do léxico")
+            self.caixa_do_lexico.setVisible(self._conferindo_lexico and not self.recado.isVisible())
         for inicio, fim in intervalos:
             selecao = QTextEdit.ExtraSelection()
             formato = QTextCharFormat()
@@ -1557,6 +1765,7 @@ class PainelDeTexto(QWidget):
             return
         inicio, _fim = self._intervalo()
         fora = bool(self._paleta_de_glifos().marca(simbolo))  # type: ignore[attr-defined]
+        self._lembrar_glifo(simbolo)
         depois = inicio + len(simbolo)
         self._aplicar(rico.inserir(self.documento, inicio, simbolo, fora_do_modelo=fora), selecao=(depois, depois))
         self.editor.setFocus()
@@ -1649,6 +1858,8 @@ class PainelDeTexto(QWidget):
         self._folha_por_ler = None
         self._historico.clear()
         self._refeitos.clear()
+        self._rotulos_do_historico.clear()
+        self._rotulos_refeitos.clear()
         self._digitacao = None
         # Documento novo na tela, arquivo de destino zerado: gravar aqui é a **primeira** vez
         # deste documento, e "Salvar" volta a perguntar onde (S-343). Quem abriu de um arquivo
@@ -2029,15 +2240,303 @@ class PainelDeTexto(QWidget):
         return True
 
     def alternar_indice(self) -> None:
-        """Abre ou fecha o índice das folhas do caderno (S-613). O foco não sai do texto, como na paleta."""
+        """Abre ou fecha o índice das folhas do caderno (S-613), a aba Folhas do painel de navegação."""
         if self.indice.isVisible():
-            self.indice.hide()
+            self.navegacao.hide()
         else:
-            self.indice.show()
-            self._mostrar_indice()
+            self._mostrar_navegacao(FOLHAS)
             if self._caderno is None:
                 self.estado.emit("O índice lista as folhas do caderno do livro aberto: abra um livro e leia uma folha.")
         self.editor.setFocus()
+
+    def alternar_navegacao(self) -> None:
+        """Abre ou fecha o painel de navegação (S-654). O foco não sai do texto."""
+        if self.navegacao.isVisible():
+            self.navegacao.hide()
+        else:
+            self._mostrar_navegacao(None)
+        self.editor.setFocus()
+
+    def mostrar_correcoes(self) -> None:
+        """A lista das correções da folha (Revisão › Correções), na aba Correções do painel."""
+        self._mostrar_navegacao(CORRECOES)
+
+    def _mostrar_navegacao(self, aba: int | None) -> None:
+        self.navegacao.show()
+        if aba is not None:
+            self.navegacao.setCurrentIndex(aba)
+        self._refazer_navegacao()
+
+    def _refazer_navegacao(self) -> None:
+        """Refaz a aba à vista do painel. Na pausa da digitação, e não por tecla (S-654)."""
+        if not self.navegacao.isVisible():
+            return
+        aba = self.navegacao.currentIndex()
+        if aba == FOLHAS:
+            self._mostrar_indice()
+        elif aba == RESULTADOS:
+            self._refazer_resultados()
+        elif aba == CORRECOES:
+            linhas = []
+            for achada in correcao.correcoes(self.documento) if self.documento.origem is not None else ():
+                onde = rico.deslocamento_do_bloco(self.documento, achada.bloco)
+                linhas.append((-1 if onde is None else onde, f"«{achada.antes}» → «{achada.depois}»"))
+            self.navegacao.mostrar_correcoes(linhas)
+        else:
+            self.navegacao.mostrar_titulos(rico.titulos(self.documento))
+
+    def _refazer_resultados(self) -> None:
+        agulha, inteira, curinga = self.navegacao.opcoes_da_busca()
+        texto = self.documento.para_texto()
+        try:
+            achados = busca.achar(self.documento, agulha, palavra_inteira=inteira, curinga=curinga)
+        except (ValueError, re.error) as erro:
+            self.navegacao.mostrar_resultados(texto, (), recado=f"Curinga inválido: {erro}")
+            return
+        self.navegacao.mostrar_resultados(texto, achados)
+
+    def _ir_para_intervalo(self, inicio: int, fim: int) -> None:
+        """Uma linha do painel clicada: o cursor (ou a seleção) vai para lá, e a folha rola até ela."""
+        self.mostrar_intervalo(inicio, fim) if fim > inicio else self._por_o_cursor(inicio)
+
+    def _por_o_cursor(self, deslocamento: int) -> None:
+        cursor = self.editor.textCursor()
+        cursor.setPosition(self._mapa.posicao(deslocamento))
+        self.editor.setTextCursor(cursor)
+        self.editor.ensureCursorVisible()
+        self.editor.setFocus()
+
+    # ----------------------------------------------------------- o pincel de formatação (S-653)
+
+    def pincel_de_formatacao(self) -> None:
+        """Um clique arma o pincel para um uso; o segundo clique logo em seguida o fixa; `Esc` desarma."""
+        from PyQt6.QtWidgets import QApplication
+
+        agora = self._relogio()
+        if self._pincel is not None:
+            if agora - self._pincel_armado_em <= QApplication.doubleClickInterval() / 1000:
+                self._pincel_fixo = True
+                self.estado.emit("Pincel fixo: cada seleção recebe a formatação. Esc desarma.")
+                return
+            self._desarmar_pincel()
+            return
+        self.copiar_formato()
+        self._pincel_armado_em = agora
+
+    def copiar_formato(self) -> None:
+        """`Ctrl+Shift+C`: guarda a formatação do começo da seleção e arma o pincel."""
+        inicio, _fim = self._intervalo()
+        atributos = rico.atributos_em(self.documento, inicio)
+        if atributos is None:
+            self.estado.emit("Não há trecho de onde copiar a formatação.")
+            return
+        self._pincel = atributos
+        self._pincel_fixo = False
+        self._pincel_armado_em = self._relogio()
+        self.editor.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
+        self.fita.marcar({"pincel_de_formatacao": True})
+        self.estado.emit("Pincel armado: selecione o trecho que recebe a formatação (Esc desarma).")
+
+    def colar_formato(self) -> None:
+        """`Ctrl+Shift+V`: pinta a seleção com a formatação guardada, sem desarmar o pincel fixo."""
+        if self._pincel is None:
+            self.estado.emit("Não há formatação copiada: use o pincel ou Ctrl+Shift+C antes.")
+            return
+        inicio, fim = self._intervalo()
+        comeco, final = rico.intervalo_de_paragrafo(self.documento, inicio, fim)
+        inteiros = fim > inicio and (comeco, final) == (inicio, fim)
+        self._rotulo_corrente = "Pincel de formatação"
+        try:
+            self._aplicar(rico.pintar(self.documento, inicio, fim, self._pincel, paragrafo=inteiros))
+        finally:
+            self._rotulo_corrente = ""
+        if not self._pincel_fixo:
+            self._desarmar_pincel()
+
+    def _desarmar_pincel(self) -> None:
+        self._pincel = None
+        self._pincel_fixo = False
+        self.editor.viewport().unsetCursor()
+        self.fita.marcar({"pincel_de_formatacao": False})
+
+    def _sair_com_esc(self) -> bool:
+        """`Esc` desarma o pincel, e depois sai do modo foco (S-653, S-658). Devolve se fez algo."""
+        if self._pincel is not None:
+            self._desarmar_pincel()
+            self.estado.emit("Pincel desarmado.")
+            return True
+        if self._modo_foco:
+            self.alternar_modo_foco()
+            return True
+        return False
+
+    # ------------------------------------------------------- o modo foco e as marcas (S-658)
+
+    def alternar_modo_foco(self) -> None:
+        """Só a folha: a fita e o painel de navegação somem, e a mesa esconde o visualizador. `Esc` sai."""
+        self._modo_foco = not self._modo_foco
+        self.fita.setVisible(not self._modo_foco)
+        self.barra_do_foco.setVisible(self._modo_foco)
+        if self._modo_foco:
+            self._navegacao_antes_do_foco = self.navegacao.isVisible()
+            self.navegacao.hide()
+        elif self._navegacao_antes_do_foco:
+            self.navegacao.show()
+        self.foco_mudou.emit(self._modo_foco)
+        self.editor.setFocus()
+
+    def alternar_marcas_de_formatacao(self) -> None:
+        """¶ no fim do parágrafo e o ponto no espaço: é vista, não grava, e acha o espaço duplo do OCR."""
+        self._marcas_de_formatacao = not self._marcas_de_formatacao
+        self._aplicar_marcas()
+        self.fita.marcar({"marcas_de_formatacao": self._marcas_de_formatacao})
+
+    def _aplicar_marcas(self) -> None:
+        """Repõe a opção do documento: `_desenhar` cria um `QTextDocument` novo a cada redesenho."""
+        from PyQt6.QtGui import QTextOption
+
+        documento = self.editor.document()
+        if documento is None:
+            return
+        opcao = documento.defaultTextOption()
+        marcas = QTextOption.Flag.ShowTabsAndSpaces | QTextOption.Flag.ShowLineAndParagraphSeparators
+        opcao.setFlags(opcao.flags() | marcas if self._marcas_de_formatacao else opcao.flags() & ~marcas)
+        documento.setDefaultTextOption(opcao)
+
+    def alternar_bloco_impresso(self) -> None:
+        """Liga ou desliga a faixa do bloco impresso da mesa (S-643)."""
+        self._faixa_ligada = not self._faixa_ligada
+        self._bloco_na_faixa = None
+        self._mostrar_impresso()
+
+    def alternar_fita(self) -> None:
+        """`Ctrl+F1`: recolhe a fita deixando só as abas, como no Word (S-652)."""
+        self.fita.alternar_recolhida()
+
+    # ---------------------------------------------------- três ferramentas de correção (S-659)
+
+    def mover_paragrafo_acima(self) -> None:
+        self._mover_paragrafo(-1)
+
+    def mover_paragrafo_abaixo(self) -> None:
+        self._mover_paragrafo(+1)
+
+    def _mover_paragrafo(self, passo: int) -> None:
+        inicio, _fim = self._intervalo()
+        novo, onde = rico.mover_paragrafo(self.documento, inicio, passo)
+        if novo is self.documento:
+            self.estado.emit("Não há parágrafo " + ("acima" if passo < 0 else "abaixo") + " para trocar de lugar.")
+            return
+        self._aplicar(novo, selecao=(onde, onde))
+
+    def codigo_unicode(self) -> None:
+        """`Alt+X`: o código antes do cursor vira o caractere, e o caractere vira o código."""
+        inicio, _fim = self._intervalo()
+        troca = codigo_unicode(self.documento.para_texto()[:inicio])
+        if troca is None:
+            return
+        apagar, escrever = troca
+        depois = inicio - apagar + len(escrever)
+        self._aplicar(rico.editar(self.documento, inicio - apagar, inicio, escrever), selecao=(depois, depois))
+
+    # --------------------------------------------------------- corrigir pelo léxico (S-657)
+
+    def proxima_fora_do_lexico(self) -> None:
+        """`F7`: vai à próxima palavra marcada depois do cursor, e a seleciona. Liga a conferência se preciso."""
+        if not self._conferindo_lexico:
+            self.marcar_fora_do_lexico()
+        if not self._fora_do_lexico:
+            self.estado.emit("Nenhuma palavra fora do léxico nesta folha.")
+            return
+        _inicio, fim = self._intervalo()
+        seguinte = next(((i, f) for i, f in self._fora_do_lexico if i >= fim), self._fora_do_lexico[0])
+        self.mostrar_intervalo(*seguinte)
+
+    def _lexico_da_folha(self) -> frozenset[str]:
+        """O léxico do programa mais o do livro (o caderno), em caixa baixa."""
+        from chess_diagram_ocr.text import dicionario
+
+        livro = self._caderno.lexico() if self._caderno is not None else frozenset()
+        return dicionario.carregar() | livro
+
+    def _sugestoes_no_menu(self, menu: QMenu, ponto: QPoint) -> None:
+        """Sobre uma palavra marcada: até cinco sugestões, acrescentar ao léxico do livro, ignorar (S-657)."""
+        from chess_diagram_ocr.text import sugestao
+
+        posicao = self._mapa.deslocamento(self.editor.cursorForPosition(ponto).position())
+        achada = next(((i, f) for i, f in self._fora_do_lexico if i <= posicao <= f), None)
+        if achada is None:
+            return
+        inicio, fim = achada
+        palavra = self.documento.para_texto()[inicio:fim]
+        primeira = menu.actions()[0] if menu.actions() else None
+        try:
+            lexico = self._lexico_da_folha()
+        except OSError:
+            lexico = frozenset()
+        for sugerida in sugestao.sugestoes(palavra, lexico):
+            acao = QAction(sugerida, menu)
+            acao.triggered.connect(lambda _m=False, s=sugerida, a=inicio, b=fim: self._aceitar_sugestao(a, b, s))
+            menu.insertAction(primeira, acao)
+        for rotulo, alvo in (
+            (f"Acrescentar «{palavra}» ao léxico do livro", lambda: self._acrescentar_ao_lexico(palavra)),
+            (f"Ignorar «{palavra}» nesta folha", lambda: self._ignorar_na_folha(palavra)),
+        ):
+            acao = QAction(rotulo, menu)
+            acao.triggered.connect(lambda _m=False, f=alvo: f())
+            menu.insertAction(primeira, acao)
+        if primeira is not None:
+            menu.insertSeparator(primeira)
+
+    def _aceitar_sugestao(self, inicio: int, fim: int, nova: str) -> None:
+        """A troca pelo clique: um passo de desfazer, e uma correção, porque o bloco fica (S-245)."""
+        self._rotulo_corrente = "Sugestão do léxico"
+        try:
+            self._aplicar(rico.substituir_intervalo(self.documento, inicio, fim, nova), selecao=(inicio + len(nova),) * 2)
+        finally:
+            self._rotulo_corrente = ""
+        self._contar_correcoes()
+
+    def _acrescentar_ao_lexico(self, palavra: str) -> None:
+        if self._caderno is None or not self._caderno.acrescentar_ao_lexico(palavra):
+            self.estado.emit("Sem caderno de livro aberto, não há léxico do livro onde acrescentar.")
+            return
+        self.estado.emit(f"«{palavra}» entrou no léxico deste livro: deixa de ser marcada nas folhas dele.")
+        self._conferir_lexico(avisar=False)
+
+    def _ignorar_na_folha(self, palavra: str) -> None:
+        self._ignoradas.add(palavra.lower())
+        self._conferir_lexico(avisar=False)
+
+    # ------------------------------------------------------- a barra de estado (S-655)
+
+    def _mostrar_recado(self, frase: str) -> None:
+        """A frase transitória toma o lugar das caixas do meio por 6 s, com o texto inteiro na dica."""
+        self.recado.setText(frase)
+        self.recado.setToolTip(frase)
+        self.recado.show()
+        self.status.hide()
+        self.caixa_de_palavras.hide()
+        self.caixa_do_lexico.hide()
+        self._relogio_do_recado.start()
+
+    def _apagar_recado(self) -> None:
+        self.recado.hide()
+        self.status.show()
+        self.caixa_de_palavras.show()
+        self.caixa_do_lexico.setVisible(self._conferindo_lexico)
+
+    def _contar_palavras_da_selecao(self) -> None:
+        inicio, fim = self._selecao_atual()
+        total = self._palavras_da_folha()
+        selecionadas = contar_palavras(self.documento.para_texto()[inicio:fim]) if fim > inicio else None
+        self.caixa_de_palavras.setText(frase_das_palavras(total, selecionadas) if total else "")
+
+    def _palavras_da_folha(self) -> int:
+        """A contagem da folha, cacheada pela edição: refeita só quando o documento é outro."""
+        if self._palavras_cache[0] is not self.documento:
+            self._palavras_cache = (self.documento, contar_palavras(self.documento.para_texto()))
+        return self._palavras_cache[1]
 
     def _mostrar_indice(self) -> None:
         """Redesenha o índice, se ele está à vista. Escondido não custa nada: ele se refaz ao abrir."""
@@ -2341,6 +2840,9 @@ class PainelDeTexto(QWidget):
         self.definir_modo_bloco(bool(getattr(estado, "texto_bloco", False)))
         self.definir_diagramas(str(getattr(estado, "texto_diagramas", "")))
         self.definir_tamanho_da_miniatura(str(getattr(estado, "texto_miniatura", "")))
+        self.fita.definir_recolhida(bool(getattr(estado, "texto_fita_recolhida", False)))
+        self._glifos_recentes = [str(g) for g in getattr(estado, "texto_glifos_recentes", [])][:GLIFOS_RECENTES]
+        self._encher_a_paleta()
 
     def anotar_estado(self, estado: object) -> None:
         """O contrário de `aplicar_estado`: a vista da aba vai ao estado que a janela grava."""
@@ -2350,6 +2852,8 @@ class PainelDeTexto(QWidget):
         estado.texto_bloco = bool(self.modo_bloco)  # type: ignore[attr-defined]
         estado.texto_diagramas = self._diagramas  # type: ignore[attr-defined]
         estado.texto_miniatura = self._tamanho_da_miniatura  # type: ignore[attr-defined]
+        estado.texto_fita_recolhida = self.fita.recolhida  # type: ignore[attr-defined]
+        estado.texto_glifos_recentes = list(self._glifos_recentes)  # type: ignore[attr-defined]
 
     def definir_mesa(self, ligada: bool) -> None:
         """A janela armou ou desarmou a mesa. A aba passa a acompanhar a página, e a faixa aparece."""
@@ -2386,6 +2890,8 @@ class PainelDeTexto(QWidget):
         self._pagina_rgb = None
         self._historico.clear()
         self._refeitos.clear()
+        self._rotulos_do_historico.clear()
+        self._rotulos_refeitos.clear()
         self._digitacao = None
         self._caminho_do_documento = None
         self._folha_por_ler = pagina
@@ -2404,7 +2910,7 @@ class PainelDeTexto(QWidget):
         doc = self.documento
         folha = self._pagina_rgb
         bloco = None
-        if self._na_mesa and folha is not None and doc.origem is not None:
+        if self._na_mesa and self._faixa_ligada and folha is not None and doc.origem is not None:
             indice = rico.bloco_em(doc, self._mapa.deslocamento(self.editor.textCursor().position()))
             blocos = doc.origem.blocos
             if indice is not None and 0 <= indice < len(blocos) and not isinstance(blocos[indice], BlocoDeDiagrama):
@@ -2459,6 +2965,7 @@ class PainelDeTexto(QWidget):
                 self._rascunho.start(max(1, int(falta * 1000)))
                 return
         self._guardar_a_folha()
+        self._refazer_navegacao()
         if self._conferindo_lexico:
             self._conferir_lexico(avisar=False)
         self._contar_correcoes()
@@ -3137,7 +3644,9 @@ class PainelDeTexto(QWidget):
         """Põe `novo` no lugar do documento; `passo` empilha o anterior -- a tecla abriu um passo novo."""
         if passo:
             self._historico.append(self.documento)
+            self._rotulos_do_historico.append("Digitação")
             self._refeitos.clear()
+            self._rotulos_refeitos.clear()
         # Cresce a cada tecla, e não a cada passo: a pergunta de `ui/desfazivel` é "quem foi editado
         # por último", e a última tecla é a resposta mesmo dentro de um passo aberto (S-243).
         self._edicao += 1
@@ -3184,6 +3693,12 @@ class PainelDeTexto(QWidget):
                 if alvo is not None:
                     alvo()
                     return True
+            for acao, tecla in self._teclas_do_editor.items():
+                if tecla == combinacao and acao in COMANDOS_DA_ABA:
+                    self.executar(acao)
+                    return True
+            if a1.key() == Qt.Key.Key_Escape and self._sair_com_esc():
+                return True
             # Enter com a marca inteira selecionada abre o diagrama no Estudo (item 30): é o
             # duplo clique do item 8 para quem anda pelo teclado -- o clique (ou Shift+setas)
             # seleciona a marca, o Enter a ativa. Com qualquer outra seleção o Enter é o Enter.
@@ -3301,6 +3816,7 @@ class PainelDeTexto(QWidget):
         seleciona. O menu é onde quem não sabe do duplo clique descobre que a miniatura é viva.
         """
         menu = self.editor.createStandardContextMenu(ponto)
+        self._sugestoes_no_menu(menu, ponto)
         # O rascunho da folha na tela, quando há um (item 25): a oferta recusada na leitura volta
         # a estar à mão, sem reler a folha.
         guardado = (
@@ -3452,7 +3968,11 @@ class PainelDeTexto(QWidget):
         chamam como os de `ui/texto_panel.py`. Um método com outro nome deixaria o comando no menu,
         na paleta e nas três peles -- sem fazer nada, e sem nada acusar (S-240).
         """
-        getattr(self, COMANDOS_DA_ABA[acao])()
+        self._rotulo_corrente = comandos.rotulo_de_botao(acao) if _no_catalogo(acao) else acao
+        try:
+            getattr(self, COMANDOS_DA_ABA[acao])()
+        finally:
+            self._rotulo_corrente = ""
 
 
 def _renderizar(caminho: Path, indice: int, *, dpi: int) -> np.ndarray | None:
@@ -3625,6 +4145,17 @@ def _url(nome: str):  # noqa: ANN202 - QUrl, importado tarde para o módulo abri
     from PyQt6.QtCore import QUrl
 
     return QUrl(nome)
+
+
+def _teclas_do_editor() -> dict[str, QKeySequence]:
+    """`ação -> QKeySequence` das teclas próprias do editor (`atalhos.TECLAS_DO_EDITOR`)."""
+    teclas: dict[str, QKeySequence] = {}
+    for acao, sequencia in atalhos.TECLAS_DO_EDITOR.items():
+        try:
+            teclas[acao] = QKeySequence(qt_atalhos.sequencia_qt(sequencia))
+        except ValueError as erro:
+            logger.warning("A tecla de %s não traduziu para o Qt (%s).", acao, erro)
+    return teclas
 
 
 def _teclas_da_tabela(acoes: Iterable[str]) -> dict[str, QKeySequence]:

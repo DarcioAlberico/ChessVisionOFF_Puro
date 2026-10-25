@@ -416,9 +416,12 @@ class TecladoTests(PainelTests):
     def test_a_barra_de_ferramentas_quebra_em_vez_de_cortar(self) -> None:
         from chess_diagram_ocr.qt.barra import BarraFluida
 
-        barras = self.painel.findChildren(BarraFluida)
-        self.assertEqual(len(barras), 1)
-        self.assertGreater(barras[0].linhas_em(160), 1)
+        # Uma barra por aba da fita (S-650), e cada uma quebra entre grupos em vez de cortar.
+        barras = self.painel.fita.barras
+        self.assertEqual(len(barras), self.painel.fita.count())
+        for barra in barras:
+            self.assertGreater(barra.linhas_em(160), 1)
+        self.assertEqual(set(self.painel.findChildren(BarraFluida)), set(barras))
 
     def test_o_tab_sai_da_folha_nos_dois_sentidos_sem_escrever_tabulacao(self) -> None:
         """Com a tecla de verdade: o `Tab` na «Folha transcrita» leva o foco adiante, e o `Shift+Tab`

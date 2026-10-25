@@ -25,6 +25,7 @@ agora é `qt/painel_de_texto.py`, `qt/janela.py` e `cli/editor_inventario.py`.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
@@ -58,10 +59,13 @@ __all__ = [
     "ZOOM_MINIMO",
     "Digitacao",
     "alinhamento_dos_diagramas",
+    "codigo_unicode",
+    "contar_palavras",
     "continua_a_digitacao",
     "digitacao_depois",
     "fora_do_livro",
     "frase_do_lexico",
+    "frase_das_palavras",
     "frase_do_rodape",
     "largura_da_miniatura",
     "linha_do_indice",
@@ -320,6 +324,22 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "diagramas_da_folha_a_esquerda": "diagramas_da_folha_a_esquerda",
     "diagramas_da_folha_ao_centro": "diagramas_da_folha_ao_centro",
     "diagramas_da_folha_como_a_preferencia": "diagramas_da_folha_como_a_preferencia",
+    "pincel_de_formatacao": "pincel_de_formatacao",
+    "copiar_formato": "copiar_formato",
+    "colar_formato": "colar_formato",
+    "marcas_de_formatacao": "alternar_marcas_de_formatacao",
+    "painel_de_navegacao": "alternar_navegacao",
+    "bloco_impresso": "alternar_bloco_impresso",
+    "modo_foco": "alternar_modo_foco",
+    "recolher_fita": "alternar_fita",
+    "proxima_fora_do_lexico": "proxima_fora_do_lexico",
+    "lista_de_correcoes": "mostrar_correcoes",
+    "mover_paragrafo_acima": "mover_paragrafo_acima",
+    "mover_paragrafo_abaixo": "mover_paragrafo_abaixo",
+    "codigo_unicode": "codigo_unicode",
+    "ler_folha_de_novo": "ler_de_novo",
+    "voltar_a_versao_anterior": "voltar_a_anterior",
+    "descartar_correcoes": "descartar_correcoes",
     "indice_do_caderno": "alternar_indice",
     "marcar_folha_conferida": "marcar_conferida",
 }
@@ -415,6 +435,45 @@ def proximo_tamanho_da_miniatura(tamanho: str) -> str:
     nomes = tuple(TAMANHOS_DA_MINIATURA)
     atual = tamanho if tamanho in TAMANHOS_DA_MINIATURA else TAMANHO_DA_MINIATURA_PADRAO
     return nomes[(nomes.index(atual) + 1) % len(nomes)]
+
+
+_PALAVRA = re.compile(r"[^\W_]+(?:['’][^\W_]+)*")
+
+
+def contar_palavras(texto: str) -> int:
+    """Quantas palavras há no texto (S-655): letras e dígitos seguidos, com o apóstrofo dentro.
+    `e4` e `Nf3` contam como palavra, como contam para quem lê a folha. Pura e barata: o rodapé a
+    chama na pausa da digitação, e não por tecla."""
+    return sum(1 for _ in _PALAVRA.finditer(texto))
+
+
+def frase_das_palavras(total: int, selecionadas: int | None = None) -> str:
+    """`357 palavras`, ou `12 de 357 palavras` com seleção (S-655)."""
+    if selecionadas is not None:
+        return f"{selecionadas} de {total} palavras"
+    return "1 palavra" if total == 1 else f"{total} palavras"
+
+
+_HEXA = re.compile(r"[Uu]\+([0-9A-Fa-f]{4,6})$|([0-9A-Fa-f]{4})$")
+
+
+def codigo_unicode(antes: str) -> tuple[int, str] | None:
+    """O `Alt+X` do Word (S-659): `(quantos caracteres apagar antes do cursor, o que escrever)`.
+
+    Se o texto antes do cursor termina em 4 dígitos hexadecimais, ou em `U+` e 4 a 6, eles viram o
+    caractere; senão, o caractere antes do cursor vira o código dele. `0161` vira `š`, e `š` volta
+    a `0161` -- e `Proke0161` vira `Prokeš`. **Sem `U+` são quatro, e não até seis**: as letras de
+    `a` a `f` são dígito hexadecimal, e `de0161` leria `DE0161`, que não é caractere nenhum.
+    `None` quando não há o que trocar.
+    """
+    achado = _HEXA.search(antes)
+    if achado is not None:
+        valor = int(achado.group(1) or achado.group(2), 16)
+        if 0 < valor <= 0x10FFFF and not 0xD800 <= valor <= 0xDFFF:
+            return len(achado.group(0)), chr(valor)
+    if not antes:
+        return None
+    return 1, f"{ord(antes[-1]):04X}"
 
 
 ESTADO_POR_EXTENSO: dict[str, str] = {"lida": "lida", "editada": "corrigida", "conferida": "conferida"}

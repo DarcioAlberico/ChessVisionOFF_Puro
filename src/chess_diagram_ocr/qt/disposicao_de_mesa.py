@@ -44,6 +44,8 @@ class DisposicaoDeMesa:
         cursor ganha contorno na folha, e o clique na folha põe o cursor no bloco."""
         if texto is not None:
             texto.bloco_destacado.connect(self._destacar)
+            # O modo foco esconde o visualizador e o devolve (S-658).
+            texto.foco_mudou.connect(lambda ligado: self._livro.setVisible(not ligado))
             ponto = getattr(visor, "ponto_clicado", None)
             if ponto is not None:
                 ponto.connect(self._clicou_na_folha)

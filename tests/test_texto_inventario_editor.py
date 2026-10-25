@@ -185,6 +185,7 @@ class InventarioPublicadoTests(unittest.TestCase):
         """
         dados = editor_inventario.inventario()
         self.assertEqual(dados["comandos_do_editor_fora_do_menu"], [])
+        self.assertEqual(dados["comandos_do_editor_fora_da_fita"], [], "comando da aba fora da fita (S-650)")
         self.assertEqual(dados["atributos_sem_formato_que_os_suporte"], [])
         self.assertNotIn("peles_que_perdem_comando", dados, "a chave voltou sem quem a responda")
 

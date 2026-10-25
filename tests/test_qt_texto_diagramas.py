@@ -448,6 +448,10 @@ class LexicoSobreviveAoRedesenhoTests(_Aba):
         self.assertEqual(self.painel.editor.extraSelections(), [], "a tecla não reconfere (caminho rápido)")
         self.assertTrue(self.painel._rascunho.isActive(), "a tecla não armou a pausa")
         self.painel._rascunho.timeout.emit()
+        # A palavra ainda em digitação não é marcada (S-657): o cursor está colado no fim dela.
+        self.assertEqual(self.painel.editor.extraSelections(), [], "marcou a palavra que ainda se digita")
+        QTest.keyClicks(self.painel.editor, " ")
+        self.painel._rascunho.timeout.emit()
         marcadas = self.painel.editor.extraSelections()
         self.assertEqual([s.cursor.selectedText() for s in marcadas], ["qzxvk"])
         self.painel.limpar_marcas_do_lexico()
@@ -946,9 +950,9 @@ class BarraSegueOCursorTests(_Aba):
         doc = rico.aplicar(doc, texto.index("Depois"), texto.index("Depois") + 6, cor="nota", realce="destaque")
         self.painel.desenhar_documento(doc)
         self.cursor_em(3)
-        self.assertEqual(self.painel.escolha_de_estilo.currentData(), "titulo")
+        self.assertEqual(self.painel.estilo_na_galeria(), "titulo")  # a galeria da S-651, no lugar da lista
         self.cursor_em(texto.index("Depois") + 1)
-        self.assertEqual(self.painel.escolha_de_estilo.currentData(), "")
+        self.assertEqual(self.painel.estilo_na_galeria(), "")
         self.assertEqual(self.painel.escolha_de_cor.currentData(), "nota")
         self.assertEqual(self.painel.escolha_de_realce.currentData(), "destaque")
         self.cursor_em(texto.index("diagrama."))

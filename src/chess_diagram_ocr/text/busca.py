@@ -45,6 +45,8 @@ __all__ = [
     "LADO_DO_CONTEXTO",
     "Ocorrencia",
     "achar",
+    "curinga_para_regex",
+    "expandir_troca",
     "padrao_de",
     "substituir",
     "substituir_todas",
@@ -75,19 +77,116 @@ class Ocorrencia:
     bloco: int = SEM_BLOCO
     """De que bloco da página o trecho saiu. `SEM_BLOCO` para texto escrito à mão."""
 
+    grupos: tuple[str, ...] = ()
+    """O que cada grupo da busca com curinga casou (S-659): é o `\\1` a `\\9` da troca."""
 
-def padrao_de(agulha: str, *, casar_figurina: bool = False, diferenciar_caixa: bool = False) -> re.Pattern[str]:
+
+def curinga_para_regex(agulha: str) -> str:
+    """A tradução dos curingas do WordCraft (`cmd/find_pattern.rs`, os do Word) para o `re` (S-659).
+
+    `?` é um caractere; `*` é qualquer sequência, a menor; `[a-z]` e `[!a-z]` são classes; `<` e `>`
+    são começo e fim de palavra; `(` e `)` agrupam para `\\1` a `\\9` na troca; `@` repete o
+    anterior uma vez ou mais; `{n}` e `{n,m}` contam. O resto é literal.
+
+    **O `re` do Python retrocede**, e um quantificador aninhado (`(a*)*`) pode levar minutos numa
+    linha de OCR. Por isso a tradução nunca põe quantificador dentro de grupo que tem quantificador:
+    `@` e `{}` depois de um `)` levantam `ValueError`, que a janela de busca mostra como frase.
+    """
+    saida: list[str] = []
+    i = 0
+    abertos = 0
+    while i < len(agulha):
+        c = agulha[i]
+        if c == "?":
+            saida.append(".")
+        elif c == "*":
+            saida.append(".*?")
+        elif c == "<":
+            saida.append(r"\b(?=\w)")
+        elif c == ">":
+            saida.append(r"\b(?<=\w)")
+        elif c == "(":
+            abertos += 1
+            saida.append("(")
+        elif c == ")":
+            if abertos == 0:
+                raise ValueError("parêntese fechado sem ter sido aberto")
+            abertos -= 1
+            saida.append(")")
+        elif c in "@{":
+            if saida and saida[-1] == ")":
+                raise ValueError("repetir um grupo inteiro não é aceito: ele pode travar a busca")
+            if c == "@":
+                saida.append("+")
+            else:
+                fim = agulha.find("}", i)
+                corpo = agulha[i + 1 : fim] if fim > 0 else ""
+                if fim < 0 or not re.fullmatch(r"\d+(,\d*)?", corpo):
+                    raise ValueError("contagem entre chaves mal formada: use {3} ou {2,4}")
+                saida.append("{" + corpo + "}")
+                i = fim
+        elif c == "[":
+            fim = agulha.find("]", i + 1)
+            if fim < 0:
+                raise ValueError("colchete aberto sem fechar")
+            dentro = agulha[i + 1 : fim]
+            negado = dentro.startswith("!")
+            dentro = dentro[1:] if negado else dentro
+            saida.append("[" + ("^" if negado else "") + re.sub(r"([\\\]^])", r"\\\1", dentro) + "]")
+            i = fim
+        elif c == "\\" and i + 1 < len(agulha):
+            i += 1
+            saida.append(re.escape(agulha[i]))
+        else:
+            saida.append(re.escape(c))
+        i += 1
+    if abertos:
+        raise ValueError("parêntese aberto sem fechar")
+    return "".join(saida)
+
+
+def expandir_troca(novo: str, grupos: Sequence[str]) -> str:
+    """`\\1` a `\\9` na troca viram o que cada grupo casou -- um dígito só, como no Word: `\\11` é o grupo 1 e um `1`."""
+    saida: list[str] = []
+    i = 0
+    while i < len(novo):
+        if novo[i] == "\\" and i + 1 < len(novo) and novo[i + 1].isdigit() and novo[i + 1] != "0":
+            indice = int(novo[i + 1]) - 1
+            saida.append(grupos[indice] if indice < len(grupos) else "")
+            i += 2
+            continue
+        saida.append(novo[i])
+        i += 1
+    return "".join(saida)
+
+
+def padrao_de(
+    agulha: str,
+    *,
+    casar_figurina: bool = False,
+    diferenciar_caixa: bool = False,
+    palavra_inteira: bool = False,
+    curinga: bool = False,
+) -> re.Pattern[str]:
     """A expressão que procura aquela agulha. **Todo caractere é escapado** -- ver o cabeçalho.
 
     Com `casar_figurina`, cada inicial inglesa de peça vira uma classe com ela e as duas figurinas
     daquela peça, e cada figurina vira uma classe com ela, a irmã de outra cor e a inicial. É a
     única liberdade que o padrão tem, e ela é declarada em `text/notacao.py`.
     """
-    partes: list[str] = []
-    for caractere in agulha:
-        alternativas = _alternativas(caractere) if casar_figurina else caractere
-        partes.append(f"[{re.escape(alternativas)}]" if len(alternativas) > 1 else re.escape(caractere))
-    return re.compile("".join(partes), 0 if diferenciar_caixa else re.IGNORECASE)
+    if curinga:
+        corpo = curinga_para_regex(agulha)
+    else:
+        partes: list[str] = []
+        for caractere in agulha:
+            alternativas = _alternativas(caractere) if casar_figurina else caractere
+            partes.append(f"[{re.escape(alternativas)}]" if len(alternativas) > 1 else re.escape(caractere))
+        corpo = "".join(partes)
+    if palavra_inteira:
+        # Palavra inteira por vizinhança, e não por `\b`: `e4` é palavra num lance, e o `\b`
+        # do `re` já trata letra e dígito como palavra -- o que se quer é não casar dentro de outra.
+        corpo = rf"(?<!\w)(?:{corpo})(?!\w)"
+    return re.compile(corpo, 0 if diferenciar_caixa else re.IGNORECASE)
 
 
 def _alternativas(caractere: str) -> str:
@@ -107,6 +206,8 @@ def achar(
     *,
     casar_figurina: bool = False,
     diferenciar_caixa: bool = False,
+    palavra_inteira: bool = False,
+    curinga: bool = False,
 ) -> tuple[Ocorrencia, ...]:
     """As ocorrências no documento, na ordem em que aparecem e sem sobreposição.
 
@@ -116,7 +217,13 @@ def achar(
     if not agulha:
         return ()
     texto = doc.para_texto()
-    padrao = padrao_de(agulha, casar_figurina=casar_figurina, diferenciar_caixa=diferenciar_caixa)
+    padrao = padrao_de(
+        agulha,
+        casar_figurina=casar_figurina,
+        diferenciar_caixa=diferenciar_caixa,
+        palavra_inteira=palavra_inteira,
+        curinga=curinga,
+    )
     por_posicao = _bloco_por_posicao(doc)
     achadas: list[Ocorrencia] = []
     for casamento in padrao.finditer(texto):
@@ -130,6 +237,7 @@ def achar(
                 texto=casamento.group(0),
                 contexto=_contexto(texto, inicio, fim),
                 bloco=por_posicao[inicio] if inicio < len(por_posicao) else SEM_BLOCO,
+                grupos=tuple(g or "" for g in casamento.groups()),
             )
         )
     return tuple(achadas)
@@ -155,7 +263,7 @@ def _bloco_por_posicao(doc: DocumentoRico) -> list[int]:
     return saida
 
 
-def substituir(doc: DocumentoRico, ocorrencias: Sequence[Ocorrencia], novo: str) -> DocumentoRico:
+def substituir(doc: DocumentoRico, ocorrencias: Sequence[Ocorrencia], novo: str, *, curinga: bool = False) -> DocumentoRico:
     """Troca aquelas ocorrências pelo texto novo, **de trás para a frente**.
 
     De trás para a frente porque cada troca desloca o que vem depois: aplicá-las na ordem direta
@@ -175,7 +283,8 @@ def substituir(doc: DocumentoRico, ocorrencias: Sequence[Ocorrencia], novo: str)
     for ocorrencia in sorted(ocorrencias, key=lambda o: o.inicio, reverse=True):
         if ocorrencia.fim > limite or ocorrencia.inicio >= ocorrencia.fim:
             continue
-        resultado = substituir_intervalo(resultado, ocorrencia.inicio, ocorrencia.fim, novo)
+        texto = expandir_troca(novo, ocorrencia.grupos) if curinga else novo
+        resultado = substituir_intervalo(resultado, ocorrencia.inicio, ocorrencia.fim, texto)
         limite = ocorrencia.inicio
     return resultado
 

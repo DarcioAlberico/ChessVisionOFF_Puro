@@ -28,7 +28,7 @@ from typing import Any
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import exportacao, paleta, rico
-from ..ui import atalhos, menu, texto_declarado
+from ..ui import atalhos, fita_do_texto, menu, texto_declarado
 from . import EXIT_FAILURE, EXIT_OK, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
@@ -78,6 +78,9 @@ def inventario() -> dict[str, Any]:
         ),
         "comandos_do_editor": do_editor,
         "comandos_do_editor_fora_do_menu": sorted(acao for acao in do_editor if acao not in no_menu),
+        # A fita da aba (S-650) é declarada como dado, e esta é a pergunta que ela responde lendo a
+        # declaração: há comando da aba que nem a fita nem a aba Arquivo dela mostram?
+        "comandos_do_editor_fora_da_fita": sorted(acao for acao in do_editor if not fita_do_texto.na_fita(acao)),
         "teclas_proprias_do_editor": dict(atalhos.TECLAS_DO_EDITOR),
         "acoes_que_a_aba_toma_para_si": sorted(texto_declarado.ACOES_PROPRIAS),
         "paleta": {
@@ -112,8 +115,10 @@ def main(argv: list[str] | None = None) -> int:
     # `peles_que_perdem_comando` saiu do inventário no corte do Tk (S-506), e esta linha ficou
     # pedindo a chave: o arquivo era gravado e o comando terminava em `KeyError` (achado em 2026-10-24).
     fora = dados["comandos_do_editor_fora_do_menu"]
+    fora_da_fita = dados["comandos_do_editor_fora_da_fita"]
     print(f"fora do menu ................ {len(fora)}")
-    return EXIT_FAILURE if fora else EXIT_OK
+    print(f"fora da fita ................ {len(fora_da_fita)}")
+    return EXIT_FAILURE if fora or fora_da_fita else EXIT_OK
 
 
 if __name__ == "__main__":  # pragma: no cover
