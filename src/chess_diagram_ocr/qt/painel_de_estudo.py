@@ -73,9 +73,9 @@ from chess_diagram_ocr.fen_utils import is_valid_fen, reading_index_from_square,
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
-from chess_diagram_ocr.qt.rotulo import CampoQueAvisaQueContinua
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
+from chess_diagram_ocr.qt.rotulo import CampoQueAvisaQueContinua
 from chess_diagram_ocr.qt.tabuleiro_de_jogo import TabuleiroDeJogo
 from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.ui import (

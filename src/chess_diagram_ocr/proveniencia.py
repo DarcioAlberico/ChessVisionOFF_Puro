@@ -28,7 +28,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 VERSAO = 1
 SUFIXO = ".proveniencia.jsonl"
@@ -145,9 +145,12 @@ def registro(position: Any, *, verdict: str = "", reason: str = "",
     }
 
 
-def verificar(registros: Iterable[Mapping[str, Any]]) -> dict[str, Mapping[str, Any]]:
+_Linha = TypeVar("_Linha", bound=Mapping[str, Any])
+
+
+def verificar(registros: Iterable[_Linha]) -> dict[str, _Linha]:
     """As linhas por chave; levanta `ColisaoDeProveniencia` se duas partilham a chave."""
-    por_chave: dict[str, Mapping[str, Any]] = {}
+    por_chave: dict[str, _Linha] = {}
     for linha in registros:
         if linha.get("kind") != "diagram":
             continue

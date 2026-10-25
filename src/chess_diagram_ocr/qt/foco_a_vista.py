@@ -204,10 +204,13 @@ def mostrar(rolagem: QScrollArea, controle: QWidget) -> None:
     conteudo = rolagem.widget()
     if conteudo is None or not conteudo.isAncestorOf(controle):
         return
+    area, vertical, horizontal = rolagem.viewport(), rolagem.verticalScrollBar(), rolagem.horizontalScrollBar()
+    if area is None or vertical is None or horizontal is None:
+        return
     alvo = QRect(controle.mapTo(conteudo, QPoint(0, 0)), controle.size())
-    vista = rolagem.viewport().size()
-    _encaixar(rolagem.verticalScrollBar(), alvo.top(), alvo.top() + alvo.height(), vista.height())
-    _encaixar(rolagem.horizontalScrollBar(), alvo.left(), alvo.left() + alvo.width(), vista.width())
+    vista = area.size()
+    _encaixar(vertical, alvo.top(), alvo.top() + alvo.height(), vista.height())
+    _encaixar(horizontal, alvo.left(), alvo.left() + alvo.width(), vista.width())
 
 
 class RolagemSegueOFoco(QObject):

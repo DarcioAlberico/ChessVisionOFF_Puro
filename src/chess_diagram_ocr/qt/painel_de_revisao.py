@@ -317,7 +317,8 @@ class PainelDeRevisao(QWidget):
             )
             for item in (self.queue.items[posicao] for posicao in self._posicoes)
         )
-        self.vazio.setGeometry(self.tabela.viewport().rect())
+        vista = self.tabela.viewport()
+        self.vazio.setGeometry(vista.rect() if vista is not None else self.tabela.rect())
         self.vazio.setVisible(not self._posicoes)
         if self.queue.items:
             taxa = error_rate(self.queue.items)

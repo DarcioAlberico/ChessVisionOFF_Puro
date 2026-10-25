@@ -17,7 +17,6 @@ from pathlib import Path
 from chess_diagram_ocr.ui import tokens
 from chess_diagram_ocr.ui.tokens import (
     AA_GRAFICO,
-    AA_GRAFICO,
     AA_TEXTO,
     PAPEIS,
     RESERVA,

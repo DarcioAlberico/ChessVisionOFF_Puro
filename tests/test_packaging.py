@@ -257,8 +257,15 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2093
+    LIMITE = 2111
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.093 -> 2.111 na CI do ramo de integração (2026-10-25), e nenhuma linha é código.** O
+    `ruff check` (I001) parava a CI pelo menos desde 2026-10-08 sem que ninguém o rodasse, e o conserto dele
+    juntou as três linhas de `from chess_diagram_ocr.qt import ...` -- que passavam das 120
+    colunas -- num bloco entre parênteses com um nome por linha, e partiu em duas a importação de
+    `ui.configuracoes`. São as 18 linhas. Encolhê-las pedia mudar como a janela nomeia os módulos
+    de `qt/`, que é refatoração e não formatação.
 
     **2.092 -> 2.093 no item 28 da aba Texto (2026-10-09)**: a folha que o visualizador já
     rasterizou serve à leitura do texto (`definir_fornecedor_de_folha`), uma ligação.

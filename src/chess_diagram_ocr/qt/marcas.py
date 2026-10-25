@@ -42,9 +42,11 @@ qualquer memória de instância por construção.
 from __future__ import annotations
 
 import logging
+import weakref
 from collections.abc import Callable
 from pathlib import Path
 
+from PyQt6 import sip
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from chess_diagram_ocr.labels import LabelStore, pages_with_training_samples, saved_diagrams_by_page
@@ -225,9 +227,28 @@ class LeitorDeMarcas(QObject):
 
         # **Sem pai**, e a referência viva é de `qt/trabalho.manter_viva`: uma `QThread` filha de
         # um widget é destruída com ele, e o destrutor aborta o processo se a thread ainda roda.
+        #
+        # **E por isso os slots perguntam se o leitor ainda existe.** A tarefa sobrevive à janela,
+        # e a resposta que chega depois de ela ser destruída encontrava o embrulho Python de um
+        # `LeitorDeMarcas` já apagado no C++: `self.prontas.emit` levantava `RuntimeError` dentro
+        # do slot, e o PyQt6 transforma exceção não tratada em slot em `qFatal` -- o processo
+        # morria sem traceback. Na CI do 3.13 era a suíte inteira, no teste seguinte ao que troca
+        # de livro sem esperar a leitura.
         tarefa = manter_viva(Tarefa(ler, nome="marcas salvas"))
-        tarefa.pronto.connect(lambda resultado, quem=nome: self._chegou(quem, resultado))
-        tarefa.falhou.connect(lambda mensagem, _exc, quem=nome: self._falhou(quem, mensagem))
+        leitor = weakref.ref(self)
+
+        def chegou(resultado: object, quem: str = nome) -> None:
+            vivo = leitor()
+            if vivo is not None and not sip.isdeleted(vivo):
+                vivo._chegou(quem, resultado)
+
+        def falhou(mensagem: str, _exc: object, quem: str = nome) -> None:
+            vivo = leitor()
+            if vivo is not None and not sip.isdeleted(vivo):
+                vivo._falhou(quem, mensagem)
+
+        tarefa.pronto.connect(chegou)
+        tarefa.falhou.connect(falhou)
         self._tarefa = tarefa
         self._registrar(nome)
         tarefa.start()

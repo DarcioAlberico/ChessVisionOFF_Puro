@@ -46,12 +46,12 @@ from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.ui import comandos, espaco, tokens
 from chess_diagram_ocr.ui.trilho import (
     MarcaDaPagina,
+    anterior_duvidosa,
     dica_da_pagina,
     papel_da_pagina,
     primeira_duvidosa,
-    rotulo_da_pagina,
-    anterior_duvidosa,
     proxima_duvidosa,
+    rotulo_da_pagina,
 )
 
 logger = logging.getLogger(__name__)
@@ -155,7 +155,9 @@ class TrilhoDoLivro(QWidget):
         self.lista.setSpacing(2)
         self.lista.setAccessibleName("Páginas do livro")
         self.lista.currentRowChanged.connect(self._linha_mudou)
-        self.lista.verticalScrollBar().valueChanged.connect(lambda _v: self._pedir_as_visiveis())
+        vertical = self.lista.verticalScrollBar()
+        assert vertical is not None  # a lista recém-montada sempre tem a barra
+        vertical.valueChanged.connect(lambda _v: self._pedir_as_visiveis())
         coluna.addWidget(self.lista, 1)
 
         self.btn_duvidosa = self._botao("primeira_duvidosa", self._ir_para_a_primeira_duvidosa)
@@ -329,11 +331,11 @@ class TrilhoDoLivro(QWidget):
         `indexAt` cairia no vão entre duas linhas (o `spacing`) e responderia -1; com todas as
         linhas do mesmo tamanho, a conta é direta e não erra.
         """
-        area = self.lista.viewport()
-        if area is None or self._paginas == 0:
+        area, vertical = self.lista.viewport(), self.lista.verticalScrollBar()
+        if area is None or vertical is None or self._paginas == 0:
             return []
         passo = ALTURA_DO_ITEM + 2 * self.lista.spacing()
-        primeiro = max(0, self.lista.verticalScrollBar().value() // max(1, passo))
+        primeiro = max(0, vertical.value() // max(1, passo))
         quantas = max(1, area.height() // max(1, passo) + 2)
         return list(range(primeiro, min(self._paginas, primeiro + quantas)))
 

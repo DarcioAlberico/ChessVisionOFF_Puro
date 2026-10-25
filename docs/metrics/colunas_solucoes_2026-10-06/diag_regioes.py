@@ -1,7 +1,5 @@
 """Diagnóstico: as regiões e calhas que o caminho do glifo acha numa página, e por quê."""
 import sys
-
-import numpy as np
 from pathlib import Path
 
 sys.path.insert(0, str(Path(sys.argv[0]).parent))
@@ -9,7 +7,6 @@ import patch_colunas  # noqa: E402,F401
 
 from chess_diagram_ocr.detection.hybrid import detect_diagrams_in_pdf_page
 from chess_diagram_ocr.pdf_io import render_pdf_page
-from chess_diagram_ocr.text import regioes as R
 from chess_diagram_ocr.text.colunas import piso_de_calha
 from chess_diagram_ocr.text.leitor import segmentar
 from chess_diagram_ocr.text.linhas import bandas

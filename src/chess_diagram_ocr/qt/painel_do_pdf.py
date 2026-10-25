@@ -295,7 +295,7 @@ class PainelDoPdf(QWidget):
         # `qt/rotulo.RotuloElidido`: um nome de livro de 149 caracteres subia a largura mínima da
         # janela de 1243 para 1513 px e desenhava dois botões um sobre o outro.
         self.lbl_pdf = RotuloElidido(strings.NENHUM_PDF_ABERTO, livro)
-        livro.layout().addWidget(self.lbl_pdf, 1)
+        self._linha_de(livro).addWidget(self.lbl_pdf, 1)
 
         reconhecer = self._bloco(barra, "Reconhecer")
         # **A única ênfase da tela** (item 10 do §7): ler a página é o que esta janela faz.
@@ -355,12 +355,12 @@ class PainelDoPdf(QWidget):
         # informa e ela só existe depois de contar as páginas.
         self._nomear_o_campo_de_pagina()
         self.campo_pagina.valueChanged.connect(self._pagina_digitada)
-        navegar.layout().addWidget(self.campo_pagina)
+        self._linha_de(navegar).addWidget(self.campo_pagina)
         self.lbl_total = QLabel("de 0", navegar)
         self.lbl_total.setProperty(tipografia.PROPRIEDADE_TABULAR, "true")
         # Contagem é texto de apoio, não dado: o degrau `AUXILIAR` da escala (item 9 do §7).
         self.lbl_total.setProperty(folha_de_estilo.PROPRIEDADE_DE_APOIO, "true")
-        navegar.layout().addWidget(self.lbl_total)
+        self._linha_de(navegar).addWidget(self.lbl_total)
         self._botao(
             navegar, "proxima_pagina", self.proxima_pagina, so_icone=True, glifo=strings.PROXIMO
         )
@@ -476,6 +476,13 @@ class PainelDoPdf(QWidget):
             linha.addWidget(separador(bloco))
         barra.adicionar(bloco)
         return bloco
+
+    @staticmethod
+    def _linha_de(bloco: QWidget) -> QHBoxLayout:
+        """A linha que `_bloco` pôs no bloco, sem o `Optional` de `QWidget.layout()`."""
+        linha = bloco.layout()
+        assert isinstance(linha, QHBoxLayout)
+        return linha
 
     def _botao(
         self,

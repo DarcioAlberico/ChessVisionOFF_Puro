@@ -86,17 +86,35 @@ from chess_diagram_ocr.config import (
 )
 from chess_diagram_ocr.detection import DiagramCandidate, detect_diagrams_in_pdf_page, detect_diagrams_rendering_page
 from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
-from chess_diagram_ocr.qt import acessibilidade, dialogo_de_configuracoes, dialogos, dica, escala, exportador_de_livro, fila, fita, legenda, menu
-from chess_diagram_ocr.qt import abas_da_suite, importador_de_livro, painel_de_revisao_de_texto, painel_de_rotulagem, painel_do_pdf
-from chess_diagram_ocr.qt import paleta, plataforma, tema
-from chess_diagram_ocr.qt.areas_de_trabalho import AreasDeTrabalho
-from chess_diagram_ocr.qt.trilho import TrilhoDoLivro
+from chess_diagram_ocr.qt import (
+    abas_da_suite,
+    acessibilidade,
+    dialogo_de_configuracoes,
+    dialogos,
+    dica,
+    escala,
+    exportador_de_livro,
+    fila,
+    fita,
+    importador_de_livro,
+    legenda,
+    leitura,
+    menu,
+    painel_de_revisao_de_texto,
+    painel_de_rotulagem,
+    painel_do_pdf,
+    paleta,
+    plataforma,
+    tema,
+)
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
+from chess_diagram_ocr.qt.areas_de_trabalho import AreasDeTrabalho
 from chess_diagram_ocr.qt.campo import PainelDeCampo
 from chess_diagram_ocr.qt.dialogos import ControladorDeTreino
 from chess_diagram_ocr.qt.exportador import Exportador
+from chess_diagram_ocr.qt.leitura import Aquecimento, Ocupacao
 from chess_diagram_ocr.qt.marcas import LeitorDeMarcas, amostras_de_treino_guardadas
 from chess_diagram_ocr.qt.painel_da_galeria import PainelDaGaleria
 from chess_diagram_ocr.qt.painel_de_estudo import PainelDeEstudo
@@ -106,11 +124,10 @@ from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
 from chess_diagram_ocr.qt.painel_do_dataset import PainelDoDataset
 from chess_diagram_ocr.qt.painel_do_pdf import PainelDoPdf
 from chess_diagram_ocr.qt.rodape import RodapeDaJanela
-from chess_diagram_ocr.qt import leitura
-from chess_diagram_ocr.qt.leitura import Aquecimento, Ocupacao
 from chess_diagram_ocr.qt.trabalho import DeteccaoDeFundo, Tarefa, manter_viva, rastro_de
+from chess_diagram_ocr.qt.trilho import TrilhoDoLivro
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
-from chess_diagram_ocr.service import OcrService, RecognitionOptions, RecognizedDiagram, RecognitionCanceled
+from chess_diagram_ocr.service import OcrService, RecognitionCanceled, RecognitionOptions, RecognizedDiagram
 from chess_diagram_ocr.ui import (
     abas,
     conjuntos,
@@ -123,6 +140,8 @@ from chess_diagram_ocr.ui import (
     strings,
 )
 from chess_diagram_ocr.ui.busy import BusyRegistry
+from chess_diagram_ocr.ui.configuracoes import dpi as _dpi
+from chess_diagram_ocr.ui.configuracoes import max_boards as _max_boards
 from chess_diagram_ocr.ui.editor_model import DiagramEditorModel
 from chess_diagram_ocr.ui.exportacao_de_pgn import ExportSettings
 from chess_diagram_ocr.ui.galeria_declarada import LARGURA_MINIMA_DA_GALERIA
@@ -141,7 +160,6 @@ from chess_diagram_ocr.ui.page_overlay import (
     mark_saved,
 )
 from chess_diagram_ocr.ui.page_results import PageOcrParams, colocacoes_conferidas, paginas_editadas
-from chess_diagram_ocr.ui.configuracoes import dpi as _dpi, max_boards as _max_boards
 from chess_diagram_ocr.ui.pedido_de_treino import TrainingRequest, pedido_de_treino
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.state import AppState, load_state, save_state
@@ -1093,7 +1111,7 @@ class JanelaPrincipal(QMainWindow):
     def _marcas_chegaram(self, livro: str, marcas: object) -> None:
         if self._pdf is None or livro != self._pdf.name:
             return
-        self._salvos = dict(marcas or {})
+        self._salvos = dict(marcas) if isinstance(marcas, dict) else {}
         self._atualizar_abas()
         # O aviso de treino da página veio na mesma leitura (ver `_aviso_de_treino`).
         self.campo.atualizar()

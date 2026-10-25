@@ -241,7 +241,7 @@ def dialogos_do_produto(pasta: object | None = None) -> tuple[str, ...]:
     import ast
     from pathlib import Path
 
-    raiz = Path(pasta) if pasta is not None else Path(__file__).resolve().parent
+    raiz = Path(str(pasta)) if pasta is not None else Path(__file__).resolve().parent
     bases_de: dict[str, set[str]] = {}
     for arquivo in sorted(raiz.rglob("*.py")):
         try:

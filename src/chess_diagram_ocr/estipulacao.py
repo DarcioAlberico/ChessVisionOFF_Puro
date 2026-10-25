@@ -470,13 +470,13 @@ def conferir(
                 if len(fecham) > 1:
                     break
         if len(fecham) == 1:
-            trocas, tentativa = fecham[0]
+            trocas, tentativa = fecham[0]  # type: ignore[assignment]  # caminho de medição (S-218): mudar a árvore invalida os relatórios de campo
             estado = list(base)
             for casa, _de, para in trocas:
                 estado[casa] = para
             descricao = ", ".join(f"{_nome(casa)} {_letra(de)}→{_letra(para)}" for casa, de, para in trocas)
             return ReparoPelaEstipulacao(
-                False, estipulacao, tentativa, trocas=trocas, placement=fen_from_class_indices(estado),
+                False, estipulacao, tentativa, trocas=trocas, placement=fen_from_class_indices(estado),  # type: ignore[arg-type]
                 motivo=f"{estipulacao.descricao} só fecha com {descricao} (1.{tentativa.chaves[0]})")
         if len(fecham) > 1:
             return ReparoPelaEstipulacao(

@@ -99,6 +99,6 @@ class EstadoVazio(QWidget):
     def eventFilter(self, a0: object, a1: object) -> bool:  # noqa: N802 - assinatura do Qt
         """Cobre o pai de novo quando ele muda de tamanho. Ver o construtor."""
         pai = self.parentWidget()
-        if a0 is pai and pai is not None and a1 is not None and a1.type() == QEvent.Type.Resize:
+        if a0 is pai and pai is not None and isinstance(a1, QEvent) and a1.type() == QEvent.Type.Resize:
             self.setGeometry(pai.rect())
         return super().eventFilter(a0, a1)  # type: ignore[arg-type]

@@ -24,7 +24,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import chess
 
@@ -261,10 +261,15 @@ def position_from_dict(raw: dict[str, Any]) -> DiagramPosition:
         context=_context_from_dict(raw.get("context")),
         detection_source=raw.get("detection_source"),
         duplicate_of=(int(duplicate[0]), int(duplicate[1])) if duplicate and len(duplicate) == 2 else None,
-        bbox_pdf=tuple(float(v) for v in raw["bbox_pdf"]) if raw.get("bbox_pdf") else None,
+        bbox_pdf=(
+            cast("tuple[float, float, float, float]", tuple(float(v) for v in raw["bbox_pdf"]))
+            if raw.get("bbox_pdf") else None
+        ),
         image_hash=str(raw.get("image_hash", "") or ""),
         square_confidences=tuple(float(v) for v in raw.get("square_confidences", ()) or ()),
-        repairs=tuple(tuple(str(x) for x in r) for r in raw.get("repairs", ()) or ()),
+        repairs=tuple(
+            cast("tuple[str, str, str]", tuple(str(x) for x in r)) for r in raw.get("repairs", ()) or ()
+        ),
         colour_repairs=tuple(str(x) for x in raw.get("colour_repairs", ()) or ()),
         next_move=str(raw.get("next_move", "") or ""),
         next_move_repairs=tuple(str(x) for x in raw.get("next_move_repairs", ()) or ()),

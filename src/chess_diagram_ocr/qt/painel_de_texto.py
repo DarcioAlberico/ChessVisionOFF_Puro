@@ -64,7 +64,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (
     QAction,
     QHelpEvent,
@@ -439,7 +439,9 @@ class PainelDeTexto(QWidget):
         self.editor.textChanged.connect(self._mostrar_vazio)
         # A barra diz o estilo, a cor e o realce que valem sob o cursor (S-292, item 22).
         self.editor.cursorPositionChanged.connect(self._seguir_o_cursor)
-        self.editor.viewport().installEventFilter(self)
+        folha = self.editor.viewport()
+        assert folha is not None  # o editor recém-montado sempre tem a área de desenho
+        folha.installEventFilter(self)
         # O `Ctrl+Z` de dentro da folha. Ver `TECLAS_DO_HISTORICO`.
         self.editor.installEventFilter(self)
         self._teclas_do_historico = _teclas_da_tabela(TECLAS_DO_HISTORICO)
@@ -2219,8 +2221,8 @@ class PainelDeTexto(QWidget):
             # seleciona a marca, o Enter a ativa. Com qualquer outra seleção o Enter é o Enter.
             if a1.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not a1.modifiers() and self._ativar_marca_selecionada():
                 return True
-        if a0 is self.editor.viewport() and a1 is not None and a1.type() == QEvent.Type.Resize:
-            self.vazio.setGeometry(self.editor.viewport().rect())
+        if a0 is self.editor.viewport() and isinstance(a1, QEvent) and a1.type() == QEvent.Type.Resize:
+            self.vazio.setGeometry(self._area_da_folha())
         if a0 is self.editor.viewport() and isinstance(a1, QHelpEvent) and a1.type() == QEvent.Type.ToolTip:
             # A dica sobre a miniatura (item 23): o que ela é, a posição, e o que o clique faz.
             dica = self._dica_da_marca(a1.pos())
@@ -2319,7 +2321,8 @@ class PainelDeTexto(QWidget):
 
     def _abrir_menu_de_contexto(self, ponto: QPoint) -> None:
         menu = self._menu_de_contexto(ponto)
-        menu.exec(self.editor.viewport().mapToGlobal(ponto))
+        folha = self.editor.viewport()
+        menu.exec(folha.mapToGlobal(ponto) if folha is not None else self.editor.mapToGlobal(ponto))
         menu.deleteLater()
 
     def _menu_de_contexto(self, ponto: QPoint) -> QMenu:
@@ -2331,6 +2334,7 @@ class PainelDeTexto(QWidget):
         seleciona. O menu é onde quem não sabe do duplo clique descobre que a miniatura é viva.
         """
         menu = self.editor.createStandardContextMenu(ponto)
+        assert menu is not None  # o Qt só devolve `None` sem documento, e o editor sempre tem um
         # O rascunho da folha na tela, quando há um (item 25): a oferta recusada na leitura volta
         # a estar à mão, sem reler a folha.
         guardado = (
@@ -2378,7 +2382,9 @@ class PainelDeTexto(QWidget):
             conteudo.setImageData(figura.toImage())
         if posicao:
             conteudo.setText(posicao)
-        QApplication.clipboard().setMimeData(conteudo)
+        area = QApplication.clipboard()
+        if area is not None:
+            area.setMimeData(conteudo)
         o_que = "Imagem e FEN do diagrama copiadas." if figura is not None and posicao else (
             "Imagem do diagrama copiada." if figura is not None else "FEN do diagrama copiada."
         )
@@ -2420,8 +2426,13 @@ class PainelDeTexto(QWidget):
         widget **sobre** o editor, e não texto dentro dele -- que era a razão de o ciclo 1 ter
         escolhido `placeholderText`, e que continua valendo.
         """
-        self.vazio.setGeometry(self.editor.viewport().rect())
+        self.vazio.setGeometry(self._area_da_folha())
         self.vazio.setVisible(not self.editor.toPlainText().strip())
+
+    def _area_da_folha(self) -> QRect:
+        """O retângulo da área de desenho do editor, sem o `Optional` de `viewport()`."""
+        folha = self.editor.viewport()
+        return folha.rect() if folha is not None else self.editor.rect()
 
     def acoes_proprias(self) -> frozenset[str]:
         """As ações globais que este painel atende enquanto tem o foco (S-244).

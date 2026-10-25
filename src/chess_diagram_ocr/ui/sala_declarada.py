@@ -184,7 +184,8 @@ def motor_de_analise() -> Any:
     tamanho (`tests/test_packaging.py`) cujo recado é justamente "baixe o que for possível para
     `ui/`".
     """
-    from chess_diagram_ocr import engine, settings as preferencias
+    from chess_diagram_ocr import engine
+    from chess_diagram_ocr import settings as preferencias
 
     try:
         configurado = preferencias.load_settings().engine

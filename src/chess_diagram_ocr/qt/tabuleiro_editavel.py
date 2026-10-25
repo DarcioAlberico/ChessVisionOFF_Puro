@@ -59,7 +59,7 @@ LARGURA_DO_CONTORNO = 0.06
 
 def _nome_da_tecla(evento: QKeyEvent) -> str:
     """`"Left"`, `"Tab"`, `"k"`… -- o nome que `ui/teclado_do_tabuleiro` entende."""
-    nomes = {
+    nomes: dict[int, str] = {
         Qt.Key.Key_Left: "Left", Qt.Key.Key_Right: "Right", Qt.Key.Key_Up: "Up", Qt.Key.Key_Down: "Down",
         Qt.Key.Key_Tab: "Tab", Qt.Key.Key_Backtab: "Backtab", Qt.Key.Key_Delete: "Delete",
         Qt.Key.Key_Backspace: "Backspace", Qt.Key.Key_Space: "Space", Qt.Key.Key_Return: "Return",
