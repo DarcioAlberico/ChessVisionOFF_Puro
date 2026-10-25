@@ -164,6 +164,7 @@ from . import colados as _colados
 from . import colunas as _colunas
 from . import dicionario as _dicionario
 from . import empilhados as _empilhados
+from . import faixas as _faixas_mod
 from . import italico as _italico
 from . import linhas as _linhas_mod
 from . import marca_fina as _marca_fina
@@ -386,8 +387,14 @@ def segmentar(
     *,
     escala: int | None = None,
     empilhados: bool = True,
+    dpi: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, int, list[_boxes.Caixa], list[_regioes.Regiao]]:
     """`(cinza, binaria, escala, caixas de caractere, regiões)` -- a página antes da linha.
+
+    `dpi` liga a S-527: com ele, as faixas de texto claro sobre fundo preto (o cabeçalho das
+    soluções do Yusupov) são viradas em tinta sobre papel **antes** da binária, e as letras delas
+    passam a ser caixas de caractere como as outras. Sem ele nada é tocado -- a régua da faixa é
+    física, e sem saber o DPI não há como medi-la. Ver `text/faixas.py`.
 
     **A ordem destas quatro coisas é o item, e ela estava invertida.** A primeira versão deste
     módulo mandava a página inteira para `GlyphRecognizer.read`, que é um leitor de **faixa**: ele
@@ -414,6 +421,8 @@ def segmentar(
 
     cinza = cv2.cvtColor(imagem_rgb, cv2.COLOR_RGB2GRAY) if imagem_rgb.ndim == 3 else imagem_rgb
     cinza = np.ascontiguousarray(cinza)
+    if dpi:
+        cinza, _faixas = _faixas_mod.desinverter_faixas(cinza, dpi)
     binaria = binarize(cinza)
     if escala is None:
         escala = escala_fora_dos_diagramas(binaria, diagramas)
@@ -482,9 +491,12 @@ def linhas_do_glifo(
     dicionario: bool = True,
     numeros: bool = True,
     juntar_lance: bool = True,
+    dpi: int | None = None,
 ) -> tuple[list[_Cru], list[_regioes.Regiao]]:
     """As linhas lidas pelo classificador de glifo, **região a região e coluna a coluna**, e as
     regiões achadas.
+
+    `dpi` é o da imagem, e vai para `segmentar` virar as faixas de texto claro sobre preto (S-527).
 
     `escala=None` a mede com `escala_fora_dos_diagramas`. `modo_bloco=True` liga a S-188 -- ler a
     linha, e não o caractere. **Desligado por padrão, e o número que decidiu isso está no cabeçalho
@@ -538,7 +550,7 @@ def linhas_do_glifo(
     from .linhas import envolve, ordem_em_faixa, quebrar_em_linhas, texto_da_linha
 
     cinza, binaria, escala, caixas, regioes = segmentar(
-        imagem_rgb, diagramas, escala=escala, empilhados=empilhados
+        imagem_rgb, diagramas, escala=escala, empilhados=empilhados, dpi=dpi
     )
     if not caixas:
         return ([], regioes)
@@ -1313,7 +1325,7 @@ def _ler_pagina_do_livro(
             imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco, colados=colados, caixa_alta=caixa_alta, marca_fina=marca_fina,
             empilhados=empilhados, italico=italico,
             dicionario=dicionario, numeros=numeros,
-            juntar_lance=juntar_lance,
+            juntar_lance=juntar_lance, dpi=dpi,
         )
 
     if marcar_negrito and cruas:
