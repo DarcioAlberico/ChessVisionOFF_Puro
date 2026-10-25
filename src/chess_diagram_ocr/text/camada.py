@@ -182,6 +182,42 @@ def linhas_com(page: object, e_do_estilo: Callable[[dict], bool]) -> list[LinhaD
     return saida
 
 
+FRACAO_DE_BITMAP = 0.7
+"""A fração da folha que uma imagem só precisa cobrir para a folha ser **scan com texto por cima**.
+
+É o corte de `cli/texto_grade.camada_de_ocr`, que o mediu no acervo por livro: os scans dão 100% das
+folhas acima dele, os editorados 0% ou 5% (a capa digitalizada)."""
+
+
+def camada_tipografica(page: object) -> bool:
+    """A camada desta folha é a **tipografia** de quem editou o livro, e não o palpite de outro OCR?
+
+    Por folha, e não por livro, porque a pergunta é feita na leitura de uma folha só e o acervo tem
+    os dois casos no mesmo livro (a capa digitalizada do editorado). Duas marcas de OCR, as de
+    `camada_de_ocr`: a fonte invisível (`GlyphLessFont`, do Tesseract e afins) e a folha que é uma
+    imagem só com texto por cima. Sem texto nenhum, não há camada a ser de alguém.
+    """
+    try:
+        if any("glyphless" in str(fonte[3]).lower() for fonte in page.get_fonts(full=True)):  # type: ignore[attr-defined]
+            return False
+        blocos = page.get_text("dict")["blocks"]  # type: ignore[attr-defined]
+        area = float(page.rect.width * page.rect.height)  # type: ignore[attr-defined]
+    except (AttributeError, KeyError, RuntimeError, ValueError):
+        return False
+    tem_texto = any(
+        "".join(s.get("text", "") for s in linha.get("spans", [])).strip()
+        for bloco in blocos
+        for linha in bloco.get("lines", [])
+    )
+    if not tem_texto or area <= 0:
+        return False
+    maior = max(
+        ((b["bbox"][2] - b["bbox"][0]) * (b["bbox"][3] - b["bbox"][1]) for b in blocos if b.get("type") == 1),
+        default=0.0,
+    )
+    return maior / area <= FRACAO_DE_BITMAP
+
+
 def _sobrepoe(a: Retangulo, b: Retangulo) -> bool:
     """As duas caixas descrevem a mesma faixa de texto?
 

@@ -1291,6 +1291,9 @@ def _ler_pagina_do_livro(
             else False
         )
         linhas_italico = _italico.linhas_de_italico(page) if spans_italico else []
+        # A camada é a tipografia do livro, e não o palpite de outro OCR? Só então o itálico dela
+        # vale no glifo também (S-660): ver o comentário de `_com_italico_da_camada` lá embaixo.
+        tipografica = bool(spans_italico) and qual == "glifo" and _camada.camada_tipografica(page)
 
     if max_boards:
         candidatos = detect_diagrams_in_pdf_page(pdf_source, indice, imagem, max_boards=max_boards)  # type: ignore[arg-type]
@@ -1322,6 +1325,8 @@ def _ler_pagina_do_livro(
         # única coisa que sabe dizer negrito, e já é ela quem responde o campo de linha logo acima.
         cruas = _com_trechos(cruas, linhas_negrito, escala_px, campo="negrito_em")
     if marcar_italico and cruas:
+        if tipografica:
+            cruas = _com_italico_da_camada(cruas, spans_italico, registra_italico, escala_px, por_cima=True)
         cruas = _com_italico_da_camada(cruas, spans_italico, registra_italico, escala_px)
         # **O pendor tem duas fontes, e o detalhe só entra onde a camada é a autoridade** (S-429).
         # No motor de camada ela é a tipografia que o editor do livro escreveu, e não erra. No de
@@ -1332,7 +1337,12 @@ def _ler_pagina_do_livro(
         #
         # É a mesma precedência de `_com_italico_da_camada`, um degrau abaixo: lá a camada só
         # preenche o que a imagem não respondeu; aqui ela só detalha o que ela mesma respondeu.
-        if qual == "camada":
+        #
+        # **Medido em 2026-10-24 (S-660), a premissa tinha um buraco**: ela vale para a camada de
+        # OCR, e não para a tipografia de um livro nascido digital lido pelo glifo -- ali a régua de
+        # linha do pendor perdia 34% do itálico declarado e marcava 2,3 vezes mais do que havia.
+        # Na folha tipográfica (`camada.camada_tipografica`) a camada responde nos dois motores.
+        if qual == "camada" or tipografica:
             cruas = _com_trechos(cruas, linhas_italico, escala_px, campo="italico_em")
 
     cabecalho, rodape = _margens(margem, altura)
@@ -1421,8 +1431,14 @@ def _com_italico_da_camada(
     spans: Sequence[Retangulo],
     registra: bool,
     escala_px: float,
+    *,
+    por_cima: bool = False,
 ) -> list[_Cru]:
     """As mesmas linhas, com o pendor que a **camada** declara -- e só onde ele falta (S-237).
+
+    `por_cima=True` é a folha tipográfica (S-660): a camada é a autoridade e responde **toda** linha
+    que ela sabe responder, por cima do pendor medido; a linha que ela não sabe (`None`) fica com o
+    que a imagem disse.
 
     **A precedência é por ausência, e não por preferência.** A régua geométrica da S-211 mede a
     binária e responde onde o classificador de glifo rodou; a camada responde onde ela não rodou,
@@ -1435,13 +1451,15 @@ def _com_italico_da_camada(
     """
     from dataclasses import replace
 
-    faltando = [i for i, c in enumerate(cruas) if c.italico is None]
+    faltando = list(range(len(cruas))) if por_cima else [i for i, c in enumerate(cruas) if c.italico is None]
     if not faltando:
         return list(cruas)
     bboxes = [_para_pontos(cruas[i].caixa, escala_px) for i in faltando]
     pendores = _italico.marcar_da_camada(bboxes, spans, registra=registra)
     saida = list(cruas)
     for indice, pendor in zip(faltando, pendores, strict=True):
+        if por_cima and pendor is None:
+            continue
         saida[indice] = replace(saida[indice], italico=pendor)
     return saida
 
