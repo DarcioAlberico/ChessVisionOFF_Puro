@@ -1113,6 +1113,22 @@ pede o mesmo olhar; a suspeita, **ainda não medida**, é o casamento por geomet
 camada e a linha que o glifo segmenta.
 A Fase 96 continua sendo só para as folhas **sem** camada.
 
+**O conserto barato, feito e remedido em 2026-10-24** (`86a1315`, a mesma amostra). A premissa que
+deixava a camada fora do glifo — "a camada do scan é palpite de outro OCR" — vale para o scan e não
+para o livro nascido digital. `camada.camada_tipografica` separa os dois **por folha** (sem
+`GlyphLessFont` e sem uma imagem cobrindo 70% dela, o corte de `cli/texto_grade.camada_de_ocr`), e
+nessas folhas o itálico da camada responde por cima do pendor, na linha e no caractere:
+
+| estilo | declarado | chegou antes | chegou agora | a mais antes | a mais agora |
+|---|---|---|---|---|---|
+| negrito | 2.489 | 2.256 | 2.256 | 24 | 24 |
+| itálico | 504 | 331 | **421** | 1.159 | **578** |
+
+O negrito idêntico é a reprodução: o conserto não toca o peso. A perda do itálico caiu de 34,3% para
+**16,5%**; nos livros tipográficos ele chega inteiro ou quase (Seirawan, os dois *400 Quebra-cabeças*,
+Dvoretsky 64 de 65). O que sobra está nos scans com camada de OCR de terceiro, que continuam sem
+voz de propósito — é a população da Fase 96.
+
 ### S-661 · O conjunto rotulado
 
 **Decisão.** Recortes de **palavra** renderizados de PDFs nascidos digitais, rotulados pela camada

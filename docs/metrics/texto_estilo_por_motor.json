@@ -2,10 +2,9 @@
   "item": "S-660 · o estilo da camada chega ao documento em cada motor?",
   "medido_em": "2026-10-24",
   "codigo": {
-    "commit": "e7c1a55",
+    "commit": "86a1315",
     "arvore_suja": false
   },
-  "nota_do_codigo": "A corrida partiu em d58c475 e o commit acima foi lido ao gravar, depois de e7c1a55 entrar no ramo. Entre os dois nada mudou em text/, cli/, pdf_io.py nem config.py (git diff --stat vazio); mudaram qt/, ui/, settings.py (uma secao de interface tirada) e testes. O classificador de glifo foi o models/char_classifier.pt do checkout principal, copiado para o worktree.",
   "protocolo": "4 folhas espacadas de cada um dos 51 PDFs; livros sem estilo declarado nas folhas lidas ficam fora",
   "referencia": "camada",
   "livros_medidos": 18,
@@ -16,12 +15,12 @@
       "negrito_chegou": 2256,
       "negrito_a_mais": 24,
       "italico_declarado": 504,
-      "italico_chegou": 331,
-      "italico_a_mais": 1159,
+      "italico_chegou": 421,
+      "italico_a_mais": 578,
       "folhas": 58,
       "perda": {
         "negrito": 0.0936,
-        "italico": 0.3433
+        "italico": 0.1647
       }
     },
     "glifo": {
@@ -30,16 +29,16 @@
       "negrito_chegou": 2256,
       "negrito_a_mais": 24,
       "italico_declarado": 504,
-      "italico_chegou": 331,
-      "italico_a_mais": 1159,
+      "italico_chegou": 421,
+      "italico_a_mais": 578,
       "folhas": 58,
       "perda": {
         "negrito": 0.0936,
-        "italico": 0.3433
+        "italico": 0.1647
       }
     }
   },
-  "leitura": "auto e glifo deram o mesmo numero: com o classificador presente, o auto e o glifo. Negrito: 90,6% do declarado chega (perda 9,4%), e quase nada aparece a mais (24 caracteres). Italico: 34,3% do declarado nao chega, e o motor marca 1.159 caracteres a mais contra 504 declarados -- a regua de linha do pendor (S-211) decide a linha inteira, e a S-429 so desce ao caractere no motor camada. Em 5 dos 15 livros com italico declarado ele some por inteiro. O conserto barato e o italico de metadado de fonte valer por caractere tambem no glifo, onde a camada existe; a Fase 96 so abre para as folhas sem camada.",
+  "leitura": "Remedido depois do conserto do italico (86a1315). O negrito saiu identico ao relatorio anterior (2.256 de 2.489, 24 a mais), e e a reproducao: o conserto nao toca o peso. Italico: a perda caiu de 34,3% para 16,5% (421 de 504 chegam, eram 331) e o que o motor marca a mais caiu de 1.159 para 578 caracteres. Nas folhas tipograficas (camada.camada_tipografica) a camada passou a responder por cima do pendor, linha e caractere: Seirawan e os dois 400 Quebra-cabecas chegam inteiros, Dvoretsky 64 de 65, Minhas 60 partidas 26 de 37. O que sobra de perda e de italico a mais esta nos scans (Kemeri, Brinckmann, Kmoch, Koblenz, Gunderam, Yusupov 4, Mieses, Anand, Boleslavsky), onde a camada e OCR de terceiro e continua sem voz de proposito: e a populacao da Fase 96.",
   "livros_com_perda": [
     {
       "livro": "1937 Kemeri.pdf",
@@ -66,30 +65,6 @@
       "perda": 0.2262
     },
     {
-      "livro": "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
-      "motor": "auto",
-      "estilo": "italico",
-      "perda": 0.2424
-    },
-    {
-      "livro": "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
-      "motor": "glifo",
-      "estilo": "italico",
-      "perda": 0.2424
-    },
-    {
-      "livro": "400 Quebra-cabeças de Estratégia de Xadrez_Martin_Kravtsiv_hq.pdf",
-      "motor": "auto",
-      "estilo": "italico",
-      "perda": 0.2222
-    },
-    {
-      "livro": "400 Quebra-cabeças de Estratégia de Xadrez_Martin_Kravtsiv_hq.pdf",
-      "motor": "glifo",
-      "estilo": "italico",
-      "perda": 0.2222
-    },
-    {
       "livro": "Brinckmann - Matt in zwanzig Zügen (1963).pdf",
       "motor": "auto",
       "estilo": "negrito",
@@ -114,16 +89,16 @@
       "perda": 0.2016
     },
     {
-      "livro": "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid Foolish Mistakes (Bastford, 2005) 2p 145p_OCR_Aprimorar_Aprimorar.pdf",
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
       "motor": "auto",
       "estilo": "italico",
-      "perda": 0.5714
+      "perda": 0.0154
     },
     {
-      "livro": "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid Foolish Mistakes (Bastford, 2005) 2p 145p_OCR_Aprimorar_Aprimorar.pdf",
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
       "motor": "glifo",
       "estilo": "italico",
-      "perda": 0.5714
+      "perda": 0.0154
     },
     {
       "livro": "Gunderam - Neue Eröffnungswege Ein Schach-Praktikum (1961).pdf",
@@ -243,7 +218,7 @@
       "livro": "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
       "motor": "auto",
       "estilo": "italico",
-      "perda": 0.9189
+      "perda": 0.2973
     },
     {
       "livro": "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
@@ -255,7 +230,7 @@
       "livro": "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
       "motor": "glifo",
       "estilo": "italico",
-      "perda": 0.9189
+      "perda": 0.2973
     },
     {
       "livro": "Vishy_Anand_Great_Chess_Combinations.pdf",
@@ -277,21 +252,9 @@
     },
     {
       "livro": "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf",
-      "motor": "auto",
-      "estilo": "italico",
-      "perda": 1.0
-    },
-    {
-      "livro": "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf",
       "motor": "glifo",
       "estilo": "negrito",
       "perda": 0.1364
-    },
-    {
-      "livro": "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf",
-      "motor": "glifo",
-      "estilo": "italico",
-      "perda": 1.0
     },
     {
       "livro": "📚Болеславский_И_Избранные_партии.pdf",
@@ -344,12 +307,12 @@
         "negrito_chegou": 35,
         "negrito_a_mais": 0,
         "italico_declarado": 33,
-        "italico_chegou": 25,
+        "italico_chegou": 33,
         "italico_a_mais": 0,
         "folhas": 4,
         "perda": {
           "negrito": 0.0,
-          "italico": 0.2424
+          "italico": 0.0
         }
       },
       "glifo": {
@@ -358,12 +321,12 @@
         "negrito_chegou": 35,
         "negrito_a_mais": 0,
         "italico_declarado": 33,
-        "italico_chegou": 25,
+        "italico_chegou": 33,
         "italico_a_mais": 0,
         "folhas": 4,
         "perda": {
           "negrito": 0.0,
-          "italico": 0.2424
+          "italico": 0.0
         }
       }
     },
@@ -374,12 +337,12 @@
         "negrito_chegou": 49,
         "negrito_a_mais": 0,
         "italico_declarado": 18,
-        "italico_chegou": 14,
+        "italico_chegou": 18,
         "italico_a_mais": 7,
         "folhas": 3,
         "perda": {
           "negrito": 0.0,
-          "italico": 0.2222
+          "italico": 0.0
         }
       },
       "glifo": {
@@ -388,12 +351,12 @@
         "negrito_chegou": 49,
         "negrito_a_mais": 0,
         "italico_declarado": 18,
-        "italico_chegou": 14,
+        "italico_chegou": 18,
         "italico_a_mais": 7,
         "folhas": 3,
         "perda": {
           "negrito": 0.0,
-          "italico": 0.2222
+          "italico": 0.0
         }
       }
     },
@@ -434,12 +397,12 @@
         "negrito_chegou": 478,
         "negrito_a_mais": 0,
         "italico_declarado": 65,
-        "italico_chegou": 65,
-        "italico_a_mais": 36,
+        "italico_chegou": 64,
+        "italico_a_mais": 1,
         "folhas": 4,
         "perda": {
           "negrito": 0.0021,
-          "italico": 0.0
+          "italico": 0.0154
         }
       },
       "glifo": {
@@ -448,12 +411,12 @@
         "negrito_chegou": 478,
         "negrito_a_mais": 0,
         "italico_declarado": 65,
-        "italico_chegou": 65,
-        "italico_a_mais": 36,
+        "italico_chegou": 64,
+        "italico_a_mais": 1,
         "folhas": 4,
         "perda": {
           "negrito": 0.0021,
-          "italico": 0.0
+          "italico": 0.0154
         }
       }
     },
@@ -464,12 +427,12 @@
         "negrito_chegou": 95,
         "negrito_a_mais": 0,
         "italico_declarado": 42,
-        "italico_chegou": 18,
-        "italico_a_mais": 38,
+        "italico_chegou": 42,
+        "italico_a_mais": 1,
         "folhas": 2,
         "perda": {
           "negrito": 0.0,
-          "italico": 0.5714
+          "italico": 0.0
         }
       },
       "glifo": {
@@ -478,12 +441,12 @@
         "negrito_chegou": 95,
         "negrito_a_mais": 0,
         "italico_declarado": 42,
-        "italico_chegou": 18,
-        "italico_a_mais": 38,
+        "italico_chegou": 42,
+        "italico_a_mais": 1,
         "folhas": 2,
         "perda": {
           "negrito": 0.0,
-          "italico": 0.5714
+          "italico": 0.0
         }
       }
     },
@@ -734,12 +697,12 @@
         "negrito_chegou": 61,
         "negrito_a_mais": 3,
         "italico_declarado": 37,
-        "italico_chegou": 3,
-        "italico_a_mais": 346,
+        "italico_chegou": 26,
+        "italico_a_mais": 0,
         "folhas": 4,
         "perda": {
           "negrito": 0.1528,
-          "italico": 0.9189
+          "italico": 0.2973
         }
       },
       "glifo": {
@@ -748,12 +711,12 @@
         "negrito_chegou": 61,
         "negrito_a_mais": 3,
         "italico_declarado": 37,
-        "italico_chegou": 3,
-        "italico_a_mais": 346,
+        "italico_chegou": 26,
+        "italico_a_mais": 0,
         "folhas": 4,
         "perda": {
           "negrito": 0.1528,
-          "italico": 0.9189
+          "italico": 0.2973
         }
       }
     },
@@ -794,12 +757,12 @@
         "negrito_chegou": 19,
         "negrito_a_mais": 0,
         "italico_declarado": 32,
-        "italico_chegou": 0,
-        "italico_a_mais": 163,
+        "italico_chegou": 32,
+        "italico_a_mais": 0,
         "folhas": 4,
         "perda": {
           "negrito": 0.1364,
-          "italico": 1.0
+          "italico": 0.0
         }
       },
       "glifo": {
@@ -808,12 +771,12 @@
         "negrito_chegou": 19,
         "negrito_a_mais": 0,
         "italico_declarado": 32,
-        "italico_chegou": 0,
-        "italico_a_mais": 163,
+        "italico_chegou": 32,
+        "italico_a_mais": 0,
         "folhas": 4,
         "perda": {
           "negrito": 0.1364,
-          "italico": 1.0
+          "italico": 0.0
         }
       }
     },
