@@ -50,7 +50,7 @@ from typing import Any
 import numpy as np
 
 from ..atomic_io import atomic_write_text
-from ..config import PROJECT_ROOT
+from ..config import DATA_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import estilo
 from . import add_verbose, cli_errors
@@ -58,7 +58,7 @@ from . import add_verbose, cli_errors
 logger = logging.getLogger(__name__)
 
 SEMENTE = 661
-CONJUNTO_PADRAO = PROJECT_ROOT / "data" / "estilo" / "palavras.npz"
+CONJUNTO_PADRAO = DATA_DIR / "estilo" / "palavras.npz"
 PESOS_PADRAO = PROJECT_ROOT / "models" / "estilo_palavra.pt"
 SUPORTE_MINIMO = 20
 """Abaixo de quantas palavras de uma classe no teste o portão não a julga: a precisão de cinco

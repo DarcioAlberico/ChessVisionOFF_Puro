@@ -35,7 +35,7 @@ from typing import Any
 import numpy as np
 
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import DATA_DIR, DEFAULT_PDF_DIR
 from ..logging_setup import configure_logging
 from ..text import estilo
 from . import add_verbose, cli_errors
@@ -50,7 +50,7 @@ ALTURA_MINIMA_PX = 10
 """A palavra mais baixa que entra: abaixo disso é índice, expoente ou número de nota, e o traço não
 tem pixel bastante para se ler peso."""
 
-PASTA_PADRAO = PROJECT_ROOT / "data" / "estilo"
+PASTA_PADRAO = DATA_DIR / "estilo"
 
 
 def folhas_de(total: int, quantas: int) -> list[int]:
