@@ -278,18 +278,23 @@ def main(argv: list[str] | None = None) -> int:
     }
     vence_o_controle = all(pop["acerto"] > max(controle.values()) for pop in populacoes.values())
     julgaveis = [n for n in estilo.CLASSES[1:] if populacoes["limpo"]["por_classe"][n]["no_teste"] >= SUPORTE_MINIMO]
-    sugerir = vence_o_controle and bool(julgaveis) and all(
-        populacoes[p]["por_classe"][n]["sugerir"]["passa"] for p in populacoes for n in julgaveis
-    )
-    aplicar = {n: all(populacoes[p]["por_classe"][n]["aplicar"]["passa"] for p in populacoes) for n in julgaveis}
+    # Por classe, nas duas populações: a S-665 trata o itálico sozinho, e um negrito que não passa não
+    # deve segurar um itálico que passa -- nem o contrário esconder o negrito que reprovou.
+    sugerir = {
+        n: vence_o_controle and all(populacoes[p]["por_classe"][n]["sugerir"]["passa"] for p in populacoes) for n in julgaveis
+    }
+    aplicar = {
+        n: vence_o_controle and all(populacoes[p]["por_classe"][n]["aplicar"]["passa"] for p in populacoes) for n in julgaveis
+    }
+    passam = [n for n, ok in sugerir.items() if ok]
     veredito = {
         "vence_o_controle": vence_o_controle,
         "classes_julgadas": julgaveis,
-        "sugerir": sugerir,
+        "sugerir_por_classe": sugerir,
         "aplicar_por_classe": aplicar,
         "decisao": (
-            "passa na regua de sugerir: a S-664 pode abrir (e e mudanca de formato, R5)"
-            if sugerir
+            f"passa na regua de sugerir para {', '.join(passam)}: a S-664 pode abrir para essa(s) classe(s), e e mudanca de formato (R5)"
+            if passam
             else "nao passa na regua de sugerir: a Fase 96 termina aqui, e o pincel manual (S-241) continua sendo a resposta"
         ),
     }
