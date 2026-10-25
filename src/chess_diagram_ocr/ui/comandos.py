@@ -520,7 +520,9 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("descartar_correcoes", "Descartar as correções desta folha…", EDICAO, estilos.NEUTRO, rotulo_curto="Descartar correções…"),
     # Os diagramas no texto (Fase 92): a preferência e o tamanho são vista; alinhar os da folha é edição.
     Comando("diagramas_a_esquerda", "Diagramas no texto à esquerda (o padrão é ao centro)", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Diagramas à esquerda"),
+    Comando("texto_ao_lado", "Texto ao lado dos diagramas à esquerda", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Texto ao lado"),
     Comando("tamanho_da_miniatura", "Tamanho das miniaturas dos diagramas", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Miniaturas"),
+    Comando("familia_da_letra", "Letra da folha: proporcional, serifada ou monoespaçada", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Letra"),
     Comando("diagramas_da_folha_a_esquerda", "Alinhar os diagramas desta folha à esquerda", EDICAO, estilos.NEUTRO, rotulo_curto="Folha: à esquerda"),
     Comando("diagramas_da_folha_ao_centro", "Alinhar os diagramas desta folha ao centro", EDICAO, estilos.NEUTRO, rotulo_curto="Folha: ao centro"),
     Comando(

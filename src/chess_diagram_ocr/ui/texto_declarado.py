@@ -47,9 +47,12 @@ __all__ = [
     "DIAGRAMAS_A_ESQUERDA",
     "ESCAPE_DA_PALETA",
     "ESTADO_POR_EXTENSO",
+    "FAMILIAS_DA_LETRA",
+    "FAMILIA_DA_LETRA_PADRAO",
     "ETIQUETA_DO_LEXICO",
     "MARCA_DO_ESTADO",
     "MOTORES",
+    "NOME_DA_FAMILIA",
     "NOME_DO_TAMANHO",
     "TAMANHOS_DA_MINIATURA",
     "TAMANHO_DA_MINIATURA_PADRAO",
@@ -71,6 +74,7 @@ __all__ = [
     "linha_do_indice",
     "paradas_do_zoom",
     "porcentagem_do_zoom",
+    "proxima_familia_da_letra",
     "proximo_tamanho_da_miniatura",
 ]
 
@@ -320,7 +324,9 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "exportar_pdf_pesquisavel": "exportar_pdf_pesquisavel",
     "exportar_caderno": "exportar_caderno",
     "diagramas_a_esquerda": "alternar_diagramas_a_esquerda",
+    "texto_ao_lado": "alternar_texto_ao_lado",
     "tamanho_da_miniatura": "mudar_tamanho_da_miniatura",
+    "familia_da_letra": "mudar_familia_da_letra",
     "diagramas_da_folha_a_esquerda": "diagramas_da_folha_a_esquerda",
     "diagramas_da_folha_ao_centro": "diagramas_da_folha_ao_centro",
     "diagramas_da_folha_como_a_preferencia": "diagramas_da_folha_como_a_preferencia",
@@ -435,6 +441,22 @@ def proximo_tamanho_da_miniatura(tamanho: str) -> str:
     nomes = tuple(TAMANHOS_DA_MINIATURA)
     atual = tamanho if tamanho in TAMANHOS_DA_MINIATURA else TAMANHO_DA_MINIATURA_PADRAO
     return nomes[(nomes.index(atual) + 1) % len(nomes)]
+
+
+FAMILIA_DA_LETRA_PADRAO = ""
+FAMILIAS_DA_LETRA: tuple[str, ...] = (FAMILIA_DA_LETRA_PADRAO, "serifada", "monoespacada")
+"""A letra de leitura da folha (S-632): a proporcional do tema (o padrão, `""`), uma serifada do
+sistema -- mais perto do impresso, para conferir lado a lado na mesa -- ou a monoespaçada, que separa
+`l`/`1`/`I` e `O`/`0`, onde o OCR mais erra. É vista, como o zoom: não vai ao `.cvtxt` nem muda a
+exportação, e a notação continua na monoespaçada nas três."""
+
+NOME_DA_FAMILIA: dict[str, str] = {"": "proporcional", "serifada": "serifada", "monoespacada": "monoespaçada"}
+
+
+def proxima_familia_da_letra(familia: str) -> str:
+    """O comando anda em roda, como o das miniaturas: proporcional, serifada, monoespaçada. Desconhecida vale o padrão."""
+    atual = familia if familia in FAMILIAS_DA_LETRA else FAMILIA_DA_LETRA_PADRAO
+    return FAMILIAS_DA_LETRA[(FAMILIAS_DA_LETRA.index(atual) + 1) % len(FAMILIAS_DA_LETRA)]
 
 
 _PALAVRA = re.compile(r"[^\W_]+(?:['’][^\W_]+)*")

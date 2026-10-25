@@ -267,6 +267,14 @@ class Markdown:
         if alinhamento in ("", "esquerda") or recorte is None:
             return self.diagrama(c, recorte, placement=placement)
         lado = "right" if alinhamento == "direita" else "center"
+        if alinhamento == AO_LADO:
+            # `align="left"` no próprio `<img>`, e não num `<p>`: é o que faz o parágrafo seguinte
+            # correr ao lado dela nos visualizadores que leem HTML dentro do Markdown (S-624).
+            saida = (
+                f'<img align="left" src="{self.pasta_de_imagens}/{recorte.name}" '
+                f'alt="{_html.escape(c.texto, quote=True)}">'
+            )
+            return saida + (f"\n<!-- FEN: {placement} -->" if placement else "")
         saida = (
             f'<p align="{lado}"><img src="{self.pasta_de_imagens}/{recorte.name}" '
             f'alt="{_html.escape(c.texto, quote=True)}"></p>'
@@ -326,6 +334,8 @@ class Html:
             # margem automática alinha o bloco da imagem (S-259).
             "    .alinhar-centro .diagrama { margin: 1em auto; }\n"
             "    .alinhar-direita .diagrama { margin: 1em 0 1em auto; }\n"
+            # O texto ao lado da figura à esquerda (S-624): ela flutua, e o parágrafo seguinte a contorna.
+            "    .diagrama.ao-lado { float: left; margin: 0.3em 1em 0.5em 0; }\n"
             f"{estilo}\n</style>\n</head>\n<body>\n"
             f"<!-- {titulo} -->\n"
             "<p class=\"aviso\">As figurinas de xadrez dependem de uma fonte com os glifos "
@@ -418,6 +428,11 @@ class Html:
         if recorte is None:
             return f'<span class="diagrama"{fen}>{marca}</span>' if fen else marca
         return f'<img class="diagrama" src="{self.pasta_de_imagens}/{recorte.name}" alt="{marca}"{fen}>'
+
+    def diagrama_ao_lado(self, c: Corrida, recorte: Path | None, placement: str = "") -> str:
+        """A figura à esquerda com o texto ao lado (S-624): a mesma `<img>`, com a classe que flutua."""
+        figura = self.diagrama(c, recorte, placement=placement)
+        return figura.replace('<img class="diagrama"', '<img class="diagrama ao-lado"', 1)
 
     def paragrafo(self, alinhamento: str, corpo: str) -> str:
         """O trecho alinhado num `<div>` (S-259). **Bloco, porque `text-align` não é de inline.**
@@ -607,6 +622,7 @@ def exportar(
     *,
     recortes: Mapping[int, Path] | None = None,
     diagramas: str = ALINHAMENTO_DO_DIAGRAMA,
+    ao_lado: bool = False,
 ) -> Relatorio:
     """O documento naquele formato, com a conta do que se perdeu.
 
@@ -616,7 +632,7 @@ def exportar(
     """
     perdas = dict.fromkeys(ATRIBUTOS, 0)
     partes, contados, sem_recorte, imagem_descartada = _partes(
-        doc, doc.corridas, formato, recortes or {}, perdas, diagramas=diagramas
+        doc, doc.corridas, formato, recortes or {}, perdas, diagramas=diagramas, ao_lado=ao_lado
     )
     montar = getattr(formato, "montar", None)
     corpo = _juntar(partes, formato)
@@ -639,6 +655,7 @@ def exportar_folhas(
     recortes: Mapping[int, Mapping[int, Path]] | None = None,
     faltam: Sequence[int] = (),
     diagramas: str = ALINHAMENTO_DO_DIAGRAMA,
+    ao_lado: bool = False,
 ) -> Relatorio:
     """O caderno inteiro num arquivo só: as folhas em ordem, cada uma aberta pelo número dela (S-614).
 
@@ -658,7 +675,7 @@ def exportar_folhas(
     for doc in folhas:
         pagina = -1 if doc.origem is None else int(doc.origem.pagina)
         partes.append(("", formato.corrida(Corrida(f"Folha {pagina + 1}", Atributos(estilo="titulo"))) + _QUEBRA))
-        dela, d, s, i = _partes(doc, doc.corridas, formato, imagens.get(pagina, {}), perdas, diagramas=diagramas)
+        dela, d, s, i = _partes(doc, doc.corridas, formato, imagens.get(pagina, {}), perdas, diagramas=diagramas, ao_lado=ao_lado)
         partes.extend(dela)
         partes.append(("", _QUEBRA))
         contados, sem_recorte, imagem_descartada = contados + d, sem_recorte + s, imagem_descartada + i
@@ -682,6 +699,10 @@ def exportar_folhas(
 
 
 _QUEBRA = "\n\n"
+
+AO_LADO = "ao-lado"
+"""O alinhamento que `_partes` passa ao `.md` para a figura à esquerda com o texto ao lado (S-624).
+Não é alinhamento de `rico` -- não vai ao `.cvtxt` --, e por isso mora aqui e não em `ALINHAMENTOS`."""
 
 
 def intervalos(paginas: Iterable[int]) -> str:
@@ -707,6 +728,7 @@ def _partes(
     perdas: dict[str, int],
     *,
     diagramas: str = ALINHAMENTO_DO_DIAGRAMA,
+    ao_lado: bool = False,
 ) -> tuple[list[tuple[str, str]], int, int, int]:
     """Cada corrida no formato, com o alinhamento dela; soma as perdas em `perdas`.
 
@@ -745,7 +767,14 @@ def _partes(
             placement = str(getattr(doc.bloco_de(corrida), "placement", "") or "")
             # O alinhamento **efetivo** (S-620): o diagrama que ninguém alinhou sai no centro, como na tela.
             efetivo = alinhamento_efetivo(corrida, padrao_do_diagrama=diagramas)
-            if alinhado is not None:
+            flutua = ao_lado and efetivo == "esquerda" and recorte is not None and desenha_imagem
+            if flutua and hasattr(formato, "diagrama_ao_lado"):
+                # A figura à esquerda com o texto ao lado (S-624). Fora de grupo de alinhamento: um
+                # `<div>` em volta dela fecharia o fluxo, e o parágrafo seguinte não a contornaria.
+                partes.append(("", formato.diagrama_ao_lado(corrida, recorte, placement=placement)))
+            elif flutua and alinhado is not None:
+                partes.append(("", alinhado(AO_LADO, corrida, recorte, placement=placement)))
+            elif alinhado is not None:
                 # O formato que não agrupa parágrafo, e sabe alinhar a figura por conta própria (S-622).
                 partes.append(("", alinhado(efetivo, corrida, recorte, placement=placement)))
             else:

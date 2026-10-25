@@ -84,7 +84,7 @@ ABAS: tuple[Aba, ...] = (
                 "Diagramas da folha",
                 ("diagramas_da_folha_a_esquerda", "diagramas_da_folha_ao_centro", "diagramas_da_folha_como_a_preferencia"),
             ),
-            Grupo("Diagramas no texto", ("diagramas_a_esquerda", "tamanho_da_miniatura")),
+            Grupo("Diagramas no texto", ("diagramas_a_esquerda", "texto_ao_lado", "tamanho_da_miniatura")),
         ),
     ),
     Aba(
@@ -110,7 +110,7 @@ ABAS: tuple[Aba, ...] = (
         "Exibir",
         (
             Grupo("Mostrar", ("painel_de_navegacao", "mesa_de_texto", "bloco_impresso", "quebrar_linha")),
-            Grupo("Zoom", ("aproximar_texto", "afastar_texto", "zoom_do_texto_normal")),
+            Grupo("Zoom", ("aproximar_texto", "afastar_texto", "zoom_do_texto_normal", "familia_da_letra")),
             Grupo("Foco", ("modo_foco", "recolher_fita")),
         ),
     ),

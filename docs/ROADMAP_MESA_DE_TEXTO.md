@@ -322,6 +322,12 @@ fita guardava a altura da aba mais alta (`heightForWidth` da aba à vista); os q
 repetiam a galeria; e `Ctrl+]`/`Ctrl+[` não traduziam para o Qt (`bracketright`), então o corpo do
 parágrafo não tinha tecla. O índice passou a marcar a folha que se abriu por ele.
 
+### Estado da quinta entrega (2026-10-25, ramo `mesa-de-texto-caderno`)
+
+| item | estado | onde, e o que mudou em relação ao plano |
+|---|---|---|
+| S-632 | ✅ com desvio | «Letra da folha: proporcional, serifada ou monoespaçada», um comando que anda em roda (menu Texto e grupo Zoom da aba Exibir), como o das miniaturas, em vez de três; guardado em `AppState.texto_familia`. Troca só a proporcional da base da vista (`_base_da_vista`): a notação fica na monoespaçada nas três, e a guarda S-603 lê a família contra a mesma base. A serifada é a primeira de `tipografia.SERIFADAS_PREFERIDAS` que o sistema tem (Georgia no Windows); sem nenhuma, a proporcional. Testes em `tests/test_qt_texto_letra.py` |
+
 ## Custo, risco e ordem
 
 | fase | esforço | risco | o que fica se ela parar no meio |

@@ -193,6 +193,10 @@ class AppState:
     """«Diagramas no texto» (S-620): `""` centralizados, `"esquerda"` à esquerda."""
     texto_miniatura: str = ""
     """O tamanho da miniatura do diagrama no texto (S-623): `pequeno`, `medio` ou `grande`; `""` é o padrão."""
+    texto_familia: str = ""
+    """A letra de leitura da folha (S-632): `""` a proporcional do tema, `serifada` ou `monoespacada`."""
+    texto_ao_lado: bool = False
+    """O texto corre ao lado do diagrama que se desenha à esquerda (S-624)."""
     texto_fita_recolhida: bool = False
     """A fita do Texto recolhida com `Ctrl+F1` (S-652)."""
     texto_glifos_recentes: list[str] = field(default_factory=list)
@@ -294,6 +298,8 @@ class AppState:
             "texto_bloco": bool(self.texto_bloco),
             "texto_diagramas": str(self.texto_diagramas),
             "texto_miniatura": str(self.texto_miniatura),
+            "texto_familia": str(self.texto_familia),
+            "texto_ao_lado": bool(self.texto_ao_lado),
             "texto_fita_recolhida": bool(self.texto_fita_recolhida),
             "texto_glifos_recentes": [str(g) for g in self.texto_glifos_recentes][:20],
             "texto_mesa": str(self.texto_mesa),
@@ -432,10 +438,13 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     if isinstance(texto_bloco, bool):
         state.texto_bloco = texto_bloco
 
-    for chave in ("texto_diagramas", "texto_miniatura"):
+    for chave in ("texto_diagramas", "texto_miniatura", "texto_familia"):
         valor = raw.get(chave)
         if isinstance(valor, str):
             setattr(state, chave, valor)
+    ao_lado = raw.get("texto_ao_lado")
+    if isinstance(ao_lado, bool):
+        state.texto_ao_lado = ao_lado
     recolhida = raw.get("texto_fita_recolhida")
     if isinstance(recolhida, bool):
         state.texto_fita_recolhida = recolhida

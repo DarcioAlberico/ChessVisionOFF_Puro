@@ -74,8 +74,10 @@ from PyQt6.QtGui import (
     QMouseEvent,
     QPixmap,
     QTextBlockFormat,
+    QTextCharFormat,
     QTextCursor,
     QTextDocument,
+    QTextDocumentFragment,
     QTextFormat,
     QTextImageFormat,
     QWheelEvent,
@@ -122,7 +124,10 @@ from chess_diagram_ocr.ui.texto_declarado import (
     COMANDOS_DA_ABA,
     DIAGRAMAS_A_ESQUERDA,
     DIAGRAMAS_AO_CENTRO,
+    FAMILIA_DA_LETRA_PADRAO,
+    FAMILIAS_DA_LETRA,
     MOTORES,
+    NOME_DA_FAMILIA,
     NOME_DO_TAMANHO,
     TAMANHO_DA_MINIATURA_PADRAO,
     TAMANHOS_DA_MINIATURA,
@@ -141,6 +146,7 @@ from chess_diagram_ocr.ui.texto_declarado import (
     largura_da_miniatura,
     paradas_do_zoom,
     porcentagem_do_zoom,
+    proxima_familia_da_letra,
     proximo_tamanho_da_miniatura,
 )
 
@@ -422,6 +428,10 @@ class PainelDeTexto(QWidget):
         """«Diagramas no texto» (S-620). É vista e preferência, e não documento: trocar não grava nada."""
         self._tamanho_da_miniatura = TAMANHO_DA_MINIATURA_PADRAO
         """O tamanho da miniatura (S-623): `ui/texto_declarado.TAMANHOS_DA_MINIATURA`."""
+        self._familia_da_letra = FAMILIA_DA_LETRA_PADRAO
+        """A letra de leitura (S-632): `ui/texto_declarado.FAMILIAS_DA_LETRA`. Vista, como o zoom."""
+        self._texto_ao_lado = False
+        """O texto contorna o diagrama que se desenha à esquerda (S-624). Vista, como a preferência da S-620."""
         self._pincel: rico.Atributos | None = None
         """A formatação que o pincel leva (S-653), ou `None` desarmado."""
         self._pincel_fixo = False
@@ -1051,6 +1061,12 @@ class PainelDeTexto(QWidget):
         from chess_diagram_ocr.ui import tipografia
 
         tamanho, proporcional, monoespacada = tema.fonte_base()
+        # A letra de leitura (S-632) troca só a proporcional: o papel DADO -- a notação -- continua
+        # na monoespaçada nas três, porque `texto_formato._fonte` a escolhe pela outra metade da base.
+        if self._familia_da_letra == "monoespacada":
+            proporcional = monoespacada
+        elif self._familia_da_letra == "serifada":
+            proporcional = tema.familia_serifada(proporcional)
         return tipografia.corpo(self._zoom_da_vista, base=tamanho), proporcional, monoespacada
 
     def _formatar_blocos(self, documento: QTextDocument, inicio: int = 0, fim: int | None = None) -> None:
@@ -1153,8 +1169,41 @@ class PainelDeTexto(QWidget):
         # deixa apagá-lo e escrever `Antes.[Diagrama 1]` -- ela cairia no meio da prosa.
         if cursor.positionInBlock() > 0:
             cursor.insertBlock()
-        cursor.insertImage(imagem)
+        if self._flutua(corrida):
+            self._inserir_flutuante(cursor, imagem)
+        else:
+            cursor.insertImage(imagem)
         cursor.insertBlock()
+
+    def _flutua(self, corrida: rico.Corrida) -> bool:
+        """A figura desta marca flutua à esquerda, com o texto ao lado (S-624)? Só a que se desenha à esquerda."""
+        if not self._texto_ao_lado:
+            return False
+        padrao = alinhamento_dos_diagramas(self._diagramas)
+        return rico.alinhamento_efetivo(corrida, padrao_do_diagrama=padrao) == rico.ALINHAMENTO_ESQUERDA
+
+    @staticmethod
+    def _inserir_flutuante(cursor: QTextCursor, imagem: QTextImageFormat) -> None:
+        """A figura flutuante, **pelo importador de HTML do Qt**, que é o único que a sabe fazer (S-624).
+
+        A figura que flutua é um `QTextImageFormat` que aponta para um objeto de quadro com
+        `FloatLeft`, e o quadro tem de estar registrado no documento: `QTextDocument.createObject`
+        chamado do Python devolve um quadro de índice −1, que o leiaute ignora. O `<img align=left>`
+        registra o quadro e, ao contrário do `QTextFrame` inserido pelo cursor, **não** põe
+        `U+FDD0`/`U+FDD1` no texto cru -- a figura continua sendo um `OBJETO` só, e `_Mapa` e
+        `_texto_da_tela` não mudam. O texto alternativo e o título entram depois, por mescla, que
+        preserva o índice do objeto.
+        """
+        largura, altura = round(imagem.width()), round(imagem.height())
+        cursor.insertFragment(
+            QTextDocumentFragment.fromHtml(f'<img src="{imagem.name()}" width="{largura}" height="{altura}" align="left">')
+        )
+        figura = QTextCursor(cursor)
+        figura.movePosition(QTextCursor.MoveOperation.PreviousCharacter, QTextCursor.MoveMode.KeepAnchor)
+        extra = QTextCharFormat()
+        for propriedade in (QTextFormat.Property.ImageAltText, QTextFormat.Property.ImageTitle):
+            extra.setProperty(propriedade, imagem.property(propriedade))
+        figura.mergeCharFormat(extra)
 
     def _imagem_do_diagrama(self, corrida: rico.Corrida) -> QPixmap | None:
         """A figura da miniatura: **o recorte da folha, ou o desenho da posição lida**.
@@ -2596,6 +2645,7 @@ class PainelDeTexto(QWidget):
         faltam = [p for p in range(self._folhas_do_livro()) if p not in presentes]
         com_imagens = bool(getattr(formato, "pasta_de_imagens", "")) and livro.exists()
         dpi = self._dpi_para_ler()
+        diagramas, ao_lado = alinhamento_dos_diagramas(self._diagramas), self._texto_ao_lado
         desistir = threading.Event()
         self._cancelar_exportacao = desistir
 
@@ -2611,7 +2661,13 @@ class PainelDeTexto(QWidget):
                 nome = caminho.with_name(f"{caminho.stem}_f{pagina + 1:04d}{caminho.suffix}")
                 recortes[pagina] = _gravar_recortes(doc, nome, folha, dpi=dpi)
             relatorio = exportacao.exportar_folhas(
-                documentos, formato, titulo=f"{livro.name} — caderno", recortes=recortes, faltam=faltam
+                documentos,
+                formato,
+                titulo=f"{livro.name} — caderno",
+                recortes=recortes,
+                faltam=faltam,
+                diagramas=diagramas,
+                ao_lado=ao_lado,
             )
             if desistir.is_set():
                 return CANCELADA
@@ -2731,6 +2787,29 @@ class PainelDeTexto(QWidget):
         self._diagramas = preferencia
         self._redesenhar_a_vista()
 
+    @property
+    def texto_ao_lado(self) -> bool:
+        return self._texto_ao_lado
+
+    def definir_texto_ao_lado(self, ligado: bool) -> None:
+        """O texto ao lado do diagrama à esquerda (S-624). Vista: redesenha sem tornar a folha «por gravar»."""
+        if bool(ligado) == self._texto_ao_lado:
+            return
+        self._texto_ao_lado = bool(ligado)
+        self._redesenhar_a_vista()
+
+    def alternar_texto_ao_lado(self) -> None:
+        self.definir_texto_ao_lado(not self._texto_ao_lado)
+        self.estado.emit(
+            "O texto corre ao lado dos diagramas que ficam à esquerda."
+            if self._texto_ao_lado
+            else "Os diagramas à esquerda voltam a ter a linha só para eles."
+        )
+
+    def interruptores_da_vista(self) -> dict[str, bool]:
+        """As marcas que o menu Texto mostra para a vista desta aba, para a janela pô-las ao abrir."""
+        return {"diagramas_a_esquerda": self.diagramas_a_esquerda, "texto_ao_lado": self._texto_ao_lado}
+
     def alternar_diagramas_a_esquerda(self) -> None:
         self.definir_diagramas(DIAGRAMAS_AO_CENTRO if self.diagramas_a_esquerda else DIAGRAMAS_A_ESQUERDA)
         self.estado.emit(
@@ -2753,6 +2832,24 @@ class PainelDeTexto(QWidget):
             f"Miniaturas {NOME_DO_TAMANHO[self._tamanho_da_miniatura]} "
             f"({TAMANHOS_DA_MINIATURA[self._tamanho_da_miniatura]} px no corpo do sistema)."
         )
+
+    @property
+    def familia_da_letra(self) -> str:
+        return self._familia_da_letra
+
+    def definir_familia_da_letra(self, familia: str) -> None:
+        """A letra de leitura (S-632). Vista, e não documento: redesenha sem tornar a folha «por gravar»."""
+        familia = familia if familia in FAMILIAS_DA_LETRA else FAMILIA_DA_LETRA_PADRAO
+        if familia == self._familia_da_letra:
+            return
+        self._familia_da_letra = familia
+        self._redesenhar_a_vista()
+
+    def mudar_familia_da_letra(self) -> None:
+        self.definir_familia_da_letra(proxima_familia_da_letra(self._familia_da_letra))
+        nome = NOME_DA_FAMILIA[self._familia_da_letra]
+        familia = self._base[1] if self._base is not None else ""
+        self.estado.emit(f"Letra da folha: {nome} ({familia})." if familia else f"Letra da folha: {nome}.")
 
     def _redesenhar_a_vista(self) -> None:
         """Redesenha a folha como está, por uma mudança de vista: nem pilha, nem rascunho, nem caderno."""
@@ -2834,13 +2931,15 @@ class PainelDeTexto(QWidget):
         return len(mudar)
 
     def aplicar_estado(self, estado: object) -> None:
-        """A vista da aba como a sessão anterior a deixou: zoom, quebra, motor, modo bloco e os diagramas."""
+        """A vista da aba como a sessão anterior a deixou: zoom, quebra, motor, modo bloco, os diagramas e a letra."""
         self.aplicar_zoom(int(getattr(estado, "texto_zoom", 0)), avisar=False)
         self.definir_quebra(bool(getattr(estado, "texto_quebra", True)))
         self.definir_motor(str(getattr(estado, "texto_motor", "")))  # o motor e o modo bloco da sessão anterior (item 17)
         self.definir_modo_bloco(bool(getattr(estado, "texto_bloco", False)))
         self.definir_diagramas(str(getattr(estado, "texto_diagramas", "")))
         self.definir_tamanho_da_miniatura(str(getattr(estado, "texto_miniatura", "")))
+        self.definir_familia_da_letra(str(getattr(estado, "texto_familia", "")))
+        self.definir_texto_ao_lado(bool(getattr(estado, "texto_ao_lado", False)))
         self.fita.definir_recolhida(bool(getattr(estado, "texto_fita_recolhida", False)))
         self._glifos_recentes = [str(g) for g in getattr(estado, "texto_glifos_recentes", [])][:GLIFOS_RECENTES]
         self._encher_a_paleta()
@@ -2853,6 +2952,8 @@ class PainelDeTexto(QWidget):
         estado.texto_bloco = bool(self.modo_bloco)  # type: ignore[attr-defined]
         estado.texto_diagramas = self._diagramas  # type: ignore[attr-defined]
         estado.texto_miniatura = self._tamanho_da_miniatura  # type: ignore[attr-defined]
+        estado.texto_familia = self._familia_da_letra  # type: ignore[attr-defined]
+        estado.texto_ao_lado = self._texto_ao_lado  # type: ignore[attr-defined]
         estado.texto_fita_recolhida = self.fita.recolhida  # type: ignore[attr-defined]
         estado.texto_glifos_recentes = list(self._glifos_recentes)  # type: ignore[attr-defined]
 
@@ -3131,6 +3232,8 @@ class PainelDeTexto(QWidget):
         folha = self._pagina_rgb
         dpi = self._dpi
         com_imagens = bool(getattr(formato, "pasta_de_imagens", ""))
+        # A vista dos diagramas vai junto (S-622): o arquivo mostra o que a tela mostra.
+        diagramas, ao_lado = alinhamento_dos_diagramas(self._diagramas), self._texto_ao_lado
 
         # **Cancelável, e o ponto de corte é antes da escrita** (F9-C2, §7 item 7). A conversão
         # do documento é a parte longa; escrever o arquivo é um `write` só. Então desistir tem um
@@ -3144,7 +3247,7 @@ class PainelDeTexto(QWidget):
             # Os recortes dos diagramas saem **antes** do arquivo, na mesma thread: são o que o
             # `.md` e o `.html` apontam (S-338). Sem folha renderizada a marca sai sozinha.
             recortes = _gravar_recortes(doc, caminho, folha, dpi=dpi) if com_imagens else {}
-            relatorio = exportacao.exportar(doc, formato, recortes=recortes)
+            relatorio = exportacao.exportar(doc, formato, recortes=recortes, diagramas=diagramas, ao_lado=ao_lado)
             if desistir.is_set():
                 return CANCELADA
             exportacao.escrever(caminho, relatorio)

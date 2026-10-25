@@ -69,6 +69,20 @@ class FenDoDiagramaTests(unittest.TestCase):
         sem = exportacao.exportar(self.documento(), exportacao.Markdown()).conteudo
         self.assertIn("[Diagrama 1]\n<!-- FEN: " + self.FEN + " -->", sem)
 
+    def test_o_texto_ao_lado_flutua_a_figura_no_md_e_no_html(self) -> None:
+        # S-624: só a figura que se desenha à esquerda, e só nos formatos que levam imagem.
+        recortes = {1: Path("d.png")}
+        md = exportacao.exportar(self.documento(), exportacao.Markdown(), recortes=recortes, diagramas="esquerda", ao_lado=True)
+        self.assertIn('<img align="left" src="diagramas/d.png" alt="[Diagrama 1]">\n<!-- FEN: ' + self.FEN + " -->", md.conteudo)
+        html = exportacao.exportar(self.documento(), exportacao.Html(), recortes=recortes, diagramas="esquerda", ao_lado=True)
+        self.assertIn('<img class="diagrama ao-lado" src="diagramas/d.png"', html.conteudo)
+        self.assertIn(".diagrama.ao-lado { float: left;", html.conteudo)
+        self.assertNotIn('<div class="alinhar-esquerda"><img', html.conteudo, "um div em volta fecharia o fluxo")
+        ao_centro = exportacao.exportar(self.documento(), exportacao.Html(), recortes=recortes, ao_lado=True)
+        self.assertNotIn("diagrama ao-lado", ao_centro.conteudo, "a figura centralizada não flutua")
+        sem_imagem = exportacao.exportar(self.documento(), exportacao.Markdown(), diagramas="esquerda", ao_lado=True)
+        self.assertNotIn('align="left"', sem_imagem.conteudo)
+
     def test_o_html_escreve_a_fen_no_data_fen(self) -> None:
         com = exportacao.exportar(self.documento(), exportacao.Html(), recortes={1: Path("d.png")}).conteudo
         self.assertIn('alt="[Diagrama 1]" data-fen="' + self.FEN + '">', com)

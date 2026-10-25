@@ -635,8 +635,8 @@ class JanelaPrincipal(QMainWindow):
         self.pdf.roda_vira_pagina.setChecked(estado.wheel_flips_page)
         self.painel.mostrar_incerteza = estado.show_heatmap
         self.texto.aplicar_estado(estado)  # zoom, quebra, motor, modo bloco e os diagramas (S-620, S-623)
-        self.menu.marcar("mesa_de_texto", ligado=self.mesa.ligada)
-        self.menu.marcar("diagramas_a_esquerda", ligado=self.texto.diagramas_a_esquerda)
+        for nome, ligado in {"mesa_de_texto": self.mesa.ligada, **self.texto.interruptores_da_vista()}.items():
+            self.menu.marcar(nome, ligado=ligado)  # a mesa (S-640) e a vista dos diagramas (S-620, S-624)
         self.estudo.posicionar_divisor(estado.estudo_divisor)
         # Daqui para baixo o disco já está nos widgets, e gravar volta a ser honesto (S-322).
         self._estado_aplicado = True

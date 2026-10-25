@@ -220,6 +220,17 @@ def fonte_base() -> tuple[int, str, str]:
     return tamanho, proporcional, monoespacada
 
 
+def familia_serifada(reserva: str) -> str:
+    """A serifada da letra de leitura (S-632), ou a `reserva` quando o sistema não tem nenhuma das preferidas."""
+    try:
+        if QApplication.instance() is None:
+            return reserva
+        return tipografia.familia_serifada(QFontDatabase.families(), reserva)
+    except Exception as exc:  # noqa: BLE001 - a mesma defesa de `fonte_base`
+        logger.debug("Famílias do sistema não lidas (%s): usando %s.", exc, reserva)
+        return reserva
+
+
 def fonte_atual(papel: str, *, negrito: bool = False) -> QFont:
     """Um papel da S-149 resolvido contra a fonte do sistema, já como `QFont`.
 
