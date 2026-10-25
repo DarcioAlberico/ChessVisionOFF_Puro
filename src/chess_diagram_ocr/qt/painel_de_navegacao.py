@@ -59,7 +59,7 @@ class PainelDeNavegacao(QTabWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setAccessibleName("Painel de navegação")
-        self.setMinimumWidth(self.fontMetrics().horizontalAdvance("M") * 18)
+        self.setMinimumWidth(self.fontMetrics().horizontalAdvance("Títulos Folhas Resultados Correções") + 64)  # as quatro abas cabem sem rolar
         self.titulos = self._lista("Títulos da folha")
         self.indice = IndiceDoCaderno(self)
         self.indice.show()  # dentro do painel ele aparece com a aba; quem esconde é o painel

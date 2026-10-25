@@ -7,7 +7,6 @@ Os critérios estão em `docs/ROADMAP_MESA_DE_TEXTO.md`. Os puros (curinga, suge
 from __future__ import annotations
 
 import unittest
-from pathlib import Path
 from unittest import mock
 
 from ambiente_de_teste import pasta_temporaria
@@ -143,6 +142,35 @@ class FitaTests(_Aba):
         self.selecionar(3, 8)
         QTest.keyClick(self.painel.editor, Qt.Key.Key_B, Qt.KeyboardModifier.ControlModifier)
         self.assertTrue(any(c.atributos.negrito and "bispo" in c.texto for c in self.painel.documento.corridas))
+
+    def test_a_fita_tem_a_altura_da_aba_a_vista(self) -> None:
+        """A aba Revisão, de uma linha, não pode carregar a altura da Página inicial (visto em 2026-10-25)."""
+        fita = self.painel.fita
+        fita.setCurrentIndex(1)
+        inicial = fita.heightForWidth(400)
+        fita.setCurrentIndex(4)
+        self.assertLess(fita.heightForWidth(400), inicial)
+
+
+    def test_nenhum_grupo_passa_de_cinco_itens(self) -> None:
+        """A fita quebra entre grupos e não dentro deles: o grupo Fonte do Word, com quinze itens, era
+        cortado e alargava a aba além da coluna da mesa (visto em 2026-10-25). A régua é pela
+        declaração, e não pela largura medida: sob `offscreen` a fonte de reserva mede o dobro do
+        Segoe UI, e o número não diria nada da tela de verdade."""
+        for aba in fita_do_texto.ABAS:
+            for grupo in aba.grupos:
+                with self.subTest(aba=aba.nome, grupo=grupo.nome):
+                    self.assertLessEqual(len(grupo.itens), 5)
+
+    def test_toda_tecla_do_editor_traduz_para_o_qt(self) -> None:
+        """`Ctrl+]`/`Ctrl+[` não traduziam (`bracketright`): a tecla existia na tabela e não fazia nada."""
+        from chess_diagram_ocr.qt.atalhos import sequencia_qt
+        from chess_diagram_ocr.ui import atalhos
+
+        for acao, sequencia in atalhos.TECLAS_DO_EDITOR.items():
+            with self.subTest(acao=acao):
+                self.assertTrue(sequencia_qt(sequencia))
+        self.assertEqual(set(self.painel._teclas_do_editor), set(atalhos.TECLAS_DO_EDITOR))
 
     def test_recolher_e_voltar_pelo_estado(self) -> None:
         from chess_diagram_ocr.ui.state import AppState

@@ -113,6 +113,10 @@ TECLAS_NOMEADAS: dict[str, str] = {
     "space": "Space",
     "plus": "+",
     "minus": "-",
+    # O corpo do parágrafo (S-260), `Ctrl+]`/`Ctrl+[` do Word. Faltavam, e desde o porte as duas
+    # teclas não traduziam: medido em 2026-10-25, o painel avisava no log e a tecla não fazia nada.
+    "bracketright": "]",
+    "bracketleft": "[",
 }
 """`nome do Tk -> nome do Qt`, para as teclas que os dois chamam de coisas diferentes.
 

@@ -51,59 +51,28 @@ CONTROLES = frozenset({"@corpo", "@cor", "@realce", "@galeria", "@folha", "@moto
 """Os controles que colhem valor. Ver o cabeçalho."""
 
 ABAS: tuple[Aba, ...] = (
+    # **Nenhum grupo passa de ~550 px**, e é regra: a fita quebra entre grupos e não dentro de um, e
+    # um grupo mais largo que a coluna da mesa (770 px numa janela de 1.400) era cortado e alargava a
+    # aba inteira -- o editor ganhava rolagem horizontal. Por isso os grupos do Word vêm em dois.
     Aba(
         "Arquivo",
         (
             Grupo("Documento", ("abrir_texto", "salvar_texto", "salvar_texto_como")),
-            Grupo(
-                "Exportar",
-                (
-                    "exportar_txt",
-                    "exportar_md",
-                    "exportar_html",
-                    "exportar_rtf",
-                    "exportar_pdf_pesquisavel",
-                    "exportar_caderno",
-                ),
-            ),
+            Grupo("Exportar a folha", ("exportar_txt", "exportar_md", "exportar_html", "exportar_rtf")),
+            Grupo("Exportar mais", ("exportar_pdf_pesquisavel", "exportar_caderno")),
         ),
     ),
     Aba(
         "Página inicial",
         (
-            Grupo("Área de transferência", ("colar", "recortar", "copiar", "pincel_de_formatacao", "copiar_formato", "colar_formato")),
-            Grupo(
-                "Fonte",
-                (
-                    "@corpo",
-                    "aumentar_corpo",
-                    "diminuir_corpo",
-                    "corpo_normal",
-                    "maiusculas",
-                    "minusculas",
-                    "capitular",
-                    "limpar_formato",
-                    "negrito",
-                    "italico",
-                    "sublinhado",
-                    "tachado",
-                    "@cor",
-                    "limpar_cor",
-                    "@realce",
-                ),
-            ),
-            Grupo(
-                "Parágrafo",
-                (
-                    "alinhar_esquerda",
-                    "alinhar_centro",
-                    "alinhar_direita",
-                    "justificar",
-                    "diagramas_a_esquerda",
-                    "marcas_de_formatacao",
-                ),
-            ),
-            Grupo("Estilos", ("@galeria", "estilo_titulo", "estilo_prosa", "estilo_notacao", "estilo_legenda")),
+            Grupo("Área de transferência", ("colar", "recortar", "copiar")),
+            Grupo("Pincel", ("pincel_de_formatacao", "copiar_formato", "colar_formato")),
+            Grupo("Fonte", ("@corpo", "aumentar_corpo", "diminuir_corpo", "corpo_normal")),
+            Grupo("Caixa", ("maiusculas", "minusculas", "capitular")),
+            Grupo("Ênfase", ("negrito", "italico", "sublinhado", "tachado", "limpar_formato")),
+            Grupo("Cor", ("@cor", "limpar_cor", "@realce")),
+            Grupo("Parágrafo", ("alinhar_esquerda", "alinhar_centro", "alinhar_direita", "justificar", "marcas_de_formatacao")),
+            Grupo("Estilos", ("@galeria",)),
             Grupo("Edição", ("achar", "substituir", "selecionar_tudo")),
         ),
     ),
@@ -112,38 +81,27 @@ ABAS: tuple[Aba, ...] = (
         (
             Grupo("Xadrez", ("inserir_figurina", "inserir_avaliacao", "paleta_de_glifos", "codigo_unicode")),
             Grupo(
-                "Diagrama",
-                (
-                    "diagramas_da_folha_a_esquerda",
-                    "diagramas_da_folha_ao_centro",
-                    "diagramas_da_folha_como_a_preferencia",
-                    "tamanho_da_miniatura",
-                ),
+                "Diagramas da folha",
+                ("diagramas_da_folha_a_esquerda", "diagramas_da_folha_ao_centro", "diagramas_da_folha_como_a_preferencia"),
             ),
+            Grupo("Diagramas no texto", ("diagramas_a_esquerda", "tamanho_da_miniatura")),
         ),
     ),
     Aba(
         "Leitura",
         (
-            Grupo("Folha", ("@folha", "@motor", "@modo_bloco", "ler_folha", "folha_da_pagina_aberta", "ler_folha_de_novo")),
+            Grupo("Folha", ("@folha", "@motor", "@modo_bloco")),
+            Grupo("Ler", ("ler_folha", "folha_da_pagina_aberta", "ler_folha_de_novo")),
             Grupo(
                 "Caderno",
-                (
-                    "marcar_folha_conferida",
-                    "voltar_a_versao_anterior",
-                    "descartar_correcoes",
-                    "indice_do_caderno",
-                ),
+                ("marcar_folha_conferida", "voltar_a_versao_anterior", "descartar_correcoes", "indice_do_caderno"),
             ),
         ),
     ),
     Aba(
         "Revisão",
         (
-            Grupo(
-                "Léxico",
-                ("marcar_fora_do_lexico", "proxima_fora_do_lexico", "limpar_marcas_do_lexico"),
-            ),
+            Grupo("Léxico", ("marcar_fora_do_lexico", "proxima_fora_do_lexico", "limpar_marcas_do_lexico")),
             Grupo("Correções", ("lista_de_correcoes",)),
             Grupo("Parágrafo", ("mover_paragrafo_acima", "mover_paragrafo_abaixo")),
         ),
@@ -179,7 +137,17 @@ DE_ESTADO = frozenset(
 """Os botões que mostram o que vale sob o cursor (S-650): marcados, desmarcados, ou desmarcados no misto."""
 
 
-CONTROLE_DO_COMANDO: dict[str, str] = {"modo_bloco": "@modo_bloco", "cor_do_texto": "@cor", "realce": "@realce"}
+CONTROLE_DO_COMANDO: dict[str, str] = {
+    "modo_bloco": "@modo_bloco",
+    "cor_do_texto": "@cor",
+    "realce": "@realce",
+    # Os quatro estilos são as amostras da galeria (S-651): botões de novo ao lado dela eram a mesma
+    # escolha duas vezes, e alargavam a fita além da coluna da mesa.
+    "estilo_titulo": "@galeria",
+    "estilo_prosa": "@galeria",
+    "estilo_notacao": "@galeria",
+    "estilo_legenda": "@galeria",
+}
 """Os comandos do catálogo que, na fita, são um controle: a caixa do modo bloco e as duas listas de
 cor. É o que o inventário consulta para não os dar por fora da fita."""
 

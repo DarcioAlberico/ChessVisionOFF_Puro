@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QTabWidget, QToolButton, QVBoxLayout, QWidget
 
@@ -66,6 +66,10 @@ class FitaDoTexto(QTabWidget):
         super().__init__(parent)
         self.setAccessibleName("Fita do Texto")
         self.setDocumentMode(True)
+        politica = self.sizePolicy()
+        politica.setVerticalPolicy(politica.Policy.Maximum)
+        politica.setHeightForWidth(True)
+        self.setSizePolicy(politica)
         self._alvo = alvo
         self._controles = dict(controles)
         self._rotulos_do_desfazer = rotulos_do_desfazer
@@ -80,6 +84,8 @@ class FitaDoTexto(QTabWidget):
         self.setCornerWidget(self._acesso_rapido(), Qt.Corner.TopRightCorner)
         self.setCurrentIndex(1)  # a Página inicial; a Arquivo é a primeira, como no Word
         self.tabBarClicked.connect(self._clicou_na_aba)
+        self.currentChanged.connect(self._altura_da_aba)
+        self._altura_da_aba(self.currentIndex())
 
     # ---------------------------------------------------------------------------- montagem
 
@@ -190,6 +196,36 @@ class FitaDoTexto(QTabWidget):
         else:
             self.setMaximumHeight(16777215)
         self.recolhida_mudou.emit(self.recolhida)
+
+    def _altura_da_aba(self, atual: int) -> None:
+        """A fita tem a altura da aba **à vista**, e não a da mais alta.
+
+        O `QTabWidget` mede todas as páginas e fica com a maior: a aba Revisão, de uma linha, deixava
+        a faixa vazia da Página inicial, de três, entre a fita e a folha. As escondidas passam a não
+        pedir altura nenhuma.
+        """
+        del atual  # a conta é de `heightForWidth`, que lê a aba atual na hora
+        self.updateGeometry()
+
+    def hasHeightForWidth(self) -> bool:  # noqa: N802 - API do Qt
+        return True
+
+    def heightForWidth(self, a0: int) -> int:  # noqa: N802 - API do Qt
+        """A barra das abas mais a aba atual nesta largura -- e não a maior das seis.
+
+        A pilha de páginas do `QTabWidget` responde pela página mais alta, e a `BarraFluida` de cada
+        aba é de altura por largura: a Página inicial, de três linhas, ditava a altura da Revisão.
+        """
+        barra_de_abas = self.tabBar()
+        abas = barra_de_abas.sizeHint().height() if barra_de_abas is not None else 0
+        atual = self.currentWidget()
+        if self.recolhida or atual is None:
+            return abas + 2
+        return abas + atual.heightForWidth(max(1, a0)) + 8
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - API do Qt
+        dica = super().sizeHint()
+        return QSize(dica.width(), self.heightForWidth(self.width() or dica.width()))
 
     def _clicou_na_aba(self, _indice: int) -> None:
         if self.recolhida:

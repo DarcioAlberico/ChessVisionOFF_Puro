@@ -314,6 +314,14 @@ O conserto barato do itálico (S-660, remedido: ver a seção dela) e a Fase 95 
 | S-659 | ✅ | Busca por palavra inteira e com curinga (`busca.curinga_para_regex`, que recusa repetir grupo inteiro), troca com `\1` a `\9`; `Alt+Shift+↑/↓` move o parágrafo; `Alt+X` só com quatro dígitos sem `U+`, porque as letras de `a` a `f` também são hexadecimais |
 | os confortos | ✅ | A paleta de glifos mostra primeiro os 20 usados por último, guardados no estado da sessão |
 
+**O que a conferência na tela achou (2026-10-25).** Fotografada a janela de verdade lendo o
+Seirawan, quatro defeitos que a suíte não via, todos consertados: os grupos do Word com até quinze
+itens passavam da coluna da mesa e eram cortados, alargando a aba e dando rolagem horizontal ao
+editor (agora nenhum grupo passa de cinco itens, e os comandos novos têm rótulo curto na fita); a
+fita guardava a altura da aba mais alta (`heightForWidth` da aba à vista); os quatro botões de estilo
+repetiam a galeria; e `Ctrl+]`/`Ctrl+[` não traduziam para o Qt (`bracketright`), então o corpo do
+parágrafo não tinha tecla. O índice passou a marcar a folha que se abriu por ele.
+
 ## Custo, risco e ordem
 
 | fase | esforço | risco | o que fica se ela parar no meio |

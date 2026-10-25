@@ -2106,6 +2106,7 @@ class PainelDeTexto(QWidget):
             self._renderizar_ao_fundo(indice)
         cad.visitar(indice)
         self._vai_ao_caderno = True
+        self._mostrar_indice()  # a linha marcada do índice acompanha a folha que abriu
         guardada = cad.estado(indice)
         feitas = 0 if guardada is None else guardada.correcoes
         self.estado.emit(
