@@ -49,7 +49,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Aumento dirigido ao acervo (S-40), como as letras de `AugmentConfig.version`: "
             "m=espelhar, h=hachura, s=granulacao, p=papel, i=inversao, e=espessura do traco "
-            "(C4 do ciclo 2 OCR/UI). Ex.: --augment mhsp, --augment mhspe. "
+            "(C4 do ciclo 2 OCR/UI), x=marca de casa sobre a vazia (estrela, X, ponto, cruz). "
+            "Ex.: --augment mhsp, --augment mhspe, --augment x. "
             "'aug0' (padrao) e o conjunto generico de antes da S-40. NAO MEDIDO ainda: ligar "
             "muda o modelo, e a comparacao honesta e treinar as duas variantes com a mesma "
             "semente e medir com `cvoff-field`."

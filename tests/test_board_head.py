@@ -139,6 +139,43 @@ class BoardUnitDatasetTests(unittest.TestCase):
         self.assertEqual(len(vistas), SQUARES_PER_BOARD)
         self.assertTrue(all(canais == 1 for canais in vistas), "o transform tem de ver uma casa por vez")
 
+    def test_a_marca_so_toca_a_casa_vazia_e_antes_do_aumento(self) -> None:
+        ordem: list[str] = []
+
+        def marca(x: torch.Tensor) -> torch.Tensor:
+            ordem.append("marca")
+            return torch.zeros_like(x)
+
+        def transform(x: torch.Tensor) -> torch.Tensor:
+            ordem.append("aumento")
+            return x
+
+        with tempfile.TemporaryDirectory() as tmp:
+            csv, samples = _fixture(Path(tmp))
+            base = BoardFenDataset(csv, samples, arch=BOARD_ARCH)
+            x, y = BoardUnitDataset(base, transform=transform, marca=marca)[0]
+
+        vazias = y == PIECE_CLASSES.index("empty")
+        self.assertEqual(ordem.count("marca"), int(vazias.sum()))
+        self.assertEqual(ordem.index("aumento"), 1, "a marca vem antes do aumento da mesma casa")
+        self.assertTrue(bool((x[vazias] == 0).all()))
+        self.assertTrue(bool((x[~vazias].flatten(1).amax(1) > 0).all()), "uma peça recebeu a marca")
+
+    def test_a_cabeca_por_casa_tambem_marca_so_a_vazia(self) -> None:
+        from torch.utils.data import Subset
+
+        from chess_diagram_ocr.training import TransformSubset
+
+        with tempfile.TemporaryDirectory() as tmp:
+            csv, samples = _fixture(Path(tmp))
+            base = BoardFenDataset(csv, samples)
+            itens = TransformSubset(Subset(base, range(64)), marca=torch.zeros_like)
+            pares = [itens[i] for i in range(64)]
+
+        vazia = PIECE_CLASSES.index("empty")
+        for x, y in pares:
+            self.assertEqual(bool((x == 0).all()), y == vazia)
+
 
 class EndToEndTests(unittest.TestCase):
     def test_one_epoch_produces_a_checkpoint_the_pipeline_can_read(self) -> None:
