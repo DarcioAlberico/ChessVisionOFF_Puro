@@ -316,6 +316,55 @@ class DesfazerADigitacaoTests(_Folha):
         self.assertEqual(passos[-1][0], original)
 
 
+class ForaDoPlanoBasicoTests(_Folha):
+    """A letra fora do plano básico vale duas posições no Qt e uma no documento.
+
+    Achado pelo portão da S-624 numa folha do Kemeri 1937, em que o OCR devolveu `🗸` (`U+1F5F8`): o
+    mapa media a corrida com `len` do Python, e toda posição depois da letra ficava deslocada de uma
+    -- a letra digitada ia ao lugar certo no documento e a tela era lida no vizinho.
+    """
+
+    FOLHA = "Lance 🗸 forte e depois 𝔅 outro."
+
+    def setUp(self) -> None:
+        super().setUp()
+        pagina = PaginaLida(documento="livro.pdf", pagina=0, colunas=(Coluna(indice=0, blocos=(_bloco(self.FOLHA), _bloco("Fim."))),))
+        self.painel.mostrar_pagina(pagina)
+        self.editor.setFocus()
+
+    def assertTelaConcorda(self) -> None:
+        from paridade_do_texto import divergencias
+
+        tela = qt_texto._texto_da_tela(self.editor.document())
+        for deslocamento, letra in enumerate(self.painel.texto()):
+            posicao = self.painel._mapa.posicao(deslocamento)
+            largura = 2 if ord(letra) > 0xFFFF else 1
+            self.assertEqual(qt_texto._do_qt(tela[posicao : posicao + largura]), letra, f"o mapa escorregou em {deslocamento}")
+        self.assertEqual(divergencias(self.painel), [])
+
+    def test_o_mapa_fecha_depois_das_duas_letras(self) -> None:
+        self.assertTelaConcorda()
+
+    def test_a_letra_digitada_depois_delas_cai_no_lugar_e_a_tela_concorda(self) -> None:
+        self.cursor_em(self.onde("outro"))
+        self.digitar("x")
+        self.assertIn("𝔅 xoutro", self.painel.texto())
+        self.assertTelaConcorda()
+
+    def test_colar_uma_delas_entra_inteira_no_documento(self) -> None:
+        self.cursor_em(self.onde("forte"))
+        self.editor.textCursor().insertText("🗸")
+        self.assertIn("🗸 🗸forte", self.painel.texto())
+        self.assertTelaConcorda()
+
+    def test_o_backspace_tira_a_letra_inteira_e_nao_meio_par(self) -> None:
+        self.cursor_em(self.onde("🗸") + 1)
+        self.tecla(Qt.Key.Key_Backspace)
+        self.assertIn("Lance  forte", self.painel.texto())
+        self.assertNotIn("\ud83d", self.painel.texto())
+        self.assertTelaConcorda()
+
+
 class MarcaDoDiagramaTests(_Folha):
     """A marca é do documento, a miniatura é do desenho -- e o documento é quem manda."""
 

@@ -222,6 +222,27 @@ class _Mapa:
             self._trechos.append(_Trecho(documento, janela, tamanho))
             self._fim_documento = max(self._fim_documento, documento + tamanho)
 
+    def registrar_texto(self, documento: int, janela: int, texto: str) -> None:
+        """Registra `texto`, escrito em `janela`, **contando como o Qt conta**: em unidades UTF-16.
+
+        A letra fora do plano básico (`U+1F5F8`, que o OCR às vezes devolve) é **uma** no documento e
+        **duas** no Qt, que guarda o par substituto. Um trecho só com `len(texto)` deixava toda posição
+        depois dela deslocada de uma -- a letra digitada ia ao lugar certo no documento e a tela era
+        lida no vizinho. Ela vira um trecho próprio de tamanho 1, e a metade de baixo do par fica no
+        vão entre dois trechos, que `deslocamento` já resolve para o começo do seguinte.
+        """
+        comeco = 0
+        andado = 0
+        for k, letra in enumerate(texto):
+            if ord(letra) <= 0xFFFF:
+                continue
+            self.registrar(documento + comeco, janela + andado, k - comeco)
+            andado += k - comeco
+            self.registrar(documento + k, janela + andado, 1)
+            andado += 2
+            comeco = k + 1
+        self.registrar(documento + comeco, janela + andado, len(texto) - comeco)
+
     def limpar(self) -> None:
         self._trechos.clear()
         self._fim_documento = 0
@@ -1018,7 +1039,7 @@ class PainelDeTexto(QWidget):
                     self._inserir_miniatura(cursor, corrida)
                 inicio = cursor.position()
                 cursor.insertText(corrida.texto, formato_de(corrida, base=base))
-                self._mapa.registrar(deslocamento, inicio, len(corrida.texto))
+                self._mapa.registrar_texto(deslocamento, inicio, corrida.texto)
                 deslocamento += len(corrida.texto)
             # **O formato de parágrafo é escrito depois do texto, bloco a bloco** (S-601). Escrito
             # no laço, antes de cada corrida, ele caía no bloco em que o cursor estava -- e a corrida
@@ -3686,7 +3707,7 @@ class PainelDeTexto(QWidget):
         """
         de = self._mapa.deslocamento(inicio)
         ate = self._mapa.deslocamento(inicio + removido)
-        escrito = novo.replace(OBJETO, "")
+        escrito = _do_qt(novo).replace(OBJETO, "")
         alcance = rico.alcance_da_edicao(self.documento, de, ate, escrito)
         if alcance is None:
             self.estado.emit(
@@ -4288,7 +4309,21 @@ def _texto_da_tela(documento: QTextDocument) -> str:
     parágrafo (`Enter`) e a de linha (`Shift+Enter`) -- viram a quebra do documento; todas valem um
     caractere, e é isso que mantém as posições.
     """
-    return documento.toRawText().replace("\u2029", "\n").replace("\u2028", "\n")
+    cru = documento.toRawText().replace("\u2029", "\n").replace("\u2028", "\n")
+    if cru.isascii() or all(ord(letra) <= 0xFFFF for letra in cru):
+        return cru
+    # A letra fora do plano básico vale **duas** posições no Qt, e o PyQt a entrega como uma letra
+    # só: o texto é refeito em unidades UTF-16, com o par substituto em duas letras soltas, para que
+    # o índice deste texto seja a posição do Qt. Quem leva texto daqui ao documento passa por `_do_qt`.
+    unidades = cru.encode("utf-16-le", "surrogatepass")
+    return "".join(chr(int.from_bytes(unidades[i : i + 2], "little")) for i in range(0, len(unidades), 2))
+
+
+def _do_qt(texto: str) -> str:
+    """O contrário da metade de `_texto_da_tela`: os pares substitutos soltos voltam a ser uma letra."""
+    if all(not 0xD800 <= ord(letra) <= 0xDFFF for letra in texto):
+        return texto
+    return texto.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "replace")
 
 
 def _comum_no_comeco(a: str, b: str) -> int:
