@@ -189,6 +189,9 @@ cvoff-texto-lado = "chess_diagram_ocr.cli.texto_lado:main"
 cvoff-texto-estilo-motor = "chess_diagram_ocr.cli.texto_estilo_motor:main"
 # S-624: o portao do diagrama a esquerda com o texto ao lado -- o editor continua dizendo a verdade?
 cvoff-texto-flutuante = "chess_diagram_ocr.cli.texto_flutuante:main"
+# S-661 a S-663: o conjunto rotulado do estilo da palavra, e o classificador com o portao dele.
+cvoff-texto-estilo-conjunto = "chess_diagram_ocr.cli.texto_estilo_conjunto:main"
+cvoff-texto-estilo-classificador = "chess_diagram_ocr.cli.texto_estilo_classificador:main"
 
 # S-210: o livro com a camada de texto invisivel do que o motor leu. A pagina nao muda um pixel --
 # `render_mode=3` --, e a camada e por LINHA para o retangulo da busca cobrir a palavra.

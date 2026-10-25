@@ -177,7 +177,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **43 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **45 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -409,6 +409,13 @@ cvoff-texto-estilo-motor --folhas 4 --json docs/metrics/texto_estilo_por_motor.j
 # com a figura flutuando, e conferida -- a guarda de paridade, o mapa de posicoes, a selecao e a
 # letra digitada ao lado da figura. O desenho de hoje e o controle. Folha contada de 1.
 cvoff-texto-flutuante --folha "1937 Kemeri.pdf:54" --json docs/metrics/texto_flutuante.json
+
+# O estilo da palavra pela imagem (Fase 96). O conjunto: recortes de palavra das folhas tipograficas,
+# rotulados pela camada e divididos por livro -- o mesmo livro em dois arquivos e juntado pelo texto.
+# O classificador: treina, e julga fora do livro, no render limpo e degradado como scan, contra
+# 'chutar normal' e 'chutar pela altura'. Os pesos vao para models/estilo_palavra.pt.
+cvoff-texto-estilo-conjunto --folhas 40 --json docs/metrics/texto_estilo_conjunto.json
+cvoff-texto-estilo-classificador --json docs/metrics/texto_estilo_classificador.json
 
 # O livro com a camada de texto invisivel do que o motor leu (S-210). A pagina nao muda um pixel
 # -- `render_mode=3` --, e a camada e por LINHA para o retangulo da busca cobrir a palavra, e nao
