@@ -156,7 +156,7 @@ def treinar(dados: dict[str, np.ndarray], *, epocas: int, semente: int) -> tuple
             perda = perda_fn(rede(x, w), y)
             perda.backward()
             otimizador.step()
-            soma += float(perda) * len(lote)
+            soma += perda.item() * len(lote)
         p = probabilidades(rede, dados["imagens"][validacao], dados["larguras"][validacao])
         verdade = classes[validacao]
         perda_val = float(-np.mean(np.log(np.maximum(p[np.arange(len(verdade)), verdade], 1e-9)))) if len(verdade) else 0.0
