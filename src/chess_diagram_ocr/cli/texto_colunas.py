@@ -126,7 +126,10 @@ def regioes_pelo_glifo(pdf: Path, indice: int) -> list[Any]:
 
     imagem = render_pdf_page(pdf, indice, dpi=DPI)
     escala = DPI / 72.0
-    retangulos = [tuple(v * escala for v in c.bbox_pdf) for c in detect_diagrams_in_pdf_page(pdf, indice, imagem)]
+    retangulos = [
+        (x0 * escala, y0 * escala, x1 * escala, y1 * escala)
+        for x0, y0, x1, y1 in (c.bbox_pdf for c in detect_diagrams_in_pdf_page(pdf, indice, imagem))
+    ]
     _, _, _, _, regioes = segmentar(imagem, retangulos)
     return regioes
 

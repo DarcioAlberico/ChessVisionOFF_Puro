@@ -219,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     por_livro = medir(pdfs, folhas=args.folhas, dpi=args.dpi, motores=MOTORES_MEDIDOS)
-    relatorio = {
+    relatorio: dict[str, Any] = {
         "item": "S-660 · o estilo da camada chega ao documento em cada motor?",
         "medido_em": date.today().isoformat(),
         "codigo": {"commit": git_commit(), "arvore_suja": git_worktree_dirty()},

@@ -1,4 +1,4 @@
-from __future__ import annotations
+from __future__ import annotations  # noqa: I001 - caminho de medição (S-218): mudar a árvore invalida os relatórios de campo
 
 import logging
 from collections.abc import Sequence

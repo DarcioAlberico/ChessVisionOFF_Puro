@@ -399,7 +399,7 @@ def aplicar_paleta(alvo: QApplication, *, cromo_escuro: bool) -> None:
     def tinta(papel: str) -> QColor:
         return QColor(tokens.cor(papel, None, cromo_escuro=cromo_escuro))
 
-    def papel_de(nome: str) -> object | None:
+    def papel_de(nome: str) -> QPalette.ColorRole | None:
         # `getattr` e não um `dict` de enums: um nome de papel que o Qt desta versão não tenha
         # não pode custar a paleta inteira -- é o mesmo contrato de degradação de `aplicar_tema`.
         return getattr(QPalette.ColorRole, nome, None)
@@ -535,7 +535,9 @@ def aplicar_tema(
     _alto_contraste = alto_contraste_ativo()
     if _alto_contraste:
         alvo.setStyleSheet("")
-        alvo.setPalette(alvo.style().standardPalette())
+        estilo = alvo.style()
+        if estilo is not None:
+            alvo.setPalette(estilo.standardPalette())
         logger.info("Alto contraste do sistema ativo: folha e paleta próprias não aplicadas (C14).")
         repintar()
         return "alto_contraste"

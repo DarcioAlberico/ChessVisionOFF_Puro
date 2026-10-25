@@ -220,7 +220,7 @@ def degradar(cinza: np.ndarray, aleatorio: np.random.Generator) -> np.ndarray:
     """
     import cv2
 
-    img = cinza.astype(np.uint8)
+    img: np.ndarray = cinza.astype(np.uint8)
     altura, largura = img.shape[:2]
     if aleatorio.random() < 0.5 and altura >= 4 and largura >= 4:
         pequena = cv2.resize(img, (max(1, largura // 2), max(1, altura // 2)), interpolation=cv2.INTER_AREA)

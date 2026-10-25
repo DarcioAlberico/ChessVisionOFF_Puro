@@ -283,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
 
     limpas: list[Dobra] = []
     degradadas: list[Dobra] = []
-    acertos = {"limpo": [], "degradado": []}
+    acertos: dict[str, list[bool]] = {"limpo": [], "degradado": []}
     altura_prevista: list[str] = []
     verdade_toda: list[str] = []
     rodadas = []
@@ -320,7 +320,7 @@ def main(argv: list[str] | None = None) -> int:
         "chutar_normal": round(estilo.acerto(["normal"] * len(verdade_toda), verdade_toda), 4),
         "chutar_pela_altura": round(estilo.acerto(altura_prevista, verdade_toda), 4),
     }
-    populacoes = {
+    populacoes: dict[str, dict[str, Any]] = {
         "limpo": {"acerto": round(float(np.mean(acertos["limpo"])), 4), "por_classe": julgar_dobras(limpas)},
         "degradado": {"acerto": round(float(np.mean(acertos["degradado"])), 4), "por_classe": julgar_dobras(degradadas)},
     }
@@ -335,7 +335,7 @@ def main(argv: list[str] | None = None) -> int:
         n: vence_o_controle and all(populacoes[p]["por_classe"][n]["aplicar"]["passa"] for p in populacoes) for n in julgaveis
     }
     passam = [n for n, ok in sugerir.items() if ok]
-    veredito = {
+    veredito: dict[str, Any] = {
         "vence_o_controle": vence_o_controle,
         "classes_julgadas": julgaveis,
         "sugerir_por_classe": sugerir,
@@ -359,7 +359,7 @@ def main(argv: list[str] | None = None) -> int:
             args.pesos,
         )
         pesos = str(args.pesos.name)
-    relatorio = {
+    relatorio: dict[str, Any] = {
         "item": "S-662 e S-663 · o classificador de estilo da palavra e o portão",
         "medido_em": date.today().isoformat(),
         "codigo": {"commit": git_commit(), "arvore_suja": git_worktree_dirty()},

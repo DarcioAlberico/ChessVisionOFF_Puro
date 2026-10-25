@@ -166,7 +166,7 @@ def conferir(painel: Any) -> Conferencia:
         painel.editor.setTextCursor(cursor)
         painel.editor.setFocus()
         onde = painel._mapa.deslocamento(seguinte.position())
-        QTest.keyClick(painel.editor, Qt.Key.Key_X)
+        QTest.keyClick(painel.editor, Qt.Key.Key_X)  # type: ignore[call-overload]  # o stub declara keyClick com `self`
         QApplication.processEvents()
         depois = painel.documento.para_texto()
         if depois != antes[:onde] + "x" + antes[onde:]:
@@ -200,7 +200,8 @@ def medir(pdf_dir: Path, folhas: list[tuple[str, int]], *, motor: str) -> list[d
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")  # a medição não abre janela na mesa de ninguém
     from PyQt6.QtWidgets import QApplication
 
-    app = QApplication.instance() or QApplication(sys.argv[:1])
+    existente = QApplication.instance()
+    app = existente if isinstance(existente, QApplication) else QApplication(sys.argv[:1])
     tema.aplicar_tema(app)
     rascunhos = Path(tempfile.mkdtemp(prefix="cvoff-flutuante-"))  # a digitação de teste não vai a data/rascunhos
     resultados = []

@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(sys.argv[0]).parent))
 import patch_colunas  # noqa: E402,F401
+
 from chess_diagram_ocr.text.leitor import ler_pagina  # noqa: E402
 
 SP = Path(sys.argv[0]).parent

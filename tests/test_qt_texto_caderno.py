@@ -607,9 +607,8 @@ class DiagramasNaTelaTests(_Aba):
         return achados
 
     def test_tres_diagramas_ao_centro_e_a_preferencia_os_leva_a_esquerda_sem_gravar(self) -> None:
-        from paridade_do_texto import divergencias
-
         import numpy as np
+        from paridade_do_texto import divergencias
 
         folha = np.full((400, 400, 3), 210, np.uint8)  # 72 dpi: os três bbox cabem nela
         self.painel.mostrar_pagina(_com_diagramas(str(self.livro), 0), folha_rgb=folha, dpi=72)

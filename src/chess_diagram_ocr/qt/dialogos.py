@@ -106,7 +106,7 @@ def ha_quem_responda() -> bool:
     consulta isto decide o que fazer sem resposta: fechar fecha, trocar de livro **guarda**.
     """
     aplicacao = QApplication.instance()
-    return aplicacao is not None and str(aplicacao.platformName()).casefold() != "offscreen"
+    return aplicacao is not None and QApplication.platformName().casefold() != "offscreen"
 
 
 def perguntar_descarte(pai: QWidget | None, paginas: Sequence[int], *, livro: str = "", ao_fechar: bool = True) -> bool:
@@ -152,6 +152,7 @@ def caixa_de_falha(pai: QWidget | None, titulo: str, mensagem: str, detalhe: str
         caixa.setDetailedText(detalhe)
     caixa.setStandardButtons(QMessageBox.StandardButton.Ok)
     copiar = caixa.addButton(strings.COPIAR, QMessageBox.ButtonRole.ActionRole)
+    assert copiar is not None  # o Qt só devolve `None` para papel que ele não monta
     dica_em(copiar, "Copia o título, a mensagem e o rastro completo, para colar num relato.")
 
     def _copiar() -> None:

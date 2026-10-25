@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QMenu, QWidget
 
@@ -60,9 +60,10 @@ class IndiceDoCaderno(QListWidget):
             menu.addAction(acao)
         return menu
 
-    def _abrir_menu(self, ponto: object) -> None:
+    def _abrir_menu(self, ponto: QPoint) -> None:
         menu = self.menu()
-        menu.exec(self.viewport().mapToGlobal(ponto))  # type: ignore[union-attr,arg-type]
+        vista = self.viewport()
+        menu.exec(vista.mapToGlobal(ponto) if vista is not None else ponto)
         menu.deleteLater()
 
     def keyPressEvent(self, e: object) -> None:  # noqa: N802 - API do Qt

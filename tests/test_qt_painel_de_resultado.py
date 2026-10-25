@@ -844,9 +844,9 @@ class SegundaOpiniaoTests(PainelTests):
         processo com a thread a correr (F9-C2). A tarefa fica sem pai (`manter_viva`) e os slots
         perguntam se o painel ainda existe -- se isto passar, o processo sobreviveu."""
         from PyQt6.QtTest import QTest
+        from qt_app import descartar
 
         from chess_diagram_ocr.qt import trabalho
-        from qt_app import descartar
 
         # Um painel só deste teste: é ele que morre no meio da leitura.
         painel = PainelDeResultado(mock.MagicMock(), csv_de_rotulos=pasta_temporaria(self) / "m.csv")

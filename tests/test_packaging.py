@@ -257,8 +257,20 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2105
+    LIMITE = 2123
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.123 no merge da mesa de texto com o ramo de integração (2026-10-25)**: os dois lados
+    partiram de 2.093. A CI do ramo de integração abriu o bloco de imports (+18, sem código, a nota
+    logo abaixo), e a mesa de texto pôs 12 linhas de código (S-640, Fases 92 e 95, S-646, cada uma
+    com a conta dela mais abaixo). 2.093 + 18 + 12 = 2.123.
+
+    **2.093 -> 2.111 na CI do ramo de integração (2026-10-25), e nenhuma linha é código.** O
+    `ruff check` (I001) parava a CI pelo menos desde 2026-10-08 sem que ninguém o rodasse, e o conserto dele
+    juntou as três linhas de `from chess_diagram_ocr.qt import ...` -- que passavam das 120
+    colunas -- num bloco entre parênteses com um nome por linha, e partiu em duas a importação de
+    `ui.configuracoes`. São as 18 linhas. Encolhê-las pedia mudar como a janela nomeia os módulos
+    de `qt/`, que é refatoração e não formatação.
 
     **2.100 -> 2.105 na S-646 (2026-10-25)**: a mesa numa janela própria. Tudo dela mora em
     `qt/mesa_destacada.py`; aqui ficaram o import, a construção, o comando do menu, a pergunta do

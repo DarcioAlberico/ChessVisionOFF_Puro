@@ -40,7 +40,6 @@ imagem estragaria a leitura. O sinal que resolveria são as coordenadas das bord
 from __future__ import annotations
 
 from collections.abc import Callable
-
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 

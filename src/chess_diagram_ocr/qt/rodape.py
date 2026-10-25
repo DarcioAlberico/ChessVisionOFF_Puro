@@ -302,16 +302,17 @@ class RodapeDaJanela(QWidget):
             janela.resize(720, 360)
             self._janela_de_mensagens = janela
         janela = self._janela_de_mensagens
-        lista = self._lista_de_mensagens()
-        if lista is not None and lista.count() == 1 and lista.item(0).text() == strings.MENSAGENS_ANTERIORES_VAZIO:
+        na_tela = self._lista_de_mensagens()
+        unica = na_tela.item(0) if na_tela is not None and na_tela.count() == 1 else None
+        if na_tela is not None and unica is not None and unica.text() == strings.MENSAGENS_ANTERIORES_VAZIO:
             if self.mensagens.todas():
-                lista.clear()
+                na_tela.clear()
                 for mensagem in self.mensagens.todas():
-                    lista.addItem(mensagem.linha())
+                    na_tela.addItem(mensagem.linha())
         janela.show()
         janela.raise_()
-        if lista is not None:
-            lista.scrollToBottom()
+        if na_tela is not None:
+            na_tela.scrollToBottom()
         return janela
 
     def _lista_de_mensagens(self) -> QListWidget | None:

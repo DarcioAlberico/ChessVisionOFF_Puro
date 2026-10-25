@@ -21,6 +21,7 @@ from chess_diagram_ocr.ui.busy import BusyRegistry
 
 if TEM_PYQT:
     from PyQt6.QtTest import QTest
+    from test_qt_janela import _livro
 
     from chess_diagram_ocr.qt.janela import JanelaPrincipal
     from chess_diagram_ocr.qt.leitura import (
@@ -31,7 +32,6 @@ if TEM_PYQT:
         sem_modelo,
     )
     from chess_diagram_ocr.qt.trabalho import Tarefa
-    from test_qt_janela import _livro
 
 
 def _diagrama(indice: int = 0):
@@ -188,7 +188,7 @@ class LeituraNaJanelaTests(unittest.TestCase):
     def test_abrir_o_livro_aquece_o_modelo_quando_a_janela_ocia(self) -> None:
         """O aquecimento é agendado (`ESPERA_PARA_AQUECER_MS`), não disparado: o portão
         `bloqueio` mediu 30–80 ms de GIL sobre «abrir PDF» com a carga no instante da abertura."""
-        janela = self.janela()
+        self.janela()
         self.assertEqual(self.servico.carregado, 0, "ainda não: a janela acabou de abrir")
         self._esperar(lambda: self.servico.carregado >= 1, ate_ms=6000)
         self.assertEqual(self.servico.carregado, 1)

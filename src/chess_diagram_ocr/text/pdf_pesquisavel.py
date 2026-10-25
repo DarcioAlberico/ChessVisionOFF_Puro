@@ -556,6 +556,7 @@ def escrever_camada(
                 total = _somar(total, RelatorioDaCamada(ja_tinham_camada=1))
                 continue
 
+            linhas: Sequence[Linha]
             if isinstance(lida, DocumentoRico):
                 linhas, parcial = _linhas_do_caderno(lida, figurinas=figurinas)
             else:

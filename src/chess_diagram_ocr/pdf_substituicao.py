@@ -894,9 +894,9 @@ def substituir_no_pdf(
         for op in substituicoes:
             if 0 <= op.pagina < len(doc):
                 por_pagina.setdefault(op.pagina, []).append(op)
-        for op in apagamentos:
-            if 0 <= op.pagina < len(doc):
-                borrachas.setdefault(op.pagina, []).append(op)
+        for borracha in apagamentos:
+            if 0 <= borracha.pagina < len(doc):
+                borrachas.setdefault(borracha.pagina, []).append(borracha)
 
         paginas = sorted(set(por_pagina) | set(borrachas))
         total = len(paginas)

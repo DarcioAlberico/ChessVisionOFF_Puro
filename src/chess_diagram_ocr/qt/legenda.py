@@ -100,10 +100,11 @@ class JanelaDeAtalhos(QDialog):
         # `QScrollArea` **não** pede largura pelo widget que ela embrulha: o `sizeHint` dela é o
         # do próprio quadro, e sem esta linha o `adjustSize` da janela nunca vê a grade. A conta
         # é a grade mais a moldura dos dois lados mais a barra vertical, que a legenda sempre tem.
+        estilo = rolagem.style()
         rolagem.setMinimumWidth(
             corpo.sizeHint().width()
             + 2 * rolagem.frameWidth()
-            + rolagem.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, None, rolagem)
+            + (estilo.pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, None, rolagem) if estilo is not None else 0)
         )
         fora.addWidget(rolagem, 1)
 

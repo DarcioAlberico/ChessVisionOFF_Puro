@@ -283,7 +283,9 @@ class PainelDaGaleria(QWidget):
         # portão `teclado` conta um focável sem nome nem papel.
         rolagem.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         rolagem.setWidget(lateral)
-        rolagem.setFixedWidth(LARGURA_DA_LATERAL + rolagem.verticalScrollBar().sizeHint().width())
+        vertical = rolagem.verticalScrollBar()
+        assert vertical is not None  # a `QScrollArea` recém-montada sempre tem as duas barras
+        rolagem.setFixedWidth(LARGURA_DA_LATERAL + vertical.sizeHint().width())
         # E ela mostra o campo que recebe o foco vindo de fora dela: o Shift+Tab do rodapé punha
         # «Copiar cabeçalhos para todos» com 0 px à vista a 1280x641, nas três peles (crítico da
         # fase 5 do ciclo 2 OCR/UI, ciclo 5). Ver `foco_a_vista`.

@@ -104,6 +104,8 @@ class DialogoDeConfiguracoes(QDialog):
         self.btn_salvar = self.botoes.addButton("Salvar", QDialogButtonBox.ButtonRole.AcceptRole)
         self.btn_cancelar = self.botoes.addButton("Cancelar", QDialogButtonBox.ButtonRole.RejectRole)
         self.btn_padroes = self.botoes.addButton("Restaurar padrões", QDialogButtonBox.ButtonRole.ResetRole)
+        # o Qt só devolve `None` para papel que ele não monta
+        assert self.btn_salvar is not None and self.btn_cancelar is not None and self.btn_padroes is not None
         for botao, nome, papel in (
             (self.btn_salvar, "Salvar as configurações", estilos.PRIMARIO),
             (self.btn_cancelar, "Cancelar", estilos.NEUTRO),
@@ -218,7 +220,7 @@ class _CampoDeCaminho(QWidget):
         linha.addWidget(self.campo, 1)
         linha.addWidget(self.btn)
 
-    def setAccessibleName(self, nome: str) -> None:  # noqa: N802 - API do Qt
+    def setAccessibleName(self, nome: str | None) -> None:  # noqa: N802 - API do Qt
         super().setAccessibleName(nome)
         self.campo.setAccessibleName(nome)
 

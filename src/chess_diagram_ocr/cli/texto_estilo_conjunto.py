@@ -171,10 +171,10 @@ def gravar(coleta: dict[str, Any], pasta: Path) -> dict[str, Any]:
         escritor.writerow(("identidade", "arquivo", "folha", "palavra", "rotulo", "particao", "altura_px"))
         escritor.writerows(linhas)
 
-    por_particao = {p: Counter() for p in estilo.PARTICOES}
+    por_particao: dict[str, Counter[str]] = {p: Counter() for p in estilo.PARTICOES}
     for linha in linhas:
         por_particao[linha[5]][linha[4]] += 1
-    juntados = {}
+    juntados: dict[str, list[str]] = {}
     for arquivo, ident in identidade.items():
         juntados.setdefault(ident, []).append(arquivo)
     return {

@@ -131,7 +131,7 @@ class Ponte:
             except TypeError:  # um importador mais antigo, sem o motivo
                 self.importador.cancelar()
 
-    def _chegou(self, resultado: object) -> None:
+    def _chegou(self, resultado: Any) -> None:
         """O relatório da importação (inteiro ou parcial) vira o estado das páginas no trilho."""
         self._trilho.importacao_terminou()
         pdf = self._pdf_importado

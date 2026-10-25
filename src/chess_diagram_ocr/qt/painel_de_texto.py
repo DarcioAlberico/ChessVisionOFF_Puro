@@ -63,9 +63,10 @@ import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import cast
 
 import numpy as np
-from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (
     QAction,
     QHelpEvent,
@@ -589,7 +590,9 @@ class PainelDeTexto(QWidget):
         self.editor.textChanged.connect(self._mostrar_vazio)
         # A barra diz o estilo, a cor e o realce que valem sob o cursor (S-292, item 22).
         self.editor.cursorPositionChanged.connect(self._seguir_o_cursor)
-        self.editor.viewport().installEventFilter(self)
+        folha = self.editor.viewport()
+        assert folha is not None  # o editor recém-montado sempre tem a área de desenho
+        folha.installEventFilter(self)
         # O `Ctrl+Z` de dentro da folha. Ver `TECLAS_DO_HISTORICO`.
         self.editor.installEventFilter(self)
         self._teclas_do_historico = _teclas_da_tabela(TECLAS_DO_HISTORICO)
@@ -2081,7 +2084,7 @@ class PainelDeTexto(QWidget):
             return not self.tem_alteracoes
         if not self._vai_ao_caderno:
             return not self.tem_alteracoes
-        pagina = int(self.documento.origem.pagina)  # type: ignore[union-attr] - `_caderno_da_tela` viu a origem
+        pagina = int(self.documento.origem.pagina)  # type: ignore[union-attr]  # `_caderno_da_tela` viu a origem
         feitas = len(correcao.correcoes(self.documento))
         try:
             feito = cad.gravar(correcao.com_procedencia_humana(self.documento), correcoes=feitas)
@@ -2206,7 +2209,7 @@ class PainelDeTexto(QWidget):
 
     def _folha_chegou(self, resultado: object) -> None:
         """A folha rasterizada ao fundo: as miniaturas entram, sem mexer no texto, na seleção nem na pilha."""
-        indice, dpi, imagem = resultado  # type: ignore[misc]
+        indice, dpi, imagem = cast("tuple[int, int, np.ndarray | None]", resultado)
         if imagem is None or indice != self._folha_pedida_ao_fundo:
             return
         if self._pagina is None or int(self._pagina.pagina) != indice or self._caderno_da_tela() is None:
@@ -2214,9 +2217,8 @@ class PainelDeTexto(QWidget):
         self._pagina_rgb = imagem
         self._dpi = int(dpi)
         if self.documento.diagramas:
-            rolagem = self.editor.verticalScrollBar().value()
-            self._desenhar(selecao=self._selecao_atual())
-            self.editor.verticalScrollBar().setValue(rolagem)
+            self._redesenhar_a_vista()
+            return
         self._atualizar_status()
         self._mostrar_impresso()
 
@@ -2404,7 +2406,9 @@ class PainelDeTexto(QWidget):
         self._pincel = atributos
         self._pincel_fixo = False
         self._pincel_armado_em = self._relogio()
-        self.editor.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
+        folha = self.editor.viewport()
+        if folha is not None:
+            folha.setCursor(Qt.CursorShape.PointingHandCursor)
         self.fita.marcar({"pincel_de_formatacao": True})
         self.estado.emit("Pincel armado: selecione o trecho que recebe a formatação (Esc desarma).")
 
@@ -2427,7 +2431,9 @@ class PainelDeTexto(QWidget):
     def _desarmar_pincel(self) -> None:
         self._pincel = None
         self._pincel_fixo = False
-        self.editor.viewport().unsetCursor()
+        folha = self.editor.viewport()
+        if folha is not None:
+            folha.unsetCursor()
         self.fita.marcar({"pincel_de_formatacao": False})
 
     def _sair_com_esc(self) -> bool:
@@ -2874,9 +2880,11 @@ class PainelDeTexto(QWidget):
 
     def _redesenhar_a_vista(self) -> None:
         """Redesenha a folha como está, por uma mudança de vista: nem pilha, nem rascunho, nem caderno."""
-        rolagem = self.editor.verticalScrollBar().value()
+        barra = self.editor.verticalScrollBar()
+        rolagem = barra.value() if barra is not None else 0
         self._desenhar(selecao=self._selecao_atual())
-        self.editor.verticalScrollBar().setValue(rolagem)
+        if barra is not None:
+            barra.setValue(rolagem)
         self._atualizar_status()
 
     def _alinhar_os_diagramas_da_folha(self, alinhamento: str) -> None:
@@ -3055,7 +3063,7 @@ class PainelDeTexto(QWidget):
             return
         self._bloco_na_faixa = chave
         self.recorte_na_faixa = imagem
-        largura = max(1, self.editor.viewport().width())
+        largura = max(1, self._area_da_folha().width())
         altura = max(24, self.editor.height() // 3)
         self.faixa_impressa.setPixmap(
             pixmap_de_rgb(np.ascontiguousarray(imagem)).scaled(
@@ -3833,8 +3841,8 @@ class PainelDeTexto(QWidget):
             # seleciona a marca, o Enter a ativa. Com qualquer outra seleção o Enter é o Enter.
             if a1.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not a1.modifiers() and self._ativar_marca_selecionada():
                 return True
-        if a0 is self.editor.viewport() and a1 is not None and a1.type() == QEvent.Type.Resize:
-            self.vazio.setGeometry(self.editor.viewport().rect())
+        if a0 is self.editor.viewport() and isinstance(a1, QEvent) and a1.type() == QEvent.Type.Resize:
+            self.vazio.setGeometry(self._area_da_folha())
         if a0 is self.editor.viewport() and isinstance(a1, QHelpEvent) and a1.type() == QEvent.Type.ToolTip:
             # A dica sobre a miniatura (item 23): o que ela é, a posição, e o que o clique faz.
             dica = self._dica_da_marca(a1.pos())
@@ -3933,7 +3941,8 @@ class PainelDeTexto(QWidget):
 
     def _abrir_menu_de_contexto(self, ponto: QPoint) -> None:
         menu = self._menu_de_contexto(ponto)
-        menu.exec(self.editor.viewport().mapToGlobal(ponto))
+        folha = self.editor.viewport()
+        menu.exec(folha.mapToGlobal(ponto) if folha is not None else self.editor.mapToGlobal(ponto))
         menu.deleteLater()
 
     def _menu_de_contexto(self, ponto: QPoint) -> QMenu:
@@ -3945,6 +3954,7 @@ class PainelDeTexto(QWidget):
         seleciona. O menu é onde quem não sabe do duplo clique descobre que a miniatura é viva.
         """
         menu = self.editor.createStandardContextMenu(ponto)
+        assert menu is not None  # o Qt só devolve `None` sem documento, e o editor sempre tem um
         self._sugestoes_no_menu(menu, ponto)
         # O rascunho da folha na tela, quando há um (item 25): a oferta recusada na leitura volta
         # a estar à mão, sem reler a folha.
@@ -4019,7 +4029,9 @@ class PainelDeTexto(QWidget):
             conteudo.setImageData(figura.toImage())
         if posicao:
             conteudo.setText(posicao)
-        QApplication.clipboard().setMimeData(conteudo)
+        area = QApplication.clipboard()
+        if area is not None:
+            area.setMimeData(conteudo)
         o_que = "Imagem e FEN do diagrama copiadas." if figura is not None and posicao else (
             "Imagem do diagrama copiada." if figura is not None else "FEN do diagrama copiada."
         )
@@ -4061,7 +4073,7 @@ class PainelDeTexto(QWidget):
         widget **sobre** o editor, e não texto dentro dele -- que era a razão de o ciclo 1 ter
         escolhido `placeholderText`, e que continua valendo.
         """
-        self.vazio.setGeometry(self.editor.viewport().rect())
+        self.vazio.setGeometry(self._area_da_folha())
         # O vazio da mesa que virou a página para uma folha sem caderno diz **qual** folha (S-644).
         por_ler = self._folha_por_ler
         self.vazio.titulo.setText(strings.TEXTO_VAZIO_TITULO if por_ler is None else strings.folha_por_ler(por_ler + 1))
@@ -4071,6 +4083,11 @@ class PainelDeTexto(QWidget):
                 comandos.rotulo_de_botao("ler_folha") if por_ler is None else strings.ler_a_folha(por_ler + 1)
             )
         self.vazio.setVisible(not self.editor.toPlainText().strip())
+
+    def _area_da_folha(self) -> QRect:
+        """O retângulo da área de desenho do editor, sem o `Optional` de `viewport()`."""
+        folha = self.editor.viewport()
+        return folha.rect() if folha is not None else self.editor.rect()
 
     def acoes_proprias(self) -> frozenset[str]:
         """As ações globais que este painel atende enquanto tem o foco (S-244).
