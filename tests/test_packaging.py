@@ -257,8 +257,12 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2100
+    LIMITE = 2105
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.100 -> 2.105 na S-646 (2026-10-25)**: a mesa numa janela própria. Tudo dela mora em
+    `qt/mesa_destacada.py`; aqui ficaram o import, a construção, o comando do menu, a pergunta do
+    `_focar_aba` («a mesa destacada é quem traz o texto?») e a linha que a fecha junto com a janela.
 
     **2.099 -> 2.100 na Fase 95 (2026-10-24)**: a fita da aba Texto pede à janela os comandos que
     são dela (a mesa, por exemplo) pelo menu -- `definir_executor`, uma linha. O resto da fita mora

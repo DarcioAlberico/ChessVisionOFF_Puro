@@ -287,7 +287,7 @@ O resto da Fase 94 que não pede a janela própria, e a Fase 92 menos a flutuaç
 | S-642 (etapa 1) | ✅ | `rico.bloco_em` e `rico.deslocamento_do_bloco` (puros); o painel diz o `bbox` do bloco sob o cursor (`bloco_destacado`), o visualizador o contorna na cor do foco e rola até ele (`VisorDePagina.definir_destaque`), e o clique na folha sai em **pontos** (`ponto_clicado`) e põe o cursor no começo do menor bloco que o contém. Quem liga os dois é `qt/disposicao_de_mesa.py`, e só com a mesa armada. A etapa 2 (por linha) continua esperando a etapa 1 provar valor |
 | S-643 | ✅ | A faixa acima do editor com o recorte do bloco sob o cursor (`_recorte_da_folha`, o mesmo da miniatura), na largura do editor e até um terço da altura dele; só na mesa e com a folha rasterizada |
 | S-644 | ✅ com desvio | A janela avisa a aba quando a mesa arma (`definir_mesa`); virar a página guarda a folha que sai, abre a que entra do caderno, ou mostra o vazio «A folha 13 ainda não foi lida» com o botão «Ler a folha 13» — e não lê. **A preferência «Ler ao chegar numa folha sem caderno» não entrou**: é uma linha no menu e uma no estado, e fica para quando alguém a pedir |
-| S-646 | ⏳ | Os três pré-requisitos (a guarda de atalhos por janela, o painel fora da `QScrollArea`, o `_focar_aba`) seguem como estavam; o R1 decide se ela é pedida |
+| S-646 | ⏳ → ✅ na quinta entrega | Ver a quinta entrega |
 | S-620 | ✅ com desvio | «Diagramas no texto à esquerda (o padrão é ao centro)», interruptor do menu Texto, guardado em `AppState.texto_diagramas` (e não em Configurações, pelo motivo da S-640). Trocar redesenha sem tornar a folha «por gravar», e a marca com alinhamento escrito vence as duas. A guarda S-603 lê o alinhamento efetivo pela mesma função |
 | S-621 | ✅ com desvio | Três comandos do menu Texto para a folha (à esquerda, ao centro, como a preferência), um passo de desfazer. O do caderno inteiro está no **menu do botão direito do índice**, com a pergunta «Alinhar 41 diagrama(s) de 23 folha(s) à esquerda?» e a versão de antes de cada folha como `anterior` |
 | S-622 | ✅ | O `.html` e o `.rtf` já seguiam o efetivo; o `.md` põe a figura num `<p align="center"><img …></p>` quando ela não está à esquerda, e mantém o `![…](…)` à esquerda. A exportação recebe a preferência (`exportar(…, diagramas=…)`) |
@@ -343,6 +343,7 @@ da aba não levava a preferência «à esquerda»** que a S-622 dizia levar: `ex
 |---|---|---|
 | S-661 | ✅ com desvio | `cvoff-texto-estilo-conjunto` e `text/estilo.py`; relatório em `docs/metrics/texto_estilo_conjunto.json`, o conjunto em `data/estilo/` (fora do git). 40 folhas espaçadas de cada PDF, só as tipográficas, a palavra rotulada pelo nome da fonte ou o bit **de cada caractere** (a que mistura fica fora), recorte a 300 dpi em 32x192. **Só entra livro cuja camada registra os dois estilos** nas folhas lidas -- um livro que não marca itálico rotularia o itálico como normal --, e sobraram **7 livros (11 arquivos), 51.064 palavras**: 2.441 negrito, 1.604 itálico, 302 negrito-itálico. **A identidade é o texto do livro inteiro** (sequências de cinco palavras), e não as folhas lidas: pelas amostras os dois «400 Quebra-cabeças» não se juntavam e caíam na validação e no teste. As degradações são aplicadas à palavra já normalizada, e não ao recorte de 300 dpi |
 | S-662 | ✅ | `cvoff-texto-estilo-classificador`: quatro convoluções, média e máximo **só sobre a largura útil** (senão a rede aprende o comprimento da palavra), treino com as degradações em metade das palavras, semente fixa. Custo: 1 ms por palavra na CPU |
+| S-646 | ✅ com desvio | O dono pediu em 2026-10-25 (R1). «Destacar a mesa numa janela própria» (menu Texto e grupo Mostrar da aba Exibir; de novo, devolve) leva o **mesmo** `PainelDeTexto` para uma `JanelaDaMesa` com uma vista da folha à esquerda (`qt/mesa_destacada.py`). Os três pré-requisitos: **(1)** `GuardaDeAtalhos.registrar_janela` -- a guarda pergunta de que janela é o foco, subindo pelos pais (a busca aberta da mesa é da mesa, a caixa da principal é da principal), e a mesa só atende as ações do texto (`ui/mesa.ACOES_DA_MESA_DESTACADA`: salvar, desfazer, refazer, achar, substituir); **(2)** `PainelPrincipal.soltar_modo`/`devolver_modo` por `takeWidget`, porque o `setWidget` da `QScrollArea` destrói o widget que tira do lugar, e um cartão «O texto está na mesa · Mostrar · Trazer de volta» no lugar; **(3)** `_focar_aba` pergunta antes à mesa destacada. Fechar a janela da mesa devolve o texto; fechar a principal grava o caderno e fecha as duas. **Desvio:** a vista da folha mostra a folha que o editor tem rasterizada, e não o visualizador do livro; e a disposição de mesa da janela principal (S-640) continua valendo com o cartão no lugar do texto. Testes em `tests/test_qt_mesa_destacada.py`, com a janela de verdade; a guarda sabotada (sempre os comandos da principal) faz o `PgDn` da mesa virar a página da principal, e o teste reprova |
 | S-663 | ✅ medido, **não passa** | `docs/metrics/texto_estilo_classificador.json`, sobre `5ba4ace` em árvore limpa. **Um livro de fora por rodada**, e não a divisão fixa: com 7 livros ela deixava o teste com um livro e 15 itálicos. O número está na seção da S-663 |
 | S-664 a S-667 | ✖ fechados pelo portão | A sugestão, o itálico por palavra, a frase do rodapé e a remedição dependiam de um classificador que passasse. O pincel manual (S-241) continua sendo a resposta, e `negrito=None` continua sendo o que a folha sem camada diz |
 
@@ -372,6 +373,7 @@ decisões que organizam o plano, que já estão tomadas.
    pedido descreve), com a preferência de três posições da S-640. E **a janela própria (S-646) é
    pedida, ou a disposição basta?** A recomendação é entregar a disposição, usar uma semana, e só
    então decidir — ela custa o conserto da guarda de atalhos, que é mudança na janela inteira.
+   **Decidido em 2026-10-25: a janela própria é pedida**, com os três pré-requisitos (S-646, feita).
 - **R2 · Onde o caderno mora.** A recomendação é `data/cadernos/` (desviado na suíte pelo
    `CVOFF_DATA_DIR`, como `data/rascunhos/`). A alternativa — uma pasta ao lado do PDF — leva o
    trabalho junto quando o livro muda de máquina, e escreve dentro de `PDF/`, que hoje é só leitura.
@@ -921,6 +923,8 @@ revisão achou lendo a fiação:
 **Critério de aceite.** Destacar e devolver dez vezes não perde seleção, pilha de desfazer nem zoom;
 com o foco na segunda janela, `Del`, setas, `PgUp`/`PgDn` e `Ctrl+N` não mudam nada na janela
 principal; fechar a principal fecha as duas e grava o caderno.
+
+**Feita em 2026-10-25**, com os três pré-requisitos -- ver a quinta entrega.
 
 ## Fase 95 — A fita e os painéis
 

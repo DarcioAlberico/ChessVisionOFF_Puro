@@ -103,6 +103,7 @@ from chess_diagram_ocr.qt.painel_de_estudo import PainelDeEstudo
 from chess_diagram_ocr.qt.painel_de_resultado import PainelDeResultado
 from chess_diagram_ocr.qt.painel_de_revisao import PainelDeRevisao
 from chess_diagram_ocr.qt.disposicao_de_mesa import DisposicaoDeMesa
+from chess_diagram_ocr.qt.mesa_destacada import MesaDestacada
 from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
 from chess_diagram_ocr.qt.painel_do_dataset import PainelDoDataset
 from chess_diagram_ocr.qt.painel_do_pdf import PainelDoPdf
@@ -380,6 +381,7 @@ class JanelaPrincipal(QMainWindow):
         """A guarda de foco. **Guardada num atributo de propósito**: um `QObject` sem referência
         viva é coletado, e um filtro coletado deixa de ser chamado sem que nada avise -- a janela
         simplesmente perde o teclado."""
+        self.mesa_destacada = MesaDestacada(self, self.principal, self.texto, self._teclas)  # a mesa numa janela própria (S-646)
         # A marca dos dois submenus **depois** de montar a barra: a pele e a densidade em vigor
         # foram lidas antes dos widgets, e sem isto o menu abriria sem nada marcado -- que é o
         # mesmo que dizer "nenhuma delas está em uso".
@@ -1687,8 +1689,9 @@ class JanelaPrincipal(QMainWindow):
         self._atualizar_abas()
 
     def _focar_aba(self, painel: QWidget) -> None:
-        """Traz para a frente o painel que acabou de receber alguma coisa -- aba ou modo."""
-        self.abas.mostrar(painel)
+        """Traz para a frente o painel que acabou de receber alguma coisa -- aba ou modo, ou a mesa destacada (S-646)."""
+        if not self.mesa_destacada.trazer(painel):
+            self.abas.mostrar(painel)
 
     # ---------------------------------------------------- o que a sala de estudo pergunta
 
@@ -1877,6 +1880,7 @@ class JanelaPrincipal(QMainWindow):
             "cancelar_importacao": lambda: self.livro.cancelar() if self.livro else None,
             "trilho": self._alternar_trilho,
             "mesa_de_texto": lambda: self.menu.marcar("mesa_de_texto", ligado=self.mesa.alternar()),
+            "destacar_mesa": lambda: self.mesa_destacada.alternar(),
             "primeira_duvidosa": self.trilho._ir_para_a_primeira_duvidosa,
             "proxima_duvidosa": self.trilho.ir_para_a_proxima_duvidosa,
             "anterior_duvidosa": self.trilho.ir_para_a_anterior_duvidosa,
@@ -2050,6 +2054,7 @@ class JanelaPrincipal(QMainWindow):
         # A sala vai para o disco antes de tudo: ela é o único painel cujo trabalho não tem outra
         # cópia, e o `Ctrl+Z` dela não sobrevive à janela (S-271).
         self.estudo.salvar_agora()
+        self.mesa_destacada.fechar()  # o texto volta à aba e a janela da mesa fecha junto (S-646)
         # E o arranjo depois dela, **antes da espera pela tarefa**: uma thread presa não pode
         # custar o último livro, a página e o divisor de quem já mandou fechar (S-156).
         self._gravar_estado()

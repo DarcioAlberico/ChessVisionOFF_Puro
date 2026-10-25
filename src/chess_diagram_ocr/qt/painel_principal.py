@@ -173,6 +173,40 @@ class PainelPrincipal(QWidget):
         if 0 <= indice < len(self._nomes):
             self.definir_modo(self._nomes[indice])
 
+    def soltar_modo(self, nome: str, cartao: QWidget) -> QWidget | None:
+        """Tira o painel do modo da rolagem dele e põe `cartao` no lugar (S-646). Devolve o painel.
+
+        **`takeWidget` e não `setWidget`**: a `QScrollArea` destrói o widget que um `setWidget` novo
+        tira do lugar, e o painel sairia daqui morto -- com a seleção, a pilha de desfazer e o caderno
+        aberto. O botão do modo continua: o modo existe, e é o cartão que diz onde está o painel.
+        """
+        rolagem = self._rolagem_do_modo(nome)
+        if rolagem is None or rolagem.widget() is cartao:
+            return None
+        painel = rolagem.takeWidget()
+        rolagem.setWidget(cartao)
+        return painel
+
+    def devolver_modo(self, nome: str) -> bool:
+        """O painel volta à rolagem do modo, e o cartão sai sem ser destruído. `False` se não estava solto."""
+        rolagem = self._rolagem_do_modo(nome)
+        painel = self.widget_do_modo(nome)
+        if rolagem is None or painel is None or rolagem.widget() is painel:
+            return False
+        cartao = rolagem.takeWidget()
+        if cartao is not None:
+            cartao.setParent(None)
+            cartao.hide()
+        rolagem.setWidget(painel)
+        painel.show()
+        return True
+
+    def _rolagem_do_modo(self, nome: str) -> QScrollArea | None:
+        if nome not in self._botoes:
+            return None
+        rolagem = self.pilha.widget(self._nomes.index(nome))
+        return rolagem if isinstance(rolagem, QScrollArea) else None
+
     def definir_contagem(self, nome: str, contagem: int | None) -> None:
         """Quanto trabalho o modo carrega, no rótulo do botão -- a regra de `ui/abas.rotulo`."""
         if nome not in self._botoes:

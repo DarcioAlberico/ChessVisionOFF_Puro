@@ -109,7 +109,7 @@ ABAS: tuple[Aba, ...] = (
     Aba(
         "Exibir",
         (
-            Grupo("Mostrar", ("painel_de_navegacao", "mesa_de_texto", "bloco_impresso", "quebrar_linha")),
+            Grupo("Mostrar", ("painel_de_navegacao", "mesa_de_texto", "destacar_mesa", "bloco_impresso", "quebrar_linha")),
             Grupo("Zoom", ("aproximar_texto", "afastar_texto", "zoom_do_texto_normal", "familia_da_letra")),
             Grupo("Foco", ("modo_foco", "recolher_fita")),
         ),

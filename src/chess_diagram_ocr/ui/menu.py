@@ -357,6 +357,7 @@ MENUS: tuple[Menu, ...] = (
             Item("familia_da_letra"),
             Item("quebrar_linha", INTERRUPTOR),
             Item("mesa_de_texto", INTERRUPTOR),
+            Item("destacar_mesa"),
             Item("indice_do_caderno"),
             Item("marcar_folha_conferida"),
             _sep(),

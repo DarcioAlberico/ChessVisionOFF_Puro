@@ -498,6 +498,7 @@ CATALOGO: tuple[Comando, ...] = (
     # A mesa de texto (S-640): o PDF vai para a esquerda e a aba Texto, larga, para a direita ao
     # abrir o Texto. Interruptor porque a preferência é ligada/desligada; o padrão é ligada.
     Comando("mesa_de_texto", "Mesa de texto: o PDF à esquerda ao abrir o Texto", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Mesa"),
+    Comando("destacar_mesa", "Destacar a mesa numa janela própria (de novo, devolve)", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Destacar"),
     # O caderno do livro (S-613): o índice das folhas e a marca de conferida. O índice abre e fecha
     # como a paleta de glifos, e não é interruptor pelo mesmo motivo: ele não é preferência guardada.
     Comando("indice_do_caderno", "Índice das folhas do caderno", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Índice"),

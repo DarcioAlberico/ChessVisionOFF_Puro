@@ -4,9 +4,9 @@
 direita". A janela já tem as duas coisas -- o visualizador do livro e a aba Texto --, só que na
 ordem contrária e com a aba espremida na coluna estreita da esquerda. A mesa é a **mesma janela com
 o divisor trocado de lado**: o PDF que aparece à esquerda é o visualizador de verdade, com as caixas
-dos diagramas e o sincronismo de folha que já funcionam. Uma janela separada ficou para depois
-(S-646 no `docs/ROADMAP_MESA_DE_TEXTO.md`): a guarda de atalhos é da aplicação inteira e não
-pergunta em que janela está o foco.
+dos diagramas e o sincronismo de folha que já funcionam. **Destacar a mesa numa janela própria** é
+a S-646 (`qt/mesa_destacada.py`), para quem tem dois monitores; ela esperou a guarda de atalhos
+passar a perguntar em que janela está o foco.
 
 Este módulo é a decisão, sem toolkit: **quando** a mesa vale, e com que fração. Quem troca os lados
 é `qt/disposicao_de_mesa.py`.
@@ -15,6 +15,9 @@ Este módulo é a decisão, sem toolkit: **quando** a mesa vale, e com que fraç
 from __future__ import annotations
 
 __all__ = [
+    "ACOES_DA_MESA_DESTACADA",
+    "CARTAO_DA_MESA",
+    "TITULO_DA_MESA",
     "FRACAO_PADRAO",
     "LARGURA_MINIMA",
     "MESA_AO_ABRIR_O_TEXTO",
@@ -45,6 +48,18 @@ FRACAO_PADRAO = 0.45
 
 O PDF está ali para ser **conferido**, e uma coluna de página inteira se lê em 45%; o editor é onde
 se trabalha, e é ele que precisa das linhas compridas."""
+
+
+ACOES_DA_MESA_DESTACADA: tuple[str, ...] = ("salvar", "desfazer", "refazer", "achar", "substituir")
+"""As ações da tabela de atalhos que a janela da mesa destacada atende (S-646), **e só elas**.
+
+São as do texto (`ui/texto_declarado.ACOES_PROPRIAS`), para que `Ctrl+F` com o foco na folha da mesa
+ache no texto em vez de não fazer nada. As outras -- `Del`, as setas, `PgUp`/`PgDn`, `Ctrl+N` -- são
+da janela principal, e com o foco na mesa elas não fazem nada: é o critério de aceite da S-646."""
+
+TITULO_DA_MESA = "Mesa de texto"
+CARTAO_DA_MESA = "O texto está na mesa, numa janela própria."
+"""O cartão que ocupa o lugar da aba Texto enquanto a mesa está destacada, com «Mostrar» e «Trazer de volta»."""
 
 
 def ligada(preferencia: str) -> bool:

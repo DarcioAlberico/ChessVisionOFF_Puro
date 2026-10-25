@@ -2978,6 +2978,10 @@ class PainelDeTexto(QWidget):
         estado.texto_fita_recolhida = self.fita.recolhida  # type: ignore[attr-defined]
         estado.texto_glifos_recentes = list(self._glifos_recentes)  # type: ignore[attr-defined]
 
+    def folha_rasterizada(self) -> tuple[np.ndarray | None, int]:
+        """A folha que o editor tem rasterizada e o DPI dela: é o que a vista da mesa destacada mostra (S-646)."""
+        return self._pagina_rgb, int(self._dpi)
+
     def definir_mesa(self, ligada: bool) -> None:
         """A janela armou ou desarmou a mesa. A aba passa a acompanhar a página, e a faixa aparece."""
         self._na_mesa = bool(ligada)
