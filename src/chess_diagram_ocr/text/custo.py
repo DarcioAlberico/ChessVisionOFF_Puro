@@ -141,6 +141,7 @@ ETAPAS: tuple[Etapa, ...] = (
         "correcoes",
         (
             "chess_diagram_ocr.text.caixa_alta:decidir",
+            "chess_diagram_ocr.text.traco:corrigir",
             "chess_diagram_ocr.text.marca_fina:corrigir",
             "chess_diagram_ocr.text.empilhados:corrigir",
             "chess_diagram_ocr.text.italico:declarar",

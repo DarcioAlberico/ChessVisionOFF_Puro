@@ -173,6 +173,7 @@ from . import numero as _numero
 from . import paragrafos as _paragrafos
 from . import quadros as _quadros
 from . import regioes as _regioes
+from . import traco as _traco
 from .binarizacao import binarize
 from .grade import Arranjo
 from .pagina import (
@@ -476,6 +477,7 @@ def linhas_do_glifo(
     modo_bloco: bool = False,
     colados: str = COLADOS_NA_PAGINA,
     caixa_alta: bool = True,
+    traco: bool = True,
     marca_fina: bool = True,
     empilhados: bool = True,
     italico: bool = True,
@@ -495,6 +497,10 @@ def linhas_do_glifo(
 
     `caixa_alta` decide maiúscula/minúscula das oito letras de mesma forma pela **altura** do box:
     CER 0,1434 -> 0,1114 em 11 páginas, 11 melhoram e nenhuma piora. Ver `text/caixa_alta.py`.
+
+    `traco` devolve ao ponto o quadrado, e ao hífen o traço curto, que o modelo leu como outro traço:
+    `2...Rd6` saía `2.——Rd6`, e `f4-f8` saía `f4—f8`. O box do ponto é mais alto que largo, e o do
+    hífen mede menos de 0,75 escala de largura. Ver `text/traco.py`.
 
     `marca_fina` promove a apóstrofo a vírgula que está no alto da linha (`Black,s` -> `Black's`).
     Também entra ligada, mas **pelo motivo certo**: o ganho de CER dela é da ordem do ruído, e o
@@ -575,7 +581,7 @@ def linhas_do_glifo(
             # `_Cru` e decidir a troca de `/` por `l`. Medir nos dois lugares dobraria o custo do
             # que este item promete entregar de graça -- a varredura já roda desde a S-186.
             pendor = _italico.declarar(binaria, grupo)
-            if caixa_alta or marca_fina or empilhados or italico or numeros or lexico:
+            if caixa_alta or traco or marca_fina or empilhados or italico or numeros or lexico:
                 # **Duas correções de geometria, e a mesma razão para as duas**: o recorte que o
                 # classificador recebe é o bbox apertado, então o que distingue dois glifos pelo
                 # *tamanho* (`s`/`S`) ou pela *posição na linha* (`'`/`,`) é apagado antes de ele
@@ -587,6 +593,11 @@ def linhas_do_glifo(
                     if caixa_alta
                     else [(i2c[int(probs[k].argmax())], float(probs[k].max())) for k in range(len(grupo))]
                 )
+                if traco:
+                    # O resize apaga a proporção: o ponto em negrito é um quadrado, e o traço
+                    # esticado para 32x32 também; e o hífen e o travessão são o mesmo retângulo.
+                    # Antes da `marca_fina`, que julga o ponto.
+                    lidos = _traco.corrigir(lidos, probs, grupo, i2c, escala=float(escala))
                 if marca_fina:
                     lidos = _marca_fina.corrigir(lidos, probs, grupo, i2c)
                 if empilhados:
@@ -1183,6 +1194,7 @@ def ler_pagina(
     modo_bloco: bool = False,
     colados: str = COLADOS_NA_PAGINA,
     caixa_alta: bool = True,
+    traco: bool = True,
     marca_fina: bool = True,
     empilhados: bool = True,
     italico: bool = True,
@@ -1220,8 +1232,8 @@ def ler_pagina(
         return _ler_pagina_do_livro(
             livro, indice, dpi=dpi, imagem_rgb=imagem_rgb, qual=qual, escala_px=escala_px,
             max_boards=max_boards, arranjo=arranjo, reconhecedor=reconhecedor, modo_bloco=modo_bloco,
-            colados=colados, caixa_alta=caixa_alta, marca_fina=marca_fina, empilhados=empilhados,
-            italico=italico, dicionario=dicionario, numeros=numeros, juntar_lance=juntar_lance,
+            colados=colados, caixa_alta=caixa_alta, traco=traco, marca_fina=marca_fina,
+            empilhados=empilhados, italico=italico, dicionario=dicionario, numeros=numeros, juntar_lance=juntar_lance,
             marcar_negrito=marcar_negrito, marcar_italico=marcar_italico,
         )
 
@@ -1240,6 +1252,7 @@ def _ler_pagina_do_livro(
     modo_bloco: bool,
     colados: str,
     caixa_alta: bool,
+    traco: bool,
     marca_fina: bool,
     empilhados: bool,
     italico: bool,
@@ -1310,8 +1323,8 @@ def _ler_pagina_do_livro(
     regioes: list[_regioes.Regiao] | None = None
     if qual == "glifo":
         cruas, regioes = linhas_do_glifo(
-            imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco, colados=colados, caixa_alta=caixa_alta, marca_fina=marca_fina,
-            empilhados=empilhados, italico=italico,
+            imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco, colados=colados, caixa_alta=caixa_alta,
+            traco=traco, marca_fina=marca_fina, empilhados=empilhados, italico=italico,
             dicionario=dicionario, numeros=numeros,
             juntar_lance=juntar_lance,
         )
