@@ -21,7 +21,9 @@ senão a imagem inteira é o tabuleiro. A conferência deixa a pessoa trocar um 
 
 **O andamento é um arquivo por pasta** (`data/importacao/*.json`): 5.800 imagens não se conferem
 numa sessão, e reabrir a mesma pasta tem de continuar de onde parou -- sem gravar duas vezes a
-mesma imagem no dataset.
+mesma imagem no dataset. A mesma imagem também cai em lotes diferentes quando se abre a pasta de um
+livro e depois a de cima dela; por isso o que outro lote já decidiu vale para todos, pelo caminho
+inteiro da imagem (`andamento_de_outros_lotes`).
 
 O módulo não importa Qt nem torch no topo: a janela é de `qt/importador_de_imagens.py`, e o modelo
 chega por parâmetro.
@@ -33,6 +35,7 @@ import csv
 import hashlib
 import json
 import logging
+import os
 import re
 from collections import Counter
 from collections.abc import Callable, Iterable
@@ -63,6 +66,7 @@ __all__ = [
     "ItemDeImportacao",
     "Lote",
     "abrir_lote",
+    "andamento_de_outros_lotes",
     "caminho_do_lote",
     "campo_de_pecas",
     "casas_diferentes",
@@ -86,6 +90,10 @@ SALVO = "salvo"
 PULADO = "pulado"
 DESCARTADO = "descartado"
 STATUS = (PENDENTE, SALVO, PULADO, DESCARTADO)
+
+_PESO_DO_STATUS = {SALVO: 0, DESCARTADO: 1, PULADO: 2, PENDENTE: 3}
+"""Quando dois lotes decidiram coisas diferentes para a mesma imagem, vale a de menor peso: o que já
+está no dataset vence o descarte, e o descarte vence o pulo."""
 
 EXTENSOES = (".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tif", ".tiff")
 
@@ -275,7 +283,55 @@ def abrir_lote(pasta: Path | str, origem: str, *, diretorio: Path | None = None)
         por_imagem = {item.imagem: item for item in antigo.itens}
         novo.itens = [_juntar(item, por_imagem.get(item.imagem)) for item in novo.itens]
         novo.criado_em = antigo.criado_em or novo.criado_em
+    _herdar_de_outros_lotes(novo, andamento_de_outros_lotes(novo.pasta, origem, diretorio=diretorio))
     return novo, caminho
+
+
+def _chave_absoluta(pasta: str, imagem: str) -> str:
+    """A imagem pelo caminho inteiro, comparado como o sistema compara: é o que dois lotes têm em comum.
+
+    O `imagem` do item é relativo à pasta do lote, e muda com ela: `Livro/x.png` aberto pela pasta
+    de cima, `x.png` aberto pela do livro.
+    """
+    return os.path.normcase(os.path.normpath(os.path.join(pasta, imagem)))
+
+
+def andamento_de_outros_lotes(
+    pasta: Path | str, origem: str, *, diretorio: Path | None = None
+) -> dict[str, ItemDeImportacao]:
+    """O que os outros lotes gravados já decidiram, por `_chave_absoluta` -- fora o lote desta pasta.
+
+    Só entra o que não está pendente. Se dois lotes discordam, vale `_PESO_DO_STATUS`.
+    """
+    diretorio = Path(diretorio if diretorio is not None else DIRETORIO_DOS_LOTES)
+    proprio = caminho_do_lote(pasta, origem, diretorio=diretorio).name
+    decididos: dict[str, ItemDeImportacao] = {}
+    if not diretorio.is_dir():
+        return decididos
+    for arquivo in sorted(diretorio.glob("*.json")):
+        if arquivo.name == proprio:
+            continue
+        lote = Lote.carregar(arquivo)
+        if lote is None or not lote.pasta:
+            continue
+        for item in lote.itens:
+            if item.status == PENDENTE:
+                continue
+            chave = _chave_absoluta(lote.pasta, item.imagem)
+            atual = decididos.get(chave)
+            if atual is None or _PESO_DO_STATUS[item.status] < _PESO_DO_STATUS[atual.status]:
+                decididos[chave] = item
+    return decididos
+
+
+def _herdar_de_outros_lotes(lote: Lote, outros: dict[str, ItemDeImportacao]) -> None:
+    """Traz para o lote o que outro lote decidiu, quando pesa mais que o que o próprio lote tem."""
+    if not outros:
+        return
+    for posicao, item in enumerate(lote.itens):
+        outro = outros.get(_chave_absoluta(lote.pasta, item.imagem))
+        if outro is not None and _PESO_DO_STATUS[outro.status] < _PESO_DO_STATUS[item.status]:
+            lote.itens[posicao] = _juntar(item, outro)
 
 
 def _juntar(lido: ItemDeImportacao, gravado: ItemDeImportacao | None) -> ItemDeImportacao:
@@ -568,17 +624,25 @@ def gravar_item(
     samples_dir: Path,
     corrected_by: str,
     allow_illegal: bool = False,
+    diretorio: Path | None = None,
+    outros: dict[str, ItemDeImportacao] | None = None,
 ) -> ItemDeImportacao:
     """Grava a amostra no dataset e marca o item como salvo. Devolve o item novo.
 
     Recusa gravar duas vezes a mesma imagem: o item salvo já tem `amostra`, e uma segunda linha no
-    `labels.csv` com a mesma imagem só pesaria em dobro no treino.
+    `labels.csv` com a mesma imagem só pesaria em dobro no treino, e com `source_pdf` diferente se
+    cada lote a gravou. Vale também para a imagem que **outro lote** já gravou: `outros` é o `andamento_de_outros_lotes`, lido de `diretorio` quando não vem pronto.
     """
     from .dataset import append_training_sample
 
     item = lote.itens[posicao]
     if item.status == SALVO:
         raise ValueError(f"Esta imagem já foi gravada no dataset ({item.amostra}).")
+    if outros is None:
+        outros = andamento_de_outros_lotes(lote.pasta, lote.origem, diretorio=diretorio)
+    outro = outros.get(_chave_absoluta(lote.pasta, item.imagem))
+    if outro is not None and outro.status == SALVO:
+        raise ValueError(f"Esta imagem já foi gravada no dataset por outro lote ({outro.amostra}).")
     caminho = append_training_sample(
         tabuleiro_rgb,
         fen,
@@ -618,6 +682,7 @@ def importar_os_que_concordam(
     cancelar: Callable[[], bool] | None = None,
     gravar_andamento: Callable[[], None] | None = None,
     a_cada: int = 25,
+    diretorio: Path | None = None,
 ) -> Counter[str]:
     """Passa pelos pendentes com FEN da fonte: recorta, lê com o modelo e grava os que concordam.
 
@@ -627,8 +692,13 @@ def importar_os_que_concordam(
 
     Devolve a contagem: `salvos`, `discordam`, `com_aviso` (não foram lidos: o relatório já tinha
     levantado suspeita), `falhas` (a imagem não abriu ou não gravou).
+
+    O andamento dos outros lotes (em `diretorio`) é lido uma vez, no começo: o que outro lote já
+    decidiu deixa de ser pendente aqui, e não é lido nem gravado de novo.
     """
     conta: Counter[str] = Counter()
+    outros = andamento_de_outros_lotes(lote.pasta, lote.origem, diretorio=diretorio)
+    _herdar_de_outros_lotes(lote, outros)
     alvos = [
         posicao
         for posicao, item in enumerate(lote.itens)
@@ -657,6 +727,7 @@ def importar_os_que_concordam(
                         csv_path=csv_path,
                         samples_dir=samples_dir,
                         corrected_by=corrected_by,
+                        outros=outros,
                     )
                     conta["salvos"] += 1
                 else:

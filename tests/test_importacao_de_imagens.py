@@ -186,6 +186,101 @@ class AndamentoTests(unittest.TestCase):
         self.assertTrue(a.name.startswith("Chess_Images_com-fen_"))
 
 
+def pasta_do_jbc(caso: unittest.TestCase) -> Path:
+    """`jbc/books/Livro/{a,b,c}.png`: o livro pode ser aberto sozinho ou pela pasta de cima."""
+    raiz = pasta_temporaria(caso) / "jbc"
+    for nome in ("a", "b", "c"):
+        gravar_png(raiz / "books" / "Livro" / f"{nome}.png", diagrama(margem=0))
+    return raiz
+
+
+class OutrosLotesTests(unittest.TestCase):
+    """A mesma imagem em dois lotes: o livro aberto sozinho e depois pela pasta de cima."""
+
+    def setUp(self) -> None:
+        self.raiz = pasta_do_jbc(self)
+        self.livro = self.raiz / "books" / "Livro"
+        self.dados = pasta_temporaria(self)
+        self.lotes = self.dados / "importacao"
+
+    def gravar(self, lote: imp.Lote, posicao: int) -> imp.ItemDeImportacao:
+        tabuleiro, usado = imp.recortar(imp.ler_imagem(lote.caminho_da_imagem(lote.itens[posicao])))
+        return imp.gravar_item(
+            lote, posicao, tabuleiro, f"{FINAL} w - - 0 1", lado="w", recorte=usado,
+            csv_path=self.dados / "labels.csv", samples_dir=self.dados / "samples",
+            corrected_by=IMPORTADO_CONFERIDO, diretorio=self.lotes,
+        )
+
+    def test_abrir_a_pasta_de_cima_herda_o_que_a_do_livro_decidiu(self) -> None:
+        do_livro, arquivo = imp.abrir_lote(self.livro, imp.SEM_FEN, diretorio=self.lotes)
+        salvo = self.gravar(do_livro, 0)
+        imp.marcar(do_livro, 1, imp.PULADO)
+        do_livro.salvar(arquivo)
+
+        de_cima, outro_arquivo = imp.abrir_lote(self.raiz, imp.SEM_FEN, diretorio=self.lotes)
+
+        self.assertNotEqual(outro_arquivo, arquivo)
+        por_imagem = {item.imagem: item for item in de_cima.itens}
+        self.assertEqual(por_imagem["books/Livro/a.png"].status, imp.SALVO)
+        self.assertEqual(por_imagem["books/Livro/a.png"].amostra, salvo.amostra)
+        self.assertEqual(por_imagem["books/Livro/b.png"].status, imp.PULADO)
+        self.assertEqual(por_imagem["books/Livro/c.png"].status, imp.PENDENTE)
+
+    def test_e_a_do_livro_herda_o_que_a_de_cima_decidiu(self) -> None:
+        de_cima, arquivo = imp.abrir_lote(self.raiz, imp.SEM_FEN, diretorio=self.lotes)
+        imp.marcar(de_cima, 2, imp.DESCARTADO)
+        de_cima.salvar(arquivo)
+
+        do_livro, _ = imp.abrir_lote(self.livro, imp.SEM_FEN, diretorio=self.lotes)
+
+        self.assertEqual([item.status for item in do_livro.itens], [imp.PENDENTE, imp.PENDENTE, imp.DESCARTADO])
+
+    def test_o_que_esta_no_dataset_vence_o_pulo_do_proprio_lote(self) -> None:
+        de_cima, arquivo_de_cima = imp.abrir_lote(self.raiz, imp.SEM_FEN, diretorio=self.lotes)
+        imp.marcar(de_cima, 0, imp.PULADO)
+        de_cima.salvar(arquivo_de_cima)
+        do_livro, arquivo = imp.abrir_lote(self.livro, imp.SEM_FEN, diretorio=self.lotes)
+        imp.marcar(do_livro, 0, imp.PENDENTE)
+        self.gravar(do_livro, 0)
+        do_livro.salvar(arquivo)
+
+        de_novo, _ = imp.abrir_lote(self.raiz, imp.SEM_FEN, diretorio=self.lotes)
+
+        self.assertEqual(de_novo.itens[0].status, imp.SALVO)
+
+    def test_gravar_o_que_outro_lote_ja_gravou_e_recusado(self) -> None:
+        # As duas janelas abertas antes de qualquer gravação: o lote de cima não sabe de nada.
+        de_cima, _ = imp.abrir_lote(self.raiz, imp.SEM_FEN, diretorio=self.lotes)
+        do_livro, arquivo = imp.abrir_lote(self.livro, imp.SEM_FEN, diretorio=self.lotes)
+        self.gravar(do_livro, 0)
+        do_livro.salvar(arquivo)
+
+        with self.assertRaisesRegex(ValueError, "outro lote"):
+            self.gravar(de_cima, 0)
+        self.assertEqual(len(linhas_do_csv(self.dados / "labels.csv")), 1)
+        self.gravar(de_cima, 1)
+        self.assertEqual(len(linhas_do_csv(self.dados / "labels.csv")), 2)
+
+    def test_o_lote_automatico_pula_o_que_outro_lote_gravou(self) -> None:
+        raiz = pasta_do_sigil(self)
+        argumentos = {
+            "ler": lambda _tabuleiro: FINAL, "csv_path": self.dados / "labels.csv",
+            "samples_dir": self.dados / "samples", "corrected_by": IMPORTADO_COM_FEN, "diretorio": self.lotes,
+        }
+        do_livro, arquivo = imp.abrir_lote(raiz / "Livro Dois", imp.COM_FEN, diretorio=self.lotes)
+        de_cima, _ = imp.abrir_lote(raiz, imp.COM_FEN, diretorio=self.lotes)
+        self.assertEqual(imp.importar_os_que_concordam(do_livro, **argumentos)["salvos"], 1)  # type: ignore[arg-type]
+        do_livro.salvar(arquivo)
+
+        conta = imp.importar_os_que_concordam(de_cima, **argumentos)  # type: ignore[arg-type]
+
+        self.assertEqual(conta["salvos"], 1, "só o b.png do Livro Um; o e.png já estava no dataset")
+        self.assertEqual(conta["falhas"], 0)
+        self.assertEqual(len(linhas_do_csv(self.dados / "labels.csv")), 2)
+        e = next(item for item in de_cima.itens if item.imagem == "Livro Dois/imagens/e.png")
+        self.assertEqual(e.status, imp.SALVO)
+
+
 class ConcordanciaTests(unittest.TestCase):
     def item(self, **campos: object) -> imp.ItemDeImportacao:
         base: dict[str, object] = {
