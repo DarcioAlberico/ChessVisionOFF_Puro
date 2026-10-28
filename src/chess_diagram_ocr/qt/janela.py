@@ -1820,7 +1820,7 @@ class JanelaPrincipal(QMainWindow):
             return
         self.exportador_de_livro.comecar(
             self._pdf, self.pdf.page_count, formato=formato, pagina_atual=self.pdf.page_index,
-            documento_para=self.livro.documento_para if self.livro else None,  # A3: sem reimportar
+            documento_para=self.livro.documento_para if self.livro else None, folhas_para=self.texto.folhas_para_a_suite,  # A3 e R7
         )
 
     def _configuracao_de_exportacao(self) -> ExportSettings:

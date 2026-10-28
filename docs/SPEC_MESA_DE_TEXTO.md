@@ -255,6 +255,32 @@ puladas e listadas no relatório ("faltam as folhas 1-4, 17"). O PDF pesquisáve
 **Critério de aceite.** Exportar um caderno de 3 folhas com 2 diagramas dá um `.md` com as 3 folhas
 na ordem, 2 imagens ao lado e nenhuma folha duplicada; a lista de faltantes está no relatório.
 
+**E o EPUB/DOCX do livro, que é da suíte (R7, 2026-10-28).** *Exportar o livro para EPUB…/DOCX…*
+escreve o IR da suíte, e o caderno não chegava lá. Agora as folhas **corrigidas** do caderno
+(editadas e conferidas; a só lida é o motor deste programa, e trocar a leitura da suíte por ela
+seria escolher motor) entram no lugar da leitura da suíte dessas páginas:
+
+- o tronco monta as folhas como dado neutro (`text/caderno_na_suite.py`, formato 1: parágrafos
+  com estilo, alinhamento e ênfase por trecho, e a marca de cada diagrama no lugar dela), e o painel
+  as entrega com a folha da tela já gravada (`PainelDeTexto.folhas_para_a_suite`);
+- a suíte as lê e aplica (`caissa.export.page_texts.apply_page_texts`, chamada por
+  `export_book(page_texts=)`): o texto da página sai -- parágrafos, títulos, partidas, a imagem de
+  página não lida e a figura de região abstida --, os diagramas e figuras ficam, e cada marca do
+  caderno toma o próximo diagrama da página; os que nenhuma marca tomou vêm depois do texto;
+- o rodapé diz «N folha(s) com o texto corrigido no caderno», e as perdas são ditas: o parágrafo
+  que a importação juntou entre duas páginas sai com o caderno da primeira, e a parte da segunda
+  fica de fora; a marca de diagrama sem diagrama na importação é contada.
+
+A suíte de antes do R7 não conhece o argumento, e `qt/exportador_de_livro.montar` o tira em vez de
+falhar: o livro sai com a leitura dela, como antes. O caminho de volta -- o IR alimentando o
+caderno -- continua com o dono.
+
+**Critério de aceite do R7.** Um livro de duas páginas exportado com a primeira corrigida no
+caderno tem, no EPUB, o texto do caderno na primeira e a leitura da suíte na segunda, pela
+importação feita na hora e pela que a janela já tinha; sem as folhas, o EPUB tem a leitura
+(`tests/unit/export/test_page_texts.py` da suíte). O relatório da importação em mãos não muda: a
+janela o exporta de novo, e um contador somado nele contaria as mesmas folhas duas vezes.
+
 ### S-615 · Os rascunhos de hoje entram no caderno
 
 **Decisão.** Na primeira abertura de um livro depois desta fase, cada rascunho de `data/rascunhos/`

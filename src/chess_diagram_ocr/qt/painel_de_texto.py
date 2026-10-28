@@ -63,7 +63,7 @@ import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 from PyQt6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, pyqtSignal
@@ -2136,6 +2136,19 @@ class PainelDeTexto(QWidget):
     def caderno_aberto(self) -> caderno.Caderno | None:
         """O caderno do livro aberto, para quem pergunta por ele -- o índice das folhas (S-613)."""
         return self._caderno
+
+    def folhas_para_a_suite(self, paginas: Sequence[int] | None) -> list[dict[str, Any]]:
+        """As folhas corrigidas do caderno, para o EPUB/DOCX do livro que a suíte escreve (R7).
+
+        A suíte chama isto na thread da janela, depois do diálogo e antes de começar; `paginas` é o
+        alcance escolhido nele (0-based, `None` = o livro). A folha da tela entra como está.
+        """
+        from chess_diagram_ocr.text import caderno_na_suite
+
+        if self._caderno is None:
+            return []
+        self._guardar_a_folha()
+        return caderno_na_suite.folhas_para_a_suite(self._caderno, paginas)
 
     def _guardar_a_folha(self) -> bool:
         """Guarda a folha da tela no caderno, se ela mudou (S-611). Devolve se o trabalho está a salvo.

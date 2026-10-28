@@ -369,6 +369,24 @@ rótulo não tem portão. A S-664 a S-667 foram fechadas pelo portão da S-663: 
 passe, não há sugestão a fazer. A especificação mudou de casa nesta entrega, para
 [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md).
 
+### Estado da sétima entrega (2026-10-28): o caderno no EPUB/DOCX do livro (R7)
+
+A recomendação do R7, feita: as folhas corrigidas do caderno entram no EPUB/DOCX que a suíte
+escreve, no lugar da leitura dela dessas páginas. A decisão está na spec, junto da S-614, e o
+trabalho mora nos dois repositórios:
+
+| onde | o que |
+|---|---|
+| tronco, `text/caderno_na_suite.py` | as folhas corrigidas (editadas e conferidas) como dado neutro, formato 1; testes em `tests/test_texto_caderno_na_suite.py` |
+| tronco, `qt/painel_de_texto.py` e `qt/janela.py` | `folhas_para_a_suite(paginas)` grava a folha da tela e devolve as do alcance; a janela passa `folhas_para` ao exportador do livro, na mesma linha do `documento_para` (o teto da `janela.py` não sobe) |
+| tronco, `qt/exportador_de_livro.py` | a suíte que não conhece `folhas_para` exporta sem as folhas, em vez de falhar; testes em `tests/test_qt_exportador_de_livro.py` |
+| suíte, `caissa/export/page_texts.py` | `PageText.from_dict` e `apply_page_texts`; `export_book(page_texts=)`, `BookExportResult.page_texts_applied` e o rodapé |
+| suíte, `caissa/ui/views/exportacao.py` | `comecar(..., folhas_para=)`, chamado na thread da janela depois do diálogo; a falha do caderno é dita e o livro sai com a leitura |
+
+**O que fica com o dono:** o caminho de volta, o IR da suíte alimentando o caderno. E a folha só
+lida não vai: trocar a leitura da suíte pela do motor deste programa é escolher motor de
+exportação, e não corrigir.
+
 ## Custo, risco e ordem
 
 | fase | esforço | risco | o que fica se ela parar no meio |
@@ -420,6 +438,8 @@ decisões que organizam o plano, que já estão tomadas.
    EPUB/DOCX. A recomendação: o caderno é a fonte da aba Texto, e a S-614 ganha uma saída **para o
    IR da suíte** quando ela estiver ao alcance, para o EPUB/DOCX do livro levar o que foi corrigido
    aqui. Quem decide se o IR também alimenta o caderno (o caminho de volta) é o dono.
+   **Feito em 2026-10-28** o caminho de ida, pela exportação do livro e não por uma gravação no
+   IR: ver «Estado da sétima entrega».
 
 ## O que foi recusado antes e volta agora
 

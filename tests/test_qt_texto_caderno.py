@@ -417,6 +417,26 @@ class ExportarCadernoTests(_Aba):
         self.assertTrue(any("faltam as folhas 1, 3-4, 6-20" in r for r in self.recados), self.recados[-3:])
 
 
+class FolhasParaASuiteTests(_Aba):
+    """R7: as folhas corrigidas vão ao EPUB/DOCX que a suíte escreve, e a da tela entra como está."""
+
+    def test_a_folha_da_tela_vai_corrigida_e_a_so_lida_fica(self) -> None:
+        self.ler(5)
+        self.ler(2)
+        self.digitar_no_fim(" corrigida")
+        folhas = self.painel.folhas_para_a_suite(None)
+        self.assertEqual([f["page_index"] for f in folhas], [1], "a folha 5 só foi lida: é a leitura do motor")
+        texto = "".join(r["text"] for p in folhas[0]["paragraphs"] for r in p.get("runs", ()))
+        self.assertIn("corrigida", texto, "a folha da tela não foi gravada antes de sair")
+        self.assertEqual(self.painel.folhas_para_a_suite((4, 5)), [], "o alcance do diálogo corta")
+
+    def test_sem_caderno_nada_vai(self) -> None:
+        self.ler(2)
+        self.digitar_no_fim(" corrigida")
+        self.painel.fechar_caderno()
+        self.assertEqual(self.painel.folhas_para_a_suite(None), [])
+
+
 class PdfPesquisavelDoCadernoTests(_Aba):
     def test_o_livro_sai_com_a_camada_das_folhas_do_caderno(self) -> None:
         import fitz
