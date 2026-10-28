@@ -514,6 +514,15 @@ principal; fechar a principal fecha as duas e grava o caderno.
 
 **Feita em 2026-10-25**, com os três pré-requisitos -- ver a quinta entrega.
 
+**Completada em 2026-10-28** (a sexta entrega): a janela da mesa vira a folha pelas setas acima da
+vista, e o visualizador do livro vai junto; destacada, a aba é mesa, e a janela principal desarma a
+dela fora da posição «sempre».
+
+**Critério de aceite (o complemento).** Na janela da mesa, a seta da folha seguinte leva o
+visualizador da principal e a aba à folha seguinte; a vista diz que a folha não foi lida; a seta de
+volta abre do caderno a folha de antes. Com o Texto à frente e a preferência «ao abrir o Texto»,
+destacar desarma a mesa da principal e devolver a arma de novo.
+
 ## Fase 95 — A fita e os painéis
 
 ### S-631 · O tamanho em pontos na fita

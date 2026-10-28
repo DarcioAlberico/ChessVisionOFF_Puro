@@ -117,8 +117,8 @@ from chess_diagram_ocr.qt.trabalho import Tarefa, rastro_de
 from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.text import busca, caderno, correcao, rascunho, rico
 from chess_diagram_ocr.text.documento import PaginaLida
-from chess_diagram_ocr.text.pagina import BlocoDeDiagrama
-from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, strings, texto_cores, tipografia, tokens
+from chess_diagram_ocr.text.pagina import BlocoDeDiagrama, BlocoDeTexto
+from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, mesa, strings, texto_cores, tipografia, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.texto_declarado import (
     ACOES_PROPRIAS,
@@ -336,6 +336,9 @@ class PainelDeTexto(QWidget):
     foco_mudou = pyqtSignal(bool)
     """O modo foco ligou ou desligou (S-658): a mesa esconde ou devolve o visualizador."""
 
+    destacada_mudou = pyqtSignal(bool)
+    """A aba foi para a janela da mesa ou voltou dela (S-646): a janela principal rearruma o divisor."""
+
     folha_pedida = pyqtSignal(int)
     """Um `.cvtxt` do livro aberto acabou de entrar na tela: a folha dele (0-based), para o
     visualizador ir até ela (item 9). Não sai para um `.cvtxt` de outro livro."""
@@ -472,13 +475,14 @@ class PainelDeTexto(QWidget):
         """A última cor de letra e de realce aplicadas pelos botões partidos (S-650), guardadas na sessão."""
         self._ler_ao_chegar = False
         """Ler a folha sem caderno ao chegar a ela pela mesa (S-644). Ver `alternar_ler_ao_chegar`."""
-        self._na_mesa = False
-        """A mesa de texto está armada (S-640): a aba acompanha a página do visualizador (S-644) e
-        mostra o bloco impresso sob o cursor (S-643). Quem diz é a janela, por `definir_mesa`."""
+        self._mesa_armada = False
+        """A mesa de texto da janela principal está armada (S-640). Quem diz é a janela, por `definir_mesa`."""
+        self._destacada = False
+        """A aba está na janela da mesa (S-646). Quem diz é `MesaDestacada`, por `definir_destacada`."""
         self._bloco_avisado: tuple[float, ...] | None = None
         self._folha_por_ler: int | None = None
         """A folha que a mesa mostrou sem texto, porque ela não está no caderno (S-644)."""
-        self._bloco_na_faixa: tuple[int, int] | None = None
+        self._bloco_na_faixa: tuple[int, ...] | None = None
         self.recorte_na_faixa: np.ndarray | None = None
         """O recorte da folha que a faixa do bloco impresso mostra, antes da escala (S-643)."""
         self._folha_pedida_ao_fundo: int | None = None
@@ -2834,8 +2838,10 @@ class PainelDeTexto(QWidget):
         blocos = doc.origem.blocos
         linha = rico.linha_em(doc, deslocamento)
         if linha is not None:
-            bloco, indice = linha
-            return blocos[bloco].linhas[indice], (bloco, indice)
+            no_bloco, indice = linha
+            lido = blocos[no_bloco]
+            if isinstance(lido, BlocoDeTexto):  # `linha_em` só acha linha em bloco de texto
+                return lido.linhas[indice], (no_bloco, indice)
         bloco = rico.bloco_em(doc, deslocamento)
         if bloco is None or not 0 <= bloco < len(blocos):
             return None
@@ -3098,11 +3104,53 @@ class PainelDeTexto(QWidget):
         """A folha que o editor tem rasterizada e o DPI dela: é o que a vista da mesa destacada mostra (S-646)."""
         return self._pagina_rgb, int(self._dpi)
 
+    @property
+    def _na_mesa(self) -> bool:
+        """A aba está numa mesa -- a da janela principal ou a janela própria: ela acompanha a página do
+        visualizador (S-644), mostra o bloco impresso sob o cursor (S-643) e avisa o bloco (S-642)."""
+        return self._mesa_armada or self._destacada
+
+    @property
+    def destacada(self) -> bool:
+        return self._destacada
+
     def definir_mesa(self, ligada: bool) -> None:
         """A janela armou ou desarmou a mesa. A aba passa a acompanhar a página, e a faixa aparece."""
-        self._na_mesa = bool(ligada)
+        self._mesa_armada = bool(ligada)
         self._mostrar_impresso()
         self._avisar_bloco()
+
+    def definir_destacada(self, destacada: bool) -> None:
+        """A aba foi para a janela da mesa, ou voltou (S-646). Lá ela é mesa como na principal."""
+        if bool(destacada) == self._destacada:
+            return
+        self._destacada = bool(destacada)
+        self._mostrar_impresso()
+        self._avisar_bloco()
+        self.destacada_mudou.emit(self._destacada)
+
+    def folha_atual(self) -> tuple[int, int]:
+        """A folha do visualizador (0-based) e quantas o livro tem; zero quando não há livro aberto."""
+        total = self.campo_de_folha.maximum() if self._pdf is not None and self.campo_de_folha.maximum() < TETO_DE_FOLHAS else 0
+        return self._pagina_indice, int(total)
+
+    def folha_por_ler(self) -> bool:
+        """O editor está no vazio «Ler a folha N» da mesa (S-644), sem folha nem texto."""
+        return self._folha_por_ler is not None and self._folha_por_ler == self._pagina_indice
+
+    def virar_folha(self, passo: int) -> bool:
+        """A janela da mesa virou a folha (S-646): pede ao visualizador a vizinha, e a mesa a acompanha.
+
+        É o mesmo caminho da página virada na janela principal: o visualizador vai à folha
+        (`folha_pedida`), a janela devolve a página nova por `definir_livro`, e a aba guarda a folha
+        que sai e abre a que entra (S-644). Devolve se havia para onde virar.
+        """
+        indice, total = self.folha_atual()
+        alvo = mesa.folha_vizinha(indice, passo, total)
+        if alvo is None:
+            return False
+        self.folha_pedida.emit(alvo)
+        return True
 
     def _seguir_a_pagina(self, pagina: int) -> None:
         """A página do visualizador virou com a mesa armada (S-644).

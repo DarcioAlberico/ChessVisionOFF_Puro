@@ -49,6 +49,8 @@ class DisposicaoDeMesa:
             texto.bloco_destacado.connect(self._destacar)
             # O modo foco esconde o visualizador e o devolve (S-658).
             texto.foco_mudou.connect(lambda ligado: self._livro.setVisible(not ligado))
+            # A mesa foi para uma janela própria, ou voltou (S-646): aqui fica o cartão, e não o texto.
+            texto.destacada_mudou.connect(self.arrumar)
             ponto = getattr(visor, "ponto_clicado", None)
             if ponto is not None:
                 ponto.connect(self._clicou_na_folha)
@@ -72,7 +74,10 @@ class DisposicaoDeMesa:
         janela = self._divisor.window()
         if janela is None or not janela.isVisible():
             return
-        quer = mesa.vale_a_mesa(self._estado.texto_mesa, texto_a_frente=self._texto_a_frente(), largura=janela.width())
+        destacada = self._texto is not None and self._texto.destacada
+        quer = mesa.vale_a_mesa(
+            self._estado.texto_mesa, texto_a_frente=self._texto_a_frente(), largura=janela.width(), destacada=destacada
+        )
         if quer != self.armada:
             self._trocar(para_a_mesa=quer)
 

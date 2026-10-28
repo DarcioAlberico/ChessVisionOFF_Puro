@@ -15,7 +15,13 @@ na mesa» · Mostrar · Trazer de volta --, e não um modo vazio que pareceria o
    para a frente (`trazer`), e não o cartão.
 
 **A vista da folha é do painel**, e não do livro: ela mostra a folha que o editor tem rasterizada, e
-o bloco sob o cursor e o clique na folha se apontam como na mesa da janela principal (S-642).
+o bloco sob o cursor e o clique na folha se apontam como na mesa da janela principal (S-642). **As
+setas acima dela viram a folha** pelo caminho da janela principal (`PainelDeTexto.virar_folha`): o
+visualizador do livro vai junto, a folha que sai vai ao caderno e a que entra abre dele (S-644). Na
+folha ainda não lida, a vista diz isso em vez de mostrar a de antes.
+
+**Destacada, a aba é mesa** (`PainelDeTexto.definir_destacada`), e a janela principal desarma a dela
+(`ui/mesa.vale_a_mesa`): o PDF ao lado do cartão seria a mesa sem o texto.
 """
 
 from __future__ import annotations
@@ -32,6 +38,8 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QStackedWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -63,9 +71,38 @@ class JanelaDaMesa(QMainWindow):
         self.setWindowTitle(mesa.TITULO_DA_MESA)
         self.setAccessibleName(mesa.TITULO_DA_MESA)
         self.divisor = QSplitter(Qt.Orientation.Horizontal, self)
-        self.visor = VisorDePagina(self.divisor)
+        lado = QWidget(self.divisor)
+        coluna = QVBoxLayout(lado)
+        coluna.setContentsMargins(0, 0, 0, 0)
+        coluna.setSpacing(0)
+        barra = QHBoxLayout()
+        margem = espaco.margem_da_aba()
+        barra.setContentsMargins(margem, margem // 2, margem, margem // 2)
+        self.botao_anterior = QToolButton(lado)
+        self.botao_anterior.setArrowType(Qt.ArrowType.LeftArrow)
+        self.botao_anterior.setToolTip(mesa.FOLHA_ANTERIOR_NA_MESA)
+        self.botao_anterior.setAccessibleName(mesa.FOLHA_ANTERIOR_NA_MESA)
+        self.rotulo_da_folha = QLabel(lado)
+        self.rotulo_da_folha.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.botao_seguinte = QToolButton(lado)
+        self.botao_seguinte.setArrowType(Qt.ArrowType.RightArrow)
+        self.botao_seguinte.setToolTip(mesa.FOLHA_SEGUINTE_NA_MESA)
+        self.botao_seguinte.setAccessibleName(mesa.FOLHA_SEGUINTE_NA_MESA)
+        barra.addWidget(self.botao_anterior)
+        barra.addWidget(self.rotulo_da_folha, 1)
+        barra.addWidget(self.botao_seguinte)
+        coluna.addLayout(barra)
+        self.pilha_da_folha = QStackedWidget(lado)
+        self.visor = VisorDePagina(self.pilha_da_folha)
         self.visor.setAccessibleName("Folha do texto na mesa")
-        self.divisor.addWidget(self.visor)
+        self.aviso_da_folha = QLabel(mesa.FOLHA_POR_LER_NA_MESA, self.pilha_da_folha)
+        self.aviso_da_folha.setWordWrap(True)
+        self.aviso_da_folha.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.aviso_da_folha.setEnabled(False)  # o cinza de apoio do tema, sem cor escrita aqui
+        self.pilha_da_folha.addWidget(self.visor)
+        self.pilha_da_folha.addWidget(self.aviso_da_folha)
+        coluna.addWidget(self.pilha_da_folha, 1)
+        self.divisor.addWidget(lado)
         # O painel numa rolagem **da mesa**, como no modo: a fita pede ~980 px de largura mínima, e
         # direto no divisor ela espremia a folha a 60 px. Rola na horizontal só quando não cabe.
         self.rolagem = QScrollArea(self.divisor)
@@ -96,6 +133,8 @@ class MesaDestacada:
         texto.bloco_destacado.connect(self._destacar)
         texto.documento_mudou.connect(self._atualizar_a_folha)
         self.janela.visor.ponto_clicado.connect(texto.ir_ao_ponto)
+        self.janela.botao_anterior.clicked.connect(lambda: self._texto.virar_folha(-1))
+        self.janela.botao_seguinte.clicked.connect(lambda: self._texto.virar_folha(+1))
 
     @property
     def destacada(self) -> bool:
@@ -122,6 +161,7 @@ class MesaDestacada:
         self.janela.divisor.setStretchFactor(1, 3)
         painel.show()
         self._guarda.registrar_janela(self.janela, self._comandos_da_mesa())
+        self._texto.definir_destacada(True)
         self._folha_mostrada = None
         self._atualizar_a_folha()
         primeira = not self._ja_mostrada
@@ -151,6 +191,7 @@ class MesaDestacada:
         # `takeWidget` antes: a rolagem da mesa guarda o painel, e o `setWidget` seguinte dela o destruiria.
         self.janela.rolagem.takeWidget()
         self._principal.devolver_modo(abas.TEXTO)
+        self._texto.definir_destacada(False)
         self.janela.hide()
         self._texto.editor.setFocus()
 
@@ -208,11 +249,21 @@ class MesaDestacada:
         return cartao
 
     def _atualizar_a_folha(self) -> None:
-        """A vista mostra a folha que o editor tem rasterizada; só troca quando ela é outra."""
+        """A vista mostra a folha que o editor tem rasterizada; só troca quando ela é outra.
+
+        A barra acima diz qual é e se há para onde virar; na folha ainda não lida, o aviso toma o lugar
+        da vista.
+        """
         if not self.destacada:
             return
+        indice, total = self._texto.folha_atual()
+        self.janela.rotulo_da_folha.setText(mesa.frase_da_folha_da_mesa(indice, total))
+        self.janela.botao_anterior.setEnabled(mesa.folha_vizinha(indice, -1, total) is not None)
+        self.janela.botao_seguinte.setEnabled(mesa.folha_vizinha(indice, +1, total) is not None)
+        por_ler = self._texto.folha_por_ler()
+        self.janela.pilha_da_folha.setCurrentWidget(self.janela.aviso_da_folha if por_ler else self.janela.visor)
         folha, dpi = self._texto.folha_rasterizada()
-        if folha is None or folha is self._folha_mostrada:
+        if por_ler or folha is None or folha is self._folha_mostrada:
             return
         self._folha_mostrada = folha
         self.janela.visor.mostrar_pagina(folha, dpi=dpi)

@@ -17,13 +17,18 @@ from __future__ import annotations
 __all__ = [
     "ACOES_DA_MESA_DESTACADA",
     "CARTAO_DA_MESA",
+    "FOLHA_ANTERIOR_NA_MESA",
+    "FOLHA_POR_LER_NA_MESA",
+    "FOLHA_SEGUINTE_NA_MESA",
     "TITULO_DA_MESA",
     "FRACAO_PADRAO",
     "LARGURA_MINIMA",
     "MESA_AO_ABRIR_O_TEXTO",
     "MESA_NUNCA",
     "MESA_SEMPRE",
+    "folha_vizinha",
     "fracao_da_mesa",
+    "frase_da_folha_da_mesa",
     "ligada",
     "sempre",
     "vale_a_mesa",
@@ -62,6 +67,11 @@ da janela principal, e com o foco na mesa elas não fazem nada: é o critério d
 
 TITULO_DA_MESA = "Mesa de texto"
 CARTAO_DA_MESA = "O texto está na mesa, numa janela própria."
+FOLHA_POR_LER_NA_MESA = "Esta folha ainda não foi lida. Ela aparece aqui quando o editor ao lado a ler."
+"""O lugar da folha na janela da mesa quando o editor está no vazio «Ler a folha N» (S-644): mostrar
+a folha de antes ao lado do convite a ler outra seria a folha e o texto discordando."""
+FOLHA_ANTERIOR_NA_MESA = "Folha anterior"
+FOLHA_SEGUINTE_NA_MESA = "Folha seguinte"
 """O cartão que ocupa o lugar da aba Texto enquanto a mesa está destacada, com «Mostrar» e «Trazer de volta»."""
 
 
@@ -75,7 +85,7 @@ def sempre(preferencia: str) -> bool:
     return preferencia == MESA_SEMPRE
 
 
-def vale_a_mesa(preferencia: str, *, texto_a_frente: bool, largura: int) -> bool:
+def vale_a_mesa(preferencia: str, *, texto_a_frente: bool, largura: int, destacada: bool = False) -> bool:
     """A mesa deve estar armada agora? Pura.
 
     **Perguntada ao trocar de área, e não a cada redimensionamento** -- quem chama é a troca de modo
@@ -83,8 +93,30 @@ def vale_a_mesa(preferencia: str, *, texto_a_frente: bool, largura: int) -> bool
     trabalho; a largura aqui é a do instante em que a pessoa entrou na área.
 
     Preferência desconhecida (o estado gravado por outra versão) vale como o padrão.
+
+    **Com a mesa destacada** (S-646) o texto está noutra janela, e na aba Texto da principal fica o
+    cartão: o PDF ao lado de um cartão seria a mesa sem o texto, e a folha já está na janela da mesa.
+    Só a posição `sempre`, que quer o PDF à esquerda em toda área, arma assim mesmo.
     """
-    return largura >= LARGURA_MINIMA and ligada(preferencia) and (texto_a_frente or sempre(preferencia))
+    if largura < LARGURA_MINIMA or not ligada(preferencia):
+        return False
+    return sempre(preferencia) or (texto_a_frente and not destacada)
+
+
+def folha_vizinha(indice: int, passo: int, total: int) -> int | None:
+    """A folha `passo` folhas adiante (ou atrás) na janela da mesa, ou `None` fora do livro. Pura.
+
+    `total` zero é o livro que não se sabe: sem ele não há para onde virar.
+    """
+    alvo = int(indice) + int(passo)
+    if total <= 0 or not 0 <= alvo < total:
+        return None
+    return alvo
+
+
+def frase_da_folha_da_mesa(indice: int, total: int) -> str:
+    """O rótulo entre as setas da janela da mesa: «Folha 13 de 289». Pura; `indice` é 0-based."""
+    return f"Folha {int(indice) + 1} de {int(total)}" if total > 0 else f"Folha {int(indice) + 1}"
 
 
 def fracao_da_mesa(guardada: float) -> float:
