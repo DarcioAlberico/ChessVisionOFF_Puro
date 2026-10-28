@@ -468,6 +468,8 @@ class PainelDeTexto(QWidget):
         """As palavras que a pessoa mandou ignorar nesta folha. Saem com a folha."""
         self._glifos_recentes: list[str] = []
         self._palavras_cache: tuple[object, int] = (None, 0)
+        self._ler_ao_chegar = False
+        """Ler a folha sem caderno ao chegar a ela pela mesa (S-644). Ver `alternar_ler_ao_chegar`."""
         self._na_mesa = False
         """A mesa de texto está armada (S-640): a aba acompanha a página do visualizador (S-644) e
         mostra o bloco impresso sob o cursor (S-643). Quem diz é a janela, por `definir_mesa`."""
@@ -621,6 +623,11 @@ class PainelDeTexto(QWidget):
         rodape = QHBoxLayout()
         self.status = QLabel("", self)
         self.status.setAccessibleName("Estado da folha")
+        # O clique na folha do rodapé leva ao campo da folha (S-655): «Folha 12» é onde se olha para
+        # saber em que folha se está, e é dali que se quer ir à outra.
+        self.status.setCursor(Qt.CursorShape.PointingHandCursor)
+        dica_em(self.status, strings.DICA_DO_RODAPE_DA_FOLHA)
+        self.status.installEventFilter(self)
         rodape.addWidget(self.status, 1)
         self.caixa_de_palavras = QLabel("", self)
         self.caixa_de_palavras.setAccessibleName("Palavras da folha")
@@ -751,6 +758,7 @@ class PainelDeTexto(QWidget):
         """
         diagramas = self.documento.diagramas
         cad = self._caderno_da_tela()
+        guardada = None if cad is None or self._pagina is None else cad.estado(self._pagina.pagina)
         self.status.setText(
             frase_do_rodape(
                 folha=None if self._pagina is None else int(self._pagina.pagina),
@@ -759,10 +767,24 @@ class PainelDeTexto(QWidget):
                 miniaturas=sum(1 for c in diagramas if self._tem_miniatura(c)),
                 por_gravar=self.tem_alteracoes,
                 correcoes=self._correcoes,
-                do_caderno=cad is not None and self._pagina is not None and cad.estado(self._pagina.pagina) is not None,
+                do_caderno=guardada is not None,
                 conferidas=None if cad is None else (cad.conferidas(), self._folhas_do_livro()),
+                # A hora vem do índice do caderno (`gravada_em`, ISO), e não de um relógio do painel:
+                # é a hora da gravação de verdade, e a folha reaberta amanhã diz a de hoje.
+                gravado_as=guardada.gravada_em[11:16] if guardada is not None else "",
             )
         )
+
+    def ir_ao_campo_de_folha(self) -> None:
+        """O clique na folha do rodapé (S-655): a aba Leitura da fita à frente e o campo da folha pronto."""
+        from chess_diagram_ocr.ui import fita_do_texto
+
+        leitura = next(i for i, aba in enumerate(fita_do_texto.ABAS) if "@folha" in (it for g in aba.grupos for it in g.itens))
+        if self.fita.recolhida:
+            self.fita.definir_recolhida(False)
+        self.fita.setCurrentIndex(leitura)
+        self.campo_de_folha.setFocus()
+        self.campo_de_folha.selectAll()
 
     def _folhas_do_livro(self) -> int:
         """Quantas folhas o livro tem, pelo teto do campo; sem ele, até a última folha do caderno."""
@@ -2835,7 +2857,21 @@ class PainelDeTexto(QWidget):
 
     def interruptores_da_vista(self) -> dict[str, bool]:
         """As marcas que o menu Texto mostra para a vista desta aba, para a janela pô-las ao abrir."""
-        return {"diagramas_a_esquerda": self.diagramas_a_esquerda, "texto_ao_lado": self._texto_ao_lado}
+        return {
+            "diagramas_a_esquerda": self.diagramas_a_esquerda,
+            "texto_ao_lado": self._texto_ao_lado,
+            "ler_ao_chegar": self._ler_ao_chegar,
+        }
+
+    def alternar_ler_ao_chegar(self) -> None:
+        """«Ler ao chegar numa folha sem caderno» (S-644): para quem corrige o livro do começo ao fim
+        com o motor rápido. Desligada por padrão -- ler custa de 1 s a 40 s, e é decisão de quem lê."""
+        self._ler_ao_chegar = not self._ler_ao_chegar
+        self.estado.emit(
+            "Virar a página com a mesa lê a folha que ainda não está no caderno."
+            if self._ler_ao_chegar
+            else "Virar a página com a mesa mostra a folha por ler, sem ler sozinha."
+        )
 
     def alternar_diagramas_a_esquerda(self) -> None:
         self.definir_diagramas(DIAGRAMAS_AO_CENTRO if self.diagramas_a_esquerda else DIAGRAMAS_A_ESQUERDA)
@@ -2969,6 +3005,7 @@ class PainelDeTexto(QWidget):
         self.definir_tamanho_da_miniatura(str(getattr(estado, "texto_miniatura", "")))
         self.definir_familia_da_letra(str(getattr(estado, "texto_familia", "")))
         self.definir_texto_ao_lado(bool(getattr(estado, "texto_ao_lado", False)))
+        self._ler_ao_chegar = bool(getattr(estado, "texto_ler_ao_chegar", False))
         self.fita.definir_recolhida(bool(getattr(estado, "texto_fita_recolhida", False)))
         self._glifos_recentes = [str(g) for g in getattr(estado, "texto_glifos_recentes", [])][:GLIFOS_RECENTES]
         self._encher_a_paleta()
@@ -2983,6 +3020,7 @@ class PainelDeTexto(QWidget):
         estado.texto_miniatura = self._tamanho_da_miniatura  # type: ignore[attr-defined]
         estado.texto_familia = self._familia_da_letra  # type: ignore[attr-defined]
         estado.texto_ao_lado = self._texto_ao_lado  # type: ignore[attr-defined]
+        estado.texto_ler_ao_chegar = self._ler_ao_chegar  # type: ignore[attr-defined]
         estado.texto_fita_recolhida = self.fita.recolhida  # type: ignore[attr-defined]
         estado.texto_glifos_recentes = list(self._glifos_recentes)  # type: ignore[attr-defined]
 
@@ -3018,6 +3056,8 @@ class PainelDeTexto(QWidget):
         if self._caderno is not None and self._caderno.estado(pagina) is not None and self._abrir_do_caderno(pagina):
             return
         self._mostrar_folha_por_ler(pagina)
+        if self._ler_ao_chegar:
+            self.ler()
 
     def _mostrar_folha_por_ler(self, pagina: int) -> None:
         """O editor vazio, com o botão que lê **esta** folha."""
@@ -3841,6 +3881,9 @@ class PainelDeTexto(QWidget):
             # seleciona a marca, o Enter a ativa. Com qualquer outra seleção o Enter é o Enter.
             if a1.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not a1.modifiers() and self._ativar_marca_selecionada():
                 return True
+        if a0 is self.status and isinstance(a1, QMouseEvent) and a1.type() == QEvent.Type.MouseButtonRelease:
+            self.ir_ao_campo_de_folha()
+            return True
         if a0 is self.editor.viewport() and isinstance(a1, QEvent) and a1.type() == QEvent.Type.Resize:
             self.vazio.setGeometry(self._area_da_folha())
         if a0 is self.editor.viewport() and isinstance(a1, QHelpEvent) and a1.type() == QEvent.Type.ToolTip:

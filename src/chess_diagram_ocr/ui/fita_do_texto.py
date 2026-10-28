@@ -91,7 +91,7 @@ ABAS: tuple[Aba, ...] = (
         "Leitura",
         (
             Grupo("Folha", ("@folha", "@motor", "@modo_bloco")),
-            Grupo("Ler", ("ler_folha", "folha_da_pagina_aberta", "ler_folha_de_novo")),
+            Grupo("Ler", ("ler_folha", "folha_da_pagina_aberta", "ler_folha_de_novo", "ler_ao_chegar")),
             Grupo(
                 "Caderno",
                 ("marcar_folha_conferida", "voltar_a_versao_anterior", "descartar_correcoes", "indice_do_caderno"),
@@ -109,7 +109,8 @@ ABAS: tuple[Aba, ...] = (
     Aba(
         "Exibir",
         (
-            Grupo("Mostrar", ("painel_de_navegacao", "mesa_de_texto", "destacar_mesa", "bloco_impresso", "quebrar_linha")),
+            Grupo("Mostrar", ("painel_de_navegacao", "bloco_impresso", "quebrar_linha")),
+            Grupo("Mesa", ("mesa_de_texto", "mesa_sempre", "destacar_mesa")),
             Grupo("Zoom", ("aproximar_texto", "afastar_texto", "zoom_do_texto_normal", "familia_da_letra")),
             Grupo("Foco", ("modo_foco", "recolher_fita")),
         ),

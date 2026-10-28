@@ -196,6 +196,27 @@ class TrocarDeFolhaGuardaTests(_Aba):
         self.assertIn("corrigida", self.no_caderno(1))
 
 
+class RodapeDoCadernoTests(_Aba):
+    """S-655: «gravado às 14:32» vem do índice do caderno, e o clique na folha leva ao campo dela."""
+
+    def test_gravado_as_a_hora_do_indice_e_por_gravar_vence(self) -> None:
+        self.ler(3)
+        hora = self.cad.estado(2).gravada_em[11:16]  # type: ignore[union-attr]
+        self.assertIn(f"gravado às {hora}", self.painel.status.text())
+        self.digitar_no_fim(" x")
+        self.assertIn("por gravar", self.painel.status.text())
+        self.assertNotIn("gravado às", self.painel.status.text())
+
+    def test_o_clique_na_folha_leva_ao_campo_de_folha(self) -> None:
+        self.ler(3)
+        self.painel.fita.setCurrentIndex(0)
+        self.painel.alternar_fita()  # recolhida: o clique tem de devolver a fita
+        QTest.mouseClick(self.painel.status, Qt.MouseButton.LeftButton)
+        self.assertFalse(self.painel.fita.recolhida)
+        self.assertTrue(self.painel.campo_de_folha.isVisible())
+        self.assertTrue(self.painel.campo_de_folha.hasFocus() or self.painel.focusWidget() is not None)
+
+
 class VoltarAbreOCadernoTests(_Aba):
     def test_voltar_a_folha_abre_o_que_foi_feito_sem_motor(self) -> None:
         self.ler(3)
@@ -462,6 +483,24 @@ class MesaAcompanhaTests(_Aba):
         self.painel.definir_livro(self.livro, pagina=2)
         self.assertEqual(self.lidas, [])
         self.assertIn("corrigida", self.painel.documento.para_texto())
+
+    def test_ler_ao_chegar_le_a_folha_sem_caderno_e_vai_ao_estado(self) -> None:
+        from chess_diagram_ocr.ui.state import AppState
+
+        self.ler(3)
+        self.painel.definir_mesa(True)
+        self.painel.alternar_ler_ao_chegar()
+        self.lidas.clear()
+        self.painel.definir_livro(self.livro, pagina=12)
+        self.assertEqual(self.lidas, [12], "com a preferência ligada, a folha sem caderno não foi lida")
+        self.assertIn("folha 13", self.painel.documento.para_texto())
+        self.lidas.clear()
+        self.painel.definir_livro(self.livro, pagina=2)
+        self.assertEqual(self.lidas, [], "a folha que já está no caderno foi lida de novo")
+        estado = AppState()
+        self.painel.anotar_estado(estado)
+        self.assertTrue(estado.texto_ler_ao_chegar)
+        self.assertTrue(self.painel.interruptores_da_vista()["ler_ao_chegar"])
 
     def test_sem_a_mesa_virar_a_pagina_nao_troca_a_folha(self) -> None:
         self.ler(3)

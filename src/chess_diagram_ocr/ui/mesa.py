@@ -22,20 +22,23 @@ __all__ = [
     "LARGURA_MINIMA",
     "MESA_AO_ABRIR_O_TEXTO",
     "MESA_NUNCA",
+    "MESA_SEMPRE",
     "fracao_da_mesa",
     "ligada",
+    "sempre",
     "vale_a_mesa",
 ]
 
 MESA_AO_ABRIR_O_TEXTO = "texto"
 MESA_NUNCA = "nunca"
-"""As duas posições da preferência (`AppState.texto_mesa`), e `""` -- nunca escolhida -- é a primeira.
+MESA_SEMPRE = "sempre"
+"""As três posições da preferência (`AppState.texto_mesa`), e `""` -- nunca escolhida -- é a primeira.
 
 **Mora no estado da sessão, e não em `settings.py`**, e a razão é medida: `settings` está no caminho
 de medição dos relatórios de campo (S-218), e uma seção nova ali muda a impressão do código que os
-quatro relatórios declaram. A segunda revisão do plano propôs uma terceira posição, `sempre` (o PDF
-à esquerda em toda área); ela espera a decisão R1 do dono, e uma posição que só se alcança editando
-o JSON seria peso morto."""
+quatro relatórios declaram. **`sempre` é a terceira**, a que a segunda revisão do plano propôs: o PDF
+à esquerda em toda área, e não só com o Texto à frente -- para quem confere o livro em qualquer aba.
+Ela chegou com o resto do que faltava da aba Texto (2026-10-28), num segundo interruptor do menu."""
 
 LARGURA_MINIMA = 1000
 """Abaixo desta largura de janela, em pixel, a mesa não se arma.
@@ -67,6 +70,11 @@ def ligada(preferencia: str) -> bool:
     return preferencia != MESA_NUNCA
 
 
+def sempre(preferencia: str) -> bool:
+    """A mesa vale em toda área, e não só com o Texto à frente? Pura."""
+    return preferencia == MESA_SEMPRE
+
+
 def vale_a_mesa(preferencia: str, *, texto_a_frente: bool, largura: int) -> bool:
     """A mesa deve estar armada agora? Pura.
 
@@ -76,7 +84,7 @@ def vale_a_mesa(preferencia: str, *, texto_a_frente: bool, largura: int) -> bool
 
     Preferência desconhecida (o estado gravado por outra versão) vale como o padrão.
     """
-    return largura >= LARGURA_MINIMA and ligada(preferencia) and texto_a_frente
+    return largura >= LARGURA_MINIMA and ligada(preferencia) and (texto_a_frente or sempre(preferencia))
 
 
 def fracao_da_mesa(guardada: float) -> float:

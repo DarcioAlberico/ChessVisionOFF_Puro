@@ -257,8 +257,11 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2123
+    LIMITE = 2124
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.123 -> 2.124 com a «Mesa sempre» (2026-10-28)**: o comando do segundo interruptor da mesa.
+    Quem marca os dois interruptores juntos é `DisposicaoDeMesa`, que recebe o `menu.marcar`.
 
     **2.123 no merge da mesa de texto com o ramo de integração (2026-10-25)**: os dois lados
     partiram de 2.093. A CI do ramo de integração abriu o bloco de imports (+18, sem código, a nota

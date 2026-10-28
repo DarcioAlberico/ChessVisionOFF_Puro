@@ -547,7 +547,7 @@ class JanelaPrincipal(QMainWindow):
         self.divisor.setSizes([LARGURA_MINIMA_DAS_ABAS, 760])
         self.mesa = DisposicaoDeMesa(  # o PDF à esquerda com a aba Texto à frente (S-640)
             self.divisor, trabalho=self.abas, livro=self.lado_do_livro, visor=self.pdf.visor, estado=self._estado,
-            texto_a_frente=lambda: self.abas.area_atual() is self.texto, texto=self.texto,
+            texto_a_frente=lambda: self.abas.area_atual() is self.texto, texto=self.texto, marcar=lambda *a, **k: self.menu.marcar(*a, **k),
         )
 
         self.treino = ControladorDeTreino(self, pedido=self._pedido_de_treino, busy=self.busy)
@@ -655,7 +655,7 @@ class JanelaPrincipal(QMainWindow):
         self.pdf.roda_vira_pagina.setChecked(estado.wheel_flips_page)
         self.painel.mostrar_incerteza = estado.show_heatmap
         self.texto.aplicar_estado(estado)  # zoom, quebra, motor, modo bloco e os diagramas (S-620, S-623)
-        for nome, ligado in {"mesa_de_texto": self.mesa.ligada, **self.texto.interruptores_da_vista()}.items():
+        for nome, ligado in {**self.mesa.estados(), **self.texto.interruptores_da_vista()}.items():
             self.menu.marcar(nome, ligado=ligado)  # a mesa (S-640) e a vista dos diagramas (S-620, S-624)
         self.estudo.posicionar_divisor(estado.estudo_divisor)
         # Daqui para baixo o disco já está nos widgets, e gravar volta a ser honesto (S-322).
@@ -1897,7 +1897,8 @@ class JanelaPrincipal(QMainWindow):
             "importar_livro": lambda: self.livro.comecar() if self.livro else self._dizer(importador_de_livro.MOTIVO_AUSENTE.splitlines()[0]),
             "cancelar_importacao": lambda: self.livro.cancelar() if self.livro else None,
             "trilho": self._alternar_trilho,
-            "mesa_de_texto": lambda: self.menu.marcar("mesa_de_texto", ligado=self.mesa.alternar()),
+            "mesa_de_texto": lambda: self.mesa.alternar(),
+            "mesa_sempre": lambda: self.mesa.alternar_sempre(),
             "destacar_mesa": lambda: self.mesa_destacada.alternar(),
             "primeira_duvidosa": self.trilho._ir_para_a_primeira_duvidosa,
             "proxima_duvidosa": self.trilho.ir_para_a_proxima_duvidosa,

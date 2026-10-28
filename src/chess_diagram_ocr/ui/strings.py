@@ -355,6 +355,9 @@ BUSCA_PALAVRA_INTEIRA = "Palavra inteira"
 BUSCA_CURINGAS = "Curingas"
 """As duas opções da busca do painel de navegação (S-654, S-659)."""
 
+DICA_DO_RODAPE_DA_FOLHA = "Clique para escolher outra folha: o campo da folha, na aba Leitura da fita."
+"""A dica da frase do rodapé da aba Texto, que leva ao campo da folha (S-655)."""
+
 ABRIR_FOLHA_DO_CADERNO = "Abrir folha"
 """O botão «Ler folha» quando a folha do campo já está no caderno do livro (S-612): abrir não
 chama o motor, e o rótulo diz isso. Ler de novo fica no menu do botão direito da folha."""
