@@ -2820,16 +2820,35 @@ class PainelDeTexto(QWidget):
         self._mostrar_impresso()
         self._avisar_bloco()
 
+    def _sob_o_cursor(self) -> tuple[object, tuple[int, int]] | None:
+        """O que está sob o cursor na folha: a **linha** lida, quando se acha (S-642, etapa 2), e o bloco
+        quando não -- a linha reescrita à mão não casa com a lida, e a resposta volta a ser o bloco.
+
+        Devolve o objeto com `bbox` (`LinhaLida` ou o bloco) e a chave `(bloco, linha)`, com `-1` na
+        linha quando é o bloco inteiro.
+        """
+        doc = self.documento
+        if doc.origem is None:
+            return None
+        deslocamento = self._mapa.deslocamento(self.editor.textCursor().position())
+        blocos = doc.origem.blocos
+        linha = rico.linha_em(doc, deslocamento)
+        if linha is not None:
+            bloco, indice = linha
+            return blocos[bloco].linhas[indice], (bloco, indice)
+        bloco = rico.bloco_em(doc, deslocamento)
+        if bloco is None or not 0 <= bloco < len(blocos):
+            return None
+        return blocos[bloco], (bloco, -1)
+
     def _avisar_bloco(self) -> None:
         """Diz à mesa qual bloco da folha está sob o cursor (S-642). Fora da mesa, nenhum."""
         bbox = None
         doc = self.documento
         if self._na_mesa and doc.origem is not None and int(doc.origem.pagina) == self._pagina_indice:
-            indice = rico.bloco_em(doc, self._mapa.deslocamento(self.editor.textCursor().position()))
-            blocos = doc.origem.blocos
-            if indice is not None and 0 <= indice < len(blocos):
-                caixa = getattr(blocos[indice], "bbox", None)
-                bbox = None if caixa is None else tuple(float(v) for v in caixa)
+            achado = self._sob_o_cursor()
+            caixa = None if achado is None else getattr(achado[0], "bbox", None)
+            bbox = None if caixa is None else tuple(float(v) for v in caixa)
         if bbox != self._bloco_avisado:
             self._bloco_avisado = bbox
             self.bloco_destacado.emit(bbox)
@@ -3135,27 +3154,29 @@ class PainelDeTexto(QWidget):
             return
         doc = self.documento
         folha = self._pagina_rgb
-        bloco = None
+        achado = None
         if self._na_mesa and self._faixa_ligada and folha is not None and doc.origem is not None:
-            indice = rico.bloco_em(doc, self._mapa.deslocamento(self.editor.textCursor().position()))
-            blocos = doc.origem.blocos
-            if indice is not None and 0 <= indice < len(blocos) and not isinstance(blocos[indice], BlocoDeDiagrama):
-                bloco = indice
+            achado = self._sob_o_cursor()
+            if achado is not None and isinstance(achado[0], BlocoDeDiagrama):
+                achado = None
         imagem = None
-        if bloco is not None and folha is not None and doc.origem is not None:
-            imagem = _recorte_da_folha(folha, doc.origem.blocos[bloco], dpi=self._dpi)
-        if bloco is None or imagem is None:
+        if achado is not None and folha is not None:
+            imagem = _recorte_da_folha(folha, achado[0], dpi=self._dpi)
+        if achado is None or imagem is None:
             self.faixa_impressa.hide()
             self._bloco_na_faixa = None
             self.recorte_na_faixa = None
             return
-        chave = (bloco, id(folha))
+        chave = (*achado[1], id(folha))
         if chave == self._bloco_na_faixa and self.faixa_impressa.isVisible():
             return
         self._bloco_na_faixa = chave
         self.recorte_na_faixa = imagem
         largura = max(1, self._area_da_folha().width())
-        altura = max(24, self.editor.height() // 3)
+        # A linha impressa fica com a altura de duas linhas de texto (S-643, etapa 2); o bloco inteiro,
+        # quando a linha não se acha, com até um terço do editor, como antes.
+        e_linha = achado[1][1] >= 0
+        altura = 2 * self.editor.fontMetrics().height() if e_linha else max(24, self.editor.height() // 3)
         self.faixa_impressa.setPixmap(
             pixmap_de_rgb(np.ascontiguousarray(imagem)).scaled(
                 largura, altura, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation

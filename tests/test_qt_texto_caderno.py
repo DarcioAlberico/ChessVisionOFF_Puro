@@ -547,6 +547,51 @@ class FaixaImpressaTests(_Aba):
         self.assertTrue(self.painel.faixa_impressa.isHidden())
 
 
+class ApontarPorLinhaTests(_Aba):
+    """S-642/S-643, etapa 2: o contorno e a faixa descem à linha lida, e voltam ao bloco onde se reescreveu."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        import numpy as np
+
+        linhas = [
+            LinhaLida("primeira linha do lance", (10.0, 10.0, 200.0, 20.0), 0.9, "glifo"),  # type: ignore[arg-type]
+            LinhaLida("segunda linha com Nf3", (10.0, 30.0, 200.0, 40.0), 0.9, "glifo"),  # type: ignore[arg-type]
+        ]
+        pagina = PaginaLida(
+            documento=str(self.livro), pagina=0, colunas=(Coluna(indice=0, blocos=(BlocoDeTexto.de_linhas(linhas),)),)
+        )
+        self.painel.definir_livro(self.livro, pagina=0)
+        self.painel.mostrar_pagina(pagina, folha_rgb=np.full((300, 300, 3), 200, np.uint8), dpi=72)
+        self.avisados: list[object] = []
+        self.painel.bloco_destacado.connect(self.avisados.append)
+        self.painel.definir_mesa(True)
+
+    def cursor_em(self, deslocamento: int) -> None:
+        cursor = self.painel.editor.textCursor()
+        cursor.setPosition(self.painel._mapa.posicao(deslocamento))
+        self.painel.editor.setTextCursor(cursor)
+
+    def test_o_contorno_e_da_linha_e_a_faixa_tem_duas_linhas_de_altura(self) -> None:
+        texto = self.painel.documento.para_texto()
+        self.cursor_em(texto.index("Nf3"))
+        self.assertEqual(self.avisados[-1], (10.0, 30.0, 200.0, 40.0))
+        self.assertEqual(self.painel.recorte_na_faixa.shape[:2], (10, 190))  # type: ignore[union-attr]
+        altura = self.painel.faixa_impressa.pixmap().height()
+        self.assertLessEqual(altura, 2 * self.painel.editor.fontMetrics().height())
+
+    def test_a_linha_reescrita_volta_ao_bloco(self) -> None:
+        texto = self.painel.documento.para_texto()
+        inicio = texto.index("segunda")
+        self.selecionar_e_trocar(inicio, inicio + len("segunda linha com Nf3"), "WWWWWWWWWWWWWWWWWWWWW")
+        self.cursor_em(inicio + 3)
+        bloco = self.painel.documento.origem.blocos[0].bbox  # type: ignore[union-attr]
+        self.assertEqual(self.avisados[-1], tuple(float(v) for v in bloco))
+
+    def selecionar_e_trocar(self, inicio: int, fim: int, novo: str) -> None:
+        self.painel._aplicar(rico.editar(self.painel.documento, inicio, fim, novo))
+
+
 class ApontarTests(_Aba):
     """S-642, etapa 1: o bloco sob o cursor ganha contorno na folha; o clique na folha leva o cursor."""
 

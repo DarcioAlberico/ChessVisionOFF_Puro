@@ -1479,6 +1479,53 @@ def bloco_em(doc: DocumentoRico, deslocamento: int) -> int | None:
     return anterior.bloco if anterior is not None and anterior.da_pagina and deslocamento == comeco else None
 
 
+def linha_em(doc: DocumentoRico, deslocamento: int) -> tuple[int, int] | None:
+    """`(bloco, linha)` da página de onde veio o trecho naquele deslocamento, ou `None` (S-642, etapa 2).
+
+    **Sem mudar o formato.** A `Corrida` não sabe a linha (R5), e o que se faz é derivá-la: o texto
+    do bloco como está no documento é comparado (`difflib`) com as linhas que o motor leu, juntas como
+    `BlocoDeTexto.texto` as junta, e a posição do cursor atravessa a comparação até a linha. Onde a
+    pessoa reescreveu o trecho a comparação não casa, e a resposta é `None` -- quem chama fica com o
+    bloco, que é a etapa 1. É o que a spec previu: "ela erra onde a pessoa reescreveu a linha, e aí a
+    resposta é o bloco".
+    """
+    from difflib import SequenceMatcher
+
+    bloco = bloco_em(doc, deslocamento)
+    if bloco is None or doc.origem is None:
+        return None
+    linhas = getattr(doc.origem.blocos[bloco], "linhas", ()) if 0 <= bloco < len(doc.origem.blocos) else ()
+    if not linhas:
+        return None
+    pedacos: list[str] = []
+    posicao: int | None = None
+    comeco = 0
+    for corrida in doc.corridas:
+        fim = comeco + len(corrida.texto)
+        if corrida.da_pagina and corrida.bloco == bloco:
+            if posicao is None and comeco <= deslocamento <= fim:
+                posicao = sum(len(p) for p in pedacos) + (deslocamento - comeco)
+            pedacos.append(corrida.texto)
+        comeco = fim
+    if posicao is None:
+        return None
+    atual = "".join(pedacos)
+    lido = " ".join(linha.texto for linha in linhas)
+    alvo = None
+    for etiqueta, a0, a1, b0, _b1 in SequenceMatcher(None, atual, lido, autojunk=False).get_opcodes():
+        if a0 <= posicao < a1 or posicao == a1 == len(atual):
+            alvo = b0 + (posicao - a0) if etiqueta == "equal" else None
+            break
+    if alvo is None:
+        return None
+    inicio = 0
+    for indice, linha in enumerate(linhas):
+        if alvo <= inicio + len(linha.texto):
+            return bloco, indice
+        inicio += len(linha.texto) + 1
+    return bloco, len(linhas) - 1
+
+
 def deslocamento_do_bloco(doc: DocumentoRico, bloco: int) -> int | None:
     """Onde começa, no texto, o primeiro trecho que veio daquele bloco da página. `None` se nenhum veio."""
     comeco = 0
@@ -1554,6 +1601,7 @@ __all__ = [
     "titulos",
     "limpar_cor",
     "limpar_formato",
+    "linha_em",
     "mover",
     "mover_paragrafo",
     "mudar_caixa",
