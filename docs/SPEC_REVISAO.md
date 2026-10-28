@@ -1057,6 +1057,16 @@ desviá-los; `cli.field`, `config` e `settings` mudaram de digest sem mudar o qu
 sem as variáveis de ambiente, as pastas são as de sempre. Das 2.071 chaves de cada relatório só
 mudaram os segundos e a procedência.
 
+Na décima (2026-10-28 -- commit `affdf36`, o merge da mesa de texto com a `main`, árvore limpa
+efêmera, `dirty=false`) **três dos quatro** voltaram idênticos: controle, `mhsp` e `s108`. O
+quarto, a produção, não reproduz pelo mesmo motivo da sétima: o `piece_classifier.pt` foi trocado
+em 2026-10-25 por um retreino no `fa41371` (época 5, val 0,978, digest `a22c7854`), e o que o
+relatório media (`a907f610`, época 10, treino `2085f18`) não existe mais no disco. Remedido com o
+de hoje: taxa de exportação 0,8957 → 0,8696, exatidão de campo 0,9709 → 0,9600 (4 exportados
+errados, eram 3), a limpa 0,9663 → 0,9535. **A queda é do modelo, e não do código**: os outros
+três passaram pelo mesmo caminho de medição e não se moveram. O relatório diz isso em
+`measured_with.note`, que é onde a ressalva viaja junto com o número.
+
 ## S-326 · A largura da fita plena é derivada, e não escolhida
 
 **Problema.** Três testes de `ModoDaFitaTests` montavam a fita em `self._em(2200)` -- 2.200 px é
