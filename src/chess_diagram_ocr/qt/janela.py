@@ -487,7 +487,7 @@ class JanelaPrincipal(QMainWindow):
             busy=self.busy,
         )
         self.abas.addTab(self.galeria, abas.GALERIA)
-        self.rotulagem = painel_de_rotulagem.montar(self.abas)  # a bancada da suíte, se ao alcance
+        self.rotulagem = painel_de_rotulagem.montar(self.abas, folhas_para=self.texto.folhas_do_livro)  # a bancada da suíte; o caderno vai ao livro dela (R7)
         if self.rotulagem is not None:
             self.abas.addTab(self.rotulagem, abas.ROTULAGEM)
         self.revisao_de_texto = painel_de_revisao_de_texto.montar(self.abas)  # idem, passo 14

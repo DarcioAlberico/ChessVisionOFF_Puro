@@ -387,6 +387,13 @@ trabalho mora nos dois repositórios:
 lida não vai: trocar a leitura da suíte pela do motor deste programa é escolher motor de
 exportação, e não corrigir.
 
+**Dois furos da mesma família, achados no caminho e fechados na mesma entrega:**
+
+| furo | conserto |
+|---|---|
+| A aba **Rotulagem** tem o próprio *Livro para EPUB/DOCX…*, que exporta o livro do projeto dela -- e não levava o caderno | `PainelDeRotulagem.folhas_para(pdf, paginas)` na suíte; o tronco o dá em `painel_de_rotulagem.montar(folhas_para=)` com `PainelDeTexto.folhas_do_livro`, que responde pelo livro aberto (com a folha da tela gravada) ou abre o caderno de outro livro **só para leitura**. A aba de antes do R7 monta igual |
+| A decisão tomada na aba **Revisão de texto** depois da importação da janela não chegava ao livro: a exportação reaproveita o documento em mãos (A3) e só reaplicava as decisões de **diagrama** | a importação guarda a impressão digital das decisões de texto que viu (`ImportReport.review_decisions_digest`, de `ReviewDecisions.digest`); se na exportação ela é outra, o documento em mãos não serve e o livro é lido de novo, e o rodapé diz por quê. As de texto valem na leitura das regiões de OCR, e por isso não há como aplicá-las ao documento pronto |
+
 ## Custo, risco e ordem
 
 | fase | esforço | risco | o que fica se ela parar no meio |

@@ -17,6 +17,9 @@ from __future__ import annotations
 
 import getpass
 import logging
+from collections.abc import Callable, Sequence
+from pathlib import Path
+from typing import Any
 
 from PyQt6.QtWidgets import QWidget
 
@@ -34,8 +37,13 @@ def disponivel() -> bool:
     return True
 
 
-def montar(parent: QWidget) -> QWidget | None:
-    """O painel da suíte, ou `None` com o motivo no log."""
+def montar(parent: QWidget, *, folhas_para: Callable[[Path, Sequence[int] | None], Any] | None = None) -> QWidget | None:
+    """O painel da suíte, ou `None` com o motivo no log.
+
+    `folhas_para(pdf, paginas)` dá as folhas corrigidas no caderno da aba Texto ao *Livro para
+    EPUB/DOCX…* da aba (R7), que exporta o livro do projeto dela -- que pode não ser o aberto aqui.
+    A suíte de antes do R7 não tem onde recebê-las, e a aba exporta como sempre exportou.
+    """
     try:
         from caissa.ui.views.rotulagem import PainelDeRotulagem
     except Exception as exc:  # noqa: BLE001 - ver o cabeçalho
@@ -46,10 +54,13 @@ def montar(parent: QWidget) -> QWidget | None:
     except Exception:  # noqa: BLE001 - sem usuário do sistema, o projeto pede o nome depois
         revisor = ""
     try:
-        return PainelDeRotulagem(parent, revisor=revisor)
+        painel = PainelDeRotulagem(parent, revisor=revisor)
     except Exception:
         logger.exception("a aba Rotulagem não pôde ser montada; a janela segue sem ela.")
         return None
+    if folhas_para is not None and hasattr(painel, "folhas_para"):
+        painel.folhas_para = folhas_para
+    return painel
 
 
 def comandos() -> dict[str, str]:

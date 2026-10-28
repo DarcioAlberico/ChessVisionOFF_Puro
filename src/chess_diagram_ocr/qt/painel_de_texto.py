@@ -2150,6 +2150,22 @@ class PainelDeTexto(QWidget):
         self._guardar_a_folha()
         return caderno_na_suite.folhas_para_a_suite(self._caderno, paginas)
 
+    def folhas_do_livro(self, livro: Path | str, paginas: Sequence[int] | None) -> list[dict[str, Any]]:
+        """As folhas corrigidas do caderno de `livro`, que não precisa ser o aberto (R7).
+
+        É a pergunta da aba Rotulagem, que exporta o livro do projeto dela. O livro aberto aqui
+        responde como `folhas_para_a_suite`, com a folha da tela gravada; outro livro abre o caderno
+        dele **só para leitura**, sem tomar a trava de quem estiver corrigindo nele.
+        """
+        from chess_diagram_ocr.text import caderno_na_suite
+
+        if self._caderno is not None and caderno.identidade_de(livro) == self._caderno.identidade:
+            return self.folhas_para_a_suite(paginas)
+        if self._pasta_de_cadernos is None or not Path(livro).exists():
+            return []
+        outro = caderno.abrir(livro, pasta=self._pasta_de_cadernos, travar=False)
+        return [] if outro is None else caderno_na_suite.folhas_para_a_suite(outro, paginas)
+
     def _guardar_a_folha(self) -> bool:
         """Guarda a folha da tela no caderno, se ela mudou (S-611). Devolve se o trabalho está a salvo.
 

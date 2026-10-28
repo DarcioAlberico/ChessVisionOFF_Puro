@@ -272,7 +272,10 @@ seria escolher motor) entram no lugar da leitura da suíte dessas páginas:
   fica de fora; a marca de diagrama sem diagrama na importação é contada.
 
 A suíte de antes do R7 não conhece o argumento, e `qt/exportador_de_livro.montar` o tira em vez de
-falhar: o livro sai com a leitura dela, como antes. O caminho de volta -- o IR alimentando o
+falhar: o livro sai com a leitura dela, como antes. A exportação da aba **Rotulagem**, que é do
+livro do projeto dela, recebe as folhas pelo mesmo caminho (`PainelDeTexto.folhas_do_livro`): do
+livro aberto, com a folha da tela gravada; de outro livro, pelo caderno dele aberto só para
+leitura. O caminho de volta -- o IR alimentando o
 caderno -- continua com o dono.
 
 **Critério de aceite do R7.** Um livro de duas páginas exportado com a primeira corrigida no

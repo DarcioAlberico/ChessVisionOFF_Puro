@@ -436,6 +436,26 @@ class FolhasParaASuiteTests(_Aba):
         self.painel.fechar_caderno()
         self.assertEqual(self.painel.folhas_para_a_suite(None), [])
 
+    def test_o_livro_aberto_responde_com_a_folha_da_tela(self) -> None:
+        self.ler(3)
+        self.digitar_no_fim(" na tela")
+        (folha,) = self.painel.folhas_do_livro(self.livro, None)
+        self.assertEqual(folha["page_index"], 2)
+        self.assertIn("na tela", "".join(r["text"] for p in folha["paragraphs"] for r in p.get("runs", ())))
+
+    def test_outro_livro_abre_o_caderno_dele_so_para_ler(self) -> None:
+        outro = self.pasta / "livros" / "Dvoretsky.pdf"
+        outro.write_bytes(b"%PDF-1.7\n" + b"outro livro inteiro " * 100)
+        dele = caderno.abrir(outro, pasta=self.cadernos)
+        assert dele is not None
+        doc = rico.de_pagina(_pagina(str(outro), 6, "folha do outro"))
+        self.assertEqual(dele.gravar(doc, correcoes=1), caderno.GRAVADA)
+        dele.fechar()
+        self.assertEqual([f["page_index"] for f in self.painel.folhas_do_livro(outro, None)], [6])
+        self.assertFalse((dele.pasta / "caderno.lock").exists(), "ler o caderno de outro livro tomou a trava")
+        self.assertEqual(self.painel.caderno_aberto.identidade, caderno.identidade_de(self.livro), "o caderno aberto mudou")  # type: ignore[union-attr]
+        self.assertEqual(self.painel.folhas_do_livro(self.pasta / "sumiu.pdf", None), [])
+
 
 class PdfPesquisavelDoCadernoTests(_Aba):
     def test_o_livro_sai_com_a_camada_das_folhas_do_caderno(self) -> None:
