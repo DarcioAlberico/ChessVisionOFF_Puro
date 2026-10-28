@@ -13,7 +13,7 @@
     },
     "accept_threshold": 0.8,
     "dpi": 220,
-    "code_commit": "927d4fd",
+    "code_commit": "affdf36",
     "code_dirty": false
   },
   "pages": 68,
@@ -71,8 +71,8 @@
   "stipulation_truth_closes": 6,
   "stipulation_truth_failed": [],
   "repairs_per_diagram": 0.2105,
-  "seconds": 67.904,
-  "seconds_per_diagram": 0.5956,
+  "seconds": 83.71,
+  "seconds_per_diagram": 0.7343,
   "per_regime": {
     "fonte": {
       "pages": 6,
@@ -130,8 +130,8 @@
       "stipulation_truth_closes": 6,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 9.743,
-      "seconds_per_diagram": 0.5413,
+      "seconds": 11.969,
+      "seconds_per_diagram": 0.665,
       "per_regime": {},
       "per_book": {}
     },
@@ -191,8 +191,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 1.0,
-      "seconds": 11.107,
-      "seconds_per_diagram": 0.5289,
+      "seconds": 13.306,
+      "seconds_per_diagram": 0.6336,
       "per_regime": {},
       "per_book": {}
     },
@@ -252,8 +252,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0682,
-      "seconds": 25.609,
-      "seconds_per_diagram": 0.582,
+      "seconds": 31.098,
+      "seconds_per_diagram": 0.7068,
       "per_regime": {},
       "per_book": {}
     },
@@ -313,7 +313,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 3.827,
+      "seconds": 4.747,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -374,8 +374,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 17.618,
-      "seconds_per_diagram": 0.5683,
+      "seconds": 22.59,
+      "seconds_per_diagram": 0.7287,
       "per_regime": {},
       "per_book": {}
     }
@@ -437,8 +437,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 1.122,
-      "seconds_per_diagram": 0.2805,
+      "seconds": 1.104,
+      "seconds_per_diagram": 0.276,
       "per_regime": {},
       "per_book": {}
     },
@@ -498,8 +498,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 2.51,
-      "seconds_per_diagram": 1.255,
+      "seconds": 3.165,
+      "seconds_per_diagram": 1.5826,
       "per_regime": {},
       "per_book": {}
     },
@@ -559,8 +559,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 1.976,
-      "seconds_per_diagram": 0.9879,
+      "seconds": 2.544,
+      "seconds_per_diagram": 1.272,
       "per_regime": {},
       "per_book": {}
     },
@@ -620,8 +620,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 3.537,
-      "seconds_per_diagram": 0.2947,
+      "seconds": 4.175,
+      "seconds_per_diagram": 0.3479,
       "per_regime": {},
       "per_book": {}
     },
@@ -681,8 +681,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 1.502,
-      "seconds_per_diagram": 0.7511,
+      "seconds": 1.67,
+      "seconds_per_diagram": 0.835,
       "per_regime": {},
       "per_book": {}
     },
@@ -742,8 +742,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 3.0,
-      "seconds": 1.55,
-      "seconds_per_diagram": 0.7752,
+      "seconds": 2.004,
+      "seconds_per_diagram": 1.002,
       "per_regime": {},
       "per_book": {}
     },
@@ -803,8 +803,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 1.2,
-      "seconds": 2.316,
-      "seconds_per_diagram": 0.4632,
+      "seconds": 2.627,
+      "seconds_per_diagram": 0.5255,
       "per_regime": {},
       "per_book": {}
     },
@@ -864,8 +864,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 3.139,
-      "seconds_per_diagram": 0.6279,
+      "seconds": 3.751,
+      "seconds_per_diagram": 0.7502,
       "per_regime": {},
       "per_book": {}
     },
@@ -925,8 +925,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.435,
-      "seconds_per_diagram": 0.4347,
+      "seconds": 0.518,
+      "seconds_per_diagram": 0.5179,
       "per_regime": {},
       "per_book": {}
     },
@@ -986,8 +986,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 7.118,
-      "seconds_per_diagram": 0.5932,
+      "seconds": 8.942,
+      "seconds_per_diagram": 0.7452,
       "per_regime": {},
       "per_book": {}
     },
@@ -1047,7 +1047,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.476,
+      "seconds": 0.644,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1108,7 +1108,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.156,
+      "seconds": 0.207,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1169,8 +1169,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.75,
-      "seconds": 1.063,
-      "seconds_per_diagram": 0.2658,
+      "seconds": 1.243,
+      "seconds_per_diagram": 0.3108,
       "per_regime": {},
       "per_book": {}
     },
@@ -1230,8 +1230,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.94,
-      "seconds_per_diagram": 0.9403,
+      "seconds": 1.172,
+      "seconds_per_diagram": 1.172,
       "per_regime": {},
       "per_book": {}
     },
@@ -1291,8 +1291,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 1.5,
-      "seconds": 0.854,
-      "seconds_per_diagram": 0.4269,
+      "seconds": 1.046,
+      "seconds_per_diagram": 0.523,
       "per_regime": {},
       "per_book": {}
     },
@@ -1352,8 +1352,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 5.809,
-      "seconds_per_diagram": 1.1619,
+      "seconds": 7.898,
+      "seconds_per_diagram": 1.5797,
       "per_regime": {},
       "per_book": {}
     },
@@ -1413,7 +1413,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.158,
+      "seconds": 0.177,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1474,7 +1474,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.116,
+      "seconds": 0.144,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1535,7 +1535,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.091,
+      "seconds": 0.107,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1596,8 +1596,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 7.426,
-      "seconds_per_diagram": 0.9283,
+      "seconds": 9.541,
+      "seconds_per_diagram": 1.1927,
       "per_regime": {},
       "per_book": {}
     },
@@ -1657,8 +1657,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.75,
-      "seconds": 1.201,
-      "seconds_per_diagram": 0.3001,
+      "seconds": 1.352,
+      "seconds_per_diagram": 0.3379,
       "per_regime": {},
       "per_book": {}
     },
@@ -1718,8 +1718,8 @@
       "stipulation_truth_closes": 6,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 1.319,
-      "seconds_per_diagram": 0.2198,
+      "seconds": 1.579,
+      "seconds_per_diagram": 0.2632,
       "per_regime": {},
       "per_book": {}
     },
@@ -1779,8 +1779,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 6.951,
-      "seconds_per_diagram": 0.5792,
+      "seconds": 8.088,
+      "seconds_per_diagram": 0.674,
       "per_regime": {},
       "per_book": {}
     },
@@ -1840,8 +1840,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 2.99,
-      "seconds_per_diagram": 0.4984,
+      "seconds": 3.804,
+      "seconds_per_diagram": 0.6341,
       "per_regime": {},
       "per_book": {}
     },
@@ -1901,8 +1901,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 3.0,
-      "seconds": 0.6,
-      "seconds_per_diagram": 0.6,
+      "seconds": 0.713,
+      "seconds_per_diagram": 0.7133,
       "per_regime": {},
       "per_book": {}
     },
@@ -1962,8 +1962,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.379,
-      "seconds_per_diagram": 0.3789,
+      "seconds": 0.471,
+      "seconds_per_diagram": 0.4715,
       "per_regime": {},
       "per_book": {}
     },
@@ -2023,8 +2023,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 6.331,
-      "seconds_per_diagram": 0.7914,
+      "seconds": 7.803,
+      "seconds_per_diagram": 0.9753,
       "per_regime": {},
       "per_book": {}
     },
@@ -2084,8 +2084,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 2.093,
-      "seconds_per_diagram": 0.5231,
+      "seconds": 2.588,
+      "seconds_per_diagram": 0.6469,
       "per_regime": {},
       "per_book": {}
     },
@@ -2145,7 +2145,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.179,
+      "seconds": 0.203,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -2206,8 +2206,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 3.568,
-      "seconds_per_diagram": 0.7135,
+      "seconds": 4.428,
+      "seconds_per_diagram": 0.8856,
       "per_regime": {},
       "per_book": {}
     }
@@ -2217,12 +2217,12 @@
       "path": "models/controle_20260816.pt",
       "digest": "f5e19f9b9a427580"
     },
-    "commit": "927d4fdcfee225d70f2712a410ed9dcf3b2ab1fd",
+    "commit": "affdf36a400b8cfd34fe2c6dba8805b0f2a81ffb",
     "dirty": false,
     "ocr": "off",
     "note": "",
     "code": {
-      "digest": "554aa42fadb23e8b",
+      "digest": "9776baa863301bf9",
       "entry": "chess_diagram_ocr.cli.field",
       "modules": {
         "chess_diagram_ocr": "0e8f11cfdf9354d6",
@@ -2231,8 +2231,8 @@
         "checkpoint": "5683de91d38ef14a",
         "cli": "abd1adbe0f277ee5",
         "cli._ocr": "90a255f7cc40b3b1",
-        "cli.field": "f0d3865eb0f9e46e",
-        "config": "4545c696f320d6b6",
+        "cli.field": "df6a68113a980466",
+        "config": "f43f7da1c8ba4413",
         "cor_por_livro": "31c91dcd6a0e27fa",
         "dataset": "d7f081d6f33eff59",
         "decode": "0ab6f66c78653940",
@@ -2257,7 +2257,7 @@
         "procedencias": "2411e5c98cef5dd8",
         "semantics": "7b35fb0542b24a47",
         "service": "57fc6d80133be751",
-        "settings": "0aac5541d756450f",
+        "settings": "3a66b3251b4ee323",
         "splits": "58ebc469016defb5"
       }
     }
