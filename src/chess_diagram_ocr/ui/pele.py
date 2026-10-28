@@ -32,20 +32,13 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "CLASSICA",
     "PADRAO",
     "COMPACTA",
     "CONFORTAVEL",
     "CROMO_CLASSICO",
     "CROMO_FITA",
-    "CROMO_FOCO",
     "DENSIDADES",
-    "DENSIDADE_ENV",
-    "FITA",
-    "FOCO",
     "PELES",
-    "PELE_ENV",
-    "ROTULOS_DE_DENSIDADE",
     "Pele",
     "densidade_em_vigor",
     "escolhida",

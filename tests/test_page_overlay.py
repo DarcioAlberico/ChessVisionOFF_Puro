@@ -9,6 +9,7 @@ conferir, e o clique que abre o vizinho parece um erro de leitura do modelo.
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
 
 import numpy as np
 
@@ -27,9 +28,7 @@ from chess_diagram_ocr.ui.page_overlay import (
     choose_boxes,
     decide_box_click,
     hit_test,
-    mark_confirmed,
     mark_saved,
-    saved_on_page,
 )
 
 PARAMS = OverlayParams(dpi=144, max_boards=12)
@@ -159,41 +158,6 @@ class MarkSavedTests(unittest.TestCase):
         self.assertEqual([box.saved for box in marcadas], [False, False, False])
 
 
-class SavedOnPageTests(unittest.TestCase):
-    """A mesma pergunta do `mark_saved`, para a página inteira (S-451).
-
-    Quem usa a resposta é o "Salvar todos", para perguntar antes de gravar a segunda cópia de uma
-    página que já foi salva. O índice é o mesmo que pinta o verde, e é o ponto: a pergunta tem de
-    concordar com a cor que o usuário está vendo.
-    """
-
-    INDICE = {16: {0, 2}}
-
-    def test_responde_o_que_o_indice_tem_daquela_pagina(self) -> None:
-        self.assertEqual(saved_on_page(self.INDICE, "livro.pdf", 16, source_pdf="livro.pdf"), {0, 2})
-
-    def test_pagina_sem_nada_salvo_responde_vazio_e_nao_erro(self) -> None:
-        self.assertEqual(saved_on_page(self.INDICE, "livro.pdf", 17, source_pdf="livro.pdf"), set())
-
-    def test_perguntar_por_outro_livro_nao_responde_pelo_que_esta_aberto(self) -> None:
-        """O editor pode estar mostrando o resultado de um PDF que a janela já fechou, e
-        responder por ele faria a pergunta citar diagramas de outro livro."""
-        self.assertEqual(saved_on_page(self.INDICE, "outro.pdf", 16, source_pdf="livro.pdf"), set())
-        self.assertEqual(saved_on_page(self.INDICE, "", 16, source_pdf=""), set())
-
-    def test_a_resposta_e_copia_e_nao_o_conjunto_do_indice(self) -> None:
-        """Quem pergunta filtra a resposta; mexer nela não pode apagar o verde da página."""
-        indice = {16: {0, 2}}
-        saved_on_page(indice, "livro.pdf", 16, source_pdf="livro.pdf").clear()
-        self.assertEqual(indice, {16: {0, 2}})
-
-    def test_o_indice_concorda_com_o_que_o_mark_saved_pinta(self) -> None:
-        """As duas leem o mesmo dicionário, e é isso que impede a pergunta e a cor divergirem."""
-        boxes = (caixa(0, 0, 0, 10, 10), caixa(1, 20, 0, 30, 10), caixa(2, 40, 0, 50, 10))
-        salvos = saved_on_page(self.INDICE, "livro.pdf", 16, source_pdf="livro.pdf")
-        self.assertEqual([box.saved for box in mark_saved(boxes, salvos)], [True, False, True])
-
-
 class PageDoneTests(unittest.TestCase):
     """"Esta página está terminada?" (S-142) -- a conta que o usuário fazia de cabeça sobre o
     verde que a S-71 pinta caixa a caixa."""
@@ -215,7 +179,7 @@ class PageDoneTests(unittest.TestCase):
 
     def test_confirmado_pela_base_nao_conclui_a_pagina(self) -> None:
         """Violeta é "não precisa" (S-75), e uma página de confirmados não rendeu amostra."""
-        pagina = PageBoxes(7, PARAMS, mark_confirmed(self.boxes, {0, 1, 2}))
+        pagina = PageBoxes(7, PARAMS, tuple(replace(box, confirmed=True) for box in self.boxes))
         self.assertFalse(pagina.all_saved)
 
     def test_a_conclusao_nao_depende_de_a_pagina_ter_sido_lida(self) -> None:
@@ -337,30 +301,6 @@ class NoTkinterTests(unittest.TestCase):
                 importados.add(node.module.split(".")[0])
 
         self.assertNotIn("tkinter", importados)
-
-
-class ConfirmadoPelaBaseTests(unittest.TestCase):
-    """A quarta marca da caixa (S-75): "não precisa", que a tela não sabia dizer."""
-
-    def _caixas(self) -> tuple[DiagramBox, ...]:
-        return (
-            DiagramBox(index=0, bbox_pdf=(0, 0, 10, 10)),
-            DiagramBox(index=1, bbox_pdf=(20, 0, 30, 10)),
-        )
-
-    def test_carimba_so_o_indice_confirmado(self) -> None:
-        caixas = mark_confirmed(self._caixas(), {1})
-        self.assertFalse(caixas[0].confirmed)
-        self.assertTrue(caixas[1].confirmed)
-
-    def test_sem_confirmacao_devolve_as_mesmas_caixas(self) -> None:
-        self.assertEqual(mark_confirmed(self._caixas(), set()), self._caixas())
-
-    def test_confirmado_e_salvo_convivem(self) -> None:
-        """Um diagrama pode ter as duas marcas: são perguntas independentes."""
-        caixas = mark_confirmed(mark_saved(self._caixas(), {0}), {0})
-        self.assertTrue(caixas[0].saved)
-        self.assertTrue(caixas[0].confirmed)
 
 
 class CanalRedundanteTests(unittest.TestCase):

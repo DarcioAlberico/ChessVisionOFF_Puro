@@ -25,9 +25,6 @@ caber na mesma revisão de português, e tem de ser afirmável sem abrir janela.
 from __future__ import annotations
 
 __all__ = [
-    "CLASSES_COM_VALOR",
-    "POR_CLASSE",
-    "SUFIXO_DE_ROTULO",
     "limpar_rotulo",
     "nome_por_classe",
     "o_texto_e_valor",

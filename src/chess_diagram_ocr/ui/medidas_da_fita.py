@@ -42,13 +42,10 @@ from . import comandos, pele, tipografia
 
 __all__ = [
     "COMPACTO",
-    "FOLGA_ACIMA_DO_ROTULO",
     "HISTERESE",
     "LADO_DO_ICONE",
     "LINHAS_DO_ROTULO",
     "MODOS",
-    "MOLDURA_DO_BOTAO",
-    "MOLDURA_DO_CABECALHO",
     "ORCAMENTO",
     "PLENO",
     "GrupoDeFita",

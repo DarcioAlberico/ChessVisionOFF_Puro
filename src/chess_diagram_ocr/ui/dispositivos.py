@@ -24,7 +24,7 @@ from typing import Any
 
 from . import estado_do_rodape as rodape
 
-__all__ = ["descricao_do_classificador_de_caracteres", "dispositivos_da_janela"]
+__all__ = ["dispositivos_da_janela"]
 
 
 def descricao_do_classificador_de_caracteres() -> str | None:

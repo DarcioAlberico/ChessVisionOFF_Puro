@@ -37,18 +37,8 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "CAMINHO_DO_ICONE",
     "DPI_DE_REFERENCIA",
-    "PONTOS_POR_POLEGADA",
-    "TAMANHOS_DO_ICONE",
-    "compor_icone",
     "gravar_icone",
 ]
-
-PONTOS_POR_POLEGADA = 72.0
-"""A unidade de `tk scaling`: quantos pixels o Tk desenha para cada ponto tipográfico.
-
-Não é 96. `tk scaling` é pixels **por ponto**, e ponto é 1/72 de polegada por definição
-tipográfica — o 96 é o DPI que o Windows finge quando o processo não declara consciência, e
-confundir os dois é o erro que faz a fonte sair 33% menor do que se pediu."""
 
 DPI_DE_REFERENCIA = 96.0
 """O DPI de um monitor a 100%. Serve de referência para o log dizer "150%", e não para a conta."""

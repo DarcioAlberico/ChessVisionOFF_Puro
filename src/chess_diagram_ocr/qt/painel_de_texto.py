@@ -62,6 +62,7 @@ import threading
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
 from typing import cast
 
@@ -74,6 +75,7 @@ from PyQt6.QtGui import (
     QKeySequence,
     QMouseEvent,
     QPixmap,
+    QShortcut,
     QTextBlockFormat,
     QTextCharFormat,
     QTextCursor,
@@ -511,6 +513,7 @@ class PainelDeTexto(QWidget):
         self.documento_mudou.connect(self._atualizar_status)
         self.editor.cursorPositionChanged.connect(self._anotar_cursor)
         self.campo_de_folha.valueChanged.connect(lambda _valor: self._rotular_leitura())
+        atalhos.conferir_dono(self, "PainelDeTexto")
 
     # ------------------------------------------------------------------------------ montagem
 
@@ -597,10 +600,11 @@ class PainelDeTexto(QWidget):
         self.editor.installEventFilter(self)
         self._teclas_do_historico = _teclas_da_tabela(TECLAS_DO_HISTORICO)
         self._teclas_do_editor = _teclas_do_editor()
-        """As teclas que só valem dentro da folha (`atalhos.TECLAS_DO_EDITOR`): `Ctrl+B`, `Ctrl+I`,
-        `F7`, `Alt+X`... **Declaradas e não ligadas** desde o porte para o Qt -- medido em
-        2026-10-24, `Ctrl+B` com o texto selecionado não negritava nada. Agora é este painel quem as
-        atende, pela mesma tabela que a legenda e as dicas leem."""
+        """As teclas que só valem dentro da folha (`atalhos.TECLAS_DO_EDITOR`), já traduzidas para o
+        Qt: `Ctrl+B`, `Ctrl+I`, `F7`, `Alt+X`... É a tabela de onde `_ligar_teclas_do_editor` monta
+        um `QShortcut` por tecla -- e o único caminho por onde elas disparam. A que não traduz sai
+        no log em vez de custar o painel."""
+        self._ligar_teclas_do_editor()
         corpo = QHBoxLayout()
         # O painel de navegação à esquerda da folha (S-654), com o índice das folhas do caderno
         # numa das abas (S-613); nasce escondido, como a paleta.
@@ -776,6 +780,27 @@ class PainelDeTexto(QWidget):
         """Refaz a conta das correções e o rodapé. Na pausa, na gravação e na abertura -- não por tecla."""
         self._correcoes = len(correcao.correcoes(self.documento)) if self.documento.origem is not None else 0
         self._atualizar_status()
+
+    def _ligar_teclas_do_editor(self) -> None:
+        """As teclas próprias do editor (S-241/S-259/S-263), ligadas **no widget** (S-511).
+
+        `atalhos.TECLAS_DO_EDITOR` é a única declaração delas, e do lado do Tk quem as ligava era
+        o `Text.bind`. O porte trouxe a tabela e não o `bind`: `Ctrl+B` não fazia nada no Qt, sem
+        erro nenhum, porque a tabela continuava lá e nenhuma guarda perguntava se alguém a lia.
+
+        Duas coisas, e as duas vêm de `ui/atalhos.py`. Um `QShortcut` por linha da tabela, com
+        alcance no editor, disparando o método de `COMANDOS_DA_ABA` -- o mesmo do botão. E
+        `teclas_proprias` no próprio widget, que é o que `qt/atalhos.cede_a_tecla` lê para
+        entregar ao editor as teclas que ele **divide** com a janela (`Ctrl+R`, `Ctrl++`,
+        `Ctrl+-`) e não a que a janela ganha (`Ctrl+H`, que chega por `acoes_proprias`).
+        `teclas_cedidas_ao_editor` levanta na montagem se uma tecla nova entrar nas duas tabelas
+        sem `SOBREPOSICOES_NO_EDITOR` dizer de quem ela é.
+        """
+        self.editor.teclas_proprias = atalhos.teclas_cedidas_ao_editor()  # type: ignore[attr-defined]
+        for acao, tecla in self._teclas_do_editor.items():
+            atalho = QShortcut(tecla, self.editor)
+            atalho.setContext(Qt.ShortcutContext.WidgetShortcut)
+            atalho.activated.connect(partial(self.executar, acao))
 
     def _montar_paleta(self) -> QListWidget:
         """O painel lateral de glifos (S-248). Nasce escondido: ele é um caminho a mais.
@@ -3829,10 +3854,6 @@ class PainelDeTexto(QWidget):
                 alvo = self.atender(acao) if tecla == combinacao else None
                 if alvo is not None:
                     alvo()
-                    return True
-            for acao, tecla in self._teclas_do_editor.items():
-                if tecla == combinacao and acao in COMANDOS_DA_ABA:
-                    self.executar(acao)
                     return True
             if a1.key() == Qt.Key.Key_Escape and self._sair_com_esc():
                 return True

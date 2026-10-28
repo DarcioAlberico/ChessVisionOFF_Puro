@@ -3,7 +3,8 @@
     cvoff-games --all                        # relata, sem escrever nada
     cvoff-games --all --apply                # grava lance, vez e headers nas anotações
     cvoff-games --all --census               # o estado do acervo; não abre a base
-    cvoff-games --build-index                # o índice por nome, uma vez (~11 min)
+    cvoff-games --build-index                # o índice por nome; relê só o que mudou (S-532)
+    cvoff-games --build-tree                 # a árvore de aberturas por posição (S-535)
     cvoff-games --book "Karpov 1" --names    # só o caminho por nome, ~150 s
     cvoff-games --all --database uma.pgn     # uma base só; repetível
 
@@ -36,10 +37,13 @@ import argparse
 import json
 import logging
 import multiprocessing as mp
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+from ..arvore_de_aberturas import DEFAULT_TREE_PATH, PROFUNDIDADE
+from ..arvore_de_aberturas import construir as construir_arvore
 from ..atomic_io import atomic_write_text
 from ..config import DEFAULT_PDF_DIR
 from ..gallery import DEFAULT_GALLERY_DIR, load_annotations, save_annotations
@@ -52,11 +56,14 @@ from ..games_db import (
     PositionHit,
     PositionIndex,
     database_paths,
+    existe_base,
     match_entries,
     match_positions,
+    nome_da_base,
     pair_from_caption,
     scan_by_players,
     scan_by_positions,
+    tamanho_da_base,
 )
 from ..games_index import DEFAULT_INDEX_PATH, build_index
 from ..logging_setup import configure_logging, default_log_file
@@ -138,7 +145,28 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--build-index",
         action="store_true",
-        help="constrói o índice por nome (~11 min, ~428 MB) e sai. Torna a busca por nome interativa.",
+        help=(
+            "constrói ou põe em dia o índice por nome e sai: relê só os arquivos que mudaram (S-532). "
+            "Do zero, ~9 min por gigabase. Torna a busca por nome interativa."
+        ),
+    )
+    parser.add_argument(
+        "--build-tree",
+        action="store_true",
+        help=(
+            "constrói a árvore de aberturas por posição e sai (S-535): que lances a base joga a "
+            "partir de cada posição dos primeiros lances. Refaz do zero -- ver --arvore."
+        ),
+    )
+    parser.add_argument("--arvore", type=Path, default=DEFAULT_TREE_PATH, help="onde fica a árvore de aberturas.")
+    parser.add_argument(
+        "--plies",
+        type=int,
+        default=PROFUNDIDADE,
+        help=(
+            f"até que meio-lance a árvore vai (padrão {PROFUNDIDADE}, dez lances de cada lado). "
+            "Mais fundo custa mais disco e mais tempo, e responde o que a busca já responde."
+        ),
     )
     parser.add_argument("--index", type=Path, default=DEFAULT_INDEX_PATH, help="onde fica o índice por nome.")
     add_verbose(parser)
@@ -220,9 +248,9 @@ def _bases(args: argparse.Namespace) -> list[Path]:
     arquivos existem na pasta -- e um relatório que diga "581 casamentos" sem dizer sobre
     quantas bases não é reproduzível.
     """
-    escolhidas = [caminho for caminho in (args.database or database_paths()) if caminho.is_file()]
+    escolhidas = [caminho for caminho in (args.database or database_paths()) if existe_base(caminho)]
     for caminho in escolhidas:
-        print(f"base: {caminho} ({caminho.stat().st_size / 1e9:.1f} GB)")
+        print(f"base: {caminho} ({tamanho_da_base(caminho) / 1e9:.1f} GB)")
     return escolhidas
 
 
@@ -315,6 +343,48 @@ def _chunk_progress(feitos: int, total: int) -> None:
     print(f"  ... pedaço {feitos} de {total}", flush=True)
 
 
+def _index_progress(a_cada_s: float = 5.0) -> Callable[[Path, int, int, int], None]:
+    """O progresso do índice na tela: uma linha por arquivo terminado, e uma a cada 5 s no meio.
+
+    `build_index` avisa até dez vezes por segundo (S-532), que é o ritmo de uma barra e não o de
+    um terminal: numa gigabase seriam seis mil linhas. Aqui fica o suficiente para saber que anda.
+    """
+    ultimo_aviso = 0.0
+    ultimo_arquivo = ""
+
+    def _avisar(base: Path, lidos: int, total: int, partidas: int) -> None:
+        nonlocal ultimo_aviso, ultimo_arquivo
+        agora = time.monotonic()
+        nome = nome_da_base(base)
+        terminou = lidos >= total
+        if not terminou and agora - ultimo_aviso < a_cada_s and ultimo_arquivo == nome:
+            return
+        ultimo_aviso, ultimo_arquivo = agora, nome
+        pedaco = f"{lidos / 1e6:.0f} de {total / 1e6:.0f} MB" if total else "vazio"
+        print(f"  ... {nome}: {pedaco}, {partidas / 1e6:.2f} M partidas lidas nesta rodada", flush=True)
+
+    return _avisar
+
+
+def _tree_progress(a_cada_s: float = 5.0) -> Callable[[int, int, int], None]:
+    """Um aviso a cada cinco segundos, e não os dois por segundo que `construir` emite.
+
+    O terminal não é uma barra: cinquenta linhas por minuto rolam a resposta anterior para fora
+    da tela. É a mesma régua de `_index_progress`, e o passo aqui é o pedaço -- ver
+    `qt/arvore_de_aberturas.construir_com_dialogo` sobre por que não é o byte.
+    """
+    ultimo = [0.0]
+
+    def _avisar(prontos: int, total: int, partidas: int) -> None:
+        agora = time.monotonic()
+        if agora - ultimo[0] < a_cada_s and prontos < total:
+            return
+        ultimo[0] = agora
+        print(f"  árvore: pedaço {prontos}/{total} · {partidas} partidas", flush=True)
+
+    return _avisar
+
+
 def _census(indices: dict[Path, GalleryIndex], args: argparse.Namespace) -> int:
     """Conta o que a base identificou e por qual regra (S-89). Não abre a base.
 
@@ -383,13 +453,35 @@ def main(argv: list[str] | None = None) -> int:
         if not bases:
             logger.error("Base de partidas não encontrada. Ponha um .pgn em %s.", DEFAULT_DATABASE_DIR)
             return EXIT_BAD_INPUT
-        # `indexadas`, e nao `partidas`: mais abaixo o mesmo nome recebe o dicionario de
+        # `indexacao`, e nao `partidas`: mais abaixo o mesmo nome recebe o dicionario de
         # `scan_by_players`, e uma variavel com dois tipos na mesma funcao e o tipo de
         # coincidencia que o verificador aponta e o leitor nao.
-        indexadas = build_index(
-            bases, args.index, progress=lambda lidas: print(f"  ... {lidas / 1e6:.1f} M partidas", flush=True)
+        indexacao = build_index(bases, args.index, progress=_index_progress())
+        print(
+            f"índice: {indexacao.partidas} partidas em {args.index} ({args.index.stat().st_size / 1e6:.0f} MB); "
+            f"nesta rodada {indexacao.relidas} lidas de {indexacao.arquivos_relidos} arquivo(s), "
+            f"{indexacao.arquivos_pulados} arquivo(s) sem mudança, {indexacao.arquivos_removidos} removido(s)"
         )
-        print(f"índice: {indexadas} partidas em {args.index} ({args.index.stat().st_size / 1e6:.0f} MB)")
+        return 0
+
+    # A árvore por posição, como o índice acima: ela descreve a base e não depende de livro
+    # nenhum. **Refaz do zero** -- cada linha dela é uma soma, e somar de novo o que já entrou
+    # daria uma contagem plausível e errada (ver `arvore_de_aberturas.construir`).
+    if args.build_tree:
+        bases = _bases(args)
+        if not bases:
+            logger.error("Base de partidas não encontrada. Ponha um .pgn em %s.", DEFAULT_DATABASE_DIR)
+            return EXIT_BAD_INPUT
+        # `--workers` e o mesmo botao das duas passadas: quem pede `1` esta depurando, e uma
+        # arvore que ignorasse o pedido daria dez processos onde ele pediu um.
+        passada = construir_arvore(
+            bases, args.arvore, profundidade=args.plies, workers=args.workers, progress=_tree_progress()
+        )
+        print(
+            f"árvore: {passada.ramos} lance(s) de {passada.partidas} partida(s) até o meio-lance "
+            f"{passada.profundidade}, em {args.arvore} ({passada.bytes_no_disco / 1e6:.0f} MB, "
+            f"{passada.segundos / 60:.1f} min)"
+        )
         return 0
 
     livros = _books(args)

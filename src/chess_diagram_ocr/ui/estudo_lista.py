@@ -224,12 +224,31 @@ def _no(
     elif estado.forcar:
         saida.append(Trecho(f"{board.fullmove_number}... ", NUMERO, caminho, nivel))
 
-    saida.append(Trecho(f"{board.san(lance)} ", LANCE, caminho, nivel))
+    # **O símbolo cola no lance, e o espaço vai depois dele** (S-537, segunda rodada). O lance
+    # levava sempre um espaço no fim, e o símbolo vinha a seguir: a lista escrevia `g6 ?` e
+    # `Bxd1 ??`, que não é como notação de xadrez se escreve em lugar nenhum -- é `g6?`. O EPUB já
+    # resolvia isto do outro lado (`estudo_paragrafos._COLA_NO_ANTERIOR`), e a lista da sala não.
+    #
+    # O `token` guarda o espaço que o desenho perdeu: no PGN `1. e4 $2` **tem** espaço, e a lista
+    # continua sendo o mesmo texto que o exportador escreve (é o que `TextoIgualAoExportadorTests`
+    # afirma). É exatamente para isto que `Trecho.token` existe.
+    simbolos = sorted(no.nags)
+    san = board.san(lance)
+    saida.append(
+        Trecho(san if simbolos else f"{san} ", LANCE, caminho, nivel, token=f"{san} " if simbolos else "")
+    )
     estado.forcar = False
 
-    for nag in sorted(no.nags):
+    for posicao, nag in enumerate(simbolos):
+        ultimo = posicao == len(simbolos) - 1
         saida.append(
-            Trecho(texto=f"{simbolo_de_nag(nag)} ", papel=NAG, caminho=caminho, nivel=nivel, token=f"${nag} ")
+            Trecho(
+                texto=f"{simbolo_de_nag(nag)}" + (" " if ultimo else ""),
+                papel=NAG,
+                caminho=caminho,
+                nivel=nivel,
+                token=f"${nag} ",
+            )
         )
 
     if no.comment:

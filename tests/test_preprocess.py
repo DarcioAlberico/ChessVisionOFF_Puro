@@ -15,10 +15,20 @@ import cv2
 import numpy as np
 
 from chess_diagram_ocr.preprocess import (
+    COBERTURA_DE_SCAN,
+    DPI_ALVO_DE_SCAN,
     IDENTITY,
+    OTSU,
+    SAUVOLA,
+    SEM_CAMINHO_DE_SCAN,
     BoardNormalizer,
     NormalizerConfig,
+    ScanConfig,
+    binarizar_pagina,
     estimate_skew,
+    pagina_e_scan,
+    preparar_pagina_de_scan,
+    reamostrar_pagina,
 )
 
 
@@ -163,6 +173,116 @@ class StageTests(unittest.TestCase):
         fonte = inspect.getsource(BoardNormalizer.normalize)
         posicoes = [fonte.index(f"self.config.{etapa}") for etapa in ("deskew", "flat_field", "hatch_suppression", "clahe")]
         self.assertEqual(posicoes, sorted(posicoes))
+
+
+# ------------------------------------------------- a página de scan puro (S-547)
+
+
+def pagina_de_scan(largura: int = 600, altura: int = 800, *, sombra: bool = False) -> np.ndarray:
+    """Uma página cinzenta com um tabuleiro no meio. Com `sombra`, o lado direito é escuro.
+
+    A sombra é o que separa Otsu de Sauvola: um limiar global tem de escolher entre o lado
+    claro e o lado escuro da página, e um local decide em cada janela.
+    """
+    pagina = np.full((altura, largura, 3), 220, dtype=np.uint8)
+    lado = min(largura, altura) // 2
+    y0 = (altura - lado) // 2
+    x0 = (largura - lado) // 2
+    pagina[y0 : y0 + lado, x0 : x0 + lado] = board(lado)
+    if sombra:
+        rampa = np.linspace(1.0, 0.35, largura, dtype=np.float32)[None, :, None]
+        pagina = np.clip(pagina.astype(np.float32) * rampa, 0, 255).astype(np.uint8)
+    return pagina
+
+
+class PortaDoScanTests(unittest.TestCase):
+    """Quando a página **é** um scan -- e o que a medição do acervo disse sobre isso."""
+
+    def test_a_porta_e_ou_e_nao_e(self) -> None:
+        """Os dois sinais discordam em livro demais para um `e` valer: o `Koblenz` tem camada de
+        texto **e** é scan de página inteira (o OCR de quem digitalizou deixou o texto lá); o
+        `Simple Chess` não tem camada nenhuma e também não tem imagem de página inteira."""
+        self.assertTrue(pagina_e_scan(False, 0.0), "sem camada de texto")
+        self.assertTrue(pagina_e_scan(True, 0.95), "uma imagem cobrindo a página")
+        self.assertFalse(pagina_e_scan(True, 0.10), "texto e uma figura pequena: não é scan")
+
+    def test_o_piso_de_cobertura_e_o_mesmo_da_deteccao(self) -> None:
+        """`MAX_PAGE_COVERAGE` decide "esta imagem é fundo e não diagrama"; aqui o mesmo número
+        decide "esta página é um scan". Dois números para a mesma observação divergiriam."""
+        from chess_diagram_ocr.detection.embedded import MAX_PAGE_COVERAGE
+
+        self.assertEqual(COBERTURA_DE_SCAN, MAX_PAGE_COVERAGE)
+        self.assertTrue(pagina_e_scan(True, COBERTURA_DE_SCAN))
+        self.assertFalse(pagina_e_scan(True, COBERTURA_DE_SCAN - 0.01))
+
+
+class CaminhoDeScanTests(unittest.TestCase):
+    """O caminho existe, é testado, e vem **desligado** -- ver o docstring de `ScanConfig`."""
+
+    def test_o_padrao_e_identidade_e_devolve_a_mesma_imagem(self) -> None:
+        pagina = pagina_de_scan()
+        self.assertTrue(SEM_CAMINHO_DE_SCAN.is_identity)
+        self.assertIs(preparar_pagina_de_scan(pagina), pagina)
+
+    def test_binarizacao_desconhecida_levanta_em_vez_de_cair_no_padrao(self) -> None:
+        """Um método escrito errado que virasse "não binariza" seria uma medição silenciosamente
+        feita sobre outra coisa."""
+        with self.assertRaises(ValueError):
+            ScanConfig(binarizacao="niblack")
+        with self.assertRaises(ValueError):
+            binarizar_pagina(pagina_de_scan(), "niblack")
+
+    def test_dpi_alvo_negativo_e_recusado(self) -> None:
+        """Uma escala negativa não reduz nem amplia: ela é um engano de sinal que o `cv2.resize`
+        transformaria numa exceção três camadas adiante."""
+        with self.assertRaises(ValueError):
+            ScanConfig(dpi_alvo=-300)
+
+    def test_a_binaria_sai_com_tres_canais_e_so_dois_valores(self) -> None:
+        """Tudo o que consome a página renderizada espera `(H, W, 3)`; um canal só faria a troca
+        aparecer como erro de forma três camadas adiante."""
+        for metodo in (OTSU, SAUVOLA):
+            binaria = binarizar_pagina(pagina_de_scan(), metodo)
+            self.assertEqual(binaria.shape, (800, 600, 3), metodo)
+            self.assertEqual(set(np.unique(binaria).tolist()), {0, 255}, metodo)
+
+    def test_otsu_e_global_e_sauvola_e_local(self) -> None:
+        """Numa página com sombra de lombada, o limiar global entrega o lado escuro inteiro como
+        tinta; o local atravessa a sombra. É a escolha que o item tinha de medir."""
+        com_sombra = pagina_de_scan(sombra=True)
+        escuro = slice(-60, None)
+        preto_otsu = float((binarizar_pagina(com_sombra, OTSU)[:, escuro, 0] == 0).mean())
+        preto_sauvola = float((binarizar_pagina(com_sombra, SAUVOLA)[:, escuro, 0] == 0).mean())
+        self.assertGreater(preto_otsu, 0.9, "o Otsu apaga o lado escuro")
+        self.assertLess(preto_sauvola, 0.5, "o Sauvola decide por janela")
+
+    def test_reamostrar_para_o_mesmo_dpi_e_identidade(self) -> None:
+        pagina = pagina_de_scan()
+        self.assertIs(reamostrar_pagina(pagina, dpi=220, dpi_alvo=220), pagina)
+        self.assertIs(reamostrar_pagina(pagina, dpi=220, dpi_alvo=0), pagina)
+
+    def test_reamostrar_muda_a_escala_e_nao_o_conteudo(self) -> None:
+        pagina = pagina_de_scan()
+        maior = reamostrar_pagina(pagina, dpi=220, dpi_alvo=440)
+        self.assertEqual(maior.shape[:2], (1600, 1200))
+        menor = reamostrar_pagina(pagina, dpi=220, dpi_alvo=110)
+        self.assertEqual(menor.shape[:2], (400, 300))
+
+    def test_a_reamostragem_vem_antes_da_binarizacao(self) -> None:
+        """A binarização mede estatísticas em janela de pixels: fazê-la antes seria decidir o
+        limiar numa escala e usá-lo noutra."""
+        pronta = preparar_pagina_de_scan(
+            pagina_de_scan(), ScanConfig(binarizacao=SAUVOLA, dpi_alvo=110), dpi=220
+        )
+        self.assertEqual(pronta.shape[:2], (400, 300))
+        self.assertEqual(set(np.unique(pronta).tolist()), {0, 255})
+
+    def test_o_dpi_alvo_declarado_e_o_que_a_medicao_usou(self) -> None:
+        """300 DPI está declarado e **não** é o padrão: medido, o `Koblenz` perde 8 dos 120
+        diagramas e o `Niemeijer` 33 dos 51 ao ser lido a 300."""
+        self.assertEqual(DPI_ALVO_DE_SCAN, 300)
+        self.assertEqual(ScanConfig().dpi_alvo, 0)
+        self.assertEqual(ScanConfig().binarizacao, "")
 
 
 if __name__ == "__main__":

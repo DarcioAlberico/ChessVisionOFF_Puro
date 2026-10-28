@@ -439,10 +439,10 @@ def segmentar(
         )
     if not caixas:
         return (cinza, binaria, escala, caixas, [])
-    # **O quadro emoldurado é região de uma coluna** (S-525): a moldura chega aqui como uma caixa
+    # **O quadro emoldurado é região de uma coluna** (S-583): a moldura chega aqui como uma caixa
     # larga, alta e oca, e sem isto ela fecha a calha das soluções em cima dela.
     quadros = _quadros.molduras_nas_caixas(caixas, binaria, escala=escala)
-    # **A poeira de scan não cobre x nenhum na calha** (S-526): aqui as caixas são caracteres, e
+    # **A poeira de scan não cobre x nenhum na calha** (S-584): aqui as caixas são caracteres, e
     # a escala diz o que é letra e o que é risco.
     regioes = _regioes.detectar_regioes(caixas, quadros=quadros, escala=escala)
     return (cinza, binaria, escala, caixas, regioes)
@@ -824,7 +824,7 @@ def montar(
     de quem sabe que a folha é homogênea -- vale como uma região única com essas colunas --, e
     nenhum dos dois é o caminho da camada, que redescobre as regiões nas linhas com o piso de
     `calha_de_linhas` -- e com os `quadros` da camada (`quadros.quadros_da_camada`, em pixels),
-    que só esse caminho usa (S-525).
+    que só esse caminho usa (S-583).
     """
     from .pagina import Diagrama, sequencia_de_leitura
 
@@ -1275,7 +1275,7 @@ def _ler_pagina_do_livro(
         largura = float(page.rect.width)
         altura = float(page.rect.height)
         cruas = linhas_da_camada(page, escala_px=escala_px) if qual == "camada" else []
-        # Os quadros de largura inteira da camada, para `montar` cortar a folha em volta (S-525).
+        # Os quadros de largura inteira da camada, para `montar` cortar a folha em volta (S-583).
         quadros = (
             [(int(y0 * escala_px), int(y1 * escala_px)) for y0, y1 in _quadros.quadros_da_camada(page)]
             if qual == "camada"

@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from typing import Generic, TypeVar
 
-__all__ = ["TETO", "Historico"]
+__all__ = ["Historico"]
 
 T = TypeVar("T")
 

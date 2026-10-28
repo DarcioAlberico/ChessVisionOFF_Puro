@@ -36,10 +36,10 @@ from chess_diagram_ocr.qt.indice_do_caderno import IndiceDoCaderno
 from chess_diagram_ocr.text import busca
 from chess_diagram_ocr.ui import strings
 
-__all__ = ["ANTES", "DEPOIS", "PainelDeNavegacao"]
+__all__ = ["CONTEXTO_ANTES", "CONTEXTO_DEPOIS", "PainelDeNavegacao"]
 
-ANTES = 30
-DEPOIS = 40
+CONTEXTO_ANTES = 30
+CONTEXTO_DEPOIS = 40
 """Quantos caracteres de cada lado o resultado mostra (S-654): os do WordCraft."""
 
 _DESLOCAMENTO = Qt.ItemDataRole.UserRole
@@ -119,8 +119,8 @@ class PainelDeNavegacao(QTabWidget):
         self.resultados.clear()
         self.recado_da_busca.setText(recado or (f"{len(achados)} achado(s)" if self.campo_de_busca.text() else ""))
         for ocorrencia in achados:
-            antes = texto[max(0, ocorrencia.inicio - ANTES) : ocorrencia.inicio].replace("\n", " ")
-            depois = texto[ocorrencia.fim : ocorrencia.fim + DEPOIS].replace("\n", " ")
+            antes = texto[max(0, ocorrencia.inicio - CONTEXTO_ANTES) : ocorrencia.inicio].replace("\n", " ")
+            depois = texto[ocorrencia.fim : ocorrencia.fim + CONTEXTO_DEPOIS].replace("\n", " ")
             item = QListWidgetItem(f"{antes}{ocorrencia.texto}{depois}")
             item.setData(_DESLOCAMENTO, ocorrencia.inicio)
             item.setData(_FIM, ocorrencia.fim)

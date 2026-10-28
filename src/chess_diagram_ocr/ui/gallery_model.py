@@ -38,7 +38,7 @@ from chess_diagram_ocr.games_db import (
 from chess_diagram_ocr.games_index import lookup_pair, positions_of
 from chess_diagram_ocr.semantics import compose_fen
 
-__all__ = ["FIELD_LABELS", "HEADER_FIELDS", "ApplyReport", "GalleryModel", "describe_origin"]
+__all__ = ["HEADER_FIELDS", "ApplyReport", "GalleryModel", "describe_origin"]
 
 HEADER_FIELDS: tuple[str, ...] = (
     "White",

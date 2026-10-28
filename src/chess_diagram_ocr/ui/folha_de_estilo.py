@@ -69,16 +69,13 @@ def letra_do_pressionado(face_pressionada: str, letra_em_repouso: str) -> str:
 
 
 __all__ = [
-    "A_FOLHA",
     "ESCURECIMENTO_DO_PRESSIONADO",
-    "O_WIDGET",
     "PAPEIS_DA_PALETA",
     "PAPEL_PINTADO",
     "PAPEIS_DA_PALETA_MORTA",
     "PROPRIEDADE_DE_APOIO",
     "QUEM_PINTA",
     "PROPRIEDADE_DE_PAPEL",
-    "RAIO_NA_BASE",
     "RECHEIO_DA_FOLHA",
     "RECHEIO_DO_TEMA",
     "folha_de_estilo",

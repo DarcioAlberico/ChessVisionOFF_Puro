@@ -160,18 +160,35 @@ class DisposicaoTests(_JanelaComLivro):
         self.assertFalse(janela.texto._na_mesa)
 
     def test_cada_disposicao_lembra_a_sua_alca(self) -> None:
+        """A alça da mesa grava sempre; a de fora, só se alguém a escolheu (S-552).
+
+        Aqui ninguém arrastou a de fora: ela é a repartição de fábrica, e gravá-la a faria valer
+        como escolha na sessão seguinte. O que a mesa não pode fazer é escrever a dela por cima.
+        """
         janela = self.montar()
-        antes = self.fracao_da_esquerda(janela)
         self.ir_para(janela, abas.TEXTO)
         total = sum(janela.divisor.sizes())
         janela.divisor.setSizes([int(total * 0.6), total - int(total * 0.6)])
         self.app.processEvents()
         janela._anotar_arranjo()
         self.assertAlmostEqual(janela._estado.mesa_fraction, 0.6, delta=0.03)
-        self.assertAlmostEqual(janela._estado.sash_fraction, antes, delta=0.03, msg="a alça de fora da mesa não foi apagada")
+        self.assertFalse(janela._estado.sash_fraction, "a fábrica de fora da mesa virou escolha")
         self.ir_para(janela, abas.RESULTADO)
         self.ir_para(janela, abas.TEXTO)
         self.assertAlmostEqual(self.fracao_da_esquerda(janela), 0.6, delta=0.03)
+
+    def test_a_alca_escolhida_fora_da_mesa_sobrevive_a_ela(self) -> None:
+        janela = self.montar()
+        janela._alca_movida_a_mao(0, 1)  # o que o `splitterMoved` do gesto chama
+        antes = self.fracao_da_esquerda(janela)
+        self.ir_para(janela, abas.TEXTO)
+        total = sum(janela.divisor.sizes())
+        janela.divisor.setSizes([int(total * 0.6), total - int(total * 0.6)])
+        janela._alca_movida_a_mao(0, 1)  # na mesa: é a alça do PDF, e não decide a do trabalho
+        self.app.processEvents()
+        janela._anotar_arranjo()
+        self.assertAlmostEqual(janela._estado.mesa_fraction, 0.6, delta=0.03)
+        self.assertAlmostEqual(janela._estado.sash_fraction, antes, delta=0.03, msg="a alça de fora da mesa não foi apagada")
 
 
 if __name__ == "__main__":

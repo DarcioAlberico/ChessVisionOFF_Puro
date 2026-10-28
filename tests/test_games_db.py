@@ -7,11 +7,14 @@ posição bate, e o teto por par.
 
 from __future__ import annotations
 
+import bz2
+import gzip
 import json
 import os
 import tempfile
 import threading
 import unittest
+import zipfile
 from itertools import pairwise
 from pathlib import Path
 from unittest import mock
@@ -22,22 +25,29 @@ from chess_diagram_ocr import games_db
 from chess_diagram_ocr.cli.games import _books, _matches_from_json, _matches_to_json, main, parse_args
 from chess_diagram_ocr.gallery_scan import GalleryEntry
 from chess_diagram_ocr.games_db import (
+    SEM_FIM,
     WORKER_ENV,
     DiagramMatch,
     GameRecord,
     PositionHit,
     PositionIndex,
     _scan_positions_chunk,
+    abrir_pgn,
+    abrir_pgn_bytes,
     chunk_bounds,
     database_paths,
+    decodificar_linha,
+    existe_base,
     match_entries,
     match_positions,
+    nome_da_base,
     occupancy,
     pair_from_caption,
     rank_candidates,
     scan_by_players,
     scan_by_positions,
     surname,
+    tamanho_da_base,
 )
 
 IMORTAL = "1. e4 e5 2. f4 exf4 3. Bc4 Qh4+ 4. Kf1 b5 5. Bxb5 Nf6 6. Nf3 Qh6 7. d3 Nh5"
@@ -1138,3 +1148,110 @@ class FilhoMortoTests(unittest.TestCase):
     def setUp(self) -> None:
         self.pasta = tempfile.TemporaryDirectory()
         self.addCleanup(self.pasta.cleanup)
+
+
+class LeitorDePGNTests(unittest.TestCase):
+    """O leitor único da S-531: o mesmo PGN solto, em `.gz`, em `.bz2` e dentro de um `.zip`.
+
+    O que pode quebrar calado: a pasta não enxergar o formato, o membro do `.zip` virar um
+    `Path` que ninguém sabe abrir, a base comprimida ser cortada em pedaços que não existem, e a
+    linha em Latin-1 sair com losango.
+    """
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.raiz = Path(self.pasta.name)
+        dados = PGN.encode("utf-8")
+        (self.raiz / "solta.pgn").write_bytes(dados)
+        with gzip.open(self.raiz / "zipada.pgn.gz", "wb") as fh:
+            fh.write(dados)
+        with bz2.open(self.raiz / "bz.pgn.bz2", "wb") as fh:
+            fh.write(dados)
+        with zipfile.ZipFile(self.raiz / "pacote.zip", "w", zipfile.ZIP_DEFLATED) as zipado:
+            zipado.writestr("dentro/torneio.pgn", dados)
+            zipado.writestr("leia-me.txt", "isto nao e uma base")
+        self.membro = self.raiz / "pacote.zip" / "dentro" / "torneio.pgn"
+
+    def test_a_pasta_enxerga_as_quatro_formas_e_o_membro_do_zip(self) -> None:
+        """O `.txt` de dentro do `.zip` fica de fora: cada membro `.pgn` é uma base, e só eles."""
+        nomes = [nome_da_base(caminho) for caminho in database_paths(self.raiz)]
+        self.assertEqual(nomes, ["bz.pgn.bz2", "pacote.zip/dentro/torneio.pgn", "solta.pgn", "zipada.pgn.gz"])
+
+    def test_as_linhas_saem_iguais_venham_de_onde_vierem(self) -> None:
+        with abrir_pgn(self.raiz / "solta.pgn") as solta:
+            esperado = list(solta)
+        for base in database_paths(self.raiz):
+            with abrir_pgn(base) as fh:
+                self.assertEqual(list(fh), esperado, nome_da_base(base))
+
+    def test_nada_e_gravado_no_disco_ao_ler(self) -> None:
+        """"Sem descompactar para o disco" é o item: a pasta tem de ficar como estava."""
+        antes = sorted(caminho.name for caminho in self.raiz.iterdir())
+        for base in database_paths(self.raiz):
+            with abrir_pgn(base) as fh:
+                for _ in fh:
+                    pass
+        self.assertEqual(sorted(caminho.name for caminho in self.raiz.iterdir()), antes)
+
+    def test_a_busca_por_nome_le_a_base_comprimida(self) -> None:
+        colhidas = scan_by_players(self.raiz / "zipada.pgn.gz", [("anderssen", "kieseritzky")])
+        self.assertEqual(len(colhidas[("anderssen", "kieseritzky")]), 2)
+
+    def test_a_busca_por_posicao_le_o_membro_do_zip_num_pedaco_so(self) -> None:
+        """Não há como pular para o meio de um fluxo comprimido: a base é um pedaço, do zero ao
+        `SEM_FIM`, e mesmo assim as três partidas são lidas."""
+        tabuleiro = chess.Board()
+        for lance in ("e4", "e5", "f4", "exf4", "Bc4"):
+            tabuleiro.push_san(lance)
+        alvo = tabuleiro.board_fen()
+        self.assertEqual(chunk_bounds(self.membro, 4), [(0, SEM_FIM)])
+        indice = scan_by_positions(self.membro, {alvo}, workers=1)
+        self.assertEqual(indice.games_read, 3)
+        self.assertEqual(indice.counts.get(alvo), 1)
+
+    def test_os_bytes_lidos_sao_os_do_disco_e_nao_os_descompactados(self) -> None:
+        """A régua do progresso é o arquivo comprimido -- é o único tamanho que se conhece antes."""
+        base = self.raiz / "zipada.pgn.gz"
+        with abrir_pgn_bytes(base) as fh:
+            descompactados = sum(len(linha) for linha in fh)
+            lidos = fh.bytes_lidos
+        self.assertGreater(lidos, 0)
+        self.assertLessEqual(lidos, tamanho_da_base(base))
+        self.assertLess(lidos, descompactados, "um PGN comprime; se não comprimiu, a régua está no fluxo errado")
+
+    def test_existe_e_tamanho_valem_para_o_membro(self) -> None:
+        self.assertTrue(existe_base(self.membro))
+        self.assertFalse(existe_base(self.raiz / "pacote.zip" / "nao_existe.pgn"))
+        self.assertTrue(0 < tamanho_da_base(self.membro) < len(PGN.encode("utf-8")))
+        self.assertEqual(tamanho_da_base(self.raiz / "sumiu.pgn"), 0)
+
+    def test_linha_em_cp1252_decodifica_sem_losango_e_utf8_continua_utf8(self) -> None:
+        """A decisão de codificação da S-531: UTF-8 estrito primeiro, cp1252 só na linha que falha."""
+        linha = '[White "Prokeš, Ladislav"]'
+        self.assertEqual(decodificar_linha(linha.encode("cp1252")), linha)
+        self.assertEqual(decodificar_linha(linha.encode("utf-8")), linha)
+        self.assertEqual(decodificar_linha(b"\xef\xbb\xbf" + linha.encode("utf-8")), linha, "a marca de bytes cai")
+
+    def test_o_offset_do_fluxo_descompactado_leva_a_mesma_partida(self) -> None:
+        """Os offsets do índice são do fluxo descompactado, então valem para o arquivo comprimido."""
+        offset = PGN.encode("utf-8").index(b'[Event "Outro torneio"]')
+        with abrir_pgn_bytes(self.raiz / "bz.pgn.bz2") as fh:
+            fh.seek(offset)
+            self.assertTrue(fh.readline().startswith(b'[Event "Outro torneio"]'))
+            self.assertEqual(fh.tell(), offset + len(b'[Event "Outro torneio"]\n'))
+
+    def test_zst_fica_fora_da_pasta_sem_o_pacote(self) -> None:
+        """Listar o que não se sabe abrir seria uma base que falha na primeira busca."""
+        (self.raiz / "moderna.pgn.zst").write_bytes(b"\x28\xb5\x2f\xfd")
+        with mock.patch.object(games_db, "_TEM_ZSTANDARD", False):
+            with self.assertLogs("chess_diagram_ocr.games_db", level="WARNING") as registro:
+                nomes = [caminho.name for caminho in database_paths(self.raiz)]
+        self.assertNotIn("moderna.pgn.zst", nomes)
+        self.assertIn("zstandard", registro.output[0])
+
+    def test_zip_ilegivel_avisa_e_fica_de_fora(self) -> None:
+        (self.raiz / "quebrado.zip").write_bytes(b"isto nao e um zip")
+        with self.assertLogs("chess_diagram_ocr.games_db", level="WARNING"):
+            nomes = [nome_da_base(caminho) for caminho in database_paths(self.raiz)]
+        self.assertFalse(any(nome.startswith("quebrado.zip") for nome in nomes))

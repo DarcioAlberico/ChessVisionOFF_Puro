@@ -94,22 +94,27 @@ class DisposicaoDeMesa:
         if self.armada and self._texto is not None:
             self._texto.ir_ao_ponto(x, y)
 
-    def anotar(self) -> None:
+    def anotar(self, *, escolhida: bool = True) -> None:
         """Põe as duas alças no estado, cada uma na sua chave (S-156/S-640).
 
         Na mesa, a alça à esquerda é a do PDF: ela vai para `mesa_fraction`, e `sash_fraction`
         fica com a que a disposição de antes tinha -- gravar a da mesa por cima abriria a sessão
         seguinte com a coluna do trabalho do tamanho que o PDF tinha aqui.
+
+        **`escolhida=False` não grava a alça do trabalho** (S-552): é a repartição de fábrica, e
+        gravá-la a faria valer como decisão de alguém na sessão seguinte. A da mesa grava sempre
+        -- ela nunca é a de fábrica da janela, é a de `mesa.fracao_da_mesa`.
         """
         tamanhos = self._divisor.sizes()
         if len(tamanhos) < 2 or sum(tamanhos) <= 0:
             return
         fracao = geometria.fracao_de_divisor(tamanhos[0], sum(tamanhos))
         if not self.armada:
-            self._estado.sash_fraction = fracao
+            if escolhida:
+                self._estado.sash_fraction = fracao
             return
         self._estado.mesa_fraction = fracao
-        if self._fracao_de_antes:
+        if self._fracao_de_antes and escolhida:
             self._estado.sash_fraction = self._fracao_de_antes
 
     def _trocar(self, *, para_a_mesa: bool) -> None:

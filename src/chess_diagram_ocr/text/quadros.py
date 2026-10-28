@@ -1,9 +1,9 @@
-"""O quadro de largura inteira que cruza a calha com muitas bandas (S-525).
+"""O quadro de largura inteira que cruza a calha com muitas bandas (S-583).
 
 O «Scoring» do fim de capítulo do `Yusupov - Build Up Your Chess` é um quadro emoldurado, de
 margem a margem, com cinco linhas dentro. Ele cruza a calha em todas elas, a folha inteira é
 recusada, e as soluções em cima dele -- de linha curta -- são reprovadas no preenchimento da busca
-por região (S-507) ou picadas em tiras. A borda da S-523 não o alcança: ela cede duas bandas, e o
+por região (S-507) ou picadas em tiras. A borda da S-581 não o alcança: ela cede duas bandas, e o
 quadro tem cinco.
 
 **O que o quadro tem, e a lista de lances não tem, é a moldura.** Tratar qualquer bloco isolado da
@@ -18,7 +18,7 @@ só o quadro tem, e ela aparece nos dois caminhos:
 - **na camada**, o quadro é um bloco de imagem (`get_text("dict")`, `type == 1`) largo, com linhas
   de texto dentro dele que **cruzam o meio** da imagem, são a maioria das linhas dentro e têm
   palavras. A imagem decorativa do cabeçalho corrente também é larga, mas tem uma linha só cruzando
-  (o título), e a S-523 cuida dela; a tira de dois diagramas tem linhas (as coordenadas) que não
+  (o título), e a S-581 cuida dela; a tira de dois diagramas tem linhas (as coordenadas) que não
   cruzam o meio; a imagem de fundo de uma lição tem as linhas das duas colunas dentro, e a maioria
   não cruza; o lixo de OCR de um tabuleiro cruza, mas não tem palavra.
 

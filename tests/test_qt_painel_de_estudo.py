@@ -18,6 +18,9 @@ O que só existe deste lado são as cinco coisas em que o Qt difere do Tk e que 
    `refresh` -- o único ponto por onde toda mudança de nó passa.
 5. **O relógio de gravação não pode ser reiniciado pela escrita da máquina** (S-345): com a
    análise contínua ligada, a sala nunca era gravada.
+6. **O cabeçalho da partida grava pelo mesmo caminho de um lance** (S-530): o `Ctrl+Z` da sala e a
+   gravação por inatividade têm de levá-lo junto, e é aqui que isso se afirma.
+7. **A alça do divisor se move sozinha até a pessoa mexer nela** (S-551), e nunca para a esquerda.
 """
 
 from __future__ import annotations
@@ -29,10 +32,12 @@ import chess
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
-from chess_diagram_ocr.estudo import Ancora, PosicaoDeEstudo
-from chess_diagram_ocr.ui import comandos, sala_declarada, strings
+from chess_diagram_ocr.estudo import Ancora, Estudo, PosicaoDeEstudo
+from chess_diagram_ocr.ui import cabecalho_da_partida, comandos, estudo_lista, sala_declarada, strings
 
 if TEM_PYQT:
+    from PyQt6.QtCore import QPoint
+
     from chess_diagram_ocr.qt import painel_de_estudo as qt_estudo
 
 
@@ -51,6 +56,31 @@ class DeclaracaoTests(unittest.TestCase):
         self.assertEqual(cor(shift=False, alt=False, ctrl=True), "yellow")
         # Shift ganha de todos: a prioridade é a ordem, e não a soma.
         self.assertEqual(cor(shift=True, alt=True, ctrl=True), "red")
+
+    def test_a_sincronia_com_o_ocr_e_tabelada(self) -> None:
+        """As quatro respostas de `decidir_sincronia`, e o que cada uma protege (S-512).
+
+        **A linha que mais importa é a última.** Sem ela, religar o fio que o porte cortou
+        devolveria a sincronia e criaria outro defeito: o sinal do painel de resultado dispara a
+        cada casa corrigida, e `_abrir` zera a pilha de desfazer da sala.
+        """
+        decidir = sala_declarada.decidir_sincronia
+        sincronia = sala_declarada.Sincronia
+        aberta = Ancora(documento="livro.pdf", pagina=3, diagrama=1)
+        no_livro = PosicaoDeEstudo(ancora=aberta)
+        outra = PosicaoDeEstudo(ancora=Ancora(documento="livro.pdf", pagina=3, diagrama=2))
+
+        casos = (
+            ("outro diagrama", aberta, outra, False, sincronia.TROCA),
+            ("mesmo diagrama, estudo vazio", aberta, no_livro, True, sincronia.ATUALIZA),
+            ("mesmo diagrama, já analisado", aberta, no_livro, False, sincronia.NADA),
+            ("posição sem âncora", aberta, PosicaoDeEstudo(), True, sincronia.NADA),
+            ("posição inválida", aberta, PosicaoDeEstudo(placement="lixo", ancora=outra.ancora), True, sincronia.NADA),
+            ("sala em posição avulsa", Ancora(), no_livro, True, sincronia.TROCA),
+        )
+        for nome, ancora, posicao, vazio, esperada in casos:
+            with self.subTest(caso=nome):
+                self.assertIs(esperada, decidir(ancora, posicao, vazio=vazio))
 
     def test_o_modulo_puro_nao_carrega_tkinter(self) -> None:
         import ast
@@ -71,8 +101,18 @@ class SalaTests(unittest.TestCase):
         self.addCleanup(self.app.processEvents)
 
     def sala(self, **kwargs: object) -> qt_estudo.PainelDeEstudo:
+        # `pasta_de_treino` é a temporária **sempre**: o placar do treino (S-541) grava a cada
+        # lance, e sem isto a suíte escreveria em `data/placar.json` do repositório.
+        kwargs.setdefault("pasta_de_treino", self.pasta)
         montada = qt_estudo.PainelDeEstudo(
-            pasta_inicial=self.pasta, pasta_de_estudos=self.pasta, **kwargs  # type: ignore[arg-type]
+            pasta_inicial=self.pasta,
+            pasta_de_estudos=self.pasta,
+            # **Sem isto a sala cria `data/games_positions.sqlite` no checkout de quem roda a
+            # suíte** (S-415): `_loja_de_posicoes` abre o cache de posições no padrão do produto,
+            # e a guarda de sessão do `conftest` acusa a rodada inteira num teste que não é o
+            # culpado. Foi a CI que pegou -- aqui o arquivo já existe de uso normal.
+            caminho_do_cache=self.pasta / "posicoes.sqlite",
+            **kwargs,  # type: ignore[arg-type]
         )
         self.addCleanup(descartar, montada)
         montada.resize(1000, 700)
@@ -337,10 +377,13 @@ class SalaTests(unittest.TestCase):
         antes = painel.estudo.para_pgn()
         painel.push_move(chess.Move.from_uci("d2d4"))
         self.assertEqual(painel.estudo.para_pgn(), antes, "errar não criou variante")
-        self.assertIn("errado", painel.lbl_placar.text())
+        # **O placar deixou de contar "errado" e passou a contar acerto sobre total** (S-541): a
+        # sessão é `bons de total`, e o lance errado é o que faz `0 de 1`.
+        self.assertEqual("sessão: 0 de 1", painel.lbl_placar.text())
 
         painel.push_move(chess.Move.from_uci("e2e4"))
-        self.assertIn("certo", painel.lbl_placar.text())
+        self.assertEqual("sessão: 1 de 2", painel.lbl_placar.text())
+        self.assertIn("certo", painel.lbl_status.text())
         self.assertEqual(painel.estudo.no.san(), "e4", "acertar anda na linha")
 
     def test_a_fen_invalida_nao_troca_o_estudo(self) -> None:
@@ -356,6 +399,53 @@ class SalaTests(unittest.TestCase):
         painel.apply_fen()
         self.assertEqual(vistas, ["FEN inválida"])
         self.assertEqual(painel.estudo.contagem_de_lances(), 1, "a árvore ficou como estava")
+
+    def test_a_fen_estreita_mostra_o_comeco_e_nao_o_fim(self) -> None:
+        """**A FEN saía cortada pela esquerda a 1024** (S-552, quinta rodada).
+
+        `setText` deixa o cursor no fim, e um `QLineEdit` estreito rola até ele: o campo mostrava
+        `2pP1N2/...` no lugar de `1q1r1nk1/...`. Ele é rolável, e é justamente isso que torna o
+        defeito silencioso -- quem olha lê uma posição que não é a da tela. O primeiro campo da FEN
+        é a fileira 8, que é a metade do tabuleiro que se confere primeiro.
+
+        **A régua é o caractere que está no pixel 1**, e não `cursorPosition()`: é o deslocamento
+        do texto que se vê, e é ele que o cursor no fim provocava.
+        """
+        painel = self.sala()
+        painel.campo_fen.setFixedWidth(90)
+        painel.push_move(chess.Move.from_uci("e2e4"))
+        self.app.processEvents()
+        texto = painel.campo_fen.text()
+        self.assertTrue(texto.startswith("rnbqkbnr/"), texto)
+        meio = painel.campo_fen.height() // 2
+        self.assertEqual(
+            0,
+            painel.campo_fen.cursorPositionAt(QPoint(1, meio)),
+            "o campo rolou para a direita e o começo da FEN saiu da tela",
+        )
+
+    def test_a_sala_recem_aberta_ja_mostra_o_comeco_da_fen(self) -> None:
+        """**Antes de qualquer lance**, e é a metade que faltava (S-552, sexta rodada).
+
+        A guarda vizinha empurra um lance e mede o campo depois de `refresh`; quem abre a sala e
+        não toca em nada vê o campo que a **montagem** escreveu, e é esse estado que ninguém
+        afirmava. A posição inicial tem 56 caracteres e a caixa estreita rola até o cursor, que
+        `setText` deixa no fim -- o que se lê então é `w KQkq - 0 1` no lugar da fileira 8.
+
+        **A régua é o caractere que está no pixel 1**, como na vizinha: é o deslocamento do texto
+        que se vê, e não onde o cursor está.
+        """
+        painel = self.sala()
+        painel.campo_fen.setFixedWidth(90)
+        self.app.processEvents()
+        texto = painel.campo_fen.text()
+        self.assertTrue(texto.startswith("rnbqkbnr/"), texto)
+        meio = painel.campo_fen.height() // 2
+        self.assertEqual(
+            0,
+            painel.campo_fen.cursorPositionAt(QPoint(1, meio)),
+            "a sala recém-aberta já mostrava o fim da FEN, e não o começo",
+        )
 
     def test_a_geracao_cresce_a_cada_mudanca_de_no(self) -> None:
         """É ela que descarta a resposta atrasada do motor, e ela cresce em `refresh` -- o único
@@ -542,5 +632,839 @@ class SalaTests(unittest.TestCase):
         self.assertIsNone(painel.atender("salvar"))
 
 
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class CabecalhoDaPartidaTests(unittest.TestCase):
+    """A faixa acima do tabuleiro e o formulário que a edita (S-530).
+
+    **O que só existe deste lado**: que a faixa mostra o que o PGN tem, que o diálogo grava nos
+    headers, e que a gravação entra na pilha de desfazer da sala -- o `Ctrl+Z` que já existia para
+    a árvore tem de devolver o cabeçalho pelo mesmo caminho, porque a pilha guarda o PGN inteiro.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.painel = qt_estudo.PainelDeEstudo()
+        self.addCleanup(descartar, self.painel)
+        self.painel.resize(900, 800)
+        self.painel.show()
+        self.app.processEvents()
+
+    def abrir(self, pgn: str) -> None:
+        estudo = Estudo.de_pgn(pgn)
+        assert estudo is not None
+        self.painel.estudo = estudo
+        self.painel.refresh()
+        self.app.processEvents()
+
+    def test_a_faixa_mostra_o_que_o_pgn_tem(self) -> None:
+        self.abrir(
+            '[Event "Kemeri"]\n[Site "Kemeri LAT"]\n[Date "1937.06.24"]\n[Round "12"]\n'
+            '[White "Capablanca, J"]\n[Black "Alekhine, A"]\n[WhiteElo "2720"]\n'
+            '[BlackElo "2690"]\n[Result "1-0"]\n\n1. e4 e5 1-0\n'
+        )
+        primeira, segunda = cabecalho_da_partida.linhas(self.painel.estudo.jogo.headers)
+        self.assertEqual(primeira, self.painel.lbl_partida.texto_inteiro())
+        self.assertEqual(segunda, self.painel.lbl_torneio.texto_inteiro())
+        self.assertIn("Capablanca", primeira)
+        self.assertIn("Kemeri", segunda)
+
+    def test_sem_jogadores_a_faixa_continua_visivel_e_diz_o_que_falta(self) -> None:
+        """Uma faixa em branco acima do tabuleiro é espaço que ninguém sabe que é editável."""
+        self.assertEqual(cabecalho_da_partida.SEM_JOGADORES, self.painel.lbl_partida.texto_inteiro())
+        self.assertTrue(self.painel.lbl_partida.isVisible())
+        self.assertFalse(self.painel.lbl_torneio.isVisible(), "a segunda linha vazia não ocupa altura")
+
+    def test_o_nome_longo_e_elidido_e_a_dica_traz_a_frase_inteira(self) -> None:
+        """A elisão é do próprio rótulo, a cada largura: feita na hora de escrever, ela usava a
+        largura de fábrica do widget e cortava `Jogadores nã...` numa faixa de 494 px."""
+        longo = "Nome Muito Comprido De Um Jogador " * 4
+        self.painel.resize(500, 800)
+        self.app.processEvents()
+        self.painel.lbl_partida.definir_texto(longo)
+        estreito = self.painel.lbl_partida.text()
+        self.assertEqual(longo, self.painel.lbl_partida.toolTip(), "a frase inteira sai da tela")
+        self.assertNotEqual(longo, estreito)
+
+        self.painel.resize(1800, 800)
+        self.app.processEvents()
+        self.assertGreater(len(self.painel.lbl_partida.text()), len(estreito), "alargar devolve texto")
+
+        curto = "Capablanca — Alekhine"
+        self.painel.lbl_partida.definir_texto(curto)
+        self.assertEqual(curto, self.painel.lbl_partida.text(), "o que cabe não é cortado")
+
+    def test_o_botao_do_lapis_tem_traco_e_dica(self) -> None:
+        self.assertFalse(self.painel.btn_cabecalho.icon().isNull())
+        self.assertIn(cabecalho_da_partida.TITULO, self.painel.btn_cabecalho.toolTip())
+
+    def test_o_dialogo_abre_com_o_que_esta_gravado(self) -> None:
+        self.abrir('[White "Capablanca, J"]\n[Result "1-0"]\n\n*\n')
+        dialogo = self.painel.editar_cabecalho()
+        self.addCleanup(descartar, dialogo)
+        self.assertEqual("Capablanca, J", dialogo.valores()["White"])
+        self.assertEqual("1-0", dialogo.valores()["Result"])
+        self.assertEqual("", dialogo.valores()["Black"], "o `?` do padrão não vai para o campo")
+
+    def test_gravar_escreve_nos_headers_e_entra_no_desfazer(self) -> None:
+        """A pilha guarda o PGN inteiro (S-275), e os headers estão nele: o `Ctrl+Z` da árvore
+        devolve o cabeçalho sem uma segunda pilha."""
+        antes = self.painel.edicao
+        dialogo = self.painel.editar_cabecalho()
+        self.addCleanup(descartar, dialogo)
+        valores = dialogo.valores()
+        valores["White"] = "Capablanca, J"
+        valores["Result"] = "1-0"
+        self.painel._gravar_cabecalho(valores)
+        self.app.processEvents()
+
+        self.assertEqual("Capablanca, J", self.painel.estudo.jogo.headers["White"])
+        self.assertIn("Capablanca", self.painel.estudo.para_pgn())
+        self.assertIn("Capablanca", self.painel.lbl_partida.texto_inteiro())
+        self.assertGreater(self.painel.edicao, antes, "a edição não chegou à pilha de desfazer")
+
+        self.painel.desfazer()
+        self.app.processEvents()
+        self.assertEqual(cabecalho_da_partida.SEM_JOGADORES, self.painel.lbl_partida.texto_inteiro())
+
+    def test_gravar_sem_mudar_nada_nao_cria_passo_de_desfazer(self) -> None:
+        """Um passo que não desfaz coisa alguma é o defeito que a S-275 evitou na árvore."""
+        antes = self.painel.edicao
+        dialogo = self.painel.editar_cabecalho()
+        self.addCleanup(descartar, dialogo)
+        self.painel._gravar_cabecalho(dialogo.valores())
+        self.assertEqual(antes, self.painel.edicao)
+
+    def test_o_formulario_tem_um_editor_por_campo(self) -> None:
+        dialogo = self.painel.editar_cabecalho()
+        self.addCleanup(descartar, dialogo)
+        self.assertEqual(
+            {campo.chave for campo in cabecalho_da_partida.CAMPOS}, set(dialogo.campos)
+        )
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class TabuleiroNaColunaTests(unittest.TestCase):
+    """O tabuleiro cresce pela altura, e a alça se move (S-551).
+
+    **O número que este item corrige**: a 1400x950 o tabuleiro tinha 488 px limitados pela largura
+    da coluna, e sobravam ~230 px de coluna vazia debaixo dele -- com dois rótulos de status
+    esticados a 79 px cada, porque o `QVBoxLayout` reparte a sobra entre quem aceita crescer.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.painel = qt_estudo.PainelDeEstudo()
+        self.addCleanup(descartar, self.painel)
+        self.painel.show()
+        self.app.processEvents()
+
+    def em(self, largura: int, altura: int) -> None:
+        self.painel.resize(largura, altura)
+        self.app.processEvents()
+
+    def test_a_sobra_de_altura_nao_vai_para_os_rotulos(self) -> None:
+        """Era o que a foto do crítico mostrava: duas frases flutuando no vazio. Com o esticador,
+        cada rótulo fica na altura de uma linha."""
+        self.em(900, 1100)
+        for rotulo in (self.painel.lbl_origem, self.painel.lbl_status):
+            with self.subTest(rotulo=rotulo.text()):
+                self.assertLessEqual(rotulo.height(), 3 * rotulo.sizeHint().height())
+
+    def test_a_faixa_de_navegacao_continua_colada_no_tabuleiro(self) -> None:
+        """É o que a S-517 garantiu, e o esticador não pode desfazer: ele fica **depois** dos dois."""
+        self.em(900, 1100)
+        fundo = self.painel.tabuleiro.mapTo(self.painel, QPoint(0, 0)).y() + self.painel.tabuleiro.height()
+        nav = self.painel.lbl_lance.mapTo(self.painel, QPoint(0, 0)).y()
+        self.assertLess(nav - fundo, 60, "a faixa descolou do tabuleiro")
+
+    def test_com_altura_de_sobra_a_alca_se_move_e_o_tabuleiro_cresce(self) -> None:
+        """A régua é `sala_declarada.fracao_para_o_tabuleiro`, e o widget só a executa."""
+        self.em(1400, 700)
+        estreito = self.painel.tabuleiro.width()
+        self.em(1400, 1400)
+        self.assertGreater(self.painel.tabuleiro.width(), estreito, "a altura não virou tabuleiro")
+
+    def test_a_leitura_nunca_fica_abaixo_do_piso(self) -> None:
+        """Com altura sobrando sempre, "cresça até a altura" sozinho daria uma coluna de lances de
+        46 px. O piso é `LARGURA_MINIMA_DA_LEITURA`."""
+        self.em(1400, 1600)
+        leitura = self.painel.divisor.sizes()[1]
+        self.assertGreaterEqual(leitura + 4, sala_declarada.LARGURA_MINIMA_DA_LEITURA)
+
+    def test_arrastar_a_alca_desliga_a_regra(self) -> None:
+        """A partir daí quem decide a repartição é quem arrastou."""
+        self.em(1400, 700)
+        self.painel.divisor.setSizes([400, 900])
+        self.painel._divisor_movido_a_mao(400, 1)
+        self.em(1400, 1400)
+        self.assertLess(self.painel.divisor.sizes()[0], 500, "a regra passou por cima da escolha")
+
+    def test_a_fracao_guardada_tambem_desliga_a_regra(self) -> None:
+        """A sessão anterior fechou com uma repartição, e ela é uma escolha -- da pessoa ou da
+        própria regra, que rodou na primeira abertura e teve o resultado gravado."""
+        self.em(1400, 700)
+        self.painel.posicionar_divisor(0.4)
+        self.em(1400, 1400)
+        self.assertAlmostEqual(0.4, self.painel.fracao_do_divisor, places=1)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class UltimoLanceNaSalaTests(unittest.TestCase):
+    """A marca do último lance sai do **nó**, e não de estado guardado no widget (S-509).
+
+    `BoardModel.last_move` e `last_move_squares()` eram puros, testados e **nunca recebiam valor**:
+    `mostrar_tabuleiro` fazia `copy(stack=False)`, que descarta a pilha de onde eles sairiam. Quem
+    tem a aresta que chegou ao nó corrente é a sala, e ela passa por argumento.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+        self.painel = qt_estudo.PainelDeEstudo(pasta_inicial=self.pasta, pasta_de_estudos=self.pasta)
+        self.addCleanup(descartar, self.painel)
+
+    def casas(self) -> frozenset[int]:
+        return self.painel.tabuleiro.modelo.last_move_squares()
+
+    def test_a_raiz_nao_marca_casa_nenhuma(self) -> None:
+        """A posição do diagrama não veio de lance nenhum -- marcar ali seria inventar uma jogada."""
+        self.assertEqual(frozenset(), self.casas())
+
+    def test_jogar_marca_as_duas_casas_do_lance(self) -> None:
+        self.painel.push_move(chess.Move.from_uci("e2e4"))
+        self.assertEqual(2, len(self.casas()))
+
+    def test_voltar_para_a_raiz_apaga_a_marca(self) -> None:
+        """**É o caso que um `_ultimo_lance` guardado no widget erraria.**"""
+        self.painel.push_move(chess.Move.from_uci("e2e4"))
+        self.painel.undo_move()
+        self.assertEqual(frozenset(), self.casas())
+
+    def test_navegar_troca_a_marca_junto_com_o_no(self) -> None:
+        self.painel.push_move(chess.Move.from_uci("e2e4"))
+        depois_de_e4 = self.casas()
+        self.painel.push_move(chess.Move.from_uci("e7e5"))
+        self.assertNotEqual(depois_de_e4, self.casas(), "a marca ficou no lance anterior")
+        self.painel.undo_move()
+        self.assertEqual(depois_de_e4, self.casas(), "voltar não repôs a marca do nó")
+
+    def test_desfazer_nao_deixa_a_marca_de_um_lance_que_saiu_da_arvore(self) -> None:
+        """**O caso que uma marca guardada no widget erraria calado.**
+
+        `_aplicar_pgn` recarrega o estudo do PGN e reaplica o caminho -- que pode não existir mais,
+        e aí `ir_para` cai na raiz, como o método documenta. A marca sai do nó, então ela cai
+        junto; guardada no widget, ela continuaria pintando e7-e5 sobre uma árvore que já não tem
+        aquele lance.
+        """
+        self.painel.push_move(chess.Move.from_uci("e2e4"))
+        self.painel.push_move(chess.Move.from_uci("e7e5"))
+        self.painel.desfazer()
+        self.assertIsNone(self.painel.estudo.no.move, "o desfazer não caiu na raiz como documentado")
+        self.assertEqual(frozenset(), self.casas())
+
+    def test_a_marca_e_sempre_a_do_no_corrente(self) -> None:
+        """O invariante, afirmado depois de cada gesto que troca de nó."""
+        from chess_diagram_ocr.fen_utils import reading_index_from_square
+
+        def esperada() -> frozenset[int]:
+            lance = self.painel.estudo.no.move
+            if lance is None:
+                return frozenset()
+            return frozenset(
+                {reading_index_from_square(lance.from_square), reading_index_from_square(lance.to_square)}
+            )
+
+        for gesto in (
+            lambda: self.painel.push_move(chess.Move.from_uci("e2e4")),
+            lambda: self.painel.push_move(chess.Move.from_uci("e7e5")),
+            self.painel.undo_move,
+            self.painel.go_to_end_of_line,
+            self.painel.go_to_start_of_line,
+        ):
+            gesto()
+            with self.subTest(no=self.painel.estudo.no.move):
+                self.assertEqual(esperada(), self.casas())
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class SincroniaComOOcrTests(unittest.TestCase):
+    """A caixa "Seguir OCR selecionado" volta a seguir, e sem levar a pilha junto (S-512).
+
+    **A ligação existia no Tk e caiu no porte**: `result_panel` chamava `on_sync_study` em três
+    pontos, `app_tkinter.py:1537` o repassava, e a janela do Qt nunca ligou o fio. A caixa nasce
+    marcada, então o que a aba prometia de fábrica é o que ela não fazia.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+        self.posicao: PosicaoDeEstudo | None = None
+        self.painel = qt_estudo.PainelDeEstudo(
+            pasta_inicial=self.pasta,
+            pasta_de_estudos=self.pasta,
+            posicao=lambda: self.posicao,
+        )
+        self.addCleanup(descartar, self.painel)
+
+    def diagrama(self, numero: int, *, placement: str = chess.STARTING_BOARD_FEN) -> PosicaoDeEstudo:
+        return PosicaoDeEstudo(
+            placement=placement,
+            ancora=Ancora(documento=str(self.pasta / "livro.pdf"), pagina=3, diagrama=numero),
+        )
+
+    def test_seguir_troca_de_mesa_quando_o_diagrama_muda(self) -> None:
+        self.posicao = self.diagrama(1)
+        self.painel.sync_with_ocr()
+        self.assertEqual(1, self.painel.estudo.ancora.diagrama)
+
+        self.posicao = self.diagrama(2)
+        self.painel.sync_with_ocr()
+        self.assertEqual(2, self.painel.estudo.ancora.diagrama)
+
+    def test_a_caixa_desmarcada_nao_segue(self) -> None:
+        self.painel.seguir_ocr.setChecked(False)
+        self.posicao = self.diagrama(1)
+        self.painel.sync_with_ocr()
+        self.assertFalse(self.painel.estudo.ancora.valida)
+
+    def test_corrigir_uma_casa_do_diagrama_aberto_nao_zera_o_desfazer(self) -> None:
+        """**A regressão que religar o fio cru teria criado.**
+
+        O sinal do painel de resultado dispara a cada casa corrigida, e `_abrir` zera a pilha. Quem
+        estivesse analisando aquele mesmo diagrama perderia o `Ctrl+Z` a cada tecla -- e `edicao` é
+        o contador que `ui/desfazivel.py` lê para decidir de quem é a tecla.
+        """
+        self.posicao = self.diagrama(1)
+        self.painel.sync_with_ocr()
+        self.painel.push_move(chess.Move.from_uci("e2e4"))
+        edicao = self.painel.edicao
+        no = self.painel.estudo.no
+
+        # A mesma âncora, com uma casa corrigida: é o que a aba Resultado emite a cada edição.
+        self.posicao = self.diagrama(1, placement="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBN1")
+        self.painel.sync_with_ocr()
+
+        self.assertEqual(edicao, self.painel.edicao, "a sincronia contou como edição")
+        self.assertIs(no, self.painel.estudo.no, "a sincronia moveu o lance corrente")
+        self.painel.desfazer()
+        self.assertEqual(0, self.painel.estudo.contagem_de_lances(), "a pilha de desfazer foi zerada")
+
+    def test_corrigir_uma_casa_do_diagrama_vazio_chega_ao_tabuleiro(self) -> None:
+        """Antes do primeiro lance não há o que perder, e a correção **tem** de chegar."""
+        self.posicao = self.diagrama(1)
+        self.painel.sync_with_ocr()
+        antes = self.painel.estudo.tabuleiro.board_fen()
+
+        corrigido = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBN1"
+        self.posicao = self.diagrama(1, placement=corrigido)
+        self.painel.sync_with_ocr()
+
+        self.assertNotEqual(antes, self.painel.estudo.tabuleiro.board_fen())
+        self.assertEqual(corrigido, self.painel.estudo.tabuleiro.board_fen())
+
+    def test_a_atualizacao_silenciosa_nao_fala_no_rodape(self) -> None:
+        """Uma frase por casa corrigida enterraria a de quem está corrigindo."""
+        self.posicao = self.diagrama(1)
+        self.painel.sync_with_ocr()
+        ditas: list[str] = []
+        self.painel.estado.connect(ditas.append)
+        self.posicao = self.diagrama(1, placement="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBN1")
+        self.painel.sync_with_ocr()
+        self.assertEqual([], [f for f in ditas if "diagrama selecionado" in f])
+
+    def test_posicao_sem_ancora_nao_recomeca_o_estudo_avulso(self) -> None:
+        """Item de fila e amostra do dataset não têm par no livro: a âncora não nomeia mesa.
+
+        Seguir uma delas recomeçaria o estudo em curso a cada atualização. O caminho para
+        estudá-las continua sendo "Carregar OCR atual", que é explícito.
+        """
+        self.painel.push_move(chess.Move.from_uci("e2e4"))
+        self.posicao = PosicaoDeEstudo()
+        self.painel.sync_with_ocr()
+        self.assertEqual(1, self.painel.estudo.contagem_de_lances())
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class ListaDeLancesTests(unittest.TestCase):
+    """A lista que se lê: recuo que aparece e quebra que não parte lance (S-514/S-515).
+
+    **Os dois defeitos eram do mecanismo do Qt, e nenhum deles quebrava teste.** `ui/estudo_lista.py`
+    continua travado contra o `StringExporter` e não foi tocado; o que mudou é como o painel desenha
+    os `Trecho` que ela devolve.
+    """
+
+    PGN = (
+        '[Event "?"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 (3... Nf6 4. O-O Nxe4 5. d4 '
+        "(5. Re1 Nd6 6. Nxe5 Be7) 5... Nd6 6. Bxc6 dxc6) 4. Ba4 Nf6 5. O-O Be7 *\n"
+    )
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+        self.painel = qt_estudo.PainelDeEstudo(pasta_inicial=self.pasta, pasta_de_estudos=self.pasta)
+        self.addCleanup(descartar, self.painel)
+        from chess_diagram_ocr.estudo import Estudo
+
+        novo = Estudo.de_pgn(self.PGN, documento="livro.pdf")
+        assert novo is not None
+        self.painel.estudo = novo
+        self.painel.refresh()
+
+    def margens(self) -> list[float]:
+        documento = self.painel.lista.document()
+        bloco = documento.begin()
+        vistas: list[float] = []
+        while bloco.isValid():
+            if bloco.text().strip():
+                vistas.append(bloco.blockFormat().leftMargin())
+            bloco = bloco.next()
+        return vistas
+
+    def test_a_variante_recua_e_a_subvariante_recua_mais(self) -> None:
+        """**A regressão do item.** O recuo era `margin-left` num `<span>`, e o `QTextDocument`
+        descarta margem em elemento inline: todos os blocos saíam com `leftMargin == 0.0`.
+        """
+        margens = self.margens()
+        passo = float(sala_declarada.RECUO_POR_NIVEL)
+        self.assertIn(0.0, margens, "a linha principal deixou de estar na margem zero")
+        self.assertIn(passo, margens, "a variante não recuou um nível")
+        self.assertIn(2 * passo, margens, "a subvariante não recuou dois níveis")
+
+    def test_o_recuo_satura_e_a_numeracao_nao(self) -> None:
+        """`NIVEL_MAXIMO_DE_RECUO` é do módulo puro, e o desenho o respeita."""
+        teto = estudo_lista.NIVEL_MAXIMO_DE_RECUO * sala_declarada.RECUO_POR_NIVEL
+        self.assertLessEqual(max(self.margens()), float(teto))
+
+    def _quebras(self, largura: int) -> list[str]:
+        """Os caracteres imediatamente **antes** de cada quebra visual, naquela largura.
+
+        **Num documento à parte, e não no do widget.** `QTextEdit` refaz a largura do documento a
+        partir do próprio viewport a cada leiaute, então um `setTextWidth` no documento dele é
+        sobrescrito: o que se mediria seria a geometria de um widget que nunca foi mostrado (aqui,
+        linhas de 72 px pedindo 240). O HTML é o mesmo -- é o que o painel gerou --, e é dele que a
+        quebra depende.
+        """
+        from PyQt6.QtGui import QTextDocument
+
+        documento = QTextDocument()
+        documento.setDefaultFont(self.painel.lista.font())
+        documento.setHtml(self.painel.lista.toHtml())
+        documento.setTextWidth(largura)
+        documento.documentLayout().documentSize()  # força o leiaute
+        antes: list[str] = []
+        bloco = documento.begin()
+        while bloco.isValid():
+            leiaute, texto = bloco.layout(), bloco.text()
+            for i in range(1, leiaute.lineCount()):
+                inicio = leiaute.lineAt(i).textStart()
+                if 0 < inicio <= len(texto):
+                    antes.append(texto[inicio - 1])
+            bloco = bloco.next()
+        return antes
+
+    def test_a_quebra_so_acontece_em_espaco_que_pode_quebrar(self) -> None:
+        """**Um critério cobre os dois da spec.**
+
+        Se toda quebra cai depois de um espaço comum, então nenhum token de SAN foi partido ao
+        meio *e* nenhum `&nbsp;` -- o que gruda `12.` em `Ba4` e `(` no primeiro lance da variante
+        -- foi quebrado. Medido antes do item, num documento de 240 px:
+        `1. Nf3 Nc6 2. Nf3 N` / `c6 3. Nf3 Nc6 4. Nf`.
+        """
+        for largura in (240, 320, 480, 900):
+            with self.subTest(largura=largura):
+                partidos = [c for c in self._quebras(largura) if c != " "]
+                self.assertEqual(
+                    [],
+                    partidos,
+                    f"quebra fora de espaço quebrável em {largura} px: {partidos!r}",
+                )
+
+    def test_a_varredura_de_quebra_acha_alguma(self) -> None:
+        """Sem isto, um leiaute que não quebrasse faria o teste acima passar sobre lista vazia."""
+        self.assertGreater(len(self._quebras(240)), 0, "nada quebrou a 240 px -- suspeito")
+
+    def test_a_lista_continua_batendo_com_o_string_exporter(self) -> None:
+        """A trava da S-273 não é tocada por este item: o desenho mudou, o PGN não."""
+        import chess.pgn
+
+        exportador = chess.pgn.StringExporter(headers=False, variations=True, comments=True)
+        esperado = self.painel.estudo.jogo.accept(exportador)
+        obtido = estudo_lista.texto_de(estudo_lista.trechos(self.painel.estudo))
+        self.assertEqual(esperado.split(), obtido.split())
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class DobraDasVariantesTests(unittest.TestCase):
+    """Dobrar é **vista**: esconde na tela e não toca a árvore (S-516)."""
+
+    PGN = ListaDeLancesTests.PGN
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+        self.painel = qt_estudo.PainelDeEstudo(pasta_inicial=self.pasta, pasta_de_estudos=self.pasta)
+        self.addCleanup(descartar, self.painel)
+        from chess_diagram_ocr.estudo import Estudo
+
+        novo = Estudo.de_pgn(self.PGN, documento="livro.pdf")
+        assert novo is not None
+        self.painel.estudo = novo
+        self.painel.refresh()
+
+    def visivel(self) -> str:
+        return self.painel.lista.toPlainText()
+
+    def test_dobrar_esconde_o_miolo_e_deixa_a_reticencia(self) -> None:
+        self.assertIn("Nxe4", self.visivel())
+        self.painel.alternar_dobra()
+        self.assertNotIn("Nxe4", self.visivel(), "o miolo da variante continuou na tela")
+        self.assertIn("(", self.visivel(), "o parêntese sumiu junto -- não há onde desdobrar")
+        self.assertIn("…", self.visivel(), "a variante dobrada não diz que existe")
+
+    def test_desdobrar_devolve_tudo(self) -> None:
+        antes = self.visivel()
+        self.painel.alternar_dobra()
+        self.painel.alternar_dobra()
+        self.assertEqual(antes, self.visivel())
+
+    def test_dobrar_nao_toca_a_arvore_nem_a_pilha(self) -> None:
+        """`Ctrl+Z` não enxerga a dobra, e `edicao` -- que decide de quem é a tecla -- não sobe."""
+        pgn, edicao = self.painel.pgn_payload(), self.painel.edicao
+        self.painel.alternar_dobra()
+        self.assertEqual(pgn, self.painel.pgn_payload())
+        self.assertEqual(edicao, self.painel.edicao)
+
+    def test_navegar_para_dentro_de_uma_dobra_a_abre(self) -> None:
+        """**O lance corrente nunca se esconde.** A dobra continua declarada e volta a valer
+        quando a navegação sai dali -- ver `ui/estudo_dobra`."""
+        self.painel.alternar_dobra()
+        self.assertNotIn("Nxe4", self.visivel())
+
+        dentro = next(
+            t.caminho
+            for t in self.painel._trechos
+            if t.papel == estudo_lista.LANCE and t.texto.startswith("Nxe4")
+        )
+        self.assertTrue(self.painel.estudo.ir_para(dentro))
+        self.painel.refresh()
+        self.assertIn("Nxe4", self.visivel(), "a lista escondeu o lance corrente")
+
+        self.painel.go_to_start_of_line()
+        self.assertNotIn("Nxe4", self.visivel(), "a dobra não voltou a valer ao sair dali")
+
+    def test_o_botao_fica_cinza_sem_variante(self) -> None:
+        """Como o do recorte na S-347: alternar sobre o que não existe troca o texto por nada."""
+        from chess_diagram_ocr.estudo import Estudo
+
+        so_principal = Estudo.de_pgn('[Event "?"]\n\n1. e4 e5 *\n', documento="livro.pdf")
+        assert so_principal is not None
+        self.painel.estudo = so_principal
+        self.painel.refresh()
+        self.assertFalse(self.painel.btn_dobra.isEnabled())
+        self.assertEqual(comandos.rotulo_de_botao("dobrar_variantes"), self.painel.btn_dobra.text())
+
+    def test_o_rotulo_do_botao_diz_o_que_esta_na_tela(self) -> None:
+        self.painel.alternar_dobra()
+        self.assertEqual(comandos.rotulo_alternado("dobrar_variantes"), self.painel.btn_dobra.text())
+        self.painel.alternar_dobra()
+        self.assertEqual(comandos.rotulo_de_botao("dobrar_variantes"), self.painel.btn_dobra.text())
+
+    def test_o_clique_no_parentese_dobra_uma_so(self) -> None:
+        """O `(` é o controle, e não um glifo novo ao lado dele -- ver `_trecho_em_html`."""
+        from PyQt6.QtCore import QUrl
+
+        interna = min(self.painel._variantes, key=lambda v: v.fecha - v.abre)
+        self.painel._clique_na_lista(QUrl(f"dobra:{interna.abre}"))
+        self.assertNotIn("Nxe5", self.visivel(), "a subvariante não dobrou")
+        self.assertIn("Nxe4", self.visivel(), "a de fora dobrou junto")
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class ArranjoTests(unittest.TestCase):
+    """Onde as coisas ficam (S-517/S-518/S-519).
+
+    **O `ROADMAP_ACABAMENTO` adiou este item por escrito** -- *"as quatro fileiras de botão do
+    Estudo são problema de arranjo, não de acabamento… merecem um plano próprio"* -- e a medição
+    que ele deixou é a que estes testes fixam: 28 botões em quatro fileiras, 130 px de 800 a 900 de
+    largura e 155 px de 620 a 760.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+
+    def sala(self, **kwargs: object) -> qt_estudo.PainelDeEstudo:
+        # `pasta_de_treino` é a temporária **sempre**: o placar do treino (S-541) grava a cada
+        # lance, e sem isto a suíte escreveria em `data/placar.json` do repositório.
+        kwargs.setdefault("pasta_de_treino", self.pasta)
+        montada = qt_estudo.PainelDeEstudo(
+            pasta_inicial=self.pasta, pasta_de_estudos=self.pasta, **kwargs  # type: ignore[arg-type]
+        )
+        self.addCleanup(descartar, montada)
+        return montada
+
+    def _barras_do_topo(self, painel: qt_estudo.PainelDeEstudo) -> list[object]:
+        from chess_diagram_ocr.qt.barra import BarraFluida
+
+        fora = painel.layout()
+        assert fora is not None
+        return [
+            item.widget()
+            for i in range(fora.count())
+            if isinstance(item := fora.itemAt(i), object)
+            and isinstance(item.widget(), BarraFluida)
+        ]
+
+    def test_o_topo_tem_uma_fila_e_nenhuma_barra_fluida(self) -> None:
+        """Eram três `BarraFluida` (S-517) que a 715 px quebravam em cinco fileiras e 154 px; desde a
+        S-527 o topo é a `BarraDaSala`, que é uma fila por construção."""
+        painel = self.sala()
+        self.assertEqual([], self._barras_do_topo(painel))
+        self.assertEqual(1, painel.barra.linhas)
+        fora = painel.layout()
+        assert fora is not None
+        self.assertIs(painel.barra, fora.itemAt(0).widget())  # type: ignore[union-attr]
+
+    def test_a_navegacao_saiu_do_topo_e_esta_sob_o_tabuleiro(self) -> None:
+        """Os quatro de navegação eram os **menores alvos do painel**, encostados na cirurgia de
+        árvore. São o único grupo cuja frequência justifica estar ao lado do tabuleiro."""
+        from PyQt6.QtWidgets import QPushButton
+
+        painel = self.sala()
+        navegacao = {"inicio_da_linha", "lance_anterior", "proximo_lance", "fim_da_linha"}
+
+        def acoes(dentro: object) -> set[str]:
+            return {
+                str(b.property("acao"))
+                for b in dentro.findChildren(QPushButton)  # type: ignore[union-attr]
+                if b.property("acao")
+            }
+
+        self.assertEqual(set(), set(painel.barra.acoes) & navegacao, "a navegação continua no topo")
+        self.assertTrue(
+            navegacao <= acoes(painel.tabuleiro.parent()),
+            "a navegação não foi para junto do tabuleiro",
+        )
+
+    def test_a_faixa_diz_o_lance_corrente_e_a_vez(self) -> None:
+        """As duas informações não tinham lugar: o lance só existia como fundo amarelo no meio da
+        lista, e a vez só como sufixo da frase do rodapé."""
+        painel = self.sala()
+        self.assertIn("posição", painel.lbl_lance.text())
+        self.assertIn("brancas", painel.lbl_vez.text())
+
+        painel.push_move(chess.Move.from_uci("e2e4"))
+        self.assertEqual("1. e4", painel.lbl_lance.text())
+        self.assertIn("pretas", painel.lbl_vez.text())
+
+        painel.push_move(chess.Move.from_uci("e7e5"))
+        self.assertEqual("e5", painel.lbl_lance.text(), "o lance das pretas não repete o número")
+
+    def test_o_catalogo_nao_mudou_de_dono(self) -> None:
+        """Rearranjar não é tirar comando: o critério da S-280 vale para todo movimento de botão."""
+        self.assertEqual(comandos.acoes_fora_do_catalogo(sala_declarada.COMANDOS_DA_ABA), [])
+        painel = self.sala()
+        for acao, metodo in sala_declarada.COMANDOS_DA_ABA.items():
+            with self.subTest(acao=acao):
+                self.assertTrue(callable(getattr(painel, metodo, None)))
+
+    def test_o_tabuleiro_da_sala_passa_do_teto_fixo_numa_janela_grande(self) -> None:
+        """**O item da S-518.** `MAX_DO_TABULEIRO` é herança do canvas de tamanho fixo do Tk."""
+        from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
+
+        painel = self.sala()
+        painel.tabuleiro.resize(900, 900)
+        self.assertGreater(painel.tabuleiro.geometria().size, qt_tabuleiro.MAX_DO_TABULEIRO)
+
+    def test_o_tabuleiro_do_resultado_nao_muda(self) -> None:
+        """A fração é da sala. Na aba Resultado o tabuleiro divide a coluna com a lista de casas."""
+        from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
+
+        outro = qt_tabuleiro.TabuleiroQt()
+        self.addCleanup(descartar, outro)
+        outro.resize(900, 900)
+        self.assertEqual(float(qt_tabuleiro.MAX_DO_TABULEIRO), outro.geometria().size)
+
+    def test_a_fracao_guardada_manda_e_o_zero_e_o_padrao(self) -> None:
+        painel = self.sala()
+        painel.tabuleiro.resize(900, 900)
+        painel.definir_fracao_do_tabuleiro(0.5)
+        self.assertEqual(0.5, painel.fracao_do_tabuleiro)
+        meio = painel.tabuleiro.geometria().size
+
+        painel.definir_fracao_do_tabuleiro(0.0)
+        self.assertEqual(sala_declarada.FRACAO_PADRAO_DO_TABULEIRO, painel.fracao_do_tabuleiro)
+        self.assertGreater(painel.tabuleiro.geometria().size, meio)
+
+    def test_o_divisor_vertical_tem_duas_partes_sem_motor(self) -> None:
+        """Sem binário a seção do motor não existe (S-33), e o divisor não reserva altura para ela."""
+        self.assertEqual(2, self.sala().divisor_vertical.count())
+
+    def test_a_fracao_do_divisor_vertical_vai_e_volta(self) -> None:
+        painel = self.sala()
+        painel.resize(1000, 700)
+        painel.show()
+        self.app.processEvents()
+        painel.posicionar_divisor_vertical(0.4)
+        self.assertAlmostEqual(0.4, painel.fracao_do_divisor_vertical, places=1)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class TabuleiroNaPrimeiraAberturaTests(unittest.TestCase):
+    """A régua da altura roda quando a sala **aparece**, e não só quando ela muda de tamanho.
+
+    **O buraco medido pelo crítico em 2026-09-05** (S-551, segunda rodada): numa janela que já
+    nasce grande, a aba nunca é redimensionada depois de aparecer -- a montagem lhe dá a geometria
+    final de uma vez. `_acomodar_o_tabuleiro` morava só no `resizeEvent`, então rodava uma única
+    vez, na construção, com o divisor ainda de largura zero, e desistia ali. Medido na janela de
+    verdade: a 1920x1080 o tabuleiro ficava em **547 px** com a régua respondendo 565, e a
+    2560x1440 em **738** com ela respondendo 834.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+
+    def _sala(self, largura: int, altura: int) -> object:
+        """Uma sala do tamanho pedido, mostrada **uma vez** -- que é o gesto do item: nenhum
+        `resize` depois do `show`, como numa janela que já nasce grande."""
+        painel = qt_estudo.PainelDeEstudo()
+        self.addCleanup(descartar, painel)
+        painel.resize(largura, altura)
+        painel.show()
+        self.app.processEvents()
+        return painel
+
+    def test_a_alca_ja_nasce_movida_quando_ha_altura_sobrando(self) -> None:
+        """**É o caso que estava quebrado**, e a régua é o estado de antes: a mesma sala do mesmo
+        tamanho, mostrada uma vez, com a regra desligada -- que é exatamente o que acontecia
+        quando ela só morava no `resizeEvent`."""
+        antes = qt_estudo.PainelDeEstudo()
+        self.addCleanup(descartar, antes)
+        antes._divisor_escolhido = True
+        antes.resize(900, 1400)
+        antes.show()
+        self.app.processEvents()
+
+        painel = self._sala(900, 1400)
+        self.assertGreater(
+            painel.tabuleiro.width(),
+            antes.tabuleiro.width(),
+            "a régua não rodou na abertura: a alça ficou onde o QSplitter a pôs",
+        )
+
+    def test_a_leitura_nao_desce_abaixo_do_piso_na_abertura(self) -> None:
+        """Crescer o tabuleiro na abertura não pode espremer a lista de lances: o piso da leitura
+        vale já no primeiro desenho, e não só a partir do primeiro `resize`."""
+        painel = self._sala(900, 1400)
+        self.assertGreaterEqual(
+            painel.divisor.sizes()[1] + 4, sala_declarada.LARGURA_MINIMA_DA_LEITURA
+        )
+
+    def test_a_fracao_guardada_continua_desligando_a_regra_na_abertura(self) -> None:
+        """Mostrar a sala de novo -- voltar à aba, desminimizar -- não é motivo para recalcular
+        uma repartição que já foi escolhida. É a decisão de `posicionar_divisor`, agora cobrada
+        também no `showEvent`."""
+        painel = self._sala(900, 1400)
+        painel.posicionar_divisor(0.4)
+        self.app.processEvents()
+        painel.hide()
+        painel.show()
+        self.app.processEvents()
+        self.assertAlmostEqual(0.4, painel.fracao_do_divisor, places=1)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class SaidasQueNaoTinhamChamadorTests(unittest.TestCase):
+    """EPUB e DOCX, afirmados pelo **arquivo que nasce** (S-542/S-543, segunda rodada).
+
+    **O defeito não estava no exportador, e é o que o torna fácil de repetir.** `epub.py` e
+    `docx_saida.py` foram escritos, medidos e validados -- o primeiro pelo `epubcheck`, o segundo
+    aberto pelo LibreOffice --, e tinham suíte própria. O que não existia era **gesto**: o
+    agrupador "Exportar ▾" da sala oferecia `.md`, `.html`, `.rtf` e `.pdf`, e o menu Estudo
+    também. É a S-518 do outro lado -- lá um campo era gravado e ninguém o lia.
+
+    Por isso estes testes não medem o pacote (a suíte de cada módulo faz isso): eles medem que o
+    **comando chega ao arquivo**. `verificar` entra só para separar "nasceu um arquivo" de "nasceu
+    um pacote", que é a diferença que um teste de efeito precisa afirmar.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.painel = qt_estudo.PainelDeEstudo(pasta_inicial=self.pasta, pasta_de_estudos=self.pasta)
+        self.addCleanup(descartar, self.painel)
+
+    def _escolher(self, alvo: Path) -> None:
+        """O diálogo de destino respondendo `alvo`, e devolvido ao que era no fim do teste."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        original = QFileDialog.getSaveFileName
+        QFileDialog.getSaveFileName = staticmethod(lambda *_a, **_k: (str(alvo), ""))  # type: ignore[assignment]
+        self.addCleanup(lambda: setattr(QFileDialog, "getSaveFileName", original))
+
+    def test_exportar_para_epub_grava_um_epub_de_verdade(self) -> None:
+        """**É o caso que não tinha como acontecer**: não havia gesto que chamasse `epub.py`."""
+        from chess_diagram_ocr import epub
+
+        alvo = self.pasta / "da acao.epub"
+        self._escolher(alvo)
+        self.painel.exportar_estudo_epub()
+        self.assertTrue(alvo.is_file())
+        self.assertEqual([], epub.verificar(alvo), "o pacote saiu, mas não é um EPUB válido")
+        self.assertIn("capítulo(s)", self.painel.lbl_status.text())
+
+    def test_exportar_para_docx_grava_um_docx_de_verdade(self) -> None:
+        """O par do de cima, e o mesmo defeito: `docx_saida.py` estava pronto e sem chamador."""
+        from chess_diagram_ocr import docx_saida
+
+        alvo = self.pasta / "da acao.docx"
+        self._escolher(alvo)
+        self.painel.exportar_estudo_docx()
+        self.assertTrue(alvo.is_file())
+        self.assertEqual([], docx_saida.verificar(alvo), "o pacote saiu, mas não é um DOCX válido")
+        self.assertIn("parágrafo(s)", self.painel.lbl_status.text())
+
+    def test_desistir_do_dialogo_nao_grava_nada(self) -> None:
+        """A régua dos outros quatro formatos: fechar o diálogo é uma resposta, e ela é "não"."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        original = QFileDialog.getSaveFileName
+        QFileDialog.getSaveFileName = staticmethod(lambda *_a, **_k: ("", ""))  # type: ignore[assignment]
+        self.addCleanup(lambda: setattr(QFileDialog, "getSaveFileName", original))
+        self.painel.exportar_estudo_epub()
+        self.painel.exportar_estudo_docx()
+        self.assertEqual([], sorted(self.pasta.iterdir()))
+
+    def test_o_destino_que_o_disco_recusa_vira_frase_e_nao_excecao(self) -> None:
+        """A régua da S-164: a pessoa acabou de escolher o destino e está olhando para esta tela,
+        então a mesma linha que diria "3 capítulo(s)" diz por que não deu -- sem caixa, e sem o
+        `OSError` subindo pela sala.
+
+        **Uma pasta que não existe não serve de caso**, e a medição mostrou: `atomic_io` cria o
+        caminho, e é o que faz "Exportar para uma pasta nova" funcionar. O que o disco recusa de
+        verdade é um **arquivo** no lugar de uma pasta.
+        """
+        bloqueio = self.pasta / "nao_sou_pasta"
+        bloqueio.write_bytes(b"")
+        alvo = bloqueio / "x.epub"
+        self._escolher(alvo)
+        self.painel.exportar_estudo_epub()
+        self.assertFalse(alvo.exists())
+        self.assertIn("Não foi possível gravar", self.painel.lbl_status.text())
+
+    def test_os_dois_comandos_tem_dono_na_aba(self) -> None:
+        """A tabela de `sala_declarada` é o que faz o menu, a paleta e o agrupador chegarem ao
+        método -- um comando sem linha ali é um botão que não faz nada."""
+        for comando in ("exportar_estudo_epub", "exportar_estudo_docx"):
+            with self.subTest(comando=comando):
+                metodo = sala_declarada.COMANDOS_DA_ABA[comando]
+                self.assertTrue(callable(getattr(self.painel, metodo)))

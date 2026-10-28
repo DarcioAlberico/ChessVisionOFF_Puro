@@ -22,12 +22,16 @@ import unittest
 from pathlib import Path
 
 import chess
+import chess.engine
 from ambiente_de_teste import pasta_temporaria_da_classe
 
 from chess_diagram_ocr.engine import (
     ENV_ENGINE_PATH,
+    TETO_DE_CENTIPEOES,
     EngineAnalyzer,
     Evaluation,
+    MotorNaoRespondeu,
+    _avaliacao_de,
     find_engine,
 )
 
@@ -181,6 +185,76 @@ class AnalyzerTests(unittest.TestCase):
             avaliacao = motor.analyse(mate)
 
         self.assertEqual(avaliacao.best_move_san, "")
+
+    def test_o_mate_ja_dado_aponta_para_quem_o_deu(self) -> None:
+        """**`mate 0` não carrega sinal, e isso valia o vencedor errado** (S-537).
+
+        O UCI responde `score mate 0` na posição em que quem está no lance está mateado, e tanto
+        `Mate(0)` quanto `MateGiven` respondem `0` a `.mate()`. Sem normalizar, a posição final de
+        toda partida ganha valia `-M0`: a barra ia para o lado do perdedor, e a análise da partida
+        inteira marcava o lance de mate como **erro grave** de quem deu o mate -- foi assim que
+        `7. Nd5#` apareceu com `??` na fotografia da defesa de Legall.
+        """
+        brancas_mateiam = chess.Board("7k/5KQ1/8/8/8/8/8/8 b - - 0 1")
+        pretas_mateiam = chess.Board("8/8/8/8/8/5k2/6q1/7K w - - 0 1")
+        self.assertTrue(brancas_mateiam.is_checkmate() and pretas_mateiam.is_checkmate())
+
+        with EngineAnalyzer(self.launcher, movetime_ms=100) as motor:
+            de_brancas = motor.analyse(brancas_mateiam)
+            de_pretas = motor.analyse(pretas_mateiam)
+
+        self.assertGreater(de_brancas.mate_in or 0, 0, "o mate das brancas não pode valer negativo")
+        self.assertLess(de_pretas.mate_in or 0, 0)
+        self.assertEqual(1.0, de_brancas.advantage_fraction())
+        self.assertEqual(0.0, de_pretas.advantage_fraction())
+
+    def test_o_score_de_tablebase_do_uci_vira_resultado_e_nao_duzentos_peoes(self) -> None:
+        """**Medido com Syzygy de verdade nesta máquina** (S-538, segunda rodada).
+
+        Com `SyzygyPath` apontado, o Stockfish imprime a vitória por tabela como `cp 20000 - ply`
+        (`UCI::value`) -- e num KBNvK o painel mostrava `+200,00` e o arquivo recebia
+        `[%eval 200.0]`. Duzentos peões não é uma avaliação: é a tabela dizendo o placar, e é assim
+        que ela tem de aparecer.
+        """
+        board = chess.Board("8/8/8/4k3/8/8/8/2BNK3 w - - 0 1")
+        ganho = _avaliacao_de(board, {"score": chess.engine.PovScore(chess.engine.Cp(19_980), chess.WHITE)})
+        self.assertEqual(1, ganho.tabela)
+        self.assertEqual("1-0", ganho.display())
+        self.assertEqual(TETO_DE_CENTIPEOES, ganho.score_cp)
+        # A barra vai ao teto de dez peões e não a 1,0 exato: é o mesmo número que uma partida
+        # decidida já vale, e é o que faz o gráfico e o `[%eval]` do arquivo continuarem coerentes.
+        self.assertGreater(ganho.advantage_fraction(), 0.99)
+
+        perdido = _avaliacao_de(board, {"score": chess.engine.PovScore(chess.engine.Cp(-19_980), chess.WHITE)})
+        self.assertEqual("0-1", perdido.display())
+        self.assertEqual(-TETO_DE_CENTIPEOES, perdido.score_cp)
+
+        normal = _avaliacao_de(board, {"score": chess.engine.PovScore(chess.engine.Cp(229), chess.WHITE)})
+        self.assertIsNone(normal.tabela, "uma avaliação de verdade continua sendo um número")
+        self.assertEqual("+2,29", normal.display())
+
+    def test_um_binario_que_nao_fala_uci_levanta_a_frase_em_pt_br(self) -> None:
+        """A janela mostrava a palavra `TimeoutError` -- o nome de uma classe do Python, em inglês.
+
+        `TimeoutError()` tem `str()` **vazio**, então `cli.message_for` caía no nome do tipo. Com
+        uma classe própria carregando a frase, a mensagem chega inteira à janela. Aqui o binário
+        morre em vez de calar (é mais rápido que os dez segundos do `popen_uci`), e o caminho de
+        tradução é o mesmo.
+        """
+        from chess_diagram_ocr.cli import message_for
+
+        vazio = pasta_temporaria_da_classe(type(self), prefixo="cvoff-engine-") / "nao_e_motor.bat"
+        vazio.write_bytes(b"@echo off\r\nexit /b 1\r\n" if os.name == "nt" else b"#!/bin/sh\nexit 1\n")
+        if os.name != "nt":
+            vazio.chmod(0o755)
+        motor = EngineAnalyzer(vazio)
+        with self.assertRaises(MotorNaoRespondeu) as capturado:
+            motor.start()
+        frase = message_for(capturado.exception)
+        self.assertIn("UCI", frase)
+        self.assertIn("sem motor", frase)
+        self.assertNotIn("Timeout", frase)
+        self.assertNotIn("EngineTerminated", frase)
 
     def test_the_process_is_reused_between_analyses(self) -> None:
         """Reabrir o motor a cada posição custaria ~100–300 ms só de inicialização."""

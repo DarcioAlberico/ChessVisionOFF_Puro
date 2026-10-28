@@ -26,11 +26,13 @@ import logging
 import threading
 import time
 from collections.abc import Callable, Iterable, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .atomic_io import atomic_write_json
+from .checkpoint import checkpoint_identity
 from .cli import message_for
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
@@ -40,6 +42,7 @@ from .config import (
     DEFAULT_READING_ORDER,
     OrientationMode,
     ReadingOrder,
+    caminho_para_relatorio,
 )
 from .pdf_to_pgn import ExportReport, default_pgn_output_path, save_pdf_positions_to_pgn
 
@@ -49,6 +52,26 @@ STATUS_OK = "ok"
 STATUS_SKIPPED = "pulado"
 STATUS_FAILED = "falhou"
 STATUS_CANCELLED = "cancelado"
+
+PageProgress = Callable[[Path, int, int, int], None]
+"""`(livro, páginas feitas, páginas do livro, diagramas lidos até agora)` (S-546).
+
+Existe porque `on_book_start`/`on_book_done` bastam para um terminal e não para uma barra: no
+`Yusupov` são 2.612 páginas entre um aviso e o outro, e uma janela que ficasse 40 minutos sem
+mudar nada é uma janela travada aos olhos de quem espera. O `progress_callback` que
+`save_pdf_positions_to_pgn` já emitia por página morria aqui dentro, sem chamador.
+"""
+
+SessionFactory = Callable[[Path], AbstractContextManager[tuple[Any, str]]]
+"""Empresta o modelo do `OcrService` **por livro**, com o lock da S-31 (S-57).
+
+Por livro e não pela fila inteira de propósito: segurar o lock por uma varredura de cinquenta
+livros deixaria a própria janela sem conseguir reconhecer a página aberta durante horas -- o
+mesmo raciocínio da S-57, com a granularidade que a fila permite.
+
+`None` -- o padrão -- é o caminho do `cvoff-batch`: ali não há serviço nem treino concorrente, e
+cada livro carrega o `.pt` por conta própria como sempre carregou.
+"""
 
 
 @dataclass(frozen=True)
@@ -227,6 +250,8 @@ def run_batch(
     report_path: Path | None = None,
     on_book_start: Callable[[Path, int, int], None] | None = None,
     on_book_done: Callable[[BookResult], None] | None = None,
+    on_page: PageProgress | None = None,
+    session_factory: SessionFactory | None = None,
     cancel_event: threading.Event | None = None,
 ) -> BatchReport:
     """Exporta cada PDF para PGN e devolve o relatório consolidado.
@@ -235,6 +260,10 @@ def run_batch(
     as CPUs disponíveis: dois processos disputariam os mesmos núcleos e ainda carregariam
     dois modelos na memória. A decisão é a mesma que a S-24 tomou para páginas, pelo mesmo
     motivo, e está registrada no ROADMAP.
+
+    `on_page` e `session_factory` são o que a fila da janela precisava e o terminal não (S-546):
+    um aviso por **página**, para a barra do livro andar, e o empréstimo do modelo do serviço.
+    Ver `PageProgress` e `SessionFactory`.
     """
     options = options or BatchOptions()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -249,7 +278,7 @@ def run_batch(
         if on_book_start is not None:
             on_book_start(pdf, indice, len(livros))
 
-        resultado = _run_one(pdf, output_dir, options, cancel_event)
+        resultado = _run_one(pdf, output_dir, options, cancel_event, on_page, session_factory)
         relatorio.books.append(resultado)
 
         if on_book_done is not None:
@@ -267,11 +296,19 @@ def _run_one(
     output_dir: Path,
     options: BatchOptions,
     cancel_event: threading.Event | None,
+    on_page: PageProgress | None = None,
+    session_factory: SessionFactory | None = None,
 ) -> BookResult:
     saida = output_dir / default_pgn_output_path(pdf).name
     if options.skip_existing and saida.exists():
         logger.info("Pulando %s: %s ja existe.", pdf.name, saida.name)
         return BookResult(pdf=pdf, status=STATUS_SKIPPED, output=saida)
+
+    def _pagina(indice: int, total: int, _na_pagina: int, posicoes: int) -> None:
+        # `indice + 1` porque o que a barra mostra e "pagina 12 de 70", e nao o indice: quem
+        # espera conta a partir de um.
+        if on_page is not None:
+            on_page(pdf, indice + 1, total, posicoes)
 
     inicio = time.monotonic()
     try:
@@ -286,6 +323,8 @@ def _run_one(
             accept_threshold=options.accept_threshold,
             dedupe=options.dedupe,
             cancel_event=cancel_event,
+            progress_callback=_pagina if on_page is not None else None,
+            model_session=session_factory(options.model_path) if session_factory is not None else None,
         )
     except Exception as exc:
         # Um livro que falha nao derruba a varredura: com 27 PDFs e minutos por livro, uma
@@ -302,6 +341,22 @@ def _run_one(
             error=f"{type(exc).__name__}: {message_for(exc)}",
         )
 
+    if not report.cancelled and report.pages_scanned <= 0:
+        # **Zero página é falha, e não "ok" com zero.** Um PDF truncado -- o download que parou no
+        # meio, o arquivo de 0 byte -- abre, não entrega página nenhuma e saía daqui com
+        # `status: "ok"`, `pages: 0`, `error: ""` e um `.pgn` de 0 byte ao lado. Na fila da janela
+        # isso aparece como um livro pronto que não achou nada, que é o resultado de verdade de
+        # cinco livros do acervo (`ROADMAP.md:151`) -- e os dois ficam indistinguíveis. Um livro
+        # que não teve página não foi lido.
+        return BookResult(
+            pdf=pdf,
+            status=STATUS_FAILED,
+            output=report.output_path,
+            review_path=report.review_path,
+            elapsed_s=time.monotonic() - inicio,
+            error="o livro não entregou página nenhuma; o PDF pode estar truncado ou vazio",
+        )
+
     return BookResult(
         pdf=pdf,
         status=STATUS_CANCELLED if report.cancelled else STATUS_OK,
@@ -315,3 +370,147 @@ def _run_one(
         mean_min_confidence=_mean_min_confidence(report),
         elapsed_s=time.monotonic() - inicio,
     )
+
+
+# ------------------------------------------- o relatório de qualidade por livro (S-548)
+
+VERSAO_DO_RELATORIO = 1
+"""A versão do **formato** deste JSON, na forma de `text/arquivo.py` e `text/fila.py`.
+
+Quem abrir um relatório antigo daqui a seis meses precisa saber se os campos que ele espera
+existiam. Sem isso, um campo acrescentado depois é indistinguível de um campo que a medição
+daquele dia deixou em branco.
+"""
+
+SUFIXO_DO_RELATORIO = ".qualidade.json"
+"""`<livro>.qualidade.json`, **ao lado do PGN** e não em `docs/metrics/`.
+
+`docs/metrics/` é o arquivo de medição do repositório -- versionado, comparado por guarda, com
+procedência de código. O relatório de um livro varrido na máquina de quem usa o programa é saída
+do usuário, e mora onde a saída dele mora. Ver `docs/SPEC_SUITE.md`, S-548.
+"""
+
+
+def _versao_do_programa() -> str:
+    """A versão da distribuição instalada, ou `""` sem instalação a consultar.
+
+    É a **mesma leitura** que `ui/strings._versao_instalada` faz, do **mesmo** `DISTRIBUICAO`, e
+    não uma segunda declaração: a verdade é o metadado da distribuição, e ler o mesmo metadado de
+    dois lugares não tem como divergir. O que a S-161 proibiu foi *cravar* o número, que é outra
+    coisa -- e repetir aqui o nome do pacote seria cravar metade dele.
+
+    Os dois `import` são tardios porque este relatório é gravado uma vez por varredura: importar
+    `ui/strings` no topo faria todo `cvoff-batch` ler os metadados da distribuição na partida, para
+    um campo que só é escrito no fim.
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    from .ui.strings import DISTRIBUICAO
+
+    try:
+        return version(DISTRIBUICAO)
+    except PackageNotFoundError:
+        return ""
+
+
+def _por(valor: float, quantos: int) -> float:
+    return round(valor / quantos, 4) if quantos else 0.0
+
+
+def _taxa(parte: int, todo: int) -> float | None:
+    """A fração, ou `None` quando não há de que tirar fração.
+
+    **`None` e não `0.0`, e não `1.0`.** `legal_rate` saía `1.0` num livro sem diagrama nenhum --
+    "100% das posições são legais" sobre zero posição --, e um relatório que responde a pergunta
+    que ninguém pôde medir é pior que um que se cala: quem compara dois livros num gráfico vê o
+    livro que falhou no topo. `null` no JSON diz *não medido*, que é a verdade.
+    """
+    return round(parte / todo, 4) if todo else None
+
+
+def relatorio_de_qualidade(
+    resultado: BookResult, options: BatchOptions, *, medido_em: str = ""
+) -> dict[str, Any]:
+    """O que aquele livro entregou, e com o quê -- o item da S-548.
+
+    **Quatro perguntas, e as quatro só respondem juntas:** quantas páginas foram lidas, quantos
+    diagramas saíram de lá, quantos deles são posições legais, e quanto tempo custou. `120
+    diagramas` sozinho não diz se o livro foi bem; `120 diagramas, 0 exportados` diz, e é o
+    estado de cinco livros do acervo. O tempo por página é o que torna dois livros comparáveis
+    quando um tem 70 páginas e outro 2.612.
+
+    **A procedência entra porque sem ela o número não se reproduz** (S-219). O modelo é
+    reescrito por todo treino, então o caminho não o identifica: vai junto o
+    `checkpoint_identity`, que é `<tamanho>-<mtime_ns>` e custa um `stat`. E vão os parâmetros de
+    leitura, porque o mesmo livro medido a 220 e a 300 DPI dá números diferentes -- medido na
+    S-547: no `Niemeijer`, 51 diagramas contra 18.
+
+    Os caminhos saem **relativos à raiz** quando cabem nela, pela mesma razão dos relatórios de
+    campo: um relatório com o layout do disco de quem mediu não compara com o de outra máquina.
+    """
+    modelo = Path(options.model_path)
+    return {
+        "schema": VERSAO_DO_RELATORIO,
+        "book": resultado.pdf.name,
+        "status": resultado.status,
+        "output": caminho_para_relatorio(resultado.output) if resultado.output else None,
+        "review_path": caminho_para_relatorio(resultado.review_path) if resultado.review_path else None,
+        "pages": resultado.pages,
+        "diagrams": resultado.total_diagrams,
+        "exported": resultado.accepted,
+        "needs_review": resultado.needs_review,
+        "illegal": resultado.rejected,
+        "duplicates": resultado.duplicates,
+        "export_rate": _taxa(resultado.accepted, resultado.total_diagrams),
+        "legal_rate": _taxa(resultado.total_diagrams - resultado.rejected, resultado.total_diagrams),
+        "mean_min_confidence": round(resultado.mean_min_confidence, 4),
+        "elapsed_s": round(resultado.elapsed_s, 2),
+        "seconds_per_page": _por(resultado.elapsed_s, resultado.pages),
+        "seconds_per_diagram": _por(resultado.elapsed_s, resultado.total_diagrams),
+        "error": resultado.error,
+        "provenance": {
+            "model": {"path": caminho_para_relatorio(modelo), "identity": checkpoint_identity(modelo)},
+            "dpi": options.dpi,
+            "max_boards_per_page": options.max_boards_per_page,
+            "orientation": options.orientation,
+            "reading_order": options.reading_order,
+            "accept_threshold": options.accept_threshold,
+            "dedupe": options.dedupe,
+            "program": _versao_do_programa(),
+            "measured_at": medido_em,
+        },
+    }
+
+
+def caminho_do_relatorio_de_qualidade(pdf: Path, output_dir: Path) -> Path:
+    """`<pasta>/<livro>.qualidade.json`. O nome sai do PDF e não do PGN.
+
+    Do PDF porque o livro pulado nem chega a ter PGN próprio nesta rodada, e o relatório dele --
+    que diz justamente "já estava exportado" -- ainda tem de saber onde nascer.
+    """
+    return Path(output_dir) / f"{Path(pdf).stem}{SUFIXO_DO_RELATORIO}"
+
+
+def gravar_relatorios_de_qualidade(
+    relatorio: BatchReport, options: BatchOptions, output_dir: Path
+) -> list[Path]:
+    """Um JSON por livro da varredura. Devolve os caminhos gravados, em ordem.
+
+    Escrita por `atomic_write_json`, como todo arquivo de trabalho deste projeto: um relatório
+    pela metade é pior que nenhum, porque ele **abre** e responde números truncados.
+
+    Um livro cujo relatório não consegue ser gravado não derruba os outros -- é a mesma regra do
+    livro que falha na varredura (S-34), e aqui ela pesa mais: perder cinquenta relatórios porque
+    um nome de arquivo é inválido seria perder a medição inteira por causa da última linha dela.
+    """
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    gravados: list[Path] = []
+    for livro in relatorio.books:
+        destino = caminho_do_relatorio_de_qualidade(livro.pdf, output_dir)
+        try:
+            atomic_write_json(destino, relatorio_de_qualidade(livro, options, medido_em=relatorio.started_at))
+        except OSError as exc:
+            logger.warning("Nao foi possivel gravar %s: %s", destino.name, exc)
+            continue
+        gravados.append(destino)
+    return gravados

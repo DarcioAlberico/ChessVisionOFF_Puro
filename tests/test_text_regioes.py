@@ -178,7 +178,7 @@ def _folio(y: int) -> list[Caixa]:
 
 
 def pagina_de_solucoes(vao: int = 3, linhas: int = 30) -> list[Caixa]:
-    """A folha da queixa (S-523): título e fólio na calha, `vao` passos afastados do corpo de
+    """A folha da queixa (S-581): título e fólio na calha, `vao` passos afastados do corpo de
     linhas curtas."""
     corpo = colunas_de_solucao(linhas)
     ultima = 120 + (linhas - 1) * PASSO_Y
@@ -186,7 +186,7 @@ def pagina_de_solucoes(vao: int = 3, linhas: int = 30) -> list[Caixa]:
 
 
 class BandaIsoladaNaBordaTests(unittest.TestCase):
-    """O item S-523. Título e fólio cruzam a calha -- duas bandas, e a folha tolera uma --, e o
+    """O item S-581. Título e fólio cruzam a calha -- duas bandas, e a folha tolera uma --, e o
     corpo de linhas curtas não passa no preenchimento da busca por região."""
 
     def test_a_regua_de_folha_perde_a_calha(self) -> None:
@@ -262,7 +262,7 @@ class BandaIsoladaNaBordaTests(unittest.TestCase):
         self.assertEqual([1], sorted({len(r.colunas) for r in regioes}), f"cortou a tabela: {regioes}")
 
     def test_a_poeira_de_scan_nao_fecha_a_calha(self) -> None:
-        """S-526, a p. 40 do Neumann: a calha de verdade era cruzada por um título (tolerado) e
+        """S-584, a p. 40 do Neumann: a calha de verdade era cruzada por um título (tolerado) e
         por um risco de 3 x 3 px dentro de uma banda de texto -- a segunda banda, e a folha
         perdia a calha. Com a escala, a caixa mais estreita que um sexto dela não cobre nada."""
         corpo = colunas_de_solucao(30)
@@ -301,7 +301,7 @@ class BandaIsoladaNaBordaTests(unittest.TestCase):
 
 
 class QuadroDeLarguraInteiraTests(unittest.TestCase):
-    """O item S-525. O quadro «Scoring» tem cinco bandas cruzando a calha; a borda cede duas. Já
+    """O item S-583. O quadro «Scoring» tem cinco bandas cruzando a calha; a borda cede duas. Já
     achado (`text/quadros.py`), ele entra aqui como intervalo de `y`, vira região de uma coluna, e
     a folha é cortada em volta dele."""
 
@@ -369,7 +369,7 @@ class PaginaDeSolucoesDoYusupovTests(unittest.TestCase):
         self.assertEqual([1, 2, 1], [len(r.colunas) for r in regioes], f"veio {regioes}")
 
     def test_a_pagina_1021_com_o_quadro_scoring_sai_em_duas_colunas(self) -> None:
-        """S-525: a imagem do quadro é achada na camada e as soluções em cima dele acham a calha."""
+        """S-583: a imagem do quadro é achada na camada e as soluções em cima dele acham a calha."""
         import fitz
 
         from chess_diagram_ocr.cli.texto_ordem import _linhas_da_camada

@@ -20,18 +20,21 @@ A especificação item a item está em [SPEC_TEXTO.md](SPEC_TEXTO.md). O verific
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175, S-176 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176, S-454, S-455 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-267, S-291 a S-293, S-521 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-430, S-451 a S-453 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
-> | S-523 a S-526 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
+> | S-507 a S-520 | [SPEC_ESTUDO_QT.md](SPEC_ESTUDO_QT.md) |
+> | S-522 a S-526 | [SPEC_REVISAO_EXTERNA_2.md](SPEC_REVISAO_EXTERNA_2.md) |
+> | S-500 a S-506, S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
+> | S-581 a S-584 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
 
 ---
 
@@ -468,7 +471,7 @@ vale a folha inteira, e o bloco de largura inteira a apagava.
 > que o multiplica por vinte (ver `leitor.calha_de_linhas`) — ela media a ordenação de livros que
 > ela achava serem de coluna única, diferente do que a produção faz.
 
-**Itens S-523 a S-526 (2026-10-08), acrescentados a esta fase.** A página de soluções, a régua
+**Itens S-581 a S-584 (2026-10-08), acrescentados a esta fase.** A página de soluções, a régua
 que a S-194 não alcança, o quadro de largura inteira, e a poeira de scan que fechava a calha.
 Medição, plano e a spec dos quatro itens em `docs/PLANO_COLUNAS_SOLUCOES.md`.
 
@@ -482,7 +485,7 @@ Medição, plano e a spec dos quatro itens em `docs/PLANO_COLUNAS_SOLUCOES.md`.
 > preenchimento, porque coluna de solução é feita de linha curta; a tira estreita, que se enche com
 > pouco, passa.
 >
-> **S-523: a banda isolada da borda não vota na calha** (spec em `SPEC_TEXTO.md`). Quando a folha
+> **S-581: a banda isolada da borda não vota na calha** (spec em `SPEC_TEXTO.md`). Quando a folha
 > inteira não tem calha, até
 > duas bandas em cada borda, isoladas da vizinha por 1,5 passos de entrelinha, saem da projeção, e
 > o corpo é tentado com a mesma régua da folha -- sem preenchimento. Onde a folha acha calha, nada
@@ -491,16 +494,16 @@ Medição, plano e a spec dos quatro itens em `docs/PLANO_COLUNAS_SOLUCOES.md`.
 > Yusupov, pelo motor da aba: **15 de 84 → 79 de 81**. A regressão conhecida é a legenda de estrelas
 > do `Aagaard - A Matter of Endgame Technique` (p. 546), partida em duas colunas.
 >
-> **S-524: a estrutura de colunas medida contra páginas anotadas à mão** (`cvoff-texto-colunas`,
+> **S-582: a estrutura de colunas medida contra páginas anotadas à mão** (`cvoff-texto-colunas`,
 > `docs/metrics/colunas_anotadas.json`; spec em `SPEC_TEXTO.md`). A régua da S-194 é cega no Yusupov -- a camada emite as
 > linhas em zigue-zague, e o guarda a descarta --, e foi assim que o defeito ficou meses sem número.
 > Aqui a referência é a diagramação: 42 páginas olhadas com as colunas desenhadas sobre elas, e o
-> portão é **por página** (nenhuma certa pode passar a errar), não por média. Só com a S-523:
+> portão é **por página** (nenhuma certa pode passar a errar), não por média. Só com a S-581:
 > `camada` 33 de 40, `glifo` 34 de 42 -- e o que faltava estava à vista no relatório: as 8 páginas
 > com o quadro «Scoring» de largura inteira (1 de 8 nos dois motores), as p. 1201/1021 picadas pelo
 > mesmo quadro, e a Neumann p. 40 em três colunas.
 >
-> **S-525: o quadro de largura inteira é região de uma coluna, e corta a folha em trechos**
+> **S-583: o quadro de largura inteira é região de uma coluna, e corta a folha em trechos**
 > (`text/quadros.py` + `detectar_regioes(quadros=)`; spec em `SPEC_TEXTO.md`). O «Scoring» tem
 > cinco bandas cruzando a calha; a borda cede duas. Tratar
 > qualquer bloco isolado da borda como título foi medido e recusado -- a lista de lances do Chernev
@@ -513,17 +516,17 @@ Medição, plano e a spec dos quatro itens em `docs/PLANO_COLUNAS_SOLUCOES.md`.
 > Baseline final (`docs/metrics/texto_colunas{,_glifo}.json`): `glifo` **41 de 42** (Scoring 8 de 8;
 > resta a Neumann p. 40), `camada` 37 de 40 (Scoring 5 de 8: nas outras três a camada junta as
 > duas colunas numa linha, ou está quebrada). A régua da S-194, nas mesmas 1.090 folhas: nenhuma
-> piora contra a produção de antes; contra a S-523 sozinha, duas folhas mudam de estrutura e
+> piora contra a produção de antes; contra a S-581 sozinha, duas folhas mudam de estrutura e
 > nenhuma muda de distância.
 >
-> **S-526: a poeira de scan não cobre `x` nenhum na calha** (spec em `PLANO_COLUNAS_SOLUCOES.md`).
+> **S-584: a poeira de scan não cobre `x` nenhum na calha** (spec em `PLANO_COLUNAS_SOLUCOES.md`).
 > A única página que restava errada pelo glifo, a Neumann p. 40, tinha a calha de verdade fechada
 > por um risco de 3 x 3 px dentro de uma banda de texto (além do título tolerado) -- e a folha caía
 > no vão alinhado entre o número do lance e o lance, mais uma «coluna» de riscos à margem. No
 > caminho do glifo, a caixa mais estreita que 1/6 da escala não cobre `x` nenhum; a camada não
 > muda. Tirar da projeção também a banda de dois caracteres soltos foi medido e recusado: sem o
-> voto do fólio a régua de folha achava a calha sozinha, a borda da S-523 não rodava, e o título
-> ia parar dentro das colunas, partido. Conjunto anotado pelo glifo: **43 de 43**. Junto, a guarda da S-523 que a legenda de
+> voto do fólio a régua de folha achava a calha sozinha, a borda da S-581 não rodava, e o título
+> ia parar dentro das colunas, partido. Conjunto anotado pelo glifo: **43 de 43**. Junto, a guarda da S-581 que a legenda de
 > estrelas do Aagaard pedia: as colunas do corpo sem as bordas têm de ter larguras parecidas
 > (`LARGURAS_DO_CORPO`).
 

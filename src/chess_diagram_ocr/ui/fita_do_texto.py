@@ -23,7 +23,6 @@ __all__ = [
     "ABAS",
     "ACESSO_RAPIDO",
     "CONTROLES",
-    "CONTROLE_DO_COMANDO",
     "DE_ESTADO",
     "Aba",
     "Grupo",

@@ -1,4 +1,4 @@
-"""`cvoff-texto-colunas` — a estrutura de colunas medida contra páginas anotadas à mão (S-524).
+"""`cvoff-texto-colunas` — a estrutura de colunas medida contra páginas anotadas à mão (S-582).
 
     cvoff-texto-colunas
     cvoff-texto-colunas --motor glifo --saida docs/metrics/texto_colunas_glifo.json
@@ -208,7 +208,7 @@ def regressoes(relatorio: dict[str, Any], baseline: dict[str, Any]) -> list[str]
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Mede a estrutura de colunas contra paginas anotadas a mao (S-524).",
+        description="Mede a estrutura de colunas contra paginas anotadas a mao (S-582).",
         epilog="O --baseline reprova se qualquer pagina certa no relatorio anterior estiver errada agora.",
     )
     parser.add_argument("--anotadas", type=Path, default=ANOTADAS_PADRAO, help="O conjunto anotado (JSON).")
