@@ -47,7 +47,9 @@ class Aba:
     grupos: tuple[Grupo, ...]
 
 
-CONTROLES = frozenset({"@corpo", "@cor", "@realce", "@galeria", "@folha", "@motor", "@modo_bloco"})
+CONTROLES = frozenset(
+    {"@corpo", "@cor", "@realce", "@cor_rapida", "@realce_rapido", "@galeria", "@folha", "@motor", "@modo_bloco"}
+)
 """Os controles que colhem valor. Ver o cabeçalho."""
 
 ABAS: tuple[Aba, ...] = (
@@ -70,7 +72,8 @@ ABAS: tuple[Aba, ...] = (
             Grupo("Fonte", ("@corpo", "aumentar_corpo", "diminuir_corpo", "corpo_normal")),
             Grupo("Caixa", ("maiusculas", "minusculas", "capitular")),
             Grupo("Ênfase", ("negrito", "italico", "sublinhado", "tachado", "limpar_formato")),
-            Grupo("Cor", ("@cor", "limpar_cor", "@realce")),
+            # Os botões partidos aplicam a última cor num clique (S-650); as listas mostram a do cursor.
+            Grupo("Cor", ("@cor_rapida", "@cor", "limpar_cor", "@realce_rapido", "@realce")),
             Grupo("Parágrafo", ("alinhar_esquerda", "alinhar_centro", "alinhar_direita", "justificar", "marcas_de_formatacao")),
             Grupo("Estilos", ("@galeria",)),
             Grupo("Edição", ("achar", "substituir", "selecionar_tudo")),

@@ -468,6 +468,8 @@ class PainelDeTexto(QWidget):
         """As palavras que a pessoa mandou ignorar nesta folha. Saem com a folha."""
         self._glifos_recentes: list[str] = []
         self._palavras_cache: tuple[object, int] = (None, 0)
+        self._ultimas_cores: dict[str, str] = {"letra": texto_cores.nomes()[0], "realce": texto_cores.nomes()[0]}
+        """A última cor de letra e de realce aplicadas pelos botões partidos (S-650), guardadas na sessão."""
         self._ler_ao_chegar = False
         """Ler a folha sem caderno ao chegar a ela pela mesa (S-644). Ver `alternar_ler_ao_chegar`."""
         self._na_mesa = False
@@ -528,6 +530,8 @@ class PainelDeTexto(QWidget):
                 "@corpo": self.caixa_de_corpo,
                 "@cor": self.escolha_de_cor,
                 "@realce": self.escolha_de_realce,
+                "@cor_rapida": self.cor_rapida,
+                "@realce_rapido": self.realce_rapido,
                 "@galeria": self.galeria,
                 "@folha": self.campo_de_folha,
                 "@motor": self.escolha_de_motor,
@@ -856,6 +860,11 @@ class PainelDeTexto(QWidget):
         self.escolha_de_realce.activated.connect(
             lambda _i: self.pintar_realce(str(self.escolha_de_realce.currentData()))
         )
+        # Os botões partidos que lembram a última cor (S-650), o conforto do WordCraft: o clique
+        # aplica a mesma de antes, e a seta abre a lista. As listas de cima ficam, porque são elas
+        # que mostram a cor **sob o cursor**; o botão mostra a que o clique vai pôr.
+        self.cor_rapida = self._botao_partido("letra")
+        self.realce_rapido = self._botao_partido("realce")
 
         # **A folha, o motor e o modo bloco ficam na mesma barra que o "Ler".** É a linha do gesto:
         # escolher a folha, escolher como lê-la, e ler -- e separá-la em duas faria a escolha do
@@ -889,6 +898,40 @@ class PainelDeTexto(QWidget):
 
         self.caixa_de_bloco = QCheckBox(comandos.rotulo_de_botao("modo_bloco"), barra)
         self.caixa_de_bloco.toggled.connect(lambda _ligado: self.modo_bloco_mudou())
+
+    def _botao_partido(self, canal: str) -> QToolButton:
+        """Um botão partido de cor: o corpo aplica a última, a seta abre os nomes do autor."""
+        botao = QToolButton(self)
+        botao.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        botao.setAccessibleName(strings.COR_RAPIDA[canal])
+        menu = QMenu(botao)
+        for nome in texto_cores.nomes():
+            acao = QAction(nome.capitalize(), menu)
+            acao.triggered.connect(lambda _m=False, n=nome, c=canal: self._pintar_e_lembrar(c, n))
+            menu.addAction(acao)
+        botao.setMenu(menu)
+        botao.clicked.connect(lambda _m=False, c=canal: self._pintar_e_lembrar(c, self._ultimas_cores[c]))
+        self._mostrar_ultima_cor(botao, canal)
+        return botao
+
+    def _pintar_e_lembrar(self, canal: str, nome: str) -> None:
+        self._ultimas_cores[canal] = nome
+        (self.pintar_letra if canal == "letra" else self.pintar_realce)(nome)
+        self._mostrar_ultima_cor(self.cor_rapida if canal == "letra" else self.realce_rapido, canal)
+
+    def _mostrar_ultima_cor(self, botao: QToolButton, canal: str) -> None:
+        """O botão diz e desenha a cor que o clique vai pôr: o nome e uma amostra pela função da folha."""
+        from PyQt6.QtGui import QIcon, QPixmap
+
+        nome = self._ultimas_cores[canal]
+        atributos = rico.Atributos(cor=nome) if canal == "letra" else rico.Atributos(realce=nome)
+        formato = formato_de(rico.Corrida("A", atributos))
+        amostra = QPixmap(14, 14)
+        amostra.fill(formato.foreground().color() if canal == "letra" else formato.background().color())
+        botao.setIcon(QIcon(amostra))
+        botao.setText(nome.capitalize())
+        botao.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        dica_em(botao, strings.dica_da_cor_rapida(canal, nome))
 
     def _alvo_da_fita(self, acao: str) -> Callable[[], object]:
         """Quem atende um botão da fita: o painel (pela tabela ou pelas ações próprias), ou a janela."""
@@ -3006,6 +3049,12 @@ class PainelDeTexto(QWidget):
         self.definir_familia_da_letra(str(getattr(estado, "texto_familia", "")))
         self.definir_texto_ao_lado(bool(getattr(estado, "texto_ao_lado", False)))
         self._ler_ao_chegar = bool(getattr(estado, "texto_ler_ao_chegar", False))
+        for canal, chave in (("letra", "texto_ultima_cor"), ("realce", "texto_ultimo_realce")):
+            nome = str(getattr(estado, chave, ""))
+            if nome in texto_cores.nomes():
+                self._ultimas_cores[canal] = nome
+        self._mostrar_ultima_cor(self.cor_rapida, "letra")
+        self._mostrar_ultima_cor(self.realce_rapido, "realce")
         self.fita.definir_recolhida(bool(getattr(estado, "texto_fita_recolhida", False)))
         self._glifos_recentes = [str(g) for g in getattr(estado, "texto_glifos_recentes", [])][:GLIFOS_RECENTES]
         self._encher_a_paleta()
@@ -3021,6 +3070,8 @@ class PainelDeTexto(QWidget):
         estado.texto_familia = self._familia_da_letra  # type: ignore[attr-defined]
         estado.texto_ao_lado = self._texto_ao_lado  # type: ignore[attr-defined]
         estado.texto_ler_ao_chegar = self._ler_ao_chegar  # type: ignore[attr-defined]
+        estado.texto_ultima_cor = self._ultimas_cores["letra"]  # type: ignore[attr-defined]
+        estado.texto_ultimo_realce = self._ultimas_cores["realce"]  # type: ignore[attr-defined]
         estado.texto_fita_recolhida = self.fita.recolhida  # type: ignore[attr-defined]
         estado.texto_glifos_recentes = list(self._glifos_recentes)  # type: ignore[attr-defined]
 

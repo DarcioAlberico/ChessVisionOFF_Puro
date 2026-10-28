@@ -293,6 +293,34 @@ class NavegacaoTests(_Aba):
         self.assertEqual(self.painel._intervalo()[0], texto.rindex("Nf3"))
 
 
+class CorPartidaTests(_Aba):
+    """S-650: os botões partidos de cor lembram a última, e o clique a aplica de novo."""
+
+    def test_a_seta_escolhe_e_o_clique_repete_a_ultima(self) -> None:
+        from chess_diagram_ocr.ui import texto_cores
+        from chess_diagram_ocr.ui.state import AppState
+
+        segunda = texto_cores.nomes()[1]
+        self.painel.desenhar_documento(rico.de_texto("um bispo e um cavalo"))
+        self.selecionar(3, 8)
+        acao = next(a for a in self.painel.cor_rapida.menu().actions() if a.text() == segunda.capitalize())
+        acao.trigger()
+        self.assertEqual(rico.valor_em_todo(self.painel.documento, 3, 8, "cor"), segunda)
+        self.assertEqual(self.painel.cor_rapida.text(), segunda.capitalize())
+        self.selecionar(14, 20)
+        self.painel.cor_rapida.click()
+        self.assertEqual(rico.valor_em_todo(self.painel.documento, 14, 20, "cor"), segunda, "o clique não repetiu a última")
+        self.painel.realce_rapido.click()
+        self.assertEqual(rico.valor_em_todo(self.painel.documento, 14, 20, "realce"), texto_cores.nomes()[0])
+        estado = AppState()
+        self.painel.anotar_estado(estado)
+        self.assertEqual(estado.texto_ultima_cor, segunda)
+
+    def test_os_dois_estao_na_fita_com_nome(self) -> None:
+        self.assertEqual(self.painel.cor_rapida.accessibleName(), "Cor da letra: a última usada")
+        self.assertIn("@cor_rapida", fita_do_texto.controles())
+
+
 class BarraDeEstadoTests(_Aba):
     """S-655."""
 
