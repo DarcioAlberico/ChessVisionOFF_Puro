@@ -23,12 +23,16 @@ __all__ = [
     "ABAS",
     "ACESSO_RAPIDO",
     "CONTROLES",
+    "COMPACTA",
     "CONTROLE_DO_COMANDO",
+    "FRACAO_DO_ORCAMENTO",
+    "PLENA",
     "DE_ESTADO",
     "Aba",
     "Grupo",
     "acoes",
     "controles",
+    "modo_da_fita",
     "na_fita",
 ]
 
@@ -177,3 +181,24 @@ def acoes() -> tuple[str, ...]:
 def controles() -> tuple[str, ...]:
     """Os controles que a fita espera receber do painel, na ordem em que aparecem."""
     return tuple(i for aba in ABAS for grupo in aba.grupos for i in grupo.itens if i in CONTROLES)
+
+
+FRACAO_DO_ORCAMENTO = 0.20
+"""Quanto da altura da **janela** a fita pode ocupar (S-652): a régua da S-151, que chamou de defeito
+a barra que passa de 20% da janela. Da janela, e não da aba: a régua é sobre quanto da tela a barra
+toma, e numa tela de 768 px a aba sozinha recolheria a fita que cabe. O orçamento em pixels da S-228 (`ui/medidas_da_fita.ORCAMENTO`) é
+o de uma fita de **uma** linha; a da mesa quebra em linhas entre os grupos, e o que se cobra dela é a
+fração."""
+
+PLENA = "plena"
+COMPACTA = "compacta"
+
+
+def modo_da_fita(*, plena: int, disponivel: int) -> str:
+    """O modo da fita naquela altura de janela. Pura.
+
+    Plena (com o nome dos grupos) se ela cabe no orçamento, e compacta (sem os nomes) se não. **Não
+    há terceiro modo automático**: recolher a fita esconde os controles que o estado vazio cita pelo
+    nome («Achar no texto…»), e é gesto da pessoa (`Ctrl+F1`), e não do leiaute.
+    """
+    return PLENA if plena <= int(disponivel * FRACAO_DO_ORCAMENTO) else COMPACTA

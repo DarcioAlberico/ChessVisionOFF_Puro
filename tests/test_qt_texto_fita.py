@@ -293,6 +293,48 @@ class NavegacaoTests(_Aba):
         self.assertEqual(self.painel._intervalo()[0], texto.rindex("Nf3"))
 
 
+class OrcamentoTests(unittest.TestCase):
+    """S-652: a fita não passa de 20% da altura da janela -- plena, ou compacta sem o nome dos grupos."""
+
+    def test_a_decisao_pela_fracao(self) -> None:
+        self.assertEqual(fita_do_texto.modo_da_fita(plena=150, disponivel=900), fita_do_texto.PLENA)
+        self.assertEqual(fita_do_texto.modo_da_fita(plena=150, disponivel=600), fita_do_texto.COMPACTA)
+        self.assertEqual(fita_do_texto.modo_da_fita(plena=150, disponivel=200), fita_do_texto.COMPACTA)
+
+
+class OrcamentoNaTelaTests(_Aba):
+    def test_a_janela_baixa_tira_os_nomes_e_a_alta_os_devolve_sem_recolher(self) -> None:
+        fita = self.painel.fita
+        self.painel.resize(1100, 300)
+        self.app.processEvents()
+        self.assertEqual(fita.decidir_o_modo(), fita_do_texto.COMPACTA)
+        self.assertTrue(fita.compacta())
+        self.assertFalse(fita.recolhida, "o orçamento recolheu a fita: recolher é gesto da pessoa")
+        self.painel.resize(1100, 2400)
+        self.app.processEvents()
+        self.assertEqual(fita.decidir_o_modo(), fita_do_texto.PLENA)
+        self.assertFalse(fita.compacta(), "a janela cresceu e os nomes dos grupos não voltaram")
+
+    def test_o_orcamento_nao_desfaz_o_ctrl_f1(self) -> None:
+        fita = self.painel.fita
+        self.painel.alternar_fita()
+        self.painel.resize(1100, 2400)
+        self.app.processEvents()
+        fita.decidir_o_modo()
+        self.assertTrue(fita.recolhida, "o orçamento desfez o Ctrl+F1")
+
+    def test_a_compacta_e_mais_baixa_que_a_plena(self) -> None:
+        fita = self.painel.fita
+        self.painel.resize(1100, 2400)
+        self.app.processEvents()
+        fita.decidir_o_modo()
+        plena = fita.heightForWidth(fita.width())
+        self.painel.resize(1100, 300)
+        self.app.processEvents()
+        fita.decidir_o_modo()
+        self.assertLess(fita.heightForWidth(fita.width()), plena)
+
+
 class CorPartidaTests(_Aba):
     """S-650: os botões partidos de cor lembram a última, e o clique a aplica de novo."""
 
