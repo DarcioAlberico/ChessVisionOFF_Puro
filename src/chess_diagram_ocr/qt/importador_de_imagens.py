@@ -631,6 +631,7 @@ class JanelaDeImportacao(QDialog):
                 samples_dir=samples_dir,
                 corrected_by=imp.rota_da_conferencia(item, fen),
                 allow_illegal=permitir,
+                diretorio=self._diretorio,
             )
         except (OSError, ValueError) as exc:
             self.lbl_aviso.setText(f"Não foi gravada: {exc}")
@@ -689,6 +690,7 @@ class JanelaDeImportacao(QDialog):
                     progresso=lambda feitos, total, salvos: _emitir(self, "_lote_andou", feitos, total, salvos),
                     cancelar=lambda: self._cancelar_lote,
                     gravar_andamento=self._gravar_andamento,
+                    diretorio=self._diretorio,
                 )
                 _emitir(self, "_lote_acabou", conta)
             except Exception as exc:  # noqa: BLE001 - a falha chega à tela, e o andamento fica gravado

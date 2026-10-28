@@ -122,7 +122,7 @@ palavra, e quem monta parágrafo não sabe o que é um pixel.
 | `modelo.py` · `classes.py` · `recognizer.py` | O classificador de caractere: os pesos pinados ao `char_meta.json`, as 314 classes e o leitor de faixa. |
 | `leitura_de_linha.py` · `colados.py` · `empilhados.py` | Ler a linha em vez do caractere (S-188), separar glifo colado (S-186) e desempilhar o que a binarização juntou. |
 | `dicionario.py` · `lexico.py` | O léxico que **desempata** entre os candidatos do modelo, e nunca aproxima da palavra mais parecida (S-209). |
-| `caixa_alta.py` · `italico.py` · `negrito.py` · `numero.py` · `notacao.py` | As correções que dependem do que a letra **é**: altura, pendor, peso da fonte, dígito e lance. |
+| `caixa_alta.py` · `traco.py` · `italico.py` · `negrito.py` · `numero.py` · `notacao.py` | As correções que dependem do que a letra **é**: altura, proporção, pendor, peso da fonte, dígito e lance. |
 | `paragrafos.py` · `grade.py` · `tabela.py` · `vertical.py` | O que a página tem além de prosa: parágrafo, grade de exercício, tabela e texto girado. |
 | `camada.py` · `pdf_pesquisavel.py` | A camada de texto do próprio PDF — como referência (S-194) e como saída invisível sobre a página (S-210). |
 | `documento.py` · `exportacao.py` · `rico.py` | O documento do editor: o `.cvtxt`, o HTML e o texto com formato. |
