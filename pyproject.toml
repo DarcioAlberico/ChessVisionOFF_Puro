@@ -189,6 +189,7 @@ cvoff-texto-lado = "chess_diagram_ocr.cli.texto_lado:main"
 cvoff-texto-estilo-motor = "chess_diagram_ocr.cli.texto_estilo_motor:main"
 # S-624: o portao do diagrama a esquerda com o texto ao lado -- o editor continua dizendo a verdade?
 cvoff-texto-flutuante = "chess_diagram_ocr.cli.texto_flutuante:main"
+cvoff-livro-com-pgn = "chess_diagram_ocr.cli.livro_com_pgn:main"
 # S-661 a S-663: o conjunto rotulado do estilo da palavra, e o classificador com o portao dele.
 cvoff-texto-estilo-conjunto = "chess_diagram_ocr.cli.texto_estilo_conjunto:main"
 cvoff-texto-estilo-classificador = "chess_diagram_ocr.cli.texto_estilo_classificador:main"

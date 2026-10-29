@@ -179,7 +179,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **45 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **46 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -411,6 +411,11 @@ cvoff-texto-estilo-motor --folhas 4 --json docs/metrics/texto_estilo_por_motor.j
 # com a figura flutuando, e conferida -- a guarda de paridade, o mapa de posicoes, a selecao e a
 # letra digitada ao lado da figura. O desenho de hoje e o controle. Folha contada de 1.
 cvoff-texto-flutuante --folha "1937 Kemeri.pdf:54" --json docs/metrics/texto_flutuante.json
+
+# O PDF digital com o PGN do livro (S-589): cada diagrama casado com o seu no pela legenda
+# («Position after: 5.dxc5») ou pela posicao lida, e conferido pelo modelo. Diz quantos conferem,
+# quantos o PGN corrige, quantos discordam e quantos faltam no PDF. --sem-modelo casa so pela legenda.
+cvoff-livro-com-pgn --pdf "livro.pdf" --pgn "livro.pgn" --json saida.json
 
 # O estilo da palavra pela imagem (Fase 96). O conjunto: recortes de palavra das folhas tipograficas,
 # rotulados pela camada e divididos por livro -- o mesmo livro em dois arquivos e juntado pelo texto.
@@ -1087,6 +1092,7 @@ src/chess_diagram_ocr/
   inference.py          carga do modelo, predicao de FEN e TTA
   labels.py             a porta unica do labels.csv: LabelStore (S-51)
   lance_seguinte.py     o primeiro lance impresso sob o diagrama jogado sobre a leitura, e a troca unica que o faz fechar (C11)
+  livro_com_pgn.py      cada diagrama do PDF digital casado com o no do PGN do livro, e o estado dele (S-587)
   logging_setup.py      configuracao de logging
   model.py              arquitetura do classificador, configuravel por ArchConfig
   net_correction.py     cliente da correcao remota de FEN (opcional, opt-in)
@@ -1098,6 +1104,7 @@ src/chess_diagram_ocr/
   pdf_substituicao.py   as operacoes de escrita no PDF: apagar, substituir o diagrama, link do lichess
   pdf_text.py           legenda e metadados da camada de texto do PDF
   pdf_to_pgn.py         varredura de PDF e exportacao PGN
+  pgn_do_livro.py       o PGN que vem com o livro: leitura tolerante e o indice da arvore por lance e por posicao (S-585)
   placar.py             o placar do treino: por livro e por sessao, em tres baldes (S-541)
   preprocess.py         o recorte do tabuleiro virando as 64 casas que o modelo le, e o caminho de pagina de scan (S-547)
   procedencias.py       de onde veio cada amostra, e o que isso permite fazer com ela
