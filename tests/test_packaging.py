@@ -257,8 +257,13 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2279
+    LIMITE = 2280
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.279 -> 2.280 no R7 de volta (2026-10-29)**: a aba Texto traz ao caderno as folhas editadas
+    na Revisão de texto da suíte, e reaproveita a importação do livro que a janela tem
+    (`definir_importacao`, uma linha). O resto mora em `qt/revisao_para_o_caderno.py`, no painel e
+    em `text/caderno_na_suite.py`.
 
     **2.278 -> 2.279 no merge da sexta e da sétima entregas da mesa (2026-10-29)**: a mesa
     andou de 2.123 para 2.124 com a «Mesa sempre» (o comando do segundo interruptor; quem

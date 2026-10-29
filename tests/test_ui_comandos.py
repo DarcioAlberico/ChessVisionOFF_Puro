@@ -437,6 +437,7 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 "recolher_fita",
                 "tamanho_da_miniatura",
                 "texto_ao_lado",
+                "trazer_da_revisao",
                 "ler_ao_chegar",
                 "voltar_a_versao_anterior",
                 "abrir_pdf",

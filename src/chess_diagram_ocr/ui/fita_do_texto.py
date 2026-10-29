@@ -99,7 +99,13 @@ ABAS: tuple[Aba, ...] = (
             Grupo("Ler", ("ler_folha", "folha_da_pagina_aberta", "ler_folha_de_novo", "ler_ao_chegar")),
             Grupo(
                 "Caderno",
-                ("marcar_folha_conferida", "voltar_a_versao_anterior", "descartar_correcoes", "indice_do_caderno"),
+                (
+                    "marcar_folha_conferida",
+                    "voltar_a_versao_anterior",
+                    "descartar_correcoes",
+                    "indice_do_caderno",
+                    "trazer_da_revisao",
+                ),
             ),
         ),
     ),

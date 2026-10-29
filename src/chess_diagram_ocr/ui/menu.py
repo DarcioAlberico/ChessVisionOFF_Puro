@@ -382,6 +382,7 @@ MENUS: tuple[Menu, ...] = (
             Item("destacar_mesa"),
             Item("indice_do_caderno"),
             Item("marcar_folha_conferida"),
+            Item("trazer_da_revisao"),
             _sep(),
             Item("diagramas_a_esquerda", INTERRUPTOR),
             Item("texto_ao_lado", INTERRUPTOR),

@@ -311,6 +311,7 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "exportar_rtf": "exportar_rtf",
     "exportar_pdf_pesquisavel": "exportar_pdf_pesquisavel",
     "exportar_caderno": "exportar_caderno",
+    "trazer_da_revisao": "trazer_da_revisao",
     "diagramas_a_esquerda": "alternar_diagramas_a_esquerda",
     "texto_ao_lado": "alternar_texto_ao_lado",
     "ler_ao_chegar": "alternar_ler_ao_chegar",

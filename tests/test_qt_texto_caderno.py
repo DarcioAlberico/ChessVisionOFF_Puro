@@ -417,6 +417,58 @@ class ExportarCadernoTests(_Aba):
         self.assertTrue(any("faltam as folhas 1, 3-4, 6-20" in r for r in self.recados), self.recados[-3:])
 
 
+class TrazerDaRevisaoTests(_Aba):
+    """R7 de volta: o comando da aba traz as folhas editadas na Revisão de texto, pela regra do dono."""
+
+    def folha(self, indice: int, texto: str) -> dict[str, object]:
+        return {"format": 1, "page_index": indice, "state": "editada", "saved_at": "",
+                "paragraphs": [{"kind": "text", "runs": [{"text": texto}]}]}
+
+    def trazer(self, folhas: list[dict[str, object]], *, documento: object = None) -> list[dict[str, object]]:
+        from chess_diagram_ocr.qt import revisao_para_o_caderno as volta
+
+        pedidos: list[dict[str, object]] = []
+
+        def buscar(pdf: object, *, documento: object = None, desistir: object = None) -> list[dict[str, object]]:
+            pedidos.append({"pdf": pdf, "documento": documento})
+            return folhas
+
+        self.painel.definir_importacao(lambda: documento)
+        with mock.patch.object(volta, "disponivel", return_value=True), mock.patch.object(volta, "buscar", buscar):
+            self.assertTrue(self.painel.trazer_da_revisao())
+        return pedidos
+
+    def test_a_folha_da_tela_so_lida_recebe_a_revisao_e_e_reaberta(self) -> None:
+        self.ler(3)
+        pedidos = self.trazer([self.folha(2, "corrigida na revisão")], documento="importação em mãos")
+        self.assertEqual(pedidos, [{"pdf": self.livro, "documento": "importação em mãos"}])
+        self.assertEqual(self.painel.texto(), "corrigida na revisão", "a folha da tela foi reaberta")
+        self.assertEqual(self.no_caderno(3), "corrigida na revisão")
+        self.assertIn("1 folha(s) trazida(s) da revisão (3)", self.recados[-1])
+
+    def test_a_correcao_feita_aqui_antes_de_trazer_vence(self) -> None:
+        self.ler(3)
+        self.digitar_no_fim(" e corrigida aqui")
+        self.trazer([self.folha(2, "corrigida na revisão")])
+        self.assertEqual(self.no_caderno(3), "texto lido da folha 3 e corrigida aqui",
+                         "a folha da tela foi ao caderno antes da regra, e a regra a manteve")
+        self.assertEqual(self.cad.anterior(2).para_texto(), "corrigida na revisão")  # type: ignore[union-attr]
+        self.assertIn("já corrigida(s) aqui", self.recados[-1])
+
+    def test_sem_a_suite_o_rodape_diz_o_motivo(self) -> None:
+        from chess_diagram_ocr.qt import revisao_para_o_caderno as volta
+
+        with mock.patch.object(volta, "disponivel", return_value=False):
+            self.assertFalse(self.painel.trazer_da_revisao())
+        self.assertEqual(self.recados[-1], volta.MOTIVO_AUSENTE)
+
+    def test_sem_nada_editado_o_rodape_diz_e_nada_muda(self) -> None:
+        self.ler(3)
+        self.trazer([])
+        self.assertEqual(self.recados[-1], "Nenhuma folha foi editada na Revisão de texto da suíte.")
+        self.assertEqual(self.no_caderno(3), "texto lido da folha 3")
+
+
 class FolhasParaASuiteTests(_Aba):
     """R7: as folhas corrigidas vão ao EPUB/DOCX que a suíte escreve, e a da tela entra como está."""
 
