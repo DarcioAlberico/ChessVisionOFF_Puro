@@ -718,28 +718,31 @@ def _abrir(bases: Sequence[Path], path: Path) -> tuple[sqlite3.Connection | None
         conexao = sqlite3.connect(f"file:{Path(path).as_posix()}?mode=ro", uri=True)
     except sqlite3.Error as exc:
         return None, f"Árvore de aberturas ilegível ({exc}). {refazer}"
+    # **A recusa fecha a conexão.** Deixada aberta, ela segura o arquivo no Windows até o coletor
+    # passar -- e o arquivo recusado é justamente o que a frase manda reconstruir por cima.
+    motivo = ""
     try:
         gravada = _meta(conexao, "version")
-        marca = _meta(conexao, "database")
+        marca = _meta(conexao, "database") if gravada == str(TREE_VERSION) else None
     except sqlite3.Error as exc:
-        conexao.close()
-        return None, f"Árvore de aberturas sem as tabelas esperadas ({exc}). {refazer}"
-    if gravada != str(TREE_VERSION):
-        motivo = (
-            f"A árvore está no formato {gravada or 'desconhecido'!r} e este programa lê o "
-            f"{TREE_VERSION}. {refazer}"
-        )
-    elif not marca:
-        motivo = f"A árvore está em obras: uma rodada não chegou ao fim. {refazer}"
-    elif bases and marca != index_fingerprint(bases):
-        motivo = f"A árvore foi construída para outra base: as contagens não valem para esta. {refazer}"
+        motivo = f"Árvore de aberturas sem as tabelas esperadas ({exc}). {refazer}"
     else:
-        return conexao, ""
-    # **A recusa fecha a conexão.** No 3.10 a contagem de referências a fechava na saída da função;
-    # no 3.13 ela ficava aberta, e no Windows o arquivo não se apaga nem se reconstrói enquanto
-    # houver conexão -- a CI do 3.13 reprovava com `PermissionError` ao limpar a pasta do teste.
-    conexao.close()
-    return None, motivo
+        if gravada != str(TREE_VERSION):
+            motivo = (
+                f"A árvore está no formato {gravada or 'desconhecido'!r} e este programa lê o "
+                f"{TREE_VERSION}. {refazer}"
+            )
+        elif not marca:
+            motivo = f"A árvore está em obras: uma rodada não chegou ao fim. {refazer}"
+        elif bases and marca != index_fingerprint(bases):
+            motivo = (
+                "A árvore foi construída para outra base: as contagens não valem para esta. "
+                f"{refazer}"
+            )
+    if motivo:
+        conexao.close()
+        return None, motivo
+    return conexao, ""
 
 
 def consultar(

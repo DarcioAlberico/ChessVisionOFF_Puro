@@ -380,6 +380,23 @@ class BarraDeEstadoTests(_Aba):
         self.assertTrue(self.painel.recado.isHidden())
         self.assertFalse(self.painel.caixa_de_palavras.isHidden())
 
+    def test_montar_o_painel_nao_levanta_no_filtro_de_eventos(self) -> None:
+        """O filtro entra no editor antes de o rodapé existir, e os eventos de montar o corpo
+        chegam a ele no meio: `self.status` ainda não existia, e cada um levantava
+        `AttributeError` dentro do `eventFilter`. O PyQt6 do 3.13 transforma isso em `qFatal`
+        -- a CI morria sem traceback no primeiro teste que monta a janela. O `excepthook` é
+        trocado por um que anota, senão a regressão derrubaria o processo em vez de reprovar."""
+        import sys
+
+        excecoes: list[BaseException] = []
+        with mock.patch.object(sys, "excepthook", lambda *args: excecoes.append(args[1])):
+            painel = PainelDeTexto(dpi=72, pasta_de_rascunhos=self.pasta / "outros")
+            self.addCleanup(descartar, painel)
+            painel.resize(900, 600)
+            painel.show()
+            self.app.processEvents()
+        self.assertEqual(excecoes, [])
+
 
 class DesfazerComRotuloTests(_Aba):
     """S-656."""

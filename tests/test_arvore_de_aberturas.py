@@ -214,7 +214,8 @@ class ConstruirTests(unittest.TestCase):
 
     def test_um_formato_anterior_e_recusado(self) -> None:
         self._construir(partida("1. e4"))
-        # `closing`: o `with` da conexão só faz commit, e a conexão aberta prende o arquivo no Windows.
+        # `closing`, e não só o `with` da conexão: aquele faz o commit e deixa o arquivo aberto, e
+        # no Windows o `rmtree` da pasta temporária não o apaga.
         with closing(sqlite3.connect(self.arvore)) as conexao, conexao:
             conexao.execute("UPDATE meta SET value = '0' WHERE key = 'version'")
         self.assertEqual(arv.SEM_ARVORE, self._raiz().estado)

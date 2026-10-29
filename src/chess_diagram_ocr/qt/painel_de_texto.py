@@ -511,11 +511,8 @@ class PainelDeTexto(QWidget):
         (item 11). `definir_livro` para outro livro esquece tudo."""
         self._documento_ao_ler: rico.DocumentoRico | None = None
         """O documento na tela quando a leitura em curso partiu. Ver `_leitura_terminou`."""
-        self._montado = False
-        """O `_montar` terminou? Até lá o filtro de eventos deixa tudo passar: ver `eventFilter`."""
 
         self._montar()
-        self._montado = True
         self._desenhar()
         # Toda edição -- tecla ou ferramenta -- reinicia o relógio do rascunho. É o único ouvinte
         # deste sinal dentro do painel; o `desenhar_documento` de uma folha recém-lida também o
@@ -4039,14 +4036,7 @@ class PainelDeTexto(QWidget):
 
         A tecla de desfazer chega ao editor porque a guarda de atalhos a cede a todo campo de
         texto -- e o desfazer do `QTextEdit` está desligado. Ver `TECLAS_DO_HISTORICO`.
-
-        **Nada é filtrado antes de o `_montar` terminar.** O filtro entra no editor antes de o rodapé
-        (`self.status`) existir, e o editor já recebe eventos no meio da montagem: a pergunta
-        `a0 is self.status` levantava `AttributeError` dentro do filtro. No 3.10 o PyQt só imprime a
-        exceção; no 3.13 ela vira `qFatal`, e a CI morria sem uma linha em `test_app_pyqt`.
         """
-        if not self._montado:
-            return False
         if a0 is self.editor and isinstance(a1, QKeyEvent) and a1.type() == QEvent.Type.KeyPress:
             combinacao = QKeySequence(a1.keyCombination())
             for acao, tecla in self._teclas_do_historico.items():
@@ -4061,7 +4051,10 @@ class PainelDeTexto(QWidget):
             # seleciona a marca, o Enter a ativa. Com qualquer outra seleção o Enter é o Enter.
             if a1.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not a1.modifiers() and self._ativar_marca_selecionada():
                 return True
-        if a0 is self.status and isinstance(a1, QMouseEvent) and a1.type() == QEvent.Type.MouseButtonRelease:
+        # O filtro já está no editor quando o corpo é montado, antes de o rodapé existir: os
+        # eventos dessa montagem chegam aqui sem `self.status`, e a exceção num filtro é `qFatal`
+        # no PyQt6 do 3.13.
+        if a0 is getattr(self, "status", None) and isinstance(a1, QMouseEvent) and a1.type() == QEvent.Type.MouseButtonRelease:
             self.ir_ao_campo_de_folha()
             return True
         if a0 is self.editor.viewport() and isinstance(a1, QEvent) and a1.type() == QEvent.Type.Resize:
