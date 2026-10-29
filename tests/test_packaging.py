@@ -257,8 +257,13 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2278
+    LIMITE = 2279
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.278 -> 2.279 no merge da sexta e da sétima entregas da mesa (2026-10-29)**: a mesa
+    andou de 2.123 para 2.124 com a «Mesa sempre» (o comando do segundo interruptor; quem
+    marca os dois juntos é `DisposicaoDeMesa`, que recebe o `menu.marcar`). O `folhas_para`
+    da Rotulagem (R7) entra na mesma linha do `montar`, sem linha nova.
 
     **2.278 no merge da mesa de texto com o `claude/religa-com-main` (2026-10-28)**: os dois lados
     partiram do `646c84f` (2.077). A mesa de texto e o religa chegaram a 2.123 (+46, a conta

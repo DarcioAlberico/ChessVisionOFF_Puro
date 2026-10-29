@@ -103,7 +103,10 @@ class CronometroTests(unittest.TestCase):
 # `moldura`. Ficam no módulo de teste porque `medindo` aceita `etapas=`, que existe justamente
 # para isto: o instrumento tem de poder ser apontado para outro alvo sem mexer em `ETAPAS`.
 def _de_dentro() -> int:
-    sleep(0.02)
+    # **Dez vezes o de fora, e não o dobro.** O `sleep` do Windows arredonda para o relógio do sistema
+    # (~15,6 ms): com 10 e 20 ms as duas etapas saíram com ~22 ms cada na CI, e a ordem entre elas
+    # virou sorte. Com 100 ms o desconto ainda é o que decide -- sem ele a de fora mediria ~110 ms.
+    sleep(0.1)
     return 1
 
 

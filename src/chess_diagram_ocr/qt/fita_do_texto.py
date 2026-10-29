@@ -79,6 +79,7 @@ class FitaDoTexto(QTabWidget):
         self.barras: list[BarraFluida] = []
         self._legendas: list[QLabel] = []
         self.recolhida = False
+        self._olhando_o_pai = False
         for aba in declaracao.ABAS:
             self.addTab(self._montar_aba(aba), aba.nome)
         self.setCornerWidget(self._acesso_rapido(), Qt.Corner.TopRightCorner)
@@ -232,13 +233,60 @@ class FitaDoTexto(QTabWidget):
             self.definir_recolhida(False)
 
     def compacta(self) -> bool:
-        """A aba à vista não cabe numa linha: os nomes dos grupos somem (S-652)."""
-        return not any(legenda.isVisible() for legenda in self._legendas) if self._legendas else False
+        """Os nomes dos grupos sumiram para a fita caber no orçamento (S-652)."""
+        return bool(self._legendas) and all(legenda.isHidden() for legenda in self._legendas)
 
     def resizeEvent(self, a0: object) -> None:  # noqa: N802 - API do Qt
         super().resizeEvent(a0)  # type: ignore[arg-type]
+        self.decidir_o_modo()
+
+    def eventFilter(self, a0: object, a1: object) -> bool:  # noqa: N802 - API do Qt
+        """A altura da janela mudou: o orçamento é uma fração dela, e o modo se decide de novo."""
+        from PyQt6.QtCore import QEvent
+
+        if a0 is self.window() and isinstance(a1, QEvent) and a1.type() == QEvent.Type.Resize:
+            self.decidir_o_modo()
+        return super().eventFilter(a0, a1)  # type: ignore[arg-type]
+
+    def showEvent(self, a0: object) -> None:  # noqa: N802 - API do Qt
+        super().showEvent(a0)  # type: ignore[arg-type]
+        janela = self.window()
+        if janela is not None and janela is not self and not self._olhando_o_pai:
+            janela.installEventFilter(self)
+            self._olhando_o_pai = True
+        self.decidir_o_modo()
+
+    def decidir_o_modo(self) -> str:
+        """Plena ou compacta, pelo orçamento de altura (S-652, `fita_do_texto.modo_da_fita`).
+
+        A plena é medida de verdade, com o nome dos grupos, na largura de agora.
+        """
+        janela = self.window()
+        if janela is None or janela is self or janela.height() <= 0:
+            return declaracao.PLENA
+        self._mostrar_legendas(True)
+        plena = self._altura_sem_recolher(max(1, self.width()))
+        modo = declaracao.modo_da_fita(plena=plena, disponivel=janela.height())
+        self._mostrar_legendas(modo == declaracao.PLENA)
+        return modo
+
+    def _altura_sem_recolher(self, largura: int) -> int:
         atual = self.currentWidget()
-        if isinstance(atual, BarraFluida):
-            sobra = atual.linhas_em(max(1, self.width())) > 1
-            for legenda in self._legendas:
-                legenda.setVisible(not sobra)
+        barra_de_abas = self.tabBar()
+        abas = barra_de_abas.sizeHint().height() if barra_de_abas is not None else 0
+        return abas + (atual.heightForWidth(largura) if atual is not None else 0) + 8
+
+    def _mostrar_legendas(self, mostrar: bool) -> None:
+        """Mostra ou esconde o nome dos grupos, e refaz já a medida deles: o leiaute do Qt só a refaria
+        no próximo laço de eventos, e a decisão do modo mede a plena e a compacta na mesma chamada."""
+        for legenda in self._legendas:
+            legenda.setVisible(mostrar)
+            grupo = legenda.parentWidget()
+            leiaute = grupo.layout() if grupo is not None else None
+            if leiaute is not None:
+                leiaute.invalidate()
+                leiaute.activate()
+        for barra in self.barras:
+            leiaute = barra.layout()
+            if leiaute is not None:
+                leiaute.invalidate()

@@ -134,7 +134,8 @@ class AoLadoNaTelaTests(unittest.TestCase):
 
     def test_a_janela_marca_o_interruptor_pela_vista_do_painel(self) -> None:
         self.painel.definir_texto_ao_lado(True)
-        self.assertEqual(self.painel.interruptores_da_vista(), {"diagramas_a_esquerda": True, "texto_ao_lado": True})
+        vista = self.painel.interruptores_da_vista()
+        self.assertEqual({k: vista[k] for k in ("diagramas_a_esquerda", "texto_ao_lado")}, {"diagramas_a_esquerda": True, "texto_ao_lado": True})
 
 
 if __name__ == "__main__":

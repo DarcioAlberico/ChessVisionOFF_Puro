@@ -513,6 +513,7 @@ CATALOGO: tuple[Comando, ...] = (
     # A mesa de texto (S-640): o PDF vai para a esquerda e a aba Texto, larga, para a direita ao
     # abrir o Texto. Interruptor porque a preferência é ligada/desligada; o padrão é ligada.
     Comando("mesa_de_texto", "Mesa de texto: o PDF à esquerda ao abrir o Texto", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Mesa"),
+    Comando("mesa_sempre", "Mesa em toda área: o PDF à esquerda em qualquer aba", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Mesa sempre"),
     Comando("destacar_mesa", "Destacar a mesa numa janela própria (de novo, devolve)", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Destacar"),
     # O caderno do livro (S-613): o índice das folhas e a marca de conferida. O índice abre e fecha
     # como a paleta de glifos, e não é interruptor pelo mesmo motivo: ele não é preferência guardada.
@@ -536,6 +537,13 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("descartar_correcoes", "Descartar as correções desta folha…", EDICAO, estilos.NEUTRO, rotulo_curto="Descartar correções…"),
     # Os diagramas no texto (Fase 92): a preferência e o tamanho são vista; alinhar os da folha é edição.
     Comando("diagramas_a_esquerda", "Diagramas no texto à esquerda (o padrão é ao centro)", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Diagramas à esquerda"),
+    Comando(
+        "ler_ao_chegar",
+        "Ler ao chegar numa folha sem caderno (a mesa acompanhando a página)",
+        OCR,
+        estilos.NEUTRO,
+        rotulo_curto="Ler ao chegar",
+    ),
     Comando("texto_ao_lado", "Texto ao lado dos diagramas à esquerda", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Texto ao lado"),
     Comando("tamanho_da_miniatura", "Tamanho das miniaturas dos diagramas", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Miniaturas"),
     Comando("familia_da_letra", "Letra da folha: proporcional, serifada ou monoespaçada", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Letra"),

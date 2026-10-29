@@ -549,7 +549,7 @@ class JanelaPrincipal(QMainWindow):
             caminho_do_cache=self._caminho_do_cache,
             busy=self.busy,
         )
-        self.rotulagem = painel_de_rotulagem.montar(self.abas)  # a bancada da suíte, se ao alcance
+        self.rotulagem = painel_de_rotulagem.montar(self.abas, folhas_para=self.texto.folhas_do_livro)  # a bancada da suíte; o caderno vai ao livro dela (R7)
         self.revisao_de_texto = painel_de_revisao_de_texto.montar(self.abas)  # idem, passo 14
         # A ordem é a de `abas.MODOS` e `abas.DO_ACERVO`, lida e não copiada (S-162/S-511): área sem
         # painel reprova aqui. A `Livro` já é a primeira aba, e as duas da suíte só existem com ela.
@@ -627,7 +627,7 @@ class JanelaPrincipal(QMainWindow):
         self.divisor.splitterMoved.connect(self._alca_movida_a_mao)
         self.mesa = DisposicaoDeMesa(  # o PDF à esquerda com a aba Texto à frente (S-640)
             self.divisor, trabalho=self.abas, livro=self.lado_do_livro, visor=self.pdf.visor, estado=self._estado,
-            texto_a_frente=lambda: self.abas.area_atual() is self.texto, texto=self.texto,
+            texto_a_frente=lambda: self.abas.area_atual() is self.texto, texto=self.texto, marcar=lambda *a, **k: self.menu.marcar(*a, **k),
         )
 
         self.treino = ControladorDeTreino(self, pedido=self._pedido_de_treino, busy=self.busy)
@@ -735,7 +735,7 @@ class JanelaPrincipal(QMainWindow):
         self.pdf.roda_vira_pagina.setChecked(estado.wheel_flips_page)
         self.painel.mostrar_incerteza = estado.show_heatmap
         self.texto.aplicar_estado(estado)  # zoom, quebra, motor, modo bloco e os diagramas (S-620, S-623)
-        for nome, ligado in {"mesa_de_texto": self.mesa.ligada, **self.texto.interruptores_da_vista()}.items():
+        for nome, ligado in {**self.mesa.estados(), **self.texto.interruptores_da_vista()}.items():
             self.menu.marcar(nome, ligado=ligado)  # a mesa (S-640) e a vista dos diagramas (S-620, S-624)
         self.estudo.posicionar_divisor(estado.estudo_divisor)
         self.estudo.posicionar_divisor_vertical(estado.estudo_divisor_vertical)
@@ -1965,7 +1965,7 @@ class JanelaPrincipal(QMainWindow):
             return
         self.exportador_de_livro.comecar(
             self._pdf, self.pdf.page_count, formato=formato, pagina_atual=self.pdf.page_index,
-            documento_para=self.livro.documento_para if self.livro else None,  # A3: sem reimportar
+            documento_para=self.livro.documento_para if self.livro else None, folhas_para=self.texto.folhas_para_a_suite,  # A3 e R7
         )
 
     def _configuracao_de_exportacao(self) -> ExportSettings:
@@ -2043,7 +2043,8 @@ class JanelaPrincipal(QMainWindow):
             "importar_livro": lambda: self.livro.comecar() if self.livro else self._dizer(importador_de_livro.MOTIVO_AUSENTE.splitlines()[0]),
             "cancelar_importacao": lambda: self.livro.cancelar() if self.livro else None,
             "trilho": self._alternar_trilho,
-            "mesa_de_texto": lambda: self.menu.marcar("mesa_de_texto", ligado=self.mesa.alternar()),
+            "mesa_de_texto": lambda: self.mesa.alternar(),
+            "mesa_sempre": lambda: self.mesa.alternar_sempre(),
             "destacar_mesa": lambda: self.mesa_destacada.alternar(),
             "primeira_duvidosa": self.trilho._ir_para_a_primeira_duvidosa,
             "proxima_duvidosa": self.trilho.ir_para_a_proxima_duvidosa,

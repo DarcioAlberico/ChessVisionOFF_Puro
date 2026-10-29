@@ -1236,6 +1236,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-522 a S-526 | [docs/SPEC_REVISAO_EXTERNA_2.md](docs/SPEC_REVISAO_EXTERNA_2.md) |
 | S-500 a S-506, S-527 a S-580 | [docs/SPEC_SUITE.md](docs/SPEC_SUITE.md) |
 | S-581 a S-584 | [docs/PLANO_COLUNAS_SOLUCOES.md](docs/PLANO_COLUNAS_SOLUCOES.md) |
+| S-601 a S-668 | [docs/SPEC_MESA_DE_TEXTO.md](docs/SPEC_MESA_DE_TEXTO.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1321,13 +1322,16 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   e troca de caixa. A **Fase 42** saiu da leitura de dois editores de texto guardados como
   referencia -- area de transferencia, zoom de leitura, modo de quebra de linha --, mais o unico
   item do corretor ortografico deles que cabia aqui: o lexico que **confere e nao troca**
-- [docs/ROADMAP_MESA_DE_TEXTO.md](docs/ROADMAP_MESA_DE_TEXTO.md) -- **Fases 90 a 96**, plano e
-  especificacao (S-601 a S-668) da mesa de texto: a folha impressa a esquerda e o editor a
+- [docs/ROADMAP_MESA_DE_TEXTO.md](docs/ROADMAP_MESA_DE_TEXTO.md) -- **Fases 90 a 96**, o plano
+  da mesa de texto: a folha impressa a esquerda e o editor a
   direita, a fita por abas lida do WordCraft, o caderno do livro que guarda cada folha corrigida
   sem poda, os diagramas centralizados por padrao, o zoom a vista e o negrito da folha sem camada
   com portao de medicao -- e os tres defeitos medidos no widget antes de tudo: o alinhamento e o
   estilo de paragrafo que nao chegam a tela, a miniatura que nao segue a marca, e o rascunho podado
   a oito que apaga a correcao da primeira folha
+- [docs/SPEC_MESA_DE_TEXTO.md](docs/SPEC_MESA_DE_TEXTO.md) -- especificacao das Fases 90 a 96
+  (S-601 a S-668): o desenho que obedece ao documento, o caderno do livro, os diagramas, a letra
+  da aba, a mesa, a fita e os paineis, e o portao do negrito e do italico na folha sem camada
 - [docs/ROADMAP_ESTUDO.md](docs/ROADMAP_ESTUDO.md) -- **Fases 43 a 50**, o que a aba
   Analise e hoje, por que ela nao e uma sala de estudo e a leitura da pasta de referencia
 - [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) -- especificacao das Fases 43 a 50 (S-268 a S-290):

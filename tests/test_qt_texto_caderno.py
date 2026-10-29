@@ -196,6 +196,27 @@ class TrocarDeFolhaGuardaTests(_Aba):
         self.assertIn("corrigida", self.no_caderno(1))
 
 
+class RodapeDoCadernoTests(_Aba):
+    """S-655: «gravado às 14:32» vem do índice do caderno, e o clique na folha leva ao campo dela."""
+
+    def test_gravado_as_a_hora_do_indice_e_por_gravar_vence(self) -> None:
+        self.ler(3)
+        hora = self.cad.estado(2).gravada_em[11:16]  # type: ignore[union-attr]
+        self.assertIn(f"gravado às {hora}", self.painel.status.text())
+        self.digitar_no_fim(" x")
+        self.assertIn("por gravar", self.painel.status.text())
+        self.assertNotIn("gravado às", self.painel.status.text())
+
+    def test_o_clique_na_folha_leva_ao_campo_de_folha(self) -> None:
+        self.ler(3)
+        self.painel.fita.setCurrentIndex(0)
+        self.painel.alternar_fita()  # recolhida: o clique tem de devolver a fita
+        QTest.mouseClick(self.painel.status, Qt.MouseButton.LeftButton)
+        self.assertFalse(self.painel.fita.recolhida)
+        self.assertTrue(self.painel.campo_de_folha.isVisible())
+        self.assertTrue(self.painel.campo_de_folha.hasFocus() or self.painel.focusWidget() is not None)
+
+
 class VoltarAbreOCadernoTests(_Aba):
     def test_voltar_a_folha_abre_o_que_foi_feito_sem_motor(self) -> None:
         self.ler(3)
@@ -396,6 +417,46 @@ class ExportarCadernoTests(_Aba):
         self.assertTrue(any("faltam as folhas 1, 3-4, 6-20" in r for r in self.recados), self.recados[-3:])
 
 
+class FolhasParaASuiteTests(_Aba):
+    """R7: as folhas corrigidas vão ao EPUB/DOCX que a suíte escreve, e a da tela entra como está."""
+
+    def test_a_folha_da_tela_vai_corrigida_e_a_so_lida_fica(self) -> None:
+        self.ler(5)
+        self.ler(2)
+        self.digitar_no_fim(" corrigida")
+        folhas = self.painel.folhas_para_a_suite(None)
+        self.assertEqual([f["page_index"] for f in folhas], [1], "a folha 5 só foi lida: é a leitura do motor")
+        texto = "".join(r["text"] for p in folhas[0]["paragraphs"] for r in p.get("runs", ()))
+        self.assertIn("corrigida", texto, "a folha da tela não foi gravada antes de sair")
+        self.assertEqual(self.painel.folhas_para_a_suite((4, 5)), [], "o alcance do diálogo corta")
+
+    def test_sem_caderno_nada_vai(self) -> None:
+        self.ler(2)
+        self.digitar_no_fim(" corrigida")
+        self.painel.fechar_caderno()
+        self.assertEqual(self.painel.folhas_para_a_suite(None), [])
+
+    def test_o_livro_aberto_responde_com_a_folha_da_tela(self) -> None:
+        self.ler(3)
+        self.digitar_no_fim(" na tela")
+        (folha,) = self.painel.folhas_do_livro(self.livro, None)
+        self.assertEqual(folha["page_index"], 2)
+        self.assertIn("na tela", "".join(r["text"] for p in folha["paragraphs"] for r in p.get("runs", ())))
+
+    def test_outro_livro_abre_o_caderno_dele_so_para_ler(self) -> None:
+        outro = self.pasta / "livros" / "Dvoretsky.pdf"
+        outro.write_bytes(b"%PDF-1.7\n" + b"outro livro inteiro " * 100)
+        dele = caderno.abrir(outro, pasta=self.cadernos)
+        assert dele is not None
+        doc = rico.de_pagina(_pagina(str(outro), 6, "folha do outro"))
+        self.assertEqual(dele.gravar(doc, correcoes=1), caderno.GRAVADA)
+        dele.fechar()
+        self.assertEqual([f["page_index"] for f in self.painel.folhas_do_livro(outro, None)], [6])
+        self.assertFalse((dele.pasta / "caderno.lock").exists(), "ler o caderno de outro livro tomou a trava")
+        self.assertEqual(self.painel.caderno_aberto.identidade, caderno.identidade_de(self.livro), "o caderno aberto mudou")  # type: ignore[union-attr]
+        self.assertEqual(self.painel.folhas_do_livro(self.pasta / "sumiu.pdf", None), [])
+
+
 class PdfPesquisavelDoCadernoTests(_Aba):
     def test_o_livro_sai_com_a_camada_das_folhas_do_caderno(self) -> None:
         import fitz
@@ -463,6 +524,24 @@ class MesaAcompanhaTests(_Aba):
         self.assertEqual(self.lidas, [])
         self.assertIn("corrigida", self.painel.documento.para_texto())
 
+    def test_ler_ao_chegar_le_a_folha_sem_caderno_e_vai_ao_estado(self) -> None:
+        from chess_diagram_ocr.ui.state import AppState
+
+        self.ler(3)
+        self.painel.definir_mesa(True)
+        self.painel.alternar_ler_ao_chegar()
+        self.lidas.clear()
+        self.painel.definir_livro(self.livro, pagina=12)
+        self.assertEqual(self.lidas, [12], "com a preferência ligada, a folha sem caderno não foi lida")
+        self.assertIn("folha 13", self.painel.documento.para_texto())
+        self.lidas.clear()
+        self.painel.definir_livro(self.livro, pagina=2)
+        self.assertEqual(self.lidas, [], "a folha que já está no caderno foi lida de novo")
+        estado = AppState()
+        self.painel.anotar_estado(estado)
+        self.assertTrue(estado.texto_ler_ao_chegar)
+        self.assertTrue(self.painel.interruptores_da_vista()["ler_ao_chegar"])
+
     def test_sem_a_mesa_virar_a_pagina_nao_troca_a_folha(self) -> None:
         self.ler(3)
         self.painel.definir_livro(self.livro, pagina=12)
@@ -506,6 +585,51 @@ class FaixaImpressaTests(_Aba):
         self.painel.abrir(rico.DocumentoRico())
         self.painel.definir_mesa(True)
         self.assertTrue(self.painel.faixa_impressa.isHidden())
+
+
+class ApontarPorLinhaTests(_Aba):
+    """S-642/S-643, etapa 2: o contorno e a faixa descem à linha lida, e voltam ao bloco onde se reescreveu."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        import numpy as np
+
+        linhas = [
+            LinhaLida("primeira linha do lance", (10.0, 10.0, 200.0, 20.0), 0.9, "glifo"),  # type: ignore[arg-type]
+            LinhaLida("segunda linha com Nf3", (10.0, 30.0, 200.0, 40.0), 0.9, "glifo"),  # type: ignore[arg-type]
+        ]
+        pagina = PaginaLida(
+            documento=str(self.livro), pagina=0, colunas=(Coluna(indice=0, blocos=(BlocoDeTexto.de_linhas(linhas),)),)
+        )
+        self.painel.definir_livro(self.livro, pagina=0)
+        self.painel.mostrar_pagina(pagina, folha_rgb=np.full((300, 300, 3), 200, np.uint8), dpi=72)
+        self.avisados: list[object] = []
+        self.painel.bloco_destacado.connect(self.avisados.append)
+        self.painel.definir_mesa(True)
+
+    def cursor_em(self, deslocamento: int) -> None:
+        cursor = self.painel.editor.textCursor()
+        cursor.setPosition(self.painel._mapa.posicao(deslocamento))
+        self.painel.editor.setTextCursor(cursor)
+
+    def test_o_contorno_e_da_linha_e_a_faixa_tem_duas_linhas_de_altura(self) -> None:
+        texto = self.painel.documento.para_texto()
+        self.cursor_em(texto.index("Nf3"))
+        self.assertEqual(self.avisados[-1], (10.0, 30.0, 200.0, 40.0))
+        self.assertEqual(self.painel.recorte_na_faixa.shape[:2], (10, 190))  # type: ignore[union-attr]
+        altura = self.painel.faixa_impressa.pixmap().height()
+        self.assertLessEqual(altura, 2 * self.painel.editor.fontMetrics().height())
+
+    def test_a_linha_reescrita_volta_ao_bloco(self) -> None:
+        texto = self.painel.documento.para_texto()
+        inicio = texto.index("segunda")
+        self.selecionar_e_trocar(inicio, inicio + len("segunda linha com Nf3"), "WWWWWWWWWWWWWWWWWWWWW")
+        self.cursor_em(inicio + 3)
+        bloco = self.painel.documento.origem.blocos[0].bbox  # type: ignore[union-attr]
+        self.assertEqual(self.avisados[-1], tuple(float(v) for v in bloco))
+
+    def selecionar_e_trocar(self, inicio: int, fim: int, novo: str) -> None:
+        self.painel._aplicar(rico.editar(self.painel.documento, inicio, fim, novo))
 
 
 class ApontarTests(_Aba):

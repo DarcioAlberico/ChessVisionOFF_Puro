@@ -29,6 +29,12 @@ class DecisaoTests(unittest.TestCase):
         self.assertTrue(mesa.vale_a_mesa("", texto_a_frente=True, largura=1400))
         self.assertFalse(mesa.vale_a_mesa("", texto_a_frente=False, largura=1400))
 
+    def test_sempre_vale_fora_do_texto(self) -> None:
+        self.assertTrue(mesa.vale_a_mesa(mesa.MESA_SEMPRE, texto_a_frente=False, largura=1400))
+        self.assertFalse(mesa.vale_a_mesa(mesa.MESA_SEMPRE, texto_a_frente=False, largura=mesa.LARGURA_MINIMA - 1))
+        self.assertTrue(mesa.ligada(mesa.MESA_SEMPRE) and mesa.sempre(mesa.MESA_SEMPRE))
+        self.assertFalse(mesa.sempre(""))
+
     def test_desligada_nunca_vale(self) -> None:
         self.assertFalse(mesa.vale_a_mesa(mesa.MESA_NUNCA, texto_a_frente=True, largura=1400))
 
@@ -121,6 +127,20 @@ class DisposicaoTests(_JanelaComLivro):
         self.ir_para(janela, abas.TEXTO)
         self.assertFalse(janela.mesa.armada)
         self.assertIs(janela.divisor.widget(0), janela.abas)
+
+    def test_mesa_sempre_arma_em_qualquer_area_e_marca_os_dois_interruptores(self) -> None:
+        janela = self.montar()
+        self.ir_para(janela, abas.RESULTADO)
+        self.assertFalse(janela.mesa.armada)
+        janela._comandos()["mesa_sempre"]()
+        self.assertTrue(janela.mesa.armada, "a mesa sempre não armou fora do Texto")
+        self.assertEqual(janela._estado.texto_mesa, mesa.MESA_SEMPRE)
+        self.assertTrue(janela.menu.acoes["mesa_sempre"].isChecked())
+        self.assertTrue(janela.menu.acoes["mesa_de_texto"].isChecked())
+        janela._comandos()["mesa_de_texto"]()  # desligar a mesa desliga as duas posições
+        self.assertFalse(janela.mesa.armada)
+        self.assertFalse(janela.menu.acoes["mesa_sempre"].isChecked())
+        self.assertFalse(janela.menu.acoes["mesa_de_texto"].isChecked())
 
     def test_o_interruptor_do_menu_desarma_e_rearma(self) -> None:
         janela = self.montar()

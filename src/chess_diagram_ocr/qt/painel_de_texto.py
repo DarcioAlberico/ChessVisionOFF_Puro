@@ -64,7 +64,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 from PyQt6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, pyqtSignal
@@ -119,8 +119,8 @@ from chess_diagram_ocr.qt.trabalho import Tarefa, rastro_de
 from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.text import busca, caderno, correcao, rascunho, rico
 from chess_diagram_ocr.text.documento import PaginaLida
-from chess_diagram_ocr.text.pagina import BlocoDeDiagrama
-from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, strings, texto_cores, tipografia, tokens
+from chess_diagram_ocr.text.pagina import BlocoDeDiagrama, BlocoDeTexto
+from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, mesa, strings, texto_cores, tipografia, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.texto_declarado import (
     ACOES_PROPRIAS,
@@ -338,6 +338,9 @@ class PainelDeTexto(QWidget):
     foco_mudou = pyqtSignal(bool)
     """O modo foco ligou ou desligou (S-658): a mesa esconde ou devolve o visualizador."""
 
+    destacada_mudou = pyqtSignal(bool)
+    """A aba foi para a janela da mesa ou voltou dela (S-646): a janela principal rearruma o divisor."""
+
     folha_pedida = pyqtSignal(int)
     """Um `.cvtxt` do livro aberto acabou de entrar na tela: a folha dele (0-based), para o
     visualizador ir até ela (item 9). Não sai para um `.cvtxt` de outro livro."""
@@ -470,13 +473,18 @@ class PainelDeTexto(QWidget):
         """As palavras que a pessoa mandou ignorar nesta folha. Saem com a folha."""
         self._glifos_recentes: list[str] = []
         self._palavras_cache: tuple[object, int] = (None, 0)
-        self._na_mesa = False
-        """A mesa de texto está armada (S-640): a aba acompanha a página do visualizador (S-644) e
-        mostra o bloco impresso sob o cursor (S-643). Quem diz é a janela, por `definir_mesa`."""
+        self._ultimas_cores: dict[str, str] = {"letra": texto_cores.nomes()[0], "realce": texto_cores.nomes()[0]}
+        """A última cor de letra e de realce aplicadas pelos botões partidos (S-650), guardadas na sessão."""
+        self._ler_ao_chegar = False
+        """Ler a folha sem caderno ao chegar a ela pela mesa (S-644). Ver `alternar_ler_ao_chegar`."""
+        self._mesa_armada = False
+        """A mesa de texto da janela principal está armada (S-640). Quem diz é a janela, por `definir_mesa`."""
+        self._destacada = False
+        """A aba está na janela da mesa (S-646). Quem diz é `MesaDestacada`, por `definir_destacada`."""
         self._bloco_avisado: tuple[float, ...] | None = None
         self._folha_por_ler: int | None = None
         """A folha que a mesa mostrou sem texto, porque ela não está no caderno (S-644)."""
-        self._bloco_na_faixa: tuple[int, int] | None = None
+        self._bloco_na_faixa: tuple[int, ...] | None = None
         self.recorte_na_faixa: np.ndarray | None = None
         """O recorte da folha que a faixa do bloco impresso mostra, antes da escala (S-643)."""
         self._folha_pedida_ao_fundo: int | None = None
@@ -529,6 +537,8 @@ class PainelDeTexto(QWidget):
                 "@corpo": self.caixa_de_corpo,
                 "@cor": self.escolha_de_cor,
                 "@realce": self.escolha_de_realce,
+                "@cor_rapida": self.cor_rapida,
+                "@realce_rapido": self.realce_rapido,
                 "@galeria": self.galeria,
                 "@folha": self.campo_de_folha,
                 "@motor": self.escolha_de_motor,
@@ -625,6 +635,11 @@ class PainelDeTexto(QWidget):
         rodape = QHBoxLayout()
         self.status = QLabel("", self)
         self.status.setAccessibleName("Estado da folha")
+        # O clique na folha do rodapé leva ao campo da folha (S-655): «Folha 12» é onde se olha para
+        # saber em que folha se está, e é dali que se quer ir à outra.
+        self.status.setCursor(Qt.CursorShape.PointingHandCursor)
+        dica_em(self.status, strings.DICA_DO_RODAPE_DA_FOLHA)
+        self.status.installEventFilter(self)
         rodape.addWidget(self.status, 1)
         self.caixa_de_palavras = QLabel("", self)
         self.caixa_de_palavras.setAccessibleName("Palavras da folha")
@@ -755,6 +770,7 @@ class PainelDeTexto(QWidget):
         """
         diagramas = self.documento.diagramas
         cad = self._caderno_da_tela()
+        guardada = None if cad is None or self._pagina is None else cad.estado(self._pagina.pagina)
         self.status.setText(
             frase_do_rodape(
                 folha=None if self._pagina is None else int(self._pagina.pagina),
@@ -763,10 +779,24 @@ class PainelDeTexto(QWidget):
                 miniaturas=sum(1 for c in diagramas if self._tem_miniatura(c)),
                 por_gravar=self.tem_alteracoes,
                 correcoes=self._correcoes,
-                do_caderno=cad is not None and self._pagina is not None and cad.estado(self._pagina.pagina) is not None,
+                do_caderno=guardada is not None,
                 conferidas=None if cad is None else (cad.conferidas(), self._folhas_do_livro()),
+                # A hora vem do índice do caderno (`gravada_em`, ISO), e não de um relógio do painel:
+                # é a hora da gravação de verdade, e a folha reaberta amanhã diz a de hoje.
+                gravado_as=guardada.gravada_em[11:16] if guardada is not None else "",
             )
         )
+
+    def ir_ao_campo_de_folha(self) -> None:
+        """O clique na folha do rodapé (S-655): a aba Leitura da fita à frente e o campo da folha pronto."""
+        from chess_diagram_ocr.ui import fita_do_texto
+
+        leitura = next(i for i, aba in enumerate(fita_do_texto.ABAS) if "@folha" in (it for g in aba.grupos for it in g.itens))
+        if self.fita.recolhida:
+            self.fita.definir_recolhida(False)
+        self.fita.setCurrentIndex(leitura)
+        self.campo_de_folha.setFocus()
+        self.campo_de_folha.selectAll()
 
     def _folhas_do_livro(self) -> int:
         """Quantas folhas o livro tem, pelo teto do campo; sem ele, até a última folha do caderno."""
@@ -859,6 +889,11 @@ class PainelDeTexto(QWidget):
         self.escolha_de_realce.activated.connect(
             lambda _i: self.pintar_realce(str(self.escolha_de_realce.currentData()))
         )
+        # Os botões partidos que lembram a última cor (S-650), o conforto do WordCraft: o clique
+        # aplica a mesma de antes, e a seta abre a lista. As listas de cima ficam, porque são elas
+        # que mostram a cor **sob o cursor**; o botão mostra a que o clique vai pôr.
+        self.cor_rapida = self._botao_partido("letra")
+        self.realce_rapido = self._botao_partido("realce")
 
         # **A folha, o motor e o modo bloco ficam na mesma barra que o "Ler".** É a linha do gesto:
         # escolher a folha, escolher como lê-la, e ler -- e separá-la em duas faria a escolha do
@@ -892,6 +927,40 @@ class PainelDeTexto(QWidget):
 
         self.caixa_de_bloco = QCheckBox(comandos.rotulo_de_botao("modo_bloco"), barra)
         self.caixa_de_bloco.toggled.connect(lambda _ligado: self.modo_bloco_mudou())
+
+    def _botao_partido(self, canal: str) -> QToolButton:
+        """Um botão partido de cor: o corpo aplica a última, a seta abre os nomes do autor."""
+        botao = QToolButton(self)
+        botao.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        botao.setAccessibleName(strings.COR_RAPIDA[canal])
+        menu = QMenu(botao)
+        for nome in texto_cores.nomes():
+            acao = QAction(nome.capitalize(), menu)
+            acao.triggered.connect(lambda _m=False, n=nome, c=canal: self._pintar_e_lembrar(c, n))
+            menu.addAction(acao)
+        botao.setMenu(menu)
+        botao.clicked.connect(lambda _m=False, c=canal: self._pintar_e_lembrar(c, self._ultimas_cores[c]))
+        self._mostrar_ultima_cor(botao, canal)
+        return botao
+
+    def _pintar_e_lembrar(self, canal: str, nome: str) -> None:
+        self._ultimas_cores[canal] = nome
+        (self.pintar_letra if canal == "letra" else self.pintar_realce)(nome)
+        self._mostrar_ultima_cor(self.cor_rapida if canal == "letra" else self.realce_rapido, canal)
+
+    def _mostrar_ultima_cor(self, botao: QToolButton, canal: str) -> None:
+        """O botão diz e desenha a cor que o clique vai pôr: o nome e uma amostra pela função da folha."""
+        from PyQt6.QtGui import QIcon, QPixmap
+
+        nome = self._ultimas_cores[canal]
+        atributos = rico.Atributos(cor=nome) if canal == "letra" else rico.Atributos(realce=nome)
+        formato = formato_de(rico.Corrida("A", atributos))
+        amostra = QPixmap(14, 14)
+        amostra.fill(formato.foreground().color() if canal == "letra" else formato.background().color())
+        botao.setIcon(QIcon(amostra))
+        botao.setText(nome.capitalize())
+        botao.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        dica_em(botao, strings.dica_da_cor_rapida(canal, nome))
 
     def _alvo_da_fita(self, acao: str) -> Callable[[], object]:
         """Quem atende um botão da fita: o painel (pela tabela ou pelas ações próprias), ou a janela."""
@@ -2093,6 +2162,35 @@ class PainelDeTexto(QWidget):
         """O caderno do livro aberto, para quem pergunta por ele -- o índice das folhas (S-613)."""
         return self._caderno
 
+    def folhas_para_a_suite(self, paginas: Sequence[int] | None) -> list[dict[str, Any]]:
+        """As folhas corrigidas do caderno, para o EPUB/DOCX do livro que a suíte escreve (R7).
+
+        A suíte chama isto na thread da janela, depois do diálogo e antes de começar; `paginas` é o
+        alcance escolhido nele (0-based, `None` = o livro). A folha da tela entra como está.
+        """
+        from chess_diagram_ocr.text import caderno_na_suite
+
+        if self._caderno is None:
+            return []
+        self._guardar_a_folha()
+        return caderno_na_suite.folhas_para_a_suite(self._caderno, paginas)
+
+    def folhas_do_livro(self, livro: Path | str, paginas: Sequence[int] | None) -> list[dict[str, Any]]:
+        """As folhas corrigidas do caderno de `livro`, que não precisa ser o aberto (R7).
+
+        É a pergunta da aba Rotulagem, que exporta o livro do projeto dela. O livro aberto aqui
+        responde como `folhas_para_a_suite`, com a folha da tela gravada; outro livro abre o caderno
+        dele **só para leitura**, sem tomar a trava de quem estiver corrigindo nele.
+        """
+        from chess_diagram_ocr.text import caderno_na_suite
+
+        if self._caderno is not None and caderno.identidade_de(livro) == self._caderno.identidade:
+            return self.folhas_para_a_suite(paginas)
+        if self._pasta_de_cadernos is None or not Path(livro).exists():
+            return []
+        outro = caderno.abrir(livro, pasta=self._pasta_de_cadernos, travar=False)
+        return [] if outro is None else caderno_na_suite.folhas_para_a_suite(outro, paginas)
+
     def _guardar_a_folha(self) -> bool:
         """Guarda a folha da tela no caderno, se ela mudou (S-611). Devolve se o trabalho está a salvo.
 
@@ -2780,16 +2878,37 @@ class PainelDeTexto(QWidget):
         self._mostrar_impresso()
         self._avisar_bloco()
 
+    def _sob_o_cursor(self) -> tuple[object, tuple[int, int]] | None:
+        """O que está sob o cursor na folha: a **linha** lida, quando se acha (S-642, etapa 2), e o bloco
+        quando não -- a linha reescrita à mão não casa com a lida, e a resposta volta a ser o bloco.
+
+        Devolve o objeto com `bbox` (`LinhaLida` ou o bloco) e a chave `(bloco, linha)`, com `-1` na
+        linha quando é o bloco inteiro.
+        """
+        doc = self.documento
+        if doc.origem is None:
+            return None
+        deslocamento = self._mapa.deslocamento(self.editor.textCursor().position())
+        blocos = doc.origem.blocos
+        linha = rico.linha_em(doc, deslocamento)
+        if linha is not None:
+            no_bloco, indice = linha
+            lido = blocos[no_bloco]
+            if isinstance(lido, BlocoDeTexto):  # `linha_em` só acha linha em bloco de texto
+                return lido.linhas[indice], (no_bloco, indice)
+        bloco = rico.bloco_em(doc, deslocamento)
+        if bloco is None or not 0 <= bloco < len(blocos):
+            return None
+        return blocos[bloco], (bloco, -1)
+
     def _avisar_bloco(self) -> None:
         """Diz à mesa qual bloco da folha está sob o cursor (S-642). Fora da mesa, nenhum."""
         bbox = None
         doc = self.documento
         if self._na_mesa and doc.origem is not None and int(doc.origem.pagina) == self._pagina_indice:
-            indice = rico.bloco_em(doc, self._mapa.deslocamento(self.editor.textCursor().position()))
-            blocos = doc.origem.blocos
-            if indice is not None and 0 <= indice < len(blocos):
-                caixa = getattr(blocos[indice], "bbox", None)
-                bbox = None if caixa is None else tuple(float(v) for v in caixa)
+            achado = self._sob_o_cursor()
+            caixa = None if achado is None else getattr(achado[0], "bbox", None)
+            bbox = None if caixa is None else tuple(float(v) for v in caixa)
         if bbox != self._bloco_avisado:
             self._bloco_avisado = bbox
             self.bloco_destacado.emit(bbox)
@@ -2860,7 +2979,21 @@ class PainelDeTexto(QWidget):
 
     def interruptores_da_vista(self) -> dict[str, bool]:
         """As marcas que o menu Texto mostra para a vista desta aba, para a janela pô-las ao abrir."""
-        return {"diagramas_a_esquerda": self.diagramas_a_esquerda, "texto_ao_lado": self._texto_ao_lado}
+        return {
+            "diagramas_a_esquerda": self.diagramas_a_esquerda,
+            "texto_ao_lado": self._texto_ao_lado,
+            "ler_ao_chegar": self._ler_ao_chegar,
+        }
+
+    def alternar_ler_ao_chegar(self) -> None:
+        """«Ler ao chegar numa folha sem caderno» (S-644): para quem corrige o livro do começo ao fim
+        com o motor rápido. Desligada por padrão -- ler custa de 1 s a 40 s, e é decisão de quem lê."""
+        self._ler_ao_chegar = not self._ler_ao_chegar
+        self.estado.emit(
+            "Virar a página com a mesa lê a folha que ainda não está no caderno."
+            if self._ler_ao_chegar
+            else "Virar a página com a mesa mostra a folha por ler, sem ler sozinha."
+        )
 
     def alternar_diagramas_a_esquerda(self) -> None:
         self.definir_diagramas(DIAGRAMAS_AO_CENTRO if self.diagramas_a_esquerda else DIAGRAMAS_A_ESQUERDA)
@@ -2994,6 +3127,13 @@ class PainelDeTexto(QWidget):
         self.definir_tamanho_da_miniatura(str(getattr(estado, "texto_miniatura", "")))
         self.definir_familia_da_letra(str(getattr(estado, "texto_familia", "")))
         self.definir_texto_ao_lado(bool(getattr(estado, "texto_ao_lado", False)))
+        self._ler_ao_chegar = bool(getattr(estado, "texto_ler_ao_chegar", False))
+        for canal, chave in (("letra", "texto_ultima_cor"), ("realce", "texto_ultimo_realce")):
+            nome = str(getattr(estado, chave, ""))
+            if nome in texto_cores.nomes():
+                self._ultimas_cores[canal] = nome
+        self._mostrar_ultima_cor(self.cor_rapida, "letra")
+        self._mostrar_ultima_cor(self.realce_rapido, "realce")
         self.fita.definir_recolhida(bool(getattr(estado, "texto_fita_recolhida", False)))
         self._glifos_recentes = [str(g) for g in getattr(estado, "texto_glifos_recentes", [])][:GLIFOS_RECENTES]
         self._encher_a_paleta()
@@ -3008,6 +3148,9 @@ class PainelDeTexto(QWidget):
         estado.texto_miniatura = self._tamanho_da_miniatura  # type: ignore[attr-defined]
         estado.texto_familia = self._familia_da_letra  # type: ignore[attr-defined]
         estado.texto_ao_lado = self._texto_ao_lado  # type: ignore[attr-defined]
+        estado.texto_ler_ao_chegar = self._ler_ao_chegar  # type: ignore[attr-defined]
+        estado.texto_ultima_cor = self._ultimas_cores["letra"]  # type: ignore[attr-defined]
+        estado.texto_ultimo_realce = self._ultimas_cores["realce"]  # type: ignore[attr-defined]
         estado.texto_fita_recolhida = self.fita.recolhida  # type: ignore[attr-defined]
         estado.texto_glifos_recentes = list(self._glifos_recentes)  # type: ignore[attr-defined]
 
@@ -3015,11 +3158,53 @@ class PainelDeTexto(QWidget):
         """A folha que o editor tem rasterizada e o DPI dela: é o que a vista da mesa destacada mostra (S-646)."""
         return self._pagina_rgb, int(self._dpi)
 
+    @property
+    def _na_mesa(self) -> bool:
+        """A aba está numa mesa -- a da janela principal ou a janela própria: ela acompanha a página do
+        visualizador (S-644), mostra o bloco impresso sob o cursor (S-643) e avisa o bloco (S-642)."""
+        return self._mesa_armada or self._destacada
+
+    @property
+    def destacada(self) -> bool:
+        return self._destacada
+
     def definir_mesa(self, ligada: bool) -> None:
         """A janela armou ou desarmou a mesa. A aba passa a acompanhar a página, e a faixa aparece."""
-        self._na_mesa = bool(ligada)
+        self._mesa_armada = bool(ligada)
         self._mostrar_impresso()
         self._avisar_bloco()
+
+    def definir_destacada(self, destacada: bool) -> None:
+        """A aba foi para a janela da mesa, ou voltou (S-646). Lá ela é mesa como na principal."""
+        if bool(destacada) == self._destacada:
+            return
+        self._destacada = bool(destacada)
+        self._mostrar_impresso()
+        self._avisar_bloco()
+        self.destacada_mudou.emit(self._destacada)
+
+    def folha_atual(self) -> tuple[int, int]:
+        """A folha do visualizador (0-based) e quantas o livro tem; zero quando não há livro aberto."""
+        total = self.campo_de_folha.maximum() if self._pdf is not None and self.campo_de_folha.maximum() < TETO_DE_FOLHAS else 0
+        return self._pagina_indice, int(total)
+
+    def folha_por_ler(self) -> bool:
+        """O editor está no vazio «Ler a folha N» da mesa (S-644), sem folha nem texto."""
+        return self._folha_por_ler is not None and self._folha_por_ler == self._pagina_indice
+
+    def virar_folha(self, passo: int) -> bool:
+        """A janela da mesa virou a folha (S-646): pede ao visualizador a vizinha, e a mesa a acompanha.
+
+        É o mesmo caminho da página virada na janela principal: o visualizador vai à folha
+        (`folha_pedida`), a janela devolve a página nova por `definir_livro`, e a aba guarda a folha
+        que sai e abre a que entra (S-644). Devolve se havia para onde virar.
+        """
+        indice, total = self.folha_atual()
+        alvo = mesa.folha_vizinha(indice, passo, total)
+        if alvo is None:
+            return False
+        self.folha_pedida.emit(alvo)
+        return True
 
     def _seguir_a_pagina(self, pagina: int) -> None:
         """A página do visualizador virou com a mesa armada (S-644).
@@ -3043,6 +3228,8 @@ class PainelDeTexto(QWidget):
         if self._caderno is not None and self._caderno.estado(pagina) is not None and self._abrir_do_caderno(pagina):
             return
         self._mostrar_folha_por_ler(pagina)
+        if self._ler_ao_chegar:
+            self.ler()
 
     def _mostrar_folha_por_ler(self, pagina: int) -> None:
         """O editor vazio, com o botão que lê **esta** folha."""
@@ -3069,27 +3256,29 @@ class PainelDeTexto(QWidget):
             return
         doc = self.documento
         folha = self._pagina_rgb
-        bloco = None
+        achado = None
         if self._na_mesa and self._faixa_ligada and folha is not None and doc.origem is not None:
-            indice = rico.bloco_em(doc, self._mapa.deslocamento(self.editor.textCursor().position()))
-            blocos = doc.origem.blocos
-            if indice is not None and 0 <= indice < len(blocos) and not isinstance(blocos[indice], BlocoDeDiagrama):
-                bloco = indice
+            achado = self._sob_o_cursor()
+            if achado is not None and isinstance(achado[0], BlocoDeDiagrama):
+                achado = None
         imagem = None
-        if bloco is not None and folha is not None and doc.origem is not None:
-            imagem = _recorte_da_folha(folha, doc.origem.blocos[bloco], dpi=self._dpi)
-        if bloco is None or imagem is None:
+        if achado is not None and folha is not None:
+            imagem = _recorte_da_folha(folha, achado[0], dpi=self._dpi)
+        if achado is None or imagem is None:
             self.faixa_impressa.hide()
             self._bloco_na_faixa = None
             self.recorte_na_faixa = None
             return
-        chave = (bloco, id(folha))
+        chave = (*achado[1], id(folha))
         if chave == self._bloco_na_faixa and self.faixa_impressa.isVisible():
             return
         self._bloco_na_faixa = chave
         self.recorte_na_faixa = imagem
         largura = max(1, self._area_da_folha().width())
-        altura = max(24, self.editor.height() // 3)
+        # A linha impressa fica com a altura de duas linhas de texto (S-643, etapa 2); o bloco inteiro,
+        # quando a linha não se acha, com até um terço do editor, como antes.
+        e_linha = achado[1][1] >= 0
+        altura = 2 * self.editor.fontMetrics().height() if e_linha else max(24, self.editor.height() // 3)
         self.faixa_impressa.setPixmap(
             pixmap_de_rgb(np.ascontiguousarray(imagem)).scaled(
                 largura, altura, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
@@ -3862,6 +4051,9 @@ class PainelDeTexto(QWidget):
             # seleciona a marca, o Enter a ativa. Com qualquer outra seleção o Enter é o Enter.
             if a1.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not a1.modifiers() and self._ativar_marca_selecionada():
                 return True
+        if a0 is self.status and isinstance(a1, QMouseEvent) and a1.type() == QEvent.Type.MouseButtonRelease:
+            self.ir_ao_campo_de_folha()
+            return True
         if a0 is self.editor.viewport() and isinstance(a1, QEvent) and a1.type() == QEvent.Type.Resize:
             self.vazio.setGeometry(self._area_da_folha())
         if a0 is self.editor.viewport() and isinstance(a1, QHelpEvent) and a1.type() == QEvent.Type.ToolTip:

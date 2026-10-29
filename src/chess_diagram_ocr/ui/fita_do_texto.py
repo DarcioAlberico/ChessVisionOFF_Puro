@@ -23,11 +23,14 @@ __all__ = [
     "ABAS",
     "ACESSO_RAPIDO",
     "CONTROLES",
+    "COMPACTA",
+    "PLENA",
     "DE_ESTADO",
     "Aba",
     "Grupo",
     "acoes",
     "controles",
+    "modo_da_fita",
     "na_fita",
 ]
 
@@ -46,7 +49,9 @@ class Aba:
     grupos: tuple[Grupo, ...]
 
 
-CONTROLES = frozenset({"@corpo", "@cor", "@realce", "@galeria", "@folha", "@motor", "@modo_bloco"})
+CONTROLES = frozenset(
+    {"@corpo", "@cor", "@realce", "@cor_rapida", "@realce_rapido", "@galeria", "@folha", "@motor", "@modo_bloco"}
+)
 """Os controles que colhem valor. Ver o cabeçalho."""
 
 ABAS: tuple[Aba, ...] = (
@@ -69,7 +74,8 @@ ABAS: tuple[Aba, ...] = (
             Grupo("Fonte", ("@corpo", "aumentar_corpo", "diminuir_corpo", "corpo_normal")),
             Grupo("Caixa", ("maiusculas", "minusculas", "capitular")),
             Grupo("Ênfase", ("negrito", "italico", "sublinhado", "tachado", "limpar_formato")),
-            Grupo("Cor", ("@cor", "limpar_cor", "@realce")),
+            # Os botões partidos aplicam a última cor num clique (S-650); as listas mostram a do cursor.
+            Grupo("Cor", ("@cor_rapida", "@cor", "limpar_cor", "@realce_rapido", "@realce")),
             Grupo("Parágrafo", ("alinhar_esquerda", "alinhar_centro", "alinhar_direita", "justificar", "marcas_de_formatacao")),
             Grupo("Estilos", ("@galeria",)),
             Grupo("Edição", ("achar", "substituir", "selecionar_tudo")),
@@ -90,7 +96,7 @@ ABAS: tuple[Aba, ...] = (
         "Leitura",
         (
             Grupo("Folha", ("@folha", "@motor", "@modo_bloco")),
-            Grupo("Ler", ("ler_folha", "folha_da_pagina_aberta", "ler_folha_de_novo")),
+            Grupo("Ler", ("ler_folha", "folha_da_pagina_aberta", "ler_folha_de_novo", "ler_ao_chegar")),
             Grupo(
                 "Caderno",
                 ("marcar_folha_conferida", "voltar_a_versao_anterior", "descartar_correcoes", "indice_do_caderno"),
@@ -108,7 +114,8 @@ ABAS: tuple[Aba, ...] = (
     Aba(
         "Exibir",
         (
-            Grupo("Mostrar", ("painel_de_navegacao", "mesa_de_texto", "destacar_mesa", "bloco_impresso", "quebrar_linha")),
+            Grupo("Mostrar", ("painel_de_navegacao", "bloco_impresso", "quebrar_linha")),
+            Grupo("Mesa", ("mesa_de_texto", "mesa_sempre", "destacar_mesa")),
             Grupo("Zoom", ("aproximar_texto", "afastar_texto", "zoom_do_texto_normal", "familia_da_letra")),
             Grupo("Foco", ("modo_foco", "recolher_fita")),
         ),
@@ -172,3 +179,24 @@ def acoes() -> tuple[str, ...]:
 def controles() -> tuple[str, ...]:
     """Os controles que a fita espera receber do painel, na ordem em que aparecem."""
     return tuple(i for aba in ABAS for grupo in aba.grupos for i in grupo.itens if i in CONTROLES)
+
+
+FRACAO_DO_ORCAMENTO = 0.20
+"""Quanto da altura da **janela** a fita pode ocupar (S-652): a régua da S-151, que chamou de defeito
+a barra que passa de 20% da janela. Da janela, e não da aba: a régua é sobre quanto da tela a barra
+toma, e numa tela de 768 px a aba sozinha recolheria a fita que cabe. O orçamento em pixels da S-228 (`ui/medidas_da_fita.ORCAMENTO`) é
+o de uma fita de **uma** linha; a da mesa quebra em linhas entre os grupos, e o que se cobra dela é a
+fração."""
+
+PLENA = "plena"
+COMPACTA = "compacta"
+
+
+def modo_da_fita(*, plena: int, disponivel: int) -> str:
+    """O modo da fita naquela altura de janela. Pura.
+
+    Plena (com o nome dos grupos) se ela cabe no orçamento, e compacta (sem os nomes) se não. **Não
+    há terceiro modo automático**: recolher a fita esconde os controles que o estado vazio cita pelo
+    nome («Achar no texto…»), e é gesto da pessoa (`Ctrl+F1`), e não do leiaute.
+    """
+    return PLENA if plena <= int(disponivel * FRACAO_DO_ORCAMENTO) else COMPACTA

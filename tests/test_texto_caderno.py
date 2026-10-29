@@ -318,6 +318,40 @@ class PesquisavelLeOCadernoTests(_ComLivro):
 
 
 
+class LinhaEmTests(unittest.TestCase):
+    """S-642, etapa 2: a linha sai da comparação do texto do bloco com as linhas lidas."""
+
+    def doc(self) -> rico.DocumentoRico:
+        linhas = [
+            LinhaLida("primeira linha do lance", (10.0, 10.0, 200.0, 20.0), 0.9, "glifo"),  # type: ignore[arg-type]
+            LinhaLida("segunda linha com Nf3", (10.0, 22.0, 200.0, 32.0), 0.9, "glifo"),  # type: ignore[arg-type]
+            LinhaLida("terceira e ultima", (10.0, 34.0, 150.0, 44.0), 0.9, "glifo"),  # type: ignore[arg-type]
+        ]
+        bloco = BlocoDeTexto.de_linhas(linhas)
+        return rico.de_pagina(PaginaLida(documento="l.pdf", pagina=0, colunas=(Coluna(indice=0, blocos=(bloco,)),)))
+
+    def test_cada_linha_pela_posicao(self) -> None:
+        doc = self.doc()
+        texto = doc.para_texto()
+        for indice, palavra in enumerate(("primeira", "Nf3", "ultima")):
+            with self.subTest(palavra=palavra):
+                self.assertEqual(rico.linha_em(doc, texto.index(palavra) + 1), (0, indice))
+
+    def test_a_linha_continua_achada_depois_de_uma_correcao_pequena(self) -> None:
+        doc = self.doc()
+        texto = doc.para_texto()
+        corrigido = rico.editar(doc, texto.index("Nf3"), texto.index("Nf3") + 3, "Cf3")
+        self.assertEqual(rico.linha_em(corrigido, corrigido.para_texto().index("segunda") + 1), (0, 1))
+
+    def test_o_trecho_reescrito_volta_ao_bloco(self) -> None:
+        doc = self.doc()
+        texto = doc.para_texto()
+        inicio = texto.index("segunda")
+        reescrito = rico.editar(doc, inicio, inicio + len("segunda linha com Nf3"), "XXXXXXXXXXXXXXXXXXXXXX")
+        self.assertIsNone(rico.linha_em(reescrito, inicio + 5))
+        self.assertEqual(rico.bloco_em(reescrito, inicio + 5), 0)
+
+
 class BlocoEmTests(unittest.TestCase):
     """S-642/S-643: do deslocamento no texto ao bloco da página, e de volta."""
 

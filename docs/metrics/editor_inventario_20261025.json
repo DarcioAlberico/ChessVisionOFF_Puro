@@ -1,7 +1,7 @@
 {
   "item": "S-256 · o inventário do editor de texto",
-  "quando": "2026-10-25",
-  "commit": "8d8dd2eb863e50067bf74b3d92ed913cdff2117b",
+  "quando": "2026-10-28",
+  "commit": "3dc005bf4b323d75e855b333b3c366cf95adfab0",
   "atributos_do_documento": [
     "negrito",
     "italico",
@@ -117,6 +117,7 @@
     "exportar_caderno",
     "diagramas_a_esquerda",
     "texto_ao_lado",
+    "ler_ao_chegar",
     "tamanho_da_miniatura",
     "familia_da_letra",
     "diagramas_da_folha_a_esquerda",

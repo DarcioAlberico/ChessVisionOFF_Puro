@@ -313,6 +313,7 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "exportar_caderno": "exportar_caderno",
     "diagramas_a_esquerda": "alternar_diagramas_a_esquerda",
     "texto_ao_lado": "alternar_texto_ao_lado",
+    "ler_ao_chegar": "alternar_ler_ao_chegar",
     "tamanho_da_miniatura": "mudar_tamanho_da_miniatura",
     "familia_da_letra": "mudar_familia_da_letra",
     "diagramas_da_folha_a_esquerda": "diagramas_da_folha_a_esquerda",
@@ -362,6 +363,7 @@ def frase_do_rodape(
     correcoes: int = 0,
     do_caderno: bool = False,
     conferidas: tuple[int, int] | None = None,
+    gravado_as: str = "",
 ) -> str:
     """O rodapé da aba: que folha está na tela, o que ela tem e se há o que gravar. Pura.
 
@@ -376,6 +378,8 @@ def frase_do_rodape(
     `do_caderno` diz que a folha está guardada no caderno do livro (S-612): «Folha 3 do caderno».
     `conferidas` é `(conferidas, folhas do livro)` (S-613), e só aparece com uma conferida ao menos:
     "0 de 289" no rodapé de quem nunca marcou nada seria ruído.
+    `gravado_as` é a hora em que o caderno gravou a folha, `"14:32"` (S-655): a resposta a "eu
+    gravei?" quando não há nada por gravar. Vazio, a frase não diz nada sobre a gravação.
     """
     if trechos == 0:
         return ""
@@ -393,6 +397,8 @@ def frase_do_rodape(
         partes.append(f"{correcoes} correção(ões)")
     if por_gravar:
         partes.append("por gravar")
+    elif gravado_as:
+        partes.append(f"gravado às {gravado_as}")
     if conferidas is not None and conferidas[0]:
         partes.append(f"{conferidas[0]} de {conferidas[1]} folhas conferidas")
     return " · ".join(partes)

@@ -205,6 +205,11 @@ class AppState:
     """A letra de leitura da folha (S-632): `""` a proporcional do tema, `serifada` ou `monoespacada`."""
     texto_ao_lado: bool = False
     """O texto corre ao lado do diagrama que se desenha à esquerda (S-624)."""
+    texto_ultima_cor: str = ""
+    texto_ultimo_realce: str = ""
+    """A última cor de letra e de realce dos botões partidos da fita (S-650). `""` é a primeira do autor."""
+    texto_ler_ao_chegar: bool = False
+    """Com a mesa acompanhando a página, a folha sem caderno é lida ao chegar (S-644). Desligada por padrão."""
     texto_fita_recolhida: bool = False
     """A fita do Texto recolhida com `Ctrl+F1` (S-652)."""
     texto_glifos_recentes: list[str] = field(default_factory=list)
@@ -317,6 +322,9 @@ class AppState:
             "texto_miniatura": str(self.texto_miniatura),
             "texto_familia": str(self.texto_familia),
             "texto_ao_lado": bool(self.texto_ao_lado),
+            "texto_ler_ao_chegar": bool(self.texto_ler_ao_chegar),
+            "texto_ultima_cor": str(self.texto_ultima_cor),
+            "texto_ultimo_realce": str(self.texto_ultimo_realce),
             "texto_fita_recolhida": bool(self.texto_fita_recolhida),
             "texto_glifos_recentes": [str(g) for g in self.texto_glifos_recentes][:20],
             "texto_mesa": str(self.texto_mesa),
@@ -463,6 +471,12 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     ao_lado = raw.get("texto_ao_lado")
     if isinstance(ao_lado, bool):
         state.texto_ao_lado = ao_lado
+    for chave in ("texto_ultima_cor", "texto_ultimo_realce"):
+        if isinstance(raw.get(chave), str):
+            setattr(state, chave, raw[chave])
+    ler_ao_chegar = raw.get("texto_ler_ao_chegar")
+    if isinstance(ler_ao_chegar, bool):
+        state.texto_ler_ao_chegar = ler_ao_chegar
     recolhida = raw.get("texto_fita_recolhida")
     if isinstance(recolhida, bool):
         state.texto_fita_recolhida = recolhida

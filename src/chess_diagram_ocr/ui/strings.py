@@ -361,6 +361,19 @@ BUSCA_PALAVRA_INTEIRA = "Palavra inteira"
 BUSCA_CURINGAS = "Curingas"
 """As duas opções da busca do painel de navegação (S-654, S-659)."""
 
+COR_RAPIDA = {"letra": "Cor da letra: a última usada", "realce": "Realce: o último usado"}
+"""Os nomes acessíveis dos dois botões partidos de cor da fita (S-650)."""
+
+
+def dica_da_cor_rapida(canal: str, nome: str) -> str:
+    """A dica do botão partido: o que o clique põe, e onde está a lista."""
+    o_que = "a letra" if canal == "letra" else "o realce"
+    return f"Clique: {o_que} em {nome}, a última usada. A seta abre as outras cores."
+
+
+DICA_DO_RODAPE_DA_FOLHA = "Clique para escolher outra folha: o campo da folha, na aba Leitura da fita."
+"""A dica da frase do rodapé da aba Texto, que leva ao campo da folha (S-655)."""
+
 ABRIR_FOLHA_DO_CADERNO = "Abrir folha"
 """O botão «Ler folha» quando a folha do campo já está no caderno do livro (S-612): abrir não
 chama o motor, e o rótulo diz isso. Ler de novo fica no menu do botão direito da folha."""

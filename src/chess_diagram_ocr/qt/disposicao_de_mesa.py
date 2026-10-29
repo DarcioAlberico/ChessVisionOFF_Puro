@@ -36,8 +36,11 @@ class DisposicaoDeMesa:
         estado: AppState,
         texto_a_frente: Callable[[], bool],
         texto: PainelDeTexto | None = None,
+        marcar: Callable[..., object] | None = None,
     ) -> None:
         self._divisor = divisor
+        self._marcar = marcar
+        """Quem põe o visto nos dois interruptores do menu (`menu.marcar`): trocar um muda o outro."""
         self._texto = texto
         """A aba Texto. Com a mesa armada ela acompanha a página do visualizador e mostra o bloco
         impresso (S-643, S-644), e a folha e o texto apontam um para o outro (S-642): o bloco sob o
@@ -46,6 +49,8 @@ class DisposicaoDeMesa:
             texto.bloco_destacado.connect(self._destacar)
             # O modo foco esconde o visualizador e o devolve (S-658).
             texto.foco_mudou.connect(lambda ligado: self._livro.setVisible(not ligado))
+            # A mesa foi para uma janela própria, ou voltou (S-646): aqui fica o cartão, e não o texto.
+            texto.destacada_mudou.connect(self.arrumar)
             ponto = getattr(visor, "ponto_clicado", None)
             if ponto is not None:
                 ponto.connect(self._clicou_na_folha)
@@ -69,7 +74,10 @@ class DisposicaoDeMesa:
         janela = self._divisor.window()
         if janela is None or not janela.isVisible():
             return
-        quer = mesa.vale_a_mesa(self._estado.texto_mesa, texto_a_frente=self._texto_a_frente(), largura=janela.width())
+        destacada = self._texto is not None and self._texto.destacada
+        quer = mesa.vale_a_mesa(
+            self._estado.texto_mesa, texto_a_frente=self._texto_a_frente(), largura=janela.width(), destacada=destacada
+        )
         if quer != self.armada:
             self._trocar(para_a_mesa=quer)
 
@@ -78,12 +86,34 @@ class DisposicaoDeMesa:
         """A preferência liga a mesa ao abrir o Texto? É o que o interruptor do menu mostra."""
         return mesa.ligada(self._estado.texto_mesa)
 
+    @property
+    def sempre(self) -> bool:
+        """A mesa vale em toda área? É o que o segundo interruptor mostra."""
+        return mesa.sempre(self._estado.texto_mesa)
+
+    def estados(self) -> dict[str, bool]:
+        """Os dois interruptores do menu, como a preferência os deixa. A janela os marca na abertura."""
+        return {"mesa_de_texto": self.ligada, "mesa_sempre": self.sempre}
+
     def alternar(self) -> bool:
         """O interruptor do menu Texto: a mesa ao abrir o Texto, ou nunca. Devolve se ficou ligada."""
         ligada = not self.ligada
         self._estado.texto_mesa = mesa.MESA_AO_ABRIR_O_TEXTO if ligada else mesa.MESA_NUNCA
-        self.arrumar()
+        self._mudou()
         return ligada
+
+    def alternar_sempre(self) -> bool:
+        """«Mesa em toda área»: liga a posição `sempre`, ou volta à de ao abrir o Texto. Devolve se ficou."""
+        sempre = not self.sempre
+        self._estado.texto_mesa = mesa.MESA_SEMPRE if sempre else mesa.MESA_AO_ABRIR_O_TEXTO
+        self._mudou()
+        return sempre
+
+    def _mudou(self) -> None:
+        self.arrumar()
+        if self._marcar is not None:
+            for nome, ligado in self.estados().items():
+                self._marcar(nome, ligado=ligado)
 
     def _destacar(self, bbox: object) -> None:
         destacar = getattr(self._visor, "definir_destaque", None)
