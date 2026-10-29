@@ -47,7 +47,7 @@ from typing import Any
 
 import numpy as np
 
-from .atomic_io import atomic_write_json, read_image
+from .atomic_io import atomic_write_bytes, atomic_write_json, read_image
 from .config import BOARD_SIZE, DATA_DIR
 
 logger = logging.getLogger(__name__)
@@ -593,7 +593,7 @@ def ler_livro_com_pgn(pasta: Path | str, *, diretorio: Path | None = None) -> Lo
             continue
         arquivo = destino / f"p{diagrama.pagina:04d}_{int(diagrama.caixa[1]):04d}.{bloco.get('ext') or 'png'}"
         if not arquivo.exists():
-            arquivo.write_bytes(bloco["image"])
+            atomic_write_bytes(arquivo, bloco["image"])
         itens.append(
             ItemDeImportacao(
                 imagem=arquivo.as_posix(),

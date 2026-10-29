@@ -20,8 +20,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from ..atomic_io import atomic_write_text
 from ..livro_com_pgn import DiagramaDoLivro, casar_livro, contagem
+from ..logging_setup import configure_logging
 from ..pgn_do_livro import IndiceDoLivro
+from . import add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -73,21 +76,27 @@ def medir(pdf: Path, pgn: Path, *, model_path: Path | None) -> dict[str, Any]:
     }
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     from ..config import DEFAULT_MODEL_PATH
 
     parser = argparse.ArgumentParser(prog="cvoff-livro-com-pgn", description=__doc__.splitlines()[0])
-    parser.add_argument("--pdf", type=Path, required=True)
-    parser.add_argument("--pgn", type=Path, required=True)
-    parser.add_argument("--modelo", type=Path, default=DEFAULT_MODEL_PATH)
-    parser.add_argument("--sem-modelo", action="store_true", help="casa só pela legenda, sem ler as imagens")
-    parser.add_argument("--json", type=Path, help="grava o relatório aqui")
-    args = parser.parse_args(argv)
-    logging.basicConfig(level=logging.WARNING)
+    parser.add_argument("--pdf", type=Path, required=True, help="O PDF digital do livro.")
+    parser.add_argument("--pgn", type=Path, required=True, help="O PGN que acompanha o livro.")
+    parser.add_argument("--modelo", type=Path, default=DEFAULT_MODEL_PATH, help="O checkpoint que confere as imagens (padrao: o de producao).")
+    parser.add_argument("--sem-modelo", action="store_true", help="Casa so pela legenda, sem ler as imagens.")
+    parser.add_argument("--json", type=Path, help="Grava o relatorio neste caminho.")
+    add_verbose(parser)
+    return parser
+
+
+@cli_errors
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    configure_logging(verbose=args.verbose)
     relatorio = medir(args.pdf, args.pgn, model_path=None if args.sem_modelo else args.modelo)
     texto = json.dumps(relatorio, ensure_ascii=False, indent=1)
     if args.json:
-        args.json.write_bytes((texto + "\n").encode("utf-8"))
+        atomic_write_text(args.json, texto + "\n")
     print(json.dumps({k: relatorio[k] for k in ("partidas", "nos", "diagramas", "estados")}, ensure_ascii=False, indent=1))
     return 0
 

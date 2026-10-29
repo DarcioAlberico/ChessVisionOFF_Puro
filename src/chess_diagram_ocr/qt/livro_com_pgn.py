@@ -51,8 +51,11 @@ from PyQt6.QtWidgets import (
 )
 
 from chess_diagram_ocr import livro_com_pgn as lp
+from chess_diagram_ocr.atomic_io import atomic_write_bytes
 from chess_diagram_ocr.pgn_do_livro import IndiceDoLivro
+from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
+from chess_diagram_ocr.ui import estilos
 
 __all__ = ["COMANDOS", "LivroComPgn", "donos", "itens_da_pagina"]
 
@@ -392,6 +395,7 @@ class _ListaDosQueFaltam(QDialog):
             ("Salvar imagem…", self._salvar),
         ):
             botao = QPushButton(rotulo, self)
+            tema.aplicar_papel(botao, estilos.NEUTRO)
             botao.clicked.connect(acao)
             botoes.addWidget(botao)
         fechar = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
@@ -449,5 +453,5 @@ class _ListaDosQueFaltam(QDialog):
         sugestao = Path(self._dono._pdf).with_name(f"{Path(self._dono._pdf).stem}_p{diagrama.pagina:04d}.png")
         nome, _ = QFileDialog.getSaveFileName(self, "Salvar o diagrama", str(sugestao), "PNG (*.png)")
         if nome:
-            Path(nome).write_bytes(self._png(diagrama, 600))
+            atomic_write_bytes(Path(nome), self._png(diagrama, 600))
             self._dono._dizer(f"Diagrama salvo em {nome}.")
