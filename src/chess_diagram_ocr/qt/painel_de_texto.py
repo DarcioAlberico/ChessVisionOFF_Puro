@@ -511,8 +511,11 @@ class PainelDeTexto(QWidget):
         (item 11). `definir_livro` para outro livro esquece tudo."""
         self._documento_ao_ler: rico.DocumentoRico | None = None
         """O documento na tela quando a leitura em curso partiu. Ver `_leitura_terminou`."""
+        self._montado = False
+        """O `_montar` terminou? Até lá o filtro de eventos deixa tudo passar: ver `eventFilter`."""
 
         self._montar()
+        self._montado = True
         self._desenhar()
         # Toda edição -- tecla ou ferramenta -- reinicia o relógio do rascunho. É o único ouvinte
         # deste sinal dentro do painel; o `desenhar_documento` de uma folha recém-lida também o
@@ -4036,7 +4039,14 @@ class PainelDeTexto(QWidget):
 
         A tecla de desfazer chega ao editor porque a guarda de atalhos a cede a todo campo de
         texto -- e o desfazer do `QTextEdit` está desligado. Ver `TECLAS_DO_HISTORICO`.
+
+        **Nada é filtrado antes de o `_montar` terminar.** O filtro entra no editor antes de o rodapé
+        (`self.status`) existir, e o editor já recebe eventos no meio da montagem: a pergunta
+        `a0 is self.status` levantava `AttributeError` dentro do filtro. No 3.10 o PyQt só imprime a
+        exceção; no 3.13 ela vira `qFatal`, e a CI morria sem uma linha em `test_app_pyqt`.
         """
+        if not self._montado:
+            return False
         if a0 is self.editor and isinstance(a1, QKeyEvent) and a1.type() == QEvent.Type.KeyPress:
             combinacao = QKeySequence(a1.keyCombination())
             for acao, tecla in self._teclas_do_historico.items():

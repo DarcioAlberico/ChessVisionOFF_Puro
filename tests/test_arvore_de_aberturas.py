@@ -11,6 +11,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 import chess
@@ -213,7 +214,8 @@ class ConstruirTests(unittest.TestCase):
 
     def test_um_formato_anterior_e_recusado(self) -> None:
         self._construir(partida("1. e4"))
-        with sqlite3.connect(self.arvore) as conexao:
+        # `closing`: o `with` da conexão só faz commit, e a conexão aberta prende o arquivo no Windows.
+        with closing(sqlite3.connect(self.arvore)) as conexao, conexao:
             conexao.execute("UPDATE meta SET value = '0' WHERE key = 'version'")
         self.assertEqual(arv.SEM_ARVORE, self._raiz().estado)
 

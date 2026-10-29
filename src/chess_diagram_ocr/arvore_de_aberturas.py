@@ -720,23 +720,26 @@ def _abrir(bases: Sequence[Path], path: Path) -> tuple[sqlite3.Connection | None
         return None, f"Árvore de aberturas ilegível ({exc}). {refazer}"
     try:
         gravada = _meta(conexao, "version")
-        if gravada != str(TREE_VERSION):
-            return None, (
-                f"A árvore está no formato {gravada or 'desconhecido'!r} e este programa lê o "
-                f"{TREE_VERSION}. {refazer}"
-            )
         marca = _meta(conexao, "database")
-        if not marca:
-            return None, f"A árvore está em obras: uma rodada não chegou ao fim. {refazer}"
-        if bases and marca != index_fingerprint(bases):
-            return None, (
-                "A árvore foi construída para outra base: as contagens não valem para esta. "
-                f"{refazer}"
-            )
     except sqlite3.Error as exc:
         conexao.close()
         return None, f"Árvore de aberturas sem as tabelas esperadas ({exc}). {refazer}"
-    return conexao, ""
+    if gravada != str(TREE_VERSION):
+        motivo = (
+            f"A árvore está no formato {gravada or 'desconhecido'!r} e este programa lê o "
+            f"{TREE_VERSION}. {refazer}"
+        )
+    elif not marca:
+        motivo = f"A árvore está em obras: uma rodada não chegou ao fim. {refazer}"
+    elif bases and marca != index_fingerprint(bases):
+        motivo = f"A árvore foi construída para outra base: as contagens não valem para esta. {refazer}"
+    else:
+        return conexao, ""
+    # **A recusa fecha a conexão.** No 3.10 a contagem de referências a fechava na saída da função;
+    # no 3.13 ela ficava aberta, e no Windows o arquivo não se apaga nem se reconstrói enquanto
+    # houver conexão -- a CI do 3.13 reprovava com `PermissionError` ao limpar a pasta do teste.
+    conexao.close()
+    return None, motivo
 
 
 def consultar(
