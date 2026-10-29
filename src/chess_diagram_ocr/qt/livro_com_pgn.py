@@ -1,9 +1,9 @@
-"""*Carregar PGN do livro…*: o `.pgn` que vem com o PDF digital, ligado à janela (S-590 a S-592).
+"""*Carregar PGN do livro…*: o `.pgn` que vem com o PDF digital, ligado à janela (S-590 a S-595).
 
 O núcleo é `livro_com_pgn` (puro): casa cada diagrama com o seu nó e diz o estado. Este arquivo é
 o fio que só a janela pode dar, e mora fora dela pela regra de `qt/importador_de_livro.py` -- cada
-fio que a janela não segura é uma linha a menos na catraca de `test_packaging`. Na janela são três
-linhas: montar, a tabela de comandos e uma chamada em `_chegaram_itens`.
+fio que a janela não segura é uma linha a menos na catraca de `test_packaging`. Na janela são quatro
+linhas: montar, a tabela de comandos, a chamada em `_chegaram_itens` e a de quando o livro abre.
 
 ## O que acontece numa página lida
 
@@ -17,14 +17,22 @@ linhas: montar, a tabela de comandos e uma chamada em `_chegaram_itens`.
 - `DISCORDA`: a leitura fica, e o diagrama entra na Revisão com a FEN do livro como sugestão e o
   motivo escrito. Decidir sozinho trocaria um erro do modelo por um erro de pareamento.
 - `FALTANDO`: o rodapé diz quantos diagramas desta página o PDF perdeu; *Diagramas que faltam no
-  PDF…* lista os do livro inteiro, desenhados do PGN.
+  PDF…* lista os do livro inteiro, desenhados do PGN, e *Pôr na folha os diagramas que faltam* os
+  insere na folha da aba Texto (S-595).
+
+## O livro inteiro, e não só a página
+
+A Galeria (S-594) e os que faltam precisam do livro casado inteiro, sem o modelo -- só legendas e
+imagens. Isso é lido junto com o índice e guardado em `do_livro`, e os dois comandos respondem na hora.
 
 ## Por que o índice é lido em segundo plano
 
-O PGN do Harikrishna tem 120 partidas e 12.697 nós; ler e indexar leva ~1 s. Feito na mão da
-interface, seria um segundo de janela parada a cada livro aberto. A `Tarefa` é sem pai e o slot não
-é lambda sobre `self` (a memória "exceção em slot do PyQt6 é qFatal"): a resposta que chega depois de
-a janela fechar não pode encontrar este objeto apagado.
+O PGN do Harikrishna tem 120 partidas e 12.697 nós; ler e indexar leva ~1 s, e casar as 748 páginas
+mais ~6 s. Feito na mão da interface, seriam sete segundos de janela parada a cada livro aberto. A
+leitura começa quando o livro abre (`livro_aberto`), e não na primeira página lida: começar ali fazia
+a primeira página chegar antes do índice. A `Tarefa` é sem pai e o slot não é lambda sobre `self` (a
+memória "exceção em slot do PyQt6 é qFatal"): a resposta que chega depois de a janela fechar não pode
+encontrar este objeto apagado.
 """
 
 from __future__ import annotations
@@ -66,6 +74,8 @@ COMANDOS: dict[str, str] = {
     "diagramas_que_faltam": "mostrar_os_que_faltam",
     "esquecer_pgn_do_livro": "esquecer",
     "estudar_na_arvore_do_livro": "estudar_na_arvore",
+    "preencher_a_galeria_pelo_livro": "preencher_a_galeria",
+    "por_na_folha_os_que_faltam": "por_na_folha",
 }
 """`ação do catálogo -> método`. A janela os põe na tabela dela por nome, como os da sala."""
 
@@ -113,16 +123,28 @@ def itens_da_pagina(
     return saida
 
 
-def _quando_o_indice_chega(fraco: weakref.ref[LivroComPgn], pgn: Path, indice: object) -> None:
+def _ler_o_livro(pgn: Path, pdf: Path | None) -> tuple[IndiceDoLivro, list[lp.DiagramaDoLivro]]:
+    """O índice do PGN e o livro inteiro casado com ele pelas legendas, sem o modelo. Em segundo plano."""
+    indice = IndiceDoLivro.do_arquivo(pgn)
+    if pdf is None:
+        return indice, []
+    import fitz
+
+    with fitz.open(pdf) as documento:
+        paginas = ((k + 1, documento[k].get_text("dict")) for k in range(documento.page_count))
+        return indice, lp.casar_livro(paginas, indice, sumario=documento.get_toc())
+
+
+def _quando_o_indice_chega(fraco: weakref.ref[LivroComPgn], pgn: Path, lido: object) -> None:
     dono = fraco()
-    if dono is not None and isinstance(indice, IndiceDoLivro):
-        dono._indice_chegou(pgn, indice)
+    if dono is not None and isinstance(lido, tuple) and isinstance(lido[0], IndiceDoLivro):
+        dono._indice_chegou(pgn, lido[0], lido[1])
 
 
 def _quando_o_indice_falha(fraco: weakref.ref[LivroComPgn], pgn: Path, mensagem: str, *_args: object) -> None:
     dono = fraco()
     if dono is not None:
-        dono._dizer(f"O PGN do livro não pôde ser lido ({pgn.name}): {mensagem}")
+        dono._indice_falhou(pgn, mensagem)
 
 
 class LivroComPgn(QObject):
@@ -134,12 +156,12 @@ class LivroComPgn(QObject):
         *,
         dizer: Callable[[str], Any],
         pdf_atual: Callable[[], Path | None],
-        pagina_atual: Callable[[], int],
         itens_atuais: Callable[[], Sequence[Any]],
         painel: Any,
         revisao: Any,
         texto: Any,
         estudo: Any,
+        galeria: Any,
         focar: Callable[[QWidget], Any],
         ir_para_pagina: Callable[[int], Any],
     ) -> None:
@@ -147,20 +169,28 @@ class LivroComPgn(QObject):
         self._pai = pai
         self._dizer = dizer
         self._pdf_atual = pdf_atual
-        self._pagina_atual = pagina_atual
         self._itens_atuais = itens_atuais
         self._painel = painel
         self._revisao = revisao
         self._texto = texto
         self._estudo = estudo
+        self._galeria = galeria
         self._focar = focar
         self._ir_para_pagina = ir_para_pagina
         self._pdf: Path | None = None
         self._pgn: Path | None = None
         self.indice: IndiceDoLivro | None = None
+        self.do_livro: list[lp.DiagramaDoLivro] = []
+        """O livro inteiro casado pelas legendas, sem o modelo -- chega com o índice."""
         self._lendo: Path | None = None
         self._da_pagina: dict[int, lp.DiagramaDoLivro] = {}
         """Os diagramas do livro casados com os reconhecidos da página na tela, por índice."""
+        self._esperando: tuple[int, list[Any]] | None = None
+        """A página lida enquanto o PGN ainda era lido: o índice que chega é aplicado a ela, e não
+        à página que a tela mostra -- a pessoa pode ter virado a folha nesse meio-tempo."""
+        sinal = getattr(texto, "diagrama_sem_caixa_ativado", None)
+        if sinal is not None:
+            sinal.connect(self._estudar_o_inserido)
 
     # ------------------------------------------------------------------ o PGN do livro aberto
 
@@ -168,12 +198,16 @@ class LivroComPgn(QObject):
     def pgn(self) -> Path | None:
         return self._pgn
 
+    def livro_aberto(self) -> None:
+        """A janela abriu um livro: se ele tem PGN, a leitura começa já, antes da primeira página."""
+        self._conferir_livro()
+
     def _conferir_livro(self) -> None:
         """Troca de livro sem avisar é o caso normal: a pergunta é feita a cada página lida."""
         pdf = self._pdf_atual()
         if pdf == self._pdf:
             return
-        self._pdf, self._pgn, self.indice = pdf, None, None
+        self._pdf, self._pgn, self.indice, self._lendo, self.do_livro = pdf, None, None, None, []
         pgn = lp.pgn_associado(pdf) if pdf is not None else None
         if pgn is not None:
             self._ler(pgn)
@@ -181,23 +215,47 @@ class LivroComPgn(QObject):
     def _ler(self, pgn: Path) -> None:
         self._pgn = pgn
         self._lendo = pgn
-        tarefa = manter_viva(Tarefa(lambda: IndiceDoLivro.do_arquivo(pgn), nome="PGN do livro"))
+        pdf = self._pdf
+        tarefa = manter_viva(Tarefa(lambda: _ler_o_livro(pgn, pdf), nome="PGN do livro"))
         fraco = weakref.ref(self)
         tarefa.pronto.connect(lambda indice, f=fraco, p=pgn: _quando_o_indice_chega(f, p, indice))
         tarefa.falhou.connect(lambda mensagem, *a, f=fraco, p=pgn: _quando_o_indice_falha(f, p, mensagem))
         tarefa.start()
 
-    def _indice_chegou(self, pgn: Path, indice: IndiceDoLivro) -> None:
+    def _indice_chegou(self, pgn: Path, indice: IndiceDoLivro, do_livro: list[lp.DiagramaDoLivro]) -> None:
         if pgn != self._lendo:
             return  # outro livro foi aberto enquanto este PGN era lido
-        self.indice = indice
+        self.indice, self.do_livro = indice, do_livro
+        faltam = sum(1 for d in do_livro if d.estado == lp.FALTANDO)
         self._dizer(
             f"PGN do livro: {pgn.name}, {len(indice.partidas)} partidas e {len(indice.nos)} lances. "
-            "Os diagramas lidos daqui em diante vêm dele."
+            "Os diagramas lidos daqui em diante vêm dele"
+            + (f"; {faltam} diagrama(s) do livro faltam no PDF." if faltam else ".")
         )
-        itens = list(self._itens_atuais())
-        if itens:
-            self.aplicar(self._pagina_atual(), itens)
+        esperando, self._esperando = self._esperando, None
+        if esperando is None:
+            return
+        pagina, itens = esperando
+        atuais = list(self._itens_atuais())
+        if len(atuais) == len(itens) and all(a is b for a, b in zip(atuais, itens, strict=True)):
+            self.aplicar(pagina, itens)
+
+    def _indice_falhou(self, pgn: Path, mensagem: str) -> None:
+        if pgn == self._lendo:
+            self._lendo = None
+        self._dizer(f"O PGN do livro não pôde ser lido ({pgn.name}): {mensagem}")
+
+    def _pronto(self) -> bool:
+        """Há PGN lido para o livro aberto; senão diz por quê."""
+        self._conferir_livro()
+        if self.indice is not None and self._pdf is not None:
+            return True
+        self._dizer(
+            "O PGN do livro ainda está sendo lido; tente daqui a pouco."
+            if self._lendo is not None
+            else "Carregue o PGN do livro antes (Arquivo > Carregar PGN do livro…)."
+        )
+        return False
 
     def carregar(self) -> None:
         pdf = self._pdf_atual()
@@ -213,7 +271,7 @@ class LivroComPgn(QObject):
             self._dizer("O PDF aberto não pôde ser lido para guardar a associação.")
             return
         self._pdf = pdf
-        self.indice = None
+        self.indice, self.do_livro = None, []
         self._ler(Path(nome))
 
     def esquecer(self) -> None:
@@ -221,7 +279,7 @@ class LivroComPgn(QObject):
         if pdf is None or not lp.esquecer(pdf):
             self._dizer("Este livro não tem PGN associado.")
             return
-        self._pgn, self.indice, self._lendo = None, None, None
+        self._pgn, self.indice, self._lendo, self._esperando, self.do_livro = None, None, None, None, []
         self._dizer("O PGN deste livro foi esquecido; as próximas páginas vêm só do reconhecimento.")
 
     # ------------------------------------------------------------------ a página lida
@@ -249,6 +307,7 @@ class LivroComPgn(QObject):
         """A FEN do livro em cada diagrama reconhecido da página. Ver o docstring do módulo."""
         self._conferir_livro()
         self._da_pagina = {}
+        self._esperando = (pagina, list(itens)) if self.indice is None and self._lendo is not None and itens else None
         if self.indice is None or self._pdf is None or not itens:
             return
         try:
@@ -341,22 +400,70 @@ class LivroComPgn(QObject):
         if self._estudo.abrir_no_livro(copia, registro.caminho, origem=f"Livro: {origem}"):
             self._focar(self._estudo)
 
+    def _estudar_o_inserido(self, pagina: int, placement: str) -> None:
+        """O duplo clique num diagrama que o PGN pôs na folha do Texto: a árvore do autor (S-595)."""
+        try:
+            diagrama = next(
+                (
+                    d
+                    for d in self.do_livro
+                    if d.pagina == pagina + 1 and d.no is not None and d.fen.split()[0] == placement
+                ),
+                None,
+            )
+            if self.indice is None or diagrama is None:
+                self._dizer("Este diagrama veio do PGN do livro, e o PGN deste livro não está carregado.")
+                return
+            self._abrir_no_estudo(diagrama)
+        except Exception:  # noqa: BLE001 - exceção em slot do PyQt6 derruba o processo
+            logger.exception("O diagrama do PGN do livro não abriu no Estudo")
+
     def mostrar_os_que_faltam(self) -> None:
         """A lista dos diagramas que o PDF perdeu, no livro inteiro, desenhados do PGN."""
-        self._conferir_livro()
-        if self.indice is None or self._pdf is None:
-            self._dizer("Carregue o PGN do livro antes (Arquivo > Carregar PGN do livro…).")
+        if not self._pronto():
             return
-        import fitz
-
-        with fitz.open(self._pdf) as documento:
-            paginas = ((k + 1, documento[k].get_text("dict")) for k in range(documento.page_count))
-            diagramas = lp.casar_livro(paginas, self.indice, sumario=documento.get_toc())
-        faltam = [d for d in diagramas if d.estado == lp.FALTANDO]
+        faltam = [d for d in self.do_livro if d.estado == lp.FALTANDO]
         if not faltam:
             self._dizer("Nenhum diagrama falta neste PDF: toda legenda tem a sua imagem.")
             return
         _ListaDosQueFaltam(self, faltam).exec()
+
+    def por_na_folha(self) -> None:
+        """Os diagramas que faltam na folha da aba Texto, desenhados do PGN e postos antes da legenda (S-595)."""
+        if not self._pronto():
+            return
+        pagina, _paginas = self._texto.folha_atual()
+        faltam = [
+            (d.legenda, d.fen.split()[0])
+            for d in self.do_livro
+            if d.estado == lp.FALTANDO and d.pagina == pagina + 1 and d.fen
+        ]
+        if not faltam:
+            self._dizer(f"Nenhum diagrama da folha {pagina + 1} falta no PDF.")
+            return
+        if self._texto.inserir_diagramas_do_livro(pagina, faltam):
+            self._focar(self._texto)
+            return
+        self._dizer(
+            f"{len(faltam)} diagrama(s) da folha {pagina + 1} faltam no PDF, mas a folha lida na aba "
+            "Texto não tem a legenda deles (ou já os mostra). Leia a folha e peça de novo."
+        )
+
+    # ------------------------------------------------------------------ a Galeria (S-594)
+
+    def preencher_a_galeria(self) -> None:
+        """Lance, lado a jogar e cabeçalhos da partida do autor em cada diagrama varrido que confere."""
+        if not self._pronto():
+            return
+        modelo = self._galeria.model
+        aberto = modelo.pdf_path
+        if aberto is None or self._pdf is None or Path(aberto).resolve() != Path(self._pdf).resolve() or modelo.is_empty:
+            self._dizer("A Galeria ainda não varreu este livro: varra-o antes (Galeria > Varrer o livro).")
+            return
+        assert self.indice is not None
+        casamentos, discordam = lp.casamentos_da_galeria(modelo.index.entries, self.do_livro, self.indice)
+        self._galeria.preencher_de_fora(casamentos, origem="PGN do livro", discordam=discordam)
+        self._focar(self._galeria)
 
 
 def _copia_da_partida(jogo: Any) -> Any:

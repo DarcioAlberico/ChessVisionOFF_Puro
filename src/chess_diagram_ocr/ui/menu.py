@@ -147,6 +147,8 @@ MENUS: tuple[Menu, ...] = (
             _sep(),
             Item("carregar_pgn_do_livro"),
             Item("diagramas_que_faltam"),
+            Item("por_na_folha_os_que_faltam"),
+            Item("preencher_a_galeria_pelo_livro"),
             Item("esquecer_pgn_do_livro"),
             _sep(),
             Item("segunda_opiniao"),

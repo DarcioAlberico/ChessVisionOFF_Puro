@@ -257,10 +257,12 @@ CATALOGO: tuple[Comando, ...] = (
     # trabalho; cancelar deixa o que já foi lido (R3.5). Neutros: a única ênfase da tela continua
     # sendo `ler_melhor`. Sem ícone porque moram no trilho e no menu, não na fita.
     Comando("importar_livro", "Importar o livro (ler todas as páginas)…", ARQUIVO, estilos.NEUTRO, rotulo_curto="Importar o livro"),
-    # **O PGN que vem com o livro** (S-590 a S-592): associado ao PDF uma vez, e a partir daí cada
+    # **O PGN que vem com o livro** (S-590 a S-595): associado ao PDF uma vez, e a partir daí cada
     # página lida casa os diagramas com os nós dele. Neutros e sem ícone, pela razão de cima.
     Comando("carregar_pgn_do_livro", "Carregar PGN do livro…", ARQUIVO, estilos.NEUTRO),
     Comando("diagramas_que_faltam", "Diagramas que faltam no PDF…", ARQUIVO, estilos.NEUTRO),
+    Comando("por_na_folha_os_que_faltam", "Pôr na folha os diagramas que faltam", ARQUIVO, estilos.NEUTRO),
+    Comando("preencher_a_galeria_pelo_livro", "Preencher a Galeria pelo PGN do livro", ARQUIVO, estilos.NEUTRO),
     Comando("esquecer_pgn_do_livro", "Esquecer o PGN do livro", ARQUIVO, estilos.NEUTRO),
     # As abas da suíte (OCR_UI ciclo 2, passo C8): os comandos existem no catálogo com ou sem a
     # suíte ao alcance, para o menu ser o mesmo; sem a aba, o dono é a frase de ausência. Os

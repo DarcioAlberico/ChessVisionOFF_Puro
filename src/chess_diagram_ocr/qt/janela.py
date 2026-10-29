@@ -653,8 +653,8 @@ class JanelaPrincipal(QMainWindow):
             revisao_de_texto=self.revisao_de_texto,
         )
         self.pgn_do_livro = livro_com_pgn.LivroComPgn(  # o .pgn que vem com o PDF digital (S-590)
-            self, dizer=self._dizer, pdf_atual=lambda: self._pdf, pagina_atual=lambda: self.pdf.page_index, itens_atuais=lambda: self._itens,
-            painel=self.painel, revisao=self.revisao, texto=self.texto, estudo=self.estudo, focar=self._focar_aba, ir_para_pagina=self.pdf.ir_para_pagina)
+            self, dizer=self._dizer, pdf_atual=lambda: self._pdf, itens_atuais=lambda: self._itens,
+            painel=self.painel, revisao=self.revisao, texto=self.texto, estudo=self.estudo, galeria=self.galeria, focar=self._focar_aba, ir_para_pagina=self.pdf.ir_para_pagina)
 
     @property
     def editor(self) -> DiagramEditorModel:
@@ -1242,6 +1242,7 @@ class JanelaPrincipal(QMainWindow):
         # em silêncio. `request_page=False` porque o visualizador acabou de escolher a página.
         self.galeria.load_pdf(alvo, request_page=False)
         self.estudo.abrir_livro(str(alvo))  # a sala daquele livro volta do disco (S-271)
+        self.pgn_do_livro.livro_aberto()  # o PGN do livro começa a ser lido junto com ele (S-590)
         # E a mesa em que a sessão anterior parou (S-347). **Só na primeira abertura**: depois
         # dela `estudo_aberto` é o que a pessoa abriu nesta sessão, e reabri-lo a cada troca de
         # livro a puxaria de volta para um diagrama que ela acabou de deixar.

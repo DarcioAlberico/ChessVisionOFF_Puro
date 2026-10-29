@@ -1,4 +1,4 @@
-# PDF digital com o PGN do livro — plano e especificação (S-585 a S-593)
+# PDF digital com o PGN do livro — plano e especificação (S-585 a S-595)
 
 Livro digital costuma vir com o `.pgn` das partidas e linhas do autor: uma partida por seção do
 capítulo, com a árvore inteira de variantes. Cada diagrama do PDF é um nó dessa árvore. Ter o nó é
@@ -41,7 +41,8 @@ só lances, variantes e NAGs, 12.697 nós e 10.910 posições distintas.
 | puro | `pgn_do_livro.py` | leitura tolerante, rótulo do lance, índice por rótulo e por posição |
 | puro | `livro_com_pgn.py` | legendas e imagens da página, capítulo pelo sumário, casamento, estados, associação PDF ↔ PGN |
 | linha de comando | `cli/livro_com_pgn.py` | `cvoff-livro-com-pgn`, a régua |
-| janela | `qt/livro_com_pgn.py` | carregar e esquecer o PGN, a página lida, a Revisão, o Estudo, os que faltam |
+| janela | `qt/livro_com_pgn.py` | carregar e esquecer o PGN, a página lida, a Revisão, o Estudo, os que faltam, a Galeria |
+| folha | `text/rico.py`, `qt/painel_de_texto.py` | o diagrama que falta posto na folha (`inserir_diagrama`) |
 | dataset | `importacao_de_imagens.py` | o lote «PDF + PGN do livro» |
 
 **Nada disto está no caminho de medição (S-218).** O `service.py` lê a imagem como sempre; a FEN do
@@ -112,7 +113,9 @@ livros), e por isso o relatório não é publicado em `docs/metrics/`.
 
 **Decisão.** *Arquivo › Carregar PGN do livro…* associa o `.pgn` ao PDF aberto em
 `data/livros_com_pgn.json`, pela identidade do conteúdo do PDF (a do caderno da aba Texto), e lê o
-índice numa `Tarefa`. A partir daí, cada página lida passa por `qt/livro_com_pgn.LivroComPgn.aplicar`:
+índice numa `Tarefa` -- junto com o livro inteiro casado pelas legendas (`do_livro`), que é o que a
+Galeria e os que faltam usam. A partir daí, cada página lida passa por
+`qt/livro_com_pgn.LivroComPgn.aplicar`:
 
 - `confere`, `corrigido` e `sem_leitura`: a posição e o lado a jogar do nó vão ao Resultado como
   edição desfazível (`PainelDeResultado.adotar_do_livro`), as casas trocadas em roxo e a frase
@@ -123,6 +126,13 @@ livros), e por isso o relatório não é publicado em `docs/metrics/`.
 - `faltando`: o rodapé diz quais diagramas da página o PDF perdeu.
 
 *Esquecer o PGN do livro* desfaz a associação.
+
+**A leitura começa quando o livro abre** (`LivroComPgn.livro_aberto`, chamado em
+`janela._abriu_livro`), e não na primeira página lida. Medido na janela real com o Harikrishna:
+começando na página lida, o índice e o livro casado chegavam ~6 s depois dela, e a primeira página
+ficava sem o livro. A página lida enquanto o índice não chegou fica guardada (`_esperando`) e o
+recebe quando ele chega -- **se os itens dela ainda são os da tela**: virar a folha nesse meio-tempo
+limpa os itens, e o índice atrasado não pode cair nos diagramas de outra página.
 
 **A rota do rótulo.** A FEN do livro não entra como «segunda opinião» no modelo do editor
 (`from_book`/`book_squares` à parte de `second_opinion`): `labels.label_route` está no caminho de
@@ -138,10 +148,8 @@ legenda) e lista cada diagrama sem imagem -- página, legenda, capítulo e parti
 desenhado do PGN (`desenho_de_diagrama.png_do_diagrama`). Para cada um: ir à página, estudar na
 árvore do livro, copiar a FEN, salvar a imagem.
 
-**O que ficou para depois.** Pôr o diagrama que falta **dentro da folha** da aba Texto é uma
-operação de edição nova -- uma corrida de diagrama a mais no documento, com o mapa de posições, a
-guarda de paridade (S-603) e o desfazer --, e não cabe como efeito colateral de ler a página. A
-miniatura já nasce da FEN quando não há recorte; o que falta é o comando que insere a marca.
+Pôr o diagrama **dentro da folha** da aba Texto é a S-595: uma edição que a pessoa pede, e não
+um efeito colateral de ler a página.
 
 ### S-592 · Estudar na árvore do livro
 
@@ -170,6 +178,51 @@ modelo de produção é a FEN do PGN em **990 de 990**. As 39 discordâncias da 
 rasterizada a 200 dpi, e não do modelo -- a imagem original lê melhor que a página desenhada de novo.
 Para o treino isso quer dizer 990 amostras rotuladas pelo livro, nenhuma por conferência humana.
 
+### S-594 · A Galeria pelo PGN do livro
+
+**Decisão.** *Arquivo › Preencher a Galeria pelo PGN do livro* trata o livro como uma base de
+partidas: cada diagrama varrido pela Galeria cuja posição é, **casa por casa**, a de um candidato do
+livro naquela página vira um `games_db.DiagramMatch` -- número do lance, lado a jogar e os
+cabeçalhos da partida do autor, com a legenda confirmando (`caption_confirmed`) -- e entra pelo
+mesmo `GalleryModel.apply_matches` da base. Daí a regra inteira vem de graça: preenche só o vazio,
+respeita a partida que a pessoa escolheu (S-86) e nunca sobrescreve (S-72). O rodapé diz quantos
+não bateram.
+
+**Só a posição exata.** O `confirmed_from` afirma que as 64 casas aconteceram num tabuleiro de
+verdade, e a leitura a uma casa do nó não aconteceu. Corrigir a leitura é do Resultado (S-590), que
+troca a posição; a Galeria só anota. O casamento é puro (`livro_com_pgn.casamentos_da_galeria`) e
+usa o `do_livro` que chegou com o índice: o comando responde na hora, sem reler o PDF.
+
+**Não medido no Harikrishna inteiro**: pede a varredura da Galeria com o modelo, que esta entrega
+não rodou. A expectativa é a da S-589 -- 951 das 990 imagens conferem casa por casa --, com a
+diferença de que a Galeria lê a página com o próprio pipeline e não com o recorte de 200 dpi.
+
+**Aceite.** `tests/test_livro_com_pgn.py::GaleriaTests` (só a posição exata casa, a página sem
+diagrama do livro não conta como discordância, o que falta no PDF não casa) e
+`tests/test_qt_painel_da_galeria.py` (o lance digitado não é sobrescrito, e a anotação grava).
+
+### S-595 · O diagrama que falta, posto na folha
+
+**Decisão.** *Arquivo › Pôr na folha os diagramas que faltam* pega os diagramas `faltando` da folha
+que a aba Texto mostra e os insere **antes da linha da legenda** de cada um («Position after:
+11.Ne5»), onde a imagem estaria. É uma edição numa jogada só: `Ctrl+Z` tira todos, e a folha passa
+a ter o que gravar. Pedir de novo não duplica (a posição que a folha já mostra fica de fora).
+
+**Como o diagrama vira folha** (`rico.inserir_diagrama`): a marca `[Diagrama N]` entra como as
+outras, com o separador de parágrafo, e a página de origem ganha um `BlocoDeDiagrama` com a FEN do
+PGN, bbox vazio e procedência `humano`. O bloco vai para o **fim da última coluna**, e não para o
+lugar: `Corrida.bloco` é o índice na lista plana, e um bloco no meio renumeraria todas as corridas
+depois dele. A ordem de leitura é a do documento. O bbox vazio diz que não há recorte -- a
+miniatura e a exportação desenham da FEN, pelo caminho que já existia para o `.cvtxt` aberto sem o
+livro --, e `humano` é a procedência que uma releitura não tem direito de apagar.
+
+**O duplo clique** num diagrama assim não tem caixa para selecionar no Resultado: o painel emite
+`diagrama_sem_caixa_ativado(folha, posição)`, e o PGN do livro o abre no Estudo, na árvore do autor.
+
+**Aceite.** `tests/test_texto_rico.py::DiagramaInseridoTests` (a marca antes da legenda, os blocos
+de antes com o mesmo índice) e `tests/test_qt_texto_diagramas.py::DiagramaDoLivroNaFolhaTests` (a
+figura desenhada da FEN, o desfazer, a folha errada e a legenda ausente, o duplo clique).
+
 ---
 
 ## O que fica fora, e por quê
@@ -179,5 +232,7 @@ Para o treino isso quer dizer 990 amostras rotuladas pelo livro, nenhuma por con
   exatos e os de uma casa.
 - **Transposição.** A mesma posição pode estar em dois nós com o lado a jogar diferente. Com
   legenda o capítulo e o rótulo decidem; sem legenda vale o primeiro na ordem do livro.
-- **A Galeria.** O casamento acontece na página lida; a varredura do livro inteiro na Galeria não
-  passa por ele nesta entrega.
+- **A posição na Galeria.** A S-594 anota (lance, lado, cabeçalhos) e não troca a leitura
+  varrida: corrigir posição é do Resultado, página a página, onde a pessoa vê a troca em roxo.
+- **Pôr na folha sozinho.** Ler a folha não insere nada; inserir é o comando da S-595. Uma folha
+  que muda de texto sem a pessoa pedir é o defeito que a mesa de texto não aceita.

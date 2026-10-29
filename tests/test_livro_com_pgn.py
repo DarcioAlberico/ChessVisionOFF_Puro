@@ -165,6 +165,46 @@ class CasarTests(unittest.TestCase):
         diagramas = self._casar([_pagina(_imagem(30), _legenda(316, "3...c5"), _legenda(452, "4.exd5"))])
         self.assertEqual({lp.SEM_LEITURA: 1, lp.FALTANDO: 1}, lp.contagem(diagramas))
 
+    def test_a_linha_de_legenda_diz_o_lance(self) -> None:
+        self.assertEqual("5.dxc5", lp.legenda_da_linha("Position after: 5.dxc5"))
+        self.assertEqual("12...Nf6", lp.legenda_da_linha("Posição após 12...Nf6"))
+        self.assertEqual("", lp.legenda_da_linha("White is better after 5.dxc5"))
+
+
+class GaleriaTests(unittest.TestCase):
+    """O livro como base de partidas da Galeria (S-594): só a posição exata confirma."""
+
+    def setUp(self) -> None:
+        self.indice = _indice()
+        pagina = _pagina(_imagem(30), _legenda(316, "3...c5"), _legenda(452, "4.exd5"))
+        self.diagramas = lp.casar_livro([(1, pagina)], self.indice, sumario=SUMARIO)
+
+    def _entrada(self, placement: str, pagina: int = 0) -> object:
+        from chess_diagram_ocr.gallery_scan import GalleryEntry
+
+        return GalleryEntry(page_index=pagina, diagram_index=0, placement=placement)
+
+    def test_a_posicao_exata_vira_casamento_com_lance_lado_e_cabecalhos(self) -> None:
+        certo = _campo("e4", "e6", "d4", "d5", "Nc3", "c5")
+        (casamento,), discordam = lp.casamentos_da_galeria([self._entrada(certo)], self.diagramas, self.indice)
+        self.assertEqual(0, discordam)
+        self.assertEqual(((0, 0), 4, "w"), (casamento.key, casamento.move_number, casamento.side_to_move))
+        self.assertEqual({"Event": "Chapter 1", "Site": "Game 1"}, casamento.headers)
+        self.assertTrue(casamento.caption_confirmed)
+        self.assertIn("3...c5", casamento.game_label)
+
+    def test_a_leitura_errada_nao_confirma_e_e_contada(self) -> None:
+        uma_casa = _campo("e4", "e6", "d4", "d5", "Nc3", "c5").replace("rnbqkbnr", "rbbqkbnr")
+        self.assertEqual(([], 1), lp.casamentos_da_galeria([self._entrada(uma_casa)], self.diagramas, self.indice))
+
+    def test_pagina_sem_diagrama_do_livro_nao_conta_como_discordancia(self) -> None:
+        self.assertEqual(([], 0), lp.casamentos_da_galeria([self._entrada("8/8/8/8/8/8/8/8", 5)], self.diagramas, self.indice))
+
+    def test_o_que_falta_no_pdf_nao_casa_com_a_galeria(self) -> None:
+        """A legenda sem imagem não tem o que a Galeria varreu: o diagrama dela não existe no PDF."""
+        faltando = _campo("e4", "e6", "d4", "d5", "Nc3", "c5", "exd5")
+        self.assertEqual(([], 1), lp.casamentos_da_galeria([self._entrada(faltando)], self.diagramas, self.indice))
+
 
 if __name__ == "__main__":
     unittest.main()

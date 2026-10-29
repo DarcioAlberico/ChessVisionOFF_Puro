@@ -59,11 +59,13 @@ __all__ = [
     "SEM_NO",
     "associar",
     "capitulos_do_sumario",
+    "casamentos_da_galeria",
     "casar_livro",
     "casas_diferentes",
     "contagem",
     "diagramas_da_pagina",
     "esquecer",
+    "legenda_da_linha",
     "nota_do_diagrama",
     "pgn_associado",
 ]
@@ -164,18 +166,24 @@ def capitulo_da_pagina(pagina: int, inicios: Sequence[tuple[int, str]]) -> str:
     return atual
 
 
+def legenda_da_linha(texto: str) -> str:
+    """O lance que uma linha de legenda diz («5.dxc5»), ou `""` quando ela não é legenda."""
+    for padrao in PADROES_DE_LEGENDA:
+        achado = padrao.search(texto)
+        if achado:
+            return achado.group(1)
+    return ""
+
+
 def _legendas(dicionario: dict[str, Any]) -> list[tuple[tuple[float, float, float, float], str]]:
     achadas = []
     for bloco in dicionario.get("blocks", []):
         if bloco.get("type") != 0:
             continue
         for linha in bloco.get("lines", []):
-            texto = "".join(span.get("text", "") for span in linha.get("spans", []))
-            for padrao in PADROES_DE_LEGENDA:
-                achado = padrao.search(texto)
-                if achado:
-                    achadas.append((tuple(linha["bbox"]), achado.group(1)))
-                    break
+            lance = legenda_da_linha("".join(span.get("text", "") for span in linha.get("spans", [])))
+            if lance:
+                achadas.append((tuple(linha["bbox"]), lance))
     return achadas
 
 
@@ -358,6 +366,65 @@ def nota_do_diagrama(diagrama: DiagramaDoLivro, indice: IndiceDoLivro) -> str:
         FALTANDO: "o diagrama falta no PDF",
     }.get(diagrama.estado, "")
     return f"{onde} -- {estado}" if estado else onde
+
+
+# ---------------------------------------------------------------- a Galeria (S-594)
+
+VAZIOS_DE_HEADER = frozenset({"", "?", "????.??.??", "*"})
+"""O que um PGN escreve quando não sabe -- e que não é informação para levar à Galeria."""
+
+
+def casamentos_da_galeria(
+    entradas: Iterable[Any], diagramas: Iterable[DiagramaDoLivro], indice: IndiceDoLivro
+) -> tuple[list[Any], int]:
+    """Cada diagrama varrido pela Galeria que é, casa por casa, um nó do livro: `(casamentos, discordam)`.
+
+    Os casamentos são `games_db.DiagramMatch`, os mesmos que a base de partidas produz, e entram
+    pelo mesmo `GalleryModel.apply_matches` -- que preenche só o que está vazio e nunca sobrescreve
+    o que a pessoa escreveu. O livro é tratado como uma base de uma partida só por diagrama, com a
+    legenda confirmando: é a evidência mais forte que a Galeria conhece.
+
+    **Só a posição exata casa.** O `confirmed_from` diz que as 64 casas aconteceram num tabuleiro
+    de verdade; uma leitura a uma casa do nó não aconteceu, e quem a corrige é o Resultado (S-590),
+    que troca a posição -- a Galeria só anota. `discordam` conta as entradas de páginas com
+    diagrama do livro que não bateram com nenhum candidato: são as que a leitura errou.
+    """
+    from .games_db import DiagramMatch
+
+    por_pagina: dict[int, list[DiagramaDoLivro]] = {}
+    for diagrama in diagramas:
+        if diagrama.caixa is not None and diagrama.candidatos:
+            por_pagina.setdefault(diagrama.pagina, []).append(diagrama)
+    casamentos, discordam = [], 0
+    for entrada in entradas:
+        da_pagina = por_pagina.get(int(entrada.page_index) + 1, [])
+        achado = next(
+            (
+                (diagrama, k)
+                for diagrama in da_pagina
+                for k in diagrama.candidatos
+                if indice.nos[k].campo_de_pecas == entrada.placement
+            ),
+            None,
+        )
+        if achado is None:
+            discordam += bool(da_pagina)
+            continue
+        diagrama, k = achado
+        registro = indice.nos[k]
+        jogo = indice.partidas[registro.partida]
+        casamentos.append(
+            DiagramMatch(
+                page_index=int(entrada.page_index),
+                diagram_index=int(entrada.diagram_index),
+                move_number=int(registro.fen.split()[5]),
+                side_to_move=registro.lado,
+                headers={nome: valor for nome, valor in jogo.headers.items() if valor not in VAZIOS_DE_HEADER},
+                game_label="PGN do livro: " + " · ".join(x for x in (registro.capitulo, registro.secao, registro.rotulo) if x),
+                caption_confirmed=bool(diagrama.legenda),
+            )
+        )
+    return casamentos, discordam
 
 
 # ---------------------------------------------------------------- o livro e o seu PGN (S-590)

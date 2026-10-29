@@ -41,6 +41,7 @@ def _campo(*lances: str) -> str:
 
 DEPOIS_DE_C5 = _campo("e4", "e6", "d4", "d5", "Nc3", "c5")
 DEPOIS_DE_DXC5 = _campo("e4", "e6", "d4", "d5", "Nc3", "c5", "exd5", "exd5", "dxc5")
+DEPOIS_DE_EXD5 = _campo("e4", "e6", "d4", "d5", "Nc3", "c5", "exd5")
 
 
 def _pdf(caminho: Path) -> Path:
@@ -53,6 +54,8 @@ def _pdf(caminho: Path) -> Path:
         pagina = documento.new_page(width=612, height=792)
         pagina.insert_image(fitz.Rect(*CAIXA), stream=png_do_diagrama(campo, lado_px=270))
         pagina.insert_text((30, 326), f"Position after: {lance}", fontsize=11)
+        if lance == "3...c5?!":
+            pagina.insert_text((30, 600), "Position after: 4.exd5", fontsize=11)  # a imagem que o PDF perdeu
     documento.set_toc([[1, "Chapter 1 – Odd 3rd moves", 1]])
     documento.save(caminho)
     documento.close()
@@ -101,24 +104,26 @@ class LivroComPgnTests(unittest.TestCase):
         self.painel, self.revisao = _Painel(), _Revisao()
         self.texto = mock.Mock()
         self.estudo = mock.Mock()
+        self.galeria = mock.Mock()
         self.ditos: list[str] = []
+        self.atuais: list = []
         self.livro = LivroComPgn(
             self.janela,
             dizer=self.ditos.append,
             pdf_atual=lambda: self.pdf,
-            pagina_atual=lambda: 0,
-            itens_atuais=lambda: [],
+            itens_atuais=lambda: self.atuais,
             painel=self.painel,
             revisao=self.revisao,
             texto=self.texto,
             estudo=self.estudo,
+            galeria=self.galeria,
             focar=lambda _p: None,
             ir_para_pagina=lambda _p: None,
         )
 
-    def _com_pgn(self) -> None:
+    def _com_pgn(self, pagina: int = 0, itens: list | None = None) -> None:
         self.assertTrue(lp.associar(self.pdf, self.pgn))
-        self.livro.aplicar(0, [])  # a primeira pergunta pelo livro dispara a leitura do índice
+        self.livro.aplicar(pagina, itens or [])  # a primeira pergunta pelo livro dispara a leitura do índice
         for _ in range(300):
             if self.livro.indice is not None:
                 break
@@ -153,6 +158,67 @@ class LivroComPgnTests(unittest.TestCase):
         self.assertEqual((1, 1), (item.page_index, item.diagram_index))
         self.assertEqual(DEPOIS_DE_DXC5, item.fen.split()[0])
         self.assertIn("PGN do livro discorda", item.reasons[0])
+
+    def test_a_pagina_lida_antes_do_indice_recebe_o_livro_quando_ele_chega(self) -> None:
+        # A primeira página lida é a que dispara a leitura do PGN, e o índice chega depois dela --
+        # com a tela, às vezes, já em outra folha. Vale a página dos itens, e não a da tela.
+        self.atuais = [_item(DEPOIS_DE_DXC5)]
+        self._com_pgn(1, self.atuais)
+        ((indice, campo, lado, _nota),) = self.painel.adotados
+        self.assertEqual((0, DEPOIS_DE_DXC5, "b"), (indice, campo, lado))
+        self.texto.definir_posicoes.assert_called_with(1, [DEPOIS_DE_DXC5])
+
+    def test_o_indice_atrasado_nao_vai_a_itens_que_ja_sairam_da_tela(self) -> None:
+        self._com_pgn(1, [_item(DEPOIS_DE_DXC5)])  # `self.atuais` é outra lista: a página mudou
+        self.assertEqual([], self.painel.adotados)
+
+    def test_o_livro_aberto_ja_comeca_a_ler_o_pgn_e_o_livro_inteiro(self) -> None:
+        lp.associar(self.pdf, self.pgn)
+        self.livro.livro_aberto()
+        for _ in range(300):
+            if self.livro.indice is not None:
+                break
+            QTest.qWait(10)
+        (faltando,) = [d for d in self.livro.do_livro if d.estado == lp.FALTANDO]
+        self.assertEqual((1, "4.exd5", DEPOIS_DE_EXD5), (faltando.pagina, faltando.legenda, faltando.fen.split()[0]))
+        self.assertIn("1 diagrama(s) do livro faltam no PDF", self.ditos[-1])
+
+    def test_por_na_folha_manda_a_aba_texto_os_que_faltam_naquela_folha(self) -> None:
+        self._com_pgn()
+        self.texto.folha_atual.return_value = (0, 2)
+        self.texto.inserir_diagramas_do_livro.return_value = 1
+        self.livro.por_na_folha()
+        self.texto.inserir_diagramas_do_livro.assert_called_once_with(0, [("4.exd5", DEPOIS_DE_EXD5)])
+        self.texto.folha_atual.return_value = (1, 2)
+        self.livro.por_na_folha()
+        self.assertEqual(1, self.texto.inserir_diagramas_do_livro.call_count, "na folha 2 nada falta")
+        self.assertIn("folha 2", self.ditos[-1])
+
+    def test_o_duplo_clique_no_inserido_abre_a_arvore_do_autor(self) -> None:
+        self._com_pgn()
+        self.livro._estudar_o_inserido(0, DEPOIS_DE_EXD5)
+        jogo, caminho = self.estudo.abrir_no_livro.call_args.args
+        from chess_diagram_ocr.estudo import no_em
+
+        self.assertEqual(DEPOIS_DE_EXD5, no_em(jogo, caminho).board().board_fen())
+
+    def test_a_galeria_do_livro_recebe_os_que_conferem(self) -> None:
+        from chess_diagram_ocr.gallery_scan import GalleryEntry
+
+        self._com_pgn()
+        entradas = [GalleryEntry(0, 0, DEPOIS_DE_C5), GalleryEntry(1, 0, chess.Board().board_fen())]
+        self.galeria.model = SimpleNamespace(pdf_path=self.pdf, is_empty=False, index=SimpleNamespace(entries=entradas))
+        self.livro.preencher_a_galeria()
+        (casamentos,), opcoes = self.galeria.preencher_de_fora.call_args
+        self.assertEqual([(0, 0)], [c.key for c in casamentos])
+        self.assertEqual(1, opcoes["discordam"])
+
+    def test_a_galeria_de_outro_livro_nao_e_preenchida(self) -> None:
+        self._com_pgn()
+        self.galeria.model = SimpleNamespace(pdf_path=self.pasta / "outro.pdf", is_empty=False, index=SimpleNamespace(entries=[]))
+        self.livro.preencher_a_galeria()
+        self.galeria.preencher_de_fora.assert_not_called()
+        self.assertIn("varra-o antes", self.ditos[-1])
 
     def test_sem_pgn_nada_muda(self) -> None:
         self.livro.aplicar(0, [_item(DEPOIS_DE_C5)])
