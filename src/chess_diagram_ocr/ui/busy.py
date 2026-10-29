@@ -249,6 +249,11 @@ class BusyRegistry:
 
 
 FORA_DO_REGISTRO: dict[tuple[str, str], str] = {
+    ("livro_com_pgn.py", "_ler"): (
+        "Ler e indexar o PGN que acompanha o livro (S-590): cerca de um segundo para um livro de "
+        "120 partidas. Só lê -- a associação já foi gravada antes, na thread da janela --, então "
+        "fechar no meio não perde nada; a resposta que chega depois é descartada."
+    ),
     ("importador_de_imagens.py", "_ler"): (
         "Recortar e ler com o modelo a imagem que está na tela da conferência (importação de "
         "imagens): meio segundo por imagem, e a resposta só vale se ainda for o item na tela. "

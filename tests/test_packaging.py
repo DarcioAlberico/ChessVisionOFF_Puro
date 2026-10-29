@@ -257,8 +257,16 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2279
+    LIMITE = 2286
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.285 -> 2.286 com o PGN do livro lido quando o livro abre (S-590, 2026-10-29)**: uma chamada
+    em `_abriu_livro`. Começar a leitura na primeira página lida deixava essa página sem o livro --
+    medido na janela real, o índice chegava ~6 s depois dela.
+
+    **2.279 -> 2.285 com o PGN do livro (S-590, 2026-10-29)**: o fio mora em `qt/livro_com_pgn.py`,
+    e a janela segura seis linhas -- a importação, as três da montagem (são onze dependências, todas
+    funções da janela), a chamada em `_chegaram_itens` e a parte da tabela de comandos.
 
     **2.278 -> 2.279 no merge da sexta e da sétima entregas da mesa (2026-10-29)**: a mesa
     andou de 2.123 para 2.124 com a «Mesa sempre» (o comando do segundo interruptor; quem

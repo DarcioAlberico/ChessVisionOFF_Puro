@@ -331,6 +331,28 @@ class AnotacaoTests(unittest.TestCase):
         )
         self.assertIsNone(painel.model.current_annotation.lichess_link)
 
+    def test_o_pgn_do_livro_preenche_so_o_vazio_e_grava(self) -> None:
+        """S-594: o casamento de fora entra por `apply_matches` -- o que a pessoa digitou fica."""
+        from chess_diagram_ocr.games_db import DiagramMatch
+
+        painel = self.painel()
+        painel.model.annotations.update(5, 0, move_number=31)
+        recados: list[str] = []
+        painel.estado.connect(recados.append)
+        casamentos = [
+            DiagramMatch(page_index=p, diagram_index=0, move_number=12, side_to_move="b",
+                         headers={"White": "Harikrishna"}, game_label="PGN do livro: C1", caption_confirmed=True)
+            for p in (2, 5)
+        ]
+        painel.preencher_de_fora(casamentos, origem="PGN do livro", discordam=3)
+        segunda, quinta = painel.model.annotations.get(2, 0), painel.model.annotations.get(5, 0)
+        self.assertEqual((12, "b", "Harikrishna"), (segunda.move_number, segunda.side_to_move, segunda.headers["White"]))
+        self.assertEqual(31, quinta.move_number, "o lance digitado não é sobrescrito")
+        self.assertIn("3 diagrama(s) não bateram", recados[-1])
+        from chess_diagram_ocr.gallery import load_annotations
+
+        self.assertEqual(12, load_annotations(self.livro, directory=self.pasta).get(2, 0).move_number)
+
     def test_escolher_o_lado_grava_de_verdade(self) -> None:
         painel = self.painel()
         for botao in painel.lado.buttons():

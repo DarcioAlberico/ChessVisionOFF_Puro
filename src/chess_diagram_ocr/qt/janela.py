@@ -100,6 +100,7 @@ from chess_diagram_ocr.qt import (
     importador_de_livro,
     legenda,
     leitura,
+    livro_com_pgn,
     menu,
     painel_de_revisao_de_texto,
     painel_de_rotulagem,
@@ -651,6 +652,9 @@ class JanelaPrincipal(QMainWindow):
             paginas=lambda: self.pdf.page_count,
             revisao_de_texto=self.revisao_de_texto,
         )
+        self.pgn_do_livro = livro_com_pgn.LivroComPgn(  # o .pgn que vem com o PDF digital (S-590)
+            self, dizer=self._dizer, pdf_atual=lambda: self._pdf, itens_atuais=lambda: self._itens,
+            painel=self.painel, revisao=self.revisao, texto=self.texto, estudo=self.estudo, galeria=self.galeria, focar=self._focar_aba, ir_para_pagina=self.pdf.ir_para_pagina)
 
     @property
     def editor(self) -> DiagramEditorModel:
@@ -1238,6 +1242,7 @@ class JanelaPrincipal(QMainWindow):
         # em silêncio. `request_page=False` porque o visualizador acabou de escolher a página.
         self.galeria.load_pdf(alvo, request_page=False)
         self.estudo.abrir_livro(str(alvo))  # a sala daquele livro volta do disco (S-271)
+        self.pgn_do_livro.livro_aberto()  # o PGN do livro começa a ser lido junto com ele (S-590)
         # E a mesa em que a sessão anterior parou (S-347). **Só na primeira abertura**: depois
         # dela `estudo_aberto` é o que a pessoa abriu nesta sessão, e reabri-lo a cada troca de
         # livro a puxaria de volta para um diagrama que ela acabou de deixar.
@@ -1659,6 +1664,7 @@ class JanelaPrincipal(QMainWindow):
         # âncora é o par (documento, página), e é ela que faz `Ctrl+S` gravar amostra nova em vez
         # de regravar a linha de um dataset que não está aberto.
         self.painel.carregar_pagina(self._itens, chave=self._chave_do_documento(), pagina=pagina)
+        self.pgn_do_livro.aplicar(pagina, self._itens)  # a posição do PGN do livro, se ele tiver um (S-590)
 
         lidas = boxes_from_diagrams(self._itens)
         guardadas = self._caixas_por_pagina.get(self._chave_do_documento(), pagina, self._parametros())
@@ -2068,6 +2074,7 @@ class JanelaPrincipal(QMainWindow):
         tabela.update({acao: getattr(self.estudo, metodo) for acao, metodo in COMANDOS_DA_SALA.items()})
         tabela.update({acao: getattr(self.texto, metodo) for acao, metodo in COMANDOS_DO_TEXTO.items()})
         tabela.update(abas_da_suite.donos(self.rotulagem, self.revisao_de_texto, dizer=self._dizer))  # C8
+        tabela.update(livro_com_pgn.donos(lambda: self.pgn_do_livro))  # S-590
         return tabela
 
     def _na_aba_ou(self, padrao: Callable[[], Any], *metodos: str) -> Any:
