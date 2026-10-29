@@ -4051,7 +4051,10 @@ class PainelDeTexto(QWidget):
             # seleciona a marca, o Enter a ativa. Com qualquer outra seleção o Enter é o Enter.
             if a1.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not a1.modifiers() and self._ativar_marca_selecionada():
                 return True
-        if a0 is self.status and isinstance(a1, QMouseEvent) and a1.type() == QEvent.Type.MouseButtonRelease:
+        # O filtro já está no editor quando o corpo é montado, antes de o rodapé existir: os
+        # eventos dessa montagem chegam aqui sem `self.status`, e a exceção num filtro é `qFatal`
+        # no PyQt6 do 3.13.
+        if a0 is getattr(self, "status", None) and isinstance(a1, QMouseEvent) and a1.type() == QEvent.Type.MouseButtonRelease:
             self.ir_ao_campo_de_folha()
             return True
         if a0 is self.editor.viewport() and isinstance(a1, QEvent) and a1.type() == QEvent.Type.Resize:
