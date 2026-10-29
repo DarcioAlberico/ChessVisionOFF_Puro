@@ -459,6 +459,20 @@ class Caderno:
         self._gravar_indice()
         return GRAVADA
 
+    def guardar_anterior(self, doc: DocumentoRico) -> str:
+        """Grava `doc` como a versão `anterior` da folha, sem tocar na folha nem no índice (R7 de volta).
+
+        É onde a correção que veio da suíte fica quando o caderno já tem a sua: «Voltar à versão
+        anterior» a alcança, e a folha que a pessoa corrigiu aqui continua sendo a folha.
+        """
+        if doc.origem is None:
+            return SEM_FOLHA
+        if self.somente_leitura:
+            return SOMENTE_LEITURA
+        self.pasta.mkdir(parents=True, exist_ok=True)
+        _gravar_conferido(self.caminho(int(doc.origem.pagina), tipo="anterior"), _texto_de(doc))
+        return GRAVADA
+
     def guardar_leitura(self, doc: DocumentoRico, *, motor: str, modo_bloco: bool) -> str:
         """O motor acabou de ler esta folha: a leitura vira a folha do caderno e a sua `lida`.
 

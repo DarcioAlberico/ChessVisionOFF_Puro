@@ -274,11 +274,14 @@ class FronteiraTests(unittest.TestCase):
         e não em `ui/` pelo motivo escrito no cabeçalho dela: é uma ponte para outro pacote, como
         `qt/importador_de_livro.py`, e `ui/` é a camada pura que `SEM_TKINTER` enumera. Não
         desenha nada, e por isso não importa o toolkit.
+
+        **`qt/revisao_para_o_caderno.py` entrou pelo mesmo motivo no R7 de volta (2026-10-29)**: é a
+        ponte que pergunta à suíte que folhas o revisor editou. A `Tarefa` que a chama é do painel.
         """
         achados = violacoes(QT, RAIZ)
         com_toolkit = {relativo for relativo in achados if relativo.startswith("qt/")}
         modulos_do_qt = {c.relative_to(RAIZ).as_posix() for c in QT.glob("*.py")}
-        sem_widget = {"qt/__init__.py", "qt/decisoes_de_diagrama.py"}
+        sem_widget = {"qt/__init__.py", "qt/decisoes_de_diagrama.py", "qt/revisao_para_o_caderno.py"}
         self.assertEqual(modulos_do_qt - sem_widget, com_toolkit)
         self.assertGreater(len(com_toolkit), 25)
 

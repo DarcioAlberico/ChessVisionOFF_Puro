@@ -508,6 +508,8 @@ class PainelDeTexto(QWidget):
         self._fornecedor_de_folha: Callable[[int], tuple[np.ndarray, int] | None] | None = None
         """Quem já tem a folha rasterizada -- o visualizador --, perguntado antes de rasterizar
         de novo (item 28). `None` é a aba sozinha, que renderiza por conta própria."""
+        self._importacao: Callable[[], Any] | None = None
+        """Quem tem a importação do livro pela suíte (a janela), para a volta do R7. `None` é a aba sozinha."""
         self._posicoes: dict[tuple[str, int], tuple[str, ...]] = {}
         """O campo de peças de cada diagrama, por `(livro, folha)`, como o OCR de diagramas do
         produto leu. Por folha porque a leitura dos diagramas e a do texto chegam em qualquer
@@ -3698,6 +3700,61 @@ class PainelDeTexto(QWidget):
     def definir_fornecedor_de_folha(self, fornecedor: Callable[[int], tuple[np.ndarray, int] | None] | None) -> None:
         """Quem responde «a folha N já está rasterizada, e em que DPI?» -- o visualizador (item 28)."""
         self._fornecedor_de_folha = fornecedor
+
+    def definir_importacao(self, fornecedor: Callable[[], Any] | None) -> None:
+        """Quem tem a importação do livro pela suíte -- a janela. A volta do R7 a reaproveita quando serve."""
+        self._importacao = fornecedor
+
+    def trazer_da_revisao(self) -> bool:
+        """Traz ao caderno as folhas editadas na Revisão de texto da suíte (R7 de volta). Devolve se começou.
+
+        A suíte acha as folhas numa `Tarefa` -- pode reimportar páginas com OCR --, e a regra do dono
+        é aplicada ao caderno quando elas chegam (`_revisao_chegou`). A folha da tela vai ao caderno
+        antes, para a regra ver a correção feita nela.
+        """
+        from chess_diagram_ocr.qt import revisao_para_o_caderno as volta
+
+        livro = self._livro_do_caderno
+        if self._caderno is None or livro is None:
+            self.estado.emit("Abra um livro com caderno para trazer as correções da Revisão de texto.")
+            return False
+        if self._tarefa is not None:
+            self.estado.emit("Já há uma operação em curso nesta aba.")
+            return False
+        if not volta.disponivel():
+            self.estado.emit(volta.MOTIVO_AUSENTE)
+            return False
+        self._guardar_a_folha()
+        documento = self._importacao() if self._importacao is not None else None
+        desistir = threading.Event()
+        self.estado.emit("Procurando as folhas editadas na Revisão de texto…")
+        self._registrar_ocupado("Trazendo as correções da Revisão de texto", loses_work=False, detail=livro.name, cancelar=desistir.set)
+        self._tarefa = Tarefa(lambda: volta.buscar(livro, documento=documento, desistir=desistir.is_set), parent=self)
+        self._tarefa.pronto.connect(self._revisao_chegou)
+        self._tarefa.falhou.connect(self._revisao_falhou)
+        self._tarefa.finished.connect(self._soltar_ocupado)
+        self._tarefa.start()
+        return True
+
+    def _revisao_chegou(self, folhas: object) -> None:
+        """A regra do dono no caderno; a folha da tela é reaberta se recebeu o texto da revisão."""
+        from chess_diagram_ocr.text import caderno_na_suite
+
+        self._tarefa = None
+        cad = self._caderno
+        if cad is None:
+            return
+        lista = folhas if isinstance(folhas, list) else []
+        volta = caderno_na_suite.trazer_da_suite(cad, lista, livro=str(self._livro_do_caderno or ""))
+        origem = self.documento.origem
+        if origem is not None and int(origem.pagina) in volta.trazidas:
+            self._abrir_do_caderno(int(origem.pagina))
+        self._mostrar_indice()
+        self.estado.emit(volta.frase())
+
+    def _revisao_falhou(self, mensagem: object, _erro: object = None) -> None:
+        self._tarefa = None
+        self.estado.emit(f"As correções da Revisão de texto não vieram: {mensagem}")
 
     def _dpi_para_ler(self) -> int:
         """O DPI da próxima leitura: o cravado pelo teste, ou o das Configurações (o produto)."""

@@ -386,8 +386,8 @@ trabalho mora nos dois repositórios:
 | suíte, `caissa/export/page_texts.py` | `PageText.from_dict` e `apply_page_texts`; `export_book(page_texts=)`, `BookExportResult.page_texts_applied` e o rodapé |
 | suíte, `caissa/ui/views/exportacao.py` | `comecar(..., folhas_para=)`, chamado na thread da janela depois do diálogo; a falha do caderno é dita e o livro sai com a leitura |
 
-**O que fica com o dono:** o caminho de volta, o IR da suíte alimentando o caderno. E a folha só
-lida não vai: trocar a leitura da suíte pela do motor deste programa é escolher motor de
+**O caminho de volta foi pedido em 2026-10-29**, com a regra que estava proposta: ver «Estado da
+oitava entrega». E a folha só lida não vai: trocar a leitura da suíte pela do motor deste programa é escolher motor de
 exportação, e não corrigir.
 
 **Dois furos da mesma família, achados no caminho e fechados na mesma entrega:**
@@ -396,6 +396,23 @@ exportação, e não corrigir.
 |---|---|
 | A aba **Rotulagem** tem o próprio *Livro para EPUB/DOCX…*, que exporta o livro do projeto dela -- e não levava o caderno | `PainelDeRotulagem.folhas_para(pdf, paginas)` na suíte; o tronco o dá em `painel_de_rotulagem.montar(folhas_para=)` com `PainelDeTexto.folhas_do_livro`, que responde pelo livro aberto (com a folha da tela gravada) ou abre o caderno de outro livro **só para leitura**. A aba de antes do R7 monta igual |
 | A decisão tomada na aba **Revisão de texto** depois da importação da janela não chegava ao livro: a exportação reaproveita o documento em mãos (A3) e só reaplicava as decisões de **diagrama** | a importação guarda a impressão digital das decisões de texto que viu (`ImportReport.review_decisions_digest`, de `ReviewDecisions.digest`); se na exportação ela é outra, o documento em mãos não serve e o livro é lido de novo, e o rodapé diz por quê. As de texto valem na leitura das regiões de OCR, e por isso não há como aplicá-las ao documento pronto |
+
+### Estado da oitava entrega (2026-10-29): o caminho de volta do R7
+
+O dono pediu a volta com a regra proposta: **a folha sem correção no caderno recebe o texto da
+Revisão de texto; onde os dois lados corrigiram, o caderno vence e a versão da revisão vai para
+`anterior`**. A decisão e o critério estão na spec, junto do R7 de ida.
+
+| onde | o que |
+|---|---|
+| suíte, `caissa/export/page_texts.py` | `page_text_of`/`page_texts_of`: a página de uma importação no formato 1, ao contrário -- parágrafos, títulos e partidas (pelo `game_to_pgn`, como notação) em ordem, cada diagrama como marca com a posição, ênfase, estilo e alinhamento |
+| suíte, `caissa/export/reviewed_pages.py` | `reviewed_page_texts(pdf, document=)`: as páginas com região editada, da importação em mãos quando ela viu as decisões de agora (o mesmo resumo que a exportação confere), senão de uma importação só dessas páginas; testes em `tests/unit/export/test_reviewed_pages.py` |
+| tronco, `text/caderno_na_suite.py` | `folha_da_suite` (o inverso de `folha_para_a_suite`) e `trazer_da_suite`, a regra; `Caderno.guardar_anterior`; testes em `tests/test_texto_caderno_na_suite.py` |
+| tronco, `qt/revisao_para_o_caderno.py` e `qt/painel_de_texto.py` | o comando *Trazer as correções da Revisão de texto para o caderno*: a suíte numa `Tarefa` registrada, com «Cancelar»; a folha da tela vai ao caderno antes, e é reaberta se recebeu o texto. A janela entrega a importação em mãos (`definir_importacao`, uma linha); testes em `tests/test_qt_texto_caderno.py::TrazerDaRevisaoTests` |
+
+**O que a volta não faz, de propósito:** não marca a folha trazida como `conferida` -- aceitar uma
+região na revisão não é conferir a folha inteira --, e não traz a folha em que o revisor só aceitou
+leituras: o texto dela é o da máquina, e o motor deste programa já a leu.
 
 ## Custo, risco e ordem
 
@@ -449,7 +466,8 @@ decisões que organizam o plano, que já estão tomadas.
    IR da suíte** quando ela estiver ao alcance, para o EPUB/DOCX do livro levar o que foi corrigido
    aqui. Quem decide se o IR também alimenta o caderno (o caminho de volta) é o dono.
    **Feito em 2026-10-28** o caminho de ida, pela exportação do livro e não por uma gravação no
-   IR: ver «Estado da sétima entrega».
+   IR: ver «Estado da sétima entrega». **E o de volta em 2026-10-29**, com a regra do dono (o
+   caderno vence onde os dois lados corrigiram): ver «Estado da oitava entrega».
 
 ## O que foi recusado antes e volta agora
 
