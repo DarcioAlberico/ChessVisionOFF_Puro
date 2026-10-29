@@ -75,7 +75,7 @@ from dataclasses import dataclass, fields, replace
 from typing import Any, get_args
 
 from . import documento, notacao
-from .pagina import PaginaLida, Procedencia
+from .pagina import BlocoDeDiagrama, PaginaLida, Procedencia
 
 SEM_BLOCO = -1
 """O `bloco` de uma corrida que não saiu da página: texto escrito à mão.
@@ -1278,6 +1278,37 @@ def editar(doc: DocumentoRico, inicio: int, fim: int, novo: str) -> DocumentoRic
     return _com_corrida(apagado, comeco, _da_mao(novo, modelo))
 
 
+def inserir_diagrama(doc: DocumentoRico, posicao: int, placement: str) -> DocumentoRico:
+    """Um diagrama que a página não tem, posto na folha em `posicao` (S-595).
+
+    É o diagrama que o PDF perdeu e o PGN do livro redesenha: a marca entra como as outras, com o
+    separador de parágrafo depois dela, e a página de origem ganha o `BlocoDeDiagrama` da marca.
+
+    **O bloco vai para o fim da última coluna, e não para o lugar.** `Corrida.bloco` é o índice na
+    lista plana de blocos, e um bloco no meio renumeraria todas as corridas depois dele. A ordem de
+    leitura é a do documento, e é nele que a marca fica no lugar. O `indice` continua a contagem dos
+    diagramas da página -- `com_posicoes` só alcança os que o detector achou -- e o bbox vazio diz que
+    não há recorte: a miniatura e a exportação desenham da FEN. A procedência é `humano` porque foi a
+    pessoa que mandou pôr, e é a que uma releitura não tem direito de apagar.
+
+    Sem página de origem devolve o próprio documento: não há onde guardar a posição.
+    """
+    pagina = doc.origem
+    if pagina is None or not pagina.colunas:
+        return doc
+    novo = BlocoDeDiagrama(
+        indice=max((b.indice for b in pagina.diagramas), default=-1) + 1,
+        procedencia="humano",
+        placement=placement,
+    )
+    ultima = pagina.colunas[-1]
+    origem = replace(pagina, colunas=(*pagina.colunas[:-1], replace(ultima, blocos=(*ultima.blocos, novo))))
+    com_o_bloco = DocumentoRico(corridas=doc.corridas, origem=origem)
+    separado = _com_corrida(com_o_bloco, posicao, Corrida(texto="\n\n", tipo=SEPARADOR))
+    marca = Corrida(texto=novo.texto, bloco=len(pagina.blocos), procedencia="humano", tipo=DIAGRAMA)
+    return _com_corrida(separado, posicao, marca)
+
+
 def mover(doc: DocumentoRico, inicio: int, fim: int, destino: int) -> DocumentoRico:
     """Leva as corridas de `[inicio, fim)` para `destino`, **inteiras**: é o arrastar-e-soltar.
 
@@ -1595,6 +1626,7 @@ __all__ = [
     "estilo_do_segmento",
     "fundir",
     "inserir",
+    "inserir_diagrama",
     "intervalo_alvo",
     "intervalo_de_paragrafo",
     "substituir_intervalo",

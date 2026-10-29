@@ -1209,6 +1209,21 @@ class PainelDeResultado(QWidget):
         self._atualizar_tudo()
         self.estado.emit(parecer.describe())
 
+    def adotar_do_livro(self, indice: int, item_lido: object, placement: str, lado: str, nota: str) -> bool:
+        """A posição e o lado a jogar do nó do PGN do livro no lugar da leitura (S-590).
+
+        Mesma guarda da segunda opinião: o livro casa em segundo plano, e um índice de outra
+        página não é este diagrama. Desfazível como qualquer edição -- o histórico registra.
+        """
+        if not (0 <= indice < len(self.modelo.items)) or self.modelo.items[indice] is not item_lido:
+            return False
+        if not self.modelo.mark_from_book(indice, placement, lado, note=nota):
+            return False
+        self.historico.registrar(self._estado_de(indice))
+        self._edicao += 1
+        self._atualizar_tudo()
+        return True
+
     def _girar_180(self) -> None:
         """A outra leitura possível: a posição girada de 180°, como edição desfazível."""
         if not self.modelo.items:
@@ -1616,6 +1631,9 @@ class PainelDeResultado(QWidget):
         if item.caption:
             # Uma linha, e não o parágrafo inteiro: ver `strings.LIMITE_DA_LEGENDA`.
             linhas.append(f"Legenda: {strings.resumo_da_legenda(item.caption)}")
+        indice = next((k for k, x in enumerate(self.modelo.items) if x is item), -1)
+        if indice in self.modelo.from_book:
+            linhas.append(f"PGN do livro: {self.modelo.from_book[indice]}")
         return "\n".join(linhas)
 
     def copiar_fen_lida(self) -> None:

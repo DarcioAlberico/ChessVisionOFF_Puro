@@ -429,5 +429,38 @@ class TipografiaMistaTests(unittest.TestCase):
         self.assertEqual([c.texto for c in doc.corridas], ["[Diagrama 1]"])
 
 
+class DiagramaInseridoTests(unittest.TestCase):
+    """O diagrama que o PDF perdeu, posto na folha pelo PGN do livro (S-595)."""
+
+    def setUp(self) -> None:
+        self.doc = rico.de_pagina(
+            _pagina(
+                _texto("Antes."),
+                BlocoDeDiagrama(indice=0, bbox=(0.0, 0.0, 50.0, 50.0)),
+                _texto("Position after: 5.dxc5"),
+                _texto("Position after: 6.Bb5+"),
+            )
+        )
+        self.onde = self.doc.para_texto().index("Position after: 6")
+        self.novo = rico.inserir_diagrama(self.doc, self.onde, "8/8/8/8/8/8/8/K6k")
+
+    def test_a_marca_entra_antes_da_legenda_com_a_posicao_no_bloco(self) -> None:
+        texto = self.novo.para_texto()
+        self.assertEqual(self.onde, texto.index("[Diagrama 2]"))
+        self.assertTrue(texto[self.onde:].startswith("[Diagrama 2]\n\nPosition after: 6.Bb5+"))
+        bloco = self.novo.bloco_de(self.novo.diagramas[1])
+        self.assertEqual(("8/8/8/8/8/8/8/K6k", "humano", (0.0, 0.0, 0.0, 0.0)), (bloco.placement, bloco.procedencia, bloco.bbox))
+
+    def test_os_blocos_de_antes_nao_mudam_de_indice(self) -> None:
+        """O bloco novo vai para o fim: as corridas que já existiam apontam para os mesmos blocos."""
+        for corrida in self.doc.corridas:
+            if corrida.da_pagina:
+                self.assertIs(self.doc.bloco_de(corrida), self.novo.bloco_de(corrida))
+
+    def test_sem_pagina_de_origem_nada_muda(self) -> None:
+        sem_origem = rico.de_texto("Position after: 6.Bb5+")
+        self.assertIs(sem_origem, rico.inserir_diagrama(sem_origem, 0, "8/8/8/8/8/8/8/K6k"))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

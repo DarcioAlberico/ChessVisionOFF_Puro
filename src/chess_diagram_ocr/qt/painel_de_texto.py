@@ -331,6 +331,11 @@ class PainelDeTexto(QWidget):
     """Duplo clique numa miniatura: `(folha 0-based, índice do diagrama)`. A janela leva o
     diagrama à sala de estudo, como o duplo clique na caixa do visualizador (item 8)."""
 
+    diagrama_sem_caixa_ativado = pyqtSignal(int, str)
+    """O mesmo duplo clique num diagrama que não tem caixa na página -- o que o PGN do livro pôs na
+    folha (S-595): `(folha 0-based, campo de peças)`. Sem caixa não há o que ler nem selecionar no
+    Resultado; quem sabe abri-lo é o PGN do livro, que o leva à árvore do autor."""
+
     bloco_destacado = pyqtSignal(object)
     """O `bbox`, em pontos, do bloco da página de onde veio o trecho sob o cursor -- ou `None` (S-642).
     A mesa o contorna no visualizador. Sai só quando o bloco muda, e não a cada tecla."""
@@ -3914,6 +3919,49 @@ class PainelDeTexto(QWidget):
         self._desenhar(selecao=self._selecao_atual())
         self._atualizar_status()
 
+    def inserir_diagramas_do_livro(self, pagina: int, faltam: Sequence[tuple[str, str]]) -> int:
+        """Os diagramas que o PDF perdeu, postos na folha antes da legenda de cada um (S-595).
+
+        `faltam` é `(lance da legenda, campo de peças)`, do PGN do livro. A marca vai para o começo
+        da linha «Position after: <lance>» -- é onde a imagem estaria, logo acima da legenda -- e a
+        figura nasce da FEN (`rico.inserir_diagrama`). **É uma edição**, numa jogada só: `Ctrl+Z`
+        tira todos, e a folha passa a ter o que gravar.
+
+        Fica de fora o lance cuja legenda a folha não tem (o leitor de texto a partiu, ou a folha é
+        de outra página) e a posição que a folha já mostra -- pedir duas vezes não duplica. Devolve
+        quantos entraram.
+        """
+        from chess_diagram_ocr.livro_com_pgn import legenda_da_linha
+        from chess_diagram_ocr.pgn_do_livro import lance_da_legenda
+
+        if self._pagina is None or int(self._pagina.pagina) != int(pagina) or not faltam:
+            return 0
+        legendas: dict[str, int] = {}  # o lance da legenda -> onde a linha dela começa
+        comeco = 0
+        for linha in self.documento.para_texto().split("\n"):
+            lance = lance_da_legenda(legenda_da_linha(linha))
+            if lance:
+                legendas.setdefault(lance, comeco)
+            comeco += len(linha) + 1
+        ja_na_folha = {_posicao_de(self.documento, corrida) for corrida in self.documento.diagramas}
+        lugares = sorted(
+            (legendas[lance], placement)
+            for lance, placement in ((lance_da_legenda(lance), placement) for lance, placement in faltam)
+            if lance in legendas and placement not in ja_na_folha
+        )
+        novo, andou = self.documento, 0
+        for onde, placement in lugares:
+            antes = len(novo.para_texto())
+            novo = rico.inserir_diagrama(novo, onde + andou, placement)
+            andou += len(novo.para_texto()) - antes
+        if novo is self.documento:
+            return 0
+        self._aplicar(novo)
+        sem_legenda = [lance for lance, _ in faltam if lance_da_legenda(lance) not in legendas]
+        fora = f" Sem a legenda na folha lida, ficaram de fora: {', '.join(sem_legenda)}." if sem_legenda else ""
+        self.estado.emit(f"{len(lugares)} diagrama(s) do PGN do livro posto(s) na folha; desfazer os tira.{fora}")
+        return len(lugares)
+
     def notacao_do_diagrama(self, pagina: int, diagrama: int) -> str:
         """A notação que o livro imprimiu ao lado daquele diagrama, ou `""` (S-283).
 
@@ -4319,24 +4367,25 @@ class PainelDeTexto(QWidget):
         """Se a seleção é exatamente uma marca `[Diagrama N]`, pede o diagrama na sala."""
         inicio, fim = self._intervalo()
         achado = self._marca_em(inicio) if fim > inicio else None
-        if achado is None or (achado[0], achado[1]) != (inicio, fim) or self._pagina is None:
+        if achado is None or (achado[0], achado[1]) != (inicio, fim):
             return False
-        indice = getattr(self.documento.bloco_de(achado[2]), "indice", None)
-        if indice is None:
-            return False
-        self.diagrama_ativado.emit(int(self._pagina.pagina), int(indice))
-        return True
+        return self._ativar(achado[2])
 
     def _ativou_a_miniatura(self, ponto: QPoint) -> bool:
         """O duplo clique na miniatura pede o diagrama na sala de estudo (`diagrama_ativado`)."""
         achado = self._marca_sob(ponto)
-        if achado is None or self._pagina is None:
-            return False
-        bloco = self.documento.bloco_de(achado[2])
+        return achado is not None and self._ativar(achado[2])
+
+    def _ativar(self, corrida: rico.Corrida) -> bool:
+        """O diagrama da marca vai à sala: pelo índice, ou pela posição quando não tem caixa (S-595)."""
+        bloco = self.documento.bloco_de(corrida)
         indice = getattr(bloco, "indice", None)
-        if indice is None:
+        if indice is None or self._pagina is None:
             return False
-        self.diagrama_ativado.emit(int(self._pagina.pagina), int(indice))
+        if getattr(bloco, "procedencia", "") == "humano" and not any(getattr(bloco, "bbox", ())):
+            self.diagrama_sem_caixa_ativado.emit(int(self._pagina.pagina), _posicao_de(self.documento, corrida))
+        else:
+            self.diagrama_ativado.emit(int(self._pagina.pagina), int(indice))
         return True
 
     def _mostrar_vazio(self) -> None:

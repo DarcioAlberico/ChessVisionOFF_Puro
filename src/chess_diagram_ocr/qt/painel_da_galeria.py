@@ -983,6 +983,21 @@ class PainelDaGaleria(QWidget):
             "Nada foi sobrescrito."
         )
 
+    def preencher_de_fora(self, casamentos: Sequence[DiagramMatch], *, origem: str, discordam: int = 0) -> None:
+        """Casamentos que não vieram da base -- o PGN do livro (S-594) -- pela mesma porta dela.
+
+        `apply_matches` é a regra inteira: preenche só o vazio, respeita a partida que a pessoa
+        escolheu e nunca sobrescreve. Quem chama só diz de onde veio e quantos não bateram.
+        """
+        relatorio = self.model.apply_matches(casamentos)
+        self._gravar()
+        self.refresh(request_page=False)
+        sobra = f" {discordam} diagrama(s) não bateram com a posição do livro." if discordam else ""
+        self.estado.emit(
+            f"{origem}: {relatorio.confirmed} leitura(s) confirmada(s), {relatorio.fields} campo(s) "
+            f"preenchido(s) em {relatorio.touched} diagrama(s). Nada foi sobrescrito.{sobra}"
+        )
+
     def _falhou(self, detalhe: str) -> None:
         self._varrendo = False
         self._ocupado(False)
