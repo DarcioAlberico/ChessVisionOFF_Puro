@@ -718,24 +718,30 @@ def _abrir(bases: Sequence[Path], path: Path) -> tuple[sqlite3.Connection | None
         conexao = sqlite3.connect(f"file:{Path(path).as_posix()}?mode=ro", uri=True)
     except sqlite3.Error as exc:
         return None, f"Árvore de aberturas ilegível ({exc}). {refazer}"
+    # **A recusa fecha a conexão.** Deixada aberta, ela segura o arquivo no Windows até o coletor
+    # passar -- e o arquivo recusado é justamente o que a frase manda reconstruir por cima.
+    motivo = ""
     try:
         gravada = _meta(conexao, "version")
+        marca = _meta(conexao, "database") if gravada == str(TREE_VERSION) else None
+    except sqlite3.Error as exc:
+        motivo = f"Árvore de aberturas sem as tabelas esperadas ({exc}). {refazer}"
+    else:
         if gravada != str(TREE_VERSION):
-            return None, (
+            motivo = (
                 f"A árvore está no formato {gravada or 'desconhecido'!r} e este programa lê o "
                 f"{TREE_VERSION}. {refazer}"
             )
-        marca = _meta(conexao, "database")
-        if not marca:
-            return None, f"A árvore está em obras: uma rodada não chegou ao fim. {refazer}"
-        if bases and marca != index_fingerprint(bases):
-            return None, (
+        elif not marca:
+            motivo = f"A árvore está em obras: uma rodada não chegou ao fim. {refazer}"
+        elif bases and marca != index_fingerprint(bases):
+            motivo = (
                 "A árvore foi construída para outra base: as contagens não valem para esta. "
                 f"{refazer}"
             )
-    except sqlite3.Error as exc:
+    if motivo:
         conexao.close()
-        return None, f"Árvore de aberturas sem as tabelas esperadas ({exc}). {refazer}"
+        return None, motivo
     return conexao, ""
 
 
