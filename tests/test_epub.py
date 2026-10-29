@@ -17,12 +17,12 @@ import zipfile
 from pathlib import Path
 
 import chess
+from ambiente_de_teste import pasta_temporaria
 
 from chess_diagram_ocr import epub, estudo_paragrafos
 from chess_diagram_ocr.estudo import Ancora, Estudo, PosicaoDeEstudo
 from chess_diagram_ocr.text import rico
 from chess_diagram_ocr.text.pagina import BlocoDeDiagrama, BlocoDeTexto, Coluna, LinhaLida, PaginaLida
-from tests.ambiente_de_teste import pasta_temporaria
 
 ITALIANA = "rnbqkb1r/pppp1ppp/5n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R"
 XHTML = f"{{{epub.XHTML_NS}}}"
