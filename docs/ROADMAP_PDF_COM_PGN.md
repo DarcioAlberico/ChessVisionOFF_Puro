@@ -158,6 +158,18 @@ legenda. A conferência é a de sempre (`concorda`: o modelo lê a mesma posiç�
 conferem entram com «Importar os que concordam» e os que discordam vão à conferência humana -- que
 são exatamente os exemplos que o modelo erra. A procedência registra o livro e a página.
 
+**A imagem é a que o livro embute**, nos bytes originais (o `get_text("dict")` os traz), e não a
+página rasterizada: abrir o lote não renderiza nada, e os 990 diagramas do Harikrishna saem em 6 s.
+**A legenda ambígua leva os candidatos** (`ItemDeImportacao.candidatos`), porque o lote é casado
+sem o modelo: com a mesma jogada em duas linhas do capítulo, a ordem do livro sozinha escolhia a
+linha errada, e o item caía na conferência com a sugestão errada. A leitura escolhe entre eles
+(`com_a_leitura`), e reabrir o lote guarda a escolha.
+
+**Medido no Harikrishna:** dos 990 itens, 310 têm candidatos; lida a imagem embutida, a leitura do
+modelo de produção é a FEN do PGN em **990 de 990**. As 39 discordâncias da S-589 vinham da página
+rasterizada a 200 dpi, e não do modelo -- a imagem original lê melhor que a página desenhada de novo.
+Para o treino isso quer dizer 990 amostras rotuladas pelo livro, nenhuma por conferência humana.
+
 ---
 
 ## O que fica fora, e por quê

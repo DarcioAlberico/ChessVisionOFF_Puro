@@ -61,6 +61,7 @@ __all__ = ["FILTROS", "ORIGENS", "JanelaDeImportacao"]
 ORIGENS: tuple[tuple[str, str], ...] = (
     (imp.COM_FEN, "Relatório do ChessMeridaOCR (imagens com FEN)"),
     (imp.SEM_FEN, "Pasta de imagens para conferir (sem FEN)"),
+    (imp.COM_PGN, "PDF digital e o PGN do livro (pasta com os dois)"),
 )
 
 FILTROS: tuple[tuple[str, str], ...] = (
@@ -559,7 +560,7 @@ class JanelaDeImportacao(QDialog):
             "Usar a imagem inteira" if usado == imp.RECORTE_DETECTADO else "Usar o tabuleiro detectado"
         )
         anterior = self.lote.itens[posicao]
-        self.lote.itens[posicao] = replace(anterior, fen_do_modelo=lida, recorte=usado)
+        self.lote.itens[posicao] = imp.com_a_leitura(anterior, lida, usado)
         if not anterior.fen_da_fonte and self.tabuleiro.posicao() == imp.campo_de_pecas(
             anterior.fen_do_modelo or imp.TABULEIRO_VAZIO
         ):
@@ -672,7 +673,7 @@ class JanelaDeImportacao(QDialog):
     # ------------------------------------------------------------------------------ lote
 
     def importar_confirmados(self) -> bool:
-        if self.lote is None or self.lote.origem != imp.COM_FEN or self._rodando_lote is not None:
+        if self.lote is None or self.lote.origem not in imp.COM_FEN_DA_FONTE or self._rodando_lote is not None:
             return False
         csv_path, samples_dir, _splits = self._caminhos()
         lote = self.lote
@@ -770,10 +771,10 @@ class JanelaDeImportacao(QDialog):
         self.campo_pasta.setEnabled(livre)
         self.btn_abrir.setEnabled(livre)
         self.btn_lote.setEnabled(
-            livre and self.lote is not None and self.lote.origem == imp.COM_FEN
+            livre and self.lote is not None and self.lote.origem in imp.COM_FEN_DA_FONTE
             and bool(imp.posicoes(self.lote, "pendentes"))
         )
-        self.btn_lote.setVisible(livre and self.origem() == imp.COM_FEN)
+        self.btn_lote.setVisible(livre and self.origem() in imp.COM_FEN_DA_FONTE)
         self.combo_filtro.setEnabled(livre)
         self.btn_anterior.setEnabled(tem_item and self._i > 0)
         self.btn_proxima.setEnabled(tem_item and self._i < len(self._fila) - 1)
@@ -782,7 +783,7 @@ class JanelaDeImportacao(QDialog):
         self.btn_descartar.setEnabled(bool(pendente_ou_pulado))
         self.btn_reabrir.setEnabled(bool(tem_item) and item.status in (imp.PULADO, imp.DESCARTADO))  # type: ignore[union-attr]
         self.btn_fonte.setEnabled(bool(tem_item) and bool(item.fen_da_fonte))  # type: ignore[union-attr]
-        self.btn_fonte.setVisible(self.lote is None or self.lote.origem == imp.COM_FEN)
+        self.btn_fonte.setVisible(self.lote is None or self.lote.origem in imp.COM_FEN_DA_FONTE)
         self.btn_modelo.setEnabled(bool(tem_item) and bool(item.fen_do_modelo))  # type: ignore[union-attr]
         self.btn_recorte.setEnabled(bool(tem_item) and bool(self._recorte_usado))
         self.tabuleiro.setEnabled(bool(tem_item))
