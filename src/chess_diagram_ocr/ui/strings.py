@@ -31,6 +31,7 @@ SIDE_SOURCE_LABELS: dict[str, str] = {
     "default": "assumido (o PDF não diz)",
     "manual": "definido por você",
     "queue": "vindo da fila de revisão",
+    "pgn": "do PGN do livro",
 }
 """De onde saiu o lado a jogar (S-16/S-17/S-19).
 

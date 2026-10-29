@@ -1336,6 +1336,12 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   com portao de medicao -- e os tres defeitos medidos no widget antes de tudo: o alinhamento e o
   estilo de paragrafo que nao chegam a tela, a miniatura que nao segue a marca, e o rascunho podado
   a oito que apaga a correcao da primeira folha
+- [docs/ROADMAP_PDF_COM_PGN.md](docs/ROADMAP_PDF_COM_PGN.md) -- **S-585 a S-593**, plano e
+  especificacao do PDF digital com o PGN do livro: o PGN lido inteiro, cada diagrama casado com o
+  seu no pela legenda ou pela posicao, a FEN e o lado a jogar do livro no Resultado, o que discorda
+  na Revisao, os diagramas que faltam no PDF desenhados do PGN, o Estudo na arvore do autor e o
+  livro como lote do dataset -- com as medidas do Harikrishna (951 conferem, 22 corrigidos, 17
+  discordam, 188 faltam)
 - [docs/SPEC_MESA_DE_TEXTO.md](docs/SPEC_MESA_DE_TEXTO.md) -- especificacao das Fases 90 a 96
   (S-601 a S-668): o desenho que obedece ao documento, o caderno do livro, os diagramas, a letra
   da aba, a mesa, a fita e os paineis, e o portao do negrito e do italico na folha sem camada

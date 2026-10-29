@@ -243,9 +243,9 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**35** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**36** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
-exceção. Vinte e uma são operações longas e estão no `BusyRegistry`; as outras catorze são declaradas
+exceção. Vinte e uma são operações longas e estão no `BusyRegistry`; as outras quinze são declaradas
 em `ui/busy.py::FORA_DO_REGISTRO`, com o motivo de cada uma (S-112).
 
 **As três últimas são do caderno do livro (2026-10-24, `qt/painel_de_texto.py`).** A folha aberta

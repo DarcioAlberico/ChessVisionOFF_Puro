@@ -126,6 +126,15 @@ class DiagramEditorModel:
     segunda leitura de novo -- 0,3 s de máquina, mas a lista do que ainda falta conferir
     perdida."""
 
+    from_book: dict[int, str] = field(default_factory=dict)
+    """Por índice, o que o PGN do livro disse deste diagrama (S-590): «Chapter 1 · Game 3 · 5.dxc5
+    -- confere». A FEN do livro já está em `fen_edits`; esta frase diz de onde ela veio."""
+
+    book_squares: dict[int, tuple[int, ...]] = field(default_factory=dict)
+    """As casas em que o PGN do livro corrigiu a leitura do modelo -- roxas no tabuleiro, como as da
+    segunda opinião, para o olho ir direto nelas. Guardadas à parte de `second_opinion` porque a
+    rota de rótulo (`labels.label_route`) contaria a correção do livro como um segundo leitor."""
+
     # ------------------------------------------------------------------- troca de vínculo
 
     def load(
@@ -173,6 +182,8 @@ class DiagramEditorModel:
         # anterior, e herdar a marca de "veio da Net" gravaria a procedencia errada.
         self.net_corrected.clear()
         self.second_opinion.clear()
+        self.from_book.clear()
+        self.book_squares.clear()
         self.selected = 0
 
     def adopt(
@@ -209,6 +220,8 @@ class DiagramEditorModel:
         self.editing_sample = None
         self.net_corrected.clear()
         self.second_opinion.clear()
+        self.from_book.clear()
+        self.book_squares.clear()
         self.selected = max(0, min(selected, len(items) - 1)) if items else 0
 
     def clear(self) -> None:
@@ -223,6 +236,8 @@ class DiagramEditorModel:
         self.origin = None
         self.net_corrected.clear()
         self.second_opinion.clear()
+        self.from_book.clear()
+        self.book_squares.clear()
 
     def unbind_page(self) -> None:
         """Solta o vínculo com a página sem apagar o conteúdo do editor.
@@ -331,9 +346,31 @@ class DiagramEditorModel:
         self.second_opinion[index] = parecer.disputed
         return parecer
 
+    def mark_from_book(self, index: int, placement: str, side: str, *, note: str) -> bool:
+        """Adota a posição do nó do PGN do livro, com o lado a jogar dele (S-590).
+
+        O contrato de `mark_second_opinion`: `False` se o índice não existe mais. O lado a jogar
+        entra com a procedência `pgn` e não `manual` -- não foi a pessoa que decidiu, e
+        `unsaved_hand_edit` só conta a vez como edição quando é `manual`.
+        """
+        if not (0 <= index < len(self.fen_edits)):
+            return False
+        from chess_diagram_ocr.livro_com_pgn import casas_diferentes
+
+        trocadas = casas_diferentes(self.items[index].placement, placement)
+        self.fen_edits[index] = placement
+        self.side_edits[index] = side
+        self.items[index].set_side_to_move(side, source="pgn")
+        self.from_book[index] = note
+        if trocadas:
+            self.book_squares[index] = trocadas
+        else:
+            self.book_squares.pop(index, None)
+        return True
+
     def disputed_squares(self, index: int) -> tuple[int, ...]:
-        """As casas em disputa deste diagrama, ou vazio se a segunda leitura não rodou."""
-        return self.second_opinion.get(index, ())
+        """As casas em disputa deste diagrama -- do segundo leitor ou do PGN do livro --, ou vazio."""
+        return self.second_opinion.get(index) or self.book_squares.get(index, ())
 
     @property
     def has_hand_edits(self) -> bool:

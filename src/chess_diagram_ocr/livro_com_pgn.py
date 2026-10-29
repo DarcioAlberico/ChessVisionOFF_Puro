@@ -33,17 +33,22 @@ Nada aqui importa Qt nem o modelo: quem lê a imagem passa `ler`, e o teste pass
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Any
 
+from .atomic_io import atomic_write_json
+from .config import DATA_DIR
 from .pgn_do_livro import IndiceDoLivro, lance_da_legenda
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "ARQUIVO_DAS_ASSOCIACOES",
     "CASAS_CORRIGIVEIS",
     "CONFERE",
     "CORRIGIDO",
@@ -52,11 +57,15 @@ __all__ = [
     "FALTANDO",
     "SEM_LEITURA",
     "SEM_NO",
+    "associar",
     "capitulos_do_sumario",
     "casar_livro",
     "casas_diferentes",
     "contagem",
     "diagramas_da_pagina",
+    "esquecer",
+    "nota_do_diagrama",
+    "pgn_associado",
 ]
 
 CONFERE = "confere"
@@ -333,3 +342,76 @@ def contagem(diagramas: Iterable[DiagramaDoLivro]) -> dict[str, int]:
     for diagrama in diagramas:
         total[diagrama.estado] = total.get(diagrama.estado, 0) + 1
     return total
+
+
+def nota_do_diagrama(diagrama: DiagramaDoLivro, indice: IndiceDoLivro) -> str:
+    """A frase que o Resultado mostra: «Chapter 1 · Game 3 · 5.dxc5 -- o PGN corrigiu 1 casa»."""
+    if diagrama.no is None:
+        return ""
+    registro = indice.nos[diagrama.no]
+    onde = " · ".join(x for x in (registro.capitulo, registro.secao, registro.rotulo) if x)
+    estado = {
+        CONFERE: "confere com a leitura",
+        CORRIGIDO: f"o PGN corrigiu {len(diagrama.casas)} casa(s) da leitura",
+        DISCORDA: f"discorda da leitura em {len(diagrama.casas)} casas; conferir",
+        SEM_LEITURA: "posição do PGN",
+        FALTANDO: "o diagrama falta no PDF",
+    }.get(diagrama.estado, "")
+    return f"{onde} -- {estado}" if estado else onde
+
+
+# ---------------------------------------------------------------- o livro e o seu PGN (S-590)
+
+ARQUIVO_DAS_ASSOCIACOES = DATA_DIR / "livros_com_pgn.json"
+"""Qual `.pgn` acompanha qual PDF. A chave é a identidade do conteúdo do PDF (a do caderno da aba
+Texto, `text.caderno.identidade_de`), e não o caminho: o livro movido ou copiado continua com o
+seu PGN."""
+
+
+def _associacoes(arquivo: Path) -> dict[str, dict[str, str]]:
+    try:
+        dados = json.loads(arquivo.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return dados if isinstance(dados, dict) else {}
+
+
+def pgn_associado(pdf: str | Path, *, arquivo: Path | None = None) -> Path | None:
+    """O `.pgn` associado a este PDF, se houver e se ele ainda existir."""
+    from .text.caderno import identidade_de
+
+    identidade = identidade_de(pdf)
+    if identidade is None:
+        return None
+    registro = _associacoes(arquivo or ARQUIVO_DAS_ASSOCIACOES).get(identidade)
+    caminho = Path(registro["pgn"]) if registro and registro.get("pgn") else None
+    return caminho if caminho is not None and caminho.is_file() else None
+
+
+def associar(pdf: str | Path, pgn: str | Path, *, arquivo: Path | None = None) -> bool:
+    """Lembra que este `.pgn` acompanha este PDF. `False` se o PDF não puder ser lido."""
+    from .text.caderno import identidade_de
+
+    identidade = identidade_de(pdf)
+    if identidade is None:
+        return False
+    destino = arquivo or ARQUIVO_DAS_ASSOCIACOES
+    dados = _associacoes(destino)
+    dados[identidade] = {"pdf": Path(pdf).name, "pgn": str(Path(pgn).resolve())}
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(destino, dados)
+    return True
+
+
+def esquecer(pdf: str | Path, *, arquivo: Path | None = None) -> bool:
+    """Desfaz a associação deste PDF. `False` se não havia nenhuma."""
+    from .text.caderno import identidade_de
+
+    identidade = identidade_de(pdf)
+    destino = arquivo or ARQUIVO_DAS_ASSOCIACOES
+    dados = _associacoes(destino)
+    if identidade is None or identidade not in dados:
+        return False
+    del dados[identidade]
+    atomic_write_json(destino, dados)
+    return True

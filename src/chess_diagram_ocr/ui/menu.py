@@ -145,6 +145,10 @@ MENUS: tuple[Menu, ...] = (
             Item("importar_livro"),
             Item("cancelar_importacao"),
             _sep(),
+            Item("carregar_pgn_do_livro"),
+            Item("diagramas_que_faltam"),
+            Item("esquecer_pgn_do_livro"),
+            _sep(),
             Item("segunda_opiniao"),
             _sep(),
             # As abas da suíte (C8): o que a pele esconde, o menu alcança.
@@ -286,6 +290,7 @@ MENUS: tuple[Menu, ...] = (
             _sep(),
             Item("colar_estudo"),
             Item("abrir_pgn"),
+            Item("estudar_na_arvore_do_livro"),
             _sep(),
             Item("copiar_fen"),
             Item("salvar_estudo"),

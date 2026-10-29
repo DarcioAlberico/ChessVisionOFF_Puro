@@ -2657,6 +2657,25 @@ class PainelDeEstudo(QWidget):
         self.set_status(f"{nomes}: {novo.contagem_de_lances()} lance(s) da base.")
         return True
 
+    def abrir_no_livro(self, jogo: Any, caminho: tuple[int, ...], *, origem: str) -> bool:
+        """Põe na mesa a partida do PGN do livro inteira, posicionada no nó do diagrama (S-592).
+
+        É a análise do autor a partir dali: as variantes que o texto comenta estão todas na árvore,
+        e andar para a frente leva ao próximo diagrama. A partida chega com `SourcePDF`, `Page` e
+        `Diagram` do diagrama, e é por eles que a sala a guarda junto dos outros estudos do livro.
+        """
+        novo = estudo_mod.Estudo.de_jogo(jogo)
+        if not novo.ir_para(caminho):
+            self.set_status("O lance do diagrama não está mais na partida do livro.")
+            return False
+        if not self._confirmar_abandono("abrir a partida do livro"):
+            return False
+        self.seguir_ocr.setChecked(False)
+        self.sala.guardar(self.estudo)
+        self._trocar_de_estudo(novo, origem)
+        self.set_status(f"{origem}: a árvore do livro, no lance do diagrama.")
+        return True
+
     def indexar_base(self) -> None:
         """Constrói o índice por nome da base, com barra e Cancelar, sem sair da janela (S-532).
 
