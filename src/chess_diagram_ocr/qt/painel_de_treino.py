@@ -23,6 +23,7 @@ import logging
 import threading
 from collections.abc import Callable, Sequence
 from datetime import date
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -158,9 +159,12 @@ class PerdaDoLance(QObject):
             return guardadas[chave], regua.avaliacao_em_centipeoes(seguinte.score_cp, seguinte.mate_in)
 
         tarefa = Tarefa(_trabalho, parent=self, nome="perda do lance")
-        tarefa.pronto.connect(lambda par, f=ficha: self.pronta.emit(f, int(par[0]), int(par[1])))
-        tarefa.falhou.connect(lambda mensagem, _e, f=ficha: self.falhou.emit(f, str(mensagem)))
-        tarefa.finished.connect(self._terminou)
+        # **Livre quando a resposta chega, e não quando a thread avisa que acabou.** Os dois sinais
+        # chegam em fila, a resposta primeiro: quem recebia a nota e errava de novo antes do
+        # `finished` era recusado como "ocupado" -- e a CI acusava isso uma vez em duas.
+        tarefa.pronto.connect(partial(self._chegou, tarefa, ficha))
+        tarefa.falhou.connect(partial(self._nao_chegou, tarefa, ficha))
+        tarefa.finished.connect(partial(self._acabou, tarefa))
         self._tarefa = tarefa
         tarefa.start()
         return True
@@ -169,10 +173,21 @@ class PerdaDoLance(QObject):
         tarefa = self._tarefa
         return True if tarefa is None else bool(tarefa.wait(espera_ms))
 
-    def _terminou(self) -> None:
-        tarefa, self._tarefa = self._tarefa, None
-        if tarefa is not None:
-            tarefa.deleteLater()
+    def _livre(self, tarefa: Tarefa) -> None:
+        if self._tarefa is tarefa:
+            self._tarefa = None
+
+    def _chegou(self, tarefa: Tarefa, ficha: Any, par: tuple[int, int]) -> None:
+        self._livre(tarefa)
+        self.pronta.emit(ficha, int(par[0]), int(par[1]))
+
+    def _nao_chegou(self, tarefa: Tarefa, ficha: Any, mensagem: str, _erro: object) -> None:
+        self._livre(tarefa)
+        self.falhou.emit(ficha, str(mensagem))
+
+    def _acabou(self, tarefa: Tarefa) -> None:
+        self._livre(tarefa)
+        tarefa.deleteLater()
 
 
 class ExtratorDeTaticas(QObject):

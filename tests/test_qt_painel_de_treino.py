@@ -327,8 +327,13 @@ class PerdaDoLanceTests(unittest.TestCase):
         with EngineAnalyzer(self.launcher, movetime_ms=50) as motor:
             medidor = qt_treino.PerdaDoLance(analisador=motor)
             medidor.pronta.connect(lambda ficha, perda: respostas.append((ficha, perda)))
+            # Livre **quando a nota chega**: o `finished` da tarefa vem depois na fila, e quem errava
+            # de novo nesse intervalo era recusado -- a CI do PR #46 pegou isso uma vez em duas.
+            livre_na_resposta: list[bool] = []
+            medidor.pronta.connect(lambda *_: livre_na_resposta.append(not medidor.ocupado))
             self.assertTrue(medidor.pedir(chess.Board(), chess.Move.from_uci("e2e4"), "um"))
             self.assertTrue(_girar(self.app, lambda: bool(respostas)))
+            self.assertEqual([True], livre_na_resposta)
             self.assertEqual("um", respostas[0][0])
             self.assertGreaterEqual(respostas[0][1], 0)
             guardadas = len(medidor._antes)
