@@ -551,6 +551,16 @@ em 26 folhas); uma folha escaneada da prata, ~272 (4.084 em 15). Um livro de 300
   que a melhora vale para livro novo, e não só para os sete que já usamos. Custa: escolher e copiar os
   PDFs. Se disser não: os portões rodam num teste "provisório", com os mesmos livros, e a promessa fica
   rotulada assim.
+  **Recebidos em 2026-10-30:** 76 PDFs em `PDF Digitais/`, fora do git como o `PDF/`. O inventário,
+  feito sem leitor nenhum (metadados, famílias de fonte e o perfil de admissão da S-702), separou:
+  12 fora (6 livros de scan, 2 com produtor de OCR, 1 sem camada de texto, 1 com camada sem prosa
+  legível, o próprio Dvoretsky e o original em inglês do *400 Quebra-cabeças*); 11 com o produtor e as
+  fontes do Dvoretsky, que vão ao estrato *fonte vista* e não contam para os 12; 17 que repetem a série
+  de outro, porque o teste leva um livro por série; e **36 livros independentes**: 33 em inglês, 2 em
+  português e 1 em espanhol. Dos 36, 25 são ebook convertido pelo calibre, um estrato a declarar no
+  manifesto. A D6 está atendida em número e em línguas, com o espanhol num livro só e de pouca prosa.
+  A lista livro a livro fica em `dados/2026-10-30/d6_inventario.tsv` da skill, fora do repositório.
+  Falta a S-702: sortear os livros e as folhas do teste antes de qualquer leitura.
 - **Antes de a fusão virar padrão (~dezembro) — D1, D4 e D9.** Levar o Tesseract no instalador (+~48 MB
   e as licenças dele); aceitar que ler a folha com texto fique ~2–3× mais lento; e dizer quem escreve o
   livro exportado (seção 7).
@@ -1516,7 +1526,7 @@ dono não responder até lá — e o recuo **cumpre o próprio portão**, rotula
 | **D3** | Horas humanas para o scan-ouro | sim, ~15 h (30 folhas e a dupla digitação de 6) | começa no primeiro dia; precisa estar pronto antes do G104 | o G104 não fecha (M3/M4 sem número), e o produto sai dizendo que o erro de scan não foi medido | ~15 h humanas |
 | **D4** | Aceitar o orçamento do G4 (a leitura com fusão custa ~2–3× a do glifo, e pela política da S-215 isso pode tirar o texto da varredura padrão) | sim | antes do G102 | a fusão fica atrás de interruptor e não vira padrão | varredura de livro inteiro mais lenta (seção 3, G4) |
 | **D5** | Fontes, livros do acervo e **pesos derivados** (o `traineddata` ajustado da S-745, o modelo da Fase 105) | uso local; peso derivado de livro comercial **não** vai no instalador sem decisão expressa | antes da S-746 | os pesos ficam fora do bundle | licença das fontes comerciais e dos livros |
-| **D6** | Trazer ≥ 12 livros digitais novos (nascidos digitais, com prosa, ≥ 3 línguas; 8 é o mínimo) para o ouro-teste | **sim** | antes do G102 | os portões G102 e G103 rodam no **teste provisório** (folhas nunca lidas dos 7 livros dev), com o teto recalculado por `amostra.py` para 7 livros e todo número rotulado "provisório (livro visto)"; o G107 não fecha sem eles | trazer os PDFs |
+| **D6** | Trazer ≥ 12 livros digitais novos (nascidos digitais, com prosa, ≥ 3 línguas; 8 é o mínimo) para o ouro-teste — **entregue em 2026-10-30**: 36 independentes (seção 5a) | **sim** | antes do G102 | os portões G102 e G103 rodam no **teste provisório** (folhas nunca lidas dos 7 livros dev), com o teto recalculado por `amostra.py` para 7 livros e todo número rotulado "provisório (livro visto)"; o G107 não fecha sem eles | trazer os PDFs |
 | **D7** | Downloads da escada e do dataset: `tesstrain`, modelo PP-OCR latino, `frak2021` (se houver Fraktur), fontes completas, corpus de domínio público | sim, um a um, com **nome, origem, tamanho e licença** declarados | antes do item que o usa | o degrau da S-745 que depende dele é pulado e registrado | variável |
 | **D8** | Orçamento de CPU da Fase 105 (dezenas de horas por corrida, várias corridas) | decidir depois da corrida-piloto da S-752 | antes da S-750 | a Fase 105 não começa; vale o plano B da seção 3 | horas de CPU desta máquina |
 | **D9** | Quem escreve o livro exportado: o tronco envia as folhas lidas pelo leitor novo à suíte, ou a suíte adota a fusão que vencer na S-707 | o que a S-707 medir melhor | antes da S-765 | o livro exportado continua com o motor da suíte, e o relatório diz | coordenação entre os dois repositórios |
