@@ -1384,6 +1384,11 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   jogador e ECO, arvore de aberturas), analise de partida, treino de taticas do proprio acervo,
   exportacao EPUB/DOCX para quem edita material, e OCR em lote na janela.
 - [docs/SPEC_SUITE.md](docs/SPEC_SUITE.md) -- especificacao das Fases 80 a 86 (S-527 a S-580), item a item.
+- [docs/ROADMAP_TEXTO_PRECISO.md](docs/ROADMAP_TEXTO_PRECISO.md) -- **Fases 100 a 107** (S-700 a
+  S-772), a prosa lida com precisao de livro: a regua que separa prosa de notacao, medida em
+  2026-10-30 (`docs/metrics/texto_prosa_20261030.json`: glifo 3,61% de CER de prosa no ouro digital,
+  Tesseract nas mesmas linhas 1,33%, e 0,16% nas linhas certas), as folhas que somem em silencio, a
+  prosa da camada nos livros digitais e o leitor de linha ao lado do glifo
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

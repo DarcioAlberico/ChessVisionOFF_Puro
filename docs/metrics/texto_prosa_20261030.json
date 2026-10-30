@@ -1,0 +1,6249 @@
+{
+ "item": "Fase 100 (linha de base) -- docs/ROADMAP_TEXTO_PRECISO.md",
+ "medido_em": "2026-10-30",
+ "medicao": "quarta medicao (rodada 9: hipotese e referencia montadas como o produto -- cabecalho e rodape so quando nenhuma linha de coluna os cobre; a montagem anterior duplicava o cabecalho) com a terceira regua (rodada 4: lance com reticencia, simbolo Informator, fileira de coordenadas em fonte, descritiva, cirilico, captura com X e : passam a notacao/outro) sobre a segunda medicao (rodada 1: linhas da camada que cruzam diagrama fora da referencia; separador entre tokens de prosa e prosa; WER (S+D+I)/N; IC95 em dois niveis; oraculo em linhas visuais justas a tinta; degradado nas MESMAS folhas do ouro; fusao_v4)",
+ "pergunta": "Quanto o OCR de texto erra na PROSA (texto que nao e lance nem avaliacao), por motor, e onde?",
+ "commit": "0be1b93ddd5ea5caadddfaf3b5bef06f9e8f3e6e",
+ "arvore_suja_em": [
+  "src/chess_diagram_ocr/qt/foco_a_vista.py"
+ ],
+ "modelo": "models/char_classifier.pt",
+ "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
+ "tesseract": "tesseract v5.5.0.20241111",
+ "tessdata": {
+  "variante": "fast",
+  "eng": "7d4322bd2a774972",
+  "por": "c4932b937207a951",
+  "deu": "19d219bbb6672c86",
+  "spa": "6f2e04d02774a18f",
+  "nld": "ced0e5e046a84c90",
+  "fra": "ced037562e8c80c1"
+ },
+ "rapidocr": "rapidocr_onnxruntime, ch_PP-OCRv4_rec_infer.onnx, so reconhecimento (use_det=False)",
+ "dpi": 220,
+ "scripts_sha256": {
+  "ablacao.py": "c2303590a11ee8b3",
+  "admissao.py": "7843041a139fd030",
+  "amostra.py": "6d02312d6c000911",
+  "banco.py": "9857cbee6af253dc",
+  "cobertura.py": "1340253ba195e48b",
+  "degradar.py": "0cfe7a74f4c10f5a",
+  "filtrar.py": "f133494cfc3cc4e3",
+  "fusao_v5.py": "3a8784e716dadaee",
+  "inspec.py": "9ab30b78fa830ca0",
+  "publicar.py": "686385d58598a2ba",
+  "refazer.py": "45c32331a7e7b6cc",
+  "repontuar.py": "a89722f5bec12bb5",
+  "reproduzir.py": "ef88c50798925677",
+  "resumo.py": "0f110be8e6da872f",
+  "rodar.py": "41d37558464aa3ea",
+  "tess_pagina.py": "70e5eed787f3290f"
+ },
+ "scripts_onde": "~/.claude/skills/ocr-texto-preciso/scripts/; a migracao do roadmap os leva ao repositorio em docs/metrics/texto_prosa_2026-10-30/ e o sha identifica a versao",
+ "split": "TODOS os livros digitais aqui sao DEV e dev contaminado: a regua, a taxonomia e as regras de fusao foram desenhadas olhando para eles. Nenhum numero deste relatorio decide portao.",
+ "referencia": "camada de texto montada por text.leitor.ler_pagina(motor='camada'), sem as linhas que cruzam retangulo de diagrama; ouro = livros nascidos digitais",
+ "motores": {
+  "glifo": "producao: ler_pagina(motor='glifo') com todos os padroes",
+  "tess": "Tesseract --psm 7 em cada caixa de linha que o GLIFO achou (mesmo leiaute)",
+  "rapid": "RapidOCR so-reconhecimento nas mesmas caixas (sem acento: modelo chines+ingles)",
+  "fusao": "por linha: notacao de QUALQUER lado -> glifo; prosa -> Tesseract",
+  "fusao_rapid": "idem com RapidOCR",
+  "fusao_v2": "glifo so onde ELE ve figurina (com o numero de lance do Tesseract); resto do Tesseract",
+  "fusao_v3": "fusao_v2 + veto: se o Tesseract leu ali palavra so de letras, a palavra vence a figurina",
+  "fusao_v4": "fusao (notacao de qualquer lado -> glifo) + o veto de palavra so-de-letras da v3",
+  "fusao_v5": "v4 com veto so por palavra que existe (lexico + palavras funcionais curtas de 6 linguas) e numero de lance do Tesseract so quando o glifo o partiu: a regra recomendada para comecar a S-721",
+  "tess_pagina": "Tesseract na PAGINA inteira com o leiaute dele (psm 3), diagramas pintados de branco",
+  "tess_oraculo": "Tesseract nas linhas VISUAIS da camada: cada linha da camada apertada a tinta, e juntada so a IMEDIATAMENTE anterior quando esta a direita dela a menos de uma altura"
+ },
+ "normalizacoes": {
+  "tip": "NFC; aspas/travessoes/ligaduras para ASCII; figurina -> letra da lingua; hifen de quebra juntado",
+  "cru": "NFC; hifen de quebra juntado; nada mais"
+ },
+ "classes_de_token": "notacao = figurina; lance SAN, longo ou com reticencia; numero de lance; avaliacao, inclusive simbolo Informator como a fonte o codifica; resultado; roque; letra de peca solta; descritiva (P-K4, TXPTR); peca em cirilico; captura com x, X, : e o sinal de multiplicacao; prosa = token com letra que nao e notacao (o separador entre dois tokens de prosa e prosa); outro = sem letra, ou so letras acentuadas de fonte de diagrama",
+ "estatistica": "IC95 por bootstrap em dois niveis (livros com reposicao, folhas com reposicao dentro do livro), 2000 reamostras, semente 7; pares = diferenca pareada nas mesmas folhas",
+ "conjuntos": {
+  "ouro_dev_completo": {
+   "folhas": 28,
+   "livros": [
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
+    "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf",
+    "📚Chess Evolution 2013 №045-096.pdf",
+    "📚Hertan Charles. Forcing Chess Moves.pdf"
+   ],
+   "caracteres_de_prosa": 32407,
+   "palavras_de_prosa": 5647,
+   "caracteres_de_notacao": 5753,
+   "linhas_da_camada_fora_por_cruzar_diagrama": 24,
+   "segundos_por_folha": {
+    "camada": 0.41,
+    "glifo": 0.76,
+    "tess": 0.83,
+    "rapid": 2.73
+   },
+   "motores": {
+    "glifo": {
+     "tip": {
+      "cer_prosa": 0.1294,
+      "ic95_prosa_dois_niveis": [
+       0.0129,
+       0.3488
+      ],
+      "wer_prosa_sdi": 0.2072,
+      "wer_partes": {
+       "s": 484,
+       "d": 649,
+       "i": 37,
+       "n": 5647
+      },
+      "cer_notacao": 0.2086,
+      "cer_espaco": 0.2886,
+      "insercoes": 541,
+      "figurina_revocacao": 0.7355,
+      "figurina_precisao": 0.8734
+     },
+     "cru": {
+      "cer_prosa": 0.1309,
+      "ic95_prosa_dois_niveis": [
+       0.0141,
+       0.3491
+      ],
+      "wer_prosa_sdi": 0.2112,
+      "wer_partes": {
+       "s": 513,
+       "d": 649,
+       "i": 31,
+       "n": 5650
+      },
+      "cer_notacao": 0.265,
+      "cer_espaco": 0.2971,
+      "insercoes": 617,
+      "figurina_revocacao": 0.1938,
+      "figurina_precisao": 1.0
+     }
+    },
+    "tess": {
+     "tip": {
+      "cer_prosa": 0.1088,
+      "ic95_prosa_dois_niveis": [
+       0.0006,
+       0.3329
+      ],
+      "wer_prosa_sdi": 0.1234,
+      "wer_partes": {
+       "s": 48,
+       "d": 630,
+       "i": 19,
+       "n": 5647
+      },
+      "cer_notacao": 0.2826,
+      "cer_espaco": 0.2474,
+      "insercoes": 189,
+      "figurina_revocacao": 0.1579,
+      "figurina_precisao": 0.7317
+     },
+     "cru": {
+      "cer_prosa": 0.1093,
+      "ic95_prosa_dois_niveis": [
+       0.0009,
+       0.333
+      ],
+      "wer_prosa_sdi": 0.1248,
+      "wer_partes": {
+       "s": 56,
+       "d": 630,
+       "i": 19,
+       "n": 5650
+      },
+      "cer_notacao": 0.2905,
+      "cer_espaco": 0.2515,
+      "insercoes": 247,
+      "figurina_revocacao": 0.2058,
+      "figurina_precisao": 0.7362
+     }
+    },
+    "rapid": {
+     "tip": {
+      "cer_prosa": 0.1212,
+      "ic95_prosa_dois_niveis": [
+       0.013,
+       0.3384
+      ],
+      "wer_prosa_sdi": 0.1861,
+      "wer_partes": {
+       "s": 411,
+       "d": 631,
+       "i": 9,
+       "n": 5647
+      },
+      "cer_notacao": 0.2359,
+      "cer_espaco": 0.2507,
+      "insercoes": 95,
+      "figurina_revocacao": 0.1566,
+      "figurina_precisao": 0.9835
+     },
+     "cru": {
+      "cer_prosa": 0.123,
+      "ic95_prosa_dois_niveis": [
+       0.0157,
+       0.3393
+      ],
+      "wer_prosa_sdi": 0.1935,
+      "wer_partes": {
+       "s": 453,
+       "d": 631,
+       "i": 9,
+       "n": 5650
+      },
+      "cer_notacao": 0.2426,
+      "cer_espaco": 0.2525,
+      "insercoes": 127,
+      "figurina_revocacao": 0.2041,
+      "figurina_precisao": 0.9835
+     }
+    },
+    "fusao": {
+     "tip": {
+      "cer_prosa": 0.1082,
+      "ic95_prosa_dois_niveis": [
+       0.0011,
+       0.3283
+      ],
+      "wer_prosa_sdi": 0.1247,
+      "wer_partes": {
+       "s": 55,
+       "d": 628,
+       "i": 21,
+       "n": 5647
+      },
+      "cer_notacao": 0.2195,
+      "cer_espaco": 0.2858,
+      "insercoes": 362,
+      "figurina_revocacao": 0.7079,
+      "figurina_precisao": 0.8663
+     },
+     "cru": {
+      "cer_prosa": 0.1086,
+      "ic95_prosa_dois_niveis": [
+       0.0013,
+       0.3287
+      ],
+      "wer_prosa_sdi": 0.1251,
+      "wer_partes": {
+       "s": 64,
+       "d": 628,
+       "i": 15,
+       "n": 5650
+      },
+      "cer_notacao": 0.2744,
+      "cer_espaco": 0.2881,
+      "insercoes": 414,
+      "figurina_revocacao": 0.1938,
+      "figurina_precisao": 1.0
+     }
+    },
+    "fusao_rapid": {
+     "tip": {
+      "cer_prosa": 0.1215,
+      "ic95_prosa_dois_niveis": [
+       0.0135,
+       0.3373
+      ],
+      "wer_prosa_sdi": 0.1886,
+      "wer_partes": {
+       "s": 415,
+       "d": 632,
+       "i": 18,
+       "n": 5647
+      },
+      "cer_notacao": 0.2089,
+      "cer_espaco": 0.2839,
+      "insercoes": 268,
+      "figurina_revocacao": 0.7092,
+      "figurina_precisao": 0.8652
+     },
+     "cru": {
+      "cer_prosa": 0.1232,
+      "ic95_prosa_dois_niveis": [
+       0.016,
+       0.3391
+      ],
+      "wer_prosa_sdi": 0.1958,
+      "wer_partes": {
+       "s": 460,
+       "d": 630,
+       "i": 16,
+       "n": 5650
+      },
+      "cer_notacao": 0.2608,
+      "cer_espaco": 0.2848,
+      "insercoes": 309,
+      "figurina_revocacao": 0.1938,
+      "figurina_precisao": 1.0
+     }
+    },
+    "fusao_v2": {
+     "tip": {
+      "cer_prosa": 0.1082,
+      "ic95_prosa_dois_niveis": [
+       0.001,
+       0.3283
+      ],
+      "wer_prosa_sdi": 0.1241,
+      "wer_partes": {
+       "s": 50,
+       "d": 629,
+       "i": 22,
+       "n": 5647
+      },
+      "cer_notacao": 0.2228,
+      "cer_espaco": 0.328,
+      "insercoes": 508,
+      "figurina_revocacao": 0.7171,
+      "figurina_precisao": 0.8692
+     },
+     "cru": {
+      "cer_prosa": 0.1086,
+      "ic95_prosa_dois_niveis": [
+       0.0011,
+       0.3285
+      ],
+      "wer_prosa_sdi": 0.1242,
+      "wer_partes": {
+       "s": 59,
+       "d": 629,
+       "i": 14,
+       "n": 5650
+      },
+      "cer_notacao": 0.2811,
+      "cer_espaco": 0.3374,
+      "insercoes": 564,
+      "figurina_revocacao": 0.2058,
+      "figurina_precisao": 0.9836
+     }
+    },
+    "fusao_v3": {
+     "tip": {
+      "cer_prosa": 0.1079,
+      "ic95_prosa_dois_niveis": [
+       0.0007,
+       0.3279
+      ],
+      "wer_prosa_sdi": 0.1238,
+      "wer_partes": {
+       "s": 47,
+       "d": 629,
+       "i": 23,
+       "n": 5647
+      },
+      "cer_notacao": 0.2281,
+      "cer_espaco": 0.328,
+      "insercoes": 511,
+      "figurina_revocacao": 0.7053,
+      "figurina_precisao": 0.8758
+     },
+     "cru": {
+      "cer_prosa": 0.1083,
+      "ic95_prosa_dois_niveis": [
+       0.0009,
+       0.3285
+      ],
+      "wer_prosa_sdi": 0.1237,
+      "wer_partes": {
+       "s": 56,
+       "d": 629,
+       "i": 14,
+       "n": 5650
+      },
+      "cer_notacao": 0.2852,
+      "cer_espaco": 0.3374,
+      "insercoes": 567,
+      "figurina_revocacao": 0.2058,
+      "figurina_precisao": 0.96
+     }
+    },
+    "fusao_v4": {
+     "tip": {
+      "cer_prosa": 0.1077,
+      "ic95_prosa_dois_niveis": [
+       0.0007,
+       0.3278
+      ],
+      "wer_prosa_sdi": 0.1236,
+      "wer_partes": {
+       "s": 48,
+       "d": 628,
+       "i": 22,
+       "n": 5647
+      },
+      "cer_notacao": 0.2268,
+      "cer_espaco": 0.2863,
+      "insercoes": 367,
+      "figurina_revocacao": 0.6961,
+      "figurina_precisao": 0.8729
+     },
+     "cru": {
+      "cer_prosa": 0.1081,
+      "ic95_prosa_dois_niveis": [
+       0.0009,
+       0.3281
+      ],
+      "wer_prosa_sdi": 0.1241,
+      "wer_partes": {
+       "s": 57,
+       "d": 628,
+       "i": 16,
+       "n": 5650
+      },
+      "cer_notacao": 0.2806,
+      "cer_espaco": 0.2886,
+      "insercoes": 419,
+      "figurina_revocacao": 0.1938,
+      "figurina_precisao": 0.9741
+     }
+    },
+    "tess_oraculo": {
+     "tip": {
+      "cer_prosa": 0.0029,
+      "ic95_prosa_dois_niveis": [
+       0.0006,
+       0.0068
+      ],
+      "wer_prosa_sdi": 0.0149,
+      "wer_partes": {
+       "s": 54,
+       "d": 4,
+       "i": 26,
+       "n": 5647
+      },
+      "cer_notacao": 0.1808,
+      "cer_espaco": 0.1095,
+      "insercoes": 140,
+      "figurina_revocacao": 0.1697,
+      "figurina_precisao": 0.6935
+     },
+     "cru": {
+      "cer_prosa": 0.0034,
+      "ic95_prosa_dois_niveis": [
+       0.0008,
+       0.0074
+      ],
+      "wer_prosa_sdi": 0.0165,
+      "wer_partes": {
+       "s": 63,
+       "d": 4,
+       "i": 26,
+       "n": 5650
+      },
+      "cer_notacao": 0.1885,
+      "cer_espaco": 0.113,
+      "insercoes": 194,
+      "figurina_revocacao": 0.2213,
+      "figurina_precisao": 0.6935
+     }
+    },
+    "fusao_v5": {
+     "tip": {
+      "cer_prosa": 0.1081,
+      "ic95_prosa_dois_niveis": [
+       0.001,
+       0.3282
+      ],
+      "wer_prosa_sdi": 0.1247,
+      "wer_partes": {
+       "s": 54,
+       "d": 626,
+       "i": 24,
+       "n": 5647
+      },
+      "cer_notacao": 0.2199,
+      "cer_espaco": 0.2919,
+      "insercoes": 459,
+      "figurina_revocacao": 0.7171,
+      "figurina_precisao": 0.8678
+     },
+     "cru": {
+      "cer_prosa": 0.1086,
+      "ic95_prosa_dois_niveis": [
+       0.0012,
+       0.3285
+      ],
+      "wer_prosa_sdi": 0.1246,
+      "wer_partes": {
+       "s": 63,
+       "d": 626,
+       "i": 15,
+       "n": 5650
+      },
+      "cer_notacao": 0.2758,
+      "cer_espaco": 0.2943,
+      "insercoes": 530,
+      "figurina_revocacao": 0.1938,
+      "figurina_precisao": 0.9826
+     }
+    },
+    "tess_pagina": {
+     "tip": {
+      "cer_prosa": 0.0225,
+      "ic95_prosa_dois_niveis": [
+       0.0183,
+       0.0273
+      ],
+      "wer_prosa_sdi": 0.0321,
+      "wer_partes": {
+       "s": 59,
+       "d": 4,
+       "i": 118,
+       "n": 5647
+      },
+      "cer_notacao": 0.2187,
+      "cer_espaco": 0.6393,
+      "insercoes": 2291,
+      "figurina_revocacao": 0.1684,
+      "figurina_precisao": 0.7399
+     },
+     "cru": {
+      "cer_prosa": 0.0233,
+      "ic95_prosa_dois_niveis": [
+       0.0188,
+       0.0286
+      ],
+      "wer_prosa_sdi": 0.0335,
+      "wer_partes": {
+       "s": 68,
+       "d": 3,
+       "i": 118,
+       "n": 5650
+      },
+      "cer_notacao": 0.2291,
+      "cer_espaco": 0.6474,
+      "insercoes": 2356,
+      "figurina_revocacao": 0.2196,
+      "figurina_precisao": 0.7399
+     }
+    }
+   },
+   "pares": {
+    "fusao_v5 - glifo (prosa)": {
+     "pp": -2.13,
+     "ic95_pp": [
+      -3.72,
+      -0.87
+     ],
+     "folhas_melhores": 25,
+     "folhas_piores": 2
+    },
+    "fusao_v5 - glifo (notacao)": {
+     "pp": 1.13,
+     "ic95_pp": [
+      -0.44,
+      2.63
+     ],
+     "folhas_melhores": 8,
+     "folhas_piores": 10
+    },
+    "fusao_v5 - tess (prosa)": {
+     "pp": -0.07,
+     "ic95_pp": [
+      -0.47,
+      0.11
+     ],
+     "folhas_melhores": 1,
+     "folhas_piores": 7
+    },
+    "fusao_v5 - tess (notacao)": {
+     "pp": -6.27,
+     "ic95_pp": [
+      -10.95,
+      -2.02
+     ],
+     "folhas_melhores": 18,
+     "folhas_piores": 5
+    },
+    "fusao_v5 - fusao (prosa)": {
+     "pp": -0.01,
+     "ic95_pp": [
+      -0.11,
+      0.09
+     ],
+     "folhas_melhores": 4,
+     "folhas_piores": 2
+    },
+    "fusao_v5 - fusao (notacao)": {
+     "pp": 0.03,
+     "ic95_pp": [
+      -0.28,
+      0.36
+     ],
+     "folhas_melhores": 7,
+     "folhas_piores": 4
+    },
+    "fusao_v5 - fusao_v4 (prosa)": {
+     "pp": 0.05,
+     "ic95_pp": [
+      0.01,
+      0.12
+     ],
+     "folhas_melhores": 0,
+     "folhas_piores": 5
+    },
+    "fusao_v5 - fusao_v4 (notacao)": {
+     "pp": -0.7,
+     "ic95_pp": [
+      -1.16,
+      -0.34
+     ],
+     "folhas_melhores": 16,
+     "folhas_piores": 1
+    },
+    "tess - tess_oraculo (prosa)": {
+     "pp": 10.6,
+     "ic95_pp": [
+      -0.03,
+      32.66
+     ],
+     "folhas_melhores": 2,
+     "folhas_piores": 7
+    },
+    "tess - tess_oraculo (notacao)": {
+     "pp": 10.19,
+     "ic95_pp": [
+      -1.66,
+      28.19
+     ],
+     "folhas_melhores": 5,
+     "folhas_piores": 12
+    },
+    "tess - glifo (prosa)": {
+     "pp": -2.06,
+     "ic95_pp": [
+      -3.73,
+      -0.74
+     ],
+     "folhas_melhores": 25,
+     "folhas_piores": 3
+    },
+    "tess - glifo (notacao)": {
+     "pp": 7.4,
+     "ic95_pp": [
+      2.29,
+      11.91
+     ],
+     "folhas_melhores": 4,
+     "folhas_piores": 19
+    },
+    "tess_pagina - tess (prosa)": {
+     "pp": -8.63,
+     "ic95_pp": [
+      -30.78,
+      2.32
+     ],
+     "folhas_melhores": 4,
+     "folhas_piores": 23
+    },
+    "tess_pagina - tess (notacao)": {
+     "pp": -6.4,
+     "ic95_pp": [
+      -22.36,
+      5.75
+     ],
+     "folhas_melhores": 9,
+     "folhas_piores": 12
+    },
+    "tess_pagina - tess_oraculo (prosa)": {
+     "pp": 1.97,
+     "ic95_pp": [
+      1.61,
+      2.43
+     ],
+     "folhas_melhores": 0,
+     "folhas_piores": 28
+    },
+    "tess_pagina - tess_oraculo (notacao)": {
+     "pp": 3.79,
+     "ic95_pp": [
+      -1.13,
+      9.0
+     ],
+     "folhas_melhores": 6,
+     "folhas_piores": 16
+    }
+   },
+   "por_livro": {
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": {
+     "lingua": "eng",
+     "folhas": [
+      155,
+      340,
+      509,
+      677
+     ],
+     "glifo": 0.0187,
+     "tess": 0.0013,
+     "rapid": 0.0011,
+     "fusao": 0.0016,
+     "fusao_rapid": 0.0011,
+     "fusao_v2": 0.0013,
+     "fusao_v3": 0.0013,
+     "fusao_v4": 0.0013,
+     "tess_oraculo": 0.0013,
+     "fusao_v5": 0.0021,
+     "tess_pagina": 0.0335
+    },
+    "📚Hertan Charles. Forcing Chess Moves.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      286,
+      485,
+      643,
+      659
+     ],
+     "glifo": 0.0407,
+     "tess": 0.0087,
+     "rapid": 0.0103,
+     "fusao": 0.0073,
+     "fusao_rapid": 0.0089,
+     "fusao_v2": 0.0087,
+     "fusao_v3": 0.0087,
+     "fusao_v4": 0.0073,
+     "tess_oraculo": 0.0014,
+     "fusao_v5": 0.0089,
+     "tess_pagina": 0.0244
+    },
+    "📚Chess Evolution 2013 №045-096.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      279,
+      578,
+      903,
+      1210
+     ],
+     "glifo": 0.6001,
+     "tess": 0.588,
+     "rapid": 0.5853,
+     "fusao": 0.5819,
+     "fusao_rapid": 0.5824,
+     "fusao_v2": 0.5821,
+     "fusao_v3": 0.5821,
+     "fusao_v4": 0.5819,
+     "tess_oraculo": 0.0112,
+     "fusao_v5": 0.5819,
+     "tess_pagina": 0.027
+    },
+    "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": {
+     "lingua": "por",
+     "folhas": [
+      58,
+      116,
+      186,
+      247
+     ],
+     "glifo": 0.0039,
+     "tess": 0.0009,
+     "rapid": 0.0242,
+     "fusao": 0.0013,
+     "fusao_rapid": 0.0247,
+     "fusao_v2": 0.0009,
+     "fusao_v3": 0.0009,
+     "fusao_v4": 0.0009,
+     "tess_oraculo": 0.0009,
+     "fusao_v5": 0.0013,
+     "tess_pagina": 0.0179
+    },
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": {
+     "lingua": "por",
+     "folhas": [
+      77,
+      165,
+      252,
+      340
+     ],
+     "glifo": 0.0117,
+     "tess": 0.0003,
+     "rapid": 0.0198,
+     "fusao": 0.0003,
+     "fusao_rapid": 0.0215,
+     "fusao_v2": 0.0003,
+     "fusao_v3": 0.0003,
+     "fusao_v4": 0.0003,
+     "tess_oraculo": 0.0012,
+     "fusao_v5": 0.0003,
+     "tess_pagina": 0.0157
+    },
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": {
+     "lingua": "por",
+     "folhas": [
+      112,
+      228,
+      350,
+      435
+     ],
+     "glifo": 0.0692,
+     "tess": 0.001,
+     "rapid": 0.02,
+     "fusao": 0.0057,
+     "fusao_rapid": 0.0252,
+     "fusao_v2": 0.0047,
+     "fusao_v3": 0.0022,
+     "fusao_v4": 0.0022,
+     "tess_oraculo": 0.001,
+     "fusao_v5": 0.0027,
+     "tess_pagina": 0.0225
+    },
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf": {
+     "lingua": "por",
+     "folhas": [
+      172,
+      566,
+      1077,
+      1167
+     ],
+     "glifo": 0.005,
+     "tess": 0.0003,
+     "rapid": 0.0349,
+     "fusao": 0.0003,
+     "fusao_rapid": 0.0349,
+     "fusao_v2": 0.0003,
+     "fusao_v3": 0.0003,
+     "fusao_v4": 0.0003,
+     "tess_oraculo": 0.0,
+     "fusao_v5": 0.0003,
+     "tess_pagina": 0.0174
+    }
+   },
+   "preservacao_de_figurina_do_glifo_na_fusao_v5": {
+    "preservadas": 530,
+    "do_glifo": 536,
+    "fracao": 0.9888
+   }
+  },
+  "ouro_dev_sem_folha_perdida": {
+   "folhas": 26,
+   "livros": [
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
+    "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf",
+    "📚Chess Evolution 2013 №045-096.pdf",
+    "📚Hertan Charles. Forcing Chess Moves.pdf"
+   ],
+   "caracteres_de_prosa": 29270,
+   "palavras_de_prosa": 5058,
+   "caracteres_de_notacao": 5151,
+   "linhas_da_camada_fora_por_cruzar_diagrama": 24,
+   "segundos_por_folha": {
+    "camada": 0.36,
+    "glifo": 0.72,
+    "tess": 0.87,
+    "rapid": 2.94
+   },
+   "motores": {
+    "glifo": {
+     "tip": {
+      "cer_prosa": 0.0361,
+      "ic95_prosa_dois_niveis": [
+       0.013,
+       0.0711
+      ],
+      "wer_prosa_sdi": 0.1149,
+      "wer_partes": {
+       "s": 484,
+       "d": 60,
+       "i": 37,
+       "n": 5058
+      },
+      "cer_notacao": 0.1161,
+      "cer_espaco": 0.2215,
+      "insercoes": 541,
+      "figurina_revocacao": 0.8125,
+      "figurina_precisao": 0.8734
+     },
+     "cru": {
+      "cer_prosa": 0.0379,
+      "ic95_prosa_dois_niveis": [
+       0.0143,
+       0.0736
+      ],
+      "wer_prosa_sdi": 0.1193,
+      "wer_partes": {
+       "s": 513,
+       "d": 60,
+       "i": 31,
+       "n": 5061
+      },
+      "cer_notacao": 0.1775,
+      "cer_espaco": 0.2306,
+      "insercoes": 617,
+      "figurina_revocacao": 0.2211,
+      "figurina_precisao": 1.0
+     }
+    },
+    "tess": {
+     "tip": {
+      "cer_prosa": 0.0133,
+      "ic95_prosa_dois_niveis": [
+       0.0006,
+       0.0427
+      ],
+      "wer_prosa_sdi": 0.0214,
+      "wer_partes": {
+       "s": 48,
+       "d": 41,
+       "i": 19,
+       "n": 5058
+      },
+      "cer_notacao": 0.1988,
+      "cer_espaco": 0.1763,
+      "insercoes": 189,
+      "figurina_revocacao": 0.1744,
+      "figurina_precisao": 0.7317
+     },
+     "cru": {
+      "cer_prosa": 0.0139,
+      "ic95_prosa_dois_niveis": [
+       0.0009,
+       0.0433
+      ],
+      "wer_prosa_sdi": 0.0229,
+      "wer_partes": {
+       "s": 56,
+       "d": 41,
+       "i": 19,
+       "n": 5061
+      },
+      "cer_notacao": 0.206,
+      "cer_espaco": 0.1808,
+      "insercoes": 247,
+      "figurina_revocacao": 0.2348,
+      "figurina_precisao": 0.7362
+     }
+    },
+    "rapid": {
+     "tip": {
+      "cer_prosa": 0.0271,
+      "ic95_prosa_dois_niveis": [
+       0.0126,
+       0.0528
+      ],
+      "wer_prosa_sdi": 0.0913,
+      "wer_partes": {
+       "s": 411,
+       "d": 42,
+       "i": 9,
+       "n": 5058
+      },
+      "cer_notacao": 0.1466,
+      "cer_espaco": 0.18,
+      "insercoes": 95,
+      "figurina_revocacao": 0.173,
+      "figurina_precisao": 0.9835
+     },
+     "cru": {
+      "cer_prosa": 0.0291,
+      "ic95_prosa_dois_niveis": [
+       0.0152,
+       0.0541
+      ],
+      "wer_prosa_sdi": 0.0996,
+      "wer_partes": {
+       "s": 453,
+       "d": 42,
+       "i": 9,
+       "n": 5061
+      },
+      "cer_notacao": 0.1524,
+      "cer_espaco": 0.1818,
+      "insercoes": 127,
+      "figurina_revocacao": 0.2329,
+      "figurina_precisao": 0.9835
+     }
+    },
+    "fusao": {
+     "tip": {
+      "cer_prosa": 0.0126,
+      "ic95_prosa_dois_niveis": [
+       0.0011,
+       0.0387
+      ],
+      "wer_prosa_sdi": 0.0227,
+      "wer_partes": {
+       "s": 55,
+       "d": 39,
+       "i": 21,
+       "n": 5058
+      },
+      "cer_notacao": 0.1283,
+      "cer_espaco": 0.2184,
+      "insercoes": 362,
+      "figurina_revocacao": 0.782,
+      "figurina_precisao": 0.8663
+     },
+     "cru": {
+      "cer_prosa": 0.0132,
+      "ic95_prosa_dois_niveis": [
+       0.0014,
+       0.0395
+      ],
+      "wer_prosa_sdi": 0.0233,
+      "wer_partes": {
+       "s": 64,
+       "d": 39,
+       "i": 15,
+       "n": 5061
+      },
+      "cer_notacao": 0.188,
+      "cer_espaco": 0.2208,
+      "insercoes": 414,
+      "figurina_revocacao": 0.2211,
+      "figurina_precisao": 1.0
+     }
+    },
+    "fusao_rapid": {
+     "tip": {
+      "cer_prosa": 0.0274,
+      "ic95_prosa_dois_niveis": [
+       0.0131,
+       0.0516
+      ],
+      "wer_prosa_sdi": 0.0941,
+      "wer_partes": {
+       "s": 415,
+       "d": 43,
+       "i": 18,
+       "n": 5058
+      },
+      "cer_notacao": 0.1165,
+      "cer_espaco": 0.2163,
+      "insercoes": 268,
+      "figurina_revocacao": 0.7834,
+      "figurina_precisao": 0.8652
+     },
+     "cru": {
+      "cer_prosa": 0.0293,
+      "ic95_prosa_dois_niveis": [
+       0.0157,
+       0.0531
+      ],
+      "wer_prosa_sdi": 0.1022,
+      "wer_partes": {
+       "s": 460,
+       "d": 41,
+       "i": 16,
+       "n": 5061
+      },
+      "cer_notacao": 0.1727,
+      "cer_espaco": 0.2171,
+      "insercoes": 309,
+      "figurina_revocacao": 0.2211,
+      "figurina_precisao": 1.0
+     }
+    },
+    "fusao_v2": {
+     "tip": {
+      "cer_prosa": 0.0126,
+      "ic95_prosa_dois_niveis": [
+       0.0009,
+       0.0387
+      ],
+      "wer_prosa_sdi": 0.0221,
+      "wer_partes": {
+       "s": 50,
+       "d": 40,
+       "i": 22,
+       "n": 5058
+      },
+      "cer_notacao": 0.132,
+      "cer_espaco": 0.2645,
+      "insercoes": 508,
+      "figurina_revocacao": 0.7922,
+      "figurina_precisao": 0.8692
+     },
+     "cru": {
+      "cer_prosa": 0.0132,
+      "ic95_prosa_dois_niveis": [
+       0.001,
+       0.0398
+      ],
+      "wer_prosa_sdi": 0.0223,
+      "wer_partes": {
+       "s": 59,
+       "d": 40,
+       "i": 14,
+       "n": 5061
+      },
+      "cer_notacao": 0.1955,
+      "cer_espaco": 0.2748,
+      "insercoes": 564,
+      "figurina_revocacao": 0.2348,
+      "figurina_precisao": 0.9836
+     }
+    },
+    "fusao_v3": {
+     "tip": {
+      "cer_prosa": 0.0123,
+      "ic95_prosa_dois_niveis": [
+       0.0007,
+       0.0385
+      ],
+      "wer_prosa_sdi": 0.0217,
+      "wer_partes": {
+       "s": 47,
+       "d": 40,
+       "i": 23,
+       "n": 5058
+      },
+      "cer_notacao": 0.1378,
+      "cer_espaco": 0.2645,
+      "insercoes": 511,
+      "figurina_revocacao": 0.7791,
+      "figurina_precisao": 0.8758
+     },
+     "cru": {
+      "cer_prosa": 0.0128,
+      "ic95_prosa_dois_niveis": [
+       0.0009,
+       0.0395
+      ],
+      "wer_prosa_sdi": 0.0217,
+      "wer_partes": {
+       "s": 56,
+       "d": 40,
+       "i": 14,
+       "n": 5061
+      },
+      "cer_notacao": 0.2,
+      "cer_espaco": 0.2748,
+      "insercoes": 567,
+      "figurina_revocacao": 0.2348,
+      "figurina_precisao": 0.96
+     }
+    },
+    "fusao_v4": {
+     "tip": {
+      "cer_prosa": 0.012,
+      "ic95_prosa_dois_niveis": [
+       0.0007,
+       0.0382
+      ],
+      "wer_prosa_sdi": 0.0216,
+      "wer_partes": {
+       "s": 48,
+       "d": 39,
+       "i": 22,
+       "n": 5058
+      },
+      "cer_notacao": 0.1365,
+      "cer_espaco": 0.2189,
+      "insercoes": 367,
+      "figurina_revocacao": 0.7689,
+      "figurina_precisao": 0.8729
+     },
+     "cru": {
+      "cer_prosa": 0.0126,
+      "ic95_prosa_dois_niveis": [
+       0.0009,
+       0.0392
+      ],
+      "wer_prosa_sdi": 0.0221,
+      "wer_partes": {
+       "s": 57,
+       "d": 39,
+       "i": 16,
+       "n": 5061
+      },
+      "cer_notacao": 0.1949,
+      "cer_espaco": 0.2213,
+      "insercoes": 419,
+      "figurina_revocacao": 0.2211,
+      "figurina_precisao": 0.9741
+     }
+    },
+    "tess_oraculo": {
+     "tip": {
+      "cer_prosa": 0.0016,
+      "ic95_prosa_dois_niveis": [
+       0.0006,
+       0.0035
+      ],
+      "wer_prosa_sdi": 0.0105,
+      "wer_partes": {
+       "s": 33,
+       "d": 4,
+       "i": 16,
+       "n": 5058
+      },
+      "cer_notacao": 0.1856,
+      "cer_espaco": 0.1193,
+      "insercoes": 109,
+      "figurina_revocacao": 0.1744,
+      "figurina_precisao": 0.6897
+     },
+     "cru": {
+      "cer_prosa": 0.0022,
+      "ic95_prosa_dois_niveis": [
+       0.0008,
+       0.0043
+      ],
+      "wer_prosa_sdi": 0.0121,
+      "wer_partes": {
+       "s": 41,
+       "d": 4,
+       "i": 16,
+       "n": 5061
+      },
+      "cer_notacao": 0.1943,
+      "cer_espaco": 0.1231,
+      "insercoes": 162,
+      "figurina_revocacao": 0.2348,
+      "figurina_precisao": 0.6897
+     }
+    },
+    "fusao_v5": {
+     "tip": {
+      "cer_prosa": 0.0125,
+      "ic95_prosa_dois_niveis": [
+       0.0009,
+       0.0386
+      ],
+      "wer_prosa_sdi": 0.0227,
+      "wer_partes": {
+       "s": 54,
+       "d": 37,
+       "i": 24,
+       "n": 5058
+      },
+      "cer_notacao": 0.1287,
+      "cer_espaco": 0.2251,
+      "insercoes": 459,
+      "figurina_revocacao": 0.7922,
+      "figurina_precisao": 0.8678
+     },
+     "cru": {
+      "cer_prosa": 0.0131,
+      "ic95_prosa_dois_niveis": [
+       0.0012,
+       0.0396
+      ],
+      "wer_prosa_sdi": 0.0227,
+      "wer_partes": {
+       "s": 63,
+       "d": 37,
+       "i": 15,
+       "n": 5061
+      },
+      "cer_notacao": 0.1896,
+      "cer_espaco": 0.2275,
+      "insercoes": 530,
+      "figurina_revocacao": 0.2211,
+      "figurina_precisao": 0.9826
+     }
+    },
+    "tess_pagina": {
+     "tip": {
+      "cer_prosa": 0.0218,
+      "ic95_prosa_dois_niveis": [
+       0.0178,
+       0.0269
+      ],
+      "wer_prosa_sdi": 0.0249,
+      "wer_partes": {
+       "s": 38,
+       "d": 4,
+       "i": 84,
+       "n": 5058
+      },
+      "cer_notacao": 0.2058,
+      "cer_espaco": 0.6509,
+      "insercoes": 1897,
+      "figurina_revocacao": 0.173,
+      "figurina_precisao": 0.7301
+     },
+     "cru": {
+      "cer_prosa": 0.0225,
+      "ic95_prosa_dois_niveis": [
+       0.0181,
+       0.0282
+      ],
+      "wer_prosa_sdi": 0.0263,
+      "wer_partes": {
+       "s": 46,
+       "d": 3,
+       "i": 84,
+       "n": 5061
+      },
+      "cer_notacao": 0.2173,
+      "cer_espaco": 0.6597,
+      "insercoes": 1961,
+      "figurina_revocacao": 0.2329,
+      "figurina_precisao": 0.7301
+     }
+    }
+   },
+   "pares": {
+    "fusao_v5 - glifo (prosa)": {
+     "pp": -2.36,
+     "ic95_pp": [
+      -4.17,
+      -1.02
+     ],
+     "folhas_melhores": 25,
+     "folhas_piores": 0
+    },
+    "fusao_v5 - glifo (notacao)": {
+     "pp": 1.26,
+     "ic95_pp": [
+      -0.41,
+      3.13
+     ],
+     "folhas_melhores": 8,
+     "folhas_piores": 10
+    },
+    "fusao_v5 - tess (prosa)": {
+     "pp": -0.08,
+     "ic95_pp": [
+      -0.58,
+      0.11
+     ],
+     "folhas_melhores": 1,
+     "folhas_piores": 7
+    },
+    "fusao_v5 - tess (notacao)": {
+     "pp": -7.01,
+     "ic95_pp": [
+      -11.91,
+      -2.2
+     ],
+     "folhas_melhores": 18,
+     "folhas_piores": 5
+    },
+    "fusao_v5 - fusao (prosa)": {
+     "pp": -0.01,
+     "ic95_pp": [
+      -0.13,
+      0.1
+     ],
+     "folhas_melhores": 4,
+     "folhas_piores": 2
+    },
+    "fusao_v5 - fusao (notacao)": {
+     "pp": 0.04,
+     "ic95_pp": [
+      -0.3,
+      0.41
+     ],
+     "folhas_melhores": 7,
+     "folhas_piores": 4
+    },
+    "fusao_v5 - fusao_v4 (prosa)": {
+     "pp": 0.05,
+     "ic95_pp": [
+      0.0,
+      0.14
+     ],
+     "folhas_melhores": 0,
+     "folhas_piores": 5
+    },
+    "fusao_v5 - fusao_v4 (notacao)": {
+     "pp": -0.78,
+     "ic95_pp": [
+      -1.24,
+      -0.38
+     ],
+     "folhas_melhores": 16,
+     "folhas_piores": 1
+    },
+    "tess - tess_oraculo (prosa)": {
+     "pp": 1.17,
+     "ic95_pp": [
+      -0.03,
+      3.91
+     ],
+     "folhas_melhores": 2,
+     "folhas_piores": 5
+    },
+    "tess - tess_oraculo (notacao)": {
+     "pp": 1.32,
+     "ic95_pp": [
+      -1.68,
+      4.23
+     ],
+     "folhas_melhores": 5,
+     "folhas_piores": 10
+    },
+    "tess - glifo (prosa)": {
+     "pp": -2.28,
+     "ic95_pp": [
+      -4.08,
+      -0.88
+     ],
+     "folhas_melhores": 25,
+     "folhas_piores": 1
+    },
+    "tess - glifo (notacao)": {
+     "pp": 8.27,
+     "ic95_pp": [
+      2.32,
+      13.3
+     ],
+     "folhas_melhores": 4,
+     "folhas_piores": 19
+    },
+    "tess_pagina - tess (prosa)": {
+     "pp": 0.84,
+     "ic95_pp": [
+      -1.97,
+      2.26
+     ],
+     "folhas_melhores": 2,
+     "folhas_piores": 23
+    },
+    "tess_pagina - tess (notacao)": {
+     "pp": 0.7,
+     "ic95_pp": [
+      -3.75,
+      5.84
+     ],
+     "folhas_melhores": 7,
+     "folhas_piores": 12
+    },
+    "tess_pagina - tess_oraculo (prosa)": {
+     "pp": 2.01,
+     "ic95_pp": [
+      1.62,
+      2.49
+     ],
+     "folhas_melhores": 0,
+     "folhas_piores": 26
+    },
+    "tess_pagina - tess_oraculo (notacao)": {
+     "pp": 2.02,
+     "ic95_pp": [
+      -1.64,
+      6.49
+     ],
+     "folhas_melhores": 6,
+     "folhas_piores": 14
+    }
+   },
+   "por_livro": {
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": {
+     "lingua": "eng",
+     "folhas": [
+      155,
+      340,
+      509,
+      677
+     ],
+     "glifo": 0.0187,
+     "tess": 0.0013,
+     "rapid": 0.0011,
+     "fusao": 0.0016,
+     "fusao_rapid": 0.0011,
+     "fusao_v2": 0.0013,
+     "fusao_v3": 0.0013,
+     "fusao_v4": 0.0013,
+     "tess_oraculo": 0.0013,
+     "fusao_v5": 0.0021,
+     "tess_pagina": 0.0335
+    },
+    "📚Hertan Charles. Forcing Chess Moves.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      286,
+      485,
+      643,
+      659
+     ],
+     "glifo": 0.0407,
+     "tess": 0.0087,
+     "rapid": 0.0103,
+     "fusao": 0.0073,
+     "fusao_rapid": 0.0089,
+     "fusao_v2": 0.0087,
+     "fusao_v3": 0.0087,
+     "fusao_v4": 0.0073,
+     "tess_oraculo": 0.0014,
+     "fusao_v5": 0.0089,
+     "tess_pagina": 0.0244
+    },
+    "📚Chess Evolution 2013 №045-096.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      279,
+      578
+     ],
+     "glifo": 0.1461,
+     "tess": 0.1196,
+     "rapid": 0.1138,
+     "fusao": 0.1066,
+     "fusao_rapid": 0.1076,
+     "fusao_v2": 0.1069,
+     "fusao_v3": 0.1069,
+     "fusao_v4": 0.1066,
+     "tess_oraculo": 0.0076,
+     "fusao_v5": 0.1066,
+     "tess_pagina": 0.0239
+    },
+    "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": {
+     "lingua": "por",
+     "folhas": [
+      58,
+      116,
+      186,
+      247
+     ],
+     "glifo": 0.0039,
+     "tess": 0.0009,
+     "rapid": 0.0242,
+     "fusao": 0.0013,
+     "fusao_rapid": 0.0247,
+     "fusao_v2": 0.0009,
+     "fusao_v3": 0.0009,
+     "fusao_v4": 0.0009,
+     "tess_oraculo": 0.0009,
+     "fusao_v5": 0.0013,
+     "tess_pagina": 0.0179
+    },
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": {
+     "lingua": "por",
+     "folhas": [
+      77,
+      165,
+      252,
+      340
+     ],
+     "glifo": 0.0117,
+     "tess": 0.0003,
+     "rapid": 0.0198,
+     "fusao": 0.0003,
+     "fusao_rapid": 0.0215,
+     "fusao_v2": 0.0003,
+     "fusao_v3": 0.0003,
+     "fusao_v4": 0.0003,
+     "tess_oraculo": 0.0012,
+     "fusao_v5": 0.0003,
+     "tess_pagina": 0.0157
+    },
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": {
+     "lingua": "por",
+     "folhas": [
+      112,
+      228,
+      350,
+      435
+     ],
+     "glifo": 0.0692,
+     "tess": 0.001,
+     "rapid": 0.02,
+     "fusao": 0.0057,
+     "fusao_rapid": 0.0252,
+     "fusao_v2": 0.0047,
+     "fusao_v3": 0.0022,
+     "fusao_v4": 0.0022,
+     "tess_oraculo": 0.001,
+     "fusao_v5": 0.0027,
+     "tess_pagina": 0.0225
+    },
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf": {
+     "lingua": "por",
+     "folhas": [
+      172,
+      566,
+      1077,
+      1167
+     ],
+     "glifo": 0.005,
+     "tess": 0.0003,
+     "rapid": 0.0349,
+     "fusao": 0.0003,
+     "fusao_rapid": 0.0349,
+     "fusao_v2": 0.0003,
+     "fusao_v3": 0.0003,
+     "fusao_v4": 0.0003,
+     "tess_oraculo": 0.0,
+     "fusao_v5": 0.0003,
+     "tess_pagina": 0.0174
+    }
+   },
+   "preservacao_de_figurina_do_glifo_na_fusao_v5": {
+    "preservadas": 530,
+    "do_glifo": 536,
+    "fracao": 0.9888
+   },
+   "filtro": "filtrar.py --sem-folha-perdida"
+  },
+  "ouro_dev_6_livros_leiaute_limpo": {
+   "folhas": 24,
+   "livros": [
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
+    "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf",
+    "📚Hertan Charles. Forcing Chess Moves.pdf"
+   ],
+   "caracteres_de_prosa": 26511,
+   "palavras_de_prosa": 4548,
+   "caracteres_de_notacao": 3975,
+   "linhas_da_camada_fora_por_cruzar_diagrama": 24,
+   "segundos_por_folha": {
+    "camada": 0.3,
+    "glifo": 0.66,
+    "tess": 0.84,
+    "rapid": 2.89
+   },
+   "motores": {
+    "glifo": {
+     "tip": {
+      "cer_prosa": 0.0247,
+      "ic95_prosa_dois_niveis": [
+       0.0088,
+       0.0446
+      ],
+      "wer_prosa_sdi": 0.1,
+      "wer_partes": {
+       "s": 400,
+       "d": 30,
+       "i": 25,
+       "n": 4548
+      },
+      "cer_notacao": 0.1069,
+      "cer_espaco": 0.2277,
+      "insercoes": 379,
+      "figurina_revocacao": 0.782,
+      "figurina_precisao": 0.8387
+     },
+     "cru": {
+      "cer_prosa": 0.0266,
+      "ic95_prosa_dois_niveis": [
+       0.0091,
+       0.0471
+      ],
+      "wer_prosa_sdi": 0.1053,
+      "wer_partes": {
+       "s": 428,
+       "d": 30,
+       "i": 21,
+       "n": 4551
+      },
+      "cer_notacao": 0.1503,
+      "cer_espaco": 0.2386,
+      "insercoes": 455,
+      "figurina_revocacao": 0.3155,
+      "figurina_precisao": 1.0
+     }
+    },
+    "tess": {
+     "tip": {
+      "cer_prosa": 0.0023,
+      "ic95_prosa_dois_niveis": [
+       0.0004,
+       0.0063
+      ],
+      "wer_prosa_sdi": 0.0068,
+      "wer_partes": {
+       "s": 22,
+       "d": 4,
+       "i": 5,
+       "n": 4548
+      },
+      "cer_notacao": 0.1701,
+      "cer_espaco": 0.1878,
+      "insercoes": 122,
+      "figurina_revocacao": 0.2237,
+      "figurina_precisao": 0.758
+     },
+     "cru": {
+      "cer_prosa": 0.0029,
+      "ic95_prosa_dois_niveis": [
+       0.0006,
+       0.0072
+      ],
+      "wer_prosa_sdi": 0.0083,
+      "wer_partes": {
+       "s": 29,
+       "d": 4,
+       "i": 5,
+       "n": 4551
+      },
+      "cer_notacao": 0.1776,
+      "cer_espaco": 0.1931,
+      "insercoes": 180,
+      "figurina_revocacao": 0.3352,
+      "figurina_precisao": 0.7628
+     }
+    },
+    "rapid": {
+     "tip": {
+      "cer_prosa": 0.018,
+      "ic95_prosa_dois_niveis": [
+       0.0102,
+       0.0261
+      ],
+      "wer_prosa_sdi": 0.0873,
+      "wer_partes": {
+       "s": 388,
+       "d": 5,
+       "i": 4,
+       "n": 4548
+      },
+      "cer_notacao": 0.122,
+      "cer_espaco": 0.1921,
+      "insercoes": 61,
+      "figurina_revocacao": 0.2218,
+      "figurina_precisao": 0.9833
+     },
+     "cru": {
+      "cer_prosa": 0.0202,
+      "ic95_prosa_dois_niveis": [
+       0.0131,
+       0.0274
+      ],
+      "wer_prosa_sdi": 0.096,
+      "wer_partes": {
+       "s": 428,
+       "d": 5,
+       "i": 4,
+       "n": 4551
+      },
+      "cer_notacao": 0.1279,
+      "cer_espaco": 0.1943,
+      "insercoes": 93,
+      "figurina_revocacao": 0.3324,
+      "figurina_precisao": 0.9833
+     }
+    },
+    "fusao": {
+     "tip": {
+      "cer_prosa": 0.0028,
+      "ic95_prosa_dois_niveis": [
+       0.0006,
+       0.0063
+      ],
+      "wer_prosa_sdi": 0.0099,
+      "wer_partes": {
+       "s": 29,
+       "d": 3,
+       "i": 13,
+       "n": 4548
+      },
+      "cer_notacao": 0.1099,
+      "cer_espaco": 0.2247,
+      "insercoes": 256,
+      "figurina_revocacao": 0.75,
+      "figurina_precisao": 0.8313
+     },
+     "cru": {
+      "cer_prosa": 0.0033,
+      "ic95_prosa_dois_niveis": [
+       0.0008,
+       0.0069
+      ],
+      "wer_prosa_sdi": 0.0108,
+      "wer_partes": {
+       "s": 36,
+       "d": 3,
+       "i": 10,
+       "n": 4551
+      },
+      "cer_notacao": 0.1521,
+      "cer_espaco": 0.2276,
+      "insercoes": 308,
+      "figurina_revocacao": 0.3155,
+      "figurina_precisao": 1.0
+     }
+    },
+    "fusao_rapid": {
+     "tip": {
+      "cer_prosa": 0.019,
+      "ic95_prosa_dois_niveis": [
+       0.0107,
+       0.0276
+      ],
+      "wer_prosa_sdi": 0.0904,
+      "wer_partes": {
+       "s": 393,
+       "d": 6,
+       "i": 12,
+       "n": 4548
+      },
+      "cer_notacao": 0.1024,
+      "cer_espaco": 0.2204,
+      "insercoes": 174,
+      "figurina_revocacao": 0.7481,
+      "figurina_precisao": 0.8274
+     },
+     "cru": {
+      "cer_prosa": 0.021,
+      "ic95_prosa_dois_niveis": [
+       0.0135,
+       0.0284
+      ],
+      "wer_prosa_sdi": 0.0987,
+      "wer_partes": {
+       "s": 433,
+       "d": 6,
+       "i": 10,
+       "n": 4551
+      },
+      "cer_notacao": 0.1397,
+      "cer_espaco": 0.2214,
+      "insercoes": 215,
+      "figurina_revocacao": 0.3155,
+      "figurina_precisao": 1.0
+     }
+    },
+    "fusao_v2": {
+     "tip": {
+      "cer_prosa": 0.0028,
+      "ic95_prosa_dois_niveis": [
+       0.0006,
+       0.007
+      ],
+      "wer_prosa_sdi": 0.0086,
+      "wer_partes": {
+       "s": 24,
+       "d": 4,
+       "i": 11,
+       "n": 4548
+      },
+      "cer_notacao": 0.1084,
+      "cer_espaco": 0.2756,
+      "insercoes": 361,
+      "figurina_revocacao": 0.7669,
+      "figurina_precisao": 0.8378
+     },
+     "cru": {
+      "cer_prosa": 0.0033,
+      "ic95_prosa_dois_niveis": [
+       0.0007,
+       0.0075
+      ],
+      "wer_prosa_sdi": 0.0094,
+      "wer_partes": {
+       "s": 31,
+       "d": 4,
+       "i": 8,
+       "n": 4551
+      },
+      "cer_notacao": 0.1552,
+      "cer_espaco": 0.2872,
+      "insercoes": 421,
+      "figurina_revocacao": 0.3352,
+      "figurina_precisao": 0.9917
+     }
+    },
+    "fusao_v3": {
+     "tip": {
+      "cer_prosa": 0.0025,
+      "ic95_prosa_dois_niveis": [
+       0.0005,
+       0.0066
+      ],
+      "wer_prosa_sdi": 0.0079,
+      "wer_partes": {
+       "s": 21,
+       "d": 4,
+       "i": 11,
+       "n": 4548
+      },
+      "cer_notacao": 0.1137,
+      "cer_espaco": 0.2756,
+      "insercoes": 364,
+      "figurina_revocacao": 0.7575,
+      "figurina_precisao": 0.8466
+     },
+     "cru": {
+      "cer_prosa": 0.0029,
+      "ic95_prosa_dois_niveis": [
+       0.0006,
+       0.0072
+      ],
+      "wer_prosa_sdi": 0.0088,
+      "wer_partes": {
+       "s": 28,
+       "d": 4,
+       "i": 8,
+       "n": 4551
+      },
+      "cer_notacao": 0.1598,
+      "cer_espaco": 0.2872,
+      "insercoes": 424,
+      "figurina_revocacao": 0.3352,
+      "figurina_precisao": 0.9675
+     }
+    },
+    "fusao_v4": {
+     "tip": {
+      "cer_prosa": 0.0022,
+      "ic95_prosa_dois_niveis": [
+       0.0005,
+       0.0056
+      ],
+      "wer_prosa_sdi": 0.0086,
+      "wer_partes": {
+       "s": 22,
+       "d": 3,
+       "i": 14,
+       "n": 4548
+      },
+      "cer_notacao": 0.1182,
+      "cer_espaco": 0.2253,
+      "insercoes": 261,
+      "figurina_revocacao": 0.7406,
+      "figurina_precisao": 0.8401
+     },
+     "cru": {
+      "cer_prosa": 0.0027,
+      "ic95_prosa_dois_niveis": [
+       0.0006,
+       0.0062
+      ],
+      "wer_prosa_sdi": 0.0094,
+      "wer_partes": {
+       "s": 29,
+       "d": 3,
+       "i": 11,
+       "n": 4551
+      },
+      "cer_notacao": 0.1598,
+      "cer_espaco": 0.2282,
+      "insercoes": 313,
+      "figurina_revocacao": 0.3155,
+      "figurina_precisao": 0.9739
+     }
+    },
+    "tess_oraculo": {
+     "tip": {
+      "cer_prosa": 0.001,
+      "ic95_prosa_dois_niveis": [
+       0.0004,
+       0.0017
+      ],
+      "wer_prosa_sdi": 0.0079,
+      "wer_partes": {
+       "s": 23,
+       "d": 3,
+       "i": 10,
+       "n": 4548
+      },
+      "cer_notacao": 0.1721,
+      "cer_espaco": 0.1357,
+      "insercoes": 46,
+      "figurina_revocacao": 0.2237,
+      "figurina_precisao": 0.7083
+     },
+     "cru": {
+      "cer_prosa": 0.0015,
+      "ic95_prosa_dois_niveis": [
+       0.0006,
+       0.003
+      ],
+      "wer_prosa_sdi": 0.0094,
+      "wer_partes": {
+       "s": 30,
+       "d": 3,
+       "i": 10,
+       "n": 4551
+      },
+      "cer_notacao": 0.1815,
+      "cer_espaco": 0.1402,
+      "insercoes": 99,
+      "figurina_revocacao": 0.3352,
+      "figurina_precisao": 0.7083
+     }
+    },
+    "fusao_v5": {
+     "tip": {
+      "cer_prosa": 0.0028,
+      "ic95_prosa_dois_niveis": [
+       0.0006,
+       0.007
+      ],
+      "wer_prosa_sdi": 0.0097,
+      "wer_partes": {
+       "s": 28,
+       "d": 1,
+       "i": 15,
+       "n": 4548
+      },
+      "cer_notacao": 0.1104,
+      "cer_espaco": 0.232,
+      "insercoes": 349,
+      "figurina_revocacao": 0.7632,
+      "figurina_precisao": 0.8337
+     },
+     "cru": {
+      "cer_prosa": 0.0032,
+      "ic95_prosa_dois_niveis": [
+       0.0008,
+       0.0076
+      ],
+      "wer_prosa_sdi": 0.0101,
+      "wer_partes": {
+       "s": 35,
+       "d": 1,
+       "i": 10,
+       "n": 4551
+      },
+      "cer_notacao": 0.1542,
+      "cer_espaco": 0.2349,
+      "insercoes": 420,
+      "figurina_revocacao": 0.3155,
+      "figurina_precisao": 0.9825
+     }
+    },
+    "tess_pagina": {
+     "tip": {
+      "cer_prosa": 0.0215,
+      "ic95_prosa_dois_niveis": [
+       0.0173,
+       0.0269
+      ],
+      "wer_prosa_sdi": 0.0172,
+      "wer_partes": {
+       "s": 24,
+       "d": 3,
+       "i": 51,
+       "n": 4548
+      },
+      "cer_notacao": 0.197,
+      "cer_espaco": 0.6133,
+      "insercoes": 1517,
+      "figurina_revocacao": 0.2218,
+      "figurina_precisao": 0.7712
+     },
+     "cru": {
+      "cer_prosa": 0.0224,
+      "ic95_prosa_dois_niveis": [
+       0.0177,
+       0.0285
+      ],
+      "wer_prosa_sdi": 0.0187,
+      "wer_partes": {
+       "s": 32,
+       "d": 2,
+       "i": 51,
+       "n": 4551
+      },
+      "cer_notacao": 0.2101,
+      "cer_espaco": 0.6236,
+      "insercoes": 1581,
+      "figurina_revocacao": 0.3324,
+      "figurina_precisao": 0.7712
+     }
+    }
+   },
+   "pares": {
+    "fusao_v5 - glifo (prosa)": {
+     "pp": -2.2,
+     "ic95_pp": [
+      -4.08,
+      -0.78
+     ],
+     "folhas_melhores": 23,
+     "folhas_piores": 0
+    },
+    "fusao_v5 - glifo (notacao)": {
+     "pp": 0.35,
+     "ic95_pp": [
+      -0.79,
+      1.91
+     ],
+     "folhas_melhores": 8,
+     "folhas_piores": 8
+    },
+    "fusao_v5 - tess (prosa)": {
+     "pp": 0.05,
+     "ic95_pp": [
+      0.0,
+      0.12
+     ],
+     "folhas_melhores": 0,
+     "folhas_piores": 6
+    },
+    "fusao_v5 - tess (notacao)": {
+     "pp": -5.96,
+     "ic95_pp": [
+      -12.12,
+      -0.96
+     ],
+     "folhas_melhores": 16,
+     "folhas_piores": 5
+    },
+    "fusao_v5 - fusao (prosa)": {
+     "pp": -0.01,
+     "ic95_pp": [
+      -0.14,
+      0.11
+     ],
+     "folhas_melhores": 4,
+     "folhas_piores": 2
+    },
+    "fusao_v5 - fusao (notacao)": {
+     "pp": 0.05,
+     "ic95_pp": [
+      -0.29,
+      0.49
+     ],
+     "folhas_melhores": 6,
+     "folhas_piores": 3
+    },
+    "fusao_v5 - fusao_v4 (prosa)": {
+     "pp": 0.06,
+     "ic95_pp": [
+      0.01,
+      0.15
+     ],
+     "folhas_melhores": 0,
+     "folhas_piores": 5
+    },
+    "fusao_v5 - fusao_v4 (notacao)": {
+     "pp": -0.78,
+     "ic95_pp": [
+      -1.35,
+      -0.29
+     ],
+     "folhas_melhores": 14,
+     "folhas_piores": 1
+    },
+    "tess - tess_oraculo (prosa)": {
+     "pp": 0.12,
+     "ic95_pp": [
+      -0.06,
+      0.48
+     ],
+     "folhas_melhores": 2,
+     "folhas_piores": 3
+    },
+    "tess - tess_oraculo (notacao)": {
+     "pp": -0.2,
+     "ic95_pp": [
+      -2.44,
+      1.4
+     ],
+     "folhas_melhores": 5,
+     "folhas_piores": 8
+    },
+    "tess - glifo (prosa)": {
+     "pp": -2.24,
+     "ic95_pp": [
+      -4.18,
+      -0.81
+     ],
+     "folhas_melhores": 24,
+     "folhas_piores": 0
+    },
+    "tess - glifo (notacao)": {
+     "pp": 6.31,
+     "ic95_pp": [
+      1.11,
+      12.18
+     ],
+     "folhas_melhores": 4,
+     "folhas_piores": 17
+    },
+    "tess_pagina - tess (prosa)": {
+     "pp": 1.93,
+     "ic95_pp": [
+      1.52,
+      2.48
+     ],
+     "folhas_melhores": 0,
+     "folhas_piores": 23
+    },
+    "tess_pagina - tess (notacao)": {
+     "pp": 2.69,
+     "ic95_pp": [
+      -0.63,
+      7.19
+     ],
+     "folhas_melhores": 5,
+     "folhas_piores": 12
+    },
+    "tess_pagina - tess_oraculo (prosa)": {
+     "pp": 2.05,
+     "ic95_pp": [
+      1.63,
+      2.56
+     ],
+     "folhas_melhores": 0,
+     "folhas_piores": 24
+    },
+    "tess_pagina - tess_oraculo (notacao)": {
+     "pp": 2.49,
+     "ic95_pp": [
+      -2.3,
+      7.23
+     ],
+     "folhas_melhores": 5,
+     "folhas_piores": 13
+    }
+   },
+   "por_livro": {
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": {
+     "lingua": "eng",
+     "folhas": [
+      155,
+      340,
+      509,
+      677
+     ],
+     "glifo": 0.0187,
+     "tess": 0.0013,
+     "rapid": 0.0011,
+     "fusao": 0.0016,
+     "fusao_rapid": 0.0011,
+     "fusao_v2": 0.0013,
+     "fusao_v3": 0.0013,
+     "fusao_v4": 0.0013,
+     "tess_oraculo": 0.0013,
+     "fusao_v5": 0.0021,
+     "tess_pagina": 0.0335
+    },
+    "📚Hertan Charles. Forcing Chess Moves.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      286,
+      485,
+      643,
+      659
+     ],
+     "glifo": 0.0407,
+     "tess": 0.0087,
+     "rapid": 0.0103,
+     "fusao": 0.0073,
+     "fusao_rapid": 0.0089,
+     "fusao_v2": 0.0087,
+     "fusao_v3": 0.0087,
+     "fusao_v4": 0.0073,
+     "tess_oraculo": 0.0014,
+     "fusao_v5": 0.0089,
+     "tess_pagina": 0.0244
+    },
+    "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": {
+     "lingua": "por",
+     "folhas": [
+      58,
+      116,
+      186,
+      247
+     ],
+     "glifo": 0.0039,
+     "tess": 0.0009,
+     "rapid": 0.0242,
+     "fusao": 0.0013,
+     "fusao_rapid": 0.0247,
+     "fusao_v2": 0.0009,
+     "fusao_v3": 0.0009,
+     "fusao_v4": 0.0009,
+     "tess_oraculo": 0.0009,
+     "fusao_v5": 0.0013,
+     "tess_pagina": 0.0179
+    },
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": {
+     "lingua": "por",
+     "folhas": [
+      77,
+      165,
+      252,
+      340
+     ],
+     "glifo": 0.0117,
+     "tess": 0.0003,
+     "rapid": 0.0198,
+     "fusao": 0.0003,
+     "fusao_rapid": 0.0215,
+     "fusao_v2": 0.0003,
+     "fusao_v3": 0.0003,
+     "fusao_v4": 0.0003,
+     "tess_oraculo": 0.0012,
+     "fusao_v5": 0.0003,
+     "tess_pagina": 0.0157
+    },
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": {
+     "lingua": "por",
+     "folhas": [
+      112,
+      228,
+      350,
+      435
+     ],
+     "glifo": 0.0692,
+     "tess": 0.001,
+     "rapid": 0.02,
+     "fusao": 0.0057,
+     "fusao_rapid": 0.0252,
+     "fusao_v2": 0.0047,
+     "fusao_v3": 0.0022,
+     "fusao_v4": 0.0022,
+     "tess_oraculo": 0.001,
+     "fusao_v5": 0.0027,
+     "tess_pagina": 0.0225
+    },
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf": {
+     "lingua": "por",
+     "folhas": [
+      172,
+      566,
+      1077,
+      1167
+     ],
+     "glifo": 0.005,
+     "tess": 0.0003,
+     "rapid": 0.0349,
+     "fusao": 0.0003,
+     "fusao_rapid": 0.0349,
+     "fusao_v2": 0.0003,
+     "fusao_v3": 0.0003,
+     "fusao_v4": 0.0003,
+     "tess_oraculo": 0.0,
+     "fusao_v5": 0.0003,
+     "tess_pagina": 0.0174
+    }
+   },
+   "preservacao_de_figurina_do_glifo_na_fusao_v5": {
+    "preservadas": 383,
+    "do_glifo": 389,
+    "fracao": 0.9846
+   },
+   "filtro": "sem folha perdida e sem o Chess Evolution (linha intercalada)"
+  },
+  "ouro_dev_estrato_misto": {
+   "folhas": 9,
+   "livros": [
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
+    "📚Hertan Charles. Forcing Chess Moves.pdf"
+   ],
+   "caracteres_de_prosa": 3980,
+   "palavras_de_prosa": 731,
+   "caracteres_de_notacao": 3020,
+   "linhas_da_camada_fora_por_cruzar_diagrama": 0,
+   "segundos_por_folha": {
+    "camada": 0.34,
+    "glifo": 0.53,
+    "tess": 0.7,
+    "rapid": 2.49
+   },
+   "motores": {
+    "glifo": {
+     "tip": {
+      "cer_prosa": 0.0249,
+      "ic95_prosa_dois_niveis": [
+       0.0105,
+       0.0397
+      ],
+      "wer_prosa_sdi": 0.1423,
+      "wer_partes": {
+       "s": 74,
+       "d": 1,
+       "i": 29,
+       "n": 731
+      },
+      "cer_notacao": 0.1414,
+      "cer_espaco": 0.2917,
+      "insercoes": 477,
+      "figurina_revocacao": 0.8986,
+      "figurina_precisao": 0.921
+     },
+     "cru": {
+      "cer_prosa": 0.0285,
+      "ic95_prosa_dois_niveis": [
+       0.012,
+       0.0465
+      ],
+      "wer_prosa_sdi": 0.1444,
+      "wer_partes": {
+       "s": 81,
+       "d": 0,
+       "i": 25,
+       "n": 734
+      },
+      "cer_notacao": 0.2209,
+      "cer_espaco": 0.3103,
+      "insercoes": 590,
+      "figurina_revocacao": 0.0106,
+      "figurina_precisao": 1.0
+     }
+    },
+    "tess": {
+     "tip": {
+      "cer_prosa": 0.0023,
+      "ic95_prosa_dois_niveis": [
+       0.0003,
+       0.0044
+      ],
+      "wer_prosa_sdi": 0.0369,
+      "wer_partes": {
+       "s": 9,
+       "d": 1,
+       "i": 17,
+       "n": 731
+      },
+      "cer_notacao": 0.2344,
+      "cer_espaco": 0.1885,
+      "insercoes": 182,
+      "figurina_revocacao": 0.0041,
+      "figurina_precisao": 0.0625
+     },
+     "cru": {
+      "cer_prosa": 0.0045,
+      "ic95_prosa_dois_niveis": [
+       0.0,
+       0.0092
+      ],
+      "wer_prosa_sdi": 0.0409,
+      "wer_partes": {
+       "s": 12,
+       "d": 1,
+       "i": 17,
+       "n": 734
+      },
+      "cer_notacao": 0.2712,
+      "cer_espaco": 0.2815,
+      "insercoes": 264,
+      "figurina_revocacao": 0.0106,
+      "figurina_precisao": 0.0625
+     }
+    },
+    "rapid": {
+     "tip": {
+      "cer_prosa": 0.0146,
+      "ic95_prosa_dois_niveis": [
+       0.0033,
+       0.0277
+      ],
+      "wer_prosa_sdi": 0.0834,
+      "wer_partes": {
+       "s": 53,
+       "d": 3,
+       "i": 5,
+       "n": 731
+      },
+      "cer_notacao": 0.1815,
+      "cer_espaco": 0.3025,
+      "insercoes": 101,
+      "figurina_revocacao": 0.0041,
+      "figurina_precisao": 0.6667
+     },
+     "cru": {
+      "cer_prosa": 0.0182,
+      "ic95_prosa_dois_niveis": [
+       0.0103,
+       0.0279
+      ],
+      "wer_prosa_sdi": 0.0913,
+      "wer_partes": {
+       "s": 60,
+       "d": 3,
+       "i": 4,
+       "n": 734
+      },
+      "cer_notacao": 0.2068,
+      "cer_espaco": 0.2941,
+      "insercoes": 142,
+      "figurina_revocacao": 0.0106,
+      "figurina_precisao": 0.6667
+     }
+    },
+    "fusao": {
+     "tip": {
+      "cer_prosa": 0.003,
+      "ic95_prosa_dois_niveis": [
+       0.0012,
+       0.0049
+      ],
+      "wer_prosa_sdi": 0.0301,
+      "wer_partes": {
+       "s": 8,
+       "d": 1,
+       "i": 13,
+       "n": 731
+      },
+      "cer_notacao": 0.1381,
+      "cer_espaco": 0.2783,
+      "insercoes": 364,
+      "figurina_revocacao": 0.8824,
+      "figurina_precisao": 0.9158
+     },
+     "cru": {
+      "cer_prosa": 0.0055,
+      "ic95_prosa_dois_niveis": [
+       0.0011,
+       0.0102
+      ],
+      "wer_prosa_sdi": 0.0286,
+      "wer_partes": {
+       "s": 11,
+       "d": 1,
+       "i": 9,
+       "n": 734
+      },
+      "cer_notacao": 0.1996,
+      "cer_espaco": 0.2797,
+      "insercoes": 420,
+      "figurina_revocacao": 0.0106,
+      "figurina_precisao": 1.0
+     }
+    },
+    "fusao_rapid": {
+     "tip": {
+      "cer_prosa": 0.0161,
+      "ic95_prosa_dois_niveis": [
+       0.0033,
+       0.0313
+      ],
+      "wer_prosa_sdi": 0.0971,
+      "wer_partes": {
+       "s": 49,
+       "d": 4,
+       "i": 18,
+       "n": 731
+      },
+      "cer_notacao": 0.1358,
+      "cer_espaco": 0.2828,
+      "insercoes": 317,
+      "figurina_revocacao": 0.8722,
+      "figurina_precisao": 0.913
+     },
+     "cru": {
+      "cer_prosa": 0.0195,
+      "ic95_prosa_dois_niveis": [
+       0.0107,
+       0.0308
+      ],
+      "wer_prosa_sdi": 0.0981,
+      "wer_partes": {
+       "s": 56,
+       "d": 4,
+       "i": 12,
+       "n": 734
+      },
+      "cer_notacao": 0.1961,
+      "cer_espaco": 0.2707,
+      "insercoes": 372,
+      "figurina_revocacao": 0.0106,
+      "figurina_precisao": 1.0
+     }
+    },
+    "fusao_v2": {
+     "tip": {
+      "cer_prosa": 0.0023,
+      "ic95_prosa_dois_niveis": [
+       0.0003,
+       0.0044
+      ],
+      "wer_prosa_sdi": 0.0629,
+      "wer_partes": {
+       "s": 8,
+       "d": 1,
+       "i": 37,
+       "n": 731
+      },
+      "cer_notacao": 0.1636,
+      "cer_espaco": 0.2513,
+      "insercoes": 511,
+      "figurina_revocacao": 0.8844,
+      "figurina_precisao": 0.916
+     },
+     "cru": {
+      "cer_prosa": 0.0052,
+      "ic95_prosa_dois_niveis": [
+       0.0,
+       0.0103
+      ],
+      "wer_prosa_sdi": 0.0613,
+      "wer_partes": {
+       "s": 11,
+       "d": 1,
+       "i": 33,
+       "n": 734
+      },
+      "cer_notacao": 0.2512,
+      "cer_espaco": 0.357,
+      "insercoes": 607,
+      "figurina_revocacao": 0.0106,
+      "figurina_precisao": 0.4
+     }
+    },
+    "fusao_v3": {
+     "tip": {
+      "cer_prosa": 0.0023,
+      "ic95_prosa_dois_niveis": [
+       0.0003,
+       0.0044
+      ],
+      "wer_prosa_sdi": 0.0629,
+      "wer_partes": {
+       "s": 8,
+       "d": 1,
+       "i": 37,
+       "n": 731
+      },
+      "cer_notacao": 0.1745,
+      "cer_espaco": 0.2504,
+      "insercoes": 514,
+      "figurina_revocacao": 0.8661,
+      "figurina_precisao": 0.9183
+     },
+     "cru": {
+      "cer_prosa": 0.0052,
+      "ic95_prosa_dois_niveis": [
+       0.0,
+       0.0103
+      ],
+      "wer_prosa_sdi": 0.0613,
+      "wer_partes": {
+       "s": 11,
+       "d": 1,
+       "i": 33,
+       "n": 734
+      },
+      "cer_notacao": 0.2608,
+      "cer_espaco": 0.3561,
+      "insercoes": 610,
+      "figurina_revocacao": 0.0106,
+      "figurina_precisao": 0.1538
+     }
+    },
+    "fusao_v4": {
+     "tip": {
+      "cer_prosa": 0.003,
+      "ic95_prosa_dois_niveis": [
+       0.0012,
+       0.0049
+      ],
+      "wer_prosa_sdi": 0.0356,
+      "wer_partes": {
+       "s": 8,
+       "d": 1,
+       "i": 17,
+       "n": 731
+      },
+      "cer_notacao": 0.1593,
+      "cer_espaco": 0.2792,
+      "insercoes": 380,
+      "figurina_revocacao": 0.8621,
+      "figurina_precisao": 0.9159
+     },
+     "cru": {
+      "cer_prosa": 0.0055,
+      "ic95_prosa_dois_niveis": [
+       0.0011,
+       0.0102
+      ],
+      "wer_prosa_sdi": 0.0341,
+      "wer_partes": {
+       "s": 11,
+       "d": 1,
+       "i": 13,
+       "n": 734
+      },
+      "cer_notacao": 0.2199,
+      "cer_espaco": 0.2806,
+      "insercoes": 436,
+      "figurina_revocacao": 0.0106,
+      "figurina_precisao": 0.1818
+     }
+    },
+    "tess_oraculo": {
+     "tip": {
+      "cer_prosa": 0.0025,
+      "ic95_prosa_dois_niveis": [
+       0.0007,
+       0.0046
+      ],
+      "wer_prosa_sdi": 0.0287,
+      "wer_partes": {
+       "s": 10,
+       "d": 1,
+       "i": 10,
+       "n": 731
+      },
+      "cer_notacao": 0.2374,
+      "cer_espaco": 0.1481,
+      "insercoes": 81,
+      "figurina_revocacao": 0.0061,
+      "figurina_precisao": 0.1
+     },
+     "cru": {
+      "cer_prosa": 0.0047,
+      "ic95_prosa_dois_niveis": [
+       0.0006,
+       0.0093
+      ],
+      "wer_prosa_sdi": 0.0327,
+      "wer_partes": {
+       "s": 13,
+       "d": 1,
+       "i": 10,
+       "n": 734
+      },
+      "cer_notacao": 0.2749,
+      "cer_espaco": 0.1583,
+      "insercoes": 160,
+      "figurina_revocacao": 0.016,
+      "figurina_precisao": 0.1
+     }
+    },
+    "fusao_v5": {
+     "tip": {
+      "cer_prosa": 0.003,
+      "ic95_prosa_dois_niveis": [
+       0.0012,
+       0.0049
+      ],
+      "wer_prosa_sdi": 0.0383,
+      "wer_partes": {
+       "s": 8,
+       "d": 1,
+       "i": 19,
+       "n": 731
+      },
+      "cer_notacao": 0.1411,
+      "cer_espaco": 0.2971,
+      "insercoes": 404,
+      "figurina_revocacao": 0.8824,
+      "figurina_precisao": 0.9158
+     },
+     "cru": {
+      "cer_prosa": 0.0055,
+      "ic95_prosa_dois_niveis": [
+       0.0011,
+       0.0102
+      ],
+      "wer_prosa_sdi": 0.0341,
+      "wer_partes": {
+       "s": 11,
+       "d": 1,
+       "i": 13,
+       "n": 734
+      },
+      "cer_notacao": 0.2034,
+      "cer_espaco": 0.2878,
+      "insercoes": 474,
+      "figurina_revocacao": 0.0106,
+      "figurina_precisao": 0.5
+     }
+    }
+   },
+   "pares": {
+    "fusao_v5 - glifo (prosa)": {
+     "pp": -2.19,
+     "ic95_pp": [
+      -3.63,
+      -0.81
+     ],
+     "folhas_melhores": 8,
+     "folhas_piores": 0
+    },
+    "fusao_v5 - glifo (notacao)": {
+     "pp": -0.03,
+     "ic95_pp": [
+      -1.8,
+      1.74
+     ],
+     "folhas_melhores": 3,
+     "folhas_piores": 5
+    },
+    "fusao_v5 - tess (prosa)": {
+     "pp": 0.08,
+     "ic95_pp": [
+      0.0,
+      0.22
+     ],
+     "folhas_melhores": 0,
+     "folhas_piores": 2
+    },
+    "fusao_v5 - tess (notacao)": {
+     "pp": -9.34,
+     "ic95_pp": [
+      -15.77,
+      -3.93
+     ],
+     "folhas_melhores": 9,
+     "folhas_piores": 0
+    },
+    "fusao_v5 - fusao (prosa)": {
+     "pp": 0.0,
+     "ic95_pp": [
+      0.0,
+      0.0
+     ],
+     "folhas_melhores": 0,
+     "folhas_piores": 0
+    },
+    "fusao_v5 - fusao (notacao)": {
+     "pp": 0.3,
+     "ic95_pp": [
+      -0.07,
+      1.06
+     ],
+     "folhas_melhores": 2,
+     "folhas_piores": 4
+    },
+    "fusao_v5 - fusao_v4 (prosa)": {
+     "pp": 0.0,
+     "ic95_pp": [
+      0.0,
+      0.0
+     ],
+     "folhas_melhores": 0,
+     "folhas_piores": 0
+    },
+    "fusao_v5 - fusao_v4 (notacao)": {
+     "pp": -1.82,
+     "ic95_pp": [
+      -3.87,
+      -0.6
+     ],
+     "folhas_melhores": 6,
+     "folhas_piores": 1
+    },
+    "tess - tess_oraculo (prosa)": {
+     "pp": -0.03,
+     "ic95_pp": [
+      -0.11,
+      0.0
+     ],
+     "folhas_melhores": 1,
+     "folhas_piores": 0
+    },
+    "tess - tess_oraculo (notacao)": {
+     "pp": -0.3,
+     "ic95_pp": [
+      -0.9,
+      0.11
+     ],
+     "folhas_melhores": 5,
+     "folhas_piores": 2
+    },
+    "tess - glifo (prosa)": {
+     "pp": -2.26,
+     "ic95_pp": [
+      -3.8,
+      -0.86
+     ],
+     "folhas_melhores": 8,
+     "folhas_piores": 0
+    },
+    "tess - glifo (notacao)": {
+     "pp": 9.3,
+     "ic95_pp": [
+      2.3,
+      16.66
+     ],
+     "folhas_melhores": 1,
+     "folhas_piores": 8
+    }
+   },
+   "por_livro": {
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": {
+     "lingua": "eng",
+     "folhas": [
+      240,
+      564
+     ],
+     "glifo": 0.0194,
+     "tess": 0.0039,
+     "rapid": 0.0,
+     "fusao": 0.0039,
+     "fusao_rapid": 0.0,
+     "fusao_v2": 0.0039,
+     "fusao_v3": 0.0039,
+     "fusao_v4": 0.0039,
+     "tess_oraculo": 0.0039,
+     "fusao_v5": 0.0039
+    },
+    "📚Hertan Charles. Forcing Chess Moves.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      224,
+      653
+     ],
+     "glifo": 0.0442,
+     "tess": 0.0048,
+     "rapid": 0.0024,
+     "fusao": 0.0048,
+     "fusao_rapid": 0.0024,
+     "fusao_v2": 0.0048,
+     "fusao_v3": 0.0048,
+     "fusao_v4": 0.0048,
+     "tess_oraculo": 0.0048,
+     "fusao_v5": 0.0048
+    },
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": {
+     "lingua": "por",
+     "folhas": [
+      84,
+      331
+     ],
+     "glifo": 0.009,
+     "tess": 0.001,
+     "rapid": 0.0281,
+     "fusao": 0.002,
+     "fusao_rapid": 0.0311,
+     "fusao_v2": 0.001,
+     "fusao_v3": 0.001,
+     "fusao_v4": 0.002,
+     "tess_oraculo": 0.001,
+     "fusao_v5": 0.002
+    },
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": {
+     "lingua": "por",
+     "folhas": [
+      154,
+      417
+     ],
+     "glifo": 0.0439,
+     "tess": 0.0,
+     "rapid": 0.0253,
+     "fusao": 0.0027,
+     "fusao_rapid": 0.0293,
+     "fusao_v2": 0.0,
+     "fusao_v3": 0.0,
+     "fusao_v4": 0.0027,
+     "tess_oraculo": 0.0,
+     "fusao_v5": 0.0027
+    },
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf": {
+     "lingua": "por",
+     "folhas": [
+      1144
+     ],
+     "glifo": 0.0,
+     "tess": 0.0,
+     "rapid": 0.0248,
+     "fusao": 0.0,
+     "fusao_rapid": 0.0248,
+     "fusao_v2": 0.0,
+     "fusao_v3": 0.0,
+     "fusao_v4": 0.0,
+     "tess_oraculo": 0.0028,
+     "fusao_v5": 0.0
+    }
+   },
+   "preservacao_de_figurina_do_glifo_na_fusao_v5": {
+    "preservadas": 483,
+    "do_glifo": 487,
+    "fracao": 0.9918
+   },
+   "o_que_e": "folhas com 20-55% de prosa: partida comentada"
+  },
+  "degradado_medio_mesmas_folhas": {
+   "folhas": 28,
+   "livros": [
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
+    "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf",
+    "📚Chess Evolution 2013 №045-096.pdf",
+    "📚Hertan Charles. Forcing Chess Moves.pdf"
+   ],
+   "caracteres_de_prosa": 32407,
+   "palavras_de_prosa": 5647,
+   "caracteres_de_notacao": 5753,
+   "linhas_da_camada_fora_por_cruzar_diagrama": 24,
+   "segundos_por_folha": {
+    "camada": 0.41,
+    "glifo": 0.89,
+    "tess": 0.9,
+    "rapid": 0.0
+   },
+   "motores": {
+    "glifo": {
+     "tip": {
+      "cer_prosa": 0.5716,
+      "ic95_prosa_dois_niveis": [
+       0.4084,
+       0.737
+      ],
+      "wer_prosa_sdi": 0.9074,
+      "wer_partes": {
+       "s": 4061,
+       "d": 602,
+       "i": 461,
+       "n": 5647
+      },
+      "cer_notacao": 0.5642,
+      "cer_espaco": 0.3645,
+      "insercoes": 2177,
+      "figurina_revocacao": 0.3263,
+      "figurina_precisao": 0.7147
+     },
+     "cru": {
+      "cer_prosa": 0.5744,
+      "ic95_prosa_dois_niveis": [
+       0.4111,
+       0.7401
+      ],
+      "wer_prosa_sdi": 0.9085,
+      "wer_partes": {
+       "s": 4142,
+       "d": 532,
+       "i": 459,
+       "n": 5650
+      },
+      "cer_notacao": 0.6052,
+      "cer_espaco": 0.3621,
+      "insercoes": 2221,
+      "figurina_revocacao": 0.1389,
+      "figurina_precisao": 0.6183
+     }
+    },
+    "tess": {
+     "tip": {
+      "cer_prosa": 0.1861,
+      "ic95_prosa_dois_niveis": [
+       0.1119,
+       0.2529
+      ],
+      "wer_prosa_sdi": 0.2532,
+      "wer_partes": {
+       "s": 644,
+       "d": 639,
+       "i": 147,
+       "n": 5647
+      },
+      "cer_notacao": 0.3909,
+      "cer_espaco": 0.3005,
+      "insercoes": 809,
+      "figurina_revocacao": 0.1329,
+      "figurina_precisao": 0.4353
+     },
+     "cru": {
+      "cer_prosa": 0.1871,
+      "ic95_prosa_dois_niveis": [
+       0.1129,
+       0.2536
+      ],
+      "wer_prosa_sdi": 0.2566,
+      "wer_partes": {
+       "s": 662,
+       "d": 640,
+       "i": 148,
+       "n": 5650
+      },
+      "cer_notacao": 0.396,
+      "cer_espaco": 0.3,
+      "insercoes": 840,
+      "figurina_revocacao": 0.1664,
+      "figurina_precisao": 0.4236
+     }
+    },
+    "fusao": {
+     "tip": {
+      "cer_prosa": 0.2159,
+      "ic95_prosa_dois_niveis": [
+       0.1527,
+       0.2714
+      ],
+      "wer_prosa_sdi": 0.291,
+      "wer_partes": {
+       "s": 890,
+       "d": 581,
+       "i": 172,
+       "n": 5647
+      },
+      "cer_notacao": 0.4514,
+      "cer_espaco": 0.3289,
+      "insercoes": 1308,
+      "figurina_revocacao": 0.3263,
+      "figurina_precisao": 0.6544
+     },
+     "cru": {
+      "cer_prosa": 0.2175,
+      "ic95_prosa_dois_niveis": [
+       0.1537,
+       0.2735
+      ],
+      "wer_prosa_sdi": 0.2915,
+      "wer_partes": {
+       "s": 915,
+       "d": 574,
+       "i": 158,
+       "n": 5650
+      },
+      "cer_notacao": 0.483,
+      "cer_espaco": 0.3256,
+      "insercoes": 1337,
+      "figurina_revocacao": 0.1338,
+      "figurina_precisao": 0.4756
+     }
+    },
+    "fusao_v2": {
+     "tip": {
+      "cer_prosa": 0.2064,
+      "ic95_prosa_dois_niveis": [
+       0.1403,
+       0.2626
+      ],
+      "wer_prosa_sdi": 0.2732,
+      "wer_partes": {
+       "s": 764,
+       "d": 625,
+       "i": 154,
+       "n": 5647
+      },
+      "cer_notacao": 0.3781,
+      "cer_espaco": 0.3104,
+      "insercoes": 1101,
+      "figurina_revocacao": 0.3447,
+      "figurina_precisao": 0.6437
+     },
+     "cru": {
+      "cer_prosa": 0.2075,
+      "ic95_prosa_dois_niveis": [
+       0.1407,
+       0.263
+      ],
+      "wer_prosa_sdi": 0.2743,
+      "wer_partes": {
+       "s": 782,
+       "d": 625,
+       "i": 143,
+       "n": 5650
+      },
+      "cer_notacao": 0.4074,
+      "cer_espaco": 0.3099,
+      "insercoes": 1133,
+      "figurina_revocacao": 0.1681,
+      "figurina_precisao": 0.5131
+     }
+    },
+    "fusao_v3": {
+     "tip": {
+      "cer_prosa": 0.1862,
+      "ic95_prosa_dois_niveis": [
+       0.1123,
+       0.2528
+      ],
+      "wer_prosa_sdi": 0.2555,
+      "wer_partes": {
+       "s": 668,
+       "d": 622,
+       "i": 153,
+       "n": 5647
+      },
+      "cer_notacao": 0.3843,
+      "cer_espaco": 0.3104,
+      "insercoes": 882,
+      "figurina_revocacao": 0.3224,
+      "figurina_precisao": 0.6282
+     },
+     "cru": {
+      "cer_prosa": 0.1873,
+      "ic95_prosa_dois_niveis": [
+       0.1134,
+       0.2534
+      ],
+      "wer_prosa_sdi": 0.2577,
+      "wer_partes": {
+       "s": 686,
+       "d": 623,
+       "i": 147,
+       "n": 5650
+      },
+      "cer_notacao": 0.4111,
+      "cer_espaco": 0.3099,
+      "insercoes": 914,
+      "figurina_revocacao": 0.1681,
+      "figurina_precisao": 0.4949
+     }
+    },
+    "fusao_v4": {
+     "tip": {
+      "cer_prosa": 0.1873,
+      "ic95_prosa_dois_niveis": [
+       0.1131,
+       0.254
+      ],
+      "wer_prosa_sdi": 0.2608,
+      "wer_partes": {
+       "s": 721,
+       "d": 578,
+       "i": 174,
+       "n": 5647
+      },
+      "cer_notacao": 0.4603,
+      "cer_espaco": 0.3308,
+      "insercoes": 1075,
+      "figurina_revocacao": 0.2974,
+      "figurina_precisao": 0.6192
+     },
+     "cru": {
+      "cer_prosa": 0.1887,
+      "ic95_prosa_dois_niveis": [
+       0.1142,
+       0.2554
+      ],
+      "wer_prosa_sdi": 0.263,
+      "wer_partes": {
+       "s": 746,
+       "d": 572,
+       "i": 168,
+       "n": 5650
+      },
+      "cer_notacao": 0.4896,
+      "cer_espaco": 0.3256,
+      "insercoes": 1103,
+      "figurina_revocacao": 0.1286,
+      "figurina_precisao": 0.4286
+     }
+    },
+    "tess_oraculo": {
+     "tip": {
+      "cer_prosa": 0.065,
+      "ic95_prosa_dois_niveis": [
+       0.0083,
+       0.1457
+      ],
+      "wer_prosa_sdi": 0.0923,
+      "wer_partes": {
+       "s": 176,
+       "d": 315,
+       "i": 30,
+       "n": 5647
+      },
+      "cer_notacao": 0.2639,
+      "cer_espaco": 0.1289,
+      "insercoes": 163,
+      "figurina_revocacao": 0.1803,
+      "figurina_precisao": 0.5209
+     },
+     "cru": {
+      "cer_prosa": 0.0661,
+      "ic95_prosa_dois_niveis": [
+       0.0094,
+       0.1467
+      ],
+      "wer_prosa_sdi": 0.0963,
+      "wer_partes": {
+       "s": 198,
+       "d": 315,
+       "i": 31,
+       "n": 5650
+      },
+      "cer_notacao": 0.2742,
+      "cer_espaco": 0.1296,
+      "insercoes": 212,
+      "figurina_revocacao": 0.223,
+      "figurina_precisao": 0.5019
+     }
+    },
+    "fusao_v5": {
+     "tip": {
+      "cer_prosa": 0.1922,
+      "ic95_prosa_dois_niveis": [
+       0.1195,
+       0.2572
+      ],
+      "wer_prosa_sdi": 0.2669,
+      "wer_partes": {
+       "s": 778,
+       "d": 542,
+       "i": 187,
+       "n": 5647
+      },
+      "cer_notacao": 0.4556,
+      "cer_espaco": 0.3379,
+      "insercoes": 1264,
+      "figurina_revocacao": 0.325,
+      "figurina_precisao": 0.6534
+     },
+     "cru": {
+      "cer_prosa": 0.1934,
+      "ic95_prosa_dois_niveis": [
+       0.121,
+       0.2582
+      ],
+      "wer_prosa_sdi": 0.2687,
+      "wer_partes": {
+       "s": 805,
+       "d": 533,
+       "i": 180,
+       "n": 5650
+      },
+      "cer_notacao": 0.4869,
+      "cer_espaco": 0.3355,
+      "insercoes": 1287,
+      "figurina_revocacao": 0.1338,
+      "figurina_precisao": 0.4671
+     }
+    }
+   },
+   "pares": {
+    "fusao_v5 - glifo (prosa)": {
+     "pp": -37.95,
+     "ic95_pp": [
+      -51.31,
+      -23.1
+     ],
+     "folhas_melhores": 28,
+     "folhas_piores": 0
+    },
+    "fusao_v5 - glifo (notacao)": {
+     "pp": -10.86,
+     "ic95_pp": [
+      -22.6,
+      -1.29
+     ],
+     "folhas_melhores": 19,
+     "folhas_piores": 5
+    },
+    "fusao_v5 - tess (prosa)": {
+     "pp": 0.61,
+     "ic95_pp": [
+      0.26,
+      1.05
+     ],
+     "folhas_melhores": 3,
+     "folhas_piores": 20
+    },
+    "fusao_v5 - tess (notacao)": {
+     "pp": 6.47,
+     "ic95_pp": [
+      0.26,
+      11.58
+     ],
+     "folhas_melhores": 10,
+     "folhas_piores": 15
+    },
+    "fusao_v5 - fusao (prosa)": {
+     "pp": -2.37,
+     "ic95_pp": [
+      -4.64,
+      -0.76
+     ],
+     "folhas_melhores": 23,
+     "folhas_piores": 4
+    },
+    "fusao_v5 - fusao (notacao)": {
+     "pp": 0.42,
+     "ic95_pp": [
+      -0.29,
+      0.95
+     ],
+     "folhas_melhores": 7,
+     "folhas_piores": 10
+    },
+    "fusao_v5 - fusao_v4 (prosa)": {
+     "pp": 0.48,
+     "ic95_pp": [
+      0.14,
+      0.93
+     ],
+     "folhas_melhores": 4,
+     "folhas_piores": 19
+    },
+    "fusao_v5 - fusao_v4 (notacao)": {
+     "pp": -0.47,
+     "ic95_pp": [
+      -1.9,
+      0.7
+     ],
+     "folhas_melhores": 15,
+     "folhas_piores": 6
+    },
+    "tess - tess_oraculo (prosa)": {
+     "pp": 12.11,
+     "ic95_pp": [
+      6.85,
+      17.07
+     ],
+     "folhas_melhores": 1,
+     "folhas_piores": 26
+    },
+    "tess - tess_oraculo (notacao)": {
+     "pp": 12.71,
+     "ic95_pp": [
+      6.47,
+      20.65
+     ],
+     "folhas_melhores": 2,
+     "folhas_piores": 25
+    },
+    "tess - glifo (prosa)": {
+     "pp": -38.56,
+     "ic95_pp": [
+      -51.93,
+      -23.75
+     ],
+     "folhas_melhores": 28,
+     "folhas_piores": 0
+    },
+    "tess - glifo (notacao)": {
+     "pp": -17.33,
+     "ic95_pp": [
+      -29.46,
+      -4.55
+     ],
+     "folhas_melhores": 22,
+     "folhas_piores": 5
+    }
+   },
+   "por_livro": {
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": {
+     "lingua": "eng",
+     "folhas": [
+      155,
+      340,
+      509,
+      677
+     ],
+     "glifo": 0.4803,
+     "tess": 0.0428,
+     "fusao": 0.0718,
+     "fusao_v2": 0.0544,
+     "fusao_v3": 0.0436,
+     "fusao_v4": 0.0459,
+     "tess_oraculo": 0.0024,
+     "fusao_v5": 0.0483
+    },
+    "📚Hertan Charles. Forcing Chess Moves.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      286,
+      485,
+      643,
+      659
+     ],
+     "glifo": 0.2734,
+     "tess": 0.1577,
+     "fusao": 0.1907,
+     "fusao_v2": 0.1877,
+     "fusao_v3": 0.1603,
+     "fusao_v4": 0.1607,
+     "tess_oraculo": 0.0036,
+     "fusao_v5": 0.1694
+    },
+    "📚Chess Evolution 2013 №045-096.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      279,
+      578,
+      903,
+      1210
+     ],
+     "glifo": 0.3848,
+     "tess": 0.2215,
+     "fusao": 0.2222,
+     "fusao_v2": 0.2213,
+     "fusao_v3": 0.2213,
+     "fusao_v4": 0.2217,
+     "tess_oraculo": 0.0638,
+     "fusao_v5": 0.2225
+    },
+    "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": {
+     "lingua": "por",
+     "folhas": [
+      58,
+      116,
+      186,
+      247
+     ],
+     "glifo": 0.7591,
+     "tess": 0.2525,
+     "fusao": 0.2743,
+     "fusao_v2": 0.2533,
+     "fusao_v3": 0.2518,
+     "fusao_v4": 0.2522,
+     "tess_oraculo": 0.0127,
+     "fusao_v5": 0.2544
+    },
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": {
+     "lingua": "por",
+     "folhas": [
+      77,
+      165,
+      252,
+      340
+     ],
+     "glifo": 0.8798,
+     "tess": 0.3193,
+     "fusao": 0.3239,
+     "fusao_v2": 0.3193,
+     "fusao_v3": 0.3193,
+     "fusao_v4": 0.3223,
+     "tess_oraculo": 0.2597,
+     "fusao_v5": 0.3235
+    },
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": {
+     "lingua": "por",
+     "folhas": [
+      112,
+      228,
+      350,
+      435
+     ],
+     "glifo": 0.6891,
+     "tess": 0.1331,
+     "fusao": 0.2257,
+     "fusao_v2": 0.2167,
+     "fusao_v3": 0.1306,
+     "fusao_v4": 0.1311,
+     "tess_oraculo": 0.0297,
+     "fusao_v5": 0.1441
+    },
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf": {
+     "lingua": "por",
+     "folhas": [
+      172,
+      566,
+      1077,
+      1167
+     ],
+     "glifo": 0.5303,
+     "tess": 0.0747,
+     "fusao": 0.1306,
+     "fusao_v2": 0.1123,
+     "fusao_v3": 0.075,
+     "fusao_v4": 0.0762,
+     "tess_oraculo": 0.0127,
+     "fusao_v5": 0.0851
+    }
+   },
+   "preservacao_de_figurina_do_glifo_na_fusao_v5": {
+    "preservadas": 257,
+    "do_glifo": 348,
+    "fracao": 0.7385
+   },
+   "o_que_e": "as MESMAS folhas do ouro, perfil 'medio' (~110 dpi efetivos) -- sem calibracao contra scan real"
+  },
+  "prata_todas": {
+   "folhas": 30,
+   "livros": [
+    "1937 Kemeri.pdf",
+    "A Matter of Endgame Technique – Jacob Aagaard.pdf",
+    "AAGAARD - Practical Chess Defence.pdf",
+    "Brinckmann - Matt in zwanzig Zügen (1963).pdf",
+    "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf",
+    "Koblenz - El dominio del arte de la combinacion (1978).pdf",
+    "La_casa_del_Ajedrez_El_metodo_Yusupov_4_Yusupov_Artur_Fundamentos.pdf",
+    "Neumann - Traité élémentaire du jeu des échecs (1870).pdf",
+    "Secrets of Chess Training School of Future Champions 1_ao_5.pdf",
+    "📚Nunn J. Secrets of Minor Piece Endings.pdf"
+   ],
+   "caracteres_de_prosa": 47601,
+   "palavras_de_prosa": 8089,
+   "caracteres_de_notacao": 5963,
+   "linhas_da_camada_fora_por_cruzar_diagrama": 53,
+   "segundos_por_folha": {
+    "camada": 0.88,
+    "glifo": 1.29,
+    "tess": 1.53,
+    "rapid": 0.0
+   },
+   "motores": {
+    "glifo": {
+     "tip": {
+      "cer_prosa": 0.2747,
+      "ic95_prosa_dois_niveis": [
+       0.1497,
+       0.4489
+      ],
+      "wer_prosa_sdi": 0.5396,
+      "wer_partes": {
+       "s": 2969,
+       "d": 730,
+       "i": 666,
+       "n": 8089
+      },
+      "cer_notacao": 0.4798,
+      "cer_espaco": 0.4565,
+      "insercoes": 3750,
+      "figurina_revocacao": 0.3641,
+      "figurina_precisao": 0.6949
+     },
+     "cru": {
+      "cer_prosa": 0.2769,
+      "ic95_prosa_dois_niveis": [
+       0.151,
+       0.4503
+      ],
+      "wer_prosa_sdi": 0.5416,
+      "wer_partes": {
+       "s": 3025,
+       "d": 730,
+       "i": 656,
+       "n": 8144
+      },
+      "cer_notacao": 0.484,
+      "cer_espaco": 0.4507,
+      "insercoes": 3735,
+      "figurina_revocacao": 0.336,
+      "figurina_precisao": 0.9
+     }
+    },
+    "tess": {
+     "tip": {
+      "cer_prosa": 0.1897,
+      "ic95_prosa_dois_niveis": [
+       0.0856,
+       0.3571
+      ],
+      "wer_prosa_sdi": 0.2892,
+      "wer_partes": {
+       "s": 1196,
+       "d": 981,
+       "i": 162,
+       "n": 8089
+      },
+      "cer_notacao": 0.3951,
+      "cer_espaco": 0.4894,
+      "insercoes": 1243,
+      "figurina_revocacao": 0.5631,
+      "figurina_precisao": 0.8614
+     },
+     "cru": {
+      "cer_prosa": 0.1922,
+      "ic95_prosa_dois_niveis": [
+       0.088,
+       0.3584
+      ],
+      "wer_prosa_sdi": 0.296,
+      "wer_partes": {
+       "s": 1266,
+       "d": 984,
+       "i": 161,
+       "n": 8144
+      },
+      "cer_notacao": 0.4207,
+      "cer_espaco": 0.4857,
+      "insercoes": 1224,
+      "figurina_revocacao": 0.5344,
+      "figurina_precisao": 0.8527
+     }
+    },
+    "fusao": {
+     "tip": {
+      "cer_prosa": 0.2023,
+      "ic95_prosa_dois_niveis": [
+       0.1007,
+       0.3696
+      ],
+      "wer_prosa_sdi": 0.318,
+      "wer_partes": {
+       "s": 1514,
+       "d": 890,
+       "i": 168,
+       "n": 8089
+      },
+      "cer_notacao": 0.4825,
+      "cer_espaco": 0.4638,
+      "insercoes": 1520,
+      "figurina_revocacao": 0.373,
+      "figurina_precisao": 0.6646
+     },
+     "cru": {
+      "cer_prosa": 0.2065,
+      "ic95_prosa_dois_niveis": [
+       0.1039,
+       0.3738
+      ],
+      "wer_prosa_sdi": 0.3264,
+      "wer_partes": {
+       "s": 1602,
+       "d": 895,
+       "i": 161,
+       "n": 8144
+      },
+      "cer_notacao": 0.4861,
+      "cer_espaco": 0.4601,
+      "insercoes": 1513,
+      "figurina_revocacao": 0.3458,
+      "figurina_precisao": 0.8421
+     }
+    },
+    "fusao_v2": {
+     "tip": {
+      "cer_prosa": 0.1945,
+      "ic95_prosa_dois_niveis": [
+       0.0945,
+       0.3613
+      ],
+      "wer_prosa_sdi": 0.2989,
+      "wer_partes": {
+       "s": 1285,
+       "d": 970,
+       "i": 163,
+       "n": 8089
+      },
+      "cer_notacao": 0.407,
+      "cer_espaco": 0.4894,
+      "insercoes": 1341,
+      "figurina_revocacao": 0.556,
+      "figurina_precisao": 0.7417
+     },
+     "cru": {
+      "cer_prosa": 0.1971,
+      "ic95_prosa_dois_niveis": [
+       0.097,
+       0.3633
+      ],
+      "wer_prosa_sdi": 0.3049,
+      "wer_partes": {
+       "s": 1352,
+       "d": 976,
+       "i": 155,
+       "n": 8144
+      },
+      "cer_notacao": 0.4319,
+      "cer_espaco": 0.4854,
+      "insercoes": 1332,
+      "figurina_revocacao": 0.5246,
+      "figurina_precisao": 0.8754
+     }
+    },
+    "fusao_v3": {
+     "tip": {
+      "cer_prosa": 0.1898,
+      "ic95_prosa_dois_niveis": [
+       0.0863,
+       0.3565
+      ],
+      "wer_prosa_sdi": 0.2903,
+      "wer_partes": {
+       "s": 1218,
+       "d": 967,
+       "i": 163,
+       "n": 8089
+      },
+      "cer_notacao": 0.4068,
+      "cer_espaco": 0.4894,
+      "insercoes": 1329,
+      "figurina_revocacao": 0.5577,
+      "figurina_precisao": 0.7441
+     },
+     "cru": {
+      "cer_prosa": 0.1924,
+      "ic95_prosa_dois_niveis": [
+       0.0889,
+       0.3582
+      ],
+      "wer_prosa_sdi": 0.2963,
+      "wer_partes": {
+       "s": 1288,
+       "d": 970,
+       "i": 155,
+       "n": 8144
+      },
+      "cer_notacao": 0.4328,
+      "cer_espaco": 0.4857,
+      "insercoes": 1313,
+      "figurina_revocacao": 0.5265,
+      "figurina_precisao": 0.873
+     }
+    },
+    "fusao_v4": {
+     "tip": {
+      "cer_prosa": 0.1934,
+      "ic95_prosa_dois_niveis": [
+       0.0885,
+       0.3628
+      ],
+      "wer_prosa_sdi": 0.2961,
+      "wer_partes": {
+       "s": 1325,
+       "d": 890,
+       "i": 180,
+       "n": 8089
+      },
+      "cer_notacao": 0.489,
+      "cer_espaco": 0.4632,
+      "insercoes": 1484,
+      "figurina_revocacao": 0.373,
+      "figurina_precisao": 0.6306
+     },
+     "cru": {
+      "cer_prosa": 0.1978,
+      "ic95_prosa_dois_niveis": [
+       0.0924,
+       0.3673
+      ],
+      "wer_prosa_sdi": 0.3044,
+      "wer_partes": {
+       "s": 1416,
+       "d": 892,
+       "i": 171,
+       "n": 8144
+      },
+      "cer_notacao": 0.491,
+      "cer_espaco": 0.4598,
+      "insercoes": 1477,
+      "figurina_revocacao": 0.3517,
+      "figurina_precisao": 0.7885
+     }
+    },
+    "tess_oraculo": {
+     "tip": {
+      "cer_prosa": 0.1243,
+      "ic95_prosa_dois_niveis": [
+       0.0645,
+       0.199
+      ],
+      "wer_prosa_sdi": 0.2273,
+      "wer_partes": {
+       "s": 1157,
+       "d": 664,
+       "i": 18,
+       "n": 8089
+      },
+      "cer_notacao": 0.2522,
+      "cer_espaco": 0.2859,
+      "insercoes": 166,
+      "figurina_revocacao": 0.8224,
+      "figurina_precisao": 0.915
+     },
+     "cru": {
+      "cer_prosa": 0.127,
+      "ic95_prosa_dois_niveis": [
+       0.0671,
+       0.2019
+      ],
+      "wer_prosa_sdi": 0.2362,
+      "wer_partes": {
+       "s": 1241,
+       "d": 664,
+       "i": 19,
+       "n": 8144
+      },
+      "cer_notacao": 0.2767,
+      "cer_espaco": 0.2881,
+      "insercoes": 161,
+      "figurina_revocacao": 0.8094,
+      "figurina_precisao": 0.9156
+     }
+    },
+    "fusao_v5": {
+     "tip": {
+      "cer_prosa": 0.1963,
+      "ic95_prosa_dois_niveis": [
+       0.0925,
+       0.3652
+      ],
+      "wer_prosa_sdi": 0.3018,
+      "wer_partes": {
+       "s": 1385,
+       "d": 873,
+       "i": 183,
+       "n": 8089
+      },
+      "cer_notacao": 0.4833,
+      "cer_espaco": 0.4517,
+      "insercoes": 1580,
+      "figurina_revocacao": 0.3677,
+      "figurina_precisao": 0.6592
+     },
+     "cru": {
+      "cer_prosa": 0.2005,
+      "ic95_prosa_dois_niveis": [
+       0.0955,
+       0.3683
+      ],
+      "wer_prosa_sdi": 0.31,
+      "wer_partes": {
+       "s": 1474,
+       "d": 877,
+       "i": 174,
+       "n": 8144
+      },
+      "cer_notacao": 0.4876,
+      "cer_espaco": 0.448,
+      "insercoes": 1574,
+      "figurina_revocacao": 0.3438,
+      "figurina_precisao": 0.8373
+     }
+    }
+   },
+   "pares": {
+    "fusao_v5 - glifo (prosa)": {
+     "pp": -7.84,
+     "ic95_pp": [
+      -13.73,
+      -2.94
+     ],
+     "folhas_melhores": 27,
+     "folhas_piores": 1
+    },
+    "fusao_v5 - glifo (notacao)": {
+     "pp": 0.35,
+     "ic95_pp": [
+      -1.44,
+      2.44
+     ],
+     "folhas_melhores": 11,
+     "folhas_piores": 11
+    },
+    "fusao_v5 - tess (prosa)": {
+     "pp": 0.66,
+     "ic95_pp": [
+      -0.07,
+      1.71
+     ],
+     "folhas_melhores": 8,
+     "folhas_piores": 17
+    },
+    "fusao_v5 - tess (notacao)": {
+     "pp": 8.82,
+     "ic95_pp": [
+      2.02,
+      16.28
+     ],
+     "folhas_melhores": 5,
+     "folhas_piores": 18
+    },
+    "fusao_v5 - fusao (prosa)": {
+     "pp": -0.6,
+     "ic95_pp": [
+      -1.45,
+      -0.04
+     ],
+     "folhas_melhores": 20,
+     "folhas_piores": 4
+    },
+    "fusao_v5 - fusao (notacao)": {
+     "pp": 0.08,
+     "ic95_pp": [
+      -0.28,
+      0.53
+     ],
+     "folhas_melhores": 3,
+     "folhas_piores": 5
+    },
+    "fusao_v5 - fusao_v4 (prosa)": {
+     "pp": 0.29,
+     "ic95_pp": [
+      -0.03,
+      0.89
+     ],
+     "folhas_melhores": 8,
+     "folhas_piores": 15
+    },
+    "fusao_v5 - fusao_v4 (notacao)": {
+     "pp": -0.57,
+     "ic95_pp": [
+      -1.46,
+      0.13
+     ],
+     "folhas_melhores": 11,
+     "folhas_piores": 3
+    },
+    "tess - tess_oraculo (prosa)": {
+     "pp": 6.54,
+     "ic95_pp": [
+      0.94,
+      17.06
+     ],
+     "folhas_melhores": 4,
+     "folhas_piores": 26
+    },
+    "tess - tess_oraculo (notacao)": {
+     "pp": 14.29,
+     "ic95_pp": [
+      1.07,
+      33.08
+     ],
+     "folhas_melhores": 6,
+     "folhas_piores": 15
+    },
+    "tess - glifo (prosa)": {
+     "pp": -8.5,
+     "ic95_pp": [
+      -15.27,
+      -2.94
+     ],
+     "folhas_melhores": 25,
+     "folhas_piores": 3
+    },
+    "tess - glifo (notacao)": {
+     "pp": -8.47,
+     "ic95_pp": [
+      -16.48,
+      -1.74
+     ],
+     "folhas_melhores": 19,
+     "folhas_piores": 6
+    }
+   },
+   "por_livro": {
+    "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      280,
+      602,
+      927
+     ],
+     "glifo": 0.0841,
+     "tess": 0.0775,
+     "fusao": 0.0776,
+     "fusao_v2": 0.0776,
+     "fusao_v3": 0.0773,
+     "fusao_v4": 0.0776,
+     "tess_oraculo": 0.0533,
+     "fusao_v5": 0.0763
+    },
+    "AAGAARD - Practical Chess Defence.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      64,
+      157,
+      234
+     ],
+     "glifo": 0.1268,
+     "tess": 0.0756,
+     "fusao": 0.0934,
+     "fusao_v2": 0.0882,
+     "fusao_v3": 0.0798,
+     "fusao_v4": 0.0794,
+     "tess_oraculo": 0.0461,
+     "fusao_v5": 0.0806
+    },
+    "A Matter of Endgame Technique – Jacob Aagaard.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      194,
+      434,
+      692
+     ],
+     "glifo": 0.0653,
+     "tess": 0.0578,
+     "fusao": 0.0573,
+     "fusao_v2": 0.0571,
+     "fusao_v3": 0.0568,
+     "fusao_v4": 0.0571,
+     "tess_oraculo": 0.0476,
+     "fusao_v5": 0.0571
+    },
+    "📚Nunn J. Secrets of Minor Piece Endings.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      64,
+      145,
+      227
+     ],
+     "glifo": 0.1526,
+     "tess": 0.1477,
+     "fusao": 0.143,
+     "fusao_v2": 0.1432,
+     "fusao_v3": 0.1447,
+     "fusao_v4": 0.144,
+     "tess_oraculo": 0.1455,
+     "fusao_v5": 0.1418
+    },
+    "1937 Kemeri.pdf": {
+     "lingua": "deu",
+     "folhas": [
+      67,
+      147,
+      226
+     ],
+     "glifo": 0.4996,
+     "tess": 0.2966,
+     "fusao": 0.3119,
+     "fusao_v2": 0.2966,
+     "fusao_v3": 0.2966,
+     "fusao_v4": 0.3098,
+     "tess_oraculo": 0.1875,
+     "fusao_v5": 0.3108
+    },
+    "Brinckmann - Matt in zwanzig Zügen (1963).pdf": {
+     "lingua": "deu",
+     "folhas": [
+      27,
+      60,
+      92
+     ],
+     "glifo": 0.4102,
+     "tess": 0.0253,
+     "fusao": 0.133,
+     "fusao_v2": 0.091,
+     "fusao_v3": 0.0335,
+     "fusao_v4": 0.0514,
+     "tess_oraculo": 0.0228,
+     "fusao_v5": 0.0846
+    },
+    "Koblenz - El dominio del arte de la combinacion (1978).pdf": {
+     "lingua": "spa",
+     "folhas": [
+      15,
+      39,
+      55
+     ],
+     "glifo": 0.1554,
+     "tess": 0.0849,
+     "fusao": 0.0981,
+     "fusao_v2": 0.0852,
+     "fusao_v3": 0.0849,
+     "fusao_v4": 0.0862,
+     "tess_oraculo": 0.1187,
+     "fusao_v5": 0.089
+    },
+    "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf": {
+     "lingua": "nld",
+     "folhas": [
+      31,
+      69,
+      106
+     ],
+     "glifo": 0.9991,
+     "tess": 1.0,
+     "fusao": 1.0,
+     "fusao_v2": 1.0,
+     "fusao_v3": 1.0,
+     "fusao_v4": 1.0,
+     "tess_oraculo": 0.4297,
+     "fusao_v5": 1.0
+    },
+    "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": {
+     "lingua": "fra",
+     "folhas": [
+      10,
+      18,
+      39
+     ],
+     "glifo": 0.1538,
+     "tess": 0.07,
+     "fusao": 0.0802,
+     "fusao_v2": 0.073,
+     "fusao_v3": 0.0709,
+     "fusao_v4": 0.0746,
+     "tess_oraculo": 0.0072,
+     "fusao_v5": 0.0755
+    },
+    "La_casa_del_Ajedrez_El_metodo_Yusupov_4_Yusupov_Artur_Fundamentos.pdf": {
+     "lingua": "spa",
+     "folhas": [
+      56,
+      118,
+      177
+     ],
+     "glifo": 0.3293,
+     "tess": 0.2426,
+     "fusao": 0.2394,
+     "fusao_v2": 0.2345,
+     "fusao_v3": 0.2371,
+     "fusao_v4": 0.2386,
+     "tess_oraculo": 0.2359,
+     "fusao_v5": 0.2426
+    }
+   },
+   "preservacao_de_figurina_do_glifo_na_fusao_v5": {
+    "preservadas": 1045,
+    "do_glifo": 1111,
+    "fracao": 0.9406
+   },
+   "o_que_e": "scans reais; referencia = OCR de terceiro; so ordena"
+  },
+  "prata_admitida": {
+   "folhas": 15,
+   "livros": [
+    "A Matter of Endgame Technique – Jacob Aagaard.pdf",
+    "AAGAARD - Practical Chess Defence.pdf",
+    "Brinckmann - Matt in zwanzig Zügen (1963).pdf",
+    "Neumann - Traité élémentaire du jeu des échecs (1870).pdf",
+    "Secrets of Chess Training School of Future Champions 1_ao_5.pdf",
+    "📚Nunn J. Secrets of Minor Piece Endings.pdf"
+   ],
+   "caracteres_de_prosa": 23379,
+   "palavras_de_prosa": 4084,
+   "caracteres_de_notacao": 2015,
+   "linhas_da_camada_fora_por_cruzar_diagrama": 53,
+   "segundos_por_folha": {
+    "camada": 1.27,
+    "glifo": 1.64,
+    "tess": 1.43,
+    "rapid": 0.0
+   },
+   "motores": {
+    "glifo": {
+     "tip": {
+      "cer_prosa": 0.1437,
+      "ic95_prosa_dois_niveis": [
+       0.0737,
+       0.2567
+      ],
+      "wer_prosa_sdi": 0.357,
+      "wer_partes": {
+       "s": 1195,
+       "d": 94,
+       "i": 169,
+       "n": 4084
+      },
+      "cer_notacao": 0.2581,
+      "cer_espaco": 0.3834,
+      "insercoes": 893,
+      "figurina_revocacao": 0.2949,
+      "figurina_precisao": 0.5169
+     },
+     "cru": {
+      "cer_prosa": 0.1457,
+      "ic95_prosa_dois_niveis": [
+       0.0742,
+       0.2614
+      ],
+      "wer_prosa_sdi": 0.3581,
+      "wer_partes": {
+       "s": 1211,
+       "d": 94,
+       "i": 163,
+       "n": 4099
+      },
+      "cer_notacao": 0.2594,
+      "cer_espaco": 0.3702,
+      "insercoes": 893,
+      "figurina_revocacao": 0.2766,
+      "figurina_precisao": 0.8864
+     }
+    },
+    "tess": {
+     "tip": {
+      "cer_prosa": 0.0603,
+      "ic95_prosa_dois_niveis": [
+       0.0423,
+       0.0828
+      ],
+      "wer_prosa_sdi": 0.1312,
+      "wer_partes": {
+       "s": 337,
+       "d": 122,
+       "i": 77,
+       "n": 4084
+      },
+      "cer_notacao": 0.0953,
+      "cer_espaco": 0.4472,
+      "insercoes": 627,
+      "figurina_revocacao": 0.8846,
+      "figurina_precisao": 0.9388
+     },
+     "cru": {
+      "cer_prosa": 0.063,
+      "ic95_prosa_dois_niveis": [
+       0.0464,
+       0.0854
+      ],
+      "wer_prosa_sdi": 0.1403,
+      "wer_partes": {
+       "s": 375,
+       "d": 123,
+       "i": 77,
+       "n": 4099
+      },
+      "cer_notacao": 0.1363,
+      "cer_espaco": 0.4389,
+      "insercoes": 620,
+      "figurina_revocacao": 0.8794,
+      "figurina_precisao": 0.9323
+     }
+    },
+    "fusao": {
+     "tip": {
+      "cer_prosa": 0.0806,
+      "ic95_prosa_dois_niveis": [
+       0.0569,
+       0.1107
+      ],
+      "wer_prosa_sdi": 0.1614,
+      "wer_partes": {
+       "s": 482,
+       "d": 102,
+       "i": 75,
+       "n": 4084
+      },
+      "cer_notacao": 0.2566,
+      "cer_espaco": 0.426,
+      "insercoes": 668,
+      "figurina_revocacao": 0.3718,
+      "figurina_precisao": 0.5859
+     },
+     "cru": {
+      "cer_prosa": 0.0836,
+      "ic95_prosa_dois_niveis": [
+       0.0591,
+       0.1163
+      ],
+      "wer_prosa_sdi": 0.1691,
+      "wer_partes": {
+       "s": 518,
+       "d": 105,
+       "i": 70,
+       "n": 4099
+      },
+      "cer_notacao": 0.2683,
+      "cer_espaco": 0.4168,
+      "insercoes": 669,
+      "figurina_revocacao": 0.3333,
+      "figurina_precisao": 0.94
+     }
+    },
+    "fusao_v2": {
+     "tip": {
+      "cer_prosa": 0.0722,
+      "ic95_prosa_dois_niveis": [
+       0.0537,
+       0.0945
+      ],
+      "wer_prosa_sdi": 0.1486,
+      "wer_partes": {
+       "s": 409,
+       "d": 120,
+       "i": 78,
+       "n": 4084
+      },
+      "cer_notacao": 0.1166,
+      "cer_espaco": 0.4495,
+      "insercoes": 688,
+      "figurina_revocacao": 0.8526,
+      "figurina_precisao": 0.7733
+     },
+     "cru": {
+      "cer_prosa": 0.075,
+      "ic95_prosa_dois_niveis": [
+       0.0562,
+       0.0976
+      ],
+      "wer_prosa_sdi": 0.1564,
+      "wer_partes": {
+       "s": 444,
+       "d": 124,
+       "i": 73,
+       "n": 4099
+      },
+      "cer_notacao": 0.1541,
+      "cer_espaco": 0.4405,
+      "insercoes": 689,
+      "figurina_revocacao": 0.844,
+      "figurina_precisao": 0.9675
+     }
+    },
+    "fusao_v3": {
+     "tip": {
+      "cer_prosa": 0.0619,
+      "ic95_prosa_dois_niveis": [
+       0.0443,
+       0.0844
+      ],
+      "wer_prosa_sdi": 0.133,
+      "wer_partes": {
+       "s": 349,
+       "d": 117,
+       "i": 77,
+       "n": 4084
+      },
+      "cer_notacao": 0.1161,
+      "cer_espaco": 0.4495,
+      "insercoes": 676,
+      "figurina_revocacao": 0.859,
+      "figurina_precisao": 0.7791
+     },
+     "cru": {
+      "cer_prosa": 0.0647,
+      "ic95_prosa_dois_niveis": [
+       0.0482,
+       0.0872
+      ],
+      "wer_prosa_sdi": 0.1408,
+      "wer_partes": {
+       "s": 387,
+       "d": 118,
+       "i": 72,
+       "n": 4099
+      },
+      "cer_notacao": 0.1567,
+      "cer_espaco": 0.4412,
+      "insercoes": 670,
+      "figurina_revocacao": 0.8511,
+      "figurina_precisao": 0.96
+     }
+    },
+    "fusao_v4": {
+     "tip": {
+      "cer_prosa": 0.0651,
+      "ic95_prosa_dois_niveis": [
+       0.0495,
+       0.0871
+      ],
+      "wer_prosa_sdi": 0.1352,
+      "wer_partes": {
+       "s": 376,
+       "d": 102,
+       "i": 74,
+       "n": 4084
+      },
+      "cer_notacao": 0.2605,
+      "cer_espaco": 0.4252,
+      "insercoes": 639,
+      "figurina_revocacao": 0.391,
+      "figurina_precisao": 0.598
+     },
+     "cru": {
+      "cer_prosa": 0.0682,
+      "ic95_prosa_dois_niveis": [
+       0.0531,
+       0.0903
+      ],
+      "wer_prosa_sdi": 0.143,
+      "wer_partes": {
+       "s": 415,
+       "d": 102,
+       "i": 69,
+       "n": 4099
+      },
+      "cer_notacao": 0.2725,
+      "cer_espaco": 0.416,
+      "insercoes": 640,
+      "figurina_revocacao": 0.3546,
+      "figurina_precisao": 0.9091
+     }
+    },
+    "tess_oraculo": {
+     "tip": {
+      "cer_prosa": 0.0365,
+      "ic95_prosa_dois_niveis": [
+       0.0205,
+       0.0538
+      ],
+      "wer_prosa_sdi": 0.1026,
+      "wer_partes": {
+       "s": 321,
+       "d": 93,
+       "i": 5,
+       "n": 4084
+      },
+      "cer_notacao": 0.071,
+      "cer_espaco": 0.2528,
+      "insercoes": 62,
+      "figurina_revocacao": 0.8974,
+      "figurina_precisao": 0.9333
+     },
+     "cru": {
+      "cer_prosa": 0.0386,
+      "ic95_prosa_dois_niveis": [
+       0.0239,
+       0.0555
+      ],
+      "wer_prosa_sdi": 0.113,
+      "wer_partes": {
+       "s": 365,
+       "d": 93,
+       "i": 5,
+       "n": 4099
+      },
+      "cer_notacao": 0.1137,
+      "cer_espaco": 0.2542,
+      "insercoes": 62,
+      "figurina_revocacao": 0.8865,
+      "figurina_precisao": 0.9259
+     }
+    },
+    "fusao_v5": {
+     "tip": {
+      "cer_prosa": 0.07,
+      "ic95_prosa_dois_niveis": [
+       0.0531,
+       0.0919
+      ],
+      "wer_prosa_sdi": 0.1425,
+      "wer_partes": {
+       "s": 407,
+       "d": 100,
+       "i": 75,
+       "n": 4084
+      },
+      "cer_notacao": 0.2605,
+      "cer_espaco": 0.4077,
+      "insercoes": 659,
+      "figurina_revocacao": 0.3718,
+      "figurina_precisao": 0.5859
+     },
+     "cru": {
+      "cer_prosa": 0.073,
+      "ic95_prosa_dois_niveis": [
+       0.0556,
+       0.0953
+      ],
+      "wer_prosa_sdi": 0.15,
+      "wer_partes": {
+       "s": 444,
+       "d": 102,
+       "i": 69,
+       "n": 4099
+      },
+      "cer_notacao": 0.2731,
+      "cer_espaco": 0.3985,
+      "insercoes": 660,
+      "figurina_revocacao": 0.3333,
+      "figurina_precisao": 0.94
+     }
+    },
+    "tess_pagina": {
+     "tip": {
+      "cer_prosa": 0.0933,
+      "ic95_prosa_dois_niveis": [
+       0.0631,
+       0.128
+      ],
+      "wer_prosa_sdi": 0.1454,
+      "wer_partes": {
+       "s": 358,
+       "d": 95,
+       "i": 141,
+       "n": 4084
+      },
+      "cer_notacao": 0.0923,
+      "cer_espaco": 0.8026,
+      "insercoes": 2100,
+      "figurina_revocacao": 0.891,
+      "figurina_precisao": 0.9456
+     },
+     "cru": {
+      "cer_prosa": 0.0959,
+      "ic95_prosa_dois_niveis": [
+       0.0676,
+       0.1298
+      ],
+      "wer_prosa_sdi": 0.1552,
+      "wer_partes": {
+       "s": 400,
+       "d": 95,
+       "i": 141,
+       "n": 4099
+      },
+      "cer_notacao": 0.1316,
+      "cer_espaco": 0.7916,
+      "insercoes": 2095,
+      "figurina_revocacao": 0.8865,
+      "figurina_precisao": 0.9398
+     }
+    }
+   },
+   "pares": {
+    "fusao_v5 - glifo (prosa)": {
+     "pp": -7.37,
+     "ic95_pp": [
+      -17.75,
+      -1.42
+     ],
+     "folhas_melhores": 15,
+     "folhas_piores": 0
+    },
+    "fusao_v5 - glifo (notacao)": {
+     "pp": 0.25,
+     "ic95_pp": [
+      -0.96,
+      2.76
+     ],
+     "folhas_melhores": 5,
+     "folhas_piores": 5
+    },
+    "fusao_v5 - tess (prosa)": {
+     "pp": 0.97,
+     "ic95_pp": [
+      -0.07,
+      2.98
+     ],
+     "folhas_melhores": 4,
+     "folhas_piores": 9
+    },
+    "fusao_v5 - tess (notacao)": {
+     "pp": 16.53,
+     "ic95_pp": [
+      3.34,
+      22.1
+     ],
+     "folhas_melhores": 2,
+     "folhas_piores": 10
+    },
+    "fusao_v5 - fusao (prosa)": {
+     "pp": -1.06,
+     "ic95_pp": [
+      -2.59,
+      -0.06
+     ],
+     "folhas_melhores": 11,
+     "folhas_piores": 1
+    },
+    "fusao_v5 - fusao (notacao)": {
+     "pp": 0.4,
+     "ic95_pp": [
+      -0.39,
+      1.41
+     ],
+     "folhas_melhores": 1,
+     "folhas_piores": 4
+    },
+    "fusao_v5 - fusao_v4 (prosa)": {
+     "pp": 0.49,
+     "ic95_pp": [
+      -0.05,
+      1.65
+     ],
+     "folhas_melhores": 3,
+     "folhas_piores": 8
+    },
+    "fusao_v5 - fusao_v4 (notacao)": {
+     "pp": 0.0,
+     "ic95_pp": [
+      -1.44,
+      0.65
+     ],
+     "folhas_melhores": 5,
+     "folhas_piores": 3
+    },
+    "tess - tess_oraculo (prosa)": {
+     "pp": 2.37,
+     "ic95_pp": [
+      0.69,
+      5.16
+     ],
+     "folhas_melhores": 2,
+     "folhas_piores": 13
+    },
+    "tess - tess_oraculo (notacao)": {
+     "pp": 2.43,
+     "ic95_pp": [
+      0.38,
+      5.89
+     ],
+     "folhas_melhores": 3,
+     "folhas_piores": 7
+    },
+    "tess - glifo (prosa)": {
+     "pp": -8.34,
+     "ic95_pp": [
+      -20.84,
+      -1.37
+     ],
+     "folhas_melhores": 14,
+     "folhas_piores": 1
+    },
+    "tess - glifo (notacao)": {
+     "pp": -16.28,
+     "ic95_pp": [
+      -22.16,
+      -2.41
+     ],
+     "folhas_melhores": 9,
+     "folhas_piores": 2
+    },
+    "tess_pagina - tess (prosa)": {
+     "pp": 3.31,
+     "ic95_pp": [
+      -0.46,
+      6.4
+     ],
+     "folhas_melhores": 2,
+     "folhas_piores": 13
+    },
+    "tess_pagina - tess (notacao)": {
+     "pp": -0.3,
+     "ic95_pp": [
+      -2.43,
+      3.8
+     ],
+     "folhas_melhores": 6,
+     "folhas_piores": 3
+    },
+    "tess_pagina - tess_oraculo (prosa)": {
+     "pp": 5.68,
+     "ic95_pp": [
+      3.78,
+      8.15
+     ],
+     "folhas_melhores": 0,
+     "folhas_piores": 15
+    },
+    "tess_pagina - tess_oraculo (notacao)": {
+     "pp": 2.13,
+     "ic95_pp": [
+      -0.04,
+      7.6
+     ],
+     "folhas_melhores": 5,
+     "folhas_piores": 6
+    }
+   },
+   "por_livro": {
+    "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      280,
+      927
+     ],
+     "glifo": 0.0569,
+     "tess": 0.0524,
+     "fusao": 0.051,
+     "fusao_v2": 0.051,
+     "fusao_v3": 0.051,
+     "fusao_v4": 0.0514,
+     "tess_oraculo": 0.0343,
+     "fusao_v5": 0.0502,
+     "tess_pagina": 0.0788
+    },
+    "AAGAARD - Practical Chess Defence.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      64,
+      157,
+      234
+     ],
+     "glifo": 0.1268,
+     "tess": 0.0756,
+     "fusao": 0.0934,
+     "fusao_v2": 0.0882,
+     "fusao_v3": 0.0798,
+     "fusao_v4": 0.0794,
+     "tess_oraculo": 0.0461,
+     "fusao_v5": 0.0806,
+     "tess_pagina": 0.1144
+    },
+    "A Matter of Endgame Technique – Jacob Aagaard.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      194,
+      434,
+      692
+     ],
+     "glifo": 0.0653,
+     "tess": 0.0578,
+     "fusao": 0.0573,
+     "fusao_v2": 0.0571,
+     "fusao_v3": 0.0568,
+     "fusao_v4": 0.0571,
+     "tess_oraculo": 0.0476,
+     "fusao_v5": 0.0571,
+     "tess_pagina": 0.1476
+    },
+    "📚Nunn J. Secrets of Minor Piece Endings.pdf": {
+     "lingua": "eng",
+     "folhas": [
+      64
+     ],
+     "glifo": 0.0942,
+     "tess": 0.0875,
+     "fusao": 0.085,
+     "fusao_v2": 0.0856,
+     "fusao_v3": 0.0856,
+     "fusao_v4": 0.085,
+     "tess_oraculo": 0.0905,
+     "fusao_v5": 0.0856,
+     "tess_pagina": 0.1162
+    },
+    "Brinckmann - Matt in zwanzig Zügen (1963).pdf": {
+     "lingua": "deu",
+     "folhas": [
+      27,
+      60,
+      92
+     ],
+     "glifo": 0.4102,
+     "tess": 0.0253,
+     "fusao": 0.133,
+     "fusao_v2": 0.091,
+     "fusao_v3": 0.0335,
+     "fusao_v4": 0.0514,
+     "tess_oraculo": 0.0228,
+     "fusao_v5": 0.0846,
+     "tess_pagina": 0.0657
+    },
+    "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": {
+     "lingua": "fra",
+     "folhas": [
+      10,
+      18,
+      39
+     ],
+     "glifo": 0.1538,
+     "tess": 0.07,
+     "fusao": 0.0802,
+     "fusao_v2": 0.073,
+     "fusao_v3": 0.0709,
+     "fusao_v4": 0.0746,
+     "tess_oraculo": 0.0072,
+     "fusao_v5": 0.0755,
+     "tess_pagina": 0.0455
+    }
+   },
+   "preservacao_de_figurina_do_glifo_na_fusao_v5": {
+    "preservadas": 352,
+    "do_glifo": 406,
+    "fracao": 0.867
+   },
+   "filtro": "filtrar.py --oraculo-max 0.10",
+   "o_que_e": "so ordena motores; a regra de admissao por oraculo foi reprovada para o ouro (S-702) e aqui so limpa o pior desalinhamento"
+  }
+ },
+ "folhas_perdidas_em_silencio": [
+  {
+   "livro": "📚Chess Evolution 2013 №045-096.pdf",
+   "folha": 903,
+   "linhas_da_camada": 41,
+   "linhas_do_glifo": 1,
+   "cer_prosa_glifo": 0.9992,
+   "cer_prosa_tess_oraculo": 0.028
+  },
+  {
+   "livro": "📚Chess Evolution 2013 №045-096.pdf",
+   "folha": 1210,
+   "linhas_da_camada": 47,
+   "linhas_do_glifo": 1,
+   "cer_prosa_glifo": 0.9995,
+   "cer_prosa_tess_oraculo": 0.0053
+  },
+  {
+   "livro": "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf",
+   "folha": 31,
+   "linhas_da_camada": 72,
+   "linhas_do_glifo": 1,
+   "cer_prosa_glifo": 1.0,
+   "cer_prosa_tess_oraculo": 0.3303
+  },
+  {
+   "livro": "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf",
+   "folha": 69,
+   "linhas_da_camada": 75,
+   "linhas_do_glifo": 1,
+   "cer_prosa_glifo": 0.9976,
+   "cer_prosa_tess_oraculo": 0.4929
+  },
+  {
+   "livro": "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf",
+   "folha": 106,
+   "linhas_da_camada": 70,
+   "linhas_do_glifo": 1,
+   "cer_prosa_glifo": 1.0,
+   "cer_prosa_tess_oraculo": 0.4352
+  }
+ ],
+ "taxonomia": {
+  "glifo_ouro": {
+   "palavras_erradas": 541,
+   "por_livro": {
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 164,
+    "📚Hertan Charles. Forcing Chess Moves.pdf": 118,
+    "📚Chess Evolution 2013 №045-096.pdf": 115,
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 64,
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 55,
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf": 13,
+    "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": 12
+   },
+   "familias": [
+    {
+     "familia": "letra trocada",
+     "n": 180,
+     "fracao": 0.333,
+     "exemplos": [
+      "Najdorf -> Najdof",
+      "the -> lhe",
+      "Issue -> ..",
+      "zugzwang. -> cugcwang.",
+      "entanto, -> entantol"
+     ],
+     "livros": {
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 92,
+      "📚Chess Evolution 2013 №045-096.pdf": 42,
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 14,
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 13,
+      "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": 8,
+      "400 Quebra-cabeças de Estratégia de Xadrez.pdf": 8,
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 3
+     }
+    },
+    {
+     "familia": "traco vertical lido como ponto (l/I -> .)",
+     "n": 128,
+     "fracao": 0.237,
+     "exemplos": [
+      "will -> wi..",
+      "I -> .",
+      "all -> a..",
+      "usually -> usua..y",
+      "always -> a.ways"
+     ],
+     "livros": {
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 100,
+      "📚Chess Evolution 2013 №045-096.pdf": 28
+     }
+    },
+    {
+     "familia": "caixa (maiusc/minusc)",
+     "n": 58,
+     "fracao": 0.107,
+     "exemplos": [
+      "White -> white",
+      "DEFESA -> DEFEsA",
+      "SICILIANA -> sIcILIANA",
+      "W? -> w?",
+      "FCM -> FcM"
+     ],
+     "livros": {
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 27,
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 10,
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 8,
+      "📚Chess Evolution 2013 №045-096.pdf": 7,
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 4,
+      "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": 2
+     }
+    },
+    {
+     "familia": "fronteira (espaco perdido junto a vizinha)",
+     "n": 43,
+     "fracao": 0.079,
+     "exemplos": [
+      "of -> of",
+      "the -> the",
+      "Brancas -> Brancas",
+      "J. -> J.",
+      "de -> de"
+     ],
+     "livros": {
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 21,
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 14,
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 5,
+      "400 Quebra-cabeças de Estratégia de Xadrez.pdf": 2,
+      "📚Chess Evolution 2013 №045-096.pdf": 1
+     }
+    },
+    {
+     "familia": "pontuacao",
+     "n": 38,
+     "fracao": 0.07,
+     "exemplos": [
+      "draw.; -> draw.:",
+      "move, -> move/",
+      "\"Tragicomedies,\" -> 'Tragicomedies,''",
+      "blue' -> blue",
+      "middlegame. -> middlegame"
+     ],
+     "livros": {
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 21,
+      "📚Chess Evolution 2013 №045-096.pdf": 10,
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 3,
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 2,
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 1,
+      "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": 1
+     }
+    },
+    {
+     "familia": "acento",
+     "n": 18,
+     "fracao": 0.033,
+     "exemplos": [
+      "não -> näo",
+      "importância -> importancia",
+      "É -> E",
+      "peão -> peäo",
+      "simultâneas, -> simultaneas,"
+     ],
+     "livros": {
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 13,
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 3,
+      "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": 1,
+      "400 Quebra-cabeças de Estratégia de Xadrez.pdf": 1
+     }
+    },
+    {
+     "familia": "palavra perdida",
+     "n": 16,
+     "fracao": 0.03,
+     "exemplos": [
+      "the -> ",
+      "Black -> ",
+      "of -> ",
+      "FCM -> ",
+      "traps -> "
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 15,
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 1
+     }
+    },
+    {
+     "familia": "aspas duplas",
+     "n": 13,
+     "fracao": 0.024,
+     "exemplos": [
+      "\"change -> 'change",
+      "leader.\" -> leader.''",
+      "\"tail -> (tail",
+      "holding\" -> holding''",
+      "\"mad -> 'mad"
+     ],
+     "livros": {
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 7,
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 6
+     }
+    },
+    {
+     "familia": "ligadura fi/fl com 1 a mais",
+     "n": 12,
+     "fracao": 0.022,
+     "exemplos": [
+      "first -> fi1rst",
+      "difficult -> diffi1cult",
+      "file, -> fi1le,",
+      "difficult. -> diffi1cult.",
+      "fifth -> fi1fth"
+     ],
+     "livros": {
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 10,
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 1,
+      "400 Quebra-cabeças de Estratégia de Xadrez.pdf": 1
+     }
+    },
+    {
+     "familia": "espaco",
+     "n": 12,
+     "fracao": 0.022,
+     "exemplos": [
+      "11th -> 1 1th",
+      "Singh-Sahu -> hu\nFcM 8.1",
+      "offensive... -> offensive. . .",
+      "White -> 1 Rc8",
+      "admits -> and Black"
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 5,
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 4,
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 2,
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 1
+     }
+    },
+    {
+     "familia": "acento+caixa",
+     "n": 11,
+     "fracao": 0.02,
+     "exemplos": [
+      "posição -> posiCäo",
+      "Umeå -> umeã",
+      "combinação -> combinaCäo",
+      "começa -> comeCa",
+      "estabeleça -> estabeleCa"
+     ],
+     "livros": {
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 10,
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 1
+     }
+    },
+    {
+     "familia": "palavra cortada",
+     "n": 6,
+     "fracao": 0.011,
+     "exemplos": [
+      "15th -> 15",
+      "not -> o",
+      "to -> t",
+      "the -> t",
+      "square. -> ."
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 5,
+      "400 Quebra-cabeças de Estratégia de Xadrez.pdf": 1
+     }
+    },
+    {
+     "familia": "1/l/I/|",
+     "n": 5,
+     "fracao": 0.009,
+     "exemplos": [
+      "If -> lf",
+      "Short-Speelman -> Short-SpeeIman",
+      "[It -> [lt",
+      "It -> lt",
+      "REI -> REl"
+     ],
+     "livros": {
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 2,
+      "📚Chess Evolution 2013 №045-096.pdf": 2,
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 1
+     }
+    },
+    {
+     "familia": "pontuacao+caixa",
+     "n": 1,
+     "fracao": 0.002,
+     "exemplos": [
+      "perdidas\". -> Perdidas''."
+     ],
+     "livros": {
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 1
+     }
+    }
+   ]
+  },
+  "tess_ouro": {
+   "palavras_erradas": 104,
+   "por_livro": {
+    "📚Chess Evolution 2013 №045-096.pdf": 80,
+    "📚Hertan Charles. Forcing Chess Moves.pdf": 11,
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 4,
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 3,
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 3,
+    "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": 2,
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf": 1
+   },
+   "familias": [
+    {
+     "familia": "letra trocada",
+     "n": 50,
+     "fracao": 0.481,
+     "exemplos": [
+      "Informant -> /nformant",
+      "Wikström -> Wikstrém",
+      "of -> e",
+      "March -> knigh",
+      "The -> &c8"
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 44,
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 2,
+      "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": 2,
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 1,
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 1
+     }
+    },
+    {
+     "familia": "palavra perdida",
+     "n": 23,
+     "fracao": 0.221,
+     "exemplos": [
+      "FCM -> ",
+      "the -> ",
+      "Black -> ",
+      "with -> ",
+      "traps -> "
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 21,
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 2
+     }
+    },
+    {
+     "familia": "1/l/I/|",
+     "n": 8,
+     "fracao": 0.077,
+     "exemplos": [
+      "I -> |"
+     ],
+     "livros": {
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 8
+     }
+    },
+    {
+     "familia": "espaco",
+     "n": 7,
+     "fracao": 0.067,
+     "exemplos": [
+      "Issue -> ¥b6 ",
+      "15th -> s th",
+      "right -> and B",
+      "17th -> r t",
+      "knight ->  with "
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 6,
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 1
+     }
+    },
+    {
+     "familia": "fronteira (espaco perdido junto a vizinha)",
+     "n": 6,
+     "fracao": 0.058,
+     "exemplos": [
+      "W -> W",
+      "of -> of",
+      "which -> which",
+      "A -> A",
+      "torre -> torre"
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 2,
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 2,
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 1,
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 1
+     }
+    },
+    {
+     "familia": "palavra cortada",
+     "n": 5,
+     "fracao": 0.048,
+     "exemplos": [
+      "threat, -> th",
+      "followed -> e",
+      "of -> o",
+      "in -> i",
+      "as -> a"
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 5
+     }
+    },
+    {
+     "familia": "pontuacao",
+     "n": 3,
+     "fracao": 0.029,
+     "exemplos": [
+      "middlegame. -> middlegame",
+      "c-file, -> cfile,",
+      "attack.] -> attack]"
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 2,
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 1
+     }
+    },
+    {
+     "familia": "acento",
+     "n": 2,
+     "fracao": 0.019,
+     "exemplos": [
+      "Umeå -> Umea",
+      "e -> é"
+     ],
+     "livros": {
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 1,
+      "400 Quebra-cabeças de Estratégia de Xadrez.pdf": 1
+     }
+    }
+   ]
+  },
+  "fusao_v5_ouro": {
+   "palavras_erradas": 91,
+   "por_livro": {
+    "📚Chess Evolution 2013 №045-096.pdf": 64,
+    "📚Hertan Charles. Forcing Chess Moves.pdf": 11,
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 5,
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 4,
+    "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": 3,
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 3,
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf": 1
+   },
+   "familias": [
+    {
+     "familia": "letra trocada",
+     "n": 39,
+     "fracao": 0.429,
+     "exemplos": [
+      "Informant -> /nformant",
+      "Wikström -> Wikstrém",
+      "Issue -> k15",
+      "15th -> ..Nh",
+      "of -> /d"
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 32,
+      "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": 3,
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 2,
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 1,
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 1
+     }
+    },
+    {
+     "familia": "palavra perdida",
+     "n": 18,
+     "fracao": 0.198,
+     "exemplos": [
+      "FCM -> ",
+      "the -> ",
+      "Black -> ",
+      "of -> ",
+      "traps -> "
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 16,
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 2
+     }
+    },
+    {
+     "familia": "espaco",
+     "n": 9,
+     "fracao": 0.099,
+     "exemplos": [
+      "decision -> ) 17...R",
+      "knight, -> k\nwith e",
+      "although ->  because",
+      "White -> of the",
+      "admits -> xc1 th"
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 7,
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 2
+     }
+    },
+    {
+     "familia": "1/l/I/|",
+     "n": 8,
+     "fracao": 0.088,
+     "exemplos": [
+      "I -> |"
+     ],
+     "livros": {
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 8
+     }
+    },
+    {
+     "familia": "fronteira (espaco perdido junto a vizinha)",
+     "n": 5,
+     "fracao": 0.055,
+     "exemplos": [
+      "W -> W",
+      "which -> which",
+      "A -> A",
+      "torre -> torre",
+      "Dama -> Dama"
+     ],
+     "livros": {
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 2,
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 1,
+      "📚Chess Evolution 2013 №045-096.pdf": 1,
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 1
+     }
+    },
+    {
+     "familia": "palavra cortada",
+     "n": 5,
+     "fracao": 0.055,
+     "exemplos": [
+      "threat, -> th",
+      "followed -> e",
+      "not -> o",
+      "to -> t",
+      "the -> t"
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 5
+     }
+    },
+    {
+     "familia": "pontuacao",
+     "n": 3,
+     "fracao": 0.033,
+     "exemplos": [
+      "middlegame. -> middlegame",
+      "c-file, -> cfile,",
+      "attack.] -> attack]"
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 2,
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 1
+     }
+    },
+    {
+     "familia": "acento",
+     "n": 2,
+     "fracao": 0.022,
+     "exemplos": [
+      "Umeå -> Umea",
+      "e -> é"
+     ],
+     "livros": {
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 1,
+      "400 Quebra-cabeças de Estratégia de Xadrez.pdf": 1
+     }
+    },
+    {
+     "familia": "ligadura fi/fl com 1 a mais",
+     "n": 1,
+     "fracao": 0.011,
+     "exemplos": [
+      "flee -> f1ee"
+     ],
+     "livros": {
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 1
+     }
+    },
+    {
+     "familia": "caixa (maiusc/minusc)",
+     "n": 1,
+     "fracao": 0.011,
+     "exemplos": [
+      "The -> the"
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 1
+     }
+    }
+   ]
+  },
+  "rapid_ouro": {
+   "palavras_erradas": 459,
+   "por_livro": {
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf": 104,
+    "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": 101,
+    "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 101,
+    "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 68,
+    "📚Chess Evolution 2013 №045-096.pdf": 68,
+    "📚Hertan Charles. Forcing Chess Moves.pdf": 13,
+    "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 4
+   },
+   "familias": [
+    {
+     "familia": "acento",
+     "n": 346,
+     "fracao": 0.754,
+     "exemplos": [
+      "não -> nao",
+      "peão -> peao",
+      "posição -> posicao",
+      "após -> apos",
+      "peões -> peoes"
+     ],
+     "livros": {
+      "400 Quebra-cabeças de Estratégia de Xadrez.pdf": 98,
+      "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": 92,
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 92,
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 62,
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 2
+     }
+    },
+    {
+     "familia": "letra trocada",
+     "n": 53,
+     "fracao": 0.115,
+     "exemplos": [
+      "o -> 0",
+      "'Impossible' -> \"lmpossible'",
+      "setting -> seting",
+      "Issue -> B\nWb6",
+      "of -> e"
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 29,
+      "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": 9,
+      "400 Quebra-cabeças de Estratégia de Xadrez.pdf": 6,
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 5,
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 2,
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 2
+     }
+    },
+    {
+     "familia": "palavra perdida",
+     "n": 25,
+     "fracao": 0.054,
+     "exemplos": [
+      "FCM -> ",
+      "the -> ",
+      "Black -> ",
+      "traps -> ",
+      "knight.) -> "
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 23,
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 2
+     }
+    },
+    {
+     "familia": "palavra cortada",
+     "n": 12,
+     "fracao": 0.026,
+     "exemplos": [
+      "although -> t",
+      "admits -> a",
+      "of -> o",
+      "to -> t",
+      "allow -> o"
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 11,
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 1
+     }
+    },
+    {
+     "familia": "fronteira (espaco perdido junto a vizinha)",
+     "n": 10,
+     "fracao": 0.022,
+     "exemplos": [
+      "\"Tragicomedies,\" -> \"Tragicomedies,\"",
+      "or -> or",
+      "ut -> ut",
+      "(que -> (que",
+      "As -> As"
+     ],
+     "livros": {
+      "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": 4,
+      "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": 3,
+      "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": 2,
+      "📚Chess Evolution 2013 №045-096.pdf": 1
+     }
+    },
+    {
+     "familia": "pontuacao",
+     "n": 5,
+     "fracao": 0.011,
+     "exemplos": [
+      "'filter -> filter",
+      "'Impossible' -> \"Impossible'",
+      "'jaw -> jaw",
+      "offensive... -> offensive..",
+      "middlegame. -> middlegame"
+     ],
+     "livros": {
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 5
+     }
+    },
+    {
+     "familia": "caixa (maiusc/minusc)",
+     "n": 4,
+     "fracao": 0.009,
+     "exemplos": [
+      "'HONING -> 'HoNiNG",
+      "'UNUSUAL -> 'uNUsUAL",
+      "SQUARES -> SQUAREs",
+      "'ANTIPOSITIONAL -> 'ANTIPosITioNAL"
+     ],
+     "livros": {
+      "📚Hertan Charles. Forcing Chess Moves.pdf": 4
+     }
+    },
+    {
+     "familia": "espaco",
+     "n": 4,
+     "fracao": 0.009,
+     "exemplos": [
+      "15th -> s th",
+      "right -> and B",
+      "that ->  by ",
+      "later. -> lanca ut the rook "
+     ],
+     "livros": {
+      "📚Chess Evolution 2013 №045-096.pdf": 4
+     }
+    }
+   ]
+  },
+  "glifo_prata": {
+   "palavras_erradas": 1284,
+   "por_livro": {
+    "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 443,
+    "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 287,
+    "AAGAARD - Practical Chess Defence.pdf": 285,
+    "A Matter of Endgame Technique – Jacob Aagaard.pdf": 101,
+    "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 93,
+    "📚Nunn J. Secrets of Minor Piece Endings.pdf": 75
+   },
+   "familias": [
+    {
+     "familia": "letra trocada",
+     "n": 844,
+     "fracao": 0.657,
+     "exemplos": [
+      "die -> d'e",
+      "the -> f6e",
+      "the -> Ke",
+      "two -> rwo",
+      ".ixf6 -> .Bxf6"
+     ],
+     "livros": {
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 350,
+      "AAGAARD - Practical Chess Defence.pdf": 187,
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 128,
+      "A Matter of Endgame Technique – Jacob Aagaard.pdf": 84,
+      "📚Nunn J. Secrets of Minor Piece Endings.pdf": 54,
+      "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 41
+     }
+    },
+    {
+     "familia": "fronteira (espaco perdido junto a vizinha)",
+     "n": 107,
+     "fracao": 0.083,
+     "exemplos": [
+      "of -> of",
+      "d -> d",
+      "a -> a",
+      "f -> f",
+      "the -> the"
+     ],
+     "livros": {
+      "AAGAARD - Practical Chess Defence.pdf": 49,
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 21,
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 16,
+      "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 14,
+      "📚Nunn J. Secrets of Minor Piece Endings.pdf": 6,
+      "A Matter of Endgame Technique – Jacob Aagaard.pdf": 1
+     }
+    },
+    {
+     "familia": "espaco",
+     "n": 106,
+     "fracao": 0.083,
+     "exemplos": [
+      "Lfl-d3 -> u1 d3",
+      "Blancs. -> . . . .",
+      "'ii'xa4 ->  Qxa4",
+      "'i!Va2+ -> f2 Qa2+",
+      "'it>gB ->  Kg8"
+     ],
+     "livros": {
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 37,
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 36,
+      "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 15,
+      "AAGAARD - Practical Chess Defence.pdf": 8,
+      "A Matter of Endgame Technique – Jacob Aagaard.pdf": 5,
+      "📚Nunn J. Secrets of Minor Piece Endings.pdf": 5
+     }
+    },
+    {
+     "familia": "1/l/I/|",
+     "n": 86,
+     "fracao": 0.067,
+     "exemplos": [
+      "le -> 1e",
+      "la -> 1a",
+      "les -> 1es",
+      "I -> l",
+      "l -> 1"
+     ],
+     "livros": {
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 61,
+      "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 10,
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 8,
+      "A Matter of Endgame Technique – Jacob Aagaard.pdf": 4,
+      "AAGAARD - Practical Chess Defence.pdf": 3
+     }
+    },
+    {
+     "familia": "pontuacao",
+     "n": 43,
+     "fracao": 0.033,
+     "exemplos": [
+      "Die -> Di'e",
+      "transition -> tran.\nsition",
+      "little-known -> little.known",
+      "Bogo-lndian -> Bogo.lndian",
+      "important -> impor.\ntant"
+     ],
+     "livros": {
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 19,
+      "AAGAARD - Practical Chess Defence.pdf": 9,
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 7,
+      "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 4,
+      "📚Nunn J. Secrets of Minor Piece Endings.pdf": 3,
+      "A Matter of Endgame Technique – Jacob Aagaard.pdf": 1
+     }
+    },
+    {
+     "familia": "caixa (maiusc/minusc)",
+     "n": 40,
+     "fracao": 0.031,
+     "exemplos": [
+      "Chris -> chris",
+      "White -> white",
+      "Surprises -> surprises",
+      "Opening -> opening",
+      "With -> with"
+     ],
+     "livros": {
+      "AAGAARD - Practical Chess Defence.pdf": 12,
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 8,
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 7,
+      "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 6,
+      "A Matter of Endgame Technique – Jacob Aagaard.pdf": 6,
+      "📚Nunn J. Secrets of Minor Piece Endings.pdf": 1
+     }
+    },
+    {
+     "familia": "palavra perdida",
+     "n": 28,
+     "fracao": 0.022,
+     "exemplos": [
+      "l -> ",
+      "I -> ",
+      "is -> ",
+      "the -> ",
+      "=I= -> "
+     ],
+     "livros": {
+      "AAGAARD - Practical Chess Defence.pdf": 11,
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 7,
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 6,
+      "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 2,
+      "📚Nunn J. Secrets of Minor Piece Endings.pdf": 2
+     }
+    },
+    {
+     "familia": "palavra cortada",
+     "n": 14,
+     "fracao": 0.011,
+     "exemplos": [
+      "repeated -> epeated",
+      "4o -> 4",
+      "far -> fa",
+      "three -> thre",
+      "l!.g3), -> g3),"
+     ],
+     "livros": {
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 5,
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 4,
+      "AAGAARD - Practical Chess Defence.pdf": 3,
+      "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 1,
+      "📚Nunn J. Secrets of Minor Piece Endings.pdf": 1
+     }
+    },
+    {
+     "familia": "acento",
+     "n": 9,
+     "fracao": 0.007,
+     "exemplos": [
+      "à -> a",
+      "être -> etre",
+      "être -> étre",
+      "Tödliche -> Todliche",
+      "même -> meme"
+     ],
+     "livros": {
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 8,
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 1
+     }
+    },
+    {
+     "familia": "aspas duplas",
+     "n": 3,
+     "fracao": 0.002,
+     "exemplos": [
+      "\"falling -> 'falling",
+      "pin\" -> pin''",
+      "\"unclear -> 'unclear"
+     ],
+     "livros": {
+      "AAGAARD - Practical Chess Defence.pdf": 3
+     }
+    },
+    {
+     "familia": "ligadura fi/fl com 1 a mais",
+     "n": 3,
+     "fracao": 0.002,
+     "exemplos": [
+      "finished -> fi1nished",
+      "first: -> fi1rst:",
+      "finishes -> fi1nishes"
+     ],
+     "livros": {
+      "📚Nunn J. Secrets of Minor Piece Endings.pdf": 3
+     }
+    },
+    {
+     "familia": "traco vertical lido como ponto (l/I -> .)",
+     "n": 1,
+     "fracao": 0.001,
+     "exemplos": [
+      "l -> ."
+     ],
+     "livros": {
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 1
+     }
+    }
+   ]
+  },
+  "fusao_v5_prata": {
+   "palavras_erradas": 519,
+   "por_livro": {
+    "AAGAARD - Practical Chess Defence.pdf": 134,
+    "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 99,
+    "A Matter of Endgame Technique – Jacob Aagaard.pdf": 79,
+    "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 71,
+    "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 70,
+    "📚Nunn J. Secrets of Minor Piece Endings.pdf": 66
+   },
+   "familias": [
+    {
+     "familia": "letra trocada",
+     "n": 322,
+     "fracao": 0.62,
+     "exemplos": [
+      ".ixf6 -> .Bxf6",
+      "©e7 -> Ke7",
+      "tllxe6 -> Nxe6",
+      "^e7 -> Ne7",
+      "&xb7 -> Kxb7"
+     ],
+     "livros": {
+      "AAGAARD - Practical Chess Defence.pdf": 104,
+      "A Matter of Endgame Technique – Jacob Aagaard.pdf": 73,
+      "📚Nunn J. Secrets of Minor Piece Endings.pdf": 47,
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 45,
+      "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 27,
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 26
+     }
+    },
+    {
+     "familia": "fronteira (espaco perdido junto a vizinha)",
+     "n": 76,
+     "fracao": 0.146,
+     "exemplos": [
+      "d -> d",
+      "a -> a",
+      "f -> f",
+      "I -> I",
+      "e -> e"
+     ],
+     "livros": {
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 24,
+      "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 17,
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 17,
+      "AAGAARD - Practical Chess Defence.pdf": 9,
+      "📚Nunn J. Secrets of Minor Piece Endings.pdf": 9
+     }
+    },
+    {
+     "familia": "espaco",
+     "n": 44,
+     "fracao": 0.085,
+     "exemplos": [
+      "'ii'xa4 ->  Qxa4",
+      "'i!Va2+ -> f2 Qa2+",
+      "'it>gB ->  Kg8",
+      "'ii'a1 ->  Qa1",
+      "'ifb2+ ->  Qb2+"
+     ],
+     "livros": {
+      "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 13,
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 10,
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 8,
+      "📚Nunn J. Secrets of Minor Piece Endings.pdf": 6,
+      "AAGAARD - Practical Chess Defence.pdf": 4,
+      "A Matter of Endgame Technique – Jacob Aagaard.pdf": 3
+     }
+    },
+    {
+     "familia": "palavra perdida",
+     "n": 28,
+     "fracao": 0.054,
+     "exemplos": [
+      "l -> ",
+      "is -> ",
+      "the -> ",
+      "=I= -> ",
+      "on -> "
+     ],
+     "livros": {
+      "AAGAARD - Practical Chess Defence.pdf": 11,
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 8,
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 6,
+      "📚Nunn J. Secrets of Minor Piece Endings.pdf": 2,
+      "A Matter of Endgame Technique – Jacob Aagaard.pdf": 1
+     }
+    },
+    {
+     "familia": "1/l/I/|",
+     "n": 21,
+     "fracao": 0.04,
+     "exemplos": [
+      "I -> |",
+      "l -> 1",
+      "Bogo-lndian -> Bogo-Indian",
+      "I -> 1",
+      "3l.f4 -> 31.f4"
+     ],
+     "livros": {
+      "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 11,
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 6,
+      "AAGAARD - Practical Chess Defence.pdf": 2,
+      "A Matter of Endgame Technique – Jacob Aagaard.pdf": 1,
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 1
+     }
+    },
+    {
+     "familia": "pontuacao",
+     "n": 13,
+     "fracao": 0.025,
+     "exemplos": [
+      "Ivanchuk. -> Ivanchuk",
+      "Ravi.kumar -> Ravikumar",
+      "play''. -> play'.",
+      "works. -> works,",
+      "Averbak.h, -> Averbakh,"
+     ],
+     "livros": {
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 4,
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 4,
+      "AAGAARD - Practical Chess Defence.pdf": 3,
+      "A Matter of Endgame Technique – Jacob Aagaard.pdf": 1,
+      "📚Nunn J. Secrets of Minor Piece Endings.pdf": 1
+     }
+    },
+    {
+     "familia": "palavra cortada",
+     "n": 12,
+     "fracao": 0.023,
+     "exemplos": [
+      "Lfl-d3 -> d3",
+      "and -> a",
+      "4o -> 4",
+      "l!.g3), -> g3),",
+      "Tfl-el -> e"
+     ],
+     "livros": {
+      "Neumann - Traité élémentaire du jeu des échecs (1870).pdf": 5,
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 4,
+      "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 1,
+      "AAGAARD - Practical Chess Defence.pdf": 1,
+      "📚Nunn J. Secrets of Minor Piece Endings.pdf": 1
+     }
+    },
+    {
+     "familia": "caixa (maiusc/minusc)",
+     "n": 1,
+     "fracao": 0.002,
+     "exemplos": [
+      "position -> Position"
+     ],
+     "livros": {
+      "Secrets of Chess Training School of Future Champions 1_ao_5.pdf": 1
+     }
+    },
+    {
+     "familia": "aspas duplas",
+     "n": 1,
+     "fracao": 0.002,
+     "exemplos": [
+      "Partie\" -> Partie''"
+     ],
+     "livros": {
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 1
+     }
+    },
+    {
+     "familia": "traco vertical lido como ponto (l/I -> .)",
+     "n": 1,
+     "fracao": 0.002,
+     "exemplos": [
+      "l -> ."
+     ],
+     "livros": {
+      "Brinckmann - Matt in zwanzig Zügen (1963).pdf": 1
+     }
+    }
+   ]
+  }
+ },
+ "tamanho_de_amostra": {
+  "metodo": "amostra.py: reamostra livros e folhas do dev (tess_oraculo, CER ~0,16%, o nivel do alvo) e mede a meia-largura superior do IC95 de dois niveis do conjunto simulado (60 simulacoes)",
+  "tabela": [
+   "tess_oraculo: CER de prosa no conjunto medido = 0.0016 (7 livros)",
+   "livros folhas/livro  meia-largura sup. (mediana)      p90",
+   "     6            4                        0.22pp    0.36pp",
+   "     6            6                        0.22pp    0.31pp",
+   "     6            8                        0.25pp    0.32pp",
+   "     8            4                        0.21pp    0.27pp",
+   "     8            6                        0.21pp    0.27pp",
+   "     8            8                        0.18pp    0.25pp",
+   "    12            4                        0.17pp    0.21pp",
+   "    12            6                        0.16pp    0.19pp",
+   "    12            8                        0.17pp    0.20pp",
+   "    16            4                        0.15pp    0.19pp",
+   "    16            6                        0.15pp    0.19pp",
+   "    16            8                        0.14pp    0.20pp",
+   "    24            4                        0.13pp    0.15pp",
+   "    24            6                        0.12pp    0.15pp",
+   "    24            8                        0.11pp    0.13pp"
+  ],
+  "tabela_no_nivel_da_fusao": [
+   "fusao_v5: CER de prosa no conjunto medido = 0.0028 (6 livros)",
+   "livros folhas/livro  meia-largura sup. (mediana)      p90",
+   "     6            4                        0.29pp    0.68pp",
+   "     6            6                        0.18pp    0.55pp",
+   "     6            8                        0.32pp    0.58pp",
+   "     8            4                        0.35pp    0.55pp",
+   "     8            6                        0.31pp    0.53pp",
+   "     8            8                        0.27pp    0.44pp",
+   "    12            4                        0.30pp    0.44pp",
+   "    12            6                        0.28pp    0.40pp",
+   "    12            8                        0.25pp    0.34pp",
+   "    16            4                        0.24pp    0.36pp",
+   "    16            6                        0.23pp    0.37pp",
+   "    16            8                        0.20pp    0.29pp",
+   "    24            4                        0.22pp    0.31pp",
+   "    24            6                        0.17pp    0.25pp",
+   "    24            8                        0.19pp    0.22pp"
+  ],
+  "poder_pareado_oraculo_contra_tess": [
+   "tess_oraculo contra tess: diferença relativa medida = -55.0% (6 livros)",
+   "livros folhas/livro  poder (teto do IC da dif. relativa < 0)",
+   "     6            6                                       8%",
+   "     8            6                                       7%",
+   "    12            6                                      28%",
+   "    16            6                                      23%",
+   "    24            6                                      43%"
+  ]
+ },
+ "guarda_de_leitura_incompleta": {
+  "sinal": "B_densidade = caracteres lidos pelo glifo / componentes de tinta (>= 6 px, >= 4 px de altura) fora dos diagramas; A (cobertura das caixas) e C (caixa degenerada) medidos e reprovados",
+  "por_conjunto": {
+   "degradado": {
+    "folhas_legiveis": 28,
+    "densidade_min": 0.969,
+    "densidade_max": 1.285,
+    "cobertura_min": 0.952,
+    "degenerada_max": 51.2
+   },
+   "misto": {
+    "folhas_legiveis": 9,
+    "densidade_min": 0.907,
+    "densidade_max": 1.086,
+    "cobertura_min": 0.944,
+    "degenerada_max": 1.2
+   },
+   "ouro_completo": {
+    "folhas_legiveis": 26,
+    "densidade_min": 0.903,
+    "densidade_max": 1.042,
+    "cobertura_min": 0.949,
+    "degenerada_max": 47.9
+   },
+   "prata": {
+    "folhas_legiveis": 27,
+    "densidade_min": 0.912,
+    "densidade_max": 1.194,
+    "cobertura_min": 0.882,
+    "degenerada_max": 40.5
+   }
+  },
+  "perdidas": [
+   {
+    "livro": "📚Chess Evolution 2013 №045-096",
+    "folha": 903,
+    "densidade": 0.001,
+    "cobertura": 1.0
+   },
+   {
+    "livro": "📚Chess Evolution 2013 №045-096",
+    "folha": 1210,
+    "densidade": 0.001,
+    "cobertura": 1.0
+   },
+   {
+    "livro": "Kmoch - Internationaal meester",
+    "folha": 31,
+    "densidade": 0.001,
+    "cobertura": 1.0
+   },
+   {
+    "livro": "Kmoch - Internationaal meester",
+    "folha": 69,
+    "densidade": 0.007,
+    "cobertura": 1.0
+   },
+   {
+    "livro": "Kmoch - Internationaal meester",
+    "folha": 106,
+    "densidade": 0.001,
+    "cobertura": 0.995
+   }
+  ]
+ },
+ "admissao_s716": {
+  "metodo": "admissao.py: criterios (a)-(d) da S-702, sem OCR; 30 folhas sorteadas por livro, semente sha256('20261030:' + nome do arquivo) por livro -- a amostra nao depende da ordem nem dos outros livros da corrida; (a) inclui o livro de scan (mais da metade das 30 folhas de perfil com texto invisivel); (b) e fileira de 6+ caracteres de fonte de diagrama encostados, fora dos retangulos",
+  "por_livro": {
+   "Dvoretsky - Dvoretsky's Endgame Manual (": {
+    "folhas": 30,
+    "admitidas": 30,
+    "folhas_com_trecho_fora_do_diagrama": 30,
+    "motivos": {},
+    "perfil_de_30_folhas": {
+     "com_texto": 29,
+     "com_texto_invisivel": 0
+    }
+   },
+   "📚Hertan Charles. Forcing Chess Moves.pdf": {
+    "folhas": 30,
+    "admitidas": 30,
+    "folhas_com_trecho_fora_do_diagrama": 30,
+    "motivos": {},
+    "perfil_de_30_folhas": {
+     "com_texto": 28,
+     "com_texto_invisivel": 0
+    }
+   },
+   "Xadrez Vitorioso - Finais - Yasser Seira": {
+    "folhas": 30,
+    "admitidas": 29,
+    "folhas_com_trecho_fora_do_diagrama": 29,
+    "motivos": {
+     "sem_texto": 1
+    },
+    "perfil_de_30_folhas": {
+     "com_texto": 29,
+     "com_texto_invisivel": 0
+    }
+   },
+   "Melhores Finais de Capablanca - Irving C": {
+    "folhas": 30,
+    "admitidas": 29,
+    "folhas_com_trecho_fora_do_diagrama": 29,
+    "motivos": {
+     "sem_texto": 1
+    },
+    "perfil_de_30_folhas": {
+     "com_texto": 29,
+     "com_texto_invisivel": 0
+    }
+   },
+   "Minhas 60 partidas memoráveis Bobby Fisc": {
+    "folhas": 30,
+    "admitidas": 30,
+    "folhas_com_trecho_fora_do_diagrama": 30,
+    "motivos": {},
+    "perfil_de_30_folhas": {
+     "com_texto": 28,
+     "com_texto_invisivel": 0
+    }
+   },
+   "400 Quebra-cabeças de Estratégia de Xadr": {
+    "folhas": 30,
+    "admitidas": 30,
+    "folhas_com_trecho_fora_do_diagrama": 30,
+    "motivos": {},
+    "perfil_de_30_folhas": {
+     "com_texto": 29,
+     "com_texto_invisivel": 0
+    }
+   },
+   "Polgar,_Laszlo_Chess_5334_Problems,_Comb": {
+    "folhas": 30,
+    "admitidas": 28,
+    "folhas_com_trecho_fora_do_diagrama": 28,
+    "motivos": {
+     "sem_texto": 2
+    },
+    "perfil_de_30_folhas": {
+     "com_texto": 28,
+     "com_texto_invisivel": 0
+    }
+   },
+   "Gaprindashvili, Paata - Imagination in C": {
+    "folhas": 30,
+    "admitidas": 0,
+    "folhas_com_trecho_fora_do_diagrama": 16,
+    "motivos": {
+     "d:produtor": 30
+    },
+    "perfil_de_30_folhas": {
+     "com_texto": 14,
+     "com_texto_invisivel": 0
+    }
+   },
+   "AAGAARD - Practical Chess Defence.pdf": {
+    "folhas": 30,
+    "admitidas": 0,
+    "folhas_com_trecho_fora_do_diagrama": 30,
+    "motivos": {
+     "d:produtor": 30
+    },
+    "perfil_de_30_folhas": {
+     "com_texto": 29,
+     "com_texto_invisivel": 0
+    }
+   },
+   "📚Chess Evolution 2013 №045-096.pdf": {
+    "folhas": 30,
+    "admitidas": 29,
+    "folhas_com_trecho_fora_do_diagrama": 29,
+    "motivos": {
+     "sem_texto": 1
+    },
+    "perfil_de_30_folhas": {
+     "com_texto": 30,
+     "com_texto_invisivel": 0
+    }
+   },
+   "📚Chess Evolution 2014 №097-149.pdf": {
+    "folhas": 30,
+    "admitidas": 26,
+    "folhas_com_trecho_fora_do_diagrama": 26,
+    "motivos": {
+     "sem_texto": 4
+    },
+    "perfil_de_30_folhas": {
+     "com_texto": 27,
+     "com_texto_invisivel": 0
+    }
+   },
+   "1937 Kemeri.pdf": {
+    "folhas": 30,
+    "admitidas": 0,
+    "folhas_com_trecho_fora_do_diagrama": 30,
+    "motivos": {
+     "a:livro_de_scan": 30
+    },
+    "perfil_de_30_folhas": {
+     "com_texto": 30,
+     "com_texto_invisivel": 29
+    }
+   }
+  },
+  "livro_inteiro": {
+   "📚Chess Evolution 2013 №045-096.pdf": {
+    "folhas": 1481,
+    "admitidas": 1454,
+    "folhas_com_trecho_fora_do_diagrama": 1454,
+    "motivos": {
+     "sem_texto": 27
+    }
+   },
+   "📚Chess Evolution 2014 №097-149.pdf": {
+    "folhas": 1515,
+    "admitidas": 1463,
+    "folhas_com_trecho_fora_do_diagrama": 1463,
+    "motivos": {
+     "sem_texto": 52
+    }
+   }
+  }
+ },
+ "rejeitado_do_ouro": {
+  "livro": "Gaprindashvili, Paata - Imagination in Chess (2005)",
+  "motivo": "a camada NAO e a tinta: notacao em lixo de OCR ('l:l'.xe3') sob figurinas impressas; Tesseract nas caixas da propria camada erra 45-57% (primeira medicao)"
+ },
+ "experimentos_avulsos": {
+  "ablacao_glifo_7_folhas_cer_prosa": {
+   "producao": 0.0422,
+   "sem_caixa_alta": 0.083,
+   "sem_dicionario": 0.0452,
+   "sem_empilhados": 0.0445,
+   "sem_marca_fina": 0.0436,
+   "sem_traco": 0.0433,
+   "colados_nunca": 0.0432,
+   "sem_italico": 0.0429,
+   "sem_numeros": 0.0422,
+   "sem_juntar_lance": 0.0422,
+   "nota": "medida na primeira regua (antes da rodada 1); vale como ordenacao entre variantes"
+  },
+  "tesseract_recorte_ampliado_2x": {
+   "limpo_8_folhas": {
+    "1x": 0.0457,
+    "2x": 0.0464
+   },
+   "degradado_medio_6_folhas": {
+    "1x": 0.18,
+    "2x": 0.1703
+   },
+   "leitura": "nao paga a 220 dpi; diferencas dentro do ruido"
+  }
+ },
+ "ressalvas": [
+  "todos os livros sao dev contaminado (ver 'split'); o ouro-teste da S-702 ainda nao existe",
+  "CER de notacao desta regua nao e nota da notacao: a camada escreve o lance em formato que a tinta nao tem",
+  "a prata so ordena motores: a referencia escreve figurina como lixo e a regua a conta como prosa",
+  "o perfil degradado nao foi calibrado contra scan real; serve de estresse, nao de alvo",
+  "tempos com 10 threads de Tesseract, RapidOCR e glifo na mesma CPU; nao e orcamento de producao"
+ ],
+ "reproduzido_na_main": {
+  "commit": "2a50521dc3d8a8dc30aa76494704520be2c5726a",
+  "como": "worktree destacado da main com o mesmo models/char_classifier.pt e assets/lexico; PYTHONPATH=<worktree>/src",
+  "folhas": 95,
+  "conjuntos": [
+   "ouro",
+   "misto",
+   "degradado",
+   "prata"
+  ],
+  "resultado": "texto identico caractere a caractere em glifo, referencia, tess, fusao_v5 e tess_oraculo"
+ }
+}
