@@ -14,8 +14,9 @@ quando o primeiro item for entregue, e só então a faixa entra na tabela "Onde 
 item" (ver `tests/test_docs.py`, `test_todo_item_com_secao_esta_declarado_no_indice`).
 
 **A skill que executa este plano** é `ocr-texto-preciso` (em `~/.claude/skills/ocr-texto-preciso/`):
-ela traz o protocolo de medição, as armadilhas já pagas, os scripts que reproduzem cada número
-deste documento e o roteiro do crítico. Quem for executar um item começa por ela.
+ela traz o protocolo de medição, as armadilhas já pagas e o roteiro do crítico; os scripts que
+reproduzem cada número deste documento estão versionados em `docs/metrics/texto_prosa_2026-10-30/`
+(seção 10). Quem for executar um item começa por ela.
 
 **Base: a `main`.** O documento foi escrito no checkout de `religa-as-decisoes-orfas` (`0be1b93`),
 119 commits atrás da `main` (`2a50521`), e a crítica da rodada 2 mostrou que isso importa: o
@@ -23,21 +24,16 @@ caderno (`text/caderno.py`), o itálico por caractere da S-660 e a mesa da aba T
 `main`. **Todo item parte da `main`**, os caminhos e números de linha citados são os dela, e a linha
 de base da seção 1 foi reproduzida sobre ela (1.7).
 
-**Antes do primeiro item: a migração.** Este documento, o relatório
+**A migração, feita em 2026-10-30.** Este documento, o relatório
 `docs/metrics/texto_prosa_20261030.json` e a linha do README nasceram **sem commit**, no checkout de
-outro ramo (`religa-as-decisoes-orfas`), e os scripts que mediram moram fora do git. Sem migrar, um
-worktree da `main` não tem o plano nem a linha de base que a S-700 manda reproduzir — e duas cópias
-vivas divergem. O procedimento, nesta ordem: (1) `git worktree add -b texto-preciso <pasta> main`;
-(2) **copiar** para lá o roadmap e o relatório, e os scripts da skill para
-`docs/metrics/texto_prosa_2026-10-30/` — a convenção do repositório para script de medição, como
-`docs/metrics/colunas_solucoes_2026-10-06/` — sem `dados/`, que tem texto de livro comercial (os scripts
-já passam no `ruff` com a configuração da `main`, não chamam `cv2.imwrite` — a S-432 o proíbe em todo o
-repositório — e leem a raiz do checkout de `CVOFF_RAIZ`, com a pasta local do dono como padrão: na
-migração o padrão passa a ser a raiz do repositório, achada a partir do próprio script); (3) **reaplicar à mão** a linha do README (o README da
-`main` está 119 commits adiante) e rodar a **suíte inteira** e `ruff check .`, como a CI; (4) commit **só** desses
-arquivos; (5) no checkout principal, apagar o roadmap e o relatório e **reverter só o hunk** da linha no
-README (o resto do arquivo é de outras sessões); (6) daí em diante, editar só no ramo. O
-`scripts_sha256` do relatório identifica a versão exata dos scripts copiados.
+outro ramo (`religa-as-decisoes-orfas`), e os scripts que mediram moravam fora do git, na skill. Foram
+levados ao ramo **`texto-preciso`**, cortado da `main` em `2a50521`, em dois commits. O primeiro copia
+os 16 scripts **byte a byte** para `docs/metrics/texto_prosa_2026-10-30/` — a convenção do repositório
+para script de medição, como `docs/metrics/colunas_solucoes_2026-10-06/` — e é a versão que o
+`scripts_sha256` do relatório identifica. O segundo troca, em sete deles, a raiz padrão (a pasta local
+do dono) pela raiz do repositório onde o script mora, e aponta a seção 10 para a cópia versionada. O
+`dados/` da skill não veio: tem texto de livro comercial. **Daí em diante, edita-se só no ramo**: a
+cópia dos scripts que ficou na skill é a de antes da migração.
 
 **Numeração.** Fases 100 a 107 e itens S-700 a S-772. Em 2026-10-30 o maior número tomado em
 **todas** as refs era S-668 (S-999 é sentinela de teste) e a maior fase, 96. O vão S-669..S-699 e
@@ -230,7 +226,7 @@ fusão ingênua erra e o Tesseract acerta, **82 são erro real da fusão** (`the
 de terceiro.
 
 Cinco regras de fusão foram medidas, todas offline sobre as mesmas linhas
-(`fusao_v5.py` da skill guarda a última):
+(`texto_prosa_2026-10-30/fusao_v5.py` guarda a última):
 
 | regra | o que decide | prosa ouro | notação ouro (Δ glifo) | prosa prata |
 |---|---|---:|---:|---:|
@@ -271,12 +267,12 @@ No Tesseract sobram 104 palavras, 80 delas (77%) no *Chess Evolution* (leiaute);
 `Informant`→`/nformant`, `Umeå`→`Umea`. Na fusão, o mesmo mais o espaçamento de notação
 (`3.Q`→`3. Q`) — 91 palavras.
 
-A ablação dos interruptores do glifo (7 folhas, `ablacao.py` da skill, medida na primeira régua)
-confirma que **nenhuma** correção existente causa o `l`→`.`: todas ajudam ou são neutras — sem
+A ablação dos interruptores do glifo (7 folhas, `texto_prosa_2026-10-30/ablacao.py`, medida na primeira
+régua) confirma que **nenhuma** correção existente causa o `l`→`.`: todas ajudam ou são neutras — sem
 `caixa_alta` o CER de prosa vai de 4,22% a 8,30%; sem `dicionario`, a 4,52%. O defeito está no
-classificador, que nunca recebe altura nem proporção. E uma hipótese barata caiu, por enquanto:
-ampliar o recorte 2× antes do Tesseract não paga a 220 dpi em livro digital (S-740 a refaz nos scans
-de 150 dpi, onde a resposta pode ser outra).
+classificador, que nunca recebe altura nem proporção. E uma hipótese barata caiu, por enquanto: ampliar
+o recorte 2× antes do Tesseract não paga a 220 dpi em livro digital (S-740 a refaz nos scans de 150 dpi,
+onde a resposta pode ser outra).
 
 ### 1.7 A mesma medição na `main`
 
@@ -393,10 +389,11 @@ admissão por livro está na S-716.
   reprovaria um conserto certo.
 
 **O tamanho de amostra que estes tetos exigem.** Simulado a partir da variação real do dev
-(`amostra.py` da skill: reamostra livros e folhas e mede a meia-largura superior do IC95 de dois
-níveis), para os dois sistemas que estão no nível do alvo — o oráculo e a fusão nos seis livros limpos.
-A linha que conta é a da **fusão**, que é o que a bancada mede; o oráculo, mais homogêneo entre livros,
-subestima a largura (a primeira versão desta tabela só tinha ele, e o crítico da rodada 9 a derrubou):
+(`texto_prosa_2026-10-30/amostra.py`: reamostra livros e folhas e mede a meia-largura superior do IC95
+de dois níveis), para os dois sistemas que estão no nível do alvo — o oráculo e a fusão nos seis livros
+limpos. A linha que conta é a da **fusão**, que é o que a bancada mede; o oráculo, mais homogêneo entre
+livros, subestima a largura (a primeira versão desta tabela só tinha ele, e o crítico da rodada 9 a
+derrubou):
 
 | livros × folhas por livro | 6 × 6 | 8 × 6 | 12 × 6 | 16 × 6 | 24 × 6 |
 |---|---:|---:|---:|---:|---:|
@@ -524,9 +521,9 @@ da S-718 vivem **em memória**, recalculadas a cada leitura; o caderno e o `.cvt
 o texto como hoje, e o `ESQUEMA` só sobe com a S-710 (avisos) e a S-722, no G102 — por isso desligar a
 primeira entrega é desligar uma opção, sem migração.
 
-A régua da Fase 100 vem **junto**, não antes: cada item da primeira entrega se mede com os scripts da
-skill (o protótipo da régua já existe) e entra atrás de interruptor; o portão G100 só é exigido para
-**trocar o padrão**.
+A régua da Fase 100 vem **junto**, não antes: cada item da primeira entrega se mede com os scripts de
+`texto_prosa_2026-10-30/` (o protótipo da régua já existe) e entra atrás de interruptor; o portão G100
+só é exigido para **trocar o padrão**.
 
 **O que você vai ver, em palavras por folha.** Uma folha do ouro tem ~195 palavras de prosa (5.058
 em 26 folhas); uma folha escaneada da prata, ~272 (4.084 em 15). Um livro de 300 folhas, ~58 mil a
@@ -570,13 +567,13 @@ interpretador do projeto, `.venv/Scripts/python.exe` (memória `interpretador-do
 
 ### Fase 100 — A régua da prosa
 
-O primeiro trabalho não melhora nada: ele torna mensurável o que se vai melhorar. Os scripts da
-skill (`banco.py`, `rodar.py`, `resumo.py`, `repontuar.py`, `degradar.py`) são o protótipo medido em
-2026-10-30; esta fase os traz para dentro do pacote, com teste.
+O primeiro trabalho não melhora nada: ele torna mensurável o que se vai melhorar. Os scripts de
+`texto_prosa_2026-10-30/` (`banco.py`, `rodar.py`, `resumo.py`, `repontuar.py`, `degradar.py`) são o
+protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com teste.
 
 - **S-700** · `text/regua_prosa.py`: normalização, classes de token, alinhamento e placar por classe.
-  - *Contexto:* o protótipo é `banco.py` da skill. O alinhamento é Levenshtein com recuo, vetorizado
-    por linha em `numpy` (mínimo acumulado para a inserção); 2.000×2.000 caracteres em ~1 s.
+  - *Contexto:* o protótipo é `texto_prosa_2026-10-30/banco.py`. O alinhamento é Levenshtein com recuo,
+    vetorizado por linha em `numpy` (mínimo acumulado para a inserção); 2.000×2.000 caracteres em ~1 s.
   - *Entrega:* funções puras `normalizar`, `classe_do_token`, `alinhar`, `pontuar` → `Placar`. Sem
     I/O. O placar traz, por classe, erros e totais; **inserções** à parte e por classe; WER de prosa
     **(S+D+I)/N** sobre alinhamento de tokens (o `ifthe` custa uma troca e uma deleção, e o token
@@ -700,12 +697,12 @@ skill (`banco.py`, `rodar.py`, `resumo.py`, `repontuar.py`, `degradar.py`) são 
   - *Contexto:* o perfil `medio` de 2026-10-30 equivale a ~110 dpi e leva o glifo a 57,2%, contra
     14,4% na prata (scan real): ele não foi calibrado contra nada, e um alvo (M5) sobre um perfil sem
     calibração mede uma imagem que ninguém imprime.
-  - *Entrega:* `text/degradacao.py` com os perfis da skill, semente por folha, geometria intacta,
-    aplicado às **mesmas folhas** do ouro (`--paginas`). Depois da S-703, um perfil `calibrado`:
-    o que faz o Tesseract errar no ouro degradado o mesmo que ele erra no scan-ouro-dev (±25%
-    relativo). Duas famílias de degradação com geradores **diferentes**: uma para o aumento de dados
-    da Fase 105, outra **reservada** para medir a M5 — senão o modelo da casa joga em casa. Usado só
-    como fatia; nunca somado ao ouro.
+  - *Entrega:* `text/degradacao.py` com os perfis de `texto_prosa_2026-10-30/degradar.py`, semente por
+    folha, geometria intacta, aplicado às **mesmas folhas** do ouro (`--paginas`). Depois da S-703, um
+    perfil `calibrado`: o que faz o Tesseract errar no ouro degradado o mesmo que ele erra no
+    scan-ouro-dev (±25% relativo). Duas famílias de degradação com geradores **diferentes**: uma para o
+    aumento de dados da Fase 105, outra **reservada** para medir a M5 — senão o modelo da casa joga em
+    casa. Usado só como fatia; nunca somado ao ouro.
   - *Verificação:* teste de reprodutibilidade (mesma folha e semente → mesmos bytes) e `resumo.py` do
     Tesseract no perfil calibrado contra o scan-ouro-dev, publicado ao lado.
   - *Saída:* mesma folha e semente → mesma imagem, byte a byte (teste); o perfil calibrado publicado
@@ -715,8 +712,8 @@ skill (`banco.py`, `rodar.py`, `resumo.py`, `repontuar.py`, `degradar.py`) são 
   estratificados como o scan-ouro (ClearScan / ≤ 150 dpi / ≥ 300 dpi).
   - *Entrega:* manifesto `assets/texto_prosa/prata.json`; o relatório imprime a palavra **"ordenação"**
     ao lado de todo número prata, e nunca o soma ao ouro.
-  - *Verificação:* `cvoff-texto-prosa` (ou, até a S-706 existir, `reproduzir.py` + `resumo.py` da
-    skill) sobre `prata`, com o filtro `--oraculo-max 0.10` registrado no relatório.
+  - *Verificação:* `cvoff-texto-prosa` (ou, até a S-706 existir, `reproduzir.py` + `resumo.py` de
+    `texto_prosa_2026-10-30/`) sobre `prata`, com o filtro `--oraculo-max 0.10` registrado no relatório.
   - *Saída:* relatório com a palavra "ordenação" em todo número prata e os três estratos separados.
   - *Reversão:* manifesto; sem chamador em produção.
 - **S-706** · `cvoff-texto-prosa` e a linha de base publicada.
@@ -726,7 +723,7 @@ skill (`banco.py`, `rodar.py`, `resumo.py`, `repontuar.py`, `degradar.py`) são 
     normalizações (`tip` e `cru`, ver 1.1), taxonomia por motor e tempo por etapa **em chave
     separada** (`segundos_*`), e uma leitura de aquecimento descartada (memória
     `primeira-leitura-do-processo-difere`). Os subconjuntos publicados saem de um filtro com
-    argumentos registrados no relatório (`filtrar.py` da skill), nunca de seleção à mão.
+    argumentos registrados no relatório (`texto_prosa_2026-10-30/filtrar.py`), nunca de seleção à mão.
   - *Verificação:* rodar duas vezes; achatar os dois JSON em chaves escalares e comparar **fora**
     `segundos_*` (memória `reproduzir-relatorio-antes-de-republicar`).
   - *Saída:* duas corridas idênticas fora as chaves `segundos_*`; README cita o relatório; o relatório
@@ -751,16 +748,16 @@ skill (`banco.py`, `rodar.py`, `resumo.py`, `repontuar.py`, `degradar.py`) são 
 ### Fase 101 — Nenhuma folha perdida em silêncio
 
 - **S-710** · Guarda de leitura incompleta, e o campo de avisos que a página ainda não tem.
-  - *Contexto:* nas cinco folhas perdidas de 2026-10-30 — *Chess Evolution* 903 e 1210, *Kmoch* 31,
-    69 e 106 (base 1) — a página inteira some, sem log. `PaginaLida` **não tem** campo de aviso
-    (`text/pagina.py`); a decisão 4 e as S-715, S-720, S-721 e S-723 dependem de um. **A primeira
-    versão desta guarda foi reprovada por medição** (crítico da rodada 5): "tinta coberta pelas caixas
-    de linha ≥ 95%" dá **1,000** na folha perdida — a caixa única e degenerada cobre a folha inteira — e
-    0,942 em folhas boas do Dvoretsky e do Seirawan. Também falha "altura da maior linha ÷ mediana"
-    (47,9 numa folha normal). O sinal que separa, medido nas 95 folhas dos quatro conjuntos
-    (`cobertura.py` da skill), é a **densidade de leitura**: caracteres lidos ÷ componentes de tinta
-    fora dos diagramas. Folhas normais: **0,903 a 1,285** (ouro, misto, prata e degradado); as cinco
-    perdidas: **0,001 a 0,007**.
+  - *Contexto:* nas cinco folhas perdidas de 2026-10-30 — *Chess Evolution* 903 e 1210, *Kmoch* 31, 69 e
+    106 (base 1) — a página inteira some, sem log. `PaginaLida` **não tem** campo de aviso
+    (`text/pagina.py`); a decisão 4 e as S-715, S-720, S-721 e S-723 dependem de um. **A primeira versão
+    desta guarda foi reprovada por medição** (crítico da rodada 5): "tinta coberta pelas caixas de linha
+    ≥ 95%" dá **1,000** na folha perdida — a caixa única e degenerada cobre a folha inteira — e 0,942 em
+    folhas boas do Dvoretsky e do Seirawan. Também falha "altura da maior linha ÷ mediana" (47,9 numa
+    folha normal). O sinal que separa, medido nas 95 folhas dos quatro conjuntos
+    (`texto_prosa_2026-10-30/cobertura.py`), é a **densidade de leitura**: caracteres lidos ÷
+    componentes de tinta fora dos diagramas. Folhas normais: **0,903 a 1,285** (ouro, misto, prata e
+    degradado); as cinco perdidas: **0,001 a 0,007**.
   - *Entrega:* `PaginaLida.avisos: tuple[Aviso, ...]` (código, mensagem, dado), com ida e volta em
     `para_json`/`de_json`; **`ESQUEMA` sobe de 1 para 2**, com leitura do formato 1 (a S-722 sobe para
     3); a densidade calculada depois da leitura; abaixo de **0,5** → aviso `folha_nao_lida` com o
@@ -825,8 +822,8 @@ skill (`banco.py`, `rodar.py`, `resumo.py`, `repontuar.py`, `degradar.py`) são 
   - *Contexto:* no perfil médio a perda de leiaute é 12,1 p.p. [6,9; 17,1]. Suspeitos, em ordem: binarização
     (janela fixa contra escala da letra), poeira passando no filtro de componente, e linhas que se
     tocam depois do desfoque.
-  - *Verificação:* `cvoff-texto-prosa` (ou, até a S-706 existir, `reproduzir.py` + `resumo.py` da
-    skill) no degradado calibrado, pareado contra o leiaute de hoje.
+  - *Verificação:* `cvoff-texto-prosa` (ou, até a S-706 existir, `reproduzir.py` + `resumo.py` de
+    `texto_prosa_2026-10-30/`) no degradado calibrado, pareado contra o leiaute de hoje.
   - *Saída:* perda de leiaute ≤ 2 p.p. no perfil médio, sem piorar o ouro limpo.
   - *Reversão:* cada mudança de binarização ou filtro atrás de constante; desligada, volta a de hoje.
 - **S-715** · O leiaute de reserva.
@@ -850,10 +847,10 @@ skill (`banco.py`, `rodar.py`, `resumo.py`, `repontuar.py`, `degradar.py`) são 
   - *Contexto:* nos livros nascidos digitais a camada **é** a tinta — é a referência do ouro. O
     `leitor.py` recusou a camada como motor por causa da **notação** (ela não representa figurina), não
     da prosa. Rotear a prosa para a camada e a notação para o glifo leva o erro de prosa a perto de zero
-    nesses livros, sem Tesseract, sem instalador e sem D4. **Taxa de admissão medida** (`admissao.py` da
-    skill, numa corrida só; 30 folhas sorteadas por livro com semente **por livro** — a amostra de um
-    livro não depende dos outros nem da ordem —, `dados/2026-10-30/admissao.tsv`; e os dois *Chess
-    Evolution* **inteiros**, `admissao_livro_inteiro.tsv`):
+    nesses livros, sem Tesseract, sem instalador e sem D4. **Taxa de admissão medida** (`admissao.py` de
+    `texto_prosa_2026-10-30/`, numa corrida só; 30 folhas sorteadas por livro com semente **por livro**
+    — a amostra de um livro não depende dos outros nem da ordem —, `dados/2026-10-30/admissao.tsv`; e os
+    dois *Chess Evolution* **inteiros**, `admissao_livro_inteiro.tsv`):
 
     | livro | amostra: admitidas | por que as outras saíram | livro inteiro: folhas com texto recusadas |
     |---|---:|---|---:|
@@ -892,10 +889,10 @@ skill (`banco.py`, `rodar.py`, `resumo.py`, `repontuar.py`, `degradar.py`) são 
     calculado uma vez por documento aberto e fica em memória. A
     procedência `camada` por intervalo vive **em memória** (a S-722 é que a grava), e o caderno continua
     gravando o texto como hoje.
-  - *Verificação:* a S-716 acrescenta ao `rodar.py` da skill a variante `camada_prosa` (o mesmo
-    mapeamento, por fora do `ler_pagina`, como as fusões v1–v5) e mede: M0 no ouro-dev — CER de prosa
-    contra a camada, que mede a **montagem** — e G1/G2/G6 contra o glifo; nos livros com camada de OCR,
-    a admissão recusa e nada muda (`admissao.tsv`).
+  - *Verificação:* a S-716 acrescenta ao `texto_prosa_2026-10-30/rodar.py` a variante `camada_prosa` (o
+    mesmo mapeamento, por fora do `ler_pagina`, como as fusões v1–v5) e mede: M0 no ouro-dev — CER de
+    prosa contra a camada, que mede a **montagem** — e G1/G2/G6 contra o glifo; nos livros com camada de
+    OCR, a admissão recusa e nada muda (`admissao.tsv`).
   - *Saída:* opção "Camada na prosa (livro digital)" na caixa de motor; o dono a vê nos livros dele;
     M0 medida no ouro-dev (montagem e auditoria visual).
   - *Reversão:* interruptor; desligado, a folha volta ao glifo.
@@ -987,14 +984,14 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     fora da faixa.
   - *Reversão:* módulos novos; sem a fusão (S-721) ninguém os chama.
 - **S-721** · Fusão por token (`text/fusao.py`).
-  - *Contexto:* cinco regras foram medidas offline sobre as mesmas linhas (tabela da 1.5); a de
-    partida é a **v5** (`fusao_v5.py` da skill) no digital: ganha do glifo em 25 de 26 folhas e, nos
-    seis livros limpos, perde do Tesseract puro só +0,05 p.p. [0,00; +0,12]; na notação fica a +1,26
-    p.p. do glifo, dentro do ruído, e preserva 98,9% das figurinas dele. O que ela ainda não resolve:
-    no estrato misto perde +0,08 p.p. [0,00; +0,22] do Tesseract puro; no scan, +0,97 p.p. [−0,07;
-    +2,98] — e **no scan a melhor regra medida é a v3** (6,2% contra 7,0%; *Brinckmann* 3,4% contra
-    8,5%), que entrega a notação em letra ao Tesseract. A regra é **por estrato de produção** (S-702):
-    v5 no digital, v3 no scan, decidido pela régua e não por gosto.
+  - *Contexto:* cinco regras foram medidas offline sobre as mesmas linhas (tabela da 1.5); a de partida
+    é a **v5** (`texto_prosa_2026-10-30/fusao_v5.py`) no digital: ganha do glifo em 25 de 26 folhas e,
+    nos seis livros limpos, perde do Tesseract puro só +0,05 p.p. [0,00; +0,12]; na notação fica a +1,26
+    p.p. do glifo, dentro do ruído, e preserva 98,9% das figurinas dele. O que ela ainda não resolve: no
+    estrato misto perde +0,08 p.p. [0,00; +0,22] do Tesseract puro; no scan, +0,97 p.p. [−0,07; +2,98] —
+    e **no scan a melhor regra medida é a v3** (6,2% contra 7,0%; *Brinckmann* 3,4% contra 8,5%), que
+    entrega a notação em letra ao Tesseract. A regra é **por estrato de produção** (S-702): v5 no
+    digital, v3 no scan, decidido pela régua e não por gosto.
   - *Entrega:* no ponto descrito no topo desta fase. Alinhamento de tokens por linha (programação
     dinâmica, custo = distância normalizada); regras, nesta ordem: (1) token de **notação em qualquer
     lado** → glifo — o Tesseract estraga lance de peão (`g4!`→`24!`) —, **salvo** se o leitor de linha
@@ -1229,8 +1226,8 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
   no degradado médio, em 8 folhas de 4 livros, dentro do ruído — **em livro digital**. Nos scans de
   ≤ 150 dpi (altura-x nativa de 7–10 px) a pergunta é outra, e é ali que ela se refaz: ampliar em
   cinza **antes** de binarizar.
-  - *Verificação:* `cvoff-texto-prosa` (ou, até a S-706 existir, `reproduzir.py` + `resumo.py` da
-    skill) no scan-ouro-dev por estrato, pareado contra o pré-processamento de hoje.
+  - *Verificação:* `cvoff-texto-prosa` (ou, até a S-706 existir, `reproduzir.py` + `resumo.py` de
+    `texto_prosa_2026-10-30/`) no scan-ouro-dev por estrato, pareado contra o pré-processamento de hoje.
   - *Saída:* no estrato ≤ 150 dpi, CER de prosa do leitor de linha com diferença pareada a favor (teto
     do IC < 0); nos outros estratos, não-inferioridade (teto ≤ +0,2 p.p.).
   - *Reversão:* cada passo atrás de constante.
@@ -1490,9 +1487,9 @@ de cada um.
 ### Fase 107 — O portão final
 
 - **S-770** · Medição de fecho nos conjuntos de teste (abertos só aqui): M0–M5 e G1–G6.
-  - *Verificação:* `cvoff-texto-prosa` (ou, até a S-706 existir, `reproduzir.py` + `resumo.py` da
-    skill) sobre ouro-teste, scan-ouro-teste e o degradado reservado, uma vez, com o relatório
-    publicado antes de qualquer ajuste.
+  - *Verificação:* `cvoff-texto-prosa` (ou, até a S-706 existir, `reproduzir.py` + `resumo.py` de
+    `texto_prosa_2026-10-30/`) sobre ouro-teste, scan-ouro-teste e o degradado reservado, uma vez, com o
+    relatório publicado antes de qualquer ajuste.
   - *Saída:* M0–M5 e G1–G6 com ponto e teto; o plano B da seção 3 aplicado se algum falhar.
   - *Reversão:* medição.
 - **S-771** · README, ARCHITECTURE e o cabeçalho de `text/leitor.py` com o caminho novo e os números.
@@ -1610,11 +1607,14 @@ guarda que lê do próprio dado que deveria travar; limiar ajustado no teste.
 
 ## 10. Como reproduzir os números deste documento
 
-Os scripts estão em `~/.claude/skills/ocr-texto-preciso/scripts/` e rodam com o `.venv` do projeto, da
-raiz do checkout que tem `PDF/` e `models/char_classifier.pt` (ou de qualquer lugar, com `CVOFF_RAIZ`
-apontando esse checkout). Os comandos abaixo são de **Git Bash**; no PowerShell troque `$TEMP` por
-`$env:TEMP`. A saída vai **sempre para fora do repositório** — o checkout principal é compartilhado
-por várias sessões, e um `*.jsonl` na raiz dele suja a árvore de todo mundo.
+Os scripts estão versionados em `docs/metrics/texto_prosa_2026-10-30/` e rodam com o `.venv` do projeto.
+Eles abrem `PDF/` e `models/char_classifier.pt` da pasta em `CVOFF_RAIZ` e, sem ela, do repositório onde
+o próprio script mora — o que só serve no checkout principal, porque os PDFs e o `.pt` não são
+versionados e só existem lá. Os comandos abaixo rodam da raiz do checkout principal, com `CVOFF_RAIZ`
+nela e `S` na pasta dos scripts; enquanto o ramo `texto-preciso` não chegar à `main`, `S` é essa pasta
+dentro do worktree do ramo. Os comandos são de **Git Bash**; no PowerShell troque `$TEMP` por
+`$env:TEMP`. A saída vai **sempre para fora do repositório** — o checkout principal é compartilhado por
+várias sessões, e um `*.jsonl` na raiz dele suja a árvore de todo mundo.
 
 **1. Saber qual código se está medindo.** O `.venv` tem uma instalação editável que aponta para
 `src/` do **checkout principal**. Para medir um worktree (a `main`, ou o ramo de um item), é preciso
@@ -1623,11 +1623,11 @@ por várias sessões, e um `*.jsonl` na raiz dele suja a árvore de todo mundo.
 e o commit que mediu, e **recusa rodar** se o pacote importado não morar ali.
 
 ```bash
-mkdir -p "$TEMP/regua_prosa"
+mkdir -p "$TEMP/regua_prosa"; export CVOFF_RAIZ="$PWD"; S=docs/metrics/texto_prosa_2026-10-30
 ```
 
 ```bash
-PYTHONPATH="$WT/src" .venv/Scripts/python.exe ~/.claude/skills/ocr-texto-preciso/scripts/rodar.py --exigir-src "$WT" --livro "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf|eng|0" --paginas 154 --saida "$TEMP/regua_prosa/teste.jsonl"
+PYTHONPATH="$WT/src" .venv/Scripts/python.exe "$S/rodar.py" --exigir-src "$WT" --livro "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf|eng|0" --paginas 154 --saida "$TEMP/regua_prosa/teste.jsonl"
 ```
 
 (`$WT` é a pasta do worktree; para medir o checkout principal, sem `PYTHONPATH` e sem `--exigir-src`.)
@@ -1641,7 +1641,7 @@ lógica de admissão é a mesma, e as 7 colunas reproduzem com o script atual �
 da rodada 10 em duas faixas):
 
 ```bash
-.venv/Scripts/python.exe ~/.claude/skills/ocr-texto-preciso/scripts/admissao.py "$TEMP/regua_prosa/admissao.tsv" 30 "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf" "1937 Kemeri.pdf"
+.venv/Scripts/python.exe "$S/admissao.py" "$TEMP/regua_prosa/admissao.tsv" 30 "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf" "1937 Kemeri.pdf"
 ```
 
 **2. Reproduzir um conjunto inteiro.** As folhas de cada conjunto estão no próprio relatório
@@ -1651,23 +1651,23 @@ seleção automática (`--livro ...|n`) depende do classificador de token e **mu
 em base 1 como no relatório; o `--paginas` recebe base 0):
 
 ```bash
-.venv/Scripts/python.exe ~/.claude/skills/ocr-texto-preciso/scripts/reproduzir.py docs/metrics/texto_prosa_20261030.json ouro_dev_completo "$TEMP/regua_prosa/ouro.jsonl"
+.venv/Scripts/python.exe "$S/reproduzir.py" docs/metrics/texto_prosa_20261030.json ouro_dev_completo "$TEMP/regua_prosa/ouro.jsonl"
 ```
 
 ```bash
-.venv/Scripts/python.exe ~/.claude/skills/ocr-texto-preciso/scripts/fusao_v5.py "$TEMP/regua_prosa/ouro.jsonl" "$TEMP/regua_prosa/ouro_v5.jsonl"
+.venv/Scripts/python.exe "$S/fusao_v5.py" "$TEMP/regua_prosa/ouro.jsonl" "$TEMP/regua_prosa/ouro_v5.jsonl"
 ```
 
 ```bash
-.venv/Scripts/python.exe ~/.claude/skills/ocr-texto-preciso/scripts/tess_pagina.py "$TEMP/regua_prosa/ouro_v5.jsonl" "$TEMP/regua_prosa/ouro_pag.jsonl" 3
+.venv/Scripts/python.exe "$S/tess_pagina.py" "$TEMP/regua_prosa/ouro_v5.jsonl" "$TEMP/regua_prosa/ouro_pag.jsonl" 3
 ```
 
 ```bash
-.venv/Scripts/python.exe ~/.claude/skills/ocr-texto-preciso/scripts/filtrar.py "$TEMP/regua_prosa/ouro_pag.jsonl" "$TEMP/regua_prosa/ouro_ok.jsonl" --sem-folha-perdida
+.venv/Scripts/python.exe "$S/filtrar.py" "$TEMP/regua_prosa/ouro_pag.jsonl" "$TEMP/regua_prosa/ouro_ok.jsonl" --sem-folha-perdida
 ```
 
 ```bash
-.venv/Scripts/python.exe ~/.claude/skills/ocr-texto-preciso/scripts/resumo.py "$TEMP/regua_prosa/ouro_ok.jsonl" tip --pares fusao_v5-glifo,fusao_v5-tess,tess-tess_oraculo
+.venv/Scripts/python.exe "$S/resumo.py" "$TEMP/regua_prosa/ouro_ok.jsonl" tip --pares fusao_v5-glifo,fusao_v5-tess,tess-tess_oraculo
 ```
 
 - **Os outros conjuntos:** `ouro_dev_estrato_misto`, `degradado_medio_mesmas_folhas` (o
@@ -1676,11 +1676,13 @@ em base 1 como no relatório; o `--paginas` recebe base 0):
 - **Sem rodar motor de novo:** os JSONL de 2026-10-30 estão em
   `~/.claude/skills/ocr-texto-preciso/dados/2026-10-30/` (texto de livro comercial: uso local, nunca no
   repositório); `repontuar.py` refaz o placar quando a régua muda, `refazer.py --oraculo` refaz só o
-  oráculo, e `publicar.py <destino.json> <pasta>` refaz este relatório a partir deles.
-- **Tamanho de amostra e poder:** `amostra.py <jsonl> tess_oraculo tip` e `amostra.py <jsonl> --pareado
-  tess_oraculo tess tip`, de dentro de `scripts/`.
-- **A guarda da S-710:** `cobertura.py <saida.tsv> <jsonl>...` mede a densidade de leitura folha a folha.
-- **Ver o que o leiaute achou:** `inspec.py <pdf> <folha base 0> <saida.png>` desenha os blocos.
+  oráculo, e `publicar.py <destino.json> <pasta>` refaz este relatório a partir deles — conferido na
+  migração: as 4.039 chaves voltam iguais, menos o `scripts_sha256` dos sete scripts que ela tocou.
+- **Tamanho de amostra e poder:** `"$S/amostra.py" <jsonl> tess_oraculo tip` e
+  `"$S/amostra.py" <jsonl> --pareado tess_oraculo tess tip`.
+- **A guarda da S-710:** `"$S/cobertura.py" <saida.tsv> <jsonl>...` mede a densidade de leitura folha a
+  folha.
+- **Ver o que o leiaute achou:** `"$S/inspec.py" <pdf> <folha base 0> <saida.png>` desenha os blocos.
 
 ---
 

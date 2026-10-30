@@ -14,7 +14,8 @@ import sys
 import cv2
 import numpy as np
 
-RAIZ = os.environ.get("CVOFF_RAIZ", r"C:\Python-Chess2\ChessVisionOFF_Puro")
+# o checkout que tem PDF/ e models/: CVOFF_RAIZ, ou o repositório onde este script mora
+RAIZ = os.environ.get("CVOFF_RAIZ") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 
 def main(sai, *ents):

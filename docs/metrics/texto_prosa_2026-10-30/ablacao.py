@@ -22,10 +22,12 @@ VARIANTES = {"producao": {}, "sem_marca_fina": {"marca_fina": False}, "sem_empil
              "sem_traco": {"traco": False}, "colados_nunca": {"colados": "nunca"},
              "sem_italico": {"italico": False}, "sem_numeros": {"numeros": False},
              "sem_juntar_lance": {"juntar_lance": False}}
+# o checkout que tem PDF/ e models/: CVOFF_RAIZ, ou o repositório onde este script mora
+RAIZ = os.environ.get("CVOFF_RAIZ") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 rec = build_glyph_recognizer()
 tot = {k: [0, 0] for k in VARIANTES}
 for nome, lang, idx in PAGS:
-    pdf = os.path.join(os.environ.get("CVOFF_RAIZ", r"C:\Python-Chess2\ChessVisionOFF_Puro"), "PDF", nome)
+    pdf = os.path.join(RAIZ, "PDF", nome)
     img = render_pdf_page(pdf, idx, 220)
     ler_pagina(pdf, idx, motor="glifo", reconhecedor=rec, imagem_rgb=img)  # aquecimento
     ref = banco.normalizar(banco.texto_de([lin.texto for lin in banco.linhas_da_pagina(

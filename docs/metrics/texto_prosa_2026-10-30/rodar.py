@@ -14,7 +14,8 @@ import fitz
 sys.path.insert(0, os.path.dirname(__file__))
 import banco  # noqa: E402
 
-RAIZ = os.environ.get("CVOFF_RAIZ", r"C:\Python-Chess2\ChessVisionOFF_Puro")
+# o checkout que tem PDF/ e models/: CVOFF_RAIZ, ou o repositório onde este script mora
+RAIZ = os.environ.get("CVOFF_RAIZ") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 
 def escolher_paginas(pdf: str, n: int, min_prosa=700, frac=0.55, pular=0.08, frac_max=1.01) -> list[int]:

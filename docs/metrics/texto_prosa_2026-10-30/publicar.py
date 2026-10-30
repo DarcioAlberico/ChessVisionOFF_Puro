@@ -20,7 +20,8 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from resumo import diferenca_pareada, familia, linha_de_motor  # noqa: E402
 
-RAIZ = os.environ.get("CVOFF_RAIZ", r"C:\Python-Chess2\ChessVisionOFF_Puro")
+# o checkout que tem PDF/ e models/: CVOFF_RAIZ, ou o repositório onde este script mora
+RAIZ = os.environ.get("CVOFF_RAIZ") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 AQUI = sys.argv[2] if len(sys.argv) > 2 else os.getcwd()
 TESS = os.path.dirname(os.environ.get("TESSERACT_CMD", r"C:\Program Files\Tesseract-OCR\tesseract.exe"))
 
