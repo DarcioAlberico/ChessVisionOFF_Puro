@@ -1,4 +1,4 @@
-# PDF digital com o PGN do livro — plano e especificação (S-585 a S-595)
+# PDF digital com o PGN do livro — plano e especificação (S-585 a S-597)
 
 Livro digital costuma vir com o `.pgn` das partidas e linhas do autor: uma partida por seção do
 capítulo, com a árvore inteira de variantes. Cada diagrama do PDF é um nó dessa árvore. Ter o nó é
@@ -42,7 +42,7 @@ só lances, variantes e NAGs, 12.697 nós e 10.910 posições distintas.
 | puro | `livro_com_pgn.py` | legendas e imagens da página, capítulo pelo sumário, casamento, estados, associação PDF ↔ PGN |
 | linha de comando | `cli/livro_com_pgn.py` | `cvoff-livro-com-pgn`, a régua |
 | janela | `qt/livro_com_pgn.py` | carregar e esquecer o PGN, a página lida, a Revisão, o Estudo, os que faltam, a Galeria |
-| folha | `text/rico.py`, `qt/painel_de_texto.py` | o diagrama que falta posto na folha (`inserir_diagrama`) |
+| folha | `text/rico.py`, `qt/painel_de_texto.py`, `text/leitor.py` | o diagrama que falta posto na folha (`inserir_diagrama`), a legenda do pé de volta (`margem_no_corpo`) |
 | dataset | `importacao_de_imagens.py` | o lote «PDF + PGN do livro» |
 
 **Nada disto está no caminho de medição (S-218).** O `service.py` lê a imagem como sempre; a FEN do
@@ -193,9 +193,12 @@ verdade, e a leitura a uma casa do nó não aconteceu. Corrigir a leitura é do 
 troca a posição; a Galeria só anota. O casamento é puro (`livro_com_pgn.casamentos_da_galeria`) e
 usa o `do_livro` que chegou com o índice: o comando responde na hora, sem reler o PDF.
 
-**Não medido no Harikrishna inteiro**: pede a varredura da Galeria com o modelo, que esta entrega
-não rodou. A expectativa é a da S-589 -- 951 das 990 imagens conferem casa por casa --, com a
-diferença de que a Galeria lê a página com o próprio pipeline e não com o recorte de 200 dpi.
+**Medido no Harikrishna inteiro** (2026-10-29, `gallery_scan.build_gallery_index` com o modelo de
+produção, sem leitura de legenda, 725 s): a Galeria acha **999** diagramas e **989 casam** casa por
+casa com o nó da legenda -- mais que os 951 da S-589, porque a Galeria lê com o próprio pipeline e
+não com o recorte de 200 dpi. **1 discorda** (página 24, a uma casa de 7...dxc3: erro de leitura,
+que o Resultado corrige). Os outros **9** estão em páginas sem legenda do livro -- a abertura de
+capítulo -- e são a S-597.
 
 **Aceite.** `tests/test_livro_com_pgn.py::GaleriaTests` (só a posição exata casa, a página sem
 diagrama do livro não conta como discordância, o que falta no PDF não casa) e
@@ -223,6 +226,68 @@ livro --, e `humano` é a procedência que uma releitura não tem direito de apa
 de antes com o mesmo índice) e `tests/test_qt_texto_diagramas.py::DiagramaDoLivroNaFolhaTests` (a
 figura desenhada da FEN, o desfazer, a folha errada e a legenda ausente, o duplo clique).
 
+### S-596 · A legenda do pé da página volta à folha
+
+**Problema.** Na janela real, *Pôr na folha* inseria 11.Ne5 e 15.Bg5! na página 21 do Harikrishna
+e deixava o 20...Qxd5 de fora: a legenda «Position after: 20...Qxd5» está a 40 pt do pé, dentro
+dos 7% da faixa de margem (S-43), e a leitura pela camada fica com **uma** linha de cada lado da
+faixa -- o cabeçalho e o rodapé -- e jogava o resto fora. O resto, ali, era a legenda.
+
+**Decisão** (`text/leitor.margem_no_corpo`). No motor de camada, as linhas da faixa **de baixo**
+que não são o rodapé voltam ao corpo, com procedência `camada`, menos as que **repetem na margem
+das duas folhas de cada lado** (`chave_de_corrente`: o texto sem números, sem caixa e sem espaço
+duplo). As vizinhas só são lidas quando sobra linha. O motor de glifo não muda: ele lê a imagem
+inteira, e a faixa já vem nas linhas dele.
+
+**Medido** (2026-10-29, censo da camada em 11 livros, até 300 páginas sorteadas por livro):
+
+| livro | linhas a mais na faixa | não repetem | em cima |
+|---|---:|---:|---:|
+| Harikrishna | 52 | 52 | 0 |
+| Aagaard, *A Matter of Endgame Technique* | 444 | 11 | 11 |
+| Aagaard, *Practical Chess Defence* | 715 | 443 | 11 |
+| Karpov, *Chess Combinations 1* | 728 | 571 | 325 |
+| Polgar, *5334 Problems* | 350 | 60 | 0 |
+| Nunn, *Minor Piece Endings* | 4 | 4 | 2 |
+| Hertan, Silman, Stean, Anand, Burgess | 0 | 0 | 0 |
+
+O que sobra **embaixo** é texto: as 52 linhas do Harikrishna (legendas e prosa do pé), a prosa do
+*Practical Chess Defence* e os lances do Polgar. O que sobra **em cima** é a abertura de capítulo
+(«Jacob Aagaard», «Fortresses»), que não repete nas vizinhas, e o lixo da camada de OCR do Karpov
+(«__ ___=_»). Por isso só o pé volta. Na janela real, a página 21 passa a receber os três
+diagramas, o 20...Qxd5 antes da legenda.
+
+**Fora do caminho de medição** (S-218): `text/leitor` não está no fecho do `cvoff-field`, nem com
+OCR. O CER de página (`docs/metrics/texto_pagina.json`) usa a camada como referência e passa a
+contar essas linhas; não foi remedido.
+
+**Aceite.** `tests/test_leitor_de_pagina.py::MargemNoCorpoTests` (a legenda do pé volta e o número
+da página não, o corrente fica fora, a faixa de cima não volta, as vizinhas só são lidas quando
+sobra linha, e uma folha de verdade pelo `ler_pagina`).
+
+### S-597 · A Galeria casa pela posição onde o livro não tem legenda
+
+**Problema.** A S-594 só procurava entre os candidatos das legendas da página. O diagrama da
+abertura de capítulo não tem legenda, e um livro de outro editor pode não ter nenhuma: ali a
+Galeria não casava nada, embora a posição esteja na árvore do autor.
+
+**Decisão** (`livro_com_pgn._pela_posicao`). Na página **sem legenda do livro**, o diagrama varrido
+casa pela posição no índice inteiro. A posição de abertura de capítulo passa por várias partidas
+dele, então o `DiagramMatch` leva `games_matched` igual ao número de partidas, e a regra da base
+decide como para qualquer base: acima de 5 só confirma (S-74). Os cabeçalhos entram só quando a
+partida é uma; o rótulo diz «posição em N partidas» quando não é. Lance e lado a jogar valem
+quando todos os nós concordam; se discordam, é transposição e nada casa.
+
+**Onde há legenda, não vale.** A leitura que não é nenhum candidato da página é erro de leitura,
+e achá-la noutro canto do livro seria casar a imagem com a legenda errada.
+
+**Medido no Harikrishna:** os 9 diagramas de abertura de capítulo estão no índice, em 4 a 15
+partidas cada; 3 ganham lance e lado a jogar, e 6 ficam só confirmados. A Galeria passa a casar
+**998 de 999**.
+
+**Aceite.** `tests/test_livro_com_pgn.py::GaleriaTests` (a posição de uma partida traz os cabeçalhos
+dela, a de várias não escolhe cabeçalho, e na página com legenda a posição de outro canto não casa).
+
 ---
 
 ## O que fica fora, e por quê
@@ -231,7 +296,7 @@ figura desenhada da FEN, o desfazer, a folha errada e a legenda ausente, o duplo
   após» em quatro línguas. Livro com outra forma cai no casamento pela posição, que cobre os casos
   exatos e os de uma casa.
 - **Transposição.** A mesma posição pode estar em dois nós com o lado a jogar diferente. Com
-  legenda o capítulo e o rótulo decidem; sem legenda vale o primeiro na ordem do livro.
+  legenda o capítulo e o rótulo decidem; sem legenda vale o primeiro na ordem do livro (S-590), e a Galeria não casa (S-597).
 - **A posição na Galeria.** A S-594 anota (lance, lado, cabeçalhos) e não troca a leitura
   varrida: corrigir posição é do Resultado, página a página, onde a pessoa vê a troca em roxo.
 - **Pôr na folha sozinho.** Ler a folha não insere nada; inserir é o comando da S-595. Uma folha
