@@ -28,6 +28,7 @@ motiva cada item: [ROADMAP_FASE7.md](ROADMAP_FASE7.md).
 > | S-500 a S-506, S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
 > | S-581 a S-584 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
+> | S-702 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
 
 > **Ressalva de 2026-08-16.** Quatro itens deste documento — **S-38b, S-40, S-62a e S-62b** —
 > foram reprovados pela taxa de exportação do conjunto de campo. A avaliação registrada em

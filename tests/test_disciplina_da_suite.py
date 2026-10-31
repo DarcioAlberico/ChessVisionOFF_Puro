@@ -244,6 +244,7 @@ class PuloQueNinguemContaTests(unittest.TestCase):
         "assets/lexico/nomes.txt.gz": "idem",
         "docs/metrics/texto_pagina.json": "o CER de página que o README publica (S-405)",
         "packaging/cvoff.spec": "o `.spec` que o `ruff` linta desde a S-391",
+        "assets/texto_prosa/ouro.json": "o manifesto do ouro da régua da prosa, que os portões abrem (S-702)",
     }
     """O que a suíte lê **e** o repositório versiona. Nenhuma guarda que dependa deles pode pular."""
 
