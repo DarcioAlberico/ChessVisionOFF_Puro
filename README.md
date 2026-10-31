@@ -1237,6 +1237,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-500 a S-506, S-527 a S-580 | [docs/SPEC_SUITE.md](docs/SPEC_SUITE.md) |
 | S-581 a S-584 | [docs/PLANO_COLUNAS_SOLUCOES.md](docs/PLANO_COLUNAS_SOLUCOES.md) |
 | S-601 a S-668 | [docs/SPEC_MESA_DE_TEXTO.md](docs/SPEC_MESA_DE_TEXTO.md) |
+| S-702 | [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1389,6 +1390,9 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   2026-10-30 (`docs/metrics/texto_prosa_20261030.json`: glifo 3,61% de CER de prosa no ouro digital,
   Tesseract nas mesmas linhas 1,33%, e 0,16% nas linhas certas), as folhas que somem em silencio, a
   prosa da camada nos livros digitais e o leitor de linha ao lado do glifo
+- [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) -- especificacao das Fases 100 a 107,
+  item a item a medida que sao entregues: a S-702 (a admissao sem motor e o ouro-teste sorteado
+  antes de qualquer leitura, em `assets/texto_prosa/ouro.json`)
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

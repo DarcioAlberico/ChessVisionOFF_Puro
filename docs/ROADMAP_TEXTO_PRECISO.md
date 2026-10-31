@@ -558,9 +558,10 @@ em 26 folhas); uma folha escaneada da prata, ~272 (4.084 em 15). Um livro de 300
   fontes do Dvoretsky, que vão ao estrato *fonte vista* e não contam para os 12; 17 que repetem a série
   de outro, porque o teste leva um livro por série; e **36 livros independentes**: 33 em inglês, 2 em
   português e 1 em espanhol. Dos 36, 25 são ebook convertido pelo calibre, um estrato a declarar no
-  manifesto. A D6 está atendida em número e em línguas, com o espanhol num livro só e de pouca prosa.
-  A lista livro a livro fica em `dados/2026-10-30/d6_inventario.tsv` da skill, fora do repositório.
-  Falta a S-702: sortear os livros e as folhas do teste antes de qualquer leitura.
+  manifesto. A lista livro a livro fica em `dados/2026-10-30/d6_inventario.tsv` da skill, fora do
+  repositório. **No sorteio da S-702, o livro em espanhol não deu nenhuma folha com prosa** (é de
+  exercícios), e o teste congelou com 16 livros em inglês e português; **falta um livro digital com
+  prosa numa terceira língua**, que entra a mais, sem trocar os sorteados (decisão do dono).
 - **Antes de a fusão virar padrão (~dezembro) — D1, D4 e D9.** Levar o Tesseract no instalador (+~48 MB
   e as licenças dele); aceitar que ler a folha com texto fique ~2–3× mais lento; e dizer quem escreve o
   livro exportado (seção 7).
@@ -663,7 +664,7 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     `conftest` desvia o `DATA_DIR` da suíte para uma pasta vazia, e o teste do manifesto ficaria vácuo),
     lido pela raiz do repositório e incluído em `VERSIONADOS` da disciplina da suíte — com `{livro,
     identidade (a de `caderno.identidade_de`, reaproveitada e não reimplementada), folha, lingua,
-    estrato, split}`. **ouro-dev** = os sete livros de 2026-10-30.
+    estrato, split}`. **ouro-dev** = os sete livros de 2026-10-30 (cinco, depois da auditoria).
     **ouro-teste** = ≥ 12 livros digitais **novos** (decisão D6 — o dono traz; 8 é o mínimo, seção 3), ≥ 3 línguas,
     folhas sorteadas por `sha256(identidade + folha)` **antes** de qualquer leitura, e o manifesto
     commitado antes da primeira corrida. Dois estratos por livro: **prosa** (≥ 55% de prosa) e
@@ -678,6 +679,16 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     manifesto de teste com data posterior à primeira leitura registrada.
   - *Reversão:* manifesto é dado versionado; um livro reprovado sai do manifesto num commit que diz o
     critério.
+  - *Entregue em 2026-10-30* (ramo `texto-preciso`): `text/admissao.py` (paridade com o protótipo
+    nas 360 folhas da tabela da S-716), `text/ouro.py` e `assets/texto_prosa/ouro.json` — 16 livros e
+    96 folhas no teste, só identidades no manifesto (o repositório é público). A auditoria visual
+    reprovou 5 de 27 livros, entre eles dois dos sete dev; o dev ficou com 5 livros e 27 folhas. Spec,
+    números, desvios e achados em `docs/SPEC_TEXTO_PRECISO.md`; a terceira língua do teste fica
+    pendente.
+  - *Achado:* a linha de base da seção 1 mediu dois livros dev contra uma referência com defeito — no
+    *Chess Evolution 2013* a ligadura `ft` perde o `t` na camada, e no *Capablanca* figurinas da tinta
+    ficam fora da linha da camada. Os números ficam como publicados, com esta ressalva; a S-706 os
+    republica nos cinco livros dev admitidos.
 - **S-703** · Scan-ouro: 30 folhas escaneadas com verdade humana.
   - *Contexto:* é o **único** jeito de dizer o erro absoluto em scan; a camada de terceiro (prata)
     só ordena. Sem este item, M3 e M4 não existem.
@@ -739,6 +750,13 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   - *Saída:* duas corridas idênticas fora as chaves `segundos_*`; README cita o relatório; o relatório
     traz `codigo.pacote` e `codigo.commit` de cada folha (o que `rodar.py --exigir-src` já grava).
   - *Reversão:* CLI novo; o relatório antigo continua no disco.
+  - *Da S-702:* o CLI grava `primeira_leitura_do_teste` no manifesto do ouro na primeira vez que lê o
+    split `teste`, e não o lê sem gravar — é o que dá dente à guarda "teste lido antes do
+    congelamento" —; grava também, por livro, a primeira leitura de cada livro acrescentado depois do
+    congelamento (o que tem `entrou_em`), num campo novo do manifesto, no dia de `entrou_em` ou depois,
+    e acrescenta a `ouro.problemas` a guarda que reprova a leitura de antes dessa data; traz o
+    `--conjunto ouro --conferir-admissao` que a S-702 adiou; e a linha de base nova se mede nos cinco
+    livros dev aprovados na auditoria, não nos sete de 2026-10-30.
 
   - **Portão G100:** as duas corridas idênticas; linha de base no ouro-dev, ouro-teste, degradado e
     prata publicada; README cita o relatório.
@@ -894,7 +912,7 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     linha que o roteador de tokens (`text/fusao.py`, criado aqui e completado pela S-721) funde com o
     glifo — notação e figurina do glifo, prosa da camada. Quando a guarda da S-710 marca a folha como não
     lida, a prosa vem da **montagem da própria camada** (`motor="camada"`) e a notação fica sem glifo,
-    com aviso. A admissão (a)–(d) é a função `admissao` deste item, reaproveitada pela S-702; o perfil
+    com aviso. A admissão (a)–(d) é a de `text/admissao.py`, escrita na S-702 e reaproveitada aqui; o perfil
     de livro do critério (a) — 30 folhas igualmente espaçadas, só `get_texttrace`, sem leitura — é
     calculado uma vez por documento aberto e fica em memória. A
     procedência `camada` por intervalo vive **em memória** (a S-722 é que a grava), e o caderno continua
@@ -906,6 +924,12 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   - *Saída:* opção "Camada na prosa (livro digital)" na caixa de motor; o dono a vê nos livros dele;
     M0 medida no ouro-dev (montagem e auditoria visual).
   - *Reversão:* interruptor; desligado, a folha volta ao glifo.
+  - *Da S-702:* (a)–(d) admitem livros cuja camada não é a tinta. A auditoria visual reprovou 5 de 27
+    livros que passam neles, entre eles o *Chess Evolution 2013* e o *Capablanca* da tabela acima. Na
+    prosa, o defeito é a ligadura que perde letra (`ft` → `f`); na notação, o símbolo de avaliação em
+    código de fonte e a figurina fora da linha. A S-716 não põe a prosa da camada por (a)–(d)
+    sozinhos: acrescenta a checagem da ligadura — o caractere cuja caixa é mais larga que a letra que
+    ele diz ser — ou fica, no padrão, nos livros aprovados na auditoria; e a M0 se mede só nesses.
 - **S-717** · Primeira entrega: a fusão experimental na janela.
   - *Entrega:* a S-721 **mínima** — regra v5, léxico de hoje, língua escolhida à mão — exposta como
     "Glifo + Tesseract (experimental)" na caixa de motor da aba, sem mudar o padrão; a leitura pode
@@ -988,10 +1012,10 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     binário); leitor falso que devolve `""`, que levanta e que estoura o timeout; teste com caminho
     acentuado forçado no `TESSDATA_PREFIX`; teste de integração marcado `requer_tesseract`, pulado onde
     não há binário.
-  - *Saída:* o executor lê as 26 folhas do ouro-dev nas caixas do glifo — um processo por folha, TIFF
-    de várias páginas (S-725) — com o **mesmo texto** que o `rodar.py` de 2026-10-30 lê com um
-    processo por linha (diferença zero), sem console e com aviso quando o binário falta ou tem versão
-    fora da faixa.
+  - *Saída:* o executor lê as 26 folhas lidas pelo `rodar.py` de 2026-10-30 nas caixas do glifo — um
+    processo por folha, TIFF de várias páginas (S-725) — com o **mesmo texto** que o `rodar.py` de
+    2026-10-30 lê com um processo por linha (diferença zero), sem console e com aviso quando o binário
+    falta ou tem versão fora da faixa.
   - *Reversão:* módulos novos; sem a fusão (S-721) ninguém os chama.
 - **S-721** · Fusão por token (`text/fusao.py`).
   - *Contexto:* cinco regras foram medidas offline sobre as mesmas linhas (tabela da 1.5); a de partida
@@ -1096,9 +1120,9 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     aviso sem perder a leitura, limpeza pelo menu, e `data/cache_texto/` no `.gitignore` **no mesmo
     commit** (o cache é texto de livro comercial). A régua roda **sempre com o cache desligado**. O
     orçamento de tempo é o do G4.
-  - *Verificação:* texto **igual** ao da leitura por linha (diferença zero) nas 26 folhas do ouro-dev;
-    tempo por folha com a máquina parada, com e sem cache; teste de despejo e de chave (trocar
-    `tessdata`, língua, `psm`, versão ou modelo invalida a entrada).
+  - *Verificação:* texto **igual** ao da leitura por linha (diferença zero) nas 26 folhas lidas pelo
+    `rodar.py` de 2026-10-30; tempo por folha com a máquina parada, com e sem cache; teste de despejo e
+    de chave (trocar `tessdata`, língua, `psm`, versão ou modelo invalida a entrada).
   - *Saída:* G4 cumprido com cache desligado; a política da S-215 remedida e publicada.
   - *Reversão:* apagar `data/cache_texto/` é sempre seguro; o lote por folha tem a leitura por linha
     como reserva atrás de constante.
@@ -1310,7 +1334,8 @@ linhas de base (S-745), porque o modelo da casa tem de vencer **a melhor** delas
 
 **Os quatro conjuntos desta fase, que não se tocam.** (1) **treino**; (2) **validação** — disjunta
 do treino por livro **e por família tipográfica**, é nela que se para o treino, se ajusta a
-temperatura e se escolhem limiares; (3) **ouro-dev** — os 7 livros de 2026-10-30, só diagnóstico;
+temperatura e se escolhem limiares; (3) **ouro-dev** — os livros de 2026-10-30 aprovados na auditoria
+da S-702 (cinco dos sete), só diagnóstico;
 (4) **teste** — ouro-teste e scan-ouro-teste, abertos só no portão. Como o acervo não tem outro livro
 digital de prosa (S-702), as linhas reais de treino e validação saem dos livros dev **e** dos livros
 digitais novos da D6 que não forem sorteados para o teste — e o relatório diz quantas linhas vieram
@@ -1373,11 +1398,12 @@ de cada um.
   - *Saída:* o feixe entra só com diferença pareada a favor na validação.
   - *Reversão:* parâmetro do decodificador.
 - **S-754** · Generalização de fonte: deixar uma **família tipográfica** de fora.
-  - *Contexto:* 7 livros dev, 5 famílias (Times em 3 deles). Deixar um livro de fora quase nunca deixa
-    a fonte de fora.
-  - *Entrega:* uma dobra por família (Times, Cambria, Calibri, Arial, Source Sans, e as que a D6
-    trouxer), IC95 por dobra, e o ouro-teste com estratos **fonte vista / fonte não vista** declarados
-    no manifesto. É o primeiro número do projeto que mede generalização de fonte — a dívida da S-203.
+  - *Contexto:* 7 livros dev em 2026-10-30, 5 famílias (Times em 3 deles). A auditoria da S-702
+    reprovou os dois de Cambria e de Source Sans; os cinco que ficam têm 3 famílias (Times em 3, Arial,
+    Calibri). Deixar um livro de fora quase nunca deixa a fonte de fora.
+  - *Entrega:* uma dobra por família (Times, Calibri, Arial, e as que a D6 trouxer), IC95 por dobra,
+    e o ouro-teste com estratos **fonte vista / fonte não vista** declarados no manifesto. É o primeiro
+    número do projeto que mede generalização de fonte — a dívida da S-203.
   - *Verificação:* uma corrida por família tipográfica deixada de fora, IC por dobra.
   - *Saída:* "pior dobra não pior que a fusão com a melhor linha de base" é condição da S-755.
   - *Reversão:* medição; não muda o produto.
@@ -1526,7 +1552,7 @@ dono não responder até lá — e o recuo **cumpre o próprio portão**, rotula
 | **D3** | Horas humanas para o scan-ouro | sim, ~15 h (30 folhas e a dupla digitação de 6) | começa no primeiro dia; precisa estar pronto antes do G104 | o G104 não fecha (M3/M4 sem número), e o produto sai dizendo que o erro de scan não foi medido | ~15 h humanas |
 | **D4** | Aceitar o orçamento do G4 (a leitura com fusão custa ~2–3× a do glifo, e pela política da S-215 isso pode tirar o texto da varredura padrão) | sim | antes do G102 | a fusão fica atrás de interruptor e não vira padrão | varredura de livro inteiro mais lenta (seção 3, G4) |
 | **D5** | Fontes, livros do acervo e **pesos derivados** (o `traineddata` ajustado da S-745, o modelo da Fase 105) | uso local; peso derivado de livro comercial **não** vai no instalador sem decisão expressa | antes da S-746 | os pesos ficam fora do bundle | licença das fontes comerciais e dos livros |
-| **D6** | Trazer ≥ 12 livros digitais novos (nascidos digitais, com prosa, ≥ 3 línguas; 8 é o mínimo) para o ouro-teste — **entregue em 2026-10-30**: 36 independentes (seção 5a) | **sim** | antes do G102 | os portões G102 e G103 rodam no **teste provisório** (folhas nunca lidas dos 7 livros dev), com o teto recalculado por `amostra.py` para 7 livros e todo número rotulado "provisório (livro visto)"; o G107 não fecha sem eles | trazer os PDFs |
+| **D6** | Trazer ≥ 12 livros digitais novos (nascidos digitais, com prosa, ≥ 3 línguas; 8 é o mínimo) para o ouro-teste — **entregue em 2026-10-30**: 36 independentes; falta a terceira língua (seção 5a) | **sim** | antes do G102 | os portões G102 e G103 rodam no **teste provisório** (folhas nunca lidas dos 7 livros dev), com o teto recalculado por `amostra.py` para 7 livros e todo número rotulado "provisório (livro visto)"; o G107 não fecha sem eles | trazer os PDFs |
 | **D7** | Downloads da escada e do dataset: `tesstrain`, modelo PP-OCR latino, `frak2021` (se houver Fraktur), fontes completas, corpus de domínio público | sim, um a um, com **nome, origem, tamanho e licença** declarados | antes do item que o usa | o degrau da S-745 que depende dele é pulado e registrado | variável |
 | **D8** | Orçamento de CPU da Fase 105 (dezenas de horas por corrida, várias corridas) | decidir depois da corrida-piloto da S-752 | antes da S-750 | a Fase 105 não começa; vale o plano B da seção 3 | horas de CPU desta máquina |
 | **D9** | Quem escreve o livro exportado: o tronco envia as folhas lidas pelo leitor novo à suíte, ou a suíte adota a fusão que vencer na S-707 | o que a S-707 medir melhor | antes da S-765 | o livro exportado continua com o motor da suíte, e o relatório diz | coordenação entre os dois repositórios |
@@ -1566,7 +1592,7 @@ Dependências **entre itens** que o quadro de fases não mostra, e que um execut
 | S-716 | — (começa no primeiro dia) | sem a S-710 ela só não avisa a folha não lida; com ela, cai na montagem da camada |
 | S-717 | S-716 | o roteador de `text/fusao.py` nasce na S-716 |
 | S-715, S-717 | S-720 | a reserva e a opção experimental são o Tesseract |
-| S-716 | os critérios (a)–(d) da S-702 | a função de admissão é escrita na S-716 e reaproveitada na S-702 |
+| S-716 | os critérios (a)–(d) da S-702 | a função de admissão foi escrita na S-702 (`text/admissao.py`) e é reaproveitada na S-716 |
 | S-721 | S-707 | a fusão não é desenhada sem medir a da suíte |
 | S-765 | D9, S-707 | quem escreve o livro exportado |
 | S-718 | S-717 (dois leitores para discordarem), o léxico de hoje | medida "já no G102" |
