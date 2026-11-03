@@ -744,6 +744,53 @@ class SeguidorTests(unittest.TestCase):
         rolou, depois, _escondida, _mostrada = roda_na_espera()
         self.assertNotEqual(depois, rolou, "sabotado, no sossego o seguidor leva a barra à caixa")
 
+    def test_a_roda_noutra_rolagem_da_janela_tambem_fica(self) -> None:
+        """Crítico da fase 5, ciclo 10, na Rotulagem da suíte: a roda sobre outra rolagem da mesma
+        janela não passa pelas barras desta, e no sossego o seguidor levava a vista à caixa debaixo de
+        quem rolava. Aqui, depois do clique, a roda numa lista ao lado da rolagem: no sossego a barra
+        fica no topo. A roda numa lista de outra janela não é a pessoa rolando esta -- no sossego a
+        caixa aparece. A sabotagem: toda roda tomada por de outra janela -- a barra vai à caixa."""
+        from PyQt6.QtCore import QPointF
+        from PyQt6.QtGui import QWheelEvent
+        from PyQt6.QtWidgets import QApplication
+
+        linhas = self._lista_no_alto()
+        barra = self.rolagem.verticalScrollBar()
+        assert barra is not None
+        ao_lado = QListWidget(self.janela)
+        ao_lado.addItems([f"item {k}" for k in range(40)])
+        layout = self.janela.layout()
+        assert layout is not None
+        layout.addWidget(ao_lado)
+        alheia = QListWidget()
+        self.addCleanup(descartar, alheia)
+        alheia.addItems([f"item {k}" for k in range(40)])
+        self.app.processEvents()
+
+        def roda_em(lista: QListWidget) -> tuple[int, bool]:
+            _clique_pela_janela(self.app, self.janela, self._na_linha(linhas))
+            self.assertIs(self.app.focusWidget(), self.caixa)
+            area = lista.viewport()
+            assert area is not None
+            centro = area.rect().center()
+            roda = QWheelEvent(QPointF(centro), QPointF(area.mapToGlobal(centro)), QPoint(0, 0),
+                               QPoint(0, -120), Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+                               Qt.ScrollPhase.NoScrollPhase, False)
+            QApplication.sendEvent(area, roda)
+            self.app.processEvents()
+            _sossegar(self.app)
+            return barra.value(), _inteiro(self.rolagem, self.caixa)
+
+        topo, inteira = roda_em(ao_lado)
+        self.assertEqual(topo, 0, "no sossego a barra fica onde a pessoa rolava")
+        self.assertFalse(inteira, "a caixa não é trazida para a vista")
+        _topo, inteira = roda_em(alheia)
+        self.assertTrue(inteira, "a roda noutra janela não segura a caixa")
+        with mock.patch.object(self.seguidor, "_na_janela", lambda _objeto: False):
+            topo, inteira = roda_em(ao_lado)
+        self.assertNotEqual(topo, 0, "sabotado, no sossego o seguidor leva a barra à caixa")
+        self.assertTrue(inteira)
+
     def test_o_foco_que_o_programa_move_no_soltar_tambem_espera(self) -> None:
         """Um botão dentro da rolagem cujo `clicked` -- no soltar -- manda o foco à caixa do fim: o botão
         não está mais apertado, mas o segundo clique de um duplo clique nele ainda vem. Logo depois do
