@@ -33,10 +33,13 @@ from __future__ import annotations
 
 import logging
 import threading
+import weakref
 from collections.abc import Callable, Iterator
 from dataclasses import fields
 from pathlib import Path
+from typing import Any
 
+from PyQt6 import sip
 from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QShowEvent
 from PyQt6.QtWidgets import (
@@ -144,7 +147,7 @@ class JanelaDeEstatisticas(QDialog):
 
 def _linhas_em_tuplas(
     csv_path: Path, samples_dir: Path, *, splits_path: Path | None, duplicate_groups: list[list[str]]
-) -> list[tuple[object, ...]]:
+) -> list[tuple[Any, ...]]:
     """`load_rows` no processo de trabalho, devolvendo tuplas. Ver `_reler_agora`."""
     linhas = load_rows(csv_path, samples_dir, splits_path=splits_path, duplicate_groups=duplicate_groups)
     return [tuple(getattr(linha, campo.name) for campo in fields(DatasetRow)) for linha in linhas]
@@ -454,8 +457,18 @@ class PainelDoDataset(QWidget):
             return load_rows(csv_path, samples_dir, splits_path=splits_path, duplicate_groups=grupos)
 
         # **Sem pai**, por `qt/trabalho.manter_viva`: ver lá o modo de falha que isso evita.
+        # A tarefa sobrevive ao painel, e o slot pergunta se ele ainda existe: uma lambda sobre
+        # `self` tocaria o embrulho de um widget já apagado, e exceção em slot é `qFatal` no PyQt6
+        # (o mesmo defeito de `qt/marcas.LeitorDeMarcas.pedir`).
         tarefa = manter_viva(Tarefa(ler, nome="dataset"))
-        tarefa.pronto.connect(lambda linhas: self._dataset_chegou(linhas, selecionadas))
+        painel = weakref.ref(self)
+
+        def chegou(linhas: object) -> None:
+            vivo = painel()
+            if vivo is not None and not sip.isdeleted(vivo):
+                vivo._dataset_chegou(linhas, selecionadas)
+
+        tarefa.pronto.connect(chegou)
         tarefa.falhou.connect(self._dataset_falhou)
         self._lendo = tarefa
         self.setEnabled(False)
@@ -562,7 +575,8 @@ class PainelDoDataset(QWidget):
 
     def _mostrar_espera(self, esperando: bool) -> None:
         """A frase sobre a tabela enquanto a leitura corre. Ver `_reler_agora`."""
-        self.vazio.setGeometry(self.tabela.viewport().rect())
+        vista = self.tabela.viewport()
+        self.vazio.setGeometry(vista.rect() if vista is not None else self.tabela.rect())
         self.vazio.setVisible(esperando)
 
     def _dataset_falhou(self, mensagem: str, _excecao: object) -> None:
@@ -584,7 +598,7 @@ class PainelDoDataset(QWidget):
             return
         self._mostrar_espera(False)
         self.setEnabled(True)
-        self.rows = list(linhas or [])
+        self.rows = list(linhas) if isinstance(linhas, list) else []
 
         livros = sorted({row.source_pdf for row in self.rows if row.source_pdf})
         escolhido = self.combo_livro.currentText()

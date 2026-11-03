@@ -1,0 +1,629 @@
+{
+  "item": "S-662 e S-663 · o classificador de estilo da palavra e o portão",
+  "medido_em": "2026-10-25",
+  "codigo": {
+    "commit": "5ba4ace",
+    "arvore_suja": false
+  },
+  "conjunto": {
+    "arquivo": "palavras.npz",
+    "resumo": "9ef0f9a724ca",
+    "palavras": 51064,
+    "livros": 7
+  },
+  "protocolo": "um livro de fora por rodada: o livro k e o teste, o k+1 a validacao (o corte), os outros treinam; as contas se somam",
+  "semente": 661,
+  "epocas_por_rodada": 6,
+  "rodadas": [
+    {
+      "teste": "00698edf57aa",
+      "validacao": "3d743a6f3dbc",
+      "palavras_no_teste": 5418,
+      "acerto_limpo": 0.9919,
+      "treino": [
+        {
+          "epoca": 1,
+          "perda_treino": 0.5469,
+          "perda_validacao": 0.3761,
+          "acerto_validacao": 0.8795,
+          "segundos": 72.0
+        },
+        {
+          "epoca": 2,
+          "perda_treino": 0.2387,
+          "perda_validacao": 0.5575,
+          "acerto_validacao": 0.7474,
+          "segundos": 31.3
+        },
+        {
+          "epoca": 3,
+          "perda_treino": 0.1806,
+          "perda_validacao": 0.5853,
+          "acerto_validacao": 0.7039,
+          "segundos": 30.7
+        },
+        {
+          "epoca": 4,
+          "perda_treino": 0.1471,
+          "perda_validacao": 0.246,
+          "acerto_validacao": 0.8971,
+          "segundos": 30.9
+        },
+        {
+          "epoca": 5,
+          "perda_treino": 0.1286,
+          "perda_validacao": 1.1502,
+          "acerto_validacao": 0.5047,
+          "segundos": 31.2
+        },
+        {
+          "epoca": 6,
+          "perda_treino": 0.1281,
+          "perda_validacao": 1.3019,
+          "acerto_validacao": 0.3609,
+          "segundos": 29.8
+        }
+      ]
+    },
+    {
+      "teste": "3d743a6f3dbc",
+      "validacao": "575942661f69",
+      "palavras_no_teste": 4589,
+      "acerto_limpo": 0.8383,
+      "treino": [
+        {
+          "epoca": 1,
+          "perda_treino": 0.5603,
+          "perda_validacao": 0.2838,
+          "acerto_validacao": 0.915,
+          "segundos": 26.3
+        },
+        {
+          "epoca": 2,
+          "perda_treino": 0.3021,
+          "perda_validacao": 0.3821,
+          "acerto_validacao": 0.9335,
+          "segundos": 26.0
+        },
+        {
+          "epoca": 3,
+          "perda_treino": 0.2525,
+          "perda_validacao": 0.395,
+          "acerto_validacao": 0.8836,
+          "segundos": 26.6
+        },
+        {
+          "epoca": 4,
+          "perda_treino": 0.1967,
+          "perda_validacao": 0.6209,
+          "acerto_validacao": 0.8454,
+          "segundos": 25.9
+        },
+        {
+          "epoca": 5,
+          "perda_treino": 0.1823,
+          "perda_validacao": 0.6855,
+          "acerto_validacao": 0.8273,
+          "segundos": 27.5
+        },
+        {
+          "epoca": 6,
+          "perda_treino": 0.1583,
+          "perda_validacao": 1.0911,
+          "acerto_validacao": 0.8448,
+          "segundos": 27.1
+        }
+      ]
+    },
+    {
+      "teste": "575942661f69",
+      "validacao": "88f04dc68d5e",
+      "palavras_no_teste": 8059,
+      "acerto_limpo": 0.9036,
+      "treino": [
+        {
+          "epoca": 1,
+          "perda_treino": 0.5661,
+          "perda_validacao": 0.4881,
+          "acerto_validacao": 0.8798,
+          "segundos": 35.6
+        },
+        {
+          "epoca": 2,
+          "perda_treino": 0.286,
+          "perda_validacao": 0.1547,
+          "acerto_validacao": 0.9222,
+          "segundos": 35.4
+        },
+        {
+          "epoca": 3,
+          "perda_treino": 0.2128,
+          "perda_validacao": 0.5742,
+          "acerto_validacao": 0.8252,
+          "segundos": 35.9
+        },
+        {
+          "epoca": 4,
+          "perda_treino": 0.1902,
+          "perda_validacao": 0.9353,
+          "acerto_validacao": 0.7265,
+          "segundos": 37.8
+        },
+        {
+          "epoca": 5,
+          "perda_treino": 0.1501,
+          "perda_validacao": 0.3023,
+          "acerto_validacao": 0.9138,
+          "segundos": 35.7
+        },
+        {
+          "epoca": 6,
+          "perda_treino": 0.1583,
+          "perda_validacao": 0.4736,
+          "acerto_validacao": 0.8472,
+          "segundos": 36.6
+        }
+      ]
+    },
+    {
+      "teste": "88f04dc68d5e",
+      "validacao": "9b3841c5cc6b",
+      "palavras_no_teste": 7493,
+      "acerto_limpo": 0.9916,
+      "treino": [
+        {
+          "epoca": 1,
+          "perda_treino": 0.4461,
+          "perda_validacao": 0.31,
+          "acerto_validacao": 0.876,
+          "segundos": 44.0
+        },
+        {
+          "epoca": 2,
+          "perda_treino": 0.1847,
+          "perda_validacao": 0.6051,
+          "acerto_validacao": 0.7913,
+          "segundos": 46.7
+        },
+        {
+          "epoca": 3,
+          "perda_treino": 0.1551,
+          "perda_validacao": 0.2346,
+          "acerto_validacao": 0.9514,
+          "segundos": 45.5
+        },
+        {
+          "epoca": 4,
+          "perda_treino": 0.1273,
+          "perda_validacao": 0.4566,
+          "acerto_validacao": 0.8174,
+          "segundos": 43.1
+        },
+        {
+          "epoca": 5,
+          "perda_treino": 0.1234,
+          "perda_validacao": 0.1985,
+          "acerto_validacao": 0.9192,
+          "segundos": 46.2
+        },
+        {
+          "epoca": 6,
+          "perda_treino": 0.1039,
+          "perda_validacao": 0.0901,
+          "acerto_validacao": 0.96,
+          "segundos": 45.3
+        }
+      ]
+    },
+    {
+      "teste": "9b3841c5cc6b",
+      "validacao": "c1533bb54332",
+      "palavras_no_teste": 2798,
+      "acerto_limpo": 0.96,
+      "treino": [
+        {
+          "epoca": 1,
+          "perda_treino": 0.4846,
+          "perda_validacao": 0.2177,
+          "acerto_validacao": 0.9216,
+          "segundos": 50.9
+        },
+        {
+          "epoca": 2,
+          "perda_treino": 0.2117,
+          "perda_validacao": 0.4979,
+          "acerto_validacao": 0.7637,
+          "segundos": 50.6
+        },
+        {
+          "epoca": 3,
+          "perda_treino": 0.1871,
+          "perda_validacao": 0.5481,
+          "acerto_validacao": 0.7888,
+          "segundos": 51.8
+        },
+        {
+          "epoca": 4,
+          "perda_treino": 0.14,
+          "perda_validacao": 0.1618,
+          "acerto_validacao": 0.9353,
+          "segundos": 50.7
+        },
+        {
+          "epoca": 5,
+          "perda_treino": 0.1256,
+          "perda_validacao": 0.1789,
+          "acerto_validacao": 0.939,
+          "segundos": 55.0
+        },
+        {
+          "epoca": 6,
+          "perda_treino": 0.1094,
+          "perda_validacao": 0.0588,
+          "acerto_validacao": 0.9828,
+          "segundos": 56.1
+        }
+      ]
+    },
+    {
+      "teste": "c1533bb54332",
+      "validacao": "f5012add8a4c",
+      "palavras_no_teste": 17103,
+      "acerto_limpo": 0.9782,
+      "treino": [
+        {
+          "epoca": 1,
+          "perda_treino": 0.4188,
+          "perda_validacao": 0.5968,
+          "acerto_validacao": 0.7066,
+          "segundos": 38.7
+        },
+        {
+          "epoca": 2,
+          "perda_treino": 0.1304,
+          "perda_validacao": 0.4173,
+          "acerto_validacao": 0.8212,
+          "segundos": 38.4
+        },
+        {
+          "epoca": 3,
+          "perda_treino": 0.0673,
+          "perda_validacao": 0.583,
+          "acerto_validacao": 0.7579,
+          "segundos": 38.9
+        },
+        {
+          "epoca": 4,
+          "perda_treino": 0.0637,
+          "perda_validacao": 2.8485,
+          "acerto_validacao": 0.2514,
+          "segundos": 37.3
+        },
+        {
+          "epoca": 5,
+          "perda_treino": 0.0861,
+          "perda_validacao": 2.6757,
+          "acerto_validacao": 0.2903,
+          "segundos": 37.1
+        },
+        {
+          "epoca": 6,
+          "perda_treino": 0.0528,
+          "perda_validacao": 1.4349,
+          "acerto_validacao": 0.5591,
+          "segundos": 36.7
+        }
+      ]
+    },
+    {
+      "teste": "f5012add8a4c",
+      "validacao": "00698edf57aa",
+      "palavras_no_teste": 5604,
+      "acerto_limpo": 0.8321,
+      "treino": [
+        {
+          "epoca": 1,
+          "perda_treino": 0.4046,
+          "perda_validacao": 0.8068,
+          "acerto_validacao": 0.5812,
+          "segundos": 38.0
+        },
+        {
+          "epoca": 2,
+          "perda_treino": 0.1317,
+          "perda_validacao": 0.178,
+          "acerto_validacao": 0.9454,
+          "segundos": 36.5
+        },
+        {
+          "epoca": 3,
+          "perda_treino": 0.0786,
+          "perda_validacao": 0.0357,
+          "acerto_validacao": 0.9961,
+          "segundos": 36.4
+        },
+        {
+          "epoca": 4,
+          "perda_treino": 0.0751,
+          "perda_validacao": 0.0319,
+          "acerto_validacao": 0.9954,
+          "segundos": 36.2
+        },
+        {
+          "epoca": 5,
+          "perda_treino": 0.0662,
+          "perda_validacao": 0.1174,
+          "acerto_validacao": 0.9666,
+          "segundos": 36.8
+        },
+        {
+          "epoca": 6,
+          "perda_treino": 0.0545,
+          "perda_validacao": 0.0251,
+          "acerto_validacao": 0.9928,
+          "segundos": 37.1
+        }
+      ]
+    }
+  ],
+  "pesos": null,
+  "custo_ms_por_palavra_cpu": 1.007,
+  "controle": {
+    "chutar_normal": 0.9149,
+    "chutar_pela_altura": 0.9141
+  },
+  "populacoes": {
+    "limpo": {
+      "acerto": 0.9403,
+      "por_classe": {
+        "negrito": {
+          "no_teste": 2441,
+          "sem_corte": {
+            "precisao": 0.6284,
+            "cobertura": 0.4973
+          },
+          "sugerir": {
+            "cortes": [
+              null,
+              0.8214,
+              0.984,
+              0.0,
+              0.0,
+              null,
+              0.0
+            ],
+            "marcadas": 1052,
+            "precisao": 0.423,
+            "cobertura": 0.1823,
+            "passa": false
+          },
+          "aplicar": {
+            "cortes": [
+              null,
+              0.8872,
+              0.984,
+              0.0,
+              0.0,
+              null,
+              0.0
+            ],
+            "marcadas": 1052,
+            "precisao": 0.423,
+            "cobertura": 0.1823,
+            "passa": false
+          }
+        },
+        "italico": {
+          "no_teste": 1604,
+          "sem_corte": {
+            "precisao": 0.674,
+            "cobertura": 0.6097
+          },
+          "sugerir": {
+            "cortes": [
+              0.0,
+              0.9568,
+              0.9442,
+              0.0,
+              0.6071,
+              null,
+              0.0
+            ],
+            "marcadas": 737,
+            "precisao": 0.6689,
+            "cobertura": 0.3074,
+            "passa": false
+          },
+          "aplicar": {
+            "cortes": [
+              0.5115,
+              0.9584,
+              0.9442,
+              0.0,
+              0.8759,
+              null,
+              0.0
+            ],
+            "marcadas": 721,
+            "precisao": 0.6644,
+            "cobertura": 0.2986,
+            "passa": false
+          }
+        },
+        "negrito-italico": {
+          "no_teste": 302,
+          "sem_corte": {
+            "precisao": 0.0,
+            "cobertura": 0.0
+          },
+          "sugerir": {
+            "cortes": [
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ],
+            "marcadas": 0,
+            "precisao": null,
+            "cobertura": 0.0,
+            "passa": false
+          },
+          "aplicar": {
+            "cortes": [
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ],
+            "marcadas": 0,
+            "precisao": null,
+            "cobertura": 0.0,
+            "passa": false
+          }
+        }
+      }
+    },
+    "degradado": {
+      "acerto": 0.9023,
+      "por_classe": {
+        "negrito": {
+          "no_teste": 2441,
+          "sem_corte": {
+            "precisao": 0.3135,
+            "cobertura": 0.4728
+          },
+          "sugerir": {
+            "cortes": [
+              null,
+              null,
+              null,
+              null,
+              0.9488,
+              null,
+              0.5409
+            ],
+            "marcadas": 1214,
+            "precisao": 0.1787,
+            "cobertura": 0.0889,
+            "passa": false
+          },
+          "aplicar": {
+            "cortes": [
+              null,
+              null,
+              null,
+              null,
+              0.9535,
+              null,
+              0.8311
+            ],
+            "marcadas": 659,
+            "precisao": 0.2246,
+            "cobertura": 0.0606,
+            "passa": false
+          }
+        },
+        "italico": {
+          "no_teste": 1604,
+          "sem_corte": {
+            "precisao": 0.6543,
+            "cobertura": 0.5062
+          },
+          "sugerir": {
+            "cortes": [
+              0.0,
+              0.9879,
+              0.967,
+              0.4817,
+              0.9791,
+              null,
+              0.4044
+            ],
+            "marcadas": 563,
+            "precisao": 0.6181,
+            "cobertura": 0.217,
+            "passa": false
+          },
+          "aplicar": {
+            "cortes": [
+              0.4644,
+              0.9879,
+              0.967,
+              0.5428,
+              0.9897,
+              null,
+              0.4841
+            ],
+            "marcadas": 546,
+            "precisao": 0.63,
+            "cobertura": 0.2145,
+            "passa": false
+          }
+        },
+        "negrito-italico": {
+          "no_teste": 302,
+          "sem_corte": {
+            "precisao": 0.0,
+            "cobertura": 0.0
+          },
+          "sugerir": {
+            "cortes": [
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ],
+            "marcadas": 0,
+            "precisao": null,
+            "cobertura": 0.0,
+            "passa": false
+          },
+          "aplicar": {
+            "cortes": [
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ],
+            "marcadas": 0,
+            "precisao": null,
+            "cobertura": 0.0,
+            "passa": false
+          }
+        }
+      }
+    }
+  },
+  "veredito": {
+    "vence_o_controle": false,
+    "classes_julgadas": [
+      "negrito",
+      "italico",
+      "negrito-italico"
+    ],
+    "sugerir_por_classe": {
+      "negrito": false,
+      "italico": false,
+      "negrito-italico": false
+    },
+    "aplicar_por_classe": {
+      "negrito": false,
+      "italico": false,
+      "negrito-italico": false
+    },
+    "decisao": "nao passa na regua de sugerir: a Fase 96 termina aqui, e o pincel manual (S-241) continua sendo a resposta"
+  },
+  "leitura": "Nao passa, e longe da regua. Fora do livro a rede acerta 0,9403 no render limpo e 0,9023 no degradado, contra 0,9149 de 'chutar normal' e 0,9141 de 'chutar pela altura': no limpo ela vence o acaso por pouco, no degradado -- que e a populacao-alvo, o scan -- perde dele. Por classe, nem sem corte nenhum ela chega perto da regua de sugerir (0,95): negrito 0,628 de precisao, italico 0,674, e o negrito-italico nunca e marcado. Com o corte escolhido na validacao fica pior (negrito 0,423, italico 0,669), e a causa esta nas rodadas: o corte que da 0,95 num livro nao vale no outro (cortes de 0,0 a 0,98 conforme o livro), e o acerto por livro vai de 0,832 a 0,992. Sao sete livros com os dois estilos na camada, e a fonte de cada um e o que a rede aprende. A geometria de 2026-08-29 chegou a 0,839 de precisao no negrito com o mesmo tipo de validacao, so que em duas classes e so em render limpo; a rede, com quatro classes e o scan simulado, nao a supera. A Fase 96 termina aqui: o pincel manual (S-241) continua sendo a resposta, e o negrito=None ('nao se sabe') continua sendo o que a folha sem camada diz. Os pesos nao foram gravados: so quem passa ganha pesos."
+}

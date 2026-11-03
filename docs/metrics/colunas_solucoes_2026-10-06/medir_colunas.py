@@ -8,19 +8,18 @@ Por página: tau (Kendall) do glifo e do caminho da camada; linhas da camada par
 entre colunas diferentes; colunas estreitas (< 20 % da largura do texto); número de colunas.
 """
 import json
+import os
 import random
 import sys
 import time
 from pathlib import Path
-
-import os
 
 import pymupdf
 
 sys.path.insert(0, str(Path(sys.argv[0]).parent))
 import patch_colunas  # noqa: E402,F401 - variante por COLUNAS_VARIANTE
 
-from chess_diagram_ocr.cli.texto_ordem import descidas, kendall_tau, medir_pagina
+from chess_diagram_ocr.cli.texto_ordem import kendall_tau, medir_pagina
 from chess_diagram_ocr.text.leitor import ler_pagina
 
 SP = Path(sys.argv[0]).parent

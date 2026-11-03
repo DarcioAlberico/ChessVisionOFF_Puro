@@ -1075,10 +1075,11 @@ def _lado_pela_numeracao(
             break
     if primeiro is not None:
         cor = chess.BLACK if primeiro[1] else chess.WHITE
-        return _SideDecision(cor, texto_do_primeiro.strip()[:40], "move-number", 0.9), primeiro, apos
+        # `_SideDecision.origin` devia ser `SideOrigin`; o caminho de medição (S-218): mudar a árvore invalida os relatórios de campo.
+        return _SideDecision(cor, texto_do_primeiro.strip()[:40], "move-number", 0.9), primeiro, apos  # type: ignore[arg-type]
     if apos is not None:
         cor = chess.BLACK if apos[1] else chess.WHITE
-        return _SideDecision(cor, texto_do_apos.strip()[:60], "caption-after", 0.85), primeiro, apos
+        return _SideDecision(cor, texto_do_apos.strip()[:60], "caption-after", 0.85), primeiro, apos  # type: ignore[arg-type]
     return None, primeiro, apos
 
 

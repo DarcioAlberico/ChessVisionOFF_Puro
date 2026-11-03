@@ -191,6 +191,15 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--sem-traco",
+        action="store_true",
+        help=(
+            "Desliga a decisão pela forma do box entre ponto, hífen e travessão (2.——Rd6 -> "
+            "2...Rd6, f4—f8 -> f4-f8). Ligada por padrão: nenhum traço tem o box mais alto que "
+            "largo, e nenhum hífen da camada editorada passa de 0,62 escala. Ver text/traco.py."
+        ),
+    )
+    parser.add_argument(
         "--sem-numeros",
         action="store_true",
         help=(
@@ -276,6 +285,7 @@ def main(argv: list[str] | None = None) -> int:
                 modo_bloco=args.bloco,
                 colados=args.colados,
                 caixa_alta=not args.sem_caixa_alta,
+                traco=not args.sem_traco,
                 marca_fina=not args.sem_marca_fina,
                 empilhados=not args.sem_empilhados,
                 italico=not args.sem_italico,

@@ -186,12 +186,13 @@ class PainelDeRecorte(QWidget):
         if a0 is None or self._mapa is None:
             super().keyPressEvent(a0)
             return
-        passo = {
+        passos: dict[int, int] = {
             Qt.Key.Key_Left: -1,
             Qt.Key.Key_Right: 1,
             Qt.Key.Key_Up: -8,
             Qt.Key.Key_Down: 8,
-        }.get(a0.key())
+        }
+        passo = passos.get(a0.key())
         if passo is not None:
             atual = self._apontada if self._apontada is not None else (self._selecionada or 0)
             if passo in (-1, 1) and (atual % 8) + passo not in range(8):

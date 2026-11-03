@@ -246,16 +246,16 @@ própria pasta de evidência.
 Ramo `claude/colunas-solucoes` do tronco, a partir do `646c84f`. Os passos 1, 2 e 4 foram
 executados; o 3 ficou sem caso no conjunto anotado depois dos outros dois, e não foi feito.
 
-**Passo 1 (S-523)** — `regioes.py`: `BORDA_MAX = 2`, `VAO_DE_BORDA = 1,5`. As 6 folhas que só o
+**Passo 1 (S-581)** — `regioes.py`: `BORDA_MAX = 2`, `VAO_DE_BORDA = 1,5`. As 6 folhas que só o
 1,5 muda foram olhadas: Neumann p. 40/61 e Gunderam p. 26 são duas colunas de verdade que a folha
 não achava; Журавлев p. 88 é grade de diagramas (S-216); Neumann p. 44/49 trocam três colunas
 espúrias por duas. Régua da S-194 com o código de produção: idêntica ao protótipo (0 pioram, 15
 mudam). Soluções do Yusupov pelo `ler_pagina`: 79 de 81.
 
-**Passo 2 (S-524)** — `cvoff-texto-colunas` e `docs/metrics/colunas_anotadas.json` (42 páginas).
+**Passo 2 (S-582)** — `cvoff-texto-colunas` e `docs/metrics/colunas_anotadas.json` (42 páginas).
 Portão por página. Baselines só com o passo 1: camada 33/40, glifo 34/42.
 
-**Passo 4 (S-525)** — `text/quadros.py` + `detectar_regioes(quadros=)`. A moldura é oca no glifo
+**Passo 4 (S-583)** — `text/quadros.py` + `detectar_regioes(quadros=)`. A moldura é oca no glifo
 (252 x 87 pt, 9 % de tinta) e é uma imagem com linhas centradas na camada. Duas armadilhas
 encontradas pela régua da S-194 e corrigidas antes de fechar: (a) a imagem larga com linhas dentro
 não basta na camada -- a tira de dois diagramas do Nunn, a imagem de fundo de uma lição (p. 1872) e
@@ -287,10 +287,21 @@ regressão registrada no cabeçalho de `regioes.py`.
 ## 9. Os itens
 
 As três seções abaixo são a spec dos itens entregues neste plano, no lugar que a tabela «Onde
-mora a spec de cada item» do README declara para a faixa S-523 a S-525. O ROADMAP_TEXTO (Fase 27)
+mora a spec de cada item» do README declara para a faixa S-581 a S-583. O ROADMAP_TEXTO (Fase 27)
 traz o relato; aqui fica o critério de aceite e a sonda de cada um.
 
-### S-523 · A banda isolada da borda não vota na calha ✅ implementada (2026-10-08)
+**Os commits destes itens dizem S-523 a S-526, e os números mudaram no merge com a `main`
+(2026-10-28).** Em 2026-10-08 a faixa estava livre neste ramo, mas a `main` já a tinha dado à
+Fase 79 (`SPEC_REVISAO_EXTERNA_2.md`, S-522 a S-526), entregue antes. É a colisão da S-431 outra
+vez: os dois lados verdes, porque nenhum dos dois tinha o outro. Ficou com o número quem o
+entregou primeiro, e estes quatro passaram ao bloco livre entre a suíte (S-580) e a mesa de
+texto (S-601): S-523 → **S-581**, S-524 → **S-582**, S-525 → **S-583**, S-526 → **S-584**. O
+assunto do commit não muda, porque está empurrado. O `RENUMERADOS` de `tests/test_docs.py` não
+pode registrar a troca: ele exige que o número antigo fique sem seção, e aqui o antigo continua
+com a seção do outro dono. Quem procurar «S-524» no `git log` acha os dois itens, e o que
+desempata é o prefixo «Texto, colunas» do assunto.
+
+### S-581 · A banda isolada da borda não vota na calha ✅ implementada (2026-10-08)
 
 **O que é.** Quando a projeção da folha inteira não acha calha, até `BORDA_MAX` (2) bandas em cada
 borda que estejam isoladas da vizinha por `VAO_DE_BORDA` (1,5) passos medianos de entrelinha saem
@@ -298,14 +309,14 @@ da projeção, e o corpo que sobra é tentado com a **mesma** régua da folha --
 da busca por região. As bandas de borda viram regiões de uma coluna. Onde a folha inteira acha
 calha, nada muda (`text/regioes.py`, `_corpo_sem_as_bordas`).
 
-**Critério de aceite.** No conjunto anotado da S-524, as páginas «solucoes» do Yusupov saem com
+**Critério de aceite.** No conjunto anotado da S-582, as páginas «solucoes» do Yusupov saem com
 duas colunas pelos dois motores; a régua da S-194 não piora nenhuma folha com referência
 confiável contra a produção anterior. Medido: 13 de 13 e 0 pioras em 1.090 folhas.
 
 **Sonda.** `tests/test_text_regioes.py::BandaIsoladaNaBordaTests` (a folha sintética de título +
 fólio + colunas de linha curta) e `PaginaDeSolucoesDoYusupovTests` (a p. 1917 real, pela camada).
 
-### S-524 · A estrutura de colunas medida contra páginas anotadas à mão ✅ implementada (2026-10-08)
+### S-582 · A estrutura de colunas medida contra páginas anotadas à mão ✅ implementada (2026-10-08)
 
 **O que é.** `cvoff-texto-colunas` lê `docs/metrics/colunas_anotadas.json` -- para cada página,
 quantas colunas tem a região mais dividida, anotado depois de olhar a página com as colunas
@@ -320,7 +331,7 @@ com o esperado e o achado, e separa «sem camada» e «livro ausente» de erro. 
 **Sonda.** `tests/test_texto_colunas.py` (medição, regressão por página, os códigos de saída) e o
 comando com `--baseline` contra os dois arquivos acima.
 
-### S-525 · O quadro de largura inteira é região de uma coluna, e corta a folha em trechos ✅ implementada (2026-10-08)
+### S-583 · O quadro de largura inteira é região de uma coluna, e corta a folha em trechos ✅ implementada (2026-10-08)
 
 **O que é.** `text/quadros.py` acha o quadro emoldurado -- no glifo, uma caixa larga
 (≥ 0,4 do texto), alta (≥ 3 escalas) e oca (≤ 0,25 de tinta) com bandas dentro; na camada, um
@@ -355,15 +366,15 @@ o número do lance e o lance na tabela de lances da coluna da direita, e a terce
 à margem) é sujeira de scan -- riscos de um ou dois pixels em várias bandas. Os dois são de
 conteúdo e de tinta, não de geometria da calha: é o passo 3.
 
-### S-526 · A poeira de scan não cobre x nenhum na calha ✅ implementada (2026-10-08)
+### S-584 · A poeira de scan não cobre x nenhum na calha ✅ implementada (2026-10-08)
 
 **O que é.** No caminho do glifo, `detectar_regioes(escala=)` tira da projeção da calha a caixa
 mais estreita que `RISCO_EM_ESCALAS` (1/6) da escala -- poeira de scan. A camada, cujas caixas são
 linhas, não passa escala e fica como estava. **Tirar também a banda de dois caracteres soltos foi
 medido e recusado:** com o fólio sem voto, a régua de folha inteira achava a calha sozinha, a
-borda da S-523 deixava de rodar, e o título com um vão interno ia parar dentro das colunas, partido
+borda da S-581 deixava de rodar, e o título com um vão interno ia parar dentro das colunas, partido
 (uma linha da camada partida a mais em 90 páginas de exercício do Yusupov, 18 folhas confiáveis
-piorando a ordem contra 15 melhorando). A banda solta na borda é da S-523; a do meio, da S-190.
+piorando a ordem contra 15 melhorando). A banda solta na borda é da S-581; a do meio, da S-190.
 
 **Critério de aceite.** A Neumann p. 40 sai em duas colunas pelo glifo (a calha de verdade era
 fechada por um risco de 3 x 3 px dentro de uma banda de texto, além do título tolerado); o
@@ -373,7 +384,7 @@ fundido, nenhuma página com referência confiável piora a ordem.
 **Sonda.** `tests/test_text_regioes.py::BandaIsoladaNaBordaTests::test_a_poeira_de_scan_nao_fecha_a_calha`
 e o conjunto anotado (`cvoff-texto-colunas --motor glifo --baseline docs/metrics/texto_colunas_glifo.json`).
 
-## 11. A poeira de scan (S-526) e o voto por banda, medido e recusado
+## 11. A poeira de scan (S-584) e o voto por banda, medido e recusado
 
 A Neumann p. 40 pelo glifo: a calha de verdade (209–221 pt) era fechada pelo título centrado
 (tolerado) e por um risco de 3 x 3 px dentro de uma banda de texto; com a segunda banda a folha
@@ -389,10 +400,10 @@ perdia a calha, caía no vão alinhado entre o número do lance e o lance (248�
 - **Voto por banda** (banda com menos de 3 escalas de tinta não vota) -- **recusada**. Pelo
   conjunto anotado também dava 43 de 43, mas nas 559 páginas: 106 mudanças de estrutura, 18
   folhas confiáveis piorando contra 15 melhorando, e linhas da camada partidas de 31 para 118.
-  A causa: com o fólio sem voto, a régua de folha inteira achava a calha sozinha, a borda da S-523
+  A causa: com o fólio sem voto, a régua de folha inteira achava a calha sozinha, a borda da S-581
   deixava de rodar, e o título -- que tem um vão interno -- ia parar dentro das colunas, partido
   («Solu | tions»), em 90 páginas de exercício do Yusupov. A banda de dois caracteres soltos na
-  borda é assunto da S-523; a do meio da folha, da tolerância da S-190.
+  borda é assunto da S-581; a do meio da folha, da tolerância da S-190.
 
 Dados: `glifo_fundido_04623bf.jsonl` (o código fundido), `glifo_passo5_poeira.jsonl` (adotado) e
 `glifo_passo5_voto_recusado.jsonl` (recusado), comparáveis com `comparar_glifo.py`.

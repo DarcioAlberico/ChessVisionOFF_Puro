@@ -35,11 +35,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "CONJUNTOS",
-    "CONJUNTO_ENV",
     "PADRAO",
     "PASTA",
-    "PECAS",
-    "TRACO",
     "Conjunto",
     "ausentes",
     "escolhido",

@@ -21,7 +21,9 @@ senão a imagem inteira é o tabuleiro. A conferência deixa a pessoa trocar um 
 
 **O andamento é um arquivo por pasta** (`data/importacao/*.json`): 5.800 imagens não se conferem
 numa sessão, e reabrir a mesma pasta tem de continuar de onde parou -- sem gravar duas vezes a
-mesma imagem no dataset.
+mesma imagem no dataset. A mesma imagem também cai em lotes diferentes quando se abre a pasta de um
+livro e depois a de cima dela; por isso o que outro lote já decidiu vale para todos, pelo caminho
+inteiro da imagem (`andamento_de_outros_lotes`).
 
 O módulo não importa Qt nem torch no topo: a janela é de `qt/importador_de_imagens.py`, e o modelo
 chega por parâmetro.
@@ -33,6 +35,7 @@ import csv
 import hashlib
 import json
 import logging
+import os
 import re
 from collections import Counter
 from collections.abc import Callable, Iterable
@@ -44,13 +47,15 @@ from typing import Any
 
 import numpy as np
 
-from .atomic_io import atomic_write_json, read_image
+from .atomic_io import atomic_write_bytes, atomic_write_json, read_image
 from .config import BOARD_SIZE, DATA_DIR
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "COM_FEN",
+    "COM_PGN",
+    "COM_FEN_DA_FONTE",
     "DESCARTADO",
     "EXTENSOES",
     "FRACAO_MINIMA_DO_QUADRO",
@@ -63,12 +68,15 @@ __all__ = [
     "ItemDeImportacao",
     "Lote",
     "abrir_lote",
+    "andamento_de_outros_lotes",
     "caminho_do_lote",
     "campo_de_pecas",
     "casas_diferentes",
+    "com_a_leitura",
     "concorda",
     "gravar_item",
     "ler_imagem",
+    "ler_livro_com_pgn",
     "ler_pasta_de_imagens",
     "ler_relatorios_do_chessmeridaocr",
     "recortar",
@@ -81,11 +89,22 @@ COM_FEN = "com-fen"
 SEM_FEN = "sem-fen"
 """Pasta de imagens soltas: a FEN é a que a pessoa conferir."""
 
+COM_PGN = "pdf-pgn"
+"""O PDF digital e o PGN do livro numa pasta (S-593): cada diagrama casado com o seu nó chega com a
+FEN do PGN e o lado a jogar dele. A imagem é a que o livro embute, nos bytes originais."""
+
+COM_FEN_DA_FONTE = (COM_FEN, COM_PGN)
+"""As origens em que a fonte traz a FEN -- onde «Importar os que concordam» faz sentido."""
+
 PENDENTE = "pendente"
 SALVO = "salvo"
 PULADO = "pulado"
 DESCARTADO = "descartado"
 STATUS = (PENDENTE, SALVO, PULADO, DESCARTADO)
+
+_PESO_DO_STATUS = {SALVO: 0, DESCARTADO: 1, PULADO: 2, PENDENTE: 3}
+"""Quando dois lotes decidiram coisas diferentes para a mesma imagem, vale a de menor peso: o que já
+está no dataset vence o descarte, e o descarte vence o pulo."""
 
 EXTENSOES = (".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tif", ".tiff")
 
@@ -148,6 +167,11 @@ class ItemDeImportacao:
     status: str = PENDENTE
     amostra: str = ""
     """O PNG gravado no `samples/`, depois de salvo."""
+    pagina: int = 0
+    """A página do livro, a partir de 1, quando a fonte diz (o `COM_PGN`). Vai para `source_page`."""
+    candidatos: tuple[str, ...] = ()
+    """As FENs que a fonte admite para esta imagem, quando ela não sabe qual (o `COM_PGN`: a mesma
+    legenda em duas linhas do capítulo). A leitura do modelo escolhe entre elas (`com_a_leitura`)."""
 
     @property
     def precisa_de_atencao(self) -> bool:
@@ -156,6 +180,7 @@ class ItemDeImportacao:
     def to_dict(self) -> dict[str, Any]:
         dados = asdict(self)
         dados["motivos"] = list(self.motivos)
+        dados["candidatos"] = list(self.candidatos)
         return dados
 
     @classmethod
@@ -173,6 +198,8 @@ class ItemDeImportacao:
             recorte=str(dados.get("recorte", "")),
             status=status if status in STATUS else PENDENTE,
             amostra=str(dados.get("amostra", "")),
+            pagina=int(dados.get("pagina", 0) or 0),
+            candidatos=tuple(str(fen) for fen in dados.get("candidatos", ())),
         )
 
 
@@ -267,6 +294,8 @@ def abrir_lote(pasta: Path | str, origem: str, *, diretorio: Path | None = None)
         novo = ler_relatorios_do_chessmeridaocr(pasta)
     elif origem == SEM_FEN:
         novo = ler_pasta_de_imagens(pasta)
+    elif origem == COM_PGN:
+        novo = ler_livro_com_pgn(pasta, diretorio=diretorio)
     else:
         raise ValueError(f"Origem desconhecida: {origem!r}")
     caminho = caminho_do_lote(pasta, origem, diretorio=diretorio)
@@ -275,17 +304,68 @@ def abrir_lote(pasta: Path | str, origem: str, *, diretorio: Path | None = None)
         por_imagem = {item.imagem: item for item in antigo.itens}
         novo.itens = [_juntar(item, por_imagem.get(item.imagem)) for item in novo.itens]
         novo.criado_em = antigo.criado_em or novo.criado_em
+    _herdar_de_outros_lotes(novo, andamento_de_outros_lotes(novo.pasta, origem, diretorio=diretorio))
     return novo, caminho
+
+
+def _chave_absoluta(pasta: str, imagem: str) -> str:
+    """A imagem pelo caminho inteiro, comparado como o sistema compara: é o que dois lotes têm em comum.
+
+    O `imagem` do item é relativo à pasta do lote, e muda com ela: `Livro/x.png` aberto pela pasta
+    de cima, `x.png` aberto pela do livro.
+    """
+    return os.path.normcase(os.path.normpath(os.path.join(pasta, imagem)))
+
+
+def andamento_de_outros_lotes(
+    pasta: Path | str, origem: str, *, diretorio: Path | None = None
+) -> dict[str, ItemDeImportacao]:
+    """O que os outros lotes gravados já decidiram, por `_chave_absoluta` -- fora o lote desta pasta.
+
+    Só entra o que não está pendente. Se dois lotes discordam, vale `_PESO_DO_STATUS`.
+    """
+    diretorio = Path(diretorio if diretorio is not None else DIRETORIO_DOS_LOTES)
+    proprio = caminho_do_lote(pasta, origem, diretorio=diretorio).name
+    decididos: dict[str, ItemDeImportacao] = {}
+    if not diretorio.is_dir():
+        return decididos
+    for arquivo in sorted(diretorio.glob("*.json")):
+        if arquivo.name == proprio:
+            continue
+        lote = Lote.carregar(arquivo)
+        if lote is None or not lote.pasta:
+            continue
+        for item in lote.itens:
+            if item.status == PENDENTE:
+                continue
+            chave = _chave_absoluta(lote.pasta, item.imagem)
+            atual = decididos.get(chave)
+            if atual is None or _PESO_DO_STATUS[item.status] < _PESO_DO_STATUS[atual.status]:
+                decididos[chave] = item
+    return decididos
+
+
+def _herdar_de_outros_lotes(lote: Lote, outros: dict[str, ItemDeImportacao]) -> None:
+    """Traz para o lote o que outro lote decidiu, quando pesa mais que o que o próprio lote tem."""
+    if not outros:
+        return
+    for posicao, item in enumerate(lote.itens):
+        outro = outros.get(_chave_absoluta(lote.pasta, item.imagem))
+        if outro is not None and _PESO_DO_STATUS[outro.status] < _PESO_DO_STATUS[item.status]:
+            lote.itens[posicao] = _juntar(item, outro)
 
 
 def _juntar(lido: ItemDeImportacao, gravado: ItemDeImportacao | None) -> ItemDeImportacao:
     if gravado is None:
         return lido
-    if gravado.status == PENDENTE and gravado.fen_da_fonte != lido.fen_da_fonte:
+    escolhida = gravado.fen_da_fonte in lido.candidatos  # a leitura já escolheu entre as da legenda
+    if gravado.status == PENDENTE and gravado.fen_da_fonte != lido.fen_da_fonte and not escolhida:
         # O relatório mudou para esta imagem (outra execução do plugin): vale a leitura nova.
         return lido
     return replace(
         lido,
+        fen_da_fonte=gravado.fen_da_fonte if escolhida else lido.fen_da_fonte,
+        lado=gravado.lado if escolhida else lido.lado,
         status=gravado.status,
         amostra=gravado.amostra,
         fen_do_modelo=gravado.fen_do_modelo,
@@ -456,6 +536,89 @@ def ler_pasta_de_imagens(pasta: Path | str) -> Lote:
     return Lote(pasta=str(pasta.resolve()), origem=SEM_FEN, itens=_numerar(itens), criado_em=_agora())
 
 
+def _par_do_livro(pasta: Path) -> tuple[Path, Path]:
+    """O `.pdf` e o `.pgn` da pasta. Com mais de um de cada, o par é o de nomes que se contêm --
+    o PDF do acervo costuma ter um prefixo («📚Autor. Título.pdf») que o PGN não tem."""
+    pdfs, pgns = sorted(pasta.glob("*.pdf")), sorted(pasta.glob("*.pgn"))
+    if not pdfs or not pgns:
+        raise FileNotFoundError(f"A pasta precisa de um .pdf e do .pgn dele: {pasta}")
+    if len(pdfs) == 1 and len(pgns) == 1:
+        return pdfs[0], pgns[0]
+    for pdf in pdfs:
+        for pgn in pgns:
+            if pgn.stem.lower() in pdf.stem.lower() or pdf.stem.lower() in pgn.stem.lower():
+                return pdf, pgn
+    raise ValueError(f"Nenhum .pgn da pasta tem o nome de um dos PDFs: {pasta}")
+
+
+def ler_livro_com_pgn(pasta: Path | str, *, diretorio: Path | None = None) -> Lote:
+    """Um lote com cada diagrama do PDF casado com o seu nó do PGN (S-593).
+
+    O casamento é o de `livro_com_pgn` pela legenda, sem o modelo: quem confere é a importação,
+    como em qualquer lote com FEN. A imagem de cada diagrama é gravada **como o livro a embute**
+    (o `get_text("dict")` traz os bytes), em `<diretorio>/<livro>_<identidade>/` -- sem rasterizar
+    página nenhuma, o que deixaria a janela parada um minuto num livro de mil diagramas. Os que o
+    casamento não resolve (sem nó, sem imagem) ficam fora: sem FEN e sem imagem não há o que importar.
+    """
+    import fitz
+
+    from .livro_com_pgn import FALTANDO, SEM_NO, casar_livro
+    from .pgn_do_livro import IndiceDoLivro
+    from .text.caderno import identidade_de
+
+    pasta = Path(pasta)
+    if not pasta.is_dir():
+        raise FileNotFoundError(f"Pasta não encontrada: {pasta}")
+    pdf, pgn = _par_do_livro(pasta)
+    indice = IndiceDoLivro.do_arquivo(pgn)
+    livro = re.sub(r"^\W+", "", pdf.stem).strip() or pdf.stem
+    destino = (diretorio or DIRETORIO_DOS_LOTES) / f"{_nome_de_arquivo(livro)}_{identidade_de(pdf) or 'livro'}"
+    destino.mkdir(parents=True, exist_ok=True)
+    blocos: dict[int, list[dict[str, Any]]] = {}
+
+    def paginas(documento: Any) -> Iterable[tuple[int, dict[str, Any]]]:
+        for k in range(documento.page_count):
+            dicionario = documento[k].get_text("dict")
+            blocos[k + 1] = [b for b in dicionario.get("blocks", []) if b.get("type") == 1]
+            yield k + 1, dicionario
+
+    itens: list[ItemDeImportacao] = []
+    with fitz.open(pdf) as documento:
+        diagramas = casar_livro(paginas(documento), indice, sumario=documento.get_toc())
+    for diagrama in diagramas:
+        if diagrama.estado in (FALTANDO, SEM_NO) or diagrama.caixa is None or not diagrama.fen:
+            continue
+        bloco = next((b for b in blocos.get(diagrama.pagina, []) if tuple(b["bbox"]) == diagrama.caixa), None)
+        if bloco is None or not bloco.get("image"):
+            continue
+        arquivo = destino / f"p{diagrama.pagina:04d}_{int(diagrama.caixa[1]):04d}.{bloco.get('ext') or 'png'}"
+        if not arquivo.exists():
+            atomic_write_bytes(arquivo, bloco["image"])
+        itens.append(
+            ItemDeImportacao(
+                imagem=arquivo.as_posix(),
+                livro=livro,
+                indice=0,
+                fen_da_fonte=diagrama.fen,
+                lado=diagrama.fen.split()[1],
+                legenda=f"Position after: {diagrama.legenda}" if diagrama.legenda else "",
+                pagina=diagrama.pagina,
+                candidatos=_candidatos(diagrama, indice),
+            )
+        )
+    return Lote(pasta=str(pasta.resolve()), origem=COM_PGN, itens=_numerar(itens), criado_em=_agora())
+
+
+def _candidatos(diagrama: Any, indice: Any) -> tuple[str, ...]:
+    """As FENs distintas dos nós que a legenda admite; vazio quando só há uma."""
+    fens = tuple(dict.fromkeys(indice.nos[k].fen for k in diagrama.candidatos))
+    return fens if len({fen.split()[0] for fen in fens}) > 1 else ()
+
+
+def _nome_de_arquivo(texto: str) -> str:
+    return re.sub(r"[^\w.-]+", "_", texto, flags=re.UNICODE).strip("_")[:60] or "livro"
+
+
 def _numerar(itens: list[ItemDeImportacao]) -> list[ItemDeImportacao]:
     """`indice` sequencial dentro de cada livro, na ordem em que as imagens vieram."""
     contadores: Counter[str] = Counter()
@@ -487,6 +650,21 @@ def casas_diferentes(fen_a: str, fen_b: str) -> list[int]:
     except ValueError:
         return list(range(64))
     return [casa for casa, (x, y) in enumerate(zip(a, b, strict=True)) if x != y]
+
+
+def com_a_leitura(item: ItemDeImportacao, lida: str, recorte: str) -> ItemDeImportacao:
+    """O item com a leitura do modelo -- e, quando a fonte admite mais de uma FEN, com a mais perto
+    dela como `fen_da_fonte`.
+
+    É o que o casamento do livro (S-588) faz com o modelo à mão, feito aqui porque o lote é casado
+    sem ele: com a mesma legenda em duas linhas do capítulo, a ordem do livro sozinha escolhia a
+    linha errada em ~40% dos casos, e o item caía na conferência com a sugestão errada.
+    """
+    novo = replace(item, fen_do_modelo=lida, recorte=recorte)
+    if len(item.candidatos) > 1 and lida:
+        melhor = min(item.candidatos, key=lambda fen: len(casas_diferentes(fen, lida)))
+        novo = replace(novo, fen_da_fonte=melhor, lado=melhor.split()[1])
+    return novo
 
 
 def concorda(item: ItemDeImportacao) -> bool:
@@ -552,6 +730,8 @@ def _fracao_do_quadro(quad: np.ndarray | None, forma: tuple[int, ...]) -> float:
 
 def origem_da_amostra(lote: Lote, item: ItemDeImportacao) -> str:
     """O `source_pdf` da amostra: a fonte e o livro, para o Dataset filtrar e o split agrupar."""
+    if lote.origem == COM_PGN:
+        return item.livro  # o livro, como as amostras que a janela grava dele: o split agrupa as duas
     fonte = "ChessMeridaOCR" if lote.origem == COM_FEN else Path(lote.pasta).name
     return f"{fonte}: {item.livro}"
 
@@ -568,17 +748,25 @@ def gravar_item(
     samples_dir: Path,
     corrected_by: str,
     allow_illegal: bool = False,
+    diretorio: Path | None = None,
+    outros: dict[str, ItemDeImportacao] | None = None,
 ) -> ItemDeImportacao:
     """Grava a amostra no dataset e marca o item como salvo. Devolve o item novo.
 
     Recusa gravar duas vezes a mesma imagem: o item salvo já tem `amostra`, e uma segunda linha no
-    `labels.csv` com a mesma imagem só pesaria em dobro no treino.
+    `labels.csv` com a mesma imagem só pesaria em dobro no treino, e com `source_pdf` diferente se
+    cada lote a gravou. Vale também para a imagem que **outro lote** já gravou: `outros` é o `andamento_de_outros_lotes`, lido de `diretorio` quando não vem pronto.
     """
     from .dataset import append_training_sample
 
     item = lote.itens[posicao]
     if item.status == SALVO:
         raise ValueError(f"Esta imagem já foi gravada no dataset ({item.amostra}).")
+    if outros is None:
+        outros = andamento_de_outros_lotes(lote.pasta, lote.origem, diretorio=diretorio)
+    outro = outros.get(_chave_absoluta(lote.pasta, item.imagem))
+    if outro is not None and outro.status == SALVO:
+        raise ValueError(f"Esta imagem já foi gravada no dataset por outro lote ({outro.amostra}).")
     caminho = append_training_sample(
         tabuleiro_rgb,
         fen,
@@ -587,6 +775,7 @@ def gravar_item(
         allow_illegal=allow_illegal,
         side_to_move=lado if lado in ("w", "b") else None,
         source_pdf=origem_da_amostra(lote, item),
+        source_page=item.pagina or "",
         source_diagram=item.indice,
         detection_source=f"importacao-{recorte}" if recorte else "importacao",
         corrected_by=corrected_by,
@@ -618,6 +807,7 @@ def importar_os_que_concordam(
     cancelar: Callable[[], bool] | None = None,
     gravar_andamento: Callable[[], None] | None = None,
     a_cada: int = 25,
+    diretorio: Path | None = None,
 ) -> Counter[str]:
     """Passa pelos pendentes com FEN da fonte: recorta, lê com o modelo e grava os que concordam.
 
@@ -627,8 +817,13 @@ def importar_os_que_concordam(
 
     Devolve a contagem: `salvos`, `discordam`, `com_aviso` (não foram lidos: o relatório já tinha
     levantado suspeita), `falhas` (a imagem não abriu ou não gravou).
+
+    O andamento dos outros lotes (em `diretorio`) é lido uma vez, no começo: o que outro lote já
+    decidiu deixa de ser pendente aqui, e não é lido nem gravado de novo.
     """
     conta: Counter[str] = Counter()
+    outros = andamento_de_outros_lotes(lote.pasta, lote.origem, diretorio=diretorio)
+    _herdar_de_outros_lotes(lote, outros)
     alvos = [
         posicao
         for posicao, item in enumerate(lote.itens)
@@ -644,7 +839,7 @@ def importar_os_que_concordam(
             try:
                 tabuleiro, recorte = recortar(ler_imagem(lote.caminho_da_imagem(item)), item.recorte)
                 lida = ler(tabuleiro)
-                item = replace(item, fen_do_modelo=lida, recorte=recorte)
+                item = com_a_leitura(item, lida, recorte)
                 lote.itens[posicao] = item
                 if concorda(item):
                     gravar_item(
@@ -657,6 +852,7 @@ def importar_os_que_concordam(
                         csv_path=csv_path,
                         samples_dir=samples_dir,
                         corrected_by=corrected_by,
+                        outros=outros,
                     )
                     conta["salvos"] += 1
                 else:

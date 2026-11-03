@@ -26,7 +26,6 @@ from __future__ import annotations
 from . import strings
 
 __all__ = [
-    "AUSENTE",
     "confianca",
     "inteiro",
     "lado_a_jogar",

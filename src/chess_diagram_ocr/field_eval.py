@@ -290,8 +290,16 @@ def _imports_of(arquivo: Path, dotted: str) -> set[str]:
         pacote = dotted
     else:
         pacote = dotted.rsplit(".", 1)[0] if "." in dotted else dotted
+    # **O texto de tela importado tarde não entra** (o merge do religa com o `main`, 2026-10-01).
+    # `engine.EngineAnalyzer.start` importa `ui/motor_declarado` dentro da função, só para a frase
+    # do binário que não fala UCI (S-536) -- e o motor entrou no caminho da medição com a
+    # estipulação da OCR_UI (`estipulacao.motor_padrao`). A frase não muda número nenhum; seguir o
+    # import poria `ui/tokens.py` no digest, e cada troca de cor pediria remedição. O `import` de
+    # `ui/` **no topo** de um módulo medido continua entrando, que é o que
+    # `test_a_interface_nao_invalida_uma_medicao` vigia.
+    fora_da_interface = not _e_da_interface(dotted)
     achados: set[str] = set()
-    for no in ast.walk(arvore):
+    for no, tardio in _nos_com_escopo(arvore):
         if isinstance(no, ast.ImportFrom):
             if no.level:
                 base = pacote.split(".")
@@ -302,11 +310,31 @@ def _imports_of(arquivo: Path, dotted: str) -> set[str]:
                 alvo = no.module
             else:
                 continue
+            if tardio and fora_da_interface and _e_da_interface(alvo):
+                continue
             achados.add(alvo)
             achados.update(f"{alvo}.{a.name}" for a in no.names)
         elif isinstance(no, ast.Import):
-            achados.update(a.name for a in no.names if a.name.startswith(PACOTE))
+            achados.update(
+                a.name
+                for a in no.names
+                if a.name.startswith(PACOTE) and not (tardio and fora_da_interface and _e_da_interface(a.name))
+            )
     return achados
+
+
+def _nos_com_escopo(arvore: ast.AST) -> Iterable[tuple[ast.AST, bool]]:
+    """Todo nó da árvore, com `True` quando ele mora dentro de uma função -- o `import` tardio."""
+    pilha: list[tuple[ast.AST, bool]] = [(arvore, False)]
+    while pilha:
+        no, tardio = pilha.pop()
+        yield no, tardio
+        dentro = tardio or isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
+        pilha.extend((filho, dentro) for filho in ast.iter_child_nodes(no))
+
+
+def _e_da_interface(dotted: str) -> bool:
+    return dotted == f"{PACOTE}.ui" or dotted.startswith(f"{PACOTE}.ui.")
 
 
 PACOTE = "chess_diagram_ocr"

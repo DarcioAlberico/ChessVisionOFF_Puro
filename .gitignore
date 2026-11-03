@@ -36,6 +36,8 @@ data/rascunhos/
 # chave do arquivo. Fica fora pelo mesmo motivo do rascunho acima -- e o arquivo em si e PGN
 # de verdade: quem quiser levar embora abre no ChessBase.
 data/estudos/
+# O conjunto do estilo da palavra (S-661): recortes renderizados do acervo, que fica fora do git.
+data/estilo/
 data/labels.csv.bak-*
 data/splits.csv.bak-*
 data/field_set.jsonl.bak-*

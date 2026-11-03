@@ -24,7 +24,7 @@ import unittest
 
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
-from chess_diagram_ocr.ui import medidas_da_fita
+from chess_diagram_ocr.ui import geometria, medidas_da_fita, pele
 
 if TEM_PYQT:
     from PyQt6.QtCore import Qt
@@ -56,6 +56,26 @@ class DeclaracaoTests(unittest.TestCase):
         diferentes -- que é a mesma fita se comportando de dois jeitos."""
         self.assertIs(qt_fita.altura_da_fita, medidas_da_fita.altura_da_fita)
         self.assertIs(qt_fita.ORCAMENTO, medidas_da_fita.ORCAMENTO)
+
+    @unittest.skipUnless(TEM_PYQT, MOTIVO)
+    def test_o_documento_fica_com_pelo_menos_sessenta_por_cento_da_altura(self) -> None:
+        """O orçamento da S-232 como conta, e não como fotografia: a fita mais o cromo de sempre
+        não podem comer mais de 40% de uma janela no piso da S-150, em nenhum modo e em nenhuma
+        densidade.
+
+        `geometria.fracao_do_documento` existe para isto desde a S-232 e **nunca teve quem a
+        chamasse** -- nem produto, nem teste. É o achado da triagem da S-511: uma conta escrita
+        para substituir a fotografia, e a fotografia nunca substituída. Esta é a guarda.
+        """
+        aplicacao()
+        for modo in medidas_da_fita.MODOS:
+            for densidade in pele.DENSIDADES:
+                with self.subTest(modo=modo, densidade=densidade):
+                    fracao = geometria.fracao_do_documento(
+                        geometria.PISO_MEDIDO[1],
+                        altura_do_cromo=qt_fita.altura_atual(modo, densidade=densidade),
+                    )
+                    self.assertGreaterEqual(fracao, 0.6)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

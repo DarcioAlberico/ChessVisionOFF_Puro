@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from PIL import Image, ImageChops, ImageFilter
 
-__all__ = ["LIMIAR_DE_TRACO", "engrossar_traco"]
+__all__ = ["engrossar_traco"]
 
 LIMIAR_DE_TRACO = 160
 """Abaixo de que luminância um pixel conta como **traço** e não como miolo, ao engrossar (S-230).

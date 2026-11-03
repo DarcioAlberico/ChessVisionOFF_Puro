@@ -48,7 +48,15 @@ from ..board_detection import (
     board_checker_score,
     detect_boards,
 )
-from ..config import BOARD_SIZE, DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, DEFAULT_RECALL, ReadingOrder, RecallOptions, recall_em_vigor
+from ..config import (
+    BOARD_SIZE,
+    DEFAULT_MAX_BOARDS,
+    DEFAULT_READING_ORDER,
+    DEFAULT_RECALL,
+    ReadingOrder,
+    RecallOptions,
+    recall_em_vigor,
+)
 from ..pdf_io import PdfSource
 from .embedded import DiagramCandidate, _pixels_for_bbox, candidates_from_embedded_images
 
