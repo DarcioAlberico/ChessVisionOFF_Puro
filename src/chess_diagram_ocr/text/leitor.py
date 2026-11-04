@@ -151,7 +151,7 @@ from __future__ import annotations
 
 import logging
 import re as _re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -1282,6 +1282,18 @@ def _ler_pagina_do_livro(
             else []
         )
         margem = [linha for linha in page_margin_lines(page) if linha.text.strip()]
+        if qual == "camada":
+
+            def correntes(doc: object = doc) -> set[str]:
+                vizinhas = range(max(0, indice - PAGINAS_VIZINHAS), min(len(doc), indice + PAGINAS_VIZINHAS + 1))  # type: ignore[arg-type]
+                return {
+                    chave_de_corrente(linha.text)
+                    for outra in vizinhas
+                    if outra != indice
+                    for linha in page_margin_lines(doc[outra])  # type: ignore[index]
+                }
+
+            cruas += margem_no_corpo(margem, altura, escala_px=escala_px, correntes=correntes)
         numero = running_page_number(doc, indice)
         documento = str(getattr(doc, "name", "") or "")
         spans_negrito = _negrito.spans_de_negrito(page) if marcar_negrito else []
@@ -1490,10 +1502,6 @@ def _margens(linhas: Sequence[object], altura: float) -> tuple[LinhaLida | None,
     o cabeçalho foi reconhecido quando ele foi **lido**, e a interface pinta as duas coisas
     diferente de propósito: procedência é a resposta a "de onde veio este texto?".
     """
-    if not linhas:
-        return (None, None)
-    meio = altura / 2.0
-
     def como_lida(linha: object) -> LinhaLida:
         return LinhaLida(
             texto=str(linha.text).strip(),  # type: ignore[attr-defined]
@@ -1502,11 +1510,79 @@ def _margens(linhas: Sequence[object], altura: float) -> tuple[LinhaLida | None,
             procedencia="camada",
         )
 
+    cabecalho, rodape = _externas(linhas, altura)
+    return (
+        como_lida(cabecalho) if cabecalho is not None else None,
+        como_lida(rodape) if rodape is not None else None,
+    )
+
+
+def _externas(linhas: Sequence[object], altura: float) -> tuple[object | None, object | None]:
+    """A linha mais alta da metade de cima e a mais baixa da de baixo. Ver `_margens`."""
+    meio = altura / 2.0
     acima = [x for x in linhas if float(x.bbox[1]) < meio]  # type: ignore[attr-defined]
     abaixo = [x for x in linhas if float(x.bbox[1]) >= meio]  # type: ignore[attr-defined]
-    cabecalho = como_lida(min(acima, key=lambda x: float(x.bbox[1]))) if acima else None  # type: ignore[attr-defined]
-    rodape = como_lida(max(abaixo, key=lambda x: float(x.bbox[3]))) if abaixo else None  # type: ignore[attr-defined]
-    return (cabecalho, rodape)
+    return (
+        min(acima, key=lambda x: float(x.bbox[1])) if acima else None,  # type: ignore[attr-defined]
+        max(abaixo, key=lambda x: float(x.bbox[3])) if abaixo else None,  # type: ignore[attr-defined]
+    )
+
+
+PAGINAS_VIZINHAS = 2
+"""Quantas folhas de cada lado `margem_no_corpo` consulta para achar o que é corrente (S-596)."""
+
+
+def chave_de_corrente(texto: str) -> str:
+    """O texto de uma linha de margem sem os números: «Chapter 1» na 14 e na 15 é a mesma linha."""
+    return _re.sub(r"\d+", "#", " ".join(texto.split())).casefold()
+
+
+def margem_no_corpo(
+    linhas: Sequence[object],
+    altura: float,
+    *,
+    escala_px: float,
+    correntes: Callable[[], Iterable[str]] = tuple,
+) -> list[_Cru]:
+    """As linhas do pé da página que não são o rodapé nem corrente, de volta ao corpo (S-596).
+
+    `_margens` fica com **uma** linha de cada lado, e a docstring dela já dizia o que são as
+    outras: texto que a régua da S-43 pegou por estar perto da borda. Até aqui elas sumiam da
+    folha. Medido no Harikrishna (2026-10-29): a página 21 termina com o diagrama e a legenda
+    «Position after: 20...Qxd5» a 40 pt do pé, dentro dos 7% da faixa, e a folha saía sem a
+    legenda -- e a S-595 não tinha onde pôr o diagrama que falta.
+
+    **O que repete nas vizinhas fica fora.** Muito do que mora na faixa é cabeçalho corrente de
+    duas linhas -- o título do livro e «Chapter 1» --, e devolvê-lo ao corpo sujaria a folha em 388
+    de 400 páginas do Aagaard. `correntes()` devolve as `chave_de_corrente` das linhas de margem
+    das folhas vizinhas, e a linha que está entre elas é corrente. É função, e não conjunto,
+    porque ler as vizinhas custa e a página comum não tem linha a mais na faixa.
+
+    **Só o pé, e não o topo.** Medido em 11 livros: o que sobra embaixo depois das correntes é
+    texto (as 52 linhas do Harikrishna, prosa no Aagaard e no Polgar); o que sobra em cima é o
+    cabeçalho da abertura de capítulo, que não repete nas vizinhas, e o lixo da camada de OCR do
+    Karpov -- nenhum livro tinha corpo na faixa de cima.
+
+    **Só no motor de camada.** O de glifo lê a imagem inteira, e a faixa já vem nas linhas dele.
+    """
+    _cabecalho, rodape = _externas(linhas, altura)
+    meio = altura / 2.0
+    sobram = [linha for linha in linhas if linha is not rodape and float(linha.bbox[1]) >= meio]  # type: ignore[attr-defined]
+    repetem = set(correntes()) if sobram else set()
+    cruas: list[_Cru] = []
+    for linha in sobram:
+        if chave_de_corrente(str(linha.text)) in repetem:  # type: ignore[attr-defined]
+            continue
+        x0, y0, x1, y1 = (float(v) for v in linha.bbox)  # type: ignore[attr-defined]
+        cruas.append(
+            _Cru(
+                texto=str(linha.text).strip(),  # type: ignore[attr-defined]
+                caixa=_caixa_de((x0 * escala_px, y0 * escala_px, x1 * escala_px, y1 * escala_px)),
+                confianca=float(getattr(linha, "confidence", 1.0)),
+                procedencia="camada",
+            )
+        )
+    return cruas
 
 
 __all__ = [
@@ -1522,6 +1598,9 @@ __all__ = [
     "ler_pagina",
     "linhas_da_camada",
     "leitor_de_linha_padrao",
+    "PAGINAS_VIZINHAS",
+    "chave_de_corrente",
+    "margem_no_corpo",
     "linhas_do_glifo",
     "segmentar",
     "calha_de_linhas",

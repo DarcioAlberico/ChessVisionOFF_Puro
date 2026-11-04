@@ -205,6 +205,26 @@ class GaleriaTests(unittest.TestCase):
         faltando = _campo("e4", "e6", "d4", "d5", "Nc3", "c5", "exd5")
         self.assertEqual(([], 1), lp.casamentos_da_galeria([self._entrada(faltando)], self.diagramas, self.indice))
 
+    def test_pagina_sem_legenda_casa_pela_posicao_de_uma_partida(self) -> None:
+        """A abertura de capítulo e o livro sem legenda (S-597): a posição de uma partida só traz os cabeçalhos dela."""
+        so_do_primeiro = _campo("e4", "e6", "d4", "d5", "Nc3", "c5", "exd5", "exd5")
+        (casamento,), discordam = lp.casamentos_da_galeria([self._entrada(so_do_primeiro, 5)], self.diagramas, self.indice)
+        self.assertEqual(0, discordam)
+        self.assertEqual(((5, 0), 5, "w", 1), (casamento.key, casamento.move_number, casamento.side_to_move, casamento.games_matched))
+        self.assertEqual({"Event": "Chapter 1", "Site": "Game 1"}, casamento.headers)
+        self.assertFalse(casamento.caption_confirmed)
+
+    def test_a_posicao_de_varias_partidas_nao_escolhe_cabecalho(self) -> None:
+        das_duas = _campo("e4", "e6", "d4", "d5", "Nc3")
+        (casamento,), _ = lp.casamentos_da_galeria([self._entrada(das_duas, 5)], self.diagramas, self.indice)
+        self.assertEqual((3, "b", 2, {}), (casamento.move_number, casamento.side_to_move, casamento.games_matched, casamento.headers))
+        self.assertIn("2 partidas", casamento.game_label)
+
+    def test_onde_ha_legenda_a_posicao_de_outro_canto_nao_casa(self) -> None:
+        """Na página com legenda, a leitura que não é candidato é erro, ainda que exista noutra página do livro."""
+        de_outro_canto = _campo("e4", "e6", "d4", "d5", "Nc3", "Nc6", "Nf3")
+        self.assertEqual(([], 1), lp.casamentos_da_galeria([self._entrada(de_outro_canto)], self.diagramas, self.indice))
+
 
 if __name__ == "__main__":
     unittest.main()
