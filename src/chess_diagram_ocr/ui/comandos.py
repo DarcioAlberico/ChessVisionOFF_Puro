@@ -300,6 +300,13 @@ CATALOGO: tuple[Comando, ...] = (
     # O caderno inteiro, folha a folha (S-614): o mesmo exportador de cada folha, com o número dela.
     Comando("exportar_caderno", "Exportar o caderno do livro…", ARQUIVO, estilos.NEUTRO, rotulo_curto="Exportar caderno…"),
     Comando(
+        "trazer_da_revisao",
+        "Trazer as correções da Revisão de texto para o caderno",
+        OCR,
+        estilos.NEUTRO,
+        rotulo_curto="Trazer da revisão",
+    ),
+    Comando(
         "exportar_pdf_pesquisavel",
         "Exportar a folha como PDF pesquisável…",
         ARQUIVO,

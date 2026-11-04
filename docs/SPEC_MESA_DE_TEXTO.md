@@ -278,8 +278,35 @@ A suíte de antes do R7 não conhece o argumento, e `qt/exportador_de_livro.mont
 falhar: o livro sai com a leitura dela, como antes. A exportação da aba **Rotulagem**, que é do
 livro do projeto dela, recebe as folhas pelo mesmo caminho (`PainelDeTexto.folhas_do_livro`): do
 livro aberto, com a folha da tela gravada; de outro livro, pelo caderno dele aberto só para
-leitura. O caminho de volta -- o IR alimentando o
-caderno -- continua com o dono.
+leitura.
+
+**E o caminho de volta (R7 de volta, 2026-10-29).** *Trazer as correções da Revisão de texto para o
+caderno* (menu Texto e grupo Caderno da aba Leitura) põe no caderno as folhas em que o revisor da
+suíte **editou** alguma região -- aceitar uma leitura ou guardar a região como imagem não põe palavra
+de ninguém na folha. A suíte acha as folhas e garante um IR com as decisões aplicadas
+(`caissa.export.reviewed_pages`: a importação em mãos quando ela construiu as páginas e viu as
+decisões de agora, senão uma importação só dessas páginas), e as devolve no mesmo formato 1, ao
+contrário (`caissa.export.page_texts.page_text_of`). A regra é do dono, e mora no tronco
+(`text/caderno_na_suite.trazer_da_suite`):
+
+- a folha **sem correção no caderno** -- só lida, ou sem caderno -- recebe o texto da revisão e fica
+  `editada`; a leitura que estava nela vai para `anterior`;
+- a folha **corrigida nos dois lados** (editada ou conferida aqui) fica como o caderno a tem, e a
+  versão da revisão vai para `anterior`, onde «Voltar à versão anterior» a alcança;
+- a folha em que as duas dizem o mesmo não muda, e a que o caderno não grava (somente leitura) é
+  dita no rodapé.
+
+A folha da tela vai ao caderno antes da regra, e é reaberta quando recebeu o texto da revisão. A
+folha que volta tem a origem que o caderno já tinha quando os diagramas batem com as marcas -- as
+miniaturas continuam recortadas da página --, e senão uma página feita dos diagramas da suíte, com a
+posição de cada um.
+
+**Critério de aceite da volta.** Uma folha só lida recebe o texto da revisão, fica `editada` e
+volta ao EPUB como corrigida; uma folha corrigida aqui antes de trazer continua a de aqui, com a da
+revisão em `anterior`; a importação em mãos que viu as decisões de agora não é refeita, e a que não
+viu é refeita só nas páginas editadas, com as decisões (`tests/test_texto_caderno_na_suite.py`,
+`tests/test_qt_texto_caderno.py::TrazerDaRevisaoTests` e `tests/unit/export/test_reviewed_pages.py`
+da suíte).
 
 **Critério de aceite do R7.** Um livro de duas páginas exportado com a primeira corrigida no
 caderno tem, no EPUB, o texto do caderno na primeira e a leitura da suíte na segunda, pela

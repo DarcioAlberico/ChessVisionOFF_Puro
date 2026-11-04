@@ -27,28 +27,51 @@ O formato, por folha::
 `style` é `"heading"`, `"notation"`, `"caption"` ou `""` (prosa); `alignment` é `"left"`,
 `"center"`, `"right"`, `"justify"` ou `""` (o da folha). A cor de autor, o realce e o corpo não
 vão: o IR os teria, mas o caderno os usa para marcar trabalho, e o livro publicado não é o lugar.
+
+## E a volta (R7 de volta, 2026-10-29)
+
+As regiões que alguém **editou** na Revisão de texto da suíte voltam ao caderno, no mesmo formato
+(`caissa.export.reviewed_pages`). A regra é do dono do projeto:
+
+- a folha **sem correção no caderno** (só lida, ou sem caderno) recebe o texto da suíte, e fica
+  `editada` -- a leitura do motor que estava nela vai para `anterior`;
+- a folha **corrigida nos dois lados** fica como o caderno a tem, e a versão da suíte vai para
+  `anterior`, onde «Voltar à versão anterior» a alcança. A correção feita aqui não é desfeita por
+  uma feita lá.
+
+A folha que volta precisa de origem (`Caderno.gravar` não grava folha sem página): é a da folha que
+o caderno já tem quando ela tem tantos diagramas quanto as marcas da suíte -- e aí as miniaturas
+continuam recortadas da página --, e senão uma página feita só dos diagramas da suíte, com a
+posição de cada um.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from typing import Any
 
-from .caderno import Caderno, EstadoDaFolha
+from . import correcao
+from .caderno import EDITADA, GRAVADA, IGUAL, LIDA, Caderno, EstadoDaFolha
+from .pagina import BlocoDeDiagrama, Coluna, PaginaLida
 from .rico import (
     ALINHAMENTO_CENTRO,
     ALINHAMENTO_DIREITA,
     ALINHAMENTO_ESQUERDA,
     ALINHAMENTO_JUSTIFICADO,
+    DIAGRAMA,
     ESTILO_LEGENDA,
     ESTILO_NOTACAO,
     ESTILO_TITULO,
+    SEPARADOR,
+    Atributos,
     Corrida,
     DocumentoRico,
     alinhamento_efetivo,
+    fundir,
 )
 
-__all__ = ["folhas_para_a_suite"]
+__all__ = ["Volta", "folha_da_suite", "folhas_para_a_suite", "trazer_da_suite"]
 
 FORMATO = 1
 """A versão do formato que `caissa.export.page_texts` lê. Muda junto com a de lá, nunca sozinha."""
@@ -156,3 +179,139 @@ def folhas_para_a_suite(cad: Caderno, paginas: Iterable[int] | None = None) -> l
         if doc is not None:
             saida.append(folha_para_a_suite(doc, estado))
     return saida
+
+
+# ------------------------------------------------------------------------------------- a volta
+
+_ESTILO_DE_VOLTA: dict[str, str] = {nome: estilo for estilo, nome in _ESTILO.items()}
+_ALINHAMENTO_DE_VOLTA: dict[str, str] = {nome: alinhamento for alinhamento, nome in _ALINHAMENTO.items()}
+
+
+def _origem_para(paragrafos: list[Mapping[str, Any]], origem: PaginaLida | None, *, livro: str, pagina: int) -> PaginaLida:
+    """A origem da folha que volta: a que o caderno já tem, se os diagramas batem; senão a da suíte."""
+    marcas = [p for p in paragrafos if p.get("kind") == "diagram"]
+    if origem is not None and len(origem.diagramas) == len(marcas):
+        return origem
+    blocos = tuple(
+        BlocoDeDiagrama(indice=k, procedencia="humano", placement=str(marca.get("fen", "")).split(" ")[0])
+        for k, marca in enumerate(marcas)
+    )
+    return PaginaLida(documento=livro, pagina=pagina, colunas=(Coluna(indice=0, blocos=blocos),))
+
+
+def folha_da_suite(dados: Mapping[str, Any], *, origem: PaginaLida | None = None, livro: str = "") -> DocumentoRico:
+    """Uma folha no formato da suíte, de volta a documento do caderno. O inverso de `folha_para_a_suite`.
+
+    O texto é `humano` -- uma pessoa o escreveu na revisão -- e cada parágrafo é separado do seguinte
+    como o leitor separa os blocos. A marca de cada diagrama aponta para o diagrama da origem na
+    mesma ordem. `ValueError` para um formato que este programa não conhece.
+    """
+    versao = dados.get("format", FORMATO)
+    if versao != FORMATO:
+        raise ValueError(f"formato de folha da suíte desconhecido: {versao!r}")
+    pagina = int(dados["page_index"])
+    paragrafos = list(dados.get("paragraphs", ()))
+    base = _origem_para(paragrafos, origem, livro=livro, pagina=pagina)
+    diagramas = [i for i, bloco in enumerate(base.blocos) if isinstance(bloco, BlocoDeDiagrama)]
+    corridas: list[Corrida] = []
+    proximo = 0
+    for paragrafo in paragrafos:
+        if paragrafo.get("kind") == "diagram":
+            if proximo >= len(diagramas):  # pragma: no cover - `_origem_para` garante as marcas
+                continue
+            indice = diagramas[proximo]
+            proximo += 1
+            pedaco = [Corrida(texto=base.blocos[indice].texto, bloco=indice, tipo=DIAGRAMA)]
+        else:
+            estilo = _ESTILO_DE_VOLTA.get(str(paragrafo.get("style", "")), "")
+            alinhamento = _ALINHAMENTO_DE_VOLTA.get(str(paragrafo.get("alignment", "")), "")
+            pedaco = [
+                Corrida(
+                    texto=str(trecho.get("text", "")),
+                    atributos=Atributos(
+                        negrito=bool(trecho.get("bold")),
+                        italico=bool(trecho.get("italic")),
+                        sublinhado=bool(trecho.get("underline")),
+                        tachado=bool(trecho.get("strike")),
+                        estilo=estilo,
+                        alinhamento=alinhamento,
+                    ),
+                    procedencia="humano",
+                )
+                for trecho in paragrafo.get("runs", ())
+                if trecho.get("text")
+            ]
+            if not pedaco:
+                continue
+        if corridas:
+            corridas.append(Corrida(texto="\n\n", tipo=SEPARADOR))
+        corridas.extend(pedaco)
+    return DocumentoRico(corridas=fundir(corridas), origem=base)
+
+
+@dataclass(frozen=True)
+class Volta:
+    """O que `trazer_da_suite` fez, folha a folha (0-based)."""
+
+    trazidas: tuple[int, ...] = ()
+    """Folhas sem correção no caderno que receberam o texto da suíte."""
+    guardadas: tuple[int, ...] = ()
+    """Folhas corrigidas nos dois lados: o caderno ficou, a da suíte foi para `anterior`."""
+    iguais: tuple[int, ...] = ()
+    """Folhas em que a suíte diz o mesmo que o caderno: nada a fazer."""
+    recusadas: tuple[int, ...] = ()
+    """Folhas que o caderno não gravou (somente leitura, ou o disco recusou)."""
+
+    def frase(self) -> str:
+        """O resumo para o rodapé, folhas contadas de 1."""
+        if not (self.trazidas or self.guardadas or self.iguais or self.recusadas):
+            return "Nenhuma folha foi editada na Revisão de texto da suíte."
+        partes = []
+        if self.trazidas:
+            partes.append(f"{len(self.trazidas)} folha(s) trazida(s) da revisão ({_lista(self.trazidas)})")
+        if self.guardadas:
+            partes.append(
+                f"{len(self.guardadas)} já corrigida(s) aqui, com a da revisão em «anterior» ({_lista(self.guardadas)})"
+            )
+        if self.iguais:
+            partes.append(f"{len(self.iguais)} igual(is) ao caderno")
+        if self.recusadas:
+            partes.append(f"{len(self.recusadas)} não gravada(s) ({_lista(self.recusadas)})")
+        return "; ".join(partes) + "."
+
+
+def _lista(paginas: tuple[int, ...]) -> str:
+    return ", ".join(str(p + 1) for p in paginas)
+
+
+def trazer_da_suite(cad: Caderno, folhas: Iterable[Mapping[str, Any]], *, livro: str = "") -> Volta:
+    """Põe no caderno as folhas editadas na Revisão de texto, pela regra do dono (ver o cabeçalho)."""
+    trazidas: list[int] = []
+    guardadas: list[int] = []
+    iguais: list[int] = []
+    recusadas: list[int] = []
+    for dados in folhas:
+        pagina = int(dados["page_index"])
+        estado = cad.estado(pagina)
+        atual = cad.folha(pagina) if estado is not None else None
+        doc = folha_da_suite(dados, origem=atual.origem if atual is not None else None, livro=livro)
+        if atual is not None and atual.corridas == doc.corridas:
+            iguais.append(pagina)
+            continue
+        try:
+            if estado is not None and estado.estado != LIDA:
+                feito = cad.guardar_anterior(doc)
+                (guardadas if feito == GRAVADA else recusadas).append(pagina)
+                continue
+            cad.visitar(pagina)  # a leitura do motor que estava nela vai para `anterior`
+            feito = cad.gravar(doc, estado=EDITADA, correcoes=max(1, len(correcao.correcoes(doc))))
+        except OSError:
+            recusadas.append(pagina)
+            continue
+        if feito == GRAVADA:
+            trazidas.append(pagina)
+        elif feito == IGUAL:
+            iguais.append(pagina)
+        else:
+            recusadas.append(pagina)
+    return Volta(tuple(trazidas), tuple(guardadas), tuple(iguais), tuple(recusadas))
