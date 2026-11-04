@@ -25,8 +25,9 @@ from pathlib import Path
 
 import numpy as np
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QKeySequence, QPixmap, QShortcut
+from PyQt6.QtGui import QKeySequence, QPainter, QPixmap, QShortcut
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -43,14 +44,16 @@ from PyQt6.QtWidgets import (
 )
 
 from chess_diagram_ocr import importacao_de_imagens as imp
+from chess_diagram_ocr import marcas_de_casa as mc
 from chess_diagram_ocr.fen_utils import is_syntactically_valid_fen
-from chess_diagram_ocr.qt import tema
+from chess_diagram_ocr.qt import desenho_de_marcas, tema
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.imagens import pixmap_de_rgb
+from chess_diagram_ocr.qt.paleta_de_marcas import PaletaDeMarcas
 from chess_diagram_ocr.qt.paleta_de_pecas import PaletaDePecas
-from chess_diagram_ocr.qt.tabuleiro_editavel import TabuleiroEditavel
+from chess_diagram_ocr.qt.tabuleiro_de_marcas import TabuleiroDeMarcas
 from chess_diagram_ocr.service import OcrService
-from chess_diagram_ocr.ui import espaco, estilos, tipografia
+from chess_diagram_ocr.ui import espaco, estilos, tipografia, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.legality import illegal_save_question
 
@@ -128,6 +131,7 @@ class JanelaDeImportacao(QDialog):
         modelo: Callable[[], Path],
         leitor: Callable[[np.ndarray], str] | None = None,
         diretorio_dos_lotes: Path | None = None,
+        arquivo_de_marcas: Path | None = None,
         busy: BusyRegistry | None = None,
     ) -> None:
         super().__init__(parent)
@@ -152,6 +156,18 @@ class JanelaDeImportacao(QDialog):
         self._busy = busy
         self._ficha: BusyToken | None = None
         """O registro do lote no rodapé da janela principal: a pergunta ao fechar e o Cancelar."""
+        self._pixmap_recorte: QPixmap | None = None
+        """O recorte na tela, sem marcas: é sobre ele que a camada é repintada a cada anotação."""
+        self._chave_atual = ""
+        """O hash da imagem na tela. Vazio quando ela não abriu, e aí não há onde anotar."""
+        self._erro_das_marcas = ""
+        self._marcas_gravadas: mc.ArquivoDeMarcas | None = None
+        try:
+            self._marcas_gravadas = mc.ArquivoDeMarcas(arquivo_de_marcas)
+        except ValueError as exc:
+            # A anotação é trabalho manual: arquivo estragado desliga a paleta e fica como está.
+            logger.warning("%s", exc)
+            self._erro_das_marcas = str(exc)
 
         self._montar()
         self._leitura_pronta.connect(self._chegou_leitura)
@@ -247,13 +263,19 @@ class JanelaDeImportacao(QDialog):
         grupo = QGroupBox("Posição (clique e arraste para corrigir)", divisor)
         coluna = QVBoxLayout(grupo)
         linha_tabuleiro = QHBoxLayout()
-        self.tabuleiro = TabuleiroEditavel(grupo)
+        self.tabuleiro = TabuleiroDeMarcas(grupo)
         self.tabuleiro.setMinimumSize(280, 280)
         self.tabuleiro.posicao_mudou.connect(self._tabuleiro_mudou)
+        self.tabuleiro.marcas_mudaram.connect(self._marcas_mudaram)
         self.paleta = PaletaDePecas(grupo)
         self.paleta.pincel.connect(self.tabuleiro.definir_pincel)
+        self.paleta.pincel.connect(self._pincel_mudou)
+        self.paleta_de_marcas = PaletaDeMarcas(grupo)
+        self.paleta_de_marcas.ferramenta.connect(self.tabuleiro.definir_ferramenta)
+        self.paleta_de_marcas.ferramenta.connect(self._ferramenta_mudou)
         linha_tabuleiro.addWidget(self.tabuleiro, 1)
         linha_tabuleiro.addWidget(self.paleta, 0, Qt.AlignmentFlag.AlignTop)
+        linha_tabuleiro.addWidget(self.paleta_de_marcas, 0, Qt.AlignmentFlag.AlignTop)
         # A sobra de largura fica depois da paleta, e não entre ela e o tabuleiro (ver F9-C3 no
         # `painel_de_resultado`).
         linha_tabuleiro.addStretch(0)
@@ -273,6 +295,10 @@ class JanelaDeImportacao(QDialog):
         self.lbl_leituras.setWordWrap(True)
         self.lbl_leituras.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         coluna.addWidget(self.lbl_leituras)
+        self.lbl_marcas = QLabel("", grupo)
+        self.lbl_marcas.setWordWrap(True)
+        self.lbl_marcas.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        coluna.addWidget(self.lbl_marcas)
         trocar = QHBoxLayout()
         self.btn_fonte = self._botao("Usar a FEN do relatório", self.usar_fonte, estilos.NEUTRO)
         self.btn_modelo = self._botao("Usar a leitura do modelo", self.usar_modelo, estilos.NEUTRO)
@@ -285,6 +311,15 @@ class JanelaDeImportacao(QDialog):
         for botao in (self.btn_fonte, self.btn_modelo, self.btn_recorte):
             trocar.addWidget(botao)
         trocar.addStretch(1)
+        self.chk_esvaziar = QCheckBox("Marcar esvazia a casa", grupo)
+        self.chk_esvaziar.setChecked(True)
+        dica_em(
+            self.chk_esvaziar,
+            "Pôr uma marca de casa tira a peça que estiver nela: o modelo costuma ler marca como peça.\n"
+            "Desligue quando a marca está mesmo sobre uma peça, como numa peça riscada.",
+        )
+        self.chk_esvaziar.toggled.connect(self.tabuleiro.definir_esvaziar)
+        trocar.addWidget(self.chk_esvaziar)
         coluna.addLayout(trocar)
         divisor.addWidget(grupo)
         divisor.setStretchFactor(2, 1)
@@ -441,12 +476,16 @@ class JanelaDeImportacao(QDialog):
     def _mostrar_item(self) -> None:
         self._recorte_atual = None
         self._recorte_usado = ""
+        self._pixmap_recorte = None
+        self._chave_atual = ""
         item = self.item_atual()
         self._atualizar_resumo()
         if item is None or self.lote is None:
             self.img_original.clear()
             self.img_recorte.clear()
             self.tabuleiro.mostrar(imp.TABULEIRO_VAZIO)
+            self.tabuleiro.definir_marcas(mc.MarcasDoDiagrama())
+            self.lbl_marcas.clear()
             self.campo_fen.clear()
             self.lbl_leituras.clear()
             self.lbl_item.setText("Nada para conferir neste filtro." if self.lote is not None else "")
@@ -464,6 +503,7 @@ class JanelaDeImportacao(QDialog):
         self.img_recorte.setText("Recortando…")
         proposta = item.fen_da_fonte or item.fen_do_modelo or imp.TABULEIRO_VAZIO
         self._mostrar_posicao(imp.campo_de_pecas(proposta))
+        self._carregar_marcas(item, caminho)
         lado = item.lado or "w"
         self.combo_lado.setCurrentIndex(0 if lado == "w" else 1)
         detalhes = [f"{item.livro} · imagem {item.indice}", item.imagem]
@@ -481,6 +521,81 @@ class JanelaDeImportacao(QDialog):
     def _mostrar_posicao(self, campo: str) -> None:
         self.tabuleiro.mostrar(campo)
         self._tabuleiro_mudou(campo)
+
+    # ---------------------------------------------------------------------------- marcas
+
+    def _carregar_marcas(self, item: imp.ItemDeImportacao, caminho: Path) -> None:
+        """As marcas já anotadas nesta imagem, por qualquer pasta que ela tenha sido aberta."""
+        marcas = mc.MarcasDoDiagrama()
+        if self._marcas_gravadas is not None:
+            try:
+                self._chave_atual = mc.chave_da_imagem(caminho)
+                marcas = self._marcas_gravadas.marcas_de(self._chave_atual)
+                if item.amostra:
+                    # A imagem salva pelo lote depois de anotada ainda não está ligada à amostra.
+                    self._marcas_gravadas.vincular_amostra(self._chave_atual, item.amostra, item.recorte)
+            except (OSError, ValueError) as exc:
+                logger.warning("Marcas de %s: %s", caminho, exc)
+                self.lbl_aviso.setText(f"Não deu para ler as marcas desta imagem: {exc}")
+        self.tabuleiro.definir_marcas(marcas)
+        self._esvaziar_marcadas(item)
+        self._descrever_marcas()
+
+    def _esvaziar_marcadas(self, item: imp.ItemDeImportacao) -> None:
+        """A posição acabou de vir da fonte ou do modelo, que podem ter lido a marca como peça.
+
+        Só no que ainda não foi gravado: o tabuleiro de um item salvo é para olhar.
+        """
+        if item.status != imp.SALVO and self.chk_esvaziar.isChecked():
+            self.tabuleiro.esvaziar_marcadas()
+
+    def _descrever_marcas(self) -> None:
+        frase = mc.descrever(self.tabuleiro.marcas())
+        self.lbl_marcas.setText(f"Marcas: {frase}" if frase else "")
+
+    def _pintar_recorte(self) -> None:
+        """O recorte com as marcas por cima, só em contorno, para conferir se o lugar bate."""
+        if self._pixmap_recorte is None:
+            return
+        mapa = QPixmap(self._pixmap_recorte)
+        marcas = self.tabuleiro.marcas()
+        if not marcas.vazia:
+            pintor = QPainter(mapa)
+            desenho_de_marcas.pintar_marcas(
+                pintor, marcas, 0.0, 0.0, mapa.width() / 8, cor_unica=tema.cor_atual(tokens.SETA_AZUL)
+            )
+            pintor.end()
+        self.img_recorte.setPixmap(mapa)
+
+    def _marcas_mudaram(self, marcas: mc.MarcasDoDiagrama) -> None:
+        """Cada anotação vai para o disco na hora: não depende de salvar a imagem no dataset."""
+        self._pintar_recorte()
+        self._descrever_marcas()
+        item = self.item_atual()
+        if item is None or self.lote is None or self._marcas_gravadas is None or not self._chave_atual:
+            return
+        try:
+            self._marcas_gravadas.gravar(
+                self._chave_atual,
+                marcas,
+                imagem=str(self.lote.caminho_da_imagem(item)),
+                livro=item.livro,
+                amostra=item.amostra,
+                recorte=self._recorte_usado or item.recorte,
+            )
+        except (OSError, ValueError) as exc:
+            logger.warning("Marcas não gravadas: %s", exc)
+            self.lbl_aviso.setText(f"As marcas não foram gravadas: {exc}")
+
+    def _pincel_mudou(self, simbolo: object) -> None:
+        """Pegar uma peça larga a marca: só uma das duas paletas tem algo na mão."""
+        if simbolo is not None and self.paleta_de_marcas.escolhido is not None:
+            self.paleta_de_marcas.largar()
+
+    def _ferramenta_mudou(self, tipo: object) -> None:
+        """Pegar uma marca larga a peça: só uma das duas paletas tem algo na mão."""
+        if tipo is not None and self.paleta.escolhido is not None:
+            self.paleta.largar()
 
     def _tabuleiro_mudou(self, campo: str) -> None:
         lado = LADOS[self.combo_lado.currentIndex()][0]
@@ -549,12 +664,11 @@ class JanelaDeImportacao(QDialog):
             return
         self._recorte_atual = tabuleiro  # type: ignore[assignment]
         self._recorte_usado = usado
-        self.img_recorte.setPixmap(
-            pixmap_de_rgb(tabuleiro).scaled(  # type: ignore[arg-type]
-                LADO_DA_IMAGEM, LADO_DA_IMAGEM, Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
+        self._pixmap_recorte = pixmap_de_rgb(tabuleiro).scaled(  # type: ignore[arg-type]
+            LADO_DA_IMAGEM, LADO_DA_IMAGEM, Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
         )
+        self._pintar_recorte()
         self.btn_recorte.setText(
             "Usar a imagem inteira" if usado == imp.RECORTE_DETECTADO else "Usar o tabuleiro detectado"
         )
@@ -565,6 +679,7 @@ class JanelaDeImportacao(QDialog):
         ):
             # Sem FEN da fonte a proposta é a leitura -- desde que a pessoa não tenha mexido ainda.
             self._mostrar_posicao(lida)
+            self._esvaziar_marcadas(anterior)
         else:
             self._tabuleiro_mudou(self.tabuleiro.posicao())
         self._descrever_leituras()
@@ -595,6 +710,7 @@ class JanelaDeImportacao(QDialog):
         self.lote.itens[posicao] = replace(self.lote.itens[posicao], recorte=outro, fen_do_modelo="")
         self._recorte_atual = None
         self._recorte_usado = ""
+        self._pixmap_recorte = None
         self.img_recorte.setText("Recortando…")
         self._descrever_leituras()
         self._habilitar()
@@ -637,10 +753,22 @@ class JanelaDeImportacao(QDialog):
             self.lbl_aviso.setText(f"Não foi gravada: {exc}")
             return False
         self.lbl_aviso.clear()
+        self._ligar_marcas_a_amostra(posicao)
         self._gravar_andamento()
         self.amostras_gravadas.emit(1)
         self._seguir(posicao)
         return True
+
+    def _ligar_marcas_a_amostra(self, posicao: int) -> None:
+        """Depois de salvar: a anotação desta imagem passa a apontar para o PNG de `samples/`."""
+        if self.lote is None or self._marcas_gravadas is None or not self._chave_atual:
+            return
+        salvo = self.lote.itens[posicao]
+        try:
+            self._marcas_gravadas.vincular_amostra(self._chave_atual, salvo.amostra, salvo.recorte)
+        except (OSError, ValueError) as exc:
+            logger.warning("Marcas sem amostra: %s", exc)
+            self.lbl_aviso.setText(f"A imagem foi salva, mas as marcas não foram ligadas a ela: {exc}")
 
     def pular(self) -> None:
         self._marcar(imp.PULADO)
@@ -787,6 +915,10 @@ class JanelaDeImportacao(QDialog):
         self.btn_recorte.setEnabled(bool(tem_item) and bool(self._recorte_usado))
         self.tabuleiro.setEnabled(bool(tem_item))
         self.paleta.habilitar(bool(tem_item))
+        self.paleta_de_marcas.habilitar(
+            bool(tem_item) and self._marcas_gravadas is not None and bool(self._chave_atual),
+            motivo=self._erro_das_marcas,
+        )
 
     def aguardar(self, ms: int = 30_000) -> None:
         """Espera as threads e entrega os sinais delas. Para os testes."""

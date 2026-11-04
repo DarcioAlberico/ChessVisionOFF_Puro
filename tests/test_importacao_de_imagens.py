@@ -377,6 +377,65 @@ class RecorteTests(unittest.TestCase):
         self.assertEqual(imp._fracao_do_quadro(None, (300, 300, 3)), 0.0)
 
 
+def com_margem(imagem: np.ndarray, *, lados: int = 0, cima: int | None = None, cor: int = 240) -> np.ndarray:
+    """A imagem com uma faixa de uma cor só em volta, como nas imagens exportadas com fundo cinza."""
+    topo = lados if cima is None else cima
+    return cv2.copyMakeBorder(imagem, topo, lados, lados, lados, cv2.BORDER_CONSTANT, value=(cor, cor, cor))
+
+
+class SemMargemTests(unittest.TestCase):
+    """`_sem_margem`: tira a faixa de verdade e não toca no resto. Ver `MARGEM_MINIMA`."""
+
+    def setUp(self) -> None:
+        self.tabuleiro = diagrama(margem=0)
+        self.lado = self.tabuleiro.shape[0]
+
+    def test_margem_de_verdade_sai_inteira_e_nada_mais(self) -> None:
+        aparada = imp._sem_margem(com_margem(self.tabuleiro, lados=7))
+        np.testing.assert_array_equal(aparada, self.tabuleiro)
+
+    def test_imagem_rente_as_casas_passa_intacta(self) -> None:
+        self.assertIs(imp._sem_margem(self.tabuleiro), self.tabuleiro)
+
+    def test_margem_pequena_fica(self) -> None:
+        imagem = com_margem(self.tabuleiro, lados=2)
+        self.assertLess(2 / imagem.shape[0], imp.MARGEM_MINIMA)
+        self.assertIs(imp._sem_margem(imagem), imagem)
+
+    def test_faixa_grande_demais_nao_e_margem(self) -> None:
+        imagem = com_margem(self.tabuleiro, lados=50)
+        self.assertGreater(50 / imagem.shape[0], imp.MARGEM_MAXIMA)
+        self.assertIs(imp._sem_margem(imagem), imagem)
+
+    def test_o_que_sobra_precisa_ser_quase_quadrado(self) -> None:
+        largo = cv2.resize(self.tabuleiro, (300, 240), interpolation=cv2.INTER_AREA)
+        imagem = com_margem(largo, lados=8)
+        self.assertIs(imp._sem_margem(imagem), imagem)
+
+    def test_imagem_de_uma_cor_so_passa_intacta(self) -> None:
+        branca = np.full((300, 300, 3), 255, np.uint8)
+        self.assertIs(imp._sem_margem(branca), branca)
+
+    def test_margem_desigual_sai_de_cada_lado_o_que_tem(self) -> None:
+        aparada = imp._sem_margem(com_margem(self.tabuleiro, lados=7, cima=12))
+        np.testing.assert_array_equal(aparada, self.tabuleiro)
+
+    def test_o_ruido_do_jpeg_nao_interrompe_a_faixa(self) -> None:
+        gerador = np.random.default_rng(0)
+        imagem = com_margem(self.tabuleiro, lados=7).astype(np.int16)
+        ruido = gerador.integers(-3, 4, imagem.shape)
+        ruido[7 : 7 + self.lado, 7 : 7 + self.lado] = 0
+        aparada = imp._sem_margem(np.clip(imagem + ruido, 0, 255).astype(np.uint8))
+        np.testing.assert_array_equal(aparada, self.tabuleiro)
+
+    def test_recortar_inteira_acerta_a_grade_com_margem(self) -> None:
+        """É o defeito: com a margem junto, a borda da casa a8 caía dentro da casa."""
+        referencia, _ = imp.recortar(self.tabuleiro, imp.RECORTE_INTEIRA)
+        recorte, usado = imp.recortar(com_margem(self.tabuleiro, lados=7), imp.RECORTE_INTEIRA)
+        self.assertEqual(usado, imp.RECORTE_INTEIRA)
+        np.testing.assert_array_equal(recorte, referencia)
+
+
 class ImportarOsQueConcordamTests(unittest.TestCase):
     def test_grava_so_o_que_o_modelo_confirma_e_nao_grava_duas_vezes(self) -> None:
         raiz = pasta_do_sigil(self)

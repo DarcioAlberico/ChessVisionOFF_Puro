@@ -20,7 +20,8 @@ Duas fontes, com o mesmo destino (`labels.csv` + `samples/`, pelo `append_traini
 diagrama à esquerda ou a seta de quem joga; as do jbc já vêm recortadas rente às casas, e nelas o
 detector de página se perde e devolve três ou quatro casas ampliadas. `recortar` usa o detector e
 só aceita o que ele achou quando o quadro cobre boa parte da imagem (`FRACAO_MINIMA_DO_QUADRO`);
-senão a imagem inteira é o tabuleiro. A conferência deixa a pessoa trocar um pelo outro.
+senão a imagem inteira é o tabuleiro, sem a margem de uma cor só que houver em volta (`_sem_margem`).
+A conferência deixa a pessoa trocar um pelo outro.
 
 **O andamento é um arquivo por pasta** (`data/importacao/*.json`): 5.800 imagens não se conferem
 numa sessão, e reabrir a mesma pasta tem de continuar de onde parou -- sem gravar duas vezes a
@@ -112,6 +113,26 @@ FRACAO_MINIMA_DO_QUADRO = 0.45
 Medido nas duas fontes em 2026-10-23: em 120 imagens do Sigil o quadro cobre de 0,65 (coordenadas
 dos quatro lados) a 0,98 da imagem; em 150 do jbc os acertos ficam em 0,97 a 1,0 e os recortes
 errados, de três ou quatro casas, em 0,12 ou menos. Entre os dois há folga dos dois lados."""
+
+MARGEM_MINIMA = 0.02
+"""A menor margem que `_sem_margem` apara, em fração do lado da imagem. Abaixo disso, fica.
+
+Medido em 2026-11-04, sempre contra a FEN gravada e comparando imagem a imagem. Com margem ≥ 2%, em
+300 imagens: tabuleiros exatos de 279 para 289, casas erradas de 22 para 11, e aparar ganhou em 14 e
+perdeu em 4. Com margem menor, até 1,1%, em 63 imagens: exatos de 58 para 56 e casas erradas de 17
+para 18. Margem pequena não desloca a grade o bastante para pagar a interpolação nova."""
+
+MARGEM_MAXIMA = 0.12
+ALONGAMENTO_MAXIMO = 1.10
+"""As travas de `_sem_margem`: cada lado aparado até 12%, e o que sobra quase quadrado.
+
+Uma faixa uniforme maior que isso, ou que deixa um retângulo, não é moldura em volta de um tabuleiro:
+é outra coisa, e a imagem fica como veio. Em 1.731 imagens lidas, as travas seguraram 5 (do jbc)."""
+
+TOLERANCIA_DA_FAIXA = 6
+FRACAO_DA_FAIXA = 0.98
+"""Uma linha é da faixa quando 98% dos pixels estão a até 6 tons da cor dela: é a folga para o ruído do
+JPEG. A primeira fileira do tabuleiro sempre fica de fora, porque atravessa casas escuras."""
 
 IMPORTADO_COM_FEN = "importado-com-fen"
 """`corrected_by` da amostra que o lote gravou: relatório e modelo leram a mesma posição, e
@@ -602,8 +623,47 @@ def recortar(imagem_rgb: np.ndarray, modo: str = "") -> tuple[np.ndarray, str]:
             tabuleiro, quad = achados[0]
             if modo == RECORTE_DETECTADO or _fracao_do_quadro(quad, imagem_rgb.shape) >= FRACAO_MINIMA_DO_QUADRO:
                 return tabuleiro, RECORTE_DETECTADO
-    inteira = cv2.resize(imagem_rgb, (BOARD_SIZE, BOARD_SIZE), interpolation=cv2.INTER_AREA)
+    inteira = cv2.resize(_sem_margem(imagem_rgb), (BOARD_SIZE, BOARD_SIZE), interpolation=cv2.INTER_AREA)
     return tighten_board(inteira), RECORTE_INTEIRA
+
+
+def _linhas_de_uma_cor(linhas: np.ndarray) -> int:
+    """Quantas linhas, a partir da primeira, são da cor dela (`FRACAO_DA_FAIXA`)."""
+    cor = int(np.median(linhas[0]))
+    quantas = 0
+    for linha in linhas:
+        if np.mean(np.abs(linha.astype(np.int16) - cor) <= TOLERANCIA_DA_FAIXA) < FRACAO_DA_FAIXA:
+            break
+        quantas += 1
+    return quantas
+
+
+def _sem_margem(imagem_rgb: np.ndarray) -> np.ndarray:
+    """A imagem sem a faixa de uma cor só em volta do tabuleiro, quando há uma de verdade.
+
+    **O defeito.** Quando o detector não acha o quadro, a imagem inteira vira o tabuleiro, e uma margem
+    de ~3% por lado vai junto: a grade de 8×8 desloca até 1/4 de casa nas bordas, e a coluna a lê a
+    casa errada. `tighten_board` não a tira porque procura a grade, e não a faixa. Mora aqui, e não
+    nele, porque `tighten_board` é de todos os caminhos de leitura, e mexer nele vence os relatórios
+    de campo; este corte só vale para o que entra pela importação.
+
+    Margem pequena demais, faixa grande demais ou resto que não é quadrado devolvem a imagem intacta
+    (`MARGEM_MINIMA`, `MARGEM_MAXIMA`, `ALONGAMENTO_MAXIMO`). As imagens do jbc, rente às casas, não
+    têm faixa, e passam sem corte nenhum.
+    """
+    import cv2
+
+    cinza = cv2.cvtColor(imagem_rgb, cv2.COLOR_RGB2GRAY)
+    altura, largura = cinza.shape
+    esquerda, direita = _linhas_de_uma_cor(cinza.T), _linhas_de_uma_cor(cinza.T[::-1])
+    cima, baixo = _linhas_de_uma_cor(cinza), _linhas_de_uma_cor(cinza[::-1])
+    maior = max(max(esquerda, direita) / largura, max(cima, baixo) / altura)
+    if not MARGEM_MINIMA <= maior <= MARGEM_MAXIMA:
+        return imagem_rgb
+    resto_x, resto_y = largura - esquerda - direita, altura - cima - baixo
+    if resto_x <= 0 or resto_y <= 0 or max(resto_x, resto_y) / min(resto_x, resto_y) > ALONGAMENTO_MAXIMO:
+        return imagem_rgb
+    return imagem_rgb[cima : altura - baixo, esquerda : largura - direita]
 
 
 def _fracao_do_quadro(quad: np.ndarray | None, forma: tuple[int, ...]) -> float:

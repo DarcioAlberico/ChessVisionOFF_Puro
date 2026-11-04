@@ -1053,6 +1053,7 @@ src/chess_diagram_ocr/
   labels.py             a porta unica do labels.csv: LabelStore (S-51)
   lance_seguinte.py     o primeiro lance impresso sob o diagrama jogado sobre a leitura, e a troca unica que o faz fechar (C11)
   logging_setup.py      configuracao de logging
+  marcas_de_casa.py     as marcas impressas no diagrama (bolinha, estrela, seta...) e o arquivo delas, fora da FEN
   model.py              arquitetura do classificador, configuravel por ArchConfig
   net_correction.py     cliente da correcao remota de FEN (opcional, opt-in)
   ocr.py                os motores de OCR de faixa, atras de uma interface so
@@ -1144,13 +1145,23 @@ para o `labels.csv`. Duas fontes:
 
 O recorte tira coordenadas, numero do diagrama e seta de quem joga: o detector so vale quando
 o quadro cobre boa parte da imagem; senao a imagem inteira e o tabuleiro (o caso das imagens
-ja recortadas rente as casas). **Usar a imagem inteira** troca um pelo outro na conferencia.
+ja recortadas rente as casas), sem a margem de uma cor so em volta, quando ela passa de 2% do
+lado. **Usar a imagem inteira** troca um pelo outro na conferencia.
 
 O andamento de cada pasta fica em `data/importacao/`: reabrir a mesma pasta continua de onde
 parou, e uma imagem ja gravada nao e gravada de novo. A coluna `source_pdf` da amostra leva a
 fonte e o livro (`ChessMeridaOCR: <livro>`), e `corrected_by` diz o caminho:
 `importado-com-fen` (relatorio e modelo concordaram, ninguem olhou), `ocr-aceito` ou
 `ocr-corrigido` (conferida com a leitura do modelo ao lado).
+
+A conferencia tambem anota as marcas impressas no diagrama, pela paleta **Marcas**: bolinha e
+estrela (brancas e pretas), X, cruz e outra marca vao numa casa com um clique; seta, reta e
+moldura se desenham arrastando. Com uma marca na mao, o botao direito tira a marca ou o traco e
+nunca a peca. **Marcar esvazia a casa** tira a peca junto, porque o modelo costuma ler marca como
+peca; desligue quando a marca esta mesmo sobre uma peca. A marca nao entra na FEN nem no
+`labels.csv`: fica em `data/marcas/anotacoes.json`, pelo conteudo da imagem, entao vale para a
+mesma imagem aberta por outra pasta, e cada anotacao ja vai para o disco, sem precisar salvar.
+O recorte mostra as marcas por cima, em contorno azul, para conferir se o lugar bate.
 
 ## Dados e artefatos
 
