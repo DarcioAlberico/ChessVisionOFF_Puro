@@ -1,11 +1,11 @@
 {
   "item": "S-211",
-  "medido_em": "2026-08-26",
+  "medido_em": "2026-11-04",
   "dpi": 220,
   "pergunta": "Qual o CER do glifo na pagina inteira, e o modo bloco da S-188 paga na pagina?",
   "referencia": "a camada de texto da propria pagina, montada pelo mesmo text/leitor.py",
   "ressalva": "A camada nao e verdade de referencia humana: no AAGAARD ela e OCR de terceiro e traz os proprios erros. O valor absoluto tem piso que nao e do glifo; a comparacao entre as duas colunas continua valida por serem medidas contra a mesma referencia. Ver tambem o bloco 'figurinas': a camada nao representa figurina, entao para NOTACAO ela nao e referencia de coisa nenhuma -- o CER acima mede prosa, e o glifo e penalizado justamente onde acerta a figurina.",
-  "commit": "7ac738006286ff392e2df4a9ac13b0216a758a65",
+  "commit": "700b2570f050c22adb71f0be99f0abcd6883f9fc",
   "modelo": "models/char_classifier.pt",
   "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
   "leitor_de_linha": "rapidocr",
@@ -13,78 +13,78 @@
     {
       "livro": "AAGAARD - Practical Chess Defence.pdf",
       "pagina": 58,
-      "caracteres_da_referencia": 2145,
-      "cer_glifo": 0.1894336030461685,
-      "cer_glifo_com_bloco": 0.1969147005444646
+      "caracteres_da_referencia": 2155,
+      "cer_glifo": 0.17969115582592418,
+      "cer_glifo_com_bloco": 0.1965372016846046
     },
     {
       "livro": "AAGAARD - Practical Chess Defence.pdf",
       "pagina": 60,
-      "caracteres_da_referencia": 2324,
-      "cer_glifo": 0.1732283464566929,
-      "cer_glifo_com_bloco": 0.17551190973673214
+      "caracteres_da_referencia": 2336,
+      "cer_glifo": 0.1664504971897968,
+      "cer_glifo_com_bloco": 0.1772589710332901
     },
     {
       "livro": "AAGAARD - Practical Chess Defence.pdf",
       "pagina": 62,
-      "caracteres_da_referencia": 2080,
-      "cer_glifo": 0.147797252486973,
-      "cer_glifo_com_bloco": 0.17295597484276728
+      "caracteres_da_referencia": 2129,
+      "cer_glifo": 0.12837517764092846,
+      "cer_glifo_com_bloco": 0.16200852676456656
     },
     {
       "livro": "AAGAARD - Practical Chess Defence.pdf",
       "pagina": 64,
       "caracteres_da_referencia": 1098,
-      "cer_glifo": 0.11527647610121837,
-      "cer_glifo_com_bloco": 0.12750455373406194
+      "cer_glifo": 0.113345521023766,
+      "cer_glifo_com_bloco": 0.12888482632541134
     },
     {
       "livro": "AAGAARD - Practical Chess Defence.pdf",
       "pagina": 66,
       "caracteres_da_referencia": 2808,
-      "cer_glifo": 0.029347826086956522,
-      "cer_glifo_com_bloco": 0.00995732574679943
+      "cer_glifo": 0.02857142857142857,
+      "cer_glifo_com_bloco": 0.01
     },
     {
       "livro": "AAGAARD - Practical Chess Defence.pdf",
       "pagina": 68,
       "caracteres_da_referencia": 1107,
-      "cer_glifo": 0.09242957746478873,
-      "cer_glifo_com_bloco": 0.11818181818181818
+      "cer_glifo": 0.09454545454545454,
+      "cer_glifo_com_bloco": 0.1290909090909091
     },
     {
       "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
       "pagina": 118,
       "caracteres_da_referencia": 1078,
-      "cer_glifo": 0.056691449814126396,
-      "cer_glifo_com_bloco": 0.09041591320072333
+      "cer_glifo": 0.054307116104868915,
+      "cer_glifo_com_bloco": 0.09363295880149813
     },
     {
       "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
       "pagina": 120,
       "caracteres_da_referencia": 969,
-      "cer_glifo": 0.06063720452209661,
-      "cer_glifo_com_bloco": 0.17425742574257425
+      "cer_glifo": 0.06047966631908238,
+      "cer_glifo_com_bloco": 0.1835245046923879
     },
     {
       "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
       "pagina": 122,
       "caracteres_da_referencia": 1046,
-      "cer_glifo": 0.06364513018322084,
-      "cer_glifo_com_bloco": 0.12287334593572778
+      "cer_glifo": 0.06335282651072124,
+      "cer_glifo_com_bloco": 0.1267056530214425
     },
     {
       "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
       "pagina": 124,
       "caracteres_da_referencia": 990,
       "cer_glifo": 0.07223942208462332,
-      "cer_glifo_com_bloco": 0.1424272818455366
+      "cer_glifo_com_bloco": 0.14654282765737875
     }
   ],
   "resumo": {
     "paginas": 10,
-    "cer_glifo_medio": 0.10007262882468652,
-    "cer_glifo_com_bloco_medio": 0.13310002495112055
+    "cer_glifo_medio": 0.09613582658165945,
+    "cer_glifo_com_bloco_medio": 0.1354186379071489
   },
   "decisao": "modo_bloco entra DESLIGADO por padrao em text/leitor.py: na media ele piora, e onde ajuda custa ~50x o tempo. Continua exposto em --bloco porque a medicao de origem era sobre faixa de legenda, que e outro caso.",
   "figurinas": {
@@ -419,5 +419,5 @@
     "por_que_nao_muda_nada": "A hipotese estava errada: os digitos NAO estao colados. Medido na p30 do Kemeli e na p60 do AAGAARD, so 2,1% e 2,7% das caixas passam do piso de largura, e os numeros perdidos nao estao entre elas. O que acontece e confusao de UM caractere: '10.' sai '1o.' (zero lido como o minusculo), '14' sai '1 4' (espaco espurio). Os de dois digitos que acertam -- '12. Ta1', '16. c4', '22. Db3', '24. Kg1' -- ja vinham segmentados separados. Nao ha o que cortar, e por isso os tres modos empatam.",
     "onde_o_caso_do_usuario_se_encaixa": "'40'->'co' e provavelmente '4'->'c' e '0'->'o', dois boxes e duas confusoes, e nao um box cortado errado. '44'->'M' pode ser colado de verdade, mas e raro demais para aparecer nas 12 paginas."
   },
-  "remedido_por": "S-258 -- RECUO_DE_PARAGRAFO passou de 0,8 para 0,4, e o corte de paragrafo entra na montagem dos dois lados desta medicao. Os numeros anteriores (0,139678 e 0,144604) sao do corte antigo."
+  "remedido_por": "S-596 -- text/leitor.margem_no_corpo devolve a referencia as linhas do pe da pagina que nao repetem nas vizinhas, e o glifo, que le a imagem inteira, deixava de ser cobrado por elas. Entram nas paginas 58, 60 e 62 (indice 0-based, como o campo 'pagina' deste relatorio sempre foi). Antes da S-596 eram 0.100073 e 0.133100; antes da S-258, 0,139678 e 0,144604 (corte de paragrafo antigo). Ressalva de 2026-11-04: a primeira medicao com a S-596, de 2026-10-30, publicou glifo 0.0967. Remedido em 700b257, com o mesmo modelo, as 10 referencias e as 10 celulas do bloco saem identicas, mas o glifo da 0.0961: 5 paginas do Aagaard (58, 60, 62, 64, 66) ficam de 0,0005 a 0,0017 abaixo do que aquela medicao dizia. O codigo de text/ que a leitura usa nao mudou entre as duas, e o valor novo se repete em processo novo, com ou sem aquecimento, antes e depois do bloco. A causa da diferenca nao foi achada; este relatorio traz o valor que o commit declarado reproduz."
 }
