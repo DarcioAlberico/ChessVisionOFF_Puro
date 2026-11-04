@@ -64,8 +64,8 @@ class AugmentConfig:
     invert: float = 0.0
     stroke: float = 0.0
     marca: float = 0.0
-    """Probabilidade de uma casa **vazia** receber uma marca de casa sintética (estrela, X,
-    ponto ou cruz), com o rótulo continuando vazio. Ver `MarcaEmVazia`."""
+    """Probabilidade de uma casa **vazia** receber uma marca de casa sintética (estrela, X, ponto,
+    cruz, bolinha oca, reta, seta ou moldura), com o rótulo continuando vazio. Ver `MarcaEmVazia`."""
 
     hatch_period_px: tuple[int, int] = (4, 12)
     """Período da hachura em pixels da **casa** (64×64 na entrada do modelo).
@@ -163,7 +163,7 @@ def from_letters(texto: str) -> AugmentConfig:
         paper=0.30 if "p" in letras else 0.0,
         invert=0.03 if "i" in letras else 0.0,
         stroke=0.30 if "e" in letras else 0.0,
-        marca=0.15 if "x" in letras else 0.0,
+        marca=0.20 if "x" in letras else 0.0,
     )
 
 
@@ -344,10 +344,24 @@ def stroke(x: torch.Tensor, raio: int, *, engrossar: bool, margin: int = 3) -> t
     return torch.where(interior, saida, x)
 
 
-TIPOS_DE_MARCA: tuple[str, ...] = ("estrela", "x", "ponto", "cruz")
-"""As marcas de casa que `MarcaEmVazia` desenha: as quatro que o censo de 2026-10-24 achou
-centradas na casa (estrela no Nunn, X no Yusupov/Dvoretsky/Silman/Seirawan, ponto e cruz no
-Levenfis)."""
+TIPOS_DE_MARCA: tuple[str, ...] = (
+    "estrela",
+    "x",
+    "ponto",
+    "cruz",
+    "oca",
+    "estrela-branca",
+    "reta",
+    "seta",
+    "moldura",
+)
+"""As marcas de casa que `MarcaEmVazia` desenha. As quatro primeiras são as que o censo de
+2026-10-24 achou centradas na casa (estrela no Nunn, X no Yusupov/Dvoretsky/Silman/Seirawan, ponto
+e cruz no Levenfis). A bolinha oca é a do *Manual de Finais*, a estrela branca foi pedida pelo dono
+e não tem exemplo no acervo, e reta, seta e moldura são os traços que atravessam a casa."""
+
+_TIPOS_OCOS = ("oca", "estrela-branca")
+"""As marcas de miolo claro: tinta na borda e papel dentro, que cobre a hachura da casa escura."""
 
 _SUPERAMOSTRA = 4
 """A marca é rasterizada numa grade 4x mais fina e reduzida por média: borda suavizada como a
@@ -363,13 +377,15 @@ def _cobertura_de_marca(
     centro: tuple[float, float],
     angulo: float,
     miolo: float,
+    tracejo: float = 0.0,
 ) -> torch.Tensor:
     """A fração de cada pixel de uma casa `tamanho x tamanho` coberta pela marca, em [0, 1].
 
     Medidas em fração do lado da casa: `largura` é a extensão da marca (o diâmetro do ponto,
-    a envergadura da estrela, o lado da caixa do X e da cruz), `espessura` é a do traço do X
-    e da cruz, `centro` é o deslocamento `(dx, dy)` do centro da casa, `angulo` gira a marca em
-    radianos e `miolo` é a razão entre o raio interno e o externo da estrela.
+    a envergadura da estrela, o lado da caixa do X, da cruz e da moldura, o comprimento da ponta
+    da seta), `espessura` é a do traço, `centro` é o deslocamento `(dx, dy)` do centro da casa,
+    `angulo` gira a marca em radianos, `miolo` é a razão entre o raio interno e o externo da
+    estrela e `tracejo` é o período do tracejado da reta (0 = contínua).
     """
     n = tamanho * _SUPERAMOSTRA
     passo = 1.0 / n
@@ -406,6 +422,22 @@ def _cobertura_de_marca(
         cruzado = (bx - ax) * (py - ay) - (by - ay) * (px - ax)
         origem = (bx - ax) * (0.0 - ay) - (by - ay) * (0.0 - ax)
         dentro = cruzado * origem >= 0
+    elif tipo == "reta":
+        # Atravessa a casa inteira ao longo de `u`; `centro` diz por onde ela passa.
+        dentro = v.abs() <= espessura / 2
+        if tracejo > 0:
+            dentro = dentro & (torch.remainder(u, tracejo) < tracejo * 0.6)
+    elif tipo == "seta":
+        # A ponta em `centro`, apontando para +u, e a haste vindo de fora da casa.
+        cabeca = (u <= 0) & (u >= -largura) & (v.abs() <= 0.45 * -u)
+        haste = (u <= -largura / 2) & (v.abs() <= espessura / 2)
+        dentro = cabeca | haste
+    elif tipo == "moldura":
+        # Caixa vazada. Deslocada, sobra na casa só um lado ou um canto dela: é o retângulo que
+        # abraça várias casas, como o do quadrado do rei no Manual de Finais.
+        meio = largura / 2
+        fora = (u.abs() <= meio) & (v.abs() <= meio)
+        dentro = fora & ~((u.abs() <= meio - espessura) & (v.abs() <= meio - espessura))
     else:
         raise ValueError(f"Marca desconhecida: {tipo!r} (válidas: {', '.join(TIPOS_DE_MARCA)})")
 
@@ -423,20 +455,41 @@ def desenhar_marca(
     angulo: float = 0.0,
     miolo: float = 0.42,
     tinta: float = 0.05,
+    tracejo: float = 0.0,
+    papel: float = 0.97,
 ) -> torch.Tensor:
     """A operação de `MarcaEmVazia` sem sorteio: a marca `tipo` impressa na casa em tinta `tinta`.
 
     Exposta para os testes e para a inspeção a olho das casas sintéticas. A tinta substitui o
     fundo na proporção da cobertura -- é o que a tinta preta faz sobre a casa clara e sobre a
     hachura da escura, e é por isso que o desenho vem **antes** de papel, hachura e granulação.
+    Nas marcas ocas, o miolo é pintado por cima em `papel`.
     """
     altura, largura_px = x.shape[-2], x.shape[-1]
     if altura != largura_px:
         raise ValueError(f"A casa precisa ser quadrada, veio {altura}x{largura_px}.")
-    alfa = _cobertura_de_marca(
-        tipo, altura, largura=largura, espessura=espessura, centro=centro, angulo=angulo, miolo=miolo
-    ).to(dtype=x.dtype, device=x.device)
-    return x * (1.0 - alfa) + tinta * alfa
+
+    def cobertura(forma: str, extensao: float) -> torch.Tensor:
+        return _cobertura_de_marca(
+            forma,
+            altura,
+            largura=extensao,
+            espessura=espessura,
+            centro=centro,
+            angulo=angulo,
+            miolo=miolo,
+            tracejo=tracejo,
+        ).to(dtype=x.dtype, device=x.device)
+
+    forma = {"oca": "ponto", "estrela-branca": "estrela"}.get(tipo, tipo)
+    alfa = cobertura(forma, largura)
+    saida = x * (1.0 - alfa) + tinta * alfa
+    if tipo in _TIPOS_OCOS:
+        # A ponta da estrela afina, e o miolo precisa recuar mais que a espessura para sobrar traço.
+        recuo = 2 * espessura if tipo == "oca" else 3.2 * espessura
+        interior = cobertura(forma, max(largura - recuo, 0.0))
+        saida = saida * (1.0 - interior) + papel * interior
+    return saida
 
 
 class MarcaEmVazia(_Sometimes):
@@ -452,9 +505,13 @@ class MarcaEmVazia(_Sometimes):
     `TransformSubset` e `BoardFenDataset.square`, que aplicam isto antes do aumento genérico
     -- a marca é tinta da página, e o desfoque, o afim e a hachura acontecem por cima dela.
 
-    **As faixas vêm do censo.** A estrela real ocupa ~45% do lado da casa e o X ~52%; o ponto vai
-    de um pingo a ~40%. As faixas cobrem isso com folga, e o tipo é sorteado por igual entre os
-    quatro de `TIPOS_DE_MARCA`.
+    **As faixas vêm dos censos.** A estrela real ocupa ~45% a 65% do lado da casa, o X vai a ~80%, o
+    ponto vai de um pingo a ~47%, e a bolinha oca do Manual de Finais tem ~44%, em traço cinza. As
+    faixas cobrem isso com folga, e o tipo é sorteado por igual entre os de `TIPOS_DE_MARCA`.
+    Estrela branca não tem exemplo real: usa as faixas da preta.
+
+    **Traços só na casa vazia.** Seta e reta que passam sobre a peça ficam de fora: é outro rótulo a
+    preservar, e o caso ainda não foi medido.
     """
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -465,17 +522,53 @@ class MarcaEmVazia(_Sometimes):
         def faixa(baixo: float, alto: float) -> float:
             return float(baixo + (alto - baixo) * torch.rand(()))
 
-        largura = {"estrela": faixa(0.30, 0.70), "x": faixa(0.30, 0.75), "ponto": faixa(0.08, 0.40), "cruz": faixa(0.30, 0.75)}[tipo]
-        giro = 0.21 if tipo == "estrela" else 0.14
+        if tipo in ("reta", "seta"):
+            # Metade nas oito direções do tabuleiro; a outra metade em qualquer ângulo.
+            if torch.rand(()) < 0.5:
+                angulo = float(torch.randint(8, ()).item()) * torch.pi / 4
+            else:
+                angulo = faixa(0.0, 2 * torch.pi)
+            tracejada = tipo == "reta" and bool(torch.rand(()) < 0.4)
+            return desenhar_marca(
+                x,
+                tipo,
+                largura=faixa(0.20, 0.40),
+                espessura=faixa(0.02, 0.10),
+                centro=(faixa(-0.35, 0.35), faixa(-0.35, 0.35)),
+                angulo=angulo,
+                tinta=faixa(0.0, 0.35),
+                tracejo=faixa(0.15, 0.40) if tracejada else 0.0,
+            )
+        if tipo == "moldura":
+            return desenhar_marca(
+                x,
+                tipo,
+                largura=faixa(0.55, 1.0),
+                espessura=faixa(0.03, 0.14),
+                centro=(faixa(-0.25, 0.25), faixa(-0.25, 0.25)),
+                tinta=faixa(0.0, 0.25),
+            )
+
+        largura = {
+            "estrela": faixa(0.30, 0.70),
+            "estrela-branca": faixa(0.35, 0.75),
+            "x": faixa(0.30, 0.80),
+            "ponto": faixa(0.08, 0.50),
+            "cruz": faixa(0.30, 0.75),
+            "oca": faixa(0.30, 0.60),
+        }[tipo]
+        oca = tipo in _TIPOS_OCOS
+        giro = 0.21 if tipo in ("estrela", "estrela-branca") else 0.14
         return desenhar_marca(
             x,
             tipo,
             largura=largura,
-            espessura=faixa(0.05, 0.13),
+            espessura=faixa(0.03, 0.09) if oca else faixa(0.05, 0.13),
             centro=(faixa(-0.05, 0.05), faixa(-0.05, 0.05)),
             angulo=faixa(-giro, giro),
             miolo=faixa(0.38, 0.50),
-            tinta=faixa(0.0, 0.15),
+            tinta=faixa(0.0, 0.50) if tipo == "oca" else faixa(0.0, 0.15),
+            papel=faixa(0.85, 1.0),
         )
 
 
