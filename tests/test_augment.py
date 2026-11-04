@@ -322,13 +322,13 @@ class MarcaTests(unittest.TestCase):
 
     def test_a_letra_x_liga_a_marca_e_entra_na_versao(self) -> None:
         config = from_letters("x")
-        self.assertEqual(config.marca, 0.15)
+        self.assertEqual(config.marca, 0.20)
         self.assertEqual(config.version, "augx")
         self.assertEqual(from_letters(config.version), config)
         self.assertIsInstance(build_marca(config), MarcaEmVazia)
 
-    def test_cada_tipo_escurece_o_centro_e_deixa_a_borda(self) -> None:
-        for tipo in TIPOS_DE_MARCA:
+    def test_cada_marca_cheia_escurece_o_centro_e_deixa_a_borda(self) -> None:
+        for tipo in ("estrela", "x", "ponto", "cruz"):
             with self.subTest(tipo=tipo):
                 x = desenhar_marca(cell(0.9), tipo, largura=0.5, tinta=0.0)
                 self.assertLess(float(x[0, 26:38, 26:38].mean()), 0.6)
@@ -336,7 +336,7 @@ class MarcaTests(unittest.TestCase):
                 self.assertGreaterEqual(float(x.min()), 0.0)
 
     def test_as_formas_sao_distintas(self) -> None:
-        """Quatro tipos que saíssem iguais seriam um tipo só, com quatro nomes."""
+        """Tipos que saíssem iguais seriam um tipo só, com vários nomes."""
         desenhos = [desenhar_marca(cell(1.0), tipo, largura=0.6) for tipo in TIPOS_DE_MARCA]
         for i in range(len(desenhos)):
             for j in range(i + 1, len(desenhos)):
@@ -351,7 +351,44 @@ class MarcaTests(unittest.TestCase):
 
     def test_tipo_desconhecido_e_recusado(self) -> None:
         with self.assertRaises(ValueError):
-            desenhar_marca(cell(), "seta", largura=0.5)
+            desenhar_marca(cell(), "raio", largura=0.5)
+
+    def test_a_marca_oca_tem_borda_de_tinta_e_miolo_de_papel(self) -> None:
+        """O miolo cobre a hachura: é o que separa a bolinha oca de um anel transparente."""
+        for tipo in ("oca", "estrela-branca"):
+            with self.subTest(tipo=tipo):
+                x = desenhar_marca(cell(0.4), tipo, largura=0.6, espessura=0.06, tinta=0.0, papel=0.95)
+                self.assertAlmostEqual(float(x[0, 32, 32]), 0.95, places=3)
+                self.assertLess(float(x.min()), 0.05, "e tem traço de tinta em volta")
+                self.assertAlmostEqual(float(x[0, 2, 2]), 0.4, places=3, msg="sem tocar o fundo de fora")
+
+    def test_a_reta_atravessa_a_casa_e_o_tracejo_abre_falhas(self) -> None:
+        cheia = desenhar_marca(cell(1.0), "reta", largura=1.0, espessura=0.1, tinta=0.0)
+        self.assertLess(float(cheia[0, 32, :].max()), 0.01, "a horizontal vai de uma borda à outra")
+        tracejada = desenhar_marca(cell(1.0), "reta", largura=1.0, espessura=0.1, tinta=0.0, tracejo=0.25)
+        self.assertGreater(float(tracejada[0, 32, :].max()), 0.99, "e a tracejada tem falhas")
+        self.assertLess(float(tracejada[0, 32, :].min()), 0.01)
+
+    def test_a_seta_tem_a_ponta_mais_larga_que_a_haste(self) -> None:
+        x = desenhar_marca(cell(1.0), "seta", largura=0.4, espessura=0.04, tinta=0.0)
+        na_cabeca = int((x[0, :, 8] < 0.5).sum())
+        na_haste = int((x[0, :, 3] < 0.5).sum())
+        self.assertGreater(na_cabeca, 2 * na_haste)
+        self.assertGreater(na_haste, 0, "a haste vem de fora da casa")
+        self.assertGreater(float(x[0, 32, 40]), 0.99, "e nada passa da ponta")
+
+    def test_a_moldura_e_vazada(self) -> None:
+        x = desenhar_marca(cell(1.0), "moldura", largura=0.8, espessura=0.08, tinta=0.0)
+        self.assertGreater(float(x[0, 32, 32]), 0.99)
+        self.assertLess(float(x[0, 32, 8]), 0.01)
+
+    def test_todo_tipo_sorteado_fica_no_intervalo_e_muda_a_casa(self) -> None:
+        marca = MarcaEmVazia(1.0)
+        torch.manual_seed(11)
+        for _ in range(200):
+            x = marca(cell(0.8))
+            self.assertGreaterEqual(float(x.min()), 0.0)
+            self.assertLessEqual(float(x.max()), 1.0)
 
     def test_probabilidade_zero_e_identidade(self) -> None:
         x = cell(0.8)
