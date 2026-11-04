@@ -8,6 +8,9 @@ Duas fontes, com o mesmo destino (`labels.csv` + `samples/`, pelo `append_traini
    traz tabuleiro vazio quando o servidor não leu nada, e a mesma imagem aparece em duas execuções
    com FENs diferentes. Por isso a FEN da fonte só vai direto para o dataset quando **o nosso
    modelo lê a mesma posição** no recorte (`concorda`); o resto fica pendente para conferência.
+   O outro formato de relatório, o `diagramas.html` ("Diagramas e FENs", com as imagens ao lado do
+   HTML), traz um `<div class="diagram">` por imagem e só o campo de peças da FEN, e segue a mesma
+   regra.
 2. **Uma pasta de imagens sem FEN** (o `chessvision-jbc`, por exemplo). Nada vai para o dataset
    sem uma pessoa olhar: a proposta é a leitura do modelo, e a conferência é imagem a imagem. Se a
    pasta tiver um `index.csv` com as colunas `png` e `to_move` (o formato do jbc), o lado a jogar e
@@ -354,12 +357,17 @@ def _juntar(lido: ItemDeImportacao, gravado: ItemDeImportacao | None) -> ItemDeI
 
 
 class _LeitorDoRelatorio(HTMLParser):
-    """Tira `(src, fen, seção)` de cada `<article class="chessocr-entry">` do relatório."""
+    """Tira `(src, fen, seção)` de cada entrada do relatório.
+
+    A entrada é um `<article class="chessocr-entry">`, com a FEN no `<code>` do parágrafo
+    `chessocr-fen`, ou um `<div class="diagram">`, com a FEN direto no `<p class="fen">`.
+    """
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.entradas: list[tuple[str, str, str]] = []
         self._no_artigo = False
+        self._tag_da_entrada = ""
         self._src = ""
         self._secao: list[str] = []
         self._fen: list[str] = []
@@ -369,8 +377,8 @@ class _LeitorDoRelatorio(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         atributos = {nome: valor or "" for nome, valor in attrs}
         classes = atributos.get("class", "").split()
-        if tag == "article" and "chessocr-entry" in classes:
-            self._no_artigo, self._src, self._secao, self._fen = True, "", [], []
+        if (tag == "article" and "chessocr-entry" in classes) or (tag == "div" and "diagram" in classes):
+            self._no_artigo, self._tag_da_entrada, self._src, self._secao, self._fen = True, tag, "", [], []
             return
         if not self._no_artigo:
             return
@@ -381,14 +389,18 @@ class _LeitorDoRelatorio(HTMLParser):
         elif tag == "p" and "chessocr-fen" in classes:
             self._no_paragrafo_da_fen = True
         elif tag == "code" and self._no_paragrafo_da_fen:
-            self._em = "code"
+            self._em = "fen"
+        elif tag == "p" and "fen" in classes:
+            self._em = "fen"
 
     def handle_endtag(self, tag: str) -> None:
         if tag in ("h3", "code"):
             self._em = ""
         elif tag == "p":
             self._no_paragrafo_da_fen = False
-        elif tag == "article" and self._no_artigo:
+            if self._em == "fen":
+                self._em = ""
+        elif tag == self._tag_da_entrada and self._no_artigo:
             self._no_artigo = False
             fen = " ".join("".join(self._fen).split())
             if self._src and fen:
@@ -397,7 +409,7 @@ class _LeitorDoRelatorio(HTMLParser):
     def handle_data(self, data: str) -> None:
         if self._em == "h3":
             self._secao.append(data)
-        elif self._em == "code":
+        elif self._em == "fen":
             self._fen.append(data)
 
 

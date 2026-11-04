@@ -1133,7 +1133,8 @@ A aba Dataset tem o botao **Importar imagens...**, que traz diagramas de fora do
 para o `labels.csv`. Duas fontes:
 
 - **Relatorio do ChessMeridaOCR** (plugin do Sigil): a pasta com um `.html` e a pasta
-  `imagens/` por livro, ou a pasta que junta varios livros. A FEN vem do relatorio, mas so
+  `imagens/` por livro, ou a pasta que junta varios livros (o `diagramas.html`, com as imagens
+  ao lado dele, e lido do mesmo jeito). A FEN vem do relatorio, mas so
   entra sozinha quando o nosso modelo le a mesma posicao no recorte -- **Importar os que o
   modelo confirma**. O que discorda, o tabuleiro vazio e a imagem com duas FENs diferentes no
   relatorio ficam pendentes, com o aviso, para conferir.

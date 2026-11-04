@@ -136,6 +136,57 @@ class RelatorioDoSigilTests(unittest.TestCase):
             imp.ler_relatorios_do_chessmeridaocr(pasta_temporaria(self))
 
 
+def pasta_de_diagramas(caso: unittest.TestCase) -> Path:
+    """O formato `diagramas.html`: imagens ao lado do HTML, e só o campo de peças da FEN.
+
+    `apagada.png` está citada sem arquivo (o dono apagou a imagem) e `solta.png` existe sem FEN.
+    """
+    raiz = pasta_temporaria(caso) / "Extratos"
+    for nome in ("boa", "vazia", "solta"):
+        gravar_png(raiz / "Livro" / f"{nome}.png", diagrama())
+    entradas = (("boa", FINAL), ("apagada", INICIAL), ("vazia", "8/8/8/8/8/8/8/8"))
+    corpo = "".join(
+        f'<div class="diagram">\n<img src="{nome}.png" alt="{nome}.png" />\n<p class="fen">{fen}</p>\n</div>\n'
+        for nome, fen in entradas
+    )
+    (raiz / "Livro" / "diagramas.html").write_text(f"<!DOCTYPE html><html><body>{corpo}</body></html>", encoding="utf-8")
+    return raiz
+
+
+class RelatorioDiagramasHtmlTests(unittest.TestCase):
+    def test_le_uma_entrada_por_div_e_conta_a_imagem_apagada(self) -> None:
+        lote = imp.ler_relatorios_do_chessmeridaocr(pasta_de_diagramas(self))
+        por_nome = {Path(item.imagem).name: item for item in lote.itens}
+
+        self.assertEqual(sorted(por_nome), ["boa.png", "vazia.png"], "imagem sem FEN não entra no lote com FEN")
+        self.assertEqual(lote.ausentes, 1)
+        self.assertEqual(por_nome["boa.png"].fen_da_fonte, FINAL)
+        self.assertEqual(por_nome["boa.png"].livro, "Livro")
+        self.assertEqual(por_nome["boa.png"].lado, "")
+        self.assertEqual(por_nome["boa.png"].motivos, ())
+        self.assertEqual(por_nome["vazia.png"].motivos, ("o relatório deu tabuleiro vazio",))
+
+    def test_entra_no_dataset_so_o_que_o_modelo_confirma(self) -> None:
+        pasta = pasta_de_diagramas(self)
+        destino = pasta_temporaria(self)
+        lote = imp.ler_relatorios_do_chessmeridaocr(pasta)
+
+        conta = imp.importar_os_que_concordam(
+            lote,
+            ler=lambda _tabuleiro: FINAL,
+            csv_path=destino / "labels.csv",
+            samples_dir=destino / "samples",
+            corrected_by=IMPORTADO_COM_FEN,
+            diretorio=destino / "lotes",
+        )
+
+        self.assertEqual((conta["salvos"], conta["com_aviso"]), (1, 1))
+        linhas = linhas_do_csv(destino / "labels.csv")
+        self.assertEqual([linha["fen"].split()[0] for linha in linhas], [FINAL])
+        self.assertEqual(linhas[0]["source_pdf"], "ChessMeridaOCR: Livro")
+        self.assertEqual(linhas[0]["corrected_by"], IMPORTADO_COM_FEN)
+
+
 class PastaSemFenTests(unittest.TestCase):
     def test_le_as_subpastas_pula_as_ocultas_e_usa_o_index_csv(self) -> None:
         raiz = pasta_temporaria(self) / "jbc"
