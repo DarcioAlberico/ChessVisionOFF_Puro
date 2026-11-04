@@ -1048,6 +1048,7 @@ src/chess_diagram_ocr/
   games_census.py       censo da base de partidas: quanto ha, e quanto disso e alcancavel
   games_db.py           leitura dos .pgn e a busca por nome e por posicao
   games_index.py        o indice sqlite da base, por nome e por posicao
+  detector_de_marcas.py  acha as marcas de casa pela forma, sem modelo; sugere, e a pessoa confirma
   importacao_de_imagens.py  imagens de fora (relatorio do ChessMeridaOCR, pastas soltas) para o dataset, com conferencia
   inference.py          carga do modelo, predicao de FEN e TTA
   labels.py             a porta unica do labels.csv: LabelStore (S-51)
@@ -1162,6 +1163,10 @@ peca; desligue quando a marca esta mesmo sobre uma peca. A marca nao entra na FE
 `labels.csv`: fica em `data/marcas/anotacoes.json`, pelo conteudo da imagem, entao vale para a
 mesma imagem aberta por outra pasta, e cada anotacao ja vai para o disco, sem precisar salvar.
 O recorte mostra as marcas por cima, em contorno azul, para conferir se o lugar bate.
+
+O detector de marcas olha a forma de cada casa e sugere o que viu: bolinha, estrela, X e cruz, em
+casa sem peca. A sugestao aparece apagada no tabuleiro e nao vai para lugar nenhum ate voce usar
+**Aceitar a sugestao** (Ctrl+M). Seta, reta e moldura ainda sao so a mao.
 
 ## Dados e artefatos
 

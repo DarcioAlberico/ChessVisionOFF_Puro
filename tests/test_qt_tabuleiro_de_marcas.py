@@ -151,6 +151,35 @@ class GestosTests(unittest.TestCase):
         depois = self.tabuleiro.grab().toImage()
         self.assertNotEqual(antes.convertToFormat(QImage.Format.Format_RGB32), depois.convertToFormat(QImage.Format.Format_RGB32))
 
+    # --------------------------------------------------------------------------- sugestão
+
+    def test_a_sugestao_aparece_mesmo_sobre_uma_peca(self) -> None:
+        """O modelo costuma ler a marca como peça: sem o contorno, a peça cobriria a sugestão."""
+        antes = self.tabuleiro.grab().toImage().convertToFormat(QImage.Format.Format_RGB32)
+        self.tabuleiro.definir_sugestao({"e2": mc.ESTRELA_PRETA})
+        depois = self.tabuleiro.grab().toImage().convertToFormat(QImage.Format.Format_RGB32)
+        self.assertNotEqual(antes, depois)
+        self.assertEqual(self.tabuleiro.posicao(), INICIAL, "sugerir não mexe na posição")
+        self.assertEqual(self.emitidas, [], "sugerir não é anotar")
+
+    def test_aceitar_segue_a_opcao_de_esvaziar(self) -> None:
+        self.tabuleiro.definir_sugestao({"e2": mc.X})
+        self.tabuleiro.definir_esvaziar(False)
+        self.tabuleiro.aceitar_sugestao()
+        self.assertEqual(self.tabuleiro.posicao(), INICIAL)
+        self.assertEqual(self.tabuleiro.marcas().casas, {"e2": mc.X})
+
+        self.tabuleiro.definir_marcas(mc.MarcasDoDiagrama())
+        self.tabuleiro.definir_esvaziar(True)
+        self.tabuleiro.aceitar_sugestao()
+        self.assertEqual(self.tabuleiro.posicao(), "rnbqkbnr/pppppppp/8/8/8/8/PPPP1PPP/RNBQKBNR")
+
+    def test_marca_a_mao_tira_a_sugestao_daquela_casa(self) -> None:
+        self.tabuleiro.definir_sugestao({"e4": mc.X, "d4": mc.X})
+        self.tabuleiro.definir_ferramenta(mc.CRUZ)
+        self.clicar(self.centro(E4))
+        self.assertEqual(self.tabuleiro.sugestao_pendente(), {"d4": mc.X})
+
     # ------------------------------------------------------------------------- sem ferramenta
 
     def test_sem_ferramenta_e_o_tabuleiro_de_sempre(self) -> None:

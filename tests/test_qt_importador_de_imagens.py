@@ -13,7 +13,9 @@ from __future__ import annotations
 import csv
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import numpy as np
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 from test_importacao_de_imagens import FINAL, INICIAL, diagrama, gravar_png, pasta_do_sigil
@@ -28,6 +30,9 @@ if TEM_PYQT:
     from chess_diagram_ocr.qt import importador_de_imagens as qt_imp
     from chess_diagram_ocr.qt import painel_do_dataset as qt_dataset
 
+
+C5 = 26
+"""A casa da estrela desenhada em `com_estrela`."""
 
 E6 = 20
 """A casa do rei preto em `FINAL`, que é o que o leitor de mentira lê: uma casa com peça."""
@@ -179,6 +184,89 @@ class MarcasNaConferenciaTests(unittest.TestCase):
         self.assertNotEqual(antes, self.janela.img_recorte.pixmap().toImage())
         self.clicar_casa(self.janela, 36)
         self.assertEqual(antes, self.janela.img_recorte.pixmap().toImage(), "tirar a marca devolve o recorte")
+
+    def com_estrela(self) -> Path:
+        """Uma pasta em que o detector vê uma estrela em c5 na primeira imagem, e nada na segunda.
+
+        O detector é uma resposta fixa aqui: o que ele acha é de `tests/test_detector_de_marcas.py`, e
+        o que se afirma nesta classe é o caminho da sugestão até a tela e o arquivo.
+        """
+        raiz = pasta_temporaria(self) / "com-estrela"
+        gravar_png(raiz / "1.png", diagrama(margem=0))
+        gravar_png(raiz / "2.png", diagrama(margem=0, casa=31))
+        referencia, _ = imp.recortar(imp.ler_imagem(raiz / "1.png"))
+
+        def sugerir(tabuleiro: np.ndarray) -> mc.MarcasDoDiagrama:
+            casas = {"c5": mc.ESTRELA_PRETA} if np.array_equal(tabuleiro, referencia) else {}
+            return mc.MarcasDoDiagrama(casas=casas)
+
+        remendo = mock.patch.object(qt_imp.detector_de_marcas, "sugerir_marcas", sugerir)
+        remendo.start()
+        self.addCleanup(remendo.stop)
+        return raiz
+
+    def test_a_sugestao_aparece_e_nao_e_anotacao_ate_aceitar(self) -> None:
+        raiz = self.com_estrela()
+        self.abrir(self.janela, raiz)
+
+        self.assertEqual(self.janela.tabuleiro.sugestao_pendente(), {"c5": mc.ESTRELA_PRETA})
+        self.assertIn("estrela preta em c5", self.janela.lbl_sugestao.text())
+        self.assertFalse(self.janela.btn_sugestao.isHidden())
+        self.assertTrue(self.janela.tabuleiro.marcas().vazia, "sugerir não é anotar")
+        self.assertFalse(self.arquivo.exists(), "sugerir não grava nada")
+
+        self.janela.aceitar_sugestao()
+
+        self.assertEqual(self.janela.tabuleiro.marcas().casas, {"c5": mc.ESTRELA_PRETA})
+        self.assertEqual(self.janela.tabuleiro.sugestao_pendente(), {})
+        self.assertEqual(self.janela.lbl_sugestao.text(), "")
+        self.assertTrue(self.janela.btn_sugestao.isHidden())
+        relido = mc.ArquivoDeMarcas(self.arquivo)
+        self.assertEqual(relido.marcas_de(mc.chave_da_imagem(raiz / "1.png")).casas, {"c5": mc.ESTRELA_PRETA})
+
+    def test_a_sugestao_nao_muda_a_posicao_ate_aceitar(self) -> None:
+        raiz = self.com_estrela()
+        leituras = {"com-peca": "8/8/8/2P5/8/8/8/8"}
+        self.janela._leitor = lambda _tabuleiro: leituras["com-peca"]
+        self.abrir(self.janela, raiz)
+        self.assertEqual(self.janela.tabuleiro.modelo.squares()[C5], "P", "o modelo leu a estrela como peão")
+        self.assertEqual(self.janela.tabuleiro.sugestao_pendente(), {"c5": mc.ESTRELA_PRETA})
+
+        self.janela.aceitar_sugestao()
+
+        self.assertEqual(self.janela.tabuleiro.modelo.squares()[C5], "", "aceitar segue a opção de esvaziar")
+
+    def test_a_sugestao_troca_com_a_imagem(self) -> None:
+        self.abrir(self.janela, self.com_estrela())
+        self.janela.andar(1)
+        self.janela.aguardar()
+        self.assertEqual(self.janela.tabuleiro.sugestao_pendente(), {})
+        self.assertEqual(self.janela.lbl_sugestao.text(), "")
+
+        self.janela.andar(-1)
+        self.janela.aguardar()
+        self.assertEqual(self.janela.tabuleiro.sugestao_pendente(), {"c5": mc.ESTRELA_PRETA})
+
+    def test_sugestao_de_outra_imagem_e_ignorada(self) -> None:
+        self.abrir(self.janela, self.raiz)
+        self.janela._chegou_sugestao(1, {"a1": mc.X})
+        self.assertEqual(self.janela.tabuleiro.sugestao_pendente(), {})
+
+    def test_anotacao_a_mao_tem_precedencia_sobre_a_sugestao(self) -> None:
+        self.abrir(self.janela, self.com_estrela())
+        self.anotar(self.janela, mc.X, C5)
+        self.assertEqual(self.janela.tabuleiro.sugestao_pendente(), {}, "a casa já foi resolvida à mão")
+        self.janela.aceitar_sugestao()
+        self.assertEqual(self.janela.tabuleiro.marcas().casas, {"c5": mc.X})
+
+    def test_sem_arquivo_de_marcas_aceitar_nao_faz_nada(self) -> None:
+        self.arquivo.parent.mkdir(parents=True, exist_ok=True)
+        self.arquivo.write_text("{ estragado", encoding="utf-8")
+        janela = self.nova_janela()
+        self.abrir(janela, self.com_estrela())
+        janela.aceitar_sugestao()
+        self.assertTrue(janela.tabuleiro.marcas().vazia)
+        self.assertEqual(self.arquivo.read_text(encoding="utf-8"), "{ estragado")
 
     def test_so_uma_das_paletas_tem_algo_na_mao(self) -> None:
         self.abrir(self.janela, self.raiz)

@@ -26,10 +26,14 @@ from PyQt6.QtWidgets import QWidget
 from chess_diagram_ocr import marcas_de_casa as mc
 from chess_diagram_ocr.fen_utils import square_name
 from chess_diagram_ocr.qt import desenho_de_marcas as desenho
+from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.tabuleiro_editavel import TabuleiroEditavel
-from chess_diagram_ocr.ui import board_edit
+from chess_diagram_ocr.ui import board_edit, tokens
 
 __all__ = ["TabuleiroDeMarcas"]
+
+OPACIDADE_DA_SUGESTAO = 0.45
+"""A sugestão do detector é mais apagada que a marca anotada: quem olha precisa saber qual é qual."""
 
 
 class TabuleiroDeMarcas(TabuleiroEditavel):
@@ -42,6 +46,7 @@ class TabuleiroDeMarcas(TabuleiroEditavel):
     def __init__(self, parent: QWidget | None = None, **opcoes: object) -> None:
         super().__init__(parent, **opcoes)
         self._marcas = mc.MarcasDoDiagrama()
+        self._sugestao: dict[str, str] = {}
         self._ferramenta: str | None = None
         self._esvaziar = True
         self._traco_de: tuple[float, float] | None = None
@@ -57,6 +62,25 @@ class TabuleiroDeMarcas(TabuleiroEditavel):
         self._marcas = marcas
         self._traco_de = self._traco_ate = None
         self.update()
+
+    def definir_sugestao(self, sugestao: dict[str, str]) -> None:
+        """O que o detector de marcas viu nesta imagem. Aparece em fantasma e não é anotação."""
+        self._sugestao = dict(sugestao)
+        self.update()
+
+    def sugestao_pendente(self) -> dict[str, str]:
+        """A sugestão nas casas ainda sem marca: o que aceitar acrescentaria."""
+        return {nome: tipo for nome, tipo in self._sugestao.items() if nome not in self._marcas.casas}
+
+    def aceitar_sugestao(self) -> None:
+        """A sugestão vira anotação, com as mesmas regras de marcar à mão: é a pessoa que decide aqui."""
+        novas = self._marcas
+        for nome, tipo in self.sugestao_pendente().items():
+            novas = novas.alternar_casa(tipo, nome)
+            indice = mc.indice_da_casa(nome)
+            if self._esvaziar and board_edit.piece_at(self.modelo.placement, indice):
+                self._aplicar(self.modelo.erase(indice))
+        self._mudou(novas)
 
     def ferramenta(self) -> str | None:
         return self._ferramenta
@@ -172,11 +196,21 @@ class TabuleiroDeMarcas(TabuleiroEditavel):
 
     def paintEvent(self, a0: QPaintEvent | None) -> None:  # noqa: N802 - assinatura do Qt
         super().paintEvent(a0)
-        if self._marcas.vazia and self._traco_de is None:
+        pendente = self.sugestao_pendente()
+        if self._marcas.vazia and self._traco_de is None and not pendente:
             return
         geo = self.geometria()
         virado = self.modelo.flipped
         pintor = QPainter(self)
+        if pendente:
+            pintor.setOpacity(OPACIDADE_DA_SUGESTAO)
+            desenho.pintar_marcas(
+                pintor, mc.MarcasDoDiagrama(casas=pendente), geo.origin_x, geo.origin_y, geo.cell, virado=virado
+            )
+            pintor.setOpacity(1.0)
+            # O modelo costuma ler a marca como peça, e a peça cobriria o fantasma justamente aí.
+            for nome in pendente:
+                self._anel(pintor, geo, mc.indice_da_casa(nome), tema.cor_atual(tokens.SETA_AZUL), tracejado=True)
         desenho.pintar_marcas(pintor, self._marcas, geo.origin_x, geo.origin_y, geo.cell, virado=virado)
         if self._traco_de is not None and self._traco_ate is not None and self._ferramenta in mc.TIPOS_DE_TRACO:
             rascunho = mc.Traco(self._ferramenta, self._traco_de, self._traco_ate)

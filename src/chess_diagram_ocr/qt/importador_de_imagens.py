@@ -43,6 +43,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from chess_diagram_ocr import detector_de_marcas
 from chess_diagram_ocr import importacao_de_imagens as imp
 from chess_diagram_ocr import marcas_de_casa as mc
 from chess_diagram_ocr.fen_utils import is_syntactically_valid_fen
@@ -119,6 +120,9 @@ class JanelaDeImportacao(QDialog):
     _leitura_pronta = pyqtSignal(int, object, str, str)
     """Interno: posição, recorte, qual recorte, campo de peças lido. Vem da thread de leitura."""
 
+    _sugestao_pronta = pyqtSignal(int, object)
+    """Interno: posição e as casas que o detector de marcas sugere. Vem da thread de leitura."""
+
     _leitura_falhou = pyqtSignal(int, str)
     _lote_andou = pyqtSignal(int, int, int)
     _lote_acabou = pyqtSignal(object)
@@ -171,6 +175,7 @@ class JanelaDeImportacao(QDialog):
 
         self._montar()
         self._leitura_pronta.connect(self._chegou_leitura)
+        self._sugestao_pronta.connect(self._chegou_sugestao)
         self._leitura_falhou.connect(self._falhou_leitura)
         self._lote_andou.connect(self._andou_lote)
         self._lote_acabou.connect(self._acabou_lote)
@@ -299,6 +304,20 @@ class JanelaDeImportacao(QDialog):
         self.lbl_marcas.setWordWrap(True)
         self.lbl_marcas.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         coluna.addWidget(self.lbl_marcas)
+        linha_sugestao = QHBoxLayout()
+        self.lbl_sugestao = QLabel("", grupo)
+        self.lbl_sugestao.setWordWrap(True)
+        self.lbl_sugestao.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.btn_sugestao = self._botao("Aceitar a sugestão", self.aceitar_sugestao, estilos.NEUTRO)
+        dica_em(
+            self.btn_sugestao,
+            "Transforma as marcas apagadas do tabuleiro em anotação (Ctrl+M).\n"
+            "São o que o detector viu pela forma: confira na imagem antes de aceitar.",
+        )
+        self.btn_sugestao.setVisible(False)
+        linha_sugestao.addWidget(self.lbl_sugestao, 1)
+        linha_sugestao.addWidget(self.btn_sugestao)
+        coluna.addLayout(linha_sugestao)
         trocar = QHBoxLayout()
         self.btn_fonte = self._botao("Usar a FEN do relatório", self.usar_fonte, estilos.NEUTRO)
         self.btn_modelo = self._botao("Usar a leitura do modelo", self.usar_modelo, estilos.NEUTRO)
@@ -350,6 +369,7 @@ class JanelaDeImportacao(QDialog):
             ("Ctrl+Right", self.pular),
             ("Ctrl+Left", lambda: self.andar(-1)),
             ("Ctrl+D", self.descartar),
+            ("Ctrl+M", self.aceitar_sugestao),
             ("PgDown", lambda: self.andar(1)),
             ("PgUp", lambda: self.andar(-1)),
         ):
@@ -478,6 +498,7 @@ class JanelaDeImportacao(QDialog):
         self._recorte_usado = ""
         self._pixmap_recorte = None
         self._chave_atual = ""
+        self.tabuleiro.definir_sugestao({})
         item = self.item_atual()
         self._atualizar_resumo()
         if item is None or self.lote is None:
@@ -485,7 +506,7 @@ class JanelaDeImportacao(QDialog):
             self.img_recorte.clear()
             self.tabuleiro.mostrar(imp.TABULEIRO_VAZIO)
             self.tabuleiro.definir_marcas(mc.MarcasDoDiagrama())
-            self.lbl_marcas.clear()
+            self._descrever_marcas()
             self.campo_fen.clear()
             self.lbl_leituras.clear()
             self.lbl_item.setText("Nada para conferir neste filtro." if self.lote is not None else "")
@@ -552,6 +573,10 @@ class JanelaDeImportacao(QDialog):
     def _descrever_marcas(self) -> None:
         frase = mc.descrever(self.tabuleiro.marcas())
         self.lbl_marcas.setText(f"Marcas: {frase}" if frase else "")
+        pendente = self.tabuleiro.sugestao_pendente()
+        sugerida = mc.descrever(mc.MarcasDoDiagrama(casas=pendente))
+        self.lbl_sugestao.setText(f"Sugestão, ainda não anotada: {sugerida}" if sugerida else "")
+        self.btn_sugestao.setVisible(bool(pendente))
 
     def _pintar_recorte(self) -> None:
         """O recorte com as marcas por cima, só em contorno, para conferir se o lugar bate."""
@@ -586,6 +611,18 @@ class JanelaDeImportacao(QDialog):
         except (OSError, ValueError) as exc:
             logger.warning("Marcas não gravadas: %s", exc)
             self.lbl_aviso.setText(f"As marcas não foram gravadas: {exc}")
+
+    def _chegou_sugestao(self, posicao: int, casas: dict[str, str]) -> None:
+        """A sugestão do detector, se a imagem ainda for a da tela."""
+        if posicao != self.posicao_atual():
+            return
+        self.tabuleiro.definir_sugestao(casas)
+        self._descrever_marcas()
+
+    def aceitar_sugestao(self) -> None:
+        """Só com onde gravar: sem a chave da imagem, a anotação se perderia ao trocar de imagem."""
+        if self._marcas_gravadas is not None and self._chave_atual and self.tabuleiro.sugestao_pendente():
+            self.tabuleiro.aceitar_sugestao()
 
     def _pincel_mudou(self, simbolo: object) -> None:
         """Pegar uma peça larga a marca: só uma das duas paletas tem algo na mão."""
@@ -643,6 +680,7 @@ class JanelaDeImportacao(QDialog):
         def trabalho() -> None:
             try:
                 tabuleiro, usado = imp.recortar(imp.ler_imagem(caminho), recorte)
+                _emitir(self, "_sugestao_pronta", posicao, detector_de_marcas.sugerir_marcas(tabuleiro).casas)
                 lida = leitor(tabuleiro)
             except Exception as exc:  # noqa: BLE001 - qualquer falha vira aviso na tela, não queda
                 logger.exception("Leitura da importação falhou em %s", caminho)
@@ -711,6 +749,8 @@ class JanelaDeImportacao(QDialog):
         self._recorte_atual = None
         self._recorte_usado = ""
         self._pixmap_recorte = None
+        self.tabuleiro.definir_sugestao({})
+        self._descrever_marcas()
         self.img_recorte.setText("Recortando…")
         self._descrever_leituras()
         self._habilitar()
