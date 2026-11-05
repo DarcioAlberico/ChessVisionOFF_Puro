@@ -578,8 +578,7 @@ class ExecutorTests(unittest.TestCase):
         from pathlib import Path
 
         processo = mock.Mock(returncode=3)
-        processo.communicate.return_value = (b"parcial", b"nada que pareca erro
-")
+        processo.communicate.return_value = (b"parcial", b"nada que pareca erro")
         motor = tesseract.Motor(binario=Path("C:/x/tesseract.exe"), versao="5.5.0")
         with mock.patch.object(tesseract, "_no_trabalho"), self.assertRaises(tesseract.FalhaDoTesseract):
             tesseract.rodar(motor, b"", lingua="eng", dpi=220, psm=7, timeout=5, popen=lambda *_a, **_k: processo)
