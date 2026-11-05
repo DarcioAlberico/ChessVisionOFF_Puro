@@ -235,7 +235,6 @@ def caminho_da_camada(saida: str) -> None:
                 ok = sum(1 for x in nota if restam[x] > 0 and not restam.subtract([x]))
                 reg = {"caminho": True, "livro": os.path.basename(pdf), "pagina": i, "avisos": [a.codigo for a in pag.avisos],
                        "notacao": [ok, len(nota)], "afer": [t_base.count("afer"), t_pag.count("afer")],
-                       "linhas": [len(banco.linhas_da_pagina(base)), len(banco.linhas_da_pagina(pag))],
                        "palavras": [len(t_base), len(t_pag)]}
                 f.write(json.dumps(reg, ensure_ascii=False) + "\n")
                 f.flush()

@@ -9,15 +9,6 @@
       "folhas": 120
     }
   },
-  "caminho_da_camada_com_reserva": {
-    "afer_na_camada": 21,
-    "afer_na_saida": 0,
-    "folhas": 28,
-    "intactos": 382,
-    "palavras_na_camada": 5419,
-    "palavras_na_saida": 5643,
-    "tokens_de_notacao_da_camada": 1210
-  },
   "conjuntos": {
     "ouro_dev_completo": {
       "avisos": {},
@@ -430,86 +421,79 @@
   "dpi": 220,
   "folhas_perdidas": [
     {
-      "avisos_com_reserva": [],
-      "cer_prosa_reserva": 0.0679,
+      "avisos": [],
+      "cer_prosa_glifo": 0.0679,
       "densidade": null,
       "folha": 903,
       "linhas": {
         "camada": 41,
-        "glifo": 47,
-        "reserva": 47
+        "lidas": 47
       },
       "livro": "📚Chess Evolu"
     },
     {
-      "avisos_com_reserva": [],
-      "cer_prosa_reserva": 0.0594,
+      "avisos": [],
+      "cer_prosa_glifo": 0.0594,
       "densidade": null,
       "folha": 1210,
       "linhas": {
         "camada": 47,
-        "glifo": 52,
-        "reserva": 52
+        "lidas": 52
       },
       "livro": "📚Chess Evolu"
     },
     {
-      "avisos_com_reserva": [],
-      "cer_prosa_reserva": 0.5397,
+      "avisos": [],
+      "cer_prosa_glifo": 0.5397,
       "densidade": null,
       "folha": 31,
       "linhas": {
         "camada": 72,
-        "glifo": 79,
-        "reserva": 79
+        "lidas": 79
       },
       "livro": "Kmoch - Inte"
     },
     {
-      "avisos_com_reserva": [],
-      "cer_prosa_reserva": 0.7849,
+      "avisos": [],
+      "cer_prosa_glifo": 0.7849,
       "densidade": null,
       "folha": 69,
       "linhas": {
         "camada": 75,
-        "glifo": 82,
-        "reserva": 82
+        "lidas": 82
       },
       "livro": "Kmoch - Inte"
     },
     {
-      "avisos_com_reserva": [],
-      "cer_prosa_reserva": 0.5573,
+      "avisos": [],
+      "cer_prosa_glifo": 0.5573,
       "densidade": null,
       "folha": 106,
       "linhas": {
         "camada": 70,
-        "glifo": 80,
-        "reserva": 80
+        "lidas": 80
       },
       "livro": "Kmoch - Inte"
     },
     {
-      "avisos_com_reserva": [],
-      "cer_prosa_reserva": 0.1364,
+      "avisos": [],
+      "cer_prosa_glifo": 0.1364,
       "densidade": null,
       "folha": 814,
       "linhas": {
         "camada": 4,
-        "glifo": 12,
-        "reserva": 12
+        "lidas": 12
       },
       "livro": "📚Chess Evolu"
     },
     {
-      "avisos_com_reserva": [],
-      "cer_prosa_reserva": 0.1084,
+      "avisos": [],
+      "cer_prosa_glifo": 0.1084,
       "densidade": null,
       "folha": 1396,
       "linhas": {
         "camada": 32,
-        "glifo": 39,
-        "reserva": 39
+        "lidas": 39
       },
       "livro": "📚Chess Evolu"
     }
