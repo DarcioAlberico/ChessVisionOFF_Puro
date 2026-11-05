@@ -346,8 +346,12 @@ def _sha(caminho: Path) -> str:
     return hashlib.sha256(caminho.read_bytes()).hexdigest()[:16] if caminho.is_file() else ""
 
 
-def _procedencia() -> dict:
-    """Com que código, modelo e Tesseract isto foi medido. Sem caminho absoluto: o relatório é público."""
+def _procedencia(commit_medido: str = "") -> dict:
+    """Com que código, modelo e Tesseract isto foi medido. Sem caminho absoluto: o relatório é público.
+
+    `commit_medido` é o da árvore que **leu** as folhas: `resumir` costuma rodar depois, de outro commit, e
+    gravar o de agora declararia um código que não mediu nada.
+    """
     import subprocess
 
     from chess_diagram_ocr.text import tesseract
@@ -361,7 +365,7 @@ def _procedencia() -> dict:
         lingua: _sha(motor.tessdata / f"{lingua}.traineddata") if motor.tessdata else "" for lingua in tesseract.LINGUAS
     }
     return {
-        "commit": git("rev-parse", "HEAD"),
+        "commit": commit_medido or git("rev-parse", "HEAD"),
         "arvore_suja_em_src": bool(git("status", "--porcelain", "--", "src")),
         "modelo_sha256": _sha(MODELO),
         "tesseract": motor.versao,
@@ -371,7 +375,7 @@ def _procedencia() -> dict:
     }
 
 
-def resumir(saida: str, entradas: list[str]) -> None:
+def resumir(saida: str, entradas: list[str], commit_medido: str = "") -> None:
     from chess_diagram_ocr.text.caderno import identidade_de
 
     reprovados = _reprovados()
@@ -380,13 +384,21 @@ def resumir(saida: str, entradas: list[str]) -> None:
         "item": "S-710, S-715, S-716, S-717, S-718, S-720",
         "regua": "texto_prosa_2026-10-30/banco.py",
         "dpi": DPI,
-        "medido_com": _procedencia(),
+        "medido_com": _procedencia(commit_medido),
     }
     for entrada in entradas:
         regs = [json.loads(ln) for ln in open(entrada, encoding="utf-8")]
         if not regs:
             continue
-        if "tipo" in regs[0]:
+        if "tipo" in regs[0] and all("Chess Evolution" in r["nome"] for r in regs):
+            por_livro: dict[str, list[dict]] = defaultdict(list)
+            for r in regs:
+                por_livro[r["nome"][:21].lstrip("📚")].append(r)
+            relatorio["amostra_chess_evolution"] = {
+                livro: {"folhas": len(v), "folha_nao_lida": sum("folha_nao_lida" in r["avisos"] for r in v)}
+                for livro, v in sorted(por_livro.items())
+            }
+        elif "tipo" in regs[0]:
             por_tipo: dict[str, list[dict]] = defaultdict(list)
             for r in regs:
                 por_tipo[r["tipo"]].append(r)
@@ -442,6 +454,7 @@ def main() -> None:
     a = sub.add_parser("resumir")
     a.add_argument("saida")
     a.add_argument("entradas", nargs="+")
+    a.add_argument("--commit", default="", help="o commit da árvore que leu as folhas")
     args = ap.parse_args()
     if args.modo == "folhas":
         folhas(args.relatorio, args.conjunto, args.saida)
@@ -450,7 +463,7 @@ def main() -> None:
     elif args.modo == "varrer":
         varrer(args.saida, args.por_livro, args.padrao)
     else:
-        resumir(args.saida, args.entradas)
+        resumir(args.saida, args.entradas, args.commit)
 
 
 if __name__ == "__main__":

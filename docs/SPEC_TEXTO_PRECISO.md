@@ -294,9 +294,14 @@ documento, então a folha reaberta do caderno continua dizendo que não foi lida
 
 ### Critério de aceite
 
-`tests/test_text_guarda_de_leitura.py` e `tests/test_qt_texto_prosa.py`. As sete folhas conhecidas avisam, com
-densidade abaixo de 0,002; a varredura está em
-[metrics/texto_prosa_primeira_entrega.json](metrics/texto_prosa_primeira_entrega.json), por tipo de folha.
+`tests/test_text_guarda_de_leitura.py`, `tests/test_text_fiacao_da_prosa.py` e `tests/test_qt_texto_prosa.py`. As sete
+folhas conhecidas avisam. A varredura, 812 folhas de 58 livros, está em
+[metrics/texto_prosa_primeira_entrega.json](metrics/texto_prosa_primeira_entrega.json), por tipo de folha: nenhuma com
+camada abaixo de 0,7 sem aviso, e nenhuma das folhas de *Polgar*, *Reinfeld* e das duas capas que avisavam. **O "5 de 67"
+do roadmap estava muito abaixo da realidade:** em 120 folhas de cada, o *Chess Evolution 2014* perde 113 e o *2013*, 60.
+
+A guarda dos testes foi provada por mutação: revertidos 116 consertos, 115 acusam. O que sobra é um mutante equivalente
+(o número partido, em que o sufixo de mesmo tamanho é o próprio número).
 
 ### O que ela não pega
 
@@ -381,7 +386,8 @@ não escrito saem iguais nos dois lados. Foi o crítico, olhando a tinta, que os
 
 `motor="fusao"`, com o rótulo "Glifo + Tesseract (experimental)", é a regra v5 de 2026-10-30, escrita sobre tokens e
 aplicada **dentro** de `ler_pagina`, antes de `_com_negrito`, `_com_trechos` e da junção de hífen, para esses
-trabalharem sobre o texto fundido. Duas regras da S-721 já entram: a palavra que só o glifo leu certo fica com ele
+trabalharem sobre o texto fundido. Medida nos aprovados na auditoria: 0,351% contra 0,279% do Tesseract puro, +0,072 p.p.
+[0; +0,16], um pouco acima do teto de +0,1 que a S-721 pede. Duas regras da S-721 já entram: a palavra que só o glifo leu certo fica com ele
 (regra 4), e a barra `|` não vence a letra, que eram 8 de 20 erros lidos à mão. A língua é escolhida à mão na caixa
 nova da aba e fica no estado da janela; a S-723 a leva ao caderno. **Trocar a língua pede a leitura nova**, como trocar
 de motor: o caderno anota `fusao:por`. O padrão não muda: `auto` continua o glifo.
@@ -417,8 +423,9 @@ terceiro sinal é a confiança por palavra do TSV; a S-761 calibra.
 
 ### Critério de aceite
 
-G5 provisória em `metrics/texto_prosa_primeira_entrega.json`, com a fração marcada travada em 5%. **A captura não
-chega ao alvo de 90%, que é da S-761.** O interruptor é `ler_pagina(marca_por_palavra=False)`, e vale a faixa de hoje.
+G5 provisória em `metrics/texto_prosa_primeira_entrega.json`, com a fração marcada travada em 5%: 4,8% das palavras
+marcadas, com captura de 50% no ouro, 41% nos aprovados na auditoria e 29% na prata. **Longe do alvo de 90%, que é da
+S-761.** O interruptor é `ler_pagina(marca_por_palavra=False)`, e vale a faixa de hoje.
 
 ## S-720 · O executor do Tesseract e o contrato `LeitorDeLinha` ✅ implementada (2026-11-05)
 
@@ -436,8 +443,9 @@ motor nunca levanta no caminho da janela.
 ### Critério de aceite
 
 `tests/test_text_tesseract.py`: o *parser* sobre saídas gravadas, sem o binário, processo falso que erra, estoura e
-não abre. **Diferença zero** contra a leitura de um processo por linha, nas folhas do ouro e da prata, em
-`metrics/texto_prosa_primeira_entrega.json`, chave `executor`.
+não abre. **Diferença zero** contra a leitura de um processo por linha em 2.573 linhas do ouro e da prata, a 0,76 s por
+folha contra 3,4 s, em `metrics/texto_prosa_primeira_entrega.json`, chave `executor`. O G4 não se julga por esses
+tempos: outras medições rodavam na máquina.
 
 ### O que ela não entrega
 

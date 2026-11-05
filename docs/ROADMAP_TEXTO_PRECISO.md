@@ -501,9 +501,11 @@ marcado para revisão, com captura ≥ 90% — ou (b) pagar o orçamento de CPU 
 > **Estado em 2026-11-05: a primeira entrega está na `main`**, com a especificação em
 > [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) e os números em
 > [metrics/texto_prosa_primeira_entrega.json](metrics/texto_prosa_primeira_entrega.json). A coluna "primeira entrega"
-> da tabela abaixo é a previsão de 2026-10-30, e o medido fica no relatório: nos livros aprovados na auditoria a prosa
-> erra um décimo do glifo, mas a M0 ainda está acima de 0,05%, e a marca captura cerca de metade do erro. Daqui para a
-> frente faltam as Fases 100 (régua no pacote), 102 (fusão completa e virar o padrão), 103 a 107, e as S-711 a S-714.
+> da tabela abaixo é a previsão de 2026-10-30, e o medido fica no relatório. Nos cinco livros aprovados na auditoria, a
+> prosa da camada erra **0,221%** [0; 0,64] contra 2,83% do glifo: um décimo, mas acima da M0 de 0,05%. A marca por palavra
+> captura de 29% a 50% do erro, com 4,8% das palavras marcadas, longe dos 90% da G5. **A S-711 é agora a prioridade:** a
+> guarda mostrou o *Chess Evolution 2014* perdendo 113 de 120 folhas, e o *2013*, 60 de 120. Daqui para a frente faltam as
+> Fases 100 (régua no pacote), 102 (fusão completa e virar o padrão), 103 a 107, e as S-711 a S-714.
 
 **A primeira entrega** — o que muda na aba Texto antes de qualquer portão, sem trocar o padrão de
 ninguém (decisão 10) e sem esperar instalador nem livro novo, porque a máquina do dono já tem o
@@ -813,10 +815,11 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     amostra (*Chess Evolution* 814 e 1396, densidade 0,038 e 0,004) avisam; o corte de 0,5 só fica se
     nenhuma folha **com texto** cair abaixo de 0,7 na varredura dos livros dev.
   - *Saída:* G3 = 0 nas 95 folhas e na varredura, com os números publicados.
-  - *Achado:* **o "5 de 67" de 2026-10-30 é muito menor que a realidade.** A guarda mostrou o *Chess Evolution 2014*
-    perdendo a maior parte das folhas, e o *2013* e o *Kmoch* mais delas; os números estão no relatório da entrega.
-    Isso sobe a prioridade da S-711, que ataca a causa. *Corte:* o 0,5 ficou com exceção registrada, e não pela regra
-    "nenhuma folha com texto abaixo de 0,7": ver `varredura_da_guarda` no relatório.
+  - *Achado:* **o "5 de 67" de 2026-10-30 é muito menor que a realidade.** Em 120 folhas igualmente espaçadas de cada
+    um, o *Chess Evolution 2014* perde 113 e o *2013*, 60. Isso sobe a prioridade da S-711, que ataca a causa. *Corte:* o
+    0,5 cumpre a regra deste item na varredura publicada: nenhuma folha com camada abaixo de 0,7 sem aviso, em 812 folhas
+    de 58 livros. Fora dos dois *Chess Evolution* e do *Kmoch*, as seis folhas que avisam têm texto que o glifo não leu
+    (quatro contracapas conferidas à vista); a varredura de livro inteiro do G101 continua por fazer.
   - *Reversão:* o aviso não muda texto nenhum; o corte é constante. O `ESQUEMA` 2 **não** é reversível
     (versão antiga não abre arquivo novo), e por isso entra junto com o primeiro uso dos avisos.
 - **S-711** · Região escura na borda: faixa colorida e moldura de scan.
