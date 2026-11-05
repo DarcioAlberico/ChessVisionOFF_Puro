@@ -301,7 +301,7 @@ folhas do roadmap avisavam, e depois da S-711 não avisam mais, porque voltaram 
 camada abaixo de 0,7 sem aviso, e nenhuma das folhas de *Polgar*, *Reinfeld* e das duas capas que avisavam. **O "5 de 67"
 do roadmap estava muito abaixo da realidade:** em 120 folhas de cada, o *Chess Evolution 2014* perdia 113 e o *2013*, 60.
 A causa foi consertada na S-711, e na varredura sobram nove avisadas: quatro com texto que o glifo não leu, e cinco de
-sinal solto saído de dentro de uma moldura (ver S-711).
+sinal solto saído de dentro de uma moldura (ver S-711), que são capas e contracapas conferidas à vista.
 
 A guarda dos testes foi provada por mutação, com a lista do crítico mais os consertos das rodadas seguintes: um mutante
 equivalente sobrevive (o número partido, em que o sufixo de mesmo tamanho é o próprio número).
@@ -356,8 +356,10 @@ sem aviso, e é por isso que quase nada chega mais à reserva da S-715.
 - **"Nenhuma folha do ouro-dev muda de texto": superado.** As folhas 903 e 1210 mudam, porque eram as perdidas. As outras
   26 saem idênticas.
 
-**A S-711 muda relatório de estilo.** Com o *Kmoch* e os *Chess Evolution* lidos, `metrics/texto_estilo_por_motor.json` passa a
-contar folhas que antes não contavam, e a perda sobe sem que nada tenha piorado: ver `leitura` no próprio relatório.
+**A S-711 muda o relatório de estilo.** Com o *Kmoch* e os *Chess Evolution* lidos, `metrics/texto_estilo_por_motor.json` passa a
+contar folhas que antes não contavam, e foi remedido: a perda de negrito vai de 9,4% a 7,3%, e a de itálico de 16,5% a 32,1%. Os
+livros que já contavam quase não mudam; a população é outra, e o total não compara. **O que aparece é defeito que a folha
+perdida escondia:** o *Chess Evolution 2014* perde 85 de 106 itálicos. Fica para o G102.
 
 ### O que ela não entrega
 

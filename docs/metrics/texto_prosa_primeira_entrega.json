@@ -13,12 +13,12 @@
     "afer_na_camada": 22,
     "afer_na_saida": 0,
     "folhas": 28,
-    "intactos": 1298,
-    "medido_em": "addcc318a4e08f4d22db1160eae88cb19057f401",
+    "intactos": 1346,
+    "medido_em": "9595253",
     "nota": "forçado: depois da S-711 nenhuma folha do ouro e da prata chega neste caminho",
     "palavras_na_camada": 5649,
-    "palavras_na_saida": 5600,
-    "tokens_de_notacao_da_camada": 1300
+    "palavras_na_saida": 5596,
+    "tokens_de_notacao_da_camada": 1346
   },
   "conjuntos": {
     "ouro_dev_completo": {
@@ -136,18 +136,18 @@
         }
       },
       "segundos_por_folha": {
-        "camada_prosa": 0.787,
-        "fusao": 1.466,
-        "glifo": 0.7,
-        "tess_por_folha": 0.708,
-        "tess_por_processo": 3.244
+        "camada_prosa": 0.929,
+        "fusao": 1.651,
+        "glifo": 0.836,
+        "tess_por_folha": 0.735,
+        "tess_por_processo": 3.505
       },
       "segundos_por_folha_p95": {
-        "camada_prosa": 1.488,
-        "fusao": 2.489,
-        "glifo": 1.428,
-        "tess_por_folha": 1.089,
-        "tess_por_processo": 4.915
+        "camada_prosa": 1.913,
+        "fusao": 2.876,
+        "glifo": 1.784,
+        "tess_por_folha": 1.152,
+        "tess_por_processo": 5.44
       },
       "wer": {
         "camada_prosa": 0.01523,
@@ -271,18 +271,18 @@
         }
       },
       "segundos_por_folha": {
-        "camada_prosa": 0.635,
-        "fusao": 1.264,
-        "glifo": 0.562,
-        "tess_por_folha": 0.637,
-        "tess_por_processo": 2.93
+        "camada_prosa": 0.734,
+        "fusao": 1.403,
+        "glifo": 0.658,
+        "tess_por_folha": 0.665,
+        "tess_por_processo": 3.161
       },
       "segundos_por_folha_p95": {
-        "camada_prosa": 0.869,
-        "fusao": 1.535,
-        "glifo": 0.772,
-        "tess_por_folha": 0.925,
-        "tess_por_processo": 4.915
+        "camada_prosa": 1.024,
+        "fusao": 1.716,
+        "glifo": 1.01,
+        "tess_por_folha": 0.976,
+        "tess_por_processo": 5.44
       },
       "wer": {
         "camada_prosa": 0.00417,
@@ -315,9 +315,9 @@
       },
       "folhas": 30,
       "g5_provisoria_fusao": {
-        "captura": 0.2555,
+        "captura": 0.256,
         "fracao_marcada": 0.0481,
-        "palavras_erradas": 955
+        "palavras_erradas": 953
       },
       "livros": 10,
       "notacao": {
@@ -366,7 +366,7 @@
           ]
         },
         "fusao-tess_prosa": {
-          "delta_pp": 0.598,
+          "delta_pp": 0.592,
           "ic95_pp": [
             -0.203,
             1.801
@@ -386,10 +386,10 @@
           ]
         },
         "fusao": {
-          "cer": 0.14964,
+          "cer": 0.14958,
           "ic95": [
             0.08539,
-            0.2253
+            0.22509
           ]
         },
         "glifo": {
@@ -408,22 +408,22 @@
         }
       },
       "segundos_por_folha": {
-        "camada_prosa": 1.313,
-        "fusao": 2.103,
-        "glifo": 1.202,
-        "tess_por_folha": 0.837,
-        "tess_por_processo": 6.371
+        "camada_prosa": 1.572,
+        "fusao": 2.41,
+        "glifo": 1.436,
+        "tess_por_folha": 0.916,
+        "tess_por_processo": 7.133
       },
       "segundos_por_folha_p95": {
-        "camada_prosa": 2.502,
-        "fusao": 3.064,
-        "glifo": 2.221,
-        "tess_por_folha": 1.479,
-        "tess_por_processo": 10.686
+        "camada_prosa": 2.826,
+        "fusao": 3.795,
+        "glifo": 2.56,
+        "tess_por_folha": 1.644,
+        "tess_por_processo": 12.339
       },
       "wer": {
         "camada_prosa": 0.54428,
-        "fusao": 0.26667,
+        "fusao": 0.26654,
         "glifo": 0.54428,
         "tess": 0.25191
       }
@@ -509,10 +509,10 @@
       "livro": "📚Chess Evolu"
     }
   ],
-  "item": "S-710, S-715, S-716, S-717, S-718, S-720",
+  "item": "S-710, S-711, S-715, S-716, S-717, S-718, S-720",
   "medido_com": {
     "arvore_suja_em_src": false,
-    "commit": "bb7a2a321de7dd9318a84522cade715cf6ee63ca",
+    "commit": "9595253",
     "modelo_sha256": "ca4bcc00b9c59b07",
     "nota": "tempos sob contenção: outras medições rodavam na máquina, e o G4 não se julga por eles",
     "regua_sha256": "9857cbee6af253dc",
@@ -528,29 +528,62 @@
     },
     "tesseract": "5.5.0.20241111"
   },
+  "portao_da_s711": {
+    "diferenca": {
+      "delta_pp": 4.289,
+      "ic95_pp": [
+        1.386,
+        8.764
+      ]
+    },
+    "folhas": 24,
+    "livros": 2,
+    "medido_em": "9595253",
+    "nota": "rodar.py nas folhas de prosa dos dois Chess Evolution; a Saída da S-711 pedia Tesseract nas linhas do glifo a até 1 p.p. do oráculo",
+    "tess_nas_linhas_do_glifo": {
+      "cer": 0.05275,
+      "ic95": [
+        0.02576,
+        0.09547
+      ]
+    },
+    "tess_oraculo": {
+      "cer": 0.00986,
+      "ic95": [
+        0.00615,
+        0.01363
+      ]
+    }
+  },
   "regua": "texto_prosa_2026-10-30/banco.py",
   "varredura_da_guarda": {
     "densidade_das_avisadas": [
       0.058,
       0.14,
       0.201,
-      0.453
+      0.453,
+      3.226,
+      3.226,
+      19.2,
+      6299.429,
+      48520.0
     ],
     "folhas": 812,
     "folhas_com_camada_abaixo_de_0_7": 0,
+    "folhas_por_livro": 14,
     "livros": 58,
     "por_tipo": {
       "branco": {
         "densidade_min": 0.0,
         "densidade_p05": 0.0,
-        "folha_nao_lida": 0,
+        "folha_nao_lida": 1,
         "folhas": 37,
         "leitura_parcial": 0
       },
       "capa": {
         "densidade_min": 0.043,
-        "densidade_p05": 0.481,
-        "folha_nao_lida": 0,
+        "densidade_p05": 0.528,
+        "folha_nao_lida": 3,
         "folhas": 55,
         "leitura_parcial": 0
       },
@@ -577,8 +610,8 @@
       },
       "sem_camada": {
         "densidade_min": 0.058,
-        "densidade_p05": 0.931,
-        "folha_nao_lida": 4,
+        "densidade_p05": 0.96,
+        "folha_nao_lida": 5,
         "folhas": 189,
         "leitura_parcial": 0
       },
@@ -597,6 +630,6 @@
         "leitura_parcial": 0
       }
     },
-    "segundos_por_folha_p95": 2.165
+    "segundos_por_folha_p95": 2.62
   }
 }
