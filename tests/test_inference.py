@@ -225,6 +225,7 @@ class PredictWithOrientationTests(unittest.TestCase):
         para a confiança em vez de perdê-lo, e o veredito não muda.
         """
         sem_rei_branco = probs_for_fen("4k3/8/8/8/8/8/8/8", 0.99)
+        sem_rei_branco[60, PIECE_TO_IDX["K"]] = 0.02  # e1: o indício que autoriza o reparo
         legal_mas_insegura = probs_for_fen(KINGS_ONLY, 0.60)
 
         reparado = self._run(sem_rei_branco, legal_mas_insegura, constrained=True)
@@ -239,7 +240,17 @@ class PredictWithOrientationTests(unittest.TestCase):
         # busca teve de reescrever.
         self.assertIsNotNone(reparado.alternative)
         assert reparado.alternative is not None
-        self.assertLess(reparado.alternative.min_confidence, 0.01)
+        self.assertLess(reparado.alternative.min_confidence, 0.03)
+
+    def test_without_king_evidence_legality_decides_even_when_constrained(self) -> None:
+        """Sem indício o decodificador não inventa o rei, e a leitura chega ilegal à política."""
+        sem_rei_branco = probs_for_fen("4k3/8/8/8/8/8/8/8", 0.99)
+        legal_mas_insegura = probs_for_fen(KINGS_ONLY, 0.60)
+
+        result = self._run(sem_rei_branco, legal_mas_insegura, constrained=True)
+
+        self.assertEqual(result.rotation, 180)
+        self.assertEqual(result.reason, "única orientação legal")
 
     def test_pawn_prior_decides_when_confidence_is_noise(self) -> None:
         """A regressão medida no 1937 Kemeri, como teste.
