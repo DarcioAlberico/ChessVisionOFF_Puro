@@ -141,7 +141,9 @@ def palavras_da_folha(pagina: Any) -> list[PalavraDaCamada]:
         )
         pedacos: list[list[_Caractere]] = []
         for c in dentro:
-            if pedacos and c.x0 - pedacos[-1][-1].x1 <= VAO_DE_PALAVRA * c.corpo:
+            # **O maior fim já visto, e não o do caractere anterior**: a ligadura mapeada direito tem um
+            # segundo caractere de largura zero, e medir dele partia `Aerofl|ot` e `Newslett|er`.
+            if pedacos and c.x0 - max(d.x1 for d in pedacos[-1]) <= VAO_DE_PALAVRA * c.corpo:
                 pedacos[-1].append(c)
             else:
                 pedacos.append([c])

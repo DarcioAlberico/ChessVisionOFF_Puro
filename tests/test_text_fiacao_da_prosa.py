@@ -427,6 +427,16 @@ class PalavraSuspeitaTests(unittest.TestCase):
         palavras = self._palavras(um, dois, palavras=[(0.0, 0.0, 40.0, 12.0, "therest", 0, 0, 0)])
         self.assertEqual([p.texto for p in palavras], ["therest"])
 
+    def test_a_ligadura_mapeada_direito_nao_parte_a_palavra(self) -> None:
+        """`Aerofl|ot`: o `l` de largura zero fica no começo do `f` largo, e o vão não sai dele."""
+        chars = (
+            (ord("f"), 0, (0.0, 10.0), (0.0, 0.0, 5.2, 12.0)),
+            (ord("l"), 0, (0.0, 10.0), (0.0, 0.0, 0.0, 12.0)),
+            (ord("o"), 0, (5.2, 10.0), (5.2, 0.0, 9.0, 12.0)),
+        )
+        palavras = self._palavras({"font": "MyriadPro-Regular", "size": 10.0, "chars": chars})
+        self.assertEqual([p.texto for p in palavras], ["flo"])
+
     def test_a_suspeita_fica_so_com_o_pedaco_dela(self) -> None:
         normais = self._trecho("ffff", [0.3, 0.3, 0.3, 0.3])
         um = self._trecho("afer", [0.48, 0.52, 0.5, 0.33], x=100.0)

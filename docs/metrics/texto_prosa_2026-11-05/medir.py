@@ -183,7 +183,7 @@ def perdidas(saida: str) -> None:
             img = render_pdf_page(pdf, idx, DPI)
             ref_pag = ler(pdf, idx, motor="camada", imagem_rgb=img, dpi=DPI)
             sem = ler(pdf, idx, motor="glifo", reconhecedor=rec, imagem_rgb=img, dpi=DPI, reserva=False)
-            com = ler(pdf, idx, motor="glifo", reconhecedor=rec, imagem_rgb=img, dpi=DPI, lingua=lang)
+            com = ler(pdf, idx, motor="glifo", reconhecedor=rec, imagem_rgb=img, dpi=DPI, lingua=lang, reserva=True)
             ref_l = banco.linhas_da_pagina(ref_pag)
             ref = banco.texto_de([ln.texto for ln in ref_l])
             r = banco.normalizar(ref, tipografia=True, lang=lang)
@@ -201,13 +201,20 @@ def perdidas(saida: str) -> None:
 
 
 def _tipo(indice: int, n: int, camada: str, diagramas: int, componentes: int, linhas: list[str]) -> str:
-    """O tipo da folha, pelo que ela tem, sem olhar o texto lido: é contra ele que a guarda se mede."""
+    """O tipo da folha, pelo que ela tem, sem olhar o texto lido: é contra ele que a guarda se mede.
+
+    **O só-diagrama vem pela camada, e não pela tinta.** A primeira versão perguntava `componentes < 40`, e as
+    folhas da *Polgar*, com seis diagramas e as coordenadas em volta, saíam `prosa`: a tabela por tipo escondia
+    justamente o falso alarme que ela existe para mostrar.
+    """
     if componentes < 5:
         return "branco"
     if indice < 4 and componentes < 400:
         return "capa"
-    if diagramas and componentes < 40:
-        return "so_diagrama"
+    if diagramas:
+        letras = sum(len(t) for t in camada.split() if banco.classe_do_token(t) == "prosa")
+        if letras < 200 and (camada.strip() or componentes < 300):
+            return "so_diagrama"
     fim_em_numero = sum(bool(re.search(r"\d\s*$", ln)) for ln in camada.splitlines())
     if camada and len(camada.splitlines()) >= 12 and fim_em_numero > 0.7 * len(camada.splitlines()):
         return "indice"
@@ -219,7 +226,7 @@ def _tipo(indice: int, n: int, camada: str, diagramas: int, componentes: int, li
     return "prosa" if prosa / total >= 0.55 else ("misto" if prosa / total >= 0.2 else "so_notacao")
 
 
-def varrer(saida: str, por_livro: int) -> None:
+def varrer(saida: str, por_livro: int, padrao: str = "*.pdf") -> None:
     """A guarda em folhas igualmente espaçadas de cada livro do acervo, sem a reserva."""
     import fitz
 
@@ -229,7 +236,7 @@ def varrer(saida: str, por_livro: int) -> None:
     ler, rec = _leitura()
     vistos = set()
     with open(saida, "w", encoding="utf-8") as f:
-        for pdf in sorted(glob.glob(str(RAIZ / "PDF" / "*.pdf"))):
+        for pdf in sorted(glob.glob(str(RAIZ / "PDF" / padrao))):
             chave = hashlib.sha256(Path(pdf).read_bytes()[:1 << 20]).hexdigest()[:16]
             if chave in vistos:
                 continue
@@ -291,6 +298,11 @@ def _figurina(regs: list[dict], motor: str) -> dict:
     return {"revocacao": round(tp / max(1, ref), 4), "precisao": round(tp / max(1, hip), 4)}
 
 
+def _p95(valores) -> float:
+    ordenados = sorted(valores)
+    return round(ordenados[min(len(ordenados) - 1, int(len(ordenados) * 0.95))], 3) if ordenados else 0.0
+
+
 def _bloco(regs: list[dict]) -> dict:
     motores = ("glifo", "camada_prosa", "fusao", "tess")
     fusao = [r["captura"]["fusao"] for r in regs]
@@ -318,15 +330,45 @@ def _bloco(regs: list[dict]) -> dict:
             "palavras_erradas": sum(c["erradas"] for c in fusao),
         },
         "segundos_por_folha": {k: round(sum(r["tempo"][k] for r in regs) / max(1, len(regs)), 3) for k in regs[0]["tempo"]},
+        "segundos_por_folha_p95": {k: _p95(r["tempo"][k] for r in regs) for k in regs[0]["tempo"]},
         "executor": {"linhas": sum(r["executor"]["linhas"] for r in regs), "diferentes_do_processo_por_linha": sum(r["executor"]["diferentes"] for r in regs)},
         "avisos": dict(Counter(a for r in regs for m in r["avisos"].values() for a in m)),
     }
 
 
 def _reprovados() -> set[str]:
-    from chess_diagram_ocr.text import ouro
+    """Os reprovados pela auditoria visual da S-702, pela TSV dela: o manifesto do ouro não é aberto aqui."""
+    caminho = Path(__file__).resolve().parent.parent / "texto_ouro_2026-10-30" / "reprovados_auditoria.tsv"
+    return {ln.split("\t")[0] for ln in caminho.read_text(encoding="utf-8").splitlines() if ln and not ln.startswith("#")}
 
-    return {x.identidade for x in ouro.carregar().livros if x.reprovado}
+
+def _sha(caminho: Path) -> str:
+    return hashlib.sha256(caminho.read_bytes()).hexdigest()[:16] if caminho.is_file() else ""
+
+
+def _procedencia() -> dict:
+    """Com que código, modelo e Tesseract isto foi medido. Sem caminho absoluto: o relatório é público."""
+    import subprocess
+
+    from chess_diagram_ocr.text import tesseract
+
+    raiz = Path(__file__).resolve().parents[3]
+    def git(*args: str) -> str:
+        return subprocess.run(["git", "-C", str(raiz), *args], capture_output=True, text=True).stdout.strip()
+
+    motor = tesseract.achar_motor()
+    tessdata = {
+        lingua: _sha(motor.tessdata / f"{lingua}.traineddata") if motor.tessdata else "" for lingua in tesseract.LINGUAS
+    }
+    return {
+        "commit": git("rev-parse", "HEAD"),
+        "arvore_suja_em_src": bool(git("status", "--porcelain", "--", "src")),
+        "modelo_sha256": _sha(MODELO),
+        "tesseract": motor.versao,
+        "tessdata_sha256": tessdata,
+        "regua_sha256": _sha(Path(banco.__file__)),
+        "nota": "tempos sob contenção: outras medições rodavam na máquina, e o G4 não se julga por eles",
+    }
 
 
 def resumir(saida: str, entradas: list[str]) -> None:
@@ -334,7 +376,12 @@ def resumir(saida: str, entradas: list[str]) -> None:
 
     reprovados = _reprovados()
     conjuntos: dict[str, list[dict]] = defaultdict(list)
-    relatorio: dict = {"item": "S-710, S-715, S-716, S-717, S-718, S-720", "regua": "texto_prosa_2026-10-30/banco.py", "dpi": DPI}
+    relatorio: dict = {
+        "item": "S-710, S-715, S-716, S-717, S-718, S-720",
+        "regua": "texto_prosa_2026-10-30/banco.py",
+        "dpi": DPI,
+        "medido_com": _procedencia(),
+    }
     for entrada in entradas:
         regs = [json.loads(ln) for ln in open(entrada, encoding="utf-8")]
         if not regs:
@@ -357,6 +404,8 @@ def resumir(saida: str, entradas: list[str]) -> None:
                     for t, v in sorted(por_tipo.items())
                 },
                 "folhas_com_camada_abaixo_de_0_7": sum(r["densidade"] < 0.7 and r["camada"] >= 200 and not r["avisos"] for r in regs),
+                "densidade_das_avisadas": sorted(round(r["densidade"], 3) for r in regs if "folha_nao_lida" in r["avisos"]),
+                "segundos_por_folha_p95": _p95(r["segundos"] for r in regs),
             }
         elif "cer_prosa" in regs[0]:
             relatorio["folhas_perdidas"] = [
@@ -389,6 +438,7 @@ def main() -> None:
     a = sub.add_parser("varrer")
     a.add_argument("saida")
     a.add_argument("--por-livro", type=int, default=12)
+    a.add_argument("--padrao", default="*.pdf", help="quais livros de PDF/, por glob")
     a = sub.add_parser("resumir")
     a.add_argument("saida")
     a.add_argument("entradas", nargs="+")
@@ -398,7 +448,7 @@ def main() -> None:
     elif args.modo == "perdidas":
         perdidas(args.saida)
     elif args.modo == "varrer":
-        varrer(args.saida, args.por_livro)
+        varrer(args.saida, args.por_livro, args.padrao)
     else:
         resumir(args.saida, args.entradas)
 
