@@ -254,6 +254,11 @@ class SingleLegalRule:
     uma leitura ilegal é pior que uma de confiança baixa. Ela cala nos 84% em que as duas são
     legais, o que é o motivo de a S-13 ter se enganado ao supô-la dominante: girar 180° manda
     peão branco da fila `r` para a `9-r`, e 2..7 vira 7..2, o que continua legal.
+
+    **Cala quando a legal só é legal por reparo e a outra só não tem rei.** Sem indício o
+    decodificador não inventa o rei, e um diagrama de marcas sai ilegal e certo. Sem esta
+    exceção, a leitura de cabeça para baixo, remendada, venceria a de pé. Ver S-360: reparo dos
+    dois lados já calava esta regra, e a confiança decidia.
     """
 
     name: str = "legalidade"
@@ -262,6 +267,10 @@ class SingleLegalRule:
         if ev.legal_upright == ev.legal_flipped:
             return None
         upright = ev.legal_upright
+        legal, illegal = (ev.upright, ev.flipped) if upright else (ev.flipped, ev.upright)
+        if legal.decode is not None and legal.decode.changed_squares and illegal.decode is not None:
+            if illegal.decode.only_king_missing:
+                return None
         return OrientationVerdict(
             upright=upright,
             reason="única orientação legal",
@@ -315,8 +324,10 @@ class PawnPriorRule:
 class TightMarginFallback:
     """O desempate quando nenhuma regra soube. Nunca cala, e sempre marca `ambiguous`.
 
-    Escolher a de maior confiança aqui não é uma decisão sobre a orientação: é a menos ruim
-    das duas, dita em voz alta. Quem lê `ambiguous=True` sabe que vale olho humano.
+    Aqui a margem já é ruído, como o `Kemeri` mediu, e seguir o ruído girava o diagrama: um
+    tabuleiro sem peão, com confiança 1,000 nos dois sentidos, saía de cabeça para baixo por
+    uma diferença na quarta casa. Livro imprime de pé, então a dúvida fica de pé, dita em voz
+    alta: quem lê `ambiguous=True` sabe que vale olho humano.
     """
 
     name: str = "desempate"
@@ -325,7 +336,7 @@ class TightMarginFallback:
         margin = ev.margin
         tem_peoes = ev.pawn_gap is not None
         return OrientationVerdict(
-            upright=margin >= 0,
+            upright=True,
             reason=(
                 f"margem apertada ({abs(margin):.3f}) e peões não decidem"
                 if tem_peoes
