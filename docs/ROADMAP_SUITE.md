@@ -63,6 +63,8 @@ faixa por tarefa; o Lichess esconde o que não é do momento.
 - **S-552** · A janela cabe em 1024 px de largura (achado do crítico do S-527: pedida a 1000×800, a janela fica em 1245×902)
 - **S-553** · O foco de teclado se vê (achado do crítico do S-527, rodada 2: `hasFocus()` desenha 0 px diferentes nos 12 pontos de parada da barra)
 - **S-554** · O ícone desabilitado apaga também na pele escura (achado do crítico do S-527, rodada 2: razão 9,47 habilitado contra 9,82 desabilitado -- o desligado é mais claro)
+- **S-555** · O anel de foco não move o botão, e o marcado se lê contra o apagado na folha da F9 (denúncia de 2026-09-06, relida depois do merge do religa: o anel de 2 px zerava o recheio e o botão encolhia de 285x29 para 267x23)
+- **S-556** · O botão marcado continua dito quando tem o foco (o `:checked` vinha depois do `:focus` e tomava a borda; e `FOCO` sobre `SELECAO` mede 1,14:1 na clássica, então o anel do marcado é a letra dele)
 
 ## Fase 81 — a base de partidas de vários gigabytes
 
