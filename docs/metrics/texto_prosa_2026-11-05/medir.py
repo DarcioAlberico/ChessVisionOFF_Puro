@@ -235,8 +235,7 @@ def caminho_da_camada(saida: str) -> None:
                        "notacao": [ok, len(nota)], "afer": [t_base.count("afer"), t_pag.count("afer")],
                        "linhas": [len(banco.linhas_da_pagina(base)), len(banco.linhas_da_pagina(pag))],
                        "palavras": [len(t_base), len(t_pag)]}
-                f.write(json.dumps(reg, ensure_ascii=False) + "
-")
+                f.write(json.dumps(reg, ensure_ascii=False) + "\n")
                 f.flush()
                 print(reg["livro"][:24], i + 1, reg["avisos"], reg["notacao"], reg["afer"], reg["palavras"], flush=True)
 
