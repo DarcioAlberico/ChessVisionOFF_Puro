@@ -111,9 +111,10 @@ def main(argv: list[str] | None = None) -> int:
         default="1",
         help="Páginas 1-based: '58', '58-62' ou '58,60,62'. Padrão: a primeira.",
     )
+    parser.add_argument("--lingua", default="eng", help="língua do Tesseract nos motores fusao e na reserva (S-717)")
     parser.add_argument(
         "--motor",
-        choices=("glifo", "camada", "auto"),
+        choices=("glifo", "camada", "auto", "camada_prosa", "fusao"),
         default="glifo",
         help=(
             "glifo (padrão) lê com o classificador deste projeto; camada usa a camada de texto do "
@@ -283,6 +284,7 @@ def main(argv: list[str] | None = None) -> int:
                 arranjo=args.arranjo,
                 reconhecedor=reconhecedor,
                 modo_bloco=args.bloco,
+                lingua=args.lingua,
                 colados=args.colados,
                 caixa_alta=not args.sem_caixa_alta,
                 traco=not args.sem_traco,

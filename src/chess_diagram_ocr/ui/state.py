@@ -172,6 +172,8 @@ class AppState:
     existe."""
 
     texto_motor: str = ""
+    texto_lingua: str = ""
+    """A língua do livro que o Tesseract lê (S-717). Vazio é a padrão; a S-723 a leva ao caderno."""
     """O motor de leitura escolhido na aba Texto (`ui/texto_declarado.MOTORES`), ou `""` para o
     padrão da aba (item 17 de 2026-10-09). Não é validado aqui, pela razão de `skin`: quem o
     aplica é `PainelDeTexto.definir_motor`, que ignora um nome que não conhece."""
@@ -317,6 +319,7 @@ class AppState:
             "texto_zoom": int(self.texto_zoom),
             "texto_quebra": bool(self.texto_quebra),
             "texto_motor": str(self.texto_motor),
+            "texto_lingua": str(self.texto_lingua),
             "texto_bloco": bool(self.texto_bloco),
             "texto_diagramas": str(self.texto_diagramas),
             "texto_miniatura": str(self.texto_miniatura),
@@ -459,6 +462,9 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     texto_motor = raw.get("texto_motor")
     if isinstance(texto_motor, str):
         state.texto_motor = texto_motor
+    texto_lingua = raw.get("texto_lingua")
+    if isinstance(texto_lingua, str):
+        state.texto_lingua = texto_lingua
 
     texto_bloco = raw.get("texto_bloco")
     if isinstance(texto_bloco, bool):

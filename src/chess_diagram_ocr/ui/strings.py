@@ -920,3 +920,28 @@ falar pt-BR numa máquina cujo Qt fala alemão -- medido: com o catálogo `de` i
 `DIVERGENCIAS_DECLARADAS`. A tabela existe para o caso em que o Qt **não** traduz -- nenhum, neste
 `.qm`, e todos, numa máquina sem catálogo. Ela não existe para reescrever o vocabulário de quem já
 tem um: foi assim que `Ok` virou `Confirmar` em 32 telas no ciclo 12."""
+
+
+ROTULOS_DE_MOTOR: dict[str, str] = {
+    "auto": "auto",
+    "glifo": "glifo",
+    "camada": "camada",
+    "camada_prosa": "Camada na prosa (livro digital)",
+    "fusao": "Glifo + Tesseract (experimental)",
+}
+"""O que a caixa de motor da aba Texto escreve. **Nunca o identificador cru** nos dois da prosa (S-716, S-717)."""
+
+ROTULOS_DE_LINGUA: dict[str, str] = {
+    "eng": "Inglês",
+    "por": "Português",
+    "spa": "Espanhol",
+    "deu": "Alemão",
+    "nld": "Holandês",
+    "fra": "Francês",
+    "ron": "Romeno",
+    "rus": "Russo",
+}
+"""A língua do livro, que o Tesseract precisa saber e a pessoa escolhe à mão até a S-723 (S-717)."""
+
+NADA_A_REVISAR = "Nenhuma palavra a revisar nesta folha."
+"""O `proxima_a_revisar` numa folha sem marca: rodapé, e não caixa -- é resposta, e não erro (S-718)."""

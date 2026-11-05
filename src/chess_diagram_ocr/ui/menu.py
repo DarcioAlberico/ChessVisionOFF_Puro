@@ -408,6 +408,7 @@ MENUS: tuple[Menu, ...] = (
             Item("modo_foco"),
             Item("recolher_fita"),
             Item("proxima_fora_do_lexico"),
+            Item("proxima_a_revisar"),
             Item("lista_de_correcoes"),
             Item("mover_paragrafo_acima"),
             Item("mover_paragrafo_abaixo"),

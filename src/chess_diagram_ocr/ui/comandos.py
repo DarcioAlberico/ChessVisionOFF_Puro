@@ -542,6 +542,7 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("modo_foco", "Modo foco: só a folha (Esc sai)", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Foco"),
     Comando("recolher_fita", "Recolher a fita do Texto", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Recolher"),
     Comando("proxima_fora_do_lexico", "Ir à próxima palavra fora do léxico", OCR, estilos.NEUTRO, rotulo_curto="Próxima marcada"),
+    Comando("proxima_a_revisar", "Ir à próxima palavra a revisar", OCR, estilos.NEUTRO, rotulo_curto="Próxima a revisar"),
     Comando("lista_de_correcoes", "Lista das correções desta folha", OCR, estilos.NEUTRO, rotulo_curto="Correções"),
     Comando("mover_paragrafo_acima", "Mover o parágrafo para cima", EDICAO, estilos.NEUTRO, rotulo_curto="Parágrafo acima"),
     Comando("mover_paragrafo_abaixo", "Mover o parágrafo para baixo", EDICAO, estilos.NEUTRO, rotulo_curto="Parágrafo abaixo"),

@@ -1,0 +1,169 @@
+"""A folha que saiu vazia avisa: a densidade de leitura (S-710).
+
+**O sintoma é o pior que este subsistema tem, porque não tem sintoma.** Medido em 2026-10-30, 5 de 67
+folhas -- *Chess Evolution* 903 e 1210, *Kmoch* 31, 69 e 106 -- saíam com um bloco só (`h`, `.`), sem
+log nem exceção: uma região escura na borda da folha faz a segmentação ver um caractere do tamanho da
+página. Quem lê o livro não tem como saber que faltam 40 linhas.
+
+**A primeira guarda foi reprovada por medição, e o motivo é o que decide esta.** "Tinta coberta pelas
+caixas de linha ≥ 95%" dá **1,000** na folha perdida -- a caixa única e degenerada cobre a folha
+inteira -- e 0,942 em folhas boas. "Altura da maior linha ÷ mediana" também falha (47,9 numa folha
+normal). O que separa, nas 95 folhas dos quatro conjuntos, é a **densidade de leitura**: caracteres
+lidos ÷ componentes de tinta fora dos diagramas. Folhas normais, 0,903 a 1,285; as perdidas, 0,001 a
+0,007.
+
+## O que ela promete, e o que não
+
+**Perda total, e só.** A densidade não vê perda parcial: no degradado, três folhas do *Capablanca*
+saem com 35-39% dos caracteres e densidade 0,97-1,16 -- o texto ruim tem tanta letra quanto o bom. Por
+isso o aviso se chama `folha_nao_lida`, e a perda parcial tem sinal próprio: linhas de texto estimadas
+pela projeção horizontal contra linhas lidas e, quando há camada, caracteres lidos contra caracteres
+dela.
+
+**Componente conta só com altura de letra**, 8 a 60 px a 220 dpi: a arte da capa virava centenas de
+componentes sem letra nenhuma, e o *Dvoretsky* dava 0,284 na capa. **Folha com pouca tinta é classe à
+parte** (capa, branco, só diagrama), e não avisa: nela não há o que ler, e avisar ensinaria a ignorar
+o selo.
+
+O cálculo é sobre a binária de Otsu da imagem da folha, e não a de `binarize`: o limiar global é o que
+a medição usou, e o resultado não depende da segmentação que esta guarda existe para vigiar.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+
+import numpy as np
+
+CORTE_DA_DENSIDADE = 0.5
+"""Abaixo disto a folha não foi lida. Folhas normais ficam acima de 0,9; as perdidas, abaixo de 0,01."""
+
+MINIMO_DE_COMPONENTES = 40
+"""Abaixo disto a folha não tem texto a perder: capa, branco, só diagrama. Uma linha curta de prosa."""
+
+DPI_DA_REGUA = 220
+ALTURA_MINIMA = 8
+ALTURA_MAXIMA = 60
+AREA_MINIMA = 6
+"""Área e altura da letra a `DPI_DA_REGUA`; escalam com o DPI da folha."""
+
+FOLGA = 8
+
+CORTE_DAS_LINHAS = 0.5
+MINIMO_DE_LINHAS = 10
+"""Perda parcial por linhas: lidas abaixo de metade das estimadas, numa folha com ao menos dez."""
+
+CORTE_DA_CAMADA = 0.6
+MINIMO_DA_CAMADA = 200
+"""Perda parcial por camada: lidos abaixo de 60% dos caracteres dela, se ela tiver ao menos 200."""
+
+
+@dataclass(frozen=True)
+class Medida:
+    """O que a guarda viu numa folha. Os três números vão ao relatório da régua."""
+
+    componentes: int
+    lidos: int
+    linhas_estimadas: int
+    linhas_lidas: int
+    caracteres_da_camada: int = 0
+
+    @property
+    def densidade(self) -> float:
+        return self.lidos / max(1, self.componentes)
+
+    @property
+    def tem_texto(self) -> bool:
+        return self.componentes >= MINIMO_DE_COMPONENTES
+
+    @property
+    def nao_lida(self) -> bool:
+        return self.tem_texto and self.densidade < CORTE_DA_DENSIDADE
+
+    @property
+    def parcial(self) -> bool:
+        """Leu, mas menos do que a folha tem. **Nunca junto com `nao_lida`**: é a mesma folha duas vezes."""
+        if not self.tem_texto or self.nao_lida:
+            return False
+        if self.linhas_estimadas >= MINIMO_DE_LINHAS and self.linhas_lidas < CORTE_DAS_LINHAS * self.linhas_estimadas:
+            return True
+        return (
+            self.caracteres_da_camada >= MINIMO_DA_CAMADA
+            and self.lidos < CORTE_DA_CAMADA * self.caracteres_da_camada
+        )
+
+
+def linhas_pela_projecao(tinta: np.ndarray, dpi: int = DPI_DA_REGUA) -> int:
+    """Quantas faixas de tinta a projeção horizontal acha: uma estimativa de linhas, para **baixo**.
+
+    Em duas colunas desalinhadas as linhas das duas se fundem numa faixa. É o lado seguro: a estimativa
+    baixa não dispara aviso, e o sinal existe para a folha em que quase nada foi lido.
+    """
+    if tinta.size == 0:
+        return 0
+    projecao = (tinta > 0).sum(axis=1)
+    minimo = max(3, int(round(0.01 * tinta.shape[1])))
+    fatias = projecao >= minimo
+    entradas = np.flatnonzero(fatias[1:] & ~fatias[:-1]) + 1
+    saidas = np.flatnonzero(~fatias[1:] & fatias[:-1]) + 1
+    inicios = entradas.tolist() if not fatias[0] else [0, *entradas.tolist()]
+    fins = saidas.tolist() if not fatias[-1] else [*saidas.tolist(), len(fatias)]
+    altura_minima = ALTURA_MINIMA * dpi / DPI_DA_REGUA
+    return sum(1 for a, b in zip(inicios, fins, strict=False) if b - a >= altura_minima)
+
+
+def medir(
+    imagem_rgb: np.ndarray,
+    diagramas: Sequence[Sequence[float]],
+    *,
+    lidos: int,
+    linhas_lidas: int,
+    dpi: int = DPI_DA_REGUA,
+    caracteres_da_camada: int = 0,
+) -> Medida:
+    """A medida de uma folha, com os retângulos de diagrama em **pixels** da imagem."""
+    import cv2
+
+    cinza = cv2.cvtColor(imagem_rgb, cv2.COLOR_RGB2GRAY) if imagem_rgb.ndim == 3 else imagem_rgb
+    _, binaria = cv2.threshold(np.ascontiguousarray(cinza), 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    altura, largura = binaria.shape[:2]
+    for x0, y0, x1, y1 in diagramas:
+        ex0, ey0 = max(0, int(x0) - FOLGA), max(0, int(y0) - FOLGA)
+        ex1, ey1 = min(largura, int(x1) + FOLGA), min(altura, int(y1) + FOLGA)
+        if ex1 > ex0 and ey1 > ey0:
+            binaria[ey0:ey1, ex0:ex1] = 0
+    fator = dpi / DPI_DA_REGUA
+    _, _, estatisticas, _ = cv2.connectedComponentsWithStats(binaria, connectivity=8)
+    alturas = estatisticas[1:, cv2.CC_STAT_HEIGHT]
+    areas = estatisticas[1:, cv2.CC_STAT_AREA]
+    de_letra = (
+        (alturas >= ALTURA_MINIMA * fator)
+        & (alturas <= ALTURA_MAXIMA * fator)
+        & (areas >= AREA_MINIMA * fator * fator)
+    )
+    return Medida(
+        componentes=int(de_letra.sum()),
+        lidos=int(lidos),
+        linhas_estimadas=linhas_pela_projecao(binaria, dpi),
+        linhas_lidas=int(linhas_lidas),
+        caracteres_da_camada=int(caracteres_da_camada),
+    )
+
+
+__all__ = [
+    "ALTURA_MAXIMA",
+    "ALTURA_MINIMA",
+    "AREA_MINIMA",
+    "CORTE_DAS_LINHAS",
+    "CORTE_DA_CAMADA",
+    "CORTE_DA_DENSIDADE",
+    "DPI_DA_REGUA",
+    "FOLGA",
+    "MINIMO_DA_CAMADA",
+    "MINIMO_DE_COMPONENTES",
+    "MINIMO_DE_LINHAS",
+    "Medida",
+    "linhas_pela_projecao",
+    "medir",
+]

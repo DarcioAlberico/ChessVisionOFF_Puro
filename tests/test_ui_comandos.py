@@ -433,6 +433,7 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 "mover_paragrafo_acima",
                 "painel_de_navegacao",
                 "pincel_de_formatacao",
+                "proxima_a_revisar",
                 "proxima_fora_do_lexico",
                 "recolher_fita",
                 "tamanho_da_miniatura",
