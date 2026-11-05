@@ -179,7 +179,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **46 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **47 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -285,6 +285,12 @@ cvoff-experiment --only referencia gap --epochs 8
 # com o torch em tolerancia de 1e-4 sobre o split de teste antes de dar por bom.
 # Requer o extra: uv sync --extra onnx
 cvoff-export-onnx --model models/piece_classifier.pt
+
+# O mesmo para o classificador de caracteres: grava <nome>.onnx + <nome>.json (mapa de
+# classes, temperatura, preparo da entrada e SHA-256 do .onnx) e confere a paridade com
+# o torch. --recortes aponta uma pasta de PNGs; sem ela, a conferencia usa recortes
+# aleatorios, que provam a conta e nao o acerto. O par roda em outro programa sem torch.
+cvoff-texto-export-onnx --saida models/chess-glyphs.onnx
 
 # Biblioteca inteira de uma vez, com relatorio consolidado. Um livro que falha nao
 # derruba a varredura: vira uma linha do relatorio e a varredura segue. Livro cujo PGN
