@@ -7,7 +7,7 @@ prosa separada da notação token a token, IC95 de dois níveis. Os motores agor
 Uso (com o `.venv` do projeto, `PYTHONPATH=<arvore>/src` e `CVOFF_RAIZ` no checkout com `PDF/`):
 
   medir.py folhas <relatorio.json> <conjunto> <saida.jsonl>   lê glifo, camada na prosa e fusão, folha a folha
-  medir.py perdidas <saida.jsonl>                             as sete folhas perdidas, pela guarda e pela reserva
+  medir.py perdidas <saida.jsonl>                             as sete folhas que se perdiam antes da S-711
   medir.py varrer <saida.jsonl> [--por-livro N]               a guarda em todos os livros, por tipo de folha
   medir.py caminho_da_camada <saida.jsonl>                    a folha acusada em camada na prosa, com a reserva
   medir.py resumir <saida.json> <entrada.jsonl>...            compila o relatório, sem texto de livro nenhum
@@ -425,7 +425,7 @@ def resumir(saida: str, entradas: list[str], commit_medido: str = "", commit_med
     reprovados = _reprovados()
     conjuntos: dict[str, list[dict]] = defaultdict(list)
     relatorio: dict = {
-        "item": "S-710, S-715, S-716, S-717, S-718, S-720",
+        "item": "S-710, S-711, S-715, S-716, S-717, S-718, S-720",
         "regua": "texto_prosa_2026-10-30/banco.py",
         "dpi": DPI,
         "medido_com": _procedencia(commit_medido),
@@ -461,6 +461,7 @@ def resumir(saida: str, entradas: list[str], commit_medido: str = "", commit_med
             relatorio["varredura_da_guarda"] = {
                 "folhas": len(regs),
                 "livros": len({r["livro"] for r in regs}),
+                "folhas_por_livro": max(Counter(r["livro"] for r in regs).values()),
                 "por_tipo": {
                     t: {
                         "folhas": len(v),
@@ -474,6 +475,16 @@ def resumir(saida: str, entradas: list[str], commit_medido: str = "", commit_med
                 "folhas_com_camada_abaixo_de_0_7": sum(r["densidade"] < 0.7 and r["camada"] >= 200 and not r["avisos"] for r in regs),
                 "densidade_das_avisadas": sorted(round(r["densidade"], 3) for r in regs if "folha_nao_lida" in r["avisos"]),
                 "segundos_por_folha_p95": _p95(r["segundos"] for r in regs),
+            }
+        elif "tess_oraculo|tip" in regs[0].get("placar", {}):
+            relatorio["portao_da_s711"] = {
+                "medido_em": commit_medido,
+                "nota": "rodar.py nas folhas de prosa dos dois Chess Evolution; a Saída da S-711 pedia Tesseract nas linhas do glifo a até 1 p.p. do oráculo",
+                "folhas": len(regs),
+                "livros": len({r["livro"] for r in regs}),
+                "tess_nas_linhas_do_glifo": _taxa(regs, "tess"),
+                "tess_oraculo": _taxa(regs, "tess_oraculo"),
+                "diferenca": _par(regs, "tess", "tess_oraculo"),
             }
         elif "cer_prosa" in regs[0]:
             relatorio["folhas_perdidas"] = [

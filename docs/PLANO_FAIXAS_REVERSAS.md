@@ -60,5 +60,13 @@ virado contra a referência em preto (F1 > 0,95), nenhum pixel fora da faixa mud
 apagada, título/filete/diagrama recusados, a régua física (metade da resolução a metade do DPI),
 e `segmentar` com DPI rendendo as letras do cabeçalho como caixas de caractere — sem DPI, nenhuma.
 
+**O piso do núcleo, achado ao medir a prata depois do merge.** `TRIFUNOVIC`, título em negrito pesado do *Koblenz*, tem 56% de
+tinta e núcleo de 8 px: saía invertido, ilegível, e a folha 38 piorava nos três motores (fusão de 86 para 129 erros). Em 30
+folhas de cada livro do acervo, 103 achados: os cabeçalhos têm de 23 a 27 px a 220 dpi, e abaixo de 22 só há título em negrito,
+filete azul do *Chess Evolution* e dois cabeçalhos de faixa cinza com o núcleo errado (2 e 3 px). O núcleo agora tem de ter ao
+menos 0,1 pol. Os dois cinzas deixam de ser apagados, e ficam sem leitura, como antes do item. **Continua faixa, e é engano:** de
+46 px para cima há casas de diagrama não detectado, uma tira marrom e o título da capa do *Koblenz*, em 5 achados; inverter ali não
+custa leitura que existisse, e não há amostra para pôr um teto sem ajustar ao *Yusupov*.
+
 **O que fica de fora.** `GlyphRecognizer.read` (a faixa de legenda da `ocr_caption`) não sabe o
 DPI e não passa por aqui; a legenda de diagrama em vídeo reverso é outro item, se aparecer.

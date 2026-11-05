@@ -335,7 +335,7 @@ superior do IC95 cumpre a coluna "teto" (decisão 7).
 | **G3** | folha perdida em silêncio | ouro, scan-ouro e varredura do acervo | 5 de 67 (e 2 fora da amostra) | **0** | — |
 | **G4** | segundos por folha, CPU de 12 threads, por estrato, com a reserva da S-715 no p95 | ouro-teste e scan-ouro-teste | glifo 0,65 s (digital), 1,2–1,6 s (scan) | **digital: ≤ 2,0 s média, ≤ 4,0 s p95; scan: ≤ 3,5 s média, ≤ 6,0 s p95** | — |
 | **G5** | a faixa "revisar" captura o erro | ouro-teste | não medido | **≥ 90% das palavras erradas** marcando **≤ 5%** das palavras | — |
-| **G6** | negrito e itálico que chegam à tela não pioram | ouro-dev e ouro-teste | régua da S-660 (`docs/metrics/texto_estilo_por_motor.json` na `main`) | não-inferioridade contra o glifo (teto do IC da perda ≤ +2 p.p.) | — |
+| **G6** | negrito e itálico que chegam à tela não pioram | ouro-dev e ouro-teste | régua da S-660 (`docs/metrics/texto_estilo_por_motor.json`, remedido depois da S-711) | não-inferioridade contra o glifo (teto do IC da perda ≤ +2 p.p.) | — |
 
 **Que motor cada meta mede — sem isso, M1 seria a camada comparada com ela mesma.** Depois da S-716,
 `auto` põe a prosa da **camada** em toda folha digital admitida; medir M1 no padrão, no ouro-teste (que
@@ -819,8 +819,8 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   - *Achado:* **o "5 de 67" de 2026-10-30 era muito menor que a realidade.** Em 120 folhas igualmente espaçadas de cada
     um, o *Chess Evolution 2014* perdia 113 e o *2013*, 60, antes da S-711. *Corte:* o
     0,5 cumpre a regra deste item na varredura publicada, contando as folhas com ao menos 200 caracteres de camada: nenhuma
-    abaixo de 0,7 sem aviso, em 812 folhas de 58 livros. Fora dos dois *Chess Evolution* e do *Kmoch*, as seis folhas que avisam têm texto que o glifo não leu
-    (quatro contracapas conferidas à vista); a varredura de livro inteiro do G101 continua por fazer.
+    abaixo de 0,7 sem aviso, em 812 folhas de 58 livros. Depois da S-711, das nove folhas que avisam, quatro têm texto que o glifo não leu
+    e cinco são sinal solto de dentro de uma moldura; a varredura de livro inteiro do G101 continua por fazer.
   - *Reversão:* o aviso não muda texto nenhum; o corte é constante. O `ESQUEMA` 2 **não** é reversível
     (versão antiga não abre arquivo novo), e por isso entra junto com o primeiro uso dos avisos.
 - **S-711** · Região escura na borda: faixa colorida e moldura de scan. ✅ entregue em 2026-11-05, com outro mecanismo: ver o *Achado* no fim deste item.
@@ -848,6 +848,12 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     folha 501, com a mesma faixa e sem o filete, sempre leu. O conserto é `text/moldura.py`: tira da binária o componente
     que cobre a folha nas duas direções. A faixa fica, e o texto claro dentro dela continua sem ler, o que a camada cobre.
     Sem aviso: ele sairia em toda folha dos dois livros, e o selo perderia o sentido.
+  - *Achado:* **a *Saída* acima foi escrita para o mecanismo errado, e não se cumpriu inteira.** Tesseract nas linhas do glifo a
+    até 1 p.p. do oráculo: **não cumprido**, +4,29 p.p. [+1,39; +8,76] em 24 folhas dos dois *Chess Evolution*, com o resto na linha
+    intercalada, que é a S-712. Varredura do acervo inteiro: **não feita**, só a amostra de 14 folhas por livro. "Nenhuma
+    folha do ouro-dev muda": superado, porque 903 e 1210 eram as perdidas. A reversão é `moldura.TIRAR_MOLDURA`.
+  - *Achado:* tirar a moldura abre o que havia dentro. Sinal solto de contracapa e de marca d'água saía sem aviso; agora sai com
+    `folha_nao_lida`, por `guarda_de_leitura.RUIDO_POR_TOKEN`. Ver a spec.
 - **S-712** · Linha intercalada.
   - *Entrega:* caixa de linha com altura > 1,8× a mediana da coluna é partida pela projeção
     horizontal antes de ler. As folhas 279 e 578 do *Chess Evolution* são fixture; o efeito é medido

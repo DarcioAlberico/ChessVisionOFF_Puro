@@ -296,11 +296,12 @@ documento, então a folha reaberta do caderno continua dizendo que não foi lida
 ### Critério de aceite
 
 `tests/test_text_guarda_de_leitura.py`, `tests/test_text_fiacao_da_prosa.py` e `tests/test_qt_texto_prosa.py`. As sete
-folhas conhecidas avisam. A varredura, 812 folhas de 58 livros, está em
+folhas do roadmap avisavam, e depois da S-711 não avisam mais, porque voltaram a ser lidas. A varredura, 14 folhas de cada um dos 58 livros, 812 no total, está em
 [metrics/texto_prosa_primeira_entrega.json](metrics/texto_prosa_primeira_entrega.json), por tipo de folha: nenhuma com
 camada abaixo de 0,7 sem aviso, e nenhuma das folhas de *Polgar*, *Reinfeld* e das duas capas que avisavam. **O "5 de 67"
 do roadmap estava muito abaixo da realidade:** em 120 folhas de cada, o *Chess Evolution 2014* perdia 113 e o *2013*, 60.
-A causa foi consertada na S-711, e hoje o acervo inteiro tem quatro folhas avisadas, todas com texto que o glifo não leu.
+A causa foi consertada na S-711, e na varredura sobram nove avisadas: quatro com texto que o glifo não leu, e cinco de
+sinal solto saído de dentro de uma moldura (ver S-711).
 
 A guarda dos testes foi provada por mutação, com a lista do crítico mais os consertos das rodadas seguintes: um mutante
 equivalente sobrevive (o número partido, em que o sufixo de mesmo tamanho é o próprio número).
@@ -317,12 +318,22 @@ existir: `caixas=1`, e o glifo lê `h`. A folha 501, com a mesma faixa e sem o f
 ### Solução
 
 `text/moldura.py`: `tirar_moldura` apaga da binária o componente cuja caixa cobre ao menos 90% da folha nas duas direções,
-antes de medir a escala e de achar as caixas. A folha sem moldura devolve o mesmo objeto, e não muda em um pixel.
+antes de medir a escala e de achar as caixas. A folha sem moldura devolve o mesmo objeto, e não muda em um pixel. A reversão
+é a constante `moldura.TIRAR_MOLDURA`.
+
+**Tirar a moldura abre o que havia dentro, e nem sempre é texto.** Contracapa manchada e marca d'água davam `h` e o aviso de
+folha não lida; sem a moldura, davam milhares de sinais soltos e nenhum aviso. Por isso a folha com moldura que devolve até
+`guarda_de_leitura.RUIDO_POR_TOKEN` = 1,3 caractere por token, com ao menos 40 caracteres, sai com `folha_nao_lida`. O corte
+vem de 100 folhas com moldura de 6 livros: as que dão ruído vão de 1,02 a 1,24, e a seguinte é 1,39. Uma delas é texto de
+verdade que o glifo despedaçou (*Niemeijer*, folha 5, 2.789 tokens em 3.101 caracteres), e o aviso também é a verdade ali. Fora
+da moldura o mesmo número é tabela de torneio, e não avisa. A fração de palavras existentes **não serve de corte**: nos livros
+holandeses ela é de 2% com o texto lido.
 
 ### Critério de aceite
 
 `tests/test_text_moldura.py`, com folhas desenhadas: o filete sozinho, o filete com a faixa, e o que **não** é moldura
-(faixa sozinha, fio entre colunas, tabela, diagrama com margem). Em `metrics/texto_prosa_primeira_entrega.json`:
+(faixa sozinha, fio entre colunas, tabela, diagrama com margem), e `RuidoEmolduradoTests` em
+`tests/test_text_fiacao_da_prosa.py`. Em `metrics/texto_prosa_primeira_entrega.json`:
 
 | | antes | depois |
 |---|---:|---:|
@@ -334,6 +345,19 @@ antes de medir a escala e de achar as caixas. A folha sem moldura devolve o mesm
 
 Os livros sem moldura não mudam: o número dos aprovados é idêntico. **As folhas voltam pelo caminho normal**, com figurina e
 sem aviso, e é por isso que quase nada chega mais à reserva da S-715.
+
+**O que a *Saída* do roadmap pedia, e o que saiu.** Ela foi escrita para outro mecanismo, e dois pontos não se cumpriram:
+
+- **Tesseract nas linhas do glifo a até 1 p.p. do oráculo: não cumprido.** Em 24 folhas de prosa dos dois *Chess Evolution*,
+  5,28% contra 0,99%, diferença de +4,29 p.p. [+1,39; +8,76] (`portao_da_s711` no relatório). A folha agora lê, e o que falta
+  é leiaute: a linha intercalada, da S-712.
+- **Varredura do acervo inteiro: não feita.** O que há é a amostra de 14 folhas por livro. O censo do crítico, só da moldura,
+  viu 2.468 de 26.730 folhas com o componente, em PDF a 220 dpi.
+- **"Nenhuma folha do ouro-dev muda de texto": superado.** As folhas 903 e 1210 mudam, porque eram as perdidas. As outras
+  26 saem idênticas.
+
+**A S-711 muda relatório de estilo.** Com o *Kmoch* e os *Chess Evolution* lidos, `metrics/texto_estilo_por_motor.json` passa a
+contar folhas que antes não contavam, e a perda sobe sem que nada tenha piorado: ver `leitura` no próprio relatório.
 
 ### O que ela não entrega
 
@@ -392,8 +416,13 @@ admissão é a de `text/admissao.py`, com o perfil do livro em memória. Folha r
 **A folha que a guarda acusa não pode contornar a checagem de ligadura.** Quem manda ali é a montagem da camada, com
 as palavras partidas no vão: nada se perde, e o lance fica como ela o escreve, sem figurina, o que o selo diz. Com a
 reserva, **só a palavra de prosa suspeita** vem do Tesseract, lida na mesma caixa; o lance nunca, nem marcado, porque ele chega
-bloqueado pela fonte de figurina com a letra certa. Sem reserva, a suspeita fica como está, e marcada `revisar`. As duas versões anteriores erraram aqui, e valem de aviso: a primeira usava a camada crua, com `afer` e tudo;
-a segunda punha as linhas do Tesseract no lugar do glifo, e `10.Qxd2` saía `10.8xd2`, com o selo falando de outra coisa.
+bloqueado pela fonte de figurina com a letra certa. Sem reserva, a suspeita fica como está, e marcada `revisar`. As três versões anteriores erraram aqui, e valem de aviso: a primeira usava a camada crua, com `afer` e tudo;
+a segunda punha as linhas do Tesseract no lugar do glifo, e `10.Qxd2` saía `10.8xd2`, com o selo falando de outra coisa; a terceira
+só reconhecia o lance limpo, e o lance com sinal colado, que a camada escreve em código de fonte (`19.Bd3\uf0b1`, `Rxg5i`,
+`24...f4e`), ia ao Tesseract e voltava `19.2d3+`. A conta de "1.298 de 1.300 intactos" não via isso, porque a régua chama esses
+tokens de prosa. Hoje o instrumento conta lance por prefixo: **1.346 de 1.346 intactos**, em 28 folhas forçadas, e os 22 `afer`
+viram `after`. O sinal solto da fonte de figurina (o `i` que voltava `eel`) também não pede outra leitura:
+`PalavraDaCamada.de_figurina`.
 
 **O PDF não precisa escrever o espaço.** No *Chess Evolution* ele é um salto de posição de 1,76 pt em corpo 13, sem
 caractere nenhum, e `get_text("words")` devolvia tokens de até 52 letras. `palavras_da_folha` parte onde o vão passa
@@ -458,6 +487,11 @@ sinais crus inundam: 10,0% a 40,1% das palavras, contra um teto de 5%.
 são os de quem escreveu o token: discordância com o glifo, palavra fora do léxico e a confiança do próprio leitor.
 Prosa da camada nunca é marcada. `LinhaLida.revisar_em` vive em memória, e o que atravessa o arquivo é a faixa da
 corrida, sem mudar o formato. `Shift+F7` vai à próxima, por `rico.intervalos_a_revisar`, também na folha reaberta.
+
+**Corrigir uma palavra não apaga as outras marcas do parágrafo.** O carimbo de `correcao.com_procedencia_humana` é por bloco, e
+a folha reaberta perdia as marcas sem aviso, embora na mesma sessão elas sobrevivessem. Agora a corrida `revisar` cujo texto é,
+inteiro, o que o motor leu fica como está, com quem a leu. A faixa do bloco inteiro continua saindo: ali a edição parte a corrida
+e todo pedaço intacto é `revisar`, o que distingue os dois casos (`correcao._marcas_intactas`).
 
 **Desvio declarado:** as alternativas do `lstm_choice_mode=2`, que o roadmap cita, saem no hOCR e não no TSV. Aqui o
 terceiro sinal é a confiança por palavra do TSV; a S-761 calibra.
