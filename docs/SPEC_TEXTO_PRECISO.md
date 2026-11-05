@@ -504,16 +504,18 @@ corrida, sem mudar o formato. `Shift+F7` vai à próxima, por `rico.intervalos_a
 a folha reaberta perdia as marcas sem aviso, embora na mesma sessão elas sobrevivessem. Agora a marca fica se a **palavra** em que
 ela está é, inteira, a que o motor leu: cabe num só trecho igual ao lido, e no lido também era uma palavra. **Olhar a corrida não
 basta:** o editor grava a diferença mínima, e corrigir `wbite` deixa `w` e `ite` como `revisar`, em trechos iguais. A primeira
-versão desta regra os guardava. A faixa do bloco inteiro continua saindo: ali tudo que ficou intacto é `revisar`, e no bloco não
-há caractere intacto fora das marcas, nem o espaço entre duas palavras, que é o que distingue os dois casos
-(`correcao._marcas_intactas`). A conta é por caractere porque o carimbo da gravação anterior funde o resto do bloco numa corrida
-com as correções dentro: contada por corrida, a segunda gravação tomava o bloco por faixa e apagava as marcas restantes. A marca
-do fim de uma linha e a do começo da seguinte são duas corridas, porque o espaço da junção não é de nenhuma (`rico._agrupar`).
+versão desta regra os guardava. A faixa do bloco inteiro continua saindo, e **quem separa os dois casos é o espaço**: a marca da
+palavra é um token, sem espaço dentro, e a faixa tem espaço em cada pedaço que a edição deixa (`correcao._marcas_intactas`). As
+tentativas de olhar o texto sem marca em volta erravam dos dois lados: o carimbo da gravação anterior funde esse texto com as
+correções, e a segunda gravação apagava as marcas restantes; e a palavra redigitada na faixa reencontra letras do que estava lá, e
+o resto do bloco ficava marcado. A marca do fim de uma linha e a do começo da seguinte são duas corridas, porque o espaço da junção
+não é de nenhuma (`rico._agrupar`).
 `Shift+F7` pergunta à mesma regra, e não para nos pedaços nem antes de gravar. As guardas são `CorrigirAMarcaNoEditorTests`, pelo
 editor com `QTest`, e `MarcaPorSorteioTests`, que sorteia correções gravando no meio.
 
-**O que sobra:** até gravar, a tinta na tela continua nos pedaços. A marca que fica sozinha, com todo o resto do bloco apagado, sai
-como se fosse a faixa. E apagar uma letra e digitar a mesma deixa os pedaços marcados, porque o texto é o que o motor leu.
+**O que sobra:** até gravar, a tinta na tela continua nos pedaços. O pedaço de uma palavra só que resta da faixa, com o espaço
+apagado junto (`wbite` de `wbite knight`, sem ` knight`), fica marcado como se fosse palavra. E apagar uma letra e digitar a mesma
+deixa os pedaços marcados, porque o texto é o que o motor leu.
 
 **Desvio declarado:** as alternativas do `lstm_choice_mode=2`, que o roadmap cita, saem no hOCR e não no TSV. Aqui o
 terceiro sinal é a confiança por palavra do TSV; a S-761 calibra.

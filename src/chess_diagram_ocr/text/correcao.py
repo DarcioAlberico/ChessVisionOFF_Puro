@@ -208,13 +208,12 @@ def _marcas_intactas(doc: DocumentoRico, editados: frozenset[int]) -> frozenset[
     como `revisar`, em trechos iguais ao lido, e a primeira versão desta regra os guardava como marcas. Corrigir uma
     letra é a correção típica de OCR, e as marcas iam para o arquivo em pedaços.
 
-    **Só quando o bloco tem caractere intacto fora das marcas**, nem que seja o espaço entre duas palavras marcadas. É
-    isso que separa a marca da palavra da faixa do bloco inteiro: nesta, a edição parte a corrida e tudo que ficou
-    intacto continua `revisar`, e quem leu o parágrafo para corrigi-lo já o conferiu. O bloco fica tranquilo como
-    sempre ficou. **A conta é por caractere, e não por corrida:** o carimbo da gravação anterior funde o resto do bloco
-    numa corrida com as correções dentro, que nunca cabe num trecho igual, e a segunda gravação tomava o bloco por
-    faixa e apagava as marcas que restavam. A única palavra que não se distingue é a marca que sobra quando se apaga
-    todo o resto do bloco: sem texto nenhum em volta, ela sai como a faixa.
+    **Só se a marca for de palavra, e quem diz é o espaço.** A marca da palavra é um token, e não tem espaço dentro; a
+    faixa do bloco inteiro tem, e continua tendo em cada pedaço que a edição deixa. Na faixa, quem leu o parágrafo para
+    corrigi-lo já o conferiu, e o bloco fica tranquilo como sempre ficou. As duas tentativas anteriores olhavam o texto
+    sem marca em volta, e erravam dos dois lados: o carimbo da gravação anterior funde esse texto com as correções, e a
+    segunda gravação tomava o bloco por faixa; e a palavra redigitada na faixa reencontra letras do que estava lá, e o
+    resto do bloco ficava marcado.
     """
     if not editados:
         return frozenset()
@@ -234,16 +233,10 @@ def _marcas_intactas(doc: DocumentoRico, editados: frozenset[int]) -> frozenset[
         agora = atual[bloco]
         trechos = SequenceMatcher(None, antes, agora, autojunk=False).get_opcodes()
         iguais = [(i1, j1, j2) for operacao, i1, _i2, j1, j2 in trechos if operacao == "equal"]
-        marcado = [False] * len(agora)
-        for _, inicio, corrida in corridas:
-            if corrida.faixa == REVISAR:
-                marcado[inicio : inicio + len(corrida.texto)] = [True] * len(corrida.texto)
-        if not all(marcado[j] for _, j1, j2 in iguais for j in range(j1, j2)):
-            ficam.update(
-                indice
-                for indice, inicio, corrida in corridas
-                if corrida.faixa == REVISAR and _palavra_intacta(antes, agora, iguais, inicio, corrida.texto)
-            )
+        marcas = [(indice, inicio, corrida.texto) for indice, inicio, corrida in corridas if corrida.faixa == REVISAR]
+        if any(letra.isspace() for _, _, texto in marcas for letra in texto):
+            continue
+        ficam.update(indice for indice, inicio, texto in marcas if _palavra_intacta(antes, agora, iguais, inicio, texto))
     return frozenset(ficam)
 
 
@@ -252,10 +245,8 @@ def _palavra_intacta(antes: str, agora: str, iguais: Sequence[tuple[int, int, in
 
     A segunda metade é o `xwhite` que perdeu o `x`: `white` é um trecho igual ao lido, e não é o que o motor leu.
     """
-    if not texto.strip():
-        return False
-    primeiro = inicio + len(texto) - len(texto.lstrip())
-    ultimo = inicio + len(texto.rstrip())
+    primeiro = inicio
+    ultimo = inicio + len(texto)
     while primeiro > 0 and not agora[primeiro - 1].isspace():
         primeiro -= 1
     while ultimo < len(agora) and not agora[ultimo].isspace():

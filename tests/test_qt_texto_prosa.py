@@ -385,6 +385,20 @@ class CorrigirAMarcaNoEditorTests(_Aba):
         QTest.keyClicks(self.painel.editor, "white")
         self.assertEqual(self._marcas_depois_de_reabrir(), [])
 
+    def test_a_faixa_do_bloco_inteiro_sai_com_a_palavra_e_os_espacos(self) -> None:
+        """`the` sobra sozinha, sem espaço, e é a outra ponta que diz que aquilo é a faixa."""
+        self._faixa_no_bloco_inteiro()
+        self._cursor(3, 10)
+        QTest.keyClicks(self.painel.editor, " white ")
+        self.assertEqual(self._marcas_depois_de_reabrir(), [])
+
+    def test_a_marca_que_sobra_com_o_resto_apagado_fica(self) -> None:
+        self._folha("wlns pawn", (0, 4))
+        self._cursor(4, 9)
+        QTest.keyClick(self.painel.editor, Qt.Key.Key_Delete)
+        self.assertEqual(self.painel.editor.toPlainText(), "wlns")
+        self._so_sobra("wlns")
+
     def test_a_palavra_inteira_redigitada(self) -> None:
         self._folha("the wbite knight wlns a pawn", (4, 9), (17, 21))
         self._cursor(4, 9)
