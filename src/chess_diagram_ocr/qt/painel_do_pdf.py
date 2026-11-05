@@ -30,7 +30,9 @@ o `pdf_io`.
 from __future__ import annotations
 
 import logging
+import multiprocessing as mp
 from collections.abc import Callable
+from concurrent.futures import BrokenExecutor, ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -51,6 +53,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from chess_diagram_ocr import livro_djvu
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
 from chess_diagram_ocr.qt import icones as qt_icones
@@ -68,6 +71,9 @@ from chess_diagram_ocr.ui.viewport import LADO_DO_DESLIZADOR, clamp_zoom, posica
 logger = logging.getLogger(__name__)
 
 __all__ = ["ESPERA_DA_FOLHA_MS", "ESPERA_DO_DPI_MS", "FolhaRasterizada", "PainelDoPdf"]
+
+_ILEGIVEIS_NA_CAIXA = 12
+"""Quantos números de página a caixa de aviso do `.djvu` lista antes de dizer "e mais N"."""
 
 ESPERA_DO_DPI_MS = 400
 """Quanto esperar o campo de DPI parar de mudar antes de re-rasterizar (S-329)."""
@@ -159,6 +165,26 @@ def _contar_e_aquecer(pdf_path: Path, *, em_processo: bool) -> int:
     if em_processo:
         processo_de_trabalho().aquecer()
     return get_pdf_page_count(pdf_path)
+
+
+def _converter_djvu(caminho: Path, *, em_processo: bool) -> livro_djvu.Conversao:
+    """O PDF do `.djvu`, convertido num processo só dele quando ainda não existe.
+
+    **Um processo porque uma thread travou a janela**: medido no Portisch (239 páginas, 2026-11-05),
+    a gravação do PDF segura o GIL e a janela ficou parada por 3,6 s. **E não o `processo_de_trabalho`,
+    que é um filho só**: durante os 26 s da conversão, o livro que continua aberto não conseguiria
+    rasterizar uma página. De quebra, uma queda nativa do decodificador não leva a janela junto.
+    """
+    if not em_processo:
+        return livro_djvu.pdf_de_djvu(caminho)
+    pronto = livro_djvu.ja_convertido(caminho)
+    if pronto is not None:
+        return pronto
+    try:
+        with ProcessPoolExecutor(max_workers=1, mp_context=mp.get_context("spawn")) as pool:
+            return pool.submit(livro_djvu.pdf_de_djvu, caminho).result()
+    except BrokenExecutor as exc:
+        raise ValueError(f"O decodificador de DjVu caiu ao ler {caminho.name}: {exc}") from exc
 
 
 class PainelDoPdf(QWidget):
@@ -736,7 +762,10 @@ class PainelDoPdf(QWidget):
 
     def abrir_pdf(self) -> None:
         caminho, _filtro = QFileDialog.getOpenFileName(
-            self, "Selecione o PDF", str(self._pasta_inicial), "PDF (*.pdf);;Todos (*.*)"
+            self,
+            "Selecione o livro",
+            str(self._pasta_inicial),
+            "Livros (*.pdf *.djvu *.djv);;PDF (*.pdf);;DjVu (*.djvu *.djv);;Todos (*.*)",
         )
         if caminho:
             self.load_pdf(Path(caminho))
@@ -776,6 +805,20 @@ class PainelDoPdf(QWidget):
             return
         self._abertura_pedida = None
         self._abrindo = pdf_path
+        if livro_djvu.e_djvu(pdf_path):
+            # **A conversão ocupa o mesmo lugar da abertura** (`_abertura`, `_abrindo`): um livro
+            # pedido enquanto ela roda espera a vez, e a falha chega em `_livro_nao_abriu`, com o
+            # livro anterior ainda aberto (S-123). Um livro inteiro leva segundos, e por isso a frase
+            # diz o que está acontecendo.
+            self.estado.emit(f"Convertendo {pdf_path.name} para PDF…")
+            self._executar(
+                lambda: _converter_djvu(pdf_path, em_processo=self.rasterizar_ao_fundo),
+                pronto=self._djvu_convertido,
+                falhou=self._livro_nao_abriu,
+                nome=f"conversão de {pdf_path.name}",
+                guardar="_abertura",
+            )
+            return
         self.estado.emit(f"Abrindo {pdf_path.name}…")
         # **Métodos ligados, e não `lambda`**: o PyQt desfaz a ligação a um método quando o
         # painel morre, e uma `lambda` chamaria um widget já destruído -- exceção num slot, que
@@ -787,6 +830,31 @@ class PainelDoPdf(QWidget):
             nome=f"abertura de {pdf_path.name}",
             guardar="_abertura",
         )
+
+    def _djvu_convertido(self, conversao: object) -> None:
+        """O PDF do `.djvu` está pronto: a partir daqui ele abre como qualquer outro livro."""
+        assert isinstance(conversao, livro_djvu.Conversao)
+        self._abertura = None
+        origem, self._abrindo = self._abrindo, None
+        if origem is None:  # pragma: no cover - não há chegada sem pedido
+            return
+        if self._abertura_pedida is not None and self._abertura_pedida != origem:
+            self._reabrir_o_pedido()
+            return
+        if conversao.ilegiveis:
+            # **Em caixa, e não só no rodapé**: a frase do rodapé é trocada pelo "Abrindo…" da linha
+            # seguinte, e são páginas do livro que a pessoa não vai ter.
+            numeros = ", ".join(str(i + 1) for i in conversao.ilegiveis[:_ILEGIVEIS_NA_CAIXA])
+            resto = len(conversao.ilegiveis) - _ILEGIVEIS_NA_CAIXA
+            QMessageBox.warning(
+                self,
+                "Abrir DjVu",
+                f"{len(conversao.ilegiveis)} de {conversao.paginas} páginas de {origem.name} não "
+                f"puderam ser decodificadas: {numeros}{f' e mais {resto}' if resto > 0 else ''}.\n\n"
+                "Cada uma delas ficou no livro como uma folha que diz isso, para a numeração não "
+                "mudar.",
+            )
+        self.load_pdf(conversao.pdf)
 
     def _livro_abriu(self, page_count: object) -> None:
         """A contagem chegou: agora, e só agora, o painel aponta para o livro novo."""

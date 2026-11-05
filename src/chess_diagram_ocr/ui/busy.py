@@ -278,6 +278,12 @@ FORA_DO_REGISTRO: dict[tuple[str, str], str] = {
         "N…» pela zona de mensagem; registrar faria a barra de progresso piscar a cada virada. "
         "Fechar no meio não perde nada: a página continua no PDF."
     ),
+    ("painel_do_pdf.py", "_converter_djvu"): (
+        "O PDF de um `.djvu` que ainda não tem um (`livro_djvu`): segundos, e minutos num livro grande, e o "
+        "rodapé diz «Convertendo…». É derivado do `.djvu`, gravado de uma vez só no fim: fechar no "
+        "meio não deixa PDF pela metade, e a próxima abertura refaz. Não há o que cancelar: a "
+        "conversão é uma chamada só da biblioteca."
+    ),
     ("visor.py", "_pedir_reescalonamento"): (
         "A página reduzida ao zoom novo, fora da thread da janela (OCR_UI passo 15). Quinze "
         "milissegundos, derivada da página que já está em memória, e a folha anterior fica na "
