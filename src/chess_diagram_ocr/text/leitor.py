@@ -174,6 +174,7 @@ from . import leitor_de_linha as _leitor_de_linha
 from . import lexico as _lexico_mod
 from . import linhas as _linhas_mod
 from . import marca_fina as _marca_fina
+from . import moldura as _moldura
 from . import negrito as _negrito
 from . import notacao as _notacao
 from . import numero as _numero
@@ -442,6 +443,9 @@ def segmentar(
     cinza = cv2.cvtColor(imagem_rgb, cv2.COLOR_RGB2GRAY) if imagem_rgb.ndim == 3 else imagem_rgb
     cinza = np.ascontiguousarray(cinza)
     binaria = binarize(cinza)
+    # **Antes da escala e das caixas** (S-711): a moldura que envolve a folha é um contorno só, e as caixas
+    # são externas, então tudo o que está dentro dela deixava de existir. Ver `text/moldura.py`.
+    binaria, _molduras = _moldura.tirar_moldura(binaria)
     if escala is None:
         escala = escala_fora_dos_diagramas(binaria, diagramas)
     if escala <= 0:
