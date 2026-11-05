@@ -257,8 +257,13 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2286
+    LIMITE = 2287
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.286 -> 2.287 no R7 de volta (2026-10-29)**: a aba Texto traz ao caderno as folhas editadas
+    na Revisão de texto da suíte, e reaproveita a importação do livro que a janela tem
+    (`definir_importacao`, uma linha). O resto mora em `qt/revisao_para_o_caderno.py`, no painel e
+    em `text/caderno_na_suite.py`.
 
     **2.285 -> 2.286 com o PGN do livro lido quando o livro abre (S-590, 2026-10-29)**: uma chamada
     em `_abriu_livro`. Começar a leitura na primeira página lida deixava essa página sem o livro --

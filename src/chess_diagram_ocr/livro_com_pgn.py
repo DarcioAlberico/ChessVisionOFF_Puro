@@ -44,6 +44,7 @@ from typing import Any
 from .atomic_io import atomic_write_json
 from .config import DATA_DIR
 from .pgn_do_livro import IndiceDoLivro, lance_da_legenda
+from .text.notacao import LETRA_DA_FIGURINA
 
 logger = logging.getLogger(__name__)
 
@@ -85,13 +86,17 @@ par imagem-legenda pode estar errado (era o caso das legendas sem imagem antes d
 sozinho trocaria um erro do modelo por um erro de pareamento."""
 
 PADROES_DE_LEGENDA: tuple[re.Pattern[str], ...] = (
-    re.compile(r"Position after:?\s*(\S+)", re.IGNORECASE),
-    re.compile(r"Posi[çc][ãa]o (?:ap[óo]s|depois de):?\s*(\S+)", re.IGNORECASE),
-    re.compile(r"Stellung nach:?\s*(\S+)", re.IGNORECASE),
-    re.compile(r"Posici[óo]n (?:tras|despu[ée]s de):?\s*(\S+)", re.IGNORECASE),
+    re.compile(r"Position after[:.]*\s*(\S+)", re.IGNORECASE),
+    re.compile(r"Posi[çc][ãa]o (?:ap[óo]s|depois de)[:.]*\s*(\S+)", re.IGNORECASE),
+    re.compile(r"Stellung nach[:.]*\s*(\S+)", re.IGNORECASE),
+    re.compile(r"Posici[óo]n (?:tras|despu[ée]s de)[:.]*\s*(\S+)", re.IGNORECASE),
 )
 """As formas de legenda conhecidas. A do Harikrishna (Thinkers Publishing) é a primeira; as outras
-são as mesmas palavras nas línguas em que este projeto lê livros."""
+são as mesmas palavras nas línguas em que este projeto lê livros. O `[:.]*` é o motor glifo, que lê
+os dois-pontos da legenda como `..` (S-598)."""
+
+_ESPACO_DEPOIS_DO_NUMERO = re.compile(r"(\d+\.(?:\.\.)?) +(?=[KQRBNa-hO0])")
+"""«11. Ne5» e «20... Qxd5»: o vão que o glifo deixa entre o número do lance e o lance (S-598)."""
 
 LARGURA_MINIMA_DA_IMAGEM = 80.0
 """Em pontos do PDF. Abaixo disso a imagem é vinheta, ícone ou o símbolo de um figurino."""
@@ -167,7 +172,14 @@ def capitulo_da_pagina(pagina: int, inicios: Sequence[tuple[int, str]]) -> str:
 
 
 def legenda_da_linha(texto: str) -> str:
-    """O lance que uma linha de legenda diz («5.dxc5»), ou `""` quando ela não é legenda."""
+    """O lance que uma linha de legenda diz («5.dxc5»), ou `""` quando ela não é legenda.
+
+    A linha pode vir da camada do PDF ou da folha da aba Texto, e a folha lida pelo glifo -- o que o
+    `auto` escolhe quando há classificador -- escreve a mesma legenda como «Position after.. 11. ♘e5».
+    Sem a figurina trocada pela letra e o vão tirado, o *Pôr na folha* (S-595) não achava legenda
+    nenhuma na janela de quem tem o modelo (S-598).
+    """
+    texto = _ESPACO_DEPOIS_DO_NUMERO.sub(r"\1", "".join(LETRA_DA_FIGURINA.get(c, c) for c in texto))
     for padrao in PADROES_DE_LEGENDA:
         achado = padrao.search(texto)
         if achado:
@@ -388,6 +400,10 @@ def casamentos_da_galeria(
     de verdade; uma leitura a uma casa do nó não aconteceu, e quem a corrige é o Resultado (S-590),
     que troca a posição -- a Galeria só anota. `discordam` conta as entradas de páginas com
     diagrama do livro que não bateram com nenhum candidato: são as que a leitura errou.
+
+    **Página sem legenda do livro casa pela posição** (`_pela_posicao`, S-597). Onde há legenda, o
+    recurso não vale: a leitura que não é nenhum candidato da página é erro, e achá-la noutro canto
+    do livro seria casar a imagem com a legenda errada.
     """
     from .games_db import DiagramMatch
 
@@ -408,7 +424,10 @@ def casamentos_da_galeria(
             None,
         )
         if achado is None:
-            discordam += bool(da_pagina)
+            if da_pagina:
+                discordam += 1
+            elif (pela_posicao := _pela_posicao(entrada, indice)) is not None:
+                casamentos.append(pela_posicao)
             continue
         diagrama, k = achado
         registro = indice.nos[k]
@@ -425,6 +444,41 @@ def casamentos_da_galeria(
             )
         )
     return casamentos, discordam
+
+
+def _pela_posicao(entrada: Any, indice: IndiceDoLivro) -> Any | None:
+    """O diagrama varrido numa página sem legenda do livro, casado pela posição (S-597).
+
+    É o diagrama da abertura de capítulo, e o do livro que não escreve legenda. A posição pode estar
+    em várias partidas -- a do capítulo passa por todas as linhas dele --, e daí vem a regra:
+    `games_matched` é o número de partidas, para o `apply_matches` só confirmar a posição comum
+    (S-74), e os cabeçalhos só entram quando a partida é uma. Lance e lado a jogar valem quando
+    todos os nós concordam; se discordam (a transposição), não se sabe qual é, e nada casa.
+    """
+    from .games_db import DiagramMatch
+
+    nos = [indice.nos[k] for k in indice.com_posicao(entrada.placement)]
+    lances = {(int(no.fen.split()[5]), no.lado) for no in nos}
+    if len(lances) != 1:
+        return None
+    ((lance, lado),) = lances
+    partidas = sorted({no.partida for no in nos})
+    if len(partidas) == 1:
+        primeiro = nos[0]
+        headers = {nome: valor for nome, valor in indice.partidas[partidas[0]].headers.items() if valor not in VAZIOS_DE_HEADER}
+        rotulo = " · ".join(x for x in (primeiro.capitulo, primeiro.secao, primeiro.rotulo) if x)
+    else:
+        headers = {}
+        rotulo = f"posição em {len(partidas)} partidas"
+    return DiagramMatch(
+        page_index=int(entrada.page_index),
+        diagram_index=int(entrada.diagram_index),
+        move_number=lance,
+        side_to_move=lado,
+        headers=headers,
+        games_matched=len(partidas),
+        game_label="PGN do livro: " + rotulo,
+    )
 
 
 # ---------------------------------------------------------------- o livro e o seu PGN (S-590)

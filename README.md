@@ -891,13 +891,13 @@ motor estava adivinhando, no meio a leitura e boa mas nao e registro, e o resto 
 A camada de texto e a correcao humana nunca pedem revisao.
 
 **O numero, e o que ele nao prova.** Medido em 10 paginas de 2 livros, com a camada de texto da
-propria pagina como referencia (`docs/metrics/texto_pagina.json`): CER **0,1001**. Esse valor tem
+propria pagina como referencia (`docs/metrics/texto_pagina.json`): CER **0,0961**. Esse valor tem
 um piso que nao e do modelo -- num dos dois livros a propria camada e OCR de terceiro e traz os
-proprios erros --, entao ele **nao** vira "86% de acerto". E ele mede **prosa**: pela tabela acima,
+proprios erros --, entao ele **nao** vira "90% de acerto". E ele mede **prosa**: pela tabela acima,
 na notacao a camada nao e referencia de coisa nenhuma, e ali o glifo e penalizado justamente onde
 acerta a figurina. O que a medicao decide de fato e o
 padrao do modo bloco da S-188, que fica **desligado**: ele custa ~50x o tempo e piora a media em
-33% -- 0,1001 contra 0,1331 nas mesmas 10 paginas. `--bloco` liga para quem quiser medir de novo.
+41% -- 0,0961 contra 0,1354 nas mesmas 10 paginas. `--bloco` liga para quem quiser medir de novo.
 
 ## Resolucao de problemas
 
@@ -1246,6 +1246,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-500 a S-506, S-527 a S-580 | [docs/SPEC_SUITE.md](docs/SPEC_SUITE.md) |
 | S-581 a S-584 | [docs/PLANO_COLUNAS_SOLUCOES.md](docs/PLANO_COLUNAS_SOLUCOES.md) |
 | S-601 a S-668 | [docs/SPEC_MESA_DE_TEXTO.md](docs/SPEC_MESA_DE_TEXTO.md) |
+| S-702 | [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1338,7 +1339,7 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   com portao de medicao -- e os tres defeitos medidos no widget antes de tudo: o alinhamento e o
   estilo de paragrafo que nao chegam a tela, a miniatura que nao segue a marca, e o rascunho podado
   a oito que apaga a correcao da primeira folha
-- [docs/ROADMAP_PDF_COM_PGN.md](docs/ROADMAP_PDF_COM_PGN.md) -- **S-585 a S-593**, plano e
+- [docs/ROADMAP_PDF_COM_PGN.md](docs/ROADMAP_PDF_COM_PGN.md) -- **S-585 a S-598**, plano e
   especificacao do PDF digital com o PGN do livro: o PGN lido inteiro, cada diagrama casado com o
   seu no pela legenda ou pela posicao, a FEN e o lado a jogar do livro no Resultado, o que discorda
   na Revisao, os diagramas que faltam no PDF desenhados do PGN, o Estudo na arvore do autor e o
@@ -1399,6 +1400,14 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   jogador e ECO, arvore de aberturas), analise de partida, treino de taticas do proprio acervo,
   exportacao EPUB/DOCX para quem edita material, e OCR em lote na janela.
 - [docs/SPEC_SUITE.md](docs/SPEC_SUITE.md) -- especificacao das Fases 80 a 86 (S-527 a S-580), item a item.
+- [docs/ROADMAP_TEXTO_PRECISO.md](docs/ROADMAP_TEXTO_PRECISO.md) -- **Fases 100 a 107** (S-700 a
+  S-772), a prosa lida com precisao de livro: a regua que separa prosa de notacao, medida em
+  2026-10-30 (`docs/metrics/texto_prosa_20261030.json`: glifo 3,61% de CER de prosa no ouro digital,
+  Tesseract nas mesmas linhas 1,33%, e 0,16% nas linhas certas), as folhas que somem em silencio, a
+  prosa da camada nos livros digitais e o leitor de linha ao lado do glifo
+- [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) -- especificacao das Fases 100 a 107,
+  item a item a medida que sao entregues: a S-702 (a admissao sem motor e o ouro-teste sorteado
+  antes de qualquer leitura, em `assets/texto_prosa/ouro.json`)
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

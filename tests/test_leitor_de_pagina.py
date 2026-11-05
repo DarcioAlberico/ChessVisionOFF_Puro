@@ -560,3 +560,77 @@ class MargemVemDaCamadaTests(unittest.TestCase):
         assert cabecalho is not None and rodape is not None
         self.assertEqual(cabecalho.procedencia, "camada")
         self.assertEqual(rodape.procedencia, "camada")
+
+
+class MargemNoCorpoTests(unittest.TestCase):
+    """O texto da faixa de margem que não é cabeçalho, rodapé nem corrente volta à folha (S-596)."""
+
+    class _Linha:
+        def __init__(self, texto: str, bbox: tuple[float, float, float, float]) -> None:
+            self.text = texto
+            self.bbox = bbox
+
+    def test_a_legenda_do_pe_volta_e_o_numero_da_pagina_nao(self) -> None:
+        linhas = [
+            self._Linha("Position after: 20...Qxd5", (30.0, 739.0, 167.0, 752.0)),
+            self._Linha("21", (299.0, 777.0, 313.0, 791.0)),
+        ]
+
+        cruas = leitor.margem_no_corpo(linhas, 792.0, escala_px=2.0)
+
+        self.assertEqual([c.texto for c in cruas], ["Position after: 20...Qxd5"])
+        self.assertEqual((cruas[0].caixa.y1, cruas[0].procedencia), (1478, "camada"))
+
+    def test_o_que_repete_nas_vizinhas_fica_fora(self) -> None:
+        linhas = [
+            self._Linha("Chapter 3", (40.0, 752.0, 120.0, 764.0)),
+            self._Linha("142", (40.0, 770.0, 60.0, 782.0)),
+        ]
+
+        cruas = leitor.margem_no_corpo(
+            linhas, 792.0, escala_px=1.0, correntes=lambda: {leitor.chave_de_corrente("Chapter  4")}
+        )
+
+        self.assertEqual(cruas, [])
+
+    def test_a_faixa_de_cima_nao_volta(self) -> None:
+        """O que sobra em cima é abertura de capítulo ou lixo de OCR, e não corpo (censo de 11 livros)."""
+        linhas = [
+            self._Linha("Jacob Aagaard", (40.0, 10.0, 200.0, 22.0)),
+            self._Linha("Fortresses", (40.0, 26.0, 120.0, 38.0)),
+            self._Linha("142", (40.0, 770.0, 60.0, 782.0)),
+        ]
+
+        self.assertEqual(leitor.margem_no_corpo(linhas, 792.0, escala_px=1.0), [])
+
+    def test_as_vizinhas_so_sao_lidas_quando_sobra_linha(self) -> None:
+        lidas: list[int] = []
+        linhas = [self._Linha("O LIVRO", (40.0, 10.0, 200.0, 22.0)), self._Linha("7", (40.0, 770.0, 60.0, 782.0))]
+
+        leitor.margem_no_corpo(linhas, 792.0, escala_px=1.0, correntes=lambda: lidas.append(1) or ())
+
+        self.assertEqual(lidas, [])
+
+    def test_a_folha_da_camada_traz_a_legenda_do_pe(self) -> None:
+        import fitz
+
+        with TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "livro.pdf"
+            doc = fitz.open()
+            for numero in range(1, 4):
+                pagina = doc.new_page(width=400.0, height=600.0)
+                pagina.insert_text((40.0, 14.0), "O LIVRO", fontsize=10)
+                pagina.insert_text((40.0, 300.0), f"uma linha de prosa da folha {numero}", fontsize=11)
+                pagina.insert_text((40.0, 568.0), f"Chapter 3 - folha {numero}", fontsize=9)
+                if numero == 2:
+                    pagina.insert_text((40.0, 580.0), "Position after: 20...Qxd5", fontsize=10)
+                pagina.insert_text((200.0, 594.0), str(numero), fontsize=9)
+            doc.save(str(caminho))
+            doc.close()
+
+            lida = leitor.ler_pagina(caminho, 1, dpi=110, motor="camada", marcar_negrito=False, marcar_italico=False)
+
+        textos = [linha.texto for c in lida.colunas for b in c.blocos for linha in getattr(b, "linhas", ())]
+        self.assertEqual(textos[-1], "Position after: 20...Qxd5")
+        self.assertNotIn("Chapter 3 - folha 2", textos)
+        self.assertEqual((lida.cabecalho and lida.cabecalho.texto, lida.rodape and lida.rodape.texto), ("O LIVRO", "2"))
