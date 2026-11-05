@@ -17,19 +17,20 @@ from __future__ import annotations
 
 import re
 import unittest
+from typing import Any
 from unittest import mock
 
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, assentado, descartar, pixels_diferentes, renderizar
 
 from chess_diagram_ocr.ui import estilos, folha, pele, tipografia, tokens
+from chess_diagram_ocr.ui import folha_de_estilo as folha_de_estilo_pura
 
 FOLHA_DO_MAIN = (
     "cobra o desenho da folha de estilo do `main` (S-441 a S-553: a moldura derivada da superfície, "
     "o anel de foco de 1 px na cor da letra, o indicador chato com ponto), e o merge do religa "
-    "ficou com a folha da F9 (`ui/folha_de_estilo.py`) -- decisão do PR do merge. Dois achados "
-    "destes testes são defeitos da folha da F9 e estão no PR: o anel de 2 px zera o recheio, e o "
-    "botão de ferramenta encolhe ao ganhar foco (285x29 -> 267x23 na barra da sala); e no "
-    "interruptor marcado o foco não aparece, porque o `:checked` vem depois do `:focus`"
+    "ficou com a folha da F9 (`ui/folha_de_estilo.py`) -- decisão do PR do merge. Os dois defeitos "
+    "que estes testes acharam na folha da F9 estão consertados e têm guarda própria em "
+    "`MarcadoEFocoNaFolhaTests` (S-555, S-556)"
 )
 """O motivo dos testes da folha do `main` que não rodam depois do merge do religa."""
 
@@ -878,6 +879,115 @@ class AnelDeFocoTests(unittest.TestCase):
                             0,
                             "dois estados do interruptor desenham igual",
                         )
+
+
+def _corpo_da_regra(qss: str, seletor: str) -> str:
+    """O corpo da regra cujo seletor é exatamente este: `:focus` não pode casar `:checked:focus`."""
+    achada = re.search(rf"(?m)^{re.escape(seletor)} \{{([^}}]*)\}}", qss)
+    assert achada is not None, f"sem regra para {seletor}"
+    return achada.group(1)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class MarcadoEFocoNaFolhaTests(unittest.TestCase):
+    """A folha da F9 diz «ligado» e «tem o foco» ao mesmo tempo, e sem mover nada (S-555, S-556)."""
+
+    def _cores(self, uma: pele.Pele, papel: str) -> str:
+        return tokens.cor(papel, None, cromo_escuro=uma.cromo_escuro)
+
+    def _folha(self, uma: pele.Pele) -> str:
+        return tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
+
+    def test_o_marcado_se_le_contra_o_apagado(self) -> None:
+        """S-555, com a régua na folha: a face acesa contra a superfície, que é o que o apagado mostra."""
+        for uma in pele.PELES:
+            corpo = _corpo_da_regra(self._folha(uma), "QToolButton:checked")
+            face = re.search(r"background-color: (#[0-9a-f]{6})", corpo)
+            assert face is not None, corpo
+            with self.subTest(pele=uma.nome):
+                razao = tokens.razao_de_contraste(face.group(1), self._cores(uma, tokens.SUPERFICIE_PADRAO))
+                self.assertGreaterEqual(razao, tokens.AA_GRAFICO)
+
+    def test_o_anel_se_le_sobre_a_face_do_marcado(self) -> None:
+        """S-556: `FOCO` sobre `SELECAO` dá 1,14:1 na clássica. O anel do marcado tem de ser outra tinta."""
+        for uma in pele.PELES:
+            qss = self._folha(uma)
+            anel = re.search(r"border: 2px solid (#[0-9a-f]{6})", _corpo_da_regra(qss, "QToolButton:checked:focus"))
+            face = re.search(r"background-color: (#[0-9a-f]{6})", _corpo_da_regra(qss, "QToolButton:checked"))
+            assert anel is not None and face is not None
+            with self.subTest(pele=uma.nome):
+                self.assertGreaterEqual(tokens.razao_de_contraste(anel.group(1), face.group(1)), tokens.AA_GRAFICO)
+
+    def test_a_regra_do_marcado_com_foco_vem_depois_das_duas_que_ela_junta(self) -> None:
+        """Mesma especificidade não salva ninguém: o `:checked` depois do `:focus` foi o que apagou o anel."""
+        qss = self._folha(pele.PELES[0])
+        posicoes = [qss.index(f"{s} {{") for s in ("QToolButton:focus", "QToolButton:checked", "QToolButton:checked:focus")]
+        self.assertEqual(posicoes, sorted(posicoes))
+
+    def test_o_anel_nao_zera_o_recheio(self) -> None:
+        for uma in pele.PELES:
+            for seletor in ("QPushButton", "QToolButton", "QComboBox"):
+                corpo = _corpo_da_regra(self._folha(uma), f"{seletor}:focus")
+                with self.subTest(pele=uma.nome, seletor=seletor):
+                    self.assertNotIn("padding: 0px", corpo)
+                    self.assertIn("padding: ", corpo)
+
+    def test_o_recheio_com_anel_paga_exatamente_o_pixel_a_mais_da_borda(self) -> None:
+        for seletor, (h, v) in folha_de_estilo_pura.RECHEIO_DO_TEMA.items():
+            with self.subTest(seletor=seletor):
+                recheio = folha_de_estilo_pura.recheio_com_anel(seletor, base=9, densidade=pele.CONFORTAVEL)
+                em_repouso = [
+                    folha_de_estilo_pura._escalado(n, base=9, densidade=pele.CONFORTAVEL)  # noqa: SLF001
+                    for n in (v, h)
+                ]
+                self.assertEqual(recheio, f"{em_repouso[0] - 1}px {em_repouso[1] - 1}px")
+
+    @staticmethod
+    def _repolido(app: Any, controle: Any) -> tuple[int, int]:
+        """O tamanho depois de a folha ser reaplicada. **Sem isto a medida é vácua**: o `sizeHint` só muda
+        no polimento, e sem conserto este teste passava verde enquanto o botão ia de 169x25 para 151x19."""
+        controle.style().unpolish(controle)
+        controle.style().polish(controle)
+        controle.updateGeometry()
+        app.processEvents()
+        return (controle.sizeHint().width(), controle.sizeHint().height())
+
+    def test_o_botao_nao_muda_de_tamanho_ao_ganhar_o_foco(self) -> None:
+        """O número que importa, medido no widget: 285x29 -> 267x23 na barra da sala, antes do conserto."""
+        from PyQt6.QtWidgets import QComboBox, QPushButton, QToolButton, QVBoxLayout, QWidget
+
+        app = aplicacao()
+        tema.aplicar_tema(app)
+        janela = QWidget()
+        self.addCleanup(descartar, janela)
+        caixa = QVBoxLayout(janela)
+        ferramenta = QToolButton(janela)
+        ferramenta.setText("Seguir OCR")
+        marcado = QToolButton(janela)
+        marcado.setText("Seguir OCR")
+        marcado.setCheckable(True)
+        marcado.setChecked(True)
+        botao = QPushButton("Exportar PDF", janela)
+        escolha = QComboBox(janela)
+        escolha.addItem("uma escolha")
+        controles = (ferramenta, marcado, botao, escolha)
+        for controle in controles:
+            caixa.addWidget(controle)
+        janela.show()
+        janela.activateWindow()
+        app.processEvents()
+        for controle in controles:
+            with self.subTest(controle=type(controle).__name__, marcado=controle is marcado):
+                # Tira o foco de quem o tem antes de medir o repouso: a janela nasce com ele em alguém.
+                outro = botao if controle is not botao else ferramenta
+                outro.setFocus()
+                app.processEvents()
+                repouso = self._repolido(app, controle)
+                controle.setFocus()
+                app.processEvents()
+                if not controle.hasFocus():
+                    self.skipTest("sem foco nesta plataforma")
+                self.assertEqual(self._repolido(app, controle), repouso)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

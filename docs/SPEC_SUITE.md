@@ -5843,3 +5843,51 @@ dois pontos — a régua é a **forma declarada**, e não o pixel, porque o que 
 A mensagem do commit `eb3ba71` cita a faixa "S-527 a S-580", e a guarda `test_todo_item_entregue_tem_secao_em_algum_doc` lê
 números em mensagem de commit como entrega. Esta seção existe para dizer que **S-580 é o limite superior da
 reserva**, e não um item: quando a faixa for ocupada até aqui, o número recebe a seção de verdade e este parágrafo sai.
+
+
+## S-555 · O anel de foco não move o botão, e o marcado se lê contra o apagado ✅ implementada (2026-11-05)
+
+### Problema
+
+A denúncia de 2026-09-06 mediu o botão marcado contra o desmarcado na folha de `qt/tema.py` (PR #33). O
+merge do religa ficou com a folha da F9 (`ui/folha_de_estilo.py`), e aquele conserto ficou sem lugar: a regra
+que ele acrescentava não existe mais, e os testes dele estão entre os que `FOLHA_DO_MAIN` pula. **O que a
+denúncia perguntava continuou valendo, e relida contra a folha de hoje a resposta é outra:**
+
+| pele | face acesa x superfície | `FOCO` x face acesa | letra x face acesa |
+|---|---|---|---|
+| Foco | 3,35 | 2,32 | 4,82 |
+| Clássica / Fita | 4,50 | **1,14** | 5,12 |
+
+O marcado em repouso já passa o piso de 3:1: na F9, quem diz "ligado" é a face, e não a moldura. **O defeito
+que sobrou é de geometria.** `QToolButton:focus` escrevia `border: 2px; padding: 0px`, e o botão encolhia ao
+ganhar o foco, de 285x29 para 267x23 na barra da sala, com a fila inteira andando a cada `Tab`.
+
+### Solução
+
+`recheio_com_anel`: o recheio do controle com o anel é o de repouso menos um pixel de cada lado, que é
+exatamente o que a borda de 2 px cobra a mais que a de 1 px. A tabela é a mesma `RECHEIO_DO_TEMA`.
+
+### Critério de aceite
+
+`MarcadoEFocoNaFolhaTests` em `tests/test_qt_tema.py`: `sizeHint` igual com e sem foco nos três controles com
+face, medido no widget; a face do marcado passa `AA_GRAFICO` contra a superfície nas três peles.
+
+## S-556 · O botão marcado continua dito quando tem o foco ✅ implementada (2026-11-05)
+
+### Problema
+
+Dois defeitos na mesma linha. O `QToolButton:checked` vem depois do `:focus`, com a mesma especificidade, e
+toma a borda: o foco some justamente no botão ligado. E inverter a ordem não bastaria: `FOCO` sobre `SELECAO`
+mede **1,14:1** na clássica e na fita, os dois quase o mesmo azul.
+
+### Solução
+
+Uma regra própria, `QToolButton:checked:focus`, depois das duas que ela junta: anel de 2 px na **letra** do
+marcado, que dá 4,82 ou mais sobre a face. A face não muda, e "ligado" continua dito por ela.
+
+### Critério de aceite
+
+O anel passa `AA_GRAFICO` sobre a face do marcado nas três peles, lido da folha; a regra vem depois de
+`:focus` e de `:checked`, e o recheio dela é o da S-555.
+
