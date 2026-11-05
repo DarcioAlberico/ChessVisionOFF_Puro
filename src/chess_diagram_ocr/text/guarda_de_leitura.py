@@ -50,6 +50,14 @@ MINIMO_DE_COMPONENTES = 100
 
 Era 40, e as capas do *1000 Chess Problems* e do *A Matter of Endgame* (47 e 43 componentes) avisavam."""
 
+MINIMO_COM_CAMADA = 40
+"""O mesmo mínimo, quando a camada confirma que a folha tem texto. **O número sozinho não separa os dois
+casos**: a folha 814 do *Chess Evolution 2013* tem três linhas, 68 componentes, e o glifo lê `h`. As duas capas
+não têm camada nenhuma, e essa folha tem."""
+
+CAMADA_QUE_CONFIRMA = 20
+"""Caracteres na camada para ela valer de testemunha: uma palavra solta na capa não confirma folha de texto."""
+
 DPI_DA_REGUA = 220
 ALTURA_MINIMA = 8
 ALTURA_MAXIMA = 60
@@ -83,7 +91,9 @@ class Medida:
 
     @property
     def tem_texto(self) -> bool:
-        return self.componentes >= MINIMO_DE_COMPONENTES
+        return self.componentes >= MINIMO_DE_COMPONENTES or (
+            self.componentes >= MINIMO_COM_CAMADA and self.caracteres_da_camada >= CAMADA_QUE_CONFIRMA
+        )
 
     @property
     def bate_com_a_camada(self) -> bool:
@@ -169,11 +179,13 @@ __all__ = [
     "ALTURA_MAXIMA",
     "ALTURA_MINIMA",
     "AREA_MINIMA",
+    "CAMADA_QUE_CONFIRMA",
     "CORTE_DAS_LINHAS",
     "CORTE_DA_CAMADA",
     "CORTE_DA_DENSIDADE",
     "DPI_DA_REGUA",
     "FOLGA",
+    "MINIMO_COM_CAMADA",
     "MINIMO_DA_CAMADA",
     "MINIMO_DE_COMPONENTES",
     "MINIMO_DE_LINHAS",

@@ -498,6 +498,13 @@ marcado para revisão, com captura ≥ 90% — ou (b) pagar o orçamento de CPU 
 
 ## 5a. O que você vai ver, e quando
 
+> **Estado em 2026-11-05: a primeira entrega está na `main`**, com a especificação em
+> [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) e os números em
+> [metrics/texto_prosa_primeira_entrega.json](metrics/texto_prosa_primeira_entrega.json). A coluna "primeira entrega"
+> da tabela abaixo é a previsão de 2026-10-30, e o medido fica no relatório: nos livros aprovados na auditoria a prosa
+> erra um décimo do glifo, mas a M0 ainda está acima de 0,05%, e a marca captura cerca de metade do erro. Daqui para a
+> frente faltam as Fases 100 (régua no pacote), 102 (fusão completa e virar o padrão), 103 a 107, e as S-711 a S-714.
+
 **A primeira entrega** — o que muda na aba Texto antes de qualquer portão, sem trocar o padrão de
 ninguém (decisão 10) e sem esperar instalador nem livro novo, porque a máquina do dono já tem o
 Tesseract. **Estimativa:** 15 dias de executor somados (tabela abaixo), sem folga; com o crítico de
@@ -806,6 +813,10 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     amostra (*Chess Evolution* 814 e 1396, densidade 0,038 e 0,004) avisam; o corte de 0,5 só fica se
     nenhuma folha **com texto** cair abaixo de 0,7 na varredura dos livros dev.
   - *Saída:* G3 = 0 nas 95 folhas e na varredura, com os números publicados.
+  - *Achado:* **o "5 de 67" de 2026-10-30 é muito menor que a realidade.** A guarda mostrou o *Chess Evolution 2014*
+    perdendo a maior parte das folhas, e o *2013* e o *Kmoch* mais delas; os números estão no relatório da entrega.
+    Isso sobe a prioridade da S-711, que ataca a causa. *Corte:* o 0,5 ficou com exceção registrada, e não pela regra
+    "nenhuma folha com texto abaixo de 0,7": ver `varredura_da_guarda` no relatório.
   - *Reversão:* o aviso não muda texto nenhum; o corte é constante. O `ESQUEMA` 2 **não** é reversível
     (versão antiga não abre arquivo novo), e por isso entra junto com o primeiro uso dos avisos.
 - **S-711** · Região escura na borda: faixa colorida e moldura de scan.
@@ -871,6 +882,9 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     contra ela), saem com ≥ 90% das linhas da camada achadas e conferência visual de uma folha por quem
     não é o executor; nenhuma das 90 folhas legíveis aciona a reserva.
   - *Reversão:* interruptor; desligado, a folha sai como o glifo a leu, com o aviso da S-710.
+  - *Achado:* a reserva vem **desligada** em `ler_pagina`, e só a janela a liga: ligada por padrão, a régua e os CLIs
+    passavam a depender de haver Tesseract. E em folha de duas colunas com fio, o `psm 3` intercala as colunas, o que
+    pediu a partição na calha (`leitor._partida_no_vao`).
 - **S-716** · Primeira entrega: a prosa da camada nos livros digitais.
   - *Contexto:* nos livros nascidos digitais a camada **é** a tinta — é a referência do ouro. O
     `leitor.py` recusou a camada como motor por causa da **notação** (ela não representa figurina), não
@@ -955,6 +969,8 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     marcada travada em 5%, publicada já no G102 (a prova é a curva captura × fração marcada).
   - *Saída:* G5 provisória medida; a S-761 a substitui pela calibrada.
   - *Reversão:* interruptor; desligado, vale a faixa de hoje.
+  - *Achado:* entregue sem as alternativas do `lstm_choice_mode=2` (saem no hOCR, e o executor lê TSV) e sem o léxico da
+    língua do livro, que é a S-728. Os dois ficam para a S-761.
 - **Portão G101:** G3 = 0 no ouro, na prata e numa varredura do acervo inteiro com a guarda da S-710
   (só o glifo e a densidade de leitura: ~0,65 s × 25.918 folhas ≈ 4,7 h de CPU, orçadas aqui) — o
   scan-ouro, que depende da D3, entra no G104; perda de leiaute (diferença pareada leitor de linha nas
@@ -1017,6 +1033,8 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     2026-10-30 lê com um processo por linha (diferença zero), sem console e com aviso quando o binário
     falta ou tem versão fora da faixa.
   - *Reversão:* módulos novos; sem a fusão (S-721) ninguém os chama.
+  - *Achado:* entregue sem `--user-words`, `load_system_dawg=0` e a escala pela altura-x: cada um muda o que o Tesseract
+    lê, e a saída deste item pede texto idêntico ao de 2026-10-30. Ficam para a S-721, medidos.
 - **S-721** · Fusão por token (`text/fusao.py`).
   - *Contexto:* cinco regras foram medidas offline sobre as mesmas linhas (tabela da 1.5); a de partida
     é a **v5** (`texto_prosa_2026-10-30/fusao_v5.py`) no digital: ganha do glifo em 25 de 26 folhas e,

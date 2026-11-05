@@ -28,7 +28,7 @@ diagnóstico, as metas com os portões, as decisões do dono e a ordem dos itens
 > | S-500 a S-506, S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
 > | S-581 a S-584 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
-> | S-702 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
+> | S-702, S-710, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
 
 Cada item traz o problema (com número quando há), a decisão, onde mora, e o **critério de aceite**,
 escrito para virar teste. A spec nasce com o primeiro item entregue, e os outros entram aqui quando
@@ -266,3 +266,181 @@ leitura de cada um.
 
 **Reversão.** O manifesto é dado versionado: um livro reprovado sai num commit que diz o critério. A
 admissão e o manifesto não têm chamador em produção até a S-716.
+
+
+## S-710 · Guarda de leitura incompleta, e o campo de avisos que a página não tinha ✅ implementada (2026-11-05)
+
+### Problema
+
+Medido em 2026-10-30, 5 de 67 folhas saíam com um bloco só (`h`, `.`), sem log nem exceção. Quem lê o livro não
+tem como saber que faltam 40 linhas. `PaginaLida` nem tinha onde dizer isso.
+
+### Solução
+
+`text/guarda_de_leitura.py`: a **densidade de leitura**, caracteres lidos ÷ componentes de tinta com altura de
+letra fora dos diagramas. Abaixo de 0,5, o aviso `folha_nao_lida`. A perda parcial tem sinal próprio,
+`leitura_parcial`: linhas lidas contra as estimadas pela projeção, e lidos contra os caracteres da camada.
+Folha com pouca tinta (capa, branco, só diagrama) é classe à parte, e não avisa.
+
+**A primeira versão foi reprovada pelo crítico, e o motivo importa.** A *Polgar 5334* avisava em 16 de 25 folhas,
+com nada perdido: seis diagramas por folha, e as coordenadas e o número em volta de cada um contavam como letra. A
+máscara agora cresce uma casa de cada lado, e quem leu ao menos 60% do que a camada tem não perdeu a folha. O mínimo
+subiu de 40 para 100 componentes, pelas duas capas que avisavam.
+
+`PaginaLida.avisos`, com ida e volta em `para_json`. **`ESQUEMA` é 2 só na folha com aviso**: a folha comum continua
+no formato 1, sem o campo, e um programa anterior a abre como sempre; é o que mantém a promessa da seção 5a do roadmap,
+de que a primeira entrega não muda arquivo gravado. O selo mora em `PainelDeTexto.selo_da_folha` e lê da origem do
+documento, então a folha reaberta do caderno continua dizendo que não foi lida.
+
+### Critério de aceite
+
+`tests/test_text_guarda_de_leitura.py` e `tests/test_qt_texto_prosa.py`. As sete folhas conhecidas avisam, com
+densidade abaixo de 0,002; a varredura está em
+[metrics/texto_prosa_primeira_entrega.json](metrics/texto_prosa_primeira_entrega.json), por tipo de folha.
+
+### O que ela não pega
+
+**Perda parcial em folha cujo texto ruim tem tanta letra quanto o bom**: a densidade não vê, e os dois sinais de
+`leitura_parcial` só veem quando faltam linhas ou caracteres em quantidade. A promessa é a perda total.
+
+## S-715 · O leiaute de reserva ✅ implementada (2026-11-05)
+
+### Problema
+
+O Tesseract lendo a página inteira, com o leiaute dele, nunca desaba; numa folha normal é pior que as caixas do
+glifo. Vale exatamente onde a guarda dispara.
+
+### Solução
+
+`leitor._linhas_da_reserva`: com a guarda acionada, a folha é relida em `psm 3`, com os diagramas em branco, e sai
+com o aviso `leiaute_de_reserva`. A notação continua do glifo onde ele achou caixa de altura de linha. Sem
+Tesseract, a folha sai como o glifo a leu, com `leitor_indisponivel`.
+
+**O interruptor vem desligado, e só a janela o liga** (`ler_pagina(reserva=True)`, em `qt/painel_de_texto._ler`).
+Ligada por padrão, ela mudava a régua: `rodar.py`, `cobertura.py` e os CLIs que publicam relatório passariam a dar um
+número que depende de haver Tesseract na máquina, e o *Chess Evolution* 903 ia de 1 linha a 69 no meio de uma medição.
+
+**O conserto que a medição pediu, e o roadmap não previa.** Em folha de duas colunas com fio no meio, o `psm 3`
+escreve as duas colunas na mesma linha: no *Kmoch* 106, 369 palavras em 40 linhas, onde a folha tem 70, e o texto
+sairia intercalado. `_partida_no_vao` parte a linha na calha, tanto no vão largo quanto no token `|`, que é o fio
+lido como letra. `montar` acha as colunas nas caixas resultantes. O CER contra a camada caiu de 0,79 para 0,29.
+
+### Critério de aceite
+
+Medido em `metrics/texto_prosa_primeira_entrega.json`, chave `folhas_perdidas`: *Chess Evolution 2013* 903 e 1210
+com CER de prosa abaixo de 5%; as três do *Kmoch* com ao menos 90% das linhas da camada, que está desalinhada da
+tinta e por isso não dá CER; nenhuma folha legível do ouro aciona a reserva. **A conferência visual de uma folha
+do *Kmoch*, que a saída do item pede a quem não é o executor, fica com o crítico.**
+
+## S-716 · A prosa da camada nos livros digitais ✅ implementada (2026-11-05)
+
+### Problema
+
+A camada foi recusada como motor por causa da **notação**, que ela não representa, e não da prosa. Nos livros
+nascidos digitais a prosa dela é a tinta.
+
+### Solução
+
+`motor="camada_prosa"`, com o rótulo "Camada na prosa (livro digital)". `text/camada_prosa.py` põe cada palavra da
+camada na linha do glifo que contém o centro dela (caixa crescida 15% na vertical), e `text/fusao.py` funde. A
+admissão é a de `text/admissao.py`, com o perfil do livro em memória. Folha recusada lê como o glifo, com
+`camada_recusada`; capa e branco (`sem_texto`) não avisam.
+
+**A folha que a guarda acusa não pode contornar a checagem de ligadura**, e a primeira versão contornava: usava a
+camada crua, com `afer` e tudo. Com a reserva, o leiaute e as palavras suspeitas vêm do Tesseract, e o resto da
+camada. Sem ela, é a montagem crua, com a suspeita marcada `revisar`. As duas saem com `camada_na_folha`, e nas duas
+os lances ficam sem figurina, o que o selo diz.
+
+**O PDF não precisa escrever o espaço.** No *Chess Evolution* ele é um salto de posição de 1,76 pt em corpo 13, sem
+caractere nenhum, e `get_text("words")` devolvia tokens de até 52 letras. `palavras_da_folha` parte onde o vão passa
+de 0,1 corpo, medido do **maior fim já visto**: o segundo caractere de uma ligadura mapeada direito tem largura zero,
+e medir dele partia `Aerofl|ot`.
+
+**(a)-(d) não bastam, e a checagem que a S-702 pediu está aqui.** Palavra com letra mais larga que 1,4× a mediana
+dela na mesma fonte é ligadura que perdeu letra (`after` -> `afer` no *Chess Evolution 2013*), e fica com o glifo.
+O `fi` mapeado direito mede a mesma largura, mas vem seguido de um `i` de largura zero, e não é acusado: sem essa
+exceção, `first` saía `frst`. Palavra em fonte de figurina, com código que não é figurina em Unicode, também fica
+com o glifo.
+
+**Na camada, toda prosa existe** (`fusao.existe_na_camada`). O léxico não tem `arranca` nem `Gelfand`, e a regra
+"notação do glifo, salvo palavra que existe" entregaria ao glifo a palavra certa do editor.
+
+### Critério de aceite
+
+M0 medida só nos livros aprovados na auditoria visual da S-702, em
+`metrics/texto_prosa_primeira_entrega.json`, com G1 e G2 contra o glifo. **A meta M0 de ≤ 0,05% é do portão G107, e
+não está cumprida**: o que sobra é quase todo notação que a régua conta como prosa (`1...B` contra `1 B`) e leiaute do
+*Hertan*. Nos livros com camada de OCR a admissão recusa, e o texto é o do glifo, caractere a caractere.
+
+**A M0 não enxerga dois defeitos, e isso é da referência.** Ela mede contra a mesma camada: ligadura perdida e espaço
+não escrito saem iguais nos dois lados. Foi o crítico, olhando a tinta, que os achou.
+
+## S-717 · A fusão experimental na janela ✅ implementada (2026-11-05)
+
+### Solução
+
+`motor="fusao"`, com o rótulo "Glifo + Tesseract (experimental)", é a regra v5 de 2026-10-30, escrita sobre tokens e
+aplicada **dentro** de `ler_pagina`, antes de `_com_negrito`, `_com_trechos` e da junção de hífen, para esses
+trabalharem sobre o texto fundido. Duas regras da S-721 já entram: a palavra que só o glifo leu certo fica com ele
+(regra 4), e a barra `|` não vence a letra, que eram 8 de 20 erros lidos à mão. A língua é escolhida à mão na caixa
+nova da aba e fica no estado da janela; a S-723 a leva ao caderno. **Trocar a língua pede a leitura nova**, como trocar
+de motor: o caderno anota `fusao:por`. O padrão não muda: `auto` continua o glifo.
+
+### Critério de aceite
+
+`tests/test_qt_texto_prosa.py` escolhe a opção na caixa, lê uma folha de um PDF desenhado no teste, e afirma o texto
+mostrado e a língua pedida. A medida está em `metrics/texto_prosa_primeira_entrega.json`.
+
+### O que ela não entrega
+
+A regra v3 no scan, o `--user-words`, o dicionário desligado nas linhas de notação, o léxico da língua do livro e a
+escala pela altura-x são da S-721, da S-728 e da S-720 completa: cada um muda o que o Tesseract lê, e a saída da S-720
+pede o mesmo texto da corrida de 2026-10-30. Em alemão a fusão perde do Tesseract puro no *Brinckmann*, o que a S-721
+já prevê com a v3. A leitura mostra o resultado de uma vez, sem o glifo primeiro.
+
+## S-718 · A marca "revisar" honesta, por palavra ✅ implementada (2026-11-05)
+
+### Problema
+
+A confiança do glifo pintada sobre o texto do Tesseract marca `revisar` o texto certo porque o glifo errou ali. E os
+sinais crus inundam: 10,0% a 40,1% das palavras, contra um teto de 5%.
+
+### Solução
+
+`fusao.marcar` ranqueia, e marca as mais suspeitas até 5% das palavras da folha, arredondando para baixo. Os sinais
+são os de quem escreveu o token: discordância com o glifo, palavra fora do léxico e a confiança do próprio leitor.
+Prosa da camada nunca é marcada. `LinhaLida.revisar_em` vive em memória, e o que atravessa o arquivo é a faixa da
+corrida, sem mudar o formato. `Shift+F7` vai à próxima, por `rico.intervalos_a_revisar`, também na folha reaberta.
+
+**Desvio declarado:** as alternativas do `lstm_choice_mode=2`, que o roadmap cita, saem no hOCR e não no TSV. Aqui o
+terceiro sinal é a confiança por palavra do TSV; a S-761 calibra.
+
+### Critério de aceite
+
+G5 provisória em `metrics/texto_prosa_primeira_entrega.json`, com a fração marcada travada em 5%. **A captura não
+chega ao alvo de 90%, que é da S-761.** O interruptor é `ler_pagina(marca_por_palavra=False)`, e vale a faixa de hoje.
+
+## S-720 · O executor do Tesseract e o contrato `LeitorDeLinha` ✅ implementada (2026-11-05)
+
+### Solução
+
+`text/tesseract.py` e `text/leitor_de_linha.py`, fora de `ocr.py`, que está no digest da S-218. Um processo por
+folha, com um TIFF de várias páginas pelo stdin, `psm 7`; `CREATE_NO_WINDOW` e os três canos explícitos; `kill` no
+timeout; *Job Object* com `KILL_ON_JOB_CLOSE`; binário só por caminho absoluto, com o diretório corrente fora da
+busca; `--version` conferida (5.x); `TESSDATA_PREFIX` do executor sobrescrevendo o do ambiente; teto de 60 MP; erro no
+`stderr` com saída 0 também vira falha, e não texto vazio.
+
+O contrato distingue **"não leu"** (`None`, com a frase na `Leitura.falha`) de **"leu vazio"** (`""`). Ausência do
+motor nunca levanta no caminho da janela.
+
+### Critério de aceite
+
+`tests/test_text_tesseract.py`: o *parser* sobre saídas gravadas, sem o binário, processo falso que erra, estoura e
+não abre. **Diferença zero** contra a leitura de um processo por linha, nas folhas do ouro e da prata, em
+`metrics/texto_prosa_primeira_entrega.json`, chave `executor`.
+
+### O que ela não entrega
+
+`--user-words` e `load_system_dawg=0`: um processo por folha tem uma configuração só, e separar as linhas de notação
+é a S-721. A escala pela altura-x muda o texto lido, e entra medida. O timeout é 1 s por linha com piso de 10 s, e
+ainda não 10× o p99 medido. O Tesseract no instalador é a S-724, que espera a D1.

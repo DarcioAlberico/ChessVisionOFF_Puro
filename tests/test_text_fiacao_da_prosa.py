@@ -144,6 +144,7 @@ class MarcaChegaATelaTests(_ComLivro):
     def test_a_contagem_le_a_marca_e_nao_a_confianca(self) -> None:
         marcada = pagina.LinhaLida(texto="uma palavra", bbox=(0, 0, 9, 9), confianca=1.0, revisar_em=((0, 3),))
         limpa = pagina.LinhaLida(texto="outra", bbox=(0, 0, 9, 9), confianca=0.0, procedencia="glifo")
+        # Pela confiança seria o contrário: a marcada é tranquila, e a outra pede revisão.
         pag = pagina.PaginaLida(
             colunas=(
                 pagina.Coluna(
@@ -152,8 +153,12 @@ class MarcaChegaATelaTests(_ComLivro):
             ),
             marca_por_palavra=True,
         )
-        self.assertEqual(documento.contagem_por_faixa(pag)[documento.REVISAR], 1)
-        self.assertEqual(documento.contagem_por_faixa(pag)[documento.TRANQUILO], 1)
+        contagem = documento.contagem_por_faixa(pag)
+        self.assertEqual((contagem[documento.REVISAR], contagem[documento.TRANQUILO]), (1, 1))
+        so_a_limpa = pagina.PaginaLida(
+            colunas=(pagina.Coluna(indice=0, blocos=(pagina.BlocoDeTexto.de_linhas([limpa]),)),), marca_por_palavra=True
+        )
+        self.assertEqual(documento.contagem_por_faixa(so_a_limpa)[documento.REVISAR], 0)
 
     def test_a_juncao_de_hifen_leva_a_marca_junto(self) -> None:
         linhas = [
@@ -224,6 +229,7 @@ class ReservaTests(_ComLivro):
         for n in range(14):
             cv2.putText(imagem, LINHA, (150, 90 + 40 * n), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2, cv2.LINE_AA)
         imagem[int(300 * ESCALA) : int(400 * ESCALA), int(100 * ESCALA) : int(200 * ESCALA)] = 40
+        imagem[:4, :4] = 40  # o canto escuro: quem "apagasse" com o pixel do canto não daria branco
         self.ler("glifo", [_crua("h", 50)], diagramas=[candidato], leitor_de_linha=falso, reserva=True, imagem_rgb=imagem)
         assert falso.cinza is not None
         self.assertEqual(int(falso.cinza[int(350 * ESCALA), int(150 * ESCALA)]), 255)
@@ -453,6 +459,15 @@ class PalavraSuspeitaTests(unittest.TestCase):
         linhas, fora = camada_prosa.por_linha([caixa], [palavra])
         self.assertEqual((len(linhas[0]), fora), (1, []))
 
+    def test_o_perfil_do_livro_e_calculado_uma_vez(self) -> None:
+        documento_falso = mock.Mock(page_count=5)
+        documento_falso.name = "uma-vez.pdf"
+        with mock.patch.object(camada_prosa.admissao, "perfil_do_livro", return_value="perfil") as perfil:
+            camada_prosa.perfil_em_memoria(documento_falso)
+            camada_prosa.perfil_em_memoria(documento_falso)
+        camada_prosa._perfis.clear()  # noqa: SLF001
+        perfil.assert_called_once()
+
     def test_vale_a_linha_de_centro_mais_proximo(self) -> None:
         caixas = [(0.0, 0.0, 100.0, 10.0), (0.0, 10.5, 100.0, 20.5)]
         palavra = camada_prosa.PalavraDaCamada("x", (10.0, 10.5, 20.0, 12.5))  # centro em 11,5, na segunda
@@ -469,13 +484,21 @@ class GuardaTests(unittest.TestCase):
 
     def test_a_altura_da_letra_escala_de_verdade_com_o_dpi(self) -> None:
         """A 73 dpi a letra tem 6 px, abaixo do mínimo de 8 px da régua de 220 dpi."""
+        grande = guarda_de_leitura.medir(self._folha(), [], lidos=0, linhas_lidas=0).componentes
         pequena = cv2.resize(self._folha(), None, fx=73 / 220, fy=73 / 220, interpolation=cv2.INTER_AREA)
-        self.assertGreater(guarda_de_leitura.medir(pequena, [], lidos=0, linhas_lidas=0, dpi=73).componentes, 100)
+        medida = guarda_de_leitura.medir(pequena, [], lidos=0, linhas_lidas=0, dpi=73).componentes
+        self.assertGreater(medida, 0.5 * grande, "a régua de 220 dpi jogou fora as letras de 73 dpi")
 
     def test_a_poeira_nao_e_letra(self) -> None:
         imagem = np.full((1400, 1000, 3), 255, dtype=np.uint8)
         for n in range(200):
             imagem[20 + 6 * n : 25 + 6 * n, 30 : 36] = 0
+        self.assertEqual(guarda_de_leitura.medir(imagem, [], lidos=0, linhas_lidas=0).componentes, 0)
+
+    def test_a_arte_alta_nao_e_letra(self) -> None:
+        imagem = np.full((1400, 1000, 3), 255, dtype=np.uint8)
+        for n in range(200):
+            imagem[100:400, 20 + 4 * n : 22 + 4 * n] = 0  # componentes altos demais para serem letra
         self.assertEqual(guarda_de_leitura.medir(imagem, [], lidos=0, linhas_lidas=0).componentes, 0)
 
     def test_as_coordenadas_em_volta_do_diagrama_nao_sao_texto_perdido(self) -> None:
@@ -492,6 +515,12 @@ class GuardaTests(unittest.TestCase):
 
     def test_a_capa_com_pouca_tinta_nao_e_folha_perdida(self) -> None:
         self.assertFalse(guarda_de_leitura.Medida(47, 2, 1, 1).nao_lida)
+
+    def test_a_folha_curta_com_camada_e_perda_e_nao_capa(self) -> None:
+        """*Chess Evolution 2013*, folha 814: três linhas, 68 componentes, e o glifo lê `h`."""
+        self.assertTrue(guarda_de_leitura.Medida(68, 1, 1, 1, caracteres_da_camada=80).nao_lida)
+        self.assertFalse(guarda_de_leitura.Medida(68, 1, 1, 1, caracteres_da_camada=3).nao_lida)
+        self.assertFalse(guarda_de_leitura.Medida(39, 1, 1, 1, caracteres_da_camada=80).nao_lida)
 
     def test_quem_leu_o_que_a_camada_tem_nao_perdeu_a_folha(self) -> None:
         self.assertFalse(guarda_de_leitura.Medida(1000, 300, 10, 8, caracteres_da_camada=400).nao_lida)
