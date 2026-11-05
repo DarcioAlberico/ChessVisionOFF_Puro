@@ -2694,8 +2694,12 @@ class PainelDeTexto(QWidget):
         self.mostrar_intervalo(*seguinte)
 
     def proxima_a_revisar(self) -> None:
-        """`Shift+F7`: vai à próxima palavra marcada `revisar` depois do cursor, e a seleciona (S-718)."""
-        marcas = rico.intervalos_a_revisar(self.documento)
+        """`Shift+F7`: vai à próxima palavra marcada `revisar` depois do cursor, e a seleciona (S-718).
+
+        **Pela marcação, e não pelo documento cru:** antes de gravar, a palavra que se acabou de corrigir ainda é
+        `w` e `ite`, em duas corridas `revisar`, e o gesto parava nos pedaços. A tinta na tela continua até gravar.
+        """
+        marcas = rico.intervalos_a_revisar(correcao.com_procedencia_humana(self.documento))
         if not marcas:
             self.estado.emit(strings.NADA_A_REVISAR)
             return

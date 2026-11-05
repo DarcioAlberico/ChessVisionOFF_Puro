@@ -63,11 +63,11 @@ e `segmentar` com DPI rendendo as letras do cabeçalho como caixas de caractere 
 **O piso do núcleo, achado ao medir a prata depois do merge.** `TRIFUNOVIC`, título em negrito pesado do *Koblenz*, tem 56% de
 tinta e núcleo de 8 px: saía invertido, ilegível, e a folha de índice 38 (a 39 do relatório da prata) piorava nos três motores
 (fusão de 86 para 129 erros). Em 30 folhas de cada livro do acervo, os cabeçalhos do *Yusupov* têm de 23 a 27 px a 220 dpi, e abaixo
-de 22 só há título em negrito (`PRIMERO`, `NEGRAS` no *Reinfeld*), filete azul do *Chess Evolution* e dois cabeçalhos de faixa cinza
-com o núcleo errado (2 e 3 px). A contagem depende de como as folhas são espaçadas (103 e 80 achados em dois censos), e a fronteira
+de 22 não há cabeçalho que se leia: título em negrito (`PRIMERO`, `NEGRAS` no *Reinfeld*), filete azul do *Chess Evolution*, barra
+preta de scan, mancha, palavra de corpo escura e dois cabeçalhos de faixa cinza com o núcleo errado (2 e 3 px). A contagem depende de como as folhas são espaçadas (103 e 80 achados em dois censos), e a fronteira
 é a mesma nos dois. O núcleo agora tem de ter ao
 menos 0,1 pol. Os dois cinzas deixam de ser apagados, e ficam sem leitura, como antes do item. **Continua faixa, e é engano:** de
-46 px para cima há casas de diagrama não detectado, uma tira marrom e o título da capa do *Koblenz*, em 5 achados; inverter ali não
+40 px para cima há casas de diagrama não detectado, uma tira marrom e títulos de capa (*Koblenz*, *Secrets*, *Vishy Anand*); inverter ali não
 custa leitura que existisse, e não há amostra para pôr um teto sem ajustar ao *Yusupov*.
 
 **O que fica de fora.** `GlyphRecognizer.read` (a faixa de legenda da `ocr_caption`) não sabe o

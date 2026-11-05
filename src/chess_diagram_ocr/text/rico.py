@@ -635,7 +635,8 @@ def _agrupar(linhas: Sequence[Any]) -> list[tuple[tuple[bool, bool, bool], str]]
     **O espaço da junção entre duas linhas fica no fim do último pedaço da linha anterior**, e não
     no começo do primeiro da seguinte: assim a corrida itálica começa na primeira letra da citação,
     e não num espaço em pé antes dela. É a mesma regra de antes, agora aplicada a pedaço em vez de
-    a linha.
+    a linha. **Menos depois de uma marca `revisar`** (S-718): o espaço não é da palavra, e com ele as marcas do fim de
+    uma linha e do começo da seguinte viravam uma corrida só, e corrigir uma tirava a outra.
     """
     grupos: list[tuple[tuple[bool, bool, bool], list[str]]] = []
     ultima = len(linhas) - 1
@@ -643,7 +644,10 @@ def _agrupar(linhas: Sequence[Any]) -> list[tuple[tuple[bool, bool, bool], str]]
         pedacos = _pedacos(linha)
         if n != ultima:
             chave, texto = pedacos[-1]
-            pedacos[-1] = (chave, texto + " ")
+            if chave[2]:
+                pedacos.append(((chave[0], chave[1], False), " "))
+            else:
+                pedacos[-1] = (chave, texto + " ")
         for chave, texto in pedacos:
             if grupos and grupos[-1][0] == chave:
                 grupos[-1][1].append(texto)

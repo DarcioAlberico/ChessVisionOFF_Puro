@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import json
+import random
 import tempfile
 import unittest
 from dataclasses import replace
@@ -16,6 +17,7 @@ from pathlib import Path
 
 from chess_diagram_ocr.cli import texto_correcoes
 from chess_diagram_ocr.text import arquivo, correcao, rico
+from chess_diagram_ocr.text import pagina as modulo_da_pagina
 from chess_diagram_ocr.text.pagina import (
     BlocoDeDiagrama,
     BlocoDeTexto,
@@ -182,6 +184,67 @@ class MarcaDaPalavraTests(unittest.TestCase):
             caminho = arquivo.gravar(Path(pasta) / "folha.cvtxt", doc)
             reaberto = arquivo.carregar(caminho)
         self.assertEqual(rico.intervalos_a_revisar(reaberto), ((17, 21),))
+
+
+class MarcaPorSorteioTests(unittest.TestCase):
+    """Fica a marca da palavra que a mão não tocou, sai a da que tocou, em qualquer ordem e gravando no meio.
+
+    As regras escritas caso a caso já erraram três vezes aqui; o sorteio é o que pegou a última, e sai barato.
+    """
+
+    VOCABULARIO = (
+        "the white knight wins a pawn after black plays rook takes bishop and queen moves to open file with "
+        "strong attack on king side while his position remains very difficult because every piece stands badly"
+    ).split()
+
+    def _folha(self, sorte: random.Random, palavras: int, marcas: int, linhas: int) -> tuple[rico.DocumentoRico, list[str], set[int]]:
+        escritas = [sorte.choice(self.VOCABULARIO) for _ in range(palavras)]
+        marcadas = set(sorte.sample(range(palavras), marcas))
+        cortes = [0, *sorted(sorte.sample(range(1, palavras), linhas - 1)), palavras]
+        montadas = []
+        for a, b in zip(cortes, cortes[1:], strict=False):
+            posicao = 0
+            intervalos = []
+            for i in range(a, b):
+                if i in marcadas:
+                    intervalos.append((posicao, posicao + len(escritas[i])))
+                posicao += len(escritas[i]) + 1
+            montadas.append(
+                modulo_da_pagina.LinhaLida(texto=" ".join(escritas[a:b]), bbox=(0, 0, 9, 9), revisar_em=tuple(intervalos), procedencia="glifo")
+            )
+        bloco = modulo_da_pagina.BlocoDeTexto.de_linhas(montadas)
+        lida = modulo_da_pagina.PaginaLida(pagina=0, colunas=(modulo_da_pagina.Coluna(indice=0, blocos=(bloco,)),), marca_por_palavra=True)
+        return rico.de_pagina(lida), escritas, marcadas
+
+    @staticmethod
+    def _marcas(doc: rico.DocumentoRico) -> list[str]:
+        texto = doc.para_texto()
+        return sorted(texto[a:b] for a, b in rico.intervalos_a_revisar(doc))
+
+    def _rodada(self, sorte: random.Random, *, gravar: bool, palavras: int, marcas: int, linhas: int, edicoes: int) -> None:
+        doc, escritas, marcadas = self._folha(sorte, palavras, marcas, linhas)
+        tocadas = sorte.sample(range(palavras), edicoes)
+        for i in tocadas:
+            k = sorte.randrange(len(escritas[i]))
+            letra = sorte.choice([c for c in "xqzj" if c != escritas[i][k]])
+            onde = sum(len(p) + 1 for p in escritas[:i]) + k
+            doc = rico.editar(rico.editar(doc, onde, onde + 1, ""), onde, onde, letra)
+            escritas[i] = escritas[i][:k] + letra + escritas[i][k + 1 :]
+            if gravar:
+                doc = correcao.com_procedencia_humana(doc)
+        esperado = sorted(escritas[i] for i in marcadas - set(tocadas))
+        self.assertEqual(self._marcas(correcao.com_procedencia_humana(doc)), esperado)
+
+    def test_gravando_a_cada_correcao(self) -> None:
+        sorte = random.Random(1234)
+        for _ in range(150):
+            self._rodada(sorte, gravar=True, palavras=12, marcas=2, linhas=2, edicoes=2)
+            self._rodada(sorte, gravar=True, palavras=40, marcas=3, linhas=4, edicoes=5)
+
+    def test_gravando_so_no_fim(self) -> None:
+        sorte = random.Random(4321)
+        for _ in range(150):
+            self._rodada(sorte, gravar=False, palavras=40, marcas=3, linhas=4, edicoes=5)
 
 
 class ParMinimoTests(unittest.TestCase):

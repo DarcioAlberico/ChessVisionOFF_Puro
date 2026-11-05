@@ -325,16 +325,19 @@ antes de medir a escala e de achar as caixas. A folha sem moldura devolve o mesm
 **Tirar a moldura abre o que havia dentro, e nem sempre é texto.** Contracapa manchada e marca d'água davam `h` e o aviso de
 folha não lida; sem a moldura, davam milhares de sinais soltos e nenhum aviso. Por isso a folha com moldura que devolve até
 `guarda_de_leitura.RUIDO_POR_TOKEN` = 1,3 caractere por token, com ao menos 40 caracteres, sai com `folha_nao_lida`. O corte
-vem de 117 folhas com moldura de 11 livros: as que dão ruído vão de 1,02 a 1,29, e a seguinte é 1,39. Fora da moldura o mesmo
+vem de 117 folhas com moldura de 10 livros, um deles duas vezes no acervo: as que dão ruído vão de 1,02 a 1,29, e a seguinte é
+1,39. Fora da moldura o mesmo
 número é tabela de torneio, e não avisa. A fração de palavras existentes **não serve de corte**: nos livros holandeses ela é de
 2% com o texto lido.
 
 **A camada não absolve o ruído.** O *Niemeijer*, índice 4, é texto de verdade que o glifo despedaçou: 3.101 caracteres em 2.789
 tokens, contra 1.624 caracteres de camada. Pela contagem ele "batia" com ela e saía calado; agora avisa, e o aviso é a verdade ali.
-Entre aquelas 117 folhas, nenhuma com ruído tem camada, e na varredura é a única folha que a regra muda.
+Entre aquelas 117 folhas, nenhuma com ruído tem camada, e na varredura é a única folha que a regra muda. O crítico leu mais 348
+folhas com moldura, 465 no total, e achou 14 com ruído, todas sinal solto e todas avisadas.
 
-**Sem aviso, e ruim:** o texto despedaçado acima de 1,3. As folhas seguintes do *Niemeijer* dão de 1,39 a 1,47, e descer o corte
-é ajustar a um livro só.
+**Sem aviso, e ruim: o texto despedaçado acima de 1,3.** Não é um livro só. Entre 1,3 e 1,7 há 14 folhas do *Mieses*, 13 do
+*Niemeijer* e 2 do *Kmoch*, e o *Niemeijer* vai até 3,61. Lendo mais de 1,3 vez o que a camada tem, são 23 de 27 folhas no
+*Niemeijer* e 52 de 63 no *Mieses*. É defeito aberto: o efeito de subir o corte não foi medido.
 
 ### Critério de aceite
 
@@ -501,9 +504,16 @@ corrida, sem mudar o formato. `Shift+F7` vai à próxima, por `rico.intervalos_a
 a folha reaberta perdia as marcas sem aviso, embora na mesma sessão elas sobrevivessem. Agora a marca fica se a **palavra** em que
 ela está é, inteira, a que o motor leu: cabe num só trecho igual ao lido, e no lido também era uma palavra. **Olhar a corrida não
 basta:** o editor grava a diferença mínima, e corrigir `wbite` deixa `w` e `ite` como `revisar`, em trechos iguais. A primeira
-versão desta regra os guardava, e `Shift+F7` parava nos pedaços. A faixa do bloco inteiro continua saindo: ali todo pedaço intacto é
-`revisar`, e o bloco não tem texto sem marca, nem o espaço entre duas palavras marcadas, que é o que distingue os dois casos
-(`correcao._marcas_intactas`). A guarda é `CorrigirAMarcaNoEditorTests`, que corrige pelo editor com `QTest`.
+versão desta regra os guardava. A faixa do bloco inteiro continua saindo: ali tudo que ficou intacto é `revisar`, e no bloco não
+há caractere intacto fora das marcas, nem o espaço entre duas palavras, que é o que distingue os dois casos
+(`correcao._marcas_intactas`). A conta é por caractere porque o carimbo da gravação anterior funde o resto do bloco numa corrida
+com as correções dentro: contada por corrida, a segunda gravação tomava o bloco por faixa e apagava as marcas restantes. A marca
+do fim de uma linha e a do começo da seguinte são duas corridas, porque o espaço da junção não é de nenhuma (`rico._agrupar`).
+`Shift+F7` pergunta à mesma regra, e não para nos pedaços nem antes de gravar. As guardas são `CorrigirAMarcaNoEditorTests`, pelo
+editor com `QTest`, e `MarcaPorSorteioTests`, que sorteia correções gravando no meio.
+
+**O que sobra:** até gravar, a tinta na tela continua nos pedaços. A marca que fica sozinha, com todo o resto do bloco apagado, sai
+como se fosse a faixa. E apagar uma letra e digitar a mesma deixa os pedaços marcados, porque o texto é o que o motor leu.
 
 **Desvio declarado:** as alternativas do `lstm_choice_mode=2`, que o roadmap cita, saem no hOCR e não no TSV. Aqui o
 terceiro sinal é a confiança por palavra do TSV; a S-761 calibra.

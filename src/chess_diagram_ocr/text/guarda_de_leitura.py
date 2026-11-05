@@ -79,7 +79,7 @@ MINIMO_DE_RUIDO = 40
 """Caracteres por token e caracteres na folha para o que saiu ser sinal solto, e não leitura (S-711).
 
 **Só vale na folha com moldura.** Tirar a moldura abre o que estava dentro dela, e isso pode ser mancha de
-contracapa ou texto que o glifo despedaça. Medido em 117 folhas com moldura de 11 livros: as que dão ruído vão de
+contracapa ou texto que o glifo despedaça. Medido em 117 folhas com moldura de 10 livros: as que dão ruído vão de
 1,02 a 1,29, e a seguinte já é 1,39. Fora da moldura esse número é uma tabela de torneio, e não ruído. A fração de
 palavras existentes não serve aqui: nos livros holandeses ela fica em 2% com o texto lido."""
 

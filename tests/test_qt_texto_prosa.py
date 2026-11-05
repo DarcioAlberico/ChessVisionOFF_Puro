@@ -319,6 +319,72 @@ class CorrigirAMarcaNoEditorTests(_Aba):
         QTest.keyClicks(self.painel.editor, "h")
         self._so_sobra("wlns")
 
+    def test_a_letra_que_faltava_no_fim(self) -> None:
+        self._folha("the whit knight wlns a pawn", (4, 8), (16, 20))
+        self._cursor(8)
+        QTest.keyClicks(self.painel.editor, "e")
+        self._so_sobra("wlns")
+
+    def _trocar_letra(self, posicao: int, letra: str) -> None:
+        self._cursor(posicao, posicao + 1)
+        QTest.keyClicks(self.painel.editor, letra)
+
+    def test_gravar_corrigir_e_gravar_nao_apaga_a_marca_intacta(self) -> None:
+        """O carimbo da primeira gravação funde o resto do bloco, e a segunda não pode tomá-lo por faixa."""
+        self._folha("the wbite knight wlns a pawm", (4, 9), (17, 21))
+        self._trocar_letra(5, "h")
+        self.assertEqual(self._marcas_depois_de_reabrir(), ["wlns"])
+        self._trocar_letra(27, "n")
+        self._so_sobra("wlns")
+
+    def test_gravar_reabrir_e_corrigir_de_novo(self) -> None:
+        from chess_diagram_ocr.text import arquivo
+
+        self._folha("the wbite knight wlns a pawm", (4, 9), (17, 21))
+        self._trocar_letra(5, "h")
+        caminho = self.pasta / "folha.cvtxt"
+        self.painel._salvar_documento_em(caminho)  # noqa: SLF001
+        self.painel.desenhar_documento(arquivo.carregar(caminho))
+        self._trocar_letra(27, "n")
+        self._so_sobra("wlns")
+
+    def test_shift_f7_nao_para_nos_pedacos_antes_de_gravar(self) -> None:
+        self._folha("the wbite knight wlns a pawn", (4, 9), (17, 21))
+        self._trocar_letra(5, "h")
+        self.assertEqual(set(self._paradas()), {"wlns"})
+
+    def test_duas_marcas_na_juncao_das_linhas_sao_duas(self) -> None:
+        linhas = [
+            pagina.LinhaLida(texto="the wbite", bbox=(0, 0, 9, 9), revisar_em=((4, 9),)),
+            pagina.LinhaLida(texto="wlns a pawn", bbox=(0, 10, 9, 19), revisar_em=((0, 4),)),
+        ]
+        bloco = pagina.BlocoDeTexto.de_linhas(linhas)
+        self.painel.mostrar_pagina(
+            pagina.PaginaLida(pagina=0, colunas=(pagina.Coluna(indice=0, blocos=(bloco,)),), marca_por_palavra=True)
+        )
+        self.assertEqual(set(self._paradas()), {"wbite", "wlns"})
+        self._trocar_letra(5, "h")
+        self._so_sobra("wlns")
+
+    def _faixa_no_bloco_inteiro(self) -> None:
+        """Sem marca por palavra e com confiança baixa: quem leu o parágrafo para corrigi-lo já o conferiu."""
+        linha = pagina.LinhaLida(texto="the wbite knight wlns a pawn", bbox=(0, 0, 9, 9), confianca=0.1, procedencia="glifo")
+        bloco = pagina.BlocoDeTexto.de_linhas([linha])
+        self.painel.mostrar_pagina(pagina.PaginaLida(pagina=0, colunas=(pagina.Coluna(indice=0, blocos=(bloco,)),)))
+        self.assertTrue(rico.intervalos_a_revisar(self.painel.documento), "a faixa não veio: o teste não vigiaria nada")
+
+    def test_a_faixa_do_bloco_inteiro_sai_com_uma_letra(self) -> None:
+        self._faixa_no_bloco_inteiro()
+        self._trocar_letra(5, "h")
+        self.assertEqual(self._marcas_depois_de_reabrir(), [])
+
+    def test_a_faixa_do_bloco_inteiro_sai_com_a_palavra_redigitada(self) -> None:
+        """Aqui sobram palavras inteiras e intactas em volta, e elas não são marcas de palavra."""
+        self._faixa_no_bloco_inteiro()
+        self._cursor(4, 9)
+        QTest.keyClicks(self.painel.editor, "white")
+        self.assertEqual(self._marcas_depois_de_reabrir(), [])
+
     def test_a_palavra_inteira_redigitada(self) -> None:
         self._folha("the wbite knight wlns a pawn", (4, 9), (17, 21))
         self._cursor(4, 9)

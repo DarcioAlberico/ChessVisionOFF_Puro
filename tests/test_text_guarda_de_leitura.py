@@ -367,6 +367,10 @@ class RuidoTests(unittest.TestCase):
         self.assertTrue(guarda_de_leitura.parece_ruido(["a"] * 58 + ["ab"] * 18))
         self.assertFalse(guarda_de_leitura.parece_ruido(["a"] * 324 + ["ab"] * 211))
 
+    def test_a_fronteira_da_quantidade(self) -> None:
+        self.assertTrue(guarda_de_leitura.parece_ruido(["a"] * 40))
+        self.assertFalse(guarda_de_leitura.parece_ruido(["a"] * 39))
+
     def test_pouco_nao_e_ruido(self) -> None:
         self.assertFalse(guarda_de_leitura.parece_ruido(list("il.,")))
 

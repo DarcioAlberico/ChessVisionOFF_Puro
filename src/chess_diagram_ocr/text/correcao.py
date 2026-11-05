@@ -208,10 +208,13 @@ def _marcas_intactas(doc: DocumentoRico, editados: frozenset[int]) -> frozenset[
     como `revisar`, em trechos iguais ao lido, e a primeira versão desta regra os guardava como marcas. Corrigir uma
     letra é a correção típica de OCR, e as marcas iam para o arquivo em pedaços.
 
-    **Só quando o bloco tem texto intacto sem marca**, nem que seja o espaço entre duas palavras marcadas. É isso que
-    separa a marca da palavra da faixa do bloco inteiro: nesta, a edição parte a corrida e todo pedaço intacto continua
-    `revisar`, e quem leu o parágrafo para corrigi-lo já o conferiu. Nada aqui é marca da palavra, e o bloco fica
-    tranquilo como sempre ficou.
+    **Só quando o bloco tem caractere intacto fora das marcas**, nem que seja o espaço entre duas palavras marcadas. É
+    isso que separa a marca da palavra da faixa do bloco inteiro: nesta, a edição parte a corrida e tudo que ficou
+    intacto continua `revisar`, e quem leu o parágrafo para corrigi-lo já o conferiu. O bloco fica tranquilo como
+    sempre ficou. **A conta é por caractere, e não por corrida:** o carimbo da gravação anterior funde o resto do bloco
+    numa corrida com as correções dentro, que nunca cabe num trecho igual, e a segunda gravação tomava o bloco por
+    faixa e apagava as marcas que restavam. A única palavra que não se distingue é a marca que sobra quando se apaga
+    todo o resto do bloco: sem texto nenhum em volta, ela sai como a faixa.
     """
     if not editados:
         return frozenset()
@@ -231,12 +234,11 @@ def _marcas_intactas(doc: DocumentoRico, editados: frozenset[int]) -> frozenset[
         agora = atual[bloco]
         trechos = SequenceMatcher(None, antes, agora, autojunk=False).get_opcodes()
         iguais = [(i1, j1, j2) for operacao, i1, _i2, j1, j2 in trechos if operacao == "equal"]
-        tem_texto_sem_marca = any(
-            corrida.faixa != REVISAR
-            and any(j1 <= inicio and inicio + len(corrida.texto) <= j2 for _, j1, j2 in iguais)
-            for _, inicio, corrida in corridas
-        )
-        if tem_texto_sem_marca:
+        marcado = [False] * len(agora)
+        for _, inicio, corrida in corridas:
+            if corrida.faixa == REVISAR:
+                marcado[inicio : inicio + len(corrida.texto)] = [True] * len(corrida.texto)
+        if not all(marcado[j] for _, j1, j2 in iguais for j in range(j1, j2)):
             ficam.update(
                 indice
                 for indice, inicio, corrida in corridas
