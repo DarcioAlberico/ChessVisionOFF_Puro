@@ -122,8 +122,10 @@ class Medida:
 
     @property
     def nao_lida(self) -> bool:
-        perdida = self.tem_texto and self.densidade < CORTE_DA_DENSIDADE
-        return (self.ruido or perdida) and not self.bate_com_a_camada
+        # **O ruído não se absolve pela contagem.** Bater em número com a camada não diz nada de sinal solto: no
+        # *Niemeijer*, índice 4, saem 3.101 caracteres em 2.789 tokens contra uma camada de 1.624, e a conta passava.
+        perdida = self.tem_texto and self.densidade < CORTE_DA_DENSIDADE and not self.bate_com_a_camada
+        return self.ruido or perdida
 
     @property
     def parcial(self) -> bool:

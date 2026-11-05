@@ -202,38 +202,68 @@ def com_procedencia_humana(doc: DocumentoRico) -> DocumentoRico:
 
 
 def _marcas_intactas(doc: DocumentoRico, editados: frozenset[int]) -> frozenset[int]:
-    """As corridas `revisar` dos blocos editados cujo texto é, inteiro, o que o motor leu.
+    """As corridas `revisar` dos blocos editados cuja **palavra** é, inteira, a que o motor leu.
 
-    **Só quando o bloco tem texto intacto sem marca.** É isso que separa a marca da palavra da faixa do bloco
-    inteiro: nesta, a edição parte a corrida e todo pedaço intacto continua `revisar`, e quem leu o parágrafo para
-    corrigi-lo já o conferiu. Nada aqui é marca da palavra, e o bloco fica tranquilo como sempre ficou.
+    **A palavra, e não a corrida.** O editor grava a diferença mínima: corrigir `wbite` deixa os pedaços `w` e `ite`
+    como `revisar`, em trechos iguais ao lido, e a primeira versão desta regra os guardava como marcas. Corrigir uma
+    letra é a correção típica de OCR, e as marcas iam para o arquivo em pedaços.
+
+    **Só quando o bloco tem texto intacto sem marca**, nem que seja o espaço entre duas palavras marcadas. É isso que
+    separa a marca da palavra da faixa do bloco inteiro: nesta, a edição parte a corrida e todo pedaço intacto continua
+    `revisar`, e quem leu o parágrafo para corrigi-lo já o conferiu. Nada aqui é marca da palavra, e o bloco fica
+    tranquilo como sempre ficou.
     """
     if not editados:
         return frozenset()
     comparaveis = _blocos_comparaveis(doc)
     atual = texto_por_bloco(doc)
     posicao: dict[int, int] = {}
-    por_bloco: dict[int, list[tuple[int, int, int, Corrida]]] = {}
+    por_bloco: dict[int, list[tuple[int, int, Corrida]]] = {}
     for indice, corrida in enumerate(doc.corridas):
         if corrida.bloco not in editados:
             continue
         inicio = posicao.get(corrida.bloco, 0)
         posicao[corrida.bloco] = inicio + len(corrida.texto)
-        por_bloco.setdefault(corrida.bloco, []).append(
-            (indice, inicio, inicio + len(corrida.texto.rstrip()), corrida)
-        )
+        por_bloco.setdefault(corrida.bloco, []).append((indice, inicio, corrida))
     ficam: set[int] = set()
     for bloco, corridas in por_bloco.items():
-        trechos = SequenceMatcher(None, comparaveis[bloco][0], atual[bloco], autojunk=False).get_opcodes()
-        iguais = [(j1, j2) for operacao, _i1, _i2, j1, j2 in trechos if operacao == "equal"]
-        tocadas = [
-            (indice, corrida)
-            for indice, inicio, fim, corrida in corridas
-            if corrida.texto.strip() and any(j1 <= inicio and fim <= j2 for j1, j2 in iguais)
-        ]
-        if any(corrida.faixa != REVISAR for _, corrida in tocadas):
-            ficam.update(indice for indice, corrida in tocadas if corrida.faixa == REVISAR)
+        antes = comparaveis[bloco][0]
+        agora = atual[bloco]
+        trechos = SequenceMatcher(None, antes, agora, autojunk=False).get_opcodes()
+        iguais = [(i1, j1, j2) for operacao, i1, _i2, j1, j2 in trechos if operacao == "equal"]
+        tem_texto_sem_marca = any(
+            corrida.faixa != REVISAR
+            and any(j1 <= inicio and inicio + len(corrida.texto) <= j2 for _, j1, j2 in iguais)
+            for _, inicio, corrida in corridas
+        )
+        if tem_texto_sem_marca:
+            ficam.update(
+                indice
+                for indice, inicio, corrida in corridas
+                if corrida.faixa == REVISAR and _palavra_intacta(antes, agora, iguais, inicio, corrida.texto)
+            )
     return frozenset(ficam)
+
+
+def _palavra_intacta(antes: str, agora: str, iguais: Sequence[tuple[int, int, int]], inicio: int, texto: str) -> bool:
+    """A palavra em que a corrida está cabe num só trecho igual, e no lido ela também era uma palavra inteira.
+
+    A segunda metade é o `xwhite` que perdeu o `x`: `white` é um trecho igual ao lido, e não é o que o motor leu.
+    """
+    if not texto.strip():
+        return False
+    primeiro = inicio + len(texto) - len(texto.lstrip())
+    ultimo = inicio + len(texto.rstrip())
+    while primeiro > 0 and not agora[primeiro - 1].isspace():
+        primeiro -= 1
+    while ultimo < len(agora) and not agora[ultimo].isspace():
+        ultimo += 1
+    for i1, j1, j2 in iguais:
+        if j1 <= primeiro and ultimo <= j2:
+            a = i1 + primeiro - j1
+            b = a + ultimo - primeiro
+            return (a == 0 or antes[a - 1].isspace()) and (b == len(antes) or antes[b].isspace())
+    return False
 
 
 def _marcada(corrida: Corrida, editados: frozenset[int]) -> Corrida:

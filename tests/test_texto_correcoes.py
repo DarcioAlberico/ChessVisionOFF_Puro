@@ -145,6 +145,37 @@ class MarcaDaPalavraTests(unittest.TestCase):
         marcado = correcao.com_procedencia_humana(self._trocado(doc, 0, "the white "))
         self.assertEqual(rico.intervalos_a_revisar(marcado), ())
 
+    def test_os_pedacos_da_palavra_nao_sao_marca(self) -> None:
+        """O que o editor deixa ao corrigir uma letra: `w`, `h` e `ite`. Os pedaços não são o que o motor leu."""
+        doc = self._doc(("the ", "tranquilo"), ("wbite", "revisar"), (" knight ", "tranquilo"), ("wlns", "revisar"), (" a pawn", "tranquilo"))
+        corridas = list(doc.corridas)
+        corridas[1:2] = [
+            replace(doc.corridas[1], texto="w"),
+            replace(doc.corridas[0], texto="h"),
+            replace(doc.corridas[1], texto="ite"),
+        ]
+        editado = rico.DocumentoRico(corridas=tuple(corridas), origem=doc.origem)
+        marcado = correcao.com_procedencia_humana(editado)
+        self.assertEqual([c.texto for c in marcado.corridas if c.faixa == "revisar"], ["wlns"])
+
+    def test_a_sobra_igual_ao_lido_nao_e_a_palavra_lida(self) -> None:
+        """`xwhite` perdeu o `x`: o que sobrou é um trecho igual, mas o motor não leu `white`."""
+        for lido, corrigido in (("xwhite", "white"), ("whitex", "white")):
+            with self.subTest(lido=lido):
+                doc = self._doc(("the ", "tranquilo"), (lido, "revisar"), (" knight ", "tranquilo"), ("wlns", "revisar"))
+                marcado = correcao.com_procedencia_humana(self._trocado(doc, 1, corrigido))
+                self.assertEqual([c.texto for c in marcado.corridas if c.faixa == "revisar"], ["wlns"])
+
+    def test_a_palavra_marcada_com_pontuacao_colada_fica(self) -> None:
+        doc = self._doc(("the ", "tranquilo"), ("wbite", "revisar"), (" knight ", "tranquilo"), ("wlns", "revisar"), (", a pawn", "tranquilo"))
+        marcado = correcao.com_procedencia_humana(self._trocado(doc, 1, "white"))
+        self.assertEqual([c.texto for c in marcado.corridas if c.faixa == "revisar"], ["wlns"])
+
+    def test_o_espaco_basta_para_nao_ser_a_faixa_do_bloco(self) -> None:
+        doc = self._doc(("wbite", "revisar"), (" ", "tranquilo"), ("wlns", "revisar"))
+        marcado = correcao.com_procedencia_humana(self._trocado(doc, 0, "white"))
+        self.assertEqual([c.texto for c in marcado.corridas if c.faixa == "revisar"], ["wlns"])
+
     def test_a_marca_sobrevive_ao_arquivo(self) -> None:
         doc = correcao.com_procedencia_humana(self._trocado(self._duas_marcas(), 1, "white"))
         with tempfile.TemporaryDirectory() as pasta:

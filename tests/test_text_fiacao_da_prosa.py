@@ -365,6 +365,10 @@ class LixoDaReservaTests(_ComLivro):
             with self.subTest(texto=token.texto):
                 self.assertFalse(leitor._e_lixo_da_reserva([token], self.existe))  # noqa: SLF001
 
+    def test_a_pontuacao_colada_nao_faz_a_palavra_virar_lixo(self) -> None:
+        self.assertFalse(leitor._e_lixo_da_reserva([self._token("pawn,", 0.2)], fusao.existe_no(frozenset({"pawn"}))))  # noqa: SLF001
+        self.assertFalse(leitor._e_lixo_da_reserva([self._token("(29)", 0.2)], self.existe))  # noqa: SLF001
+
     def test_o_lixo_sai_da_folha_relida(self) -> None:
         palavras = [
             tesseract.Palavra("fh)", 0.2, (20, 100, 60, 130), bloco=1, linha=0),
@@ -517,6 +521,23 @@ class QuemPedeOutraLeituraTests(unittest.TestCase):
         self.assertFalse(
             leitor._pede_outra_leitura(camada_prosa.PalavraDaCamada("after", (0.0, 0.0, 10.0, 10.0)))
         )
+
+
+class ReservaNaFolhaDaCamadaTests(_ComLivro):
+    """O Tesseract na folha inteira custa segundos, e só se paga se houver palavra para ele resolver."""
+
+    def _ler(self, *textos: str) -> _Falso:
+        falso = _Falso()
+        marcadas = [camada_prosa.PalavraDaCamada(t, (60.0, 50.0, 90.0, 62.0), True) for t in textos]
+        with mock.patch.object(camada_prosa, "palavras_da_folha", return_value=marcadas):
+            self.ler("camada_prosa", [_crua("h", 50)], leitor_de_linha=falso, reserva=True)
+        return falso
+
+    def test_a_palavra_suspeita_chama_o_leitor(self) -> None:
+        self.assertIsNotNone(self._ler("afer").cinza)
+
+    def test_so_lance_nao_chama(self) -> None:
+        self.assertIsNone(self._ler("Nf3", "19.Bd3\uf0b1").cinza)
 
 
 class ClasseDoTokenTests(unittest.TestCase):

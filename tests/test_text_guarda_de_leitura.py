@@ -376,8 +376,10 @@ class RuidoTests(unittest.TestCase):
     def test_nao_lida_sem_componentes(self) -> None:
         self.assertTrue(guarda_de_leitura.Medida(0, 500, 0, 40, ruido=True).nao_lida)
 
-    def test_a_camada_ainda_absolve(self) -> None:
-        self.assertFalse(guarda_de_leitura.Medida(0, 500, 0, 40, caracteres_da_camada=500, ruido=True).nao_lida)
+    def test_a_camada_nao_absolve_o_ruido(self) -> None:
+        """Niemeijer, índice 4: lê mais caracteres que a camada tem, e são sinais soltos."""
+        self.assertTrue(guarda_de_leitura.Medida(0, 3101, 0, 40, caracteres_da_camada=1624, ruido=True).nao_lida)
+        self.assertFalse(guarda_de_leitura.Medida(0, 3101, 0, 40, caracteres_da_camada=1624, ruido=False).nao_lida)
 
 
 if __name__ == "__main__":

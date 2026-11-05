@@ -7,8 +7,10 @@ de diagrama e o Tesseract.
 
 from __future__ import annotations
 
+import tempfile
 import unittest
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 from unittest import mock
 
@@ -22,6 +24,10 @@ from chess_diagram_ocr.ui import state as estado_da_janela
 from chess_diagram_ocr.ui import strings
 
 if TEM_PYQT:
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QTextCursor
+    from PyQt6.QtTest import QTest
+
     from chess_diagram_ocr.qt import tema
     from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
 
@@ -212,6 +218,112 @@ class ProximaARevisarTests(_Aba):
 
     def test_o_comando_esta_na_fita(self) -> None:
         self.assertIsNotNone(self.painel.fita.botao("proxima_a_revisar"))
+
+
+class CorrigirAMarcaNoEditorTests(_Aba):
+    """A correção de verdade: o editor grava a diferença mínima, e os pedaços da palavra não são marca.
+
+    **Tem de ser pelo editor.** Trocar a corrida inteira por `replace` é o que nenhuma tecla faz, e foi assim que
+    `w` e `ite` chegaram ao arquivo como palavras a revisar sem nenhum teste acusar.
+    """
+
+    def _folha(self, texto: str, *marcas: tuple[int, int]) -> None:
+        linha = pagina.LinhaLida(texto=texto, bbox=(0, 0, 9, 9), revisar_em=marcas)
+        bloco = pagina.BlocoDeTexto.de_linhas([linha])
+        self.painel.mostrar_pagina(
+            pagina.PaginaLida(pagina=0, colunas=(pagina.Coluna(indice=0, blocos=(bloco,)),), marca_por_palavra=True)
+        )
+
+    def _cursor(self, inicio: int, fim: int | None = None) -> None:
+        editor = self.painel.editor
+        cursor = editor.textCursor()
+        cursor.setPosition(inicio)
+        if fim is not None:
+            cursor.setPosition(fim, QTextCursor.MoveMode.KeepAnchor)
+        editor.setTextCursor(cursor)
+        editor.setFocus()
+        self.app.processEvents()
+
+    def _marcas_depois_de_reabrir(self) -> list[str]:
+        from chess_diagram_ocr.text import arquivo
+
+        with tempfile.TemporaryDirectory() as pasta:
+            caminho = Path(pasta) / "folha.cvtxt"
+            self.painel._salvar_documento_em(caminho)  # noqa: SLF001
+            reaberto = arquivo.carregar(caminho)
+        texto = reaberto.para_texto()
+        return [texto[a:b] for a, b in rico.intervalos_a_revisar(reaberto)]
+
+    def _paradas(self) -> list[str]:
+        vistas = []
+        for _ in range(3):
+            self.painel.proxima_a_revisar()
+            vistas.append(self.painel.editor.textCursor().selectedText())
+        return vistas
+
+    def _so_sobra(self, *palavras: str) -> None:
+        self.assertEqual(self._marcas_depois_de_reabrir(), list(palavras))
+        self.assertEqual(set(self._paradas()), set(palavras))
+
+    def test_backspace_e_a_letra_certa(self) -> None:
+        self._folha("the wbite knight wlns a pawn", (4, 9), (17, 21))
+        self._cursor(6)
+        QTest.keyClick(self.painel.editor, Qt.Key.Key_Backspace)
+        QTest.keyClicks(self.painel.editor, "h")
+        self.assertIn("the white knight", self.painel.editor.toPlainText())
+        self._so_sobra("wlns")
+
+    def test_selecionar_a_letra_e_digitar(self) -> None:
+        self._folha("the wbite knight wlns a pawn", (4, 9), (17, 21))
+        self._cursor(5, 6)
+        QTest.keyClicks(self.painel.editor, "h")
+        self._so_sobra("wlns")
+
+    def test_a_letra_que_faltava(self) -> None:
+        self._folha("the whte knight wlns a pawn", (4, 8), (16, 20))
+        self._cursor(6)
+        QTest.keyClicks(self.painel.editor, "i")
+        self._so_sobra("wlns")
+
+    def test_a_letra_que_faltava_no_comeco(self) -> None:
+        """`hite` continua inteiro num trecho igual ao lido, e a palavra agora é outra."""
+        self._folha("the hite knight wlns a pawn", (4, 8), (16, 20))
+        self._cursor(4)
+        QTest.keyClicks(self.painel.editor, "w")
+        self._so_sobra("wlns")
+
+    def test_a_letra_a_mais_no_meio(self) -> None:
+        self._folha("the whiite knight wlns a pawn", (4, 10), (18, 22))
+        self._cursor(6)
+        QTest.keyClick(self.painel.editor, Qt.Key.Key_Delete)
+        self._so_sobra("wlns")
+
+    def test_a_letra_a_mais_no_comeco(self) -> None:
+        """O que sobra é igual ao lido, e a palavra corrigida inteira cabe num trecho igual."""
+        self._folha("the xwhite knight wlns a pawn", (4, 10), (18, 22))
+        self._cursor(4)
+        QTest.keyClick(self.painel.editor, Qt.Key.Key_Delete)
+        self._so_sobra("wlns")
+
+    def test_a_letra_a_mais_no_fim(self) -> None:
+        self._folha("the whitex knight wlns a pawn", (4, 10), (18, 22))
+        self._cursor(9)
+        QTest.keyClick(self.painel.editor, Qt.Key.Key_Delete)
+        self._so_sobra("wlns")
+
+    def test_o_bloco_de_duas_palavras_marcadas(self) -> None:
+        """Só o espaço fica de texto sem marca, e ele basta para não ser a faixa do bloco inteiro."""
+        self._folha("wbite wlns", (0, 5), (6, 10))
+        self._cursor(2)
+        QTest.keyClick(self.painel.editor, Qt.Key.Key_Backspace)
+        QTest.keyClicks(self.painel.editor, "h")
+        self._so_sobra("wlns")
+
+    def test_a_palavra_inteira_redigitada(self) -> None:
+        self._folha("the wbite knight wlns a pawn", (4, 9), (17, 21))
+        self._cursor(4, 9)
+        QTest.keyClicks(self.painel.editor, "white")
+        self._so_sobra("wlns")
 
 
 if __name__ == "__main__":
