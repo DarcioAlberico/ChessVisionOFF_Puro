@@ -20,6 +20,11 @@ consomem um peão ausente **do mesmo modo que o excesso de promoção já modela
 com um bispo em cada cor, logo cada bispo a mais numa cor veio de um peão. Com oito peões no
 tabuleiro, dois bispos brancos em casas claras são impossíveis, e é esse o caso da dúvida do
 Stefaniu f1. As duas ficam em `DecodeRules`, com `CLASSIC_RULES` para medir sem elas.
+
+**O rei que falta só é reparado onde a rede vê rei.** Diagrama de esquema ou de marcas pode não ter
+rei nenhum, e a busca punha um na casa menos contrariada, com probabilidade quase zero: uma casa
+vazia e limpa virava rei. Ver `MIN_KING_PROBABILITY`. Sem indício, a falta fica declarada em
+`remaining_problems`, e os outros reparos continuam.
 """
 
 from __future__ import annotations
@@ -58,20 +63,27 @@ MAX_PIECES = 16
 _INITIAL_COUNT = {"N": 2, "B": 2, "R": 2, "Q": 1}
 
 
+MIN_KING_PROBABILITY = 0.01
+"""Abaixo disto a busca não cria rei na casa, seja qual for a regra que ela está reparando."""
+
+
 @dataclass(frozen=True)
 class DecodeRules:
     """Quais regras além das da S-11 o decodificador aplica (C11).
 
     `bishop_colors`: bispos de um lado em casas da mesma cor contam como promovidos na
     conta de peões ausentes. `adjacent_kings`: reis que se tocam são uma violação.
+    `min_king_probability`: a menor probabilidade com que uma casa pode virar rei; zero é o
+    decodificador que sempre punha o rei que faltava.
     """
 
     bishop_colors: bool = True
     adjacent_kings: bool = True
+    min_king_probability: float = MIN_KING_PROBABILITY
 
 
 DEFAULT_RULES = DecodeRules()
-CLASSIC_RULES = DecodeRules(bishop_colors=False, adjacent_kings=False)
+CLASSIC_RULES = DecodeRules(bishop_colors=False, adjacent_kings=False, min_king_probability=0.0)
 """O decodificador de antes do C11 -- a sabotagem do `lab_gate --rules classic`."""
 
 
@@ -103,7 +115,8 @@ class _Violation:
 
     `squares` são as casas que uma solução obrigatoriamente precisa alterar (ou, no caso
     de rei faltando, as casas candidatas a virar rei). Ramificar sobre elas é completo:
-    nenhuma atribuição legal fica fora do espaço de busca.
+    nenhuma atribuição legal fica fora do espaço de busca, salvo as que criam um rei sem
+    indício. Vazio quer dizer que nenhuma troca resolve: o rei falta e nenhuma casa o sustenta.
     """
 
     description: str
@@ -158,7 +171,11 @@ def _adjacent_kings(state: tuple[int, ...]) -> tuple[int, ...]:
     return tuple(sorted(set(touching)))
 
 
-def _find_violations(state: tuple[int, ...], rules: DecodeRules = DEFAULT_RULES) -> list[_Violation]:
+def _king_without_evidence(square: int, target: int, probs: np.ndarray, rules: DecodeRules) -> bool:
+    return target in (WHITE_KING, BLACK_KING) and probs[square, target] < rules.min_king_probability
+
+
+def _find_violations(state: tuple[int, ...], probs: np.ndarray, rules: DecodeRules = DEFAULT_RULES) -> list[_Violation]:
     counts = _color_counts(state)
     violations: list[_Violation] = []
 
@@ -168,7 +185,7 @@ def _find_violations(state: tuple[int, ...], rules: DecodeRules = DEFAULT_RULES)
             violations.append(
                 _Violation(
                     f"falta o rei {color}",
-                    tuple(square for square in range(64) if state[square] != king),
+                    tuple(square for square in range(64) if not _king_without_evidence(square, king, probs, rules)),
                     (king,),
                 )
             )
@@ -246,6 +263,8 @@ def _candidates(
     violation: _Violation,
     logp: np.ndarray,
     alternatives_per_square: int,
+    probs: np.ndarray,
+    rules: DecodeRules,
 ) -> Iterator[tuple[int, int]]:
     for square in violation.squares:
         current = state[square]
@@ -255,7 +274,8 @@ def _candidates(
             else _alternatives(square, current, logp, alternatives_per_square)
         )
         for target in targets:
-            yield square, target
+            if not _king_without_evidence(square, target, probs, rules):
+                yield square, target
 
 
 def _build_result(
@@ -345,7 +365,7 @@ def decode_constrained(
     logp = np.log(np.clip(probs, _EPS, None))
     base: tuple[int, ...] = tuple(int(index) for index in probs.argmax(axis=1))
 
-    if not _find_violations(base, rules):
+    if not _find_violations(base, probs, rules):
         return _build_result(base, base, logp, satisfied=True)
 
     heap: list[tuple[float, int, tuple[int, ...]]] = [(0.0, 0, base)]
@@ -354,7 +374,7 @@ def decode_constrained(
     expansions = 0
 
     best_state = base
-    best_key = (len(_find_violations(base, rules)), 0.0)
+    best_key = (len(_find_violations(base, probs, rules)), 0.0)
 
     prazo = time.monotonic() + max_seconds if max_seconds > 0 else None
     while heap and expansions < max_expansions:
@@ -366,9 +386,15 @@ def decode_constrained(
         cost, _, state = heapq.heappop(heap)
         expansions += 1
 
-        violations = _find_violations(state, rules)
+        violations = _find_violations(state, probs, rules)
         if not violations:
             return _build_result(state, base, logp, satisfied=True)
+        # Só sobrou o que nenhuma troca resolve. A fila sai em ordem de custo, então este é o
+        # melhor estado possível, e seguir buscando só gastaria o tempo da S-358.
+        repairable = [violation for violation in violations if violation.squares]
+        if not repairable:
+            problems = tuple(violation.description for violation in violations)
+            return _build_result(state, base, logp, satisfied=False, problems=problems)
 
         key = (len(violations), cost)
         if key < best_key:
@@ -381,9 +407,9 @@ def decode_constrained(
 
         # Ramificar sobre a violação mais restrita primeiro reduz o fator de ramificação
         # sem perder completude: qualquer solução precisa reparar todas elas.
-        violation = min(violations, key=lambda item: len(item.squares))
+        violation = min(repairable, key=lambda item: len(item.squares))
 
-        for square, target in _candidates(state, violation, logp, alternatives_per_square):
+        for square, target in _candidates(state, violation, logp, alternatives_per_square, probs, rules):
             successor = state[:square] + (target,) + state[square + 1 :]
             if successor in visited:
                 continue
@@ -392,5 +418,5 @@ def decode_constrained(
             delta = float(logp[square, state[square]] - logp[square, target])
             heapq.heappush(heap, (cost + delta, counter, successor))
 
-    problems = tuple(violation.description for violation in _find_violations(best_state, rules))
+    problems = tuple(violation.description for violation in _find_violations(best_state, probs, rules))
     return _build_result(best_state, base, logp, satisfied=False, problems=problems)
