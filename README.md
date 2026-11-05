@@ -1251,6 +1251,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-522 a S-526 | [docs/SPEC_REVISAO_EXTERNA_2.md](docs/SPEC_REVISAO_EXTERNA_2.md) |
 | S-500 a S-506, S-527 a S-580 | [docs/SPEC_SUITE.md](docs/SPEC_SUITE.md) |
 | S-581 a S-584 | [docs/PLANO_COLUNAS_SOLUCOES.md](docs/PLANO_COLUNAS_SOLUCOES.md) |
+| S-599 | [docs/PLANO_FAIXAS_REVERSAS.md](docs/PLANO_FAIXAS_REVERSAS.md) |
 | S-601 a S-668 | [docs/SPEC_MESA_DE_TEXTO.md](docs/SPEC_MESA_DE_TEXTO.md) |
 | S-702 | [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) |
 
@@ -1309,6 +1310,7 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   o que os pesos treinados em `training_data/` destravaram, as dez etapas ate a pagina lida, o
   portao que decide se as tres ultimas acontecem, e as duas dividas que so a origem dos
   recortes pode pagar -- procedencia e livro
+- [docs/PLANO_FAIXAS_REVERSAS.md](docs/PLANO_FAIXAS_REVERSAS.md) -- texto claro sobre faixa preta na aba Texto (S-599)
 - [docs/PLANO_COLUNAS_SOLUCOES.md](docs/PLANO_COLUNAS_SOLUCOES.md) -- as colunas da pagina de
   solucoes (S-581 a S-584): a medicao em 559 paginas de 12 livros, a causa em duas metades (o
   titulo e o folio na calha; o preenchimento que reprova a coluna de linha curta), as variantes
