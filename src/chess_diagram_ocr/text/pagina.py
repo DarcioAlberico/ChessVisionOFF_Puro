@@ -785,10 +785,10 @@ ESQUEMA = 2
 Campo novo com padrão é compatível nos dois sentidos e não paga versão -- é a mesma regra do
 `char_meta.json` da S-179.
 
-**O 2 é a exceção escrita (S-710).** `avisos` diz que a leitura pode estar incompleta, e um programa
-que abre o arquivo e o ignora mostraria como inteira uma folha que o arquivo sabe que não é: esse
-campo muda o que o resto do arquivo significa. O formato 1 continua abrindo, sem aviso nenhum; um
-programa anterior a este não abre o 2, e isso não tem volta."""
+**O 2 é a exceção escrita (S-710), e só a folha com aviso o paga.** `avisos` diz que a leitura pode
+estar incompleta, e um programa que abre o arquivo e o ignora mostraria como inteira uma folha que o
+arquivo sabe que não é: esse campo muda o que o resto do arquivo significa. Por isso a folha **sem**
+aviso continua saindo no formato 1, sem o campo, e um programa anterior a este a abre como sempre."""
 
 FOLHA_NAO_LIDA = "folha_nao_lida"
 LEITURA_PARCIAL = "leitura_parcial"
@@ -916,8 +916,8 @@ class PaginaLida:
     # ---------------------------------------------------------------------------- serialização
 
     def para_json(self) -> dict[str, Any]:
-        return {
-            "esquema": ESQUEMA,
+        dados: dict[str, Any] = {
+            "esquema": ESQUEMA if self.avisos else 1,
             "documento": self.documento,
             "pagina": self.pagina,
             "largura": self.largura,
@@ -927,8 +927,10 @@ class PaginaLida:
             "cabecalho": self.cabecalho.para_json() if self.cabecalho else None,
             "rodape": self.rodape.para_json() if self.rodape else None,
             "colunas": [coluna.para_json() for coluna in self.colunas],
-            "avisos": [aviso.para_json() for aviso in self.avisos],
         }
+        if self.avisos:
+            dados["avisos"] = [aviso.para_json() for aviso in self.avisos]
+        return dados
 
     @classmethod
     def de_json(cls, dados: Any) -> PaginaLida:

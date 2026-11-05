@@ -42,7 +42,7 @@ _PECA = "KQRBNDTCSLFAP♔♕♖♗♘♙♚♛♜♝♞♟"
 _FIGURINA = re.compile(r"[♔-♟]")
 _LANCE = re.compile(
     rf"^(\d+\.+|\.\.\.|…)?([{_PECA}]?[a-h]?[1-8]?[xX:×]?[a-h][1-8](=?[{_PECA}])?:?|O-O(-O)?|0-0(-0)?)"
-    r"(e\.p\.)?[+#†‡t]*[!?]*[=+\-±∓∞⩲⩱]*$"
+    r"(e\.p\.)?[+#†‡t]*[!?]*[=+\-–—±∓∞⩲⩱]*$"
 )
 _NUMERO_DE_LANCE = re.compile(r"^\d+\.+$")
 _AVALIACAO = re.compile(r"^([+\-=±∓⩲⩱∞!?#†□△⌓→↑⇆○●N]|\+/-|-/\+|\+-|-\+|=/\+|\+/=|=/∞)+$")
@@ -59,6 +59,8 @@ _LETRA_DE_PECA = re.compile(r"^[KQRBNDTCSLF]$")
 _ROQUE = re.compile(r"^(\d+\.+)?(O-O(-O)?|0-0(-0)?|O–O(–O)?|0–0(–0)?)")
 _PALAVRA = re.compile(r"^[A-Za-zÀ-ÿ]{2,}(?:['’-][A-Za-zÀ-ÿ]+)*$")
 _NUMERO = re.compile(r"^\(?(\d+)(?=\.)")
+_SO_FIO = re.compile(r"^[|¦]+$")
+"""O Tesseract lê `I` como `|`: 8 de 20 erros da fusão. Barra sozinha contra letra não é leitura melhor."""
 
 CURTAS = frozenset(
     """
@@ -79,7 +81,9 @@ def classe_do_token(token: str) -> str:
     nu = token.strip("()[]{},;:\"'")
     if not nu:
         return OUTRO
-    sem_ponto = nu.rstrip(".").replace("×", "x")
+    # `Nc5).` e `Rh1!).`: o lance fechando um parêntese no fim da frase. Sem tirar os dois, ele é prosa, e
+    # na camada a figurina do glifo se perde para o código da fonte.
+    sem_ponto = nu.rstrip(".)]").replace("×", "x")
     if _ACENTOS_DE_FONTE.match(nu):
         return OUTRO
     sem_simbolos = "".join(c for c in sem_ponto if c not in _SIMBOLOS) or sem_ponto
@@ -224,7 +228,18 @@ def fundir(
     for i, j in alinhar_tokens(g, t):
         bloqueado = j != -1 and j < len(bloqueados) and bool(bloqueados[j])
         if i != -1 and j != -1:
-            if bloqueado or ((e_notacao(g[i]) or e_notacao(t[j])) and not existe(t[j])):
+            if _SO_FIO.match(t[j]) and any(c.isalpha() for c in g[i]):
+                saida.append(Token(g[i], "glifo", g[i], do_glifo(i)))
+            elif (
+                not bloqueado
+                and classe_do_token(g[i]) == PROSA
+                and classe_do_token(t[j]) == PROSA
+                and existe(g[i])
+                and not existe(t[j])
+            ):
+                # Regra 4 da S-721: divergem, e só a versão do glifo é palavra que existe.
+                saida.append(Token(g[i], "glifo", g[i], do_glifo(i)))
+            elif bloqueado or ((e_notacao(g[i]) or e_notacao(t[j])) and not existe(t[j])):
                 token = _numero_partido(g[i], t[j])
                 # O dígito que o glifo deixou solto antes do número (`1 7.♔xf3`) é absorvido aqui.
                 if token != g[i] and saida and saida[-1].texto.isdigit() and t[j].lstrip("(").startswith(saida[-1].texto):

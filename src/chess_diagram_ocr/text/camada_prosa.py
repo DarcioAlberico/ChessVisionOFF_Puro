@@ -41,6 +41,13 @@ LARGURA_DE_LIGADURA = 1.4
 MINIMO_PARA_A_MEDIANA = 3
 """Com menos ocorrências da letra na folha não há mediana, e a palavra não é acusada."""
 
+VAO_DE_PALAVRA = 0.1
+"""Em corpos da fonte. Um vão maior que isto entre duas letras é espaço que o PDF não escreveu: o do
+*Chess Evolution* mede 1,76 pt em corpo 13, ou 0,135, e o par de letras mais largo fica abaixo de 0,05."""
+
+_FAIXA_DE_BUSCA = 4
+"""Pontos de altura de cada balde: a palavra só procura os caracteres da faixa dela."""
+
 _PERFIS_EM_MEMORIA = 16
 
 
@@ -58,8 +65,21 @@ def _sem_ligadura(texto: str) -> str:
     return "".join(unicodedata.normalize("NFKC", c) if "ﬀ" <= c <= "ﬆ" else c for c in texto)
 
 
-def _caracteres_suspeitos(pagina: Any) -> list[Retangulo]:
-    """As caixas dos caracteres que não são a letra que dizem ser: ligadura ou fonte de figurina."""
+@dataclass(frozen=True)
+class _Caractere:
+    """Um caractere do `get_texttrace`, com o que a palavra precisa saber dele."""
+
+    letra: str
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    corpo: float
+    suspeito: bool
+
+
+def _caracteres(pagina: Any) -> list[_Caractere]:
+    """Todos os caracteres da folha que não são espaço, com a marca de quais não são o que dizem ser."""
     medidas: defaultdict[tuple[str, int], list[float]] = defaultdict(list)
     trechos = pagina.get_texttrace()
     for trecho in trechos:
@@ -70,7 +90,7 @@ def _caracteres_suspeitos(pagina: Any) -> list[Retangulo]:
                 medidas[(trecho.get("font", ""), caractere[0])].append((x1 - x0) / corpo)
     medianas = {k: statistics.median(v) for k, v in medidas.items() if len(v) >= MINIMO_PARA_A_MEDIANA}
 
-    suspeitos: list[Retangulo] = []
+    saida: list[_Caractere] = []
     for trecho in trechos:
         fonte = trecho.get("font", "") or ""
         corpo = max(float(trecho.get("size", 0) or 0), 1e-3)
@@ -89,23 +109,57 @@ def _caracteres_suspeitos(pagina: Any) -> list[Retangulo]:
             # `♕` de verdade, e esse código diz o que é.
             codigo_cego = de_figurina and not 0x2654 <= codigo <= 0x265F and not chr(codigo).isdigit()
             privado = bool(admissao.USO_PRIVADO.search(chr(codigo)))
-            if larga or codigo_cego or privado:
-                suspeitos.append((float(x0), float(y0), float(x1), float(y1)))
-    return suspeitos
+            saida.append(
+                _Caractere(chr(codigo), float(x0), float(y0), float(x1), float(y1), corpo, larga or codigo_cego or privado)
+            )
+    return saida
 
 
 def palavras_da_folha(pagina: Any) -> list[PalavraDaCamada]:
-    """As palavras da camada desta folha, em pontos, com a marca de quais não podem ser usadas."""
-    suspeitos = _caracteres_suspeitos(pagina)
+    """As palavras da camada desta folha, em pontos, partidas onde a tinta tem vão.
+
+    **O PDF não precisa escrever o espaço, e o `get_text("words")` só parte onde ele está escrito.** No
+    *Chess Evolution* o espaço é um salto de posição: 1,76 pt entre duas letras, sem caractere nenhum, e
+    saía um token de 52 letras colado. A palavra cuja lista de caracteres não fecha com o texto dela fica
+    como veio, com a marca do que foi achado.
+    """
+    caracteres = _caracteres(pagina)
+    por_faixa: defaultdict[int, list[_Caractere]] = defaultdict(list)
+    for c in caracteres:
+        por_faixa[int((c.y0 + c.y1) / 2) // _FAIXA_DE_BUSCA].append(c)
+
     palavras: list[PalavraDaCamada] = []
     for x0, y0, x1, y1, texto, *_ in pagina.get_text("words"):
-        bloqueada = any(
-            x0 <= (a + c) / 2 <= x1 and y0 <= (b + d) / 2 <= y1 for a, b, c, d in suspeitos
+        dentro = sorted(
+            (
+                c
+                for faixa in range(int(y0) // _FAIXA_DE_BUSCA, int(y1) // _FAIXA_DE_BUSCA + 1)
+                for c in por_faixa.get(faixa, ())
+                if x0 <= (c.x0 + c.x1) / 2 <= x1 and y0 <= (c.y0 + c.y1) / 2 <= y1
+            ),
+            key=lambda c: c.x0,
         )
-        # A camada separa token com espaço fino dentro da "palavra" (`(2546) — Macedo,M`). O
+        pedacos: list[list[_Caractere]] = []
+        for c in dentro:
+            if pedacos and c.x0 - pedacos[-1][-1].x1 <= VAO_DE_PALAVRA * c.corpo:
+                pedacos[-1].append(c)
+            else:
+                pedacos.append([c])
+        if len(pedacos) > 1 and "".join(c.letra for c in dentro) == "".join(texto.split()):
+            for pedaco in pedacos:
+                palavras.append(
+                    PalavraDaCamada(
+                        _sem_ligadura("".join(c.letra for c in pedaco)),
+                        (pedaco[0].x0, min(c.y0 for c in pedaco), pedaco[-1].x1, max(c.y1 for c in pedaco)),
+                        any(c.suspeito for c in pedaco),
+                    )
+                )
+            continue
+        bloqueada = any(c.suspeito for c in dentro)
+        # A camada separa token com espaço fino dentro da "palavra" (`(2546)\u2009—\u2009Macedo,M`). O
         # roteador parte por espaço de qualquer tipo; quem parte aqui é para a marca ir com cada pedaço.
-        for pedaco in _sem_ligadura(texto).split():
-            palavras.append(PalavraDaCamada(pedaco, (float(x0), float(y0), float(x1), float(y1)), bloqueada))
+        for pedaco_de_texto in _sem_ligadura(texto).split():
+            palavras.append(PalavraDaCamada(pedaco_de_texto, (float(x0), float(y0), float(x1), float(y1)), bloqueada))
     return palavras
 
 
@@ -162,6 +216,18 @@ def perfil_em_memoria(documento: Any) -> admissao.PerfilDoLivro:
     return perfil
 
 
+MOTIVOS_DA_RECUSA: dict[str, str] = {
+    admissao.PRODUTOR: "o PDF saiu de um programa de OCR",
+    admissao.FONTE: "as fontes são as de um programa de OCR",
+    admissao.LIVRO_DE_SCAN: "o livro é um scan com camada invisível",
+    admissao.INVISIVEL: "a camada desta folha é invisível",
+    admissao.COBERTO: "uma imagem cobre a camada nesta folha",
+    admissao.LIXO: "a camada tem código de fonte no lugar de figurina",
+    admissao.FILEIRA_FORA: "a camada desenha um tabuleiro em fonte fora do diagrama",
+}
+"""A frase de cada critério da admissão, para o selo: quem lê a folha não sabe o que é `d:produtor`."""
+
+
 def admitir(documento: Any, indice: int, retangulos: Sequence[Retangulo]) -> admissao.Admissao:
     """A folha `indice` entra? Retângulos de diagrama em pontos."""
     return admissao.admitir_folha(
@@ -176,6 +242,8 @@ __all__ = [
     "FOLGA_VERTICAL",
     "LARGURA_DE_LIGADURA",
     "MINIMO_PARA_A_MEDIANA",
+    "MOTIVOS_DA_RECUSA",
+    "VAO_DE_PALAVRA",
     "PalavraDaCamada",
     "admitir",
     "caracteres_fora",

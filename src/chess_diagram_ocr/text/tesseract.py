@@ -147,6 +147,8 @@ def _opcoes_do_processo(ambiente: Mapping[str, str]) -> dict[str, object]:
     return opcoes
 
 
+_ERRO_NO_STDERR = re.compile(r"^\s*(error|failed)\b|can't open|cannot open", re.I)
+
 _motor_em_cache: Motor | None = None
 
 
@@ -165,9 +167,14 @@ def examinar(binario: Path | None) -> Motor:
         return Motor(motivo="O Tesseract não foi encontrado nesta máquina.")
     try:
         processo = subprocess.Popen([str(binario), "--version"], **_opcoes_do_processo(os.environ))  # type: ignore[call-overload]  # noqa: S603
-        saida, erro = processo.communicate(timeout=TIMEOUT_MINIMO)
     except (OSError, subprocess.SubprocessError) as exc:
         return Motor(motivo=f"O Tesseract não abriu: {exc}.")
+    try:
+        saida, erro = processo.communicate(timeout=TIMEOUT_MINIMO)
+    except subprocess.TimeoutExpired:
+        processo.kill()
+        processo.communicate()
+        return Motor(motivo=f"O Tesseract não respondeu em {TIMEOUT_MINIMO:.0f} s.")
     versao = versao_de(saida.decode("utf-8", "replace") + "\n" + erro.decode("utf-8", "replace"))
     if not versao_medida(versao):
         return Motor(motivo=f"A versão {versao or 'desconhecida'} do Tesseract está fora da medida (5.x).")
@@ -287,9 +294,14 @@ def rodar(
         processo.kill()
         processo.communicate()
         raise FalhaDoTesseract(f"O Tesseract passou de {timeout:.0f} s e foi interrompido.") from exc
+    mensagem = erro.decode("utf-8", "replace").strip().splitlines()
     if processo.returncode != 0:
-        mensagem = erro.decode("utf-8", "replace").strip().splitlines()
         raise FalhaDoTesseract(f"O Tesseract terminou com erro: {mensagem[-1] if mensagem else processo.returncode}.")
+    # Saída 0 com erro no stderr existe (página que ele não abriu, no meio do TIFF). "Estimating resolution"
+    # e afins são informação, e passam: só a palavra de erro derruba.
+    grave = next((linha for linha in mensagem if _ERRO_NO_STDERR.search(linha)), None)
+    if grave is not None:
+        raise FalhaDoTesseract(f"O Tesseract avisou um erro: {grave}.")
     return saida.decode("utf-8", "replace")
 
 

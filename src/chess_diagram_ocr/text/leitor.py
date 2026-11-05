@@ -1239,14 +1239,16 @@ def ler_pagina(
     marcar_italico: bool = True,
     lingua: str = _tesseract.LINGUA_PADRAO,
     leitor_de_linha: LeitorDeLinha | None = None,
-    reserva: bool = True,
+    reserva: bool = False,
     marca_por_palavra: bool = True,
 ) -> PaginaLida:
     """Uma página do PDF como `PaginaLida`: colunas de blocos, cabeçalho, rodapé, número impresso.
 
     `motor="camada_prosa"` lê a prosa da camada nos livros nascidos digitais (S-716); `motor="fusao"`, a
     prosa do leitor de linha na língua `lingua` (S-717). A notação fica com o glifo nos dois. `reserva`
-    deixa a folha que a guarda da S-710 acusou ser relida pelo leiaute do leitor de linha (S-715);
+    deixa a folha que a guarda da S-710 acusou ser relida pelo leiaute do leitor de linha (S-715). **Ela
+    vem desligada, e só a janela a liga**: ligada por padrão, todo script da régua e todo CLI passariam a
+    dar um número que depende de haver Tesseract na máquina, e `cobertura.py` mediria depois do conserto.
     `marca_por_palavra` troca a faixa de confiança do bloco pela marca por palavra nos dois motores que
     combinam leitores (S-718). `leitor_de_linha` existe para o teste: `None` é o Tesseract desta máquina.
 
@@ -1378,6 +1380,12 @@ def _com_prosa_de_outro_leitor(
             )
         )
     return saida
+
+
+def _intervalos_das_palavras(texto: str, palavras: Iterable[str]) -> tuple[tuple[int, int], ...]:
+    """Onde, em `texto`, estão estas palavras: a marca da prosa crua da camada que a checagem acusou."""
+    quais = set(palavras)
+    return tuple((m.start(), m.end()) for m in _re.finditer(r"\S+", texto) if m.group() in quais)
 
 
 def _recorte_de_linha(imagem: np.ndarray, caixa: _boxes.Caixa, escala_px: float) -> np.ndarray:
@@ -1610,11 +1618,8 @@ def _ler_pagina_do_livro(
                 dpi=dpi,
                 caracteres_da_camada=caracteres_da_camada,
             )
-            da_camada = (
-                _cruas_da_camada(page, doc, indice, margem, altura, escala_px)
-                if admissao is not None and admissao.admitida and guarda.nao_lida
-                else []
-            )
+            camada_na_folha = admissao is not None and admissao.admitida and guarda.nao_lida
+            da_camada = _cruas_da_camada(page, doc, indice, margem, altura, escala_px) if camada_na_folha else []
             quadros_da_camada = (
                 [(int(y0 * escala_px), int(y1 * escala_px)) for y0, y1 in _quadros.quadros_da_camada(page)]
                 if da_camada
@@ -1624,12 +1629,43 @@ def _ler_pagina_do_livro(
             avisos.append(
                 Aviso(
                     CAMADA_RECUSADA,
-                    f"A camada desta folha não é a tinta ({admissao.criterio}): a prosa veio do glifo.",
+                    "A prosa desta folha veio do glifo: "
+                    f"{_camada_prosa.MOTIVOS_DA_RECUSA.get(admissao.criterio or '', 'a camada não é a tinta')}.",
                 )
             )
-        if guarda.nao_lida and da_camada:
-            # **A prosa vem da montagem da própria camada, e a notação fica sem glifo** (S-716): a
-            # segmentação se perdeu, e não há linha do glifo em que pôr nada.
+        if guarda.nao_lida and camada_na_folha:
+            # **A segmentação se perdeu, e não há linha do glifo em que pôr a prosa** (S-716). Com a reserva,
+            # o leiaute e as palavras suspeitas vêm do Tesseract, e o resto da camada: é o que devolve o
+            # `after` que a ligadura perdeu. Sem ela, é a montagem crua da camada, com a suspeita marcada.
+            relidas: list[_Cru] = []
+            if reserva:
+                leitor = _leitor_de_linha.leitor_padrao() if leitor_de_linha is None else leitor_de_linha
+                relidas, _falha = _linhas_da_reserva(
+                    imagem, retangulos, cruas, leitor=leitor, lingua=lingua, dpi=dpi, existe=existe,
+                    marca_por_palavra=False,
+                )
+            if relidas:
+                por_linha, _fora = _camada_prosa.por_linha([_para_pontos(c.caixa, escala_px) for c in relidas], palavras)
+                cruas = _com_prosa_de_outro_leitor(
+                    relidas,
+                    [
+                        (" ".join(p.texto for p in desta), (), [p.bloqueada for p in desta]) if desta else None
+                        for desta in por_linha
+                    ],
+                    existe=_fusao.existe_na_camada(existe),
+                    e_da_camada=True,
+                    marca_por_palavra=False,
+                )
+                regioes, por_palavra = None, marca_por_palavra
+            else:
+                suspeitas = {p.texto for p in palavras if p.bloqueada}
+                cruas, regioes, quadros, qual = (
+                    [replace(c, revisar_em=_intervalos_das_palavras(c.texto, suspeitas)) for c in da_camada],
+                    None,
+                    quadros_da_camada,
+                    "camada",
+                )
+                por_palavra = marca_por_palavra
             avisos.append(
                 Aviso(
                     CAMADA_NA_FOLHA,
@@ -1637,12 +1673,11 @@ def _ler_pagina_do_livro(
                     guarda.densidade,
                 )
             )
-            cruas, regioes, quadros, qual = da_camada, None, quadros_da_camada, "camada"
         elif guarda.nao_lida:
             avisos.append(
                 Aviso(
                     FOLHA_NAO_LIDA,
-                    f"Esta folha não foi lida inteira: {guarda.lidos} caracteres para ~{guarda.componentes} letras impressas.",
+                    f"Esta folha não foi lida inteira: saíram {guarda.lidos} caractere(s) para ~{guarda.componentes} letras impressas.",
                     guarda.densidade,
                 )
             )

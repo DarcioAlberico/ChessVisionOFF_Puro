@@ -172,11 +172,11 @@ class AppState:
     existe."""
 
     texto_motor: str = ""
-    texto_lingua: str = ""
-    """A língua do livro que o Tesseract lê (S-717). Vazio é a padrão; a S-723 a leva ao caderno."""
     """O motor de leitura escolhido na aba Texto (`ui/texto_declarado.MOTORES`), ou `""` para o
     padrão da aba (item 17 de 2026-10-09). Não é validado aqui, pela razão de `skin`: quem o
     aplica é `PainelDeTexto.definir_motor`, que ignora um nome que não conhece."""
+    texto_lingua: str = ""
+    """A língua do livro que o Tesseract lê (S-717). Vazio é a padrão; a S-723 a leva ao caderno."""
 
     texto_bloco: bool = False
     """O modo bloco da aba Texto estava ligado? (item 17) Quem o liga paga ~40 s por folha de

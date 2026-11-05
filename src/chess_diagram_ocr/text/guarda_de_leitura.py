@@ -25,6 +25,12 @@ componentes sem letra nenhuma, e o *Dvoretsky* dava 0,284 na capa. **Folha com p
 parte** (capa, branco, só diagrama), e não avisa: nela não há o que ler, e avisar ensinaria a ignorar
 o selo.
 
+**O diagrama é mais largo que o retângulo dele.** As coordenadas e o número do exercício ficam em volta,
+têm altura de letra, e o glifo os descarta de propósito (`sem_rotulos_de_eixo`). Na *Polgar 5334*, com
+seis diagramas por folha, isso dava densidade de 0,33 a 0,48 em 16 de 25 folhas, sem nada perdido, e a
+reserva trocava o texto certo por outro pior. A máscara cresce uma casa de cada lado. E **a leitura que
+bate com a camada não é perda**: quem leu ao menos 60% do que a camada tem não perdeu a folha.
+
 O cálculo é sobre a binária de Otsu da imagem da folha, e não a de `binarize`: o limiar global é o que
 a medição usou, e o resultado não depende da segmentação que esta guarda existe para vigiar.
 """
@@ -39,8 +45,10 @@ import numpy as np
 CORTE_DA_DENSIDADE = 0.5
 """Abaixo disto a folha não foi lida. Folhas normais ficam acima de 0,9; as perdidas, abaixo de 0,01."""
 
-MINIMO_DE_COMPONENTES = 40
-"""Abaixo disto a folha não tem texto a perder: capa, branco, só diagrama. Uma linha curta de prosa."""
+MINIMO_DE_COMPONENTES = 100
+"""Abaixo disto a folha não tem texto a perder: capa, branco, só diagrama. Duas linhas de prosa.
+
+Era 40, e as capas do *1000 Chess Problems* e do *A Matter of Endgame* (47 e 43 componentes) avisavam."""
 
 DPI_DA_REGUA = 220
 ALTURA_MINIMA = 8
@@ -78,8 +86,13 @@ class Medida:
         return self.componentes >= MINIMO_DE_COMPONENTES
 
     @property
+    def bate_com_a_camada(self) -> bool:
+        """Leu ao menos o que a camada pede para não ser perda parcial. Sem camada, não responde."""
+        return self.caracteres_da_camada > 0 and self.lidos >= CORTE_DA_CAMADA * self.caracteres_da_camada
+
+    @property
     def nao_lida(self) -> bool:
-        return self.tem_texto and self.densidade < CORTE_DA_DENSIDADE
+        return self.tem_texto and self.densidade < CORTE_DA_DENSIDADE and not self.bate_com_a_camada
 
     @property
     def parcial(self) -> bool:
@@ -129,8 +142,9 @@ def medir(
     _, binaria = cv2.threshold(np.ascontiguousarray(cinza), 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     altura, largura = binaria.shape[:2]
     for x0, y0, x1, y1 in diagramas:
-        ex0, ey0 = max(0, int(x0) - FOLGA), max(0, int(y0) - FOLGA)
-        ex1, ey1 = min(largura, int(x1) + FOLGA), min(altura, int(y1) + FOLGA)
+        folga = max(FOLGA, int((x1 - x0) / 8))  # uma casa: a moldura, as coordenadas e o número
+        ex0, ey0 = max(0, int(x0) - folga), max(0, int(y0) - folga)
+        ex1, ey1 = min(largura, int(x1) + folga), min(altura, int(y1) + folga)
         if ex1 > ex0 and ey1 > ey0:
             binaria[ey0:ey1, ex0:ex1] = 0
     fator = dpi / DPI_DA_REGUA

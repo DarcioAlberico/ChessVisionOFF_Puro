@@ -2324,7 +2324,7 @@ class PainelDeTexto(QWidget):
         if not hasattr(self, "botao_de_ler"):
             return
         guardada = None if self._caderno is None else self._caderno.estado(int(self.campo_de_folha.value()) - 1)
-        abre = guardada is not None and caderno.abre_do_caderno(guardada, motor=self._motor, modo_bloco=self._modo_bloco)
+        abre = guardada is not None and caderno.abre_do_caderno(guardada, motor=self._motor_gravado(), modo_bloco=self._modo_bloco)
         self.botao_de_ler.setText(strings.ABRIR_FOLHA_DO_CADERNO if abre else comandos.rotulo_de_botao("ler_folha"))
 
     def _abrir_do_caderno(self, indice: int) -> bool:
@@ -3661,6 +3661,15 @@ class PainelDeTexto(QWidget):
 
     def _lingua_escolhida(self, _indice: int) -> None:
         self._lingua = str(self.escolha_de_lingua.currentData())
+        self._rotular_leitura()
+
+    def _motor_gravado(self) -> str:
+        """O que o caderno anota como motor da folha. **Na fusão a língua vai junto** (S-717).
+
+        Quem troca a língua da fusão quer a leitura nova, como quem troca de motor, e `abre_do_caderno` só
+        sabe comparar o motor. É texto anotado no índice, e nenhum outro lugar o interpreta como `MOTORES`.
+        """
+        return f"{self._motor}:{self._lingua}" if self._motor == "fusao" else str(self._motor)
 
     def definir_modo_bloco(self, ligado: bool) -> None:
         """Repõe o modo bloco gravado -- sem a frase do rodapé, que é para quem acabou de clicar."""
@@ -3714,7 +3723,7 @@ class PainelDeTexto(QWidget):
         indice = int(self.campo_de_folha.value()) - 1
         guardada = None if self._caderno is None else self._caderno.estado(indice)
         if guardada is not None:
-            if not de_novo and caderno.abre_do_caderno(guardada, motor=self._motor, modo_bloco=self._modo_bloco):
+            if not de_novo and caderno.abre_do_caderno(guardada, motor=self._motor_gravado(), modo_bloco=self._modo_bloco):
                 if self._abrir_do_caderno(indice):
                     return
             elif de_novo and guardada.correcoes and not self._confirmar_releitura(indice, guardada.correcoes):
@@ -3726,7 +3735,7 @@ class PainelDeTexto(QWidget):
         motor = self._motor
         bloco = self._modo_bloco
         lingua = self._lingua
-        self._leitura_de = (motor, bloco)
+        self._leitura_de = (self._motor_gravado(), bloco)
         caminho = self._pdf
         dpi = self._dpi_para_ler()
         teto = self._teto_de_diagramas()
@@ -3753,7 +3762,7 @@ class PainelDeTexto(QWidget):
         self._registrar_ocupado(
             f"Lendo o texto da folha {indice + 1}",
             loses_work=False,
-            detail=f"motor {motor}" + (" · modo bloco" if bloco else ""),
+            detail=f"motor {strings.ROTULOS_DE_MOTOR.get(motor, motor)}" + (" · modo bloco" if bloco else ""),
         )
         self._tarefa = Tarefa(_trabalho, parent=self)
         self._tarefa.pronto.connect(self._leitura_terminou)
@@ -3866,7 +3875,7 @@ class PainelDeTexto(QWidget):
             # A folha vazia não é falha nem é «0 trecho(s)» (item 26): é uma página sem texto para
             # este motor -- capa, figura inteira, ou scan que o glifo não leu --, e a frase diz o
             # que tentar. O estado vazio do editor já está na tela.
-            como = f"motor {self._motor}" + (", modo bloco" if self._modo_bloco else "")
+            como = f"motor {strings.ROTULOS_DE_MOTOR.get(self._motor, self._motor)}" + (", modo bloco" if self._modo_bloco else "")
             self.estado.emit(
                 f"A folha {pagina.pagina + 1} não tem texto lido ({como}{tempo.replace(' em ', ', ')}): "
                 "tente outro motor ou o modo bloco."
@@ -4564,6 +4573,7 @@ def _ler(
 
     return ler_pagina(
         caminho, indice, dpi=dpi, motor=motor, modo_bloco=modo_bloco, imagem_rgb=imagem_rgb, max_boards=max_boards, lingua=lingua,  # type: ignore[arg-type]
+        reserva=True,  # só aqui: a régua e os CLIs não dependem de haver Tesseract na máquina
     )
 
 

@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
-import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
+from ambiente_de_teste import pasta_temporaria
 
 from chess_diagram_ocr.text import leitor_de_linha, tesseract
 
@@ -44,8 +43,7 @@ class TsvTests(unittest.TestCase):
 
 class ResolverBinarioTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.pasta = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, self.pasta, ignore_errors=True)
+        self.pasta = pasta_temporaria(self)
         self.binario = self.pasta / ("tesseract.exe" if os.name == "nt" else "tesseract")
         self.binario.write_bytes(b"")
 
@@ -239,6 +237,7 @@ class ContratoDoLeitorTests(unittest.TestCase):
         self.assertTrue(leitura.falha)
 
 
+@pytest.mark.requer_tesseract
 @pytest.mark.skipif(not tesseract.achar_motor().disponivel, reason="sem o binário do Tesseract")
 class IntegracaoTests(unittest.TestCase):
     """Só onde há o binário: o CI pula, e a máquina do dono confere o contrato de ponta a ponta."""

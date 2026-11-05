@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import unittest
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Any
 from unittest import mock
 
 import cv2
 import numpy as np
+from ambiente_de_teste import pasta_temporaria
 
 from chess_diagram_ocr.text import camada_prosa, documento, guarda_de_leitura, leitor, pagina, rico, tesseract
 from chess_diagram_ocr.text.leitor_de_linha import Leitura
@@ -89,9 +89,8 @@ class AvisosNaPaginaTests(unittest.TestCase):
         original = self._pagina()
         self.assertEqual(pagina.PaginaLida.de_json(original.para_json()), original)
 
-    def test_o_esquema_e_dois_e_o_formato_um_ainda_abre(self) -> None:
+    def test_o_formato_um_ainda_abre(self) -> None:
         dados = self._pagina().para_json()
-        self.assertEqual(dados["esquema"], 2)
         antigo = {k: v for k, v in dados.items() if k != "avisos"} | {"esquema": 1}
         self.assertEqual(pagina.PaginaLida.de_json(antigo).avisos, ())
 
@@ -185,10 +184,6 @@ class CaraterSuspeitoTests(unittest.TestCase):
         palavras = camada_prosa.palavras_da_folha(self._pagina(self._trecho("Ã", [0.5], fonte="FigurineSymbol-T1")))
         self.assertTrue(palavras[0].bloqueada)
 
-    def test_figurina_de_verdade_em_unicode_tambem_vai_ao_glifo_pela_regra_da_notacao(self) -> None:
-        palavras = camada_prosa.palavras_da_folha(self._pagina(self._trecho("♕", [0.5], fonte="SegoeUISymbol")))
-        self.assertFalse(palavras[0].bloqueada)
-
     def test_a_forma_de_apresentacao_vira_letras(self) -> None:
         falsa = mock.Mock()
         falsa.get_texttrace.return_value = []
@@ -235,26 +230,16 @@ class _LeitorFalso:
 class LeituraDoLivroTests(unittest.TestCase):
     """`ler_pagina` num PDF desenhado aqui, com o glifo trocado: a fiação inteira, sem modelo e sem livro."""
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        import tempfile
-
+    def setUp(self) -> None:
         import fitz
 
-        cls.pasta = Path(tempfile.mkdtemp())
         doc = fitz.open()
         pag = doc.new_page(width=450, height=650)
         for n in range(12):
             pag.insert_text((60, 60 + 18 * n), "the white knight wins a pawn", fontname="helv", fontsize=11)
-        cls.caminho = cls.pasta / "livro.pdf"
-        doc.save(cls.caminho)
+        self.caminho = pasta_temporaria(self) / "livro.pdf"
+        doc.save(self.caminho)
         doc.close()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        import shutil
-
-        shutil.rmtree(cls.pasta, ignore_errors=True)
 
     def _crua(self, texto: str, y: int) -> Any:
         from chess_diagram_ocr.text import boxes
@@ -286,7 +271,7 @@ class LeituraDoLivroTests(unittest.TestCase):
             tesseract.Palavra("the", 0.9, (100, 100 + 40 * n, 160, 130 + 40 * n), linha=n) for n in range(5)
         ]
         falso = _LeitorFalso(folha=palavras)
-        lida = self._ler("glifo", [self._crua("h", 50)], leitor_de_linha=falso)
+        lida = self._ler("glifo", [self._crua("h", 50)], leitor_de_linha=falso, reserva=True)
         self.assertTrue(falso.pediu_folha)
         self.assertEqual([a.codigo for a in lida.avisos], [pagina.FOLHA_NAO_LIDA, pagina.LEIAUTE_DE_RESERVA])
         self.assertEqual(lida.texto(com_marcas=False).split(), ["the"] * 5)
@@ -298,7 +283,7 @@ class LeituraDoLivroTests(unittest.TestCase):
             y = 100 + 40 * n
             palavras.append(tesseract.Palavra(f"esq{n}", 0.9, (100, y, 300, y + 25), linha=n))
             palavras.append(tesseract.Palavra(f"dir{n}", 0.9, (700, y, 900, y + 25), linha=n))
-        lida = self._ler("glifo", [self._crua("h", 50)], leitor_de_linha=_LeitorFalso(folha=palavras))
+        lida = self._ler("glifo", [self._crua("h", 50)], leitor_de_linha=_LeitorFalso(folha=palavras), reserva=True)
         texto = lida.texto(com_marcas=False).split()
         self.assertEqual(len(texto), 12)
         self.assertNotIn("esq0 dir0", lida.texto(com_marcas=False))
@@ -318,14 +303,14 @@ class LeituraDoLivroTests(unittest.TestCase):
         self.assertEqual(len(leitor._partida_no_vao(palavras)), 1)  # noqa: SLF001
 
     def test_sem_tesseract_a_folha_sai_como_o_glifo_leu_com_os_dois_avisos(self) -> None:
-        lida = self._ler("glifo", [self._crua("h", 50)], leitor_de_linha=_LeitorFalso(falha="Sem Tesseract."))
+        lida = self._ler("glifo", [self._crua("h", 50)], leitor_de_linha=_LeitorFalso(falha="Sem Tesseract."), reserva=True)
         self.assertEqual([a.codigo for a in lida.avisos], [pagina.FOLHA_NAO_LIDA, pagina.LEITOR_INDISPONIVEL])
         self.assertIn("Sem Tesseract.", lida.avisos[1].mensagem)
         self.assertEqual(lida.texto(com_marcas=False), "h")
 
     def test_folha_legivel_nao_aciona_a_reserva(self) -> None:
         falso = _LeitorFalso()
-        self._ler("glifo", self._boas(), leitor_de_linha=falso)
+        self._ler("glifo", self._boas(), leitor_de_linha=falso, reserva=True)
         self.assertFalse(falso.pediu_folha)
 
     def test_a_camada_na_prosa_troca_a_prosa(self) -> None:

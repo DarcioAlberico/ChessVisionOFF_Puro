@@ -168,6 +168,27 @@ class SeloTests(_Aba):
         self.assertEqual(self.painel.selo_da_folha.text(), "Relida pela reserva.")
 
 
+class LinguaNoCadernoTests(_Aba):
+    """Trocar a língua da fusão é pedir a leitura nova, como trocar de motor (S-717)."""
+
+    def test_o_motor_gravado_leva_a_lingua_so_na_fusao(self) -> None:
+        self.painel.definir_motor("fusao")
+        self.painel.definir_lingua("por")
+        self.assertEqual(self.painel._motor_gravado(), "fusao:por")
+        self.painel.definir_motor("glifo")
+        self.assertEqual(self.painel._motor_gravado(), "glifo")
+
+    def test_a_folha_lida_em_outra_lingua_nao_abre_do_caderno(self) -> None:
+        from chess_diagram_ocr.text import caderno
+
+        estado = caderno.EstadoDaFolha(pagina=0, estado=caderno.LIDA, motor="fusao:eng", modo_bloco=False)
+        self.painel.definir_motor("fusao")
+        self.painel.definir_lingua("eng")
+        self.assertTrue(caderno.abre_do_caderno(estado, motor=self.painel._motor_gravado(), modo_bloco=False))
+        self.painel.definir_lingua("por")
+        self.assertFalse(caderno.abre_do_caderno(estado, motor=self.painel._motor_gravado(), modo_bloco=False))
+
+
 class ProximaARevisarTests(_Aba):
     def _com_marca(self) -> None:
         linha = pagina.LinhaLida(texto="uma palavra errada outra", bbox=(0, 0, 9, 9), revisar_em=((4, 11), (19, 24)))
