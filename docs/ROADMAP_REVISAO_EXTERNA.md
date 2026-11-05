@@ -26,6 +26,7 @@ Uma revisão técnica independente do repositório, feita por terceiro em 2026-0
 > | S-500 a S-506, S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
 > | S-581 a S-584 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
+> | S-702 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
 
 Este documento não propõe recurso novo. Ele é o que sobrou de dez achados de fora **depois de
 cada um ser conferido contra este ramo** -- que está 17 commits à frente do que a revisão viu.
