@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 import cv2
 import numpy as np
@@ -27,6 +28,11 @@ def _folha(*, filete: bool = False, faixa: bool = False, linhas: int = 20) -> np
 
 def _caixas(imagem: np.ndarray) -> int:
     return len(leitor.segmentar(imagem)[3])
+
+
+def _caixas_sem_moldura() -> int:
+    with mock.patch.object(moldura, "TIRAR_MOLDURA", False):
+        return _caixas(_folha(filete=True))
 
 
 class SegmentarTests(unittest.TestCase):
@@ -86,6 +92,12 @@ class TirarMolduraTests(unittest.TestCase):
         imagem = _folha()
         cv2.rectangle(imagem, (0, 0), (960, 1340), (40, 40, 40), 3)
         self.assertEqual(moldura.tirar_moldura(binarize(imagem))[1], 1)
+
+    def test_a_constante_desliga(self) -> None:
+        binaria = binarize(_folha(filete=True))
+        with mock.patch.object(moldura, "TIRAR_MOLDURA", False):
+            self.assertIs(moldura.tirar_moldura(binaria)[0], binaria)
+        self.assertLess(_caixas_sem_moldura(), 5, "desligada, a folha volta a se perder")
 
     def test_a_folha_vazia_nao_quebra(self) -> None:
         self.assertEqual(moldura.tirar_moldura(np.zeros((0, 0), dtype=np.uint8))[1], 0)

@@ -58,6 +58,9 @@ class PalavraDaCamada:
     texto: str
     bbox: Retangulo
     bloqueada: bool = False
+    de_figurina: bool = False
+    """Bloqueada por ter código de fonte de figurina. **É lance ou sinal, e não prosa**: o `i` solto dessa fonte
+    é uma avaliação, e o Tesseract o devolvia como `eel`. Quem pode pedir outra leitura é só a ligadura."""
 
 
 def sem_ligadura(texto: str) -> str:
@@ -76,6 +79,7 @@ class _Caractere:
     y1: float
     corpo: float
     suspeito: bool
+    cego: bool = False
 
 
 def _caracteres(pagina: Any) -> list[_Caractere]:
@@ -110,7 +114,9 @@ def _caracteres(pagina: Any) -> list[_Caractere]:
             codigo_cego = de_figurina and not 0x2654 <= codigo <= 0x265F and not chr(codigo).isdigit()
             privado = bool(admissao.USO_PRIVADO.search(chr(codigo)))
             saida.append(
-                _Caractere(chr(codigo), float(x0), float(y0), float(x1), float(y1), corpo, larga or codigo_cego or privado)
+                _Caractere(
+                    chr(codigo), float(x0), float(y0), float(x1), float(y1), corpo, larga or codigo_cego or privado, codigo_cego
+                )
             )
     return saida
 
@@ -154,14 +160,18 @@ def palavras_da_folha(pagina: Any) -> list[PalavraDaCamada]:
                         sem_ligadura("".join(c.letra for c in pedaco)),
                         (pedaco[0].x0, min(c.y0 for c in pedaco), pedaco[-1].x1, max(c.y1 for c in pedaco)),
                         any(c.suspeito for c in pedaco),
+                        any(c.cego for c in pedaco),
                     )
                 )
             continue
         bloqueada = any(c.suspeito for c in dentro)
+        de_figurina = any(c.cego for c in dentro)
         # A camada separa token com espaço fino dentro da "palavra" (`(2546)\u2009—\u2009Macedo,M`). O
         # roteador parte por espaço de qualquer tipo; quem parte aqui é para a marca ir com cada pedaço.
         for pedaco_de_texto in sem_ligadura(texto).split():
-            palavras.append(PalavraDaCamada(pedaco_de_texto, (float(x0), float(y0), float(x1), float(y1)), bloqueada))
+            palavras.append(
+                PalavraDaCamada(pedaco_de_texto, (float(x0), float(y0), float(x1), float(y1)), bloqueada, de_figurina)
+            )
     return palavras
 
 

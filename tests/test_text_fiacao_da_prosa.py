@@ -393,6 +393,43 @@ class RecorteTests(_ComLivro):
         self.assertEqual(falso.recortes[0].shape[0], altura + 2 * max(2, round(altura * 0.12)))
 
 
+class FaixaPretaNoLeitorTests(unittest.TestCase):
+    """A S-599 vale para os dois leitores: o Tesseract recebe a faixa virada, a mesma que o glifo vê."""
+
+    def _folha(self, *, faixa: bool) -> np.ndarray:
+        imagem = np.full((1400, 1000, 3), 255, dtype=np.uint8)
+        if faixa:
+            imagem[300:360, 100:900] = 0
+            cv2.putText(imagem, "E.Jackson - D.Baird", (130, 342), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
+        return imagem
+
+    def test_a_faixa_chega_como_tinta_sobre_papel(self) -> None:
+        recorte = leitor._imagem_do_leitor(self._folha(faixa=True), 220)[300:360, 100:900]
+        self.assertGreater(float(recorte.mean()), 200, "o fundo da faixa virou papel")
+        self.assertLess(int(recorte.min()), 80, "e as letras viraram tinta")
+
+    def test_a_folha_sem_faixa_e_o_mesmo_objeto(self) -> None:
+        imagem = self._folha(faixa=False)
+        self.assertIs(leitor._imagem_do_leitor(imagem, 220), imagem)
+
+
+class FaixaPretaNaFusaoTests(_ComLivro):
+    def setUp(self) -> None:
+        import fitz
+
+        super().setUp()
+        doc = fitz.open(self.caminho)
+        doc[0].draw_rect(fitz.Rect(60, 280, 400, 298), color=(0, 0, 0), fill=(0, 0, 0))
+        doc.saveIncr()
+        doc.close()
+
+    def test_o_recorte_da_fusao_nao_e_a_faixa_preta(self) -> None:
+        """Afirmado no recorte que chega ao leitor: trocar `do_leitor` por `imagem` faz este teste acusar."""
+        falso = _Falso(linhas=[LINHA] * (self.linhas_do_pdf + 1))
+        self.ler("fusao", [*self.boas(LINHA), _crua(LINHA, 283, x1=380)], leitor_de_linha=falso)
+        self.assertGreater(float(falso.recortes[-1].mean()), 200)
+
+
 class _Classificador:
     meta = None
 
@@ -411,6 +448,75 @@ class ConfiancaPorCaractereTests(unittest.TestCase):
         )
         self.assertTrue(cruas)
         self.assertEqual(len(cruas[0].confiancas), len("".join(cruas[0].texto.split())))
+
+
+class RuidoEmolduradoTests(_ComLivro):
+    """Tirar a moldura abre o que estava dentro: sinal solto sai avisado, e não como se fosse a leitura."""
+
+    linhas_do_pdf = 0
+    SINAIS = " ".join("i . , ; l - ' :".split() * 8)
+
+    def _com_moldura(self) -> None:
+        import fitz
+
+        doc = fitz.open(self.caminho)
+        doc[0].draw_rect(fitz.Rect(1, 1, 449, 649), color=(0, 0, 0), width=1)
+        doc.saveIncr()
+        doc.close()
+
+    def test_o_ruido_na_folha_com_moldura_avisa(self) -> None:
+        self._com_moldura()
+        lida = self.ler("glifo", [_crua(self.SINAIS, 60)])
+        self.assertIn(pagina.FOLHA_NAO_LIDA, [a.codigo for a in lida.avisos])
+        self.assertIn("sinais soltos", lida.avisos[0].mensagem)
+
+    def test_o_mesmo_texto_sem_moldura_e_uma_tabela(self) -> None:
+        """Uma tabela de torneio dá esse número, e não tem moldura em volta."""
+        lida = self.ler("glifo", [_crua(self.SINAIS, 60)])
+        self.assertEqual(lida.avisos, ())
+
+    def test_a_leitura_de_verdade_na_folha_com_moldura_nao_avisa(self) -> None:
+        self._com_moldura()
+        lida = self.ler("glifo", [_crua(LINHA, 60 + 18 * n) for n in range(4)])
+        self.assertEqual(lida.avisos, ())
+
+
+class LanceComSinalTests(unittest.TestCase):
+    """O lance com sinal colado não é prosa: era o que ia ao Tesseract e voltava `19.2d3+`."""
+
+    def test_e_notacao(self) -> None:
+        for token in ("19.Bd3\uf0b1", "58.Qe7\uf0b2)", "Rxg5i", "Rh8+i)", "24...f4e", "30.Bf2h)", "Rfc1²]", "Na4\uf084", "Bg1²;"):
+            with self.subTest(token=token):
+                self.assertTrue(fusao.e_notacao(token))
+
+    def test_a_palavra_continua_prosa(self) -> None:
+        for token in ("af7anca", "after", "first", "f4e", "Black", "m²"):
+            with self.subTest(token=token):
+                self.assertFalse(fusao.e_notacao(token))
+
+    def test_o_resultado_com_travessao_e_notacao(self) -> None:
+        self.assertTrue(fusao.e_notacao("1—0"))
+        self.assertTrue(fusao.e_notacao("0–1"))
+
+
+class QuemPedeOutraLeituraTests(unittest.TestCase):
+    def _palavra(self, texto: str, *, de_figurina: bool = False) -> camada_prosa.PalavraDaCamada:
+        return camada_prosa.PalavraDaCamada(texto, (0.0, 0.0, 10.0, 10.0), True, de_figurina)
+
+    def test_a_ligadura_pede(self) -> None:
+        self.assertTrue(leitor._pede_outra_leitura(self._palavra("afer")))
+
+    def test_o_lance_com_sinal_nao_pede(self) -> None:
+        self.assertFalse(leitor._pede_outra_leitura(self._palavra("19.Bd3\uf0b1")))
+
+    def test_o_sinal_solto_da_fonte_de_figurina_nao_pede(self) -> None:
+        """O `i` solto dessa fonte é avaliação: o Tesseract o devolvia como `eel`."""
+        self.assertFalse(leitor._pede_outra_leitura(self._palavra("i", de_figurina=True)))
+
+    def test_nao_bloqueada_nao_pede(self) -> None:
+        self.assertFalse(
+            leitor._pede_outra_leitura(camada_prosa.PalavraDaCamada("after", (0.0, 0.0, 10.0, 10.0)))
+        )
 
 
 class ClasseDoTokenTests(unittest.TestCase):

@@ -44,9 +44,18 @@ _LANCE = re.compile(
     rf"^(\d+\.+|\.\.\.|…)?([{_PECA}]?[a-h]?[1-8]?[xX:×]?[a-h][1-8](=?[{_PECA}])?:?|O-O(-O)?|0-0(-0)?)"
     r"(e\.p\.)?[+#†‡t]*[!?]*[=+\-–—±∓∞⩲⩱]*$"
 )
+_CASA_DO_LANCE = rf"[a-h]?[1-8]?[xX:×]?[a-h][1-8](?:=?[{_PECA}])?[+#†‡!?]*"
+_LANCE_COM_SINAL = re.compile(
+    rf"^(?:\d+\.+|\.\.\.|…)?[{_PECA}]?{_CASA_DO_LANCE}[\ue000-\uf8ff²³°][+#†‡!?]*$"
+    rf"|^(?:(?:\d+\.+|\.\.\.|…)[{_PECA}]?|[{_PECA}]){_CASA_DO_LANCE}[a-z][+#†‡!?]*$"
+)
+"""O lance com o sinal de avaliação colado, que a camada escreve em código de fonte: `19.Bd3\uf0b1`, `Rfc1²`,
+`Rxg5i`, `24...f4e`. A letra solta só conta com peça ou número de lance na frente: `f4e` sozinho não é lance, e
+uma letra só é o que tira `af7anca` daqui. Sem isto, 41 lances do *Chess Evolution 2013* iam ao Tesseract como se
+fossem prosa, e voltavam `19.2d3+` (S-716, terceira rodada do crítico)."""
 _NUMERO_DE_LANCE = re.compile(r"^\d+\.+$")
 _AVALIACAO = re.compile(r"^([+\-=±∓⩲⩱∞!?#†□△⌓→↑⇆○●N]|\+/-|-/\+|\+-|-\+|=/\+|\+/=|=/∞)+$")
-_RESULTADO = re.compile(r"^(1-0|0-1|½-½|1/2-1/2|\*)$")
+_RESULTADO = re.compile(r"^(1[-–—]0|0[-–—]1|½[-–—]½|1/2[-–—]1/2|\*)$")
 _SIMBOLOS = "ʘ⊕⊞⨀□△▲▼○●↑→←⇆⇄∆∇⌓⩲⩱±∓∞#†‡"
 _DESCRITIVA = re.compile(
     r"^(\d+\.+)?[KQRBNPTDACS]{1,3}[1-8]?(-|[xX:])?[KQRBNPTDACS]{0,3}[1-8]?[a-z]{0,2}(ch|mate|\+|#|!|\?)*$"
@@ -90,6 +99,7 @@ def classe_do_token(token: str) -> str:
     if (
         _FIGURINA.search(nu)
         or any(_LANCE.match(x) for x in (nu, sem_ponto, sem_simbolos))
+        or _LANCE_COM_SINAL.match(sem_ponto)
         or _NUMERO_DE_LANCE.match(nu)
         or _AVALIACAO.match(nu)
         or _RESULTADO.match(nu)

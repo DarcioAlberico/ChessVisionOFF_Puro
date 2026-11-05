@@ -38,6 +38,7 @@ import resumo  # noqa: E402
 RAIZ = Path(os.environ.get("CVOFF_RAIZ") or Path(__file__).resolve().parents[3])
 MODELO = RAIZ / "models" / "char_classifier.pt"
 DPI = 220
+LANCE_POR_PREFIXO = re.compile(r"^[(\[]?(\d+\.+|\.\.\.|…)?[KQRBNDTCSLF]?[a-h]?[1-8]?[xX:×]?[a-h][1-8](?![a-z]{2})")
 
 
 def _leitura():
@@ -230,7 +231,9 @@ def caminho_da_camada(saida: str) -> None:
                 with fitz.open(pdf) as doc:
                     t_base = [p.texto for p in camada_prosa.palavras_da_folha(doc[i])]
                 t_pag = pag.texto(com_marcas=False).split()
-                nota = [x for x in t_base if banco.classe_do_token(x) == "notacao"]
+                # **Por prefixo, e não pela classe da régua**: ela chama `19.Bd3\uf0b1` de prosa, e os lances com
+                # sinal colado, que eram justamente os estragados, ficavam fora da conta (crítico, terceira rodada).
+                nota = [x for x in t_base if banco.classe_do_token(x) == "notacao" or LANCE_POR_PREFIXO.match(x)]
                 restam = Counter(t_pag)
                 ok = sum(1 for x in nota if restam[x] > 0 and not restam.subtract([x]))
                 reg = {"caminho": True, "livro": os.path.basename(pdf), "pagina": i, "avisos": [a.codigo for a in pag.avisos],

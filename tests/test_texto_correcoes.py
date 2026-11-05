@@ -96,6 +96,63 @@ class CarimboTests(unittest.TestCase):
         self.assertEqual(marcado.origem.blocos[0].texto, "antes")
 
 
+class MarcaDaPalavraTests(unittest.TestCase):
+    """Corrigir uma palavra não apaga as outras marcas do parágrafo (S-718)."""
+
+    def _doc(self, *pedacos: tuple[str, str]) -> rico.DocumentoRico:
+        lido = "".join(t for t, _ in pedacos)
+        origem = _pagina(_texto(lido))
+        corridas = tuple(
+            rico.Corrida(t, faixa=f, bloco=0, procedencia="glifo")
+            for t, f in pedacos
+        )
+        return rico.DocumentoRico(corridas=corridas, origem=origem)
+
+    def _trocado(self, doc: rico.DocumentoRico, indice: int, novo: str) -> rico.DocumentoRico:
+        corridas = list(doc.corridas)
+        corridas[indice] = replace(corridas[indice], texto=novo)
+        return rico.DocumentoRico(corridas=tuple(corridas), origem=doc.origem)
+
+    def _duas_marcas(self) -> rico.DocumentoRico:
+        return self._doc(("the ", "tranquilo"), ("wbite", "revisar"), (" knight ", "tranquilo"), ("wlns", "revisar"), (" a pawn", "tranquilo"))
+
+    def test_a_marca_que_a_mao_nao_tocou_fica(self) -> None:
+        doc = self._trocado(self._duas_marcas(), 1, "white")
+        marcado = correcao.com_procedencia_humana(doc)
+        self.assertEqual([c.texto for c in marcado.corridas if c.faixa == "revisar"], ["wlns"])
+        self.assertEqual(rico.intervalos_a_revisar(marcado), ((17, 21),))
+
+    def test_a_marca_corrigida_sai_e_a_corrida_vira_humano(self) -> None:
+        doc = self._trocado(self._duas_marcas(), 1, "white")
+        corrida = correcao.com_procedencia_humana(doc).corridas[1]
+        self.assertEqual((corrida.faixa, corrida.procedencia), ("tranquilo", "humano"))
+
+    def test_a_marca_que_fica_guarda_quem_leu(self) -> None:
+        doc = self._trocado(self._duas_marcas(), 1, "white")
+        self.assertEqual(correcao.com_procedencia_humana(doc).corridas[3].procedencia, "glifo")
+
+    def test_e_idempotente(self) -> None:
+        marcado = correcao.com_procedencia_humana(self._trocado(self._duas_marcas(), 1, "white"))
+        self.assertEqual(correcao.com_procedencia_humana(marcado), marcado)
+
+    def test_corrigir_as_duas_nao_deixa_marca(self) -> None:
+        doc = self._trocado(self._trocado(self._duas_marcas(), 1, "white"), 3, "wins")
+        self.assertEqual(rico.intervalos_a_revisar(correcao.com_procedencia_humana(doc)), ())
+
+    def test_a_faixa_do_bloco_inteiro_continua_saindo(self) -> None:
+        """A edição parte a corrida, e os dois pedaços intactos são da faixa do bloco, e não da palavra."""
+        doc = self._doc(("the wbite ", "revisar"), ("knight", "revisar"))
+        marcado = correcao.com_procedencia_humana(self._trocado(doc, 0, "the white "))
+        self.assertEqual(rico.intervalos_a_revisar(marcado), ())
+
+    def test_a_marca_sobrevive_ao_arquivo(self) -> None:
+        doc = correcao.com_procedencia_humana(self._trocado(self._duas_marcas(), 1, "white"))
+        with tempfile.TemporaryDirectory() as pasta:
+            caminho = arquivo.gravar(Path(pasta) / "folha.cvtxt", doc)
+            reaberto = arquivo.carregar(caminho)
+        self.assertEqual(rico.intervalos_a_revisar(reaberto), ((17, 21),))
+
+
 class ParMinimoTests(unittest.TestCase):
     def test_o_par_e_o_trecho_que_mudou_e_nao_o_bloco(self) -> None:
         """A S-213 quer saber quantas vezes a vírgula virou apóstrofo, não quantos parágrafos."""

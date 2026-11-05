@@ -11,15 +11,22 @@ dá 1.691 caixas e lê normal. **O que apaga não é o escuro, é o que envolve.
 e estreito: só sai o componente cuja caixa cobre a folha nas duas direções, e a folha sem moldura não muda em
 um pixel.
 
-**Sai da binária, e não da imagem.** O recorte que o classificador lê vem do cinza, e a letra encostada na borda
-continua lá. O que o conserto não traz é o texto claro de dentro da faixa, que é o título corrente do fascículo:
-a camada o tem, e ler o negativo de uma faixa vertical é outro item.
+**Sai da binária, e não da imagem.** A letra que encosta na moldura é parte do componente, e sai com ela: numa
+folha desenhada são 20 de 500 caixas, e nenhum caso real apareceu. O que o conserto não traz é o texto claro de
+dentro da faixa, que é o título corrente do fascículo: a camada o tem, e ler o negativo de uma faixa vertical é
+outro item. Um quadro abaixo de `COBERTURA_MINIMA` continua apagando a folha, e a guarda da S-710 o avisa.
+
+**O que estava dentro pode não ser texto.** Em contracapa manchada e marca d'água sai ruído onde antes não saía
+nada, e é a guarda que o acusa: ver `guarda_de_leitura.RUIDO_POR_TOKEN`.
 """
 
 from __future__ import annotations
 
 import cv2
 import numpy as np
+
+TIRAR_MOLDURA = True
+"""A reversão da S-711: desligada, a folha volta a ser lida como antes, com a guarda da S-710 acusando a perda."""
 
 COBERTURA_MINIMA = 0.9
 """Quanto da folha a caixa do componente tem de cobrir, em cada direção, para ser moldura.
@@ -33,7 +40,7 @@ def tirar_moldura(binaria: np.ndarray) -> tuple[np.ndarray, int]:
 
     Devolver o objeto recebido é parte do contrato: a folha sem moldura sai idêntica, e sem custo de cópia.
     """
-    if binaria.size == 0:
+    if not TIRAR_MOLDURA or binaria.size == 0:
         return binaria, 0
     altura, largura = binaria.shape[:2]
     n, rotulos, estatisticas, _ = cv2.connectedComponentsWithStats(binaria, connectivity=8)
@@ -50,4 +57,4 @@ def tirar_moldura(binaria: np.ndarray) -> tuple[np.ndarray, int]:
     return limpa, len(envolventes)
 
 
-__all__ = ["COBERTURA_MINIMA", "tirar_moldura"]
+__all__ = ["COBERTURA_MINIMA", "TIRAR_MOLDURA", "tirar_moldura"]

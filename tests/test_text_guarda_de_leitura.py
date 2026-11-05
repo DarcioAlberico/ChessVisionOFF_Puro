@@ -358,5 +358,27 @@ class LeituraDoLivroTests(unittest.TestCase):
         self.assertEqual(leitor.motor_escolhido("auto"), "glifo")
 
 
+class RuidoTests(unittest.TestCase):
+    def test_sinal_solto_e_ruido(self) -> None:
+        self.assertTrue(guarda_de_leitura.parece_ruido(list("il.,;:-'" * 6)))
+
+    def test_o_numero_das_folhas_medidas(self) -> None:
+        """94 caracteres em 76 tokens (a menor das que davam ruído), e 746 em 535 (a primeira que não dá)."""
+        self.assertTrue(guarda_de_leitura.parece_ruido(["a"] * 58 + ["ab"] * 18))
+        self.assertFalse(guarda_de_leitura.parece_ruido(["a"] * 324 + ["ab"] * 211))
+
+    def test_pouco_nao_e_ruido(self) -> None:
+        self.assertFalse(guarda_de_leitura.parece_ruido(list("il.,")))
+
+    def test_prosa_nao_e_ruido(self) -> None:
+        self.assertFalse(guarda_de_leitura.parece_ruido("the white knight wins a pawn and the game".split() * 3))
+
+    def test_nao_lida_sem_componentes(self) -> None:
+        self.assertTrue(guarda_de_leitura.Medida(0, 500, 0, 40, ruido=True).nao_lida)
+
+    def test_a_camada_ainda_absolve(self) -> None:
+        self.assertFalse(guarda_de_leitura.Medida(0, 500, 0, 40, caracteres_da_camada=500, ruido=True).nao_lida)
+
+
 if __name__ == "__main__":
     unittest.main()

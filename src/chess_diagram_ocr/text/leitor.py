@@ -1398,6 +1398,16 @@ def _com_prosa_de_outro_leitor(
     return saida
 
 
+def _imagem_do_leitor(imagem: np.ndarray, dpi: int) -> np.ndarray:
+    """A folha que o leitor de linha recebe: as faixas pretas viradas em tinta sobre papel, como as vê o glifo (S-599).
+
+    Sem isto o glifo lia o cabeçalho e o Tesseract recebia a faixa com a borda serrilhada e a franja, que saíam
+    como `Anderssen|` e `$.Bouaziz)` na fusão. Sem faixa na folha volta a mesma imagem, sem conversão nenhuma.
+    """
+    cinza, faixas = _faixas_mod.desinverter_faixas(imagem, dpi)
+    return cinza if faixas else imagem
+
+
 def _recorte_de_linha(imagem: np.ndarray, caixa: _boxes.Caixa, escala_px: float) -> np.ndarray:
     """O recorte que o leitor de linha lê: a caixa do glifo, com 12% da altura de folga. O mesmo da régua."""
     x0, y0, x1, y1 = (v * escala_px for v in _para_pontos(caixa, escala_px))
@@ -1452,6 +1462,18 @@ def _com_diagramas_em_branco(imagem: np.ndarray, retangulos: Sequence[Retangulo]
     return cinza
 
 
+def _e_ruido_emoldurado(imagem: np.ndarray, cruas: Sequence[_Cru]) -> bool:
+    """Saiu sinal solto de uma folha com moldura? A binária só é refeita nas raras folhas que dão esse número."""
+    if not _guarda.parece_ruido([t for c in cruas for t in c.texto.split()]):
+        return False
+    return _moldura.tirar_moldura(binarize(imagem))[1] > 0
+
+
+def _pede_outra_leitura(palavra: _camada_prosa.PalavraDaCamada) -> bool:
+    """A palavra suspeita que o Tesseract pode resolver: a prosa com ligadura, e nunca lance ou sinal de figurina."""
+    return palavra.bloqueada and not palavra.de_figurina and not _fusao.e_notacao(palavra.texto)
+
+
 def _camada_montada(
     cruas: Sequence[_Cru],
     palavras: Sequence[_camada_prosa.PalavraDaCamada],
@@ -1480,7 +1502,7 @@ def _camada_montada(
             # **Lance nunca é trocado, nem marcado.** O da camada vem em fonte de figurina, e por isso chega
             # bloqueado, mas a letra está certa (`Rxd5!`): o Tesseract ali lê `Af6` onde está `Nf6`. A folha já
             # diz, no selo, que os lances estão sem figurina.
-            if palavra.bloqueada and not _fusao.e_notacao(texto):
+            if _pede_outra_leitura(palavra):
                 x0, y0, x1, y1 = palavra.bbox
                 lidas = [
                     p.texto
@@ -1508,7 +1530,8 @@ def _e_lixo_da_reserva(tokens: Sequence[_fusao.Token], existe: Callable[[str], b
     """Linha curta, sem palavra que exista nem lance, e que o próprio leitor leu sem certeza."""
     if sum(len(t.texto) for t in tokens) > LINHA_DE_LIXO:
         return False
-    if any(existe(t.texto) or _fusao.e_notacao(t.texto) or t.texto.strip(".,;:)(").isdigit() for t in tokens):
+    nus = [t.texto.strip(".,;:)(") for t in tokens]
+    if any(existe(nu) or nu.isdigit() for nu in nus) or any(_fusao.e_notacao(t.texto) for t in tokens):
         return False
     return min((t.confianca for t in tokens if t.confianca is not None), default=0.0) < CONFIANCA_DE_LIXO
 
@@ -1529,7 +1552,7 @@ def _linhas_da_reserva(
     **A notação continua do glifo onde ele achou caixa de altura de linha**: uma leitura perdida ainda pode
     ter uma ou outra linha boa. A caixa degenerada do tamanho da folha, que é o sintoma, não casa com nada.
     """
-    palavras, falha = leitor.ler_folha(_com_diagramas_em_branco(imagem, retangulos), lingua=lingua, dpi=dpi)
+    palavras, falha = leitor.ler_folha(_com_diagramas_em_branco(_imagem_do_leitor(imagem, dpi), retangulos), lingua=lingua, dpi=dpi)
     if falha or not palavras:
         return ([], falha)
     grupos: dict[tuple[int, int, int], list[_tesseract.Palavra]] = {}
@@ -1693,6 +1716,7 @@ def _ler_pagina_do_livro(
                 linhas_lidas=len(cruas),
                 dpi=dpi,
                 caracteres_da_camada=caracteres_da_camada,
+                ruido=_e_ruido_emoldurado(imagem, cruas),
             )
             camada_na_folha = admissao is not None and admissao.admitida and guarda.nao_lida
             da_camada = _cruas_da_camada(page, doc, indice, margem, altura, escala_px) if camada_na_folha else []
@@ -1716,9 +1740,9 @@ def _ler_pagina_do_livro(
             # é o que devolve o `after` que a ligadura perdeu. A primeira versão fazia o contrário, com as
             # linhas do Tesseract no lugar do glifo, e trocava `10.Qxd2` por `10.8xd2`.
             leituras_da_reserva: list[_tesseract.Palavra] = []
-            if reserva and any(p.bloqueada and not _fusao.e_notacao(p.texto) for p in palavras):
+            if reserva and any(_pede_outra_leitura(p) for p in palavras):
                 leitor = _leitor_de_linha.leitor_padrao() if leitor_de_linha is None else leitor_de_linha
-                leituras_da_reserva, _falha = leitor.ler_folha(_com_diagramas_em_branco(imagem, retangulos), lingua=lingua, dpi=dpi)
+                leituras_da_reserva, _falha = leitor.ler_folha(_com_diagramas_em_branco(_imagem_do_leitor(imagem, dpi), retangulos), lingua=lingua, dpi=dpi)
             cruas, regioes, quadros, qual = (
                 _camada_montada(da_camada, palavras, leituras_da_reserva, escala_px),
                 None,
@@ -1737,7 +1761,9 @@ def _ler_pagina_do_livro(
             avisos.append(
                 Aviso(
                     FOLHA_NAO_LIDA,
-                    f"Esta folha não foi lida inteira: saíram {guarda.lidos} caractere(s) para ~{guarda.componentes} letras impressas.",
+                    f"O que saiu desta folha são {guarda.lidos} sinais soltos, e não texto: confira se há o que ler nela."
+                    if guarda.ruido
+                    else f"Esta folha não foi lida inteira: saíram {guarda.lidos} caractere(s) para ~{guarda.componentes} letras impressas.",
                     guarda.densidade,
                 )
             )
@@ -1784,8 +1810,9 @@ def _ler_pagina_do_livro(
                 por_palavra = marca_por_palavra
             elif qual == "fusao" and cruas:
                 leitor = _leitor_de_linha.leitor_padrao() if leitor_de_linha is None else leitor_de_linha
+                do_leitor = _imagem_do_leitor(imagem, dpi)
                 leitura = leitor.ler_linhas(
-                    [_recorte_de_linha(imagem, c.caixa, escala_px) for c in cruas], lingua=lingua, dpi=dpi
+                    [_recorte_de_linha(do_leitor, c.caixa, escala_px) for c in cruas], lingua=lingua, dpi=dpi
                 )
                 if leitura.falha:
                     avisos.append(Aviso(LEITOR_INDISPONIVEL, f"A prosa ficou com o glifo. {leitura.falha}"))

@@ -74,6 +74,21 @@ CORTE_DA_CAMADA = 0.6
 MINIMO_DA_CAMADA = 200
 """Perda parcial por camada: lidos abaixo de 60% dos caracteres dela, se ela tiver ao menos 200."""
 
+RUIDO_POR_TOKEN = 1.3
+MINIMO_DE_RUIDO = 40
+"""Caracteres por token e caracteres na folha para o que saiu ser sinal solto, e não leitura (S-711).
+
+**Só vale na folha com moldura.** Tirar a moldura abre o que estava dentro dela, e isso pode ser mancha de
+contracapa ou texto que o glifo despedaça. Medido em 100 folhas com moldura de 6 livros: as que dão ruído vão de
+1,02 a 1,24, e a seguinte já é 1,39. Fora da moldura esse número é uma tabela de torneio, e não ruído. A fração de
+palavras existentes não serve aqui: nos livros holandeses ela fica em 2% com o texto lido."""
+
+
+def parece_ruido(tokens: Sequence[str]) -> bool:
+    """O que saiu da folha é sinal solto: `RUIDO_POR_TOKEN`, numa quantidade que não é número de folha."""
+    caracteres = sum(len(t) for t in tokens)
+    return caracteres >= MINIMO_DE_RUIDO and caracteres / max(1, len(tokens)) <= RUIDO_POR_TOKEN
+
 
 @dataclass(frozen=True)
 class Medida:
@@ -84,6 +99,8 @@ class Medida:
     linhas_estimadas: int
     linhas_lidas: int
     caracteres_da_camada: int = 0
+    ruido: bool = False
+    """A folha tem moldura, e o que saiu de dentro dela é sinal solto. Ver `RUIDO_POR_TOKEN`."""
 
     @property
     def densidade(self) -> float:
@@ -105,7 +122,8 @@ class Medida:
 
     @property
     def nao_lida(self) -> bool:
-        return self.tem_texto and self.densidade < CORTE_DA_DENSIDADE and not self.bate_com_a_camada
+        perdida = self.tem_texto and self.densidade < CORTE_DA_DENSIDADE
+        return (self.ruido or perdida) and not self.bate_com_a_camada
 
     @property
     def parcial(self) -> bool:
@@ -147,6 +165,7 @@ def medir(
     linhas_lidas: int,
     dpi: int = DPI_DA_REGUA,
     caracteres_da_camada: int = 0,
+    ruido: bool = False,
 ) -> Medida:
     """A medida de uma folha, com os retângulos de diagrama em **pixels** da imagem."""
     import cv2
@@ -175,6 +194,7 @@ def medir(
         linhas_estimadas=linhas_pela_projecao(binaria, dpi),
         linhas_lidas=int(linhas_lidas),
         caracteres_da_camada=int(caracteres_da_camada),
+        ruido=ruido,
     )
 
 

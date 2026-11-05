@@ -53,7 +53,7 @@ from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 from typing import Any
 
-from .documento import TRANQUILO
+from .documento import REVISAR, TRANQUILO
 from .pagina import BlocoDeDiagrama, Procedencia
 from .rico import SEM_BLOCO, TEXTO, Corrida, DocumentoRico
 
@@ -187,12 +187,53 @@ def com_procedencia_humana(doc: DocumentoRico) -> DocumentoRico:
 
     **É idempotente**, e precisa ser: a aba a aplica a cada gravação, e a comparação que a decide é
     contra a `PaginaLida`, que a marcação não toca.
+
+    **A marca da palavra que a mão não tocou fica** (S-718). O carimbo é por bloco, e sem esta regra corrigir uma
+    palavra apagava as outras marcas do parágrafo, na folha reaberta e em silêncio. Ver `_marcas_intactas`.
     """
     editados = blocos_editados(doc)
     if not editados and all(c.procedencia is not None or c.bloco != SEM_BLOCO for c in doc.corridas):
         return doc
-    novas = tuple(_marcada(corrida, editados) for corrida in doc.corridas)
+    intactas = _marcas_intactas(doc, editados)
+    novas = tuple(
+        corrida if indice in intactas else _marcada(corrida, editados) for indice, corrida in enumerate(doc.corridas)
+    )
     return DocumentoRico(corridas=novas, origem=doc.origem)
+
+
+def _marcas_intactas(doc: DocumentoRico, editados: frozenset[int]) -> frozenset[int]:
+    """As corridas `revisar` dos blocos editados cujo texto é, inteiro, o que o motor leu.
+
+    **Só quando o bloco tem texto intacto sem marca.** É isso que separa a marca da palavra da faixa do bloco
+    inteiro: nesta, a edição parte a corrida e todo pedaço intacto continua `revisar`, e quem leu o parágrafo para
+    corrigi-lo já o conferiu. Nada aqui é marca da palavra, e o bloco fica tranquilo como sempre ficou.
+    """
+    if not editados:
+        return frozenset()
+    comparaveis = _blocos_comparaveis(doc)
+    atual = texto_por_bloco(doc)
+    posicao: dict[int, int] = {}
+    por_bloco: dict[int, list[tuple[int, int, int, Corrida]]] = {}
+    for indice, corrida in enumerate(doc.corridas):
+        if corrida.bloco not in editados:
+            continue
+        inicio = posicao.get(corrida.bloco, 0)
+        posicao[corrida.bloco] = inicio + len(corrida.texto)
+        por_bloco.setdefault(corrida.bloco, []).append(
+            (indice, inicio, inicio + len(corrida.texto.rstrip()), corrida)
+        )
+    ficam: set[int] = set()
+    for bloco, corridas in por_bloco.items():
+        trechos = SequenceMatcher(None, comparaveis[bloco][0], atual[bloco], autojunk=False).get_opcodes()
+        iguais = [(j1, j2) for operacao, _i1, _i2, j1, j2 in trechos if operacao == "equal"]
+        tocadas = [
+            (indice, corrida)
+            for indice, inicio, fim, corrida in corridas
+            if corrida.texto.strip() and any(j1 <= inicio and fim <= j2 for j1, j2 in iguais)
+        ]
+        if any(corrida.faixa != REVISAR for _, corrida in tocadas):
+            ficam.update(indice for indice, corrida in tocadas if corrida.faixa == REVISAR)
+    return frozenset(ficam)
 
 
 def _marcada(corrida: Corrida, editados: frozenset[int]) -> Corrida:
