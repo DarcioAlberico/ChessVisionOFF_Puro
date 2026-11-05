@@ -11,8 +11,9 @@ from __future__ import annotations
 import unittest
 
 import numpy as np
+from test_inference import probs_for_fen
 
-from chess_diagram_ocr.config import PIECE_CLASSES
+from chess_diagram_ocr.config import PIECE_CLASSES, PIECE_TO_IDX
 from chess_diagram_ocr.fen_utils import fen_from_class_indices, labels_from_fen
 from chess_diagram_ocr.inference import prediction_from_probs
 from chess_diagram_ocr.orientation import (
@@ -149,6 +150,45 @@ class SingleLegalRuleTests(unittest.TestCase):
         self.assertFalse(verdict.ambiguous)
 
 
+class SingleLegalRuleSemReiTests(unittest.TestCase):
+    """Um diagrama de marcas sem rei não pode perder para a leitura invertida e remendada."""
+
+    @staticmethod
+    def _reparada() -> np.ndarray:
+        probs = probs_for_fen(_rotated(SEM_REI_BRANCO), 0.99)
+        probs[0, PIECE_TO_IDX["K"]] = 0.02
+        return probs
+
+    def test_cala_entre_rei_sem_indicio_e_leitura_remendada(self) -> None:
+        de_pe = prediction_from_probs(probs_for_fen(SEM_REI_BRANCO, 0.99), constrained=True)
+        invertida = prediction_from_probs(self._reparada(), constrained=True)
+        assert de_pe.decode is not None and invertida.decode is not None
+        self.assertTrue(de_pe.decode.only_king_missing)
+        self.assertTrue(invertida.decode.changed_squares)
+        ev = OrientationEvidence(upright=de_pe, flipped=invertida)
+        self.assertNotEqual(ev.legal_upright, ev.legal_flipped)
+
+        self.assertIsNone(SingleLegalRule().decide(ev))
+        self.assertEqual(OrientationPolicy().resolve(ev).rotation, 0)
+
+    def test_legal_sem_reparo_continua_vencendo(self) -> None:
+        de_pe = prediction_from_probs(probs_for_fen(SEM_REI_BRANCO, 0.99), constrained=True)
+        invertida = prediction_from_probs(probs_for_fen(_rotated(KINGS_ONLY), 0.60), constrained=True)
+        verdict = SingleLegalRule().decide(OrientationEvidence(upright=de_pe, flipped=invertida))
+        assert verdict is not None
+        self.assertFalse(verdict.upright)
+
+    def test_reparo_contra_outro_defeito_continua_vencendo(self) -> None:
+        """Peão na oitava fila não é falta de rei: a leitura de pé continua ilegal de verdade."""
+        de_pe = prediction_from_probs(probs_for_fen("P3k3/8/8/8/8/8/8/4K3", 0.99), constrained=True, max_changes=0)
+        assert de_pe.decode is not None
+        self.assertFalse(de_pe.decode.only_king_missing)
+        invertida = prediction_from_probs(self._reparada(), constrained=True)
+        verdict = SingleLegalRule().decide(OrientationEvidence(upright=de_pe, flipped=invertida))
+        assert verdict is not None
+        self.assertFalse(verdict.upright)
+
+
 class ConfidenceMarginRuleTests(unittest.TestCase):
     def test_cala_abaixo_do_limiar(self) -> None:
         ev = OrientationEvidence(upright=_prediction(KINGS_ONLY, 0.50), flipped=_prediction(KINGS_ONLY, 0.49))
@@ -193,6 +233,13 @@ class TightMarginFallbackTests(unittest.TestCase):
         assert verdict is not None
         self.assertTrue(verdict.ambiguous)
         self.assertIn("sem peões dos dois lados", verdict.reason)
+
+    def test_a_duvida_fica_de_pe_mesmo_se_a_invertida_tem_mais_confianca(self) -> None:
+        ev = OrientationEvidence(upright=_prediction(KINGS_ONLY, 0.60), flipped=_prediction(KINGS_ONLY, 0.61))
+        verdict = TightMarginFallback().decide(ev)
+        assert verdict is not None
+        self.assertTrue(verdict.upright)
+        self.assertTrue(verdict.ambiguous)
 
 
 class OrientationPolicyTests(unittest.TestCase):

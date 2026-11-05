@@ -42,6 +42,8 @@ from .fen_utils import fen_from_class_indices
 
 _EPS = 1e-12
 
+_KING_MISSING = "falta o rei"
+
 EMPTY = PIECE_TO_IDX["empty"]
 WHITE_KING = PIECE_TO_IDX["K"]
 BLACK_KING = PIECE_TO_IDX["k"]
@@ -107,6 +109,11 @@ class DecodeResult:
     @property
     def changed_square_count(self) -> int:
         return len(self.changed_squares)
+
+    @property
+    def only_king_missing(self) -> bool:
+        """O único defeito é o rei que nenhuma casa sustenta: a leitura pode estar certa."""
+        return bool(self.remaining_problems) and all(p.startswith(_KING_MISSING) for p in self.remaining_problems)
 
 
 @dataclass(frozen=True)
@@ -184,7 +191,7 @@ def _find_violations(state: tuple[int, ...], probs: np.ndarray, rules: DecodeRul
         if total == 0:
             violations.append(
                 _Violation(
-                    f"falta o rei {color}",
+                    f"{_KING_MISSING} {color}",
                     tuple(square for square in range(64) if not _king_without_evidence(square, king, probs, rules)),
                     (king,),
                 )
