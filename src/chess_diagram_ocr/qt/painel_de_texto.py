@@ -127,11 +127,13 @@ from chess_diagram_ocr.ui.texto_declarado import (
     COMANDOS_DA_ABA,
     DIAGRAMAS_A_ESQUERDA,
     DIAGRAMAS_AO_CENTRO,
+    ESCAPE_DA_PALETA,
     FAMILIA_DA_LETRA_PADRAO,
     FAMILIAS_DA_LETRA,
     MOTORES,
     NOME_DA_FAMILIA,
     NOME_DO_TAMANHO,
+    ROTULO_DO_CORPO_MISTO,
     TAMANHO_DA_MINIATURA_PADRAO,
     TAMANHOS_DA_MINIATURA,
     ZOOM_MAXIMO,
@@ -1067,7 +1069,7 @@ class PainelDeTexto(QWidget):
         caixa = QSpinBox(self)
         caixa.setAccessibleName("Corpo do parágrafo (pt)")
         caixa.setRange(tipografia.MINIMO_LEGIVEL - 1, 96)
-        caixa.setSpecialValueText(" ")  # o valor de baixo é "misto": a caixa vazia, como o negrito misto
+        caixa.setSpecialValueText(ROTULO_DO_CORPO_MISTO)  # o valor de baixo é "misto" (S-292)
         caixa.setSuffix(" pt")
         dica_em(caixa, strings.DICA_DO_CORPO_EM_PONTOS)
         caixa.editingFinished.connect(self._corpo_digitado)
@@ -4057,6 +4059,8 @@ class PainelDeTexto(QWidget):
         if removido == ate - de and escrito == novo and alcance == (de, ate):
             self._mapa.trocar(inicio, removido, de, len(escrito))
             self._pintar_o_digitado(inicio, len(escrito), de)
+            if removido == 0 and len(escrito) == 1:
+                self._fechar_sequencia(de + 1)
             return
         if alcance != (de, ate):
             self.estado.emit("O diagrama saiu da folha junto com a marca inteira; desfazer o devolve.")
@@ -4067,6 +4071,30 @@ class PainelDeTexto(QWidget):
             )
         cursor = alcance[0] + len(escrito)
         self._desenhar(selecao=(cursor, cursor))
+
+    def _fechar_sequencia(self, posicao: int) -> None:
+        r"""Troca `\N` por `♘` **quando a sequência fecha** (S-248), e só digitando: colar não é tecla.
+
+        Três regras, e as três são critério de aceite: a barra sozinha continua sendo barra; uma
+        barra seguida de tecla que não abre sequência devolve os dois caracteres; e nada é trocado sem
+        a barra -- `Nf3` continua `Nf3`, porque a troca silenciosa sobre texto de OCR é o que a S-209
+        proíbe ao léxico. Um passo próprio de desfazer: `Ctrl+Z` devolve o `\N` que foi digitado.
+        """
+        from chess_diagram_ocr.text import paleta as _paleta
+
+        sequencias = _paleta.SEQUENCIAS_DECLARADAS
+        maior = max(len(s) for s in sequencias) + len(ESCAPE_DA_PALETA)
+        trecho = self.documento.para_texto()[max(0, posicao - maior) : posicao]
+        corte = trecho.rfind(ESCAPE_DA_PALETA)
+        if corte < 0:
+            return
+        chave = trecho[corte + len(ESCAPE_DA_PALETA) :]
+        simbolo = sequencias.get(chave)
+        if simbolo is None:
+            return
+        comeco = posicao - len(chave) - len(ESCAPE_DA_PALETA)
+        fim = comeco + len(simbolo)
+        self._aplicar(rico.editar(self.documento, comeco, posicao, simbolo), selecao=(fim, fim))
 
     def _arrastado(self, inicio: int, tamanho: int, giro: int) -> None:
         """Um trecho arrastado dentro da folha: o documento o leva inteiro, por `rico.mover`.

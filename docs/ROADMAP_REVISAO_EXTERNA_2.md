@@ -105,7 +105,9 @@ O que uma revisão de fora não pode ver é o que a bancada de fora não tem: os
 
 # O que ficou de fora, e por quê
 
-- **A sétima aba (Configuração).** É o maior item aberto, e continua sendo: DPI, máximo de
+- **A sétima aba (Configuração).** *Em 2026-11-05: `Ferramentas ▸ Configurações…`
+  (`qt/dialogo_de_configuracoes.py`) grava `data/settings.json`, e o DPI e o teto de diagramas são
+  lidos de `ui/configuracoes`; a aba em si não voltou.* Era o maior item aberto: DPI, máximo de
   diagramas por página, orientação, caminho do modelo e conjunto de peças são constantes em
   `config.py`, sem como mudar sem editar código. Merece plano próprio com medição, e não um item
   no fim de uma revisão -- a triagem (PR #30) já tirou a aba da tupla para a guarda parar de
