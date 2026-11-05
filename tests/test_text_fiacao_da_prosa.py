@@ -264,41 +264,72 @@ class ReservaTests(_ComLivro):
 
 
 class CamadaNaFolhaPerdidaTests(_ComLivro):
-    """O contorno da checagem de ligadura: a folha perdida usava a camada crua, com `afer` e tudo."""
+    """Quem manda é a montagem da camada, e só a palavra suspeita pode vir de outro lugar."""
 
-    def _ligadura(self) -> list[camada_prosa.PalavraDaCamada]:
+    def _suspeita(self) -> list[camada_prosa.PalavraDaCamada]:
         return [
-            camada_prosa.PalavraDaCamada("afer", (60.0, 50.0, 100.0, 62.0), True),
-            camada_prosa.PalavraDaCamada("this", (110.0, 50.0, 150.0, 62.0), False),
+            camada_prosa.PalavraDaCamada(p, (60.0 + 22 * k, 58.0, 80.0 + 22 * k, 66.0), p == "knight")
+            for k, p in enumerate(LINHA.split())
         ]
 
+    def _tesseract(self, texto: str) -> tesseract.Palavra:
+        # O centro cai na caixa de `knight`, a terceira palavra.
+        return tesseract.Palavra(texto, 0.9, (int(104 * ESCALA), int(58 * ESCALA), int(124 * ESCALA), int(66 * ESCALA)))
+
     def test_sem_reserva_vem_da_camada_com_a_suspeita_marcada(self) -> None:
-        with mock.patch.object(camada_prosa, "palavras_da_folha", return_value=self._ligadura()):
+        with mock.patch.object(camada_prosa, "palavras_da_folha", return_value=self._suspeita()):
             lida = self.ler("camada_prosa", [_crua("h", 50)])
         self.assertEqual([a.codigo for a in lida.avisos], [pagina.CAMADA_NA_FOLHA])
         self.assertIn(LINHA, lida.texto(com_marcas=False))
-
-    def test_a_palavra_suspeita_sai_marcada_da_camada_crua(self) -> None:
-        suspeita = [camada_prosa.PalavraDaCamada("knight", (60.0, 50.0, 100.0, 62.0), True)]
-        with mock.patch.object(camada_prosa, "palavras_da_folha", return_value=suspeita):
-            lida = self.ler("camada_prosa", [_crua("h", 50)])
+        self.assertTrue(lida.marca_por_palavra)
         marcadas = {linha.texto[a:b] for linha in _linhas(lida) for a, b in linha.revisar_em}
         self.assertEqual(marcadas, {"knight"})
-        self.assertTrue(lida.marca_por_palavra)
 
-    def test_a_marca_acha_a_palavra_suspeita_no_texto_cru(self) -> None:
-        self.assertEqual(leitor._intervalos_das_palavras("depois afer isto", ["afer"]), ((7, 11),))  # noqa: SLF001
+    def test_com_reserva_a_suspeita_vem_do_tesseract_e_nada_mais_muda(self) -> None:
+        falso = _Falso(folha=[self._tesseract("knight!")])
+        with mock.patch.object(camada_prosa, "palavras_da_folha", return_value=self._suspeita()):
+            lida = self.ler("camada_prosa", [_crua("h", 50)], leitor_de_linha=falso, reserva=True)
+        self.assertIn("the white knight! wins a pawn", lida.texto(com_marcas=False))
+        self.assertFalse(any(linha.revisar_em for linha in _linhas(lida)[:1]))
 
-    def test_com_reserva_a_palavra_suspeita_fica_com_o_tesseract(self) -> None:
-        y = int(50 * ESCALA)
+    def test_o_lance_da_camada_nao_passa_pelo_tesseract(self) -> None:
+        """`10.Qxd2` -> `10.8xd2`: o defeito da segunda rodada, na janela, em 216 de 648 lances mantidos."""
         palavras = [
-            tesseract.Palavra("after", 0.95, (int(60 * ESCALA), y, int(100 * ESCALA), y + 40), linha=0),
-            tesseract.Palavra("thls", 0.95, (int(110 * ESCALA), y, int(150 * ESCALA), y + 40), linha=0),
+            camada_prosa.PalavraDaCamada("10.Qxd2", (60.0, 52.0, 110.0, 60.0), False),
+            camada_prosa.PalavraDaCamada("afer", (120.0, 52.0, 150.0, 60.0), True),
         ]
-        with mock.patch.object(camada_prosa, "palavras_da_folha", return_value=self._ligadura()):
-            lida = self.ler("camada_prosa", [_crua("h", 50)], leitor_de_linha=_Falso(folha=palavras), reserva=True)
-        self.assertEqual(lida.texto(com_marcas=False), "after this")
-        self.assertEqual([a.codigo for a in lida.avisos], [pagina.CAMADA_NA_FOLHA])
+        leituras = [
+            tesseract.Palavra("10.8xd2", 0.9, (int(60 * ESCALA), int(52 * ESCALA), int(110 * ESCALA), int(60 * ESCALA))),
+            tesseract.Palavra("after", 0.9, (int(120 * ESCALA), int(52 * ESCALA), int(150 * ESCALA), int(60 * ESCALA))),
+        ]
+        cruas = [_crua("10.Qxd2 afer", 50)]
+        self.assertEqual(leitor._camada_montada(cruas, palavras, leituras, ESCALA)[0].texto, "10.Qxd2 after")  # noqa: SLF001
+
+    def test_sem_palavra_suspeita_o_tesseract_nem_abre(self) -> None:
+        falso = _Falso()
+        with mock.patch.object(camada_prosa, "palavras_da_folha", return_value=[]):
+            self.ler("camada_prosa", [_crua("h", 50)], leitor_de_linha=falso, reserva=True)
+        self.assertIsNone(falso.cinza)
+
+    def test_as_palavras_coladas_da_camada_saem_partidas_sem_tesseract(self) -> None:
+        cruas = [_crua("thewhite knight", 50)]
+        palavras = [
+            camada_prosa.PalavraDaCamada("the", (60.0, 52.0, 80.0, 60.0)),
+            camada_prosa.PalavraDaCamada("white", (82.0, 52.0, 110.0, 60.0)),
+            camada_prosa.PalavraDaCamada("knight", (120.0, 52.0, 150.0, 60.0)),
+        ]
+        montadas = leitor._camada_montada(cruas, palavras, [], ESCALA)  # noqa: SLF001
+        self.assertEqual(montadas[0].texto, "the white knight")
+
+    def test_a_linha_cujas_palavras_nao_somam_o_texto_fica_como_veio(self) -> None:
+        """A palavra que caiu noutra linha não pode sumir calada do texto desta."""
+        palavras = [camada_prosa.PalavraDaCamada("the", (60.0, 52.0, 80.0, 60.0))]
+        cruas = [_crua("the white knight", 50)]
+        self.assertEqual(leitor._camada_montada(cruas, palavras, [], ESCALA)[0].texto, "the white knight")  # noqa: SLF001
+
+    def test_a_linha_sem_palavra_nenhuma_fica_como_veio(self) -> None:
+        cruas = [_crua("uma linha", 50)]
+        self.assertEqual(leitor._camada_montada(cruas, [], [], ESCALA)[0].texto, "uma linha")  # noqa: SLF001
 
     def test_os_quadros_da_camada_chegam_a_montagem(self) -> None:
         with (
@@ -307,6 +338,32 @@ class CamadaNaFolhaPerdidaTests(_ComLivro):
         ):
             self.ler("camada_prosa", [_crua("h", 50)])
         self.assertEqual(montar.call_args.kwargs["quadros"], [(int(100 * ESCALA), int(200 * ESCALA))])
+
+
+class LixoDaReservaTests(_ComLivro):
+    existe = staticmethod(fusao.existe_no(frozenset({"white"})))
+
+    @staticmethod
+    def _token(texto: str, confianca: float = 0.3) -> fusao.Token:
+        return fusao.Token(texto, "outro", texto, confianca)
+
+    def test_o_resto_da_faixa_nao_vira_linha(self) -> None:
+        for lixo in ("fh)", "a)", "pe", "—"):
+            with self.subTest(lixo=lixo):
+                self.assertTrue(leitor._e_lixo_da_reserva([self._token(lixo)], self.existe))  # noqa: SLF001
+
+    def test_palavra_lance_numero_e_certeza_ficam(self) -> None:
+        for token in (self._token("white"), self._token("Nf3"), self._token("29"), self._token("xq", 0.95), self._token("umalinhagrande")):
+            with self.subTest(texto=token.texto):
+                self.assertFalse(leitor._e_lixo_da_reserva([token], self.existe))  # noqa: SLF001
+
+    def test_o_lixo_sai_da_folha_relida(self) -> None:
+        palavras = [
+            tesseract.Palavra("fh)", 0.2, (20, 100, 60, 130), bloco=1, linha=0),
+            tesseract.Palavra("white", 0.9, (400, 200, 600, 240), bloco=2, linha=0),
+        ]
+        lida = self.ler("glifo", [_crua("h", 50)], leitor_de_linha=_Falso(folha=palavras), reserva=True)
+        self.assertEqual(lida.texto(com_marcas=False), "white")
 
 
 class ItalicoNaProsaTests(_ComLivro):
@@ -374,6 +431,15 @@ class RegrasDaLeituraDeLinhaTests(unittest.TestCase):
     def test_a_barra_nao_vence_a_letra(self) -> None:
         """O Tesseract lê `I` como `|`: 8 de 20 erros da fusão, lidos à mão pelo crítico."""
         self.assertEqual(fusao.texto_fundido(fusao.fundir("I wins", "| wins", existe=self.existe)), "I wins")
+
+    def test_a_barra_nao_vence_o_digito_nem_entra_sozinha(self) -> None:
+        self.assertEqual(fusao.texto_fundido(fusao.fundir("1 wins", "| wins", existe=self.existe)), "1 wins")
+        self.assertEqual(fusao.texto_fundido(fusao.fundir("wins", "| wins", existe=self.existe)), "wins")
+
+    def test_a_palavra_colada_no_lance_nao_sai_duas_vezes(self) -> None:
+        """`of2.exf6`, do glifo, com o `of` da camada: saía `of of2.exf6`."""
+        saida = fusao.texto_fundido(fusao.fundir("of2.exf6", "of 2.exf6", existe=self.existe))
+        self.assertEqual(saida, "of 2.exf6")
 
     def test_so_a_versao_do_glifo_existe(self) -> None:
         self.assertEqual(fusao.texto_fundido(fusao.fundir("white", "wh1te", existe=self.existe)), "white")
@@ -529,6 +595,13 @@ class GuardaTests(unittest.TestCase):
         self.assertTrue(guarda_de_leitura.Medida(68, 1, 1, 1, caracteres_da_camada=80).nao_lida)
         self.assertFalse(guarda_de_leitura.Medida(68, 1, 1, 1, caracteres_da_camada=3).nao_lida)
         self.assertFalse(guarda_de_leitura.Medida(39, 1, 1, 1, caracteres_da_camada=80).nao_lida)
+
+    def test_o_corte_da_densidade_esta_onde_a_medicao_o_pos(self) -> None:
+        self.assertTrue(guarda_de_leitura.Medida(1000, 400, 10, 8).nao_lida)
+        self.assertFalse(guarda_de_leitura.Medida(1000, 500, 10, 8).nao_lida)
+
+    def test_a_camada_de_um_caractere_nao_absolve_a_folha(self) -> None:
+        self.assertTrue(guarda_de_leitura.Medida(2000, 1, 10, 1, caracteres_da_camada=1).nao_lida)
 
     def test_quem_leu_o_que_a_camada_tem_nao_perdeu_a_folha(self) -> None:
         self.assertFalse(guarda_de_leitura.Medida(1000, 300, 10, 8, caracteres_da_camada=400).nao_lida)

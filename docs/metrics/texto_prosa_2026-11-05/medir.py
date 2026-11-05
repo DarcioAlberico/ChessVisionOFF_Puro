@@ -9,6 +9,7 @@ Uso (com o `.venv` do projeto, `PYTHONPATH=<arvore>/src` e `CVOFF_RAIZ` no check
   medir.py folhas <relatorio.json> <conjunto> <saida.jsonl>   lê glifo, camada na prosa e fusão, folha a folha
   medir.py perdidas <saida.jsonl>                             as sete folhas perdidas, pela guarda e pela reserva
   medir.py varrer <saida.jsonl> [--por-livro N]               a guarda em todos os livros, por tipo de folha
+  medir.py caminho_da_camada <saida.jsonl>                    a folha acusada em camada na prosa, com a reserva
   medir.py resumir <saida.json> <entrada.jsonl>...            compila o relatório, sem texto de livro nenhum
 
 A saída dos três primeiros **tem texto de livro comercial**: mande-a para fora do repositório. Só o
@@ -198,6 +199,46 @@ def perdidas(saida: str) -> None:
             f.flush()
             print(reg["livro"][:26], idx + 1, reg["avisos_com_reserva"], f"cer={reg['cer_prosa']:.3f}",
                   f"linhas {reg['linhas_sem_reserva']}->{reg['linhas_reserva']} (camada {reg['linhas_camada']})", flush=True)
+
+
+def caminho_da_camada(saida: str) -> None:
+    """O caminho `camada_na_folha` com a reserva, forçado: depois da S-711, quase nenhuma folha real chega nele.
+
+    O glifo é trocado por uma linha só, e o resto roda de verdade, com o Tesseract. O que se afirma é que a
+    notação da camada sai intacta e que o `afer` da ligadura vira `after`.
+    """
+    from unittest import mock
+
+    import fitz
+
+    from chess_diagram_ocr.pdf_io import render_pdf_page
+    from chess_diagram_ocr.text import boxes, leitor
+
+    ler, rec = _leitura()
+    cru = leitor._Cru(texto="h", caixa=boxes.Caixa(0, 0, 40, 40), confianca=0.1, procedencia="glifo")  # noqa: SLF001
+    with open(saida, "w", encoding="utf-8") as f:
+        for padrao in ("*Evolution 2013*", "*Evolution 2014*"):
+            pdf = glob.glob(str(RAIZ / "PDF" / padrao))[0]
+            with fitz.open(pdf) as doc:
+                n = doc.page_count
+            for i in range(int(n * 0.1), int(n * 0.9), int(n * 0.8 / 13)):
+                img = render_pdf_page(pdf, i, DPI)
+                base = ler(pdf, i, motor="camada", imagem_rgb=img, dpi=DPI)
+                with mock.patch.object(leitor, "linhas_do_glifo", return_value=([cru], [])):
+                    pag = ler(pdf, i, motor="camada_prosa", reconhecedor=rec, imagem_rgb=img, dpi=DPI, reserva=True)
+                t_base = base.texto(com_marcas=False).split()
+                t_pag = pag.texto(com_marcas=False).split()
+                nota = [x for x in t_base if banco.classe_do_token(x) == "notacao"]
+                restam = Counter(t_pag)
+                ok = sum(1 for x in nota if restam[x] > 0 and not restam.subtract([x]))
+                reg = {"caminho": True, "livro": os.path.basename(pdf), "pagina": i, "avisos": [a.codigo for a in pag.avisos],
+                       "notacao": [ok, len(nota)], "afer": [t_base.count("afer"), t_pag.count("afer")],
+                       "linhas": [len(banco.linhas_da_pagina(base)), len(banco.linhas_da_pagina(pag))],
+                       "palavras": [len(t_base), len(t_pag)]}
+                f.write(json.dumps(reg, ensure_ascii=False) + "
+")
+                f.flush()
+                print(reg["livro"][:24], i + 1, reg["avisos"], reg["notacao"], reg["afer"], reg["palavras"], flush=True)
 
 
 def _tipo(indice: int, n: int, camada: str, diagramas: int, componentes: int, linhas: list[str]) -> str:
@@ -390,7 +431,17 @@ def resumir(saida: str, entradas: list[str], commit_medido: str = "") -> None:
         regs = [json.loads(ln) for ln in open(entrada, encoding="utf-8")]
         if not regs:
             continue
-        if "tipo" in regs[0] and all("Chess Evolution" in r["nome"] for r in regs):
+        if "caminho" in regs[0]:
+            relatorio["caminho_da_camada_com_reserva"] = {
+                "folhas": len(regs),
+                "tokens_de_notacao_da_camada": sum(r["notacao"][1] for r in regs),
+                "intactos": sum(r["notacao"][0] for r in regs),
+                "afer_na_camada": sum(r["afer"][0] for r in regs),
+                "afer_na_saida": sum(r["afer"][1] for r in regs),
+                "palavras_na_camada": sum(r["palavras"][0] for r in regs),
+                "palavras_na_saida": sum(r["palavras"][1] for r in regs),
+            }
+        elif "tipo" in regs[0] and all("Chess Evolution" in r["nome"] for r in regs):
             por_livro: dict[str, list[dict]] = defaultdict(list)
             for r in regs:
                 por_livro[r["nome"][:21].lstrip("📚")].append(r)
@@ -447,6 +498,8 @@ def main() -> None:
     a.add_argument("saida")
     a = sub.add_parser("perdidas")
     a.add_argument("saida")
+    a = sub.add_parser("caminho_da_camada")
+    a.add_argument("saida")
     a = sub.add_parser("varrer")
     a.add_argument("saida")
     a.add_argument("--por-livro", type=int, default=12)
@@ -460,6 +513,8 @@ def main() -> None:
         folhas(args.relatorio, args.conjunto, args.saida)
     elif args.modo == "perdidas":
         perdidas(args.saida)
+    elif args.modo == "caminho_da_camada":
+        caminho_da_camada(args.saida)
     elif args.modo == "varrer":
         varrer(args.saida, args.por_livro, args.padrao)
     else:

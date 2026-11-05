@@ -1386,12 +1386,6 @@ def _com_prosa_de_outro_leitor(
     return saida
 
 
-def _intervalos_das_palavras(texto: str, palavras: Iterable[str]) -> tuple[tuple[int, int], ...]:
-    """Onde, em `texto`, estão estas palavras: a marca da prosa crua da camada que a checagem acusou."""
-    quais = set(palavras)
-    return tuple((m.start(), m.end()) for m in _re.finditer(r"\S+", texto) if m.group() in quais)
-
-
 def _recorte_de_linha(imagem: np.ndarray, caixa: _boxes.Caixa, escala_px: float) -> np.ndarray:
     """O recorte que o leitor de linha lê: a caixa do glifo, com 12% da altura de folga. O mesmo da régua."""
     x0, y0, x1, y1 = (v * escala_px for v in _para_pontos(caixa, escala_px))
@@ -1431,6 +1425,79 @@ def _partida_no_vao(palavras: Sequence[_tesseract.Palavra]) -> list[list[_tesser
     return [pedaco for pedaco in pedacos if pedaco]
 
 
+def _com_diagramas_em_branco(imagem: np.ndarray, retangulos: Sequence[Retangulo]) -> np.ndarray:
+    """A folha em cinza, com os diagramas apagados: o que o leitor de linha recebe na folha inteira."""
+    import cv2
+
+    cinza = cv2.cvtColor(imagem, cv2.COLOR_RGB2GRAY) if imagem.ndim == 3 else imagem.copy()
+    cinza = np.ascontiguousarray(cinza).copy()
+    altura, largura = cinza.shape[:2]
+    for x0, y0, x1, y1 in retangulos:
+        cinza[
+            max(0, int(y0) - FOLGA_DA_MASCARA) : min(altura, int(y1) + FOLGA_DA_MASCARA),
+            max(0, int(x0) - FOLGA_DA_MASCARA) : min(largura, int(x1) + FOLGA_DA_MASCARA),
+        ] = 255
+    return cinza
+
+
+def _camada_montada(
+    cruas: Sequence[_Cru],
+    palavras: Sequence[_camada_prosa.PalavraDaCamada],
+    leituras: Sequence[_tesseract.Palavra],
+    escala_px: float,
+) -> list[_Cru]:
+    """As linhas da camada com as palavras partidas no vão, e a suspeita trocada ou marcada (S-716).
+
+    A palavra suspeita vira o que o Tesseract leu dentro da caixa dela, quando leu; se não, fica como a camada a
+    escreve, e marcada `revisar`. **A linha em que nenhuma palavra caiu fica como veio**: nada sai daqui calado.
+    """
+    fator = escala_px or 1.0
+    por_linha, _fora = _camada_prosa.por_linha([_para_pontos(c.caixa, escala_px) for c in cruas], palavras)
+    saida: list[_Cru] = []
+    for cru, desta in zip(cruas, por_linha, strict=True):
+        # **Só troca o texto da linha se as palavras somarem as mesmas letras.** Palavra que caiu noutra linha, ou
+        # linha que a camada escreveu de outro jeito, ficariam a menos: aí a linha fica como veio.
+        if "".join(p.texto for p in desta) != _camada_prosa.sem_ligadura("".join(cru.texto.split())):
+            saida.append(cru)
+            continue
+        pedacos: list[str] = []
+        marcas: list[tuple[int, int]] = []
+        posicao = 0
+        for palavra in desta:
+            texto = palavra.texto
+            if palavra.bloqueada:
+                x0, y0, x1, y1 = palavra.bbox
+                lidas = [
+                    p.texto
+                    for p in leituras
+                    if x0 <= (p.caixa[0] + p.caixa[2]) / 2 / fator <= x1 and y0 <= (p.caixa[1] + p.caixa[3]) / 2 / fator <= y1
+                ]
+                if lidas:
+                    texto = " ".join(lidas)
+                else:
+                    marcas.append((posicao, posicao + len(texto)))
+            pedacos.append(texto)
+            posicao += len(texto) + 1
+        saida.append(replace(cru, texto=" ".join(pedacos), revisar_em=tuple(marcas)))
+    return saida
+
+
+LINHA_DE_LIXO = 5
+"""Caracteres. A linha da reserva até este tamanho, sem palavra que exista e sem notação, é o resto da faixa
+lateral ou do fio lido como letra (`fh) a) pe i) —`): 277 de 673 linhas em 13 folhas do *Chess Evolution 2014*."""
+
+CONFIANCA_DE_LIXO = 0.8
+
+
+def _e_lixo_da_reserva(tokens: Sequence[_fusao.Token], existe: Callable[[str], bool]) -> bool:
+    """Linha curta, sem palavra que exista nem lance, e que o próprio leitor leu sem certeza."""
+    if sum(len(t.texto) for t in tokens) > LINHA_DE_LIXO:
+        return False
+    if any(existe(t.texto) or _fusao.e_notacao(t.texto) or t.texto.strip(".,;:)(").isdigit() for t in tokens):
+        return False
+    return min((t.confianca for t in tokens if t.confianca is not None), default=0.0) < CONFIANCA_DE_LIXO
+
+
 def _linhas_da_reserva(
     imagem: np.ndarray,
     retangulos: Sequence[Retangulo],
@@ -1447,17 +1514,7 @@ def _linhas_da_reserva(
     **A notação continua do glifo onde ele achou caixa de altura de linha**: uma leitura perdida ainda pode
     ter uma ou outra linha boa. A caixa degenerada do tamanho da folha, que é o sintoma, não casa com nada.
     """
-    import cv2
-
-    cinza = cv2.cvtColor(imagem, cv2.COLOR_RGB2GRAY) if imagem.ndim == 3 else imagem.copy()
-    cinza = np.ascontiguousarray(cinza).copy()
-    altura, largura = cinza.shape[:2]
-    for x0, y0, x1, y1 in retangulos:
-        cinza[
-            max(0, int(y0) - FOLGA_DA_MASCARA) : min(altura, int(y1) + FOLGA_DA_MASCARA),
-            max(0, int(x0) - FOLGA_DA_MASCARA) : min(largura, int(x1) + FOLGA_DA_MASCARA),
-        ] = 255
-    palavras, falha = leitor.ler_folha(cinza, lingua=lingua, dpi=dpi)
+    palavras, falha = leitor.ler_folha(_com_diagramas_em_branco(imagem, retangulos), lingua=lingua, dpi=dpi)
     if falha or not palavras:
         return ([], falha)
     grupos: dict[tuple[int, int, int], list[_tesseract.Palavra]] = {}
@@ -1502,7 +1559,7 @@ def _linhas_da_reserva(
                 revisar_em=_fusao.intervalos_de(linha, marcados),
             )
             for caixa, linha, marcados in zip(caixas, tokens, marcadas, strict=True)
-            if linha
+            if linha and not _e_lixo_da_reserva(linha, existe)
         ],
         "",
     )
@@ -1638,38 +1695,22 @@ def _ler_pagina_do_livro(
                 )
             )
         if guarda.nao_lida and camada_na_folha:
-            # **A segmentação se perdeu, e não há linha do glifo em que pôr a prosa** (S-716). Com a reserva,
-            # o leiaute e as palavras suspeitas vêm do Tesseract, e o resto da camada: é o que devolve o
-            # `after` que a ligadura perdeu. Sem ela, é a montagem crua da camada, com a suspeita marcada.
-            relidas: list[_Cru] = []
-            if reserva:
+            # **A segmentação se perdeu, e não há linha do glifo em que pôr a prosa** (S-716). Quem manda é a
+            # montagem da camada, com as palavras partidas onde a tinta tem vão: nada se perde, e o lance dela
+            # fica como ela o escreve. Com a reserva, só a palavra suspeita vem do Tesseract, na mesma caixa, e
+            # é o que devolve o `after` que a ligadura perdeu. A primeira versão fazia o contrário, com as
+            # linhas do Tesseract no lugar do glifo, e trocava `10.Qxd2` por `10.8xd2`.
+            leituras_da_reserva: list[_tesseract.Palavra] = []
+            if reserva and any(p.bloqueada for p in palavras):
                 leitor = _leitor_de_linha.leitor_padrao() if leitor_de_linha is None else leitor_de_linha
-                relidas, _falha = _linhas_da_reserva(
-                    imagem, retangulos, cruas, leitor=leitor, lingua=lingua, dpi=dpi, existe=existe,
-                    marca_por_palavra=False,
-                )
-            if relidas:
-                por_linha, _fora = _camada_prosa.por_linha([_para_pontos(c.caixa, escala_px) for c in relidas], palavras)
-                cruas = _com_prosa_de_outro_leitor(
-                    relidas,
-                    [
-                        (" ".join(p.texto for p in desta), (), [p.bloqueada for p in desta]) if desta else None
-                        for desta in por_linha
-                    ],
-                    existe=_fusao.existe_na_camada(existe),
-                    e_da_camada=True,
-                    marca_por_palavra=False,
-                )
-                regioes, por_palavra = None, marca_por_palavra
-            else:
-                suspeitas = {p.texto for p in palavras if p.bloqueada}
-                cruas, regioes, quadros, qual = (
-                    [replace(c, revisar_em=_intervalos_das_palavras(c.texto, suspeitas)) for c in da_camada],
-                    None,
-                    quadros_da_camada,
-                    "camada",
-                )
-                por_palavra = marca_por_palavra
+                leituras_da_reserva, _falha = leitor.ler_folha(_com_diagramas_em_branco(imagem, retangulos), lingua=lingua, dpi=dpi)
+            cruas, regioes, quadros, qual = (
+                _camada_montada(da_camada, palavras, leituras_da_reserva, escala_px),
+                None,
+                quadros_da_camada,
+                "camada",
+            )
+            por_palavra = marca_por_palavra
             avisos.append(
                 Aviso(
                     CAMADA_NA_FOLHA,
@@ -1693,7 +1734,7 @@ def _ler_pagina_do_livro(
                 )
                 if relidas:
                     avisos.append(
-                        Aviso(LEIAUTE_DE_RESERVA, "A folha foi relida pelo leiaute do Tesseract: confira a ordem das linhas.")
+                        Aviso(LEIAUTE_DE_RESERVA, "A folha foi relida pelo leiaute do Tesseract: confira a ordem e o texto das linhas.")
                     )
                     cruas, regioes, por_palavra = relidas, None, marca_por_palavra
                 elif falha:

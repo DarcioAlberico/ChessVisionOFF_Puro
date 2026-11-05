@@ -249,6 +249,19 @@ class IntegracaoTests(unittest.TestCase):
         cv2.putText(imagem, texto, (10, 42), cv2.FONT_HERSHEY_SIMPLEX, 1.1, 0, 2, cv2.LINE_AA)
         return imagem
 
+    def test_tessdata_em_caminho_acentuado_le_de_verdade(self) -> None:
+        """Esta máquina é UTF-8, e por isso **não** reproduz o defeito de uma cp1252: ver a spec da S-720."""
+        import shutil
+        from dataclasses import replace
+
+        real = tesseract.achar_motor()
+        assert real.tessdata is not None
+        pasta = pasta_temporaria(self) / "ação çãé" / "tessdata"
+        pasta.mkdir(parents=True)
+        shutil.copy(real.tessdata / "eng.traineddata", pasta)
+        lidas = tesseract.ler_linhas([self._recorte("White wins")], lingua="eng", motor=replace(real, tessdata=pasta))
+        self.assertEqual(lidas[0].texto, "White wins")
+
     def test_le_linhas_de_verdade_com_um_processo_so(self) -> None:
         lidas = tesseract.ler_linhas([self._recorte("White wins"), self._recorte("the knight")], lingua="eng")
         self.assertEqual(lidas[0].texto, "White wins")

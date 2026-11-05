@@ -498,7 +498,7 @@ marcado para revisão, com captura ≥ 90% — ou (b) pagar o orçamento de CPU 
 
 ## 5a. O que você vai ver, e quando
 
-> **Estado em 2026-11-05: a primeira entrega está na `main`**, com a especificação em
+> **Estado em 2026-11-05: a primeira entrega foi feita**, com a especificação em
 > [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) e os números em
 > [metrics/texto_prosa_primeira_entrega.json](metrics/texto_prosa_primeira_entrega.json). A coluna "primeira entrega"
 > da tabela abaixo é a previsão de 2026-10-30, e o medido fica no relatório. Nos cinco livros aprovados na auditoria, a
@@ -817,8 +817,8 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   - *Saída:* G3 = 0 nas 95 folhas e na varredura, com os números publicados.
   - *Achado:* **o "5 de 67" de 2026-10-30 é muito menor que a realidade.** Em 120 folhas igualmente espaçadas de cada
     um, o *Chess Evolution 2014* perde 113 e o *2013*, 60. Isso sobe a prioridade da S-711, que ataca a causa. *Corte:* o
-    0,5 cumpre a regra deste item na varredura publicada: nenhuma folha com camada abaixo de 0,7 sem aviso, em 812 folhas
-    de 58 livros. Fora dos dois *Chess Evolution* e do *Kmoch*, as seis folhas que avisam têm texto que o glifo não leu
+    0,5 cumpre a regra deste item na varredura publicada, contando as folhas com ao menos 200 caracteres de camada: nenhuma
+    abaixo de 0,7 sem aviso, em 812 folhas de 58 livros. Fora dos dois *Chess Evolution* e do *Kmoch*, as seis folhas que avisam têm texto que o glifo não leu
     (quatro contracapas conferidas à vista); a varredura de livro inteiro do G101 continua por fazer.
   - *Reversão:* o aviso não muda texto nenhum; o corte é constante. O `ESQUEMA` 2 **não** é reversível
     (versão antiga não abre arquivo novo), e por isso entra junto com o primeiro uso dos avisos.
@@ -941,6 +941,7 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   - *Saída:* opção "Camada na prosa (livro digital)" na caixa de motor; o dono a vê nos livros dele;
     M0 medida no ouro-dev (montagem e auditoria visual).
   - *Reversão:* interruptor; desligado, a folha volta ao glifo.
+  - *Achado:* a G6 não foi medida pela régua da S-660, e fica para o G102; há só teste de fiação do detalhe da camada.
   - *Da S-702:* (a)–(d) admitem livros cuja camada não é a tinta. A auditoria visual reprovou 5 de 27
     livros que passam neles, entre eles o *Chess Evolution 2013* e o *Capablanca* da tabela acima. Na
     prosa, o defeito é a ligadura que perde letra (`ft` → `f`); na notação, o símbolo de avaliação em
@@ -1037,7 +1038,8 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     falta ou tem versão fora da faixa.
   - *Reversão:* módulos novos; sem a fusão (S-721) ninguém os chama.
   - *Achado:* entregue sem `--user-words`, `load_system_dawg=0` e a escala pela altura-x: cada um muda o que o Tesseract
-    lê, e a saída deste item pede texto idêntico ao de 2026-10-30. Ficam para a S-721, medidos.
+    lê, e a saída deste item pede texto idêntico ao de 2026-10-30. Ficam para a S-721, medidos. O teste de caminho
+    acentuado lê numa pasta com acento, mas esta máquina é UTF-8 e não reproduz a cp1252: a conferência fica para a S-724.
 - **S-721** · Fusão por token (`text/fusao.py`).
   - *Contexto:* cinco regras foram medidas offline sobre as mesmas linhas (tabela da 1.5); a de partida
     é a **v5** (`texto_prosa_2026-10-30/fusao_v5.py`) no digital: ganha do glifo em 25 de 26 folhas e,

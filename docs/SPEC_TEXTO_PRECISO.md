@@ -351,10 +351,11 @@ camada na linha do glifo que contém o centro dela (caixa crescida 15% na vertic
 admissão é a de `text/admissao.py`, com o perfil do livro em memória. Folha recusada lê como o glifo, com
 `camada_recusada`; capa e branco (`sem_texto`) não avisam.
 
-**A folha que a guarda acusa não pode contornar a checagem de ligadura**, e a primeira versão contornava: usava a
-camada crua, com `afer` e tudo. Com a reserva, o leiaute e as palavras suspeitas vêm do Tesseract, e o resto da
-camada. Sem ela, é a montagem crua, com a suspeita marcada `revisar`. As duas saem com `camada_na_folha`, e nas duas
-os lances ficam sem figurina, o que o selo diz.
+**A folha que a guarda acusa não pode contornar a checagem de ligadura.** Quem manda ali é a montagem da camada, com
+as palavras partidas no vão: nada se perde, e o lance fica como ela o escreve, sem figurina, o que o selo diz. Com a
+reserva, **só a palavra suspeita** vem do Tesseract, lida na mesma caixa. Sem ela, a suspeita fica como está, e marcada
+`revisar`. As duas versões anteriores erraram aqui, e valem de aviso: a primeira usava a camada crua, com `afer` e tudo;
+a segunda punha as linhas do Tesseract no lugar do glifo, e `10.Qxd2` saía `10.8xd2`, com o selo falando de outra coisa.
 
 **O PDF não precisa escrever o espaço.** No *Chess Evolution* ele é um salto de posição de 1,76 pt em corpo 13, sem
 caractere nenhum, e `get_text("words")` devolvia tokens de até 52 letras. `palavras_da_folha` parte onde o vão passa
@@ -373,7 +374,8 @@ com o glifo.
 ### Critério de aceite
 
 M0 medida só nos livros aprovados na auditoria visual da S-702, em
-`metrics/texto_prosa_primeira_entrega.json`, com G1 e G2 contra o glifo. **A meta M0 de ≤ 0,05% é do portão G107, e
+`metrics/texto_prosa_primeira_entrega.json`, com G1 e G2 contra o glifo. **A G6 (negrito e itálico) não foi medida**
+pela régua da S-660: o que há é teste de fiação de que o detalhe da camada chega à linha, e a medida fica para o G102. **A meta M0 de ≤ 0,05% é do portão G107, e
 não está cumprida**: o que sobra é quase todo notação que a régua conta como prosa (`1...B` contra `1 B`) e leiaute do
 *Hertan*. Nos livros com camada de OCR a admissão recusa, e o texto é o do glifo, caractere a caractere.
 
@@ -388,7 +390,8 @@ não escrito saem iguais nos dois lados. Foi o crítico, olhando a tinta, que os
 aplicada **dentro** de `ler_pagina`, antes de `_com_negrito`, `_com_trechos` e da junção de hífen, para esses
 trabalharem sobre o texto fundido. Medida nos aprovados na auditoria: 0,351% contra 0,279% do Tesseract puro, +0,072 p.p.
 [0; +0,16], um pouco acima do teto de +0,1 que a S-721 pede. Duas regras da S-721 já entram: a palavra que só o glifo leu certo fica com ele
-(regra 4), e a barra `|` não vence a letra, que eram 8 de 20 erros lidos à mão. A língua é escolhida à mão na caixa
+(regra 4), e a barra `|` não vence letra nem dígito, nem entra sem par, que eram 8 de 20 erros lidos à mão. O que sobra
+de `|` é quando o glifo também não leu nada ali. A língua é escolhida à mão na caixa
 nova da aba e fica no estado da janela; a S-723 a leva ao caderno. **Trocar a língua pede a leitura nova**, como trocar
 de motor: o caderno anota `fusao:por`. O padrão não muda: `auto` continua o glifo.
 
@@ -436,6 +439,10 @@ folha, com um TIFF de várias páginas pelo stdin, `psm 7`; `CREATE_NO_WINDOW` e
 timeout; *Job Object* com `KILL_ON_JOB_CLOSE`; binário só por caminho absoluto, com o diretório corrente fora da
 busca; `--version` conferida (5.x); `TESSDATA_PREFIX` do executor sobrescrevendo o do ambiente; teto de 60 MP; erro no
 `stderr` com saída 0 também vira falha, e não texto vazio.
+
+**Caminho acentuado:** a imagem vai pelo stdin, e o `TESSDATA_PREFIX` pelo ambiente. `test_tessdata_em_caminho_acentuado`
+lê de verdade numa pasta com acento, **mas esta máquina tem a code page em UTF-8 e não reproduz o defeito de uma cp1252**.
+A conferência numa máquina assim fica para a S-724, junto do instalador.
 
 O contrato distingue **"não leu"** (`None`, com a frase na `Leitura.falha`) de **"leu vazio"** (`""`). Ausência do
 motor nunca levanta no caminho da janela.

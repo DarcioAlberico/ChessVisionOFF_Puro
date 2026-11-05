@@ -228,7 +228,7 @@ def fundir(
     for i, j in alinhar_tokens(g, t):
         bloqueado = j != -1 and j < len(bloqueados) and bool(bloqueados[j])
         if i != -1 and j != -1:
-            if _SO_FIO.match(t[j]) and any(c.isalpha() for c in g[i]):
+            if _SO_FIO.match(t[j]) and any(c.isalnum() for c in g[i]):
                 saida.append(Token(g[i], "glifo", g[i], do_glifo(i)))
             elif (
                 not bloqueado
@@ -244,13 +244,17 @@ def fundir(
                 # O dígito que o glifo deixou solto antes do número (`1 7.♔xf3`) é absorvido aqui.
                 if token != g[i] and saida and saida[-1].texto.isdigit() and t[j].lstrip("(").startswith(saida[-1].texto):
                     saida.pop()
+                # A palavra que o glifo colou no lance (`of2.exf6`), com o `of` já vindo do outro leitor.
+                anterior = saida[-1].texto if saida and saida[-1].origem == "outro" else ""
+                if anterior and token.startswith(anterior) and e_notacao(token[len(anterior) :]):
+                    token = token[len(anterior) :]
                 saida.append(Token(token, "glifo", g[i], do_glifo(i)))
             else:
                 saida.append(Token(t[j], "outro", g[i], confianca.get(j)))
         elif i != -1:
             if e_notacao(g[i]) or g[i].isdigit() or guarda_prosa_sem_par:
                 saida.append(Token(g[i], "glifo", g[i], do_glifo(i)))
-        elif not e_notacao(t[j]) and not bloqueado:
+        elif not e_notacao(t[j]) and not bloqueado and not _SO_FIO.match(t[j]):
             saida.append(Token(t[j], "outro", "", confianca.get(j)))
     return saida
 

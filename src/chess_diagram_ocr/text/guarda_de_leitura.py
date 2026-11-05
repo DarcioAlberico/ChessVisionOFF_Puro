@@ -98,7 +98,10 @@ class Medida:
     @property
     def bate_com_a_camada(self) -> bool:
         """Leu ao menos o que a camada pede para não ser perda parcial. Sem camada, não responde."""
-        return self.caracteres_da_camada > 0 and self.lidos >= CORTE_DA_CAMADA * self.caracteres_da_camada
+        return (
+            self.caracteres_da_camada >= CAMADA_QUE_CONFIRMA
+            and self.lidos >= CORTE_DA_CAMADA * self.caracteres_da_camada
+        )
 
     @property
     def nao_lida(self) -> bool:

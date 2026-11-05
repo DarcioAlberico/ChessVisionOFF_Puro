@@ -60,7 +60,7 @@ class PalavraDaCamada:
     bloqueada: bool = False
 
 
-def _sem_ligadura(texto: str) -> str:
+def sem_ligadura(texto: str) -> str:
     """`ﬁ` vira `fi`. Só as formas de apresentação latinas: NFKC no texto inteiro mudaria `½` e `…`."""
     return "".join(unicodedata.normalize("NFKC", c) if "ﬀ" <= c <= "ﬆ" else c for c in texto)
 
@@ -151,7 +151,7 @@ def palavras_da_folha(pagina: Any) -> list[PalavraDaCamada]:
             for pedaco in pedacos:
                 palavras.append(
                     PalavraDaCamada(
-                        _sem_ligadura("".join(c.letra for c in pedaco)),
+                        sem_ligadura("".join(c.letra for c in pedaco)),
                         (pedaco[0].x0, min(c.y0 for c in pedaco), pedaco[-1].x1, max(c.y1 for c in pedaco)),
                         any(c.suspeito for c in pedaco),
                     )
@@ -160,7 +160,7 @@ def palavras_da_folha(pagina: Any) -> list[PalavraDaCamada]:
         bloqueada = any(c.suspeito for c in dentro)
         # A camada separa token com espaço fino dentro da "palavra" (`(2546)\u2009—\u2009Macedo,M`). O
         # roteador parte por espaço de qualquer tipo; quem parte aqui é para a marca ir com cada pedaço.
-        for pedaco_de_texto in _sem_ligadura(texto).split():
+        for pedaco_de_texto in sem_ligadura(texto).split():
             palavras.append(PalavraDaCamada(pedaco_de_texto, (float(x0), float(y0), float(x1), float(y1)), bloqueada))
     return palavras
 
@@ -252,4 +252,5 @@ __all__ = [
     "palavras_da_folha",
     "perfil_em_memoria",
     "por_linha",
+    "sem_ligadura",
 ]
