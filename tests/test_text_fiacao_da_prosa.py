@@ -278,6 +278,14 @@ class CamadaNaFolhaPerdidaTests(_ComLivro):
         self.assertEqual([a.codigo for a in lida.avisos], [pagina.CAMADA_NA_FOLHA])
         self.assertIn(LINHA, lida.texto(com_marcas=False))
 
+    def test_a_palavra_suspeita_sai_marcada_da_camada_crua(self) -> None:
+        suspeita = [camada_prosa.PalavraDaCamada("knight", (60.0, 50.0, 100.0, 62.0), True)]
+        with mock.patch.object(camada_prosa, "palavras_da_folha", return_value=suspeita):
+            lida = self.ler("camada_prosa", [_crua("h", 50)])
+        marcadas = {linha.texto[a:b] for linha in _linhas(lida) for a, b in linha.revisar_em}
+        self.assertEqual(marcadas, {"knight"})
+        self.assertTrue(lida.marca_por_palavra)
+
     def test_a_marca_acha_a_palavra_suspeita_no_texto_cru(self) -> None:
         self.assertEqual(leitor._intervalos_das_palavras("depois afer isto", ["afer"]), ((7, 11),))  # noqa: SLF001
 
@@ -564,6 +572,16 @@ class ExecutorTests(unittest.TestCase):
         processo.communicate.return_value = (b"", b"Error in pixReadStream: Unknown format\n")
         motor = tesseract.Motor(binario=Path("C:/x/tesseract.exe"), versao="5.5.0")
         with mock.patch.object(tesseract, "_no_trabalho"), self.assertRaisesRegex(tesseract.FalhaDoTesseract, "pixRead"):
+            tesseract.rodar(motor, b"", lingua="eng", dpi=220, psm=7, timeout=5, popen=lambda *_a, **_k: processo)
+
+    def test_saida_diferente_de_zero_e_falha_mesmo_sem_palavra_de_erro(self) -> None:
+        from pathlib import Path
+
+        processo = mock.Mock(returncode=3)
+        processo.communicate.return_value = (b"parcial", b"nada que pareca erro
+")
+        motor = tesseract.Motor(binario=Path("C:/x/tesseract.exe"), versao="5.5.0")
+        with mock.patch.object(tesseract, "_no_trabalho"), self.assertRaises(tesseract.FalhaDoTesseract):
             tesseract.rodar(motor, b"", lingua="eng", dpi=220, psm=7, timeout=5, popen=lambda *_a, **_k: processo)
 
     def test_o_aviso_comum_do_stderr_nao_derruba(self) -> None:

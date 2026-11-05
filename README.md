@@ -372,6 +372,10 @@ cvoff-texto-linha --motor rapidocr
 # `PaginaLida` -- coluna, bloco, linha, bbox, confianca e procedencia -- em vez do texto.
 cvoff-texto-pagina "PDF/AAGAARD - Practical Chess Defence.pdf" --paginas 58-62
 cvoff-texto-pagina LIVRO.pdf --paginas 40 --motor glifo --json saida.json
+# A prosa da camada nos livros digitais (S-716), ou a do Tesseract na lingua dada (S-717). A notacao
+# fica com o glifo nos dois, e o padrao nao muda.
+cvoff-texto-pagina LIVRO.pdf --paginas 40 --motor camada_prosa
+cvoff-texto-pagina LIVRO.pdf --paginas 40 --motor fusao --lingua por
 
 # Empacota uma pasta de listas de palavras em assets/lexico/idioma.txt.gz e nomes.txt.gz -- as
 # duas listas que o dicionario le. Reconstruir da byte a byte o mesmo arquivo (o gzip vai com
@@ -1405,7 +1409,10 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   prosa da camada nos livros digitais e o leitor de linha ao lado do glifo
 - [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) -- especificacao das Fases 100 a 107,
   item a item a medida que sao entregues: a S-702 (a admissao sem motor e o ouro-teste sorteado
-  antes de qualquer leitura, em `assets/texto_prosa/ouro.json`)
+  antes de qualquer leitura, em `assets/texto_prosa/ouro.json`) e a primeira entrega: a guarda da
+  folha nao lida e o selo (S-710), a reserva pelo leiaute do Tesseract (S-715), os motores
+  "Camada na prosa" (S-716) e "Glifo + Tesseract" (S-717), a marca por palavra (S-718) e o executor
+  do Tesseract (S-720), com os numeros em `docs/metrics/texto_prosa_primeira_entrega.json`
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`
