@@ -1079,6 +1079,23 @@ existe mais no disco. A detecção não se moveu (114 de 115 casados, nenhum fal
 diagrama a menos passa do gate, e a taxa de exportação vai de 0,8696 para 0,8609, a exatidão de
 campo de 0,9600 para 0,9596, e a limpa fica em 0,9535. É o modelo, pelo mesmo argumento da décima.
 
+Na décima segunda (2026-11-05 -- commit `604dc8a`, árvore limpa efêmera, `dirty=false`) mudaram o
+código e o modelo. O código: a porta do rei em `decode` (`DecodeRules.min_king_probability`, 1%) e a
+orientação em `orientation`, que fazem o rei sem evidência deixar de ser inventado e a dúvida ficar
+de pé. Nos três modelos antigos, exportados, exatos e exportados errados não se moveram: só muda a
+contagem de reparos, e o `s108` tem dois legais a menos. O modelo: `piece_classifier.pt` agora é o
+treinado com a marca de casa sintética (digest `fccd0097`, época 11, treino `2cbe9e2`), e o
+`2977b7b8` da décima primeira fica em `models/piece_classifier_antes_das_marcas_20261105.pt`. A
+detecção não se moveu (114 de 115 casados, nenhum falso positivo); a produção vai de 99 para 101
+exportados, de 103 para 104 exatos e fica em 4 exportados errados, com 112 legais em vez de 114. Os
+dois novos ilegais são Niemeijer p. 20 e Stefaniu p. 100, nenhum deles exportado antes. Dois dos 4
+exportados errados são dama lida na cor trocada, e são novos (Koblenz p. 50 e Neumann p. 30). A
+contaminação da produção usa a cópia de `labels.csv` e `splits.csv` do treino deste modelo (19.370
+linhas, fora do git), e por isso são 13 páginas, e não 14: o Anand p. 62 não entrou nesse treino. A
+limpa de 0,8627 não compara direto com a de 0,8515 publicada antes; na mesma cópia, o modelo anterior
+faz 0,8431. O ganho que motivou a troca não aparece neste conjunto: é nos 48 tabuleiros marcados,
+fora do relatório, onde os exatos pelo caminho inteiro vão de 7 para 41.
+
 ## S-326 · A largura da fita plena é derivada, e não escolhida
 
 **Problema.** Três testes de `ModoDaFitaTests` montavam a fita em `self._em(2200)` -- 2.200 px é
