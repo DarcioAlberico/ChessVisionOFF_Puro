@@ -1,4 +1,4 @@
-# PDF digital com o PGN do livro — plano e especificação (S-585 a S-597)
+# PDF digital com o PGN do livro — plano e especificação (S-585 a S-598)
 
 Livro digital costuma vir com o `.pgn` das partidas e linhas do autor: uma partida por seção do
 capítulo, com a árvore inteira de variantes. Cada diagrama do PDF é um nó dessa árvore. Ter o nó é
@@ -259,7 +259,16 @@ diagramas, o 20...Qxd5 antes da legenda.
 
 **Fora do caminho de medição** (S-218): `text/leitor` não está no fecho do `cvoff-field`, nem com
 OCR. O CER de página (`docs/metrics/texto_pagina.json`) usa a camada como referência e passa a
-contar essas linhas; não foi remedido.
+contar essas linhas. **Remedido em 2026-10-30**, depois de reproduzido na main sem a S-596 (as 10
+referências com o tamanho arquivado; glifo 0,0999 contra 0,1001): as páginas 58, 60 e 62 do Aagaard
+ganham a linha do pé, e o glifo, que já a lia, deixa de ser cobrado por ela: aquela medição deu
+0,0967. O modo bloco vai a 0,1354 e continua pior; a decisão de deixá-lo desligado não muda.
+
+**Remedido de novo em 2026-11-04**, em `700b257`, com o mesmo modelo: as 10 referências e as 10
+células do bloco saem idênticas, mas o glifo dá **0,0961**, com 5 páginas do Aagaard de 0,0005 a
+0,0017 abaixo. O código de `text/` que a leitura usa não mudou entre as duas medições, e o valor novo
+se repete em processo novo, com ou sem aquecimento, antes e depois do bloco. A causa da diferença
+não foi achada; o relatório traz o valor que o commit declarado reproduz.
 
 **Aceite.** `tests/test_leitor_de_pagina.py::MargemNoCorpoTests` (a legenda do pé volta e o número
 da página não, o corrente fica fora, a faixa de cima não volta, as vizinhas só são lidas quando
@@ -287,6 +296,27 @@ partidas cada; 3 ganham lance e lado a jogar, e 6 ficam só confirmados. A Galer
 
 **Aceite.** `tests/test_livro_com_pgn.py::GaleriaTests` (a posição de uma partida traz os cabeçalhos
 dela, a de várias não escolhe cabeçalho, e na página com legenda a posição de outro canto não casa).
+
+### S-598 · A legenda lida pelo glifo
+
+**Problema.** Na janela de quem tem o classificador de glifo, o `auto` da aba Texto lê pelo glifo,
+e a folha escreve a legenda como o glifo a vê: «Position after.. 11. ♘e5» -- os dois-pontos como
+`..`, a figurina no lugar da letra, um vão depois do número do lance. `legenda_da_linha` só conhecia
+a forma da camada («Position after: 11.Ne5»), e o *Pôr na folha* (S-595) não achava legenda
+nenhuma: na página 21 do Harikrishna, com o glifo, entravam **0** dos 3 diagramas que faltam. As
+medições da S-595 e da S-596 rodaram num worktree sem o `.pt`, onde o `auto` cai para a camada.
+
+**Decisão** (`livro_com_pgn.legenda_da_linha`). Antes dos padrões, a figurina vira a inicial inglesa
+(`text/notacao.LETRA_DA_FIGURINA`) e o vão entre o número e o lance sai; os padrões aceitam `[:.]*`
+depois de «after». O que segue o lance («15. ♗g5.l», o `!` lido como `.l`) o `lance_da_legenda` já
+descartava.
+
+**Medido** (2026-10-30): as 1.180 legendas que a camada acha no Harikrishna saem **idênticas**,
+página a página, antes e depois. Na janela real offscreen com o glifo, a página 21 recebe os três
+diagramas, o 20...Qxd5 antes da legenda do pé (S-596).
+
+**Aceite.** `tests/test_livro_com_pgn.py::CasarTests::test_a_legenda_lida_pelo_glifo_diz_o_mesmo_lance`
+e `tests/test_qt_texto_diagramas.py::DiagramaDoLivroNaFolhaTests::test_a_legenda_lida_pelo_glifo_tambem_recebe_o_diagrama`.
 
 ---
 

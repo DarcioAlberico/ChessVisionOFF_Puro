@@ -14,7 +14,7 @@ import chess
 import chess.pgn
 
 from chess_diagram_ocr import livro_com_pgn as lp
-from chess_diagram_ocr.pgn_do_livro import IndiceDoLivro, fluxo_tolerante
+from chess_diagram_ocr.pgn_do_livro import IndiceDoLivro, fluxo_tolerante, lance_da_legenda
 
 PGN = (
     '[Event "Chapter 1"]\n[Site "Game 1"]\n\n'
@@ -169,6 +169,14 @@ class CasarTests(unittest.TestCase):
         self.assertEqual("5.dxc5", lp.legenda_da_linha("Position after: 5.dxc5"))
         self.assertEqual("12...Nf6", lp.legenda_da_linha("Posição após 12...Nf6"))
         self.assertEqual("", lp.legenda_da_linha("White is better after 5.dxc5"))
+
+    def test_a_legenda_lida_pelo_glifo_diz_o_mesmo_lance(self) -> None:
+        """O motor glifo lê a figurina, os dois-pontos como ponto e um espaço depois do número (S-598)."""
+        self.assertEqual("11.Ne5", lp.legenda_da_linha("Position after.. 11. ♘e5"))
+        self.assertEqual("20...Qxd5", lp.legenda_da_linha("Position after.. 20... ♕xd5"))
+        self.assertEqual("15.Bg5", lance_da_legenda(lp.legenda_da_linha("Position after.. 15. ♗g5.l")))
+        self.assertEqual("8.O-O", lance_da_legenda(lp.legenda_da_linha("Position after: 8. 0-0")))
+        self.assertEqual("", lp.legenda_da_linha("White is better after.. 5. ♘c3"))
 
 
 class GaleriaTests(unittest.TestCase):

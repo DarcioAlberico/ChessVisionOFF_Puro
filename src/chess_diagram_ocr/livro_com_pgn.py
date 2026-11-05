@@ -44,6 +44,7 @@ from typing import Any
 from .atomic_io import atomic_write_json
 from .config import DATA_DIR
 from .pgn_do_livro import IndiceDoLivro, lance_da_legenda
+from .text.notacao import LETRA_DA_FIGURINA
 
 logger = logging.getLogger(__name__)
 
@@ -85,13 +86,17 @@ par imagem-legenda pode estar errado (era o caso das legendas sem imagem antes d
 sozinho trocaria um erro do modelo por um erro de pareamento."""
 
 PADROES_DE_LEGENDA: tuple[re.Pattern[str], ...] = (
-    re.compile(r"Position after:?\s*(\S+)", re.IGNORECASE),
-    re.compile(r"Posi[çc][ãa]o (?:ap[óo]s|depois de):?\s*(\S+)", re.IGNORECASE),
-    re.compile(r"Stellung nach:?\s*(\S+)", re.IGNORECASE),
-    re.compile(r"Posici[óo]n (?:tras|despu[ée]s de):?\s*(\S+)", re.IGNORECASE),
+    re.compile(r"Position after[:.]*\s*(\S+)", re.IGNORECASE),
+    re.compile(r"Posi[çc][ãa]o (?:ap[óo]s|depois de)[:.]*\s*(\S+)", re.IGNORECASE),
+    re.compile(r"Stellung nach[:.]*\s*(\S+)", re.IGNORECASE),
+    re.compile(r"Posici[óo]n (?:tras|despu[ée]s de)[:.]*\s*(\S+)", re.IGNORECASE),
 )
 """As formas de legenda conhecidas. A do Harikrishna (Thinkers Publishing) é a primeira; as outras
-são as mesmas palavras nas línguas em que este projeto lê livros."""
+são as mesmas palavras nas línguas em que este projeto lê livros. O `[:.]*` é o motor glifo, que lê
+os dois-pontos da legenda como `..` (S-598)."""
+
+_ESPACO_DEPOIS_DO_NUMERO = re.compile(r"(\d+\.(?:\.\.)?) +(?=[KQRBNa-hO0])")
+"""«11. Ne5» e «20... Qxd5»: o vão que o glifo deixa entre o número do lance e o lance (S-598)."""
 
 LARGURA_MINIMA_DA_IMAGEM = 80.0
 """Em pontos do PDF. Abaixo disso a imagem é vinheta, ícone ou o símbolo de um figurino."""
@@ -167,7 +172,14 @@ def capitulo_da_pagina(pagina: int, inicios: Sequence[tuple[int, str]]) -> str:
 
 
 def legenda_da_linha(texto: str) -> str:
-    """O lance que uma linha de legenda diz («5.dxc5»), ou `""` quando ela não é legenda."""
+    """O lance que uma linha de legenda diz («5.dxc5»), ou `""` quando ela não é legenda.
+
+    A linha pode vir da camada do PDF ou da folha da aba Texto, e a folha lida pelo glifo -- o que o
+    `auto` escolhe quando há classificador -- escreve a mesma legenda como «Position after.. 11. ♘e5».
+    Sem a figurina trocada pela letra e o vão tirado, o *Pôr na folha* (S-595) não achava legenda
+    nenhuma na janela de quem tem o modelo (S-598).
+    """
+    texto = _ESPACO_DEPOIS_DO_NUMERO.sub(r"\1", "".join(LETRA_DA_FIGURINA.get(c, c) for c in texto))
     for padrao in PADROES_DE_LEGENDA:
         achado = padrao.search(texto)
         if achado:

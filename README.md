@@ -889,13 +889,13 @@ motor estava adivinhando, no meio a leitura e boa mas nao e registro, e o resto 
 A camada de texto e a correcao humana nunca pedem revisao.
 
 **O numero, e o que ele nao prova.** Medido em 10 paginas de 2 livros, com a camada de texto da
-propria pagina como referencia (`docs/metrics/texto_pagina.json`): CER **0,1001**. Esse valor tem
+propria pagina como referencia (`docs/metrics/texto_pagina.json`): CER **0,0961**. Esse valor tem
 um piso que nao e do modelo -- num dos dois livros a propria camada e OCR de terceiro e traz os
-proprios erros --, entao ele **nao** vira "86% de acerto". E ele mede **prosa**: pela tabela acima,
+proprios erros --, entao ele **nao** vira "90% de acerto". E ele mede **prosa**: pela tabela acima,
 na notacao a camada nao e referencia de coisa nenhuma, e ali o glifo e penalizado justamente onde
 acerta a figurina. O que a medicao decide de fato e o
 padrao do modo bloco da S-188, que fica **desligado**: ele custa ~50x o tempo e piora a media em
-33% -- 0,1001 contra 0,1331 nas mesmas 10 paginas. `--bloco` liga para quem quiser medir de novo.
+41% -- 0,0961 contra 0,1354 nas mesmas 10 paginas. `--bloco` liga para quem quiser medir de novo.
 
 ## Resolucao de problemas
 
@@ -1336,7 +1336,7 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   com portao de medicao -- e os tres defeitos medidos no widget antes de tudo: o alinhamento e o
   estilo de paragrafo que nao chegam a tela, a miniatura que nao segue a marca, e o rascunho podado
   a oito que apaga a correcao da primeira folha
-- [docs/ROADMAP_PDF_COM_PGN.md](docs/ROADMAP_PDF_COM_PGN.md) -- **S-585 a S-593**, plano e
+- [docs/ROADMAP_PDF_COM_PGN.md](docs/ROADMAP_PDF_COM_PGN.md) -- **S-585 a S-598**, plano e
   especificacao do PDF digital com o PGN do livro: o PGN lido inteiro, cada diagrama casado com o
   seu no pela legenda ou pela posicao, a FEN e o lado a jogar do livro no Resultado, o que discorda
   na Revisao, os diagramas que faltam no PDF desenhados do PGN, o Estudo na arvore do autor e o

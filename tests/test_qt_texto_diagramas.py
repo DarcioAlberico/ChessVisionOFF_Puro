@@ -582,6 +582,19 @@ class DiagramaDoLivroNaFolhaTests(_Aba):
         self.assertEqual(1, self.painel.inserir_diagramas_do_livro(0, [("5.dxc5", FEN), ("20...Qxd5", "8/8/8/8/8/8/8/K6k")]))
         self.assertIn("ficaram de fora: 20...Qxd5", self.recados[-1])
 
+    def test_a_legenda_lida_pelo_glifo_tambem_recebe_o_diagrama(self) -> None:
+        """Com o classificador, o `auto` lê pelo glifo: «Position after.. 11. ♘e5» na folha (S-598)."""
+        from dataclasses import replace
+
+        pagina = _pagina()
+        coluna = pagina.colunas[0]
+        legendas = (_bloco("Position after.. 11. ♘e5"), _bloco("Position after.. 20... ♕xd5"))
+        self.painel.mostrar_pagina(replace(pagina, colunas=(replace(coluna, blocos=(*coluna.blocos, *legendas)),)), folha_rgb=_folha())
+        self.assertEqual(2, self.painel.inserir_diagramas_do_livro(0, [("11.Ne5", FEN), ("20...Qxd5", "8/8/8/8/8/8/8/K6k")]))
+        texto = self.painel.texto()
+        self.assertLess(texto.index("[Diagrama 2]"), texto.index("Position after.. 11."))
+        self.assertLess(texto.index("[Diagrama 3]"), texto.index("Position after.. 20..."))
+
     def test_o_duplo_clique_no_inserido_pede_pela_posicao(self) -> None:
         self.painel.inserir_diagramas_do_livro(0, [("5.dxc5", FEN)])
         pela_posicao: list[tuple[int, str]] = []
