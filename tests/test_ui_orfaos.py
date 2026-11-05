@@ -61,11 +61,6 @@ SEM_CHAMADOR: dict[str, str] = {
         "repetir a saturação que a propriedade faz -- um chamador escrito para a guarda ficar "
         "verde, que é o `lambda: None` ao contrário."
     ),
-    "desenho_do_tabuleiro.LARGURA_DO_CIRCULO": (
-        "a casa marcada do padrão `[%csl]` ainda não é oferecida pela sala -- `_soltar_seta` "
-        "recusa a seta de comprimento zero, que é o gesto que a marcaria. A espessura do anel "
-        "fica declarada para quando o gesto existir, e não como número solto no widget."
-    ),
     # --- os tipos: `ATALHOS` é uma tupla de `Atalho`, `geometria_de_texto` devolve `Geometria`...
     "atalhos.Atalho": E_O_TIPO,
     "atalhos.DonoDeAcoes": E_O_TIPO + " -- e é um `Protocol`: quem o implementa não o nomeia, por definição",
@@ -116,16 +111,6 @@ SEM_CHAMADOR: dict[str, str] = {
     "degradacao.QUEDAS": TABELA_PERCORRIDA + " (`test_ui_degradacao`, revivido: morreu no corte com a raiz Tk que abria)",
     "degradacao.avisos_dados": INSTRUMENTO + " -- conta os avisos dados, para o teste afirmar o `uma vez`",
     "icones.ICONES": TABELA_PERCORRIDA + " (`test_ui_icones`, nos dois sentidos com o catálogo de comandos)",
-    "texto_declarado.ROTULO_DO_CORPO_MISTO": (
-        "o mostrador de corpo da S-292 não foi portado para o Qt (o painel não tem o rótulo); fica "
-        "declarado para quando for, como `LARGURA_DO_CIRCULO`"
-    ),
-    "texto_declarado.ESCAPE_DA_PALETA": (
-        "a sequência digitada da S-248 depende de a digitação chegar ao documento, e no editor do "
-        "Qt ela ainda não chega -- medido em 2026-09-02: o widget recebe o texto e `documento` não. "
-        "Fica declarada para quando chegar (S-521); portá-la antes seria trocar um caractere que "
-        "o documento não tem."
-    ),
     "texto_declarado.COMANDO_DA_ESCOLHA": (
         "as listas de escolha exclusiva da S-259/S-262 não foram portadas: no Qt alinhamento e "
         "caixa são botões, um por comando, e a tabela nome-do-domínio -> comando fica para as listas"

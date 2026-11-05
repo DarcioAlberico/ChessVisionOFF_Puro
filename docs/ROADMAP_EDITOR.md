@@ -365,15 +365,15 @@ e o que mudou é que existe um documento para as ferramentas editarem.
 - **S-255** · O rascunho automático, e a recuperação depois do fechamento
 - **S-256** · O inventário do editor: nada de recurso sem comando, atalho e teste
 
-## Fase 78 — A digitação que chega ao documento
+## Fase 78 — A digitação que chega ao documento — ✅ **na `main` pelo `491a79f`**
 
-Não estava neste plano, e é o maior defeito que a aba tem hoje. A triagem da S-511 (2026-09-02),
+Não estava neste plano, e era o maior defeito que a aba tinha. A triagem da S-511 (2026-09-02),
 ao ligar as teclas do editor que o porte para o Qt tinha deixado sem `bind`, mediu que **o que se
 digita no editor do Qt não chega ao documento**: o `QTextEdit` recebe o texto, `documento` fica
 como estava, e salvar grava a folha sem a correção — o ciclo que a S-238 fechou no Tk e o porte não
 refez. A spec está em [SPEC_EDITOR.md](SPEC_EDITOR.md), com a tabela dos quatro gestos medidos.
 
-- **S-521** · A digitação que chega ao documento, e o desfazer que a vê
+- **S-521** · A digitação que chega ao documento, e o desfazer que a vê — ✅ entrou pela integração da mesa de texto, e não pelo PR próprio (fechado sem mesclar em 2026-11-05)
 
 ---
 

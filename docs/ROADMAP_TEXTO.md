@@ -204,8 +204,8 @@ S-183 parciais, e o que falta em cada um está na seção dele na spec.
 **A S-182 fechou em 2026-08-23** (Etapa 1 do [`PLANO_OCR_TEXTO.md`](PLANO_OCR_TEXTO.md)): o
 rodapé passou a dizer o dispositivo dos **dois** modelos torch, e o empacotamento nomeia o
 classificador de caracteres na lista do que fica fora do bundle. **A S-183 continua parcial, e o
-que falta nela não é código:** as 123 faixas de referência estão semeadas e nenhuma foi
-transcrita.
+que falta nela não é código:** das 123 faixas de referência semeadas, 14 estão conferidas
+(`conferido: true` em `docs/metrics/texto_faixa_referencia.jsonl`, 2026-11-05).
 
 > **O que a implementação achou, e não estava previsto.**
 >
