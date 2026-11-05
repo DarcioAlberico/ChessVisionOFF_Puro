@@ -6,7 +6,7 @@ import numpy as np
 from test_inference import probs_for_fen
 
 from chess_diagram_ocr.config import ACCEPT_MIN_CONFIDENCE, PIECE_CLASSES, PIECE_TO_IDX
-from chess_diagram_ocr.decode import CLASSIC_RULES, DecodeRules, decode_constrained
+from chess_diagram_ocr.decode import CLASSIC_RULES, MIN_KING_PROBABILITY, DecodeRules, decode_constrained
 from chess_diagram_ocr.fen_utils import check_position, labels_from_fen, square_name
 from chess_diagram_ocr.inference import prediction_from_probs
 
@@ -77,6 +77,82 @@ class MissingKingTests(unittest.TestCase):
 
         self.assertTrue(result.constraints_satisfied)
         self.assertEqual(result.class_indices[b1], PIECE_TO_IDX["k"])
+
+
+class KingEvidenceTests(unittest.TestCase):
+    """Diagrama de esquema ou de marcas pode não ter rei: o reparo não pode inventar um."""
+
+    NO_BLACK_KING = "8/8/8/8/7K/8/8/8"
+
+    def test_no_evidence_leaves_the_king_missing_and_says_so(self) -> None:
+        probs = probs_for_fen(self.NO_BLACK_KING, confidence=0.99)
+
+        result = decode_constrained(probs)
+
+        self.assertEqual(result.fen_board, self.NO_BLACK_KING)
+        self.assertEqual(result.changed_squares, [])
+        self.assertFalse(result.constraints_satisfied)
+        self.assertEqual(result.remaining_problems, ("falta o rei preto",))
+
+    def test_no_king_on_the_board_names_both(self) -> None:
+        result = decode_constrained(probs_for_fen("8/8/8/3P4/8/8/8/8", confidence=0.99))
+
+        self.assertEqual(result.changed_squares, [])
+        self.assertEqual(result.remaining_problems, ("falta o rei branco", "falta o rei preto"))
+
+    def test_the_threshold_decides_at_the_square(self) -> None:
+        d4 = square_index("d4")
+        for p_rei, repara in ((MIN_KING_PROBABILITY, True), (MIN_KING_PROBABILITY * 0.99, False)):
+            with self.subTest(p_rei=p_rei):
+                probs = probs_for_fen(self.NO_BLACK_KING, confidence=0.99)
+                probs[d4, PIECE_TO_IDX["k"]] = p_rei
+
+                result = decode_constrained(probs)
+
+                self.assertEqual(result.class_indices[d4] == PIECE_TO_IDX["k"], repara)
+                self.assertEqual(result.constraints_satisfied, repara)
+
+    def test_other_violations_are_still_repaired(self) -> None:
+        """Sem indício de rei, o peão na oitava fila continua sendo conserto a fazer."""
+        a8 = square_index("a8")
+        probs = probs_for_fen("P7/8/8/8/7K/8/8/8", confidence=0.99)
+        probs[a8] = 0.0
+        probs[a8, PIECE_TO_IDX["P"]] = 0.55
+        probs[a8, PIECE_TO_IDX["R"]] = 0.45
+
+        result = decode_constrained(probs)
+
+        self.assertEqual(result.class_indices[a8], PIECE_TO_IDX["R"])
+        self.assertEqual(result.remaining_problems, ("falta o rei preto",))
+
+    def test_repair_of_another_rule_does_not_smuggle_a_king(self) -> None:
+        """O rei sem indício também não entra como alternativa de outra regra."""
+        a8 = square_index("a8")
+        probs = probs_for_fen("P7/8/8/8/7K/8/8/8", confidence=0.99)
+        probs[a8] = 1e-6
+        probs[a8, PIECE_TO_IDX["P"]] = 0.99
+        probs[a8, PIECE_TO_IDX["k"]] = 0.005
+        probs[a8, PIECE_TO_IDX["empty"]] = 0.001
+
+        result = decode_constrained(probs)
+
+        self.assertEqual(result.class_indices[a8], PIECE_TO_IDX["empty"])
+
+    def test_stops_without_spending_the_search(self) -> None:
+        probs = probs_for_fen(self.NO_BLACK_KING, confidence=0.99)
+
+        result = decode_constrained(probs, max_expansions=1)
+
+        self.assertEqual(result.remaining_problems, ("falta o rei preto",))
+
+    def test_threshold_zero_is_the_old_decoder(self) -> None:
+        probs = probs_for_fen(self.NO_BLACK_KING, confidence=0.99)
+
+        result = decode_constrained(probs, rules=DecodeRules(min_king_probability=0.0))
+
+        self.assertTrue(result.constraints_satisfied)
+        self.assertEqual(result.changed_square_count, 1)
+        self.assertEqual(decode_constrained(probs, rules=CLASSIC_RULES).class_indices, result.class_indices)
 
 
 class TooManyKingsTests(unittest.TestCase):
