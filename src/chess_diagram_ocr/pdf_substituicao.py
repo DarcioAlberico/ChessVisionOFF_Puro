@@ -47,6 +47,7 @@ from PIL import Image
 
 from chess_diagram_ocr import desenho_de_diagrama
 from chess_diagram_ocr.atomic_io import atomic_write_bytes
+from chess_diagram_ocr.djvu_io import pdf_legivel
 from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.ui.substituicao import (
     Apagamento,
@@ -687,7 +688,7 @@ class ServicoDeSubstituicao:
 
     def __init__(self, caminho: str | Path) -> None:
         self.caminho = str(caminho)
-        self.doc = fitz.open(self.caminho)
+        self.doc = fitz.open(pdf_legivel(self.caminho))
         self._previa: fitz.Document | None = None
         self._assinatura: tuple[object, ...] | None = None
 
@@ -887,7 +888,7 @@ def substituir_no_pdf(
     if not origem.exists():
         raise FileNotFoundError(f"PDF de entrada não encontrado: {origem}")
 
-    doc = fitz.open(str(origem))
+    doc = fitz.open(pdf_legivel(origem))
     try:
         por_pagina: dict[int, list[Substituicao]] = {}
         borrachas: dict[int, list[Apagamento]] = {}

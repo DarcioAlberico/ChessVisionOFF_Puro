@@ -268,6 +268,9 @@ Desviável pela mesma razão de `DATA_DIR`, e com a mesma consequência: a lista
 fingerprint do cache (`games_cache.database_fingerprint`), então quem enxerga outras bases abre o
 mesmo cache como se fosse de outro acervo."""
 
+DJVU_CONVERTIDOS_DIR = DATA_DIR / "djvu_convertidos"
+"""O PDF de cada DjVu já aberto (`djvu_io`). Descartável: apagado, o livro é convertido de novo."""
+
 DEFAULT_DATASET_CSV = DATA_DIR / "labels.csv"
 DEFAULT_SAMPLES_DIR = DATA_DIR / "samples"
 DEFAULT_MODEL_PATH = PROJECT_ROOT / "models" / "piece_classifier.pt"

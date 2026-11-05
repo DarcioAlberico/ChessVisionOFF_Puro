@@ -55,6 +55,15 @@ Nao ha dependencia de plataforma: a aba "Leitura" (WebView2, so-Windows) saiu na
 ela o `pythonnet` e o `pywebview`. Para ler o livro com rolagem continua e busca de texto, o
 botao **Abrir no leitor do sistema** entrega o PDF ao leitor padrao da maquina.
 
+**Livros em DjVu** (`.djvu`, `.djv`) abrem como os PDFs, pelo mesmo **Abrir PDF**, e entram nas
+varreduras de pasta. Na primeira abertura o livro e convertido para um PDF guardado em
+`data/djvu_convertidos/`, o que leva de segundos a alguns minutos; depois e imediato. Essa pasta
+pode ser apagada a qualquer hora: o livro e convertido de novo quando for aberto. O PDF pesa bem mais
+que o DjVu, em geral dezenas de MB por livro, e passa de 100 MB nos escaneados em tons de cinza.
+Nao e preciso instalar o DjVuLibre. A camada de texto do DjVu, quando existe, vai junto, invisivel,
+em alfabeto latino ou cirilico. Uma pagina que nao da para ler sai em branco, com um aviso escrito
+nela, e o resto do livro abre normalmente.
+
 **A janela tem duas familias de abas** (OCR_UI passo 17, ramo `passo-17-trilho`): a aba **Livro**,
 com o trabalho sobre o livro aberto em quatro **modos** -- Resultado, Estudo, Revisao e Texto,
 uma barra de botoes exclusivos no topo dela (`qt/painel_principal.py`) --, e as abas do acervo
@@ -1049,6 +1058,8 @@ src/chess_diagram_ocr/
   games_db.py           leitura dos .pgn e a busca por nome e por posicao
   games_index.py        o indice sqlite da base, por nome e por posicao
   detector_de_marcas.py  acha as marcas de casa pela forma, sem modelo; sugere, e a pessoa confirma
+  djvu_bzz.py           o decodificador BZZ, so para ler os nomes dentro do DIRM de um DjVu
+  djvu_io.py            converte o livro em DjVu para um PDF guardado, e o resto do programa nem fica sabendo
   importacao_de_imagens.py  imagens de fora (relatorio do ChessMeridaOCR, pastas soltas) para o dataset, com conferencia
   inference.py          carga do modelo, predicao de FEN e TTA
   labels.py             a porta unica do labels.csv: LabelStore (S-51)

@@ -26,6 +26,8 @@ dependencies = [
     "opencv-python>=4.9.0",
     "pillow>=10.0.0",
     "pymupdf>=1.24.0",
+    # Abre os livros em DjVu (`djvu_io`). Pura Rust e MIT, sem DjVuLibre instalado na maquina.
+    "djvu-rs>=0.43.0",
     "torch>=2.6",
     "torchvision>=0.21",
     "chess>=1.11",

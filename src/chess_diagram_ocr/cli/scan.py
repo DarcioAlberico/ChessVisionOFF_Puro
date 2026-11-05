@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import DEFAULT_MAX_BOARDS, DEFAULT_PDF_DIR, DEFAULT_READING_ORDER
+from ..djvu_io import livros_em
 from ..gallery_scan import build_gallery_index, index_path_for, load_index, save_index
 from ..logging_setup import configure_logging, default_log_file, onde_esta_o_rastro
 from ..review_queue import DEFAULT_CACHE_DIR, ReviewQueue, ReviewQueueBuilder, merge_queues
@@ -109,7 +110,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Varre livros do acervo e grava índice da Galeria e fila de revisão (S-121).",
         epilog="Uma passada por livro produz os dois artefatos. O que já está completo é pulado.",
     )
-    parser.add_argument("books", nargs="*", type=Path, help="PDFs a varrer. Vazio com --all: a pasta inteira.")
+    parser.add_argument("books", nargs="*", type=Path, help="PDFs ou DjVus a varrer. Vazio com --all: a pasta inteira.")
     parser.add_argument("--all", action="store_true", help="Varre todos os PDFs de --pdf-dir.")
     parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
     add_model_argument(parser)
@@ -129,12 +130,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def books_to_scan(args: argparse.Namespace) -> list[Path]:
-    """Os PDFs pedidos, ou a pasta inteira em ordem. Ordenado para a retomada ser previsível."""
+    """Os livros pedidos, ou a pasta inteira em ordem. Ordenado para a retomada ser previsível."""
     if args.books:
         return [Path(livro) for livro in args.books]
     if not args.all:
         return []
-    return sorted(p for p in Path(args.pdf_dir).glob("*.pdf") if p.is_file())
+    return livros_em(args.pdf_dir)
 
 
 def _queue_path(queue_dir: Path, pdf_path: Path) -> Path:

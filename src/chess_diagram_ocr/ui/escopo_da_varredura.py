@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import DEFAULT_PDF_DIR
+from ..djvu_io import livros_em
 
 __all__ = ["ABERTO", "ESCOLHER", "PASTA", "ScanScope", "books_in_folder"]
 
@@ -48,7 +49,7 @@ class ScanScope:
 
 
 def books_in_folder(directory: Path = DEFAULT_PDF_DIR) -> list[Path]:
-    """Os `.pdf` da pasta, em ordem de nome. Pasta que não existe é lista vazia, e não erro.
+    """Os PDFs e DjVus da pasta, em ordem de nome. Pasta que não existe é lista vazia, e não erro.
 
     Ordenado pelo mesmo motivo do `cvoff-scan`: a varredura de um acervo é interrompida e
     retomada, e uma ordem estável faz "continuar de onde parou" significar alguma coisa.
@@ -56,6 +57,6 @@ def books_in_folder(directory: Path = DEFAULT_PDF_DIR) -> list[Path]:
     pasta = Path(directory)
     if not pasta.is_dir():
         return []
-    return sorted(caminho for caminho in pasta.glob("*.pdf") if caminho.is_file())
+    return livros_em(pasta)
 
 

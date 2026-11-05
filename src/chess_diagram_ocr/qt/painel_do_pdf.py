@@ -51,6 +51,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from chess_diagram_ocr.djvu_io import FILTRO_DE_LIVROS, e_djvu, ja_convertido
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
 from chess_diagram_ocr.qt import icones as qt_icones
@@ -729,7 +730,7 @@ class PainelDoPdf(QWidget):
 
     def abrir_pdf(self) -> None:
         caminho, _filtro = QFileDialog.getOpenFileName(
-            self, "Selecione o PDF", str(self._pasta_inicial), "PDF (*.pdf);;Todos (*.*)"
+            self, "Selecione o livro", str(self._pasta_inicial), FILTRO_DE_LIVROS
         )
         if caminho:
             self.load_pdf(Path(caminho))
@@ -769,7 +770,12 @@ class PainelDoPdf(QWidget):
             return
         self._abertura_pedida = None
         self._abrindo = pdf_path
-        self.estado.emit(f"Abrindo {pdf_path.name}…")
+        # A primeira abertura de um DjVu converte o livro inteiro, e chega a levar alguns minutos.
+        # Só "Abrindo" nesse tempo todo pareceria um programa travado.
+        if e_djvu(pdf_path) and not ja_convertido(pdf_path):
+            self.estado.emit(f"Convertendo {pdf_path.name} para leitura. É só na primeira vez, e pode levar alguns minutos…")
+        else:
+            self.estado.emit(f"Abrindo {pdf_path.name}…")
         # **Métodos ligados, e não `lambda`**: o PyQt desfaz a ligação a um método quando o
         # painel morre, e uma `lambda` chamaria um widget já destruído -- exceção num slot, que
         # derruba o processo (ver `trabalho.DeteccaoDeFundo`).
