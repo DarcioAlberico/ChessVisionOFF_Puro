@@ -1944,7 +1944,7 @@ Nenhum ficou por falta de tempo.
 
 | fase | estado |
 |---|---|
-| **7** — ler o acervo que existe | código completo. **Critério de saída não atingido**: 0,7368 contra 0,85, e a 7.7 explica por que a métrica não consegue mais julgar |
+| **7** — ler o acervo que existe | código completo. **Critério de saída não atingido naquele conjunto**: 0,7368 contra 0,85, e a 7.7 explica por que a métrica não consegue mais julgar. A régua nova da S-99, com 115 diagramas, deu 0,8696 (0,8515 sem as páginas contaminadas) em `docs/metrics/field_20260822_s99.json`, com 4 exportados errados: é outro conjunto, e o número não substitui o de cima |
 | **8** — OCR de verdade | **fechada**. 19 de 32 livros com procedência ≠ `default`, 14 deles por texto ou OCR — contra 10 antes do motor |
 | **9** e **10** | fechadas desde 2026-08-09, mais a S-66 e a S-67 documentadas depois (10.7, 10.8) |
 | **11** — o modelo | **feita e reprovada nos próprios critérios**. Ver 11.1 |

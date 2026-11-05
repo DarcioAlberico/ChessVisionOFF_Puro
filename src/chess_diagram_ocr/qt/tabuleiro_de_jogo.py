@@ -36,6 +36,7 @@ from chess_diagram_ocr.ui import tokens
 from chess_diagram_ocr.ui.board_model import BoardModel
 from chess_diagram_ocr.ui.desenho_do_tabuleiro import (
     LARGURA_DA_SETA,
+    LARGURA_DO_CIRCULO,
     PAPEL_DE_SETA,
     PONTA_DA_SETA,
     BoardGeometry,
@@ -201,16 +202,17 @@ class TabuleiroDeJogo(TabuleiroQt):
             self.lance.emit(mudanca.move)
 
     def _soltar_seta(self, destino: int | None) -> None:
-        """Solta o botão direito: uma seta, ou nada.
+        """Solta o botão direito: uma seta, uma casa marcada, ou nada.
 
-        **Origem igual a destino não é seta**, e é de propósito: um clique direito sem arrastar é
-        o gesto de marcar uma *casa*, que o `[%csl]` guarda -- e a sala ainda não o oferece.
-        Emitir uma seta de comprimento zero criaria um `[%cal]` que nenhum leitor sabe desenhar.
+        **Origem igual a destino não é seta de comprimento zero: é a casa marcada**, o clique direito
+        sem arrastar que o `[%csl]` guarda. Quem separa os dois na gravação é `chess.pgn`, pela mesma
+        convenção de `chess.svg.Arrow` que `BoardModel.arrows` já declara; `estudo.trocar_seta` faz o
+        mesmo gesto pôr e tirar.
         """
         origem, self._seta_de = self._seta_de, None
         self._seta_para = None
         self.update()
-        if origem is None or destino is None or destino == origem:
+        if origem is None or destino is None:
             return
         self.seta.emit(origem, destino, self._cor_da_seta)
 
@@ -274,7 +276,19 @@ class TabuleiroDeJogo(TabuleiroQt):
         if self._seta_de is not None and self._seta_para is not None and self._seta_de != self._seta_para:
             setas.append((self._seta_de, self._seta_para, self._cor_da_seta))
         for origem, destino, cor in setas:
-            self._desenhar_uma_seta(pintor, geo, origem, destino, cor)
+            if origem == destino:
+                self._desenhar_casa_marcada(pintor, geo, origem, cor)
+            else:
+                self._desenhar_uma_seta(pintor, geo, origem, destino, cor)
+
+    def _desenhar_casa_marcada(self, pintor: QPainter, geo: BoardGeometry, casa: int, cor: str) -> None:
+        """O anel do `[%csl]`, na mesma tinta das setas. Por cima de tudo que não é anotação humana."""
+        caneta = QPen(QColor(tema.cor_atual(COR_DA_SETA.get(cor, tokens.SETA_VERDE))))
+        caneta.setWidthF(max(1.0, geo.cell * LARGURA_DO_CIRCULO))
+        pintor.setPen(caneta)
+        pintor.setBrush(Qt.BrushStyle.NoBrush)
+        folga = caneta.widthF() / 2
+        pintor.drawEllipse(self._retangulo(geo, casa).adjusted(folga, folga, -folga, -folga))
 
     def _desenhar_uma_seta(
         self, pintor: QPainter, geo: BoardGeometry, origem: int, destino: int, cor: str
@@ -284,7 +298,7 @@ class TabuleiroDeJogo(TabuleiroQt):
         de, para = self._centro(geo, origem), self._centro(geo, destino)
         vetor = QPointF(para.x() - de.x(), para.y() - de.y())
         comprimento = (vetor.x() ** 2 + vetor.y() ** 2) ** 0.5
-        if comprimento <= 0:  # pragma: no cover - `_soltar_seta` já recusa a seta de tamanho zero
+        if comprimento <= 0:  # pragma: no cover - quem chama separa a casa marcada
             return
         unidade = QPointF(vetor.x() / comprimento, vetor.y() / comprimento)
         # As duas medidas saem de `ui/desenho_do_tabuleiro.py` (S-510): eram `0.34` e `0.14`
