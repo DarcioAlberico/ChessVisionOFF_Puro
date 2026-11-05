@@ -1069,6 +1069,16 @@ errados, eram 3), a limpa 0,9663 → 0,9535. **A queda é do modelo, e não do c
 três passaram pelo mesmo caminho de medição e não se moveram. O relatório diz isso em
 `measured_with.note`, que é onde a ressalva viaja junto com o número.
 
+Na décima primeira (2026-11-03 -- commit `9325eb8`, o merge da marca de casa sintética com a
+`main`, árvore limpa efêmera, `dirty=false`), **três dos quatro** voltaram idênticos de novo:
+controle, `mhsp` e `s108`. A marca de casa acrescentou a `dataset` a constante `EMPTY_LABEL` e um
+parâmetro `marca`, que vale `None` por padrão, e a medição de campo não passa marca nenhuma. Só
+`dataset` mudou de digest. A produção, outra vez, não reproduz: o `piece_classifier.pt` foi trocado
+de novo em 2026-11-02 (digest `2977b7b8`, época 43, treino `0be1b93`), e o `a22c7854` da décima não
+existe mais no disco. A detecção não se moveu (114 de 115 casados, nenhum falso positivo); um
+diagrama a menos passa do gate, e a taxa de exportação vai de 0,8696 para 0,8609, a exatidão de
+campo de 0,9600 para 0,9596, e a limpa fica em 0,9535. É o modelo, pelo mesmo argumento da décima.
+
 ## S-326 · A largura da fita plena é derivada, e não escolhida
 
 **Problema.** Três testes de `ModoDaFitaTests` montavam a fita em `self._em(2200)` -- 2.200 px é
