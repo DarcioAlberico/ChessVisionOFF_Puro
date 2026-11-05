@@ -56,7 +56,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..config import PROJECT_ROOT
+from ..config import DATA_DIR, PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ regra legível onde ela é aplicada."""
 
 NOME = {valor: chave for chave, valor in CODIGO.items()}
 
-CAMINHO_PADRAO = PROJECT_ROOT / "data" / "texto_procedencia.csv"
+CAMINHO_PADRAO = DATA_DIR / "texto_procedencia.csv"
 COLUNAS = ("uuid", "livro", "pagina", "procedencia", "rotulado_em")
 
 

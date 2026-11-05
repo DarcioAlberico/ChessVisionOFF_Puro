@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from ..config import PROJECT_ROOT
+from ..config import DATA_DIR
 from . import arquivo
 from .rico import DocumentoRico
 
@@ -49,17 +49,16 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "ESPERA_SEGUNDOS",
     "PASTA_PADRAO",
-    "TETO_POR_DOCUMENTO",
     "Rascunho",
     "achar",
     "caminho_de",
     "chave_de",
     "descartar",
     "gravar",
-    "podar",
+    "listar",
 ]
 
-PASTA_PADRAO = PROJECT_ROOT / "data" / "rascunhos"
+PASTA_PADRAO = DATA_DIR / "rascunhos"
 """Onde os rascunhos moram. Em `data/`, como todo artefato de trabalho deste projeto."""
 
 ESPERA_SEGUNDOS = 4.0
@@ -69,11 +68,11 @@ Quatro segundos é mais longo que a pausa entre duas palavras e mais curto que a
 parágrafos: quem está digitando não é interrompido, e quem parou para pensar já tem o trabalho no
 disco. Não é relógio -- ver o cabeçalho."""
 
-TETO_POR_DOCUMENTO = 8
-"""Quantos rascunhos de um mesmo livro a pasta guarda. O mais antigo sai primeiro.
-
-Oito é o que cabe numa sessão de trabalho sobre um livro sem a pasta virar depósito: quem corrige
-folha a folha volta às anteriores, e quem passou de oito folhas atrás já salvou as primeiras."""
+# **Não há teto de rascunhos por livro** (S-605). Havia um, de oito, com o mais antigo saindo
+# primeiro -- escrito para o rascunho como rede de segurança, "quem passou de oito folhas atrás já
+# salvou as primeiras". O uso desmentiu: quem corrige um livro folha a folha deixa o trabalho no
+# rascunho, e a correção da folha 1 sumia quando a folha 9 gravava o dela. Um rascunho é uma folha
+# de texto, poucos KB; o que sai da pasta sai porque chegou a um lugar melhor (`descartar`).
 
 _SUFIXO_DA_CHAVE = 10
 """Quantos caracteres da impressão do caminho entram no nome do arquivo.
@@ -139,7 +138,6 @@ def gravar(doc: DocumentoRico, *, pasta: Path | None = None) -> Path | None:
     destino = caminho_de(origem[0], origem[1], pasta=pasta)
     destino.parent.mkdir(parents=True, exist_ok=True)
     arquivo.gravar(destino, doc)
-    podar(origem[0], pasta=pasta)
     return destino
 
 
@@ -178,33 +176,50 @@ def descartar(documento: str | Path, folha: int, *, pasta: Path | None = None) -
     return True
 
 
-def podar(documento: str | Path, *, pasta: Path | None = None, teto: int = TETO_POR_DOCUMENTO) -> list[Path]:
-    """Deixa no máximo `teto` rascunhos daquele livro, **e o mais antigo sai primeiro**.
+def _nome_e_impressao(chave: str) -> tuple[str, str]:
+    """`"livro_f1_f36a81cc42"` -> `("livro", "f36a81cc42")`: as duas pontas da chave de uma folha.
 
-    A poda é por documento e não pela pasta inteira: quem trabalha em dois livros na mesma semana
-    não pode perder o rascunho de um porque abriu muitas folhas do outro.
+    **Pela forma, e não por `rsplit("_f")`.** A poda fazia `rsplit("_f", 1)` e caía quando a
+    impressão do caminho começava por `f` -- um caso em dezesseis --: o prefixo saía `livro_f1`,
+    nenhum rascunho de outra folha casava, e a pasta daquele livro nunca era podada (achado ao
+    escrever `listar`, 2026-10-09).
     """
+    impressao = chave.rsplit("_", 1)[-1]
+    sufixo = f"_f1_{impressao}"
+    return (chave[: -len(sufixo)] if chave.endswith(sufixo) else chave), impressao
+
+
+def _do_livro(documento: str | Path, pasta: Path | None) -> list[Path]:
+    """Os arquivos de rascunho daquele livro, pela impressão do caminho no nome."""
     raiz = Path(pasta) if pasta is not None else PASTA_PADRAO
     if not raiz.exists():
         return []
-    prefixo = chave_de(documento, 0).rsplit("_f", 1)[0]
-    impressao = chave_de(documento, 0).rsplit("_", 1)[-1]
-    do_livro = [
+    nome, impressao = _nome_e_impressao(chave_de(documento, 0))
+    return [
         caminho
         for caminho in raiz.glob(f"*{arquivo.EXTENSAO}")
-        if caminho.name.startswith(prefixo) and impressao in caminho.name
+        if caminho.name.startswith(f"{nome}_f") and caminho.name.endswith(f"_{impressao}{arquivo.EXTENSAO}")
     ]
-    if len(do_livro) <= teto:
-        return []
-    por_idade = sorted(do_livro, key=lambda c: c.stat().st_mtime)
-    apagados: list[Path] = []
-    for caminho in por_idade[: len(do_livro) - teto]:
+
+
+def listar(documento: str | Path, *, pasta: Path | None = None) -> list[Rascunho]:
+    """Os rascunhos daquele livro, por folha crescente. **Não os abre** (item 18 de 2026-10-09).
+
+    A oferta de recuperação só acontece ao ler a folha certa; quem abre o livro sem saber que
+    deixou trabalho por gravar em três folhas não tem como saber quais. Esta lista é o que a aba
+    diz na abertura do livro.
+    """
+    achados: list[Rascunho] = []
+    for caminho in _do_livro(documento, pasta):
+        folha = re.search(r"_f(\d+)_[0-9a-f]+$", caminho.stem)
+        if folha is None:
+            continue
         try:
-            caminho.unlink()
-            apagados.append(caminho)
-        except OSError as erro:  # pragma: no cover - arquivo em uso
-            logger.debug("Rascunho antigo não pôde ser apagado (%s): %s", caminho, erro)
-    return apagados
+            quando = datetime.fromtimestamp(caminho.stat().st_mtime)
+        except OSError:  # pragma: no cover - arquivo sumiu entre o `glob` e o `stat`
+            continue
+        achados.append(Rascunho(caminho=caminho, quando=quando, folha=int(folha.group(1)) - 1))
+    return sorted(achados, key=lambda r: r.folha)
 
 
 def frase_de_recuperacao(rascunho: Rascunho) -> str:

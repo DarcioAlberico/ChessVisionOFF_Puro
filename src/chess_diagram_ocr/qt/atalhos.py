@@ -51,6 +51,7 @@ __all__ = [
     "e_campo_de_texto",
     "ligar",
     "sequencia_qt",
+    "teclas_proprias",
 ]
 
 
@@ -113,6 +114,8 @@ TECLAS_NOMEADAS: dict[str, str] = {
     "space": "Space",
     "plus": "+",
     "minus": "-",
+    "bracketright": "]",
+    "bracketleft": "[",
 }
 """`nome do Tk -> nome do Qt`, para as teclas que os dois chamam de coisas diferentes.
 
@@ -121,7 +124,8 @@ tabela em que só cabe a exceção obriga quem lê a saber de cor quais são as 
 
 **As três que de fato mordem** são `Prior`/`Next` (o Tk herdou os nomes do X11; o Qt usa `PgUp`
 e `PgDown`), `Delete` (`Del` no Qt) e o par `plus`/`minus`, que no Tk são nomes e no Qt são o
-próprio caractere."""
+próprio caractere. `bracketright`/`bracketleft` são o par de `aumentar_corpo`/`diminuir_corpo`
+(`Ctrl+]`/`Ctrl+[`), que entrou quando as teclas do editor passaram a ser ligadas aqui (S-511)."""
 
 
 def sequencia_qt(sequencia: str) -> str:
@@ -180,14 +184,38 @@ def e_campo_de_texto(widget: object) -> bool:
     return isinstance(widget, WIDGETS_DE_TEXTO)
 
 
+def teclas_proprias(widget: object) -> frozenset[str]:
+    """As sequências que o widget em foco -- ou um pai dele -- declarou para si.
+
+    É a regra da S-117, *quem declarou a tecla fica com ela*, no lugar do `owns_key` do Tk: o
+    editor de texto põe `atalhos.teclas_cedidas_ao_editor()` no próprio `QTextEdit`, e é assim
+    que `Ctrl+R` dentro dele alinha à direita em vez de reler a página (S-511). Sobe pelo
+    `parentWidget` como `contem`, e pela mesma razão.
+    """
+    atual = widget
+    for _ in range(40):
+        if atual is None:
+            return frozenset()
+        declaradas = getattr(atual, "teclas_proprias", None)
+        if declaradas:
+            return frozenset(declaradas)
+        pai = getattr(atual, "parentWidget", None)
+        atual = pai() if callable(pai) else None
+    return frozenset()
+
+
 def cede_a_tecla(widget: object, sequencia: str) -> bool:
     """A guarda deve ceder **esta tecla** a este widget?
 
-    A decisão é `atalhos.cede_a_sequencia`, que é pura e vale nos dois frontends; o que este
-    módulo acrescenta são as duas listas de classe do Qt. É a mesma divisão de
+    Duas perguntas, nesta ordem. *O widget declarou esta tecla para si?* (`teclas_proprias`, S-117)
+    -- se sim, cede, e é por aqui que as teclas que o editor **divide** com a janela chegam ao
+    editor. Senão, a decisão é `atalhos.cede_a_sequencia`, que é pura e vale nos dois frontends;
+    o que este módulo acrescenta são as duas listas de classe do Qt. É a mesma divisão de
     `ui/shortcuts.cede_a_tecla`, e é o que garante que `Ctrl+S` salva com o cursor dentro do
     campo nas duas janelas -- ou em nenhuma.
     """
+    if sequencia and sequencia in teclas_proprias(widget):
+        return True
     return atalhos.cede_a_sequencia(
         sequencia,
         e_campo=e_campo_de_texto(widget),
@@ -205,12 +233,22 @@ class GuardaDeAtalhos(QObject):
        nenhum painel precise lembrar de excluir os campos dele: a regra da S-20 vale sempre.
     2. *O painel em foco declarou esta ação para si?* (`atalhos.destino`, S-244) Se sim, é dele.
        É por aqui que `←` continua sendo "lance anterior" dentro da sala de estudo.
-    3. Senão, é da janela.
+    3. Senão, é da **janela do foco** (S-646).
+
+    **A guarda é da aplicação, e por isso pergunta de que janela é o foco.** Enquanto o programa tinha
+    uma janela só, "da janela" era uma resposta só; com a mesa destacada (S-646) há uma segunda, e sem
+    a pergunta `Del` com o foco na folha da mesa apagava a casa do diagrama da principal, as setas e
+    `PgUp`/`PgDn` viravam a página dela, e `Ctrl+N` abria a fila. A janela registrada com
+    `registrar_janela` tem os comandos dela; a que não está registrada -- uma caixa de diálogo, a
+    janela de busca -- é de quem a abriu, subindo pelos pais, e no fim da cadeia é a principal, que é o
+    comportamento de antes.
     """
 
     def __init__(self, comandos: Mapping[str, Callable[[], object]], parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._comandos = dict(comandos)
+        self._por_janela: dict[int, tuple[QWidget, dict[str, Callable[[], object]]]] = {}
+        """`id(janela) -> (janela, comandos)`: as janelas de topo que não são a principal (S-646)."""
         # `sequência do Tk -> QKeySequence`, montado uma vez. Traduzir a cada tecla pressionada
         # seria refazer a mesma conta a 30 Hz enquanto alguém segura uma seta.
         self._teclas: dict[str, QKeySequence] = {}
@@ -223,6 +261,27 @@ class GuardaDeAtalhos(QObject):
                 # Uma tecla que não traduz não pode custar as outras vinte: ela sai no log com o
                 # nome, e o resto da janela continua com teclado. É a disciplina de `folha.aplicar`.
                 logger.warning("Atalho %s não traduzido para o Qt (%s).", atalho.sequencia, exc)
+
+    def registrar_janela(self, janela: QWidget, comandos: Mapping[str, Callable[[], object]]) -> None:
+        """A janela de topo `janela` tem os comandos dela, e não os da principal (S-646)."""
+        self._por_janela[id(janela)] = (janela, dict(comandos))
+
+    def esquecer_janela(self, janela: QWidget) -> None:
+        """A janela volta a ser tratada como qualquer outra: os comandos de quem a abriu."""
+        self._por_janela.pop(id(janela), None)
+
+    def comandos_de(self, foco: QWidget | None) -> Mapping[str, Callable[[], object]]:
+        """Os comandos da janela em que o foco está, subindo de janela em janela pelos pais."""
+        janela = foco.window() if foco is not None else QApplication.activeWindow()
+        vistas = 0
+        while janela is not None and vistas < 32:  # um ciclo de pais não pode travar a tecla
+            registrada = self._por_janela.get(id(janela))
+            if registrada is not None and registrada[0] is janela:
+                return registrada[1]
+            pai = janela.parentWidget()
+            janela = pai.window() if pai is not None else None
+            vistas += 1
+        return self._comandos
 
     def sequencia_do_evento(self, evento: QKeyEvent) -> str:
         """A sequência do **Tk** que este evento casa, ou `""`. É a tradução no sentido inverso.
@@ -256,7 +315,7 @@ class GuardaDeAtalhos(QObject):
                 return False
 
             acao = atalhos.acao_de(sequencia)
-            atendida = atalhos.destino(acao, foco, self._comandos) if acao else None
+            atendida = atalhos.destino(acao, foco, self.comandos_de(foco)) if acao else None
             if atendida is None:
                 return False
             atendida()

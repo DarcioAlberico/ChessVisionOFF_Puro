@@ -44,6 +44,67 @@ def _com_tudo() -> rico.DocumentoRico:
     return rico.aplicar_estilo(doc, 0, 3, "titulo")
 
 
+class FenDoDiagramaTests(unittest.TestCase):
+    """A FEN vai no comentário do `.md` e no `data-fen` do `.html` -- a tabela do cabeçalho do módulo
+    prometia isso desde a S-250, e nada o escrevia porque o campo de peças só chega ao bloco quando a
+    leitura dos diagramas do produto o entrega."""
+
+    FEN = "r1bqkbnr/pppppppp/2n5/8/4P3/8/PPPP1PPP/RNBQKBNR"
+
+    def documento(self, placement: str = FEN) -> rico.DocumentoRico:
+        return rico.de_pagina(
+            _pagina(_texto("antes"), BlocoDeDiagrama(indice=0, bbox=(0.0, 0.0, 9.0, 9.0), placement=placement))
+        )
+
+    def test_o_md_escreve_a_fen_em_comentario_com_e_sem_imagem(self) -> None:
+        # Centralizado, porque ninguém o alinhou (S-620): o `.md` o põe num `<p align>` (S-622).
+        com = exportacao.exportar(self.documento(), exportacao.Markdown(), recortes={1: Path("d.png")}).conteudo
+        self.assertIn(
+            '<p align="center"><img src="diagramas/d.png" alt="[Diagrama 1]"></p>\n<!-- FEN: ' + self.FEN + " -->", com
+        )
+        a_esquerda = exportacao.exportar(
+            self.documento(), exportacao.Markdown(), recortes={1: Path("d.png")}, diagramas="esquerda"
+        ).conteudo
+        self.assertIn("![[Diagrama 1]](diagramas/d.png)\n<!-- FEN: " + self.FEN + " -->", a_esquerda)
+        sem = exportacao.exportar(self.documento(), exportacao.Markdown()).conteudo
+        self.assertIn("[Diagrama 1]\n<!-- FEN: " + self.FEN + " -->", sem)
+
+    def test_o_texto_ao_lado_flutua_a_figura_no_md_e_no_html(self) -> None:
+        # S-624: só a figura que se desenha à esquerda, e só nos formatos que levam imagem.
+        recortes = {1: Path("d.png")}
+        md = exportacao.exportar(self.documento(), exportacao.Markdown(), recortes=recortes, diagramas="esquerda", ao_lado=True)
+        self.assertIn('<img align="left" src="diagramas/d.png" alt="[Diagrama 1]">\n<!-- FEN: ' + self.FEN + " -->", md.conteudo)
+        html = exportacao.exportar(self.documento(), exportacao.Html(), recortes=recortes, diagramas="esquerda", ao_lado=True)
+        self.assertIn('<img class="diagrama ao-lado" src="diagramas/d.png"', html.conteudo)
+        self.assertIn(".diagrama.ao-lado { float: left;", html.conteudo)
+        self.assertNotIn('<div class="alinhar-esquerda"><img', html.conteudo, "um div em volta fecharia o fluxo")
+        ao_centro = exportacao.exportar(self.documento(), exportacao.Html(), recortes=recortes, ao_lado=True)
+        self.assertNotIn("diagrama ao-lado", ao_centro.conteudo, "a figura centralizada não flutua")
+        sem_imagem = exportacao.exportar(self.documento(), exportacao.Markdown(), diagramas="esquerda", ao_lado=True)
+        self.assertNotIn('align="left"', sem_imagem.conteudo)
+
+    def test_o_html_escreve_a_fen_no_data_fen(self) -> None:
+        com = exportacao.exportar(self.documento(), exportacao.Html(), recortes={1: Path("d.png")}).conteudo
+        self.assertIn('alt="[Diagrama 1]" data-fen="' + self.FEN + '">', com)
+        sem = exportacao.exportar(self.documento(), exportacao.Html()).conteudo
+        self.assertIn('<span class="diagrama" data-fen="' + self.FEN + '">[Diagrama 1]</span>', sem)
+
+    def test_sem_fen_nada_muda(self) -> None:
+        for formato in (exportacao.Markdown(), exportacao.Html()):
+            with self.subTest(formato=formato.nome):
+                conteudo = exportacao.exportar(self.documento(placement=""), formato).conteudo
+                self.assertNotIn("FEN", conteudo)
+                self.assertNotIn("data-fen", conteudo)
+                self.assertIn("[Diagrama 1]", conteudo)
+
+    def test_o_txt_e_o_rtf_ficam_como_eram(self) -> None:
+        for formato in (exportacao.Texto(), exportacao.Rtf()):
+            with self.subTest(formato=formato.nome):
+                conteudo = exportacao.exportar(self.documento(), formato).conteudo
+                self.assertNotIn(self.FEN, conteudo)
+                self.assertIn("[Diagrama 1]", conteudo)
+
+
 class TodosSaemDoMesmoDocumentoTests(unittest.TestCase):
     def test_os_formatos_saem_do_mesmo_documento(self) -> None:
         doc = _com_tudo()

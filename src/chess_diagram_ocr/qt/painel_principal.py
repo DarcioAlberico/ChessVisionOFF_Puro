@@ -20,9 +20,19 @@ marcado", e o Tab alcança os quatro na ordem da barra -- que é o que o portão
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QButtonGroup, QHBoxLayout, QStackedWidget, QToolButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QButtonGroup,
+    QFrame,
+    QHBoxLayout,
+    QScrollArea,
+    QStackedWidget,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from chess_diagram_ocr.qt import tema
+from chess_diagram_ocr.qt.foco_a_vista import seguir_o_foco
 from chess_diagram_ocr.ui import abas, espaco, estilos
 
 __all__ = ["PainelPrincipal"]
@@ -37,6 +47,8 @@ class PainelPrincipal(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._nomes: list[str] = []
+        self._paineis: list[QWidget] = []
+        """Os painéis dos modos, na ordem da pilha -- a pilha guarda a rolagem de cada um."""
         self._contagens: dict[str, int | None] = {}
         self._botoes: dict[str, QToolButton] = {}
         coluna = QVBoxLayout(self)
@@ -80,10 +92,39 @@ class PainelPrincipal(QWidget):
         self._nomes.append(nome)
         self._botoes[nome] = botao
         self._contagens[nome] = None
-        self.pilha.addWidget(painel)
+        self._paineis.append(painel)
+        self.pilha.addWidget(self._rolagem_de(painel))
         if indice == 0:
             botao.setChecked(True)
             self.pilha.setCurrentIndex(0)
+
+    @staticmethod
+    def _rolagem_de(painel: QWidget) -> QScrollArea:
+        """O modo dentro de uma rolagem **vertical** (OCR_UI ciclo 2, C18).
+
+        O Resultado pede 520 px de altura com um livro aberto, e era ele -- o painel mais alto da
+        pilha -- que decidia a altura mínima da janela: 659 a 695 px lógicos, contra os 641 que
+        sobram num portátil 1920×1080 a 150 % com a barra de tarefas. Numa rolagem o modo fica com
+        a altura que a janela tiver, e o que não couber rola; é o que a lateral da Galeria e o
+        cartão da Rotulagem já fazem desde o passo 16 do ciclo 1.
+
+        **A horizontal aparece quando precisa.** A primeira versão a desligava dizendo que «na
+        largura nada muda», e mudava: o Resultado pede 550 px (o recorte e o tabuleiro lado a
+        lado, pisos declarados) e, com a janela no mínimo de 1248x640, a rolagem mostra 526 --
+        a barra de ações e o «Copiar FEN» ficavam com 0 px à vista, sem barra que dissesse que
+        havia mais (crítico da fase 5 do ciclo 2).
+
+        **E ela mostra o controle que recebe o foco, venha ele de onde vier** (`foco_a_vista`): a
+        rolagem do Qt só segue o foco que anda dentro dela, e o Shift+Tab da barra de modos punha
+        «Esconder incerteza» do Resultado com 0 px à vista a 1280x641 (crítico, ciclo 5).
+        """
+        rolagem = QScrollArea()
+        rolagem.setWidgetResizable(True)
+        rolagem.setFrameShape(QFrame.Shape.NoFrame)
+        rolagem.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        rolagem.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        rolagem.setWidget(painel)
+        return seguir_o_foco(rolagem)
 
     # -------------------------------------------------------------------------------- perguntas
 
@@ -97,15 +138,18 @@ class PainelPrincipal(QWidget):
     def widget_do_modo(self, nome: str) -> QWidget | None:
         if nome not in self._botoes:
             return None
-        return self.pilha.widget(self._nomes.index(nome))
+        return self._paineis[self._nomes.index(nome)]
 
     def modo_de(self, painel: QWidget) -> str | None:
         """O nome do modo que aquele painel é, ou `None` se ele não mora aqui."""
-        indice = self.pilha.indexOf(painel)
-        return self._nomes[indice] if indice >= 0 else None
+        for indice, dono in enumerate(self._paineis):
+            if dono is painel:
+                return self._nomes[indice]
+        return None
 
     def painel_atual(self) -> QWidget | None:
-        return self.pilha.currentWidget()
+        indice = self.pilha.currentIndex()
+        return self._paineis[indice] if 0 <= indice < len(self._paineis) else None
 
     def botao(self, nome: str) -> QToolButton:
         return self._botoes[nome]
@@ -128,6 +172,40 @@ class PainelPrincipal(QWidget):
     def _clicou(self, indice: int) -> None:
         if 0 <= indice < len(self._nomes):
             self.definir_modo(self._nomes[indice])
+
+    def soltar_modo(self, nome: str, cartao: QWidget) -> QWidget | None:
+        """Tira o painel do modo da rolagem dele e põe `cartao` no lugar (S-646). Devolve o painel.
+
+        **`takeWidget` e não `setWidget`**: a `QScrollArea` destrói o widget que um `setWidget` novo
+        tira do lugar, e o painel sairia daqui morto -- com a seleção, a pilha de desfazer e o caderno
+        aberto. O botão do modo continua: o modo existe, e é o cartão que diz onde está o painel.
+        """
+        rolagem = self._rolagem_do_modo(nome)
+        if rolagem is None or rolagem.widget() is cartao:
+            return None
+        painel = rolagem.takeWidget()
+        rolagem.setWidget(cartao)
+        return painel
+
+    def devolver_modo(self, nome: str) -> bool:
+        """O painel volta à rolagem do modo, e o cartão sai sem ser destruído. `False` se não estava solto."""
+        rolagem = self._rolagem_do_modo(nome)
+        painel = self.widget_do_modo(nome)
+        if rolagem is None or painel is None or rolagem.widget() is painel:
+            return False
+        cartao = rolagem.takeWidget()
+        if cartao is not None:
+            cartao.setParent(None)
+            cartao.hide()
+        rolagem.setWidget(painel)
+        painel.show()
+        return True
+
+    def _rolagem_do_modo(self, nome: str) -> QScrollArea | None:
+        if nome not in self._botoes:
+            return None
+        rolagem = self.pilha.widget(self._nomes.index(nome))
+        return rolagem if isinstance(rolagem, QScrollArea) else None
 
     def definir_contagem(self, nome: str, contagem: int | None) -> None:
         """Quanto trabalho o modo carrega, no rótulo do botão -- a regra de `ui/abas.rotulo`."""

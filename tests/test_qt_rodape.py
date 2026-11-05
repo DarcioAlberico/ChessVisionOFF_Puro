@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import unittest
 
-from qt_app import MOTIVO, TEM_PYQT, aplicacao
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
 from chess_diagram_ocr.ui import estado_do_rodape as estado
 from chess_diagram_ocr.ui import tokens
@@ -27,6 +27,7 @@ from chess_diagram_ocr.ui.busy import BusyOperation, BusyRegistry
 
 if TEM_PYQT:
     from PyQt6 import sip
+    from PyQt6.QtCore import Qt
 
     from chess_diagram_ocr.qt import rodape, tema
 
@@ -399,17 +400,21 @@ class DocumentoTests(unittest.TestCase):
     def test_sem_folga_ele_volta_a_elidir(self) -> None:
         """O outro lado, e é o que impede o conserto de virar transbordo.
 
-        Um nome de 149 caracteres numa faixa de 320 px **tem** de ser cortado -- a alternativa é
+        Um nome de 149 caracteres com 320 px para ele **tem** de ser cortado -- a alternativa é
         empurrar as outras zonas para fora. O que este par de testes cobra é que a reticência
         apareça por falta de espaço, e nunca por um teto herdado.
+
+        Os 320 px são **do nome**, somados ao mínimo da faixa: desde que o botão das mensagens
+        guarda o seu mínimo (OCR_UI ciclo 2, fase 5), uma faixa inteira de 320 px -- que a
+        janela, de 1248 px no mínimo, nunca tem -- deixava ao nome menos que uma reticência.
         """
         longo = (
             "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid "
             "Foolish Mistakes (Bastford, 2005) 2p 145 · p. 121 de 289"
         )
         self.rodape.definir_documento(longo, False)
-        elididos = self._elididos(320)
-        self.assertEqual(1, len(elididos), "a faixa de 320 px coube o nome de 149 caracteres?")
+        elididos = self._elididos(self.rodape.minimumSizeHint().width() + 320)
+        self.assertEqual(1, len(elididos), "320 px couberam o nome de 149 caracteres?")
         self.assertIn("\u2026", elididos[0][1])
 
     def test_o_rotulo_do_documento_continua_sem_decidir_a_largura_minima(self) -> None:
@@ -426,6 +431,116 @@ class DocumentoTests(unittest.TestCase):
         rotulo = self.rodape._lbl_documento
         self.assertEqual(0, rotulo.minimumSizeHint().width())
         self.assertGreater(rotulo.sizeHint().width(), 130, "o teto da barra voltou ao rodape")
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class ZonaDaMensagemTests(unittest.TestCase):
+    """A zona que cede largura em vez de exigi-la (S-552, quinta rodada).
+
+    **O defeito era de janela e a causa era daqui.** `QLabel.minimumSizeHint` de um rótulo sem
+    quebra de linha é a largura do texto inteiro; ele subia pelo leiaute do rodapé e virava o piso
+    da janela -- medido a 1024x768, uma frase de 600 caracteres punha a janela em 3457 px de
+    mínimo, e o erro de modelo ausente tem justamente esse tamanho.
+
+    Aqui se afirma o widget solto, que é onde a regra mora; o efeito na janela é
+    `tests/test_qt_tamanho_da_janela.py::RodapeNaoEPisoDeJanelaTests`.
+    """
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        tema.aplicar_tema(self.app)
+        self.zona = rodape.ZonaDaMensagem()
+        # `descartar` e nao `deleteLater`: o rodape registra repintura de tema, e um widget morto
+        # que segue registrado e o defeito que `qt_app.descartar` documenta -- ele aparece no
+        # vizinho, e nao em quem esqueceu.
+        self.addCleanup(descartar, self.zona)
+        # **Mostrada, mesmo sob `offscreen`.** Um widget que nunca foi criado tem `crect` mas não
+        # recebe `QResizeEvent`: `resize()` muda o número e a elisão não é refeita. Medir a régua
+        # num widget nesse estado seria medir o silêncio do Qt, como em `qt/dica.py`.
+        self.zona.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.zona.show()
+        self.zona.resize(200, 20)
+        self.app.processEvents()
+
+    def test_o_minimo_nao_cresce_com_o_texto(self) -> None:
+        """**A guarda do bloqueio, no widget.** Era 614 px para 120 caracteres e 10014 para 2000."""
+        vazio = self.zona.minimumSizeHint().width()
+        self.assertEqual(estado.LARGURA_MINIMA_DA_MENSAGEM, vazio)
+        for tamanho in (120, 600, 2000):
+            with self.subTest(caracteres=tamanho):
+                self.zona.definir_frase("erro " * tamanho)
+                self.assertEqual(vazio, self.zona.minimumSizeHint().width())
+                self.assertEqual(vazio, self.zona.sizeHint().width())
+                self.assertEqual(vazio, self.zona.minimumWidth())
+
+    def test_a_altura_continua_sendo_a_de_uma_linha(self) -> None:
+        """O teto é de largura, e só. Trocar um piso de largura por um de altura -- que é o que
+        `setWordWrap` faria -- não conserta um rodapé cuja altura é fixa por construção.
+
+        Comparadas duas frases, e não uma contra a zona vazia: um `QLabel` sem texto responde a
+        altura da fonte e um com texto responde a do texto desenhado -- 14 contra 12 px aqui --, e
+        essa diferença é do Qt e não do tamanho da frase."""
+        self.zona.definir_frase("Pronto.")
+        curta = self.zona.sizeHint().height()
+        self.zona.definir_frase("erro " * 2000)
+        self.assertEqual(curta, self.zona.sizeHint().height())
+        self.assertEqual(curta, self.zona.minimumSizeHint().height())
+
+    def test_a_frase_longa_e_elidida_pelo_fim_e_guarda_o_comeco(self) -> None:
+        """Numa frase de erro o começo é o que a classifica -- é dele que sai a severidade."""
+        frase = "Não foi possível carregar o modelo de peças: " + "detalhe " * 60
+        self.zona.definir_frase(frase)
+        self.assertEqual(frase, self.zona.frase(), "a frase inteira se perdeu")
+        self.assertNotEqual(frase, self.zona.text(), "a frase longa não foi elidida")
+        # O que está na tela é um **prefixo** da frase mais a reticência: é isso que "guarda o
+        # começo" quer dizer, e é o que distingue `ElideRight` de `ElideMiddle` e `ElideLeft`.
+        self.assertTrue(
+            frase.startswith(self.zona.text().rstrip("…")),
+            f"a elisão não guardou o começo: {self.zona.text()!r}",
+        )
+        self.assertIn("Não foi poss", self.zona.text())
+        self.assertLessEqual(
+            self.zona.fontMetrics().horizontalAdvance(self.zona.text()), self.zona.width()
+        )
+
+    def test_a_frase_inteira_vai_para_a_dica_e_a_curta_nao_deixa_dica(self) -> None:
+        """Elidir sem a dica seria esconder a instrução em vez de encurtá-la; e uma dica que
+        repete o que já está na tela é ruído -- é o critério de `dica_em` para texto vazio."""
+        frase = "Não foi possível carregar o modelo: " + "detalhe " * 60
+        self.zona.definir_frase(frase)
+        self.assertEqual(frase, self.zona.toolTip())
+        self.zona.definir_frase("Pronto.")
+        self.assertEqual("Pronto.", self.zona.text())
+        self.assertEqual("", self.zona.toolTip())
+
+    def test_alargada_a_zona_mostra_o_que_passou_a_caber(self) -> None:
+        """A elisão é refeita no `resizeEvent`: ela é função da largura de agora, e não da de
+        quando a frase chegou."""
+        frase = "Não foi possível carregar o modelo de peças do disco."
+        self.zona.resize(120, 20)
+        self.app.processEvents()
+        self.zona.definir_frase(frase)
+        estreita = self.zona.text()
+        self.zona.resize(900, 20)
+        self.app.processEvents()
+        self.assertNotEqual(estreita, self.zona.text())
+        self.assertEqual(frase, self.zona.text())
+        self.assertEqual("", self.zona.toolTip(), "coube inteira e a dica ficou")
+
+    def test_o_rodape_devolve_a_frase_inteira_e_nao_o_que_coube(self) -> None:
+        """`mensagem()` é o que o roteiro headless do `CONTRIBUTING.md` lê: se ele lesse a tela,
+        passaria a afirmar a largura do rodapé em vez do que o programa disse."""
+        faixa = rodape.RodapeDaJanela()
+        self.addCleanup(descartar, faixa)
+        faixa.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        faixa.show()
+        faixa.resize(300, 30)
+        self.app.processEvents()
+        # Sem espaço no fim: `compor` apara a frase, e o que o rodapé guarda é a aparada.
+        frase = ("Não foi possível ler a página 21: " + "detalhe " * 60).strip()
+        faixa.mostrar(frase)
+        self.assertEqual(frase, faixa.mensagem())
+        self.assertNotEqual(frase, faixa._lbl_mensagem.text())
 
 
 if __name__ == "__main__":  # pragma: no cover

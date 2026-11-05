@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .games_cache import CachedPosition
-from .games_db import PositionHit
+from .games_db import GameRecord, PositionHit
 
 __all__ = [
     "ACHOU",
@@ -55,6 +55,7 @@ __all__ = [
     "SEM_PARTIDA",
     "Loja",
     "Resposta",
+    "como_pgn",
     "consultar",
 ]
 
@@ -132,3 +133,33 @@ def consultar(loja: Loja | None, placement: str, *, bases: Sequence[Path] = ()) 
     if guardada.count > quantas:
         frase += f"; a lista mostra as {quantas} guardadas"
     return Resposta(ACHOU, frase + ".", partidas=guardada.games, total=guardada.count)
+
+
+def _valor_de_header(valor: str) -> str:
+    r"""O valor de um header como o PGN o escreve: `"` e `\` viram sequência de escape.
+
+    Não é zelo -- a base tem eventos com aspas dentro (`ch-URS "A" final`), e um header que não
+    fecha faz o `chess.pgn` ler a partida seguinte como continuação desta.
+    """
+    return str(valor).replace("\\", "\\\\").replace('"', '\\"')
+
+
+def como_pgn(partida: GameRecord) -> str:
+    """A partida da base como texto PGN, pronta para `estudo.colar` (S-533).
+
+    **Por que reconstruir em vez de recortar os bytes.** `GameRecord` já leu os headers e o
+    movetext do arquivo, e o que a sala precisa é de um PGN -- não do trecho original: o recorte
+    exigiria guardar o byte final de cada partida, que é uma coluna a mais em dez milhões de
+    linhas para poupar esta montagem de dez linhas.
+
+    **O `[FEN]` volta com o `[SetUp]` ao lado**, e os dois juntos: `setup_fen` mora fora de
+    `headers` de propósito (ver `GameRecord`), e um `[FEN]` sem `[SetUp "1"]` é PGN que alguns
+    leitores ignoram -- e ignorá-lo faz a solução de um estudo partir da posição inicial, onde o
+    primeiro lance é ilegal e a partida vira uma linha vazia.
+    """
+    cabecalho = dict(partida.headers)
+    if partida.setup_fen:
+        cabecalho["SetUp"] = "1"
+        cabecalho["FEN"] = partida.setup_fen
+    linhas = [f'[{chave} "{_valor_de_header(valor)}"]' for chave, valor in cabecalho.items() if str(valor).strip()]
+    return "\n".join(linhas) + "\n\n" + partida.movetext.strip() + "\n"

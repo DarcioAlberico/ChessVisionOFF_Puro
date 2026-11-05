@@ -34,7 +34,7 @@ from typing import Any
 from urllib.parse import quote
 
 from .atomic_io import atomic_write_json, atomic_write_text
-from .config import DEFAULT_READING_ORDER, PROJECT_ROOT, ReadingOrder
+from .config import DATA_DIR, DEFAULT_READING_ORDER, ReadingOrder
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +54,9 @@ __all__ = [
     "write_human_extract",
 ]
 
-DEFAULT_GALLERY_DIR = PROJECT_ROOT / "data" / "gallery"
+DEFAULT_GALLERY_DIR = DATA_DIR / "gallery"
 
-DEFAULT_HUMAN_EXTRACT = PROJECT_ROOT / "data" / "gallery_human.jsonl"
+DEFAULT_HUMAN_EXTRACT = DATA_DIR / "gallery_human.jsonl"
 """O extrato do que **uma pessoa** digitou ou escolheu na galeria (S-115).
 
 `data/gallery/` fica fora do repositório por dois motivos que continuam válidos: o

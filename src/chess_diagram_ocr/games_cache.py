@@ -56,7 +56,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .config import PROJECT_ROOT
+from .config import DATA_DIR
 from .games_db import MAX_HITS_PER_POSITION, PositionHit, PositionIndex, as_databases
 
 logger = logging.getLogger(__name__)
@@ -74,12 +74,12 @@ __all__ = [
     "stored_summary",
 ]
 
-DEFAULT_STORE_PATH = PROJECT_ROOT / "data" / "games_positions.sqlite"
+DEFAULT_STORE_PATH = DATA_DIR / "games_positions.sqlite"
 """Onde o cache mora. Em `data/`, com o resto do que é derivado e reconstruível."""
 
 STORE_VERSION = 1
 
-DEFAULT_CACHE_PATH = PROJECT_ROOT / "data" / "games_positions.json"
+DEFAULT_CACHE_PATH = DATA_DIR / "games_positions.json"
 """O artefato anterior, **lido uma vez e aposentado** -- ver `_migra_json`.
 
 Ele não é um formato aceito: é um arquivo que existe no disco de quem já usou o programa, e

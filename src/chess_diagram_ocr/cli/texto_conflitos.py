@@ -22,15 +22,15 @@ from datetime import date
 from pathlib import Path
 
 from ..atomic_io import atomic_write_bytes, atomic_write_text
-from ..config import PROJECT_ROOT, caminho_para_relatorio
+from ..config import DATA_DIR, PROJECT_ROOT, caminho_para_relatorio
 from ..logging_setup import configure_logging
 from . import add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
 BASE_PADRAO = PROJECT_ROOT / "training_data"
-DECISOES = PROJECT_ROOT / "data" / "texto_conflitos.json"
-QUARENTENA = PROJECT_ROOT / "data" / "quarentena_texto"
+DECISOES = DATA_DIR / "texto_conflitos.json"
+QUARENTENA = DATA_DIR / "quarentena_texto"
 METRICAS = PROJECT_ROOT / "docs" / "metrics"
 
 

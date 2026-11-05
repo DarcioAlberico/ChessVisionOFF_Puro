@@ -45,7 +45,7 @@ medição, que aquele livro é uma grade lida em fileiras.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from .boxes import Caixa
@@ -895,6 +895,27 @@ class PaginaLida:
             rodape=LinhaLida.de_json(rodape, "rodape") if rodape else None,
             numero_impresso=int(numero) if numero is not None else None,
         )
+
+    def com_posicoes(self, posicoes: Sequence[str]) -> PaginaLida:
+        """A mesma página com o campo de peças de cada diagrama preenchido, por `indice`.
+
+        **Quem lê a posição é o OCR de diagramas do produto**, não o leitor de texto: este sabe
+        onde o diagrama está (`bbox`) e aquele sabe o que há nele. Os dois numeram pelo mesmo
+        detector (`indice` é a posição na lista que ele devolveu -- a chave da S-12), e é por ela
+        que as duas leituras se encontram. Um `""` em `posicoes` é "não lido" e não apaga o que o
+        bloco já tinha; um índice além da lista fica como está.
+
+        Devolve **a própria página** quando nada muda, para quem compara por identidade.
+        """
+
+        def com(bloco: Bloco) -> Bloco:
+            if not isinstance(bloco, BlocoDeDiagrama) or bloco.indice >= len(posicoes):
+                return bloco
+            nova = str(posicoes[bloco.indice] or "")
+            return replace(bloco, placement=nova) if nova and nova != bloco.placement else bloco
+
+        colunas = tuple(replace(c, blocos=tuple(com(b) for b in c.blocos)) for c in self.colunas)
+        return self if colunas == self.colunas else replace(self, colunas=colunas)
 
 
 def de_diagramas(

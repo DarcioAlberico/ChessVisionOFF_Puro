@@ -1,3 +1,4 @@
+import os
 import sys
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -201,6 +202,8 @@ BOARDS_PER_CHUNK = 64
 def _project_root() -> Path:
     """Onde ficam `data/`, `models/`, `PDF/` e `PGN/`.
 
+    `data/` e `pgn_database/` podem morar em outro lugar -- ver `DATA_DIR` e `PGN_DATABASE_DIR`.
+
     Num checkout, é a raiz do repositório: `src/chess_diagram_ocr/config.py` → dois níveis
     acima. **Num bundle do PyInstaller isso apontaria para dentro do pacote** (S-55), que é
     somente-leitura na prática e some a cada reinstalação -- e o `labels.csv` é trabalho
@@ -228,12 +231,49 @@ distinção importa: imagem de peça é dado do programa, `labels.csv` é dado d
 misturar os dois é o que faz reinstalar apagar trabalho.
 """
 
-DEFAULT_DATASET_CSV = PROJECT_ROOT / "data" / "labels.csv"
-DEFAULT_SAMPLES_DIR = PROJECT_ROOT / "data" / "samples"
+ENV_DATA_DIR = "CVOFF_DATA_DIR"
+ENV_PGN_DATABASE_DIR = "CVOFF_PGN_DATABASE_DIR"
+
+
+def _pasta_pedida(variavel: str, padrao: Path) -> Path:
+    """A pasta que a variável de ambiente pede, ou `padrao` quando ela não está posta.
+
+    **Lida no import, e não a cada chamada**, porque é no import que os caminhos derivados nascem
+    -- inclusive os que viram valor padrão de parâmetro: `open_store(path=DEFAULT_STORE_PATH)`
+    congela o caminho na definição da função, e trocar a constante do módulo depois não muda o
+    que ela abre. Quem quer outra pasta põe a variável antes de importar o pacote, que é o que
+    `tests/conftest.py` faz.
+    """
+    pedida = os.environ.get(variavel, "").strip()
+    return Path(pedida) if pedida else padrao
+
+
+DATA_DIR = _pasta_pedida(ENV_DATA_DIR, PROJECT_ROOT / "data")
+"""A pasta do que é **de quem usa** o programa: rótulos, caches, estado da janela, rascunhos.
+
+**Uma pasta só, e todo caminho em `data/` sai dela.** Eram vinte e cinco caminhos montados à mão
+em dezessete módulos -- dois deles relativos ao diretório de trabalho, em `text/conflitos.py` --,
+e não havia como apontar a pasta para outro lugar sem ir atrás de cada um. Quem precisava era a
+suíte: ela abria o cache de posições **de quem a roda** (`data/games_positions.sqlite`), e
+`open_store` esvazia a tabela quando a lista de bases não bate com a gravada (S-84) -- uma
+varredura de ~56 minutos. `tests/test_disciplina_da_suite.py` cobra que nenhum caminho novo
+volte a ser montado por fora daqui.
+
+`CVOFF_DATA_DIR` manda no checkout e no `.exe`, como `CVOFF_LOG_DIR` manda no log."""
+
+PGN_DATABASE_DIR = _pasta_pedida(ENV_PGN_DATABASE_DIR, PROJECT_ROOT / "pgn_database")
+"""A pasta das bases de partidas (`*.pgn`). `CVOFF_PGN_DATABASE_DIR` manda.
+
+Desviável pela mesma razão de `DATA_DIR`, e com a mesma consequência: a lista de bases entra no
+fingerprint do cache (`games_cache.database_fingerprint`), então quem enxerga outras bases abre o
+mesmo cache como se fosse de outro acervo."""
+
+DEFAULT_DATASET_CSV = DATA_DIR / "labels.csv"
+DEFAULT_SAMPLES_DIR = DATA_DIR / "samples"
 DEFAULT_MODEL_PATH = PROJECT_ROOT / "models" / "piece_classifier.pt"
 DEFAULT_PDF_DIR = PROJECT_ROOT / "PDF"
 
-DEFAULT_SPLITS_PATH = PROJECT_ROOT / "data" / "splits.csv"
+DEFAULT_SPLITS_PATH = DATA_DIR / "splits.csv"
 """A partição, aqui e em nenhum outro lugar (S-383).
 
 Ela estava declarada **seis vezes** dentro de `cli/`, sob dois nomes -- `DEFAULT_SPLITS_PATH`

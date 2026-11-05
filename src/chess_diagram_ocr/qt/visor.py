@@ -28,7 +28,7 @@ from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.imagens import qimage_de_rgb, reduzir_rgb
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.ui import tokens
-from chess_diagram_ocr.ui.leitura_do_pdf import CLICK_SLOP_PX, MIN_SELECTION_PX
+from chess_diagram_ocr.ui.leitura_do_pdf import CLICK_SLOP_PX, MIN_SELECTION_PX, SELECTION_HALO_PX
 from chess_diagram_ocr.ui.page_overlay import (
     A_FAZER,
     CORRIGIDO,
@@ -58,24 +58,35 @@ from chess_diagram_ocr.ui.viewport import (
 
 logger = logging.getLogger(__name__)
 
-COR_POR_ESTADO: dict[str, str] = {
-    A_FAZER: tokens.RESERVA[tokens.A_FAZER],
-    LIDO: tokens.RESERVA[tokens.LIDO],
-    DUVIDOSO: tokens.RESERVA[tokens.ATENCAO],
-    CORRIGIDO: tokens.RESERVA[tokens.CORRIGIDO],
-    PRONTO: tokens.RESERVA[tokens.PRONTO],
-    DISPENSADO: tokens.RESERVA[tokens.DISPENSADO],
+PAPEL_DO_ESTADO: dict[str, str] = {
+    A_FAZER: tokens.A_FAZER,
+    LIDO: tokens.LIDO,
+    DUVIDOSO: tokens.ATENCAO,
+    CORRIGIDO: tokens.CORRIGIDO,
+    PRONTO: tokens.PRONTO,
+    DISPENSADO: tokens.DISPENSADO,
 }
-"""A mesma cor por estado que `pdf_panel.box_color` escolhe.
+"""Estado da caixa -> papel de cor. O estado e o papel têm o **mesmo nome** em `page_overlay` e em
+`tokens`, então isto é a resolução do papel, e não uma segunda escolha de matiz -- salvo o
+`DUVIDOSO` do passo 13 da OCR_UI, que pinta com `ATENCAO`.
 
-Não é cópia da decisão: o estado e o papel de cor têm o **mesmo nome** em `page_overlay` e em
-`tokens`, então isto é a resolução do papel, e não uma segunda escolha de matiz. Se a paleta
-mudar em `tokens.RESERVA`, as duas telas mudam juntas."""
+**A tinta sai de `tema.cor_atual`, e no momento de pintar.** Saía de `tokens.RESERVA[...]` -- o
+hexadecimal de fábrica, que não acompanha a troca de pele -- e era o mesmo achado da S-510 sobre
+o glifo de reserva do tabuleiro, numa terceira tela. `RESERVA` é a paleta sem pele; quem responde
+é a pele em uso, e ela pode ter mudado desde a montagem. É a triagem da S-511."""
 
-HALO_DA_SELECAO = 4
-"""Folga da segunda borda do diagrama selecionado, **para fora** da caixa -- igual à do
-produto: uma borda por dentro cairia sobre a primeira fila de casas, que é o que a caixa
-existe para deixar conferir."""
+COR_POR_ESTADO = PAPEL_DO_ESTADO
+"""O nome antigo da tabela, mantido como apelido: é por ele que `tests/test_page_overlay` cobra
+que os seis estados têm cor no visor. Hoje ela devolve o **papel**, e a cor é `cor_do_estado`."""
+
+
+def cor_do_estado(estado: str) -> str:
+    """A cor da caixa naquele estado, contra a pele em uso."""
+    return tema.cor_atual(PAPEL_DO_ESTADO[estado])
+
+
+# A folga da segunda borda é `leitura_do_pdf.SELECTION_HALO_PX`: o número já existia, com o
+# motivo escrito, e este widget o reescrevia como `HALO_DA_SELECAO = 4` (S-511).
 
 ALTURA_DA_ETIQUETA = 18
 LARGURA_DA_ETIQUETA = 22
@@ -184,6 +195,7 @@ class _Folha(QWidget):
                 pintor.drawPixmap(self.rect(), pagina)
             self._desenhar_contorno(pintor)
             self._desenhar_caixas(pintor)
+            self._desenhar_destaque(pintor)
             self._desenhar_selecao(pintor)
         pintor.end()
 
@@ -201,6 +213,17 @@ class _Folha(QWidget):
         pintor.setPen(caneta)
         pintor.setBrush(Qt.BrushStyle.NoBrush)
         pintor.drawRect(self.rect().adjusted(0, 0, -1, -1))
+
+    def _desenhar_destaque(self, pintor: QPainter) -> None:
+        """O bloco de texto sob o cursor do editor, com a mesa armada (S-642)."""
+        retangulo = self._visor.retangulo_do_destaque()
+        if retangulo is None:
+            return
+        caneta = QPen(QColor(tema.cor_atual(tokens.FOCO)))
+        caneta.setWidth(2)
+        pintor.setPen(caneta)
+        pintor.setBrush(Qt.BrushStyle.NoBrush)
+        pintor.drawRect(retangulo.adjusted(-2, -2, 2, 2))
 
     def _desenhar_selecao(self, pintor: QPainter) -> None:
         """O retângulo tracejado do arrasto, por cima de tudo.
@@ -233,7 +256,7 @@ class _Folha(QWidget):
         self, pintor: QPainter, caixa: DiagramBox, retangulo: tuple[float, float, float, float], fonte: QFont
     ) -> None:
         x0, y0, x1, y1 = (int(round(valor)) for valor in retangulo)
-        cor = QColor(COR_POR_ESTADO[estado_da_caixa(caixa)])
+        cor = QColor(cor_do_estado(estado_da_caixa(caixa)))
         traco = traco_da_caixa(caixa)
 
         caneta = QPen(cor)
@@ -252,10 +275,10 @@ class _Folha(QWidget):
             pintor.setPen(halo)
             pintor.drawRect(
                 QRect(
-                    x0 - HALO_DA_SELECAO,
-                    y0 - HALO_DA_SELECAO,
-                    (x1 - x0) + 2 * HALO_DA_SELECAO,
-                    (y1 - y0) + 2 * HALO_DA_SELECAO,
+                    x0 - SELECTION_HALO_PX,
+                    y0 - SELECTION_HALO_PX,
+                    (x1 - x0) + 2 * SELECTION_HALO_PX,
+                    (y1 - y0) + 2 * SELECTION_HALO_PX,
                 )
             )
 
@@ -353,6 +376,10 @@ class VisorDePagina(QScrollArea):
     parte que depende do zoom."""
 
     selecao_pequena = pyqtSignal()
+
+    ponto_clicado = pyqtSignal(float, float)
+    """O clique na folha, em **pontos** da página (o `bbox` do texto lido está em pontos): é o que a
+    aba Texto usa para pôr o cursor no bloco clicado, com a mesa armada (S-642)."""
     """O arrasto foi menor que `MIN_SELECTION_PX` **na folha** (S-330)."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -381,6 +408,8 @@ class VisorDePagina(QScrollArea):
         self._reescalonamento: Tarefa | None = None
         self._reescalar_de_novo = False
         self._dpi = 220
+        self._destaque: tuple[float, ...] | None = None
+        """O bloco de texto contornado, em pontos da página (S-642)."""
         self._caixas: PageBoxes | None = None
         self._selecionada: int | None = None
         self._mostrar_caixas = True
@@ -529,6 +558,7 @@ class VisorDePagina(QScrollArea):
         self._zoom_da_escalada = folha.zoom
         self._caixas = None
         self._selecionada = None
+        self._destaque = None
         self._dpi = int(dpi)
         self._ajustar_folha()
         # A página nova pode ter outro tamanho -- capa, mapa dobrado, folha de errata -- e o
@@ -538,6 +568,28 @@ class VisorDePagina(QScrollArea):
     def pagina_rgb(self) -> np.ndarray | None:
         """A página como o pipeline a devolveu. É ela que vai ao OCR, e não o `QPixmap`."""
         return self._pagina_rgb
+
+    def definir_destaque(self, bbox: tuple[float, float, float, float] | None) -> None:
+        """Contorna na folha o bloco de texto sob o cursor do editor (S-642), em pontos da página.
+
+        Fino e na cor do foco, e não uma caixa de diagrama: é onde o olho está, e não um estado da
+        página. A folha rola até ele quando ele sai da vista. `None` apaga.
+        """
+        self._destaque = None if bbox is None else tuple(float(v) for v in bbox)
+        retangulo = self.retangulo_do_destaque()
+        if retangulo is not None:
+            centro = retangulo.center()
+            self.ensureVisible(centro.x(), centro.y(), retangulo.width() // 2 + 8, retangulo.height() // 2 + 8)
+        self._folha.update()
+
+    def retangulo_do_destaque(self) -> QRect | None:
+        """O destaque em pixels da folha desenhada: pontos -> pixel pelo DPI da página, vezes o zoom."""
+        destaque = self._destaque
+        if destaque is None or self._pagina_rgb is None:
+            return None
+        fator = self._dpi / 72.0 * self._zoom
+        x0, y0, x1, y1 = (int(round(v * fator)) for v in destaque)
+        return QRect(x0, y0, max(1, x1 - x0), max(1, y1 - y0))
 
     def definir_caixas(self, caixas: PageBoxes | None) -> None:
         self._caixas = caixas
@@ -690,6 +742,9 @@ class VisorDePagina(QScrollArea):
         detector às vezes acha a moldura do exercício **e** o tabuleiro dentro dela, e devolver
         a maior abriria a moldura, que é o candidato que o modelo lê pior.
         """
+        if self._pagina_rgb is not None and self._zoom > 0:
+            fator = 72.0 / (self._dpi * self._zoom)
+            self.ponto_clicado.emit(x * fator, y * fator)
         if self._caixas is None or not self._mostrar_caixas:
             return
         indice = self._caixas.index_at(x, y, self._zoom)

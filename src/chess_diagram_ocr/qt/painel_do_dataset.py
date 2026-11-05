@@ -33,10 +33,13 @@ from __future__ import annotations
 
 import logging
 import threading
+import weakref
 from collections.abc import Callable, Iterator
 from dataclasses import fields
 from pathlib import Path
+from typing import Any
 
+from PyQt6 import sip
 from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QShowEvent
 from PyQt6.QtWidgets import (
@@ -55,6 +58,7 @@ from PyQt6.QtWidgets import (
 )
 
 from chess_diagram_ocr.audit import find_duplicate_groups
+from chess_diagram_ocr.config import DEFAULT_MODEL_PATH
 from chess_diagram_ocr.dataset_browser import (
     DatasetRow,
     delete_rows,
@@ -68,6 +72,7 @@ from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
+from chess_diagram_ocr.qt.importador_de_imagens import JanelaDeImportacao
 from chess_diagram_ocr.qt.tabela import TabelaQt
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.qt.vazio import EstadoVazio
@@ -142,7 +147,7 @@ class JanelaDeEstatisticas(QDialog):
 
 def _linhas_em_tuplas(
     csv_path: Path, samples_dir: Path, *, splits_path: Path | None, duplicate_groups: list[list[str]]
-) -> list[tuple[object, ...]]:
+) -> list[tuple[Any, ...]]:
     """`load_rows` no processo de trabalho, devolvendo tuplas. Ver `_reler_agora`."""
     linhas = load_rows(csv_path, samples_dir, splits_path=splits_path, duplicate_groups=duplicate_groups)
     return [tuple(getattr(linha, campo.name) for campo in fields(DatasetRow)) for linha in linhas]
@@ -209,6 +214,9 @@ class PainelDoDataset(QWidget):
         segunda chegaria depois da primeira com as mesmas linhas -- e reescreveria a seleção que
         a pessoa já tinha refeito."""
 
+        self.importador: JanelaDeImportacao | None = None
+        """A janela de importação de imagens, enquanto aberta. Uma só: duas mexeriam no mesmo lote."""
+
         self._stale = True
         """Alguém gravou no `labels.csv` desde a última leitura desta aba (S-116).
 
@@ -237,6 +245,12 @@ class PainelDoDataset(QWidget):
             "mesmo tempo leem o disco duas vezes para dar a mesma resposta.",
         )
         self._botao(barra, "Estatísticas", self.mostrar_estatisticas, estilos.NEUTRO)
+        self.btn_importar = self._botao(barra, "Importar imagens…", self.importar_imagens, estilos.NEUTRO)
+        dica_em(
+            self.btn_importar,
+            "Traz diagramas de fora do programa para o dataset: o relatório do ChessMeridaOCR "
+            "(imagens com FEN) ou uma pasta de imagens para conferir uma a uma.",
+        )
         fora.addWidget(barra)
 
         fora.addWidget(self._filtros())
@@ -443,8 +457,18 @@ class PainelDoDataset(QWidget):
             return load_rows(csv_path, samples_dir, splits_path=splits_path, duplicate_groups=grupos)
 
         # **Sem pai**, por `qt/trabalho.manter_viva`: ver lá o modo de falha que isso evita.
+        # A tarefa sobrevive ao painel, e o slot pergunta se ele ainda existe: uma lambda sobre
+        # `self` tocaria o embrulho de um widget já apagado, e exceção em slot é `qFatal` no PyQt6
+        # (o mesmo defeito de `qt/marcas.LeitorDeMarcas.pedir`).
         tarefa = manter_viva(Tarefa(ler, nome="dataset"))
-        tarefa.pronto.connect(lambda linhas: self._dataset_chegou(linhas, selecionadas))
+        painel = weakref.ref(self)
+
+        def chegou(linhas: object) -> None:
+            vivo = painel()
+            if vivo is not None and not sip.isdeleted(vivo):
+                vivo._dataset_chegou(linhas, selecionadas)
+
+        tarefa.pronto.connect(chegou)
         tarefa.falhou.connect(self._dataset_falhou)
         self._lendo = tarefa
         self.setEnabled(False)
@@ -551,7 +575,8 @@ class PainelDoDataset(QWidget):
 
     def _mostrar_espera(self, esperando: bool) -> None:
         """A frase sobre a tabela enquanto a leitura corre. Ver `_reler_agora`."""
-        self.vazio.setGeometry(self.tabela.viewport().rect())
+        vista = self.tabela.viewport()
+        self.vazio.setGeometry(vista.rect() if vista is not None else self.tabela.rect())
         self.vazio.setVisible(esperando)
 
     def _dataset_falhou(self, mensagem: str, _excecao: object) -> None:
@@ -573,7 +598,7 @@ class PainelDoDataset(QWidget):
             return
         self._mostrar_espera(False)
         self.setEnabled(True)
-        self.rows = list(linhas or [])
+        self.rows = list(linhas) if isinstance(linhas, list) else []
 
         livros = sorted({row.source_pdf for row in self.rows if row.source_pdf})
         escolhido = self.combo_livro.currentText()
@@ -758,6 +783,37 @@ class PainelDoDataset(QWidget):
         janela = JanelaDeEstatisticas(texto_de_estatisticas(self.rows), self)
         janela.show()
         return janela
+
+    def importar_imagens(self) -> JanelaDeImportacao:
+        """Abre (ou traz para a frente) a janela que importa imagens de fora para o dataset.
+
+        Não modal: a conferência de uma pasta leva horas, e a janela principal continua usável.
+        O dataset é relido quando ela fecha -- a cada `Ctrl+S` lá seria reler 5 mil linhas por
+        amostra, o defeito que a S-116 tirou do caminho.
+        """
+        if self.importador is None:
+            csv_path, _amostras, _splits = self._caminhos()
+            self.importador = JanelaDeImportacao(
+                self,
+                caminhos=self._caminhos,
+                modelo=lambda: DEFAULT_MODEL_PATH,
+                diretorio_dos_lotes=Path(csv_path).parent / "importacao",
+                busy=self._busy_registry,
+            )
+            self.importador.amostras_gravadas.connect(self._marcar_desatualizado)
+            self.importador.finished.connect(self._importador_fechou)
+        self.importador.show()
+        self.importador.raise_()
+        self.importador.activateWindow()
+        return self.importador
+
+    def _marcar_desatualizado(self, _quantas: int) -> None:
+        self._stale = True
+
+    def _importador_fechou(self) -> None:
+        self.importador = None
+        if self._stale:
+            self.reload()
 
     # ---------------------------------------------------------------------------- duplicatas
 

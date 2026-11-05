@@ -43,12 +43,12 @@ import numpy as np
 from .atomic_io import atomic_write_json, write_image
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
+    DATA_DIR,
     DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
     DEFAULT_READING_ORDER,
     PIECE_CLASSES,
-    PROJECT_ROOT,
     OrientationMode,
     ReadingOrder,
 )
@@ -61,8 +61,8 @@ logger = logging.getLogger(__name__)
 
 QUEUE_VERSION = 1
 
-DEFAULT_QUEUE_PATH = PROJECT_ROOT / "data" / "review_queue.json"
-DEFAULT_CACHE_DIR = PROJECT_ROOT / "data" / "review_cache"
+DEFAULT_QUEUE_PATH = DATA_DIR / "review_queue.json"
+DEFAULT_CACHE_DIR = DATA_DIR / "review_cache"
 
 ReviewStatus = Literal["pending", "done", "skipped"]
 

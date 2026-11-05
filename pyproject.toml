@@ -127,6 +127,9 @@ cvoff-texto-transcrever = "chess_diagram_ocr.cli.texto_transcrever:main"
 # PDF. Independente da nossa medicao -- mas em parte do acervo a camada e de OCR, e nao da
 # diagramacao, e ali ela nao arbitra grade de exercicio (S-216).
 cvoff-texto-ordem = "chess_diagram_ocr.cli.texto_ordem:main"
+# A estrutura de colunas contra paginas anotadas a mao (S-582): a regua acima e cega onde a
+# camada e zigue-zague (as solucoes do Yusupov), e o portao daqui e por pagina, nao por media.
+cvoff-texto-colunas = "chess_diagram_ocr.cli.texto_colunas:main"
 # O treino do classificador de caracteres (S-204): varre training_data/, parte por grupo de
 # copia exata, treina, calibra na validacao e grava o par pinado que text/modelo.py exige.
 # O inventario da base de caractere (S-200): varre training_data/, grava o manifesto e o
@@ -183,6 +186,13 @@ cvoff-texto-semelhanca = "chess_diagram_ocr.cli.texto_semelhanca:main"
 # S-207: quantos diagramas deixam de sair `default` com o classificador de casa lendo a legenda.
 # Mede os dois lados na mesma corrida -- so a camada de texto, e a camada mais o glifo.
 cvoff-texto-lado = "chess_diagram_ocr.cli.texto_lado:main"
+cvoff-texto-estilo-motor = "chess_diagram_ocr.cli.texto_estilo_motor:main"
+# S-624: o portao do diagrama a esquerda com o texto ao lado -- o editor continua dizendo a verdade?
+cvoff-texto-flutuante = "chess_diagram_ocr.cli.texto_flutuante:main"
+cvoff-livro-com-pgn = "chess_diagram_ocr.cli.livro_com_pgn:main"
+# S-661 a S-663: o conjunto rotulado do estilo da palavra, e o classificador com o portao dele.
+cvoff-texto-estilo-conjunto = "chess_diagram_ocr.cli.texto_estilo_conjunto:main"
+cvoff-texto-estilo-classificador = "chess_diagram_ocr.cli.texto_estilo_classificador:main"
 
 # S-210: o livro com a camada de texto invisivel do que o motor leu. A pagina nao muda um pixel --
 # `render_mode=3` --, e a camada e por LINHA para o retangulo da busca cobrir a palavra.

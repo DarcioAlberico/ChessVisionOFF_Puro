@@ -49,13 +49,13 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_text
-from ..config import caminho_para_relatorio
+from ..config import DATA_DIR, caminho_para_relatorio
 from .classes import NomeDePastaInvalido, char_to_folder, folder_to_char
 
 logger = logging.getLogger(__name__)
 
-DECISOES_PADRAO = Path("data") / "texto_conflitos.json"
-QUARENTENA_PADRAO = Path("data") / "quarentena_texto"
+DECISOES_PADRAO = DATA_DIR / "texto_conflitos.json"
+QUARENTENA_PADRAO = DATA_DIR / "quarentena_texto"
 TAREFAS_PADRAO = 16
 
 INDECIDIVEL = "indecidivel"

@@ -13,9 +13,17 @@ alguém lembrava. Aqui elas passam a falhar.
 from __future__ import annotations
 
 import ast
+import inspect
+import io
+import shutil
 import subprocess
+import textwrap
+import tokenize
 import unittest
 from pathlib import Path
+
+from ambiente_de_teste import pasta_temporaria
+from subprocesso import rodar_python
 
 RAIZ = Path(__file__).resolve().parents[1]
 TESTES = Path(__file__).resolve().parent
@@ -64,11 +72,15 @@ class UmaRaizSoTests(unittest.TestCase):
 
 
 class NadaVazaDoTesteTests(unittest.TestCase):
-    """Pasta temporária e widget morrem com o teste que os criou (S-415).
+    """Pasta temporária, widget e arquivo morrem com o teste que os criou (S-415).
 
     Cada rodada abandonava **mais de cem** diretórios em `%TEMP%` e pendurava 99 `TextoPanel` na
     mesma raiz, nenhum destruído. Nada disso reprova um teste: apodrece a máquina de quem roda a
     suíte, e some do relatório porque tudo está verde.
+
+    Os dois primeiros a rodada ao menos leva embora quando acaba. O terceiro não: um arquivo
+    gravado em `data/` fica na árvore de trabalho depois que o pytest sai, e a última guarda
+    daqui é sobre ele.
     """
 
     PAIS_QUE_SAO_A_RAIZ = frozenset({"_RAIZ", "self.root", "cls.root", "raiz()", "raiz_do_processo()"})
@@ -108,6 +120,26 @@ class NadaVazaDoTesteTests(unittest.TestCase):
             "Painel pendurado na raiz compartilhada. Use `quadro(self, raiz)` de "
             "`tests/ambiente_de_teste.py`: destruir quadro é seguro, destruir raiz é que não é.",
         )
+
+    def test_o_conftest_continua_vigiando_o_data_de_verdade(self) -> None:
+        """A terceira coisa que vaza de um teste é um arquivo, e essa não morre com a rodada.
+
+        **O caso, de 2026-08-31:** um teste novo chamou `save_index(livro)` e `GalleryModel.save()`
+        sem dizer onde gravar, e os dois resolvem `data/gallery/` na definição do argumento -- a
+        rodada gravou dois arquivos na árvore do usuário e terminou verde. Uma varredura daqui
+        pegaria a primeira chamada e não a segunda: no `GalleryModel` quem grava é um campo posto
+        na construção, a suíte constrói vinte modelos sem ele que nunca gravam, e o teste que
+        grava direito põe o campo por atribuição depois. Não há forma sintática que separe os
+        três, e por isso a guarda é do `conftest` e olha o efeito.
+
+        Esta linha é o que impede que ela seja removida sem que ninguém note. `PROJECT_ROOT` está
+        cobrado junto de propósito: a guarda tem de vigiar a pasta que o **código** resolve, e não
+        a que fica sob `RAIZ`. Num worktree as duas coincidem, e é aí que trocar uma pela outra
+        passa despercebido -- a S-218 já foi vácua exatamente assim.
+        """
+        conftest = (TESTES / "conftest.py").read_text(encoding="utf-8")
+        self.assertIn("nada_novo_no_data_de_verdade", conftest)
+        self.assertIn("PROJECT_ROOT", conftest, "a guarda tem de vigiar a pasta que o código resolve")
 
 
 class NenhumaCaixaDeVerdadeTests(unittest.TestCase):
@@ -212,6 +244,7 @@ class PuloQueNinguemContaTests(unittest.TestCase):
         "assets/lexico/nomes.txt.gz": "idem",
         "docs/metrics/texto_pagina.json": "o CER de página que o README publica (S-405)",
         "packaging/cvoff.spec": "o `.spec` que o `ruff` linta desde a S-391",
+        "assets/texto_prosa/ouro.json": "o manifesto do ouro da régua da prosa, que os portões abrem (S-702)",
     }
     """O que a suíte lê **e** o repositório versiona. Nenhuma guarda que dependa deles pode pular."""
 
@@ -248,3 +281,169 @@ class PuloQueNinguemContaTests(unittest.TestCase):
         pyproject = (RAIZ / "pyproject.toml").read_text(encoding="utf-8")
         self.assertIn("addopts", pyproject, "o `pyproject` perdeu a configuração do pytest")
         self.assertIn('"-ra"', pyproject, "sem `-ra` o motivo de cada pulo não é impresso")
+
+
+# --------------------------------------------------------- o que a suíte estraga fora dela
+
+FONTES = RAIZ / "src" / "chess_diagram_ocr"
+
+PASTAS_DE_QUEM_USA = ("data", "pgn_database")
+"""As duas pastas que `config.DATA_DIR` e `config.PGN_DATABASE_DIR` decidem, e a suíte desvia."""
+
+_FICHAS_DE_LEIAUTE = frozenset({tokenize.NL, tokenize.NEWLINE, tokenize.COMMENT, tokenize.INDENT, tokenize.DEDENT})
+
+
+def caminhos_montados_a_mao(fonte: str) -> list[int]:
+    """Linhas onde `PROJECT_ROOT / "data"` ou `Path("data")` montam um caminho por fora do `config`.
+
+    Por `tokenize`, e não por regex nem `ast`: um docstring que *conta* o caminho antigo é uma ficha
+    de texto só e não acusa, e uma quebra de linha no meio da expressão não esconde nada.
+    """
+    fichas = [f for f in tokenize.generate_tokens(io.StringIO(fonte).readline) if f.type not in _FICHAS_DE_LEIAUTE]
+    linhas = []
+    for dono, operador, ficha in zip(fichas, fichas[1:], fichas[2:], strict=False):
+        if ficha.type != tokenize.STRING or (dono.string, operador.string) not in (("PROJECT_ROOT", "/"), ("Path", "(")):
+            continue
+        try:
+            valor = ast.literal_eval(ficha.string)
+        except (ValueError, SyntaxError):
+            continue
+        if isinstance(valor, str) and valor.replace("\\", "/").split("/")[0] in PASTAS_DE_QUEM_USA:
+            linhas.append(ficha.start[0])
+    return linhas
+
+
+LINHA_DO_DESVIO = "os.environ.update({variavel: str(pasta) for variavel, pasta in DESVIOS.items()})\n"
+"""A linha do `conftest` que a sabotagem tira. Se ela mudar de forma, a sabotagem muda junto."""
+
+TESTE_QUE_ABRE_O_CACHE = '''
+from chess_diagram_ocr import games_cache
+
+
+def test_abre_o_cache_padrao():
+    """O que a Galeria faz ao abrir um livro numa pasta sem bases: o cache padrao, lista vazia."""
+    games_cache.open_store(database=[]).close()
+'''
+
+
+class DadosDeQuemRodaTests(unittest.TestCase):
+    """O programa, rodado pela suíte, não lê nem grava o `data/` e o `pgn_database/` de quem a roda.
+
+    **O caso medido (2026-09-24).** A janela abre o cache de posições padrão com as bases achadas em
+    `pgn_database/`, e `open_store` **esvazia a tabela** quando a lista de bases muda (S-84). Rodada
+    no checkout do dono, uma corrida de `test_qt_janela.py` e vizinhos regravou o
+    `data/games_positions.sqlite` dele, de 10,9 MB; numa réplica daquele `data/`, a suíte inteira o
+    regravou 91 vezes, em 88 testes. Nenhuma corrida o esvaziou -- a lista de bases batia --, mas
+    bastava um teste com outra lista para jogar fora ~56 minutos de varredura.
+
+    O desvio mora no `conftest` (`DESVIOS`), e a guarda também (`dados_de_quem_roda_ficam_onde_estao`).
+    O que está aqui é o que impede os dois de apodrecerem calados: o pacote tem de ter nascido
+    desviado, nenhum caminho novo pode ser montado por fora do `config`, e a guarda tem de ser vista
+    reprovando quando o desvio sai.
+    """
+
+    def test_o_desvio_chegou_ao_pacote(self) -> None:
+        """O `config` foi importado **depois** do desvio, e os padrões congelados saíram dele.
+
+        Um plugin que importasse o pacote antes do `conftest` faria os caminhos nascerem no `data/`
+        de verdade, e é aqui que isso aparece -- antes de um teste de janela gravar no cache.
+        """
+        from conftest import DESVIOS
+
+        from chess_diagram_ocr import config, games_cache, games_db
+        from chess_diagram_ocr.ui import escolha_de_bases
+
+        self.assertEqual(config.DATA_DIR, DESVIOS[config.ENV_DATA_DIR])
+        self.assertEqual(config.PGN_DATABASE_DIR, DESVIOS[config.ENV_PGN_DATABASE_DIR])
+        self.assertEqual(games_db.DEFAULT_DATABASE_DIR, config.PGN_DATABASE_DIR)
+        # Os padrões que as funções congelaram na definição: é com eles que a janela abre o cache.
+        cache = config.DATA_DIR / "games_positions.sqlite"
+        self.assertEqual(inspect.signature(games_cache.open_store).parameters["path"].default, cache)
+        self.assertEqual(inspect.signature(games_cache.stored_summary).parameters["path"].default, cache)
+        self.assertEqual(inspect.signature(escolha_de_bases.store_path_for).parameters["default_path"].default, cache)
+
+    def test_nenhum_caminho_de_dados_e_montado_por_fora_do_config(self) -> None:
+        """Todo caminho em `data/` e `pgn_database/` sai de `config.DATA_DIR` ou `config.PGN_DATABASE_DIR`.
+
+        Eram vinte e seis montados à mão, e cada um seria um furo no desvio: um módulo novo que
+        escrevesse `PROJECT_ROOT / "data" / ...` voltaria a gravar no `data/` de quem roda a suíte.
+        O `config.py` fica de fora porque é ele quem decide.
+        """
+        soltos = [
+            f"{caminho.relative_to(FONTES).as_posix()}:{linha}"
+            for caminho in sorted(FONTES.rglob("*.py"))
+            if caminho != FONTES / "config.py"
+            for linha in caminhos_montados_a_mao(caminho.read_text(encoding="utf-8"))
+        ]
+        self.assertEqual(
+            [],
+            soltos,
+            "Caminho em `data/` ou `pgn_database/` montado à mão: use `config.DATA_DIR` ou "
+            "`config.PGN_DATABASE_DIR`, que são o que a suíte desvia (tests/conftest.py).",
+        )
+
+    def test_a_varredura_acha_o_caminho_montado_a_mao(self) -> None:
+        """A varredura acima só vale se acha o que procura: as formas que existiam, e não o docstring."""
+        fonte = textwrap.dedent(
+            '''
+            DEFAULT_STORE_PATH = PROJECT_ROOT / "data" / "games_positions.sqlite"
+            DECISOES_PADRAO = Path("data") / "texto_conflitos.json"
+            DEFAULT_DATABASE_DIR = config.PROJECT_ROOT / "pgn_database"
+            """Era `PROJECT_ROOT / "data" / "labels.csv"` antes da S-383."""
+            DEFAULT_MODEL_PATH = PROJECT_ROOT / "models" / "piece_classifier.pt"
+            DEFAULT_SPLITS_PATH = DATA_DIR / "splits.csv"
+            '''
+        )
+        self.assertEqual([2, 3, 4], caminhos_montados_a_mao(fonte))
+
+    def test_a_guarda_reprova_quando_o_desvio_sai(self) -> None:
+        """**A prova de vida da guarda**: sem o desvio, o teste que abre o cache padrão reprova.
+
+        Um portão novo sem sabotagem é uma promessa (`tests/test_busy.py`). A sabotagem roda numa
+        **cópia** da árvore -- `src/` e o `conftest` --, porque o `data/` de uma cópia é o único
+        "dado de verdade" que se pode sujar: o `PROJECT_ROOT` sai do lugar do `config.py` importado.
+        A cópia perde só a linha do desvio, e o filho roda o `pytest` dela sem as variáveis que este
+        processo herdou do `conftest`.
+
+        O corpo do teste do filho tem de **passar** e a corrida, reprovar: é isso que diz que quem
+        reprovou foi a guarda, e não um filho que nem chegou a importar o pacote.
+        """
+        from conftest import DESVIOS
+
+        conftest = (TESTES / "conftest.py").read_text(encoding="utf-8")
+        self.assertEqual(1, conftest.count(LINHA_DO_DESVIO), "A linha do desvio mudou de forma: ajuste a sabotagem.")
+
+        copia = pasta_temporaria(self, prefixo="cvoff-sabotagem-")
+        shutil.copytree(FONTES, copia / "src" / "chess_diagram_ocr", ignore=shutil.ignore_patterns("__pycache__"))
+        (copia / "tests").mkdir()
+        sabotado = conftest.replace(LINHA_DO_DESVIO, "pass  # sabotagem: o desvio saiu\n")
+        (copia / "tests" / "conftest.py").write_text(sabotado, encoding="utf-8", newline="\n")
+        (copia / "tests" / "test_abre_o_cache.py").write_text(TESTE_QUE_ABRE_O_CACHE, encoding="utf-8", newline="\n")
+        # Sem um arquivo de configuração na cópia, o pytest do filho subiria procurando um até a
+        # raiz do disco -- e o `addopts` de quem ele achasse mudaria a corrida.
+        (copia / "pytest.ini").write_text("[pytest]\n", encoding="utf-8", newline="\n")
+
+        variaveis, fontes_da_copia, raiz_da_copia = sorted(DESVIOS), str(copia / "src"), str(copia)
+        filho = rodar_python(
+            textwrap.dedent(
+                f"""
+                import os, sys
+                for variavel in {variaveis!r}:
+                    os.environ.pop(variavel, None)
+                sys.path.insert(0, {fontes_da_copia!r})
+                os.chdir({raiz_da_copia!r})
+                import pytest
+                sys.exit(pytest.main(["-q", "-p", "no:cacheprovider", "tests"]))
+                """
+            ),
+            check=False,
+        )
+        saida = filho.stdout + filho.stderr
+        self.assertNotEqual(0, filho.returncode, saida)
+        self.assertIn("1 passed", saida)
+        self.assertIn("mexeu nos dados de quem roda a suíte", saida)
+        self.assertIn("games_positions.sqlite (criado)", saida)
+        self.assertTrue(
+            (copia / "data" / "games_positions.sqlite").exists(),
+            "A sabotagem não gravou no data/ da cópia: a prova não provou nada.",
+        )

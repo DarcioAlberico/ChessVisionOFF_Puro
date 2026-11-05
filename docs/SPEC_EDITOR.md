@@ -1,4 +1,4 @@
-# Especificação do editor de texto — Fases 36 a 42 e 51 (S-235 a S-267, S-291 a S-293)
+# Especificação do editor de texto — Fases 36 a 42, 51 e 78 (S-235 a S-267, S-291 a S-293, S-521)
 
 Base: [ROADMAP_EDITOR.md](ROADMAP_EDITOR.md), que traz a medição da aba de hoje, os oito achados e
 o sequenciamento. O reconhecimento que alimenta o editor é o das Fases 25 a 31
@@ -11,17 +11,23 @@ o sequenciamento. O reconhecimento que alimenta o editor é o das Fases 25 a 31
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175, S-176 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176, S-454, S-455 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-267, S-291 a S-293, S-521 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-430, S-451 a S-453 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
+> | S-507 a S-520 | [SPEC_ESTUDO_QT.md](SPEC_ESTUDO_QT.md) |
+> | S-522 a S-526 | [SPEC_REVISAO_EXTERNA_2.md](SPEC_REVISAO_EXTERNA_2.md) |
+> | S-500 a S-506, S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
+> | S-581 a S-584 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
+> | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
+> | S-702 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -2886,6 +2892,232 @@ não só uma limpeza.
 - o documento continua idêntico com a conferência ligada.
 
 **Testes.** `tests/test_ui_texto_editor.py::ConferenciaQueSeRefazTests`.
+
+---
+
+## O que o porte para o Qt deixou para trás, e voltou em 2026-10-08
+
+O corte do Tk (S-506) portou a aba Texto para `qt/painel_de_texto.py` com o documento como estado,
+e deixou cinco itens desta spec pela metade. Nenhum deles acusava: a tela estava certa.
+
+| item | o que faltava no Qt | o que entrou |
+|---|---|---|
+| **S-211/S-238 — o diagrama na folha** | `ler` jogava fora a imagem da folha na volta da thread: `mostrar_pagina` só recebia `folha_rgb` dos testes, e no produto todo `[Diagrama N]` aparecia **sem miniatura**. O `.cvtxt` reaberto também não a refazia do livro | a folha é rasterizada **uma vez**, na thread de trabalho (S-352), dada a `ler_pagina` por `imagem_rgb` e guardada; `abrir(doc)` renderiza a folha do livro quando ele ainda está onde estava, e o rodapé diz qual livro falta quando não está. O recorte é uma função pura (`_recorte_da_folha`), a mesma para a tela e para a exportação |
+| **S-250/S-338 — os recortes na exportação** | `exportar` recebia `recortes=` vazio: o `.md` e o `.html` saíam com `![Diagrama 1]()` de alvo vazio, e o relatório contava "sem recorte" sobre uma folha que estava na tela | `_gravar_recortes` escreve um PNG por diagrama em `diagramas/` ao lado do arquivo, na thread de exportação, só para os formatos com `pasta_de_imagens` |
+| **S-255 — o rascunho automático** | não existia no Qt: o texto digitado vivia só na memória até o Salvar | `QTimer` de inatividade (`ESPERA_SEGUNDOS`) reiniciado por `documento_mudou`; `gravar_rascunho` só com `tem_alteracoes` e folha de origem; `oferecer_rascunho` depois da leitura, sem tela o rascunho fica; recuperar apaga o arquivo e deixa o texto **por gravar** (S-308); `confirmar_fechamento` grava antes de perguntar; salvar apaga. O painel recebeu `pasta_de_rascunhos=`, pela razão de sempre |
+| **S-239 — a procedência da mão** | o `.cvtxt` gravado dizia `glifo` sobre o que a pessoa tinha corrigido, e o rodapé não contava correção nenhuma | `_salvar_documento_em`, `gravar_rascunho` e `_exportar` passam por `correcao.com_procedencia_humana`; o gravado **fica na tela** (sem entrar na pilha), e o rodapé conta as correções. **E a faixa vai junto**: `com_procedencia_humana` passou a pôr `tranquilo` na corrida que carimba de `humano` -- antes a tinta de "revisar" ficava sobre o trecho conferido, na tela e no arquivo reaberto, porque a faixa é decidida uma vez em `de_pagina` |
+| **S-264 e S-293 — o zoom e o léxico** | o zoom trocava a fonte do editor e redesenhava, mas cada trecho sai com corpo explícito de `formato_de`: **nenhuma letra mudava**. A conferência do léxico tinha o interruptor e nenhum redesenho a chamava | `_base_da_vista` soma o degrau à fonte do sistema e é a base de todo desenho e de toda tecla; `_desenhar` refaz a marcação do léxico quando ela está ligada |
+
+**Testes.** `tests/test_qt_texto_diagramas.py` (a leitura traz a miniatura; sem imagem a marca fica;
+reabrir com e sem o livro; `.md`/`.html` com o PNG e `.txt` sem; o recorte puro; o zoom chega à
+letra desenhada e à digitada; o negrito não apaga as marcas do léxico);
+`tests/test_qt_texto_rascunho.py` (grava só com o que gravar; a tecla e a ferramenta reagendam; o
+relógio grava; sem folha de origem não há rascunho; fechar grava antes de perguntar, com e sem tela;
+reabrir oferece e não aplica; aceitar traz e apaga; recusar não apaga; o recuperado continua por
+gravar; outra folha não é oferecida; salvar apaga o rascunho e carimba arquivo e tela; a marcação
+não entra na pilha; o rascunho e a exportação saem carimbados sem tocar na tela);
+`tests/test_texto_correcoes.py::CarimboTests::test_a_corrida_editada_deixa_de_pedir_revisao`.
+
+## Dez itens da aba Texto no Qt (2026-10-08, à tarde)
+
+Cada linha é um commit, com o teste que a tranca.
+
+| item | o que faltava | o que entrou | teste |
+|---|---|---|---|
+| **1. a leitura respeita as Configurações** | o painel nascia com `dpi=220` cravado e lia sem teto de diagramas: a aba Livro e a aba Texto discordavam sobre a escala da folha e sobre quantos diagramas há na página, e «Ferramentas ▸ Configurações…» não alcançava esta aba | `_dpi_para_ler` e `_teto_de_diagramas` perguntam a `ui/configuracoes` (o teste continua cravando `dpi=`); o DPI viaja com a folha lida (`mostrar_pagina(dpi=)`), porque a configuração pode mudar enquanto a leitura corre, e o recorte fica na escala em que a folha foi renderizada | `test_qt_texto_diagramas.py::ConfiguracoesDaLeituraTests` |
+| **2. o rodapé da aba diz a folha, o que ela tem e se há o que gravar** | o `QLabel` de estado existia e ficava vazio desde o porte: quem voltava à aba não sabia se era a folha certa, se os diagramas estavam lá nem se tinha gravado | `ui/texto_declarado.frase_do_rodape` (pura) e `_atualizar_status`, refeito a cada `documento_mudou`, a cada folha e a cada gravação; a contagem de miniaturas só aparece quando falta alguma | `FraseDoRodapeTests`, `RodapeDaAbaTests` |
+| **3. a miniatura acompanha o zoom da vista** | `LARGURA_DA_MINIATURA` era fixa: aproximar a folha deixava a letra do tamanho pedido e o diagrama do tamanho de antes, cada vez menor em relação ao texto que fala dele | `_largura_da_miniatura` escala a largura pela mesma razão da letra (corpo da vista ÷ corpo do sistema), e a medida vai no `QTextImageFormat`, que é o que o leiaute usa e o que o teste lê | `MiniaturaAcompanhaOZoomTests` |
+| **4. a palavra digitada é conferida na pausa** | a tecla comum não redesenha a folha (caminho rápido de `_trocado`), então a palavra recém-escrita só era conferida no redesenho seguinte, e a conferência ligada (S-293) prometia o contrário | `_depois_da_pausa`: o relógio de inatividade do rascunho grava o rascunho **e** refaz a marcação do léxico quando ela está ligada; reconferir por tecla seria varrer o léxico por letra | `LexicoSobreviveAoRedesenhoTests::test_a_palavra_digitada_e_conferida_na_pausa` |
+| **5. a FEN sai no `.md` e no `.html`** | a tabela de `text/exportacao.py` prometia desde a S-250 «a FEN em comentário» no `.md` e «no `data-fen`» no `.html`, e nenhum formato a escrevia | `Formato.diagrama(c, recorte, placement="")`: o `.md` põe `<!-- FEN: … -->` depois da imagem (ou da marca), o `.html` põe `data-fen` no `<img>` (ou num `<span class="diagrama">` sem imagem) -- o atributo que o contrato `cb-*` do editor lê; `.txt` e `.rtf` ignoram | `test_texto_exportacao.py::FenDoDiagramaTests` |
+| **6. a posição de cada diagrama lido chega à aba Texto** | a aba Livro lê a posição com o classificador de peças; a aba Texto só sabia **onde** o diagrama está, e `BlocoDeDiagrama.placement` ficava sempre vazio | `PaginaLida.com_posicoes` (pura, por `indice`, o mesmo detector numera os dois lados) e `definir_posicoes` no painel, chamado pela janela a cada `_chegaram_itens` (+1 linha, catraca 2.079); a folha na tela recebe na hora **sem virar alteração por gravar**; a FEN vai ao `.cvtxt`, ao `.md` e ao `.html` | `ComPosicoesTests`, `PosicoesDoProdutoTests`, `test_qt_janela.py::…::test_a_posicao_de_cada_diagrama_lido_chega_a_aba_texto` |
+| **7. sem folha, a miniatura e o recorte exportado nascem da posição lida** | o `.cvtxt` aberto com o livro fora do lugar (ou noutra máquina) mostrava a marca solta e exportava sem figura, mesmo com a posição já lida pelo produto | `_imagem_do_diagrama`: o recorte da folha vem primeiro (a verdade impressa); sem ele, a FEN é desenhada com as peças do próprio programa (`desenho_de_diagrama`, o mesmo da exportação do livro) na tela e no PNG do `.md`/`.html` (`LADO_DO_RECORTE_DESENHADO`); é desenho e não leitura | `DesenhadaDaPosicaoTests` |
+| **8. o clique na miniatura seleciona a marca; o duplo clique leva o diagrama à sala** | o clique punha o cursor ao lado de um caractere invisível, e a pessoa apagava a figura sem apagar o diagrama; a miniatura não levava a lugar nenhum, enquanto a caixa do visualizador leva à sala de estudo | `_marca_sob` acha a marca da miniatura sob o ponto; o clique a seleciona (é a marca que se apaga, move e copia), o duplo clique emite `diagrama_ativado(folha, índice)` e a janela o leva a `_estudar_a_caixa` quando a folha é a da tela -- senão diz qual folha é qual (+6 linhas em `janela.py`) | `CliqueNaMiniaturaTests`; `test_qt_janela.py::…::test_o_duplo_clique_na_miniatura_da_aba_texto_leva_o_diagrama_a_sala` e `…_de_outra_folha_nao_estuda_nada_e_diz_por_que` |
+| **9. o `.cvtxt` aberto leva o visualizador à folha dele** | o texto da folha 14 na tela com o visualizador na folha 3 fazia a pessoa procurar a página à mão | `abrir` emite `folha_pedida(folha)` quando o `.cvtxt` é do livro aberto (`_mesmo_livro`, a regra de `dialogos._mesmo`), e a janela liga o sinal a `ir_para_pagina` (+1 linha, catraca 2.088); um `.cvtxt` de outro livro não troca o livro de ninguém | `ReabrirOArquivoTests::test_o_cvtxt_do_livro_aberto_pede_a_folha_dele_e_o_de_outro_livro_nao`; `test_qt_janela.py::…::test_abrir_um_cvtxt_do_livro_leva_o_visualizador_a_folha_dele` |
+| **10. o botão direito sobre a miniatura** | a miniatura não dizia o que sabe fazer; quem não conhece o duplo clique a tomava por decoração | `_menu_de_contexto`: o menu padrão do editor mais «Abrir o diagrama N no Estudo» (o duplo clique do item 8), «Copiar a imagem do diagrama N» (recorte ou desenho, para a área de transferência) e «Apagar o diagrama N da folha» (a marca inteira, por `rico.apagar`; `Ctrl+Z` devolve). Fora do catálogo de comandos (S-256) porque as três já existem por outro caminho | `MenuDaMiniaturaTests` |
+
+## Mais dez itens da aba Texto no Qt (2026-10-09)
+
+| item | o que faltava | o que entrou | teste |
+|---|---|---|---|
+| **11. as posições são do livro** | o item 6 guardava as posições só pela folha: trocar de livro levava as posições do anterior para as folhas do novo | chave `(livro resolvido, folha)` (`_chave_de_livro`); `definir_livro` para outro livro esquece tudo, a mesma grafia diferente do mesmo livro não | `PosicoesDoProdutoTests::test_as_posicoes_sao_do_livro_e_trocar_de_livro_as_esquece` |
+| **12. o clique e o menu valem também sobre o texto da marca** | `_marca_sob` só reconhecia a figura: sem miniatura (livro fora do lugar, posição não lida) a marca `[Diagrama N]` não tinha clique nem menu | `_marca_em(deslocamento)`: a marca que contém o ponto, figura ou texto | `CliqueNaMiniaturaTests::test_o_clique_no_texto_da_marca_tambem_a_seleciona` |
+| **13. Ctrl+roda é o zoom da vista** | o `QTextEdit` respondia ao Ctrl+roda mudando a fonte do editor, que nenhuma letra segue (S-264): a pessoa rodava e nada acontecia | o filtro de eventos do editor traduz Ctrl+roda em `_mudar_zoom(±1)`, os mesmos degraus dos comandos; a roda sem Ctrl continua rolando | `RodaComCtrlTests` |
+| **14. a miniatura tem texto alternativo** | a figura era muda para o leitor de tela e para o `toHtml`: um caractere-objeto sem nome | `ImageAltText` = «Diagrama N» e `ImageTitle` = «Diagrama N da folha F» no `QTextImageFormat` -- o `alt` que o `toHtml` escreve e o que a acessibilidade lê | `TextoAlternativoDaMiniaturaTests` |
+| **15. o campo «Folha a ler» sabe quantas folhas o livro tem** | teto de 9.999 cravado: quem digitava 500 num livro de 289 folhas só descobria o erro na leitura, com a caixa vermelha do PyMuPDF | `definir_livro(paginas=)` põe o teto do campo; a janela passa `page_count` na abertura do livro (na mesma linha); sem o número o teto fica largo (`TETO_DE_FOLHAS`) | `TetoDoCampoDeFolhaTests`; `test_qt_janela.py::…::test_a_aba_texto_sabe_quantas_folhas_o_livro_tem` |
+| **16. o rodapé diz quanto a leitura custou** | «Folha lida: 43 trecho(s)» não dizia se foram 2 s ou 40: a pessoa escolhe o motor e o modo bloco pelo preço | o tempo é medido na thread e viaja com a folha: «Folha lida em 3,9 s: …» | `LeituraEntregaAFolhaTests::test_o_rodape_diz_quanto_a_leitura_custou` |
+| **17. o motor e o modo bloco sobrevivem ao fechamento** | o zoom e a quebra voltavam (S-291); o motor e o modo bloco, não -- e quem liga o modo bloco paga 40 s por folha de propósito | `AppState.texto_motor`/`texto_bloco`; `definir_motor` (ignora nome desconhecido) e `definir_modo_bloco` (sem a frase do rodapé, que é para quem clicou); a janela repõe e grava ao lado do zoom (+4 linhas, catraca 2.092) | `MotorEModoBlocoTests`; `test_qt_janela.py::…::test_o_motor_e_o_modo_bloco_da_aba_de_texto_voltam` |
+| **18. o livro aberto anuncia os rascunhos dele** | a oferta de recuperação (S-255) só acontece ao ler a folha certa: quem volta no dia seguinte não sabe que deixou trabalho em três folhas, nem quais | `rascunho.listar` (pura, por folha, sem abrir) e `_anunciar_rascunhos` na troca de livro: «2 rascunho(s) deste livro por recuperar (folha 1, 3): leia a folha e a aba oferece.» -- rodapé, não caixa. **De passagem:** a poda (`podar`) fazia `rsplit("_f")` na chave e caía quando a impressão do caminho começava por `f` (um livro em dezesseis nunca era podado); a seleção dos arquivos do livro passou a ser pela forma da chave (`_nome_e_impressao`) | `ListarTests`, `AnuncioNaAberturaTests` |
+| **19. gravar a folha vazia recusa no rodapé** | o Tk recusava; o porte abria o diálogo, gravava um `.cvtxt` vazio e dizia «Texto gravado» | `_salvar_documento_em` sai antes do diálogo com a frase do rodapé, como a exportação já fazia | `GravarCarimbaAMaoTests::test_salvar_a_folha_vazia_recusa_no_rodape_sem_abrir_dialogo` |
+| **20. copiar o diagrama leva a FEN como texto** | «Copiar a imagem» punha só o pixmap na área de transferência: colar num programa de xadrez ou num e-mail não dava nada | `QMimeData` com a imagem **e** o texto da FEN quando se sabe; sem figura, a FEN sozinha ainda é copiada | `MenuDaMiniaturaTests::test_copiar_leva_a_fen_como_texto_quando_se_sabe` e `…::test_sem_figura_a_fen_ainda_e_copiada` |
+
+## Itens 21 a 30 da aba Texto no Qt (2026-10-09)
+
+| item | o que faltava | o que entrou | teste |
+|---|---|---|---|
+| **21. as falhas da aba trazem o rastro** | a leitura e a exportação que falhavam abriam um `QMessageBox.critical` só com a frase; o rastro ficava no log (A10) | `_falha`: a mesma `dialogos.mostrar_falha` da janela, com o rastro que a `Tarefa` formatou na thread atrás de «Detalhes» e o botão «Copiar»; duas caixas modais a menos na contagem | `FalhaComRastroTests` |
+| **22. a barra segue o cursor** | a S-292 era do Tk; no porte as caixas de estilo, cor e realce ficavam paradas em «(sem …)» com o cursor num título | `_seguir_o_cursor` em `cursorPositionChanged`: `rico.valor_em_todo` sobre a seleção (ou o caractere sob o cursor), vazio quando mistura; as caixas disparam só por `activated`, então repô-las não aplica nada | `BarraSegueOCursorTests` |
+| **23. a dica sobre a miniatura** | a miniatura não dizia o que é nem o que o gesto faz; o duplo clique e o botão direito eram de quem adivinhasse | `_dica_da_marca` no evento `ToolTip` do editor: «Diagrama 3 da folha 14», a FEN (ou «Posição ainda não lida…») e «Duplo clique abre no Estudo · botão direito: copiar, apagar» | `DicaDaMiniaturaTests` |
+| **24. o rodapé conta as correções** | a conta das correções (S-239) só aparecia na frase da gravação; durante a tarde de correção ninguém sabia quantas já tinha feito | `frase_do_rodape(correcoes=)`; `_contar_correcoes` na pausa da digitação, na gravação e na abertura do arquivo -- não por tecla, porque `correcao.correcoes` compara bloco a bloco por `difflib` | `RodapeDaAbaTests::test_o_rodape_conta_as_correcoes_na_pausa_na_gravacao_e_na_abertura` |
+| **25. o rascunho recusado volta pelo menu** | quem recusava a oferta na leitura e mudava de ideia tinha de reler a folha (até 40 s) para a pergunta voltar | «Recuperar o rascunho de dd/mm/aaaa hh:mm» no menu do botão direito quando há rascunho da folha na tela; `recuperar_rascunho` pergunta antes de descartar o editado; `_recuperar` é o mesmo caminho da oferta | `ReabrirOfereceTests::test_a_oferta_recusada_volta_pelo_menu_do_botao_direito` e `…::test_recuperar_pelo_menu_pergunta_antes_de_descartar_o_editado` |
+| **26. a folha sem texto diz o que tentar** | a capa, a figura inteira ou o scan que o glifo não leu saíam como «Folha lida: 0 trecho(s)» | «A folha 4 não tem texto lido (motor auto, 2,0 s): tente outro motor ou o modo bloco.»; o estado vazio do editor continua na tela | `LeituraEntregaAFolhaTests::test_a_folha_sem_texto_diz_o_que_tentar` |
+| **27. Enter no campo «Folha a ler» lê** | digitar o número e ir ao botão com o mouse era o atrito de quem lê folha a folha | `returnPressed` do campo → `ler` (e não `editingFinished`, que dispara ao sair com o Tab) | `TetoDoCampoDeFolhaTests::test_enter_no_campo_le_a_folha_digitada` |
+| **28. a folha do visualizador serve à leitura** | a página aberta já custou os ~200 ms de rasterização, e a aba Texto a rasterizava de novo para ler | `PainelDoPdf.folha_renderizada(indice)` e `definir_fornecedor_de_folha` na aba: se é a mesma folha no mesmo DPI, a leitura usa uma cópia dela (copiada na thread da janela, porque o visualizador pode trocar a sua no meio); a janela liga os dois (+1 linha, catraca 2.093) | `LeituraEntregaAFolhaTests::test_a_folha_do_visualizador_serve_a_leitura_no_mesmo_dpi` e `…_noutro_dpi_nao_serve`; `test_qt_janela.py::…::test_o_visualizador_empresta_a_folha_rasterizada_a_aba_texto` |
+| **29. a frase do léxico nomeia as primeiras palavras** | «3 de 120 palavra(s) fora do léxico» obrigava a rolar a folha atrás das marcas para saber se valia olhar | `texto_declarado.frase_do_lexico` (pura): «3 de 120 palavra(s) fora do léxico (qwv, zzt, Capablanca). Nada foi corrigido (S-209).», até `PALAVRAS_NA_FRASE` palavras distintas, e a frase do zero | `LexicoSobreviveAoRedesenhoTests::test_a_frase_do_lexico_nomeia_as_primeiras_palavras` |
+| **30. Enter com a marca selecionada abre no Estudo** | o duplo clique (item 8) era só do mouse; quem anda pelo teclado não tinha como abrir o diagrama da marca | `_ativar_marca_selecionada` no filtro de teclas do editor: a seleção que é exatamente uma marca `[Diagrama N]` + Enter (sem modificador) emite `diagrama_ativado`; qualquer outra seleção deixa o Enter ser o Enter | `CliqueNaMiniaturaTests::test_enter_com_a_marca_selecionada_pede_o_diagrama_na_sala` |
+
+---
+
+# Fase 78 — A digitação que chega ao documento
+
+A fase nasce de uma medição feita de passagem, em 2026-09-02, ao ligar as teclas do editor que o
+porte para o Qt tinha deixado sem `bind` (triagem da S-511): **o que se digita no editor de texto
+do Qt não chega ao documento.** A S-235 decidiu que o documento rico é o dado e o widget é o
+desenho; a S-238 fechou o ciclo do lado do Tk fazendo do `tk.Text` o estado vivo e relendo-o ao
+gravar. O porte trouxe a primeira decisão e não trouxe a segunda nem o seu equivalente — e ficou
+com um editor em que toda ferramenta passa pelo documento e a tecla mais comum de todas, a letra,
+passa por fora dele. É um item só, e ele é o maior defeito que a triagem encontrou.
+
+## S-521 · A digitação que chega ao documento, e o desfazer que a vê
+
+### Problema
+
+**O widget recebe o texto e o documento não.** `qt/painel_de_texto.py` declara, no `__init__`:
+*"O estado é o documento, e não o widget"*. Toda ferramenta cumpre isso: negrito, cor, estilo,
+paleta, achar-e-substituir chamam uma função pura de `text/rico.py` e redesenham o que voltou
+(`_aplicar`). Digitar não: o `QTextEdit` é editável, nada escuta o que ele muda, e `documento`
+fica como estava. Medido em 2026-09-02, sob `offscreen`, com `QTest.keyClicks` sobre a folha
+`"O bispo vai para c4."`:
+
+| gesto | o widget mostra | o documento diz | o que acontece |
+|---|---|---|---|
+| digitar `grande ` na posição 2 | `O grande bispo vai para c4.` | `O bispo vai para c4.` | **salvar grava a folha sem o que foi digitado** — conferido relendo o `.cvtxt` |
+| depois disso, selecionar `bispo` na tela e pedir negrito | `O bispo vai para c4.` (redesenhado) | negrito em `ai pa` | o mapa da S-235 é o do último desenho: a seleção da tela cai sete caracteres antes no documento, e o redesenho **apaga o que foi digitado** |
+| digitar `xyz` e apertar `Ctrl+Z` | `O bispo vai para c4.` | idem | o desfazer devolve o documento anterior à digitação, que é o mesmo de antes — o `xyz` some sem ter existido para a pilha |
+| `Ver ▸ Colar` com `COLADO ` na área de transferência | `COLADO Linha um…` | `Linha um…` | `colar` é `self.editor.paste()`: o docstring promete que *"o texto colado herda os atributos dos dois lados, como o digitado"*, e nenhum dos dois chega ao documento |
+
+Quatro gestos, um mecanismo. `recortar`, `Backspace`, `Delete`, `Enter` e a composição de teclado
+(acentos por tecla morta, IME) são o mesmo caso: tudo que o Qt escreve no `QTextDocument` por
+conta própria fica só ali.
+
+**Por que ninguém acusou.** `tests/test_qt_texto.py` tem 60 casos e nenhum digita: as ferramentas
+são testadas chamando o método (`self.painel.negrito()`) sobre um documento posto por
+`desenhar_documento`, que é exatamente o caminho que funciona. E a S-238, que fechou este ciclo no
+Tk, foi afirmada em `tests/test_ui_texto_editor.py` com um `tk.Text` de verdade — arquivo que saiu
+no corte (S-506) junto com o widget que ele abria. O que sobrou de guarda mede o documento; o
+defeito está entre o teclado e ele.
+
+**O que o desenho do Qt já tem, e é a metade boa.** `_Mapa` traduz posição do cursor em
+deslocamento do documento nos dois sentidos, descontando a miniatura do diagrama (um caractere
+para o widget, nenhum para o documento) e a quebra que o desenho põe embaixo dela. `_intervalo`
+lê a seleção por ele. `rico.inserir` (S-248) e `rico.substituir_intervalo` (S-245) já sabem
+receber texto novo herdando atributo, faixa e bloco de quem estava ali e carimbando
+`procedencia="humano"` (S-239). E redesenhar a folha inteira custa **1,7 ms** numa página de 3.360
+caracteres (média de 20 redesenhos, `perf_counter`) — o custo do redesenho não é o que decide o
+desenho; o que decide é o cursor, que o redesenho manda para o zero.
+
+### Solução
+
+**O documento continua sendo o estado, e passa a escutar o widget.** É a mesma escolha da S-235,
+levada até a tecla: em vez de fazer do widget o estado vivo (a saída do Tk, que precisaria de um
+`texto_etiquetas.py` para o Qt e perderia `bloco` e `procedencia`, que o `QTextCharFormat` não
+carrega), cada mudança que o Qt faz no `QTextDocument` vira uma chamada pura sobre o documento.
+
+1. **Um ouvinte, para todos os gestos.** `QTextDocument.contentsChange(posicao, removidos,
+   acrescentados)` é o único ponto por onde passam tecla, tecla morta, IME, `Backspace`, `Delete`,
+   `Enter`, colar e recortar. O painel o liga no `_montar` e o **ignora enquanto `_redesenhando`**
+   — o redesenho troca o documento inteiro e o sinal dispararia para o próprio desenho.
+2. **A tradução é a do `_Mapa`, e o mapa passa a acompanhar a edição.** `inicio =
+   mapa.deslocamento(posicao)`, `fim = mapa.deslocamento(posicao + removidos)`, e `novo` é o texto
+   que o widget tem em `[posicao, posicao + acrescentados)`, com o separador de bloco do Qt
+   (`U+2029`) traduzido para a quebra de linha que o documento usa. Depois de aplicar,
+   `mapa.editar(posicao, removidos, acrescentados)`: os trechos depois da edição deslocam-se pelo
+   saldo, e o trecho que a contém cresce ou encolhe. É uma função pura sobre uma lista de três
+   inteiros, e é a parte que mais merece teste.
+3. **A aplicação é `rico.substituir_intervalo(documento, inicio, fim, novo)`**, que já é a regra
+   da S-245 e da S-248: o texto novo herda de quem estava ali, ganha `procedencia="humano"`, e a
+   marca de diagrama e o separador atravessam a troca inteiros. Inserção pura (`inicio == fim`)
+   cai em `rico.inserir`, herdando **da esquerda** — é a regra que a paleta já usa, e este item
+   a estende à digitação e ao colar. *Divergência declarada com a S-238:* lá, digitar na emenda
+   entre dois blocos não herdava bloco nenhum, porque era o que as etiquetas do Tk faziam; aqui
+   o texto digitado na emenda pertence ao bloco da esquerda, como o símbolo inserido. Três
+   caminhos de entrada, uma regra só.
+4. **Sem redesenho, salvo quando o widget e o documento divergem.** Depois de aplicar, o
+   invariante é `documento.para_texto() == texto_do_widget()` (com o separador traduzido). Quando
+   ele vale — que é sempre, na digitação comum —, nada é redesenhado, e o cursor fica onde a
+   pessoa o deixou. Quando não vale, é porque a edição tocou o que o documento não deixa tocar:
+   apagar o caractere da miniatura, ou a quebra que o desenho pôs embaixo dela. Aí o painel
+   redesenha a partir do documento — o widget volta ao que era —, repõe o cursor por
+   `mapa.posicao(inicio)` e diz no rodapé que a marca do diagrama não se edita. É o mesmo
+   contrato de `substituir_intervalo`: a estrutura do texto não é do teclado.
+5. **O desfazer vê a digitação por lotes, e não por tecla.** A pilha do painel é de documentos
+   (S-243), e ela continua sendo: uma entrada por tecla daria cem entradas em cem caracteres e
+   estouraria o teto em uma frase. A regra do lote é pura e mora ao lado das outras declarações
+   da aba (`ui/texto_declarado.py`, sugestão): um lote **fecha** quando a edição muda de tipo
+   (inserir ↔ apagar), quando ela não é contígua à anterior (o cursor andou), quando o caractere
+   digitado é separador (espaço, quebra, pontuação — a granularidade de palavra, que é a do
+   `edit_separator` do Tk e a do Word), ou quando qualquer ferramenta passa por `_aplicar`. Ao
+   **abrir** um lote o painel empurra o documento anterior para `_historico`, esvazia
+   `_refeitos` e incrementa `edicao` — que é o contador da S-243, e é ele que faz o `Ctrl+Z`
+   sem foco escolher esta aba depois de a pessoa digitar nela. `Ctrl+Z` no meio de um lote desfaz
+   o lote inteiro, como no Tk.
+6. **`documento_mudou` dispara no fechamento do lote**, e não a cada tecla: é o sinal que a
+   conferência do léxico (S-293) e o rascunho automático (S-255, quando for portado) escutam, e
+   nenhum dos dois quer rodar entre duas letras da mesma palavra.
+
+**O que `colar` e `recortar` viram.** Nada: continuam sendo `paste()` e `cut()` do widget, porque
+o caminho novo os alcança pelo mesmo sinal. O docstring de `colar` passa a ser verdade sem mudar
+uma palavra.
+
+### Critério de aceite
+
+- Digitar, apagar, colar e recortar no editor deixam `documento.para_texto()` igual ao texto do
+  widget, e **salvar e reabrir devolve o que foi digitado** — o ciclo da S-238, fechado no Qt.
+- Formatar depois de digitar marca o trecho que está na tela: inserir `grande ` e pedir negrito em
+  `bispo` põe negrito em `bispo`, e não sete caracteres antes.
+- O texto digitado dentro de um bloco fica com o `bloco` dele e com `procedencia="humano"` — a
+  correção continua atada ao bloco que corrige, que é o que a fila da S-212 lê.
+- `Ctrl+Z` depois de digitar uma palavra tira a palavra inteira e deixa o resto; uma frase de três
+  palavras é três entradas na pilha, não quinze; `edicao` cresce uma vez por lote.
+- Apagar o caractere da miniatura não apaga a marca do diagrama: o widget volta, o cursor fica, e
+  o rodapé diz por quê.
+- Enquanto se digita, o cursor e a rolagem não se movem: **nenhum redesenho** na digitação comum,
+  afirmado contando chamadas de `_desenhar`.
+- A tradução de posição continua certa depois da edição: `_intervalo` de uma seleção feita
+  **depois** de digitar cai no lugar certo do documento, com miniatura antes e depois dela.
+- Custo por tecla abaixo de 1 ms na página de 3.360 caracteres (`perf_counter` sobre o ouvinte),
+  sem contar o redesenho, que não acontece.
+
+### Testes
+
+- `tests/test_qt_texto.py`: uma classe `DigitacaoTests` com `QTest.keyClicks` e `keyClick` para
+  cada linha da tabela do problema — inserir, `Backspace`, `Delete`, `Enter`, colar pelo comando,
+  recortar pelo comando —, afirmando o documento, o arquivo salvo e relido, a formatação depois de
+  digitar, os lotes do desfazer e o `edicao`, a miniatura que não se apaga, e a contagem de
+  `_desenhar` em zero durante a digitação comum.
+- `tests/test_qt_texto.py::MapaTests`: `editar` com inserção no meio de um trecho, no fim, na
+  emenda de dois, remoção que atravessa dois trechos, e edição depois de uma miniatura — cinco
+  casos que não abrem janela.
+- Um arquivo puro para a regra do lote (`tests/test_ui_texto_lotes.py`, sugestão): os quatro
+  fechos, e que `a b` são dois lotes e `abc` é um.
+- `tests/test_texto_rico.py`: o que a S-238 travava com um `tk.Text` e morreu no corte, refeito
+  sem widget — inserir dentro de um bloco mantém a origem, inserir na emenda pertence ao da
+  esquerda (a divergência declarada acima, afirmada e não escondida).
+
+### Considerado e recusado
+
+- **Religar o desfazer nativo do `QTextEdit` para o texto e manter a pilha de documentos para o
+  formato.** É a saída de duas pilhas que a S-243 recusou, e a razão de lá vale aqui: um `Ctrl+Z`
+  que às vezes desfaz o negrito e às vezes a palavra.
+- **Fazer do widget o estado vivo, como no Tk, e reler o `QTextDocument` ao gravar.** Exigiria
+  reconstruir corridas a partir de `QTextCharFormat`, que não carrega `bloco` nem `procedencia`
+  — as duas coisas que a S-239 existe para preservar. Seria reescrever `texto_etiquetas.py` para
+  o Qt e perder no caminho o que o outro já perdia.
+- **Redesenhar a cada tecla.** Custa 1,7 ms e seria a implementação mais curta; o que ela custa
+  de verdade é o cursor de volta ao início da folha a cada letra e a composição de acento
+  interrompida no meio. O redesenho fica só para o caso em que o widget e o documento divergem.
+- **Tornar o editor somente-leitura no Qt até este item entrar.** Seria honesto e é o oposto do
+  que a aba existe para fazer; e a S-511 já deixou o defeito escrito em três lugares, que é o que
+  um item planejado precisa para não ser esquecido.
 
 ---
 

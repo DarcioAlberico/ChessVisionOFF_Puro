@@ -1096,7 +1096,7 @@ class _Vigia:
             return
         self._desfazer.append((alvo, nome, original))
 
-    def __enter__(self) -> "_Vigia":
+    def __enter__(self) -> _Vigia:
         vigia = self
 
         def _thread_start(original):

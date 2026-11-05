@@ -794,6 +794,14 @@ class IndiceDaBiblioteca:
         """Todos os valores que o acervo tem em cada eixo, ordenados. **Do acervo e não do filtro**:
         é o que mantém a barra lateral com a mesma altura enquanto os números mudam."""
 
+        self._totais: dict[str, dict[str, int]] = {eixo: dict.fromkeys(self._universo[eixo], 0) for eixo in EIXOS}
+        for indexado in self._itens:
+            for eixo in EIXOS:
+                self._totais[eixo][indexado.valores[eixo]] += 1
+        """A contagem de cada valor no acervo inteiro: a resposta de `facetas` sem busca e sem eixo
+        marcado, que é a da abertura. `facetas` a lia e ninguém a montava -- a primeira chamada sem
+        filtro levantava `AttributeError`."""
+
         self._consulta_em_cache: str | None = None
         self._achados_em_cache: tuple[_Indexado, ...] = ()
         """A última consulta de texto e o que ela achou. **Uma entrada, e ela basta**, porque o

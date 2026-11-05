@@ -29,7 +29,7 @@ Galeria, que já está na thread certa quando a varredura acaba.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Sequence
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
@@ -52,6 +52,7 @@ from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.review_queue import (
     DEFAULT_CACHE_DIR,
     DEFAULT_QUEUE_PATH,
+    ReviewItem,
     ReviewQueue,
     error_rate,
     merge_queues,
@@ -317,7 +318,8 @@ class PainelDeRevisao(QWidget):
             )
             for item in (self.queue.items[posicao] for posicao in self._posicoes)
         )
-        self.vazio.setGeometry(self.tabela.viewport().rect())
+        vista = self.tabela.viewport()
+        self.vazio.setGeometry(vista.rect() if vista is not None else self.tabela.rect())
         self.vazio.setVisible(not self._posicoes)
         if self.queue.items:
             taxa = error_rate(self.queue.items)
@@ -404,6 +406,22 @@ class PainelDeRevisao(QWidget):
         self.queue.mark(posicao, "done")
         self.salvar_fila(quieto=True)
         self.refresh()
+
+    def acrescentar(self, itens: Sequence[ReviewItem]) -> int:
+        """Põe na fila os itens que ainda não estão nela, e devolve quantos entraram.
+
+        É a porta de quem acha dúvida fora da varredura: o PGN do livro que discorda da leitura
+        (S-590). O item que já está na fila -- mesma página, mesmo diagrama -- fica como está, com
+        o status que a pessoa deu a ele.
+        """
+        novos = [i for i in itens if self.queue.index_of(i.page_index, i.diagram_index) is None]
+        if not novos:
+            return 0
+        self.queue.items.extend(novos)
+        self.queue.sort()
+        self.salvar_fila(quieto=True)
+        self.refresh()
+        return len(novos)
 
     # ----------------------------------------------------------------------------- varredura
 

@@ -6,10 +6,13 @@ produto não podem discordar sobre o que é um erro. Copiar a tabela de `MARCAS_
 janela dizendo "isto falhou" em vermelho e a outra dizendo o mesmo em cinza -- que é o defeito 3
 do cabeçalho de `ui/rodape.py`, agora entre frontends.
 
-**As quatro zonas e a ordem delas são as de lá**, e a razão é a mesma: a mensagem é a única que
-cede espaço. No Tk isso é a ordem do `pack`; aqui é o `stretch` do `QHBoxLayout` -- a mensagem
+**As quatro zonas e a ordem delas são as de lá**, e a razão é a mesma: a mensagem é a primeira a
+ceder espaço. No Tk isso é a ordem do `pack`; aqui é o `stretch` do `QHBoxLayout` -- a mensagem
 leva 1 e as outras 0, e por isso uma mensagem longa encolhe a si mesma em vez de empurrar para
-fora o livro e a página, que é o que a pessoa consulta o tempo todo.
+fora o livro e a página, que é o que a pessoa consulta o tempo todo. **Até a reserva dela**
+(`LARGURA_DA_MENSAGEM`): abaixo disso quem cede é o nome do livro, elidido no meio, e as zonas de
+dispositivos e de ocupação ficam inteiras (`LARGURA_DA_ZONA`) -- OCR_UI ciclo 2, fase 5, os dois
+ciclos do crítico sobre o rodapé.
 
 **A altura é fixa por construção, e não por pixel cravado.** A altura da linha é a do **botão de
 cancelar**, que existe sempre -- desabilitado quando não há o que cancelar. É por isso que o
@@ -39,7 +42,8 @@ import weakref
 from collections.abc import Callable, Sequence
 
 from PyQt6 import sip
-from PyQt6.QtCore import Qt, QTime, QTimer, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, QTime, QTimer, pyqtSignal
+from PyQt6.QtGui import QResizeEvent
 from PyQt6.QtWidgets import (
     QDialog,
     QFrame,
@@ -63,6 +67,7 @@ from chess_diagram_ocr.ui.estado_do_rodape import (
     INDETERMINADO,
     INTERVALO_DE_ACOMPANHAMENTO_MS,
     LARGURA_DA_BARRA,
+    LARGURA_MINIMA_DA_MENSAGEM,
     PAPEL_DE_TEXTO,
     PARADO,
     Dispositivos,
@@ -76,7 +81,43 @@ from chess_diagram_ocr.ui.estado_do_rodape import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["DICA_DO_CANCELAR", "RodapeDaJanela"]
+__all__ = ["DICA_DO_CANCELAR", "LARGURA_DA_MENSAGEM", "LARGURA_DA_ZONA", "RodapeDaJanela", "ZonaDaMensagem"]
+
+LARGURA_DA_MENSAGEM = 320
+"""Quanto a mensagem **tem garantido** enquanto está na tela, no máximo: cerca de 57 caracteres
+na fonte do produto (5,6 px cada, medido pelo crítico da fase 5, ciclo 3) -- o começo de qualquer
+frase de erro. Uma frase mais curta tem garantida a largura dela, e não a reserva: espaço vazio ao
+lado de uma zona em reticências é o defeito. **O custo, medido:** uma frase mais longa sai elidida,
+com a inteira na dica -- a do próprio produto sem o modelo de casas
+(`leitura.FRASE_SEM_MODELO`, 84 caracteres, 474 px) sai assim nos 46 livros do acervo de 1246 a
+1440 px de largura, e o estado vazio do Resultado (73 caracteres, 409 px) também. **Elidida à
+direita**, e não no meio: quem a desenha é a `ZonaDaMensagem` da S-552, que guarda o começo -- é
+dele que sai a severidade, e é ele que diz o que falhou. A reserva entra na zona por
+`ZonaDaMensagem.definir_reserva`, no lugar do teto fixo `LARGURA_MINIMA_DA_MENSAGEM`.
+
+Com `stretch=1` o Qt a encolhe **primeiro**: no leiaute de caixa, um item esticável entra no
+aperto com o mínimo como largura desejada (`QLayoutStruct.smartSizeHint`), e o mínimo dela era
+zero. O crítico da fase 5 mediu (ciclo 1): com o livro de nome de 149 caracteres, a 1248x640 e a
+1366x728, a mensagem ficava com **0 px** e o nome do livro com 985 -- toda mensagem de erro
+sumia. A primeira reserva, 480 px, saiu das zonas curtas (ciclo 2): no aperto o leiaute tira de
+cada item não fixo a mesma parte, e as zonas de dispositivos e de ocupação chegavam a zero antes
+do nome do livro -- dispositivos cortados em 46 dos 46 livros do acervo a 1248 px, e a queda para
+a CPU de novo em silêncio. Sem mensagem, o mínimo volta a zero e o nome do livro fica com o
+espaço."""
+
+LARGURA_DA_ZONA = 240
+"""Quanto as zonas de **dispositivos** e de **ocupação** têm garantido: o texto inteiro delas até
+este teto. A de dispositivos é curta e de forma conhecida (``peças cpu · texto sem pesos``,
+135 px), e o que diz só vale inteiro: ela existe porque uma máquina com placa e o torch ``+cpu``
+roda na CPU em silêncio (`ui/dispositivos.py`). A de ocupação é curta no caso comum
+(``Importando o livro (p. 121 de 289)``, 163 px), **mas não tem forma fixa**: ``aquecendo o
+modelo (<caminho do .pt>)`` e ``Exportando para EPUB (<nome>.epub)`` passam do teto e saem
+elididas no meio, com a inteira na dica (crítico da fase 5, ciclo 3: 46 de 46 livros com a
+primeira, 36 a 45 com a segunda). Quem cede no aperto é o nome do livro, elidido no meio -- o
+começo do nome e o fim da frase (a página e os diagramas) ficam; com a ocupação no teto, a
+1246 px, ele chega a ~95 px. Com a mensagem na reserva, as duas zonas no teto, a barra e os
+botões, o rodapé ainda pede menos que a largura mínima da janela: quem a decide continua sendo o
+modo."""
 
 DICA_DO_CANCELAR = (
     "Só fica ativo quando há operação longa que sabe parar limpo.\n"
@@ -84,6 +125,125 @@ DICA_DO_CANCELAR = (
 )
 """O mesmo texto do outro rodapé, e a igualdade é o item: uma dica que explicasse o botão de um
 jeito numa janela e de outro na outra seria duas respostas para a mesma pergunta."""
+
+
+class ZonaDaMensagem(QLabel):
+    """A zona de mensagem: um rótulo que **cede largura em vez de exigi-la** (S-552, 5ª rodada).
+
+    **O defeito, e ele é de janela e não de rodapé.** Um `QLabel` de uma linha responde, como
+    mínimo, a largura do **texto inteiro** -- `QLabel::minimumSizeHint` é `sizeForWidth(0)`, e sem
+    quebra de linha isso é a frase medida de ponta a ponta. Esse mínimo sobe pelo `QHBoxLayout` do
+    rodapé, pelo `QVBoxLayout` da janela e chega ao `minimumSizeHint` dela. Medido a 1024x768 com
+    frases de 120, 200, 300, 600 e 2000 caracteres, o piso da janela ia a **1057, 1457, 1957, 3457
+    e 10457 px** -- e `resize(1024, 768)` era recusado até chegar uma frase menor.
+
+    E o caminho não é hipotético: o erro de modelo ausente tem ~600 caracteres e é escrito por
+    `janela._falhou` -> `_dizer`. **A mensagem que ensina a consertar o modelo tornava a janela
+    maior que a tela e a si mesma ilegível.**
+
+    **`setWordWrap` não serve, e essa foi a primeira tentativa.** Ele troca largura por altura: o
+    mínimo horizontal cai para a maior palavra, mas o vertical passa a ser a altura do texto
+    quebrado na largura mais estreita possível -- e o rodapé, cuja altura é fixa por construção
+    (ver o cabeçalho deste módulo), viraria uma faixa de doze linhas na mesma frase de 600
+    caracteres. Trocar um piso de largura por um de altura não é consertar.
+
+    **O que serve são três coisas juntas**, e nenhuma delas sozinha:
+
+    1. **Um teto declarado de exigência** (`LARGURA_MINIMA_DA_MENSAGEM`). `sizeHint` e
+       `minimumSizeHint` param de falar do texto e passam a falar da zona; a largura de fato vem do
+       esticamento, que é o que sempre decidiu quem cede espaço aqui.
+    2. **Elisão à direita** (`QFontMetrics.elidedText`), refeita a cada `resizeEvent`. **À direita
+       e não no meio**: numa frase de erro o começo é o que a classifica -- é dele que
+       `estado_do_rodape.severidade_de` tira a severidade --, e `"Não foi possível…"` diz o que
+       `"…em C:/modelos/piece_classifier.pt"` não diz.
+    3. **A frase inteira na dica.** Elidir sem isso seria esconder a instrução em vez de encurtá-la;
+       com isso, o rodapé mostra o começo e o ponteiro parado revela o resto.
+
+    `frase()` devolve o que foi escrito e `text()` o que está na tela -- e são coisas diferentes
+    desde esta rodada, e é por isso que `RodapeDaJanela.mensagem()` pergunta pela primeira.
+
+    **A reserva do rodapé entra por cima do teto** (OCR_UI ciclo 2, fase 5; ver
+    `definir_reserva`): solta, a zona exige o teto declarado; no rodapé ela garante a frase inteira
+    até `LARGURA_DA_MENSAGEM` enquanto há frase, e zero sem frase. As duas respostas falam da zona e
+    não do texto inteiro, e é o que mantém a frase longe do piso da janela.
+    """
+
+    def __init__(self, parent: QWidget | None = None, *, largura_minima: int = LARGURA_MINIMA_DA_MENSAGEM) -> None:
+        super().__init__("", parent)
+        self._frase = ""
+        self._largura_minima = max(1, int(largura_minima))
+        self._reserva: int | None = None
+        """Até quanto a zona **garante** a frase inteira, ou `None` para o teto declarado acima."""
+        # **O mínimo explícito é o que grampeia o item do leiaute**, e não só a dica: `qSmartMinSize`
+        # usa `minimumSize()` por cima de `minimumSizeHint()` quando ele é positivo. Os dois estão
+        # aqui de propósito -- o primeiro fecha o caminho do leiaute, o segundo faz o widget
+        # responder a verdade quando alguém lhe pergunta direto.
+        self.setMinimumWidth(self._largura_minima)
+
+    def frase(self) -> str:
+        """A mensagem inteira, como ela foi escrita -- antes da elisão."""
+        return self._frase
+
+    @property
+    def texto_inteiro(self) -> str:
+        """`frase()` com o nome de `qt/rotulo.RotuloElidido`: é por ele que as réguas de rótulo
+        elidido (o portão do F9-C7, §4.1) comparam o que foi pedido com o que está na tela."""
+        return self._frase
+
+    def definir_frase(self, frase: str) -> None:
+        """Escreve a mensagem. O que couber vai para a tela; o resto, para a dica."""
+        self._frase = str(frase)
+        self._reescrever()
+        if self._reserva is not None:
+            # A exigência acompanha a frase (ver `_exigida`): o leiaute tem de perguntar de novo.
+            self.updateGeometry()
+
+    def definir_reserva(self, reserva: int) -> None:
+        """Troca o teto declarado por uma reserva que acompanha a frase (OCR_UI ciclo 2, fase 5).
+
+        **Por que o rodapé quer isso, e o número está em `LARGURA_DA_MENSAGEM`.** Com o teto fixo a
+        zona exige o mesmo com e sem frase: sem frase, o nome do livro perde a largura de uma zona
+        vazia; com frase, um nome de 149 caracteres a espreme até o teto. A reserva garante a frase
+        inteira até `reserva` px enquanto ela está na tela -- a largura dela, se for mais curta --
+        e zero quando não há frase.
+
+        **Medida com a fonte de agora**, em `_exigida`, e não quando a frase chega: um mínimo
+        calculado ao escrever mede com a fonte de antes do estilo, que é o defeito que
+        `RotuloElidido.minimumSizeHint` registra. Por isso o mínimo explícito sai (`0`) e quem
+        responde ao leiaute é `minimumSizeHint`.
+        """
+        self._reserva = max(0, int(reserva))
+        self.setMinimumWidth(0)
+        self.updateGeometry()
+
+    def _exigida(self) -> int:
+        """A largura que a zona exige e pede: o teto declarado, ou a reserva sobre a frase."""
+        if self._reserva is None:
+            return self._largura_minima
+        if not self._frase:
+            return 0
+        return min(self._reserva, self.fontMetrics().horizontalAdvance(self._frase))
+
+    def _reescrever(self) -> None:
+        """Recorta a frase na largura de agora. Chamado ao escrever, ao redimensionar e ao repintar."""
+        largura = max(0, self.contentsRect().width())
+        recortada = self.fontMetrics().elidedText(self._frase, Qt.TextElideMode.ElideRight, largura)
+        self.setText(recortada)
+        # Dica só quando há o que revelar: uma dica repetindo o que já está na tela é ruído, e é o
+        # mesmo critério de `dica_em` para texto vazio.
+        dica_em(self, self._frase if recortada != self._frase else "")
+
+    def resizeEvent(self, a0: QResizeEvent | None) -> None:  # noqa: N802 - assinatura do Qt
+        super().resizeEvent(a0)
+        self._reescrever()
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - assinatura do Qt
+        """A largura da **zona**, e não a do texto. A altura continua sendo a de uma linha."""
+        return QSize(self._exigida(), super().sizeHint().height())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - assinatura do Qt
+        """O mesmo, e é este que a janela lia como piso antes desta rodada."""
+        return QSize(self._exigida(), super().minimumSizeHint().height())
 
 
 class RodapeDaJanela(QWidget):
@@ -130,7 +290,18 @@ class RodapeDaJanela(QWidget):
 
         # **A mensagem primeiro, e com `stretch=1`.** No Tk a ordem do `pack` é o que decide quem
         # cede espaço; aqui é o esticamento, e por isso a mensagem pode vir na ordem de leitura.
-        self._lbl_mensagem = QLabel("", self)
+        # **Elidida, e é o defeito do nome do livro no terceiro lugar** (OCR_UI ciclo 2, C18). Um
+        # `QLabel` comum pede como largura mínima a frase inteira, e a frase do rodapé é o texto
+        # mais variável da janela: medido com um livro aberto, uma frase sozinha subia o mínimo da
+        # janela para 1.246 px -- cada mensagem longa empurrava a janela para fora de um portátil
+        # a 150 %. A frase inteira fica na dica, em `mensagem()` e na lista das últimas cinquenta.
+        #
+        # E é uma `ZonaDaMensagem` e não um `QLabel` cru: um rótulo comum **exige** a largura do
+        # texto inteiro, e o esticamento acima só reparte a sobra -- a exigência passava por baixo
+        # dele e virava piso da janela (S-552). Ver a classe. A reserva é a de `LARGURA_DA_MENSAGEM`,
+        # relida a cada frase em `mostrar`.
+        self._lbl_mensagem = ZonaDaMensagem(self)
+        self._lbl_mensagem.definir_reserva(LARGURA_DA_MENSAGEM)
         self._lbl_mensagem.setFont(tema.fonte_atual(tipografia.CORPO))
         self._lbl_mensagem.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         linha.addWidget(self._lbl_mensagem, 1)
@@ -144,17 +315,22 @@ class RodapeDaJanela(QWidget):
         tema.aplicar_papel(self._btn_mensagens, estilos.NEUTRO)
         self._btn_mensagens.clicked.connect(self.abrir_mensagens)
         dica_em(self._btn_mensagens, "As últimas mensagens desta sessão, inclusive as que já saíram daqui.")
-        # **Piso de um pixel, pela razão do rótulo do documento**: o rodapé é a faixa que cede, e
-        # um botão que exigisse os seus 90 px subiria a largura mínima da janela por causa de uma
-        # lista de consulta. Com folga ele tem o tamanho que pede; sem folga, encolhe.
-        self._btn_mensagens.setMinimumWidth(1)
+        # **O mínimo do botão é o dele** (OCR_UI ciclo 2, fase 5, portão da janela estendido).
+        # Havia um piso de um pixel, para o botão não subir a largura mínima da janela; mas quem
+        # cede nesta linha são os rótulos elididos, e um botão de 27 px não mostra o que abre.
+        # Com a mensagem no piso dela e uma importação em curso (ocupação e barra na linha), o
+        # portão mediu o botão com 27 dos 82 px, com a janela no mínimo e em todas as áreas. Sem o
+        # piso de um pixel, o mínimo do rodapé sobe a largura do botão e continua abaixo de 950 px
+        # com tudo à vista; quem decide a largura mínima da janela continua sendo o modo (1248).
         linha.addWidget(self._btn_mensagens, 0)
         self._janela_de_mensagens: QDialog | None = None
 
         # A quarta zona vem **à esquerda do documento** e não à direita: livro e página são o que
         # a pessoa consulta o tempo todo, e o dispositivo é o que ela olha uma vez por sessão.
         # Quem fica mais perto da mensagem é quem cede espaço primeiro.
-        self._lbl_dispositivos = QLabel("", self)
+        # Elidido pelo mesmo motivo da mensagem (C18): a descrição dos dispositivos cresce com o
+        # motivo de uma ausência, e nenhum texto do rodapé decide a largura da janela.
+        self._lbl_dispositivos = RotuloElidido("", self, largura_desejada=0, piso=LARGURA_DA_ZONA)
         self._lbl_dispositivos.setFont(auxiliar)
         tema.pintar(self._lbl_dispositivos, "color", tokens.TEXTO_SECUNDARIO)
         linha.addWidget(self._lbl_dispositivos, 0)
@@ -176,7 +352,7 @@ class RodapeDaJanela(QWidget):
         tema.pintar(self._lbl_documento, "color", tokens.TEXTO_SECUNDARIO)
         linha.addWidget(self._lbl_documento, 0)
 
-        self._lbl_ocupacao = QLabel("", self)
+        self._lbl_ocupacao = RotuloElidido("", self, largura_desejada=0, piso=LARGURA_DA_ZONA)
         self._lbl_ocupacao.setProperty(tipografia.PROPRIEDADE_TABULAR, "true")
         self._lbl_ocupacao.setFont(auxiliar)
         linha.addWidget(self._lbl_ocupacao, 0)
@@ -222,7 +398,10 @@ class RodapeDaJanela(QWidget):
         """
         estado = compor(mensagem=texto, origem=origem, severidade=severidade)
         self._severidade = estado.severidade
-        self._lbl_mensagem.setText(estado.mensagem)
+        self._lbl_mensagem.definir_frase(estado.mensagem)
+        # a reserva é o piso da zona: a largura da frase até `LARGURA_DA_MENSAGEM`, medida com a
+        # fonte de agora (`ZonaDaMensagem._exigida`), e zero sem frase
+        self._lbl_mensagem.definir_reserva(LARGURA_DA_MENSAGEM)
         self._repintar_mensagem()
         self._reagendar_expiracao(expira_em_ms(estado.severidade))
         item = self.mensagens.registrar(
@@ -254,16 +433,17 @@ class RodapeDaJanela(QWidget):
             janela.resize(720, 360)
             self._janela_de_mensagens = janela
         janela = self._janela_de_mensagens
-        lista = self._lista_de_mensagens()
-        if lista is not None and lista.count() == 1 and lista.item(0).text() == strings.MENSAGENS_ANTERIORES_VAZIO:
+        na_tela = self._lista_de_mensagens()
+        unica = na_tela.item(0) if na_tela is not None and na_tela.count() == 1 else None
+        if na_tela is not None and unica is not None and unica.text() == strings.MENSAGENS_ANTERIORES_VAZIO:
             if self.mensagens.todas():
-                lista.clear()
+                na_tela.clear()
                 for mensagem in self.mensagens.todas():
-                    lista.addItem(mensagem.linha())
+                    na_tela.addItem(mensagem.linha())
         janela.show()
         janela.raise_()
-        if lista is not None:
-            lista.scrollToBottom()
+        if na_tela is not None:
+            na_tela.scrollToBottom()
         return janela
 
     def _lista_de_mensagens(self) -> QListWidget | None:
@@ -285,6 +465,10 @@ class RodapeDaJanela(QWidget):
         try:
             cor = tema.cor_atual(PAPEL_DE_TEXTO[self._severidade])
             self._lbl_mensagem.setStyleSheet(f"color: {cor};")
+            # A pele nova traz outra fonte, e o que cabia na anterior pode não caber mais: a
+            # elisão é refeita aqui pela mesma razão que a cor -- ela foi resolvida na hora de
+            # escrever, e a hora de escrever passou.
+            self._lbl_mensagem.definir_frase(self._lbl_mensagem.frase())
         except RuntimeError:  # pragma: no cover - rodapé destruído entre a troca e a repintura
             return
 
@@ -293,8 +477,12 @@ class RodapeDaJanela(QWidget):
 
         Existe para o roteiro headless do `CONTRIBUTING.md`, pela mesma razão de `ui/rodape.py`:
         um roteiro documentado que não roda é pior que nenhum.
+
+        **A frase inteira, e não o que coube** (S-552, 5ª rodada): desde a `ZonaDaMensagem` o que
+        está na tela pode estar elidido, e um roteiro que lesse a tela passaria a afirmar o
+        tamanho da janela em vez do que o programa disse.
         """
-        return self._lbl_mensagem.text()
+        return self._lbl_mensagem.frase()
 
     def _reagendar_expiracao(self, prazo: int | None) -> None:
         self._expiracao.stop()
@@ -302,7 +490,9 @@ class RodapeDaJanela(QWidget):
             self._expiracao.start(prazo)
 
     def _expirar(self) -> None:
-        self._lbl_mensagem.setText("")
+        # sem frase a reserva cai a zero sozinha (`ZonaDaMensagem._exigida`): o nome do livro fica
+        # com o espaço
+        self._lbl_mensagem.definir_frase("")
         self._severidade = ""
 
     # ------------------------------------------------------------------ estado do documento
@@ -339,12 +529,12 @@ class RodapeDaJanela(QWidget):
             motivo=dispositivos.motivo,
             ausencia=dispositivos.ausencia,
         )
-        self._lbl_dispositivos.setText(texto)
+        self._lbl_dispositivos.definir_texto(texto)
         dica_em(self._lbl_dispositivos, dica)
 
     def dispositivos(self) -> str:
         """O que a zona mostra agora. Existe pelo mesmo motivo que `mensagem()`."""
-        return self._lbl_dispositivos.text()
+        return self._lbl_dispositivos.texto_inteiro
 
     def barra_de_progresso(self) -> QProgressBar:
         """A barra, para quem precisa **medir** o que ela ficou tendo (F9-C7, §4.2).
@@ -372,7 +562,7 @@ class RodapeDaJanela(QWidget):
         """
         atual = ocupacao(operacoes)
         try:
-            self._lbl_ocupacao.setText(atual.texto)
+            self._lbl_ocupacao.definir_texto(atual.texto)
             self._btn_cancelar.setEnabled(atual.cancelavel)
             # **Escondida sem operação** (F9-C3). Antes de `mostra_barra` esta linha não existia,
             # e a barra ficava em `0/100` para sempre no canto de todas as capturas.

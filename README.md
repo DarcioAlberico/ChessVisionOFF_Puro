@@ -90,7 +90,9 @@ desenha sem depender de cor), `ui/viewport.py` (roda, zoom ancorado, "caber na p
 `ui/comandos.py` sao reusados como estao. O que o Qt escreve do zero e o desenho -- `QPainter`
 no lugar de `create_rectangle`.
 
-E o numero que mede: `app_tkinter.py` tinha 2.327 linhas; `qt/janela.py` tem 1.193 e faz mais.
+E o numero que mede: no dia do corte, `app_tkinter.py` tinha 2.327 linhas e `qt/janela.py` 1.193, fazendo
+mais. Hoje a janela passa de 1.800, e cada degrau tem o motivo escrito na catraca de
+`tests/test_packaging.py` -- ela sobe por decisao, nao por acidente.
 A diferenca nao e codigo omitido -- e a camada pura de `ui/` sendo chamada em vez de reescrita.
 O que o Tk carregava sozinho virou 13 modulos puros novos, e `ui/` foi de 81 para 53 modulos,
 nenhum deles importando toolkit.
@@ -177,7 +179,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **40 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **46 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -309,6 +311,7 @@ cvoff-texto-status --exigir S-181   # portao: codigo 1 se o item nao esta inteir
 # leitura e contada a parte, nao descartada.
 cvoff-texto-ordem --por-livro 5
 cvoff-texto-ordem --baseline docs/metrics/texto_ordem.json   # regressao de ordem e regressao
+cvoff-texto-colunas --baseline docs/metrics/texto_colunas.json   # a estrutura de colunas, pagina a pagina (S-582)
 
 # A direcao em que cada livro numera a grade de exercicios (S-216). A referencia e o numero
 # impresso na pagina, e nao a ordem de emissao: nos livros de grade do acervo a camada e do
@@ -397,6 +400,29 @@ cvoff-texto-semelhanca --amostras 3000 --curva
 # 146 diagramas assumidos (2,1%), e o motivo de nao ser mais e que os livros que declaram o lado
 # por diagrama ja tem camada de texto, onde o motor nem chega a ser chamado.
 cvoff-texto-lado --livros 10 --paginas 8
+
+# Quanto do negrito e do italico que a camada do PDF declara chega ao documento em cada motor
+# (S-660). A referencia e o motor `camada`; o `auto` e o `glifo` leem a mesma folha e os textos sao
+# casados por `difflib`. Livro sem estilo declarado nas folhas lidas fica fora. Precisa de
+# models/char_classifier.pt -- sem ele os dois leriam pela camada e a medida nao diria nada.
+cvoff-texto-estilo-motor --folhas 4 --json docs/metrics/texto_estilo_por_motor.json
+
+# O portao do diagrama a esquerda com o texto ao lado (S-624): cada folha e lida, aberta na aba Texto
+# com a figura flutuando, e conferida -- a guarda de paridade, o mapa de posicoes, a selecao e a
+# letra digitada ao lado da figura. O desenho de hoje e o controle. Folha contada de 1.
+cvoff-texto-flutuante --folha "1937 Kemeri.pdf:54" --json docs/metrics/texto_flutuante.json
+
+# O PDF digital com o PGN do livro (S-589): cada diagrama casado com o seu no pela legenda
+# («Position after: 5.dxc5») ou pela posicao lida, e conferido pelo modelo. Diz quantos conferem,
+# quantos o PGN corrige, quantos discordam e quantos faltam no PDF. --sem-modelo casa so pela legenda.
+cvoff-livro-com-pgn --pdf "livro.pdf" --pgn "livro.pgn" --json saida.json
+
+# O estilo da palavra pela imagem (Fase 96). O conjunto: recortes de palavra das folhas tipograficas,
+# rotulados pela camada e divididos por livro -- o mesmo livro em dois arquivos e juntado pelo texto.
+# O classificador: treina, e julga fora do livro, no render limpo e degradado como scan, contra
+# 'chutar normal' e 'chutar pela altura'. Os pesos vao para models/estilo_palavra.pt.
+cvoff-texto-estilo-conjunto --folhas 40 --json docs/metrics/texto_estilo_conjunto.json
+cvoff-texto-estilo-classificador --json docs/metrics/texto_estilo_classificador.json
 
 # O livro com a camada de texto invisivel do que o motor leu (S-210). A pagina nao muda um pixel
 # -- `render_mode=3` --, e a camada e por LINHA para o retangulo da busca cobrir a palavra, e nao
@@ -489,9 +515,11 @@ integracoes abaixo sao desligadas por padrao e nao afetam o reconhecimento.
 
 ### Base de partidas (S-72/S-73)
 
-Um ou mais `.pgn` que voce poe em `pgn_database/`. Com eles, a Galeria preenche **numero do
-lance, vez a jogar e headers** dos diagramas cuja posicao aparece numa partida registrada -- e
-a vez a jogar deixa de ser o palpite que a Fase 3 registrou como palpite.
+Um ou mais `.pgn` que voce poe em `pgn_database/` -- soltos, em `.pgn.gz`, `.pgn.bz2` ou dentro
+de um `.zip`, lidos em fluxo sem descompactar para o disco (S-531; `.pgn.zst` se o pacote
+`zstandard` estiver instalado). Com eles, a Galeria preenche **numero do lance, vez a jogar e
+headers** dos diagramas cuja posicao aparece numa partida registrada -- e a vez a jogar deixa de
+ser o palpite que a Fase 3 registrou como palpite.
 
 **Todos os arquivos da pasta entram nas buscas (S-93).** Ate aqui era so o maior, e o custo
 disso foi medido: numa pasta com duas gigabases, as 10,3 M partidas da segunda nunca eram
@@ -501,6 +529,10 @@ nome e o cache de posicoes, que avisam como refazer:
 ```bash
 cvoff-games --build-index     # o indice por nome, sobre todas as bases da pasta
 ```
+
+O indice e **incremental** (S-532): a segunda rodada sobre a mesma pasta rele zero partidas, um
+arquivo que saiu da pasta sai do indice, e um `.pgn` que so cresceu e lido a partir do byte em
+que a rodada anterior parou. Cancelar no meio guarda os arquivos ja terminados.
 
 E **local**: o arquivo e lido do disco, nada e consultado na rede. Sem ele, os botoes "Buscar
 por nome" e "Buscar pela posicao" dizem onde por um e o resto do produto segue igual.
@@ -857,13 +889,13 @@ motor estava adivinhando, no meio a leitura e boa mas nao e registro, e o resto 
 A camada de texto e a correcao humana nunca pedem revisao.
 
 **O numero, e o que ele nao prova.** Medido em 10 paginas de 2 livros, com a camada de texto da
-propria pagina como referencia (`docs/metrics/texto_pagina.json`): CER **0,1001**. Esse valor tem
+propria pagina como referencia (`docs/metrics/texto_pagina.json`): CER **0,0961**. Esse valor tem
 um piso que nao e do modelo -- num dos dois livros a propria camada e OCR de terceiro e traz os
-proprios erros --, entao ele **nao** vira "86% de acerto". E ele mede **prosa**: pela tabela acima,
+proprios erros --, entao ele **nao** vira "90% de acerto". E ele mede **prosa**: pela tabela acima,
 na notacao a camada nao e referencia de coisa nenhuma, e ali o glifo e penalizado justamente onde
 acerta a figurina. O que a medicao decide de fato e o
 padrao do modo bloco da S-188, que fica **desligado**: ele custa ~50x o tempo e piora a media em
-33% -- 0,1001 contra 0,1331 nas mesmas 10 paginas. `--bloco` liga para quem quiser medir de novo.
+41% -- 0,0961 contra 0,1354 nas mesmas 10 paginas. `--bloco` liga para quem quiser medir de novo.
 
 ## Resolucao de problemas
 
@@ -899,6 +931,15 @@ uv run mypy            # tipos
 Os testes que dependem de `data/samples/` sao pulados automaticamente quando a pasta
 esta vazia, entao a suite roda em um clone limpo. Os testes de ONNX sao pulados quando o
 extra `onnx` nao esta instalado.
+
+A suite nao mexe nos dados de quem a roda. O `tests/conftest.py` aponta `CVOFF_DATA_DIR` e
+`CVOFF_PGN_DATABASE_DIR` para uma pasta temporaria antes de importar o pacote: o programa,
+rodado pelos testes, nao le nem grava o seu `data/` (rotulos, estado da janela, rascunhos, os
+caches) e nao enxerga as suas bases em `pgn_database/`. Um teste que crie ou grave um
+`data/games_positions*.sqlite` de verdade reprova com o caminho na mensagem -- o cache de
+posicoes do acervo custa ~56 min de varredura para refazer. Os testes de numeros vivos continuam
+lendo, so para leitura, os arquivos versionados de `data/`. As duas variaveis valem tambem para o
+programa, para quem quiser os dados em outro lugar.
 
 ## Desempenho: CPU, GPU e ONNX
 
@@ -1007,10 +1048,12 @@ Atalhos do ciclo de correcao (desligados quando o foco esta num campo de texto):
 src/chess_diagram_ocr/
   service.py            camada de servico: o pipeline de OCR, sem dependencia de UI
   settings.py           preferencias do usuario (endpoint remoto, motor de analise)
+  alinhamento.py       regua de alinhamento do recorte: onde o damero ideal encaixa, em pixel (S-526)
   atomic_io.py          escrita de arquivo que nao deixa arquivo pela metade
   audit.py              auditoria do dataset: legalidade, duplicatas, orfaos
   augment.py            aumento de dados do treino: jitter, afim e ruido, com probabilidade
-  batch.py              varredura da biblioteca inteira, com relatorio consolidado
+  arvore_de_aberturas.py  a arvore de aberturas por posicao: que lances a base joga daqui (S-535)
+  batch.py              varredura da biblioteca inteira, com relatorio consolidado e o de qualidade por livro (S-548)
   board_detection.py    deteccao do tabuleiro na pagina (OpenCV)
   calibration.py        temperature scaling e curva de confiabilidade
   checkpoint.py         leitura e escrita de checkpoints, com metadados de treino
@@ -1021,10 +1064,17 @@ src/chess_diagram_ocr/
   decode.py             decodificacao sujeita as regras do xadrez
   desenho_de_diagrama.py  o diagrama desenhado de novo (fonte Merida ou PNGs das pecas) para substituir no PDF
   detection_census.py   censo da deteccao: quantos diagramas cada regra achou, por livro
+  diagrama_png.py       o diagrama em PNG a partir da FEN, com as pecas de assets/ (S-543)
+  diagrama_svg.py       o diagrama vetorial a partir da FEN, com as pecas do python-chess (S-542)
+  diagramas_em_lote.py  os diagramas de uma origem gravados soltos, um arquivo por posicao (S-544)
+  docx_saida.py         o estudo e o texto em DOCX, OOXML minimo com zipfile (S-543)
+  eco.py                a tabela ECO embutida: classifica a abertura por posicao ou por lance (S-534)
   engine.py             motor UCI opcional (Stockfish)
+  epub.py               o estudo e o texto em EPUB 3, um SVG por diagrama (S-542)
   estipulacao.py        a exigencia do problema («mate em N») jogada sobre a leitura: busca exaustiva, motor UCI, e a troca unica que a faz fechar (C12)
   estudo.py             a arvore de variantes da sala de estudo, e as regras de lance
   estudo_arquivo.py     leitura e escrita dos estudos em disco, um arquivo por posicao
+  estudo_paragrafos.py  o estudo em paragrafos de livro: lance, variante recuada, comentario, [%D]
   estudo_partidas.py    a partida da base carregada como linha principal do estudo
   estudo_saida.py       o estudo exportado: PGN com variantes, comentarios e simbolos
   evaluation.py         metricas de qualidade do reconhecimento (sobre recortes rotulados)
@@ -1038,9 +1088,11 @@ src/chess_diagram_ocr/
   games_census.py       censo da base de partidas: quanto ha, e quanto disso e alcancavel
   games_db.py           leitura dos .pgn e a busca por nome e por posicao
   games_index.py        o indice sqlite da base, por nome e por posicao
+  importacao_de_imagens.py  imagens de fora (relatorio do ChessMeridaOCR, pastas soltas) para o dataset, com conferencia
   inference.py          carga do modelo, predicao de FEN e TTA
   labels.py             a porta unica do labels.csv: LabelStore (S-51)
   lance_seguinte.py     o primeiro lance impresso sob o diagrama jogado sobre a leitura, e a troca unica que o faz fechar (C11)
+  livro_com_pgn.py      cada diagrama do PDF digital casado com o no do PGN do livro, e o estado dele (S-587)
   logging_setup.py      configuracao de logging
   model.py              arquitetura do classificador, configuravel por ArchConfig
   net_correction.py     cliente da correcao remota de FEN (opcional, opt-in)
@@ -1052,16 +1104,23 @@ src/chess_diagram_ocr/
   pdf_substituicao.py   as operacoes de escrita no PDF: apagar, substituir o diagrama, link do lichess
   pdf_text.py           legenda e metadados da camada de texto do PDF
   pdf_to_pgn.py         varredura de PDF e exportacao PGN
-  preprocess.py         o recorte do tabuleiro virando as 64 casas que o modelo le
+  pgn_do_livro.py       o PGN que vem com o livro: leitura tolerante e o indice da arvore por lance e por posicao (S-585)
+  placar.py             o placar do treino: por livro e por sessao, em tres baldes (S-541)
+  preprocess.py         o recorte do tabuleiro virando as 64 casas que o modelo le, e o caminho de pagina de scan (S-547)
   procedencias.py       de onde veio cada amostra, e o que isso permite fazer com ela
   processo_de_trabalho.py  o filho que rasteriza, le o CSV e detecta, porque o PyMuPDF e o Python seguram o GIL
   provenance.py         o registro de procedencia gravado ao lado de cada rotulo
   proveniencia.py       o sidecar .proveniencia.jsonl ao lado do PGN: retangulo, hash, confiancas, reparos e veredito por diagrama (A11)
   review_queue.py       fila de revisao ordenada por valor de informacao
+  revisao_arquivo.py    o baralho da repeticao espacada no disco, um para o acervo (S-540)
+  revisao_espacada.py   a repeticao espacada dos estudos e das taticas: FSRS e a agenda (S-540)
   second_opinion.py     a segunda leitura local do tabuleiro, para conferir a primeira (S-66)
   semantics.py          lado a jogar e direitos de roque
   side_survey.py        o levantamento do lado a jogar declarado nas legendas do acervo
   splits.py             divisao treino/validacao/teste estavel
+  tablebase.py          tablebases Syzygy opcionais: resultado exato nos finais (S-538)
+  taticas.py            o exercicio montado do acervo: FEN lida + solucao impressa (S-539)
+  taticas_arquivo.py    os exercicios de tatica no disco, um arquivo por livro (S-539)
   text_status.py        o que do plano de texto ja existe no disco, medido por sonda
   training.py           loop de treino (Trainer, TrainingPlan, BestEpochPolicy)
   tsoj_reader.py        o leitor do formato TSOJ, de onde veio o classificador de caractere
@@ -1116,6 +1175,30 @@ problema, e o `cvoff-audit --fix` nao a manda para a quarentena. Sem isso, o "si
 uma pergunta sem consequencia: o comando seguinte tiraria a linha do arquivo. Corrigir o
 rotulo depois, ja com os dois reis no lugar, limpa a marca sozinho.
 
+## Importar imagens de outros programas
+
+A aba Dataset tem o botao **Importar imagens...**, que traz diagramas de fora do programa
+para o `labels.csv`. Duas fontes:
+
+- **Relatorio do ChessMeridaOCR** (plugin do Sigil): a pasta com um `.html` e a pasta
+  `imagens/` por livro, ou a pasta que junta varios livros. A FEN vem do relatorio, mas so
+  entra sozinha quando o nosso modelo le a mesma posicao no recorte -- **Importar os que o
+  modelo confirma**. O que discorda, o tabuleiro vazio e a imagem com duas FENs diferentes no
+  relatorio ficam pendentes, com o aviso, para conferir.
+- **Pasta de imagens sem FEN** (o `chessvision-jbc`, por exemplo): nada entra sem conferencia.
+  A proposta e a leitura do modelo; corrija no tabuleiro e salve, pule ou descarte. Um
+  `index.csv` com as colunas `png` e `to_move` na raiz da pasta da o lado a jogar e a legenda.
+
+O recorte tira coordenadas, numero do diagrama e seta de quem joga: o detector so vale quando
+o quadro cobre boa parte da imagem; senao a imagem inteira e o tabuleiro (o caso das imagens
+ja recortadas rente as casas). **Usar a imagem inteira** troca um pelo outro na conferencia.
+
+O andamento de cada pasta fica em `data/importacao/`: reabrir a mesma pasta continua de onde
+parou, e uma imagem ja gravada nao e gravada de novo. A coluna `source_pdf` da amostra leva a
+fonte e o livro (`ChessMeridaOCR: <livro>`), e `corrected_by` diz o caminho:
+`importado-com-fen` (relatorio e modelo concordaram, ninguem olhou), `ocr-aceito` ou
+`ocr-corrigido` (conferida com a leitura do modelo ao lado).
+
 ## Dados e artefatos
 
 O repositorio versiona apenas codigo, documentacao e `data/labels.csv`. Ficam de fora,
@@ -1145,17 +1228,23 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 |---|---|
 | S-01 a S-36 | [docs/SPEC.md](docs/SPEC.md) |
 | S-37 a S-77 | [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) |
-| S-78 a S-82, S-143, S-175, S-176 | [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) |
+| S-78 a S-82, S-143, S-175, S-176, S-454, S-455 | [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) |
 | S-83 a S-94 | [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) |
 | S-95 a S-142, S-171 a S-174, S-218, S-219 | [docs/SPEC_FASE14.md](docs/SPEC_FASE14.md) |
 | S-144 a S-170, S-177 | [docs/SPEC_UI.md](docs/SPEC_UI.md) |
 | S-178 a S-217 | [docs/SPEC_TEXTO.md](docs/SPEC_TEXTO.md) |
 | S-220 a S-234, S-294, S-295, S-324 | [docs/SPEC_APARENCIA.md](docs/SPEC_APARENCIA.md) |
-| S-235 a S-267, S-291 a S-293 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
+| S-235 a S-267, S-291 a S-293, S-521 | [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) |
 | S-268 a S-290 | [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) |
-| S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
+| S-296 a S-323, S-325 a S-430, S-451 a S-453 (menos S-324) | [docs/SPEC_REVISAO.md](docs/SPEC_REVISAO.md) |
 | S-431 a S-440 | [docs/SPEC_REVISAO_EXTERNA.md](docs/SPEC_REVISAO_EXTERNA.md) |
 | S-441 a S-450 | [docs/SPEC_ACABAMENTO.md](docs/SPEC_ACABAMENTO.md) |
+| S-507 a S-520 | [docs/SPEC_ESTUDO_QT.md](docs/SPEC_ESTUDO_QT.md) |
+| S-522 a S-526 | [docs/SPEC_REVISAO_EXTERNA_2.md](docs/SPEC_REVISAO_EXTERNA_2.md) |
+| S-500 a S-506, S-527 a S-580 | [docs/SPEC_SUITE.md](docs/SPEC_SUITE.md) |
+| S-581 a S-584 | [docs/PLANO_COLUNAS_SOLUCOES.md](docs/PLANO_COLUNAS_SOLUCOES.md) |
+| S-601 a S-668 | [docs/SPEC_MESA_DE_TEXTO.md](docs/SPEC_MESA_DE_TEXTO.md) |
+| S-702 | [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1179,7 +1268,10 @@ criterio de aceite dele. A tabela acima e sobre a spec.
 - [docs/SPEC_FASE7.md](docs/SPEC_FASE7.md) -- especificacao das Fases 7 a 13 (S-37 a S-75),
   incluindo os defeitos da Fase 7.0 e a Fase 12, que saiu de uso e nao de varredura
 - [docs/ANALISE_DETECCAO.md](docs/ANALISE_DETECCAO.md) -- o glifo do cabecalho reconhecido
-  como diagrama, os quatro danos medidos e o censo de candidatos (S-78 a S-82)
+  como diagrama, os quatro danos medidos e o censo de candidatos (S-78 a S-82). Guarda tambem
+  os itens de recorte que vieram depois: a foto quadrada (S-143), a quina que a rasterizacao
+  nao liga (S-175), a faixa que passa por diagrama (S-176) e a legenda que entra no recorte
+  (S-454)
 - [docs/PLANO_BASE_PARTIDAS.md](docs/PLANO_BASE_PARTIDAS.md) -- a base de partidas como fonte
   de verdade: o indice por nome, a busca por posicao e a escolha que vira procedencia
   (S-83 a S-94)
@@ -1209,6 +1301,11 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   o que os pesos treinados em `training_data/` destravaram, as dez etapas ate a pagina lida, o
   portao que decide se as tres ultimas acontecem, e as duas dividas que so a origem dos
   recortes pode pagar -- procedencia e livro
+- [docs/PLANO_COLUNAS_SOLUCOES.md](docs/PLANO_COLUNAS_SOLUCOES.md) -- as colunas da pagina de
+  solucoes (S-581 a S-584): a medicao em 559 paginas de 12 livros, a causa em duas metades (o
+  titulo e o folio na calha; o preenchimento que reprova a coluna de linha curta), as variantes
+  medidas e recusadas, e a execucao -- a borda isolada, a regua anotada `cvoff-texto-colunas` e
+  o quadro de largura inteira
 - [docs/ROADMAP_APARENCIA.md](docs/ROADMAP_APARENCIA.md) -- **Fases 32 a 35**, a leitura das duas
   propostas de interface de `Proposta de interface/` e o plano para adota-las sem aposentar a
   interface de hoje: as duas imagens mostram 4 e 13 comandos onde a janela tem 21 nas barras do
@@ -1223,7 +1320,7 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   plano para transforma-la num editor: a aba tem 6 controles, 3 tags de cor e **1** formato de
   saida, e devolve uma `str` -- dai a regra de que todo atributo (negrito, italico, cor, estilo)
   mora no documento e nao no widget, porque tag do Tk nao sobrevive ao botao Salvar
-- [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) -- especificacao das Fases 36 a 42 e 51 (S-235 a S-267, S-291 a S-293):
+- [docs/SPEC_EDITOR.md](docs/SPEC_EDITOR.md) -- especificacao das Fases 36 a 42, 51 e 78 (S-235 a S-267, S-291 a S-293, S-521):
   o documento rico como dado, o italico que o leitor ja mede e joga fora, o negrito medido pela
   espessura do traco (a camada declara estilo em 14 dos 41 livros), o arquivo que reabre com
   diagrama e faixa, a paleta gerada das 314 classes do modelo, `Ctrl+S` no editor -- que hoje nao
@@ -1233,6 +1330,22 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   e troca de caixa. A **Fase 42** saiu da leitura de dois editores de texto guardados como
   referencia -- area de transferencia, zoom de leitura, modo de quebra de linha --, mais o unico
   item do corretor ortografico deles que cabia aqui: o lexico que **confere e nao troca**
+- [docs/ROADMAP_MESA_DE_TEXTO.md](docs/ROADMAP_MESA_DE_TEXTO.md) -- **Fases 90 a 96**, o plano
+  da mesa de texto: a folha impressa a esquerda e o editor a
+  direita, a fita por abas lida do WordCraft, o caderno do livro que guarda cada folha corrigida
+  sem poda, os diagramas centralizados por padrao, o zoom a vista e o negrito da folha sem camada
+  com portao de medicao -- e os tres defeitos medidos no widget antes de tudo: o alinhamento e o
+  estilo de paragrafo que nao chegam a tela, a miniatura que nao segue a marca, e o rascunho podado
+  a oito que apaga a correcao da primeira folha
+- [docs/ROADMAP_PDF_COM_PGN.md](docs/ROADMAP_PDF_COM_PGN.md) -- **S-585 a S-598**, plano e
+  especificacao do PDF digital com o PGN do livro: o PGN lido inteiro, cada diagrama casado com o
+  seu no pela legenda ou pela posicao, a FEN e o lado a jogar do livro no Resultado, o que discorda
+  na Revisao, os diagramas que faltam no PDF desenhados do PGN, o Estudo na arvore do autor e o
+  livro como lote do dataset -- com as medidas do Harikrishna (951 conferem, 22 corrigidos, 17
+  discordam, 188 faltam)
+- [docs/SPEC_MESA_DE_TEXTO.md](docs/SPEC_MESA_DE_TEXTO.md) -- especificacao das Fases 90 a 96
+  (S-601 a S-668): o desenho que obedece ao documento, o caderno do livro, os diagramas, a letra
+  da aba, a mesa, a fita e os paineis, e o portao do negrito e do italico na folha sem camada
 - [docs/ROADMAP_ESTUDO.md](docs/ROADMAP_ESTUDO.md) -- **Fases 43 a 50**, o que a aba
   Analise e hoje, por que ela nao e uma sala de estudo e a leitura da pasta de referencia
 - [docs/SPEC_ESTUDO.md](docs/SPEC_ESTUDO.md) -- especificacao das Fases 43 a 50 (S-268 a S-290):
@@ -1262,6 +1375,37 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   (S-441 a S-450): a folha de base do `ttk`, o indicador que encosta no rotulo, a regra 1 da
   aparencia relida -- a pele classica nao muda de *arranjo*, e acabamento e da janela e nao da
   pele --, os 154 literais de espaco e o tabuleiro que flutua num slab quase-preto
+- [docs/ROADMAP_ESTUDO_QT.md](docs/ROADMAP_ESTUDO_QT.md) -- **Fases 73 a 77**, a sala de estudo
+  medida no PyQt6 em 2026-09-01: cinco decisoes que existiam e perderam o chamador no porte e no
+  corte -- a esteira do tabuleiro que voltou a nao ter fim um dia depois de ter sido consertada, as
+  coordenadas, a marca do ultimo lance e a caixa "Seguir OCR selecionado" que nao segue --, mais o
+  arranjo das quatro fileiras de botao que o acabamento adiou de proposito
+- [docs/SPEC_ESTUDO_QT.md](docs/SPEC_ESTUDO_QT.md) -- especificacao das Fases 73 a 77
+  (S-507 a S-520): a esteira do tabuleiro com fim, as coordenadas e a marca do ultimo lance que o
+  modelo ja sabia calcular, a caixa "Seguir OCR" religada com guarda de ancora, o recuo de variante
+  que o `QTextDocument` descarta em elemento inline, e a conta que pergunta de cada decisao pura
+  de `ui/` quem a chama -- 77 nomes exportados que nada toca, medidos em 2026-09-01
+- [docs/ROADMAP_REVISAO_EXTERNA_2.md](docs/ROADMAP_REVISAO_EXTERNA_2.md) -- **Fase 79**, a segunda
+  revisao externa, recebida em 2026-09-02: seis itens sobre a janela do Qt e um teste no acervo, cada
+  um conferido contra este ramo -- tres ja estavam feitos, um venceu, e os dois que valiam foram
+  remedidos aqui no estilo `windows11` antes de virar item
+- [docs/SPEC_REVISAO_EXTERNA_2.md](docs/SPEC_REVISAO_EXTERNA_2.md) -- especificacao da Fase 79
+  (S-522 a S-526): a moldura derivada da superficie (1,04:1 na pele Foco, 3,02:1 depois), o motor e
+  o OCR de legenda chegando a janela pelas preferencias, o auto-teste com estado descartavel, a
+  ARCHITECTURE descrevendo o Qt, e a regua de alinhamento do recorte no censo
+- [docs/ROADMAP_SUITE.md](docs/ROADMAP_SUITE.md) -- **Fases 80 a 86**, a suite de treino: a sala e a
+  janela com barra agrupada, a base de partidas de varios gigabytes (indice incremental, busca por
+  jogador e ECO, arvore de aberturas), analise de partida, treino de taticas do proprio acervo,
+  exportacao EPUB/DOCX para quem edita material, e OCR em lote na janela.
+- [docs/SPEC_SUITE.md](docs/SPEC_SUITE.md) -- especificacao das Fases 80 a 86 (S-527 a S-580), item a item.
+- [docs/ROADMAP_TEXTO_PRECISO.md](docs/ROADMAP_TEXTO_PRECISO.md) -- **Fases 100 a 107** (S-700 a
+  S-772), a prosa lida com precisao de livro: a regua que separa prosa de notacao, medida em
+  2026-10-30 (`docs/metrics/texto_prosa_20261030.json`: glifo 3,61% de CER de prosa no ouro digital,
+  Tesseract nas mesmas linhas 1,33%, e 0,16% nas linhas certas), as folhas que somem em silencio, a
+  prosa da camada nos livros digitais e o leitor de linha ao lado do glifo
+- [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) -- especificacao das Fases 100 a 107,
+  item a item a medida que sao entregues: a S-702 (a admissao sem motor e o ouro-teste sorteado
+  antes de qualquer leitura, em `assets/texto_prosa/ouro.json`)
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

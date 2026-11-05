@@ -67,22 +67,15 @@ from dataclasses import dataclass, field, replace
 from . import historico
 
 __all__ = [
-    "FOLGA_PADRAO_PT",
-    "IDENTIDADE",
     "SEM_ROTACAO",
     "Apagamento",
     "EspacoDeEscrita",
-    "Matriz",
     "PilhaDeSubstituicoes",
     "Retangulo",
     "Substituicao",
     "assinatura_da_pagina",
-    "assinatura_de_apagamento",
-    "assinatura_de_substituicao",
-    "estado_do_texto",
     "folga_aplicada",
     "quer_link_lichess",
-    "texto_do_estado",
     "vazio",
 ]
 

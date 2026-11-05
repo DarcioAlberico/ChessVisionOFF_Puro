@@ -417,5 +417,54 @@ class PrecedenciaTests(unittest.TestCase):
         self.assertEqual([c.italico for c in saida], [None])
 
 
+    def test_na_folha_tipografica_a_camada_vence_o_pendor(self) -> None:
+        """S-660: a régua do pendor errava a linha inteira num livro nascido digital lido pelo glifo.
+        Na folha tipográfica a camada responde por cima -- nos dois sentidos -- e a linha que ela não
+        sabe responder fica com a imagem."""
+        from chess_diagram_ocr.text.leitor import _com_italico_da_camada
+
+        saida = _com_italico_da_camada(
+            [self._cru(False), self._cru(True)], [(0.0, 0.0, 100.0, 10.0)], registra=True, escala_px=1.0, por_cima=True
+        )
+        self.assertEqual(saida[0].italico, True, "o itálico declarado não venceu o pendor")
+        sem_registro = _com_italico_da_camada([self._cru(True)], [], registra=False, escala_px=1.0, por_cima=True)
+        self.assertEqual([c.italico for c in sem_registro], [True], "a camada que não sabe apagou a imagem")
+
+
+class FolhaTipograficaTests(unittest.TestCase):
+    """`camada.camada_tipografica`: a camada é do editor do livro, ou de outro OCR por cima de um scan?"""
+
+    def folha(self, *, texto: bool = True, imagem: bool = False, fonte: str = "helv"):  # noqa: ANN202
+        import fitz
+        import numpy as np
+
+        documento = fitz.open()
+        pagina = documento.new_page(width=300, height=400)
+        if imagem:
+            pixmap = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 30, 40), False)
+            pixmap.set_rect(pixmap.irect, (200, 200, 200))
+            pagina.insert_image(pagina.rect, pixmap=pixmap)
+            del np
+        if texto:
+            pagina.insert_text((20, 40), "um lance", fontname=fonte, fontsize=11)
+        self.addCleanup(documento.close)
+        return pagina
+
+    def test_texto_composto_e_tipografico(self) -> None:
+        from chess_diagram_ocr.text import camada
+
+        self.assertTrue(camada.camada_tipografica(self.folha()))
+
+    def test_scan_com_texto_por_cima_nao_e(self) -> None:
+        from chess_diagram_ocr.text import camada
+
+        self.assertFalse(camada.camada_tipografica(self.folha(imagem=True)))
+
+    def test_folha_sem_texto_nao_tem_camada_de_ninguem(self) -> None:
+        from chess_diagram_ocr.text import camada
+
+        self.assertFalse(camada.camada_tipografica(self.folha(texto=False)))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

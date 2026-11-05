@@ -404,6 +404,29 @@ class ExatidaoDeCampoTests(unittest.TestCase):
         self.assertAlmostEqual(r.field_exact, 0.0, msg="sem denominador, a taxa é 0 e não 1")
         self.assertFalse(r.has_enough_comparable)
 
+    def test_uma_linha_por_diagrama_casado_refaz_o_gate_em_qualquer_limiar(self) -> None:
+        """C17 do ciclo 2: as linhas deixam a curva risco × cobertura cortar onde quiser -- e a
+        soma de duas páginas carrega as linhas das duas."""
+        r = evaluate_page(
+            self._pagina(LEGAL, LEGAL, ""),
+            self._leituras((self.OUTRA, 0.99), (LEGAL, 0.40), (LEGAL, 0.97)),
+            accept_threshold=0.8,
+            training_samples=1,
+        )
+        self.assertEqual([d["index"] for d in r.diagrams], [0, 1, 2])
+        self.assertEqual([d["exact"] for d in r.diagrams], [False, True, None])
+        self.assertEqual([d["gate_confidence"] for d in r.diagrams], [0.99, 0.4, 0.97])
+        self.assertTrue(all(d["legal"] and d["contaminated"] for d in r.diagrams))
+        # o gate de 0,80 refeito a partir das linhas dá o mesmo que o relatório contou
+        exportados = [d for d in r.diagrams if d["legal"] and d["gate_confidence"] >= 0.8]
+        self.assertEqual(len(exportados), r.exported)
+        self.assertEqual(sum(1 for d in exportados if d["exact"] is False), r.exported_wrong)
+        total = FieldReport()
+        _accumulate(total, r)
+        _accumulate(total, evaluate_page(self._pagina(LEGAL), self._leituras((LEGAL, 0.99))))
+        self.assertEqual(len(total.diagrams), 4)
+        self.assertNotIn("diagrams", total.as_dict(), "as linhas não enchem o JSON dos sub-relatórios")
+
     def test_a_exatidao_de_campo_separa_do_condicional(self) -> None:
         """Um exportado errado e um barrado errado: as duas taxas respondem coisas diferentes."""
         r = evaluate_page(
@@ -1341,6 +1364,30 @@ class ImpressaoDaMedicaoTests(unittest.TestCase):
         """Nada no caminho da medição importa `ui/`, então mexer nela não torna um relatório
         obsoleto. Um digest que incluísse a interface pediria remedição por mudança de botão."""
         self.assertFalse([m for m in measured_modules() if m.startswith("chess_diagram_ocr.ui")])
+
+    def test_o_texto_de_tela_importado_tarde_nao_entra_e_o_do_topo_entra(self) -> None:
+        """A poda do merge do religa: o `import` de `ui/` dentro de uma função de um módulo medido
+        é texto de tela (a frase do motor que não fala UCI) e fica fora do fecho; o do topo entra,
+        e é ele que a guarda de cima pegaria. Contra fonte de mentira, para não se apagar junto."""
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            pacote = raiz / "src" / "chess_diagram_ocr"
+            (pacote / "cli").mkdir(parents=True)
+            (pacote / "ui").mkdir()
+            for vazio in ("__init__.py", "cli/__init__.py", "ui/__init__.py", "ui/frase.py", "ui/cor.py"):
+                (pacote / vazio).write_text("", encoding="utf-8")
+            (pacote / "cli" / "field.py").write_text(
+                "from ..motor import abrir\nfrom ..medido import ler\n", encoding="utf-8"
+            )
+            (pacote / "motor.py").write_text(
+                "def abrir():\n    from chess_diagram_ocr.ui.frase import dizer\n    return dizer\n",
+                encoding="utf-8",
+            )
+            (pacote / "medido.py").write_text("from .ui import cor\n\ndef ler():\n    return cor\n", encoding="utf-8")
+            modulos = measured_modules(root=raiz)
+        self.assertIn("chess_diagram_ocr.motor", modulos)
+        self.assertNotIn("chess_diagram_ocr.ui.frase", modulos, "o import tardio de texto de tela entrou")
+        self.assertIn("chess_diagram_ocr.ui.cor", modulos, "o import de ui/ no topo saiu do fecho")
 
     def test_o_motor_desligado_fica_fora_do_digest(self) -> None:
         """`--ocr` nasce `off`, e o glifo entra por import tardio dentro de `build_recognizer`.

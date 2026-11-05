@@ -1,0 +1,7 @@
+# identidade<TAB>motivo -- a auditoria visual da S-702: 20 linhas por livro, a tinta contra a camada,
+# conferidas em 2026-10-30 por cinco agentes que não sortearam, 27 livros. Uma divergência reprova o livro.
+3bf430b593e457aa	auditoria: a ligadura ft perde o t na camada (after vira afer) e o ± vai para uso privado (2 de 20 linhas)
+ac434e60403be4e0	auditoria: figurinas da tinta fora da linha da camada (5 de 20 linhas)
+15d1dba028d4d00d	auditoria: símbolos de avaliação em código de fonte ChessBase na camada, ³ µ ƒ no lugar de ⩱ ∓ ↑ (4 de 20 linhas)
+24c8019ba0940099	auditoria: figurinas da tinta fora da linha da camada (5 de 20 linhas)
+e94b198d98671cdd	auditoria: símbolos de avaliação em código de fonte ChessBase na camada, © e ‚ no lugar da compensação e da seta (3 de 20 linhas)

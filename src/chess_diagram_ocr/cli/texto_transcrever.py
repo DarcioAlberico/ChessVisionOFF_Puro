@@ -28,7 +28,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..config import PROJECT_ROOT
+from ..config import DATA_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text.transcricao import Item, ReferenciaMudouNoDisco, SessaoDeTranscricao, so_scan
 from . import EXIT_BAD_INPUT, EXIT_OK, add_verbose, cli_errors
@@ -36,7 +36,7 @@ from . import EXIT_BAD_INPUT, EXIT_OK, add_verbose, cli_errors
 logger = logging.getLogger(__name__)
 
 REFERENCIA_PADRAO = PROJECT_ROOT / "docs" / "metrics" / "texto_faixa_referencia.jsonl"
-PNGS_PADRAO = PROJECT_ROOT / "data" / "faixas_para_transcrever"
+PNGS_PADRAO = DATA_DIR / "faixas_para_transcrever"
 
 ZOOM_MIN = 0.15
 ZOOM_MAX = 6.0

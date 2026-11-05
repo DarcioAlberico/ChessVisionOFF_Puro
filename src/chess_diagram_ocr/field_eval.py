@@ -290,8 +290,16 @@ def _imports_of(arquivo: Path, dotted: str) -> set[str]:
         pacote = dotted
     else:
         pacote = dotted.rsplit(".", 1)[0] if "." in dotted else dotted
+    # **O texto de tela importado tarde não entra** (o merge do religa com o `main`, 2026-10-01).
+    # `engine.EngineAnalyzer.start` importa `ui/motor_declarado` dentro da função, só para a frase
+    # do binário que não fala UCI (S-536) -- e o motor entrou no caminho da medição com a
+    # estipulação da OCR_UI (`estipulacao.motor_padrao`). A frase não muda número nenhum; seguir o
+    # import poria `ui/tokens.py` no digest, e cada troca de cor pediria remedição. O `import` de
+    # `ui/` **no topo** de um módulo medido continua entrando, que é o que
+    # `test_a_interface_nao_invalida_uma_medicao` vigia.
+    fora_da_interface = not _e_da_interface(dotted)
     achados: set[str] = set()
-    for no in ast.walk(arvore):
+    for no, tardio in _nos_com_escopo(arvore):
         if isinstance(no, ast.ImportFrom):
             if no.level:
                 base = pacote.split(".")
@@ -302,11 +310,31 @@ def _imports_of(arquivo: Path, dotted: str) -> set[str]:
                 alvo = no.module
             else:
                 continue
+            if tardio and fora_da_interface and _e_da_interface(alvo):
+                continue
             achados.add(alvo)
             achados.update(f"{alvo}.{a.name}" for a in no.names)
         elif isinstance(no, ast.Import):
-            achados.update(a.name for a in no.names if a.name.startswith(PACOTE))
+            achados.update(
+                a.name
+                for a in no.names
+                if a.name.startswith(PACOTE) and not (tardio and fora_da_interface and _e_da_interface(a.name))
+            )
     return achados
+
+
+def _nos_com_escopo(arvore: ast.AST) -> Iterable[tuple[ast.AST, bool]]:
+    """Todo nó da árvore, com `True` quando ele mora dentro de uma função -- o `import` tardio."""
+    pilha: list[tuple[ast.AST, bool]] = [(arvore, False)]
+    while pilha:
+        no, tardio = pilha.pop()
+        yield no, tardio
+        dentro = tardio or isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
+        pilha.extend((filho, dentro) for filho in ast.iter_child_nodes(no))
+
+
+def _e_da_interface(dotted: str) -> bool:
+    return dotted == f"{PACOTE}.ui" or dotted.startswith(f"{PACOTE}.ui.")
 
 
 PACOTE = "chess_diagram_ocr"
@@ -852,6 +880,15 @@ class FieldReport:
     contaminated_pages: list[str] = field(default_factory=list)
     """Que páginas têm amostra de treino, para quem for crescer o conjunto saber de onde fugir."""
 
+    diagrams: list[dict[str, Any]] = field(default_factory=list)
+    """Uma linha por diagrama anotado **casado** com uma leitura (C17 do ciclo 2 OCR/UI).
+
+    `pdf`, `page`, `index`, `legal`, `gate_confidence`, `min_confidence`, `exact` (`None` sem
+    posição de referência) e `contaminated`. É a entrada da curva risco × cobertura: comparar
+    dois modelos num gate fixo é comparar duas escalas de confiança -- o `x10` da fase 4 exporta
+    72 em vez de 104 com o **mesmo** laboratório --, e só as linhas deixam refazer o corte em
+    qualquer limiar. Os sub-relatórios por regime e por livro não as repetem (`as_dict`)."""
+
     wrong: list[str] = field(default_factory=list)
     """Os que **saíram errados**: passaram o gate e a FEN não bate com a referência (S-96).
 
@@ -1104,6 +1141,7 @@ def _accumulate(alvo: FieldReport, parcela: FieldReport) -> None:
     alvo.stipulation_truth_failed.extend(parcela.stipulation_truth_failed)
     alvo.seconds += parcela.seconds
     alvo.misses.extend(parcela.misses)
+    alvo.diagrams.extend(parcela.diagrams)
     alvo.wrong.extend(parcela.wrong)
     alvo.contaminated_pages.extend(parcela.contaminated_pages)
 
@@ -1233,6 +1271,16 @@ def evaluate_page(
         else:
             motivo = "ilegal" if not legal else f"confiança {lido.min_confidence:.3f}"
             relatorio.misses.append(f"{page.pdf} p{page.page}: detectado mas barrado ({motivo})")
+
+        # C17: a linha do diagrama, para a curva risco × cobertura refazer o gate em qualquer
+        # limiar -- `exact` é `None` quando a anotação não traz posição.
+        relatorio.diagrams.append({
+            "pdf": page.pdf, "page": page.page, "index": indice, "legal": legal,
+            "gate_confidence": round(float(lido.gate_confidence), 4),
+            "min_confidence": round(float(lido.min_confidence), 4),
+            "exact": (lido.placement == anotado.placement) if anotado.placement else None,
+            "contaminated": contaminada,
+        })
 
         if not anotado.placement:
             continue

@@ -217,7 +217,7 @@ class _VigiaDeDialogos(QObject):
     ele observa, nunca consome.
     """
 
-    def eventFilter(self, alvo: QObject, evento: QEvent) -> bool:  # noqa: N802 - API do Qt
+    def eventFilter(self, alvo: QObject | None, evento: QEvent | None) -> bool:  # noqa: N802 - API do Qt
         try:
             if (
                 evento is not None
@@ -292,7 +292,7 @@ def botoes_em_portugues(raiz: QWidget) -> int:
                 padrao = caixa.standardButton(botao)
                 if padrao == QDialogButtonBox.StandardButton.NoButton:
                     continue
-                texto = strings.BOTOES_PADRAO.get(padrao.name)
+                texto = strings.BOTOES_PADRAO.get(padrao.name or "")
                 if texto and botao.text().replace("&", "") != texto:
                     botao.setText(texto)
                     trocados += 1
@@ -301,7 +301,7 @@ def botoes_em_portugues(raiz: QWidget) -> int:
     return trocados
 
 
-def vigiar_dialogos(aplicacao: object | None = None) -> bool:
+def vigiar_dialogos(aplicacao: QObject | None = None) -> bool:
     """Instala em `aplicacao` o filtro que nomeia todo `QDialog` mostrado. Idempotente.
 
     Devolve `True` quando instalou agora, `False` quando já estava instalado ou quando não há

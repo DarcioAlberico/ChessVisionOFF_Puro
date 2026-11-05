@@ -63,12 +63,12 @@ import numpy as np
 
 from .atomic_io import atomic_write_bytes, read_image
 from .audit import DUPLICATE_HASH_SIZE, dhash
-from .config import DEFAULT_MAX_BOARDS, PROJECT_ROOT
+from .config import DATA_DIR, DEFAULT_MAX_BOARDS
 from .labels import LabelStore
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_INDEX_PATH = PROJECT_ROOT / "data" / "provenance_index.jsonl"
+DEFAULT_INDEX_PATH = DATA_DIR / "provenance_index.jsonl"
 
 DEFAULT_DPI = 220
 """O mesmo DPI do pipeline. Não é escolha livre: o índice precisa ver o diagrama como o

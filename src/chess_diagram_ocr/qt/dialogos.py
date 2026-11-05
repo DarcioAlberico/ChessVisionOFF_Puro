@@ -60,6 +60,7 @@ from chess_diagram_ocr.config import DEFAULT_PDF_DIR
 from chess_diagram_ocr.games_db import DEFAULT_DATABASE_DIR, PositionHit, database_paths
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
+from chess_diagram_ocr.qt.foco_a_vista import seguir_o_foco
 from chess_diagram_ocr.qt.tabela import Coluna, TabelaQt
 from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.ui import espaco, estilos, folha_de_estilo, strings, tipografia, tokens
@@ -105,7 +106,7 @@ def ha_quem_responda() -> bool:
     consulta isto decide o que fazer sem resposta: fechar fecha, trocar de livro **guarda**.
     """
     aplicacao = QApplication.instance()
-    return aplicacao is not None and str(aplicacao.platformName()).casefold() != "offscreen"
+    return aplicacao is not None and QApplication.platformName().casefold() != "offscreen"
 
 
 def perguntar_descarte(pai: QWidget | None, paginas: Sequence[int], *, livro: str = "", ao_fechar: bool = True) -> bool:
@@ -151,6 +152,7 @@ def caixa_de_falha(pai: QWidget | None, titulo: str, mensagem: str, detalhe: str
         caixa.setDetailedText(detalhe)
     caixa.setStandardButtons(QMessageBox.StandardButton.Ok)
     copiar = caixa.addButton(strings.COPIAR, QMessageBox.ButtonRole.ActionRole)
+    assert copiar is not None  # o Qt só devolve `None` para papel que ele não monta
     dica_em(copiar, "Copia o título, a mensagem e o rastro completo, para colar num relato.")
 
     def _copiar() -> None:
@@ -229,6 +231,9 @@ class DialogoDeBases(QDialog):
         rolagem = QScrollArea(self)
         rolagem.setWidget(self._corpo)
         rolagem.setWidgetResizable(True)
+        # A caixa que recebe o foco vindo de fora da lista -- o Shift+Tab de «Marcar todas», logo
+        # abaixo -- fica à vista, também as que a lista redesenha depois (ver `foco_a_vista`).
+        seguir_o_foco(rolagem)
         fora.addWidget(rolagem, 1)
         self._desenhar_lista()
 
@@ -355,10 +360,18 @@ def perguntar_bases(
     escolher: Callable[[], Sequence[str]] | None = None,
     nota: Callable[[Sequence[Path]], str] = cache_note,
 ) -> tuple[Path, ...] | None:
-    """Abre o diálogo modal e devolve as bases marcadas, ou `None` se a pessoa desistiu."""
+    """Abre o diálogo modal e devolve as bases marcadas, ou `None` se a pessoa desistiu.
+
+    **O diálogo morre com a pergunta.** Filho da janela, ele ficava vivo depois de fechado, e o
+    seguidor de foco da lista dele (`qt/foco_a_vista`), ligado à aplicação inteira, também: 7 → 16
+    seguidores em 20 aberturas (crítico da fase 5 do ciclo 2 OCR/UI, ciclo 6).
+    """
     dialogo = DialogoDeBases(pai, selected=selected, folder=folder, escolher=escolher, nota=nota)
-    dialogo.exec()
-    return dialogo.escolhidas
+    try:
+        dialogo.exec()
+        return dialogo.escolhidas
+    finally:
+        dialogo.deleteLater()
 
 
 class DialogoDeEscopo(QDialog):
@@ -737,12 +750,22 @@ class DialogoDePartidas(QDialog):
         novas = tuple(hit for hit in achadas if hit.key not in conhecidas)
         self._por_nome.update(hit.key for hit in achadas)
         if not achadas:
-            QMessageBox.information(
-                self,
-                "Partidas da base",
+            # **A saída é a ação, e não um comando de terminal** (S-527/S-532). Até aqui a caixa
+            # mandava rodar `cvoff-games --build-index`; o índice se constrói de dentro da janela,
+            # e o botão daqui é o mesmo `indexar_com_dialogo` da sala de estudo.
+            caixa = QMessageBox(self)
+            caixa.setIcon(QMessageBox.Icon.Information)
+            caixa.setWindowTitle("Partidas da base")
+            caixa.setText(
                 "A busca por nome não achou partida com esta posição.\n\n"
-                "Se o índice ainda não foi construído:  cvoff-games --build-index",
+                "Se o índice da base ainda não foi construído -- ou está atrasado --, construa-o "
+                "agora: ele lê só o que mudou e mostra o andamento."
             )
+            indexar = caixa.addButton("Indexar agora", QMessageBox.ButtonRole.AcceptRole)
+            caixa.addButton(QMessageBox.StandardButton.Close)
+            caixa.exec()
+            if caixa.clickedButton() is indexar:
+                self.indexar_base()
             return
         self._todas = (*self._todas, *novas)
         sem_posicao = sum(1 for hit in novas if not hit.verified)
@@ -751,6 +774,16 @@ class DialogoDePartidas(QDialog):
             f"{len(self._todas)} partida(s), {len(novas)} pela busca por nome{aviso}"
         )
         self._repovoar()
+
+    def indexar_base(self) -> None:
+        """O índice por nome de dentro desta janela, com barra e Cancelar (S-532); a frase final vai
+        para a contagem. Guardado em `_indexador` porque um `QObject` sem referência é recolhido."""
+        from chess_diagram_ocr.qt import indice_da_base
+
+        self._indexador = indice_da_base.indexar_com_dialogo(self, database_paths())
+        self._indexador.terminou.connect(
+            lambda resultado: self.lbl_contagem.setText(indice_da_base.frase_final(resultado))
+        )
 
     def aplicar_aos_vizinhos(self) -> None:
         escolhida = self.selecionada()

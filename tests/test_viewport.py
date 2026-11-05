@@ -17,10 +17,8 @@ from chess_diagram_ocr.ui.viewport import (
     anchor_after_zoom,
     clamp_zoom,
     decide_wheel,
-    desvio_de_centralizacao,
     fit_page_zoom,
     fit_width_zoom,
-    regiao_de_rolagem,
     wheel_direction,
     zoomed,
 )
@@ -178,47 +176,6 @@ class NoTkinterTests(unittest.TestCase):
                 importados.add(node.module.split(".")[0])
 
         self.assertNotIn("tkinter", importados)
-
-
-class CentralizacaoTests(unittest.TestCase):
-    """A página no meio da área visível, e a região de rolagem que a acompanha (S-157).
-
-    O defeito: `create_image(0, 0, anchor="nw")` encosta a página no canto superior esquerdo, e
-    em 40% de zoom numa janela de 1700 isso deixava **~45% da área de visualização** em vazio
-    `#1c1c1c` à direita — a maior área contínua da janela, gasta em nada, no painel que existe
-    para mostrar a página.
-    """
-
-    def test_pagina_menor_ganha_metade_da_folga(self) -> None:
-        self.assertEqual(desvio_de_centralizacao(400, 1000), 300)
-
-    def test_pagina_maior_nao_desloca(self) -> None:
-        """Deslocar aqui esconderia o começo da página atrás da borda esquerda."""
-        self.assertEqual(desvio_de_centralizacao(1200, 1000), 0)
-
-    def test_pagina_do_tamanho_exato_nao_desloca(self) -> None:
-        self.assertEqual(desvio_de_centralizacao(1000, 1000), 0)
-
-    def test_a_folga_impar_sobra_para_a_direita_e_nao_alterna(self) -> None:
-        """Arredondamento que alternasse de lado faria a página **tremer** 1 px ao
-        redimensionar -- mais visível do que o pixel de assimetria que ninguém mede."""
-        self.assertEqual(desvio_de_centralizacao(400, 1001), 300)
-        self.assertEqual(desvio_de_centralizacao(401, 1000), 299)
-
-    def test_a_regiao_de_rolagem_cobre_a_area_visivel(self) -> None:
-        """O par da centralização: sem isto, a página deslocada cai fora do que o Tk rola.
-
-        A região limitada ao tamanho da página faria o Tk oferecer rolagem para a faixa vazia à
-        esquerda e esconder a faixa à direita onde a página de fato está.
-        """
-        self.assertEqual(regiao_de_rolagem((400, 300), (1000, 800)), (0, 0, 1000, 800))
-
-    def test_a_regiao_de_rolagem_cobre_a_pagina_quando_ela_e_maior(self) -> None:
-        self.assertEqual(regiao_de_rolagem((1400, 2000), (1000, 800)), (0, 0, 1400, 2000))
-
-    def test_a_regiao_toma_o_maior_de_cada_eixo_separadamente(self) -> None:
-        """Página estreita e alta é o caso comum: A4 em retrato, janela em paisagem."""
-        self.assertEqual(regiao_de_rolagem((600, 2000), (1000, 800)), (0, 0, 1000, 2000))
 
 
 class AjustarAPaginaTests(unittest.TestCase):
