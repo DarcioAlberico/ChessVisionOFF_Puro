@@ -14,7 +14,7 @@
     "afer_na_saida": 0,
     "folhas": 28,
     "intactos": 1346,
-    "medido_em": "9595253",
+    "medido_em": "c22c5d38",
     "nota": "forçado: depois da S-711 nenhuma folha do ouro e da prata chega neste caminho",
     "palavras_na_camada": 5649,
     "palavras_na_saida": 5596,
@@ -136,18 +136,18 @@
         }
       },
       "segundos_por_folha": {
-        "camada_prosa": 0.929,
-        "fusao": 1.651,
-        "glifo": 0.836,
-        "tess_por_folha": 0.735,
-        "tess_por_processo": 3.505
+        "camada_prosa": 0.95,
+        "fusao": 1.676,
+        "glifo": 0.859,
+        "tess_por_folha": 0.744,
+        "tess_por_processo": 3.54
       },
       "segundos_por_folha_p95": {
-        "camada_prosa": 1.913,
-        "fusao": 2.876,
-        "glifo": 1.784,
-        "tess_por_folha": 1.152,
-        "tess_por_processo": 5.44
+        "camada_prosa": 1.942,
+        "fusao": 2.967,
+        "glifo": 1.841,
+        "tess_por_folha": 1.145,
+        "tess_por_processo": 5.417
       },
       "wer": {
         "camada_prosa": 0.01523,
@@ -271,18 +271,18 @@
         }
       },
       "segundos_por_folha": {
-        "camada_prosa": 0.734,
-        "fusao": 1.403,
-        "glifo": 0.658,
-        "tess_por_folha": 0.665,
-        "tess_por_processo": 3.161
+        "camada_prosa": 0.755,
+        "fusao": 1.429,
+        "glifo": 0.678,
+        "tess_por_folha": 0.671,
+        "tess_por_processo": 3.191
       },
       "segundos_por_folha_p95": {
-        "camada_prosa": 1.024,
-        "fusao": 1.716,
-        "glifo": 1.01,
-        "tess_por_folha": 0.976,
-        "tess_por_processo": 5.44
+        "camada_prosa": 1.08,
+        "fusao": 1.784,
+        "glifo": 1.027,
+        "tess_por_folha": 1.006,
+        "tess_por_processo": 5.417
       },
       "wer": {
         "camada_prosa": 0.00417,
@@ -408,18 +408,18 @@
         }
       },
       "segundos_por_folha": {
-        "camada_prosa": 1.572,
-        "fusao": 2.41,
-        "glifo": 1.436,
-        "tess_por_folha": 0.916,
-        "tess_por_processo": 7.133
+        "camada_prosa": 1.564,
+        "fusao": 2.395,
+        "glifo": 1.419,
+        "tess_por_folha": 0.9,
+        "tess_por_processo": 7.033
       },
       "segundos_por_folha_p95": {
-        "camada_prosa": 2.826,
-        "fusao": 3.795,
-        "glifo": 2.56,
-        "tess_por_folha": 1.644,
-        "tess_por_processo": 12.339
+        "camada_prosa": 2.907,
+        "fusao": 3.351,
+        "glifo": 2.524,
+        "tess_por_folha": 1.564,
+        "tess_por_processo": 11.704
       },
       "wer": {
         "camada_prosa": 0.54428,
@@ -512,7 +512,7 @@
   "item": "S-710, S-711, S-715, S-716, S-717, S-718, S-720",
   "medido_com": {
     "arvore_suja_em_src": false,
-    "commit": "9595253",
+    "commit": "c22c5d38",
     "modelo_sha256": "ca4bcc00b9c59b07",
     "nota": "tempos sob contenção: outras medições rodavam na máquina, e o G4 não se julga por eles",
     "regua_sha256": "9857cbee6af253dc",
@@ -538,7 +538,7 @@
     },
     "folhas": 24,
     "livros": 2,
-    "medido_em": "9595253",
+    "medido_em": "c22c5d38",
     "nota": "rodar.py nas folhas de prosa dos dois Chess Evolution; a Saída da S-711 pedia Tesseract nas linhas do glifo a até 1 p.p. do oráculo",
     "tess_nas_linhas_do_glifo": {
       "cer": 0.05275,
@@ -562,6 +562,7 @@
       0.14,
       0.201,
       0.453,
+      1.166,
       3.226,
       3.226,
       19.2,
@@ -604,7 +605,7 @@
       "prosa": {
         "densidade_min": 0.941,
         "densidade_p05": 1.033,
-        "folha_nao_lida": 0,
+        "folha_nao_lida": 1,
         "folhas": 395,
         "leitura_parcial": 0
       },
@@ -630,6 +631,6 @@
         "leitura_parcial": 0
       }
     },
-    "segundos_por_folha_p95": 2.62
+    "segundos_por_folha_p95": 2.589
   }
 }

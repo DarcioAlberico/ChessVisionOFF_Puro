@@ -300,8 +300,9 @@ folhas do roadmap avisavam, e depois da S-711 não avisam mais, porque voltaram 
 [metrics/texto_prosa_primeira_entrega.json](metrics/texto_prosa_primeira_entrega.json), por tipo de folha: nenhuma com
 camada abaixo de 0,7 sem aviso, e nenhuma das folhas de *Polgar*, *Reinfeld* e das duas capas que avisavam. **O "5 de 67"
 do roadmap estava muito abaixo da realidade:** em 120 folhas de cada, o *Chess Evolution 2014* perdia 113 e o *2013*, 60.
-A causa foi consertada na S-711, e na varredura sobram nove avisadas: quatro com texto que o glifo não leu, e cinco de
-sinal solto saído de dentro de uma moldura (ver S-711), que são capas e contracapas conferidas à vista.
+A causa foi consertada na S-711, e na varredura sobram dez avisadas: quatro com texto que o glifo não leu, e seis de
+sinal solto saído de dentro de uma moldura (ver S-711). Cinco destas são capas e contracapas conferidas à vista, que são quatro
+folhas distintas, porque um livro está duas vezes no acervo. A sexta é texto de verdade que o glifo despedaçou.
 
 A guarda dos testes foi provada por mutação, com a lista do crítico mais os consertos das rodadas seguintes: um mutante
 equivalente sobrevive (o número partido, em que o sufixo de mesmo tamanho é o próprio número).
@@ -324,10 +325,16 @@ antes de medir a escala e de achar as caixas. A folha sem moldura devolve o mesm
 **Tirar a moldura abre o que havia dentro, e nem sempre é texto.** Contracapa manchada e marca d'água davam `h` e o aviso de
 folha não lida; sem a moldura, davam milhares de sinais soltos e nenhum aviso. Por isso a folha com moldura que devolve até
 `guarda_de_leitura.RUIDO_POR_TOKEN` = 1,3 caractere por token, com ao menos 40 caracteres, sai com `folha_nao_lida`. O corte
-vem de 100 folhas com moldura de 6 livros: as que dão ruído vão de 1,02 a 1,24, e a seguinte é 1,39. Uma delas é texto de
-verdade que o glifo despedaçou (*Niemeijer*, folha 5, 2.789 tokens em 3.101 caracteres), e o aviso também é a verdade ali. Fora
-da moldura o mesmo número é tabela de torneio, e não avisa. A fração de palavras existentes **não serve de corte**: nos livros
-holandeses ela é de 2% com o texto lido.
+vem de 117 folhas com moldura de 11 livros: as que dão ruído vão de 1,02 a 1,29, e a seguinte é 1,39. Fora da moldura o mesmo
+número é tabela de torneio, e não avisa. A fração de palavras existentes **não serve de corte**: nos livros holandeses ela é de
+2% com o texto lido.
+
+**A camada não absolve o ruído.** O *Niemeijer*, índice 4, é texto de verdade que o glifo despedaçou: 3.101 caracteres em 2.789
+tokens, contra 1.624 caracteres de camada. Pela contagem ele "batia" com ela e saía calado; agora avisa, e o aviso é a verdade ali.
+Entre aquelas 117 folhas, nenhuma com ruído tem camada, e na varredura é a única folha que a regra muda.
+
+**Sem aviso, e ruim:** o texto despedaçado acima de 1,3. As folhas seguintes do *Niemeijer* dão de 1,39 a 1,47, e descer o corte
+é ajustar a um livro só.
 
 ### Critério de aceite
 
@@ -491,9 +498,12 @@ Prosa da camada nunca é marcada. `LinhaLida.revisar_em` vive em memória, e o q
 corrida, sem mudar o formato. `Shift+F7` vai à próxima, por `rico.intervalos_a_revisar`, também na folha reaberta.
 
 **Corrigir uma palavra não apaga as outras marcas do parágrafo.** O carimbo de `correcao.com_procedencia_humana` é por bloco, e
-a folha reaberta perdia as marcas sem aviso, embora na mesma sessão elas sobrevivessem. Agora a corrida `revisar` cujo texto é,
-inteiro, o que o motor leu fica como está, com quem a leu. A faixa do bloco inteiro continua saindo: ali a edição parte a corrida
-e todo pedaço intacto é `revisar`, o que distingue os dois casos (`correcao._marcas_intactas`).
+a folha reaberta perdia as marcas sem aviso, embora na mesma sessão elas sobrevivessem. Agora a marca fica se a **palavra** em que
+ela está é, inteira, a que o motor leu: cabe num só trecho igual ao lido, e no lido também era uma palavra. **Olhar a corrida não
+basta:** o editor grava a diferença mínima, e corrigir `wbite` deixa `w` e `ite` como `revisar`, em trechos iguais. A primeira
+versão desta regra os guardava, e `Shift+F7` parava nos pedaços. A faixa do bloco inteiro continua saindo: ali todo pedaço intacto é
+`revisar`, e o bloco não tem texto sem marca, nem o espaço entre duas palavras marcadas, que é o que distingue os dois casos
+(`correcao._marcas_intactas`). A guarda é `CorrigirAMarcaNoEditorTests`, que corrige pelo editor com `QTest`.
 
 **Desvio declarado:** as alternativas do `lstm_choice_mode=2`, que o roadmap cita, saem no hOCR e não no TSV. Aqui o
 terceiro sinal é a confiança por palavra do TSV; a S-761 calibra.

@@ -819,8 +819,8 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   - *Achado:* **o "5 de 67" de 2026-10-30 era muito menor que a realidade.** Em 120 folhas igualmente espaçadas de cada
     um, o *Chess Evolution 2014* perdia 113 e o *2013*, 60, antes da S-711. *Corte:* o
     0,5 cumpre a regra deste item na varredura publicada, contando as folhas com ao menos 200 caracteres de camada: nenhuma
-    abaixo de 0,7 sem aviso, em 812 folhas de 58 livros. Depois da S-711, das nove folhas que avisam, quatro têm texto que o glifo não leu
-    e cinco são sinal solto de dentro de uma moldura; a varredura de livro inteiro do G101 continua por fazer.
+    abaixo de 0,7 sem aviso, em 812 folhas de 58 livros. Depois da S-711, das dez folhas que avisam, quatro têm texto que o glifo não leu
+    e seis são sinal solto de dentro de uma moldura; a varredura de livro inteiro do G101 continua por fazer.
   - *Reversão:* o aviso não muda texto nenhum; o corte é constante. O `ESQUEMA` 2 **não** é reversível
     (versão antiga não abre arquivo novo), e por isso entra junto com o primeiro uso dos avisos.
 - **S-711** · Região escura na borda: faixa colorida e moldura de scan. ✅ entregue em 2026-11-05, com outro mecanismo: ver o *Achado* no fim deste item.

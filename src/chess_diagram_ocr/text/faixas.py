@@ -30,9 +30,10 @@ em cinza e antes da binarização, por geometria física:
 
 5.  O núcleo tem de caber uma linha de texto: ao menos 0,1 pol. **Sem este piso o título em negrito pesado era faixa:**
     `TRIFUNOVIC` no *Koblenz* tem 56% de tinta e núcleo de 8 px, e saía invertido, ilegível, e a folha piorava nos três
-    motores. Em 30 folhas de cada livro do acervo, 103 achados: os cabeçalhos do *Yusupov* e do *Reinfeld* têm de 23 a 27 px
-    a 220 dpi, e abaixo de 22 só há título em negrito, filete azul do *Chess Evolution* e, duas vezes, cabeçalho de faixa
-    cinza cujo núcleo sai errado (2 e 3 px), que era apagado e agora fica como veio, sem leitura.
+    motores. Em 30 folhas de cada livro do acervo, os cabeçalhos do *Yusupov* têm de 23 a 27 px a 220 dpi, e abaixo de 22
+    só há título em negrito (`PRIMERO`, `NEGRAS` no *Reinfeld*), filete azul do *Chess Evolution* e, duas vezes, cabeçalho de
+    faixa cinza cujo núcleo sai errado (2 e 3 px), que era apagado e agora fica como veio, sem leitura. A contagem depende de
+    como as folhas são espaçadas: 103 e 80 achados em dois censos, e a fronteira é a mesma nos dois.
 
 **Tudo é físico** (polegadas a `dpi`), para a mesma faixa sair a 150 e a 600 dpi. Por isso quem
 chama tem de saber o DPI da imagem -- e por isso `segmentar` só liga isto quando recebe um: o
