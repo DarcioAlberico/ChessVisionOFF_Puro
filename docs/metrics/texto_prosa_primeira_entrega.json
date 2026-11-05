@@ -9,6 +9,17 @@
       "folhas": 120
     }
   },
+  "caminho_da_camada_com_reserva": {
+    "afer_na_camada": 22,
+    "afer_na_saida": 0,
+    "folhas": 28,
+    "intactos": 1298,
+    "medido_em": "addcc318a4e08f4d22db1160eae88cb19057f401",
+    "nota": "forçado: depois da S-711 nenhuma folha do ouro e da prata chega neste caminho",
+    "palavras_na_camada": 5649,
+    "palavras_na_saida": 5600,
+    "tokens_de_notacao_da_camada": 1300
+  },
   "conjuntos": {
     "ouro_dev_completo": {
       "avisos": {},
