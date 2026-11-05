@@ -1,23 +1,29 @@
 {
   "amostra_chess_evolution": {
     "Chess Evolution 2013": {
-      "folha_nao_lida": 60,
+      "folha_nao_lida": 0,
       "folhas": 120
     },
     "Chess Evolution 2014": {
-      "folha_nao_lida": 113,
+      "folha_nao_lida": 0,
       "folhas": 120
     }
   },
+  "caminho_da_camada_com_reserva": {
+    "afer_na_camada": 21,
+    "afer_na_saida": 0,
+    "folhas": 28,
+    "intactos": 382,
+    "palavras_na_camada": 5419,
+    "palavras_na_saida": 5643,
+    "tokens_de_notacao_da_camada": 1210
+  },
   "conjuntos": {
     "ouro_dev_completo": {
-      "avisos": {
-        "camada_na_folha": 2,
-        "folha_nao_lida": 4
-      },
+      "avisos": {},
       "executor": {
         "diferentes_do_processo_por_linha": 0,
-        "linhas": 798
+        "linhas": 895
       },
       "figurina": {
         "camada_prosa": {
@@ -25,127 +31,127 @@
           "revocacao": 0.8171
         },
         "fusao": {
-          "precisao": 0.8678,
-          "revocacao": 0.7171
+          "precisao": 0.8813,
+          "revocacao": 0.8105
         },
         "glifo": {
-          "precisao": 0.8734,
-          "revocacao": 0.7355
+          "precisao": 0.8862,
+          "revocacao": 0.8303
         }
       },
       "folhas": 28,
       "g5_provisoria_fusao": {
-        "captura": 0.5,
-        "fracao_marcada": 0.0479,
-        "palavras_erradas": 130
+        "captura": 0.497,
+        "fracao_marcada": 0.0481,
+        "palavras_erradas": 165
       },
       "livros": 7,
       "notacao": {
         "camada_prosa": {
-          "cer": 0.10673,
+          "cer": 0.11264,
           "ic95": [
-            0.05539,
-            0.16093
+            0.0565,
+            0.16236
           ]
         },
         "fusao": {
-          "cer": 0.21745,
+          "cer": 0.12254,
           "ic95": [
-            0.06556,
-            0.41182
+            0.06184,
+            0.17272
           ]
         },
         "glifo": {
-          "cer": 0.20859,
+          "cer": 0.11142,
           "ic95": [
-            0.06553,
-            0.39755
+            0.06117,
+            0.15983
           ]
         },
         "tess": {
-          "cer": 0.28264,
+          "cer": 0.19937,
           "ic95": [
-            0.12572,
-            0.46856
+            0.12467,
+            0.2534
           ]
         }
       },
       "pares": {
         "camada_prosa-glifo_notacao": {
-          "delta_pp": -10.186,
+          "delta_pp": 0.122,
           "ic95_pp": [
-            -30.833,
-            0.51
+            -0.966,
+            1.148
           ]
         },
         "fusao-glifo_notacao": {
-          "delta_pp": 0.886,
+          "delta_pp": 1.112,
           "ic95_pp": [
-            -1.069,
-            2.651
+            -1.101,
+            3.029
           ]
         },
         "fusao-tess_prosa": {
-          "delta_pp": -0.077,
+          "delta_pp": -0.099,
           "ic95_pp": [
-            -0.513,
-            0.112
+            -0.551,
+            0.109
           ]
         }
       },
       "preservacao_de_figurina": {
-        "camada_prosa": 0.9907,
-        "fusao": 0.9888
+        "camada_prosa": 0.9901,
+        "fusao": 0.9852
       },
       "prosa": {
         "camada_prosa": {
-          "cer": 0.00947,
+          "cer": 0.01037,
           "ic95": [
-            0.00017,
-            0.03004
+            0.00021,
+            0.03143
           ]
         },
         "fusao": {
-          "cer": 0.10806,
+          "cer": 0.01305,
           "ic95": [
             0.00098,
-            0.32778
+            0.03495
           ]
         },
         "glifo": {
-          "cer": 0.12939,
+          "cer": 0.03777,
           "ic95": [
             0.01291,
-            0.34876
+            0.06757
           ]
         },
         "tess": {
-          "cer": 0.10883,
+          "cer": 0.01404,
           "ic95": [
             0.00061,
-            0.33288
+            0.03872
           ]
         }
       },
       "segundos_por_folha": {
-        "camada_prosa": 0.902,
-        "fusao": 1.601,
-        "glifo": 0.794,
-        "tess_por_folha": 0.757,
-        "tess_por_processo": 3.407
+        "camada_prosa": 0.787,
+        "fusao": 1.466,
+        "glifo": 0.7,
+        "tess_por_folha": 0.708,
+        "tess_por_processo": 3.244
       },
       "segundos_por_folha_p95": {
-        "camada_prosa": 1.778,
-        "fusao": 2.895,
-        "glifo": 1.659,
-        "tess_por_folha": 1.206,
-        "tess_por_processo": 5.277
+        "camada_prosa": 1.488,
+        "fusao": 2.489,
+        "glifo": 1.428,
+        "tess_por_folha": 1.089,
+        "tess_por_processo": 4.915
       },
       "wer": {
-        "camada_prosa": 0.01222,
-        "fusao": 0.12449,
-        "glifo": 0.20719,
-        "tess": 0.12343
+        "camada_prosa": 0.01523,
+        "fusao": 0.02833,
+        "glifo": 0.12856,
+        "tess": 0.02745
       }
     },
     "ouro_dev_completo_aprovados_na_auditoria": {
@@ -170,24 +176,24 @@
       },
       "folhas": 20,
       "g5_provisoria_fusao": {
-        "captura": 0.4118,
+        "captura": 0.42,
         "fracao_marcada": 0.0477,
-        "palavras_erradas": 51
+        "palavras_erradas": 50
       },
       "livros": 5,
       "notacao": {
         "camada_prosa": {
-          "cer": 0.08011,
+          "cer": 0.0768,
           "ic95": [
-            0.0377,
-            0.16174
+            0.03509,
+            0.15423
           ]
         },
         "fusao": {
-          "cer": 0.08904,
+          "cer": 0.08805,
           "ic95": [
-            0.03757,
-            0.17829
+            0.03543,
+            0.17902
           ]
         },
         "glifo": {
@@ -207,17 +213,17 @@
       },
       "pares": {
         "camada_prosa-glifo_notacao": {
-          "delta_pp": -0.463,
+          "delta_pp": -0.794,
           "ic95_pp": [
-            -1.254,
-            0.542
+            -1.508,
+            -0.168
           ]
         },
         "fusao-glifo_notacao": {
-          "delta_pp": 0.43,
+          "delta_pp": 0.331,
           "ic95_pp": [
-            -1.105,
-            2.325
+            -1.175,
+            2.412
           ]
         },
         "fusao-tess_prosa": {
@@ -229,8 +235,8 @@
         }
       },
       "preservacao_de_figurina": {
-        "camada_prosa": 0.9903,
-        "fusao": 0.9805
+        "camada_prosa": 0.987,
+        "fusao": 0.974
       },
       "prosa": {
         "camada_prosa": {
@@ -263,18 +269,18 @@
         }
       },
       "segundos_por_folha": {
-        "camada_prosa": 0.743,
-        "fusao": 1.478,
-        "glifo": 0.645,
-        "tess_por_folha": 0.705,
-        "tess_por_processo": 3.449
+        "camada_prosa": 0.635,
+        "fusao": 1.264,
+        "glifo": 0.562,
+        "tess_por_folha": 0.637,
+        "tess_por_processo": 2.93
       },
       "segundos_por_folha_p95": {
-        "camada_prosa": 1.003,
-        "fusao": 1.846,
-        "glifo": 0.874,
-        "tess_por_folha": 1.139,
-        "tess_por_processo": 6.173
+        "camada_prosa": 0.869,
+        "fusao": 1.535,
+        "glifo": 0.772,
+        "tess_por_folha": 0.925,
+        "tess_por_processo": 4.915
       },
       "wer": {
         "camada_prosa": 0.00417,
@@ -285,61 +291,60 @@
     },
     "prata_todas": {
       "avisos": {
-        "camada_recusada": 30,
-        "folha_nao_lida": 9
+        "camada_recusada": 30
       },
       "executor": {
         "diferentes_do_processo_por_linha": 0,
-        "linhas": 1775
+        "linhas": 2013
       },
       "figurina": {
         "camada_prosa": {
-          "precisao": 0.6821,
-          "revocacao": 0.3646
+          "precisao": 0.7359,
+          "revocacao": 0.577
         },
         "fusao": {
-          "precisao": 0.6728,
-          "revocacao": 0.3858
+          "precisao": 0.7103,
+          "revocacao": 0.5858
         },
         "glifo": {
-          "precisao": 0.6821,
-          "revocacao": 0.3646
+          "precisao": 0.7359,
+          "revocacao": 0.577
         }
       },
       "folhas": 30,
       "g5_provisoria_fusao": {
-        "captura": 0.2857,
-        "fracao_marcada": 0.048,
-        "palavras_erradas": 700
+        "captura": 0.2555,
+        "fracao_marcada": 0.0481,
+        "palavras_erradas": 955
       },
       "livros": 10,
       "notacao": {
         "camada_prosa": {
-          "cer": 0.47541,
+          "cer": 0.35759,
           "ic95": [
             0.19696,
-            0.7354
+            0.44775
           ]
         },
         "fusao": {
-          "cer": 0.4671,
+          "cer": 0.35959,
           "ic95": [
             0.19564,
-            0.73327
+            0.47555
           ]
         },
         "glifo": {
-          "cer": 0.47541,
+          "cer": 0.35759,
           "ic95": [
             0.19696,
-            0.7354
+            0.44775
           ]
         },
         "tess": {
-          "cer": 0.39083,
+          "cer": 0.26753,
           "ic95": [
             0.08873,
-            0.70366
+            0.40667
           ]
         }
       },
@@ -352,180 +357,159 @@
           ]
         },
         "fusao-glifo_notacao": {
-          "delta_pp": -0.831,
+          "delta_pp": 0.199,
           "ic95_pp": [
-            -3.479,
-            1.678
+            -3.313,
+            3.766
           ]
         },
         "fusao-tess_prosa": {
-          "delta_pp": 0.493,
+          "delta_pp": 0.598,
           "ic95_pp": [
-            -0.205,
-            1.579
+            -0.203,
+            1.801
           ]
         }
       },
       "preservacao_de_figurina": {
         "camada_prosa": 1.0,
-        "fusao": 0.9406
+        "fusao": 0.9379
       },
       "prosa": {
         "camada_prosa": {
-          "cer": 0.27098,
+          "cer": 0.24566,
           "ic95": [
-            0.14516,
-            0.44838
+            0.14099,
+            0.37335
           ]
         },
         "fusao": {
-          "cer": 0.19101,
+          "cer": 0.14964,
           "ic95": [
-            0.08633,
-            0.36319
+            0.08539,
+            0.2253
           ]
         },
         "glifo": {
-          "cer": 0.27098,
+          "cer": 0.24566,
           "ic95": [
-            0.14516,
-            0.44838
+            0.14099,
+            0.37335
           ]
         },
         "tess": {
-          "cer": 0.18608,
+          "cer": 0.14366,
           "ic95": [
-            0.07994,
-            0.35562
+            0.07951,
+            0.2191
           ]
         }
       },
       "segundos_por_folha": {
-        "camada_prosa": 1.48,
-        "fusao": 2.26,
-        "glifo": 1.347,
-        "tess_por_folha": 0.884,
-        "tess_por_processo": 6.535
+        "camada_prosa": 1.313,
+        "fusao": 2.103,
+        "glifo": 1.202,
+        "tess_por_folha": 0.837,
+        "tess_por_processo": 6.371
       },
       "segundos_por_folha_p95": {
-        "camada_prosa": 2.879,
-        "fusao": 3.413,
-        "glifo": 2.607,
-        "tess_por_folha": 1.732,
-        "tess_por_processo": 12.328
+        "camada_prosa": 2.502,
+        "fusao": 3.064,
+        "glifo": 2.221,
+        "tess_por_folha": 1.479,
+        "tess_por_processo": 10.686
       },
       "wer": {
-        "camada_prosa": 0.53579,
-        "fusao": 0.29668,
-        "glifo": 0.53579,
-        "tess": 0.28499
+        "camada_prosa": 0.54428,
+        "fusao": 0.26667,
+        "glifo": 0.54428,
+        "tess": 0.25191
       }
     }
   },
   "dpi": 220,
   "folhas_perdidas": [
     {
-      "avisos_com_reserva": [
-        "folha_nao_lida",
-        "leiaute_de_reserva"
-      ],
-      "cer_prosa_reserva": 0.0463,
-      "densidade": 0.0007347538574577516,
+      "avisos_com_reserva": [],
+      "cer_prosa_reserva": 0.0679,
+      "densidade": null,
       "folha": 903,
       "linhas": {
         "camada": 41,
-        "glifo": 1,
-        "reserva": 69
+        "glifo": 47,
+        "reserva": 47
       },
       "livro": "📚Chess Evolu"
     },
     {
-      "avisos_com_reserva": [
-        "folha_nao_lida",
-        "leiaute_de_reserva"
-      ],
-      "cer_prosa_reserva": 0.0207,
-      "densidade": 0.0005743825387708214,
+      "avisos_com_reserva": [],
+      "cer_prosa_reserva": 0.0594,
+      "densidade": null,
       "folha": 1210,
       "linhas": {
         "camada": 47,
-        "glifo": 1,
-        "reserva": 74
+        "glifo": 52,
+        "reserva": 52
       },
       "livro": "📚Chess Evolu"
     },
     {
-      "avisos_com_reserva": [
-        "folha_nao_lida",
-        "leiaute_de_reserva"
-      ],
-      "cer_prosa_reserva": 0.29,
-      "densidade": 0.0008488964346349745,
+      "avisos_com_reserva": [],
+      "cer_prosa_reserva": 0.5397,
+      "densidade": null,
       "folha": 31,
       "linhas": {
         "camada": 72,
-        "glifo": 1,
-        "reserva": 85
+        "glifo": 79,
+        "reserva": 79
       },
       "livro": "Kmoch - Inte"
     },
     {
-      "avisos_com_reserva": [
-        "folha_nao_lida",
-        "leiaute_de_reserva"
-      ],
-      "cer_prosa_reserva": 0.4521,
-      "densidade": 0.008825526137135099,
+      "avisos_com_reserva": [],
+      "cer_prosa_reserva": 0.7849,
+      "densidade": null,
       "folha": 69,
       "linhas": {
         "camada": 75,
-        "glifo": 1,
+        "glifo": 82,
+        "reserva": 82
+      },
+      "livro": "Kmoch - Inte"
+    },
+    {
+      "avisos_com_reserva": [],
+      "cer_prosa_reserva": 0.5573,
+      "densidade": null,
+      "folha": 106,
+      "linhas": {
+        "camada": 70,
+        "glifo": 80,
         "reserva": 80
       },
       "livro": "Kmoch - Inte"
     },
     {
-      "avisos_com_reserva": [
-        "folha_nao_lida",
-        "leiaute_de_reserva"
-      ],
-      "cer_prosa_reserva": 0.2917,
-      "densidade": 0.0008319467554076539,
-      "folha": 106,
-      "linhas": {
-        "camada": 70,
-        "glifo": 1,
-        "reserva": 73
-      },
-      "livro": "Kmoch - Inte"
-    },
-    {
-      "avisos_com_reserva": [
-        "folha_nao_lida",
-        "leiaute_de_reserva"
-      ],
-      "cer_prosa_reserva": 0.0,
-      "densidade": 0.014705882352941176,
+      "avisos_com_reserva": [],
+      "cer_prosa_reserva": 0.1364,
+      "densidade": null,
       "folha": 814,
       "linhas": {
         "camada": 4,
-        "glifo": 1,
-        "reserva": 26
+        "glifo": 12,
+        "reserva": 12
       },
       "livro": "📚Chess Evolu"
     },
     {
-      "avisos_com_reserva": [
-        "folha_nao_lida",
-        "leiaute_de_reserva"
-      ],
-      "cer_prosa_reserva": 0.1176,
-      "densidade": 0.0014858841010401188,
+      "avisos_com_reserva": [],
+      "cer_prosa_reserva": 0.1084,
+      "densidade": null,
       "folha": 1396,
       "linhas": {
         "camada": 32,
-        "glifo": 1,
-        "reserva": 53
+        "glifo": 39,
+        "reserva": 39
       },
       "livro": "📚Chess Evolu"
     }
@@ -533,7 +517,7 @@
   "item": "S-710, S-715, S-716, S-717, S-718, S-720",
   "medido_com": {
     "arvore_suja_em_src": false,
-    "commit": "2e030e3051896d824e84f4fe559383e6d024562a",
+    "commit": "bb7a2a321de7dd9318a84522cade715cf6ee63ca",
     "modelo_sha256": "ca4bcc00b9c59b07",
     "nota": "tempos sob contenção: outras medições rodavam na máquina, e o G4 não se julga por eles",
     "regua_sha256": "9857cbee6af253dc",
@@ -552,37 +536,6 @@
   "regua": "texto_prosa_2026-10-30/banco.py",
   "varredura_da_guarda": {
     "densidade_das_avisadas": [
-      0.0,
-      0.001,
-      0.001,
-      0.001,
-      0.001,
-      0.001,
-      0.001,
-      0.001,
-      0.001,
-      0.001,
-      0.001,
-      0.001,
-      0.001,
-      0.001,
-      0.002,
-      0.002,
-      0.002,
-      0.002,
-      0.003,
-      0.003,
-      0.004,
-      0.004,
-      0.007,
-      0.007,
-      0.008,
-      0.01,
-      0.011,
-      0.015,
-      0.017,
-      0.018,
-      0.034,
       0.058,
       0.14,
       0.201,
@@ -600,9 +553,9 @@
         "leitura_parcial": 0
       },
       "capa": {
-        "densidade_min": 0.011,
-        "densidade_p05": 0.018,
-        "folha_nao_lida": 2,
+        "densidade_min": 0.043,
+        "densidade_p05": 0.481,
+        "folha_nao_lida": 0,
         "folhas": 55,
         "leitura_parcial": 0
       },
@@ -614,30 +567,30 @@
         "leitura_parcial": 1
       },
       "misto": {
-        "densidade_min": 0.002,
-        "densidade_p05": 0.004,
-        "folha_nao_lida": 2,
+        "densidade_min": 1.03,
+        "densidade_p05": 1.037,
+        "folha_nao_lida": 0,
         "folhas": 33,
         "leitura_parcial": 0
       },
       "prosa": {
-        "densidade_min": 0.0,
-        "densidade_p05": 0.007,
-        "folha_nao_lida": 22,
+        "densidade_min": 0.941,
+        "densidade_p05": 1.033,
+        "folha_nao_lida": 0,
         "folhas": 395,
         "leitura_parcial": 0
       },
       "sem_camada": {
-        "densidade_min": 0.015,
-        "densidade_p05": 0.887,
-        "folha_nao_lida": 5,
+        "densidade_min": 0.058,
+        "densidade_p05": 0.931,
+        "folha_nao_lida": 4,
         "folhas": 189,
         "leitura_parcial": 0
       },
       "so_diagrama": {
-        "densidade_min": 0.004,
-        "densidade_p05": 0.161,
-        "folha_nao_lida": 4,
+        "densidade_min": 0.161,
+        "densidade_p05": 0.967,
+        "folha_nao_lida": 0,
         "folhas": 94,
         "leitura_parcial": 0
       },
@@ -649,6 +602,6 @@
         "leitura_parcial": 0
       }
     },
-    "segundos_por_folha_p95": 2.437
+    "segundos_por_folha_p95": 2.165
   }
 }

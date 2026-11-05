@@ -503,9 +503,10 @@ marcado para revisão, com captura ≥ 90% — ou (b) pagar o orçamento de CPU 
 > [metrics/texto_prosa_primeira_entrega.json](metrics/texto_prosa_primeira_entrega.json). A coluna "primeira entrega"
 > da tabela abaixo é a previsão de 2026-10-30, e o medido fica no relatório. Nos cinco livros aprovados na auditoria, a
 > prosa da camada erra **0,221%** [0; 0,64] contra 2,83% do glifo: um décimo, mas acima da M0 de 0,05%. A marca por palavra
-> captura de 29% a 50% do erro, com 4,8% das palavras marcadas, longe dos 90% da G5. **A S-711 é agora a prioridade:** a
-> guarda mostrou o *Chess Evolution 2014* perdendo 113 de 120 folhas, e o *2013*, 60 de 120. Daqui para a frente faltam as
-> Fases 100 (régua no pacote), 102 (fusão completa e virar o padrão), 103 a 107, e as S-711 a S-714.
+> captura de 26% a 50% do erro, com 4,8% das palavras marcadas, longe dos 90% da G5. **A S-711 entrou junto**, porque a guarda
+> mostrou o *Chess Evolution 2014* perdendo 113 de 120 folhas, e o *2013*, 60 de 120: agora são 0, e o glifo no ouro caiu de
+> 12,94% para 3,78%. Daqui para a frente faltam as Fases 100 (régua no pacote), 102 (fusão completa e virar o padrão), 103 a
+> 107, e as S-712 a S-714.
 
 **A primeira entrega** — o que muda na aba Texto antes de qualquer portão, sem trocar o padrão de
 ninguém (decisão 10) e sem esperar instalador nem livro novo, porque a máquina do dono já tem o
@@ -815,14 +816,14 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     amostra (*Chess Evolution* 814 e 1396, densidade 0,038 e 0,004) avisam; o corte de 0,5 só fica se
     nenhuma folha **com texto** cair abaixo de 0,7 na varredura dos livros dev.
   - *Saída:* G3 = 0 nas 95 folhas e na varredura, com os números publicados.
-  - *Achado:* **o "5 de 67" de 2026-10-30 é muito menor que a realidade.** Em 120 folhas igualmente espaçadas de cada
-    um, o *Chess Evolution 2014* perde 113 e o *2013*, 60. Isso sobe a prioridade da S-711, que ataca a causa. *Corte:* o
+  - *Achado:* **o "5 de 67" de 2026-10-30 era muito menor que a realidade.** Em 120 folhas igualmente espaçadas de cada
+    um, o *Chess Evolution 2014* perdia 113 e o *2013*, 60, antes da S-711. *Corte:* o
     0,5 cumpre a regra deste item na varredura publicada, contando as folhas com ao menos 200 caracteres de camada: nenhuma
     abaixo de 0,7 sem aviso, em 812 folhas de 58 livros. Fora dos dois *Chess Evolution* e do *Kmoch*, as seis folhas que avisam têm texto que o glifo não leu
     (quatro contracapas conferidas à vista); a varredura de livro inteiro do G101 continua por fazer.
   - *Reversão:* o aviso não muda texto nenhum; o corte é constante. O `ESQUEMA` 2 **não** é reversível
     (versão antiga não abre arquivo novo), e por isso entra junto com o primeiro uso dos avisos.
-- **S-711** · Região escura na borda: faixa colorida e moldura de scan.
+- **S-711** · Região escura na borda: faixa colorida e moldura de scan. ✅ entregue em 2026-11-05, com outro mecanismo: ver o *Achado* no fim deste item.
   - *Contexto:* duas aparências, um mecanismo. A faixa lateral azul com letra branca vertical do
     *Chess Evolution* (folhas 903 e 1210) e a moldura cinza do scan do *Kmoch* (folhas 31, 69 e 106)
     fazem o glifo devolver **um** bloco para a folha inteira (`h`, `.`). `text/negativo.py` (S-195)
@@ -842,6 +843,11 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     ouro-dev muda de texto.
   - *Reversão:* a detecção de região escura entra atrás de constante; desligada, a folha volta a ser
     lida como hoje (e a reserva da S-715 a cobre).
+  - *Achado:* **o mecanismo não era o escuro, era o que envolve a folha.** O maior componente de cada folha perdida é a
+    folha inteira, um filete fino na borda ligado à faixa, e as caixas de caractere só pegam contorno externo: `caixas=1`. A
+    folha 501, com a mesma faixa e sem o filete, sempre leu. O conserto é `text/moldura.py`: tira da binária o componente
+    que cobre a folha nas duas direções. A faixa fica, e o texto claro dentro dela continua sem ler, o que a camada cobre.
+    Sem aviso: ele sairia em toda folha dos dois livros, e o selo perderia o sentido.
 - **S-712** · Linha intercalada.
   - *Entrega:* caixa de linha com altura > 1,8× a mediana da coluna é partida pela projeção
     horizontal antes de ler. As folhas 279 e 578 do *Chess Evolution* são fixture; o efeito é medido

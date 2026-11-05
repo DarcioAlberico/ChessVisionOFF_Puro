@@ -305,6 +305,14 @@ class CamadaNaFolhaPerdidaTests(_ComLivro):
         cruas = [_crua("10.Qxd2 afer", 50)]
         self.assertEqual(leitor._camada_montada(cruas, palavras, leituras, ESCALA)[0].texto, "10.Qxd2 after")  # noqa: SLF001
 
+    def test_o_lance_em_fonte_de_figurina_chega_bloqueado_e_fica_como_esta(self) -> None:
+        """`Rxd5!`, em `FigurineSymbol`: a letra está certa, e o Tesseract leria `Af6` onde está `Nf6`."""
+        palavras = [camada_prosa.PalavraDaCamada("Nf6", (60.0, 52.0, 110.0, 60.0), True)]
+        leituras = [tesseract.Palavra("Af6", 0.9, (int(60 * ESCALA), int(52 * ESCALA), int(110 * ESCALA), int(60 * ESCALA)))]
+        montada = leitor._camada_montada([_crua("Nf6", 50)], palavras, leituras, ESCALA)[0]  # noqa: SLF001
+        self.assertEqual(montada.texto, "Nf6")
+        self.assertEqual(montada.revisar_em, ())
+
     def test_sem_palavra_suspeita_o_tesseract_nem_abre(self) -> None:
         falso = _Falso()
         with mock.patch.object(camada_prosa, "palavras_da_folha", return_value=[]):

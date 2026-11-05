@@ -212,7 +212,7 @@ def caminho_da_camada(saida: str) -> None:
     import fitz
 
     from chess_diagram_ocr.pdf_io import render_pdf_page
-    from chess_diagram_ocr.text import boxes, leitor
+    from chess_diagram_ocr.text import boxes, camada_prosa, leitor
 
     ler, rec = _leitura()
     cru = leitor._Cru(texto="h", caixa=boxes.Caixa(0, 0, 40, 40), confianca=0.1, procedencia="glifo")  # noqa: SLF001
@@ -223,10 +223,12 @@ def caminho_da_camada(saida: str) -> None:
                 n = doc.page_count
             for i in range(int(n * 0.1), int(n * 0.9), int(n * 0.8 / 13)):
                 img = render_pdf_page(pdf, i, DPI)
-                base = ler(pdf, i, motor="camada", imagem_rgb=img, dpi=DPI)
                 with mock.patch.object(leitor, "linhas_do_glifo", return_value=([cru], [])):
                     pag = ler(pdf, i, motor="camada_prosa", reconhecedor=rec, imagem_rgb=img, dpi=DPI, reserva=True)
-                t_base = base.texto(com_marcas=False).split()
+                # As palavras da camada já partidas no vão: contra a montagem crua, o que a partição separou
+                # contaria como lance perdido.
+                with fitz.open(pdf) as doc:
+                    t_base = [p.texto for p in camada_prosa.palavras_da_folha(doc[i])]
                 t_pag = pag.texto(com_marcas=False).split()
                 nota = [x for x in t_base if banco.classe_do_token(x) == "notacao"]
                 restam = Counter(t_pag)
@@ -415,7 +417,7 @@ def _procedencia(commit_medido: str = "") -> dict:
     }
 
 
-def resumir(saida: str, entradas: list[str], commit_medido: str = "") -> None:
+def resumir(saida: str, entradas: list[str], commit_medido: str = "", commit_medido_do_caminho: str = "") -> None:
     from chess_diagram_ocr.text.caderno import identidade_de
 
     reprovados = _reprovados()
@@ -432,6 +434,8 @@ def resumir(saida: str, entradas: list[str], commit_medido: str = "") -> None:
             continue
         if "caminho" in regs[0]:
             relatorio["caminho_da_camada_com_reserva"] = {
+                "medido_em": commit_medido_do_caminho,
+                "nota": "forçado: depois da S-711 nenhuma folha do ouro e da prata chega neste caminho",
                 "folhas": len(regs),
                 "tokens_de_notacao_da_camada": sum(r["notacao"][1] for r in regs),
                 "intactos": sum(r["notacao"][0] for r in regs),
@@ -472,8 +476,8 @@ def resumir(saida: str, entradas: list[str], commit_medido: str = "") -> None:
         elif "cer_prosa" in regs[0]:
             relatorio["folhas_perdidas"] = [
                 {"livro": r["livro"][:12], "folha": r["pagina"] + 1, "densidade": (r["avisos_sem_reserva"] or [[None, None]])[0][1],
-                 "avisos_com_reserva": r["avisos_com_reserva"], "cer_prosa_reserva": round(r["cer_prosa"], 4),
-                 "linhas": {"glifo": r["linhas_sem_reserva"], "reserva": r["linhas_reserva"], "camada": r["linhas_camada"]}}
+                 "avisos": r["avisos_com_reserva"], "cer_prosa_glifo": round(r["cer_prosa"], 4),
+                 "linhas": {"lidas": r["linhas_reserva"], "camada": r["linhas_camada"]}}
                 for r in regs
             ]
         else:
@@ -507,6 +511,7 @@ def main() -> None:
     a.add_argument("saida")
     a.add_argument("entradas", nargs="+")
     a.add_argument("--commit", default="", help="o commit da árvore que leu as folhas")
+    a.add_argument("--commit-do-caminho", default="", help="idem, para a medida do caminho da camada")
     args = ap.parse_args()
     if args.modo == "folhas":
         folhas(args.relatorio, args.conjunto, args.saida)
@@ -517,7 +522,7 @@ def main() -> None:
     elif args.modo == "varrer":
         varrer(args.saida, args.por_livro, args.padrao)
     else:
-        resumir(args.saida, args.entradas, args.commit)
+        resumir(args.saida, args.entradas, args.commit, args.commit_do_caminho)
 
 
 if __name__ == "__main__":

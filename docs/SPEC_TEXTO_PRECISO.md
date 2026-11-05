@@ -28,7 +28,7 @@ diagnóstico, as metas com os portões, as decisões do dono e a ordem dos itens
 > | S-500 a S-506, S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
 > | S-581 a S-584 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
-> | S-702, S-710, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
+> | S-702, S-710, S-711, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
 
 Cada item traz o problema (com número quando há), a decisão, onde mora, e o **critério de aceite**,
 escrito para virar teste. A spec nasce com o primeiro item entregue, e os outros entram aqui quando
@@ -298,10 +298,46 @@ documento, então a folha reaberta do caderno continua dizendo que não foi lida
 folhas conhecidas avisam. A varredura, 812 folhas de 58 livros, está em
 [metrics/texto_prosa_primeira_entrega.json](metrics/texto_prosa_primeira_entrega.json), por tipo de folha: nenhuma com
 camada abaixo de 0,7 sem aviso, e nenhuma das folhas de *Polgar*, *Reinfeld* e das duas capas que avisavam. **O "5 de 67"
-do roadmap estava muito abaixo da realidade:** em 120 folhas de cada, o *Chess Evolution 2014* perde 113 e o *2013*, 60.
+do roadmap estava muito abaixo da realidade:** em 120 folhas de cada, o *Chess Evolution 2014* perdia 113 e o *2013*, 60.
+A causa foi consertada na S-711, e hoje o acervo inteiro tem quatro folhas avisadas, todas com texto que o glifo não leu.
 
-A guarda dos testes foi provada por mutação: revertidos 116 consertos, 115 acusam. O que sobra é um mutante equivalente
-(o número partido, em que o sufixo de mesmo tamanho é o próprio número).
+A guarda dos testes foi provada por mutação, com a lista do crítico mais os consertos das rodadas seguintes: um mutante
+equivalente sobrevive (o número partido, em que o sufixo de mesmo tamanho é o próprio número).
+
+## S-711 · A moldura que envolve a folha ✅ implementada (2026-11-05)
+
+### Problema
+
+O roadmap supunha que a região escura na borda confundia a escala. **Medido, não é isso.** O maior componente de cada folha
+perdida é a folha inteira, `(0, 0, 2571, 1819)`: um filete fino na borda, ligado à faixa lateral do *Chess Evolution* ou à
+borda escura do scan do *Kmoch*. `caixas_de_caractere` só pega contorno externo, e tudo o que está dentro dele deixa de
+existir: `caixas=1`, e o glifo lê `h`. A folha 501, com a mesma faixa e sem o filete fechando a volta, dá 1.691 caixas.
+
+### Solução
+
+`text/moldura.py`: `tirar_moldura` apaga da binária o componente cuja caixa cobre ao menos 90% da folha nas duas direções,
+antes de medir a escala e de achar as caixas. A folha sem moldura devolve o mesmo objeto, e não muda em um pixel.
+
+### Critério de aceite
+
+`tests/test_text_moldura.py`, com folhas desenhadas: o filete sozinho, o filete com a faixa, e o que **não** é moldura
+(faixa sozinha, fio entre colunas, tabela, diagrama com margem). Em `metrics/texto_prosa_primeira_entrega.json`:
+
+| | antes | depois |
+|---|---:|---:|
+| folhas perdidas em 120 do *Chess Evolution 2014* | 113 | **0** |
+| folhas perdidas em 120 do *Chess Evolution 2013* | 60 | **0** |
+| CER de prosa do glifo, `ouro_dev_completo` | 12,94% | **3,78%** |
+| CER de prosa do glifo, nos 5 livros aprovados na auditoria | 2,83% | 2,83% |
+| *Chess Evolution 2013* 903, na fusão | 99,9% | **2,0%** |
+
+Os livros sem moldura não mudam: o número dos aprovados é idêntico. **As folhas voltam pelo caminho normal**, com figurina e
+sem aviso, e é por isso que quase nada chega mais à reserva da S-715.
+
+### O que ela não entrega
+
+O texto claro de dentro da faixa, que é o título corrente do fascículo e está na camada. A linha intercalada, que ainda pesa
+no *Chess Evolution* e é a S-712.
 
 ### O que ela não pega
 
@@ -332,10 +368,11 @@ lido como letra. `montar` acha as colunas nas caixas resultantes. O CER contra a
 
 ### Critério de aceite
 
-Medido em `metrics/texto_prosa_primeira_entrega.json`, chave `folhas_perdidas`: *Chess Evolution 2013* 903 e 1210
-com CER de prosa abaixo de 5%; as três do *Kmoch* com ao menos 90% das linhas da camada, que está desalinhada da
-tinta e por isso não dá CER; nenhuma folha legível do ouro aciona a reserva. **A conferência visual de uma folha
-do *Kmoch*, que a saída do item pede a quem não é o executor, fica com o crítico.**
+Medido **antes da S-711**, em `2e030e3`, e reproduzido pelo crítico até a 4ª casa: *Chess Evolution 2013* 903 e 1210 com 4,6% e
+2,1% de CER de prosa; as três do *Kmoch* com 100%, 97,2% e 96% das linhas da camada, que está desalinhada da tinta e por isso
+não dá CER, e a folha 106 conferida à vista pelo crítico. Nenhuma folha legível do ouro aciona a reserva. **Depois da S-711 essas
+folhas não chegam mais aqui:** no acervo, ela só dispara em quatro folhas de 812, em que o glifo não leu o texto. A linha curta sem
+palavra que exista, que era o resto da faixa, sai da folha relida.
 
 ## S-716 · A prosa da camada nos livros digitais ✅ implementada (2026-11-05)
 
@@ -353,8 +390,8 @@ admissão é a de `text/admissao.py`, com o perfil do livro em memória. Folha r
 
 **A folha que a guarda acusa não pode contornar a checagem de ligadura.** Quem manda ali é a montagem da camada, com
 as palavras partidas no vão: nada se perde, e o lance fica como ela o escreve, sem figurina, o que o selo diz. Com a
-reserva, **só a palavra suspeita** vem do Tesseract, lida na mesma caixa. Sem ela, a suspeita fica como está, e marcada
-`revisar`. As duas versões anteriores erraram aqui, e valem de aviso: a primeira usava a camada crua, com `afer` e tudo;
+reserva, **só a palavra de prosa suspeita** vem do Tesseract, lida na mesma caixa; o lance nunca, nem marcado, porque ele chega
+bloqueado pela fonte de figurina com a letra certa. Sem reserva, a suspeita fica como está, e marcada `revisar`. As duas versões anteriores erraram aqui, e valem de aviso: a primeira usava a camada crua, com `afer` e tudo;
 a segunda punha as linhas do Tesseract no lugar do glifo, e `10.Qxd2` saía `10.8xd2`, com o selo falando de outra coisa.
 
 **O PDF não precisa escrever o espaço.** No *Chess Evolution* ele é um salto de posição de 1,76 pt em corpo 13, sem
@@ -389,7 +426,7 @@ não escrito saem iguais nos dois lados. Foi o crítico, olhando a tinta, que os
 `motor="fusao"`, com o rótulo "Glifo + Tesseract (experimental)", é a regra v5 de 2026-10-30, escrita sobre tokens e
 aplicada **dentro** de `ler_pagina`, antes de `_com_negrito`, `_com_trechos` e da junção de hífen, para esses
 trabalharem sobre o texto fundido. Medida nos aprovados na auditoria: 0,351% contra 0,279% do Tesseract puro, +0,072 p.p.
-[0; +0,16], um pouco acima do teto de +0,1 que a S-721 pede. Duas regras da S-721 já entram: a palavra que só o glifo leu certo fica com ele
+[0; +0,16], um pouco acima do teto de +0,1 que a S-721 pede; no ouro inteiro, −0,099 p.p. [−0,55; +0,11]. Duas regras da S-721 já entram: a palavra que só o glifo leu certo fica com ele
 (regra 4), e a barra `|` não vence letra nem dígito, nem entra sem par, que eram 8 de 20 erros lidos à mão. O que sobra
 de `|` é quando o glifo também não leu nada ali. A língua é escolhida à mão na caixa
 nova da aba e fica no estado da janela; a S-723 a leva ao caderno. **Trocar a língua pede a leitura nova**, como trocar
@@ -427,7 +464,7 @@ terceiro sinal é a confiança por palavra do TSV; a S-761 calibra.
 ### Critério de aceite
 
 G5 provisória em `metrics/texto_prosa_primeira_entrega.json`, com a fração marcada travada em 5%: 4,8% das palavras
-marcadas, com captura de 50% no ouro, 41% nos aprovados na auditoria e 29% na prata. **Longe do alvo de 90%, que é da
+marcadas, com captura de 50% no ouro, 42% nos aprovados na auditoria e 26% na prata. **Longe do alvo de 90%, que é da
 S-761.** O interruptor é `ler_pagina(marca_por_palavra=False)`, e vale a faixa de hoje.
 
 ## S-720 · O executor do Tesseract e o contrato `LeitorDeLinha` ✅ implementada (2026-11-05)
@@ -450,8 +487,8 @@ motor nunca levanta no caminho da janela.
 ### Critério de aceite
 
 `tests/test_text_tesseract.py`: o *parser* sobre saídas gravadas, sem o binário, processo falso que erra, estoura e
-não abre. **Diferença zero** contra a leitura de um processo por linha em 2.573 linhas do ouro e da prata, a 0,76 s por
-folha contra 3,4 s, em `metrics/texto_prosa_primeira_entrega.json`, chave `executor`. O G4 não se julga por esses
+não abre. **Diferença zero** contra a leitura de um processo por linha em 2.908 linhas do ouro e da prata, a 0,71 s por
+folha contra 3,2 s, em `metrics/texto_prosa_primeira_entrega.json`, chave `executor`. O G4 não se julga por esses
 tempos: outras medições rodavam na máquina.
 
 ### O que ela não entrega

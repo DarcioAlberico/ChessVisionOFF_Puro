@@ -1250,7 +1250,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-500 a S-506, S-527 a S-580 | [docs/SPEC_SUITE.md](docs/SPEC_SUITE.md) |
 | S-581 a S-584 | [docs/PLANO_COLUNAS_SOLUCOES.md](docs/PLANO_COLUNAS_SOLUCOES.md) |
 | S-601 a S-668 | [docs/SPEC_MESA_DE_TEXTO.md](docs/SPEC_MESA_DE_TEXTO.md) |
-| S-702, S-710, S-715 a S-718, S-720 | [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) |
+| S-702, S-710, S-711, S-715 a S-718, S-720 | [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1412,7 +1412,7 @@ criterio de aceite dele. A tabela acima e sobre a spec.
 - [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) -- especificacao das Fases 100 a 107,
   item a item a medida que sao entregues: a S-702 (a admissao sem motor e o ouro-teste sorteado
   antes de qualquer leitura, em `assets/texto_prosa/ouro.json`) e a primeira entrega: a guarda da
-  folha nao lida e o selo (S-710), a reserva pelo leiaute do Tesseract (S-715), os motores
+  folha nao lida e o selo (S-710), a moldura que apagava a folha inteira (S-711), a reserva pelo leiaute do Tesseract (S-715), os motores
   "Camada na prosa" (S-716) e "Glifo + Tesseract" (S-717), a marca por palavra (S-718) e o executor
   do Tesseract (S-720), com os numeros em `docs/metrics/texto_prosa_primeira_entrega.json`
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados

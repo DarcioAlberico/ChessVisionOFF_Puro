@@ -1465,7 +1465,10 @@ def _camada_montada(
         posicao = 0
         for palavra in desta:
             texto = palavra.texto
-            if palavra.bloqueada:
+            # **Lance nunca é trocado, nem marcado.** O da camada vem em fonte de figurina, e por isso chega
+            # bloqueado, mas a letra está certa (`Rxd5!`): o Tesseract ali lê `Af6` onde está `Nf6`. A folha já
+            # diz, no selo, que os lances estão sem figurina.
+            if palavra.bloqueada and not _fusao.e_notacao(texto):
                 x0, y0, x1, y1 = palavra.bbox
                 lidas = [
                     p.texto
@@ -1701,7 +1704,7 @@ def _ler_pagina_do_livro(
             # é o que devolve o `after` que a ligadura perdeu. A primeira versão fazia o contrário, com as
             # linhas do Tesseract no lugar do glifo, e trocava `10.Qxd2` por `10.8xd2`.
             leituras_da_reserva: list[_tesseract.Palavra] = []
-            if reserva and any(p.bloqueada for p in palavras):
+            if reserva and any(p.bloqueada and not _fusao.e_notacao(p.texto) for p in palavras):
                 leitor = _leitor_de_linha.leitor_padrao() if leitor_de_linha is None else leitor_de_linha
                 leituras_da_reserva, _falha = leitor.ler_folha(_com_diagramas_em_branco(imagem, retangulos), lingua=lingua, dpi=dpi)
             cruas, regioes, quadros, qual = (
