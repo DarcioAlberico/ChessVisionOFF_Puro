@@ -138,6 +138,9 @@ cvoff-texto-inventario = "chess_diagram_ocr.cli.texto_inventario:main"
 # O inventario do EDITOR (S-256): o outro esta acima e conta recorte de caractere.
 cvoff-editor-inventario = "chess_diagram_ocr.cli.editor_inventario:main"
 cvoff-texto-train = "chess_diagram_ocr.cli.texto_train:main"
+# O classificador de caracteres para ONNX, com o .json ao lado (mapa de classes, temperatura,
+# SHA-256 do .onnx): o par que outro programa carrega sem torch.
+cvoff-texto-export-onnx = "chess_diagram_ocr.cli.texto_export_onnx:main"
 # A mesma imagem arquivada sob dois caracteres (S-202): acha por hash, mostra os glifos em
 # disputa para alguem julgar, e move o rotulo perdedor para quarentena -- nunca apaga.
 cvoff-texto-conflitos = "chess_diagram_ocr.cli.texto_conflitos:main"
