@@ -14,6 +14,7 @@ Projeto para extrair diagramas de xadrez em PDF, converter para FEN e melhorar a
 - Streamlit: demonstracao do servico no navegador (`examples/streamlit_demo.py`), nao e
   uma interface alternativa -- veja abaixo.
 - PyMuPDF (`fitz`): render de paginas PDF para imagem.
+- djvu-rs: abre livro `.djvu`, convertido sem perda para um PDF em `data/djvu/`.
 
 ## Setup
 
@@ -1052,6 +1053,7 @@ src/chess_diagram_ocr/
   inference.py          carga do modelo, predicao de FEN e TTA
   labels.py             a porta unica do labels.csv: LabelStore (S-51)
   lance_seguinte.py     o primeiro lance impresso sob o diagrama jogado sobre a leitura, e a troca unica que o faz fechar (C11)
+  livro_djvu.py         o .djvu que vira PDF sem perda em data/djvu/, e a pagina que nao decodifica vira aviso
   logging_setup.py      configuracao de logging
   model.py              arquitetura do classificador, configuravel por ArchConfig
   net_correction.py     cliente da correcao remota de FEN (opcional, opt-in)

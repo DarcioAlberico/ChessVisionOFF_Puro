@@ -36,6 +36,8 @@ data/rascunhos/
 # chave do arquivo. Fica fora pelo mesmo motivo do rascunho acima -- e o arquivo em si e PGN
 # de verdade: quem quiser levar embora abre no ChessBase.
 data/estudos/
+# O PDF de cada `.djvu` aberto (`livro_djvu.py`): dezenas de MB por livro, e refazivel do .djvu.
+data/djvu/
 data/labels.csv.bak-*
 data/splits.csv.bak-*
 data/field_set.jsonl.bak-*

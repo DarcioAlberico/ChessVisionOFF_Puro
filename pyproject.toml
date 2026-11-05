@@ -26,6 +26,9 @@ dependencies = [
     "opencv-python>=4.9.0",
     "pillow>=10.0.0",
     "pymupdf>=1.24.0",
+    # O MuPDF nao le DjVu; `livro_djvu.py` converte para PDF com este. Rust puro, MIT, sem DjVuLibre.
+    # Faixa estreita: projeto de 2026, com 24 versoes em dois meses, e o que foi medido e a 0.43.
+    "djvu-rs>=0.43,<0.44",
     "torch>=2.6",
     "torchvision>=0.21",
     "chess>=1.11",

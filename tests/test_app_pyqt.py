@@ -14,6 +14,8 @@ pularia em toda corrida de CI, que é o defeito que a S-417 nomeia.
 
 from __future__ import annotations
 
+import shutil
+import struct
 import unittest
 from pathlib import Path
 
@@ -520,6 +522,96 @@ class JanelaTests(unittest.TestCase):
 
         self.assertTrue(caixa.called)
         self.assertIsNone(janela.pdf.visor.pagina_rgb())
+
+    def _djvu_de_uma_pagina(self) -> Path:
+        """A menor página que o formato permite: só o `INFO`, 600x1200 a 300 DPI."""
+        info = struct.pack(">HH", 600, 1200) + bytes([26, 0]) + struct.pack("<H", 300) + bytes([22, 1])
+        miolo = b"DJVU" + b"INFO" + struct.pack(">I", len(info)) + info
+        caminho = self.pasta / "russo.djvu"
+        caminho.write_bytes(b"AT&TFORM" + struct.pack(">I", len(miolo)) + miolo)
+        return caminho
+
+    def test_um_djvu_abre_pelo_pdf_convertido_e_a_janela_aponta_para_ele(self) -> None:
+        from unittest import mock
+
+        from chess_diagram_ocr import livro_djvu
+
+        janela = self._janela()
+        with mock.patch.object(livro_djvu, "PASTA_PADRAO", self.pasta / "djvu"):
+            janela.abrir_pdf(self._djvu_de_uma_pagina())
+
+        self.assertEqual(janela.pdf.page_count, 1)
+        self.assertEqual(janela.pdf.name, "russo.pdf")
+        self.assertEqual(janela.pdf.source.suffix, ".pdf")
+        self.assertTrue(janela.pdf.source.is_relative_to(self.pasta / "djvu"))
+
+    def test_um_djvu_danificado_nao_tira_a_janela_do_livro_aberto(self) -> None:
+        from unittest import mock
+
+        from chess_diagram_ocr import livro_djvu
+
+        janela = self._janela()
+        janela.abrir_pdf(self.pdf)
+        cortado = self.pasta / "cortado.djvu"
+        cortado.write_bytes(self._djvu_de_uma_pagina().read_bytes()[:-6])
+        with (
+            mock.patch.object(livro_djvu, "PASTA_PADRAO", self.pasta / "djvu"),
+            mock.patch("chess_diagram_ocr.qt.janela.QMessageBox.critical") as caixa,
+        ):
+            janela.abrir_pdf(cortado)
+
+        self.assertIn("incompleto", caixa.call_args.args[2])
+        self.assertEqual(janela.pdf.source, self.pdf)
+
+    def test_a_conversao_em_processo_proprio_entrega_o_pdf_e_a_segunda_nem_abre_processo(self) -> None:
+        from unittest import mock
+
+        from chess_diagram_ocr.qt import painel_do_pdf
+
+        origem = self._djvu_de_uma_pagina()
+        primeira = painel_do_pdf._converter_djvu(origem, em_processo=True)
+        self.addCleanup(lambda: shutil.rmtree(primeira.pdf.parent, ignore_errors=True))
+        self.assertEqual(primeira.paginas, 1)
+        self.assertTrue(primeira.pdf.is_file())
+
+        with mock.patch.object(painel_do_pdf, "ProcessPoolExecutor") as processo:
+            segunda = painel_do_pdf._converter_djvu(origem, em_processo=True)
+        processo.assert_not_called()
+        self.assertTrue(segunda.reaproveitada)
+        self.assertEqual(segunda.pdf, primeira.pdf)
+
+    def test_a_queda_do_decodificador_vira_frase_e_nao_derruba_a_tarefa(self) -> None:
+        from concurrent.futures.process import BrokenProcessPool
+        from unittest import mock
+
+        from chess_diagram_ocr import livro_djvu
+        from chess_diagram_ocr.qt import painel_do_pdf
+
+        with (
+            mock.patch.object(livro_djvu, "ja_convertido", return_value=None),
+            mock.patch.object(painel_do_pdf, "ProcessPoolExecutor") as processo,
+        ):
+            processo.return_value.__enter__.return_value.submit.side_effect = BrokenProcessPool("caiu")
+            with self.assertRaisesRegex(ValueError, "decodificador de DjVu caiu"):
+                painel_do_pdf._converter_djvu(self.pasta / "x.djvu", em_processo=True)
+
+    def test_paginas_ilegiveis_do_djvu_sao_ditas_em_caixa_antes_de_abrir(self) -> None:
+        from unittest import mock
+
+        from chess_diagram_ocr import livro_djvu
+
+        janela = self._janela()
+        conversao = livro_djvu.Conversao(pdf=self.pdf, paginas=20, ilegiveis=tuple(range(14)))
+        with (
+            mock.patch.object(livro_djvu, "pdf_de_djvu", return_value=conversao),
+            mock.patch("chess_diagram_ocr.qt.janela.QMessageBox.warning") as caixa,
+        ):
+            janela.abrir_pdf(self.pasta / "qualquer.djvu")
+
+        frase = caixa.call_args.args[2]
+        self.assertIn("14 de 20", frase)
+        self.assertIn("e mais 2", frase)
+        self.assertEqual(janela.pdf.source, self.pdf)
 
     def test_marcar_diagramas_desenha_a_caixa_que_o_detector_achou(self) -> None:
         """O caminho de detecção de verdade -- render, detector híbrido, caixas -- sem modelo."""
