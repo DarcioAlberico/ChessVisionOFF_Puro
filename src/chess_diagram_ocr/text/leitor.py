@@ -168,6 +168,7 @@ from . import colados as _colados
 from . import colunas as _colunas
 from . import dicionario as _dicionario
 from . import empilhados as _empilhados
+from . import espacado as _espacado
 from . import faixas as _faixas_mod
 from . import fronteira as _fronteira
 from . import fusao as _fusao
@@ -1878,6 +1879,10 @@ def _ler_pagina_do_livro(
                     )
                     por_palavra = marca_por_palavra
 
+    if dicionario and qual in ("glifo", "fusao"):
+        # Depois dos dois motores, e antes dos trechos de estilo, que são medidos no texto final (S-744).
+        cruas = _sem_espacado(cruas, lingua)
+
     if marcar_negrito and cruas:
         cruas = _com_negrito(cruas, spans_negrito, registra_negrito, escala_px)
         # **O peso não tem segunda fonte**, então o detalhe vale nos dois motores: a camada é a
@@ -1929,6 +1934,16 @@ def _ler_pagina_do_livro(
         avisos=tuple(avisos),
         marca_por_palavra=por_palavra,
     )
+
+
+def _sem_espacado(cruas: Sequence[_Cru], lingua: str) -> list[_Cru]:
+    """As linhas com o *gesperrt* refeito (S-744). A camada não passa aqui: ela é a referência."""
+    saida: list[_Cru] = []
+    for cru in cruas:
+        texto = _espacado.juntar_na_lingua(cru.texto, lingua)
+        revisar_em = _espacado.intervalos_depois(cru.texto, texto, cru.revisar_em)
+        saida.append(replace(cru, texto=texto, revisar_em=revisar_em) if texto != cru.texto else cru)
+    return saida
 
 
 def _com_negrito(

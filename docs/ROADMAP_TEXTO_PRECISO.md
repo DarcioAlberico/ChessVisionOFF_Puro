@@ -1382,11 +1382,15 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
   - *Saída:* nenhum `Io.`/`ıı.` nas folhas medidas; casas válidas ≥ 99%.
   - *Reversão:* constante no árbitro da S-729.
 - **S-744** · Texto espaçado (*gesperrt*): `f a t a l e n` na ênfase alemã do Gutmayer volta a
-  `fatalen` quando o léxico concorda.
+  `fatalen` quando o léxico concorda. ✅ entregue em 2026-11-06
   - *Verificação:* folhas do Gutmayer com *gesperrt*: palavras espaçadas juntadas só quando o léxico
     concorda.
   - *Saída:* zero palavra espaçada que o léxico conhece; nenhuma junção de palavras distintas.
   - *Reversão:* constante.
+  - *Achado:* **quem sofre é o glifo**, e o Tesseract já lê a palavra inteira. `text/espacado.py` (`JUNTAR_ESPACADO`), e nenhuma linha do ouro-dev muda. Nas 22 folhas do
+    Gutmayer, nenhuma junção de palavras distintas à vista; palavras conhecidas espaçadas de 14 a 2 nas olhadas, de 7 a 3 nas não vistas. **O zero não se cumpre**: o que sobra é
+    corrida com letra a mais, e a primeira versão, que achava a palavra no meio, juntava `d e sHan d e`.
+  - *Achado:* `fatalen` não está na lista alemã, e o exemplo do item fica espaçado. Em uma de cada quatro junções sai só um pedaço da palavra (`mann`), porque o resto veio com erro.
 - **S-745** · A escada de linhas de base, antes de qualquer modelo da casa.
   - *Entrega:* no ouro-dev e no scan-ouro-dev, em ordem de custo: (0) o degrau que não custa nada —
     `--user-words`, dicionário desligado na notação, escala por altura-x e um modelo de n-gramas de

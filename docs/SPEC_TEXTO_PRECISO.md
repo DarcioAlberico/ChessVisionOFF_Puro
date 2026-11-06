@@ -1068,3 +1068,50 @@ traço-ponto de volta. Aí a reabertura é outra ADR, e começa pela procedênci
 
 As regras de geometria continuam morando fora da rede, cada uma com a sua constante e o seu teste. A primeira leitura delas num livro novo é o
 G103. Se a base for um dia recortada de novo, as classes mais vazias que esta fase registrou (seção da S-735) são a primeira coisa a pedir.
+
+## S-744 · O texto espaçado volta a ser palavra ✅ implementada (2026-11-06)
+
+### Problema
+
+O *Gutmayer* enfatiza espaçando as letras, e o vão passa do `linhas.VAO_DE_ESPACO`. **Quem sofre é o glifo, e não o Tesseract**: nas folhas
+medidas o Tesseract lê a palavra inteira, e o glifo, que é o padrão, sai `k o m b i n i e r t e`, `F i gu re n`. O roadmap citava `f a t a l e n`, mas
+a forma flexionada `fatalen` não está na lista alemã: fica como está, porque o critério é o léxico.
+
+### Solução
+
+`text/espacado.py`, com a reversão em `JUNTAR_ESPACADO`, chamado por `leitor._sem_espacado` depois dos dois motores (glifo e fusão), com
+`dicionario` ligado. A camada não passa por ali: é a referência. A língua é a do livro (S-723), com `lexico.da_lingua` e `do_livro` (S-728) e as
+curtas da língua; sem lista, nada acontece.
+
+Corrida é a sequência de ao menos 3 tokens de uma ou duas letras, com metade de uma letra só. A maiúscula abre trecho, salvo na corrida toda em
+maiúsculas. Cada trecho vira **uma** palavra, ou **várias** se há uma única cobertura inteira de menos pedaços (`d e r B a u e r` → `der Bauer`), ou fica
+como estava. O nome da lista do livro só vale com maiúscula e trecho todo de uma letra. Só tira espaço: a contagem de `confiancas` sobrevive, e
+`revisar_em` é remapeado.
+
+**A primeira versão reconhecia a palavra no meio da corrida, e foi recusada pela auditoria**: `d e sHan d e`, `a. nOhn`, `gein e s`. Sobre o glifo a
+corrida vem com erro, e 396 mil palavras e nomes acham alguma coisa em quase toda sequência. Agora, sobrou letra, o trecho fica.
+
+### Critério de aceite
+
+`tests/test_text_espacado.py`, sintético e sem livro, com a decisão inteira, e a fiação por `_sem_espacado`. Nas folhas do *Gutmayer*, motor `glifo`,
+língua `deu`, contando as corridas de ao menos 3 letras soltas cuja junção a lista conhece:
+
+| | antes | depois |
+|---|---:|---:|
+| 12 folhas olhadas para escrever a régua | 14 | 2 |
+| 10 folhas **não vistas** | 7 | 3 |
+| junções de palavras distintas, à vista, nas 22 folhas (50 junções) | | **0** |
+| linhas mudadas no ouro-dev, limpo (882) e no perfil médio (898), com `eng` e `por` | | **0** |
+
+**A saída não se cumpre inteira.** Zero palavra distinta juntada, sim. Zero palavra conhecida espaçada, não: sobram 5, porque a corrida tem letra a mais ou é pedaço de
+palavra maior (`F i g u`), e é a regra acima, que escolheu não juntar na dúvida.
+
+**Em uma de cada quatro junções sai só um pedaço**, e não a palavra: `rung`, `mann`, `Laske`, porque o resto dela veio com erro (`S p i e1 m a n n` → `S p i e1 mann`). As letras
+são as mesmas e nenhuma palavra de fora entra, mas o pedaço existe na lista por acaso.
+
+### O que ela não entrega
+
+- **Palavra com letra errada** fica: `1 e b e n d i g`. O léxico não a conhece, e aproximar é a decisão recusada da S-209.
+- **Duas letras** (`z u`, `i n`) ficam: `a o` e `e a` são prosa. `der`, `und` e as outras curtas da língua entram.
+- **Forma flexionada fora da lista** fica: `f a t a l e n`. A lista alemã tem 52.854 palavras, e o caderno do livro (`lexico.txt`) ainda não é consultado aqui.
+- O **Tesseract** não muda, porque já lia a palavra inteira: aqui a régua quase não dispara. A camada de terceiro do *Gutmayer*, com 737 corridas, continua como é.
