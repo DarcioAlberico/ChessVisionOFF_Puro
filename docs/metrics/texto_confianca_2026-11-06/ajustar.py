@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import rotular  # noqa: E402
 
-from chess_diagram_ocr.text import calibracao, fusao, regua_prosa  # noqa: E402
+from chess_diagram_ocr.text import calibracao, fusao, ouro, regua_prosa  # noqa: E402
 from chess_diagram_ocr.text import confianca_palavra as cp
 
 FRACAO = 0.05
@@ -166,7 +166,8 @@ def juntar(folhas: Sequence[dict[str, Any]]) -> tuple[np.ndarray, np.ndarray]:
 
 
 def deixa_um_livro_de_fora(folhas: Sequence[dict[str, Any]], *, colunas: Sequence[int] | None = None) -> dict[str, Any]:
-    """Cada livro medido por um calibrador e um corte que não o viram."""
+    """Cada livro medido por um calibrador e um corte que não o viram. O livro da exclusão da S-750 é medido, e nunca ajusta."""
+    excluidos = ouro.carregar_exclusao().identidades
     por_livro = defaultdict(list)
     for f in folhas:
         por_livro[f["id"]].append(f)
@@ -174,7 +175,7 @@ def deixa_um_livro_de_fora(folhas: Sequence[dict[str, Any]], *, colunas: Sequenc
     contas_do_teto: list[tuple[int, int, int, int]] = []
     ps, ys = [], []
     for livro, dele in por_livro.items():
-        outros = [f for f in folhas if f["id"] != livro]
+        outros = [f for f in folhas if f["id"] != livro and f["id"] not in excluidos]
         x, y = juntar(outros)
         pesos = ajustar(x, y, colunas=colunas)
         corte = corte_da_fracao(prob(x, pesos))
@@ -192,8 +193,23 @@ def dos_dados(pasta: Path, *nomes: str) -> list[dict[str, Any]]:
     return amostras([r for nome in nomes for r in rotular.ler(pasta / f"{nome}.jsonl") if r["tokens"]])
 
 
-def base_de_hoje(folhas: Sequence[dict[str, Any]], registros: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    """A marca que já está nos arquivos: a S-718, medida com o mesmo rótulo. Só para a comparação."""
+def marca_s718(folhas: Sequence[dict[str, Any]], registros: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """O ranque por folha da S-718 **refeito sobre os tokens**, com o mesmo rótulo. Os `revisar_em` gravados já são os da S-761, com a S-760 ligada."""
+    contas = []
+    for r in registros:
+        marcadas = fusao.marcar(_tokens(r["tokens"]), existe=fusao.existe_do_livro(r["lingua"]))
+        rotulados, _ = rotular.tokens_rotulados(r)
+        contas.append((
+            sum(1 for _t, errada, _p, n, k in rotulados if errada and k in marcadas[n]),
+            sum(1 for _t, errada, _p, _n, _k in rotulados if errada),
+            sum(1 for _t, _e, _p, n, k in rotulados if k in marcadas[n]),
+            len(rotulados),
+        ))
+    return placar(contas, folhas)
+
+
+def marca_gravada(folhas: Sequence[dict[str, Any]], registros: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """A marca que `ler_pagina` escreveu, lida em `revisar_em`: é o que o produto mostra."""
     contas = []
     for r in registros:
         rotulo = rotular.rotular_linhas(r["ref"], [ln["texto"] for ln in r["linhas"]], r["lingua"])
@@ -228,7 +244,7 @@ def comparacao(pasta: Path, ajuste: str, valida: str, uniao: Sequence[dict[str, 
     c, y = np.array(conf), np.array(certo, dtype=bool)
     constante = np.full(y.size, 1 - float(y.mean()))
     return {
-        "marca_s718": base_de_hoje(folhas, registros),
+        "marca_s718": marca_s718(folhas, registros),
         "confianca_de_quem_escreveu": {**calibracao_de(c, y), "risco_cobertura": risco_cobertura(c, y)},
         "constante": {**calibracao_de(constante, y), "risco_cobertura": risco_cobertura(constante, y)},
     }
@@ -242,7 +258,7 @@ def do_produto(pasta: Path, anterior: str, produto: str) -> dict[str, Any]:
     return {
         "folhas_com_texto_diferente_de_antes": sum(antes[(r["identidade"], r["folha"])] != r["hip"]["fusao"] for r in registros),
         "folhas_comparadas": len(registros),
-        **base_de_hoje(folhas, registros),
+        **marca_gravada(folhas, registros),
     }
 
 
@@ -259,14 +275,17 @@ def bloco_do_dominio(pasta: Path, ajuste: str, valida: str) -> tuple[dict[str, A
     registros = [r for r in rotular.ler(pasta / f"{valida}.jsonl") if r["tokens"]]
     uniao = no_ajuste + na_validacao
     bloco = {
-        "ajuste": {"conjunto": ajuste, "folhas": len(no_ajuste), "livros": len({f["id"] for f in no_ajuste}), "palavras": int(y.size), "erradas": int(y.sum())},
+        "ajuste": {
+            "conjunto": ajuste, "folhas": len(no_ajuste), "livros": len({f["id"] for f in no_ajuste}), "identidades": sorted({f["id"] for f in no_ajuste}),
+            "palavras": int(y.size), "erradas": int(y.sum()),
+        },
         "pesos": dict(zip(cp.NOMES, [round(float(v), 4) for v in pesos], strict=True)),
         "corte_de_revisar": round(corte, 5),
         "validacao": {
             "conjunto": valida,
             "calibracao": calibracao_de(1 - prob(xv, pesos), yv),
             "risco_cobertura": risco_cobertura(1 - prob(xv, pesos), yv),
-            "marca_de_hoje_s718": base_de_hoje(na_validacao, registros),
+            "marca_de_hoje_s718": marca_s718(na_validacao, registros),
             "marca_por_corte": placar(marcar_por_corte(na_validacao, pesos, corte), na_validacao),
             "marca_por_teto_de_folha": placar(marcar_por_folha(na_validacao, pesos), na_validacao),
             "captura_com_a_fracao_travada": fracao_travada(na_validacao, pesos),

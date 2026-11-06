@@ -551,7 +551,7 @@ def marcar(
     return [frozenset(m) for m in marcadas]
 
 
-CORTE_DE_REVISAR: dict[str, float] = {V5: 0.01619, V3: 0.16112}
+CORTE_DE_REVISAR: dict[str, float] = {V5: 0.01621, V3: 0.1793}
 """Da probabilidade de erro para cima, a palavra pede olho (S-761), por estrato. **É o corte da fusão, e de mais ninguém**: o `corte_de_revisar`
 de `documento.py` é o `ocr.MIN_CONFIDENCE`, que o `pdf_pesquisavel` e a `coleta` usam e que está no digest da S-218. Sai de `ajustar.py`: é o que
 marca 5% das palavras no pedaço reservado do dev."""
@@ -559,7 +559,7 @@ marca 5% das palavras no pedaço reservado do dev."""
 
 def marcar_por_erro(erros: Sequence[Sequence[float]], corte: float) -> list[frozenset[int]]:
     """Quais tokens de cada linha passam do corte. **Sem teto por folha, e é medido:** a folha limpa não gasta marca, e a ruim recebe as que
-    precisa. Com o teto de 5% por folha, a captura na prata fica em 36%; com o mesmo calibrador e o corte, em 60%, marcando 6,9%."""
+    precisa. Com o teto de 5% por folha, a captura na prata fica em 35%; com o mesmo calibrador e o corte, em 56%, marcando 6,0%."""
     return [frozenset(k for k, p in enumerate(linha) if p >= corte) for linha in erros]
 
 

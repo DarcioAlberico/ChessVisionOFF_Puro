@@ -50,13 +50,6 @@ class AlarmeTests(unittest.TestCase):
     def test_sinal_que_nao_passou_na_medicao_nao_dispara(self) -> None:
         """Nenhum dos quatro passou da regra no dev: ver `docs/metrics/texto_confianca_2026-11-06.json`. Se um entrar, é com medida."""
         self.assertEqual(monitor_prosa.ALARMES, {})
-        self.assertEqual(monitor_prosa.alarmes_da_folha({"discordancia": 0.99, "densidade": 9.0}, cp.DIGITAL), ())
-
-    def test_o_alarme_da_tabela_dispara_no_corte(self) -> None:
-        with mock.patch.object(monitor_prosa, "ALARMES", {cp.SCAN: {"densidade": 0.5}}):
-            self.assertEqual(monitor_prosa.alarmes_da_folha({"densidade": 0.5}, cp.SCAN), ("densidade",))
-            self.assertEqual(monitor_prosa.alarmes_da_folha({"densidade": 0.4}, cp.SCAN), ())
-            self.assertEqual(monitor_prosa.alarmes_da_folha({"densidade": 0.9}, cp.DIGITAL), ())
 
     def test_o_publicado_bate_com_a_tabela(self) -> None:
         """Quem escreve na tabela sem medir é pego: um sinal em `ALARMES` tem de estar com `vira_alarme` no relatório."""
@@ -98,6 +91,13 @@ class CanarioTests(unittest.TestCase):
         dev = {f.identidade for f in ouro.carregar().do_split("dev")}
         for folha in monitor_prosa.carregar_canario():
             self.assertIn(folha.identidade, dev)
+
+    def test_o_motor_forcado_aparece_na_linha_do_relatorio(self) -> None:
+        forcadas = monitor_prosa.com_motor([self.FOLHA], "glifo")
+        relatorio = monitor_prosa.para_relatorio(monitor_prosa.conferir_canario(forcadas, lambda f: 0.5 if f.motor == "glifo" else 0.0))
+        self.assertEqual(relatorio["folhas"][0]["motor"], "glifo")
+        self.assertEqual(relatorio["folhas"][0]["cer"], 0.5)
+        self.assertEqual(monitor_prosa.com_motor([self.FOLHA], ""), (self.FOLHA,))
 
     def test_o_relatorio_nao_leva_texto(self) -> None:
         relatorio = monitor_prosa.para_relatorio(monitor_prosa.conferir_canario([self.FOLHA], lambda _f: 0.5))

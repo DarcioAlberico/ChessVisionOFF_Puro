@@ -23,7 +23,7 @@ from typing import Any
 
 import fitz
 
-from chess_diagram_ocr.cli.texto_prosa import folhas_do_conjunto
+from chess_diagram_ocr.cli.texto_prosa import _procedencia_dos_motores, codigo_medido, folhas_do_conjunto
 from chess_diagram_ocr.pdf_io import render_pdf_page
 from chess_diagram_ocr.text import (
     admissao,
@@ -189,10 +189,15 @@ def reservado(conjunto: str, por_livro: int, cache: Path) -> list[tuple[str, int
         citadas = {(f.identidade, f.folha) for f in p.folhas}
         linguas = {f.identidade: f.lingua for f in p.folhas}
     achados = _livros(set(linguas), cache)
+    exclusao = ouro.carregar_exclusao()
     saida = []
     for identidade in sorted(linguas):
         if identidade not in achados:
             print("# livro não achado:", identidade, flush=True)
+            continue
+        # **Ajustar é treinar**: o livro da série de um livro do teste (S-750) não entra no pedaço que ajusta, e a prata tem um.
+        if exclusao.recusa(identidade, Path(achados[identidade]).stem):
+            print("# fora do ajuste, da série de um livro do teste:", identidade, flush=True)
             continue
         with fitz.open(achados[identidade]) as doc:
             ordem = sorted(range(1, doc.page_count + 1), key=lambda n: hashlib.sha256(f"S-760:{identidade}:{n}".encode()).hexdigest())
@@ -218,6 +223,7 @@ def main() -> int:
     ap.add_argument("--alternativas", action="store_true")
     ap.add_argument("--por-livro", type=int, default=12)
     ap.add_argument("--lingua", default="eng")
+    ap.add_argument("--exigir-src", default="", help="aborta se o pacote importado não morar sob esta pasta")
     ap.add_argument("--folhas", default="", help="livro:<identidade>: de, até, base 1, no passo pedido: 10,200,10")
     args = ap.parse_args()
     if hasattr(sys.stdout, "reconfigure"):
@@ -245,7 +251,10 @@ def main() -> int:
     print(f"# {len(folhas)} folhas, {len(feitas)} feitas, {len(faltam)} a ler", flush=True)
     if not faltam:
         return 0
-    rec = build_glyph_recognizer(str(RAIZ / "models" / "char_classifier.pt"))
+    modelo = str(RAIZ / "models" / "char_classifier.pt")
+    codigo = codigo_medido(exigir_src=args.exigir_src)
+    codigo.update(_procedencia_dos_motores(modelo, sorted({f[2] for f in folhas})))
+    rec = build_glyph_recognizer(modelo)
     leitor.ler_pagina(achados[faltam[0][0]], faltam[0][1] - 1, motor="glifo", reconhecedor=rec, dpi=DPI)
     inicio = time.perf_counter()
     with saida.open("a", encoding="utf-8", newline="\n") as destino:
@@ -254,7 +263,7 @@ def main() -> int:
                 print(f"# parou pelo limite: faltam {len(faltam) - n + 1}", flush=True)
                 return 3
             registro = ler_folha(achados[identidade], identidade, folha - 1, lingua, rec, alternativas=args.alternativas, oraculo=dominio == "scan")
-            registro.update(conjunto=args.conjunto, dominio=dominio)
+            registro.update(conjunto=args.conjunto, dominio=dominio, codigo=codigo)
             destino.write(json.dumps(registro, ensure_ascii=False) + "\n")
             destino.flush()
             p = registro["placar"]["fusao|tip"]

@@ -2,6 +2,10 @@
 
 **A prévia é obrigatória, e o botão diz isso.** «Aplicar» só acende com uma lista na tela, e mudar um dos dois campos a apaga: a lista que a pessoa vê é sempre
 a da troca que vai acontecer. Cada ocorrência tem a caixa dela, e a folha conferida vem desmarcada.
+
+**A janela não é modal, e isso custou texto.** A pessoa vê a prévia, digita na folha da tela e aplica: a troca lia o disco, regravava por cima e o `abrir` limpava o histórico, e o que ela digitou sumia da tela e do
+disco. Por isso `aplicar_marcadas` guarda a folha da tela **antes**: o digitado vai ao caderno, o resumo da folha deixa de bater com o da prévia, e ela é contada como mudada. E o caderno tem de ser ainda o da
+aba: trocar de livro com a janela aberta gravava no caderno antigo, já sem a trava, e recarregava a folha de mesmo índice do livro novo.
 """
 
 from __future__ import annotations
@@ -87,7 +91,19 @@ class JanelaDeCorrecaoNoLivro(QDialog):
         self.btn_aplicar.setEnabled(False)
         self.resumo.setText("A troca mudou: veja a prévia de novo.")
 
-    def ver_previa(self) -> modelo.Previa:
+    def _caderno_ainda_e_o_da_aba(self) -> bool:
+        if self._painel.caderno_aberto is self._caderno:
+            return True
+        self._vista = None
+        self.lista.clear()
+        self.btn_aplicar.setEnabled(False)
+        self.btn_previa.setEnabled(False)
+        self.resumo.setText("O livro da aba mudou: esta troca era do outro. Feche e abra de novo, no livro certo.")
+        return False
+
+    def ver_previa(self) -> modelo.Previa | None:
+        if not self._caderno_ainda_e_o_da_aba():
+            return None
         vista = modelo.previa(self._caderno, self.campo_antes.text().strip(), self.campo_depois.text().strip())
         self._vista = vista
         self.lista.clear()
@@ -105,7 +121,10 @@ class JanelaDeCorrecaoNoLivro(QDialog):
 
     def aplicar_marcadas(self) -> modelo.Aplicado | None:
         """Aplica o que está marcado. **Sem prévia na tela não há o que aplicar**, e o botão nem acende."""
-        if self._vista is None or not self.btn_aplicar.isEnabled():
+        if self._vista is None or not self.btn_aplicar.isEnabled() or not self._caderno_ainda_e_o_da_aba():
+            return None
+        if not self._painel._guardar_a_folha():  # noqa: SLF001 - o que foi digitado depois da prévia tem de estar no disco: ver o cabeçalho
+            self.resumo.setText("A folha da tela não gravou, e nada foi trocado: ela perderia o que você digitou.")
             return None
         feito = modelo.aplicar(self._caderno, self._vista, fora=self._fora())
         self.resumo.setText(modelo.frase_do_resultado(feito))

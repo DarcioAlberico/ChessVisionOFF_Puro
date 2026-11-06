@@ -19,9 +19,14 @@ from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, Pagin
 
 if TEM_PYQT:
     from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QTextCursor
+    from PyQt6.QtTest import QTest
+    from test_qt_janela import _JanelaComLivro
 
     from chess_diagram_ocr.qt.correcao_no_livro import JanelaDeCorrecaoNoLivro
     from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
+else:  # pragma: no cover - sem o PyQt6 as classes pulam, mas precisam de uma base para existir
+    _JanelaComLivro = unittest.TestCase
 
 
 def folha(pagina: int, texto: str, *, documento: str = "livro.pdf") -> rico.DocumentoRico:
@@ -194,6 +199,8 @@ class JanelaTests(_ComCaderno):
         super().setUp()
         aplicacao()
         self.painel = mock.MagicMock()
+        self.painel.caderno_aberto = self.cad
+        self.painel._guardar_a_folha.return_value = True  # noqa: SLF001
 
     def _nova(self, antes: str = "Gelfmnd", depois: str = "Gelfand") -> Any:
         from PyQt6.QtWidgets import QWidget
@@ -230,6 +237,33 @@ class JanelaTests(_ComCaderno):
         self.assertIn("the Gelfand line", self.cad.folha(0).para_texto())
         self.assertIn("more Gelfmnd here", self.cad.folha(1).para_texto())
         self.painel.folhas_corrigidas_no_livro.assert_called_once()
+
+    def test_a_folha_da_tela_e_guardada_antes_de_trocar(self) -> None:
+        self.guardar(0, "the Gelfmnd line")
+        janela = self._nova()
+        janela.btn_previa.click()
+        janela.btn_aplicar.click()
+        self.painel._guardar_a_folha.assert_called_once()  # noqa: SLF001
+
+    def test_a_folha_da_tela_que_nao_grava_nao_deixa_trocar(self) -> None:
+        self.guardar(0, "the Gelfmnd line")
+        janela = self._nova()
+        janela.btn_previa.click()
+        self.painel._guardar_a_folha.return_value = False  # noqa: SLF001
+        janela.btn_aplicar.click()
+        self.assertIn("Gelfmnd", self.cad.folha(0).para_texto())
+        self.painel.folhas_corrigidas_no_livro.assert_not_called()
+
+    def test_o_caderno_que_nao_e_mais_o_da_aba_recusa(self) -> None:
+        self.guardar(0, "the Gelfmnd line")
+        janela = self._nova()
+        janela.btn_previa.click()
+        self.painel.caderno_aberto = object()
+        janela.btn_aplicar.click()
+        self.assertIn("Gelfmnd", self.cad.folha(0).para_texto())
+        self.painel._guardar_a_folha.assert_not_called()  # noqa: SLF001
+        self.assertFalse(janela.btn_aplicar.isEnabled())
+        self.assertIsNone(janela.ver_previa())
 
     def test_a_folha_conferida_aparece_desmarcada_e_dita(self) -> None:
         self.guardar(0, "the Gelfmnd line")
@@ -268,7 +302,7 @@ class PainelTests(unittest.TestCase):
         self.assertTrue(self.painel._guardar_a_folha())  # noqa: SLF001
         self.assertIn("xyzzyq", self.cad.lexico())
 
-    def test_o_comando_abre_com_a_ultima_correcao_e_a_folha_da_tela_volta_trocada(self) -> None:
+    def test_o_comando_abre_com_a_ultima_correcao(self) -> None:
         self.cad.guardar_leitura(folha(1, "more Gelfmnd here", documento=str(self.pdf)), motor="fusao")
         self.painel._aplicar(corrigido(self.painel.documento, "Gelfmnd", "Gelfand"))  # noqa: SLF001
         janela = self.painel.corrigir_em_todas_as_folhas()
@@ -277,6 +311,16 @@ class PainelTests(unittest.TestCase):
         janela.btn_previa.click()
         janela.btn_aplicar.click()
         self.assertIn("more Gelfand here", self.cad.folha(1).para_texto())
+
+    def test_a_folha_da_tela_volta_trocada(self) -> None:
+        """**Com a palavra errada ainda na tela**: a versão anterior deste teste a corrigia antes, e passava sem `_abrir_do_caderno`."""
+        janela = self.painel.corrigir_em_todas_as_folhas()
+        self.addCleanup(descartar, janela)
+        janela.campo_antes.setText("Gelfmnd")
+        janela.campo_depois.setText("Gelfand")
+        self.assertIn("the Gelfmnd line", self.painel.documento.para_texto())
+        janela.btn_previa.click()
+        janela.btn_aplicar.click()
         self.assertIn("the Gelfand line", self.painel.documento.para_texto())
 
     def test_sem_caderno_diz_e_nao_abre(self) -> None:
@@ -286,6 +330,89 @@ class PainelTests(unittest.TestCase):
         self.assertIsNone(self.painel.corrigir_em_todas_as_folhas())
         self.assertTrue(frases)
 
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class NaJanelaDeVerdadeTests(_JanelaComLivro):
+    """A `JanelaPrincipal` inteira, com o comando pela tabela dela, o caderno dela e a digitação no editor dela."""
+
+    def preparar(self) -> tuple[Any, Any, Any]:
+        janela = self.janela()
+        janela.show()
+        painel = janela.texto
+        cad = painel.caderno_aberto
+        assert cad is not None
+        cad.guardar_leitura(folha(0, "the Gelfmnd line", documento=str(self.livro)), motor="fusao")
+        cad.guardar_leitura(folha(1, "more Gelfmnd here", documento=str(self.livro)), motor="fusao")
+        painel._abrir_do_caderno(0)  # noqa: SLF001
+        self.app.processEvents()
+        return janela, painel, cad
+
+    def abrir_a_troca(self, janela: Any, painel: Any) -> Any:
+        janela._comandos()["corrigir_em_todas_as_folhas"]()  # noqa: SLF001
+        troca = painel._janela_de_correcao_no_livro  # noqa: SLF001
+        self.addCleanup(descartar, troca)
+        troca.campo_antes.setText("Gelfmnd")
+        troca.campo_depois.setText("Gelfand")
+        return troca
+
+    def digitar(self, painel: Any, texto: str) -> None:
+        painel.editor.setFocus()
+        painel.editor.moveCursor(QTextCursor.MoveOperation.End)
+        QTest.keyClicks(painel.editor, texto)
+        self.app.processEvents()
+
+    def test_o_comando_troca_nas_folhas_e_na_tela(self) -> None:
+        janela, painel, cad = self.preparar()
+        troca = self.abrir_a_troca(janela, painel)
+        troca.btn_previa.click()
+        self.assertEqual(troca.lista.count(), 2)
+        troca.btn_aplicar.click()
+        self.assertIn("the Gelfand line", painel.documento.para_texto())
+        self.assertIn("more Gelfand here", cad.folha(1).para_texto())
+        self.assertIn("more Gelfmnd here", cad.anterior(1).para_texto())
+
+    def test_o_que_se_digita_depois_da_previa_nao_some(self) -> None:
+        """Certo -> errado, o defeito do crítico: `XYZ` sumia da tela e do disco, e nem o `.anterior` o guardava."""
+        janela, painel, cad = self.preparar()
+        troca = self.abrir_a_troca(janela, painel)
+        troca.btn_previa.click()
+        self.digitar(painel, "XYZ")
+        self.assertIn("XYZ", painel.documento.para_texto())
+        troca.btn_aplicar.click()
+        self.assertIn("XYZ", painel.documento.para_texto())
+        self.assertIn("XYZ", cad.folha(0).para_texto())
+        self.assertIn("mudaram depois da prévia", troca.resumo.text())
+        self.assertIn("more Gelfand here", cad.folha(1).para_texto(), "a outra folha, que ninguém tocou, foi trocada")
+
+    def test_trocar_de_livro_com_a_janela_aberta_nao_grava_em_nenhum_dos_dois(self) -> None:
+        import fitz
+
+        janela, painel, cad = self.preparar()
+        troca = self.abrir_a_troca(janela, painel)
+        troca.btn_previa.click()
+        pasta_antiga = cad.caminho(1)
+        antes = pasta_antiga.read_bytes()
+
+        outro = self.pasta / "outro.pdf"
+        doc = fitz.open()
+        for _ in range(3):
+            doc.new_page(width=400, height=600).insert_text((40, 60), "outro livro", fontsize=11)
+        doc.save(outro)
+        doc.close()
+        janela.abrir_pdf(outro)
+        self.app.processEvents()
+        self._esperar_o_detector(janela)
+        novo = painel.caderno_aberto
+        self.assertIsNot(novo, cad)
+        novo.guardar_leitura(folha(0, "o texto do livro novo", documento=str(outro)), motor="fusao")
+        painel._abrir_do_caderno(0)  # noqa: SLF001
+        self.digitar(painel, "ABC")
+
+        troca.btn_aplicar.click()
+        self.assertIn("ABC", painel.documento.para_texto(), "a folha do livro novo não foi recarregada")
+        self.assertEqual(pasta_antiga.read_bytes(), antes, "o caderno antigo, já sem a trava, não foi escrito")
+        self.assertIn("mudou", troca.resumo.text())
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
