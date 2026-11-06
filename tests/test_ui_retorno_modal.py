@@ -47,8 +47,12 @@ ARQUIVOS_DE_UI = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")
 )
 """Mesmo recorte do `test_strings` e do `test_busy`: a interface, e o que a monta."""
 
-LIMITE = 50
+LIMITE = 53
 """Quantas caixas modais a interface ainda abre.
+
+**50 -> 53 no «Corrigir o PGN…» da aba de Revisão (2026-11-06)**, e as três são da tabela acima:
+a pergunta antes de sobrescrever o `.pgn` já exportado é decisão sobre trabalho já gravado, e as
+duas falhas (ler e gravar) são erro de um gesto que a pessoa acabou de fazer.
 
 **49 -> 50 no caderno do livro da aba Texto (2026-10-24, Fases 91 e 92)**, e as três perguntas que
 ele trouxe são decisões sobre trabalho humano, a linha 4 da tabela: «Ler de novo» uma folha com

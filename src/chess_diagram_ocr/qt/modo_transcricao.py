@@ -35,13 +35,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.imagens import pixmap_de_rgb
 from chess_diagram_ocr.text import dado_corrigido as _dado_corrigido
 from chess_diagram_ocr.text import ouro as _ouro
 from chess_diagram_ocr.text import procedencia as _procedencia
 from chess_diagram_ocr.text import scan_ouro as _scan_ouro
 from chess_diagram_ocr.text import transcricao_scan as _transcricao
-from chess_diagram_ocr.ui import strings
+from chess_diagram_ocr.ui import estilos, strings
 
 logger = logging.getLogger(__name__)
 
@@ -148,12 +149,15 @@ class ModoTranscricao(QWidget):
         self.escolha_de_partida.activated.connect(self._trocar_partida)
         topo.addWidget(self.escolha_de_partida)
         self.botao_de_pasta = QPushButton(strings.TRANSCRICAO_ESCOLHER_PASTA, self)
+        tema.aplicar_papel(self.botao_de_pasta, estilos.NEUTRO)
         self.botao_de_pasta.clicked.connect(self._pedir_pasta)
         topo.addWidget(self.botao_de_pasta)
         self.botao_de_backup = QPushButton(strings.TRANSCRICAO_ESCOLHER_BACKUP, self)
+        tema.aplicar_papel(self.botao_de_backup, estilos.NEUTRO)
         self.botao_de_backup.clicked.connect(self._pedir_backup)
         topo.addWidget(self.botao_de_backup)
         self.botao_de_fechar = QPushButton(strings.TRANSCRICAO_FECHAR, self)
+        tema.aplicar_papel(self.botao_de_fechar, estilos.NEUTRO)
         self.botao_de_fechar.clicked.connect(self.fechar_pedido)
         topo.addWidget(self.botao_de_fechar)
         caixa.addLayout(topo)
@@ -171,11 +175,13 @@ class ModoTranscricao(QWidget):
         base = QHBoxLayout()
         for figurina in FIGURINAS:
             botao = QPushButton(figurina, self)
+            tema.aplicar_papel(botao, estilos.NEUTRO)
             botao.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             botao.setAccessibleName(f"Escrever a figurina {figurina}")
             botao.clicked.connect(lambda _marcado=False, f=figurina: self._escrever(f))
             base.addWidget(botao)
         self.botao_de_linha = QPushButton(strings.TRANSCRICAO_LINHA_A_MAIS, self)
+        tema.aplicar_papel(self.botao_de_linha, estilos.NEUTRO)
         self.botao_de_linha.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.botao_de_linha.clicked.connect(self._linha_a_mais)
         base.addWidget(self.botao_de_linha)
@@ -184,6 +190,7 @@ class ModoTranscricao(QWidget):
         self.mostrador.setAccessibleName("Tempo nesta folha")
         base.addWidget(self.mostrador)
         self.botao_de_concluir = QPushButton(strings.TRANSCRICAO_CONCLUIR, self)
+        tema.aplicar_papel(self.botao_de_concluir, estilos.NEUTRO)
         self.botao_de_concluir.clicked.connect(self.concluir)
         base.addWidget(self.botao_de_concluir)
         caixa.addLayout(base)

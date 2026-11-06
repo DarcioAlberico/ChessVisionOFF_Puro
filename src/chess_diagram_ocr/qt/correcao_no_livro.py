@@ -23,7 +23,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.text import correcao_no_livro as modelo
+from chess_diagram_ocr.ui import estilos
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,8 @@ class JanelaDeCorrecaoNoLivro(QDialog):
         self.btn_aplicar = QPushButton("Aplicar nas marcadas", self)
         self.btn_aplicar.setEnabled(False)
         self.btn_fechar = QPushButton("Fechar", self)
+        for botao in (self.btn_previa, self.btn_aplicar, self.btn_fechar):
+            tema.aplicar_papel(botao, estilos.NEUTRO)
         botoes = QHBoxLayout()
         botoes.addWidget(self.btn_previa)
         botoes.addStretch(1)

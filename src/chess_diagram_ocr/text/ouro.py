@@ -323,7 +323,7 @@ def registrar_leitura_do_teste(manifesto: Manifesto, data: str, identidades: Ite
     novo = replace(manifesto, primeira_leitura_do_teste=primeira, leituras_dos_acrescentados=leituras)
     erros = problemas(novo)
     if erros:
-        raise ValueError(f"a leitura de {data} invalida o manifesto: {erros}")
+        raise ValueError(f"a leitura de {data} reprova o manifesto: {erros}")
     return novo
 
 
