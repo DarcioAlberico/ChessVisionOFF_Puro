@@ -63,11 +63,10 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from PyQt6 import sip
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
-    QHBoxLayout,
     QMainWindow,
     QMessageBox,
     QSplitter,
@@ -102,8 +101,7 @@ from chess_diagram_ocr.qt import (
     leitura,
     livro_com_pgn,
     menu,
-    painel_de_revisao_de_texto,
-    painel_de_rotulagem,
+    montagem_da_janela,
     painel_do_pdf,
     paleta,
     plataforma,
@@ -119,6 +117,8 @@ from chess_diagram_ocr.qt.campo import PainelDeCampo
 from chess_diagram_ocr.qt.dialogos import ControladorDeTreino
 from chess_diagram_ocr.qt.disposicao_de_mesa import DisposicaoDeMesa
 from chess_diagram_ocr.qt.exportador import Exportador
+from chess_diagram_ocr.qt.exportador_de_livro import ExportadorDeLivro
+from chess_diagram_ocr.qt.importador_de_livro import Ponte
 from chess_diagram_ocr.qt.leitura import Aquecimento, Ocupacao
 from chess_diagram_ocr.qt.marcas import LeitorDeMarcas, amostras_de_treino_guardadas
 from chess_diagram_ocr.qt.mesa_destacada import MesaDestacada
@@ -129,11 +129,11 @@ from chess_diagram_ocr.qt.painel_de_revisao import PainelDeRevisao
 from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
 from chess_diagram_ocr.qt.painel_do_dataset import PainelDoDataset
 from chess_diagram_ocr.qt.painel_do_pdf import PainelDoPdf
+from chess_diagram_ocr.qt.painel_principal import PainelPrincipal
 from chess_diagram_ocr.qt.preferencias import motor_das_preferencias, servico_das_preferencias
 from chess_diagram_ocr.qt.rodape import RodapeDaJanela
 from chess_diagram_ocr.qt.trabalho import DeteccaoDeFundo, Tarefa, manter_viva, rastro_de
 from chess_diagram_ocr.qt.trilho import TrilhoDoLivro
-from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
 from chess_diagram_ocr.service import OcrService, RecognitionCanceled, RecognitionOptions, RecognizedDiagram
 from chess_diagram_ocr.settings import load_settings
 from chess_diagram_ocr.ui import (
@@ -219,6 +219,29 @@ em silêncio na primeira abertura. Não é reescrito nem apagado: quem grava é 
 
 class JanelaPrincipal(QMainWindow):
     """As sete abas do produto numa janela, e a fiação entre elas."""
+
+    # O que `qt/montagem_da_janela.montar_paineis` constrói, declarado aqui porque é daqui que se lê.
+    divisor: QSplitter
+    abas: AreasDeTrabalho
+    principal: PainelPrincipal
+    painel: PainelDeResultado
+    estudo: PainelDeEstudo
+    revisao: PainelDeRevisao
+    texto: PainelDeTexto
+    dataset: PainelDoDataset
+    galeria: PainelDaGaleria
+    rotulagem: QWidget | None
+    revisao_de_texto: QWidget | None
+    lado_do_livro: QWidget
+    pdf: PainelDoPdf
+    campo: PainelDeCampo
+    trilho: TrilhoDoLivro
+    mesa: DisposicaoDeMesa
+    treino: ControladorDeTreino
+    exportador: Exportador
+    exportador_de_livro: ExportadorDeLivro | None
+    livro: Ponte | None
+    pgn_do_livro: livro_com_pgn.LivroComPgn
 
     def __init__(
         self,
@@ -390,7 +413,7 @@ class JanelaPrincipal(QMainWindow):
         # **Antes dos painéis**: os dois tabuleiros leem o conjunto de peças ao nascer (S-230).
         self._aplicar_conjunto()
 
-        self._montar_paineis()
+        montagem_da_janela.montar_paineis(self)
 
         corpo = QWidget(self)
         pilha = QVBoxLayout(corpo)
@@ -442,178 +465,6 @@ class JanelaPrincipal(QMainWindow):
         acessibilidade.tornar_acessivel(self)  # o nome derivado, aqui e em todo diálogo (F9)
         escala.aplicar_escala(self)  # o degrau tipográfico (F9-C2); ver o módulo
         self.resize(1440, 900)
-
-    def _montar_paineis(self) -> None:
-        self.divisor = QSplitter(Qt.Orientation.Horizontal, self)
-
-        # **Os quatro painéis do diagrama são modos da aba `Livro`**, e não abas (OCR_UI passo
-        # 17, tarefa 3): quem sabe onde cada área mora é `qt/areas_de_trabalho.py`; aqui só se
-        # monta cada painel e se diz se ele é modo (`adicionar_modo`) ou aba (`addTab`).
-        self.abas = AreasDeTrabalho(self.divisor)
-        self.abas.setMinimumWidth(LARGURA_MINIMA_DAS_ABAS)
-        self.principal = self.abas.principal
-
-        self.painel = PainelDeResultado(
-            self._servico, csv_de_rotulos=self._csv_de_rotulos, parent=self.principal
-        )
-        self.painel.declarar_contexto(documento=self._chave_do_documento, parametros=self._parametros_de_ocr)
-
-        self.estudo = PainelDeEstudo(
-            self.principal,
-            # **O motor, se houver um** (F9-C16/S-523): sem esta linha os três comandos do menu
-            # Estudo nunca podiam funcionar, e sem binário a seção "Motor" não existe (S-33).
-            analyzer=self._analisador,
-            # Vínculo de mão única: o estudo lê a posição do diagrama selecionado e nunca escreve
-            # de volta. Um lance jogado no estudo não é uma correção do OCR.
-            posicao=self._posicao_de_estudo,
-            pasta_inicial=DEFAULT_PDF_DIR,
-            pasta_de_estudos=self._pasta_de_estudos,
-            # As quatro portas por onde o **livro** entra na sala. Cada uma é uma pergunta que
-            # outro painel já sabe responder, e nenhuma deixa a sala escrever naquele painel.
-            recorte=self._recorte_do_diagrama,
-            linha_impressa=self._linha_impressa,
-            abrir_pagina=self._abrir_pagina_do_estudo,
-            para_o_texto=self._linha_para_o_texto,
-            caminho_do_cache=self._caminho_do_cache,
-        )
-
-        self.revisao = PainelDeRevisao(
-            self.principal,
-            pedido_de_varredura=self._pedido_de_varredura,
-            # A fila que a sessão anterior abriu, e não sempre a do produto (S-22/S-156). Vazio no
-            # estado é "nunca escolhi outra", e aí a do produto é a certa.
-            queue_path=Path(self._estado.review_queue_path or DEFAULT_QUEUE_PATH),
-        )
-
-        self.texto = PainelDeTexto(busy=self.busy, com_caderno=True, parent=self.principal)
-        self.texto.definir_executor(lambda acao: self.menu.acoes[acao].trigger())  # o que a fita pede à janela
-        self.texto.diagrama_ativado.connect(self._estudar_do_texto)  # duplo clique na miniatura (item 8)
-
-        self.dataset = PainelDoDataset(
-            self.abas,
-            caminhos=self._caminhos_do_dataset,
-            busy=self.busy,
-            em_processo=self._rasterizar_ao_fundo,
-        )
-
-        self.galeria = PainelDaGaleria(
-            self.abas,
-            service=self._servico,
-            pdf_path=lambda: self._pdf,
-            model_path=lambda: DEFAULT_MODEL_PATH,
-            max_boards=_max_boards,
-            # Uma varredura por livro (S-119): a Galeria varre, e a fila de revisão sai da mesma
-            # passada. Quem liga as duas abas é esta janela -- nenhuma conhece a outra.
-            sumidouro_de_revisao=self.revisao.sumidouro,
-            pasta_da_galeria=self._pasta_da_galeria,
-            caminho_do_cache=self._caminho_do_cache,
-            busy=self.busy,
-        )
-        self.rotulagem = painel_de_rotulagem.montar(self.abas, folhas_para=self.texto.folhas_do_livro)  # a bancada da suíte; o caderno vai ao livro dela (R7)
-        self.revisao_de_texto = painel_de_revisao_de_texto.montar(self.abas)  # idem, passo 14
-        # A ordem é a de `abas.MODOS` e `abas.DO_ACERVO`, lida e não copiada (S-162/S-511): área sem
-        # painel reprova aqui. A `Livro` já é a primeira aba, e as duas da suíte só existem com ela.
-        modos = {abas.RESULTADO: self.painel, abas.ESTUDO: self.estudo, abas.REVISAO: self.revisao, abas.TEXTO: self.texto}
-        acervo = {
-            abas.DATASET: self.dataset,
-            abas.GALERIA: self.galeria,
-            abas.ROTULAGEM: self.rotulagem,
-            abas.REVISAO_DE_TEXTO: self.revisao_de_texto,
-        }
-        for nome in abas.MODOS:
-            self.principal.adicionar_modo(nome, modos[nome])
-        for nome in abas.DO_ACERVO:
-            if (aba := acervo[nome]) is not None:
-                self.abas.addTab(aba, nome)
-
-        self.lado_do_livro = QWidget(self.divisor)
-        self.pdf = PainelDoPdf(
-            self.lado_do_livro,
-            dpi=_dpi,
-            # Todo livro abre na página em que foi deixado, e não só o último (S-25). O histórico
-            # guarda 50, e é a pergunta que se faz ao voltar a um livro pela quinta vez.
-            pagina_inicial_de=self._pagina_guardada_de,
-            pasta_inicial=DEFAULT_PDF_DIR,
-            rasterizar_ao_fundo=self._rasterizar_ao_fundo,
-        )
-        self.pdf.setMinimumWidth(LARGURA_MINIMA_DO_VISOR)
-
-        # **A anotação de campo fica sob a página, e não numa aba** (S-95): ela afirma coisas
-        # sobre a página exibida -- quantos diagramas ela tem, se algum é falso positivo --, e
-        # numa aba a pessoa anotaria sem estar olhando para o que anota.
-        self.campo = PainelDeCampo(
-            self.lado_do_livro,
-            pdf_path=lambda: self._pdf,
-            page_index=lambda: self.pdf.page_index,
-            caixas=lambda: self.pdf.boxes,
-            caixa_selecionada=lambda: self.pdf.caixa_selecionada,
-            colocacoes=self._colocacoes_conferidas,
-            aviso_de_treino=self._aviso_de_treino,
-        )
-        # **O trilho de páginas à esquerda do visor** (OCR_UI passo 17): o mapa do livro, com o
-        # estado de cada página e os botões do fluxo principal (importar, primeira duvidosa,
-        # exportar). É um índice de largura fixa; a página continua com o resto.
-        self.trilho = TrilhoDoLivro(self.lado_do_livro, miniaturas_ao_fundo=self._rasterizar_ao_fundo)
-        self.trilho.pagina_pedida.connect(self.pdf.ir_para_pagina)
-        self.trilho.exportar_pedido.connect(lambda: self._exportar_livro("epub"))
-        coluna = QVBoxLayout()
-        coluna.setContentsMargins(0, 0, 0, 0)
-        coluna.setSpacing(espaco.linha())
-        coluna.addWidget(self.pdf, 1)
-        coluna.addWidget(self.campo)
-        lado = QHBoxLayout(self.lado_do_livro)
-        lado.setContentsMargins(0, 0, 0, 0)
-        lado.setSpacing(espaco.linha())
-        lado.addWidget(self.trilho)
-        lado.addLayout(coluna, 1)
-
-        self.divisor.addWidget(self.abas)
-        self.divisor.addWidget(self.lado_do_livro)
-        self.divisor.setStretchFactor(0, 2)
-        self.divisor.setStretchFactor(1, 3)
-        # **A alça não apaga a navegação** (F9-C3): colapsar punha 21 de 36 botões fora da tela.
-        self.divisor.setChildrenCollapsible(False)
-        # **Os tamanhos iniciais são declarados, e não deduzidos.** O `QSplitter` reparte pela
-        # `sizeHint` de cada lado, e a de um `QTabWidget` cheio de rótulos com quebra de linha
-        # pede toda a largura que lhe derem.
-        #
-        # E são as larguras **preferidas**, e não o piso repetido: até a S-552 a esquerda nascia
-        # com `LARGURA_MINIMA_DAS_ABAS`, o que dava no mesmo porque o piso era 720. Baixado o piso
-        # para 500, repeti-lo aqui encolheria a aba de trabalho -- o piso diz onde a janela
-        # **para**, e não como ela abre. Quem arbitra os dois preferidos é `showEvent`.
-        self.divisor.setSizes([LARGURA_PREFERIDA_DAS_ABAS, LARGURA_PREFERIDA_DO_VISOR])
-        # `splitterMoved` só sai do gesto do mouse: `setSizes` não o emite. É o que separa "a
-        # pessoa escolheu" de "o programa repartiu" -- ver `resizeEvent`.
-        self.divisor.splitterMoved.connect(self._alca_movida_a_mao)
-        self.mesa = DisposicaoDeMesa(  # o PDF à esquerda com a aba Texto à frente (S-640)
-            self.divisor, trabalho=self.abas, livro=self.lado_do_livro, visor=self.pdf.visor, estado=self._estado,
-            texto_a_frente=lambda: self.abas.area_atual() is self.texto, texto=self.texto, marcar=lambda *a, **k: self.menu.marcar(*a, **k),
-        )
-
-        self.treino = ControladorDeTreino(self, pedido=self._pedido_de_treino, busy=self.busy)
-        self.exportador = Exportador(
-            self, configuracao=self._configuracao_de_exportacao, servico=self._servico, busy=self.busy
-        )
-        # EPUB/DOCX pela suíte, se ao alcance; sem ela os itens ficam cinza com o motivo na dica.
-        self.exportador_de_livro = exportador_de_livro.montar(
-            self, dizer=self._dizer, trancar=partial(self._trancar, quem="exportação do livro")
-        )
-        # A importação do livro inteiro, pela mesma suíte e com a mesma guarda (passo 17). A
-        # ponte liga o importador ao trilho e guarda o resultado; a janela só a segura.
-        # **Sem tranca** (C7): a importação só lê o PDF; a pessoa corrige um diagrama enquanto isso.
-        self.livro = importador_de_livro.montar(
-            self,
-            dizer=self._dizer,
-            trancar=lambda _liberado: None,
-            ocupado=self.busy,
-            trilho=self.trilho,
-            pdf_atual=lambda: self._pdf,
-            paginas=lambda: self.pdf.page_count,
-            revisao_de_texto=self.revisao_de_texto,
-        )
-        self.pgn_do_livro = livro_com_pgn.LivroComPgn(  # o .pgn que vem com o PDF digital (S-590)
-            self, dizer=self._dizer, pdf_atual=lambda: self._pdf, itens_atuais=lambda: self._itens,
-            painel=self.painel, revisao=self.revisao, texto=self.texto, estudo=self.estudo, galeria=self.galeria, focar=self._focar_aba, ir_para_pagina=self.pdf.ir_para_pagina)
 
     @property
     def editor(self) -> DiagramEditorModel:

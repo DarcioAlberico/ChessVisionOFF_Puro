@@ -257,8 +257,13 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2086
+    LIMITE = 1937
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.086 -> 1.937 com a montagem dos painéis fora da janela (S-31, fatia 2, 2026-11-06)**:
+    `_montar_paineis` foi para `qt/montagem_da_janela.py`, extração pura e com a janela idêntica
+    em offscreen antes e depois. A classe ganhou 21 linhas: os atributos que a função preenche,
+    declarados porque o mypy só deduz de `self.x = ...` dentro dela.
 
     **2.293 -> 2.086 com a sessão fora da janela (S-31, fatia 1, 2026-11-06)**: `_aplicar_estado`,
     `_restaurar_arranjo`, `_anotar_arranjo`, `_gravar_estado`, `closeEvent` e
