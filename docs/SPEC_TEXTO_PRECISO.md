@@ -468,7 +468,7 @@ diferença do portão não, porque o oráculo paga o mesmo erro.
 - **O pedaço da vizinha não volta para a linha dele:** a partição o deixa como linha à parte, ou o descarta como fragmento.
 - **O rodapé que atravessa a calha** (`www.chess-n` + `ewsletter.com`, em quase toda folha do *Chess Evolution 2014*) continua partido entre
   as duas colunas. Ele é parte do que sobra da perda de leiaute, e é da detecção de região. É ele, trocando de lugar com a linha de cima, que
-  faz a folha 673 do *Chess Evolution 2014* piorar em prosa no Tesseract (65 a 74 erros); nos não-prosa ela cai de 43 a 10.
+  faz a folha 673 do *Chess Evolution 2014* piorar em prosa no Tesseract (65 a 74 erros), enquanto os da classe `outro` caem de 43 a 10.
 - **O título corrente de dentro da faixa** continua fora: cerca de 30 caracteres por folha, que a referência tem e o glifo não.
 - **Na prata, uma folha piora na fusão:** *Kmoch* 105, de 333 a 366 erros. A camada do *Kmoch* é desalinhada da tinta, e a régua ali é fraca.
 - **Limites do corte:** a mancha de 90% de tinta leva também o `I` maciço de 3 escalas de largura, que só existe em capa; a foto abaixo de
