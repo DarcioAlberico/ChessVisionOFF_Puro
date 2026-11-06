@@ -294,5 +294,7 @@ $ uv run pytest -q         4.870 passaram, 2 pulados, 3.652 subtests    169 s
   do interpretador que o `uv` entrega para 3.13 já veio incompleto uma vez.
 - **A matriz da CI ainda não rodou.** Ela é YAML válido e a estrutura foi conferida, mas quem a
   prova é o GitHub. A perna do 3.13 é a primeira coisa a olhar no próximo push.
+  *Rodou: `gh run view 42141235858`, na `main` em 2026-11-06 (merge do PR #58), com `check (3.10)`,
+  `check (3.13)` e `caminho-com-acento` em `success`.*
 - **A S-440 não tem código, e nunca vai ter.** É o registro de uma recomendação medida e
   recusada.

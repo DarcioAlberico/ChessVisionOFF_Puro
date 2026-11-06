@@ -144,6 +144,6 @@ com estimativa grosseira:
 | Elo máximo, número de lances e rodada na busca | a spec já escreveu o custo de cada um; dois pedem coluna nova e uma versão 7 do índice | 4 a 7 dias |
 | ECO acima de 90% | hoje 86,39% exatos contra o header; o caminho é mais medição e mais linhas, não outra regra | 1 a 2 semanas de trabalho de dados |
 | Sincronização entre máquinas | tudo é local | 2 a 4 semanas |
-| Idioma | `ui/strings.py` são 411 linhas de pt-BR cravado, sem `gettext` | 1 a 2 semanas mais a tradução |
+| Idioma | `ui/strings.py` são 411 linhas de pt-BR cravado, sem `gettext` (*947 linhas em 2026-11-06*) | 1 a 2 semanas mais a tradução |
 | LaTeX e `.cbv` na exportação | EPUB, DOCX, PDF, PNG e SVG existem e estão medidos | 2 a 4 dias cada |
 
