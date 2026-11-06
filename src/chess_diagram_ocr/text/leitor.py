@@ -637,7 +637,7 @@ def linhas_do_glifo(
                 probs = classificador.probabilidades(recortes)
                 i2c = classificador.meta.idx_to_char
                 lidos = (
-                    _caixa_alta.decidir(probs, [c.altura for c in grupo], i2c)
+                    _caixa_alta.decidir(probs, [c.altura for c in grupo], i2c, caixas=grupo, escala=float(escala))
                     if caixa_alta
                     else [(i2c[int(probs[k].argmax())], float(probs[k].max())) for k in range(len(grupo))]
                 )
@@ -658,6 +658,8 @@ def linhas_do_glifo(
                 if numeros:
                     # O oval dentro de um número é zero, e nenhuma palavra é dígito seguido de `o`.
                     lidos = _numero.corrigir(lidos, probs, grupo, i2c)
+                if caixa_alta:
+                    lidos = _caixa_alta.coerente(lidos, probs, grupo, i2c)  # `DEFEsA`, versalete (S-731)
                 if lexico:
                     # **Por último, e é a ordem certa**: as correções de geometria acima mudam a
                     # palavra que o dicionário vai julgar, e julgá-la antes delas seria julgar um
