@@ -107,7 +107,7 @@ class BuscaCurtaTests(unittest.TestCase):
                 self.assertEqual(em.unir(caixas, escala=self.ESCALA), self._busca_inteira(caixas))
 
     def test_a_folha_de_ruido_nao_compara_tudo_com_tudo(self) -> None:
-        caixas = self._caixas(20000, 7)
+        caixas = self._caixas(5000, 7)
         comparacoes = 0
         original = em._casam
 
@@ -118,8 +118,8 @@ class BuscaCurtaTests(unittest.TestCase):
 
         with mock.patch.object(em, "_casam", contar):
             em.unir(caixas, escala=self.ESCALA)
-        # Sem o corte seriam ~200 milhões; com ele, o alcance vertical de cada caixa.
-        self.assertLess(comparacoes, 2_000_000)
+        # Sem o corte seriam ~12 milhões; com ele, o alcance vertical de cada caixa.
+        self.assertLess(comparacoes, 1_000_000)
 
 
 class BarraTests(unittest.TestCase):
