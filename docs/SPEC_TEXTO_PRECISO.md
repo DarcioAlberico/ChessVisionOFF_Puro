@@ -269,6 +269,72 @@ leitura de cada um.
 admissão e o manifesto não têm chamador em produção até a S-716.
 
 
+## S-700 · A régua no pacote ✅ implementada (2026-11-06)
+
+**Problema.** A régua morava em `docs/metrics/texto_prosa_2026-10-30/banco.py`, sem teste, e seis medições já se
+apoiavam nela. O `Placar.somar` dela perdia inserção, WER e figurina, e a normalização não era idempotente:
+`a-\n\nb` e `a-\nb-\nc` só se juntavam na segunda passada.
+
+**Decisão.** `src/chess_diagram_ocr/text/regua_prosa.py`, sem I/O: `normalizar(texto, modo, lingua)`,
+`classe_do_token(token, lingua)`, `classes_por_char`, `alinhar`, `pontuar(ref, hip, lingua)` → `Placar`, mais a
+`familia` de cada palavra errada, o `ic95` de dois níveis e a `diferenca_pareada` (semente 7, 2.000 reamostras), e as
+funções puras da montagem (`linhas_da_pagina`, `cruza_diagrama`, `crescer_diagrama`). O espaço colapsa antes de o hífen
+juntar, e o hífen não consome as letras em volta: é o conserto da idempotência. O módulo não importa nada do pacote: em
+particular, nem `text/fusao.py` nem o caminho contrário, porque o instrumento não pode dividir código com o medido.
+
+**Critério de aceite.** `tests/test_text_regua_prosa.py`: alinhamento contra Levenshtein de força bruta em 500 pares;
+atribuição de inserção, inclusive no fim do texto; `if the`→`ifthe` custa no CER de prosa e dá S=1, D=1; token inventado
+dá I=1; normalização idempotente em 2.000 textos sorteados.
+
+**A saída: reproduzido até a 4ª casa.** `docs/metrics/texto_prosa_2026-11-06/reproduzir_regua.py` repontua os JSONL de
+2026-10-30 sem rodar motor. Com o classificador do protótipo injetado (`classificar=`) e a normalização do protótipo: **zero
+diferença** em CER, WER, notação, espaço, figurina e inserções, nos quatro conjuntos do ouro e nos dois conferidos
+sem eles (`degradado`, `prata_admitida`); é a prova do alinhamento e do placar. Com a normalização nova, os ouros seguem sem diferença, e
+degradado e prata mudam até 0,1 p.p. no `tess_oraculo` da prata (0,02 p.p. no resto): é só a linha lida vazia, onde o hífen agora se
+junta. A diferença que sobra é a do classificador da S-701, medida abaixo.
+
+**Desvios.** O `Placar.wer_prosa()` agora é o (S+D+I)/N que o relatório publica; o do protótipo era `1 − palavras certas / N`,
+que nenhum relatório usava.
+
+## S-701 · O classificador de token, testado contra o que já enganou ✅ implementada (2026-11-06)
+
+**Problema.** Metade do erro que parecia de reconhecimento em 2026-10-30 era de régua, e ainda era: o lixo de figurina
+da camada de terceiro contava como prosa, e o lance com sinal colado também (memória `lance-com-sinal-e-regua-cega`).
+
+**Decisão.** `classe_do_token(token, lingua)` devolve `prosa`, `notacao`, `outro` ou **`ruido`**, com
+`VERSAO_CLASSIFICADOR` no relatório.
+
+- **Letra de peça por língua só acrescenta** (`LETRAS_DE_PECA`, as oito do acervo, nos códigos de três letras; aceita `pt` e
+  `eng+por`). `B`, `D`, `T`, `C`, `R`, `N`, `K`, `Q`, `S`, `L`, `F` soltos são notação em qualquer livro, como no protótipo:
+  a régua é inclusiva, e restringir à língua tiraria da notação o `Q` de um livro em português que cita em inglês. `P`
+  só é peça em holandês, e `Кр`, `Ф`, `Л`, `С`, `К` só em russo. **`A` solto é prosa até em espanhol**, onde é quase sempre a preposição.
+- **Novo em notação:** `19.Bd3`, `Rfc1²`, `Rxg5i`, `24...f4e` (sinal em código de fonte); `1...B`;
+  `Nc5).`; `Rg8-Rg6.`; `6…g6!?`, `8.Rxg6+–`; `31.Bxg6fxg632.Qf4` (a camada sem espaço); `97×f6)`.
+- **Saiu de notação:** `b3-pawn`, `f4-pawn,` (o regex cirílico sem âncora no fim), `af7anca`.
+- **Novo `ruido`:** o que termina numa casa e não tem peça nem palavra antes (`.l:tb1`, `'ii'xa4`, `Wxf7`, `tlld7+`, `©e7`,
+  `\x15d7`; `peão-g6` continua prosa, pela vogal), os padrões da admissão, `=I=`, e a letra solta de fonte (`ç`, `æ+`).
+- **Linha** só de `a–h`/`1–8` (quatro ou mais, todos diferentes), `abcdefgh`, ou só de letras acentuadas, é `outro`.
+- **Retângulo de diagrama crescido de uma casa** ao excluir linhas da referência: `crescer_diagrama`, aplicado pelo CLI.
+
+**Critério de aceite.** Tabela de 124 tokens rotulados à mão nas oito línguas, zero divergência; 26 que a régua recusa como
+prosa, um por família da seção 1.6. Os casos saíram também de varrer os JSONL de 2026-10-30 atrás de "prosa" com dígito ou sinal.
+
+**O efeito, medido nos JSONL de 2026-10-30, sem rodar motor** (CER de prosa, `tip`, publicado → classificador novo):
+
+| conjunto | glifo | Tesseract | oráculo | fusão v5 |
+|---|---:|---:|---:|---:|
+| ouro sem folha perdida | 3,61 → 3,59% | 1,33 → 1,32% | 0,16 → 0,15% | 1,25 → 1,23% |
+| ouro, seis livros limpos | 2,47 → 2,44% | 0,23 → 0,22% | 0,10 → 0,09% | 0,28 → 0,25% |
+| degradado médio | 57,16 → 57,16% | 18,61 → 18,53% | 6,50 → 6,44% | 19,22 → 19,15% |
+| prata admitida | 14,37 → 12,71% | **6,03 → 3,85%** | **3,65 → 1,40%** | **7,00 → 4,84%** |
+
+No ouro o conserto é pequeno: 6 tokens de 5.647 mudam de classe nas 28 folhas, e 4 no estrato misto. **Na prata não:** 244
+tokens de lixo de figurina saem da prosa, e o erro do Tesseract cai em um terço. O WER dela vai de 13,12% a 7,68%. A prata
+continua só ordenando, mas o número de scan "6,0% do Tesseract" do roadmap era em boa parte a figurina escrita como lixo.
+
+*Achado:* `text/notacao.fatiar` continua conservador (S-208), e o classificador da fusão, próprio dela, ainda não reconhece
+`Rg8-Rg6` nem `31.Bxg6fxg632`: são dois instrumentos, e a guarda de grafo de import é de outro item.
+
 ## S-710 · Guarda de leitura incompleta, e o campo de avisos que a página não tinha ✅ implementada (2026-11-05)
 
 ### Problema

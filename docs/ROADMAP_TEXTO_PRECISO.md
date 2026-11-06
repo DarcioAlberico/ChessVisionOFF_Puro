@@ -592,7 +592,7 @@ O primeiro trabalho não melhora nada: ele torna mensurável o que se vai melhor
 `texto_prosa_2026-10-30/` (`banco.py`, `rodar.py`, `resumo.py`, `repontuar.py`, `degradar.py`) são o
 protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com teste.
 
-- **S-700** · `text/regua_prosa.py`: normalização, classes de token, alinhamento e placar por classe.
+- **S-700** · `text/regua_prosa.py`: normalização, classes de token, alinhamento e placar por classe. ✅ entregue em 2026-11-06
   - *Contexto:* o protótipo é `texto_prosa_2026-10-30/banco.py`. O alinhamento é Levenshtein com recuo,
     vetorizado por linha em `numpy` (mínimo acumulado para a inserção); 2.000×2.000 caracteres em ~1 s.
   - *Entrega:* funções puras `normalizar`, `classe_do_token`, `alinhar`, `pontuar` → `Placar`. Sem
@@ -608,7 +608,12 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   - *Saída:* os números do relatório de 2026-10-30 reproduzidos pela função nova, iguais até a 4ª casa
     — **depois** de a S-701 consertar o classificador, nunca antes (reproduzir antes trava o defeito).
   - *Reversão:* módulo novo, sem chamador em produção.
-- **S-701** · O classificador de token da régua, testado contra os casos que já enganaram.
+  - *Achado:* a saída se cumpre: com o classificador e a normalização do protótipo, `reproduzir_regua.py` dá **zero diferença** até a
+    4ª casa em CER, WER, notação, espaço, figurina e inserções. A normalização do protótipo não era idempotente (`a-
+
+b`), e consertá-la
+    move até 0,1 p.p. só onde há linha lida vazia (degradado e prata). Spec em `docs/SPEC_TEXTO_PRECISO.md`.
+- **S-701** · O classificador de token da régua, testado contra os casos que já enganaram. ✅ entregue em 2026-11-06
   - *Contexto:* a primeira versão contou `f1-e1`, `b4×c3`, `Kg2=` e a letra de peça solta do
     Capablanca como prosa, e inflou o erro de prosa de **todos** os motores (0,0386 → 0,0328 no glifo).
     `text/notacao.fatiar` é **conservador de propósito** (S-208: lance não pode virar prosa no PGN);
@@ -637,6 +642,9 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   - *Saída:* zero divergência na tabela; relatório diz a versão do classificador.
   - *Reversão:* a régua não tem chamador em produção; trocar a versão do classificador muda o número
     publicado, e por isso a versão vai no relatório.
+  - *Achado:* no ouro o conserto muda pouco (glifo 3,61 → 3,59%, Tesseract 1,33 → 1,32%, 6 tokens em 5.647). **Na prata admitida muda
+    muito:** 244 tokens de lixo de figurina saem da prosa, e o Tesseract vai de 6,03% a 3,85% (WER 13,1% a 7,7%), o oráculo de 3,65% a
+    1,40%. O "6,0% no scan" da seção 1 era em boa parte figurina escrita como lixo.
 - **S-702** · Conjuntos ouro-dev e ouro-teste congelados, com admissão que não usa motor nenhum.
   - *Contexto:* **a camada só é referência quando é a tinta.** O *Gaprindashvili* parece editorado e
     tem notação em lixo de OCR (`l:l'.xe3`) sob figurinas impressas. A primeira regra de admissão
