@@ -11,6 +11,11 @@ Uso (com o `.venv` do projeto, `PYTHONPATH=<arvore>/src` e `CVOFF_RAIZ` no check
   medir_glifo.py compilar <saida.json> <entrada.jsonl>... números e identidades, e nada de texto
 
 `hoje` é tudo desligado, e `tudo` é o padrão: a comparação pareada é sempre contra `hoje`.
+
+**O IC95 depende da ordem dos livros.** O bootstrap de dois níveis de `resumo.py` agrupa pela primeira aparição
+e sorteia com semente fixa, então a mesma folha em outra ordem dá outro intervalo, com o ponto igual. `compilar`
+ordena as folhas sempre por `ORDEM_NO_IC` (Dvoretsky, Hertan, Minhas 60, 400 Quebra-cabeças, Seirawan), e o
+relatório a grava. Comparar IC de relatórios só vale com a mesma ordem.
 """
 from __future__ import annotations
 
@@ -51,6 +56,7 @@ LIVROS = {
     "7a548a47f20f5f1f": ("400 Quebra-cabeças de Estratégia de Xadrez.pdf", "por", "400 Quebra-cabeças"),
 }
 ROTULO = {nome: rotulo for nome, _, rotulo in LIVROS.values()}
+ORDEM_NO_IC = ("Dvoretsky", "Hertan", "Minhas 60", "400 Quebra-cabeças", "Seirawan")
 ROTULO_ANTIGO = {"Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": "Capablanca (reprovado)",
                  "📚Chess Evolution 2013 №045-096.pdf": "Chess Evolution (reprovado)"}
 
@@ -202,6 +208,7 @@ def _sha(caminho: Path) -> str:
 
 def compilar(saida: str, entradas: list[str], extras: str) -> None:
     regs = [json.loads(x) for e in entradas for x in open(e, encoding="utf-8")]
+    regs.sort(key=lambda r: (ORDEM_NO_IC.index(ROTULO[r["livro"]]), r["folha"]))
     motores = list(regs[0]["hip"].keys())
     arvore = AQUI.parents[2]
     git = lambda *a: subprocess.run(["git", "-C", str(arvore), *a], capture_output=True, text=True).stdout.strip()  # noqa: E731
@@ -213,6 +220,7 @@ def compilar(saida: str, entradas: list[str], extras: str) -> None:
         "src_sujo": bool(git("status", "--porcelain", "--", "src")),
         "modelo_sha256": _sha(RAIZ / "models" / "char_classifier.pt"),
         "dpi": DPI,
+        "ordem_dos_livros_no_ic": list(ORDEM_NO_IC),
         "regua": "texto_prosa_2026-10-30/banco.py; sha256 " + _sha(AQUI.parent / "texto_prosa_2026-10-30" / "banco.py")[:16],
         "motores": {"hoje": "tudo desligado: reproduz o texto de a2937260 byte a byte, folha a folha", "tudo": "o padrão", **{k: "só as constantes deste item: " + ", ".join(v) for k, v in ITENS.items()}},
         "tempo": "não publicado: três trilhas na máquina; G4 se mede depois com a máquina parada",

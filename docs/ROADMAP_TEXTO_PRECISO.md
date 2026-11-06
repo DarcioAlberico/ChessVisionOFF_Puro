@@ -1305,7 +1305,8 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
   - *Saída:* família caixa ≤ 1/3 do que é hoje no dev, sem nenhum `DEFEsA`.
   - *Reversão:* constante.
   - *Achado:* família 59 → 1. **O modelo acertava**: 70 dos 71 casos tinham a classe certa em rank 1, e era a mediana da linha que a derrubava, em
-    linha com lance. A régua passou às letras de x, com vão de 1,06 a 1,32. O versalete precisa da palavra, e `P`/`p` da descida. Ver a seção da S-731.
+    linha com lance. A régua passou às letras de x, com vão de 1,06 a 1,32. O versalete precisa da palavra, e `P`/`p` da descida. A primeira versão foi
+    reprovada pelo crítico, fora do dev: `ChessCafe`, `McClure`, `GMs`, e `Qxf7`, `Kc5` em scan. Ver a seção da S-731.
 - **S-732** · Fronteira de palavra (7,9%): o vão de `f`+`t`, `f`+`f` com *kerning*; o léxico como
   árbitro do corte, que já mediu melhor que a confiança (memória `lexico-arbitra-corte-melhor-que-confianca`). ✅ entregue em 2026-11-06
   - *Verificação:* régua da família "fronteira" por livro; teste com pares de caixas sintéticos.

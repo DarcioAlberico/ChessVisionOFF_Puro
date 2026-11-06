@@ -223,7 +223,7 @@ def por_lexico(
         nucleo = palavra.strip(".,;:!?()[]'\"")
         if len(nucleo) < MIN_LETRAS_DO_EXAME or conhecida_ou_curta(palavra, lexico) or peso_de_notacao(palavra) > 0:
             continue
-        if not any(c.isalpha() for c in nucleo) or any(c.isdigit() or ord(c) >= 0x2190 for c in nucleo.replace("f7", "")):
+        if not any(c.isalpha() for c in nucleo):
             continue
         suspeitos = [
             k
@@ -232,6 +232,11 @@ def por_lexico(
             and caixas[k].largura / max(1, caixas[k].altura) >= PROPORCAO_DO_SUSPEITO
             and chars[k - inicio] not in "wWvV"
         ][:MAX_SUSPEITOS]
+        # O dígito só é perdoado na caixa que vai ser relida: `cof7ect` tem a classe `f7`, de lance, numa caixa
+        # larga que são dois glifos (`rr`). Fora dela, o dígito é tinta do livro, e a palavra não é palavra.
+        fora = [c for k, c in enumerate(chars, start=inicio) if k not in suspeitos]
+        if any(ch.isdigit() or ord(ch) >= 0x2190 for c in fora for ch in c):
+            continue
         achadas: dict[str, tuple[int, str]] = {}
         for k in suspeitos:
             corte = vale(binaria, caixas[k])

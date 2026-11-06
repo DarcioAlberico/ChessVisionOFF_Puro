@@ -66,5 +66,15 @@ class AspasTests(unittest.TestCase):
         self.assertEqual(self._ler(("'", 3), ("'", 30)), "ken''")
 
 
+class LimiaresDasAspasTests(AspasTests):
+    def test_a_folga_e_de_uma_largura(self) -> None:
+        self.assertEqual(self._ler(("'", 3), ("'", 7)), 'ken"', "7 px, com o risco de 7")
+        self.assertEqual(self._ler(("'", 3), ("'", 8)), "ken''", "8 px")
+
+    def test_tudo_o_que_o_modelo_responde_no_alto(self) -> None:
+        for char in "'(),`":
+            self.assertEqual(self._ler((char, 3)), "ken'", char)
+
+
 if __name__ == "__main__":
     unittest.main()

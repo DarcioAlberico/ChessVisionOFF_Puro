@@ -2,10 +2,17 @@
  "pergunta": "Quanto cada conserto da Fase 103 tira de cada família de erro do glifo, sem piorar a notação?",
  "split": "dev contaminado: 5 livros aprovados na auditoria da S-702. Nenhum número aqui decide portão; o G103 abre o teste e é rodado depois.",
  "reprovados_fora": "Chess Evolution e Capablanca (citados nas Saídas do roadmap) foram reprovados na auditoria da S-702 e não entram no ouro-dev; ficam em `reprovados_na_auditoria`, só como conferência.",
- "commit_medido": "4acb26234fb2a7d9a80ce7748774574b7f4656bd",
+ "commit_medido": "6b99f95e17b1beea455e36ae533c5b61fb607313",
  "src_sujo": false,
  "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
  "dpi": 220,
+ "ordem_dos_livros_no_ic": [
+  "Dvoretsky",
+  "Hertan",
+  "Minhas 60",
+  "400 Quebra-cabeças",
+  "Seirawan"
+ ],
  "regua": "texto_prosa_2026-10-30/banco.py; sha256 9857cbee6af253dc",
  "motores": {
   "hoje": "tudo desligado: reproduz o texto de a2937260 byte a byte, folha a folha",
@@ -32,8 +39,8 @@
     "prosa_tip": {
      "cer": 0.02851,
      "ic95": [
-      0.00757,
-      0.04835
+      0.0077,
+      0.04851
      ],
      "erros": 678,
      "total": 23779
@@ -41,8 +48,8 @@
     "prosa_cru": {
      "cer": 0.0312,
      "ic95": [
-      0.008,
-      0.05174
+      0.00817,
+      0.05253
      ],
      "erros": 743,
      "total": 23817
@@ -52,8 +59,8 @@
     "notacao_tip": {
      "cer": 0.10876,
      "ic95": [
-      0.04558,
-      0.19554
+      0.04631,
+      0.19555
      ],
      "erros": 591,
      "total": 5434
@@ -61,8 +68,8 @@
     "espaco_tip": {
      "cer": 0.03593,
      "ic95": [
-      0.01175,
-      0.0625
+      0.01188,
+      0.06303
      ],
      "erros": 72,
      "total": 2004
@@ -122,8 +129,8 @@
       "palavras": 15,
       "por_livro": {
        "Minhas 60": 13,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 1
+       "400 Quebra-cabeças": 1,
+       "Seirawan": 1
       }
      },
      "ligadura fi/fl com 1 a mais": {
@@ -231,8 +238,8 @@
       "palavras": 15,
       "por_livro": {
        "Minhas 60": 13,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 1
+       "400 Quebra-cabeças": 1,
+       "Seirawan": 1
       }
      },
      "ligadura fi/fl com 1 a mais": {
@@ -287,8 +294,8 @@
     "prosa_tip": {
      "cer": 0.00988,
      "ic95": [
-      0.003,
-      0.01969
+      0.00288,
+      0.01968
      ],
      "erros": 235,
      "total": 23779
@@ -296,8 +303,8 @@
     "prosa_cru": {
      "cer": 0.01323,
      "ic95": [
-      0.0042,
-      0.02222
+      0.00424,
+      0.02258
      ],
      "erros": 315,
      "total": 23817
@@ -307,8 +314,8 @@
     "notacao_tip": {
      "cer": 0.1071,
      "ic95": [
-      0.04447,
-      0.19427
+      0.04413,
+      0.1938
      ],
      "erros": 582,
      "total": 5434
@@ -316,8 +323,8 @@
     "espaco_tip": {
      "cer": 0.03393,
      "ic95": [
-      0.01102,
-      0.05998
+      0.01107,
+      0.05965
      ],
      "erros": 68,
      "total": 2004
@@ -360,8 +367,8 @@
       "por_livro": {
        "Dvoretsky": 1,
        "Minhas 60": 2,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 2
+       "400 Quebra-cabeças": 2,
+       "Seirawan": 1
       }
      },
      "pontuacao": {
@@ -427,8 +434,8 @@
       "palavras": 8,
       "por_livro": {
        "Dvoretsky": 1,
-       "Minhas 60": 6,
-       "Hertan": 1
+       "Hertan": 1,
+       "Minhas 60": 6
       }
      },
      "figurina inventada em palavra": {
@@ -443,8 +450,8 @@
       "por_livro": {
        "Dvoretsky": 1,
        "Minhas 60": 2,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 2
+       "400 Quebra-cabeças": 2,
+       "Seirawan": 1
       }
      },
      "palavra perdida": {
@@ -476,8 +483,8 @@
      "prosa_tip": {
       "pp": -1.863,
       "ic95": [
-       -3.044,
-       -0.436
+       -3.067,
+       -0.433
       ],
       "melhores": 22,
       "piores": 0
@@ -485,8 +492,8 @@
      "prosa_cru": {
       "pp": -1.797,
       "ic95": [
-       -2.989,
-       -0.374
+       -3.006,
+       -0.38
       ],
       "melhores": 22,
       "piores": 0
@@ -494,7 +501,7 @@
      "g1b_notacao_tip": {
       "pp": -0.166,
       "ic95": [
-       -0.637,
+       -0.622,
        0.0
       ],
       "melhores": 3,
@@ -506,8 +513,8 @@
     "prosa_tip": {
      "cer": 0.02086,
      "ic95": [
-      0.00608,
-      0.04139
+      0.00599,
+      0.04127
      ],
      "erros": 496,
      "total": 23779
@@ -515,8 +522,8 @@
     "prosa_cru": {
      "cer": 0.02355,
      "ic95": [
-      0.00738,
-      0.04294
+      0.00751,
+      0.04276
      ],
      "erros": 561,
      "total": 23817
@@ -526,8 +533,8 @@
     "notacao_tip": {
      "cer": 0.10821,
      "ic95": [
-      0.04534,
-      0.19427
+      0.04629,
+      0.19381
      ],
      "erros": 588,
      "total": 5434
@@ -535,8 +542,8 @@
     "espaco_tip": {
      "cer": 0.03593,
      "ic95": [
-      0.01175,
-      0.0625
+      0.01188,
+      0.06303
      ],
      "erros": 72,
      "total": 2004
@@ -589,8 +596,8 @@
       "palavras": 16,
       "por_livro": {
        "Minhas 60": 14,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 1
+       "400 Quebra-cabeças": 1,
+       "Seirawan": 1
       }
      },
      "acento+caixa": {
@@ -691,8 +698,8 @@
       "palavras": 16,
       "por_livro": {
        "Minhas 60": 14,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 1
+       "400 Quebra-cabeças": 1,
+       "Seirawan": 1
       }
      },
      "acento+caixa": {
@@ -746,7 +753,7 @@
      "prosa_tip": {
       "pp": -0.765,
       "ic95": [
-       -1.884,
+       -1.855,
        0.0
       ],
       "melhores": 12,
@@ -755,7 +762,7 @@
      "prosa_cru": {
       "pp": -0.764,
       "ic95": [
-       -1.881,
+       -1.854,
        0.0
       ],
       "melhores": 12,
@@ -764,7 +771,7 @@
      "g1b_notacao_tip": {
       "pp": -0.055,
       "ic95": [
-       -0.25,
+       -0.243,
        0.0
       ],
       "melhores": 2,
@@ -776,8 +783,8 @@
     "prosa_tip": {
      "cer": 0.02502,
      "ic95": [
-      0.00671,
-      0.04212
+      0.0067,
+      0.04238
      ],
      "erros": 595,
      "total": 23779
@@ -785,8 +792,8 @@
     "prosa_cru": {
      "cer": 0.02771,
      "ic95": [
-      0.0072,
-      0.04586
+      0.00726,
+      0.04594
      ],
      "erros": 660,
      "total": 23817
@@ -796,8 +803,8 @@
     "notacao_tip": {
      "cer": 0.10766,
      "ic95": [
-      0.04447,
-      0.19554
+      0.04423,
+      0.1953
      ],
      "erros": 585,
      "total": 5434
@@ -805,8 +812,8 @@
     "espaco_tip": {
      "cer": 0.03543,
      "ic95": [
-      0.01109,
-      0.06216
+      0.01108,
+      0.06303
      ],
      "erros": 71,
      "total": 2004
@@ -846,12 +853,12 @@
       }
      },
      "acento": {
-      "palavras": 29,
+      "palavras": 28,
       "por_livro": {
        "Dvoretsky": 1,
-       "Minhas 60": 26,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 1
+       "Minhas 60": 25,
+       "400 Quebra-cabeças": 1,
+       "Seirawan": 1
       }
      },
      "espaco": {
@@ -902,6 +909,12 @@
        "Minhas 60": 1
       }
      },
+     "acento+caixa": {
+      "palavras": 1,
+      "por_livro": {
+       "Minhas 60": 1
+      }
+     },
      "palavra cortada": {
       "palavras": 1,
       "por_livro": {
@@ -945,20 +958,20 @@
       }
      },
      "acento": {
-      "palavras": 29,
+      "palavras": 28,
       "por_livro": {
        "Dvoretsky": 1,
-       "Minhas 60": 26,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 1
+       "Minhas 60": 25,
+       "400 Quebra-cabeças": 1,
+       "Seirawan": 1
       }
      },
      "espaco": {
       "palavras": 17,
       "por_livro": {
        "Dvoretsky": 1,
-       "Minhas 60": 15,
-       "Hertan": 1
+       "Hertan": 1,
+       "Minhas 60": 15
       }
      },
      "ligadura fi/fl com 1 a mais": {
@@ -993,6 +1006,12 @@
        "Minhas 60": 1
       }
      },
+     "acento+caixa": {
+      "palavras": 1,
+      "por_livro": {
+       "Minhas 60": 1
+      }
+     },
      "palavra cortada": {
       "palavras": 1,
       "por_livro": {
@@ -1004,8 +1023,8 @@
      "prosa_tip": {
       "pp": -0.349,
       "ic95": [
-       -0.642,
-       -0.078
+       -0.638,
+       -0.076
       ],
       "melhores": 19,
       "piores": 0
@@ -1013,8 +1032,8 @@
      "prosa_cru": {
       "pp": -0.348,
       "ic95": [
-       -0.639,
-       -0.078
+       -0.636,
+       -0.076
       ],
       "melhores": 19,
       "piores": 0
@@ -1022,7 +1041,7 @@
      "g1b_notacao_tip": {
       "pp": -0.11,
       "ic95": [
-       -0.546,
+       -0.548,
        0.0
       ],
       "melhores": 1,
@@ -1034,8 +1053,8 @@
     "prosa_tip": {
      "cer": 0.02527,
      "ic95": [
-      0.00591,
-      0.04309
+      0.00601,
+      0.04282
      ],
      "erros": 601,
      "total": 23779
@@ -1043,8 +1062,8 @@
     "prosa_cru": {
      "cer": 0.02796,
      "ic95": [
-      0.00658,
-      0.04687
+      0.00648,
+      0.0469
      ],
      "erros": 666,
      "total": 23817
@@ -1054,8 +1073,8 @@
     "notacao_tip": {
      "cer": 0.10876,
      "ic95": [
-      0.04558,
-      0.19554
+      0.04631,
+      0.19555
      ],
      "erros": 591,
      "total": 5434
@@ -1063,8 +1082,8 @@
     "espaco_tip": {
      "cer": 0.03443,
      "ic95": [
-      0.01159,
-      0.0603
+      0.01186,
+      0.06003
      ],
      "erros": 69,
      "total": 2004
@@ -1116,8 +1135,8 @@
       "palavras": 15,
       "por_livro": {
        "Minhas 60": 13,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 1
+       "400 Quebra-cabeças": 1,
+       "Seirawan": 1
       }
      },
      "ligadura fi/fl com 1 a mais": {
@@ -1216,8 +1235,8 @@
       "palavras": 15,
       "por_livro": {
        "Minhas 60": 13,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 1
+       "400 Quebra-cabeças": 1,
+       "Seirawan": 1
       }
      },
      "ligadura fi/fl com 1 a mais": {
@@ -1286,8 +1305,8 @@
      "prosa_tip": {
       "pp": -0.324,
       "ic95": [
-       -0.716,
-       -0.02
+       -0.724,
+       -0.021
       ],
       "melhores": 13,
       "piores": 0
@@ -1295,8 +1314,8 @@
      "prosa_cru": {
       "pp": -0.323,
       "ic95": [
-       -0.715,
-       -0.02
+       -0.723,
+       -0.021
       ],
       "melhores": 13,
       "piores": 0
@@ -1316,8 +1335,8 @@
     "prosa_tip": {
      "cer": 0.02788,
      "ic95": [
-      0.00665,
-      0.04815
+      0.00679,
+      0.04841
      ],
      "erros": 663,
      "total": 23779
@@ -1325,8 +1344,8 @@
     "prosa_cru": {
      "cer": 0.03057,
      "ic95": [
-      0.00727,
-      0.05162
+      0.00737,
+      0.05212
      ],
      "erros": 728,
      "total": 23817
@@ -1336,8 +1355,8 @@
     "notacao_tip": {
      "cer": 0.10876,
      "ic95": [
-      0.04558,
-      0.19554
+      0.04631,
+      0.19555
      ],
      "erros": 591,
      "total": 5434
@@ -1345,8 +1364,8 @@
     "espaco_tip": {
      "cer": 0.03593,
      "ic95": [
-      0.01175,
-      0.0625
+      0.01188,
+      0.06303
      ],
      "erros": 72,
      "total": 2004
@@ -1406,8 +1425,8 @@
       "palavras": 16,
       "por_livro": {
        "Minhas 60": 13,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 2
+       "400 Quebra-cabeças": 2,
+       "Seirawan": 1
       }
      },
      "acento+caixa": {
@@ -1508,8 +1527,8 @@
       "palavras": 16,
       "por_livro": {
        "Minhas 60": 13,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 2
+       "400 Quebra-cabeças": 2,
+       "Seirawan": 1
       }
      },
      "acento+caixa": {
@@ -1556,7 +1575,7 @@
      "prosa_tip": {
       "pp": -0.063,
       "ic95": [
-       -0.177,
+       -0.176,
        0.0
       ],
       "melhores": 7,
@@ -1565,7 +1584,7 @@
      "prosa_cru": {
       "pp": -0.063,
       "ic95": [
-       -0.176,
+       -0.175,
        0.0
       ],
       "melhores": 7,
@@ -1586,8 +1605,8 @@
     "prosa_tip": {
      "cer": 0.02712,
      "ic95": [
-      0.0064,
-      0.04737
+      0.00644,
+      0.04744
      ],
      "erros": 645,
      "total": 23779
@@ -1595,8 +1614,8 @@
     "prosa_cru": {
      "cer": 0.03044,
      "ic95": [
-      0.00749,
-      0.05141
+      0.00758,
+      0.05167
      ],
      "erros": 725,
      "total": 23817
@@ -1606,8 +1625,8 @@
     "notacao_tip": {
      "cer": 0.10876,
      "ic95": [
-      0.04558,
-      0.19554
+      0.04631,
+      0.19555
      ],
      "erros": 591,
      "total": 5434
@@ -1615,8 +1634,8 @@
     "espaco_tip": {
      "cer": 0.03593,
      "ic95": [
-      0.01175,
-      0.0625
+      0.01188,
+      0.06303
      ],
      "erros": 72,
      "total": 2004
@@ -1676,8 +1695,8 @@
       "palavras": 15,
       "por_livro": {
        "Minhas 60": 13,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 1
+       "400 Quebra-cabeças": 1,
+       "Seirawan": 1
       }
      },
      "ligadura fi/fl com 1 a mais": {
@@ -1778,8 +1797,8 @@
       "palavras": 15,
       "por_livro": {
        "Minhas 60": 13,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 1
+       "400 Quebra-cabeças": 1,
+       "Seirawan": 1
       }
      },
      "ligadura fi/fl com 1 a mais": {
@@ -1842,7 +1861,7 @@
      "prosa_cru": {
       "pp": -0.076,
       "ic95": [
-       -0.178,
+       -0.179,
        0.0
       ],
       "melhores": 7,
@@ -1863,8 +1882,8 @@
     "prosa_tip": {
      "cer": 0.02679,
      "ic95": [
-      0.00757,
-      0.04431
+      0.0077,
+      0.04402
      ],
      "erros": 637,
      "total": 23779
@@ -1872,8 +1891,8 @@
     "prosa_cru": {
      "cer": 0.02947,
      "ic95": [
-      0.008,
-      0.04812
+      0.00817,
+      0.0483
      ],
      "erros": 702,
      "total": 23817
@@ -1883,8 +1902,8 @@
     "notacao_tip": {
      "cer": 0.10876,
      "ic95": [
-      0.04558,
-      0.19554
+      0.04631,
+      0.19555
      ],
      "erros": 591,
      "total": 5434
@@ -1892,8 +1911,8 @@
     "espaco_tip": {
      "cer": 0.03593,
      "ic95": [
-      0.01175,
-      0.0625
+      0.01188,
+      0.06303
      ],
      "erros": 72,
      "total": 2004
@@ -1982,8 +2001,8 @@
       "palavras": 3,
       "por_livro": {
        "Minhas 60": 1,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 1
+       "400 Quebra-cabeças": 1,
+       "Seirawan": 1
       }
      },
      "acento+caixa": {
@@ -2082,8 +2101,8 @@
       "palavras": 3,
       "por_livro": {
        "Minhas 60": 1,
-       "Seirawan": 1,
-       "400 Quebra-cabeças": 1
+       "400 Quebra-cabeças": 1,
+       "Seirawan": 1
       }
      },
      "pontuacao+caixa": {
@@ -2148,8 +2167,8 @@
    "hoje": {
     "cer": 0.01889,
     "ic95": [
-     0.01517,
-     0.02292
+     0.01515,
+     0.02296
     ],
     "erros": 91,
     "total": 4817,
@@ -2159,7 +2178,7 @@
     "cer": 0.00374,
     "ic95": [
      0.00125,
-     0.0059
+     0.00594
     ],
     "erros": 18,
     "total": 4817,
@@ -2168,8 +2187,8 @@
    "S-730": {
     "cer": 0.01889,
     "ic95": [
-     0.01517,
-     0.02292
+     0.01515,
+     0.02296
     ],
     "erros": 91,
     "total": 4817,
@@ -2178,8 +2197,8 @@
    "S-731": {
     "cer": 0.01599,
     "ic95": [
-     0.01234,
-     0.02021
+     0.01246,
+     0.02026
     ],
     "erros": 77,
     "total": 4817,
@@ -2188,7 +2207,7 @@
    "S-732": {
     "cer": 0.01432,
     "ic95": [
-     0.01094,
+     0.01111,
      0.01785
     ],
     "erros": 69,
@@ -2218,8 +2237,8 @@
    "S-735": {
     "cer": 0.01889,
     "ic95": [
-     0.01517,
-     0.02292
+     0.01515,
+     0.02296
     ],
     "erros": 91,
     "total": 4817,
@@ -2230,8 +2249,8 @@
    "hoje": {
     "cer": 0.04117,
     "ic95": [
-     0.03405,
-     0.05395
+     0.03385,
+     0.05513
     ],
     "erros": 242,
     "total": 5878,
@@ -2240,8 +2259,8 @@
    "tudo": {
     "cer": 0.00953,
     "ic95": [
-     0.00173,
-     0.02266
+     0.00164,
+     0.02337
     ],
     "erros": 56,
     "total": 5878,
@@ -2250,8 +2269,8 @@
    "S-730": {
     "cer": 0.01412,
     "ic95": [
-     0.00681,
-     0.02544
+     0.00689,
+     0.02635
     ],
     "erros": 83,
     "total": 5878,
@@ -2260,8 +2279,8 @@
    "S-731": {
     "cer": 0.03675,
     "ic95": [
-     0.02765,
-     0.05115
+     0.02743,
+     0.05219
     ],
     "erros": 216,
     "total": 5878,
@@ -2270,8 +2289,8 @@
    "S-732": {
     "cer": 0.04117,
     "ic95": [
-     0.03405,
-     0.05395
+     0.03385,
+     0.05513
     ],
     "erros": 242,
     "total": 5878,
@@ -2280,8 +2299,8 @@
    "S-733": {
     "cer": 0.04117,
     "ic95": [
-     0.03405,
-     0.05395
+     0.03385,
+     0.05513
     ],
     "erros": 242,
     "total": 5878,
@@ -2290,8 +2309,8 @@
    "S-734": {
     "cer": 0.041,
     "ic95": [
-     0.03366,
-     0.05395
+     0.03349,
+     0.05513
     ],
     "erros": 241,
     "total": 5878,
@@ -2300,8 +2319,8 @@
    "S-735": {
     "cer": 0.04117,
     "ic95": [
-     0.03405,
-     0.05395
+     0.03385,
+     0.05513
     ],
     "erros": 242,
     "total": 5878,
@@ -2312,8 +2331,8 @@
    "hoje": {
     "cer": 0.06517,
     "ic95": [
-     0.05453,
-     0.07401
+     0.05475,
+     0.074
     ],
     "erros": 310,
     "total": 4757,
@@ -2323,7 +2342,7 @@
     "cer": 0.02838,
     "ic95": [
      0.0171,
-     0.03808
+     0.0379
     ],
     "erros": 135,
     "total": 4757,
@@ -2332,8 +2351,8 @@
    "S-730": {
     "cer": 0.06033,
     "ic95": [
-     0.04657,
-     0.06982
+     0.04718,
+     0.06962
     ],
     "erros": 287,
     "total": 4757,
@@ -2342,8 +2361,8 @@
    "S-731": {
     "cer": 0.05655,
     "ic95": [
-     0.04626,
-     0.06592
+     0.04632,
+     0.06581
     ],
     "erros": 269,
     "total": 4757,
@@ -2353,7 +2372,7 @@
     "cer": 0.05466,
     "ic95": [
      0.04429,
-     0.06435
+     0.06414
     ],
     "erros": 260,
     "total": 4757,
@@ -2362,8 +2381,8 @@
    "S-733": {
     "cer": 0.06517,
     "ic95": [
-     0.05453,
-     0.07401
+     0.05475,
+     0.074
     ],
     "erros": 310,
     "total": 4757,
@@ -2373,7 +2392,7 @@
     "cer": 0.06349,
     "ic95": [
      0.05186,
-     0.0734
+     0.07319
     ],
     "erros": 302,
     "total": 4757,
@@ -2383,7 +2402,7 @@
     "cer": 0.05655,
     "ic95": [
      0.04826,
-     0.06464
+     0.06452
     ],
     "erros": 269,
     "total": 4757,
@@ -2394,7 +2413,7 @@
    "hoje": {
     "cer": 0.00454,
     "ic95": [
-     0.0012,
+     0.0013,
      0.00755
     ],
     "erros": 17,
@@ -2405,7 +2424,7 @@
     "cer": 0.00267,
     "ic95": [
      0.00031,
-     0.00477
+     0.00485
     ],
     "erros": 10,
     "total": 3748,
@@ -2414,7 +2433,7 @@
    "S-730": {
     "cer": 0.00454,
     "ic95": [
-     0.0012,
+     0.0013,
      0.00755
     ],
     "erros": 17,
@@ -2424,7 +2443,7 @@
    "S-731": {
     "cer": 0.00454,
     "ic95": [
-     0.0012,
+     0.0013,
      0.00755
     ],
     "erros": 17,
@@ -2435,7 +2454,7 @@
     "cer": 0.0032,
     "ic95": [
      0.00031,
-     0.00573
+     0.00593
     ],
     "erros": 12,
     "total": 3748,
@@ -2444,7 +2463,7 @@
    "S-733": {
     "cer": 0.004,
     "ic95": [
-     0.0012,
+     0.0013,
      0.00647
     ],
     "erros": 15,
@@ -2454,7 +2473,7 @@
    "S-734": {
     "cer": 0.00454,
     "ic95": [
-     0.0012,
+     0.0013,
      0.00755
     ],
     "erros": 17,
@@ -2464,7 +2483,7 @@
    "S-735": {
     "cer": 0.00454,
     "ic95": [
-     0.0012,
+     0.0013,
      0.00755
     ],
     "erros": 17,
@@ -2885,32 +2904,32 @@
    },
    "tudo": {
     "prosa_tip": {
-     "cer": 0.22494,
+     "cer": 0.22377,
      "ic95": [
-      0.12994,
-      0.33926
+      0.12897,
+      0.33896
      ],
-     "erros": 10760,
+     "erros": 10704,
      "total": 47834
     },
     "prosa_cru": {
-     "cer": 0.22708,
+     "cer": 0.22592,
      "ic95": [
-      0.1308,
-      0.34172
+      0.12949,
+      0.34147
      ],
-     "erros": 10960,
+     "erros": 10904,
      "total": 48265
     },
-    "wer_tip": 0.51021,
-    "wer_cru": 0.51252,
+    "wer_tip": 0.50689,
+    "wer_cru": 0.50922,
     "notacao_tip": {
-     "cer": 0.3325,
+     "cer": 0.33134,
      "ic95": [
-      0.17754,
-      0.42504
+      0.17705,
+      0.42503
      ],
-     "erros": 2001,
+     "erros": 1994,
      "total": 6018
     },
     "espaco_tip": {
@@ -2922,38 +2941,38 @@
      "erros": 1335,
      "total": 3771
     },
-    "insercoes_tip": 4498,
+    "insercoes_tip": 4489,
     "figurina": {
      "revocacao": 0.6956,
-     "precisao": 0.7736,
+     "precisao": 0.7844,
      "ref": 565,
-     "hip": 508,
+     "hip": 501,
      "tp": 393
     },
     "pareado_contra_hoje": {
      "prosa_tip": {
-      "pp": -0.692,
+      "pp": -0.809,
       "ic95": [
-       -0.987,
-       -0.452
+       -1.219,
+       -0.485
       ],
-      "melhores": 30,
-      "piores": 0
+      "melhores": 29,
+      "piores": 1
      },
      "prosa_cru": {
-      "pp": -0.709,
+      "pp": -0.825,
       "ic95": [
-       -0.992,
-       -0.489
+       -1.223,
+       -0.521
       ],
       "melhores": 30,
       "piores": 0
      },
      "g1b_notacao_tip": {
-      "pp": -1.379,
+      "pp": -1.496,
       "ic95": [
-       -2.887,
-       -0.498
+       -2.945,
+       -0.539
       ],
       "melhores": 13,
       "piores": 0
@@ -2970,8 +2989,8 @@
     "por_livro": {
      "Dvoretsky": 14,
      "Hertan": 26,
-     "Minhas 60": 9,
-     "Seirawan": 1
+     "Seirawan": 1,
+     "Minhas 60": 9
     }
    },
    "tudo": {
@@ -2979,16 +2998,16 @@
     "por_livro": {
      "Dvoretsky": 14,
      "Hertan": 37,
-     "Minhas 60": 6,
-     "Seirawan": 1
+     "Seirawan": 1,
+     "Minhas 60": 6
     }
    },
    "curvas": {
     "palavras": 12,
     "por_livro": {
      "Hertan": 5,
-     "Minhas 60": 6,
-     "Seirawan": 1
+     "Seirawan": 1,
+     "Minhas 60": 6
     }
    }
   },
@@ -2996,8 +3015,8 @@
    "tudo": {
     "cer": 0.01323,
     "ic95": [
-     0.0042,
-     0.02222
+     0.00448,
+     0.02258
     ],
     "erros": 315,
     "total": 23817
@@ -3005,8 +3024,8 @@
    "curvas": {
     "cer": 0.01092,
     "ic95": [
-     0.00343,
-     0.02097
+     0.00349,
+     0.02108
     ],
     "erros": 260,
     "total": 23817
@@ -3246,6 +3265,48 @@
     "2": 1
    },
    "nota": "o modelo acertava, e a régua de altura derrubava"
+  }
+ },
+ "fora_do_ouro": {
+  "o_que": "os casos que o crítico achou, com o texto de hoje e o de agora, contra a camada",
+  "casos": {
+   "Hertan, folha 4": "ChessCafe: camada, hoje e tudo iguais",
+   "Yusupov, folha 961": "McClure: camada, hoje e tudo iguais",
+   "Chess Evolution 2014, folhas 234, 243, 422": "GMs: camada, hoje e tudo iguais",
+   "Aagaard Practical Chess Defence, folhas 64 e 234": "nenhuma captura com X maiúsculo em tudo",
+   "Chess Evolution 2014, folhas 71, 100, 122, 767": "código ECO: camada e tudo com C maiúsculo; hoje com c minúsculo"
+  },
+  "prata_padroes_em_hip": {
+   "coluna_C_e_digito": {
+    "hoje": 5,
+    "tudo": 0
+   },
+   "captura_com_X": {
+    "hoje": 3,
+    "tudo": 0
+   },
+   "ambigua_no_meio_da_palavra": {
+    "hoje": 20,
+    "tudo": 8
+   }
+  }
+ },
+ "mutantes": {
+  "constantes": {
+   "total": 263,
+   "acusam": 263,
+   "sobrevivem": 0,
+   "o_que": "cada limiar a 0, metade, 1,5x, 3x e negativo; cada lista vazia e sem cada elemento; cada interruptor; controle verde no mesmo processo. Não é o conjunto de 86 do crítico"
+  },
+  "limiares_a_10_por_cento": {
+   "total": 34,
+   "sobrevivem": 24,
+   "o_que": "cada limiar a mais ou menos 10%: fica no meio do vão de propósito, e nenhum caso sintético o prende tão perto"
+  },
+  "fiacao": {
+   "total": 9,
+   "acusam": 9,
+   "o_que": "cada chamada de linhas_do_glifo neutralizada, rodando só tests/test_text_fiacao_do_glifo.py; antes, com os testes de decisão junto, a conta era vácua"
   }
  }
 }

@@ -79,9 +79,9 @@ JUNCAO_MINIMA = 5
 MAX_TOKENS_DA_JUNCAO = 4
 """`ga n ha ndo` tem quatro."""
 
-ANTES_DE_LANCE = frozenset({"of", "if", "in", "on", "at", "by", "to", "and", "or", "de", "em", "ou", "e", "com"})
+ANTES_DE_LANCE = frozenset({"of", "if", "in", "on", "at", "by", "to", "and", "or", "de", "em", "ou", "com"})
 """As palavras que ficam coladas num número de lance: `of2.exf6`, `if2...`. Fechada de propósito:
-`Be2.` também é palavra curta seguida de número, e é lance."""
+`Be2.` também é palavra curta seguida de número, e é lance. **`e` não entra**: `e7.` é a casa, no fim da frase."""
 
 _NUMERO_DE_LANCE = re.compile(r"^\d+\.")
 _SO_LETRAS = re.compile(r"^[^\W\d_]+$")

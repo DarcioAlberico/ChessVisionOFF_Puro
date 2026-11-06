@@ -1007,13 +1007,14 @@ morrem.
 Toda a fase é regra de decisão, geometria e léxico, sem retreino, e cada conserto tem a sua constante. Contra o que se mediu: **os 5
 livros aprovados na auditoria da S-702**, 27 folhas. O *Chess Evolution* e o *Capablanca*, que as Saídas do roadmap citam, foram
 reprovados nela, e ficam à parte no relatório, como conferência. O **Hertan é do ouro-dev**, e está nas contas. O relatório é
-[metrics/texto_prosa_glifo_2026-11-06.json](metrics/texto_prosa_glifo_2026-11-06.json), medido em `4acb2623`, e `hoje` é tudo
-desligado, que dá texto idêntico ao de `a2937260` nas 27 folhas. Tudo aqui é dev contaminado: o portão G103 abre o teste, e é rodado
+[metrics/texto_prosa_glifo_2026-11-06.json](metrics/texto_prosa_glifo_2026-11-06.json), medido em `6b99f95e`, e `hoje` é tudo
+desligado, que dá texto idêntico ao de `a2937260` nas 27 folhas. O IC depende da ordem dos livros, e ela é fixa: Dvoretsky, Hertan, *Minhas 60*,
+400 Quebra-cabeças, Seirawan. Tudo aqui é dev contaminado: o portão G103 abre o teste, e é rodado
 depois. Reproduzir: `texto_prosa_glifo_2026-11-06/medir_glifo.py`.
 
 | CER de prosa, `tip` | antes | depois |
 |---|---:|---:|
-| ouro-dev, 27 folhas | 2,85% [0,76; 4,84] | **0,99%** [0,30; 1,97] |
+| ouro-dev, 27 folhas | 2,85% [0,77; 4,85] | **0,99%** [0,29; 1,97] |
 | WER de prosa | 11,7% | **3,55%** |
 | Hertan | 4,12% | 0,95% |
 | *Minhas 60* | 6,52% | 2,84% |
@@ -1021,15 +1022,31 @@ depois. Reproduzir: `texto_prosa_glifo_2026-11-06/medir_glifo.py`.
 | 400 Quebra-cabeças | 0,45% | 0,27% |
 | Seirawan | 0,39% | 0,35% |
 
-Diferença pareada na prosa: **−1,86 p.p. [−3,04; −0,44]**, 22 folhas melhores e nenhuma pior. **Notação, a G1(b):** −0,17 p.p.
-[−0,64; 0,00], 3 folhas melhores e nenhuma pior. **Figurina, a G2:** revocação 85,2% → 85,9%, precisão 85,8% → 85,9%. Na prata, que só
-ordena e é o caminho de reserva: prosa −0,69 p.p. [−0,99; −0,45] em **30 de 30** folhas, notação −1,38 p.p. [−2,89; −0,50] com nenhuma
-pior, revocação de figurina 60,2% → 69,6%.
+Diferença pareada na prosa: **−1,86 p.p. [−3,07; −0,43]**, 22 folhas melhores e nenhuma pior. **Notação, a G1(b):** −0,17 p.p.
+[−0,62; 0,00], 3 folhas melhores e nenhuma pior. **Figurina, a G2:** revocação 85,2% → 85,9%, precisão 85,8% → 85,9%. Na prata, que só
+ordena e é o caminho de reserva: prosa −0,81 p.p. [−1,22; −0,49], **29 folhas melhores e 1 pior** (*Kemeri* 226, por 1 caractere em 1.163, numa folha de
+45% de erro), notação −1,50 p.p. [−2,95; −0,54] com nenhuma pior, figurina: revocação 60,2% → 69,6%, precisão 75,1% → 78,4%.
+
+**A primeira versão foi reprovada pelo crítico**, e o que ele achou está nos itens: a regra de caixa trocava certo por errado fora do dev
+(`ChessCafe`, `McClure`, `GMs`, `Nxa2`), e as guardas tinham vão. Os casos dele, relidos: `ChessCafe` (Hertan, folha 4), `McClure` (Yusupov, folha 961) e
+`GMs` (*Chess Evolution 2014*, folhas 234, 243 e 422) saem como na camada, e no Aagaard, folhas 64 e 234, nenhuma captura sai com `X`. Na segunda
+rodada: `[C42]`, `[C18]` e `[C84]` (*Chess Evolution 2014*, folhas 767, 71, 100 e 122) saem como na camada, e agora melhor que `hoje`, que dá `[c42]`.
 
 **Os testes de decisão da S-764** moram em `tests/test_text_traco_vertical.py`, `test_text_caixa_coerente.py`, `test_text_fronteira.py`,
 `test_text_ligadura.py`, `test_text_aspas.py` e `test_text_acento.py`, com o desenho comum em `tests/glifo_sintetico.py`: caixas
-sintéticas, sem modelo nem livro, e rodam no CI. Cada família tem o caso que reproduz o defeito com a constante desligada. Conferido
-revertendo: 12 constantes e 21 limiares levados para o lado errado, um processo por mutante, e os 33 acusam.
+sintéticas, sem modelo nem livro, e rodam no CI. Cada família tem o caso que reproduz o defeito com a constante desligada.
+
+`tests/test_text_fiacao_do_glifo.py` é a outra camada: uma folha desenhada, a segmentação de verdade e um classificador falso que responde pelo
+tamanho do recorte, lidos por `linhas_do_glifo`. **Neutralizar cada uma das 9 chamadas acusa**, rodando **só** este arquivo: é assim que a conta vale.
+A primeira versão desta frase rodava os testes de decisão junto, e o patch no módulo os derrubava, então a conta era vácua: `coerente`, a regra reprovada,
+passava sem acusar neste arquivo. Agora um versalete, um `KC5` e a forma minúscula do léxico a prendem.
+
+**Conferido revertendo, e o que isso vale.** 263 mutantes sistemáticos das constantes desta fase (cada interruptor; cada limiar a 0, metade, 1,5×, 3× e
+negativo; cada lista vazia e sem cada elemento), com controle verde no mesmo processo: **os 263 acusam**. É só esse conjunto: mutante de lógica, de
+condição ou de `<` por `<=` não está nele, e ele não é o conjunto de 86 de limiar e lista do crítico, em que a primeira versão perdia 36. Ele
+tem de ser rodado de novo. As listas são iteradas por literal no teste: iterar a própria constante deixava a guarda vácua, e os mutantes mostraram.
+`CORTE_ACENTUADA` a 1,5, que o crítico achou vivo, agora acusa. **A ±10% de cada limiar, 24 de 34 sobrevivem, e é o esperado**: o limiar fica no meio do vão
+medido, e nenhum caso sintético o prende tão perto. Quem o segura ali é a medição das folhas, e não o CI.
 
 ## S-730 · Traço vertical contra ponto ✅ implementada (2026-11-06)
 
@@ -1092,8 +1109,14 @@ Três mudanças em `text/caixa_alta.py`:
 
 - **`coerente`** (`PALAVRA_COERENTE`): palavra só de letras, com duas ou mais maiúsculas de desenho próprio e nenhuma minúscula, sobe as
   ambíguas, o `p` e o `l`. É o que resolve o **versalete** (`'UNUSUAL SQUARES'`, com altura de letra de x), que altura nenhuma separa. Lance
-  fica de fora pelo dígito, e `KxR` porque o `x` só sobe a partir de quatro letras. Na outra direção, a ambígua depois de minúscula desce
-  (`IvanchUk`), e `QXf7` volta a `Qxf7`.
+  fica de fora pelo dígito, e `KxR` porque o `x` só sobe a partir de quatro letras. O `s` final de até 4 letras não sobe (`GMs`). Na outra
+  direção, a ambígua depois de minúscula desce (`IvanchUk`), salvo em palavra que começa em maiúscula, seguida de 2 minúsculas e cuja forma
+  minúscula não existe no léxico sem nomes (`ChessCafe`, `SacrifiCio`→`Sacrificio`), ou depois de `Mc`/`Mac`. Em palavra que começa em minúscula, nunca
+  (`soViéticos`, `deCido`): na prata, a ambígua no meio da palavra vai de 20 a 8.
+- **O lance que a régua estragou** (também `PALAVRA_COERENTE`): em scan, com as letras de x comidas, `Qxf7` saía `QXf7`, `Nxa2` saía `NXa2`, e a
+  coluna `c` saía `C`: `Kc5`→`KC5`, `c2`→`C2`. O `X` diante de casa e o `C` diante de dígito de casa descem, e `Cc3`, a descritiva `C3A`, o rótulo `C3)` e
+  o código ECO `C42` ficam. E `c` com dois dígitos sobe (`[c18]`→`[C18]`), porque não é casa nenhuma. Na prata, a coluna maiúscula diante de dígito vai de 5
+  a 0, e a captura com `X`, de 3 a 0, contados no texto de saída.
 - **`P` pela descida** (`P_PELA_DESCIDA`): `P` era lido `p` em *Minhas 60*, em rank 2 nos 11 casos. Esticados, são o mesmo desenho, e o `p`
   desce, enquanto o `P` não.
 
@@ -1105,9 +1128,9 @@ figurina: `Cd6`→`cd6` em linha com lance não acontece mais. No *Capablanca*, 
 
 ### O que ela não entrega
 
-Linha só de ambíguas sem escala continua na mediana. Em scan, `will` pode sair `Will` onde as letras de x estão comidas: visto na prata,
-com poucos casos, e a prata melhora em todas as folhas mesmo assim. `MIN_LETRAS_DE_X` 3 no lugar de 2 foi medido e não muda nada que
-decida.
+Linha só de ambíguas sem escala continua na mediana. Em scan, `will` pode sair `Will` e `winning`, `Winning`, onde as letras de x estão comidas:
+visto na prata, com poucos casos, e a prata melhora em todas as folhas mesmo assim. `MIN_LETRAS_DE_X` 3 no lugar de 2 foi medido e não muda nada
+que decida. A exceção `Mc`/`Mac` é lista: nome com maiúscula no meio e uma letra depois dela (`DeJr`) cai na regra.
 
 ## S-732 · Fronteira de palavra ✅ implementada (2026-11-06)
 
@@ -1131,14 +1154,16 @@ E o léxico sozinho já perdeu: `lexico.PARTIR_COLADAS` registra 0 certas contra
 - **partir** (`fronteira.LIGADO`): o vão de baixo propõe, a partir de 0,30, e fora do `f` exige também o vão de cima de 0,15; o léxico **sem
   nomes** e `palavras_curtas` dispõem, os dois pedaços têm de existir, e nome só vale de pedaço a partir de 6 letras. O pedaço da direita
   tem 3 letras ou mais, salvo depois do `f`: `transferem` e `romperam` não estão no léxico, e `transfer` + `em` estão. Ambiguidade não
-  corrige. `of2.` parte por uma lista fechada, e `Be2.` fica. O espaço entra na frente do caractere, e a confiança por letra continua casando.
+  corrige. `of2.` parte por uma lista fechada, sem `e`, e `Be2.` e `e7.` ficam. O espaço entra na frente do caractere, e a confiança por letra
+  continua casando.
 - **juntar** (`JUNTAR_PARTIDAS`): `ga n ha ndo`→`ganhando`, quando a junção existe e algum token dela não. Token de 3 letras conta como
   existente, senão `cut off` vira `cutoff`.
 - **o colado** (`colados.POR_LEXICO`): em palavra que não existe e sem peso de notação, a caixa larga é recortada no vale e os dois pedaços
   são relidos; se **uma só** leitura dos dois melhores de cada pedaço fizer palavra, fica, como dois caracteres numa caixa. É a medição de
   `GANHO_MINIMO` trocada por léxico: `tums`→`turns`, `acmal`→`actual`, `Ffxcher`→`Fischer`, `cof7ect`→`correct`. `w` e `v` não entram, os
-  pedaços têm de ser letras, maiúscula só na primeira posição, palavra de 3 letras não é examinada (`bom`→`born` foi a primeira rodada), e
-  resposta com menos de 7 letras tem de estar no léxico sem nomes (`bem`→`Beni`).
+  pedaços têm de ser letras, maiúscula só na primeira posição, palavra de 3 letras não é examinada (`bom`→`born` foi a primeira rodada),
+  resposta com menos de 7 letras tem de estar no léxico sem nomes (`bem`→`Beni`), e dígito só é perdoado na caixa relida: `cof7ect` tem a
+  classe `f7` numa caixa larga, e fora dela o dígito é tinta do livro.
 
 `text/palavras_curtas.py` é a lista fechada, à mão, de palavra funcional de menos de 4 letras, que `lexico.MIN_TAMANHO` tira de propósito.
 
@@ -1152,6 +1177,10 @@ E o léxico sozinho já perdeu: `lexico.PARTIR_COLADAS` registra 0 certas contra
 `Reshevsky joga`, `de folga` e `se perdem` saem, e 9 sobram: `3 d4` em *Minhas 60*, que é notação, sem letra que o léxico arbitre, e colagens
 sem vão embaixo. `comer` no lugar de `corner` é palavra que existe, e fica. `pamda`→`partida` precisa de dois cortes numa caixa, e fica.
 O veto do corte da S-186 (`paM(ns`) não foi trocado, porque não aparece mais nestas folhas.
+
+**Em scan, o léxico erra para o lado de cá:** `invulnerable`→`in vulnerable` e `erschien`→`er schien` partem, porque a palavra inteira não está
+no léxico e os dois pedaços estão, e `cleanly`→`clearly` é um corte de colado que achou outra palavra que existe. Visto na prata, em poucos casos.
+Nenhum desses é veto do léxico: palavra certa fora da lista continua exposta.
 
 ## S-733 · Ligadura sem o `1` a mais ✅ implementada (2026-11-06)
 
@@ -1192,8 +1221,8 @@ no alto vira `'`. Reversão: `marca_fina.ASPAS_PELA_GEOMETRIA`.
 O roadmap pede a pontuação em `cru` ≤ 1/2. **Ela sobe de 50 para 58**, e não por erro novo: são palavras que tinham outro erro e agora só têm
 este. Das 58, 37 são do Hertan, e quase todas são `’` lido `'`: **o modelo não tem as aspas curvas**, e `cru` conta a diferença.
 
-Simulando por fora do leitor, com aspas e apóstrofos curvados pelo contexto, a família vai a **12**, e nenhum dos 5 livros piora, porque nenhum
-usa aspa reta na prosa. **Não entra**, e é decisão: `lexico.PONTUACAO_DE_BORDA` e as classes de token não aparam a curva, então `“tail` passaria a
+Simulando por fora do leitor, com aspas e apóstrofos curvados pelo contexto, a família vai a **12**, e nenhum dos 5 livros piora, porque o texto do
+glifo não traz aspa reta onde a camada a tem. **Não entra**, e é decisão: `lexico.PONTUACAO_DE_BORDA` e as classes de token não aparam a curva, então `“tail` passaria a
 ser palavra desconhecida para quem marca "revisar", e é uma mudança fora dos arquivos desta trilha. As metas valem em `tip`. Fica para quem
 abrir a régua da marca.
 
@@ -1221,7 +1250,8 @@ abrir a régua da marca.
 - **A cedilha pela descida** (`caixa_alta.CEDILHA_PELA_DESCIDA`): `c` ou `C` com a caixa 0,25 altura-de-x abaixo da base, com `ç` entre as
   opções, é `ç`. `ç` desce de 0,38 a 0,50, e `C` e `c` vão até 0,06.
 - **O segundo corte** (`caixa_alta.SEGUNDO_CORTE`, `CORTE_ACENTUADA` 1,65): `í ó õ ö ú ć č š ž` têm corte próprio. A minúscula acentuada mede
-  até 1,46, e a maiúscula, cerca de 1,85: **esse lado é estimado**, porque nenhuma aparece no dev.
+  **de 1,33 a 1,53** das letras de x (53 casos, 5 livros do dev), o que a memória `caixa-alta-nao-cobre-acentuada` dava como 1,46 pela mediana da linha. A
+  maiúscula, cerca de 1,85: **esse lado é estimado**, porque nenhuma aparece no dev. A 1,5, o corte quebra: `após`→`apÓs`, `última`→`Última` em *Minhas 60*.
 
 ### Critério de aceite
 

@@ -86,7 +86,7 @@ desenho, e quem os separa é a descida do `p`, que o `P` não tem.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 import numpy as np
 
@@ -117,6 +117,18 @@ Calibri 1,38, Times 1,47, Cambria 1,45. Só precisa cair longe do corte: minúsc
 PALAVRA_COERENTE = True
 """A reversão de `coerente` (S-731)."""
 
+MINUSCULAS_QUE_ABSOLVEM = 2
+"""Quantas minúsculas depois da ambígua dizem que ela é maiúscula de verdade: `ChessCafe`, `McClure`.
+
+`IvanchUk` e `teU` têm uma ou nenhuma, e é esse o erro que a regra desfaz. Foi o crítico da Fase 103 quem
+achou o outro lado, fora do dev."""
+
+PREFIXOS_DE_NOME = ("Mc", "Mac")
+"""A maiúscula no meio que é do nome, mesmo curta: `McCoy` passaria pela regra acima, `McOy` não."""
+
+MIN_LETRAS_DO_S_FINAL = 5
+"""Abaixo disto, o `s` final não sobe: `GMs` é plural de sigla, com 19 ocorrências num livro só."""
+
 MIN_MAIUSCULAS_DA_PALAVRA = 2
 """Quantas maiúsculas de desenho próprio bastam para dizer que a palavra é toda em maiúscula."""
 
@@ -142,7 +154,8 @@ AMBIGUAS_ACENTUADAS = "íóõöúćčšž"
 """As acentuadas de mesma forma. `á ã ä å è é` mudam de desenho; `ý` tem a haste, como `y`."""
 
 CORTE_ACENTUADA = 1.65
-"""A minúscula acentuada mede até 1,46 com o acento dentro do bbox, e a maiúscula, cerca de 1,85.
+"""A minúscula acentuada mede de 1,33 a 1,53 das letras de x, com o acento dentro do bbox (53 casos, 5 livros
+do dev), e a maiúscula, cerca de 1,85: esse lado é estimado, porque nenhuma aparece no dev.
 
 **As classes de cima quase não têm amostra**, e é por isso que ela é regra de geometria: `Õ` 1, `Ú` 1,
 `Ó` 3, `Ć` 3, `Č` 3, `ö` 3, `ž` 2, `Ž` 1, `Ö` 5, `š` 7, `Š` 9 em `training_data/`. O que o modelo
@@ -318,6 +331,7 @@ def coerente(
     probs: np.ndarray,
     caixas: Sequence[object],
     idx_to_char: dict[int, str],
+    lexico: frozenset[str] = frozenset(),
 ) -> list[tuple[str, float]]:
     """A palavra toda em maiúscula não ganha minúscula no meio (S-731). `DEFEsA`, `FcM`, `uNusuAL`.
 
@@ -328,6 +342,12 @@ def coerente(
     **Só palavra de letras.** Com dígito ou figurina ela é lance, e `Nc3` não é palavra em maiúscula. E
     `x` entre duas peças é captura: `KxR` e `QxB` são notação, então o `x` só sobe em palavra de quatro
     letras ou mais.
+
+    **E o lance que a régua de altura estragou volta**, em `_lance_em_minuscula`: em scan, as letras de x
+    comidas fazem `c` e `x` passarem do corte.
+
+    **A absolvição exige a palavra começar em maiúscula**: `ChessCafe` e `BeverWijk` são nome, e `soViéticos`, `deCido` e
+    `sigUiente`, não. `lexico` é o sem nomes, e pega o resto: `SacrifiCio`, porque `sacrificio` existe.
     """
     saida = list(lidos)
     if not PALAVRA_COERENTE or not lidos or len(lidos) != len(caixas):
@@ -345,22 +365,26 @@ def coerente(
             saida[k] = (novo, float(probs[k, indice]))
 
     for inicio, fim in palavras(caixas, lidos):  # type: ignore[arg-type]
+        # Antes de olhar ligadura: `Qxf7` chega com `f7` numa caixa só.
+        _lance_em_minuscula(saida, inicio, fim, por)
         trecho = [c for c, _ in saida[inicio:fim]]
         if any(len(c) != 1 for c in trecho):
             continue
+        tem_lance = any(c.isdigit() or ord(c) >= 0x2654 for c in trecho)
         for k in range(inicio + 1, fim):
-            # A captura seguida de casa: em scan o `x` passa do corte, e `Qxf7` saía `QXf7`.
-            if saida[k][0] == "X" and k + 1 < fim and saida[k + 1][0] in "abcdefgh" and saida[k - 1][0] != "x":
-                por(k, "x")
             # A ambígua depois de minúscula, em palavra sem dígito: `IvanchUk`, `teU`.
-            elif (
-                saida[k][0] in AMBIGUAS.upper()
-                and saida[k - 1][0].islower()
-                and not any(c.isdigit() or ord(c) >= 0x2654 for c in trecho)
-            ):
-                por(k, saida[k][0].lower())
+            if saida[k][0] in AMBIGUAS.upper() and saida[k - 1][0].islower() and not tem_lance:
+                depois = trecho[k + 1 - inicio : k + 1 - inicio + MINUSCULAS_QUE_ABSOLVEM]
+                absolvida = (
+                    trecho[0].isupper()
+                    and len(depois) == MINUSCULAS_QUE_ABSOLVEM
+                    and all(c.islower() for c in depois)
+                    and not _minuscula_existe(trecho, lexico)
+                )
+                if not absolvida and not "".join(trecho[: k - inicio]).lstrip("'\"(").startswith(PREFIXOS_DE_NOME):
+                    por(k, saida[k][0].lower())
         trecho = [c for c, _ in saida[inicio:fim]]
-        if any(c.isdigit() or ord(c) >= 0x2654 for c in trecho):
+        if tem_lance:
             continue
         letras = [c for c in trecho if c.isalpha()]
         proprias = [c for c in letras if c.casefold() not in sobem and c != "I"]
@@ -368,12 +392,49 @@ def coerente(
             continue
         if sum(c.isupper() for c in proprias) < MIN_MAIUSCULAS_DA_PALAVRA:
             continue
+        ultima_letra = max(k for k in range(inicio, fim) if saida[k][0].isalpha())
         for k in range(inicio, fim):
             char = saida[k][0]
             if char not in sobem or (char == "x" and len(letras) < 4):
                 continue
+            if char == "s" and k == ultima_letra and len(letras) < MIN_LETRAS_DO_S_FINAL:
+                continue
             por(k, sobem[char])
     return saida
+
+
+def _minuscula_existe(trecho: Sequence[str], lexico: frozenset[str]) -> bool:
+    from .palavras_curtas import conhecida_ou_curta
+
+    return bool(lexico) and conhecida_ou_curta("".join(trecho).lower(), lexico)
+
+
+def _lance_em_minuscula(
+    saida: list[tuple[str, float]], inicio: int, fim: int, por: Callable[[int, str], None]
+) -> None:
+    """`QXf7`->`Qxf7`, `NXa2`->`Nxa2`, e a coluna `KC5`->`Kc5`, `C2`->`c2`: maiúscula aí não é lance de ninguém.
+
+    A coluna exige o dígito de casa e, depois dele, nem letra, nem outro dígito, nem `)`: `C3A` é descritiva, `C42`
+    é código ECO, `C3)` é rótulo de variante, e `Cc3` tem o `c` certo. O `X` exige a casa inteira depois, numa caixa
+    (`f7`) ou em duas: `TEXas` e `TXPTR` ficam.
+
+    **A volta do código ECO** é a outra metade: `c` seguido de dois dígitos não é casa nenhuma, e sai `C18`.
+    """
+    for k in range(inicio, fim):
+        char = saida[k][0]
+        proximos = [c for c, _ in saida[k + 1 : min(fim, k + 3)]]  # o que se testa é a caixa, e não a letra
+        if char == "X" and k > inicio and proximos and proximos[0][:1] in tuple("abcdefgh"):
+            if len(proximos[0]) == 2 or (len(proximos) == 2 and proximos[1][:1] in tuple("12345678")):
+                por(k, "x")
+        elif char == "C" and proximos and proximos[0] in tuple("12345678"):
+            depois = proximos[1][:1] if len(proximos) == 2 else ""
+            antes = saida[k - 1][0][-1:] if k > inicio else ""
+            if not (depois.isalpha() or depois.isdigit() or depois == ")") and (
+                not antes or not antes.isalpha() or antes in "KQRBNDTCSLFP"
+            ):
+                por(k, "c")
+        elif char == "c" and len(proximos) == 2 and all(len(p) == 1 and p.isdigit() for p in proximos):
+            por(k, "C")
 
 
 __all__ = [
