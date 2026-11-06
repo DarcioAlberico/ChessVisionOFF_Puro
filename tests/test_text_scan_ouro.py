@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import hashlib
 import io
 import json
 import unittest
@@ -99,6 +100,35 @@ class ManifestoVersionadoTests(unittest.TestCase):
                     nomes.update((no.module or "").split("."))
                     nomes.update(a.name for a in no.names)
             self.assertEqual(set(), nomes & proibidos, caminho.name)
+
+
+class VazamentoDoTesteTests(unittest.TestCase):
+    """A correção num livro do teste do scan-ouro não pode ir à quarentena de treino, e a S-746 e a S-750 leem a mesma lista."""
+
+    def setUp(self) -> None:
+        self.m = scan_ouro.carregar(RAIZ / scan_ouro.CAMINHO)
+        self.vazio = ouro.Manifesto(ouro.VERSAO, "2026-10-30", None, (), ())
+
+    def test_cada_livro_do_teste_e_recusado(self) -> None:
+        do_teste = [x.identidade for x in self.m.livros if x.split == scan_ouro.TESTE]
+        self.assertTrue(do_teste)
+        for identidade in do_teste:
+            with self.subTest(identidade=identidade), mock.patch.object(dado_corrigido, "identidade_de", return_value=identidade):
+                self.assertTrue(dado_corrigido.livro_recusado(Path("nome qualquer.pdf"), self.vazio))
+
+    def test_a_guarda_acusa_sem_a_lista(self) -> None:
+        """Sem a exclusão, o livro passa: é o defeito, e é por ela que ele deixa de passar."""
+        identidade = next(x.identidade for x in self.m.livros if x.split == scan_ouro.TESTE)
+        with mock.patch.object(dado_corrigido, "identidade_de", return_value=identidade):
+            self.assertEqual("", dado_corrigido.livro_recusado(Path("x.pdf"), self.vazio, ouro.Exclusao()))
+
+    def test_a_chave_de_nome_cirilico_nao_e_a_chave_vazia(self) -> None:
+        """A chave vazia seria igual para todo nome sem a-z, e a lista recusaria todo livro russo."""
+        vazia = hashlib.sha256(b"").hexdigest()[:16]
+        self.assertNotIn(vazia, ouro.carregar_exclusao().series)
+        self.assertNotEqual(vazia, ouro.chave_de_serie("Болеславский"))
+        self.assertNotEqual(ouro.chave_de_serie("Болеславский"), ouro.chave_de_serie("Пилавов"))
+        self.assertEqual(ouro.chave_de_serie("Болеславский 2 (1960)"), ouro.chave_de_serie("Болеславский 3 (1961)"))
 
 
 class ProblemasTests(unittest.TestCase):
@@ -202,9 +232,9 @@ class CadernoDaPassadaTests(unittest.TestCase):
         self.assertEqual(("nova",), caderno.ler("aaaa", 1).linhas)
 
     def test_folha_escrita_sobre_um_motor_nao_grava(self) -> None:
-        """A porta da S-762. A procedência `tesseract` só existe na página depois da S-722; até lá a fusão sai `glifo`. Nada chega ao arquivo."""
+        """A porta da S-762. Nada chega ao arquivo."""
         caderno = ts.CadernoDaPassada(self.pasta, 1)
-        for motor in ("glifo", "rapidocr"):
+        for motor in ("glifo", "tesseract", "rapidocr"):
             doc = DocumentoRico(corridas=(), origem=_pagina(motor))
             with self.subTest(motor=motor), self.assertRaises(dado_corrigido.FolhaAncorada):
                 caderno.gravar(_registro(), doc)
@@ -263,6 +293,48 @@ class CadernoDaPassadaTests(unittest.TestCase):
             self.assertFalse(caderno.gravar(_registro(), _doc_cego()))
         self.assertIsNotNone(caderno.ler("aaaa", 1))
         self.assertEqual("atrasado", ts.estado_do_backup(self.pasta))
+
+
+class LinhaCortadaTests(unittest.TestCase):
+    """Queda de luz e disco cheio cortam a última linha. Em slot, a exceção é a morte do processo a cada abertura."""
+
+    def setUp(self) -> None:
+        self.pasta = pasta_temporaria(self)
+        ts.declarar_backup(self.pasta, pasta_temporaria(self))
+        self.caderno = ts.CadernoDaPassada(self.pasta, 1)
+        self.caderno.gravar(_registro(linhas=("inteira",)), _doc_cego())
+
+    def _cortar(self) -> None:
+        with self.caderno.arquivo.open("ab") as arquivo:
+            arquivo.write(b'{"identidade": "aaaa", "folha": 1, "linhas": ["cortad')
+
+    def test_a_ultima_linha_cortada_nao_derruba_e_a_gravacao_anterior_vale(self) -> None:
+        self._cortar()
+        with self.assertLogs(ts.logger, level="WARNING"):
+            self.assertEqual(("inteira",), self.caderno.ler("aaaa", 1).linhas)
+        self.assertEqual(1, ts.linhas_ilegiveis(self.pasta, 1))
+
+    def test_o_corte_no_meio_de_um_acento_tambem_nao(self) -> None:
+        with self.caderno.arquivo.open("ab") as arquivo:
+            arquivo.write("é".encode()[:1])
+        self.assertEqual(("inteira",), self.caderno.ler("aaaa", 1).linhas)
+
+    def test_a_proxima_gravacao_nao_e_engolida_pela_linha_cortada(self) -> None:
+        self._cortar()
+        self.caderno.gravar(_registro(linhas=("depois do corte",)), _doc_cego())
+        self.assertEqual(("depois do corte",), self.caderno.ler("aaaa", 1).linhas)
+        self.assertEqual(1, ts.linhas_ilegiveis(self.pasta, 1))
+
+    def test_o_acordo_avisa(self) -> None:
+        self._cortar()
+        linhas, _codigo = ts.relatorio_do_acordo(_manifesto(_folha()), self.pasta)
+        self.assertTrue(any("ilegível" in x for x in linhas), linhas)
+
+    def test_declaracao_de_backup_ilegivel_e_nao_declarado(self) -> None:
+        (self.pasta / ts.ARQUIVO_DO_BACKUP).write_bytes(b'{"backup": ')
+        self.assertIsNone(ts.backup_declarado(self.pasta))
+        with self.assertRaises(ts.SemBackup):
+            self.caderno.gravar(_registro(), _doc_cego())
 
 
 class LinhasDaFolhaTests(unittest.TestCase):
@@ -349,6 +421,11 @@ class AcordoTests(unittest.TestCase):
         self.assertEqual({1: 2, 2: 1}, e.concluidas)
         self.assertEqual({("aaaa", 1), ("aaaa", 2)}, e.prontas)
         self.assertTrue(e.tem_numero)
+
+    def test_concluida_vazia_nao_e_verdade(self) -> None:
+        e = ts.estado_da_verdade(_manifesto(_folha()), {1: {("aaaa", 1): _registro(linhas=("", "  "))}, 2: {}})
+        self.assertEqual(set(), e.prontas)
+        self.assertEqual(0, e.concluidas[1])
 
     def test_rascunho_nao_e_verdade(self) -> None:
         e = ts.estado_da_verdade(_manifesto(_folha()), {1: {("aaaa", 1): _registro(completa=False)}, 2: {}})

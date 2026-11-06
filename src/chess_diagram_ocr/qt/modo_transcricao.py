@@ -234,11 +234,12 @@ class ModoTranscricao(QWidget):
         if self._folha is not None:
             self._relogio = _transcricao.Relogio(self._agora(), inicial=self._parado_com)
 
-    def desativar(self) -> None:
-        """O modo saiu de cena: o que estiver digitado vai ao disco, e o relógio para."""
-        self.guardar()
+    def desativar(self) -> bool:
+        """O modo saiu de cena: o que estiver digitado vai ao disco, e o relógio para. `False` é o digitado que não foi: quem chama não apaga."""
+        gravou = self.guardar()
         self._parado_com = self._segundos()
         self._tique_do_relogio.stop()
+        return gravou
 
     # ------------------------------------------------------------------------------- a passada
 
@@ -247,8 +248,15 @@ class ModoTranscricao(QWidget):
         return int(self.escolha_de_passada.currentData() or _transcricao.PASSADAS[0])
 
     def _trocar_passada(self, _indice: int = 0) -> None:
-        """**A troca fecha a folha da outra passada na tela**: o que estava digitado vai para o caderno dela, e os campos somem."""
-        self.guardar()
+        """**A troca fecha a folha da outra passada na tela**: o que estava digitado vai para o caderno dela, e os campos somem.
+
+        Se não foi, a passada volta e os campos ficam: trocar apagaria o digitado.
+        """
+        if not self.guardar():
+            self.escolha_de_passada.blockSignals(True)
+            self.escolha_de_passada.setCurrentIndex(self.escolha_de_passada.findData(self.caderno.passada if self.caderno is not None else 1))
+            self.escolha_de_passada.blockSignals(False)
+            return
         self._limpar_linhas()
         self._folha = None
         self._aberta = None
@@ -271,19 +279,30 @@ class ModoTranscricao(QWidget):
 
     def _encher_folhas(self) -> None:
         concluidas = self.caderno.concluidas() if self.caderno is not None else set()
+        atual = self.escolha_de_folha.currentData()
         self.escolha_de_folha.clear()
         for f in self._folhas_da_passada():
             marca = " ✓" if (f.identidade, f.folha) in concluidas else ""
             falta = "" if f.identidade in self._achados else " (livro não achado)"
             dupla = " · dupla" if f.dupla else ""
             self.escolha_de_folha.addItem(f"{f.identidade[:8]} folha {f.folha} · {f.producao} · {f.conteudo} · {f.lingua}{dupla}{marca}{falta}", (f.identidade, f.folha))
+        if atual is not None:
+            self._selecionar_folha(atual)
 
     # ---------------------------------------------------------------------------------- a folha
 
+    def _selecionar_folha(self, chave: tuple[str, int]) -> None:
+        """Por laço, e não por `findData`: o Qt não compara tupla de Python guardada num item."""
+        for k in range(self.escolha_de_folha.count()):
+            if self.escolha_de_folha.itemData(k) == chave:
+                self.escolha_de_folha.setCurrentIndex(k)
+                return
+
     def _trocar_folha(self, indice: int) -> None:
         dados = self.escolha_de_folha.itemData(indice)
-        if dados is not None:
-            self.abrir(*dados)
+        if dados is not None and not self.abrir(*dados) and self._folha is not None:
+            # A caixa não pode dizer uma folha com outra na tela.
+            self._selecionar_folha((self._folha.identidade, self._folha.folha))
 
     def abrir(self, identidade: str, folha: int) -> bool:
         """Abre a folha **desta** passada: o que este caderno tem dela, ou a partida. O da outra passada não chega aqui."""
@@ -298,7 +317,9 @@ class ModoTranscricao(QWidget):
         if pdf is None:
             self._dizer(strings.TRANSCRICAO_LIVRO_NAO_ACHADO)
             return False
-        self.guardar()
+        if not self.guardar():
+            # **O digitado fica na tela, e a frase da recusa fica de pé**: seguir apagaria os campos, e a frase seguinte diria que está tudo em dia.
+            return False
         try:
             aberta = _transcricao.abrir_folha(pdf, folha - 1)
         except (OSError, RuntimeError, ValueError, IndexError) as exc:
@@ -426,7 +447,7 @@ class ModoTranscricao(QWidget):
             backup_em_dia = self.caderno.gravar(self._registro(completa=completa, passada=self.caderno.passada), self._documento)
         except _FALHAS_DE_GRAVACAO as exc:
             # **Não levanta**: exceção em slot do PyQt6 mata o processo, e aqui ela é a recusa que precisa ser lida.
-            self._dizer(str(exc))
+            self._dizer(strings.TRANSCRICAO_NAO_GRAVOU.format(motivo=exc))
             return False
         self._alterada = False
         self._completa = completa
@@ -441,6 +462,9 @@ class ModoTranscricao(QWidget):
 
     def concluir(self, _marcado: bool = False) -> None:
         """A pessoa disse que a folha terminou: é só assim que ela mede, conta no acordo e estima o custo."""
+        if not any(linha.campo.text().strip() for linha in self.linhas):
+            self._dizer(strings.TRANSCRICAO_FOLHA_VAZIA)
+            return
         if self._gravar(completa=True):
             self._encher_folhas()
 
@@ -478,6 +502,9 @@ class ModoTranscricao(QWidget):
         else:
             estado = _transcricao.estado_do_backup(self.pasta)
             partes.append(strings.TRANSCRICAO_ESTADO.format(passada=self.passada, pasta=self.pasta, backup=strings.TRANSCRICAO_BACKUPS[estado]))
+            ilegiveis = _transcricao.linhas_ilegiveis(self.pasta, self.passada)
+            if ilegiveis:
+                partes.append(strings.TRANSCRICAO_LINHAS_ILEGIVEIS.format(quantas=ilegiveis))
             self._mostrar_custo()
         if not self._achados:
             partes.append(strings.TRANSCRICAO_ABRA_UM_LIVRO)
