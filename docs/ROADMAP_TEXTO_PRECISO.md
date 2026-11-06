@@ -1081,7 +1081,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Achado:* entregue sem `--user-words`, `load_system_dawg=0` e a escala pela altura-x: cada um muda o que o Tesseract
     lê, e a saída deste item pede texto idêntico ao de 2026-10-30. Ficam para a S-721, medidos. O teste de caminho
     acentuado lê numa pasta com acento, mas esta máquina é UTF-8 e não reproduz a cp1252: a conferência fica para a S-724.
-- **S-721** · Fusão por token (`text/fusao.py`).
+- **S-721** · Fusão por token (`text/fusao.py`). ✅ entregue em 2026-11-06
   - *Contexto:* cinco regras foram medidas offline sobre as mesmas linhas (tabela da 1.5); a de partida
     é a **v5** (`texto_prosa_2026-10-30/fusao_v5.py`) no digital: ganha do glifo em 25 de 26 folhas e,
     nos seis livros limpos, perde do Tesseract puro só +0,05 p.p. [0,00; +0,12]; na notação fica a +1,26
@@ -1127,6 +1127,11 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     estrato misto e na prata admitida, diferença para o Tesseract puro com IC95 contendo zero ou abaixo.
   - *Reversão:* `MotorDeTexto` ganha `"fusao"`; o padrão só muda no G102, e voltar ao glifo sozinho é
     trocar o motor, sem migração (o texto fundido é texto como outro qualquer até a S-722).
+  - *Achado:* **saída cumprida**, em `docs/metrics/texto_prosa_fusao_2026-11-06.json`. Ouro-dev, prosa contra o Tesseract puro −0,034 p.p. [−0,123; +0,025]; G1(a) 721 de 721 fora dos 3 vetos, os 3 certos; G1(b) −1,84 p.p. [−3,88; −0,65]; G2 −0,12 [−0,54; 0] e −0,02 [−0,10; 0]. Misto −0,033 [−0,119; 0]; prata admitida +0,18 [−0,12; +0,66].
+  - *Achado:* **a regra (5) como está escrita reprova a saída** (prosa de 0,24% a 0,42% no dev; +1,18 p.p. na prata admitida): é o ruído do glifo. Ela guarda só palavra que existe, atrás de `fusao.GUARDA_SO_O_QUE_EXISTE`.
+  - *Achado:* `Pas` contra `♔a5` e `Axed` contra `♘xc4` (S-723) acabam com o lance inteiro não sendo vetado. Na v3 o veto por léxico e o por letras ficaram iguais folha a folha, e não sobrou escolha a fazer.
+  - *Achado:* **da S-707 entram duas das quatro.** A âncora e `_keep_number_prefix`, sim. `_truncates_long_notation` não disparou em 57 folhas. A disputa virar revisão não muda a captura no dev e a piora na prata (30,0% para 29,2%).
+  - *Achado:* **os três ajustes da S-720 não pagam, e ficam desligados.** Altura-x +0,004 [−0,029; +0,048] e −0,007 [−0,104; +0,100]. `load_system_dawg=0`: 0 de 120 linhas mudam, porque o LSTM não lê a variável. `--user-words` com os nomes: 1 de 316 linhas muda, para pior, e o `spa` termina com erro. **A S-766 pressupõe o `--user-words`, e precisa de outro caminho.**
 - **S-722** · O modelo de página guarda o que a fusão produz.
   - *Contexto:* `LinhaLida` tem **uma** `procedencia` e **uma** `confianca` por linha
     (`text/pagina.py`); a faixa de confiança é por bloco (`documento.faixa_de_confianca`); `PROCEDENCIAS`
@@ -1252,7 +1257,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     pacote (`BUNDLE_ROOT`). Lido o código, os três arquivos antigos **não são achados no bundle**, em silêncio, e o
     `dicionario` lá não corrige nada. Não se rodou um bundle para confirmar, e não se mexeu: consertar muda o texto do
     bundle. As listas novas usam `BUNDLE_ROOT`. Fica para a S-724.
-- **S-729** · O árbitro de notação pela legalidade.
+- **S-729** · O árbitro de notação pela legalidade. ✅ entregue em 2026-11-06
   - *Contexto:* as regras 1 e 2 da S-721 são heurísticas de forma (`27.` contra `21.` → "fica o do
     glifo"). A notação tem um modelo de língua exato — a legalidade do lance a partir da posição — e
     `text/notacao.py` já importa `chess` com o `validar` deixado de fora (S-208).
@@ -1266,6 +1271,10 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Saída:* G1(c) — a fração de sequências que fecham legais não cai; e na prata, os dígitos de casa
     errados do Tesseract (`R1D`→`RID`, `P5C`→`PSC`) voltam pela gramática.
   - *Reversão:* interruptor; desligado, valem as regras de forma da S-721.
+  - *Achado:* **saída cumprida pela gramática, e não pela legalidade.** G1(c): 12 de 19 no ouro-dev, igual ao glifo; 14 de 28 na prata, contra 13 de 32. Casas válidas na prata, de 86,2% a 99,5%. Notação no dev, −0,79 p.p. [−1,30; −0,12], com a prosa intacta.
+  - *Achado:* **a legalidade alcança 2,7% dos lances no dev (29 de 1.060) e 1,8% na prata (28 de 1.550), e troca 0 e 1 lance.** Fica `ler_pagina(posicao_do_diagrama=)`, sem chamador na janela, porque a FEN custa o classificador de peças. O que alcançaria mais: da posição inicial nas folhas com `1.`, e o tabuleiro levado de uma folha à outra.
+  - *Achado:* o top-k do glifo e o `lstm_choice_mode=2` **não entram**. O segundo sai no hOCR, e `tesseract.rodar(formato="hocr")` o lê: resolve 16 dígitos em 27 folhas da prata, ao preço de um processo a mais por folha; as outras 224 trocas são de letra de peça, que é a figurina do glifo.
+  - *Achado:* `rus+eng` conferido à mão, em 8 folhas do *Пилавов*: não há ouro nem prata em russo.
 - **Portão G102:** no ouro-teste (≥ 12 livros × 6 folhas, ou o recuo da D6), CER de prosa ≤ 0,8% com teto do IC95
   ≤ 1,2%, WER ≤ 2,0% com teto ≤ 3,0%, G1, G2 e G4 (sem a D6, no teste provisório da D6, rotulado);
   **no scan, por estrato, não-inferioridade contra o Tesseract puro** (teto do IC da diferença pareada
@@ -1387,7 +1396,7 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
   - *Saída:* entra só se a diferença pareada for a favor (teto do IC < 0) em pelo menos um estrato e
     não-inferior nos outros; senão, fica registrado que não paga.
   - *Reversão:* interruptor; sem camada no PDF, o voto simplesmente não existe.
-- **S-743** · Algarismos de estilo antigo e notação oitocentista.
+- **S-743** · Algarismos de estilo antigo e notação oitocentista. ✅ entregue em 2026-11-06
   - *Contexto:* conferido na imagem pelo crítico da rodada 4: Gutmayer, Neumann, Dufresne e Bachmann
     são **Antiqua**, não Fraktur. O problema real do século XIX são os algarismos de estilo antigo, que
     destroem a casa e o número de lance — no Bachmann o Tesseract leu `10.`→`Io.`, `11.`→`ıı.`,
@@ -1399,6 +1408,7 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
     depois (a gramática da S-729 é o juiz).
   - *Saída:* nenhum `Io.`/`ıı.` nas folhas medidas; casas válidas ≥ 99%.
   - *Reversão:* constante no árbitro da S-729.
+  - *Achado:* **saída cumprida.** *Bachmann*, 19 folhas: casas válidas de 72,3% a 100%, `Io.`/`ıı.` de 1 a 0. *Neumann*, 29 folhas: de 86,2% a 100%. Sobra um `(l)` antes de lance. Validade não é acerto: da posição inicial, o *Neumann* fecha legais 33 de 47 lances contra 20 de 30, e o *Bachmann* tem começo de partida de menos para dizer algo.
 - **S-744** · Texto espaçado (*gesperrt*): `f a t a l e n` na ênfase alemã do Gutmayer volta a
   `fatalen` quando o léxico concorda. ✅ entregue em 2026-11-06
   - *Verificação:* folhas do Gutmayer com *gesperrt*: palavras espaçadas juntadas só quando o léxico

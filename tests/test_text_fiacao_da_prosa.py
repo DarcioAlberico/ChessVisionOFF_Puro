@@ -11,6 +11,7 @@ from __future__ import annotations
 import subprocess
 import unittest
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any
 from unittest import mock
 
@@ -376,6 +377,133 @@ class LixoDaReservaTests(_ComLivro):
         ]
         lida = self.ler("glifo", [_crua("h", 50)], leitor_de_linha=_Falso(folha=palavras), reserva=True)
         self.assertEqual(lida.texto(com_marcas=False), "white")
+
+
+class EstratoEmExecucaoTests(unittest.TestCase):
+    """S-721: o critério da admissão escolhe a regra, em tempo de execução."""
+
+    def _regra(self, criterio: str | None) -> str:
+        resposta = mock.Mock(criterio=criterio)
+        with mock.patch.object(camada_prosa, "admitir", return_value=resposta):
+            return leitor.regra_da_folha(object(), 0, ())
+
+    def test_produtor_fonte_livro_de_scan_e_folha_sem_camada_sao_scan(self) -> None:
+        from chess_diagram_ocr.text import admissao
+
+        for criterio in (admissao.PRODUTOR, admissao.FONTE, admissao.LIVRO_DE_SCAN, admissao.INVISIVEL, admissao.COBERTO, admissao.SEM_TEXTO):
+            with self.subTest(criterio=criterio):
+                self.assertEqual(fusao.V3, self._regra(criterio))
+
+    def test_digital_admitido_e_recusado_por_b_ou_c_sao_v5(self) -> None:
+        from chess_diagram_ocr.text import admissao
+
+        for criterio in (None, admissao.LIXO, admissao.FILEIRA_FORA):
+            with self.subTest(criterio=criterio):
+                self.assertEqual(fusao.V5, self._regra(criterio))
+
+    def test_o_interruptor_volta_a_v5(self) -> None:
+        with mock.patch.object(leitor, "REGRA_POR_ESTRATO", False):
+            self.assertEqual(fusao.V5, self._regra("d:produtor"))
+
+
+class FusaoNaPaginaTests(_ComLivro):
+    """As três verificações da S-721, no `ler_pagina`, com o PDF de verdade e a leitura trocada."""
+
+    def cruas(self, *linhas: str) -> list[Any]:
+        """As linhas pedidas e o resto da folha: com menos, a guarda acusa leitura parcial e a fusão não roda."""
+        todas = [*linhas, *([LINHA] * (self.linhas_do_pdf - len(linhas)))]
+        return [_crua(t, 50 + 18 * k) for k, t in enumerate(todas)]
+
+    def do_leitor(self, *linhas: str | None) -> _Falso:
+        return _Falso(linhas=[*linhas, *([LINHA] * (self.linhas_do_pdf - len(linhas)))])
+
+    def test_leitor_que_nao_leu_deixa_a_folha_igual_a_do_glifo_e_avisa(self) -> None:
+        cruas = self.cruas("the wbite knight wlns", "♘f3 and ♗e5 are moves")
+        lida = self.ler("fusao", cruas, leitor_de_linha=_Falso(falha="O Tesseract não foi encontrado."))
+        so_glifo = self.ler("glifo", cruas)
+        self.assertEqual([ln.texto for ln in _linhas(so_glifo)], [ln.texto for ln in _linhas(lida)])
+        self.assertIn("leitor_indisponivel", [a.codigo for a in lida.avisos])
+
+    def test_uma_linha_nao_lida_fica_com_o_glifo_e_a_outra_funde(self) -> None:
+        lida = self.ler("fusao", self.cruas("wbite wlns", "bl4ck loses"), leitor_de_linha=self.do_leitor(None, "black loses"))
+        self.assertEqual(["wbite wlns", "black loses"], [ln.texto for ln in _linhas(lida)][:2])
+
+    def test_a_juncao_de_hifen_sai_igual_com_e_sem_fusao(self) -> None:
+        cruas = self.cruas("Foi um grande em-", "barrassment para as brancas")
+        so_glifo = self.ler("glifo", cruas)
+        fundida = self.ler("fusao", cruas, leitor_de_linha=_Falso(linhas=[c.texto for c in cruas]))
+        self.assertEqual([ln.texto for ln in _linhas(so_glifo)], [ln.texto for ln in _linhas(fundida)])
+
+    def test_os_intervalos_de_negrito_e_italico_caem_no_texto_fundido(self) -> None:
+        """Quem os calcula roda **depois** da fusão, e por isso eles apontam o texto que sai."""
+        lidos: list[str] = []
+
+        def com_trechos(cruas: Sequence[Any], _marcadas: object, _escala: float, *, campo: str) -> list[Any]:
+            saida = []
+            for cru in cruas:
+                lidos.append(cru.texto)
+                inicio = cru.texto.index("knight")
+                saida.append(replace(cru, **{campo: ((inicio, inicio + len("knight")),)}))
+            return saida
+
+        with mock.patch.object(leitor, "_com_trechos", com_trechos):
+            lida = self.ler("fusao", self.cruas("the wbite knlght wins"), leitor_de_linha=self.do_leitor("the white knight wins"))
+        self.assertIn("the white knight wins", lidos)
+        self.assertNotIn("the wbite knlght wins", lidos)
+        linha = _linhas(lida)[0]
+        ((inicio, fim),) = linha.negrito_em
+        self.assertEqual("knight", linha.texto[inicio:fim])
+
+
+class ArbitroNaFolhaTests(_ComLivro):
+    """S-729: quem chama o árbitro é a fusão, e a linha seguinte entra na conta."""
+
+    def cruas(self, *linhas: str) -> list[Any]:
+        todas = [*linhas, *([LINHA] * (self.linhas_do_pdf - len(linhas)))]
+        return [_crua(t, 50 + 18 * k) for k, t in enumerate(todas)]
+
+    def _falso(self, *linhas: str) -> _Falso:
+        return _Falso(linhas=[*linhas, *([LINHA] * (self.linhas_do_pdf - len(linhas)))])
+
+    def test_a_fusao_forca_o_digito_e_a_folha_sai_com_ele(self) -> None:
+        with mock.patch.object(leitor, "regra_da_folha", return_value=fusao.V3):
+            lida = self.ler("fusao", self.cruas("Tg1 g2 and"), leitor_de_linha=self._falso("Tgı-g2 and"), lingua="deu")
+        self.assertIn("Tg1-g2 and", _linhas(lida)[0].texto)
+
+    def test_a_camada_nao_passa_pelo_arbitro(self) -> None:
+        with mock.patch.object(leitor._arbitro, "arbitrar", side_effect=AssertionError("a camada é a tinta")):  # noqa: SLF001
+            self.ler("camada_prosa", self.cruas("the white knight wins"))
+
+    def test_o_glifo_sozinho_nao_passa_pelo_arbitro(self) -> None:
+        with mock.patch.object(leitor._arbitro, "arbitrar", side_effect=AssertionError("só a fusão")):  # noqa: SLF001
+            self.ler("glifo", self.cruas("the white knight wins"))
+
+
+class PosicaoDoDiagramaTests(unittest.TestCase):
+    def _cru(self, x0: int, y0: int, x1: int, y1: int) -> Any:
+        return leitor._Cru(texto="x", caixa=boxes.Caixa(x0, y0, x1, y1), confianca=1.0, procedencia="glifo")  # noqa: SLF001
+
+    def test_a_primeira_linha_abaixo_na_mesma_coluna(self) -> None:
+        cruas = [self._cru(0, 0, 100, 10), self._cru(0, 300, 100, 310), self._cru(200, 0, 300, 10)]
+        self.assertEqual([1], leitor.linhas_depois_dos_diagramas(cruas, [(0, 50, 100, 250)]))
+
+    def test_o_diagrama_no_pe_da_coluna_olha_a_seguinte(self) -> None:
+        cruas = [self._cru(0, 0, 100, 10), self._cru(200, 0, 300, 10)]
+        self.assertEqual([1], leitor.linhas_depois_dos_diagramas(cruas, [(0, 50, 100, 250)]))
+
+    def test_o_diagrama_sem_linha_depois(self) -> None:
+        self.assertEqual([None], leitor.linhas_depois_dos_diagramas([self._cru(0, 0, 100, 10)], [(0, 50, 100, 250)]))
+
+    def test_sem_quem_leia_a_posicao_nao_ha_posicao(self) -> None:
+        self.assertEqual([], leitor.posicoes_da_folha([self._cru(0, 300, 100, 310)], [(0, 50, 100, 250)], None))
+
+    def test_o_diagrama_que_nao_se_leu_fica_de_fora(self) -> None:
+        import chess
+
+        cruas = [self._cru(0, 300, 100, 310)]
+        self.assertEqual([], leitor.posicoes_da_folha(cruas, [(0, 50, 100, 250)], lambda _n: None))
+        ((linha, tabuleiro),) = leitor.posicoes_da_folha(cruas, [(0, 50, 100, 250)], lambda _n: chess.Board())
+        self.assertEqual((0, chess.STARTING_FEN), (linha, tabuleiro.fen()))
 
 
 class ItalicoNaProsaTests(_ComLivro):

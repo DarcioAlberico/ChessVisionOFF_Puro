@@ -314,7 +314,7 @@ def compilar(args: argparse.Namespace) -> int:
             procedencia["src_sujo"] = procedencia["src_sujo"] or bool(c["src_sujo"])
             procedencia["tessdata_sha256"].update(c.get("tessdata_sha256", {}))
     relatorio = {
-        "item": "S-706: a linha de base da prosa, pelo cvoff-texto-prosa",
+        "item": args.item,
         "medido_em": args.medido_em or date.today().isoformat(),
         "pergunta": "Quanto cada motor erra na prosa (o texto que não é lance nem avaliação), por conjunto?",
         "regua": {"modulo": "src/chess_diagram_ocr/text/regua_prosa.py", "classificador": regua_prosa.VERSAO_CLASSIFICADOR,
@@ -411,6 +411,7 @@ def construir_parser() -> argparse.ArgumentParser:
     ap.add_argument("--bloco", action="append", default=[], help="nome=arquivo.jsonl[?filtro=valor&...]; o filtro vai escrito no relatório")
     ap.add_argument("--pares", default="", help="pares a mais, a-b,c-d, além dos padrão")
     ap.add_argument("--ressalva", action="append", help="frase para a chave ressalvas do relatório")
+    ap.add_argument("--item", default="S-706: a linha de base da prosa, pelo cvoff-texto-prosa", help="o que o relatório compilado responde")
     ap.add_argument("--comparar", nargs=2, metavar=("A", "B"), help="compara dois relatórios fora as chaves segundos_*")
     ap.add_argument("--importar", default="", help="nome=hip.jsonl: a hipótese de um motor de fora, com --dados e --saida")
     ap.add_argument("--repontuar", default="", help="arquivo.jsonl: refaz o placar pelos textos, com --saida")

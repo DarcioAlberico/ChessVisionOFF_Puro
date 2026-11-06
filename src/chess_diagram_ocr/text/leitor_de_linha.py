@@ -47,12 +47,12 @@ class LeitorTesseract:
     def _achado(self) -> tesseract.Motor:
         return tesseract.achar_motor() if self._motor is None else self._motor
 
-    def ler_linhas(self, recortes: Sequence[np.ndarray], *, lingua: str, dpi: int) -> Leitura:
+    def ler_linhas(self, recortes: Sequence[np.ndarray], *, lingua: str, dpi: int, sem_dicionario: bool = False) -> Leitura:
         motor = self._achado()
         if not motor.disponivel:
             return Leitura((None,) * len(recortes), motor.motivo)
         try:
-            return Leitura(tuple(tesseract.ler_linhas(recortes, lingua=lingua, dpi=dpi, motor=motor)))
+            return Leitura(tuple(tesseract.ler_linhas(recortes, lingua=lingua, dpi=dpi, motor=motor, sem_dicionario=sem_dicionario)))
         except tesseract.FalhaDoTesseract as exc:
             logger.warning("Leitura por linha falhou: %s", exc)
             return Leitura((None,) * len(recortes), str(exc))

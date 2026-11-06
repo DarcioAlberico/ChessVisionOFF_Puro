@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from chess_diagram_ocr.text import fusao
 
@@ -36,7 +37,7 @@ class ClasseDoTokenPrefixoTests(unittest.TestCase):
 
     def test_na_camada_a_prosa_vence_mesmo_fora_do_lexico(self) -> None:
         existe_na_camada = fusao.existe_na_camada(existe)
-        self.assertEqual(fusao.texto_fundido(fusao.fundir("♘e1", "Gelfand", existe=existe_na_camada)), "Gelfand")
+        self.assertEqual(fusao.texto_fundido(fusao.fundir("♘e1", "Gelfand", existe=existe_na_camada, da_camada=True)), "Gelfand")
         self.assertEqual(fusao.texto_fundido(fusao.fundir("♘e1", "Ne1", existe=existe_na_camada)), "♘e1")
 
 
@@ -67,7 +68,15 @@ class RegrasDaFusaoTests(unittest.TestCase):
         self.assertEqual(fundida("white xyz", "white"), "white")
 
     def test_guardar_a_prosa_sem_par_e_a_regra_da_s721(self) -> None:
-        self.assertEqual(fundida("white xyz", "white", guarda_prosa_sem_par=True), "white xyz")
+        self.assertEqual(fundida("white knight", "white", guarda_prosa_sem_par=True), "white knight")
+
+    def test_a_regra_5_guarda_palavra_e_nao_o_que_o_glifo_inventou(self) -> None:
+        """Medido: guardar tudo põe a prosa de 0,24% em 0,42% no ouro-dev. É o ruído do glifo que entra."""
+        self.assertEqual(fundida("white xyz", "white", guarda_prosa_sem_par=True), "white")
+
+    def test_a_palavra_guardada_tem_a_confianca_mais_baixa_da_linha(self) -> None:
+        tokens = fusao.fundir("white knight", "white", existe=existe, guarda_prosa_sem_par=True, confiancas_do_glifo=(0.4, 0.99))
+        self.assertEqual(0.4, tokens[1].confianca)
 
     def test_token_bloqueado_fica_com_o_glifo(self) -> None:
         # A camada do Chess Evolution escreve `afer` por `after`: a palavra suspeita não vence.
@@ -75,6 +84,130 @@ class RegrasDaFusaoTests(unittest.TestCase):
 
     def test_token_bloqueado_sem_par_nao_entra(self) -> None:
         self.assertEqual(fundida("white", "white afer", bloqueados=[False, True]), "white")
+
+
+class LanceInteiroNaoSeVetaTests(unittest.TestCase):
+    """As pendências da S-723 e a G1(a): `Pas`, `Axed`, `fixes` e `Das` são palavras, e a tinta era um lance."""
+
+    def existe(self, token: str) -> bool:
+        return fusao.existe_no(frozenset({"fixes", "axed", "tipo", "aguda"}), curtas=frozenset({"das", "pas", "de", "the"}))(token)
+
+    def test_o_lance_inteiro_fica(self) -> None:
+        for glifo, lido in (("♔a4", "Das"), ("♕xe5", "fixes"), ("♘xc4", "Axed"), ("♔a5", "Pas"), ("♕d6.", "de.")):
+            with self.subTest(glifo=glifo):
+                self.assertEqual(glifo, fusao.texto_fundido(fusao.fundir(glifo, lido, existe=self.existe)))
+
+    def test_o_que_o_glifo_inventa_em_palavra_ainda_perde(self) -> None:
+        for glifo, lido in (("♔e", "the"), ("♔o", "tipo"), ("WUd♔", "aguda")):
+            with self.subTest(glifo=glifo):
+                self.assertEqual(lido, fusao.texto_fundido(fusao.fundir(glifo, lido, existe=self.existe)))
+
+    def test_desligada_a_palavra_vence_o_lance_como_antes(self) -> None:
+        with mock.patch.object(fusao, "LANCE_INTEIRO_NAO_SE_VETA", False):
+            self.assertEqual("Das", fusao.texto_fundido(fusao.fundir("♔a4", "Das", existe=self.existe)))
+
+    def test_o_veto_e_ouvido_para_a_g1a(self) -> None:
+        ouvidos: list[tuple[str, str]] = []
+        with mock.patch.object(fusao, "OUVINTE_DE_VETOS", lambda g, t: ouvidos.append((g, t))):
+            fusao.fundir("♔o ♔a4", "tipo Das", existe=self.existe)
+        self.assertEqual([("♔o", "tipo")], ouvidos)
+
+
+class FiguraForaDeLanceTests(unittest.TestCase):
+    def test_contra_palavra_longa_fora_do_lexico_ela_perde(self) -> None:
+        # `ruinös` não está na lista do alemão, e `nta♔` não é lance em língua nenhuma.
+        for glifo, lido in (("nta♔.", "ruinös."), ("ge♔h1ich", "gemächlich")):
+            with self.subTest(glifo=glifo):
+                self.assertEqual(lido, fundida(glifo, lido))
+
+    def test_contra_lance_estragado_curto_ela_fica(self) -> None:
+        # O `acl` de `♖ac1`: letras, e não palavra. Sem o mínimo, o lance ia embora.
+        self.assertEqual("♖ac", fundida("♖ac", "acl"))
+
+    def test_o_lance_com_a_cor_do_enunciado_e_lance(self) -> None:
+        self.assertEqual("W♔d5,", fundida("W♔d5,", "Weds,"))
+
+    def test_a_promocao_com_figurina_e_lance(self) -> None:
+        self.assertEqual("e8♕", fundida("e8♕", "e8Wife"))
+
+
+class LanceTortoTests(unittest.TestCase):
+    def test_o_lance_estragado_sem_par_nao_entra_ao_lado_do_glifo(self) -> None:
+        """`14...♕c6` contra `14...` e `Hc6`: 14 dos erros de notação a mais do *Chess Evolution*."""
+        self.assertEqual("14...♕c6 white", fundida("14...♕c6 white", "14... Hc6 white"))
+        self.assertEqual("14 ♔h1", fundida("14 ♔h1", "14 ♔h1 &hl!,"))
+
+    def test_o_nome_que_termina_em_letra_entra(self) -> None:
+        self.assertEqual("white Hal", fundida("white", "white Hal"))
+
+    def test_o_ponto_solto_nao_e_tirado_do_lance(self) -> None:
+        self.assertEqual(".. ...♕f5,", fundida("...♕f5,", ".. Hf5,"))
+
+
+class NumeroEReticenciaTests(unittest.TestCase):
+    def test_o_numero_do_glifo_nao_se_cola_ao_lance(self) -> None:
+        for leitor in ("28711", "Ea836"):
+            with self.subTest(leitor=leitor):
+                self.assertEqual(leitor[-2:], fundida(leitor[-2:], leitor))
+
+    def test_o_numero_da_folha_que_o_glifo_cortou_volta(self) -> None:
+        self.assertEqual("1166", fundida("66", "1166"))
+
+    def test_o_numero_partido_volta_inteiro(self) -> None:
+        self.assertEqual("13 Fischer", fundida("1 3 Fischer", "13 Fischer"))
+
+    def test_a_reticencia_partida_volta_inteira(self) -> None:
+        self.assertEqual("6... ♕f6", fundida("6. . . ♕f6", "6... Wf6"))
+        self.assertEqual("37... ♘e5", fundida("37.. . ♘e5", "37... Ae5"))
+
+    def test_sem_o_leitor_ver_a_reticencia_os_pontos_ficam(self) -> None:
+        self.assertEqual("6. . . ♕f6", fundida("6. . . ♕f6", "6. Wf6"))
+
+    def test_o_sinal_que_ja_veio_na_palavra_nao_repete(self) -> None:
+        self.assertEqual("white!", fundida("white !", "white!"))
+
+
+class RegraV3Tests(unittest.TestCase):
+    """No scan, a notação em letra é do outro leitor, e só a figurina é de quem a vê."""
+
+    def v3(self, glifo: str, leitor: str, **opcoes: object) -> str:
+        return fundida(glifo, leitor, regra=fusao.V3, **opcoes)
+
+    def test_a_notacao_em_letra_vai_ao_leitor(self) -> None:
+        self.assertEqual("Lf1-d3 Kxf3", self.v3("Lf1-d8 Kxf8", "Lf1-d3 Kxf3"))
+        # Na v5 a mesma linha fica com o glifo: é o que separa as duas.
+        self.assertEqual("Lf1-d8 Kxf8", fundida("Lf1-d8 Kxf8", "Lf1-d3 Kxf3"))
+
+    def test_a_figurina_fica_com_o_glifo_e_com_o_numero_do_leitor(self) -> None:
+        self.assertEqual("17.♔xf3", self.v3("7.♔xf3", "17.Kxf3"))
+
+    def test_a_palavra_que_existe_vence_a_figurina(self) -> None:
+        self.assertEqual("the knight", self.v3("♔e knight", "the knight"))
+
+    def test_sem_par_so_a_figurina_fica(self) -> None:
+        # `Sg1-f3` é um token no Tesseract e dois no glifo: o `f3` sem par não é lance a mais.
+        self.assertEqual("Sg1-f3", self.v3("Sg1 f3", "Sg1-f3"))
+        self.assertEqual("white ♘f3", self.v3("white ♘f3", "white"))
+        self.assertEqual("white", self.v3("white 1", "white"))
+
+    def test_a_linha_que_o_leitor_leu_vazia_fica_com_o_glifo(self) -> None:
+        """No *Bachmann*, `33. Tg2-g1 Dd1-f3+` sumia inteira: o `psm 7` não leu nada, e a notação em letra não tinha par."""
+        self.assertEqual("33. Tg2 g1 Dd1 f3+", self.v3("33. Tg2 g1 Dd1 f3+", ""))
+
+    def test_a_notacao_sem_par_do_leitor_entra(self) -> None:
+        self.assertEqual("white Nf3", self.v3("white", "white Nf3"))
+
+    def test_a_regra_nao_conhecida_e_a_v5_nao(self) -> None:
+        self.assertEqual({"v5", "v3"}, set(fusao.REGRAS))
+
+
+class RegrasDaSuiteTests(unittest.TestCase):
+    """Das quatro regras de `caissa/ocr/fusion.py` que a S-707 mandou medir, a única nova que pagou."""
+
+    def test_o_parentese_do_numero_volta_junto(self) -> None:
+        self.assertEqual("(17...♘e5", fundida("7...♘e5", "(17...Ae5"))
+        with mock.patch.object(fusao, "PARENTESE_DO_NUMERO", False):
+            self.assertEqual("17...♘e5", fundida("7...♘e5", "(17...Ae5"))
 
 
 class MarcaPorPalavraTests(unittest.TestCase):
@@ -112,18 +245,45 @@ class MarcaPorPalavraTests(unittest.TestCase):
         self.assertEqual(texto[inicio:fim], "duas")
 
 
+def _importados_do_pacote(caminho: Path) -> set[str]:
+    """Os módulos irmãos em `text/` que este arquivo importa, inclusive dentro de função."""
+    nomes: set[str] = set()
+    for no in ast.walk(ast.parse(caminho.read_text(encoding="utf-8"))):
+        if isinstance(no, ast.ImportFrom) and no.level == 1:
+            if no.module:
+                nomes.add(no.module.split(".")[0])
+            else:
+                nomes.update(a.name for a in no.names)
+        elif isinstance(no, ast.ImportFrom) and no.module and no.module.startswith("chess_diagram_ocr.text"):
+            nomes.update(a.name for a in no.names)
+            nomes.add(no.module.rsplit(".", 1)[-1])
+    return nomes
+
+
 class FronteiraTests(unittest.TestCase):
-    def test_o_roteador_nao_importa_a_regua(self) -> None:
-        """O instrumento não pode compartilhar código com o medido."""
-        arvore = ast.parse(Path(fusao.__file__).read_text(encoding="utf-8"))
-        nomes = set()
-        for no in ast.walk(arvore):
-            if isinstance(no, ast.Import):
-                nomes.update(a.name for a in no.names)
-            elif isinstance(no, ast.ImportFrom):
-                nomes.add(no.module or "")
-                nomes.update(a.name for a in no.names)
-        self.assertFalse({n for n in nomes if "regua" in n or "banco" in n}, "fusao.py importou a régua")
+    def test_o_roteador_nao_alcanca_a_regua_por_grafo_nenhum(self) -> None:
+        """O instrumento não pode compartilhar código com o medido: nem direto, nem por quem `fusao.py` importa."""
+        pasta = Path(fusao.__file__).parent
+        vistos: set[str] = set()
+        faltam = ["fusao"]
+        while faltam:
+            nome = faltam.pop()
+            caminho = pasta / f"{nome}.py"
+            if nome in vistos or not caminho.is_file():
+                continue
+            vistos.add(nome)
+            faltam.extend(_importados_do_pacote(caminho))
+        self.assertIn("lexico", vistos, "o varredor de import ficou vazio")
+        self.assertFalse(vistos & {"regua_prosa", "relatorio_prosa", "bancada_prosa"}, "fusao.py alcança a régua")
+
+    def test_a_lista_de_funcionais_curtas_e_privada(self) -> None:
+        """Só `fusao.py` a escreve: no léxico compartilhado ela mudaria `dicionario.corrigir` e a junção de hífen."""
+        pasta = Path(fusao.__file__).parents[1]
+        for arquivo in pasta.rglob("*.py"):
+            if arquivo.name != "fusao.py":
+                texto = arquivo.read_text(encoding="utf-8")
+                self.assertNotIn("CURTAS_POR_LINGUA", texto, arquivo.name)
+                self.assertNotIn("fusao.CURTAS", texto, arquivo.name)
 
     def test_as_curtas_nao_foram_para_o_lexico_compartilhado(self) -> None:
         from chess_diagram_ocr.text import dicionario

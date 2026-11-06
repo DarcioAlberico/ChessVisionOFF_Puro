@@ -33,6 +33,7 @@ from typing import Any
 
 import numpy as np
 
+from . import fusao as _fusao
 from . import regua_prosa as regua
 
 logger = logging.getLogger(__name__)
@@ -221,10 +222,21 @@ def preparar_folha(
     )
 
 
+_NUMERO_DO_TOKEN = re.compile(r"^[(\[]?\d*\.*")
+
+
 def preservacao_de_figurina(glifo: Sequence[str], fundida: Sequence[str]) -> tuple[int, int]:
-    """Quantos tokens com figurina do glifo chegam idênticos ao outro texto (G1, sem referência)."""
-    figurinas = [t for linha in glifo for t in linha.split() if re.search(r"[♔-♟]", t)]
-    restam = Counter(t for linha in fundida for t in linha.split())
+    """Quantos tokens com figurina do glifo chegam ao outro texto (G1, sem referência).
+
+    **O número de lance não entra na conta**: `25♕e6+` que sai `25 ♕e6+`, ou `...♖xh4?` que recebe o `11` que o glifo partiu, chegaram.
+    A G1(a) trava a figurina, e o número é da continuidade.
+    """
+
+    def sem_numero(token: str) -> str:
+        return _NUMERO_DO_TOKEN.sub("", token)
+
+    figurinas = [sem_numero(t) for linha in glifo for t in linha.split() if re.search(r"[♔-♟]", t)]
+    restam = Counter(sem_numero(t) for linha in fundida for t in linha.split())
     presentes = 0
     for token in figurinas:
         if restam[token] > 0:
@@ -251,11 +263,18 @@ def medir_folha(folha: FolhaEmMedida, motores: Sequence[str]) -> dict[str, Any]:
     tempo: dict[str, float] = {}
     avisos: dict[str, list[str]] = {}
     preservacao: dict[str, list[int]] = {}
+    vetos: dict[str, list[list[str]]] = {}
     linhas_do_glifo = [ln.texto for ln in regua.linhas_da_pagina(folha.glifo)]
     for motor in motores:
         inicio = time.perf_counter()
         if motor in MOTORES:
-            pagina = _ler_pelo_leitor(folha, motor)
+            ouvidos: list[list[str]] = []
+            _fusao.OUVINTE_DE_VETOS = lambda glifo, palavra, destino=ouvidos: destino.append([glifo, palavra])
+            try:
+                pagina = _ler_pelo_leitor(folha, motor)
+            finally:
+                _fusao.OUVINTE_DE_VETOS = None
+            vetos[motor] = ouvidos
             linhas = [ln.texto for ln in regua.linhas_da_pagina(pagina)]
             hipoteses[motor] = regua.texto_de(linhas)
             avisos[motor] = [a.codigo for a in pagina.avisos]
@@ -273,6 +292,7 @@ def medir_folha(folha: FolhaEmMedida, motores: Sequence[str]) -> dict[str, Any]:
         "tempo": tempo,
         "avisos": avisos,
         "preservacao": preservacao,
+        "vetos": vetos,
         "n_linhas": {
             "ref": len(folha.linhas_da_referencia),
             "ref_no_diagrama": len(regua.linhas_da_pagina(folha.referencia)) - len(folha.linhas_da_referencia),
