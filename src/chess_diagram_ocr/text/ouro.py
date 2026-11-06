@@ -123,6 +123,9 @@ class Manifesto:
     sorteio: dict[str, Any] = field(default_factory=dict)
     pendencias: tuple[str, ...] = ()
     """O que o teste ainda não cumpre e foi aceito assim, com nome. Ver `PENDENCIA_DE_LINGUA`."""
+    leituras_dos_acrescentados: dict[str, str] = field(default_factory=dict)
+    """A primeira leitura de cada livro que entrou **a mais** no teste (`entrou_em`), por identidade (S-706). A data do
+    manifesto cobre os congelados; um livro que chegou depois tem o seu próprio "antes de ser lido"."""
 
     def do_split(self, split: str) -> tuple[FolhaDoOuro, ...]:
         return tuple(f for f in self.folhas if f.split == split)
@@ -143,11 +146,13 @@ def de_json(dados: dict[str, Any]) -> Manifesto:
         folhas=tuple(FolhaDoOuro(**folha) for folha in dados.get("folhas", ())),
         sorteio=dict(dados.get("sorteio", {})),
         pendencias=tuple(dados.get("pendencias", ())),
+        leituras_dos_acrescentados=dict(dados.get("leituras_dos_acrescentados", {})),
     )
 
 
 def para_json(manifesto: Manifesto) -> dict[str, Any]:
-    return {
+    """`leituras_dos_acrescentados` só aparece quando existe: sem ela, o manifesto sai byte a byte o congelado."""
+    dados: dict[str, Any] = {
         "versao": manifesto.versao,
         "congelado_em": manifesto.congelado_em,
         "primeira_leitura_do_teste": manifesto.primeira_leitura_do_teste,
@@ -156,6 +161,9 @@ def para_json(manifesto: Manifesto) -> dict[str, Any]:
         "livros": [vars(livro) for livro in manifesto.livros],
         "folhas": [vars(folha) for folha in manifesto.folhas],
     }
+    if manifesto.leituras_dos_acrescentados:
+        dados["leituras_dos_acrescentados"] = dict(sorted(manifesto.leituras_dos_acrescentados.items()))
+    return dados
 
 
 def carregar(caminho: str | Path | None = None) -> Manifesto:
@@ -167,8 +175,9 @@ def gravar(manifesto: Manifesto, caminho: str | Path) -> None:
     """Grava em LF e UTF-8, uma folha por linha, para o diff de uma troca ser de uma linha."""
     dados = para_json(manifesto)
     linhas = ["{"]
-    for chave in ("versao", "congelado_em", "primeira_leitura_do_teste", "pendencias", "sorteio"):
-        linhas.append(f"  {json.dumps(chave)}: {json.dumps(dados[chave], ensure_ascii=False)},")
+    for chave in ("versao", "congelado_em", "primeira_leitura_do_teste", "leituras_dos_acrescentados", "pendencias", "sorteio"):
+        if chave in dados:
+            linhas.append(f"  {json.dumps(chave)}: {json.dumps(dados[chave], ensure_ascii=False)},")
     for chave in ("livros", "folhas"):
         itens = [f"    {json.dumps(item, ensure_ascii=False)}" for item in dados[chave]]
         fim = "," if chave == "livros" else ""
@@ -247,10 +256,43 @@ def problemas(manifesto: Manifesto) -> list[str]:
         for livro in manifesto.livros:
             if livro.split == RESERVA and (livro.grupo or livro.identidade) in grupos_do_teste and not livro.fora_do_treino:
                 erros.append(f"livro {livro.identidade} é do grupo de um livro do teste e não está fora_do_treino")
+    entrou_em = {livro.identidade: livro.entrou_em for livro in manifesto.livros}
+    for identidade, lido_em in manifesto.leituras_dos_acrescentados.items():
+        if not entrou_em.get(identidade):
+            erros.append(f"leitura registrada de {identidade}, que não é um livro acrescentado ao teste")
+        elif not _DATA.fullmatch(str(lido_em)) or str(lido_em) < entrou_em[identidade]:
+            erros.append(f"o livro {identidade} foi lido em {lido_em!r}, antes de entrar no teste em {entrou_em[identidade]}")
     desconhecidas = sorted(set(manifesto.pendencias) - {PENDENCIA_DE_LINGUA})
     if desconhecidas:
         erros.append(f"pendências sem regra: {desconhecidas}")
     return erros
+
+
+def registrar_leitura_do_teste(manifesto: Manifesto, data: str, identidades: Iterable[str]) -> Manifesto:
+    """O manifesto depois de `identidades` do teste serem lidas em `data`: quem abre o teste chama isto **antes** de ler.
+
+    Só a primeira leitura grava. Um livro congelado marca `primeira_leitura_do_teste`; um acrescentado depois, a
+    linha dele em `leituras_dos_acrescentados`. Livro que não é do teste levanta: a data diria que algo foi aberto, e
+    não foi.
+    """
+    if not _DATA.fullmatch(data):
+        raise ValueError(f"data de leitura sem o formato AAAA-MM-DD: {data!r}")
+    livros = {livro.identidade: livro for livro in manifesto.livros}
+    leituras = dict(manifesto.leituras_dos_acrescentados)
+    primeira = manifesto.primeira_leitura_do_teste
+    for identidade in identidades:
+        livro = livros.get(identidade)
+        if livro is None or livro.split != TESTE:
+            raise ValueError(f"o livro {identidade} não é do teste")
+        if livro.entrou_em:
+            leituras.setdefault(identidade, data)
+        elif primeira is None:
+            primeira = data
+    novo = replace(manifesto, primeira_leitura_do_teste=primeira, leituras_dos_acrescentados=leituras)
+    erros = problemas(novo)
+    if erros:
+        raise ValueError(f"a leitura de {data} invalida o manifesto: {erros}")
+    return novo
 
 
 def acrescentar_ao_teste(

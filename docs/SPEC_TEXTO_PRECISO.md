@@ -269,6 +269,199 @@ leitura de cada um.
 admissão e o manifesto não têm chamador em produção até a S-716.
 
 
+## S-700 · A régua no pacote ✅ implementada (2026-11-06)
+
+**Problema.** A régua morava em `docs/metrics/texto_prosa_2026-10-30/banco.py`, sem teste, e seis medições já se
+apoiavam nela. O `Placar.somar` dela perdia inserção, WER e figurina, e a normalização não era idempotente:
+`a-\n\nb` e `a-\nb-\nc` só se juntavam na segunda passada.
+
+**Decisão.** `src/chess_diagram_ocr/text/regua_prosa.py`, sem I/O: `normalizar(texto, modo, lingua)`,
+`classe_do_token(token, lingua)`, `classes_por_char`, `alinhar`, `pontuar(ref, hip, lingua)` → `Placar`, mais a
+`familia` de cada palavra errada, o `ic95` de dois níveis e a `diferenca_pareada` (semente 7, 2.000 reamostras), e as
+funções puras da montagem (`linhas_da_pagina`, `cruza_diagrama`, `crescer_diagrama`). O espaço colapsa antes de o hífen
+juntar, e o hífen não consome as letras em volta: é o conserto da idempotência. O módulo não importa nada do pacote: em
+particular, nem `text/fusao.py` nem o caminho contrário, porque o instrumento não pode dividir código com o medido.
+
+**Critério de aceite.** `tests/test_text_regua_prosa.py`: alinhamento contra Levenshtein de força bruta em 500 pares;
+atribuição de inserção, inclusive no fim do texto; `if the`→`ifthe` custa no CER de prosa e dá S=1, D=1; token inventado
+dá I=1; normalização idempotente em 2.000 textos sorteados.
+
+**A saída: reproduzido até a 4ª casa.** `docs/metrics/texto_prosa_2026-11-06/reproduzir_regua.py` repontua os JSONL de
+2026-10-30 sem rodar motor. Com o classificador do protótipo injetado (`classificar=`) e a normalização do protótipo: **zero
+diferença** em CER, WER, notação, espaço, figurina e inserções, nos quatro conjuntos do ouro e nos dois conferidos
+sem eles (`degradado`, `prata_admitida`); é a prova do alinhamento e do placar. Com a normalização nova, os ouros seguem sem diferença, e
+degradado e prata mudam até 0,1 p.p. no `tess_oraculo` da prata (0,02 p.p. no resto): é só a linha lida vazia, onde o hífen agora se
+junta. A diferença que sobra é a do classificador da S-701, medida abaixo.
+
+**Achado: o `tess_pagina` publicado em 2026-10-30 estava inflado por CRLF.** O stdout do Tesseract no Windows vem em `\r\n`
+(1.328 `\r` nas 28 folhas do ouro), e o protótipo pagava um erro por linha só por isso: na folha 155 do Dvoretsky, 33 erros de
+prosa contra 3, com os mesmos 286 tokens. `normalizar` agora faz de toda quebra `\n`, e o `--prototipo` só reproduz o `tess_pagina`
+com a normalização antiga. A frase do roadmap "numa folha normal é pior que as caixas do glifo" fica para ser relida com o número
+novo da S-713.
+
+**Desvios.** O `Placar.wer_prosa()` agora é o (S+D+I)/N que o relatório publica; o do protótipo era `1 − palavras certas / N`,
+que nenhum relatório usava.
+
+## S-701 · O classificador de token, testado contra o que já enganou ✅ implementada (2026-11-06)
+
+**Problema.** Metade do erro que parecia de reconhecimento em 2026-10-30 era de régua, e ainda era: o lixo de figurina
+da camada de terceiro contava como prosa, e o lance com sinal colado também (memória `lance-com-sinal-e-regua-cega`).
+
+**Decisão.** `classe_do_token(token, lingua)` devolve `prosa`, `notacao`, `outro` ou **`ruido`**, com
+`VERSAO_CLASSIFICADOR` no relatório.
+
+- **Letra de peça por língua só acrescenta** (`LETRAS_DE_PECA`, as oito do acervo, nos códigos de três letras; aceita `pt` e
+  `eng+por`). `B`, `D`, `T`, `C`, `R`, `N`, `K`, `Q`, `S`, `L`, `F` soltos são notação em qualquer livro, como no protótipo:
+  a régua é inclusiva, e restringir à língua tiraria da notação o `Q` de um livro em português que cita em inglês. `P`
+  só é peça em holandês, e `Кр`, `Ф`, `Л`, `С`, `К` só em russo. **`A` solto é prosa até em espanhol**, onde é quase sempre a preposição.
+- **Novo em notação:** `19.Bd3`, `Rfc1²`, `Rxg5i`, `24...f4e` (sinal em código de fonte); `1...B`;
+  `Nc5).`; `Rg8-Rg6.`; `6…g6!?`, `8.Rxg6+–`; `31.Bxg6fxg632.Qf4` (a camada sem espaço); `97×f6)`.
+- **Saiu de notação:** `b3-pawn`, `f4-pawn,` (o regex cirílico sem âncora no fim), `af7anca`.
+- **Novo `ruido`:** o que termina numa casa e não tem peça nem palavra antes (`.l:tb1`, `'ii'xa4`, `Wxf7`, `tlld7+`, `©e7`,
+  `\x15d7`; `peão-g6` continua prosa, pela vogal), os padrões da admissão, `=I=`, e a letra solta de fonte (`ç`, `æ+`).
+- **Linha** só de `a–h`/`1–8` (quatro ou mais, todos diferentes), `abcdefgh`, ou só de letras acentuadas, é `outro`.
+- **Retângulo de diagrama crescido de uma casa** ao excluir linhas da referência, mas só para a linha sem palavra nem lance
+  (`fora_da_referencia`). *Desvio do roadmap, medido:* nas 27 folhas do dev o retângulo crescido tira 15 linhas a mais, e 9 são
+  texto de verdade ao lado do diagrama (`As brancas jogam`), que contariam como inserção de todo motor que as leu certo. As 6 que
+  ele tinha de tirar são a fileira do Seirawan, e seguem saindo.
+
+**Critério de aceite.** Tabela de 124 tokens rotulados à mão nas oito línguas, zero divergência; 26 que a régua recusa como
+prosa, um por família da seção 1.6. Os casos saíram também de varrer os JSONL de 2026-10-30 atrás de "prosa" com dígito ou sinal.
+
+**O efeito, medido nos JSONL de 2026-10-30, sem rodar motor** (CER de prosa, `tip`, publicado → classificador novo):
+
+| conjunto | glifo | Tesseract | oráculo | fusão v5 |
+|---|---:|---:|---:|---:|
+| ouro sem folha perdida | 3,61 → 3,59% | 1,33 → 1,32% | 0,16 → 0,15% | 1,25 → 1,23% |
+| ouro, seis livros limpos | 2,47 → 2,44% | 0,23 → 0,22% | 0,10 → 0,09% | 0,28 → 0,25% |
+| degradado médio | 57,16 → 57,16% | 18,61 → 18,53% | 6,50 → 6,44% | 19,22 → 19,15% |
+| prata admitida | 14,37 → 12,71% | **6,03 → 3,85%** | **3,65 → 1,40%** | **7,00 → 4,84%** |
+
+No ouro o conserto é pequeno: 6 tokens de 5.647 mudam de classe nas 28 folhas, e 4 no estrato misto. **Na prata não:** 244
+tokens de lixo de figurina saem da prosa, e o erro do Tesseract cai em um terço. O WER dela vai de 13,12% a 7,68%. A prata
+continua só ordenando, mas o número de scan "6,0% do Tesseract" do roadmap era em boa parte a figurina escrita como lixo.
+
+*Achado:* `text/notacao.fatiar` continua conservador (S-208), e o classificador da fusão, próprio dela, ainda não reconhece
+`Rg8-Rg6` nem `31.Bxg6fxg632`: são dois instrumentos, e a guarda de grafo de import é de outro item.
+
+## S-704 · A degradação sintética, reprodutível, em duas famílias ✅ implementada (2026-11-06)
+
+**Problema.** O perfil `medio` de 2026-10-30 equivale a ~110 dpi e leva o glifo a 57,2%, contra 14,4% na prata: não foi calibrado
+contra nada, morava num script, e a semente era o índice da folha.
+
+**Decisão.** `src/chess_diagram_ocr/text/degradacao.py`: `aplicar(img_rgb, perfil, semente)`, `semente_da_folha(identidade, folha)`
+(não depende da ordem da corrida), geometria intacta. **Duas famílias com geradores diferentes:** `AUMENTO`, os cinco perfis de
+`degradar.py`, byte a byte (reduz, desfoca, ruído gaussiano, manchas, JPEG; `default_rng`), que o aumento de dados da Fase 105 pode
+ver; e `RESERVADA`, três perfis `fotocopia_*`, outra física (tinta que borra desigual, sombra de baixa frequência, contraste amassado,
+estrias de sensor, poeira em grumos; sem redução nem JPEG; `MT19937`), **só para medir a M5**. `perfil_de_aumento` recusa os nomes dela.
+
+**O perfil `calibrado` fica pendente, com o recuo.** Ele depende da S-703 (humano, D3). `aplicar(..., "calibrado")` levanta
+`PerfilPendente` com a frase do recuo da seção 7: a M5 fica sem número, e os perfis publicados dizem que não foram calibrados. Os
+números de `fotocopia_*` também não saíram de scan real.
+
+**Critério de aceite.** `tests/test_text_degradacao.py`: mesma folha e semente dão os mesmos bytes, no mesmo processo e em outro;
+a família de aumento é o protótipo byte a byte; a tinta fica a até 2 px; o aumento recusa a família reservada.
+
+**Desvios.** A verificação pede o `resumo.py` do Tesseract no perfil calibrado contra o scan-ouro-dev: não existe sem a S-703. O
+`degradado` da linha de base da S-706 usa `semente_da_folha`, e não o índice, por isso não é o mesmo ruído de 2026-10-30.
+
+## S-705 · A prata, só para ordenar ✅ implementada (2026-11-06)
+
+**Problema.** Os scans com camada de terceiro eram uma lista num relatório, sem estrato, e os números deles se liam como erro.
+
+**Decisão.** `assets/texto_prosa/prata.json` (versionado, só identidades) e `src/chess_diagram_ocr/text/prata.py`: `carregar`, `gravar`,
+`problemas` (com o ouro à mão, também o livro que estivesse nos dois) e `estrato_de_producao(fontes, dpi)`, sem leitor nenhum. São os
+dez livros e as trinta folhas de `prata_todas` de 2026-10-30, para a ordenação continuar comparável: 3 `clearscan` (fontes `Fd<n>`),
+3 `ate_150` e 4 `de_300`. `docs/metrics/texto_prosa_2026-11-06/prata_manifesto.py` o escreve. O relatório carimba `"uso": "ordenação"`
+em todo dicionário com número da prata, e a tela imprime a palavra ao lado de cada um; `compilar_bloco` recusa folha de conjunto,
+split ou perfil diferentes num bloco só, e é assim que a prata nunca se soma ao ouro.
+
+**Critério de aceite.** `tests/test_text_prata.py` e `BlocoTests` em `tests/test_cli_texto_prosa.py`; o filtro `oraculo_max=0.10` fica
+escrito em `prata_admitida`. **Medido (ordenação):** no bloco `prata`, Tesseract na página 8,25%, nas linhas certas 9,20%, nas do glifo 10,08%, fusão
+11,14%, glifo 21,20%, suíte 24,01%, com os três estratos separados.
+
+*Achado:* folha de duas colunas na prata não fecha com a montagem da camada, e o CER dela mede a ordem junto. Por isso o relatório publica
+`palavras_de_prosa_achadas_em_qualquer_ordem` ao lado: Tesseract na página 92,3%, suíte 91,7%, Tesseract nas linhas do glifo 89,0%, fusão 88,3%.
+
+## S-706 · `cvoff-texto-prosa` e a linha de base publicada ✅ implementada (2026-11-06)
+
+**Problema.** Cada medição da prosa saía de um script próprio; nenhum gravava a abertura do teste, e todos deixavam o JSONL perto do repositório.
+
+**Decisão.** Três peças. `text/bancada_prosa.py`: `preparar_folha`, `medir_folha`, os motores `tess`, `tess_oraculo`, `tess_pagina`, e `registrar_motor`,
+`motor_de_linha`. `text/relatorio_prosa.py`: agrega sem texto de livro, com `achatar` e `diferencas`. `cli/texto_prosa.py`, a entrada `cvoff-texto-prosa`.
+
+- **Medir** grava um JSONL por folha em `--dados`, recusado dentro do repositório. `--limite-segundos` para depois da folha em curso, e o mesmo
+  `--dados` continua. Cada processo descarta uma leitura de aquecimento; cada folha traz `codigo` (pacote, commit, `src_sujo`, modelo, Tesseract, `tessdata`).
+  `--exigir-src` aborta se o pacote importado for de outra árvore.
+- **O teste** pede `--abrir-teste`, grava `primeira_leitura_do_teste` **antes** de ler (`ouro.registrar_leitura_do_teste`) e não imprime número por folha.
+  O livro acrescentado depois do congelamento grava em `leituras_dos_acrescentados`, só presente quando existe, e `ouro.problemas` reprova a leitura de
+  antes de `entrou_em`. A data é a da primeira abertura, e não sobe.
+- **`--compilar`** escreve IC95 de dois níveis, `tip` e `cru`, taxonomia por família com o livro de origem (sem exemplo), pares, `por_estrato`,
+  `por_livro` e `segundos_*` à parte. O filtro vem na linha do bloco (`nome=a.jsonl?oraculo_max=0.10`) e vai escrito no relatório. O bloco do teste sai sem
+  `por_livro` e sem livro na taxonomia; o pior livro sai como número, sem nome.
+- **`--conferir-admissao`** lista folha recusada e critério, sem leitor. Não conta como leitura do teste: é a mesma admissão que o sorteio já fez.
+  Medido: **0 recusadas** em 27 do dev e em 96 do teste.
+- **`--comparar`**, `--importar nome=hip.jsonl` (motor de outro processo, `{identidade, folha, texto}`) e `--repontuar`.
+
+**Como medir um motor novo (a S-721).** O que entra por `ler_pagina(motor="nome")`: `--motor nome`, e nada mais; mudar a regra da fusão e rodar `--motor fusao`
+mede a regra nova. Uma função sobre a folha: `bancada_prosa.registrar_motor("nome", funcao)`. Outro `LeitorDeLinha`: `motor_de_linha(leitor)`. Outro processo: `--importar`.
+Num worktree, `python -m chess_diagram_ocr.cli.texto_prosa` com `PYTHONPATH=<worktree>/src` e `CVOFF_RAIZ` no checkout com os PDF; o `cvoff-*` instalado importa o principal.
+A sequência da medição está em `docs/metrics/texto_prosa_2026-11-06/compilar_g100.sh`.
+
+**O portão G100: passou, com o relatório em `docs/metrics/texto_prosa_20261106.json`.** Duas corridas no dev, no degradado e na prata, **zero diferença** fora `segundos_*`
+(`--comparar`; no degradado, a segunda corrida foi num worktree limpo no mesmo commit, e a única diferença é o nome da pasta do pacote); o teste correu uma vez, de propósito, com `primeira_leitura_do_teste = 2026-11-06` gravada antes. Medido em `3ebb61ec` (árvore limpa), compilado depois.
+
+| CER de prosa, `tip` [IC95 de dois níveis] | glifo (`auto`) | camada na prosa | fusão | Tesseract | oráculo | Tesseract na página | suíte |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| ouro-dev, 27 folhas, 5 livros | 2,82% [0,78; 4,82] | 0,20% [0; 0,62] | 0,32% [0,07; 0,82] | 0,27% | 0,11% | 0,37% | 0,36% |
+| WER (S+D+I) no dev | 11,47% | 0,29% | 1,04% | 0,97% | 0,80% | 2,20% | 2,58% |
+| **ouro-teste, 96 folhas, 16 livros** | **6,93% [3,31; 12,19]** | **3,25% [0,75; 7,12]** | — | — | — | — | — |
+| WER no teste | 18,66% | 3,78% | — | — | — | — | — |
+| degradado médio (dev), sem calibração | 49,91% | — | 11,72% | 10,74% | 1,55% | 2,36% | — |
+| prata admitida, 19 folhas (ordenação) | 11,27% | — | 3,90% | 3,12% | 1,78% | 2,77% | 14,37% |
+
+**O dev é otimista, e o teste diz quanto:** o glifo erra 2,5 vezes mais nos livros que nunca serviram para desenhar nada. A camada na prosa contra a própria camada dá 3,25% no teste,
+com 99,4% das palavras achadas em qualquer ordem: o que sobra ali é montagem, e é a M0 do G107 que julga isso, não esta linha de base. Nenhuma folha do teste se perdeu pelo leiaute, e nenhum
+aviso saiu. O tempo foi medido sob contenção, e não julga o G4.
+
+**Desvios.** A linha de base do teste é só de `auto` e `camada_prosa`, porque o portão o abriu só para o padrão de hoje; `fusao` no teste fica para o G102. O `--conjunto scan-ouro --acordo` da S-703
+não existe: depende do trabalho humano. A G5 (`captura`) e a G1 (c), de legalidade, não entraram no relatório: são de portões de outras fases, e o `medir.py` da primeira entrega segue valendo para a G5.
+
+**Critério de aceite.** `tests/test_cli_texto_prosa.py`: o teste não abre sem pedir, a data está gravada na primeira leitura, a segunda abertura não a muda, o relatório sai sem as palavras do livro,
+duas corridas iguais, `--comparar` acusa diferença fora do tempo, filtro escrito, motor registrado e importado. `RelatorioPublicadoTests` confere o relatório versionado. `tests/test_text_prata.py`, a guarda por livro acrescentado.
+
+## S-707 · A suíte irmã na mesma régua, e o que a S-721 reaproveita ✅ implementada (2026-11-06)
+
+**Medida.** `docs/metrics/texto_prosa_2026-11-06/suite_ler.py`, com o Python da suíte (`claude/rotulagem-diagramas`, `39ab634`) e nada escrito lá: `OcrService.recognize_image` a 300 dpi, a
+configuração padrão dela, nas folhas do ouro-dev e da prata, importado como motor `suite`. **`recognize_image`, e não `recognize` com o PDF:** com a página na mão, ela lê primeiro a camada, e medir isso contra
+a camada daria ~0 por construção. **Os diagramas vão pintados de branco** (`suite_diagramas.py`, os retângulos da régua): em produção ela os recebe da frente de visão, e por `recognize_image` eles não têm
+por onde entrar. Sem a máscara ela inventa texto no tabuleiro: 1,27% de CER no dev, contra 0,36% com ela. Os modelos Tesseract por livro **não foram medidos**: `book_anchor` só existe com um livro registrado, e nenhum das folhas tem.
+
+| | fusão (tronco) | suíte | fusão − suíte |
+|---|---:|---:|---|
+| dev: CER de prosa | 0,32% | 0,36% | −0,03 p.p. [−0,76; +0,53], **empate** |
+| dev: WER de prosa | 1,04% | 2,58% | |
+| dev: palavras achadas em qualquer ordem | 99,37% | 99,42% | |
+| dev: CER de notação | 11,07% | 12,21% | −1,14 p.p. [−5,46; +1,67] |
+| dev: figurina, revocação / precisão | **83,8% / 85,3%** | **49,7% / 80,5%** | |
+| prata (ordenação): CER de prosa | 11,14% | 24,01% | −12,87 p.p. [−23,39; −4,11] |
+| prata (ordenação): palavras achadas em qualquer ordem | 88,29% | 91,68% | |
+
+Por estrato, na prata (ordenação), fusão contra suíte: `clearscan` 2,80% e 18,71%; `ate_150` 17,74% e 28,51%; `de_300` 14,17% e 25,77%. **Esse CER não decide:** a suíte acha mais palavras que a fusão, e paga pela ordem em que as lê, contra uma
+referência que é o OCR de outro. No dev, por livro, ela ganha na prosa em três (*Hertan* 0,29% contra 0,94%, *Dvoretsky* 0,08% contra 0,21%) e perde no Seirawan (1,31% contra 0,09%): é o leiaute do Tesseract, e o Tesseract na página mostra o mesmo.
+
+**A decisão, escrita para a S-721.** O pipeline dela não entra: na prosa empata com a fusão, e perde 34 p.p. de revocação de figurina, porque só pede o glifo na região que parece notação e ancora tudo no Tesseract. A regra de roteamento do tronco (notação de qualquer lado ao glifo) fica.
+O árbitro por região também não: a pergunta dele, "a camada é confiável?", a S-716 responde pela admissão, sem depender do motor avaliado. **O que a S-721 leva da suíte são regras de `caissa/ocr/fusion.py`, cada uma medida na régua antes de entrar:**
+
+1. *A âncora não se troca por outra leitura quando já é palavra ou lance* (regra 4 do módulo; lá, sem ela o CER de uma página de fax foi de 0,031 a 0,082). É a generalização do veto de léxico da fusão v5.
+2. *`_keep_number_prefix`*: o número de lance da âncora sobrevive à troca (`17...Ae5` e `7...♘e5` dão `17...♘e5`). É a regra 2 da fusão, com o parêntese aberto a mais.
+3. *`_truncates_long_notation`*: leitura mais curta que é um pedaço da notação longa não vence (`h5–h4.` contra `...h7—h5—h4.`).
+4. *Disputa vira revisão* (regra 6): o slot sem vencedor claro fica com a âncora e marca revisar. Serve à G5 da S-718, que hoje captura 26 a 50%.
+
+**Fora da régua de hoje:** o leiaute. O Tesseract na página acha 92,3% das palavras na prata contra 88,3% da fusão, e é a S-712 e a S-715 que respondem a isso, e não a S-721. A **D9** (quem escreve o livro exportado) segue do dono: o medido recomenda o tronco enviar as folhas, por causa da figurina.
+
+**Critério de aceite.** Motor `suite` no `ouro_dev` e na `prata`, com os pares `fusao - suite`, e `RelatorioPublicadoTests` o confere. A suíte não foi tocada: `git status` dela igual antes e depois. **Desvio:** o roadmap pede `resumo.py --pares`; quem dá o par é o relatório do `cvoff-texto-prosa`.
+
 ## S-710 · Guarda de leitura incompleta, e o campo de avisos que a página não tinha ✅ implementada (2026-11-05)
 
 ### Problema
@@ -446,6 +639,22 @@ de 0,5, e o aviso é verdadeiro. `metrics/texto_estilo_por_motor.json` foi remed
   as duas colunas. Ele é parte do que sobra da perda de leiaute, e é da detecção de região.
 - **Na prata, duas folhas pioram na fusão:** *Kmoch* 30 e 105. A camada do *Kmoch* é desalinhada da tinta, e a régua ali é fraca.
 - **A faixa entre 3 e 8 escalas não foi examinada caixa a caixa**: título e capitular ficam, e uma foto com menos de 80% de tinta também.
+
+## S-713 · A perda de leiaute como métrica de primeira classe ✅ implementada (2026-11-06)
+
+**Decisão.** `relatorio_prosa` publica `perda_de_leiaute` em todo bloco que tem `tess` e `tess_oraculo`: a diferença pareada com IC95 de dois níveis, `cer_tess`, `cer_tess_oraculo` e `cer_tess_pagina` ao lado, e, por livro, a mesma conta com IC por folha. O bloco do teste sairia sem o por livro.
+
+| | perda de leiaute | Tesseract nas linhas do glifo | oráculo | Tesseract na página |
+|---|---:|---:|---:|---:|
+| ouro-dev | **+0,16 p.p. [−0,01; +0,56]** | 0,27% | 0,11% | 0,37% |
+| degradado médio | **+9,19 p.p. [+3,74; +15,53]** | 10,74% | 1,55% | 2,36% |
+| prata (ordenação) | +0,88 p.p. [−1,61; +2,94] | 10,08% | 9,20% | 8,25% |
+
+No dev, o custo mora num livro: o *Hertan*, +0,63 p.p. [0; +1,59]; os outros quatro dão 0. O orçamento da seção 3 é ≤ +0,10 p.p., e o ponto não cabe nele. A S-714 pede ≤ 2 p.p. no perfil médio, e está a +9,19.
+
+*Achado:* **a reserva custa menos do que a seção 1 dizia.** O `tess_pagina` publicado em 2026-10-30 pagava um erro por linha, de CRLF (S-700): 0,37% no dev, e não os 2,24% de lá, medidos em outros livros também. Ele é o melhor na prata e no degradado, depois do oráculo.
+
+**Critério de aceite.** `test_perda_de_leiaute_por_livro_com_ic_e_tess_pagina`, e o relatório versionado traz os cinco livros do dev (`RelatorioPublicadoTests`).
 
 ## S-715 · O leiaute de reserva ✅ implementada (2026-11-05)
 

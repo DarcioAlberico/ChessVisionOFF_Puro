@@ -179,7 +179,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **47 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **48 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao abaixo; `--help` lista o resto.
@@ -1432,7 +1432,9 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   "Camada na prosa" (S-716) e "Glifo + Tesseract" (S-717), a marca por palavra (S-718) e o executor
   do Tesseract (S-720), com os numeros em `docs/metrics/texto_prosa_primeira_entrega.json`
   e a caixa que nao e letra, que intercalava a coluna inteira (S-712), em
-  `docs/metrics/texto_prosa_s712.json`
+  `docs/metrics/texto_prosa_s712.json`; e a regua no pacote com `cvoff-texto-prosa` (S-700 a S-707, S-713),
+  com a linha de base em `docs/metrics/texto_prosa_20261106.json`: glifo 2,82% no ouro-dev e 6,93% no
+  ouro-teste, aberto uma vez, e a suite irma na mesma regua
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`
