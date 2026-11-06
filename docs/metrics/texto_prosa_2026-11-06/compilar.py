@@ -7,15 +7,17 @@ nos conjuntos, `medir.py perdidas`, `medir.py varrer`, e `censo_de_linhas.py`. `
 
 Na pasta, com `T` em `antes` e `depois`: `ce_T`, `nv_T`, `ouro_T`, `prata_T` .jsonl; e mais:
 
-- `prata_gigantes.jsonl` e `ce_gigantes.jsonl`, `nv_gigantes.jsonl`: com `duas_linhas.PARTIR_LINHA_ALTA` desligada;
+- `prata_gigantes.jsonl` e `nv_gigantes.jsonl`: com `duas_linhas.PARTIR_LINHA_ALTA` desligada;
 - `censo_antes`, `censo_gigantes`, `censo_depois` .jsonl: `censo_de_linhas.py`, com `--sem-particao` no segundo;
-- `ouro_altas.json`, `ouro_altas_so_gigantes.json`: `censo_de_linhas.py --ouro`;
+- `ouro_altas_antes.json`, `ouro_altas.json`, `ouro_altas_so_gigantes.json`: `censo_de_linhas.py --ouro`;
 - `auditoria.json`: `auditoria_das_caixas.py`;
+- `equivalencia_da_tinta.json`: `equivalencia_da_tinta.py`;
 - `perdidas`, `amostra_ce`, `varrer` .jsonl: `medir.py`.
 """
 from __future__ import annotations
 
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -23,6 +25,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "texto_prosa_2026-11-05"))
 
 import medir  # noqa: E402
+
+
+CONFERIDO = (
+    "as 47 caixas que tocam a camada ou em que o Tesseract le palavra de 3 letras, e o mosaico das 264 de tamanho de letra: 19 fios sao as "
+    "barras do codigo de barras de uma contracapa; 7 sao a faixa do Chess Evolution, com o titulo dela; a caixa do Nunn 326 e a moldura de "
+    "uma tabela, unica a sair da folha, e as letras de dentro ficam; o resto e capa, contracapa, foto, anuncio, ornamento e um tabuleiro "
+    "que o detector nao viu. Duas eram letra: o n e o u do titulo da capa do Estrin, classe mancha, devolvidas por TINTA_DE_MANCHA 0,9"
+)
 
 
 def _resumo(pasta: Path, nomes: list[str], commit: str) -> dict:
@@ -69,6 +79,17 @@ def _folha_a_folha(a: Path, b: Path, motor: str) -> dict:
         "melhoraram": sum(erros(depois[k]) < erros(antes[k]) for k in antes),
         "pioraram": sum(erros(depois[k]) > erros(antes[k]) for k in antes),
         "iguais": sum(erros(depois[k]) == erros(antes[k]) for k in antes),
+        "as_que_pioraram": [[k[0], k[1], erros(antes[k]), erros(depois[k])] for k in sorted(antes) if erros(depois[k]) > erros(antes[k])],
+    }
+
+
+def _ligaduras_perdidas(caminho: Path) -> dict:
+    """`afer` e `lef` na camada, sem o `t` que a tinta tem: o Tesseract acerta a palavra, e a régua conta erro."""
+    regs = _registros(caminho)
+    achadas = sum(len(re.findall(r"\b(?:afer|lef)\b", r["ref"], re.IGNORECASE)) for r in regs)
+    return {
+        "ocorrencias_na_referencia": achadas,
+        "erros_de_prosa_do_tesseract": sum(r["placar"]["tess|tip"]["erros"]["prosa"] for r in regs),
     }
 
 
@@ -93,6 +114,11 @@ def main(saida: str, pasta_: str, antes: str, depois: str, estilo: str) -> None:
             "depois": _resumo(pasta, ["nv_depois"], depois)["portao_da_s711"],
             "tess_folha_a_folha": _folha_a_folha(pasta / "nv_antes.jsonl", pasta / "nv_depois.jsonl", "tess"),
             "glifo_folha_a_folha": _folha_a_folha(pasta / "nv_antes.jsonl", pasta / "nv_depois.jsonl", "glifo"),
+            "ligaduras_perdidas_na_camada": _ligaduras_perdidas(pasta / "nv_depois.jsonl"),
+            "cer_de_prosa_por_motor": {
+                lado: {motor: medir._taxa(_registros(pasta / f"nv_{lado}.jsonl"), motor) for motor in ("glifo", "fusao", "tess")}
+                for lado in ("antes", "depois")
+            },
         },
         "conjuntos": {
             nome: {"antes": ant["conjuntos"][nome], "depois": dep["conjuntos"][nome]} for nome in dep["conjuntos"]
@@ -101,6 +127,9 @@ def main(saida: str, pasta_: str, antes: str, depois: str, estilo: str) -> None:
             "glifo": _folha_a_folha(pasta / "ouro_antes.jsonl", pasta / "ouro_depois.jsonl", "glifo"),
             "camada_prosa": _folha_a_folha(pasta / "ouro_antes.jsonl", pasta / "ouro_depois.jsonl", "camada_prosa"),
             "texto_do_glifo": _textos_iguais(pasta / "ouro_antes.jsonl", pasta / "ouro_depois.jsonl", "glifo"),
+        },
+        "prata_folha_a_folha": {
+            motor: _folha_a_folha(pasta / "prata_antes.jsonl", pasta / "prata_depois.jsonl", motor) for motor in ("glifo", "fusao", "tess")
         },
         "particao_sozinha_na_prata": {
             "nota": "gigantes ligado nos dois lados; só a partição pela projeção muda",
@@ -127,10 +156,16 @@ def main(saida: str, pasta_: str, antes: str, depois: str, estilo: str) -> None:
             "antes": _censo(pasta / "censo_antes.jsonl"),
             "so_gigantes": _censo(pasta / "censo_gigantes.jsonl"),
             "depois": _censo(pasta / "censo_depois.jsonl"),
+            "ouro_dev_antes": json.loads((pasta / "ouro_altas_antes.json").read_text(encoding="utf-8")),
             "ouro_dev_depois": json.loads((pasta / "ouro_altas.json").read_text(encoding="utf-8")),
             "ouro_dev_so_gigantes": json.loads((pasta / "ouro_altas_so_gigantes.json").read_text(encoding="utf-8")),
         },
         "auditoria_das_caixas": json.loads((pasta / "auditoria.json").read_text(encoding="utf-8")),
+        "auditoria_conferida_a_vista": CONFERIDO,
+        "mudanca_depois_de_medir": {
+            "commit": "0d950439",
+            **json.loads((pasta / "equivalencia_da_tinta.json").read_text(encoding="utf-8")),
+        },
         "estilo": json.loads(Path(estilo).read_text(encoding="utf-8"))["total"],
     }
     Path(saida).write_bytes((json.dumps(relatorio, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8"))
