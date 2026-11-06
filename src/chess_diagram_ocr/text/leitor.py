@@ -168,6 +168,7 @@ from . import camada as _camada
 from . import camada_prosa as _camada_prosa
 from . import colados as _colados
 from . import colunas as _colunas
+from . import confianca_palavra as _confianca_palavra
 from . import dicionario as _dicionario
 from . import empilhados as _empilhados
 from . import espacado as _espacado
@@ -1330,6 +1331,7 @@ def ler_pagina(
     reserva: bool = False,
     marca_por_palavra: bool = True,
     posicao_do_diagrama: Callable[[int], chess.Board | None] | None = None,
+    palavras_do_livro: Iterable[str] = (),
 ) -> PaginaLida:
     """Uma página do PDF como `PaginaLida`: colunas de blocos, cabeçalho, rodapé, número impresso.
 
@@ -1342,6 +1344,7 @@ def ler_pagina(
     combinam leitores (S-718). `leitor_de_linha` existe para o teste: `None` é o Tesseract desta máquina.
     `posicao_do_diagrama` dá ao árbitro da S-729 a posição do diagrama `n` da folha, e `None` quem a ignora. **Ninguém na janela a
     passa ainda:** ler a posição custa o classificador de peças, e o alcance medido não paga (ver a spec).
+    `palavras_do_livro` é o léxico do caderno (S-766): o que entra nele passa a existir para os árbitros da fusão, e o Tesseract não muda.
 
     `imagem_rgb` deixa quem já renderizou a página (a interface, sempre) não renderizá-la de novo:
     são ~200 ms por página a 220 dpi, e a aba de texto abriria com um atraso que ela não precisa
@@ -1373,7 +1376,7 @@ def ler_pagina(
             empilhados=empilhados, italico=italico, dicionario=dicionario, numeros=numeros, juntar_lance=juntar_lance,
             marcar_negrito=marcar_negrito, marcar_italico=marcar_italico,
             lingua=lingua, leitor_de_linha=leitor_de_linha, reserva=reserva, marca_por_palavra=marca_por_palavra,
-            posicao_do_diagrama=posicao_do_diagrama,
+            posicao_do_diagrama=posicao_do_diagrama, palavras_do_livro=palavras_do_livro,
         )
 
 
@@ -1428,9 +1431,9 @@ def _com_prosa_de_outro_leitor(
 
     **`None` é "não leu", e a linha fica como o glifo a leu**, sem tocar em nada. Uma linha só de prosa da
     camada é registro: procedência `camada`, confiança 1,0. Linha mista leva a menos confiável das que a compõem,
-    e os trechos dizem de quem é cada palavra (S-722). A confiança da linha fundida é a do glifo até a S-760
-    calibrar a do Tesseract, e é por isso que a marca por palavra existe; a de cada palavra, em `confianca_em`, é
-    a de quem a escreveu.
+    e os trechos dizem de quem é cada palavra (S-722). **A confiança da palavra de prosa é a calibrada da S-760**, pelo domínio da
+    regra, a da linha é a da palavra mais fraca, e a marca é o corte da S-761. Com `confianca_palavra.LIGADO` desligado, a linha volta à do glifo, a
+    palavra à de quem a escreveu, e a marca ao ranque da S-718. **Nada disso muda texto.**
     """
     quem_le: Procedencia = "camada" if e_da_camada else LEITOR_DE_LINHA
     fundidas: list[list[_fusao.Token]] = []
@@ -1459,17 +1462,26 @@ def _com_prosa_de_outro_leitor(
     if not e_da_camada:
         # O árbitro olha a folha inteira, porque o número de lance continua de uma linha para a outra (S-729).
         fundidas = _arbitro.arbitrar(fundidas, existe=existe, posicoes=posicoes, lingua=lingua, relato=relato_do_arbitro)
-    marcadas = (
-        _fusao.marcar(fundidas, existe=existe, e_da_camada=e_da_camada)
-        if marca_por_palavra
-        else [frozenset[int]() for _ in fundidas]
-    )
+    erros: list[list[float]] | None = None
+    if not e_da_camada and _confianca_palavra.LIGADO:
+        fundidas, erros = _confianca_palavra.calibrar_folha(fundidas, existe=existe, dominio=_confianca_palavra.dominio_da_regra(regra))
+    if not marca_por_palavra:
+        marcadas = [frozenset[int]() for _ in fundidas]
+    elif erros is not None:
+        marcadas = _fusao.marcar_por_erro(erros, _fusao.CORTE_DE_REVISAR[regra])
+    else:
+        marcadas = _fusao.marcar(fundidas, existe=existe, e_da_camada=e_da_camada)
+
+    def confianca_de(tokens: Sequence[_fusao.Token], cru: _Cru) -> float:
+        return _confianca_palavra.confianca_da_linha(tokens, cru.confianca) if erros is not None else cru.confianca
+
     saida: list[_Cru] = []
     for cru, leitura, tokens, marcados in zip(cruas, leituras, fundidas, marcadas, strict=True):
         if leitura is None:
             saida.append(
                 replace(
                     cru,
+                    confianca=confianca_de(tokens, cru),
                     revisar_em=_fusao.intervalos_de(tokens, marcados),
                     confianca_em=trechos_de_confianca((t.texto, t.confianca) for t in tokens),
                 )
@@ -1487,7 +1499,7 @@ def _com_prosa_de_outro_leitor(
             replace(
                 cru,
                 texto=_fusao.texto_fundido(tokens),
-                confianca=1.0 if procedencia == "camada" else cru.confianca,
+                confianca=1.0 if procedencia == "camada" else confianca_de(tokens, cru),
                 procedencia=procedencia,
                 confiancas=(),
                 revisar_em=_fusao.intervalos_de(tokens, marcados),
@@ -1824,6 +1836,7 @@ def _ler_pagina_do_livro(
     reserva: bool,
     marca_por_palavra: bool,
     posicao_do_diagrama: Callable[[int], chess.Board | None] | None,
+    palavras_do_livro: Iterable[str] = (),
 ) -> PaginaLida:
     """O corpo de `ler_pagina`, com o documento **já aberto**. Ver a nota da S-351."""
     from ..detection.hybrid import detect_diagrams_in_pdf_page
@@ -1897,7 +1910,7 @@ def _ler_pagina_do_livro(
             juntar_lance=juntar_lance, dpi=dpi,
         )
         pontos = [(r[0] / escala_px, r[1] / escala_px, r[2] / escala_px, r[3] / escala_px) for r in retangulos]
-        existe = _fusao.existe_do_livro(lingua)
+        existe = _fusao.existe_do_livro(lingua, palavras_do_livro)
         with open_document(pdf_source) as doc:  # type: ignore[arg-type]
             page = doc[indice]
             palavras = _camada_prosa.palavras_da_folha(page) if qual == "camada_prosa" else []

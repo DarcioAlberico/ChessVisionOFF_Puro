@@ -20,6 +20,7 @@ from chess_diagram_ocr.text import (
     arquivo,
     caderno,
     camada_prosa,
+    confianca_palavra,
     correcao,
     dado_corrigido,
     documento,
@@ -298,7 +299,10 @@ class ALeituraPreencheTests(_ComLivro):
         self.assertEqual(linhas[0].texto, "the white knight wins a pawn")
         self.assertEqual(linhas[0].procedencia, "tesseract")
         self.assertEqual(linhas[0].procedencia_em, (), "uma procedência só não pede detalhe: o campo da linha já diz")
-        self.assertEqual(linhas[0].confianca_em[0], (0, 3, 0.8))
+        self.assertEqual(linhas[0].confianca_em[0][:2], (0, 3), "o valor é o calibrado da S-760: ver test_text_confianca_palavra")
+        with mock.patch.object(confianca_palavra, "LIGADO", False):
+            desligado = self._fundida(self.cruas("tne wbite knlght wins a pawn"), "the white knight wins a pawn")
+        self.assertEqual(desligado[0].confianca_em[0], (0, 3, 0.8), "desligada, é a de quem escreveu")
 
     def test_a_linha_mista_leva_a_menos_confiavel_e_diz_onde(self) -> None:
         linhas = self._fundida(self.cruas("the ♘f3 wins a pawn"), "the Af3 wins a pawn")
