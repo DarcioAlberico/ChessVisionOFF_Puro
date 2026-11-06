@@ -506,15 +506,19 @@ ela está é, inteira, a que o motor leu, e a comparação é palavra com palavr
 diferença mínima, e corrigir `wbite` deixa `w` e `ite` como `revisar`. **Olhar caractere também não:** apagar `a ` em `to a and`
 casa `to a` e `nd`, e `and` perdia a marca. A faixa do bloco inteiro continua saindo, e **quem separa os dois casos é o espaço**: a
 marca da palavra é um token, e `rico._pedacos` garante que não há espaço nela, nem onde `camada.remapear` uniu duas vizinhas, em 17
-de 414 folhas; a faixa tem espaço em algum pedaço que a edição deixa (`correcao._marcas_intactas`). O espaço que a mão pôs não
+de 414 folhas; a faixa tem espaço em algum pedaço que a edição deixa, salvo quando a mão troca o último branco dela (`correcao._marcas_intactas`). O espaço que a mão pôs não
 conta. A marca do fim de uma linha e a do começo da seguinte são duas corridas (`rico._agrupar`). `Shift+F7` pergunta à mesma regra,
 e não para nos pedaços nem antes de gravar. As guardas são `CorrigirAMarcaNoEditorTests`, pelo editor com `QTest`, e
 `MarcaPorSorteioTests`, que sorteia correções gravando no meio.
 
 **O que sobra:** até gravar, a tinta na tela continua nos pedaços. A faixa reduzida a uma palavra sem espaço fica marcada como se
 fosse palavra (`wbite`, com ` knight` apagado, ou acrescentado). Apagar uma letra e digitar a mesma deixa os pedaços marcados, porque
-a palavra é a que o motor leu. E o alinhamento pode errar quando o bloco repete muito as mesmas palavras: 9 de 3.000 rodadas no pior
-sorteio, com 15 correções em 60 palavras de um vocabulário de 40.
+a palavra é a que o motor leu. Uma marca de parte do token sai junto se a mão mexer no resto dele (`wlns,` trocado por `wlns.`), o que
+não apareceu em 853 marcas de 62 folhas. O negrito em metade da palavra marcada dá duas paradas no `Shift+F7`. **E o alinhamento pode
+errar quando a palavra escrita já existe por perto:** em `a wbite white`, corrigir `wbite` deixa a marca; em `the wlns rests`, digitar
+outro `wlns` antes a tira. No sorteio, com palavra nova do próprio vocabulário, são de 25 a 40 de 3.000 rodadas em 60 palavras, e 10 de
+1.500 em blocos de 8. Em folha real foi 1 em 294 trocas pela busca, e nenhuma em 1.629 outras edições. O efeito é só uma marca a mais
+ou a menos, e o texto não muda.
 
 **Desvio declarado:** as alternativas do `lstm_choice_mode=2`, que o roadmap cita, saem no hOCR e não no TSV. Aqui o
 terceiro sinal é a confiança por palavra do TSV; a S-761 calibra.

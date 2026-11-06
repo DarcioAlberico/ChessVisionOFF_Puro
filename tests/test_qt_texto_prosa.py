@@ -400,7 +400,7 @@ class CorrigirAMarcaNoEditorTests(_Aba):
         self._so_sobra("wlns")
 
     def test_duas_marcas_vizinhas_que_a_juncao_de_hifen_uniu(self) -> None:
-        """`camada.remapear` une o branco entre elas: 17 de 414 folhas, e uma letra levava 82 marcas a 0."""
+        """`camada.remapear` une o branco entre elas, em 17 de 414 folhas, e uma letra levava as marcas do bloco a 0."""
         self._folha("the wbite knigbt wins a pawn", (4, 16))
         self.assertEqual(set(self._paradas()), {"wbite", "knigbt"})
         self._trocar_letra(17, "v")
