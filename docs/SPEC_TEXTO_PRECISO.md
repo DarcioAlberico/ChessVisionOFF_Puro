@@ -645,3 +645,34 @@ muda: o que se escreveu é `glifo`, e é o `MOTOR_PADRAO` de hoje. Os relatório
 `tests/test_texto_clis_motor.py`: varre os arquivos por `ast` e reprova chamada sem `motor=`, também com import dentro
 de função, apelido, acesso pelo módulo e `**opcoes`. Os casos sintéticos provam que a guarda acusa, e um deles grita se
 a varredura ficar vazia. `texto_placar_final` tem um homônimo local, e não conta.
+
+## S-728 · Léxico por língua ✅ implementada (2026-11-06)
+
+### Problema
+
+`text/lexico.py` tem perfis, e não línguas: `idioma.txt.gz` mistura oito, e o que distingue uma palavra de `por` de uma
+de `eng` não existe em lugar nenhum. A S-723 e a S-721 pressupõem que exista. O que se tem em disco, sem baixar nada, são
+as listas de dentro dos `.traineddata` do Tesseract.
+
+### Decisão
+
+`assets/lexico/linguas/<código>.txt.gz`, uma por código do Tesseract, com `manifesto.json` e `LICENSE.tessdata` ao lado.
+`cvoff-texto-lexico --linguas-de` as refaz byte a byte. `lexico.da_lingua(codigo)` é quem lê, e nenhum perfil as inclui.
+A régua (`aceita_na_lingua`) deixa só minúsculas de 4 letras ou mais, e o alemão fica também com a inicial maiúscula.
+Palavra curta tem tabela à mão em `text/fusao.py`: as curtas da lista bruta são lixo (`mk`, `Rd`, `Kf`).
+
+Numa pasta própria, e não ao lado das outras, porque o README publica "três listas e 367.163 entradas" sobre o que o
+perfil do glifo une, e essa frase continua verdadeira. `BUNDLE_ROOT`, porque `assets/` fica dentro do pacote.
+
+### Critério de aceite
+
+`tests/test_texto_lexico_linguas.py`: régua, byte a byte, sha e contagem do manifesto contra o disco, licença ao lado, e
+nenhum perfil lendo a pasta. `test_docs` confere a contagem de cada língua no README, e `test_disciplina_da_suite`, que as
+listas estão versionadas. **Diferença zero** do `motor="glifo"` em 28 folhas do ouro-dev, contra `a2937260`, com
+`docs/metrics/texto_lingua_2026-11-06/medir.py glifo` e `comparar`.
+
+### O que ela não entrega
+
+Uma lista limpa. O corpus do Tesseract é da web: `after`, `para` e `avec` estão em sete das oito, e `fixes` está em `por`,
+como conta `assets/lexico/PROCEDENCIA.md`. A lista diz que a palavra existe; não diz que ela é **só** daquela língua. A D5
+(o `acervo.txt.gz`) segue com o dono.

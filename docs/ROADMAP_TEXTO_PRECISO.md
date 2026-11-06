@@ -1196,7 +1196,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     é `glifo`, logo número nenhum muda. Quem escrevia o motor e não o gravava: `texto_custo`, `texto_estilo_motor` e a
     junção do `texto_lexico`. `texto_flutuante` e `texto_paragrafo` já gravavam. `texto_placar_final` tem um `ler_pagina`
     próprio, homônimo, que não é o do leitor. `texto_pesquisavel` não publica JSON: diz o motor na saída.
-- **S-728** · Léxico por língua.
+- **S-728** · Léxico por língua. ✅ entregue em 2026-11-06
   - *Contexto:* `text/lexico.py` tem perfis (`acervo`, `idioma`, `nomes`), não línguas; a S-721 e a
     S-723 pressupõem um léxico por língua.
   - *Entrega:* listas por língua (as 8 do acervo: en, pt, es, de, nl, fr, ro, ru) em `assets/lexico/` —
@@ -1208,6 +1208,14 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     do glifo com o perfil de hoje dá o mesmo texto no ouro-dev (diferença zero).
   - *Saída:* listas das 8 línguas com procedência escrita e sha no manifesto.
   - *Reversão:* listas novas; o perfil do glifo não muda.
+  - *Achado:* a fonte é o `lstm-word-dawg` dos `.traineddata` desta máquina, as oito línguas presentes: 2,1 MB comprimidos,
+    0,3% do bundle de 684 MB, e **nenhum teto reprovou**. **Diferença zero** em 28 folhas do ouro-dev contra o commit de
+    antes. **As listas não são limpas por língua**, porque o corpus do Tesseract é da web: `after`, `para` e `avec` estão em
+    sete das oito, e `fixes` está em `por`. **Elas não barram sozinhas os vetos da G1(a)**; a S-721 precisa de outra regra.
+  - *Achado:* `PASTA_DO_LEXICO` usa `PROJECT_ROOT`, que num bundle é a pasta do `.exe`, e o `assets/` vai para dentro do
+    pacote (`BUNDLE_ROOT`). Lido o código, os três arquivos antigos **não são achados no bundle**, em silêncio, e o
+    `dicionario` lá não corrige nada. Não se rodou um bundle para confirmar, e não se mexeu: consertar muda o texto do
+    bundle. As listas novas usam `BUNDLE_ROOT`. Fica para a S-724.
 - **S-729** · O árbitro de notação pela legalidade.
   - *Contexto:* as regras 1 e 2 da S-721 são heurísticas de forma (`27.` contra `21.` → "fica o do
     glifo"). A notação tem um modelo de língua exato — a legalidade do lance a partir da posição — e
