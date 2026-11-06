@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import rotular  # noqa: E402
 
-from chess_diagram_ocr.text import calibracao, fusao, regua_prosa  # noqa: E402
+from chess_diagram_ocr.text import calibracao, fusao, ouro, regua_prosa  # noqa: E402
 from chess_diagram_ocr.text import confianca_palavra as cp
 
 FRACAO = 0.05
@@ -166,7 +166,8 @@ def juntar(folhas: Sequence[dict[str, Any]]) -> tuple[np.ndarray, np.ndarray]:
 
 
 def deixa_um_livro_de_fora(folhas: Sequence[dict[str, Any]], *, colunas: Sequence[int] | None = None) -> dict[str, Any]:
-    """Cada livro medido por um calibrador e um corte que não o viram."""
+    """Cada livro medido por um calibrador e um corte que não o viram. O livro da exclusão da S-750 é medido, e nunca ajusta."""
+    excluidos = ouro.carregar_exclusao().identidades
     por_livro = defaultdict(list)
     for f in folhas:
         por_livro[f["id"]].append(f)
@@ -174,7 +175,7 @@ def deixa_um_livro_de_fora(folhas: Sequence[dict[str, Any]], *, colunas: Sequenc
     contas_do_teto: list[tuple[int, int, int, int]] = []
     ps, ys = [], []
     for livro, dele in por_livro.items():
-        outros = [f for f in folhas if f["id"] != livro]
+        outros = [f for f in folhas if f["id"] != livro and f["id"] not in excluidos]
         x, y = juntar(outros)
         pesos = ajustar(x, y, colunas=colunas)
         corte = corte_da_fracao(prob(x, pesos))
@@ -259,7 +260,10 @@ def bloco_do_dominio(pasta: Path, ajuste: str, valida: str) -> tuple[dict[str, A
     registros = [r for r in rotular.ler(pasta / f"{valida}.jsonl") if r["tokens"]]
     uniao = no_ajuste + na_validacao
     bloco = {
-        "ajuste": {"conjunto": ajuste, "folhas": len(no_ajuste), "livros": len({f["id"] for f in no_ajuste}), "palavras": int(y.size), "erradas": int(y.sum())},
+        "ajuste": {
+            "conjunto": ajuste, "folhas": len(no_ajuste), "livros": len({f["id"] for f in no_ajuste}), "identidades": sorted({f["id"] for f in no_ajuste}),
+            "palavras": int(y.size), "erradas": int(y.sum()),
+        },
         "pesos": dict(zip(cp.NOMES, [round(float(v), 4) for v in pesos], strict=True)),
         "corte_de_revisar": round(corte, 5),
         "validacao": {

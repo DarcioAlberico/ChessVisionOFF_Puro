@@ -43,9 +43,7 @@ def sortear(medidas: str) -> int:
 def validar() -> int:
     from chess_diagram_ocr.cli import texto_prosa
 
-    saidas = {}
-    for nome, motor in (("primeira", ""), ("segunda", ""), ("regressao_de_mentira", "glifo")):
-        saidas[nome] = texto_prosa.conferir_o_canario(motor=motor)
+    saidas = {nome: texto_prosa.conferir_o_canario(motor=motor) for nome, motor in (("primeira", ""), ("segunda", ""), ("regressao_de_mentira", "glifo"))}
     print(json.dumps(saidas, ensure_ascii=False, indent=1))
     return 0
 
