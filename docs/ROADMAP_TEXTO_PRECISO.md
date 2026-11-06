@@ -1208,7 +1208,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Saída:* G4 cumprido com cache desligado; a política da S-215 remedida e publicada.
   - *Reversão:* apagar `data/cache_texto/` é sempre seguro; o lote por folha tem a leitura por linha
     como reserva atrás de constante.
-- **S-726** · A S-188 relida com a régua nova, e o modo bloco aposentado com quem o usa.
+- **S-726** · A S-188 relida com a régua nova, e o modo bloco aposentado com quem o usa. ✅ entregue em 2026-11-06
   - *Entrega:* remedir o modo bloco **só na prosa**; se a fusão por token vencer (esperado: o modo bloco
     amarra a leitura às caixas do glifo e não conserta segmentação), aposentá-lo no caminho da página
     junto com **todos** os consumidores — `ui/state.texto_bloco` (gravado no estado da janela, com
@@ -1223,6 +1223,8 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     do estado; a suíte verde.
   - *Saída:* o modo bloco não existe no caminho da página; estado antigo abre sem a chave.
   - *Reversão:* é remoção: volta por `git revert` do commit, que precisa ser só dela.
+  - *Achado:* CER de prosa no ouro-dev: fusão 0,24%, glifo 0,95%, bloco 6,33%, e fusão − bloco −6,09 p.p. [−8,95; −4,48], 27 folhas de 27. Na prata, que só ordena: 9,19%, 19,71% e 16,20%. O commit da remoção é `66c4a399`.
+  - *Achado:* **sem Tesseract, tirar o bloco melhora o digital e piora o scan ruim.** A fusão sem o binário é o glifo, diferença zero nas 57 folhas. Glifo − bloco é −5,37 p.p. no digital e +3,51 p.p. [−1,43; +9,81] no scan, com o bloco à frente em 5 dos 10 livros, 3 deles com folga (≤ 150 dpi: 35,34% contra 23,42%). O programa instalado não paga isso: `packaging/cvoff.spec` exclui o `onnxruntime`, e sem ele a caixa não fazia nada, em silêncio. Sobra quem instala do código com `--extra ocr` e sem Tesseract.
 - **S-727** · Os CLIs de medição fixam o motor antes de o padrão mudar. ✅ entregue em 2026-11-06
   - *Contexto:* na `main`, CLIs que publicam `docs/metrics/texto_*.json` (`texto_lexico`,
     `texto_paragrafo`, `texto_pesquisavel`, `texto_custo` e outros) chamam `ler_pagina` com o motor

@@ -1059,6 +1059,61 @@ Duas corridas do ouro-dev dão o mesmo texto folha a folha. `tests/test_text_fus
 
 **Desvios.** A reserva da S-715 continua na v5: lá a folha já se perdeu, e não foi medida na v3. A confiança da linha fundida segue a do glifo até a S-760. Os limiares foram escritos no dev contaminado: quem julga é o G102.
 
+## S-726 · O modo bloco sai do caminho da página ✅ implementada (2026-11-06)
+
+### Problema
+
+A S-188 foi recusada em agosto por um CER que misturava prosa com notação, e a caixa «Modo bloco (lento)» ficou na aba Texto, com o `--bloco` do `cvoff-texto-pagina`. O item pede a releitura só na prosa e, se a fusão vencer, a remoção com todos os consumidores: dois caminhos híbridos não convivem.
+
+### A medição
+
+Na régua da S-706, em `689132d6`, árvore limpa, `docs/metrics/texto_prosa_bloco_2026-11-06.json`. CER de prosa em `tip`, com IC95 de dois níveis. `glifo_bloco` é `ler_pagina(motor="glifo", modo_bloco=True)` com o RapidOCR do wheel, como a janela o chamava.
+
+| conjunto | fusão | glifo | bloco | figurina (revocação): fusão, glifo, bloco |
+|---|---:|---:|---:|---:|
+| ouro-dev, 27 folhas, 5 livros | **0,24%** [0,04; 0,63] | 0,95% [0,29; 1,88] | 6,33% [4,62; 9,20] | 85,7, 85,8, **33,4** |
+| prata, 30 folhas, 10 livros (só ordena) | **9,19%** [3,92; 16,25] | 19,71% [9,00; 32,47] | 16,20% [8,59; 25,62] | 83,1, 70,6, 81,0 |
+
+Fusão − bloco, pareado: **−6,09 p.p. [−8,95; −4,48]** no ouro-dev, 27 folhas melhores e nenhuma pior; **−7,02 p.p. [−9,84; −4,44]** na prata, 30 melhores e nenhuma pior. **A fusão vence.** O WER diz o mesmo: 0,58% contra 20,16% no ouro-dev, e 15,13% contra 42,01% na prata.
+
+### Quem não tem Tesseract
+
+A fusão depende do Tesseract, e sem ele o que sobra é o glifo. Medido com um `LeitorTesseract` que não acha o binário: **diferença zero contra o glifo nas 57 folhas**, e a folha sai com o aviso `LEITOR_INDISPONIVEL`. A comparação que importa a essa pessoa é glifo contra bloco:
+
+| | glifo | bloco | glifo − bloco | |
+|---|---:|---:|---:|---|
+| digital (ouro-dev) | 0,95% | 6,33% | −5,37 p.p. [−8,60; −3,06] | tirar **melhora**: 26 folhas melhores, 1 pior |
+| scan, ClearScan (3 livros) | 4,37% | 6,93% | | tirar melhora |
+| scan, ≥ 300 dpi (4 livros) | 23,24% | 19,65% | | o bloco à frente |
+| scan, ≤ 150 dpi (3 livros) | 35,34% | 23,42% | | **o bloco à frente** |
+| scan, os 10 livros | 19,71% | 16,20% | +3,51 p.p. [−1,43; +9,81] | IC contém zero; 16 folhas contra 14 |
+
+**Tirar o modo bloco piora o scan ruim de quem não tem Tesseract, e o número é este.** O ganho está em cinco dos dez livros, e é grande em três, onde o glifo desaba: 38,87% → 9,32%, 40,90% → 29,67% e 58,18% → 50,19%; nos outros dois é de menos de 1 p.p., e nos outros cinco o bloco perde. Com o Tesseract, as mesmas três faixas dão 2,75%, 10,65% e 15,78%, abaixo do bloco em todas.
+
+**Quem pode pagar esse preço é pouca gente, e o programa instalado não é ela.** O bloco precisa do RapidOCR, que é o extra `ocr`, e o `onnxruntime` está nos `excludes` de `packaging/cvoff.spec`. Simulado sem os dois módulos, `leitor_de_linha_padrao()` devolve `None`, e `ler_pagina(modo_bloco=True)` sai **idêntico** ao glifo, em silêncio, com o rodapé dizendo «modo bloco». O bundle em si não foi rodado. Sobra quem instala do código com `--extra ocr`, não tem Tesseract, lê scan e marcou a caixa: para essa pessoa, o caminho agora é instalar o Tesseract.
+
+### Decisão
+
+Sai do caminho da página, num commit só (`66c4a399`): o parâmetro de `ler_pagina` e `linhas_do_glifo`, `leitor_de_linha_padrao`, o `--bloco`, a caixa, o comando, o item do menu, o controle da fita, `texto_declarado`, o campo do índice do caderno e o do estado da janela. O inventário do editor foi regravado.
+
+- **O estado antigo abre:** `ui/state._migrate` descarta a chave. **Sem versão nova**, porque o programa anterior lê o arquivo sem ela, e com a versão subida ele o recusaria.
+- **O índice antigo do caderno abre:** `EstadoDaFolha.de_json` só deixa de ler a chave, e a próxima gravação a tira. A folha lida em blocos abre do caderno quando o motor é o mesmo, e a pessoa não perde a leitura sem ter pedido.
+- **A frase da folha vazia** dizia «tente outro motor ou o modo bloco». Agora é `strings.FOLHA_SEM_TEXTO_LIDO`, «tente outro motor».
+
+### Critério de aceite
+
+`grep -rln "modo_bloco\|texto_bloco" src tests` acha só `ui/state.py`, a migração; `tests/test_texto_bloco_aposentado.py` faz essa varredura, com conjunto exato, para não ficar vácua, e monta os nomes das chaves para não ser um dos achados. O mesmo arquivo afirma o efeito: o arquivo antigo abre e a chave não volta ao disco, o índice antigo abre e a perde, a aba grava o estado sem ela, o `_ler` da aba chama `ler_pagina` com a assinatura real (`autospec`), e `--bloco` é erro de uso. Numa cópia da árvore de antes da remoção, 10 dos 11 testes falham; o que passa é o que fixa a versão do estado.
+
+### Desvios
+
+- **A frase não estava em `ui/strings.py`**, como o item dizia: estava literal em `qt/painel_de_texto.py`. Foi para lá.
+- **O item contava 8 arquivos de teste**: hoje eram 9, com `test_qt_texto_prosa`, que nasceu depois da contagem.
+- **`em_bloco` e `GlyphRecognizer(leitor_de_linha=)` ficam**, porque o item aposenta o caminho da página: são a faixa de legenda, medida no `cvoff-texto-linha`. A sonda S-188 do `text_status` procura `em_bloco` e `texto_linha`, os dois seguem lá, e ela fica verde, com um comentário. Nenhum chamador de `src/` passa mais `leitor_de_linha=` ao reconhecedor.
+- **A etapa `leitura_de_linha` de `text/custo.py` fica**, zerada: tirá-la muda as onze etapas e a comparação com os relatórios publicados, e o nome dela não diz a opção.
+- **`_colapsar_espaco` fica:** nasceu para o espaço dobrado do bloco, e tirá-la poderia mudar uma leitura; a outra trilha também mexe em `leitor.py`.
+- O relatório não publica tempo como veredito: três trilhas dividiam a máquina.
+- Reproduzir pede o commit medido, e `docs/metrics/texto_prosa_bloco_2026-11-06/medir_bloco.py` diz como: a remoção tirou o parâmetro que ele usa.
+
 ## S-729 · O árbitro de notação pela gramática, e o alcance da legalidade ✅ implementada (2026-11-06)
 
 ### Problema

@@ -880,6 +880,8 @@ de mudança, porque ele já consome ordem e não coordenada.
 
 ## S-188 · Ler a linha, e não o caractere ✅ implementada (2026-08-24)
 
+> **Na página, a S-726 a aposentou** (2026-11-06, `docs/SPEC_TEXTO_PRECISO.md`): só na prosa, 6,33% contra 0,95% do glifo. Na faixa de legenda, ela fica.
+
 **Problema.** Um classificador de glifo isolado descarta o contexto, e o contexto é o que resolve
 o que sobra. Medido lá, em 6.953 caracteres de 275 linhas rotuladas:
 
