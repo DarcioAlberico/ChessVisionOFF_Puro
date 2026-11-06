@@ -526,6 +526,9 @@ class PainelDeTexto(QWidget):
         ordem; **por livro** porque a folha 14 de um livro não é a folha 14 do outro -- com a chave
         só pela folha, trocar de livro levava as posições do anterior para as folhas do novo
         (item 11). `definir_livro` para outro livro esquece tudo."""
+        self.transcricao: Any = None
+        """O modo transcrição do scan-ouro (S-703), que nasce na primeira vez que é pedido. Ver `qt/modo_transcricao.py`."""
+        self._pasta_da_transcricao = ""
         self._documento_ao_ler: rico.DocumentoRico | None = None
         """O documento na tela quando a leitura em curso partiu. Ver `_leitura_terminou`."""
 
@@ -649,6 +652,7 @@ class PainelDeTexto(QWidget):
         self.navegacao.ir_para.connect(self._ir_para_intervalo)
         self.navegacao.busca_mudou.connect(self._refazer_resultados)
         self.navegacao.currentChanged.connect(lambda _i: self._refazer_navegacao())
+        self._corpo = corpo
         corpo.addWidget(self.navegacao)
         corpo.addWidget(self.editor, 1)
         corpo.addWidget(self._montar_paleta())
@@ -2188,6 +2192,8 @@ class PainelDeTexto(QWidget):
 
         Com o caderno (S-611) não há pergunta: a folha vai para ele, e a trava sai.
         """
+        if self.transcricao is not None:
+            self.transcricao.desativar()  # são horas de alguém, e o relógio de gravação pode não ter disparado (S-703)
         if self._guardar_a_folha():
             self.fechar_caderno()
             return True
@@ -3002,6 +3008,36 @@ class PainelDeTexto(QWidget):
             return True
         return False
 
+    # ------------------------------------------------------------- o modo transcrição (S-703)
+
+    @property
+    def em_transcricao(self) -> bool:
+        return self.transcricao is not None and self.transcricao.isVisibleTo(self)
+
+    def alternar_transcricao(self) -> None:
+        """Liga ou desliga o modo. **O editor sai de cena**: ele mostra a leitura de um motor, e quem transcreve não pode vê-la."""
+        if self.transcricao is None:
+            from chess_diagram_ocr.qt.modo_transcricao import ModoTranscricao
+
+            self.transcricao = ModoTranscricao(self)
+            self.transcricao.fechar_pedido.connect(self.alternar_transcricao)
+            self.transcricao.pasta_mudou.connect(self._anotar_pasta_da_transcricao)
+            self._corpo.insertWidget(self._corpo.indexOf(self.editor) + 1, self.transcricao, 1)
+            self.transcricao.hide()
+            if self._pasta_da_transcricao:
+                self.transcricao.definir_pasta(self._pasta_da_transcricao)
+        ligar = not self.em_transcricao
+        if ligar:
+            self.transcricao.definir_livro(self._pdf)
+            self.transcricao.ativar()
+        else:
+            self.transcricao.desativar()
+        self.editor.setVisible(not ligar)
+        self.transcricao.setVisible(ligar)
+
+    def _anotar_pasta_da_transcricao(self, pasta: str) -> None:
+        self._pasta_da_transcricao = pasta
+
     # ------------------------------------------------------------- a mesa (S-643, S-644)
 
     # ------------------------------------------------------- os diagramas no texto (Fase 92)
@@ -3189,6 +3225,7 @@ class PainelDeTexto(QWidget):
         self.definir_familia_da_letra(str(getattr(estado, "texto_familia", "")))
         self.definir_texto_ao_lado(bool(getattr(estado, "texto_ao_lado", False)))
         self._ler_ao_chegar = bool(getattr(estado, "texto_ler_ao_chegar", False))
+        self._pasta_da_transcricao = str(getattr(estado, "texto_transcricao_pasta", ""))
         for canal, chave in (("letra", "texto_ultima_cor"), ("realce", "texto_ultimo_realce")):
             nome = str(getattr(estado, chave, ""))
             if nome in texto_cores.nomes():
@@ -3212,6 +3249,7 @@ class PainelDeTexto(QWidget):
         estado.texto_familia = self._familia_da_letra  # type: ignore[attr-defined]
         estado.texto_ao_lado = self._texto_ao_lado  # type: ignore[attr-defined]
         estado.texto_ler_ao_chegar = self._ler_ao_chegar  # type: ignore[attr-defined]
+        estado.texto_transcricao_pasta = self._pasta_da_transcricao  # type: ignore[attr-defined]
         estado.texto_ultima_cor = self._ultimas_cores["letra"]  # type: ignore[attr-defined]
         estado.texto_ultimo_realce = self._ultimas_cores["realce"]  # type: ignore[attr-defined]
         estado.texto_fita_recolhida = self.fita.recolhida  # type: ignore[attr-defined]

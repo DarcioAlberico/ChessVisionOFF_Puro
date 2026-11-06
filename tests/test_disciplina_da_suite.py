@@ -243,6 +243,7 @@ class PuloQueNinguemContaTests(unittest.TestCase):
         "assets/lexico/idioma.txt.gz": "idem",
         "assets/lexico/nomes.txt.gz": "idem",
         "assets/lexico/linguas/manifesto.json": "o sha e a contagem das listas por língua (S-728)",
+        "assets/texto_prosa/scan_ouro.json": "as folhas do scan-ouro, que o teste do manifesto lê (S-703)",
         "assets/lexico/linguas/eng.txt.gz": "as listas que o README cita, uma por língua (S-728)",
         "assets/lexico/linguas/por.txt.gz": "idem",
         "assets/lexico/linguas/spa.txt.gz": "idem",

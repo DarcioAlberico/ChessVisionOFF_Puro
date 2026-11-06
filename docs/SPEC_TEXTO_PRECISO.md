@@ -344,6 +344,59 @@ continua só ordenando, mas o número de scan "6,0% do Tesseract" do roadmap era
 *Achado:* `text/notacao.fatiar` continua conservador (S-208), e o classificador da fusão, próprio dela, ainda não reconhece
 `Rg8-Rg6` nem `31.Bxg6fxg632`: são dois instrumentos, e a guarda de grafo de import é de outro item.
 
+## S-703 · O scan-ouro: a ferramenta, sem a transcrição ✅ implementada (2026-11-06)
+
+**Problema.** Sem verdade humana em scan, M3 e M4 não existem, e os 14,4% do glifo são contra OCR de terceiro. A transcrição custa ~15 horas e depende
+da decisão D3, que o dono não tomou. O que não dependia dele era a ferramenta: sem ela, as 15 horas seriam num editor que reabre a folha com
+o que já foi corrigido (S-612) e carimba o bloco inteiro de `humano`. **Nada foi transcrito. M3 e M4 seguem sem número.**
+
+**Decisão.** Quatro peças, e todas sem leitor nenhum.
+
+- **O manifesto**, `assets/texto_prosa/scan_ouro.json`, só identidades, e `text/scan_ouro.py`: `carregar`, `gravar`, `problemas`, `sha_da_folha`. 30 folhas de 10
+  livros em 6 línguas: 3 livros `clearscan`, 4 `ate_150`, 3 `de_300`, ou 12 folhas (40%) de até 150 dpi. 15 no misto, 12 na prosa, 3 `a_conferir`. Dev e teste com 5
+  livros cada, e as três produções nos dois. 6 folhas de dupla digitação, uma por produção em cada split. Cada folha guarda o sha dos bytes dela no PDF.
+- **O sorteio**, `docs/metrics/texto_scan_ouro_2026-11-06/sortear.py`: livros por `sha256(semente:identidade)`, folhas por `sha256(identidade + folha)`, as funções do ouro.
+  Bachmann e Neumann entram por exigência do item, e no dev, porque as S-743 e S-721 os viram; **livro visto não vai ao teste**. Um livro por série ou autor, no máximo
+  3 por língua.
+- **O caderno**, `text/transcricao_scan.py`. `CadernoDaPassada` só conhece o arquivo da sua passada: `passada_1.jsonl`, `passada_2.jsonl`, com linha, partida, `sha_imagem`, `sha_folha`,
+  segundos e `completa`. A pasta é recusada dentro de um repositório, e sem o backup declarado (`backup.json`, na própria pasta) nada grava. `gravar` chama `exigir_transcricao` e
+  `dado_corrigido.exigir_documento_cego` a cada linha, e copia o arquivo para o backup. A procedência `transcricao:<passada>` mora em `text/procedencia.py`: `classe` a traduz
+  para `humano`, e `exigir_transcricao` é mais estreita que `exigir_verdade`, recusando também o `humano` do bloco.
+- **A tela**, `qt/modo_transcricao.py`, comando `modo_transcricao` (`alternar_transcricao`, grupo Verdade da aba Leitura). O editor da aba sai de cena, porque mostra a leitura
+  de um motor. Cada linha é uma faixa impressa com um campo ao lado, `Enter` leva à seguinte, seis botões escrevem a figurina e `Linha a mais` cobre o que a geometria não achou.
+  A faixa é a geometria de `leitor.segmentar` com o detector de diagrama, sem classificador. A pasta fica em `AppState.texto_transcricao_pasta`. Erro sai na frase de estado, nunca em caixa.
+
+**Regra que o item não pedia: a segunda passada só parte do vazio.** As duas partindo da mesma camada concordariam nos erros que ninguém viu, e o acordo mediria a camada.
+
+**O relógio.** `Relogio` soma o tempo entre uma tecla e a seguinte, e uma pausa conta no máximo 5 minutos. `custo` estima o conjunto a partir de duas folhas concluídas; a tela e o
+`--acordo` mostram. É a resposta à D3 com o relógio de quem digitou, em vez dos "20 a 30 minutos" do roadmap.
+
+**A verificação.** `cvoff-texto-prosa --conjunto scan-ouro --acordo --transcricao <pasta>` imprime o acordo por folha (S+D+I sobre o maior comprimento, normalização `cru`), a
+folha que volta, o custo e o estado do backup, e sai com 0, 1 (há folha que volta) ou 3 (nada para medir). `--conjunto scan-ouro --split dev --transcricao <pasta> --dados <jsonl>` mede
+contra a verdade digitada, e só quando **o split inteiro** tem verdade pronta; sem isso, diz `M3 e M4 sem número` e sai com 3. O split `teste` pede `--abrir-teste`, que grava
+`primeira_leitura_do_teste` antes de ler, como no ouro.
+
+**Onde mora.** `text/scan_ouro.py`, `text/transcricao_scan.py`, `text/procedencia.py`, `qt/modo_transcricao.py`, `qt/painel_de_texto.py` (`alternar_transcricao`), `cli/texto_prosa.py` (`--acordo`,
+`--transcricao`), `text/bancada_prosa.py` (`preparar_folha(verdade=)`). O módulo novo não se chama `text/transcricao.py` porque esse já é o da S-183, das 123 faixas de legenda.
+
+**Critério de aceite.** `tests/test_text_scan_ouro.py`: o manifesto cumpre a entrega, e cada regra de `problemas` reprova um manifesto falsificado; a segunda passada não vê a primeira;
+glifo e rapidocr não gravam, `humano` e `corrigido_de:` também não; sem dados, o CLI diz e não zera. `tests/test_qt_modo_transcricao.py`, por efeito na tela e no arquivo.
+**Falsificação:** tirar as duas portas de `gravar` deixa vermelhos os testes das portas, e o resto verde.
+
+*Achado:* **a geometria não separa prosa de misto.** Nas 27 folhas do ouro-dev, com os estratos conhecidos, a fração de linhas cheias dá AUC 0,63. Por isso o conteúdo da folha sai
+da camada de terceiro que o PDF já traz, pelo `ouro.estrato_do_texto` do sorteio da S-702: nenhum motor nosso roda, mas é um OCR que foi lido. **O preço:** livro sem camada não entra no
+sorteio, e o `teste` sai de um grupo mais estreito: dos 43 candidatos, 17 têm mediana abaixo de 200 caracteres de camada. Só 3 livros de até 150 dpi com camada não foram vistos.
+
+*Achado:* **o Bachmann não tem camada**, e o item o exige: as três folhas dele são `a_conferir`, e a conta da metade no misto vale no pior caso (15 de 30 sem contá-las). Depois da
+transcrição, o conteúdo real de toda folha sai da régua sobre a verdade. **E o `dpi` 72 dele é nominal**: a página mede 1216 × 1864 pt e a imagem tem esses mesmos pixels. O estrato `ate_150` vem
+daí; a altura-x nativa, perto de 10 px, é a do estrato.
+
+*Achado:* a faixa é a mesma geometria dos motores, e ela erra como eles. Na folha 71 do Bachmann, `Stellung nach dem 13. Zug von Schwarz.` são três faixas, e a tabela de lances sai em duas colunas de faixas.
+A pessoa digita o que cada faixa mostra, e a referência fica na ordem do produto; a linha partida não vira erro de medição, e a de outra ordem também não.
+
+**Desvios.** A verificação de M3 e M4 por estrato não roda, porque não há verdade. O manifesto traz os **estratos previstos**: a conta real só existe depois. A camada entra na escolha, e o pedido era "sem
+leitor nenhum": nenhum leitor roda, e o achado acima diz o que isso custa. `tesseract` fica fora do teste de porta porque a procedência só existe na página a partir da S-722.
+
 ## S-704 · A degradação sintética, reprodutível, em duas famílias ✅ implementada (2026-11-06)
 
 **Problema.** O perfil `medio` de 2026-10-30 equivale a ~110 dpi e leva o glifo a 57,2%, contra 14,4% na prata: não foi calibrado
@@ -1445,6 +1498,49 @@ são as mesmas e nenhuma palavra de fora entra, mas o pedaço existe na lista po
 - **Duas letras** (`z u`, `i n`) ficam: `a o` e `e a` são prosa. `der`, `und` e as outras curtas da língua entram.
 - **Forma flexionada fora da lista** fica: `f a t a l e n`. A lista alemã tem 52.854 palavras, e o caderno do livro (`lexico.txt`) ainda não é consultado aqui.
 - O **Tesseract** não muda, porque já lia a palavra inteira: aqui a régua quase não dispara. A camada de terceiro do *Gutmayer*, com 737 corridas, continua como é.
+
+## S-745 · A escada de linhas de base: o degrau 0 e a tabela ✅ implementada (2026-11-06)
+
+**Problema.** A S-755 tem de comparar o leitor da casa contra **o melhor** leitor que não exige modelo da casa, e ninguém tinha dito qual é. Do degrau 0, a S-721 já recusara `--user-words`,
+`load_system_dawg=0` e a altura-x; faltavam os n-gramas de caractere desempatando as alternativas de `lstm_choice_mode=2`. Os degraus 1, 2 e 3 dependem de downloads.
+
+**Decisão. O melhor degrau é a fusão de hoje**, `motor="fusao"` com Tesseract 5.5 e `tessdata` fast, sem nenhum ajuste do degrau 0: 0,235% [0,040%; 0,627%] de prosa no ouro-dev. No scan-ouro **não há número**. Nada muda no produto: os
+n-gramas moram só em `docs/metrics/texto_escada_2026-11-06/ngramas.py`.
+
+| degrau | o quê | estado | ouro-dev, Δ prosa pareado | prata (ordenação) | scan-ouro-dev |
+|---|---|---|---|---|---|
+| 0a | `--user-words` com os nomes | recusado pela S-721, não remedido | 0 [0; 0] | não fecha: o `spa` termina com erro | sem número |
+| 0b | `load_system_dawg=0` na notação | recusado pela S-721, não remedido | 0 [0; 0] | 0 [0; 0] | sem número |
+| 0c | escala pela altura-x | recusado pela S-721, não remedido | +0,004 [−0,029; +0,048] | −0,154 [−0,509; +0,066] | sem número |
+| 0d | n-gramas, margem de 1 nat | **medido aqui, e recusado** | +0,042 [−0,008; +0,113] | +0,084 [−0,046; +0,174] | sem número |
+| 1 | `tessdata_best` (S-741) | **pulado por recuo** (D2) | | | |
+| 2 | ajuste fino do Tesseract (S-746) | **pulado por recuo** (D2, D7) | | | |
+| 3 | PP-OCR latino em ONNX | **pulado por recuo** (D7) | | | |
+
+**A medição dos n-gramas.** Trigramas de caractere por língua, contados nos tipos de `lexico.da_lingua`. Só palavra de letras, de 3 letras ou mais, fora do léxico, troca pela alternativa de confiança ≥ 5%, até duas posições, cujo trigrama ganha pela margem.
+Mesmas caixas do glifo e mesmo placar, pela porta `registrar_motor` da bancada, nas 27 folhas do ouro-dev e nas 30 da prata. O par é contra a primeira escolha do próprio hOCR.
+
+| CER de prosa, Δ contra `tess_hocr` | ouro-dev (0,286%) | prata (8,820%, ordenação) |
+|---|---|---|
+| margem 0,5 nat | +0,042 [−0,008; +0,113], 1 melhor, 7 piores | +0,094 [−0,032; +0,181], 2, 18 |
+| margem 1 nat | +0,042 [−0,008; +0,113], 1, 7 | +0,084 [−0,046; +0,174], 2, 18 |
+| margem 2 nats | +0,038 [−0,012; +0,111], 1, 6 | +0,063 [−0,065; +0,145], 2, 15 |
+| controle: a alternativa que é do léxico | −0,004 [−0,017; 0], 1, 0 | +0,005 [−0,011; +0,022], 2, 3 |
+| **teto**: a alternativa que está na referência | −0,046 [−0,133; 0], 6, 0 | −0,154 [−0,297; −0,073], 22, 0 |
+
+**Por que não paga.** Nas 5.759 palavras do dev, com 1 nat, são 32 trocas: nenhuma leva a uma palavra da referência, e 11 estragam uma certa, quase sempre nome próprio (`Reshevsky` → `Resheysky`, `Najdorf` → `Nojdorf`), porque o que a lista da língua não conhece
+é justamente o que o trigrama pune. Na prata, 147 trocas: 5 acertam, 36 estragam. E o teto é baixo: **até um oráculo que sabe a resposta só tira 0,046 p.p. no dev.** A letra certa quase nunca está nas alternativas.
+
+**O custo, que a S-729 não mediu.** Ela recusou as alternativas por "um processo a mais por folha", sem número. É 0,88 s por folha no dev e 1,34 s na prata, se for um processo a mais; ou +15% (mediana, folha a folha) se o hOCR substituir o TSV, e aí a primeira escolha do hOCR
+perde +0,017 p.p. [0; +0,045] no dev. Sob contenção, e não julga o G4. **O custo sozinho não o tornaria inviável. Quem recusa é o ganho.**
+
+**Onde mora.** `docs/metrics/texto_escada_2026-11-06.json`, com `melhor_degrau`, `escada` e `ngramas`. `docs/metrics/texto_escada_2026-11-06/`: `ngramas.py` e `compilar.py`. Os JSONL ficam fora do repositório.
+
+**Critério de aceite.** `EscadaPublicadaTests` em `tests/test_text_scan_ouro.py`: o melhor degrau tem nome, os degraus 1, 2 e 3 dizem `pulado por recuo`, o scan-ouro diz `sem número` e não zero, e o relatório não tem caminho absoluto.
+
+**Desvios.** A verificação pede cada degrau pareado contra o anterior e no scan-ouro-dev: o par dos n-gramas é contra a primeira escolha do hOCR, e no scan-ouro não há verdade. A S-746 fica de fora, por recuo: só serve ao degrau 2. **O melhor degrau é provisório**: a D2 ou a D7 podem mudá-lo, e a S-755 tem de reler este relatório.
+
+*Achado:* a primeira escolha do hOCR com `lstm_choice_mode=2` não é o TSV. Difere em 3 folhas do dev, e sempre para pior; na prata, 7 melhores e 10 piores. Quem for ler alternativas não pode supor que o texto é o mesmo.
 
 ## S-762 · A correção humana volta como dado, sem contaminar nada ✅ implementada (2026-11-06)
 

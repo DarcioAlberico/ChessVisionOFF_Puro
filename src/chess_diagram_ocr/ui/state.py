@@ -213,6 +213,8 @@ class AppState:
     texto_ler_ao_chegar: bool = False
     """Com a mesa acompanhando a página, a folha sem caderno é lida ao chegar (S-644). Desligada por padrão."""
     texto_fita_recolhida: bool = False
+    texto_transcricao_pasta: str = ""
+    """A pasta da transcrição do scan-ouro (S-703), fora do repositório. O backup é declarado dentro dela."""
     """A fita do Texto recolhida com `Ctrl+F1` (S-652)."""
     texto_glifos_recentes: list[str] = field(default_factory=list)
     """Os glifos usados por último na paleta (S-650), do mais novo ao mais velho."""
@@ -326,6 +328,7 @@ class AppState:
             "texto_familia": str(self.texto_familia),
             "texto_ao_lado": bool(self.texto_ao_lado),
             "texto_ler_ao_chegar": bool(self.texto_ler_ao_chegar),
+            "texto_transcricao_pasta": str(self.texto_transcricao_pasta),
             "texto_ultima_cor": str(self.texto_ultima_cor),
             "texto_ultimo_realce": str(self.texto_ultimo_realce),
             "texto_fita_recolhida": bool(self.texto_fita_recolhida),
@@ -480,6 +483,8 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     for chave in ("texto_ultima_cor", "texto_ultimo_realce"):
         if isinstance(raw.get(chave), str):
             setattr(state, chave, raw[chave])
+    if isinstance(raw.get("texto_transcricao_pasta"), str):
+        state.texto_transcricao_pasta = raw["texto_transcricao_pasta"]
     ler_ao_chegar = raw.get("texto_ler_ao_chegar")
     if isinstance(ler_ao_chegar, bool):
         state.texto_ler_ao_chegar = ler_ao_chegar

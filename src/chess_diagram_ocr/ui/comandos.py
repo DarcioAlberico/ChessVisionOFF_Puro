@@ -701,6 +701,7 @@ CATALOGO: tuple[Comando, ...] = (
     # tecla -- a ênfase de hoje já contrariava o critério, e é ela que sai.
     Comando("ler_folha", "Ler o texto desta folha", OCR, estilos.NEUTRO, rotulo_curto="Ler folha"),
     Comando("lingua_do_livro", "Língua do livro…", OCR, estilos.NEUTRO, rotulo_curto="Língua"),
+    Comando("modo_transcricao", "Modo transcrição: digitar a verdade do scan-ouro, às cegas", OCR, estilos.NEUTRO, rotulo_curto="Transcrever"),
     Comando(
         "folha_da_pagina_aberta",
         "Pôr no campo a folha que o visualizador mostra",

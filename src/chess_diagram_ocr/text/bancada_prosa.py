@@ -207,15 +207,23 @@ def preparar_folha(
     dpi: int = DPI_PADRAO,
     leitor_de_linha: Any = None,
     reserva: bool = False,
+    verdade: Sequence[str] | None = None,
 ) -> FolhaEmMedida:
-    """A referência da folha e a leitura do glifo, que todo motor de bancada e a própria referência usam."""
+    """A referência da folha e a leitura do glifo, que todo motor de bancada e a própria referência usam.
+
+    `verdade` são as linhas digitadas às cegas do scan-ouro (S-703), que tomam o lugar da camada de terceiro. Sem caixa: `tess_oraculo`
+    precisa das linhas da camada, e não mede ali.
+    """
     from .leitor import ler_pagina
+    from .pagina import LinhaLida
 
     referencia = ler_pagina(pdf, indice, motor="camada", imagem_rgb=imagem, dpi=dpi)
     glifo = ler_pagina(pdf, indice, motor="glifo", reconhecedor=reconhecedor, imagem_rgb=imagem, dpi=dpi, lingua=lingua)
     diagramas = [d.bbox for d in referencia.diagramas] + [d.bbox for d in glifo.diagramas]
     todas = regua.linhas_da_pagina(referencia)
     linhas = [ln for ln in todas if not regua.fora_da_referencia(ln.texto, ln.bbox, diagramas, lingua)]
+    if verdade is not None:
+        linhas = [LinhaLida(texto, (0.0, 0.0, 0.0, 0.0)) for texto in verdade if texto.strip()]
     return FolhaEmMedida(
         pdf=pdf, indice=indice, lingua=lingua, dpi=dpi, imagem=imagem, reconhecedor=reconhecedor, referencia=referencia,
         glifo=glifo, linhas_da_referencia=linhas, diagramas=diagramas, leitor_de_linha=leitor_de_linha, reserva=reserva,

@@ -5,6 +5,12 @@
     cvoff-texto-prosa --compilar docs/metrics/texto_prosa_AAAAMMDD.json --bloco ouro_dev=fora/dev.jsonl \\
         --bloco "prata_admitida=fora/prata.jsonl?oraculo_max=0.10"
     cvoff-texto-prosa --comparar a.json b.json
+    cvoff-texto-prosa --conjunto scan-ouro --acordo --transcricao <pasta>
+    cvoff-texto-prosa --conjunto scan-ouro --split dev --motor glifo,fusao --transcricao <pasta> --dados fora/scan.jsonl
+
+**O scan-ouro (S-703) mede contra a verdade digitada às cegas**, e não contra a camada. `--acordo` imprime o acordo da dupla digitação
+e o custo medido. **Sem dados, M3 e M4 ficam sem número, e o comando diz isso** (código 3): o erro de uma folha que ninguém digitou não é zero.
+O split inteiro tem de ter verdade pronta para medir: número de meio conjunto não responde o portão.
 
 **Duas etapas, porque só uma pode ver texto de livro.** Medir grava um JSONL por folha em `--dados`, **fora do
 repositório** (o comando recusa um caminho dentro dele): tem texto de livro comercial. `--compilar` lê esses JSONL e escreve o
@@ -49,6 +55,11 @@ from urllib.parse import parse_qsl
 logger = logging.getLogger(__name__)
 
 MOTORES_PADRAO = "glifo,camada_prosa,fusao,tess,tess_oraculo,tess_pagina"
+MOTORES_SEM_VERDADE_DE_LINHA = frozenset({"tess_oraculo", "camada_prosa"})
+"""No scan-ouro não medem: o oráculo precisa das linhas de uma camada editorada, e a prosa da camada é a de terceiro."""
+SCAN_OURO = "scan-ouro"
+SEM_DADOS = 3
+"""O código de saída de quem não tem o que medir: nem sucesso nem erro, e nunca um zero."""
 
 
 @dataclass(frozen=True)
@@ -63,7 +74,18 @@ class FolhaDoConjunto:
 
 
 def folhas_do_conjunto(conjunto: str, split: str, *, manifesto: str | None = None) -> list[FolhaDoConjunto]:
-    """As folhas de um manifesto. O ouro é do split pedido; a prata não tem split."""
+    """As folhas de um manifesto. O ouro e o scan-ouro são do split pedido; a prata não tem split.
+
+    No scan-ouro, o `estrato` do relatório é a produção: é por ela que M3 e M4 se publicam.
+    """
+    if conjunto == SCAN_OURO:
+        from ..text import scan_ouro
+
+        s = scan_ouro.carregar(manifesto)
+        erros = scan_ouro.problemas(s)
+        if erros:
+            raise SystemExit(f"o manifesto do scan-ouro não vale: {erros}")
+        return [FolhaDoConjunto(SCAN_OURO, split, f.identidade, f.folha, f.lingua, f.producao) for f in s.do_split(split)]
     if conjunto == "ouro":
         from ..text import ouro
 
@@ -81,10 +103,17 @@ def folhas_do_conjunto(conjunto: str, split: str, *, manifesto: str | None = Non
     return [FolhaDoConjunto("prata", "", f.identidade, f.folha, f.lingua, f.estrato) for f in p.folhas]
 
 
-def abrir_o_teste(folhas: Iterable[FolhaDoConjunto], *, manifesto: str | None, hoje: str) -> str | None:
+def abrir_o_teste(folhas: Iterable[FolhaDoConjunto], *, manifesto: str | None, hoje: str, conjunto: str = "ouro") -> str | None:
     """Grava a primeira leitura **antes** de qualquer folha ser lida. Devolve a data que ficou no manifesto."""
-    from ..text import ouro
+    from ..text import ouro, scan_ouro
 
+    if conjunto == SCAN_OURO:
+        destino = manifesto or scan_ouro.caminho_padrao()
+        antes = scan_ouro.carregar(destino)
+        depois = scan_ouro.registrar_leitura_do_teste(antes, hoje)
+        if depois != antes:
+            scan_ouro.gravar(depois, destino)
+        return depois.primeira_leitura_do_teste
     caminho = manifesto or ouro.caminho_padrao()
     m = ouro.carregar(caminho)
     novo = ouro.registrar_leitura_do_teste(m, hoje, sorted({f.identidade for f in folhas}))
@@ -172,11 +201,13 @@ def medir(args: argparse.Namespace) -> int:
         raise SystemExit("medir precisa de --dados, fora do repositório")
     recusar_dentro_do_repositorio(args.dados)
     dados = Path(args.dados)
-    split = args.split if args.conjunto == "ouro" else ""
-    teste = args.conjunto == "ouro" and split == "teste"
+    split = args.split if args.conjunto in ("ouro", SCAN_OURO) else ""
+    teste = args.conjunto in ("ouro", SCAN_OURO) and split == "teste"
     if teste and not args.abrir_teste:
         raise SystemExit("o split teste só abre no portão da fase: passe --abrir-teste de propósito (S-702)")
     motores = [m.strip() for m in args.motor.split(",") if m.strip()]
+    if args.conjunto == SCAN_OURO:
+        motores = [m for m in motores if m not in MOTORES_SEM_VERDADE_DE_LINHA]
     desconhecidos = sorted(set(motores) - set(bancada_prosa.motores_conhecidos()))
     if desconhecidos:
         raise SystemExit(f"motor desconhecido: {desconhecidos}; os que existem: {bancada_prosa.motores_conhecidos()}")
@@ -189,9 +220,14 @@ def medir(args: argparse.Namespace) -> int:
         folhas = folhas[: args.folhas_maximas]
     if not folhas:
         raise SystemExit("nenhuma folha para medir")
+    verdades: dict[tuple[str, int], tuple[str, ...]] = {}
+    if args.conjunto == SCAN_OURO:
+        verdades = _verdades_do_scan_ouro(args, folhas)
+        if len(verdades) < len(folhas):
+            return SEM_DADOS
     achados = _achar_livros(folhas, args.pasta or _pastas_padrao(args.raiz))
     if teste:
-        lido = abrir_o_teste(folhas, manifesto=args.manifesto, hoje=args.medido_em or date.today().isoformat())
+        lido = abrir_o_teste(folhas, manifesto=args.manifesto, hoje=args.medido_em or date.today().isoformat(), conjunto=args.conjunto)
         print(f"# teste aberto; primeira_leitura_do_teste = {lido}", flush=True)
     feitas = _ja_medidas(dados)
     faltam = [f for f in folhas if (f.identidade, f.folha) not in feitas]
@@ -217,7 +253,10 @@ def medir(args: argparse.Namespace) -> int:
             if not aquecido:
                 ler_pagina(pdf, indice, motor="glifo", reconhecedor=reconhecedor, imagem_rgb=imagem, dpi=args.dpi)
                 aquecido = True
-            folha = bancada_prosa.preparar_folha(pdf, indice, lingua=f.lingua, imagem=imagem, reconhecedor=reconhecedor, dpi=args.dpi, reserva=args.reserva)
+            folha = bancada_prosa.preparar_folha(
+                pdf, indice, lingua=f.lingua, imagem=imagem, reconhecedor=reconhecedor, dpi=args.dpi, reserva=args.reserva,
+                verdade=verdades.get((f.identidade, f.folha)),
+            )
             registro = bancada_prosa.medir_folha(folha, motores)
             registro.update(
                 conjunto=f.conjunto, split=f.split, perfil=args.degradar, identidade=f.identidade, folha=f.folha,
@@ -227,6 +266,31 @@ def medir(args: argparse.Namespace) -> int:
             saida.flush()
             print(_linha_da_folha(registro, n, len(faltam), mostrar_numero=not teste), flush=True)
     return 0
+
+
+def _verdades_do_scan_ouro(args: argparse.Namespace, folhas: Sequence[FolhaDoConjunto]) -> dict[tuple[str, int], tuple[str, ...]]:
+    """As linhas digitadas de cada folha, ou o que falta dito em voz alta. Só folha pronta: concluída e, se dupla, com acordo."""
+    from ..text import scan_ouro, transcricao_scan
+
+    pastas = transcricao_scan.ler_pasta(args.transcricao) if args.transcricao else {}
+    estado = transcricao_scan.estado_da_verdade(scan_ouro.carregar(args.manifesto), pastas)
+    prontas = {
+        (f.identidade, f.folha): pastas[transcricao_scan.PASSADAS[0]][(f.identidade, f.folha)].linhas
+        for f in folhas
+        if (f.identidade, f.folha) in estado.prontas
+    }
+    if len(prontas) < len(folhas):
+        print(f"{transcricao_scan.FRASE_SEM_NUMERO}: {len(prontas)} de {len(folhas)} folhas do split têm verdade pronta. Ver --acordo.", flush=True)
+    return prontas
+
+
+def _acordo(args: argparse.Namespace) -> int:
+    from ..text import scan_ouro, transcricao_scan
+
+    linhas, codigo = transcricao_scan.relatorio_do_acordo(scan_ouro.carregar(args.manifesto), args.transcricao or None)
+    for linha in linhas:
+        print(linha)
+    return codigo
 
 
 def _linha_da_folha(registro: dict[str, Any], n: int, total: int, *, mostrar_numero: bool) -> str:
@@ -251,6 +315,8 @@ def conferir_admissao(args: argparse.Namespace) -> int:
     from ..text import admissao
     from ..text.leitor import ler_pagina
 
+    if args.conjunto == SCAN_OURO:
+        raise SystemExit("o scan-ouro não tem admissão: a camada dele é de terceiro, e a verdade é digitada.")
     splits = [args.split] if args.split_dado and args.conjunto == "ouro" else (["dev", "teste"] if args.conjunto == "ouro" else [""])
     recusadas_no_total = 0
     for split in splits:
@@ -387,9 +453,17 @@ def repontuar(args: argparse.Namespace) -> int:
     return 0
 
 
+def _frase_sem_numero() -> str:
+    from ..text.transcricao_scan import FRASE_SEM_NUMERO
+
+    return FRASE_SEM_NUMERO
+
+
 def construir_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="cvoff-texto-prosa", description="A régua da prosa sobre um manifesto (S-706).")
-    ap.add_argument("--conjunto", choices=("ouro", "prata"), default="ouro")
+    ap.add_argument("--conjunto", choices=("ouro", "prata", SCAN_OURO), default="ouro")
+    ap.add_argument("--acordo", action="store_true", help="no scan-ouro: o acordo da dupla digitação e o custo medido")
+    ap.add_argument("--transcricao", default="", help="no scan-ouro: a pasta da transcrição, fora do repositório")
     ap.add_argument("--split", choices=("dev", "teste"), default=None, help="do ouro; padrão: dev")
     ap.add_argument("--abrir-teste", action="store_true", help="autoriza ler o split teste, e grava a primeira leitura antes")
     ap.add_argument("--motor", default=MOTORES_PADRAO, help=f"separados por vírgula; padrão: {MOTORES_PADRAO}")
@@ -436,6 +510,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return repontuar(args)
     if args.conferir_admissao:
         return conferir_admissao(args)
+    if args.acordo:
+        if args.conjunto != SCAN_OURO:
+            raise SystemExit("--acordo é do --conjunto scan-ouro")
+        return _acordo(args)
+    if args.conjunto == SCAN_OURO and not args.dados:
+        print(f"{_frase_sem_numero()}: o scan-ouro só mede contra a verdade digitada, com --transcricao e --dados. Ver --acordo.")
+        return SEM_DADOS
     return medir(args)
 
 

@@ -707,7 +707,7 @@ b`), e consertá-la
     *Chess Evolution 2013* a ligadura `ft` perde o `t` na camada, e no *Capablanca* figurinas da tinta
     ficam fora da linha da camada. Os números ficam como publicados, com esta ressalva; a S-706 os
     republica nos cinco livros dev admitidos.
-- **S-703** · Scan-ouro: 30 folhas escaneadas com verdade humana.
+- **S-703** · Scan-ouro: 30 folhas escaneadas com verdade humana. ✅ entregue em 2026-11-06 (a ferramenta; a transcrição é da D3, e M3 e M4 seguem sem número)
   - *Contexto:* é o **único** jeito de dizer o erro absoluto em scan; a camada de terceiro (prata)
     só ordena. Sem este item, M3 e M4 não existem.
   - *Entrega:* ≥ 30 folhas de ≥ 8 livros escaneados, ≥ 5 línguas, **estratificadas por produção e
@@ -732,6 +732,9 @@ b`), e consertá-la
     sorteado antes da transcrição.
   - *Reversão:* folha com acordo abaixo de 99,9% volta para transcrição; nada do produto muda.
   - *Dono:* ~20–30 min por folha e mais a dupla digitação; **cerca de 15 horas humanas** (decisão D3).
+  - *Achado:* **pronto para quando o dono quiser, e nada transcrito.** `assets/texto_prosa/scan_ouro.json`: 30 folhas, 10 livros, 6 línguas, 40% de até 150 dpi, 15 no misto, 6 de dupla digitação, cinco livros em cada split. Aba Leitura, *Transcrever*. O relógio mostra o custo real a partir da segunda folha. `cvoff-texto-prosa --conjunto scan-ouro --acordo` diz `M3 e M4 sem número` em vez de zerar. Spec em `docs/SPEC_TEXTO_PRECISO.md`.
+  - *Achado:* a geometria não separa prosa de misto (AUC 0,63 no ouro-dev), então o conteúdo da folha sai da camada de terceiro, sem motor nosso. Livro sem camada fica fora do sorteio, menos o Bachmann, com 3 folhas `a_conferir`: a metade no misto vale no pior caso.
+  - *Achado:* **a segunda passada só parte do vazio**, regra a mais: partindo da mesma camada, o acordo mediria a camada.
 - **S-704** · Degradação sintética reprodutível e **calibrada** como fatia de robustez. ✅ entregue em 2026-11-06 (menos o perfil `calibrado`, que depende da S-703)
   - *Contexto:* o perfil `medio` de 2026-10-30 equivale a ~110 dpi e leva o glifo a 57,2%, contra
     14,4% na prata (scan real): ele não foi calibrado contra nada, e um alvo (M5) sobre um perfil sem
@@ -1419,7 +1422,7 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
     Gutmayer, nenhuma junção de palavras distintas à vista; palavras conhecidas espaçadas de 14 a 2 nas olhadas, de 7 a 3 nas não vistas. **O zero não se cumpre**: o que sobra é
     corrida com letra a mais, e a primeira versão, que achava a palavra no meio, juntava `d e sHan d e`.
   - *Achado:* `fatalen` não está na lista alemã, e o exemplo do item fica espaçado. Em 16 de 50 junções sai só um pedaço da palavra (`mann`), porque o resto veio com erro.
-- **S-745** · A escada de linhas de base, antes de qualquer modelo da casa.
+- **S-745** · A escada de linhas de base, antes de qualquer modelo da casa. ✅ entregue em 2026-11-06 (o degrau 0 e a tabela; 1, 2 e 3 pulados por recuo, e no scan-ouro não há número)
   - *Entrega:* no ouro-dev e no scan-ouro-dev, em ordem de custo: (0) o degrau que não custa nada —
     `--user-words`, dicionário desligado na notação, escala por altura-x e um modelo de n-gramas de
     caractere por língua para desempatar as alternativas do `lstm_choice_mode=2`; (1) `tessdata_best` (S-741);
@@ -1433,6 +1436,9 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
   - *Saída:* a escada publicada com o melhor degrau nomeado — é contra ele que a S-755 compara.
   - *Reversão:* cada degrau é configuração do executor (modelo e opções); voltar é trocar a
     configuração.
+  - *Achado:* **o melhor degrau é a fusão de hoje, com `tessdata` fast e sem ajuste nenhum**: 0,235% [0,040%; 0,627%] de prosa no ouro-dev. No scan-ouro não há número. Tabela em `docs/metrics/texto_escada_2026-11-06.json` e em `docs/SPEC_TEXTO_PRECISO.md`. Os degraus 1, 2 e 3: **pulado por recuo** (D2, D7), e a S-746 com eles.
+  - *Achado:* **n-gramas medidos, não entram.** Contra a primeira escolha do hOCR, +0,042 p.p. [−0,008; +0,113] no dev e +0,084 [−0,046; +0,174] na prata; 7 folhas piores contra 1, e 18 contra 2. Das 32 trocas do dev, nenhuma acerta e 11 estragam nome próprio (`Reshevsky` → `Resheysky`). Até o oráculo das alternativas só tira 0,046 p.p.
+  - *Achado:* o custo que a S-729 não mediu: 0,88 s por folha no dev e 1,34 s na prata como processo a mais, ou +15% substituindo o TSV. Sob contenção, sem julgar o G4. Ele sozinho não recusaria; quem recusa é o ganho.
 - **S-746** · As linhas de treino do ajuste fino (o pedaço de dados que a escada precisa antes da
   Fase 105).
   - *Contexto:* a S-745 precisa de linhas rotuladas para o degrau 2, e a Fase 105 só começa depois da
