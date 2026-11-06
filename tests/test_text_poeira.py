@@ -7,7 +7,7 @@ from unittest import mock
 
 import numpy as np
 
-from chess_diagram_ocr.text import leitor, poeira
+from chess_diagram_ocr.text import leitor, poeira, quadros
 from chess_diagram_ocr.text.boxes import Caixa
 from chess_diagram_ocr.text.linhas import envolve, ordem_em_faixa, quebrar_em_linhas
 
@@ -112,7 +112,7 @@ class ApararTests(unittest.TestCase):
 
     def test_o_descendente_e_a_maiuscula_nao_sao_cortados(self) -> None:
         linha = _letras(100)
-        descendente = Caixa(linha[2].x1, 100, linha[2].x2, 124 + 10)
+        descendente = Caixa(linha[2].x1, 100, linha[2].x2, 124 + 11)
         maiuscula = Caixa(linha[6].x1, 100 - 12, linha[6].x2, 124)
         inteira = [*linha[:2], descendente, *linha[3:6], maiuscula, *linha[7:]]
         self.assertEqual(poeira.aparar([inteira]), [inteira])
@@ -171,6 +171,129 @@ class SegmentarTests(unittest.TestCase):
         with mock.patch.object(poeira, "TIRAR_POEIRA", False):
             _c, _b, _e, caixas, _r = leitor.segmentar(self._pagina())
         self.assertLess(min(c.x1 for c in caixas), 250)
+
+
+class _Meta:
+    idx_to_char = {0: "a", 1: "."}
+
+
+class _Classificador:
+    """Tudo é `a`: aqui só a caixa da linha interessa."""
+
+    meta = _Meta
+
+    def probabilidades(self, recortes: list[np.ndarray]) -> np.ndarray:
+        return np.tile(np.array([0.9, 0.1], dtype=np.float32), (len(recortes), 1))
+
+    def classificar(self, recortes: list[np.ndarray]) -> list[tuple[str, float]]:
+        return [("a", 0.9) for _ in recortes]
+
+
+class _Reconhecedor:
+    classifier = _Classificador()
+
+
+class LinhasDoGlifoTests(unittest.TestCase):
+    """**A mancha entre duas linhas dentro de `linhas_do_glifo`**: arrancar `_poeira.aparar` de lá tem de reprovar aqui."""
+
+    Y = (100, 150, 200)
+    ALTURA = 24
+
+    def _folha(self) -> np.ndarray:
+        imagem = np.full((400, 1000, 3), 255, dtype=np.uint8)
+        for y in self.Y:
+            for k in range(30):
+                imagem[y : y + self.ALTURA, 100 + 22 * k : 100 + 22 * k + 16] = 0
+        return imagem
+
+    def _caixas(self, imagem: np.ndarray) -> list[tuple[float, float, float, float]]:
+        cruas, _ = leitor.linhas_do_glifo(
+            imagem, (), reconhecedor=_Reconhecedor(), colados="nunca", dicionario=False, dpi=None
+        )
+        return [(c.caixa.x1, c.caixa.y1, c.caixa.x2, c.caixa.y2) for c in cruas]
+
+    def test_a_folha_sem_mancha(self) -> None:
+        caixas = self._caixas(self._folha())
+        self.assertEqual([c[1] for c in caixas], list(self.Y))
+        self.assertEqual([c[3] for c in caixas], [y + self.ALTURA for y in self.Y])
+
+    def test_a_mancha_entre_duas_linhas_nao_estica_a_caixa(self) -> None:
+        """Uma só, entre as letras, a 10 px do fundo da linha: ela não está solta, e o portão da folha nem abre."""
+        imagem = self._folha()
+        imagem[100 + self.ALTURA + 10 : 100 + self.ALTURA + 14, 200:204] = 0
+        caixas = self._caixas(imagem)
+        self.assertEqual([c[3] for c in caixas], [y + self.ALTURA for y in self.Y])
+        self.assertEqual([c[1] for c in caixas], list(self.Y))
+
+    def test_a_mancha_na_ponta_nao_alarga_a_caixa(self) -> None:
+        imagem = self._folha()
+        fim = 100 + 22 * 30
+        imagem[110:114, fim + 60 : fim + 64] = 0
+        self.assertLess(self._caixas(imagem)[0][2], fim)
+
+    def test_a_mancha_colada_na_letra_e_cortada(self) -> None:
+        """A ponta de tinta embaixo da letra é um contorno só: `aparar` a corta no que uma letra alcança."""
+        imagem = self._folha()
+        imagem[100 + self.ALTURA : 100 + self.ALTURA + 16, 100 + 22 * 5 + 4 : 100 + 22 * 5 + 8] = 0
+        caixas = self._caixas(imagem)
+        self.assertEqual(caixas[0][3], 100 + self.ALTURA + int(poeira.CAIXA_ABAIXO_DO_MIOLO * self.ALTURA))
+
+    def test_o_descendente_longo_fica_inteiro_para_o_classificador(self) -> None:
+        """`que` saía `aue` numa folha limpa com o corte da letra em 0,4: a caixa da linha aperta, e o recorte da letra não."""
+        imagem = self._folha()
+        imagem[100 + self.ALTURA : 100 + self.ALTURA + 11, 100 + 22 * 5 + 4 : 100 + 22 * 5 + 8] = 0
+        alturas: list[int] = []
+
+        class Espia(_Classificador):
+            def probabilidades(self, recortes: list[np.ndarray]) -> np.ndarray:
+                alturas.extend(r.shape[0] for r in recortes)
+                return super().probabilidades(recortes)
+
+        rec = _Reconhecedor()
+        rec.classifier = Espia()  # type: ignore[assignment]
+        cruas, _ = leitor.linhas_do_glifo(imagem, (), reconhecedor=rec, colados="nunca", dicionario=False, dpi=None)
+        self.assertIn(self.ALTURA + 11, alturas)
+        self.assertEqual(cruas[0].caixa.y2, 100 + self.ALTURA + int(poeira.CAIXA_ABAIXO_DO_MIOLO * self.ALTURA))
+
+    def test_com_a_constante_desligada_a_caixa_estica(self) -> None:
+        imagem = self._folha()
+        imagem[100 + self.ALTURA + 10 : 100 + self.ALTURA + 14, 200:204] = 0
+        with mock.patch.object(poeira, "TIRAR_POEIRA", False):
+            # Ela abre a banda de baixo sem fixar fundo, e a linha de baixo a recolhe: é a caixa dela que sobe.
+            self.assertLess(self._caixas(imagem)[1][1], self.Y[1])
+
+
+class DuplaTests(unittest.TestCase):
+    def test_a_dupla_na_margem_esta_solta(self) -> None:
+        """A dupla do *Dvoretsky* 564: uma vizinha só não faz marca de livro."""
+        linha = _letras(100)
+        dupla = [Caixa(20, 100, 24, 104), Caixa(32, 104, 36, 108)]
+        self.assertEqual(poeira.soltas([*linha, *dupla]), [len(linha), len(linha) + 1])
+
+
+class MolduraNumaColunaTests(unittest.TestCase):
+    """O limiar alto do scan fecha a caixa do nome da partida: ela não é quadro de largura inteira."""
+
+    def _caixas(self, x1: int, x2: int) -> tuple[list[Caixa], np.ndarray]:
+        binaria = np.zeros((1000, 1800), np.uint8)
+        moldura = Caixa(x1, 400, x2, 540)
+        binaria[400:402, x1:x2] = 255
+        linhas = [Caixa(x, y, x + 16, y + 24) for y in (415, 455, 495) for x in range(x1 + 40, x2 - 40, 22)]
+        margens = [Caixa(100, 100, 116, 124), Caixa(1700, 100, 1716, 124)]
+        return ([moldura, *linhas, *margens], binaria)
+
+    def test_a_moldura_de_uma_coluna_nao_corta_a_folha(self) -> None:
+        caixas, binaria = self._caixas(1000, 1720)
+        self.assertEqual(quadros.molduras_nas_caixas(caixas, binaria, escala=30), [])
+
+    def test_a_que_cruza_o_meio_corta(self) -> None:
+        caixas, binaria = self._caixas(400, 1400)
+        self.assertEqual(quadros.molduras_nas_caixas(caixas, binaria, escala=30), [(400, 540)])
+
+    def test_a_constante_desliga(self) -> None:
+        caixas, binaria = self._caixas(1000, 1720)
+        with mock.patch.object(quadros, "MOLDURA_CRUZA_O_MEIO", False):
+            self.assertEqual(quadros.molduras_nas_caixas(caixas, binaria, escala=30), [(400, 540)])
 
 
 if __name__ == "__main__":

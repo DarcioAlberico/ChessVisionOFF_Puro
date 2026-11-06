@@ -18,7 +18,8 @@ com metade de uma letra só: `in der Zeit` não é corrida, e `Fi g u r` é. O q
 **A maiúscula abre palavra**, salvo na corrida toda em maiúsculas: `Fi g u r i m N o f.` são duas corridas, e a primeira vira
 `Figur im` sem precisar da segunda. Na palavra, a caixa tem de ser a de uma palavra: `sHan` não é.
 
-**Nunca junta duas palavras**: a junção só existe se ela mesma é uma palavra da lista, e `M itte l u n d Z we ck` não vira `lund`:
+**Nunca junta duas palavras**: a junção só existe se ela mesma é uma palavra da lista, se nenhuma cobertura de curtas serve (`in den`, e
+não `inden`), se a corrida não é feita só de palavras (`y a la postre` fica), e `M itte l u n d Z we ck` não vira `lund`:
 sem o `l` a palavra ainda existe, e o `itte` ao lado não é palavra. Na dúvida entre duas coberturas fica como estava. Sem lista para a língua nada acontece, porque aproximar é a decisão recusada da S-209.
 
 A régua não acha a palavra errada: `1 e b e n d i g` tem um dígito e fica, porque o léxico não a conhece. E `z u` fica: duas letras
@@ -140,7 +141,14 @@ def _uma_corrida(
         trecho = letras[de:ate]
         # **O nome só vale com o trecho todo de uma letra**: `Y a su` é prosa, e `Yasu` está na lista dos nomes.
         nomes = conhece if all(len(p) == 1 for p in trecho) else so_da_lingua
-        fins = _cobertura(trecho, nomes, so_da_lingua, curtas) if len(trecho) >= 2 else None
+        # **`y a la` é prosa**: toda peça já é palavra da língua, e não há o que refazer.
+        if all(p.casefold() in curtas for p in trecho):
+            saida.extend(tokens[de:ate])
+            continue
+        # **Duas curtas vencem uma palavra**: `in den` e não `inden`, `of the` e não `ofthe`, `No se` e não `Nose`. As listas têm
+        # essas junções, e é a junção de duas palavras que o item proíbe. O preço é `indem` sair `in dem`.
+        so_curtas = _cobertura(trecho, frozenset(), frozenset(), curtas) if len(trecho) >= 2 else None
+        fins = so_curtas if so_curtas else (_cobertura(trecho, nomes, so_da_lingua, curtas) if len(trecho) >= 2 else None)
         if not fins:
             saida.extend(tokens[de:ate])
             continue

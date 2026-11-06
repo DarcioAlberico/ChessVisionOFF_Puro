@@ -709,70 +709,70 @@ No dev, o custo mora num livro: o *Hertan*, +0,63 p.p. [0; +1,59]; os outros qua
 
 **Critério de aceite.** `test_perda_de_leiaute_por_livro_com_ic_e_tess_pagina`, e o relatório versionado traz os cinco livros do dev (`RelatorioPublicadoTests`).
 
-## S-714 · A poeira que estica a linha ✅ implementada (2026-11-06)
+## S-714 · A poeira que estica a linha ◐ parcial (2026-11-06)
 
 ### Problema
 
-No perfil médio de hoje, com S-711 e S-712 dentro, a perda de leiaute é +6,52 p.p. [+1,35; +12,65] nas 28 folhas do ouro-dev, e
-+10,17 nos cinco livros em que o oráculo presta. O roadmap supunha, em ordem, binarização, poeira e linhas que tocam. **É a poeira.**
-Uma mancha na margem tem o tamanho de um ponto final, passa pela régua de área, entra na linha, e `envolve` leva a caixa até ela. A
-caixa de `Apesar das pretas`, no *Seirawan* 58, ia da margem à margem e invadia a linha de cima; com 62 px de altura, onde a linha
-tem 38, o Tesseract em `psm 7` devolve vazio.
+No perfil médio, com S-711 e S-712 dentro, a perda de leiaute é **+9,19 p.p. [+3,74; +15,53]** nas 27 folhas dos 5 livros do dev aprovados na auditoria. O
+roadmap supunha, em ordem, binarização, poeira e linhas que tocam. **É a poeira**, e depois dela a moldura que o limiar fecha:
+
+- Uma mancha na margem tem o tamanho de um ponto final, passa pela régua de área, entra na linha, e `envolve` leva a caixa até ela. Com 62 px de altura, onde a linha tem
+  38, o Tesseract em `psm 7` devolve vazio. Basta invadir 7 px da linha de baixo.
+- O limiar do Otsu sobe a ~205 no perfil médio e fecha a caixa do nome da partida, que na folha limpa é cinza clara. Com 0,42 da largura da folha ela passava por quadro de
+  largura inteira (S-583), e abaixo dela as duas colunas viravam uma: *Dvoretsky* 564, Tesseract a 87,9% com o oráculo a 0,2%.
 
 ### Solução
 
-`text/poeira.py`, com a reversão em `TIRAR_POEIRA`. Duas réguas, porque são duas manchas:
+`text/poeira.py`, com a reversão em `TIRAR_POEIRA`, e `quadros.MOLDURA_CRUZA_O_MEIO`:
 
-- **`sem_poeira`, a mancha solta**, antes de `unir_pingos`: caixa pequena (maior lado abaixo de 0,5 altura mediana) a mais de uma
-  altura mediana de qualquer letra e de qualquer outra caixa pequena. Só vale com **6 ou mais** na folha (`POEIRA_MINIMA_NA_FOLHA`). Em
-  210 folhas limpas dos sete livros há de 0 a 3, 184 delas com 0; no perfil médio, de 18 a 136. **A outra caixa pequena conta** porque as
-  reticências espaçadas de `9 . . . Cxe4`, no *Capablanca* limpo, eram os únicos pontos que uma folha limpa tinha a perder.
-- **`aparar`, a mancha entre duas linhas**, na linha já formada: ela não está solta, e é a que mais custa. Sai a caixa pequena com o
-  centro a mais de 0,35 mediana do miolo (a mediana dos topos e dos fundos das letras), e a caixa pequena na ponta a mais de 1,5 mediana
-  da vizinha. A que `unir_pingos` já colou numa letra sai cortando a letra no que uma letra alcança: 0,9 mediana acima do topo do
-  miolo (a maiúscula acentuada) e 0,5 abaixo do fundo (o descendente). Passou disso em mais de uma mediana, a caixa não é letra com
-  mancha, e fica para a S-198 e a S-712. Vem depois de `partir_linhas_altas`: antes dela, a linha pode ter outra linha dentro.
+- **`sem_poeira`, a mancha solta**, antes de `unir_pingos`: caixa pequena (maior lado abaixo de 0,5 altura mediana) a mais de uma altura mediana de qualquer letra, sozinha ou em
+  dupla. Só vale com **10 ou mais** na folha. Em 210 folhas limpas dos sete livros há de 0 a 6, 184 delas com 0; no perfil médio, de 19 a 136. **O grupo de três conta como marca do
+  livro**: as reticências espaçadas de `9 . . . Cxe4`, no *Capablanca* limpo, eram os únicos pontos que uma folha limpa tinha a perder.
+- **`aparar`, a mancha entre duas linhas**, na linha já formada, depois de `partir_linhas_altas`. Sai a caixa pequena com o centro a mais de 0,35 mediana do miolo (a mediana dos topos
+  e dos fundos das letras), e a caixa pequena na ponta a mais de 1,5 mediana da vizinha. A que `unir_pingos` colou numa letra sai cortando a letra no que uma letra alcança: 0,9
+  acima do topo e 0,5 abaixo do fundo.
+- **`caixa_da_linha`, o retângulo que o leitor recorta**: 0,4 abaixo do fundo, mais apertado que a letra. Cortar a própria letra a 0,4 trocou `que` por `aue` no glifo, numa folha limpa.
+- **A moldura tem de cruzar o meio da folha** para ser quadro de largura inteira: a que não cruza o meio não cruza a calha.
 
-Em `leitor.py`, duas chamadas e um `import`.
+Em `leitor.py`, três chamadas e um `import`.
 
 ### Critério de aceite
 
-`tests/test_text_poeira.py`, com caixas desenhadas e a fiação pelo `segmentar`, e a constante desligada devolve exatamente as linhas de
-antes (conferido em duas folhas reais). Em [metrics/texto_prosa_s714.json](metrics/texto_prosa_s714.json), pareado contra o leiaute de
-hoje, Tesseract nas caixas do glifo, IC95 de dois níveis, tudo no **perfil médio sem calibração**:
+`tests/test_text_poeira.py`, com caixas desenhadas e **a fiação pelo `linhas_do_glifo`**: uma mancha só entre duas linhas, sem o portão da folha abrir, não estica a caixa. Arrancar
+`aparar`, `sem_poeira` ou `caixa_da_linha` do leitor reprova. Em [metrics/texto_prosa_s714.json](metrics/texto_prosa_s714.json), publicado por `cvoff-texto-prosa` (`--degradar medio`), sem os dois
+livros reprovados na auditoria, pareado contra as constantes desligadas, IC95 de dois níveis:
 
-| | antes | depois |
+| 27 folhas, 5 livros | desligado | ligado |
 |---|---:|---:|
-| perda de leiaute, 28 folhas olhadas | +6,52 p.p. [+1,35; +12,65] | **−3,18 p.p. [−9,10; +1,51]** |
-| a mesma, sem os dois livros de oráculo ruim (20 folhas) | +10,17 p.p. [+4,07; +16,81] | **+0,85 p.p. [−1,35; +3,10]** |
-| perda de leiaute, 21 folhas **não vistas** | +10,54 p.p. [+0,92; +21,90] | **−0,06 p.p. [−4,49; +3,89]** |
-| a mesma, sem os dois livros (15 folhas) | +11,40 p.p. [+3,26; +21,91] | **+2,46 p.p. [−0,24; +6,21]** |
-| CER de prosa, Tesseract, 28 olhadas | 13,02% | **3,32%** (−9,70 [−14,93; −5,15]; 27 melhores, 1 pior) |
-| CER de prosa, Tesseract, 21 não vistas | 14,27% | **3,67%** (nenhuma pior) |
-| CER de prosa, fusão, 28 olhadas | 16,15% | 6,72% |
-| CER de prosa, glifo, 28 olhadas | 53,35% | 51,96% |
-| **ouro limpo**, 28 folhas: glifo / Tesseract / fusão | 1,21 / 0,46 / 0,47% | **1,20 / 0,46 / 0,47%** |
+| perda de leiaute, perfil médio | +9,19 p.p. [+3,74; +15,53] | **+0,16 p.p. [−1,73; +1,74]** |
+| Tesseract nas caixas do glifo, perfil médio | 10,74% | **1,71%** |
+| oráculo, perfil médio | 1,55% | 1,55% |
+| perda por livro: Hertan / Dvoretsky / Seirawan | +6,96 / +1,63 / +19,73 | +2,14 / +0,31 / +1,51 |
+| perda por livro: *Minhas 60* / 400 Quebra-cabeças | +12,63 / +5,23 | −2,79 / −1,04 |
+| ouro limpo: glifo / Tesseract | 0,96 / 0,27% | **0,95 / 0,27%** |
+| ouro limpo: perda de leiaute | +0,16 | +0,15 |
 
-No ouro limpo o Tesseract lê todas as linhas iguais, e o glifo muda duas, as duas para melhor (`Perdidas".` e `Marocey`).
+No ouro limpo o glifo muda uma linha, para melhor (`Marocey`), e o Tesseract muda 4 folhas de 27 só em notação, nenhuma para pior em prosa.
 
-**A saída cumpre-se com ressalva, e a ressalva é o oráculo.** A *Saída* pede ≤ 2 p.p.: nas folhas olhadas sim, com qualquer recorte; nas não
-vistas, sim com os sete livros, e fica em +2,46 sem os dois. O número negativo com os sete é o oráculo errando mais que as caixas do
-glifo (26,0% no *Capablanca*, 6,4% no *Chess Evolution*), e não mérito delas. Por isso a linha de cinco livros é a que importa, e o
-limite superior do IC dela, +3,10 e +6,21, não cabe em 2. Pior livro: *Seirawan*, +3,41 nas olhadas e +5,48 nas não vistas.
+**Por que é parcial.** O crítico mediu esta árvore antes dos consertos de moldura e de caixa, em +2,79 [−1,15; +9,17], com *Dvoretsky* +8,50 e *Seirawan* +6,27: a primeira publicação (+0,85 e +2,46, por
+outro script) **não** se sustentou, e está substituída. Agora a *Saída* de ≤ 2 p.p. se cumpre nas 27 folhas, ponto e teto do IC, mas:
 
-**Os outros dois suspeitos, medidos.** Binarização: o Otsu sobe mesmo, de ~140 a ~205 no perfil médio, e a tinta dobra. Trocá-lo pelo
-meio entre papel e tinta, sobre a poeira, leva o Tesseract a 3,01% (27 folhas), o *Seirawan* a 0,39%, e o glifo a 7.532 inserções contra
-1.150: parte as letras dele. **Medido, não entra**; o Otsu alto fica como está. Linhas que tocam: 14 linhas acima de 1,8 mediana em 898,
-3 depois do filtro. Não são a causa.
+- **as folhas do *Dvoretsky* 564 e do *Seirawan* 116 e 247 estão entre as olhadas para escrever o conserto.** Em 15 folhas **não vistas** dos mesmos cinco livros, por `rodar.py` e o perfil de 2026-10-30:
+  **+1,87 p.p. [−0,52; +5,62]**, contra +11,40 desligado. O ponto cabe, o teto do IC não, e o *Minhas 60* 217 sozinho faz +7,14 no livro;
+- **o perfil calibrado não existe**: depende da S-703, que é humana. O perfil médio é sintético, a mancha dele é um ponto escuro de um pixel a meia resolução, e os cortes de 10 caixas soltas e de 0,4
+  mediana não viram scan nenhum;
+- a perda negativa de dois livros é o oráculo errando mais que as caixas do glifo, e não mérito delas.
+
+**Os outros dois suspeitos, medidos.** Trocar o Otsu pelo meio entre papel e tinta leva o Tesseract a 3,01% (27 folhas, antes dos consertos de moldura e de caixa) e o glifo a 7.532 inserções contra 1.150: parte as
+letras dele. **Medido, não entra.** Linhas que tocam: 14 linhas acima de 1,8 mediana em 898, 3 com o filtro. Não são a causa.
 
 ### O que ela não entrega
 
-- **O perfil calibrado não existe**: depende da S-703, que é humana. O perfil médio é sintético, e a mancha dele é um ponto escuro de
-  um pixel a meia resolução. Em scan de verdade a poeira tem outra forma, e o corte de 6 caixas soltas não foi visto em scan nenhum.
 - **O glifo continua em ~52%** no perfil médio: o conserto é da caixa, e o glifo erra por dentro dela.
-- **Há linhas inteiras que o `psm 7` ainda devolve vazias** com a caixa certa ou quase: é onde mora o que resta no *Seirawan* e no *Minhas 60* 217.
+- **Há linhas inteiras que o `psm 7` ainda devolve vazias** com a caixa certa ou quase: é o que resta no *Minhas 60* 217.
 - **A mancha sobre uma letra é acento**, e fica: a régua não a distingue, e a caixa só cresce até o corte acima.
 - A mancha entre as palavras de uma linha também fica: não muda a caixa, e é indistinguível de um ponto.
+- A moldura que deixa de ser quadro continua caixa na coluna dela, com o texto dentro lido.
 
 ## S-715 · O leiaute de reserva ✅ implementada (2026-11-05)
 
@@ -1616,23 +1616,27 @@ como estava. O nome da lista do livro só vale com maiúscula e trecho todo de u
 **A primeira versão reconhecia a palavra no meio da corrida, e foi recusada pela auditoria**: `d e sHan d e`, `a. nOhn`, `gein e s`. Sobre o glifo a
 corrida vem com erro, e 396 mil palavras e nomes acham alguma coisa em quase toda sequência. Agora, sobrou letra, o trecho fica.
 
+**A segunda versão foi reprovada pelo crítico, e é a que manda.** Em leitura real, `y a la postre` saía `ya la postre` no *Dobonov*; na régua de texto, `N o se` saía `Nose`, e as listas aceitavam `inden`, `ander`, `ofthe`,
+`andthe`. Agora **o trecho em que toda peça já é palavra da língua é prosa** e fica, e **a cobertura só de curtas vence uma palavra**: `in den`, `of the`, `No se`, `de la`. O preço, escrito: `e i n e s` sai `ein es`, e `i n d e m` sai
+`in dem`. Mal partido e não junto, com as mesmas letras, que é o lado seguro do que a saída proíbe.
+
 ### Critério de aceite
 
-`tests/test_text_espacado.py`, sintético e sem livro, com a decisão inteira, e a fiação por `_sem_espacado`. Nas folhas do *Gutmayer*, motor `glifo`,
-língua `deu`, contando as corridas de ao menos 3 letras soltas cuja junção a lista conhece:
+`tests/test_text_espacado.py`, sintético, **e pelo `ler_pagina`**: trocar a chamada de `_sem_espacado` por `pass`, `MIN_TOKENS = 2` e tirar as curtas públicas reprovam. Nas folhas do *Gutmayer*, motor `glifo`, língua `deu`, contando as corridas
+de ao menos 3 letras soltas cuja junção a lista conhece:
 
 | | antes | depois |
 |---|---:|---:|
-| 12 folhas olhadas para escrever a régua | 14 | 2 |
+| 12 folhas olhadas para escrever a régua | 14 | 4 |
 | 10 folhas **não vistas** | 7 | 3 |
-| junções de palavras distintas, à vista, nas 22 folhas (50 junções) | | **0** |
-| linhas mudadas no ouro-dev, limpo (882) e no perfil médio (898), com `eng` e `por` | | **0** |
+| junções de palavras distintas, à vista, nas 22 folhas (47 refeitas) | | **0** |
+| linhas mudadas no ouro-dev, limpo e no perfil médio, com `eng` e `por` | | **0** |
 
-**A saída não se cumpre inteira.** Zero palavra distinta juntada, sim. Zero palavra conhecida espaçada, não: sobram 5, porque a corrida tem letra a mais ou é pedaço de
-palavra maior (`F i g u`), e é a regra acima, que escolheu não juntar na dúvida.
+Sobre a camada em espanhol, só como régua de texto, porque a camada não passa por aqui: 7 linhas mudam no *Dobonov* e 2 no *Koblenz*, e as 9 estão certas (`d eb e` → `debe`, `N o se` → `No se`).
 
-**Em cerca de um terço das junções (16 de 50) sai só um pedaço**, e não a palavra: `rung`, `mann`, `Laske`, porque o resto dela veio com erro (`S p i e1 m a n n` → `S p i e1 mann`). As letras
-são as mesmas e nenhuma palavra de fora entra, mas o pedaço existe na lista por acaso.
+**A saída não se cumpre inteira.** Zero palavra distinta juntada, sim. Zero palavra conhecida espaçada, não: sobram 7, porque a corrida tem letra a mais, é pedaço de palavra maior (`F i g u`), ou tem duas coberturas, e é a regra acima, que escolheu não juntar na dúvida.
+
+**Em cerca de um terço das junções sai só um pedaço**, e não a palavra: `rung`, `mann`, `Lask`, porque o resto dela veio com erro (`S p i e1 m a n n` → `S p i e1 mann`). As letras são as mesmas e nenhuma palavra de fora entra, mas o pedaço existe na lista por acaso.
 
 ### O que ela não entrega
 
@@ -1704,6 +1708,9 @@ por trás, o que a S-703 proíbe; para o treino, não diz qual palavra a mão to
   errou). `recortes_do_par` recorta só as letras que mudaram, só no par de mesmo tamanho, e só quando as caixas da linha casam uma a uma com as letras dela; senão, `sem_recorte`,
   e não se adivinha. `coleta.Recorte` leva a procedência, e `corrigidos.csv`, na raiz da quarentena, guarda o par; `promover` grava o `corrigido_de:` no lugar de `humano`.
   **O livro do teste nunca entra**, nem o que o manifesto tira do treino, nem livro sem identidade (`livro_recusado`), e a recusa vem antes de qualquer leitura de imagem.
+  **O manifesto não basta**, e o crítico achou o caso: o volume 4 de uma série com o 2 no teste está fora do manifesto e passava. `assets/texto_prosa/exclusao_do_teste.json` é a lista da S-750, independente do inventário: as 4 identidades de irmãos
+  fora do manifesto, conferidas à mão, e a chave de série (`ouro.chave_de_serie`, o resumo do nome sem número e ano) de cada um dos 16 livros do teste. O volume que ainda não chegou cai pelo nome. Só resumos: nenhum nome de livro no repositório. **A lista é
+  um retrato**: livro de outra série do mesmo autor, ou com nome diferente, só entra revendo a lista.
 
 **O sha.** `PaginaLida.modelo` é campo novo com padrão, sai do metadado que `carregar_classificador` já conferiu, e vai ao JSON só quando existe. **Não sobe `ESQUEMA` nem `arquivo.VERSAO`**,
 e um programa anterior o ignora. `.cvtxt` de antes sai `@desconhecido`. **Não há valor novo no `Literal` de `Procedencia`**: a corrida continua `humano`, e `corrigido_de:` só existe em

@@ -150,6 +150,64 @@ class LivroDoTesteTests(unittest.TestCase):
         self.assertTrue(dado_corrigido.livro_recusado(Path(self.tmp.name) / "nao_existe.pdf", _manifesto("x", ouro.DEV)))
 
 
+class SerieForaDoManifestoTests(unittest.TestCase):
+    """O volume seguinte de uma série do teste não está no manifesto, e não entra na quarentena (S-750)."""
+
+    def setUp(self) -> None:
+        self.tmp = TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.vazio = _manifesto("outro", ouro.DEV)
+
+    def _pdf(self, nome: str, conteudo: bytes = b"%PDF-1.4 volume") -> Path:
+        pdf = Path(self.tmp.name) / nome
+        pdf.write_bytes(conteudo)
+        return pdf
+
+    def test_o_volume_quatro_pelo_resumo_da_lista_versionada(self) -> None:
+        """`58529adc...` é o volume 4 de uma série que tem o 2 no teste, e não está no manifesto."""
+        pdf = self._pdf("qualquer.pdf")
+        with mock.patch.object(dado_corrigido, "identidade_de", return_value="58529adc955cc4ea"):
+            self.assertTrue(dado_corrigido.livro_recusado(pdf, self.vazio))
+
+    def test_a_lista_versionada_so_tem_resumo(self) -> None:
+        import re
+
+        exclusao = ouro.carregar_exclusao()
+        self.assertTrue(exclusao.identidades and exclusao.series)
+        for valor in (*exclusao.identidades, *exclusao.series):
+            self.assertRegex(valor, re.compile(r"^[0-9a-f]{16}$"))
+        bruto = (ouro.BUNDLE_ROOT / ouro.CAMINHO_DA_EXCLUSAO).read_text(encoding="utf-8")
+        self.assertEqual(set(json.loads(bruto)), {"versao", "item", "gerada_em", "nota", "identidades", "series"})
+
+    def test_cada_livro_do_teste_tem_a_sua_serie(self) -> None:
+        """Não confere qual, porque o nome não está aqui; confere que nenhum ficou de fora em número."""
+        manifesto = ouro.carregar()
+        self.assertGreaterEqual(len(ouro.carregar_exclusao().series), len([x for x in manifesto.livros if x.split == ouro.TESTE]) - 1)
+
+    def test_a_chave_ignora_numero_ano_e_pontuacao(self) -> None:
+        self.assertEqual(ouro.chave_de_serie("Autor X - Titulo Y 2 (2019)"), ouro.chave_de_serie("Autor X - Titulo Y 5 (2024)"))
+        self.assertEqual(ouro.chave_de_serie("Autor X - Titulo Y vol. 3"), ouro.chave_de_serie("autor x título y"))
+        self.assertNotEqual(ouro.chave_de_serie("Autor X - Titulo Y"), ouro.chave_de_serie("Autor X - Titulo Z"))
+
+    def test_o_volume_que_ainda_nao_chegou_cai_pelo_nome(self) -> None:
+        serie = ouro.chave_de_serie("Autor X - Titulo Y 2 (2019)")
+        exclusao = ouro.Exclusao(series=frozenset({serie}))
+        pdf = self._pdf("Autor X - Titulo Y 7 (2030).pdf")
+        self.assertTrue(dado_corrigido.livro_recusado(pdf, self.vazio, exclusao))
+        self.assertEqual(dado_corrigido.livro_recusado(self._pdf("Outro Livro.pdf"), self.vazio, exclusao), "")
+
+    def test_preparar_recusa_antes_da_imagem(self) -> None:
+        doc = _editado(_pagina(_linha("the wbite rook")), "wbite", "white")
+        with (
+            mock.patch.object(dado_corrigido, "identidade_de", return_value="58529adc955cc4ea"),
+            mock.patch("chess_diagram_ocr.text.leitor.segmentar") as segmentar,
+        ):
+            recortes, envio = dado_corrigido.preparar(doc, self._pdf("x.pdf"), np.zeros((10, 10, 3), np.uint8), dpi=72, manifesto=self.vazio)
+        self.assertEqual(recortes, [])
+        self.assertTrue(envio.recusado)
+        segmentar.assert_not_called()
+
+
 def _caixas_da_linha(texto: str, y: float = 10.0) -> list[Caixa]:
     """Uma caixa por letra, em pixels a 72 dpi: 10 px de largura cada, em ordem."""
     letras = len("".join(texto.split()))

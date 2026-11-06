@@ -15,7 +15,7 @@ quando as caixas da linha casam uma a uma com as letras que o motor leu nela (`r
 e não se adivinha. Cada recorte leva a procedência `corrigido_de:<motor>@<sha do modelo>`, que `coleta.promover` grava no registro
 no lugar de `humano`: entra no treino, e nunca mede.
 
-**O livro do teste nunca entra**, nem o que o manifesto tira do treino: `livro_recusado`. Livro sem identidade também não: sem ela
+**O livro do teste nunca entra**, nem o que o manifesto tira do treino, nem o da mesma série fora do manifesto: `livro_recusado`. Livro sem identidade também não: sem ela
 não há como saber que não é do teste.
 """
 
@@ -106,11 +106,20 @@ def exigir_documento_cego(doc: DocumentoRico, *, onde: str) -> None:
         raise FolhaAncorada(f"{onde}: a folha foi escrita sobre a leitura de {', '.join(motores)}, e a verdade tem de ser cega.")
 
 
-def livro_recusado(pdf: str | Path, manifesto: _ouro.Manifesto | None = None) -> str:
-    """Por que este livro não vai à quarentena, ou vazio se pode ir. Só compara identidades: nenhuma folha é aberta."""
+def livro_recusado(
+    pdf: str | Path, manifesto: _ouro.Manifesto | None = None, exclusao: _ouro.Exclusao | None = None
+) -> str:
+    """Por que este livro não vai à quarentena, ou vazio se pode ir. Só compara identidades e nomes: nenhuma folha é aberta.
+
+    **O manifesto não basta**: ele só conhece os livros sorteados, e o volume seguinte de uma série do teste não está nele. Quem responde
+    por esse é a lista de exclusão, por identidade e por série (S-750).
+    """
     identidade = identidade_de(pdf)
     if identidade is None:
         return "sem identidade: não há como saber se o livro é do teste"
+    recusa = (exclusao if exclusao is not None else _ouro.carregar_exclusao()).recusa(identidade, Path(pdf).stem)
+    if recusa:
+        return recusa
     for livro in (manifesto if manifesto is not None else _ouro.carregar()).livros:
         if livro.identidade != identidade:
             continue
