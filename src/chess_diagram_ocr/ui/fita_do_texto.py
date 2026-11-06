@@ -103,7 +103,6 @@ ABAS: tuple[Aba, ...] = (
                     "marcar_folha_conferida",
                     "voltar_a_versao_anterior",
                     "descartar_correcoes",
-                    "corrigir_em_todas_as_folhas",
                     "indice_do_caderno",
                     "trazer_da_revisao",
                 ),
@@ -115,7 +114,7 @@ ABAS: tuple[Aba, ...] = (
         "Revisão",
         (
             Grupo("Léxico", ("marcar_fora_do_lexico", "proxima_fora_do_lexico", "limpar_marcas_do_lexico")),
-            Grupo("Leitura", ("proxima_a_revisar", "limpar_cache_de_leitura")),
+            Grupo("Leitura", ("proxima_a_revisar", "corrigir_em_todas_as_folhas", "limpar_cache_de_leitura")),
             Grupo("Correções", ("lista_de_correcoes",)),
             Grupo("Parágrafo", ("mover_paragrafo_acima", "mover_paragrafo_abaixo")),
         ),
