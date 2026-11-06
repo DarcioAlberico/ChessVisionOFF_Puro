@@ -43,7 +43,7 @@ import re
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from ..atomic_io import atomic_write_bytes, atomic_write_text
 from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
@@ -162,7 +162,7 @@ LIVROS_DA_MEDICAO = 5
 PAGINAS_DA_MEDICAO = 12
 DESTINO_DA_MEDICAO = PROJECT_ROOT / "docs" / "metrics" / "texto_lexico.json"
 
-MOTOR_DA_JUNCAO = "glifo"
+MOTOR_DA_JUNCAO: Literal["glifo"] = "glifo"
 """Quem lê a folha na medida da junção: a população dela é o livro tipografado, e não a camada (S-727)."""
 
 

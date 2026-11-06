@@ -46,7 +46,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from ..atomic_io import atomic_write_text
 from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
@@ -166,7 +166,7 @@ def _modelo_emprestado(modelo: Path) -> Iterator[tuple[Any, str]]:
     yield load_model(modelo)
 
 
-MOTOR_MEDIDO = "glifo"
+MOTOR_MEDIDO: Literal["glifo"] = "glifo"
 """O motor cujo custo este comando mede, escrito aqui e no relatório: virar o padrão não o muda (S-727)."""
 
 
