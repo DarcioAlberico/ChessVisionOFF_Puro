@@ -47,6 +47,7 @@ corrigir o que o motor leu. Deixá-la entrar encheria o relatório de pares
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
@@ -56,6 +57,8 @@ from typing import Any
 from .documento import REVISAR, TRANQUILO
 from .pagina import BlocoDeDiagrama, Procedencia
 from .rico import SEM_BLOCO, TEXTO, Corrida, DocumentoRico
+
+_PALAVRA = re.compile(r"\S+")
 
 __all__ = [
     "Correcao",
@@ -205,58 +208,49 @@ def _marcas_intactas(doc: DocumentoRico, editados: frozenset[int]) -> frozenset[
     """As corridas `revisar` dos blocos editados cuja **palavra** é, inteira, a que o motor leu.
 
     **A palavra, e não a corrida.** O editor grava a diferença mínima: corrigir `wbite` deixa os pedaços `w` e `ite`
-    como `revisar`, em trechos iguais ao lido, e a primeira versão desta regra os guardava como marcas. Corrigir uma
-    letra é a correção típica de OCR, e as marcas iam para o arquivo em pedaços.
+    como `revisar`, e eles não são o que o motor leu. A comparação é por palavra, com `_palavras_intactas`.
 
-    **Só se a marca for de palavra, e quem diz é o espaço.** A marca da palavra é um token, e não tem espaço dentro; a
-    faixa do bloco inteiro tem, e continua tendo em cada pedaço que a edição deixa. Na faixa, quem leu o parágrafo para
-    corrigi-lo já o conferiu, e o bloco fica tranquilo como sempre ficou. As duas tentativas anteriores olhavam o texto
-    sem marca em volta, e erravam dos dois lados: o carimbo da gravação anterior funde esse texto com as correções, e a
-    segunda gravação tomava o bloco por faixa; e a palavra redigitada na faixa reencontra letras do que estava lá, e o
-    resto do bloco ficava marcado.
+    **Só se a marca for de palavra, e quem diz é o espaço.** A marca da palavra é um token, e `rico._pedacos` garante que
+    não há espaço nela; a faixa do bloco inteiro tem espaço em algum pedaço que a edição deixa. Na faixa, quem leu o
+    parágrafo para corrigi-lo já o conferiu, e o bloco fica tranquilo como sempre ficou. O texto que a mão pôs não conta
+    (`rico.substituir_intervalo` mantém a faixa em `of the`): ali o espaço é dela, e ele não diz nada sobre o bloco.
     """
     if not editados:
         return frozenset()
     comparaveis = _blocos_comparaveis(doc)
     atual = texto_por_bloco(doc)
     posicao: dict[int, int] = {}
-    por_bloco: dict[int, list[tuple[int, int, Corrida]]] = {}
+    marcas_do_bloco: dict[int, list[tuple[int, int, Corrida]]] = {}
     for indice, corrida in enumerate(doc.corridas):
         if corrida.bloco not in editados:
             continue
         inicio = posicao.get(corrida.bloco, 0)
         posicao[corrida.bloco] = inicio + len(corrida.texto)
-        por_bloco.setdefault(corrida.bloco, []).append((indice, inicio, corrida))
+        if corrida.faixa == REVISAR:
+            marcas_do_bloco.setdefault(corrida.bloco, []).append((indice, inicio, corrida))
     ficam: set[int] = set()
-    for bloco, corridas in por_bloco.items():
-        antes = comparaveis[bloco][0]
-        agora = atual[bloco]
-        trechos = SequenceMatcher(None, antes, agora, autojunk=False).get_opcodes()
-        iguais = [(i1, j1, j2) for operacao, i1, _i2, j1, j2 in trechos if operacao == "equal"]
-        marcas = [(indice, inicio, corrida.texto) for indice, inicio, corrida in corridas if corrida.faixa == REVISAR]
-        if any(letra.isspace() for _, _, texto in marcas for letra in texto):
+    for bloco, marcas in marcas_do_bloco.items():
+        lidas = [corrida.texto for _, _, corrida in marcas if corrida.procedencia != "humano"]
+        if any(letra.isspace() for texto in lidas for letra in texto):
             continue
-        ficam.update(indice for indice, inicio, texto in marcas if _palavra_intacta(antes, agora, iguais, inicio, texto))
+        intactas = _palavras_intactas(comparaveis[bloco][0], atual[bloco])
+        ficam.update(
+            indice
+            for indice, inicio, corrida in marcas
+            if any(a <= inicio and inicio + len(corrida.texto) <= b for a, b in intactas)
+        )
     return frozenset(ficam)
 
 
-def _palavra_intacta(antes: str, agora: str, iguais: Sequence[tuple[int, int, int]], inicio: int, texto: str) -> bool:
-    """A palavra em que a corrida está cabe num só trecho igual, e no lido ela também era uma palavra inteira.
+def _palavras_intactas(antes: str, agora: str) -> list[tuple[int, int]]:
+    """Onde estão, em `agora`, as palavras inteiras que o motor leu.
 
-    A segunda metade é o `xwhite` que perdeu o `x`: `white` é um trecho igual ao lido, e não é o que o motor leu.
+    **Alinha palavra com palavra, e não caractere com caractere.** Por caractere, apagar `a ` em `to a and` casa `to a`
+    e `nd`, e `and`, que ninguém tocou, atravessava dois trechos e perdia a marca.
     """
-    primeiro = inicio
-    ultimo = inicio + len(texto)
-    while primeiro > 0 and not agora[primeiro - 1].isspace():
-        primeiro -= 1
-    while ultimo < len(agora) and not agora[ultimo].isspace():
-        ultimo += 1
-    for i1, j1, j2 in iguais:
-        if j1 <= primeiro and ultimo <= j2:
-            a = i1 + primeiro - j1
-            b = a + ultimo - primeiro
-            return (a == 0 or antes[a - 1].isspace()) and (b == len(antes) or antes[b].isspace())
-    return False
+    achadas = list(_PALAVRA.finditer(agora))
+    casados = SequenceMatcher(None, _PALAVRA.findall(antes), [m.group() for m in achadas], autojunk=False).get_matching_blocks()
+    return [achadas[j + k].span() for _i, j, tamanho in casados for k in range(tamanho)]
 
 
 def _marcada(corrida: Corrida, editados: frozenset[int]) -> Corrida:

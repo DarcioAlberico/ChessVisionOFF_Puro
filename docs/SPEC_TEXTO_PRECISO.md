@@ -332,11 +332,11 @@ número é tabela de torneio, e não avisa. A fração de palavras existentes **
 
 **A camada não absolve o ruído.** O *Niemeijer*, índice 4, é texto de verdade que o glifo despedaçou: 3.101 caracteres em 2.789
 tokens, contra 1.624 caracteres de camada. Pela contagem ele "batia" com ela e saía calado; agora avisa, e o aviso é a verdade ali.
-Entre aquelas 117 folhas, nenhuma com ruído tem camada, e na varredura é a única folha que a regra muda. O crítico leu mais 348
-folhas com moldura, 465 no total, e achou 14 com ruído, todas sinal solto e todas avisadas.
+Entre aquelas 117 folhas, nenhuma com ruído tem camada, e na varredura é a única folha que a regra muda. Somando a leitura do
+crítico, são 498 folhas com moldura e 15 com ruído, todas avisadas: 14 sem camada, e o *Niemeijer*.
 
 **Sem aviso, e ruim: o texto despedaçado acima de 1,3.** Não é um livro só. Entre 1,3 e 1,7 há 14 folhas do *Mieses*, 13 do
-*Niemeijer* e 2 do *Kmoch*, e o *Niemeijer* vai até 3,61. Lendo mais de 1,3 vez o que a camada tem, são 23 de 27 folhas no
+*Niemeijer*, 2 do *Kmoch* e uma do *Pachman*, e o *Niemeijer* vai até 3,61. Lendo mais de 1,3 vez o que a camada tem, são 23 de 27 folhas no
 *Niemeijer* e 52 de 63 no *Mieses*. É defeito aberto: o efeito de subir o corte não foi medido.
 
 ### Critério de aceite
@@ -502,20 +502,19 @@ corrida, sem mudar o formato. `Shift+F7` vai à próxima, por `rico.intervalos_a
 
 **Corrigir uma palavra não apaga as outras marcas do parágrafo.** O carimbo de `correcao.com_procedencia_humana` é por bloco, e
 a folha reaberta perdia as marcas sem aviso, embora na mesma sessão elas sobrevivessem. Agora a marca fica se a **palavra** em que
-ela está é, inteira, a que o motor leu: cabe num só trecho igual ao lido, e no lido também era uma palavra. **Olhar a corrida não
-basta:** o editor grava a diferença mínima, e corrigir `wbite` deixa `w` e `ite` como `revisar`, em trechos iguais. A primeira
-versão desta regra os guardava. A faixa do bloco inteiro continua saindo, e **quem separa os dois casos é o espaço**: a marca da
-palavra é um token, sem espaço dentro, e a faixa tem espaço em cada pedaço que a edição deixa (`correcao._marcas_intactas`). As
-tentativas de olhar o texto sem marca em volta erravam dos dois lados: o carimbo da gravação anterior funde esse texto com as
-correções, e a segunda gravação apagava as marcas restantes; e a palavra redigitada na faixa reencontra letras do que estava lá, e
-o resto do bloco ficava marcado. A marca do fim de uma linha e a do começo da seguinte são duas corridas, porque o espaço da junção
-não é de nenhuma (`rico._agrupar`).
-`Shift+F7` pergunta à mesma regra, e não para nos pedaços nem antes de gravar. As guardas são `CorrigirAMarcaNoEditorTests`, pelo
-editor com `QTest`, e `MarcaPorSorteioTests`, que sorteia correções gravando no meio.
+ela está é, inteira, a que o motor leu, e a comparação é palavra com palavra. **Olhar a corrida não basta:** o editor grava a
+diferença mínima, e corrigir `wbite` deixa `w` e `ite` como `revisar`. **Olhar caractere também não:** apagar `a ` em `to a and`
+casa `to a` e `nd`, e `and` perdia a marca. A faixa do bloco inteiro continua saindo, e **quem separa os dois casos é o espaço**: a
+marca da palavra é um token, e `rico._pedacos` garante que não há espaço nela, nem onde `camada.remapear` uniu duas vizinhas, em 17
+de 414 folhas; a faixa tem espaço em algum pedaço que a edição deixa (`correcao._marcas_intactas`). O espaço que a mão pôs não
+conta. A marca do fim de uma linha e a do começo da seguinte são duas corridas (`rico._agrupar`). `Shift+F7` pergunta à mesma regra,
+e não para nos pedaços nem antes de gravar. As guardas são `CorrigirAMarcaNoEditorTests`, pelo editor com `QTest`, e
+`MarcaPorSorteioTests`, que sorteia correções gravando no meio.
 
-**O que sobra:** até gravar, a tinta na tela continua nos pedaços. O pedaço de uma palavra só que resta da faixa, com o espaço
-apagado junto (`wbite` de `wbite knight`, sem ` knight`), fica marcado como se fosse palavra. E apagar uma letra e digitar a mesma
-deixa os pedaços marcados, porque o texto é o que o motor leu.
+**O que sobra:** até gravar, a tinta na tela continua nos pedaços. A faixa reduzida a uma palavra sem espaço fica marcada como se
+fosse palavra (`wbite`, com ` knight` apagado, ou acrescentado). Apagar uma letra e digitar a mesma deixa os pedaços marcados, porque
+a palavra é a que o motor leu. E o alinhamento pode errar quando o bloco repete muito as mesmas palavras: 9 de 3.000 rodadas no pior
+sorteio, com 15 correções em 60 palavras de um vocabulário de 40.
 
 **Desvio declarado:** as alternativas do `lstm_choice_mode=2`, que o roadmap cita, saem no hOCR e não no TSV. Aqui o
 terceiro sinal é a confiança por palavra do TSV; a S-761 calibra.

@@ -612,7 +612,9 @@ def _pedacos(linha: Any) -> list[tuple[tuple[bool, bool, bool], str]]:
     texto = linha.texto
     negrito = _marcas(texto, getattr(linha, "negrito_em", ()), getattr(linha, "negrito", None) is True)
     italico = _marcas(texto, getattr(linha, "italico_em", ()), getattr(linha, "italico", None) is True)
-    revisar = _marcas(texto, getattr(linha, "revisar_em", ()), False)
+    # **A marca é da palavra, e nunca do espaço** (S-718). `camada.remapear` une o branco entre duas marcas vizinhas, que
+    # é a regra certa para o negrito, e 17 de 414 folhas chegavam aqui com duas palavras numa marca só.
+    revisar = [m and not c.isspace() for m, c in zip(_marcas(texto, getattr(linha, "revisar_em", ()), False), texto, strict=True)]
     pedacos: list[tuple[tuple[bool, bool, bool], str]] = []
     comeco = 0
     for i in range(1, len(texto) + 1):
@@ -643,11 +645,8 @@ def _agrupar(linhas: Sequence[Any]) -> list[tuple[tuple[bool, bool, bool], str]]
     for n, linha in enumerate(linhas):
         pedacos = _pedacos(linha)
         if n != ultima:
-            chave, texto = pedacos[-1]
-            if chave[2]:
-                pedacos.append(((chave[0], chave[1], False), " "))
-            else:
-                pedacos[-1] = (chave, texto + " ")
+            chave, _texto = pedacos[-1]
+            pedacos.append(((chave[0], chave[1], False), " "))
         for chave, texto in pedacos:
             if grupos and grupos[-1][0] == chave:
                 grupos[-1][1].append(texto)

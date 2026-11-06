@@ -399,6 +399,27 @@ class CorrigirAMarcaNoEditorTests(_Aba):
         self.assertEqual(self.painel.editor.toPlainText(), "wlns")
         self._so_sobra("wlns")
 
+    def test_duas_marcas_vizinhas_que_a_juncao_de_hifen_uniu(self) -> None:
+        """`camada.remapear` une o branco entre elas: 17 de 414 folhas, e uma letra levava 82 marcas a 0."""
+        self._folha("the wbite knigbt wins a pawn", (4, 16))
+        self.assertEqual(set(self._paradas()), {"wbite", "knigbt"})
+        self._trocar_letra(17, "v")
+        self._so_sobra("wbite", "knigbt")
+
+    def test_apagar_a_palavra_vizinha_nao_tira_a_marca(self) -> None:
+        """Por caractere, `to a` casa com `to a` e `nd` com `nd`, e `and` atravessava dois trechos."""
+        self._folha("to a and", (5, 8))
+        self._cursor(3, 5)
+        QTest.keyClick(self.painel.editor, Qt.Key.Key_Delete)
+        self.assertEqual(self.painel.editor.toPlainText(), "to and")
+        self._so_sobra("and")
+
+    def test_inserir_uma_palavra_nao_tira_a_marca(self) -> None:
+        self._folha("the knight wlns a pawn", (11, 15))
+        self._cursor(4)
+        QTest.keyClicks(self.painel.editor, "white ")
+        self._so_sobra("wlns")
+
     def test_a_palavra_inteira_redigitada(self) -> None:
         self._folha("the wbite knight wlns a pawn", (4, 9), (17, 21))
         self._cursor(4, 9)
