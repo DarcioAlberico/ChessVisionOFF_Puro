@@ -702,6 +702,7 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("ler_folha", "Ler o texto desta folha", OCR, estilos.NEUTRO, rotulo_curto="Ler folha"),
     Comando("lingua_do_livro", "Língua do livro…", OCR, estilos.NEUTRO, rotulo_curto="Língua"),
     Comando("modo_transcricao", "Modo transcrição: digitar a verdade do scan-ouro, às cegas", OCR, estilos.NEUTRO, rotulo_curto="Transcrever"),
+    Comando("limpar_cache_de_leitura", "Limpar o cache de leitura", OCR, estilos.NEUTRO, rotulo_curto="Limpar cache"),
     Comando(
         "folha_da_pagina_aberta",
         "Pôr no campo a folha que o visualizador mostra",

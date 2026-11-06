@@ -58,7 +58,8 @@ class ParTocado:
     depois: str
     motor: Procedencia
     modelo: str
-    """O sha do modelo que gerou o texto, de `PaginaLida.modelo`. Vazio é o `.cvtxt` de antes da S-762."""
+    """O sha do modelo que gerou o texto, de `PaginaLida.modelo`. Vazio é o `.cvtxt` de antes da S-762, ou o motor que não é o
+    classificador: `PaginaLida.modelo` é o sha dele, e acusá-lo pelo erro do Tesseract é o defeito que a S-722 tirou."""
 
     @property
     def procedencia(self) -> str:
@@ -69,6 +70,9 @@ def pares_tocados(doc: DocumentoRico) -> tuple[ParTocado, ...]:
     """Os pares palavra a palavra. **O alinhamento é por palavra**, e o que ninguém tocou não aparece em par nenhum.
 
     Só a troca de uma palavra por uma: `ofthe` -> `of the` e a palavra acrescentada não têm par que o treino use.
+
+    **O motor é o da palavra, e não o do bloco** (S-722): o bloco misto é `glifo`, e a palavra pode ser do Tesseract ou da
+    camada. Palavra da camada não vira par, como num bloco inteiro dela: não há motor a acusar.
     """
     if doc.origem is None:
         return ()
@@ -78,13 +82,15 @@ def pares_tocados(doc: DocumentoRico) -> tuple[ParTocado, ...]:
     for bloco, (antes, motor) in sorted(_correcao._blocos_comparaveis(doc).items()):
         if motor not in MOTORES_DE_LEITURA or atual[bloco] == antes:
             continue
+        alvo = doc.origem.blocos[bloco]
         lidas, ficaram = antes.split(), atual[bloco].split()
         for op, i1, i2, j1, j2 in SequenceMatcher(None, lidas, ficaram, autojunk=False).get_opcodes():
             if op != "replace" or i2 - i1 != j2 - j1:
                 continue
-            achados.extend(
-                ParTocado(bloco, i1 + k, lidas[i1 + k], ficaram[j1 + k], motor, modelo) for k in range(i2 - i1)
-            )
+            for k in range(i2 - i1):
+                quem = alvo.procedencia_da_palavra(i1 + k) if isinstance(alvo, BlocoDeTexto) else motor
+                if quem in MOTORES_DE_LEITURA:
+                    achados.append(ParTocado(bloco, i1 + k, lidas[i1 + k], ficaram[j1 + k], quem, modelo if quem == "glifo" else ""))
     return tuple(achados)
 
 

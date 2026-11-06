@@ -74,13 +74,12 @@ from time import perf_counter
 
 logger = logging.getLogger(__name__)
 
-PAGINAS_DO_ACERVO = 12_000
-"""O tamanho do acervo em páginas, como a S-61 o extrapolou. Ver `horas_para_o_acervo`.
+PAGINAS_DO_ACERVO = 26_730
+"""As folhas de `PDF/*.pdf`, contadas em 2026-11-06: 58 arquivos (S-725). Ver `horas_para_o_acervo`.
 
-**É uma ordem de grandeza declarada, e não uma contagem.** O acervo tem livros duplicados (o
-mesmo título em duas edições de arquivo), então contar páginas de `PDF/*.pdf` conta a mesma
-página duas vezes. Quem quiser o número da sua pasta passa `paginas=` -- o padrão existe para
-que a segunda unidade do relatório seja comparável com o ~10 h que o plano cita."""
+**O padrão era 12.000, a extrapolação da S-61**, e dava menos da metade das horas de verdade. **A conta inclui as duplicatas**, dois
+títulos em duas edições de arquivo (1.544 folhas; sem elas, 25.186), porque uma varredura da pasta paga as duas. Quem quiser o número
+da sua pasta passa `paginas=`. Os relatórios arquivados guardam o que usaram, em `paginas_do_acervo`."""
 
 MARGEM_PADRAO = 0.10
 """Quanto o custo por página pode piorar antes de `comparar` acusar. Ver o cabeçalho."""
@@ -152,14 +151,16 @@ ETAPAS: tuple[Etapa, ...] = (
         "linha",
     ),
     Etapa("leitura_de_linha", ("chess_diagram_ocr.text.leitura_de_linha:em_bloco",), "linha"),
+    Etapa("leitor_de_linha", ("chess_diagram_ocr.text.tesseract:ler_linhas", "chess_diagram_ocr.text.tesseract:ler_folha"), "pagina"),
+    Etapa("fusao", ("chess_diagram_ocr.text.fusao:fundir", "chess_diagram_ocr.text.arbitro:arbitrar"), "linha"),
     Etapa("coluna", ("chess_diagram_ocr.text.leitor:montar",), "pagina"),
 )
-"""As onze etapas, na ordem em que uma página as atravessa.
+"""As treze etapas, na ordem em que uma página as atravessa.
 
 As cinco que a spec nomeia -- binarização, contornos, classificação, leitura por linha, coluna --
 mais seis sem as quais o total não fecha: renderizar a folha, ler a camada do PDF, achar os
 diagramas, o separador de colado da S-186 (que roda em `auto` na página e não é de graça), a
-quebra em linhas, e as correções por linha.
+quebra em linhas, e as correções por linha. As duas últimas a entrar, `leitor_de_linha` e `fusao`, só andam com `motor="fusao"` (S-725).
 
 **As correções entraram porque a primeira medição as deixou no resíduo, e ele saiu com 32% da
 página** -- o maior número da tabela, e o único que não dizia nada. `italico.declarar` conta aqui

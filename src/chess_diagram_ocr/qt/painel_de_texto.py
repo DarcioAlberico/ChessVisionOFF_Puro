@@ -504,6 +504,7 @@ class PainelDeTexto(QWidget):
         """O recorte da folha que a faixa do bloco impresso mostra, antes da escala (S-643)."""
         self._folha_pedida_ao_fundo: int | None = None
         self._renderizacao: Tarefa | None = None
+        self._limpeza_do_cache: Tarefa | None = None
         """A folha do caderno sendo rasterizada ao fundo, para as miniaturas (`_renderizar_ao_fundo`)."""
         """O motor e o modo bloco da leitura em curso, como eram quando ela partiu."""
         self._sincronizando = False
@@ -3750,6 +3751,30 @@ class PainelDeTexto(QWidget):
         if aceitou:
             self._escolher_lingua(codigos[rotulos.index(rotulo)])
 
+    def limpar_cache_de_leitura(self) -> None:
+        """«Limpar o cache de leitura» no menu Texto (S-725). Sem pergunta: apagar é sempre seguro, e a próxima leitura o refaz.
+
+        Numa `Tarefa`, porque são dezenas de milhares de arquivos pequenos. Uma de cada vez, e uma limpeza em curso responde à segunda.
+        """
+        if self._limpeza_do_cache is not None:
+            return
+        from chess_diagram_ocr.text import cache_texto
+
+        tarefa = Tarefa(cache_texto.padrao().limpar, parent=self, nome="limpeza do cache de leitura")
+        tarefa.pronto.connect(self._cache_limpo)
+        tarefa.falhou.connect(self._cache_nao_limpo)
+        self._limpeza_do_cache = tarefa
+        tarefa.start()
+
+    def _cache_limpo(self, resultado: object) -> None:
+        quantas, tamanho = cast("tuple[int, int]", resultado)
+        self._limpeza_do_cache = None
+        self.estado.emit(strings.frase_do_cache_limpo(quantas, tamanho))
+
+    def _cache_nao_limpo(self, erro: str, _excecao: object = None) -> None:
+        self._limpeza_do_cache = None
+        self.estado.emit(f"O cache de leitura não foi limpo: {erro}")
+
     def _anotar_lingua_da_folha(self, pagina: PaginaLida, camada: str) -> str:
         """A folha lida soma na detecção (S-723). Devolve a frase do rodapé, quando há o que dizer sobre a língua."""
         texto = lingua_do_livro.texto_da_folha(camada, pagina.texto())
@@ -3986,7 +4011,9 @@ class PainelDeTexto(QWidget):
                 "tente outro motor ou o modo bloco."
             )
             return
-        self.estado.emit(f"Folha lida{tempo}: {len(self.documento.corridas)} trecho(s){figuras}.{lingua_nova}")
+        # **O bloco misto é `glifo` por regra, e a frase diz de quem é o texto de verdade** (S-722).
+        de_quem = f" {strings.frase_de_procedencia(pagina.caracteres_por_procedencia())}" if pagina.tem_detalhe_de_procedencia else ""
+        self.estado.emit(f"Folha lida{tempo}: {len(self.documento.corridas)} trecho(s){figuras}.{de_quem}{lingua_nova}")
         # **Depois de desenhar, e não antes**: se a pessoa recusar a oferta, o que fica na tela é
         # a leitura que ela acabou de pedir (S-255).
         self.oferecer_rascunho(pagina)
@@ -4687,11 +4714,13 @@ def _ler(
     lingua: str = LINGUA_PADRAO,
 ) -> PaginaLida:
     """`ler_pagina` com a folha já renderizada. **O `import` do leitor mora aqui** -- ver `ler`."""
+    from chess_diagram_ocr.text import cache_texto, leitor_de_linha
     from chess_diagram_ocr.text.leitor import ler_pagina
 
     return ler_pagina(
         caminho, indice, dpi=dpi, motor=motor, modo_bloco=modo_bloco, imagem_rgb=imagem_rgb, max_boards=max_boards, lingua=lingua,  # type: ignore[arg-type]
         reserva=True,  # só aqui: a régua e os CLIs não dependem de haver Tesseract na máquina
+        leitor_de_linha=leitor_de_linha.leitor_padrao(cache=cache_texto.padrao()),  # e só aqui a leitura volta do disco (S-725)
     )
 
 

@@ -374,8 +374,8 @@ admissão por livro está na S-716.
   sem referência:** fração das sequências de lance que fecham legais a partir da FEN do diagrama
   (S-729) não cai em relação ao glifo — é o "modelo de língua" da notação, e o único juiz que não
   depende da camada.
-- **G4 — tempo, e o que ele custa no acervo.** O acervo tem **25.918 folhas em 54 PDFs** (contadas pelo
-  crítico da rodada 6; `custo.PAGINAS_DO_ACERVO` ainda diz 12.000 e fica desatualizado até a S-725). A 2 s
+- **G4 — tempo, e o que ele custa no acervo.** O acervo tinha **25.918 folhas em 54 PDFs** (contadas pelo
+  crítico da rodada 6; hoje são 26.730 em 58, e `custo.PAGINAS_DO_ACERVO` acompanha desde a S-725). A 2 s
   por folha, varrer o acervo leva ~14 h, e um livro de 800 folhas, ~27 min. A política da S-215
   (`texto_custo_20260826.json`: ler texto custava 2,21× a página sem texto, política "sob demanda")
   muda de faixa acima de 4× — a S-725 remede e a D4 decide. Este é o **único** orçamento de tempo do
@@ -1135,7 +1135,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Achado:* `Pas` contra `♔a5` e `Axed` contra `♘xc4` (S-723) acabam com o lance inteiro não sendo vetado. Na v3 o veto por léxico e o por letras ficaram iguais folha a folha, e não sobrou escolha a fazer.
   - *Achado:* **da S-707 entram duas das quatro.** A âncora e `_keep_number_prefix`, sim. `_truncates_long_notation` não disparou em 57 folhas. A disputa virar revisão não muda a captura no dev e a piora na prata (30,0% para 29,2%).
   - *Achado:* **os três ajustes da S-720 não pagam, e ficam desligados.** Altura-x +0,004 [−0,029; +0,048] e −0,007 [−0,104; +0,100]. `load_system_dawg=0`: 0 de 120 linhas mudam, porque o LSTM não lê a variável. `--user-words` com os nomes: 1 de 316 linhas muda, para pior, e o `spa` termina com erro. **A S-766 pressupõe o `--user-words`, e precisa de outro caminho.**
-- **S-722** · O modelo de página guarda o que a fusão produz.
+- **S-722** · O modelo de página guarda o que a fusão produz. ✅ entregue em 2026-11-06
   - *Contexto:* `LinhaLida` tem **uma** `procedencia` e **uma** `confianca` por linha
     (`text/pagina.py`); a faixa de confiança é por bloco (`documento.faixa_de_confianca`); `PROCEDENCIAS`
     e `ORDEM_DE_CONFIANCA` são tuplas à parte do `Literal` (sem a entrada nova, `menos_confiavel`
@@ -1151,6 +1151,9 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Reversão:* **este item não é reversível por interruptor** — uma versão antiga do programa não
     abre `.cvtxt` nem caderno gravado com `tesseract` (estoura `PaginaInvalida`). Fica escrito, e o
     formato novo só é gravado depois do portão G102.
+  - *Achado:* a leitura do novo e do antigo está pronta, e a gravação do novo fica atrás de `pagina.GRAVAR_FORMATO_NOVO`, **desligada**: quem a liga é o G102. Desligada, sai o formato de antes, com `tesseract` escrito `glifo`; em memória os campos estão sempre inteiros.
+  - *Achado:* **a procedência por intervalo da S-716 não existia**: era o `so_da_camada`, por linha. Agora há uma escrita só. Texto igual ao de antes do item nas 27 folhas do ouro-dev (0 diferentes). Nelas, 78,8% dos caracteres vêm do Tesseract, e 237 de 392 blocos são mistos.
+  - *Achado:* `documento.resumo` não tem quem o chame fora dos testes: quem diz de quem é o texto, na janela, é a frase do rodapé de `_leitura_terminou`.
 - **S-723** · A língua do livro. ✅ entregue em 2026-11-06
   - *Entrega:* parâmetro `lingua` em `ler_pagina` (hoje não existe); detecção por perfil de palavras
     funcionais nas primeiras folhas lidas, guardada no caderno do livro (`text/caderno.py`, só na
@@ -1190,7 +1193,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     bundle lê uma folha com a fusão; sem a pasta do Tesseract no bundle, lê com o glifo e avisa.
   - *Saída:* bundle medido dentro do teto, licenças no lugar e aprovado pelo dono (decisão D1).
   - *Reversão:* o bundle sem o Tesseract continua funcionando (decisão 4).
-- **S-725** · Desempenho, custo de varredura e cache.
+- **S-725** · Desempenho, custo de varredura e cache. ✅ entregue em 2026-11-06
   - *Contexto:* o protótipo chama o Tesseract uma vez por linha (≈ 40 processos por folha, 0,7–1,0 s
     com 10 threads). **Empilhar as linhas numa imagem só (`psm 6`) muda o reconhecimento**: medido pelo
     crítico da rodada 6, 14 de 55 linhas mudaram no Dvoretsky e 14 de 25 no *Minhas 60* (`7...2f6`→`7...
@@ -1211,6 +1214,10 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Saída:* G4 cumprido com cache desligado; a política da S-215 remedida e publicada.
   - *Reversão:* apagar `data/cache_texto/` é sempre seguro; o lote por folha tem a leitura por linha
     como reserva atrás de constante.
+  - *Achado:* **o um processo por folha com TIFF é o que a S-720 já entrega.** Faltava a reserva, `tesseract.LOTE_POR_FOLHA`. Nas 27 folhas do ouro-dev (758 linhas), **0 diferentes** do lote em texto, linhas com confianças e avisos: leitura por linha, cache frio e cache quente (`texto_cache_20261106.json`).
+  - *Achado:* **para a D4**, `motor="fusao"` custa 3,09× a página sem texto, contra 1,84× do glifo, nas mesmas 18 folhas: continua "sob demanda", abaixo dos 4× que a tirariam da varredura. Acervo de 26.730 folhas: 21,4 h contra 9,8 h. `custo.PAGINAS_DO_ACERVO` dizia 12.000.
+  - *Achado:* **a parte da saída sobre o G4 fica aberta.** Tudo foi medido com a máquina dividida com outras duas corridas (o lado `hoje` foi de 0,72 a 0,93 s entre duas corridas seguidas), e nenhum número de tempo aqui julga o G4: ele se mede com a máquina parada, na janela e com o cache desligado.
+  - *Achado:* o cache só anda na janela. A folha inteira da reserva (`psm 3`) não passa por ele, e a entrada não guarda as caixas por palavra, que ninguém lê neste caminho.
 - **S-726** · A S-188 relida com a régua nova, e o modo bloco aposentado com quem o usa.
   - *Entrega:* remedir o modo bloco **só na prosa**; se a fusão por token vencer (esperado: o modo bloco
     amarra a leitura às caixas do glifo e não conserta segmentação), aposentá-lo no caminho da página

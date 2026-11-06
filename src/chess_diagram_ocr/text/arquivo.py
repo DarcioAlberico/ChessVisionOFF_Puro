@@ -38,13 +38,21 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_text
+from . import pagina as _pagina
 from .rico import DocumentoRico
 
-VERSAO = 1
-"""A versão do formato. Sobe quando um arquivo gravado hoje deixar de ser legível como hoje.
+VERSAO = 2
+"""Até que versão do formato este programa lê. Sobe quando um arquivo gravado hoje deixar de ser legível como hoje.
 
 **Acrescentar campo não sobe a versão**, e é o que `Atributos.para_json` compra ao omitir o que é
-padrão: um arquivo da versão 1 continua válido depois de a S-242 acrescentar cor."""
+padrão: um arquivo da versão 1 continua válido depois de a S-242 acrescentar cor.
+
+**O 2 é a S-722**: um programa anterior recusa a procedência `tesseract`. Só o arquivo que a tem o paga, e só depois do
+portão G102 (`pagina.GRAVAR_FORMATO_NOVO`). **Este item não é reversível por interruptor depois de ligado**: um programa
+anterior não abre o que o novo gravou. O 1 continua legível, e é o que continua saindo enquanto a constante está desligada."""
+
+VERSAO_DE_ANTES = 1
+"""O que sai do arquivo que não pede o formato novo. Ver `VERSAO`."""
 
 EXTENSAO = ".cvtxt"
 NOME_DO_FORMATO = "Texto do ChessVisionOFF"
@@ -61,7 +69,8 @@ class VersaoFutura(ArquivoInvalido):
 
 def para_json(doc: DocumentoRico) -> dict[str, Any]:
     """O documento como o arquivo o guarda: a versão, e ele."""
-    return {"versao": VERSAO, "documento": doc.para_json()}
+    versao = VERSAO if _pagina.GRAVAR_FORMATO_NOVO and doc.pede_formato_novo else VERSAO_DE_ANTES
+    return {"versao": versao, "documento": doc.para_json()}
 
 
 def de_json(dados: Any) -> DocumentoRico:
@@ -139,6 +148,7 @@ __all__ = [
     "EXTENSAO",
     "NOME_DO_FORMATO",
     "VERSAO",
+    "VERSAO_DE_ANTES",
     "ArquivoInvalido",
     "DocumentoRico",
     "VersaoFutura",

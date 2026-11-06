@@ -19,8 +19,9 @@ implementações do mesmo conceito, e a segunda seguindo por conta própria.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from importlib.metadata import PackageNotFoundError, version
+from typing import Any
 
 SIDE_SOURCE_LABELS: dict[str, str] = {
     "text": "declarado no texto do PDF",
@@ -956,6 +957,32 @@ def frase_da_lingua_do_livro(codigo: str, *, manual: bool) -> str:
     """O rodapé quando a língua do livro muda (S-723). Diz de onde ela veio, porque é o que decide se vale corrigir."""
     como = "escolhida à mão" if manual else "detectada nas folhas lidas"
     return f"Língua deste livro: {ROTULOS_DE_LINGUA.get(codigo, codigo)} ({como})."
+
+
+ROTULOS_DE_PROCEDENCIA: dict[str, str] = {
+    "camada": "camada do PDF",
+    "glifo": "glifo",
+    "tesseract": "Tesseract",
+    "rapidocr": "RapidOCR",
+    "humano": "à mão",
+}
+"""As procedências, como a tela as diz. Nunca o identificador cru (S-722)."""
+
+
+def frase_de_procedencia(caracteres: Mapping[Any, int]) -> str:
+    """`Texto: 79% Tesseract, 21% glifo.` (S-722). O maior primeiro; vazio sem nada a contar."""
+    total = sum(caracteres.values())
+    if not total:
+        return ""
+    ordem = sorted(caracteres.items(), key=lambda par: (-par[1], par[0]))
+    return "Texto: " + ", ".join(f"{round(100 * n / total)}% {ROTULOS_DE_PROCEDENCIA.get(quem, quem)}" for quem, n in ordem) + "."
+
+
+def frase_do_cache_limpo(quantas: int, tamanho: int) -> str:
+    """O rodapé depois de «Limpar o cache de leitura» (S-725). Só a leitura guardada sai: o caderno fica."""
+    if not quantas:
+        return "O cache de leitura já estava vazio."
+    return f"Cache de leitura limpo: {quantas} folha(s), {tamanho / (1024 * 1024):.1f} MB. As folhas do caderno não mudam.".replace(".0 MB", " MB")
 
 
 NADA_A_REVISAR = "Nenhuma palavra a revisar nesta folha."

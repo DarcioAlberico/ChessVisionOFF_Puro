@@ -423,6 +423,7 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 "familia_da_letra",
                 "lingua_do_livro",  # a S-723: o menu pergunta de quem é a língua; o botão fica ao lado da caixa
                 "modo_transcricao",  # a S-703: o menu diz o que é digitar a verdade; o botão da fita, o verbo
+                "limpar_cache_de_leitura",  # a S-725: o menu e a fita limpam a leitura guardada
                 "indice_do_caderno",
                 "ler_folha_de_novo",
                 "lista_de_correcoes",

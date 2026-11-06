@@ -196,6 +196,7 @@ from .binarizacao import binarize
 from .grade import Arranjo
 from .leitor_de_linha import LeitorDeLinha
 from .pagina import (
+    CACHE_NAO_GRAVADO,
     CAMADA_NA_FOLHA,
     CAMADA_RECUSADA,
     FOLHA_NAO_LIDA,
@@ -209,6 +210,10 @@ from .pagina import (
     LinhaLida,
     PaginaLida,
     Procedencia,
+    menos_confiavel,
+    remapear_com_valor,
+    trechos_de_confianca,
+    trechos_de_procedencia,
 )
 
 logger = logging.getLogger(__name__)
@@ -309,6 +314,12 @@ class _Cru:
 
     revisar_em: tuple[tuple[int, int], ...] = ()
     """Quais palavras pedem olho. Ver `pagina.LinhaLida.revisar_em` (S-718)."""
+
+    procedencia_em: tuple[tuple[int, int, Procedencia], ...] = ()
+    """De quem é cada trecho. Ver `pagina.LinhaLida.procedencia_em` (S-722)."""
+
+    confianca_em: tuple[tuple[int, int, float], ...] = ()
+    """Quanto vale cada palavra. Ver `pagina.LinhaLida.confianca_em` (S-722)."""
 
 
 def _envolver(caixas: Sequence[Retangulo]) -> Retangulo:
@@ -1191,6 +1202,8 @@ def _blocos_de_texto(
                     negrito_em=cru.negrito_em,
                     italico_em=cru.italico_em,
                     revisar_em=cru.revisar_em,
+                    procedencia_em=cru.procedencia_em,
+                    confianca_em=cru.confianca_em,
                 )
             )
         if not lidas:
@@ -1226,25 +1239,30 @@ def _sem_hifen_de_quebra(linhas: list[LinhaLida], lexico: frozenset[str]) -> lis
     """
     if not lexico or len(linhas) < 2:
         return linhas
-    from dataclasses import replace
-
     from . import lexico as _lexico
 
     novos, juncoes = _lexico.juntar_hifenizadas([linha.texto for linha in linhas], lexico)
     if not juncoes:
         return linhas
     return [
-        linha
-        if novo == linha.texto
-        else replace(
-            linha,
-            texto=novo,
-            negrito_em=_camada.remapear(linha.negrito_em, linha.texto, novo),
-            italico_em=_camada.remapear(linha.italico_em, linha.texto, novo),
-            revisar_em=_camada.remapear(linha.revisar_em, linha.texto, novo),
-        )
+        linha if novo == linha.texto else _com_texto_juntado(linha, novo)
         for linha, novo in zip(linhas, novos, strict=True)
     ]
+
+
+def _com_texto_juntado(linha: LinhaLida, novo: str) -> LinhaLida:
+    def depois(trechos: Sequence[tuple[int, int]]) -> tuple[tuple[int, int], ...]:
+        return _camada.remapear(trechos, linha.texto, novo)
+
+    return replace(
+        linha,
+        texto=novo,
+        negrito_em=depois(linha.negrito_em),
+        italico_em=depois(linha.italico_em),
+        revisar_em=depois(linha.revisar_em),
+        procedencia_em=remapear_com_valor(linha.procedencia_em, depois),
+        confianca_em=remapear_com_valor(linha.confianca_em, depois),
+    )
 
 
 def motor_escolhido(motor: MotorDeTexto = MOTOR_PADRAO, *, tem_modelo: bool = True) -> MotorResolvido:
@@ -1409,10 +1427,12 @@ def _com_prosa_de_outro_leitor(
     """Cada linha do glifo fundida com o que o outro leitor leu nela (S-716, S-717).
 
     **`None` é "não leu", e a linha fica como o glifo a leu**, sem tocar em nada. Uma linha só de prosa da
-    camada é registro: procedência `camada`, confiança 1,0. Linha mista continua `glifo`, a menos confiável
-    das que a compõem. A confiança da fundida é a do glifo até a S-760 calibrar a do Tesseract, e é por isso
-    que a marca por palavra existe.
+    camada é registro: procedência `camada`, confiança 1,0. Linha mista leva a menos confiável das que a compõem,
+    e os trechos dizem de quem é cada palavra (S-722). A confiança da linha fundida é a do glifo até a S-760
+    calibrar a do Tesseract, e é por isso que a marca por palavra existe; a de cada palavra, em `confianca_em`, é
+    a de quem a escreveu.
     """
+    quem_le: Procedencia = "camada" if e_da_camada else LEITOR_DE_LINHA
     fundidas: list[list[_fusao.Token]] = []
     for cru, leitura in zip(cruas, leituras, strict=True):
         tokens_do_glifo = cru.texto.split()
@@ -1447,21 +1467,32 @@ def _com_prosa_de_outro_leitor(
     saida: list[_Cru] = []
     for cru, leitura, tokens, marcados in zip(cruas, leituras, fundidas, marcadas, strict=True):
         if leitura is None:
-            saida.append(replace(cru, revisar_em=_fusao.intervalos_de(tokens, marcados)))
+            saida.append(
+                replace(
+                    cru,
+                    revisar_em=_fusao.intervalos_de(tokens, marcados),
+                    confianca_em=trechos_de_confianca((t.texto, t.confianca) for t in tokens),
+                )
+            )
             continue
         if not tokens:
             # O leitor leu vazio e a linha do glifo era só prosa sem par: a regra tirou tudo, e linha sem
             # texto não sai. Quem lê uma folha com caixa e sem texto é a guarda, um nível acima.
             continue
-        so_da_camada = e_da_camada and all(token.origem != "glifo" for token in tokens)
+        de_quem: list[tuple[str, Procedencia]] = [
+            (token.texto, cru.procedencia if token.origem == "glifo" else quem_le) for token in tokens
+        ]
+        procedencia = menos_confiavel([quem for _, quem in de_quem])
         saida.append(
             replace(
                 cru,
                 texto=_fusao.texto_fundido(tokens),
-                confianca=1.0 if so_da_camada else cru.confianca,
-                procedencia="camada" if so_da_camada else cru.procedencia,
+                confianca=1.0 if procedencia == "camada" else cru.confianca,
+                procedencia=procedencia,
                 confiancas=(),
                 revisar_em=_fusao.intervalos_de(tokens, marcados),
+                procedencia_em=trechos_de_procedencia(de_quem),
+                confianca_em=() if procedencia == "camada" else trechos_de_confianca((t.texto, t.confianca) for t in tokens),
             )
         )
     return saida
@@ -1498,6 +1529,9 @@ def posicoes_da_folha(
             saida.append((linha, tabuleiro))
     return saida
 
+
+LEITOR_DE_LINHA: Procedencia = "tesseract"
+"""De quem é o texto que o leitor de linha escreve, com o nome do motor (S-722). O da Fase 105 terá o dele."""
 
 REGRA_POR_ESTRATO = True
 """O interruptor do estrato da S-721: desligado, `motor="fusao"` é a v5 em toda folha, como a S-717 a entregou."""
@@ -1540,7 +1574,7 @@ def _lido_pelo_outro(
     linhas = list(leitura.linhas)
     for k, linha in zip(indices, outra.linhas, strict=True):
         linhas[k] = linha
-    return _leitor_de_linha.Leitura(tuple(linhas))
+    return _leitor_de_linha.Leitura(tuple(linhas), aviso=leitura.aviso)
 
 
 def _imagem_do_leitor(imagem: np.ndarray, dpi: int) -> np.ndarray:
@@ -1641,9 +1675,11 @@ def _camada_montada(
             continue
         pedacos: list[str] = []
         marcas: list[tuple[int, int]] = []
+        de_quem: list[tuple[str, Procedencia]] = []
         posicao = 0
         for palavra in desta:
             texto = palavra.texto
+            quem: Procedencia = cru.procedencia
             # **Lance nunca é trocado, nem marcado.** O da camada vem em fonte de figurina, e por isso chega
             # bloqueado, mas a letra está certa (`Rxd5!`): o Tesseract ali lê `Af6` onde está `Nf6`. A folha já
             # diz, no selo, que os lances estão sem figurina.
@@ -1655,12 +1691,22 @@ def _camada_montada(
                     if x0 <= (p.caixa[0] + p.caixa[2]) / 2 / fator <= x1 and y0 <= (p.caixa[1] + p.caixa[3]) / 2 / fator <= y1
                 ]
                 if lidas:
-                    texto = " ".join(lidas)
+                    texto, quem = " ".join(lidas), LEITOR_DE_LINHA
                 else:
                     marcas.append((posicao, posicao + len(texto)))
             pedacos.append(texto)
+            de_quem.append((texto, quem))
             posicao += len(texto) + 1
-        saida.append(replace(cru, texto=" ".join(pedacos), revisar_em=tuple(marcas)))
+        saida.append(
+            replace(
+                cru,
+                texto=" ".join(pedacos),
+                revisar_em=tuple(marcas),
+                # A linha com uma palavra do Tesseract não é mais registro, e a S-703 precisa ver isso (S-722).
+                procedencia=menos_confiavel([q for _, q in de_quem]) if de_quem else cru.procedencia,
+                procedencia_em=trechos_de_procedencia(de_quem),
+            )
+        )
     return saida
 
 
@@ -1738,8 +1784,10 @@ def _linhas_da_reserva(
                 texto=_fusao.texto_fundido(linha),
                 caixa=caixa,
                 confianca=min((t.confianca for t in linha if t.confianca is not None), default=0.0),
-                procedencia="glifo",
+                procedencia=menos_confiavel(["glifo" if t.origem == "glifo" else LEITOR_DE_LINHA for t in linha]),
                 revisar_em=_fusao.intervalos_de(linha, marcados),
+                procedencia_em=trechos_de_procedencia((t.texto, "glifo" if t.origem == "glifo" else LEITOR_DE_LINHA) for t in linha),
+                confianca_em=trechos_de_confianca((t.texto, t.confianca) for t in linha),
             )
             for caixa, linha, marcados in zip(caixas, tokens, marcadas, strict=True)
             if linha and not _e_lixo_da_reserva(linha, existe)
@@ -1961,6 +2009,8 @@ def _ler_pagina_do_livro(
                 leitura = _lido_pelo_outro(
                     leitor, [_recorte_de_linha(do_leitor, c.caixa, escala_px) for c in cruas], cruas, lingua=lingua, dpi=dpi
                 )
+                if leitura.aviso:
+                    avisos.append(Aviso(CACHE_NAO_GRAVADO, leitura.aviso))
                 if leitura.falha:
                     avisos.append(Aviso(LEITOR_INDISPONIVEL, f"A prosa ficou com o glifo. {leitura.falha}"))
                 else:
@@ -2053,9 +2103,34 @@ def _sem_espacado(cruas: Sequence[_Cru], lingua: str) -> list[_Cru]:
     saida: list[_Cru] = []
     for cru in cruas:
         texto = _espacado.juntar_na_lingua(cru.texto, lingua)
-        revisar_em = _espacado.intervalos_depois(cru.texto, texto, cru.revisar_em)
-        saida.append(replace(cru, texto=texto, revisar_em=revisar_em) if texto != cru.texto else cru)
+        if texto == cru.texto:
+            saida.append(cru)
+            continue
+
+        def depois(par: Sequence[tuple[int, int]], antes: str = cru.texto, junto: str = texto) -> tuple[tuple[int, int], ...]:
+            return _espacado.intervalos_depois(antes, junto, par)
+
+        saida.append(
+            replace(
+                cru,
+                texto=texto,
+                revisar_em=depois(cru.revisar_em),
+                procedencia_em=_vizinhos_unidos(remapear_com_valor(cru.procedencia_em, depois)),
+                confianca_em=remapear_com_valor(cru.confianca_em, depois),
+            )
+        )
     return saida
+
+
+def _vizinhos_unidos(trechos: Sequence[tuple[int, int, Procedencia]]) -> tuple[tuple[int, int, Procedencia], ...]:
+    """O que só o espaço separava e o espaçado juntou volta a ser um trecho, se a origem é a mesma."""
+    saida: list[tuple[int, int, Procedencia]] = []
+    for inicio, fim, quem in trechos:
+        if saida and saida[-1][2] == quem and saida[-1][1] >= inicio - 1:
+            saida[-1] = (saida[-1][0], fim, quem)
+        else:
+            saida.append((inicio, fim, quem))
+    return tuple(saida) if len(saida) > 1 else ()
 
 
 def _com_negrito(

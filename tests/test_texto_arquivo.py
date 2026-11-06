@@ -157,7 +157,7 @@ class GravacaoTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as pasta:
             destino = arquivo.gravar(Path(pasta) / "a.cvtxt", _documento_de_exemplo())
             dados = json.loads(destino.read_text(encoding="utf-8"))
-        self.assertEqual(dados["versao"], arquivo.VERSAO)
+        self.assertEqual(dados["versao"], arquivo.VERSAO_DE_ANTES, "o formato novo só sai depois do G102 (S-722)")
         self.assertIn("corridas", dados["documento"])
 
     def test_gravar_duas_vezes_da_o_mesmo_byte(self) -> None:

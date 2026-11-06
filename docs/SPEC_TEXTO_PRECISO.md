@@ -1146,6 +1146,93 @@ Na v3 a notação em letra vem do Tesseract, e ele troca o dígito da casa: 13,8
 
 **Desvios.** O alvo do roadmap é "por token de notação, candidatos do glifo e do Tesseract": os dois estão lá, sem o top-k e o hOCR, pelo medido acima. A descritiva inglesa (`R-Q1`) não tem forma própria na gramática, porque nenhuma folha medida a tem. **Sem prata nem ouro em russo**, o `rus+eng` foi conferido à mão. A continuidade não mudou nada no ouro-dev nem na prata; dispara no *Bachmann* e no *Neumann*.
 
+## S-722 · O modelo de página guarda o que a fusão produz ✅ implementada (2026-11-06)
+
+**Problema.** `LinhaLida` tinha uma `procedencia` e uma `confianca` por linha, e a fusão escreve por palavra: nas 27 folhas do
+ouro-dev, 78,8% dos caracteres de prosa e notação (20.622 de 26.181) vieram do Tesseract, e todos saíam `glifo`. A faixa de confiança era
+por bloco. A correção de uma palavra do Tesseract acusava o classificador (S-762), e a marca da S-761 não tinha onde se apoiar.
+
+**Decisão.**
+
+- **`tesseract` é procedência**, no `Literal`, em `PROCEDENCIAS` e na posição declarada de `ORDEM_DE_CONFIANCA`: `rapidocr`,
+  `glifo`, `tesseract`, `camada`, `humano`. Acima do glifo porque é só na prosa que ele escreve, e ali erra 2,7× menos; a notação, a
+  fusão não deixa com ele. Linha mista leva a menos confiável: glifo com Tesseract continua `glifo`, e camada com Tesseract vira
+  `tesseract`, o que a S-703 precisa ver (`exigir_documento_cego`).
+- **`procedencia_em` e `confianca_em`**, por intervalo de caractere, com o desenho de `negrito_em`, e um valor em cada intervalo. Vazio é
+  "não há detalhe" e vale o campo da linha; uma origem só não gera intervalo. `confianca_em` é a de **quem escreveu** a palavra.
+- **A escrita é uma só.** A S-716 prometia procedência por intervalo em memória, e o que havia era o `so_da_camada`, por linha. Agora
+  `_com_prosa_de_outro_leitor`, `_camada_montada` e `_linhas_da_reserva` escrevem os mesmos campos, e o `so_da_camada` é derivado deles.
+- **O formato novo só é gravado depois do G102**, atrás de `pagina.GRAVAR_FORMATO_NOVO`, desligada. Desligada, a folha sai como antes:
+  `tesseract` escrito `glifo`, sem os intervalos, `esquema` 1 (2 com aviso) e `versao` 1. Ligada, só a folha que pede o formato paga: `esquema`
+  3 e `versao` 2, a regra da S-710. A leitura aceita os três. **A constante é do arquivo**: em memória os campos estão sempre inteiros.
+- **A aba lê os campos pelas corridas.** `rico.de_pagina` parte a corrida onde muda o leitor, e `Corrida.procedencia` passa a ser por
+  palavra. O rodapé diz `Texto: 79% Tesseract, 21% glifo.`, porque o bloco misto conta inteiro como `glifo`.
+- **A faixa pode marcar palavra.** `documento.faixas_da_linha`: sem a marca da S-718, `confianca_em` pinta palavra a palavra, com o corte de
+  hoje, e a confiança do bloco não pinta nada. Com a marca ligada, só `revisar_em` pinta: o teto de 5% continua valendo, e o sinal cru da
+  confiança, que inunda, não entra por cima. É onde a S-761 troca o corte. Na leitura de hoje a marca está ligada: nada muda na tela.
+- **A exportação lê os campos**: o `.html` leva a faixa por palavra e `data-procedencia="tesseract"`, o `Relatorio` conta `procedencias`, e o
+  `.txt` sai byte a byte igual. A folha sem Tesseract sai como saía.
+- **`dado_corrigido.pares_tocados` diz quem errou por palavra.** O motor é o da palavra; a do Tesseract leva `corrigido_de:tesseract@desconhecido`,
+  porque `PaginaLida.modelo` é o sha do classificador; a da camada não vira par. Vale para a folha lida; a reaberta do arquivo é `glifo` até o G102.
+
+**Onde mora.** `text/pagina.py`, `text/leitor.py`, `text/rico.py`, `text/documento.py`, `text/arquivo.py`, `text/exportacao.py`,
+`text/dado_corrigido.py`, `ui/strings.py`, `qt/painel_de_texto.py`. Testes em `tests/test_text_procedencia_em.py` e `tests/test_qt_texto_prosa.py`.
+
+**Critério de aceite.** Ida e volta de `.cvtxt` e caderno com os campos; arquivo do esquema anterior abre igual; `menos_confiavel` com `tesseract` não
+levanta; **texto igual** ao de antes do item nas 27 folhas do ouro-dev, com `motor="fusao"` (`sha` por folha, 0 de 27 diferentes); nenhuma das 27 grava
+`tesseract` com a constante desligada.
+
+**Desvios.** `revisar_em` não é gravado no formato novo: é derivado da folha inteira, e o que sobrevive é a faixa da corrida. A confiança da linha continua a do
+glifo, até a S-760. A aba não pinta nada novo enquanto a marca da S-718 estiver ligada: a saída "a faixa pode marcar palavra" é a capacidade, e quem a usa é a S-761.
+
+## S-725 · Desempenho, custo de varredura e cache ✅ implementada (2026-11-06)
+
+**Problema.** Quem relê uma folha pagava o Tesseract de novo; o relatório de custo só conhecia o glifo (`texto_custo_20260826.json`, fator 2,21×), e dividia
+as horas por um acervo de 12.000 folhas, a extrapolação da S-61, quando a pasta tem 26.730.
+
+**Decisão.**
+
+- **O um processo por folha já existia.** `tesseract.ler_linhas` é um processo, com o TIFF de várias páginas pelo stdin e `psm 7`, desde a S-720. Faltava a reserva
+  que o item pede: `tesseract.LOTE_POR_FOLHA`, ligada; desligada, um processo por linha. É ela que mede o lote.
+- **Cache em `data/cache_texto/`**, em `text/cache_texto.py`. Uma entrada por lote, porque por linha seriam ~40 arquivos por folha e um milhão no acervo. A chave leva o sha dos
+  recortes na ordem, a versão do executor, a assinatura do pré-processamento (margem, escala, alvo, `rus+eng`: virar uma dessas constantes invalida sem ninguém lembrar de subir
+  versão), a versão do Tesseract, o sha do `traineddata` de **cada** língua do processo, a língua, o `psm`, o `dpi`, as opções e o `modelo`. O `modelo` é o da S-752, passado por
+  `LeitorTesseract(modelo=)`; no Tesseract quem faz esse papel é o `traineddata`, e ele sai vazio. O classificador de glifo não entra: o que ele muda é o recorte.
+- **Teto de 200 MB, com despejo do usado há mais tempo**, pelo `mtime`, que a leitura atualiza. Despeja até 90%, para não varrer a pasta a cada gravação. Uma entrada ocupa 5,5 KB em média
+  (7,9 KB no máximo), e o teto cabe o acervo inteiro.
+- **Disco cheio vira aviso, e a leitura segue.** `gravar` nunca levanta: devolve a frase, e a folha ganha `CACHE_NAO_GRAVADO`. Esse aviso é da sessão, e **não vai ao arquivo**
+  (`pagina.AVISOS_DA_SESSAO`): uma folha inteira não passa a dizer para sempre que o disco esteve cheio. Entrada ilegível é falta, e sai da pasta.
+- **Só a janela liga.** `LeitorTesseract()` e `leitor_padrao()` nascem sem cache, e é o que a régua, a bancada e os CLIs recebem. Quem pede é `qt/painel_de_texto._ler`, a mesma
+  regra da reserva da S-715, e um teste varre o pacote atrás de quem cita o módulo.
+- **Limpeza** por «Limpar o cache de leitura», no menu Texto e na aba Revisão da fita, numa `Tarefa`: sem pergunta, porque apagar é sempre seguro. As folhas do caderno não mudam.
+- **`cvoff-texto-custo --motor fusao`**, com a reserva, como a janela, e sem cache. O padrão continua `glifo` (S-727). Ganha `--limite-segundos`, `--ressalva` e as etapas `leitor_de_linha` e `fusao`.
+- **`custo.PAGINAS_DO_ACERVO` = 26.730**, contadas em 58 PDFs, com as duplicatas, que uma varredura da pasta paga (1.544 folhas; sem elas, 25.186).
+
+**O medido.** Em `docs/metrics/texto_cache_20261106.json`, sobre o `080d56e5`, com a árvore limpa: nas 27 folhas do ouro-dev (5 livros, 758 linhas), **0 folhas diferentes** do lote em
+texto da página, em linhas do leitor com as confianças e em avisos, para a leitura por linha, o cache frio e o cache quente. Custo em `docs/metrics/texto_custo_fusao_20261106.json` e
+`docs/metrics/texto_custo_glifo_20261106.json`, nas mesmas 18 folhas de 6 livros:
+
+| motor | s/folha | o texto soma | fator | política | horas no acervo |
+|---|---:|---:|---:|---|---:|
+| `glifo` | 1,09 | 0,60 | 1,84× | sob demanda | 9,8 |
+| `fusao` | 2,63 | 1,95 | 3,09× | sob demanda | 21,4 |
+
+O leitor de linha é 0,75 s por folha, e a fusão, 0,013 s. **A fusão não muda de faixa**: continua abaixo dos 4× que a tiram da varredura. Quem decide é a D4.
+
+**Ressalva, e ela vale para todo número de tempo acima.** Foram medidos com outras duas corridas na máquina e `OMP_NUM_THREADS=3`: entre duas corridas seguidas, o lado `hoje` foi de 0,72 a 0,93 s.
+**Nenhum deles julga o G4**, que se mede depois, com a máquina parada, na janela e com o cache desligado. Servem de ordem de grandeza para a D4. Na mesma ressalva: 2,6 s por folha no lote, 7,8 s
+por linha e 1,6 s com o cache quente, em que a diferença para o lote é só o processo do Tesseract: o glifo continua rodando, porque é dele que saem os recortes.
+
+**Onde mora.** `text/cache_texto.py`, `text/tesseract.py`, `text/leitor_de_linha.py`, `text/custo.py`, `cli/texto_custo.py`, `qt/painel_de_texto.py`, `ui/comandos.py`, `ui/menu.py`, `ui/fita_do_texto.py`,
+`ui/texto_declarado.py`, `ui/busy.py`. A medição em `docs/metrics/texto_cache_2026-11-06/medir.py`. Testes em `tests/test_text_cache_de_leitura.py` e `tests/test_qt_texto_prosa.py`.
+
+**Critério de aceite.** Diferença zero acima; trocar `tessdata`, língua, `psm`, versão ou modelo invalida a entrada; o teto é cumprido e sai quem foi usado há mais tempo; a segunda leitura na aba não abre
+processo; `data/cache_texto/` no `.gitignore` e na tabela de persistência; a régua sempre sem cache.
+
+**Desvios.** A verificação pedia as 26 folhas do `rodar.py` de 2026-10-30, e foi feita nas 27 do ouro-dev de hoje. O G4 **não foi julgado**: é a parte da saída que espera a máquina parada. A folha inteira da
+reserva (`psm 3`) não passa pelo cache: não é lida em nenhuma das 90 folhas legíveis, e a `Leitura` dela não tem por onde devolver o aviso. A entrada guarda texto e confiança, sem as caixas por palavra: nenhum
+consumidor as lê neste caminho.
+
 ## Fase 103 — O glifo sem as cegueiras do 32×32
 
 Toda a fase é regra de decisão, geometria e léxico, sem retreino, e cada conserto tem a sua constante. Contra o que se mediu: **os 5
@@ -1581,7 +1668,7 @@ como a letra que o motor tinha lido ali**, e os 15 sem recorte são a conta que 
 ### O que ela não entrega
 
 - **A correção não treina nada**: fica na quarentena até uma pessoa mover a pasta, e nenhum treino foi rodado com ela.
-- **Na fusão, o motor sai `glifo`** mesmo onde o Tesseract escreveu a palavra: a procedência por palavra é a S-722, e o sha é o do classificador.
+- **Na fusão, o motor saía `glifo`** mesmo onde o Tesseract escreveu a palavra. A S-722 resolveu na folha lida; a reaberta do arquivo continua `glifo` até o G102.
 - **Par de tamanho diferente** (`fi1rst` → `first`) conta e não vira recorte. O leitor de linha da Fase 105 é quem vai querer ele, com outro recorte.
 - A correção não entra nas folhas seguintes: é a S-766.
 
