@@ -588,7 +588,7 @@ def linhas_do_glifo(
     foram consumidas aqui, e detectá-las de novo a partir das linhas é o defeito que `segmentar`
     documenta.
     """
-    from .duas_linhas import descartar_fragmentos
+    from .duas_linhas import descartar_fragmentos, partir_linhas_altas
     from .linhas import envolve, ordem_em_faixa, quebrar_em_linhas, texto_da_linha
 
     cinza, binaria, escala, caixas, regioes = segmentar(
@@ -622,7 +622,7 @@ def linhas_do_glifo(
 
     cruas: list[_Cru] = []
     for i_regiao, indice, desta in _tiras(caixas, regioes):
-        grupos = descartar_fragmentos(quebrar_em_linhas(ordem_em_faixa(desta)), escala=escala)
+        grupos = descartar_fragmentos(partir_linhas_altas(quebrar_em_linhas(ordem_em_faixa(desta))), escala=escala)
         for grupo in grupos:
             recortes = [c.recortar(cinza) for c in grupo]
             # **Uma medição por linha, e ela serve aos dois usos** (S-236): declarar o pendor no

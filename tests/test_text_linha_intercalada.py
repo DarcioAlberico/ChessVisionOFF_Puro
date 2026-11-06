@@ -9,7 +9,7 @@ from unittest import mock
 import cv2
 import numpy as np
 
-from chess_diagram_ocr.text import gigantes, leitor, linhas
+from chess_diagram_ocr.text import duas_linhas, gigantes, leitor, linhas
 from chess_diagram_ocr.text.boxes import Caixa
 
 TEXTOS = (
@@ -143,6 +143,62 @@ class SemGigantesTests(unittest.TestCase):
         caixas = [self._caixa(5000)]
         with mock.patch.object(gigantes, "TIRAR_GIGANTES", False):
             self.assertIs(gigantes.sem_gigantes(caixas, self.BINARIA, escala=self.ESCALA), caixas)
+
+
+def _fileira(y: int, n: int = 12, altura: int = 20, x0: int = 0) -> list[Caixa]:
+    return [Caixa(x0 + 16 * k, y, x0 + 16 * k + 12, y + altura) for k in range(n)]
+
+
+class PartirLinhasAltasTests(unittest.TestCase):
+    """A linha alta sem caixa gigante: duas fileiras costuradas, ou uma linha com um pedaço da vizinha."""
+
+    NORMAIS = (_fileira(0), _fileira(40), _fileira(80))
+
+    def _partidas(self, alta: list[Caixa]) -> list[list[Caixa]]:
+        return duas_linhas.partir_linhas_altas([*self.NORMAIS, alta])[len(self.NORMAIS) :]
+
+    def test_duas_fileiras_costuradas_viram_duas(self) -> None:
+        cima, baixo = _fileira(200), _fileira(226)
+        alta = sorted(cima + baixo, key=lambda c: c.x1)
+        self.assertEqual(self._partidas(alta), [cima, baixo])
+
+    def test_a_ordem_de_leitura_se_mantem(self) -> None:
+        for pedaco in self._partidas(sorted(_fileira(200) + _fileira(226), key=lambda c: c.x1)):
+            self.assertEqual(pedaco, sorted(pedaco, key=lambda c: c.x1))
+
+    def test_o_pedaco_da_vizinha_sai_da_linha(self) -> None:
+        linha = _fileira(240)
+        pedaco = [Caixa(30, 205, 42, 215)]
+        partidas = self._partidas(sorted(linha + pedaco, key=lambda c: c.x1))
+        self.assertEqual(partidas, [pedaco, linha])
+
+    def test_tres_fileiras_viram_tres(self) -> None:
+        fileiras = [_fileira(200), _fileira(226), _fileira(252)]
+        alta = sorted(fileiras[0] + fileiras[1] + fileiras[2], key=lambda c: c.x1)
+        self.assertEqual(self._partidas(alta), fileiras)
+
+    def test_o_titulo_alto_sem_vale_fica_inteiro(self) -> None:
+        titulo = _fileira(200, altura=50)
+        self.assertEqual(self._partidas(titulo), [titulo])
+
+    def test_o_vale_raso_nao_corta(self) -> None:
+        """Metade das caixas atravessa o meio: isso é letra grande, e não duas linhas."""
+        titulo = _fileira(200, altura=56, n=6) + _fileira(200, altura=22, n=6, x0=120)
+        partidas = self._partidas(titulo)
+        self.assertEqual(partidas, [titulo])
+
+    def test_a_linha_normal_nao_e_examinada(self) -> None:
+        normal = _fileira(200, altura=30)
+        self.assertEqual(self._partidas(normal), [normal])
+
+    def test_a_tira_curta_nao_tem_mediana(self) -> None:
+        alta = sorted(_fileira(0) + _fileira(26), key=lambda c: c.x1)
+        self.assertEqual(duas_linhas.partir_linhas_altas([alta]), [alta])
+
+    def test_a_constante_desliga(self) -> None:
+        alta = sorted(_fileira(200) + _fileira(226), key=lambda c: c.x1)
+        with mock.patch.object(duas_linhas, "PARTIR_LINHA_ALTA", False):
+            self.assertEqual(self._partidas(alta), [alta])
 
 
 if __name__ == "__main__":
