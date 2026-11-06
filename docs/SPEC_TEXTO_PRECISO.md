@@ -676,3 +676,54 @@ listas estão versionadas. **Diferença zero** do `motor="glifo"` em 28 folhas d
 Uma lista limpa. O corpus do Tesseract é da web: `after`, `para` e `avec` estão em sete das oito, e `fixes` está em `por`,
 como conta `assets/lexico/PROCEDENCIA.md`. A lista diz que a palavra existe; não diz que ela é **só** daquela língua. A D5
 (o `acervo.txt.gz`) segue com o dono.
+
+## S-723 · A língua do livro ✅ implementada (2026-11-06)
+
+### Problema
+
+O Tesseract precisa saber a língua, e a caixa da S-717 a guardava no estado da janela: a escolha do livro em português valia
+para o livro em alemão aberto depois. O `existe` da fusão usava `idioma.txt.gz`, que mistura oito línguas, e as `CURTAS` de seis:
+`Pas` vencia `♔a5` num livro em português.
+
+### Decisão
+
+`text/lingua.py`, puro: um perfil de palavras funcionais à mão, uma contagem sem texto nenhum, e `decidir`, que responde `""`
+quando a evidência não basta. **Só minúscula e nunca uma letra só**, porque `De` e `Le` são lance e `a` é coluna. Palavra de
+várias línguas se reparte entre elas, e é isso que separa português de espanhol. O russo se decide pelo alfabeto.
+
+**A fonte da folha é a camada, quando ela traz palavras; senão, o texto lido** (`texto_da_folha`). Numa folha russa o glifo escreve
+latim sem sentido, e a camada, mesmo de OCR de terceiro, basta para dizer a língua.
+
+`Caderno.lingua()` e `guardar_lingua`, em `lingua.json`, **fora do índice**: o índice se refaz das folhas, e uma escolha da pessoa
+não pode sumir com ele. **A manual sempre vence a detectada.** Ela vem da caixa da fita ou de «Língua do livro…» no menu Texto, e
+só o menu volta a «Detectar pelo livro». Nada em `settings.py`. `texto_lingua` do estado da janela virou só o padrão de quem ainda
+não tem língua, e a do livro aberto não passa mais para ele.
+
+`ler_pagina(lingua=)` já existia para o `tessdata`, e agora escolhe também o léxico: `fusao.existe_do_livro(lingua)` é a lista da
+S-728, mais `acervo` e `nomes`, e as curtas **da língua**. Em `text/leitor.py` é uma linha. `fusao.LEXICO_POR_LINGUA` desliga. Em
+`existe_no`, a régua de palavra passou a aceitar qualquer alfabeto, senão `după` e o russo nunca existiam. O `motor="glifo"` não muda:
+**zero** folhas diferentes em 28 do ouro-dev contra `a2937260`.
+
+As dez folhas sem resposta dizem no rodapé que a pessoa escolha, porque calar seria ler em inglês para sempre.
+
+### Critério de aceite
+
+`tests/test_texto_lingua.py`: o decisor com textos curtos das oito línguas, nunca lendo livro; `RelatorioTests` refaz a decisão sobre as
+contagens de `metrics/texto_lingua_20261106.json`, confere a tabela à mão, reprova relatório de outro perfil, e reprova qualquer livro
+com língua **errada**. `tests/test_qt_texto_prosa.py`: o que o leitor de linha de mentira recebeu, na primeira e na segunda leitura; a
+manual vencendo; a língua voltando com o livro e não passando para outro; `OSError` sem derrubar o slot. Quinze mutantes, um por peça,
+morrem.
+
+**Medido em 54 livros deduplicados de `PDF/`, nas primeiras folhas com texto:** 52 certos, 2 sem resposta, nenhum errado (só o glifo:
+50, 4, 0; só a camada: 38, 16, 0). Os sem resposta: `1000 Chess Problems`, sem prosa, e `Пилавов`, scan russo sem camada.
+
+### Desvios
+
+- **A saída pedia "todos os livros".** São 52 de 54, e não se ajustou nada para fechar a conta. Fica a recomendação: um scan cirílico sem
+  camada se resolve com o `osd` do Tesseract, que não entrou por não ser palavra funcional e por valer um livro só.
+- **O *Zhuravlev* é bilíngue**, e a tabela o diz à parte: declarado russo, e inglês conta como certo.
+- A leitura para antes das dez folhas quando já há quatro folhas e cinco vezes a evidência mínima: a medida custava minutos por livro.
+  O relatório diz quantas folhas cada um contou; a janela conta até dez.
+- A tabela à mão está em `docs/metrics/texto_lingua_2026-11-06/linguas_declaradas.json`, lida pelo teste, e não no código dele.
+- A primeira folha de um livro novo é lida no padrão. Detectar antes custaria outra leitura de glifo por folha.
+- `lingua.json` não sobe `VERSAO_DO_INDICE`: é arquivo novo, que a versão antiga ignora.

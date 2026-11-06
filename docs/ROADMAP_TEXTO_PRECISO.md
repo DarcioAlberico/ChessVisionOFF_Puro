@@ -1120,7 +1120,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Reversão:* **este item não é reversível por interruptor** — uma versão antiga do programa não
     abre `.cvtxt` nem caderno gravado com `tesseract` (estoura `PaginaInvalida`). Fica escrito, e o
     formato novo só é gravado depois do portão G102.
-- **S-723** · A língua do livro.
+- **S-723** · A língua do livro. ✅ entregue em 2026-11-06
   - *Entrega:* parâmetro `lingua` em `ler_pagina` (hoje não existe); detecção por perfil de palavras
     funcionais nas primeiras folhas lidas, guardada no caderno do livro (`text/caderno.py`, só na
     `main`), com troca manual no menu Texto (**não** em `settings.py`: S-218). Escolhe `tessdata` e o
@@ -1129,6 +1129,19 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     comparada com a língua declarada à mão numa tabela do teste.
   - *Saída:* acerto de língua em todos os livros do acervo deduplicado (8 línguas).
   - *Reversão:* a língua manual no menu sempre vence a detectada.
+  - *Achado:* **saída não cumprida à risca: 52 de 54 livros certos, 2 sem resposta, nenhum errado.** Os dois sem resposta são
+    `1000 Chess Problems`, de problemas, com quase nenhuma prosa, e o `Пилавов`, scan russo sem camada: o glifo não tem classe de
+    cirílico, e lá escreve latim sem sentido. Nos dois a janela diz para escolher à mão depois de dez folhas. Sem a camada como
+    fonte eram 50: ela recupera o *Niemeijer* e o *Boleslavski*. O *Zhuravlev* é bilíngue, russo e inglês folha sim, folha não,
+    e deu inglês; está à parte na tabela, contado como certo. A tabela é `docs/metrics/texto_lingua_2026-11-06/linguas_declaradas.json`,
+    e não está no código do teste: o teste a lê. **Não há conjunto de teste aqui**: o decisor foi escrito antes de medir e não mudou
+    depois, mas o acervo é o único conjunto. As constantes não foram ajustadas olhando o resultado.
+  - *Achado:* `motor="fusao"` com o léxico da língua, no ouro-dev: CER de prosa 0,469% → 0,457%, em 32.407 caracteres; 20 de 28 folhas
+    iguais, 3 melhores, 1 pior. Dentro do ruído, e não é portão. **Um veto certo e um errado, os dois para a S-721:** `Pas` deixa
+    de vencer `♔a5` num livro em português, e `Axed` passa a vencer `♘xc4` num em inglês, porque `axed` está na lista.
+  - *Achado:* `motor="tesseract"`, citado no pedido, não existe nesta árvore; quem usa a língua são a fusão e a reserva.
+    A primeira folha de um livro novo ainda é lida no padrão (`eng`): a língua detectada vale da leitura seguinte em diante,
+    e a folha lida noutra língua volta a ser lida, porque o motor anotado no caderno a inclui.
 - **S-724** · O Tesseract no instalador.
   - *Contexto:* o binário existe nesta máquina em `C:\Program Files\Tesseract-OCR`, instalado à mão; o
     instalador não o leva. Licença Apache-2.0.

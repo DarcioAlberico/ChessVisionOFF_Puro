@@ -30,6 +30,7 @@ if TEM_PYQT:
 
     from chess_diagram_ocr.qt import tema
     from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
+    from chess_diagram_ocr.text.lingua import LinguaDoLivro
 
 
 class _Falso:
@@ -193,6 +194,165 @@ class LinguaNoCadernoTests(_Aba):
         self.assertTrue(caderno.abre_do_caderno(estado, motor=self.painel._motor_gravado(), modo_bloco=False))
         self.painel.definir_lingua("por")
         self.assertFalse(caderno.abre_do_caderno(estado, motor=self.painel._motor_gravado(), modo_bloco=False))
+
+
+class LinguaDoLivroTests(_Aba):
+    """A língua do livro na janela (S-723). Teste de fiação afirma efeito: o que o leitor de linha recebe, e o que fica."""
+
+    PROSA_EM_PORTUGUES = "o rei das brancas não pode sair da coluna com uma torre em jogo pelo lado da dama"
+
+    def setUp(self) -> None:
+        super().setUp()
+        import fitz
+
+        self.livro_em_ingles = self.livro
+        self.livro = self.pasta / "em_portugues.pdf"
+        doc = fitz.open()
+        folha = doc.new_page(width=450, height=650)
+        for n in range(30):
+            folha.insert_text((60, 60 + 18 * n), self.PROSA_EM_PORTUGUES[:60], fontname="helv", fontsize=9)
+        doc.save(self.livro)
+        doc.close()
+        self.painel._pasta_de_cadernos = self.pasta / "cadernos"
+        self.painel.definir_livro(None)
+        self.painel.definir_livro(self.livro, pagina=0)
+        self.addCleanup(self.painel.fechar_caderno)
+        self.escolher("fusao")
+
+    def _ler_em_portugues(self, falso: _Falso | None = None) -> None:
+        self.ler([_crua(self.PROSA_EM_PORTUGUES, 50 + 18 * n) for n in range(30)], falso or _Falso(self.PROSA_EM_PORTUGUES))
+
+    def test_a_folha_lida_decide_a_lingua_e_a_leitura_seguinte_usa_ela(self) -> None:
+        falso = _Falso(self.PROSA_EM_PORTUGUES)
+        self._ler_em_portugues(falso)
+        self.assertEqual(falso.linguas, [tesseract.LINGUA_PADRAO])
+        self.assertEqual(self.painel.lingua, "por")
+        self.assertEqual(self.painel.escolha_de_lingua.currentData(), "por")
+        self.assertTrue(any("Português (detectada" in recado for recado in self.recados), self.recados)
+
+    def test_a_segunda_leitura_recebe_a_lingua_detectada(self) -> None:
+        """Pelo botão: o motor anotado na folha é `fusao:eng`, e a língua nova pede a leitura nova em vez do caderno."""
+        self._ler_em_portugues()
+        falso = _Falso(self.PROSA_EM_PORTUGUES)
+        self._ler_em_portugues(falso)
+        self.assertEqual(falso.linguas, ["por"])
+
+    def test_a_escolhida_a_mao_vence_a_detectada(self) -> None:
+        caixa = self.painel.escolha_de_lingua
+        caixa.setCurrentIndex(caixa.findData("deu"))
+        caixa.activated.emit(caixa.currentIndex())
+        falso = _Falso(self.PROSA_EM_PORTUGUES)
+        self._ler_em_portugues(falso)
+        self.assertEqual(falso.linguas, ["deu"])
+        self.assertEqual(self.painel.lingua, "deu")
+        self.assertEqual(self.painel._caderno.lingua().detectada, "por")  # type: ignore[union-attr]
+        self.assertEqual(self.painel._caderno.lingua().manual, "deu")  # type: ignore[union-attr]
+
+    def test_a_lingua_fica_no_caderno_e_volta_com_o_livro(self) -> None:
+        self._ler_em_portugues()
+        self.painel.definir_livro(None)
+        self.assertEqual(self.painel.lingua, tesseract.LINGUA_PADRAO)
+        self.painel.definir_livro(self.livro, pagina=0)
+        self.assertEqual(self.painel.lingua, "por")
+
+    def test_a_lingua_de_um_livro_nao_passa_para_o_outro(self) -> None:
+        caixa = self.painel.escolha_de_lingua
+        caixa.setCurrentIndex(caixa.findData("rus"))
+        caixa.activated.emit(caixa.currentIndex())
+        outro = self.pasta / "outro.pdf"
+        outro.write_bytes(self.livro.read_bytes() + b"% outro livro")
+        self.painel.definir_livro(outro, pagina=0)
+        self.assertEqual(self.painel.lingua, tesseract.LINGUA_PADRAO)
+        self.painel.definir_livro(self.livro, pagina=0)
+        self.assertEqual(self.painel.lingua, "rus")
+
+    def test_o_estado_da_janela_nao_guarda_a_lingua_do_livro(self) -> None:
+        caixa = self.painel.escolha_de_lingua
+        caixa.setCurrentIndex(caixa.findData("rus"))
+        caixa.activated.emit(caixa.currentIndex())
+        guardado = estado_da_janela.AppState()
+        self.painel.anotar_estado(guardado)
+        self.assertEqual(guardado.texto_lingua, tesseract.LINGUA_PADRAO)
+
+    def test_o_comando_do_menu_escolhe_e_volta_a_detectar(self) -> None:
+        self._ler_em_portugues()
+        with mock.patch("chess_diagram_ocr.qt.painel_de_texto.QInputDialog.getItem", return_value=("Francês", True)):
+            self.painel.executar("lingua_do_livro")
+        self.assertEqual(self.painel.lingua, "fra")
+        self.assertEqual(self.painel._caderno.lingua().manual, "fra")  # type: ignore[union-attr]
+        with mock.patch(
+            "chess_diagram_ocr.qt.painel_de_texto.QInputDialog.getItem", return_value=(strings.LINGUA_DETECTADA_PELO_LIVRO, True)
+        ):
+            self.painel.executar("lingua_do_livro")
+        self.assertEqual(self.painel.lingua, "por")
+        self.assertEqual(self.painel._caderno.lingua().manual, "")  # type: ignore[union-attr]
+
+    def test_cancelar_o_dialogo_nao_muda_nada(self) -> None:
+        with mock.patch("chess_diagram_ocr.qt.painel_de_texto.QInputDialog.getItem", return_value=("Francês", False)):
+            self.painel.executar("lingua_do_livro")
+        self.assertEqual(self.painel.lingua, tesseract.LINGUA_PADRAO)
+
+    def test_disco_recusando_a_lingua_nao_derruba_o_slot(self) -> None:
+        with mock.patch.object(self.painel._caderno, "guardar_lingua", side_effect=OSError("disco cheio")):
+            self.painel._escolher_lingua("por")
+        self.assertEqual(self.painel.lingua, "por")
+        self.assertTrue(any("disco cheio" in recado for recado in self.recados), self.recados)
+
+    def test_as_dez_folhas_sem_resposta_dizem_que_a_pessoa_escolha(self) -> None:
+        """É o scan russo sem camada: o glifo escreve latim sem sentido, e calar seria ler em inglês para sempre."""
+        sem_sentido = pagina.PaginaLida(pagina=9, colunas=(pagina.Coluna(indice=0, blocos=(pagina.BlocoDeTexto.de_linhas(
+            [pagina.LinhaLida(texto=" ".join(["xqzw"] * 30), bbox=(0, 0, 9, 9))]
+        ),)),))
+        self.painel._lingua_do_livro = LinguaDoLivro(folhas=tuple(range(9)))
+        self.assertEqual(self.painel._anotar_lingua_da_folha(sem_sentido, "").strip(), strings.LINGUA_NAO_DETECTADA)
+        self.assertEqual(self.painel.lingua, tesseract.LINGUA_PADRAO)
+
+    def test_a_camada_com_palavras_e_quem_conta_para_a_lingua(self) -> None:
+        """O glifo não tem cirílico: sem a camada, o livro russo com camada ficaria sem resposta."""
+        sem_sentido = pagina.PaginaLida(pagina=0, colunas=(pagina.Coluna(indice=0, blocos=(pagina.BlocoDeTexto.de_linhas(
+            [pagina.LinhaLida(texto=" ".join(["xqzw"] * 30), bbox=(0, 0, 9, 9))]
+        ),)),))
+        russo = "Белый король не может выйти на открытую линию и при этом пешки становятся сильнее после размена ладей на доске " * 2
+        self.painel._anotar_lingua_da_folha(sem_sentido, russo)
+        self.assertEqual(self.painel.lingua, "rus")
+
+    def test_a_leitura_de_verdade_leva_a_camada_a_deteccao(self) -> None:
+        """Fiação: a folha deste teste é inglês na camada, e o Tesseract de mentira lê português: quem conta é a camada."""
+        self.painel.definir_livro(self.livro_em_ingles, pagina=0)
+        self._ler_em_portugues()
+        self.assertEqual(self.painel._caderno.lingua().detectada, "eng")  # type: ignore[union-attr]
+
+    def test_o_comando_esta_no_menu_texto(self) -> None:
+        from chess_diagram_ocr.ui import menu
+
+        texto = next(m for m in menu.MENUS if m.titulo == "Texto")
+        self.assertIn("lingua_do_livro", [item.acao for item in texto.itens])
+
+    def test_settings_nao_conhece_a_lingua(self) -> None:
+        """S-218: `settings.py` está no digest do campo, e a língua do livro nunca passa por ele."""
+        from chess_diagram_ocr import config
+
+        fonte = (Path(config.__file__).parent / "settings.py").read_text(encoding="utf-8")
+        self.assertNotIn("lingua", fonte)
+
+
+class LexicoDoLivroNaFusaoTests(_Aba):
+    """`lingua` escolhe o léxico, e não só o `tessdata`: `und` existe no alemão, e no português não (S-723)."""
+
+    def _fundida(self, lingua: str) -> str:
+        cruas = [_crua("und und und und und und und und", 50 + 18 * n) for n in range(30)]
+        with (
+            mock.patch.object(leitor, "linhas_do_glifo", return_value=(cruas, [])),
+            mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=[]),
+        ):
+            lida = leitor.ler_pagina(
+                self.livro, 0, dpi=72, motor="fusao", lingua=lingua, leitor_de_linha=_Falso("unol unol unol unol unol unol unol unol"), reconhecedor=object()
+            )
+        return lida.texto()
+
+    def test_a_lingua_do_livro_muda_quem_vence(self) -> None:
+        self.assertIn("und", self._fundida("deu"))
+        self.assertNotIn("und", self._fundida("por"))
 
 
 class ProximaARevisarTests(_Aba):

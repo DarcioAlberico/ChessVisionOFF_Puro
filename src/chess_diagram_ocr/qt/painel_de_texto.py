@@ -93,6 +93,7 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -118,7 +119,9 @@ from chess_diagram_ocr.qt.texto_formato import bloco_de, formato_de
 from chess_diagram_ocr.qt.trabalho import Tarefa, rastro_de
 from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.text import busca, caderno, correcao, rascunho, rico
+from chess_diagram_ocr.text import lingua as lingua_do_livro
 from chess_diagram_ocr.text.documento import PaginaLida
+from chess_diagram_ocr.text.lingua import LinguaDoLivro
 from chess_diagram_ocr.text.pagina import BlocoDeDiagrama, BlocoDeTexto
 from chess_diagram_ocr.text.tesseract import LINGUA_PADRAO
 from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, mesa, strings, texto_cores, tipografia, tokens
@@ -443,6 +446,9 @@ class PainelDeTexto(QWidget):
         self._paleta: object | None = None
         self._motor = MOTORES[0]
         self._lingua = LINGUA_PADRAO
+        self._lingua_padrao = LINGUA_PADRAO
+        """Quem responde enquanto o livro não tem língua, escolhida nem detectada. Vem do estado gravado."""
+        self._lingua_do_livro = LinguaDoLivro()
         """O motor de leitura. O primeiro da lista é o padrão, e a S-423 explica por que ele é o
         `auto` e não o `glifo`."""
         self._modo_bloco = False
@@ -964,7 +970,7 @@ class PainelDeTexto(QWidget):
         for lingua, rotulo in strings.ROTULOS_DE_LINGUA.items():
             self.escolha_de_lingua.addItem(rotulo, lingua)
         self.escolha_de_lingua.activated.connect(self._lingua_escolhida)
-        dica_em(self.escolha_de_lingua, "A língua em que o Tesseract lê a prosa, no motor «Glifo + Tesseract» e na reserva.")
+        dica_em(self.escolha_de_lingua, strings.DICA_DA_LINGUA_DO_LIVRO)
 
         self.caixa_de_bloco = QCheckBox(comandos.rotulo_de_botao("modo_bloco"), barra)
         self.caixa_de_bloco.toggled.connect(lambda _ligado: self.modo_bloco_mudou())
@@ -3198,7 +3204,8 @@ class PainelDeTexto(QWidget):
         estado.texto_zoom = int(self.zoom_da_vista)  # type: ignore[attr-defined]
         estado.texto_quebra = bool(self.quebra)  # type: ignore[attr-defined]
         estado.texto_motor = self.motor  # type: ignore[attr-defined]
-        estado.texto_lingua = self.lingua  # type: ignore[attr-defined]
+        # **O padrão, e não a língua do livro aberto**: esta mora no caderno, e não pode vazar para o livro seguinte (S-723).
+        estado.texto_lingua = self._lingua_padrao  # type: ignore[attr-defined]
         estado.texto_bloco = bool(self.modo_bloco)  # type: ignore[attr-defined]
         estado.texto_diagramas = self._diagramas  # type: ignore[attr-defined]
         estado.texto_miniatura = self._tamanho_da_miniatura  # type: ignore[attr-defined]
@@ -3656,16 +3663,68 @@ class PainelDeTexto(QWidget):
         return str(self._lingua)
 
     def definir_lingua(self, codigo: str) -> None:
-        """Repõe a língua gravada; um código que a aba não conhece é ignorado, como no motor."""
-        indice = self.escolha_de_lingua.findData(codigo)
-        if indice < 0:
+        """Repõe o padrão gravado; um código que a aba não conhece é ignorado, como no motor.
+
+        É o que responde enquanto o livro não tem língua: a do caderno e a escolhida à mão vencem este.
+        """
+        if self.escolha_de_lingua.findData(codigo) < 0:
             return
-        self._lingua = codigo
-        self.escolha_de_lingua.setCurrentIndex(indice)
+        self._lingua_padrao = codigo
+        self._mostrar_lingua_do_livro()
+
+    def _mostrar_lingua_do_livro(self) -> None:
+        """A língua que vai ler é a do livro (S-723): a escolhida à mão, senão a detectada, senão o padrão."""
+        self._lingua = self._lingua_do_livro.efetiva(self._lingua_padrao)
+        self.escolha_de_lingua.setCurrentIndex(self.escolha_de_lingua.findData(self._lingua))
+        self._rotular_leitura()
+
+    def _carregar_lingua_do_livro(self) -> None:
+        """O livro mudou: a língua dele vem do caderno, e a do livro que saiu não passa para este."""
+        self._lingua_do_livro = LinguaDoLivro() if self._caderno is None else self._caderno.lingua()
+        self._mostrar_lingua_do_livro()
+
+    def _guardar_lingua_do_livro(self) -> None:
+        """Vai ao caderno. **Disco cheio não é exceção em slot** (qFatal no PyQt6): a língua fica na memória e o rodapé diz."""
+        if self._caderno is None:
+            return
+        try:
+            self._caderno.guardar_lingua(self._lingua_do_livro)
+        except OSError as erro:
+            logger.warning("A língua do livro não foi ao caderno: %s", erro)
+            self.estado.emit(f"A língua do livro não foi ao caderno: {erro}.")
 
     def _lingua_escolhida(self, _indice: int) -> None:
-        self._lingua = str(self.escolha_de_lingua.currentData())
-        self._rotular_leitura()
+        self._escolher_lingua(str(self.escolha_de_lingua.currentData()))
+
+    def _escolher_lingua(self, codigo: str) -> None:
+        """A escolha à mão, da caixa ou do menu. `""` devolve a decisão à detecção. Vale para este livro, e só para ele."""
+        self._lingua_do_livro = self._lingua_do_livro.com_manual(codigo)
+        self._guardar_lingua_do_livro()
+        self._mostrar_lingua_do_livro()
+        self.estado.emit(strings.frase_da_lingua_do_livro(self._lingua, manual=bool(codigo)))
+
+    def escolher_lingua_do_livro(self) -> None:
+        """«Língua do livro…» no menu Texto: as oito, mais a volta à detecção."""
+        rotulos = [strings.LINGUA_DETECTADA_PELO_LIVRO, *strings.ROTULOS_DE_LINGUA.values()]
+        codigos = ["", *strings.ROTULOS_DE_LINGUA]
+        atual = codigos.index(self._lingua_do_livro.manual)
+        rotulo, aceitou = QInputDialog.getItem(self, "Língua do livro", strings.PERGUNTA_DA_LINGUA_DO_LIVRO, rotulos, atual, False)
+        if aceitou:
+            self._escolher_lingua(codigos[rotulos.index(rotulo)])
+
+    def _anotar_lingua_da_folha(self, pagina: PaginaLida, camada: str) -> str:
+        """A folha lida soma na detecção (S-723). Devolve a frase do rodapé, quando há o que dizer sobre a língua."""
+        texto = lingua_do_livro.texto_da_folha(camada, pagina.texto())
+        novo = self._lingua_do_livro.com_folha(int(pagina.pagina), texto)
+        if novo == self._lingua_do_livro:
+            return ""
+        self._lingua_do_livro = novo
+        self._guardar_lingua_do_livro()
+        antes = self._lingua
+        self._mostrar_lingua_do_livro()
+        if len(novo.folhas) == lingua_do_livro.FOLHAS_DA_DETECCAO and not novo.efetiva():
+            return " " + strings.LINGUA_NAO_DETECTADA  # as dez folhas não bastaram, e calar seria ler em inglês para sempre
+        return "" if self._lingua == antes else " " + strings.frase_da_lingua_do_livro(self._lingua, manual=False)
 
     def _motor_gravado(self) -> str:
         """O que o caderno anota como motor da folha. **Na fusão a língua vai junto** (S-717).
@@ -3747,8 +3806,9 @@ class PainelDeTexto(QWidget):
         # copiada aqui, na thread da janela, porque o visualizador pode trocá-la enquanto se lê.
         pronta = self._fornecedor_de_folha(indice) if self._fornecedor_de_folha is not None else None
         imagem_pronta = np.array(pronta[0], copy=True) if pronta is not None and int(pronta[1]) == dpi else None
+        conta_lingua = len(self._lingua_do_livro.folhas) < lingua_do_livro.FOLHAS_DA_DETECCAO
 
-        def _trabalho() -> tuple[PaginaLida, np.ndarray | None, int, float]:
+        def _trabalho() -> tuple[PaginaLida, np.ndarray | None, int, float, str]:
             # **A folha é rasterizada uma vez, e aqui (S-352).** `ler_pagina` a renderiza sozinha
             # quando ninguém lhe dá a imagem, e as miniaturas precisariam dela de novo -- na thread
             # da janela, que congelava ~355 ms por leitura no outro frontend. O mesmo `dpi` dos
@@ -3760,7 +3820,9 @@ class PainelDeTexto(QWidget):
             lida = _ler(
                 caminho, indice, dpi=dpi, motor=motor, modo_bloco=bloco, imagem_rgb=imagem, max_boards=teto, lingua=lingua
             )
-            return lida, imagem, dpi, time.perf_counter() - inicio
+            # A camada só enquanto a detecção conta: são dez folhas por livro, e aqui, fora da thread da janela (S-723).
+            camada = _camada_da_folha(caminho, indice) if conta_lingua else ""
+            return lida, imagem, dpi, time.perf_counter() - inicio, camada
 
         self.estado.emit(f"Lendo a folha {indice + 1}…")
         self._registrar_ocupado(
@@ -3854,9 +3916,9 @@ class PainelDeTexto(QWidget):
         """A folha lida voltou da thread -- **e a imagem vem com ela** (S-352), com o DPI dela."""
         self._tarefa = None
         if isinstance(resultado, tuple):
-            pagina, imagem, dpi, segundos = (*resultado, None, None)[:4]
+            pagina, imagem, dpi, segundos, camada = (*resultado, None, None, "")[:5]
         else:
-            pagina, imagem, dpi, segundos = resultado, None, None, None
+            pagina, imagem, dpi, segundos, camada = resultado, None, None, None, ""
         assert isinstance(pagina, PaginaLida)
         partida = self._documento_ao_ler
         self._documento_ao_ler = None
@@ -3871,6 +3933,7 @@ class PainelDeTexto(QWidget):
         self._pagina_indice = int(self.campo_de_folha.value()) - 1
         self.mostrar_pagina(pagina, folha_rgb=imagem, dpi=dpi)
         self._guardar_leitura()
+        lingua_nova = self._anotar_lingua_da_folha(pagina, str(camada or ""))
         diagramas = len(pagina.diagramas)
         figuras = f", {diagramas} diagrama(s)" if diagramas else ""
         # «em 3,9 s»: a pessoa escolhe o motor e o modo bloco pelo preço, e o preço tem de ser dito.
@@ -3885,7 +3948,7 @@ class PainelDeTexto(QWidget):
                 "tente outro motor ou o modo bloco."
             )
             return
-        self.estado.emit(f"Folha lida{tempo}: {len(self.documento.corridas)} trecho(s){figuras}.")
+        self.estado.emit(f"Folha lida{tempo}: {len(self.documento.corridas)} trecho(s){figuras}.{lingua_nova}")
         # **Depois de desenhar, e não antes**: se a pessoa recusar a oferta, o que fica na tela é
         # a leitura que ela acabou de pedir (S-255).
         self.oferecer_rascunho(pagina)
@@ -3926,6 +3989,7 @@ class PainelDeTexto(QWidget):
         if _chave_de_livro(novo) != _chave_de_livro(self._pdf):
             self._posicoes.clear()  # as posições são do livro que saiu (item 11)
             self._abrir_caderno(novo)
+            self._carregar_lingua_do_livro()
             if self._caderno is None:
                 self._anunciar_rascunhos(novo)
             self._rotular_leitura()
@@ -4544,6 +4608,18 @@ class PainelDeTexto(QWidget):
             getattr(self, COMANDOS_DA_ABA[acao])()
         finally:
             self._rotulo_corrente = ""
+
+
+def _camada_da_folha(caminho: object, indice: int) -> str:
+    """O texto da camada do PDF, para a detecção da língua (S-723). PDF que não responde é "sem camada", e nunca um erro."""
+    from chess_diagram_ocr.pdf_io import open_document
+
+    try:
+        with open_document(caminho) as doc:  # type: ignore[arg-type]
+            return str(doc[indice].get_text())
+    except (OSError, RuntimeError, ValueError, IndexError) as erro:
+        logger.debug("Sem camada para a língua na folha %d: %s", indice + 1, erro)
+        return ""
 
 
 def _renderizar(caminho: Path, indice: int, *, dpi: int) -> np.ndarray | None:

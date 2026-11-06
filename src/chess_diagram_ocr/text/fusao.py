@@ -34,6 +34,8 @@ import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 
+from . import lexico as _lexico
+
 PROSA = "prosa"
 NOTACAO = "notacao"
 OUTRO = "outro"
@@ -66,23 +68,34 @@ _ACENTOS_DE_FONTE = re.compile(r"^[^A-Za-z]*[À-ÿ]{3,}[^A-Za-z]*$")
 _LONGA = re.compile(rf"^(\d+\.+)?[{_PECA}]?[a-h][1-8][-x×:–][a-h][1-8]")
 _LETRA_DE_PECA = re.compile(r"^[KQRBNDTCSLF]$")
 _ROQUE = re.compile(r"^(\d+\.+)?(O-O(-O)?|0-0(-0)?|O–O(–O)?|0–0(–0)?)")
-_PALAVRA = re.compile(r"^[A-Za-zÀ-ÿ]{2,}(?:['’-][A-Za-zÀ-ÿ]+)*$")
+_PALAVRA = re.compile(r"^[^\W\d_]{2,}(?:['’-][^\W\d_]+)*$")
+"""Qualquer alfabeto (S-723): até `ÿ`, `după` e o russo nunca existiam, com lista ou sem ela."""
 _NUMERO = re.compile(r"^\(?(\d+)(?=\.)")
 _SO_FIO = re.compile(r"^[|¦]+$")
 """O Tesseract lê `I` como `|`: 8 de 20 erros da fusão. Barra sozinha contra letra não é leitura melhor."""
 
-CURTAS = frozenset(
-    """
-    a an and are as at be but by do for he her his i if in is it its me my no not of on or our she so the
-    to up us was we who you
-    a ao aos as com da das de do dos e é em na nas no nos o os ou para por que se sem um uma à às
-    al el en es la las lo los y del con por que un una su sus
-    am an auf aus bei das dem den der des die ein er es im in ist mit nach nicht und von vor zu zum zur
-    au aux ce de des du en et il la le les ne on ou par pas que qui se un une
-    de een en het in is met niet op te van voor zijn
-    """.split()
-)
-"""Palavras que existem e o léxico compartilhado descarta. Privadas daqui: ver o cabeçalho."""
+CURTAS_POR_LINGUA: dict[str, frozenset[str]] = {
+    "eng": frozenset(
+        "a an and are as at be but by do for he her his i if in is it its me my no not of on or our she so the "
+        "to up us was we who you".split()
+    ),
+    "por": frozenset("a ao aos as com da das de do dos e é em na nas no nos o os ou para por que se sem um uma à às".split()),
+    "spa": frozenset("al el en es la las lo los y del con por que un una su sus".split()),
+    "deu": frozenset("am an auf aus bei das dem den der des die ein er es im in ist mit nach nicht und von vor zu zum zur".split()),
+    "fra": frozenset("au aux ce de des du en et il la le les ne on ou par pas que qui se un une".split()),
+    "nld": frozenset("de een en het in is met niet op te van voor zijn".split()),
+    "ron": frozenset("a al ale ca ce cu dar de din e ea el eu in la le lui mai ne nu o pe sa se si și un în".split()),
+    "rus": frozenset("а в во да до ее её же за и из к как ко мы на не но о об он от по с со та те то ты у уж".split()),
+}
+"""As palavras curtas de cada língua, à mão: a lista da S-728 só tem de 4 letras para cima (S-723)."""
+
+CURTAS = frozenset().union(*(CURTAS_POR_LINGUA[lingua] for lingua in ("eng", "por", "spa", "deu", "fra", "nld")))
+"""Palavras que existem e o léxico compartilhado descarta. Privadas daqui: ver o cabeçalho.
+
+As seis línguas de sempre, e é este o conjunto do léxico compartilhado: `existe_no` sem língua responde como antes."""
+
+LEXICO_POR_LINGUA = True
+"""O interruptor da S-723: desligado, `existe_do_livro` responde pelo léxico compartilhado, como antes dela."""
 
 
 def classe_do_token(token: str) -> str:
@@ -177,7 +190,7 @@ def alinhar_tokens(g: Sequence[str], t: Sequence[str]) -> list[tuple[int, int]]:
     return pares
 
 
-def existe_no(lexico: Iterable[str]) -> Callable[[str], bool]:
+def existe_no(lexico: Iterable[str], *, curtas: frozenset[str] = CURTAS) -> Callable[[str], bool]:
     """A pergunta "esta palavra existe?" sobre um léxico em caixa baixa, mais as curtas daqui."""
     conjunto = lexico if isinstance(lexico, (set, frozenset)) else frozenset(lexico)
 
@@ -186,9 +199,23 @@ def existe_no(lexico: Iterable[str]) -> Callable[[str], bool]:
         if not _PALAVRA.match(nu) or e_notacao(nu):
             return False
         chave = nu.casefold()
-        return chave in conjunto or chave in CURTAS
+        return chave in conjunto or chave in curtas
 
     return existe
+
+
+def existe_do_livro(lingua: str) -> Callable[[str], bool]:
+    """A pergunta "esta palavra existe?" na língua do livro (S-723). Sem lista dela, a do léxico compartilhado.
+
+    **O que muda é só a metade da língua**: a lista da S-728 entra no lugar de `idioma`, que mistura oito, e as curtas
+    da língua no lugar das de seis. O vocabulário do xadrez (`acervo`) e os nomes ficam, porque nenhuma lista do
+    Tesseract conhece `zugzwang` nem `Nimzowitsch`.
+    """
+    if LEXICO_POR_LINGUA:
+        lista = _lexico.do_livro(lingua)
+        if lista:
+            return existe_no(lista, curtas=CURTAS_POR_LINGUA.get(lingua, CURTAS))
+    return existe_no(_lexico.carregar())
 
 
 def _numero_partido(do_glifo: str, do_leitor: str) -> str:
@@ -362,6 +389,7 @@ __all__ = [
     "alinhar_tokens",
     "classe_do_token",
     "e_notacao",
+    "existe_do_livro",
     "existe_na_camada",
     "existe_no",
     "fundir",

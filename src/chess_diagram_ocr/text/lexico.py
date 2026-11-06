@@ -165,6 +165,13 @@ def da_lingua(lingua: str) -> frozenset[str]:
     return _de_um_arquivo(PASTA_DAS_LINGUAS / f"{lingua}.txt.gz")
 
 
+@lru_cache(maxsize=8)
+def do_livro(lingua: str) -> frozenset[str]:
+    """A lista da língua, com o vocabulário do xadrez e os nomes. Vazio se a língua não tem lista: quem chama decide."""
+    lista = da_lingua(lingua)
+    return lista | _de_um_arquivo(CAMINHO_ACERVO) | _de_um_arquivo(CAMINHO_NOMES) if lista else frozenset()
+
+
 def _de_um_arquivo(caminho: Path) -> frozenset[str]:
     """Um `.txt.gz` de uma palavra por linha, ou o conjunto vazio se ele não estiver lá."""
     try:

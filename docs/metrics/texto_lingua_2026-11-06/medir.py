@@ -6,7 +6,7 @@ Uso (com o `.venv` do projeto, `PYTHONPATH=<arvore>/src`, `CVOFF_RAIZ` no checko
   medir.py comparar <a.jsonl> <b.jsonl>                quantas folhas do ouro-dev diferem entre as duas corridas
   medir.py deteccao <saida.jsonl> [--orcamento S]      as primeiras folhas lidas de cada livro deduplicado de `PDF/`
   medir.py fusao <saida.jsonl> [--orcamento S]         a fusão do ouro-dev, com o léxico de antes e com o da língua
-  medir.py resumir <saida.json> <deteccao.jsonl> [--fusao F] [--glifo-iguais N --glifo-folhas M]
+  medir.py resumir <saida.json> <deteccao.jsonl> [--fusao F] [--glifo-iguais N --glifo-folhas M --base C --codigo C]
 
 `--orcamento` para a corrida depois de tantos segundos, sem perder nada: rodar de novo continua de onde parou. **A saída
 dos comandos de leitura tem texto de livro comercial** (na fusão): mande-a para fora do repositório. Só o `resumir` escreve
@@ -32,7 +32,8 @@ RELATORIO = Path(__file__).resolve().parent.parent / "texto_prosa_20261030.json"
 TABELA = Path(__file__).resolve().parent / "linguas_declaradas.json"
 DPI = 220
 FOLHAS = 10
-TENTATIVAS = 40
+FOLHAS_FOLGADAS = 4
+TENTATIVAS = 25
 """Quantas folhas do começo do livro, no máximo, para achar as dez lidas com texto."""
 
 
@@ -104,19 +105,28 @@ def deteccao(saida: Path, orcamento: float) -> None:
         total = doc.page_count
         do_glifo = lingua.LinguaDoLivro()
         da_camada = lingua.LinguaDoLivro()
-        decidiu_em = {"glifo": None, "camada": None}
+        do_produto = lingua.LinguaDoLivro()
+        decidiu_em = {"glifo": None, "camada": None, "produto": None}
         lidas = 0
         for indice in range(min(total, TENTATIVAS)):
-            if len(do_glifo.folhas) >= FOLHAS:
+            if len(do_produto.folhas) >= FOLHAS:
                 break
             lidas += 1
             camada = doc[indice].get_text()
             da_camada = da_camada.com_folha(indice, camada)
-            do_glifo = do_glifo.com_folha(indice, ler_pagina(caminho, indice, dpi=DPI, motor="glifo", reconhecedor=reconhecedor).texto())
+            lido = ler_pagina(caminho, indice, dpi=DPI, motor="glifo", reconhecedor=reconhecedor).texto()
+            do_glifo = do_glifo.com_folha(indice, lido)
+            do_produto = do_produto.com_folha(indice, lingua.texto_da_folha(camada, lido))
+            if decidiu_em["produto"] is None and do_produto.detectada == declarada:
+                decidiu_em["produto"] = lidas
             if decidiu_em["glifo"] is None and do_glifo.detectada == declarada:
                 decidiu_em["glifo"] = lidas
             if decidiu_em["camada"] is None and da_camada.detectada == declarada:
                 decidiu_em["camada"] = lidas
+            # A medida custa minutos por livro de scan, e o que ela pergunta já está respondido: a folga é cinco vezes o
+            # mínimo, quatro folhas somadas. O relatório diz quantas folhas cada livro leu.
+            if len(do_produto.folhas) >= FOLHAS_FOLGADAS and max(do_produto.contagem.pontos.values(), default=0) >= 5 * lingua.PONTOS_MINIMOS and do_produto.detectada:
+                break
         doc.close()
         registro = {
             "livro": livro,
@@ -124,6 +134,7 @@ def deteccao(saida: Path, orcamento: float) -> None:
             "folhas_abertas": lidas,
             "glifo": do_glifo.para_json(),
             "camada": da_camada.para_json(),
+            "produto": do_produto.para_json(),
             "decidiu_em": decidiu_em,
         }
         with saida.open("a", encoding="utf-8", newline="\n") as fluxo:
@@ -154,33 +165,46 @@ def fusao(saida: Path, orcamento: float) -> None:
             ler_pagina(RAIZ / "PDF" / primeiro[0], primeiro[2], dpi=DPI, motor="glifo", reconhecedor=reconhecedor)
         caminho = RAIZ / "PDF" / livro
         referencia = ler_pagina(caminho, folha, dpi=DPI, motor="camada")
-        registro = {"livro": livro, "folha": folha, "lingua": lingua_do_livro, "ref": banco.texto_da_pagina(referencia) if hasattr(banco, "texto_da_pagina") else referencia.texto()}
+        registro = {"livro": livro, "folha": folha, "lingua": lingua_do_livro}
         for nome, ligado in (("antes", False), ("depois", True)):
             modulo.LEXICO_POR_LINGUA = ligado
-            registro[nome] = ler_pagina(caminho, folha, dpi=DPI, motor="fusao", lingua=lingua_do_livro, reconhecedor=reconhecedor).texto()
+            lida = ler_pagina(caminho, folha, dpi=DPI, motor="fusao", lingua=lingua_do_livro, reconhecedor=reconhecedor)
+            registro[nome] = banco.texto_de([ln.texto for ln in banco.linhas_da_pagina(lida)])
+        diagramas = [d.bbox for d in referencia.diagramas] + [d.bbox for d in lida.diagramas]
+        registro["ref"] = banco.texto_de([ln.texto for ln in banco.linhas_da_pagina(referencia) if not banco.cruza_diagrama(ln.bbox, diagramas)])
         with saida.open("a", encoding="utf-8", newline="\n") as fluxo:
             fluxo.write(json.dumps(registro, ensure_ascii=False) + "\n")
     print("fim")
 
 
 def resumir_fusao(entrada: Path) -> dict:
+    """CER de prosa da fusão com o léxico de antes e com o da língua, nas mesmas folhas e com a mesma régua."""
     import banco
 
     linhas = _ja_lidas(entrada)
-    por_variante: dict[str, Counter] = {"antes": Counter(), "depois": Counter()}
-    trocas: Counter = Counter()
-    iguais = 0
+    somas: dict[str, Counter] = {"antes": Counter(), "depois": Counter()}
+    linguas = sorted({r["lingua"] for r in linhas})
+    por_folha = []
     for r in linhas:
-        iguais += r["antes"] == r["depois"]
-        for nome in por_variante:
-            placar = banco.pontuar(r["ref"], r[nome], normalizacao="tip", lingua=r["lingua"][:2]) if False else banco.placar(r["ref"], r[nome], "tip")
-            por_variante[nome]["erros"] += placar["prosa"]["erros"]
-            por_variante[nome]["caracteres"] += placar["prosa"]["n"]
+        ref = banco.normalizar(r["ref"], tipografia=True, lang=r["lingua"])
+        cer = {}
+        for nome, soma in somas.items():
+            placar = banco.placar_dict(banco.pontuar(ref, banco.normalizar(r[nome], tipografia=True, lang=r["lingua"])))
+            soma["erros"] += placar["erros"]["prosa"]
+            soma["n"] += placar["total"]["prosa"]
+            soma["erros_notacao"] += placar["erros"]["notacao"]
+            soma["n_notacao"] += placar["total"]["notacao"]
+            cer[nome] = placar["erros"]["prosa"]
+        por_folha.append(cer["depois"] - cer["antes"])
     return {
         "folhas": len(linhas),
-        "folhas_com_texto_igual": iguais,
-        "cer_de_prosa_tip": {k: round(v["erros"] / max(1, v["caracteres"]), 5) for k, v in por_variante.items()},
-        "trocas": trocas.most_common(0),
+        "folhas_com_texto_igual": sum(1 for r in linhas if r["antes"] == r["depois"]),
+        "cer_de_prosa_tip": {nome: round(s["erros"] / max(1, s["n"]), 5) for nome, s in somas.items()},
+        "cer_de_notacao_tip": {nome: round(s["erros_notacao"] / max(1, s["n_notacao"]), 5) for nome, s in somas.items()},
+        "folhas_melhores": sum(1 for d in por_folha if d < 0),
+        "folhas_piores": sum(1 for d in por_folha if d > 0),
+        "caracteres_de_prosa": somas["antes"]["n"],
+        "linguas": linguas,
     }
 
 
@@ -192,39 +216,44 @@ def resumir(saida: Path, entrada: Path, args: argparse.Namespace) -> None:
     for r in linhas:
         glifo_ = lingua.LinguaDoLivro.de_json(r["glifo"])
         camada = lingua.LinguaDoLivro.de_json(r["camada"])
-        combinada = lingua.detectar_em(glifo_, camada)
+        produto = lingua.LinguaDoLivro.de_json(r["produto"])
         livros.append(
             {
                 "livro": r["livro"],
                 "declarada": r["declarada"],
                 "folhas_abertas": r["folhas_abertas"],
                 "decidiu_em": r["decidiu_em"],
-                "glifo": {"detectada": glifo_.detectada, "folhas": len(glifo_.folhas), **glifo_.contagem.para_json()},
-                "camada": {"detectada": camada.detectada, "folhas": len(camada.folhas), **camada.contagem.para_json()},
-                "produto": combinada,
+                "glifo": {"detectada": lingua.decidir(glifo_.contagem), "folhas": len(glifo_.folhas), **glifo_.contagem.para_json()},
+                "camada": {"detectada": lingua.decidir(camada.contagem), "folhas": len(camada.folhas), **camada.contagem.para_json()},
+                "produto": {"detectada": lingua.decidir(produto.contagem), "folhas": len(produto.folhas), **produto.contagem.para_json()},
             }
         )
-    acertos = {
-        nome: sum(1 for livro in livros if chave(livro) == livro["declarada"])
-        for nome, chave in (
-            ("glifo", lambda x: x["glifo"]["detectada"]),
-            ("camada", lambda x: x["camada"]["detectada"]),
-            ("produto", lambda x: x["produto"]),
-        )
-    }
+    bilingues = json.loads(TABELA.read_text(encoding="utf-8")).get("bilingues", {})
+
+    def certa(livro: dict, fonte: str) -> bool:
+        return livro[fonte]["detectada"] in {livro["declarada"], *bilingues.get(livro["livro"], ())}
+
+    fontes = ("glifo", "camada", "produto")
     relatorio = {
-        "item": "S-723 e S-728 · a língua do livro e o léxico por língua",
+        "item": "S-723 · a língua do livro, nas primeiras folhas lidas",
         "medido_em": time.strftime("%Y-%m-%d"),
         "conjunto": "PDF/ deduplicado: uma cópia de cada livro, língua declarada à mão em linguas_declaradas.json",
-        "folhas": f"as primeiras {FOLHAS} folhas com texto de cada livro, abrindo no máximo {TENTATIVAS}",
+        "folhas": f"as primeiras folhas com texto de cada livro, até {FOLHAS} e abrindo no máximo {TENTATIVAS}; com a folga folgada de {FOLHAS_FOLGADAS} folhas e cinco vezes o mínimo, a leitura para antes, e `folhas` diz quantas contaram",
+        "fontes": "glifo: só o texto lido. camada: só a camada do PDF. produto: a camada da folha quando ela traz palavras, senão o lido (lingua.texto_da_folha), que é o que a janela faz",
         "perfil_sha": lingua.sha_do_perfil(),
+        "codigo": args.codigo,
+        "modelo_sha256": hashlib.sha256(MODELO.read_bytes()).hexdigest(),
+        "como_foi_lido": "glifo e camada numa corrida só; o `produto` veio depois, por produto_reaproveitado.py, relendo com o glifo só as folhas de camada rala. Tempo não é veredito: três medições rodavam na máquina",
         "livros_medidos": len(livros),
-        "acertos": acertos,
-        "por_lingua_declarada": dict(Counter(livro["declarada"] for livro in livros)),
-        "erros": [
-            {"livro": x["livro"], "declarada": x["declarada"], "produto": x["produto"], "glifo": x["glifo"]["detectada"], "camada": x["camada"]["detectada"]}
+        "acertos": {fonte: sum(1 for x in livros if certa(x, fonte)) for fonte in fontes},
+        "sem_resposta": {fonte: sum(1 for x in livros if not x[fonte]["detectada"]) for fonte in fontes},
+        "erradas": {fonte: sum(1 for x in livros if x[fonte]["detectada"] and not certa(x, fonte)) for fonte in fontes},
+        "por_lingua_declarada": dict(sorted(Counter(x["declarada"] for x in livros).items())),
+        "bilingues": bilingues,
+        "sem_acerto_no_produto": [
+            {"livro": x["livro"], "declarada": x["declarada"], "produto": x["produto"]["detectada"], "glifo": x["glifo"]["detectada"], "camada": x["camada"]["detectada"]}
             for x in livros
-            if x["produto"] != x["declarada"]
+            if not certa(x, "produto")
         ],
         "livros": livros,
     }
@@ -233,8 +262,8 @@ def resumir(saida: Path, entrada: Path, args: argparse.Namespace) -> None:
     if args.glifo_folhas:
         relatorio["glifo_no_ouro_dev"] = {"folhas": args.glifo_folhas, "iguais_a_base": args.glifo_iguais, "base": args.base}
     saida.write_bytes((json.dumps(relatorio, ensure_ascii=False, indent=1) + "\n").encode("utf-8"))
-    print(acertos, "de", len(livros))
-    for erro in relatorio["erros"]:
+    print(relatorio["acertos"], relatorio["sem_resposta"], relatorio["erradas"], "de", len(livros))
+    for erro in relatorio["sem_acerto_no_produto"]:
         print(erro)
 
 
@@ -247,6 +276,7 @@ def main() -> None:
     parser.add_argument("--glifo-iguais", type=int, default=0)
     parser.add_argument("--glifo-folhas", type=int, default=0)
     parser.add_argument("--base", default="")
+    parser.add_argument("--codigo", default="")
     args = parser.parse_args()
     if args.comando == "glifo":
         glifo(args.arquivos[0])
