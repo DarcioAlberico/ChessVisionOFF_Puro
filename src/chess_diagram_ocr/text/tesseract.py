@@ -61,6 +61,10 @@ ESCALA_PELA_ALTURA_X = False
 ALTURA_X_ALVO = (20.0, 30.0)
 """Pixels. Um scan de 150 dpi tem altura-x nativa de 7 a 10 px; o *Bachmann*, a 220 dpi, de ~52 px."""
 
+RUS_COM_ENG = True
+"""Livro russo lê com `rus+eng` (S-729): só com `rus`, a notação em letra sai cirílica (`№х45`, `Вхд5`), e com `eng` ao lado sai `Nxd5`,
+`Bxd5`. Oito folhas do *Пилавов*: ver a spec. Só no número de lance fica igual: quem precisa do dígito é a gramática."""
+
 PALAVRAS_DO_USUARIO: Path | None = None
 """O `--user-words` da S-720: jogadores, aberturas e torneios. `None` não passa nada. Medido e deixado sem lista: ver a spec."""
 
@@ -141,6 +145,11 @@ def versao_de(texto: str) -> str:
 
 def versao_medida(versao: str) -> bool:
     return bool(versao) and versao.split(".")[0].isdigit() and int(versao.split(".")[0]) in VERSOES_MEDIDAS
+
+
+def lingua_do_processo(lingua: str) -> str:
+    """O `-l` que vai ao processo. A língua do livro continua `rus`, para o léxico e para o caderno."""
+    return "rus+eng" if RUS_COM_ENG and lingua == "rus" else lingua
 
 
 def _opcoes_do_processo(ambiente: Mapping[str, str]) -> dict[str, object]:
@@ -297,7 +306,7 @@ def rodar(
     if motor.binario is None:
         raise FalhaDoTesseract(motor.motivo or "O Tesseract não foi encontrado.")
     comando = [
-        str(motor.binario), "stdin", "stdout", "-l", lingua, "--psm", str(psm), "--dpi", str(int(dpi)),
+        str(motor.binario), "stdin", "stdout", "-l", lingua_do_processo(lingua), "--psm", str(psm), "--dpi", str(int(dpi)),
         *opcoes,
         *(("--user-words", str(PALAVRAS_DO_USUARIO)) if PALAVRAS_DO_USUARIO is not None else ()),
         formato,
@@ -478,6 +487,7 @@ __all__ = [
     "achar_motor",
     "ambiente_do_processo",
     "examinar",
+    "lingua_do_processo",
     "ler_folha",
     "ler_linhas",
     "palavras_do_tsv",

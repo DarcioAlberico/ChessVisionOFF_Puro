@@ -144,6 +144,29 @@ class LanceTortoTests(unittest.TestCase):
         self.assertEqual(".. ...♕f5,", fundida("...♕f5,", ".. Hf5,"))
 
 
+class NumeroEReticenciaTests(unittest.TestCase):
+    def test_o_numero_do_glifo_nao_se_cola_ao_lance(self) -> None:
+        for leitor in ("28711", "Ea836"):
+            with self.subTest(leitor=leitor):
+                self.assertEqual(leitor[-2:], fundida(leitor[-2:], leitor))
+
+    def test_o_numero_da_folha_que_o_glifo_cortou_volta(self) -> None:
+        self.assertEqual("1166", fundida("66", "1166"))
+
+    def test_o_numero_partido_volta_inteiro(self) -> None:
+        self.assertEqual("13 Fischer", fundida("1 3 Fischer", "13 Fischer"))
+
+    def test_a_reticencia_partida_volta_inteira(self) -> None:
+        self.assertEqual("6... ♕f6", fundida("6. . . ♕f6", "6... Wf6"))
+        self.assertEqual("37... ♘e5", fundida("37.. . ♘e5", "37... Ae5"))
+
+    def test_sem_o_leitor_ver_a_reticencia_os_pontos_ficam(self) -> None:
+        self.assertEqual("6. . . ♕f6", fundida("6. . . ♕f6", "6. Wf6"))
+
+    def test_o_sinal_que_ja_veio_na_palavra_nao_repete(self) -> None:
+        self.assertEqual("white!", fundida("white !", "white!"))
+
+
 class RegraV3Tests(unittest.TestCase):
     """No scan, a notação em letra é do outro leitor, e só a figurina é de quem a vê."""
 
@@ -166,6 +189,10 @@ class RegraV3Tests(unittest.TestCase):
         self.assertEqual("Sg1-f3", self.v3("Sg1 f3", "Sg1-f3"))
         self.assertEqual("white ♘f3", self.v3("white ♘f3", "white"))
         self.assertEqual("white", self.v3("white 1", "white"))
+
+    def test_a_linha_que_o_leitor_leu_vazia_fica_com_o_glifo(self) -> None:
+        """No *Bachmann*, `33. Tg2-g1 Dd1-f3+` sumia inteira: o `psm 7` não leu nada, e a notação em letra não tinha par."""
+        self.assertEqual("33. Tg2 g1 Dd1 f3+", self.v3("33. Tg2 g1 Dd1 f3+", ""))
 
     def test_a_notacao_sem_par_do_leitor_entra(self) -> None:
         self.assertEqual("white Nf3", self.v3("white", "white Nf3"))

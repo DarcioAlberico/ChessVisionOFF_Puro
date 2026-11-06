@@ -123,6 +123,14 @@ MINIMO_DE_LETRAS_DA_PALAVRA = 4
 SEM_PAR_NA_V3_SO_FIGURINA = True
 """Na v3, a notação em letra e o dígito são do outro leitor: `Sg1-f3` é um token nele e dois no glifo, e o `f3` a mais entrava."""
 
+NUMERO_DO_GLIFO_NAO_SE_COLA = True
+"""O `11` do glifo contra o `28711` ou o `Ea836` do Tesseract, que colou o lance no número: no *Minhas 60*, em cada linha de
+lances, porque o glifo põe espaço depois da figurina. Fica o do glifo. Quando é o glifo que partiu (`1 3` e `13`), volta inteiro."""
+
+RETICENCIA_DO_LEITOR = True
+"""`6. . . ♕` no glifo e `6...` no leitor: a reticência partida volta inteira, e sem ela a notação perde dois caracteres por lance
+de pretas. Sem o leitor ter visto a reticência, os pontos soltos do glifo ficam."""
+
 LANCE_TORTO_NAO_ENTRA = True
 """O lance que o outro leitor estragou, sem par: `14...♕c6` contra `14...` e `Hc6`. O glifo já o leu, colado no número, e o
 `Hc6` entraria como prosa ao lado dele: 14 de 22 erros de notação a mais numa folha do *Chess Evolution*."""
@@ -260,6 +268,34 @@ def existe_do_livro(lingua: str) -> Callable[[str], bool]:
     return existe_no(_lexico.carregar())
 
 
+def _numero_colado(do_glifo: str, do_leitor: str) -> bool:
+    """O outro leitor grudou algo antes do número do glifo. Quatro dígitos ainda são folha (`66` e `1166`); cinco, não."""
+    if not NUMERO_DO_GLIFO_NAO_SE_COLA or not do_glifo.isdigit() or do_leitor == do_glifo or not do_leitor.endswith(do_glifo):
+        return False
+    return not do_leitor.isdigit() or len(do_leitor) > 4
+
+
+def _com_reticencia(token: str, do_leitor: str) -> str:
+    """`6.` e `6...` dão `6...`: o número é o mesmo, e só o leitor viu os três pontos juntos."""
+    if not RETICENCIA_DO_LEITOR:
+        return token
+    mt = _NUMERO_COM_RETICENCIA.match(do_leitor)
+    mg = _NUMERO_SEM_RETICENCIA.match(token)
+    if mt and mg and mt.group(1).lstrip("(") == mg.group(1).lstrip("("):
+        return f"{mg.group(1)}...{token[mg.end():]}"
+    return token
+
+
+def _ponto_da_reticencia(token: str, saida: Sequence[Token]) -> bool:
+    """O ponto solto do glifo que continua um número (`6. . .`), sem o leitor ter visto a reticência."""
+    if not RETICENCIA_DO_LEITOR or not _SO_PONTOS.match(token):
+        return False
+    for anterior in reversed(saida):
+        if not _SO_PONTOS.match(anterior.texto):
+            return _NUMERO_SEM_RETICENCIA.match(anterior.texto) is not None and anterior.texto.endswith(".")
+    return False
+
+
 def _numero_partido(do_glifo: str, do_leitor: str) -> str:
     """O número do outro leitor, **só** se o do glifo é o fim dele: `7.` contra `17.`, e não `21.` contra `27.`.
 
@@ -273,6 +309,10 @@ def _numero_partido(do_glifo: str, do_leitor: str) -> str:
 
 
 _PROMOCAO_COM_FIGURINA = re.compile(r"^(?:\d+\.+)?(?:[a-h]x)?[a-h][18]=?[♔-♟][+#†‡!?]*$")
+_NUMERO_COM_RETICENCIA = re.compile(r"^(\(?\d+)\.{3}")
+_NUMERO_SEM_RETICENCIA = re.compile(r"^(\(?\d+)\.{1,2}(?!\.)")
+_SO_PONTOS = re.compile(r"^\.{1,3}$")
+_SO_SINAL = re.compile(r"^[!?+#]+$")
 _LANCE_TORTO = re.compile(r"^(?:[&€£¢§¥$@%©®]x?[a-h][1-8lI|]|[A-JM-PR-Zi-z]x?[a-h][1-8])$")
 
 
@@ -332,6 +372,8 @@ class Token:
     """O que o glifo leu ali, quando teve par: a diferença é o sinal de discordância."""
     confianca: float | None = None
     """A confiança de **quem escreveu** o token, quando se sabe."""
+    do_leitor: str = ""
+    """O que o outro leitor leu ali, quando teve par. É a segunda leitura que o árbitro da S-729 pesa."""
 
 
 def fundir(
@@ -365,15 +407,17 @@ def fundir(
     for i, j in alinhar_tokens(g, t):
         bloqueado = j != -1 and j < len(bloqueados) and bool(bloqueados[j])
         if i != -1 and j != -1:
-            if _SO_FIO.match(t[j]) and any(c.isalnum() for c in g[i]):
-                saida.append(Token(g[i], "glifo", g[i], do_glifo(i)))
+            if _numero_colado(g[i], t[j]) or (_SO_FIO.match(t[j]) and any(c.isalnum() for c in g[i])):
+                saida.append(Token(g[i], "glifo", g[i], do_glifo(i), t[j]))
+            elif NUMERO_DO_GLIFO_NAO_SE_COLA and g[i].isdigit() and saida and saida[-1].texto.isdigit() and t[j] == saida[-1].texto + g[i]:
+                saida[-1] = Token(t[j], "outro", saida[-1].texto + g[i], confianca.get(j), t[j])
             elif regra == V3 and not bloqueado and not _FIGURINA.search(g[i]):
                 # Notação em letra e prosa: no scan, as duas são do outro leitor. Sem figurina, não há veto a pesar.
-                saida.append(Token(t[j], "outro", g[i], confianca.get(j)))
+                saida.append(Token(t[j], "outro", g[i], confianca.get(j), t[j]))
             elif regra == V3 and not bloqueado and _palavra_veta(g[i], t[j], existe, da_camada):
                 if OUVINTE_DE_VETOS is not None:
                     OUVINTE_DE_VETOS(g[i], t[j])
-                saida.append(Token(t[j], "outro", g[i], confianca.get(j)))
+                saida.append(Token(t[j], "outro", g[i], confianca.get(j), t[j]))
             elif (
                 REGRA_4
                 and not bloqueado
@@ -383,9 +427,9 @@ def fundir(
                 and not existe(t[j])
             ):
                 # Regra 4 da S-721: divergem, e só a versão do glifo é palavra que existe.
-                saida.append(Token(g[i], "glifo", g[i], do_glifo(i)))
+                saida.append(Token(g[i], "glifo", g[i], do_glifo(i), t[j]))
             elif bloqueado or ((e_notacao(g[i]) or e_notacao(t[j])) and not _palavra_veta(g[i], t[j], existe, da_camada)):
-                token = _numero_partido(g[i], t[j])
+                token = _com_reticencia(_numero_partido(g[i], t[j]), t[j])
                 # O dígito que o glifo deixou solto antes do número (`1 7.♔xf3`) é absorvido aqui.
                 if token != g[i] and saida and saida[-1].texto.isdigit() and t[j].lstrip("(").startswith(saida[-1].texto):
                     saida.pop()
@@ -394,16 +438,23 @@ def fundir(
                 anterior = saida[-1].texto if saida and saida[-1].origem == "outro" else ""
                 if anterior and any(c.isalpha() for c in anterior) and token.startswith(anterior) and e_notacao(token[len(anterior) :]):
                     token = token[len(anterior) :]
-                saida.append(Token(token, "glifo", g[i], do_glifo(i)))
+                saida.append(Token(token, "glifo", g[i], do_glifo(i), t[j]))
             else:
                 if _FIGURINA.search(g[i]) and OUVINTE_DE_VETOS is not None:
                     OUVINTE_DE_VETOS(g[i], t[j])
-                saida.append(Token(t[j], "outro", g[i], confianca.get(j)))
+                saida.append(Token(t[j], "outro", g[i], confianca.get(j), t[j]))
         elif i != -1:
+            anterior = saida[-1].texto if saida else ""
+            if _SO_SINAL.match(g[i]) and anterior.endswith(g[i]):
+                # `ideal !` no glifo e `ideal!` no leitor: o sinal já veio.
+                continue
+            if RETICENCIA_DO_LEITOR and _SO_PONTOS.match(g[i]) and anterior.endswith("..."):
+                continue
             if (
                 _FIGURINA.search(g[i])
-                if regra == V3 and SEM_PAR_NA_V3_SO_FIGURINA
-                else (e_notacao(g[i]) or g[i].isdigit())
+                # **Linha que o leitor leu vazia não tem o que oferecer**: lá ele não viu, e o glifo fica com o que é dele.
+                if regra == V3 and SEM_PAR_NA_V3_SO_FIGURINA and t
+                else (e_notacao(g[i]) or g[i].isdigit() or _ponto_da_reticencia(g[i], saida))
             ):
                 saida.append(Token(g[i], "glifo", g[i], do_glifo(i)))
             elif guarda_prosa_sem_par and (existe(g[i]) or not GUARDA_SO_O_QUE_EXISTE):

@@ -156,10 +156,12 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from typing import Literal
 
+import chess
 import numpy as np
 
 from . import acento as _acento
 from . import admissao as _admissao
+from . import arbitro as _arbitro
 from . import boxes as _boxes
 from . import caixa_alta as _caixa_alta
 from . import camada as _camada
@@ -1305,6 +1307,7 @@ def ler_pagina(
     leitor_de_linha: LeitorDeLinha | None = None,
     reserva: bool = False,
     marca_por_palavra: bool = True,
+    posicao_do_diagrama: Callable[[int], chess.Board | None] | None = None,
 ) -> PaginaLida:
     """Uma página do PDF como `PaginaLida`: colunas de blocos, cabeçalho, rodapé, número impresso.
 
@@ -1315,6 +1318,8 @@ def ler_pagina(
     dar um número que depende de haver Tesseract na máquina, e `cobertura.py` mediria depois do conserto.
     `marca_por_palavra` troca a faixa de confiança do bloco pela marca por palavra nos dois motores que
     combinam leitores (S-718). `leitor_de_linha` existe para o teste: `None` é o Tesseract desta máquina.
+    `posicao_do_diagrama` dá ao árbitro da S-729 a posição do diagrama `n` da folha, e `None` quem a ignora. **Ninguém na janela a
+    passa ainda:** ler a posição custa o classificador de peças, e o alcance medido não paga (ver a spec).
 
     `imagem_rgb` deixa quem já renderizou a página (a interface, sempre) não renderizá-la de novo:
     são ~200 ms por página a 220 dpi, e a aba de texto abriria com um atraso que ela não precisa
@@ -1346,6 +1351,7 @@ def ler_pagina(
             empilhados=empilhados, italico=italico, dicionario=dicionario, numeros=numeros, juntar_lance=juntar_lance,
             marcar_negrito=marcar_negrito, marcar_italico=marcar_italico,
             lingua=lingua, leitor_de_linha=leitor_de_linha, reserva=reserva, marca_por_palavra=marca_por_palavra,
+            posicao_do_diagrama=posicao_do_diagrama,
         )
 
 
@@ -1392,6 +1398,9 @@ def _com_prosa_de_outro_leitor(
     marca_por_palavra: bool,
     regra: str = _fusao.V5,
     guarda_prosa_sem_par: bool = False,
+    relato_do_arbitro: _arbitro.Relato | None = None,
+    posicoes: Sequence[tuple[int, chess.Board]] = (),
+    lingua: str = _tesseract.LINGUA_PADRAO,
 ) -> list[_Cru]:
     """Cada linha do glifo fundida com o que o outro leitor leu nela (S-716, S-717).
 
@@ -1423,6 +1432,9 @@ def _com_prosa_de_outro_leitor(
                 da_camada=e_da_camada,
             )
         )
+    if not e_da_camada:
+        # O árbitro olha a folha inteira, porque o número de lance continua de uma linha para a outra (S-729).
+        fundidas = _arbitro.arbitrar(fundidas, existe=existe, posicoes=posicoes, lingua=lingua, relato=relato_do_arbitro)
     marcadas = (
         _fusao.marcar(fundidas, existe=existe, e_da_camada=e_da_camada)
         if marca_por_palavra
@@ -1448,6 +1460,38 @@ def _com_prosa_de_outro_leitor(
                 revisar_em=_fusao.intervalos_de(tokens, marcados),
             )
         )
+    return saida
+
+
+def linhas_depois_dos_diagramas(cruas: Sequence[_Cru], retangulos: Sequence[Retangulo]) -> list[int | None]:
+    """Em que linha a leitura de cada diagrama começa: a primeira abaixo dele na mesma coluna, senão a primeira da coluna seguinte.
+
+    As cruas já vêm em ordem de leitura. `None` é diagrama sem linha depois dele na folha (S-729).
+    """
+    saida: list[int | None] = []
+    for x0, _y0, x1, y1 in retangulos:
+        na_mesma = next(
+            (k for k, c in enumerate(cruas) if c.caixa.y1 >= y1 - 2 and min(c.caixa.x2, x1) > max(c.caixa.x1, x0)), None
+        )
+        if na_mesma is None:
+            na_mesma = next((k for k, c in enumerate(cruas) if c.caixa.x1 >= x1), None)
+        saida.append(na_mesma)
+    return saida
+
+
+def posicoes_da_folha(
+    cruas: Sequence[_Cru],
+    retangulos: Sequence[Retangulo],
+    posicao_do_diagrama: Callable[[int], chess.Board | None] | None,
+) -> list[tuple[int, chess.Board]]:
+    """O que o árbitro precisa: `(linha, posição)` de cada diagrama que `posicao_do_diagrama` soube ler."""
+    if posicao_do_diagrama is None:
+        return []
+    saida = []
+    for n, linha in enumerate(linhas_depois_dos_diagramas(cruas, retangulos)):
+        tabuleiro = posicao_do_diagrama(n)
+        if linha is not None and tabuleiro is not None:
+            saida.append((linha, tabuleiro))
     return saida
 
 
@@ -1727,6 +1771,7 @@ def _ler_pagina_do_livro(
     leitor_de_linha: LeitorDeLinha | None,
     reserva: bool,
     marca_por_palavra: bool,
+    posicao_do_diagrama: Callable[[int], chess.Board | None] | None,
 ) -> PaginaLida:
     """O corpo de `ler_pagina`, com o documento **já aberto**. Ver a nota da S-351."""
     from ..detection.hybrid import detect_diagrams_in_pdf_page
@@ -1923,6 +1968,8 @@ def _ler_pagina_do_livro(
                         marca_por_palavra=marca_por_palavra,
                         regra=regra,
                         guarda_prosa_sem_par=GUARDA_PROSA_SEM_PAR,
+                        posicoes=posicoes_da_folha(cruas, retangulos, posicao_do_diagrama),
+                        lingua=lingua,
                     )
                     por_palavra = marca_por_palavra
 
