@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import mock
+
+import numpy as np
 
 from chess_diagram_ocr.text import espacado
 
@@ -131,13 +135,93 @@ class NaLinguaTests(unittest.TestCase):
         self.assertEqual(espacado.juntar_na_lingua("k o m b i n i e r t e", "deu"), "kombinierte")
 
 
+class ProsaQueNaoJuntaTests(unittest.TestCase):
+    """As junções erradas que o crítico achou em leitura real e na régua de texto."""
+
+    def test_duas_letras_nao_sao_corrida(self) -> None:
+        """Mata `MIN_TOKENS = 2`: `z u` existe na lista curta, e `a o` também é assim."""
+        self.assertEqual(espacado.juntar("z u", frozenset({"xxxx"}), curtas=frozenset({"zu"})), "z u")
+
+    def test_toda_peca_ja_e_palavra(self) -> None:
+        curtas = frozenset({"y", "a", "o", "la", "su", "un", "en", "ya"})
+        for prosa in ("y a la postre", "y a su casa", "y a un lado", "y a en", "y o la"):
+            with self.subTest(prosa):
+                self.assertEqual(espacado.juntar(prosa, frozenset({"xxxx"}), curtas=curtas), prosa)
+
+    def test_duas_curtas_vencem_uma_palavra(self) -> None:
+        lista = frozenset({"inden", "ander", "ofthe", "inthe", "andthe", "nose", "dela"})
+        curtas = frozenset({"in", "den", "an", "der", "of", "the", "and", "no", "se", "de", "la"})
+        for lida, certa in (
+            ("i n d e n", "in den"),
+            ("a n d e r", "an der"),
+            ("o f t h e", "of the"),
+            ("i n t h e", "in the"),
+            ("a n d t h e", "and the"),
+            ("N o se", "No se"),
+            ("de l a", "de la"),
+        ):
+            with self.subTest(lida):
+                self.assertEqual(espacado.juntar(lida, lista, curtas=curtas), certa)
+
+    def test_com_as_listas_empacotadas(self) -> None:
+        """Mata o `frozenset()` no lugar das curtas públicas: sem elas, é a junção errada que sai."""
+        self.assertEqual(espacado.juntar_na_lingua("i n d e n", "deu"), "in den")
+        self.assertEqual(espacado.juntar_na_lingua("a n d e r", "deu"), "an der")
+        self.assertEqual(espacado.juntar_na_lingua("d e r", "deu"), "der")
+        self.assertEqual(espacado.juntar_na_lingua("o f t h e", "eng"), "of the")
+        self.assertEqual(espacado.juntar_na_lingua("y a la postre", "spa"), "y a la postre")
+        self.assertEqual(espacado.juntar_na_lingua("y a su casa", "spa"), "y a su casa")
+        self.assertEqual(espacado.juntar_na_lingua("N o se", "spa"), "No se")
+
+
+def _pdf_com_texto(caminho: Path, texto: str) -> None:
+    import fitz
+
+    doc = fitz.open()
+    pagina = doc.new_page(width=400.0, height=500.0)
+    pagina.insert_text((40.0, 60.0), texto, fontsize=11)
+    doc.save(str(caminho))
+    doc.close()
+
+
 class FiacaoTests(unittest.TestCase):
-    def test_ler_pagina_chama_a_juncao_nas_linhas_do_glifo(self) -> None:
+    """Pelo `ler_pagina`, e não pelo ajudante: trocar a chamada dele por `pass` tem de reprovar aqui."""
+
+    LIDO = "den k o m b i n i e r t e Zug"
+
+    def _ler(self, motor: str, **extra: object) -> str:
         from chess_diagram_ocr.text import leitor
         from chess_diagram_ocr.text.boxes import Caixa
 
-        cruas = [leitor._Cru("den k o m b i n i e r t e Zug", Caixa(0, 0, 10, 10), 0.9, "glifo", revisar_em=((4, 25),))]
-        saida = leitor._sem_espacado(cruas, "deu")
+        cru = leitor._Cru(self.LIDO, Caixa(40, 40, 300, 60), 0.9, "glifo", revisar_em=((4, 25),))
+        with TemporaryDirectory() as raiz:
+            pdf = Path(raiz) / "livro.pdf"
+            _pdf_com_texto(pdf, self.LIDO)
+            with (
+                mock.patch.object(leitor, "linhas_do_glifo", return_value=([cru], [])),
+                mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=[]),
+                mock.patch.object(leitor, "_ha_classificador", return_value=True),
+            ):
+                pagina = leitor.ler_pagina(
+                    pdf, 0, motor=motor, lingua="deu", imagem_rgb=np.full((500, 400, 3), 255, np.uint8), dpi=72, **extra  # type: ignore[arg-type]
+                )
+        return " ".join(ln.texto for col in pagina.colunas for bloco in col.blocos for ln in getattr(bloco, "linhas", ()))
+
+    def test_o_glifo_passa_pela_juncao(self) -> None:
+        self.assertEqual(self._ler("glifo"), "den kombinierte Zug")
+
+    def test_sem_dicionario_nao_passa(self) -> None:
+        self.assertEqual(self._ler("glifo", dicionario=False), self.LIDO)
+
+    def test_a_camada_nao_passa(self) -> None:
+        """A camada é a referência da régua: juntar nela é mexer na régua."""
+        self.assertEqual(self._ler("camada"), self.LIDO)
+
+    def test_o_intervalo_acompanha_na_linha_do_glifo(self) -> None:
+        from chess_diagram_ocr.text import leitor
+        from chess_diagram_ocr.text.boxes import Caixa
+
+        saida = leitor._sem_espacado([leitor._Cru(self.LIDO, Caixa(0, 0, 10, 10), 0.9, "glifo", revisar_em=((4, 25),))], "deu")
         self.assertEqual(saida[0].texto, "den kombinierte Zug")
         self.assertEqual(saida[0].revisar_em, ((4, 15),))
 
