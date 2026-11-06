@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from importlib.metadata import PackageNotFoundError, version
+from typing import Any
 
 SIDE_SOURCE_LABELS: dict[str, str] = {
     "text": "declarado no texto do PDF",
@@ -968,7 +969,7 @@ ROTULOS_DE_PROCEDENCIA: dict[str, str] = {
 """As procedências, como a tela as diz. Nunca o identificador cru (S-722)."""
 
 
-def frase_de_procedencia(caracteres: Mapping[str, int]) -> str:
+def frase_de_procedencia(caracteres: Mapping[Any, int]) -> str:
     """`Texto: 79% Tesseract, 21% glifo.` (S-722). O maior primeiro; vazio sem nada a contar."""
     total = sum(caracteres.values())
     if not total:
