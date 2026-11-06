@@ -257,6 +257,22 @@ class IdaEVoltaTests(FormatoNovoLigado):
         self.assertEqual(volta.corridas, doc.corridas)
 
 
+class AMarcaSobreviveAoArquivoTests(unittest.TestCase):
+    def test_a_marca_por_palavra_volta_sem_pagar_esquema(self) -> None:
+        """Sem ela, a folha reaberta contava pela confiança do glifo sobre texto que outro leitor escreveu."""
+        original = _pagina_com(LinhaLida("abc", CAIXA, confianca=0.1, procedencia="glifo"), marca_por_palavra=True)
+        dados = json.loads(json.dumps(original.para_json()))
+        self.assertEqual(dados["esquema"], 1)
+        volta = PaginaLida.de_json(dados)
+        self.assertTrue(volta.marca_por_palavra)
+        self.assertEqual(documento.contagem_por_faixa(volta), documento.contagem_por_faixa(original))
+
+    def test_ausente_e_desligada(self) -> None:
+        dados = _pagina_com(LinhaLida("abc", CAIXA, procedencia="glifo")).para_json()
+        self.assertNotIn("marca_por_palavra", dados)
+        self.assertFalse(PaginaLida.de_json(dados).marca_por_palavra)
+
+
 class ArquivoEstragadoTests(unittest.TestCase):
     def _linha(self, **campos: Any) -> dict[str, Any]:
         return {"texto": "abc", "bbox": list(CAIXA), "procedencia": "glifo", **campos}

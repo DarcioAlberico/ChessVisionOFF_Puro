@@ -135,7 +135,7 @@ class CacheDeLeituraNaTelaTests(_Aba):
         super().setUp()
         self.processos = 0
         self.cache = cache_texto.CacheDeLeitura(self.pasta / "cache_texto")
-        motor = tesseract.Motor(binario=self.pasta / "tesseract.exe", versao="5.5.0")
+        motor = tesseract.Motor(binario=self.pasta / "tesseract.exe", tessdata=self.pasta, versao="5.5.0")
         trocas = [
             mock.patch.object(cache_texto, "padrao", return_value=self.cache),
             mock.patch.object(tesseract, "achar_motor", return_value=motor),

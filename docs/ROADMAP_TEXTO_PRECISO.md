@@ -1216,6 +1216,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Achado:* **o um processo por folha com TIFF é o que a S-720 já entrega.** Faltava a reserva, `tesseract.LOTE_POR_FOLHA`. Nas 27 folhas do ouro-dev (758 linhas), **0 diferentes** do lote em texto, linhas com confianças e avisos: leitura por linha, cache frio e cache quente (`texto_cache_20261106.json`).
   - *Achado:* **para a D4**, `motor="fusao"` custa 3,09× a página sem texto, contra 1,84× do glifo, nas mesmas 18 folhas: continua "sob demanda", abaixo dos 4× que a tirariam da varredura. Acervo de 26.730 folhas: 21,4 h contra 9,8 h. `custo.PAGINAS_DO_ACERVO` dizia 12.000.
   - *Achado:* **a parte da saída sobre o G4 fica aberta.** Tudo foi medido com a máquina dividida com outras duas corridas (o lado `hoje` foi de 0,72 a 0,93 s entre duas corridas seguidas), e nenhum número de tempo aqui julga o G4: ele se mede com a máquina parada, na janela e com o cache desligado.
+  - *Achado:* do crítico: sem `tessdata` ao lado do binário, a chave não via o `TESSDATA_PREFIX`. Motor assim não usa cache. E `marca_por_palavra` passou a ir ao arquivo, sem subir `ESQUEMA`.
   - *Achado:* o cache só anda na janela. A folha inteira da reserva (`psm 3`) não passa por ele, e a entrada não guarda as caixas por palavra, que ninguém lê neste caminho.
 - **S-726** · A S-188 relida com a régua nova, e o modo bloco aposentado com quem o usa. ✅ entregue em 2026-11-06
   - *Entrega:* remedir o modo bloco **só na prosa**; se a fusão por token vencer (esperado: o modo bloco

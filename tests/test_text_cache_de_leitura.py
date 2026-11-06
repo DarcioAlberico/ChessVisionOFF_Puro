@@ -251,6 +251,18 @@ class OLeitorTests(_ComMotor):
         self.assertEqual([li.texto for li in lida.linhas if li is not None], ["linha 0", "linha 1"])
         self.assertIn("disco está cheio", lida.aviso)
 
+    def test_sem_tessdata_conhecido_nao_ha_cache(self) -> None:
+        """Binário do `PATH` sem a pasta ao lado: quem escolhe os pesos é o `TESSDATA_PREFIX`, que a chave não vê."""
+        sem_pasta = tesseract.Motor(binario=self.motor.binario, tessdata=None, versao="5.5.0")
+        leitor = leitor_de_linha.LeitorTesseract(sem_pasta, cache=self.cache)
+        with mock.patch.dict(os.environ, {"TESSDATA_PREFIX": "pesos_um"}):
+            leitor.ler_linhas(_recortes(), lingua="eng", dpi=220)
+        with mock.patch.dict(os.environ, {"TESSDATA_PREFIX": "pesos_dois"}):
+            lida = leitor.ler_linhas(_recortes(), lingua="eng", dpi=220)
+        self.assertEqual(self.rodar.vezes, 2, "a segunda leitura respondeu com os pesos da primeira")
+        self.assertEqual(self.cache.tamanho(), 0)
+        self.assertEqual(lida.aviso, "")
+
     def test_motor_ausente_nao_toca_no_cache(self) -> None:
         leitor = leitor_de_linha.LeitorTesseract(tesseract.Motor(motivo="sem"), cache=self.cache)
         self.assertEqual(leitor.ler_linhas(_recortes(), lingua="eng", dpi=220).falha, "sem")
