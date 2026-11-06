@@ -120,6 +120,11 @@ O que uma revisão de fora não pode ver é o que a bancada de fora não tem: os
   calibração está na S-526.
 - **O risco do rodapé.** `qt/rodape.py:86` desenha o traço de cima com um `QFrame.HLine`, a mesma
   forma que o separador da fila tinha. Não foi medido; fica nomeado para quem for lá.
+  ✅ *Medido e resolvido em 2026-11-06.* O `HLine` não obedecia à folha: sobre o cromo claro,
+  `#c9ced5` (1,4:1) no `Fusion` e 2 px de `#dcdfe2` (1,2:1) no `windows11`; sobre o escuro,
+  `#383d43` (1,5:1) e 2 px de `#2c2f33` (1,2:1). Virou o `QWidget#separador-da-fila` de 1 px, com `#8a8a8a`
+  e `#696b6d` (a moldura da S-522, 3:1) nos dois estilos. Guarda:
+  `tests/test_qt_rodape.py::RiscoDeCimaTests`, no `grab()`.
 
 ---
 
