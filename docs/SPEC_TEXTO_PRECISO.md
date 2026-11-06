@@ -1106,7 +1106,7 @@ língua `deu`, contando as corridas de ao menos 3 letras soltas cuja junção a 
 **A saída não se cumpre inteira.** Zero palavra distinta juntada, sim. Zero palavra conhecida espaçada, não: sobram 5, porque a corrida tem letra a mais ou é pedaço de
 palavra maior (`F i g u`), e é a regra acima, que escolheu não juntar na dúvida.
 
-**Em uma de cada quatro junções sai só um pedaço**, e não a palavra: `rung`, `mann`, `Laske`, porque o resto dela veio com erro (`S p i e1 m a n n` → `S p i e1 mann`). As letras
+**Em cerca de um terço das junções (16 de 50) sai só um pedaço**, e não a palavra: `rung`, `mann`, `Laske`, porque o resto dela veio com erro (`S p i e1 m a n n` → `S p i e1 mann`). As letras
 são as mesmas e nenhuma palavra de fora entra, mas o pedaço existe na lista por acaso.
 
 ### O que ela não entrega
@@ -1115,3 +1115,46 @@ são as mesmas e nenhuma palavra de fora entra, mas o pedaço existe na lista po
 - **Duas letras** (`z u`, `i n`) ficam: `a o` e `e a` são prosa. `der`, `und` e as outras curtas da língua entram.
 - **Forma flexionada fora da lista** fica: `f a t a l e n`. A lista alemã tem 52.854 palavras, e o caderno do livro (`lexico.txt`) ainda não é consultado aqui.
 - O **Tesseract** não muda, porque já lia a palavra inteira: aqui a régua quase não dispara. A camada de terceiro do *Gutmayer*, com 737 corridas, continua como é.
+
+## S-762 · A correção humana volta como dado, sem contaminar nada ✅ implementada (2026-11-06)
+
+### Problema
+
+`correcao.com_procedencia_humana` carimba o **bloco inteiro** como `humano` quando se edita um caractere, inclusive as palavras erradas que ninguém
+conferiu. O carimbo serve à tela, que deixa de pintar o que a pessoa conferiu. Como dado, ele é falso nas duas direções: para a medição diz verdade onde há leitura de motor
+por trás, o que a S-703 proíbe; para o treino, não diz qual palavra a mão tocou nem que modelo errou. E `coleta.promover` gravava `humano` em tudo o que passasse pela quarentena.
+
+### Solução
+
+`text/dado_corrigido.py`. **O carimbo fica como está, e nenhum caminho de dado o lê.** Duas portas:
+
+- **A medição, fechada.** Procedência `corrigido_de:<motor>@<sha do modelo>`, em `text/procedencia.py`: `Registro.mede` é falso, `classe` a traduz para `modelo` em toda conta
+  e regra de split (`dataset.procedencia_de`), e `violacoes_do_split` a reprova no teste. Duas guardas para quem vier: `procedencia.exigir_verdade(valor, onde=)` e
+  `dado_corrigido.exigir_documento_cego(doc, onde=)`, que recusa o `.cvtxt` com leitura de motor por trás, corrigido ou não. **A tela da S-703 tem de chamar as duas**: o
+  scan-ouro ainda não tem código, e a guarda espera por ele.
+- **O treino, pela quarentena da S-214.** `pares_tocados` alinha **por palavra** o que o motor leu e o que ficou: só a troca de uma por uma, só de motor de leitura (`camada` não
+  errou). `recortes_do_par` recorta só as letras que mudaram, só no par de mesmo tamanho, e só quando as caixas da linha casam uma a uma com as letras dela; senão, `sem_recorte`,
+  e não se adivinha. `coleta.Recorte` leva a procedência, e `corrigidos.csv`, na raiz da quarentena, guarda o par; `promover` grava o `corrigido_de:` no lugar de `humano`.
+  **O livro do teste nunca entra**, nem o que o manifesto tira do treino, nem livro sem identidade (`livro_recusado`), e a recusa vem antes de qualquer leitura de imagem.
+
+**O sha.** `PaginaLida.modelo` é campo novo com padrão, sai do metadado que `carregar_classificador` já conferiu, e vai ao JSON só quando existe. **Não sobe `ESQUEMA` nem `arquivo.VERSAO`**,
+e um programa anterior o ignora. `.cvtxt` de antes sai `@desconhecido`. **Não há valor novo no `Literal` de `Procedencia`**: a corrida continua `humano`, e `corrigido_de:` só existe em
+registro e quarentena. A S-722, que vem depois em `pagina.py`, não colide além desse campo.
+
+**Quem chama é uma pessoa**: `cvoff-texto-correcoes <pasta ou .cvtxt> --quarentena <pasta>`, que aceita a pasta do caderno. Gravar da janela a cada folha não entrou: a pasta padrão
+fica dentro do programa, e levar à quarentena é decisão de quem está treinando.
+
+### Critério de aceite
+
+`tests/test_text_dado_corrigido.py`: só a palavra tocada vira par (com `wiil` errado e carimbado ao lado), `corrigido_de:` reprovado no split, na porta e no `.cvtxt`, livro do teste fora sem
+abrir imagem, a conta de caixas que não fecha não adivinha, `promover` não lava a origem, ida e volta do `modelo` com o esquema em 1, e o comando do `.cvtxt` à quarentena.
+
+Em folhas reais do dev, com uma letra trocada por bloco em 7 folhas de 3 livros, e o classificador como juiz de que o recorte é a letra certa: **85 pares, 70 com recorte, 69 dos 70 lidos
+como a letra que o motor tinha lido ali**, e os 15 sem recorte são a conta que não fechou (8 deles numa folha do *Minhas 60*). Procedência gravada com o sha do `.pt` em uso.
+
+### O que ela não entrega
+
+- **A correção não treina nada**: fica na quarentena até uma pessoa mover a pasta, e nenhum treino foi rodado com ela.
+- **Na fusão, o motor sai `glifo`** mesmo onde o Tesseract escreveu a palavra: a procedência por palavra é a S-722, e o sha é o do classificador.
+- **Par de tamanho diferente** (`fi1rst` → `first`) conta e não vira recorte. O leitor de linha da Fase 105 é quem vai querer ele, com outro recorte.
+- A correção não entra nas folhas seguintes: é a S-766.

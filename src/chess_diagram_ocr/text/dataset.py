@@ -354,7 +354,8 @@ def procedencia_de(nome: str, registro: Mapping[str, Registro] | None = None) ->
     if not registro:
         return procedencia.DESCONHECIDA
     achado = registro.get(nome)
-    return achado.procedencia if achado is not None else procedencia.DESCONHECIDA
+    # `classe`: o par corrigido (S-762) é `modelo` para toda conta e toda regra de split.
+    return procedencia.classe(achado.procedencia) if achado is not None else procedencia.DESCONHECIDA
 
 
 def codigos_de_procedencia(

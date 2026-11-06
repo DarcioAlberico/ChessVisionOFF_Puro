@@ -36,6 +36,12 @@ isso não olha o código, olha a distribuição de páginas do que sobrou.
 confiança nessa ordem, e o Explorer ordena por nome -- isto é, por página. Aqui a confiança vem
 **primeiro**, em milésimos com zeros à esquerda, e ordenar a pasta por nome é ordenar por dúvida.
 
+## O par corrigido entra por aqui, e não vira `humano` (S-762)
+
+`Recorte.procedencia` é o `corrigido_de:<motor>@<sha>` de quem veio de uma correção da aba Texto (`text/dado_corrigido.py`). Ele fica em
+`corrigidos.csv`, na raiz da quarentena, com o par que o gerou, e `promover` o grava no registro no lugar de `humano`. Sem isso, mover o
+arquivo de pasta lavaria a origem: o recorte entraria em teste como se ninguém tivesse visto a leitura do motor antes.
+
 ## O que a promoção registra, e por que isso destrava meio item
 
 `promover` escreve em `data/texto_procedencia.csv` com procedência `humano` (S-201) -- livro,
@@ -52,7 +58,9 @@ existe, e é por isso que ela é barata: a maioria já está na pasta certa.
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import logging
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
@@ -61,7 +69,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ..atomic_io import write_image
+from ..atomic_io import atomic_write_text, write_image
 from ..config import PROJECT_ROOT
 from . import procedencia as _procedencia
 from .classes import NomeDePastaInvalido, char_to_folder, folder_to_char
@@ -81,6 +89,11 @@ TETO_PADRAO = 300
 LADO = 32
 """O lado do recorte gravado, o mesmo de `dataset.LADO`: a quarentena alimenta aquela base."""
 
+CORRIGIDOS = "corrigidos.csv"
+"""O registro dos recortes que vieram de correção, na raiz da quarentena: `promover` só percorre as subpastas (S-762)."""
+
+COLUNAS_DOS_CORRIGIDOS = ("uuid", "procedencia", "antes", "depois")
+
 
 @dataclass(frozen=True)
 class Recorte:
@@ -95,6 +108,15 @@ class Recorte:
     confianca: float
     livro: str = ""
     pagina: int = 0
+    procedencia: str = ""
+    """O `corrigido_de:` do par que gerou o recorte, ou vazio para a coleta de sempre (S-762)."""
+    antes: str = ""
+    depois: str = ""
+
+    @property
+    def uuid(self) -> str:
+        """A chave do registro: o que `_do_nome` lê do fim do nome."""
+        return self.impressao[:16]
 
     @property
     def pasta(self) -> str:
@@ -118,7 +140,7 @@ class Recorte:
         """
         milesimos = max(0, min(999, int(round(float(self.confianca) * 1000))))
         livro = _sem_caractere_estranho(self.livro) or "sem-livro"
-        return f"{milesimos:04d}_{livro}_p{int(self.pagina):04d}_{self.impressao[:16]}.png"
+        return f"{milesimos:04d}_{livro}_p{int(self.pagina):04d}_{self.uuid}.png"
 
 
 def _sem_caractere_estranho(valor: str) -> str:
@@ -252,9 +274,37 @@ def coletar(
             write_image(alvo / recorte.nome(), np.asarray(recorte.imagem, np.uint8).reshape(LADO, LADO))
         relatorio.por_pasta[chave] = len(guardados)
         relatorio.gravados += len(guardados)
+    _anotar_corrigidos(pasta, [r for reservatorio in reservatorios.values() for r in reservatorio.itens if r.procedencia])
 
     logger.info("Coleta em quarentena: %s", relatorio)
     return relatorio
+
+
+def _ler_corrigidos(pasta: Path) -> dict[str, dict[str, str]]:
+    """`uuid -> linha` de `corrigidos.csv`. Ausente é não haver correção nenhuma."""
+    alvo = pasta / CORRIGIDOS
+    if not alvo.exists():
+        return {}
+    with open(alvo, encoding="utf-8", newline="") as arquivo:
+        return {linha["uuid"]: dict(linha) for linha in csv.DictReader(arquivo) if linha.get("uuid")}
+
+
+def _anotar_corrigidos(pasta: Path, recortes: Sequence[Recorte]) -> None:
+    if not recortes:
+        return
+    linhas = _ler_corrigidos(pasta)
+    for recorte in recortes:
+        linhas[recorte.uuid] = {
+            "uuid": recorte.uuid,
+            "procedencia": recorte.procedencia,
+            "antes": recorte.antes,
+            "depois": recorte.depois,
+        }
+    saida = io.StringIO(newline="")
+    escritor = csv.DictWriter(saida, COLUNAS_DOS_CORRIGIDOS, lineterminator="\n")
+    escritor.writeheader()
+    escritor.writerows(linhas[uuid] for uuid in sorted(linhas))
+    atomic_write_text(pasta / CORRIGIDOS, saida.getvalue())
 
 
 def _ja_visto_parecido(assinatura: np.ndarray, vistas: Sequence[np.ndarray], limiar: float) -> bool:
@@ -397,12 +447,14 @@ def promover(
         alvo.mkdir(parents=True, exist_ok=True)
         (shutil.move if mover else shutil.copy2)(str(item.origem), str(alvo / item.origem.name))
 
+    corrigidos = _ler_corrigidos(origem)
     caminho_do_registro = _procedencia.acrescentar(
         {
             item.uuid: _procedencia.Registro(
                 livro=item.livro,
                 pagina=item.pagina or None,
-                procedencia=_procedencia.HUMANO,
+                # **O que veio de correção continua sendo de correção** (S-762): a mão que moveu a pasta não apaga a leitura por trás.
+                procedencia=corrigidos.get(item.uuid, {}).get("procedencia", _procedencia.HUMANO),
                 rotulado_em=hoje,
             )
             for item in promovidos

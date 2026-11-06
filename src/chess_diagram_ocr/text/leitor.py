@@ -1932,8 +1932,22 @@ def _ler_pagina_do_livro(
         rodape=rodape,
         numero_impresso=numero,
         avisos=tuple(avisos),
+        modelo=_sha_do_modelo(reconhecedor) if qual in _MOTORES_DO_GLIFO else "",
         marca_por_palavra=por_palavra,
     )
+
+
+def _sha_do_modelo(reconhecedor: object | None) -> str:
+    """O sha do classificador que leu (S-762), ou vazio: quem responde é o metadado que `carregar_classificador` já conferiu."""
+    meta = getattr(getattr(reconhecedor, "classifier", None), "meta", None)
+    if meta is None and reconhecedor is None:
+        from .modelo import CAMINHO_PADRAO_META, ler_metadado
+
+        try:
+            meta = ler_metadado(CAMINHO_PADRAO_META)
+        except (OSError, ValueError):
+            return ""
+    return str(getattr(meta, "modelo_sha256", "") or "")
 
 
 def _sem_espacado(cruas: Sequence[_Cru], lingua: str) -> list[_Cru]:

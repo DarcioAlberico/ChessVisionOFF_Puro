@@ -459,6 +459,7 @@ cvoff-texto-paragrafo                        # varre os candidatos sobre a refer
 # transforma correcao em rotulo e a fila de revisao de caractere, que tem o criterio.
 cvoff-texto-correcoes trabalho/
 cvoff-texto-correcoes folha58.cvtxt --todas --json docs/metrics/texto_correcoes.json
+cvoff-texto-correcoes trabalho/ --quarentena revisao_ocr/   # S-762: o par que a mao tocou, com a versao do modelo; nunca vai a teste
 
 # As duas reguas lado a lado (S-206). O comando **recusa** publicar so a do recorte: publicar
 # "99,1% de acerto" sobre recorte segmentado quando a pagina da outro numero e a forma de

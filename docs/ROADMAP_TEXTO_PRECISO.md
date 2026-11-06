@@ -1390,7 +1390,7 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
   - *Achado:* **quem sofre é o glifo**, e o Tesseract já lê a palavra inteira. `text/espacado.py` (`JUNTAR_ESPACADO`), e nenhuma linha do ouro-dev muda. Nas 22 folhas do
     Gutmayer, nenhuma junção de palavras distintas à vista; palavras conhecidas espaçadas de 14 a 2 nas olhadas, de 7 a 3 nas não vistas. **O zero não se cumpre**: o que sobra é
     corrida com letra a mais, e a primeira versão, que achava a palavra no meio, juntava `d e sHan d e`.
-  - *Achado:* `fatalen` não está na lista alemã, e o exemplo do item fica espaçado. Em uma de cada quatro junções sai só um pedaço da palavra (`mann`), porque o resto veio com erro.
+  - *Achado:* `fatalen` não está na lista alemã, e o exemplo do item fica espaçado. Em 16 de 50 junções sai só um pedaço da palavra (`mann`), porque o resto veio com erro.
 - **S-745** · A escada de linhas de base, antes de qualquer modelo da casa.
   - *Entrega:* no ouro-dev e no scan-ouro-dev, em ordem de custo: (0) o degrau que não custa nada —
     `--user-words`, dicionário desligado na notação, escala por altura-x e um modelo de n-gramas de
@@ -1556,7 +1556,7 @@ de cada um.
   - *Verificação:* no ouro-teste, captura de palavras erradas e fração marcada, com IC.
   - *Saída:* G5 cumprida (captura ≥ 90%, limite inferior ≥ 85%, marcadas ≤ 5%).
   - *Reversão:* o corte é constante própria da fusão; mudá-lo não mexe no `ocr.MIN_CONFIDENCE`.
-- **S-762** · A correção humana volta como dado, sem contaminar nada.
+- **S-762** · A correção humana volta como dado, sem contaminar nada. ✅ entregue em 2026-11-06
   - *Contexto:* `correcao.py` carimba o **bloco inteiro** como `humano` quando se edita um caractere —
     inclusive as palavras erradas que ninguém conferiu —, e o próprio código diz que "a correção é
     registro, e não rótulo" e recusa "treinar o modelo no próprio erro" (`coleta.py`). E a S-703
@@ -1569,6 +1569,10 @@ de cada um.
     confere que só o par tocado vai à quarentena da S-214.
   - *Saída:* correções da aba Texto chegam à quarentena com a versão do modelo; nenhuma chega a teste.
   - *Reversão:* a quarentena é revisável; nada entra no treino sem passar por ela.
+  - *Achado:* o carimbo `humano` do bloco fica, porque serve à tela, e nenhum caminho de dado o lê. Sem valor novo no `Literal` e sem subir `ESQUEMA`: `corrigido_de:` mora em `text/procedencia.py`, e o
+    sha é `PaginaLida.modelo`, campo novo com padrão. `cvoff-texto-correcoes --quarentena` leva o par: em 7 folhas reais do dev, 85 pares, 70 com recorte, e 69 dos 70 recortes são a letra certa pelo classificador.
+  - *Achado:* **o scan-ouro não tem código ainda**, então a recusa dele é uma guarda à espera: a tela da S-703 tem de chamar `procedencia.exigir_verdade` e `dado_corrigido.exigir_documento_cego`. Na fusão o motor sai `glifo`
+    até a S-722.
 - **S-763** · Monitor de qualidade sem referência, validado antes de ser usado.
   - *Contexto:* a concordância glifo × leitor de linha **mede o glifo**, não a saída: por livro, a
     correlação entre o CER do glifo e o da fusão é só +0,51 por livro nos seis livros limpos (+0,46 por
