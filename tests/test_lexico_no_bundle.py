@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import subprocess
-import sys
 import unittest
 from pathlib import Path
+
+from subprocesso import rodar_python
 
 from chess_diagram_ocr.text import lexico
 
@@ -16,7 +16,7 @@ class LexicoNoBundleTests(unittest.TestCase):
             "import sys; sys._MEIPASS = r'C:\\bundle\\_internal'; "
             "from chess_diagram_ocr.text import lexico; print(lexico.PASTA_DO_LEXICO)"
         )
-        saida = subprocess.run([sys.executable, "-c", codigo], capture_output=True, text=True, check=True).stdout
+        saida = rodar_python("-c", codigo).stdout
         self.assertEqual(Path(saida.strip()), Path(r"C:\bundle\_internal") / "assets" / "lexico")
 
     def test_as_tres_listas_existem_na_arvore(self) -> None:
