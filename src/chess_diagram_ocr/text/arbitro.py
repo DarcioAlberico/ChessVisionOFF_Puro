@@ -405,12 +405,12 @@ def _digitos_soltos_antes(textos: Sequence[str], k: int, numero: str) -> list[in
 
 
 def _outra_leitura_vale(token: _fusao.Token, outra: str, textos: Sequence[str], k: int, existe: Callable[[str], bool]) -> bool:
-    """A outra leitura é lance, esta não, e as duas são da mesma tinta. Figurina nunca é trocada por letra.
+    """A outra leitura é lance, esta não, e as duas são da mesma tinta.
 
     **O glifo também lê `l` como `1`:** `Tal` contra `Ta1` não é prova de nada, e por isso o token sem dígito pede o mesmo contexto da curta.
     """
     texto = token.texto
-    if not outra or not e_estrita(outra) or existe(texto) or not _parece_lance(texto) or _tem_figurina(texto):
+    if not outra or not e_estrita(outra) or existe(texto) or not _parece_lance(texto):
         return False
     if _distancia_de_edicao(texto, outra) > MAXIMO_DE_EDICOES or texto.endswith("-"):
         return False

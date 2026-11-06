@@ -214,8 +214,30 @@ class CertoQueNaoViraErradoTests(unittest.TestCase):
     def test_mais_e_menos_soltos_nao_sao_vizinhos(self) -> None:
         for sinal in ("+", "-", "=", "!", "B"):
             with self.subTest(sinal=sinal):
-                (saida,) = arbitro.arbitrar([com_o_glifo(("Dhs", "Dh5"), (sinal, sinal), ("e4", "e4"))], existe=nao_existe)
-                self.assertEqual("Dhs", saida[0].texto)
+                # Quatro letras ou mais bastam com um vizinho: é aqui que um sinal passando por lance faria diferença.
+                (saida,) = arbitro.arbitrar([com_o_glifo(("hoje", "hoje"), ("Daxds", "Daxd5"), (sinal, sinal), ("hoje", "hoje"))], existe=nao_existe)
+                self.assertEqual("Daxds", saida[1].texto)
+        (saida,) = arbitro.arbitrar([com_o_glifo(("e4", "e4"), ("Daxds", "Daxd5"), ("hoje", "hoje"))], existe=nao_existe)
+        self.assertEqual("Daxd5", saida[1].texto)
+
+    def test_dois_leitores_iguais_mesmo_com_contexto_de_sobra(self) -> None:
+        """O contexto bastaria: quem barra é o glifo ter lido o mesmo."""
+        for lido, sem_glifo in (("Dhs", ""), ("Dhs", "Dhs"), ("es", ""), ("es", "es"), ("RID", "RID")):
+            with self.subTest(lido=lido, glifo=sem_glifo):
+                linha = [
+                    fusao.Token("12.", "outro", "12.", None, "12."),
+                    fusao.Token("e4", "outro", "e4", None, "e4"),
+                    fusao.Token(lido, "outro", sem_glifo, None, lido),
+                    fusao.Token("13.", "outro", "13.", None, "13."),
+                ]
+                (saida,) = arbitro.arbitrar([linha], existe=nao_existe)
+                self.assertEqual(lido, saida[2].texto)
+
+    def test_tres_letras_depois_do_numero_a_palavra_que_existe_fica(self) -> None:
+        linha = com_o_glifo(("12.", "12."), ("Das", "Da5"), ("hoje", "hoje"))
+        (fica,) = arbitro.arbitrar([linha], existe=lambda t: t == "Das")
+        (troca,) = arbitro.arbitrar([linha], existe=nao_existe)
+        self.assertEqual(("Das", "Da5"), (fica[1].texto, troca[1].texto))
 
     def test_sem_o_glifo_ter_lido_nada_nao_ha_troca_sem_digito(self) -> None:
         (saida,) = arbitro.arbitrar([[fusao.Token("Tgı-gz", "outro", "", None, "Tgı-gz")]], existe=nao_existe)
