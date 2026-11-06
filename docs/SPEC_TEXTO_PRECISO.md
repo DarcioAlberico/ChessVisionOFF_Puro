@@ -293,6 +293,12 @@ sem eles (`degradado`, `prata_admitida`); é a prova do alinhamento e do placar.
 degradado e prata mudam até 0,1 p.p. no `tess_oraculo` da prata (0,02 p.p. no resto): é só a linha lida vazia, onde o hífen agora se
 junta. A diferença que sobra é a do classificador da S-701, medida abaixo.
 
+**Achado: o `tess_pagina` publicado em 2026-10-30 estava inflado por CRLF.** O stdout do Tesseract no Windows vem em `\r\n`
+(1.328 `\r` nas 28 folhas do ouro), e o protótipo pagava um erro por linha só por isso: na folha 155 do Dvoretsky, 33 erros de
+prosa contra 3, com os mesmos 286 tokens. `normalizar` agora faz de toda quebra `\n`, e o `--prototipo` só reproduz o `tess_pagina`
+com a normalização antiga. A frase do roadmap "numa folha normal é pior que as caixas do glifo" fica para ser relida com o número
+novo da S-713.
+
 **Desvios.** O `Placar.wer_prosa()` agora é o (S+D+I)/N que o relatório publica; o do protótipo era `1 − palavras certas / N`,
 que nenhum relatório usava.
 

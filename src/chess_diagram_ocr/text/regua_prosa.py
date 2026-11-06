@@ -91,6 +91,9 @@ def normalizar(texto: str, modo: str = TIP, lingua: str = LINGUA_PADRAO) -> str:
     `tip`, a das metas, ainda troca aspas, travessões, ligaduras e espaço fino por ASCII, e a figurina pela letra
     da língua, com o peão sumindo. A família de pontuação (`—` contra `-`) só existe em `cru`.
 
+    Toda quebra vira `\\n`. O stdout do Tesseract no Windows vem em CRLF, e o protótipo pagava um erro por linha só por
+    isso: era quase todo o erro do `tess_pagina` publicado em 2026-10-30.
+
     O espaço colapsa **antes** de o hífen juntar, e o hífen não consome as letras em volta. O protótipo fazia o
     contrário, e `a-\\n\\nb` e `a-\\nb-\\nc` precisavam de duas passadas: a normalização não era idempotente.
     """
@@ -104,6 +107,7 @@ def normalizar(texto: str, modo: str = TIP, lingua: str = LINGUA_PADRAO) -> str:
                      "♘": cavalo, "♞": cavalo, "♙": "", "♟": ""}
         t = "".join(figurinas.get(c, c) for c in t)
         t = unicodedata.normalize("NFC", t)
+    t = re.sub(r"\r\n?|[\f\v]", "\n", t)
     t = re.sub(r"[ \t]+", " ", t)
     t = re.sub(r" *\n *", "\n", t)
     t = re.sub(r"\n+", "\n", t)

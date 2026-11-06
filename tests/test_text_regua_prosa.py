@@ -115,7 +115,7 @@ class PlacarTests(unittest.TestCase):
 class NormalizacaoTests(unittest.TestCase):
     def test_idempotente(self) -> None:
         sorteio = random.Random(7)
-        alfabeto = "ab -\n\t…—“”ﬁ♔♙ ­é"
+        alfabeto = "ab -\n\r\f\t…—“”ﬁ♔♙ ­é"
         for _ in range(2000):
             texto = "".join(sorteio.choice(alfabeto) for _ in range(sorteio.randint(0, 30)))
             for modo in regua.MODOS:
@@ -125,6 +125,12 @@ class NormalizacaoTests(unittest.TestCase):
     def test_os_casos_em_que_o_prototipo_nao_era_idempotente(self) -> None:
         self.assertEqual("ab", regua.normalizar("a-\n\nb", regua.CRU))
         self.assertEqual("abc", regua.normalizar("a-\nb-\nc", regua.CRU))
+
+    def test_toda_quebra_de_linha_vira_a_mesma(self) -> None:
+        """O `tess_pagina` de 2026-10-30 pagava um erro por linha: o stdout do Tesseract no Windows vem em CRLF."""
+        for modo in regua.MODOS:
+            self.assertEqual("um\ndois\ntres", regua.normalizar("um\r\ndois\rtres\f", modo))
+        self.assertEqual(0, regua.pontuar("um dois\ntres", regua.normalizar("um dois\r\ntres", regua.CRU)).erros[regua.PROSA])
 
     def test_tip_e_cru(self) -> None:
         self.assertEqual("o “fim”", regua.normalizar("o  “fim”", regua.CRU))
