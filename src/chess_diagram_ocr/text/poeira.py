@@ -30,6 +30,7 @@ import cv2
 import numpy as np
 
 from .boxes import Caixa
+from .linhas import envolve
 
 TIRAR_POEIRA = True
 """A reversão da S-714: desligada, toda caixa pequena segue para a linha, como antes."""
@@ -59,8 +60,12 @@ VAO_DA_PONTA = 1.5
 LETRA_ACIMA_DO_MIOLO = 0.9
 """Até onde uma letra sobe acima do topo mediano da linha, em alturas medianas: a maiúscula acentuada."""
 
-LETRA_ABAIXO_DO_MIOLO = 0.4
+LETRA_ABAIXO_DO_MIOLO = 0.5
 """Até onde uma letra desce abaixo do fundo mediano da linha, em alturas medianas: o descendente."""
+
+CAIXA_ABAIXO_DO_MIOLO = 0.4
+"""Até onde a caixa da **linha** desce abaixo do fundo mediano dela. Mais apertado que o da letra, e só na caixa: o `psm 7` lê vazio com
+7 px da linha de baixo no recorte, mas cortar a letra a 0,4 troca `que` por `aue` no glifo, numa folha limpa."""
 
 LINHA_INTEIRA = 3.0
 """Acima de quantas alturas medianas a linha não é uma linha só, e não tem miolo. Não é o caso desta régua: é o da S-712."""
@@ -159,6 +164,18 @@ def _aparar_uma(linha: list[Caixa], *, mediana: int) -> list[Caixa]:
     return [sem_excesso(c) for c in miolo]
 
 
+def caixa_da_linha(linha: Sequence[Caixa]) -> tuple[float, float, float, float]:
+    """O retângulo da linha, sem o que a mancha colada ainda deixou abaixo do descendente. A letra fica inteira para o classificador."""
+    x0, y0, x1, y1 = envolve(linha)
+    alturas = sorted(c.altura for c in linha)
+    mediana = alturas[len(alturas) // 2] or 1
+    letras = [c for c in linha if c.altura >= ALTURA_DE_LETRA * mediana]
+    if not TIRAR_POEIRA or len(letras) < MIN_LETRAS_NA_LINHA or y1 - y0 > LINHA_INTEIRA * mediana:
+        return (x0, y0, x1, y1)
+    fundo = sorted(c.y2 for c in letras)[len(letras) // 2]
+    return (x0, y0, x1, min(y1, float(int(fundo + CAIXA_ABAIXO_DO_MIOLO * mediana))))
+
+
 def aparar(linhas: Sequence[Sequence[Caixa]]) -> list[list[Caixa]]:
     """As linhas de uma tira sem a caixa pequena que está fora do miolo delas, ou solta numa ponta.
 
@@ -179,6 +196,7 @@ def aparar(linhas: Sequence[Sequence[Caixa]]) -> list[list[Caixa]]:
 
 __all__ = [
     "ALTURA_DE_LETRA",
+    "CAIXA_ABAIXO_DO_MIOLO",
     "FOLGA_DO_MIOLO",
     "LETRA_ABAIXO_DO_MIOLO",
     "LETRA_ACIMA_DO_MIOLO",
@@ -191,6 +209,7 @@ __all__ = [
     "TIRAR_POEIRA",
     "VAO_DA_PONTA",
     "aparar",
+    "caixa_da_linha",
     "sem_poeira",
     "soltas",
 ]

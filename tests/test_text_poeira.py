@@ -112,7 +112,7 @@ class ApararTests(unittest.TestCase):
 
     def test_o_descendente_e_a_maiuscula_nao_sao_cortados(self) -> None:
         linha = _letras(100)
-        descendente = Caixa(linha[2].x1, 100, linha[2].x2, 124 + 8)
+        descendente = Caixa(linha[2].x1, 100, linha[2].x2, 124 + 11)
         maiuscula = Caixa(linha[6].x1, 100 - 12, linha[6].x2, 124)
         inteira = [*linha[:2], descendente, *linha[3:6], maiuscula, *linha[7:]]
         self.assertEqual(poeira.aparar([inteira]), [inteira])
@@ -236,7 +236,24 @@ class LinhasDoGlifoTests(unittest.TestCase):
         imagem = self._folha()
         imagem[100 + self.ALTURA : 100 + self.ALTURA + 16, 100 + 22 * 5 + 4 : 100 + 22 * 5 + 8] = 0
         caixas = self._caixas(imagem)
-        self.assertLessEqual(caixas[0][3], 100 + self.ALTURA + int(poeira.LETRA_ABAIXO_DO_MIOLO * self.ALTURA))
+        self.assertEqual(caixas[0][3], 100 + self.ALTURA + int(poeira.CAIXA_ABAIXO_DO_MIOLO * self.ALTURA))
+
+    def test_o_descendente_longo_fica_inteiro_para_o_classificador(self) -> None:
+        """`que` saía `aue` numa folha limpa com o corte da letra em 0,4: a caixa da linha aperta, e o recorte da letra não."""
+        imagem = self._folha()
+        imagem[100 + self.ALTURA : 100 + self.ALTURA + 11, 100 + 22 * 5 + 4 : 100 + 22 * 5 + 8] = 0
+        alturas: list[int] = []
+
+        class Espia(_Classificador):
+            def probabilidades(self, recortes: list[np.ndarray]) -> np.ndarray:
+                alturas.extend(r.shape[0] for r in recortes)
+                return super().probabilidades(recortes)
+
+        rec = _Reconhecedor()
+        rec.classifier = Espia()  # type: ignore[assignment]
+        cruas, _ = leitor.linhas_do_glifo(imagem, (), reconhecedor=rec, colados="nunca", dicionario=False, dpi=None)
+        self.assertIn(self.ALTURA + 11, alturas)
+        self.assertEqual(cruas[0].caixa.y2, 100 + self.ALTURA + int(poeira.CAIXA_ABAIXO_DO_MIOLO * self.ALTURA))
 
     def test_com_a_constante_desligada_a_caixa_estica(self) -> None:
         imagem = self._folha()

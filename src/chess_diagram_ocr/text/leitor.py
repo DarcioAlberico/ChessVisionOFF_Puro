@@ -614,7 +614,7 @@ def linhas_do_glifo(
     documenta.
     """
     from .duas_linhas import descartar_fragmentos, partir_linhas_altas
-    from .linhas import envolve, ordem_em_faixa, quebrar_em_linhas, texto_da_linha
+    from .linhas import ordem_em_faixa, quebrar_em_linhas, texto_da_linha
 
     cinza, binaria, escala, caixas, regioes = segmentar(
         imagem_rgb, diagramas, escala=escala, empilhados=empilhados, dpi=dpi
@@ -732,7 +732,7 @@ def linhas_do_glifo(
             cruas.append(
                 _Cru(
                     texto=texto,
-                    caixa=_caixa_de(envolve(grupo)),
+                    caixa=_caixa_de(_poeira.caixa_da_linha(grupo)),
                     confianca=min(conf for _, conf in lidos),
                     procedencia="glifo",
                     coluna=indice,
