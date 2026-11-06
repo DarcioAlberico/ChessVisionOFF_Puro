@@ -169,6 +169,7 @@ from . import colunas as _colunas
 from . import dicionario as _dicionario
 from . import empilhados as _empilhados
 from . import faixas as _faixas_mod
+from . import fronteira as _fronteira
 from . import fusao as _fusao
 from . import gigantes as _gigantes
 from . import guarda_de_leitura as _guarda
@@ -516,6 +517,24 @@ def _arbitro_de_confianca(
     return julgar
 
 
+def _pedacos_de(
+    cinza: np.ndarray, classificador: object
+) -> Callable[[Sequence[_boxes.Caixa]], list[list[tuple[str, float]]]]:
+    """Caixas -> os dois melhores `(caractere, probabilidade)` de cada uma, para `colados.por_lexico`."""
+
+    def ler(caixas: Sequence[_boxes.Caixa]) -> list[list[tuple[str, float]]]:
+        recortes = [c.recortar(cinza) for c in caixas]
+        if not all(r.size for r in recortes):
+            return []
+        probs = classificador.probabilidades(recortes)  # type: ignore[attr-defined]
+        i2c = classificador.meta.idx_to_char  # type: ignore[attr-defined]
+        return [
+            [(i2c[int(j)], float(probs[k, j])) for j in np.argsort(-probs[k])[:2]] for k in range(len(caixas))
+        ]
+
+    return ler
+
+
 def linhas_do_glifo(
     imagem_rgb: np.ndarray,
     diagramas: Sequence[Retangulo] = (),
@@ -609,6 +628,7 @@ def linhas_do_glifo(
     classificador = reconhecedor.classifier  # type: ignore[attr-defined]
     leitor_de_linha = getattr(reconhecedor, "_leitor_de_linha", None)
     lexico = _dicionario.carregar() if dicionario else frozenset()
+    sem_nomes = _dicionario.carregar(nomes=False) if dicionario else frozenset()
 
     # **O separador de colado entra aqui, e entra desligado** (S-186). Ele parte um contorno que
     # tem dois glifos, e o arbitro -- o proprio classificador -- confirma o corte comparando a
@@ -665,7 +685,13 @@ def linhas_do_glifo(
                     lidos = _numero.corrigir(lidos, probs, grupo, i2c)
                 if caixa_alta:
                     lidos = _caixa_alta.coerente(lidos, probs, grupo, i2c)  # `DEFEsA`, versalete (S-731)
+                xh = _caixa_alta.x_height_da_linha(
+                    [c.altura for c in grupo], [c for c, _ in lidos], escala=float(escala)
+                )
                 lidos = _acento.corrigir(lidos, probs, grupo, i2c, lexico)  # `näo` (S-735)
+                lidos = _colados.por_lexico(  # `tums`, `acmal` (S-732)
+                    lidos, grupo, binaria, lexico, sem_nomes, _pedacos_de(cinza, classificador), xh=xh
+                )
                 if lexico:
                     # **Por último, e é a ordem certa**: as correções de geometria acima mudam a
                     # palavra que o dicionário vai julgar, e julgá-la antes delas seria julgar um
@@ -675,6 +701,7 @@ def linhas_do_glifo(
                 grupo, lidos = _ligadura.corrigir(lidos, grupo)  # `fi1rst` (S-733)
                 if marca_fina:
                     grupo, lidos = _marca_fina.aspas(lidos, grupo)  # `(tail`, `rook''` (S-734)
+                lidos = _fronteira.corrigir(lidos, grupo, binaria, lexico, sem_nomes, xh=xh)  # `ofthe` (S-732)
             else:
                 lidos = classificador.classificar(recortes)
             if not lidos:
@@ -685,6 +712,7 @@ def linhas_do_glifo(
                 casados = em_bloco(cinza, grupo, lidos, leitor_de_linha)
                 lidos = [(item.caractere, item.confianca) for item in casados]
             texto = _colapsar_espaco(texto_da_linha(grupo, [char for char, _ in lidos]))
+            texto = _fronteira.juntar(texto, sem_nomes)  # `ga n ha ndo` (S-732)
             if juntar_lance:
                 # **Só a notação separa `1 5` de `In 1968`**, e a geometria não: os dois vãos têm
                 # o mesmo tamanho. Ver `text/notacao.py`, que traz a medição.
