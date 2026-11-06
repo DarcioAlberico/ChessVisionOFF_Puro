@@ -50,7 +50,7 @@ class Aba:
 
 
 CONTROLES = frozenset(
-    {"@corpo", "@cor", "@realce", "@cor_rapida", "@realce_rapido", "@galeria", "@folha", "@motor", "@modo_bloco"}
+    {"@corpo", "@cor", "@realce", "@cor_rapida", "@realce_rapido", "@galeria", "@folha", "@motor", "@lingua", "@modo_bloco"}
 )
 """Os controles que colhem valor. Ver o cabeçalho."""
 
@@ -95,7 +95,7 @@ ABAS: tuple[Aba, ...] = (
     Aba(
         "Leitura",
         (
-            Grupo("Folha", ("@folha", "@motor", "@modo_bloco")),
+            Grupo("Folha", ("@folha", "@motor", "@lingua", "@modo_bloco")),
             Grupo("Ler", ("ler_folha", "folha_da_pagina_aberta", "ler_folha_de_novo", "ler_ao_chegar")),
             Grupo(
                 "Caderno",
@@ -113,6 +113,7 @@ ABAS: tuple[Aba, ...] = (
         "Revisão",
         (
             Grupo("Léxico", ("marcar_fora_do_lexico", "proxima_fora_do_lexico", "limpar_marcas_do_lexico")),
+            Grupo("Leitura", ("proxima_a_revisar",)),
             Grupo("Correções", ("lista_de_correcoes",)),
             Grupo("Parágrafo", ("mover_paragrafo_acima", "mover_paragrafo_abaixo")),
         ),

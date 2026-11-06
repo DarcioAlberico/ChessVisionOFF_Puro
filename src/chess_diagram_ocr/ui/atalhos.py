@@ -263,6 +263,8 @@ TECLAS_DO_EDITOR: dict[str, str] = {
     "colar_formato": "<Control-V>",
     "recolher_fita": "<Control-F1>",
     "proxima_fora_do_lexico": "<F7>",
+    # Livre na tabela em 2026-11-05, e ao lado do `F7`, que faz o mesmo gesto sobre outra marca (S-718).
+    "proxima_a_revisar": "<Shift-F7>",
     "mover_paragrafo_acima": "<Alt-Shift-Up>",
     "mover_paragrafo_abaixo": "<Alt-Shift-Down>",
     "codigo_unicode": "<Alt-x>",

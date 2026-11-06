@@ -106,6 +106,23 @@ class AcharFaixasTests(unittest.TestCase):
         faixas, _ = achar_faixas(pagina, DPI)
         self.assertEqual([], faixas, [f.como_tupla() for f in faixas])
 
+    def test_o_titulo_em_negrito_pesado_nao_e_faixa(self) -> None:
+        """`TRIFUNOVIC` no *Koblenz*: largo, baixo e com mais de 55% de tinta, e o núcleo não cabe uma linha."""
+        img = np.full((800, 1000), 255, dtype=np.uint8)
+        cv2.putText(img, "TRIFUNOVIC", (100, 200), cv2.FONT_HERSHEY_DUPLEX, 1.0, 0, 5, cv2.LINE_AA)
+        self.assertEqual(achar_faixas(img, 220)[0], [])
+        self.assertTrue(
+            achar_faixas(img, 220, nucleo_minimo_pol=0.0)[0], "sem o piso ele é faixa: é o que este teste vigia"
+        )
+
+    def test_o_filete_grosso_nao_e_faixa_e_nao_some(self) -> None:
+        """O filete azul do *Chess Evolution*: sem o piso, ele ia para papel."""
+        img = np.full((800, 1000), 255, dtype=np.uint8)
+        img[200:216, 100:900] = 60
+        saida, achadas = desinverter_faixas(img, 220)
+        self.assertEqual(achadas, [])
+        self.assertEqual(int(saida[208, 500]), 60)
+
     def test_a_regua_e_fisica_e_nao_em_pixels(self) -> None:
         """Metade da resolução a metade do DPI: a mesma faixa, uma só."""
         pagina, _ = _pagina()

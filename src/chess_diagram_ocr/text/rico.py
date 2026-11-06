@@ -531,9 +531,9 @@ def _corridas_do_segmento(segmento: documento.Segmento, *, bloco: int, procedenc
         Corrida(
             texto=texto,
             atributos=Atributos(negrito=negrito, italico=italico, estilo=estilo),
-            **comum,
+            **{**comum, "faixa": documento.REVISAR if revisar else segmento.faixa},
         )
-        for (negrito, italico), texto in grupos
+        for (negrito, italico, revisar), texto in grupos
     ]
 
 
@@ -603,8 +603,8 @@ def _marcas(texto: str, intervalos: Sequence[tuple[int, int]], resumo: bool) -> 
     return marcas
 
 
-def _pedacos(linha: Any) -> list[tuple[tuple[bool, bool], str]]:
-    """Uma linha partida onde a tipografia dela muda. Uma peça só quando ela não muda.
+def _pedacos(linha: Any) -> list[tuple[tuple[bool, bool, bool], str]]:
+    """Uma linha partida onde a tipografia dela muda, ou a marca de revisão (S-718). Uma peça só quando não muda.
 
     A soma dos pedaços é `linha.texto` caractere a caractere, e isso é o contrato: quem os junta de
     volta tem de reencontrar o texto do bloco, que é o que a S-235 travou.
@@ -612,17 +612,20 @@ def _pedacos(linha: Any) -> list[tuple[tuple[bool, bool], str]]:
     texto = linha.texto
     negrito = _marcas(texto, getattr(linha, "negrito_em", ()), getattr(linha, "negrito", None) is True)
     italico = _marcas(texto, getattr(linha, "italico_em", ()), getattr(linha, "italico", None) is True)
-    pedacos: list[tuple[tuple[bool, bool], str]] = []
+    # **A marca é da palavra, e nunca do espaço** (S-718). `camada.remapear` une o branco entre duas marcas vizinhas, que
+    # é a regra certa para o negrito, e 17 de 414 folhas chegavam aqui com duas palavras numa marca só.
+    revisar = [m and not c.isspace() for m, c in zip(_marcas(texto, getattr(linha, "revisar_em", ()), False), texto, strict=True)]
+    pedacos: list[tuple[tuple[bool, bool, bool], str]] = []
     comeco = 0
     for i in range(1, len(texto) + 1):
-        muda = i == len(texto) or (negrito[i], italico[i]) != (negrito[comeco], italico[comeco])
+        muda = i == len(texto) or (negrito[i], italico[i], revisar[i]) != (negrito[comeco], italico[comeco], revisar[comeco])
         if muda:
-            pedacos.append(((negrito[comeco], italico[comeco]), texto[comeco:i]))
+            pedacos.append(((negrito[comeco], italico[comeco], revisar[comeco]), texto[comeco:i]))
             comeco = i
-    return pedacos or [((False, False), texto)]
+    return pedacos or [((False, False, False), texto)]
 
 
-def _agrupar(linhas: Sequence[Any]) -> list[tuple[tuple[bool, bool], str]]:
+def _agrupar(linhas: Sequence[Any]) -> list[tuple[tuple[bool, bool, bool], str]]:
     """O parágrafo partido nos trechos de mesma tipografia, na ordem, com o texto de cada um.
 
     **O corte deixou de ser na linha e passou a ser no caractere** (S-429). A `LinhaLida` traz
@@ -634,15 +637,16 @@ def _agrupar(linhas: Sequence[Any]) -> list[tuple[tuple[bool, bool], str]]:
     **O espaço da junção entre duas linhas fica no fim do último pedaço da linha anterior**, e não
     no começo do primeiro da seguinte: assim a corrida itálica começa na primeira letra da citação,
     e não num espaço em pé antes dela. É a mesma regra de antes, agora aplicada a pedaço em vez de
-    a linha.
+    a linha. **Menos depois de uma marca `revisar`** (S-718): o espaço não é da palavra, e com ele as marcas do fim de
+    uma linha e do começo da seguinte viravam uma corrida só, e corrigir uma tirava a outra.
     """
-    grupos: list[tuple[tuple[bool, bool], list[str]]] = []
+    grupos: list[tuple[tuple[bool, bool, bool], list[str]]] = []
     ultima = len(linhas) - 1
     for n, linha in enumerate(linhas):
         pedacos = _pedacos(linha)
         if n != ultima:
-            chave, texto = pedacos[-1]
-            pedacos[-1] = (chave, texto + " ")
+            chave, _texto = pedacos[-1]
+            pedacos.append(((chave[0], chave[1], False), " "))
         for chave, texto in pedacos:
             if grupos and grupos[-1][0] == chave:
                 grupos[-1][1].append(texto)
@@ -1483,6 +1487,22 @@ def titulos(doc: DocumentoRico) -> tuple[tuple[int, str], ...]:
     if atual:
         achados.append((inicio_do_atual, "".join(atual)))
     return tuple((onde, texto.strip()) for onde, texto in achados if texto.strip())
+
+
+def intervalos_a_revisar(doc: DocumentoRico) -> tuple[tuple[int, int], ...]:
+    """Onde estão as corridas `revisar`, em deslocamentos de `para_texto`, na ordem (S-718).
+
+    **A corrida é a palavra quando a marca é por palavra, e o bloco quando é a faixa de hoje**: o gesto
+    de ir à próxima serve aos dois, e funciona na folha reaberta, porque a faixa é da corrida.
+    """
+    saida: list[tuple[int, int]] = []
+    posicao = 0
+    for corrida in doc.corridas:
+        fim = posicao + len(corrida.texto)
+        if corrida.faixa == documento.REVISAR and corrida.texto.strip():
+            saida.append((posicao, posicao + len(corrida.texto.rstrip())))
+        posicao = fim
+    return tuple(saida)
 
 
 def bloco_em(doc: DocumentoRico, deslocamento: int) -> int | None:

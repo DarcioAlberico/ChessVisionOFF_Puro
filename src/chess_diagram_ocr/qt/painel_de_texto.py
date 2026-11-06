@@ -120,6 +120,7 @@ from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.text import busca, caderno, correcao, rascunho, rico
 from chess_diagram_ocr.text.documento import PaginaLida
 from chess_diagram_ocr.text.pagina import BlocoDeDiagrama, BlocoDeTexto
+from chess_diagram_ocr.text.tesseract import LINGUA_PADRAO
 from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, mesa, strings, texto_cores, tipografia, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.texto_declarado import (
@@ -441,6 +442,7 @@ class PainelDeTexto(QWidget):
         self._janela_de_busca: QWidget | None = None
         self._paleta: object | None = None
         self._motor = MOTORES[0]
+        self._lingua = LINGUA_PADRAO
         """O motor de leitura. O primeiro da lista é o padrão, e a S-423 explica por que ele é o
         `auto` e não o `glifo`."""
         self._modo_bloco = False
@@ -551,6 +553,7 @@ class PainelDeTexto(QWidget):
                 "@galeria": self.galeria,
                 "@folha": self.campo_de_folha,
                 "@motor": self.escolha_de_motor,
+                "@lingua": self.escolha_de_lingua,
                 "@modo_bloco": self.caixa_de_bloco,
             },
             rotulos_do_desfazer=lambda: list(reversed(self._rotulos_do_historico)),
@@ -571,6 +574,12 @@ class PainelDeTexto(QWidget):
         self.faixa_impressa.hide()
         caixa.addWidget(self.faixa_impressa)
 
+        self.selo_da_folha = QLabel("", self)
+        self.selo_da_folha.setObjectName("seloDaFolha")
+        self.selo_da_folha.setWordWrap(True)
+        self.selo_da_folha.setAccessibleName("Aviso sobre a leitura desta folha")
+        self.selo_da_folha.setVisible(False)
+        caixa.addWidget(self.selo_da_folha)
         self.editor = QTextEdit(self)
         self.editor.setAccessibleName("Folha transcrita")
         # O `Tab` sai da folha, como da caixa do comentário do Estudo. Guardado pelo editor, ele
@@ -795,6 +804,20 @@ class PainelDeTexto(QWidget):
                 gravado_as=guardada.gravada_em[11:16] if guardada is not None else "",
             )
         )
+        self._mostrar_selo()
+
+    def _mostrar_selo(self) -> None:
+        """O selo da folha (S-710): o que a leitura sabe de si, de cima do texto. Some sem aviso nenhum.
+
+        **Lê do documento, e não da última leitura**: a origem dele atravessa o arquivo, então a folha
+        reaberta do caderno amanhã continua dizendo que não foi lida inteira.
+        """
+        origem = self.documento.origem
+        avisos = () if origem is None else origem.avisos
+        self.selo_da_folha.setText("\n".join(aviso.mensagem for aviso in avisos))
+        # A cor é lida aqui, e não na montagem: a pele pode ter mudado desde a última folha.
+        self.selo_da_folha.setStyleSheet(f"color: {tema.cor_atual(tokens.ATENCAO)}; font-weight: 600; padding: 4px 8px;")
+        self.selo_da_folha.setVisible(bool(avisos))
 
     def ir_ao_campo_de_folha(self) -> None:
         """O clique na folha do rodapé (S-655): a aba Leitura da fita à frente e o campo da folha pronto."""
@@ -924,15 +947,24 @@ class PainelDeTexto(QWidget):
         self.escolha_de_motor = QComboBox(barra)
         self.escolha_de_motor.setAccessibleName("Motor de leitura")
         for motor in MOTORES:
-            self.escolha_de_motor.addItem(motor, motor)
+            self.escolha_de_motor.addItem(strings.ROTULOS_DE_MOTOR[motor], motor)
         self.escolha_de_motor.activated.connect(
             lambda _i: setattr(self, "_motor", str(self.escolha_de_motor.currentData()))
         )
         dica_em(
             self.escolha_de_motor,
             "auto é o glifo com a camada do PDF como reserva. O glifo sozinho precisa de "
-            "models/char_classifier.pt, que não vem no repositório.",
+            "models/char_classifier.pt, que não vem no repositório. «Camada na prosa» lê a prosa do "
+            "próprio PDF nos livros nascidos digitais; «Glifo + Tesseract» precisa do Tesseract "
+            "instalado. Nos dois, os lances continuam do glifo.",
         )
+
+        self.escolha_de_lingua = QComboBox(barra)
+        self.escolha_de_lingua.setAccessibleName("Língua do livro")
+        for lingua, rotulo in strings.ROTULOS_DE_LINGUA.items():
+            self.escolha_de_lingua.addItem(rotulo, lingua)
+        self.escolha_de_lingua.activated.connect(self._lingua_escolhida)
+        dica_em(self.escolha_de_lingua, "A língua em que o Tesseract lê a prosa, no motor «Glifo + Tesseract» e na reserva.")
 
         self.caixa_de_bloco = QCheckBox(comandos.rotulo_de_botao("modo_bloco"), barra)
         self.caixa_de_bloco.toggled.connect(lambda _ligado: self.modo_bloco_mudou())
@@ -2292,7 +2324,7 @@ class PainelDeTexto(QWidget):
         if not hasattr(self, "botao_de_ler"):
             return
         guardada = None if self._caderno is None else self._caderno.estado(int(self.campo_de_folha.value()) - 1)
-        abre = guardada is not None and caderno.abre_do_caderno(guardada, motor=self._motor, modo_bloco=self._modo_bloco)
+        abre = guardada is not None and caderno.abre_do_caderno(guardada, motor=self._motor_gravado(), modo_bloco=self._modo_bloco)
         self.botao_de_ler.setText(strings.ABRIR_FOLHA_DO_CADERNO if abre else comandos.rotulo_de_botao("ler_folha"))
 
     def _abrir_do_caderno(self, indice: int) -> bool:
@@ -2660,6 +2692,19 @@ class PainelDeTexto(QWidget):
         _inicio, fim = self._intervalo()
         seguinte = next(((i, f) for i, f in self._fora_do_lexico if i >= fim), self._fora_do_lexico[0])
         self.mostrar_intervalo(*seguinte)
+
+    def proxima_a_revisar(self) -> None:
+        """`Shift+F7`: vai à próxima palavra marcada `revisar` depois do cursor, e a seleciona (S-718).
+
+        **Pela marcação, e não pelo documento cru:** antes de gravar, a palavra que se acabou de corrigir ainda é
+        `w` e `ite`, em duas corridas `revisar`, e o gesto parava nos pedaços. A tinta na tela continua até gravar.
+        """
+        marcas = rico.intervalos_a_revisar(correcao.com_procedencia_humana(self.documento))
+        if not marcas:
+            self.estado.emit(strings.NADA_A_REVISAR)
+            return
+        _inicio, fim = self._intervalo()
+        self.mostrar_intervalo(*next(((i, f) for i, f in marcas if i >= fim), marcas[0]))
 
     def _lexico_da_folha(self) -> frozenset[str]:
         """O léxico do programa mais o do livro (o caderno), em caixa baixa."""
@@ -3131,6 +3176,7 @@ class PainelDeTexto(QWidget):
         self.aplicar_zoom(int(getattr(estado, "texto_zoom", 0)), avisar=False)
         self.definir_quebra(bool(getattr(estado, "texto_quebra", True)))
         self.definir_motor(str(getattr(estado, "texto_motor", "")))  # o motor e o modo bloco da sessão anterior (item 17)
+        self.definir_lingua(str(getattr(estado, "texto_lingua", "")))
         self.definir_modo_bloco(bool(getattr(estado, "texto_bloco", False)))
         self.definir_diagramas(str(getattr(estado, "texto_diagramas", "")))
         self.definir_tamanho_da_miniatura(str(getattr(estado, "texto_miniatura", "")))
@@ -3152,6 +3198,7 @@ class PainelDeTexto(QWidget):
         estado.texto_zoom = int(self.zoom_da_vista)  # type: ignore[attr-defined]
         estado.texto_quebra = bool(self.quebra)  # type: ignore[attr-defined]
         estado.texto_motor = self.motor  # type: ignore[attr-defined]
+        estado.texto_lingua = self.lingua  # type: ignore[attr-defined]
         estado.texto_bloco = bool(self.modo_bloco)  # type: ignore[attr-defined]
         estado.texto_diagramas = self._diagramas  # type: ignore[attr-defined]
         estado.texto_miniatura = self._tamanho_da_miniatura  # type: ignore[attr-defined]
@@ -3603,6 +3650,31 @@ class PainelDeTexto(QWidget):
         self._motor = nome
         self.escolha_de_motor.setCurrentIndex(MOTORES.index(nome))
 
+    @property
+    def lingua(self) -> str:
+        """A língua do livro que o Tesseract lê (S-717) -- a que a janela grava no estado."""
+        return str(self._lingua)
+
+    def definir_lingua(self, codigo: str) -> None:
+        """Repõe a língua gravada; um código que a aba não conhece é ignorado, como no motor."""
+        indice = self.escolha_de_lingua.findData(codigo)
+        if indice < 0:
+            return
+        self._lingua = codigo
+        self.escolha_de_lingua.setCurrentIndex(indice)
+
+    def _lingua_escolhida(self, _indice: int) -> None:
+        self._lingua = str(self.escolha_de_lingua.currentData())
+        self._rotular_leitura()
+
+    def _motor_gravado(self) -> str:
+        """O que o caderno anota como motor da folha. **Na fusão a língua vai junto** (S-717).
+
+        Quem troca a língua da fusão quer a leitura nova, como quem troca de motor, e `abre_do_caderno` só
+        sabe comparar o motor. É texto anotado no índice, e nenhum outro lugar o interpreta como `MOTORES`.
+        """
+        return f"{self._motor}:{self._lingua}" if self._motor == "fusao" else str(self._motor)
+
     def definir_modo_bloco(self, ligado: bool) -> None:
         """Repõe o modo bloco gravado -- sem a frase do rodapé, que é para quem acabou de clicar."""
         self._modo_bloco = bool(ligado)
@@ -3655,7 +3727,7 @@ class PainelDeTexto(QWidget):
         indice = int(self.campo_de_folha.value()) - 1
         guardada = None if self._caderno is None else self._caderno.estado(indice)
         if guardada is not None:
-            if not de_novo and caderno.abre_do_caderno(guardada, motor=self._motor, modo_bloco=self._modo_bloco):
+            if not de_novo and caderno.abre_do_caderno(guardada, motor=self._motor_gravado(), modo_bloco=self._modo_bloco):
                 if self._abrir_do_caderno(indice):
                     return
             elif de_novo and guardada.correcoes and not self._confirmar_releitura(indice, guardada.correcoes):
@@ -3666,7 +3738,8 @@ class PainelDeTexto(QWidget):
 
         motor = self._motor
         bloco = self._modo_bloco
-        self._leitura_de = (motor, bloco)
+        lingua = self._lingua
+        self._leitura_de = (self._motor_gravado(), bloco)
         caminho = self._pdf
         dpi = self._dpi_para_ler()
         teto = self._teto_de_diagramas()
@@ -3684,14 +3757,16 @@ class PainelDeTexto(QWidget):
             # número que decide entre o motor rápido e o modo bloco de 40 s.
             inicio = time.perf_counter()
             imagem = imagem_pronta if imagem_pronta is not None else _renderizar(caminho, indice, dpi=dpi)
-            lida = _ler(caminho, indice, dpi=dpi, motor=motor, modo_bloco=bloco, imagem_rgb=imagem, max_boards=teto)
+            lida = _ler(
+                caminho, indice, dpi=dpi, motor=motor, modo_bloco=bloco, imagem_rgb=imagem, max_boards=teto, lingua=lingua
+            )
             return lida, imagem, dpi, time.perf_counter() - inicio
 
         self.estado.emit(f"Lendo a folha {indice + 1}…")
         self._registrar_ocupado(
             f"Lendo o texto da folha {indice + 1}",
             loses_work=False,
-            detail=f"motor {motor}" + (" · modo bloco" if bloco else ""),
+            detail=f"motor {strings.ROTULOS_DE_MOTOR.get(motor, motor)}" + (" · modo bloco" if bloco else ""),
         )
         self._tarefa = Tarefa(_trabalho, parent=self)
         self._tarefa.pronto.connect(self._leitura_terminou)
@@ -3804,7 +3879,7 @@ class PainelDeTexto(QWidget):
             # A folha vazia não é falha nem é «0 trecho(s)» (item 26): é uma página sem texto para
             # este motor -- capa, figura inteira, ou scan que o glifo não leu --, e a frase diz o
             # que tentar. O estado vazio do editor já está na tela.
-            como = f"motor {self._motor}" + (", modo bloco" if self._modo_bloco else "")
+            como = f"motor {strings.ROTULOS_DE_MOTOR.get(self._motor, self._motor)}" + (", modo bloco" if self._modo_bloco else "")
             self.estado.emit(
                 f"A folha {pagina.pagina + 1} não tem texto lido ({como}{tempo.replace(' em ', ', ')}): "
                 "tente outro motor ou o modo bloco."
@@ -4495,12 +4570,14 @@ def _ler(
     modo_bloco: bool,
     imagem_rgb: np.ndarray | None,
     max_boards: int | None = None,
+    lingua: str = LINGUA_PADRAO,
 ) -> PaginaLida:
     """`ler_pagina` com a folha já renderizada. **O `import` do leitor mora aqui** -- ver `ler`."""
     from chess_diagram_ocr.text.leitor import ler_pagina
 
     return ler_pagina(
-        caminho, indice, dpi=dpi, motor=motor, modo_bloco=modo_bloco, imagem_rgb=imagem_rgb, max_boards=max_boards  # type: ignore[arg-type]
+        caminho, indice, dpi=dpi, motor=motor, modo_bloco=modo_bloco, imagem_rgb=imagem_rgb, max_boards=max_boards, lingua=lingua,  # type: ignore[arg-type]
+        reserva=True,  # só aqui: a régua e os CLIs não dependem de haver Tesseract na máquina
     )
 
 

@@ -179,8 +179,9 @@ def porcentagem_do_zoom(degrau: int, base: int) -> int:
 ESCAPE_DA_PALETA = "\\"
 """O prefixo das sequências de teclado da S-248. Ver `text/paleta.SEQUENCIAS_DECLARADAS`."""
 
-MOTORES: tuple[MotorDeTexto, ...] = ("auto", "glifo", "camada")
-"""Os mesmos três de `text/leitor.py`, e a caixa da barra os oferece nesta ordem.
+MOTORES: tuple[MotorDeTexto, ...] = ("auto", "glifo", "camada", "camada_prosa", "fusao")
+"""Os mesmos de `text/leitor.py`, e a caixa da barra os oferece nesta ordem. **Os dois últimos são opção**
+(S-716, S-717): o padrão não muda, e quem o vira é o portão G102. O que a caixa escreve é `ROTULOS_DE_MOTOR`.
 
 `auto` é o glifo **com a camada como reserva**: com o classificador no lugar ele lê igual, e sem
 ele cai na camada de texto do PDF avisando no log. É a mesma regra do resto do programa --
@@ -329,6 +330,7 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "modo_foco": "alternar_modo_foco",
     "recolher_fita": "alternar_fita",
     "proxima_fora_do_lexico": "proxima_fora_do_lexico",
+    "proxima_a_revisar": "proxima_a_revisar",
     "lista_de_correcoes": "mostrar_correcoes",
     "mover_paragrafo_acima": "mover_paragrafo_acima",
     "mover_paragrafo_abaixo": "mover_paragrafo_abaixo",

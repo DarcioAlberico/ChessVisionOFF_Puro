@@ -319,8 +319,9 @@ class MotorTests(unittest.TestCase):
             for tem in (True, False):
                 with self.subTest(motor=motor, tem_modelo=tem):
                     resposta = leitor.motor_escolhido(motor, tem_modelo=tem)
-                    self.assertIn(resposta, ("camada", "glifo"))
-                    self.assertIn(resposta, PROCEDENCIAS)
+                    self.assertNotEqual(resposta, "auto")
+                    # Os dois que combinam leitores não são origem: cada linha diz a dela (S-716, S-717).
+                    self.assertIn(resposta, (*PROCEDENCIAS, "camada_prosa", "fusao"))
 
 
 class SeparadorDeColadoTests(unittest.TestCase):

@@ -150,34 +150,51 @@ erro do modelo**, e transformá-lo em "86% de acerto" seria inventar um número.
 from __future__ import annotations
 
 import logging
+import math
 import re as _re
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 import numpy as np
 
+from . import admissao as _admissao
 from . import boxes as _boxes
 from . import caixa_alta as _caixa_alta
 from . import camada as _camada
+from . import camada_prosa as _camada_prosa
 from . import colados as _colados
 from . import colunas as _colunas
 from . import dicionario as _dicionario
 from . import empilhados as _empilhados
 from . import faixas as _faixas_mod
+from . import fusao as _fusao
+from . import guarda_de_leitura as _guarda
 from . import italico as _italico
+from . import leitor_de_linha as _leitor_de_linha
+from . import lexico as _lexico_mod
 from . import linhas as _linhas_mod
 from . import marca_fina as _marca_fina
+from . import moldura as _moldura
 from . import negrito as _negrito
 from . import notacao as _notacao
 from . import numero as _numero
 from . import paragrafos as _paragrafos
 from . import quadros as _quadros
 from . import regioes as _regioes
+from . import tesseract as _tesseract
 from . import traco as _traco
 from .binarizacao import binarize
 from .grade import Arranjo
+from .leitor_de_linha import LeitorDeLinha
 from .pagina import (
+    CAMADA_NA_FOLHA,
+    CAMADA_RECUSADA,
+    FOLHA_NAO_LIDA,
+    LEIAUTE_DE_RESERVA,
+    LEITOR_INDISPONIVEL,
+    LEITURA_PARCIAL,
+    Aviso,
     BlocoDeDiagrama,
     BlocoDeTexto,
     Coluna,
@@ -188,13 +205,17 @@ from .pagina import (
 
 logger = logging.getLogger(__name__)
 
-MotorDeTexto = Literal["auto", "camada", "glifo"]
-MotorResolvido = Literal["camada", "glifo"]
+MotorDeTexto = Literal["auto", "camada", "glifo", "camada_prosa", "fusao"]
+MotorResolvido = Literal["camada", "glifo", "camada_prosa", "fusao"]
 """O que `motor_escolhido` devolve: **nunca** `auto`.
 
-Tipo próprio e não `MotorDeTexto` porque a resposta vira **procedência** de cada bloco, e
-"auto" não é procedência de coisa nenhuma -- é uma pergunta, não uma origem."""
-MOTORES: tuple[MotorDeTexto, ...] = ("auto", "camada", "glifo")
+Tipo próprio e não `MotorDeTexto` porque a resposta decide de onde sai cada bloco, e "auto" não é
+origem de coisa nenhuma -- é uma pergunta. `camada_prosa` e `fusao` também não são procedência: quem
+combina dois leitores diz a procedência linha a linha (S-716, S-717)."""
+MOTORES: tuple[MotorDeTexto, ...] = ("auto", "camada", "glifo", "camada_prosa", "fusao")
+
+_MOTORES_DO_GLIFO: frozenset[str] = frozenset({"glifo", "camada_prosa", "fusao"})
+"""Os que passam pela segmentação do glifo: a notação e o leiaute são dele, nos três (S-716, S-717)."""
 
 COLADOS_NA_PAGINA = _colados.AUTO
 """O separador de glifo colado (S-186) na **página**, que não é o padrão dele na faixa.
@@ -274,6 +295,12 @@ class _Cru:
 
     italico_em: tuple[tuple[int, int], ...] = ()
     """Onde o pendor está dentro de `texto`. Ver `pagina.LinhaLida.italico_em` (S-429)."""
+
+    confiancas: tuple[float, ...] = ()
+    """A confiança de cada caractere que não é espaço, quando o glifo leu. Vazio é "não se sabe" (S-718)."""
+
+    revisar_em: tuple[tuple[int, int], ...] = ()
+    """Quais palavras pedem olho. Ver `pagina.LinhaLida.revisar_em` (S-718)."""
 
 
 def _envolver(caixas: Sequence[Retangulo]) -> Retangulo:
@@ -425,6 +452,9 @@ def segmentar(
     if dpi:
         cinza, _faixas = _faixas_mod.desinverter_faixas(cinza, dpi)
     binaria = binarize(cinza)
+    # **Antes da escala e das caixas** (S-711): a moldura que envolve a folha é um contorno só, e as caixas
+    # são externas, então tudo o que está dentro dela deixava de existir. Ver `text/moldura.py`.
+    binaria, _molduras = _moldura.tirar_moldura(binaria)
     if escala is None:
         escala = escala_fora_dos_diagramas(binaria, diagramas)
     if escala <= 0:
@@ -643,6 +673,11 @@ def linhas_do_glifo(
                 texto = _notacao.juntar_numero_de_lance(texto)
             if not texto:
                 continue
+            # Um número por caractere que não é espaço: `juntar_lance` só tira espaço, e a classe de
+            # ligadura vale pelas letras dela. Se a conta não fechar, a marca fica sem este sinal.
+            por_caractere = tuple(
+                conf for char, conf in lidos for letra in char if not letra.isspace()
+            )
             cruas.append(
                 _Cru(
                     texto=texto,
@@ -651,6 +686,7 @@ def linhas_do_glifo(
                     procedencia="glifo",
                     coluna=indice,
                     regiao=i_regiao,
+                    confiancas=por_caractere if len(por_caractere) == len("".join(texto.split())) else (),
                     # **Independente de `italico`**, que liga a *correção* de `/` para `l`. Declarar
                     # o pendor e trocar um caractere por causa dele são duas coisas, e quem mede o
                     # ganho da troca com ela desligada não deve perder o campo junto (S-236).
@@ -1100,6 +1136,7 @@ def _blocos_de_texto(
                     italico=cru.italico,
                     negrito_em=cru.negrito_em,
                     italico_em=cru.italico_em,
+                    revisar_em=cru.revisar_em,
                 )
             )
         if not lidas:
@@ -1150,6 +1187,7 @@ def _sem_hifen_de_quebra(linhas: list[LinhaLida], lexico: frozenset[str]) -> lis
             texto=novo,
             negrito_em=_camada.remapear(linha.negrito_em, linha.texto, novo),
             italico_em=_camada.remapear(linha.italico_em, linha.texto, novo),
+            revisar_em=_camada.remapear(linha.revisar_em, linha.texto, novo),
         )
         for linha, novo in zip(linhas, novos, strict=True)
     ]
@@ -1170,8 +1208,8 @@ def motor_escolhido(motor: MotorDeTexto = MOTOR_PADRAO, *, tem_modelo: bool = Tr
     leitura nenhuma, e uma camada imperfeita é melhor que uma página em branco. É reserva
     declarada, e quem a aciona **avisa** -- ver `ler_pagina`.
     """
-    if motor in ("camada", "glifo"):
-        return motor  # type: ignore[return-value]
+    if motor != "auto":
+        return motor
     return "glifo" if tem_modelo else "camada"
 
 
@@ -1215,8 +1253,20 @@ def ler_pagina(
     juntar_lance: bool = True,
     marcar_negrito: bool = True,
     marcar_italico: bool = True,
+    lingua: str = _tesseract.LINGUA_PADRAO,
+    leitor_de_linha: LeitorDeLinha | None = None,
+    reserva: bool = False,
+    marca_por_palavra: bool = True,
 ) -> PaginaLida:
     """Uma página do PDF como `PaginaLida`: colunas de blocos, cabeçalho, rodapé, número impresso.
+
+    `motor="camada_prosa"` lê a prosa da camada nos livros nascidos digitais (S-716); `motor="fusao"`, a
+    prosa do leitor de linha na língua `lingua` (S-717). A notação fica com o glifo nos dois. `reserva`
+    deixa a folha que a guarda da S-710 acusou ser relida pelo leiaute do leitor de linha (S-715). **Ela
+    vem desligada, e só a janela a liga**: ligada por padrão, todo script da régua e todo CLI passariam a
+    dar um número que depende de haver Tesseract na máquina, e `cobertura.py` mediria depois do conserto.
+    `marca_por_palavra` troca a faixa de confiança do bloco pela marca por palavra nos dois motores que
+    combinam leitores (S-718). `leitor_de_linha` existe para o teste: `None` é o Tesseract desta máquina.
 
     `imagem_rgb` deixa quem já renderizou a página (a interface, sempre) não renderizá-la de novo:
     são ~200 ms por página a 220 dpi, e a aba de texto abriria com um atraso que ela não precisa
@@ -1247,7 +1297,310 @@ def ler_pagina(
             colados=colados, caixa_alta=caixa_alta, traco=traco, marca_fina=marca_fina,
             empilhados=empilhados, italico=italico, dicionario=dicionario, numeros=numeros, juntar_lance=juntar_lance,
             marcar_negrito=marcar_negrito, marcar_italico=marcar_italico,
+            lingua=lingua, leitor_de_linha=leitor_de_linha, reserva=reserva, marca_por_palavra=marca_por_palavra,
         )
+
+
+def _cruas_da_camada(
+    page: object, doc: object, indice: int, margem: Sequence[object], altura: float, escala_px: float
+) -> list[_Cru]:
+    """As linhas da camada e a margem que é corpo (S-597): o que o motor `camada` lê na folha."""
+    from ..pdf_text import page_margin_lines
+
+    def correntes() -> set[str]:
+        vizinhas = range(max(0, indice - PAGINAS_VIZINHAS), min(len(doc), indice + PAGINAS_VIZINHAS + 1))  # type: ignore[arg-type]
+        return {
+            chave_de_corrente(linha.text)
+            for outra in vizinhas
+            if outra != indice
+            for linha in page_margin_lines(doc[outra])  # type: ignore[index]
+        }
+
+    return [
+        *linhas_da_camada(page, escala_px=escala_px),
+        *margem_no_corpo(margem, altura, escala_px=escala_px, correntes=correntes),  # type: ignore[arg-type]
+    ]
+
+
+def _confianca_de_token(confiancas: Sequence[float], tokens: Sequence[str]) -> list[float | None]:
+    """A confiança de cada token, a mínima dos caracteres dele. Sem `confiancas`, nenhuma se sabe."""
+    if not confiancas:
+        return [None] * len(tokens)
+    saida: list[float | None] = []
+    posicao = 0
+    for token in tokens:
+        fim = posicao + len(token)
+        saida.append(min(confiancas[posicao:fim], default=None))
+        posicao = fim
+    return saida
+
+
+def _com_prosa_de_outro_leitor(
+    cruas: Sequence[_Cru],
+    leituras: Sequence[tuple[str, Sequence[float], Sequence[bool]] | None],
+    *,
+    existe: Callable[[str], bool],
+    e_da_camada: bool,
+    marca_por_palavra: bool,
+) -> list[_Cru]:
+    """Cada linha do glifo fundida com o que o outro leitor leu nela (S-716, S-717).
+
+    **`None` é "não leu", e a linha fica como o glifo a leu**, sem tocar em nada. Uma linha só de prosa da
+    camada é registro: procedência `camada`, confiança 1,0. Linha mista continua `glifo`, a menos confiável
+    das que a compõem. A confiança da fundida é a do glifo até a S-760 calibrar a do Tesseract, e é por isso
+    que a marca por palavra existe.
+    """
+    fundidas: list[list[_fusao.Token]] = []
+    for cru, leitura in zip(cruas, leituras, strict=True):
+        tokens_do_glifo = cru.texto.split()
+        confianca_do_glifo = _confianca_de_token(cru.confiancas, tokens_do_glifo)
+        if leitura is None:
+            fundidas.append(
+                [_fusao.Token(tok, "glifo", tok, conf) for tok, conf in zip(tokens_do_glifo, confianca_do_glifo, strict=True)]
+            )
+            continue
+        texto, confiancas, bloqueados = leitura
+        fundidas.append(
+            _fusao.fundir(
+                cru.texto,
+                texto,
+                existe=existe,
+                confiancas_do_leitor=confiancas,
+                confiancas_do_glifo=confianca_do_glifo,
+                bloqueados=bloqueados,
+            )
+        )
+    marcadas = (
+        _fusao.marcar(fundidas, existe=existe, e_da_camada=e_da_camada)
+        if marca_por_palavra
+        else [frozenset[int]() for _ in fundidas]
+    )
+    saida: list[_Cru] = []
+    for cru, leitura, tokens, marcados in zip(cruas, leituras, fundidas, marcadas, strict=True):
+        if leitura is None:
+            saida.append(replace(cru, revisar_em=_fusao.intervalos_de(tokens, marcados)))
+            continue
+        if not tokens:
+            # O leitor leu vazio e a linha do glifo era só prosa sem par: a regra tirou tudo, e linha sem
+            # texto não sai. Quem lê uma folha com caixa e sem texto é a guarda, um nível acima.
+            continue
+        so_da_camada = e_da_camada and all(token.origem != "glifo" for token in tokens)
+        saida.append(
+            replace(
+                cru,
+                texto=_fusao.texto_fundido(tokens),
+                confianca=1.0 if so_da_camada else cru.confianca,
+                procedencia="camada" if so_da_camada else cru.procedencia,
+                confiancas=(),
+                revisar_em=_fusao.intervalos_de(tokens, marcados),
+            )
+        )
+    return saida
+
+
+def _imagem_do_leitor(imagem: np.ndarray, dpi: int) -> np.ndarray:
+    """A folha que o leitor de linha recebe: as faixas pretas viradas em tinta sobre papel, como as vê o glifo (S-599).
+
+    Sem isto o glifo lia o cabeçalho e o Tesseract recebia a faixa com a borda serrilhada e a franja, que saíam
+    como `Anderssen|` e `$.Bouaziz)` na fusão. Sem faixa na folha volta a mesma imagem, sem conversão nenhuma.
+    """
+    cinza, faixas = _faixas_mod.desinverter_faixas(imagem, dpi)
+    return cinza if faixas else imagem
+
+
+def _recorte_de_linha(imagem: np.ndarray, caixa: _boxes.Caixa, escala_px: float) -> np.ndarray:
+    """O recorte que o leitor de linha lê: a caixa do glifo, com 12% da altura de folga. O mesmo da régua."""
+    x0, y0, x1, y1 = (v * escala_px for v in _para_pontos(caixa, escala_px))
+    folga = max(2, round((y1 - y0) * 0.12))
+    altura, largura = imagem.shape[:2]
+    return imagem[
+        max(0, int(y0) - folga) : min(altura, math.ceil(y1) + folga),
+        max(0, int(x0) - folga) : min(largura, math.ceil(x1) + folga),
+    ]
+
+
+_FIO_DE_COLUNA = _re.compile(r"[|¦│┃‖]+")
+VAO_DE_COLUNA = 1.5
+"""Um vão maior que isto vezes a altura da linha não é espaço entre palavras: é a calha entre colunas."""
+
+
+def _partida_no_vao(palavras: Sequence[_tesseract.Palavra]) -> list[list[_tesseract.Palavra]]:
+    """A linha do Tesseract partida na calha (S-715).
+
+    **Com um fio entre as colunas, o `psm 3` escreve as duas na mesma linha**: no *Kmoch* 106, 369 palavras
+    em 40 linhas, onde a folha tem 70. Saía texto intercalado, que é o defeito da S-507. Partida aqui, cada
+    pedaço é uma linha de uma coluna, e `montar` acha as colunas nas caixas, como no caminho da camada.
+    """
+    ordem = sorted(palavras, key=lambda p: p.caixa[0])
+    if not ordem:
+        return []
+    altura = sorted(p.caixa[3] - p.caixa[1] for p in ordem)[len(ordem) // 2]
+    pedacos: list[list[_tesseract.Palavra]] = [[]]
+    for palavra in ordem:
+        if _FIO_DE_COLUNA.fullmatch(palavra.texto):
+            # O fio é tinta, e o Tesseract o lê como `|`: visto assim, o vão em volta dele é pequeno.
+            pedacos.append([])
+            continue
+        if pedacos[-1] and palavra.caixa[0] - pedacos[-1][-1].caixa[2] > VAO_DE_COLUNA * altura:
+            pedacos.append([])
+        pedacos[-1].append(palavra)
+    return [pedaco for pedaco in pedacos if pedaco]
+
+
+def _com_diagramas_em_branco(imagem: np.ndarray, retangulos: Sequence[Retangulo]) -> np.ndarray:
+    """A folha em cinza, com os diagramas apagados: o que o leitor de linha recebe na folha inteira."""
+    import cv2
+
+    cinza = cv2.cvtColor(imagem, cv2.COLOR_RGB2GRAY) if imagem.ndim == 3 else imagem.copy()
+    cinza = np.ascontiguousarray(cinza).copy()
+    altura, largura = cinza.shape[:2]
+    for x0, y0, x1, y1 in retangulos:
+        cinza[
+            max(0, int(y0) - FOLGA_DA_MASCARA) : min(altura, int(y1) + FOLGA_DA_MASCARA),
+            max(0, int(x0) - FOLGA_DA_MASCARA) : min(largura, int(x1) + FOLGA_DA_MASCARA),
+        ] = 255
+    return cinza
+
+
+def _e_ruido_emoldurado(imagem: np.ndarray, cruas: Sequence[_Cru]) -> bool:
+    """Saiu sinal solto de uma folha com moldura? A binária só é refeita nas raras folhas que dão esse número."""
+    if not _guarda.parece_ruido([t for c in cruas for t in c.texto.split()]):
+        return False
+    return _moldura.tirar_moldura(binarize(imagem))[1] > 0
+
+
+def _pede_outra_leitura(palavra: _camada_prosa.PalavraDaCamada) -> bool:
+    """A palavra suspeita que o Tesseract pode resolver: a prosa com ligadura, e nunca lance ou sinal de figurina."""
+    return palavra.bloqueada and not palavra.de_figurina and not _fusao.e_notacao(palavra.texto)
+
+
+def _camada_montada(
+    cruas: Sequence[_Cru],
+    palavras: Sequence[_camada_prosa.PalavraDaCamada],
+    leituras: Sequence[_tesseract.Palavra],
+    escala_px: float,
+) -> list[_Cru]:
+    """As linhas da camada com as palavras partidas no vão, e a suspeita trocada ou marcada (S-716).
+
+    A palavra suspeita vira o que o Tesseract leu dentro da caixa dela, quando leu; se não, fica como a camada a
+    escreve, e marcada `revisar`. **A linha em que nenhuma palavra caiu fica como veio**: nada sai daqui calado.
+    """
+    fator = escala_px or 1.0
+    por_linha, _fora = _camada_prosa.por_linha([_para_pontos(c.caixa, escala_px) for c in cruas], palavras)
+    saida: list[_Cru] = []
+    for cru, desta in zip(cruas, por_linha, strict=True):
+        # **Só troca o texto da linha se as palavras somarem as mesmas letras.** Palavra que caiu noutra linha, ou
+        # linha que a camada escreveu de outro jeito, ficariam a menos: aí a linha fica como veio.
+        if "".join(p.texto for p in desta) != _camada_prosa.sem_ligadura("".join(cru.texto.split())):
+            saida.append(cru)
+            continue
+        pedacos: list[str] = []
+        marcas: list[tuple[int, int]] = []
+        posicao = 0
+        for palavra in desta:
+            texto = palavra.texto
+            # **Lance nunca é trocado, nem marcado.** O da camada vem em fonte de figurina, e por isso chega
+            # bloqueado, mas a letra está certa (`Rxd5!`): o Tesseract ali lê `Af6` onde está `Nf6`. A folha já
+            # diz, no selo, que os lances estão sem figurina.
+            if _pede_outra_leitura(palavra):
+                x0, y0, x1, y1 = palavra.bbox
+                lidas = [
+                    p.texto
+                    for p in leituras
+                    if x0 <= (p.caixa[0] + p.caixa[2]) / 2 / fator <= x1 and y0 <= (p.caixa[1] + p.caixa[3]) / 2 / fator <= y1
+                ]
+                if lidas:
+                    texto = " ".join(lidas)
+                else:
+                    marcas.append((posicao, posicao + len(texto)))
+            pedacos.append(texto)
+            posicao += len(texto) + 1
+        saida.append(replace(cru, texto=" ".join(pedacos), revisar_em=tuple(marcas)))
+    return saida
+
+
+LINHA_DE_LIXO = 5
+"""Caracteres. A linha da reserva até este tamanho, sem palavra que exista e sem notação, é o resto da faixa
+lateral ou do fio lido como letra (`fh) a) pe i) —`): 277 de 673 linhas em 13 folhas do *Chess Evolution 2014*."""
+
+CONFIANCA_DE_LIXO = 0.8
+
+
+def _e_lixo_da_reserva(tokens: Sequence[_fusao.Token], existe: Callable[[str], bool]) -> bool:
+    """Linha curta, sem palavra que exista nem lance, e que o próprio leitor leu sem certeza."""
+    if sum(len(t.texto) for t in tokens) > LINHA_DE_LIXO:
+        return False
+    nus = [t.texto.strip(".,;:)(") for t in tokens]
+    if any(existe(nu) or nu.isdigit() for nu in nus) or any(_fusao.e_notacao(t.texto) for t in tokens):
+        return False
+    return min((t.confianca for t in tokens if t.confianca is not None), default=0.0) < CONFIANCA_DE_LIXO
+
+
+def _linhas_da_reserva(
+    imagem: np.ndarray,
+    retangulos: Sequence[Retangulo],
+    cruas_do_glifo: Sequence[_Cru],
+    *,
+    leitor: LeitorDeLinha,
+    lingua: str,
+    dpi: int,
+    existe: Callable[[str], bool],
+    marca_por_palavra: bool,
+) -> tuple[list[_Cru], str]:
+    """A folha relida pelo leiaute do leitor de linha, com os diagramas em branco (S-715). E a falha, se houver.
+
+    **A notação continua do glifo onde ele achou caixa de altura de linha**: uma leitura perdida ainda pode
+    ter uma ou outra linha boa. A caixa degenerada do tamanho da folha, que é o sintoma, não casa com nada.
+    """
+    palavras, falha = leitor.ler_folha(_com_diagramas_em_branco(_imagem_do_leitor(imagem, dpi), retangulos), lingua=lingua, dpi=dpi)
+    if falha or not palavras:
+        return ([], falha)
+    grupos: dict[tuple[int, int, int], list[_tesseract.Palavra]] = {}
+    for palavra in palavras:
+        grupos.setdefault((palavra.bloco, palavra.paragrafo, palavra.linha), []).append(palavra)
+    caixas: list[_boxes.Caixa] = []
+    tokens: list[list[_fusao.Token]] = []
+    for grupo in (pedaco for g in grupos.values() for pedaco in _partida_no_vao(g)):
+        caixa = _boxes.Caixa(
+            min(p.caixa[0] for p in grupo),
+            min(p.caixa[1] for p in grupo),
+            max(p.caixa[2] for p in grupo),
+            max(p.caixa[3] for p in grupo),
+        )
+        confiancas = [p.confianca for p in grupo]
+        texto = " ".join(p.texto for p in grupo)
+        par = next(
+            (
+                c
+                for c in cruas_do_glifo
+                if c.caixa.altura <= 2 * caixa.altura
+                and min(c.caixa.y2, caixa.y2) - max(c.caixa.y1, caixa.y1) > 0.5 * caixa.altura
+                and min(c.caixa.x2, caixa.x2) > max(c.caixa.x1, caixa.x1)
+            ),
+            None,
+        )
+        caixas.append(caixa)
+        if par is not None:
+            tokens.append(_fusao.fundir(par.texto, texto, existe=existe, confiancas_do_leitor=confiancas))
+        else:
+            tokens.append(
+                [_fusao.Token(t, "outro", t, c) for t, c in zip(texto.split(), confiancas, strict=False)]
+            )
+    marcadas = _fusao.marcar(tokens, existe=existe) if marca_por_palavra else [frozenset[int]() for _ in tokens]
+    return (
+        [
+            _Cru(
+                texto=_fusao.texto_fundido(linha),
+                caixa=caixa,
+                confianca=min((t.confianca for t in linha if t.confianca is not None), default=0.0),
+                procedencia="glifo",
+                revisar_em=_fusao.intervalos_de(linha, marcados),
+            )
+            for caixa, linha, marcados in zip(caixas, tokens, marcadas, strict=True)
+            if linha and not _e_lixo_da_reserva(linha, existe)
+        ],
+        "",
+    )
 
 
 def _ler_pagina_do_livro(
@@ -1273,6 +1626,10 @@ def _ler_pagina_do_livro(
     juntar_lance: bool,
     marcar_negrito: bool,
     marcar_italico: bool,
+    lingua: str,
+    leitor_de_linha: LeitorDeLinha | None,
+    reserva: bool,
+    marca_por_palavra: bool,
 ) -> PaginaLida:
     """O corpo de `ler_pagina`, com o documento **já aberto**. Ver a nota da S-351."""
     from ..detection.hybrid import detect_diagrams_in_pdf_page
@@ -1286,26 +1643,14 @@ def _ler_pagina_do_livro(
         page = doc[indice]
         largura = float(page.rect.width)
         altura = float(page.rect.height)
-        cruas = linhas_da_camada(page, escala_px=escala_px) if qual == "camada" else []
+        margem = [linha for linha in page_margin_lines(page) if linha.text.strip()]
+        cruas = _cruas_da_camada(page, doc, indice, margem, altura, escala_px) if qual == "camada" else []
         # Os quadros de largura inteira da camada, para `montar` cortar a folha em volta (S-583).
         quadros = (
             [(int(y0 * escala_px), int(y1 * escala_px)) for y0, y1 in _quadros.quadros_da_camada(page)]
             if qual == "camada"
             else []
         )
-        margem = [linha for linha in page_margin_lines(page) if linha.text.strip()]
-        if qual == "camada":
-
-            def correntes(doc: object = doc) -> set[str]:
-                vizinhas = range(max(0, indice - PAGINAS_VIZINHAS), min(len(doc), indice + PAGINAS_VIZINHAS + 1))  # type: ignore[arg-type]
-                return {
-                    chave_de_corrente(linha.text)
-                    for outra in vizinhas
-                    if outra != indice
-                    for linha in page_margin_lines(doc[outra])  # type: ignore[index]
-                }
-
-            cruas += margem_no_corpo(margem, altura, escala_px=escala_px, correntes=correntes)
         numero = running_page_number(doc, indice)
         documento = str(getattr(doc, "name", "") or "")
         spans_negrito = _negrito.spans_de_negrito(page) if marcar_negrito else []
@@ -1330,7 +1675,7 @@ def _ler_pagina_do_livro(
         linhas_italico = _italico.linhas_de_italico(page) if spans_italico else []
         # A camada é a tipografia do livro, e não o palpite de outro OCR? Só então o itálico dela
         # vale no glifo também (S-660): ver o comentário de `_com_italico_da_camada` lá embaixo.
-        tipografica = bool(spans_italico) and qual == "glifo" and _camada.camada_tipografica(page)
+        tipografica = bool(spans_italico) and qual in _MOTORES_DO_GLIFO and _camada.camada_tipografica(page)
 
     if max_boards:
         candidatos = detect_diagrams_in_pdf_page(pdf_source, indice, imagem, max_boards=max_boards)  # type: ignore[arg-type]
@@ -1348,13 +1693,138 @@ def _ler_pagina_do_livro(
     confiancas = [float(c.detector_score) for c in candidatos]
 
     regioes: list[_regioes.Regiao] | None = None
-    if qual == "glifo":
+    avisos: list[Aviso] = []
+    por_palavra = False
+    if qual in _MOTORES_DO_GLIFO:
         cruas, regioes = linhas_do_glifo(
             imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco, colados=colados, caixa_alta=caixa_alta,
             traco=traco, marca_fina=marca_fina, empilhados=empilhados, italico=italico,
             dicionario=dicionario, numeros=numeros,
             juntar_lance=juntar_lance, dpi=dpi,
         )
+        pontos = [(r[0] / escala_px, r[1] / escala_px, r[2] / escala_px, r[3] / escala_px) for r in retangulos]
+        existe = _fusao.existe_no(_lexico_mod.carregar())
+        with open_document(pdf_source) as doc:  # type: ignore[arg-type]
+            page = doc[indice]
+            palavras = _camada_prosa.palavras_da_folha(page) if qual == "camada_prosa" else []
+            caracteres_da_camada = _camada_prosa.caracteres_fora(page, pontos)
+            admissao = _camada_prosa.admitir(doc, indice, pontos) if qual == "camada_prosa" else None
+            guarda = _guarda.medir(
+                imagem,
+                retangulos,
+                lidos=sum(len("".join(c.texto.split())) for c in cruas),
+                linhas_lidas=len(cruas),
+                dpi=dpi,
+                caracteres_da_camada=caracteres_da_camada,
+                ruido=_e_ruido_emoldurado(imagem, cruas),
+            )
+            camada_na_folha = admissao is not None and admissao.admitida and guarda.nao_lida
+            da_camada = _cruas_da_camada(page, doc, indice, margem, altura, escala_px) if camada_na_folha else []
+            quadros_da_camada = (
+                [(int(y0 * escala_px), int(y1 * escala_px)) for y0, y1 in _quadros.quadros_da_camada(page)]
+                if da_camada
+                else []
+            )
+        if admissao is not None and not admissao.admitida and admissao.criterio != _admissao.SEM_TEXTO:
+            avisos.append(
+                Aviso(
+                    CAMADA_RECUSADA,
+                    "A prosa desta folha veio do glifo: "
+                    f"{_camada_prosa.MOTIVOS_DA_RECUSA.get(admissao.criterio or '', 'a camada não é a tinta')}.",
+                )
+            )
+        if guarda.nao_lida and camada_na_folha:
+            # **A segmentação se perdeu, e não há linha do glifo em que pôr a prosa** (S-716). Quem manda é a
+            # montagem da camada, com as palavras partidas onde a tinta tem vão: nada se perde, e o lance dela
+            # fica como ela o escreve. Com a reserva, só a palavra suspeita vem do Tesseract, na mesma caixa, e
+            # é o que devolve o `after` que a ligadura perdeu. A primeira versão fazia o contrário, com as
+            # linhas do Tesseract no lugar do glifo, e trocava `10.Qxd2` por `10.8xd2`.
+            leituras_da_reserva: list[_tesseract.Palavra] = []
+            if reserva and any(_pede_outra_leitura(p) for p in palavras):
+                leitor = _leitor_de_linha.leitor_padrao() if leitor_de_linha is None else leitor_de_linha
+                leituras_da_reserva, _falha = leitor.ler_folha(_com_diagramas_em_branco(_imagem_do_leitor(imagem, dpi), retangulos), lingua=lingua, dpi=dpi)
+            cruas, regioes, quadros, qual = (
+                _camada_montada(da_camada, palavras, leituras_da_reserva, escala_px),
+                None,
+                quadros_da_camada,
+                "camada",
+            )
+            por_palavra = marca_por_palavra
+            avisos.append(
+                Aviso(
+                    CAMADA_NA_FOLHA,
+                    "A leitura desta folha se perdeu: o texto veio da camada do PDF, e os lances estão sem figurina.",
+                    guarda.densidade,
+                )
+            )
+        elif guarda.nao_lida:
+            avisos.append(
+                Aviso(
+                    FOLHA_NAO_LIDA,
+                    f"O que saiu desta folha são {guarda.lidos} sinais soltos, e não texto: confira se há o que ler nela."
+                    if guarda.ruido
+                    else f"Esta folha não foi lida inteira: saíram {guarda.lidos} caractere(s) para ~{guarda.componentes} letras impressas.",
+                    guarda.densidade,
+                )
+            )
+            if reserva:
+                leitor = _leitor_de_linha.leitor_padrao() if leitor_de_linha is None else leitor_de_linha
+                relidas, falha = _linhas_da_reserva(
+                    imagem, retangulos, cruas, leitor=leitor, lingua=lingua, dpi=dpi, existe=existe,
+                    marca_por_palavra=marca_por_palavra,
+                )
+                if relidas:
+                    avisos.append(
+                        Aviso(LEIAUTE_DE_RESERVA, "A folha foi relida pelo leiaute do Tesseract: confira a ordem e o texto das linhas.")
+                    )
+                    cruas, regioes, por_palavra = relidas, None, marca_por_palavra
+                elif falha:
+                    avisos.append(Aviso(LEITOR_INDISPONIVEL, f"A reserva não leu a folha. {falha}"))
+        else:
+            if guarda.parcial:
+                avisos.append(
+                    Aviso(
+                        LEITURA_PARCIAL,
+                        f"Esta folha pode estar incompleta: {guarda.linhas_lidas} linhas lidas para ~{guarda.linhas_estimadas}.",
+                        guarda.densidade,
+                    )
+                )
+            if qual == "camada_prosa" and admissao is not None and admissao.admitida:
+                por_linha, _fora = _camada_prosa.por_linha([_para_pontos(c.caixa, escala_px) for c in cruas], palavras)
+                cruas = _com_prosa_de_outro_leitor(
+                    cruas,
+                    [
+                        (
+                            " ".join(p.texto for p in desta),
+                            (),
+                            [p.bloqueada for p in desta],
+                        )
+                        if desta
+                        else None
+                        for desta in por_linha
+                    ],
+                    existe=_fusao.existe_na_camada(existe),
+                    e_da_camada=True,
+                    marca_por_palavra=marca_por_palavra,
+                )
+                por_palavra = marca_por_palavra
+            elif qual == "fusao" and cruas:
+                leitor = _leitor_de_linha.leitor_padrao() if leitor_de_linha is None else leitor_de_linha
+                do_leitor = _imagem_do_leitor(imagem, dpi)
+                leitura = leitor.ler_linhas(
+                    [_recorte_de_linha(do_leitor, c.caixa, escala_px) for c in cruas], lingua=lingua, dpi=dpi
+                )
+                if leitura.falha:
+                    avisos.append(Aviso(LEITOR_INDISPONIVEL, f"A prosa ficou com o glifo. {leitura.falha}"))
+                else:
+                    cruas = _com_prosa_de_outro_leitor(
+                        cruas,
+                        [None if li is None else (li.texto, li.confiancas, ()) for li in leitura.linhas],
+                        existe=existe,
+                        e_da_camada=False,
+                        marca_por_palavra=marca_por_palavra,
+                    )
+                    por_palavra = marca_por_palavra
 
     if marcar_negrito and cruas:
         cruas = _com_negrito(cruas, spans_negrito, registra_negrito, escala_px)
@@ -1404,6 +1874,8 @@ def _ler_pagina_do_livro(
         cabecalho=cabecalho,
         rodape=rodape,
         numero_impresso=numero,
+        avisos=tuple(avisos),
+        marca_por_palavra=por_palavra,
     )
 
 

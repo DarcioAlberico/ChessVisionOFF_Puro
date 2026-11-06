@@ -29,7 +29,7 @@ motiva cada item: [ROADMAP_FASE7.md](ROADMAP_FASE7.md).
 > | S-581 a S-584 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
-> | S-702 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
+> | S-702, S-710, S-711, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
 
 > **Ressalva de 2026-08-16.** Quatro itens deste documento — **S-38b, S-40, S-62a e S-62b** —
 > foram reprovados pela taxa de exportação do conjunto de campo. A avaliação registrada em

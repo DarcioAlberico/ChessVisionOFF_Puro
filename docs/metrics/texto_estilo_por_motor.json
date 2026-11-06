@@ -1,68 +1,68 @@
 {
   "item": "S-660 · o estilo da camada chega ao documento em cada motor?",
-  "medido_em": "2026-10-24",
+  "medido_em": "2026-11-05",
   "codigo": {
-    "commit": "86a1315",
+    "commit": "95952530",
     "arvore_suja": false
   },
-  "protocolo": "4 folhas espacadas de cada um dos 51 PDFs; livros sem estilo declarado nas folhas lidas ficam fora",
+  "protocolo": "4 folhas espacadas de cada um dos 58 PDFs; livros sem estilo declarado nas folhas lidas ficam fora",
   "referencia": "camada",
-  "livros_medidos": 18,
+  "livros_medidos": 21,
   "total": {
     "auto": {
-      "casados": 42989,
-      "negrito_declarado": 2489,
-      "negrito_chegou": 2256,
-      "negrito_a_mais": 24,
-      "italico_declarado": 504,
-      "italico_chegou": 421,
-      "italico_a_mais": 578,
-      "folhas": 58,
+      "casados": 57586,
+      "negrito_declarado": 3857,
+      "negrito_chegou": 3577,
+      "negrito_a_mais": 66,
+      "italico_declarado": 708,
+      "italico_chegou": 481,
+      "italico_a_mais": 844,
+      "folhas": 70,
       "perda": {
-        "negrito": 0.0936,
-        "italico": 0.1647
+        "negrito": 0.0726,
+        "italico": 0.3206
       }
     },
     "glifo": {
-      "casados": 42989,
-      "negrito_declarado": 2489,
-      "negrito_chegou": 2256,
-      "negrito_a_mais": 24,
-      "italico_declarado": 504,
-      "italico_chegou": 421,
-      "italico_a_mais": 578,
-      "folhas": 58,
+      "casados": 57586,
+      "negrito_declarado": 3857,
+      "negrito_chegou": 3577,
+      "negrito_a_mais": 66,
+      "italico_declarado": 708,
+      "italico_chegou": 481,
+      "italico_a_mais": 844,
+      "folhas": 70,
       "perda": {
-        "negrito": 0.0936,
-        "italico": 0.1647
+        "negrito": 0.0726,
+        "italico": 0.3206
       }
     }
   },
-  "leitura": "Remedido depois do conserto do italico (86a1315). O negrito saiu identico ao relatorio anterior (2.256 de 2.489, 24 a mais), e e a reproducao: o conserto nao toca o peso. Italico: a perda caiu de 34,3% para 16,5% (421 de 504 chegam, eram 331) e o que o motor marca a mais caiu de 1.159 para 578 caracteres. Nas folhas tipograficas (camada.camada_tipografica) a camada passou a responder por cima do pendor, linha e caractere: Seirawan e os dois 400 Quebra-cabecas chegam inteiros, Dvoretsky 64 de 65, Minhas 60 partidas 26 de 37. O que sobra de perda e de italico a mais esta nos scans (Kemeri, Brinckmann, Kmoch, Koblenz, Gunderam, Yusupov 4, Mieses, Anand, Boleslavsky), onde a camada e OCR de terceiro e continua sem voz de proposito: e a populacao da Fase 96.",
+  "leitura": "Remedido depois da S-711, com outra populacao: 58 PDFs em vez de 51, 21 livros medidos em vez de 18, e folhas que antes saiam vazias. O total nao compara com o relatorio de 86a1315. Negrito: perda de 9,4% para 7,3%. Italico: de 16,5% para 32,1%, quase todo por folhas que passaram a contar: Chess Evolution 2014 (21 de 106 chegam, antes fora da conta) e Kmoch (63 de 123, antes 35 de 38 em 1.371 casados, agora 4.458). Os demais livros mudam ate 2 caracteres declarados, salvo Mieses. Os 85 italicos que nao chegam no Chess Evolution 2014 sao defeito que a folha perdida escondia, e ficam para o G102.",
   "livros_com_perda": [
     {
       "livro": "1937 Kemeri.pdf",
       "motor": "auto",
       "estilo": "negrito",
-      "perda": 0.2216
+      "perda": 0.2308
     },
     {
       "livro": "1937 Kemeri.pdf",
       "motor": "auto",
       "estilo": "italico",
-      "perda": 0.2262
+      "perda": 0.2235
     },
     {
       "livro": "1937 Kemeri.pdf",
       "motor": "glifo",
       "estilo": "negrito",
-      "perda": 0.2216
+      "perda": 0.2308
     },
     {
       "livro": "1937 Kemeri.pdf",
       "motor": "glifo",
       "estilo": "italico",
-      "perda": 0.2262
+      "perda": 0.2235
     },
     {
       "livro": "Brinckmann - Matt in zwanzig Zügen (1963).pdf",
@@ -139,14 +139,26 @@
     {
       "livro": "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf",
       "motor": "auto",
+      "estilo": "negrito",
+      "perda": 0.3333
+    },
+    {
+      "livro": "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf",
+      "motor": "auto",
       "estilo": "italico",
-      "perda": 0.0789
+      "perda": 0.4878
+    },
+    {
+      "livro": "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf",
+      "motor": "glifo",
+      "estilo": "negrito",
+      "perda": 0.3333
     },
     {
       "livro": "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf",
       "motor": "glifo",
       "estilo": "italico",
-      "perda": 0.0789
+      "perda": 0.4878
     },
     {
       "livro": "Koblenz - El dominio del arte de la combinacion (1978).pdf",
@@ -188,7 +200,7 @@
       "livro": "Mieses - Blind Schaken (1938).pdf",
       "motor": "auto",
       "estilo": "negrito",
-      "perda": 0.3333
+      "perda": 0.4545
     },
     {
       "livro": "Mieses - Blind Schaken (1938).pdf",
@@ -200,7 +212,7 @@
       "livro": "Mieses - Blind Schaken (1938).pdf",
       "motor": "glifo",
       "estilo": "negrito",
-      "perda": 0.3333
+      "perda": 0.4545
     },
     {
       "livro": "Mieses - Blind Schaken (1938).pdf",
@@ -212,7 +224,7 @@
       "livro": "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
       "motor": "auto",
       "estilo": "negrito",
-      "perda": 0.1528
+      "perda": 0.1216
     },
     {
       "livro": "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
@@ -224,7 +236,7 @@
       "livro": "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
       "motor": "glifo",
       "estilo": "negrito",
-      "perda": 0.1528
+      "perda": 0.1216
     },
     {
       "livro": "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
@@ -255,6 +267,42 @@
       "motor": "glifo",
       "estilo": "negrito",
       "perda": 0.1364
+    },
+    {
+      "livro": "📚Chess Evolution 2013 №045-096.pdf",
+      "motor": "auto",
+      "estilo": "negrito",
+      "perda": 0.0369
+    },
+    {
+      "livro": "📚Chess Evolution 2013 №045-096.pdf",
+      "motor": "glifo",
+      "estilo": "negrito",
+      "perda": 0.0369
+    },
+    {
+      "livro": "📚Chess Evolution 2014 №097-149.pdf",
+      "motor": "auto",
+      "estilo": "italico",
+      "perda": 0.8019
+    },
+    {
+      "livro": "📚Chess Evolution 2014 №097-149.pdf",
+      "motor": "glifo",
+      "estilo": "italico",
+      "perda": 0.8019
+    },
+    {
+      "livro": "📚Hertan Charles. Forcing Chess Moves.pdf",
+      "motor": "auto",
+      "estilo": "negrito",
+      "perda": 0.0109
+    },
+    {
+      "livro": "📚Hertan Charles. Forcing Chess Moves.pdf",
+      "motor": "glifo",
+      "estilo": "negrito",
+      "perda": 0.0109
     },
     {
       "livro": "📚Болеславский_И_Избранные_партии.pdf",
@@ -272,31 +320,31 @@
   "por_livro": {
     "1937 Kemeri.pdf": {
       "auto": {
-        "casados": 6019,
-        "negrito_declarado": 167,
+        "casados": 6086,
+        "negrito_declarado": 169,
         "negrito_chegou": 130,
-        "negrito_a_mais": 13,
-        "italico_declarado": 84,
-        "italico_chegou": 65,
+        "negrito_a_mais": 12,
+        "italico_declarado": 85,
+        "italico_chegou": 66,
         "italico_a_mais": 104,
         "folhas": 4,
         "perda": {
-          "negrito": 0.2216,
-          "italico": 0.2262
+          "negrito": 0.2308,
+          "italico": 0.2235
         }
       },
       "glifo": {
-        "casados": 6019,
-        "negrito_declarado": 167,
+        "casados": 6086,
+        "negrito_declarado": 169,
         "negrito_chegou": 130,
-        "negrito_a_mais": 13,
-        "italico_declarado": 84,
-        "italico_chegou": 65,
+        "negrito_a_mais": 12,
+        "italico_declarado": 85,
+        "italico_chegou": 66,
         "italico_a_mais": 104,
         "folhas": 4,
         "perda": {
-          "negrito": 0.2216,
-          "italico": 0.2262
+          "negrito": 0.2308,
+          "italico": 0.2235
         }
       }
     },
@@ -392,9 +440,9 @@
     },
     "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf": {
       "auto": {
-        "casados": 3732,
-        "negrito_declarado": 479,
-        "negrito_chegou": 478,
+        "casados": 3736,
+        "negrito_declarado": 480,
+        "negrito_chegou": 479,
         "negrito_a_mais": 0,
         "italico_declarado": 65,
         "italico_chegou": 64,
@@ -406,9 +454,9 @@
         }
       },
       "glifo": {
-        "casados": 3732,
-        "negrito_declarado": 479,
-        "negrito_chegou": 478,
+        "casados": 3736,
+        "negrito_declarado": 480,
+        "negrito_chegou": 479,
         "negrito_a_mais": 0,
         "italico_declarado": 65,
         "italico_chegou": 64,
@@ -422,7 +470,7 @@
     },
     "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid Foolish Mistakes (Bastford, 2005) 2p 145p_OCR_Aprimorar_Aprimorar.pdf": {
       "auto": {
-        "casados": 2907,
+        "casados": 2916,
         "negrito_declarado": 95,
         "negrito_chegou": 95,
         "negrito_a_mais": 0,
@@ -436,7 +484,7 @@
         }
       },
       "glifo": {
-        "casados": 2907,
+        "casados": 2916,
         "negrito_declarado": 95,
         "negrito_chegou": 95,
         "negrito_a_mais": 0,
@@ -452,7 +500,7 @@
     },
     "Gunderam - Neue Eröffnungswege Ein Schach-Praktikum (1961).pdf": {
       "auto": {
-        "casados": 5097,
+        "casados": 5098,
         "negrito_declarado": 1252,
         "negrito_chegou": 1082,
         "negrito_a_mais": 0,
@@ -466,7 +514,7 @@
         }
       },
       "glifo": {
-        "casados": 5097,
+        "casados": 5098,
         "negrito_declarado": 1252,
         "negrito_chegou": 1082,
         "negrito_a_mais": 0,
@@ -482,7 +530,7 @@
     },
     "Gutmayer - Turnierpraxis (1922).pdf": {
       "auto": {
-        "casados": 2690,
+        "casados": 2688,
         "negrito_declarado": 2,
         "negrito_chegou": 1,
         "negrito_a_mais": 0,
@@ -496,7 +544,7 @@
         }
       },
       "glifo": {
-        "casados": 2690,
+        "casados": 2688,
         "negrito_declarado": 2,
         "negrito_chegou": 1,
         "negrito_a_mais": 0,
@@ -512,37 +560,37 @@
     },
     "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf": {
       "auto": {
-        "casados": 1371,
-        "negrito_declarado": 12,
-        "negrito_chegou": 12,
+        "casados": 4458,
+        "negrito_declarado": 60,
+        "negrito_chegou": 40,
         "negrito_a_mais": 0,
-        "italico_declarado": 38,
-        "italico_chegou": 35,
-        "italico_a_mais": 55,
+        "italico_declarado": 123,
+        "italico_chegou": 63,
+        "italico_a_mais": 253,
         "folhas": 4,
         "perda": {
-          "negrito": 0.0,
-          "italico": 0.0789
+          "negrito": 0.3333,
+          "italico": 0.4878
         }
       },
       "glifo": {
-        "casados": 1371,
-        "negrito_declarado": 12,
-        "negrito_chegou": 12,
+        "casados": 4458,
+        "negrito_declarado": 60,
+        "negrito_chegou": 40,
         "negrito_a_mais": 0,
-        "italico_declarado": 38,
-        "italico_chegou": 35,
-        "italico_a_mais": 55,
+        "italico_declarado": 123,
+        "italico_chegou": 63,
+        "italico_a_mais": 253,
         "folhas": 4,
         "perda": {
-          "negrito": 0.0,
-          "italico": 0.0789
+          "negrito": 0.3333,
+          "italico": 0.4878
         }
       }
     },
     "Koblenz - El dominio del arte de la combinacion (1978).pdf": {
       "auto": {
-        "casados": 1031,
+        "casados": 1041,
         "negrito_declarado": 68,
         "negrito_chegou": 63,
         "negrito_a_mais": 0,
@@ -556,7 +604,7 @@
         }
       },
       "glifo": {
-        "casados": 1031,
+        "casados": 1041,
         "negrito_declarado": 68,
         "negrito_chegou": 63,
         "negrito_a_mais": 0,
@@ -572,11 +620,11 @@
     },
     "La_casa_del_Ajedrez_El_metodo_Yusupov_4_Yusupov_Artur_Fundamentos.pdf": {
       "auto": {
-        "casados": 2984,
+        "casados": 3001,
         "negrito_declarado": 34,
         "negrito_chegou": 34,
         "negrito_a_mais": 0,
-        "italico_declarado": 16,
+        "italico_declarado": 17,
         "italico_chegou": 0,
         "italico_a_mais": 12,
         "folhas": 3,
@@ -586,11 +634,11 @@
         }
       },
       "glifo": {
-        "casados": 2984,
+        "casados": 3001,
         "negrito_declarado": 34,
         "negrito_chegou": 34,
         "negrito_a_mais": 0,
-        "italico_declarado": 16,
+        "italico_declarado": 17,
         "italico_chegou": 0,
         "italico_a_mais": 12,
         "folhas": 3,
@@ -602,13 +650,13 @@
     },
     "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf": {
       "auto": {
-        "casados": 1707,
-        "negrito_declarado": 35,
-        "negrito_chegou": 35,
+        "casados": 1751,
+        "negrito_declarado": 36,
+        "negrito_chegou": 36,
         "negrito_a_mais": 2,
         "italico_declarado": 0,
         "italico_chegou": 0,
-        "italico_a_mais": 52,
+        "italico_a_mais": 62,
         "folhas": 2,
         "perda": {
           "negrito": 0.0,
@@ -616,13 +664,13 @@
         }
       },
       "glifo": {
-        "casados": 1707,
-        "negrito_declarado": 35,
-        "negrito_chegou": 35,
+        "casados": 1751,
+        "negrito_declarado": 36,
+        "negrito_chegou": 36,
         "negrito_a_mais": 2,
         "italico_declarado": 0,
         "italico_chegou": 0,
-        "italico_a_mais": 52,
+        "italico_a_mais": 62,
         "folhas": 2,
         "perda": {
           "negrito": 0.0,
@@ -632,13 +680,13 @@
     },
     "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia_hq.pdf": {
       "auto": {
-        "casados": 1539,
-        "negrito_declarado": 35,
-        "negrito_chegou": 35,
+        "casados": 1583,
+        "negrito_declarado": 36,
+        "negrito_chegou": 36,
         "negrito_a_mais": 2,
         "italico_declarado": 0,
         "italico_chegou": 0,
-        "italico_a_mais": 195,
+        "italico_a_mais": 205,
         "folhas": 2,
         "perda": {
           "negrito": 0.0,
@@ -646,13 +694,13 @@
         }
       },
       "glifo": {
-        "casados": 1539,
-        "negrito_declarado": 35,
-        "negrito_chegou": 35,
+        "casados": 1583,
+        "negrito_declarado": 36,
+        "negrito_chegou": 36,
         "negrito_a_mais": 2,
         "italico_declarado": 0,
         "italico_chegou": 0,
-        "italico_a_mais": 195,
+        "italico_a_mais": 205,
         "folhas": 2,
         "perda": {
           "negrito": 0.0,
@@ -662,60 +710,60 @@
     },
     "Mieses - Blind Schaken (1938).pdf": {
       "auto": {
-        "casados": 1275,
-        "negrito_declarado": 6,
-        "negrito_chegou": 4,
-        "negrito_a_mais": 3,
-        "italico_declarado": 2,
+        "casados": 1616,
+        "negrito_declarado": 11,
+        "negrito_chegou": 6,
+        "negrito_a_mais": 32,
+        "italico_declarado": 3,
         "italico_chegou": 0,
-        "italico_a_mais": 0,
+        "italico_a_mais": 4,
         "folhas": 4,
         "perda": {
-          "negrito": 0.3333,
+          "negrito": 0.4545,
           "italico": 1.0
         }
       },
       "glifo": {
-        "casados": 1275,
-        "negrito_declarado": 6,
-        "negrito_chegou": 4,
-        "negrito_a_mais": 3,
-        "italico_declarado": 2,
+        "casados": 1616,
+        "negrito_declarado": 11,
+        "negrito_chegou": 6,
+        "negrito_a_mais": 32,
+        "italico_declarado": 3,
         "italico_chegou": 0,
-        "italico_a_mais": 0,
+        "italico_a_mais": 4,
         "folhas": 4,
         "perda": {
-          "negrito": 0.3333,
+          "negrito": 0.4545,
           "italico": 1.0
         }
       }
     },
     "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf": {
       "auto": {
-        "casados": 2133,
-        "negrito_declarado": 72,
-        "negrito_chegou": 61,
-        "negrito_a_mais": 3,
+        "casados": 2138,
+        "negrito_declarado": 74,
+        "negrito_chegou": 65,
+        "negrito_a_mais": 5,
         "italico_declarado": 37,
         "italico_chegou": 26,
         "italico_a_mais": 0,
         "folhas": 4,
         "perda": {
-          "negrito": 0.1528,
+          "negrito": 0.1216,
           "italico": 0.2973
         }
       },
       "glifo": {
-        "casados": 2133,
-        "negrito_declarado": 72,
-        "negrito_chegou": 61,
-        "negrito_a_mais": 3,
+        "casados": 2138,
+        "negrito_declarado": 74,
+        "negrito_chegou": 65,
+        "negrito_a_mais": 5,
         "italico_declarado": 37,
         "italico_chegou": 26,
         "italico_a_mais": 0,
         "folhas": 4,
         "perda": {
-          "negrito": 0.1528,
+          "negrito": 0.1216,
           "italico": 0.2973
         }
       }
@@ -752,7 +800,7 @@
     },
     "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf": {
       "auto": {
-        "casados": 5007,
+        "casados": 5038,
         "negrito_declarado": 22,
         "negrito_chegou": 19,
         "negrito_a_mais": 0,
@@ -766,7 +814,7 @@
         }
       },
       "glifo": {
-        "casados": 5007,
+        "casados": 5038,
         "negrito_declarado": 22,
         "negrito_chegou": 19,
         "negrito_a_mais": 0,
@@ -780,15 +828,105 @@
         }
       }
     },
+    "📚Chess Evolution 2013 №045-096.pdf": {
+      "auto": {
+        "casados": 3395,
+        "negrito_declarado": 488,
+        "negrito_chegou": 470,
+        "negrito_a_mais": 5,
+        "italico_declarado": 10,
+        "italico_chegou": 10,
+        "italico_a_mais": 0,
+        "folhas": 4,
+        "perda": {
+          "negrito": 0.0369,
+          "italico": 0.0
+        }
+      },
+      "glifo": {
+        "casados": 3395,
+        "negrito_declarado": 488,
+        "negrito_chegou": 470,
+        "negrito_a_mais": 5,
+        "italico_declarado": 10,
+        "italico_chegou": 10,
+        "italico_a_mais": 0,
+        "folhas": 4,
+        "perda": {
+          "negrito": 0.0369,
+          "italico": 0.0
+        }
+      }
+    },
+    "📚Chess Evolution 2014 №097-149.pdf": {
+      "auto": {
+        "casados": 5596,
+        "negrito_declarado": 637,
+        "negrito_chegou": 633,
+        "negrito_a_mais": 7,
+        "italico_declarado": 106,
+        "italico_chegou": 21,
+        "italico_a_mais": 45,
+        "folhas": 4,
+        "perda": {
+          "negrito": 0.0063,
+          "italico": 0.8019
+        }
+      },
+      "glifo": {
+        "casados": 5596,
+        "negrito_declarado": 637,
+        "negrito_chegou": 633,
+        "negrito_a_mais": 7,
+        "italico_declarado": 106,
+        "italico_chegou": 21,
+        "italico_a_mais": 45,
+        "folhas": 4,
+        "perda": {
+          "negrito": 0.0063,
+          "italico": 0.8019
+        }
+      }
+    },
+    "📚Hertan Charles. Forcing Chess Moves.pdf": {
+      "auto": {
+        "casados": 1949,
+        "negrito_declarado": 183,
+        "negrito_chegou": 181,
+        "negrito_a_mais": 0,
+        "italico_declarado": 0,
+        "italico_chegou": 0,
+        "italico_a_mais": 0,
+        "folhas": 4,
+        "perda": {
+          "negrito": 0.0109,
+          "italico": null
+        }
+      },
+      "glifo": {
+        "casados": 1949,
+        "negrito_declarado": 183,
+        "negrito_chegou": 181,
+        "negrito_a_mais": 0,
+        "italico_declarado": 0,
+        "italico_chegou": 0,
+        "italico_a_mais": 0,
+        "folhas": 4,
+        "perda": {
+          "negrito": 0.0109,
+          "italico": null
+        }
+      }
+    },
     "📚Болеславский_И_Избранные_партии.pdf": {
       "auto": {
-        "casados": 880,
+        "casados": 879,
         "negrito_declarado": 0,
         "negrito_chegou": 0,
         "negrito_a_mais": 1,
         "italico_declarado": 5,
         "italico_chegou": 3,
-        "italico_a_mais": 65,
+        "italico_a_mais": 64,
         "folhas": 3,
         "perda": {
           "negrito": null,
@@ -796,13 +934,13 @@
         }
       },
       "glifo": {
-        "casados": 880,
+        "casados": 879,
         "negrito_declarado": 0,
         "negrito_chegou": 0,
         "negrito_a_mais": 1,
         "italico_declarado": 5,
         "italico_chegou": 3,
-        "italico_a_mais": 65,
+        "italico_a_mais": 64,
         "folhas": 3,
         "perda": {
           "negrito": null,

@@ -9,13 +9,15 @@ from __future__ import annotations
 
 import ast
 import json
+import random
 import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
 
 from chess_diagram_ocr.cli import texto_correcoes
-from chess_diagram_ocr.text import arquivo, correcao, rico
+from chess_diagram_ocr.text import arquivo, busca, correcao, rico
+from chess_diagram_ocr.text import pagina as modulo_da_pagina
 from chess_diagram_ocr.text.pagina import (
     BlocoDeDiagrama,
     BlocoDeTexto,
@@ -94,6 +96,195 @@ class CarimboTests(unittest.TestCase):
         assert marcado.origem is not None
         self.assertEqual(marcado.origem.blocos[0].procedencia, "glifo")
         self.assertEqual(marcado.origem.blocos[0].texto, "antes")
+
+
+class MarcaDaPalavraTests(unittest.TestCase):
+    """Corrigir uma palavra não apaga as outras marcas do parágrafo (S-718)."""
+
+    def _doc(self, *pedacos: tuple[str, str]) -> rico.DocumentoRico:
+        lido = "".join(t for t, _ in pedacos)
+        origem = _pagina(_texto(lido))
+        corridas = tuple(
+            rico.Corrida(t, faixa=f, bloco=0, procedencia="glifo")
+            for t, f in pedacos
+        )
+        return rico.DocumentoRico(corridas=corridas, origem=origem)
+
+    def _trocado(self, doc: rico.DocumentoRico, indice: int, novo: str) -> rico.DocumentoRico:
+        corridas = list(doc.corridas)
+        corridas[indice] = replace(corridas[indice], texto=novo)
+        return rico.DocumentoRico(corridas=tuple(corridas), origem=doc.origem)
+
+    def _duas_marcas(self) -> rico.DocumentoRico:
+        return self._doc(("the ", "tranquilo"), ("wbite", "revisar"), (" knight ", "tranquilo"), ("wlns", "revisar"), (" a pawn", "tranquilo"))
+
+    def test_a_marca_que_a_mao_nao_tocou_fica(self) -> None:
+        doc = self._trocado(self._duas_marcas(), 1, "white")
+        marcado = correcao.com_procedencia_humana(doc)
+        self.assertEqual([c.texto for c in marcado.corridas if c.faixa == "revisar"], ["wlns"])
+        self.assertEqual(rico.intervalos_a_revisar(marcado), ((17, 21),))
+
+    def test_a_marca_corrigida_sai_e_a_corrida_vira_humano(self) -> None:
+        doc = self._trocado(self._duas_marcas(), 1, "white")
+        corrida = correcao.com_procedencia_humana(doc).corridas[1]
+        self.assertEqual((corrida.faixa, corrida.procedencia), ("tranquilo", "humano"))
+
+    def test_a_marca_que_fica_guarda_quem_leu(self) -> None:
+        doc = self._trocado(self._duas_marcas(), 1, "white")
+        self.assertEqual(correcao.com_procedencia_humana(doc).corridas[3].procedencia, "glifo")
+
+    def test_e_idempotente(self) -> None:
+        marcado = correcao.com_procedencia_humana(self._trocado(self._duas_marcas(), 1, "white"))
+        self.assertEqual(correcao.com_procedencia_humana(marcado), marcado)
+
+    def test_corrigir_as_duas_nao_deixa_marca(self) -> None:
+        doc = self._trocado(self._trocado(self._duas_marcas(), 1, "white"), 3, "wins")
+        self.assertEqual(rico.intervalos_a_revisar(correcao.com_procedencia_humana(doc)), ())
+
+    def test_a_faixa_do_bloco_inteiro_continua_saindo(self) -> None:
+        """A edição parte a corrida, e os dois pedaços intactos são da faixa do bloco, e não da palavra."""
+        doc = self._doc(("the wbite ", "revisar"), ("knight", "revisar"))
+        marcado = correcao.com_procedencia_humana(self._trocado(doc, 0, "the white "))
+        self.assertEqual(rico.intervalos_a_revisar(marcado), ())
+
+    def test_os_pedacos_da_palavra_nao_sao_marca(self) -> None:
+        """O que o editor deixa ao corrigir uma letra: `w`, `h` e `ite`. Os pedaços não são o que o motor leu."""
+        doc = self._doc(("the ", "tranquilo"), ("wbite", "revisar"), (" knight ", "tranquilo"), ("wlns", "revisar"), (" a pawn", "tranquilo"))
+        corridas = list(doc.corridas)
+        corridas[1:2] = [
+            replace(doc.corridas[1], texto="w"),
+            replace(doc.corridas[0], texto="h"),
+            replace(doc.corridas[1], texto="ite"),
+        ]
+        editado = rico.DocumentoRico(corridas=tuple(corridas), origem=doc.origem)
+        marcado = correcao.com_procedencia_humana(editado)
+        self.assertEqual([c.texto for c in marcado.corridas if c.faixa == "revisar"], ["wlns"])
+
+    def test_a_sobra_igual_ao_lido_nao_e_a_palavra_lida(self) -> None:
+        """`xwhite` perdeu o `x`: o que sobrou é um trecho igual, mas o motor não leu `white`."""
+        for lido, corrigido in (("xwhite", "white"), ("whitex", "white")):
+            with self.subTest(lido=lido):
+                doc = self._doc(("the ", "tranquilo"), (lido, "revisar"), (" knight ", "tranquilo"), ("wlns", "revisar"))
+                marcado = correcao.com_procedencia_humana(self._trocado(doc, 1, corrigido))
+                self.assertEqual([c.texto for c in marcado.corridas if c.faixa == "revisar"], ["wlns"])
+
+    def test_a_palavra_marcada_com_pontuacao_colada_fica(self) -> None:
+        doc = self._doc(("the ", "tranquilo"), ("wbite", "revisar"), (" knight ", "tranquilo"), ("wlns", "revisar"), (", a pawn", "tranquilo"))
+        marcado = correcao.com_procedencia_humana(self._trocado(doc, 1, "white"))
+        self.assertEqual([c.texto for c in marcado.corridas if c.faixa == "revisar"], ["wlns"])
+
+    def test_o_espaco_basta_para_nao_ser_a_faixa_do_bloco(self) -> None:
+        doc = self._doc(("wbite", "revisar"), (" ", "tranquilo"), ("wlns", "revisar"))
+        marcado = correcao.com_procedencia_humana(self._trocado(doc, 0, "white"))
+        self.assertEqual([c.texto for c in marcado.corridas if c.faixa == "revisar"], ["wlns"])
+
+    def test_a_marca_sobrevive_ao_arquivo(self) -> None:
+        doc = correcao.com_procedencia_humana(self._trocado(self._duas_marcas(), 1, "white"))
+        with tempfile.TemporaryDirectory() as pasta:
+            caminho = arquivo.gravar(Path(pasta) / "folha.cvtxt", doc)
+            reaberto = arquivo.carregar(caminho)
+        self.assertEqual(rico.intervalos_a_revisar(reaberto), ((17, 21),))
+
+
+class MarcaNaoEEspacoTests(unittest.TestCase):
+    @staticmethod
+    def _corridas(*linhas: modulo_da_pagina.LinhaLida) -> list[rico.Corrida]:
+        bloco = modulo_da_pagina.BlocoDeTexto.de_linhas(list(linhas))
+        lida = modulo_da_pagina.PaginaLida(pagina=0, colunas=(modulo_da_pagina.Coluna(indice=0, blocos=(bloco,)),), marca_por_palavra=True)
+        return list(rico.de_pagina(lida).corridas)
+
+    def test_o_branco_entre_duas_marcas_nao_e_marcado(self) -> None:
+        for branco in (" ", "\u00a0"):
+            with self.subTest(branco=branco):
+                texto = f"wbite{branco}knigbt"
+                corridas = self._corridas(modulo_da_pagina.LinhaLida(texto=texto, bbox=(0, 0, 9, 9), revisar_em=((0, len(texto)),)))
+                self.assertEqual([c.texto for c in corridas if c.faixa == "revisar"], ["wbite", "knigbt"])
+
+    def test_o_espaco_da_juncao_nao_perde_o_estilo(self) -> None:
+        primeira = modulo_da_pagina.LinhaLida(texto="wbite", bbox=(0, 0, 9, 9), negrito=True, revisar_em=((0, 5),))
+        segunda = modulo_da_pagina.LinhaLida(texto="knight", bbox=(0, 10, 9, 19), negrito=True)
+        corridas = self._corridas(primeira, segunda)
+        self.assertEqual("".join(c.texto for c in corridas), "wbite knight")
+        self.assertTrue(all(c.atributos.negrito for c in corridas))
+
+    def test_o_espaco_da_mao_nao_e_faixa(self) -> None:
+        """`ofthe` trocado por `of the` na busca fica `revisar` até gravar, e não pode levar a outra marca."""
+        doc = MarcaDaPalavraTests()._doc(("the ", "tranquilo"), ("ofthe", "revisar"), (" knight ", "tranquilo"), ("wlns", "revisar"))  # noqa: SLF001
+        editado = busca.substituir(doc, busca.achar(doc, "ofthe"), "of the")
+        self.assertIn(("of the", "revisar"), [(c.texto, c.faixa) for c in editado.corridas], "a busca mudou: o teste não vigia nada")
+        marcado = correcao.com_procedencia_humana(editado)
+        self.assertEqual([c.texto for c in marcado.corridas if c.faixa == "revisar"], ["wlns"])
+
+
+class MarcaPorSorteioTests(unittest.TestCase):
+    """Fica a marca da palavra que a mão não tocou, sai a da que tocou, gravando no meio ou não.
+
+    Troca letra, insere palavra e apaga palavra. As regras escritas caso a caso já erraram várias vezes aqui, e o sorteio
+    sai barato.
+    """
+
+    VOCABULARIO = (
+        "the white knight wins a pawn after black plays rook takes bishop and queen moves to open file with "
+        "strong attack on king side while his position remains very difficult because every piece stands badly"
+    ).split()
+
+    def _folha(self, sorte: random.Random, palavras: int, marcas: int, linhas: int) -> tuple[rico.DocumentoRico, list[str], set[int]]:
+        escritas = [sorte.choice(self.VOCABULARIO) for _ in range(palavras)]
+        marcadas = set(sorte.sample(range(palavras), marcas))
+        cortes = [0, *sorted(sorte.sample(range(1, palavras), linhas - 1)), palavras]
+        montadas = []
+        for a, b in zip(cortes, cortes[1:], strict=False):
+            posicao = 0
+            intervalos = []
+            for i in range(a, b):
+                if i in marcadas:
+                    intervalos.append((posicao, posicao + len(escritas[i])))
+                posicao += len(escritas[i]) + 1
+            montadas.append(
+                modulo_da_pagina.LinhaLida(texto=" ".join(escritas[a:b]), bbox=(0, 0, 9, 9), revisar_em=tuple(intervalos), procedencia="glifo")
+            )
+        bloco = modulo_da_pagina.BlocoDeTexto.de_linhas(montadas)
+        lida = modulo_da_pagina.PaginaLida(pagina=0, colunas=(modulo_da_pagina.Coluna(indice=0, blocos=(bloco,)),), marca_por_palavra=True)
+        return rico.de_pagina(lida), escritas, marcadas
+
+    @staticmethod
+    def _marcas(doc: rico.DocumentoRico) -> list[str]:
+        texto = doc.para_texto()
+        return sorted(texto[a:b] for a, b in rico.intervalos_a_revisar(doc))
+
+    def _rodada(self, sorte: random.Random, *, gravar: bool, palavras: int, marcas: int, linhas: int, edicoes: int) -> None:
+        doc, escritas, marcadas = self._folha(sorte, palavras, marcas, linhas)
+        vivas = [[palavra, i in marcadas] for i, palavra in enumerate(escritas)]
+        for _ in range(edicoes):
+            i = sorte.randrange(len(vivas))
+            palavra, marcada = vivas[i]
+            onde = sum(len(p) + 1 for p, _m in vivas[:i])
+            gesto = sorte.choice(("letra", "inserir", "apagar"))
+            if gesto == "inserir":
+                doc = rico.editar(doc, onde, onde, "novidade ")
+                vivas.insert(i, ["novidade", False])
+            elif gesto == "apagar" and not marcada and i < len(vivas) - 1:
+                doc = rico.editar(doc, onde, onde + len(palavra) + 1, "")
+                del vivas[i]
+            else:
+                k = sorte.randrange(len(palavra))
+                letra = sorte.choice([c for c in "xqzj" if c != palavra[k]])
+                doc = rico.editar(rico.editar(doc, onde + k, onde + k + 1, ""), onde + k, onde + k, letra)
+                vivas[i] = [palavra[:k] + letra + palavra[k + 1 :], False]
+            if gravar:
+                doc = correcao.com_procedencia_humana(doc)
+        self.assertEqual(self._marcas(correcao.com_procedencia_humana(doc)), sorted(p for p, m in vivas if m))
+
+    def test_gravando_a_cada_correcao(self) -> None:
+        sorte = random.Random(1234)
+        for _ in range(150):
+            self._rodada(sorte, gravar=True, palavras=12, marcas=2, linhas=2, edicoes=2)
+            self._rodada(sorte, gravar=True, palavras=40, marcas=3, linhas=4, edicoes=5)
+
+    def test_gravando_so_no_fim(self) -> None:
+        sorte = random.Random(4321)
+        for _ in range(150):
+            self._rodada(sorte, gravar=False, palavras=40, marcas=3, linhas=4, edicoes=5)
 
 
 class ParMinimoTests(unittest.TestCase):

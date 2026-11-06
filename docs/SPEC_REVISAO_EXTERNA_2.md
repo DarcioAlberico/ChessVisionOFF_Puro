@@ -27,7 +27,7 @@ virarem proposta**. O placar, o que já estava feito, as divergências e o que f
 > | S-581 a S-584 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
-> | S-702 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
+> | S-702, S-710, S-711, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
 
 Cada item tem **Problema** (com `arquivo:linha` do estado em `44ce78c`, a ponta da
 `triagem-dos-orfaos` no dia da conferência), **Solução**, **Critério de aceite** e **Testes**. As

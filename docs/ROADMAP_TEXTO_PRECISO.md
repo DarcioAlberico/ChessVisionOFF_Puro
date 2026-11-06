@@ -335,7 +335,7 @@ superior do IC95 cumpre a coluna "teto" (decisão 7).
 | **G3** | folha perdida em silêncio | ouro, scan-ouro e varredura do acervo | 5 de 67 (e 2 fora da amostra) | **0** | — |
 | **G4** | segundos por folha, CPU de 12 threads, por estrato, com a reserva da S-715 no p95 | ouro-teste e scan-ouro-teste | glifo 0,65 s (digital), 1,2–1,6 s (scan) | **digital: ≤ 2,0 s média, ≤ 4,0 s p95; scan: ≤ 3,5 s média, ≤ 6,0 s p95** | — |
 | **G5** | a faixa "revisar" captura o erro | ouro-teste | não medido | **≥ 90% das palavras erradas** marcando **≤ 5%** das palavras | — |
-| **G6** | negrito e itálico que chegam à tela não pioram | ouro-dev e ouro-teste | régua da S-660 (`docs/metrics/texto_estilo_por_motor.json` na `main`) | não-inferioridade contra o glifo (teto do IC da perda ≤ +2 p.p.) | — |
+| **G6** | negrito e itálico que chegam à tela não pioram | ouro-dev e ouro-teste | régua da S-660 (`docs/metrics/texto_estilo_por_motor.json`, remedido depois da S-711) | não-inferioridade contra o glifo (teto do IC da perda ≤ +2 p.p.) | — |
 
 **Que motor cada meta mede — sem isso, M1 seria a camada comparada com ela mesma.** Depois da S-716,
 `auto` põe a prosa da **camada** em toda folha digital admitida; medir M1 no padrão, no ouro-teste (que
@@ -497,6 +497,16 @@ marcado para revisão, com captura ≥ 90% — ou (b) pagar o orçamento de CPU 
 ---
 
 ## 5a. O que você vai ver, e quando
+
+> **Estado em 2026-11-05: a primeira entrega foi feita**, com a especificação em
+> [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) e os números em
+> [metrics/texto_prosa_primeira_entrega.json](metrics/texto_prosa_primeira_entrega.json). A coluna "primeira entrega"
+> da tabela abaixo é a previsão de 2026-10-30, e o medido fica no relatório. Nos cinco livros aprovados na auditoria, a
+> prosa da camada erra **0,221%** [0; 0,64] contra 2,83% do glifo: um décimo, mas acima da M0 de 0,05%. A marca por palavra
+> captura de 26% a 50% do erro, com 4,8% das palavras marcadas, longe dos 90% da G5. **A S-711 entrou junto**, porque a guarda
+> mostrou o *Chess Evolution 2014* perdendo 113 de 120 folhas, e o *2013*, 60 de 120: agora são 0, e o glifo no ouro caiu de
+> 12,94% para 3,78%. Daqui para a frente faltam as Fases 100 (régua no pacote), 102 (fusão completa e virar o padrão), 103 a
+> 107, e as S-712 a S-714.
 
 **A primeira entrega** — o que muda na aba Texto antes de qualquer portão, sem trocar o padrão de
 ninguém (decisão 10) e sem esperar instalador nem livro novo, porque a máquina do dono já tem o
@@ -806,9 +816,14 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     amostra (*Chess Evolution* 814 e 1396, densidade 0,038 e 0,004) avisam; o corte de 0,5 só fica se
     nenhuma folha **com texto** cair abaixo de 0,7 na varredura dos livros dev.
   - *Saída:* G3 = 0 nas 95 folhas e na varredura, com os números publicados.
+  - *Achado:* **o "5 de 67" de 2026-10-30 era muito menor que a realidade.** Em 120 folhas igualmente espaçadas de cada
+    um, o *Chess Evolution 2014* perdia 113 e o *2013*, 60, antes da S-711. *Corte:* o
+    0,5 cumpre a regra deste item na varredura publicada, contando as folhas com ao menos 200 caracteres de camada: nenhuma
+    abaixo de 0,7 sem aviso, em 812 folhas de 58 livros. Depois da S-711, das dez folhas que avisam, quatro têm texto que o glifo não leu
+    e seis são sinal solto de dentro de uma moldura; a varredura de livro inteiro do G101 continua por fazer.
   - *Reversão:* o aviso não muda texto nenhum; o corte é constante. O `ESQUEMA` 2 **não** é reversível
     (versão antiga não abre arquivo novo), e por isso entra junto com o primeiro uso dos avisos.
-- **S-711** · Região escura na borda: faixa colorida e moldura de scan.
+- **S-711** · Região escura na borda: faixa colorida e moldura de scan. ✅ entregue em 2026-11-05, com outro mecanismo: ver o *Achado* no fim deste item.
   - *Contexto:* duas aparências, um mecanismo. A faixa lateral azul com letra branca vertical do
     *Chess Evolution* (folhas 903 e 1210) e a moldura cinza do scan do *Kmoch* (folhas 31, 69 e 106)
     fazem o glifo devolver **um** bloco para a folha inteira (`h`, `.`). `text/negativo.py` (S-195)
@@ -828,6 +843,17 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     ouro-dev muda de texto.
   - *Reversão:* a detecção de região escura entra atrás de constante; desligada, a folha volta a ser
     lida como hoje (e a reserva da S-715 a cobre).
+  - *Achado:* **o mecanismo não era o escuro, era o que envolve a folha.** O maior componente de cada folha perdida é a
+    folha inteira, um filete fino na borda ligado à faixa, e as caixas de caractere só pegam contorno externo: `caixas=1`. A
+    folha 501, com a mesma faixa e sem o filete, sempre leu. O conserto é `text/moldura.py`: tira da binária o componente
+    que cobre a folha nas duas direções. A faixa fica, e o texto claro dentro dela continua sem ler, o que a camada cobre.
+    Sem aviso: ele sairia em toda folha dos dois livros, e o selo perderia o sentido.
+  - *Achado:* **a *Saída* acima foi escrita para o mecanismo errado, e não se cumpriu inteira.** Tesseract nas linhas do glifo a
+    até 1 p.p. do oráculo: **não cumprido**, +4,29 p.p. [+1,39; +8,76] em 24 folhas dos dois *Chess Evolution*, com o resto na linha
+    intercalada, que é a S-712. Varredura do acervo inteiro: **não feita**, só a amostra de 14 folhas por livro. "Nenhuma
+    folha do ouro-dev muda": superado, porque 903 e 1210 eram as perdidas. A reversão é `moldura.TIRAR_MOLDURA`.
+  - *Achado:* tirar a moldura abre o que havia dentro. Sinal solto de contracapa e de marca d'água saía sem aviso; agora sai com
+    `folha_nao_lida`, por `guarda_de_leitura.RUIDO_POR_TOKEN`. Ver a spec.
 - **S-712** · Linha intercalada.
   - *Entrega:* caixa de linha com altura > 1,8× a mediana da coluna é partida pela projeção
     horizontal antes de ler. As folhas 279 e 578 do *Chess Evolution* são fixture; o efeito é medido
@@ -871,6 +897,9 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     contra ela), saem com ≥ 90% das linhas da camada achadas e conferência visual de uma folha por quem
     não é o executor; nenhuma das 90 folhas legíveis aciona a reserva.
   - *Reversão:* interruptor; desligado, a folha sai como o glifo a leu, com o aviso da S-710.
+  - *Achado:* a reserva vem **desligada** em `ler_pagina`, e só a janela a liga: ligada por padrão, a régua e os CLIs
+    passavam a depender de haver Tesseract. E em folha de duas colunas com fio, o `psm 3` intercala as colunas, o que
+    pediu a partição na calha (`leitor._partida_no_vao`).
 - **S-716** · Primeira entrega: a prosa da camada nos livros digitais.
   - *Contexto:* nos livros nascidos digitais a camada **é** a tinta — é a referência do ouro. O
     `leitor.py` recusou a camada como motor por causa da **notação** (ela não representa figurina), não
@@ -924,6 +953,7 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   - *Saída:* opção "Camada na prosa (livro digital)" na caixa de motor; o dono a vê nos livros dele;
     M0 medida no ouro-dev (montagem e auditoria visual).
   - *Reversão:* interruptor; desligado, a folha volta ao glifo.
+  - *Achado:* a G6 não foi medida pela régua da S-660, e fica para o G102; há só teste de fiação do detalhe da camada.
   - *Da S-702:* (a)–(d) admitem livros cuja camada não é a tinta. A auditoria visual reprovou 5 de 27
     livros que passam neles, entre eles o *Chess Evolution 2013* e o *Capablanca* da tabela acima. Na
     prosa, o defeito é a ligadura que perde letra (`ft` → `f`); na notação, o símbolo de avaliação em
@@ -955,6 +985,8 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     marcada travada em 5%, publicada já no G102 (a prova é a curva captura × fração marcada).
   - *Saída:* G5 provisória medida; a S-761 a substitui pela calibrada.
   - *Reversão:* interruptor; desligado, vale a faixa de hoje.
+  - *Achado:* entregue sem as alternativas do `lstm_choice_mode=2` (saem no hOCR, e o executor lê TSV) e sem o léxico da
+    língua do livro, que é a S-728. Os dois ficam para a S-761.
 - **Portão G101:** G3 = 0 no ouro, na prata e numa varredura do acervo inteiro com a guarda da S-710
   (só o glifo e a densidade de leitura: ~0,65 s × 25.918 folhas ≈ 4,7 h de CPU, orçadas aqui) — o
   scan-ouro, que depende da D3, entra no G104; perda de leiaute (diferença pareada leitor de linha nas
@@ -1017,6 +1049,9 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     2026-10-30 lê com um processo por linha (diferença zero), sem console e com aviso quando o binário
     falta ou tem versão fora da faixa.
   - *Reversão:* módulos novos; sem a fusão (S-721) ninguém os chama.
+  - *Achado:* entregue sem `--user-words`, `load_system_dawg=0` e a escala pela altura-x: cada um muda o que o Tesseract
+    lê, e a saída deste item pede texto idêntico ao de 2026-10-30. Ficam para a S-721, medidos. O teste de caminho
+    acentuado lê numa pasta com acento, mas esta máquina é UTF-8 e não reproduz a cp1252: a conferência fica para a S-724.
 - **S-721** · Fusão por token (`text/fusao.py`).
   - *Contexto:* cinco regras foram medidas offline sobre as mesmas linhas (tabela da 1.5); a de partida
     é a **v5** (`texto_prosa_2026-10-30/fusao_v5.py`) no digital: ganha do glifo em 25 de 26 folhas e,

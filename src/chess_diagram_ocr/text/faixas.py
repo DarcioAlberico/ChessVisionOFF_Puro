@@ -28,6 +28,14 @@ em cinza e antes da binarização, por geometria física:
     1896») continua tinta sobre papel. A borda serrilhada de 2 px em volta vai para papel, para
     não sobrar moldura que pareça sublinhado.
 
+5.  O núcleo tem de caber uma linha de texto: ao menos 0,1 pol. **Sem este piso o título em negrito pesado era faixa:**
+    `TRIFUNOVIC` no *Koblenz* tem 56% de tinta e núcleo de 8 px, e saía invertido, ilegível, e a folha piorava nos três
+    motores. Em 30 folhas de cada livro do acervo, os cabeçalhos do *Yusupov* têm de 23 a 27 px a 220 dpi, e abaixo de 22
+    não há cabeçalho que se leia: título em negrito (`PRIMERO`, `NEGRAS` no *Reinfeld*), filete azul do *Chess Evolution*,
+    barra preta de scan, mancha, palavra de corpo escura e, duas vezes, cabeçalho de faixa cinza cujo núcleo sai errado (2 e
+    3 px), que era apagado e agora fica como veio, sem leitura. A contagem depende de como as folhas são espaçadas: 103 e 80
+    achados em dois censos, e a fronteira é a mesma nos dois.
+
 **Tudo é físico** (polegadas a `dpi`), para a mesma faixa sair a 150 e a 600 dpi. Por isso quem
 chama tem de saber o DPI da imagem -- e por isso `segmentar` só liga isto quando recebe um: o
 `cli/texto_colunas.py` chama sem DPI e continua lendo o que lia.
@@ -151,6 +159,7 @@ def achar_faixas(
     solidez_minima: float = 0.80,
     fechamento_pol: float = 0.03,
     margem_solida: float = 0.9,
+    nucleo_minimo_pol: float = 0.1,
 ) -> tuple[list[Faixa], np.ndarray]:
     """As faixas pretas com texto claro, e a máscara da página que diz o que fazer com cada pixel.
 
@@ -202,6 +211,8 @@ def achar_faixas(
         if ultima - primeira + 1 > 4 * recorte:
             primeira += recorte
             ultima -= recorte
+        if ultima - primeira + 1 < nucleo_minimo_pol * dpi:
+            continue
         # As pontas da faixa têm o mesmo serrilhado que a borda de cima e de baixo, e
         # invertido ele saía como um «—» ou um «r» no começo e no fim do cabeçalho; o
         # texto nunca encosta na ponta (há >= 0,1 pol de faixa de cada lado).
