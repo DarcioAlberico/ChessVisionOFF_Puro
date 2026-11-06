@@ -184,6 +184,7 @@ from . import negrito as _negrito
 from . import notacao as _notacao
 from . import numero as _numero
 from . import paragrafos as _paragrafos
+from . import poeira as _poeira
 from . import quadros as _quadros
 from . import regioes as _regioes
 from . import tesseract as _tesseract
@@ -468,7 +469,7 @@ def segmentar(
     # **A binária entra para o pingo do itálico** (`i` que sai `l` + `'`): sem ela a régua de
     # sobreposição é horizontal e o itálico é uma inclinação. Ver `boxes.unir_pingos`.
     caixas = _boxes.unir_pingos(
-        _boxes.caixas_de_caractere(binaria, escala=escala), escala=escala, binaria=binaria
+        _poeira.sem_poeira(_boxes.caixas_de_caractere(binaria, escala=escala)), escala=escala, binaria=binaria
     )
     if empilhados:
         # **`:`, `;` e `=` são dois contornos**, e sem isto o classificador nunca vê nenhum dos
@@ -645,7 +646,9 @@ def linhas_do_glifo(
 
     cruas: list[_Cru] = []
     for i_regiao, indice, desta in _tiras(caixas, regioes, escala=escala):
-        grupos = descartar_fragmentos(partir_linhas_altas(quebrar_em_linhas(ordem_em_faixa(desta))), escala=escala)
+        grupos = descartar_fragmentos(
+            _poeira.aparar(partir_linhas_altas(quebrar_em_linhas(ordem_em_faixa(desta)))), escala=escala
+        )
         for grupo in grupos:
             recortes = [c.recortar(cinza) for c in grupo]
             # **Uma medição por linha, e ela serve aos dois usos** (S-236): declarar o pendor no

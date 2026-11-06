@@ -447,6 +447,71 @@ de 0,5, e o aviso é verdadeiro. `metrics/texto_estilo_por_motor.json` foi remed
 - **Na prata, duas folhas pioram na fusão:** *Kmoch* 30 e 105. A camada do *Kmoch* é desalinhada da tinta, e a régua ali é fraca.
 - **A faixa entre 3 e 8 escalas não foi examinada caixa a caixa**: título e capitular ficam, e uma foto com menos de 80% de tinta também.
 
+## S-714 · A poeira que estica a linha ✅ implementada (2026-11-06)
+
+### Problema
+
+No perfil médio de hoje, com S-711 e S-712 dentro, a perda de leiaute é +6,52 p.p. [+1,35; +12,65] nas 28 folhas do ouro-dev, e
++10,17 nos cinco livros em que o oráculo presta. O roadmap supunha, em ordem, binarização, poeira e linhas que tocam. **É a poeira.**
+Uma mancha na margem tem o tamanho de um ponto final, passa pela régua de área, entra na linha, e `envolve` leva a caixa até ela. A
+caixa de `Apesar das pretas`, no *Seirawan* 58, ia da margem à margem e invadia a linha de cima; com 62 px de altura, onde a linha
+tem 38, o Tesseract em `psm 7` devolve vazio.
+
+### Solução
+
+`text/poeira.py`, com a reversão em `TIRAR_POEIRA`. Duas réguas, porque são duas manchas:
+
+- **`sem_poeira`, a mancha solta**, antes de `unir_pingos`: caixa pequena (maior lado abaixo de 0,5 altura mediana) a mais de uma
+  altura mediana de qualquer letra e de qualquer outra caixa pequena. Só vale com **6 ou mais** na folha (`POEIRA_MINIMA_NA_FOLHA`). Em
+  210 folhas limpas dos sete livros há de 0 a 3, 184 delas com 0; no perfil médio, de 18 a 136. **A outra caixa pequena conta** porque as
+  reticências espaçadas de `9 . . . Cxe4`, no *Capablanca* limpo, eram os únicos pontos que uma folha limpa tinha a perder.
+- **`aparar`, a mancha entre duas linhas**, na linha já formada: ela não está solta, e é a que mais custa. Sai a caixa pequena com o
+  centro a mais de 0,35 mediana do miolo (a mediana dos topos e dos fundos das letras), e a caixa pequena na ponta a mais de 1,5 mediana
+  da vizinha. A que `unir_pingos` já colou numa letra sai cortando a letra no que uma letra alcança: 0,9 mediana acima do topo do
+  miolo (a maiúscula acentuada) e 0,5 abaixo do fundo (o descendente). Passou disso em mais de uma mediana, a caixa não é letra com
+  mancha, e fica para a S-198 e a S-712. Vem depois de `partir_linhas_altas`: antes dela, a linha pode ter outra linha dentro.
+
+Em `leitor.py`, duas chamadas e um `import`.
+
+### Critério de aceite
+
+`tests/test_text_poeira.py`, com caixas desenhadas e a fiação pelo `segmentar`, e a constante desligada devolve exatamente as linhas de
+antes (conferido em duas folhas reais). Em [metrics/texto_prosa_s714.json](metrics/texto_prosa_s714.json), pareado contra o leiaute de
+hoje, Tesseract nas caixas do glifo, IC95 de dois níveis, tudo no **perfil médio sem calibração**:
+
+| | antes | depois |
+|---|---:|---:|
+| perda de leiaute, 28 folhas olhadas | +6,52 p.p. [+1,35; +12,65] | **−3,18 p.p. [−9,10; +1,51]** |
+| a mesma, sem os dois livros de oráculo ruim (20 folhas) | +10,17 p.p. [+4,07; +16,81] | **+0,85 p.p. [−1,35; +3,10]** |
+| perda de leiaute, 21 folhas **não vistas** | +10,54 p.p. [+0,92; +21,90] | **−0,06 p.p. [−4,49; +3,89]** |
+| a mesma, sem os dois livros (15 folhas) | +11,40 p.p. [+3,26; +21,91] | **+2,46 p.p. [−0,24; +6,21]** |
+| CER de prosa, Tesseract, 28 olhadas | 13,02% | **3,32%** (−9,70 [−14,93; −5,15]; 27 melhores, 1 pior) |
+| CER de prosa, Tesseract, 21 não vistas | 14,27% | **3,67%** (nenhuma pior) |
+| CER de prosa, fusão, 28 olhadas | 16,15% | 6,72% |
+| CER de prosa, glifo, 28 olhadas | 53,35% | 51,96% |
+| **ouro limpo**, 28 folhas: glifo / Tesseract / fusão | 1,21 / 0,46 / 0,47% | **1,20 / 0,46 / 0,47%** |
+
+No ouro limpo o Tesseract lê todas as linhas iguais, e o glifo muda duas, as duas para melhor (`Perdidas".` e `Marocey`).
+
+**A saída cumpre-se com ressalva, e a ressalva é o oráculo.** A *Saída* pede ≤ 2 p.p.: nas folhas olhadas sim, com qualquer recorte; nas não
+vistas, sim com os sete livros, e fica em +2,46 sem os dois. O número negativo com os sete é o oráculo errando mais que as caixas do
+glifo (26,0% no *Capablanca*, 6,4% no *Chess Evolution*), e não mérito delas. Por isso a linha de cinco livros é a que importa, e o
+limite superior do IC dela, +3,10 e +6,21, não cabe em 2. Pior livro: *Seirawan*, +3,41 nas olhadas e +5,48 nas não vistas.
+
+**Os outros dois suspeitos, medidos.** Binarização: o Otsu sobe mesmo, de ~140 a ~205 no perfil médio, e a tinta dobra. Trocá-lo pelo
+meio entre papel e tinta, sobre a poeira, leva o Tesseract a 3,01% (27 folhas), o *Seirawan* a 0,39%, e o glifo a 7.532 inserções contra
+1.150: parte as letras dele. **Medido, não entra**; o Otsu alto fica como está. Linhas que tocam: 14 linhas acima de 1,8 mediana em 898,
+3 depois do filtro. Não são a causa.
+
+### O que ela não entrega
+
+- **O perfil calibrado não existe**: depende da S-703, que é humana. O perfil médio é sintético, e a mancha dele é um ponto escuro de
+  um pixel a meia resolução. Em scan de verdade a poeira tem outra forma, e o corte de 6 caixas soltas não foi visto em scan nenhum.
+- **O glifo continua em ~52%** no perfil médio: o conserto é da caixa, e o glifo erra por dentro dela.
+- **Há linhas inteiras que o `psm 7` ainda devolve vazias** com a caixa certa ou quase: é onde mora o que resta no *Seirawan* e no *Minhas 60* 217.
+- **A mancha sobre uma letra é acento**, e fica: a régua não a distingue, e a caixa só cresce até o corte acima.
+- A mancha entre as palavras de uma linha também fica: não muda a caixa, e é indistinguível de um ponto.
+
 ## S-715 · O leiaute de reserva ✅ implementada (2026-11-05)
 
 ### Problema

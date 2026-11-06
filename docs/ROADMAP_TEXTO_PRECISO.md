@@ -878,7 +878,7 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     `tess_pagina` ao lado.
   - *Saída:* a métrica existe no relatório e o G101 a lê dali.
   - *Reversão:* só relatório.
-- **S-714** · Leiaute sob ruído.
+- **S-714** · Leiaute sob ruído. ✅ entregue em 2026-11-06
   - *Contexto:* no perfil médio a perda de leiaute é 12,1 p.p. [6,9; 17,1]. Suspeitos, em ordem: binarização
     (janela fixa contra escala da letra), poeira passando no filtro de componente, e linhas que se
     tocam depois do desfoque.
@@ -886,6 +886,12 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     `texto_prosa_2026-10-30/`) no degradado calibrado, pareado contra o leiaute de hoje.
   - *Saída:* perda de leiaute ≤ 2 p.p. no perfil médio, sem piorar o ouro limpo.
   - *Reversão:* cada mudança de binarização ou filtro atrás de constante; desligada, volta a de hoje.
+  - *Achado:* **é a poeira, e não a binarização nem linha que toca.** Uma mancha na margem entra na linha e estica a caixa, e o `psm 7` lê a
+    folga como nada. `text/poeira.py` (`TIRAR_POEIRA`): Tesseract de 13,02% a **3,32%** nas 28 folhas, de 14,27% a 3,67% em 21 não vistas, e o
+    ouro limpo igual. Trocar o Otsu **não entra**: não é a causa, e parte as letras do glifo (7.532 inserções contra 1.150).
+  - *Achado:* perda de leiaute de +6,52 a **−3,18 [−9,10; +1,51]**; sem os dois livros em que o oráculo erra mais que o glifo (*Capablanca* 26%,
+    *Chess Evolution* 6,4%), de +10,17 a **+0,85 [−1,35; +3,10]**, e **+2,46 [−0,24; +6,21]** nas não vistas. Ponto dentro de 2 p.p. salvo esse último;
+    teto do IC fora. **Medido no perfil médio, e não no calibrado**, que depende da S-703: o corte de 6 caixas soltas não viu scan nenhum.
 - **S-715** · O leiaute de reserva.
   - *Contexto:* o Tesseract lendo a página inteira com o leiaute dele **nunca desaba** — resgata as
     folhas 903 e 1210 do *Chess Evolution* (99,9% → 4,2% e 2,1%), as de linha intercalada (16% → 2,2%)
