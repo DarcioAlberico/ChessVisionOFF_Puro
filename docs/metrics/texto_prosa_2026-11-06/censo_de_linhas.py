@@ -2,8 +2,11 @@
 
 Uso (com o `.venv` do projeto, `PYTHONPATH=<arvore>/src` e `CVOFF_RAIZ` no checkout com `PDF/`):
 
-  censo_de_linhas.py <saida.jsonl> [folhas por livro]
-  censo_de_linhas.py --ouro <medido.jsonl>     as folhas de um JSONL do medir.py, e a contagem da Saída do roadmap
+  censo_de_linhas.py <saida.jsonl> [folhas por livro] [--sem-particao]
+  censo_de_linhas.py --ouro <medido.jsonl> [--sem-particao]    as folhas de um JSONL do medir.py, e a contagem da Saída
+
+`--sem-particao` desliga `duas_linhas.PARTIR_LINHA_ALTA`, para medir o que `gigantes` faz sozinho. O script roda também
+sobre a árvore de antes da S-712, onde as duas coisas não existem: é assim que se mede o lado de antes.
 
 A saída não tem texto de livro: só contagens, nomes de arquivo e retângulos. Mesmo assim, fora do repositório.
 """
@@ -19,7 +22,8 @@ from pathlib import Path
 
 from chess_diagram_ocr.detection.hybrid import detect_diagrams_in_pdf_page
 from chess_diagram_ocr.pdf_io import render_pdf_page
-from chess_diagram_ocr.text.duas_linhas import descartar_fragmentos, partir_linhas_altas
+from chess_diagram_ocr.text import duas_linhas
+from chess_diagram_ocr.text.duas_linhas import descartar_fragmentos
 from chess_diagram_ocr.text.leitor import _tiras, segmentar
 from chess_diagram_ocr.text.linhas import envolve, ordem_em_faixa, quebrar_em_linhas
 
@@ -38,8 +42,13 @@ def medir_folha(pdf: str, indice: int) -> tuple[int, list[dict], int]:
     if not caixas:
         return 0, [], escala
     total, altas = 0, []
-    for _regiao, _coluna, desta in _tiras(caixas, regioes):
-        grupos = descartar_fragmentos(partir_linhas_altas(quebrar_em_linhas(ordem_em_faixa(desta))), escala=escala)
+    partir = getattr(duas_linhas, "partir_linhas_altas", list)
+    try:
+        tiras = _tiras(caixas, regioes, escala=escala)
+    except TypeError:  # a árvore de antes da S-712
+        tiras = _tiras(caixas, regioes)
+    for _regiao, _coluna, desta in tiras:
+        grupos = descartar_fragmentos(partir(quebrar_em_linhas(ordem_em_faixa(desta))), escala=escala)
         alturas = [envolve(g)[3] - envolve(g)[1] for g in grupos]
         if not alturas:
             continue
@@ -86,7 +95,10 @@ def ouro(medido: str) -> None:
 
 
 if __name__ == "__main__":
-    if sys.argv[1] == "--ouro":
-        ouro(sys.argv[2])
+    args = [a for a in sys.argv[1:] if a != "--sem-particao"]
+    if "--sem-particao" in sys.argv:
+        duas_linhas.PARTIR_LINHA_ALTA = False
+    if args[0] == "--ouro":
+        ouro(args[1])
     else:
-        censo(sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 14)
+        censo(args[0], int(args[1]) if len(args) > 1 else 14)

@@ -112,6 +112,28 @@ class TirarMolduraTests(unittest.TestCase):
         self.assertEqual(quantas, 1)
         self.assertGreater(int((limpa > 0).sum()), 1000, "o anel da borda do scan cerca a folha inteira")
 
+    def test_o_anel_que_nao_chega_a_cobertura_nao_apaga(self) -> None:
+        """Anel a 86% da folha, com riscos até a borda: a parte grossa não cobre 90%, e o vazado é que a separa da faixa."""
+        imagem = _folha()
+        cv2.rectangle(imagem, (70, 100), (930, 1300), (40, 40, 40), 30)
+        imagem[0:100, 500:503] = 40
+        imagem[1300:, 500:503] = 40
+        imagem[700:703, 0:70] = 40
+        imagem[700:703, 930:] = 40
+        cv2.rectangle(imagem, (0, 0), (999, 1399), (40, 40, 40), 2)
+        limpa, quantas = moldura.tirar_moldura(binarize(imagem))
+        self.assertEqual(quantas, 1)
+        self.assertGreater(int((limpa > 0).sum()), 1000, "o texto de dentro do anel fica")
+
+    def test_o_quadro_grosso_ligado_por_filete_nao_apaga(self) -> None:
+        imagem = _folha()
+        cv2.rectangle(imagem, (200, 60), (800, 600), (40, 40, 40), 24)
+        imagem[0:60, 500:502] = 40
+        cv2.rectangle(imagem, (0, 0), (999, 1399), (40, 40, 40), 2)
+        antes = int((moldura.tirar_moldura(binarize(_folha(filete=True)))[0] > 0).sum())
+        limpa, _ = moldura.tirar_moldura(binarize(imagem))
+        self.assertGreater(int((limpa > 0).sum()), antes * 0.6, "as linhas de dentro do quadro ficam")
+
     def test_a_constante_desliga(self) -> None:
         binaria = binarize(_folha(filete=True))
         with mock.patch.object(moldura, "TIRAR_MOLDURA", False):

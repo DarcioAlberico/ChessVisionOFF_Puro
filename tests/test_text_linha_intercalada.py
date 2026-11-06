@@ -39,9 +39,9 @@ def _folha(*, faixa: bool = False, fio: bool = False, n_linhas: int = 20) -> np.
 
 
 def _linhas(imagem: np.ndarray) -> list[list[Caixa]]:
-    _, _, _, caixas, regioes = leitor.segmentar(imagem)
+    _, _, _escala, caixas, regioes = leitor.segmentar(imagem)
     saida: list[list[Caixa]] = []
-    for _regiao, _coluna, desta in leitor._tiras(caixas, regioes):
+    for _regiao, _coluna, desta in leitor._tiras(caixas, regioes, escala=_escala):
         saida.extend(linhas.quebrar_em_linhas(linhas.ordem_em_faixa(desta)))
     return saida
 
@@ -102,47 +102,121 @@ class QuadroTests(unittest.TestCase):
 
 
 class SemGigantesTests(unittest.TestCase):
-    ESCALA = 20
-    BINARIA = np.zeros((6000, 3000), dtype=np.uint8)
+    """O que não é letra sai. Os números são literais: mudar uma régua tem de quebrar aqui."""
 
-    def _caixa(self, altura: int, largura: int = 12) -> Caixa:
-        return Caixa(100, 100, 100 + largura, 100 + altura)
+    ESCALA = 20
+    BINARIA = np.zeros((2000, 3000), dtype=np.uint8)
+
+    def _fora(self, *caixas: Caixa, binaria: np.ndarray | None = None) -> list[Caixa]:
+        ficam = gigantes.sem_gigantes(list(caixas), self.BINARIA if binaria is None else binaria, escala=self.ESCALA)
+        return [c for c in caixas if c not in ficam]
 
     def test_a_folha_sem_gigante_devolve_a_mesma_lista(self) -> None:
-        caixas = [self._caixa(20), self._caixa(26)]
+        caixas = [Caixa(0, 0, 12, 20), Caixa(20, 0, 32, 26)]
         self.assertIs(gigantes.sem_gigantes(caixas, self.BINARIA, escala=self.ESCALA), caixas)
 
-    def test_a_fronteira_da_altura(self) -> None:
-        limite = int(gigantes.ALTURA_DE_GIGANTE * self.ESCALA)
-        no_limite, acima = self._caixa(limite), self._caixa(limite + 1)
-        self.assertEqual(gigantes.sem_gigantes([no_limite, acima], self.BINARIA, escala=self.ESCALA), [no_limite])
+    def test_o_fio_sai_so_acima_de_oito_escalas(self) -> None:
+        self.assertEqual(self._fora(fio := Caixa(0, 0, 4, 161)), [fio])
+        self.assertEqual(self._fora(Caixa(0, 0, 4, 160)), [])
 
-    def test_a_capitular_fica(self) -> None:
-        """A inicial de três linhas é letra, e a régua não pode alcançá-la."""
-        capitular = self._caixa(3 * self.ESCALA + 10, largura=3 * self.ESCALA)
-        self.assertEqual(gigantes.sem_gigantes([capitular], self.BINARIA, escala=self.ESCALA), [capitular])
+    def test_a_largura_do_fio(self) -> None:
+        self.assertEqual(self._fora(fio := Caixa(0, 0, 9, 300)), [fio])
+        self.assertEqual(self._fora(Caixa(0, 0, 10, 300)), [], "o `I` de título é mais largo que meia escala")
+
+    def test_a_faixa_sai_pela_fracao_da_folha(self) -> None:
+        self.assertEqual(self._fora(faixa := Caixa(0, 0, 300, 600)), [faixa], "0,3 de 2.000")
+        self.assertEqual(self._fora(Caixa(0, 0, 300, 599)), [])
+
+    def test_a_letra_de_titulo_fica(self) -> None:
+        """9 a 12 escalas: `PRACTICAL MATTERS` e `OPENING`, que a primeira versão apagava."""
+        titulo = [Caixa(60 * k, 300, 60 * k + 55, 300 + 200) for k in range(8)]
+        self.assertEqual(self._fora(*titulo), [])
+
+    def test_a_moldura_aberta_sai_e_o_quadro_fechado_fica(self) -> None:
+        """A fechada é o `CHAPTER SIX`: as letras de dentro não existem, e só o recorte dela as lê."""
+        quadro = Caixa(100, 100, 900, 400)
+        letras = [Caixa(150 + 30 * k, 200, 170 + 30 * k, 220) for k in range(3)]
+        self.assertEqual(self._fora(quadro, *letras), [quadro])
+        self.assertEqual(self._fora(quadro, *letras[:2]), [])
 
     def test_a_foto_abaixo_do_corte_sai_pela_tinta(self) -> None:
-        binaria = np.zeros((400, 400), dtype=np.uint8)
+        binaria = np.zeros((2000, 3000), dtype=np.uint8)
         binaria[10:150, 10:170] = 255
-        foto = Caixa(10, 10, 170, 150)
-        self.assertEqual(gigantes.sem_gigantes([foto], binaria, escala=self.ESCALA), [])
+        self.assertEqual(self._fora(foto := Caixa(10, 10, 170, 150), binaria=binaria), [foto])
+
+    def test_o_lado_da_mancha(self) -> None:
+        binaria = np.full((2000, 3000), 255, dtype=np.uint8)
+        self.assertEqual(self._fora(Caixa(0, 0, 59, 150), binaria=binaria), [], "menos de 3 escalas de largura")
+        self.assertEqual(self._fora(foto := Caixa(0, 0, 60, 60), binaria=binaria), [foto])
 
     def test_a_letra_grande_tem_tinta_de_letra(self) -> None:
-        binaria = np.zeros((400, 400), dtype=np.uint8)
+        binaria = np.zeros((2000, 3000), dtype=np.uint8)
         binaria[10:150, 10:60] = 255
         binaria[10:50, 10:170] = 255
-        letra = Caixa(10, 10, 170, 150)
-        self.assertEqual(gigantes.sem_gigantes([letra], binaria, escala=self.ESCALA), [letra])
+        self.assertEqual(self._fora(Caixa(10, 10, 170, 150), binaria=binaria), [])
 
     def test_sem_escala_nao_mexe(self) -> None:
-        caixas = [self._caixa(5000)]
+        caixas = [Caixa(0, 0, 4, 1900)]
         self.assertIs(gigantes.sem_gigantes(caixas, self.BINARIA, escala=0), caixas)
 
     def test_a_constante_desliga(self) -> None:
-        caixas = [self._caixa(5000)]
+        caixas = [Caixa(0, 0, 4, 1900)]
         with mock.patch.object(gigantes, "TIRAR_GIGANTES", False):
             self.assertIs(gigantes.sem_gigantes(caixas, self.BINARIA, escala=self.ESCALA), caixas)
+
+
+class _Classificador:
+    """Lê tudo como `x`: a pergunta aqui é quais linhas existem, e não o que elas dizem."""
+
+    def classificar(self, recortes: list[np.ndarray]) -> list[tuple[str, float]]:
+        return [("x", 0.9) for _ in recortes]
+
+
+class _Reconhecedor:
+    classifier = _Classificador()
+
+
+def _pelo_leitor(imagem: np.ndarray) -> list[tuple[int, int, int, int]]:
+    """As caixas de linha que `linhas_do_glifo` entrega, e é ela que precisa ter a regra ligada."""
+    cruas, _ = leitor.linhas_do_glifo(
+        imagem,
+        reconhecedor=_Reconhecedor(),
+        colados="nunca",
+        caixa_alta=False,
+        traco=False,
+        marca_fina=False,
+        empilhados=False,
+        italico=False,
+        dicionario=False,
+        numeros=False,
+    )
+    return [(c.caixa.x1, c.caixa.y1, c.caixa.x2, c.caixa.y2) for c in cruas]
+
+
+class FiacaoTests(unittest.TestCase):
+    """Pelo leitor, e não pela função: tirar a chamada de `linhas_do_glifo` tem de quebrar aqui."""
+
+    def test_o_titulo_grande_chega_numa_linha_so_dele(self) -> None:
+        imagem = _folha(n_linhas=20)
+        cv2.putText(imagem, "OPENING", (220, 1380), cv2.FONT_HERSHEY_SIMPLEX, 9.0, (0, 0, 0), 26, cv2.LINE_AA)
+        caixas = _pelo_leitor(imagem)
+        altas = [c for c in caixas if c[3] - c[1] > 150]
+        self.assertTrue(altas, "o título tem de chegar ao leitor de linha")
+        normais = [c for c in caixas if c[3] - c[1] <= 150]
+        self.assertGreaterEqual(len(normais), 18, "e sem abrir banda nas linhas de cima")
+        self.assertLess(max(c[3] - c[1] for c in normais), 60)
+
+    def test_o_pedaco_solto_sai_da_linha(self) -> None:
+        """Um risco acima do começo da linha: a caixa curta não fixa a base, e a banda recolhe os dois."""
+        imagem = _folha(n_linhas=20)
+        for n in (3, 9, 15):
+            imagem[80 + 56 * n - 44 : 80 + 56 * n - 38, 205:215] = 0
+        com = _pelo_leitor(imagem)
+        with mock.patch.object(duas_linhas, "PARTIR_LINHA_ALTA", False):
+            sem = _pelo_leitor(imagem)
+        self.assertGreater(max(c[3] - c[1] for c in sem), max(c[3] - c[1] for c in com), "o caso tem de reproduzir")
+        alturas = sorted(c[3] - c[1] for c in com)
+        self.assertLess(alturas[-1], 1.8 * alturas[len(alturas) // 2])
 
 
 def _fileira(y: int, n: int = 12, altura: int = 20, x0: int = 0) -> list[Caixa]:
@@ -190,6 +264,18 @@ class PartirLinhasAltasTests(unittest.TestCase):
     def test_a_linha_normal_nao_e_examinada(self) -> None:
         normal = _fileira(200, altura=30)
         self.assertEqual(self._partidas(normal), [normal])
+
+    def test_o_corte_so_acima_de_um_virgula_oito(self) -> None:
+        """35 de altura contra a mediana de 20: 1,75, e duas fileiras assim continuam inteiras."""
+        alta = sorted(_fileira(200, altura=15) + _fileira(220, altura=15), key=lambda c: c.x1)
+        self.assertEqual(self._partidas(alta), [alta])
+
+    def test_a_maiuscula_maior_nao_e_outra_linha(self) -> None:
+        """`You have` saía `Y` / `ou have`: a maiúscula atravessa o vale, e sozinha não é uma linha."""
+        maiuscula = Caixa(0, 200, 30, 250)
+        resto = _fileira(232, altura=18, x0=40)
+        linha = [maiuscula, *resto]
+        self.assertEqual(self._partidas(linha), [linha])
 
     def test_a_tira_curta_nao_tem_mediana(self) -> None:
         alta = sorted(_fileira(0) + _fileira(26), key=lambda c: c.x1)

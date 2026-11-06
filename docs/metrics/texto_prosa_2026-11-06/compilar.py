@@ -5,8 +5,13 @@ nos conjuntos, `medir.py perdidas`, `medir.py varrer`, e `censo_de_linhas.py`. `
 
   compilar.py <saida.json> <pasta> <commit de antes> <commit de depois> <estilo.json>
 
-Na pasta, com `T` em `antes` e `depois`: `ce_T`, `nv_T`, `ouro_T`, `prata_T` .jsonl, e `prata_gigantes`, `censo_antes`,
-`censo_gigantes`, `censo_depois`, `perdidas`, `amostra_ce`, `varrer` .jsonl. `auditoria.json` é a conta das caixas que saíram.
+Na pasta, com `T` em `antes` e `depois`: `ce_T`, `nv_T`, `ouro_T`, `prata_T` .jsonl; e mais:
+
+- `prata_gigantes.jsonl` e `ce_gigantes.jsonl`, `nv_gigantes.jsonl`: com `duas_linhas.PARTIR_LINHA_ALTA` desligada;
+- `censo_antes`, `censo_gigantes`, `censo_depois` .jsonl: `censo_de_linhas.py`, com `--sem-particao` no segundo;
+- `ouro_altas.json`, `ouro_altas_so_gigantes.json`: `censo_de_linhas.py --ouro`;
+- `auditoria.json`: `auditoria_das_caixas.py`;
+- `perdidas`, `amostra_ce`, `varrer` .jsonl: `medir.py`.
 """
 from __future__ import annotations
 
@@ -104,6 +109,15 @@ def main(saida: str, pasta_: str, antes: str, depois: str, estilo: str) -> None:
             "tess_cer": {
                 "sem": medir._taxa(_registros(pasta / "prata_gigantes.jsonl"), "tess"),
                 "com": medir._taxa(_registros(pasta / "prata_depois.jsonl"), "tess"),
+            },
+        },
+        "particao_sozinha_nos_chess_evolution": {
+            "nota": "as 40 não vistas; é aqui que a partição muda folha de livro digital",
+            "tess": _folha_a_folha(pasta / "nv_gigantes.jsonl", pasta / "nv_depois.jsonl", "tess"),
+            "glifo": _folha_a_folha(pasta / "nv_gigantes.jsonl", pasta / "nv_depois.jsonl", "glifo"),
+            "tess_cer": {
+                "sem": medir._taxa(_registros(pasta / "nv_gigantes.jsonl"), "tess"),
+                "com": medir._taxa(_registros(pasta / "nv_depois.jsonl"), "tess"),
             },
         },
         "folhas_perdidas": dep.get("folhas_perdidas"),

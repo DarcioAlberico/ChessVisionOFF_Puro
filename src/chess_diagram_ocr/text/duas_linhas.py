@@ -185,6 +185,10 @@ def _partir_uma(linha: list[Caixa], teto: float) -> list[list[Caixa]]:
     de_baixo = [c for c in linha if (c.y1 + c.y2) / 2 >= corte]
     if not de_cima or not de_baixo:
         return [linha]
+    # **A maiúscula maior que o resto não é outra linha**: `You have` saía `Y` / `ou have`. O vale acima das minúsculas é
+    # a parte de cima dela, e ela atravessa o corte. Um lado feito só do que atravessa não é uma linha.
+    if all(c.y2 > corte for c in de_cima) or all(c.y1 < corte for c in de_baixo):
+        return [linha]
     return _partir_uma(de_cima, teto) + _partir_uma(de_baixo, teto)
 
 

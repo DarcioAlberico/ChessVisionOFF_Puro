@@ -621,7 +621,7 @@ def linhas_do_glifo(
         )
 
     cruas: list[_Cru] = []
-    for i_regiao, indice, desta in _tiras(caixas, regioes):
+    for i_regiao, indice, desta in _tiras(caixas, regioes, escala=escala):
         grupos = descartar_fragmentos(partir_linhas_altas(quebrar_em_linhas(ordem_em_faixa(desta))), escala=escala)
         for grupo in grupos:
             recortes = [c.recortar(cinza) for c in grupo]
@@ -703,7 +703,7 @@ def linhas_do_glifo(
 
 
 def _tiras(
-    caixas: Sequence[_boxes.Caixa], regioes: Sequence[_regioes.Regiao]
+    caixas: Sequence[_boxes.Caixa], regioes: Sequence[_regioes.Regiao], *, escala: int = 0
 ) -> list[tuple[int, int, list[_boxes.Caixa]]]:
     """`(região, coluna, caixas)` na ordem de leitura, cada tira pronta para virar linha (S-507).
 
@@ -711,6 +711,9 @@ def _tiras(
     colunas a banda recolhe a linha da esquerda e a da direita juntas; quebrar sem separar antes é
     o defeito que `segmentar` documenta. E numa folha com bloco de largura inteira o inverso
     também vale: separar por coluna o que é uma linha só a parte em duas metades.
+
+    **A letra grande sai numa tira só dela, com a mesma região e coluna** (S-712). Junto das outras, ela abre uma banda que
+    engole a coluna. `escala=0` é quem não sabe a escala, e não separa. A ordem final é de `montar`, pela geometria.
     """
     saida: list[tuple[int, int, list[_boxes.Caixa]]] = []
     for i_regiao, regiao in enumerate(regioes or [_regioes.Regiao(0, 0, ())]):
@@ -726,8 +729,8 @@ def _tiras(
                 if len(faixas) > 1
                 else list(da_regiao)
             )
-            if desta:
-                saida.append((i_regiao, indice, desta))
+            normais, grandes = _gigantes.separar_grandes(desta, escala=escala)
+            saida.extend((i_regiao, indice, grupo) for grupo in (normais, grandes) if grupo)
     return saida
 
 
