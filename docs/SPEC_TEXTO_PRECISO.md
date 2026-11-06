@@ -335,6 +335,27 @@ continua só ordenando, mas o número de scan "6,0% do Tesseract" do roadmap era
 *Achado:* `text/notacao.fatiar` continua conservador (S-208), e o classificador da fusão, próprio dela, ainda não reconhece
 `Rg8-Rg6` nem `31.Bxg6fxg632`: são dois instrumentos, e a guarda de grafo de import é de outro item.
 
+## S-704 · A degradação sintética, reprodutível, em duas famílias ✅ implementada (2026-11-06)
+
+**Problema.** O perfil `medio` de 2026-10-30 equivale a ~110 dpi e leva o glifo a 57,2%, contra 14,4% na prata: não foi calibrado
+contra nada, morava num script, e a semente era o índice da folha.
+
+**Decisão.** `src/chess_diagram_ocr/text/degradacao.py`: `aplicar(img_rgb, perfil, semente)`, `semente_da_folha(identidade, folha)`
+(não depende da ordem da corrida), geometria intacta. **Duas famílias com geradores diferentes:** `AUMENTO`, os cinco perfis de
+`degradar.py`, byte a byte (reduz, desfoca, ruído gaussiano, manchas, JPEG; `default_rng`), que o aumento de dados da Fase 105 pode
+ver; e `RESERVADA`, três perfis `fotocopia_*`, outra física (tinta que borra desigual, sombra de baixa frequência, contraste amassado,
+estrias de sensor, poeira em grumos; sem redução nem JPEG; `MT19937`), **só para medir a M5**. `perfil_de_aumento` recusa os nomes dela.
+
+**O perfil `calibrado` fica pendente, com o recuo.** Ele depende da S-703 (humano, D3). `aplicar(..., "calibrado")` levanta
+`PerfilPendente` com a frase do recuo da seção 7: a M5 fica sem número, e os perfis publicados dizem que não foram calibrados. Os
+números de `fotocopia_*` também não saíram de scan real.
+
+**Critério de aceite.** `tests/test_text_degradacao.py`: mesma folha e semente dão os mesmos bytes, no mesmo processo e em outro;
+a família de aumento é o protótipo byte a byte; a tinta fica a até 2 px; o aumento recusa a família reservada.
+
+**Desvios.** A verificação pede o `resumo.py` do Tesseract no perfil calibrado contra o scan-ouro-dev: não existe sem a S-703. O
+`degradado` da linha de base da S-706 usa `semente_da_folha`, e não o índice, por isso não é o mesmo ruído de 2026-10-30.
+
 ## S-710 · Guarda de leitura incompleta, e o campo de avisos que a página não tinha ✅ implementada (2026-11-05)
 
 ### Problema

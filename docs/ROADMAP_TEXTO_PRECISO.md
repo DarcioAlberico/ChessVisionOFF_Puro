@@ -732,7 +732,7 @@ b`), e consertá-la
     sorteado antes da transcrição.
   - *Reversão:* folha com acordo abaixo de 99,9% volta para transcrição; nada do produto muda.
   - *Dono:* ~20–30 min por folha e mais a dupla digitação; **cerca de 15 horas humanas** (decisão D3).
-- **S-704** · Degradação sintética reprodutível e **calibrada** como fatia de robustez.
+- **S-704** · Degradação sintética reprodutível e **calibrada** como fatia de robustez. ✅ entregue em 2026-11-06 (menos o perfil `calibrado`, que depende da S-703)
   - *Contexto:* o perfil `medio` de 2026-10-30 equivale a ~110 dpi e leva o glifo a 57,2%, contra
     14,4% na prata (scan real): ele não foi calibrado contra nada, e um alvo (M5) sobre um perfil sem
     calibração mede uma imagem que ninguém imprime.
@@ -747,6 +747,8 @@ b`), e consertá-la
   - *Saída:* mesma folha e semente → mesma imagem, byte a byte (teste); o perfil calibrado publicado
     com a medida que o calibrou.
   - *Reversão:* módulo de medição, sem chamador em produção.
+  - *Achado:* `text/degradacao.py` traz as duas famílias (`medio` e os outros quatro, byte a byte os do protótipo; `fotocopia_*`, a
+    reservada à M5). O `calibrado` levanta `PerfilPendente` com o recuo da seção 7: sem a S-703, a M5 não tem número.
 - **S-705** · Prata: livros escaneados com camada de terceiro, rotulados como "só para ordenar", e
   estratificados como o scan-ouro (ClearScan / ≤ 150 dpi / ≥ 300 dpi).
   - *Entrega:* manifesto `assets/texto_prosa/prata.json`; o relatório imprime a palavra **"ordenação"**
