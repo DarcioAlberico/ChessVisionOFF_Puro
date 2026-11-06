@@ -126,6 +126,67 @@ class ModoTests(unittest.TestCase):
         self.modo.abrir(_ID, 1)
         self.assertEqual("pela metade", self.modo.linhas[0].campo.text())
 
+    def test_sem_backup_trocar_de_folha_nao_apaga_o_digitado(self) -> None:
+        self.modo.definir_pasta(pasta_temporaria(self))
+        self.modo.abrir(_ID, 1)
+        self._digitar("horas de trabalho")
+        self.assertFalse(self.modo.abrir(_ID, 2))
+        self.assertEqual("horas de trabalho", self.modo.linhas[0].campo.text())
+        self.assertEqual(1, self.modo._folha.folha)  # noqa: SLF001
+        self.assertIn("não foi gravado", self.modo.frase.text())
+
+    def test_com_disco_cheio_a_frase_nao_diz_em_dia(self) -> None:
+        self.modo.abrir(_ID, 1)
+        self._digitar("horas de trabalho")
+        with mock.patch.object(ts.os, "fsync", side_effect=OSError(28, "disco cheio")):
+            self.assertFalse(self.modo.abrir(_ID, 2))
+        self.assertEqual("horas de trabalho", self.modo.linhas[0].campo.text())
+        self.assertIn("disco cheio", self.modo.frase.text())
+        self.assertNotIn(strings.TRANSCRICAO_BACKUPS["em_dia"], self.modo.frase.text())
+        self.assertTrue(self.modo.guardar(), "o disco voltou, e o digitado ainda está lá para gravar")
+        self.assertEqual("horas de trabalho", self._dados(1)[-1]["linhas"][0])
+
+    def test_a_caixa_de_folha_nao_mente_quando_a_troca_e_recusada(self) -> None:
+        self.modo.definir_pasta(pasta_temporaria(self))
+        self.modo.abrir(_ID, 1)
+        self._digitar("x")
+        self.modo.escolha_de_folha.setCurrentIndex(1)
+        self.modo._trocar_folha(1)  # noqa: SLF001
+        self.assertEqual((_ID, 1), self.modo.escolha_de_folha.currentData())
+
+    def test_trocar_de_passada_sem_gravar_nao_apaga(self) -> None:
+        self.modo.definir_pasta(pasta_temporaria(self))
+        self.modo.abrir(_ID, 1)
+        self._digitar("primeira passada")
+        self.modo.escolha_de_passada.setCurrentIndex(self.modo.escolha_de_passada.findData(2))
+        self.assertEqual(1, self.modo.passada)
+        self.assertEqual("primeira passada", self.modo.linhas[0].campo.text())
+
+    def test_arquivo_com_linha_cortada_abre_e_avisa(self) -> None:
+        self.modo.abrir(_ID, 1)
+        self._digitar("inteira")
+        self.modo.concluir()
+        with ts.caminho_da_passada(self.pasta, 1).open("ab") as arquivo:
+            arquivo.write(b'{"identidade": "cortad')
+        self.assertTrue(self.modo.definir_pasta(self.pasta))
+        self.assertTrue(self.modo.abrir(_ID, 1))
+        self.assertEqual("inteira", self.modo.linhas[0].campo.text())
+        self.assertIn("cortadas", self.modo.frase.text())
+
+    def test_folha_vazia_nao_se_conclui(self) -> None:
+        self.modo.abrir(_ID, 1)
+        self.modo.concluir()
+        self.assertEqual(strings.TRANSCRICAO_FOLHA_VAZIA, self.modo.frase.text())
+        self.assertFalse(ts.caminho_da_passada(self.pasta, 1).exists())
+
+    def test_concluir_mantem_a_folha_na_caixa(self) -> None:
+        self.modo._encher_folhas()  # noqa: SLF001
+        self.modo.escolha_de_folha.setCurrentIndex(1)
+        self.modo.abrir(_ID, 2)
+        self._digitar("x")
+        self.modo.concluir()
+        self.assertEqual((_ID, 2), self.modo.escolha_de_folha.currentData())
+
     def test_sair_do_modo_guarda(self) -> None:
         self.modo.abrir(_ID, 1)
         self._digitar("antes de sair")
@@ -250,6 +311,24 @@ class NoPainelTests(unittest.TestCase):
         self.painel.transcricao.botao_de_fechar.click()
         self.assertFalse(self.painel.em_transcricao)
         self.assertTrue(self.painel.editor.isVisible())
+
+    def test_sem_gravar_o_modo_nao_sai_e_a_frase_fica(self) -> None:
+        self.painel.show()
+        self.painel.alternar_transcricao()
+        modo = self.painel.transcricao
+        modo.manifesto = _manifesto()
+        modo._achados = {_ID: Path("x.pdf")}  # noqa: SLF001
+        modo.definir_pasta(pasta_temporaria(self))
+        modo._encher_folhas()  # noqa: SLF001
+        with mock.patch.object(ts, "abrir_folha", side_effect=_aberta):
+            modo.abrir(_ID, 1)
+        modo.linhas[0].campo.setText("x")
+        modo.linhas[0].campo.textEdited.emit("x")
+        self.painel.alternar_transcricao()
+        self.assertTrue(self.painel.em_transcricao)
+        self.assertFalse(self.painel.editor.isVisible())
+        self.assertIn("não foi gravado", modo.frase.text())
+        self.assertEqual("x", modo.linhas[0].campo.text())
 
     def test_a_pasta_sobrevive_a_sessao(self) -> None:
         pasta = pasta_temporaria(self)

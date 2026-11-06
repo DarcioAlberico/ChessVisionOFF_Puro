@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 import unicodedata
@@ -41,6 +42,8 @@ from . import regua_prosa as _regua
 from . import scan_ouro as _scan_ouro
 from .pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
 from .rico import DocumentoRico
+
+logger = logging.getLogger(__name__)
 
 PASSADAS = (1, 2)
 VAZIO = "vazio"
@@ -98,7 +101,12 @@ def backup_declarado(pasta: str | Path) -> Path | None:
     arquivo = Path(pasta) / ARQUIVO_DO_BACKUP
     if not arquivo.is_file():
         return None
-    return Path(json.loads(arquivo.read_text(encoding="utf-8"))["backup"])
+    try:
+        return Path(json.loads(arquivo.read_text(encoding="utf-8"))["backup"])
+    except (ValueError, KeyError, TypeError):
+        # Declaração ilegível é declaração que não há: o caderno recusa gravar, e a tela diz. Levantar aqui mataria o processo num slot.
+        logger.warning("A declaração de backup em %s está ilegível.", arquivo)
+        return None
 
 
 def estado_do_backup(pasta: str | Path) -> str:
@@ -151,16 +159,34 @@ class FolhaDaPassada:
         return cls(**campos)
 
 
-def _ler_jsonl(caminho: Path) -> dict[tuple[str, int], FolhaDaPassada]:
+def _ler_com_ilegiveis(caminho: Path) -> tuple[dict[tuple[str, int], FolhaDaPassada], int]:
+    """As folhas, e quantas linhas não se leram. **A linha cortada não derruba nada**: queda de luz e disco cheio cortam a última linha,
+    e levantar aqui seria morte do processo a cada abertura do modo (exceção em slot do PyQt6), com as horas de digitação presas no arquivo."""
     if not caminho.is_file():
-        return {}
+        return ({}, 0)
     registros: dict[tuple[str, int], FolhaDaPassada] = {}
-    with caminho.open(encoding="utf-8") as arquivo:
-        for linha in arquivo:
-            if linha.strip():
-                registro = FolhaDaPassada.de_json(json.loads(linha))
-                registros[(registro.identidade, registro.folha)] = registro
-    return registros
+    ilegiveis = 0
+    for linha in caminho.read_bytes().split(b"\n"):
+        if not linha.strip():
+            continue
+        try:
+            registro = FolhaDaPassada.de_json(json.loads(linha.decode("utf-8")))
+        except (ValueError, TypeError):
+            ilegiveis += 1
+            continue
+        registros[(registro.identidade, registro.folha)] = registro
+    if ilegiveis:
+        logger.warning("%s: %d linha(s) ilegível(is), ignorada(s).", caminho.name, ilegiveis)
+    return (registros, ilegiveis)
+
+
+def _ler_jsonl(caminho: Path) -> dict[tuple[str, int], FolhaDaPassada]:
+    return _ler_com_ilegiveis(caminho)[0]
+
+
+def linhas_ilegiveis(pasta: str | Path, passada: int) -> int:
+    """É o que a tela e o `--acordo` avisam: o que estava nessa linha voltou à gravação anterior da folha."""
+    return _ler_com_ilegiveis(caminho_da_passada(pasta, passada))[1]
 
 
 class CadernoDaPassada:
@@ -203,8 +229,10 @@ class CadernoDaPassada:
         if backup is None:
             raise SemBackup("declare o backup antes de gravar: são horas de trabalho humano.")
         self.pasta.mkdir(parents=True, exist_ok=True)
+        # A linha cortada de antes não pode engolir esta: sem a quebra, as duas virariam uma linha ilegível só.
+        cortada = self.arquivo.is_file() and self.arquivo.stat().st_size > 0 and not self.arquivo.read_bytes().endswith(b"\n")
         with self.arquivo.open("a", encoding="utf-8", newline="\n") as arquivo:
-            arquivo.write(json.dumps(registro.para_json(), ensure_ascii=False) + "\n")
+            arquivo.write(("\n" if cortada else "") + json.dumps(registro.para_json(), ensure_ascii=False) + "\n")
             arquivo.flush()
             os.fsync(arquivo.fileno())
         try:
@@ -425,7 +453,8 @@ def estado_da_verdade(manifesto: _scan_ouro.ScanOuro, pastas: Mapping[int, Mappi
         validas[passada] = {}
         for f in manifesto.folhas:
             registro = pastas.get(passada, {}).get((f.identidade, f.folha))
-            if registro is None or not registro.completa or registro.sha_folha != f.sha_folha:
+            # Concluída sem uma letra não é verdade: mediria o motor contra o vazio.
+            if registro is None or not registro.completa or registro.sha_folha != f.sha_folha or not registro.texto.strip():
                 continue
             _procedencia.exigir_transcricao(registro.procedencia, onde=f"scan-ouro, folha {f.folha}")
             validas[passada][(f.identidade, f.folha)] = registro
@@ -464,6 +493,10 @@ def relatorio_do_acordo(manifesto: _scan_ouro.ScanOuro, pasta: str | Path | None
         return (linhas, 3)
     estado = estado_da_verdade(manifesto, ler_pasta(pasta))
     linhas.append(f"backup: {estado_do_backup(pasta)}")
+    for passada in PASSADAS:
+        ilegiveis = linhas_ilegiveis(pasta, passada)
+        if ilegiveis:
+            linhas.append(f"passada {passada}: {ilegiveis} linha(s) ilegível(is) ignorada(s); a folha delas volta à gravação anterior")
     linhas.append(f"concluídas: passada 1 {estado.concluidas[1]} de {estado.folhas}; passada 2 {estado.concluidas[2]} de {estado.duplas}")
     if estado.custo is not None:
         linhas.append(custo_por_extenso(estado.custo))
@@ -514,6 +547,7 @@ __all__ = [
     "estado_do_backup",
     "ler_pasta",
     "linhas_da_folha",
+    "linhas_ilegiveis",
     "partidas_da_passada",
     "recorte_da_linha",
     "recusar_no_repositorio",

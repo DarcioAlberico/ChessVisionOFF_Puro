@@ -143,6 +143,8 @@ def chave_de_serie(nome_do_arquivo: str) -> str:
     """O resumo do nome sem número, ano e pontuação: `Autor - Título 2 (2019)` e `Autor - Título 4 (2023)` dão a mesma chave."""
     sem_acento = "".join(c for c in unicodedata.normalize("NFKD", nome_do_arquivo.casefold()) if not unicodedata.combining(c))
     pedacos = [p for p in re.split(r"[^a-z]+", sem_acento) if p and p not in _RUIDO_DE_SERIE]
+    # O nome só em cirílico não tem letra de a a z, e a chave vazia seria a mesma para todos eles: recusaria todo livro russo.
+    pedacos = pedacos or [p for p in re.findall(r"[^\W\d_]+", sem_acento) if p not in _RUIDO_DE_SERIE]
     return hashlib.sha256(" ".join(pedacos).encode("utf-8")).hexdigest()[:16]
 
 

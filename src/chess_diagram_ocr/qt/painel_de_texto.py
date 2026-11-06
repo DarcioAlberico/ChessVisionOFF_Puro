@@ -2188,8 +2188,11 @@ class PainelDeTexto(QWidget):
 
         Com o caderno (S-611) não há pergunta: a folha vai para ele, e a trava sai.
         """
-        if self.transcricao is not None:
-            self.transcricao.desativar()  # são horas de alguém, e o relógio de gravação pode não ter disparado (S-703)
+        # São horas de alguém, e o relógio de gravação pode não ter disparado (S-703). O que não gravou pergunta antes de se perder.
+        if self.transcricao is not None and not self.transcricao.desativar() and not self._confirmar_descarte(
+            "Fechar a janela descarta a transcrição que não foi gravada.", ao_fechar=True
+        ):
+            return False
         if self._guardar_a_folha():
             self.fechar_caderno()
             return True
@@ -3070,8 +3073,9 @@ class PainelDeTexto(QWidget):
         if ligar:
             self.transcricao.definir_livro(self._pdf)
             self.transcricao.ativar()
-        else:
-            self.transcricao.desativar()
+        elif not self.transcricao.desativar():
+            self.transcricao.ativar()  # o digitado não foi gravado: o modo fica, com a frase da recusa
+            return
         self.editor.setVisible(not ligar)
         self.transcricao.setVisible(ligar)
 

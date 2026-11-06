@@ -2,7 +2,7 @@
   "versao": 1,
   "congelado_em": "2026-11-06",
   "primeira_leitura_do_teste": null,
-  "sorteio": {"candidatos": 43, "conteudo": "ouro.estrato_do_texto sobre a camada de terceiro, com regua_prosa.classe_do_token; sem camada, a_conferir", "cotas": {"dev": {"ate_150": 1, "clearscan": 1, "de_300": 1}, "folhas_por_livro": 3, "por_lingua": 3, "teste": {"ate_150": 2, "clearscan": 2, "de_300": 1}}, "duplas": "sha256('dupla:' + identidade + folha), a primeira de cada produção em cada split", "folhas": "sha256(identidade + folha), base 1, fora os 8% iniciais e finais", "livros": "sha256(semente:identidade), por produção; livro visto não vai ao teste", "script_sha256": "7d0238b14039fa51", "semente": "s703-2026-11-06"},
+  "sorteio": {"candidatos": 43, "conteudo": "ouro.estrato_do_texto sobre a camada de terceiro, com regua_prosa.classe_do_token; sem camada, a_conferir", "cotas": {"dev": {"ate_150": 1, "clearscan": 1, "de_300": 1}, "folhas_por_livro": 3, "por_lingua": 3, "teste": {"ate_150": 2, "clearscan": 2, "de_300": 1}}, "duplas": "sha256('dupla:' + identidade + folha), a primeira de cada produção em cada split", "folhas": "sha256(identidade + folha), base 1, fora os 8% iniciais e finais", "livros": "sha256(semente:identidade), por produção; livro visto não vai ao teste", "script_sha256": "19a0d2b2e9585751", "semente": "s703-2026-11-06"},
   "livros": [
     {"identidade": "cc97a2f13b9bef16", "split": "dev", "lingua": "deu", "producao": "ate_150", "dpi": 72, "grupo": "bachmann", "visto": true, "seculo_xix": true},
     {"identidade": "05a0e10f297ee860", "split": "dev", "lingua": "fra", "producao": "de_300", "dpi": 600, "grupo": "neumann", "visto": true, "seculo_xix": true},

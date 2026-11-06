@@ -15,12 +15,16 @@ geometria. O teste do manifesto confere que este módulo não importa nem glifo,
 **O livro sem camada não entra no sorteio**, porque sem ela o conteúdo da folha não se sabe antes de ler. Fora o que o item obriga, é um
 recuo com custo: ver `SPEC_TEXTO_PRECISO.md`.
 
-Uso: sortear.py <saida.json>. Raiz com `PDF/`: `CVOFF_RAIZ`. Só identidades saem daqui, e o texto da camada não é gravado nem impresso.
+**Os livros do teste entram na lista de exclusão** (`assets/texto_prosa/exclusao_do_teste.json`), com os do mesmo grupo: identidade e `chave_de_serie`, só
+resumos. O crítico achou o vazamento: fora do manifesto do ouro, `dado_corrigido.livro_recusado` deixava a correção neles ir à quarentena de treino.
+
+Uso: sortear.py <saida.json> [<exclusao.json>]. Raiz com `PDF/`: `CVOFF_RAIZ`. Só identidades saem daqui, e o texto da camada não é gravado nem impresso.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import statistics
 import sys
@@ -111,7 +115,25 @@ def folhas_pela_tinta(pdf: Path, doc: fitz.Document, identidade: str) -> list[in
     return achadas
 
 
-def main(saida: str) -> None:
+def acrescentar_a_exclusao(destino: Path, candidatos: dict[str, dict], teste: set[str]) -> int:
+    """Os livros do teste e os irmãos deles, por identidade e por série. Idempotente, e só soma: a lista é de vários conjuntos."""
+    grupos = {candidatos[i]["grupo"] for i in teste}
+    alvos = {i: c for i, c in candidatos.items() if c["grupo"] in grupos}
+    dados = json.loads(destino.read_text(encoding="utf-8"))
+    identidades, series = set(dados["identidades"]), set(dados["series"])
+    antes = len(identidades) + len(series)
+    identidades.update(alvos)
+    series.update(ouro.chave_de_serie(c["pdf"].stem) for c in alvos.values())
+    dados.update(identidades=sorted(identidades), series=sorted(series))
+    dados["nota"] = (
+        "Livro fora do manifesto da mesma série de um livro do teste. Só resumos: identidade (caderno.identidade_de) e ouro.chave_de_serie do nome do arquivo "
+        "de cada livro do teste do ouro e do scan-ouro, e dos irmãos dos do scan-ouro."
+    )
+    destino.write_bytes((json.dumps(dados, ensure_ascii=False, indent=1) + "\n").encode("utf-8"))
+    return len(identidades) + len(series) - antes
+
+
+def main(saida: str, exclusao: str | None = None) -> None:
     no_ouro = {livro.identidade for livro in ouro.carregar().livros}
     da_prata = {livro.identidade for livro in prata.carregar().livros}
     candidatos: dict[str, dict] = {}
@@ -238,7 +260,10 @@ def main(saida: str) -> None:
     for livro in livros:
         print(f"{livro.identidade[:8]} {livro.split:5} {livro.lingua} {livro.producao:9} visto={livro.visto}")
     print({c: sum(f.conteudo == c for f in folhas) for c in scan_ouro.CONTEUDOS}, len(folhas), "folhas,", len(duplas), "duplas")
+    if exclusao:
+        novos = acrescentar_a_exclusao(Path(exclusao), candidatos, {x.identidade for x in livros if x.split == scan_ouro.TESTE})
+        print(f"# {novos} resumos novos na lista de exclusão")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(*sys.argv[1:3])

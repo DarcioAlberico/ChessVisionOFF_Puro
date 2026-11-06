@@ -395,7 +395,19 @@ daí; a altura-x nativa, perto de 10 px, é a do estrato.
 A pessoa digita o que cada faixa mostra, e a referência fica na ordem do produto; a linha partida não vira erro de medição, e a de outra ordem também não.
 
 **Desvios.** A verificação de M3 e M4 por estrato não roda, porque não há verdade. O manifesto traz os **estratos previstos**: a conta real só existe depois. A camada entra na escolha, e o pedido era "sem
-leitor nenhum": nenhum leitor roda, e o achado acima diz o que isso custa. `tesseract` fica fora do teste de porta porque a procedência só existe na página a partir da S-722.
+leitor nenhum": nenhum leitor roda, e o achado acima diz o que isso custa.
+
+**Consertos do crítico.**
+
+- **O teste vazava pela quarentena** (bloqueante). Os 5 livros do teste do scan-ouro não estavam no manifesto do ouro nem na lista de exclusão, e `dado_corrigido.livro_recusado` os deixava passar. `sortear.py` agora os acrescenta a `exclusao_do_teste.json`, com os 3
+  irmãos do mesmo grupo, por identidade e `chave_de_serie`: 15 resumos novos, o sorteio idêntico folha a folha. `VazamentoDoTesteTests` exige a recusa de cada um. `chave_de_serie` de nome só em cirílico dava a chave vazia, igual para todos: agora usa as letras dele.
+- **Os ativos derivados, conferidos** (`docs/metrics/texto_scan_ouro_2026-11-06/ativos.py`, só contagens). Das palavras da camada dos 5 livros (`lexico.palavras_de`), as que estão na lista e que nenhum outro PDF de `PDF/` traz nem a lista da língua conhece: **`acervo` 0** de 6.947 (cruzam 1.365),
+  `idioma` 20 de 10.010 (cruzam 2.967), `nomes` 174 de 349.565 (cruzam 1.771). O `acervo` sai da camada editorada, e estes têm camada de OCR: o 0 confirma. `idioma` e `nomes` são listas de fora, e 20 e 174 são teto, não prova: palavra comum de alemão e sobrenome também aparecem assim. O que `nomes` herda de `Acervo (nomes casados aos livros)` não se separa daqui, e é da D5/S-750 congelar.
+- **Digitação perdida em silêncio** (importante). `abrir` ignorava o retorno de `guardar`: sem backup ou com o disco cheio, trocar de folha apagava o digitado, e a frase seguinte dizia "Backup: em dia". Agora `abrir`, a troca de passada e a saída do modo param, com o digitado na tela e a recusa de pé; fechar a janela pergunta.
+- **Linha cortada** (importante). `_ler_jsonl` levantava `JSONDecodeError`, que em slot mata o processo a cada abertura. A linha ilegível é ignorada, com aviso no log, na frase e no `--acordo`; a gravação seguinte começa em linha nova, para não ser engolida. `backup.json` ilegível vale por não declarado.
+- **Folha vazia** (menor). Concluída sem uma letra não é verdade pronta, e a tela não a conclui.
+
+*Achado, sem conserto:* o livro `clearscan` do dev (`65d6c32a`) já estava na lista de exclusão, como irmão de um livro do teste do ouro. A lista fala de treino, e o scan-ouro-dev só mede; mas quem escrever regra olhando esse dev olha a série de um livro do teste. Trocá-lo é refazer o sorteio, o que ainda não custa nada: nada foi transcrito.
 
 ## S-704 · A degradação sintética, reprodutível, em duas famílias ✅ implementada (2026-11-06)
 
