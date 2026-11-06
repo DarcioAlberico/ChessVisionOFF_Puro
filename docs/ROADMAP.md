@@ -627,6 +627,16 @@ Fase 6 (S-31).
   leitura antiga —, mas significa que corrigir uma casa apaga a informação sobre as **outras**.
   Guardar as confianças das casas não tocadas é possível e não foi feito; o gesto de contorno é
   rodar o OCR da página de novo (`Ctrl+R`).
+  ✅ *Resolvida em 2026-11-06, e o defeito na janela de hoje era o inverso do escrito aqui.* A
+  frase é da janela do Tk. No Qt o tabuleiro não lê `BoardModel.confidences`: a tinta sai de
+  `_pintar_diagrama`, que a recalcula da leitura a cada gesto, então nada se apagava e **a casa
+  reescrita continuava tingida** (medido: `casas_incertas()` em `(12, 20)` depois de pôr a dama em
+  e6, com o teste abaixo vermelho). Agora a casa corrigida sai da tinta, no tabuleiro, no recorte e
+  no `Tab` (`recorte_do_diagrama.tinta_do_diagrama(corrigidas=...)`), as outras ficam, e desfazer
+  a devolve porque ela é derivada de `differing_squares`. `BoardModel` segue a mesma regra
+  (`SEM_CONFIANCA` só nas casas de `dirty`). Testes: `tests/test_qt_painel_de_resultado.py`
+  (`test_corrigir_uma_casa_tira_a_tinta_so_dela`, `test_desfazer_a_correcao_devolve_a_tinta`) e
+  `tests/test_board_model.py`.
 - **A revisão não volta para o PGN.** Corrigir um item da fila salva a amostra no dataset e
   marca o item como revisado, mas não reescreve o `.pgn` já exportado — quem quer o PGN
   corrigido exporta de novo. Reescrever um PGN existente por diagrama é trabalho da S-34/Fase 6.
