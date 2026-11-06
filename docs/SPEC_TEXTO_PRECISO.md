@@ -1132,6 +1132,54 @@ levanta; **texto igual** ao de antes do item nas 27 folhas do ouro-dev, com `mot
 **Desvios.** `revisar_em` não é gravado no formato novo: é derivado da folha inteira, e o que sobrevive é a faixa da corrida. A confiança da linha continua a do
 glifo, até a S-760. A aba não pinta nada novo enquanto a marca da S-718 estiver ligada: a saída "a faixa pode marcar palavra" é a capacidade, e quem a usa é a S-761.
 
+## S-725 · Desempenho, custo de varredura e cache ✅ implementada (2026-11-06)
+
+**Problema.** Quem relê uma folha pagava o Tesseract de novo; o relatório de custo só conhecia o glifo (`texto_custo_20260826.json`, fator 2,21×), e dividia
+as horas por um acervo de 12.000 folhas, a extrapolação da S-61, quando a pasta tem 26.730.
+
+**Decisão.**
+
+- **O um processo por folha já existia.** `tesseract.ler_linhas` é um processo, com o TIFF de várias páginas pelo stdin e `psm 7`, desde a S-720. Faltava a reserva
+  que o item pede: `tesseract.LOTE_POR_FOLHA`, ligada; desligada, um processo por linha. É ela que mede o lote.
+- **Cache em `data/cache_texto/`**, em `text/cache_texto.py`. Uma entrada por lote, porque por linha seriam ~40 arquivos por folha e um milhão no acervo. A chave leva o sha dos
+  recortes na ordem, a versão do executor, a assinatura do pré-processamento (margem, escala, alvo, `rus+eng`: virar uma dessas constantes invalida sem ninguém lembrar de subir
+  versão), a versão do Tesseract, o sha do `traineddata` de **cada** língua do processo, a língua, o `psm`, o `dpi`, as opções e o `modelo`. O `modelo` é o da S-752, passado por
+  `LeitorTesseract(modelo=)`; no Tesseract quem faz esse papel é o `traineddata`, e ele sai vazio. O classificador de glifo não entra: o que ele muda é o recorte.
+- **Teto de 200 MB, com despejo do usado há mais tempo**, pelo `mtime`, que a leitura atualiza. Despeja até 90%, para não varrer a pasta a cada gravação. Uma entrada ocupa 5,5 KB em média
+  (7,9 KB no máximo), e o teto cabe o acervo inteiro.
+- **Disco cheio vira aviso, e a leitura segue.** `gravar` nunca levanta: devolve a frase, e a folha ganha `CACHE_NAO_GRAVADO`. Esse aviso é da sessão, e **não vai ao arquivo**
+  (`pagina.AVISOS_DA_SESSAO`): uma folha inteira não passa a dizer para sempre que o disco esteve cheio. Entrada ilegível é falta, e sai da pasta.
+- **Só a janela liga.** `LeitorTesseract()` e `leitor_padrao()` nascem sem cache, e é o que a régua, a bancada e os CLIs recebem. Quem pede é `qt/painel_de_texto._ler`, a mesma
+  regra da reserva da S-715, e um teste varre o pacote atrás de quem cita o módulo.
+- **Limpeza** por «Limpar o cache de leitura», no menu Texto e na aba Revisão da fita, numa `Tarefa`: sem pergunta, porque apagar é sempre seguro. As folhas do caderno não mudam.
+- **`cvoff-texto-custo --motor fusao`**, com a reserva, como a janela, e sem cache. O padrão continua `glifo` (S-727). Ganha `--limite-segundos`, `--ressalva` e as etapas `leitor_de_linha` e `fusao`.
+- **`custo.PAGINAS_DO_ACERVO` = 26.730**, contadas em 58 PDFs, com as duplicatas, que uma varredura da pasta paga (1.544 folhas; sem elas, 25.186).
+
+**O medido.** Em `docs/metrics/texto_cache_20261106.json`, sobre o `080d56e5`, com a árvore limpa: nas 27 folhas do ouro-dev (5 livros, 758 linhas), **0 folhas diferentes** do lote em
+texto da página, em linhas do leitor com as confianças e em avisos, para a leitura por linha, o cache frio e o cache quente. Custo em `docs/metrics/texto_custo_fusao_20261106.json` e
+`docs/metrics/texto_custo_glifo_20261106.json`, nas mesmas 18 folhas de 6 livros:
+
+| motor | s/folha | o texto soma | fator | política | horas no acervo |
+|---|---:|---:|---:|---|---:|
+| `glifo` | 1,09 | 0,60 | 1,84× | sob demanda | 9,8 |
+| `fusao` | 2,63 | 1,95 | 3,09× | sob demanda | 21,4 |
+
+O leitor de linha é 0,75 s por folha, e a fusão, 0,013 s. **A fusão não muda de faixa**: continua abaixo dos 4× que a tiram da varredura. Quem decide é a D4.
+
+**Ressalva, e ela vale para todo número de tempo acima.** Foram medidos com outras duas corridas na máquina e `OMP_NUM_THREADS=3`: entre duas corridas seguidas, o lado `hoje` foi de 0,72 a 0,93 s.
+**Nenhum deles julga o G4**, que se mede depois, com a máquina parada, na janela e com o cache desligado. Servem de ordem de grandeza para a D4. Na mesma ressalva: 2,6 s por folha no lote, 7,8 s
+por linha e 1,6 s com o cache quente, em que a diferença para o lote é só o processo do Tesseract: o glifo continua rodando, porque é dele que saem os recortes.
+
+**Onde mora.** `text/cache_texto.py`, `text/tesseract.py`, `text/leitor_de_linha.py`, `text/custo.py`, `cli/texto_custo.py`, `qt/painel_de_texto.py`, `ui/comandos.py`, `ui/menu.py`, `ui/fita_do_texto.py`,
+`ui/texto_declarado.py`, `ui/busy.py`. A medição em `docs/metrics/texto_cache_2026-11-06/medir.py`. Testes em `tests/test_text_cache_de_leitura.py` e `tests/test_qt_texto_prosa.py`.
+
+**Critério de aceite.** Diferença zero acima; trocar `tessdata`, língua, `psm`, versão ou modelo invalida a entrada; o teto é cumprido e sai quem foi usado há mais tempo; a segunda leitura na aba não abre
+processo; `data/cache_texto/` no `.gitignore` e na tabela de persistência; a régua sempre sem cache.
+
+**Desvios.** A verificação pedia as 26 folhas do `rodar.py` de 2026-10-30, e foi feita nas 27 do ouro-dev de hoje. O G4 **não foi julgado**: é a parte da saída que espera a máquina parada. A folha inteira da
+reserva (`psm 3`) não passa pelo cache: não é lida em nenhuma das 90 folhas legíveis, e a `Leitura` dela não tem por onde devolver o aviso. A entrada guarda texto e confiança, sem as caixas por palavra: nenhum
+consumidor as lê neste caminho.
+
 ## Fase 103 — O glifo sem as cegueiras do 32×32
 
 Toda a fase é regra de decisão, geometria e léxico, sem retreino, e cada conserto tem a sua constante. Contra o que se mediu: **os 5
