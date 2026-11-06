@@ -1961,8 +1961,9 @@ def _ler_pagina_do_livro(
                 leitura = _lido_pelo_outro(
                     leitor, [_recorte_de_linha(do_leitor, c.caixa, escala_px) for c in cruas], cruas, lingua=lingua, dpi=dpi
                 )
-                if leitura.falha:
-                    avisos.append(Aviso(LEITOR_INDISPONIVEL, f"A prosa ficou com o glifo. {leitura.falha}"))
+                # `None` em todas as linhas é o leitor dizendo que não leu nenhuma, com ou sem frase: a folha é a do glifo, e avisa.
+                if leitura.falha or all(li is None for li in leitura.linhas):
+                    avisos.append(Aviso(LEITOR_INDISPONIVEL, f"A prosa ficou com o glifo. {leitura.falha}".strip()))
                 else:
                     cruas = _com_prosa_de_outro_leitor(
                         cruas,

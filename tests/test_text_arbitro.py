@@ -21,7 +21,8 @@ def existe_das(token: str) -> bool:
 
 
 def do_leitor(*textos: str) -> list[fusao.Token]:
-    return [fusao.Token(t, "outro", "", None, t) for t in textos]
+    """Tokens do outro leitor, com o glifo tendo lido **outra coisa** em cada um: o caso em que há disputa."""
+    return [fusao.Token(t, "outro", "♟" + t, None, t) for t in textos]
 
 
 def arbitrada(*textos: str, existe=nao_existe, **opcoes) -> list[str]:  # type: ignore[no-untyped-def]
@@ -40,7 +41,7 @@ class GramaticaTests(unittest.TestCase):
 
     def test_a_notacao_longa_nao_precisa_de_contexto(self) -> None:
         """No *Bachmann*: `Tgı-g2`, `Sbı-cg`, `Tdy-f7`, `Seö-f3`. Duas casas com traço entre elas não são outra coisa."""
-        for lido, certo in (("Tgı-g2", "Tg1-g2"), ("Sbı-cg", "Sb1-c3"), ("h2-hg", "h2-h3"), ("Tdy-f7", "Td7-f7"), ("Seö—f3", "Se5—f3"), ("Sf3xeb", "Sf3xe6")):
+        for lido, certo in (("Tgı-g2", "Tg1-g2"), ("h2-hg", "h2-h3"), ("Tdy-f7", "Td7-f7"), ("Seö—f3", "Se5—f3"), ("Sf3xeb", "Sf3xe6")):
             with self.subTest(lido=lido):
                 self.assertEqual([certo], arbitrada(lido))
 
@@ -72,10 +73,14 @@ class GramaticaTests(unittest.TestCase):
     def test_o_peao_so_entre_lances(self) -> None:
         self.assertEqual(["1.", "e4", "e5", "2.", "f4"], arbitrada("1.", "e4", "es", "2.", "f4"))
         self.assertEqual(["vem", "es", "aqui"], arbitrada("vem", "es", "aqui"))
+        # Um vizinho só não basta: o mutante com "um" vivia em oito arquivos.
+        self.assertEqual(["1.", "e4", "es", "agora"], arbitrada("1.", "e4", "es", "agora"))
+        self.assertEqual(["agora", "es", "2.", "f4"], arbitrada("agora", "es", "2.", "f4"))
 
     def test_a_descritiva_das_linguas_latinas(self) -> None:
         """`R1D` -> `RID` e `P5C` -> `PSC`, a saída da S-729."""
         self.assertEqual(["1.", "R1D", "P5C", "2."], arbitrada("1.", "RID", "PSC", "2."))
+        self.assertEqual(["the", "AIR", "force"], arbitrada("the", "AIR", "force"))
 
     def test_o_interruptor_de_digito_e_a_constante_da_s743(self) -> None:
         with mock.patch.object(arbitro, "DIGITO_FORCADO", False):
@@ -96,7 +101,12 @@ class OutraLeituraTests(unittest.TestCase):
         return [t.texto for t in saida]
 
     def test_a_outra_e_lance_e_esta_nao(self) -> None:
-        self.assertEqual(["A3R"], self.linha("ABR", "A3R"))
+        tokens = [fusao.Token("1.", "outro", "1.", None, "1."), fusao.Token("ABR", "outro", "A3R", None, "ABR")]
+        (saida,) = arbitro.arbitrar([tokens], existe=nao_existe)
+        self.assertEqual(["1.", "A3R"], [t.texto for t in saida])
+
+    def test_o_glifo_lendo_l_como_1_nao_prova_nada(self) -> None:
+        self.assertEqual(["Tal"], self.linha("Tal", "Ta1"))
 
     def test_o_digito_forcado_vem_antes_da_outra_leitura(self) -> None:
         # `Tel,` é `Te1,`: o glifo leu `Tc1`, e no scan a letra do Tesseract é a melhor das duas.
@@ -126,6 +136,94 @@ class OutraLeituraTests(unittest.TestCase):
         tokens = [fusao.Token("Db6x", "outro", "Db6xb2", None, "Db6x"), fusao.Token("b2", "outro", "", None, "b2")]
         (saida,) = arbitro.arbitrar([tokens], existe=nao_existe)
         self.assertEqual(["Db6x", "b2"], [t.texto for t in saida])
+
+
+def com_o_glifo(*pares: tuple[str, str]) -> list[fusao.Token]:
+    return [fusao.Token(lido, "outro", glifo, None, lido) for lido, glifo in pares]
+
+
+class CertoQueNaoViraErradoTests(unittest.TestCase):
+    """Os casos que o crítico achou no `ler_pagina`, com o léxico real. Prosa certa, e o árbitro não pode tocar."""
+
+    CASOS = (
+        ("eng", "Tal - Smyslov 1-0"),  # *Secrets of Chess Training* f600
+        ("eng", "Vasyukov - Tal 1/2"),  # f1059
+        ("eng", "d4 by c2-c3"),  # f15
+        ("eng", "1.e4 as P-QB4 e5"),  # *Pachman* f104
+        ("eng", "Lev - Axelrod Moscow"),  # *Burgess* f135
+        ("eng", "Bd3. Key move Bc4"),  # *Schiller* f191
+        ("rus", "Tal - Petrosian Riga"),  # *Zhuravlev* f106
+        ("por", "e4 ala do Rei. Bc4"),  # *Seirawan* f30
+        ("eng", "Tal is playing Bc4"),  # *Chess Evolution 2014* f284
+        ("eng", "Bc4 Key point Nf3"),  # *Hertan* f641
+        ("eng", "d4 as 4...Qg7 c4"),  # *Dvoretsky* f615
+        ("por", "e4 Deixei e5"),  # *Minhas 60* f156
+        ("por", "Rei + Peão contra Rei"),  # *100 Finais*, *Finais Fundamentais*
+    )
+
+    def test_dois_leitores_iguais_nao_sao_disputa(self) -> None:
+        for lingua, frase in self.CASOS:
+            with self.subTest(frase=frase):
+                tokens = com_o_glifo(*((t, t) for t in frase.split()))
+                (saida,) = arbitro.arbitrar([tokens], existe=fusao.existe_do_livro(lingua))
+                self.assertEqual(frase, " ".join(t.texto for t in saida))
+
+    def test_com_o_glifo_lendo_outra_coisa_a_palavra_tambem_fica(self) -> None:
+        """A segunda linha de defesa: o glifo troca `l` por `1`, e mesmo assim estes contextos não bastam."""
+        for lingua, frase, palavra, do_glifo in (
+            ("eng", "Tal - Smyslov 1-0", "Tal", "Ta1"),
+            ("eng", "Vasyukov - Tal 1/2", "Tal", "Ta1"),
+            ("eng", "Lev - Axelrod Moscow", "Lev", "Le7"),
+            ("eng", "d4 by c2-c3", "by", "b7"),
+            ("eng", "1.e4 as P-QB4 e5", "as", "a5"),
+            ("eng", "d4 as 4...Qg7 c4", "as", "a5"),
+            ("eng", "Bd3. Key move Bc4", "Key", "Ke7"),
+            ("eng", "Bc4 Key point Nf3", "Key", "Ke7"),
+            ("eng", "Tal is playing Bc4", "Tal", "Ta1"),
+            ("por", "e4 ala do Rei. Bc4", "Rei.", "Re1."),
+            ("por", "Rei + Peão contra Rei", "Rei", "Re1"),
+            ("por", "e4 Deixei e5", "Deixei", "De1xe1"),
+        ):
+            with self.subTest(frase=frase):
+                tokens = com_o_glifo(*((t, do_glifo if t == palavra else t) for t in frase.split()))
+                (saida,) = arbitro.arbitrar([tokens], existe=fusao.existe_do_livro(lingua))
+                self.assertEqual(frase, " ".join(t.texto for t in saida))
+
+    def test_o_que_existe_decide_e_nao_e_decoracao(self) -> None:
+        """Mata o mutante `existe` trocado por `True` e por `False`: só o léxico muda, e o resultado muda."""
+        linha = com_o_glifo(("12.", "12."), ("Daxds", "Daxd5"), ("hoje", "hoje"))
+        (fica,) = arbitro.arbitrar([linha], existe=lambda t: t == "Daxds")
+        (troca,) = arbitro.arbitrar([linha], existe=nao_existe)
+        self.assertEqual("Daxds", fica[1].texto)
+        self.assertEqual("Daxd5", troca[1].texto)
+        peao = com_o_glifo(("e4", "e4"), ("as", "a5"), ("f4", "f4"))
+        (fica,) = arbitro.arbitrar([peao], existe=lambda t: t == "as")
+        (troca,) = arbitro.arbitrar([peao], existe=nao_existe)
+        self.assertEqual("as", fica[1].texto)
+        self.assertEqual("a5", troca[1].texto)
+
+    def test_longa_sem_digito_pede_vizinho_e_nao_pode_ser_palavra(self) -> None:
+        self.assertEqual(["Dexe"], [t.texto for t in arbitro.arbitrar([com_o_glifo(("Dexe", "De1xe1"))], existe=nao_existe)[0]])
+        (fica,) = arbitro.arbitrar([com_o_glifo(("Tal—bl", "Ta1 b1"), ("agora", "agora"))], existe=nao_existe)
+        self.assertEqual("Tal—bl", fica[0].texto)
+        (troca,) = arbitro.arbitrar([com_o_glifo(("9.", "9."), ("Tal—bl", "Ta1 b1"))], existe=nao_existe)
+        self.assertEqual("Ta1—b1", troca[1].texto)
+        (troca,) = arbitro.arbitrar([com_o_glifo(("6.", "6."), ("Sbı-cg", "Sb1 c3"))], existe=nao_existe)
+        self.assertEqual("Sb1-c3", troca[1].texto)
+
+    def test_mais_e_menos_soltos_nao_sao_vizinhos(self) -> None:
+        for sinal in ("+", "-", "=", "!", "B"):
+            with self.subTest(sinal=sinal):
+                (saida,) = arbitro.arbitrar([com_o_glifo(("Dhs", "Dh5"), (sinal, sinal), ("e4", "e4"))], existe=nao_existe)
+                self.assertEqual("Dhs", saida[0].texto)
+
+    def test_sem_o_glifo_ter_lido_nada_nao_ha_troca_sem_digito(self) -> None:
+        (saida,) = arbitro.arbitrar([[fusao.Token("Tgı-gz", "outro", "", None, "Tgı-gz")]], existe=nao_existe)
+        self.assertEqual("Tgı-gz", saida[0].texto)
+
+    def test_com_digito_de_verdade_a_longa_nao_precisa_do_glifo(self) -> None:
+        (saida,) = arbitro.arbitrar([[fusao.Token("Tgı-g2", "outro", "", None, "Tgı-g2")]], existe=nao_existe)
+        self.assertEqual("Tg1-g2", saida[0].texto)
 
 
 class ContinuidadeTests(unittest.TestCase):

@@ -34,6 +34,9 @@ GRAMATICA = True
 DIGITO_FORCADO = True
 """A constante da S-743: o dígito forçado pela gramática na casa e no número de lance."""
 
+CURTA_DE_TRES = 3
+"""Letras. Até aqui a curta pede número de lance antes, ou um lance de cada lado (`Dhs`, `RID`), e `lexico.MIN_TAMANHO` não ajuda."""
+
 JANELA_DO_NUMERO = 12
 """Tokens para cada lado, ao procurar o número vizinho."""
 
@@ -81,6 +84,9 @@ _DESCRITIVA = re.compile(
 )
 """A descritiva das línguas latinas: `P4R`, `C3AR`, `R1D`. É a de que a saída da S-729 fala (`R1D` -> `RID`, `P5C` -> `PSC`)."""
 
+_SO_NUMERO_LIMPO = re.compile(r"^[(\[]?\d{1,3}(?:\.{1,3}|\))$|^\.{2,3}$|^…$")
+_NUMERO_COLADO = re.compile(r"^[(\[:]?\d{1,3}(?:\.{1,3}|\))")
+_NU_DE_PONTA = re.compile(r"^[(\[:]+|[+#†‡✝t!?.,;:)\]]+$")
 _ESTRITA = re.compile(
     rf"^[(\[:]?(?:\d{{1,3}}(?:\.{{1,3}}|\))\s*|\.{{1,3}})?(?:"
     rf"[{_PECA}]?[a-h][1-8]{_SEP}[a-h][1-8]"
@@ -161,23 +167,16 @@ class Relato:
 
 
 def _vizinho_de_notacao(token: str) -> bool:
-    if e_estrita(token) or _fusao.e_notacao(token):
+    """Lance, número ou figurina. **`+`, `-` e `=` soltos não contam**: `Tal - Smyslov` é o título de uma partida."""
+    if not token:
+        return False
+    if e_estrita(token) or _tem_figurina(token) or _numero_de(token) is not None:
         return True
-    return forcado(token)[1] in ("longa", "numero") and any(c.isdigit() for c in forcado(token)[0])
+    return forcado(token)[1] == "longa" and any(c.isdigit() for c in token)
 
 
-def _pede_contexto(forma: str, original: str, novo: str) -> str:
-    """Quanto contexto a forma precisa: `nenhum`, `um` vizinho de notação, ou `dois`, entre lances."""
-    if forma == "longa":
-        # Sem dígito nem peça (`dl—hs`) pode ser palavra com hífen; com qualquer um dos dois, não.
-        return "nenhum" if any(c.isdigit() for c in original) or original.lstrip("([:")[:1].isupper() else "um"
-    if forma == "numero":
-        return "nenhum" if "ı" in original else "um_a_frente"
-    if forma == "curta":
-        return "nenhum" if re.match(r"^[(\[]?\d+[.)]", novo) else "um"
-    if forma == "descritiva":
-        return "um"
-    return "dois"
+def _numero_de_lance_antes(lista: Sequence[str], k: int) -> bool:
+    return k > 0 and _SO_NUMERO_LIMPO.match(lista[k - 1]) is not None
 
 
 def _numero_cabe(lista: Sequence[str], k: int, numero: str) -> bool:
@@ -191,17 +190,34 @@ def _numero_cabe(lista: Sequence[str], k: int, numero: str) -> bool:
     return any(v is not None and abs(v - valor) <= 1 for v in vizinhos)
 
 
-def _com_contexto(lista: Sequence[str], k: int, pede: str, existe: Callable[[str], bool], original: str) -> bool:
+def _pode_forcar(forma: str, token: _fusao.Token, lista: Sequence[str], k: int, existe: Callable[[str], bool]) -> bool:
+    """O dígito forçado vale aqui? **Nenhuma forma basta sozinha sem um dígito de verdade.**
+
+    O léxico é cego para o que tem menos de 4 letras (`lexico.MIN_TAMANHO`), e `Tal`, `Rei`, `Key`, `Lev`, `Day` e `Say` têm a forma de lance. Sem
+    dígito no original, quem diz que ali há um dígito é **o glifo ter lido outra coisa**: dois leitores iguais não são disputa. A partir daí,
+    a forma diz quanto contexto basta.
+    """
+    original = token.texto
+    tem_digito = any(c.isdigit() for c in original)
+    if not tem_digito and (not token.do_glifo or token.do_glifo.casefold() == original.casefold()):
+        return False
     antes = k > 0 and _vizinho_de_notacao(lista[k - 1])
     depois = k + 1 < len(lista) and _vizinho_de_notacao(lista[k + 1])
-    if pede == "nenhum":
+    if forma == "numero":
+        return "ı" in original or (depois and _numero_cabe(lista, k, forcado(original)[0]))
+    if forma == "peao":
+        # `as` antes de `P-QB4` e `by` antes de `c2-c3`: palavra que existe não é lance de peão, entre o que for.
+        return antes and depois and not existe(original)
+    if forma == "longa":
+        # `Deixei` tem a forma de `De1xe1`. Com dígito, `Tgı-g2` não é outra coisa; sem ele, pede vizinho e não pode ser palavra.
+        return tem_digito or ((antes or depois) and not existe(original))
+    if forma == "curta" and _NUMERO_COLADO.match(forcado(original)[0]):
         return True
-    if pede == "um_a_frente":
-        return depois and _numero_cabe(lista, k, forcado(original)[0])
-    if pede == "um":
-        # A palavra que existe só cai entre dois lances: `Das` numa frase não é `Da5`.
-        return (antes or depois) and (not existe(original) or (antes and depois))
-    return antes and depois
+    if len(_NU_DE_PONTA.sub("", original)) <= CURTA_DE_TRES:
+        # `Key move`, `Rei + Peão`: três letras são palavra até prova em contrário.
+        comeco = _numero_de_lance_antes(lista, k) or (antes and depois)
+        return comeco and (not existe(original) or (antes and depois))
+    return (antes or depois) and (not existe(original) or (antes and depois))
 
 
 def _numero_de(token: str) -> int | None:
@@ -282,7 +298,6 @@ def _pela_legalidade(
 
 
 _FIGURINA_SOLTA = re.compile(r"^[(\[]?(?:\d{1,3}\.{1,3})?[♔-♟]$")
-_SO_NUMERO_LIMPO = re.compile(r"^[(\[]?\d{1,3}(?:\.{1,3}|\))$|^\.{2,3}$|^…$")
 
 
 def _jogar_o_trecho(
@@ -390,14 +405,20 @@ def _digitos_soltos_antes(textos: Sequence[str], k: int, numero: str) -> list[in
 
 
 def _outra_leitura_vale(token: _fusao.Token, outra: str, textos: Sequence[str], k: int, existe: Callable[[str], bool]) -> bool:
-    """A outra leitura é lance, esta não, e as duas são da mesma tinta. Figurina nunca é trocada por letra."""
+    """A outra leitura é lance, esta não, e as duas são da mesma tinta. Figurina nunca é trocada por letra.
+
+    **O glifo também lê `l` como `1`:** `Tal` contra `Ta1` não é prova de nada, e por isso o token sem dígito pede o mesmo contexto da curta.
+    """
     texto = token.texto
     if not outra or not e_estrita(outra) or existe(texto) or not _parece_lance(texto) or _tem_figurina(texto):
         return False
     if _distancia_de_edicao(texto, outra) > MAXIMO_DE_EDICOES or texto.endswith("-"):
         return False
-    # O `15` pode ser o número que ele é: sem letra, só entre dois lances.
-    return any(c.isalpha() for c in texto) or _com_contexto(textos, k, "dois", existe, texto)
+    antes = k > 0 and _vizinho_de_notacao(textos[k - 1])
+    depois = k + 1 < len(textos) and _vizinho_de_notacao(textos[k + 1])
+    if len(_NU_DE_PONTA.sub("", texto)) <= CURTA_DE_TRES:
+        return _numero_de_lance_antes(textos, k) or (antes and depois)
+    return antes or depois or any(c.isdigit() for c in texto)
 
 
 def _tem_figurina(texto: str) -> bool:
@@ -432,7 +453,7 @@ def _pela_gramatica(tokens: list[_fusao.Token], existe: Callable[[str], bool], r
         novo, forma = forcado(token.texto)
         # **O dígito forçado vem antes da outra leitura, salvo na descritiva.** No scan, a letra do Tesseract é a melhor das duas (`Tel,` é
         # `Te1,`, e o glifo leu `Tc1`); mas o rank da descritiva tem `B` por `3` e por `8`, e ali o glifo decide.
-        if forma and forma != "descritiva" and novo != token.texto and _com_contexto(textos, k, _pede_contexto(forma, token.texto, novo), existe, token.texto):
+        if forma and forma != "descritiva" and novo != token.texto and _pode_forcar(forma, token, textos, k, existe):
             relato.forcados += 1
             anota(k, forma, novo)
             continue
@@ -442,7 +463,7 @@ def _pela_gramatica(tokens: list[_fusao.Token], existe: Callable[[str], bool], r
             relato.pela_outra_leitura += 1
             anota(k, "outra_leitura", outra)
             continue
-        if forma == "descritiva" and novo != token.texto and _com_contexto(textos, k, _pede_contexto(forma, token.texto, novo), existe, token.texto):
+        if forma == "descritiva" and novo != token.texto and _pode_forcar(forma, token, textos, k, existe):
             relato.forcados += 1
             anota(k, forma, novo)
 
