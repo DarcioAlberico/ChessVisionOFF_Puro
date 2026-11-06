@@ -35,6 +35,20 @@ auf aus bei das dem den der des die ein hat ist mit nun oft sie und von vor war 
 CURTAS = frozenset(p for grupo in (_INGLES, _PORTUGUES, _ESPANHOL, _FRANCES, _ALEMAO) for p in grupo.split())
 """Em `casefold`. Toda palavra daqui tem menos de `lexico.MIN_TAMANHO` letras (`test_palavras_curtas`)."""
 
+_POR_LINGUA = {
+    "eng": frozenset(_INGLES.split()),
+    "por": frozenset(_PORTUGUES.split()),
+    "spa": frozenset(_ESPANHOL.split()),
+    "fra": frozenset(_FRANCES.split()),
+    "deu": frozenset(_ALEMAO.split()),
+}
+
+
+def da_lingua(lingua: str) -> frozenset[str]:
+    """As curtas da língua do livro (código do Tesseract); língua sem lista cai no conjunto inteiro."""
+    return _POR_LINGUA.get(lingua, CURTAS)
+
+
 
 def conhecida_ou_curta(palavra: str, lexico: frozenset[str]) -> bool:
     """A palavra está no léxico, ou é curta e está nesta lista? Sem pontuação nas pontas."""

@@ -201,10 +201,9 @@ def juntar(
 
 @lru_cache(maxsize=8)
 def _listas(lingua: str) -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
-    from .fusao import CURTAS_POR_LINGUA
-    from .palavras_curtas import CURTAS
+    from .palavras_curtas import da_lingua
 
-    return (_lexico.do_livro(lingua), _lexico.da_lingua(lingua), CURTAS_POR_LINGUA.get(lingua, CURTAS))
+    return (_lexico.do_livro(lingua), _lexico.da_lingua(lingua), da_lingua(lingua))
 
 
 def juntar_na_lingua(texto: str, lingua: str) -> str:
