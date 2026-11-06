@@ -981,6 +981,16 @@ class NumerosVivosTests(unittest.TestCase):
         ausentes = [lista.name for lista in listas if f"`{lista.name}`" not in self.readme]
         self.assertEqual([], ausentes, "Lista do léxico que o README não menciona.")
 
+    def test_as_listas_por_lingua_citadas_batem_com_o_disco(self) -> None:
+        """A contagem de cada língua, e não a soma: uma lista trocada por outra de tamanho parecido não passa (S-728)."""
+        listas = sorted((RAIZ / "assets" / "lexico" / "linguas").glob("*.txt.gz"))
+        self.assertEqual(8, len(listas), "A S-728 são oito línguas, e a pasta não tem oito listas.")
+        for lista in listas:
+            with self.subTest(lista=lista.name):
+                real = sum(1 for _ in gzip.open(lista, "rt", encoding="utf-8"))
+                citado = _citado(self.readme, rf"`{re.escape(lista.name)}` \(([\d.]+) entradas\)")
+                self.assertEqual(real, citado, "O README cita outra contagem para esta língua.")
+
     def test_as_threads_citadas_batem_com_as_do_codigo(self) -> None:
         """A ARCHITECTURE contava doze e havia treze: as duas da aba Texto ficaram de fora (S-410).
 

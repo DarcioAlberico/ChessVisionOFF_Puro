@@ -393,6 +393,7 @@ cvoff-texto-pagina LIVRO.pdf --paginas 40 --motor fusao --lingua por
 cvoff-texto-lexico "Lista de Palavras"
 cvoff-texto-lexico "Lista de Palavras" --dry-run   # conta e imprime, sem escrever nada
 cvoff-texto-lexico --medir --com-glifo             # o alarme falso por perfil, e a juncao (S-209)
+cvoff-texto-lexico --linguas-de "C:/Program Files/Tesseract-OCR"   # as listas por lingua, do tessdata (S-728)
 
 # Quanto o texto soma a varredura, etapa a etapa (S-215). As duas pontas da divisao sao medidas
 # na mesma corrida -- a varredura de diagramas como ela e hoje, e a leitura de texto --, porque
@@ -884,6 +885,12 @@ Vem **ligado** desde que as tres listas foram empacotadas: em 40 paginas de 11 l
 as 6 confirmadas pela camada de texto, nenhuma palavra certa quebrada, e +1,1% de tempo por pagina.
 Antes das listas ele corrigia zero, e por isso vinha desligado. `--sem-dicionario` desliga, e a
 procedencia de cada lista esta em `assets/lexico/PROCEDENCIA.md`.
+
+Ao lado delas ha **listas por lingua** em `assets/lexico/linguas/` (S-728), tiradas do `tessdata` do proprio Tesseract, com
+licenca Apache-2.0: `eng.txt.gz` (87.680 entradas), `por.txt.gz` (52.199 entradas), `spa.txt.gz` (67.361 entradas),
+`deu.txt.gz` (52.854 entradas), `nld.txt.gz` (172.929 entradas), `fra.txt.gz` (31.986 entradas),
+`ron.txt.gz` (74.038 entradas) e `rus.txt.gz` (139.107 entradas). O sha de cada uma esta em `linguas/manifesto.json`, e o dicionario do glifo
+**nao** as le: o texto dele nao muda.
 
 **O negrito e mostrado na aba**, e vem da **camada de texto** -- nome da fonte e bit de peso,
 que sao metadado e nao erram. No Dvoretsky ele marca exatamente os lances da variante principal.

@@ -68,6 +68,7 @@ from typing import Any
 from ..atomic_io import atomic_write_json
 from ..config import DATA_DIR
 from . import arquivo
+from .lingua import LinguaDoLivro
 from .rico import DocumentoRico
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,7 @@ _BYTES_DA_IDENTIDADE = 1 << 20
 _TAMANHO_DA_IDENTIDADE = 16
 _LIMPEZA = re.compile(r"[^A-Za-z0-9_.-]+")
 _INDICE = "indice.json"
+_LINGUA = "lingua.json"
 _TRAVA = "caderno.lock"
 
 
@@ -299,6 +301,27 @@ class Caderno:
             return False
         self.pasta.mkdir(parents=True, exist_ok=True)
         _gravar_conferido(self.pasta / "lexico.txt", "".join(f"{p}\n" for p in sorted(atuais | {palavra})))
+        return True
+
+    # ---------------------------------------------------------------- a língua do livro (S-723)
+
+    def lingua(self) -> LinguaDoLivro:
+        """A língua deste livro: a escolhida à mão, a detectada e a conta. **Num arquivo só dela, e não no índice**:
+        o índice é derivado e se refaz das folhas, e uma escolha da pessoa não pode sumir com ele."""
+        try:
+            return LinguaDoLivro.de_json(json.loads((self.pasta / _LINGUA).read_text(encoding="utf-8")))
+        except FileNotFoundError:
+            return LinguaDoLivro()
+        except (OSError, ValueError) as erro:
+            logger.warning("A língua do caderno %s não abriu (%s): volta à detecção.", self.pasta, erro)
+            return LinguaDoLivro()
+
+    def guardar_lingua(self, lingua: LinguaDoLivro) -> bool:
+        """Grava a língua do livro. Num caderno só de leitura não grava, e devolve `False`."""
+        if self.somente_leitura:
+            return False
+        self.pasta.mkdir(parents=True, exist_ok=True)
+        _gravar_conferido(self.pasta / _LINGUA, json.dumps(lingua.para_json(), ensure_ascii=False, indent=2) + "\n")
         return True
 
     def caminho(self, pagina: int, *, tipo: str = "") -> Path:

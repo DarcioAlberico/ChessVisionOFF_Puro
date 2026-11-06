@@ -941,7 +941,22 @@ ROTULOS_DE_LINGUA: dict[str, str] = {
     "ron": "Romeno",
     "rus": "Russo",
 }
-"""A língua do livro, que o Tesseract precisa saber e a pessoa escolhe à mão até a S-723 (S-717)."""
+"""As oito línguas do acervo, pelo código do Tesseract (S-717, S-723)."""
+
+LINGUA_DETECTADA_PELO_LIVRO = "Detectar pelo livro"
+PERGUNTA_DA_LINGUA_DO_LIVRO = "Em que língua o Tesseract lê este livro?"
+LINGUA_NAO_DETECTADA = "A língua deste livro não foi detectada nas folhas lidas: escolha-a em Texto, «Língua do livro»."
+DICA_DA_LINGUA_DO_LIVRO = (
+    "A língua deste livro, em que o Tesseract lê a prosa: detectada nas primeiras folhas lidas, "
+    "ou a escolhida aqui, que sempre vence. Para voltar à detecção, menu Texto, «Língua do livro»."
+)
+
+
+def frase_da_lingua_do_livro(codigo: str, *, manual: bool) -> str:
+    """O rodapé quando a língua do livro muda (S-723). Diz de onde ela veio, porque é o que decide se vale corrigir."""
+    como = "escolhida à mão" if manual else "detectada nas folhas lidas"
+    return f"Língua deste livro: {ROTULOS_DE_LINGUA.get(codigo, codigo)} ({como})."
+
 
 NADA_A_REVISAR = "Nenhuma palavra a revisar nesta folha."
 """O `proxima_a_revisar` numa folha sem marca: rodapé, e não caixa -- é resposta, e não erro (S-718)."""

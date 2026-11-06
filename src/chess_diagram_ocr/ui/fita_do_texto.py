@@ -96,7 +96,7 @@ ABAS: tuple[Aba, ...] = (
         "Leitura",
         (
             Grupo("Folha", ("@folha", "@motor", "@lingua", "@modo_bloco")),
-            Grupo("Ler", ("ler_folha", "folha_da_pagina_aberta", "ler_folha_de_novo", "ler_ao_chegar")),
+            Grupo("Ler", ("ler_folha", "folha_da_pagina_aberta", "ler_folha_de_novo", "ler_ao_chegar", "lingua_do_livro")),
             Grupo(
                 "Caderno",
                 (

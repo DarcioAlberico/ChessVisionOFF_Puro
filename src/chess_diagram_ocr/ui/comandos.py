@@ -700,6 +700,7 @@ CATALOGO: tuple[Comando, ...] = (
     # `estilos.PRIMARIO` é "a ação que o atalho de teclado também faz", e `Ler folha` não tem
     # tecla -- a ênfase de hoje já contrariava o critério, e é ela que sai.
     Comando("ler_folha", "Ler o texto desta folha", OCR, estilos.NEUTRO, rotulo_curto="Ler folha"),
+    Comando("lingua_do_livro", "Língua do livro…", OCR, estilos.NEUTRO, rotulo_curto="Língua"),
     Comando(
         "folha_da_pagina_aberta",
         "Pôr no campo a folha que o visualizador mostra",

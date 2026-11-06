@@ -46,7 +46,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from ..atomic_io import atomic_write_text
 from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
@@ -166,12 +166,16 @@ def _modelo_emprestado(modelo: Path) -> Iterator[tuple[Any, str]]:
     yield load_model(modelo)
 
 
+MOTOR_MEDIDO: Literal["glifo"] = "glifo"
+"""O motor cujo custo este comando mede, escrito aqui e no relatório: virar o padrão não o muda (S-727)."""
+
+
 def _medir_pagina(pdf: Path, indice: int, *, dpi: int, reconhecedor: Any) -> _custo.Cronometro:
     """O cronômetro de uma leitura de página, com as nove etapas envolvidas."""
     from ..text.leitor import ler_pagina
 
     with _custo.medindo() as relogio:
-        ler_pagina(pdf, indice, dpi=dpi, motor="glifo", reconhecedor=reconhecedor)
+        ler_pagina(pdf, indice, dpi=dpi, motor=MOTOR_MEDIDO, reconhecedor=reconhecedor)
     return relogio
 
 
@@ -235,6 +239,7 @@ def relatorio(
     dados.update(
         {
             "item": "S-215",
+            "motor": MOTOR_MEDIDO,
             "hoje_por_pagina": round(hoje_por_pagina, 4),
             "texto_por_pagina": round(texto_por_pagina, 4),
             "total_por_pagina": round(total_por_pagina, 4),

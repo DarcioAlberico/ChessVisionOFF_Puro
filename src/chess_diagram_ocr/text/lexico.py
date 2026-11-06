@@ -62,7 +62,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from ..config import PROJECT_ROOT
+from ..config import BUNDLE_ROOT, PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +92,13 @@ dados, e acrescentar uma lista é acrescentar uma linha aqui -- não mexer em qu
 `sem-nomes` é o perfil da medição da S-209: nome próprio baixa o alarme falso de 12,1% para 5,8%
 **e esconde erro**. `so-idioma` e `so-acervo` existem para a medição comparar uma lista contra
 outra, que é o que `docs/metrics/texto_dicionario.json` faz."""
+
+PASTA_DAS_LINGUAS = BUNDLE_ROOT / "assets" / "lexico" / "linguas"
+"""As listas por língua da S-728, uma por código do Tesseract. **Não entram em perfil nenhum**: o `dicionario` do
+glifo continua decidindo pelo que decide hoje, e quem as pede é `da_lingua`. `BUNDLE_ROOT`, porque `assets/` é
+somente-leitura dentro do bundle. A origem, a licença e a regra estão em `assets/lexico/PROCEDENCIA.md`."""
+
+MANIFESTO_DAS_LINGUAS = PASTA_DAS_LINGUAS / "manifesto.json"
 
 PERFIL_PADRAO: Perfil = "completo"
 """Medido em 40 páginas de 11 livros: os nomes não mudam um caractere do que sai, e protegem 73
@@ -144,6 +151,25 @@ def carregar(
     if arquivos is None:
         raise ValueError(f"perfil desconhecido: {perfil!r}. Conhecidos: {', '.join(PERFIS)}")
     return frozenset().union(*(_de_um_arquivo(c) for c in arquivos))
+
+
+@lru_cache(maxsize=8)
+def da_lingua(lingua: str) -> frozenset[str]:
+    """A lista da língua pelo código do Tesseract (`por`, `deu`...), ou o conjunto vazio se ela não existir.
+
+    **Ausente não é erro**, como em `carregar`. O código vem de quem chama e de um arquivo do caderno: o que não é só
+    letra minúscula, sublinhado ou dígito nem chega a virar caminho.
+    """
+    if not re.fullmatch(r"[a-z0-9_]+", lingua):
+        return frozenset()
+    return _de_um_arquivo(PASTA_DAS_LINGUAS / f"{lingua}.txt.gz")
+
+
+@lru_cache(maxsize=8)
+def do_livro(lingua: str) -> frozenset[str]:
+    """A lista da língua, com o vocabulário do xadrez e os nomes. Vazio se a língua não tem lista: quem chama decide."""
+    lista = da_lingua(lingua)
+    return lista | _de_um_arquivo(CAMINHO_ACERVO) | _de_um_arquivo(CAMINHO_NOMES) if lista else frozenset()
 
 
 def _de_um_arquivo(caminho: Path) -> frozenset[str]:

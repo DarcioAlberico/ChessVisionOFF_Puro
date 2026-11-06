@@ -318,6 +318,7 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "ler_ao_chegar": "alternar_ler_ao_chegar",
     "tamanho_da_miniatura": "mudar_tamanho_da_miniatura",
     "familia_da_letra": "mudar_familia_da_letra",
+    "lingua_do_livro": "escolher_lingua_do_livro",
     "diagramas_da_folha_a_esquerda": "diagramas_da_folha_a_esquerda",
     "diagramas_da_folha_ao_centro": "diagramas_da_folha_ao_centro",
     "diagramas_da_folha_como_a_preferencia": "diagramas_da_folha_como_a_preferencia",

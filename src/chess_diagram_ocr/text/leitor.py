@@ -1712,7 +1712,7 @@ def _ler_pagina_do_livro(
             juntar_lance=juntar_lance, dpi=dpi,
         )
         pontos = [(r[0] / escala_px, r[1] / escala_px, r[2] / escala_px, r[3] / escala_px) for r in retangulos]
-        existe = _fusao.existe_no(_lexico_mod.carregar())
+        existe = _fusao.existe_do_livro(lingua)
         with open_document(pdf_source) as doc:  # type: ignore[arg-type]
             page = doc[indice]
             palavras = _camada_prosa.palavras_da_folha(page) if qual == "camada_prosa" else []

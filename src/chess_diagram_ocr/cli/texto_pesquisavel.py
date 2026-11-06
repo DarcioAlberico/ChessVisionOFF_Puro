@@ -159,6 +159,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     print(relatorio.resumo())
+    print(f"motor: {args.motor}")
     for aviso in relatorio.avisos:
         print(f"  aviso: {aviso}")
 

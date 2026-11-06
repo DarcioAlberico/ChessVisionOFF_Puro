@@ -1120,7 +1120,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Reversão:* **este item não é reversível por interruptor** — uma versão antiga do programa não
     abre `.cvtxt` nem caderno gravado com `tesseract` (estoura `PaginaInvalida`). Fica escrito, e o
     formato novo só é gravado depois do portão G102.
-- **S-723** · A língua do livro.
+- **S-723** · A língua do livro. ✅ entregue em 2026-11-06
   - *Entrega:* parâmetro `lingua` em `ler_pagina` (hoje não existe); detecção por perfil de palavras
     funcionais nas primeiras folhas lidas, guardada no caderno do livro (`text/caderno.py`, só na
     `main`), com troca manual no menu Texto (**não** em `settings.py`: S-218). Escolhe `tessdata` e o
@@ -1129,6 +1129,19 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     comparada com a língua declarada à mão numa tabela do teste.
   - *Saída:* acerto de língua em todos os livros do acervo deduplicado (8 línguas).
   - *Reversão:* a língua manual no menu sempre vence a detectada.
+  - *Achado:* **saída não cumprida à risca: 52 de 54 livros certos, 2 sem resposta, nenhum errado.** Os dois sem resposta são
+    `1000 Chess Problems`, de problemas, com quase nenhuma prosa, e o `Пилавов`, scan russo sem camada: o glifo não tem classe de
+    cirílico, e lá escreve latim sem sentido. Nos dois a janela diz para escolher à mão depois de dez folhas. Sem a camada como
+    fonte eram 50: ela recupera o *Niemeijer* e o *Boleslavski*. O *Zhuravlev* é bilíngue, russo e inglês folha sim, folha não,
+    e deu inglês; está à parte na tabela, contado como certo. A tabela é `docs/metrics/texto_lingua_2026-11-06/linguas_declaradas.json`,
+    e não está no código do teste: o teste a lê. **Não há conjunto de teste aqui**: o decisor foi escrito antes de medir e não mudou
+    depois, mas o acervo é o único conjunto. As constantes não foram ajustadas olhando o resultado.
+  - *Achado:* `motor="fusao"` com o léxico da língua, no ouro-dev: CER de prosa 0,469% → 0,457%, em 32.407 caracteres; 20 de 28 folhas
+    iguais, 3 melhores, 1 pior. Dentro do ruído, e não é portão. **Um veto certo e um errado, os dois para a S-721:** `Pas` deixa
+    de vencer `♔a5` num livro em português, e `Axed` passa a vencer `♘xc4` num em inglês, porque `axed` está na lista.
+  - *Achado:* `motor="tesseract"`, citado no pedido, não existe nesta árvore; quem usa a língua são a fusão e a reserva.
+    A primeira folha de um livro novo ainda é lida no padrão (`eng`): a língua detectada vale da leitura seguinte em diante,
+    e a folha lida noutra língua volta a ser lida, porque o motor anotado no caderno a inclui.
 - **S-724** · O Tesseract no instalador.
   - *Contexto:* o binário existe nesta máquina em `C:\Program Files\Tesseract-OCR`, instalado à mão; o
     instalador não o leva. Licença Apache-2.0.
@@ -1182,7 +1195,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     do estado; a suíte verde.
   - *Saída:* o modo bloco não existe no caminho da página; estado antigo abre sem a chave.
   - *Reversão:* é remoção: volta por `git revert` do commit, que precisa ser só dela.
-- **S-727** · Os CLIs de medição fixam o motor antes de o padrão mudar.
+- **S-727** · Os CLIs de medição fixam o motor antes de o padrão mudar. ✅ entregue em 2026-11-06
   - *Contexto:* na `main`, CLIs que publicam `docs/metrics/texto_*.json` (`texto_lexico`,
     `texto_paragrafo`, `texto_pesquisavel`, `texto_custo` e outros) chamam `ler_pagina` com o motor
     **padrão**. Virar o padrão para a fusão mudaria o que eles medem, sem guarda nenhuma.
@@ -1192,7 +1205,11 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Verificação:* teste que varre `cli/texto_*.py` e reprova chamada de `ler_pagina` sem `motor=`.
   - *Saída:* todo relatório `docs/metrics/texto_*.json` novo diz o motor; os antigos ficam como estão.
   - *Reversão:* acrescentar `motor=` explícito não muda número nenhum.
-- **S-728** · Léxico por língua.
+  - *Achado:* só um CLI chamava sem `motor=`: `texto_lexico`, na junção do glifo. `MOTOR_PADRAO` é `glifo` e o escrito
+    é `glifo`, logo número nenhum muda. Quem escrevia o motor e não o gravava: `texto_custo`, `texto_estilo_motor` e a
+    junção do `texto_lexico`. `texto_flutuante` e `texto_paragrafo` já gravavam. `texto_placar_final` tem um `ler_pagina`
+    próprio, homônimo, que não é o do leitor. `texto_pesquisavel` não publica JSON: diz o motor na saída.
+- **S-728** · Léxico por língua. ✅ entregue em 2026-11-06
   - *Contexto:* `text/lexico.py` tem perfis (`acervo`, `idioma`, `nomes`), não línguas; a S-721 e a
     S-723 pressupõem um léxico por língua.
   - *Entrega:* listas por língua (as 8 do acervo: en, pt, es, de, nl, fr, ro, ru) em `assets/lexico/` —
@@ -1204,6 +1221,14 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     do glifo com o perfil de hoje dá o mesmo texto no ouro-dev (diferença zero).
   - *Saída:* listas das 8 línguas com procedência escrita e sha no manifesto.
   - *Reversão:* listas novas; o perfil do glifo não muda.
+  - *Achado:* a fonte é o `lstm-word-dawg` dos `.traineddata` desta máquina, as oito línguas presentes: 2,1 MB comprimidos,
+    0,3% do bundle de 684 MB, e **nenhum teto reprovou**. **Diferença zero** em 28 folhas do ouro-dev contra o commit de
+    antes. **As listas não são limpas por língua**, porque o corpus do Tesseract é da web: `after`, `para` e `avec` estão em
+    sete das oito, e `fixes` está em `por`. **Elas não barram sozinhas os vetos da G1(a)**; a S-721 precisa de outra regra.
+  - *Achado:* `PASTA_DO_LEXICO` usa `PROJECT_ROOT`, que num bundle é a pasta do `.exe`, e o `assets/` vai para dentro do
+    pacote (`BUNDLE_ROOT`). Lido o código, os três arquivos antigos **não são achados no bundle**, em silêncio, e o
+    `dicionario` lá não corrige nada. Não se rodou um bundle para confirmar, e não se mexeu: consertar muda o texto do
+    bundle. As listas novas usam `BUNDLE_ROOT`. Fica para a S-724.
 - **S-729** · O árbitro de notação pela legalidade.
   - *Contexto:* as regras 1 e 2 da S-721 são heurísticas de forma (`27.` contra `21.` → "fica o do
     glifo"). A notação tem um modelo de língua exato — a legalidade do lance a partir da posição — e
