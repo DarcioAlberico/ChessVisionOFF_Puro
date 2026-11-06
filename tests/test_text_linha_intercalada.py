@@ -206,6 +206,32 @@ class FiacaoTests(unittest.TestCase):
         self.assertGreaterEqual(len(normais), 18, "e sem abrir banda nas linhas de cima")
         self.assertLess(max(c[3] - c[1] for c in normais), 60)
 
+    def test_a_letra_grande_ao_lado_do_texto_nao_abre_banda(self) -> None:
+        """Pelo leitor inteiro: tirar a separação de `_tiras`, ou a escala da chamada, intercala as seis fileiras."""
+        fileiras = [_fileira(200 + 40 * k, n=20) for k in range(6)]
+        grande = Caixa(150, 190, 310, 400)  # Por cima das fileiras: à direita delas, a banda se fecha sozinha.
+        caixas = [grande, *(c for fileira in fileiras for c in fileira)]
+        cinza = np.full((1400, 1000), 255, dtype=np.uint8)
+        binaria = np.zeros((1400, 1000), dtype=np.uint8)
+        segmentada = (cinza, binaria, 20, caixas, [leitor._regioes.Regiao(0, 1400, ())])
+        # A partição desligada: ligada, ela remenda boa parte do estrago, e o teste não veria a separação sumir.
+        with mock.patch.object(leitor, "segmentar", return_value=segmentada), mock.patch.object(duas_linhas, "PARTIR_LINHA_ALTA", False):
+            cruas, _ = leitor.linhas_do_glifo(
+                np.stack([cinza] * 3, axis=2),
+                reconhecedor=_Reconhecedor(),
+                colados="nunca",
+                caixa_alta=False,
+                traco=False,
+                marca_fina=False,
+                empilhados=False,
+                italico=False,
+                dicionario=False,
+                numeros=False,
+            )
+        retangulos = sorted((c.caixa.y1, c.caixa.y2, c.caixa.x1, c.caixa.x2) for c in cruas)
+        inteiras = [(200 + 40 * k, 220 + 40 * k, 0, 316) for k in range(6)]
+        self.assertEqual(retangulos, sorted([*inteiras, (190, 400, 150, 310)]), "seis fileiras inteiras, e a grande à parte")
+
     def test_o_pedaco_solto_sai_da_linha(self) -> None:
         """Um risco acima do começo da linha: a caixa curta não fixa a base, e a banda recolhe os dois."""
         imagem = _folha(n_linhas=20)
@@ -264,6 +290,20 @@ class PartirLinhasAltasTests(unittest.TestCase):
     def test_a_linha_normal_nao_e_examinada(self) -> None:
         normal = _fileira(200, altura=30)
         self.assertEqual(self._partidas(normal), [normal])
+
+    def test_o_descendente_que_atravessa_nao_impede_o_corte(self) -> None:
+        """Um `g` encostado na linha de baixo: uma caixa em treze na fileira do vale, e ainda são duas linhas."""
+        cima, baixo = _fileira(200), _fileira(226)
+        descendente = Caixa(200, 200, 212, 240)
+        partidas = self._partidas(sorted([*cima, *baixo, descendente], key=lambda c: c.x1))
+        self.assertEqual(len(partidas), 2)
+
+    def test_o_vale_com_um_terco_nao_corta(self) -> None:
+        """Quatro caixas em catorze atravessam o meio: acima de um quarto da fileira mais cheia, e isso não é vale."""
+        cima, baixo = _fileira(200, n=10), _fileira(226, n=10)
+        atravessam = [Caixa(200 + 16 * k, 200, 212 + 16 * k, 246) for k in range(4)]
+        linha = sorted([*cima, *baixo, *atravessam], key=lambda c: c.x1)
+        self.assertEqual(self._partidas(linha), [linha])
 
     def test_o_corte_so_acima_de_um_virgula_oito(self) -> None:
         """35 de altura contra a mediana de 20: 1,75, e duas fileiras assim continuam inteiras."""
