@@ -1499,6 +1499,49 @@ são as mesmas e nenhuma palavra de fora entra, mas o pedaço existe na lista po
 - **Forma flexionada fora da lista** fica: `f a t a l e n`. A lista alemã tem 52.854 palavras, e o caderno do livro (`lexico.txt`) ainda não é consultado aqui.
 - O **Tesseract** não muda, porque já lia a palavra inteira: aqui a régua quase não dispara. A camada de terceiro do *Gutmayer*, com 737 corridas, continua como é.
 
+## S-745 · A escada de linhas de base: o degrau 0 e a tabela ✅ implementada (2026-11-06)
+
+**Problema.** A S-755 tem de comparar o leitor da casa contra **o melhor** leitor que não exige modelo da casa, e ninguém tinha dito qual é. Do degrau 0, a S-721 já recusara `--user-words`,
+`load_system_dawg=0` e a altura-x; faltavam os n-gramas de caractere desempatando as alternativas de `lstm_choice_mode=2`. Os degraus 1, 2 e 3 dependem de downloads.
+
+**Decisão. O melhor degrau é a fusão de hoje**, `motor="fusao"` com Tesseract 5.5 e `tessdata` fast, sem nenhum ajuste do degrau 0: 0,235% [0,040%; 0,627%] de prosa no ouro-dev. No scan-ouro **não há número**. Nada muda no produto: os
+n-gramas moram só em `docs/metrics/texto_escada_2026-11-06/ngramas.py`.
+
+| degrau | o quê | estado | ouro-dev, Δ prosa pareado | prata (ordenação) | scan-ouro-dev |
+|---|---|---|---|---|---|
+| 0a | `--user-words` com os nomes | recusado pela S-721, não remedido | 0 [0; 0] | não fecha: o `spa` termina com erro | sem número |
+| 0b | `load_system_dawg=0` na notação | recusado pela S-721, não remedido | 0 [0; 0] | 0 [0; 0] | sem número |
+| 0c | escala pela altura-x | recusado pela S-721, não remedido | +0,004 [−0,029; +0,048] | −0,154 [−0,509; +0,066] | sem número |
+| 0d | n-gramas, margem de 1 nat | **medido aqui, e recusado** | +0,042 [−0,008; +0,113] | +0,084 [−0,046; +0,174] | sem número |
+| 1 | `tessdata_best` (S-741) | **pulado por recuo** (D2) | | | |
+| 2 | ajuste fino do Tesseract (S-746) | **pulado por recuo** (D2, D7) | | | |
+| 3 | PP-OCR latino em ONNX | **pulado por recuo** (D7) | | | |
+
+**A medição dos n-gramas.** Trigramas de caractere por língua, contados nos tipos de `lexico.da_lingua`. Só palavra de letras, de 3 letras ou mais, fora do léxico, troca pela alternativa de confiança ≥ 5%, até duas posições, cujo trigrama ganha pela margem.
+Mesmas caixas do glifo e mesmo placar, pela porta `registrar_motor` da bancada, nas 27 folhas do ouro-dev e nas 30 da prata. O par é contra a primeira escolha do próprio hOCR.
+
+| CER de prosa, Δ contra `tess_hocr` | ouro-dev (0,286%) | prata (8,820%, ordenação) |
+|---|---|---|
+| margem 0,5 nat | +0,042 [−0,008; +0,113], 1 melhor, 7 piores | +0,094 [−0,032; +0,181], 2, 18 |
+| margem 1 nat | +0,042 [−0,008; +0,113], 1, 7 | +0,084 [−0,046; +0,174], 2, 18 |
+| margem 2 nats | +0,038 [−0,012; +0,111], 1, 6 | +0,063 [−0,065; +0,145], 2, 15 |
+| controle: a alternativa que é do léxico | −0,004 [−0,017; 0], 1, 0 | +0,005 [−0,011; +0,022], 2, 3 |
+| **teto**: a alternativa que está na referência | −0,046 [−0,133; 0], 6, 0 | −0,154 [−0,297; −0,073], 22, 0 |
+
+**Por que não paga.** Nas 5.759 palavras do dev, com 1 nat, são 32 trocas: nenhuma leva a uma palavra da referência, e 11 estragam uma certa, quase sempre nome próprio (`Reshevsky` → `Resheysky`, `Najdorf` → `Nojdorf`), porque o que a lista da língua não conhece
+é justamente o que o trigrama pune. Na prata, 147 trocas: 5 acertam, 36 estragam. E o teto é baixo: **até um oráculo que sabe a resposta só tira 0,046 p.p. no dev.** A letra certa quase nunca está nas alternativas.
+
+**O custo, que a S-729 não mediu.** Ela recusou as alternativas por "um processo a mais por folha", sem número. É 0,88 s por folha no dev e 1,34 s na prata, se for um processo a mais; ou +15% (mediana, folha a folha) se o hOCR substituir o TSV, e aí a primeira escolha do hOCR
+perde +0,017 p.p. [0; +0,045] no dev. Sob contenção, e não julga o G4. **O custo sozinho não o tornaria inviável. Quem recusa é o ganho.**
+
+**Onde mora.** `docs/metrics/texto_escada_2026-11-06.json`, com `melhor_degrau`, `escada` e `ngramas`. `docs/metrics/texto_escada_2026-11-06/`: `ngramas.py` e `compilar.py`. Os JSONL ficam fora do repositório.
+
+**Critério de aceite.** `EscadaPublicadaTests` em `tests/test_text_scan_ouro.py`: o melhor degrau tem nome, os degraus 1, 2 e 3 dizem `pulado por recuo`, o scan-ouro diz `sem número` e não zero, e o relatório não tem caminho absoluto.
+
+**Desvios.** A verificação pede cada degrau pareado contra o anterior e no scan-ouro-dev: o par dos n-gramas é contra a primeira escolha do hOCR, e no scan-ouro não há verdade. A S-746 fica de fora, por recuo: só serve ao degrau 2. **O melhor degrau é provisório**: a D2 ou a D7 podem mudá-lo, e a S-755 tem de reler este relatório.
+
+*Achado:* a primeira escolha do hOCR com `lstm_choice_mode=2` não é o TSV. Difere em 3 folhas do dev, e sempre para pior; na prata, 7 melhores e 10 piores. Quem for ler alternativas não pode supor que o texto é o mesmo.
+
 ## S-762 · A correção humana volta como dado, sem contaminar nada ✅ implementada (2026-11-06)
 
 ### Problema

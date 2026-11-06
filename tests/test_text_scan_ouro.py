@@ -462,5 +462,39 @@ class CliTests(unittest.TestCase):
         self.assertEqual(folha.producao, registro["estrato"])
 
 
+class EscadaPublicadaTests(unittest.TestCase):
+    """A tabela da S-745: é contra o melhor degrau que a S-755 compara, e o que não foi medido diz isso por extenso."""
+
+    def setUp(self) -> None:
+        self.cru = (RAIZ / "docs/metrics/texto_escada_2026-11-06.json").read_text(encoding="utf-8")
+        self.r = json.loads(self.cru)
+
+    def test_o_melhor_degrau_tem_nome_e_numero(self) -> None:
+        melhor = self.r["melhor_degrau"]
+        self.assertIn("fusao", melhor["nome"])
+        self.assertGreater(melhor["ouro_dev_cer_prosa_pct"], 0)
+        self.assertIn("sem número", melhor["scan_ouro_dev"])
+
+    def test_os_degraus_que_dependem_de_download_dizem_que_foram_pulados(self) -> None:
+        por_degrau = {d["degrau"]: d for d in self.r["escada"]}
+        for degrau in ("1", "2", "3"):
+            self.assertEqual("pulado por recuo", por_degrau[degrau]["estado"], degrau)
+            self.assertNotIn("ouro_dev", por_degrau[degrau], "degrau pulado não tem número")
+        for degrau in ("0a", "0b", "0c", "0d"):
+            self.assertEqual("sem número", por_degrau[degrau]["scan_ouro_dev"], degrau)
+
+    def test_o_teto_e_o_que_os_ngramas_nao_passam(self) -> None:
+        pares = self.r["ngramas"]["ouro_dev"]["pares"]
+        self.assertLessEqual(pares["teto - tess_hocr"]["delta_prosa_pp"], pares["ng_10 - tess_hocr"]["delta_prosa_pp"])
+
+    def test_sem_caminho_absoluto_nem_texto_de_livro(self) -> None:
+        self.assertNotIn("C:\\\\", self.cru)
+        self.assertNotIn('"hip"', self.cru)
+        self.assertNotIn('"ref"', self.cru)
+
+    def test_a_chave_de_uso_da_prata_esta_escrita(self) -> None:
+        self.assertEqual(prata.USO, self.r["ngramas"]["prata"]["uso"])
+
+
 if __name__ == "__main__":
     unittest.main()
