@@ -149,9 +149,9 @@ def ler_folha(pdf: str, identidade: str, indice: int, lingua: str, reconhecedor:
         fusao.marcar = original_marcar
         leitor._guarda.medir = original_medir  # noqa: SLF001
         confianca_palavra.calibrar_folha = original_calibrar
-    ref = regua_prosa.texto_de(ln.texto for ln in folha.linhas_da_referencia)
+    ref = regua_prosa.texto_das_linhas(ln.texto for ln in folha.linhas_da_referencia)
     linhas = regua_prosa.linhas_da_pagina(pagina)
-    hipoteses = {"fusao": regua_prosa.texto_de(ln.texto for ln in linhas), "glifo": regua_prosa.texto_de(ln.texto for ln in regua_prosa.linhas_da_pagina(folha.glifo))}
+    hipoteses = {"fusao": regua_prosa.texto_das_linhas(ln.texto for ln in linhas), "glifo": regua_prosa.texto_das_linhas(ln.texto for ln in regua_prosa.linhas_da_pagina(folha.glifo))}
     if oraculo:
         hipoteses["tess_oraculo"] = bancada_prosa.MOTORES_DE_BANCADA["tess_oraculo"](folha)
     m = capturado["medida"]

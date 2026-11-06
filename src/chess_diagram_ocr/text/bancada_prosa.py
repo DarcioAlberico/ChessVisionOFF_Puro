@@ -129,7 +129,7 @@ def motor_de_linha(leitor: Any) -> MotorDeBancada:
 
     def ler(folha: FolhaEmMedida) -> str:
         linhas = regua.linhas_da_pagina(folha.glifo)
-        return regua.texto_de(_ler_recortes(folha, leitor, [recortar(folha.imagem, ln.bbox, folha.dpi) for ln in linhas]))
+        return regua.texto_das_linhas(_ler_recortes(folha, leitor, [recortar(folha.imagem, ln.bbox, folha.dpi) for ln in linhas]))
 
     return ler
 
@@ -149,7 +149,7 @@ def _tess(folha: FolhaEmMedida) -> str:
 def _tess_oraculo(folha: FolhaEmMedida) -> str:
     visuais = caixas_visuais(folha.linhas_da_referencia, folha.imagem, folha.dpi)
     recortes = [recortar(folha.imagem, caixa, folha.dpi) for caixa, _ in visuais]
-    return regua.texto_de(_ler_recortes(folha, _leitor_da_folha(folha), recortes))
+    return regua.texto_das_linhas(_ler_recortes(folha, _leitor_da_folha(folha), recortes))
 
 
 def _tess_pagina(folha: FolhaEmMedida) -> str:
@@ -167,7 +167,7 @@ def _tess_pagina(folha: FolhaEmMedida) -> str:
     linhas: dict[tuple[int, int, int], list[str]] = {}
     for palavra in palavras:
         linhas.setdefault((palavra.bloco, palavra.paragrafo, palavra.linha), []).append(palavra.texto)
-    return regua.texto_de(" ".join(v) for v in linhas.values())
+    return regua.texto_das_linhas(" ".join(v) for v in linhas.values())
 
 
 MOTORES_DE_BANCADA: dict[str, MotorDeBancada] = {
@@ -284,7 +284,7 @@ def medir_folha(folha: FolhaEmMedida, motores: Sequence[str]) -> dict[str, Any]:
                 _fusao.OUVINTE_DE_VETOS = None
             vetos[motor] = ouvidos
             linhas = [ln.texto for ln in regua.linhas_da_pagina(pagina)]
-            hipoteses[motor] = regua.texto_de(linhas)
+            hipoteses[motor] = regua.texto_das_linhas(linhas)
             avisos[motor] = [a.codigo for a in pagina.avisos]
             preservacao[motor] = list(preservacao_de_figurina(linhas_do_glifo, linhas))
         elif motor in MOTORES_DE_BANCADA:
@@ -292,7 +292,7 @@ def medir_folha(folha: FolhaEmMedida, motores: Sequence[str]) -> dict[str, Any]:
         else:
             raise ValueError(f"motor desconhecido: {motor!r}; os que existem: {motores_conhecidos()}")
         tempo[motor] = time.perf_counter() - inicio
-    ref = regua.texto_de(ln.texto for ln in folha.linhas_da_referencia)
+    ref = regua.texto_das_linhas(ln.texto for ln in folha.linhas_da_referencia)
     return {
         "ref": ref,
         "hip": hipoteses,

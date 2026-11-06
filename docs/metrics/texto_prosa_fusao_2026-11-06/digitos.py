@@ -93,7 +93,7 @@ def medir_folha(pdf: str, indice: int, lingua: str, rec: object, totais: dict[bo
         for ligado in (False, True):
             arbitro.GRAMATICA = ligado
             pagina = leitor.ler_pagina(pdf, indice, motor="fusao", reconhecedor=rec, imagem_rgb=imagem, dpi=220, lingua=lingua, leitor_de_linha=leitor_unico)
-            totais[ligado].update(contar(regua.texto_de(ln.texto for ln in regua.linhas_da_pagina(pagina)), fusao.existe_do_livro(lingua)))
+            totais[ligado].update(contar(regua.texto_das_linhas(ln.texto for ln in regua.linhas_da_pagina(pagina)), fusao.existe_do_livro(lingua)))
     finally:
         leitor.linhas_do_glifo = real
         arbitro.GRAMATICA = True

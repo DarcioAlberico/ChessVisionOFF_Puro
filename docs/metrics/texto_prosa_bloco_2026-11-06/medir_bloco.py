@@ -40,7 +40,7 @@ def glifo_bloco(folha: bancada_prosa.FolhaEmMedida) -> str:
         folha.pdf, folha.indice, motor="glifo", reconhecedor=_reconhecedor_do_bloco(), imagem_rgb=folha.imagem, dpi=folha.dpi,
         lingua=folha.lingua, reserva=folha.reserva, modo_bloco=True,
     )
-    return regua.texto_de(ln.texto for ln in regua.linhas_da_pagina(pagina))
+    return regua.texto_das_linhas(ln.texto for ln in regua.linhas_da_pagina(pagina))
 
 
 def fusao_sem_tess(folha: bancada_prosa.FolhaEmMedida) -> str:
@@ -51,7 +51,7 @@ def fusao_sem_tess(folha: bancada_prosa.FolhaEmMedida) -> str:
         lingua=folha.lingua, reserva=True, leitor_de_linha=ausente,
     )
     assert any(a.codigo for a in pagina.avisos), "sem Tesseract a folha tem de avisar"
-    return regua.texto_de(ln.texto for ln in regua.linhas_da_pagina(pagina))
+    return regua.texto_das_linhas(ln.texto for ln in regua.linhas_da_pagina(pagina))
 
 
 bancada_prosa.registrar_motor("glifo_bloco", glifo_bloco)

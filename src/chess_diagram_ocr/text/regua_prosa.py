@@ -670,7 +670,7 @@ def fora_da_referencia(linha: str, caixa: Caixa, diagramas: Sequence[Caixa], lin
     return not set(classes_por_char(linha, lingua)) & {PROSA, NOTACAO}
 
 
-def texto_de(linhas: Iterable[str]) -> str:
+def texto_das_linhas(linhas: Iterable[str]) -> str:
     return "\n".join(linhas)
 
 
@@ -703,5 +703,5 @@ __all__ = [
     "normalizar",
     "palavras_achadas",
     "pontuar",
-    "texto_de",
+    "texto_das_linhas",
 ]

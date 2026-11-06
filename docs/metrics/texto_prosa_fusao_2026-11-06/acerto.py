@@ -103,13 +103,13 @@ def main() -> int:
 
         with mock.patch.object(leitor, "linhas_do_glifo", glifo_uma_vez):
             folha = bancada_prosa.preparar_folha(pdf, indice, lingua=lingua, imagem=imagem, reconhecedor=rec, dpi=220, leitor_de_linha=unico)
-            ref = regua.texto_de(ln.texto for ln in folha.linhas_da_referencia).split()
+            ref = regua.texto_das_linhas(ln.texto for ln in folha.linhas_da_referencia).split()
             for regra in contas:
                 textos = {}
                 for ligado in (False, True):
                     with mock.patch.object(arbitro, "GRAMATICA", ligado), mock.patch.object(leitor, "regra_da_folha", return_value=regra):
                         pagina = leitor.ler_pagina(pdf, indice, motor="fusao", reconhecedor=rec, imagem_rgb=imagem, dpi=220, lingua=lingua, leitor_de_linha=unico)
-                    textos[ligado] = regua.texto_de(ln.texto for ln in regua.linhas_da_pagina(pagina)).split()
+                    textos[ligado] = regua.texto_das_linhas(ln.texto for ln in regua.linhas_da_pagina(pagina)).split()
                 for de, para, veredito in trocas(ref, textos[False], textos[True], lingua):
                     contas[regra][veredito] += 1
                     print(f"{regra} f{indice + 1} {veredito:8s} {de!r} -> {para!r}", flush=True)

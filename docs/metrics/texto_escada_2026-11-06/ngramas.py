@@ -154,18 +154,18 @@ def _do_hocr(folha: bancada_prosa.FolhaEmMedida) -> list[list[Palavra]]:
 
 def _motor(**regra) -> bancada_prosa.MotorDeBancada:
     def ler(folha: bancada_prosa.FolhaEmMedida) -> str:
-        return regua.texto_de(" ".join(escolher(p, folha.lingua, **regra) for p in linha) for linha in _do_hocr(folha))
+        return regua.texto_das_linhas(" ".join(escolher(p, folha.lingua, **regra) for p in linha) for linha in _do_hocr(folha))
 
     return ler
 
 
 def _teto(folha: bancada_prosa.FolhaEmMedida) -> str:
     referencia = frozenset(" ".join(ln.texto for ln in folha.linhas_da_referencia).split())
-    return regua.texto_de(" ".join(escolher(p, folha.lingua, na_referencia=referencia) for p in linha) for linha in _do_hocr(folha))
+    return regua.texto_das_linhas(" ".join(escolher(p, folha.lingua, na_referencia=referencia) for p in linha) for linha in _do_hocr(folha))
 
 
 def _base(folha: bancada_prosa.FolhaEmMedida) -> str:
-    return regua.texto_de(" ".join(lida(p) for p in linha) for linha in _do_hocr(folha))
+    return regua.texto_das_linhas(" ".join(lida(p) for p in linha) for linha in _do_hocr(folha))
 
 
 MOTORES = {

@@ -45,7 +45,7 @@ class _ComCaderno(unittest.TestCase):
         self.addCleanup(self.cad.fechar)
 
     def guardar(self, pagina: int, texto: str) -> None:
-        self.cad.guardar_leitura(folha(pagina, texto), motor="fusao", modo_bloco=False)
+        self.cad.guardar_leitura(folha(pagina, texto), motor="fusao")
 
 
 class PalavrasDoLivroTests(_ComCaderno):
@@ -260,7 +260,7 @@ class PainelTests(unittest.TestCase):
         cad = self.painel._caderno  # noqa: SLF001
         assert cad is not None
         self.cad = cad
-        self.cad.guardar_leitura(folha(0, "the Gelfmnd line", documento=str(self.pdf)), motor="fusao", modo_bloco=False)
+        self.cad.guardar_leitura(folha(0, "the Gelfmnd line", documento=str(self.pdf)), motor="fusao")
         self.painel._abrir_do_caderno(0)  # noqa: SLF001
 
     def test_a_correcao_na_tela_ensina_o_lexico_ao_gravar(self) -> None:
@@ -269,7 +269,7 @@ class PainelTests(unittest.TestCase):
         self.assertIn("xyzzyq", self.cad.lexico())
 
     def test_o_comando_abre_com_a_ultima_correcao_e_a_folha_da_tela_volta_trocada(self) -> None:
-        self.cad.guardar_leitura(folha(1, "more Gelfmnd here", documento=str(self.pdf)), motor="fusao", modo_bloco=False)
+        self.cad.guardar_leitura(folha(1, "more Gelfmnd here", documento=str(self.pdf)), motor="fusao")
         self.painel._aplicar(corrigido(self.painel.documento, "Gelfmnd", "Gelfand"))  # noqa: SLF001
         janela = self.painel.corrigir_em_todas_as_folhas()
         self.addCleanup(descartar, janela)
