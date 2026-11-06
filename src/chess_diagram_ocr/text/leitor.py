@@ -185,6 +185,7 @@ from . import quadros as _quadros
 from . import regioes as _regioes
 from . import tesseract as _tesseract
 from . import traco as _traco
+from . import traco_vertical as _traco_vertical
 from .binarizacao import binarize
 from .grade import Arranjo
 from .leitor_de_linha import LeitorDeLinha
@@ -646,6 +647,8 @@ def linhas_do_glifo(
                     # esticado para 32x32 também; e o hífen e o travessão são o mesmo retângulo.
                     # Antes da `marca_fina`, que julga o ponto.
                     lidos = _traco.corrigir(lidos, probs, grupo, i2c, escala=float(escala))
+                    # O traço vertical esticado é a mesma imagem que o ponto: `will` -> `wi..` (S-730).
+                    lidos = _traco_vertical.corrigir(lidos, probs, grupo, i2c, lexico, escala=float(escala))
                 if marca_fina:
                     lidos = _marca_fina.corrigir(lidos, probs, grupo, i2c)
                 if empilhados:
