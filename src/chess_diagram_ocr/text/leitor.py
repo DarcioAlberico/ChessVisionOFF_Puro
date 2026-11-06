@@ -671,6 +671,8 @@ def linhas_do_glifo(
                     lidos = _dicionario.corrigir(lidos, probs, grupo, i2c, lexico)
                 # Daqui em diante `probs` não casa mais com as caixas: duas delas podem virar uma.
                 grupo, lidos = _ligadura.corrigir(lidos, grupo)  # `fi1rst` (S-733)
+                if marca_fina:
+                    grupo, lidos = _marca_fina.aspas(lidos, grupo)  # `(tail`, `rook''` (S-734)
             else:
                 lidos = classificador.classificar(recortes)
             if not lidos:
