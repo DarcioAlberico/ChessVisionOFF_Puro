@@ -7,7 +7,7 @@ import numpy as np
 from chess_diagram_ocr.text.boxes import Caixa
 
 CLASSES = list("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,'\"()-—/")
-CLASSES += ["ç", "ã", "ä", "é", "ê", "õ", "Õ", "ó", "Ó", "fi", "f1"]
+CLASSES += ["ç", "ã", "ä", "é", "ê", "õ", "Õ", "ó", "Ó", "fi", "f1", "f7", "a2", "ffi", "|", "`", "ú", "Ú", "š", "Š", "í", "Í", "ö", "Ö", "ć", "Ć", "č", "Č", "ž", "Ž", "–", "_"]
 I2C = dict(enumerate(CLASSES))
 C2I = {c: i for i, c in I2C.items()}
 

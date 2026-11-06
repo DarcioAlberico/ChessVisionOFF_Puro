@@ -75,11 +75,45 @@ class PalavraCoerenteTests(unittest.TestCase):
 
     def test_a_ambigua_depois_de_minuscula_desce(self) -> None:
         self.assertEqual(self._coerente("IvanchUk"), "Ivanchuk")
+        self.assertEqual(self._coerente("teU"), "teu")
         self.assertEqual(self._coerente("McDonald"), "McDonald", "o `D` tem desenho próprio")
+
+    def test_a_maiuscula_do_nome_fica(self) -> None:
+        """O que o crítico achou fora do dev: Hertan, Yusupov."""
+        for palavra in ("ChessCafe", "McClure", "McCutcheon", "McCoy", "McOy", "MacOs", "'McCoy"):
+            self.assertEqual(self._coerente(palavra), palavra)
+
+    def test_uma_so_minuscula_depois_nao_absolve(self) -> None:
+        self.assertEqual(self._coerente("toUr"), "tour")
+
+    def test_o_plural_de_sigla_fica(self) -> None:
+        """`GMs`, 19 ocorrências num livro."""
+        self.assertEqual(self._coerente("GMs"), "GMs")
+        self.assertEqual(self._coerente("FIDEs"), "FIDES", "a partir de 5 letras, é a palavra em maiúscula")
+
+    def test_uma_maiuscula_so_nao_faz_a_palavra(self) -> None:
+        for palavra in ("Dos", "You", "Now", "Bus"):
+            self.assertEqual(self._coerente(palavra), palavra)
 
     def test_a_captura_seguida_de_casa_e_minuscula(self) -> None:
         self.assertEqual(self._coerente("QXf7"), "Qxf7")
         self.assertEqual(self._coerente("TXPTR"), "TXPTR", "descritiva")
+        self.assertEqual(self._coerente("TEXas"), "TEXas", "sem a casa inteira depois, não é captura")
+
+    def test_a_captura_com_a_casa_numa_caixa_so(self) -> None:
+        """`Qxf7` chega com `f7` numa classe só, e o crítico achou `5.QXf7` e `NXa2` no Aagaard."""
+        chars, caixas = _linha([("Q", 16, 28), ("X", 14, 28), ("f7", 18, 28)])
+        self.assertEqual(_texto(caixa_alta.coerente(_lidos(chars), _matriz(chars), caixas, I2C)), "Qxf7")
+        chars, caixas = _linha([("N", 16, 28), ("X", 14, 28), ("a2", 18, 28)])
+        self.assertEqual(_texto(caixa_alta.coerente(_lidos(chars), _matriz(chars), caixas, I2C)), "Nxa2")
+
+    def test_a_coluna_maiuscula_diante_do_digito_desce(self) -> None:
+        self.assertEqual(self._coerente("KC5"), "Kc5")
+        self.assertEqual(self._coerente("C2"), "c2")
+        self.assertEqual(self._coerente("SC7"), "Sc7")
+        self.assertEqual(self._coerente("C3A"), "C3A", "descritiva")
+        self.assertEqual(self._coerente("Cc3"), "Cc3")
+        self.assertEqual(self._coerente("aC5"), "aC5", "letra minúscula antes: não sabemos o que é")
 
     def test_lance_fica(self) -> None:
         """Lance tem dígito, e `KxR` é captura: o `x` só sobe a partir de quatro letras."""
@@ -97,6 +131,60 @@ class PalavrasCurtasTests(unittest.TestCase):
         self.assertTrue(conhecida_ou_curta("first", frozenset({"first"})))
         self.assertFalse(conhecida_ou_curta("first", frozenset()))
         self.assertFalse(conhecida_ou_curta("...", frozenset({"..."})))
+
+
+class LimiaresDaAlturaTests(unittest.TestCase):
+    """A régua presa dos dois lados: o caso em que cada fonte da altura-de-x dá uma resposta diferente."""
+
+    def _decidir(self, desenho: list[tuple[str, int, int]]) -> str:
+        chars, caixas = _linha(desenho)
+        return _texto(caixa_alta.decidir(_matriz(chars), [c.altura for c in caixas], I2C, caixas=caixas))
+
+    # haste alta demais: pela razão das altas o `C` cairia, e pelas letras de x fica
+    ALTAS = [("h", 12, 40), ("d", 12, 40), ("b", 12, 40), ("C", 16, 28)]
+
+    def test_toda_letra_de_x_conta(self) -> None:
+        for letras in ("ae", "mn", "nr", "am"):
+            desenho = [(c, 12, 20) for c in letras]
+            self.assertEqual(self._decidir(desenho + self.ALTAS), letras + "hdbC", letras)
+
+    def test_duas_letras_de_x_bastam(self) -> None:
+        self.assertEqual(self._decidir([("a", 12, 20), ("e", 12, 20), *self.ALTAS]), "aehdbC")
+
+    def test_uma_letra_de_x_e_ruido(self) -> None:
+        """Um fragmento de 12 px lido `a` não vira a régua: `c` de 20 seria 1,67 dele."""
+        self.assertEqual(self._decidir([("a", 8, 12), ("h", 12, 28), ("d", 12, 28), ("c", 12, 20)]), "ahdc")
+
+    def test_cada_alta_segura_mede_a_linha(self) -> None:
+        for alta in "ABDEFGHKLMNPRTbdfhkl0123456789":  # literal: iterar a constante faria a guarda vácua
+            lido = self._decidir([("C", 16, 28), (alta, 10, 28), (alta, 10, 28)])
+            self.assertEqual(lido, f"C{alta}{alta}", alta)
+
+    def test_cada_letra_de_x_mede_a_linha(self) -> None:
+        for letra in "aemnr":  # literal, pelo mesmo motivo
+            lido = self._decidir([(letra, 12, 20), (letra, 12, 20), ("h", 12, 40), ("d", 12, 40), ("b", 12, 40), ("C", 16, 28)])
+            self.assertEqual(lido, f"{letra}{letra}hdbC", letra)
+
+    def test_toda_alta_segura_conta(self) -> None:
+        """Sem letra de x e só com dígito: a mediana, que sobra sem as altas, derrubaria o `C`."""
+        self.assertEqual(self._decidir([("C", 16, 28), ("4", 10, 28), ("6", 10, 28)]), "C46")
+        self.assertEqual(self._decidir([("C", 16, 28), ("T", 10, 28), ("k", 10, 28)]), "CTk")
+
+
+class LimiaresDaPalavraTests(unittest.TestCase):
+    def _coerente(self, palavra: str) -> str:
+        chars, caixas = _linha([(c, 12, 20) for c in palavra])
+        return _texto(caixa_alta.coerente(_lidos(chars), _matriz(chars), caixas, I2C))
+
+    def test_duas_minusculas_absolvem_e_tres_nao_sao_preciso(self) -> None:
+        self.assertEqual(self._coerente("ChesCar"), "ChesCar")
+
+    def test_o_s_final_de_quatro_letras_fica(self) -> None:
+        self.assertEqual(self._coerente("FIDs"), "FIDs")
+
+    def test_duas_maiusculas_de_desenho_proprio_bastam(self) -> None:
+        self.assertEqual(self._coerente("FcM"), "FCM")
+        self.assertEqual(self._coerente("DoR"), "DOR")
 
 
 if __name__ == "__main__":
