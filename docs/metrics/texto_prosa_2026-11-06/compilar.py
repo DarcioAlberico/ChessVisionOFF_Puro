@@ -26,7 +26,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "texto_prosa_202
 
 import medir  # noqa: E402
 
-
 CONFERIDO = (
     "as 47 caixas que tocam a camada ou em que o Tesseract le palavra de 3 letras, e o mosaico das 264 de tamanho de letra: 19 fios sao as "
     "barras do codigo de barras de uma contracapa; 7 sao a faixa do Chess Evolution, com o titulo dela; a caixa do Nunn 326 e a moldura de "
