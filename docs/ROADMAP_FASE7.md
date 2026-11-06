@@ -1225,6 +1225,10 @@ Por isso o comando **não grava por padrão**: `--match` relata a taxa e o histo
 distância, e `--apply` é um segundo passo. O histograma existe exatamente para que o limiar
 seja escolhido olhando dados em vez de herdado desta linha.
 
+**Indexado em 2026-11-06**, e o que sobra é a decisão de gravar: 1.038 das 3.356 órfãs casam a 0 bits,
+e o resto é um platô de impostores, então o limiar de 6 bits não serve
+([metrics/provenance_match_20261106.json](metrics/provenance_match_20261106.json)).
+
 **O que falta, e é decisão sua:** indexar os 27 PDFs (~12 mil páginas, horas de CPU). Sem
 isso não há taxa real sobre os 3.195 órfãos — só a garantia de que o mecanismo acerta quando
 tem o que casar.
