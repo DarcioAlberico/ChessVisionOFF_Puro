@@ -257,8 +257,14 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1937
+    LIMITE = 1850
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.937 -> 1.850 com a tabela de comandos fora da janela (S-31, fatia 3, 2026-11-06)**:
+    `_comandos` virou `montagem_da_janela.tabela_de_comandos`, e a classe segue respondendo por
+    `_comandos`, delegando. Extração pura, com a janela idêntica em offscreen antes e depois.
+    **O alvo de 600 continua aberto**, e o que sobrou está contado na S-136
+    (`docs/SPEC_FASE14.md`).
 
     **2.086 -> 1.937 com a montagem dos painéis fora da janela (S-31, fatia 2, 2026-11-06)**:
     `_montar_paineis` foi para `qt/montagem_da_janela.py`, extração pura e com a janela idêntica

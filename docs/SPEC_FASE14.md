@@ -3847,6 +3847,54 @@ arquivo continuar crescendo em silêncio enquanto isso se resolve.
 **É catraca, não meta.** O corte é o valor de hoje. Baixá-lo é a S-31 reaberta; subi-lo exige
 editar o teste — que é o ponto: passa a ser decisão em vez de acidente.
 
+### Continuação em 2026-11-06: três extrações puras, e o que sobrou para as 600
+
+`qt/janela.py` foi de **2.293 para 1.850 linhas**, em três commits, sem mudar comportamento:
+
+| fatia | para onde | antes | depois |
+|---|---|---|---|
+| sessão (`_aplicar_estado`, `_restaurar_arranjo`, `_anotar_arranjo`, `_gravar_estado`, `closeEvent`, `_confirmar_fechamento`) | `qt/sessao_da_janela.py`; as quatro larguras, para `ui/geometria.py` | 2.293 | 2.086 |
+| `_montar_paineis` | `qt/montagem_da_janela.py` | 2.086 | 1.937 |
+| `_comandos` | `qt/montagem_da_janela.py`, como `tabela_de_comandos` | 1.937 | 1.850 |
+
+Duas escolhas que o guarda decidiu: as larguras foram para `ui/` e a tabela de comandos ficou com a
+montagem, porque `test_ui_fronteira` cobra toolkit em todo módulo de `qt/`, e nenhuma das duas o
+importaria. `closeEvent`, `_gravar_estado`, `_anotar_arranjo` e `_comandos` continuam na classe,
+delegando: o Qt, os testes, a paleta e o auditor da suíte chamam esses nomes.
+
+**A prova** foi a janela real em offscreen, em quatro cenários, comparada com a foto de antes:
+árvore de objetos com classe, nome, geometria e receptores de sinal, os 192 comandos com o destino e
+o bytecode, e o estado gravado. Deu idêntico nas três fatias, com o sinal `destroyed` fora da conta,
+porque ele variou entre duas corridas do mesmo código. Quatro sabotagens (um comando, um widget, um
+sinal e a anotação do arranjo) foram acusadas pela mesma comparação.
+
+**O alvo de 600 segue aberto, e não foi perseguido.** Das 1.850 linhas, 1.006 são código, 567 são
+docstring e nota de atributo, 117 são comentário e 160 são branco. Por trecho do arquivo:
+
+| trecho | linhas |
+|---|---|
+| docstring do módulo, imports e constantes | 215 |
+| atributos declarados e `__init__` | 179 |
+| `_montar` | 80 |
+| estado (`_ler_estado`, recentes, `showEvent`, `resizeEvent`, delegados) | 144 |
+| aparência (pele, densidade, peças, cromo) | 189 |
+| fiação (`_ligar` e os quatro vizinhos) | 97 |
+| livro | 185 |
+| leitura | 229 |
+| resposta | 96 |
+| seleção | 84 |
+| o que um painel entrega a outro, o que a sala pergunta, o que os outros perguntam | 192 |
+| auxiliares da tabela de comandos | 85 |
+| a tela | 76 |
+
+**Por que parar aqui.** A próxima fatia que ainda sai pura é a aparência, que mexe em `_estado`, `menu`
+e no cromo e em quase nada mais, e ela deixaria o arquivo perto de 1.680. Daí para baixo a extração deixa de ser pura:
+livro, leitura, resposta e seleção somam 594 linhas em volta do mesmo estado (`_pdf`, `_itens`,
+`_candidatos`, `_salvos`, `_caixas_por_pagina`, `_tiradas`, `_tarefa`, `_estudar_ao_ler`), e movê-las
+pede um dono novo para esse estado, com os testes que leem esses atributos direto indo atrás. É uma
+decisão de desenho, e não um corte. Chegar a 600 também teria de tirar boa parte das 567 linhas de
+docstring, onde mora o porquê de cada decisão, ou contar só código, e essa escolha é do dono.
+
 ---
 
 ## S-137 · As três guardas de arquitetura, e o peso que ninguém usa

@@ -1,12 +1,15 @@
-"""A montagem da janela: o que existe na tela, e em que ordem nasce (S-31).
+"""A montagem da janela: o que existe na tela, e o que cada comando do catálogo faz nela (S-31).
 
 Saiu de `qt/janela.py` pela regra de corte da S-31 (`tests/test_packaging.py`), **sem mudar uma
-decisão**: o corpo é o de `_montar_paineis`, com `janela` onde estava `self`. Os atributos que ele
-preenche estão declarados na classe, e quem conversa com quem continua em `JanelaPrincipal._ligar`.
+decisão**: os corpos são os de `_montar_paineis` e `_comandos`, com `janela` onde estava `self`. Os
+atributos que a montagem preenche estão declarados na classe, e quem conversa com quem continua em
+`JanelaPrincipal._ligar`. `JanelaPrincipal._comandos` segue existindo, delegando: é a face que o
+menu, a paleta, os atalhos e os testes pedem.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -16,8 +19,11 @@ from PyQt6.QtWidgets import QHBoxLayout, QSplitter, QVBoxLayout, QWidget
 
 from chess_diagram_ocr.config import DEFAULT_MODEL_PATH, DEFAULT_PDF_DIR
 from chess_diagram_ocr.qt import (
+    abas_da_suite,
+    dialogo_de_configuracoes,
     exportador_de_livro,
     importador_de_livro,
+    legenda,
     livro_com_pgn,
     painel_de_revisao_de_texto,
     painel_de_rotulagem,
@@ -45,11 +51,13 @@ from chess_diagram_ocr.ui.geometria import (
     LARGURA_PREFERIDA_DAS_ABAS,
     LARGURA_PREFERIDA_DO_VISOR,
 )
+from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
+from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_TEXTO
 
 if TYPE_CHECKING:
     from chess_diagram_ocr.qt.janela import JanelaPrincipal
 
-__all__ = ["montar_paineis"]
+__all__ = ["montar_paineis", "tabela_de_comandos"]
 
 
 def montar_paineis(janela: JanelaPrincipal) -> None:
@@ -224,3 +232,91 @@ def montar_paineis(janela: JanelaPrincipal) -> None:
     janela.pgn_do_livro = livro_com_pgn.LivroComPgn(  # o .pgn que vem com o PDF digital (S-590)
         janela, dizer=janela._dizer, pdf_atual=lambda: janela._pdf, itens_atuais=lambda: janela._itens,
         painel=janela.painel, revisao=janela.revisao, texto=janela.texto, estudo=janela.estudo, galeria=janela.galeria, focar=janela._focar_aba, ir_para_pagina=janela.pdf.ir_para_pagina)
+
+
+def tabela_de_comandos(janela: JanelaPrincipal) -> dict[str, Callable[[], object]]:
+    """`ação do catálogo -> o que ela faz nesta janela`. **A soma de três tabelas.**
+
+    A desta janela, mais as duas `COMANDOS_DA_ABA` -- a da sala de estudo (31 comandos) e a da
+    aba de texto (48). As duas são declarações dos próprios painéis, e é por isso que os
+    métodos do Qt se chamam igual aos do Tk: a tabela é uma só, e uma segunda seria o lugar
+    onde um comando some sem ninguém notar -- ele continua no catálogo, no menu e nas três
+    peles, e não faz nada.
+
+    **Daqui saem o menu, a paleta e os atalhos**, e é o que garante que os três digam a mesma
+    coisa. `qt/menu.montar` levanta nomeando o item que não tiver comando: um menu que desenha
+    uma linha inerte é pior que um menu sem ela.
+    """
+    tabela: dict[str, Callable[[], object]] = {
+        # --- o livro
+        "abrir_pdf": janela.pdf.abrir_pdf,
+        "abrir_recente": janela._abrir_o_mais_recente,
+        "abrir_no_leitor": janela.pdf.abrir_no_leitor_do_sistema,
+        "sair": janela.close,
+        # --- navegar
+        "pagina_anterior": lambda: janela._na_aba_ou(janela.pdf.pagina_anterior, "pagina_anterior"),
+        "proxima_pagina": lambda: janela._na_aba_ou(janela.pdf.proxima_pagina, "proxima_pagina"),
+        "primeira_pagina": lambda: janela.pdf.ir_para_pagina(0),
+        "ultima_pagina": lambda: janela.pdf.ir_para_pagina(janela.pdf.page_count - 1),
+        "zoom_mais": janela.pdf.aumentar_zoom,
+        "zoom_menos": janela.pdf.diminuir_zoom,
+        "ajustar_largura": janela.pdf.ajustar_a_largura,
+        "ajustar_pagina": janela.pdf.ajustar_a_pagina,
+        "marcar_diagramas": lambda: janela.pdf.marcar_diagramas.toggle(),
+        "roda_vira_pagina": lambda: janela.pdf.roda_vira_pagina.toggle(),
+        "selecionar_area": janela.pdf.alternar_selecao,
+        "tirar_caixa": janela.pdf.dispensar_a_selecionada,
+        "devolver_caixas": janela.devolver_caixas,
+        # --- ler e gravar
+        "ler_pagina": lambda: janela._na_aba_ou(janela.ler_pagina, "recognise_page"),
+        "segunda_opiniao": janela.painel.segunda_opiniao,  # C3
+        "ler_melhor": janela.ler_melhor,
+        "salvar": lambda: janela._na_aba_ou(janela.painel.salvar_atual, "save", "gravar"),
+        "salvar_todos": janela.painel.salvar_todos,
+        "aplicar_fen": janela.painel.aplicar_fen,
+        "limpar_tabuleiro": janela.painel.limpar_tabuleiro,
+        "apagar_casa": janela._apagar_casa,
+        # **Quem desfaz é o foco, e não sempre o tabuleiro** (S-243). Ver `_no_desfazivel`.
+        "desfazer": lambda: janela._no_desfazivel(lambda alvo: alvo.desfazer()),
+        "refazer": lambda: janela._no_desfazivel(lambda alvo: alvo.refazer()),
+        "diagrama_anterior": lambda: janela.painel.andar(-1),
+        "proximo_diagrama": lambda: janela.painel.andar(1),
+        # --- as outras abas
+        "proximo_da_fila": janela.revisao.abrir_proximo_pendente,
+        # **As duas do F9-C3**: ganharam tecla global, e o motivo está em `ui/atalhos.ATALHOS`.
+        "corrigir_agora": janela.revisao.corrigir_agora,
+        "anotar_pagina": janela.campo.anotar_pagina,
+        "varrer_livro": janela.galeria.varrer,
+        "varrer_fila": janela.abrir_fila_de_livros,
+        "exportar_pgn": lambda: janela.exportador.comecar(janela._pdf),
+        "exportar_epub": lambda: janela._exportar_livro("epub"),
+        "importar_livro": lambda: janela.livro.comecar() if janela.livro else janela._dizer(importador_de_livro.MOTIVO_AUSENTE.splitlines()[0]),
+        "cancelar_importacao": lambda: janela.livro.cancelar() if janela.livro else None,
+        "trilho": janela._alternar_trilho,
+        "mesa_de_texto": lambda: janela.mesa.alternar(),
+        "mesa_sempre": lambda: janela.mesa.alternar_sempre(),
+        "destacar_mesa": lambda: janela.mesa_destacada.alternar(),
+        "primeira_duvidosa": janela.trilho._ir_para_a_primeira_duvidosa,
+        "proxima_duvidosa": janela.trilho.ir_para_a_proxima_duvidosa,
+        "anterior_duvidosa": janela.trilho.ir_para_a_anterior_duvidosa,
+        "exportar_docx": lambda: janela._exportar_livro("docx"),
+        "cancelar_exportacao": janela.exportador.cancelar,
+        "treinar": janela.treino.iniciar,
+        "configuracoes": lambda: dialogo_de_configuracoes.abrir(janela, dizer=janela._dizer),
+        "recarregar_modelo": janela._recarregar_modelo,
+        # --- a janela
+        "aparencia": janela._escolher_pele,
+        "densidade": janela._escolher_densidade,
+        "conjunto_de_pecas": janela._escolher_conjunto,
+        "paleta_de_comandos": janela.abrir_paleta,
+        "legenda_de_atalhos": lambda: legenda.abrir(janela),
+        "abrir_log": janela._abrir_log,
+        "sobre": janela._sobre,
+    }
+    # As duas tabelas dos painéis entram depois: um comando que os dois declarassem seria da
+    # aba, e não da janela -- é lá que o método está.
+    tabela.update({acao: getattr(janela.estudo, metodo) for acao, metodo in COMANDOS_DA_SALA.items()})
+    tabela.update({acao: getattr(janela.texto, metodo) for acao, metodo in COMANDOS_DO_TEXTO.items()})
+    tabela.update(abas_da_suite.donos(janela.rotulagem, janela.revisao_de_texto, dizer=janela._dizer))  # C8
+    tabela.update(livro_com_pgn.donos(lambda: janela.pgn_do_livro))  # S-590
+    return tabela

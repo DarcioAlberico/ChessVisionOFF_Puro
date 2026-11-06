@@ -70,12 +70,11 @@ def _livro(pasta: Path, nome: str = "livro.pdf", paginas: int = 3) -> Path:
     return caminho
 
 
-_FONTE_DA_JANELA = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt" / "janela.py"
-_FONTE_DA_MONTAGEM = _FONTE_DA_JANELA.with_name("montagem_da_janela.py")
+_FONTE_DA_MONTAGEM = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt" / "montagem_da_janela.py"
 
 
 def _comandos_inertes(fonte: str) -> list[str]:
-    """As acoes que `_comandos` amarra a um `lambda: None`, lidas do texto do modulo (PR #25).
+    """As acoes que `tabela_de_comandos` amarra a um `lambda: None`, lidas do texto do modulo (PR #25).
 
     **Sobre a fonte e nao sobre o objeto, e a diferenca custou uma guarda vacua.** A primeira
     versao disto pedia `inspect.getsource` da funcao amarrada, que para um `lambda` dentro de um
@@ -88,7 +87,7 @@ def _comandos_inertes(fonte: str) -> list[str]:
     metodo = next(
         no
         for no in ast.walk(ast.parse(fonte))
-        if isinstance(no, ast.FunctionDef) and no.name == "_comandos"
+        if isinstance(no, ast.FunctionDef) and no.name == "tabela_de_comandos"
     )
     return [
         chave.value
@@ -296,7 +295,7 @@ class MontagemTests(unittest.TestCase):
 
         A varredura e sobre a **fonte** do arquivo, e nao sobre o objeto: ver `_comandos_inertes`.
         """
-        inertes = _comandos_inertes(_FONTE_DA_JANELA.read_text(encoding="utf-8"))
+        inertes = _comandos_inertes(_FONTE_DA_MONTAGEM.read_text(encoding="utf-8"))
         self.assertEqual(
             sorted(set(inertes) - set(self.INERTES_DECLARADOS)),
             [],
@@ -312,7 +311,7 @@ class MontagemTests(unittest.TestCase):
         dela comeca no dia em que alguem acrescentar uma entrada; ate la quem cobra e a de cima,
         que e absoluta justamente por nao haver isencao nenhuma.
         """
-        inertes = set(_comandos_inertes(_FONTE_DA_JANELA.read_text(encoding="utf-8")))
+        inertes = set(_comandos_inertes(_FONTE_DA_MONTAGEM.read_text(encoding="utf-8")))
         self.assertEqual(sorted(set(self.INERTES_DECLARADOS) - inertes), [])
 
     def test_a_varredura_de_inertes_acha_um_comando_inerte(self) -> None:
@@ -327,13 +326,12 @@ class MontagemTests(unittest.TestCase):
         detector contra uma fonte de mentira, e e a diferenca entre "nao achou" e "nao procura".
         """
         fonte = (
-            "class J:\n"
-            "    def _comandos(self):\n"
-            "        return {\n"
-            '            "faz_algo": self.metodo,\n'
-            '            "nao_faz": lambda: None,\n'
-            '            "chama": lambda: outra(self),\n'
-            "        }\n"
+            "def tabela_de_comandos(janela):\n"
+            "    return {\n"
+            '        "faz_algo": janela.metodo,\n'
+            '        "nao_faz": lambda: None,\n'
+            '        "chama": lambda: outra(janela),\n'
+            "    }\n"
         )
         self.assertEqual(_comandos_inertes(fonte), ["nao_faz"])
 

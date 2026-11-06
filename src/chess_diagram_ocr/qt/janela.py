@@ -89,7 +89,6 @@ from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
 from chess_diagram_ocr.qt import (
     abas_da_suite,
     acessibilidade,
-    dialogo_de_configuracoes,
     dialogos,
     dica,
     escala,
@@ -97,7 +96,6 @@ from chess_diagram_ocr.qt import (
     fila,
     fita,
     importador_de_livro,
-    legenda,
     leitura,
     livro_com_pgn,
     menu,
@@ -177,9 +175,7 @@ from chess_diagram_ocr.ui.page_overlay import (
 )
 from chess_diagram_ocr.ui.page_results import PageOcrParams, colocacoes_conferidas, paginas_editadas
 from chess_diagram_ocr.ui.pedido_de_treino import TrainingRequest, pedido_de_treino
-from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.state import AppState, load_state
-from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_TEXTO
 from chess_diagram_ocr.ui.varredura_de_revisao import PedidoDeVarredura
 
 logger = logging.getLogger(__name__)
@@ -1695,91 +1691,8 @@ class JanelaPrincipal(QMainWindow):
     # ------------------------------------------------------------------- a tabela de comandos
 
     def _comandos(self) -> dict[str, Callable[[], object]]:
-        """`ação do catálogo -> o que ela faz nesta janela`. **A soma de três tabelas.**
-
-        A desta janela, mais as duas `COMANDOS_DA_ABA` -- a da sala de estudo (31 comandos) e a da
-        aba de texto (48). As duas são declarações dos próprios painéis, e é por isso que os
-        métodos do Qt se chamam igual aos do Tk: a tabela é uma só, e uma segunda seria o lugar
-        onde um comando some sem ninguém notar -- ele continua no catálogo, no menu e nas três
-        peles, e não faz nada.
-
-        **Daqui saem o menu, a paleta e os atalhos**, e é o que garante que os três digam a mesma
-        coisa. `qt/menu.montar` levanta nomeando o item que não tiver comando: um menu que desenha
-        uma linha inerte é pior que um menu sem ela.
-        """
-        tabela: dict[str, Callable[[], object]] = {
-            # --- o livro
-            "abrir_pdf": self.pdf.abrir_pdf,
-            "abrir_recente": self._abrir_o_mais_recente,
-            "abrir_no_leitor": self.pdf.abrir_no_leitor_do_sistema,
-            "sair": self.close,
-            # --- navegar
-            "pagina_anterior": lambda: self._na_aba_ou(self.pdf.pagina_anterior, "pagina_anterior"),
-            "proxima_pagina": lambda: self._na_aba_ou(self.pdf.proxima_pagina, "proxima_pagina"),
-            "primeira_pagina": lambda: self.pdf.ir_para_pagina(0),
-            "ultima_pagina": lambda: self.pdf.ir_para_pagina(self.pdf.page_count - 1),
-            "zoom_mais": self.pdf.aumentar_zoom,
-            "zoom_menos": self.pdf.diminuir_zoom,
-            "ajustar_largura": self.pdf.ajustar_a_largura,
-            "ajustar_pagina": self.pdf.ajustar_a_pagina,
-            "marcar_diagramas": lambda: self.pdf.marcar_diagramas.toggle(),
-            "roda_vira_pagina": lambda: self.pdf.roda_vira_pagina.toggle(),
-            "selecionar_area": self.pdf.alternar_selecao,
-            "tirar_caixa": self.pdf.dispensar_a_selecionada,
-            "devolver_caixas": self.devolver_caixas,
-            # --- ler e gravar
-            "ler_pagina": lambda: self._na_aba_ou(self.ler_pagina, "recognise_page"),
-            "segunda_opiniao": self.painel.segunda_opiniao,  # C3
-            "ler_melhor": self.ler_melhor,
-            "salvar": lambda: self._na_aba_ou(self.painel.salvar_atual, "save", "gravar"),
-            "salvar_todos": self.painel.salvar_todos,
-            "aplicar_fen": self.painel.aplicar_fen,
-            "limpar_tabuleiro": self.painel.limpar_tabuleiro,
-            "apagar_casa": self._apagar_casa,
-            # **Quem desfaz é o foco, e não sempre o tabuleiro** (S-243). Ver `_no_desfazivel`.
-            "desfazer": lambda: self._no_desfazivel(lambda alvo: alvo.desfazer()),
-            "refazer": lambda: self._no_desfazivel(lambda alvo: alvo.refazer()),
-            "diagrama_anterior": lambda: self.painel.andar(-1),
-            "proximo_diagrama": lambda: self.painel.andar(1),
-            # --- as outras abas
-            "proximo_da_fila": self.revisao.abrir_proximo_pendente,
-            # **As duas do F9-C3**: ganharam tecla global, e o motivo está em `ui/atalhos.ATALHOS`.
-            "corrigir_agora": self.revisao.corrigir_agora,
-            "anotar_pagina": self.campo.anotar_pagina,
-            "varrer_livro": self.galeria.varrer,
-            "varrer_fila": self.abrir_fila_de_livros,
-            "exportar_pgn": lambda: self.exportador.comecar(self._pdf),
-            "exportar_epub": lambda: self._exportar_livro("epub"),
-            "importar_livro": lambda: self.livro.comecar() if self.livro else self._dizer(importador_de_livro.MOTIVO_AUSENTE.splitlines()[0]),
-            "cancelar_importacao": lambda: self.livro.cancelar() if self.livro else None,
-            "trilho": self._alternar_trilho,
-            "mesa_de_texto": lambda: self.mesa.alternar(),
-            "mesa_sempre": lambda: self.mesa.alternar_sempre(),
-            "destacar_mesa": lambda: self.mesa_destacada.alternar(),
-            "primeira_duvidosa": self.trilho._ir_para_a_primeira_duvidosa,
-            "proxima_duvidosa": self.trilho.ir_para_a_proxima_duvidosa,
-            "anterior_duvidosa": self.trilho.ir_para_a_anterior_duvidosa,
-            "exportar_docx": lambda: self._exportar_livro("docx"),
-            "cancelar_exportacao": self.exportador.cancelar,
-            "treinar": self.treino.iniciar,
-            "configuracoes": lambda: dialogo_de_configuracoes.abrir(self, dizer=self._dizer),
-            "recarregar_modelo": self._recarregar_modelo,
-            # --- a janela
-            "aparencia": self._escolher_pele,
-            "densidade": self._escolher_densidade,
-            "conjunto_de_pecas": self._escolher_conjunto,
-            "paleta_de_comandos": self.abrir_paleta,
-            "legenda_de_atalhos": lambda: legenda.abrir(self),
-            "abrir_log": self._abrir_log,
-            "sobre": self._sobre,
-        }
-        # As duas tabelas dos painéis entram depois: um comando que os dois declarassem seria da
-        # aba, e não da janela -- é lá que o método está.
-        tabela.update({acao: getattr(self.estudo, metodo) for acao, metodo in COMANDOS_DA_SALA.items()})
-        tabela.update({acao: getattr(self.texto, metodo) for acao, metodo in COMANDOS_DO_TEXTO.items()})
-        tabela.update(abas_da_suite.donos(self.rotulagem, self.revisao_de_texto, dizer=self._dizer))  # C8
-        tabela.update(livro_com_pgn.donos(lambda: self.pgn_do_livro))  # S-590
-        return tabela
+        """`ação do catálogo -> o que ela faz nesta janela`. Ver `qt/montagem_da_janela.tabela_de_comandos`."""
+        return montagem_da_janela.tabela_de_comandos(self)
 
     def _na_aba_ou(self, padrao: Callable[[], Any], *metodos: str) -> Any:
         """O comando global roteado à aba da suíte à frente (C8), senão ao padrão: `Ctrl+S` com a
