@@ -498,6 +498,31 @@ marcado para revisão, com captura ≥ 90% — ou (b) pagar o orçamento de CPU 
 
 ## 5a. O que você vai ver, e quando
 
+> **Estado em 2026-11-06: as Fases 100, 102, 103 e 106 foram executadas, e o ouro-teste foi lido para os portões.** Números em
+> [metrics/texto_prosa_portoes_20261106.json](metrics/texto_prosa_portoes_20261106.json), medidos em `3f780eb5`, máquina parada.
+>
+> | portão | meta | medido no ouro-teste (96 folhas, 16 livros) | veredito |
+> |---|---|---|---|
+> | G100 | linha de base publicada | [metrics/texto_prosa_20261106.json](metrics/texto_prosa_20261106.json) | ✅ |
+> | G101, perda de leiaute | teto ≤ +0,3 p.p. | **+1,79 p.p. [+0,74; +3,05]**; degradado médio +0,16 [−1,73; +1,74] sem calibração | ❌ no teste |
+> | G102, CER de prosa da fusão | ≤ 0,8%, teto ≤ 1,2% | **2,11% [0,83; 3,72]** | ❌ |
+> | G102, WER da fusão | ≤ 2,0%, teto ≤ 3,0% | 2,70% | ❌ |
+> | G1(a), figurina | ≥ 99,5% | 100% fora 22 vetos (2.866 de 2.888) | ✅ |
+> | G1(b), notação contra o glifo | teto ≤ +1,0 p.p. | **−0,89 [−1,63; −0,25]** | ✅ |
+> | G2, figurina | piso ≥ −1,0 p.p. | revocação −0,26 [−0,66; 0], precisão −0,03 [−0,26; +0,18] | ✅ |
+> | não-inferioridade contra o Tesseract, prata admitida | teto ≤ +0,5 p.p. | +0,21 [−0,17; +0,79] | ❌ pelo teto |
+> | G4, tempo | digital 2,0 s, p95 4,0; scan 3,5 s, p95 6,0 | digital 1,68 s, p95 2,70; scan 2,66 s, p95 3,72, no CLI | ✅, mas não na janela |
+> | G103, glifo sozinho | ≤ 1,5%, teto ≤ 2,5% | **4,87% [2,51; 7,55]**, era 6,93% na linha de base | ❌ |
+> | G5, faixa "revisar" | captura ≥ 90% com ≤ 5% marcadas | no dev, livro de fora: 76,9% com 5,6%; scan: 54,5% | ❌ |
+>
+> **O padrão não muda.** `auto` continua o glifo: o G102 não passou, e a D4 não foi respondida. **O que os números dizem:** o reconhecimento já está
+> pago, com o Tesseract nas linhas certas a **0,15%** no teste, e o que falta é leiaute: as mesmas folhas caem a 1,94% nas caixas do glifo. O
+> teste foi lido, então nada se ajusta olhando para ele: mais trabalho de leiaute precisa de livro novo no dev.
+>
+> **O plano B da seção 3 está valendo, e a escolha é do dono**: (a) aceitar M1 ≤ 0,50% com a G5 compensando, ou (b) pagar a Fase 105 (D8). A G5 também
+> não cumpre, então (a) hoje não fecha sozinha. O que ficou de fora por recuo: S-703 só a ferramenta (D3), S-704 sem perfil calibrado (D3), S-724 (D1), S-740, S-741, S-742 e os
+> degraus 1 a 3 da S-745 (D2, D7, D3), a Fase 105 (D8), S-746 (só serve a ela), S-765 (D9), o G104 e a S-770 (D3 e D8).
+
 > **Estado em 2026-11-05: a primeira entrega foi feita**, com a especificação em
 > [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) e os números em
 > [metrics/texto_prosa_primeira_entrega.json](metrics/texto_prosa_primeira_entrega.json). A coluna "primeira entrega"
@@ -1024,6 +1049,8 @@ b`), e consertá-la
   caixas do glifo − nas caixas da camada) com teto do IC95 ≤ +0,3 p.p. no ouro-teste e ≤ +2 p.p. no
   degradado calibrado. Hoje: +1,17 p.p. [−0,03; +3,91] no ouro-dev (+0,12 [−0,06; +0,48] sem o *Chess
   Evolution*) e +12,1 p.p. no degradado médio.
+  - *Medido em 2026-11-06:* **não passa.** +1,79 p.p. [+0,74; +3,05] no ouro-teste, +0,15 [−0,01; +0,56] no dev. Nenhuma folha perdida pelo leiaute
+    nas 153 folhas medidas.
 
 ### Fase 102 — O leitor de linha ao lado do glifo
 
@@ -1676,12 +1703,12 @@ de cada um.
     relatório publicado antes de qualquer ajuste.
   - *Saída:* M0–M5 e G1–G6 com ponto e teto; o plano B da seção 3 aplicado se algum falhar.
   - *Reversão:* medição.
-- **S-771** · README, ARCHITECTURE e o cabeçalho de `text/leitor.py` com o caminho novo e os números.
+- **S-771** · README, ARCHITECTURE e o cabeçalho de `text/leitor.py` com o caminho novo e os números. ✅ entregue em 2026-11-06, com os números de portão: o fecho depende de D3 e D8
   - *Verificação:* `pytest tests/test_docs.py` verde; os números citados batem com o relatório (guarda
     de número vivo, como as que o `test_docs` já tem).
   - *Saída:* README, ARCHITECTURE e cabeçalho de `text/leitor.py` atualizados.
   - *Reversão:* documentação.
-- **S-772** · Memória do projeto e a skill `ocr-texto-preciso` atualizadas com o que a execução ensinou.
+- **S-772** · Memória do projeto e a skill `ocr-texto-preciso` atualizadas com o que a execução ensinou. ✅ entregue em 2026-11-06
   - *Verificação:* a memória e a skill citam o relatório final e não contradizem o roadmap.
   - *Saída:* memória e skill atualizadas no mesmo dia do portão final.
   - *Reversão:* documentação.

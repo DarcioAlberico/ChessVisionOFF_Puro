@@ -62,6 +62,13 @@ pesos não carregarem -- e nesse caso quem cai avisa, em vez de trocar de motor 
 **Continua não havendo voto entre os dois**, e por isso a `PaginaLida` registra em cada bloco de
 qual deles ele veio: a procedência é o que permite comparar depois sem remedir.
 
+## Quem lê o quê, depois da régua da prosa (S-771)
+
+O padrão continua `glifo`, em `auto` também. `camada_prosa` lê a prosa da camada nos livros digitais admitidos e a notação pelo glifo;
+`fusao` lê a prosa pelo Tesseract e a notação pelo glifo, com `text/arbitro.py` julgando o lance e a figurina. Sem Tesseract, `fusao` é
+o glifo, com aviso. Quem decide trocar o padrão é o portão G102, e ele **não passou**: no ouro-teste, fusão 2,11% contra a meta de 0,8%,
+e Tesseract nas linhas certas 0,15% (`docs/metrics/texto_prosa_portoes_20261106.json`). O que falta é leiaute, não reconhecimento.
+
 ## O separador de colado paga na página, e a primeira medição não viu
 
 **Esta seção existia dizendo o contrário, e a correção é o item.** Em 2026-08-24 eu medi o

@@ -1933,3 +1933,18 @@ Em 19 folhas do *Bachmann* e 29 do *Neumann*, espaçadas e lidas pelo `motor="fu
 **Saída cumprida: nenhum `Io.`/`ıı.`, casas válidas ≥ 99%.**
 
 **Validade é o juiz da própria correção, e o crítico o reprovou por isso.** Quem mede acerto é o `acerto.py` da S-729, contra a camada: 37 certas e 1 errada em 41 trocas na v5, 62 e 2 em 90 na v3 forçada, nas 40 folhas digitais. **Nenhum dos dois livros do século XIX tem camada que julgue**, então a fatia digital é um substituto, e o mapa do estilo antigo (`g` por `3`, `y` por `7`) quase não aparece nela. O que julga estes dois livros é o replay da posição inicial, sem a gramática do árbitro: o *Neumann* fecha legais 28 de 44 lances com o árbitro e 19 de 30 sem; o *Bachmann* das folhas sorteadas quase não tem começo de partida (4 de 4 e 3 de 3). `g` por `3` num livro que usa `g` por `9` não mudaria a validade. `tests/test_text_arbitro.py`, `GramaticaTests` e `CertoQueNaoViraErradoTests`.
+
+## S-771 · O caminho novo escrito onde se lê ✅ implementada (2026-11-06)
+
+**Problema.** O cabeçalho de `text/leitor.py` dizia que o padrão é o glifo e parava aí, sem dizer quem lê o quê depois das Fases 100 a 106.
+
+**Decisão.** O cabeçalho, o README e a ARCHITECTURE dizem quem lê o quê, e citam o relatório dos portões: `docs/metrics/texto_prosa_portoes_20261106.json`. O padrão continua o
+glifo, porque o G102 não passou no ouro-teste.
+
+**Critério de aceite.** `tests/test_docs.py` verde.
+
+## S-772 · O que a execução ensinou ✅ implementada (2026-11-06)
+
+**Decisão.** A skill `ocr-texto-preciso` e a memória do projeto citam o relatório dos portões e não contradizem o roadmap. Moram fora do repositório, então a guarda é a leitura.
+
+**O que ficou para a próxima rodada.** A escolha do plano B (seção 3 do roadmap), e leiaute medido em livro que o teste não viu: o teste foi lido, e não serve mais para decidir ajuste.
