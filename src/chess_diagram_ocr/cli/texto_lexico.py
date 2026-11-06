@@ -162,6 +162,9 @@ LIVROS_DA_MEDICAO = 5
 PAGINAS_DA_MEDICAO = 12
 DESTINO_DA_MEDICAO = PROJECT_ROOT / "docs" / "metrics" / "texto_lexico.json"
 
+MOTOR_DA_JUNCAO = "glifo"
+"""Quem lê a folha na medida da junção: a população dela é o livro tipografado, e não a camada (S-727)."""
+
 
 LIVROS_TIPOGRAFADOS = (
     "AAGAARD - Practical Chess Defence.pdf",
@@ -198,7 +201,7 @@ def medir_juncao_no_glifo(livros: Sequence[str], folhas: Sequence[int]) -> dict[
             continue
         for indice in folhas:
             try:
-                pagina = ler_pagina(caminho, indice, reconhecedor=reconhecedor)
+                pagina = ler_pagina(caminho, indice, motor=MOTOR_DA_JUNCAO, reconhecedor=reconhecedor)
             except (ValueError, RuntimeError, OSError):
                 continue
             lidas += 1
@@ -210,6 +213,7 @@ def medir_juncao_no_glifo(livros: Sequence[str], folhas: Sequence[int]) -> dict[
     _novas, juncoes = juntar_hifenizadas(linhas, lexico)
     return {
         "medida": True,
+        "motor": MOTOR_DA_JUNCAO,
         "livros": list(livros),
         "folhas_lidas": lidas,
         "linhas": len(linhas),

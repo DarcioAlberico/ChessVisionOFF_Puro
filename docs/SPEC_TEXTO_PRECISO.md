@@ -624,3 +624,24 @@ tempos: outras medições rodavam na máquina.
 `--user-words` e `load_system_dawg=0`: um processo por folha tem uma configuração só, e separar as linhas de notação
 é a S-721. A escala pela altura-x muda o texto lido, e entra medida. O timeout é 1 s por linha com piso de 10 s, e
 ainda não 10× o p99 medido. O Tesseract no instalador é a S-724, que espera a D1.
+
+## S-727 · Os CLIs de medição fixam o motor ✅ implementada (2026-11-06)
+
+### Problema
+
+O G102 vira o padrão de `ler_pagina`. Sem motor escrito, o que um CLI mede mudaria junto, em silêncio. Medido em
+`cli/texto_*.py`: uma chamada sem `motor=` (`texto_lexico`, a junção no glifo), e três relatórios que usavam um motor
+sem dizê-lo (`texto_custo`, `texto_estilo_motor` e a mesma junção).
+
+### Decisão
+
+Todo `ler_pagina` de CLI escreve o motor; quem publica relatório o grava. `MOTOR_MEDIDO` em `texto_custo` e
+`MOTOR_DA_JUNCAO` em `texto_lexico` são a mesma constante na leitura e no relatório, para os dois não divergirem.
+`texto_estilo_motor` grava `motores`; `texto_pesquisavel`, que não publica JSON, escreve o motor na saída. Número nenhum
+muda: o que se escreveu é `glifo`, e é o `MOTOR_PADRAO` de hoje. Os relatórios antigos ficam como estão.
+
+### Critério de aceite
+
+`tests/test_texto_clis_motor.py`: varre os arquivos por `ast` e reprova chamada sem `motor=`, também com import dentro
+de função, apelido, acesso pelo módulo e `**opcoes`. Os casos sintéticos provam que a guarda acusa, e um deles grita se
+a varredura ficar vazia. `texto_placar_final` tem um homônimo local, e não conta.

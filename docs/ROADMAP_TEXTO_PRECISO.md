@@ -1182,7 +1182,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     do estado; a suíte verde.
   - *Saída:* o modo bloco não existe no caminho da página; estado antigo abre sem a chave.
   - *Reversão:* é remoção: volta por `git revert` do commit, que precisa ser só dela.
-- **S-727** · Os CLIs de medição fixam o motor antes de o padrão mudar.
+- **S-727** · Os CLIs de medição fixam o motor antes de o padrão mudar. ✅ entregue em 2026-11-06
   - *Contexto:* na `main`, CLIs que publicam `docs/metrics/texto_*.json` (`texto_lexico`,
     `texto_paragrafo`, `texto_pesquisavel`, `texto_custo` e outros) chamam `ler_pagina` com o motor
     **padrão**. Virar o padrão para a fusão mudaria o que eles medem, sem guarda nenhuma.
@@ -1192,6 +1192,10 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Verificação:* teste que varre `cli/texto_*.py` e reprova chamada de `ler_pagina` sem `motor=`.
   - *Saída:* todo relatório `docs/metrics/texto_*.json` novo diz o motor; os antigos ficam como estão.
   - *Reversão:* acrescentar `motor=` explícito não muda número nenhum.
+  - *Achado:* só um CLI chamava sem `motor=`: `texto_lexico`, na junção do glifo. `MOTOR_PADRAO` é `glifo` e o escrito
+    é `glifo`, logo número nenhum muda. Quem escrevia o motor e não o gravava: `texto_custo`, `texto_estilo_motor` e a
+    junção do `texto_lexico`. `texto_flutuante` e `texto_paragrafo` já gravavam. `texto_placar_final` tem um `ler_pagina`
+    próprio, homônimo, que não é o do leitor. `texto_pesquisavel` não publica JSON: diz o motor na saída.
 - **S-728** · Léxico por língua.
   - *Contexto:* `text/lexico.py` tem perfis (`acervo`, `idioma`, `nomes`), não línguas; a S-721 e a
     S-723 pressupõem um léxico por língua.
