@@ -375,6 +375,9 @@ def dica_da_cor_rapida(canal: str, nome: str) -> str:
 DICA_DO_RODAPE_DA_FOLHA = "Clique para escolher outra folha: o campo da folha, na aba Leitura da fita."
 """A dica da frase do rodapé da aba Texto, que leva ao campo da folha (S-655)."""
 
+FOLHA_SEM_TEXTO_LIDO = "A folha {folha} não tem texto lido ({como}): tente outro motor."
+"""A folha vazia não é falha nem é «0 trecho(s)» (item 26). Dizia também «ou o modo bloco», que saiu na S-726."""
+
 ABRIR_FOLHA_DO_CADERNO = "Abrir folha"
 """O botão «Ler folha» quando a folha do campo já está no caderno do livro (S-612): abrir não
 chama o motor, e o rótulo diz isso. Ler de novo fica no menu do botão direito da folha."""

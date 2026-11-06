@@ -321,7 +321,6 @@ MENUS: tuple[Menu, ...] = (
             # S-151 mediu.
             Item("ler_folha"),
             Item("folha_da_pagina_aberta"),
-            Item("modo_bloco", INTERRUPTOR),
             Item("lingua_do_livro"),
             _sep(),
             Item("abrir_texto"),

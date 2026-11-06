@@ -274,9 +274,9 @@ class MontagemTests(unittest.TestCase):
         self.assertAlmostEqual(colunas[0].blocos[0].confianca, 0.42)
 
 
-class EspacoDoModoBlocoTests(unittest.TestCase):
-    def test_o_espaco_dobrado_do_modo_bloco_colapsa(self) -> None:
-        """`texto_da_linha` põe um espaço no vão, e o bloco já trouxe o seu: sai `e5,  but`."""
+class EspacoRepetidoTests(unittest.TestCase):
+    def test_o_espaco_dobrado_colapsa(self) -> None:
+        """`texto_da_linha` põe um espaço no vão, e a linha que já trouxe o seu sairia `e5,  but`."""
         self.assertEqual(leitor._colapsar_espaco("e5,  but  Ne5"), "e5, but Ne5")
 
     def test_colapsar_nao_mexe_em_texto_normal(self) -> None:

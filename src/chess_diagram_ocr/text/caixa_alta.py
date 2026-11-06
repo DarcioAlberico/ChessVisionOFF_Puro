@@ -31,7 +31,7 @@ E o ganho ponta a ponta, medido em 11 páginas de 4 livros pelo caminho de produ
     CER 0,1434 -> 0,1114   (-22,3%)   11 páginas melhoram, nenhuma piora, sem custo de tempo
 
 É o maior ganho medido deste subpacote, e é o único dos três interruptores da página que entra
-**ligado** -- o modo bloco da S-188 e o separador da S-186 foram medidos e não pagam.
+**ligado** -- a leitura em blocos da S-188, que a S-726 aposentou, e o separador da S-186 foram medidos e não pagam.
 
 **O caminho da faixa de legenda não usa isto.** A correção mora em `text/leitor.py`, e não em
 `GlyphRecognizer.read`: os números publicados da legenda continuam descrevendo o que roda lá.

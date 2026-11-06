@@ -188,12 +188,12 @@ class LinguaNoCadernoTests(_Aba):
     def test_a_folha_lida_em_outra_lingua_nao_abre_do_caderno(self) -> None:
         from chess_diagram_ocr.text import caderno
 
-        estado = caderno.EstadoDaFolha(pagina=0, estado=caderno.LIDA, motor="fusao:eng", modo_bloco=False)
+        estado = caderno.EstadoDaFolha(pagina=0, estado=caderno.LIDA, motor="fusao:eng")
         self.painel.definir_motor("fusao")
         self.painel.definir_lingua("eng")
-        self.assertTrue(caderno.abre_do_caderno(estado, motor=self.painel._motor_gravado(), modo_bloco=False))
+        self.assertTrue(caderno.abre_do_caderno(estado, motor=self.painel._motor_gravado()))
         self.painel.definir_lingua("por")
-        self.assertFalse(caderno.abre_do_caderno(estado, motor=self.painel._motor_gravado(), modo_bloco=False))
+        self.assertFalse(caderno.abre_do_caderno(estado, motor=self.painel._motor_gravado()))
 
 
 class LinguaDoLivroTests(_Aba):

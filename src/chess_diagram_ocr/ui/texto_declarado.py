@@ -269,7 +269,6 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "exportar_txt": "salvar",
     "ler_folha": "ler",
     "folha_da_pagina_aberta": "sincronizar_com_a_pagina",
-    "modo_bloco": "modo_bloco_mudou",
     "cor_do_texto": "escolher_cor",
     "realce": "escolher_realce",
     "paleta_de_glifos": "alternar_paleta",

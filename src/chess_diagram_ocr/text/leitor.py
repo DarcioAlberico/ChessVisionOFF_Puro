@@ -120,7 +120,11 @@ Fica registrado porque o erro de diagnóstico é o achado: `40`→`co` **parece*
 duas confusões de um caractere. Quem for atrás dessa família de erro deve ir para o léxico da
 S-209 ou para o treino, e não para a geometria.
 
-## O modo bloco da S-188 entra desligado, e o número é o motivo
+## O modo bloco da S-188 saiu da página, e o número é o motivo
+
+Remedido só na prosa (S-726, `docs/metrics/texto_prosa_bloco_2026-11-06.json`, 27 folhas de 5 livros digitais): **6,33%** de CER
+de prosa, contra 0,95% do glifo sozinho e 0,24% da fusão, e revocação de figurina de 33%. A tabela abaixo é a medição de agosto, que
+misturava prosa com notação, e já tinha dito o mesmo.
 
 A S-188 prometia o maior ganho do plano -- 72,8% para 91,2% de acerto de caractere, medido no
 projeto de origem sobre faixas de legenda -- e na página ela **não paga**. Medido em 2026-08-24
@@ -134,9 +138,8 @@ sobre 10 páginas de 2 livros, com a camada de texto da própria página como re
     média                            10   0,1397             0,1446      ~50x
 
 No livro nativo digital ele **piora** 22,5%, e mesmo onde ajuda o ganho é de 0,009 de CER por 40
-vezes o tempo. Ele fica, e fica exposto em `--bloco`: o ganho da medição de origem era sobre
-**faixa de legenda**, que é texto curto e isolado, e ali ele pode continuar valendo. O que a
-medição diz é que a página não é aquele caso -- e o padrão segue a medição.
+vezes o tempo. O ganho da medição de origem era sobre **faixa de legenda**, que é texto curto e isolado:
+`GlyphRecognizer` e `leitura_de_linha.em_bloco` ficam para ela. A página não é aquele caso.
 
 ## O que o número de CER inclui, e o que ele não prova
 
@@ -389,28 +392,11 @@ def linhas_da_camada(page: object, *, escala_px: float) -> list[_Cru]:
     return cruas
 
 
-def leitor_de_linha_padrao() -> object | None:
-    """O segundo opinante da S-188, ou `None` quando o extra não está instalado.
-
-    RapidOCR e não outro pelo motivo que a S-42 já mediu: é o único que não baixa nada na primeira
-    execução -- os modelos vêm no wheel. `None` é caminho normal e não erro: sem ele o leitor cai
-    para a leitura por caractere, que é a que sempre existiu.
-    """
-    from ..ocr import build_recognizer
-    from ..settings import OcrSettings
-
-    try:
-        return build_recognizer(OcrSettings(enabled=True, engine="rapidocr"))
-    except Exception as exc:  # pragma: no cover - extra ausente
-        logger.debug("Sem leitor de linha para o modo bloco da S-188: %s", exc)
-        return None
-
-
 def _colapsar_espaco(texto: str) -> str:
-    """Espaços repetidos viram um. Existe porque o modo bloco os produz aos pares.
+    """Espaços repetidos viram um. Nasceu com a leitura em blocos, que os produzia aos pares, e fica de guarda.
 
-    `texto_da_linha` põe um espaço onde o vão entre boxes é largo, e a leitura de bloco **já
-    trouxe** o espaço dentro do pedaço casado àquele box -- então `e5, but` sai `e5,  but`. Colapsar
+    `texto_da_linha` põe um espaço onde o vão entre boxes é largo, e a linha que já traz um espaço
+    sairia com dois: `e5,  but`. Colapsar
     aqui, e não em `texto_da_linha`: aquela função está medida no caminho da legenda, e um espaço a
     menos ali mudaria um CER publicado.
     """
@@ -544,7 +530,6 @@ def linhas_do_glifo(
     *,
     reconhecedor: object | None = None,
     escala: int | None = None,
-    modo_bloco: bool = False,
     colados: str = COLADOS_NA_PAGINA,
     caixa_alta: bool = True,
     traco: bool = True,
@@ -559,9 +544,7 @@ def linhas_do_glifo(
     """As linhas lidas pelo classificador de glifo, **região a região e coluna a coluna**, e as
     regiões achadas.
 
-    `escala=None` a mede com `escala_fora_dos_diagramas`. `modo_bloco=True` liga a S-188 -- ler a
-    linha, e não o caractere. **Desligado por padrão, e o número que decidiu isso está no cabeçalho
-    deste módulo**: na página inteira ele custa ~50x o tempo e piora o livro nativo digital.
+    `escala=None` a mede com `escala_fora_dos_diagramas`.
 
     `dpi` é o da imagem, e vai para `segmentar` virar as faixas de texto claro sobre preto (S-599).
 
@@ -625,11 +608,8 @@ def linhas_do_glifo(
     if reconhecedor is None:
         from .recognizer import build_glyph_recognizer
 
-        reconhecedor = build_glyph_recognizer(
-            leitor_de_linha=leitor_de_linha_padrao() if modo_bloco else None
-        )
+        reconhecedor = build_glyph_recognizer()
     classificador = reconhecedor.classifier  # type: ignore[attr-defined]
-    leitor_de_linha = getattr(reconhecedor, "_leitor_de_linha", None)
     lexico = _dicionario.carregar() if dicionario else frozenset()
     sem_nomes = _dicionario.carregar(nomes=False) if dicionario else frozenset()
 
@@ -711,11 +691,6 @@ def linhas_do_glifo(
                 lidos = classificador.classificar(recortes)
             if not lidos:
                 continue
-            if leitor_de_linha is not None:
-                from .leitura_de_linha import em_bloco
-
-                casados = em_bloco(cinza, grupo, lidos, leitor_de_linha)
-                lidos = [(item.caractere, item.confianca) for item in casados]
             texto = _colapsar_espaco(texto_da_linha(grupo, [char for char, _ in lidos]))
             texto = _fronteira.juntar(texto, sem_nomes)  # `ga n ha ndo` (S-732)
             if juntar_lance:
@@ -1295,7 +1270,6 @@ def ler_pagina(
     arranjo: Arranjo = "prosa",
     reconhecedor: object | None = None,
     imagem_rgb: np.ndarray | None = None,
-    modo_bloco: bool = False,
     colados: str = COLADOS_NA_PAGINA,
     caixa_alta: bool = True,
     traco: bool = True,
@@ -1350,7 +1324,7 @@ def ler_pagina(
     with opened(pdf_source) as livro:  # type: ignore[arg-type]
         return _ler_pagina_do_livro(
             livro, indice, dpi=dpi, imagem_rgb=imagem_rgb, qual=qual, escala_px=escala_px,
-            max_boards=max_boards, arranjo=arranjo, reconhecedor=reconhecedor, modo_bloco=modo_bloco,
+            max_boards=max_boards, arranjo=arranjo, reconhecedor=reconhecedor,
             colados=colados, caixa_alta=caixa_alta, traco=traco, marca_fina=marca_fina,
             empilhados=empilhados, italico=italico, dicionario=dicionario, numeros=numeros, juntar_lance=juntar_lance,
             marcar_negrito=marcar_negrito, marcar_italico=marcar_italico,
@@ -1759,7 +1733,6 @@ def _ler_pagina_do_livro(
     max_boards: int | None,
     arranjo: Arranjo,
     reconhecedor: object | None,
-    modo_bloco: bool,
     colados: str,
     caixa_alta: bool,
     traco: bool,
@@ -1843,7 +1816,7 @@ def _ler_pagina_do_livro(
     por_palavra = False
     if qual in _MOTORES_DO_GLIFO:
         cruas, regioes = linhas_do_glifo(
-            imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco, colados=colados, caixa_alta=caixa_alta,
+            imagem, retangulos, reconhecedor=reconhecedor, colados=colados, caixa_alta=caixa_alta,
             traco=traco, marca_fina=marca_fina, empilhados=empilhados, italico=italico,
             dicionario=dicionario, numeros=numeros,
             juntar_lance=juntar_lance, dpi=dpi,
@@ -2260,7 +2233,6 @@ __all__ = [
     "escala_fora_dos_diagramas",
     "ler_pagina",
     "linhas_da_camada",
-    "leitor_de_linha_padrao",
     "PAGINAS_VIZINHAS",
     "chave_de_corrente",
     "margem_no_corpo",

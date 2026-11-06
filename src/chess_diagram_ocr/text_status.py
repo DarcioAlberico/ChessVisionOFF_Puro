@@ -99,6 +99,7 @@ MANIFESTO: tuple[Item, ...] = (
          ("simbolo:chess_diagram_ocr.text.colados:separar", "metrica:texto_colados")),
     Item("S-187", 26, "A linha, e a ordem de leitura dentro dela",
          ("simbolo:chess_diagram_ocr.text.linhas:quebrar_em_linhas",)),
+    # Na página, a S-726 a aposentou. A sonda segue verde porque o que ela procura ficou: `em_bloco` na faixa e o `texto_linha`.
     Item("S-188", 26, "Ler a linha, e não o caractere",
          ("simbolo:chess_diagram_ocr.text.leitura_de_linha:em_bloco", "metrica:texto_linha")),
     Item("S-189", 26, "A confiança sai da concordância, e ela é calibrada",

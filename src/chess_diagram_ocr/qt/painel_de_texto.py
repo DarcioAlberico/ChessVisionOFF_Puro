@@ -451,7 +451,6 @@ class PainelDeTexto(QWidget):
         self._lingua_do_livro = LinguaDoLivro()
         """O motor de leitura. O primeiro da lista é o padrão, e a S-423 explica por que ele é o
         `auto` e não o `glifo`."""
-        self._modo_bloco = False
         self._tela = ""
         """O texto do widget na última mudança vista -- o `antes` de cada tecla. `contentsChange`
         diz onde mudou; é comparando com isto que se sabe **o que** saiu, e se o Qt disse a
@@ -465,7 +464,8 @@ class PainelDeTexto(QWidget):
         self._cursor_em = 0.0
         """Quando o documento mudou e quando o cursor mexeu pela última vez: a régua do salvamento
         no caderno pede os dois parados (`caderno.espera_restante`, S-612)."""
-        self._leitura_de: tuple[str, bool] = ("", False)
+        self._leitura_de = ""
+        """O motor da leitura em curso, como era quando ela partiu."""
         self._diagramas = DIAGRAMAS_AO_CENTRO
         """«Diagramas no texto» (S-620). É vista e preferência, e não documento: trocar não grava nada."""
         self._tamanho_da_miniatura = TAMANHO_DA_MINIATURA_PADRAO
@@ -505,7 +505,6 @@ class PainelDeTexto(QWidget):
         self._folha_pedida_ao_fundo: int | None = None
         self._renderizacao: Tarefa | None = None
         """A folha do caderno sendo rasterizada ao fundo, para as miniaturas (`_renderizar_ao_fundo`)."""
-        """O motor e o modo bloco da leitura em curso, como eram quando ela partiu."""
         self._sincronizando = False
         """O painel está repintando o que acabou de ser digitado: a mudança de formato que isso
         gera não é digitação."""
@@ -560,7 +559,6 @@ class PainelDeTexto(QWidget):
                 "@folha": self.campo_de_folha,
                 "@motor": self.escolha_de_motor,
                 "@lingua": self.escolha_de_lingua,
-                "@modo_bloco": self.caixa_de_bloco,
             },
             rotulos_do_desfazer=lambda: list(reversed(self._rotulos_do_historico)),
             desfazer_ate=self.desfazer_ate,
@@ -933,7 +931,7 @@ class PainelDeTexto(QWidget):
         self.cor_rapida = self._botao_partido("letra")
         self.realce_rapido = self._botao_partido("realce")
 
-        # **A folha, o motor e o modo bloco ficam na mesma barra que o "Ler".** É a linha do gesto:
+        # **A folha e o motor ficam na mesma barra que o "Ler".** É a linha do gesto:
         # escolher a folha, escolher como lê-la, e ler -- e separá-la em duas faria a escolha do
         # motor parecer configuração, que é o que a S-423 mostrou custar a primeira leitura de quem
         # instala o programa.
@@ -971,9 +969,6 @@ class PainelDeTexto(QWidget):
             self.escolha_de_lingua.addItem(rotulo, lingua)
         self.escolha_de_lingua.activated.connect(self._lingua_escolhida)
         dica_em(self.escolha_de_lingua, strings.DICA_DA_LINGUA_DO_LIVRO)
-
-        self.caixa_de_bloco = QCheckBox(comandos.rotulo_de_botao("modo_bloco"), barra)
-        self.caixa_de_bloco.toggled.connect(lambda _ligado: self.modo_bloco_mudou())
 
     def _botao_partido(self, canal: str) -> QToolButton:
         """Um botão partido de cor: o corpo aplica a última, a seta abre os nomes do autor."""
@@ -2330,7 +2325,7 @@ class PainelDeTexto(QWidget):
         if not hasattr(self, "botao_de_ler"):
             return
         guardada = None if self._caderno is None else self._caderno.estado(int(self.campo_de_folha.value()) - 1)
-        abre = guardada is not None and caderno.abre_do_caderno(guardada, motor=self._motor_gravado(), modo_bloco=self._modo_bloco)
+        abre = guardada is not None and caderno.abre_do_caderno(guardada, motor=self._motor_gravado())
         self.botao_de_ler.setText(strings.ABRIR_FOLHA_DO_CADERNO if abre else comandos.rotulo_de_botao("ler_folha"))
 
     def _abrir_do_caderno(self, indice: int) -> bool:
@@ -3178,12 +3173,11 @@ class PainelDeTexto(QWidget):
         return len(mudar)
 
     def aplicar_estado(self, estado: object) -> None:
-        """A vista da aba como a sessão anterior a deixou: zoom, quebra, motor, modo bloco, os diagramas e a letra."""
+        """A vista da aba como a sessão anterior a deixou: zoom, quebra, motor, os diagramas e a letra."""
         self.aplicar_zoom(int(getattr(estado, "texto_zoom", 0)), avisar=False)
         self.definir_quebra(bool(getattr(estado, "texto_quebra", True)))
-        self.definir_motor(str(getattr(estado, "texto_motor", "")))  # o motor e o modo bloco da sessão anterior (item 17)
+        self.definir_motor(str(getattr(estado, "texto_motor", "")))  # o motor da sessão anterior (item 17)
         self.definir_lingua(str(getattr(estado, "texto_lingua", "")))
-        self.definir_modo_bloco(bool(getattr(estado, "texto_bloco", False)))
         self.definir_diagramas(str(getattr(estado, "texto_diagramas", "")))
         self.definir_tamanho_da_miniatura(str(getattr(estado, "texto_miniatura", "")))
         self.definir_familia_da_letra(str(getattr(estado, "texto_familia", "")))
@@ -3206,7 +3200,6 @@ class PainelDeTexto(QWidget):
         estado.texto_motor = self.motor  # type: ignore[attr-defined]
         # **O padrão, e não a língua do livro aberto**: esta mora no caderno, e não pode vazar para o livro seguinte (S-723).
         estado.texto_lingua = self._lingua_padrao  # type: ignore[attr-defined]
-        estado.texto_bloco = bool(self.modo_bloco)  # type: ignore[attr-defined]
         estado.texto_diagramas = self._diagramas  # type: ignore[attr-defined]
         estado.texto_miniatura = self._tamanho_da_miniatura  # type: ignore[attr-defined]
         estado.texto_familia = self._familia_da_letra  # type: ignore[attr-defined]
@@ -3646,10 +3639,6 @@ class PainelDeTexto(QWidget):
         """O motor de leitura escolhido -- o que a janela grava no estado (item 17)."""
         return str(self._motor)
 
-    @property
-    def modo_bloco(self) -> bool:
-        return bool(self._modo_bloco)
-
     def definir_motor(self, nome: str) -> None:
         """Repõe o motor gravado na sessão anterior; um nome que a aba não conhece é ignorado."""
         if nome not in MOTORES:
@@ -3734,24 +3723,6 @@ class PainelDeTexto(QWidget):
         """
         return f"{self._motor}:{self._lingua}" if self._motor == "fusao" else str(self._motor)
 
-    def definir_modo_bloco(self, ligado: bool) -> None:
-        """Repõe o modo bloco gravado -- sem a frase do rodapé, que é para quem acabou de clicar."""
-        self._modo_bloco = bool(ligado)
-        self.caixa_de_bloco.blockSignals(True)
-        try:
-            self.caixa_de_bloco.setChecked(bool(ligado))
-        finally:
-            self.caixa_de_bloco.blockSignals(False)
-
-    def modo_bloco_mudou(self) -> None:
-        """Liga e desliga o modo bloco. **O comando não inverte a caixa**: quem a inverte é ela."""
-        self._modo_bloco = self.caixa_de_bloco.isChecked()
-        self.estado.emit(
-            "Modo bloco: a folha é lida em blocos, e não linha a linha."
-            if self._modo_bloco
-            else "Modo linha: a folha volta a ser lida linha a linha."
-        )
-
     def sincronizar_com_a_pagina(self) -> None:
         """Lê a folha que o visualizador está mostrando -- e não a que o campo diz (S-236)."""
         self.campo_de_folha.setValue(self._pagina_indice + 1)
@@ -3766,7 +3737,7 @@ class PainelDeTexto(QWidget):
         por uma aba que talvez ninguém abra.
 
         **A folha que já tem caderno abre dele, sem motor** (S-612) -- salvo quando a pessoa trocou
-        o motor ou o modo bloco e a folha não tem correção: aí ela quer a leitura nova. Ler de novo
+        o motor e a folha não tem correção: aí ela quer a leitura nova. Ler de novo
         uma folha corrigida é `ler_de_novo`, que pergunta.
         """
         self._ler_folha(de_novo=False)
@@ -3786,7 +3757,7 @@ class PainelDeTexto(QWidget):
         indice = int(self.campo_de_folha.value()) - 1
         guardada = None if self._caderno is None else self._caderno.estado(indice)
         if guardada is not None:
-            if not de_novo and caderno.abre_do_caderno(guardada, motor=self._motor_gravado(), modo_bloco=self._modo_bloco):
+            if not de_novo and caderno.abre_do_caderno(guardada, motor=self._motor_gravado()):
                 if self._abrir_do_caderno(indice):
                     return
             elif de_novo and guardada.correcoes and not self._confirmar_releitura(indice, guardada.correcoes):
@@ -3796,9 +3767,8 @@ class PainelDeTexto(QWidget):
         self._documento_ao_ler = self.documento
 
         motor = self._motor
-        bloco = self._modo_bloco
         lingua = self._lingua
-        self._leitura_de = (self._motor_gravado(), bloco)
+        self._leitura_de = self._motor_gravado()
         caminho = self._pdf
         dpi = self._dpi_para_ler()
         teto = self._teto_de_diagramas()
@@ -3814,11 +3784,11 @@ class PainelDeTexto(QWidget):
             # da janela, que congelava ~355 ms por leitura no outro frontend. O mesmo `dpi` dos
             # dois lados é o que liga pixel a ponto -- e ele viaja com a folha, porque a
             # configuração pode mudar enquanto a leitura corre. O tempo vai junto (item 16): é o
-            # número que decide entre o motor rápido e o modo bloco de 40 s.
+            # número que decide entre o motor rápido e o que lê com o Tesseract.
             inicio = time.perf_counter()
             imagem = imagem_pronta if imagem_pronta is not None else _renderizar(caminho, indice, dpi=dpi)
             lida = _ler(
-                caminho, indice, dpi=dpi, motor=motor, modo_bloco=bloco, imagem_rgb=imagem, max_boards=teto, lingua=lingua
+                caminho, indice, dpi=dpi, motor=motor, imagem_rgb=imagem, max_boards=teto, lingua=lingua
             )
             # A camada só enquanto a detecção conta: são dez folhas por livro, e aqui, fora da thread da janela (S-723).
             camada = _camada_da_folha(caminho, indice) if conta_lingua else ""
@@ -3828,7 +3798,7 @@ class PainelDeTexto(QWidget):
         self._registrar_ocupado(
             f"Lendo o texto da folha {indice + 1}",
             loses_work=False,
-            detail=f"motor {strings.ROTULOS_DE_MOTOR.get(motor, motor)}" + (" · modo bloco" if bloco else ""),
+            detail=f"motor {strings.ROTULOS_DE_MOTOR.get(motor, motor)}",
         )
         self._tarefa = Tarefa(_trabalho, parent=self)
         self._tarefa.pronto.connect(self._leitura_terminou)
@@ -3936,17 +3906,14 @@ class PainelDeTexto(QWidget):
         lingua_nova = self._anotar_lingua_da_folha(pagina, str(camada or ""))
         diagramas = len(pagina.diagramas)
         figuras = f", {diagramas} diagrama(s)" if diagramas else ""
-        # «em 3,9 s»: a pessoa escolhe o motor e o modo bloco pelo preço, e o preço tem de ser dito.
+        # «em 3,9 s»: a pessoa escolhe o motor pelo preço, e o preço tem de ser dito.
         tempo = "" if segundos is None else f" em {segundos:.1f} s".replace(".", ",")
         if not self.documento.para_texto().strip():
             # A folha vazia não é falha nem é «0 trecho(s)» (item 26): é uma página sem texto para
             # este motor -- capa, figura inteira, ou scan que o glifo não leu --, e a frase diz o
             # que tentar. O estado vazio do editor já está na tela.
-            como = f"motor {strings.ROTULOS_DE_MOTOR.get(self._motor, self._motor)}" + (", modo bloco" if self._modo_bloco else "")
-            self.estado.emit(
-                f"A folha {pagina.pagina + 1} não tem texto lido ({como}{tempo.replace(' em ', ', ')}): "
-                "tente outro motor ou o modo bloco."
-            )
+            como = f"motor {strings.ROTULOS_DE_MOTOR.get(self._motor, self._motor)}"
+            self.estado.emit(strings.FOLHA_SEM_TEXTO_LIDO.format(folha=pagina.pagina + 1, como=f"{como}{tempo.replace(' em ', ', ')}"))
             return
         self.estado.emit(f"Folha lida{tempo}: {len(self.documento.corridas)} trecho(s){figuras}.{lingua_nova}")
         # **Depois de desenhar, e não antes**: se a pessoa recusar a oferta, o que fica na tela é
@@ -3958,9 +3925,8 @@ class PainelDeTexto(QWidget):
         cad = self._caderno_da_tela()
         if cad is None:
             return
-        motor, bloco = self._leitura_de
         try:
-            cad.guardar_leitura(self.documento, motor=motor or self._motor, modo_bloco=bloco)
+            cad.guardar_leitura(self.documento, motor=self._leitura_de or self._motor)
         except OSError as erro:
             logger.warning("A leitura da folha não foi ao caderno: %s", erro)
             self.estado.emit(f"A folha lida não foi ao caderno: {erro}.")
@@ -4643,7 +4609,6 @@ def _ler(
     *,
     dpi: int,
     motor: str,
-    modo_bloco: bool,
     imagem_rgb: np.ndarray | None,
     max_boards: int | None = None,
     lingua: str = LINGUA_PADRAO,
@@ -4652,7 +4617,7 @@ def _ler(
     from chess_diagram_ocr.text.leitor import ler_pagina
 
     return ler_pagina(
-        caminho, indice, dpi=dpi, motor=motor, modo_bloco=modo_bloco, imagem_rgb=imagem_rgb, max_boards=max_boards, lingua=lingua,  # type: ignore[arg-type]
+        caminho, indice, dpi=dpi, motor=motor, imagem_rgb=imagem_rgb, max_boards=max_boards, lingua=lingua,  # type: ignore[arg-type]
         reserva=True,  # só aqui: a régua e os CLIs não dependem de haver Tesseract na máquina
     )
 
