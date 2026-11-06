@@ -350,7 +350,7 @@ def conferir_o_canario(*, motor: str = "", raiz: str = "", manifesto: str | None
     from ..text.leitor import ler_pagina
     from ..text.recognizer import build_glyph_recognizer
 
-    folhas = monitor_prosa.carregar_canario(manifesto)
+    folhas = monitor_prosa.com_motor(monitor_prosa.carregar_canario(manifesto), motor)
     achados = _achar_livros(folhas, _pastas_padrao(raiz or os.environ.get("CVOFF_RAIZ", "")))  # type: ignore[arg-type]
     reconhecedor = build_glyph_recognizer()
     aquecido: list[bool] = []
@@ -361,12 +361,12 @@ def conferir_o_canario(*, motor: str = "", raiz: str = "", manifesto: str | None
         if not aquecido:
             ler_pagina(pdf, f.folha - 1, motor="glifo", reconhecedor=reconhecedor, imagem_rgb=imagem, dpi=bancada_prosa.DPI_PADRAO)
             aquecido.append(True)
-        qual = motor or f.motor
+        qual = f.motor
         folha = bancada_prosa.preparar_folha(pdf, f.folha - 1, lingua=f.lingua, imagem=imagem, reconhecedor=reconhecedor)
         placar = bancada_prosa.medir_folha(folha, [qual])["placar"][f"{qual}|tip"]
         return float(placar["erros"]["prosa"] / max(1, placar["total"]["prosa"]))
 
-    return {**monitor_prosa.para_relatorio(monitor_prosa.conferir_canario(folhas, medir)), "motor_forcado": motor}
+    return monitor_prosa.para_relatorio(monitor_prosa.conferir_canario(folhas, medir))
 
 
 def canario(args: argparse.Namespace) -> int:

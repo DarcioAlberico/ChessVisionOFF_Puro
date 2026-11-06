@@ -551,7 +551,7 @@ def marcar(
     return [frozenset(m) for m in marcadas]
 
 
-CORTE_DE_REVISAR: dict[str, float] = {V5: 0.01619, V3: 0.16112}
+CORTE_DE_REVISAR: dict[str, float] = {V5: 0.01621, V3: 0.1793}
 """Da probabilidade de erro para cima, a palavra pede olho (S-761), por estrato. **É o corte da fusão, e de mais ninguém**: o `corte_de_revisar`
 de `documento.py` é o `ocr.MIN_CONFIDENCE`, que o `pdf_pesquisavel` e a `coleta` usam e que está no digest da S-218. Sai de `ajustar.py`: é o que
 marca 5% das palavras no pedaço reservado do dev."""

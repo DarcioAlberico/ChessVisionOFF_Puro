@@ -14,8 +14,8 @@ erra em scan. O manifesto (`assets/texto_prosa/canario.json`) só tem identidade
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +32,8 @@ MARGEM_DO_CANARIO = 0.002
 CANARIO = "canario.json"
 
 ALARMES: dict[str, dict[str, float]] = {}
-"""`{domínio: {sinal: corte}}`. **Vazio de propósito até a medição dizer o contrário:** ver a spec da S-763."""
+"""`{domínio: {sinal: corte}}`. **Vazia de propósito, e sem quem a leia:** nenhum sinal passou da régua (ver a spec da S-763). Quem entrar aqui, com a medida, traz junto o chamador
+que transforma o sinal em aviso. `test_text_monitor_prosa` compara esta tabela com o relatório."""
 
 
 def caminho_do_canario() -> Path:
@@ -91,6 +92,11 @@ def carregar_canario(caminho: Path | str | None = None) -> tuple[FolhaCanario, .
     return tuple(FolhaCanario(**f) for f in dados["folhas"])
 
 
+def com_motor(folhas: Sequence[FolhaCanario], motor: str) -> tuple[FolhaCanario, ...]:
+    """As folhas lidas por outro motor, e a linha do relatório diz qual: a regressão de mentira não sai rotulada `fusao`."""
+    return tuple(replace(f, motor=motor) for f in folhas) if motor else tuple(folhas)
+
+
 def conferir_canario(folhas: Sequence[FolhaCanario], medir: Callable[[FolhaCanario], float]) -> list[ResultadoDoCanario]:
     """Relê cada folha e compara com a base. `medir` é quem lê: aqui não há motor, e o teste passa um falso."""
     return [ResultadoDoCanario(f, float(medir(f))) for f in folhas]
@@ -111,11 +117,6 @@ def para_relatorio(resultados: Sequence[ResultadoDoCanario]) -> dict[str, Any]:
     }
 
 
-def alarmes_da_folha(sinais: Mapping[str, float], dominio: str) -> tuple[str, ...]:
-    """Os sinais que passaram da medição e do corte. Sem nenhum em `ALARMES`, nunca dispara."""
-    return tuple(nome for nome, corte in ALARMES.get(dominio, {}).items() if sinais.get(nome, 0.0) >= corte)
-
-
 __all__ = [
     "ALARMES",
     "CANARIO",
@@ -123,9 +124,9 @@ __all__ = [
     "ROTULO_DO_CANARIO",
     "FolhaCanario",
     "ResultadoDoCanario",
-    "alarmes_da_folha",
     "caminho_do_canario",
     "carregar_canario",
+    "com_motor",
     "concordancia",
     "conferir_canario",
     "erro_estimado",
