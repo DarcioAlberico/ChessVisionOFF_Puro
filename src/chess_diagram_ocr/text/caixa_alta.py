@@ -50,6 +50,38 @@ letras dele com a mediana da página os promoveria todos a maiúscula.
 
 Não decide `l` contra `1`, nem `0` contra `o`: essas trocam **entre alfabetos**, e altura não as
 separa (`l` e `1` têm a mesma altura). Elas são da S-209.
+
+## A régua que a mediana não dava (S-731)
+
+Nas 27 folhas dos 5 livros aprovados do ouro-dev, depois de tudo acima, a família caixa ainda tinha 59
+palavras, e **o modelo estava certo em quase todas**: em `White`->`white`, o `W` vinha com 0,99 e era a
+régua de altura que o derrubava. A mediana das alturas só é a altura-de-x em linha de prosa. Em linha
+com notação, dígito e maiúscula, ela sobe para a altura de maiúscula (`h/mediana` de 1,00 a 1,19 num `W`
+de verdade), e na linha toda em maiúscula ela **é** a altura de maiúscula: `DEFEsA`.
+
+Medindo contra as letras que não têm haste nem acento, e que o modelo não confunde (`LETRAS_DE_X`):
+
+    maiúscula ambígua certa, 139    p1 1,32    mediana 1,50    p99 1,58
+    minúscula ambígua certa, 4.992  p1 0,94    mediana 1,00    p99 1,06
+
+**O vão vai de 1,06 a 1,32**, e o corte de 1,25 continua no meio dele. Sobram dois casos sem letra de x
+na linha: a toda em maiúscula, que se mede pelas altas seguras (`RAZAO_ALTA_X`), e a linha de um só
+sinal (`W`, `W?`), que se mede pela escala da folha.
+
+**Versalete é outro problema, e é da palavra.** `'UNUSUAL SQUARES'` em versalete tem altura de letra de
+x, e nenhuma régua de altura o separa: a palavra toda é que diz (`coerente`).
+
+## A cedilha e o P, que também são tamanho (S-731, S-735)
+
+`ç` era lido `C`: o modelo diz `c` a 0,6 e `ç` a 0,3, e a cedilha estica a caixa, que então passa do
+corte. Descida da caixa abaixo da linha de base, em alturas-de-x:
+
+    ç (certo ou lido C/c), 61     0,38 a 0,50
+    C certo, 69                  -0,04 a 0,06
+    c certo, 797                  0,00 a 0,05
+
+`P` era lido `p` em *Minhas 60* (Calibri, 11 casos, `P` em rank 2 a 0,08): esticados, são o mesmo
+desenho, e quem os separa é a descida do `p`, que o `P` não tem.
 """
 
 from __future__ import annotations
@@ -64,6 +96,57 @@ AMBIGUAS = "cosuvwxz"
 **Oito, e a lista é fechada por inspeção do alfabeto, não por medição.** `k` e `y` quase entram --
 a minúscula tem haste que sobe ou desce, e isso muda a forma o bastante para o modelo. As oito
 daqui não têm nenhuma diferença de desenho em fonte de texto comum."""
+
+XH_COERENTE = True
+"""A reversão da régua de letras de x (S-731). Desligada, volta a mediana da linha inteira."""
+
+LETRAS_DE_X = "aemnr"
+"""Sem haste, sem descida, sem acento, e com a maiúscula de outro desenho: o modelo não as confunde."""
+
+MIN_LETRAS_DE_X = 2
+"""Com menos que isto na linha, a altura delas é ruído de uma caixa só."""
+
+ALTAS_SEGURAS = "ABDEFGHKLMNPRTbdfhkl0123456789"
+"""Altura de maiúscula ou de haste, e a forma não muda com a caixa de ninguém."""
+
+RAZAO_ALTA_X = 1.40
+"""Altura de maiúscula sobre altura-de-x, para a linha sem letra de x. Dos livros dev: Arial 1,38,
+Calibri 1,38, Times 1,47, Cambria 1,45. Só precisa cair longe do corte: minúscula ambígua fica em 0,65 a
+0,75 da alta segura, e maiúscula, em 1,00 a 1,17, com o corte em 0,89."""
+
+PALAVRA_COERENTE = True
+"""A reversão de `coerente` (S-731)."""
+
+MIN_MAIUSCULAS_DA_PALAVRA = 2
+"""Quantas maiúsculas de desenho próprio bastam para dizer que a palavra é toda em maiúscula."""
+
+CEDILHA_PELA_DESCIDA = True
+"""A reversão da cedilha (S-735)."""
+
+DESCIDA_DA_CEDILHA = 0.25
+"""Em alturas-de-x abaixo da linha de base. `C` e `c` vão até 0,06, e `ç` começa em 0,38."""
+
+PISO_DA_CEDILHA = 0.01
+"""A classe `ç` tem de estar entre as opções do modelo: `ç` tem 93 amostras, e ele a vê."""
+
+P_PELA_DESCIDA = True
+"""A reversão do `P` (S-731)."""
+
+DESCIDA_DO_P = 0.10
+"""Fração da altura da caixa. O `p` lido errado que era `P` fica em 0,00; o `p` de verdade passa de 0,2."""
+
+SEGUNDO_CORTE = True
+"""A reversão do corte da família acentuada (S-735)."""
+
+AMBIGUAS_ACENTUADAS = "íóõöúćčšž"
+"""As acentuadas de mesma forma. `á ã ä å è é` mudam de desenho; `ý` tem a haste, como `y`."""
+
+CORTE_ACENTUADA = 1.65
+"""A minúscula acentuada mede até 1,46 com o acento dentro do bbox, e a maiúscula, cerca de 1,85.
+
+**As classes de cima quase não têm amostra**, e é por isso que ela é regra de geometria: `Õ` 1, `Ú` 1,
+`Ó` 3, `Ć` 3, `Č` 3, `ö` 3, `ž` 2, `Ž` 1, `Ö` 5, `š` 7, `Š` 9 em `training_data/`. O que o modelo
+responde nessas classes é ruído, e nenhum número aqui fala do modelo."""
 
 CORTE_DE_CAIXA = 1.25
 """Acima de tantas x-heights, a caixa é alta. Medido em 1.026 casos: separa 99,4%.
@@ -83,6 +166,29 @@ def x_height(alturas: Sequence[int]) -> float:
     if not alturas:
         return 0.0
     return float(np.median(np.asarray(alturas, dtype=np.float64)))
+
+
+def x_height_da_linha(
+    alturas: Sequence[float], chars: Sequence[str], *, escala: float | None = None
+) -> float:
+    """A altura-de-x pelas letras que a medem (S-731). `x_height` quando a régua está desligada.
+
+    Na ordem: a mediana das letras de x; sem elas, a das altas seguras dividida pela razão de sempre;
+    sem nenhuma das duas, a escala da folha, que cai perto da altura de maiúscula; e, sem escala, a
+    mediana da linha.
+    """
+    if not XH_COERENTE:
+        return x_height(alturas)  # type: ignore[arg-type]
+    pares = list(zip(alturas, chars, strict=False))
+    de_x = [h for h, c in pares if c in LETRAS_DE_X]
+    if len(de_x) >= MIN_LETRAS_DE_X:
+        return float(np.median(de_x))
+    altas = [h for h, c in pares if c in ALTAS_SEGURAS]
+    if altas:
+        return float(np.median(altas)) / RAZAO_ALTA_X
+    if escala:
+        return float(escala) / RAZAO_ALTA_X
+    return x_height(alturas)  # type: ignore[arg-type]
 
 
 def pares_de_caixa(idx_to_char: dict[int, str]) -> dict[int, int]:
@@ -125,6 +231,8 @@ def decidir(
     *,
     corte: float | None = None,
     pares: dict[int, int] | None = None,
+    caixas: Sequence[object] | None = None,
+    escala: float | None = None,
 ) -> list[tuple[str, float]]:
     """`(caractere, confiança)` por box, com a caixa das ambíguas decidida pela altura.
 
@@ -136,12 +244,21 @@ def decidir(
 
     O que ela **não** faz: mexer em box que não é letra ambígua, e mexer em linha sem x-height.
     Fora as ambíguas, o resultado é `argmax` puro -- byte a byte o que o classificador daria.
+
+    `caixas` e `escala` são da S-731: sem elas, a régua é a das letras de x da linha, e a cedilha, o
+    `P` e o segundo corte, que olham a linha de base, não decidem.
     """
     if probs.size == 0:
         return []
     if pares is None:
         pares = pares_de_caixa(idx_to_char)
-    xh = x_height(alturas)
+    argmax = [idx_to_char[int(probs[k].argmax())] for k in range(probs.shape[0])]
+    xh = x_height_da_linha(alturas, argmax, escala=escala)
+    base = None
+    if caixas:
+        base = float(np.median([c.y2 for c in caixas]))  # type: ignore[attr-defined]
+    de_char = {c: i for i, c in idx_to_char.items() if len(c) == 1}
+    acentuadas = _pares_acentuados(de_char) if SEGUNDO_CORTE else {}
 
     saida: list[tuple[str, float]] = []
     for linha in range(probs.shape[0]):
@@ -151,15 +268,129 @@ def decidir(
             alta = caixa_pela_altura(float(alturas[linha]), xh, corte=corte)
             desejado = outro if idx_to_char[escolhido].isupper() != alta else escolhido
             escolhido = desejado
+        elif escolhido in acentuadas and linha < len(alturas):
+            alta = caixa_pela_altura(float(alturas[linha]), xh, corte=CORTE_ACENTUADA)
+            escolhido = acentuadas[escolhido] if idx_to_char[escolhido].isupper() != alta else escolhido
+        if base is not None and linha < len(caixas or ()) and linha < len(alturas):
+            descida = float(caixas[linha].y2) - base  # type: ignore[index,union-attr,attr-defined]
+            escolhido = _pela_descida(escolhido, descida, float(alturas[linha]), xh, probs[linha], idx_to_char, de_char)
         saida.append((idx_to_char[escolhido], float(probs[linha, escolhido])))
+    return saida
+
+
+def _pares_acentuados(de_char: dict[str, int]) -> dict[int, int]:
+    """Os pares completos de `AMBIGUAS_ACENTUADAS`. Como em `pares_de_caixa`, meia-regra não entra."""
+    pares: dict[int, int] = {}
+    for letra in AMBIGUAS_ACENTUADAS:
+        baixa, alta = de_char.get(letra), de_char.get(letra.upper())
+        if baixa is not None and alta is not None:
+            pares[baixa] = alta
+            pares[alta] = baixa
+    return pares
+
+
+def _pela_descida(
+    escolhido: int,
+    descida: float,
+    altura: float,
+    xh: float,
+    probs: np.ndarray,
+    idx_to_char: dict[int, str],
+    de_char: dict[str, int],
+) -> int:
+    """A cedilha desce, e o `P` não: as duas decisões que só a linha de base toma."""
+    char = idx_to_char[escolhido]
+    if xh <= 0:
+        return escolhido
+    if CEDILHA_PELA_DESCIDA and char in "cC" and descida / xh >= DESCIDA_DA_CEDILHA:
+        cedilha = de_char.get("ç")
+        if cedilha is not None and float(probs[cedilha]) >= PISO_DA_CEDILHA:
+            return cedilha
+    if P_PELA_DESCIDA and char == "p" and altura > 0 and altura / xh >= CORTE_DE_CAIXA:
+        maiuscula = de_char.get("P")
+        if maiuscula is not None and descida / altura < DESCIDA_DO_P:
+            return maiuscula
+    return escolhido
+
+
+def coerente(
+    lidos: Sequence[tuple[str, float]],
+    probs: np.ndarray,
+    caixas: Sequence[object],
+    idx_to_char: dict[int, str],
+) -> list[tuple[str, float]]:
+    """A palavra toda em maiúscula não ganha minúscula no meio (S-731). `DEFEsA`, `FcM`, `uNusuAL`.
+
+    Olha as letras de desenho próprio da palavra: se há ao menos `MIN_MAIUSCULAS_DA_PALAVRA` maiúsculas e
+    nenhuma minúscula, as ambíguas, o `p` e o `l` sobem. É o que resolve o **versalete**, em que a altura
+    não separa nada, e é por isso que esta regra não olha altura.
+
+    **Só palavra de letras.** Com dígito ou figurina ela é lance, e `Nc3` não é palavra em maiúscula. E
+    `x` entre duas peças é captura: `KxR` e `QxB` são notação, então o `x` só sobe em palavra de quatro
+    letras ou mais.
+    """
+    saida = list(lidos)
+    if not PALAVRA_COERENTE or not lidos or len(lidos) != len(caixas):
+        return saida
+
+    from .dicionario import palavras
+
+    de_char = {c: i for i, c in idx_to_char.items() if len(c) == 1}
+    sobem = {c: c.upper() for c in AMBIGUAS + "p"}
+    sobem["l"] = "I"
+
+    def por(k: int, novo: str) -> None:
+        indice = de_char.get(novo)
+        if indice is not None and k < probs.shape[0]:
+            saida[k] = (novo, float(probs[k, indice]))
+
+    for inicio, fim in palavras(caixas, lidos):  # type: ignore[arg-type]
+        trecho = [c for c, _ in saida[inicio:fim]]
+        if any(len(c) != 1 for c in trecho):
+            continue
+        for k in range(inicio + 1, fim):
+            # A captura seguida de casa: em scan o `x` passa do corte, e `Qxf7` saía `QXf7`.
+            if saida[k][0] == "X" and k + 1 < fim and saida[k + 1][0] in "abcdefgh" and saida[k - 1][0] != "x":
+                por(k, "x")
+            # A ambígua depois de minúscula, em palavra sem dígito: `IvanchUk`, `teU`.
+            elif (
+                saida[k][0] in AMBIGUAS.upper()
+                and saida[k - 1][0].islower()
+                and not any(c.isdigit() or ord(c) >= 0x2654 for c in trecho)
+            ):
+                por(k, saida[k][0].lower())
+        trecho = [c for c, _ in saida[inicio:fim]]
+        if any(c.isdigit() or ord(c) >= 0x2654 for c in trecho):
+            continue
+        letras = [c for c in trecho if c.isalpha()]
+        proprias = [c for c in letras if c.casefold() not in sobem and c != "I"]
+        if len(letras) < 3 or any(c.islower() for c in proprias):
+            continue
+        if sum(c.isupper() for c in proprias) < MIN_MAIUSCULAS_DA_PALAVRA:
+            continue
+        for k in range(inicio, fim):
+            char = saida[k][0]
+            if char not in sobem or (char == "x" and len(letras) < 4):
+                continue
+            por(k, sobem[char])
     return saida
 
 
 __all__ = [
     "AMBIGUAS",
+    "AMBIGUAS_ACENTUADAS",
+    "CEDILHA_PELA_DESCIDA",
+    "CORTE_ACENTUADA",
     "CORTE_DE_CAIXA",
+    "LETRAS_DE_X",
+    "PALAVRA_COERENTE",
+    "P_PELA_DESCIDA",
+    "SEGUNDO_CORTE",
+    "XH_COERENTE",
     "caixa_pela_altura",
+    "coerente",
     "decidir",
     "pares_de_caixa",
     "x_height",
+    "x_height_da_linha",
 ]

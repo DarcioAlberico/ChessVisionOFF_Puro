@@ -1,0 +1,3251 @@
+{
+ "pergunta": "Quanto cada conserto da Fase 103 tira de cada família de erro do glifo, sem piorar a notação?",
+ "split": "dev contaminado: 5 livros aprovados na auditoria da S-702. Nenhum número aqui decide portão; o G103 abre o teste e é rodado depois.",
+ "reprovados_fora": "Chess Evolution e Capablanca (citados nas Saídas do roadmap) foram reprovados na auditoria da S-702 e não entram no ouro-dev; ficam em `reprovados_na_auditoria`, só como conferência.",
+ "commit_medido": "4acb26234fb2a7d9a80ce7748774574b7f4656bd",
+ "src_sujo": false,
+ "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
+ "dpi": 220,
+ "regua": "texto_prosa_2026-10-30/banco.py; sha256 9857cbee6af253dc",
+ "motores": {
+  "hoje": "tudo desligado: reproduz o texto de a2937260 byte a byte, folha a folha",
+  "tudo": "o padrão",
+  "S-730": "só as constantes deste item: traco_vertical.LIGADO",
+  "S-731": "só as constantes deste item: caixa_alta.XH_COERENTE, caixa_alta.PALAVRA_COERENTE, caixa_alta.P_PELA_DESCIDA",
+  "S-732": "só as constantes deste item: fronteira.LIGADO, fronteira.JUNTAR_PARTIDAS, colados.POR_LEXICO",
+  "S-733": "só as constantes deste item: ligadura.LIGADO",
+  "S-734": "só as constantes deste item: marca_fina.ASPAS_PELA_GEOMETRIA",
+  "S-735": "só as constantes deste item: caixa_alta.CEDILHA_PELA_DESCIDA, caixa_alta.SEGUNDO_CORTE, acento.LIGADO"
+ },
+ "tempo": "não publicado: três trilhas na máquina; G4 se mede depois com a máquina parada",
+ "ouro_dev": {
+  "folhas": 27,
+  "livros": [
+   "400 Quebra-cabeças",
+   "Dvoretsky",
+   "Hertan",
+   "Minhas 60",
+   "Seirawan"
+  ],
+  "motores": {
+   "hoje": {
+    "prosa_tip": {
+     "cer": 0.02851,
+     "ic95": [
+      0.00757,
+      0.04835
+     ],
+     "erros": 678,
+     "total": 23779
+    },
+    "prosa_cru": {
+     "cer": 0.0312,
+     "ic95": [
+      0.008,
+      0.05174
+     ],
+     "erros": 743,
+     "total": 23817
+    },
+    "wer_tip": 0.11688,
+    "wer_cru": 0.12395,
+    "notacao_tip": {
+     "cer": 0.10876,
+     "ic95": [
+      0.04558,
+      0.19554
+     ],
+     "erros": 591,
+     "total": 5434
+    },
+    "espaco_tip": {
+     "cer": 0.03593,
+     "ic95": [
+      0.01175,
+      0.0625
+     ],
+     "erros": 72,
+     "total": 2004
+    },
+    "insercoes_tip": 562,
+    "figurina": {
+     "revocacao": 0.8519,
+     "precisao": 0.858,
+     "ref": 837,
+     "hip": 831,
+     "tp": 713
+    },
+    "familias_tip": {
+     "letra trocada": {
+      "palavras": 128,
+      "por_livro": {
+       "Dvoretsky": 17,
+       "Hertan": 3,
+       "Minhas 60": 92,
+       "400 Quebra-cabeças": 8,
+       "Seirawan": 8
+      }
+     },
+     "traco vertical lido como ponto (l/I -> .)": {
+      "palavras": 124,
+      "por_livro": {
+       "Hertan": 121,
+       "Minhas 60": 3
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 59,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "Hertan": 14,
+       "Minhas 60": 30,
+       "Seirawan": 2
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 38,
+      "por_livro": {
+       "Dvoretsky": 22,
+       "Minhas 60": 14,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "espaco": {
+      "palavras": 23,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Hertan": 5,
+       "Minhas 60": 17
+      }
+     },
+     "acento": {
+      "palavras": 15,
+      "por_livro": {
+       "Minhas 60": 13,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "ligadura fi/fl com 1 a mais": {
+      "palavras": 14,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "acento+caixa": {
+      "palavras": 13,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 12
+      }
+     },
+     "pontuacao": {
+      "palavras": 10,
+      "por_livro": {
+       "Dvoretsky": 2,
+       "Hertan": 2,
+       "Minhas 60": 5,
+       "Seirawan": 1
+      }
+     },
+     "aspas duplas": {
+      "palavras": 8,
+      "por_livro": {
+       "Dvoretsky": 8
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 3,
+      "por_livro": {
+       "Hertan": 2,
+       "Minhas 60": 1
+      }
+     },
+     "palavra perdida": {
+      "palavras": 1,
+      "por_livro": {
+       "Hertan": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    },
+    "familias_cru": {
+     "letra trocada": {
+      "palavras": 132,
+      "por_livro": {
+       "Dvoretsky": 17,
+       "Hertan": 10,
+       "Minhas 60": 89,
+       "400 Quebra-cabeças": 8,
+       "Seirawan": 8
+      }
+     },
+     "traco vertical lido como ponto (l/I -> .)": {
+      "palavras": 117,
+      "por_livro": {
+       "Hertan": 114,
+       "Minhas 60": 3
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 57,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "Hertan": 12,
+       "Minhas 60": 30,
+       "Seirawan": 2
+      }
+     },
+     "pontuacao": {
+      "palavras": 50,
+      "por_livro": {
+       "Dvoretsky": 14,
+       "Hertan": 26,
+       "Minhas 60": 9,
+       "Seirawan": 1
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 38,
+      "por_livro": {
+       "Dvoretsky": 22,
+       "Minhas 60": 14,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "espaco": {
+      "palavras": 18,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Hertan": 2,
+       "Minhas 60": 15
+      }
+     },
+     "acento": {
+      "palavras": 15,
+      "por_livro": {
+       "Minhas 60": 13,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "ligadura fi/fl com 1 a mais": {
+      "palavras": 14,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "acento+caixa": {
+      "palavras": 13,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 12
+      }
+     },
+     "figurina inventada em palavra": {
+      "palavras": 7,
+      "por_livro": {
+       "Dvoretsky": 4,
+       "Minhas 60": 3
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 3,
+      "por_livro": {
+       "Hertan": 2,
+       "Minhas 60": 1
+      }
+     },
+     "pontuacao+caixa": {
+      "palavras": 2,
+      "por_livro": {
+       "Hertan": 2
+      }
+     },
+     "palavra perdida": {
+      "palavras": 1,
+      "por_livro": {
+       "Hertan": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    }
+   },
+   "tudo": {
+    "prosa_tip": {
+     "cer": 0.00988,
+     "ic95": [
+      0.003,
+      0.01969
+     ],
+     "erros": 235,
+     "total": 23779
+    },
+    "prosa_cru": {
+     "cer": 0.01323,
+     "ic95": [
+      0.0042,
+      0.02222
+     ],
+     "erros": 315,
+     "total": 23817
+    },
+    "wer_tip": 0.0355,
+    "wer_cru": 0.0475,
+    "notacao_tip": {
+     "cer": 0.1071,
+     "ic95": [
+      0.04447,
+      0.19427
+     ],
+     "erros": 582,
+     "total": 5434
+    },
+    "espaco_tip": {
+     "cer": 0.03393,
+     "ic95": [
+      0.01102,
+      0.05998
+     ],
+     "erros": 68,
+     "total": 2004
+    },
+    "insercoes_tip": 526,
+    "figurina": {
+     "revocacao": 0.859,
+     "precisao": 0.859,
+     "ref": 837,
+     "hip": 837,
+     "tp": 719
+    },
+    "familias_tip": {
+     "letra trocada": {
+      "palavras": 79,
+      "por_livro": {
+       "Dvoretsky": 10,
+       "Minhas 60": 56,
+       "400 Quebra-cabeças": 5,
+       "Seirawan": 8
+      }
+     },
+     "espaco": {
+      "palavras": 13,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Hertan": 4,
+       "Minhas 60": 8
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 9,
+      "por_livro": {
+       "Dvoretsky": 3,
+       "Minhas 60": 6
+      }
+     },
+     "acento": {
+      "palavras": 6,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 2,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "pontuacao": {
+      "palavras": 4,
+      "por_livro": {
+       "Hertan": 2,
+       "Minhas 60": 1,
+       "Seirawan": 1
+      }
+     },
+     "palavra perdida": {
+      "palavras": 2,
+      "por_livro": {
+       "Hertan": 2
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 1,
+      "por_livro": {
+       "Hertan": 1
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 1,
+      "por_livro": {
+       "Minhas 60": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    },
+    "familias_cru": {
+     "letra trocada": {
+      "palavras": 76,
+      "por_livro": {
+       "Dvoretsky": 10,
+       "Minhas 60": 53,
+       "400 Quebra-cabeças": 5,
+       "Seirawan": 8
+      }
+     },
+     "pontuacao": {
+      "palavras": 58,
+      "por_livro": {
+       "Dvoretsky": 14,
+       "Hertan": 37,
+       "Minhas 60": 6,
+       "Seirawan": 1
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 9,
+      "por_livro": {
+       "Dvoretsky": 3,
+       "Minhas 60": 6
+      }
+     },
+     "espaco": {
+      "palavras": 8,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 6,
+       "Hertan": 1
+      }
+     },
+     "figurina inventada em palavra": {
+      "palavras": 7,
+      "por_livro": {
+       "Dvoretsky": 4,
+       "Minhas 60": 3
+      }
+     },
+     "acento": {
+      "palavras": 6,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 2,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "palavra perdida": {
+      "palavras": 2,
+      "por_livro": {
+       "Hertan": 2
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 1,
+      "por_livro": {
+       "Hertan": 1
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 1,
+      "por_livro": {
+       "Minhas 60": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    },
+    "pareado_contra_hoje": {
+     "prosa_tip": {
+      "pp": -1.863,
+      "ic95": [
+       -3.044,
+       -0.436
+      ],
+      "melhores": 22,
+      "piores": 0
+     },
+     "prosa_cru": {
+      "pp": -1.797,
+      "ic95": [
+       -2.989,
+       -0.374
+      ],
+      "melhores": 22,
+      "piores": 0
+     },
+     "g1b_notacao_tip": {
+      "pp": -0.166,
+      "ic95": [
+       -0.637,
+       0.0
+      ],
+      "melhores": 3,
+      "piores": 0
+     }
+    }
+   },
+   "S-730": {
+    "prosa_tip": {
+     "cer": 0.02086,
+     "ic95": [
+      0.00608,
+      0.04139
+     ],
+     "erros": 496,
+     "total": 23779
+    },
+    "prosa_cru": {
+     "cer": 0.02355,
+     "ic95": [
+      0.00738,
+      0.04294
+     ],
+     "erros": 561,
+     "total": 23817
+    },
+    "wer_tip": 0.08355,
+    "wer_cru": 0.09236,
+    "notacao_tip": {
+     "cer": 0.10821,
+     "ic95": [
+      0.04534,
+      0.19427
+     ],
+     "erros": 588,
+     "total": 5434
+    },
+    "espaco_tip": {
+     "cer": 0.03593,
+     "ic95": [
+      0.01175,
+      0.0625
+     ],
+     "erros": 72,
+     "total": 2004
+    },
+    "insercoes_tip": 562,
+    "figurina": {
+     "revocacao": 0.8519,
+     "precisao": 0.858,
+     "ref": 837,
+     "hip": 831,
+     "tp": 713
+    },
+    "familias_tip": {
+     "letra trocada": {
+      "palavras": 115,
+      "por_livro": {
+       "Dvoretsky": 17,
+       "Hertan": 2,
+       "Minhas 60": 80,
+       "400 Quebra-cabeças": 8,
+       "Seirawan": 8
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 59,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "Hertan": 14,
+       "Minhas 60": 30,
+       "Seirawan": 2
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 38,
+      "por_livro": {
+       "Dvoretsky": 22,
+       "Minhas 60": 14,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "espaco": {
+      "palavras": 24,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Hertan": 5,
+       "Minhas 60": 18
+      }
+     },
+     "acento": {
+      "palavras": 16,
+      "por_livro": {
+       "Minhas 60": 14,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "acento+caixa": {
+      "palavras": 14,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 13
+      }
+     },
+     "ligadura fi/fl com 1 a mais": {
+      "palavras": 14,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "pontuacao": {
+      "palavras": 9,
+      "por_livro": {
+       "Dvoretsky": 2,
+       "Hertan": 3,
+       "Minhas 60": 3,
+       "Seirawan": 1
+      }
+     },
+     "aspas duplas": {
+      "palavras": 8,
+      "por_livro": {
+       "Dvoretsky": 8
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 2,
+      "por_livro": {
+       "Hertan": 1,
+       "Minhas 60": 1
+      }
+     },
+     "palavra perdida": {
+      "palavras": 1,
+      "por_livro": {
+       "Hertan": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    },
+    "familias_cru": {
+     "letra trocada": {
+      "palavras": 112,
+      "por_livro": {
+       "Dvoretsky": 17,
+       "Hertan": 2,
+       "Minhas 60": 77,
+       "400 Quebra-cabeças": 8,
+       "Seirawan": 8
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 57,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "Hertan": 12,
+       "Minhas 60": 30,
+       "Seirawan": 2
+      }
+     },
+     "pontuacao": {
+      "palavras": 56,
+      "por_livro": {
+       "Dvoretsky": 14,
+       "Hertan": 34,
+       "Minhas 60": 7,
+       "Seirawan": 1
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 38,
+      "por_livro": {
+       "Dvoretsky": 22,
+       "Minhas 60": 14,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "espaco": {
+      "palavras": 19,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Hertan": 2,
+       "Minhas 60": 16
+      }
+     },
+     "acento": {
+      "palavras": 16,
+      "por_livro": {
+       "Minhas 60": 14,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "acento+caixa": {
+      "palavras": 14,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 13
+      }
+     },
+     "ligadura fi/fl com 1 a mais": {
+      "palavras": 14,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "figurina inventada em palavra": {
+      "palavras": 7,
+      "por_livro": {
+       "Dvoretsky": 4,
+       "Minhas 60": 3
+      }
+     },
+     "pontuacao+caixa": {
+      "palavras": 2,
+      "por_livro": {
+       "Hertan": 2
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 2,
+      "por_livro": {
+       "Hertan": 1,
+       "Minhas 60": 1
+      }
+     },
+     "palavra perdida": {
+      "palavras": 1,
+      "por_livro": {
+       "Hertan": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    },
+    "pareado_contra_hoje": {
+     "prosa_tip": {
+      "pp": -0.765,
+      "ic95": [
+       -1.884,
+       0.0
+      ],
+      "melhores": 12,
+      "piores": 0
+     },
+     "prosa_cru": {
+      "pp": -0.764,
+      "ic95": [
+       -1.881,
+       0.0
+      ],
+      "melhores": 12,
+      "piores": 0
+     },
+     "g1b_notacao_tip": {
+      "pp": -0.055,
+      "ic95": [
+       -0.25,
+       0.0
+      ],
+      "melhores": 2,
+      "piores": 0
+     }
+    }
+   },
+   "S-731": {
+    "prosa_tip": {
+     "cer": 0.02502,
+     "ic95": [
+      0.00671,
+      0.04212
+     ],
+     "erros": 595,
+     "total": 23779
+    },
+    "prosa_cru": {
+     "cer": 0.02771,
+     "ic95": [
+      0.0072,
+      0.04586
+     ],
+     "erros": 660,
+     "total": 23817
+    },
+    "wer_tip": 0.10142,
+    "wer_cru": 0.10899,
+    "notacao_tip": {
+     "cer": 0.10766,
+     "ic95": [
+      0.04447,
+      0.19554
+     ],
+     "erros": 585,
+     "total": 5434
+    },
+    "espaco_tip": {
+     "cer": 0.03543,
+     "ic95": [
+      0.01109,
+      0.06216
+     ],
+     "erros": 71,
+     "total": 2004
+    },
+    "insercoes_tip": 570,
+    "figurina": {
+     "revocacao": 0.859,
+     "precisao": 0.859,
+     "ref": 837,
+     "hip": 837,
+     "tp": 719
+    },
+    "familias_tip": {
+     "letra trocada": {
+      "palavras": 125,
+      "por_livro": {
+       "Dvoretsky": 17,
+       "Hertan": 1,
+       "Minhas 60": 91,
+       "400 Quebra-cabeças": 8,
+       "Seirawan": 8
+      }
+     },
+     "traco vertical lido como ponto (l/I -> .)": {
+      "palavras": 124,
+      "por_livro": {
+       "Hertan": 121,
+       "Minhas 60": 3
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 38,
+      "por_livro": {
+       "Dvoretsky": 22,
+       "Minhas 60": 14,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "acento": {
+      "palavras": 29,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 26,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "espaco": {
+      "palavras": 22,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Hertan": 4,
+       "Minhas 60": 17
+      }
+     },
+     "ligadura fi/fl com 1 a mais": {
+      "palavras": 14,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "pontuacao": {
+      "palavras": 10,
+      "por_livro": {
+       "Dvoretsky": 2,
+       "Hertan": 2,
+       "Minhas 60": 5,
+       "Seirawan": 1
+      }
+     },
+     "aspas duplas": {
+      "palavras": 8,
+      "por_livro": {
+       "Dvoretsky": 8
+      }
+     },
+     "palavra perdida": {
+      "palavras": 2,
+      "por_livro": {
+       "Hertan": 2
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 2,
+      "por_livro": {
+       "Hertan": 2
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 1,
+      "por_livro": {
+       "Minhas 60": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    },
+    "familias_cru": {
+     "letra trocada": {
+      "palavras": 129,
+      "por_livro": {
+       "Dvoretsky": 17,
+       "Hertan": 8,
+       "Minhas 60": 88,
+       "400 Quebra-cabeças": 8,
+       "Seirawan": 8
+      }
+     },
+     "traco vertical lido como ponto (l/I -> .)": {
+      "palavras": 117,
+      "por_livro": {
+       "Hertan": 114,
+       "Minhas 60": 3
+      }
+     },
+     "pontuacao": {
+      "palavras": 53,
+      "por_livro": {
+       "Dvoretsky": 14,
+       "Hertan": 29,
+       "Minhas 60": 9,
+       "Seirawan": 1
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 38,
+      "por_livro": {
+       "Dvoretsky": 22,
+       "Minhas 60": 14,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "acento": {
+      "palavras": 29,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 26,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "espaco": {
+      "palavras": 17,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 15,
+       "Hertan": 1
+      }
+     },
+     "ligadura fi/fl com 1 a mais": {
+      "palavras": 14,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "figurina inventada em palavra": {
+      "palavras": 7,
+      "por_livro": {
+       "Dvoretsky": 4,
+       "Minhas 60": 3
+      }
+     },
+     "palavra perdida": {
+      "palavras": 2,
+      "por_livro": {
+       "Hertan": 2
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 2,
+      "por_livro": {
+       "Hertan": 2
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 1,
+      "por_livro": {
+       "Minhas 60": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    },
+    "pareado_contra_hoje": {
+     "prosa_tip": {
+      "pp": -0.349,
+      "ic95": [
+       -0.642,
+       -0.078
+      ],
+      "melhores": 19,
+      "piores": 0
+     },
+     "prosa_cru": {
+      "pp": -0.348,
+      "ic95": [
+       -0.639,
+       -0.078
+      ],
+      "melhores": 19,
+      "piores": 0
+     },
+     "g1b_notacao_tip": {
+      "pp": -0.11,
+      "ic95": [
+       -0.546,
+       0.0
+      ],
+      "melhores": 1,
+      "piores": 0
+     }
+    }
+   },
+   "S-732": {
+    "prosa_tip": {
+     "cer": 0.02527,
+     "ic95": [
+      0.00591,
+      0.04309
+     ],
+     "erros": 601,
+     "total": 23779
+    },
+    "prosa_cru": {
+     "cer": 0.02796,
+     "ic95": [
+      0.00658,
+      0.04687
+     ],
+     "erros": 666,
+     "total": 23817
+    },
+    "wer_tip": 0.09973,
+    "wer_cru": 0.10658,
+    "notacao_tip": {
+     "cer": 0.10876,
+     "ic95": [
+      0.04558,
+      0.19554
+     ],
+     "erros": 591,
+     "total": 5434
+    },
+    "espaco_tip": {
+     "cer": 0.03443,
+     "ic95": [
+      0.01159,
+      0.0603
+     ],
+     "erros": 69,
+     "total": 2004
+    },
+    "insercoes_tip": 550,
+    "figurina": {
+     "revocacao": 0.8519,
+     "precisao": 0.858,
+     "ref": 837,
+     "hip": 831,
+     "tp": 713
+    },
+    "familias_tip": {
+     "traco vertical lido como ponto (l/I -> .)": {
+      "palavras": 124,
+      "por_livro": {
+       "Hertan": 121,
+       "Minhas 60": 3
+      }
+     },
+     "letra trocada": {
+      "palavras": 102,
+      "por_livro": {
+       "Dvoretsky": 10,
+       "Hertan": 3,
+       "Minhas 60": 75,
+       "400 Quebra-cabeças": 6,
+       "Seirawan": 8
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 59,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "Hertan": 14,
+       "Minhas 60": 30,
+       "Seirawan": 2
+      }
+     },
+     "espaco": {
+      "palavras": 15,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Hertan": 5,
+       "Minhas 60": 9
+      }
+     },
+     "acento": {
+      "palavras": 15,
+      "por_livro": {
+       "Minhas 60": 13,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "ligadura fi/fl com 1 a mais": {
+      "palavras": 14,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "acento+caixa": {
+      "palavras": 13,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 12
+      }
+     },
+     "pontuacao": {
+      "palavras": 10,
+      "por_livro": {
+       "Dvoretsky": 2,
+       "Hertan": 2,
+       "Minhas 60": 5,
+       "Seirawan": 1
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 9,
+      "por_livro": {
+       "Dvoretsky": 3,
+       "Minhas 60": 6
+      }
+     },
+     "aspas duplas": {
+      "palavras": 8,
+      "por_livro": {
+       "Dvoretsky": 8
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 3,
+      "por_livro": {
+       "Hertan": 2,
+       "Minhas 60": 1
+      }
+     },
+     "palavra perdida": {
+      "palavras": 1,
+      "por_livro": {
+       "Hertan": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    },
+    "familias_cru": {
+     "traco vertical lido como ponto (l/I -> .)": {
+      "palavras": 117,
+      "por_livro": {
+       "Hertan": 114,
+       "Minhas 60": 3
+      }
+     },
+     "letra trocada": {
+      "palavras": 106,
+      "por_livro": {
+       "Dvoretsky": 10,
+       "Hertan": 10,
+       "Minhas 60": 72,
+       "400 Quebra-cabeças": 6,
+       "Seirawan": 8
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 57,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "Hertan": 12,
+       "Minhas 60": 30,
+       "Seirawan": 2
+      }
+     },
+     "pontuacao": {
+      "palavras": 50,
+      "por_livro": {
+       "Dvoretsky": 14,
+       "Hertan": 26,
+       "Minhas 60": 9,
+       "Seirawan": 1
+      }
+     },
+     "acento": {
+      "palavras": 15,
+      "por_livro": {
+       "Minhas 60": 13,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "ligadura fi/fl com 1 a mais": {
+      "palavras": 14,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "acento+caixa": {
+      "palavras": 13,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 12
+      }
+     },
+     "espaco": {
+      "palavras": 10,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Hertan": 2,
+       "Minhas 60": 7
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 9,
+      "por_livro": {
+       "Dvoretsky": 3,
+       "Minhas 60": 6
+      }
+     },
+     "figurina inventada em palavra": {
+      "palavras": 7,
+      "por_livro": {
+       "Dvoretsky": 4,
+       "Minhas 60": 3
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 3,
+      "por_livro": {
+       "Hertan": 2,
+       "Minhas 60": 1
+      }
+     },
+     "pontuacao+caixa": {
+      "palavras": 2,
+      "por_livro": {
+       "Hertan": 2
+      }
+     },
+     "palavra perdida": {
+      "palavras": 1,
+      "por_livro": {
+       "Hertan": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    },
+    "pareado_contra_hoje": {
+     "prosa_tip": {
+      "pp": -0.324,
+      "ic95": [
+       -0.716,
+       -0.02
+      ],
+      "melhores": 13,
+      "piores": 0
+     },
+     "prosa_cru": {
+      "pp": -0.323,
+      "ic95": [
+       -0.715,
+       -0.02
+      ],
+      "melhores": 13,
+      "piores": 0
+     },
+     "g1b_notacao_tip": {
+      "pp": 0.0,
+      "ic95": [
+       0.0,
+       0.0
+      ],
+      "melhores": 0,
+      "piores": 0
+     }
+    }
+   },
+   "S-733": {
+    "prosa_tip": {
+     "cer": 0.02788,
+     "ic95": [
+      0.00665,
+      0.04815
+     ],
+     "erros": 663,
+     "total": 23779
+    },
+    "prosa_cru": {
+     "cer": 0.03057,
+     "ic95": [
+      0.00727,
+      0.05162
+     ],
+     "erros": 728,
+     "total": 23817
+    },
+    "wer_tip": 0.1135,
+    "wer_cru": 0.12057,
+    "notacao_tip": {
+     "cer": 0.10876,
+     "ic95": [
+      0.04558,
+      0.19554
+     ],
+     "erros": 591,
+     "total": 5434
+    },
+    "espaco_tip": {
+     "cer": 0.03593,
+     "ic95": [
+      0.01175,
+      0.0625
+     ],
+     "erros": 72,
+     "total": 2004
+    },
+    "insercoes_tip": 548,
+    "figurina": {
+     "revocacao": 0.8519,
+     "precisao": 0.858,
+     "ref": 837,
+     "hip": 831,
+     "tp": 713
+    },
+    "familias_tip": {
+     "letra trocada": {
+      "palavras": 127,
+      "por_livro": {
+       "Dvoretsky": 17,
+       "Hertan": 3,
+       "Minhas 60": 92,
+       "400 Quebra-cabeças": 7,
+       "Seirawan": 8
+      }
+     },
+     "traco vertical lido como ponto (l/I -> .)": {
+      "palavras": 124,
+      "por_livro": {
+       "Hertan": 121,
+       "Minhas 60": 3
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 59,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "Hertan": 14,
+       "Minhas 60": 30,
+       "Seirawan": 2
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 38,
+      "por_livro": {
+       "Dvoretsky": 22,
+       "Minhas 60": 14,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "espaco": {
+      "palavras": 23,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Hertan": 5,
+       "Minhas 60": 17
+      }
+     },
+     "acento": {
+      "palavras": 16,
+      "por_livro": {
+       "Minhas 60": 13,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "acento+caixa": {
+      "palavras": 13,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 12
+      }
+     },
+     "pontuacao": {
+      "palavras": 10,
+      "por_livro": {
+       "Dvoretsky": 2,
+       "Hertan": 2,
+       "Minhas 60": 5,
+       "Seirawan": 1
+      }
+     },
+     "aspas duplas": {
+      "palavras": 8,
+      "por_livro": {
+       "Dvoretsky": 8
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 3,
+      "por_livro": {
+       "Hertan": 2,
+       "Minhas 60": 1
+      }
+     },
+     "palavra perdida": {
+      "palavras": 1,
+      "por_livro": {
+       "Hertan": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    },
+    "familias_cru": {
+     "letra trocada": {
+      "palavras": 131,
+      "por_livro": {
+       "Dvoretsky": 17,
+       "Hertan": 10,
+       "Minhas 60": 89,
+       "400 Quebra-cabeças": 7,
+       "Seirawan": 8
+      }
+     },
+     "traco vertical lido como ponto (l/I -> .)": {
+      "palavras": 117,
+      "por_livro": {
+       "Hertan": 114,
+       "Minhas 60": 3
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 57,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "Hertan": 12,
+       "Minhas 60": 30,
+       "Seirawan": 2
+      }
+     },
+     "pontuacao": {
+      "palavras": 50,
+      "por_livro": {
+       "Dvoretsky": 14,
+       "Hertan": 26,
+       "Minhas 60": 9,
+       "Seirawan": 1
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 38,
+      "por_livro": {
+       "Dvoretsky": 22,
+       "Minhas 60": 14,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "espaco": {
+      "palavras": 18,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Hertan": 2,
+       "Minhas 60": 15
+      }
+     },
+     "acento": {
+      "palavras": 16,
+      "por_livro": {
+       "Minhas 60": 13,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "acento+caixa": {
+      "palavras": 13,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 12
+      }
+     },
+     "figurina inventada em palavra": {
+      "palavras": 7,
+      "por_livro": {
+       "Dvoretsky": 4,
+       "Minhas 60": 3
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 3,
+      "por_livro": {
+       "Hertan": 2,
+       "Minhas 60": 1
+      }
+     },
+     "pontuacao+caixa": {
+      "palavras": 2,
+      "por_livro": {
+       "Hertan": 2
+      }
+     },
+     "palavra perdida": {
+      "palavras": 1,
+      "por_livro": {
+       "Hertan": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    },
+    "pareado_contra_hoje": {
+     "prosa_tip": {
+      "pp": -0.063,
+      "ic95": [
+       -0.177,
+       0.0
+      ],
+      "melhores": 7,
+      "piores": 0
+     },
+     "prosa_cru": {
+      "pp": -0.063,
+      "ic95": [
+       -0.176,
+       0.0
+      ],
+      "melhores": 7,
+      "piores": 0
+     },
+     "g1b_notacao_tip": {
+      "pp": 0.0,
+      "ic95": [
+       0.0,
+       0.0
+      ],
+      "melhores": 0,
+      "piores": 0
+     }
+    }
+   },
+   "S-734": {
+    "prosa_tip": {
+     "cer": 0.02712,
+     "ic95": [
+      0.0064,
+      0.04737
+     ],
+     "erros": 645,
+     "total": 23779
+    },
+    "prosa_cru": {
+     "cer": 0.03044,
+     "ic95": [
+      0.00749,
+      0.05141
+     ],
+     "erros": 725,
+     "total": 23817
+    },
+    "wer_tip": 0.11398,
+    "wer_cru": 0.1237,
+    "notacao_tip": {
+     "cer": 0.10876,
+     "ic95": [
+      0.04558,
+      0.19554
+     ],
+     "erros": 591,
+     "total": 5434
+    },
+    "espaco_tip": {
+     "cer": 0.03593,
+     "ic95": [
+      0.01175,
+      0.0625
+     ],
+     "erros": 72,
+     "total": 2004
+    },
+    "insercoes_tip": 546,
+    "figurina": {
+     "revocacao": 0.8519,
+     "precisao": 0.858,
+     "ref": 837,
+     "hip": 831,
+     "tp": 713
+    },
+    "familias_tip": {
+     "letra trocada": {
+      "palavras": 128,
+      "por_livro": {
+       "Dvoretsky": 17,
+       "Hertan": 3,
+       "Minhas 60": 92,
+       "400 Quebra-cabeças": 8,
+       "Seirawan": 8
+      }
+     },
+     "traco vertical lido como ponto (l/I -> .)": {
+      "palavras": 124,
+      "por_livro": {
+       "Hertan": 121,
+       "Minhas 60": 3
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 59,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "Hertan": 14,
+       "Minhas 60": 30,
+       "Seirawan": 2
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 38,
+      "por_livro": {
+       "Dvoretsky": 22,
+       "Minhas 60": 14,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "espaco": {
+      "palavras": 23,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Hertan": 5,
+       "Minhas 60": 17
+      }
+     },
+     "acento": {
+      "palavras": 15,
+      "por_livro": {
+       "Minhas 60": 13,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "ligadura fi/fl com 1 a mais": {
+      "palavras": 14,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "acento+caixa": {
+      "palavras": 13,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 12
+      }
+     },
+     "pontuacao": {
+      "palavras": 6,
+      "por_livro": {
+       "Hertan": 2,
+       "Minhas 60": 3,
+       "Seirawan": 1
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 3,
+      "por_livro": {
+       "Hertan": 2,
+       "Minhas 60": 1
+      }
+     },
+     "palavra perdida": {
+      "palavras": 1,
+      "por_livro": {
+       "Hertan": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    },
+    "familias_cru": {
+     "letra trocada": {
+      "palavras": 132,
+      "por_livro": {
+       "Dvoretsky": 17,
+       "Hertan": 10,
+       "Minhas 60": 89,
+       "400 Quebra-cabeças": 8,
+       "Seirawan": 8
+      }
+     },
+     "traco vertical lido como ponto (l/I -> .)": {
+      "palavras": 117,
+      "por_livro": {
+       "Hertan": 114,
+       "Minhas 60": 3
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 57,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "Hertan": 12,
+       "Minhas 60": 30,
+       "Seirawan": 2
+      }
+     },
+     "pontuacao": {
+      "palavras": 49,
+      "por_livro": {
+       "Dvoretsky": 14,
+       "Hertan": 26,
+       "Minhas 60": 8,
+       "Seirawan": 1
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 38,
+      "por_livro": {
+       "Dvoretsky": 22,
+       "Minhas 60": 14,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "espaco": {
+      "palavras": 18,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Hertan": 2,
+       "Minhas 60": 15
+      }
+     },
+     "acento": {
+      "palavras": 15,
+      "por_livro": {
+       "Minhas 60": 13,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "ligadura fi/fl com 1 a mais": {
+      "palavras": 14,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "acento+caixa": {
+      "palavras": 13,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 12
+      }
+     },
+     "figurina inventada em palavra": {
+      "palavras": 7,
+      "por_livro": {
+       "Dvoretsky": 4,
+       "Minhas 60": 3
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 3,
+      "por_livro": {
+       "Hertan": 2,
+       "Minhas 60": 1
+      }
+     },
+     "pontuacao+caixa": {
+      "palavras": 2,
+      "por_livro": {
+       "Hertan": 2
+      }
+     },
+     "palavra perdida": {
+      "palavras": 1,
+      "por_livro": {
+       "Hertan": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    },
+    "pareado_contra_hoje": {
+     "prosa_tip": {
+      "pp": -0.139,
+      "ic95": [
+       -0.341,
+       0.0
+      ],
+      "melhores": 8,
+      "piores": 0
+     },
+     "prosa_cru": {
+      "pp": -0.076,
+      "ic95": [
+       -0.178,
+       0.0
+      ],
+      "melhores": 7,
+      "piores": 0
+     },
+     "g1b_notacao_tip": {
+      "pp": 0.0,
+      "ic95": [
+       0.0,
+       0.0
+      ],
+      "melhores": 0,
+      "piores": 0
+     }
+    }
+   },
+   "S-735": {
+    "prosa_tip": {
+     "cer": 0.02679,
+     "ic95": [
+      0.00757,
+      0.04431
+     ],
+     "erros": 637,
+     "total": 23779
+    },
+    "prosa_cru": {
+     "cer": 0.02947,
+     "ic95": [
+      0.008,
+      0.04812
+     ],
+     "erros": 702,
+     "total": 23817
+    },
+    "wer_tip": 0.11012,
+    "wer_cru": 0.11719,
+    "notacao_tip": {
+     "cer": 0.10876,
+     "ic95": [
+      0.04558,
+      0.19554
+     ],
+     "erros": 591,
+     "total": 5434
+    },
+    "espaco_tip": {
+     "cer": 0.03593,
+     "ic95": [
+      0.01175,
+      0.0625
+     ],
+     "erros": 72,
+     "total": 2004
+    },
+    "insercoes_tip": 562,
+    "figurina": {
+     "revocacao": 0.8519,
+     "precisao": 0.858,
+     "ref": 837,
+     "hip": 831,
+     "tp": 713
+    },
+    "familias_tip": {
+     "letra trocada": {
+      "palavras": 126,
+      "por_livro": {
+       "Dvoretsky": 17,
+       "Hertan": 3,
+       "Minhas 60": 90,
+       "400 Quebra-cabeças": 8,
+       "Seirawan": 8
+      }
+     },
+     "traco vertical lido como ponto (l/I -> .)": {
+      "palavras": 124,
+      "por_livro": {
+       "Hertan": 121,
+       "Minhas 60": 3
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 59,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "Hertan": 14,
+       "Minhas 60": 30,
+       "Seirawan": 2
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 38,
+      "por_livro": {
+       "Dvoretsky": 22,
+       "Minhas 60": 14,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "espaco": {
+      "palavras": 23,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Hertan": 5,
+       "Minhas 60": 17
+      }
+     },
+     "ligadura fi/fl com 1 a mais": {
+      "palavras": 14,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "pontuacao": {
+      "palavras": 10,
+      "por_livro": {
+       "Dvoretsky": 2,
+       "Hertan": 2,
+       "Minhas 60": 5,
+       "Seirawan": 1
+      }
+     },
+     "aspas duplas": {
+      "palavras": 8,
+      "por_livro": {
+       "Dvoretsky": 8
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 3,
+      "por_livro": {
+       "Hertan": 2,
+       "Minhas 60": 1
+      }
+     },
+     "acento": {
+      "palavras": 3,
+      "por_livro": {
+       "Minhas 60": 1,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "acento+caixa": {
+      "palavras": 1,
+      "por_livro": {
+       "Dvoretsky": 1
+      }
+     },
+     "palavra perdida": {
+      "palavras": 1,
+      "por_livro": {
+       "Hertan": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    },
+    "familias_cru": {
+     "letra trocada": {
+      "palavras": 130,
+      "por_livro": {
+       "Dvoretsky": 17,
+       "Hertan": 10,
+       "Minhas 60": 87,
+       "400 Quebra-cabeças": 8,
+       "Seirawan": 8
+      }
+     },
+     "traco vertical lido como ponto (l/I -> .)": {
+      "palavras": 117,
+      "por_livro": {
+       "Hertan": 114,
+       "Minhas 60": 3
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 57,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "Hertan": 12,
+       "Minhas 60": 30,
+       "Seirawan": 2
+      }
+     },
+     "pontuacao": {
+      "palavras": 50,
+      "por_livro": {
+       "Dvoretsky": 14,
+       "Hertan": 26,
+       "Minhas 60": 9,
+       "Seirawan": 1
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 38,
+      "por_livro": {
+       "Dvoretsky": 22,
+       "Minhas 60": 14,
+       "400 Quebra-cabeças": 2
+      }
+     },
+     "espaco": {
+      "palavras": 18,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Hertan": 2,
+       "Minhas 60": 15
+      }
+     },
+     "ligadura fi/fl com 1 a mais": {
+      "palavras": 14,
+      "por_livro": {
+       "Dvoretsky": 13,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "figurina inventada em palavra": {
+      "palavras": 7,
+      "por_livro": {
+       "Dvoretsky": 4,
+       "Minhas 60": 3
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 3,
+      "por_livro": {
+       "Hertan": 2,
+       "Minhas 60": 1
+      }
+     },
+     "acento": {
+      "palavras": 3,
+      "por_livro": {
+       "Minhas 60": 1,
+       "Seirawan": 1,
+       "400 Quebra-cabeças": 1
+      }
+     },
+     "pontuacao+caixa": {
+      "palavras": 2,
+      "por_livro": {
+       "Hertan": 2
+      }
+     },
+     "acento+caixa": {
+      "palavras": 1,
+      "por_livro": {
+       "Dvoretsky": 1
+      }
+     },
+     "palavra perdida": {
+      "palavras": 1,
+      "por_livro": {
+       "Hertan": 1
+      }
+     },
+     "palavra cortada": {
+      "palavras": 1,
+      "por_livro": {
+       "400 Quebra-cabeças": 1
+      }
+     }
+    },
+    "pareado_contra_hoje": {
+     "prosa_tip": {
+      "pp": -0.172,
+      "ic95": [
+       -0.533,
+       0.0
+      ],
+      "melhores": 6,
+      "piores": 0
+     },
+     "prosa_cru": {
+      "pp": -0.172,
+      "ic95": [
+       -0.531,
+       0.0
+      ],
+      "melhores": 6,
+      "piores": 0
+     },
+     "g1b_notacao_tip": {
+      "pp": 0.0,
+      "ic95": [
+       0.0,
+       0.0
+      ],
+      "melhores": 0,
+      "piores": 0
+     }
+    }
+   }
+  }
+ },
+ "por_livro": {
+  "Dvoretsky": {
+   "hoje": {
+    "cer": 0.01889,
+    "ic95": [
+     0.01517,
+     0.02292
+    ],
+    "erros": 91,
+    "total": 4817,
+    "wer": 0.09163
+   },
+   "tudo": {
+    "cer": 0.00374,
+    "ic95": [
+     0.00125,
+     0.0059
+    ],
+    "erros": 18,
+    "total": 4817,
+    "wer": 0.02376
+   },
+   "S-730": {
+    "cer": 0.01889,
+    "ic95": [
+     0.01517,
+     0.02292
+    ],
+    "erros": 91,
+    "total": 4817,
+    "wer": 0.09163
+   },
+   "S-731": {
+    "cer": 0.01599,
+    "ic95": [
+     0.01234,
+     0.02021
+    ],
+    "erros": 77,
+    "total": 4817,
+    "wer": 0.07919
+   },
+   "S-732": {
+    "cer": 0.01432,
+    "ic95": [
+     0.01094,
+     0.01785
+    ],
+    "erros": 69,
+    "total": 4817,
+    "wer": 0.06222
+   },
+   "S-733": {
+    "cer": 0.01619,
+    "ic95": [
+     0.01311,
+     0.01945
+    ],
+    "erros": 78,
+    "total": 4817,
+    "wer": 0.07692
+   },
+   "S-734": {
+    "cer": 0.01391,
+    "ic95": [
+     0.00989,
+     0.01708
+    ],
+    "erros": 67,
+    "total": 4817,
+    "wer": 0.08032
+   },
+   "S-735": {
+    "cer": 0.01889,
+    "ic95": [
+     0.01517,
+     0.02292
+    ],
+    "erros": 91,
+    "total": 4817,
+    "wer": 0.09163
+   }
+  },
+  "Hertan": {
+   "hoje": {
+    "cer": 0.04117,
+    "ic95": [
+     0.03405,
+     0.05395
+    ],
+    "erros": 242,
+    "total": 5878,
+    "wer": 0.16347
+   },
+   "tudo": {
+    "cer": 0.00953,
+    "ic95": [
+     0.00173,
+     0.02266
+    ],
+    "erros": 56,
+    "total": 5878,
+    "wer": 0.01816
+   },
+   "S-730": {
+    "cer": 0.01412,
+    "ic95": [
+     0.00681,
+     0.02544
+    ],
+    "erros": 83,
+    "total": 5878,
+    "wer": 0.03835
+   },
+   "S-731": {
+    "cer": 0.03675,
+    "ic95": [
+     0.02765,
+     0.05115
+    ],
+    "erros": 216,
+    "total": 5878,
+    "wer": 0.1443
+   },
+   "S-732": {
+    "cer": 0.04117,
+    "ic95": [
+     0.03405,
+     0.05395
+    ],
+    "erros": 242,
+    "total": 5878,
+    "wer": 0.16347
+   },
+   "S-733": {
+    "cer": 0.04117,
+    "ic95": [
+     0.03405,
+     0.05395
+    ],
+    "erros": 242,
+    "total": 5878,
+    "wer": 0.16347
+   },
+   "S-734": {
+    "cer": 0.041,
+    "ic95": [
+     0.03366,
+     0.05395
+    ],
+    "erros": 241,
+    "total": 5878,
+    "wer": 0.16347
+   },
+   "S-735": {
+    "cer": 0.04117,
+    "ic95": [
+     0.03405,
+     0.05395
+    ],
+    "erros": 242,
+    "total": 5878,
+    "wer": 0.16347
+   }
+  },
+  "Minhas 60": {
+   "hoje": {
+    "cer": 0.06517,
+    "ic95": [
+     0.05453,
+     0.07401
+    ],
+    "erros": 310,
+    "total": 4757,
+    "wer": 0.27225
+   },
+   "tudo": {
+    "cer": 0.02838,
+    "ic95": [
+     0.0171,
+     0.03808
+    ],
+    "erros": 135,
+    "total": 4757,
+    "wer": 0.10864
+   },
+   "S-730": {
+    "cer": 0.06033,
+    "ic95": [
+     0.04657,
+     0.06982
+    ],
+    "erros": 287,
+    "total": 4757,
+    "wer": 0.25393
+   },
+   "S-731": {
+    "cer": 0.05655,
+    "ic95": [
+     0.04626,
+     0.06592
+    ],
+    "erros": 269,
+    "total": 4757,
+    "wer": 0.23168
+   },
+   "S-732": {
+    "cer": 0.05466,
+    "ic95": [
+     0.04429,
+     0.06435
+    ],
+    "erros": 260,
+    "total": 4757,
+    "wer": 0.21859
+   },
+   "S-733": {
+    "cer": 0.06517,
+    "ic95": [
+     0.05453,
+     0.07401
+    ],
+    "erros": 310,
+    "total": 4757,
+    "wer": 0.27225
+   },
+   "S-734": {
+    "cer": 0.06349,
+    "ic95": [
+     0.05186,
+     0.0734
+    ],
+    "erros": 302,
+    "total": 4757,
+    "wer": 0.26963
+   },
+   "S-735": {
+    "cer": 0.05655,
+    "ic95": [
+     0.04826,
+     0.06464
+    ],
+    "erros": 269,
+    "total": 4757,
+    "wer": 0.2356
+   }
+  },
+  "400 Quebra-cabeças": {
+   "hoje": {
+    "cer": 0.00454,
+    "ic95": [
+     0.0012,
+     0.00755
+    ],
+    "erros": 17,
+    "total": 3748,
+    "wer": 0.02624
+   },
+   "tudo": {
+    "cer": 0.00267,
+    "ic95": [
+     0.00031,
+     0.00477
+    ],
+    "erros": 10,
+    "total": 3748,
+    "wer": 0.01895
+   },
+   "S-730": {
+    "cer": 0.00454,
+    "ic95": [
+     0.0012,
+     0.00755
+    ],
+    "erros": 17,
+    "total": 3748,
+    "wer": 0.02624
+   },
+   "S-731": {
+    "cer": 0.00454,
+    "ic95": [
+     0.0012,
+     0.00755
+    ],
+    "erros": 17,
+    "total": 3748,
+    "wer": 0.02624
+   },
+   "S-732": {
+    "cer": 0.0032,
+    "ic95": [
+     0.00031,
+     0.00573
+    ],
+    "erros": 12,
+    "total": 3748,
+    "wer": 0.02041
+   },
+   "S-733": {
+    "cer": 0.004,
+    "ic95": [
+     0.0012,
+     0.00647
+    ],
+    "erros": 15,
+    "total": 3748,
+    "wer": 0.02478
+   },
+   "S-734": {
+    "cer": 0.00454,
+    "ic95": [
+     0.0012,
+     0.00755
+    ],
+    "erros": 17,
+    "total": 3748,
+    "wer": 0.02624
+   },
+   "S-735": {
+    "cer": 0.00454,
+    "ic95": [
+     0.0012,
+     0.00755
+    ],
+    "erros": 17,
+    "total": 3748,
+    "wer": 0.02624
+   }
+  },
+  "Seirawan": {
+   "hoje": {
+    "cer": 0.00393,
+    "ic95": [
+     0.00202,
+     0.00582
+    ],
+    "erros": 18,
+    "total": 4579,
+    "wer": 0.01838
+   },
+   "tudo": {
+    "cer": 0.00349,
+    "ic95": [
+     0.00195,
+     0.00547
+    ],
+    "erros": 16,
+    "total": 4579,
+    "wer": 0.01471
+   },
+   "S-730": {
+    "cer": 0.00393,
+    "ic95": [
+     0.00202,
+     0.00582
+    ],
+    "erros": 18,
+    "total": 4579,
+    "wer": 0.01838
+   },
+   "S-731": {
+    "cer": 0.00349,
+    "ic95": [
+     0.00195,
+     0.00547
+    ],
+    "erros": 16,
+    "total": 4579,
+    "wer": 0.01471
+   },
+   "S-732": {
+    "cer": 0.00393,
+    "ic95": [
+     0.00202,
+     0.00582
+    ],
+    "erros": 18,
+    "total": 4579,
+    "wer": 0.01838
+   },
+   "S-733": {
+    "cer": 0.00393,
+    "ic95": [
+     0.00202,
+     0.00582
+    ],
+    "erros": 18,
+    "total": 4579,
+    "wer": 0.01838
+   },
+   "S-734": {
+    "cer": 0.00393,
+    "ic95": [
+     0.00202,
+     0.00582
+    ],
+    "erros": 18,
+    "total": 4579,
+    "wer": 0.01838
+   },
+   "S-735": {
+    "cer": 0.00393,
+    "ic95": [
+     0.00202,
+     0.00582
+    ],
+    "erros": 18,
+    "total": 4579,
+    "wer": 0.01838
+   }
+  }
+ },
+ "reprovados_na_auditoria": {
+  "nota": "referência com defeito (S-702): só conferência, e nada se decide aqui",
+  "folhas": 10,
+  "livros": 2,
+  "motores": {
+   "hoje": {
+    "prosa_tip": {
+     "cer": 0.02713,
+     "ic95": [
+      0.01005,
+      0.04823
+     ],
+     "erros": 342,
+     "total": 12608
+    },
+    "prosa_cru": {
+     "cer": 0.02871,
+     "ic95": [
+      0.01027,
+      0.05342
+     ],
+     "erros": 362,
+     "total": 12607
+    },
+    "wer_tip": 0.13232,
+    "wer_cru": 0.13098,
+    "notacao_tip": {
+     "cer": 0.10452,
+     "ic95": [
+      0.03065,
+      0.18545
+     ],
+     "erros": 349,
+     "total": 3339
+    },
+    "espaco_tip": {
+     "cer": 0.52623,
+     "ic95": [
+      0.02768,
+      0.96986
+     ],
+     "erros": 642,
+     "total": 1220
+    },
+    "insercoes_tip": 379,
+    "figurina": {
+     "revocacao": 0.899,
+     "precisao": 1.0,
+     "ref": 416,
+     "hip": 374,
+     "tp": 374
+    },
+    "familias_tip": {
+     "letra trocada": {
+      "palavras": 84,
+      "por_livro": {
+       "Chess Evolution (reprovado)": 69,
+       "Capablanca (reprovado)": 15
+      }
+     },
+     "traco vertical lido como ponto (l/I -> .)": {
+      "palavras": 43,
+      "por_livro": {
+       "Chess Evolution (reprovado)": 43
+      }
+     },
+     "pontuacao": {
+      "palavras": 37,
+      "por_livro": {
+       "Chess Evolution (reprovado)": 13,
+       "Capablanca (reprovado)": 24
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 26,
+      "por_livro": {
+       "Chess Evolution (reprovado)": 19,
+       "Capablanca (reprovado)": 7
+      }
+     },
+     "espaco": {
+      "palavras": 25,
+      "por_livro": {
+       "Chess Evolution (reprovado)": 25
+      }
+     },
+     "palavra perdida": {
+      "palavras": 8,
+      "por_livro": {
+       "Chess Evolution (reprovado)": 8
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 7,
+      "por_livro": {
+       "Chess Evolution (reprovado)": 2,
+       "Capablanca (reprovado)": 5
+      }
+     },
+     "aspas duplas": {
+      "palavras": 7,
+      "por_livro": {
+       "Capablanca (reprovado)": 7
+      }
+     },
+     "acento": {
+      "palavras": 4,
+      "por_livro": {
+       "Capablanca (reprovado)": 4
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 2,
+      "por_livro": {
+       "Chess Evolution (reprovado)": 2
+      }
+     },
+     "pontuacao+caixa": {
+      "palavras": 2,
+      "por_livro": {
+       "Chess Evolution (reprovado)": 1,
+       "Capablanca (reprovado)": 1
+      }
+     },
+     "ligadura fi/fl com 1 a mais": {
+      "palavras": 1,
+      "por_livro": {
+       "Capablanca (reprovado)": 1
+      }
+     }
+    }
+   },
+   "tudo": {
+    "prosa_tip": {
+     "cer": 0.01356,
+     "ic95": [
+      0.00338,
+      0.02903
+     ],
+     "erros": 171,
+     "total": 12608
+    },
+    "prosa_cru": {
+     "cer": 0.01571,
+     "ic95": [
+      0.00411,
+      0.03454
+     ],
+     "erros": 198,
+     "total": 12607
+    },
+    "wer_tip": 0.07197,
+    "wer_cru": 0.07287,
+    "notacao_tip": {
+     "cer": 0.10063,
+     "ic95": [
+      0.03065,
+      0.17843
+     ],
+     "erros": 336,
+     "total": 3339
+    },
+    "espaco_tip": {
+     "cer": 0.52623,
+     "ic95": [
+      0.02768,
+      0.96986
+     ],
+     "erros": 642,
+     "total": 1220
+    },
+    "insercoes_tip": 359,
+    "figurina": {
+     "revocacao": 0.899,
+     "precisao": 1.0,
+     "ref": 416,
+     "hip": 374,
+     "tp": 374
+    },
+    "familias_tip": {
+     "letra trocada": {
+      "palavras": 67,
+      "por_livro": {
+       "Chess Evolution (reprovado)": 60,
+       "Capablanca (reprovado)": 7
+      }
+     },
+     "espaco": {
+      "palavras": 19,
+      "por_livro": {
+       "Chess Evolution (reprovado)": 19
+      }
+     },
+     "palavra perdida": {
+      "palavras": 8,
+      "por_livro": {
+       "Chess Evolution (reprovado)": 8
+      }
+     },
+     "pontuacao": {
+      "palavras": 6,
+      "por_livro": {
+       "Chess Evolution (reprovado)": 5,
+       "Capablanca (reprovado)": 1
+      }
+     },
+     "fronteira (espaco perdido junto a vizinha)": {
+      "palavras": 5,
+      "por_livro": {
+       "Capablanca (reprovado)": 5
+      }
+     },
+     "acento": {
+      "palavras": 5,
+      "por_livro": {
+       "Capablanca (reprovado)": 5
+      }
+     },
+     "aspas duplas": {
+      "palavras": 3,
+      "por_livro": {
+       "Capablanca (reprovado)": 3
+      }
+     },
+     "caixa (maiusc/minusc)": {
+      "palavras": 3,
+      "por_livro": {
+       "Capablanca (reprovado)": 3
+      }
+     },
+     "1/l/I/|": {
+      "palavras": 1,
+      "por_livro": {
+       "Chess Evolution (reprovado)": 1
+      }
+     },
+     "pontuacao+caixa": {
+      "palavras": 1,
+      "por_livro": {
+       "Chess Evolution (reprovado)": 1
+      }
+     }
+    },
+    "pareado_contra_hoje": {
+     "prosa_tip": {
+      "pp": -1.356,
+      "ic95": [
+       -2.417,
+       -0.651
+      ],
+      "melhores": 10,
+      "piores": 0
+     },
+     "prosa_cru": {
+      "pp": -1.301,
+      "ic95": [
+       -2.375,
+       -0.585
+      ],
+      "melhores": 10,
+      "piores": 0
+     },
+     "g1b_notacao_tip": {
+      "pp": -0.389,
+      "ic95": [
+       -0.826,
+       0.0
+      ],
+      "melhores": 7,
+      "piores": 0
+     }
+    }
+   }
+  }
+ },
+ "prata_todas": {
+  "nota": "scans com camada de OCR de terceiro: só ordena, e o caminho de reserva é este",
+  "folhas": 30,
+  "livros": 10,
+  "motores": {
+   "hoje": {
+    "prosa_tip": {
+     "cer": 0.23186,
+     "ic95": [
+      0.13638,
+      0.34839
+     ],
+     "erros": 11091,
+     "total": 47834
+    },
+    "prosa_cru": {
+     "cer": 0.23417,
+     "ic95": [
+      0.13734,
+      0.35032
+     ],
+     "erros": 11302,
+     "total": 48265
+    },
+    "wer_tip": 0.53616,
+    "wer_cru": 0.53842,
+    "notacao_tip": {
+     "cer": 0.34629,
+     "ic95": [
+      0.19696,
+      0.43443
+     ],
+     "erros": 2084,
+     "total": 6018
+    },
+    "espaco_tip": {
+     "cer": 0.35137,
+     "ic95": [
+      0.23236,
+      0.50562
+     ],
+     "erros": 1325,
+     "total": 3771
+    },
+    "insercoes_tip": 4526,
+    "figurina": {
+     "revocacao": 0.6018,
+     "precisao": 0.7506,
+     "ref": 565,
+     "hip": 453,
+     "tp": 340
+    }
+   },
+   "tudo": {
+    "prosa_tip": {
+     "cer": 0.22494,
+     "ic95": [
+      0.12994,
+      0.33926
+     ],
+     "erros": 10760,
+     "total": 47834
+    },
+    "prosa_cru": {
+     "cer": 0.22708,
+     "ic95": [
+      0.1308,
+      0.34172
+     ],
+     "erros": 10960,
+     "total": 48265
+    },
+    "wer_tip": 0.51021,
+    "wer_cru": 0.51252,
+    "notacao_tip": {
+     "cer": 0.3325,
+     "ic95": [
+      0.17754,
+      0.42504
+     ],
+     "erros": 2001,
+     "total": 6018
+    },
+    "espaco_tip": {
+     "cer": 0.35402,
+     "ic95": [
+      0.23596,
+      0.51089
+     ],
+     "erros": 1335,
+     "total": 3771
+    },
+    "insercoes_tip": 4498,
+    "figurina": {
+     "revocacao": 0.6956,
+     "precisao": 0.7736,
+     "ref": 565,
+     "hip": 508,
+     "tp": 393
+    },
+    "pareado_contra_hoje": {
+     "prosa_tip": {
+      "pp": -0.692,
+      "ic95": [
+       -0.987,
+       -0.452
+      ],
+      "melhores": 30,
+      "piores": 0
+     },
+     "prosa_cru": {
+      "pp": -0.709,
+      "ic95": [
+       -0.992,
+       -0.489
+      ],
+      "melhores": 30,
+      "piores": 0
+     },
+     "g1b_notacao_tip": {
+      "pp": -1.379,
+      "ic95": [
+       -2.887,
+       -0.498
+      ],
+      "melhores": 13,
+      "piores": 0
+     }
+    }
+   }
+  }
+ },
+ "aspas_curvas_simuladas": {
+  "o_que": "texto de `tudo`, com aspas e apóstrofos trocados por curvos pelo contexto, em cru. Simulação por fora do leitor: nenhum código disso entrou",
+  "pontuacao_cru": {
+   "hoje": {
+    "palavras": 50,
+    "por_livro": {
+     "Dvoretsky": 14,
+     "Hertan": 26,
+     "Minhas 60": 9,
+     "Seirawan": 1
+    }
+   },
+   "tudo": {
+    "palavras": 58,
+    "por_livro": {
+     "Dvoretsky": 14,
+     "Hertan": 37,
+     "Minhas 60": 6,
+     "Seirawan": 1
+    }
+   },
+   "curvas": {
+    "palavras": 12,
+    "por_livro": {
+     "Hertan": 5,
+     "Minhas 60": 6,
+     "Seirawan": 1
+    }
+   }
+  },
+  "prosa_cru": {
+   "tudo": {
+    "cer": 0.01323,
+    "ic95": [
+     0.0042,
+     0.02222
+    ],
+    "erros": 315,
+    "total": 23817
+   },
+   "curvas": {
+    "cer": 0.01092,
+    "ic95": [
+     0.00343,
+     0.02097
+    ],
+    "erros": 260,
+    "total": 23817
+   }
+  }
+ },
+ "esticados_em_training_data": {
+  "lower_l": {
+   "total": 2573,
+   "amostra": 600,
+   "esticados": 585,
+   "frac": 0.975,
+   "prop_h_l_mediana": 2.31
+  },
+  "upper_I": {
+   "total": 786,
+   "amostra": 600,
+   "esticados": 600,
+   "frac": 1.0,
+   "prop_h_l_mediana": null
+  },
+  "digit_1": {
+   "total": 26757,
+   "amostra": 600,
+   "esticados": 430,
+   "frac": 0.717,
+   "prop_h_l_mediana": 2.16
+  },
+  "sym_124": {
+   "total": 2,
+   "amostra": 2,
+   "esticados": 2,
+   "frac": 1.0,
+   "prop_h_l_mediana": null
+  },
+  "sym_46": {
+   "total": 20434,
+   "amostra": 600,
+   "esticados": 416,
+   "frac": 0.693,
+   "prop_h_l_mediana": 1.0
+  },
+  "sym_44": {
+   "total": 521,
+   "amostra": 521,
+   "esticados": 521,
+   "frac": 1.0,
+   "prop_h_l_mediana": null
+  },
+  "sym_39": {
+   "total": 95,
+   "amostra": 95,
+   "esticados": 95,
+   "frac": 1.0,
+   "prop_h_l_mediana": null
+  },
+  "sym_34": {
+   "total": 89,
+   "amostra": 89,
+   "esticados": 17,
+   "frac": 0.191,
+   "prop_h_l_mediana": 0.83
+  },
+  "lower_i": {
+   "total": 18903,
+   "amostra": 600,
+   "esticados": 398,
+   "frac": 0.663,
+   "prop_h_l_mediana": 5.2
+  },
+  "lower_e": {
+   "total": 33855,
+   "amostra": 600,
+   "esticados": 584,
+   "frac": 0.973,
+   "prop_h_l_mediana": 1.17
+  },
+  "lower_c": {
+   "total": 12755,
+   "amostra": 600,
+   "esticados": 577,
+   "frac": 0.962,
+   "prop_h_l_mediana": 1.29
+  },
+  "upper_C": {
+   "total": 537,
+   "amostra": 537,
+   "esticados": 249,
+   "frac": 0.464,
+   "prop_h_l_mediana": 1.14
+  },
+  "lower_s": {
+   "total": 4511,
+   "amostra": 600,
+   "esticados": 600,
+   "frac": 1.0,
+   "prop_h_l_mediana": null
+  },
+  "upper_S": {
+   "total": 432,
+   "amostra": 432,
+   "esticados": 432,
+   "frac": 1.0,
+   "prop_h_l_mediana": null
+  },
+  "sym_227": {
+   "total": 3797,
+   "amostra": 600,
+   "esticados": 11,
+   "frac": 0.018,
+   "prop_h_l_mediana": 1.5
+  },
+  "sym_228": {
+   "total": 15,
+   "amostra": 15,
+   "esticados": 8,
+   "frac": 0.533,
+   "prop_h_l_mediana": 1.53
+  },
+  "sym_231": {
+   "total": 93,
+   "amostra": 93,
+   "esticados": 63,
+   "frac": 0.677,
+   "prop_h_l_mediana": 1.6
+  },
+  "sym_45": {
+   "total": 536,
+   "amostra": 536,
+   "esticados": 98,
+   "frac": 0.183,
+   "prop_h_l_mediana": 0.4
+  },
+  "sym_33": {
+   "total": 13788,
+   "amostra": 600,
+   "esticados": 126,
+   "frac": 0.21,
+   "prop_h_l_mediana": 4.83
+  },
+  "_uniforme": {
+   "amostra": 3000,
+   "esticados": 1704,
+   "frac": 0.568
+  },
+  "_total": {
+   "classes": 314,
+   "recortes": 607719
+  }
+ },
+ "custo_de_recortar_de_novo": {
+  "medido": "10 folhas de 5 livros, com as outras duas trilhas rodando (ordem de grandeza, não veredito): render, camada, segmentação e recorte",
+  "segundos_por_folha": 1.2,
+  "caixas_por_folha": 1113,
+  "folhas_nos_5_livros_dev": 3710,
+  "por_folha_vezes_folhas_horas": 1.24,
+  "treino": "memória gpu-para-treino: cerca de 10 min por época na RTX 5060, na base inteira",
+  "recortes_com_procedencia": 0
+ },
+ "amostras_de_classe": {
+  "ã": 3797,
+  "ä": 15,
+  "ç": 93,
+  "é": 1751,
+  "ê": 347,
+  "í": 32,
+  "Í": 90,
+  "ó": 371,
+  "Ó": 3,
+  "õ": 1241,
+  "Õ": 1,
+  "ö": 3,
+  "Ö": 5,
+  "ú": 128,
+  "Ú": 1,
+  "ć": 171,
+  "Ć": 3,
+  "č": 59,
+  "Č": 3,
+  "š": 7,
+  "Š": 9,
+  "ž": 2,
+  "Ž": 1,
+  "à": 183,
+  "á": 1478,
+  "â": 54,
+  "Ã": 1
+ },
+ "rank_da_classe_certa": {
+  "l lido .": {
+   "n": 149,
+   "rank": {
+    "2": 62,
+    "6": 87
+   }
+  },
+  "I lido .": {
+   "n": 13,
+   "rank": {
+    "5": 13
+   }
+  },
+  "ã lido ä": {
+   "n": 23,
+   "rank": {
+    "2": 23
+   }
+  },
+  "ç lido C": {
+   "n": 19,
+   "rank_de_ç_antes_da_altura": {
+    "1 ou 2": 19
+   }
+  },
+  "ê lido é": {
+   "n": 4,
+   "rank": {
+    "3": 4
+   }
+  },
+  "P lido p": {
+   "n": 11,
+   "rank": {
+    "2": 11
+   }
+  },
+  ", lido l ou /": {
+   "n": 20,
+   "rank": {
+    "fora do top-8": 20
+   }
+  },
+  "W, S, U, O lidos em minúscula": {
+   "n": 71,
+   "rank": {
+    "1": 70,
+    "2": 1
+   },
+   "nota": "o modelo acertava, e a régua de altura derrubava"
+  }
+ }
+}
