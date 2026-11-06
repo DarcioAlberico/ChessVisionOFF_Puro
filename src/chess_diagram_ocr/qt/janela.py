@@ -57,7 +57,7 @@ from __future__ import annotations
 
 import logging
 import weakref
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -107,6 +107,7 @@ from chess_diagram_ocr.qt import (
     painel_do_pdf,
     paleta,
     plataforma,
+    sessao_da_janela,
     tema,
 )
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
@@ -152,6 +153,12 @@ from chess_diagram_ocr.ui.configuracoes import dpi as _dpi
 from chess_diagram_ocr.ui.configuracoes import max_boards as _max_boards
 from chess_diagram_ocr.ui.editor_model import DiagramEditorModel
 from chess_diagram_ocr.ui.exportacao_de_pgn import ExportSettings
+from chess_diagram_ocr.ui.geometria import (
+    LARGURA_MINIMA_DAS_ABAS,
+    LARGURA_MINIMA_DO_VISOR,
+    LARGURA_PREFERIDA_DAS_ABAS,
+    LARGURA_PREFERIDA_DO_VISOR,
+)
 from chess_diagram_ocr.ui.page_overlay import (
     BoxClick,
     DiagramBox,
@@ -171,7 +178,7 @@ from chess_diagram_ocr.ui.page_overlay import (
 from chess_diagram_ocr.ui.page_results import PageOcrParams, colocacoes_conferidas, paginas_editadas
 from chess_diagram_ocr.ui.pedido_de_treino import TrainingRequest, pedido_de_treino
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
-from chess_diagram_ocr.ui.state import AppState, load_state, save_state
+from chess_diagram_ocr.ui.state import AppState, load_state
 from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_TEXTO
 from chess_diagram_ocr.ui.varredura_de_revisao import PedidoDeVarredura
 
@@ -185,51 +192,6 @@ __all__ = [
     "JanelaPrincipal",
 ]
 
-LARGURA_MINIMA_DAS_ABAS = 500
-"""O piso do lado esquerdo, e ele é o que as abas **de fato** pedem (S-552, segunda rodada).
-
-**Eram 720, somados das partes em `galeria_declarada.LARGURA_MINIMA_DA_GALERIA`** -- 420 px de
-recorte mais 260 de lateral mais a folga --, e essa soma era o piso da janela inteira desde a
-S-154. Com a S-552 a Galeria passou a morar dentro de um `QScrollArea`: os 680 px continuam sendo
-o tamanho **preferido** dela, e deixaram de ser o exigido. Medido com as fontes de verdade, a aba
-mais exigente hoje é a do Dataset, com **522 px**; 500 é o valor que o crítico provou em
-`probe_1024.py`, trocando as duas constantes em memória antes de a janela ser montada.
-
-**Do outro lado, no F9-C2, o `720` cravado tinha virado a própria fórmula** --
-`LARGURA_MINIMA_DA_GALERIA`, com o recorte elástico de piso 240 --, porque uma constante que só
-coincidia com a soma dela já tinha divergido uma vez sem ninguém ver. Na junção com a S-552 fica o
-número medido: a Galeria rola, e a soma das partes dela deixou de ser o piso do lado esquerdo.
-
-**Por que isto é um item e não um ajuste de gosto:** 720 + 520 + 5 de alça = **1245**, e era o
-piso de largura da janela. Pedida a 1024×768 -- a tela de um notebook de 1366×768 com a janela
-numa metade, ou a de um projetor --, ela abria em 1245×768 e transbordava a tela. O ChessBase e o
-Lichess funcionam a 1024."""
-
-LARGURA_MINIMA_DO_VISOR = 440
-"""O piso do visualizador, e ele também é o que o painel pede (S-552, segunda rodada).
-
-Eram 520, escritos como "abaixo disso a página não cabe nem no ajuste à largura". Medido, o painel
-responde **198 px** de mínimo desde que a S-528 trocou as três fileiras de cromo por uma fila de
-32 px. Os 440 não são o mínimo dele: são a largura em que uma página A5 a 100% ainda se lê sem
-rolagem horizontal, e é por isso que este número continua acima do que o painel exige."""
-
-LARGURA_PREFERIDA_DAS_ABAS = 720
-"""O que o lado das abas **pede** quando há espaço, em pixel (S-552, segunda rodada).
-
-São os 720 que eram o piso até esta rodada, demovidos de exigência a preferência. **A distinção é
-o item inteiro:** piso é onde a janela para de encolher, e por isso ele tinha de cair para a janela
-caber em 1024; preferida é o que o lado pede quando há espaço. Sem separar os dois, baixar o piso
-levava junto o arranjo de fábrica: a 1400×950 a aba ia de 720 para 585 px e o tabuleiro da sala de
-488 para 392. **E os 720 são o que a Galeria ocupa mais o cromo** -- 702 + 6 de moldura da aba + 12
-de barra --, invariante que `GaleriaNaLarguraPreferidaTests` cobra desde a quarta rodada."""
-
-LARGURA_PREFERIDA_DO_VISOR = 520
-"""O mesmo para o lado do livro: os 520 que eram o piso do visor.
-
-**E é o preferido do visor que desfaz o empate numa janela de 1024**, onde os dois preferidos não
-cabem juntos: quem cede é a aba, porque a página do livro é o que não se lê espremido -- ver
-`geometria.divisor_da_primeira_abertura`."""
-
 TITULO_DA_JANELA = strings.PRODUTO
 """A marca no título: o produto, e **não mais o toolkit** (OCR_UI C2, A10). Era `"PyQt"`, para
 distinguir esta janela da do Tk enquanto as duas escreviam no mesmo `labels.csv`; o corte aconteceu
@@ -237,9 +199,6 @@ distinguir esta janela da do Tk enquanto as duas escreviam no mesmo `labels.csv`
 
 TITULO_DE_TESTE = TITULO_DA_JANELA
 """O nome que os testes da S-502 citam. Um alias e não um segundo literal."""
-
-ESPERA_AO_FECHAR_MS = 15_000
-"""Quanto o fechamento espera pela tarefa em curso, em milissegundos."""
 
 CAMINHO_DO_ESTADO = DATA_DIR / "janela.json"
 """Onde o que a janela lembra entre execuções fica (S-25/S-156).
@@ -409,7 +368,7 @@ class JanelaPrincipal(QMainWindow):
 
         self._montar()
         self._ligar()
-        self._aplicar_estado()
+        sessao_da_janela.aplicar_estado(self)
         self._atualizar_titulo()
         self._atualizar_abas()
         self.rodape.mostrar("Abra um livro em PDF para começar.")
@@ -720,61 +679,10 @@ class JanelaPrincipal(QMainWindow):
         abrir()
         self._dizer(f"Aberto o mais recente: {nome}.")
 
-    def _aplicar_estado(self) -> None:
-        """Põe nos widgets o que veio do disco, e só então libera a gravação (S-156/S-291/S-322).
-
-        **Depois de `_ligar` e não antes.** Marcar um interruptor dispara o sinal dele, e o sinal
-        só chega a quem escuta depois da fiação -- restaurar antes deixaria a marca na tela e o
-        efeito dela por acontecer, que é a metade pior dos dois estados possíveis.
-        """
-        estado = self._estado
-        self._restaurar_arranjo()
-        # `last_pdf` vazio é "nunca houve sessão anterior", e aí não há zoom escolhido a
-        # restaurar: quem enquadra a primeira abertura é o ajuste à página da S-157.
-        if estado.last_pdf:
-            self.pdf.aplicar_zoom(estado.pdf_zoom)
-        # Depois do zoom (F9-C3): `aplicar_zoom` desliga o enquadramento.
-        self.pdf.definir_enquadramento(estado.pdf_enquadramento)
-        self.pdf.marcar_diagramas.setChecked(estado.show_diagram_boxes)
-        self.pdf.roda_vira_pagina.setChecked(estado.wheel_flips_page)
-        self.painel.mostrar_incerteza = estado.show_heatmap
-        self.texto.aplicar_estado(estado)  # zoom, quebra, motor e os diagramas (S-620, S-623)
-        for nome, ligado in {**self.mesa.estados(), **self.texto.interruptores_da_vista()}.items():
-            self.menu.marcar(nome, ligado=ligado)  # a mesa (S-640) e a vista dos diagramas (S-620, S-624)
-        self.estudo.posicionar_divisor(estado.estudo_divisor)
-        self.estudo.posicionar_divisor_vertical(estado.estudo_divisor_vertical)
-        # O leitor que `board_zoom` nunca teve (S-518): o campo era gravado, era lido do disco, e
-        # não chegava a widget nenhum.
-        self.estudo.definir_fracao_do_tabuleiro(estado.board_zoom)
-        # Daqui para baixo o disco já está nos widgets, e gravar volta a ser honesto (S-322).
-        self._estado_aplicado = True
-
-    def _restaurar_arranjo(self) -> None:
-        """Tamanho, posição, divisor e aba de onde a sessão anterior parou (S-156).
-
-        A geometria passa por `geometria_a_aplicar`, a mesma decisão pura do outro frontend: sem ela, trocar
-        de monitor entre duas sessões abre a janela fora da tela, sem erro nenhum a que se agarrar. **E o
-        piso é o desta janela** (S-552, terceira rodada): o `PISO_MEDIDO`, medido numa janela **sem rolagem**,
-        devolvia 1180x800 numa tela de 1024x768 -- esta rola, e o piso dela é a soma (`com_a_medicao`).
-        """
-        alvo = geometria.geometria_a_aplicar(
-            self._estado.window_geometry,
-            plataforma.monitores(),
-            piso=geometria.piso_da_janela(LARGURA_MINIMA_DAS_ABAS, LARGURA_MINIMA_DO_VISOR, com_a_medicao=False),
-        )
-        lida = geometria.geometria_de_texto(alvo) if alvo else None
-        if lida is not None:
-            self.setGeometry(lida.x, lida.y, lida.largura, lida.altura)
-        # O divisor **não** vem aqui: ver `showEvent`.
-        # A área de trabalho na primeira abertura, e a guardada nas seguintes (S-162). `nome_atual`
-        # traduz o nome que uma sessão antiga guardou e que desde então foi renomeado; um nome de
-        # modo (`Resultado`, o que toda sessão anterior ao passo 17 guardou) abre a `Livro` nele.
-        self.abas.mostrar_area(abas.nome_atual(self._estado.active_tab) or abas.MODO_DE_TRABALHO)
-
     def showEvent(self, a0: Any) -> None:  # noqa: N802 - assinatura do Qt
         """Põe o divisor onde ele estava, **na primeira vez que a janela aparece** (S-156).
 
-        **Aqui e não em `_restaurar_arranjo`**, e o motivo é medido: antes do `show()` o
+        **Aqui e não em `restaurar_arranjo`**, e o motivo é medido: antes do `show()` o
         `QSplitter` ainda tem a largura da montagem, e os dois lados têm piso (`[720, 810]` na
         janela mínima). Pedir 60% ali é pedir 60% de uma largura que não é a final -- o Qt grampeia
         contra os pisos e o que sobra é o arranjo de fábrica, com a alça de volta ao meio.
@@ -854,74 +762,12 @@ class JanelaPrincipal(QMainWindow):
             self.divisor.setSizes([esquerda, max(1, largura - esquerda)])
 
     def _anotar_arranjo(self) -> None:
-        """Lê da tela o arranjo de agora e o põe no estado (S-156/S-311).
-
-        **Janela não mostrada não é janela medida** (S-311). Antes do `show()` o divisor devolve os
-        tamanhos declarados na montagem, que são do leiaute e não da pessoa: gravá-los apagaria a
-        posição da sessão anterior antes de alguém tocar em nada. `isVisible` é o `winfo_ismapped`
-        deste lado.
-
-        A geometria sai de `normalGeometry` quando ela existe: é a que a janela tem **fora** do
-        maximizado e do minimizado, e é a única que faz sentido restaurar. Ela é o que substitui a
-        recusa do `1x1+-32000+-32000` que o Tk devolvia para uma janela minimizada.
-
-        **A aba fica fora da guarda**, e é a diferença entre ela e as outras duas: qual área está à
-        frente é verdade com a janela mostrada ou não, e é o `QTabWidget` que responde -- não há
-        medida de pixel envolvida. O nome é o da **área** (o modo `Revisão`, e não a aba `Livro`).
-        """
-        nome = self.abas.nome_da_area_atual()
-        if nome:
-            self._estado.active_tab = nome
-        if not self.isVisible():
-            return
-        normal = self.normalGeometry()
-        atual = normal if not normal.isEmpty() else self.geometry()
-        texto = f"{atual.width()}x{atual.height()}{atual.x():+d}{atual.y():+d}"
-        self._estado.window_geometry = geometria.geometria_gravavel(texto) or self._estado.window_geometry
-        # **E a fração só é gravada quando ela é escolha** (S-552, 5ª rodada). Gravá-la sempre
-        # transformava a repartição de fábrica numa decisão de alguém: a sessão seguinte lia a
-        # fração da largura em que a anterior por acaso fechou e a aplicava numa largura diferente
-        # -- fechada a 1400 e reaberta a 1366, a aba ficava com 702 px em vez dos 720 preferidos, o
-        # viewport com 684 e a Galeria empilhava. A mesa guarda as duas alças, cada uma na sua
-        # chave (S-640), e a do trabalho só quando alguém a escolheu.
-        self.mesa.anotar(escolhida=not self._divisor_de_fabrica)
+        """Lê da tela o arranjo de agora. Ver `qt/sessao_da_janela.anotar_arranjo`."""
+        sessao_da_janela.anotar_arranjo(self)
 
     def _gravar_estado(self) -> None:
-        """Anota o que a próxima sessão precisa e grava. Nunca levanta -- `save_state` registra.
-
-        **Nada é gravado antes de `_aplicar_estado` (S-322)**: até lá os widgets estão nos padrões
-        de fábrica, e escrevê-los por cima do disco apagaria a escolha da sessão anterior sem que
-        ninguém tivesse mudado nada.
-
-        `board_zoom` não é tocado aqui, e a omissão é deliberada: é um controle que **este**
-        frontend não tem, porque não precisa -- o tabuleiro do Qt se ajusta ao painel, e o
-        deslizador de zoom do outro existia porque lá ele era um canvas de tamanho fixo. Não
-        escrevê-lo preserva o que estiver no arquivo; zerá-lo seria apagar a escolha de alguém em
-        nome de um widget que não há.
-        """
-        if not self._estado_aplicado:
-            logger.debug("Estado ainda não aplicado aos widgets: gravação adiada (S-322).")
-            return
-        estado = self._estado
-        estado.last_pdf = str(self._pdf) if self._pdf is not None else ""
-        estado.last_page = self.pdf.page_index
-        estado.pdf_zoom = float(self.pdf.zoom)
-        estado.pdf_enquadramento = self.pdf.enquadramento
-        estado.show_diagram_boxes = bool(self.pdf.marcar_diagramas.isChecked())
-        estado.wheel_flips_page = bool(self.pdf.roda_vira_pagina.isChecked())
-        estado.show_heatmap = self.painel.mostrar_incerteza
-        self.texto.anotar_estado(estado)
-        estado.review_queue_path = str(self.revisao.queue_path)
-        estado.estudo_aberto = self.estudo.chave_do_estudo_aberto
-        # `or` o guardado: o divisor devolve `0.0` enquanto não há geometria medida, e zero
-        # significa "nunca guardado" -- gravá-lo apagaria a alça da sessão anterior.
-        estado.estudo_divisor = self.estudo.fracao_do_divisor or estado.estudo_divisor
-        estado.estudo_divisor_vertical = (
-            self.estudo.fracao_do_divisor_vertical or estado.estudo_divisor_vertical
-        )
-        estado.board_zoom = self.estudo.fracao_do_tabuleiro
-        self._anotar_arranjo()
-        save_state(self._caminho_do_estado, estado)
+        """Anota e grava; nunca levanta. Ver `qt/sessao_da_janela.gravar_estado`."""
+        sessao_da_janela.gravar_estado(self)
 
     # ------------------------------------------------------------------------------ aparência
 
@@ -2224,61 +2070,8 @@ class JanelaPrincipal(QMainWindow):
         self.painel.trancar_gravacao(self._tarefa is not None)
 
     def closeEvent(self, a0: Any) -> None:  # noqa: N802 - assinatura do Qt
-        """Espera a tarefa em curso, grava a sala de estudo e pergunta pelo que se perde.
-
-        Um `QThread` vivo quando o objeto que o representa é destruído derruba o processo com
-        `QThread: Destroyed while thread is still running` -- e num bundle isso é uma janela que
-        some sem deixar rastro.
-
-        **A espera é limitada, e o limite é generoso**: ler uma página de nove diagramas na CPU
-        leva alguns segundos, e fechar no meio disso é gesto comum. Estourar o limite não impede o
-        fechamento -- não há nada melhor a fazer com uma thread presa --, mas fica no log.
-        """
-        perdidas = [operacao for operacao in self.busy.running() if operacao.loses_work]
-        editadas = paginas_editadas(self.painel.paginas, self.painel.modelo)  # correções à mão (A7)
-        if (perdidas and not self._confirmar_fechamento(perdidas)) or (
-            editadas and not dialogos.perguntar_descarte(self, editadas, ao_fechar=True)
-        ) or not self.texto.confirmar_fechamento():  # o texto digitado e não gravado na aba Texto
-            if a0 is not None:
-                a0.ignore()
-            return
-        # A sala vai para o disco antes de tudo: ela é o único painel cujo trabalho não tem outra
-        # cópia, e o `Ctrl+Z` dela não sobrevive à janela (S-271).
-        self.estudo.salvar_agora()
-        self.mesa_destacada.fechar()  # o texto volta à aba e a janela da mesa fecha junto (S-646)
-        # E o arranjo depois dela, **antes da espera pela tarefa**: uma thread presa não pode
-        # custar o último livro, a página e o divisor de quem já mandou fechar (S-156).
-        self._gravar_estado()
-        # O motor é um processo (S-523) e a sala pode tê-lo trocado nas preferências (S-536): o
-        # fechado é o dela, e sem levantar (`encerrar_o_motor`, F9-C16).
-        sala_declarada.encerrar_o_motor(self.estudo.analisador)
-        self._detector.parar(ESPERA_AO_FECHAR_MS)
-        # As tarefas (a leitura, o aquecimento do modelo) não têm pai desde a fase 2 do ciclo 2:
-        # destruí-las a correr derrubava o processo sem rastro (o portão `comandos` mediu: exit
-        # 255, nada no log). A espera é cortesia -- sair com a leitura no meio deixa uma thread
-        # a terminar sozinha, e `manter_viva` a solta quando acaba.
-        self._aquecimento.cancelar()   # o relógio de uma janela fechada não dispara mais
-        self._aquecimento.esperar(ESPERA_AO_FECHAR_MS)
-        if self._tarefa is not None and not self._tarefa.wait(ESPERA_AO_FECHAR_MS):
-            logger.warning("A janela fechou com uma tarefa ainda em andamento; ela termina sozinha.")
-        if a0 is not None:
-            a0.accept()
-
-    def _confirmar_fechamento(self, perdidas: Sequence[Any]) -> bool:
-        """Pergunta antes de fechar sobre uma operação que perde trabalho (S-60/S-112).
-
-        **Só as que perdem**, e é o item: a varredura do livro retoma de onde parou e a busca por
-        nome custa a passada de novo -- perguntar sobre elas ensinaria a fechar a caixa sem ler,
-        e aí a pergunta que importa (a busca por posição, ~56 min de tudo-ou-nada) passaria batida.
-        """
-        nomes = ", ".join(operacao.name for operacao in perdidas)
-        caixa = QMessageBox(self)
-        caixa.setIcon(QMessageBox.Icon.Warning)
-        caixa.setWindowTitle("Fechar")
-        caixa.setText(f"Estas operações perdem o trabalho feito se a janela fechar agora:\n\n  {nomes}")
-        caixa.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        caixa.setDefaultButton(QMessageBox.StandardButton.No)
-        return caixa.exec() == QMessageBox.StandardButton.Yes
+        """Espera a tarefa, grava a sala e pergunta pelo que se perde. Ver `qt/sessao_da_janela.fechar`."""
+        sessao_da_janela.fechar(self, a0)
 
     def _dispositivos(self) -> Any:
         """Em que dispositivo cada um dos dois modelos torch está (S-182).

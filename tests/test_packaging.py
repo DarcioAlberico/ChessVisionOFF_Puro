@@ -257,8 +257,14 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2293
+    LIMITE = 2086
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.293 -> 2.086 com a sessão fora da janela (S-31, fatia 1, 2026-11-06)**: `_aplicar_estado`,
+    `_restaurar_arranjo`, `_anotar_arranjo`, `_gravar_estado`, `closeEvent` e
+    `_confirmar_fechamento` foram para `qt/sessao_da_janela.py`, e as quatro larguras, que a sessão
+    também lê, para `ui/geometria.py` (a janela as reexporta). Extração pura, com a janela idêntica
+    em offscreen antes e depois. Na classe ficaram os três delegados que o Qt e os testes chamam.
 
     **2.287 -> 2.293 com o campo «Lance» de volta ao Resultado (S-71, 2026-11-05)**: o Tk tinha
     o campo e o porte do Qt não o trouxe. Seis linhas: a janela entrega ao painel os dois
