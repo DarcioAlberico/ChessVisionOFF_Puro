@@ -1,0 +1,148 @@
+{
+  "pergunta": "S-33: a avaliação do motor separa os exportados errados dos certos?",
+  "motor": "stockfish-windows-x86-64-universal.exe",
+  "profundidade": 16,
+  "threads": 1,
+  "hash_mb": 64,
+  "mate_vale_cp": 10000,
+  "modelo": "8786968-1793824735036821200",
+  "codigo": "abea63c1b0e973ccd7ef0bae916d5340a8673c92",
+  "conjunto": "data/field_set.jsonl",
+  "sinal": "|avaliação| em centipawns, com o lado lido, e o menor |avaliação| entre os dois lados",
+  "diagramas_anotados": 115,
+  "comparaveis": 114,
+  "exportados_comparaveis": 101,
+  "exportados_errados": 4,
+  "lidos_errados": 10,
+  "lidos_errados_motor_recusa": 2,
+  "exportados": {
+    "lado_lido": {
+      "errados": {
+        "n": 4,
+        "mediana": 1076,
+        "p90": 1463,
+        "ge_300": 4,
+        "ge_500": 3,
+        "ge_1000": 2,
+        "ge_1500": 1
+      },
+      "certos": {
+        "n": 97,
+        "mediana": 474,
+        "p90": 9998,
+        "ge_300": 63,
+        "ge_500": 46,
+        "ge_1000": 21,
+        "ge_1500": 20
+      },
+      "auc_errado_maior": 0.683
+    },
+    "dois_lados": {
+      "errados": {
+        "n": 4,
+        "mediana": 956,
+        "p90": 1222,
+        "ge_300": 4,
+        "ge_500": 3,
+        "ge_1000": 2,
+        "ge_1500": 1
+      },
+      "certos": {
+        "n": 97,
+        "mediana": 140,
+        "p90": 1693,
+        "ge_300": 41,
+        "ge_500": 24,
+        "ge_1000": 12,
+        "ge_1500": 12
+      },
+      "auc_errado_maior": 0.814
+    }
+  },
+  "todos_os_lidos": {
+    "lado_lido": {
+      "errados": {
+        "n": 8,
+        "mediana": 1029,
+        "p90": 9996,
+        "ge_300": 8,
+        "ge_500": 6,
+        "ge_1000": 4,
+        "ge_1500": 2
+      },
+      "certos": {
+        "n": 104,
+        "mediana": 490,
+        "p90": 9998,
+        "ge_300": 69,
+        "ge_500": 51,
+        "ge_1000": 23,
+        "ge_1500": 22
+      },
+      "auc_errado_maior": 0.704
+    },
+    "dois_lados": {
+      "errados": {
+        "n": 8,
+        "mediana": 842,
+        "p90": 9995,
+        "ge_300": 8,
+        "ge_500": 6,
+        "ge_1000": 3,
+        "ge_1500": 2
+      },
+      "certos": {
+        "n": 104,
+        "mediana": 165,
+        "p90": 1715,
+        "ge_300": 45,
+        "ge_500": 27,
+        "ge_1000": 14,
+        "ge_1500": 14
+      },
+      "auc_errado_maior": 0.825
+    }
+  },
+  "falso_alarme_na_verdade_anotada": {
+    "n": 114,
+    "mediana": 224,
+    "p90": 9992,
+    "ge_300": 53,
+    "ge_500": 35,
+    "ge_1000": 19,
+    "ge_1500": 18
+  },
+  "erro_provavel_simulado": {
+    "como": "nos exportados certos, a 2ª classe na casa de menor margem da própria matriz",
+    "pares": 97,
+    "ficou_ilegal_motor_recusa": 52,
+    "aval_validos": 45,
+    "auc_variante_maior": 0.681,
+    "variante": {
+      "n": 45,
+      "mediana": 453,
+      "p90": 1167,
+      "ge_300": 30,
+      "ge_500": 22,
+      "ge_1000": 8,
+      "ge_1500": 4
+    },
+    "original": {
+      "n": 45,
+      "mediana": 185,
+      "p90": 593,
+      "ge_300": 21,
+      "ge_500": 8,
+      "ge_1000": 1,
+      "ge_1500": 1
+    },
+    "cruzou_limiar_que_o_original_nao": {
+      "ge_300": 13,
+      "ge_500": 14,
+      "ge_1000": 7,
+      "ge_1500": 3
+    }
+  },
+  "veredito": "não separa com utilidade: no sinal melhor (menor |avaliação| entre os dois lados), |cp| >= 500 acha 3 dos 4 exportados errados e 24 dos 97 certos, precisão de 11% sobre uma base de 4%. Posição de livro de táticas já é bizarra por natureza: 35 das 114 verdades anotadas passam de 500. Não entra.",
+  "ressalva": "n=4 exportados errados: a precisão é indicativa, e o conjunto de campo é o de sempre (S-99), não amostra do acervo."
+}

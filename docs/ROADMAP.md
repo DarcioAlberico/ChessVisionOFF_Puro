@@ -1208,6 +1208,23 @@ hipótese razoável e não medida: quantificá-la exige rodar um motor de verdad
 diagramas de verdade, e não há Stockfish aqui. Implementá-la sem medir seria repetir o erro
 que a Fase 5 documentou nos pesos de classe — a ideia razoável que a medição desaconselhou.
 
+✅ **Medida em 2026-11-06, e não entra** (`docs/metrics/motor_plausibilidade_20261106.json`:
+Stockfish a profundidade 16, sobre o `field_set.jsonl`, 101 exportados conferíveis, 4 errados). O
+melhor sinal é o menor |avaliação| entre os dois lados, porque o lado assumido sozinho já inventa
+avaliação (AUC 0,68 contra 0,81). Ele separa alguma coisa, e não o bastante para valer um aviso:
+
+| limiar | exportados errados acima (de 4) | certos acima (de 97) | precisão |
+|---|---|---|---|
+| ≥ 500 | 3 | 24 | 11% |
+| ≥ 1000 | 2 | 12 | 14% |
+| ≥ 1500 | 1 | 12 | 8% |
+
+O exemplo da spec ("+15 sem razão") é o que menos serve: num livro de táticas a posição certa já é
+bizarra, e 35 das 114 verdades anotadas passam de 500. O erro provável simulado (a 2ª classe na casa
+de menor margem, nos 97 certos) diz o mesmo: 52 ficam ilegais, e isso a legalidade já pega; dos 45
+restantes, 14 cruzam o 500 que o original não cruzava (31%), contra 25% de falso alarme. Com n = 4 a
+precisão é indicativa, mas o falso alarme não depende desse n. A produção não muda.
+
 ### 6.6 — o relatório mostrou algo que o `Andamento.txt` nunca poderia
 
 `cvoff-batch` substitui o acompanhamento manual. O critério de aceite tem três partes, e a
