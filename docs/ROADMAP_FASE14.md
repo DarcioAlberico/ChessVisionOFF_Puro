@@ -19,7 +19,7 @@ decisão, as duas do dono do acervo. Está assim, por medição e não por impre
 |---|---|---|
 | 0, 1, 3, 4, 5 | ✅ | — |
 | 2 | ✅ | critério de saída **fechado em 22/08**: 41 livros, 20.089 páginas, 3 h 25 min, e **0 posições ilegais** em 29.322 exportadas |
-| 6 | ⚠ | `app_tkinter.py` em 2.226 contra o alvo de 600 (S-31 aberta, com catraca; +65 nas S-324 a S-226, +81 na Fase 37, +21 na S-445, +10 na S-448 e, no `main`, +4 na S-512, +8 nas S-518/S-519, +17 na S-523 e +86 com o duplo clique e a detecção ao virar a página (S-68), cada subida com o motivo no `test_packaging`; o corte do Tk da S-506 trocou o arquivo vigiado pelo `qt/janela.py`, o placar caiu de 2.327 para 1.196, voltou a 1.776 com o que o corte tinha deixado sem chamador e foi a 1.810 com o duplo clique que leva o diagrama à sala de estudo; 1.944 com o passo 15 da OCR_UI, 1.984 com o trilho de páginas do passo 17 e 1.967 com as abas do diagrama viradas modos da aba `Livro`, no ramo `passo-17-trilho`; 1.979 com o estado «corrigido» das caixas da página, passo 13; 2.226 no merge do religa com o `main`, 2026-10-01, que soma as duas contas) |
+| 6 | ⚠ | `app_tkinter.py` em 2.226 contra o alvo de 600 (S-31 aberta, com catraca; +65 nas S-324 a S-226, +81 na Fase 37, +21 na S-445, +10 na S-448 e, no `main`, +4 na S-512, +8 nas S-518/S-519, +17 na S-523 e +86 com o duplo clique e a detecção ao virar a página (S-68), cada subida com o motivo no `test_packaging`; o corte do Tk da S-506 trocou o arquivo vigiado pelo `qt/janela.py`, o placar caiu de 2.327 para 1.196, voltou a 1.776 com o que o corte tinha deixado sem chamador e foi a 1.810 com o duplo clique que leva o diagrama à sala de estudo; 1.944 com o passo 15 da OCR_UI, 1.984 com o trilho de páginas do passo 17 e 1.967 com as abas do diagrama viradas modos da aba `Livro`, no ramo `passo-17-trilho`; 1.979 com o estado «corrigido» das caixas da página, passo 13; 2.226 no merge do religa com o `main`, 2026-10-01, que soma as duas contas; *em 2026-11-06 o `app_tkinter.py` não existe mais, o `qt/janela.py` tem 2.293 linhas, no teto de `tests/test_packaging.py`, e a S-31 segue aberta*) |
 | 7 a 13 | ✅ código completo | a 7 registra critério não atingido, com a razão medida |
 | **14 — a régua** | ✅ | S-99 fechada em 22/08: 66 páginas, `comparable` 96, faixa 0,60–0,80 com **6 de 5**. A régua achou o primeiro **exportado e errado** do projeto |
 | **15 — dataset e treino** | ✅ | S-108 fechada em 21/08: 80 rótulos, dedupe registrado, controle e tratamento medidos. Promover segue sendo decisão sua |
@@ -401,6 +401,10 @@ a condição de qualquer medição, a segunda porque cada dia de uso acrescenta 
 
 > O projeto não sabe se lê certo, e as duas réguas estão contaminadas pelo que deveriam julgar.
 
+*Estado em 2026-11-06: o título ficou do dia em que faltava a anotação. O critério fechou em
+2026-08-22 (S-99, linha 14.5), e o `data/field_set.jsonl` tem hoje 68 páginas, 115 diagramas, 114
+com FEN conferida.*
+
 | # | Entrega | Ref. | Estado |
 |---|---|---|---|
 | 14.1 | A verdade de referência deixa de ser a leitura do próprio modelo | S-95 | ✅ |
@@ -485,6 +489,10 @@ melhorá-la.
 ---
 
 ## Fase 15 — O dataset e o treino que não mentem ⚠ **código completo; o critério depende de uma decisão sua**
+
+*Estado em 2026-11-06: a decisão foi tomada e está abaixo (não promover, 2026-08-16 e 2026-08-18).
+O piso de `dataset_size` também passou: o `models/piece_classifier.pt` em produção declara **15.431**
+no `metadata`, depois das trocas de modelo de 2026-10-25 e de 2026-11-05.*
 
 | # | Entrega | Ref. | Estado |
 |---|---|---|---|
@@ -603,7 +611,7 @@ as doze operações; e o destino da galeria **está decidido** — opção 2, o 
 | 17.4 | Uma varredura por livro em vez de duas | S-119 | ✅ um botão, uma passada — e a fusão de fila parava de encurtar a fila numa varredura retomada |
 | 17.5 | A varredura da Galeria é retomável e diz até onde foi | S-120 | ✅ |
 | 17.6 | O acervo varrido sem janela aberta | S-121 | ✅ |
-| 17.7 | O OCR ligado por padrão | S-122 | ✅ medido — **não ligar** |
+| 17.7 | O OCR ligado por padrão | S-122 | ✅ medido — **não ligar**; *por livro, medido em 2026-11-06: também não, ver a seção da S-122* |
 | 17.8 | A varredura por posição responde igual com 1 e com N processos | S-138 | ✅ |
 | 17.9 | A consulta por nome alcança as duas cores, e paga o porteiro | S-139 | ✅ |
 | 17.10 | O índice sem a cópia (885 → ~476 MB) e o cache que não cabe na memória | S-140 | ✅ índice −44,0%; cache por colocação — trocar de livro deixou de custar 0,59 s e 63 MB |
@@ -1013,6 +1021,30 @@ ainda ligou à preferência.
 
 Fica como pendência nomeada, e não como "não fizemos": o mecanismo pedido pelo enunciado
 ("ligado se o motor estiver instalado") é uma linha; o que falta é justificativa para ele.
+
+### O OCR por livro, medido em 2026-11-06: não ligar sozinho
+
+`cvoff-sides`, 12 páginas por livro, nos 58 PDFs de `PDF/`, sobre o modelo em produção; 17 livros
+sem camada de texto, 276 diagramas (`docs/metrics/ocr_por_livro_20261106.json`).
+
+| nos 17 livros sem camada | sem OCR | com `rapidocr` |
+|---|---|---|
+| lado resolvido | 2 (legalidade) | 80 (78 pelo OCR) |
+| dos 78, pretas (a FEN muda) | | 19 |
+| tempo (máquina dividida: indicativo) | 187 s | 898 s, 4,8× |
+
+**O ganho existe e não está onde se pagaria.** 64 dos 78 vêm de 4 livros, e 42 de um só
+(`Reinfeld_1001_Sacrificios`, 42 de 42, 12 deles pretas). Seis livros pagam o custo inteiro e não
+ganham nada, entre eles o `1000 Chess Problems` e o `Karpov`. "Falta a camada" não prevê quem ganha,
+e é só isso que a preferência automática saberia.
+
+**E onde há verdade anotada ele não conserta nada.** Nos 15 diagramas com lado anotado nesses
+livros, os 6 lados errados continuam errados com o OCR, e ele só resolve mais um que o padrão já
+acertava. O n é pequeno, mas é o único número do par que mede acerto: os 78 acima são procedência.
+
+**Decisão: fica desligado.** `settings.py` e o padrão global não mudaram, e não entrou preferência
+por livro na janela. Quem tem um livro como o Reinfeld já tem o caminho, que é explícito e por
+execução: `cvoff-export --ocr rapidocr`.
 
 ---
 

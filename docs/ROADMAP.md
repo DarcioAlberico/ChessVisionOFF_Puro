@@ -627,9 +627,28 @@ Fase 6 (S-31).
   leitura antiga —, mas significa que corrigir uma casa apaga a informação sobre as **outras**.
   Guardar as confianças das casas não tocadas é possível e não foi feito; o gesto de contorno é
   rodar o OCR da página de novo (`Ctrl+R`).
+  ✅ *Resolvida em 2026-11-06, e o defeito na janela de hoje era o inverso do escrito aqui.* A
+  frase é da janela do Tk. No Qt o tabuleiro não lê `BoardModel.confidences`: a tinta sai de
+  `_pintar_diagrama`, que a recalcula da leitura a cada gesto, então nada se apagava e **a casa
+  reescrita continuava tingida** (medido: `casas_incertas()` em `(12, 20)` depois de pôr a dama em
+  e6, com o teste abaixo vermelho). Agora a casa corrigida sai da tinta, no tabuleiro, no recorte e
+  no `Tab` (`recorte_do_diagrama.tinta_do_diagrama(corrigidas=...)`), as outras ficam, e desfazer
+  a devolve porque ela é derivada de `differing_squares`. `BoardModel` segue a mesma regra
+  (`SEM_CONFIANCA` só nas casas de `dirty`). Testes: `tests/test_qt_painel_de_resultado.py`
+  (`test_corrigir_uma_casa_tira_a_tinta_so_dela`, `test_desfazer_a_correcao_devolve_a_tinta`) e
+  `tests/test_board_model.py`.
 - **A revisão não volta para o PGN.** Corrigir um item da fila salva a amostra no dataset e
   marca o item como revisado, mas não reescreve o `.pgn` já exportado — quem quer o PGN
   corrigido exporta de novo. Reescrever um PGN existente por diagrama é trabalho da S-34/Fase 6.
+  ✅ *Resolvida em 2026-11-06*, sem a Fase 6: `Corrigir o PGN…` na aba de Revisão
+  (`qt/painel_de_revisao.reescrever_pgn` sobre `pgn_revisado.py`). Leva os itens `done` ao `.pgn` e
+  ao par `.review.pgn`, casando `SourcePDF`, `Page` e `Diagram`; pergunta antes, guarda
+  `<nome>.bak-<data>` e grava por `atomic_io`. Só mudam os cabeçalhos do jogo corrigido: a FEN, o
+  lado quando ele mudou e o `[ReviewedFrom]` novo com a FEN anterior. Conferido numa cópia de
+  `PGN/Simple Chess - Stean, M_.pgn`: 1.634 linhas CRLF, diff de 1 linha trocada e 1 acrescentada,
+  o lance 16 da FEN preservado. **O que ela não faz:** não promove o jogo do `.review.pgn` para o
+  `.pgn` principal, não reavalia os `OCR*` (eles descrevem a leitura, e o `[ReviewedFrom]` diz isso)
+  e recusa o jogo de `[ReadingOrder]` diferente do padrão, porque o número do diagrama ali é outro.
 
 ---
 
@@ -1188,6 +1207,23 @@ validador de plausibilidade para o OCR, alimentando a prioridade da fila da S-22
 hipótese razoável e não medida: quantificá-la exige rodar um motor de verdade sobre
 diagramas de verdade, e não há Stockfish aqui. Implementá-la sem medir seria repetir o erro
 que a Fase 5 documentou nos pesos de classe — a ideia razoável que a medição desaconselhou.
+
+✅ **Medida em 2026-11-06, e não entra** (`docs/metrics/motor_plausibilidade_20261106.json`:
+Stockfish a profundidade 16, sobre o `field_set.jsonl`, 101 exportados conferíveis, 4 errados). O
+melhor sinal é o menor |avaliação| entre os dois lados, porque o lado assumido sozinho já inventa
+avaliação (AUC 0,68 contra 0,81). Ele separa alguma coisa, e não o bastante para valer um aviso:
+
+| limiar | exportados errados acima (de 4) | certos acima (de 97) | precisão |
+|---|---|---|---|
+| ≥ 500 | 3 | 24 | 11% |
+| ≥ 1000 | 2 | 12 | 14% |
+| ≥ 1500 | 1 | 12 | 8% |
+
+O exemplo da spec ("+15 sem razão") é o que menos serve: num livro de táticas a posição certa já é
+bizarra, e 35 das 114 verdades anotadas passam de 500. O erro provável simulado (a 2ª classe na casa
+de menor margem, nos 97 certos) diz o mesmo: 52 ficam ilegais, e isso a legalidade já pega; dos 45
+restantes, 14 cruzam o 500 que o original não cruzava (31%), contra 25% de falso alarme. Com n = 4 a
+precisão é indicativa, mas o falso alarme não depende desse n. A produção não muda.
 
 ### 6.6 — o relatório mostrou algo que o `Andamento.txt` nunca poderia
 

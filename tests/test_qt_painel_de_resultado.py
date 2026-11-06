@@ -554,6 +554,40 @@ class RecorteTests(PainelTests):
         self.assertEqual(self.painel.recorte.casas_marcadas()["hesitacao"], (12,))
         self.assertTrue(self.painel.tabuleiro.dica_da_casa(12).startswith("e7 · dama branca 0,600"))
 
+    def test_corrigir_uma_casa_tira_a_tinta_so_dela(self) -> None:
+        """Pendência da Fase 4 (`docs/ROADMAP.md`): a confiança era da leitura antiga, e só da casa
+        reescrita. As outras casas continuam com o que o modelo disse delas, no tabuleiro, no
+        recorte e no `Tab`."""
+        probs = probs_que_hesitam_em(12)
+        probs[20] = probs[12]
+        self.painel.carregar_pagina([diagrama(LEGAL, probs=probs)], chave="livro.pdf", pagina=0)
+        self.assertEqual(self.painel.tabuleiro.casas_incertas(), (12, 20))
+
+        self.painel.paleta._botoes["Q"].click()
+        self.painel.tabuleiro.pressionar(12)
+
+        self.assertEqual(self.painel.tabuleiro.casas_incertas(), (20,))
+        self.assertEqual(self.painel.recorte.casas_marcadas()["hesitacao"], (20,))
+        self.assertEqual(self.painel.tabuleiro._candidatas_do_tab(), (20,))
+
+    def test_desfazer_a_correcao_devolve_a_tinta(self) -> None:
+        """A casa voltou a ter o que o modelo leu, e o que ele hesitou volta a valer."""
+        self.painel.carregar_pagina([diagrama(LEGAL, probs=probs_que_hesitam_em(12))], chave="livro.pdf", pagina=0)
+        self.painel.paleta._botoes["Q"].click()
+        self.painel.tabuleiro.pressionar(12)
+        self.assertEqual(self.painel.tabuleiro.casas_incertas(), ())
+        self.painel.desfazer()
+        self.assertEqual(self.painel.tabuleiro.casas_incertas(), (12,))
+
+    def test_sem_matriz_a_regua_antiga_tambem_solta_a_casa_corrigida(self) -> None:
+        item = diagrama(LEGAL)
+        item.uncertain_squares = [12, 20]
+        self.painel.carregar_pagina([item], chave="livro.pdf", pagina=0)
+        self.painel.paleta._botoes["Q"].click()
+        self.painel.tabuleiro.pressionar(20)
+        self.assertEqual(self.painel.tabuleiro.casas_incertas(), (12,))
+        self.assertEqual(self.painel.tabuleiro._candidatas_do_tab(), (12,))
+
     def test_sem_matriz_vale_a_regua_antiga(self) -> None:
         item = diagrama(LEGAL)
         item.uncertain_squares = [5]

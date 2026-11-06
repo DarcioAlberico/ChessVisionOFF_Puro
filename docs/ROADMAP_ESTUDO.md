@@ -405,7 +405,7 @@ livro falam a mesma língua. → **S-268, S-271**
 |---|---|
 | relógio, `[%clk]`, tempo por lance | `python-chess` suporta, e nada nesta sala é partida cronometrada. Livro não tem relógio |
 | tabuleiro de análise em janela própria | a S-150 mediu o notebook de 1366×768; mais uma janela é mais uma coisa a arrumar na tela |
-| motor rodando sozinho no acervo inteiro | é a hipótese que a S-33 registrou como **não medida** — avaliação bizarra sugere erro de OCR. Continua não medida, e continua fora |
+| motor rodando sozinho no acervo inteiro | é a hipótese que a S-33 registrou como **não medida** — avaliação bizarra sugere erro de OCR. Continua não medida, e continua fora. *Medida em 2026-11-06 (`docs/metrics/motor_plausibilidade_20261106.json`): |cp| ≥ 500 pega 3 dos 4 exportados errados e 24 dos 97 certos, 11% de precisão; continua fora, agora com número* |
 | árvore de aberturas / repertório | é outro produto. O que cabe aqui é a busca por posição na base do usuário (S-287) |
 | gravar `nanoid` por lance no arquivo | não sobrevive à exportação para PGN. O caminho de variação resolve o mesmo problema sem gastar arquivo (S-268) |
 | variante de profundidade 1 | é a limitação do plugin da pasta, e o pedido usa a palavra *subvariante*. `chess.pgn` é recursiva |

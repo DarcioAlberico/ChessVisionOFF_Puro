@@ -857,7 +857,7 @@ Generalizar como provedor plugável: interface `RemoteFenProvider` para que outr
 
 **Solução.** Integração opcional com Stockfish via `chess.engine.SimpleEngine` (a dependência `python-chess` já está no projeto, e o `Python-Easy-Chess-GUI-master` de referência mostra o padrão de uso). Caminho do binário configurável, recurso desabilitado se ausente. UI: avaliação em centipawns, melhor lance, barra de vantagem, análise em thread separada com profundidade/tempo configuráveis.
 
-Ganho secundário relevante: a avaliação do motor é um **validador de plausibilidade** para o OCR. Numa posição de livro de táticas, se o motor não encontra nada e a avaliação é bizarra (ex.: +15 sem razão), a probabilidade de erro de reconhecimento é alta. Pode alimentar a prioridade da fila da S-22.
+Ganho secundário relevante: a avaliação do motor é um **validador de plausibilidade** para o OCR. Numa posição de livro de táticas, se o motor não encontra nada e a avaliação é bizarra (ex.: +15 sem razão), a probabilidade de erro de reconhecimento é alta. Pode alimentar a prioridade da fila da S-22. *Medido em 2026-11-06: não paga, ver `docs/ROADMAP.md` (seção da 6.5) e `docs/metrics/motor_plausibilidade_20261106.json`.*
 
 **Critério de aceite.** Sem Stockfish instalado, o app funciona normalmente com o recurso oculto. Com Stockfish, avaliação aparece em <2 s e não bloqueia a UI.
 

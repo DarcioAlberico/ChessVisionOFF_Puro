@@ -27,7 +27,9 @@ from chess_diagram_ocr.ui.busy import BusyOperation, BusyRegistry
 
 if TEM_PYQT:
     from PyQt6 import sip
-    from PyQt6.QtCore import Qt
+    from PyQt6.QtCore import QPoint, Qt
+    from PyQt6.QtGui import QColor
+    from PyQt6.QtWidgets import QWidget
 
     from chess_diagram_ocr.qt import rodape, tema
 
@@ -48,6 +50,41 @@ def operacao(**campos: object) -> BusyOperation:
     }
     padrao.update(campos)
     return BusyOperation(**padrao)  # type: ignore[arg-type]
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class RiscoDeCimaTests(unittest.TestCase):
+    """O traço de cima obedece à folha, nomeado como risco em `ROADMAP_REVISAO_EXTERNA_2.md`.
+
+    Medido antes, em `QFrame.HLine`: `#c9ced5` (1,4:1) no `Fusion` e 2 px de `#dcdfe2` (1,2:1) no
+    `windows11` sobre o cromo claro; a cor vinha da paleta e cada estilo desenhava a sua."""
+
+    def test_e_um_pixel_da_moldura_do_cromo_nas_duas_peles_e_em_todo_estilo(self) -> None:
+        self.app = aplicacao()
+        estilo_de_antes = self.app.style().objectName()
+        self.addCleanup(self.app.setStyle, estilo_de_antes)
+        self.addCleanup(tema.aplicar_tema, self.app)
+        for estilo in ("Fusion", "windows11"):
+            for cromo_escuro in (False, True):
+                with self.subTest(estilo=estilo, cromo_escuro=cromo_escuro):
+                    self.app.setStyle(estilo)
+                    tema.aplicar_tema(self.app, cromo_escuro=cromo_escuro)
+                    painel = rodape.RodapeDaJanela()
+                    self.addCleanup(descartar, painel)
+                    painel.resize(900, 40)
+                    painel.show()
+                    self.app.processEvents()
+
+                    risco = painel.findChild(QWidget, tema.ID_DO_SEPARADOR)
+                    self.assertIsNotNone(risco, "o traço não é o separador pintado pela folha")
+                    self.assertEqual(1, risco.height())
+                    self.assertEqual(painel.width(), risco.width())
+                    imagem = painel.grab().toImage()
+                    y = risco.mapTo(painel, QPoint(0, 0)).y()
+                    superficie = tema.cor_atual(tokens.SUPERFICIE_PADRAO)
+                    esperada = tokens.moldura_sobre(superficie)
+                    self.assertEqual(esperada, QColor(imagem.pixel(450, y)).name())
+                    self.assertGreaterEqual(tokens.razao_de_contraste(esperada, superficie), tokens.AA_GRAFICO)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

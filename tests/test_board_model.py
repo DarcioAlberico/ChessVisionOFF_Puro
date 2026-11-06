@@ -248,7 +248,8 @@ class SignalTests(unittest.TestCase):
         self.assertIsNone(model.heatmap_confidence(0))
 
     def test_uma_edicao_invalida_os_sinais_do_modelo(self) -> None:
-        """A confiança era da leitura antiga: deixá-la afirmaria algo sobre o que mudou."""
+        """A matriz e as casas reparadas eram da leitura antiga: deixá-las afirmaria algo sobre o
+        que mudou. A confiança é por casa, e tem o teste dela abaixo."""
         model = BoardModel(mode="edit", uncertain_threshold=0.80)
         model.set_position(INICIAL)
         model.set_uncertainty([0.20] * 64)
@@ -256,9 +257,37 @@ class SignalTests(unittest.TestCase):
         model.set_changed_squares([A8, H8])
 
         model.erase(A8)
-        self.assertEqual(model.confidences, ())
         self.assertIsNone(model.probs)
         self.assertEqual(model.changed, frozenset())
+
+    def test_a_edicao_tira_a_confianca_so_da_casa_reescrita(self) -> None:
+        """Pendência da Fase 4: corrigir uma casa apagava a informação sobre as outras 63."""
+        model = BoardModel(mode="edit", uncertain_threshold=0.80)
+        model.set_position(INICIAL)
+        model.set_uncertainty([0.20] * 64)
+
+        mudanca = model.erase(A8)
+        self.assertIsNone(model.heatmap_confidence(A8))
+        self.assertAlmostEqual(model.heatmap_confidence(H8) or 0.0, 0.20)
+        self.assertEqual(mudanca.dirty, frozenset({A8}), "a casa vizinha não perdeu tinta nenhuma")
+
+    def test_arrastar_tira_a_confianca_das_duas_pontas(self) -> None:
+        """A origem ficou vazia e o destino ganhou outra peça: nenhuma das duas é mais o que o
+        modelo leu."""
+        model = BoardModel(mode="edit", uncertain_threshold=0.80)
+        model.set_position(INICIAL)
+        model.set_uncertainty([0.20] * 64)
+        model.press(A8)
+        model.drop(A1)
+        self.assertIsNone(model.heatmap_confidence(A8))
+        self.assertIsNone(model.heatmap_confidence(A1))
+        self.assertAlmostEqual(model.heatmap_confidence(H8) or 0.0, 0.20)
+
+    def test_a_edicao_sem_mapa_continua_sem_mapa(self) -> None:
+        model = BoardModel(mode="edit")
+        model.set_position(INICIAL)
+        model.erase(A8)
+        self.assertEqual(model.confidences, ())
 
     def test_a_edicao_suja_tambem_as_casas_que_perderam_o_sinal(self) -> None:
         """Senão o contorno azul de uma casa que não foi tocada ficaria na tela."""

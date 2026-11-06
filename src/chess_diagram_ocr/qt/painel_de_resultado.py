@@ -172,8 +172,9 @@ def _casas_a_conferir(item: RecognizedDiagram, tinta: Any, placement: str) -> tu
         if probs is not None:
             return tuple(sorted(tinta.casas, key=lambda c: regra_do_recorte.margem(probs, c)))
         return tuple(tinta.casas)
-    if item.uncertain_squares:
-        return tuple(int(c) for c in item.uncertain_squares)
+    corrigidas = set(board_edit.differing_squares(item.placement, placement))
+    if incertas := tuple(int(c) for c in item.uncertain_squares if int(c) not in corrigidas):
+        return incertas
     confiancas = list(item.square_confidences) or [1.0] * 64
     ocupadas = [c for c in range(64) if board_edit.piece_at(placement, c)]
     return tuple(sorted(ocupadas, key=lambda c: confiancas[c] if c < len(confiancas) else 1.0))
@@ -1587,8 +1588,12 @@ class PainelDeResultado(QWidget):
 
         # **A tinta é por margem quando há matriz** (passo 13, tarefa 3), e a mesma `Tinta` vai ao
         # tabuleiro e ao recorte -- decidida uma vez, em `ui/recorte_do_diagrama`.
+        lidas_diferente = board_edit.differing_squares(item.placement, corrigida)
         tinta = regra_do_recorte.tinta_do_diagrama(
-            item.probs, casas_incertas=item.uncertain_squares, confiancas=item.square_confidences
+            item.probs,
+            casas_incertas=item.uncertain_squares,
+            confiancas=item.square_confidences,
+            corrigidas=lidas_diferente,
         )
         # Passo C10: impresso do ponto de vista das pretas, o tabuleiro é desenhado virado
         # para bater com o recorte ao lado -- a posição continua canônica; só a vista gira.
@@ -1610,7 +1615,7 @@ class PainelDeResultado(QWidget):
             tinta=tinta,
             leituras=item.probs,
         )
-        corrigidas: set[int] = set(board_edit.differing_squares(item.placement, corrigida))
+        corrigidas: set[int] = set(lidas_diferente)
         if self._mostrando_reparadas:
             # As casas reparadas usam o mesmo anel tracejado do «corrigido» (C1/X5): nos dois
             # casos a casa difere da leitura crua do classificador -- ali pela pessoa, aqui pelo

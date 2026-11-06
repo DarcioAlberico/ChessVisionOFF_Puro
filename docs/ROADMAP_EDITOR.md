@@ -275,6 +275,9 @@ e o que mudou é que existe um documento para as ferramentas editarem.
 - **S-236** · O itálico que o leitor já mede e joga fora — ✅ **implementada em 2026-08-25**
 - **S-237** · O negrito: a espessura medida, ou dita não-medida — ◐ **parcial**: a camada entrou, a
   rota geométrica foi medida e recusada, o itálico não entrou
+  *(estado em 2026-11-06: fechada. O itálico da camada entrou depois, é a `LinhaLida.italico_em`, e
+  a seção da S-237 em `SPEC_EDITOR.md` diz "a S-237 fecha"; o negrito da imagem segue recusado com
+  número, 82,2% contra 82,7%.)*
 - **S-238** · O arquivo do editor: salvar e reabrir sem perder diagrama, faixa nem correção —
   ✅ **implementada em 2026-08-24**
 - **S-239** · A correção humana carimba procedência, e vai para onde a S-212 a espera —
