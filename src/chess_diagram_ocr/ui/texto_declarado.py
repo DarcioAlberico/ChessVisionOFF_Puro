@@ -341,6 +341,7 @@ COMANDOS_DA_ABA: dict[str, str] = {
     "ler_folha_de_novo": "ler_de_novo",
     "voltar_a_versao_anterior": "voltar_a_anterior",
     "descartar_correcoes": "descartar_correcoes",
+    "corrigir_em_todas_as_folhas": "corrigir_em_todas_as_folhas",
     "indice_do_caderno": "alternar_indice",
     "marcar_folha_conferida": "marcar_conferida",
 }

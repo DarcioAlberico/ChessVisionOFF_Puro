@@ -1577,7 +1577,7 @@ de cada um.
 
 ### Fase 106 — Confiança, revisão e aprendizado
 
-- **S-760** · Confiança por palavra, calibrada por domínio.
+- **S-760** · Confiança por palavra, calibrada por domínio. ✅ entregue em 2026-11-06
   - *Contexto:* com ~99% de palavras certas, uma confiança **constante** já cumpre "ECE ≤ 0,03" — e o
     próprio projeto sabe: `calibracao.py` diz que o ECE ponderado "sai lisonjeiro por construção". A
     S-189 já tem `confianca_por_concordancia` (`text/leitura_de_linha.py`).
@@ -1589,7 +1589,8 @@ de cada um.
   - *Verificação:* `ece_por_faixa` e curva risco–cobertura na validação e no ouro-teste, por domínio.
   - *Saída:* calibrador publicado com as duas medidas; a fila da S-212 o consome.
   - *Reversão:* interruptor; desligado, vale a confiança de hoje (glifo calibrado, S-189).
-- **S-761** · A faixa "revisar" que paga a atenção de quem revisa (G5): captura ≥ 90% das palavras
+  - *Achado:* **calibra, e a curva anda.** Cada livro por um calibrador que não o viu, `ece_por_faixa` e erro aceitando 90%: digital 0,411 e 0,373% (a de quem escreveu) -> **0,163 e 0,211%**; scan, contra OCR de terceiro, 0,286 e 3,06% -> **0,027 e 1,94%**. Uma constante tem ECE zero nas duas réguas e 0,98% de erro: é a armadilha do contexto, e a curva a reprova. Ajustada no pedaço reservado do dev, porque a Fase 105 não vai começar (D8). As alternativas do `lstm_choice_mode=2` não pagam (77,1% e 77,1%; 55,4% e 55,7%), e ficam de fora. Texto idêntico em 57 folhas. A medição no ouro-teste é do portão, e não foi feita. Spec em `docs/SPEC_TEXTO_PRECISO.md`.
+- **S-761** · A faixa "revisar" que paga a atenção de quem revisa (G5). ✅ entregue em 2026-11-06, e a G5 não cumpre. Captura ≥ 90% das palavras
   erradas restantes marcando ≤ 5% das palavras, **por palavra** (os intervalos `confianca_em` da
   S-722), com teto do IC95 (captura ≥ 85% no limite inferior). Corte **próprio** da fusão: o
   `corte_de_revisar` de hoje é o `ocr.MIN_CONFIDENCE`, que o `pdf_pesquisavel` e a `coleta` também
@@ -1597,6 +1598,7 @@ de cada um.
   - *Verificação:* no ouro-teste, captura de palavras erradas e fração marcada, com IC.
   - *Saída:* G5 cumprida (captura ≥ 90%, limite inferior ≥ 85%, marcadas ≤ 5%).
   - *Reversão:* o corte é constante própria da fusão; mudá-lo não mexe no `ocr.MIN_CONFIDENCE`.
+  - *Achado:* **a captura é 77%, [52; 94], com 5,45% marcadas, no dev digital com o livro de fora, contra 52% da S-718; no scan, 56%, [41; 69], contra 32%.** O ouro-dev dá 95%, [77; 100], com 4,55%, mas são 20 palavras erradas em folhas que a S-721 viu: nas 60 folhas que ninguém olhou, a S-718 cai de 95% para 47%. **Longe da meta de 90%, com limite inferior de 85%.** O corte ganha do teto por folha (68% e 39%), e o IC da fração vai até 6,9% (10,9% no scan). Parte do que falta é ruído de rótulo: legenda lida certo que a referência tira. A G5 de portão se mede no fecho. Spec em `docs/SPEC_TEXTO_PRECISO.md`.
 - **S-762** · A correção humana volta como dado, sem contaminar nada. ✅ entregue em 2026-11-06
   - *Contexto:* `correcao.py` carimba o **bloco inteiro** como `humano` quando se edita um caractere —
     inclusive as palavras erradas que ninguém conferiu —, e o próprio código diz que "a correção é
@@ -1614,7 +1616,7 @@ de cada um.
     sha é `PaginaLida.modelo`, campo novo com padrão. `cvoff-texto-correcoes --quarentena` leva o par: em 7 folhas reais do dev, 85 pares, 70 com recorte, e 69 dos 70 recortes são a letra certa pelo classificador.
   - *Achado:* **o scan-ouro não tem código ainda**, então a recusa dele é uma guarda à espera: a tela da S-703 tem de chamar `procedencia.exigir_verdade` e `dado_corrigido.exigir_documento_cego`. Na fusão o motor sai `glifo`
     até a S-722.
-- **S-763** · Monitor de qualidade sem referência, validado antes de ser usado.
+- **S-763** · Monitor de qualidade sem referência, validado antes de ser usado. ✅ entregue em 2026-11-06, e nenhum sinal virou alarme
   - *Contexto:* a concordância glifo × leitor de linha **mede o glifo**, não a saída: por livro, a
     correlação entre o CER do glifo e o da fusão é só +0,51 por livro nos seis livros limpos (+0,46 por
     folha) — o *Minhas 60* tem glifo 6,92% e fusão 0,27%: a concordância anda com o erro do glifo, não
@@ -1628,6 +1630,7 @@ de cada um.
     domínio, publicadas.
   - *Saída:* só vira alarme o sinal que correlacionar no dev; a folha-canário relida a cada versão.
   - *Reversão:* alarme é aviso; não muda texto.
+  - *Achado:* **nenhum sinal passou da regra, escrita antes de olhar: nenhum alarme novo.** Spearman com o CER da saída, por folha: concordância +0,18 no digital e +0,24 no scan; densidade +0,12 e +0,50; o erro estimado da S-760, +0,42 e +0,32; alarmes falsos de 1 em 2 para cima. A folha-canário é **de camada, não humana**, porque a humana depende da S-703 e da D3: `eng` e `por`, as línguas do dev, e nada no scan. `cvoff-texto-prosa --canario`: a mesma versão dá diferença zero; o glifo no lugar da fusão dispara em `por` e não em `eng`. Spec em `docs/SPEC_TEXTO_PRECISO.md`.
 - **S-764** · Regressão viva: cada família consertada vira teste escrito **antes** do conserto e
   conferido revertendo-o (a guarda que se pergunta ao próprio dado — memória
   `suite-de-treino-fases-80-a-86`). Duas camadas: a de **decisão** (a regra de geometria, de caixa, de
@@ -1649,7 +1652,7 @@ de cada um.
   - *Verificação:* exportar um livro do ouro-dev e medir a prosa do EPUB na régua.
   - *Saída:* a prosa do livro exportado igual à da aba, folha a folha.
   - *Reversão:* o envio é opção da exportação.
-- **S-766** · Corrigir uma vez, corrigir no livro inteiro.
+- **S-766** · Corrigir uma vez, corrigir no livro inteiro. ✅ entregue em 2026-11-06
   - *Contexto:* a S-762 leva a correção à quarentena de treino, não às folhas seguintes; a S-213
     (`semelhanca.py`) casa por imagem de glifo e não alcança a prosa que vem do Tesseract.
   - *Entrega:* palavras do livro no caderno — o nome que o dono corrigiu vira `--user-words` do executor
@@ -1657,6 +1660,7 @@ de cada um.
   - *Verificação:* num livro do dev, quantos erros repetidos somem depois da primeira correção.
   - *Saída:* a medida publicada e a prévia obrigatória (nenhuma troca em massa sem o dono ver).
   - *Reversão:* a troca em massa vai ao caderno como corrigida e se desfaz folha a folha.
+  - *Achado:* **a troca em massa paga, e o léxico nos árbitros quase nada.** Em 40 folhas de cada um de dois livros do dev, a troca tira 19 de 71 palavras erradas e 13 de 72; o léxico do livro, 0 e 2. Ele decide entre duas leituras, e não conserta o que os dois erram juntos. O `--user-words` não entra, pela medida da S-721. Os 43 colaterais de um dos livros são o motivo da prévia: palavra errada numa folha é certa em outra. Spec em `docs/SPEC_TEXTO_PRECISO.md`.
 
 ### Fase 107 — O portão final
 

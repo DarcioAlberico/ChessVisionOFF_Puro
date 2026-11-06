@@ -410,6 +410,7 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 "colar_formato",
                 "copiar_formato",
                 "descartar_correcoes",
+                "corrigir_em_todas_as_folhas",
                 "destacar_mesa",
                 "diagramas_a_esquerda",
                 "diagramas_da_folha_a_esquerda",

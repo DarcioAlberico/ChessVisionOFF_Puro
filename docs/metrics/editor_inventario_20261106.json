@@ -1,7 +1,7 @@
 {
   "item": "S-256 · o inventário do editor de texto",
   "quando": "2026-11-06",
-  "commit": "b4c3dd68da542a7fd922610bc1daa1623037d7a9",
+  "commit": "f2f9686635f98b5d522f2ac393fa42913422e5c2",
   "atributos_do_documento": [
     "negrito",
     "italico",
@@ -144,6 +144,7 @@
     "ler_folha_de_novo",
     "voltar_a_versao_anterior",
     "descartar_correcoes",
+    "corrigir_em_todas_as_folhas",
     "indice_do_caderno",
     "marcar_folha_conferida"
   ],
