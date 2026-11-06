@@ -1044,7 +1044,7 @@ acertava. O n é pequeno, mas é o único número do par que mede acerto: os 78 
 
 **Decisão: fica desligado.** `settings.py` e o padrão global não mudaram, e não entrou preferência
 por livro na janela. Quem tem um livro como o Reinfeld já tem o caminho, que é explícito e por
-execução: `cvoff-export --ocr rapidocr`, ou `ocr.enabled` nas Configurações para aquela sessão.
+execução: `cvoff-export --ocr rapidocr`.
 
 ---
 
