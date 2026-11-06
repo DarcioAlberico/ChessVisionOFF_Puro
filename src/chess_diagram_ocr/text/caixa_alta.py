@@ -154,7 +154,8 @@ AMBIGUAS_ACENTUADAS = "íóõöúćčšž"
 """As acentuadas de mesma forma. `á ã ä å è é` mudam de desenho; `ý` tem a haste, como `y`."""
 
 CORTE_ACENTUADA = 1.65
-"""A minúscula acentuada mede até 1,46 com o acento dentro do bbox, e a maiúscula, cerca de 1,85.
+"""A minúscula acentuada mede de 1,33 a 1,53 das letras de x, com o acento dentro do bbox (53 casos, 5 livros
+do dev), e a maiúscula, cerca de 1,85: esse lado é estimado, porque nenhuma aparece no dev.
 
 **As classes de cima quase não têm amostra**, e é por isso que ela é regra de geometria: `Õ` 1, `Ú` 1,
 `Ó` 3, `Ć` 3, `Č` 3, `ö` 3, `ž` 2, `Ž` 1, `Ö` 5, `š` 7, `Š` 9 em `training_data/`. O que o modelo
@@ -330,6 +331,7 @@ def coerente(
     probs: np.ndarray,
     caixas: Sequence[object],
     idx_to_char: dict[int, str],
+    lexico: frozenset[str] = frozenset(),
 ) -> list[tuple[str, float]]:
     """A palavra toda em maiúscula não ganha minúscula no meio (S-731). `DEFEsA`, `FcM`, `uNusuAL`.
 
@@ -343,6 +345,9 @@ def coerente(
 
     **E o lance que a régua de altura estragou volta**, em `_lance_em_minuscula`: em scan, as letras de x
     comidas fazem `c` e `x` passarem do corte.
+
+    `lexico` é o sem nomes: a ambígua seguida de minúsculas não é absolvida se a forma minúscula existir, e é o
+    que separa `soViéticos` de `ChessCafe`.
     """
     saida = list(lidos)
     if not PALAVRA_COERENTE or not lidos or len(lidos) != len(caixas):
@@ -370,7 +375,11 @@ def coerente(
             # A ambígua depois de minúscula, em palavra sem dígito: `IvanchUk`, `teU`.
             if saida[k][0] in AMBIGUAS.upper() and saida[k - 1][0].islower() and not tem_lance:
                 depois = trecho[k + 1 - inicio : k + 1 - inicio + MINUSCULAS_QUE_ABSOLVEM]
-                absolvida = len(depois) == MINUSCULAS_QUE_ABSOLVEM and all(c.islower() for c in depois)
+                absolvida = (
+                    len(depois) == MINUSCULAS_QUE_ABSOLVEM
+                    and all(c.islower() for c in depois)
+                    and not _minuscula_existe(trecho, lexico)
+                )
                 if not absolvida and not "".join(trecho[: k - inicio]).lstrip("'\"(").startswith(PREFIXOS_DE_NOME):
                     por(k, saida[k][0].lower())
         trecho = [c for c, _ in saida[inicio:fim]]
@@ -393,25 +402,38 @@ def coerente(
     return saida
 
 
+def _minuscula_existe(trecho: Sequence[str], lexico: frozenset[str]) -> bool:
+    from .palavras_curtas import conhecida_ou_curta
+
+    return bool(lexico) and conhecida_ou_curta("".join(trecho).lower(), lexico)
+
+
 def _lance_em_minuscula(
     saida: list[tuple[str, float]], inicio: int, fim: int, por: Callable[[int, str], None]
 ) -> None:
     """`QXf7`->`Qxf7`, `NXa2`->`Nxa2`, e a coluna `KC5`->`Kc5`, `C2`->`c2`: maiúscula aí não é lance de ninguém.
 
-    A coluna exige o dígito de casa e nenhuma letra depois dele: `C3A` é descritiva, e `Cc3` tem o `c` certo. O
-    `X` exige a casa inteira depois, numa caixa (`f7`) ou em duas: `TEXas` e `TXPTR` ficam.
+    A coluna exige o dígito de casa e, depois dele, nem letra, nem outro dígito, nem `)`: `C3A` é descritiva, `C42`
+    é código ECO, `C3)` é rótulo de variante, e `Cc3` tem o `c` certo. O `X` exige a casa inteira depois, numa caixa
+    (`f7`) ou em duas: `TEXas` e `TXPTR` ficam.
+
+    **A volta do código ECO** é a outra metade: `c` seguido de dois dígitos não é casa nenhuma, e sai `C18`.
     """
     for k in range(inicio, fim):
         char = saida[k][0]
-        proximos = [c for c, _ in saida[k + 1 : min(fim, k + 3)]]
+        proximos = [c for c, _ in saida[k + 1 : min(fim, k + 3)]]  # o que se testa é a caixa, e não a letra
         if char == "X" and k > inicio and proximos and proximos[0][:1] in tuple("abcdefgh"):
             if len(proximos[0]) == 2 or (len(proximos) == 2 and proximos[1][:1] in tuple("12345678")):
                 por(k, "x")
         elif char == "C" and proximos and proximos[0] in tuple("12345678"):
-            depois_e_letra = len(proximos) == 2 and proximos[1][:1].isalpha()
+            depois = proximos[1][:1] if len(proximos) == 2 else ""
             antes = saida[k - 1][0][-1:] if k > inicio else ""
-            if not depois_e_letra and (not antes or not antes.isalpha() or antes in "KQRBNDTCSLFP"):
+            if not (depois.isalpha() or depois.isdigit() or depois == ")") and (
+                not antes or not antes.isalpha() or antes in "KQRBNDTCSLFP"
+            ):
                 por(k, "c")
+        elif char == "c" and len(proximos) == 2 and all(len(p) == 1 and p.isdigit() for p in proximos):
+            por(k, "C")
 
 
 __all__ = [

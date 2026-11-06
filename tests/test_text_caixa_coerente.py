@@ -83,6 +83,21 @@ class PalavraCoerenteTests(unittest.TestCase):
         for palavra in ("ChessCafe", "McClure", "McCutcheon", "McCoy", "McOy", "MacOs", "'McCoy"):
             self.assertEqual(self._coerente(palavra), palavra)
 
+    def test_a_forma_minuscula_existe_e_nao_absolve(self) -> None:
+        """`soViéticos`, `SacrifiCio`: o léxico sem nomes separa de `ChessCafe`, que não existe em minúscula."""
+        lexico = frozenset({"soviéticos", "sacrificio", "siguiente"})
+        for lido, certo in (("soViéticos", "soviéticos"), ("SacrifiCio", "Sacrificio"), ("sigUiente", "siguiente")):
+            chars, caixas = _linha([(c, 12, 20) for c in lido])
+            saida = caixa_alta.coerente(_lidos(chars), _matriz(chars), caixas, I2C, lexico)
+            self.assertEqual(_texto(saida), certo)
+        chars, caixas = _linha([(c, 12, 20) for c in "ChessCafe"])
+        self.assertEqual(_texto(caixa_alta.coerente(_lidos(chars), _matriz(chars), caixas, I2C, lexico)), "ChessCafe")
+
+    def test_mc_nao_depende_do_lexico(self) -> None:
+        chars, caixas = _linha([(c, 12, 20) for c in "McClure"])
+        lido = caixa_alta.coerente(_lidos(chars), _matriz(chars), caixas, I2C, frozenset({"mcclure"}))
+        self.assertEqual(_texto(lido), "McClure")
+
     def test_uma_so_minuscula_depois_nao_absolve(self) -> None:
         self.assertEqual(self._coerente("toUr"), "tour")
 
@@ -114,6 +129,19 @@ class PalavraCoerenteTests(unittest.TestCase):
         self.assertEqual(self._coerente("C3A"), "C3A", "descritiva")
         self.assertEqual(self._coerente("Cc3"), "Cc3")
         self.assertEqual(self._coerente("aC5"), "aC5", "letra minúscula antes: não sabemos o que é")
+
+    def test_codigo_eco_e_rotulo_nao_sao_casa(self) -> None:
+        """Reprovação do crítico: `C3)` em *Secrets*, e `[C42]` no *Chess Evolution 2014*."""
+        for palavra in ("C42", "[C42]", "C65", "C3)", "(C3)"):
+            self.assertEqual(self._coerente(palavra), palavra)
+
+    def test_o_eco_em_minuscula_volta(self) -> None:
+        """`[c18]`: `c` com dois dígitos não é casa nenhuma."""
+        self.assertEqual(self._coerente("[c18]"), "[C18]")
+        self.assertEqual(self._coerente("c18"), "C18")
+        self.assertEqual(self._coerente("c1"), "c1", "um dígito é casa")
+        self.assertEqual(self._coerente("Rc1"), "Rc1")
+        self.assertEqual(self._coerente("c3)"), "c3)", "rótulo em minúscula fica como está")
 
     def test_lance_fica(self) -> None:
         """Lance tem dígito, e `KxR` é captura: o `x` só sobe a partir de quatro letras."""

@@ -102,6 +102,11 @@ class SegundoCorteTests(unittest.TestCase):
     def test_a_maiuscula_de_verdade_fica(self) -> None:
         self.assertEqual(self._ultima("Õ", 37), "Õ", "1,85 x-height")
 
+    def test_a_minuscula_mais_alta_do_dev_nao_sobe(self) -> None:
+        """`após`->`apÓs`, com corte de 1,5: a minúscula acentuada vai a 1,53 no dev, e a margem é para 1,65."""
+        self.assertEqual(self._ultima("ó", 31), "ó", "1,55")
+        self.assertEqual(self._ultima("ú", 32), "ú", "1,60")
+
     def test_o_corte_de_1_25_inventaria_o_oo(self) -> None:
         """A régua de quem não tem acento: minúscula acentuada a 1,45 não pode virar maiúscula."""
         self.assertEqual(self._ultima("õ", 29), "õ")

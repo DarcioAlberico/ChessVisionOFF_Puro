@@ -684,7 +684,7 @@ def linhas_do_glifo(
                     # O oval dentro de um número é zero, e nenhuma palavra é dígito seguido de `o`.
                     lidos = _numero.corrigir(lidos, probs, grupo, i2c)
                 if caixa_alta:
-                    lidos = _caixa_alta.coerente(lidos, probs, grupo, i2c)  # `DEFEsA`, versalete (S-731)
+                    lidos = _caixa_alta.coerente(lidos, probs, grupo, i2c, sem_nomes)  # `DEFEsA`, versalete (S-731)
                 xh = _caixa_alta.x_height_da_linha(
                     [c.altura for c in grupo], [c for c, _ in lidos], escala=float(escala)
                 )

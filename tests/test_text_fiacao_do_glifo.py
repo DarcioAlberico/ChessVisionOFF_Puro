@@ -103,8 +103,19 @@ class FiacaoTests(unittest.TestCase):
         self.assertEqual(_ler(desenho), "aenwillaenaen")
 
     def test_a_palavra_coerente(self) -> None:
-        desenho = [("F", 14, 28, 0, 3), ("c", 15, 28, 0, 3), ("M", 16, 28, 0, 3)]
-        self.assertEqual(_ler(desenho), "FCM")
+        """O versalete: maiúscula na altura das letras de x. A régua de altura o derruba, e é a palavra que o sobe."""
+        desenho = [A, E, ("n", 13, 20, 0, 12), ("U", 18, 20, 0, 3), ("N", 16, 20, 0, 3), ("A", 17, 20, 0, 3), ("S", 19, 20, 0, 3), ("O", 20, 20, 0, 3)]
+        self.assertEqual(_ler(desenho), "aen UNASO")
+
+    def test_o_lance_em_minuscula(self) -> None:
+        """`KC5`: pela altura o `c` passa do corte, e quem o desce é a mesma chamada de `coerente`."""
+        desenho = [("K", 16, 28, 0, 3), ("C", 15, 28, 0, 3), ("5", 12, 28, 0, 3)]
+        self.assertEqual(_ler(desenho), "Kc5")
+
+    def test_coerente_recebe_o_lexico(self) -> None:
+        desenho = [("s", 10, 20, 0, 3), ("o", 12, 20, 0, 3), ("U", 18, 28, 0, 3), ("e", 11, 20, 0, 3), ("t", 8, 26, 0, 3)]
+        self.assertEqual(_ler(desenho, frozenset({"souet"})), "souet")
+        self.assertEqual(_ler(desenho), "soUet", "sem a forma minúscula no léxico, é absolvida")
 
     def test_o_acento(self) -> None:
         desenho = [E, N, ("t", 8, 26, 0, 3), ("ä", 14, 29, 0, 3, "ã"), ("o", 15, 20, 0, 3)]
