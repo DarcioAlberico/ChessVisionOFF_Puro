@@ -559,7 +559,7 @@ marca 5% das palavras no pedaço reservado do dev."""
 
 def marcar_por_erro(erros: Sequence[Sequence[float]], corte: float) -> list[frozenset[int]]:
     """Quais tokens de cada linha passam do corte. **Sem teto por folha, e é medido:** a folha limpa não gasta marca, e a ruim recebe as que
-    precisa. Com o teto de 5% por folha, a captura na prata fica em 36%; com o mesmo calibrador e o corte, em 60%, marcando 6,9%."""
+    precisa. Com o teto de 5% por folha, a captura na prata fica em 35%; com o mesmo calibrador e o corte, em 56%, marcando 6,0%."""
     return [frozenset(k for k, p in enumerate(linha) if p >= corte) for linha in erros]
 
 

@@ -62,9 +62,10 @@ def main() -> int:
         "regua": "palavra de prosa da régua, normalização tip, contra a camada montada; o split teste não foi aberto",
         "ressalvas": [
             "Tudo é dev contaminado: quem julga a G5 é o portão, no ouro-teste, que este item não abriu.",
-            "O ouro-dev tem só 20 palavras erradas depois da S-721: o IC é largo, e a medida que não foi vista pelo ajuste é a que deixa um livro de fora.",
+            "O ouro-dev tem só 19 palavras erradas depois da S-721: o IC é largo, e a medida que não foi vista pelo ajuste é a que deixa um livro de fora.",
             "No domínio scan, a referência é OCR de terceiro: a prata ordena, e a probabilidade de lá é contra aquela referência. O ajuste tira a folha em que o oráculo erra mais de 10%; a validação publica com e sem.",
-            "Parte do erro do dígito é ruído de rótulo: legenda e título lidos certo que a referência tira, por cruzarem o diagrama (`OLAFSSON`, `Short-Speelman`) contam como erro, e nenhuma marca os separa.",
+            "Parte do erro do digital é ruído de rótulo: legenda e título lidos certo que a referência tira, por cruzarem o diagrama (`OLAFSSON`, `Short-Speelman`) contam como erro, e nenhuma marca os separa.",
+            "O livro c22d5e70, da prata, é da série de um livro do teste (S-750): é medido, e nunca ajusta.",
             "Tempos sob contenção: três trilhas na máquina. Nenhum número de tempo é veredito aqui.",
         ],
         "s760_s761_calibrador_e_marca": pedaco("calibrador"),

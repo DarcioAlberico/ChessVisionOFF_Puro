@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import ast
+import json
+import subprocess
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from chess_diagram_ocr.text import confianca_palavra as cp
-from chess_diagram_ocr.text import fila, fusao, leitor
+from chess_diagram_ocr.text import fila, fusao, leitor, ouro
 from chess_diagram_ocr.text.boxes import Caixa
 from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
 
@@ -71,6 +73,50 @@ class CalibrarFolhaTests(unittest.TestCase):
         self.assertEqual(cp.confianca_da_linha([token("Nf3", "glifo", conf=0.1)], 0.7), 0.7)
 
 
+class PublicadoTests(unittest.TestCase):
+    """**Número que ninguém mediu não entra pela constante.** Mudar o V3 para 0,3 passava em 397 testes: as duas tabelas têm de bater com o relatório, como `ALARMES` na S-763."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.relatorio = json.loads((RAIZ / "docs" / "metrics" / "texto_confianca_2026-11-06.json").read_text(encoding="utf-8"))
+        cls.blocos = cls.relatorio["s760_s761_calibrador_e_marca"]
+
+    def test_os_coeficientes_sao_os_publicados(self) -> None:
+        for dominio in cp.DOMINIOS:
+            self.assertEqual(dict(zip(cp.NOMES, cp.COEFICIENTES[dominio], strict=True)), self.blocos[dominio]["pesos"], dominio)
+
+    def test_o_corte_e_o_publicado(self) -> None:
+        self.assertEqual(fusao.CORTE_DE_REVISAR[fusao.V5], self.blocos[cp.DIGITAL]["corte_de_revisar"])
+        self.assertEqual(fusao.CORTE_DE_REVISAR[fusao.V3], self.blocos[cp.SCAN]["corte_de_revisar"])
+
+    def test_o_relatorio_diz_com_que_arvore_foi_medido(self) -> None:
+        for chave in ("coleta_que_ajustou", "marca_no_produto"):
+            codigo = self.relatorio["codigo"][chave]
+            self.assertEqual(len(codigo["commit"]), 1, chave)
+            self.assertFalse(codigo["src_sujo"], chave)
+            self.assertEqual(len(codigo["modelo_sha256"]), 1, chave)
+            self.assertTrue(all(codigo["modelo_sha256"]), chave)
+        linguas = set(self.relatorio["codigo"]["coleta_que_ajustou"]["tessdata_sha256"])
+        self.assertLessEqual({"eng", "por", "deu", "fra", "spa", "nld"}, linguas, "o scan tem dez livros: as línguas de todos")
+
+    def test_o_commit_contem_o_calibrador(self) -> None:
+        for chave in ("coleta_que_ajustou", "marca_no_produto"):
+            commit = self.relatorio["codigo"][chave]["commit"][0]
+            achado = subprocess.run(["git", "-C", str(RAIZ), "cat-file", "-e", f"{commit}:src/chess_diagram_ocr/text/confianca_palavra.py"], capture_output=True, check=False)
+            if achado.returncode == 128 and b"not a git repository" in achado.stderr:
+                self.skipTest("sem git nesta árvore")
+            self.assertEqual(achado.returncode, 0, f"{chave}: {commit} não tem o calibrador")
+
+    def test_o_ajuste_nao_tocou_em_livro_do_teste_nem_da_serie_dele(self) -> None:
+        exclusao = ouro.carregar_exclusao().identidades
+        do_teste = {livro.identidade for livro in ouro.carregar().livros if livro.split == ouro.TESTE}
+        for dominio in cp.DOMINIOS:
+            ajuste = set(self.blocos[dominio]["ajuste"]["identidades"])
+            self.assertTrue(ajuste)
+            self.assertFalse(ajuste & exclusao, dominio)
+            self.assertFalse(ajuste & do_teste, dominio)
+
+
 class MarcaPorCorteTests(unittest.TestCase):
     def test_o_corte_e_da_fusao_e_nao_do_ocr(self) -> None:
         """A S-761 é explícita: o `ocr.MIN_CONFIDENCE` está no digest da S-218, e o `pdf_pesquisavel` e a `coleta` o usam."""
@@ -88,7 +134,7 @@ class MarcaPorCorteTests(unittest.TestCase):
         self.assertEqual(fusao.marcar_por_erro([[0.001] * 50], 0.1), [frozenset()])
 
     def test_a_folha_ruim_pode_passar_do_teto_da_folha(self) -> None:
-        """O teto por folha deixava marca sobrando na folha limpa e faltando na ruim: 36% contra 60% na prata, com a mesma fração."""
+        """O teto por folha deixava marca sobrando na folha limpa e faltando na ruim: 35% contra 56% na prata."""
         self.assertEqual(len(fusao.marcar_por_erro([[0.9] * 40], 0.1)[0]), 40)
 
 
