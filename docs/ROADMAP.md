@@ -640,6 +640,15 @@ Fase 6 (S-31).
 - **A revisão não volta para o PGN.** Corrigir um item da fila salva a amostra no dataset e
   marca o item como revisado, mas não reescreve o `.pgn` já exportado — quem quer o PGN
   corrigido exporta de novo. Reescrever um PGN existente por diagrama é trabalho da S-34/Fase 6.
+  ✅ *Resolvida em 2026-11-06*, sem a Fase 6: `Corrigir o PGN…` na aba de Revisão
+  (`qt/painel_de_revisao.reescrever_pgn` sobre `pgn_revisado.py`). Leva os itens `done` ao `.pgn` e
+  ao par `.review.pgn`, casando `SourcePDF`, `Page` e `Diagram`; pergunta antes, guarda
+  `<nome>.bak-<data>` e grava por `atomic_io`. Só mudam os cabeçalhos do jogo corrigido: a FEN, o
+  lado quando ele mudou e o `[ReviewedFrom]` novo com a FEN anterior. Conferido numa cópia de
+  `PGN/Simple Chess - Stean, M_.pgn`: 1.634 linhas CRLF, diff de 1 linha trocada e 1 acrescentada,
+  o lance 16 da FEN preservado. **O que ela não faz:** não promove o jogo do `.review.pgn` para o
+  `.pgn` principal, não reavalia os `OCR*` (eles descrevem a leitura, e o `[ReviewedFrom]` diz isso)
+  e recusa o jogo de `[ReadingOrder]` diferente do padrão, porque o número do diagrama ali é outro.
 
 ---
 

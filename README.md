@@ -1123,6 +1123,7 @@ src/chess_diagram_ocr/
   processo_de_trabalho.py  o filho que rasteriza, le o CSV e detecta, porque o PyMuPDF e o Python seguram o GIL
   provenance.py         o registro de procedencia gravado ao lado de cada rotulo
   proveniencia.py       o sidecar .proveniencia.jsonl ao lado do PGN: retangulo, hash, confiancas, reparos e veredito por diagrama (A11)
+  pgn_revisado.py       a decisao da fila de revisao de volta ao .pgn ja exportado, com copia
   review_queue.py       fila de revisao ordenada por valor de informacao
   revisao_arquivo.py    o baralho da repeticao espacada no disco, um para o acervo (S-540)
   revisao_espacada.py   a repeticao espacada dos estudos e das taticas: FSRS e a agenda (S-540)
