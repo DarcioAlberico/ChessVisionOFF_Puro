@@ -1070,14 +1070,14 @@ As regras da v5 e da v3 estão no cabeçalho de `fusao.py`. O que a medida acres
 | constante | o que faz | sem ela, no ouro-dev (notação) | sem ela, na prata admitida (prosa; notação) |
 |---|---|---:|---:|
 | `LANCE_INTEIRO_NAO_SE_VETA` | peça e casa não perdem para palavra: `♔a4` e `Das`, `♕xe5` e `fixes`, `♘xc4` e `Axed`. As duas pendências da S-723 acabam aqui | +0,13 [0; +0,43], e 4 figurinas a menos | −0,00; 0 |
-| `FIGURINA_FORA_DE_LANCE_PERDE` | `nta♔`, `ge♔h1ich` perdem para palavra de 4 letras ou mais, mesmo fora do léxico. Conta como veto | 0 | +0,08 [0; +0,29]; 0 |
-| `LANCE_TORTO_NAO_ENTRA` | `14...♕c6` contra `14...` e `Hc6`: o `Hc6` sem par não entra | +0,41 [0; +1,54] | 0; 0 |
+| `FIGURINA_FORA_DE_LANCE_PERDE` | `nta♔`, `ge♔h1ich` perdem para palavra de 4 letras ou mais, mesmo fora do léxico. Conta como veto | 0 | ver `ablacao` no relatório |
+| `LANCE_TORTO_NAO_ENTRA` | `14...♕c6` contra `14...` e `Hc6`: o `Hc6` sem par não entra | +0,41 [0; +1,54] | +0,02 [0; +0,06]; 0 |
 | `RETICENCIA_DO_LEITOR` | `6. . . ♕` e `6...` dão `6... ♕` | +0,44 [0; +1,36] | 0; 0 |
-| `NUMERO_DO_GLIFO_NAO_SE_COLA` | `11` contra `28711` ou `Ea836`: fica o do glifo | 0 | 0; +0,04 [0; +0,29] |
-| `SEM_PAR_NA_V3_SO_FIGURINA` | na v3, sem par só a figurina fica, salvo se o leitor leu a linha **vazia**: lá ele não viu | 0 | +0,03 [−0,09; +0,15]; +1,41 [−4,14; +4,6]; na prata inteira, +0,51 [+0,04; +1,27] e +3,46 [+0,53; +5,39] |
-| `GUARDA_SO_O_QUE_EXISTE` | a regra 5 guarda **palavra**, e não o que o glifo inventou | prosa +0,16 [0; +0,42] | +1,18 [+0,12; +3,08]; +3,03 |
+| `NUMERO_DO_GLIFO_NAO_SE_COLA` | `11` contra `28711` ou `Ea836`: fica o do glifo | 0 | ver `ablacao` no relatório |
+| `SEM_PAR_NA_V3_SO_FIGURINA` | na v3, sem par só a figurina fica, salvo se o leitor leu a linha **vazia**: lá ele não viu | 0 | +0,13 [0; +0,38]; +1,58 [−4,06; +4,50]; na prata inteira, +0,45 [+0,09; +0,97] e +3,35 [+0,51; +5,46] |
+| `GUARDA_SO_O_QUE_EXISTE` | a regra 5 guarda **palavra**, e não o que o glifo inventou | prosa +0,16 [0; +0,42] | +1,22 [+0,13; +3,36]; +3,28 |
 
-**A regra 5 como o roadmap a escreve põe a prosa de 0,24% em 0,42% no ouro-dev e reprova a saída**: é ruído do glifo entrando. Guardando só a palavra que existe, ela paga onde paga (prata inteira, −0,33 p.p. de prosa, [−1,04; +0,10]) e não custa no dev.
+**A regra 5 como o roadmap a escreve põe a prosa de 0,24% em 0,42% no ouro-dev e reprova a saída**: é ruído do glifo entrando. Guardando só a palavra que existe, não custa no dev.
 
 **As quatro regras da suíte (S-707), medidas:** a âncora que já é palavra ou lance não se troca entra como as duas primeiras linhas da tabela; `_keep_number_prefix` entra com o parêntese (`PARENTESE_DO_NUMERO`: um token em 57 folhas). **`_truncates_long_notation` não entra:** não disparou em nenhuma das 57 folhas, e regra sem caso é só código. **A disputa que vira revisão não entra:** a captura da G5 ficou em 64,4% com e sem no ouro-dev, e cai de 30,0% para 29,2% na prata, com 4,8% de palavras marcadas. Das 39 disputas do ouro, a maior parte é pontuação (`White's` contra `White’s`).
 
@@ -1087,7 +1087,7 @@ As regras da v5 e da v3 estão no cabeçalho de `fusao.py`. O que a medida acres
 
 | ajuste | ouro-dev (prosa) | prata admitida (prosa) | por quê |
 |---|---:|---:|---|
-| `tesseract.ESCALA_PELA_ALTURA_X`, alvo de 20 a 30 px | +0,004 [−0,029; +0,048] | −0,007 [−0,104; +0,100]; na prata inteira −0,154 [−0,509; +0,066] | não abre de zero. A S-740 pode voltar a ele no scan |
+| `tesseract.ESCALA_PELA_ALTURA_X`, alvo de 20 a 30 px | +0,004 [−0,029; +0,048] | −0,056 [−0,210; +0,065]; na prata inteira −0,192 [−0,750; +0,109] | não abre de zero. A S-740 pode voltar a ele no scan |
 | `leitor.DICIONARIO_FORA_NA_NOTACAO`, `load_system_dawg=0` | 0 | 0 | **0 de 120 linhas de notação mudam**: o LSTM não lê essa variável em tempo de execução |
 | `tesseract.PALAVRAS_DO_USUARIO`, `--user-words` com os 349.565 nomes | 0 | não fecha | 1 de 316 linhas muda, e para pior (`areas` -> `areias`); **no `spa` o processo termina com erro**, com a lista toda. A S-766 pressupõe esse caminho, e precisa de outro |
 
@@ -1097,20 +1097,23 @@ As regras da v5 e da v3 estão no cabeçalho de `fusao.py`. O que a medida acres
 
 ### Critério de aceite
 
-`docs/metrics/texto_prosa_fusao_2026-11-06.json`, com S-729 ligada, medido no commit dela, sem cache:
+`docs/metrics/texto_prosa_fusao_2026-11-06.json`, republicado na base integrada, no commit `4a47d15d`, com o conserto do árbitro, sem cache:
 
 | | medido | saída |
 |---|---:|---|
 | ouro-dev, prosa, fusão − Tesseract puro | **−0,034 p.p. [−0,123; +0,025]**; fusão 0,24%, Tesseract 0,27%; WER 0,58% e 0,97% | teto ≤ +0,1 ✅ |
 | G1(a), figurinas fora dos vetos | **721 de 721**, mais 3 vetos, os 3 certos (`tipo`, `adequada.`, `aguda,`), nenhum de outra língua | ≥ 99,5% ✅ |
-| G1(b), notação, fusão − glifo | **−1,84 p.p. [−3,88; −0,65]** | teto ≤ +1,0 ✅ |
+| G1(b), notação, fusão − glifo | **−1,90 p.p. [−3,95; −0,74]** | teto ≤ +1,0 ✅ |
 | G2, revocação e precisão, fusão − glifo | **−0,12 [−0,54; 0]** e **−0,02 [−0,10; 0]** | piso ≥ −1,0 ✅ |
 | estrato misto (dev), prosa contra o Tesseract | −0,033 p.p. [−0,119; 0] | IC contém zero ou abaixo ✅ |
-| prata admitida, prosa contra o Tesseract (ordenação) | +0,18 p.p. [−0,12; +0,66]; na prata inteira, −0,13 [−0,91; +0,69] | IC contém zero ✅ |
+| prata admitida, prosa contra o Tesseract (ordenação) | **+0,224 p.p. [−0,157; +0,840]** | IC contém zero ✅ |
+| prata inteira, prosa contra o Tesseract (ordenação) | +0,418 p.p. [−0,006; +0,998] | não pedida |
+
+**A integração moveu a prata, e o sinal da prata inteira inverteu.** A poeira da S-714 ajudou mais o Tesseract que a fusão: antes da junção, prata admitida +0,179 e prata inteira −0,129. **O teto de +0,84 na prata admitida não cabe nos ≤ +0,5 p.p. que o G102 pede no scan.** O limiar fica onde está: é o portão que julga, e hoje ele reprova. Parte disso é a regra 5: desligada, a prata inteira melhora −0,154 p.p. [−0,401; −0,016], e o ouro-dev não muda. Ela fica ligada porque é o que o item manda, e sem referência humana a prata não decide se a palavra guardada é ruído: quem pode decidir é o scan-ouro da S-703.
 
 Duas corridas do ouro-dev dão o mesmo texto folha a folha. `tests/test_text_fusao.py`: as regras, as pendências da S-723, o grafo de import transitivo (nada de `regua_prosa`, `relatorio_prosa`, `bancada_prosa` a partir de `fusao.py`) e a lista de curtas privada. `tests/test_text_fiacao_da_prosa.py`: intervalos de negrito caindo no texto fundido, junção de hífen igual com e sem fusão, leitor falso `None` deixando a folha igual à do glifo com aviso, a linha não lida ao lado da lida, o estrato por critério.
 
-**Desvios.** A reserva da S-715 continua na v5: lá a folha já se perdeu, e não foi medida na v3. A confiança da linha fundida segue a do glifo até a S-760. Os limiares foram escritos no dev contaminado: quem julga é o G102.
+`None` em todas as linhas, sem frase de falha, agora avisa como a falha. **Desvios.** A reserva da S-715 continua na v5: lá a folha já se perdeu, e não foi medida na v3. A confiança da linha fundida segue a do glifo até a S-760. Os limiares foram escritos no dev contaminado: quem julga é o G102.
 
 ## S-726 · O modo bloco sai do caminho da página ✅ implementada (2026-11-06)
 
@@ -1177,7 +1180,19 @@ Na v3 a notação em letra vem do Tesseract, e ele troca o dígito da casa: 13,8
 
 `text/arbitro.py`, chamado por `_com_prosa_de_outro_leitor` na folha inteira, depois de `fundir` e antes da marca, só no `motor="fusao"`. Três juízes, do mais barato ao mais caro: a **gramática** (a outra leitura quando ela é lance e esta não, a até duas edições; o dígito forçado da S-743; o número que o glifo partiu, sem duplicar, `1 1 ...♖xh4?` -> `11...♖xh4?`), a **continuidade** do número de lance, e a **legalidade**, quando quem chama passa `ler_pagina(posicao_do_diagrama=)`. Toda troca sai de uma leitura de um dos dois leitores ou de um homóglifo escrito na tabela, e figurina nunca é trocada por letra. `tesseract.lingua_do_processo` lê com `rus+eng` nos livros russos: com `rus` sozinho a notação em letra sai cirílica (`№х45`, `Вхд5`), e com `eng` sai `Nxd5`, `Bxd5`, em 8 folhas do *Пилавов* lidas lado a lado. A troca de homóglifo (`е`, `Ь`, `б`, `З`, `В`, `х`) só vale em token que a gramática chama de lance.
 
-**A legalidade não paga, e a FEN fica de fora da janela.** Ela alcança **29 de 1.060 lances (2,7%) no ouro-dev e 28 de 1.550 (1,8%) na prata**: só a primeira fatia de lances depois de um diagrama tem posição conhecida. E troca **0 lance no ouro e 1 na prata**. Ler a FEN custa o classificador de peças por diagrama. Fica `posicao_do_diagrama`, sem chamador na janela, e o `leitor.posicoes_da_folha`. Quem paga é a gramática: ver abaixo. Continuar da posição inicial nas folhas que têm um `1.` e levar o tabuleiro de uma folha para a outra alcançaria mais, e não foi feito.
+**A legalidade não paga, e a FEN fica de fora da janela.** Ela alcança **29 de 1.062 lances (2,7%) no ouro-dev e 34 de 1.555 (2,2%) na prata**: só a primeira fatia de lances depois de um diagrama tem posição conhecida. E troca **0 lance no ouro e 1 na prata**. Ler a FEN custa o classificador de peças por diagrama. Fica `posicao_do_diagrama`, sem chamador na janela, e o `leitor.posicoes_da_folha`. Quem paga é a gramática: ver abaixo. Continuar da posição inicial nas folhas que têm um `1.` e levar o tabuleiro de uma folha para a outra alcançaria mais, e não foi feito.
+
+**A reprovação do crítico, e o que ela mudou.** A primeira versão virava prosa certa em lance no produto: *Secrets of Chess Training* f600 `Tal - Smyslov` -> `Ta1`, f15 `d4 by c2-c3` -> `b7`; *Pachman* f104 `as P-QB4` -> `a5`; *Burgess* f135 `Lev` -> `Le7`; *Schiller* f191 e *Hertan* f641 `Key` -> `Ke7`; *Seirawan* f30 `Rei.` -> `Re1.`; e, simulando sobre a camada, `Deixei` -> `De1xe1` e `Rei + Peão` -> `Re1 + Peão`. Precisão em 26 folhas digitais: 8 trocas, 2 certas, 3 erradas, 3 indecisas. **O dev não viu**: as 27 folhas não têm esses casos, e a ablação dá zero na prosa. As causas: `lexico.MIN_TAMANHO = 4` deixa `existe` cego para o que tem 3 letras, a forma `peao` nunca o consultava, e `-` e `+` valiam como lance vizinho. **A guarda agora (`arbitro._pode_forcar`):** sem dígito de verdade no token, a troca exige o glifo ter lido outra coisa, porque dois leitores iguais não são disputa; `peao` que existe nunca é forçado; `curta` de 3 letras e a descritiva pedem número de lance antes ou um lance de cada lado; `longa` sem dígito pede vizinho e não pode ser palavra; só lance, número e figurina são vizinhos; e a outra leitura em token de 3 letras pede o mesmo, porque o glifo também lê `l` como `1`. Os dez casos reais conferidos no `ler_pagina`: nenhum vira lance. `tests/test_text_arbitro.py`, `CertoQueNaoViraErradoTests`, com o léxico real; 16 mutantes das guardas, todos mortos ali.
+
+**O acerto contra a camada, e não só a validade:** `acerto.py`, 40 folhas espaçadas dos cinco livros do dev, cada troca contra a referência alinhada.
+
+| | trocas | certas | erradas | indecisas |
+|---|---:|---:|---:|---:|
+| antes do conserto, medida do crítico | 8 | 2 | 3 | 3 |
+| **depois, v5** (como o digital roda) | 41 | **37** | 1 | 3 |
+| **depois, v3 forçada** (o caso difícil) | 90 | **62** | 2 | 26 |
+
+As 3 erradas, lidas: `1 .Rd4` -> `1.Rd4` e `2.Del+` -> `2.De1+` são defeitos da própria camada do Seirawan (o espaço e o erro de digitação), e a troca está certa na tinta; **`♖ 1f7+` -> `♖ f7+` é erro de verdade**, o número desambigua e sai, e fica. Das 26 indecisas, 23 são do *Minhas 60*: o Tesseract lê `♖ fc8` como `Efc8`, a troca para `fc8` ao lado do `♖` do glifo está certa, e a camada escreve `Rfc8`, que a régua por token não casa.
 
 **Os dois candidatos a mais que o roadmap cita não entram.** As alternativas do `lstm_choice_mode=2` saem no hOCR (agora há `rodar(formato=)`): trocar um caractere por uma delas resolve 240 palavras inválidas em 27 folhas da prata, **mas só 16 trocam um dígito** (`Ded!` -> `De4!`); as outras trocam a letra de peça (`Hb4` -> `Bb4` ou `Kb4`), que é a figurina, e o glifo já a tem. São 0,6 dígito por folha ao preço de um processo a mais. O top-k do glifo não foi ligado: não há o que oferecer a um juiz que troca um lance em 57 folhas.
 
@@ -1189,13 +1204,13 @@ Na v3 a notação em letra vem do Tesseract, e ele troca o dígito da casa: 13,8
 
 | | sem o árbitro | com o árbitro | saída |
 |---|---:|---:|---|
-| ouro-dev, notação, CER | 9,80% | **9,01%**: −0,79 p.p. [−1,30; −0,12] | |
+| ouro-dev, notação, CER | | **8,95%**: −0,85 p.p. [−1,31; −0,32] | |
 | ouro-dev, prosa | 0,235% | 0,235% | intacta |
 | G1(c), ouro-dev: sequências que fecham legais | 12 de 19 (glifo: 12 de 19) | **12 de 19** | não cai ✅ |
-| G1(c), prata (ordenação) | 14 de 28 (glifo: 13 de 32) | **14 de 28** | não cai ✅ |
-| prata, casas válidas | 86,2% (72 inválidas em 521) | **99,5%** (3 em 542) | os dígitos voltam ✅ |
-| prata, notação (ordenação) | | −0,77 p.p. [−1,51; −0,37] | |
-| prata admitida, prosa (ordenação) | 3,23% | 3,30%: +0,07 [−0,01; +0,27] | a referência é OCR de terceiro, que também escreve `Tfl` |
+| G1(c), prata (ordenação) | 14 de 29 (glifo: 13 de 32) | **13 de 29**, 44,8% contra 40,6% do glifo | não cai em relação ao glifo ✅; uma sequência a menos que sem o árbitro |
+| prata, casas válidas | 86,0% (75 inválidas em 536) | **98,4%** (9 em 552: `Day`, `Les`, `Pas.)`, `Lel`, `Kel,`, `Tel:` e outras, que a guarda de 3 letras deixa como estão) | os dígitos voltam ✅ |
+| prata, notação (ordenação) | | −0,62 p.p. [−1,43; −0,02] | |
+| prata admitida, prosa (ordenação) | | +0,07 [−0,01; +0,27] | a referência é OCR de terceiro, que também escreve `Tfl` |
 
 `tests/test_text_arbitro.py`. Desligado (`arbitro.GRAMATICA = False`), valem as regras de forma da S-721.
 
@@ -1748,13 +1763,13 @@ A constante é `arbitro.DIGITO_FORCADO`.
 
 ### Critério de aceite
 
-Em 19 folhas do *Bachmann* e 29 do *Neumann*, espaçadas e lidas pelo `motor="fusao"`, com `digitos.py`, cuja contagem é escrita à parte da gramática do árbitro:
+Em 19 folhas do *Bachmann* e 29 do *Neumann*, espaçadas e lidas pelo `motor="fusao"`, com `digitos.py`, cuja contagem é escrita à parte da gramática do árbitro. Republicado depois da guarda da S-729, que barra a troca sem o glifo discordar, e na base integrada:
 
-| | casas válidas, antes | depois | `Io.`/`ıı.` antes | depois | número inválido antes de lance, depois |
-|---|---:|---:|---:|---:|---:|
-| *Bachmann* | 72,3% (145 em 524) | **100%** (531) | 1 | **0** | 1 (`(l)`) |
-| *Neumann* | 86,2% (137 em 993) | **100%** (1.007) | 0 | **0** | 0 |
+| | casas válidas, antes | depois | `Io.`/`ıı.` antes | depois |
+|---|---:|---:|---:|---:|
+| *Bachmann* | 72,9% (151 em 557) | **99,5%** (3 em 564: `Tas`, `Dhs=fs`, `Sbı-cz`) | 1 | **0** |
+| *Neumann* | 86,6% (137 em 1.024) | **99,9%** (1 em 1.038: `Ces`) | 0 | **0** |
 
-**Saída cumprida: nenhum `Io.`/`ıı.`, casas válidas ≥ 99%.** O juiz independente é pequeno, e diz o mesmo: da posição inicial, a partir de um número 1, o *Neumann* fecha legais 33 de 47 lances com o árbitro e 20 de 30 sem; o *Bachmann* das folhas sorteadas quase não tem começo de partida (3 de 3 e 2 de 2).
+**Saída cumprida: nenhum `Io.`/`ıı.`, casas válidas ≥ 99%.**
 
-**Validade não é acerto:** uma casa válida pode ser a errada, e `g` por `3` num livro que usa `g` por `9` não muda a conta. Por isso o replay ao lado. `tests/test_text_arbitro.py`, `GramaticaTests`.
+**Validade é o juiz da própria correção, e o crítico o reprovou por isso.** Quem mede acerto é o `acerto.py` da S-729, contra a camada: 37 certas e 1 errada em 41 trocas na v5, 62 e 2 em 90 na v3 forçada, nas 40 folhas digitais. **Nenhum dos dois livros do século XIX tem camada que julgue**, então a fatia digital é um substituto, e o mapa do estilo antigo (`g` por `3`, `y` por `7`) quase não aparece nela. O que julga estes dois livros é o replay da posição inicial, sem a gramática do árbitro: o *Neumann* fecha legais 28 de 44 lances com o árbitro e 19 de 30 sem; o *Bachmann* das folhas sorteadas quase não tem começo de partida (4 de 4 e 3 de 3). `g` por `3` num livro que usa `g` por `9` não mudaria a validade. `tests/test_text_arbitro.py`, `GramaticaTests` e `CertoQueNaoViraErradoTests`.

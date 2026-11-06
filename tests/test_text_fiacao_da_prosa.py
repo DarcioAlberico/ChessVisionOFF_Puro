@@ -424,6 +424,12 @@ class FusaoNaPaginaTests(_ComLivro):
         self.assertEqual([ln.texto for ln in _linhas(so_glifo)], [ln.texto for ln in _linhas(lida)])
         self.assertIn("leitor_indisponivel", [a.codigo for a in lida.avisos])
 
+    def test_none_em_todas_as_linhas_sem_frase_tambem_avisa(self) -> None:
+        cruas = self.cruas("the wbite knight wlns")
+        lida = self.ler("fusao", cruas, leitor_de_linha=_Falso(linhas=[None] * len(cruas)))
+        self.assertEqual([ln.texto for ln in _linhas(self.ler("glifo", cruas))], [ln.texto for ln in _linhas(lida)])
+        self.assertIn("leitor_indisponivel", [a.codigo for a in lida.avisos])
+
     def test_uma_linha_nao_lida_fica_com_o_glifo_e_a_outra_funde(self) -> None:
         lida = self.ler("fusao", self.cruas("wbite wlns", "bl4ck loses"), leitor_de_linha=self.do_leitor(None, "black loses"))
         self.assertEqual(["wbite wlns", "black loses"], [ln.texto for ln in _linhas(lida)][:2])
