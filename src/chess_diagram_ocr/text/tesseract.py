@@ -55,6 +55,15 @@ TETO_DE_MEGAPIXELS = 60.0
 MARGEM_DO_RECORTE = 10
 """Pixels brancos em volta da linha. Sem eles o `psm 7` come a primeira e a última letra."""
 
+ESCALA_PELA_ALTURA_X = False
+"""A escala do recorte pela altura-x medida, um ajuste que a S-720 adiou (S-721). Medido e deixado desligado: ver a spec."""
+
+ALTURA_X_ALVO = (20.0, 30.0)
+"""Pixels. Um scan de 150 dpi tem altura-x nativa de 7 a 10 px; o *Bachmann*, a 220 dpi, de ~52 px."""
+
+PALAVRAS_DO_USUARIO: Path | None = None
+"""O `--user-words` da S-720: jogadores, aberturas e torneios. `None` não passa nada. Medido e deixado sem lista: ver a spec."""
+
 _NOMES_DO_BINARIO = ("tesseract.exe", "tesseract") if os.name == "nt" else ("tesseract",)
 _INSTALADO_EM = (Path(r"C:\Program Files\Tesseract-OCR"), Path(r"C:\Program Files (x86)\Tesseract-OCR"))
 _CRIAR_SEM_JANELA = 0x08000000
@@ -278,11 +287,21 @@ def rodar(
     psm: int,
     timeout: float,
     popen: Callable[..., subprocess.Popen[bytes]] = subprocess.Popen,
+    opcoes: Sequence[str] = (),
+    formato: str = "tsv",
 ) -> str:
-    """Um processo, a imagem pelo stdin, o TSV de volta. Levanta `FalhaDoTesseract` e nunca devolve `""` calado."""
+    """Um processo, a imagem pelo stdin, o TSV de volta. Levanta `FalhaDoTesseract` e nunca devolve `""` calado.
+
+    `opcoes` são argumentos a mais, antes do formato (`-c load_system_dawg=0`); `formato`, `tsv` ou `hocr`.
+    """
     if motor.binario is None:
         raise FalhaDoTesseract(motor.motivo or "O Tesseract não foi encontrado.")
-    comando = [str(motor.binario), "stdin", "stdout", "-l", lingua, "--psm", str(psm), "--dpi", str(int(dpi)), "tsv"]
+    comando = [
+        str(motor.binario), "stdin", "stdout", "-l", lingua, "--psm", str(psm), "--dpi", str(int(dpi)),
+        *opcoes,
+        *(("--user-words", str(PALAVRAS_DO_USUARIO)) if PALAVRAS_DO_USUARIO is not None else ()),
+        formato,
+    ]
     try:
         processo = popen(comando, **_opcoes_do_processo(ambiente_do_processo(motor)))
     except OSError as exc:
@@ -331,6 +350,33 @@ def palavras_do_tsv(texto: str) -> list[Palavra]:
     return palavras
 
 
+def altura_x(recorte: np.ndarray) -> float | None:
+    """A altura-x de uma linha, na projeção horizontal da tinta: a faixa de linhas com mais da metade do pico."""
+    import cv2
+
+    cinza = cv2.cvtColor(recorte, cv2.COLOR_RGB2GRAY) if recorte.ndim == 3 else recorte
+    if cinza.size == 0:
+        return None
+    _, binaria = cv2.threshold(cinza, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    perfil = (binaria > 0).sum(axis=1).astype(float)
+    if perfil.max() <= 0:
+        return None
+    return float((perfil >= 0.5 * perfil.max()).sum()) or None
+
+
+def escalado(recorte: np.ndarray) -> np.ndarray:
+    """O recorte com a altura-x no alvo. Dentro da faixa, ou sem altura-x medida, volta o mesmo."""
+    import cv2
+
+    medida = altura_x(recorte)
+    baixo, alto = ALTURA_X_ALVO
+    if medida is None or baixo <= medida <= alto:
+        return recorte
+    fator = (baixo if medida < baixo else alto) / medida
+    interpolacao = cv2.INTER_CUBIC if fator > 1 else cv2.INTER_AREA
+    return cv2.resize(recorte, None, fx=fator, fy=fator, interpolation=interpolacao)
+
+
 def _tiff_de(recortes: Sequence[np.ndarray]) -> bytes:
     """Um TIFF de várias páginas, uma linha em cada, com a margem branca. Sem compressão: é um cano."""
     import cv2
@@ -339,6 +385,8 @@ def _tiff_de(recortes: Sequence[np.ndarray]) -> bytes:
     imagens = []
     for recorte in recortes:
         cinza = cv2.cvtColor(recorte, cv2.COLOR_RGB2GRAY) if recorte.ndim == 3 else recorte
+        if ESCALA_PELA_ALTURA_X:
+            cinza = escalado(cinza)
         m = MARGEM_DO_RECORTE
         imagens.append(
             Image.fromarray(cv2.copyMakeBorder(cinza, m, m, m, m, cv2.BORDER_CONSTANT, value=255))
@@ -355,11 +403,12 @@ def ler_linhas(
     dpi: int = 220,
     motor: Motor | None = None,
     rodar_tesseract: Callable[..., str] = rodar,
+    sem_dicionario: bool = False,
 ) -> list[LinhaDoTesseract]:
     """Um recorte de linha por página do TIFF, um processo só. Levanta `FalhaDoTesseract`.
 
     Recorte vazio responde `""` sem ir ao processo: ele não tem como ser página de TIFF, e tirá-lo
-    deslocaria todas as respostas seguintes.
+    deslocaria todas as respostas seguintes. `sem_dicionario` é para linha de notação: `load_system_dawg=0`.
     """
     achado = achar_motor() if motor is None else motor
     validos = [i for i, r in enumerate(recortes) if r.size]
@@ -373,6 +422,7 @@ def ler_linhas(
         dpi=dpi,
         psm=7,
         timeout=max(TIMEOUT_MINIMO, TIMEOUT_POR_LINHA * len(validos)),
+        **({"opcoes": ("-c", "load_system_dawg=0")} if sem_dicionario else {}),
     )
     por_pagina: dict[int, list[Palavra]] = {}
     for palavra in palavras_do_tsv(tsv):

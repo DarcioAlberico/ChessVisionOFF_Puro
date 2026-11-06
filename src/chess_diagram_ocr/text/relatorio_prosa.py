@@ -155,6 +155,37 @@ def _par(registros: Sequence[dict[str, Any]], a: str, b: str, classe: str) -> di
     }
 
 
+def _guarda_de_notacao(registros: Sequence[dict[str, Any]], motor: str) -> dict[str, Any]:
+    """G1(a) e G2 do motor contra o glifo: a figurina que chega, fora os vetos registrados, e o acerto pareado dela.
+
+    G1(a) é presença, sem referência; G2 é revocação e precisão contra a referência, e o piso é do limite inferior.
+    """
+    presentes = sum(r["preservacao"][motor][0] for r in registros)
+    total = sum(r["preservacao"][motor][1] for r in registros)
+    vetos = sum(len(r.get("vetos", {}).get(motor, ())) for r in registros)
+    livros = [r["identidade"] for r in registros]
+
+    def par(campo: str) -> dict[str, Any]:
+        def erros(m: str) -> tuple[list[int], list[int]]:
+            figuras = [r["placar"][f"{m}|{regua.TIP}"]["fig"] for r in registros]
+            return [f[campo] - f["tp"] for f in figuras], [f[campo] for f in figuras]
+
+        em, tm = erros(motor)
+        eg, tg = erros("glifo")
+        ponto, baixo, alto = regua.diferenca_pareada(em, tm, eg, tg, livros)
+        # Erro a menos é acerto a mais: o sinal inverte, e o intervalo troca de ponta.
+        return {"delta_pp": _r(-ponto * 100, 3), "ic95_pp": [_r(-alto * 100, 3), _r(-baixo * 100, 3)]}
+
+    return {
+        "g1a_figurinas": total,
+        "g1a_vetos_registrados": vetos,
+        "g1a_chegam_identicas": presentes,
+        "g1a_fracao_fora_dos_vetos": _r(min(1.0, presentes / max(1, total - vetos)), 4),
+        "g2_revocacao": par("ref"),
+        "g2_precisao": par("hip"),
+    }
+
+
 def _cer_de(registros: Sequence[dict[str, Any]], motor: str) -> float:
     erros, totais = _classe_erros(registros, motor, regua.TIP, regua.PROSA)
     return sum(erros) / max(1, sum(totais))
@@ -270,6 +301,10 @@ def compilar_bloco(
         "taxonomia": {m: _taxonomia(ficam, m, com_livros=not teste) for m in motores},
         "codigo_das_folhas": _codigo_das_folhas(ficam),
     }
+    if "glifo" in motores:
+        guardas = {m: _guarda_de_notacao(ficam, m) for m in motores if m != "glifo" and all(m in r.get("preservacao", {}) for r in ficam)}
+        if guardas:
+            bloco["guarda_de_notacao"] = guardas
     bloco["pares"] = {}
     pedidos = list(dict.fromkeys([*PARES_PADRAO, *pares]))
     for a, b in pedidos:

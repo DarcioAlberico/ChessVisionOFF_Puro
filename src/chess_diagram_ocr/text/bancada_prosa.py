@@ -33,6 +33,7 @@ from typing import Any
 
 import numpy as np
 
+from . import fusao as _fusao
 from . import regua_prosa as regua
 
 logger = logging.getLogger(__name__)
@@ -251,11 +252,18 @@ def medir_folha(folha: FolhaEmMedida, motores: Sequence[str]) -> dict[str, Any]:
     tempo: dict[str, float] = {}
     avisos: dict[str, list[str]] = {}
     preservacao: dict[str, list[int]] = {}
+    vetos: dict[str, list[list[str]]] = {}
     linhas_do_glifo = [ln.texto for ln in regua.linhas_da_pagina(folha.glifo)]
     for motor in motores:
         inicio = time.perf_counter()
         if motor in MOTORES:
-            pagina = _ler_pelo_leitor(folha, motor)
+            ouvidos: list[list[str]] = []
+            _fusao.OUVINTE_DE_VETOS = lambda glifo, palavra, destino=ouvidos: destino.append([glifo, palavra])
+            try:
+                pagina = _ler_pelo_leitor(folha, motor)
+            finally:
+                _fusao.OUVINTE_DE_VETOS = None
+            vetos[motor] = ouvidos
             linhas = [ln.texto for ln in regua.linhas_da_pagina(pagina)]
             hipoteses[motor] = regua.texto_de(linhas)
             avisos[motor] = [a.codigo for a in pagina.avisos]
@@ -273,6 +281,7 @@ def medir_folha(folha: FolhaEmMedida, motores: Sequence[str]) -> dict[str, Any]:
         "tempo": tempo,
         "avisos": avisos,
         "preservacao": preservacao,
+        "vetos": vetos,
         "n_linhas": {
             "ref": len(folha.linhas_da_referencia),
             "ref_no_diagrama": len(regua.linhas_da_pagina(folha.referencia)) - len(folha.linhas_da_referencia),

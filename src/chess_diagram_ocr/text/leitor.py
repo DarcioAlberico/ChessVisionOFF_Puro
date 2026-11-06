@@ -1390,6 +1390,8 @@ def _com_prosa_de_outro_leitor(
     existe: Callable[[str], bool],
     e_da_camada: bool,
     marca_por_palavra: bool,
+    regra: str = _fusao.V5,
+    guarda_prosa_sem_par: bool = False,
 ) -> list[_Cru]:
     """Cada linha do glifo fundida com o que o outro leitor leu nela (S-716, S-717).
 
@@ -1416,6 +1418,9 @@ def _com_prosa_de_outro_leitor(
                 confiancas_do_leitor=confiancas,
                 confiancas_do_glifo=confianca_do_glifo,
                 bloqueados=bloqueados,
+                regra=regra,
+                guarda_prosa_sem_par=guarda_prosa_sem_par,
+                da_camada=e_da_camada,
             )
         )
     marcadas = (
@@ -1444,6 +1449,50 @@ def _com_prosa_de_outro_leitor(
             )
         )
     return saida
+
+
+REGRA_POR_ESTRATO = True
+"""O interruptor do estrato da S-721: desligado, `motor="fusao"` é a v5 em toda folha, como a S-717 a entregou."""
+
+GUARDA_PROSA_SEM_PAR = True
+"""A regra 5 da S-721 no `motor="fusao"`. A camada é a tinta, e não passa por aqui."""
+
+_CRITERIOS_DE_SCAN = frozenset(
+    {_admissao.PRODUTOR, _admissao.FONTE, _admissao.LIVRO_DE_SCAN, _admissao.INVISIVEL, _admissao.COBERTO, _admissao.SEM_TEXTO}
+)
+"""Por que a camada não é a tinta, quando a resposta quer dizer que a folha é scan ou ClearScan: critério (d) e (a) da S-702, e
+folha sem camada visível. Recusa por (b) e (c) é de livro digital com a fonte de diagrama ou a figurina fora do lugar."""
+
+
+def regra_da_folha(documento: object, indice: int, retangulos: Sequence[Retangulo]) -> str:
+    """Qual regra funde esta folha, decidido em tempo de execução pela admissão (S-721). Retângulos em pontos."""
+    if not REGRA_POR_ESTRATO:
+        return _fusao.V5
+    criterio = _camada_prosa.admitir(documento, indice, retangulos).criterio
+    return _fusao.V3 if criterio in _CRITERIOS_DE_SCAN else _fusao.V5
+
+
+DICIONARIO_FORA_NA_NOTACAO = False
+"""`load_system_dawg=0` nas linhas de notação, um ajuste que a S-720 adiou (S-721). Medido e deixado desligado: ver a spec."""
+
+
+def _lido_pelo_outro(
+    leitor: LeitorDeLinha, recortes: Sequence[np.ndarray], cruas: Sequence[_Cru], *, lingua: str, dpi: int
+) -> _leitor_de_linha.Leitura:
+    """As linhas lidas pelo outro leitor; as de notação, sem o dicionário, quando a constante manda."""
+    leitura = leitor.ler_linhas(recortes, lingua=lingua, dpi=dpi)
+    indices = [k for k, c in enumerate(cruas) if _notacao.e_linha_de_notacao(c.texto)] if DICIONARIO_FORA_NA_NOTACAO else []
+    if leitura.falha or not indices:
+        return leitura
+    outra = leitor.ler_linhas(  # type: ignore[call-arg]
+        [recortes[k] for k in indices], lingua=lingua, dpi=dpi, sem_dicionario=True
+    )
+    if outra.falha:
+        return leitura
+    linhas = list(leitura.linhas)
+    for k, linha in zip(indices, outra.linhas, strict=True):
+        linhas[k] = linha
+    return _leitor_de_linha.Leitura(tuple(linhas))
 
 
 def _imagem_do_leitor(imagem: np.ndarray, dpi: int) -> np.ndarray:
@@ -1757,6 +1806,7 @@ def _ler_pagina_do_livro(
             palavras = _camada_prosa.palavras_da_folha(page) if qual == "camada_prosa" else []
             caracteres_da_camada = _camada_prosa.caracteres_fora(page, pontos)
             admissao = _camada_prosa.admitir(doc, indice, pontos) if qual == "camada_prosa" else None
+            regra = regra_da_folha(doc, indice, pontos) if qual == "fusao" else _fusao.V5
             guarda = _guarda.medir(
                 imagem,
                 retangulos,
@@ -1859,8 +1909,8 @@ def _ler_pagina_do_livro(
             elif qual == "fusao" and cruas:
                 leitor = _leitor_de_linha.leitor_padrao() if leitor_de_linha is None else leitor_de_linha
                 do_leitor = _imagem_do_leitor(imagem, dpi)
-                leitura = leitor.ler_linhas(
-                    [_recorte_de_linha(do_leitor, c.caixa, escala_px) for c in cruas], lingua=lingua, dpi=dpi
+                leitura = _lido_pelo_outro(
+                    leitor, [_recorte_de_linha(do_leitor, c.caixa, escala_px) for c in cruas], cruas, lingua=lingua, dpi=dpi
                 )
                 if leitura.falha:
                     avisos.append(Aviso(LEITOR_INDISPONIVEL, f"A prosa ficou com o glifo. {leitura.falha}"))
@@ -1871,6 +1921,8 @@ def _ler_pagina_do_livro(
                         existe=existe,
                         e_da_camada=False,
                         marca_por_palavra=marca_por_palavra,
+                        regra=regra,
+                        guarda_prosa_sem_par=GUARDA_PROSA_SEM_PAR,
                     )
                     por_palavra = marca_por_palavra
 
