@@ -175,7 +175,6 @@ from . import gigantes as _gigantes
 from . import guarda_de_leitura as _guarda
 from . import italico as _italico
 from . import leitor_de_linha as _leitor_de_linha
-from . import lexico as _lexico_mod
 from . import ligadura as _ligadura
 from . import linhas as _linhas_mod
 from . import marca_fina as _marca_fina
