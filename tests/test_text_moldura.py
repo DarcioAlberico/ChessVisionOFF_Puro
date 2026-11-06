@@ -93,6 +93,25 @@ class TirarMolduraTests(unittest.TestCase):
         cv2.rectangle(imagem, (0, 0), (960, 1340), (40, 40, 40), 3)
         self.assertEqual(moldura.tirar_moldura(binarize(imagem))[1], 1)
 
+    def test_o_miolo_das_letras_da_faixa_sai_junto(self) -> None:
+        """Letra branca na faixa: o miolo do `o` é tinta solta, e sem isto vira uma coluna de lixo."""
+        imagem = _folha(filete=True, faixa=True)
+        cv2.circle(imagem, (80, 300), 40, (255, 255, 255), 16)
+        limpa, quantas = moldura.tirar_moldura(binarize(imagem))
+        self.assertEqual(quantas, 1)
+        self.assertEqual(int((limpa[:, :160] > 0).sum()), 0)
+
+    def test_o_filete_nao_apaga_o_texto_que_ele_cerca(self) -> None:
+        limpa, _ = moldura.tirar_moldura(binarize(_folha(filete=True)))
+        self.assertGreater(int((limpa > 0).sum()), 1000)
+
+    def test_o_anel_grosso_nao_apaga_o_texto_que_ele_cerca(self) -> None:
+        imagem = _folha()
+        cv2.rectangle(imagem, (0, 0), (999, 1399), (40, 40, 40), 60)
+        limpa, quantas = moldura.tirar_moldura(binarize(imagem))
+        self.assertEqual(quantas, 1)
+        self.assertGreater(int((limpa > 0).sum()), 1000, "o anel da borda do scan cerca a folha inteira")
+
     def test_a_constante_desliga(self) -> None:
         binaria = binarize(_folha(filete=True))
         with mock.patch.object(moldura, "TIRAR_MOLDURA", False):

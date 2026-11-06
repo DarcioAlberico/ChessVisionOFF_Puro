@@ -169,6 +169,7 @@ from . import dicionario as _dicionario
 from . import empilhados as _empilhados
 from . import faixas as _faixas_mod
 from . import fusao as _fusao
+from . import gigantes as _gigantes
 from . import guarda_de_leitura as _guarda
 from . import italico as _italico
 from . import leitor_de_linha as _leitor_de_linha
@@ -481,6 +482,11 @@ def segmentar(
     # **O quadro emoldurado é região de uma coluna** (S-583): a moldura chega aqui como uma caixa
     # larga, alta e oca, e sem isto ela fecha a calha das soluções em cima dela.
     quadros = _quadros.molduras_nas_caixas(caixas, binaria, escala=escala)
+    # **Depois de medir o quadro, e antes da região e da linha** (S-712): a faixa lateral chega aqui como uma
+    # caixa só, da altura da folha, e abre uma banda que engole a coluna. Ver `text/gigantes.py`.
+    caixas = list(_gigantes.sem_gigantes(caixas, binaria, escala=escala))
+    if not caixas:
+        return (cinza, binaria, escala, caixas, [])
     # **A poeira de scan não cobre x nenhum na calha** (S-584): aqui as caixas são caracteres, e
     # a escala diz o que é letra e o que é risco.
     regioes = _regioes.detectar_regioes(caixas, quadros=quadros, escala=escala)
