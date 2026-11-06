@@ -155,7 +155,7 @@ class CacheDeLeituraNaTelaTests(_Aba):
             mock.patch.object(leitor, "linhas_do_glifo", return_value=(self.boas(), [])),
             mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=[]),
         ):
-            return painel_de_texto._ler(self.livro, 0, dpi=72, motor="fusao", modo_bloco=False, imagem_rgb=imagem)
+            return painel_de_texto._ler(self.livro, 0, dpi=72, motor="fusao", imagem_rgb=imagem)
 
     def test_a_segunda_leitura_nao_abre_processo_e_o_texto_e_o_mesmo(self) -> None:
         primeira = self._ler()
