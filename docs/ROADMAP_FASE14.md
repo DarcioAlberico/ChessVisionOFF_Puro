@@ -611,7 +611,7 @@ as doze operações; e o destino da galeria **está decidido** — opção 2, o 
 | 17.4 | Uma varredura por livro em vez de duas | S-119 | ✅ um botão, uma passada — e a fusão de fila parava de encurtar a fila numa varredura retomada |
 | 17.5 | A varredura da Galeria é retomável e diz até onde foi | S-120 | ✅ |
 | 17.6 | O acervo varrido sem janela aberta | S-121 | ✅ |
-| 17.7 | O OCR ligado por padrão | S-122 | ✅ medido — **não ligar** |
+| 17.7 | O OCR ligado por padrão | S-122 | ✅ medido — **não ligar**; *por livro, medido em 2026-11-06: também não, ver a seção da S-122* |
 | 17.8 | A varredura por posição responde igual com 1 e com N processos | S-138 | ✅ |
 | 17.9 | A consulta por nome alcança as duas cores, e paga o porteiro | S-139 | ✅ |
 | 17.10 | O índice sem a cópia (885 → ~476 MB) e o cache que não cabe na memória | S-140 | ✅ índice −44,0%; cache por colocação — trocar de livro deixou de custar 0,59 s e 63 MB |
@@ -1021,6 +1021,30 @@ ainda ligou à preferência.
 
 Fica como pendência nomeada, e não como "não fizemos": o mecanismo pedido pelo enunciado
 ("ligado se o motor estiver instalado") é uma linha; o que falta é justificativa para ele.
+
+### O OCR por livro, medido em 2026-11-06: não ligar sozinho
+
+`cvoff-sides`, 12 páginas por livro, nos 58 PDFs de `PDF/`, sobre o modelo em produção; 17 livros
+sem camada de texto, 276 diagramas (`docs/metrics/ocr_por_livro_20261106.json`).
+
+| nos 17 livros sem camada | sem OCR | com `rapidocr` |
+|---|---|---|
+| lado resolvido | 2 (legalidade) | 80 (78 pelo OCR) |
+| dos 78, pretas (a FEN muda) | | 19 |
+| tempo (máquina dividida: indicativo) | 187 s | 898 s, 4,8× |
+
+**O ganho existe e não está onde se pagaria.** 64 dos 78 vêm de 4 livros, e 42 de um só
+(`Reinfeld_1001_Sacrificios`, 42 de 42, 12 deles pretas). Seis livros pagam o custo inteiro e não
+ganham nada, entre eles o `1000 Chess Problems` e o `Karpov`. "Falta a camada" não prevê quem ganha,
+e é só isso que a preferência automática saberia.
+
+**E onde há verdade anotada ele não conserta nada.** Nos 15 diagramas com lado anotado nesses
+livros, os 6 lados errados continuam errados com o OCR, e ele só resolve mais um que o padrão já
+acertava. O n é pequeno, mas é o único número do par que mede acerto: os 78 acima são procedência.
+
+**Decisão: fica desligado.** `settings.py` e o padrão global não mudaram, e não entrou preferência
+por livro na janela. Quem tem um livro como o Reinfeld já tem o caminho, que é explícito e por
+execução: `cvoff-export --ocr rapidocr`, ou `ocr.enabled` nas Configurações para aquela sessão.
 
 ---
 
