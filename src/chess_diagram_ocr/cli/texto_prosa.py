@@ -7,6 +7,9 @@
     cvoff-texto-prosa --comparar a.json b.json
     cvoff-texto-prosa --conjunto scan-ouro --acordo --transcricao <pasta>
     cvoff-texto-prosa --conjunto scan-ouro --split dev --motor glifo,fusao --transcricao <pasta> --dados fora/scan.jsonl
+    cvoff-texto-prosa --canario
+
+**`--canario` relê a folha-canário de cada língua (S-763)**, compara com a base gravada e sai com 1 se uma piorou. É **canário de camada, não humano**: ver `text/monitor_prosa.py`.
 
 **O scan-ouro (S-703) mede contra a verdade digitada às cegas**, e não contra a camada. `--acordo` imprime o acordo da dupla digitação
 e o custo medido. **Sem dados, M3 e M4 ficam sem número, e o comando diz isso** (código 3): o erro de uma folha que ninguém digitou não é zero.
@@ -340,6 +343,40 @@ def conferir_admissao(args: argparse.Namespace) -> int:
     return 1 if recusadas_no_total and args.conjunto == "ouro" else 0
 
 
+def conferir_o_canario(*, motor: str = "", raiz: str = "", manifesto: str | None = None) -> dict[str, Any]:
+    """Relê as folhas-canário e devolve o relatório, sem texto de livro. `motor` força outro motor: é a regressão de mentira da validação."""
+    from ..pdf_io import render_pdf_page
+    from ..text import bancada_prosa, monitor_prosa
+    from ..text.leitor import ler_pagina
+    from ..text.recognizer import build_glyph_recognizer
+
+    folhas = monitor_prosa.carregar_canario(manifesto)
+    achados = _achar_livros(folhas, _pastas_padrao(raiz or os.environ.get("CVOFF_RAIZ", "")))  # type: ignore[arg-type]
+    reconhecedor = build_glyph_recognizer()
+    aquecido: list[bool] = []
+
+    def medir(f: monitor_prosa.FolhaCanario) -> float:
+        pdf = str(achados[f.identidade])
+        imagem = render_pdf_page(pdf, f.folha - 1, bancada_prosa.DPI_PADRAO)
+        if not aquecido:
+            ler_pagina(pdf, f.folha - 1, motor="glifo", reconhecedor=reconhecedor, imagem_rgb=imagem, dpi=bancada_prosa.DPI_PADRAO)
+            aquecido.append(True)
+        qual = motor or f.motor
+        folha = bancada_prosa.preparar_folha(pdf, f.folha - 1, lingua=f.lingua, imagem=imagem, reconhecedor=reconhecedor)
+        placar = bancada_prosa.medir_folha(folha, [qual])["placar"][f"{qual}|tip"]
+        return float(placar["erros"]["prosa"] / max(1, placar["total"]["prosa"]))
+
+    return {**monitor_prosa.para_relatorio(monitor_prosa.conferir_canario(folhas, medir)), "motor_forcado": motor}
+
+
+def canario(args: argparse.Namespace) -> int:
+    relatorio = conferir_o_canario(motor=args.motor_do_canario, raiz=args.raiz, manifesto=args.manifesto)
+    print(f"# {relatorio['rotulo']}")
+    for f in relatorio["folhas"]:
+        print(f"  {f['lingua']} {f['identidade'][:8]} f{f['folha']} {f['motor']}: base {f['cer_de_base']:.4f}, agora {f['cer']:.4f}{'  ALARME' if f['alarme'] else ''}")
+    return 1 if any(f["alarme"] for f in relatorio["folhas"]) else 0
+
+
 def _ler_registros(caminho: str | Path) -> list[dict[str, Any]]:
     with open(caminho, encoding="utf-8") as arquivo:
         return [json.loads(linha) for linha in arquivo]
@@ -490,6 +527,8 @@ def construir_parser() -> argparse.ArgumentParser:
     ap.add_argument("--importar", default="", help="nome=hip.jsonl: a hipótese de um motor de fora, com --dados e --saida")
     ap.add_argument("--repontuar", default="", help="arquivo.jsonl: refaz o placar pelos textos, com --saida")
     ap.add_argument("--saida", default="", help="o JSONL de --importar e --repontuar")
+    ap.add_argument("--canario", action="store_true", help="relê a folha-canário de cada língua e compara com a base (S-763): canário de camada, não humano")
+    ap.add_argument("--motor-do-canario", default="", help="força outro motor no --canario: é como se prova que o alarme dispara")
     return ap
 
 
@@ -500,6 +539,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     logging.basicConfig(level=logging.WARNING)
+    if args.canario:
+        return canario(args)
     if args.comparar:
         return comparar(args)
     if args.compilar:
