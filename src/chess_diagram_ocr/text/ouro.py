@@ -36,6 +36,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -129,6 +130,37 @@ class Manifesto:
 
     def do_split(self, split: str) -> tuple[FolhaDoOuro, ...]:
         return tuple(f for f in self.folhas if f.split == split)
+
+
+CAMINHO_DA_EXCLUSAO = Path("assets") / "texto_prosa" / "exclusao_do_teste.json"
+"""A lista de exclusão da S-750, por identidade **e** por série, independente do inventário: o manifesto só conhece os livros
+sorteados, e o volume 4 de uma série que tem o 2 no teste não está nele. Só resumos: nenhum nome de livro no repositório."""
+
+_RUIDO_DE_SERIE = frozenset({"pdf", "vol", "volume", "book", "part", "parte", "tomo", "edition", "edicao", "hq", "copia", "ocr"})
+
+
+def chave_de_serie(nome_do_arquivo: str) -> str:
+    """O resumo do nome sem número, ano e pontuação: `Autor - Título 2 (2019)` e `Autor - Título 4 (2023)` dão a mesma chave."""
+    sem_acento = "".join(c for c in unicodedata.normalize("NFKD", nome_do_arquivo.casefold()) if not unicodedata.combining(c))
+    pedacos = [p for p in re.split(r"[^a-z]+", sem_acento) if p and p not in _RUIDO_DE_SERIE]
+    return hashlib.sha256(" ".join(pedacos).encode("utf-8")).hexdigest()[:16]
+
+
+@dataclass(frozen=True)
+class Exclusao:
+    identidades: frozenset[str] = frozenset()
+    series: frozenset[str] = frozenset()
+
+    def recusa(self, identidade: str | None, nome_do_arquivo: str) -> str:
+        if identidade in self.identidades:
+            return "da série de um livro do teste"
+        return "da série de um livro do teste, pelo nome" if chave_de_serie(nome_do_arquivo) in self.series else ""
+
+
+def carregar_exclusao(caminho: str | Path | None = None) -> Exclusao:
+    alvo = Path(caminho) if caminho is not None else BUNDLE_ROOT / CAMINHO_DA_EXCLUSAO
+    dados = json.loads(alvo.read_text(encoding="utf-8"))
+    return Exclusao(frozenset(dados["identidades"]), frozenset(dados["series"]))
 
 
 def caminho_padrao() -> Path:

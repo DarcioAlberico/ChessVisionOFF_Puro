@@ -1,0 +1,30 @@
+{
+ "versao": 1,
+ "item": "S-750, adiantada pela S-762",
+ "gerada_em": "2026-11-06",
+ "nota": "Livro fora do manifesto da mesma série de um livro do teste. Só resumos: identidade (caderno.identidade_de) e ouro.chave_de_serie do nome do arquivo de cada livro do teste.",
+ "identidades": [
+  "09fdefdb00409640",
+  "58529adc955cc4ea",
+  "65d6c32a22a38e81",
+  "c22d5e70aad4d523"
+ ],
+ "series": [
+  "12bb44ec3ba164a6",
+  "2b55a21cc00e07b2",
+  "339e9b4e6119c668",
+  "34abdbd45109d102",
+  "38bb01367b9700f3",
+  "616d6297e3d45e14",
+  "75fb5283fb1d1986",
+  "7f08280778c1732b",
+  "88d9a1b451642d2e",
+  "8f0e712f3de293ad",
+  "8f3b8d736f8d996b",
+  "98a865f6a687bdf5",
+  "aac4f850d163b1eb",
+  "c64dc485f77dce76",
+  "eb0aa7cb8fe0e613",
+  "f83e46ab54a99986"
+ ]
+}
