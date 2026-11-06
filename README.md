@@ -118,7 +118,7 @@ sem Python e sem `uv`.
 
 **Tamanho: o build grava em [docs/metrics/bundle.json](docs/metrics/bundle.json), e o numero
 citado aqui e conferido contra esse arquivo por `tests/test_docs.py` (S-135).** A ultima
-medida registrada e de **684 MB, 4.275 arquivos**, do build de 2026-08-18 (commit `9a683d1`).
+medida registrada e de **677 MB, 4.264 arquivos**, do build de 2026-11-06 (commit `3f780eb5`).
 Ela substitui a de 2026-08-09, que estava obsoleta -- e refaze-la achou uma coisa: o
 `streamlit` de fato tinha saido, mas o `pythonnet` e o `clr_loader` **continuavam dentro do
 bundle**, muito depois de a S-69 ter removido o codigo que os usava. O PyInstaller coleta o

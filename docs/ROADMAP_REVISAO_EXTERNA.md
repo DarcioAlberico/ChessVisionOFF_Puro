@@ -283,7 +283,8 @@ $ uv run pytest -q         4.870 passaram, 2 pulados, 3.652 subtests    169 s
   verde se a linha mudar de lugar e parar de rodar. A versão que ficou chama `gravar_metricas`
   com `PROJETO` e `SAIDA` numa pasta temporária e lê o JSON. O `docs/metrics/bundle.json`
   versionado não é tocado: nenhum build foi rodado, e o número publicado continua o de
-  2026-08-18.
+  2026-08-18. **Refeito em 2026-11-06**, o primeiro depois do corte do Tk: 677 MB e 4.264 arquivos. O `.exe`
+  abriu em `offscreen` por 30 s sem erro no log; a janela de verdade, na tela, não foi aberta.
 - **O `.bat` do motor foi reescrito à mão**, porque o hunk do patch não aplicava -- a única
   colisão dos 27 arquivos, e a causa era nossa.
 

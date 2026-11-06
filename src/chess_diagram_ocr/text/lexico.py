@@ -62,11 +62,13 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from ..config import BUNDLE_ROOT, PROJECT_ROOT
+from ..config import BUNDLE_ROOT
 
 logger = logging.getLogger(__name__)
 
-PASTA_DO_LEXICO = PROJECT_ROOT / "assets" / "lexico"
+# `BUNDLE_ROOT`: no bundle, `assets/` mora em `_internal`, e não ao lado do `.exe`. Com a raiz do projeto
+# as três listas não eram achadas, em silêncio, e o programa instalado lia sem léxico nenhum.
+PASTA_DO_LEXICO = BUNDLE_ROOT / "assets" / "lexico"
 
 CAMINHO_ACERVO = PASTA_DO_LEXICO / "acervo.txt.gz"
 CAMINHO_IDIOMA = PASTA_DO_LEXICO / "idioma.txt.gz"
