@@ -15,13 +15,14 @@ import os
 import re
 import sys
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 
 import fitz
 
 from chess_diagram_ocr.cli.texto_prosa import _achar_livros, _pastas_padrao, folhas_do_conjunto
 from chess_diagram_ocr.pdf_io import render_pdf_page
-from chess_diagram_ocr.text import arbitro, leitor, leitor_de_linha, lexico
+from chess_diagram_ocr.text import arbitro, fusao, leitor, leitor_de_linha
 from chess_diagram_ocr.text import regua_prosa as regua
 from chess_diagram_ocr.text.recognizer import build_glyph_recognizer
 
@@ -40,11 +41,12 @@ NUMERO_OK = re.compile(r"^[(\[]?\d{1,3}(?:\.{1,3}|\))$")
 SO_ANTIGO = re.compile(r"^[(\[]?(?:Io|ıı|Il|II|lo|ıo)\.")
 
 
-def contar(texto: str, palavras: frozenset[str]) -> Counter[str]:
+def contar(texto: str, existe: Callable[[str], bool]) -> Counter[str]:
     c: Counter[str] = Counter()
     tokens = texto.split()
     for k, t in enumerate(tokens):
-        if FORMA.match(t) and not (re.sub(r"[^\w]", "", t).casefold() in palavras and not any(ch.isdigit() for ch in t)):
+        # A palavra que existe tem a forma e não é lance: `Les` em francês, `Das` em alemão.
+        if FORMA.match(t) and (any(ch.isdigit() for ch in t) or not existe(t)):
             c["casas"] += 1
             if not CASA_OK.match(t):
                 c["casas_invalidas"] += 1
@@ -75,7 +77,7 @@ class LeituraUnica:
         return self.real.ler_folha(cinza, lingua=lingua, dpi=dpi)
 
 
-def medir_folha(pdf: str, indice: int, lingua: str, rec: object, palavras: frozenset[str], totais: dict[bool, Counter[str]]) -> None:
+def medir_folha(pdf: str, indice: int, lingua: str, rec: object, totais: dict[bool, Counter[str]]) -> None:
     imagem = render_pdf_page(pdf, indice, 220)
     leitor_unico = LeituraUnica()
     real = leitor.linhas_do_glifo
@@ -91,7 +93,7 @@ def medir_folha(pdf: str, indice: int, lingua: str, rec: object, palavras: froze
         for ligado in (False, True):
             arbitro.GRAMATICA = ligado
             pagina = leitor.ler_pagina(pdf, indice, motor="fusao", reconhecedor=rec, imagem_rgb=imagem, dpi=220, lingua=lingua, leitor_de_linha=leitor_unico)
-            totais[ligado].update(contar(regua.texto_de(ln.texto for ln in regua.linhas_da_pagina(pagina)), palavras))
+            totais[ligado].update(contar(regua.texto_de(ln.texto for ln in regua.linhas_da_pagina(pagina)), fusao.existe_do_livro(lingua)))
     finally:
         leitor.linhas_do_glifo = real
         arbitro.GRAMATICA = True
@@ -120,9 +122,8 @@ def main() -> int:
         with fitz.open(pdf) as doc:
             n = len(doc)
         folhas = list(range(30, n - 5, (n - 35) // 16))
-        palavras = frozenset(lexico.do_livro(lingua) or ())
         for f in folhas:
-            medir_folha(str(pdf), f, lingua, rec, palavras, totais)
+            medir_folha(str(pdf), f, lingua, rec, totais)
         Path(destino).write_bytes((json.dumps(publicar(nome, totais, len(folhas)), ensure_ascii=False, indent=1, sort_keys=True) + "\n").encode("utf-8"))
         return 0
     destino = sys.argv[2]
@@ -131,7 +132,7 @@ def main() -> int:
     folhas_da_prata = folhas_do_conjunto("prata", "")[de:ate]
     achados = _achar_livros(folhas_da_prata, _pastas_padrao(raiz))
     for f in folhas_da_prata:
-        medir_folha(str(achados[f.identidade]), f.folha - 1, f.lingua, rec, frozenset(lexico.do_livro(f.lingua) or ()), totais)
+        medir_folha(str(achados[f.identidade]), f.folha - 1, f.lingua, rec, totais)
     Path(destino).write_bytes((json.dumps(publicar("prata", totais, len(folhas_da_prata)), ensure_ascii=False, indent=1, sort_keys=True) + "\n").encode("utf-8"))
     return 0
 

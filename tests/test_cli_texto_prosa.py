@@ -379,6 +379,61 @@ class BlocoTests(unittest.TestCase):
         self.assertEqual({"a.b": 1, "c.0.d": 2}, relatorio_prosa.achatar({"a": {"b": 1, "segundos_x": 3}, "c": [{"d": 2}], "segundos_por_folha": {"e": 1}}))
 
 
+class RelatorioDaFusaoTests(unittest.TestCase):
+    """S-721, S-729, S-743: as saídas lidas do que foi publicado, sem texto de livro."""
+
+    def setUp(self) -> None:
+        self.relatorio = json.loads((RAIZ / "docs/metrics/texto_prosa_fusao_2026-11-06.json").read_text(encoding="utf-8"))
+        self.conjuntos = self.relatorio["conjuntos"]
+
+    def _teto(self, conjunto: str, par: str) -> float:
+        return self.conjuntos[conjunto]["pares"][par]["ic95_pp"][1]
+
+    def test_a_prosa_nao_perde_do_tesseract_no_ouro(self) -> None:
+        self.assertLessEqual(self._teto("ouro_dev", "fusao - tess (prosa)"), 0.1)
+
+    def test_a_notacao_fica_dentro_das_guardas(self) -> None:
+        guarda = self.conjuntos["ouro_dev"]["guarda_de_notacao"]["fusao"]
+        self.assertGreaterEqual(guarda["g1a_fracao_fora_dos_vetos"], 0.995)
+        self.assertLessEqual(self._teto("ouro_dev", "fusao - glifo (notacao)"), 1.0)
+        self.assertGreaterEqual(guarda["g2_revocacao"]["ic95_pp"][0], -1.0)
+        self.assertGreaterEqual(guarda["g2_precisao"]["ic95_pp"][0], -1.0)
+
+    def test_misto_e_prata_admitida_contem_zero_ou_abaixo(self) -> None:
+        for conjunto in ("ouro_dev_misto", "prata_admitida"):
+            with self.subTest(conjunto=conjunto):
+                self.assertLessEqual(self.conjuntos[conjunto]["pares"]["fusao - tess (prosa)"]["ic95_pp"][0], 0.0)
+
+    def test_a_legalidade_nao_cai_em_relacao_ao_glifo(self) -> None:
+        for conjunto in ("ouro_dev", "prata"):
+            with self.subTest(conjunto=conjunto):
+                variantes = self.relatorio["legalidade_g1c"][conjunto]["variantes"]
+                glifo, fusao = variantes["glifo"], variantes["fusao_gramatica"]
+                self.assertGreaterEqual(fusao["fecham"] / fusao["sequencias"], glifo["fecham"] / glifo["sequencias"])
+
+    def test_o_digito_de_estilo_antigo_volta(self) -> None:
+        for livro in ("bachmann", "neumann"):
+            with self.subTest(livro=livro):
+                depois = self.relatorio["digitos"][livro]["com_arbitro"]
+                self.assertGreaterEqual(depois["casas_validas"], 0.99)
+                self.assertEqual(0, depois["io"])
+
+    def test_o_relatorio_diz_que_o_codigo_estava_limpo_e_nao_tem_caminho_nem_palavra(self) -> None:
+        self.assertFalse(self.relatorio["codigo"]["src_sujo"])
+        texto = json.dumps(self.relatorio, ensure_ascii=False)
+        self.assertNotIn("C:\\\\", texto)
+        self.assertNotIn('"trocas"', texto)
+        self.assertNotIn("inv:", texto)
+
+
+class GuardaDeNotacaoTests(unittest.TestCase):
+    def test_o_numero_de_lance_nao_conta_como_figurina_perdida(self) -> None:
+        from chess_diagram_ocr.text.bancada_prosa import preservacao_de_figurina
+
+        self.assertEqual((2, 2), preservacao_de_figurina(["25♕e6+ ...♖xh4?"], ["25 ♕e6+ 11...♖xh4?"]))
+        self.assertEqual((1, 2), preservacao_de_figurina(["♕e6+ ♖xh4"], ["♕e6+ tipo"]))
+
+
 class RelatorioPublicadoTests(unittest.TestCase):
     """O portão G100: as quatro fatias, sem texto de livro, e a prata com a palavra."""
 

@@ -128,8 +128,8 @@ def main() -> int:
             except ValueError:
                 tabuleiros.append(None)
 
-        def posicao(n: int) -> chess.Board | None:
-            return tabuleiros[n] if n < len(tabuleiros) else None
+        def posicao(n: int, lidos: list[chess.Board | None] = tabuleiros) -> chess.Board | None:
+            return lidos[n] if n < len(lidos) else None
 
         for nome, motor, gramatica, com_fen in (
             ("glifo", "glifo", False, False),
@@ -141,9 +141,9 @@ def main() -> int:
             relato = arbitro.Relato()
             real = leitor._arbitro.arbitrar  # noqa: SLF001
 
-            def com_relato(fund, relato_do_chamador=None, r=relato, **kw):
+            def com_relato(fund, arbitrar=real, r=relato, **kw):
                 kw.pop("relato", None)
-                return real(fund, relato=r, **kw)
+                return arbitrar(fund, relato=r, **kw)
 
             leitor._arbitro.arbitrar = com_relato  # noqa: SLF001
             pagina = ler_pagina(pdf, f.folha - 1, motor=motor, posicao_do_diagrama=posicao if com_fen else None, **comum)

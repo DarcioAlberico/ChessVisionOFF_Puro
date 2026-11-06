@@ -455,6 +455,57 @@ class FusaoNaPaginaTests(_ComLivro):
         self.assertEqual("knight", linha.texto[inicio:fim])
 
 
+class ArbitroNaFolhaTests(_ComLivro):
+    """S-729: quem chama o árbitro é a fusão, e a linha seguinte entra na conta."""
+
+    def cruas(self, *linhas: str) -> list[Any]:
+        todas = [*linhas, *([LINHA] * (self.linhas_do_pdf - len(linhas)))]
+        return [_crua(t, 50 + 18 * k) for k, t in enumerate(todas)]
+
+    def _falso(self, *linhas: str) -> _Falso:
+        return _Falso(linhas=[*linhas, *([LINHA] * (self.linhas_do_pdf - len(linhas)))])
+
+    def test_a_fusao_forca_o_digito_e_a_folha_sai_com_ele(self) -> None:
+        with mock.patch.object(leitor, "regra_da_folha", return_value=fusao.V3):
+            lida = self.ler("fusao", self.cruas("Tg1 g2 and"), leitor_de_linha=self._falso("Tgı-g2 and"), lingua="deu")
+        self.assertIn("Tg1-g2 and", _linhas(lida)[0].texto)
+
+    def test_a_camada_nao_passa_pelo_arbitro(self) -> None:
+        with mock.patch.object(leitor._arbitro, "arbitrar", side_effect=AssertionError("a camada é a tinta")):  # noqa: SLF001
+            self.ler("camada_prosa", self.cruas("the white knight wins"))
+
+    def test_o_glifo_sozinho_nao_passa_pelo_arbitro(self) -> None:
+        with mock.patch.object(leitor._arbitro, "arbitrar", side_effect=AssertionError("só a fusão")):  # noqa: SLF001
+            self.ler("glifo", self.cruas("the white knight wins"))
+
+
+class PosicaoDoDiagramaTests(unittest.TestCase):
+    def _cru(self, x0: int, y0: int, x1: int, y1: int) -> Any:
+        return leitor._Cru(texto="x", caixa=boxes.Caixa(x0, y0, x1, y1), confianca=1.0, procedencia="glifo")  # noqa: SLF001
+
+    def test_a_primeira_linha_abaixo_na_mesma_coluna(self) -> None:
+        cruas = [self._cru(0, 0, 100, 10), self._cru(0, 300, 100, 310), self._cru(200, 0, 300, 10)]
+        self.assertEqual([1], leitor.linhas_depois_dos_diagramas(cruas, [(0, 50, 100, 250)]))
+
+    def test_o_diagrama_no_pe_da_coluna_olha_a_seguinte(self) -> None:
+        cruas = [self._cru(0, 0, 100, 10), self._cru(200, 0, 300, 10)]
+        self.assertEqual([1], leitor.linhas_depois_dos_diagramas(cruas, [(0, 50, 100, 250)]))
+
+    def test_o_diagrama_sem_linha_depois(self) -> None:
+        self.assertEqual([None], leitor.linhas_depois_dos_diagramas([self._cru(0, 0, 100, 10)], [(0, 50, 100, 250)]))
+
+    def test_sem_quem_leia_a_posicao_nao_ha_posicao(self) -> None:
+        self.assertEqual([], leitor.posicoes_da_folha([self._cru(0, 300, 100, 310)], [(0, 50, 100, 250)], None))
+
+    def test_o_diagrama_que_nao_se_leu_fica_de_fora(self) -> None:
+        import chess
+
+        cruas = [self._cru(0, 300, 100, 310)]
+        self.assertEqual([], leitor.posicoes_da_folha(cruas, [(0, 50, 100, 250)], lambda _n: None))
+        ((linha, tabuleiro),) = leitor.posicoes_da_folha(cruas, [(0, 50, 100, 250)], lambda _n: chess.Board())
+        self.assertEqual((0, chess.STARTING_FEN), (linha, tabuleiro.fen()))
+
+
 class ItalicoNaProsaTests(_ComLivro):
     fonte = "heit"
 
