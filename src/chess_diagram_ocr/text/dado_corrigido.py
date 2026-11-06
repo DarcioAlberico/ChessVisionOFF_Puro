@@ -135,6 +135,17 @@ def _linhas_do_bloco(pagina: PaginaLida, bloco: int) -> Sequence[LinhaLida] | No
     return alvo.linhas if isinstance(alvo, BlocoDeTexto) and alvo.linhas else None
 
 
+def _confianca_da_palavra(linha: LinhaLida, palavra: int) -> float:
+    """A confiança calibrada da palavra (S-760), que é o que ordena a pasta da quarentena por dúvida (S-214). Sem detalhe, `0,0`, como sempre foi."""
+    posicao = 0
+    for n, token in enumerate(linha.texto.split()):
+        posicao = linha.texto.index(token, posicao)
+        if n == palavra:
+            return next((float(v) for a, b, v in linha.confianca_em if a <= posicao < b), 0.0)
+        posicao += len(token)
+    return 0.0
+
+
 def recortes_do_par(
     par: ParTocado,
     pagina: PaginaLida,
@@ -188,7 +199,7 @@ def recortes_do_par(
                 _coleta.Recorte(
                     cv2.resize(imagem, (_coleta.LADO, _coleta.LADO)),
                     certa,
-                    0.0,
+                    _confianca_da_palavra(linha, restante),
                     livro=Path(pagina.documento).stem,
                     pagina=pagina.pagina,
                     procedencia=par.procedencia,

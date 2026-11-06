@@ -1749,6 +1749,143 @@ como a letra que o motor tinha lido ali**, e os 15 sem recorte são a conta que 
 - **Par de tamanho diferente** (`fi1rst` → `first`) conta e não vira recorte. O leitor de linha da Fase 105 é quem vai querer ele, com outro recorte.
 - A correção não entra nas folhas seguintes: é a S-766.
 
+## S-760 · Confiança por palavra, calibrada por domínio ✅ implementada (2026-11-06)
+
+### Problema
+
+A linha fundida carregava a confiança do glifo sobre o texto do Tesseract, e a palavra, a de quem a escreveu, numa escala que ninguém calibrou. Medida agora, em 18.474 palavras do dev digital, com cada livro medido por um calibrador que não o viu: a confiança de quem escreveu tem `ece_por_faixa` 0,411. E a armadilha do item é real: **uma constante tem ECE 0,000 nas duas réguas**, e só a curva risco-cobertura a reprova.
+
+### Decisão
+
+`text/confianca_palavra.py`: regressão logística por domínio sobre quem escreveu, a confiança dele, discordância com o outro leitor, léxico da língua do livro e forma da palavra. Os domínios são os estratos da fusão, `digital` (v5) e `scan` (v3). **Ajustada num pedaço reservado do dev**, porque a Fase 105 não vai começar (D8): 60 folhas que nenhum manifesto cita, dos cinco livros dev, sorteadas por `sha256("S-760:identidade:folha")`; no scan, 41 da prata, sem as que têm oráculo acima de 10%. Os coeficientes saem de `docs/metrics/texto_confianca_2026-11-06/ajustar.py`, sem texto de livro.
+
+Na linha fundida ela **substitui** a da S-189: a prosa recebe a calibrada em `confianca_em`, e a linha vale a palavra mais fraca. O lance fica com a de quem o escreveu, porque a referência da notação é a camada, e calibrar contra ela mediria a referência. Prosa da camada não passa por aqui.
+
+**Os consumidores.** `fila.de_pagina` (S-212) dá um item por palavra na linha que tem `confianca_em`, com a cor e a ordem saindo do mesmo número, e a palavra que a marca apontou entra mesmo tranquila, no fim. `dado_corrigido.recortes_do_par` grava no recorte a confiança da palavra, e a pasta da quarentena (S-214) passa a ordenar por dúvida também aí.
+
+**O interruptor é `confianca_palavra.LIGADO`.** Desligado, volta tudo: a linha à do glifo, a palavra à de quem escreveu, a marca ao ranque da S-718. Só `motor="fusao"` passa por aqui, e ele não é o padrão.
+
+**As alternativas do `lstm_choice_mode=2` não pagam, e não entram.** Com a primeira escolha e a margem do hOCR como atributos: digital 77,1% [52,5; 92,9] contra 77,1% [51,9; 93,6]; scan 55,4% [41,9; 69,5] contra 55,7% [42,8; 69,1]. O custo seria 0,88 a 1,34 s por folha, ou +15%, da S-745. O contexto da linha e da folha também foi medido, e saiu: nenhuma diferença fora do IC.
+
+### Critério de aceite
+
+`docs/metrics/texto_confianca_2026-11-06.json`, com o rótulo de `rotular.py` e o IC de dois níveis. Cada livro por um calibrador que não o viu:
+
+| domínio | | ECE | `ece_por_faixa` | erro aceitando 90% | erro aceitando 99% | erro em 100% |
+|---|---|---:|---:|---:|---:|---:|
+| digital (87 folhas, 5 livros, 170 erradas) | de quem escreveu | 0,0615 | 0,411 | 0,373% | 0,842% | 0,92% |
+| | constante | 0,0000 | 0,000 | 0,980% | 0,930% | 0,92% |
+| | **calibrada** | **0,0025** | **0,163** | **0,211%** | **0,525%** | 0,92% |
+| scan (71 folhas, 10 livros, 1.174 erradas; referência de terceiro) | de quem escreveu | 0,0509 | 0,286 | 3,06% | 4,86% | 5,34% |
+| | constante | 0,0000 | 0,000 | 5,25% | 5,38% | 5,34% |
+| | **calibrada** | **0,0028** | **0,027** | **1,94%** | **4,45%** | 5,34% |
+
+Validação com os coeficientes publicados, sobre as folhas do manifesto: ouro-dev ECE 0,0086, `ece_por_faixa` 0,288 (20 erradas: as faixas de baixo têm meia dúzia de palavras cada); prata 0,0127 e 0,077. **O texto não muda:** 0 de 27 folhas do ouro-dev e 0 de 30 da prata diferem da leitura de antes. `tests/test_text_confianca_palavra.py`, com o interruptor e o grafo de import, que não alcança a régua.
+
+### O que ela não entrega
+
+A verificação no ouro-teste é do portão, e ele não foi aberto. O domínio `scan` foi ajustado contra OCR de terceiro: ordena, e a probabilidade dele é contra aquela referência; a calibração de verdade espera a S-703. Coeficiente de domínio, e não por livro. Parte do erro é ruído de rótulo (ver a S-761). Com a marca desligada (`marca_por_palavra=False`), `faixas_da_linha` pinta a calibrada pelo corte de sempre, 0,30, e quase nada fica vermelho.
+
+## S-761 · A faixa "revisar" que paga a atenção de quem revisa ✅ implementada (2026-11-06), e a G5 não cumpre
+
+### Problema
+
+A marca da S-718 ranqueia por folha, com pesos à mão. Medida com o mesmo rótulo: 95% no ouro-dev, que a S-721 ajustou, e **46,7% nas 60 folhas que ninguém olhou** dos mesmos livros. Essa é a verdade do número de hoje, junto com os 30% da prata. A meta é 90%, com limite inferior de 85%, marcando no máximo 5%.
+
+### Decisão
+
+`fusao.marcar_por_erro` marca o que passa de `fusao.CORTE_DE_REVISAR`, com a probabilidade de erro da S-760. **O corte é da fusão**: `ocr.MIN_CONFIDENCE` não foi tocado, e continua no digest da S-218. Os dois valores são os que marcam 5% das palavras no pedaço reservado: 0,01619 na v5, 0,16112 na v3. O léxico é o da língua do livro (S-728), pelo `existe_do_livro` que a fusão já usa.
+
+**Sem teto por folha, medido.** Com o mesmo calibrador, o teto de 5% por folha fica em 68,2% no digital e 39,1% no scan; o corte, em 77,1% e 55,8%. A folha limpa não gasta marca, e a ruim recebe as que precisa. O preço é a fração variar por livro: o IC vai de 2,3% a 6,9% no ouro-dev, e no scan o ponto passa de 5%, a 6,7%. `marcar`, o ranque da S-718, fica para a camada, a reserva e o interruptor.
+
+### Critério de aceite
+
+| | captura | IC95 | marcadas | IC95 |
+|---|---:|---:|---:|---:|
+| ouro-dev, S-718 | 95,0% (19 de 20) | [78,9; 100] | 4,76% | [4,71; 4,82] |
+| **ouro-dev, S-761, no produto** | **95,0% (19 de 20)** | **[76,9; 100]** | **4,55%** | **[2,27; 6,93]** |
+| ouro-dev, fração travada em 5% | 95,0% | [76,9; 100] | 5,19% | |
+| dev digital, S-718 (87 folhas) | 52,4% (89 de 170) | [31,3; 72,9] | 4,74% | |
+| **dev digital, S-761, livro de fora** | **77,1% (131 de 170)** | **[51,9; 93,6]** | **5,45%** | **[3,55; 7,54]** |
+| prata, S-718 | 30,4% | [23,8; 44,4] | 4,79% | |
+| **prata, S-761, no produto** | **60,3%** | **[43,5; 72,0]** | **6,74%** | **[3,10; 10,9]** |
+| prata, fração travada em 5% | 52,7% | [34,4; 64,7] | 4,99% | |
+| scan, S-761, livro de fora | 55,8% | [40,6; 68,6] | 5,58% | [2,62; 9,70] |
+
+**A G5 não cumpre, e o número a dizer é 77%.** O ponto do ouro-dev toca a meta, com o limite inferior em 77%, e são 20 palavras erradas em folhas que a S-721 viu. O que não foi visto pelo ajuste dá 77%, [52; 94]. A curva no ouro-dev: 1% marcadas, 75%; 3%, 80%; 5%, 95%; 10%, 100%. Quem julga é o portão, no ouro-teste, que não foi aberto. Fica de fora do alcance de qualquer marca a palavra que sumiu: 11 no ouro-dev e 799 na prata.
+
+**Por que para aí, no digital:** parte do que falta é ruído de rótulo. Título e legenda lidos certo, que a referência tira por cruzarem o diagrama, contam como erro (`OLAFSSON`, `Short-Speelman`), e os dois leitores concordam neles.
+
+`tests/test_text_confianca_palavra.py`: o corte não vem do OCR, a palavra duvidosa é a marcada, o interruptor volta ao que era, a camada nunca é marcada. **`fracao` da S-718 continua testada com o interruptor desligado**, em `test_text_fiacao_da_prosa.py`.
+
+## S-763 · Monitor de qualidade sem referência ✅ implementada (2026-11-06), e nenhum sinal virou alarme
+
+### Problema
+
+A concordância glifo × leitor de linha mede o glifo, e a densidade da S-710 vê perda total. Um alarme ingênuo sobre eles dispara sempre. Ninguém tinha medido nenhum dos dois contra o CER da saída.
+
+### Decisão
+
+`text/monitor_prosa.py`: `concordancia`, `erro_estimado` e `fracao_acima_do_corte`, os dois últimos a partir da S-760, e a densidade que a guarda já calcula. `ALARMES` é a tabela do que passou, e **está vazia**.
+
+**A regra foi escrita antes de olhar o número**, no cabeçalho de `docs/metrics/texto_confianca_2026-11-06/monitor.py`: correlação de postos com o CER de prosa da saída ≥ 0,5 em módulo, limite do IC95 de dois níveis além de 0,2, e no máximo 1 em 3 alarmes falsos nas folhas do manifesto, com o corte tirado do pedaço reservado. Folha ruim é CER ≥ 1% no digital e ≥ 5% no scan.
+
+| domínio | sinal | Spearman | IC95 | alarmes falsos no manifesto | vira alarme |
+|---|---|---:|---:|---:|---|
+| digital (87 folhas, 16 ruins) | discordância | +0,184 | [−0,207; +0,553] | 9 de 9 | não |
+| | densidade | +0,118 | [−0,287; +0,449] | 2 de 2 | não |
+| | erro estimado | +0,421 | [+0,030; +0,723] | 1 de 2 | não |
+| | fração acima do corte | +0,214 | [−0,169; +0,534] | 6 de 7 | não |
+| scan (60 folhas, 21 ruins; referência de terceiro) | discordância | +0,242 | [−0,106; +0,636] | 2 de 5 | não |
+| | densidade | +0,501 | [+0,144; +0,771] | 4 de 8 | não |
+| | erro estimado | +0,319 | [−0,036; +0,674] | 4 de 8 | não |
+| | fração acima do corte | +0,323 | [−0,052; +0,677] | 1 de 2 | não |
+
+O melhor do digital é o erro estimado, e o do scan, a densidade: os dois abaixo da regra. Eles ficam publicados, e nenhum aviso novo sai. Alarme é aviso, e não muda texto: sem alarme, nada muda.
+
+**A folha-canário é de camada, e o rótulo diz: `canário de camada, não humano`.** A referência humana depende da S-703 e da D3. `assets/texto_prosa/canario.json`, só identidades e números: `eng`, *18d93bd0*, folha 643; `por`, *69343a57*, folha 186, sorteadas por sha entre as folhas de prosa do dev. O dev só tem essas duas línguas, porque o ouro-teste não abre aqui. **O scan não tem canário**: a camada de lá é de terceiro.
+
+`cvoff-texto-prosa --canario` relê, compara com a base e sai com 1 se piorou mais de 0,2 p.p. (`--motor-do-canario` prova que o alarme dispara). Duas leituras da mesma versão dão diferença zero nas duas folhas: nenhum falso alarme. **Com o glifo no lugar da fusão, como regressão de mentira, o alarme dispara em `por` (0,27%) e não em `eng` (0,16%).** As duas folhas têm CER 0 na fusão e o glifo também vai bem nelas: o canário vê regressão grande, e pode deixar passar a pequena numa língua. Uma folha por língua é o que o item pede, e é pouco.
+
+### Critério de aceite
+
+`tests/test_text_monitor_prosa.py`, **sem nenhuma folha de livro**: os sinais com tokens sintéticos, o canário com um medidor falso, o manifesto só com identidades, a folha sempre do dev, a recusa de manifesto que diga outro rótulo, e a guarda de que `ALARMES` bate com `vira_alarme` no relatório publicado.
+
+### O que ela não entrega
+
+Referência humana, canário em outras línguas e em scan, e a releitura automática "a cada versão": o comando existe, e o CI não tem os livros. Quem o roda é o dono, ou o portão.
+
+## S-766 · Corrigir uma vez, corrigir no livro inteiro ✅ implementada (2026-11-06)
+
+### Problema
+
+A correção ia à quarentena de treino, e não às folhas seguintes. O caminho do roadmap, `--user-words`, a S-721 mediu e recusou: 1 de 316 linhas muda, para pior.
+
+### Decisão
+
+`text/correcao_no_livro.py` e `qt/correcao_no_livro.py`.
+
+**As palavras do livro nos árbitros.** Ao gravar a folha, o que a mão escreveu e o léxico não conhece vai ao `lexico.txt` do caderno (S-657), só o par palavra a palavra da S-762, e só palavra: lance e número não entram. `ler_pagina(palavras_do_livro=)` as faz existir para `fundir`, o árbitro e o calibrador. `fusao.existe_do_livro` as consulta à parte, porque unir 350 mil entradas por folha é o custo errado para meia dúzia de nomes. O Tesseract não muda.
+
+**«Corrigir em todas as folhas do caderno».** Comando novo, no menu e no grupo Caderno da fita. `previa` procura a palavra inteira, com a caixa dela, em todas as folhas que o caderno tem, e não grava nada. `aplicar` **só aceita a `Previa`**, e levanta `SemPrevia` com qualquer outra coisa. Na janela, «Aplicar nas marcadas» só acende com a lista na tela, mudar um campo a apaga, cada ocorrência tem a caixa dela e a folha conferida vem desmarcada. Cada folha vai ao caderno como `editada`, com a de antes em `.anterior.cvtxt`: **«Voltar à versão anterior desta folha» desfaz uma folha, e as outras ficam**. A folha que mudou entre a prévia e o aplicar fica como está, e é contada.
+
+### Critério de aceite
+
+`docs/metrics/texto_confianca_2026-11-06/repetidos.py`, com o dono simulado passando as folhas em ordem, em 40 folhas de cada livro, de duas em duas:
+
+| livro | palavras erradas | trocas um a um | primeiras correções | **repetidos que a troca tira** | colaterais que a prévia mostra | erradas, fusão sem e com as palavras do livro |
+|---|---:|---:|---:|---:|---:|---:|
+| *603581c9*, `eng` | 71 | 41 | 22 | **19 (27%)** | 4 | 71 e 71 |
+| *69343a57*, `por` | 72 | 37 | 24 | **13 (18%)** | 43 | 71 e 69 |
+
+**A troca em massa paga, e o léxico nos árbitros quase nada:** em 80 folhas, 2 erros, e o texto muda em 1 folha. Ele decide entre duas leituras, e não conserta o que os dois leitores erram juntos; o que ele faz é tirar a marca do nome certo. Fica, porque é barato e é o que o roadmap pede. **Os 43 colaterais do segundo livro são o motivo de a prévia ser obrigatória**: uma palavra errada numa folha é certa em outra. A maior repetição é de 10 ocorrências de um par só. O resto do erro não é troca um a um (inserção, palavra colada), e a correção por palavra não o alcança.
+
+`tests/test_text_correcao_no_livro.py`: sem prévia não troca; a prévia não grava; a folha desfaz sozinha; a ocorrência desmarcada fica; disco que recusa não levanta, porque exceção em slot é `qFatal`. **Fiação que afirma efeito:** a aba de verdade, com o caderno de verdade, lê com a fusão e o nome ensinado vence na tela, e sem ele não; o clique grava no disco; a folha da tela volta trocada.
+
+### Desvios
+
+`--user-words` não entra, pela medida da S-721. A prévia lê as folhas do caderno na thread da janela: para um livro de 300 folhas, algo como um segundo, e sem `Tarefa` nova. A folha que ninguém leu não é trocada: não há o que trocar, e quando for lida o nome já está no léxico, mas o erro de leitura pode voltar. A folha da tela volta a ser `visitar`, então a próxima edição à mão gira o `.anterior` para a versão já trocada: um nível só, como sempre. S-765 fica fora, pelo recuo da D9.
+
 ## S-743 · O dígito de estilo antigo ✅ implementada (2026-11-06)
 
 ### Problema

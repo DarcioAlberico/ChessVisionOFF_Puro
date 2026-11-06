@@ -2268,6 +2268,8 @@ class PainelDeTexto(QWidget):
         if feito == caderno.RECUSADA_VAZIA:
             self.estado.emit(f"A folha {pagina + 1} vazia não foi gravada por cima do texto que o caderno tem dela.")
             return True
+        if feitas and feito == caderno.GRAVADA:
+            self._ensinar_as_palavras(cad)
         self._documento_gravado = self.documento
         self._correcoes = feitas
         self._atualizar_status()
@@ -2414,6 +2416,48 @@ class PainelDeTexto(QWidget):
         if self._pagina is not None:
             self.campo_de_folha.setValue(int(self._pagina.pagina) + 1)
         self._ler_folha(de_novo=True)
+
+    def _ensinar_as_palavras(self, cad: caderno.Caderno) -> None:
+        """O que a mão escreveu e o léxico não conhece vai ao léxico do livro, e os árbitros passam a ouvir nas folhas seguintes (S-766)."""
+        from chess_diagram_ocr.text import correcao_no_livro, dado_corrigido, fusao
+
+        if not dado_corrigido.pares_tocados(self.documento):
+            return
+        try:
+            novas = correcao_no_livro.ensinar(cad, self.documento, existe=fusao.existe_do_livro(self._lingua, cad.lexico()))
+        except OSError as erro:
+            logger.warning("O léxico do livro não gravou: %s", erro)
+            return
+        if novas:
+            self.estado.emit(f"No léxico do livro: {', '.join(novas)}.")
+
+    def corrigir_em_todas_as_folhas(self) -> QDialog | None:
+        """Abre a janela da troca em massa, com a prévia obrigatória (S-766). A palavra selecionada, ou a última corrigida, já vem nos campos."""
+        from chess_diagram_ocr.qt.correcao_no_livro import JanelaDeCorrecaoNoLivro
+        from chess_diagram_ocr.text import dado_corrigido
+
+        cad = self._caderno
+        if cad is None or cad.somente_leitura:
+            self.estado.emit("Só há o que corrigir em todas as folhas com o caderno do livro aberto para escrita.")
+            return None
+        self._guardar_a_folha()  # o que está na tela entra na procura
+        selecionada = self.editor.textCursor().selectedText().strip()
+        pares = dado_corrigido.pares_tocados(self.documento)
+        antes, depois = (selecionada, "") if selecionada else (pares[-1].antes, pares[-1].depois) if pares else ("", "")
+        janela = JanelaDeCorrecaoNoLivro(self, cad, antes=antes, depois=depois)
+        self._janela_de_correcao_no_livro = janela
+        janela.show()
+        return janela
+
+    def folhas_corrigidas_no_livro(self, feito: Any) -> None:
+        """A troca em massa terminou: a frase no rodapé, o índice, e a folha da tela, se ela mudou, relida do caderno."""
+        from chess_diagram_ocr.text import correcao_no_livro
+
+        pagina = None if self.documento.origem is None else int(self.documento.origem.pagina)
+        if pagina is not None and pagina in feito.folhas:
+            self._abrir_do_caderno(pagina)
+        self._mostrar_indice()
+        self.estado.emit(correcao_no_livro.frase_do_resultado(feito))
 
     def voltar_a_anterior(self) -> bool:
         """Põe na tela a versão de quando a pessoa chegou da última vez à folha (S-611). `Ctrl+Z` desfaz."""
@@ -3840,6 +3884,7 @@ class PainelDeTexto(QWidget):
         pronta = self._fornecedor_de_folha(indice) if self._fornecedor_de_folha is not None else None
         imagem_pronta = np.array(pronta[0], copy=True) if pronta is not None and int(pronta[1]) == dpi else None
         conta_lingua = len(self._lingua_do_livro.folhas) < lingua_do_livro.FOLHAS_DA_DETECCAO
+        palavras_do_livro = frozenset() if self._caderno is None else self._caderno.lexico()  # o que o dono ensinou (S-766)
 
         def _trabalho() -> tuple[PaginaLida, np.ndarray | None, int, float, str]:
             # **A folha é rasterizada uma vez, e aqui (S-352).** `ler_pagina` a renderiza sozinha
@@ -3851,7 +3896,8 @@ class PainelDeTexto(QWidget):
             inicio = time.perf_counter()
             imagem = imagem_pronta if imagem_pronta is not None else _renderizar(caminho, indice, dpi=dpi)
             lida = _ler(
-                caminho, indice, dpi=dpi, motor=motor, imagem_rgb=imagem, max_boards=teto, lingua=lingua
+                caminho, indice, dpi=dpi, motor=motor, imagem_rgb=imagem, max_boards=teto, lingua=lingua,
+                palavras_do_livro=palavras_do_livro,
             )
             # A camada só enquanto a detecção conta: são dez folhas por livro, e aqui, fora da thread da janela (S-723).
             camada = _camada_da_folha(caminho, indice) if conta_lingua else ""
@@ -4677,6 +4723,7 @@ def _ler(
     imagem_rgb: np.ndarray | None,
     max_boards: int | None = None,
     lingua: str = LINGUA_PADRAO,
+    palavras_do_livro: Iterable[str] = (),
 ) -> PaginaLida:
     """`ler_pagina` com a folha já renderizada. **O `import` do leitor mora aqui** -- ver `ler`."""
     from chess_diagram_ocr.text import cache_texto, leitor_de_linha
@@ -4686,6 +4733,7 @@ def _ler(
         caminho, indice, dpi=dpi, motor=motor, imagem_rgb=imagem_rgb, max_boards=max_boards, lingua=lingua,  # type: ignore[arg-type]
         reserva=True,  # só aqui: a régua e os CLIs não dependem de haver Tesseract na máquina
         leitor_de_linha=leitor_de_linha.leitor_padrao(cache=cache_texto.padrao()),  # e só aqui a leitura volta do disco (S-725)
+        palavras_do_livro=palavras_do_livro,
     )
 
 

@@ -418,6 +418,7 @@ MENUS: tuple[Menu, ...] = (
             Item("ler_folha_de_novo"),
             Item("voltar_a_versao_anterior"),
             Item("descartar_correcoes"),
+            Item("corrigir_em_todas_as_folhas"),
             _sep(),
             Item("exportar_txt"),
             Item("exportar_md"),

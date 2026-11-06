@@ -1,7 +1,7 @@
 {
   "item": "S-256 · o inventário do editor de texto",
   "quando": "2026-11-06",
-  "commit": "9e66b3614830b5d3103a086999bea2b1ba3a182e",
+  "commit": "f2f9686635f98b5d522f2ac393fa42913422e5c2",
   "atributos_do_documento": [
     "negrito",
     "italico",
@@ -73,6 +73,7 @@
     "ler_folha",
     "folha_da_pagina_aberta",
     "modo_transcricao",
+    "modo_bloco",
     "cor_do_texto",
     "realce",
     "paleta_de_glifos",
@@ -143,6 +144,7 @@
     "ler_folha_de_novo",
     "voltar_a_versao_anterior",
     "descartar_correcoes",
+    "corrigir_em_todas_as_folhas",
     "indice_do_caderno",
     "marcar_folha_conferida"
   ],

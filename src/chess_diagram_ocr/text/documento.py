@@ -58,8 +58,8 @@ def faixas_da_linha(linha: Any, *, por_palavra: bool = False) -> list[str | None
     """A faixa de cada caractere de `linha.texto`, quando a linha sabe dizer. `None` é a faixa do bloco (S-718, S-722).
 
     **A marca ranqueada vem primeiro, e com ela ligada nada mais pinta.** O teto de 5% é a S-718, e o sinal cru da
-    confiança, que inunda, não entra por cima dele. Sem ela, é `confianca_em` que responde palavra a palavra: é por aqui
-    que a S-761 marca palavra, e o corte, até lá, é o de sempre. **Só a palavra pinta, e nunca o espaço.**
+    confiança, que inunda, não entra por cima dele. Sem ela, é `confianca_em` que responde palavra a palavra, com o corte de sempre: o corte
+    da S-761 é o da fusão (`fusao.CORTE_DE_REVISAR`), e ela o escreve em `revisar_em`. **Só a palavra pinta, e nunca o espaço.**
     """
     texto = linha.texto
     saida: list[str | None] = [None] * len(texto)

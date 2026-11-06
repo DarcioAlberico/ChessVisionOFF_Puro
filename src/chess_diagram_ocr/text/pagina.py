@@ -459,10 +459,11 @@ class LinhaLida:
     prometia em memória, e o que havia era o `so_da_camada` por linha, que passou a ser derivado daqui."""
 
     confianca_em: tuple[tuple[int, int, float], ...] = ()
-    """Quanto vale cada palavra de `texto`, pela confiança de **quem a escreveu** (S-722), em `[início, fim, valor)`.
+    """Quanto vale cada palavra de `texto` (S-722), em `[início, fim, valor)`. Só os motores que combinam leitores o preenchem, e só onde se sabe.
 
-    É o dado que a S-761 precisa para marcar palavra e não bloco. Só os motores que combinam leitores o preenchem, e só
-    onde se sabe; a confiança do Tesseract ainda não é calibrada (S-760). `confianca`, o resumo, continua a do glifo."""
+    **Na fusão, a prosa traz a confiança calibrada da S-760**, a probabilidade de a palavra estar certa, e `confianca` é a da mais fraca. O lance fica com
+    a de quem o escreveu: a referência da notação é a camada, e calibrar contra ela mediria a referência. Com `confianca_palavra.LIGADO` desligado, tudo aqui
+    é a de quem escreveu, e `confianca` é a do glifo."""
 
     def procedencia_no(self, posicao: int) -> Procedencia:
         """De quem é o caractere nesta posição de `texto`. Sem detalhe que o cubra, vale o campo da linha."""

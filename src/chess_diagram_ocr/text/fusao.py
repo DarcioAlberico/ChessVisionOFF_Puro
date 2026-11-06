@@ -32,11 +32,12 @@ isso: o instrumento não pode compartilhar código com o medido, ou o erro de um
 acrescentá-las lá mudaria `dicionario.corrigir` e a junção de hífen no caminho do glifo: desligar a fusão
 não devolveria o glifo de antes.
 
-## A marca por palavra (S-718)
+## A marca por palavra (S-718, S-761)
 
 Os sinais crus inundam: a discordância marca 10,0% das palavras no ouro e 27,7% na prata; o léxico sozinho,
-26,8% e 40,1%. O teto da marca é 5%. Por isso os sinais **ranqueiam**, e só as mais suspeitas da folha são
-marcadas. **Prosa que veio da camada não tem outro leitor, e nunca é marcada.**
+26,8% e 40,1%. O teto da marca é 5%. Por isso os sinais **ranqueiam**. **Prosa que veio da camada não tem outro
+leitor, e nunca é marcada.** Desde a S-761 a fusão marca pela probabilidade de erro de `text/confianca_palavra.py`
+contra `CORTE_DE_REVISAR`, e `marcar`, o ranque por folha da S-718, fica com a camada, a reserva e o interruptor.
 """
 
 from __future__ import annotations
@@ -254,18 +255,32 @@ def existe_no(lexico: Iterable[str], *, curtas: frozenset[str] = CURTAS) -> Call
     return existe
 
 
-def existe_do_livro(lingua: str) -> Callable[[str], bool]:
+def existe_do_livro(lingua: str, palavras_do_livro: Iterable[str] = ()) -> Callable[[str], bool]:
     """A pergunta "esta palavra existe?" na língua do livro (S-723). Sem lista dela, a do léxico compartilhado.
 
     **O que muda é só a metade da língua**: a lista da S-728 entra no lugar de `idioma`, que mistura oito, e as curtas
     da língua no lugar das de seis. O vocabulário do xadrez (`acervo`) e os nomes ficam, porque nenhuma lista do
     Tesseract conhece `zugzwang` nem `Nimzowitsch`.
+
+    `palavras_do_livro` é o léxico do caderno (S-766): o nome que o dono corrigiu passa a existir nas folhas seguintes. Fora do conjunto
+    grande, e não unido a ele: uma união de 350 mil entradas por folha é o custo errado para meia dúzia de nomes.
     """
     if LEXICO_POR_LINGUA:
         lista = _lexico.do_livro(lingua)
-        if lista:
-            return existe_no(lista, curtas=CURTAS_POR_LINGUA.get(lingua, CURTAS))
-    return existe_no(_lexico.carregar())
+        base = existe_no(lista, curtas=CURTAS_POR_LINGUA.get(lingua, CURTAS)) if lista else existe_no(_lexico.carregar())
+    else:
+        base = existe_no(_lexico.carregar())
+    extras = frozenset(p.casefold() for p in palavras_do_livro)
+    return base if not extras else _com_as_do_livro(base, extras)
+
+
+def _com_as_do_livro(base: Callable[[str], bool], extras: frozenset[str]) -> Callable[[str], bool]:
+    do_livro = existe_no(extras, curtas=frozenset())
+
+    def existe(token: str) -> bool:
+        return base(token) or do_livro(token)
+
+    return existe
 
 
 def _numero_colado(do_glifo: str, do_leitor: str) -> bool:
@@ -536,6 +551,18 @@ def marcar(
     return [frozenset(m) for m in marcadas]
 
 
+CORTE_DE_REVISAR: dict[str, float] = {V5: 0.01619, V3: 0.16112}
+"""Da probabilidade de erro para cima, a palavra pede olho (S-761), por estrato. **É o corte da fusão, e de mais ninguém**: o `corte_de_revisar`
+de `documento.py` é o `ocr.MIN_CONFIDENCE`, que o `pdf_pesquisavel` e a `coleta` usam e que está no digest da S-218. Sai de `ajustar.py`: é o que
+marca 5% das palavras no pedaço reservado do dev."""
+
+
+def marcar_por_erro(erros: Sequence[Sequence[float]], corte: float) -> list[frozenset[int]]:
+    """Quais tokens de cada linha passam do corte. **Sem teto por folha, e é medido:** a folha limpa não gasta marca, e a ruim recebe as que
+    precisa. Com o teto de 5% por folha, a captura na prata fica em 36%; com o mesmo calibrador e o corte, em 60%, marcando 6,9%."""
+    return [frozenset(k for k, p in enumerate(linha) if p >= corte) for linha in erros]
+
+
 def intervalos_de(tokens: Sequence[Token], marcados: Iterable[int]) -> tuple[tuple[int, int], ...]:
     """Os tokens marcados como intervalos `[início, fim)` no texto de `texto_fundido(tokens)`."""
     quais = set(marcados)
@@ -549,6 +576,7 @@ def intervalos_de(tokens: Sequence[Token], marcados: Iterable[int]) -> tuple[tup
 
 
 __all__ = [
+    "CORTE_DE_REVISAR",
     "CURTAS",
     "FRACAO_MARCADA",
     "LANCE_INTEIRO_NAO_SE_VETA",
@@ -571,6 +599,7 @@ __all__ = [
     "fundir",
     "intervalos_de",
     "marcar",
+    "marcar_por_erro",
     "suspeita_de",
     "texto_fundido",
 ]

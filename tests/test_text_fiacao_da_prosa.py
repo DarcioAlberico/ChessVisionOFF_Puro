@@ -22,6 +22,7 @@ from ambiente_de_teste import pasta_temporaria
 from chess_diagram_ocr.text import (
     boxes,
     camada_prosa,
+    confianca_palavra,
     documento,
     fusao,
     guarda_de_leitura,
@@ -127,7 +128,9 @@ class MarcaChegaATelaTests(_ComLivro):
         self.assertTrue(rico.intervalos_a_revisar(doc))
 
     def test_o_teto_vale_na_folha_real(self) -> None:
-        lida = self._marcada()
+        """O teto por folha é o ranque da S-718, que vale com a S-760 desligada. Ligada, quem manda é o corte: `test_text_confianca_palavra`."""
+        with mock.patch.object(confianca_palavra, "LIGADO", False):
+            lida = self._marcada()
         total = sum(len(linha.texto.split()) for linha in _linhas(lida))
         marcadas = sum(len(linha.revisar_em) for linha in _linhas(lida))
         self.assertLessEqual(marcadas, total * fusao.FRACAO_MARCADA)

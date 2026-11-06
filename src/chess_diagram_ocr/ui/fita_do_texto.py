@@ -103,6 +103,7 @@ ABAS: tuple[Aba, ...] = (
                     "marcar_folha_conferida",
                     "voltar_a_versao_anterior",
                     "descartar_correcoes",
+                    "corrigir_em_todas_as_folhas",
                     "indice_do_caderno",
                     "trazer_da_revisao",
                 ),
