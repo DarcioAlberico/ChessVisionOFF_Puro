@@ -2,7 +2,7 @@
  "pergunta": "Quanto cada conserto da Fase 103 tira de cada família de erro do glifo, sem piorar a notação?",
  "split": "dev contaminado: 5 livros aprovados na auditoria da S-702. Nenhum número aqui decide portão; o G103 abre o teste e é rodado depois.",
  "reprovados_fora": "Chess Evolution e Capablanca (citados nas Saídas do roadmap) foram reprovados na auditoria da S-702 e não entram no ouro-dev; ficam em `reprovados_na_auditoria`, só como conferência.",
- "commit_medido": "d6ca7835ec04ce7e7ee549637a0c2d0095e9cdf6",
+ "commit_medido": "6b99f95e17b1beea455e36ae533c5b61fb607313",
  "src_sujo": false,
  "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
  "dpi": 220,
@@ -852,21 +852,21 @@
        "400 Quebra-cabeças": 2
       }
      },
+     "acento": {
+      "palavras": 28,
+      "por_livro": {
+       "Dvoretsky": 1,
+       "Minhas 60": 25,
+       "400 Quebra-cabeças": 1,
+       "Seirawan": 1
+      }
+     },
      "espaco": {
       "palavras": 22,
       "por_livro": {
        "Dvoretsky": 1,
        "Hertan": 4,
        "Minhas 60": 17
-      }
-     },
-     "acento": {
-      "palavras": 20,
-      "por_livro": {
-       "Dvoretsky": 1,
-       "Minhas 60": 17,
-       "400 Quebra-cabeças": 1,
-       "Seirawan": 1
       }
      },
      "ligadura fi/fl com 1 a mais": {
@@ -883,12 +883,6 @@
        "Hertan": 2,
        "Minhas 60": 5,
        "Seirawan": 1
-      }
-     },
-     "acento+caixa": {
-      "palavras": 9,
-      "por_livro": {
-       "Minhas 60": 9
       }
      },
      "aspas duplas": {
@@ -910,6 +904,12 @@
       }
      },
      "caixa (maiusc/minusc)": {
+      "palavras": 1,
+      "por_livro": {
+       "Minhas 60": 1
+      }
+     },
+     "acento+caixa": {
       "palavras": 1,
       "por_livro": {
        "Minhas 60": 1
@@ -958,10 +958,10 @@
       }
      },
      "acento": {
-      "palavras": 20,
+      "palavras": 28,
       "por_livro": {
        "Dvoretsky": 1,
-       "Minhas 60": 17,
+       "Minhas 60": 25,
        "400 Quebra-cabeças": 1,
        "Seirawan": 1
       }
@@ -979,12 +979,6 @@
       "por_livro": {
        "Dvoretsky": 13,
        "400 Quebra-cabeças": 1
-      }
-     },
-     "acento+caixa": {
-      "palavras": 9,
-      "por_livro": {
-       "Minhas 60": 9
       }
      },
      "figurina inventada em palavra": {
@@ -1007,6 +1001,12 @@
       }
      },
      "caixa (maiusc/minusc)": {
+      "palavras": 1,
+      "por_livro": {
+       "Minhas 60": 1
+      }
+     },
+     "acento+caixa": {
       "palavras": 1,
       "por_livro": {
        "Minhas 60": 1
@@ -2904,75 +2904,75 @@
    },
    "tudo": {
     "prosa_tip": {
-     "cer": 0.22379,
+     "cer": 0.22377,
      "ic95": [
-      0.12905,
-      0.33886
+      0.12897,
+      0.33896
      ],
-     "erros": 10705,
+     "erros": 10704,
      "total": 47834
     },
     "prosa_cru": {
-     "cer": 0.226,
+     "cer": 0.22592,
      "ic95": [
-      0.12977,
-      0.34127
+      0.12949,
+      0.34147
      ],
-     "erros": 10908,
+     "erros": 10904,
      "total": 48265
     },
-    "wer_tip": 0.50812,
-    "wer_cru": 0.51045,
+    "wer_tip": 0.50689,
+    "wer_cru": 0.50922,
     "notacao_tip": {
-     "cer": 0.33184,
+     "cer": 0.33134,
      "ic95": [
       0.17705,
       0.42503
      ],
-     "erros": 1997,
+     "erros": 1994,
      "total": 6018
     },
     "espaco_tip": {
-     "cer": 0.35243,
+     "cer": 0.35402,
      "ic95": [
-      0.23237,
-      0.51039
+      0.23596,
+      0.51089
      ],
-     "erros": 1329,
+     "erros": 1335,
      "total": 3771
     },
-    "insercoes_tip": 4460,
+    "insercoes_tip": 4489,
     "figurina": {
      "revocacao": 0.6956,
-     "precisao": 0.7829,
+     "precisao": 0.7844,
      "ref": 565,
-     "hip": 502,
+     "hip": 501,
      "tp": 393
     },
     "pareado_contra_hoje": {
      "prosa_tip": {
-      "pp": -0.807,
+      "pp": -0.809,
       "ic95": [
-       -1.201,
-       -0.503
+       -1.219,
+       -0.485
       ],
-      "melhores": 30,
-      "piores": 0
+      "melhores": 29,
+      "piores": 1
      },
      "prosa_cru": {
-      "pp": -0.816,
+      "pp": -0.825,
       "ic95": [
-       -1.206,
-       -0.523
+       -1.223,
+       -0.521
       ],
       "melhores": 30,
       "piores": 0
      },
      "g1b_notacao_tip": {
-      "pp": -1.446,
+      "pp": -1.496,
       "ic95": [
-       -2.934,
-       -0.513
+       -2.945,
+       -0.539
       ],
       "melhores": 13,
       "piores": 0
@@ -3273,7 +3273,8 @@
    "Hertan, folha 4": "ChessCafe: camada, hoje e tudo iguais",
    "Yusupov, folha 961": "McClure: camada, hoje e tudo iguais",
    "Chess Evolution 2014, folhas 234, 243, 422": "GMs: camada, hoje e tudo iguais",
-   "Aagaard Practical Chess Defence, folhas 64 e 234": "nenhuma captura com X maiúsculo em tudo"
+   "Aagaard Practical Chess Defence, folhas 64 e 234": "nenhuma captura com X maiúsculo em tudo",
+   "Chess Evolution 2014, folhas 71, 100, 122, 767": "código ECO: camada e tudo com C maiúsculo; hoje com c minúsculo"
   },
   "prata_padroes_em_hip": {
    "coluna_C_e_digito": {
@@ -3283,6 +3284,10 @@
    "captura_com_X": {
     "hoje": 3,
     "tudo": 0
+   },
+   "ambigua_no_meio_da_palavra": {
+    "hoje": 20,
+    "tudo": 8
    }
   }
  },
@@ -3293,10 +3298,15 @@
    "sobrevivem": 0,
    "o_que": "cada limiar a 0, metade, 1,5x, 3x e negativo; cada lista vazia e sem cada elemento; cada interruptor; controle verde no mesmo processo. Não é o conjunto de 86 do crítico"
   },
+  "limiares_a_10_por_cento": {
+   "total": 34,
+   "sobrevivem": 24,
+   "o_que": "cada limiar a mais ou menos 10%: fica no meio do vão de propósito, e nenhum caso sintético o prende tão perto"
+  },
   "fiacao": {
    "total": 9,
    "acusam": 9,
-   "o_que": "cada chamada de linhas_do_glifo neutralizada, por tests/test_text_fiacao_do_glifo.py"
+   "o_que": "cada chamada de linhas_do_glifo neutralizada, rodando só tests/test_text_fiacao_do_glifo.py; antes, com os testes de decisão junto, a conta era vácua"
   }
  }
 }

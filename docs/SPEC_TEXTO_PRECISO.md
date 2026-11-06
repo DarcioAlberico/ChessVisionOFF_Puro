@@ -630,7 +630,7 @@ ainda não 10× o p99 medido. O Tesseract no instalador é a S-724, que espera a
 Toda a fase é regra de decisão, geometria e léxico, sem retreino, e cada conserto tem a sua constante. Contra o que se mediu: **os 5
 livros aprovados na auditoria da S-702**, 27 folhas. O *Chess Evolution* e o *Capablanca*, que as Saídas do roadmap citam, foram
 reprovados nela, e ficam à parte no relatório, como conferência. O **Hertan é do ouro-dev**, e está nas contas. O relatório é
-[metrics/texto_prosa_glifo_2026-11-06.json](metrics/texto_prosa_glifo_2026-11-06.json), medido em `d6ca7835`, e `hoje` é tudo
+[metrics/texto_prosa_glifo_2026-11-06.json](metrics/texto_prosa_glifo_2026-11-06.json), medido em `6b99f95e`, e `hoje` é tudo
 desligado, que dá texto idêntico ao de `a2937260` nas 27 folhas. O IC depende da ordem dos livros, e ela é fixa: Dvoretsky, Hertan, *Minhas 60*,
 400 Quebra-cabeças, Seirawan. Tudo aqui é dev contaminado: o portão G103 abre o teste, e é rodado
 depois. Reproduzir: `texto_prosa_glifo_2026-11-06/medir_glifo.py`.
@@ -647,25 +647,29 @@ depois. Reproduzir: `texto_prosa_glifo_2026-11-06/medir_glifo.py`.
 
 Diferença pareada na prosa: **−1,86 p.p. [−3,07; −0,43]**, 22 folhas melhores e nenhuma pior. **Notação, a G1(b):** −0,17 p.p.
 [−0,62; 0,00], 3 folhas melhores e nenhuma pior. **Figurina, a G2:** revocação 85,2% → 85,9%, precisão 85,8% → 85,9%. Na prata, que só
-ordena e é o caminho de reserva: prosa −0,81 p.p. [−1,20; −0,50] em **30 de 30** folhas, notação −1,45 p.p. [−2,93; −0,51] com nenhuma
-pior, figurina: revocação 60,2% → 69,6%, precisão 75,1% → 78,3%.
+ordena e é o caminho de reserva: prosa −0,81 p.p. [−1,22; −0,49], **29 folhas melhores e 1 pior** (*Kemeri* 226, por 1 caractere em 1.163, numa folha de
+45% de erro), notação −1,50 p.p. [−2,95; −0,54] com nenhuma pior, figurina: revocação 60,2% → 69,6%, precisão 75,1% → 78,4%.
 
 **A primeira versão foi reprovada pelo crítico**, e o que ele achou está nos itens: a regra de caixa trocava certo por errado fora do dev
 (`ChessCafe`, `McClure`, `GMs`, `Nxa2`), e as guardas tinham vão. Os casos dele, relidos: `ChessCafe` (Hertan, folha 4), `McClure` (Yusupov, folha 961) e
-`GMs` (*Chess Evolution 2014*, folhas 234, 243 e 422) saem como na camada, e no Aagaard, folhas 64 e 234, nenhuma captura sai com `X`.
+`GMs` (*Chess Evolution 2014*, folhas 234, 243 e 422) saem como na camada, e no Aagaard, folhas 64 e 234, nenhuma captura sai com `X`. Na segunda
+rodada: `[C42]`, `[C18]` e `[C84]` (*Chess Evolution 2014*, folhas 767, 71, 100 e 122) saem como na camada, e agora melhor que `hoje`, que dá `[c42]`.
 
 **Os testes de decisão da S-764** moram em `tests/test_text_traco_vertical.py`, `test_text_caixa_coerente.py`, `test_text_fronteira.py`,
 `test_text_ligadura.py`, `test_text_aspas.py` e `test_text_acento.py`, com o desenho comum em `tests/glifo_sintetico.py`: caixas
 sintéticas, sem modelo nem livro, e rodam no CI. Cada família tem o caso que reproduz o defeito com a constante desligada.
 
 `tests/test_text_fiacao_do_glifo.py` é a outra camada: uma folha desenhada, a segmentação de verdade e um classificador falso que responde pelo
-tamanho do recorte, lidos por `linhas_do_glifo`. **Neutralizar cada uma das 9 chamadas do leitor acusa**, o que antes não acontecia com nenhum
-teste de decisão.
+tamanho do recorte, lidos por `linhas_do_glifo`. **Neutralizar cada uma das 9 chamadas acusa**, rodando **só** este arquivo: é assim que a conta vale.
+A primeira versão desta frase rodava os testes de decisão junto, e o patch no módulo os derrubava, então a conta era vácua: `coerente`, a regra reprovada,
+passava sem acusar neste arquivo. Agora um versalete, um `KC5` e a forma minúscula do léxico a prendem.
 
 **Conferido revertendo, e o que isso vale.** 263 mutantes sistemáticos das constantes desta fase (cada interruptor; cada limiar a 0, metade, 1,5×, 3× e
 negativo; cada lista vazia e sem cada elemento), com controle verde no mesmo processo: **os 263 acusam**. É só esse conjunto: mutante de lógica, de
 condição ou de `<` por `<=` não está nele, e ele não é o conjunto de 86 de limiar e lista do crítico, em que a primeira versão perdia 36. Ele
 tem de ser rodado de novo. As listas são iteradas por literal no teste: iterar a própria constante deixava a guarda vácua, e os mutantes mostraram.
+`CORTE_ACENTUADA` a 1,5, que o crítico achou vivo, agora acusa. **A ±10% de cada limiar, 24 de 34 sobrevivem, e é o esperado**: o limiar fica no meio do vão
+medido, e nenhum caso sintético o prende tão perto. Quem o segura ali é a medição das folhas, e não o CI.
 
 ## S-730 · Traço vertical contra ponto ✅ implementada (2026-11-06)
 
@@ -729,10 +733,13 @@ Três mudanças em `text/caixa_alta.py`:
 - **`coerente`** (`PALAVRA_COERENTE`): palavra só de letras, com duas ou mais maiúsculas de desenho próprio e nenhuma minúscula, sobe as
   ambíguas, o `p` e o `l`. É o que resolve o **versalete** (`'UNUSUAL SQUARES'`, com altura de letra de x), que altura nenhuma separa. Lance
   fica de fora pelo dígito, e `KxR` porque o `x` só sobe a partir de quatro letras. O `s` final de até 4 letras não sobe (`GMs`). Na outra
-  direção, a ambígua depois de minúscula desce (`IvanchUk`), salvo seguida de 2 minúsculas (`ChessCafe`, `McClure`) ou depois de `Mc`/`Mac`.
+  direção, a ambígua depois de minúscula desce (`IvanchUk`), salvo em palavra que começa em maiúscula, seguida de 2 minúsculas e cuja forma
+  minúscula não existe no léxico sem nomes (`ChessCafe`, `SacrifiCio`→`Sacrificio`), ou depois de `Mc`/`Mac`. Em palavra que começa em minúscula, nunca
+  (`soViéticos`, `deCido`): na prata, a ambígua no meio da palavra vai de 20 a 8.
 - **O lance que a régua estragou** (também `PALAVRA_COERENTE`): em scan, com as letras de x comidas, `Qxf7` saía `QXf7`, `Nxa2` saía `NXa2`, e a
-  coluna `c` saía `C`: `Kc5`→`KC5`, `c2`→`C2`. O `X` diante de casa e o `C` diante de dígito de casa descem, e `Cc3` e a descritiva `C3A` ficam.
-  Na prata, a coluna maiúscula diante de dígito vai de 5 a 0, e a captura com `X`, de 3 a 0, contados no texto de saída.
+  coluna `c` saía `C`: `Kc5`→`KC5`, `c2`→`C2`. O `X` diante de casa e o `C` diante de dígito de casa descem, e `Cc3`, a descritiva `C3A`, o rótulo `C3)` e
+  o código ECO `C42` ficam. E `c` com dois dígitos sobe (`[c18]`→`[C18]`), porque não é casa nenhuma. Na prata, a coluna maiúscula diante de dígito vai de 5
+  a 0, e a captura com `X`, de 3 a 0, contados no texto de saída.
 - **`P` pela descida** (`P_PELA_DESCIDA`): `P` era lido `p` em *Minhas 60*, em rank 2 nos 11 casos. Esticados, são o mesmo desenho, e o `p`
   desce, enquanto o `P` não.
 
@@ -866,7 +873,8 @@ abrir a régua da marca.
 - **A cedilha pela descida** (`caixa_alta.CEDILHA_PELA_DESCIDA`): `c` ou `C` com a caixa 0,25 altura-de-x abaixo da base, com `ç` entre as
   opções, é `ç`. `ç` desce de 0,38 a 0,50, e `C` e `c` vão até 0,06.
 - **O segundo corte** (`caixa_alta.SEGUNDO_CORTE`, `CORTE_ACENTUADA` 1,65): `í ó õ ö ú ć č š ž` têm corte próprio. A minúscula acentuada mede
-  até 1,46, e a maiúscula, cerca de 1,85: **esse lado é estimado**, porque nenhuma aparece no dev.
+  **de 1,33 a 1,53** das letras de x (53 casos, 5 livros do dev), o que a memória `caixa-alta-nao-cobre-acentuada` dava como 1,46 pela mediana da linha. A
+  maiúscula, cerca de 1,85: **esse lado é estimado**, porque nenhuma aparece no dev. A 1,5, o corte quebra: `após`→`apÓs`, `última`→`Última` em *Minhas 60*.
 
 ### Critério de aceite
 
