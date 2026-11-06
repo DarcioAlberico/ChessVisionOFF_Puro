@@ -504,6 +504,7 @@ marcado para revisão, com captura ≥ 90% — ou (b) pagar o orçamento de CPU 
 > | portão | meta | medido no ouro-teste (96 folhas, 16 livros) | veredito |
 > |---|---|---|---|
 > | G100 | linha de base publicada | [metrics/texto_prosa_20261106.json](metrics/texto_prosa_20261106.json) | ✅ |
+> | G3, folha perdida em silêncio | 0 | **0** no ouro, na prata e em 26.730 folhas de 58 arquivos ([metrics/texto_g3_20261106.json](metrics/texto_g3_20261106.json)) | ✅ |
 > | G101, perda de leiaute | teto ≤ +0,3 p.p. | **+1,79 p.p. [+0,74; +3,05]**; degradado médio +0,16 [−1,73; +1,74] sem calibração | ❌ no teste |
 > | G102, CER de prosa da fusão | ≤ 0,8%, teto ≤ 1,2% | **2,11% [0,83; 3,72]** | ❌ |
 > | G102, WER da fusão | ≤ 2,0%, teto ≤ 3,0% | 2,70% | ❌ |
@@ -518,6 +519,10 @@ marcado para revisão, com captura ≥ 90% — ou (b) pagar o orçamento de CPU 
 > **O padrão não muda.** `auto` continua o glifo: o G102 não passou, e a D4 não foi respondida. **O que os números dizem:** o reconhecimento já está
 > pago, com o Tesseract nas linhas certas a **0,15%** no teste, e o que falta é leiaute: as mesmas folhas caem a 1,94% nas caixas do glifo. O
 > teste foi lido, então nada se ajusta olhando para ele: mais trabalho de leiaute precisa de livro novo no dev.
+>
+> **O G3 só promete perda total, e a varredura achou o que fica fora dele.** Onze folhas derrubavam a leitura com caixa vazia, um defeito da S-714, já consertado.
+> Sem aviso restam 13 grades de números do *Schiller* lidas pela metade ou menos, e 42 folhas com mais de 6.000 caracteres lidos: em 9 delas, do *Yusupov*, há prosa
+> real afogada em ruído.
 >
 > **O plano B da seção 3 está valendo, e a escolha é do dono**: (a) aceitar M1 ≤ 0,50% com a G5 compensando, ou (b) pagar a Fase 105 (D8). A G5 também
 > não cumpre, então (a) hoje não fecha sozinha. O que ficou de fora por recuo: S-703 só a ferramenta (D3), S-704 sem perfil calibrado (D3), S-724 (D1), S-740, S-741, S-742 e os
@@ -865,7 +870,8 @@ b`), e consertá-la
     um, o *Chess Evolution 2014* perdia 113 e o *2013*, 60, antes da S-711. *Corte:* o
     0,5 cumpre a regra deste item na varredura publicada, contando as folhas com ao menos 200 caracteres de camada: nenhuma
     abaixo de 0,7 sem aviso, em 812 folhas de 58 livros. Depois da S-711, das dez folhas que avisam, quatro têm texto que o glifo não leu
-    e seis são sinal solto de dentro de uma moldura; a varredura de livro inteiro do G101 continua por fazer.
+    e seis são sinal solto de dentro de uma moldura. A varredura de livro inteiro do G101 foi feita em 2026-11-06, com G3 = 0 em 26.730 folhas:
+    [metrics/texto_g3_20261106.json](metrics/texto_g3_20261106.json). Ela não gravou a densidade de cada folha, então a regra do corte segue valendo pelas 812.
   - *Reversão:* o aviso não muda texto nenhum; o corte é constante. O `ESQUEMA` 2 **não** é reversível
     (versão antiga não abre arquivo novo), e por isso entra junto com o primeiro uso dos avisos.
 - **S-711** · Região escura na borda: faixa colorida e moldura de scan. ✅ entregue em 2026-11-05, com outro mecanismo: ver o *Achado* no fim deste item.
@@ -1048,7 +1054,7 @@ b`), e consertá-la
   scan-ouro, que depende da D3, entra no G104; perda de leiaute (diferença pareada leitor de linha nas
   caixas do glifo − nas caixas da camada) com teto do IC95 ≤ +0,3 p.p. no ouro-teste e ≤ +2 p.p. no
   degradado calibrado. Hoje: +1,17 p.p. [−0,03; +3,91] no ouro-dev (+0,12 [−0,06; +0,48] sem o *Chess
-  Evolution*) e +12,1 p.p. no degradado médio.
+  Evolution*) e +12,1 p.p. no degradado médio. *Em 2026-11-06:* G3 = 0 nos três, e a perda de leiaute reprova, ver a seção 5a.
   - *Medido em 2026-11-06:* **não passa.** +1,79 p.p. [+0,74; +3,05] no ouro-teste, +0,15 [−0,01; +0,56] no dev. Nenhuma folha perdida pelo leiaute
     nas 153 folhas medidas.
 

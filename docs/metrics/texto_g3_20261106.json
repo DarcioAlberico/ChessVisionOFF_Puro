@@ -1,0 +1,80 @@
+{
+  "item": "G3 e a varredura do G101: toda folha do acervo pelo glifo e pela guarda da S-710",
+  "quando": "2026-11-06",
+  "codigo": {
+    "varredura": "095496e5",
+    "conserto_das_excecoes": "87d60bca",
+    "ressalva": "só as 11 folhas da exceção foram relidas depois do conserto. As outras não mudam: só elas produziam a caixa vazia."
+  },
+  "comando": "docs/metrics/texto_g3_2026-11-06/varredura.py, motor glifo a 220 dpi, 5 processos",
+  "acervo": {
+    "arquivos": 58,
+    "folhas": 26730,
+    "ressalva": "PDF/ tem livros duplicados: a contagem é de arquivos, e a mesma folha pode valer duas vezes."
+  },
+  "veredito": {
+    "G3": 0,
+    "o_que_G3_promete": "perda total sem aviso, a promessa da S-710. Perda parcial e ruído estão abaixo, e não entram no número.",
+    "ouro_dev_teste_prata": "0 em todos, em texto_prosa_portoes_20261106.json",
+    "G101_continua_reprovado": "pela perda de leiaute no ouro-teste, +1,79 p.p. [+0,74; +3,05] contra teto de +0,3"
+  },
+  "excecoes": {
+    "na_varredura": 11,
+    "causa": "text/poeira.py cortava a letra toda fora do alcance e devolvia caixa sem altura; cv2.resize derrubava a folha",
+    "relidas_com_o_conserto": 11,
+    "ainda_com_erro": 0,
+    "das_relidas_com_mais_de_6000_lidos": 4
+  },
+  "avisos": {
+    "por_codigo": {
+      "folha_nao_lida": 52,
+      "leitura_parcial": 24
+    },
+    "folhas_com_aviso": 76
+  },
+  "perda_total_sem_aviso": {
+    "com_camada": {
+      "criterio": "camada com ao menos 50 caracteres, menos de 5% lidos, sem aviso",
+      "folhas": 0
+    },
+    "sem_camada": {
+      "criterio": "menos de 50 caracteres na camada, menos de 600 lidos, sem aviso; régua independente da guarda: componentes de altura de letra a 110 dpi, fora de componente grande",
+      "folhas_examinadas": 2991,
+      "com_100_letras_e_menos_da_metade_lida": 73,
+      "o_que_sao": "todas do Reinfeld em espanhol, com cerca de 82 lidos: seis diagramas sem moldura, cujas peças a régua conta como letra. Duas vistas."
+    }
+  },
+  "perda_parcial_sem_aviso": {
+    "suspeitas_pela_camada_crua": 3497,
+    "criterio_cru": "camada com ao menos 50 caracteres, menos de 60% lidos, sem aviso",
+    "suspeitas_pela_camada_montada": 136,
+    "conferencia_visual_das_montadas": {
+      "só diagrama, com o tabuleiro desenhado em fonte na camada": 119,
+      "diagramas com duas linhas de teste (Seirawan 200), não conferida palavra a palavra": 1,
+      "grade de anotação com números (Schiller 274 a 287): perda parcial real, sem aviso": 13,
+      "sumário com pontilhado (Euwe 4, Polgar 3), não conferida palavra a palavra": 2,
+      "folha de rosto (Seirawan 2), não conferida palavra a palavra": 1
+    },
+    "ressalva": "a camada montada ainda conta o tabuleiro em fonte destes livros, por isso as 119. Folha que lê mais de 60% e perde o resto não entra nesta conta."
+  },
+  "ruido_sem_aviso": {
+    "criterio": "mais de 6.000 caracteres lidos, sem aviso; uma folha cheia de prosa tem de 2.500 a 4.000",
+    "folhas": 42,
+    "maior_leitura": 78355,
+    "conferencia_visual": {
+      "capa, contracapa ou contracapa em negativo": 7,
+      "só diagrama, com a hachura lida como letra (La casa del Ajedrez)": 26,
+      "prosa real, com a coluna pontilhada lida como letra (Yusupov, Build Up Your Chess)": 9
+    },
+    "ressalva": "a guarda só trata sinal solto como ruído em folha com moldura (S-711). Nas 9 de prosa, o texto fica afogado em 15 mil a 78 mil caracteres, e a tela não avisa."
+  },
+  "criterio_da_s710_nao_refeito": "a varredura não gravou a densidade de cada folha, então a regra do corte de 0,5 segue valendo pela amostra de 812 folhas já publicada.",
+  "segundos_por_folha": {
+    "media": 1.86,
+    "p50": 1.52,
+    "p95": 3.79,
+    "p99": 4.85,
+    "max": 51.57,
+    "ressalva": "cinco processos disputando a máquina, e a página inteira do acervo: não é o G4."
+  }
+}
