@@ -158,6 +158,7 @@ from typing import Literal
 
 import numpy as np
 
+from . import acento as _acento
 from . import admissao as _admissao
 from . import boxes as _boxes
 from . import caixa_alta as _caixa_alta
@@ -664,6 +665,7 @@ def linhas_do_glifo(
                     lidos = _numero.corrigir(lidos, probs, grupo, i2c)
                 if caixa_alta:
                     lidos = _caixa_alta.coerente(lidos, probs, grupo, i2c)  # `DEFEsA`, versalete (S-731)
+                lidos = _acento.corrigir(lidos, probs, grupo, i2c, lexico)  # `näo` (S-735)
                 if lexico:
                     # **Por último, e é a ordem certa**: as correções de geometria acima mudam a
                     # palavra que o dicionário vai julgar, e julgá-la antes delas seria julgar um
