@@ -37,6 +37,10 @@ a primeira é uma ausência **declarada**, a segunda é uma ausência **descober
 | `modelo` | o rótulo é o palpite de um classificador | treino, e nunca validação nem teste |
 | `desconhecida` | não há registro de quem rotulou | treino, e nunca validação nem teste |
 
+**E um quarto, que não é valor novo e sim um `modelo` que diz qual** (S-762): `corrigido_de:<motor>@<sha do modelo>` é o par que a
+pessoa corrigiu sobre a leitura de um motor. Entra no treino, com a versão do modelo que errou registrada, e nunca mede: quem corrige
+vê a leitura, e a verdade ancorada no motor é o achado nº 1. `classe` o traduz para `modelo`, e é por isso que toda regra abaixo vale.
+
 **Amostra sem procedência não é recusada -- ela é marcada.** Recusar 607 mil imagens porque
 ninguém sabe de onde vieram desperdiça o ativo; deixá-las entrar no teste torna o número final
 sem significado. É o mesmo meio-termo que este projeto já aplica a diagramas desde a S-19.
@@ -66,6 +70,36 @@ DESCONHECIDA = "desconhecida"
 
 VALORES = (HUMANO, MODELO, DESCONHECIDA)
 """Os três, e não mais. Um valor fora desta lista é erro de arquivo, não um quarto estado."""
+
+CORRIGIDO_DE = "corrigido_de:"
+"""O prefixo da correção humana sobre a leitura de um motor (S-762). Ver o cabeçalho."""
+
+SEM_MODELO = "desconhecido"
+"""O sha de quem foi lido antes de a página guardar o modelo: é o que o arquivo não sabe."""
+
+
+def corrigido_de(motor: str, modelo: str = "") -> str:
+    """`corrigido_de:glifo@ab12...`, a procedência de um par corrigido."""
+    return f"{CORRIGIDO_DE}{motor}@{modelo or SEM_MODELO}"
+
+
+def e_corrigido(valor: str) -> bool:
+    return valor.startswith(CORRIGIDO_DE) and "@" in valor
+
+
+def classe(valor: str) -> str:
+    """Um dos três `VALORES`. O corrigido é rótulo ancorado num motor, e vale o que `modelo` vale: treino, e nunca medida."""
+    return MODELO if e_corrigido(valor) else valor
+
+
+class VerdadeContaminada(ValueError):
+    """Pediram para medir com um rótulo que não é verdade independente. Levanta: medir com ele não dá um número pior, dá um número falso."""
+
+
+def exigir_verdade(valor: str, *, onde: str) -> None:
+    """A porta de todo split de medida: o scan-ouro da S-703, o teste de caractere, e qualquer outro que venha."""
+    if valor != HUMANO:
+        raise VerdadeContaminada(f"{onde}: procedência {valor!r} não mede nada. Só a conferida por humano, sem leitura por trás, mede.")
 
 CODIGO = {DESCONHECIDA: 0, MODELO: 1, HUMANO: 2}
 """Procedência -> inteiro, para caber num `int8` por amostra em vez de uma lista de strings.
@@ -139,7 +173,7 @@ def ler(caminho: Path | str | None = None) -> dict[str, Registro]:
             if not uuid:
                 raise ArquivoInvalido(f"{alvo}, linha {numero}: uuid vazio.")
             valor = (linha.get("procedencia") or "").strip().lower() or DESCONHECIDA
-            if valor not in VALORES:
+            if valor not in VALORES and not e_corrigido(valor):
                 raise ArquivoInvalido(
                     f"{alvo}, linha {numero}: procedência {valor!r} não é uma de {', '.join(VALORES)}."
                 )
@@ -159,7 +193,7 @@ def resumo(registro: dict[str, Registro]) -> str:
     """Uma linha em pt-BR sobre o que o arquivo trouxe. Para o log e para a tela."""
     if not registro:
         return "sem registro de procedência: toda amostra entra como desconhecida"
-    por_valor = {valor: sum(1 for r in registro.values() if r.procedencia == valor) for valor in VALORES}
+    por_valor = {valor: sum(1 for r in registro.values() if classe(r.procedencia) == valor) for valor in VALORES}
     livros = len({r.livro for r in registro.values() if r.tem_livro})
     return (
         f"{len(registro):,} recorte(s) registrado(s): "
@@ -220,6 +254,7 @@ __all__ = [
     "CAMINHO_PADRAO",
     "CODIGO",
     "COLUNAS",
+    "CORRIGIDO_DE",
     "DESCONHECIDA",
     "HUMANO",
     "MODELO",
@@ -228,6 +263,11 @@ __all__ = [
     "VAZIO",
     "ArquivoInvalido",
     "Registro",
+    "VerdadeContaminada",
+    "classe",
+    "corrigido_de",
+    "e_corrigido",
+    "exigir_verdade",
     "ler",
     "resumo",
     "violacoes_do_split",

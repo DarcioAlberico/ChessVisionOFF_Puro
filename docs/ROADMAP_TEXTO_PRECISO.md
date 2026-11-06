@@ -895,7 +895,7 @@ b`), e consertá-la
   - *Saída:* a métrica existe no relatório e o G101 a lê dali.
   - *Reversão:* só relatório.
   - *Achado:* no dev, **+0,16 p.p. [−0,01; +0,56]**, quase todo do *Hertan*, acima do orçamento de +0,10; no degradado médio, **+9,19 p.p. [+3,74; +15,53]**, contra os ≤ 2 da S-714. O `tess_pagina` de 2026-10-30 pagava um erro por linha, de CRLF: é 0,37% no dev, e a primeira folha da S-715 custa menos do que a seção 1 dizia.
-- **S-714** · Leiaute sob ruído.
+- **S-714** · Leiaute sob ruído. ✅ entregue em 2026-11-06
   - *Contexto:* no perfil médio a perda de leiaute é 12,1 p.p. [6,9; 17,1]. Suspeitos, em ordem: binarização
     (janela fixa contra escala da letra), poeira passando no filtro de componente, e linhas que se
     tocam depois do desfoque.
@@ -903,6 +903,12 @@ b`), e consertá-la
     `texto_prosa_2026-10-30/`) no degradado calibrado, pareado contra o leiaute de hoje.
   - *Saída:* perda de leiaute ≤ 2 p.p. no perfil médio, sem piorar o ouro limpo.
   - *Reversão:* cada mudança de binarização ou filtro atrás de constante; desligada, volta a de hoje.
+  - *Achado:* **é a poeira, e não a binarização nem linha que toca.** Uma mancha na margem entra na linha e estica a caixa, e o `psm 7` lê a
+    folga como nada. `text/poeira.py` (`TIRAR_POEIRA`): Tesseract de 13,02% a **3,32%** nas 28 folhas, de 14,27% a 3,67% em 21 não vistas, e o
+    ouro limpo igual. Trocar o Otsu **não entra**: não é a causa, e parte as letras do glifo (7.532 inserções contra 1.150).
+  - *Achado:* perda de leiaute de +6,52 a **−3,18 [−9,10; +1,51]**; sem os dois livros em que o oráculo erra mais que o glifo (*Capablanca* 26%,
+    *Chess Evolution* 6,4%), de +10,17 a **+0,85 [−1,35; +3,10]**, e **+2,46 [−0,24; +6,21]** nas não vistas. Ponto dentro de 2 p.p. salvo esse último;
+    teto do IC fora. **Medido no perfil médio, e não no calibrado**, que depende da S-703: o corte de 6 caixas soltas não viu scan nenhum.
 - **S-715** · O leiaute de reserva.
   - *Contexto:* o Tesseract lendo a página inteira com o leiaute dele **nunca desaba** — resgata as
     folhas 903 e 1210 do *Chess Evolution* (99,9% → 4,2% e 2,1%), as de linha intercalada (16% → 2,2%)
@@ -1393,11 +1399,15 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
   - *Saída:* nenhum `Io.`/`ıı.` nas folhas medidas; casas válidas ≥ 99%.
   - *Reversão:* constante no árbitro da S-729.
 - **S-744** · Texto espaçado (*gesperrt*): `f a t a l e n` na ênfase alemã do Gutmayer volta a
-  `fatalen` quando o léxico concorda.
+  `fatalen` quando o léxico concorda. ✅ entregue em 2026-11-06
   - *Verificação:* folhas do Gutmayer com *gesperrt*: palavras espaçadas juntadas só quando o léxico
     concorda.
   - *Saída:* zero palavra espaçada que o léxico conhece; nenhuma junção de palavras distintas.
   - *Reversão:* constante.
+  - *Achado:* **quem sofre é o glifo**, e o Tesseract já lê a palavra inteira. `text/espacado.py` (`JUNTAR_ESPACADO`), e nenhuma linha do ouro-dev muda. Nas 22 folhas do
+    Gutmayer, nenhuma junção de palavras distintas à vista; palavras conhecidas espaçadas de 14 a 2 nas olhadas, de 7 a 3 nas não vistas. **O zero não se cumpre**: o que sobra é
+    corrida com letra a mais, e a primeira versão, que achava a palavra no meio, juntava `d e sHan d e`.
+  - *Achado:* `fatalen` não está na lista alemã, e o exemplo do item fica espaçado. Em 16 de 50 junções sai só um pedaço da palavra (`mann`), porque o resto veio com erro.
 - **S-745** · A escada de linhas de base, antes de qualquer modelo da casa.
   - *Entrega:* no ouro-dev e no scan-ouro-dev, em ordem de custo: (0) o degrau que não custa nada —
     `--user-words`, dicionário desligado na notação, escala por altura-x e um modelo de n-gramas de
@@ -1563,7 +1573,7 @@ de cada um.
   - *Verificação:* no ouro-teste, captura de palavras erradas e fração marcada, com IC.
   - *Saída:* G5 cumprida (captura ≥ 90%, limite inferior ≥ 85%, marcadas ≤ 5%).
   - *Reversão:* o corte é constante própria da fusão; mudá-lo não mexe no `ocr.MIN_CONFIDENCE`.
-- **S-762** · A correção humana volta como dado, sem contaminar nada.
+- **S-762** · A correção humana volta como dado, sem contaminar nada. ✅ entregue em 2026-11-06
   - *Contexto:* `correcao.py` carimba o **bloco inteiro** como `humano` quando se edita um caractere —
     inclusive as palavras erradas que ninguém conferiu —, e o próprio código diz que "a correção é
     registro, e não rótulo" e recusa "treinar o modelo no próprio erro" (`coleta.py`). E a S-703
@@ -1576,6 +1586,10 @@ de cada um.
     confere que só o par tocado vai à quarentena da S-214.
   - *Saída:* correções da aba Texto chegam à quarentena com a versão do modelo; nenhuma chega a teste.
   - *Reversão:* a quarentena é revisável; nada entra no treino sem passar por ela.
+  - *Achado:* o carimbo `humano` do bloco fica, porque serve à tela, e nenhum caminho de dado o lê. Sem valor novo no `Literal` e sem subir `ESQUEMA`: `corrigido_de:` mora em `text/procedencia.py`, e o
+    sha é `PaginaLida.modelo`, campo novo com padrão. `cvoff-texto-correcoes --quarentena` leva o par: em 7 folhas reais do dev, 85 pares, 70 com recorte, e 69 dos 70 recortes são a letra certa pelo classificador.
+  - *Achado:* **o scan-ouro não tem código ainda**, então a recusa dele é uma guarda à espera: a tela da S-703 tem de chamar `procedencia.exigir_verdade` e `dado_corrigido.exigir_documento_cego`. Na fusão o motor sai `glifo`
+    até a S-722.
 - **S-763** · Monitor de qualidade sem referência, validado antes de ser usado.
   - *Contexto:* a concordância glifo × leitor de linha **mede o glifo**, não a saída: por livro, a
     correlação entre o CER do glifo e o da fusão é só +0,51 por livro nos seis livros limpos (+0,46 por

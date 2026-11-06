@@ -866,6 +866,11 @@ class PaginaLida:
     avisos: tuple[Aviso, ...] = ()
     """O que a leitura sabe de si mesma: folha que não foi lida inteira, leiaute de reserva (S-710)."""
 
+    modelo: str = ""
+    """O sha do classificador que leu a folha, vazio quando não foi ele ou não se sabe (S-762).
+
+    Campo novo com padrão: não paga `ESQUEMA`, e um programa anterior o ignora. É o que a correção precisa para dizer de quem veio o erro."""
+
     marca_por_palavra: bool = False
     """A marca desta folha é por palavra, e não a faixa de confiança do bloco (S-718).
 
@@ -930,6 +935,8 @@ class PaginaLida:
         }
         if self.avisos:
             dados["avisos"] = [aviso.para_json() for aviso in self.avisos]
+        if self.modelo:
+            dados["modelo"] = self.modelo
         return dados
 
     @classmethod
@@ -963,6 +970,7 @@ class PaginaLida:
             rodape=LinhaLida.de_json(rodape, "rodape") if rodape else None,
             numero_impresso=int(numero) if numero is not None else None,
             avisos=tuple(Aviso.de_json(a, f"avisos[{i}]") for i, a in enumerate(dados.get("avisos") or [])),
+            modelo=str(dados.get("modelo", "") or ""),
         )
 
     def com_posicoes(self, posicoes: Sequence[str]) -> PaginaLida:

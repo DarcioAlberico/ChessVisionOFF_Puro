@@ -168,6 +168,7 @@ from . import colados as _colados
 from . import colunas as _colunas
 from . import dicionario as _dicionario
 from . import empilhados as _empilhados
+from . import espacado as _espacado
 from . import faixas as _faixas_mod
 from . import fronteira as _fronteira
 from . import fusao as _fusao
@@ -183,6 +184,7 @@ from . import negrito as _negrito
 from . import notacao as _notacao
 from . import numero as _numero
 from . import paragrafos as _paragrafos
+from . import poeira as _poeira
 from . import quadros as _quadros
 from . import regioes as _regioes
 from . import tesseract as _tesseract
@@ -467,7 +469,7 @@ def segmentar(
     # **A binária entra para o pingo do itálico** (`i` que sai `l` + `'`): sem ela a régua de
     # sobreposição é horizontal e o itálico é uma inclinação. Ver `boxes.unir_pingos`.
     caixas = _boxes.unir_pingos(
-        _boxes.caixas_de_caractere(binaria, escala=escala), escala=escala, binaria=binaria
+        _poeira.sem_poeira(_boxes.caixas_de_caractere(binaria, escala=escala)), escala=escala, binaria=binaria
     )
     if empilhados:
         # **`:`, `;` e `=` são dois contornos**, e sem isto o classificador nunca vê nenhum dos
@@ -644,7 +646,9 @@ def linhas_do_glifo(
 
     cruas: list[_Cru] = []
     for i_regiao, indice, desta in _tiras(caixas, regioes, escala=escala):
-        grupos = descartar_fragmentos(partir_linhas_altas(quebrar_em_linhas(ordem_em_faixa(desta))), escala=escala)
+        grupos = descartar_fragmentos(
+            _poeira.aparar(partir_linhas_altas(quebrar_em_linhas(ordem_em_faixa(desta)))), escala=escala
+        )
         for grupo in grupos:
             recortes = [c.recortar(cinza) for c in grupo]
             # **Uma medição por linha, e ela serve aos dois usos** (S-236): declarar o pendor no
@@ -1874,6 +1878,10 @@ def _ler_pagina_do_livro(
                     )
                     por_palavra = marca_por_palavra
 
+    if dicionario and qual in ("glifo", "fusao"):
+        # Depois dos dois motores, e antes dos trechos de estilo, que são medidos no texto final (S-744).
+        cruas = _sem_espacado(cruas, lingua)
+
     if marcar_negrito and cruas:
         cruas = _com_negrito(cruas, spans_negrito, registra_negrito, escala_px)
         # **O peso não tem segunda fonte**, então o detalhe vale nos dois motores: a camada é a
@@ -1923,8 +1931,32 @@ def _ler_pagina_do_livro(
         rodape=rodape,
         numero_impresso=numero,
         avisos=tuple(avisos),
+        modelo=_sha_do_modelo(reconhecedor) if qual in _MOTORES_DO_GLIFO else "",
         marca_por_palavra=por_palavra,
     )
+
+
+def _sha_do_modelo(reconhecedor: object | None) -> str:
+    """O sha do classificador que leu (S-762), ou vazio: quem responde é o metadado que `carregar_classificador` já conferiu."""
+    meta = getattr(getattr(reconhecedor, "classifier", None), "meta", None)
+    if meta is None and reconhecedor is None:
+        from .modelo import CAMINHO_PADRAO_META, ler_metadado
+
+        try:
+            meta = ler_metadado(CAMINHO_PADRAO_META)
+        except (OSError, ValueError):
+            return ""
+    return str(getattr(meta, "modelo_sha256", "") or "")
+
+
+def _sem_espacado(cruas: Sequence[_Cru], lingua: str) -> list[_Cru]:
+    """As linhas com o *gesperrt* refeito (S-744). A camada não passa aqui: ela é a referência."""
+    saida: list[_Cru] = []
+    for cru in cruas:
+        texto = _espacado.juntar_na_lingua(cru.texto, lingua)
+        revisar_em = _espacado.intervalos_depois(cru.texto, texto, cru.revisar_em)
+        saida.append(replace(cru, texto=texto, revisar_em=revisar_em) if texto != cru.texto else cru)
+    return saida
 
 
 def _com_negrito(

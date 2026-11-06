@@ -1,0 +1,451 @@
+{
+  "item": "S-714",
+  "medido_em": "2026-11-06",
+  "commit_de_antes": "95b7d930",
+  "perfil": "medio de degradar.py (texto_prosa_2026-10-30), sem calibração: a S-703 não existe",
+  "dpi": 220,
+  "tesseract": "5.5, tessdata fast",
+  "folhas": "ouro-dev; dev contaminado, nada de teste",
+  "regua": "perda de leiaute = CER de prosa do Tesseract nas caixas do glifo menos nas linhas visuais da camada, tip, IC95 de dois níveis",
+  "ressalva_do_oraculo": "o oráculo erra 26,0% no Capablanca (a camada tem de 41 a 119 linhas por folha onde o glifo acha de 20 a 43) e 6,4% no Chess Evolution, nas folhas olhadas; a perda negativa nesses livros é o oráculo errando mais que as caixas do glifo, e não mérito delas. Por isso sai também sem os dois.",
+  "folhas_olhadas": {
+    "todas": {
+      "folhas": 28,
+      "livros": 7,
+      "glifo": {
+        "cer_prosa_antes": 53.35,
+        "cer_prosa_depois": 51.96,
+        "diferenca": {
+          "pp": -1.39,
+          "ic95_pp": [
+            -3.0,
+            0.24
+          ]
+        },
+        "folhas_melhores": 24,
+        "folhas_piores": 4,
+        "cer_notacao_antes": 55.12,
+        "cer_notacao_depois": 51.96
+      },
+      "tess": {
+        "cer_prosa_antes": 13.02,
+        "cer_prosa_depois": 3.32,
+        "diferenca": {
+          "pp": -9.7,
+          "ic95_pp": [
+            -14.93,
+            -5.15
+          ]
+        },
+        "folhas_melhores": 27,
+        "folhas_piores": 1,
+        "cer_notacao_antes": 33.83,
+        "cer_notacao_depois": 26.53
+      },
+      "fusao": {
+        "cer_prosa_antes": 16.15,
+        "cer_prosa_depois": 6.72,
+        "diferenca": {
+          "pp": -9.42,
+          "ic95_pp": [
+            -14.51,
+            -4.96
+          ]
+        },
+        "folhas_melhores": 26,
+        "folhas_piores": 2,
+        "cer_notacao_antes": 42.05,
+        "cer_notacao_depois": 39.35
+      },
+      "perda_de_leiaute_antes": {
+        "pp": 6.52,
+        "ic95_pp": [
+          1.35,
+          12.65
+        ]
+      },
+      "perda_de_leiaute_depois": {
+        "pp": -3.18,
+        "ic95_pp": [
+          -9.1,
+          1.51
+        ]
+      }
+    },
+    "sem_os_dois_de_oraculo_ruim": {
+      "folhas": 20,
+      "livros": 5,
+      "glifo": {
+        "cer_prosa_antes": 52.09,
+        "cer_prosa_depois": 49.9,
+        "diferenca": {
+          "pp": -2.19,
+          "ic95_pp": [
+            -3.64,
+            -1.08
+          ]
+        },
+        "folhas_melhores": 19,
+        "folhas_piores": 1,
+        "cer_notacao_antes": 37.97,
+        "cer_notacao_depois": 34.23
+      },
+      "tess": {
+        "cer_prosa_antes": 11.35,
+        "cer_prosa_depois": 2.03,
+        "diferenca": {
+          "pp": -9.32,
+          "ic95_pp": [
+            -15.17,
+            -3.8
+          ]
+        },
+        "folhas_melhores": 19,
+        "folhas_piores": 1,
+        "cer_notacao_antes": 28.17,
+        "cer_notacao_depois": 20.29
+      },
+      "fusao": {
+        "cer_prosa_antes": 16.0,
+        "cer_prosa_depois": 7.17,
+        "diferenca": {
+          "pp": -8.83,
+          "ic95_pp": [
+            -14.38,
+            -3.5
+          ]
+        },
+        "folhas_melhores": 18,
+        "folhas_piores": 2,
+        "cer_notacao_antes": 34.72,
+        "cer_notacao_depois": 31.61
+      },
+      "perda_de_leiaute_antes": {
+        "pp": 10.17,
+        "ic95_pp": [
+          4.07,
+          16.81
+        ]
+      },
+      "perda_de_leiaute_depois": {
+        "pp": 0.85,
+        "ic95_pp": [
+          -1.35,
+          3.1
+        ]
+      }
+    },
+    "por_livro_depois": {
+      "Dvoretsky - Dvoretsky's ": {
+        "tess": 1.21,
+        "oraculo": 0.24,
+        "perda_pp": 0.98
+      },
+      "📚Hertan Charles. Forcing": {
+        "tess": 1.98,
+        "oraculo": 0.36,
+        "perda_pp": 1.63
+      },
+      "📚Chess Evolution 2013 №0": {
+        "tess": 1.85,
+        "oraculo": 6.38,
+        "perda_pp": -4.53
+      },
+      "Xadrez Vitorioso - Finai": {
+        "tess": 4.67,
+        "oraculo": 1.27,
+        "perda_pp": 3.41
+      },
+      "Melhores Finais de Capab": {
+        "tess": 9.54,
+        "oraculo": 25.97,
+        "perda_pp": -16.43
+      },
+      "Minhas 60 partidas memor": {
+        "tess": 0.85,
+        "oraculo": 2.97,
+        "perda_pp": -2.12
+      },
+      "400 Quebra-cabeças de Es": {
+        "tess": 0.86,
+        "oraculo": 1.27,
+        "perda_pp": -0.41
+      }
+    }
+  },
+  "folhas_nao_vistas": {
+    "como": "3 folhas de cada livro dev, fora as 4 olhadas, com a constante desligada e ligada",
+    "todas": {
+      "folhas": 21,
+      "livros": 7,
+      "glifo": {
+        "cer_prosa_antes": 51.53,
+        "cer_prosa_depois": 50.63,
+        "diferenca": {
+          "pp": -0.9,
+          "ic95_pp": [
+            -2.43,
+            1.12
+          ]
+        },
+        "folhas_melhores": 16,
+        "folhas_piores": 5,
+        "cer_notacao_antes": 63.66,
+        "cer_notacao_depois": 60.02
+      },
+      "tess": {
+        "cer_prosa_antes": 14.27,
+        "cer_prosa_depois": 3.67,
+        "diferenca": {
+          "pp": -10.6,
+          "ic95_pp": [
+            -19.84,
+            -3.85
+          ]
+        },
+        "folhas_melhores": 21,
+        "folhas_piores": 0,
+        "cer_notacao_antes": 36.08,
+        "cer_notacao_depois": 27.55
+      },
+      "fusao": {
+        "cer_prosa_antes": 17.58,
+        "cer_prosa_depois": 7.36,
+        "diferenca": {
+          "pp": -10.22,
+          "ic95_pp": [
+            -19.48,
+            -3.73
+          ]
+        },
+        "folhas_melhores": 21,
+        "folhas_piores": 0,
+        "cer_notacao_antes": 45.43,
+        "cer_notacao_depois": 41.26
+      },
+      "perda_de_leiaute_antes": {
+        "pp": 10.54,
+        "ic95_pp": [
+          0.92,
+          21.9
+        ]
+      },
+      "perda_de_leiaute_depois": {
+        "pp": -0.06,
+        "ic95_pp": [
+          -4.49,
+          3.89
+        ]
+      }
+    },
+    "sem_os_dois_de_oraculo_ruim": {
+      "folhas": 15,
+      "livros": 5,
+      "glifo": {
+        "cer_prosa_antes": 49.88,
+        "cer_prosa_depois": 48.01,
+        "diferenca": {
+          "pp": -1.88,
+          "ic95_pp": [
+            -3.29,
+            -0.75
+          ]
+        },
+        "folhas_melhores": 13,
+        "folhas_piores": 2,
+        "cer_notacao_antes": 40.52,
+        "cer_notacao_depois": 34.79
+      },
+      "tess": {
+        "cer_prosa_antes": 11.93,
+        "cer_prosa_depois": 2.99,
+        "diferenca": {
+          "pp": -8.94,
+          "ic95_pp": [
+            -16.26,
+            -3.21
+          ]
+        },
+        "folhas_melhores": 15,
+        "folhas_piores": 0,
+        "cer_notacao_antes": 27.31,
+        "cer_notacao_depois": 20.64
+      },
+      "fusao": {
+        "cer_prosa_antes": 16.21,
+        "cer_prosa_depois": 7.97,
+        "diferenca": {
+          "pp": -8.24,
+          "ic95_pp": [
+            -14.66,
+            -3.19
+          ]
+        },
+        "folhas_melhores": 15,
+        "folhas_piores": 0,
+        "cer_notacao_antes": 36.35,
+        "cer_notacao_depois": 34.04
+      },
+      "perda_de_leiaute_antes": {
+        "pp": 11.4,
+        "ic95_pp": [
+          3.26,
+          21.91
+        ]
+      },
+      "perda_de_leiaute_depois": {
+        "pp": 2.46,
+        "ic95_pp": [
+          -0.24,
+          6.21
+        ]
+      }
+    },
+    "por_livro_depois": {
+      "Dvoretsky - Dvoretsky's ": {
+        "tess": 0.7,
+        "oraculo": 0.21,
+        "perda_pp": 0.49
+      },
+      "📚Hertan Charles. Forcing": {
+        "tess": 1.44,
+        "oraculo": 0.08,
+        "perda_pp": 1.36
+      },
+      "📚Chess Evolution 2013 №0": {
+        "tess": 3.11,
+        "oraculo": 11.0,
+        "perda_pp": -7.9
+      },
+      "Xadrez Vitorioso - Finai": {
+        "tess": 5.74,
+        "oraculo": 0.26,
+        "perda_pp": 5.48
+      },
+      "Melhores Finais de Capab": {
+        "tess": 7.71,
+        "oraculo": 11.32,
+        "perda_pp": -3.6
+      },
+      "Minhas 60 partidas memor": {
+        "tess": 7.74,
+        "oraculo": 0.49,
+        "perda_pp": 7.24
+      },
+      "400 Quebra-cabeças de Es": {
+        "tess": 0.41,
+        "oraculo": 2.04,
+        "perda_pp": -1.63
+      }
+    }
+  },
+  "ouro_limpo": {
+    "folhas": 28,
+    "livros": 7,
+    "glifo": {
+      "cer_prosa_antes": 1.21,
+      "cer_prosa_depois": 1.2,
+      "diferenca": {
+        "pp": -0.01,
+        "ic95_pp": [
+          -0.02,
+          0.0
+        ]
+      },
+      "folhas_melhores": 2,
+      "folhas_piores": 0,
+      "cer_notacao_antes": 8.62,
+      "cer_notacao_depois": 8.62
+    },
+    "tess": {
+      "cer_prosa_antes": 0.46,
+      "cer_prosa_depois": 0.46,
+      "diferenca": {
+        "pp": 0.0,
+        "ic95_pp": [
+          0.0,
+          0.0
+        ]
+      },
+      "folhas_melhores": 0,
+      "folhas_piores": 0,
+      "cer_notacao_antes": 17.83,
+      "cer_notacao_depois": 17.83
+    },
+    "fusao": {
+      "cer_prosa_antes": 0.47,
+      "cer_prosa_depois": 0.47,
+      "diferenca": {
+        "pp": 0.0,
+        "ic95_pp": [
+          0.0,
+          0.0
+        ]
+      },
+      "folhas_melhores": 0,
+      "folhas_piores": 0,
+      "cer_notacao_antes": 9.59,
+      "cer_notacao_depois": 9.59
+    },
+    "perda_de_leiaute_antes": {
+      "pp": 0.17,
+      "ic95_pp": [
+        -0.03,
+        0.48
+      ]
+    },
+    "perda_de_leiaute_depois": {
+      "pp": 0.17,
+      "ic95_pp": [
+        -0.03,
+        0.48
+      ]
+    },
+    "linhas_diferentes_em_28_folhas": {
+      "tess": 0,
+      "glifo": 2,
+      "quais": "duas, as duas melhores: uma maiúscula e um z"
+    }
+  },
+  "contagem_de_caixas_soltas": {
+    "limpas": {
+      "folhas": 210,
+      "livros": 7,
+      "dpi": 150,
+      "histograma": {
+        "0": 184,
+        "1": 20,
+        "2": 5,
+        "3": 1
+      }
+    },
+    "medio": {
+      "folhas": 28,
+      "minimo_sem_capablanca_340": 18,
+      "maximo": 136
+    },
+    "corte": 6
+  },
+  "suspeitos": {
+    "binarizacao": {
+      "o_que": "limiar no meio entre papel e tinta, contra o Otsu que sobe a 205",
+      "sobre_a_poeira_em_27_folhas": {
+        "tess_cer_prosa": 3.01,
+        "glifo_cer_prosa": 53.42,
+        "glifo_insercoes": 7532
+      },
+      "contra": "tess 3,32%, glifo 51,96% e 1.150 inserções em 28 folhas",
+      "decisao": "medido, não entra: não é a causa da perda, e parte as letras do glifo"
+    },
+    "poeira": "a causa",
+    "linhas_que_tocam": {
+      "linhas_acima_de_1_8_mediana_em_28_folhas": {
+        "desligada": 14,
+        "ligada": 3,
+        "linhas": 898
+      },
+      "decisao": "não é a causa: 11 das 14 eram poeira"
+    }
+  },
+  "scripts": "reproduzir com `rodar.py --degradar medio --sem-rapid`, livro a livro; `poeira.TIRAR_POEIRA=False` é o antes"
+}

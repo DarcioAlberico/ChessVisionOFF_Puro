@@ -656,6 +656,71 @@ No dev, o custo mora num livro: o *Hertan*, +0,63 p.p. [0; +1,59]; os outros qua
 
 **Critério de aceite.** `test_perda_de_leiaute_por_livro_com_ic_e_tess_pagina`, e o relatório versionado traz os cinco livros do dev (`RelatorioPublicadoTests`).
 
+## S-714 · A poeira que estica a linha ✅ implementada (2026-11-06)
+
+### Problema
+
+No perfil médio de hoje, com S-711 e S-712 dentro, a perda de leiaute é +6,52 p.p. [+1,35; +12,65] nas 28 folhas do ouro-dev, e
++10,17 nos cinco livros em que o oráculo presta. O roadmap supunha, em ordem, binarização, poeira e linhas que tocam. **É a poeira.**
+Uma mancha na margem tem o tamanho de um ponto final, passa pela régua de área, entra na linha, e `envolve` leva a caixa até ela. A
+caixa de `Apesar das pretas`, no *Seirawan* 58, ia da margem à margem e invadia a linha de cima; com 62 px de altura, onde a linha
+tem 38, o Tesseract em `psm 7` devolve vazio.
+
+### Solução
+
+`text/poeira.py`, com a reversão em `TIRAR_POEIRA`. Duas réguas, porque são duas manchas:
+
+- **`sem_poeira`, a mancha solta**, antes de `unir_pingos`: caixa pequena (maior lado abaixo de 0,5 altura mediana) a mais de uma
+  altura mediana de qualquer letra e de qualquer outra caixa pequena. Só vale com **6 ou mais** na folha (`POEIRA_MINIMA_NA_FOLHA`). Em
+  210 folhas limpas dos sete livros há de 0 a 3, 184 delas com 0; no perfil médio, de 18 a 136. **A outra caixa pequena conta** porque as
+  reticências espaçadas de `9 . . . Cxe4`, no *Capablanca* limpo, eram os únicos pontos que uma folha limpa tinha a perder.
+- **`aparar`, a mancha entre duas linhas**, na linha já formada: ela não está solta, e é a que mais custa. Sai a caixa pequena com o
+  centro a mais de 0,35 mediana do miolo (a mediana dos topos e dos fundos das letras), e a caixa pequena na ponta a mais de 1,5 mediana
+  da vizinha. A que `unir_pingos` já colou numa letra sai cortando a letra no que uma letra alcança: 0,9 mediana acima do topo do
+  miolo (a maiúscula acentuada) e 0,5 abaixo do fundo (o descendente). Passou disso em mais de uma mediana, a caixa não é letra com
+  mancha, e fica para a S-198 e a S-712. Vem depois de `partir_linhas_altas`: antes dela, a linha pode ter outra linha dentro.
+
+Em `leitor.py`, duas chamadas e um `import`.
+
+### Critério de aceite
+
+`tests/test_text_poeira.py`, com caixas desenhadas e a fiação pelo `segmentar`, e a constante desligada devolve exatamente as linhas de
+antes (conferido em duas folhas reais). Em [metrics/texto_prosa_s714.json](metrics/texto_prosa_s714.json), pareado contra o leiaute de
+hoje, Tesseract nas caixas do glifo, IC95 de dois níveis, tudo no **perfil médio sem calibração**:
+
+| | antes | depois |
+|---|---:|---:|
+| perda de leiaute, 28 folhas olhadas | +6,52 p.p. [+1,35; +12,65] | **−3,18 p.p. [−9,10; +1,51]** |
+| a mesma, sem os dois livros de oráculo ruim (20 folhas) | +10,17 p.p. [+4,07; +16,81] | **+0,85 p.p. [−1,35; +3,10]** |
+| perda de leiaute, 21 folhas **não vistas** | +10,54 p.p. [+0,92; +21,90] | **−0,06 p.p. [−4,49; +3,89]** |
+| a mesma, sem os dois livros (15 folhas) | +11,40 p.p. [+3,26; +21,91] | **+2,46 p.p. [−0,24; +6,21]** |
+| CER de prosa, Tesseract, 28 olhadas | 13,02% | **3,32%** (−9,70 [−14,93; −5,15]; 27 melhores, 1 pior) |
+| CER de prosa, Tesseract, 21 não vistas | 14,27% | **3,67%** (nenhuma pior) |
+| CER de prosa, fusão, 28 olhadas | 16,15% | 6,72% |
+| CER de prosa, glifo, 28 olhadas | 53,35% | 51,96% |
+| **ouro limpo**, 28 folhas: glifo / Tesseract / fusão | 1,21 / 0,46 / 0,47% | **1,20 / 0,46 / 0,47%** |
+
+No ouro limpo o Tesseract lê todas as linhas iguais, e o glifo muda duas, as duas para melhor (`Perdidas".` e `Marocey`).
+
+**A saída cumpre-se com ressalva, e a ressalva é o oráculo.** A *Saída* pede ≤ 2 p.p.: nas folhas olhadas sim, com qualquer recorte; nas não
+vistas, sim com os sete livros, e fica em +2,46 sem os dois. O número negativo com os sete é o oráculo errando mais que as caixas do
+glifo (26,0% no *Capablanca*, 6,4% no *Chess Evolution*), e não mérito delas. Por isso a linha de cinco livros é a que importa, e o
+limite superior do IC dela, +3,10 e +6,21, não cabe em 2. Pior livro: *Seirawan*, +3,41 nas olhadas e +5,48 nas não vistas.
+
+**Os outros dois suspeitos, medidos.** Binarização: o Otsu sobe mesmo, de ~140 a ~205 no perfil médio, e a tinta dobra. Trocá-lo pelo
+meio entre papel e tinta, sobre a poeira, leva o Tesseract a 3,01% (27 folhas), o *Seirawan* a 0,39%, e o glifo a 7.532 inserções contra
+1.150: parte as letras dele. **Medido, não entra**; o Otsu alto fica como está. Linhas que tocam: 14 linhas acima de 1,8 mediana em 898,
+3 depois do filtro. Não são a causa.
+
+### O que ela não entrega
+
+- **O perfil calibrado não existe**: depende da S-703, que é humana. O perfil médio é sintético, e a mancha dele é um ponto escuro de
+  um pixel a meia resolução. Em scan de verdade a poeira tem outra forma, e o corte de 6 caixas soltas não foi visto em scan nenhum.
+- **O glifo continua em ~52%** no perfil médio: o conserto é da caixa, e o glifo erra por dentro dela.
+- **Há linhas inteiras que o `psm 7` ainda devolve vazias** com a caixa certa ou quase: é onde mora o que resta no *Seirawan* e no *Minhas 60* 217.
+- **A mancha sobre uma letra é acento**, e fica: a régua não a distingue, e a caixa só cresce até o corte acima.
+- A mancha entre as palavras de uma linha também fica: não muda a caixa, e é indistinguível de um ponto.
+
 ## S-715 · O leiaute de reserva ✅ implementada (2026-11-05)
 
 ### Problema
@@ -1212,3 +1277,93 @@ traço-ponto de volta. Aí a reabertura é outra ADR, e começa pela procedênci
 
 As regras de geometria continuam morando fora da rede, cada uma com a sua constante e o seu teste. A primeira leitura delas num livro novo é o
 G103. Se a base for um dia recortada de novo, as classes mais vazias que esta fase registrou (seção da S-735) são a primeira coisa a pedir.
+
+## S-744 · O texto espaçado volta a ser palavra ✅ implementada (2026-11-06)
+
+### Problema
+
+O *Gutmayer* enfatiza espaçando as letras, e o vão passa do `linhas.VAO_DE_ESPACO`. **Quem sofre é o glifo, e não o Tesseract**: nas folhas
+medidas o Tesseract lê a palavra inteira, e o glifo, que é o padrão, sai `k o m b i n i e r t e`, `F i gu re n`. O roadmap citava `f a t a l e n`, mas
+a forma flexionada `fatalen` não está na lista alemã: fica como está, porque o critério é o léxico.
+
+### Solução
+
+`text/espacado.py`, com a reversão em `JUNTAR_ESPACADO`, chamado por `leitor._sem_espacado` depois dos dois motores (glifo e fusão), com
+`dicionario` ligado. A camada não passa por ali: é a referência. A língua é a do livro (S-723), com `lexico.da_lingua` e `do_livro` (S-728) e as
+curtas da língua; sem lista, nada acontece.
+
+Corrida é a sequência de ao menos 3 tokens de uma ou duas letras, com metade de uma letra só. A maiúscula abre trecho, salvo na corrida toda em
+maiúsculas. Cada trecho vira **uma** palavra, ou **várias** se há uma única cobertura inteira de menos pedaços (`d e r B a u e r` → `der Bauer`), ou fica
+como estava. O nome da lista do livro só vale com maiúscula e trecho todo de uma letra. Só tira espaço: a contagem de `confiancas` sobrevive, e
+`revisar_em` é remapeado.
+
+**A primeira versão reconhecia a palavra no meio da corrida, e foi recusada pela auditoria**: `d e sHan d e`, `a. nOhn`, `gein e s`. Sobre o glifo a
+corrida vem com erro, e 396 mil palavras e nomes acham alguma coisa em quase toda sequência. Agora, sobrou letra, o trecho fica.
+
+### Critério de aceite
+
+`tests/test_text_espacado.py`, sintético e sem livro, com a decisão inteira, e a fiação por `_sem_espacado`. Nas folhas do *Gutmayer*, motor `glifo`,
+língua `deu`, contando as corridas de ao menos 3 letras soltas cuja junção a lista conhece:
+
+| | antes | depois |
+|---|---:|---:|
+| 12 folhas olhadas para escrever a régua | 14 | 2 |
+| 10 folhas **não vistas** | 7 | 3 |
+| junções de palavras distintas, à vista, nas 22 folhas (50 junções) | | **0** |
+| linhas mudadas no ouro-dev, limpo (882) e no perfil médio (898), com `eng` e `por` | | **0** |
+
+**A saída não se cumpre inteira.** Zero palavra distinta juntada, sim. Zero palavra conhecida espaçada, não: sobram 5, porque a corrida tem letra a mais ou é pedaço de
+palavra maior (`F i g u`), e é a regra acima, que escolheu não juntar na dúvida.
+
+**Em cerca de um terço das junções (16 de 50) sai só um pedaço**, e não a palavra: `rung`, `mann`, `Laske`, porque o resto dela veio com erro (`S p i e1 m a n n` → `S p i e1 mann`). As letras
+são as mesmas e nenhuma palavra de fora entra, mas o pedaço existe na lista por acaso.
+
+### O que ela não entrega
+
+- **Palavra com letra errada** fica: `1 e b e n d i g`. O léxico não a conhece, e aproximar é a decisão recusada da S-209.
+- **Duas letras** (`z u`, `i n`) ficam: `a o` e `e a` são prosa. `der`, `und` e as outras curtas da língua entram.
+- **Forma flexionada fora da lista** fica: `f a t a l e n`. A lista alemã tem 52.854 palavras, e o caderno do livro (`lexico.txt`) ainda não é consultado aqui.
+- O **Tesseract** não muda, porque já lia a palavra inteira: aqui a régua quase não dispara. A camada de terceiro do *Gutmayer*, com 737 corridas, continua como é.
+
+## S-762 · A correção humana volta como dado, sem contaminar nada ✅ implementada (2026-11-06)
+
+### Problema
+
+`correcao.com_procedencia_humana` carimba o **bloco inteiro** como `humano` quando se edita um caractere, inclusive as palavras erradas que ninguém
+conferiu. O carimbo serve à tela, que deixa de pintar o que a pessoa conferiu. Como dado, ele é falso nas duas direções: para a medição diz verdade onde há leitura de motor
+por trás, o que a S-703 proíbe; para o treino, não diz qual palavra a mão tocou nem que modelo errou. E `coleta.promover` gravava `humano` em tudo o que passasse pela quarentena.
+
+### Solução
+
+`text/dado_corrigido.py`. **O carimbo fica como está, e nenhum caminho de dado o lê.** Duas portas:
+
+- **A medição, fechada.** Procedência `corrigido_de:<motor>@<sha do modelo>`, em `text/procedencia.py`: `Registro.mede` é falso, `classe` a traduz para `modelo` em toda conta
+  e regra de split (`dataset.procedencia_de`), e `violacoes_do_split` a reprova no teste. Duas guardas para quem vier: `procedencia.exigir_verdade(valor, onde=)` e
+  `dado_corrigido.exigir_documento_cego(doc, onde=)`, que recusa o `.cvtxt` com leitura de motor por trás, corrigido ou não. **A tela da S-703 tem de chamar as duas**: o
+  scan-ouro ainda não tem código, e a guarda espera por ele.
+- **O treino, pela quarentena da S-214.** `pares_tocados` alinha **por palavra** o que o motor leu e o que ficou: só a troca de uma por uma, só de motor de leitura (`camada` não
+  errou). `recortes_do_par` recorta só as letras que mudaram, só no par de mesmo tamanho, e só quando as caixas da linha casam uma a uma com as letras dela; senão, `sem_recorte`,
+  e não se adivinha. `coleta.Recorte` leva a procedência, e `corrigidos.csv`, na raiz da quarentena, guarda o par; `promover` grava o `corrigido_de:` no lugar de `humano`.
+  **O livro do teste nunca entra**, nem o que o manifesto tira do treino, nem livro sem identidade (`livro_recusado`), e a recusa vem antes de qualquer leitura de imagem.
+
+**O sha.** `PaginaLida.modelo` é campo novo com padrão, sai do metadado que `carregar_classificador` já conferiu, e vai ao JSON só quando existe. **Não sobe `ESQUEMA` nem `arquivo.VERSAO`**,
+e um programa anterior o ignora. `.cvtxt` de antes sai `@desconhecido`. **Não há valor novo no `Literal` de `Procedencia`**: a corrida continua `humano`, e `corrigido_de:` só existe em
+registro e quarentena. A S-722, que vem depois em `pagina.py`, não colide além desse campo.
+
+**Quem chama é uma pessoa**: `cvoff-texto-correcoes <pasta ou .cvtxt> --quarentena <pasta>`, que aceita a pasta do caderno. Gravar da janela a cada folha não entrou: a pasta padrão
+fica dentro do programa, e levar à quarentena é decisão de quem está treinando.
+
+### Critério de aceite
+
+`tests/test_text_dado_corrigido.py`: só a palavra tocada vira par (com `wiil` errado e carimbado ao lado), `corrigido_de:` reprovado no split, na porta e no `.cvtxt`, livro do teste fora sem
+abrir imagem, a conta de caixas que não fecha não adivinha, `promover` não lava a origem, ida e volta do `modelo` com o esquema em 1, e o comando do `.cvtxt` à quarentena.
+
+Em folhas reais do dev, com uma letra trocada por bloco em 7 folhas de 3 livros, e o classificador como juiz de que o recorte é a letra certa: **85 pares, 70 com recorte, 69 dos 70 lidos
+como a letra que o motor tinha lido ali**, e os 15 sem recorte são a conta que não fechou (8 deles numa folha do *Minhas 60*). Procedência gravada com o sha do `.pt` em uso.
+
+### O que ela não entrega
+
+- **A correção não treina nada**: fica na quarentena até uma pessoa mover a pasta, e nenhum treino foi rodado com ela.
+- **Na fusão, o motor sai `glifo`** mesmo onde o Tesseract escreveu a palavra: a procedência por palavra é a S-722, e o sha é o do classificador.
+- **Par de tamanho diferente** (`fi1rst` → `first`) conta e não vira recorte. O leitor de linha da Fase 105 é quem vai querer ele, com outro recorte.
+- A correção não entra nas folhas seguintes: é a S-766.
