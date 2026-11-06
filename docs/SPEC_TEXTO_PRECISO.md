@@ -29,7 +29,7 @@ diagnóstico, as metas com os portões, as decisões do dono e a ordem dos itens
 > | S-581 a S-584 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
-> | S-702, S-710, S-711, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
+> | S-702, S-710 a S-712, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
 
 Cada item traz o problema (com número quando há), a decisão, onde mora, e o **critério de aceite**,
 escrito para virar teste. A spec nasce com o primeiro item entregue, e os outros entram aqui quando
@@ -360,7 +360,7 @@ sem aviso, e é por isso que quase nada chega mais à reserva da S-715.
 
 - **Tesseract nas linhas do glifo a até 1 p.p. do oráculo: não cumprido.** Em 24 folhas de prosa dos dois *Chess Evolution*,
   5,28% contra 0,99%, diferença de +4,29 p.p. [+1,39; +8,76] (`portao_da_s711` no relatório). A folha agora lê, e o que falta
-  é leiaute: a linha intercalada, da S-712.
+  é leiaute: a linha intercalada, da S-712, **que depois o cumpriu**: +0,39 p.p. nessas folhas, e +0,56 em 40 não vistas.
 - **Varredura do acervo inteiro: não feita.** O que há é a amostra de 14 folhas por livro. O censo do crítico, só da moldura,
   viu 2.468 de 26.730 folhas com o componente, em PDF a 220 dpi.
 - **"Nenhuma folha do ouro-dev muda de texto": superado.** As folhas 903 e 1210 mudam, porque eram as perdidas. As outras
@@ -373,13 +373,79 @@ perdida escondia:** o *Chess Evolution 2014* perde 85 de 106 itálicos. Fica par
 
 ### O que ela não entrega
 
-O texto claro de dentro da faixa, que é o título corrente do fascículo e está na camada. A linha intercalada, que ainda pesa
-no *Chess Evolution* e é a S-712.
+O texto claro de dentro da faixa, que é o título corrente do fascículo e está na camada: cerca de 30 caracteres por folha, que a
+referência tem e o glifo não. A linha intercalada foi a S-712.
 
 ### O que ela não pega
 
 **Perda parcial em folha cujo texto ruim tem tanta letra quanto o bom**: a densidade não vê, e os dois sinais de
 `leitura_parcial` só veem quando faltam linhas ou caracteres em quantidade. A promessa é a perda total.
+
+## S-712 · A caixa que não é letra ✅ implementada (2026-11-06)
+
+### Problema
+
+O roadmap supunha duas linhas encostadas que viram uma caixa. **Medido, não é isso.** A "linha" das folhas 278 e 577 do *Chess
+Evolution 2013* é `(0, 0, 466, 595)`: a folha de alto a baixo. A faixa azul lateral, solta, chega à lista como uma caixa de
+caractere de `(0, 0, 377, 1819)`. `linhas.bandas` ordena por `y1`, ela entra primeiro e abre uma banda com o fundo no pé da folha,
+e as letras das primeiras linhas da coluna entram nessa banda, ordenadas por `x`: `k15n.ig..♘ht/da4.!th1o6u`. O recorte do leitor de
+linha é o retângulo disso, e o Tesseract também erra. É a mesma faixa da S-711, onde o filete a ligava à borda.
+
+**O caso não era só do *Chess Evolution*.** Num *Aagaard* a borda do scan fazia o mesmo: 75 linhas onde a coluna tem 34.
+
+### Solução
+
+Três mudanças, cada uma com a sua reversão:
+
+- **`text/gigantes.py`** (`TIRAR_GIGANTES`): tira da lista, depois de `quadros.molduras_nas_caixas` e antes das regiões, a caixa acima
+  de 8 escalas, e a "mancha" de ao menos 3 escalas nos dois lados e 80% de tinta, que é a foto. **É o conserto.** Sai da lista, e não
+  da binária: da binária, o miolo das letras brancas da faixa viraria sinal.
+- **`moldura._miolo_da_faixa`** (sai com `TIRAR_MOLDURA`): quando a faixa sai como moldura, o miolo das letras brancas sobra como tinta
+  solta, e era uma coluna a mais de lixo (`a i ws dof May 2014 1 ...`). Só a parte grossa da moldura é preenchida: nem o filete nem o
+  anel que dá a volta na folha cercam nada que deva sair.
+- **`duas_linhas.partir_linhas_altas`** (`PARTIR_LINHA_ALTA`): é a *Entrega* do roadmap. Acima de 1,8 mediana da tira, corta onde a
+  contagem de caixas por fileira cai a um quarto da fileira mais cheia. **Paga pouco:** no ouro-dev e no *Chess Evolution* não muda
+  nenhum texto, e na prata o Tesseract vai de 13,30% a 13,17%, com 4 folhas melhores e 1 pior.
+
+### Critério de aceite
+
+`tests/test_text_linha_intercalada.py` e `tests/test_text_moldura.py`, com folhas desenhadas: a faixa sozinha, o fio, o quadro aberto,
+a capitular, a foto, o anel grosso, e o caso que **tem de reproduzir** o defeito com a constante desligada. Em
+[metrics/texto_prosa_s712.json](metrics/texto_prosa_s712.json), de `6c1b0ade` para `fa537741`:
+
+| | antes | depois |
+|---|---:|---:|
+| perda de leiaute, 40 folhas **não vistas** dos dois *Chess Evolution* | +3,83 p.p. [+1,78; +6,88] | **+0,56 p.p. [+0,33; +0,86]** |
+| perda de leiaute, as 24 folhas olhadas para achar o conserto | +4,29 p.p. [+1,39; +8,76] | +0,39 p.p. [+0,19; +0,67] |
+| Tesseract nas linhas do glifo, 40 não vistas | 5,14% | 1,88% |
+| linhas acima de 1,8 mediana no ouro-dev | não medido | **0 de 891** |
+| linhas acima de 1,8 mediana em 808 folhas do acervo | 1.868 (4,4%) | 1.266 (3,0%) |
+| CER de prosa, ouro-dev: glifo / camada na prosa / fusão / Tesseract | 3,78 / 1,04 / 1,31 / 1,40% | **2,84 / 0,31 / 0,47 / 0,46%** |
+| CER de prosa, prata: glifo / fusão / Tesseract | 24,6 / 15,0 / 14,4% | 23,2 / 14,1 / 13,2% |
+
+Nas 40 não vistas, o Tesseract melhora em 33 folhas, fica igual em 6 e piora em 1; o glifo melhora em 35 e não piora em nenhuma. No
+ouro-dev, 24 das 28 folhas saem com o mesmo texto, e nenhuma piora: **os 5 livros aprovados na auditoria dão exatamente o mesmo número**
+(0,221% na camada, 2,83% no glifo), porque o ganho é todo das quatro folhas do *Chess Evolution*, que é um dos dois reprovados. O
+oráculo não muda: o que caiu foi a perda de leiaute. O glifo fica em 5,11% nas não vistas e é ainda o padrão.
+
+**O que saiu.** Ligando e desligando no mesmo processo, em 808 folhas: 837 caixas a menos, de 177 folhas, e cada uma era lida como um
+caractere só. Vi as folhas de onde saíram mais: capa, contracapa, código de barras, e o miolo da faixa. 44 tocam texto da camada: 24 são
+os dígitos do código de barras de uma contracapa, 7 são o título da faixa do *Chess Evolution*, e o resto é capa, camada de OCR de
+terceiro, e duas ou três caixas que só cruzam uma linha.
+
+**A guarda continua inteira.** Folhas perdidas nas 120 de cada *Chess Evolution*: 0. Na varredura, avisadas sobem de 10 a 12, as duas a
+mais em contracapa (*Silman* 387, sobre fundo vermelho, e *Boleslavsky* 257): com menos sinal solto lido, elas ficam logo abaixo do corte
+de 0,5, e o aviso é verdadeiro. `metrics/texto_estilo_por_motor.json` foi remedido: negrito 7,3%, itálico 32,3%, praticamente igual.
+
+### O que ela não entrega
+
+- **O acervo inteiro não fica sem linha alta.** Sobram 1.266 de 42.495, 450 delas em primeira folha de livro. O resto é título grande,
+  tabuleiro que o detector não viu, tarja e scan ruim. O limite de 1,8 mediana é sinal, e não defeito.
+- **O pedaço da vizinha não volta para a linha dele:** a partição o deixa como linha à parte, ou o descarta como fragmento.
+- **O rodapé que atravessa a calha** (`www.chess-n` + `ewsletter.com`, em quase toda folha do *Chess Evolution 2014*) continua partido entre
+  as duas colunas. Ele é parte do que sobra da perda de leiaute, e é da detecção de região.
+- **Na prata, duas folhas pioram na fusão:** *Kmoch* 30 e 105. A camada do *Kmoch* é desalinhada da tinta, e a régua ali é fraca.
+- **A faixa entre 3 e 8 escalas não foi examinada caixa a caixa**: título e capitular ficam, e uma foto com menos de 80% de tinta também.
 
 ## S-715 · O leiaute de reserva ✅ implementada (2026-11-05)
 

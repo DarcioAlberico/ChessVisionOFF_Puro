@@ -1,0 +1,1254 @@
+{
+  "amostra_chess_evolution": {
+    "Chess Evolution 2013": {
+      "folha_nao_lida": 0,
+      "folhas": 120
+    },
+    "Chess Evolution 2014": {
+      "folha_nao_lida": 0,
+      "folhas": 120
+    }
+  },
+  "auditoria_das_caixas": {
+    "caixas_a_menos": 837,
+    "folhas_com_caixa_a_menos": 177,
+    "folhas_no_censo": 808,
+    "nota": "gigantes e miolo da faixa ligados contra desligados; 24 das que tocam são os dígitos do código de barras de uma contracapa",
+    "que_tocam_texto_da_camada": 44
+  },
+  "censo_de_linhas_altas": {
+    "antes": {
+      "altas": 1868,
+      "altas_na_primeira_folha_do_livro": 512,
+      "folhas": 809,
+      "fracao": 0.0441,
+      "linhas": 42347,
+      "livros": 58
+    },
+    "depois": {
+      "altas": 1266,
+      "altas_na_primeira_folha_do_livro": 450,
+      "folhas": 808,
+      "fracao": 0.0298,
+      "linhas": 42495,
+      "livros": 58
+    },
+    "ouro_dev_depois": {
+      "altas": 0,
+      "linhas": 891
+    },
+    "ouro_dev_so_gigantes": {
+      "altas": 0,
+      "linhas": 891
+    },
+    "so_gigantes": {
+      "altas": 1464,
+      "altas_na_primeira_folha_do_livro": 410,
+      "folhas": 808,
+      "fracao": 0.0351,
+      "linhas": 41730,
+      "livros": 58
+    }
+  },
+  "commit_de_antes": "6c1b0ade",
+  "conjuntos": {
+    "ouro_dev_completo": {
+      "antes": {
+        "avisos": {},
+        "executor": {
+          "diferentes_do_processo_por_linha": 0,
+          "linhas": 895
+        },
+        "figurina": {
+          "camada_prosa": {
+            "precisao": 0.8821,
+            "revocacao": 0.8171
+          },
+          "fusao": {
+            "precisao": 0.8813,
+            "revocacao": 0.8105
+          },
+          "glifo": {
+            "precisao": 0.8862,
+            "revocacao": 0.8303
+          }
+        },
+        "folhas": 28,
+        "g5_provisoria_fusao": {
+          "captura": 0.497,
+          "fracao_marcada": 0.0481,
+          "palavras_erradas": 165
+        },
+        "livros": 7,
+        "notacao": {
+          "camada_prosa": {
+            "cer": 0.11264,
+            "ic95": [
+              0.0565,
+              0.16236
+            ]
+          },
+          "fusao": {
+            "cer": 0.12254,
+            "ic95": [
+              0.06184,
+              0.17272
+            ]
+          },
+          "glifo": {
+            "cer": 0.11142,
+            "ic95": [
+              0.06117,
+              0.15983
+            ]
+          },
+          "tess": {
+            "cer": 0.19937,
+            "ic95": [
+              0.12467,
+              0.2534
+            ]
+          }
+        },
+        "pares": {
+          "camada_prosa-glifo_notacao": {
+            "delta_pp": 0.122,
+            "ic95_pp": [
+              -0.966,
+              1.148
+            ]
+          },
+          "fusao-glifo_notacao": {
+            "delta_pp": 1.112,
+            "ic95_pp": [
+              -1.101,
+              3.029
+            ]
+          },
+          "fusao-tess_prosa": {
+            "delta_pp": -0.099,
+            "ic95_pp": [
+              -0.551,
+              0.109
+            ]
+          }
+        },
+        "preservacao_de_figurina": {
+          "camada_prosa": 0.9901,
+          "fusao": 0.9852
+        },
+        "prosa": {
+          "camada_prosa": {
+            "cer": 0.01037,
+            "ic95": [
+              0.00021,
+              0.03143
+            ]
+          },
+          "fusao": {
+            "cer": 0.01305,
+            "ic95": [
+              0.00098,
+              0.03495
+            ]
+          },
+          "glifo": {
+            "cer": 0.03777,
+            "ic95": [
+              0.01291,
+              0.06757
+            ]
+          },
+          "tess": {
+            "cer": 0.01404,
+            "ic95": [
+              0.00061,
+              0.03872
+            ]
+          }
+        },
+        "segundos_por_folha": {
+          "camada_prosa": 0.975,
+          "fusao": 1.736,
+          "glifo": 0.916,
+          "tess_por_folha": 0.747,
+          "tess_por_processo": 3.59
+        },
+        "segundos_por_folha_p95": {
+          "camada_prosa": 2.041,
+          "fusao": 3.115,
+          "glifo": 1.938,
+          "tess_por_folha": 1.166,
+          "tess_por_processo": 5.675
+        },
+        "wer": {
+          "camada_prosa": 0.01523,
+          "fusao": 0.02833,
+          "glifo": 0.12856,
+          "tess": 0.02745
+        }
+      },
+      "depois": {
+        "avisos": {},
+        "executor": {
+          "diferentes_do_processo_por_linha": 0,
+          "linhas": 882
+        },
+        "figurina": {
+          "camada_prosa": {
+            "precisao": 0.8846,
+            "revocacao": 0.8368
+          },
+          "fusao": {
+            "precisao": 0.8861,
+            "revocacao": 0.8289
+          },
+          "glifo": {
+            "precisao": 0.8895,
+            "revocacao": 0.8474
+          }
+        },
+        "folhas": 28,
+        "g5_provisoria_fusao": {
+          "captura": 0.5039,
+          "fracao_marcada": 0.0481,
+          "palavras_erradas": 127
+        },
+        "livros": 7,
+        "notacao": {
+          "camada_prosa": {
+            "cer": 0.08656,
+            "ic95": [
+              0.04557,
+              0.15054
+            ]
+          },
+          "fusao": {
+            "cer": 0.09751,
+            "ic95": [
+              0.05321,
+              0.15428
+            ]
+          },
+          "glifo": {
+            "cer": 0.08917,
+            "ic95": [
+              0.04792,
+              0.15362
+            ]
+          },
+          "tess": {
+            "cer": 0.17834,
+            "ic95": [
+              0.12009,
+              0.21748
+            ]
+          }
+        },
+        "pares": {
+          "camada_prosa-glifo_notacao": {
+            "delta_pp": -0.261,
+            "ic95_pp": [
+              -0.966,
+              0.219
+            ]
+          },
+          "fusao-glifo_notacao": {
+            "delta_pp": 0.834,
+            "ic95_pp": [
+              -1.101,
+              2.513
+            ]
+          },
+          "fusao-tess_prosa": {
+            "delta_pp": 0.012,
+            "ic95_pp": [
+              -0.113,
+              0.108
+            ]
+          }
+        },
+        "preservacao_de_figurina": {
+          "camada_prosa": 0.9935,
+          "fusao": 0.9853
+        },
+        "prosa": {
+          "camada_prosa": {
+            "cer": 0.00312,
+            "ic95": [
+              0.00021,
+              0.00702
+            ]
+          },
+          "fusao": {
+            "cer": 0.00469,
+            "ic95": [
+              0.00098,
+              0.00944
+            ]
+          },
+          "glifo": {
+            "cer": 0.02842,
+            "ic95": [
+              0.01289,
+              0.04433
+            ]
+          },
+          "tess": {
+            "cer": 0.00457,
+            "ic95": [
+              0.00061,
+              0.00989
+            ]
+          }
+        },
+        "segundos_por_folha": {
+          "camada_prosa": 0.995,
+          "fusao": 1.719,
+          "glifo": 0.923,
+          "tess_por_folha": 0.738,
+          "tess_por_processo": 3.577
+        },
+        "segundos_por_folha_p95": {
+          "camada_prosa": 2.034,
+          "fusao": 3.02,
+          "glifo": 1.943,
+          "tess_por_folha": 1.01,
+          "tess_por_processo": 5.33
+        },
+        "wer": {
+          "camada_prosa": 0.00779,
+          "fusao": 0.01594,
+          "glifo": 0.11971,
+          "tess": 0.01488
+        }
+      }
+    },
+    "ouro_dev_completo_aprovados_na_auditoria": {
+      "antes": {
+        "avisos": {},
+        "executor": {
+          "diferentes_do_processo_por_linha": 0,
+          "linhas": 578
+        },
+        "figurina": {
+          "camada_prosa": {
+            "precisao": 0.7995,
+            "revocacao": 0.7862
+          },
+          "fusao": {
+            "precisao": 0.8029,
+            "revocacao": 0.7838
+          },
+          "glifo": {
+            "precisao": 0.8072,
+            "revocacao": 0.7957
+          }
+        },
+        "folhas": 20,
+        "g5_provisoria_fusao": {
+          "captura": 0.42,
+          "fracao_marcada": 0.0477,
+          "palavras_erradas": 50
+        },
+        "livros": 5,
+        "notacao": {
+          "camada_prosa": {
+            "cer": 0.0768,
+            "ic95": [
+              0.03509,
+              0.15423
+            ]
+          },
+          "fusao": {
+            "cer": 0.08805,
+            "ic95": [
+              0.03543,
+              0.17902
+            ]
+          },
+          "glifo": {
+            "cer": 0.08474,
+            "ic95": [
+              0.04005,
+              0.166
+            ]
+          },
+          "tess": {
+            "cer": 0.15425,
+            "ic95": [
+              0.07241,
+              0.22093
+            ]
+          }
+        },
+        "pares": {
+          "camada_prosa-glifo_notacao": {
+            "delta_pp": -0.794,
+            "ic95_pp": [
+              -1.508,
+              -0.168
+            ]
+          },
+          "fusao-glifo_notacao": {
+            "delta_pp": 0.331,
+            "ic95_pp": [
+              -1.175,
+              2.412
+            ]
+          },
+          "fusao-tess_prosa": {
+            "delta_pp": 0.072,
+            "ic95_pp": [
+              0.0,
+              0.16
+            ]
+          }
+        },
+        "preservacao_de_figurina": {
+          "camada_prosa": 0.987,
+          "fusao": 0.974
+        },
+        "prosa": {
+          "camada_prosa": {
+            "cer": 0.00221,
+            "ic95": [
+              0.0,
+              0.0064
+            ]
+          },
+          "fusao": {
+            "cer": 0.00351,
+            "ic95": [
+              0.00077,
+              0.00876
+            ]
+          },
+          "glifo": {
+            "cer": 0.02827,
+            "ic95": [
+              0.00783,
+              0.05215
+            ]
+          },
+          "tess": {
+            "cer": 0.00279,
+            "ic95": [
+              0.00049,
+              0.00769
+            ]
+          }
+        },
+        "segundos_por_folha": {
+          "camada_prosa": 0.765,
+          "fusao": 1.475,
+          "glifo": 0.721,
+          "tess_por_folha": 0.677,
+          "tess_por_processo": 3.213
+        },
+        "segundos_por_folha_p95": {
+          "camada_prosa": 1.075,
+          "fusao": 1.882,
+          "glifo": 1.053,
+          "tess_por_folha": 1.005,
+          "tess_por_processo": 5.478
+        },
+        "wer": {
+          "camada_prosa": 0.00417,
+          "fusao": 0.01058,
+          "glifo": 0.11021,
+          "tess": 0.00779
+        }
+      },
+      "depois": {
+        "avisos": {},
+        "executor": {
+          "diferentes_do_processo_por_linha": 0,
+          "linhas": 578
+        },
+        "figurina": {
+          "camada_prosa": {
+            "precisao": 0.7995,
+            "revocacao": 0.7862
+          },
+          "fusao": {
+            "precisao": 0.8029,
+            "revocacao": 0.7838
+          },
+          "glifo": {
+            "precisao": 0.8072,
+            "revocacao": 0.7957
+          }
+        },
+        "folhas": 20,
+        "g5_provisoria_fusao": {
+          "captura": 0.42,
+          "fracao_marcada": 0.0477,
+          "palavras_erradas": 50
+        },
+        "livros": 5,
+        "notacao": {
+          "camada_prosa": {
+            "cer": 0.0768,
+            "ic95": [
+              0.03509,
+              0.15423
+            ]
+          },
+          "fusao": {
+            "cer": 0.08805,
+            "ic95": [
+              0.03543,
+              0.17902
+            ]
+          },
+          "glifo": {
+            "cer": 0.08474,
+            "ic95": [
+              0.04005,
+              0.166
+            ]
+          },
+          "tess": {
+            "cer": 0.15425,
+            "ic95": [
+              0.07241,
+              0.22093
+            ]
+          }
+        },
+        "pares": {
+          "camada_prosa-glifo_notacao": {
+            "delta_pp": -0.794,
+            "ic95_pp": [
+              -1.508,
+              -0.168
+            ]
+          },
+          "fusao-glifo_notacao": {
+            "delta_pp": 0.331,
+            "ic95_pp": [
+              -1.175,
+              2.412
+            ]
+          },
+          "fusao-tess_prosa": {
+            "delta_pp": 0.072,
+            "ic95_pp": [
+              0.0,
+              0.16
+            ]
+          }
+        },
+        "preservacao_de_figurina": {
+          "camada_prosa": 0.987,
+          "fusao": 0.974
+        },
+        "prosa": {
+          "camada_prosa": {
+            "cer": 0.00221,
+            "ic95": [
+              0.0,
+              0.0064
+            ]
+          },
+          "fusao": {
+            "cer": 0.00351,
+            "ic95": [
+              0.00077,
+              0.00876
+            ]
+          },
+          "glifo": {
+            "cer": 0.02827,
+            "ic95": [
+              0.00783,
+              0.05215
+            ]
+          },
+          "tess": {
+            "cer": 0.00279,
+            "ic95": [
+              0.00049,
+              0.00769
+            ]
+          }
+        },
+        "segundos_por_folha": {
+          "camada_prosa": 0.797,
+          "fusao": 1.478,
+          "glifo": 0.739,
+          "tess_por_folha": 0.689,
+          "tess_por_processo": 3.287
+        },
+        "segundos_por_folha_p95": {
+          "camada_prosa": 1.21,
+          "fusao": 1.795,
+          "glifo": 1.093,
+          "tess_por_folha": 0.997,
+          "tess_por_processo": 5.805
+        },
+        "wer": {
+          "camada_prosa": 0.00417,
+          "fusao": 0.01058,
+          "glifo": 0.11021,
+          "tess": 0.00779
+        }
+      }
+    },
+    "prata_todas": {
+      "antes": {
+        "avisos": {
+          "camada_recusada": 30
+        },
+        "executor": {
+          "diferentes_do_processo_por_linha": 0,
+          "linhas": 2013
+        },
+        "figurina": {
+          "camada_prosa": {
+            "precisao": 0.7359,
+            "revocacao": 0.577
+          },
+          "fusao": {
+            "precisao": 0.7103,
+            "revocacao": 0.5858
+          },
+          "glifo": {
+            "precisao": 0.7359,
+            "revocacao": 0.577
+          }
+        },
+        "folhas": 30,
+        "g5_provisoria_fusao": {
+          "captura": 0.256,
+          "fracao_marcada": 0.0481,
+          "palavras_erradas": 953
+        },
+        "livros": 10,
+        "notacao": {
+          "camada_prosa": {
+            "cer": 0.35759,
+            "ic95": [
+              0.19696,
+              0.44775
+            ]
+          },
+          "fusao": {
+            "cer": 0.35959,
+            "ic95": [
+              0.19564,
+              0.47555
+            ]
+          },
+          "glifo": {
+            "cer": 0.35759,
+            "ic95": [
+              0.19696,
+              0.44775
+            ]
+          },
+          "tess": {
+            "cer": 0.26753,
+            "ic95": [
+              0.08873,
+              0.40667
+            ]
+          }
+        },
+        "pares": {
+          "camada_prosa-glifo_notacao": {
+            "delta_pp": 0.0,
+            "ic95_pp": [
+              0.0,
+              0.0
+            ]
+          },
+          "fusao-glifo_notacao": {
+            "delta_pp": 0.199,
+            "ic95_pp": [
+              -3.313,
+              3.766
+            ]
+          },
+          "fusao-tess_prosa": {
+            "delta_pp": 0.592,
+            "ic95_pp": [
+              -0.203,
+              1.801
+            ]
+          }
+        },
+        "preservacao_de_figurina": {
+          "camada_prosa": 1.0,
+          "fusao": 0.9379
+        },
+        "prosa": {
+          "camada_prosa": {
+            "cer": 0.24566,
+            "ic95": [
+              0.14099,
+              0.37335
+            ]
+          },
+          "fusao": {
+            "cer": 0.14958,
+            "ic95": [
+              0.08539,
+              0.22509
+            ]
+          },
+          "glifo": {
+            "cer": 0.24566,
+            "ic95": [
+              0.14099,
+              0.37335
+            ]
+          },
+          "tess": {
+            "cer": 0.14366,
+            "ic95": [
+              0.07951,
+              0.2191
+            ]
+          }
+        },
+        "segundos_por_folha": {
+          "camada_prosa": 1.663,
+          "fusao": 2.494,
+          "glifo": 1.545,
+          "tess_por_folha": 0.902,
+          "tess_por_processo": 6.955
+        },
+        "segundos_por_folha_p95": {
+          "camada_prosa": 3.405,
+          "fusao": 3.742,
+          "glifo": 2.82,
+          "tess_por_folha": 1.636,
+          "tess_por_processo": 11.784
+        },
+        "wer": {
+          "camada_prosa": 0.54428,
+          "fusao": 0.26654,
+          "glifo": 0.54428,
+          "tess": 0.25191
+        }
+      },
+      "depois": {
+        "avisos": {
+          "camada_recusada": 30
+        },
+        "executor": {
+          "diferentes_do_processo_por_linha": 0,
+          "linhas": 2001
+        },
+        "figurina": {
+          "camada_prosa": {
+            "precisao": 0.7506,
+            "revocacao": 0.6018
+          },
+          "fusao": {
+            "precisao": 0.7134,
+            "revocacao": 0.5947
+          },
+          "glifo": {
+            "precisao": 0.7506,
+            "revocacao": 0.6018
+          }
+        },
+        "folhas": 30,
+        "g5_provisoria_fusao": {
+          "captura": 0.2609,
+          "fracao_marcada": 0.0481,
+          "palavras_erradas": 943
+        },
+        "livros": 10,
+        "notacao": {
+          "camada_prosa": {
+            "cer": 0.34629,
+            "ic95": [
+              0.19696,
+              0.43443
+            ]
+          },
+          "fusao": {
+            "cer": 0.35776,
+            "ic95": [
+              0.19888,
+              0.47285
+            ]
+          },
+          "glifo": {
+            "cer": 0.34629,
+            "ic95": [
+              0.19696,
+              0.43443
+            ]
+          },
+          "tess": {
+            "cer": 0.26105,
+            "ic95": [
+              0.09594,
+              0.39935
+            ]
+          }
+        },
+        "pares": {
+          "camada_prosa-glifo_notacao": {
+            "delta_pp": 0.0,
+            "ic95_pp": [
+              0.0,
+              0.0
+            ]
+          },
+          "fusao-glifo_notacao": {
+            "delta_pp": 1.147,
+            "ic95_pp": [
+              -1.887,
+              5.173
+            ]
+          },
+          "fusao-tess_prosa": {
+            "delta_pp": 0.899,
+            "ic95_pp": [
+              0.012,
+              2.151
+            ]
+          }
+        },
+        "preservacao_de_figurina": {
+          "camada_prosa": 1.0,
+          "fusao": 0.9379
+        },
+        "prosa": {
+          "camada_prosa": {
+            "cer": 0.23214,
+            "ic95": [
+              0.13638,
+              0.34926
+            ]
+          },
+          "fusao": {
+            "cer": 0.14069,
+            "ic95": [
+              0.07994,
+              0.21327
+            ]
+          },
+          "glifo": {
+            "cer": 0.23214,
+            "ic95": [
+              0.13638,
+              0.34926
+            ]
+          },
+          "tess": {
+            "cer": 0.13171,
+            "ic95": [
+              0.07306,
+              0.20082
+            ]
+          }
+        },
+        "segundos_por_folha": {
+          "camada_prosa": 1.67,
+          "fusao": 2.507,
+          "glifo": 1.544,
+          "tess_por_folha": 0.89,
+          "tess_por_processo": 6.908
+        },
+        "segundos_por_folha_p95": {
+          "camada_prosa": 3.373,
+          "fusao": 3.724,
+          "glifo": 2.83,
+          "tess_por_folha": 1.475,
+          "tess_por_processo": 11.285
+        },
+        "wer": {
+          "camada_prosa": 0.53616,
+          "fusao": 0.25843,
+          "glifo": 0.53616,
+          "tess": 0.24157
+        }
+      }
+    }
+  },
+  "dpi": 220,
+  "estilo": {
+    "auto": {
+      "casados": 58097,
+      "folhas": 70,
+      "italico_a_mais": 834,
+      "italico_chegou": 483,
+      "italico_declarado": 713,
+      "negrito_a_mais": 36,
+      "negrito_chegou": 3601,
+      "negrito_declarado": 3886,
+      "perda": {
+        "italico": 0.3226,
+        "negrito": 0.0733
+      }
+    },
+    "glifo": {
+      "casados": 58097,
+      "folhas": 70,
+      "italico_a_mais": 834,
+      "italico_chegou": 483,
+      "italico_declarado": 713,
+      "negrito_a_mais": 36,
+      "negrito_chegou": 3601,
+      "negrito_declarado": 3886,
+      "perda": {
+        "italico": 0.3226,
+        "negrito": 0.0733
+      }
+    }
+  },
+  "folhas_perdidas": [
+    {
+      "avisos": [],
+      "cer_prosa_glifo": 0.0679,
+      "densidade": null,
+      "folha": 903,
+      "linhas": {
+        "camada": 41,
+        "lidas": 38
+      },
+      "livro": "📚Chess Evolu"
+    },
+    {
+      "avisos": [],
+      "cer_prosa_glifo": 0.0531,
+      "densidade": null,
+      "folha": 1210,
+      "linhas": {
+        "camada": 47,
+        "lidas": 46
+      },
+      "livro": "📚Chess Evolu"
+    },
+    {
+      "avisos": [],
+      "cer_prosa_glifo": 0.527,
+      "densidade": null,
+      "folha": 31,
+      "linhas": {
+        "camada": 72,
+        "lidas": 80
+      },
+      "livro": "Kmoch - Inte"
+    },
+    {
+      "avisos": [],
+      "cer_prosa_glifo": 0.7849,
+      "densidade": null,
+      "folha": 69,
+      "linhas": {
+        "camada": 75,
+        "lidas": 83
+      },
+      "livro": "Kmoch - Inte"
+    },
+    {
+      "avisos": [],
+      "cer_prosa_glifo": 0.5275,
+      "densidade": null,
+      "folha": 106,
+      "linhas": {
+        "camada": 70,
+        "lidas": 79
+      },
+      "livro": "Kmoch - Inte"
+    },
+    {
+      "avisos": [],
+      "cer_prosa_glifo": 0.1364,
+      "densidade": null,
+      "folha": 814,
+      "linhas": {
+        "camada": 4,
+        "lidas": 4
+      },
+      "livro": "📚Chess Evolu"
+    },
+    {
+      "avisos": [],
+      "cer_prosa_glifo": 0.1084,
+      "densidade": null,
+      "folha": 1396,
+      "linhas": {
+        "camada": 32,
+        "lidas": 31
+      },
+      "livro": "📚Chess Evolu"
+    }
+  ],
+  "item": "S-712",
+  "medido_com": {
+    "arvore_suja_em_src": true,
+    "commit": "fa537741",
+    "modelo_sha256": "ca4bcc00b9c59b07",
+    "nota": "tempos sob contenção: outras medições rodavam na máquina, e o G4 não se julga por eles",
+    "regua_sha256": "9857cbee6af253dc",
+    "tessdata_sha256": {
+      "deu": "19d219bbb6672c86",
+      "eng": "7d4322bd2a774972",
+      "fra": "ced037562e8c80c1",
+      "nld": "ced0e5e046a84c90",
+      "por": "c4932b937207a951",
+      "ron": "9adfde6b51ba4b97",
+      "rus": "e16e5e036cce1d9e",
+      "spa": "6f2e04d02774a18f"
+    },
+    "tesseract": "5.5.0.20241111"
+  },
+  "ouro_dev_folha_a_folha": {
+    "camada_prosa": {
+      "iguais": 25,
+      "melhoraram": 3,
+      "pioraram": 0
+    },
+    "glifo": {
+      "iguais": 25,
+      "melhoraram": 3,
+      "pioraram": 0
+    },
+    "texto_do_glifo": {
+      "folhas": 28,
+      "texto_igual": 24
+    }
+  },
+  "particao_sozinha_na_prata": {
+    "glifo": {
+      "iguais": 26,
+      "melhoraram": 3,
+      "pioraram": 1
+    },
+    "nota": "gigantes ligado nos dois lados; só a partição pela projeção muda",
+    "tess": {
+      "iguais": 25,
+      "melhoraram": 4,
+      "pioraram": 1
+    },
+    "tess_cer": {
+      "com": {
+        "cer": 0.13171,
+        "ic95": [
+          0.07306,
+          0.20082
+        ]
+      },
+      "sem": {
+        "cer": 0.13296,
+        "ic95": [
+          0.07391,
+          0.20184
+        ]
+      }
+    }
+  },
+  "portao_nas_folhas_nao_vistas": {
+    "antes": {
+      "diferenca": {
+        "delta_pp": 3.825,
+        "ic95_pp": [
+          1.778,
+          6.88
+        ]
+      },
+      "folhas": 40,
+      "livros": 2,
+      "medido_em": "6c1b0ade",
+      "nota": "rodar.py nas folhas de prosa dos dois Chess Evolution; a Saída da S-711 pedia Tesseract nas linhas do glifo a até 1 p.p. do oráculo",
+      "tess_nas_linhas_do_glifo": {
+        "cer": 0.0514,
+        "ic95": [
+          0.03064,
+          0.08156
+        ]
+      },
+      "tess_oraculo": {
+        "cer": 0.01315,
+        "ic95": [
+          0.01092,
+          0.01547
+        ]
+      }
+    },
+    "depois": {
+      "diferenca": {
+        "delta_pp": 0.563,
+        "ic95_pp": [
+          0.328,
+          0.856
+        ]
+      },
+      "folhas": 40,
+      "livros": 2,
+      "medido_em": "fa537741",
+      "nota": "rodar.py nas folhas de prosa dos dois Chess Evolution; a Saída da S-711 pedia Tesseract nas linhas do glifo a até 1 p.p. do oráculo",
+      "tess_nas_linhas_do_glifo": {
+        "cer": 0.01878,
+        "ic95": [
+          0.01615,
+          0.0217
+        ]
+      },
+      "tess_oraculo": {
+        "cer": 0.01315,
+        "ic95": [
+          0.01092,
+          0.01547
+        ]
+      }
+    },
+    "glifo_folha_a_folha": {
+      "iguais": 5,
+      "melhoraram": 35,
+      "pioraram": 0
+    },
+    "nota": "40 folhas de prosa, 20 por livro, fora das 24 e das duas fixtures; é o que a Saída pede",
+    "tess_folha_a_folha": {
+      "iguais": 6,
+      "melhoraram": 33,
+      "pioraram": 1
+    }
+  },
+  "portao_nas_folhas_vistas": {
+    "antes": {
+      "diferenca": {
+        "delta_pp": 4.289,
+        "ic95_pp": [
+          1.386,
+          8.764
+        ]
+      },
+      "folhas": 24,
+      "livros": 2,
+      "medido_em": "6c1b0ade",
+      "nota": "rodar.py nas folhas de prosa dos dois Chess Evolution; a Saída da S-711 pedia Tesseract nas linhas do glifo a até 1 p.p. do oráculo",
+      "tess_nas_linhas_do_glifo": {
+        "cer": 0.05275,
+        "ic95": [
+          0.02576,
+          0.09547
+        ]
+      },
+      "tess_oraculo": {
+        "cer": 0.00986,
+        "ic95": [
+          0.00615,
+          0.01363
+        ]
+      }
+    },
+    "depois": {
+      "diferenca": {
+        "delta_pp": 0.385,
+        "ic95_pp": [
+          0.193,
+          0.665
+        ]
+      },
+      "folhas": 24,
+      "livros": 2,
+      "medido_em": "fa537741",
+      "nota": "rodar.py nas folhas de prosa dos dois Chess Evolution; a Saída da S-711 pedia Tesseract nas linhas do glifo a até 1 p.p. do oráculo",
+      "tess_nas_linhas_do_glifo": {
+        "cer": 0.01371,
+        "ic95": [
+          0.00985,
+          0.01722
+        ]
+      },
+      "tess_oraculo": {
+        "cer": 0.00986,
+        "ic95": [
+          0.00615,
+          0.01363
+        ]
+      }
+    },
+    "nota": "as 24 folhas do portão da S-711: foram olhadas para achar o conserto, e não julgam nada"
+  },
+  "regua": "texto_prosa_2026-10-30/banco.py",
+  "varredura_da_guarda": {
+    "densidade_das_avisadas": [
+      0.042,
+      0.134,
+      0.197,
+      0.443,
+      0.447,
+      0.469,
+      1.166,
+      3.161,
+      3.161,
+      18.931,
+      6279.714,
+      48494.0
+    ],
+    "folhas": 812,
+    "folhas_com_camada_abaixo_de_0_7": 0,
+    "folhas_por_livro": 14,
+    "livros": 58,
+    "por_tipo": {
+      "branco": {
+        "densidade_min": 0.0,
+        "densidade_p05": 0.0,
+        "folha_nao_lida": 1,
+        "folhas": 37,
+        "leitura_parcial": 0
+      },
+      "capa": {
+        "densidade_min": 0.0,
+        "densidade_p05": 0.558,
+        "folha_nao_lida": 3,
+        "folhas": 55,
+        "leitura_parcial": 0
+      },
+      "indice": {
+        "densidade_min": 1.027,
+        "densidade_p05": 1.027,
+        "folha_nao_lida": 0,
+        "folhas": 4,
+        "leitura_parcial": 1
+      },
+      "misto": {
+        "densidade_min": 1.03,
+        "densidade_p05": 1.037,
+        "folha_nao_lida": 0,
+        "folhas": 33,
+        "leitura_parcial": 0
+      },
+      "prosa": {
+        "densidade_min": 0.94,
+        "densidade_p05": 1.03,
+        "folha_nao_lida": 1,
+        "folhas": 395,
+        "leitura_parcial": 0
+      },
+      "sem_camada": {
+        "densidade_min": 0.042,
+        "densidade_p05": 0.945,
+        "folha_nao_lida": 7,
+        "folhas": 189,
+        "leitura_parcial": 0
+      },
+      "so_diagrama": {
+        "densidade_min": 0.143,
+        "densidade_p05": 0.92,
+        "folha_nao_lida": 0,
+        "folhas": 94,
+        "leitura_parcial": 0
+      },
+      "so_notacao": {
+        "densidade_min": 1.031,
+        "densidade_p05": 1.031,
+        "folha_nao_lida": 0,
+        "folhas": 5,
+        "leitura_parcial": 0
+      }
+    },
+    "segundos_por_folha_p95": 2.868
+  }
+}

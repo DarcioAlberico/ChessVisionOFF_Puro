@@ -191,9 +191,10 @@ def _partir_uma(linha: list[Caixa], teto: float) -> list[list[Caixa]]:
 def partir_linhas_altas(linhas: Sequence[Sequence[Caixa]]) -> list[list[Caixa]]:
     """As linhas de uma tira, com a alta demais partida no vale entre as caixas dela (S-712).
 
-    **O que sobra alto depois de `gigantes` é uma linha com pedaços das vizinhas**, em scan torto ou com poeira: o
-    descendente da linha de cima, o topo da de baixo. Medido em 379 linhas assim, de 58 livros. O recorte do leitor de
-    linha pega as três, e o pedaço entra no meio do texto. A ordem de cada pedaço é preservada: ela já é a de leitura.
+    **O que sobra alto depois de `gigantes` é, em boa parte, uma linha com pedaços das vizinhas**, em scan: o descendente
+    da linha de cima, o topo da de baixo. Vi 18 linhas sorteadas, e o resto é título, tabuleiro não detectado e tarja. O
+    recorte do leitor de linha pega as três, e o pedaço entra no meio do texto. A ordem de cada pedaço é preservada: ela
+    já é a de leitura. O pedaço não volta para a linha de origem: fica como linha à parte, ou cai em `descartar_fragmentos`.
     """
     grupos = [list(linha) for linha in linhas]
     if not PARTIR_LINHA_ALTA or len(grupos) < 3:
