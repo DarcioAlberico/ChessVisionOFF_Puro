@@ -7,7 +7,9 @@ despercebida, porque fundir sozinho fazia metade dos `=` sair `:`.
 
 from __future__ import annotations
 
+import random
 import unittest
+from unittest import mock
 
 import numpy as np
 
@@ -64,6 +66,60 @@ class UnirTests(unittest.TestCase):
     def test_escala_zero_devolve_intacto(self) -> None:
         caixas = [Caixa(100, 100, 106, 106), Caixa(100, 114, 106, 120)]
         self.assertEqual(em.unir(caixas, escala=0), caixas)
+
+
+class BuscaCurtaTests(unittest.TestCase):
+    """A capa de ruído do Estrin tem dezenas de milhares de contornos, e a busca inteira levava minutos."""
+
+    ESCALA = 20
+
+    def _caixas(self, quantas: int, semente: int) -> list[Caixa]:
+        gerador = random.Random(semente)
+        saida = []
+        for _ in range(quantas):
+            x, y = gerador.randrange(0, 1800), gerador.randrange(0, 2400)
+            saida.append(Caixa(x, y, x + gerador.randrange(2, 12), y + gerador.randrange(2, 12)))
+        return saida
+
+    def _busca_inteira(self, caixas: list[Caixa]) -> list[Caixa]:
+        """A mesma regra sem o corte: é ela o gabarito, e não a implementação."""
+        ordenadas = sorted(caixas, key=lambda c: (c.y1, c.x1))
+        usada: set[int] = set()
+        uniao: dict[int, Caixa] = {}
+        absorvida: set[int] = set()
+        for i, acima in enumerate(ordenadas):
+            if id(acima) in usada:
+                continue
+            for abaixo in ordenadas[i + 1 :]:
+                if id(abaixo) not in usada and em._casam(acima, abaixo, self.ESCALA):
+                    usada.update({id(acima), id(abaixo)})
+                    uniao[id(acima)] = Caixa(
+                        min(acima.x1, abaixo.x1), acima.y1, max(acima.x2, abaixo.x2), abaixo.y2, acima.angulo
+                    )
+                    absorvida.add(id(abaixo))
+                    break
+        return [uniao.get(id(c), c) for c in caixas if id(c) not in absorvida]
+
+    def test_o_corte_nao_muda_nenhum_par(self) -> None:
+        for semente in range(40):
+            with self.subTest(semente=semente):
+                caixas = self._caixas(500, semente)
+                self.assertEqual(em.unir(caixas, escala=self.ESCALA), self._busca_inteira(caixas))
+
+    def test_a_folha_de_ruido_nao_compara_tudo_com_tudo(self) -> None:
+        caixas = self._caixas(20000, 7)
+        comparacoes = 0
+        original = em._casam
+
+        def contar(acima: Caixa, abaixo: Caixa, escala: int) -> bool:
+            nonlocal comparacoes
+            comparacoes += 1
+            return original(acima, abaixo, escala)
+
+        with mock.patch.object(em, "_casam", contar):
+            em.unir(caixas, escala=self.ESCALA)
+        # Sem o corte seriam ~200 milhões; com ele, o alcance vertical de cada caixa.
+        self.assertLess(comparacoes, 2_000_000)
 
 
 class BarraTests(unittest.TestCase):
