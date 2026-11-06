@@ -1278,6 +1278,11 @@ as horas por um acervo de 12.000 folhas, a extrapolação da S-61, quando a past
 - **`cvoff-texto-custo --motor fusao`**, com a reserva, como a janela, e sem cache. O padrão continua `glifo` (S-727). Ganha `--limite-segundos`, `--ressalva` e as etapas `leitor_de_linha` e `fusao`.
 - **`custo.PAGINAS_DO_ACERVO` = 26.730**, contadas em 58 PDFs, com as duplicatas, que uma varredura da pasta paga (1.544 folhas; sem elas, 25.186).
 
+**Motor sem `tessdata` conhecido não usa cache** (crítico da S-725). Binário achado por `PATH` ou `TESSERACT_CMD` sem a pasta ao lado dá `motor.tessdata=None`, e aí quem escolhe os pesos é o `TESSDATA_PREFIX`,
+fora da chave: trocá-lo responderia a leitura dos pesos antigos, calada. Nesse caso `LeitorTesseract.ler_linhas` lê sempre. Com a pasta conhecida, `ambiente_do_processo` sobrescreve a variável, e a chave vale.
+
+**`PaginaLida.marca_por_palavra` passou a ir ao arquivo**, com padrão e sem subir `ESQUEMA`, como `modelo`: a folha reaberta contava pela confiança do glifo sobre texto de outro leitor.
+
 **O medido.** Em `docs/metrics/texto_cache_20261106.json`, sobre o `080d56e5`, com a árvore limpa: nas 27 folhas do ouro-dev (5 livros, 758 linhas), **0 folhas diferentes** do lote em
 texto da página, em linhas do leitor com as confianças e em avisos, para a leitura por linha, o cache frio e o cache quente. Custo em `docs/metrics/texto_custo_fusao_20261106.json` e
 `docs/metrics/texto_custo_glifo_20261106.json`, nas mesmas 18 folhas de 6 livros:

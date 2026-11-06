@@ -11,7 +11,8 @@ que muda relê a folha: quem muda uma linha é a segmentação do glifo, e aí c
 **A chave é completa, porque a leitura errada aqui não dá erro nenhum.** Sha dos recortes, versão do executor e do
 pré-processamento, versão do Tesseract, sha do `traineddata` de cada língua do processo, língua, `psm`, `dpi`, as opções e o sha
 do modelo. O `modelo` é o do leitor de linha da Fase 105 (S-752): no Tesseract, quem faz esse papel é o `traineddata`, e ele sai
-vazio. O classificador de glifo não entra: quem ele influencia é o recorte, e esse já está na chave.
+vazio. O classificador de glifo não entra: quem ele influencia é o recorte, e esse já está na chave. **Motor sem `tessdata`
+conhecido não usa cache** (`LeitorTesseract.ler_linhas`): quem decide os pesos ali é o `TESSDATA_PREFIX` do ambiente, fora da chave.
 
 **Disco cheio não custa a leitura.** `gravar` devolve a frase, e a leitura segue: a folha ganha um aviso, que não vai ao arquivo.
 

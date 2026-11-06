@@ -60,7 +60,9 @@ class LeitorTesseract:
         if not motor.disponivel:
             return Leitura((None,) * len(recortes), motor.motivo)
         chave = None
-        if self._cache is not None:
+        # **Sem `tessdata` conhecido, sem cache.** Binário achado por `PATH` ou `TESSERACT_CMD` sem a pasta ao lado lê com o que
+        # `TESSDATA_PREFIX` disser, e a chave não tem como saber: trocá-lo responderia a leitura dos pesos antigos, calada.
+        if self._cache is not None and motor.tessdata is not None:
             chave = cache_texto.chave_de(
                 recortes,
                 motor=motor,

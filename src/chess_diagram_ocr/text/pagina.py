@@ -1033,7 +1033,8 @@ class PaginaLida:
 
     **Só o motor que combina dois leitores a liga.** A confiança do glifo não pode ser pintada sobre
     texto que outro leitor escreveu: no *Hertan* o texto certo do Tesseract sairia `revisar` porque o
-    glifo errou ali. Em memória, como `LinhaLida.revisar_em`."""
+    glifo errou ali. **Vai ao arquivo**: campo novo com padrão, que não paga `ESQUEMA`, como `modelo`. Sem ele, a folha reaberta voltava a contar
+    pela confiança do glifo sobre texto de outro leitor. `LinhaLida.revisar_em` continua em memória: o que sobrevive é a faixa da corrida."""
 
     # -------------------------------------------------------------------------------- leituras
 
@@ -1133,6 +1134,8 @@ class PaginaLida:
             dados["avisos"] = [aviso.para_json() for aviso in self._avisos_gravados()]
         if self.modelo:
             dados["modelo"] = self.modelo
+        if self.marca_por_palavra:
+            dados["marca_por_palavra"] = True
         return dados
 
     @classmethod
@@ -1167,6 +1170,7 @@ class PaginaLida:
             numero_impresso=int(numero) if numero is not None else None,
             avisos=tuple(Aviso.de_json(a, f"avisos[{i}]") for i, a in enumerate(dados.get("avisos") or [])),
             modelo=str(dados.get("modelo", "") or ""),
+            marca_por_palavra=dados.get("marca_por_palavra") is True,
         )
 
     def com_posicoes(self, posicoes: Sequence[str]) -> PaginaLida:
