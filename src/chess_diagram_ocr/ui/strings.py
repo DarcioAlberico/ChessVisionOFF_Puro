@@ -960,3 +960,23 @@ def frase_da_lingua_do_livro(codigo: str, *, manual: bool) -> str:
 
 NADA_A_REVISAR = "Nenhuma palavra a revisar nesta folha."
 """O `proxima_a_revisar` numa folha sem marca: rodapé, e não caixa -- é resposta, e não erro (S-718)."""
+
+# ----------------------------------------------------------------- o modo transcrição (S-703)
+
+TRANSCRICAO_PASSADA = "Passada"
+TRANSCRICAO_FOLHA = "Folha"
+TRANSCRICAO_PARTIDA = "Partir de"
+TRANSCRICAO_PARTIDAS = {"vazio": "Vazio", "camada": "Camada de terceiro"}
+TRANSCRICAO_ESCOLHER_PASTA = "Pasta da transcrição…"
+TRANSCRICAO_ESCOLHER_BACKUP = "Pasta do backup…"
+TRANSCRICAO_FECHAR = "Voltar ao texto"
+TRANSCRICAO_LINHA_A_MAIS = "Linha a mais"
+TRANSCRICAO_CONCLUIR = "Concluir folha"
+TRANSCRICAO_ESCOLHA_A_PASTA = "Escolha a pasta da transcrição e a do backup, as duas fora do repositório: a transcrição é texto de livro."
+TRANSCRICAO_ABRA_UM_LIVRO = "Abra um PDF da pasta do acervo: é nela que as folhas do scan-ouro são procuradas."
+TRANSCRICAO_LIVRO_NAO_ACHADO = "O livro desta folha não está na pasta do PDF aberto."
+TRANSCRICAO_FORA_DA_PASSADA = "Esta folha não é desta passada: a segunda só digita as folhas da dupla digitação."
+TRANSCRICAO_OUTRA_COPIA = "Esta cópia do livro tem outra folha, e a verdade dela não valeria para o manifesto."
+TRANSCRICAO_BACKUP_FALHOU = "A folha está gravada, e o backup falhou: confira a pasta dele."
+TRANSCRICAO_ESTADO = "Passada {passada}, em {pasta}. Backup: {backup}."
+TRANSCRICAO_BACKUPS = {"nao_declarado": "não declarado, e nada se grava sem ele", "em_dia": "em dia", "atrasado": "atrasado"}

@@ -41,6 +41,9 @@ a primeira é uma ausência **declarada**, a segunda é uma ausência **descober
 pessoa corrigiu sobre a leitura de um motor. Entra no treino, com a versão do modelo que errou registrada, e nunca mede: quem corrige
 vê a leitura, e a verdade ancorada no motor é o achado nº 1. `classe` o traduz para `modelo`, e é por isso que toda regra abaixo vale.
 
+**E um quinto, que é um `humano` que diz como** (S-703): `transcricao:<passada>` é a verdade do scan-ouro, digitada às cegas de todo motor. É a
+única que o scan-ouro aceita, porque o `humano` do bloco inteiro cobre as palavras que ninguém conferiu. `classe` o traduz para `humano`.
+
 **Amostra sem procedência não é recusada -- ela é marcada.** Recusar 607 mil imagens porque
 ninguém sabe de onde vieram desperdiça o ativo; deixá-las entrar no teste torna o número final
 sem significado. É o mesmo meio-termo que este projeto já aplica a diagramas desde a S-19.
@@ -74,6 +77,9 @@ VALORES = (HUMANO, MODELO, DESCONHECIDA)
 CORRIGIDO_DE = "corrigido_de:"
 """O prefixo da correção humana sobre a leitura de um motor (S-762). Ver o cabeçalho."""
 
+TRANSCRICAO = "transcricao:"
+"""O prefixo da digitação às cegas do scan-ouro (S-703). Ver o cabeçalho."""
+
 SEM_MODELO = "desconhecido"
 """O sha de quem foi lido antes de a página guardar o modelo: é o que o arquivo não sabe."""
 
@@ -87,8 +93,20 @@ def e_corrigido(valor: str) -> bool:
     return valor.startswith(CORRIGIDO_DE) and "@" in valor
 
 
+def transcricao(passada: int) -> str:
+    """`transcricao:1`, a procedência de uma folha digitada às cegas na passada dada."""
+    return f"{TRANSCRICAO}{int(passada)}"
+
+
+def e_transcricao(valor: str) -> bool:
+    return valor.startswith(TRANSCRICAO) and valor[len(TRANSCRICAO):].isdigit()
+
+
 def classe(valor: str) -> str:
-    """Um dos três `VALORES`. O corrigido é rótulo ancorado num motor, e vale o que `modelo` vale: treino, e nunca medida."""
+    """Um dos três `VALORES`. O corrigido é rótulo ancorado num motor, e vale o que `modelo` vale: treino, e nunca medida.
+    A transcrição é a mão sem leitura por trás, e vale o que `humano` vale."""
+    if e_transcricao(valor):
+        return HUMANO
     return MODELO if e_corrigido(valor) else valor
 
 
@@ -98,8 +116,16 @@ class VerdadeContaminada(ValueError):
 
 def exigir_verdade(valor: str, *, onde: str) -> None:
     """A porta de todo split de medida: o scan-ouro da S-703, o teste de caractere, e qualquer outro que venha."""
-    if valor != HUMANO:
+    if classe(valor) != HUMANO:
         raise VerdadeContaminada(f"{onde}: procedência {valor!r} não mede nada. Só a conferida por humano, sem leitura por trás, mede.")
+
+
+def exigir_transcricao(valor: str, *, onde: str) -> None:
+    """A porta do scan-ouro, mais estreita que `exigir_verdade`: o `humano` do bloco inteiro também não entra (S-703)."""
+    exigir_verdade(valor, onde=onde)
+    if not e_transcricao(valor):
+        raise VerdadeContaminada(f"{onde}: procedência {valor!r} não é digitação às cegas. O scan-ouro só aceita `{TRANSCRICAO}<passada>`.")
+
 
 CODIGO = {DESCONHECIDA: 0, MODELO: 1, HUMANO: 2}
 """Procedência -> inteiro, para caber num `int8` por amostra em vez de uma lista de strings.
@@ -135,7 +161,7 @@ class Registro:
     @property
     def mede(self) -> bool:
         """Esta amostra pode entrar em validação e teste? Só a conferida por humano pode."""
-        return self.procedencia == HUMANO
+        return classe(self.procedencia) == HUMANO
 
     @property
     def tem_livro(self) -> bool:
@@ -173,7 +199,7 @@ def ler(caminho: Path | str | None = None) -> dict[str, Registro]:
             if not uuid:
                 raise ArquivoInvalido(f"{alvo}, linha {numero}: uuid vazio.")
             valor = (linha.get("procedencia") or "").strip().lower() or DESCONHECIDA
-            if valor not in VALORES and not e_corrigido(valor):
+            if valor not in VALORES and not e_corrigido(valor) and not e_transcricao(valor):
                 raise ArquivoInvalido(
                     f"{alvo}, linha {numero}: procedência {valor!r} não é uma de {', '.join(VALORES)}."
                 )

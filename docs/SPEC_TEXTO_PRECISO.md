@@ -344,6 +344,59 @@ continua só ordenando, mas o número de scan "6,0% do Tesseract" do roadmap era
 *Achado:* `text/notacao.fatiar` continua conservador (S-208), e o classificador da fusão, próprio dela, ainda não reconhece
 `Rg8-Rg6` nem `31.Bxg6fxg632`: são dois instrumentos, e a guarda de grafo de import é de outro item.
 
+## S-703 · O scan-ouro: a ferramenta, sem a transcrição ✅ implementada (2026-11-06)
+
+**Problema.** Sem verdade humana em scan, M3 e M4 não existem, e os 14,4% do glifo são contra OCR de terceiro. A transcrição custa ~15 horas e depende
+da decisão D3, que o dono não tomou. O que não dependia dele era a ferramenta: sem ela, as 15 horas seriam num editor que reabre a folha com
+o que já foi corrigido (S-612) e carimba o bloco inteiro de `humano`. **Nada foi transcrito. M3 e M4 seguem sem número.**
+
+**Decisão.** Quatro peças, e todas sem leitor nenhum.
+
+- **O manifesto**, `assets/texto_prosa/scan_ouro.json`, só identidades, e `text/scan_ouro.py`: `carregar`, `gravar`, `problemas`, `sha_da_folha`. 30 folhas de 10
+  livros em 6 línguas: 3 livros `clearscan`, 4 `ate_150`, 3 `de_300`, ou 12 folhas (40%) de até 150 dpi. 15 no misto, 12 na prosa, 3 `a_conferir`. Dev e teste com 5
+  livros cada, e as três produções nos dois. 6 folhas de dupla digitação, uma por produção em cada split. Cada folha guarda o sha dos bytes dela no PDF.
+- **O sorteio**, `docs/metrics/texto_scan_ouro_2026-11-06/sortear.py`: livros por `sha256(semente:identidade)`, folhas por `sha256(identidade + folha)`, as funções do ouro.
+  Bachmann e Neumann entram por exigência do item, e no dev, porque as S-743 e S-721 os viram; **livro visto não vai ao teste**. Um livro por série ou autor, no máximo
+  3 por língua.
+- **O caderno**, `text/transcricao_scan.py`. `CadernoDaPassada` só conhece o arquivo da sua passada: `passada_1.jsonl`, `passada_2.jsonl`, com linha, partida, `sha_imagem`, `sha_folha`,
+  segundos e `completa`. A pasta é recusada dentro de um repositório, e sem o backup declarado (`backup.json`, na própria pasta) nada grava. `gravar` chama `exigir_transcricao` e
+  `dado_corrigido.exigir_documento_cego` a cada linha, e copia o arquivo para o backup. A procedência `transcricao:<passada>` mora em `text/procedencia.py`: `classe` a traduz
+  para `humano`, e `exigir_transcricao` é mais estreita que `exigir_verdade`, recusando também o `humano` do bloco.
+- **A tela**, `qt/modo_transcricao.py`, comando `modo_transcricao` (`alternar_transcricao`, grupo Verdade da aba Leitura). O editor da aba sai de cena, porque mostra a leitura
+  de um motor. Cada linha é uma faixa impressa com um campo ao lado, `Enter` leva à seguinte, seis botões escrevem a figurina e `Linha a mais` cobre o que a geometria não achou.
+  A faixa é a geometria de `leitor.segmentar` com o detector de diagrama, sem classificador. A pasta fica em `AppState.texto_transcricao_pasta`. Erro sai na frase de estado, nunca em caixa.
+
+**Regra que o item não pedia: a segunda passada só parte do vazio.** As duas partindo da mesma camada concordariam nos erros que ninguém viu, e o acordo mediria a camada.
+
+**O relógio.** `Relogio` soma o tempo entre uma tecla e a seguinte, e uma pausa conta no máximo 5 minutos. `custo` estima o conjunto a partir de duas folhas concluídas; a tela e o
+`--acordo` mostram. É a resposta à D3 com o relógio de quem digitou, em vez dos "20 a 30 minutos" do roadmap.
+
+**A verificação.** `cvoff-texto-prosa --conjunto scan-ouro --acordo --transcricao <pasta>` imprime o acordo por folha (S+D+I sobre o maior comprimento, normalização `cru`), a
+folha que volta, o custo e o estado do backup, e sai com 0, 1 (há folha que volta) ou 3 (nada para medir). `--conjunto scan-ouro --split dev --transcricao <pasta> --dados <jsonl>` mede
+contra a verdade digitada, e só quando **o split inteiro** tem verdade pronta; sem isso, diz `M3 e M4 sem número` e sai com 3. O split `teste` pede `--abrir-teste`, que grava
+`primeira_leitura_do_teste` antes de ler, como no ouro.
+
+**Onde mora.** `text/scan_ouro.py`, `text/transcricao_scan.py`, `text/procedencia.py`, `qt/modo_transcricao.py`, `qt/painel_de_texto.py` (`alternar_transcricao`), `cli/texto_prosa.py` (`--acordo`,
+`--transcricao`), `text/bancada_prosa.py` (`preparar_folha(verdade=)`). O módulo novo não se chama `text/transcricao.py` porque esse já é o da S-183, das 123 faixas de legenda.
+
+**Critério de aceite.** `tests/test_text_scan_ouro.py`: o manifesto cumpre a entrega, e cada regra de `problemas` reprova um manifesto falsificado; a segunda passada não vê a primeira;
+glifo e rapidocr não gravam, `humano` e `corrigido_de:` também não; sem dados, o CLI diz e não zera. `tests/test_qt_modo_transcricao.py`, por efeito na tela e no arquivo.
+**Falsificação:** tirar as duas portas de `gravar` deixa vermelhos os testes das portas, e o resto verde.
+
+*Achado:* **a geometria não separa prosa de misto.** Nas 27 folhas do ouro-dev, com os estratos conhecidos, a fração de linhas cheias dá AUC 0,63. Por isso o conteúdo da folha sai
+da camada de terceiro que o PDF já traz, pelo `ouro.estrato_do_texto` do sorteio da S-702: nenhum motor nosso roda, mas é um OCR que foi lido. **O preço:** livro sem camada não entra no
+sorteio, e o `teste` sai de um grupo mais estreito: dos 43 candidatos, 17 têm mediana abaixo de 200 caracteres de camada. Só 3 livros de até 150 dpi com camada não foram vistos.
+
+*Achado:* **o Bachmann não tem camada**, e o item o exige: as três folhas dele são `a_conferir`, e a conta da metade no misto vale no pior caso (15 de 30 sem contá-las). Depois da
+transcrição, o conteúdo real de toda folha sai da régua sobre a verdade. **E o `dpi` 72 dele é nominal**: a página mede 1216 × 1864 pt e a imagem tem esses mesmos pixels. O estrato `ate_150` vem
+daí; a altura-x nativa, perto de 10 px, é a do estrato.
+
+*Achado:* a faixa é a mesma geometria dos motores, e ela erra como eles. Na folha 71 do Bachmann, `Stellung nach dem 13. Zug von Schwarz.` são três faixas, e a tabela de lances sai em duas colunas de faixas.
+A pessoa digita o que cada faixa mostra, e a referência fica na ordem do produto; a linha partida não vira erro de medição, e a de outra ordem também não.
+
+**Desvios.** A verificação de M3 e M4 por estrato não roda, porque não há verdade. O manifesto traz os **estratos previstos**: a conta real só existe depois. A camada entra na escolha, e o pedido era "sem
+leitor nenhum": nenhum leitor roda, e o achado acima diz o que isso custa. `tesseract` fica fora do teste de porta porque a procedência só existe na página a partir da S-722.
+
 ## S-704 · A degradação sintética, reprodutível, em duas famílias ✅ implementada (2026-11-06)
 
 **Problema.** O perfil `medio` de 2026-10-30 equivale a ~110 dpi e leva o glifo a 57,2%, contra 14,4% na prata: não foi calibrado

@@ -107,6 +107,7 @@ ABAS: tuple[Aba, ...] = (
                     "trazer_da_revisao",
                 ),
             ),
+            Grupo("Verdade", ("modo_transcricao",)),
         ),
     ),
     Aba(

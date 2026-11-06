@@ -707,7 +707,7 @@ b`), e consertá-la
     *Chess Evolution 2013* a ligadura `ft` perde o `t` na camada, e no *Capablanca* figurinas da tinta
     ficam fora da linha da camada. Os números ficam como publicados, com esta ressalva; a S-706 os
     republica nos cinco livros dev admitidos.
-- **S-703** · Scan-ouro: 30 folhas escaneadas com verdade humana.
+- **S-703** · Scan-ouro: 30 folhas escaneadas com verdade humana. ✅ entregue em 2026-11-06 (a ferramenta; a transcrição é da D3, e M3 e M4 seguem sem número)
   - *Contexto:* é o **único** jeito de dizer o erro absoluto em scan; a camada de terceiro (prata)
     só ordena. Sem este item, M3 e M4 não existem.
   - *Entrega:* ≥ 30 folhas de ≥ 8 livros escaneados, ≥ 5 línguas, **estratificadas por produção e
@@ -732,6 +732,9 @@ b`), e consertá-la
     sorteado antes da transcrição.
   - *Reversão:* folha com acordo abaixo de 99,9% volta para transcrição; nada do produto muda.
   - *Dono:* ~20–30 min por folha e mais a dupla digitação; **cerca de 15 horas humanas** (decisão D3).
+  - *Achado:* **pronto para quando o dono quiser, e nada transcrito.** `assets/texto_prosa/scan_ouro.json`: 30 folhas, 10 livros, 6 línguas, 40% de até 150 dpi, 15 no misto, 6 de dupla digitação, cinco livros em cada split. Aba Leitura, *Transcrever*. O relógio mostra o custo real a partir da segunda folha. `cvoff-texto-prosa --conjunto scan-ouro --acordo` diz `M3 e M4 sem número` em vez de zerar. Spec em `docs/SPEC_TEXTO_PRECISO.md`.
+  - *Achado:* a geometria não separa prosa de misto (AUC 0,63 no ouro-dev), então o conteúdo da folha sai da camada de terceiro, sem motor nosso. Livro sem camada fica fora do sorteio, menos o Bachmann, com 3 folhas `a_conferir`: a metade no misto vale no pior caso.
+  - *Achado:* **a segunda passada só parte do vazio**, regra a mais: partindo da mesma camada, o acordo mediria a camada.
 - **S-704** · Degradação sintética reprodutível e **calibrada** como fatia de robustez. ✅ entregue em 2026-11-06 (menos o perfil `calibrado`, que depende da S-703)
   - *Contexto:* o perfil `medio` de 2026-10-30 equivale a ~110 dpi e leva o glifo a 57,2%, contra
     14,4% na prata (scan real): ele não foi calibrado contra nada, e um alvo (M5) sobre um perfil sem

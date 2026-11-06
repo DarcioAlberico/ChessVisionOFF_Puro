@@ -24,6 +24,7 @@ from . import regua_prosa as regua
 from .prata import USO as USO_DA_PRATA
 
 PRATA = "prata"
+SCAN_OURO = "scan-ouro"
 OURO = "ouro"
 TESTE = "teste"
 
@@ -268,7 +269,7 @@ def compilar_bloco(
     if len(origens) != 1:
         raise ValueError(f"um bloco é de um conjunto só, e a prata nunca se soma ao ouro: {sorted(origens)}")
     conjunto, split, perfil = origens.pop()
-    teste = conjunto == OURO and split == TESTE
+    teste = conjunto in (OURO, SCAN_OURO) and split == TESTE
     motores = _motores(ficam)
     referencia = motores[0]
     wer = [r["placar"][f"{referencia}|{regua.TIP}"]["wer"]["n"] for r in ficam]
