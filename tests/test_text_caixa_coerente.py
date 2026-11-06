@@ -83,13 +83,17 @@ class PalavraCoerenteTests(unittest.TestCase):
         for palavra in ("ChessCafe", "McClure", "McCutcheon", "McCoy", "McOy", "MacOs", "'McCoy"):
             self.assertEqual(self._coerente(palavra), palavra)
 
+    def test_palavra_em_minuscula_nao_e_absolvida(self) -> None:
+        """A prata: `soViéticos`, `deCido`, `sigUiente`, nenhuma no léxico. Sem maiúscula na frente, não é nome."""
+        for lido, certo in (("soViéticos", "soviéticos"), ("deCido", "decido"), ("sigUiente", "siguiente")):
+            self.assertEqual(self._coerente(lido), certo)
+
     def test_a_forma_minuscula_existe_e_nao_absolve(self) -> None:
-        """`soViéticos`, `SacrifiCio`: o léxico sem nomes separa de `ChessCafe`, que não existe em minúscula."""
-        lexico = frozenset({"soviéticos", "sacrificio", "siguiente"})
-        for lido, certo in (("soViéticos", "soviéticos"), ("SacrifiCio", "Sacrificio"), ("sigUiente", "siguiente")):
-            chars, caixas = _linha([(c, 12, 20) for c in lido])
-            saida = caixa_alta.coerente(_lidos(chars), _matriz(chars), caixas, I2C, lexico)
-            self.assertEqual(_texto(saida), certo)
+        """`SacrifiCio`: o léxico sem nomes separa de `ChessCafe`, que não existe em minúscula."""
+        lexico = frozenset({"sacrificio"})
+        chars, caixas = _linha([(c, 12, 20) for c in "SacrifiCio"])
+        saida = caixa_alta.coerente(_lidos(chars), _matriz(chars), caixas, I2C, lexico)
+        self.assertEqual(_texto(saida), "Sacrificio")
         chars, caixas = _linha([(c, 12, 20) for c in "ChessCafe"])
         self.assertEqual(_texto(caixa_alta.coerente(_lidos(chars), _matriz(chars), caixas, I2C, lexico)), "ChessCafe")
 

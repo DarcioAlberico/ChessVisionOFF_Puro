@@ -113,9 +113,9 @@ class FiacaoTests(unittest.TestCase):
         self.assertEqual(_ler(desenho), "Kc5")
 
     def test_coerente_recebe_o_lexico(self) -> None:
-        desenho = [("s", 10, 20, 0, 3), ("o", 12, 20, 0, 3), ("U", 18, 28, 0, 3), ("e", 11, 20, 0, 3), ("t", 8, 26, 0, 3)]
-        self.assertEqual(_ler(desenho, frozenset({"souet"})), "souet")
-        self.assertEqual(_ler(desenho), "soUet", "sem a forma minúscula no léxico, é absolvida")
+        desenho = [("B", 16, 28, 0, 3), ("o", 12, 20, 0, 3), ("U", 18, 28, 0, 3), ("e", 11, 20, 0, 3), ("t", 8, 26, 0, 3)]
+        self.assertEqual(_ler(desenho, frozenset({"bouet"})), "Bouet")
+        self.assertEqual(_ler(desenho), "BoUet", "sem a forma minúscula no léxico, é absolvida")
 
     def test_o_acento(self) -> None:
         desenho = [E, N, ("t", 8, 26, 0, 3), ("ä", 14, 29, 0, 3, "ã"), ("o", 15, 20, 0, 3)]

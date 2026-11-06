@@ -346,8 +346,8 @@ def coerente(
     **E o lance que a régua de altura estragou volta**, em `_lance_em_minuscula`: em scan, as letras de x
     comidas fazem `c` e `x` passarem do corte.
 
-    `lexico` é o sem nomes: a ambígua seguida de minúsculas não é absolvida se a forma minúscula existir, e é o
-    que separa `soViéticos` de `ChessCafe`.
+    **A absolvição exige a palavra começar em maiúscula**: `ChessCafe` e `BeverWijk` são nome, e `soViéticos`, `deCido` e
+    `sigUiente`, não. `lexico` é o sem nomes, e pega o resto: `SacrifiCio`, porque `sacrificio` existe.
     """
     saida = list(lidos)
     if not PALAVRA_COERENTE or not lidos or len(lidos) != len(caixas):
@@ -376,7 +376,8 @@ def coerente(
             if saida[k][0] in AMBIGUAS.upper() and saida[k - 1][0].islower() and not tem_lance:
                 depois = trecho[k + 1 - inicio : k + 1 - inicio + MINUSCULAS_QUE_ABSOLVEM]
                 absolvida = (
-                    len(depois) == MINUSCULAS_QUE_ABSOLVEM
+                    trecho[0].isupper()
+                    and len(depois) == MINUSCULAS_QUE_ABSOLVEM
                     and all(c.islower() for c in depois)
                     and not _minuscula_existe(trecho, lexico)
                 )
