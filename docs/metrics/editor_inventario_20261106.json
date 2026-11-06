@@ -1,7 +1,7 @@
 {
   "item": "S-256 · o inventário do editor de texto",
   "quando": "2026-11-06",
-  "commit": "5bd688565ad91ce919ea24d2897297f8bfe33463",
+  "commit": "b4c3dd68da542a7fd922610bc1daa1623037d7a9",
   "atributos_do_documento": [
     "negrito",
     "italico",
@@ -72,6 +72,7 @@
     "exportar_txt",
     "ler_folha",
     "folha_da_pagina_aberta",
+    "modo_transcricao",
     "modo_bloco",
     "cor_do_texto",
     "realce",
