@@ -94,5 +94,48 @@ class TracoVerticalTests(unittest.TestCase):
         self.assertEqual(lidos[-1][0], "/")
 
 
+class LimiaresDoTracoTests(unittest.TestCase):
+    """Cada limiar preso dos dois lados, em caixa de verdade: altura-de-x 20, das letras `aen`."""
+
+    def _ler(self, char: str, largura: int, altura: int) -> str:
+        chars, caixas = _linha([*DE_X, (char, largura, altura), ("o", 12, 20)])
+        return traco_vertical.corrigir(_lidos(chars), _matriz(chars), caixas, I2C, frozenset(), escala=28.0)[3][0]
+
+    def test_toda_marca_alta_e_traco(self) -> None:
+        for char in ".,'`-–—_":
+            self.assertEqual(self._ler(char, 3, 27), "l", char)
+
+    def test_toda_coluna_no_fim_do_lance(self) -> None:
+        for coluna in "abcdefgh":
+            chars, caixas = _linha([("R", 14, 27), (coluna, 8, 27), (".", 3, 27)])
+            lidos = traco_vertical.corrigir(_lidos(chars), _matriz(chars), caixas, I2C, frozenset(), escala=28.0)
+            self.assertEqual(lidos[-1][0], "1", coluna)
+
+    def test_a_altura(self) -> None:
+        self.assertEqual(self._ler(".", 3, 21), "l", "1,05: o traço mais baixo medido é 1,03")
+        self.assertEqual(self._ler(".", 2, 12), ".", "0,60: entre o ponto e o traço, fica como está")
+
+    def test_a_proporcao(self) -> None:
+        self.assertEqual(self._ler("-", 8, 27), "l", "0,30")
+        self.assertEqual(self._ler("-", 12, 27), "-", "0,44: acima do traço medido, e não é traço")
+
+    def _ultima(self, char: str, y1: int, y2: int) -> str:
+        chars, caixas = _linha(DE_X)
+        chars, caixas = [*chars, char], [*caixas, Caixa(caixas[-1].x2 + 2, y1, caixas[-1].x2 + 6, y2)]
+        return traco_vertical.corrigir(_lidos(chars), _matriz(chars), caixas, I2C, frozenset(), escala=28.0)[-1][0]
+
+    def test_todo_traco_baixo_que_desce_e_virgula(self) -> None:
+        for char in "/l1I|":
+            self.assertEqual(self._ultima(char, 94, 106), ",", char)
+
+    def test_a_altura_da_virgula(self) -> None:
+        self.assertEqual(self._ultima("/", 89, 107), "/", "0,90 de altura: é barra de verdade, mesmo descendo")
+
+    def test_a_descida_da_virgula(self) -> None:
+        self.assertEqual(self._ultima("/", 91, 103), "/", "só 0,25 da caixa abaixo da base")
+        self.assertEqual(self._ultima("/", 88, 100), "/", "nada abaixo da base")
+        self.assertEqual(self._ultima("/", 95, 105), ",", "0,50")
+
+
 if __name__ == "__main__":
     unittest.main()

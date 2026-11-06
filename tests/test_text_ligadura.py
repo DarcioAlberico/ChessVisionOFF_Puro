@@ -30,7 +30,9 @@ class LigaduraTests(unittest.TestCase):
             self.assertEqual(self._ler([("fi", 12, 28), ("1", 9, 20), ("r", 8, 20)]), ("fi1r", 3))
 
     def test_o_l_de_file_nao_e_haste(self) -> None:
-        self.assertEqual(self._ler([("fi", 12, 28), ("l", 3, 27), ("e", 12, 20)]), ("file", 3))
+        """Vão de 1 px, dentro da `FOLGA` de meia haste: é `HASTES` que segura, e não a distância."""
+        self.assertEqual(self._ler([("fi", 12, 28), ("l", 3, 27), ("e", 12, 20)], vao=1), ("file", 3))
+        self.assertEqual(self._ler([("fi", 12, 28), ("I", 3, 27), ("e", 12, 20)], vao=1), ("fiIe", 3))
 
     def test_a_haste_longe_fica(self) -> None:
         self.assertEqual(self._ler([("fi", 12, 28), ("1", 9, 20)], vao=20), ("fi1", 2))
@@ -42,6 +44,23 @@ class LigaduraTests(unittest.TestCase):
         self.assertEqual(self._ler([("R", 15, 28), ("f1", 15, 28)]), ("Rf1", 2))
         self.assertEqual(self._ler([("f1", 15, 28), ("-", 8, 3), ("e", 12, 20), ("1", 9, 28)]), ("f1-e1", 4))
         self.assertEqual(self._ler([("f1", 15, 28), ("e", 12, 20), ("2", 9, 28)]), ("f1e2", 3))
+
+
+class LimiaresDaLigaduraTests(unittest.TestCase):
+    def _ler(self, desenho: list[tuple[str, int, int]], vao: int = 2) -> str:
+        chars, caixas = _linha(desenho, vao=vao)
+        return _texto(ligadura.corrigir(_lidos(chars), caixas)[1])
+
+    def test_a_folga_e_de_meia_haste(self) -> None:
+        self.assertEqual(self._ler([("fi", 12, 28), ("1", 9, 20), ("r", 8, 20)], vao=4), "fir", "4 px, com a haste de 9")
+        self.assertEqual(self._ler([("fi", 12, 28), ("1", 9, 20), ("r", 8, 20)], vao=5), "fi1r", "5 px")
+
+    def test_as_duas_ligaduras_e_as_duas_hastes(self) -> None:
+        self.assertEqual(self._ler([("ffi", 12, 28), ("1", 9, 20)]), "ffi")
+        self.assertEqual(self._ler([("fi", 12, 28), ("|", 9, 20)]), "fi")
+
+    def test_a_haste_antes_de_digito_fica(self) -> None:
+        self.assertEqual(self._ler([("fi", 12, 28), ("1", 9, 20), ("2", 9, 28)]), "fi12")
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from glifo_sintetico import DE_X, I2C, _lidos, _linha, _matriz, _texto
+from glifo_sintetico import C2I, DE_X, I2C, _lidos, _linha, _matriz, _texto
 
 from chess_diagram_ocr.text import acento, caixa_alta
 from chess_diagram_ocr.text.boxes import Caixa
@@ -109,6 +109,61 @@ class SegundoCorteTests(unittest.TestCase):
     def test_o_defeito_volta_com_a_constante_desligada(self) -> None:
         with mock.patch.object(caixa_alta, "SEGUNDO_CORTE", False):
             self.assertEqual(self._ultima("Õ", 29), "Õ")
+
+
+class LimiaresDaDescidaTests(unittest.TestCase):
+    def _ultima(self, char: str, caixa: Caixa, probs: dict[str, float] | None = None) -> str:
+        chars, caixas = _linha(DE_X)
+        chars, caixas = [*chars, char], [*caixas, caixa]
+        m = _matriz(chars)
+        for c, p in (probs or {}).items():
+            m[-1, C2I[c]] = p
+        return caixa_alta.decidir(m, [c.altura for c in caixas], I2C, caixas=caixas)[-1][0]
+
+    def test_a_descida_da_cedilha(self) -> None:
+        self.assertEqual(self._ultima("c", Caixa(60, 80, 72, 104), {"ç": 0.3}), "c", "0,20: fica")
+        self.assertEqual(self._ultima("c", Caixa(60, 80, 72, 107), {"ç": 0.3}), "ç", "0,35")
+
+    def test_o_piso_da_cedilha(self) -> None:
+        self.assertEqual(self._ultima("c", Caixa(60, 80, 72, 109), {"ç": 0.012}), "ç")
+        self.assertEqual(self._ultima("c", Caixa(60, 80, 72, 109), {"ç": 0.008}), "C", "abaixo do piso, o modelo não a viu")
+
+    def test_a_descida_do_p(self) -> None:
+        self.assertEqual(self._ultima("p", Caixa(60, 74, 74, 102)), "P", "0,07 da caixa")
+        self.assertEqual(self._ultima("p", Caixa(60, 75, 74, 103)), "p", "0,11 da caixa")
+
+    def test_toda_acentuada_tem_o_segundo_corte(self) -> None:
+        for baixa in "íóõöúćčšž":
+            alta = baixa.upper()
+            self.assertEqual(self._ultima(alta, Caixa(60, 71, 72, 100)), baixa, alta)
+
+
+class LimiaresDoAcentoTests(unittest.TestCase):
+    def _ler(self, palavra: str, alternativas: dict[int, list[tuple[str, float]]], lexico: frozenset[str]) -> str:
+        chars, caixas = _linha([(c, 12, 20) for c in palavra])
+        m = _matriz(chars)
+        for k, lista in alternativas.items():
+            for c, p in lista:
+                m[k, C2I[c]] = p
+        return _texto(acento.corrigir(_lidos(chars), m, caixas, I2C, lexico))
+
+    def test_o_terceiro_do_modelo_entra(self) -> None:
+        lido = self._ler("trés", {2: [("e", 0.2), ("ê", 0.1)]}, frozenset({"três"}))
+        self.assertEqual(lido, "três")
+
+    def test_o_quarto_nao_entra(self) -> None:
+        lido = self._ler("trés", {2: [("e", 0.2), ("a", 0.15), ("ê", 0.1)]}, frozenset({"três"}))
+        self.assertEqual(lido, "trés")
+
+    def test_o_piso(self) -> None:
+        self.assertEqual(self._ler("trés", {2: [("ê", 0.0012)]}, frozenset({"três"})), "três")
+        self.assertEqual(self._ler("trés", {2: [("ê", 0.0008)]}, frozenset({"três"})), "trés")
+
+    def test_duas_trocas_sim_e_tres_nao(self) -> None:
+        duas = {1: [("ã", 0.3)], 3: [("ê", 0.3)]}
+        self.assertEqual(self._ler("cäbé", duas, frozenset({"cãbê"})), "cãbê")
+        tres = {1: [("ã", 0.3)], 3: [("ê", 0.3)], 4: [("ê", 0.3)]}
+        self.assertEqual(self._ler("cäbéé", tres, frozenset({"cãbêê"})), "cäbéé")
 
 
 if __name__ == "__main__":
