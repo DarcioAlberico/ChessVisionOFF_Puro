@@ -174,6 +174,7 @@ from . import guarda_de_leitura as _guarda
 from . import italico as _italico
 from . import leitor_de_linha as _leitor_de_linha
 from . import lexico as _lexico_mod
+from . import ligadura as _ligadura
 from . import linhas as _linhas_mod
 from . import marca_fina as _marca_fina
 from . import moldura as _moldura
@@ -668,6 +669,8 @@ def linhas_do_glifo(
                     # palavra que o dicionário vai julgar, e julgá-la antes delas seria julgar um
                     # texto que não é o que sai.
                     lidos = _dicionario.corrigir(lidos, probs, grupo, i2c, lexico)
+                # Daqui em diante `probs` não casa mais com as caixas: duas delas podem virar uma.
+                grupo, lidos = _ligadura.corrigir(lidos, grupo)  # `fi1rst` (S-733)
             else:
                 lidos = classificador.classificar(recortes)
             if not lidos:
