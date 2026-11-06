@@ -898,7 +898,7 @@ b`), e consertá-la
   - *Saída:* a métrica existe no relatório e o G101 a lê dali.
   - *Reversão:* só relatório.
   - *Achado:* no dev, **+0,16 p.p. [−0,01; +0,56]**, quase todo do *Hertan*, acima do orçamento de +0,10; no degradado médio, **+9,19 p.p. [+3,74; +15,53]**, contra os ≤ 2 da S-714. O `tess_pagina` de 2026-10-30 pagava um erro por linha, de CRLF: é 0,37% no dev, e a primeira folha da S-715 custa menos do que a seção 1 dizia.
-- **S-714** · Leiaute sob ruído. ✅ entregue em 2026-11-06
+- **S-714** · Leiaute sob ruído. ◐ parcial em 2026-11-06: ver o último *Achado*.
   - *Contexto:* no perfil médio a perda de leiaute é 12,1 p.p. [6,9; 17,1]. Suspeitos, em ordem: binarização
     (janela fixa contra escala da letra), poeira passando no filtro de componente, e linhas que se
     tocam depois do desfoque.
@@ -906,12 +906,10 @@ b`), e consertá-la
     `texto_prosa_2026-10-30/`) no degradado calibrado, pareado contra o leiaute de hoje.
   - *Saída:* perda de leiaute ≤ 2 p.p. no perfil médio, sem piorar o ouro limpo.
   - *Reversão:* cada mudança de binarização ou filtro atrás de constante; desligada, volta a de hoje.
-  - *Achado:* **é a poeira, e não a binarização nem linha que toca.** Uma mancha na margem entra na linha e estica a caixa, e o `psm 7` lê a
-    folga como nada. `text/poeira.py` (`TIRAR_POEIRA`): Tesseract de 13,02% a **3,32%** nas 28 folhas, de 14,27% a 3,67% em 21 não vistas, e o
-    ouro limpo igual. Trocar o Otsu **não entra**: não é a causa, e parte as letras do glifo (7.532 inserções contra 1.150).
-  - *Achado:* perda de leiaute de +6,52 a **−3,18 [−9,10; +1,51]**; sem os dois livros em que o oráculo erra mais que o glifo (*Capablanca* 26%,
-    *Chess Evolution* 6,4%), de +10,17 a **+0,85 [−1,35; +3,10]**, e **+2,46 [−0,24; +6,21]** nas não vistas. Ponto dentro de 2 p.p. salvo esse último;
-    teto do IC fora. **Medido no perfil médio, e não no calibrado**, que depende da S-703: o corte de 6 caixas soltas não viu scan nenhum.
+  - *Achado:* **é a poeira, e não a binarização nem linha que toca**: uma mancha entra na linha, estica a caixa, e o `psm 7` lê a folga como nada. E o limiar alto fecha a caixa do nome da partida, que virava quadro de largura inteira.
+    `text/poeira.py` (`TIRAR_POEIRA`) e `quadros.MOLDURA_CRUZA_O_MEIO`. Trocar o Otsu **não entra**: parte as letras do glifo (7.532 inserções contra 1.150).
+  - *Achado:* por `cvoff-texto-prosa`, 27 folhas de 5 livros: perda de +9,19 [+3,74; +15,53] a **+0,16 [−1,73; +1,74]**, Tesseract de 10,74% a 1,71%, ouro limpo igual. A primeira publicação não se sustentou no crítico (+2,79, com *Dvoretsky* +8,50) e está substituída.
+    **Parcial:** folhas do conserto estão nas 27; em 15 não vistas, **+1,87 [−0,52; +5,62]**, teto fora de 2. **E o perfil calibrado não existe** (S-703): nada disto viu scan real.
 - **S-715** · O leiaute de reserva.
   - *Contexto:* o Tesseract lendo a página inteira com o leiaute dele **nunca desaba** — resgata as
     folhas 903 e 1210 do *Chess Evolution* (99,9% → 4,2% e 2,1%), as de linha intercalada (16% → 2,2%)
@@ -1419,9 +1417,10 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
   - *Saída:* zero palavra espaçada que o léxico conhece; nenhuma junção de palavras distintas.
   - *Reversão:* constante.
   - *Achado:* **quem sofre é o glifo**, e o Tesseract já lê a palavra inteira. `text/espacado.py` (`JUNTAR_ESPACADO`), e nenhuma linha do ouro-dev muda. Nas 22 folhas do
-    Gutmayer, nenhuma junção de palavras distintas à vista; palavras conhecidas espaçadas de 14 a 2 nas olhadas, de 7 a 3 nas não vistas. **O zero não se cumpre**: o que sobra é
+    Gutmayer, nenhuma junção de palavras distintas à vista; palavras conhecidas espaçadas de 14 a 4 nas olhadas, de 7 a 3 nas não vistas. **O zero não se cumpre**: o que sobra é
     corrida com letra a mais, e a primeira versão, que achava a palavra no meio, juntava `d e sHan d e`.
-  - *Achado:* `fatalen` não está na lista alemã, e o exemplo do item fica espaçado. Em 16 de 50 junções sai só um pedaço da palavra (`mann`), porque o resto veio com erro.
+  - *Achado:* `fatalen` não está na lista alemã, e o exemplo do item fica espaçado. Em cerca de um terço das junções sai só um pedaço da palavra (`mann`), porque o resto veio com erro.
+  - *Achado:* o crítico achou `y a la postre` → `ya la postre` e `inden`. Corrida feita só de palavras é prosa, e duas curtas vencem uma palavra; o preço é `e i n e s` sair `ein es`.
 - **S-745** · A escada de linhas de base, antes de qualquer modelo da casa. ✅ entregue em 2026-11-06 (o degrau 0 e a tabela; 1, 2 e 3 pulados por recuo, e no scan-ouro não há número)
   - *Entrega:* no ouro-dev e no scan-ouro-dev, em ordem de custo: (0) o degrau que não custa nada —
     `--user-words`, dicionário desligado na notação, escala por altura-x e um modelo de n-gramas de
@@ -1607,6 +1606,7 @@ de cada um.
     sha é `PaginaLida.modelo`, campo novo com padrão. `cvoff-texto-correcoes --quarentena` leva o par: em 7 folhas reais do dev, 85 pares, 70 com recorte, e 69 dos 70 recortes são a letra certa pelo classificador.
   - *Achado:* **o scan-ouro não tem código ainda**, então a recusa dele é uma guarda à espera: a tela da S-703 tem de chamar `procedencia.exigir_verdade` e `dado_corrigido.exigir_documento_cego`. Na fusão o motor sai `glifo`
     até a S-722.
+  - *Achado:* o manifesto só conhece os sorteados, e o volume seguinte de uma série do teste passava. `assets/texto_prosa/exclusao_do_teste.json` adianta a lista da S-750: identidades e chave de série, só resumos.
 - **S-763** · Monitor de qualidade sem referência, validado antes de ser usado.
   - *Contexto:* a concordância glifo × leitor de linha **mede o glifo**, não a saída: por livro, a
     correlação entre o CER do glifo e o da fusão é só +0,51 por livro nos seis livros limpos (+0,46 por
