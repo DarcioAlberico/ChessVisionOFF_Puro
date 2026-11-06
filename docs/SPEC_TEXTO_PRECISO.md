@@ -391,7 +391,7 @@ caractere de `(0, 0, 377, 1819)`. `linhas.bandas` ordena por `y1`, ela entra pri
 e as letras das primeiras linhas da coluna entram nessa banda, ordenadas por `x`: `k15n.ig..♘ht/da4.!th1o6u`. O recorte do leitor de
 linha é o retângulo disso, e o Tesseract também erra. É a mesma faixa da S-711, onde o filete a ligava à borda.
 
-**O caso não era só do *Chess Evolution*.** Num *Aagaard* a borda do scan fazia o mesmo: 75 linhas onde a coluna tem 34.
+**O caso não era só do *Chess Evolution*.** Na folha 59 de um *Aagaard*, a borda do scan fazia o mesmo: 75 linhas onde a coluna tem 34.
 
 ### Solução
 
@@ -418,7 +418,8 @@ desenho virou três mudanças, cada uma com a sua reversão:
 
 `tests/test_text_linha_intercalada.py` e `tests/test_text_moldura.py`, com folhas desenhadas e com o leitor inteiro: a faixa sozinha, o
 fio, o quadro aberto e o fechado, a letra de título, a foto, a letra grossa de capa, o anel grosso, e o caso que **tem de reproduzir** o
-defeito com a constante desligada. Reverter cada interruptor e cada constante faz a suíte acusar: são 25 mutantes, e 25 morrem. Em
+defeito com a constante desligada. `metrics/texto_prosa_2026-11-06/mutantes.py` reverte cada interruptor e move cada constante: são 27
+mutantes, e os 27 morrem. Em
 [metrics/texto_prosa_s712.json](metrics/texto_prosa_s712.json), de `6c1b0ade` para `08fee20c`:
 
 | | antes | depois |
@@ -449,13 +450,15 @@ pelo Tesseract: 19 são as barras do código de barras de uma contracapa, 7 são
 moldura de uma tabela do *Nunn* (a única a sair da folha: as letras de dentro ficam), e o resto é capa, contracapa, foto, e um tabuleiro
 que o detector não viu. **Duas das 5 manchas eram letra:** o `n` de `in` e o `u` de `bunte` no título em negrito da capa do *Estrin*, com
 0,81 e 0,80 de tinta e a escala da capa em 7 pixels. O Tesseract leu `i` e `u`, e o filtro de palavra de 3 letras não as pegava;
-apareceram olhando as cinco manchas uma a uma, e foi o que levou o limite a 0,9. O mosaico das 264 caixas de tamanho de letra (manchas,
-molduras abertas e fios curtos, até 30 escalas) não achou outra: é código de barras, foto, textura e ornamento, e letra só dentro de
+apareceram olhando as cinco manchas uma a uma, e foi o que levou o limite a 0,9. O mosaico das 264 caixas de tamanho de letra (manchas e
+molduras abertas de até 30 escalas nos dois lados, e fios abaixo de 14) não achou outra: é código de barras, foto, textura e ornamento, e letra só dentro de
 ilustração de capa, contracapa e anúncio. As outras caixas não foram olhadas uma a uma.
 
 **A guarda continua inteira.** Folhas perdidas nas 120 de cada *Chess Evolution*: 0. Na varredura, avisadas sobem de 10 a 12, as duas a
 mais em contracapa (*Silman* 387, sobre fundo vermelho, e *Boleslavsky* 257): com menos sinal solto lido, elas ficam logo abaixo do corte
-de 0,5, e o aviso é verdadeiro. `metrics/texto_estilo_por_motor.json` foi remedido: negrito 7,3%, itálico 32,3%, praticamente igual.
+de 0,5, e o aviso é verdadeiro. Essa varredura, como o censo e a auditoria, conta o limite de tinta antigo.
+`metrics/texto_estilo_por_motor.json` foi remedido em `08fee20c`: negrito 7,3%, itálico 32,3%, praticamente igual; ele lê 4 folhas
+espaçadas por PDF, e parte delas está fora das 1.163 da conferência da tinta.
 
 **O absoluto das não vistas tem uma ressalva.** A camada escreve `afer` por `after` e `lef` por `left` (a ligadura perdeu o `t`): 60
 ocorrências na referência dessas 40 folhas, contra 1.047 erros de prosa do Tesseract, cerca de 6%. O 1,88% fica um pouco inflado. A
@@ -465,6 +468,8 @@ diferença do portão não, porque o oráculo paga o mesmo erro.
 
 - **O acervo inteiro não fica sem linha alta.** Sobram 1.210 de 41.950, 419 delas em primeira folha de livro. O resto não foi classificado:
   nas que vi há título grande, tabuleiro que o detector não viu, tarja e scan ruim. O limite de 1,8 mediana é sinal, e não defeito.
+  **E parte da queda de 1.868 para 1.210 pode ser de definição:** o censo conta por tira, e a letra grande agora fica numa tira só dela,
+  onde ela não é alta. Não quantifiquei. No ouro-dev não há essa diferença: lá não há nenhuma caixa grande.
 - **O pedaço da vizinha não volta para a linha dele:** a partição o deixa como linha à parte, ou o descarta como fragmento.
 - **O rodapé que atravessa a calha** (`www.chess-n` + `ewsletter.com`, em quase toda folha do *Chess Evolution 2014*) continua partido entre
   as duas colunas. Ele é parte do que sobra da perda de leiaute, e é da detecção de região. É ele, trocando de lugar com a linha de cima, que
@@ -474,6 +479,12 @@ diferença do portão não, porque o oráculo paga o mesmo erro.
 - **Limites do corte:** a mancha de 90% de tinta leva também o `I` maciço de 3 escalas de largura, que só existe em capa; a foto abaixo de
   90% de tinta fica, e entre 3 e 8 escalas ninguém mais a examina. O título em ornamento de uma capa (o *Bachmann*) sai como moldura aberta,
   pedaço por pedaço; e o que está escrito dentro de uma foto sai com ela.
+- **O quadro fechado de 0,3 da folha ou mais, com texto dentro,** sai como faixa, e o conteúdo dele não é lido (*Polugajewski* 261, sem
+  aviso, e contracapas). Antes também não era: lá a auditoria registra o Tesseract sem palavra, com uma exceção de 6 caracteres numa
+  contracapa do *Karpov*.
+- **O título em caixa mista que atravessa as 8 escalas** pode se partir, porque só as letras acima do corte vão para a tira de grandes: numa
+  folha desenhada, `Playing` sai `Play` + `avin`. No real, os 3 casos que o crítico achou em amostra cortada por tempo não eram título.
+- **Uma moldura de anel com menos de 50% de vão** apagaria o texto de dentro. Visto no código, e não medido.
 - **O tempo não se julga aqui:** as medições correram lado a lado, e o p95 de 2,9 s por folha é sob contenção.
 
 ## S-715 · O leiaute de reserva ✅ implementada (2026-11-05)

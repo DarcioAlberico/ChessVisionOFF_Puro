@@ -310,6 +310,13 @@ class PartirLinhasAltasTests(unittest.TestCase):
         partidas = self._partidas(sorted([*cima, *baixo, descendente], key=lambda c: c.x1))
         self.assertEqual(len(partidas), 2)
 
+    def test_o_vale_com_um_sexto_corta(self) -> None:
+        """Duas caixas em doze na fileira do vale: abaixo de um quarto, e isso é vale, embora acima de 0,15."""
+        cima, baixo = _fileira(200, n=10), _fileira(226, n=10)
+        atravessam = [Caixa(200 + 16 * k, 200, 212 + 16 * k, 246) for k in range(2)]
+        partidas = self._partidas(sorted([*cima, *baixo, *atravessam], key=lambda c: c.x1))
+        self.assertEqual(len(partidas), 2)
+
     def test_o_vale_com_um_terco_nao_corta(self) -> None:
         """Quatro caixas em catorze atravessam o meio: acima de um quarto da fileira mais cheia, e isso não é vale."""
         cima, baixo = _fileira(200, n=10), _fileira(226, n=10)
