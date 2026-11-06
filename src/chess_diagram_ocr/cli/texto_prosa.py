@@ -55,6 +55,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl
 
+from ..atomic_io import atomic_write_bytes
+from . import EXIT_FAILURE, EXIT_NO_CHECKPOINT, EXIT_OK, add_dpi_argument, add_verbose, cli_errors
+
 logger = logging.getLogger(__name__)
 
 MOTORES_PADRAO = "glifo,camada_prosa,fusao,tess,tess_oraculo,tess_pagina"
@@ -247,7 +250,7 @@ def medir(args: argparse.Namespace) -> int:
         for n, f in enumerate(faltam, start=1):
             if args.limite_segundos and time.perf_counter() - inicio > args.limite_segundos:
                 print(f"# parou pelo limite: faltam {len(faltam) - n + 1} folhas. Rode de novo com o mesmo --dados.", flush=True)
-                return 3
+                return EXIT_NO_CHECKPOINT
             pdf = str(achados[f.identidade])
             indice = f.folha - 1
             imagem = render_pdf_page(pdf, indice, args.dpi)
@@ -340,7 +343,7 @@ def conferir_admissao(args: argparse.Namespace) -> int:
         print(f"# {rotulo}: {len(folhas)} folhas, {sum(criterios.values())} recusadas {dict(criterios)}", flush=True)
         recusadas_no_total += sum(criterios.values())
     # Na prata a recusa é o normal: os livros são de OCR de terceiro. No ouro, é defeito.
-    return 1 if recusadas_no_total and args.conjunto == "ouro" else 0
+    return EXIT_FAILURE if recusadas_no_total and args.conjunto == "ouro" else EXIT_OK
 
 
 def conferir_o_canario(*, motor: str = "", raiz: str = "", manifesto: str | None = None) -> dict[str, Any]:
@@ -374,7 +377,7 @@ def canario(args: argparse.Namespace) -> int:
     print(f"# {relatorio['rotulo']}")
     for f in relatorio["folhas"]:
         print(f"  {f['lingua']} {f['identidade'][:8]} f{f['folha']} {f['motor']}: base {f['cer_de_base']:.4f}, agora {f['cer']:.4f}{'  ALARME' if f['alarme'] else ''}")
-    return 1 if any(f["alarme"] for f in relatorio["folhas"]) else 0
+    return EXIT_FAILURE if any(f["alarme"] for f in relatorio["folhas"]) else EXIT_OK
 
 
 def _ler_registros(caminho: str | Path) -> list[dict[str, Any]]:
@@ -431,7 +434,7 @@ def compilar(args: argparse.Namespace) -> int:
         "ressalvas": list(args.ressalva or []),
         "conjuntos": blocos,
     }
-    Path(args.compilar).write_bytes((json.dumps(relatorio, ensure_ascii=False, indent=1, sort_keys=True) + "\n").encode("utf-8"))
+    atomic_write_bytes(Path(args.compilar), (json.dumps(relatorio, ensure_ascii=False, indent=1, sort_keys=True) + "\n").encode("utf-8"))
     for nome, bloco in blocos.items():
         for linha in relatorio_prosa.linhas_na_tela(nome, bloco):
             print(linha)
@@ -446,7 +449,7 @@ def comparar(args: argparse.Namespace) -> int:
     for erro in erros[:40]:
         print(erro)
     print(f"{len(erros)} diferenças fora as chaves segundos_*")
-    return 1 if erros else 0
+    return EXIT_FAILURE if erros else EXIT_OK
 
 
 def importar(args: argparse.Namespace) -> int:
@@ -498,7 +501,7 @@ def _frase_sem_numero() -> str:
 
 def construir_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="cvoff-texto-prosa", description="A régua da prosa sobre um manifesto (S-706).")
-    ap.add_argument("--conjunto", choices=("ouro", "prata", SCAN_OURO), default="ouro")
+    ap.add_argument("--conjunto", choices=("ouro", "prata", SCAN_OURO), default="ouro", help="o manifesto a medir; padrão: ouro")
     ap.add_argument("--acordo", action="store_true", help="no scan-ouro: o acordo da dupla digitação e o custo medido")
     ap.add_argument("--transcricao", default="", help="no scan-ouro: a pasta da transcrição, fora do repositório")
     ap.add_argument("--split", choices=("dev", "teste"), default=None, help="do ouro; padrão: dev")
@@ -508,12 +511,12 @@ def construir_parser() -> argparse.ArgumentParser:
     ap.add_argument("--dados", default="", help="o JSONL por folha, fora do repositório: tem texto de livro")
     ap.add_argument("--limite-segundos", type=float, default=0.0, help="para depois da folha em curso; rode de novo para continuar")
     ap.add_argument("--livro", action="append", help="só esta identidade; pode repetir")
-    ap.add_argument("--folhas-maximas", type=int, default=0)
+    ap.add_argument("--folhas-maximas", type=int, default=0, help="teto de folhas, para ensaiar; 0 é sem teto")
     ap.add_argument("--raiz", default=os.environ.get("CVOFF_RAIZ", ""), help="o checkout com PDF/ e PDF Digitais/")
     ap.add_argument("--pasta", action="append", help="onde procurar os PDF, no lugar das duas da raiz")
     ap.add_argument("--manifesto", default=None, help="outro manifesto no lugar do versionado")
     ap.add_argument("--modelo", default="", help="o char_classifier.pt; padrão: o de models/")
-    ap.add_argument("--dpi", type=int, default=220)
+    add_dpi_argument(ap)
     ap.add_argument("--reserva", action="store_true", help="liga a reserva da S-715, como a janela")
     ap.add_argument("--exigir-src", default="", help="aborta se o pacote importado não morar sob esta pasta")
     ap.add_argument("--medido-em", default="", help="a data do relatório e da primeira leitura; padrão: hoje")
@@ -532,8 +535,11 @@ def construir_parser() -> argparse.ArgumentParser:
     return ap
 
 
+@cli_errors
 def main(argv: Sequence[str] | None = None) -> int:
-    args = construir_parser().parse_args(argv)
+    parser = construir_parser()
+    add_verbose(parser)
+    args = parser.parse_args(argv)
     args.split_dado = args.split is not None
     args.split = args.split or "dev"
     if hasattr(sys.stdout, "reconfigure"):

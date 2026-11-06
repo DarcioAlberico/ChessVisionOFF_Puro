@@ -32,7 +32,7 @@ from typing import Any
 from ..atomic_io import atomic_write_text
 from ..logging_setup import configure_logging
 from ..text import arquivo, correcao
-from . import add_verbose, cli_errors
+from . import add_dpi_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Leva o par que a mao tocou a esta pasta de quarentena (S-214), com a versao do modelo. Nao grava na base.",
     )
-    parser.add_argument("--dpi", type=int, default=220, help="DPI do recorte da folha, com --quarentena.")
+    add_dpi_argument(parser, help="DPI do recorte da folha, com --quarentena.")
     add_verbose(parser)
     return parser
 

@@ -36,6 +36,7 @@ from typing import Any
 
 import numpy as np
 
+from ..atomic_io import atomic_write_bytes
 from . import dado_corrigido as _dado_corrigido
 from . import procedencia as _procedencia
 from . import regua_prosa as _regua
@@ -94,7 +95,7 @@ def declarar_backup(pasta: str | Path, backup: str | Path, *, hoje: str | None =
     Path(pasta).mkdir(parents=True, exist_ok=True)
     Path(backup).mkdir(parents=True, exist_ok=True)
     dados = {"backup": str(Path(backup).resolve()), "declarado_em": hoje or date.today().isoformat()}
-    (Path(pasta) / ARQUIVO_DO_BACKUP).write_bytes((json.dumps(dados, ensure_ascii=False, indent=1) + "\n").encode("utf-8"))
+    atomic_write_bytes(Path(pasta) / ARQUIVO_DO_BACKUP, (json.dumps(dados, ensure_ascii=False, indent=1) + "\n").encode("utf-8"))
 
 
 def backup_declarado(pasta: str | Path) -> Path | None:
