@@ -978,5 +978,12 @@ def frase_de_procedencia(caracteres: Mapping[Any, int]) -> str:
     return "Texto: " + ", ".join(f"{round(100 * n / total)}% {ROTULOS_DE_PROCEDENCIA.get(quem, quem)}" for quem, n in ordem) + "."
 
 
+def frase_do_cache_limpo(quantas: int, tamanho: int) -> str:
+    """O rodapé depois de «Limpar o cache de leitura» (S-725). Só a leitura guardada sai: o caderno fica."""
+    if not quantas:
+        return "O cache de leitura já estava vazio."
+    return f"Cache de leitura limpo: {quantas} folha(s), {tamanho / (1024 * 1024):.1f} MB. As folhas do caderno não mudam.".replace(".0 MB", " MB")
+
+
 NADA_A_REVISAR = "Nenhuma palavra a revisar nesta folha."
 """O `proxima_a_revisar` numa folha sem marca: rodapé, e não caixa -- é resposta, e não erro (S-718)."""

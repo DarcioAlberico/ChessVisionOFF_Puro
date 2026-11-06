@@ -422,6 +422,7 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 "exportar_rtf",
                 "familia_da_letra",
                 "lingua_do_livro",  # a S-723: o menu pergunta de quem é a língua; o botão fica ao lado da caixa
+                "limpar_cache_de_leitura",  # a S-725: o menu e a fita limpam a leitura guardada
                 "indice_do_caderno",
                 "ler_folha_de_novo",
                 "lista_de_correcoes",

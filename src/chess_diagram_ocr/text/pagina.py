@@ -947,6 +947,7 @@ LEIAUTE_DE_RESERVA = "leiaute_de_reserva"
 CAMADA_NA_FOLHA = "camada_na_folha"
 CAMADA_RECUSADA = "camada_recusada"
 LEITOR_INDISPONIVEL = "leitor_indisponivel"
+CACHE_NAO_GRAVADO = "cache_nao_gravado"
 AVISOS: tuple[str, ...] = (
     FOLHA_NAO_LIDA,
     LEITURA_PARCIAL,
@@ -954,9 +955,13 @@ AVISOS: tuple[str, ...] = (
     CAMADA_NA_FOLHA,
     CAMADA_RECUSADA,
     LEITOR_INDISPONIVEL,
+    CACHE_NAO_GRAVADO,
 )
 """Os códigos conhecidos. **`de_json` aceita um que não esteja aqui**: quem lê um aviso de versão mais
 nova ainda o mostra pela mensagem, e recusar o arquivo por isso perderia a folha inteira."""
+
+AVISOS_DA_SESSAO: frozenset[str] = frozenset({CACHE_NAO_GRAVADO})
+"""O que é da leitura de agora, e não da folha (S-725): uma folha inteira não passa a dizer, no arquivo, que o disco esteve cheio."""
 
 
 @dataclass(frozen=True)
@@ -1102,10 +1107,13 @@ class PaginaLida:
 
     # ---------------------------------------------------------------------------- serialização
 
+    def _avisos_gravados(self) -> tuple[Aviso, ...]:
+        return tuple(aviso for aviso in self.avisos if aviso.codigo not in AVISOS_DA_SESSAO)
+
     def _esquema_gravado(self) -> int:
         if GRAVAR_FORMATO_NOVO and self.pede_formato_novo:
             return ESQUEMA
-        return ESQUEMA_DOS_AVISOS if self.avisos else 1
+        return ESQUEMA_DOS_AVISOS if self._avisos_gravados() else 1
 
     def para_json(self) -> dict[str, Any]:
         dados: dict[str, Any] = {
@@ -1120,8 +1128,8 @@ class PaginaLida:
             "rodape": self.rodape.para_json() if self.rodape else None,
             "colunas": [coluna.para_json() for coluna in self.colunas],
         }
-        if self.avisos:
-            dados["avisos"] = [aviso.para_json() for aviso in self.avisos]
+        if self._avisos_gravados():
+            dados["avisos"] = [aviso.para_json() for aviso in self._avisos_gravados()]
         if self.modelo:
             dados["modelo"] = self.modelo
         return dados
@@ -1222,6 +1230,8 @@ def de_diagramas(
 
 __all__ = [
     "AVISOS",
+    "AVISOS_DA_SESSAO",
+    "CACHE_NAO_GRAVADO",
     "CAMADA_NA_FOLHA",
     "CAMADA_RECUSADA",
     "ESQUEMA",

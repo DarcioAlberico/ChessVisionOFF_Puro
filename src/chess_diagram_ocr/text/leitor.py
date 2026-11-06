@@ -196,6 +196,7 @@ from .binarizacao import binarize
 from .grade import Arranjo
 from .leitor_de_linha import LeitorDeLinha
 from .pagina import (
+    CACHE_NAO_GRAVADO,
     CAMADA_NA_FOLHA,
     CAMADA_RECUSADA,
     FOLHA_NAO_LIDA,
@@ -1573,7 +1574,7 @@ def _lido_pelo_outro(
     linhas = list(leitura.linhas)
     for k, linha in zip(indices, outra.linhas, strict=True):
         linhas[k] = linha
-    return _leitor_de_linha.Leitura(tuple(linhas))
+    return _leitor_de_linha.Leitura(tuple(linhas), aviso=leitura.aviso)
 
 
 def _imagem_do_leitor(imagem: np.ndarray, dpi: int) -> np.ndarray:
@@ -2008,6 +2009,8 @@ def _ler_pagina_do_livro(
                 leitura = _lido_pelo_outro(
                     leitor, [_recorte_de_linha(do_leitor, c.caixa, escala_px) for c in cruas], cruas, lingua=lingua, dpi=dpi
                 )
+                if leitura.aviso:
+                    avisos.append(Aviso(CACHE_NAO_GRAVADO, leitura.aviso))
                 if leitura.falha:
                     avisos.append(Aviso(LEITOR_INDISPONIVEL, f"A prosa ficou com o glifo. {leitura.falha}"))
                 else:

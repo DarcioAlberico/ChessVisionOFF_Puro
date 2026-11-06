@@ -1,7 +1,7 @@
 {
   "item": "S-256 · o inventário do editor de texto",
   "quando": "2026-11-06",
-  "commit": "e453df2f19beea4695993a28431f4e403b72bd20",
+  "commit": "5bd688565ad91ce919ea24d2897297f8bfe33463",
   "atributos_do_documento": [
     "negrito",
     "italico",
@@ -122,6 +122,7 @@
     "tamanho_da_miniatura",
     "familia_da_letra",
     "lingua_do_livro",
+    "limpar_cache_de_leitura",
     "diagramas_da_folha_a_esquerda",
     "diagramas_da_folha_ao_centro",
     "diagramas_da_folha_como_a_preferencia",

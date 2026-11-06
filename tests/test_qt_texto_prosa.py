@@ -7,6 +7,7 @@ de diagrama e o Tesseract.
 
 from __future__ import annotations
 
+import errno
 import tempfile
 import unittest
 from collections.abc import Sequence
@@ -18,7 +19,7 @@ import numpy as np
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
-from chess_diagram_ocr.text import arquivo, boxes, leitor, pagina, rico, tesseract
+from chess_diagram_ocr.text import arquivo, boxes, cache_texto, leitor, pagina, rico, tesseract
 from chess_diagram_ocr.text.leitor_de_linha import Leitura
 from chess_diagram_ocr.ui import state as estado_da_janela
 from chess_diagram_ocr.ui import strings
@@ -28,7 +29,7 @@ if TEM_PYQT:
     from PyQt6.QtGui import QTextCursor
     from PyQt6.QtTest import QTest
 
-    from chess_diagram_ocr.qt import tema
+    from chess_diagram_ocr.qt import painel_de_texto, tema
     from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
     from chess_diagram_ocr.text.lingua import LinguaDoLivro
 
@@ -125,6 +126,71 @@ class ProcedenciaPorPalavraNaTelaTests(_Aba):
         self.assertNotIn("tesseract", bruto)
         self.assertNotIn("procedencia_em", bruto)
         self.assertEqual(arquivo.carregar(caminho).para_texto(), self.painel.texto())
+
+
+class CacheDeLeituraNaTelaTests(_Aba):
+    """A S-725 afirmada na aba: a leitura volta do disco, o texto é o mesmo, e o menu limpa."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.processos = 0
+        self.cache = cache_texto.CacheDeLeitura(self.pasta / "cache_texto")
+        motor = tesseract.Motor(binario=self.pasta / "tesseract.exe", versao="5.5.0")
+        trocas = [
+            mock.patch.object(cache_texto, "padrao", return_value=self.cache),
+            mock.patch.object(tesseract, "achar_motor", return_value=motor),
+            mock.patch.object(tesseract, "ler_linhas", self._ler_linhas),
+        ]
+        for troca in trocas:
+            troca.start()
+            self.addCleanup(troca.stop)
+
+    def _ler_linhas(self, recortes: Sequence[Any], **_: Any) -> list[tesseract.LinhaDoTesseract]:
+        self.processos += 1
+        return [tesseract.LinhaDoTesseract("the white Nf3 wins a pawn", (0.9,) * 6) for _ in recortes]
+
+    def _ler(self) -> pagina.PaginaLida:
+        imagem = painel_de_texto._renderizar(self.livro, 0, dpi=72)
+        with (
+            mock.patch.object(leitor, "linhas_do_glifo", return_value=(self.boas(), [])),
+            mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=[]),
+        ):
+            return painel_de_texto._ler(self.livro, 0, dpi=72, motor="fusao", modo_bloco=False, imagem_rgb=imagem)
+
+    def test_a_segunda_leitura_nao_abre_processo_e_o_texto_e_o_mesmo(self) -> None:
+        primeira = self._ler()
+        self.assertEqual(self.processos, 1)
+        self.assertGreater(self.cache.tamanho(), 0)
+        segunda = self._ler()
+        self.assertEqual(self.processos, 1)
+        self.assertEqual(primeira.texto(), segunda.texto())
+
+    def test_o_menu_limpa_e_a_leitura_seguinte_abre_processo(self) -> None:
+        self._ler()
+        self.painel.executar("limpar_cache_de_leitura")
+        tarefa = self.painel._limpeza_do_cache
+        self.assertIsNotNone(tarefa)
+        self.assertTrue(tarefa.wait(30_000))  # type: ignore[union-attr]
+        self.app.processEvents()
+        self.assertEqual(self.cache.tamanho(), 0)
+        self.assertIn("Cache de leitura limpo: 1 folha(s)", self.recados[-1])
+        self._ler()
+        self.assertEqual(self.processos, 2)
+
+    def test_com_o_cache_vazio_o_menu_diz_que_ja_estava(self) -> None:
+        self.painel.executar("limpar_cache_de_leitura")
+        self.assertTrue(self.painel._limpeza_do_cache.wait(30_000))  # type: ignore[union-attr]
+        self.app.processEvents()
+        self.assertEqual(self.recados[-1], "O cache de leitura já estava vazio.")
+
+    def test_disco_cheio_vira_aviso_na_folha_e_nao_perde_a_leitura(self) -> None:
+        erro = OSError(errno.ENOSPC, "No space left on device")
+        with mock.patch.object(cache_texto, "atomic_write_text", side_effect=erro):
+            lida = self._ler()
+        self.assertIn("the white", lida.texto())
+        avisos = {a.codigo: a.mensagem for a in lida.avisos}
+        self.assertIn("disco está cheio", avisos[pagina.CACHE_NAO_GRAVADO])
+        self.assertNotIn("avisos", lida.para_json())
 
 
 class CaixaDeMotorTests(_Aba):

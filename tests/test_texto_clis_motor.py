@@ -98,6 +98,19 @@ class RelatorioDizOMotorTests(unittest.TestCase):
             texto_custo._medir_pagina(Path("x.pdf"), 0, dpi=220, reconhecedor=object())
         self.assertEqual(texto_custo.MOTOR_MEDIDO, ler.call_args.kwargs["motor"])
 
+    def test_o_custo_da_fusao_le_pela_fusao_como_a_janela(self) -> None:
+        """A S-725: o que a D4 vai decidir é a fusão, com a reserva, e sem cache."""
+        with mock.patch("chess_diagram_ocr.text.leitor.ler_pagina") as ler:
+            texto_custo._medir_pagina(Path("x.pdf"), 0, dpi=220, reconhecedor=object(), motor="fusao", lingua="por")
+        argumentos = ler.call_args.kwargs
+        self.assertEqual((argumentos["motor"], argumentos["lingua"], argumentos["reserva"]), ("fusao", "por", True))
+        self.assertNotIn("leitor_de_linha", argumentos, "sem leitor, `ler_pagina` usa o padrão, que nasce sem cache")
+
+    def test_o_relatorio_diz_a_fusao(self) -> None:
+        perfil = _custo.Perfil(paginas=1, segundos_por_pagina=1.0, etapas={}, chamadas={})
+        _tabela, dados = texto_custo.relatorio(perfil, hoje_por_pagina=1.0, paginas_do_acervo=10, motor="fusao")
+        self.assertEqual(dados["motor"], "fusao")
+
     def test_a_juncao_no_glifo_grava_o_motor_e_le_por_ele(self) -> None:
         pagina = mock.Mock(colunas=[])
         with (

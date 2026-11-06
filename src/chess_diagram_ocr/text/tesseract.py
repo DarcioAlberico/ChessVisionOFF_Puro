@@ -49,6 +49,14 @@ TIMEOUT_POR_LINHA = 1.0
 """Segundos. O teto é 10× o p99 medido por folha, com piso de 10 s: um Tesseract travado não pode prender
 a `Tarefa` do Qt, e uma folha de 80 linhas lidas em 4 s não pode ser morta por um teto curto."""
 
+LOTE_POR_FOLHA = True
+"""Um processo por folha, com o TIFF de várias páginas (S-720, S-725). Desligado, um processo por linha: a reserva, e a régua do lote."""
+
+PSM_DA_LINHA = 7
+
+VERSAO_DO_EXECUTOR = 1
+"""Sobe quando o que este módulo faz com o recorte ou com o TSV muda a leitura sem mudar uma constante. Vai na chave do cache (S-725)."""
+
 TETO_DE_MEGAPIXELS = 60.0
 """Acima disto a imagem não vai ao Tesseract: ~124 MB por processo a 600 dpi, e um PDF pode pedir gigabytes."""
 
@@ -386,6 +394,11 @@ def escalado(recorte: np.ndarray) -> np.ndarray:
     return cv2.resize(recorte, None, fx=fator, fy=fator, interpolation=interpolacao)
 
 
+def assinatura_do_preprocessamento() -> str:
+    """O que muda o recorte antes do processo, escrito na chave do cache: virar uma constante daqui invalida a entrada (S-725)."""
+    return f"margem={MARGEM_DO_RECORTE};escala={ESCALA_PELA_ALTURA_X};alvo={ALTURA_X_ALVO};russo={RUS_COM_ENG}"
+
+
 def _tiff_de(recortes: Sequence[np.ndarray]) -> bytes:
     """Um TIFF de várias páginas, uma linha em cada, com a margem branca. Sem compressão: é um cano."""
     import cv2
@@ -424,15 +437,24 @@ def ler_linhas(
     saida = [LinhaDoTesseract("") for _ in recortes]
     if not validos:
         return saida
-    tsv = rodar_tesseract(
-        achado,
-        _tiff_de([recortes[i] for i in validos]),
-        lingua=lingua,
-        dpi=dpi,
-        psm=7,
-        timeout=max(TIMEOUT_MINIMO, TIMEOUT_POR_LINHA * len(validos)),
-        **({"opcoes": ("-c", "load_system_dawg=0")} if sem_dicionario else {}),
-    )
+
+    def lote(indices: Sequence[int]) -> str:
+        return rodar_tesseract(
+            achado,
+            _tiff_de([recortes[i] for i in indices]),
+            lingua=lingua,
+            dpi=dpi,
+            psm=PSM_DA_LINHA,
+            timeout=max(TIMEOUT_MINIMO, TIMEOUT_POR_LINHA * len(indices)),
+            **({"opcoes": ("-c", "load_system_dawg=0")} if sem_dicionario else {}),
+        )
+
+    if not LOTE_POR_FOLHA:
+        for indice in validos:
+            palavras = palavras_do_tsv(lote([indice]))
+            saida[indice] = LinhaDoTesseract(" ".join(p.texto for p in palavras), tuple(p.confianca for p in palavras), tuple(palavras))
+        return saida
+    tsv = lote(validos)
     por_pagina: dict[int, list[Palavra]] = {}
     for palavra in palavras_do_tsv(tsv):
         por_pagina.setdefault(palavra.pagina, []).append(palavra)
@@ -475,10 +497,13 @@ def ler_folha(
 __all__ = [
     "LINGUAS",
     "LINGUA_PADRAO",
+    "LOTE_POR_FOLHA",
     "MARGEM_DO_RECORTE",
+    "PSM_DA_LINHA",
     "TETO_DE_MEGAPIXELS",
     "TIMEOUT_MINIMO",
     "TIMEOUT_POR_LINHA",
+    "VERSAO_DO_EXECUTOR",
     "VERSOES_MEDIDAS",
     "FalhaDoTesseract",
     "LinhaDoTesseract",
@@ -486,6 +511,7 @@ __all__ = [
     "Palavra",
     "achar_motor",
     "ambiente_do_processo",
+    "assinatura_do_preprocessamento",
     "examinar",
     "lingua_do_processo",
     "ler_folha",
