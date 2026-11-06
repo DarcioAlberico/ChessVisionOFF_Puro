@@ -122,6 +122,10 @@ class OutraLeituraTests(unittest.TestCase):
     def test_figurina_nunca_e_trocada_por_letra(self) -> None:
         (saida,) = arbitro.arbitrar([[fusao.Token("♖g", "glifo", "♖g", None, "Bg4")]], existe=nao_existe)
         self.assertEqual(["♖g"], [t.texto for t in saida])
+        # Com número antes, o contexto bastaria: quem barra é a figurina.
+        tokens = [fusao.Token("12.", "glifo", "12."), fusao.Token("♖g", "glifo", "♖g", None, "Bg4")]
+        (saida,) = arbitro.arbitrar([tokens], existe=nao_existe)
+        self.assertEqual(["12.", "♖g"], [t.texto for t in saida])
 
     def test_o_numero_que_faltava_vem_e_a_figurina_fica(self) -> None:
         (saida,) = arbitro.arbitrar([[fusao.Token(".♖g6!", "glifo", ".♖g6!", None, "1.2g6!")]], existe=nao_existe)
