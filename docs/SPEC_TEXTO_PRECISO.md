@@ -314,7 +314,10 @@ da camada de terceiro contava como prosa, e o lance com sinal colado também (me
 - **Novo `ruido`:** o que termina numa casa e não tem peça nem palavra antes (`.l:tb1`, `'ii'xa4`, `Wxf7`, `tlld7+`, `©e7`,
   `\x15d7`; `peão-g6` continua prosa, pela vogal), os padrões da admissão, `=I=`, e a letra solta de fonte (`ç`, `æ+`).
 - **Linha** só de `a–h`/`1–8` (quatro ou mais, todos diferentes), `abcdefgh`, ou só de letras acentuadas, é `outro`.
-- **Retângulo de diagrama crescido de uma casa** ao excluir linhas da referência: `crescer_diagrama`, aplicado pelo CLI.
+- **Retângulo de diagrama crescido de uma casa** ao excluir linhas da referência, mas só para a linha sem palavra nem lance
+  (`fora_da_referencia`). *Desvio do roadmap, medido:* nas 27 folhas do dev o retângulo crescido tira 15 linhas a mais, e 9 são
+  texto de verdade ao lado do diagrama (`As brancas jogam`), que contariam como inserção de todo motor que as leu certo. As 6 que
+  ele tinha de tirar são a fileira do Seirawan, e seguem saindo.
 
 **Critério de aceite.** Tabela de 124 tokens rotulados à mão nas oito línguas, zero divergência; 26 que a régua recusa como
 prosa, um por família da seção 1.6. Os casos saíram também de varrer os JSONL de 2026-10-30 atrás de "prosa" com dígito ou sinal.

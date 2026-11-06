@@ -342,6 +342,25 @@ class MontagemTests(unittest.TestCase):
         self.assertTrue(regua.cruza_diagrama(fileira, [regua.crescer_diagrama(diagrama)]))
 
 
+class ForaDaReferenciaTests(unittest.TestCase):
+    DIAGRAMA = ((100, 100, 180, 180),)
+
+    def test_a_linha_dentro_do_diagrama_sai_tenha_o_que_tiver(self) -> None:
+        self.assertTrue(regua.fora_da_referencia("White to move", (110, 110, 170, 120), self.DIAGRAMA))
+
+    def test_a_fileira_de_coordenadas_colada_sai_pelo_retangulo_crescido(self) -> None:
+        self.assertTrue(regua.fora_da_referencia("/èéêëìíîï)", (100, 182, 180, 188), self.DIAGRAMA, "por"))
+        self.assertTrue(regua.fora_da_referencia("a b c d e f g h", (100, 182, 180, 188), self.DIAGRAMA, "por"))
+
+    def test_o_texto_colado_no_diagrama_fica(self) -> None:
+        """Eram 9 das 15 linhas a mais no dev: tiradas, viravam inserção de quem as leu certo."""
+        self.assertFalse(regua.fora_da_referencia("As brancas jogam", (100, 182, 180, 188), self.DIAGRAMA, "por"))
+        self.assertFalse(regua.fora_da_referencia("6...Ng3+", (100, 182, 180, 188), self.DIAGRAMA))
+
+    def test_longe_do_diagrama_fica_mesmo_sem_palavra(self) -> None:
+        self.assertFalse(regua.fora_da_referencia("/èéêëìíîï)", (100, 300, 180, 306), self.DIAGRAMA, "por"))
+
+
 class FronteiraTests(unittest.TestCase):
     def test_a_regua_nao_le_arquivo_nem_importa_o_medido(self) -> None:
         arvore = ast.parse((RAIZ / "src/chess_diagram_ocr/text/regua_prosa.py").read_text(encoding="utf-8"))

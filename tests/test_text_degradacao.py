@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
-import subprocess
-import sys
 import unittest
 from pathlib import Path
 
 import cv2
 import numpy as np
+from subprocesso import rodar_python
 
 from chess_diagram_ocr.text import degradacao
 
@@ -48,7 +47,7 @@ class ReprodutibilidadeTests(unittest.TestCase):
             "print(hashlib.sha256(d.aplicar(i,'medio',11).tobytes()).hexdigest());"
             "print(hashlib.sha256(d.aplicar(i,'fotocopia_media',11).tobytes()).hexdigest())"
         )
-        saida = subprocess.run([sys.executable, "-c", codigo], capture_output=True, text=True, check=True).stdout.split()
+        saida = rodar_python(codigo).stdout.split()
         self.assertEqual(_resumo(degradacao.aplicar(_folha(), "medio", 11)), saida[0])
         self.assertEqual(_resumo(degradacao.aplicar(_folha(), "fotocopia_media", 11)), saida[1])
 

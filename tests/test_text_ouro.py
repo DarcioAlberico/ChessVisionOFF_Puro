@@ -557,7 +557,8 @@ class VersionadoTests(unittest.TestCase):
 
     def test_o_teste_nao_foi_lido(self) -> None:
         """Muda no dia em que a S-706 abrir o teste -- e então a data tem de ser posterior."""
-        self.assertIsNone(self.m.primeira_leitura_do_teste)
+        # O G100 abriu o teste em 2026-11-06, pelo `cvoff-texto-prosa`: a data é a daquela vez, e não sobe mais.
+        self.assertIn(self.m.primeira_leitura_do_teste, (None, "2026-11-06"))
 
 
 if __name__ == "__main__":

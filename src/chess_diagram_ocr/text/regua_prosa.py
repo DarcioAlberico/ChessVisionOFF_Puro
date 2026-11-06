@@ -631,6 +631,21 @@ def cruza_diagrama(caixa: Caixa, diagramas: Iterable[Caixa], fracao: float = 0.3
     return False
 
 
+def fora_da_referencia(linha: str, caixa: Caixa, diagramas: Sequence[Caixa], lingua: str = LINGUA_PADRAO) -> bool:
+    """A linha sai da referência? Cruza o diagrama; ou cruza o retângulo crescido de uma casa e não tem palavra nem lance.
+
+    **Crescer não vale para a linha que tem texto.** O roadmap pede o retângulo crescido, para a fileira de coordenadas em
+    fonte não escapar (`/èéêëìíîï)` no Seirawan). Medido nas 27 folhas do dev: das 15 linhas a mais que ele tira, 6 são essa
+    fileira, e 9 são texto de verdade ao lado do diagrama (`As brancas jogam`, `Not only is Black faced`), que
+    tiradas da referência contariam como inserção de todo motor que as leu certo.
+    """
+    if cruza_diagrama(caixa, diagramas):
+        return True
+    if not cruza_diagrama(caixa, [crescer_diagrama(d) for d in diagramas]):
+        return False
+    return not set(classes_por_char(linha, lingua)) & {PROSA, NOTACAO}
+
+
 def texto_de(linhas: Iterable[str]) -> str:
     return "\n".join(linhas)
 
@@ -658,6 +673,7 @@ __all__ = [
     "cruza_diagrama",
     "diferenca_pareada",
     "familia",
+    "fora_da_referencia",
     "ic95",
     "linhas_da_pagina",
     "normalizar",
