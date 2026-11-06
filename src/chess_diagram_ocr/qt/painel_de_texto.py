@@ -3948,7 +3948,9 @@ class PainelDeTexto(QWidget):
                 "tente outro motor ou o modo bloco."
             )
             return
-        self.estado.emit(f"Folha lida{tempo}: {len(self.documento.corridas)} trecho(s){figuras}.{lingua_nova}")
+        # **O bloco misto é `glifo` por regra, e a frase diz de quem é o texto de verdade** (S-722).
+        de_quem = f" {strings.frase_de_procedencia(pagina.caracteres_por_procedencia())}" if pagina.tem_detalhe_de_procedencia else ""
+        self.estado.emit(f"Folha lida{tempo}: {len(self.documento.corridas)} trecho(s){figuras}.{de_quem}{lingua_nova}")
         # **Depois de desenhar, e não antes**: se a pessoa recusar a oferta, o que fica na tela é
         # a leitura que ela acabou de pedir (S-255).
         self.oferecer_rascunho(pagina)

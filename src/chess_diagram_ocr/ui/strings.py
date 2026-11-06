@@ -19,7 +19,7 @@ implementações do mesmo conceito, e a segunda seguindo por conta própria.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from importlib.metadata import PackageNotFoundError, version
 
 SIDE_SOURCE_LABELS: dict[str, str] = {
@@ -956,6 +956,25 @@ def frase_da_lingua_do_livro(codigo: str, *, manual: bool) -> str:
     """O rodapé quando a língua do livro muda (S-723). Diz de onde ela veio, porque é o que decide se vale corrigir."""
     como = "escolhida à mão" if manual else "detectada nas folhas lidas"
     return f"Língua deste livro: {ROTULOS_DE_LINGUA.get(codigo, codigo)} ({como})."
+
+
+ROTULOS_DE_PROCEDENCIA: dict[str, str] = {
+    "camada": "camada do PDF",
+    "glifo": "glifo",
+    "tesseract": "Tesseract",
+    "rapidocr": "RapidOCR",
+    "humano": "à mão",
+}
+"""As procedências, como a tela as diz. Nunca o identificador cru (S-722)."""
+
+
+def frase_de_procedencia(caracteres: Mapping[str, int]) -> str:
+    """`Texto: 79% Tesseract, 21% glifo.` (S-722). O maior primeiro; vazio sem nada a contar."""
+    total = sum(caracteres.values())
+    if not total:
+        return ""
+    ordem = sorted(caracteres.items(), key=lambda par: (-par[1], par[0]))
+    return "Texto: " + ", ".join(f"{round(100 * n / total)}% {ROTULOS_DE_PROCEDENCIA.get(quem, quem)}" for quem, n in ordem) + "."
 
 
 NADA_A_REVISAR = "Nenhuma palavra a revisar nesta folha."

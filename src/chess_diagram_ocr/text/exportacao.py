@@ -124,6 +124,9 @@ class Relatorio:
     sem_recorte: int = 0
     """Diagramas que o formato desenharia e não tinham imagem no disco."""
 
+    procedencias: Mapping[str, int] = field(default_factory=dict)
+    """De quem é o texto exportado: procedência -> caracteres, fora o espaço (S-722). Quem sai do programa leva a conta."""
+
     @property
     def perdeu(self) -> bool:
         return any(self.perdas.values())
@@ -402,8 +405,11 @@ class Html:
             # porque quem corrige o marcou assim -- que é exatamente o que o HTML5 define para `s`.
             texto = f"<s>{texto}</s>"
         classes = self._classes(c)
-        if classes:
-            texto = f'<span class="{" ".join(classes)}">{texto}</span>'
+        # **Só o leitor de linha ganha o atributo** (S-722): a folha sem Tesseract sai byte a byte como saía.
+        de_quem = f' data-procedencia="{c.procedencia}"' if c.procedencia == "tesseract" else ""
+        if classes or de_quem:
+            classe = f' class="{" ".join(classes)}"' if classes else ""
+            texto = f"<span{classe}{de_quem}>{texto}</span>"
         if atributos.estilo == "titulo":
             texto = f"<h2>{texto}</h2>"
         return texto
@@ -653,7 +659,17 @@ def exportar(
         avisos=_avisos(doc, formato, sem_recorte, imagem_descartada),
         diagramas=contados,
         sem_recorte=sem_recorte,
+        procedencias=_caracteres_por_procedencia(doc.corridas),
     )
+
+
+def _caracteres_por_procedencia(corridas: Iterable[Corrida]) -> dict[str, int]:
+    """Lê `Corrida.procedencia`, que desde a S-722 é por palavra. O separador e o diagrama não foram lidos por ninguém."""
+    contagem: dict[str, int] = {}
+    for corrida in corridas:
+        if corrida.procedencia is not None and corrida.tipo == "texto":
+            contagem[corrida.procedencia] = contagem.get(corrida.procedencia, 0) + sum(not c.isspace() for c in corrida.texto)
+    return contagem
 
 
 def exportar_folhas(

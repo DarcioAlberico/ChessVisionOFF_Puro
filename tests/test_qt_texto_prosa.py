@@ -18,7 +18,7 @@ import numpy as np
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
-from chess_diagram_ocr.text import boxes, leitor, pagina, rico, tesseract
+from chess_diagram_ocr.text import arquivo, boxes, leitor, pagina, rico, tesseract
 from chess_diagram_ocr.text.leitor_de_linha import Leitura
 from chess_diagram_ocr.ui import state as estado_da_janela
 from chess_diagram_ocr.ui import strings
@@ -95,6 +95,36 @@ class _Aba(unittest.TestCase):
 
     def boas(self, texto: str = "tne wbite ♘f3 wins a pawn") -> list[Any]:
         return [_crua(texto, 50 + 18 * n) for n in range(30)]
+
+
+class ProcedenciaPorPalavraNaTelaTests(_Aba):
+    """A S-722 afirmada no efeito: o que o painel mostra e grava, e não o que `ler_pagina` devolve."""
+
+    def _lida(self) -> None:
+        self.escolher("fusao")
+        self.ler(self.boas(), _Falso())
+
+    def test_as_corridas_e_o_rodape_dizem_de_quem_e_cada_palavra(self) -> None:
+        self._lida()
+        corridas = self.painel.documento.corridas
+        self.assertEqual({c.procedencia for c in corridas if "♘" in c.texto}, {"glifo"})
+        self.assertEqual({c.procedencia for c in corridas if "wins" in c.texto}, {"tesseract"})
+        self.assertRegex(self.recados[-1], r"Texto: \d+% Tesseract, \d+% glifo\.")
+
+    def test_o_motor_de_glifo_nao_fala_de_procedencia(self) -> None:
+        self.escolher("glifo")
+        self.ler(self.boas())
+        self.assertNotIn("Texto:", self.recados[-1])
+
+    def test_o_arquivo_gravado_um_programa_anterior_abre(self) -> None:
+        """Até o G102 o `tesseract` não vai ao disco, e a folha reaberta mostra o mesmo texto."""
+        self._lida()
+        caminho = self.pasta / "folha.cvtxt"
+        self.painel._salvar_documento_em(caminho)
+        bruto = caminho.read_text(encoding="utf-8")
+        self.assertNotIn("tesseract", bruto)
+        self.assertNotIn("procedencia_em", bruto)
+        self.assertEqual(arquivo.carregar(caminho).para_texto(), self.painel.texto())
 
 
 class CaixaDeMotorTests(_Aba):

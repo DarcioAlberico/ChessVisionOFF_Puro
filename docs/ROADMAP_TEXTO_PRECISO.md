@@ -1132,7 +1132,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Achado:* `Pas` contra `♔a5` e `Axed` contra `♘xc4` (S-723) acabam com o lance inteiro não sendo vetado. Na v3 o veto por léxico e o por letras ficaram iguais folha a folha, e não sobrou escolha a fazer.
   - *Achado:* **da S-707 entram duas das quatro.** A âncora e `_keep_number_prefix`, sim. `_truncates_long_notation` não disparou em 57 folhas. A disputa virar revisão não muda a captura no dev e a piora na prata (30,0% para 29,2%).
   - *Achado:* **os três ajustes da S-720 não pagam, e ficam desligados.** Altura-x +0,004 [−0,029; +0,048] e −0,007 [−0,104; +0,100]. `load_system_dawg=0`: 0 de 120 linhas mudam, porque o LSTM não lê a variável. `--user-words` com os nomes: 1 de 316 linhas muda, para pior, e o `spa` termina com erro. **A S-766 pressupõe o `--user-words`, e precisa de outro caminho.**
-- **S-722** · O modelo de página guarda o que a fusão produz.
+- **S-722** · O modelo de página guarda o que a fusão produz. ✅ entregue em 2026-11-06
   - *Contexto:* `LinhaLida` tem **uma** `procedencia` e **uma** `confianca` por linha
     (`text/pagina.py`); a faixa de confiança é por bloco (`documento.faixa_de_confianca`); `PROCEDENCIAS`
     e `ORDEM_DE_CONFIANCA` são tuplas à parte do `Literal` (sem a entrada nova, `menos_confiavel`
@@ -1148,6 +1148,9 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Reversão:* **este item não é reversível por interruptor** — uma versão antiga do programa não
     abre `.cvtxt` nem caderno gravado com `tesseract` (estoura `PaginaInvalida`). Fica escrito, e o
     formato novo só é gravado depois do portão G102.
+  - *Achado:* a leitura do novo e do antigo está pronta, e a gravação do novo fica atrás de `pagina.GRAVAR_FORMATO_NOVO`, **desligada**: quem a liga é o G102. Desligada, sai o formato de antes, com `tesseract` escrito `glifo`; em memória os campos estão sempre inteiros.
+  - *Achado:* **a procedência por intervalo da S-716 não existia**: era o `so_da_camada`, por linha. Agora há uma escrita só. Texto igual ao de antes do item nas 27 folhas do ouro-dev (0 diferentes). Nelas, 78,8% dos caracteres vêm do Tesseract, e 237 de 392 blocos são mistos.
+  - *Achado:* `documento.resumo` não tem quem o chame fora dos testes: quem diz de quem é o texto, na janela, é a frase do rodapé de `_leitura_terminou`.
 - **S-723** · A língua do livro. ✅ entregue em 2026-11-06
   - *Entrega:* parâmetro `lingua` em `ler_pagina` (hoje não existe); detecção por perfil de palavras
     funcionais nas primeiras folhas lidas, guardada no caderno do livro (`text/caderno.py`, só na
