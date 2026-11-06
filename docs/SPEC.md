@@ -31,7 +31,7 @@ Base: [ANALISE.md](ANALISE.md). Sequenciamento: [ROADMAP.md](ROADMAP.md).
 > | S-581 a S-584 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
-> | S-702, S-710 a S-712, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
+> | S-700 a S-772 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
 
 Cada item tem **Problema** (com referência ao arquivo/linha atual), **Solução**, **Interface proposta**, **Critério de aceite** e **Testes**. Os itens são independentes o suficiente para serem implementados em ordem diferente, exceto onde há dependência declarada.
 
