@@ -159,6 +159,10 @@ def _aparar_uma(linha: list[Caixa], *, mediana: int) -> list[Caixa]:
     def sem_excesso(c: Caixa) -> Caixa:
         if c.altura < letra or (c.y1 >= teto and c.y2 <= piso) or c.y1 < teto - mediana or c.y2 > piso + mediana:
             return c
+        # **Toda fora do alcance não há letra a salvar**, e o corte daria caixa sem altura, que derruba a folha no `cv2.resize`:
+        # 11 de 26.730 na varredura do acervo. Fica como veio, e os recortes das outras folhas não mudam.
+        if c.y1 >= piso or c.y2 <= teto:
+            return c
         return Caixa(c.x1, max(c.y1, teto), c.x2, min(c.y2, piso), c.angulo)
 
     return [sem_excesso(c) for c in miolo]

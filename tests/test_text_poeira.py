@@ -117,6 +117,23 @@ class ApararTests(unittest.TestCase):
         inteira = [*linha[:2], descendente, *linha[3:6], maiuscula, *linha[7:]]
         self.assertEqual(poeira.aparar([inteira]), [inteira])
 
+    def test_a_letra_toda_fora_do_alcance_nao_vira_caixa_vazia(self) -> None:
+        """Não há letra a salvar no corte, e o `cv2.resize` da caixa sem altura derrubava a folha: 11 no acervo inteiro."""
+        linha = _letras(100)
+        piso = 124 + int(poeira.LETRA_ABAIXO_DO_MIOLO * 24)
+        teto = int(100 - poeira.LETRA_ACIMA_DO_MIOLO * 24)
+        for nome, fora in (
+            ("encosta no piso", Caixa(linha[4].x1, piso, linha[4].x2, piso + 24)),
+            ("passa do piso", Caixa(linha[4].x1, piso + 1, linha[4].x2, piso + 24)),
+            ("encosta no teto", Caixa(linha[4].x1, teto - 24, linha[4].x2, teto)),
+            ("acima do teto", Caixa(linha[4].x1, teto - 24, linha[4].x2, teto - 1)),
+        ):
+            with self.subTest(nome):
+                inteira = [*linha[:4], fora, *linha[5:]]
+                saida = poeira.aparar([inteira])[0]
+                self.assertEqual(saida[4], fora)
+                self.assertTrue(all(c.y2 > c.y1 and c.x2 > c.x1 for c in saida))
+
     def test_a_caixa_de_duas_linhas_nao_e_cortada(self) -> None:
         """Passou do que a mancha alcança, é da S-198 e da S-712."""
         linha = _letras(100)
