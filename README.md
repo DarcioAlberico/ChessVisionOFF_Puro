@@ -913,9 +913,9 @@ propria pagina como referencia (`docs/metrics/texto_pagina.json`): CER **0,0961*
 um piso que nao e do modelo -- num dos dois livros a propria camada e OCR de terceiro e traz os
 proprios erros --, entao ele **nao** vira "90% de acerto". E ele mede **prosa**: pela tabela acima,
 na notacao a camada nao e referencia de coisa nenhuma, e ali o glifo e penalizado justamente onde
-acerta a figurina. O que a medicao decide de fato e o
-padrao do modo bloco da S-188, que fica **desligado**: ele custa ~50x o tempo e piora a media em
-41% -- 0,0961 contra 0,1354 nas mesmas 10 paginas. `--bloco` liga para quem quiser medir de novo.
+acerta a figurina. A mesma medicao ja dizia que o modo bloco da S-188 nao pagava na pagina: ~50x o
+tempo e 41% pior, 0,0961 contra 0,1354 nas mesmas 10 paginas. Ele saiu na S-726, depois de remedido
+so na prosa: 6,33% contra 0,95% do glifo (`docs/metrics/texto_prosa_bloco_2026-11-06.json`).
 
 ## Resolucao de problemas
 

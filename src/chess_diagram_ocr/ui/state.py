@@ -178,10 +178,6 @@ class AppState:
     texto_lingua: str = ""
     """A língua do livro que o Tesseract lê (S-717). Vazio é a padrão; a S-723 a leva ao caderno."""
 
-    texto_bloco: bool = False
-    """O modo bloco da aba Texto estava ligado? (item 17) Quem o liga paga ~40 s por folha de
-    propósito, e não quer religá-lo a cada abertura."""
-
     texto_zoom: int = 0
     """Degraus de zoom da aba de texto (S-291). `0` = tamanho normal.
 
@@ -322,7 +318,6 @@ class AppState:
             "texto_quebra": bool(self.texto_quebra),
             "texto_motor": str(self.texto_motor),
             "texto_lingua": str(self.texto_lingua),
-            "texto_bloco": bool(self.texto_bloco),
             "texto_diagramas": str(self.texto_diagramas),
             "texto_miniatura": str(self.texto_miniatura),
             "texto_familia": str(self.texto_familia),
@@ -355,13 +350,16 @@ def _migrate(raw: dict[str, Any]) -> dict[str, Any]:
     A versão 1 (sem o campo `version`) já tinha `last_pdf`, `last_page`, `pdf_zoom` e
     `pdf_history` com os mesmos significados -- migrar é só reconhecê-la, e é por isso que
     a numeração começa nela em vez de fingir que o formato antigo não existiu.
+
+    **A chave do modo bloco sai aqui (S-726)**, e sem versão nova: o programa anterior lê o arquivo
+    sem ela, e com a versão subida ele o recusaria. Quem a tinha ligada lê como todo mundo.
     """
     version = raw.get("version", 1)
     if not isinstance(version, int) or version < 1:
         raise ValueError(f"campo `version` inválido: {version!r}")
     if version > STATE_VERSION:
         raise ValueError(f"estado gravado por versão mais nova ({version} > {STATE_VERSION})")
-    return raw
+    return {chave: valor for chave, valor in raw.items() if chave != "texto_bloco"}
 
 
 def state_from_dict(raw: dict[str, Any]) -> AppState:
@@ -468,10 +466,6 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     texto_lingua = raw.get("texto_lingua")
     if isinstance(texto_lingua, str):
         state.texto_lingua = texto_lingua
-
-    texto_bloco = raw.get("texto_bloco")
-    if isinstance(texto_bloco, bool):
-        state.texto_bloco = texto_bloco
 
     for chave in ("texto_diagramas", "texto_miniatura", "texto_familia"):
         valor = raw.get(chave)

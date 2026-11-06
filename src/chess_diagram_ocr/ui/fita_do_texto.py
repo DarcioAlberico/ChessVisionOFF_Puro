@@ -8,7 +8,7 @@ ela tem um conjunto fechado de grupos e serve a outra pergunta.
 
 Os nomes com `@` não são comandos: são os controles que **colhem** um valor em vez de agir -- a
 caixa de corpo em pontos, as listas de cor e de realce, a galeria de estilos, o campo da folha, o
-motor e o modo bloco. O widget os recebe prontos do painel, que é quem sabe o que eles mostram.
+motor e a língua. O widget os recebe prontos do painel, que é quem sabe o que eles mostram.
 
 **Pura**, sem toolkit: é o que deixa o inventário do editor (S-256) cobrar, **lendo esta
 declaração**, que todo comando da aba está na fita ou na aba Arquivo -- e não uma lista literal num
@@ -50,7 +50,7 @@ class Aba:
 
 
 CONTROLES = frozenset(
-    {"@corpo", "@cor", "@realce", "@cor_rapida", "@realce_rapido", "@galeria", "@folha", "@motor", "@lingua", "@modo_bloco"}
+    {"@corpo", "@cor", "@realce", "@cor_rapida", "@realce_rapido", "@galeria", "@folha", "@motor", "@lingua"}
 )
 """Os controles que colhem valor. Ver o cabeçalho."""
 
@@ -95,7 +95,7 @@ ABAS: tuple[Aba, ...] = (
     Aba(
         "Leitura",
         (
-            Grupo("Folha", ("@folha", "@motor", "@lingua", "@modo_bloco")),
+            Grupo("Folha", ("@folha", "@motor", "@lingua")),
             Grupo("Ler", ("ler_folha", "folha_da_pagina_aberta", "ler_folha_de_novo", "ler_ao_chegar", "lingua_do_livro")),
             Grupo(
                 "Caderno",
@@ -152,7 +152,6 @@ DE_ESTADO = frozenset(
 
 
 CONTROLE_DO_COMANDO: dict[str, str] = {
-    "modo_bloco": "@modo_bloco",
     "cor_do_texto": "@cor",
     "realce": "@realce",
     # Os quatro estilos são as amostras da galeria (S-651): botões de novo ao lado dela eram a mesma
@@ -162,7 +161,7 @@ CONTROLE_DO_COMANDO: dict[str, str] = {
     "estilo_notacao": "@galeria",
     "estilo_legenda": "@galeria",
 }
-"""Os comandos do catálogo que, na fita, são um controle: a caixa do modo bloco e as duas listas de
+"""Os comandos do catálogo que, na fita, são um controle: as duas listas de
 cor. É o que o inventário consulta para não os dar por fora da fita."""
 
 

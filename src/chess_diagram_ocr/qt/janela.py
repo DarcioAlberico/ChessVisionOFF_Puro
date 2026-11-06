@@ -738,7 +738,7 @@ class JanelaPrincipal(QMainWindow):
         self.pdf.marcar_diagramas.setChecked(estado.show_diagram_boxes)
         self.pdf.roda_vira_pagina.setChecked(estado.wheel_flips_page)
         self.painel.mostrar_incerteza = estado.show_heatmap
-        self.texto.aplicar_estado(estado)  # zoom, quebra, motor, modo bloco e os diagramas (S-620, S-623)
+        self.texto.aplicar_estado(estado)  # zoom, quebra, motor e os diagramas (S-620, S-623)
         for nome, ligado in {**self.mesa.estados(), **self.texto.interruptores_da_vista()}.items():
             self.menu.marcar(nome, ligado=ligado)  # a mesa (S-640) e a vista dos diagramas (S-620, S-624)
         self.estudo.posicionar_divisor(estado.estudo_divisor)

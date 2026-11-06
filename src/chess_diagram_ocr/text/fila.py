@@ -35,8 +35,8 @@ lá com um comentário dizendo que quem decidiria se ele está no lugar certo se
 
 ## A régua muda quando o leitor de linha não roda, e a fila diz qual usou
 
-`modo_bloco` está **desligado por padrão** desde a S-188 -- na página inteira ele custa ~50x o
-tempo e piora o livro nativo digital. Sem ele não há segunda leitura, e portanto não há
+A leitura em blocos saiu do caminho da página na S-726 -- na prosa ela erra 6,33% contra 0,95% do
+glifo sozinho. Sem ela não há segunda leitura, e portanto não há
 divergência: todo box tem `do_glifo == do_bloco`, e a fila ordena pela confiança do classificador
 sozinho. Isso não é defeito, é o estado normal do programa -- e a fila **declara** em qual dos
 dois mundos ela foi montada (`Fila.regua`), porque uma fila que não diz por que ordenou assim é

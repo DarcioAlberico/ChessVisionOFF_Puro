@@ -133,16 +133,16 @@ def espera_restante(agora: float, *, mudou_em: float, cursor_em: float) -> float
     return max(0.0, mudou_em + ESPERA_DA_MUDANCA - agora, cursor_em + ESPERA_DO_CURSOR - agora)
 
 
-def abre_do_caderno(estado: EstadoDaFolha, *, motor: str, modo_bloco: bool) -> bool:
+def abre_do_caderno(estado: EstadoDaFolha, *, motor: str) -> bool:
     """"Ler folha" sobre uma folha que tem caderno abre o caderno, sem motor? (S-612)
 
-    Sim, salvo num caso: a pessoa trocou o motor ou o modo bloco, e a folha está como o motor a
+    Sim, salvo num caso: a pessoa trocou o motor, e a folha está como o motor a
     deixou, sem correção. Quem mudou o motor quer a leitura nova, e não há trabalho a perder. Com
     correção -- ou conferida, ou sem motor anotado --, abre o caderno, e reler é "Ler de novo".
     """
     if estado.correcoes or estado.estado != LIDA or not estado.motor:
         return True
-    return (estado.motor, bool(estado.modo_bloco)) == (motor, bool(modo_bloco))
+    return estado.motor == motor
 
 
 def correcoes_por_extenso(quantas: int) -> str:
@@ -177,7 +177,6 @@ class EstadoDaFolha:
     pagina: int
     estado: str
     motor: str = ""
-    modo_bloco: bool = False
     gravada_em: str = ""
     correcoes: int = 0
 
@@ -185,7 +184,6 @@ class EstadoDaFolha:
         return {
             "estado": self.estado,
             "motor": self.motor,
-            "modo_bloco": self.modo_bloco,
             "gravada_em": self.gravada_em,
             "correcoes": self.correcoes,
         }
@@ -197,7 +195,6 @@ class EstadoDaFolha:
             pagina=pagina,
             estado=estado if estado in ESTADOS else LIDA,
             motor=str(dados.get("motor", "")),
-            modo_bloco=bool(dados.get("modo_bloco", False)),
             gravada_em=str(dados.get("gravada_em", "")),
             correcoes=max(0, int(dados.get("correcoes", 0) or 0)),
         )
@@ -442,11 +439,11 @@ class Caderno:
         """A pessoa chegou a esta folha: a próxima gravação guarda a de antes como `anterior`."""
         self._por_girar.add(int(pagina))
 
-    def gravar(self, doc: DocumentoRico, *, estado: str | None = None, motor: str = "", modo_bloco: bool | None = None, correcoes: int = 0) -> str:
+    def gravar(self, doc: DocumentoRico, *, estado: str | None = None, motor: str = "", correcoes: int = 0) -> str:
         """Grava a folha deste documento e devolve o que fez -- uma das constantes do módulo.
 
         `estado` `None` é "o que a conta diz": `editada` com correção, senão o que já estava (ou
-        `lida`). `motor` e `modo_bloco` vazios mantêm os da leitura que está no índice. Levanta
+        `lida`). `motor` vazio mantém o da leitura que está no índice. Levanta
         `OSError` quando o disco recusa, **sem** ter apagado nada.
         """
         if doc.origem is None:
@@ -475,7 +472,6 @@ class Caderno:
             pagina=pagina,
             estado=estado,
             motor=motor or (antes.motor if antes is not None else ""),
-            modo_bloco=bool(modo_bloco) if modo_bloco is not None else (antes.modo_bloco if antes is not None else False),
             gravada_em=datetime.now().isoformat(timespec="seconds"),
             correcoes=int(correcoes),
         )
@@ -496,7 +492,7 @@ class Caderno:
         _gravar_conferido(self.caminho(int(doc.origem.pagina), tipo="anterior"), _texto_de(doc))
         return GRAVADA
 
-    def guardar_leitura(self, doc: DocumentoRico, *, motor: str, modo_bloco: bool) -> str:
+    def guardar_leitura(self, doc: DocumentoRico, *, motor: str) -> str:
         """O motor acabou de ler esta folha: a leitura vira a folha do caderno e a sua `lida`.
 
         Uma folha que já tinha caderno vai para `anterior` antes -- é o "Ler de novo" (S-612), e a
@@ -511,12 +507,12 @@ class Caderno:
         self._ultimos.pop(pagina, None)
         self.pasta.mkdir(parents=True, exist_ok=True)
         _gravar_conferido(self.caminho(pagina, tipo="lida"), _texto_de(doc))
-        feito = self.gravar(doc, estado=LIDA, motor=motor, modo_bloco=modo_bloco, correcoes=0)
+        feito = self.gravar(doc, estado=LIDA, motor=motor, correcoes=0)
         if feito == IGUAL:  # a mesma leitura de antes: o índice ainda diz o motor desta
-            self.marcar(pagina, LIDA, motor=motor, modo_bloco=modo_bloco)
+            self.marcar(pagina, LIDA, motor=motor)
         return feito
 
-    def marcar(self, pagina: int, estado: str, *, motor: str = "", modo_bloco: bool | None = None) -> bool:
+    def marcar(self, pagina: int, estado: str, *, motor: str = "") -> bool:
         """Muda o estado de uma folha no índice, sem tocar no arquivo dela. Devolve se mudou."""
         if estado not in ESTADOS:
             raise ValueError(f"estado de folha desconhecido: {estado!r} (são {', '.join(ESTADOS)})")
@@ -527,7 +523,6 @@ class Caderno:
             pagina=antes.pagina,
             estado=estado,
             motor=motor or antes.motor,
-            modo_bloco=antes.modo_bloco if modo_bloco is None else bool(modo_bloco),
             gravada_em=antes.gravada_em,
             correcoes=antes.correcoes,
         )

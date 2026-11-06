@@ -322,7 +322,6 @@ MENUS: tuple[Menu, ...] = (
             Item("ler_folha"),
             Item("folha_da_pagina_aberta"),
             Item("modo_transcricao"),
-            Item("modo_bloco", INTERRUPTOR),
             Item("lingua_do_livro"),
             Item("limpar_cache_de_leitura"),
             _sep(),

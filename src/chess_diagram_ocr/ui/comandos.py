@@ -711,13 +711,6 @@ CATALOGO: tuple[Comando, ...] = (
         rotulo_curto="Da página aberta",
     ),
     Comando(
-        "modo_bloco",
-        "Ler o texto em modo bloco (lento)",
-        OCR,
-        estilos.NEUTRO,
-        rotulo_curto="Modo bloco (lento)",
-    ),
-    Comando(
         "selecionar_area",
         "Selecionar área para ler",
         OCR,

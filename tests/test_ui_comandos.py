@@ -67,7 +67,6 @@ COMANDOS_DO_EDITOR: tuple[str, ...] = (
     "maiusculas",
     "marcar_fora_do_lexico",
     "minusculas",
-    "modo_bloco",
     "negrito",
     "paleta_de_glifos",
     "quebrar_linha",
@@ -396,7 +395,6 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
                 "maiusculas",
                 "marcar_fora_do_lexico",
                 "minusculas",
-                "modo_bloco",
                 "paleta_de_glifos",
                 "quebrar_linha",
                 "recortar",
@@ -710,7 +708,6 @@ class ComandosDoEditorTests(unittest.TestCase):
         """
         self.assertEqual(comandos.rotulo_de_botao("ler_folha"), "Ler folha")
         self.assertEqual(comandos.rotulo_de_botao("folha_da_pagina_aberta"), "Da página aberta")
-        self.assertEqual(comandos.rotulo_de_botao("modo_bloco"), "Modo bloco (lento)")
         self.assertEqual(comandos.rotulo_de_botao("exportar_txt"), "Salvar .txt")
         self.assertEqual(comandos.rotulo_de_botao("salvar_texto"), "Salvar")
         self.assertEqual(comandos.rotulo_de_botao("abrir_texto"), "Abrir…")

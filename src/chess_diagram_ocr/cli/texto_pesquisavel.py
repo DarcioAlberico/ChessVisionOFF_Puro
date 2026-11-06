@@ -125,8 +125,7 @@ def main(argv: list[str] | None = None) -> int:
             # Um reconhecedor para o livro inteiro: carregá-lo custa ~3 s, e por página um livro
             # de 60 folhas gastaria três minutos só abrindo o mesmo arquivo.
             #
-            # **Sem leitor de linha**, e é a S-188: na página inteira o modo bloco custa ~50x o
-            # tempo e piora o livro nativo digital. Um livro de 400 folhas com ele seria uma noite.
+            # **Sem leitor de linha**: a leitura em blocos saiu do caminho da página (S-726).
             reconhecedor = build_glyph_recognizer()
         except ModeloInvalido as exc:
             if args.motor == "glifo":
