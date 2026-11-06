@@ -1237,7 +1237,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
 O glifo continua lendo a notação e é o caminho de reserva quando não há leitor de linha. Cada item
 ataca uma família da seção 1.6 e é medido pela régua — família e total.
 
-- **S-730** · Traço vertical contra ponto (23,7% das palavras de prosa erradas do glifo; 100 delas só no Hertan, Arial).
+- **S-730** · Traço vertical contra ponto (23,7% das palavras de prosa erradas do glifo; 100 delas só no Hertan, Arial). ✅ entregue em 2026-11-06
   - *Entrega:* `.`, `,`, `'`, `l`, `I`, `|`, `1`, `i` decididos pela geometria da caixa — altura
     sobre a altura-de-x, topo e base contra a linha de base, proporção —, como a `caixa_alta` faz com
     a caixa. Antes de escrever a regra, medir em que *rank* a classe certa está (memória
@@ -1247,34 +1247,49 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
   - *Saída:* a família cai a ≤ 1/4 do que é hoje no Hertan e no *Chess Evolution*, sem subir em nenhum
     livro; notação dentro de G1(b).
   - *Reversão:* constante, como a `caixa_alta`.
+  - *Achado:* **medido contra os 5 livros aprovados na auditoria da S-702**; o Hertan está entre eles, e o *Chess Evolution* não. Família 124 → 0
+    (Hertan 121 → 0), e 43 → 0 no *Chess Evolution*, à parte. A classe certa está em rank 2 em só 62 dos 149 `l`, e em rank 6 nos outros: o rank
+    não decide, e a geometria decide. A vírgula em barra de *Minhas 60* (`entanto,`→`entantol`) é a regra irmã. Ver a seção da S-730.
 - **S-731** · Caixa coerente na palavra (10,7%): palavra toda em maiúscula não ganha minúscula no meio
-  (`DEFEsA`); a primeira letra da linha usa a régua de altura da linha inteira.
+  (`DEFEsA`); a primeira letra da linha usa a régua de altura da linha inteira. ✅ entregue em 2026-11-06
   - *Verificação:* teste de decisão (palavra toda em maiúscula, primeira letra da linha); régua da
     família "caixa" por livro.
   - *Saída:* família caixa ≤ 1/3 do que é hoje no dev, sem nenhum `DEFEsA`.
   - *Reversão:* constante.
+  - *Achado:* família 59 → 1. **O modelo acertava**: 70 dos 71 casos tinham a classe certa em rank 1, e era a mediana da linha que a derrubava, em
+    linha com lance. A régua passou às letras de x, com vão de 1,06 a 1,32. O versalete precisa da palavra, e `P`/`p` da descida. Ver a seção da S-731.
 - **S-732** · Fronteira de palavra (7,9%): o vão de `f`+`t`, `f`+`f` com *kerning*; o léxico como
-  árbitro do corte, que já mediu melhor que a confiança (memória `lexico-arbitra-corte-melhor-que-confianca`).
+  árbitro do corte, que já mediu melhor que a confiança (memória `lexico-arbitra-corte-melhor-que-confianca`). ✅ entregue em 2026-11-06
   - *Verificação:* régua da família "fronteira" por livro; teste com pares de caixas sintéticos.
   - *Saída:* família fronteira ≤ 1/3 da de hoje, sem aumentar "espaço inserido".
   - *Reversão:* constante.
-- **S-733** · Ligadura `fi`/`fl`/`ff` sem o `1` a mais (2,2%).
+  - *Achado:* fronteira 38 → 9, inserções 562 → 550, espaço 23 → 15. O vão de baixo sozinho não separa (1.381 pares sem espaço acima de 0,30), e o léxico
+    sozinho também não (`carr ying`): o vão propõe, o léxico **sem nomes** dispõe. O léxico como árbitro do colado derruba `letra trocada` de 128 a 102
+    (`tums`, `acmal`, `Ffxcher`). `the`, `of` e `não` não estão no léxico por terem menos de 4 letras, e isso quebrava a primeira rodada: `text/palavras_curtas.py`.
+- **S-733** · Ligadura `fi`/`fl`/`ff` sem o `1` a mais (2,2%). ✅ entregue em 2026-11-06
   - *Verificação:* régua da família "ligadura com 1 a mais" (Dvoretsky).
   - *Saída:* zero `fi1`/`f1` em palavra do ouro-dev.
   - *Reversão:* constante.
-- **S-734** · Aspas duplas e apóstrofo (2,4%), medidos em `cru`: par de apóstrofos colados vira `"`; abre-aspas nunca vira `(`.
+  - *Achado:* família 14 → 0, zero `fi1`/`f1`. Só `1` e `|` contam como haste: com `l`, `h-file` saía `h-fie` na prata.
+- **S-734** · Aspas duplas e apóstrofo (2,4%), medidos em `cru`: par de apóstrofos colados vira `"`; abre-aspas nunca vira `(`. ✅ entregue em 2026-11-06, com uma Saída não cumprida: ver o *Achado*.
   - *Verificação:* régua em `cru` (onde `—` e `-` e as aspas contam) da família aspas e pontuação.
   - *Saída:* aspas duplas zero no Capablanca e no Dvoretsky; pontuação ≤ 1/2 da de hoje.
   - *Reversão:* constante.
+  - *Achado:* em `tip`, aspas duplas 8 → 0 no Dvoretsky, e pontuação 10 → 4. **O *Capablanca* foi reprovado na auditoria da S-702**, e medido à parte dá 7 → 3.
+    **Em `cru` a Saída não se cumpre:** a pontuação sobe de 50 a 58, porque o modelo não tem as aspas curvas e as palavras deixaram de ter outro erro. Curvar pelo
+    contexto, simulado por fora do leitor, dá 12 e não piora livro nenhum; não entra porque `lexico.PONTUACAO_DE_BORDA` e as classes de token não aparam a curva.
 - **S-735** · Acento (5,3%): til contra trema (`não`→`näo`), `ç` contra `C`; o segundo corte de caixa
   para a família acentuada (memória `caixa-alta-nao-cobre-acentuada`, ~1,65); contar as amostras de
-  cada classe acentuada antes de creditar qualquer número a ela (`par-scaron-tem-7-amostras`).
+  cada classe acentuada antes de creditar qualquer número a ela (`par-scaron-tem-7-amostras`). ✅ entregue em 2026-11-06
   - *Verificação:* régua da família acento por livro; antes, contar as amostras de cada classe
     acentuada em `training_data/`.
   - *Saída:* família acento ≤ 1/3 da de hoje no *Minhas 60*, sem `Õ` nem `Ó` inventados (o segundo
     corte não pode quebrar minúscula acentuada).
   - *Reversão:* constante, como a `caixa_alta`.
-- **S-736** · ADR: a geometria como entrada do classificador.
+  - *Achado:* em *Minhas 60*, acento + acento+caixa 25 → 2, sem `Õ` nem `Ó` inventados. **`ä` tem 15 amostras contra 3.797 de `ã`**: o que vence é ruído. A
+    cedilha é tamanho: `ç` desce de 0,38 a 0,50 altura-de-x, e `C` e `c`, até 0,06. **O segundo corte não muda nenhum caractere nas 27 folhas**: é guarda, com
+    teste, e o lado da maiúscula é estimado.
+- **S-736** · ADR: a geometria como entrada do classificador. ✅ entregue em 2026-11-06
   - *Contexto:* numa amostra de 3.000 recortes de `training_data/` (crítico da rodada 3), 57,6% estão
     em 32×32 e 42% guardam o tamanho original — mas justamente `l` (99% esticados) e `I` (100%) perderam
     a proporção, e são classes raras (2.573 e 786 recortes, contra 20.434 de `.` e 33.855 de `e`). A
@@ -1286,6 +1301,8 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
     de novo.
   - *Saída:* ADR commitada com decisão (fazer na Fase 105 ou não fazer) e o porquê.
   - *Reversão:* é uma decisão escrita; revê-la é outra ADR.
+  - *Achado:* **não fazer na Fase 105** (seção da S-736). Recortar custa cerca de 1,2 h de CPU nos 5 livros dev, e isso é o barato: nenhum dos 607.719 recortes
+    sabe de onde veio, então é trocar a base, e não migrá-la. As famílias de geometria já caíram sem tocar no modelo.
 - **Portão G103:** depois da Fase 102 o glifo lê sobretudo **notação** — e a família traço-ponto
   custa ali também (`Rf1`→`Rf.`, `11.`). O portão mede as duas coisas: glifo sozinho ≤ 1,5% de CER de
   prosa (teto ≤ 2,5%) no ouro-teste, para o caminho de reserva; e, na notação, G1(b), G1(c) e G2

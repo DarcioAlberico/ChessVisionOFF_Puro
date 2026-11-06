@@ -624,3 +624,279 @@ tempos: outras medições rodavam na máquina.
 `--user-words` e `load_system_dawg=0`: um processo por folha tem uma configuração só, e separar as linhas de notação
 é a S-721. A escala pela altura-x muda o texto lido, e entra medida. O timeout é 1 s por linha com piso de 10 s, e
 ainda não 10× o p99 medido. O Tesseract no instalador é a S-724, que espera a D1.
+
+## Fase 103 — O glifo sem as cegueiras do 32×32
+
+Toda a fase é regra de decisão, geometria e léxico, sem retreino, e cada conserto tem a sua constante. Contra o que se mediu: **os 5
+livros aprovados na auditoria da S-702**, 27 folhas. O *Chess Evolution* e o *Capablanca*, que as Saídas do roadmap citam, foram
+reprovados nela, e ficam à parte no relatório, como conferência. O **Hertan é do ouro-dev**, e está nas contas. O relatório é
+[metrics/texto_prosa_glifo_2026-11-06.json](metrics/texto_prosa_glifo_2026-11-06.json), medido em `4acb2623`, e `hoje` é tudo
+desligado, que dá texto idêntico ao de `a2937260` nas 27 folhas. Tudo aqui é dev contaminado: o portão G103 abre o teste, e é rodado
+depois. Reproduzir: `texto_prosa_glifo_2026-11-06/medir_glifo.py`.
+
+| CER de prosa, `tip` | antes | depois |
+|---|---:|---:|
+| ouro-dev, 27 folhas | 2,85% [0,76; 4,84] | **0,99%** [0,30; 1,97] |
+| WER de prosa | 11,7% | **3,55%** |
+| Hertan | 4,12% | 0,95% |
+| *Minhas 60* | 6,52% | 2,84% |
+| Dvoretsky | 1,89% | 0,37% |
+| 400 Quebra-cabeças | 0,45% | 0,27% |
+| Seirawan | 0,39% | 0,35% |
+
+Diferença pareada na prosa: **−1,86 p.p. [−3,04; −0,44]**, 22 folhas melhores e nenhuma pior. **Notação, a G1(b):** −0,17 p.p.
+[−0,64; 0,00], 3 folhas melhores e nenhuma pior. **Figurina, a G2:** revocação 85,2% → 85,9%, precisão 85,8% → 85,9%. Na prata, que só
+ordena e é o caminho de reserva: prosa −0,69 p.p. [−0,99; −0,45] em **30 de 30** folhas, notação −1,38 p.p. [−2,89; −0,50] com nenhuma
+pior, revocação de figurina 60,2% → 69,6%.
+
+**Os testes de decisão da S-764** moram em `tests/test_text_traco_vertical.py`, `test_text_caixa_coerente.py`, `test_text_fronteira.py`,
+`test_text_ligadura.py`, `test_text_aspas.py` e `test_text_acento.py`, com o desenho comum em `tests/glifo_sintetico.py`: caixas
+sintéticas, sem modelo nem livro, e rodam no CI. Cada família tem o caso que reproduz o defeito com a constante desligada. Conferido
+revertendo: 12 constantes e 21 limiares levados para o lado errado, um processo por mutante, e os 33 acusam.
+
+## S-730 · Traço vertical contra ponto ✅ implementada (2026-11-06)
+
+### Problema
+
+124 das 437 palavras erradas do glifo, 121 delas no Hertan (Arial): `will`→`wi..`, `I`→`.`. **A classe certa não está sempre em rank 2**:
+dos 149 `l` lidos como `.`, ela está em rank 2 em 62 e em rank 6 em 87, atrás de quatro traços; os 13 `I` estão em rank 5. E a ordem entre
+`l`, `I` e `1` não quer dizer nada: depois do resize, são a mesma mancha.
+
+| caixa | n | altura / altura-de-x | largura / altura |
+|---|---:|---:|---:|
+| `l` lido `.` | 149 | 1,03 a 1,32 | 0,12 |
+| `I` lido `.` | 13 | 1,03 a 1,32 | 0,12 a 0,19 |
+| `.` certo | 1.095 | 0,15 a 0,28 | 0,80 a 1,25 |
+
+### Solução
+
+`text/traco_vertical.py`, depois de `traco` e antes de `marca_fina`. Caixa acima de `ALTURA_MINIMA` (0,85) e abaixo de `PROPORCAO_MAXIMA`
+(0,35) não é `.`, `,`, `'`, `-` nem `—`: é traço, e **o contexto escolhe a letra**, não o modelo. Sozinho ou diante de apóstrofo é `I`; entre
+maiúsculas, `I`; junto de dígito ou no fim de um lance (`Rf.`), `1`; no começo, o léxico e `palavras_curtas` separam `look` de `In`; onde
+só o `i` faz palavra, `i` (`fixed`, em scan, sem o pingo); no resto, `l`.
+
+**A regra irmã, da vírgula.** Em *Minhas 60* (Calibri), a vírgula é uma barra inclinada, e o modelo responde `/` a 0,999, com `,` fora das
+oito primeiras: `entanto,`→`entantol`, porque depois o `italico` troca `/` por `l`. Altura de 0,48 a 0,53 e mais da metade abaixo da linha
+de base é vírgula, e nem `/` nem `l` têm essa caixa. É a única decisão da fase que aceita uma classe que o modelo não pôs no topo.
+
+Reversão: `traco_vertical.LIGADO`.
+
+### Critério de aceite
+
+`tests/test_text_traco_vertical.py`. Família, só com este item ligado: **124 → 0**, e Hertan **121 → 0** (o roadmap pedia ≤ 1/4); em nenhum
+livro sobe. CER de prosa 2,85% → 2,09%, 12 folhas melhores e nenhuma pior. Notação −0,06 p.p. [−0,25; 0,00], nenhuma folha pior.
+No *Chess Evolution*, reprovado, a família vai de 43 a 0.
+
+### O que ela não entrega
+
+`l` contra `1` em caixa que o modelo **já leu** como `l` ou `1` continua com o dicionário (S-508). `Short-SpeeIman` sobra: `I` lido entre
+minúsculas não é marca.
+
+## S-731 · Caixa coerente na palavra ✅ implementada (2026-11-06)
+
+### Problema
+
+59 palavras, e **o modelo acertava em quase todas**: nos 71 `W`, `S`, `U`, `O` e `C` lidos em minúscula, a classe certa estava em rank 1 em
+70. Era a régua da S-211 que os derrubava: a mediana das alturas só é a altura-de-x em linha de prosa. Em linha com lance ela é a altura de
+maiúscula (`White`→`white`), e na linha toda em maiúscula também (`DEFEsA`).
+
+### Solução
+
+Três mudanças em `text/caixa_alta.py`:
+
+- **`x_height_da_linha`** (`XH_COERENTE`): a altura-de-x vem de `LETRAS_DE_X` (`aemnr`, sem haste, sem acento e com maiúscula de outro
+  desenho). Sem duas delas, das altas seguras divididas por `RAZAO_ALTA_X` (1,40); sem altas, da escala da folha (`W` e `W?` sozinhos na
+  linha). O corte de 1,25 não muda, e passa a estar no meio do vão:
+
+| medida contra as letras de x | n | p1 | mediana | p99 |
+|---|---:|---:|---:|---:|
+| minúscula ambígua certa | 4.992 | 0,94 | 1,00 | 1,06 |
+| maiúscula ambígua certa | 139 | 1,32 | 1,50 | 1,58 |
+
+- **`coerente`** (`PALAVRA_COERENTE`): palavra só de letras, com duas ou mais maiúsculas de desenho próprio e nenhuma minúscula, sobe as
+  ambíguas, o `p` e o `l`. É o que resolve o **versalete** (`'UNUSUAL SQUARES'`, com altura de letra de x), que altura nenhuma separa. Lance
+  fica de fora pelo dígito, e `KxR` porque o `x` só sobe a partir de quatro letras. Na outra direção, a ambígua depois de minúscula desce
+  (`IvanchUk`), e `QXf7` volta a `Qxf7`.
+- **`P` pela descida** (`P_PELA_DESCIDA`): `P` era lido `p` em *Minhas 60*, em rank 2 nos 11 casos. Esticados, são o mesmo desenho, e o `p`
+  desce, enquanto o `P` não.
+
+### Critério de aceite
+
+`tests/test_text_caixa_coerente.py`. Só com este item: família **59 → 1**, com `já`→`Já` de sobra (o roadmap pedia ≤ 1/3); nenhum `DEFEsA`.
+Acento+caixa 13 → 0. CER de prosa 2,85% → 2,50%, 19 folhas melhores e nenhuma pior. Notação −0,11 p.p. [−0,55; 0,00], e é daqui o ganho de
+figurina: `Cd6`→`cd6` em linha com lance não acontece mais. No *Capablanca*, reprovado, 7 → 3, e no *Chess Evolution*, 19 → 0.
+
+### O que ela não entrega
+
+Linha só de ambíguas sem escala continua na mediana. Em scan, `will` pode sair `Will` onde as letras de x estão comidas: visto na prata,
+com poucos casos, e a prata melhora em todas as folhas mesmo assim. `MIN_LETRAS_DE_X` 3 no lugar de 2 foi medido e não muda nada que
+decida.
+
+## S-732 · Fronteira de palavra ✅ implementada (2026-11-06)
+
+### Problema
+
+38 palavras coladas, 22 no Dvoretsky: `of the`→`ofthe`. O `bbox` do `f` inclui o gancho, e `texto_da_linha` só vê o vão entre os `bbox`. O
+vão da faixa de baixo separa melhor, mas não basta, porque `r|a`, `q|u` e `v|e` também têm o vão embaixo:
+
+| vão de baixo, em alturas-de-x | p5 | mediana | p95 |
+|---|---:|---:|---:|
+| com espaço, já detectado | 0,48 | 0,72 | 1,24 |
+| espaço que faltou | 0,20 | 0,54 | 1,01 |
+| sem espaço | 0,05 | 0,16 | 0,33 |
+
+E o léxico sozinho já perdeu: `lexico.PARTIR_COLADAS` registra 0 certas contra 5 erradas, com `carrying`→`carr ying`.
+
+### Solução
+
+`text/fronteira.py` e `colados.por_lexico`, com o léxico por árbitro nos dois:
+
+- **partir** (`fronteira.LIGADO`): o vão de baixo propõe, a partir de 0,30, e fora do `f` exige também o vão de cima de 0,15; o léxico **sem
+  nomes** e `palavras_curtas` dispõem, os dois pedaços têm de existir, e nome só vale de pedaço a partir de 6 letras. O pedaço da direita
+  tem 3 letras ou mais, salvo depois do `f`: `transferem` e `romperam` não estão no léxico, e `transfer` + `em` estão. Ambiguidade não
+  corrige. `of2.` parte por uma lista fechada, e `Be2.` fica. O espaço entra na frente do caractere, e a confiança por letra continua casando.
+- **juntar** (`JUNTAR_PARTIDAS`): `ga n ha ndo`→`ganhando`, quando a junção existe e algum token dela não. Token de 3 letras conta como
+  existente, senão `cut off` vira `cutoff`.
+- **o colado** (`colados.POR_LEXICO`): em palavra que não existe e sem peso de notação, a caixa larga é recortada no vale e os dois pedaços
+  são relidos; se **uma só** leitura dos dois melhores de cada pedaço fizer palavra, fica, como dois caracteres numa caixa. É a medição de
+  `GANHO_MINIMO` trocada por léxico: `tums`→`turns`, `acmal`→`actual`, `Ffxcher`→`Fischer`, `cof7ect`→`correct`. `w` e `v` não entram, os
+  pedaços têm de ser letras, maiúscula só na primeira posição, palavra de 3 letras não é examinada (`bom`→`born` foi a primeira rodada), e
+  resposta com menos de 7 letras tem de estar no léxico sem nomes (`bem`→`Beni`).
+
+`text/palavras_curtas.py` é a lista fechada, à mão, de palavra funcional de menos de 4 letras, que `lexico.MIN_TAMANHO` tira de propósito.
+
+### Critério de aceite
+
+`tests/test_text_fronteira.py`. Só com este item: fronteira **38 → 9** (o roadmap pedia ≤ 1/3), espaço 23 → 15, letra trocada 128 → 102, e
+**as inserções caem**: 562 → 550. CER de prosa 2,85% → 2,53%, 13 folhas melhores e nenhuma pior. Notação igual.
+
+### O que ela não entrega
+
+`Reshevsky joga`, `de folga` e `se perdem` saem, e 9 sobram: `3 d4` em *Minhas 60*, que é notação, sem letra que o léxico arbitre, e colagens
+sem vão embaixo. `comer` no lugar de `corner` é palavra que existe, e fica. `pamda`→`partida` precisa de dois cortes numa caixa, e fica.
+O veto do corte da S-186 (`paM(ns`) não foi trocado, porque não aparece mais nestas folhas.
+
+## S-733 · Ligadura sem o `1` a mais ✅ implementada (2026-11-06)
+
+### Problema
+
+14 palavras, 13 no Dvoretsky: `first`→`fi1rst`. No Times dele o `fi` tem duas caixas: o gancho com o pingo, que o modelo lê `fi`, e a haste,
+lida `1` a 0,99, a 1 a 3 px. `flee`→`f1ee` é a classe `f1`, de lance.
+
+### Solução
+
+`text/ligadura.py`, depois do dicionário, que pula palavra com ligadura de qualquer jeito. A haste se funde à ligadura (`FOLGA` de meia haste),
+e **funde a caixa**, para o vão seguinte não medir de um lugar que não está no texto. `f1` seguido de duas minúsculas vira `fl`, o que
+lance nenhum faz. A haste é só `1` e `|`: `h-file` saía `h-fie` numa versão que aceitava `l`, e foi a prata que mostrou. Reversão:
+`ligadura.LIGADO`.
+
+### Critério de aceite
+
+`tests/test_text_ligadura.py`. **Família 14 → 0**, nenhum `fi1` nem `f1` em palavra do ouro-dev, conferido no texto de saída. Notação igual.
+
+## S-734 · Aspas duplas e apóstrofo ✅ implementada (2026-11-06)
+
+### Problema
+
+8 palavras no Dvoretsky e 13 + 4 caixas no ouro-dev: `"tail`→`'(tail`, `rook"`→`rook''`. As duas caixas de uma aspa dupla chegam separadas, a
+2 a 4 px, e o modelo responde caixa a caixa; `"` tem 89 amostras contra 5.676 de `(`, e a classe certa está fora das oito primeiras.
+
+### Solução
+
+`marca_fina.aspas`, depois do dicionário: dois riscos no alto da linha, com vão de até uma largura, viram `"` numa caixa só; um `(` pequeno
+no alto vira `'`. Reversão: `marca_fina.ASPAS_PELA_GEOMETRIA`.
+
+### Critério de aceite
+
+`tests/test_text_aspas.py`. Em `tip`: aspas duplas **8 → 0 no Dvoretsky**, pontuação 10 → 4. No *Capablanca*, reprovado: 7 → 3.
+
+### Desvio: a Saída de pontuação, em `cru`, não se cumpre
+
+O roadmap pede a pontuação em `cru` ≤ 1/2. **Ela sobe de 50 para 58**, e não por erro novo: são palavras que tinham outro erro e agora só têm
+este. Das 58, 37 são do Hertan, e quase todas são `’` lido `'`: **o modelo não tem as aspas curvas**, e `cru` conta a diferença.
+
+Simulando por fora do leitor, com aspas e apóstrofos curvados pelo contexto, a família vai a **12**, e nenhum dos 5 livros piora, porque nenhum
+usa aspa reta na prosa. **Não entra**, e é decisão: `lexico.PONTUACAO_DE_BORDA` e as classes de token não aparam a curva, então `“tail` passaria a
+ser palavra desconhecida para quem marca "revisar", e é uma mudança fora dos arquivos desta trilha. As metas valem em `tip`. Fica para quem
+abrir a régua da marca.
+
+## S-735 · Acento e segundo corte de caixa ✅ implementada (2026-11-06)
+
+### Problema
+
+15 + 13 palavras, 25 delas em *Minhas 60*: `não`→`näo`, `posição`→`posiCäo`. Três causas, e duas têm a classe certa à mão:
+
+| troca | n | rank da certa | amostras em `training_data/` |
+|---|---:|---:|---|
+| `ã` lido `ä` | 23 | 2 | `ã` 3.797, **`ä` 15** |
+| `ç` lido `C` | 19 | 1 ou 2 | `ç` 93, `C` 537 |
+| `ê` lido `é` | 4 | 3 | `ê` 347, `é` 1.751 |
+
+**A classe que vence é a que o modelo quase não viu**, e nenhum número daqui fala do modelo. Acima do piso de ~50 só `ã`, `ç`, `ê`, `é`, `ó`,
+`õ`, `ú`, `Í`, `á`, `à`, `â`, `ć` e `č`; abaixo dele, `í` 32, `ö` 3, `Ö` 5, `Ó` 3, `Õ` 1, `Ú` 1, `Ć` 3, `Č` 3, `š` 7, `Š` 9, `ž` 2, `Ž` 1, `Ã` 1.
+
+### Solução
+
+- **`text/acento.py`** (`acento.LIGADO`): trocar um acento por outro, entre os três primeiros do modelo, se só a resposta existir. `corrigir` do
+  dicionário não alcança isso, e está certo: `sem_troca_de_caixa` tira a mesma letra com outro acento porque `façanha` virava `facanha`, e
+  `MIN_TAMANHO` tira `não`. Aqui nunca se tira nem se põe tinta. A única troca sem léxico é `äo` no fim da palavra ou antes de hífen, que
+  nenhuma língua do acervo escreve.
+- **A cedilha pela descida** (`caixa_alta.CEDILHA_PELA_DESCIDA`): `c` ou `C` com a caixa 0,25 altura-de-x abaixo da base, com `ç` entre as
+  opções, é `ç`. `ç` desce de 0,38 a 0,50, e `C` e `c` vão até 0,06.
+- **O segundo corte** (`caixa_alta.SEGUNDO_CORTE`, `CORTE_ACENTUADA` 1,65): `í ó õ ö ú ć č š ž` têm corte próprio. A minúscula acentuada mede
+  até 1,46, e a maiúscula, cerca de 1,85: **esse lado é estimado**, porque nenhuma aparece no dev.
+
+### Critério de aceite
+
+`tests/test_text_acento.py`. Em *Minhas 60*: acento + acento+caixa **25 → 2** (o roadmap pedia ≤ 1/3). No todo, 28 → 6. **Nenhum `Õ` nem `Ó`
+inventado**, conferido no texto de saída. Notação igual. Só com `acento.LIGADO`, o segundo corte e a cedilha: CER de prosa 2,85% → 2,68%, 6 folhas
+melhores e nenhuma pior.
+
+### O que ela não entrega
+
+`importância`→`importancia` e `à`→`a` são tinta que se perdeu, e não acento trocado: a classe nem está nos três primeiros. **O segundo corte não
+mudou nenhum caractere nestas 27 folhas**: não há maiúscula acentuada inventada para desfazer, e o que existe é a guarda, com o teste.
+
+## S-736 · ADR: a geometria como entrada do classificador ✅ implementada (2026-11-06)
+
+### Contexto
+
+O classificador recebe o recorte esticado para 32×32, e toda a Fase 103 existe porque a altura relativa, a linha de base e a proporção se perdem
+nesse caminho. A saída estrutural seria recortar de novo e dar as três como entrada da rede.
+
+**Recortes esticados**, amostra de até 600 por classe de `training_data/` (607.719 recortes, 314 classes); uniforme em 3.000: 56,8%:
+
+| classe | recortes | esticados | classe | recortes | esticados |
+|---|---:|---:|---|---:|---:|
+| `l` | 2.573 | 97,5% | `,` | 521 | 100% |
+| `I` | 786 | 100% | `'` | 95 | 100% |
+| `\|` | 2 | 100% | `"` | 89 | 19% |
+| `1` | 26.757 | 72% | `s` / `S` | 4.511 / 432 | 100% / 100% |
+| `.` | 20.434 | 69% | `c` / `C` | 12.755 / 537 | 96% / 46% |
+| `i` | 18.903 | 66% | `ã` / `ä` | 3.797 / 15 | 2% / 53% |
+| `!` | 13.788 | 21% | `ç` | 93 | 68% |
+
+**O custo de recortar de novo**, medido em 10 folhas dos 5 livros dev, com outras duas medições na máquina (ordem de grandeza): 1,2 s por folha
+e 1.113 caixas por folha, para render, camada, segmentação e recorte; são 3.710 folhas nesses livros, cerca de **1,2 h de CPU**, e 4 milhões de
+caixas antes de deduplicar, rótulo pela camada. Isso é o barato. O caro é o que vem junto:
+
+1. **Nenhum dos 607.719 recortes sabe de onde veio** (`text/procedencia.py`: UUID puro, sem sidecar). Recortar de novo não é migrar a base, é
+   trocá-la: o que veio de scan, a figurina e as ligaduras saem junto, e só os livros digitais voltam;
+2. os livros digitais admitidos são os do dev e os de reserva treináveis (30), com a lista de exclusão da S-750 valendo, então o conjunto novo é
+   mais estreito em fonte do que o de hoje;
+3. rede nova, `char_meta` novo e ONNX novo, com treino de cerca de 10 min por época na RTX 5060;
+4. trocar o modelo é S-218: os quatro relatórios de campo remedidos, e o modelo da notação do diagrama no caminho.
+
+### Decisão
+
+**Não fazer na Fase 105.** A Fase 103 tirou as famílias de geometria sem tocar no modelo: traço-ponto 124 → 0, caixa 59 → 1, acento+caixa 13 → 0.
+O que sobra das 437 palavras são 116, e 79 são `letra trocada`, que é sobretudo segmentação em *Minhas 60*, e nenhuma entrada de geometria a
+resolve. E a própria Fase 105 é sobre leitor de linha, que olha a linha inteira e não tem o problema do recorte apertado.
+
+**O que muda a decisão:** o glifo sozinho não fechar o G103 por causa das famílias de geometria no teste, ou um livro novo com a família
+traço-ponto de volta. Aí a reabertura é outra ADR, e começa pela procedência (S-201), sem a qual nada se migra.
+
+### Consequências
+
+As regras de geometria continuam morando fora da rede, cada uma com a sua constante e o seu teste. A primeira leitura delas num livro novo é o
+G103. Se a base for um dia recortada de novo, as classes mais vazias que esta fase registrou (seção da S-735) são a primeira coisa a pedir.
