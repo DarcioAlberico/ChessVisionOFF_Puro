@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -476,6 +476,26 @@ def _trocas_de_palavra(p: Placar, ref: str, hip: str, pares: Sequence[tuple[int,
             p.trocas[chave] = p.trocas.get(chave, 0) + 1
 
 
+def palavras_achadas(ref: str, hip: str, lingua: str = LINGUA_PADRAO) -> tuple[int, int]:
+    """Quantos tokens de prosa da referência existem na hipótese, **em qualquer ordem**: `(achados, total)`.
+
+    O CER mede a leitura e a ordem juntas. Um leitor que lê as palavras certas na ordem das colunas de outro paga por todas
+    elas: na prata, a suíte erra 24% de CER e acha mais palavras que a fusão, que erra 11%. Esta conta separa as duas coisas, e
+    serve de diagnóstico ao lado do CER, nunca no lugar dele: a ordem também é o que o dono lê.
+    """
+    tokens, classes = _classes_dos_tokens(ref, lingua, None)
+    restam = Counter(hip.split())
+    achados = total = 0
+    for token, classe in zip(tokens, classes, strict=True):
+        if classe != PROSA:
+            continue
+        total += 1
+        if restam[token] > 0:
+            restam[token] -= 1
+            achados += 1
+    return achados, total
+
+
 # ---------------------------------------------------------------------------------- a família de um erro
 
 
@@ -681,6 +701,7 @@ __all__ = [
     "ic95",
     "linhas_da_pagina",
     "normalizar",
+    "palavras_achadas",
     "pontuar",
     "texto_de",
 ]

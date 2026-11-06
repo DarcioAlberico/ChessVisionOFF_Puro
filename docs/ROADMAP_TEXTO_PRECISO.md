@@ -750,14 +750,16 @@ b`), e consertá-la
   - *Achado:* `text/degradacao.py` traz as duas famílias (`medio` e os outros quatro, byte a byte os do protótipo; `fotocopia_*`, a
     reservada à M5). O `calibrado` levanta `PerfilPendente` com o recuo da seção 7: sem a S-703, a M5 não tem número.
 - **S-705** · Prata: livros escaneados com camada de terceiro, rotulados como "só para ordenar", e
-  estratificados como o scan-ouro (ClearScan / ≤ 150 dpi / ≥ 300 dpi).
+  estratificados como o scan-ouro (ClearScan / ≤ 150 dpi / ≥ 300 dpi). ✅ entregue em 2026-11-06
   - *Entrega:* manifesto `assets/texto_prosa/prata.json`; o relatório imprime a palavra **"ordenação"**
     ao lado de todo número prata, e nunca o soma ao ouro.
   - *Verificação:* `cvoff-texto-prosa` (ou, até a S-706 existir, `reproduzir.py` + `resumo.py` de
     `texto_prosa_2026-10-30/`) sobre `prata`, com o filtro `--oraculo-max 0.10` registrado no relatório.
   - *Saída:* relatório com a palavra "ordenação" em todo número prata e os três estratos separados.
   - *Reversão:* manifesto; sem chamador em produção.
-- **S-706** · `cvoff-texto-prosa` e a linha de base publicada.
+  - *Achado:* 3 `clearscan`, 3 `ate_150`, 4 `de_300`, as 30 folhas de 2026-10-30. Folha de duas colunas não fecha com a montagem da camada, e o
+    CER mede a ordem junto: o relatório publica `palavras_de_prosa_achadas_em_qualquer_ordem` ao lado.
+- **S-706** · `cvoff-texto-prosa` e a linha de base publicada. ✅ entregue em 2026-11-06
   - *Entrega:* CLI que roda um manifesto, grava `docs/metrics/texto_prosa_<data>.json` (caminhos
     relativos — `test_nenhum_relatorio_publica_a_raiz_do_disco`), com commit, árvore suja, sha do
     modelo e do `tessdata`, versão do classificador de token, IC95 de dois níveis, as duas
@@ -779,8 +781,10 @@ b`), e consertá-la
     livros dev aprovados na auditoria, não nos sete de 2026-10-30.
 
   - **Portão G100:** as duas corridas idênticas; linha de base no ouro-dev, ouro-teste, degradado e
-    prata publicada; README cita o relatório.
-- **S-707** · A suíte irmã medida na mesma régua, antes da S-721.
+    prata publicada; README cita o relatório. **Passou em 2026-11-06:** `docs/metrics/texto_prosa_20261106.json`, zero diferença em duas corridas no dev, no degradado e na prata.
+  - *Achado:* **o dev é otimista:** o glifo, `auto`, erra 2,82% no dev e **6,93% [3,31; 12,19]** no ouro-teste (WER 18,66%), aberto uma vez, com `primeira_leitura_do_teste = 2026-11-06`. A camada na prosa dá 3,25% [0,75; 7,12] no teste, e
+    99,4% das palavras em qualquer ordem: é montagem, e quem a julga é a M0 do G107. No dev: fusão 0,32%, Tesseract 0,27%, oráculo 0,11%, camada na prosa 0,20%. Como medir um motor novo está na spec da S-706.
+- **S-707** · A suíte irmã medida na mesma régua, antes da S-721. ✅ entregue em 2026-11-06
   - *Contexto:* a `Suite_de_Edicao_de_Xadrez` já funde a prosa do Tesseract com a figurina do glifo
     deste projeto, token a token (`src/caissa/ocr/engines/glyph.py`: "a prosa fica do Tesseract; as
     figurinas viram figurinas"), tem um árbitro que prefere a camada quando ela é confiável
@@ -792,6 +796,8 @@ b`), e consertá-la
   - *Saída:* decisão escrita sobre o que a S-721 reaproveita da suíte (regras, árbitro, modelos por
     livro) — o que vencer na régua fica; nada é reescrito sem medir.
   - *Reversão:* medição.
+  - *Achado:* no dev a suíte empata na prosa (0,36% contra 0,32% da fusão, −0,03 p.p. [−0,76; +0,53]) e perde 34 p.p. de revocação de figurina (49,7% contra 83,8%). Na prata (ordenação) o CER dela é 24,01% contra 11,14%, mas ela acha mais
+    palavras (91,7% contra 88,3%): paga pela ordem. **Decisão:** o pipeline e o árbitro dela não entram; a S-721 leva quatro regras de `caissa/ocr/fusion.py`, medidas antes (âncora que já é palavra não se troca, `_keep_number_prefix`, `_truncates_long_notation`, disputa vira revisão). Modelos por livro não foram medidos. Spec em `docs/SPEC_TEXTO_PRECISO.md`.
 
 ### Fase 101 — Nenhuma folha perdida em silêncio
 
@@ -879,7 +885,7 @@ b`), e consertá-la
     também, em `duas_linhas.partir_linhas_altas`, e paga pouco: ver a spec.
   - *Achado:* a *Saída* se cumpre nos dois pontos: perda de leiaute **+0,56 p.p. [+0,33; +0,86]** em 40 folhas não vistas (era
     +3,83), e nenhuma linha alta no ouro-dev. No acervo inteiro, não: 1.266 de 42.495 linhas ainda passam de 1,8 mediana.
-- **S-713** · Perda de leiaute como métrica de primeira classe.
+- **S-713** · Perda de leiaute como métrica de primeira classe. ✅ entregue em 2026-11-06
   - *Entrega:* o relatório da régua publica, por livro, `perda_de_leiaute = CER(leitor de linha nas
     caixas do glifo) − CER(leitor de linha nas caixas da camada)`, e a variante `tess_pagina` (o
     Tesseract com o leiaute dele) ao lado — medida **antes** de S-711, S-712 e S-714, para cada conserto
@@ -888,6 +894,7 @@ b`), e consertá-la
     `tess_pagina` ao lado.
   - *Saída:* a métrica existe no relatório e o G101 a lê dali.
   - *Reversão:* só relatório.
+  - *Achado:* no dev, **+0,16 p.p. [−0,01; +0,56]**, quase todo do *Hertan*, acima do orçamento de +0,10; no degradado médio, **+9,19 p.p. [+3,74; +15,53]**, contra os ≤ 2 da S-714. O `tess_pagina` de 2026-10-30 pagava um erro por linha, de CRLF: é 0,37% no dev, e a primeira folha da S-715 custa menos do que a seção 1 dizia.
 - **S-714** · Leiaute sob ruído.
   - *Contexto:* no perfil médio a perda de leiaute é 12,1 p.p. [6,9; 17,1]. Suspeitos, em ordem: binarização
     (janela fixa contra escala da letra), poeira passando no filtro de componente, e linhas que se

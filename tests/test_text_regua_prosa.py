@@ -348,6 +348,21 @@ class MontagemTests(unittest.TestCase):
         self.assertTrue(regua.cruza_diagrama(fileira, [regua.crescer_diagrama(diagrama)]))
 
 
+class PalavrasAchadasTests(unittest.TestCase):
+    def test_a_ordem_nao_conta(self) -> None:
+        self.assertEqual((3, 3), regua.palavras_achadas("uma casa branca", "branca uma casa"))
+        self.assertGreater(regua.pontuar("uma casa branca", "branca uma casa").erros[regua.PROSA], 0)
+
+    def test_repeticao_conta_uma_vez_por_ocorrencia(self) -> None:
+        self.assertEqual((1, 2), regua.palavras_achadas("casa casa", "casa"))
+
+    def test_so_a_prosa_conta(self) -> None:
+        self.assertEqual((1, 1), regua.palavras_achadas("casa Nf3", "casa"))
+
+    def test_referencia_sem_prosa(self) -> None:
+        self.assertEqual((0, 0), regua.palavras_achadas("Nf3", "Nf3"))
+
+
 class ForaDaReferenciaTests(unittest.TestCase):
     DIAGRAMA = ((100, 100, 180, 180),)
 

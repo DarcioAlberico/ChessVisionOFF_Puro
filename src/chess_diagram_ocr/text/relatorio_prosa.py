@@ -101,6 +101,11 @@ def _linha_do_motor(registros: Sequence[dict[str, Any]], motor: str, modo: str) 
         e, t = _classe_erros(registros, motor, modo, classe)
         return sum(e) / max(1, sum(t))
 
+    achadas = [
+        regua.palavras_achadas(regua.normalizar(r["ref"], modo, r["lingua"]), regua.normalizar(r["hip"][motor], modo, r["lingua"]), r["lingua"])
+        for r in registros
+    ]
+
     return {
         "cer_prosa": _r(ponto),
         "ic95_prosa_dois_niveis": [_r(baixo), _r(alto)],
@@ -113,6 +118,7 @@ def _linha_do_motor(registros: Sequence[dict[str, Any]], motor: str, modo: str) 
         "insercoes": sum(p["insercoes"] for p in placares),
         "figurina_revocacao": _r(figura["tp"] / max(1, figura["ref"])),
         "figurina_precisao": _r(figura["tp"] / max(1, figura["hip"])),
+        "palavras_de_prosa_achadas_em_qualquer_ordem": _r(sum(a for a, _ in achadas) / max(1, sum(t for _, t in achadas))),
     }
 
 

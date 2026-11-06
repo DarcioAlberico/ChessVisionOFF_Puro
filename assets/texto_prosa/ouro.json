@@ -1,7 +1,7 @@
 {
   "versao": 1,
   "congelado_em": "2026-10-30",
-  "primeira_leitura_do_teste": null,
+  "primeira_leitura_do_teste": "2026-11-06",
   "pendencias": ["terceira_lingua"],
   "sorteio": {"semente": "20261030", "livros": "teste = todos os candidatos em ['por', 'spa'] + os primeiros por origem (maior resto) na ordem sha256(semente:identidade), 16 no total; o que não dá 6 folhas, ou que a auditoria visual reprova (reprovados_auditoria.tsv), cede a vaga ao seguinte em inglês da mesma origem; o livro da língua pendente, quando chegar, entra a mais, sem trocar nenhum sorteado", "folhas": "ordem sha256(identidade + folha), folha em base 1, sem os 8% iniciais e finais; 3 por estrato, o outro estrato completando", "estratos": {"prosa": [700, 0.55, 1.01], "misto": [300, 0.2, 0.55]}, "classificador_de_token": {"arquivo": "docs/metrics/texto_prosa_2026-10-30/banco.py", "sha256": "9857cbee6af253dc"}, "admissao": "chess_diagram_ocr.text.admissao versao 1", "candidatos": 36, "dev": "as folhas de ouro_dev_completo (prosa) e ouro_dev_estrato_misto (misto) de docs/metrics/texto_prosa_20261030.json"},
   "livros": [

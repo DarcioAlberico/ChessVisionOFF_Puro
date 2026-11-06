@@ -379,6 +379,47 @@ class BlocoTests(unittest.TestCase):
         self.assertEqual({"a.b": 1, "c.0.d": 2}, relatorio_prosa.achatar({"a": {"b": 1, "segundos_x": 3}, "c": [{"d": 2}], "segundos_por_folha": {"e": 1}}))
 
 
+class RelatorioPublicadoTests(unittest.TestCase):
+    """O portão G100: as quatro fatias, sem texto de livro, e a prata com a palavra."""
+
+    def setUp(self) -> None:
+        self.relatorio = json.loads((RAIZ / "docs/metrics/texto_prosa_20261106.json").read_text(encoding="utf-8"))
+        self.conjuntos = self.relatorio["conjuntos"]
+
+    def test_as_fatias_do_portao(self) -> None:
+        self.assertEqual({"ouro_dev", "ouro_teste", "degradado_medio_dev", "prata", "prata_admitida"}, set(self.conjuntos))
+        self.assertEqual((27, 5), (self.conjuntos["ouro_dev"]["folhas"], self.conjuntos["ouro_dev"]["livros"]))
+        self.assertEqual((96, 16), (self.conjuntos["ouro_teste"]["folhas"], self.conjuntos["ouro_teste"]["livros"]))
+        self.assertEqual({"oraculo_max": 0.1}, self.conjuntos["prata_admitida"]["filtro"])
+
+    def test_o_teste_saiu_so_com_os_motores_do_portao_e_sem_livro(self) -> None:
+        teste = self.conjuntos["ouro_teste"]
+        self.assertEqual({"auto", "camada_prosa"}, set(teste["motores"]))
+        self.assertNotIn("por_livro", teste)
+        self.assertNotIn("livros", next(iter(teste["taxonomia"]["auto"]["familias"].values())))
+
+    def test_a_prata_nunca_sai_sem_a_palavra(self) -> None:
+        for nome in ("prata", "prata_admitida"):
+            for motor in self.conjuntos[nome]["motores"].values():
+                self.assertEqual(prata.USO, motor["tip"]["uso"])
+                self.assertEqual(prata.USO, motor["cru"]["uso"])
+
+    def test_a_perda_de_leiaute_esta_por_livro_com_o_tess_pagina(self) -> None:
+        perda = self.conjuntos["ouro_dev"]["perda_de_leiaute"]
+        self.assertEqual(5, len(perda["por_livro"]))
+        for livro in perda["por_livro"].values():
+            self.assertEqual({"delta_pp", "ic95_pp", "cer_tess", "cer_tess_oraculo", "cer_tess_pagina"}, {*livro} - {"folhas_melhores", "folhas_piores"})
+
+    def test_a_suite_esta_na_regua(self) -> None:
+        self.assertIn("suite", self.conjuntos["ouro_dev"]["motores"])
+        self.assertIn("suite", self.conjuntos["prata"]["motores"])
+        self.assertIn("fusao - suite (prosa)", self.conjuntos["ouro_dev"]["pares"])
+
+    def test_um_commit_so_e_arvore_limpa(self) -> None:
+        self.assertEqual(1, len(self.relatorio["codigo"]["commit"]))
+        self.assertFalse(self.relatorio["codigo"]["src_sujo"])
+
+
 class EntradaTests(unittest.TestCase):
     def test_o_comando_esta_no_pyproject(self) -> None:
         self.assertIn('cvoff-texto-prosa = "chess_diagram_ocr.cli.texto_prosa:main"', (RAIZ / "pyproject.toml").read_text(encoding="utf-8"))
