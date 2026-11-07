@@ -541,6 +541,11 @@ letra fora dos diagramas. Abaixo de 0,5, o aviso `folha_nao_lida`. A perda parci
 `leitura_parcial`: linhas lidas contra as estimadas pela projeção, e lidos contra os caracteres da camada.
 Folha com pouca tinta (capa, branco, só diagrama) é classe à parte, e não avisa.
 
+**O excesso tem aviso próprio, `leitura_com_ruido`** (2026-11-07). A folha que leu muito mais do que tem não perdeu nada que a contagem veja, e fora da moldura saía calada: na prosa do
+*Yusupov*, o texto vem afogado em 15 mil a 78 mil sinais. `CORTE_DO_EXCESSO` = 4,0 sinais por letra impressa, com `MINIMO_DO_EXCESSO` = 500 sinais na folha; nunca junto dos outros dois avisos.
+Ele não chama a reserva nem muda o texto. **Densidade, e não contagem:** folha de letra miúda lê mais de 6.000 sinais certos. O corte saiu da banda vista em mosaico: até 3,18 ainda há prosa de
+verdade, e o primeiro acima é uma capa, a 4,85. O mínimo tira as legendas em volta dos tabuleiros, que passam do corte com leitura certa (*Karpov*, *Dufresne*, até 330 sinais).
+
 **A primeira versão foi reprovada pelo crítico, e o motivo importa.** A *Polgar 5334* avisava em 16 de 25 folhas,
 com nada perdido: seis diagramas por folha, e as coordenadas e o número em volta de cada um contavam como letra. A
 máscara agora cresce uma casa de cada lado, e quem leu ao menos 60% do que a camada tem não perdeu a folha. O mínimo
@@ -564,6 +569,10 @@ folhas distintas, porque um livro está duas vezes no acervo. A sexta é texto d
 
 A guarda dos testes foi provada por mutação, com a lista do crítico mais os consertos das rodadas seguintes: um mutante
 equivalente sobrevive (o número partido, em que o sufixo de mesmo tamanho é o próprio número).
+
+O `leitura_com_ruido` dispara em 84 das 26.730 folhas, todas vistas, nenhuma com leitura boa: bloco `aviso_de_ruido` de
+[metrics/texto_g3_20261106.json](metrics/texto_g3_20261106.json), medido com `docs/metrics/texto_g3_2026-11-06/densidade.py`. As 18 mil folhas que não
+foram relidas estão cobertas por um teto da densidade, e as candidatas desse teto foram relidas. Ele sai igual nos motores `glifo`, `auto`, `fusao` e `camada_prosa`, com o texto intacto.
 
 ## S-711 · A moldura que envolve a folha ✅ implementada (2026-11-05)
 

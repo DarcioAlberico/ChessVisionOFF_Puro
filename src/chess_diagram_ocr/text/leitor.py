@@ -213,6 +213,7 @@ from .pagina import (
     FOLHA_NAO_LIDA,
     LEIAUTE_DE_RESERVA,
     LEITOR_INDISPONIVEL,
+    LEITURA_COM_RUIDO,
     LEITURA_PARCIAL,
     Aviso,
     BlocoDeDiagrama,
@@ -1974,6 +1975,15 @@ def _ler_pagina_do_livro(
                     Aviso(
                         LEITURA_PARCIAL,
                         f"Esta folha pode estar incompleta: {guarda.linhas_lidas} linhas lidas para ~{guarda.linhas_estimadas}.",
+                        guarda.densidade,
+                    )
+                )
+            elif guarda.afogada:
+                avisos.append(
+                    Aviso(
+                        LEITURA_COM_RUIDO,
+                        f"Esta folha saiu com ruído: {guarda.lidos} sinais para ~{guarda.componentes} letras impressas. "
+                        "Se há texto certo, ele está misturado a eles: confira contra a folha.",
                         guarda.densidade,
                     )
                 )

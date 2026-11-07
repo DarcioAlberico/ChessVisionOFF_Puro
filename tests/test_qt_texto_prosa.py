@@ -251,6 +251,12 @@ class SeloTests(_Aba):
         self.assertIn("não foi lida inteira", self.painel.selo_da_folha.text())
         self.assertIn("Sem Tesseract.", self.painel.selo_da_folha.text())
 
+    def test_a_folha_lida_como_ruido_mostra_o_selo(self) -> None:
+        self.escolher("glifo")
+        self.ler(self.boas("x" * 150))
+        self.assertFalse(self.painel.selo_da_folha.isHidden())
+        self.assertIn("saiu com ruído", self.painel.selo_da_folha.text())
+
     def test_o_selo_some_na_folha_seguinte(self) -> None:
         aviso = pagina.Aviso(pagina.FOLHA_NAO_LIDA, "Não foi lida.")
         self.painel.mostrar_pagina(pagina.PaginaLida(pagina=0, avisos=(aviso,)))

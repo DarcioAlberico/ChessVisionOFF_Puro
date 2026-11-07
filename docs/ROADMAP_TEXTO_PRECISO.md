@@ -521,8 +521,9 @@ marcado para revisão, com captura ≥ 90% — ou (b) pagar o orçamento de CPU 
 > teste foi lido, então nada se ajusta olhando para ele: mais trabalho de leiaute precisa de livro novo no dev.
 >
 > **O G3 só promete perda total, e a varredura achou o que fica fora dele.** Onze folhas derrubavam a leitura com caixa vazia, um defeito da S-714, já consertado.
-> Sem aviso restam 13 grades de números do *Schiller* lidas pela metade ou menos, e 42 folhas com mais de 6.000 caracteres lidos: em 9 delas, do *Yusupov*, há prosa
-> real afogada em ruído.
+> Sem aviso restam 13 grades de números do *Schiller* lidas pela metade ou menos. As 42 folhas com mais de 6.000 caracteres lidos, 9 delas de prosa real do *Yusupov* afogada em
+> ruído, também passavam caladas: desde 2026-11-07 elas avisam, menos uma folha em branco manchada do *Bachmann*, com o `leitura_com_ruido` (ver o *Achado* da S-710). O aviso não
+> conserta o texto: só diz que ele saiu assim.
 >
 > **O plano B da seção 3 está valendo, e a escolha é do dono**: (a) aceitar M1 ≤ 0,50% com a G5 compensando, ou (b) pagar a Fase 105 (D8). A G5 também
 > não cumpre, então (a) hoje não fecha sozinha. O que ficou de fora por recuo: S-703 só a ferramenta (D3), S-704 sem perfil calibrado (D3), S-724 (D1), S-740, S-741, S-742 e os
@@ -872,6 +873,11 @@ b`), e consertá-la
     abaixo de 0,7 sem aviso, em 812 folhas de 58 livros. Depois da S-711, das dez folhas que avisam, quatro têm texto que o glifo não leu
     e seis são sinal solto de dentro de uma moldura. A varredura de livro inteiro do G101 foi feita em 2026-11-06, com G3 = 0 em 26.730 folhas:
     [metrics/texto_g3_20261106.json](metrics/texto_g3_20261106.json). Ela não gravou a densidade de cada folha, então a regra do corte segue valendo pelas 812.
+  - *Achado (2026-11-07):* **a densidade também acusa o lado de cima, e esse aviso faltava.** Fora da moldura, a folha lida como ruído saía calada: 15 mil a 78 mil sinais nas 9
+    folhas de prosa do *Yusupov*. Agora, com densidade de ao menos 4,0 e ao menos 500 lidos, sai `leitura_com_ruido`, em **84 das 26.730 folhas**. Vistas uma a uma, nenhuma tem leitura boa: 54
+    de diagramas com a hachura lida como letra, 2 de tabela com pontilhado, 18 de capa ou arte e 10 de prosa real no meio do ruído. É só aviso: não chama a reserva nem muda o texto,
+    porque o texto certo pode estar no meio. Abaixo do corte há prosa de verdade, até 3,18 (*Simple Chess*); e abaixo de 500 lidos há leitura certa acima dele (legendas do *Karpov* e do *Dufresne*).
+    Ficam calados a folha manchada 125 do *Bachmann* (2,05) e as 13 grades do *Schiller*, que são falta, e não excesso. O bloco `aviso_de_ruido` do relatório traz a conta.
   - *Reversão:* o aviso não muda texto nenhum; o corte é constante. O `ESQUEMA` 2 **não** é reversível
     (versão antiga não abre arquivo novo), e por isso entra junto com o primeiro uso dos avisos.
 - **S-711** · Região escura na borda: faixa colorida e moldura de scan. ✅ entregue em 2026-11-05, com outro mecanismo: ver o *Achado* no fim deste item.

@@ -78,6 +78,37 @@ class DensidadeTests(unittest.TestCase):
         self.assertFalse(total.parcial)
 
 
+class AfogadaTests(unittest.TestCase):
+    """A folha lida como ruído fora da moldura: muito mais sinais do que letras impressas."""
+
+    def test_a_prosa_afogada_e_a_capa_acusam(self) -> None:
+        for componentes, lidos in ((1808, 44026), (1646, 8404), (46, 6370), (475, 3444), (39, 985), (107, 511)):
+            with self.subTest(lidos=lidos):
+                self.assertTrue(guarda_de_leitura.Medida(componentes, lidos, 30, 200).afogada)
+
+    def test_as_folhas_reais_de_densidade_alta_nao_acusam(self) -> None:
+        """Sumário com pontilhado, 2,2; prosa com letras coladas, 2,9; scan velho com diagrama, 3,2."""
+        for componentes, lidos in ((1108, 2441), (659, 1892), (509, 1615)):
+            with self.subTest(lidos=lidos):
+                self.assertFalse(guarda_de_leitura.Medida(componentes, lidos, 30, 60).afogada)
+
+    def test_pouco_lido_nao_e_afogar(self) -> None:
+        """Legenda em volta dos tabuleiros dá densidade alta com a leitura certa: `lidos` ÷ quase nada."""
+        for componentes, lidos in ((2, guarda_de_leitura.MINIMO_DO_EXCESSO - 1), (36, 324), (25, 186)):
+            with self.subTest(lidos=lidos):
+                medida = guarda_de_leitura.Medida(componentes, lidos, 1, 1)
+                self.assertGreater(medida.densidade, guarda_de_leitura.CORTE_DO_EXCESSO)
+                self.assertFalse(medida.afogada)
+
+    def test_nunca_junto_dos_outros_dois(self) -> None:
+        moldura = guarda_de_leitura.Medida(1000, 9000, 30, 300, ruido=True)
+        self.assertTrue(moldura.nao_lida)
+        self.assertFalse(moldura.afogada)
+        poucas_linhas = guarda_de_leitura.Medida(1000, 9000, 40, 10)
+        self.assertTrue(poucas_linhas.parcial)
+        self.assertFalse(poucas_linhas.afogada)
+
+
 class AvisosNaPaginaTests(unittest.TestCase):
     def _pagina(self) -> pagina.PaginaLida:
         return pagina.PaginaLida(

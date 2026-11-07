@@ -215,6 +215,33 @@ class LeituraParcialTests(_ComLivro):
         self.assertEqual(_linhas(lida)[0].texto, "the white knigh")
 
 
+class LeituraComRuidoTests(_ComLivro):
+    def _afogada(self, **opcoes: Any) -> pagina.PaginaLida:
+        return self.ler("glifo", self.boas("x" * 150), **opcoes)
+
+    def test_a_folha_afogada_avisa_com_os_dois_numeros(self) -> None:
+        ((aviso),) = self._afogada().avisos
+        self.assertEqual(aviso.codigo, pagina.LEITURA_COM_RUIDO)
+        self.assertIn("1800 sinais", aviso.mensagem)
+        self.assertGreater(aviso.dado or 0, guarda_de_leitura.CORTE_DO_EXCESSO)
+
+    def test_o_aviso_nao_muda_o_texto(self) -> None:
+        self.assertEqual(_linhas(self._afogada())[0].texto, "x" * 150)
+
+    def test_nao_chama_a_reserva(self) -> None:
+        """A reserva é para quem não leu. Aqui há texto, e trocá-lo seria outra decisão, que pede medição."""
+        falso = _Falso()
+        self._afogada(reserva=True, leitor_de_linha=falso)
+        self.assertIsNone(falso.cinza)
+
+    def test_o_aviso_atravessa_o_arquivo(self) -> None:
+        dados = self._afogada().para_json()
+        self.assertEqual(pagina.PaginaLida.de_json(dados).avisos[0].codigo, pagina.LEITURA_COM_RUIDO)
+
+    def test_a_folha_normal_nao_avisa(self) -> None:
+        self.assertEqual(self.ler("glifo", self.boas(LINHA)).avisos, ())
+
+
 class ReservaTests(_ComLivro):
     def _palavras(self) -> list[tesseract.Palavra]:
         return [tesseract.Palavra(LINHA.split()[0], 0.9, (180, 100 + 60 * n, 500, 140 + 60 * n), linha=n) for n in range(4)]

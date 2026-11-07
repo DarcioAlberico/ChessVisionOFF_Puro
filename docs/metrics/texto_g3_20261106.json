@@ -66,7 +66,57 @@
       "só diagrama, com a hachura lida como letra (La casa del Ajedrez)": 26,
       "prosa real, com a coluna pontilhada lida como letra (Yusupov, Build Up Your Chess)": 9
     },
-    "ressalva": "a guarda só trata sinal solto como ruído em folha com moldura (S-711). Nas 9 de prosa, o texto fica afogado em 15 mil a 78 mil caracteres, e a tela não avisa."
+    "ressalva": "a guarda da varredura só tratava sinal solto como ruído em folha com moldura (S-711). Nas 9 de prosa, o texto fica afogado em 15 mil a 78 mil caracteres. Desde 2026-11-07 a tela avisa: ver aviso_de_ruido."
+  },
+  "aviso_de_ruido": {
+    "quando": "2026-11-07",
+    "codigo": {
+      "amostra_e_cota": "ce18c780",
+      "releitura": "ce18c780 mais o aviso, que não muda o texto de folha nenhuma"
+    },
+    "comando": "docs/metrics/texto_g3_2026-11-06/densidade.py, motor glifo a 220 dpi, 5 processos",
+    "regra": "densidade de ao menos 4,0 e ao menos 500 lidos, sem folha_nao_lida nem leitura_parcial",
+    "populacao": {
+      "folhas_do_acervo": 26730,
+      "lidas_de_novo_com_a_guarda": 1448,
+      "so_com_os_componentes": 18064,
+      "candidatas_da_cota_relidas": 171,
+      "fora_por_ler_menos_de_300": 7218,
+      "ressalva": "PDF/ tem livros duplicados: a contagem é de arquivos, e a mesma folha pode valer duas vezes."
+    },
+    "folhas_que_avisam": 84,
+    "conferencia_visual": {
+      "só diagramas, com a hachura lida como letra (La casa del Ajedrez)": 54,
+      "tabela com pontilhado lida como lixo, menos as duas últimas linhas (La casa del Ajedrez 73 e 199)": 2,
+      "prosa real no meio do ruído (Yusupov, Build Up Your Chess, 9; Kemeri 133, com foto em retícula)": 10,
+      "capa, contracapa, retrato, foto ou arte": 18
+    },
+    "falso_alarme_visto": 0,
+    "densidade_na_amostra": {
+      "criterio": "folhas com ao menos 100 componentes",
+      "folhas": 1256,
+      "p50": 1.13,
+      "p95": 1.49,
+      "p99": 7.25,
+      "ressalva": "a amostra traz toda folha com 3.000 lidos ou mais, então a cauda de cima pesa mais do que no acervo."
+    },
+    "prosa_real_abaixo_do_corte": {
+      "Simple Chess 117": 3.06,
+      "Simple Chess 127": 3.18,
+      "Bachmann 121": 3.17
+    },
+    "em_silencio": {
+      "das_com_mais_de_6000_lidos": {
+        "folhas": 42,
+        "agora_avisam": 41,
+        "a_que_fica": "Bachmann 125: folha em branco manchada, densidade 2,05"
+      },
+      "acima_do_corte_com_menos_de_500_lidos": {
+        "folhas": 106,
+        "o_que_sao": "folhas só de diagrama com a legenda lida (Karpov, Dufresne: leitura certa, e não ruído), algumas da La casa, e capas."
+      },
+      "grades_do_schiller": "as 13 de perda parcial: é falta, e não excesso, e este aviso não as vê."
+    }
   },
   "criterio_da_s710_nao_refeito": "a varredura não gravou a densidade de cada folha, então a regra do corte de 0,5 segue valendo pela amostra de 812 folhas já publicada.",
   "segundos_por_folha": {

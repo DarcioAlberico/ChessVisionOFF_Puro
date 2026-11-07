@@ -31,6 +31,10 @@ seis diagramas por folha, isso dava densidade de 0,33 a 0,48 em 16 de 25 folhas,
 reserva trocava o texto certo por outro pior. A máscara cresce uma casa de cada lado. E **a leitura que
 bate com a camada não é perda**: quem leu ao menos 60% do que a camada tem não perdeu a folha.
 
+**Ela olha para os dois lados.** O ruído fora da moldura não é perda, e não se chama `folha_nao_lida`: é a folha que leu
+muito mais do que tem, e o aviso é `leitura_com_ruido` (`Medida.afogada`). Ele não chama a reserva nem muda o texto, porque
+o texto certo pode estar no meio: nas 9 folhas de prosa do *Yusupov*, ele fica afogado em 15 mil a 78 mil sinais.
+
 O cálculo é sobre a binária de Otsu da imagem da folha, e não a de `binarize`: o limiar global é o que
 a medição usou, e o resultado não depende da segmentação que esta guarda existe para vigiar.
 """
@@ -82,6 +86,19 @@ MINIMO_DE_RUIDO = 40
 contracapa ou texto que o glifo despedaça. Medido em 117 folhas com moldura de 10 livros: as que dão ruído vão de
 1,02 a 1,29, e a seguinte já é 1,39. Fora da moldura esse número é uma tabela de torneio, e não ruído. A fração de
 palavras existentes não serve aqui: nos livros holandeses ela fica em 2% com o texto lido."""
+
+CORTE_DO_EXCESSO = 4.0
+MINIMO_DO_EXCESSO = 500
+"""Sinais lidos por letra impressa, e sinais na folha, para o que saiu estar afogado em ruído.
+
+**Densidade, e não contagem:** folha de letra miúda lê mais de 6.000 sinais certos. Medido em 2026-11-07 no acervo
+inteiro (`docs/metrics/texto_g3_20261106.json`): na amostra de 1.448 folhas, a mediana é 1,13 e o p95 é 1,49. Abaixo do
+corte ainda há prosa de verdade (*Simple Chess* 117 e 127, 3,06 e 3,18; *Bachmann* 121, 3,17), e a seguinte que dispara
+é a capa do *Chess Structures*, 4,85. Das 84 folhas que disparam, vistas uma a uma, nenhuma tem leitura boa: 56 de
+diagramas ou tabela com a hachura lida como letra, 18 de capa ou arte, e 10 de prosa real no meio do ruído.
+
+**O mínimo tira as legendas:** abaixo dele a densidade alta pode ser leitura certa. As folhas de diagrama do *Karpov* e do
+*Dufresne* passam do corte com 130 a 330 sinais legítimos, porque a régua conta pouca letra em volta dos tabuleiros."""
 
 
 def parece_ruido(tokens: Sequence[str]) -> bool:
@@ -137,6 +154,16 @@ class Medida:
         return (
             self.caracteres_da_camada >= MINIMO_DA_CAMADA
             and self.lidos < CORTE_DA_CAMADA * self.caracteres_da_camada
+        )
+
+    @property
+    def afogada(self) -> bool:
+        """Leu muito mais do que a folha tem. **Nunca junto dos outros dois**, e o texto certo pode estar no meio."""
+        return (
+            not self.nao_lida
+            and not self.parcial
+            and self.lidos >= MINIMO_DO_EXCESSO
+            and self.densidade >= CORTE_DO_EXCESSO
         )
 
 
@@ -208,12 +235,14 @@ __all__ = [
     "CORTE_DAS_LINHAS",
     "CORTE_DA_CAMADA",
     "CORTE_DA_DENSIDADE",
+    "CORTE_DO_EXCESSO",
     "DPI_DA_REGUA",
     "FOLGA",
     "MINIMO_COM_CAMADA",
     "MINIMO_DA_CAMADA",
     "MINIMO_DE_COMPONENTES",
     "MINIMO_DE_LINHAS",
+    "MINIMO_DO_EXCESSO",
     "Medida",
     "linhas_pela_projecao",
     "medir",

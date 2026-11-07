@@ -944,6 +944,7 @@ ESQUEMA_DOS_AVISOS = 2
 
 FOLHA_NAO_LIDA = "folha_nao_lida"
 LEITURA_PARCIAL = "leitura_parcial"
+LEITURA_COM_RUIDO = "leitura_com_ruido"
 LEIAUTE_DE_RESERVA = "leiaute_de_reserva"
 CAMADA_NA_FOLHA = "camada_na_folha"
 CAMADA_RECUSADA = "camada_recusada"
@@ -952,6 +953,7 @@ CACHE_NAO_GRAVADO = "cache_nao_gravado"
 AVISOS: tuple[str, ...] = (
     FOLHA_NAO_LIDA,
     LEITURA_PARCIAL,
+    LEITURA_COM_RUIDO,
     LEIAUTE_DE_RESERVA,
     CAMADA_NA_FOLHA,
     CAMADA_RECUSADA,
@@ -1245,6 +1247,7 @@ __all__ = [
     "GRAVAR_FORMATO_NOVO",
     "LEIAUTE_DE_RESERVA",
     "LEITOR_INDISPONIVEL",
+    "LEITURA_COM_RUIDO",
     "LEITURA_PARCIAL",
     "ORDEM_DE_CONFIANCA",
     "PROCEDENCIAS",
