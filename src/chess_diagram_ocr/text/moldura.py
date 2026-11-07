@@ -35,6 +35,14 @@ Não é 1,0 porque o scan raramente fecha na última fileira de pixels. Um diagr
 aqui: ele não encosta nas duas bordas opostas nas duas direções, e a margem tira mais que 10%."""
 
 
+ESPESSURA_DE_FAIXA = 0.01
+"""Fração do lado menor da folha abaixo da qual a moldura é filete, e não faixa: 18 px numa folha de 1.819."""
+
+
+VAZADO_DE_FAIXA = 0.5
+"""Fração da parte grossa que pode ser vão. A letra branca da faixa do *Chess Evolution* fica muito abaixo, e o anel, acima."""
+
+
 def tirar_moldura(binaria: np.ndarray) -> tuple[np.ndarray, int]:
     """A binária sem o componente que envolve a folha, e quantos saíram. **A mesma binária se não há nenhum.**
 
@@ -52,9 +60,35 @@ def tirar_moldura(binaria: np.ndarray) -> tuple[np.ndarray, int]:
     ]
     if not envolventes:
         return binaria, 0
+    mascara = np.isin(rotulos, envolventes)
     limpa = binaria.copy()
-    limpa[np.isin(rotulos, envolventes)] = 0
+    limpa[mascara] = 0
+    limpa[_miolo_da_faixa(mascara)] = 0
     return limpa, len(envolventes)
 
 
-__all__ = ["COBERTURA_MINIMA", "TIRAR_MOLDURA", "tirar_moldura"]
+def _miolo_da_faixa(mascara: np.ndarray) -> np.ndarray:
+    """O que a parte **grossa** da moldura cercava: o miolo das letras brancas da faixa.
+
+    Ela tem letra branca, e o `o` e o `e` deixam tinta solta por dentro, que sobra quando a faixa sai: nas folhas do
+    *Chess Evolution* isso era uma coluna de lixo a mais. Só a parte grossa: o filete fino não sobrevive à abertura, e
+    ele cerca o texto da folha. Pelo mesmo motivo, o anel grosso não conta, nem o que dá a volta na folha (a borda escura
+    do scan) nem o quadro interno: quem separa os dois da faixa é o vazado, porque a faixa é quase toda tinta e o anel é
+    quase todo vão.
+    """
+    altura, largura = mascara.shape[:2]
+    lado = max(3, int(min(altura, largura) * ESPESSURA_DE_FAIXA))
+    grossa = cv2.morphologyEx(mascara.astype(np.uint8), cv2.MORPH_OPEN, np.ones((lado, lado), np.uint8))
+    contornos, _ = cv2.findContours(grossa, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    miolo = np.zeros((altura, largura), dtype=np.uint8)
+    for contorno in contornos:
+        cheia = np.zeros((altura, largura), dtype=np.uint8)
+        cv2.drawContours(cheia, [contorno], -1, 1, thickness=cv2.FILLED)
+        area = int(cheia.sum())
+        vazado = area - int(grossa[cheia > 0].sum())
+        if vazado <= VAZADO_DE_FAIXA * area:
+            miolo[cheia > 0] = 1
+    return miolo.astype(bool)
+
+
+__all__ = ["COBERTURA_MINIMA", "ESPESSURA_DE_FAIXA", "TIRAR_MOLDURA", "VAZADO_DE_FAIXA", "tirar_moldura"]

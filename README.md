@@ -1257,7 +1257,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-581 a S-584 | [docs/PLANO_COLUNAS_SOLUCOES.md](docs/PLANO_COLUNAS_SOLUCOES.md) |
 | S-599 | [docs/PLANO_FAIXAS_REVERSAS.md](docs/PLANO_FAIXAS_REVERSAS.md) |
 | S-601 a S-668 | [docs/SPEC_MESA_DE_TEXTO.md](docs/SPEC_MESA_DE_TEXTO.md) |
-| S-702, S-710, S-711, S-715 a S-718, S-720 | [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) |
+| S-702, S-710 a S-712, S-715 a S-718, S-720 | [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1423,6 +1423,8 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   folha nao lida e o selo (S-710), a moldura que apagava a folha inteira (S-711), a reserva pelo leiaute do Tesseract (S-715), os motores
   "Camada na prosa" (S-716) e "Glifo + Tesseract" (S-717), a marca por palavra (S-718) e o executor
   do Tesseract (S-720), com os numeros em `docs/metrics/texto_prosa_primeira_entrega.json`
+  e a caixa que nao e letra, que intercalava a coluna inteira (S-712), em
+  `docs/metrics/texto_prosa_s712.json`
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

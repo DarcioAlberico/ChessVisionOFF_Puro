@@ -48,6 +48,15 @@ GANHO_MINIMO = 0.05
 **É a régua que não atravessa uma calibração** -- ver o cabeçalho. Conservador de propósito: na
 dúvida, não cortar, porque cortar um glifo bom troca um caractere certo por dois errados."""
 
+PARTIR_LINHA_ALTA = True
+"""A reversão da S-712: desligada, a linha alta fica inteira, com os pedaços das vizinhas dentro dela."""
+
+LINHA_ALTA = 1.8
+"""Acima de quantas medianas da tira a linha é suspeita de ter recolhido pedaços das vizinhas."""
+
+VALE_DA_LINHA = 0.25
+"""Quanto da fileira mais cheia o vale pode ter para o corte valer: o título grande não tem vale nenhum."""
+
 FRAGMENTO_ALTURA = 0.35
 """Abaixo desta fração da escala, a caixa é fragmento de descendente e não caractere."""
 
@@ -141,6 +150,64 @@ def separar(
     return saida
 
 
+def _corte_da_linha(linha: Sequence[Caixa]) -> int | None:
+    """O `y` do vale entre as caixas da linha, ou `None`. A régua conta caixas por fileira, e não tinta."""
+    topo = min(c.y1 for c in linha)
+    alturas = max(c.y2 for c in linha) - topo
+    if alturas < 3:
+        return None
+    cobertura = np.zeros(alturas, dtype=np.int32)
+    for caixa in linha:
+        cobertura[caixa.y1 - topo : caixa.y2 - topo] += 1
+    # Só onde há caixa dos dois lados: fora disso o mínimo é a ponta da própria linha.
+    centros = sorted((c.y1 + c.y2) / 2 - topo for c in linha)
+    inicio, fim = int(centros[0]) + 1, int(centros[-1])
+    if fim <= inicio:
+        return None
+    miolo = cobertura[inicio:fim]
+    posicao = int(miolo.argmin())
+    # O meio do trecho mínimo, e não a primeira fileira: o vale costuma ser largo.
+    ate = posicao
+    while ate + 1 < miolo.size and miolo[ate + 1] == miolo[posicao]:
+        ate += 1
+    if float(miolo[posicao]) > VALE_DA_LINHA * float(cobertura.max()):
+        return None
+    return topo + inicio + (posicao + ate) // 2
+
+
+def _partir_uma(linha: list[Caixa], teto: float) -> list[list[Caixa]]:
+    if len(linha) < 2 or max(c.y2 for c in linha) - min(c.y1 for c in linha) <= teto:
+        return [linha]
+    corte = _corte_da_linha(linha)
+    if corte is None:
+        return [linha]
+    de_cima = [c for c in linha if (c.y1 + c.y2) / 2 < corte]
+    de_baixo = [c for c in linha if (c.y1 + c.y2) / 2 >= corte]
+    if not de_cima or not de_baixo:
+        return [linha]
+    # **A maiúscula maior que o resto não é outra linha**: `You have` saía `Y` / `ou have`. O vale acima das minúsculas é
+    # a parte de cima dela, e ela atravessa o corte. Um lado feito só do que atravessa não é uma linha.
+    if all(c.y2 > corte for c in de_cima) or all(c.y1 < corte for c in de_baixo):
+        return [linha]
+    return _partir_uma(de_cima, teto) + _partir_uma(de_baixo, teto)
+
+
+def partir_linhas_altas(linhas: Sequence[Sequence[Caixa]]) -> list[list[Caixa]]:
+    """As linhas de uma tira, com a alta demais partida no vale entre as caixas dela (S-712).
+
+    **O que sobra alto depois de `gigantes` é, em boa parte, uma linha com pedaços das vizinhas**, em scan: o descendente
+    da linha de cima, o topo da de baixo. Vi 18 linhas sorteadas, e o resto é título, tabuleiro não detectado e tarja. O
+    recorte do leitor de linha pega as três, e o pedaço entra no meio do texto. A ordem de cada pedaço é preservada: ela
+    já é a de leitura. O pedaço não volta para a linha de origem: fica como linha à parte, ou cai em `descartar_fragmentos`.
+    """
+    grupos = [list(linha) for linha in linhas]
+    if not PARTIR_LINHA_ALTA or len(grupos) < 3:
+        return grupos
+    alturas = sorted(max(c.y2 for c in g) - min(c.y1 for c in g) for g in grupos if g)
+    teto = LINHA_ALTA * alturas[len(alturas) // 2]
+    return [pedaco for grupo in grupos for pedaco in _partir_uma(grupo, teto)]
+
+
 def e_fragmento(linha: Sequence[Caixa], *, escala: int) -> bool:
     """A "linha" é só fragmento de descendente da linha vizinha?
 
@@ -165,10 +232,14 @@ __all__ = [
     "FRAGMENTO_ALTURA",
     "FRAGMENTO_FRACAO",
     "GANHO_MINIMO",
+    "LINHA_ALTA",
     "MARGEM_DO_VALE",
+    "PARTIR_LINHA_ALTA",
+    "VALE_DA_LINHA",
     "descartar_fragmentos",
     "e_fragmento",
     "partir",
+    "partir_linhas_altas",
     "separar",
     "vale",
 ]

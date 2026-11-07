@@ -93,6 +93,57 @@ class TirarMolduraTests(unittest.TestCase):
         cv2.rectangle(imagem, (0, 0), (960, 1340), (40, 40, 40), 3)
         self.assertEqual(moldura.tirar_moldura(binarize(imagem))[1], 1)
 
+    def test_o_miolo_das_letras_da_faixa_sai_junto(self) -> None:
+        """Letra branca na faixa: o miolo do `o` é tinta solta, e sem isto vira uma coluna de lixo."""
+        imagem = _folha(filete=True, faixa=True)
+        cv2.circle(imagem, (80, 300), 40, (255, 255, 255), 16)
+        limpa, quantas = moldura.tirar_moldura(binarize(imagem))
+        self.assertEqual(quantas, 1)
+        self.assertEqual(int((limpa[:, :160] > 0).sum()), 0)
+
+    def test_a_faixa_com_letra_grande_ainda_e_faixa(self) -> None:
+        """Pouco mais de um quarto de vão, de letra branca: abaixo de meio, e o miolo sai. Um limite de 0,2 a tomaria por anel."""
+        imagem = _folha(filete=True, faixa=True)
+        for y in range(100, 1300, 200):
+            cv2.rectangle(imagem, (30, y), (130, y + 100), (255, 255, 255), -1)
+            cv2.rectangle(imagem, (70, y + 40), (90, y + 60), (40, 40, 40), -1)
+        limpa, quantas = moldura.tirar_moldura(binarize(imagem))
+        self.assertEqual(quantas, 1)
+        self.assertEqual(int((limpa[:, :160] > 0).sum()), 0)
+
+    def test_o_filete_nao_apaga_o_texto_que_ele_cerca(self) -> None:
+        limpa, _ = moldura.tirar_moldura(binarize(_folha(filete=True)))
+        self.assertGreater(int((limpa > 0).sum()), 1000)
+
+    def test_o_anel_grosso_nao_apaga_o_texto_que_ele_cerca(self) -> None:
+        imagem = _folha()
+        cv2.rectangle(imagem, (0, 0), (999, 1399), (40, 40, 40), 60)
+        limpa, quantas = moldura.tirar_moldura(binarize(imagem))
+        self.assertEqual(quantas, 1)
+        self.assertGreater(int((limpa > 0).sum()), 1000, "o anel da borda do scan cerca a folha inteira")
+
+    def test_o_anel_que_nao_chega_a_cobertura_nao_apaga(self) -> None:
+        """Anel a 86% da folha, com riscos até a borda: a parte grossa não cobre 90%, e o vazado é que a separa da faixa."""
+        imagem = _folha()
+        cv2.rectangle(imagem, (70, 100), (930, 1300), (40, 40, 40), 30)
+        imagem[0:100, 500:503] = 40
+        imagem[1300:, 500:503] = 40
+        imagem[700:703, 0:70] = 40
+        imagem[700:703, 930:] = 40
+        cv2.rectangle(imagem, (0, 0), (999, 1399), (40, 40, 40), 2)
+        limpa, quantas = moldura.tirar_moldura(binarize(imagem))
+        self.assertEqual(quantas, 1)
+        self.assertGreater(int((limpa > 0).sum()), 1000, "o texto de dentro do anel fica")
+
+    def test_o_quadro_grosso_ligado_por_filete_nao_apaga(self) -> None:
+        imagem = _folha()
+        cv2.rectangle(imagem, (200, 60), (800, 600), (40, 40, 40), 24)
+        imagem[0:60, 500:502] = 40
+        cv2.rectangle(imagem, (0, 0), (999, 1399), (40, 40, 40), 2)
+        antes = int((moldura.tirar_moldura(binarize(_folha(filete=True)))[0] > 0).sum())
+        limpa, _ = moldura.tirar_moldura(binarize(imagem))
+        self.assertGreater(int((limpa > 0).sum()), antes * 0.6, "as linhas de dentro do quadro ficam")
+
     def test_a_constante_desliga(self) -> None:
         binaria = binarize(_folha(filete=True))
         with mock.patch.object(moldura, "TIRAR_MOLDURA", False):

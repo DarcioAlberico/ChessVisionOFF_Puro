@@ -506,7 +506,7 @@ marcado para revisão, com captura ≥ 90% — ou (b) pagar o orçamento de CPU 
 > captura de 26% a 50% do erro, com 4,8% das palavras marcadas, longe dos 90% da G5. **A S-711 entrou junto**, porque a guarda
 > mostrou o *Chess Evolution 2014* perdendo 113 de 120 folhas, e o *2013*, 60 de 120: agora são 0, e o glifo no ouro caiu de
 > 12,94% para 3,78%. Daqui para a frente faltam as Fases 100 (régua no pacote), 102 (fusão completa e virar o padrão), 103 a
-> 107, e as S-712 a S-714.
+> 107, e as S-713 e S-714. A S-712 veio depois, em 2026-11-06: ver o item dela.
 
 **A primeira entrega** — o que muda na aba Texto antes de qualquer portão, sem trocar o padrão de
 ninguém (decisão 10) e sem esperar instalador nem livro novo, porque a máquina do dono já tem o
@@ -850,11 +850,11 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     Sem aviso: ele sairia em toda folha dos dois livros, e o selo perderia o sentido.
   - *Achado:* **a *Saída* acima foi escrita para o mecanismo errado, e não se cumpriu inteira.** Tesseract nas linhas do glifo a
     até 1 p.p. do oráculo: **não cumprido**, +4,29 p.p. [+1,39; +8,76] em 24 folhas dos dois *Chess Evolution*, com o resto na linha
-    intercalada, que é a S-712. Varredura do acervo inteiro: **não feita**, só a amostra de 14 folhas por livro. "Nenhuma
+    intercalada, que é a S-712, e ela o cumpriu. Varredura do acervo inteiro: **não feita**, só a amostra de 14 folhas por livro. "Nenhuma
     folha do ouro-dev muda": superado, porque 903 e 1210 eram as perdidas. A reversão é `moldura.TIRAR_MOLDURA`.
   - *Achado:* tirar a moldura abre o que havia dentro. Sinal solto de contracapa e de marca d'água saía sem aviso; agora sai com
     `folha_nao_lida`, por `guarda_de_leitura.RUIDO_POR_TOKEN`. Ver a spec.
-- **S-712** · Linha intercalada.
+- **S-712** · Linha intercalada. ✅ entregue em 2026-11-06, com outro mecanismo: ver o *Achado* no fim deste item.
   - *Entrega:* caixa de linha com altura > 1,8× a mediana da coluna é partida pela projeção
     horizontal antes de ler. As folhas 279 e 578 do *Chess Evolution* são fixture; o efeito é medido
     nas folhas não vistas do mesmo livro e no ouro-dev.
@@ -863,6 +863,15 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   - *Saída:* nenhuma caixa de linha com altura > 1,8× a mediana no ouro-dev; perda de leiaute do
     *Chess Evolution* abaixo de +1 p.p. nas folhas não vistas.
   - *Reversão:* constante; desligada, a caixa fica inteira como hoje.
+  - *Achado:* **o mecanismo não eram duas linhas encostadas.** A faixa lateral solta chega à lista como uma caixa de caractere da
+    altura da folha, abre uma banda com o fundo no pé dela, e a coluna entra ordenada por `x`. O conserto principal é
+    `text/gigantes.py`, e não a partição; ele tirou sozinho toda linha alta do ouro-dev (0 de 891). A partição pela projeção entrou
+    também, em `duas_linhas.partir_linhas_altas`, e paga pouco: ver a spec.
+  - *Achado:* **tirar tudo o que passa de 8 escalas apagava título de verdade**, e o crítico reprovou por isso (`PRACTICAL MATTERS`,
+    `OPENING`, `CHAPTER SIX`). Agora só sai o que não é letra; a letra grande é lida numa linha só dela. A auditoria das caixas achou
+    ainda duas letras da capa do *Estrin* saindo como foto, e o limite de tinta foi a 0,9.
+  - *Achado:* a *Saída* se cumpre nos dois pontos: perda de leiaute **+0,56 p.p. [+0,33; +0,86]** em 40 folhas não vistas (era
+    +3,83), e nenhuma linha alta no ouro-dev. No acervo inteiro, não: 1.210 de 41.950 linhas ainda passam de 1,8 mediana.
 - **S-713** · Perda de leiaute como métrica de primeira classe.
   - *Entrega:* o relatório da régua publica, por livro, `perda_de_leiaute = CER(leitor de linha nas
     caixas do glifo) − CER(leitor de linha nas caixas da camada)`, e a variante `tess_pagina` (o
