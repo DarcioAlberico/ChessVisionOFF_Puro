@@ -29,24 +29,15 @@ from math import ceil
 from . import pele
 
 __all__ = [
-    "ACAO",
-    "ALTURA_DE_LINHA_NA_BASE",
     "AUXILIAR",
     "BASE_DE_REFERENCIA",
     "CORPO",
     "DADO",
-    "DEGRAUS",
     "FATOR_DE_FOLGA",
-    "FATOR_DE_LINHA",
     "FOLGA",
-    "FOLGAS",
     "FOLGA_DE_LINHA",
     "FOLGA_DE_MOLDURA",
     "FOLGA_MINIMA",
-    "LINHA_NA_BASE",
-    "MONOESPACADAS_PREFERIDAS",
-    "PAPEIS_DE_FOLGA",
-    "PAPEIS_DE_FONTE",
     "PAPEL_POR_CLASSE",
     "PESOS",
     "PROPRIEDADE_DE_PAPEL_DE_FONTE",
@@ -243,20 +234,38 @@ Consolas vem primeiro porque acompanha o Windows desde o Vista, tem zero cortado
 e aí ela entra por ser o que o sistema tem — não por ter sido escolhida."""
 
 
+SERIFADAS_PREFERIDAS = ("Georgia", "Cambria", "Book Antiqua", "Times New Roman", "DejaVu Serif", "Liberation Serif", "Noto Serif")
+"""Serifadas em ordem de preferência, para a letra de leitura da aba Texto (S-632).
+
+Georgia vem primeiro porque foi desenhada para a tela, com altura de x grande e algarismos que não
+colam; Cambria e Book Antiqua lembram mais o miolo de um livro de xadrez, e Times New Roman é a que
+todo Windows tem. As outras cobrem Linux. Sem nenhuma delas a reserva é a proporcional do tema: a
+escolha vira a de sempre, e não uma família que o Qt substitui em silêncio."""
+
+
+def _a_primeira_instalada(preferidas: Iterable[str], disponiveis: Iterable[object], reserva: str) -> str:
+    try:
+        instaladas = {str(nome).strip().casefold() for nome in disponiveis}
+    except TypeError:  # pragma: no cover - Tk que não responde a lista de famílias
+        return reserva
+    for nome in preferidas:
+        if nome.casefold() in instaladas:
+            return nome
+    return reserva
+
+
 def familia_monoespacada(disponiveis: Iterable[object], reserva: str) -> str:
     """A melhor monoespaçada que este sistema tem, ou a `reserva` do Tk. Pura.
 
     `disponiveis` é o que `tkinter.font.families()` devolveu; qualquer iterável de nomes serve,
     e é o que permite testar a escolha em três sistemas diferentes sem ter os três.
     """
-    try:
-        instaladas = {str(nome).strip().casefold() for nome in disponiveis}
-    except TypeError:  # pragma: no cover - Tk que não responde a lista de famílias
-        return reserva
-    for nome in MONOESPACADAS_PREFERIDAS:
-        if nome.casefold() in instaladas:
-            return nome
-    return reserva
+    return _a_primeira_instalada(MONOESPACADAS_PREFERIDAS, disponiveis, reserva)
+
+
+def familia_serifada(disponiveis: Iterable[object], reserva: str) -> str:
+    """A melhor serifada que este sistema tem, ou a `reserva`. Pura, pela razão de `familia_monoespacada`."""
+    return _a_primeira_instalada(SERIFADAS_PREFERIDAS, disponiveis, reserva)
 
 
 def escala(base: int) -> dict[str, int]:

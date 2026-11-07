@@ -377,6 +377,12 @@ class LinhaLida:
 
     Nos 12 livros que declaram pendor, 68,6% das linhas itálicas o misturam dentro de si."""
 
+    revisar_em: tuple[tuple[int, int], ...] = ()
+    """Quais palavras de `texto` pedem olho (S-718), em intervalos `[início, fim)` como os de estilo.
+
+    **Vive em memória, e `para_json` não o escreve**: é recalculado a cada leitura, e o que sobrevive
+    ao arquivo é a faixa da corrida que ele produz. Gravá-lo pediria subir o `ESQUEMA`, que é a S-722."""
+
     def para_json(self) -> dict[str, Any]:
         return {
             "texto": self.texto,
@@ -773,11 +779,60 @@ class Coluna:
         )
 
 
-ESQUEMA = 1
+ESQUEMA = 2
 """Versão do formato de `para_json`. Sobe quando um campo muda de significado, não quando nasce.
 
 Campo novo com padrão é compatível nos dois sentidos e não paga versão -- é a mesma regra do
-`char_meta.json` da S-179."""
+`char_meta.json` da S-179.
+
+**O 2 é a exceção escrita (S-710), e só a folha com aviso o paga.** `avisos` diz que a leitura pode
+estar incompleta, e um programa que abre o arquivo e o ignora mostraria como inteira uma folha que o
+arquivo sabe que não é: esse campo muda o que o resto do arquivo significa. Por isso a folha **sem**
+aviso continua saindo no formato 1, sem o campo, e um programa anterior a este a abre como sempre."""
+
+FOLHA_NAO_LIDA = "folha_nao_lida"
+LEITURA_PARCIAL = "leitura_parcial"
+LEIAUTE_DE_RESERVA = "leiaute_de_reserva"
+CAMADA_NA_FOLHA = "camada_na_folha"
+CAMADA_RECUSADA = "camada_recusada"
+LEITOR_INDISPONIVEL = "leitor_indisponivel"
+AVISOS: tuple[str, ...] = (
+    FOLHA_NAO_LIDA,
+    LEITURA_PARCIAL,
+    LEIAUTE_DE_RESERVA,
+    CAMADA_NA_FOLHA,
+    CAMADA_RECUSADA,
+    LEITOR_INDISPONIVEL,
+)
+"""Os códigos conhecidos. **`de_json` aceita um que não esteja aqui**: quem lê um aviso de versão mais
+nova ainda o mostra pela mensagem, e recusar o arquivo por isso perderia a folha inteira."""
+
+
+@dataclass(frozen=True)
+class Aviso:
+    """Algo que quem lê a folha precisa saber sobre a leitura dela, e que o texto não diz (S-710).
+
+    `dado` é o número que disparou, quando há um: a densidade de leitura, por exemplo. **Aviso nunca
+    muda texto**, e quem o desenha é a aba. A mensagem é frase de gente, escrita onde ele nasce, para
+    o arquivo reaberto dizer a mesma coisa sem depender de tabela nenhuma.
+    """
+
+    codigo: str
+    mensagem: str
+    dado: float | None = None
+
+    def para_json(self) -> dict[str, Any]:
+        return {"codigo": self.codigo, "mensagem": self.mensagem, "dado": self.dado}
+
+    @classmethod
+    def de_json(cls, dados: Any, onde: str = "aviso") -> Aviso:
+        if not isinstance(dados, dict) or not isinstance(dados.get("codigo"), str):
+            raise PaginaInvalida(f"{onde}: aviso sem código -- veio {dados!r}")
+        dado = dados.get("dado")
+        try:
+            return cls(str(dados["codigo"]), str(dados.get("mensagem", "")), None if dado is None else float(dado))
+        except (TypeError, ValueError) as exc:
+            raise PaginaInvalida(f"{onde}: dado do aviso não é número -- veio {dado!r}") from exc
 
 
 @dataclass(frozen=True)
@@ -807,6 +862,16 @@ class PaginaLida:
 
     documento: str = ""
     """Identidade do livro, para a página saber de onde veio quando é gravada sozinha."""
+
+    avisos: tuple[Aviso, ...] = ()
+    """O que a leitura sabe de si mesma: folha que não foi lida inteira, leiaute de reserva (S-710)."""
+
+    marca_por_palavra: bool = False
+    """A marca desta folha é por palavra, e não a faixa de confiança do bloco (S-718).
+
+    **Só o motor que combina dois leitores a liga.** A confiança do glifo não pode ser pintada sobre
+    texto que outro leitor escreveu: no *Hertan* o texto certo do Tesseract sairia `revisar` porque o
+    glifo errou ali. Em memória, como `LinhaLida.revisar_em`."""
 
     # -------------------------------------------------------------------------------- leituras
 
@@ -851,8 +916,8 @@ class PaginaLida:
     # ---------------------------------------------------------------------------- serialização
 
     def para_json(self) -> dict[str, Any]:
-        return {
-            "esquema": ESQUEMA,
+        dados: dict[str, Any] = {
+            "esquema": ESQUEMA if self.avisos else 1,
             "documento": self.documento,
             "pagina": self.pagina,
             "largura": self.largura,
@@ -863,6 +928,9 @@ class PaginaLida:
             "rodape": self.rodape.para_json() if self.rodape else None,
             "colunas": [coluna.para_json() for coluna in self.colunas],
         }
+        if self.avisos:
+            dados["avisos"] = [aviso.para_json() for aviso in self.avisos]
+        return dados
 
     @classmethod
     def de_json(cls, dados: Any) -> PaginaLida:
@@ -894,6 +962,7 @@ class PaginaLida:
             cabecalho=LinhaLida.de_json(cabecalho, "cabecalho") if cabecalho else None,
             rodape=LinhaLida.de_json(rodape, "rodape") if rodape else None,
             numero_impresso=int(numero) if numero is not None else None,
+            avisos=tuple(Aviso.de_json(a, f"avisos[{i}]") for i, a in enumerate(dados.get("avisos") or [])),
         )
 
     def com_posicoes(self, posicoes: Sequence[str]) -> PaginaLida:
@@ -957,10 +1026,18 @@ def de_diagramas(
 
 
 __all__ = [
+    "AVISOS",
+    "CAMADA_NA_FOLHA",
+    "CAMADA_RECUSADA",
     "ESQUEMA",
+    "FOLHA_NAO_LIDA",
+    "LEIAUTE_DE_RESERVA",
+    "LEITOR_INDISPONIVEL",
+    "LEITURA_PARCIAL",
     "ORDEM_DE_CONFIANCA",
     "PROCEDENCIAS",
     "UNIDADES",
+    "Aviso",
     "Bloco",
     "BlocoDeDiagrama",
     "BlocoDeTabela",

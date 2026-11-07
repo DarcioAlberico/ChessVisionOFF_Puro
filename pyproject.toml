@@ -129,7 +129,7 @@ cvoff-texto-transcrever = "chess_diagram_ocr.cli.texto_transcrever:main"
 # PDF. Independente da nossa medicao -- mas em parte do acervo a camada e de OCR, e nao da
 # diagramacao, e ali ela nao arbitra grade de exercicio (S-216).
 cvoff-texto-ordem = "chess_diagram_ocr.cli.texto_ordem:main"
-# A estrutura de colunas contra paginas anotadas a mao (S-524): a regua acima e cega onde a
+# A estrutura de colunas contra paginas anotadas a mao (S-582): a regua acima e cega onde a
 # camada e zigue-zague (as solucoes do Yusupov), e o portao daqui e por pagina, nao por media.
 cvoff-texto-colunas = "chess_diagram_ocr.cli.texto_colunas:main"
 # O treino do classificador de caracteres (S-204): varre training_data/, parte por grupo de
@@ -140,6 +140,9 @@ cvoff-texto-inventario = "chess_diagram_ocr.cli.texto_inventario:main"
 # O inventario do EDITOR (S-256): o outro esta acima e conta recorte de caractere.
 cvoff-editor-inventario = "chess_diagram_ocr.cli.editor_inventario:main"
 cvoff-texto-train = "chess_diagram_ocr.cli.texto_train:main"
+# O classificador de caracteres para ONNX, com o .json ao lado (mapa de classes, temperatura,
+# SHA-256 do .onnx): o par que outro programa carrega sem torch.
+cvoff-texto-export-onnx = "chess_diagram_ocr.cli.texto_export_onnx:main"
 # A mesma imagem arquivada sob dois caracteres (S-202): acha por hash, mostra os glifos em
 # disputa para alguem julgar, e move o rotulo perdedor para quarentena -- nunca apaga.
 cvoff-texto-conflitos = "chess_diagram_ocr.cli.texto_conflitos:main"
@@ -188,6 +191,13 @@ cvoff-texto-semelhanca = "chess_diagram_ocr.cli.texto_semelhanca:main"
 # S-207: quantos diagramas deixam de sair `default` com o classificador de casa lendo a legenda.
 # Mede os dois lados na mesma corrida -- so a camada de texto, e a camada mais o glifo.
 cvoff-texto-lado = "chess_diagram_ocr.cli.texto_lado:main"
+cvoff-texto-estilo-motor = "chess_diagram_ocr.cli.texto_estilo_motor:main"
+# S-624: o portao do diagrama a esquerda com o texto ao lado -- o editor continua dizendo a verdade?
+cvoff-texto-flutuante = "chess_diagram_ocr.cli.texto_flutuante:main"
+cvoff-livro-com-pgn = "chess_diagram_ocr.cli.livro_com_pgn:main"
+# S-661 a S-663: o conjunto rotulado do estilo da palavra, e o classificador com o portao dele.
+cvoff-texto-estilo-conjunto = "chess_diagram_ocr.cli.texto_estilo_conjunto:main"
+cvoff-texto-estilo-classificador = "chess_diagram_ocr.cli.texto_estilo_classificador:main"
 
 # S-210: o livro com a camada de texto invisivel do que o motor leu. A pagina nao muda um pixel --
 # `render_mode=3` --, e a camada e por LINHA para o retangulo da busca cobrir a palavra.
@@ -209,6 +219,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["requer_tesseract: precisa do binário do Tesseract, e pula onde ele não existe (S-720)"]
 # S-37: a suite roda num checkout sem instalacao editavel. Nao substitui `uv sync` -- o
 # `app_tkinter.py` e os `cvoff-*` continuam dependendo dela, e `tests/test_environment.py`
 # e quem confere isso. Aqui o que se garante e que um diretorio movido nao desligue 611

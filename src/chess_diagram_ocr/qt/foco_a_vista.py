@@ -204,10 +204,13 @@ def mostrar(rolagem: QScrollArea, controle: QWidget) -> None:
     conteudo = rolagem.widget()
     if conteudo is None or not conteudo.isAncestorOf(controle):
         return
+    area, vertical, horizontal = rolagem.viewport(), rolagem.verticalScrollBar(), rolagem.horizontalScrollBar()
+    if area is None or vertical is None or horizontal is None:
+        return
     alvo = QRect(controle.mapTo(conteudo, QPoint(0, 0)), controle.size())
-    vista = rolagem.viewport().size()
-    _encaixar(rolagem.verticalScrollBar(), alvo.top(), alvo.top() + alvo.height(), vista.height())
-    _encaixar(rolagem.horizontalScrollBar(), alvo.left(), alvo.left() + alvo.width(), vista.width())
+    vista = area.size()
+    _encaixar(vertical, alvo.top(), alvo.top() + alvo.height(), vista.height())
+    _encaixar(horizontal, alvo.left(), alvo.left() + alvo.width(), vista.width())
 
 
 class RolagemSegueOFoco(QObject):
@@ -273,7 +276,9 @@ class RolagemSegueOFoco(QObject):
         O foco que espera deixa de ser mostrado quando o mouse sossega -- a vista voltaria para ele meio
         segundo depois do clique, desfazendo a roda (crítico da fase 5, ciclo 9: a 1280×641, a roda
         levava a barra de 473 a 413, e o sossego a punha em 298) --, e passa a esperar só a primeira
-        tecla: o que se digita continua à vista."""
+        tecla: o que se digita continua à vista. A roda sobre outra rolagem da mesma janela também
+        (`eventFilter`): ela não passa pelas barras desta rolagem, e o sossego levava a vista ao foco
+        debaixo de quem rolava (crítico da fase 5, ciclo 10, na Rotulagem da suíte)."""
         if self._esperando:
             self._so_na_tecla = True
             self._sossego.stop()
@@ -287,7 +292,16 @@ class RolagemSegueOFoco(QObject):
                 self._sossego.start(intervalo_do_duplo_clique())
             elif tipo == QEvent.Type.KeyPress and evento.key() not in _MODIFICADORES:  # type: ignore[attr-defined]
                 self._mostrar_o_pendente()
+            elif tipo == QEvent.Type.Wheel and self._na_janela(objeto):
+                # a roda noutra rolagem da mesma janela também é a pessoa rolando
+                self._a_pessoa_rolou(0)
         return super().eventFilter(objeto, evento)
+
+    def _na_janela(self, objeto: QObject | None) -> bool:
+        """``objeto`` é um controle da janela da rolagem que este seguidor segue."""
+        if not isinstance(objeto, QWidget) or sip.isdeleted(self._rolagem):
+            return False
+        return objeto.window() is self._rolagem.window()
 
     def _sossegou(self) -> None:
         if not no_meio_do_clique() and not self._so_na_tecla:

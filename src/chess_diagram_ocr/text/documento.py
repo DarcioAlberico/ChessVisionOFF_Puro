@@ -118,7 +118,9 @@ def segmentos(pagina: PaginaLida) -> Iterator[Segmento]:
             yield Segmento(
                 tipo="diagrama" if isinstance(bloco, BlocoDeDiagrama) else "texto",
                 texto=texto,
-                faixa=faixa_de_confianca(bloco.confianca, bloco.procedencia),
+                # **Com a marca por palavra, a confiança do bloco não pinta nada** (S-718): ela é do glifo,
+                # e boa parte do texto é de outro leitor. Quem marca é `LinhaLida.revisar_em`.
+                faixa=TRANQUILO if pagina.marca_por_palavra else faixa_de_confianca(bloco.confianca, bloco.procedencia),
                 bloco=bloco,
                 coluna=coluna.indice,
                 negrito=getattr(bloco, "negrito", None) is True,
@@ -146,6 +148,10 @@ def contagem_por_faixa(pagina: PaginaLida) -> dict[str, int]:
     """Quantos blocos em cada faixa. É o que a linha de status da aba resume."""
     contagem = dict.fromkeys(FAIXAS, 0)
     for bloco in pagina.blocos:
+        if pagina.marca_por_palavra:
+            marcado = any(getattr(linha, "revisar_em", ()) for linha in getattr(bloco, "linhas", ()))
+            contagem[REVISAR if marcado else TRANQUILO] += 1
+            continue
         contagem[faixa_de_confianca(bloco.confianca, bloco.procedencia)] += 1
     return contagem
 

@@ -15,6 +15,11 @@ O que só existe deste lado são as coisas em que o Qt difere do Tk e que quebra
    página, e a 200%, 6 px.
 4. **Clique e arrasto usam o mesmo botão**, e a folga é o que os separa (S-68).
 5. **O deslizador de zoom não pode se realimentar** (S-225).
+6. **A folha fica no meio da área visível** (S-157): no Tk era uma conta de `ui/viewport.py`,
+   aqui é uma propriedade do `QScrollArea` -- e a conta saiu na triagem da S-511.
+7. **O cromo são blocos nomeados** (F9-C2), e quem diz o que fica cinza em cada modo é a tabela
+   de `ui/barra_do_pdf.py` (S-528): sem livro, ler, virar e enquadrar ficam cinza; trancado, só o
+   cancelar da exportação continua vivo. Cada botão chega ao método que a tabela nomeia.
 """
 
 from __future__ import annotations
@@ -99,6 +104,10 @@ class PainelTests(unittest.TestCase):
         painel.page_rgb = _pagina()
         painel.page_loaded_for_index = 0
         painel._faixa_do_campo_de_pagina()
+        # Desde a S-528 quem acende os controles é o modo da barra, e é `_reavaliar_controles` que
+        # o aplica: um painel que **acredita** ter livro precisa dizer isso à fila, senão o grupo
+        # `LEITURA` continua cinza e um clique de teste não chega a método nenhum.
+        painel._reavaliar_controles()
         painel.visor.mostrar_pagina(painel.page_rgb, dpi=self.dpi)
 
         painel.renderizadas: list[int] = []  # type: ignore[attr-defined]
@@ -112,6 +121,9 @@ class PainelTests(unittest.TestCase):
         return painel
 
     def test_o_estado_vazio_nao_promete_o_que_nao_tem(self) -> None:
+        """Sem livro o rótulo do livro diz que não há nenhum, e o campo de página fica cinza com o
+        bloco de navegação inteiro -- o modo `SEM_LIVRO` de `ui/barra_do_pdf` desliga `PAGINA` e
+        `VISTA` (S-528)."""
         painel = self.painel()
         from chess_diagram_ocr.ui import strings
 
@@ -121,6 +133,7 @@ class PainelTests(unittest.TestCase):
         # (§7 item 11), onde ele já estava declarado em `ui/menu.MENUS`.
         self.assertEqual(painel.lbl_pdf.texto_inteiro, strings.NENHUM_PDF_ABERTO)
         self.assertIsNone(painel.source, "sem livro não há o que abrir no leitor")
+        self.assertFalse(painel.campo_pagina.isEnabled())
         self.assertFalse(painel.desenhar_pagina(), "sem livro não há o que rasterizar")
 
     def test_selecionar_area_sem_livro_avisa_no_rodape(self) -> None:
@@ -349,9 +362,31 @@ class PainelTests(unittest.TestCase):
             painel.btn_selecionar.accessibleName(), comandos.nome_acessivel("selecionar_area")
         )
 
-    def test_os_dois_interruptores_saem_pelo_nome_do_comando(self) -> None:
-        """Quem acrescentar uma terceira preferência a declara ao lado das outras duas (S-161)."""
+    def test_o_clique_no_botao_de_selecao_liga_o_modo_uma_vez_so(self) -> None:
+        """Um botão marcável alterna **antes** de emitir, e o método alterna de novo: era o
+        defeito que a S-527 mediu em "Treinar", e "Selecionar área" tem a mesma forma."""
+        painel = self.com_pagina()
+        botao = painel.btn_selecionar
+        botao.click()
+        self.assertTrue(painel.visor.selecionando, "o clique ligou e desligou no mesmo gesto")
+        self.assertTrue(painel.btn_selecionar.isChecked())
+        botao.click()
+        self.assertFalse(painel.visor.selecionando)
+        self.assertFalse(painel.btn_selecionar.isChecked())
+
+    def test_selecionar_sem_livro_nao_deixa_o_botao_pressionado(self) -> None:
+        """A pré-condição vai para o rodapé (S-164), e o botão volta: pressionado sobre um modo que
+        não ligou é a mentira que a S-396 existe para não contar."""
         painel = self.painel()
+        painel.btn_selecionar.setChecked(True)
+        painel.alternar_selecao()
+        self.assertFalse(painel.btn_selecionar.isChecked())
+
+    def test_os_dois_interruptores_saem_pelo_nome_do_comando(self) -> None:
+        """Quem acrescentar uma terceira preferência a declara na tabela (S-161/S-528)."""
+        painel = self.painel()
+        self.assertTrue(painel.marcar_diagramas.isChecked(), "a marcação nasce ligada")
+        self.assertTrue(painel.roda_vira_pagina.isChecked())
         self.assertEqual(
             sorted(painel.interruptores_de_vista), ["marcar_diagramas", "roda_vira_pagina"]
         )
@@ -362,6 +397,19 @@ class PainelTests(unittest.TestCase):
         painel.roda_vira_pagina.setChecked(False)
         self.assertFalse(painel.visor.virar_paginas)
         self.assertEqual(mudou, [1, 1])
+
+    def test_a_pagina_fica_no_meio_da_area_visivel(self) -> None:
+        """A decisão da S-157, que no Tk era uma conta e aqui é uma propriedade do `QScrollArea`.
+
+        `desvio_de_centralizacao` e `regiao_de_rolagem` saíram de `ui/viewport.py` na triagem da
+        S-511 porque o Qt centraliza sozinho -- e esta é a guarda que ficou no lugar delas: sem o
+        `setAlignment`, a folha volta ao canto superior esquerdo e, a 40% de zoom numa janela de
+        1700, ~45% da vista vira vazio.
+        """
+        from PyQt6.QtCore import Qt
+
+        painel = self.com_pagina()
+        self.assertEqual(painel.visor.alignment(), Qt.AlignmentFlag.AlignCenter)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -459,15 +507,24 @@ class ControlesDoLivroTests(unittest.TestCase):
                 self.assertFalse(self.os_cinco(painel)[acao].isEnabled())  # type: ignore[attr-defined]
 
     def test_o_trancamento_apaga_a_navegacao_e_o_visor(self) -> None:
-        """O que o `setEnabled` em bloco fazia antes, agora nomeado item a item."""
+        """O que o `setEnabled` em bloco fazia antes, agora nomeado item a item.
+
+        **A barra do livro nunca é desabilitada**, e é o item: no Qt um filho de widget
+        desabilitado não pode ser reabilitado, e o cancelar da exportação -- que mora nela --
+        morreria junto com o resto. Quem se apaga inteira é a barra de navegação, e é o modo
+        `TRANCADO` de `ui/barra_do_pdf` que o decide (S-528).
+        """
         painel = self.painel(com_livro=True)
         painel.trancar(False)
         self.assertFalse(painel._barra_de_navegacao.isEnabled())
+        self.assertFalse(painel.campo_pagina.isEnabled())
         self.assertFalse(painel.visor.isEnabled())
         self.assertFalse(painel.deslizador.isEnabled())
+        self.assertTrue(painel._barra_do_livro.isEnabled(), "a barra do livro cinza mata o cancelar")
 
         painel.trancar(True)
         self.assertTrue(painel._barra_de_navegacao.isEnabled())
+        self.assertTrue(painel.campo_pagina.isEnabled())
         self.assertTrue(painel.visor.isEnabled())
 
     def test_os_dois_botoes_de_ocr_pedem_tetos_diferentes(self) -> None:
@@ -482,6 +539,19 @@ class ControlesDoLivroTests(unittest.TestCase):
 
         self.assertEqual([True, False], pedidos)
 
+    def test_o_disparo_chega_ao_metodo_da_tabela(self) -> None:
+        """Afirmado pelo **efeito**, e não por `patch` depois do `connect` -- que não intercepta.
+
+        O botão do bloco e `executar` chegam ao mesmo método, o que `ui/barra_do_pdf` nomeia para
+        a ação (S-528): o par comando-método é declarado uma vez, na tabela.
+        """
+        painel = self.painel(com_livro=True)
+        pedidos: list[bool] = []
+        painel.leitura_pedida.connect(pedidos.append)
+        painel.btn_ler_melhor.click()
+        painel.executar("ler_melhor")
+        self.assertEqual([True, True], pedidos)
+
     def test_exportar_e_cancelar_avisam_a_janela(self) -> None:
         """Quem exporta é o controlador da janela: este painel não conhece o serviço."""
         painel = self.painel(com_livro=True)
@@ -494,8 +564,9 @@ class ControlesDoLivroTests(unittest.TestCase):
         painel.exportacao_em_curso(False)
         # **Começar a exportação é do menu `Arquivo` desde o F9-C2** (§7 item 11), e a janela a
         # liga pelo mesmo sinal: o que este teste afirma é que o painel avisa em vez de
-        # exportar sozinho, e isso não depende de qual controle emite.
-        painel.exportacao_pedida.emit()
+        # exportar sozinho, e isso não depende de qual controle emite. O pedido passa pelo
+        # método que `ui/barra_do_pdf` nomeia para `exportar_pgn` (S-528).
+        painel.executar("exportar_pgn")
 
         self.assertEqual(["cancelar", "comecar"], pedidos)
 

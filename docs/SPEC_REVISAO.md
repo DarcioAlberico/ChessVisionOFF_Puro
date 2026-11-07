@@ -15,18 +15,24 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > |---|---|
 > | S-01 a S-36 | [SPEC.md](SPEC.md) |
 > | S-37 a S-77 | [SPEC_FASE7.md](SPEC_FASE7.md) |
-> | S-78 a S-82, S-143, S-175, S-176 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
+> | S-78 a S-82, S-143, S-175, S-176, S-454, S-455 | [ANALISE_DETECCAO.md](ANALISE_DETECCAO.md) |
 > | S-83 a S-94 | [PLANO_BASE_PARTIDAS.md](PLANO_BASE_PARTIDAS.md) |
 > | S-95 a S-142, S-171 a S-174, S-218, S-219 | [SPEC_FASE14.md](SPEC_FASE14.md) |
 > | S-144 a S-170, S-177 | [SPEC_UI.md](SPEC_UI.md) |
 > | S-178 a S-217 | [SPEC_TEXTO.md](SPEC_TEXTO.md) |
 > | S-220 a S-234, S-294, S-295, S-324 | [SPEC_APARENCIA.md](SPEC_APARENCIA.md) |
-> | S-235 a S-267, S-291 a S-293 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
+> | S-235 a S-267, S-291 a S-293, S-521 | [SPEC_EDITOR.md](SPEC_EDITOR.md) |
 > | S-268 a S-290 | [SPEC_ESTUDO.md](SPEC_ESTUDO.md) |
-> | S-296 a S-323, S-325 a S-430, S-451, S-452 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
+> | S-296 a S-323, S-325 a S-430, S-451 a S-453 (menos S-324) | [SPEC_REVISAO.md](SPEC_REVISAO.md) |
 > | S-431 a S-440 | [SPEC_REVISAO_EXTERNA.md](SPEC_REVISAO_EXTERNA.md) |
 > | S-441 a S-450 | [SPEC_ACABAMENTO.md](SPEC_ACABAMENTO.md) |
-> | S-523 a S-526 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
+> | S-507 a S-520 | [SPEC_ESTUDO_QT.md](SPEC_ESTUDO_QT.md) |
+> | S-522 a S-526 | [SPEC_REVISAO_EXTERNA_2.md](SPEC_REVISAO_EXTERNA_2.md) |
+> | S-500 a S-506, S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
+> | S-581 a S-584 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
+> | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
+> | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
+> | S-702, S-710 a S-712, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -1053,6 +1059,43 @@ montados à mão e os pôs em `config.DATA_DIR` e `config.PGN_DATABASE_DIR`, par
 desviá-los; `cli.field`, `config` e `settings` mudaram de digest sem mudar o que a medição lê --
 sem as variáveis de ambiente, as pastas são as de sempre. Das 2.071 chaves de cada relatório só
 mudaram os segundos e a procedência.
+
+Na décima (2026-10-28 -- commit `affdf36`, o merge da mesa de texto com a `main`, árvore limpa
+efêmera, `dirty=false`) **três dos quatro** voltaram idênticos: controle, `mhsp` e `s108`. O
+quarto, a produção, não reproduz pelo mesmo motivo da sétima: o `piece_classifier.pt` foi trocado
+em 2026-10-25 por um retreino no `fa41371` (época 5, val 0,978, digest `a22c7854`), e o que o
+relatório media (`a907f610`, época 10, treino `2085f18`) não existe mais no disco. Remedido com o
+de hoje: taxa de exportação 0,8957 → 0,8696, exatidão de campo 0,9709 → 0,9600 (4 exportados
+errados, eram 3), a limpa 0,9663 → 0,9535. **A queda é do modelo, e não do código**: os outros
+três passaram pelo mesmo caminho de medição e não se moveram. O relatório diz isso em
+`measured_with.note`, que é onde a ressalva viaja junto com o número.
+
+Na décima primeira (2026-11-03 -- commit `9325eb8`, o merge da marca de casa sintética com a
+`main`, árvore limpa efêmera, `dirty=false`), **três dos quatro** voltaram idênticos de novo:
+controle, `mhsp` e `s108`. A marca de casa acrescentou a `dataset` a constante `EMPTY_LABEL` e um
+parâmetro `marca`, que vale `None` por padrão, e a medição de campo não passa marca nenhuma. Só
+`dataset` mudou de digest. A produção, outra vez, não reproduz: o `piece_classifier.pt` foi trocado
+de novo em 2026-11-02 (digest `2977b7b8`, época 43, treino `0be1b93`), e o `a22c7854` da décima não
+existe mais no disco. A detecção não se moveu (114 de 115 casados, nenhum falso positivo); um
+diagrama a menos passa do gate, e a taxa de exportação vai de 0,8696 para 0,8609, a exatidão de
+campo de 0,9600 para 0,9596, e a limpa fica em 0,9535. É o modelo, pelo mesmo argumento da décima.
+
+Na décima segunda (2026-11-05 -- commit `604dc8a`, árvore limpa efêmera, `dirty=false`) mudaram o
+código e o modelo. O código: a porta do rei em `decode` (`DecodeRules.min_king_probability`, 1%) e a
+orientação em `orientation`, que fazem o rei sem evidência deixar de ser inventado e a dúvida ficar
+de pé. Nos três modelos antigos, exportados, exatos e exportados errados não se moveram: só muda a
+contagem de reparos, e o `s108` tem dois legais a menos. O modelo: `piece_classifier.pt` agora é o
+treinado com a marca de casa sintética (digest `fccd0097`, época 11, treino `2cbe9e2`), e o
+`2977b7b8` da décima primeira fica em `models/piece_classifier_antes_das_marcas_20261105.pt`. A
+detecção não se moveu (114 de 115 casados, nenhum falso positivo); a produção vai de 99 para 101
+exportados, de 103 para 104 exatos e fica em 4 exportados errados, com 112 legais em vez de 114. Os
+dois novos ilegais são Niemeijer p. 20 e Stefaniu p. 100, nenhum deles exportado antes. Dois dos 4
+exportados errados são dama lida na cor trocada, e são novos (Koblenz p. 50 e Neumann p. 30). A
+contaminação da produção usa a cópia de `labels.csv` e `splits.csv` do treino deste modelo (19.370
+linhas, fora do git), e por isso são 13 páginas, e não 14: o Anand p. 62 não entrou nesse treino. A
+limpa de 0,8627 não compara direto com a de 0,8515 publicada antes; na mesma cópia, o modelo anterior
+faz 0,8431. O ganho que motivou a troca não aparece neste conjunto: é nos 48 tabuleiros marcados,
+fora do relatório, onde os exatos pelo caminho inteiro vão de 7 para 41.
 
 ## S-326 · A largura da fita plena é derivada, e não escolhida
 
@@ -3304,3 +3347,56 @@ colisão não aparecia de nenhum dos dois lados, só no merge, onde eram duas se
 nomeando coisas diferentes. Renumerar um item saiu mais barato que dez. O assunto do commit é
 imutável; quem faz a ponte é `RENUMERADOS`, em `tests/test_docs.py`, e ela é conferida por
 `test_a_renumeracao_declarada_vale`.
+---
+
+## S-453 · O relatório que semeava CRLF, e a guarda que faltava do outro lado ✅ implementada (2026-08-30)
+
+**Problema.** A [S-325](#s-325--o-digest-de-código-normaliza-a-quebra-de-linha) consertou o lado
+da **leitura**: `_digest_of` normaliza a quebra antes de hashear, então um checkout com CRLF
+deixou de dar digest diferente do mesmo commit. O outro lado ficou aberto — **quem grava**.
+
+`Path.write_text` sem `newline` traduz `\n` para `os.linesep`, e no Windows isso é `CR LF`.
+Cinco chamadas de `src/` gravavam assim, e três delas escrevem relatório em `docs/metrics/`,
+que o `.gitattributes` declara `*.json text eol=lf`:
+
+| chamada | o que grava |
+|---|---|
+| `detection_census.py:583` · `write_census_json` | `docs/metrics/deteccao_*.json` |
+| `experiments.py:191` · `save_results` | a grade de variantes do treino |
+| `side_survey.py:205` · `write_survey` | o levantamento de procedência do lado a jogar |
+
+**Não é achado de leitura de código: aconteceu.** Ao remedir o censo para a
+[S-454](ANALISE_DETECCAO.md), `cvoff-census` gravou `deteccao_base.csv` e `.json` com CRLF, e os
+dois tiveram de ser normalizados à mão antes do commit — com o `git` avisando
+`CRLF will be replaced by LF the next time Git touches it`.
+
+**O estrago não aparece no `git status`, e é por isso que dura.** O git normaliza na leitura: um
+arquivo com CRLF no disco casa com um blob em LF e a árvore parece limpa. Foi assim que os `.py`
+do checkout principal ficaram com CRLF sem ninguém notar, até que a guarda da S-218 passou a
+reprovar relatório correto num clone limpo — que é o defeito que a S-325 foi escrita para
+consertar. **Semear é a causa; normalizar ao hashear é o curativo.**
+
+**Solução.** As três vão para `atomic_write_text`, que abre o temporário com `newline="\n"`.
+O conserto e a escrita atômica são o mesmo movimento, então as três **saem de `PERMITIDAS`** no
+mesmo commit: elas não gravam mais direto, e uma exceção que sobrevive ao motivo vira permissão
+em branco.
+
+Os dois sítios restantes ficam, declarados em `SEM_LF_DECLARADO` com o motivo: o `.pgn` exportado
+e o `.review.pgn` de `pdf_to_pgn.py`. **O padrão PGN especifica CR/LF como terminador**, e nenhum
+`.pgn` é versionado neste repositório — a regra do `.gitattributes` não os alcança.
+
+**Critério de aceite.**
+
+- ✅ nenhum `write_text` em `src/` grava a quebra da plataforma, fora do que está declarado;
+- ✅ a lista de exceções recusa entrada sem motivo escrito, como a irmã dela já fazia;
+- ✅ a lista não guarda arquivo que não existe mais;
+- ✅ `PERMITIDAS` encolhe de cinco para dois, e a docstring dela diz por quê.
+
+**A guarda foi conferida contra o código que a motivou**, e não só contra o consertado: rodada
+sobre o commit da S-454, ela acusa `detection_census.py:583`, `experiments.py:191` e
+`side_survey.py:205`. Uma guarda que só é vista passar não foi vista funcionar.
+
+**Testes.** `tests/test_atomic_writes.py::EscritaAtomicaTests` — `test_todo_write_text_grava_lf`,
+`test_a_lista_de_lf_nao_guarda_arquivo_que_nao_existe_mais` e `test_cada_excecao_de_lf_diz_por_que`,
+ao lado dos quatro da guarda de escrita atômica, que é a mesma forma pelo mesmo motivo: a decisão
+estava sendo tomada por omissão.

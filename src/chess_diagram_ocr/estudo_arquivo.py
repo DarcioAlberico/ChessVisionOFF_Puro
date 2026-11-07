@@ -45,6 +45,7 @@ import chess.pgn
 from .atomic_io import atomic_write_text
 from .config import DATA_DIR
 from .estudo import Estudo, Sala
+from .pgn_do_livro import fluxo_tolerante
 
 logger = logging.getLogger(__name__)
 
@@ -175,8 +176,12 @@ def estudos_de_pgn(
     arquivo da sala em `carregar`: um teto global truncaria em silêncio a sala de quem tem mais
     estudos que o teto -- perda de análise humana, o oposto do que o item quer. Quem trunca é
     quem abre PGN de fora, e é ele quem avisa na tela.
+
+    **O fluxo é o tolerante (S-585)**: o PGN que vem com livro digital pode trazer duas linhas em
+    branco entre o cabeçalho e os lances, e o `read_game` partia a partida em duas -- a metade com
+    «Chapter 3 / Game 2» era descartada aqui, por não ter lance. Ver `pgn_do_livro`.
     """
-    fluxo: TextIO = io.StringIO(texto or "") if isinstance(texto, str) else texto
+    fluxo = fluxo_tolerante(io.StringIO(texto or "") if isinstance(texto, str) else texto)
     achados: list[Estudo] = []
     while True:
         if limite is not None and len(achados) >= limite:

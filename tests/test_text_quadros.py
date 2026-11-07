@@ -1,7 +1,7 @@
-"""O quadro emoldurado de largura inteira, e a moldura que o separa da lista de lances (S-525).
+"""O quadro emoldurado de largura inteira, e a moldura que o separa da lista de lances (S-583).
 
 **O teste que dá nome a este arquivo é `test_a_moldura_oca_e_quadro_e_o_tabuleiro_cheio_nao`.**
-A borda da S-523 cede duas bandas; o «Scoring» do Yusupov tem cinco, e tratá-lo como bloco de
+A borda da S-581 cede duas bandas; o «Scoring» do Yusupov tem cinco, e tratá-lo como bloco de
 borda partia a lista de lances do Chernev. O que só o quadro tem é a moldura: uma caixa larga,
 alta e **oca**.
 """

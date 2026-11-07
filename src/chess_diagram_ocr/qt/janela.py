@@ -60,7 +60,7 @@ import weakref
 from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from PyQt6 import sip
 from PyQt6.QtCore import Qt, QTimer
@@ -85,19 +85,42 @@ from chess_diagram_ocr.config import (
     find_default_pdf_path,
 )
 from chess_diagram_ocr.detection import DiagramCandidate, detect_diagrams_in_pdf_page, detect_diagrams_rendering_page
+from chess_diagram_ocr.engine import EngineAnalyzer
 from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
-from chess_diagram_ocr.qt import acessibilidade, dialogo_de_configuracoes, dialogos, dica, escala, exportador_de_livro, fila, fita, legenda, menu
-from chess_diagram_ocr.qt import abas_da_suite, importador_de_livro, painel_de_revisao_de_texto, painel_de_rotulagem, painel_do_pdf
-from chess_diagram_ocr.qt import paleta, plataforma, tema
-from chess_diagram_ocr.qt.areas_de_trabalho import AreasDeTrabalho
-from chess_diagram_ocr.qt.trilho import TrilhoDoLivro
+from chess_diagram_ocr.qt import (
+    abas_da_suite,
+    acessibilidade,
+    dialogo_de_configuracoes,
+    dialogos,
+    dica,
+    escala,
+    exportador_de_livro,
+    fila,
+    fita,
+    importador_de_livro,
+    legenda,
+    leitura,
+    livro_com_pgn,
+    menu,
+    painel_de_revisao_de_texto,
+    painel_de_rotulagem,
+    painel_do_pdf,
+    paleta,
+    plataforma,
+    tema,
+)
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
+from chess_diagram_ocr.qt import fila_de_livros as qt_fila_de_livros
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
+from chess_diagram_ocr.qt.areas_de_trabalho import AreasDeTrabalho
 from chess_diagram_ocr.qt.campo import PainelDeCampo
 from chess_diagram_ocr.qt.dialogos import ControladorDeTreino
+from chess_diagram_ocr.qt.disposicao_de_mesa import DisposicaoDeMesa
 from chess_diagram_ocr.qt.exportador import Exportador
+from chess_diagram_ocr.qt.leitura import Aquecimento, Ocupacao
 from chess_diagram_ocr.qt.marcas import LeitorDeMarcas, amostras_de_treino_guardadas
+from chess_diagram_ocr.qt.mesa_destacada import MesaDestacada
 from chess_diagram_ocr.qt.painel_da_galeria import PainelDaGaleria
 from chess_diagram_ocr.qt.painel_de_estudo import PainelDeEstudo
 from chess_diagram_ocr.qt.painel_de_resultado import PainelDeResultado
@@ -105,15 +128,17 @@ from chess_diagram_ocr.qt.painel_de_revisao import PainelDeRevisao
 from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
 from chess_diagram_ocr.qt.painel_do_dataset import PainelDoDataset
 from chess_diagram_ocr.qt.painel_do_pdf import PainelDoPdf
+from chess_diagram_ocr.qt.preferencias import motor_das_preferencias, servico_das_preferencias
 from chess_diagram_ocr.qt.rodape import RodapeDaJanela
-from chess_diagram_ocr.qt import leitura
-from chess_diagram_ocr.qt.leitura import Aquecimento, Ocupacao
 from chess_diagram_ocr.qt.trabalho import DeteccaoDeFundo, Tarefa, manter_viva, rastro_de
+from chess_diagram_ocr.qt.trilho import TrilhoDoLivro
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
-from chess_diagram_ocr.service import OcrService, RecognitionOptions, RecognizedDiagram, RecognitionCanceled
+from chess_diagram_ocr.service import OcrService, RecognitionCanceled, RecognitionOptions, RecognizedDiagram
+from chess_diagram_ocr.settings import load_settings
 from chess_diagram_ocr.ui import (
     abas,
     conjuntos,
+    degradacao,
     desfazivel,
     espaco,
     estado_do_rodape,
@@ -123,9 +148,10 @@ from chess_diagram_ocr.ui import (
     strings,
 )
 from chess_diagram_ocr.ui.busy import BusyRegistry
+from chess_diagram_ocr.ui.configuracoes import dpi as _dpi
+from chess_diagram_ocr.ui.configuracoes import max_boards as _max_boards
 from chess_diagram_ocr.ui.editor_model import DiagramEditorModel
 from chess_diagram_ocr.ui.exportacao_de_pgn import ExportSettings
-from chess_diagram_ocr.ui.galeria_declarada import LARGURA_MINIMA_DA_GALERIA
 from chess_diagram_ocr.ui.page_overlay import (
     BoxClick,
     DiagramBox,
@@ -137,11 +163,12 @@ from chess_diagram_ocr.ui.page_overlay import (
     boxes_from_diagrams,
     choose_boxes,
     decide_box_click,
+    frase_de_caixa_tirada,
+    frase_de_caixas_devolvidas,
     mark_edited,
     mark_saved,
 )
 from chess_diagram_ocr.ui.page_results import PageOcrParams, colocacoes_conferidas, paginas_editadas
-from chess_diagram_ocr.ui.configuracoes import dpi as _dpi, max_boards as _max_boards
 from chess_diagram_ocr.ui.pedido_de_treino import TrainingRequest, pedido_de_treino
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.state import AppState, load_state, save_state
@@ -150,24 +177,58 @@ from chess_diagram_ocr.ui.varredura_de_revisao import PedidoDeVarredura
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["LARGURA_MINIMA_DAS_ABAS", "LARGURA_MINIMA_DO_VISOR", "JanelaPrincipal"]
+__all__ = [
+    "LARGURA_MINIMA_DAS_ABAS",
+    "LARGURA_MINIMA_DO_VISOR",
+    "LARGURA_PREFERIDA_DAS_ABAS",
+    "LARGURA_PREFERIDA_DO_VISOR",
+    "JanelaPrincipal",
+]
 
-LARGURA_MINIMA_DAS_ABAS = LARGURA_MINIMA_DA_GALERIA
-"""O piso do lado esquerdo, somado das partes em `galeria_declarada.LARGURA_MINIMA_DA_GALERIA`.
+LARGURA_MINIMA_DAS_ABAS = 500
+"""O piso do lado esquerdo, e ele é o que as abas **de fato** pedem (S-552, segunda rodada).
 
-**É a aba mais exigente que decide o piso**, e não a média: a Galeria precisa do recorte, mais
-260 px de lateral, mais a folga -- e abaixo disso quem perde é a coluna de headers, os controles
-que gravam a procedência de uma partida (S-154).
+**Eram 720, somados das partes em `galeria_declarada.LARGURA_MINIMA_DA_GALERIA`** -- 420 px de
+recorte mais 260 de lateral mais a folga --, e essa soma era o piso da janela inteira desde a
+S-154. Com a S-552 a Galeria passou a morar dentro de um `QScrollArea`: os 680 px continuam sendo
+o tamanho **preferido** dela, e deixaram de ser o exigido. Medido com as fontes de verdade, a aba
+mais exigente hoje é a do Dataset, com **522 px**; 500 é o valor que o crítico provou em
+`probe_1024.py`, trocando as duas constantes em memória antes de a janela ser montada.
 
-**Era `720` cravado, e o número tinha se descolado da soma que ele diz ser** (F9-C2). A soma
-valia enquanto o recorte era fixo em 420; quando o item 4 do §7 o trocou por um recorte elástico
-de piso 240, o 720 continuou aqui sozinho -- e uma constante que só coincidia com a fórmula dela
-é uma constante que já divergiu uma vez sem ninguém ver. Agora ela **é** a fórmula, e o piso da
-janela caiu de 1243 px de largura junto com o recorte."""
+**Do outro lado, no F9-C2, o `720` cravado tinha virado a própria fórmula** --
+`LARGURA_MINIMA_DA_GALERIA`, com o recorte elástico de piso 240 --, porque uma constante que só
+coincidia com a soma dela já tinha divergido uma vez sem ninguém ver. Na junção com a S-552 fica o
+número medido: a Galeria rola, e a soma das partes dela deixou de ser o piso do lado esquerdo.
 
-LARGURA_MINIMA_DO_VISOR = 520
-"""O mesmo piso do visualizador do produto: abaixo disso a página não cabe nem no ajuste à
-largura, e o que sobra é rolagem horizontal."""
+**Por que isto é um item e não um ajuste de gosto:** 720 + 520 + 5 de alça = **1245**, e era o
+piso de largura da janela. Pedida a 1024×768 -- a tela de um notebook de 1366×768 com a janela
+numa metade, ou a de um projetor --, ela abria em 1245×768 e transbordava a tela. O ChessBase e o
+Lichess funcionam a 1024."""
+
+LARGURA_MINIMA_DO_VISOR = 440
+"""O piso do visualizador, e ele também é o que o painel pede (S-552, segunda rodada).
+
+Eram 520, escritos como "abaixo disso a página não cabe nem no ajuste à largura". Medido, o painel
+responde **198 px** de mínimo desde que a S-528 trocou as três fileiras de cromo por uma fila de
+32 px. Os 440 não são o mínimo dele: são a largura em que uma página A5 a 100% ainda se lê sem
+rolagem horizontal, e é por isso que este número continua acima do que o painel exige."""
+
+LARGURA_PREFERIDA_DAS_ABAS = 720
+"""O que o lado das abas **pede** quando há espaço, em pixel (S-552, segunda rodada).
+
+São os 720 que eram o piso até esta rodada, demovidos de exigência a preferência. **A distinção é
+o item inteiro:** piso é onde a janela para de encolher, e por isso ele tinha de cair para a janela
+caber em 1024; preferida é o que o lado pede quando há espaço. Sem separar os dois, baixar o piso
+levava junto o arranjo de fábrica: a 1400×950 a aba ia de 720 para 585 px e o tabuleiro da sala de
+488 para 392. **E os 720 são o que a Galeria ocupa mais o cromo** -- 702 + 6 de moldura da aba + 12
+de barra --, invariante que `GaleriaNaLarguraPreferidaTests` cobra desde a quarta rodada."""
+
+LARGURA_PREFERIDA_DO_VISOR = 520
+"""O mesmo para o lado do livro: os 520 que eram o piso do visor.
+
+**E é o preferido do visor que desfaz o empate numa janela de 1024**, onde os dois preferidos não
+cabem juntos: quem cede é a aba, porque a página do livro é o que não se lê espremido -- ver
+`geometria.divisor_da_primeira_abertura`."""
 
 TITULO_DA_JANELA = strings.PRODUTO
 """A marca no título: o produto, e **não mais o toolkit** (OCR_UI C2, A10). Era `"PyQt"`, para
@@ -207,8 +268,10 @@ class JanelaPrincipal(QMainWindow):
         csv_de_rotulos: Path = DEFAULT_DATASET_CSV,
         pasta_de_estudos: Path | None = None,
         pasta_da_galeria: Path | None = None,
+        caminho_do_cache: Path | None = None,
         caminho_do_estado: Path | None = None,
         rasterizar_ao_fundo: bool | None = None,
+        motor: EngineAnalyzer | None | Literal["preferencias"] = "preferencias",
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -217,10 +280,31 @@ class JanelaPrincipal(QMainWindow):
         self._rasterizar_ao_fundo = rasterizar_ao_fundo
         """Repassado ao `PainelDoPdf` (OCR_UI passo 15). Desligado nos testes de janela, que
         perguntam pela folha na linha seguinte a `abrir_pdf`; o produto rasteriza ao fundo."""
-        self._servico = servico if servico is not None else OcrService(model_path=DEFAULT_MODEL_PATH)
+        self._preferencias = load_settings()
+        """Preferências do usuário (S-32). Por padrão nada sai da máquina."""
+        # O serviço nasce das preferências porque o OCR de legenda entra por ele (S-43/S-523):
+        # quem lê a configuração é a interface, e o pipeline recebe pronto o que ela autorizou.
+        self._servico = servico if servico is not None else servico_das_preferencias(self._preferencias)
+        self._ocr = self._preferencias.ocr
+        """Quem sabe **por que** não há classificador de caracteres (`dispositivos_da_janela`, S-182)."""
+        self._analisador: EngineAnalyzer | None = motor_das_preferencias(self._preferencias) if isinstance(motor, str) else motor
+        """Motor de análise (S-33), ou `None`. Sem binário, a seção some da sala de estudo (S-523).
+
+        Injetável pelo mesmo motivo de `caminho_do_estado`: o padrão procura um binário na máquina
+        de quem roda, e uma suíte que fizesse isso a cada janela dependeria do `PATH` de quem a roda.
+        `None` é "sem motor", e não "procure" -- a procura é o que só o produto pede.
+
+        **Antes** dos painéis (F9-C16): `PainelDeEstudo` decide na construção se desenha a seção
+        do motor, e `_montar` tira do menu o que exige motor quando não há um. `_analisador` e não
+        `_motor`: é o nome que o portão `caissa.ui.audit.comandos` lê."""
         self._csv_de_rotulos = Path(csv_de_rotulos)
         self._pasta_de_estudos = pasta_de_estudos
         self._pasta_da_galeria = pasta_da_galeria
+        self._caminho_do_cache = caminho_do_cache
+        """Onde o cache de posições da base mora. `None` é o padrão do produto.
+
+        Terceiro parâmetro da mesma família (`pasta_da_galeria`, este): sem ele o teste da janela
+        cria `data/games_positions.sqlite` no checkout de quem roda a suíte."""
         """Onde o índice varrido e as anotações moram. `None` é o padrão do produto, `data/gallery/`.
 
         Existe pelo mesmo motivo do parâmetro homônimo do painel: **sem ele o teste da janela grava
@@ -251,8 +335,15 @@ class JanelaPrincipal(QMainWindow):
         self._estudo_a_reabrir = self._estado.estudo_aberto
         """A mesa em que a sessão anterior parou, guardada até o livro dela abrir (S-347)."""
 
-        self._divisor_por_posicionar = bool(self._estado.sash_fraction)
-        """A alça do divisor ainda espera a primeira aparição da janela. Ver `showEvent`."""
+        self._divisor_por_posicionar = True
+        """A alça do divisor ainda espera a primeira aparição da janela. Ver `showEvent` -- é lá
+        que `geometria.FRACAO_PADRAO_DO_DIVISOR` entra quando o disco não diz nada (S-156)."""
+
+        self._divisor_de_fabrica = not self._estado.sash_fraction
+        """A repartição na tela ainda é a preferida, e não a de alguém? Ver `resizeEvent` (S-552).
+
+        Nasce `False` quando o disco traz uma fração -- ela é escolha, e escolha acompanha a
+        largura sozinha, porque é fração e não pixel."""
 
         self.busy = BusyRegistry()
         self._ocupacao = Ocupacao(self.busy)
@@ -316,10 +407,6 @@ class JanelaPrincipal(QMainWindow):
         A espera custa ~400 ms antes de uma leitura de segundos; o clique numa caixa já lida não
         espera nada, porque selecionar não tranca."""
 
-        self._analisador = sala_declarada.motor_de_analise()
-        """O motor UCI, ou `None` (F9-C16). **Antes** dos painéis: `PainelDeEstudo` decide na
-        construção se desenha a seção do motor. Ver `ui/sala_declarada.motor_de_analise`."""
-
         self._montar()
         self._ligar()
         self._aplicar_estado()
@@ -379,6 +466,7 @@ class JanelaPrincipal(QMainWindow):
         """A guarda de foco. **Guardada num atributo de propósito**: um `QObject` sem referência
         viva é coletado, e um filtro coletado deixa de ser chamado sem que nada avise -- a janela
         simplesmente perde o teclado."""
+        self.mesa_destacada = MesaDestacada(self, self.principal, self.texto, self._teclas)  # a mesa numa janela própria (S-646)
         # A marca dos dois submenus **depois** de montar a barra: a pele e a densidade em vigor
         # foram lidas antes dos widgets, e sem isto o menu abriria sem nada marcado -- que é o
         # mesmo que dizer "nenhuma delas está em uso".
@@ -410,12 +498,11 @@ class JanelaPrincipal(QMainWindow):
             self._servico, csv_de_rotulos=self._csv_de_rotulos, parent=self.principal
         )
         self.painel.declarar_contexto(documento=self._chave_do_documento, parametros=self._parametros_de_ocr)
-        self.principal.adicionar_modo(abas.RESULTADO, self.painel)
 
         self.estudo = PainelDeEstudo(
             self.principal,
-            # **O motor, se houver um** (F9-C16): sem esta linha os três comandos do menu
-            # Estudo nunca podiam funcionar. Ver `ui/sala_declarada.motor_de_analise`.
+            # **O motor, se houver um** (F9-C16/S-523): sem esta linha os três comandos do menu
+            # Estudo nunca podiam funcionar, e sem binário a seção "Motor" não existe (S-33).
             analyzer=self._analisador,
             # Vínculo de mão única: o estudo lê a posição do diagrama selecionado e nunca escreve
             # de volta. Um lance jogado no estudo não é uma correção do OCR.
@@ -428,8 +515,8 @@ class JanelaPrincipal(QMainWindow):
             linha_impressa=self._linha_impressa,
             abrir_pagina=self._abrir_pagina_do_estudo,
             para_o_texto=self._linha_para_o_texto,
+            caminho_do_cache=self._caminho_do_cache,
         )
-        self.principal.adicionar_modo(abas.ESTUDO, self.estudo)
 
         self.revisao = PainelDeRevisao(
             self.principal,
@@ -438,11 +525,10 @@ class JanelaPrincipal(QMainWindow):
             # estado é "nunca escolhi outra", e aí a do produto é a certa.
             queue_path=Path(self._estado.review_queue_path or DEFAULT_QUEUE_PATH),
         )
-        self.principal.adicionar_modo(abas.REVISAO, self.revisao)
 
-        self.texto = PainelDeTexto(busy=self.busy, parent=self.principal)
+        self.texto = PainelDeTexto(busy=self.busy, com_caderno=True, parent=self.principal)
+        self.texto.definir_executor(lambda acao: self.menu.acoes[acao].trigger())  # o que a fita pede à janela
         self.texto.diagrama_ativado.connect(self._estudar_do_texto)  # duplo clique na miniatura (item 8)
-        self.principal.adicionar_modo(abas.TEXTO, self.texto)
 
         self.dataset = PainelDoDataset(
             self.abas,
@@ -450,7 +536,6 @@ class JanelaPrincipal(QMainWindow):
             busy=self.busy,
             em_processo=self._rasterizar_ao_fundo,
         )
-        self.abas.addTab(self.dataset, abas.DATASET)
 
         self.galeria = PainelDaGaleria(
             self.abas,
@@ -462,15 +547,25 @@ class JanelaPrincipal(QMainWindow):
             # passada. Quem liga as duas abas é esta janela -- nenhuma conhece a outra.
             sumidouro_de_revisao=self.revisao.sumidouro,
             pasta_da_galeria=self._pasta_da_galeria,
+            caminho_do_cache=self._caminho_do_cache,
             busy=self.busy,
         )
-        self.abas.addTab(self.galeria, abas.GALERIA)
-        self.rotulagem = painel_de_rotulagem.montar(self.abas)  # a bancada da suíte, se ao alcance
-        if self.rotulagem is not None:
-            self.abas.addTab(self.rotulagem, abas.ROTULAGEM)
+        self.rotulagem = painel_de_rotulagem.montar(self.abas, folhas_para=self.texto.folhas_do_livro)  # a bancada da suíte; o caderno vai ao livro dela (R7)
         self.revisao_de_texto = painel_de_revisao_de_texto.montar(self.abas)  # idem, passo 14
-        if self.revisao_de_texto is not None:
-            self.abas.addTab(self.revisao_de_texto, abas.REVISAO_DE_TEXTO)
+        # A ordem é a de `abas.MODOS` e `abas.DO_ACERVO`, lida e não copiada (S-162/S-511): área sem
+        # painel reprova aqui. A `Livro` já é a primeira aba, e as duas da suíte só existem com ela.
+        modos = {abas.RESULTADO: self.painel, abas.ESTUDO: self.estudo, abas.REVISAO: self.revisao, abas.TEXTO: self.texto}
+        acervo = {
+            abas.DATASET: self.dataset,
+            abas.GALERIA: self.galeria,
+            abas.ROTULAGEM: self.rotulagem,
+            abas.REVISAO_DE_TEXTO: self.revisao_de_texto,
+        }
+        for nome in abas.MODOS:
+            self.principal.adicionar_modo(nome, modos[nome])
+        for nome in abas.DO_ACERVO:
+            if (aba := acervo[nome]) is not None:
+                self.abas.addTab(aba, nome)
 
         self.lado_do_livro = QWidget(self.divisor)
         self.pdf = PainelDoPdf(
@@ -522,7 +617,19 @@ class JanelaPrincipal(QMainWindow):
         # **Os tamanhos iniciais são declarados, e não deduzidos.** O `QSplitter` reparte pela
         # `sizeHint` de cada lado, e a de um `QTabWidget` cheio de rótulos com quebra de linha
         # pede toda a largura que lhe derem.
-        self.divisor.setSizes([LARGURA_MINIMA_DAS_ABAS, 760])
+        #
+        # E são as larguras **preferidas**, e não o piso repetido: até a S-552 a esquerda nascia
+        # com `LARGURA_MINIMA_DAS_ABAS`, o que dava no mesmo porque o piso era 720. Baixado o piso
+        # para 500, repeti-lo aqui encolheria a aba de trabalho -- o piso diz onde a janela
+        # **para**, e não como ela abre. Quem arbitra os dois preferidos é `showEvent`.
+        self.divisor.setSizes([LARGURA_PREFERIDA_DAS_ABAS, LARGURA_PREFERIDA_DO_VISOR])
+        # `splitterMoved` só sai do gesto do mouse: `setSizes` não o emite. É o que separa "a
+        # pessoa escolheu" de "o programa repartiu" -- ver `resizeEvent`.
+        self.divisor.splitterMoved.connect(self._alca_movida_a_mao)
+        self.mesa = DisposicaoDeMesa(  # o PDF à esquerda com a aba Texto à frente (S-640)
+            self.divisor, trabalho=self.abas, livro=self.lado_do_livro, visor=self.pdf.visor, estado=self._estado,
+            texto_a_frente=lambda: self.abas.area_atual() is self.texto, texto=self.texto, marcar=lambda *a, **k: self.menu.marcar(*a, **k),
+        )
 
         self.treino = ControladorDeTreino(self, pedido=self._pedido_de_treino, busy=self.busy)
         self.exportador = Exportador(
@@ -545,6 +652,9 @@ class JanelaPrincipal(QMainWindow):
             paginas=lambda: self.pdf.page_count,
             revisao_de_texto=self.revisao_de_texto,
         )
+        self.pgn_do_livro = livro_com_pgn.LivroComPgn(  # o .pgn que vem com o PDF digital (S-590)
+            self, dizer=self._dizer, pdf_atual=lambda: self._pdf, itens_atuais=lambda: self._itens,
+            painel=self.painel, revisao=self.revisao, texto=self.texto, estudo=self.estudo, galeria=self.galeria, focar=self._focar_aba, ir_para_pagina=self.pdf.ir_para_pagina)
 
     @property
     def editor(self) -> DiagramEditorModel:
@@ -628,26 +738,29 @@ class JanelaPrincipal(QMainWindow):
         self.pdf.marcar_diagramas.setChecked(estado.show_diagram_boxes)
         self.pdf.roda_vira_pagina.setChecked(estado.wheel_flips_page)
         self.painel.mostrar_incerteza = estado.show_heatmap
-        self.texto.aplicar_zoom(estado.texto_zoom, avisar=False)
-        self.texto.definir_quebra(estado.texto_quebra)
-        self.texto.definir_motor(estado.texto_motor)  # o motor e o modo bloco da sessão anterior (item 17)
-        self.texto.definir_modo_bloco(estado.texto_bloco)
+        self.texto.aplicar_estado(estado)  # zoom, quebra, motor, modo bloco e os diagramas (S-620, S-623)
+        for nome, ligado in {**self.mesa.estados(), **self.texto.interruptores_da_vista()}.items():
+            self.menu.marcar(nome, ligado=ligado)  # a mesa (S-640) e a vista dos diagramas (S-620, S-624)
         self.estudo.posicionar_divisor(estado.estudo_divisor)
+        self.estudo.posicionar_divisor_vertical(estado.estudo_divisor_vertical)
+        # O leitor que `board_zoom` nunca teve (S-518): o campo era gravado, era lido do disco, e
+        # não chegava a widget nenhum.
+        self.estudo.definir_fracao_do_tabuleiro(estado.board_zoom)
         # Daqui para baixo o disco já está nos widgets, e gravar volta a ser honesto (S-322).
         self._estado_aplicado = True
 
     def _restaurar_arranjo(self) -> None:
         """Tamanho, posição, divisor e aba de onde a sessão anterior parou (S-156).
 
-        A geometria passa por `geometria_a_aplicar`, que é a mesma decisão pura do outro frontend:
-        ela confere a guardada contra as telas de **hoje** e devolve uma centrada quando o monitor
-        em que a janela estava não existe mais. Sem isso, trocar de monitor entre duas sessões
-        abre a janela fora da tela, sem erro nenhum a que se agarrar.
+        A geometria passa por `geometria_a_aplicar`, a mesma decisão pura do outro frontend: sem ela, trocar
+        de monitor entre duas sessões abre a janela fora da tela, sem erro nenhum a que se agarrar. **E o
+        piso é o desta janela** (S-552, terceira rodada): o `PISO_MEDIDO`, medido numa janela **sem rolagem**,
+        devolvia 1180x800 numa tela de 1024x768 -- esta rola, e o piso dela é a soma (`com_a_medicao`).
         """
         alvo = geometria.geometria_a_aplicar(
             self._estado.window_geometry,
             plataforma.monitores(),
-            piso=geometria.piso_da_janela(LARGURA_MINIMA_DAS_ABAS, LARGURA_MINIMA_DO_VISOR),
+            piso=geometria.piso_da_janela(LARGURA_MINIMA_DAS_ABAS, LARGURA_MINIMA_DO_VISOR, com_a_medicao=False),
         )
         lida = geometria.geometria_de_texto(alvo) if alvo else None
         if lida is not None:
@@ -675,13 +788,70 @@ class JanelaPrincipal(QMainWindow):
         """
         super().showEvent(a0)
         if not self._divisor_por_posicionar:
+            self.mesa.arrumar()  # a primeira aparição sem alça guardada também decide a mesa
             return
         self._divisor_por_posicionar = False
         largura = sum(self.divisor.sizes()) or self.divisor.width()
         if largura <= 0:
             return
-        esquerda = max(1, int(largura * self._estado.sash_fraction))
+        # **Guardada é escolha; ausente é a repartição preferida** (S-552, segunda rodada). Uma
+        # fração que a sessão anterior gravou vale como veio, mesmo estreita: alguém a arrastou
+        # para ali. Sem nada guardado quem decide é `divisor_da_primeira_abertura`, que arbitra as
+        # duas larguras preferidas -- e é o que repõe o arranjo de fábrica que o piso dava de
+        # graça enquanto ele era 720.
+        if self._estado.sash_fraction:
+            esquerda = max(1, int(largura * self._estado.sash_fraction))
+        else:
+            esquerda = geometria.divisor_da_primeira_abertura(
+                largura,
+                preferida_esquerda=LARGURA_PREFERIDA_DAS_ABAS,
+                preferida_direita=LARGURA_PREFERIDA_DO_VISOR,
+            )
         self.divisor.setSizes([esquerda, max(1, largura - esquerda)])
+        self.mesa.arrumar()
+
+    def _alca_movida_a_mao(self, _posicao: int, _indice: int) -> None:
+        """A partir daqui a repartição é de quem arrastou, e o `resizeEvent` não a toca mais.
+
+        Na mesa a alça arrastada é a do PDF, e ela não decide a do trabalho (S-640)."""
+        if not self.mesa.armada:
+            self._divisor_de_fabrica = False
+
+    def resizeEvent(self, a0: Any) -> None:  # noqa: N802 - assinatura do Qt
+        """Reaplica a repartição **preferida** enquanto ela ainda for a de fábrica (S-552, 5ª rodada).
+
+        **O que estava errado.** O `QSplitter` reparte o crescimento em proporção, e não pelo que
+        cada lado prefere: uma janela levada de 1024 a 1366 saía de `[526, 493]` para `[702, 659]`,
+        a aba ficava com 696 px e o viewport da Galeria com **684** -- abaixo dos 702 de
+        `galeria_declarada.LARGURA_MINIMA_DA_GALERIA` --, e a aba empilhava. Aberta direto em 1366
+        a mesma janela dá 720 à aba e 702 ao viewport, e as duas colunas ficam. O critério da S-552
+        dizia "duas colunas a 1280, 1366, 1400", e isso só era verdade para a janela **recém-aberta**:
+        arrastada pela faixa, a virada caía em 1504 em vez dos 1245 medidos.
+
+        **Reaplicar não é sobrescrever escolha nenhuma**, e é essa a distinção que o método
+        preserva. `divisor_da_primeira_abertura` responde o que os dois lados preferem *naquela*
+        largura, e é exatamente o que a janela teria feito se tivesse nascido ali. Assim que
+        alguém arrasta a alça (`splitterMoved`), ou o disco traz uma fração, `_divisor_de_fabrica`
+        cai para `False` e a proporção volta a ser de quem a escolheu -- que é a mesma regra que
+        `showEvent` já aplicava, agora valendo depois da primeira aparição também.
+
+        **Antes de a alça ser posicionada, não.** Entre a montagem e o `showEvent` o `QSplitter`
+        ainda tem a largura da montagem, e é a razão registrada lá: repartir ali é repartir uma
+        largura que não é a final.
+        """
+        super().resizeEvent(a0)
+        # Na mesa os lados estão trocados (`[livro, trabalho]`, S-640): os dois preferidos cairiam
+        # no widget errado.
+        if self._divisor_por_posicionar or not self._divisor_de_fabrica or self.mesa.armada:
+            return
+        largura = sum(self.divisor.sizes())
+        esquerda = geometria.divisor_da_primeira_abertura(
+            largura,
+            preferida_esquerda=LARGURA_PREFERIDA_DAS_ABAS,
+            preferida_direita=LARGURA_PREFERIDA_DO_VISOR,
+        )
+        if esquerda > 0:
+            self.divisor.setSizes([esquerda, max(1, largura - esquerda)])
 
     def _anotar_arranjo(self) -> None:
         """Lê da tela o arranjo de agora e o põe no estado (S-156/S-311).
@@ -708,9 +878,13 @@ class JanelaPrincipal(QMainWindow):
         atual = normal if not normal.isEmpty() else self.geometry()
         texto = f"{atual.width()}x{atual.height()}{atual.x():+d}{atual.y():+d}"
         self._estado.window_geometry = geometria.geometria_gravavel(texto) or self._estado.window_geometry
-        tamanhos = self.divisor.sizes()
-        if len(tamanhos) >= 2 and sum(tamanhos) > 0:
-            self._estado.sash_fraction = geometria.fracao_de_divisor(tamanhos[0], sum(tamanhos))
+        # **E a fração só é gravada quando ela é escolha** (S-552, 5ª rodada). Gravá-la sempre
+        # transformava a repartição de fábrica numa decisão de alguém: a sessão seguinte lia a
+        # fração da largura em que a anterior por acaso fechou e a aplicava numa largura diferente
+        # -- fechada a 1400 e reaberta a 1366, a aba ficava com 702 px em vez dos 720 preferidos, o
+        # viewport com 684 e a Galeria empilhava. A mesa guarda as duas alças, cada uma na sua
+        # chave (S-640), e a do trabalho só quando alguém a escolheu.
+        self.mesa.anotar(escolhida=not self._divisor_de_fabrica)
 
     def _gravar_estado(self) -> None:
         """Anota o que a próxima sessão precisa e grava. Nunca levanta -- `save_state` registra.
@@ -736,15 +910,16 @@ class JanelaPrincipal(QMainWindow):
         estado.show_diagram_boxes = bool(self.pdf.marcar_diagramas.isChecked())
         estado.wheel_flips_page = bool(self.pdf.roda_vira_pagina.isChecked())
         estado.show_heatmap = self.painel.mostrar_incerteza
-        estado.texto_zoom = int(self.texto.zoom_da_vista)
-        estado.texto_quebra = bool(self.texto.quebra)
-        estado.texto_motor = self.texto.motor
-        estado.texto_bloco = bool(self.texto.modo_bloco)
+        self.texto.anotar_estado(estado)
         estado.review_queue_path = str(self.revisao.queue_path)
         estado.estudo_aberto = self.estudo.chave_do_estudo_aberto
         # `or` o guardado: o divisor devolve `0.0` enquanto não há geometria medida, e zero
         # significa "nunca guardado" -- gravá-lo apagaria a alça da sessão anterior.
         estado.estudo_divisor = self.estudo.fracao_do_divisor or estado.estudo_divisor
+        estado.estudo_divisor_vertical = (
+            self.estudo.fracao_do_divisor_vertical or estado.estudo_divisor_vertical
+        )
+        estado.board_zoom = self.estudo.fracao_do_tabuleiro
         self._anotar_arranjo()
         save_state(self._caminho_do_estado, estado)
 
@@ -933,6 +1108,7 @@ class JanelaPrincipal(QMainWindow):
         escolhida = self._pele_atual()
         tema.aplicar_tema(cromo_escuro=escolhida.cromo_escuro, densidade=self._densidade_atual())
         qt_icones.limpar_cache()
+        degradacao.esquecer_avisos()
         self._marcar_a_aparencia()
         self._montar_o_cromo(escolhida)
 
@@ -967,6 +1143,7 @@ class JanelaPrincipal(QMainWindow):
         self.pdf.regiao_pedida.connect(self._ler_regiao)
         self.texto.folha_pedida.connect(self.pdf.ir_para_pagina)  # o .cvtxt aberto leva o visualizador à folha dele (item 9)
         self.texto.definir_fornecedor_de_folha(self.pdf.folha_renderizada)  # a folha já na tela serve à leitura (item 28)
+        self.texto.definir_importacao(lambda: self.livro.resultado if self.livro else None)  # a volta do R7 a reaproveita
         self.pdf.leitura_pedida.connect(self._leitura_pedida)
         self.pdf.exportacao_pedida.connect(lambda: self.exportador.comecar(self._pdf))
         self.pdf.exportacao_cancelada.connect(self.exportador.cancelar)
@@ -975,8 +1152,16 @@ class JanelaPrincipal(QMainWindow):
         # A S-451: "Salvar todos" pergunta antes de gravar a segunda cópia, e quem sabe o que já
         # foi salvo é a janela -- o painel não tem o carimbo por página.
         self.painel.diagramas_salvos = lambda _documento, pagina: self._salvos.get(pagina, set())
+        # O número do lance é anotação da Galeria (S-71/S-67): o painel lê e grava lá, e nunca
+        # guarda cópia. É o mesmo par que `_posicao_de_estudo` já usa para a sala.
+        self.painel.lance_de = self.galeria.move_number_at
+        self.painel.gravar_lance = self.galeria.set_move_number
         self.painel.selecionou.connect(self.pdf.selecionar_caixa)
         self.painel.mudou.connect(self._recarimbar_caixas)
+        # **O fio que o porte cortou** (S-512), e por onde o clique numa caixa da página chega ao
+        # tabuleiro de estudo (S-513). Quem decide se há o que fazer é `decidir_sincronia`: este
+        # sinal dispara a cada casa corrigida, e reabrir ali zeraria a pilha de desfazer da sala.
+        self.painel.posicao_mudou.connect(self.estudo.sync_with_ocr)
         self.painel.salvou.connect(self._gravou_amostra)
         self.painel.revisou.connect(self._fechar_item_da_fila)
         self.painel.regravou.connect(self._dataset_mudou)
@@ -992,6 +1177,10 @@ class JanelaPrincipal(QMainWindow):
 
         # --- o Dataset
         self.dataset.editar.connect(self._abrir_amostra)
+
+        # --- a mesa de texto (S-640): a troca de área é o único momento em que ela se decide
+        self.principal.modo_mudou.connect(self.mesa.arrumar)
+        self.abas.currentChanged.connect(self.mesa.arrumar)
 
     def _dizer(self, frase: str, severidade: str | None = None) -> None:
         """A frase de qualquer painel no rodapé. Quem emite declara a severidade quando sabe (A10);
@@ -1058,6 +1247,7 @@ class JanelaPrincipal(QMainWindow):
         # em silêncio. `request_page=False` porque o visualizador acabou de escolher a página.
         self.galeria.load_pdf(alvo, request_page=False)
         self.estudo.abrir_livro(str(alvo))  # a sala daquele livro volta do disco (S-271)
+        self.pgn_do_livro.livro_aberto()  # o PGN do livro começa a ser lido junto com ele (S-590)
         # E a mesa em que a sessão anterior parou (S-347). **Só na primeira abertura**: depois
         # dela `estudo_aberto` é o que a pessoa abriu nesta sessão, e reabri-lo a cada troca de
         # livro a puxaria de volta para um diagrama que ela acabou de deixar.
@@ -1093,7 +1283,7 @@ class JanelaPrincipal(QMainWindow):
     def _marcas_chegaram(self, livro: str, marcas: object) -> None:
         if self._pdf is None or livro != self._pdf.name:
             return
-        self._salvos = dict(marcas or {})
+        self._salvos = dict(marcas) if isinstance(marcas, dict) else {}
         self._atualizar_abas()
         # O aviso de treino da página veio na mesma leitura (ver `_aviso_de_treino`).
         self.campo.atualizar()
@@ -1479,6 +1669,7 @@ class JanelaPrincipal(QMainWindow):
         # âncora é o par (documento, página), e é ela que faz `Ctrl+S` gravar amostra nova em vez
         # de regravar a linha de um dataset que não está aberto.
         self.painel.carregar_pagina(self._itens, chave=self._chave_do_documento(), pagina=pagina)
+        self.pgn_do_livro.aplicar(pagina, self._itens)  # a posição do PGN do livro, se ele tiver um (S-590)
 
         lidas = boxes_from_diagrams(self._itens)
         guardadas = self._caixas_por_pagina.get(self._chave_do_documento(), pagina, self._parametros())
@@ -1598,28 +1789,19 @@ class JanelaPrincipal(QMainWindow):
         if alvo is None or not self.pdf.boxes or all(
             caixa.index != int(indice) for caixa in self.pdf.boxes.boxes
         ):
-            self._dizer(f"A caixa {indice + 1} não está mais na página.")
+            self._dizer(frase_de_caixa_tirada(None, 0))
             return
         self._tiradas.drop(documento, pagina, alvo.bbox_pdf)
         self._publicar_caixas(guardadas)
-        quantas = self._tiradas.count(documento, pagina)
-        recado = (
-            f"Caixa {indice + 1} tirada desta página. Devolver as caixas traz de volta."
-            if quantas == 1
-            else f"Caixa {indice + 1} tirada: {quantas} caixas tiradas desta página."
-        )
-        self._dizer(recado)
+        self._dizer(frase_de_caixa_tirada(alvo, self._tiradas.count(documento, pagina)))
 
     def devolver_caixas(self) -> None:
         """Desfaz as remoções **desta página**, e diz quantas voltaram."""
         documento, pagina = self._chave_do_documento(), self.pdf.page_index
         quantas = self._tiradas.restore(documento, pagina)
-        if not quantas:
-            self._dizer("Nenhuma caixa foi tirada desta página.")
-            return
-        self._publicar_caixas(self._caixas_por_pagina.get(documento, pagina, self._parametros()))
-        plural = "" if quantas == 1 else "s"
-        self._dizer(f"{quantas} caixa{plural} devolvida{plural} a esta página.")
+        self._dizer(frase_de_caixas_devolvidas(quantas, pagina + 1))
+        if quantas:
+            self._publicar_caixas(self._caixas_por_pagina.get(documento, pagina, self._parametros()))
 
     # --------------------------------------------------- o que um painel entrega a outro
 
@@ -1679,10 +1861,13 @@ class JanelaPrincipal(QMainWindow):
             self._caixas_por_pagina.get(self._chave_do_documento(), self.pdf.page_index, self._parametros())
         )
         self._atualizar_abas()
+        # O campo de lance do Resultado mostra a mesma anotação: se a Galeria a mudou, ele relê.
+        self.painel.sincronizar_lance()
 
     def _focar_aba(self, painel: QWidget) -> None:
-        """Traz para a frente o painel que acabou de receber alguma coisa -- aba ou modo."""
-        self.abas.mostrar(painel)
+        """Traz para a frente o painel que acabou de receber alguma coisa -- aba ou modo, ou a mesa destacada (S-646)."""
+        if not self.mesa_destacada.trazer(painel):
+            self.abas.mostrar(painel)
 
     # ---------------------------------------------------- o que a sala de estudo pergunta
 
@@ -1793,7 +1978,7 @@ class JanelaPrincipal(QMainWindow):
             return
         self.exportador_de_livro.comecar(
             self._pdf, self.pdf.page_count, formato=formato, pagina_atual=self.pdf.page_index,
-            documento_para=self.livro.documento_para if self.livro else None,  # A3: sem reimportar
+            documento_para=self.livro.documento_para if self.livro else None, folhas_para=self.texto.folhas_para_a_suite,  # A3 e R7
         )
 
     def _configuracao_de_exportacao(self) -> ExportSettings:
@@ -1865,11 +2050,15 @@ class JanelaPrincipal(QMainWindow):
             "corrigir_agora": self.revisao.corrigir_agora,
             "anotar_pagina": self.campo.anotar_pagina,
             "varrer_livro": self.galeria.varrer,
+            "varrer_fila": self.abrir_fila_de_livros,
             "exportar_pgn": lambda: self.exportador.comecar(self._pdf),
             "exportar_epub": lambda: self._exportar_livro("epub"),
             "importar_livro": lambda: self.livro.comecar() if self.livro else self._dizer(importador_de_livro.MOTIVO_AUSENTE.splitlines()[0]),
             "cancelar_importacao": lambda: self.livro.cancelar() if self.livro else None,
             "trilho": self._alternar_trilho,
+            "mesa_de_texto": lambda: self.mesa.alternar(),
+            "mesa_sempre": lambda: self.mesa.alternar_sempre(),
+            "destacar_mesa": lambda: self.mesa_destacada.alternar(),
             "primeira_duvidosa": self.trilho._ir_para_a_primeira_duvidosa,
             "proxima_duvidosa": self.trilho.ir_para_a_proxima_duvidosa,
             "anterior_duvidosa": self.trilho.ir_para_a_anterior_duvidosa,
@@ -1892,6 +2081,7 @@ class JanelaPrincipal(QMainWindow):
         tabela.update({acao: getattr(self.estudo, metodo) for acao, metodo in COMANDOS_DA_SALA.items()})
         tabela.update({acao: getattr(self.texto, metodo) for acao, metodo in COMANDOS_DO_TEXTO.items()})
         tabela.update(abas_da_suite.donos(self.rotulagem, self.revisao_de_texto, dizer=self._dizer))  # C8
+        tabela.update(livro_com_pgn.donos(lambda: self.pgn_do_livro))  # S-590
         return tabela
 
     def _na_aba_ou(self, padrao: Callable[[], Any], *metodos: str) -> Any:
@@ -1903,6 +2093,18 @@ class JanelaPrincipal(QMainWindow):
     def abrir_paleta(self) -> Any:
         """A paleta de comandos (S-231): um campo, uma lista filtrada, Enter executa."""
         return paleta.abrir(self, self._comandos())
+
+    def abrir_fila_de_livros(self) -> Any:
+        """A fila de PDFs da S-546, com o modelo emprestado pelo serviço e o registro de ocupação.
+
+        O diálogo não é guardado em atributo: ele não é modal, não é reusado e a rodada dele vive
+        na `VarreduraDeLivros` que nasce dentro -- guardá-lo aqui só criaria um segundo dono para
+        uma janela que já sabe se fechar. `pasta_inicial` é a pasta do livro aberto, que é de onde
+        vêm os outros livros que se quer varrer.
+        """
+        return qt_fila_de_livros.abrir_fila_de_livros(
+            self, servico=self._servico, busy=self.busy, pasta_inicial=DEFAULT_PDF_DIR
+        )
 
     def _desfaziveis(self) -> list[desfazivel.Desfazivel]:
         """Os painéis que disputam o `Ctrl+Z`, na ordem de registro -- que é a de construção.
@@ -2043,11 +2245,14 @@ class JanelaPrincipal(QMainWindow):
         # A sala vai para o disco antes de tudo: ela é o único painel cujo trabalho não tem outra
         # cópia, e o `Ctrl+Z` dela não sobrevive à janela (S-271).
         self.estudo.salvar_agora()
+        self.mesa_destacada.fechar()  # o texto volta à aba e a janela da mesa fecha junto (S-646)
         # E o arranjo depois dela, **antes da espera pela tarefa**: uma thread presa não pode
         # custar o último livro, a página e o divisor de quem já mandou fechar (S-156).
         self._gravar_estado()
+        # O motor é um processo (S-523) e a sala pode tê-lo trocado nas preferências (S-536): o
+        # fechado é o dela, e sem levantar (`encerrar_o_motor`, F9-C16).
+        sala_declarada.encerrar_o_motor(self.estudo.analisador)
         self._detector.parar(ESPERA_AO_FECHAR_MS)
-        sala_declarada.encerrar_o_motor(self._analisador)
         # As tarefas (a leitura, o aquecimento do modelo) não têm pai desde a fase 2 do ciclo 2:
         # destruí-las a correr derrubava o processo sem rastro (o portão `comandos` mediu: exit
         # 255, nada no log). A espera é cortesia -- sair com a leitura no meio deixa uma thread
@@ -2080,14 +2285,9 @@ class JanelaPrincipal(QMainWindow):
 
         **Relido a cada tique porque nenhum dos dois avisa quando muda**: o de peças carrega na
         primeira leitura da sessão, e o de caracteres é trocado quando um retreino reescreve o
-        `.pt`.
+        `.pt`. A decisão é `dispositivos_da_janela`, pura; esta janela a reescrevia com
+        `motivo=""` cravado, e "os pesos não estão no disco" saía igual a "o motor é outro" (S-511).
         """
         from chess_diagram_ocr.ui import dispositivos as dispositivos_mod
-        from chess_diagram_ocr.ui.estado_do_rodape import DESLIGADO, Dispositivos
 
-        return Dispositivos(
-            pecas=self._servico.device_label if self._servico.device else None,
-            caracteres=dispositivos_mod.descricao_do_classificador_de_caracteres(),
-            motivo="",
-            ausencia=DESLIGADO,
-        )
+        return dispositivos_mod.dispositivos_da_janela(self._servico, self._ocr)

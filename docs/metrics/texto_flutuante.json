@@ -1,0 +1,253 @@
+{
+  "item": "S-624 · o portão do diagrama à esquerda com o texto ao lado",
+  "medido_em": "2026-10-25",
+  "codigo": {
+    "commit": "6f75982",
+    "arvore_suja": false
+  },
+  "protocolo": "cada folha lida, aberta no painel com a folha rasterizada e os diagramas à esquerda, e conferida com o texto ao lado e com o desenho de hoje (o controle)",
+  "motor": "auto",
+  "dpi": 150,
+  "veredito": {
+    "folhas": 10,
+    "figuras": 21,
+    "flutuam": 21,
+    "flutuam_no_controle": 0,
+    "folhas_reprovadas": [],
+    "passa": true
+  },
+  "folhas": [
+    {
+      "livro": "1937 Kemeri.pdf",
+      "folha": 54,
+      "diagramas_lidos": 1,
+      "ao_lado": {
+        "figuras": 1,
+        "flutuam": 1,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      },
+      "controle": {
+        "figuras": 1,
+        "flutuam": 0,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      }
+    },
+    {
+      "livro": "1937 Kemeri.pdf",
+      "folha": 132,
+      "diagramas_lidos": 1,
+      "ao_lado": {
+        "figuras": 1,
+        "flutuam": 1,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      },
+      "controle": {
+        "figuras": 1,
+        "flutuam": 0,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      }
+    },
+    {
+      "livro": "A Matter of Endgame Technique – Jacob Aagaard.pdf",
+      "folha": 164,
+      "diagramas_lidos": 3,
+      "ao_lado": {
+        "figuras": 3,
+        "flutuam": 3,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      },
+      "controle": {
+        "figuras": 3,
+        "flutuam": 0,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      }
+    },
+    {
+      "livro": "A Matter of Endgame Technique – Jacob Aagaard.pdf",
+      "folha": 246,
+      "diagramas_lidos": 4,
+      "ao_lado": {
+        "figuras": 4,
+        "flutuam": 4,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      },
+      "controle": {
+        "figuras": 4,
+        "flutuam": 0,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      }
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "folha": 75,
+      "diagramas_lidos": 1,
+      "ao_lado": {
+        "figuras": 1,
+        "flutuam": 1,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      },
+      "controle": {
+        "figuras": 1,
+        "flutuam": 0,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      }
+    },
+    {
+      "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+      "folha": 298,
+      "diagramas_lidos": 2,
+      "ao_lado": {
+        "figuras": 2,
+        "flutuam": 2,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      },
+      "controle": {
+        "figuras": 2,
+        "flutuam": 0,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      }
+    },
+    {
+      "livro": "Euwe, Kramer - Das Mittelspiel Band 1-2 (1956).pdf",
+      "folha": 12,
+      "diagramas_lidos": 1,
+      "ao_lado": {
+        "figuras": 1,
+        "flutuam": 1,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      },
+      "controle": {
+        "figuras": 1,
+        "flutuam": 0,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      }
+    },
+    {
+      "livro": "Euwe, Kramer - Das Mittelspiel Band 1-2 (1956).pdf",
+      "folha": 24,
+      "diagramas_lidos": 2,
+      "ao_lado": {
+        "figuras": 2,
+        "flutuam": 2,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      },
+      "controle": {
+        "figuras": 2,
+        "flutuam": 0,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      }
+    },
+    {
+      "livro": "Gunderam - Neue Eröffnungswege Ein Schach-Praktikum (1961).pdf",
+      "folha": 27,
+      "diagramas_lidos": 3,
+      "ao_lado": {
+        "figuras": 3,
+        "flutuam": 3,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      },
+      "controle": {
+        "figuras": 3,
+        "flutuam": 0,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      }
+    },
+    {
+      "livro": "Gunderam - Neue Eröffnungswege Ein Schach-Praktikum (1961).pdf",
+      "folha": 53,
+      "diagramas_lidos": 3,
+      "ao_lado": {
+        "figuras": 3,
+        "flutuam": 3,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      },
+      "controle": {
+        "figuras": 3,
+        "flutuam": 0,
+        "editor_certo": true,
+        "divergencias": [],
+        "mapa": [],
+        "selecao": [],
+        "digitacao": []
+      }
+    }
+  ],
+  "escolha_das_folhas": "duas folhas de cada um de cinco livros em que um diagrama tem texto a mesma altura na pagina, achadas lendo 10 folhas espacadas de cada PDF com o motor camada: dois nascidos digitais (Aagaard, Dvoretsky) e tres scans (Kemeri 1937, Euwe/Kramer 1-2, Gunderam). Nos cinco o texto ao lado e a outra coluna da pagina, que e como esses livros diagramam.",
+  "leitura": "Passa. As 21 figuras flutuam com o texto ao lado e nenhuma no controle, e o editor fica certo nas duas vistas. A primeira corrida (sobre c858f3a) reprovou a folha 132 do Kemeri nas DUAS vistas: o OCR devolveu U+1F5F8, que o Qt conta como duas posicoes e o mapa contava como uma, e a letra digitada depois dela era lida no vizinho. O defeito era do editor de antes, e nao da figura -- o controle e o que mostrou isso. Consertado em 6f75982; esta e a corrida sobre o conserto."
+}

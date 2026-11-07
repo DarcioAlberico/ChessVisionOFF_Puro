@@ -69,16 +69,13 @@ def letra_do_pressionado(face_pressionada: str, letra_em_repouso: str) -> str:
 
 
 __all__ = [
-    "A_FOLHA",
     "ESCURECIMENTO_DO_PRESSIONADO",
-    "O_WIDGET",
     "PAPEIS_DA_PALETA",
     "PAPEL_PINTADO",
     "PAPEIS_DA_PALETA_MORTA",
     "PROPRIEDADE_DE_APOIO",
     "QUEM_PINTA",
     "PROPRIEDADE_DE_PAPEL",
-    "RAIO_NA_BASE",
     "RECHEIO_DA_FOLHA",
     "RECHEIO_DO_TEMA",
     "folha_de_estilo",
@@ -373,7 +370,13 @@ def folha_de_estilo(
         f"QGroupBox::title {{ subcontrol-origin: margin; left: {linha}px; padding: 0 {minima}px; }}",
     ]
     regras += _escala_tipografica(base=base)
-    regras += _relevo(cor, base=base, densidade=densidade, marcas=marcas or {})
+    regras += _relevo(
+        cor,
+        base=base,
+        densidade=densidade,
+        marcas=marcas or {},
+        recheio_no_foco={seletor: recheio_com_anel(seletor, base=base, densidade=densidade) for seletor in RECHEIO_DO_TEMA},
+    )
     return "\n".join(regras)
 
 
@@ -497,8 +500,27 @@ def _escala_tipografica(*, base: int) -> list[str]:
     return regras
 
 
+def recheio_com_anel(seletor: str, *, base: int, densidade: str) -> str:
+    """O recheio do controle com o anel de 2 px: **um pixel a menos de cada lado** que o de repouso (S-555).
+
+    A borda em repouso é de 1 px e o anel, de 2. Quem paga o pixel a mais é o recheio, e é só o que ele
+    pode pagar. A primeira versão zerava o recheio, e o botão **encolhia ao ganhar o foco**: de 285x29
+    para 267x23 na barra da sala, com a fila inteira andando a cada `Tab`.
+    """
+    h, v = RECHEIO_DO_TEMA[seletor]
+    return (
+        f"{max(0, _escalado(v, base=base, densidade=densidade) - 1)}px"
+        f" {max(0, _escalado(h, base=base, densidade=densidade) - 1)}px"
+    )
+
+
 def _relevo(
-    cor: Callable[[str], str], *, base: int, densidade: str, marcas: dict[str, str] | None = None
+    cor: Callable[[str], str],
+    *,
+    base: int,
+    densidade: str,
+    marcas: dict[str, str] | None = None,
+    recheio_no_foco: dict[str, str] | None = None,
 ) -> list[str]:
     """O relevo do cromo: face, borda, foco, seleção e barra de rolagem (F9).
 
@@ -589,11 +611,18 @@ def _relevo(
             # dos dois desligado.
             f"{seletor}:disabled {{ background-color: {superficie}; color: {morto};"
             f" border: 1px solid {separador}; }}",
-            f"{seletor}:focus {{ border: 2px solid {foco}; padding: 0px; }}",
+            f"{seletor}:focus {{ border: 2px solid {foco}; padding: {(recheio_no_foco or {}).get(seletor, '0px')}; }}",
         ]
     regras += [
         f"QToolButton:checked {{ background-color: {selecao}; color: {sobre_selecao};"
         f" border: 1px solid {foco}; }}",
+        # **O marcado que tem o foco precisa de regra própria, e por dois motivos** (S-556). Sem ela, o
+        # `:checked` acima vem depois do `:focus` e toma a borda: o foco some justamente no botão ligado.
+        # E não bastaria inverter a ordem: `FOCO` sobre `SELECAO` mede **1,14:1** na clássica e na fita, os
+        # dois quase o mesmo azul. O anel aqui é a **letra** do marcado, que passa de 4,8:1 sobre a face nas
+        # três peles, e a face não muda: "ligado" continua dito por ela, a 3,35:1 ou mais contra a superfície.
+        f"QToolButton:checked:focus {{ border: 2px solid {sobre_selecao};"
+        f" padding: {(recheio_no_foco or {}).get('QToolButton', '0px')}; }}",
         # **`::drop-down` e `::up-button` ficam sem regra, e é decisão medida.** A primeira
         # versão deste bloco declarava `QComboBox::drop-down {{ border: none; width: ... }}` --
         # e a prancha de controles mostrou a caixa de escolha **sem seta nenhuma**. Em Qt,

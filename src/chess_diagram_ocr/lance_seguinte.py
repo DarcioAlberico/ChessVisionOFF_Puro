@@ -253,7 +253,7 @@ def conferir(
             if _fecha(fen_from_class_indices(estado), turn, fullmove, tokens, exigidos) is not None:
                 fecham.append(tuple(trocas))
         if len(fecham) == 1:
-            trocas = fecham[0]
+            trocas = fecham[0]  # type: ignore[assignment]  # caminho de medição (S-218): mudar a árvore invalida os relatórios de campo
             estado = list(base)
             for casa, _de, para in trocas:
                 estado[casa] = para
@@ -261,7 +261,7 @@ def conferir(
             descricao = ", ".join(
                 f"{_nome(casa)} {_letra(de)}→{_letra(para)}" for casa, de, para in trocas)
             return ReparoPeloLance(
-                False, lance=lance, trocas=trocas, placement=reparado,
+                False, lance=lance, trocas=trocas, placement=reparado,  # type: ignore[arg-type]
                 motivo=f"o lance impresso {lance!r} só replica com {descricao}")
         if len(fecham) > 1:
             return ReparoPeloLance(

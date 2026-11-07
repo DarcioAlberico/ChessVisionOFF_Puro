@@ -31,6 +31,7 @@ SIDE_SOURCE_LABELS: dict[str, str] = {
     "default": "assumido (o PDF não diz)",
     "manual": "definido por você",
     "queue": "vindo da fila de revisão",
+    "pgn": "do PGN do livro",
 }
 """De onde saiu o lado a jogar (S-16/S-17/S-19).
 
@@ -82,7 +83,7 @@ em `src/` procurava o binário -- `engine.find_engine` não tinha um único cham
 A carta §3.3 cobra que a mensagem de erro diga o que fazer a seguir; esta dizia, e mandava fazer o
 que não resolve, que é pior do que não dizer.
 
-Hoje a janela procura (`qt/janela._motor_de_analise`) e, quando não acha, **desabilita os três
+Hoje a janela procura (`qt/preferencias.motor_das_preferencias`) e, quando não acha, **desabilita os três
 comandos** -- de modo que esta frase é a rede de segurança de um caminho que o menu já não oferece,
 e não a explicação principal. Quem explica é `SEM_MOTOR_DICA`, na dica do item desabilitado."""
 
@@ -98,7 +99,7 @@ o motivo cabe. Sem ela, um item cinza faz procurar o defeito na própria máquin
 
 **Os dois caminhos escritos aqui são os dois que `engine.find_engine` de fato percorre**, e essa é
 a diferença para a frase de antes: `CANDIDATE_DIRS` começa por `engines/`, e
-`settings.EngineSettings.path` é lido em `qt/janela._motor_de_analise`. A instrução é executável, e
+`settings.EngineSettings.path` é lido em `qt/preferencias.motor_das_preferencias`. A instrução é executável, e
 foi executada -- ver o §1 do relatório do ciclo 16."""
 
 # ------------------------------------------------------- um conceito, um nome (S-166)
@@ -116,6 +117,12 @@ LADO_A_JOGAR = "Lado a jogar"
 
 "Lado a jogar" ganha porque é o nome do conceito no PGN (`SideToMove`) e porque "Vez" sozinho, num
 rodapé, não diz vez de quê."""
+
+COPIAR_FEN = "Copiar FEN"
+"""O rótulo do botão que põe a FEN na área de transferência.
+
+Aqui porque duas telas o dizem: o painel de Resultado copia a FEN **lida** e a sala copia a
+do estudo, e as duas escrevem a mesma coisa no botão -- que é o critério deste módulo."""
 
 MAPA_DE_INCERTEZA = "Mapa de incerteza"
 """Era "Heatmap de incerteza" -- metade em inglês, e a metade que nomeia a coisa."""
@@ -318,6 +325,59 @@ que a região está vazia e o que a enche, e o botão faz. A frase de Texto cont
 `EDITOR_VAZIO`, que já nomeava os dois caminhos de saída pelos rótulos que estão nos botões -- ela
 só deixou de ser `placeholderText`, que não quebra linha e era cortada em 77 px em qualquer janela
 abaixo de 1350 px."""
+
+def folha_por_ler(numero: int) -> str:
+    """O título do vazio da aba quando a mesa acompanha a página e a folha não está no caderno (S-644)."""
+    return f"A folha {numero} ainda não foi lida"
+
+
+def ler_a_folha(numero: int) -> str:
+    """O botão desse vazio: o número no rótulo, porque o campo de folha está longe dele."""
+    return f"Ler a folha {numero}"
+
+
+FOLHA_POR_LER_FRASE = sem_orfa(
+    "A aba acompanha a página do livro e não lê sozinha: ler custa de 1 s a 40 s, e quem decide "
+    "é quem lê. As folhas já lidas abrem do caderno."
+)
+
+MODO_FOCO_BARRA = "Modo foco: só a folha. Esc volta à mesa."
+"""A barra fina que sobra no lugar da fita no modo foco (S-658)."""
+
+NOME_DO_ESTILO: dict[str, str] = {
+    "": "Normal",
+    "titulo": "Título",
+    "prosa": "Prosa",
+    "notacao": "Notação",
+    "legenda": "Legenda",
+}
+"""Como a galeria de estilos (S-651) chama cada estilo de `rico.ESTILOS`. `""` é o sem estilo."""
+
+DICA_DO_CORPO_EM_PONTOS = (
+    "O corpo do parágrafo, em pontos. Muda o documento e a exportação -- o zoom, no rodapé, muda só a tela."
+)
+"""A dica da caixa de corpo (S-631): é ela que separa o corpo do zoom, que o pedido «aumentar a fonte» confunde."""
+
+BUSCA_PALAVRA_INTEIRA = "Palavra inteira"
+BUSCA_CURINGAS = "Curingas"
+"""As duas opções da busca do painel de navegação (S-654, S-659)."""
+
+COR_RAPIDA = {"letra": "Cor da letra: a última usada", "realce": "Realce: o último usado"}
+"""Os nomes acessíveis dos dois botões partidos de cor da fita (S-650)."""
+
+
+def dica_da_cor_rapida(canal: str, nome: str) -> str:
+    """A dica do botão partido: o que o clique põe, e onde está a lista."""
+    o_que = "a letra" if canal == "letra" else "o realce"
+    return f"Clique: {o_que} em {nome}, a última usada. A seta abre as outras cores."
+
+
+DICA_DO_RODAPE_DA_FOLHA = "Clique para escolher outra folha: o campo da folha, na aba Leitura da fita."
+"""A dica da frase do rodapé da aba Texto, que leva ao campo da folha (S-655)."""
+
+ABRIR_FOLHA_DO_CADERNO = "Abrir folha"
+"""O botão «Ler folha» quando a folha do campo já está no caderno do livro (S-612): abrir não
+chama o motor, e o rótulo diz isso. Ler de novo fica no menu do botão direito da folha."""
 
 DISPENSAR = "×"
 """O glifo de "tirar isto de cena", no botão que dispensa o retângulo selecionado (F9-C2).
@@ -860,3 +920,28 @@ falar pt-BR numa máquina cujo Qt fala alemão -- medido: com o catálogo `de` i
 `DIVERGENCIAS_DECLARADAS`. A tabela existe para o caso em que o Qt **não** traduz -- nenhum, neste
 `.qm`, e todos, numa máquina sem catálogo. Ela não existe para reescrever o vocabulário de quem já
 tem um: foi assim que `Ok` virou `Confirmar` em 32 telas no ciclo 12."""
+
+
+ROTULOS_DE_MOTOR: dict[str, str] = {
+    "auto": "auto",
+    "glifo": "glifo",
+    "camada": "camada",
+    "camada_prosa": "Camada na prosa (livro digital)",
+    "fusao": "Glifo + Tesseract (experimental)",
+}
+"""O que a caixa de motor da aba Texto escreve. **Nunca o identificador cru** nos dois da prosa (S-716, S-717)."""
+
+ROTULOS_DE_LINGUA: dict[str, str] = {
+    "eng": "Inglês",
+    "por": "Português",
+    "spa": "Espanhol",
+    "deu": "Alemão",
+    "nld": "Holandês",
+    "fra": "Francês",
+    "ron": "Romeno",
+    "rus": "Russo",
+}
+"""A língua do livro, que o Tesseract precisa saber e a pessoa escolhe à mão até a S-723 (S-717)."""
+
+NADA_A_REVISAR = "Nenhuma palavra a revisar nesta folha."
+"""O `proxima_a_revisar` numa folha sem marca: rodapé, e não caixa -- é resposta, e não erro (S-718)."""

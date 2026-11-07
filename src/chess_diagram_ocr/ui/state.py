@@ -35,12 +35,13 @@ from . import viewport
 
 logger = logging.getLogger(__name__)
 
-STATE_VERSION = 6
+STATE_VERSION = 7
 """Versão 1 é o formato sem o campo `version`, que existe em disco hoje.
 
 A **3** é a S-221, e ela só acrescenta `skin`. A **4** é a S-230, e acrescenta `piece_set` e
 `piece_dir`. A **5** é a S-232, e acrescenta `densidade`. A **6** é a S-271, e acrescenta
-`estudo_aberto` e `estudo_divisor`. Um arquivo de qualquer versão anterior abre sem perder nada: o campo que falta cai
+`estudo_aberto` e `estudo_divisor`. A **7** é a S-519, e acrescenta `estudo_divisor_vertical`. Um
+arquivo de qualquer versão anterior abre sem perder nada: o campo que falta cai
 no padrão, que é "nada escolhido" -- e nada escolhido é a pele clássica, com o conjunto de peças de
 sempre, a densidade que a pele sugerir e nenhum estudo aberto."""
 
@@ -67,7 +68,13 @@ class AppState:
     last_pdf: str = ""
     last_page: int = 0
     pdf_zoom: float = 0.7
-    board_zoom: float = 0.85
+    board_zoom: float = 1.0
+    """Que fração da coluna o tabuleiro da sala ocupa (S-518).
+
+    **Era 0,85 e não tinha leitor.** O número vinha do deslizador do Tk, onde o canvas do estudo era
+    de tamanho fixo e a fração era do canvas; aqui o tabuleiro **é** a coluna, e o padrão certo é
+    ocupá-la -- `BoardGeometry.fit` já desconta a margem das coordenadas antes de enquadrar. Quem
+    quiser menor troca aqui, e o valor sobrevive à sessão."""
 
     pdf_enquadramento: str = viewport.ENQUADRAMENTO_LARGURA
     """Como o visor enquadra a folha: `LARGURA`, `PAGINA` ou `LIVRE` (F9-C3).
@@ -86,6 +93,7 @@ class AppState:
     O padrão é `LARGURA` e não `LIVRE`: um estado gravado antes deste campo não tem
     enquadramento nenhum a restaurar, e "caiba na largura" é a resposta que uma janela de
     leitura dá quando ninguém disse outra coisa."""
+
     pdf_history: dict[str, int] = field(default_factory=dict)
     """Última página vista por PDF, indexado pelo caminho absoluto."""
 
@@ -167,6 +175,8 @@ class AppState:
     """O motor de leitura escolhido na aba Texto (`ui/texto_declarado.MOTORES`), ou `""` para o
     padrão da aba (item 17 de 2026-10-09). Não é validado aqui, pela razão de `skin`: quem o
     aplica é `PainelDeTexto.definir_motor`, que ignora um nome que não conhece."""
+    texto_lingua: str = ""
+    """A língua do livro que o Tesseract lê (S-717). Vazio é a padrão; a S-723 a leva ao caderno."""
 
     texto_bloco: bool = False
     """O modo bloco da aba Texto estava ligado? (item 17) Quem o liga paga ~40 s por folha de
@@ -189,6 +199,34 @@ class AppState:
     **notação** -- uma linha de lances quebrada deixa de ser uma linha de lances --, e essa escolha
     dura tanto quanto a de `wheel_flips_page`, que é o interruptor vizinho com o mesmo argumento."""
 
+    texto_diagramas: str = ""
+    """«Diagramas no texto» (S-620): `""` centralizados, `"esquerda"` à esquerda."""
+    texto_miniatura: str = ""
+    """O tamanho da miniatura do diagrama no texto (S-623): `pequeno`, `medio` ou `grande`; `""` é o padrão."""
+    texto_familia: str = ""
+    """A letra de leitura da folha (S-632): `""` a proporcional do tema, `serifada` ou `monoespacada`."""
+    texto_ao_lado: bool = False
+    """O texto corre ao lado do diagrama que se desenha à esquerda (S-624)."""
+    texto_ultima_cor: str = ""
+    texto_ultimo_realce: str = ""
+    """A última cor de letra e de realce dos botões partidos da fita (S-650). `""` é a primeira do autor."""
+    texto_ler_ao_chegar: bool = False
+    """Com a mesa acompanhando a página, a folha sem caderno é lida ao chegar (S-644). Desligada por padrão."""
+    texto_fita_recolhida: bool = False
+    """A fita do Texto recolhida com `Ctrl+F1` (S-652)."""
+    texto_glifos_recentes: list[str] = field(default_factory=list)
+    """Os glifos usados por último na paleta (S-650), do mais novo ao mais velho."""
+    texto_mesa: str = ""
+    """A mesa de texto se arma ao abrir o Texto? (S-640) `ui/mesa`: `""` e `texto` ligam, `nunca`
+    desliga. Não é validada aqui além do tipo, pela razão de `skin`: quem a aplica é `mesa.ligada`."""
+
+    mesa_fraction: float = 0.0
+    """A parte da largura que o PDF ocupa **na mesa de texto** (S-640). `0` = nunca guardada.
+
+    Separada de `sash_fraction` porque a mesa troca os lados do divisor: gravar a fração dela por cima
+    da outra faria a janela abrir, na sessão seguinte, com a coluna do trabalho do tamanho que o PDF
+    tinha na mesa. As duas disposições lembram cada uma a sua alça."""
+
     estudo_aberto: str = ""
     """A chave do diagrama cujo estudo estava aberto na sala (S-271). Vazio = nenhum.
 
@@ -199,6 +237,15 @@ class AppState:
     **Não é validada aqui**, pela mesma razão de `skin` e `window_geometry`: se aquele diagrama ainda
     existe é pergunta de quem for abrir o livro, e uma chave que não casa com nada tem a mesma
     resposta de não ter nada guardado."""
+
+    estudo_divisor_vertical: float = 0.0
+    """Onde está o divisor entre a lista de lances e o comentário, como fração (S-519). `0.0` = nunca
+    guardado.
+
+    **Um campo novo e não uma reforma do de baixo**, porque são dois divisores com assuntos
+    diferentes: o horizontal reparte tabuleiro e coluna de leitura, o vertical reparte a coluna de
+    leitura entre lances, comentário e motor. Guardá-los juntos faria mexer num mover o outro no
+    arquivo, e o zero de "nunca guardado" deixaria de distinguir qual dos dois nunca foi mexido."""
 
     estudo_divisor: float = 0.0
     """Onde está o divisor entre o tabuleiro e a lista de lances, como fração (S-276). `0.0` = nunca
@@ -272,9 +319,22 @@ class AppState:
             "texto_zoom": int(self.texto_zoom),
             "texto_quebra": bool(self.texto_quebra),
             "texto_motor": str(self.texto_motor),
+            "texto_lingua": str(self.texto_lingua),
             "texto_bloco": bool(self.texto_bloco),
+            "texto_diagramas": str(self.texto_diagramas),
+            "texto_miniatura": str(self.texto_miniatura),
+            "texto_familia": str(self.texto_familia),
+            "texto_ao_lado": bool(self.texto_ao_lado),
+            "texto_ler_ao_chegar": bool(self.texto_ler_ao_chegar),
+            "texto_ultima_cor": str(self.texto_ultima_cor),
+            "texto_ultimo_realce": str(self.texto_ultimo_realce),
+            "texto_fita_recolhida": bool(self.texto_fita_recolhida),
+            "texto_glifos_recentes": [str(g) for g in self.texto_glifos_recentes][:20],
+            "texto_mesa": str(self.texto_mesa),
+            "mesa_fraction": float(self.mesa_fraction),
             "estudo_aberto": self.estudo_aberto,
             "estudo_divisor": float(self.estudo_divisor),
+            "estudo_divisor_vertical": float(self.estudo_divisor_vertical),
         }
 
 
@@ -402,10 +462,40 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     texto_motor = raw.get("texto_motor")
     if isinstance(texto_motor, str):
         state.texto_motor = texto_motor
+    texto_lingua = raw.get("texto_lingua")
+    if isinstance(texto_lingua, str):
+        state.texto_lingua = texto_lingua
 
     texto_bloco = raw.get("texto_bloco")
     if isinstance(texto_bloco, bool):
         state.texto_bloco = texto_bloco
+
+    for chave in ("texto_diagramas", "texto_miniatura", "texto_familia"):
+        valor = raw.get(chave)
+        if isinstance(valor, str):
+            setattr(state, chave, valor)
+    ao_lado = raw.get("texto_ao_lado")
+    if isinstance(ao_lado, bool):
+        state.texto_ao_lado = ao_lado
+    for chave in ("texto_ultima_cor", "texto_ultimo_realce"):
+        if isinstance(raw.get(chave), str):
+            setattr(state, chave, raw[chave])
+    ler_ao_chegar = raw.get("texto_ler_ao_chegar")
+    if isinstance(ler_ao_chegar, bool):
+        state.texto_ler_ao_chegar = ler_ao_chegar
+    recolhida = raw.get("texto_fita_recolhida")
+    if isinstance(recolhida, bool):
+        state.texto_fita_recolhida = recolhida
+    glifos = raw.get("texto_glifos_recentes")
+    if isinstance(glifos, list):
+        state.texto_glifos_recentes = [g for g in glifos if isinstance(g, str) and g][:20]
+    texto_mesa = raw.get("texto_mesa")
+    if isinstance(texto_mesa, str):
+        state.texto_mesa = texto_mesa
+
+    mesa = raw.get("mesa_fraction")
+    if isinstance(mesa, (int, float)) and not isinstance(mesa, bool):
+        state.mesa_fraction = _clamp(float(mesa), 0.0, 1.0)
 
     estudo_aberto = raw.get("estudo_aberto")
     if isinstance(estudo_aberto, str):
@@ -414,6 +504,10 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     estudo_divisor = raw.get("estudo_divisor")
     if isinstance(estudo_divisor, (int, float)) and not isinstance(estudo_divisor, bool):
         state.estudo_divisor = _clamp(float(estudo_divisor), 0.0, 1.0)
+
+    vertical = raw.get("estudo_divisor_vertical")
+    if isinstance(vertical, (int, float)) and not isinstance(vertical, bool):
+        state.estudo_divisor_vertical = _clamp(float(vertical), 0.0, 1.0)
 
     return state
 

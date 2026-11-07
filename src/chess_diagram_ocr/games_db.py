@@ -59,17 +59,22 @@ milissegundos. Estes dois caminhos aqui são os que **produzem** aquelas respost
 
 from __future__ import annotations
 
+import bz2
+import gzip
+import importlib.util
+import io
 import logging
 import multiprocessing as mp
 import os
 import re
 import sys
 import threading
+import zipfile
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 import chess
 
@@ -80,13 +85,25 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "DEFAULT_DATABASE_DIR",
+    "EXTENSOES_DE_BASE",
     "DiagramMatch",
+    "FluxoDePGN",
     "GameRecord",
+    "LinhasDePGN",
     "PlayerPair",
     "PositionHit",
     "PositionIndex",
+    "abrir_pgn",
+    "abrir_pgn_bytes",
+    "arquivo_fisico",
     "as_databases",
     "database_paths",
+    "decodificar_linha",
+    "eh_base",
+    "eh_comprimida",
+    "existe_base",
+    "nome_da_base",
+    "tamanho_da_base",
     "match_entries",
     "match_positions",
     "occupancy",
@@ -181,12 +198,349 @@ def database_paths(directory: Path | None = None) -> list[Path]:
     **A ordem é por nome, e não por tamanho, porque ela virou identidade.** O índice por nome
     grava *em que arquivo* cada partida mora, e esse número é a posição nesta lista; uma ordem
     que mudasse quando um arquivo crescesse faria cada offset apontar para o arquivo errado --
-    o defeito que o fingerprint existe para impedir.
+    o defeito que o fingerprint existe para impedir. (Desde a S-532 o número vem do manifesto do
+    índice e sobrevive à ordem; a ordem por nome fica porque é a que a pessoa lê na lista.)
+
+    **Comprimidos e `.zip` entram desde a S-531**, e cada membro `.pgn` de um `.zip` é uma base
+    por si -- um `Path` da forma `pasta/base.zip/membro.pgn`, que `abrir_pgn` sabe abrir. Um
+    `.pgn.zst` só entra quando o `zstandard` está instalado: listar o que não se sabe abrir seria
+    uma base que falha na primeira busca, e a busca é justamente onde ninguém está olhando o log.
     """
     pasta = directory or DEFAULT_DATABASE_DIR
     if not pasta.is_dir():
         return []
-    return sorted(pasta.glob("*.pgn"), key=lambda caminho: caminho.name.lower())
+    achados: list[Path] = []
+    for caminho in pasta.iterdir():
+        if not caminho.is_file():
+            continue
+        sufixo = _sufixo_de_base(caminho.name)
+        if not sufixo:
+            continue
+        if sufixo == ".pgn.zst" and not _TEM_ZSTANDARD:
+            logger.warning("%s ficou de fora: ler .zst pede o pacote `zstandard` (uv pip install zstandard).", caminho.name)
+            continue
+        if sufixo == ".zip":
+            achados.extend(_membros_pgn(caminho))
+        else:
+            achados.append(caminho)
+    return sorted(achados, key=lambda caminho: nome_da_base(caminho).lower())
+
+
+# ------------------------------------------------------------------- o leitor único (S-531)
+
+EXTENSOES_DE_BASE = (".pgn", ".pgn.gz", ".pgn.bz2", ".pgn.zst", ".zip")
+"""O que conta como base na pasta. O `.zip` entra pelos membros `.pgn` que tiver dentro.
+
+**Sem descompactar para o disco, e isto é o item.** Uma gigabase de 8,6 GB ocupa ~1,5 GB em
+`.gz`; pedir à pessoa que a expanda antes de usar é pedir 7 GB de disco por um arquivo que ela
+já tem. O leitor descompacta em fluxo, linha a linha, e o resto do módulo não sabe se o que lê
+veio solto ou comprimido -- os deslocamentos são do fluxo descompactado, e é com eles que o
+índice trabalha.
+
+**O preço, dito aqui.** Um fluxo comprimido não tem `seek` de verdade: voltar é recomeçar do
+zero e descompactar até o ponto. A varredura em pedaços (`chunk_bounds`) trata a base
+comprimida como um pedaço só, e a consulta por offset (`games_index.lookup_pair`) lê os offsets
+em ordem crescente para pagar **uma** descompactação por consulta -- que numa base de gigabytes
+são segundos, e não os milissegundos do arquivo solto. Quem consulta muito, descompacta; quem
+guarda, comprime. O programa aceita os dois."""
+
+_TEM_ZSTANDARD = importlib.util.find_spec("zstandard") is not None
+"""Opcional de propósito: o `zstandard` é uma extensão em C que o bundle da S-55 não carrega."""
+
+_KB_DE_LEITURA = 1 << 16
+"""O bloco do `BufferedReader` sobre o fluxo `.zst`, que não sabe `readline` sozinho."""
+
+
+def _sufixo_de_base(nome: str) -> str:
+    """Qual das `EXTENSOES_DE_BASE` o nome carrega, ou vazio. `.PGN.GZ` conta: o Windows não liga."""
+    baixo = nome.lower()
+    for sufixo in EXTENSOES_DE_BASE:
+        if baixo.endswith(sufixo):
+            return sufixo
+    return ""
+
+
+def eh_base(caminho: Path) -> bool:
+    """O nome diz que isto é uma base que este programa sabe abrir."""
+    sufixo = _sufixo_de_base(caminho.name)
+    if sufixo == ".pgn.zst":
+        return _TEM_ZSTANDARD
+    return bool(sufixo)
+
+
+def eh_comprimida(caminho: Path) -> bool:
+    """Fluxo sem `seek` barato: `.gz`, `.bz2`, `.zst` ou membro de `.zip`."""
+    if _membro_de_zip(caminho) is not None:
+        return True
+    return _sufixo_de_base(caminho.name) in (".pgn.gz", ".pgn.bz2", ".pgn.zst")
+
+
+def _membro_de_zip(caminho: Path) -> tuple[Path, str] | None:
+    """`pasta/base.zip/dentro/x.pgn` -> (`pasta/base.zip`, `dentro/x.pgn`); `None` para arquivo solto.
+
+    O `Path` de um membro não existe no disco, e é isso que o distingue: um arquivo que existe é
+    um arquivo, mesmo que um dos pais dele se chame `algo.zip`.
+    """
+    if caminho.is_file():
+        return None
+    partes = caminho.parts
+    for corte in range(len(partes) - 1, 0, -1):
+        if partes[corte - 1].lower().endswith(".zip"):
+            recipiente = Path(*partes[:corte])
+            if recipiente.is_file():
+                return recipiente, "/".join(partes[corte:])
+            return None
+    return None
+
+
+def _membros_pgn(recipiente: Path) -> list[Path]:
+    """Os `.pgn` de dentro de um `.zip`, como caminhos `recipiente/membro`."""
+    try:
+        with zipfile.ZipFile(recipiente) as zipado:
+            return [
+                recipiente / nome
+                for nome in zipado.namelist()
+                if nome.lower().endswith(".pgn") and not nome.endswith("/")
+            ]
+    except (OSError, zipfile.BadZipFile) as exc:
+        logger.warning("O .zip %s não pôde ser lido (%s) e ficou de fora da base.", recipiente.name, exc)
+        return []
+
+
+def arquivo_fisico(caminho: Path) -> Path:
+    """O arquivo que existe no disco: o próprio, ou o `.zip` de que o caminho é membro."""
+    membro = _membro_de_zip(caminho)
+    return caminho if membro is None else membro[0]
+
+
+def nome_da_base(caminho: Path) -> str:
+    """Como a base se chama no índice e na tela: `base.pgn`, ou `base.zip/membro.pgn`.
+
+    O nome do membro sozinho não serve de identidade: dois `.zip` podem ter um `games.pgn` cada,
+    e um `games.pgn` solto ao lado. O índice grava este nome e casa por ele na consulta.
+    """
+    membro = _membro_de_zip(caminho)
+    return caminho.name if membro is None else f"{membro[0].name}/{membro[1]}"
+
+
+def existe_base(caminho: Path) -> bool:
+    """O `is_file()` que também vale para membro de `.zip`."""
+    if caminho.is_file():
+        return True
+    membro = _membro_de_zip(caminho)
+    if membro is None:
+        return False
+    try:
+        with zipfile.ZipFile(membro[0]) as zipado:
+            return membro[1] in zipado.namelist()
+    except (OSError, zipfile.BadZipFile):
+        return False
+
+
+def tamanho_da_base(caminho: Path) -> int:
+    """Quantos bytes a base ocupa **no disco** -- comprimidos, se for o caso. Zero se não existe.
+
+    É a régua do progresso e da identidade (`index_fingerprint`), e por isso é o tamanho que o
+    disco vê e não o descompactado: o segundo só se conhece lendo o arquivo inteiro.
+    """
+    membro = _membro_de_zip(caminho)
+    try:
+        if membro is None:
+            return caminho.stat().st_size
+        with zipfile.ZipFile(membro[0]) as zipado:
+            return zipado.getinfo(membro[1]).compress_size
+    except (OSError, KeyError, zipfile.BadZipFile):
+        return 0
+
+
+def decodificar_linha(linha: bytes) -> str:
+    """Uma linha do `.pgn` como texto: UTF-8 quando é, `cp1252` quando não é.
+
+    **A decisão de codificação, registrada (S-531).** PGN antigo -- e boa parte do que circula
+    em `.zip` -- está em Latin-1/cp1252, e `Kieseritzky` vira `Kieseritzk\\ufffd` sob
+    `errors="replace"`: a conferência de sobrenomes da consulta por nome ainda casa, mas o nome
+    que a tela mostra sai com o losango. Tentar UTF-8 estrito primeiro custa o mesmo que
+    `replace` numa linha válida (é o caminho rápido em C), e só a linha que falha paga a segunda
+    decodificação. Por linha e não por arquivo porque uma base montada de várias fontes mistura
+    as duas coisas no mesmo `.pgn`, e é o que a gigabase desta máquina faz.
+
+    `cp1252` e não `latin-1` porque é o que o Windows gravou: as aspas tipográficas e o travessão
+    dos comentários existem em cp1252 e são controle em latin-1. Os cinco pontos que a cp1252 não
+    define caem no `replace`, que é o que o resto do módulo sempre fez.
+    """
+    if linha.startswith(_BOM):
+        linha = linha[len(_BOM) :]
+    try:
+        return linha.decode("utf-8")
+    except UnicodeDecodeError:
+        return linha.decode("cp1252", "replace")
+
+
+class _ArquivoContado:
+    """O arquivo cru, contando quantos bytes saíram do disco. É a régua de progresso do leitor.
+
+    O descompactador lê daqui; `lidos` é a posição **comprimida**, que é a única que dá para
+    comparar com o tamanho do arquivo sem conhecer o descompactado.
+    """
+
+    def __init__(self, arquivo: IO[bytes]) -> None:
+        self._arquivo = arquivo
+        self.lidos = 0
+        self.name = getattr(arquivo, "name", "")
+
+    def read(self, quantos: int = -1) -> bytes:
+        dados = self._arquivo.read(quantos)
+        self.lidos += len(dados)
+        return dados
+
+    def readinto(self, destino: Any) -> int:
+        lidos = self._arquivo.readinto(destino) or 0  # type: ignore[attr-defined]
+        self.lidos += lidos
+        return lidos
+
+    def seek(self, deslocamento: int, de_onde: int = 0) -> int:
+        return self._arquivo.seek(deslocamento, de_onde)
+
+    def tell(self) -> int:
+        return self._arquivo.tell()
+
+    def readable(self) -> bool:
+        return True
+
+    def seekable(self) -> bool:
+        return True
+
+    def writable(self) -> bool:
+        return False
+
+    def flush(self) -> None:
+        return None
+
+    def close(self) -> None:
+        self._arquivo.close()
+
+    @property
+    def closed(self) -> bool:
+        return self._arquivo.closed
+
+
+class FluxoDePGN:
+    """Um `.pgn` aberto em **bytes**, venha ele solto, comprimido ou de dentro de um `.zip`.
+
+    É o que o código de offsets usa: `tell()` e `seek()` são do fluxo descompactado, então um
+    offset gravado no índice vale para o mesmo arquivo comprimido do mesmo jeito. `bytes_lidos`
+    é quanto já saiu do disco, comprimido -- a régua do progresso.
+    """
+
+    def __init__(self, caminho: Path) -> None:
+        self.caminho = Path(caminho)
+        membro = _membro_de_zip(self.caminho)
+        fisico = self.caminho if membro is None else membro[0]
+        self.comprimido = membro is not None or _sufixo_de_base(fisico.name) in (".pgn.gz", ".pgn.bz2", ".pgn.zst")
+        self._bruto: IO[bytes] = open(fisico, "rb")  # noqa: SIM115 - fechado em `close`
+        self._contador = _ArquivoContado(self._bruto)
+        self._zipado: zipfile.ZipFile | None = None
+        try:
+            self._fluxo: Any = self._abrir(fisico, membro)
+        except Exception:
+            self._bruto.close()
+            raise
+
+    def _abrir(self, fisico: Path, membro: tuple[Path, str] | None) -> Any:
+        if membro is not None:
+            self._zipado = zipfile.ZipFile(self._contador)  # type: ignore[arg-type]
+            return self._zipado.open(membro[1])
+        sufixo = _sufixo_de_base(fisico.name)
+        if sufixo == ".pgn.gz":
+            return gzip.GzipFile(fileobj=self._contador, mode="rb")  # type: ignore[arg-type]
+        if sufixo == ".pgn.bz2":
+            return bz2.BZ2File(self._contador)  # type: ignore[arg-type]
+        if sufixo == ".pgn.zst":
+            if not _TEM_ZSTANDARD:
+                raise OSError(f"Ler {fisico.name} pede o pacote `zstandard` (uv pip install zstandard).")
+            import zstandard  # a importação fica aqui: o pacote é opcional
+
+            leitor = zstandard.ZstdDecompressor().stream_reader(self._contador)
+            return io.BufferedReader(leitor, buffer_size=_KB_DE_LEITURA)
+        return self._bruto
+
+    # ------------------------------------------------------------------ o que o resto usa
+
+    def readline(self) -> bytes:
+        return self._fluxo.readline()
+
+    def read(self, quantos: int = -1) -> bytes:
+        return self._fluxo.read(quantos)
+
+    def tell(self) -> int:
+        return self._fluxo.tell()
+
+    def seek(self, deslocamento: int, de_onde: int = 0) -> int:
+        """Num fluxo comprimido, voltar é recomeçar: ver `EXTENSOES_DE_BASE`."""
+        return self._fluxo.seek(deslocamento, de_onde)
+
+    def __iter__(self) -> Iterator[bytes]:
+        while True:
+            linha = self._fluxo.readline()
+            if not linha:
+                return
+            yield linha
+
+    @property
+    def bytes_lidos(self) -> int:
+        """Quanto já saiu do disco. No arquivo solto é a própria posição."""
+        if self._fluxo is self._bruto:
+            return self._bruto.tell()
+        return self._contador.lidos
+
+    def close(self) -> None:
+        try:
+            if self._fluxo is not self._bruto:
+                self._fluxo.close()
+            if self._zipado is not None:
+                self._zipado.close()
+        finally:
+            self._bruto.close()
+
+    def __enter__(self) -> FluxoDePGN:
+        return self
+
+    def __exit__(self, *_excecao: object) -> None:
+        self.close()
+
+
+class LinhasDePGN:
+    """O mesmo fluxo, em **texto**: cada linha já decodificada por `decodificar_linha`."""
+
+    def __init__(self, fluxo: FluxoDePGN) -> None:
+        self._fluxo = fluxo
+
+    def __iter__(self) -> Iterator[str]:
+        for linha in self._fluxo:
+            yield decodificar_linha(linha)
+
+    @property
+    def bytes_lidos(self) -> int:
+        return self._fluxo.bytes_lidos
+
+    def close(self) -> None:
+        self._fluxo.close()
+
+    def __enter__(self) -> LinhasDePGN:
+        return self
+
+    def __exit__(self, *_excecao: object) -> None:
+        self.close()
+
+
+def abrir_pgn_bytes(caminho: Path) -> FluxoDePGN:
+    """A base em bytes, com `tell`/`seek` do fluxo descompactado. Para quem trabalha com offset."""
+    return FluxoDePGN(caminho)
+
+
+def abrir_pgn(caminho: Path) -> LinhasDePGN:
+    """A base como linhas de texto. **Todo `open()` de PGN do projeto passa por aqui (S-531).**"""
+    return LinhasDePGN(FluxoDePGN(caminho))
 
 
 def as_databases(databases: Path | Sequence[Path] | None) -> list[Path]:
@@ -540,7 +894,9 @@ def _collect_players(
             )
         coletando, movetext = None, []
 
-    with database.open("r", encoding="utf-8-sig", errors="replace") as fh:
+    # `abrir_pgn` e nao `open`: a base pode estar em `.gz`, `.bz2` ou dentro de um `.zip` (S-531),
+    # e a decodificacao por linha e a de `decodificar_linha`.
+    with abrir_pgn(database) as fh:
         for linha in fh:
             if linha.startswith("["):
                 if linha.startswith("[Event "):
@@ -701,6 +1057,9 @@ ele evita é a alternativa óbvia -- conferir o cancelamento **entre** pedaços 
 que numa varredura de dez processos significa esperar um pedaço inteiro: a passada dividida
 por dez, ou seja, minutos depois do clique."""
 
+SEM_FIM = sys.maxsize
+"""O fim de um pedaço cujo tamanho não se conhece: o de uma base comprimida (S-531)."""
+
 WORKER_ENV = "CVOFF_GAMES_WORKER"
 """Marca herdada pelos processos-filhos, e a guarda contra a recursão que a S-26 previu.
 
@@ -720,7 +1079,14 @@ def chunk_bounds(database: Path, parts: int) -> list[tuple[int, int]]:
     Cortar por byte e "andar até o próximo `[Event `" é o que permite dividir 9,7 GB sem
     lê-los antes: a alternativa -- indexar as partidas para saber onde cortar -- custaria uma
     passada inteira para poupar segundos de uma passada inteira.
+
+    **Uma base comprimida é um pedaço só** (S-531): não há como pular para o meio de um `.gz`
+    sem descompactar o que vem antes, e o fim do pedaço é `SEM_FIM` porque o tamanho
+    descompactado só se conhece no fim. Ela ocupa um processo enquanto os outros repartem as
+    bases soltas.
     """
+    if eh_comprimida(database):
+        return [(0, SEM_FIM)]
     tamanho = database.stat().st_size
     marcos = [0]
     with database.open("rb") as fh:
@@ -766,8 +1132,9 @@ def _scan_positions_chunk(argumento: tuple[Path, int, int, frozenset[str], froze
                     PositionHit(move_number=lance, side_to_move="w" if vez else "b", headers=dict(cabecalho))
                 )
 
-    with caminho.open("rb") as fh:
-        fh.seek(inicio)
+    with abrir_pgn_bytes(caminho) as fh:
+        if inicio:
+            fh.seek(inicio)
         while fh.tell() < fim:
             linha = fh.readline()
             if not linha:
@@ -777,7 +1144,7 @@ def _scan_positions_chunk(argumento: tuple[Path, int, int, frozenset[str], froze
                     processar()
                     movetext, cabecalho, fen = [], {}, ""
                     resultado.games_read += 1
-                casado = _RE_HEADER.match(linha.decode("utf-8", "replace").lstrip("﻿").rstrip())
+                casado = _RE_HEADER.match(decodificar_linha(linha).rstrip())
                 if casado is None:
                     continue
                 if casado.group(1) in _KEPT_HEADERS:
@@ -788,7 +1155,7 @@ def _scan_positions_chunk(argumento: tuple[Path, int, int, frozenset[str], froze
                 continue
             texto = linha.strip()
             if texto:
-                movetext.append(texto.decode("utf-8", "replace"))
+                movetext.append(decodificar_linha(texto))
         processar()
     return resultado
 
@@ -916,7 +1283,7 @@ def scan_by_positions(
     """
     alvos = frozenset(targets)
     total = PositionIndex()
-    bases = [caminho for caminho in as_databases(databases) if caminho.is_file()]
+    bases = [caminho for caminho in as_databases(databases) if existe_base(caminho)]
     if not alvos or not bases:
         return total
 
@@ -931,9 +1298,8 @@ def scan_by_positions(
     tarefas = [
         (caminho, inicio, fim, alvos, ocupacoes, max_hits_per_position)
         for caminho in bases
-        for inicio, fim in (
-            chunk_bounds(caminho, processos) if processos > 1 else [(0, caminho.stat().st_size)]
-        )
+        # `chunk_bounds(..., 1)` e nao `stat().st_size`: numa base comprimida o fim e `SEM_FIM`.
+        for inicio, fim in chunk_bounds(caminho, processos)
     ]
 
     if processos == 1:

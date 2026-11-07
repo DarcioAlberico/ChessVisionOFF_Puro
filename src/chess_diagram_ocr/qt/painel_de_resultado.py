@@ -82,7 +82,17 @@ from chess_diagram_ocr.qt.rotulo import CampoQueAvisaQueContinua
 from chess_diagram_ocr.qt.tabuleiro_editavel import TabuleiroEditavel
 from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import OcrService, RecognitionOrigin, RecognizedDiagram
-from chess_diagram_ocr.ui import atalhos, board_edit, comandos, espaco, estilos, strings, tipografia, tokens
+from chess_diagram_ocr.ui import (
+    atalhos,
+    barra_do_resultado,
+    board_edit,
+    comandos,
+    espaco,
+    estilos,
+    strings,
+    tipografia,
+    tokens,
+)
 from chess_diagram_ocr.ui import recorte_do_diagrama as regra_do_recorte
 from chess_diagram_ocr.ui.editor_model import DiagramEditorModel, EditorBinding, SaveKind, SaveTarget
 from chess_diagram_ocr.ui.historico import Historico
@@ -135,6 +145,10 @@ MOTIVO_LEITURA_EM_CURSO = "Gravar espera a leitura terminar: a amostra seria de 
 MOTIVO_SEM_DIAGRAMA = "Não há diagrama aberto."
 MOTIVO_SEM_DESFAZER = "Não há mudança anterior neste diagrama."
 MOTIVO_SEM_REFAZER = "Não há o que refazer: nada foi desfeito."
+MOTIVO_SEM_LANCE = (
+    "O número do lance da legenda impressa, para a exportação. Fica cinza quando o diagrama "
+    "não veio de uma página do livro -- uma imagem solta não tem onde gravá-lo."
+)
 """As três razões de um botão estar cinza, ditas na dica -- a regra da S-165, que achou treze
 botões cinzas e mudos. As duas do histórico são diferentes entre si, e quem olha precisa saber
 qual é a sua: sem diagrama não há posição nenhuma; com diagrama e pilha vazia, não há mudança
@@ -189,6 +203,19 @@ class PainelDeResultado(QWidget):
 
     selecionou = pyqtSignal(int)
     """O diagrama que passou a estar em edição, para o visor destacar a caixa dele."""
+
+    posicao_mudou = pyqtSignal()
+    """A posição mostrada aqui mudou -- por troca de diagrama, por casa corrigida ou por desfazer.
+
+    **É o `on_sync_study` do outro frontend, com um sinal no lugar de três chamadas** (S-512). Lá o
+    `result_panel` o chamava em três pontos e `app_tkinter.py:1537` o repassava à sala; o porte para
+    o Qt não trouxe nenhum dos três, e a caixa "Seguir OCR selecionado" -- marcada de fábrica --
+    deixou de seguir qualquer coisa.
+
+    Sai de `_atualizar_tudo` porque é ali que os três pontos do Tk se encontram: um lugar só, que é
+    a mesma razão de aquele método existir. Quem escuta é a sala, e **quem decide se há o que
+    fazer** é `ui/sala_declarada.decidir_sincronia` -- este sinal dispara a cada casa corrigida, e
+    reabrir o estudo a cada uma apagaria a pilha de desfazer de quem o estava analisando."""
 
     revisou = pyqtSignal(int, str, str)
     """`(posição na fila, FEN, lado)` -- o item da fila que acabou de ser corrigido e gravado.
@@ -256,9 +283,24 @@ class PainelDeResultado(QWidget):
         o preço é uma linha e um PNG duplicados por diagrama, num arquivo que este projeto existe
         para fazer crescer limpo."""
         """A chave do livro aberto. Mesma razão do de cima."""
+        self.lance_de: Callable[[int, int], int | None] = lambda _pagina, _diagrama: None
+        self.gravar_lance: Callable[[int, int, int | None], None] = lambda _p, _d, _v: None
+        """Leitura e gravação do número do lance, por (página, diagrama) (S-71).
+
+        Moram fora porque o dono da anotação é a aba Galeria: ela já edita o mesmo campo, do
+        mesmo diagrama, no mesmo arquivo. Duas cópias em memória do `data/gallery/<livro>.json`
+        divergiriam, e a última a gravar apagaria o que a outra tivesse escrito. A janela
+        substitui os dois pelos da galeria; o padrão deixa o campo cinza -- que é melhor que
+        gravar no lugar errado."""
+        self._alvo_do_lance: tuple[int, int] | None = None
+        """(página, diagrama) de quem o campo de lance está mostrando **agora**. É o que
+        `_gravar_lance` grava, e não o diagrama selecionado: a lista dispara `currentRowChanged`
+        depois de o modelo já ter trocado de página, e gravar "no selecionado" ali poria o
+        número digitado para o diagrama anterior no primeiro diagrama da página seguinte."""
 
         self._montar()
         self._atualizar_tudo()
+        atalhos.conferir_dono(self, "PainelDeResultado")
 
     # ------------------------------------------------------------------------------ montagem
 
@@ -432,14 +474,15 @@ class PainelDeResultado(QWidget):
         self.anterior = QPushButton(strings.ANTERIOR, self)
         # Os dois glifos ganham nome por extenso (F9-C2): ver `comandos.Comando.no_leitor`.
         self.anterior.setAccessibleName("Diagrama anterior")
-        self.anterior.clicked.connect(lambda: self.andar(-1))
+        # O método que `ui/barra_do_resultado.METODOS_DO_PAINEL` nomeia (S-528), e não um `lambda`.
+        self.anterior.clicked.connect(self.diagrama_anterior)
         tema.aplicar_papel(self.anterior, estilos.NEUTRO)
         # O desenho no lugar do glifo (F9-C7, §4.7): ver `qt/icones.vestir`.
         qt_icones.vestir(self.anterior, "diagrama_anterior", estilos.NEUTRO)
         linha.addWidget(self.anterior)
         self.proximo = QPushButton(strings.PROXIMO, self)
         self.proximo.setAccessibleName("Próximo diagrama")
-        self.proximo.clicked.connect(lambda: self.andar(1))
+        self.proximo.clicked.connect(self.proximo_diagrama)
         tema.aplicar_papel(self.proximo, estilos.NEUTRO)
         qt_icones.vestir(self.proximo, "proximo_diagrama", estilos.NEUTRO)
         linha.addWidget(self.proximo)
@@ -447,6 +490,9 @@ class PainelDeResultado(QWidget):
         self.seletor = QSpinBox(self)
         self.seletor.setMinimum(1)
         self.seletor.setMaximum(1)
+        # O total é o **sufixo** do campo (S-528, terceira barra): "Selecionado" sozinho não dizia
+        # de quantos, e para saber quantos diagramas a página tinha era preciso contar a lista.
+        self.seletor.setSuffix(barra_do_resultado.sufixo_de_diagramas(0))
         self.seletor.setAccessibleName("Diagrama selecionado")
         self.seletor.valueChanged.connect(self._pediu_diagrama)
         linha.addWidget(self.seletor)
@@ -478,7 +524,7 @@ class PainelDeResultado(QWidget):
         # Copiar fica ao lado da FEN e **fora** da barra de ações: ele não muda nada, e uma ação
         # inócua no meio de cinco que gravam ou apagam é a que se clica por engano.
         self.copiar = QPushButton("Copiar FEN", self)
-        self.copiar.clicked.connect(self._copiar_fen)
+        self.copiar.clicked.connect(self.copiar_fen_lida)
         tema.aplicar_papel(self.copiar, estilos.NEUTRO)
         linha.addWidget(self.copiar)
         return linha
@@ -503,6 +549,20 @@ class PainelDeResultado(QWidget):
             self._lados.addButton(botao)
             linha.addWidget(botao)
         self._lados.buttonClicked.connect(self._trocou_o_lado)
+        # Número do lance (S-71), ao lado do lado a jogar porque é a mesma leitura: os dois saem
+        # da legenda impressa, e quem está com o livro aberto declara os dois de uma vez. O Tk
+        # tinha este campo e o porte não o trouxe (pedido do usuário, 2026-09-22). A gravação vai
+        # para a anotação da galeria -- ver `_gravar_lance` -- e o campo é o mesmo da aba Galeria:
+        # `QLineEdit` de 60 px, gravado no `editingFinished`.
+        linha.addSpacing(espaco.folga())
+        linha.addWidget(QLabel("Lance", self))
+        self.campo_lance = QLineEdit(self)
+        self.campo_lance.setFixedWidth(60)
+        self.campo_lance.setAccessibleName("Número do lance")
+        self.campo_lance.setFont(tema.fonte_atual(tipografia.DADO))
+        self.campo_lance.editingFinished.connect(self._gravar_lance)
+        dica_em(self.campo_lance, MOTIVO_SEM_LANCE)
+        linha.addWidget(self.campo_lance)
         linha.addStretch(1)
         return linha
 
@@ -544,7 +604,7 @@ class PainelDeResultado(QWidget):
         # inverso dela (`mostrar_incerteza`).
         self.heatmap = QCheckBox(strings.ESCONDER_INCERTEZA, barra)
         self.heatmap.setChecked(False)
-        self.heatmap.toggled.connect(lambda esconder: self.tabuleiro.definir_heatmap(not esconder))
+        self.heatmap.toggled.connect(self.alternou_mapa_de_incerteza)
         dica_em(self.heatmap, "Esconde a tinta das casas em que o modelo hesitou: a peça lida aparece limpa.")
         barra.adicionar(self.heatmap)
         return barra
@@ -580,6 +640,34 @@ class PainelDeResultado(QWidget):
         """A dica do botão: o que ele faz (ou por que está cinza) e a tecla dele."""
         tecla = atalhos.acelerador(acao)
         dica_em(botao, f"{motivo}\nTecla: {tecla}" if tecla else motivo)
+
+    def executar(self, acao: str) -> None:
+        """Roda o método que `barra_do_resultado.METODOS_DO_PAINEL` liga àquela ação.
+
+        É a mesma forma de `PainelDoPdf.executar` (S-528) e de `PainelDeEstudo.executar` (S-280):
+        o par ação-método é declarado **uma** vez, na tabela, e não num `lambda` escrito no meio da
+        montagem. Levanta para ação que a tabela não tem.
+        """
+        getattr(self, barra_do_resultado.METODOS_DO_PAINEL[acao])()
+
+    # ------------------------------------------- o que cada ação da fila faz (S-528, 3ª barra)
+
+    def diagrama_anterior(self) -> None:
+        """O diagrama de cima da lista desta página."""
+        self.andar(-1)
+
+    def proximo_diagrama(self) -> None:
+        """O de baixo."""
+        self.andar(1)
+
+    def alternou_mapa_de_incerteza(self) -> None:
+        """O interruptor da tinta de dúvida mudou.
+
+        O método **lê** o estado e não o inverte -- ver `ui/barra.Acao.alterna_no_metodo`: quem
+        alterna é o próprio item. A caixa é «Esconder incerteza» (OCR_UI passo 13): marcada, a
+        tinta some, e por isso quem decide o que o tabuleiro desenha é `mostrar_incerteza`.
+        """
+        self.tabuleiro.definir_heatmap(self.mostrar_incerteza)
 
     # ------------------------------------------------------------------------------ carga
 
@@ -900,6 +988,10 @@ class PainelDeResultado(QWidget):
         self.lista.setCurrentRow(min(len(self.modelo.items), max(1, numero)) - 1)
 
     def _trocou_de_item(self, linha: int) -> None:
+        # O lance digitado entra **antes** de a seleção mudar, e não só no `editingFinished`:
+        # `→` com o foco no campo de FEN não tira o foco do campo de lance, e o que a pessoa
+        # digitou iria embora sem aviso. Grava em `_alvo_do_lance`, que é quem o campo mostra.
+        self._gravar_lance()
         if not 0 <= linha < len(self.modelo.items):
             self._atualizar_tudo()
             return
@@ -950,6 +1042,78 @@ class PainelDeResultado(QWidget):
         self.modelo.apply_placement(placement, self.modelo.clamped_index())
         self.historico.registrar(self._estado_de())
         self._atualizar_tudo()
+
+    # ---------------------------------------------------------------- número do lance (S-71)
+
+    def _alvo_do_lance_atual(self) -> tuple[int, int] | None:
+        """(página, diagrama) do que está no editor, ou `None` se não é resultado de página.
+
+        Item da fila e amostra do dataset não têm par: a anotação é do diagrama **daquele livro
+        naquela página**, e uma amostra solta do `labels.csv` não sabe mais de onde veio com essa
+        precisão. Ali o campo fica cinza, em vez de gravar no diagrama errado.
+        """
+        if self.modelo.page_key is None or not self.modelo.items:
+            return None
+        return (int(self.modelo.page_key[1]), self.modelo.clamped_index())
+
+    def sincronizar_lance(self) -> None:
+        """Traz para o campo o lance do diagrama selecionado, como a galeria o tem agora.
+
+        Público porque a Galeria edita o mesmo número: a janela chama isto quando a anotação do
+        livro muda, e o `showEvent` chama ao voltar para este modo.
+        """
+        # Guarda e devolve `_montando` em vez de zerá-lo: `_atualizar_tudo` chama isto de dentro
+        # do próprio bloco de montagem, e zerar aqui abriria o laço que ele fecha.
+        montando = self._montando
+        self._montando = True
+        try:
+            self._alvo_do_lance = self._alvo_do_lance_atual()
+            if self._alvo_do_lance is None:
+                self.campo_lance.setText("")
+                self.campo_lance.setEnabled(False)
+                return
+            self.campo_lance.setEnabled(True)
+            numero = self.lance_de(*self._alvo_do_lance)
+            self.campo_lance.setText("" if numero is None else str(numero))
+        finally:
+            self._montando = montando
+
+    def _gravar_lance(self) -> None:
+        """Grava o que está no campo. Em branco **apaga** a declaração.
+
+        Só grava quando o valor muda de fato: o campo confirma no `editingFinished`, que dispara
+        a cada passagem do foco, e regravar o mesmo número reescreveria o JSON do livro inteiro a
+        cada clique fora do campo.
+        """
+        alvo = self._alvo_do_lance
+        if self._montando or alvo is None:
+            return
+        digitado = self.campo_lance.text().strip()
+        atual = self.lance_de(*alvo)
+        if not digitado:
+            if atual is not None:
+                self.gravar_lance(alvo[0], alvo[1], None)
+                self.estado.emit(f"Diagrama {alvo[1] + 1}: número do lance apagado.")
+            return
+        try:
+            numero = int(digitado)
+        except ValueError:
+            numero = 0
+        if numero <= 0:
+            # Devolver o campo ao valor gravado e não abrir caixa: digitar e apagar é normal,
+            # e um diálogo por tecla errada tornaria o painel insuportável.
+            self.estado.emit(f"Número de lance inválido: {digitado!r}. Use um inteiro positivo.")
+            self.campo_lance.setText("" if atual is None else str(atual))
+            return
+        if numero == atual:
+            return
+        self.gravar_lance(alvo[0], alvo[1], numero)
+        self.estado.emit(f"Diagrama {alvo[1] + 1}: lance {numero}.")
+
+    def showEvent(self, evento: Any) -> None:  # noqa: N802 - nome do Qt
+        """Ao voltar a este modo, o campo relê a galeria: ela pode ter editado o mesmo lance."""
+        super().showEvent(evento)
+        self.sincronizar_lance()
 
     def _trocou_o_lado(self) -> None:
         if self._montando:
@@ -1153,6 +1317,21 @@ class PainelDeResultado(QWidget):
         self._edicao += 1
         self._atualizar_tudo()
         self.estado.emit(parecer.describe())
+
+    def adotar_do_livro(self, indice: int, item_lido: object, placement: str, lado: str, nota: str) -> bool:
+        """A posição e o lado a jogar do nó do PGN do livro no lugar da leitura (S-590).
+
+        Mesma guarda da segunda opinião: o livro casa em segundo plano, e um índice de outra
+        página não é este diagrama. Desfazível como qualquer edição -- o histórico registra.
+        """
+        if not (0 <= indice < len(self.modelo.items)) or self.modelo.items[indice] is not item_lido:
+            return False
+        if not self.modelo.mark_from_book(indice, placement, lado, note=nota):
+            return False
+        self.historico.registrar(self._estado_de(indice))
+        self._edicao += 1
+        self._atualizar_tudo()
+        return True
 
     def _girar_180(self) -> None:
         """A outra leitura possível: a posição girada de 180°, como edição desfazível."""
@@ -1391,10 +1570,14 @@ class PainelDeResultado(QWidget):
                 self._pintar_estados(None)
             else:
                 self._pintar_diagrama()
+            # O lance vem da galeria e não do modelo, mas depende do mesmo estado: qual
+            # diagrama de qual página está aberto. Cinza nas outras três origens (S-71).
+            self.sincronizar_lance()
         finally:
             self._montando = False
         self._atualizar_botoes(vazio)
         self.mudou.emit()
+        self.posicao_mudou.emit()
 
     def _pintar_diagrama(self) -> None:
         indice = self.modelo.clamped_index()
@@ -1447,6 +1630,7 @@ class PainelDeResultado(QWidget):
         self.campo_fen.setText(compose_fen(corrigida, lado != "b"))
         # Ver `painel_de_estudo._mostrar_fen_do_comeco`: o `setText` deixa o cursor no
         # fim e o campo passa a mostrar o fim. A 1280x800 isso come as tres primeiras casas.
+        # O começo da FEN é o que se confere -- mesma razão da sala de estudo (S-552, quinta rodada).
         self.campo_fen.setCursorPosition(0)
         self.detalhes.setText(self._detalhes_do_item(item))
         self._pintar_estados(item, lado=lado, corrigida=corrigida)
@@ -1497,6 +1681,7 @@ class PainelDeResultado(QWidget):
         self.anterior.setEnabled(not vazio and self.modelo.clamped_index() > 0)
         self.proximo.setEnabled(not vazio and self.modelo.clamped_index() < len(self.modelo.items) - 1)
         self.seletor.setEnabled(not vazio)
+        self.seletor.setSuffix(barra_do_resultado.sufixo_de_diagramas(len(self.modelo.items)))
         self.paleta.habilitar(not vazio, motivo=MOTIVO_SEM_DIAGRAMA)
 
         for botao, acao, pode, sem in (
@@ -1532,13 +1717,18 @@ class PainelDeResultado(QWidget):
         legenda e "pretas jogam" assumido pelo padrão têm o mesmo texto e valores completamente
         diferentes para quem vai conferir. O rótulo vem de `ui/strings.py`, que existe para que
         as duas telas do projeto não digam isso de dois jeitos.
+
+        **A legalidade e o material saíam daqui também, e o crítico fotografou o resultado**
+        (S-551, segunda rodada): "Posição legal." e a contagem de peças apareciam **duas vezes**
+        na mesma coluna, uma nos rótulos `legalidade` e `material` -- que ficam logo acima, e cuja
+        única razão de existir é essa -- e outra na primeira metade deste parágrafo. Uma frase
+        repetida a dois centímetros de distância não é redundância inofensiva: ela faz procurar a
+        diferença entre as duas. Este parágrafo ficou com o que **só** ele diz: procedência,
+        confiança, detecção e legenda.
         """
-        explicacao = explain_position(compose_fen(item.placement, item.side_is_white))
         linhas = [
             f"Lado a jogar: {'brancas' if item.side_is_white else 'pretas'}"
             f" — {strings.side_source_label(item.side_to_move_source, conflicting=item.side_conflicting)}",
-            explicacao.summary(),
-            explicacao.material_line(),
             f"Confiança: mínima {item.min_confidence:.3f} · média {item.mean_confidence:.3f}"
             f" · {len(item.uncertain_squares)} casa(s) incerta(s)",
         ]
@@ -1553,9 +1743,17 @@ class PainelDeResultado(QWidget):
         if item.caption:
             # Uma linha, e não o parágrafo inteiro: ver `strings.LIMITE_DA_LEGENDA`.
             linhas.append(f"Legenda: {strings.resumo_da_legenda(item.caption)}")
+        indice = next((k for k, x in enumerate(self.modelo.items) if x is item), -1)
+        if indice in self.modelo.from_book:
+            linhas.append(f"PGN do livro: {self.modelo.from_book[indice]}")
         return "\n".join(linhas)
 
-    def _copiar_fen(self) -> None:
+    def copiar_fen_lida(self) -> None:
+        """A FEN que o modelo leu, já com as correções feitas aqui, na área de transferência.
+
+        **Não é `copiar_fen` do catálogo**, e a distinção é real: aquele copia a posição da sala de
+        estudo, com os lances jogados por cima. Ver `barra_do_resultado.COPIAR_FEN_LIDA`.
+        """
         texto = self.campo_fen.text().strip()
         if not texto:
             return
@@ -1584,6 +1782,6 @@ class PainelDeResultado(QWidget):
             "desfazer": self.desfazer,
             "refazer": self.refazer,
             "aplicar_fen": self.aplicar_fen,
-            "diagrama_anterior": lambda: self.andar(-1),
-            "proximo_diagrama": lambda: self.andar(1),
+            "diagrama_anterior": self.diagrama_anterior,
+            "proximo_diagrama": self.proximo_diagrama,
         }.get(acao)

@@ -21,8 +21,11 @@ import importlib.util
 import logging
 import multiprocessing as mp
 import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
+from typing import Any
 
 from chess_diagram_ocr.config import (
     DEFAULT_MODEL_PATH,
@@ -67,8 +70,41 @@ def tem_pyqt() -> bool:
     return importlib.util.find_spec("PyQt6") is not None
 
 
-def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
+def _janela_do_auto_teste(servico: Any, descartavel: Path, caminho_do_cache: Path | None = None) -> Any:
+    """A janela que o auto-teste monta: o serviço medido, sem motor, e com estado descartável (S-524).
+
+    **Conferir a instalação não pode mexer na sessão de quem a confere.** A janela lê e grava
+    `data/janela.json` -- o último livro, a página, o arranjo --, e o auto-teste abre o primeiro
+    livro de `PDF/` e vai a uma página: com o arquivo do produto, qualquer gravação apagaria o
+    livro e a página em que a pessoa estava. Hoje ela só grava no `closeEvent`, que o auto-teste
+    não dispara; o caminho descartável é o que faz isso deixar de depender de *quando* a janela
+    grava -- a segunda revisão externa viu exatamente essa gravação apagar a sessão numa árvore
+    em que a janela gravava a cada gesto.
+
+    E `motor=None`: a pergunta do auto-teste é "esta instalação lê um diagrama?", e procurar um
+    binário de motor no disco não faz parte dela.
+    """
+    from chess_diagram_ocr.qt.janela import JanelaPrincipal
+
+    return JanelaPrincipal(
+        servico=servico,
+        motor=None,
+        caminho_do_estado=descartavel / "janela.json",
+        caminho_do_cache=caminho_do_cache,
+        # **Em linha** (OCR_UI passo 15): o auto-teste pergunta pela folha na linha seguinte, e um
+        # processo filho só para ele seria um segundo de `spawn` a mais numa conferência de instalação.
+        rasterizar_ao_fundo=False,
+    )
+
+def selftest(
+    pdf: Path | None = None, page_index: int = 0, *, caminho_do_cache: Path | None = None
+) -> int:
     """Abre um livro, monta a janela e reconhece uma página, sem mostrar nada. `0` se funciona.
+
+    `caminho_do_cache` é para a **suíte**, e `None` é o produto (S-415): abrir um livro abre o
+    cache de posições, e sem esta porta o teste que exercita o auto-teste cria o
+    `data/games_positions.sqlite` no checkout de quem o roda. É a mesma família do `descartavel`
+    abaixo -- conferir a instalação não pode mexer na árvore de quem a confere.
 
     Existe por causa do bundle da S-55. Um `.exe` sem console não tem como dizer "aqui funciona":
     se ele abrir e o torch estiver faltando, o sintoma é uma janela que some. Um auto-teste que
@@ -153,13 +189,10 @@ def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PyQt6.QtWidgets import QApplication
 
-    from chess_diagram_ocr.qt.janela import JanelaPrincipal
-
     aplicacao = QApplication.instance() or QApplication([])
+    descartavel = Path(tempfile.mkdtemp(prefix="cvoff-selftest-"))
     try:
-        # **Em linha** (OCR_UI passo 15): o auto-teste pergunta pela folha na linha seguinte, e um
-        # processo filho só para ele seria um segundo de `spawn` a mais numa conferência de instalação.
-        janela = JanelaPrincipal(servico=servico, rasterizar_ao_fundo=False)
+        janela = _janela_do_auto_teste(servico, descartavel, caminho_do_cache)
         janela.abrir_pdf(Path(caminho))
         # **Ir à página pedida, e não à que o estado lembra** (S-506): desde que a janela restaura
         # o livro e a página da sessão anterior, abrir o livro não deixa mais o auto-teste na
@@ -177,6 +210,7 @@ def selftest(pdf: Path | None = None, page_index: int = 0) -> int:
         return CODIGO_SEM_QT
     finally:
         del aplicacao
+        shutil.rmtree(descartavel, ignore_errors=True)
 
     try:
         itens = servico.recognize_page(

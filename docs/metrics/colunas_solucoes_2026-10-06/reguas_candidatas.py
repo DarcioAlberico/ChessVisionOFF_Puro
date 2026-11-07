@@ -10,8 +10,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(sys.argv[0]).parent))
-import patch_colunas  # noqa: E402,F401
 import numpy as np  # noqa: E402
+import patch_colunas  # noqa: E402,F401
 import pymupdf  # noqa: E402
 
 from chess_diagram_ocr.cli.texto_ordem import _linhas_da_camada  # noqa: E402
@@ -26,7 +26,7 @@ estado = {"piso": 1}
 def borda(mascaras, i, j, faixas, x_min):
     piso = estado["piso"]
     saida = []
-    for (a, b), (c, _) in zip(faixas, faixas[1:], strict=False):
+    for (a, b), (_c, _) in zip(faixas, faixas[1:], strict=False):
         com_tinta = rentes = 0
         for k in range(i, j):
             dentro = np.flatnonzero(mascaras[k][a - x_min : b - x_min + 1])

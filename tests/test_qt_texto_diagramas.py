@@ -448,6 +448,10 @@ class LexicoSobreviveAoRedesenhoTests(_Aba):
         self.assertEqual(self.painel.editor.extraSelections(), [], "a tecla não reconfere (caminho rápido)")
         self.assertTrue(self.painel._rascunho.isActive(), "a tecla não armou a pausa")
         self.painel._rascunho.timeout.emit()
+        # A palavra ainda em digitação não é marcada (S-657): o cursor está colado no fim dela.
+        self.assertEqual(self.painel.editor.extraSelections(), [], "marcou a palavra que ainda se digita")
+        QTest.keyClicks(self.painel.editor, " ")
+        self.painel._rascunho.timeout.emit()
         marcadas = self.painel.editor.extraSelections()
         self.assertEqual([s.cursor.selectedText() for s in marcadas], ["qzxvk"])
         self.painel.limpar_marcas_do_lexico()
@@ -539,6 +543,68 @@ class RodapeDaAbaTests(_Aba):
 
 
 FEN = "r1bqkbnr/pppppppp/2n5/8/4P3/8/PPPP1PPP/RNBQKBNR"
+
+
+class DiagramaDoLivroNaFolhaTests(_Aba):
+    """Os diagramas que o PDF perdeu, postos na folha pelo PGN do livro (S-595)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        pagina = _pagina()
+        coluna = pagina.colunas[0]
+        legendas = (_bloco("Position after: 4.exd5"), _bloco("Prosa."), _bloco("Position after: 5.dxc5"))
+        from dataclasses import replace
+
+        self.painel.mostrar_pagina(replace(pagina, colunas=(replace(coluna, blocos=(*coluna.blocos, *legendas)),)), folha_rgb=_folha())
+
+    def test_cada_um_entra_antes_da_sua_legenda_numa_edicao_so(self) -> None:
+        postos = self.painel.inserir_diagramas_do_livro(0, [("5.dxc5", FEN), ("4.exd5", "8/8/8/8/8/8/8/K6k")])
+        self.assertEqual(2, postos)
+        texto = self.painel.texto()
+        self.assertLess(texto.index("[Diagrama 2]"), texto.index("Position after: 4.exd5"))
+        self.assertLess(texto.index("[Diagrama 3]"), texto.index("Position after: 5.dxc5"))
+        self.assertGreater(texto.index("[Diagrama 3]"), texto.index("Prosa."))
+        self.assertEqual(3, self.miniaturas(), "a figura nasce da FEN, sem recorte")
+        self.painel.desfazer()
+        self.assertNotIn("[Diagrama 2]", self.painel.texto())
+
+    def test_pedir_duas_vezes_nao_duplica(self) -> None:
+        self.painel.inserir_diagramas_do_livro(0, [("5.dxc5", FEN)])
+        self.assertEqual(0, self.painel.inserir_diagramas_do_livro(0, [("5.dxc5", FEN)]))
+        self.assertEqual(1, self.painel.texto().count("[Diagrama 2]"))
+
+    def test_outra_folha_ou_legenda_ausente_nao_insere(self) -> None:
+        self.assertEqual(0, self.painel.inserir_diagramas_do_livro(3, [("5.dxc5", FEN)]))
+        self.assertEqual(0, self.painel.inserir_diagramas_do_livro(0, [("9.Qh5", FEN)]))
+
+    def test_o_que_ficou_sem_legenda_e_dito(self) -> None:
+        """No Harikrishna o leitor de texto deixa a legenda do pé da página fora da folha (20...Qxd5)."""
+        self.assertEqual(1, self.painel.inserir_diagramas_do_livro(0, [("5.dxc5", FEN), ("20...Qxd5", "8/8/8/8/8/8/8/K6k")]))
+        self.assertIn("ficaram de fora: 20...Qxd5", self.recados[-1])
+
+    def test_a_legenda_lida_pelo_glifo_tambem_recebe_o_diagrama(self) -> None:
+        """Com o classificador, o `auto` lê pelo glifo: «Position after.. 11. ♘e5» na folha (S-598)."""
+        from dataclasses import replace
+
+        pagina = _pagina()
+        coluna = pagina.colunas[0]
+        legendas = (_bloco("Position after.. 11. ♘e5"), _bloco("Position after.. 20... ♕xd5"))
+        self.painel.mostrar_pagina(replace(pagina, colunas=(replace(coluna, blocos=(*coluna.blocos, *legendas)),)), folha_rgb=_folha())
+        self.assertEqual(2, self.painel.inserir_diagramas_do_livro(0, [("11.Ne5", FEN), ("20...Qxd5", "8/8/8/8/8/8/8/K6k")]))
+        texto = self.painel.texto()
+        self.assertLess(texto.index("[Diagrama 2]"), texto.index("Position after.. 11."))
+        self.assertLess(texto.index("[Diagrama 3]"), texto.index("Position after.. 20..."))
+
+    def test_o_duplo_clique_no_inserido_pede_pela_posicao(self) -> None:
+        self.painel.inserir_diagramas_do_livro(0, [("5.dxc5", FEN)])
+        pela_posicao: list[tuple[int, str]] = []
+        pelo_indice: list[tuple[int, int]] = []
+        self.painel.diagrama_sem_caixa_ativado.connect(lambda p, c: pela_posicao.append((p, c)))
+        self.painel.diagrama_ativado.connect(lambda p, i: pelo_indice.append((p, i)))
+        inserido = self.painel.documento.diagramas[1]
+        self.assertTrue(self.painel._ativar(inserido))
+        self.assertTrue(self.painel._ativar(self.painel.documento.diagramas[0]))
+        self.assertEqual(([(0, FEN)], [(0, 0)]), (pela_posicao, pelo_indice))
 
 
 class ComPosicoesTests(unittest.TestCase):
@@ -946,9 +1012,9 @@ class BarraSegueOCursorTests(_Aba):
         doc = rico.aplicar(doc, texto.index("Depois"), texto.index("Depois") + 6, cor="nota", realce="destaque")
         self.painel.desenhar_documento(doc)
         self.cursor_em(3)
-        self.assertEqual(self.painel.escolha_de_estilo.currentData(), "titulo")
+        self.assertEqual(self.painel.estilo_na_galeria(), "titulo")  # a galeria da S-651, no lugar da lista
         self.cursor_em(texto.index("Depois") + 1)
-        self.assertEqual(self.painel.escolha_de_estilo.currentData(), "")
+        self.assertEqual(self.painel.estilo_na_galeria(), "")
         self.assertEqual(self.painel.escolha_de_cor.currentData(), "nota")
         self.assertEqual(self.painel.escolha_de_realce.currentData(), "destaque")
         self.cursor_em(texto.index("diagrama."))

@@ -12,12 +12,18 @@ do tronco a suíte é um repositório vizinho, não um pacote instalado, e exige
 bundle os dois pacotes moram no mesmo arquivo. Sem a suíte os dois itens **continuam no menu,
 desabilitados e com o motivo na dica** (`menu.impedir`): um menu não promete o que o produto não
 faz, e um item cinza sem dica faria a pessoa procurar o defeito na própria máquina.
+
+**O caderno vai junto (R7).** `comecar(..., folhas_para=)` entrega à suíte as folhas corrigidas na
+aba Texto (`text/caderno_na_suite.py`), que entram no lugar da leitura dela dessas páginas. Uma
+suíte de antes do R7 não conhece o argumento: `montar` o tira, e o livro sai com a leitura dela,
+como sempre saiu, em vez de a exportação falhar num `TypeError`.
 """
 
 from __future__ import annotations
 
+import inspect
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -46,6 +52,7 @@ class ExportadorDeLivro(Protocol):
     def comecar(
         self, pdf_path: Path | None, page_count: int, *, formato: str, pagina_atual: int,
         documento_para: Callable[[Sequence[int] | None], Any] | None = None,
+        folhas_para: Callable[[Sequence[int] | None], Sequence[Mapping[str, Any]]] | None = None,
     ) -> bool: ...
 
     def cancelar(self) -> None: ...
@@ -74,6 +81,16 @@ def montar(
         logger.info("exportação para EPUB/DOCX ausente: a suíte não está ao alcance (%s).", exc)
         return None
     exportador = _Exportador(pai)
+    if "folhas_para" not in inspect.signature(exportador.comecar).parameters:
+        # Uma suíte de antes do R7 não leva o caderno ao livro: a exportação segue com a leitura
+        # dela, como sempre foi, em vez de falhar no argumento que ela não conhece.
+        logger.info("a suíte ao alcance não recebe as folhas do caderno (R7); o EPUB/DOCX sai sem elas.")
+        comecar = exportador.comecar
+
+        def _sem_folhas(*args: Any, folhas_para: Any = None, **kwargs: Any) -> Any:
+            return comecar(*args, **kwargs)
+
+        exportador.comecar = _sem_folhas
     exportador.estado.connect(dizer)
     exportador.controles.connect(trancar)
     return exportador

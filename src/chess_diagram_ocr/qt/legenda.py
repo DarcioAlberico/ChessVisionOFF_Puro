@@ -77,7 +77,9 @@ class JanelaDeAtalhos(QDialog):
         grade.setContentsMargins(0, 0, 0, 0)
         grade.setHorizontalSpacing(CALHA)
         grade.setVerticalSpacing(espaco.minima())
-        for linha, atalho in enumerate(atalhos.ATALHOS):
+        # As da janela e as da sala (S-527): uma tecla que não está escrita em lugar nenhum é o
+        # defeito da S-161, e as quatro da sala só apareciam na dica do botão.
+        for linha, atalho in enumerate((*atalhos.ATALHOS, *atalhos.TECLAS_DA_SALA)):
             tecla = QLabel(atalho.rotulo, corpo)
             tecla.setFont(tema.fonte_atual(tipografia.DADO))
             tecla.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
@@ -100,10 +102,11 @@ class JanelaDeAtalhos(QDialog):
         # `QScrollArea` **não** pede largura pelo widget que ela embrulha: o `sizeHint` dela é o
         # do próprio quadro, e sem esta linha o `adjustSize` da janela nunca vê a grade. A conta
         # é a grade mais a moldura dos dois lados mais a barra vertical, que a legenda sempre tem.
+        estilo = rolagem.style()
         rolagem.setMinimumWidth(
             corpo.sizeHint().width()
             + 2 * rolagem.frameWidth()
-            + rolagem.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, None, rolagem)
+            + (estilo.pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, None, rolagem) if estilo is not None else 0)
         )
         fora.addWidget(rolagem, 1)
 

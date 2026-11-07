@@ -75,7 +75,7 @@ from dataclasses import dataclass, fields, replace
 from typing import Any, get_args
 
 from . import documento, notacao
-from .pagina import PaginaLida, Procedencia
+from .pagina import BlocoDeDiagrama, PaginaLida, Procedencia
 
 SEM_BLOCO = -1
 """O `bloco` de uma corrida que não saiu da página: texto escrito à mão.
@@ -144,6 +144,14 @@ que ninguém alinhou -- ele se desenha à esquerda porque é assim que texto se 
 entregou assim. `esquerda` é uma escolha: alguém centralizou e voltou atrás, e essa decisão
 sobrevive ao arquivo em vez de virar indistinguível do que nunca foi tocado. É a mesma fronteira que
 `cor` mantém entre "sem cor" e "cor que o autor escolheu"."""
+
+ALINHAMENTO_DO_DIAGRAMA = ALINHAMENTO_CENTRO
+"""Onde fica o diagrama que ninguém alinhou (S-620): **no centro**, que é como os livros o imprimem.
+
+É a distinção de `ALINHAMENTOS` posta para trabalhar. Para o parágrafo, `""` se desenha à esquerda
+porque é assim que texto se desenha; para a figura, à esquerda era só o que o desenho fazia por
+falta de decisão, e o dono do projeto pediu o centro como padrão. Quem escreveu `esquerda` na marca
+continua à esquerda -- a escolha escrita vence o padrão."""
 
 CORPO_MINIMO = -3
 CORPO_MAXIMO = 6
@@ -523,9 +531,9 @@ def _corridas_do_segmento(segmento: documento.Segmento, *, bloco: int, procedenc
         Corrida(
             texto=texto,
             atributos=Atributos(negrito=negrito, italico=italico, estilo=estilo),
-            **comum,
+            **{**comum, "faixa": documento.REVISAR if revisar else segmento.faixa},
         )
-        for (negrito, italico), texto in grupos
+        for (negrito, italico, revisar), texto in grupos
     ]
 
 
@@ -595,8 +603,8 @@ def _marcas(texto: str, intervalos: Sequence[tuple[int, int]], resumo: bool) -> 
     return marcas
 
 
-def _pedacos(linha: Any) -> list[tuple[tuple[bool, bool], str]]:
-    """Uma linha partida onde a tipografia dela muda. Uma peça só quando ela não muda.
+def _pedacos(linha: Any) -> list[tuple[tuple[bool, bool, bool], str]]:
+    """Uma linha partida onde a tipografia dela muda, ou a marca de revisão (S-718). Uma peça só quando não muda.
 
     A soma dos pedaços é `linha.texto` caractere a caractere, e isso é o contrato: quem os junta de
     volta tem de reencontrar o texto do bloco, que é o que a S-235 travou.
@@ -604,17 +612,20 @@ def _pedacos(linha: Any) -> list[tuple[tuple[bool, bool], str]]:
     texto = linha.texto
     negrito = _marcas(texto, getattr(linha, "negrito_em", ()), getattr(linha, "negrito", None) is True)
     italico = _marcas(texto, getattr(linha, "italico_em", ()), getattr(linha, "italico", None) is True)
-    pedacos: list[tuple[tuple[bool, bool], str]] = []
+    # **A marca é da palavra, e nunca do espaço** (S-718). `camada.remapear` une o branco entre duas marcas vizinhas, que
+    # é a regra certa para o negrito, e 17 de 414 folhas chegavam aqui com duas palavras numa marca só.
+    revisar = [m and not c.isspace() for m, c in zip(_marcas(texto, getattr(linha, "revisar_em", ()), False), texto, strict=True)]
+    pedacos: list[tuple[tuple[bool, bool, bool], str]] = []
     comeco = 0
     for i in range(1, len(texto) + 1):
-        muda = i == len(texto) or (negrito[i], italico[i]) != (negrito[comeco], italico[comeco])
+        muda = i == len(texto) or (negrito[i], italico[i], revisar[i]) != (negrito[comeco], italico[comeco], revisar[comeco])
         if muda:
-            pedacos.append(((negrito[comeco], italico[comeco]), texto[comeco:i]))
+            pedacos.append(((negrito[comeco], italico[comeco], revisar[comeco]), texto[comeco:i]))
             comeco = i
-    return pedacos or [((False, False), texto)]
+    return pedacos or [((False, False, False), texto)]
 
 
-def _agrupar(linhas: Sequence[Any]) -> list[tuple[tuple[bool, bool], str]]:
+def _agrupar(linhas: Sequence[Any]) -> list[tuple[tuple[bool, bool, bool], str]]:
     """O parágrafo partido nos trechos de mesma tipografia, na ordem, com o texto de cada um.
 
     **O corte deixou de ser na linha e passou a ser no caractere** (S-429). A `LinhaLida` traz
@@ -626,15 +637,16 @@ def _agrupar(linhas: Sequence[Any]) -> list[tuple[tuple[bool, bool], str]]:
     **O espaço da junção entre duas linhas fica no fim do último pedaço da linha anterior**, e não
     no começo do primeiro da seguinte: assim a corrida itálica começa na primeira letra da citação,
     e não num espaço em pé antes dela. É a mesma regra de antes, agora aplicada a pedaço em vez de
-    a linha.
+    a linha. **Menos depois de uma marca `revisar`** (S-718): o espaço não é da palavra, e com ele as marcas do fim de
+    uma linha e do começo da seguinte viravam uma corrida só, e corrigir uma tirava a outra.
     """
-    grupos: list[tuple[tuple[bool, bool], list[str]]] = []
+    grupos: list[tuple[tuple[bool, bool, bool], list[str]]] = []
     ultima = len(linhas) - 1
     for n, linha in enumerate(linhas):
         pedacos = _pedacos(linha)
         if n != ultima:
-            chave, texto = pedacos[-1]
-            pedacos[-1] = (chave, texto + " ")
+            chave, _texto = pedacos[-1]
+            pedacos.append(((chave[0], chave[1], False), " "))
         for chave, texto in pedacos:
             if grupos and grupos[-1][0] == chave:
                 grupos[-1][1].append(texto)
@@ -1270,6 +1282,37 @@ def editar(doc: DocumentoRico, inicio: int, fim: int, novo: str) -> DocumentoRic
     return _com_corrida(apagado, comeco, _da_mao(novo, modelo))
 
 
+def inserir_diagrama(doc: DocumentoRico, posicao: int, placement: str) -> DocumentoRico:
+    """Um diagrama que a página não tem, posto na folha em `posicao` (S-595).
+
+    É o diagrama que o PDF perdeu e o PGN do livro redesenha: a marca entra como as outras, com o
+    separador de parágrafo depois dela, e a página de origem ganha o `BlocoDeDiagrama` da marca.
+
+    **O bloco vai para o fim da última coluna, e não para o lugar.** `Corrida.bloco` é o índice na
+    lista plana de blocos, e um bloco no meio renumeraria todas as corridas depois dele. A ordem de
+    leitura é a do documento, e é nele que a marca fica no lugar. O `indice` continua a contagem dos
+    diagramas da página -- `com_posicoes` só alcança os que o detector achou -- e o bbox vazio diz que
+    não há recorte: a miniatura e a exportação desenham da FEN. A procedência é `humano` porque foi a
+    pessoa que mandou pôr, e é a que uma releitura não tem direito de apagar.
+
+    Sem página de origem devolve o próprio documento: não há onde guardar a posição.
+    """
+    pagina = doc.origem
+    if pagina is None or not pagina.colunas:
+        return doc
+    novo = BlocoDeDiagrama(
+        indice=max((b.indice for b in pagina.diagramas), default=-1) + 1,
+        procedencia="humano",
+        placement=placement,
+    )
+    ultima = pagina.colunas[-1]
+    origem = replace(pagina, colunas=(*pagina.colunas[:-1], replace(ultima, blocos=(*ultima.blocos, novo))))
+    com_o_bloco = DocumentoRico(corridas=doc.corridas, origem=origem)
+    separado = _com_corrida(com_o_bloco, posicao, Corrida(texto="\n\n", tipo=SEPARADOR))
+    marca = Corrida(texto=novo.texto, bloco=len(pagina.blocos), procedencia="humano", tipo=DIAGRAMA)
+    return _com_corrida(separado, posicao, marca)
+
+
 def mover(doc: DocumentoRico, inicio: int, fim: int, destino: int) -> DocumentoRico:
     """Leva as corridas de `[inicio, fim)` para `destino`, **inteiras**: é o arrastar-e-soltar.
 
@@ -1304,6 +1347,246 @@ def mover(doc: DocumentoRico, inicio: int, fim: int, destino: int) -> DocumentoR
     return DocumentoRico(corridas=fundir(novas), origem=doc.origem)
 
 
+def alinhamento_efetivo(corrida: Corrida, *, padrao_do_diagrama: str = ALINHAMENTO_DO_DIAGRAMA) -> str:
+    """O alinhamento com que esta corrida se desenha e se exporta (S-620). Pura.
+
+    O escrito vale sempre. Sem nada escrito, a marca do diagrama vai para `padrao_do_diagrama`, e o
+    texto continua `""` -- à esquerda, como texto se desenha. **É a única resposta a essa pergunta**:
+    a tela (`qt/painel_de_texto.formato_de_bloco`) e os exportadores (`exportacao`) chamam esta
+    função, e é o que impede a figura de sair centralizada na tela e à esquerda no `.html`.
+    """
+    if corrida.atributos.alinhamento or not corrida.e_diagrama:
+        return corrida.atributos.alinhamento
+    return padrao_do_diagrama
+
+
+ATRIBUTOS_DE_TRECHO = ("negrito", "italico", "sublinhado", "tachado", "cor", "realce")
+ATRIBUTOS_DE_PARAGRAFO = ("estilo", "alinhamento", "corpo")
+"""O que o pincel de formatação leva (S-653). **A faixa de confiança e o `fora_do_modelo` não vão**:
+são do motor e do modelo, e não do autor (S-242) -- pincelá-los seria dizer que a palavra pintada foi
+lida com a mesma confiança da outra."""
+
+
+def atributos_em(doc: DocumentoRico, deslocamento: int) -> Atributos | None:
+    """Os atributos do trecho naquele deslocamento -- ou do anterior, no fim do texto. `None` sem texto."""
+    comeco = 0
+    ultima: Corrida | None = None
+    for corrida in doc.corridas:
+        fim = comeco + len(corrida.texto)
+        if comeco <= deslocamento < fim and corrida.texto.strip():
+            return corrida.atributos
+        if corrida.texto.strip():
+            ultima = corrida
+        comeco = fim
+    return None if ultima is None else ultima.atributos
+
+
+def pintar(doc: DocumentoRico, inicio: int, fim: int, atributos: Atributos, *, paragrafo: bool) -> DocumentoRico:
+    """O pincel de formatação (S-653): os atributos de trecho no intervalo, e os de parágrafo se pedido.
+
+    Sem seleção o alvo é a palavra (`intervalo_alvo`), como no negrito. Os de parágrafo só entram
+    quando quem chama diz que a seleção cobre parágrafos inteiros -- pincelar um título sobre meia
+    frase não a transforma em título, que é a regra do WordCraft (`cmd/edit.rs:776-826`).
+    """
+    alvo_inicio, alvo_fim = intervalo_alvo(doc, inicio, fim)
+    novo = doc
+    if alvo_inicio < alvo_fim:
+        novo = aplicar(novo, alvo_inicio, alvo_fim, **{a: getattr(atributos, a) for a in ATRIBUTOS_DE_TRECHO})
+    if paragrafo:
+        novo = aplicar_no_paragrafo(novo, inicio, fim, **{a: getattr(atributos, a) for a in ATRIBUTOS_DE_PARAGRAFO})
+    return novo
+
+
+def _linhas(texto: str) -> list[tuple[int, int]]:
+    """Os parágrafos do texto como o editor os vê -- o que há entre duas quebras de linha --, com o começo e o fim."""
+    saida: list[tuple[int, int]] = []
+    comeco = 0
+    for pedaco in texto.split("\n"):
+        saida.append((comeco, comeco + len(pedaco)))
+        comeco += len(pedaco) + 1
+    return saida
+
+
+def _entre(doc: DocumentoRico, inicio: int, fim: int) -> list[Corrida]:
+    if inicio >= fim:
+        return []
+    return [corrida for corrida, dentro in _fatiado(doc, inicio, fim) if dentro]
+
+
+def mover_paragrafo(doc: DocumentoRico, deslocamento: int, passo: int) -> tuple[DocumentoRico, int]:
+    """Troca o parágrafo sob o cursor com o vizinho de cima (`-1`) ou de baixo (`+1`) (S-659).
+
+    A ordem de leitura é erro conhecido do OCR desta aba, e consertá-la era recortar e colar. As
+    linhas em branco entre os dois ficam onde estavam, e o diagrama anda com a marca -- a marca é
+    um parágrafo. Devolve o documento e onde o parágrafo movido começa agora; o mesmo documento e
+    o mesmo deslocamento quando não há vizinho.
+    """
+    linhas = _linhas(doc.para_texto())
+    atual = next((i for i, (a, b) in enumerate(linhas) if a <= deslocamento <= b), None)
+    if atual is None or linhas[atual][0] == linhas[atual][1]:
+        return doc, deslocamento
+    vizinho = atual + passo
+    while 0 <= vizinho < len(linhas) and linhas[vizinho][0] == linhas[vizinho][1]:
+        vizinho += passo
+    if not 0 <= vizinho < len(linhas):
+        return doc, deslocamento
+    (a1, b1), (a2, b2) = sorted((linhas[atual], linhas[vizinho]))
+    total = len(doc.para_texto())
+    corridas = _entre(doc, 0, a1) + _entre(doc, a2, b2) + _entre(doc, b1, a2) + _entre(doc, a1, b1) + _entre(doc, b2, total)
+    novo = DocumentoRico(corridas=fundir(corridas), origem=doc.origem)
+    return novo, (a1 if passo < 0 else a1 + (b2 - a2) + (a2 - b1))
+
+
+def alinhar_diagramas(doc: DocumentoRico, alinhamento: str) -> DocumentoRico:
+    """Todos os diagramas da folha naquele alinhamento -- `""` limpa o escrito e volta à preferência (S-621).
+
+    É o mesmo documento quando nenhum muda, e é isso que deixa o chamador saber se há o que gravar
+    sem comparar a folha inteira. Só a marca muda: o parágrafo de texto em volta fica como estava.
+    """
+    if alinhamento and alinhamento not in ALINHAMENTOS:
+        raise KeyError(f"alinhamento desconhecido: {alinhamento!r}. Os válidos estão em ALINHAMENTOS.")
+    if not any(c.e_diagrama and c.atributos.alinhamento != alinhamento for c in doc.corridas):
+        return doc
+    corridas = tuple(
+        replace(c, atributos=replace(c.atributos, alinhamento=alinhamento)) if c.e_diagrama else c
+        for c in doc.corridas
+    )
+    return DocumentoRico(corridas=corridas, origem=doc.origem)
+
+
+def diagramas_a_alinhar(doc: DocumentoRico, alinhamento: str) -> int:
+    """Quantos diagramas da folha `alinhar_diagramas` mudaria: a conta que a pergunta do caderno diz."""
+    return sum(1 for c in doc.corridas if c.e_diagrama and c.atributos.alinhamento != alinhamento)
+
+
+def titulos(doc: DocumentoRico) -> tuple[tuple[int, str], ...]:
+    """Os parágrafos de estilo `titulo` da folha, com onde cada um começa (S-654). Pura.
+
+    Um título é a sequência de corridas de estilo `titulo` até a quebra de linha: um título com uma
+    palavra em itálico são três corridas e um título só.
+    """
+    achados: list[tuple[int, str]] = []
+    comeco = 0
+    atual: list[str] = []
+    inicio_do_atual = 0
+    for corrida in doc.corridas:
+        if corrida.atributos.estilo == ESTILO_TITULO and not corrida.e_diagrama:
+            partes = corrida.texto.split("\n")
+            for indice, parte in enumerate(partes):
+                if indice > 0 and atual:
+                    achados.append((inicio_do_atual, "".join(atual)))
+                    atual = []
+                if parte:
+                    if not atual:
+                        inicio_do_atual = comeco + sum(len(p) + 1 for p in partes[:indice])
+                    atual.append(parte)
+        elif atual:
+            achados.append((inicio_do_atual, "".join(atual)))
+            atual = []
+        comeco += len(corrida.texto)
+    if atual:
+        achados.append((inicio_do_atual, "".join(atual)))
+    return tuple((onde, texto.strip()) for onde, texto in achados if texto.strip())
+
+
+def intervalos_a_revisar(doc: DocumentoRico) -> tuple[tuple[int, int], ...]:
+    """Onde estão as corridas `revisar`, em deslocamentos de `para_texto`, na ordem (S-718).
+
+    **A corrida é a palavra quando a marca é por palavra, e o bloco quando é a faixa de hoje**: o gesto
+    de ir à próxima serve aos dois, e funciona na folha reaberta, porque a faixa é da corrida.
+    """
+    saida: list[tuple[int, int]] = []
+    posicao = 0
+    for corrida in doc.corridas:
+        fim = posicao + len(corrida.texto)
+        if corrida.faixa == documento.REVISAR and corrida.texto.strip():
+            saida.append((posicao, posicao + len(corrida.texto.rstrip())))
+        posicao = fim
+    return tuple(saida)
+
+
+def bloco_em(doc: DocumentoRico, deslocamento: int) -> int | None:
+    """O bloco da página de onde veio o trecho naquele deslocamento, ou `None` (S-642, S-643).
+
+    É o que liga o cursor do editor à folha: a `Corrida` não sabe a linha nem o `bbox`, mas sabe o
+    `bloco`, e o `bbox` do bloco está em `origem.blocos`. O cursor no **fim** de um parágrafo -- o
+    lugar mais comum de ele estar -- fica entre o trecho e o separador, e conta como do trecho.
+    Trecho escrito do zero (`SEM_BLOCO`) e separador não têm bloco.
+    """
+    if doc.origem is None:
+        return None
+    comeco = 0
+    anterior: Corrida | None = None
+    for corrida in doc.corridas:
+        fim = comeco + len(corrida.texto)
+        if comeco <= deslocamento < fim:
+            if corrida.da_pagina and corrida.texto.strip():
+                return corrida.bloco
+            if deslocamento == comeco and anterior is not None and anterior.da_pagina:
+                return anterior.bloco
+            return None
+        comeco = fim
+        anterior = corrida
+    return anterior.bloco if anterior is not None and anterior.da_pagina and deslocamento == comeco else None
+
+
+def linha_em(doc: DocumentoRico, deslocamento: int) -> tuple[int, int] | None:
+    """`(bloco, linha)` da página de onde veio o trecho naquele deslocamento, ou `None` (S-642, etapa 2).
+
+    **Sem mudar o formato.** A `Corrida` não sabe a linha (R5), e o que se faz é derivá-la: o texto
+    do bloco como está no documento é comparado (`difflib`) com as linhas que o motor leu, juntas como
+    `BlocoDeTexto.texto` as junta, e a posição do cursor atravessa a comparação até a linha. Onde a
+    pessoa reescreveu o trecho a comparação não casa, e a resposta é `None` -- quem chama fica com o
+    bloco, que é a etapa 1. É o que a spec previu: "ela erra onde a pessoa reescreveu a linha, e aí a
+    resposta é o bloco".
+    """
+    from difflib import SequenceMatcher
+
+    bloco = bloco_em(doc, deslocamento)
+    if bloco is None or doc.origem is None:
+        return None
+    linhas = getattr(doc.origem.blocos[bloco], "linhas", ()) if 0 <= bloco < len(doc.origem.blocos) else ()
+    if not linhas:
+        return None
+    pedacos: list[str] = []
+    posicao: int | None = None
+    comeco = 0
+    for corrida in doc.corridas:
+        fim = comeco + len(corrida.texto)
+        if corrida.da_pagina and corrida.bloco == bloco:
+            if posicao is None and comeco <= deslocamento <= fim:
+                posicao = sum(len(p) for p in pedacos) + (deslocamento - comeco)
+            pedacos.append(corrida.texto)
+        comeco = fim
+    if posicao is None:
+        return None
+    atual = "".join(pedacos)
+    lido = " ".join(linha.texto for linha in linhas)
+    alvo = None
+    for etiqueta, a0, a1, b0, _b1 in SequenceMatcher(None, atual, lido, autojunk=False).get_opcodes():
+        if a0 <= posicao < a1 or posicao == a1 == len(atual):
+            alvo = b0 + (posicao - a0) if etiqueta == "equal" else None
+            break
+    if alvo is None:
+        return None
+    inicio = 0
+    for indice, linha in enumerate(linhas):
+        if alvo <= inicio + len(linha.texto):
+            return bloco, indice
+        inicio += len(linha.texto) + 1
+    return bloco, len(linhas) - 1
+
+
+def deslocamento_do_bloco(doc: DocumentoRico, bloco: int) -> int | None:
+    """Onde começa, no texto, o primeiro trecho que veio daquele bloco da página. `None` se nenhum veio."""
+    comeco = 0
+    for corrida in doc.corridas:
+        if corrida.da_pagina and corrida.bloco == bloco and corrida.texto.strip():
+            return comeco
+        comeco += len(corrida.texto)
+    return None
+
+
 __all__ = [
     "BOOLEANOS",
     "CORES_DE_AUTOR",
@@ -1327,8 +1610,11 @@ __all__ = [
     "ALINHAMENTOS",
     "ALINHAMENTO_CENTRO",
     "ALINHAMENTO_DIREITA",
+    "ALINHAMENTO_DO_DIAGRAMA",
     "ALINHAMENTO_ESQUERDA",
     "ALINHAMENTO_JUSTIFICADO",
+    "ATRIBUTOS_DE_PARAGRAFO",
+    "ATRIBUTOS_DE_TRECHO",
     "ATRIBUTOS_DA_MARCA",
     "CAIXAS",
     "CAIXA_ALTA",
@@ -1338,6 +1624,9 @@ __all__ = [
     "CORPO_MINIMO",
     "alcance_da_edicao",
     "alcance_de_apagar",
+    "alinhamento_efetivo",
+    "alinhar_diagramas",
+    "atributos_em",
     "alternar",
     "apagar",
     "aplicar",
@@ -1345,24 +1634,32 @@ __all__ = [
     "aplicar_corpo",
     "aplicar_estilo",
     "aplicar_no_paragrafo",
+    "bloco_em",
     "corpo_no_limite",
     "corridas_de_texto",
     "de_pagina",
     "de_texto",
     "dentro_de_marca",
+    "diagramas_a_alinhar",
+    "deslocamento_do_bloco",
     "editar",
     "estilo_do_segmento",
     "fundir",
     "inserir",
+    "inserir_diagrama",
     "intervalo_alvo",
     "intervalo_de_paragrafo",
     "substituir_intervalo",
+    "titulos",
     "limpar_cor",
     "limpar_formato",
+    "linha_em",
     "mover",
+    "mover_paragrafo",
     "mudar_caixa",
     "mudar_corpo",
     "palavra_em",
+    "pintar",
     "vale_em_todo",
     "valor_em_todo",
 ]
