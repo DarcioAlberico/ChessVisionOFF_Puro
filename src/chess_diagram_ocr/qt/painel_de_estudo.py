@@ -2416,7 +2416,8 @@ class PainelDeEstudo(QWidget):
         leitura = ler_arquivo(self._caminho_das_preferencias)
         self._recusa_das_preferencias = ""
         try:
-            save_settings(gravavel(leitura).com(replace(leitura.valor, engine=depois)))
+            arquivo = leitura.valor
+            save_settings(gravavel(leitura).com(arquivo.com(replace(arquivo.preferencias, engine=depois))))
         except GravacaoRecusada as recusa:
             # Vale em memória e não vai para o disco (S-812). A frase sai junto com a do motor
             # aplicado, que chega depois e cobriria esta.

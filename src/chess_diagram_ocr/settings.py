@@ -14,6 +14,13 @@ dependência invisível. Quem quiser o serviço antigo escreve o endereço dele.
 grava; `CVOFF_REMOTE_FEN_URL` e `CVOFF_REMOTE_FEN_ENABLED` são para uso em script e CI, e
 precisam poder desligar o recurso sem editar arquivo -- inclusive para o teste que prova
 que nenhuma requisição parte no uso padrão.
+
+**Duas camadas, e só uma é gravada (S-811).** `ConfiguracaoDoArquivo` é o que está no disco, com as
+chaves que esta versão não conhece guardadas à parte; `Configuracao` é o que vale agora, derivada por
+`aplicar_ambiente`. Carregar aplicava o ambiente sobre o que leu, e salvar gravava o resultado: um
+`CVOFF_REMOTE_FEN_ENABLED=0` virava `false` no arquivo para sempre, e um `CVOFF_REMOTE_FEN_URL` ia
+para o arquivo junto de `enabled=true` -- um consentimento que ninguém deu. `save_settings` aceita
+só a camada de arquivo, e o mypy acusa quem lhe passa a efetiva.
 """
 
 from __future__ import annotations
@@ -23,12 +30,12 @@ import logging
 import math
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, TypeVar
 from urllib.parse import urlparse
 
-from .arquivo_do_dono import Leitura, Lida, gravavel, ler
+from .arquivo_do_dono import Leitura, Lida, VersaoFutura, gravavel, ler
 from .atomic_io import atomic_write_json
 from .config import DATA_DIR
 
@@ -591,40 +598,99 @@ def _flag(raw: str) -> bool | None:
     return None
 
 
-def ler_arquivo(path: Path = DEFAULT_SETTINGS_PATH) -> Leitura[Settings]:
-    """O que está gravado em `settings.json`, sem as variáveis de ambiente (S-812).
+Configuracao = Settings
+"""A camada efetiva: o arquivo, com o ambiente e as faixas por cima (S-811). Não se grava."""
+
+
+@dataclass(frozen=True)
+class ConfiguracaoDoArquivo:
+    """A camada de arquivo: o que está em `settings.json`, sem ambiente e sem faixa (S-811).
+
+    `desconhecidas` são as seções e as chaves que esta versão não conhece -- de uma versão mais
+    nova com o mesmo esquema, ou escritas à mão. Voltam iguais na gravação: antes, a primeira
+    gravação as apagava.
+    """
+
+    preferencias: Settings = Settings()
+    desconhecidas: Mapping[str, object] = field(default_factory=dict)
+
+    def com(self, preferencias: Settings) -> ConfiguracaoDoArquivo:
+        """O mesmo arquivo com outras preferências: é como se grava o que o diálogo mudou."""
+        return replace(self, preferencias=preferencias)
+
+    def para_json(self) -> dict[str, object]:
+        saida = self.preferencias.to_dict()
+        for chave, valor in self.desconhecidas.items():
+            conhecida = saida.get(chave)
+            if isinstance(conhecida, dict) and isinstance(valor, Mapping):
+                saida[chave] = {**conhecida, **{k: v for k, v in valor.items() if k not in conhecida}}
+            elif chave not in saida:
+                saida[chave] = valor
+        return saida
+
+
+def ler_arquivo(path: Path = DEFAULT_SETTINGS_PATH) -> Leitura[ConfiguracaoDoArquivo]:
+    """A camada de arquivo: o que está gravado em `settings.json`, sem o ambiente (S-811, S-812).
 
     Arquivo ausente é `Lida` com os padrões. Arquivo que não lê -- vírgula sobrando, topo que não é
     objeto -- é leitura travada: os padrões valem em memória, e `save_settings` recusa gravar por
     cima. Antes, os padrões voltavam como se fossem o arquivo, e o próximo *Salvar* escrevia
-    `endpoint: ''` sobre o que a pessoa tinha escrito.
+    `endpoint: ''` sobre o que a pessoa tinha escrito. `version` maior que `SETTINGS_VERSION` trava
+    do mesmo jeito: foi gravado por uma versão mais nova, e regravá-lo seria rebaixá-lo.
     """
-    return ler(path, _interpretar, Settings)
+    return ler(path, _interpretar, ConfiguracaoDoArquivo)
 
 
-def _interpretar(texto: str) -> Settings:
+def _interpretar(texto: str) -> ConfiguracaoDoArquivo:
     carregado = json.loads(texto)
     if not isinstance(carregado, Mapping):
         raise ValueError("o topo não é um objeto")
-    return Settings.from_dict(carregado)
+    versao = carregado.get("version")
+    if isinstance(versao, int) and not isinstance(versao, bool) and versao > SETTINGS_VERSION:
+        raise VersaoFutura(versao)
+    return ConfiguracaoDoArquivo(Settings.from_dict(carregado), _desconhecidas(carregado))
+
+
+def _desconhecidas(dados: Mapping[str, object]) -> dict[str, object]:
+    """O que o arquivo tem e `Settings.to_dict` não escreve: seções inteiras e chaves de seção."""
+    modelo = Settings().to_dict()
+    fora: dict[str, object] = {}
+    for chave, valor in dados.items():
+        conhecida = modelo.get(chave)
+        if chave not in modelo:
+            fora[chave] = valor
+        elif isinstance(conhecida, dict) and isinstance(valor, Mapping):
+            resto = {k: v for k, v in valor.items() if k not in conhecida}
+            if resto:
+                fora[chave] = resto
+    return fora
+
+
+def aplicar_ambiente(arquivo: ConfiguracaoDoArquivo, env: Mapping[str, str] | None = None) -> Configuracao:
+    """A camada efetiva: o arquivo com as variáveis `CVOFF_*` e as faixas da S-810 por cima."""
+    return _nas_faixas(apply_environment(arquivo.preferencias, env=env))
 
 
 def load_settings(
     path: Path = DEFAULT_SETTINGS_PATH,
     *,
     env: Mapping[str, str] | None = None,
-) -> Settings:
+) -> Configuracao:
     """As preferências que valem agora: o arquivo, com as variáveis de ambiente por cima.
 
     Arquivo ausente ou ilegível cai no padrão, que não envia nada: falhar para o lado do padrão é
     seguro aqui exatamente porque o padrão é "desligado", e um JSON truncado não pode ligar um
-    envio para fora. Gravar é outra conversa -- ver `ler_arquivo`.
+    envio para fora. Gravar é outra conversa -- ver `ler_arquivo` e `save_settings`.
     """
-    return _nas_faixas(apply_environment(ler_arquivo(path).valor, env=env))
+    return aplicar_ambiente(ler_arquivo(path).valor, env=env)
 
 
-def save_settings(lida: Lida[Settings]) -> None:
-    """Grava as preferências de forma atômica (S-25). Só sobre uma leitura que leu (S-812)."""
+def save_settings(lida: Lida[ConfiguracaoDoArquivo]) -> None:
+    """Grava a camada de arquivo, de forma atômica (S-25), sobre uma leitura que leu (S-812).
+
+    Só a camada de arquivo: a efetiva tem o ambiente dentro, e gravá-la levaria uma variável de
+    uma sessão de script para o arquivo de todas as sessões (S-811).
+    """
     lida = gravavel(lida)
     lida.caminho.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(lida.caminho, lida.valor.to_dict())
+    atomic_write_json(lida.caminho, lida.valor.para_json())

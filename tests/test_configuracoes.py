@@ -68,7 +68,7 @@ class TreinoTests(unittest.TestCase):
             preferencias.Settings(),
             {"training.epochs": 25, "training.ocr_iterations": 4000, "recognition.dpi": 300},
         )
-        preferencias.save_settings(Lida(gravado, caminho))
+        preferencias.save_settings(Lida(preferencias.ConfiguracaoDoArquivo(gravado), caminho))
         lido = preferencias.load_settings(caminho, env={})
         self.assertEqual(lido.training.epochs, 25)
         self.assertEqual(lido.training.ocr_iterations, 4000)
@@ -89,7 +89,12 @@ class TreinoTests(unittest.TestCase):
     def test_o_pedido_de_treino_le_o_arquivo(self) -> None:
         caminho = pasta_temporaria(self) / "settings.json"
         preferencias.save_settings(
-            Lida(configuracoes.trocar(preferencias.Settings(), {"training.epochs": 3, "training.lr": 0.01}), caminho)
+            Lida(
+                preferencias.ConfiguracaoDoArquivo(
+                    configuracoes.trocar(preferencias.Settings(), {"training.epochs": 3, "training.lr": 0.01})
+                ),
+                caminho,
+            )
         )
         original = preferencias.DEFAULT_SETTINGS_PATH
         preferencias.DEFAULT_SETTINGS_PATH = caminho
@@ -103,9 +108,9 @@ class TreinoTests(unittest.TestCase):
 
     def test_dpi_e_max_boards_releem_quando_o_arquivo_muda(self) -> None:
         caminho = pasta_temporaria(self) / "settings.json"
-        preferencias.save_settings(Lida(configuracoes.trocar(preferencias.Settings(), {"recognition.dpi": 150}), caminho))
+        preferencias.save_settings(Lida(preferencias.ConfiguracaoDoArquivo(configuracoes.trocar(preferencias.Settings(), {"recognition.dpi": 150})), caminho))
         self.assertEqual(configuracoes.reconhecimento(caminho).dpi, 150)
-        preferencias.save_settings(Lida(configuracoes.trocar(preferencias.Settings(), {"recognition.dpi": 400}), caminho))
+        preferencias.save_settings(Lida(preferencias.ConfiguracaoDoArquivo(configuracoes.trocar(preferencias.Settings(), {"recognition.dpi": 400})), caminho))
         self.assertEqual(configuracoes.reconhecimento(caminho).dpi, 400)
 
 

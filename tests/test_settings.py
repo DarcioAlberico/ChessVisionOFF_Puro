@@ -17,7 +17,7 @@ from unittest import mock
 import numpy as np
 
 from chess_diagram_ocr import net_correction
-from chess_diagram_ocr.arquivo_do_dono import Lida
+from chess_diagram_ocr.arquivo_do_dono import EsquemaFuturo, GravacaoRecusada, Lida
 from chess_diagram_ocr.net_correction import (
     HttpFenProvider,
     RemoteFenProvider,
@@ -28,11 +28,13 @@ from chess_diagram_ocr.settings import (
     ENV_OCR_ENGINE,
     ENV_REMOTE_ENABLED,
     ENV_REMOTE_URL,
+    ConfiguracaoDoArquivo,
     LocalReaderSettings,
     OcrSettings,
     RemoteFenSettings,
     Settings,
     apply_environment,
+    ler_arquivo,
     load_settings,
     save_settings,
 )
@@ -60,7 +62,7 @@ class OcrSettingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as pasta:
             caminho = Path(pasta) / "settings.json"
             original = Settings(ocr=OcrSettings(enabled=True, engine="easyocr", languages=("de",)))
-            save_settings(Lida(original, caminho))
+            save_settings(Lida(ConfiguracaoDoArquivo(original), caminho))
             self.assertEqual(load_settings(caminho, env={}).ocr, original.ocr)
 
     def test_secao_ausente_cai_no_padrao(self) -> None:
@@ -192,7 +194,7 @@ class PersistenceTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             caminho = Path(tmp) / "settings.json"
-            save_settings(Lida(original, caminho))
+            save_settings(Lida(ConfiguracaoDoArquivo(original), caminho))
             self.assertEqual(load_settings(caminho, env={}), original)
 
     def test_a_corrupt_file_falls_back_to_the_default_which_sends_nothing(self) -> None:
@@ -212,7 +214,7 @@ class PersistenceTests(unittest.TestCase):
         """Sem versão, um esquema novo não teria como distinguir "campo ausente" de "antigo"."""
         with tempfile.TemporaryDirectory() as tmp:
             caminho = Path(tmp) / "settings.json"
-            save_settings(Lida(Settings(), caminho))
+            save_settings(Lida(ConfiguracaoDoArquivo(Settings()), caminho))
             self.assertIn("version", json.loads(caminho.read_text(encoding="utf-8")))
 
     def test_acknowledging_is_what_the_dialog_persists(self) -> None:
@@ -492,3 +494,130 @@ class BooleanoEstritoEFaixasTests(unittest.TestCase):
             and any(isinstance(sub, ast.Attribute) and sub.attr == "get" for sub in ast.walk(no))
         ]
         self.assertEqual([], achados)
+
+
+class CamadaDeArquivoTests(unittest.TestCase):
+    """O que está gravado e o que vale agora são dois valores, e só o primeiro é gravado (S-811).
+
+    Carregar aplicava as variáveis `CVOFF_*` sobre o que leu, e salvar gravava o resultado: com
+    `remote_fen.enabled=true` no arquivo e `CVOFF_REMOTE_FEN_ENABLED=0` no ambiente, mudar outra
+    opção deixava `false` no arquivo para sempre; com `CVOFF_REMOTE_FEN_URL`, o endpoint ia para o
+    arquivo junto de `enabled=true` -- um consentimento de privacidade que ninguém deu.
+    """
+
+    def setUp(self) -> None:
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        self.arquivo = Path(pasta.name) / "settings.json"
+
+    def _salvar_pelo_dialogo(self, env: dict[str, str]) -> dict:
+        """A porta do menu: abre o diálogo, muda as épocas do treino e salva."""
+        from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+
+        if not TEM_PYQT:
+            self.skipTest(MOTIVO)
+        aplicacao()
+        from chess_diagram_ocr import settings as preferencias
+        from chess_diagram_ocr.qt import dialogo_de_configuracoes
+        from chess_diagram_ocr.qt.dialogo_de_configuracoes import DialogoDeConfiguracoes
+
+        def exec_(dialogo: DialogoDeConfiguracoes) -> int:
+            dialogo._controles["training.epochs"].setValue(21)
+            dialogo.btn_salvar.click()
+            return 1
+
+        with (
+            mock.patch.dict("os.environ", env),
+            mock.patch.object(preferencias, "DEFAULT_SETTINGS_PATH", self.arquivo),
+            mock.patch.object(DialogoDeConfiguracoes, "exec", exec_),
+        ):
+            descartar(dialogo_de_configuracoes.abrir(None))
+        return json.loads(self.arquivo.read_text(encoding="utf-8"))
+
+    def test_salvar_nao_grava_o_ambiente_que_desliga(self) -> None:
+        self.arquivo.write_text(
+            json.dumps({"version": 1, "remote_fen": {"enabled": True, "endpoint": ENDPOINT}}), encoding="utf-8"
+        )
+        gravado = self._salvar_pelo_dialogo({ENV_REMOTE_ENABLED: "0"})
+        self.assertEqual(21, gravado["training"]["epochs"], "a mudança pedida foi gravada")
+        self.assertTrue(gravado["remote_fen"]["enabled"], "o ambiente não vai para o arquivo")
+        self.assertEqual(ENDPOINT, gravado["remote_fen"]["endpoint"])
+
+    def test_salvar_nao_grava_o_ambiente_que_liga(self) -> None:
+        """O sentido que importa para a privacidade: endereço e motor do ambiente ligam em memória."""
+        self.arquivo.write_text(json.dumps({"version": 1}), encoding="utf-8")
+        gravado = self._salvar_pelo_dialogo({ENV_REMOTE_URL: ENDPOINT, ENV_OCR_ENGINE: "tesseract"})
+        self.assertEqual(21, gravado["training"]["epochs"])
+        self.assertEqual(("", False), (gravado["remote_fen"]["endpoint"], gravado["remote_fen"]["enabled"]))
+        self.assertEqual(("rapidocr", False), (gravado["ocr"]["engine"], gravado["ocr"]["enabled"]))
+
+    def test_chave_desconhecida_sobrevive_a_gravacao(self) -> None:
+        """Seção e chave que esta versão não conhece eram apagadas pela primeira gravação."""
+        self.arquivo.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "secao_futura": {"x": [1, 2]},
+                    "engine": {"threads": 2, "opcao_nova": "sim"},
+                    "nota": "escrita à mão",
+                }
+            ),
+            encoding="utf-8",
+        )
+        leitura = ler_arquivo(self.arquivo)
+        assert isinstance(leitura, Lida)
+        arquivo = leitura.valor
+        mudado = replace(arquivo.preferencias, engine=replace(arquivo.preferencias.engine, multipv=5))
+        save_settings(leitura.com(arquivo.com(mudado)))
+        gravado = json.loads(self.arquivo.read_text(encoding="utf-8"))
+        self.assertEqual({"x": [1, 2]}, gravado["secao_futura"])
+        self.assertEqual("escrita à mão", gravado["nota"])
+        self.assertEqual(("sim", 2, 5), (gravado["engine"]["opcao_nova"], gravado["engine"]["threads"], gravado["engine"]["multipv"]))
+
+    def test_faixa_vale_na_memoria_e_nao_e_regravada(self) -> None:
+        """O `threads` de outra máquina fica no arquivo; nesta, vale o padrão (S-810)."""
+        self.arquivo.write_text(json.dumps({"engine": {"threads": 100000}}), encoding="utf-8")
+        self.assertEqual(1, load_settings(self.arquivo, env={}).engine.threads)
+        leitura = ler_arquivo(self.arquivo)
+        assert isinstance(leitura, Lida)
+        save_settings(leitura)
+        self.assertEqual(100000, json.loads(self.arquivo.read_text(encoding="utf-8"))["engine"]["threads"])
+
+    def test_versao_futura_trava_a_gravacao(self) -> None:
+        self.arquivo.write_text(json.dumps({"version": 2, "remote_fen": {"endpoint": ENDPOINT}}), encoding="utf-8")
+        original = self.arquivo.read_bytes()
+        leitura = ler_arquivo(self.arquivo)
+        self.assertIsInstance(leitura, EsquemaFuturo)
+        self.assertFalse(load_settings(self.arquivo, env={}).remote_fen.is_usable, "os padrões valem")
+        with self.assertRaises(GravacaoRecusada):
+            save_settings(leitura)  # type: ignore[arg-type]
+        self.assertEqual(original, self.arquivo.read_bytes())
+
+    def test_o_tipo_efetivo_nao_grava(self) -> None:
+        """**O mypy acusa a tentativa**: `save_settings` só aceita a camada de arquivo.
+
+        Com o caso certo ao lado, que tem de passar: sem ele, um `chess_diagram_ocr` que o mypy não
+        achasse viraria `Any`, e o teste passaria sem ter conferido nada.
+        """
+        from mypy import api
+
+        import chess_diagram_ocr.settings as modulo
+
+        cabeca = (
+            "from pathlib import Path\n"
+            "from chess_diagram_ocr.arquivo_do_dono import Lida\n"
+            "from chess_diagram_ocr.settings import ler_arquivo, load_settings, save_settings\n"
+        )
+        casos = {
+            "efetiva": (cabeca + "save_settings(Lida(load_settings(), Path('x.json')))\n", 1),
+            "arquivo": (cabeca + "lida = ler_arquivo(Path('x.json'))\nif isinstance(lida, Lida):\n    save_settings(lida)\n", 0),
+        }
+        raiz_de_src = str(Path(modulo.__file__).resolve().parents[1])
+        for nome, (fonte, esperado) in casos.items():
+            trecho = self.arquivo.parent / f"{nome}.py"
+            trecho.write_text(fonte, encoding="utf-8")
+            with self.subTest(nome), mock.patch.dict("os.environ", {"MYPYPATH": raiz_de_src}):
+                saida, _erro, codigo = api.run(
+                    [str(trecho), "--follow-imports=silent", "--no-incremental", "--no-site-packages"]
+                )
+                self.assertEqual(esperado, codigo, saida)

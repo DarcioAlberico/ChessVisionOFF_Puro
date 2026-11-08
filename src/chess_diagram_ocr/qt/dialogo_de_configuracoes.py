@@ -254,12 +254,14 @@ def abrir(pai: QWidget | None, *, dizer: Callable[[str], None] | None = None) ->
     def gravar(novo: preferencias.Settings) -> None:
         if not isinstance(leitura, Lida):  # Salvar está desligado; ver `travada`
             return
-        preferencias.save_settings(leitura.com(novo))
+        preferencias.save_settings(leitura.com(leitura.valor.com(novo)))
         if dizer is not None:
             dizer(f"Configurações gravadas em {preferencias.DEFAULT_SETTINGS_PATH.name}.")
 
+    # **A camada de arquivo, e não a efetiva (S-811).** O diálogo edita o que está gravado: com a
+    # efetiva, o `CVOFF_*` desta sessão ia para o arquivo na primeira gravação.
     dialogo = DialogoDeConfiguracoes(
-        pai, configuracao=preferencias.load_settings(), ao_salvar=gravar, travada=travada
+        pai, configuracao=leitura.valor.preferencias, ao_salvar=gravar, travada=travada
     )
     dialogo.exec()
     return dialogo

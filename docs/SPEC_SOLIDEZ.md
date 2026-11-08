@@ -542,6 +542,13 @@ versão futura entra pela S-812.
 
 **Aceite.** Os testes passam. O tipo efetivo não tem método de gravação (mypy acusa a tentativa).
 
+**Entregue** (2026-11-08): `Configuracao` é o próprio `Settings` (um nome, para os 30 leitores não mudarem), e
+`ConfiguracaoDoArquivo` o embrulha com as `desconhecidas`. A gravação é `save_settings(Lida[ConfiguracaoDoArquivo])`,
+uma função e não um método, para a trava da S-812 valer nela; o teste roda o mypy num trecho que tenta gravar a
+efetiva, com o caso certo ao lado. `aplicar_ambiente` leva também as faixas da S-810. O diálogo de configurações
+passou a mostrar e editar a camada de arquivo; as opções do motor da sala já gravavam sobre ela desde a S-812.
+Uma seção conhecida que no arquivo não é objeto (`"engine": [1, 2]`) não é guardada: vira os padrões, como antes.
+
 ## S-813 · Baralho de revisão e placar sob a leitura travada
 
 **Problema** (confirmado por script). Além da premissa da S-812: `"esquema": "1.0"` levanta `ValueError`

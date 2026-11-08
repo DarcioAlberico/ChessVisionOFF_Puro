@@ -60,8 +60,9 @@ class SeisLeitoresTests(unittest.TestCase):
         original = self._corromper(caminho, b'{"remote_fen": {"endpoint": "http://x", "enabled": true},}')
         leitura = settings.ler_arquivo(caminho)
         self.assertIsInstance(leitura, Ilegivel)
-        self.assertEqual(settings.Settings(), leitura.valor, "os padrões valem em memória")
-        novo = replace(leitura.valor, engine=replace(leitura.valor.engine, multipv=5))
+        self.assertEqual(settings.ConfiguracaoDoArquivo(), leitura.valor, "os padrões valem em memória")
+        preferencias = leitura.valor.preferencias
+        novo = leitura.valor.com(replace(preferencias, engine=replace(preferencias.engine, multipv=5)))
         self._conferir(caminho, original, lambda: settings.save_settings(replace(leitura, valor=novo)))
 
     def test_baralho_de_esquema_futuro_com_600_itens(self) -> None:
