@@ -364,6 +364,7 @@ SEM_TKINTER = {
     "analise_da_partida.py": "os cortes de imprecisão/erro/erro grave e onde o gráfico põe cada ply (S-537)",
     "finais.py": "quando perguntar à tabela de finais e o que a resposta dela diz (S-538)",
     "motor_declarado.py": "os tetos das opções do motor, a barra de avaliação e as linhas do MultiPV (S-529/S-536)",
+    "livros.py": "se dois caminhos são o mesmo livro: a chave do livro numa função só (S-827)",
     "biblioteca.py": "o acervo inteiro como uma decisão só: busca, facetas e a janela que se realiza (F9)",
     "configuracoes.py": "a tabela da janela Configurações…: um campo por preferência de settings.Settings, DPI e teto relidos do arquivo",
     "cortina.py": "a cortina de comparação: onde está a divisa entre o antes e o depois (F9)",
