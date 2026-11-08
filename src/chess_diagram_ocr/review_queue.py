@@ -39,7 +39,7 @@ from typing import Any, Literal
 import cv2
 import numpy as np
 
-from .arquivo_do_dono import ConteudoIlegivel, Leitura, Lida, conferir_versao, gravar_json, ler
+from .arquivo_do_dono import ConteudoIlegivel, Leitura, Lida, conferir_versao_exata, gravar_json, ler
 from .atomic_io import write_image
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
@@ -250,7 +250,7 @@ def carregar_fila(path: Path = DEFAULT_QUEUE_PATH) -> Leitura[ReviewQueue]:
 
 def _interpretar_fila(texto: str) -> ReviewQueue:
     raw = json.loads(texto)
-    conferir_versao(raw, "version", QUEUE_VERSION, aceita_antiga=False)
+    conferir_versao_exata(raw, "version", QUEUE_VERSION)
     fila = ReviewQueue(
         source_pdf=str(raw.get("source_pdf", "")),
         created_at=str(raw.get("created_at", "")),

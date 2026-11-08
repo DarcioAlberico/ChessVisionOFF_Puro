@@ -55,7 +55,7 @@ from .arquivo_do_dono import (
     Leitura,
     Lida,
     com_valor,
-    conferir_versao,
+    conferir_versao_exata,
     gravar_json,
     ler,
 )
@@ -297,7 +297,7 @@ def carregar_lote(caminho: Path) -> Leitura[Lote | None]:
 
 def _lote_de_json(texto: str) -> Lote:
     dados = json.loads(texto)
-    conferir_versao(dados, "versao", VERSAO_DO_LOTE, aceita_antiga=False)
+    conferir_versao_exata(dados, "versao", VERSAO_DO_LOTE)
     return Lote(
         pasta=str(dados.get("pasta", "")),
         origem=str(dados.get("origem", "")),

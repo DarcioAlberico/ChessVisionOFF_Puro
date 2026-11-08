@@ -267,20 +267,20 @@ def gravavel(leitura: Leitura[T]) -> Lida[T]:
     raise GravacaoRecusada(leitura.mensagem)
 
 
-def conferir_versao(dados: object, chave: str, atual: int, *, aceita_antiga: bool) -> None:
-    """O topo do JSON de um arquivo do dono é um objeto, e a versão dele é uma que se lê (S-812).
+def conferir_versao_exata(dados: object, chave: str, atual: int) -> None:
+    """O topo do JSON é um objeto, e a versão em `chave` é exatamente a `atual` (S-812).
 
-    Versão mais nova levanta `VersaoFutura` (a leitura trava como `EsquemaFuturo`). Com
-    `aceita_antiga`, a ausência vale a versão atual e uma mais velha se lê; sem, só a atual se lê:
-    não há migração, e regravar seria apagar.
+    Para o arquivo sem migração (a fila de revisão, o lote de importação): a versão mais nova
+    levanta `VersaoFutura` (a leitura trava como `EsquemaFuturo`), e qualquer outra levanta
+    `ValueError` (ilegível) -- ler uma mais velha e regravar seria apagar o que ela tinha. O
+    arquivo que lê esquema antigo usa `ler_lista`, com `conferir_esquema` (S-813).
     """
     if not isinstance(dados, dict):
         raise ValueError("o topo não é um objeto")
-    bruta = dados.get(chave, atual) if aceita_antiga else dados.get(chave)
-    versao = int(bruta) if aceita_antiga else bruta
+    versao = dados.get(chave)
     if isinstance(versao, int) and versao > atual:
         raise VersaoFutura(versao)
-    if not aceita_antiga and versao != atual:
+    if versao != atual:
         raise ValueError(f"versão {versao!r} desconhecida")
 
 
