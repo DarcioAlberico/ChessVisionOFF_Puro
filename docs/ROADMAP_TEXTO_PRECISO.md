@@ -441,6 +441,17 @@ ouro-dev **e** a Fase 105 não promover (S-755), a M1 não é rebaixada em silê
 marcado para revisão, com captura ≥ 90% — ou (b) pagar o orçamento de CPU de mais uma rodada da Fase
 105 (D8). A escolha fica registrada aqui **antes** da primeira leitura do ouro-teste.
 
+**A escolha do dono, em 2026-11-08: (a), com livros novos para o leiaute.** Ela veio depois da primeira leitura do teste
+(2026-11-06), e por isso não ajusta nada nele: só diz o que se persegue daqui em diante. A meta da M1 passa a ser ≤ 0,50%,
+com a G5 cobrindo o erro que sobra (captura ≥ 90% com ≤ 5% das palavras). Hoje nenhuma das duas
+cumpre: fusão 2,11% [0,83; 3,72] e G5 76,9% no digital. O motivo de não pagar a Fase 105 é o próprio diagnóstico do
+teste: o Tesseract nas linhas certas erra 0,15%, então o reconhecimento já está pago, e o que falta é leiaute.
+
+O dev novo para o leiaute sai da **reserva** de `assets/texto_prosa/ouro.json`: 30 livros digitais que nunca foram ao
+teste, fora os marcados `fora_do_treino` e os reprovados (29 em inglês, 1 em espanhol). O teste só se lê de novo no
+portão. Do dono continua faltando o livro da terceira língua (a pendência `terceira_lingua`), que entra no teste a mais.
+A Fase 105 fica adiada, e não cancelada: volta se o scan mostrar que lá o gargalo é o reconhecimento.
+
 ---
 
 ## 4. As decisões que organizam o plano
@@ -525,8 +536,9 @@ marcado para revisão, com captura ≥ 90% — ou (b) pagar o orçamento de CPU 
 > ruído, também passavam caladas: desde 2026-11-07 elas avisam, menos uma folha em branco manchada do *Bachmann*, com o `leitura_com_ruido` (ver o *Achado* da S-710). O aviso não
 > conserta o texto: só diz que ele saiu assim.
 >
-> **O plano B da seção 3 está valendo, e a escolha é do dono**: (a) aceitar M1 ≤ 0,50% com a G5 compensando, ou (b) pagar a Fase 105 (D8). A G5 também
-> não cumpre, então (a) hoje não fecha sozinha. O que ficou de fora por recuo: S-703 só a ferramenta (D3), S-704 sem perfil calibrado (D3), S-724 (D1), S-740, S-741, S-742 e os
+> **O plano B da seção 3 está valendo, e o dono escolheu (a) em 2026-11-08**: M1 ≤ 0,50% com a G5 compensando, e o leiaute
+> trabalhado em livros novos, que saem da reserva do ouro. A Fase 105 (D8) fica adiada. A G5 também não cumpre, então (a) hoje
+> não fecha sozinha: ver a seção 3. O que ficou de fora por recuo: S-703 só a ferramenta (D3), S-704 sem perfil calibrado (D3), S-724 (D1), S-740, S-741, S-742 e os
 > degraus 1 a 3 da S-745 (D2, D7, D3), a Fase 105 (D8), S-746 (só serve a ela), S-765 (D9), o G104 e a S-770 (D3 e D8).
 
 > **Estado em 2026-11-05: a primeira entrega foi feita**, com a especificação em
