@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
 import sys
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -18,6 +17,7 @@ from pathlib import Path
 from unittest import mock
 
 from ambiente_de_teste import pasta_temporaria
+from subprocesso import iniciar_python
 
 from chess_diagram_ocr.text import arquivo, caderno, rico
 from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
@@ -266,7 +266,7 @@ class TravaTests(_ComLivro):
 
     def _trava_de_um_vivo(self, segunda_linha: str = "") -> tuple[Path, int]:
         """A trava em nome de um processo vivo que não é este; `segunda_linha` é a hora de criação."""
-        vivo = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        vivo = iniciar_python("import time; time.sleep(60)")
         self.addCleanup(vivo.wait)
         self.addCleanup(vivo.kill)
         primeiro = self.abrir()

@@ -26,7 +26,14 @@ from ..review_queue import (
     rare_classes_from_labels,
 )
 from ..ui.livros import mesmo_livro
-from . import add_accept_threshold_argument, add_dpi_argument, add_model_argument, add_verbose, cli_errors
+from . import (
+    EXIT_BAD_INPUT,
+    add_accept_threshold_argument,
+    add_dpi_argument,
+    add_model_argument,
+    add_verbose,
+    cli_errors,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
         # Antes da varredura, e nao depois: a fila que nao leu nao e regravada (S-812), e varrer
         # o livro inteiro para so entao recusar seria gastar a noite.
         print(anterior.mensagem, file=sys.stderr)
-        return 1
+        return EXIT_BAD_INPUT
 
     rare = rare_classes_from_labels(args.labels)
     if rare:

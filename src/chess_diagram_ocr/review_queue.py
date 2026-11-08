@@ -39,8 +39,8 @@ from typing import Any, Literal
 import cv2
 import numpy as np
 
-from .arquivo_do_dono import Leitura, Lida, VersaoFutura, gravavel, ler
-from .atomic_io import atomic_write_json, write_image
+from .arquivo_do_dono import Leitura, Lida, conferir_versao, gravar_json, ler
+from .atomic_io import write_image
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
     DATA_DIR,
@@ -244,13 +244,7 @@ def carregar_fila(path: Path = DEFAULT_QUEUE_PATH) -> Leitura[ReviewQueue]:
 
 def _interpretar_fila(texto: str) -> ReviewQueue:
     raw = json.loads(texto)
-    if not isinstance(raw, dict):
-        raise ValueError("o topo não é um objeto")
-    versao = raw.get("version")
-    if versao != QUEUE_VERSION:
-        if isinstance(versao, int) and versao > QUEUE_VERSION:
-            raise VersaoFutura(versao)
-        raise ValueError(f"versão {versao!r} desconhecida")
+    conferir_versao(raw, "version", QUEUE_VERSION, aceita_antiga=False)
     return ReviewQueue(
         source_pdf=str(raw.get("source_pdf", "")),
         created_at=str(raw.get("created_at", "")),
@@ -262,10 +256,9 @@ def _interpretar_fila(texto: str) -> ReviewQueue:
 
 def gravar_fila(lida: Lida[ReviewQueue]) -> Path:
     """Grava a fila onde ela foi lida. Só sobre uma leitura que leu (S-812)."""
-    lida = gravavel(lida)
-    atomic_write_json(lida.caminho, lida.valor.to_dict())
-    logger.info("Fila de revisão gravada em %s (%d itens).", lida.caminho, len(lida.valor.items))
-    return lida.caminho
+    destino = gravar_json(lida, lida.valor.to_dict())
+    logger.info("Fila de revisão gravada em %s (%d itens).", destino, len(lida.valor.items))
+    return destino
 
 
 # ------------------------------------------------------------------- prioridade

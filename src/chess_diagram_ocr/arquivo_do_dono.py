@@ -33,6 +33,8 @@ from datetime import date
 from pathlib import Path
 from typing import Generic, TypeAlias, TypeVar, cast
 
+from .atomic_io import atomic_write_json
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -189,6 +191,30 @@ def gravavel(leitura: Leitura[T]) -> Lida[T]:
     if isinstance(leitura, Lida):
         return leitura
     raise GravacaoRecusada(leitura.mensagem)
+
+
+def conferir_versao(dados: object, chave: str, atual: int, *, aceita_antiga: bool) -> None:
+    """O topo do JSON de um arquivo do dono é um objeto, e a versão dele é uma que se lê (S-812).
+
+    Versão mais nova levanta `VersaoFutura` (a leitura trava como `EsquemaFuturo`). Com
+    `aceita_antiga`, a ausência vale a versão atual e uma mais velha se lê; sem, só a atual se lê:
+    não há migração, e regravar seria apagar.
+    """
+    if not isinstance(dados, dict):
+        raise ValueError("o topo não é um objeto")
+    bruta = dados.get(chave, atual) if aceita_antiga else dados.get(chave)
+    versao = int(bruta) if aceita_antiga else bruta
+    if isinstance(versao, int) and versao > atual:
+        raise VersaoFutura(versao)
+    if not aceita_antiga and versao != atual:
+        raise ValueError(f"versão {versao!r} desconhecida")
+
+
+def gravar_json(leitura: Leitura[T], conteudo: object, *, indent: int = 2) -> Path:
+    """Grava `conteudo` onde `leitura` leu. Só sobre uma leitura que leu (S-812)."""
+    lida = gravavel(leitura)
+    atomic_write_json(lida.caminho, conteudo, indent=indent)
+    return lida.caminho
 
 
 def copiar_ao_lado(caminho: Path, *, hoje: date | None = None) -> Path | None:

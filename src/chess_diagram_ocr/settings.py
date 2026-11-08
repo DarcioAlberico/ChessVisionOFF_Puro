@@ -32,7 +32,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TypeVar
 from urllib.parse import urlparse
 
 from .arquivo_do_dono import Leitura, Lida, VersaoFutura, gravavel, ler
@@ -230,7 +230,7 @@ def _nas_faixas(settings: Settings) -> Settings:
     """O valor fora da faixa vira o padrão **daquele campo**, com aviso -- como o que não é número."""
     padrao = Settings()
     for (secao, campo), faixa in faixas().items():
-        atual: Any = getattr(settings, secao)
+        atual = getattr(settings, secao)
         valor = getattr(atual, campo)
         if faixa.contem(valor):
             continue

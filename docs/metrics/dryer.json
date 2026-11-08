@@ -2,7 +2,7 @@
  "limiar": 0.8,
  "gramas": 5,
  "min_tokens": 60,
- "total": 78,
+ "total": 79,
  "pares": [
   {
    "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
@@ -69,9 +69,9 @@
   },
   {
    "a": "src/chess_diagram_ocr/importacao_de_imagens.py::Lote.to_dict",
-   "linha_a": 265,
+   "linha_a": 276,
    "b": "src/chess_diagram_ocr/review_queue.py::ReviewQueue.to_dict",
-   "linha_b": 222,
+   "linha_b": 223,
    "semelhanca": 1.0
   },
   {
@@ -85,14 +85,14 @@
    "a": "src/chess_diagram_ocr/qt/painel_da_galeria.py::PainelDaGaleria._confirmar_destrutivo",
    "linha_a": 1510,
    "b": "src/chess_diagram_ocr/qt/painel_de_estudo.py::PainelDeEstudo._perguntar",
-   "linha_b": 1747,
+   "linha_b": 1758,
    "semelhanca": 1.0
   },
   {
    "a": "src/chess_diagram_ocr/qt/painel_de_texto.py::PainelDeTexto.desfazer",
-   "linha_a": 1530,
+   "linha_a": 1531,
    "b": "src/chess_diagram_ocr/qt/painel_de_texto.py::PainelDeTexto.refazer",
-   "linha_b": 1554,
+   "linha_b": 1555,
    "semelhanca": 1.0
   },
   {
@@ -100,13 +100,6 @@
    "linha_a": 292,
    "b": "src/chess_diagram_ocr/qt/trilho.py::TrilhoDoLivro.ir_para_a_anterior_duvidosa",
    "linha_b": 300,
-   "semelhanca": 1.0
-  },
-  {
-   "a": "src/chess_diagram_ocr/settings.py::_inteiro",
-   "linha_a": 139,
-   "b": "src/chess_diagram_ocr/settings.py::_flutuante",
-   "linha_b": 162,
    "semelhanca": 1.0
   },
   {
@@ -145,10 +138,18 @@
    "semelhanca": 1.0
   },
   {
+   "a": "src/chess_diagram_ocr/placar.py::gravar",
+   "linha_a": 201,
+   "b": "src/chess_diagram_ocr/revisao_arquivo.py::gravar",
+   "linha_b": 71,
+   "semelhanca": 0.982,
+   "proposito": "S-812: a gravacao e a conferencia de versao moraram em arquivo_do_dono (gravar_json, conferir_versao); o que sobra e a forma propria de cada arquivo, dois campos por lado"
+  },
+  {
    "a": "src/chess_diagram_ocr/qt/painel_de_estudo.py::PainelDeEstudo.buscar_partidas",
-   "linha_a": 2508,
+   "linha_a": 2526,
    "b": "src/chess_diagram_ocr/qt/painel_de_estudo.py::PainelDeEstudo.arvore_de_aberturas",
-   "linha_b": 2537,
+   "linha_b": 2555,
    "semelhanca": 0.948
   },
   {
@@ -223,7 +224,7 @@
   },
   {
    "a": "src/chess_diagram_ocr/cli/scan.py::parse_args",
-   "linha_a": 108,
+   "linha_a": 109,
    "b": "src/chess_diagram_ocr/cli/texto_conflitos.py::parse_args",
    "linha_b": 37,
    "semelhanca": 0.903
@@ -279,17 +280,24 @@
   },
   {
    "a": "src/chess_diagram_ocr/cli/review.py::parse_args",
-   "linha_a": 29,
+   "linha_a": 41,
    "b": "src/chess_diagram_ocr/cli/sides.py::parse_args",
    "linha_b": 37,
    "semelhanca": 0.876
   },
   {
    "a": "src/chess_diagram_ocr/estudo_arquivo.py::chave_de",
-   "linha_a": 78,
+   "linha_a": 79,
    "b": "src/chess_diagram_ocr/text/rascunho.py::chave_de",
-   "linha_b": 100,
+   "linha_b": 101,
    "semelhanca": 0.875
+  },
+  {
+   "a": "src/chess_diagram_ocr/settings.py::RemoteFenSettings.from_dict",
+   "linha_a": 139,
+   "b": "src/chess_diagram_ocr/settings.py::EngineSettings.from_dict",
+   "linha_b": 297,
+   "semelhanca": 0.873
   },
   {
    "a": "src/chess_diagram_ocr/ui/editor_model.py::DiagramEditorModel.apply_placement",
@@ -372,7 +380,7 @@
    "a": "src/chess_diagram_ocr/cli/export_pgn.py::parse_args",
    "linha_a": 31,
    "b": "src/chess_diagram_ocr/cli/review.py::parse_args",
-   "linha_b": 29,
+   "linha_b": 41,
    "semelhanca": 0.846
   },
   {
@@ -383,18 +391,19 @@
    "semelhanca": 0.846
   },
   {
-   "a": "src/chess_diagram_ocr/settings.py::RemoteFenSettings.from_dict",
-   "linha_a": 127,
-   "b": "src/chess_diagram_ocr/settings.py::EngineSettings.from_dict",
-   "linha_b": 228,
-   "semelhanca": 0.842
-  },
-  {
    "a": "src/chess_diagram_ocr/cli/export_onnx.py::parse_args",
    "linha_a": 35,
    "b": "src/chess_diagram_ocr/cli/sides.py::parse_args",
    "linha_b": 37,
    "semelhanca": 0.84
+  },
+  {
+   "a": "src/chess_diagram_ocr/importacao_de_imagens.py::_lote_de_json",
+   "linha_a": 298,
+   "b": "src/chess_diagram_ocr/review_queue.py::_interpretar_fila",
+   "linha_b": 245,
+   "semelhanca": 0.839,
+   "proposito": "S-812: a gravacao e a conferencia de versao moraram em arquivo_do_dono (gravar_json, conferir_versao); o que sobra e a forma propria de cada arquivo, dois campos por lado"
   },
   {
    "a": "src/chess_diagram_ocr/cli/texto_grade.py::_linhas_da_camada",
@@ -540,7 +549,7 @@
    "a": "src/chess_diagram_ocr/cli/evaluate.py::parse_args",
    "linha_a": 25,
    "b": "src/chess_diagram_ocr/cli/review.py::parse_args",
-   "linha_b": 29,
+   "linha_b": 41,
    "semelhanca": 0.8
   },
   {

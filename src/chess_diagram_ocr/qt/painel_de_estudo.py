@@ -3251,7 +3251,7 @@ class PainelDeEstudo(QWidget):
     def _caminho_da_revisao(self) -> Path:
         return self._pasta_de_treino / revisao_arquivo.CAMINHO_PADRAO.name
 
-    def _gravar_o_baralho(self, leitura: Leitura[dict[str, Any]], baralho: dict[str, Any]) -> None:
+    def _gravar_o_baralho(self, leitura: Leitura[revisao_arquivo.Baralho], baralho: revisao_arquivo.Baralho) -> None:
         """A gravação que a janela de treino chama ao fechar. Método e não `lambda`: um `lambda`
         não tem nome para o critério de aceite citar, e a S-546 já registrou o argumento.
 

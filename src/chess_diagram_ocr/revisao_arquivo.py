@@ -22,8 +22,7 @@ import json
 import logging
 from pathlib import Path
 
-from .arquivo_do_dono import Leitura, Lida, VersaoFutura, gravavel, ler
-from .atomic_io import atomic_write_json
+from .arquivo_do_dono import Leitura, Lida, conferir_versao, gravar_json, ler
 from .config import DATA_DIR
 from .revisao_espacada import Estado
 
@@ -55,11 +54,7 @@ def carregar(*, caminho: Path | None = None) -> Leitura[Baralho]:
 
 def _interpretar(texto: str) -> Baralho:
     dados = json.loads(texto)
-    if not isinstance(dados, dict):
-        raise ValueError("o topo não é um objeto")
-    esquema = int(dados.get("esquema", ESQUEMA))
-    if esquema > ESQUEMA:
-        raise VersaoFutura(esquema)
+    conferir_versao(dados, "esquema", ESQUEMA, aceita_antiga=True)
 
     baralho: Baralho = {}
     for bruto in dados.get("itens", []):
@@ -81,14 +76,5 @@ def gravar(lida: Lida[Baralho]) -> Path:
     histórico", e um apagamento que deixa o arquivo antigo no disco ressuscitaria o histórico na
     abertura seguinte. Só sobre uma leitura que leu (S-812).
     """
-    lida = gravavel(lida)
-    destino = lida.caminho
-    estados = list(lida.valor.values())
-    atomic_write_json(
-        destino,
-        {
-            "esquema": ESQUEMA,
-            "itens": [estado.para_json() for estado in sorted(estados, key=lambda e: e.chave)],
-        },
-    )
-    return destino
+    estados = sorted(lida.valor.values(), key=lambda e: e.chave)
+    return gravar_json(lida, {"esquema": ESQUEMA, "itens": [estado.para_json() for estado in estados]})

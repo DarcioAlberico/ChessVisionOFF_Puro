@@ -26,7 +26,8 @@ from unittest import mock
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
-from chess_diagram_ocr.review_queue import ReviewItem, ReviewQueue, ReviewStatus
+from chess_diagram_ocr.arquivo_do_dono import Lida
+from chess_diagram_ocr.review_queue import ReviewItem, ReviewQueue, ReviewStatus, gravar_fila
 from chess_diagram_ocr.ui import galeria_declarada
 from chess_diagram_ocr.ui.state import AppState
 
@@ -194,7 +195,7 @@ class FilaDeRevisaoTests(TabelaDosPares, unittest.TestCase):
     def decide(self, um: str, outro: str) -> bool:
         pasta = pasta_temporaria(self)
         caminho = pasta / "fila.json"
-        ReviewQueue(source_pdf=outro, items=[_item(0, status="done")]).save(caminho)
+        gravar_fila(Lida(ReviewQueue(source_pdf=outro, items=[_item(0, status="done")]), caminho))
         painel = qt_revisao.PainelDeRevisao(queue_path=caminho, cache_dir=pasta)
         self.addCleanup(descartar, painel)
         painel.aplicar_varredura(ReviewQueue(source_pdf=um, items=[_item(0)]), False, pages=frozenset({0}))

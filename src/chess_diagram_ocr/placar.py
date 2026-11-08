@@ -30,8 +30,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from .arquivo_do_dono import Leitura, Lida, VersaoFutura, gravavel, ler
-from .atomic_io import atomic_write_json
+from .arquivo_do_dono import Leitura, Lida, conferir_versao, gravar_json, ler
 from .config import DATA_DIR
 
 logger = logging.getLogger(__name__)
@@ -190,11 +189,7 @@ def carregar(*, caminho: Path | None = None) -> Leitura[Placar]:
 
 def _interpretar(texto: str) -> Placar:
     dados = json.loads(texto)
-    if not isinstance(dados, dict):
-        raise ValueError("o topo não é um objeto")
-    esquema = int(dados.get("esquema", ESQUEMA))
-    if esquema > ESQUEMA:
-        raise VersaoFutura(esquema)
+    conferir_versao(dados, "esquema", ESQUEMA, aceita_antiga=True)
     achados: dict[str, PlacarDoLivro] = {}
     for bruto in dados.get("livros", []):
         placar = PlacarDoLivro.de_json(bruto)
@@ -210,14 +205,5 @@ def gravar(lida: Lida[Placar]) -> Path:
     de `pasta_de_treino/placar.json`, e é ela quem grava (S-541). Só sobre uma leitura que leu
     (S-812).
     """
-    lida = gravavel(lida)
-    destino = lida.caminho
-    lista = list(lida.valor.livros.values())
-    atomic_write_json(
-        destino,
-        {
-            "esquema": ESQUEMA,
-            "livros": [p.para_json() for p in sorted(lista, key=lambda p: p.livro)],
-        },
-    )
-    return destino
+    livros = sorted(lida.valor.livros.values(), key=lambda p: p.livro)
+    return gravar_json(lida, {"esquema": ESQUEMA, "livros": [p.para_json() for p in livros]})

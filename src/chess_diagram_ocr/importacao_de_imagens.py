@@ -50,8 +50,16 @@ from typing import Any
 
 import numpy as np
 
-from .arquivo_do_dono import MARCA_DA_COPIA, Leitura, Lida, VersaoFutura, com_valor, gravavel, ler
-from .atomic_io import atomic_write_bytes, atomic_write_json, read_image
+from .arquivo_do_dono import (
+    MARCA_DA_COPIA,
+    Leitura,
+    Lida,
+    com_valor,
+    conferir_versao,
+    gravar_json,
+    ler,
+)
+from .atomic_io import atomic_write_bytes, read_image
 from .config import BOARD_SIZE, DATA_DIR
 from .relogio import agora_iso
 
@@ -289,13 +297,7 @@ def carregar_lote(caminho: Path) -> Leitura[Lote | None]:
 
 def _lote_de_json(texto: str) -> Lote:
     dados = json.loads(texto)
-    if not isinstance(dados, dict):
-        raise ValueError("o topo não é um objeto")
-    versao = dados.get("versao")
-    if versao != VERSAO_DO_LOTE:
-        if isinstance(versao, int) and versao > VERSAO_DO_LOTE:
-            raise VersaoFutura(versao)
-        raise ValueError(f"versão {versao!r} desconhecida")
+    conferir_versao(dados, "versao", VERSAO_DO_LOTE, aceita_antiga=False)
     return Lote(
         pasta=str(dados.get("pasta", "")),
         origem=str(dados.get("origem", "")),
@@ -307,9 +309,7 @@ def _lote_de_json(texto: str) -> Lote:
 
 def gravar_lote(lida: Lida[Lote]) -> Path:
     """Grava o andamento onde ele foi lido. Só sobre uma leitura que leu (S-812)."""
-    lida = gravavel(lida)
-    atomic_write_json(lida.caminho, lida.valor.to_dict(), indent=1)
-    return lida.caminho
+    return gravar_json(lida, lida.valor.to_dict(), indent=1)
 
 
 def caminho_do_lote(pasta: Path | str, origem: str, *, diretorio: Path | None = None) -> Path:
