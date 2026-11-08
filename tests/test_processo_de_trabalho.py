@@ -7,6 +7,9 @@ um processo de verdade. O resto da suíte roda em linha (`conftest.trabalho_em_l
 
 from __future__ import annotations
 
+import logging
+import os
+import subprocess
 import sys
 import threading
 import time
@@ -16,7 +19,12 @@ from pathlib import Path
 import numpy as np
 
 from chess_diagram_ocr.pdf_io import render_pdf_page
-from chess_diagram_ocr.processo_de_trabalho import PaginaQueDerruba, ProcessoDeTrabalho, processo_de_trabalho
+from chess_diagram_ocr.processo_de_trabalho import (
+    PaginaQueDerruba,
+    ProcessoDeTrabalho,
+    ProcessoEncerrado,
+    processo_de_trabalho,
+)
 
 
 def _soma(a: int, b: int) -> int:
@@ -150,6 +158,116 @@ class QuedaDoFilhoTests(unittest.TestCase):
         for nome in ("primeira", "segunda"):
             pid = self.trabalho.executar(_derruba_a_primeira_vez, str(self.pasta / nome))
             self.assertNotEqual(_pid(), pid, f"a {nome} chamada rodou no processo da janela")
+
+
+def _dorme(segundos: float, marca: str = "") -> float:
+    """A página que pendura o MuPDF, sem o MuPDF. Deixa `marca` escrita ao começar, se houver."""
+    if marca:
+        Path(marca).write_bytes(b"dormindo")
+    time.sleep(segundos)
+    return segundos
+
+
+def _avisa(frase: str) -> int:
+    """Um aviso logado no filho, como o da detecção quando ela desconfia de uma caixa."""
+    logging.getLogger("chess_diagram_ocr.detection").warning(frase)
+    return os.getpid()
+
+
+_PENDURA_E_SAI = """
+import sys, time
+from chess_diagram_ocr.processo_de_trabalho import PaginaPendurada, ProcessoDeTrabalho
+from test_processo_de_trabalho import _dorme
+
+trabalho = ProcessoDeTrabalho()
+inicio = time.monotonic()
+try:
+    trabalho.executar(_dorme, 60.0, pagina=4, prazo_s=1.0)
+except PaginaPendurada as exc:
+    print("pendurada", exc.pagina, inicio, time.monotonic(), str(exc), flush=True)
+"""
+
+
+class PrazoTests(unittest.TestCase):
+    """S-906: a chamada tem prazo, e o fechamento derruba o filho sem esperar o trabalho dele."""
+
+    def test_funcao_pendurada_no_filho_levanta_no_prazo_e_o_processo_sai(self) -> None:
+        """Um processo de verdade, porque o que se mede é a saída dele: o `atexit` do
+        `concurrent.futures` espera o trabalho em curso, e o filho que não foi morto o segura."""
+        raiz = Path(__file__).resolve().parents[1]
+        ambiente = dict(os.environ)
+        ambiente["PYTHONPATH"] = os.pathsep.join([str(raiz / "src"), str(raiz / "tests")])
+        processo = subprocess.Popen(
+            [sys.executable, "-c", _PENDURA_E_SAI],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=ambiente,
+            cwd=raiz,
+        )
+        try:
+            saida, erros = processo.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            processo.kill()
+            processo.communicate()
+            self.fail("o processo não saiu em 30 s com uma função de 60 s no filho")
+        fim = time.monotonic()
+        texto = saida.decode("utf-8", "replace")
+        self.assertTrue(texto.startswith("pendurada 4 "), f"{texto!r} {erros.decode('utf-8', 'replace')}")
+        _, _, inicio, levantou, frase = texto.strip().split(" ", 4)
+        self.assertLess(float(levantou) - float(inicio), 3.0, "o prazo de 1 s não foi respeitado")
+        self.assertLess(fim - float(levantou), 5.0, "o processo ficou vivo esperando o filho pendurado")
+        self.assertIn("página 5", frase)
+
+    def test_fechar_mata_o_filho_e_nao_cria_outro(self) -> None:
+        import tempfile
+
+        trabalho = ProcessoDeTrabalho(em_processo=True)
+        self.addCleanup(trabalho.encerrar, True)
+        with tempfile.TemporaryDirectory() as pasta:
+            marca = Path(pasta) / "dormindo"
+            erros: list[BaseException] = []
+
+            def pedir() -> None:
+                try:
+                    trabalho.executar(_dorme, 60.0, str(marca), prazo_s=None)
+                except Exception as exc:  # noqa: BLE001 - o tipo é conferido abaixo
+                    erros.append(exc)
+
+            fio = threading.Thread(target=pedir)
+            fio.start()
+            limite = time.monotonic() + 20
+            while not marca.exists() and time.monotonic() < limite:
+                time.sleep(0.05)
+            self.assertTrue(marca.exists(), "o filho não começou a dormir em 20 s")
+            antes = time.monotonic()
+            trabalho.encerrar(matar=True)
+            fio.join(10)
+        self.assertFalse(fio.is_alive(), "a chamada ficou esperando o filho morto")
+        self.assertLess(time.monotonic() - antes, 5.0)
+        self.assertEqual(1, len(erros))
+        self.assertIsInstance(erros[0], ProcessoEncerrado, "um filho novo nasceu depois do fechamento")
+        with self.assertRaises(ProcessoEncerrado):
+            trabalho.executar(_soma, 1, 2)
+
+    def test_aviso_logado_no_filho_chega_ao_arquivo(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as pasta:
+            arquivo = Path(pasta) / "cvoff.log"
+            manipulador = logging.FileHandler(arquivo, encoding="utf-8")
+            manipulador.setLevel(logging.WARNING)
+            raiz = logging.getLogger()
+            raiz.addHandler(manipulador)
+            try:
+                trabalho = ProcessoDeTrabalho(em_processo=True)
+                pid = trabalho.executar(_avisa, "aviso de dentro do filho, com acento")
+                trabalho.encerrar(esperar=True)  # o que o filho mandou já chegou quando ele sai
+            finally:
+                raiz.removeHandler(manipulador)
+                manipulador.close()
+            texto = arquivo.read_bytes().decode("utf-8")
+        self.assertNotEqual(_pid(), pid, "o aviso foi logado aqui, e não no filho")
+        self.assertIn("aviso de dentro do filho, com acento", texto)
 
 
 class QuandoNaoHaFilhoTests(unittest.TestCase):

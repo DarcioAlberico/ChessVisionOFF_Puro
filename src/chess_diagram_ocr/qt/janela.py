@@ -2270,6 +2270,7 @@ class JanelaPrincipal(QMainWindow):
         # O motor é um processo (S-523) e a sala pode tê-lo trocado nas preferências (S-536): o
         # fechado é o dela, e sem levantar (`encerrar_o_motor`, F9-C16).
         sala_declarada.encerrar_o_motor(self.estudo.analisador)
+        processo_de_trabalho().encerrar(matar=True)  # o filho pendurado não segura o processo (S-906)
         self._detector.parar(ESPERA_AO_FECHAR_MS)
         # As tarefas (a leitura, o aquecimento do modelo) não têm pai desde a fase 2 do ciclo 2:
         # destruí-las a correr derrubava o processo sem rastro (o portão `comandos` mediu: exit

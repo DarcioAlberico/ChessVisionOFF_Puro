@@ -2555,6 +2555,15 @@ class MotorDasPreferenciasTests(unittest.TestCase):
         self.app.processEvents()
         self.assertTrue(motor.fechado)
 
+    def test_fechar_a_janela_mata_o_processo_de_trabalho(self) -> None:
+        """S-906: o filho pendurado numa página não segura o programa depois que a janela some."""
+        trabalho = janela_mod.processo_de_trabalho()
+        janela = self._janela(motor=None)
+        with mock.patch.object(trabalho, "encerrar") as encerrar:
+            janela.close()
+            self.app.processEvents()
+        encerrar.assert_called_once_with(matar=True)
+
     def test_o_servico_padrao_vem_das_preferencias(self) -> None:
         """Sem `servico`, o produto: o `OcrService` nasce com o OCR de legenda que as preferências
         autorizam (S-43), e não sem `caption_reader` como desde o porte."""

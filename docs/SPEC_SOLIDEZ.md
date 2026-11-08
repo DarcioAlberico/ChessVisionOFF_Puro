@@ -114,6 +114,14 @@ s, função que dorme 60 s, saída em menos de 5 s) e `test_aviso_logado_no_filh
 
 **Aceite.** Os dois passam.
 
+**Entregue** (2026-11-08): `PRAZO_S` é 60 s e conta também o `spawn` da primeira chamada; `prazo_s=None`
+é sem prazo. Além do pedido, `encerrar(matar=True)` deixa o processo de trabalho fechado: a chamada em
+curso, que perde o filho e tentaria de novo pela S-874, recebe `ProcessoEncerrado` em vez de fazer nascer
+outro filho que o `atexit` esperaria (`test_fechar_mata_o_filho_e_nao_cria_outro`). O filho herda os
+níveis de logger postos no pai, e cada filho tem a sua fila: o morto no meio de um `put` não a passa ao
+seguinte. A frase de `PaginaPendurada` chega à tela pelo mesmo caminho da S-874; varredura que passe pelo
+processo de trabalho não há.
+
 ## S-801 · crapper no repositório, com catraca de CRAP por função
 
 **Problema.** O método pede CRAP abaixo de 10 por função, e o projeto não tem como medir: nem `radon` nem
