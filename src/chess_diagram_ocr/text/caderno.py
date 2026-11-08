@@ -327,7 +327,8 @@ def _interpretar_folha(texto: str) -> DocumentoRico | None:
     try:
         return arquivo.de_json(dados)
     except arquivo.VersaoFutura:
-        raise VersaoFutura(dados.get("versao")) from None
+        declarada = dados.get("versao")
+        raise VersaoFutura(declarada) from None
 
 
 def _sem_folha() -> DocumentoRico | None:
