@@ -17,6 +17,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+from subprocesso import rodar_python
 
 from chess_diagram_ocr.pdf_io import render_pdf_page
 from chess_diagram_ocr.processo_de_trabalho import (
@@ -194,25 +195,15 @@ class PrazoTests(unittest.TestCase):
     def test_funcao_pendurada_no_filho_levanta_no_prazo_e_o_processo_sai(self) -> None:
         """Um processo de verdade, porque o que se mede é a saída dele: o `atexit` do
         `concurrent.futures` espera o trabalho em curso, e o filho que não foi morto o segura."""
-        raiz = Path(__file__).resolve().parents[1]
-        ambiente = dict(os.environ)
-        ambiente["PYTHONPATH"] = os.pathsep.join([str(raiz / "src"), str(raiz / "tests")])
-        processo = subprocess.Popen(
-            [sys.executable, "-c", _PENDURA_E_SAI],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=ambiente,
-            cwd=raiz,
-        )
+        pasta_dos_testes = str(Path(__file__).resolve().parent)
+        codigo = f"import sys; sys.path.insert(0, {pasta_dos_testes!r})\n" + _PENDURA_E_SAI
         try:
-            saida, erros = processo.communicate(timeout=30)
+            feito = rodar_python(codigo, check=False, timeout=30)
         except subprocess.TimeoutExpired:
-            processo.kill()
-            processo.communicate()
             self.fail("o processo não saiu em 30 s com uma função de 60 s no filho")
         fim = time.monotonic()
-        texto = saida.decode("utf-8", "replace")
-        self.assertTrue(texto.startswith("pendurada 4 "), f"{texto!r} {erros.decode('utf-8', 'replace')}")
+        texto = feito.stdout
+        self.assertTrue(texto.startswith("pendurada 4 "), f"{texto!r} {feito.stderr}")
         _, _, inicio, levantou, frase = texto.strip().split(" ", 4)
         self.assertLess(float(levantou) - float(inicio), 3.0, "o prazo de 1 s não foi respeitado")
         self.assertLess(fim - float(levantou), 5.0, "o processo ficou vivo esperando o filho pendurado")

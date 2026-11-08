@@ -257,8 +257,12 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2311
+    LIMITE = 2312
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.311 -> 2.312 com o processo de trabalho encerrado no fechamento (S-906, 2026-11-08)**:
+    uma linha no `closeEvent`, `processo_de_trabalho().encerrar(matar=True)`; sem ela, uma página
+    que pendura o MuPDF deixa o processo vivo e sem janela.
 
     **2.293 -> 2.311 com o estado gravado antes da queda (S-800, 2026-11-08)**: o relógio de
     disparo único (seis linhas), o prazo dele (três), `_gravar_em_breve` (seis), as duas chamadas
