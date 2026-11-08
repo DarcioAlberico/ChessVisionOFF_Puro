@@ -56,6 +56,11 @@ dev = [
     # Como obrigatorio ele viajava dentro do `.exe`, e o bundle e o lugar onde peso custa.
     "pandas>=2.2.0",
     "pandas-stubs",
+    # O CRAP por funcao de `tools/qualidade/crapper.py` (S-801): `radon` da a complexidade,
+    # `coverage` a fracao de cada funcao que a suite executa. Sem os dois o metodo pedia CRAP
+    # abaixo de 10 e o projeto nao tinha como medir.
+    "radon>=6.0",
+    "coverage>=7.6",
 ]
 # Backend alternativo de inferencia em CPU (S-30). Opcional de proposito: o pipeline
 # funciona sem ele, e `cvoff-export-onnx` avisa se faltar.
@@ -269,8 +274,17 @@ python_version = "3.10"
 # `COLLECT` como globais -- nomes que nao existem em import nenhum, e que o verificador
 # acusaria um por um. Quem o cobre e o `ruff`, pelo `extend-include` acima, que e o que valida
 # o que da para validar sem executar o PyInstaller.
-files = ["src", "app_pyqt.py", "packaging"]
+#
+# `tools/` entra com as ferramentas de qualidade (S-801 a S-803): a catraca que mede a suite
+# tambem precisa de guarda.
+files = ["src", "app_pyqt.py", "packaging", "tools"]
 ignore_missing_imports = true
 warn_redundant_casts = true
 no_implicit_optional = true
 check_untyped_defs = true
+
+[tool.coverage.run]
+# A cobertura que `tools/qualidade/crapper.py` le (S-801). Caminho relativo para que o JSON
+# gravado numa maquina sirva noutra, e so `src/`, que e onde a catraca do CRAP olha.
+source = ["src"]
+relative_files = true

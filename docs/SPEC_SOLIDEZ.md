@@ -140,6 +140,16 @@ crapper a reporta com CRAP 12² + 12 = 156.
 catraca falha ao acrescentar a função sintética a `src/` e passa ao removê-la. O CI roda a cobertura numa
 perna só, a 3.13.
 
+**Entregue** (2026-11-08): o `crap.json` saiu da cobertura gravada na revisão (`coverage` 7.16.2, 11:55, com
+o `src/` idêntico ao de `e8c9f64a`): 5.928 funções, 609 com CRAP ≥ 10 e 137 ≥ 30 (os 611 da revisão contavam
+duas do `app_pyqt.py`, que fica fora). Roda em ~20 s. A catraca do repositório é um teste que só compara
+quando há `coverage.json` (ou `CVOFF_COBERTURA`) e `radon`; sem eles pula, e os testes da fórmula e da
+comparação rodam sobre dado sintético. No CI a perna 3.13 roda a suíte sob `coverage` e a catraca **avisa
+sem reprovar** (`continue-on-error`): a base registrada é de outro ambiente (3.10, outros pulos), e o
+`coverage.json` da perna sobe como artefato para regravá-la com `--gravar --forcar`. A função é
+identificada por arquivo e nome qualificado, não por linha; o nome da closure de método é montado pelo
+crapper, porque o `add_inner_blocks` do `radon` perde a classe.
+
 ## S-802 · dryer no repositório, com catraca de pares duplicados
 
 **Problema** (confirmado). 65 pares de funções com semelhança ≥ 0,8 e 340 com ≥ 0,6. Exemplos com 1,00:

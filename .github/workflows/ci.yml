@@ -106,7 +106,43 @@ jobs:
 
       - name: Testes (pytest)
         # data/samples/ e PDF/ nao sao versionados: os testes que dependem deles pulam.
+        if: matrix.python != '3.13'
         run: uv run pytest -v
+
+      # **A cobertura roda numa perna so, a do 3.13 (S-801).** E a mesma suite da outra perna,
+      # medida: o `coverage` vem do extra `dev` e escreve o `coverage.json` que o
+      # `tools/qualidade/crapper.py` le. So nesta ponta porque e nela que o `sys.monitoring`
+      # existe (`COVERAGE_CORE=sysmon`, 3.12+), e medir custa quase nada; na de 3.10 o rastreio
+      # classico deixaria a suite mais lenta e os testes de tempo (`test_engine`,
+      # `test_tablebase`) mais perto do limite. Passos separados, e nao um `run` de duas linhas:
+      # no PowerShell do runner so o codigo de saida do ULTIMO comando reprova o passo, e uma
+      # suite vermelha seguida de um `coverage json` verde passaria.
+      - name: Testes com cobertura (pytest sob coverage)
+        if: matrix.python == '3.13'
+        env:
+          COVERAGE_CORE: sysmon
+        run: uv run coverage run -m pytest -v
+
+      - name: Gravar coverage.json
+        if: matrix.python == '3.13'
+        run: uv run coverage json -o coverage.json
+
+      - name: Catraca do CRAP (S-801)
+        # **Avisa, e ainda nao reprova.** O `docs/metrics/crap.json` registrado saiu de uma
+        # cobertura medida na maquina de desenvolvimento, em 3.10 e com outros pulos; a desta
+        # perna e de outro ambiente, e a diferenca de pulo vira diferenca de CRAP sem que o
+        # codigo tenha mudado. Quando o registro for regravado a partir do artefato abaixo
+        # (`crapper.py --cobertura coverage.json --gravar --forcar`), o `continue-on-error` sai.
+        if: matrix.python == '3.13'
+        continue-on-error: true
+        run: uv run python tools/qualidade/crapper.py
+
+      - name: Guardar a cobertura
+        if: matrix.python == '3.13'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura-3.13
+          path: coverage.json
 
       - name: Verificar que o pacote e importavel fora do diretorio do projeto
         run: |
