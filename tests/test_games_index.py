@@ -15,13 +15,13 @@ import threading
 import time
 import unittest
 import zipfile
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from unittest import mock
 
 import chess
 from subprocesso import rodar_python
 
-from chess_diagram_ocr import games_index
+from chess_diagram_ocr import games_db, games_index
 from chess_diagram_ocr.games_db import GameRecord, database_paths
 from chess_diagram_ocr.games_index import (
     _INDICES_DE_BUSCA,
@@ -307,6 +307,109 @@ class DuasBasesTests(unittest.TestCase):
             conexao.close()
 
         self.assertEqual(repetidas, 1)
+
+
+class CaminhoComCaractereDeUriTests(unittest.TestCase):
+    """S-808: a URI de leitura do SQLite com `#`, `%`, espaço e acento no caminho, e o caminho UNC.
+
+    `f"file:{path}?mode=ro"` não escapava nada. Numa pasta `Xadrez #2` o `?mode=ro` virava
+    fragmento, o SQLite abria `.../Xadrez ` em leitura **e escrita** -- criando um arquivo vazio
+    na pasta-mãe --, a versão voltava `None`, e `_abrir_para_escrita` apagava o índice de 8,6 GB
+    de PGN como se fosse "outro formato". Numa pasta `100%25 ok` o SQLite nem abria.
+    """
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.mae = Path(self.pasta.name)
+
+    def _segunda_rodada(self, nome_da_pasta: str) -> None:
+        pasta = self.mae / nome_da_pasta
+        pasta.mkdir()
+        base = pasta / "base.pgn"
+        base.write_text(PGN, encoding="utf-8")
+        indice = pasta / "indice.sqlite"
+        self.assertEqual(build_index(base, indice).partidas, 3)
+
+        segunda = build_index(base, indice)
+
+        self.assertEqual((segunda.relidas, segunda.arquivos_pulados), (0, 1), "o índice foi apagado e refeito")
+        self.assertEqual(len(lookup_pair(("anderssen", "kieseritzky"), base, indice)), 2)
+        self.assertEqual(sorted(p.name for p in self.mae.iterdir()), [nome_da_pasta], "nada nasce na pasta-mãe")
+
+    def test_indice_em_pasta_com_cerquilha_sobrevive_a_segunda_rodada(self) -> None:
+        self._segunda_rodada("Xadrez #2")
+
+    def test_indice_em_pasta_com_porcento_sobrevive_a_segunda_rodada(self) -> None:
+        self._segunda_rodada("100%25 ok")
+
+    def test_indice_em_pasta_com_espaco_e_acento_sobrevive_a_segunda_rodada(self) -> None:
+        self._segunda_rodada("Coleção de aberturas")
+
+    def _banco(self, pasta: Path) -> Path:
+        pasta.mkdir(parents=True, exist_ok=True)
+        arquivo = pasta / "x.sqlite"
+        conexao = sqlite3.connect(arquivo)
+        conexao.execute("CREATE TABLE t (v TEXT)")
+        conexao.execute("INSERT INTO t VALUES ('lido')")
+        conexao.commit()
+        conexao.close()
+        return arquivo
+
+    def _le_e_nao_grava(self, caminho: Path) -> None:
+        conexao = sqlite3.connect(games_db.uri_somente_leitura(caminho), uri=True)
+        try:
+            self.assertEqual(conexao.execute("SELECT v FROM t").fetchone(), ("lido",))
+            with self.assertRaises(sqlite3.OperationalError, msg="a URI tem de abrir só para ler"):
+                conexao.execute("INSERT INTO t VALUES ('gravado')")
+        finally:
+            conexao.close()
+
+    def test_uri_somente_leitura_abre_caminho_com_espaco_acento_cerquilha_e_porcento(self) -> None:
+        arquivo = self._banco(self.mae / "Pasta com espaço" / "ação #2 100%25 ok")
+        self._le_e_nao_grava(arquivo)
+        self.assertEqual(sorted(p.name for p in arquivo.parent.iterdir()), ["x.sqlite"])
+
+    def test_uri_somente_leitura_abre_unc(self) -> None:
+        """`\\\\localhost\\C$\\...`: o caminho de rede, que falha hoje e falha com `resolve().as_uri()`."""
+        arquivo = self._banco(self.mae / "rede")
+        unidade = arquivo.drive.rstrip(":")
+        if len(unidade) != 1:
+            self.skipTest("o arquivo temporário não está numa unidade com letra")
+        unc = Path(f"\\\\localhost\\{unidade}$") / arquivo.relative_to(arquivo.anchor)
+        try:
+            alcanca = unc.exists()
+        except OSError:
+            alcanca = False
+        if not alcanca:
+            self.skipTest(f"o compartilhamento administrativo {unidade}$ não existe nesta máquina")
+        self._le_e_nao_grava(unc)
+
+    def test_uri_de_unc_e_a_forma_que_o_sqlite_aceita(self) -> None:
+        """A forma medida na spec: quatro barras, `$` escapado, e nada de `localhost` como autoridade."""
+        unc = PureWindowsPath(r"\\nas\Xadrez $\a b#.sqlite")
+        self.assertEqual(games_db.uri_somente_leitura(unc), "file:////nas/Xadrez%20%24/a%20b%23.sqlite?mode=ro")
+
+    def test_versao_ilegivel_e_erro_e_nao_apaga(self) -> None:
+        """`_abrir_para_escrita` só apaga quando leu uma versão **e** ela é outra."""
+        indice = self.mae / "indice.sqlite"
+        indice.write_bytes(b"isto nao e um banco" * 100)
+        base = self.mae / "base.pgn"
+        base.write_text(PGN, encoding="utf-8")
+        with self.assertRaises(IndiceIndisponivel):
+            build_index(base, indice)
+        self.assertEqual(indice.read_bytes(), b"isto nao e um banco" * 100)
+
+    def test_nenhum_f_string_de_uri_sobra_em_src(self) -> None:
+        """Guarda sem piso: o número certo de URIs montadas à mão é zero."""
+        fontes = Path(games_index.__file__).resolve().parent
+        soltas = [
+            f"{caminho.relative_to(fontes).as_posix()}:{numero}"
+            for caminho in sorted(fontes.rglob("*.py"))
+            for numero, linha in enumerate(caminho.read_text(encoding="utf-8").splitlines(), 1)
+            if 'f"file:' in linha or "f'file:" in linha
+        ]
+        self.assertEqual(soltas, [])
 
 
 if __name__ == "__main__":

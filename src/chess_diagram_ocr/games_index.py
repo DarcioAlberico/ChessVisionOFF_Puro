@@ -89,6 +89,7 @@ from .games_db import (
     occupancy,
     surname,
     tamanho_da_base,
+    uri_somente_leitura,
 )
 from .pdf_text import fold
 from .ui.busca_de_partidas import Filtro
@@ -381,18 +382,20 @@ def _connect(path: Path) -> sqlite3.Connection:
 
 
 def _versao_gravada(path: Path) -> str | None:
-    """A versão declarada num índice existente, ou `None` se não dá para ler."""
+    """A versão declarada num índice existente; `None` para um banco sem tabela nenhuma.
+
+    **Levanta `sqlite3.Error` quando não leu (S-808)**, em vez de devolver `None`: era o `None` de
+    "não consegui ler" que `_abrir_para_escrita` lia como "outro formato", e apagava. Um `meta` sem a
+    linha de versão é lido como `""` -- uma versão que não é esta.
+    """
+    conexao = sqlite3.connect(uri_somente_leitura(path), uri=True)
     try:
-        conexao = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    except sqlite3.Error:
-        return None
-    try:
+        if conexao.execute("SELECT count(*) FROM sqlite_master").fetchone()[0] == 0:
+            return None
         linha = conexao.execute("SELECT value FROM meta WHERE key = 'version'").fetchone()
-    except sqlite3.Error:
-        return None
     finally:
         conexao.close()
-    return None if linha is None else str(linha[0])
+    return "" if linha is None else str(linha[0])
 
 
 _VERSOES_QUE_SO_GANHAM_ARVORE = frozenset({"5"})
@@ -412,10 +415,23 @@ def _abrir_para_escrita(path: Path) -> sqlite3.Connection:
     Um índice de outra versão é apagado e refeito -- é o que `--build-index` sempre significou
     para ele --, e o `.parcial` de uma versão anterior interrompida vai junto. A exceção é a
     versão que só perdeu árvores: ver `_VERSOES_QUE_SO_GANHAM_ARVORE`.
+
+    **Só apaga quando leu uma versão, e ela é outra (S-808).** Um índice cuja versão não se lê --
+    disco com defeito, arquivo que não é SQLite, a URI que não abria com `#` no caminho -- levanta
+    `IndiceIndisponivel` e fica onde está: ele é construído de 8,6 GB de PGN, e "não consegui ler"
+    não é razão para jogar fora o que talvez esteja inteiro.
     """
     path.with_suffix(path.suffix + ".parcial").unlink(missing_ok=True)
-    gravada = _versao_gravada(path) if path.exists() else None
-    if path.exists() and gravada != str(INDEX_VERSION):
+    gravada: str | None = None
+    if path.exists():
+        try:
+            gravada = _versao_gravada(path)
+        except sqlite3.Error as exc:
+            raise IndiceIndisponivel(
+                f"O índice por nome em {path} não pôde ser lido ({exc}) e não foi apagado. Confira o "
+                "arquivo; se ele não servir mais, apague-o e rode cvoff-games --build-index de novo."
+            ) from exc
+    if gravada is not None and gravada != str(INDEX_VERSION):
         if gravada in _VERSOES_QUE_SO_GANHAM_ARVORE:
             logger.info("O índice em %s é da versão %s: as árvores que faltam são criadas no fim da rodada.", path, gravada)
         else:
@@ -996,7 +1012,7 @@ def _abrir_para_consulta(bases: Sequence[Path], path: Path) -> tuple[sqlite3.Con
     if not path.exists():
         return None, f"O índice da base de partidas ainda não foi construído. {refazer}"
     try:
-        conexao = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        conexao = sqlite3.connect(uri_somente_leitura(path), uri=True)
     except sqlite3.Error as exc:
         return None, f"Índice por nome ilegível ({exc}). {refazer}"
     try:

@@ -115,6 +115,7 @@ from .games_db import (
     decodificar_linha,
     eh_comprimida,
     existe_base,
+    uri_somente_leitura,
 )
 from .games_index import index_fingerprint
 from .ui.busca_de_partidas import ANO_MAXIMO, ANO_MINIMO, ELO_MAXIMO
@@ -715,7 +716,7 @@ def _abrir(bases: Sequence[Path], path: Path) -> tuple[sqlite3.Connection | None
     if not Path(path).exists():
         return None, f"A árvore de aberturas ainda não foi construída. {refazer}"
     try:
-        conexao = sqlite3.connect(f"file:{Path(path).as_posix()}?mode=ro", uri=True)
+        conexao = sqlite3.connect(uri_somente_leitura(Path(path)), uri=True)
     except sqlite3.Error as exc:
         return None, f"Árvore de aberturas ilegível ({exc}). {refazer}"
     # **A recusa fecha a conexão.** Deixada aberta, ela segura o arquivo no Windows até o coletor
@@ -811,7 +812,7 @@ def resumo_do_arquivo(path: Path = DEFAULT_TREE_PATH) -> dict[str, Any]:
     if not caminho.exists():
         return {}
     try:
-        conexao = sqlite3.connect(f"file:{caminho.as_posix()}?mode=ro", uri=True)
+        conexao = sqlite3.connect(uri_somente_leitura(caminho), uri=True)
     except sqlite3.Error:
         return {}
     try:

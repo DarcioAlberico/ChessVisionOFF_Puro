@@ -63,7 +63,14 @@ from pathlib import Path
 from typing import Any
 
 from .config import DATA_DIR
-from .games_db import MAX_HITS_PER_POSITION, PositionHit, PositionIndex, as_databases, impressao_da_base
+from .games_db import (
+    MAX_HITS_PER_POSITION,
+    PositionHit,
+    PositionIndex,
+    as_databases,
+    impressao_da_base,
+    uri_somente_leitura,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -592,7 +599,7 @@ def _abre_para_ler(caminho: Path, atual: dict[str, Any], de_outra_thread: bool) 
     conexao: sqlite3.Connection | None = None
     try:
         conexao = sqlite3.connect(
-            f"file:{caminho.as_posix()}?mode=ro", uri=True, timeout=BUSY_TIMEOUT, check_same_thread=not de_outra_thread
+            uri_somente_leitura(caminho), uri=True, timeout=BUSY_TIMEOUT, check_same_thread=not de_outra_thread
         )
         if _versao_do_esquema(conexao) == 1:
             _le_a_versao_um(conexao)

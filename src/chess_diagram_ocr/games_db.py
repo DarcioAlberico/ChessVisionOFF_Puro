@@ -73,8 +73,9 @@ import zipfile
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import IO, Any
+from urllib.parse import quote
 
 import chess
 
@@ -106,6 +107,7 @@ __all__ = [
     "impressao_da_base",
     "nome_da_base",
     "tamanho_da_base",
+    "uri_somente_leitura",
     "match_entries",
     "match_positions",
     "occupancy",
@@ -378,6 +380,26 @@ def impressao_da_base(caminho: Path) -> ImpressaoDaBase:
     except (OSError, KeyError, zipfile.BadZipFile):
         tamanho = None
     return ImpressaoDaBase(nome_da_base(caminho), tamanho)
+
+
+def uri_somente_leitura(caminho: PurePath) -> str:
+    """A URI que abre um SQLite **só para ler**, com o caminho escapado (S-808). O único lugar.
+
+    A URI montada à mão -- `file:`, o caminho cru e `?mode=ro` -- não escapava nada: com `#` no
+    caminho o `?mode=ro` virava fragmento e o SQLite abria outro arquivo, em leitura e escrita; com
+    `%25` ele decodificava o nome e não achava o arquivo. Aqui o caminho passa por `quote`, e `$`,
+    `#`, `%`, espaço e acento viajam escapados.
+
+    **Caminho de rede tem quatro barras, e nada de `resolve()`.** `\\\\servidor\\pasta` vira
+    `file:////servidor/pasta/...`: com duas, o servidor seria a autoridade da URI, e o SQLite só
+    aceita `localhost` ali (e nem esse ele abre). `resolve()` transformaria uma unidade mapeada em
+    UNC e quebraria quem hoje funciona. Medido em 2026-11-08: a forma de quatro barras sobre
+    `\\\\localhost\\C$\\...` abriu, e a escrita foi recusada.
+    """
+    posix = caminho.as_posix()
+    if caminho.drive.startswith(("\\\\", "//")):
+        posix = "//" + posix
+    return "file:" + quote(posix) + "?mode=ro"
 
 
 def tamanho_da_base(caminho: Path) -> int:

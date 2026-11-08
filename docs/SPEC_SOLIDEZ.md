@@ -327,6 +327,11 @@ compartilhamento administrativo não existe).
 **Aceite.** Os dois passam. Nenhum `f"file:` sobra em `src/` (guarda por `grep` sem piso, porque o número
 certo é zero).
 
+**Entregue** (2026-11-08): `games_db.uri_somente_leitura`, usada pelas cinco aberturas (a do cache é agora
+a porta de leitura da S-806). O `quote` também escapa o `:` da unidade (`file:C%3A/...`), e o SQLite o
+abre. `_versao_gravada` distingue banco sem tabela nenhuma (não apaga, só cria as tabelas) de `meta` sem a
+linha de versão (outra versão, apagado como antes); o que não lê levanta `IndiceIndisponivel`.
+
 ## S-809 · `--build-index` com subconjunto não apaga as outras bases
 
 **Problema** (plausível). `games_index.py:652-660` apaga de `games` e `files` toda base que não está na
