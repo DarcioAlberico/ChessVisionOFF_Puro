@@ -29,7 +29,7 @@ Fases 66 a 68), escrita em 2026-09-01 sobre o `corte-do-tk` (653f88b) integrado 
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
 > | S-702, S-710 a S-712, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
-> | S-800 a S-904 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
+> | S-800 a S-910 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
 
 Este documento não propõe recurso novo. Ele é o que sobrou de seis itens e um teste de acervo
 **depois de cada um ser conferido contra este ramo** -- que está três PRs à frente do que a revisão

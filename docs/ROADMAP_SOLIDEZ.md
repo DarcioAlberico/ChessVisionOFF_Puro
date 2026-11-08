@@ -1,4 +1,4 @@
-# Roadmap da solidez — Fases 110 a 121 (S-800 a S-904)
+# Roadmap da solidez — Fases 110 a 121 (S-800 a S-910)
 
 Revisão do programa inteiro em 2026-11-08, feita sobre `origin/main` (`e8c9f64a`) com o método
 *ub-mode*: primeiro funcionar (a decisão num lugar só, a forma do dado antes da lógica, o teste que
@@ -31,7 +31,7 @@ mutação), e a prática (registro, commits pequenos). A spec de cada item está
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
 > | S-702, S-710 a S-712, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
-> | S-800 a S-904 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
+> | S-800 a S-910 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
 
 ## 1. O que se mediu
 
@@ -79,10 +79,11 @@ de cobertura, CRAP 870 (S-881). Fora de `cli/`, nove funções de produção pas
 | `detection/hybrid.py` `detect_diagrams` | 36 | 119 (S-859) |
 | `pdf_to_pgn.py` `_scan_pages` | 35 | 116 (S-833) |
 | `qt/painel_de_texto.py` `PainelDeTexto.eventFilter` | 34 | 114 (S-825) |
+| `text/leitor.py` `montar` | 34 | 119 (S-861) |
 
 ## 2. As premissas atacadas
 
-Os 111 achados não são 111 problemas. Seis premissas, cada uma segurada por vários atores, geram a maior
+Os 117 achados não são 117 problemas. Seis premissas, cada uma segurada por vários atores, geram a maior
 parte deles. O roadmap remove a premissa em vez de consertar cada ator.
 
 1. **"Arquivo que não lê é arquivo vazio."** Sete leitores de arquivo do dono tratam o arquivo ilegível, ou
@@ -102,10 +103,11 @@ parte deles. O roadmap remove a premissa em vez de consertar cada ator.
 3. **"Copiar para manter igual."** Comentários como *"Escrito igual ao de lá de propósito"* justificam uma
    cópia em vez de um import. Há o árbitro de confiança em três cópias, o pipeline de reconhecimento em duas
    (o medido e o exportado), a regra de fonte de diagrama em duas que já discordam, a camada de OCR em
-   quatro, a identidade do livro em sete, a impressão digital da base em duas, as iniciais de peça por
-   língua em três, e a FEN da posição em dois jeitos (com o roque inferido nas táticas, sem roque no lance
-   seguinte e na estipulação). **Remoção:** cada decisão num módulo, importada (S-807, S-827, S-833, S-836,
-   S-849, S-852, S-880 e S-901, nas Fases 111, 112, 116 e 118).
+   quatro, o pré-processamento de glifo em duas, a fusão da fila retomada em três chamadores, a identidade
+   do livro em sete, a impressão digital da base em duas, as iniciais de peça por língua em três, e a FEN da
+   posição em dois jeitos (com o roque inferido nas táticas, sem roque no lance seguinte e na estipulação).
+   **Remoção:** cada decisão num módulo, importada (S-807, S-816, S-827, S-833, S-836, S-849, S-852, S-854,
+   S-880 e S-901, nas Fases 111, 112, 116 e 118).
 4. **"A mensagem é o dado."** Contadores publicados nos relatórios de campo contam substrings de frases em
    português (`"trocas diferentes"`, `"falta o rei"`). Reescrever a frase zera o contador. **Remoção:**
    campo tipado ou enum no resultado (S-835).
@@ -122,11 +124,11 @@ parte deles. O roadmap remove a premissa em vez de consertar cada ator.
 | termo | quer dizer |
 |---|---|
 | **âncora da tela** | o par `(documento, página)` em que um pedido assíncrono foi feito (`AncoraDaTela`); o resultado só vale se a tela ainda está na mesma âncora. Não confundir com a `Ancora(documento, pagina, diagrama)` do estudo |
-| **arquivo do dono** | dado que o programa não sabe refazer: `settings.json`, `revisao.json`, `placar.json`, o estudo, a fila de revisão, o lote, os rótulos |
+| **arquivo do dono** | dado que o programa não sabe refazer: `settings.json`, `revisao.json`, `placar.json`, o estudo, a fila de revisão, o lote, as folhas do caderno, os rótulos |
 | **leitura travada** | estado de um arquivo do dono que não leu, ou que é de esquema futuro; o programa segue em memória e recusa gravar por cima |
 | **camada de arquivo / camada efetiva** | o que está gravado em `settings.json` / o que vale agora, depois das variáveis `CVOFF_*`; só a primeira é gravada |
 | **impressão digital da base** | nome e tamanho de cada base de partidas, inclusive membro de `.zip`; decide se o cache e o índice ainda valem |
-| **caminho de medição** | o código que os quatro relatórios de campo de `docs/metrics/` exercitam; tocar nele obriga a remedir (S-218) |
+| **caminho de medição** | a corrente que os quatro relatórios de campo exercitam (`OcrService.recognize_page`); em módulos, é o fecho de medição |
 | **regime** | a configuração de aumento de dados com que um checkpoint foi treinado; a letra (`augh`, `augx`) é o nome curto dela |
 | **colocação** | as 64 casas de um tabuleiro, peça ou vazio; o tipo que substitui a string de FEN dentro do programa (S-842) |
 | **catraca** | teste que guarda uma contagem e falha quando ela sobe; descer é sempre permitido e baixa o teto |
@@ -134,7 +136,9 @@ parte deles. O roadmap remove a premissa em vez de consertar cada ator.
 | **crapper, dryer, mutator** | as três ferramentas do método: CRAP por função, pares de funções quase iguais, e mutantes que a suíte deixa viver (S-801 a S-803) |
 | **teste de caracterização** | teste que grava o que o código faz hoje, antes de uma refatoração, e confere que depois faz igual |
 | **`TarefaAdiada`** | tarefa de teste que só entrega o resultado quando o teste manda; é como se testa "a tela mudou durante a tarefa" (S-805) |
-| **fecho de medição** | os 36 módulos que `field_eval.measurement_fingerprint()` importa; o digest deles está nos relatórios de campo |
+| **fecho de medição** | os módulos que `field_eval.measured_modules()` acha por importação (36 com o OCR desligado, como nos quatro relatórios; 48 com `--ocr glifo`, que traz `text/`); `measurement_fingerprint()` grava o digest deles nos relatórios |
+| **chave do livro** | `ChaveDoLivro`, a identidade de um livro pelo caminho (S-827); é o `documento` da âncora da tela |
+| **estrato** | a classe de um livro do ouro pela origem da camada de texto (S-702); muda com a regra da S-849 só por decisão do dono (D9) |
 | **portão** | a confiança mínima com que uma posição lida é aceita sem revisão (`gate_confidence`) |
 | **camada (de texto)** | o texto embutido no PDF; não confundir com a camada de arquivo da configuração |
 | **folha / página** | a folha é a página do livro vista pela aba Texto; o número de folha é o índice + 1 |
@@ -148,13 +152,13 @@ A ordem segue "faça primeiro o que ajuda todas as fases seguintes" e, depois, o
 
 | fase | tema | itens | por que nesta posição |
 |---|---|---|---|
-| 110 | Alavancas | S-800 a S-805, S-874 | toda fase seguinte usa a borda (queda vira log), as catracas e a `TarefaAdiada`; a S-874 é a premissa 6 do lado do processo de trabalho |
-| 111 | Caches e índices que não se apagam sozinhos | S-806 a S-809 | é o defeito que já custou dado do dono, e um `--census` o repete |
-| 112 | Arquivos do dono e a identidade do livro | S-810 a S-817, S-827, S-878, S-892, S-896, S-897 | a mesma premissa nos arquivos do dono; a S-827 (a identidade do livro) e a S-812 (o tipo que todos usam) vêm primeiro |
-| 113 | Escritas idempotentes e saídas corretas | S-818 a S-822, S-876, S-877, S-879, S-899 | rodar duas vezes ou cair no meio termina no mesmo estado |
-| 114 | A tela e o editor sabem de onde veio cada resultado | S-823 a S-826, S-828, S-829, S-875, S-882, S-883, S-887, S-888, S-891, S-893, S-894 | contamina o dataset em silêncio; depende da `TarefaAdiada` (S-805) |
-| 115 | Interpretador, empacotamento e documentos | S-830 a S-832, S-884, S-885 | o 3.10 saiu de suporte em outubro de 2026 e vai dentro do `.exe` |
-| 116 | Um pipeline só | S-833 a S-837, S-843, S-880 | os itens que mudam número no caminho medido, explicados juntos na S-837; os que só tocam o fecho remedem no próprio commit (§7) |
+| 110 | Alavancas | S-800 a S-805, S-874, S-906 | toda fase seguinte usa a borda (queda vira log), as catracas e a `TarefaAdiada`; a S-874 é a premissa 6 do lado do processo de trabalho |
+| 111 | Caches e índices que não se apagam sozinhos | S-806 a S-809 | é o defeito que já custou uma hora de varredura (2026-10-18), e um `--census` o repete |
+| 112 | Arquivos do dono e a identidade do livro | S-810 a S-817, S-827, S-878, S-892, S-896, S-897, S-905, S-908 | a mesma premissa nos arquivos do dono; a S-827 (a identidade do livro) e a S-812 (o tipo que todos usam) vêm primeiro |
+| 113 | Escritas idempotentes e saídas corretas | S-818 a S-822, S-876, S-877, S-879, S-899 | rodar duas vezes ou cair no meio termina no mesmo estado; e o que sai (PGN, EPUB, DOCX, legenda casada, solução de tática) é o que o livro diz |
+| 114 | A tela e o editor sabem de onde veio cada resultado | S-823 a S-826, S-828, S-829, S-875, S-882, S-883, S-887, S-888, S-891, S-893, S-894, S-910 | contamina o dataset em silêncio; depende da `TarefaAdiada` (S-805) |
+| 115 | Interpretador, empacotamento e documentos | S-830 a S-832, S-884, S-885, S-907, S-909 | o 3.10 saiu de suporte em outubro de 2026 e vai dentro do `.exe` |
+| 116 | Um pipeline só | S-833 a S-837, S-843, S-880 | os itens que mudam número no caminho de medição, explicados juntos na S-837; os que só tocam o fecho remedem no próprio commit (§7) |
 | 117 | Treino honesto | S-838 a S-842, S-844 a S-846, S-889, S-890, S-900 | página de campo no treino invalida o número publicado |
 | 118 | Texto: fronteira e decisões únicas | S-847 a S-856, S-898, S-901 a S-904 | coordenada com as Fases 100 a 107, que mexem nos mesmos arquivos |
 | 119 | Complexidade e duplicação | S-857 a S-864, S-881 | depois das fases que mudam comportamento, para refatorar código já certo |
@@ -175,6 +179,7 @@ Os títulos são os da spec, na ordem em que os itens devem ser feitos dentro de
 
 - **S-800** · Borda de exceção do processo, e o estado da sessão gravado antes da queda
 - **S-874** · Página que derruba o processo de trabalho nunca roda no processo da janela
+- **S-906** · O processo de trabalho tem prazo, e o fechamento o encerra
 - **S-801** · crapper no repositório, com catraca de CRAP por função
 - **S-802** · dryer no repositório, com catraca de pares duplicados
 - **S-803** · mutator no repositório, com piloto em seis módulos puros
@@ -192,6 +197,7 @@ Os títulos são os da spec, na ordem em que os itens devem ser feitos dentro de
 
 - **S-827** · A identidade do livro numa função só
 - **S-812** · Leitura travada
+- **S-905** · Arquivo do usuário em BOM, ANSI ou UTF-16 abre, e `UnicodeDecodeError` não escapa
 - **S-810** · Booleano estrito e faixas numéricas no `settings.json`
 - **S-811** · Camada de arquivo e camada efetiva
 - **S-813** · Baralho de revisão e placar sob a leitura travada
@@ -203,6 +209,7 @@ Os títulos são os da spec, na ordem em que os itens devem ser feitos dentro de
 - **S-892** · "Aplicar aos vizinhos" não troca a partida que a pessoa escolheu
 - **S-896** · Folha do caderno que não abre não é relida por cima
 - **S-897** · O caderno acha o seu livro e a sua trava
+- **S-908** · Hora gravada com fuso, e o rascunho mais novo não é apagado
 
 ### Fase 113 — Escritas idempotentes e saídas corretas
 
@@ -232,6 +239,7 @@ Os títulos são os da spec, na ordem em que os itens devem ser feitos dentro de
 - **S-875** · O motor que caiu é reaberto na próxima análise
 - **S-882** · "Segunda opinião remota" só aparece quando tem quem a use
 - **S-883** · O leitor tsoj não troca a pasta corrente fora da trava
+- **S-910** · Número com vírgula e ordem alfabética pela mesma régua da tela
 
 ### Fase 115 — Interpretador, empacotamento e documentos
 
@@ -240,6 +248,8 @@ Os títulos são os da spec, na ordem em que os itens devem ser feitos dentro de
 - **S-832** · A tabela de faixas e o `ARCHITECTURE.md` que enxergam tudo
 - **S-884** · No `.exe`, o OCR que falta é dito na janela
 - **S-885** · CI com permissão mínima e ações fixadas
+- **S-907** · Arrastar um PDF para o ícone abre o livro
+- **S-909** · O arquivo de log não leva o nome do usuário
 
 ### Fase 116 — Um pipeline só
 
@@ -334,16 +344,17 @@ Na spec elas aparecem como "D1 da solidez" a "D9 da solidez", para não confundi
 Cada item fecha com: o teste que falhou antes e passa depois, `ruff check .`, `mypy` e `pytest` verdes num
 worktree, as catracas da Fase 110 sem subir e um commit que diz por que, o que mudou e como foi provado.
 **Todo commit que edita um módulo do fecho de medição remede os quatro relatórios de campo** (S-218), em
-qualquer fase: são os 36 módulos de `field_eval.measured_modules()`, entre eles `atomic_io`,
-`board_detection`, `checkpoint`, `config`, `cor_por_livro`, `dataset`, `decode`, `detection/*`, `djvu_*`,
-`engine`, `estipulacao`, `fen_utils`, `field_eval`, `inference`, `labels`, `lance_seguinte`, `model`, `ocr`,
-`ocr_caption`, `orientation`, `pdf_io`, `pdf_text`, `preprocess`, `procedencias`, `semantics`, `service`,
-`settings`, `splits` e `cli/field`. Fora da Fase 116, os números têm de voltar idênticos; na Fase 116, a
-S-837 explica os que mudam. `text/` inteiro fica fora do fecho.
+qualquer fase: são os 36 módulos de `field_eval.measured_modules()` com o OCR desligado, entre eles
+`atomic_io`, `board_detection`, `checkpoint`, `config`, `cor_por_livro`, `dataset`, `decode`, `detection/*`,
+`djvu_*`, `engine`, `estipulacao`, `fen_utils`, `field_eval`, `inference`, `labels`, `lance_seguinte`,
+`model`, `ocr`, `ocr_caption`, `orientation`, `pdf_io`, `pdf_text`, `preprocess`, `procedencias`,
+`semantics`, `service`, `settings`, `splits` e `cli/field`. Fora da Fase 116, os números têm de voltar
+idênticos; na Fase 116, a S-837 explica os que mudam. `text/` fica fora do fecho dos quatro relatórios; com
+`--ocr glifo` ele entra.
 
 **Em worktree, uma falha é esperada:** `tests/test_environment.py`, porque a instalação editável aponta para
-o checkout principal. Os `.pt` e o `PDF/` só existem no checkout principal, e a remedição roda de lá, por
-`python -m`.
+o checkout principal. Os `.pt` e o `PDF/` só existem no checkout principal, e a remedição roda num worktree
+limpo, lendo-os do checkout principal por caminho, por `python -m`.
 
 ## 8. Registro desta revisão
 
@@ -352,7 +363,7 @@ o checkout principal. Os `.pt` e o `PDF/` só existem no checkout principal, e a
 | 1 | worktree `claude/revisao-ub-mode` a partir de `origin/main` | o checkout principal tem sessões concorrentes e a `main` local estava defasada |
 | 2 | `radon cc` sobre `src/` e `app_pyqt.py`, num alvo fora do `.venv` | medir complexidade sem mexer no ambiente que as outras sessões usam |
 | 3 | suíte inteira sob `coverage` | o CRAP precisa da cobertura de cada função |
-| 4 | dryer escrito e rodado | a ferramenta não existia; uma unidade conferida à mão antes de confiar no ranking |
+| 4 | dryer escrito e rodado | a ferramenta não existia; uma unidade conferida à mão antes de confiar na ordenação |
 | 5 | cinco auditorias em paralelo: texto, Qt, diagrama e modelo, persistência e CLI, testes e documentos | cada uma com prova por script ou leitura, marcada CONFIRMADO ou PLAUSÍVEL |
 | 6 | os dois achados mais graves conferidos à mão | o cache apagado pelo `--census` e a leitura de A entrando em B |
 | 7 | roadmap e spec escritos | a premissa antes do item, e um teste de aceite por item |
@@ -360,3 +371,4 @@ o checkout principal. Os `.pt` e o `PDF/` só existem no checkout principal, e a
 | 9 | revisão 1: dois verificadores conferiram cada citação de S-800 a S-873 contra o código, e um terceiro auditou os módulos que as cinco auditorias não cobriram | 139 correções de linha, número e citação; quatro testes "que falham primeiro" que passariam hoje (S-806, S-810, S-845, S-854); a S-837 com a causa invertida; 13 itens novos (S-874 a S-886) |
 | 10 | piloto do mutator num worktree separado: 50 mutantes em `splits.py`, `fen_utils.py` e `decode.py` | 68%, 58% e 74% só com o arquivo homônimo; os dois sobreviventes de `decode.py` conferidos morreram noutros arquivos, então a S-803 roda os testes que importam o módulo |
 | 11 | revisão 2: um revisor da coerência e do método, e dois caçadores (camada `ui/` com os painéis Qt restantes, e os módulos secundários de `text/`) | a regra de remedição corrigida (o fecho tem 36 módulos e é tocado fora da Fase 116), dependências reordenadas (a S-827 abre a Fase 112, a S-843 abre a 116, a S-854 abre a 118), títulos regerados da spec, glossário e decisões completados, a S-869 reduzida a subtração e a S-825 sem `try` novo; 18 itens novos (S-887 a S-904), entre eles o Ctrl+Z que aplica a posição de outro diagrama e a folha do caderno relida por cima da correção |
+| 12 | revisão 3: um verificador conferiu contra o código, rodando os testes, tudo o que a revisão 2 escreveu; um leitor de olhos novos conferiu os dois documentos por script; uma varredura transversal procurou padrões no programa inteiro | ~90 correções (16 lugares de `Tarefa` com pai, e não 14; o teste da S-834 refeito; a correção de UNC da S-808, que a proposta anterior quebraria; o fecho com `--ocr glifo`); 6 itens novos (S-905 a S-910), entre eles o `settings.json` em ANSI que impede o `.exe` de abrir, o processo de trabalho sem prazo e o PDF arrastado para o ícone |

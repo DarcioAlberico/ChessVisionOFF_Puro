@@ -32,7 +32,7 @@ Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); a base de partidas que a Fase 48 con
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
 > | S-702, S-710 a S-712, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
-> | S-800 a S-904 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
+> | S-800 a S-910 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
