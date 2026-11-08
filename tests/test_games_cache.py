@@ -13,6 +13,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+import zipfile
 from contextlib import closing
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from chess_diagram_ocr.games_cache import (
     PositionStore,
     database_fingerprint,
     open_store,
+    same_database,
 )
 from chess_diagram_ocr.games_db import PositionHit, PositionIndex, scan_by_positions
 from chess_diagram_ocr.games_index import index_fingerprint
@@ -217,7 +219,7 @@ class ArquivoTests(unittest.TestCase):
 
     def test_base_inexistente_nao_derruba_o_fingerprint(self) -> None:
         impressao = database_fingerprint(self.raiz / "nao_existe.pgn")
-        self.assertEqual(impressao["files"][0]["size"], 0)
+        self.assertIsNone(impressao["files"][0]["size"], "desconhecido, e não zero (S-807)")
 
     def test_acrescentar_uma_base_descarta_o_cache(self) -> None:
         """**A parte da S-93 que mais importa para a honestidade dos números.** Uma base a mais
@@ -313,6 +315,53 @@ class ArquivoTests(unittest.TestCase):
             for parte in index_fingerprint(bases).split("|")
         ]
         self.assertEqual(do_cache, do_indice)
+
+    # ------------------------------------------- a impressão de membro de .zip (S-807)
+
+    def _zip(self, nome: str, conteudo: str, membro: str = "games.pgn") -> Path:
+        recipiente = self.raiz / nome
+        with zipfile.ZipFile(recipiente, "w", compression=zipfile.ZIP_DEFLATED) as zipado:
+            zipado.writestr(membro, conteudo)
+        return recipiente / membro
+
+    def test_impressao_de_membro_de_zip_muda_com_o_conteudo(self) -> None:
+        """Um membro reescrito com 50 vezes o conteúdo é outra base, e o cache tem de notar.
+
+        A impressão do cache fazia `stat()` no caminho do membro, que não existe no disco: o
+        `OSError` virava tamanho 0, e todo membro de `.zip` tinha o mesmo tamanho para sempre.
+        """
+        membro = self._zip("z.zip", '[Event "x"]\n')
+        antes = database_fingerprint(membro)
+        self._zip("z.zip", '[Event "x"]\n' * 50)
+        depois = database_fingerprint(membro)
+        self.assertFalse(same_database(antes, depois), f"{antes} e {depois} descrevem a mesma base")
+
+    def test_dois_zips_com_mesmo_membro_sao_bases_diferentes(self) -> None:
+        """`a.zip/games.pgn` e `b.zip/games.pgn` não são a mesma base, mesmo com o mesmo conteúdo."""
+        uma = self._zip("a.zip", '[Event "x"]\n')
+        outra = self._zip("b.zip", '[Event "x"]\n')
+        self.assertFalse(same_database(database_fingerprint(uma), database_fingerprint(outra)))
+        self.assertNotEqual(index_fingerprint(uma), index_fingerprint(outra))
+
+    def test_tamanho_que_nao_le_e_desconhecido_e_nao_zero(self) -> None:
+        """Uma base fora do ar não tem tamanho 0: ela tem tamanho desconhecido.
+
+        Com o 0, o arquivo que sumiu e o arquivo vazio de mesmo nome eram a mesma base -- no
+        cache e no índice, que liam o tamanho por dois caminhos com o mesmo defeito.
+        """
+        vazia = self.raiz / "vazia.pgn"
+        vazia.write_bytes(b"")
+        presente_cache, presente_indice = database_fingerprint(vazia), index_fingerprint(vazia)
+        vazia.unlink()
+        self.assertFalse(same_database(presente_cache, database_fingerprint(vazia)))
+        self.assertNotEqual(presente_indice, index_fingerprint(vazia))
+
+    def test_cache_e_indice_dizem_o_mesmo_de_um_membro_de_zip(self) -> None:
+        """A mesma pergunta respondida por uma função só: nome qualificado e tamanho do membro."""
+        membro = self._zip("z.zip", '[Event "x"]\n' * 7)
+        (do_cache,) = database_fingerprint(membro)["files"]
+        self.assertEqual(f"{do_cache['name']}:{do_cache['size']}", index_fingerprint(membro))
+        self.assertEqual(do_cache["name"], "z.zip/games.pgn")
 
     # ------------------------------------------------------ o esquema, travado (S-140)
 

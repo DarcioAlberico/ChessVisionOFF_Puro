@@ -57,7 +57,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import DATA_DIR
-from .games_db import MAX_HITS_PER_POSITION, PositionHit, PositionIndex, as_databases
+from .games_db import MAX_HITS_PER_POSITION, PositionHit, PositionIndex, as_databases, impressao_da_base
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +111,12 @@ def database_fingerprint(databases: Path | Sequence[Path]) -> dict[str, Any]:
     piada do módulo. Tamanho erra no caso de uma base editada sem mudar o tamanho, que não é
     um caso que aconteça sem intenção.
 
+    **Quem decide nome e tamanho é `games_db.impressao_da_base` (S-807)**, a mesma função do
+    `index_fingerprint`. Aqui havia um `stat()` próprio, e ele dava tamanho 0 a todo membro de
+    `.zip` -- o caminho do membro não existe no disco -- e nome sem o `.zip` na frente, então
+    reescrever o membro não mudava nada e dois `.zip` com um `games.pgn` cada eram a mesma base.
+    O tamanho que não lê é `None`, e não zero.
+
     **O `mtime` saiu na S-113, e é o item.** Ele estava aqui e não em `index_fingerprint`
     (`games_index.py`), que sempre usou só nome e tamanho -- duas regras para a mesma pergunta,
     e a mais estrita descartava o trabalho. Copiar a pasta de bases, um sync de nuvem ou um
@@ -122,13 +128,8 @@ def database_fingerprint(databases: Path | Sequence[Path]) -> dict[str, Any]:
     que estava em uma partida pode estar em três. Um cache que sobrevivesse a isso responderia
     "partida única" sobre uma base que tem quatro, e é a contagem que autoriza preencher header.
     """
-    arquivos = []
-    for caminho in as_databases(databases):
-        try:
-            arquivos.append({"name": caminho.name, "size": caminho.stat().st_size})
-        except OSError:
-            arquivos.append({"name": caminho.name, "size": 0})
-    return {"files": arquivos}
+    impressoes = (impressao_da_base(caminho) for caminho in as_databases(databases))
+    return {"files": [{"name": impressao.nome, "size": impressao.tamanho} for impressao in impressoes]}
 
 
 def _same_database(um: dict[str, Any], outro: dict[str, Any]) -> bool:
@@ -140,13 +141,18 @@ def _same_database(um: dict[str, Any], outro: dict[str, Any]) -> bool:
     existe para deixar de perder.
     """
 
-    def _marcas(fingerprint: dict[str, Any]) -> list[tuple[str, int]]:
+    def _marcas(fingerprint: dict[str, Any]) -> list[tuple[str, int | None]]:
         arquivos = fingerprint.get("files")
         if not isinstance(arquivos, list):
             arquivos = [fingerprint]
-        return [(str(item.get("name", "?")), int(item.get("size", 0))) for item in arquivos]
+        return [(str(item.get("name", "?")), _tamanho(item.get("size", 0))) for item in arquivos]
 
     return _marcas(um) == _marcas(outro)
+
+
+def _tamanho(valor: Any) -> int | None:
+    """O tamanho gravado numa marca: inteiro, ou `None` quando a base não leu (S-807)."""
+    return None if valor is None else int(valor)
 
 
 @dataclass(frozen=True)
@@ -620,7 +626,10 @@ def _descreve(fingerprint: dict[str, Any]) -> str:
     arquivos = fingerprint.get("files")
     if not isinstance(arquivos, list):
         arquivos = [fingerprint]
-    return ", ".join(f"{item.get('name', '?')} ({item.get('size', 0)} bytes)" for item in arquivos) or "nada"
+    def _peso(tamanho: Any) -> str:
+        return "tamanho desconhecido" if tamanho is None else f"{tamanho} bytes"
+
+    return ", ".join(f"{item.get('name', '?')} ({_peso(item.get('size', 0))})" for item in arquivos) or "nada"
 
 
 def _migra_json(conexao: sqlite3.Connection, origem: Path, fingerprint: dict[str, Any]) -> int:

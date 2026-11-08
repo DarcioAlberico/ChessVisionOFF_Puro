@@ -84,6 +84,7 @@ from .games_db import (
     decodificar_linha,
     eh_comprimida,
     existe_base,
+    impressao_da_base,
     nome_da_base,
     occupancy,
     surname,
@@ -367,10 +368,11 @@ def index_fingerprint(databases: Path | Sequence[Path]) -> str:
     ficou incompleto: ele não sabe as partidas do arquivo novo, e responder sem elas seria
     dizer "a base não tem" sobre um arquivo que ninguém indexou (S-93).
 
-    O nome é o de `nome_da_base` -- `base.zip/membro.pgn` para um membro de `.zip` --, e o
-    tamanho é o do disco, comprimido se for o caso (S-531).
+    Cada pedaço é a `impressao_da_base` (S-807), a mesma que o cache de posições usa: nome
+    qualificado pelo `.zip`, tamanho do disco, e `?` quando o tamanho não lê -- que não casa
+    com índice nenhum, porque offsets de uma base que não se lê não se conferem.
     """
-    return "|".join(f"{nome_da_base(caminho)}:{tamanho_da_base(caminho)}" for caminho in as_databases(databases))
+    return "|".join(str(impressao_da_base(caminho)) for caminho in as_databases(databases))
 
 
 def _connect(path: Path) -> sqlite3.Connection:

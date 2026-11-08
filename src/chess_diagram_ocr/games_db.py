@@ -89,6 +89,7 @@ __all__ = [
     "DiagramMatch",
     "FluxoDePGN",
     "GameRecord",
+    "ImpressaoDaBase",
     "LinhasDePGN",
     "PlayerPair",
     "PositionHit",
@@ -102,6 +103,7 @@ __all__ = [
     "eh_base",
     "eh_comprimida",
     "existe_base",
+    "impressao_da_base",
     "nome_da_base",
     "tamanho_da_base",
     "match_entries",
@@ -337,20 +339,55 @@ def existe_base(caminho: Path) -> bool:
         return False
 
 
-def tamanho_da_base(caminho: Path) -> int:
-    """Quantos bytes a base ocupa **no disco** -- comprimidos, se for o caso. Zero se não existe.
+@dataclass(frozen=True)
+class ImpressaoDaBase:
+    """O que identifica uma base sem lê-la: o nome qualificado e o tamanho (S-807).
 
-    É a régua do progresso e da identidade (`index_fingerprint`), e por isso é o tamanho que o
-    disco vê e não o descompactado: o segundo só se conhece lendo o arquivo inteiro.
+    `tamanho` é `None` quando não deu para ler -- disco fora do ar, arquivo no meio de uma cópia,
+    `.zip` corrompido. **Desconhecido não é zero**: com o zero, a base que sumiu e um arquivo vazio
+    de mesmo nome eram a mesma base, e o tamanho que "mudou" para 0 parecia outra base.
+    """
+
+    nome: str
+    tamanho: int | None
+
+    @property
+    def conhecida(self) -> bool:
+        return self.tamanho is not None
+
+    def __str__(self) -> str:
+        return f"{self.nome}:{'?' if self.tamanho is None else self.tamanho}"
+
+
+def impressao_da_base(caminho: Path) -> ImpressaoDaBase:
+    """A impressão digital de **uma** base, e o único lugar que decide o que ela é (S-807).
+
+    O nome é o de `nome_da_base` -- `base.zip/membro.pgn` para um membro de `.zip`, porque dois
+    `.zip` com um `games.pgn` cada são duas bases. O tamanho é o que o disco vê, comprimido se for
+    o caso: para um membro, o `compress_size` do diretório do `.zip`, que muda quando o membro é
+    reescrito. Cache de posições (`games_cache.database_fingerprint`) e índice por nome
+    (`games_index.index_fingerprint`) perguntam a mesma coisa e perguntam aqui.
     """
     membro = _membro_de_zip(caminho)
     try:
         if membro is None:
-            return caminho.stat().st_size
-        with zipfile.ZipFile(membro[0]) as zipado:
-            return zipado.getinfo(membro[1]).compress_size
+            tamanho: int | None = caminho.stat().st_size
+        else:
+            with zipfile.ZipFile(membro[0]) as zipado:
+                tamanho = zipado.getinfo(membro[1]).compress_size
     except (OSError, KeyError, zipfile.BadZipFile):
-        return 0
+        tamanho = None
+    return ImpressaoDaBase(nome_da_base(caminho), tamanho)
+
+
+def tamanho_da_base(caminho: Path) -> int:
+    """Quantos bytes a base ocupa **no disco** -- comprimidos, se for o caso. Zero se não lê.
+
+    É a régua do progresso, e por isso o zero serve: uma barra que não sabe o total fica vazia.
+    **Não é identidade** -- para isso há `impressao_da_base`, em que o tamanho que não lê é
+    desconhecido e não zero.
+    """
+    return impressao_da_base(caminho).tamanho or 0
 
 
 def decodificar_linha(linha: bytes) -> str:
