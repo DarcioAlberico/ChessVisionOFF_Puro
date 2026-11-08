@@ -67,6 +67,21 @@ class IndexadorDaBaseTests(unittest.TestCase):
         self.assertEqual(self.indexador.resultado.partidas, 2)  # type: ignore[union-attr]
         self.assertTrue(self.indice.exists())
 
+    def test_a_janela_poda_so_a_base_que_saiu_da_pasta(self) -> None:
+        """S-809: o botão da janela é o que a recusa da consulta manda apertar, então ele poda --
+        mas só o que não existe mais no disco; a base que só ficou fora da lista continua."""
+        outra = self.raiz / "outra.pgn"
+        outra.write_text(PGN, encoding="utf-8")
+        sumida = self.raiz / "sumida.pgn"
+        sumida.write_text(PGN, encoding="utf-8")
+        self.indexador.iniciar([self.base, outra, sumida], self.indice)
+        self._esperar()
+        sumida.unlink()
+        self.indexador.iniciar([self.base], self.indice)
+        self._esperar()
+        self.assertEqual(self.indexador.resultado.arquivos_removidos, 1)  # type: ignore[union-attr]
+        self.assertEqual(self.indexador.resultado.partidas, 4, "base.pgn e outra.pgn")  # type: ignore[union-attr]
+
     def test_o_progresso_chega_por_sinal_e_somado_por_mil(self) -> None:
         """O `progress` do índice roda na thread de trabalho; o que a barra recebe já veio pela
         fila de eventos, e o último valor do conjunto é mil."""

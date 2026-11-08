@@ -5,6 +5,7 @@
     cvoff-games --all --census               # o estado do acervo; não abre a base
     cvoff-games --limpar-cache               # apaga do cache o que é de outro conjunto de bases
     cvoff-games --build-index                # o índice por nome; relê só o que mudou (S-532)
+    cvoff-games --build-index --podar        # idem, e tira do índice a base que saiu da pasta (S-809)
     cvoff-games --build-tree                 # a árvore de aberturas por posição (S-535)
     cvoff-games --book "Karpov 1" --names    # só o caminho por nome, ~150 s
     cvoff-games --all --database uma.pgn     # uma base só; repetível
@@ -157,6 +158,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "constrói ou põe em dia o índice por nome e sai: relê só os arquivos que mudaram (S-532). "
             "Do zero, ~9 min por gigabase. Torna a busca por nome interativa."
+        ),
+    )
+    parser.add_argument(
+        "--podar",
+        action="store_true",
+        help=(
+            "com --build-index: tira do índice as bases que não existem mais na pasta (S-809). Sem "
+            "isto, uma rodada com parte das bases acrescenta e atualiza, e não apaga nada."
         ),
     )
     parser.add_argument(
@@ -474,7 +483,7 @@ def main(argv: list[str] | None = None) -> int:
         # `indexacao`, e nao `partidas`: mais abaixo o mesmo nome recebe o dicionario de
         # `scan_by_players`, e uma variavel com dois tipos na mesma funcao e o tipo de
         # coincidencia que o verificador aponta e o leitor nao.
-        indexacao = build_index(bases, args.index, progress=_index_progress())
+        indexacao = build_index(bases, args.index, progress=_index_progress(), podar=args.podar)
         print(
             f"índice: {indexacao.partidas} partidas em {args.index} ({args.index.stat().st_size / 1e6:.0f} MB); "
             f"nesta rodada {indexacao.relidas} lidas de {indexacao.arquivos_relidos} arquivo(s), "

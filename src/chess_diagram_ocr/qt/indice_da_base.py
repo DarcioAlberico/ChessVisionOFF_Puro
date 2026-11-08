@@ -92,7 +92,10 @@ class IndexadorDaBase(QObject):
         relatar = self._relatar
 
         def _trabalho() -> Indexacao:
-            return build_index(lista, caminho, progress=relatar, cancel=cancelar)
+            # `podar`, e a janela nao tem a bandeira do terminal (S-809): este botao e o que a recusa
+            # da consulta manda apertar, e sem podar um indice que guarda uma base que saiu da pasta
+            # seria recusado de novo a cada rodada. Podar so tira o que nao existe mais no disco.
+            return build_index(lista, caminho, progress=relatar, cancel=cancelar, podar=True)
 
         tarefa = Tarefa(_trabalho, parent=self, nome="índice da base de partidas")
         tarefa.pronto.connect(self._pronto)

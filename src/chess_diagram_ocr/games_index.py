@@ -69,7 +69,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .config import DATA_DIR
+from .config import DATA_DIR, PGN_DATABASE_DIR
 from .eco import classificar_lances, codigo_do_header, lances_do_movetext
 from .games_db import (
     _ABRE_CABECALHO,
@@ -616,6 +616,7 @@ def build_index(
     *,
     progress: Progresso | None = None,
     cancel: threading.Event | None = None,
+    podar: bool = False,
 ) -> Indexacao:
     """Põe o índice em dia com as bases: relê só o que mudou, e diz quanto foi (S-87/S-532).
 
@@ -637,7 +638,16 @@ def build_index(
     | mesmo tamanho, mesma cabeça, mesma cauda | **pulado**; só o `mtime` é atualizado se mudou |
     | cresceu, mesma cabeça, e a cauda antiga ainda está no mesmo lugar | lido **a partir do tamanho antigo** -- é o PGN em que se anexa |
     | qualquer outra diferença, ou base comprimida que mudou | as partidas dele saem e ele é relido inteiro |
-    | não está mais na lista | as partidas dele saem do índice |
+    | não está na lista desta rodada | **fica** como está (S-809) |
+    | não está na lista, não existe mais na pasta, e `podar` | as partidas dele saem do índice |
+
+    **Uma rodada com parte das bases acrescenta e atualiza; não poda (S-809).** Ela apagava toda
+    base fora da lista desta rodada -- e com um `--database X` explícito, ou com uma base que
+    `_bases()` tirou por estar ausente naquele instante, horas de indexação iam embora. Só sai a
+    base cujo arquivo não existe mais na pasta das bases (`PGN_DATABASE_DIR`, ou a de uma base
+    desta rodada), e só quando se pede (`cvoff-games --build-index --podar`). A marca gravada no fim
+    é a do **manifesto inteiro** (`_marca_do_manifesto`): o índice declara tudo o que guarda, e a
+    consulta só o aceita para esse conjunto.
 
     **Uma transação por lote, e não mais por arquivo** (S-533, r2). Era por arquivo, e a gigabase
     **é** um arquivo: cancelar no nono minuto desfazia os nove, e a rodada seguinte relia 8,6 GB
@@ -668,8 +678,9 @@ def build_index(
         conexao.execute("DELETE FROM meta WHERE key = 'database'")
         conexao.commit()
 
+        pastas = {PGN_DATABASE_DIR, *(arquivo_fisico(base).parent for base in bases)}
         for nome, registro in list(manifesto.items()):
-            if nome in atuais:
+            if nome in atuais or not podar or any(existe_base(pasta / nome) for pasta in pastas):
                 continue
             conexao.execute("DELETE FROM games WHERE file = ?", (registro.id,))
             conexao.execute("DELETE FROM files WHERE id = ?", (registro.id,))
@@ -778,7 +789,7 @@ def build_index(
             # numa grande foram derrubados; e depois de uma cancelada podem ter ficado de fora.
             for indice, colunas in _INDICES_DE_BUSCA:
                 conexao.execute(f"CREATE INDEX IF NOT EXISTS {indice} ON {colunas}")
-            conexao.execute("INSERT OR REPLACE INTO meta VALUES ('database', ?)", (index_fingerprint(bases),))
+            conexao.execute("INSERT OR REPLACE INTO meta VALUES ('database', ?)", (_marca_do_manifesto(manifesto),))
             conexao.commit()
         total = sum(registro.games for registro in manifesto.values())
     finally:
@@ -803,6 +814,19 @@ def build_index(
         ", cancelado" if cancelado else "",
     )
     return resultado
+
+
+def _marca_do_manifesto(manifesto: dict[str, _Registro]) -> str:
+    """A marca de **tudo** o que o índice guarda, na forma do `index_fingerprint` e na ordem da pasta.
+
+    Era o `index_fingerprint` das bases desta rodada; desde que uma rodada parcial não poda (S-809)
+    o índice pode guardar mais do que ela leu, e a marca diz o que ele guarda.
+    """
+    return "|".join(f"{r.name}:{r.size}" for r in sorted(manifesto.values(), key=lambda r: r.name.lower()))
+
+
+def _pedacos_da_marca(marca: str) -> set[str]:
+    return set(marca.split("|")) if marca else set()
 
 
 def _inteiro(texto: str) -> int:
@@ -1030,11 +1054,23 @@ def _abrir_para_consulta(bases: Sequence[Path], path: Path) -> tuple[sqlite3.Con
     if gravado is None:
         conexao.close()
         return None, f"O índice da base está em obras: uma rodada não chegou ao fim. {refazer}"
-    if gravado[0] != atual:
+    # Por conjunto, e nao pela string: a marca e gravada na ordem da pasta (S-809), e quem pergunta
+    # pode passar as bases em outra.
+    if _pedacos_da_marca(str(gravado[0])) != _pedacos_da_marca(atual):
         conexao.close()
+        nomes_de_agora = {pedaco.rsplit(":", 1)[0] for pedaco in _pedacos_da_marca(atual)}
+        a_mais = sorted(
+            nome for pedaco in _pedacos_da_marca(str(gravado[0])) if (nome := pedaco.rsplit(":", 1)[0]) not in nomes_de_agora
+        )
+        podar = (
+            f" O índice guarda também {', '.join(a_mais)}, fora das bases de agora; se saíram da pasta, "
+            "cvoff-games --build-index --podar as tira."
+            if a_mais
+            else ""
+        )
         return None, (
             f"O índice por nome foi feito para {gravado[0]!r} e a base agora é {atual!r}: os offsets não valem, "
-            f"e a consulta seria lixo. {refazer}"
+            f"e a consulta seria lixo.{podar} {refazer}"
         )
     return conexao, ""
 

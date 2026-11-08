@@ -346,6 +346,13 @@ de `b` continuam.
 
 **Aceite.** O teste passa. `--podar` sem nenhuma base ausente não faz nada.
 
+**Entregue** (2026-11-08): sem poda, o índice pode guardar mais bases do que a rodada leu, e a marca
+`meta.database` passou a ser a do manifesto inteiro, comparada como conjunto — senão a consulta da pasta
+inteira recusaria o índice depois de uma rodada parcial. A base que saiu da pasta sem `--podar` faz a
+consulta recusar, e a frase diz `cvoff-games --build-index --podar`. O botão da janela
+(`qt/indice_da_base.py`) poda sempre: é o que a recusa manda apertar, e sem podar ele não a resolveria.
+"Pasta das bases" é `PGN_DATABASE_DIR` mais a pasta de cada base da rodada.
+
 ## Fase 112 — Arquivos do dono e a identidade do livro
 
 ## S-827 · A identidade do livro numa função só

@@ -635,9 +635,54 @@ class IndiceIncrementalTests(unittest.TestCase):
         self.assertEqual(self._linhas_do_arquivo("a.pgn"), 4)
         self.assertEqual(len(lookup_pair(("anderssen", "kieseritzky"), [self.a, self.b], self.indice)), 2)
 
-    def test_arquivo_removido_sai_do_indice_sem_aviso_na_consulta(self) -> None:
+    # ------------------------------------------- subconjunto não poda (S-809)
+
+    def _cli(self, *argv: str) -> int:
+        from contextlib import redirect_stdout
+        from io import StringIO
+
+        from chess_diagram_ocr.cli import games as cli_games
+
+        with mock.patch.object(cli_games, "configure_logging"), redirect_stdout(StringIO()):
+            return cli_games.main(["--build-index", "--index", str(self.indice), *argv])
+
+    def test_build_index_com_subconjunto_nao_apaga_as_outras_bases(self) -> None:
+        """`--build-index --database a` sobre um índice de `[a, b]`: as partidas de `b` continuam.
+
+        A rodada apagava de `games` e `files` toda base fora da lista desta rodada -- e com um
+        `--database` explícito, ou com uma base que `_bases()` tirou por estar ausente naquele
+        instante, horas de indexação iam embora.
+        """
+        self.assertEqual(self._cli("--database", str(self.a)), 0)
+        self.assertEqual(self._linhas_do_arquivo("b.pgn"), 1)
+        with self.assertNoLogs("chess_diagram_ocr.games_index", level="WARNING"):
+            capablanca = lookup_pair(("capablanca", "lasker"), [self.a, self.b], self.indice)
+        self.assertEqual(len(capablanca), 1, "e a pasta inteira continua respondendo, sem reindexar")
+
+    def test_podar_sem_base_ausente_nao_faz_nada(self) -> None:
+        self.assertEqual(self._cli("--podar", "--database", str(self.a)), 0)
+        self.assertEqual(self._linhas_do_arquivo("b.pgn"), 1, "b não está na rodada, mas está na pasta")
+
+    def test_podar_tira_a_base_que_saiu_da_pasta(self) -> None:
+        self.b.unlink()
+        self.assertEqual(self._cli("--podar", "--database", str(self.a)), 0)
+        with self.assertNoLogs("chess_diagram_ocr.games_index", level="WARNING"):
+            self.assertEqual(len(lookup_pair(("anderssen", "kieseritzky"), [self.a], self.indice)), 2)
+
+    def test_base_que_saiu_sem_podar_recusa_a_consulta_e_diz_como_podar(self) -> None:
+        """O índice que guarda uma base que não está mais entre as de agora não responde menos do que
+        diz ter -- e a frase diz o comando que o põe em dia, senão "refaça" seria um laço."""
         self.b.unlink()
         rodada = build_index([self.a], self.indice)
+        self.assertEqual(rodada.arquivos_removidos, 0)
+        with self.assertRaises(IndiceIndisponivel) as recusa:
+            buscar(Filtro(brancas="Anderssen"), [self.a], self.indice)
+        self.assertIn("--podar", str(recusa.exception))
+        self.assertIn("b.pgn", str(recusa.exception))
+
+    def test_arquivo_removido_sai_do_indice_sem_aviso_na_consulta(self) -> None:
+        self.b.unlink()
+        rodada = build_index([self.a], self.indice, podar=True)
 
         self.assertEqual(rodada.arquivos_removidos, 1)
         self.assertEqual(rodada.partidas, 3)
