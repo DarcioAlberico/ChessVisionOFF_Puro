@@ -44,6 +44,7 @@ from .config import (
     ReadingOrder,
     caminho_para_relatorio,
 )
+from .djvu_io import livros_em
 from .pdf_to_pgn import ExportReport, default_pgn_output_path, save_pdf_positions_to_pgn
 
 logger = logging.getLogger(__name__)
@@ -219,10 +220,10 @@ class BatchReport:
 
 
 def find_pdfs(source: Path) -> list[Path]:
-    """Os PDFs a varrer, em ordem de nome. Aceita um arquivo ou um diretório."""
+    """Os livros (PDF e DjVu) a varrer, em ordem de nome. Aceita um arquivo ou um diretório."""
     if source.is_file():
         return [source]
-    return sorted(p for p in source.rglob("*.pdf") if p.is_file())
+    return livros_em(source, recursivo=True)
 
 
 def _mean_min_confidence(report: ExportReport) -> float:

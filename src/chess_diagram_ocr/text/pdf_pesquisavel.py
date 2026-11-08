@@ -49,6 +49,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, cast
 
+from ..djvu_io import pdf_legivel
 from .pagina import BlocoDeDiagrama
 from .rico import DocumentoRico
 
@@ -209,7 +210,7 @@ def escrever(
     if not caminho.exists():
         return Relatorio(avisos=(f"o livro {caminho.name} não está no lugar de antes",), seco=seco)
 
-    livro = fitz.open(caminho)
+    livro = fitz.open(pdf_legivel(caminho))
     try:
         if not 0 <= pagina_lida.pagina < livro.page_count:
             return Relatorio(avisos=(f"a folha {pagina_lida.pagina + 1} não existe em {caminho.name}",), seco=seco)
@@ -541,7 +542,7 @@ def escrever_camada(
 
     total = RelatorioDaCamada()
     avisos: list[str] = []
-    livro = fitz.open(caminho)
+    livro = fitz.open(pdf_legivel(caminho))
     try:
         fontes: dict[int, object] = {int(getattr(lida, "pagina", -1)): lida for lida in lidas}
         fontes.update(do_caderno)
@@ -707,7 +708,7 @@ def pares_sem_mapeamento(livro: Path | str, *, paginas: int = 40) -> tuple[ParSe
     """
     import fitz
 
-    documento = fitz.open(Path(livro))
+    documento = fitz.open(pdf_legivel(livro))
     try:
         passo = max(1, documento.page_count // max(1, paginas))
         folhas = [documento[i].get_text("dict") for i in range(0, documento.page_count, passo)]

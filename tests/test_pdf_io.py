@@ -173,6 +173,17 @@ class FraseDeAberturaTests(unittest.TestCase):
         nossa = "livro.pdf está protegido por senha. Este programa não tem onde pedi-la: …"
         self.assertEqual(nossa, leitura_do_pdf.frase_de_abertura("livro.pdf", ValueError(nossa)))
 
+    def test_a_recusa_do_djvu_passa_intacta(self) -> None:
+        """O DjVu danificado: `djvu_io` já diz em pt-BR que o arquivo parece incompleto, mas o texto
+        da djvu-rs entre parênteses tem "format error", que `_CAUSAS` lia como PDF corrompido."""
+        pasta = pasta_temporaria(self)
+        (pasta / "quebrado.djvu").write_bytes(b"AT&TFORM isto nao e um DjVu")
+        with self.assertRaises(Exception) as caixa:  # noqa: B017 - o tipo é de djvu_io
+            get_pdf_page_count(pasta / "quebrado.djvu")
+        frase = leitura_do_pdf.frase_de_abertura("quebrado.djvu", caixa.exception)
+        self.assertIn("incompleto ou danificado", frase)
+        self.assertNotIn("não é um PDF", frase)
+
     def test_o_que_o_pymupdf_de_verdade_levanta_cai_nas_pistas(self) -> None:
         """**A ponte com a biblioteca**, e é ela que envelhece: os nomes de exceção do PyMuPDF
         mudam entre versões, e o que não muda é a frase que ele escreve."""

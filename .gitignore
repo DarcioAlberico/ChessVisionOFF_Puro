@@ -152,6 +152,9 @@ data/quarentena_texto/
 # A leitura do Tesseract guardada (S-725): e texto de livro comercial, folha a folha, pela mesma regra
 # do review_cache e da galeria. Apagar a pasta e sempre seguro, e e o que o menu faz.
 data/cache_texto/
+# O PDF de cada DjVu ja aberto (`djvu_io`): recorte inteiro de livro protegido, e reconstruivel
+# abrindo o livro de novo. Chega a dezenas de MB por livro.
+data/djvu_convertidos/
 # Metadado dos modelos de experimento (S-204). Os pesos ja estao fora por `models/**/*.pt`, e um
 # `*_meta.json` de experimento tem a MESMA forma do par de producao -- schema 2, idx_to_char,
 # temperatura -- sem os pesos que ele descreve. Versiona-lo poria no repositorio um metadado que

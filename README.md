@@ -55,6 +55,15 @@ Nao ha dependencia de plataforma: a aba "Leitura" (WebView2, so-Windows) saiu na
 ela o `pythonnet` e o `pywebview`. Para ler o livro com rolagem continua e busca de texto, o
 botao **Abrir no leitor do sistema** entrega o PDF ao leitor padrao da maquina.
 
+**Livros em DjVu** (`.djvu`, `.djv`) abrem como os PDFs, pelo mesmo **Abrir PDF**, e entram nas
+varreduras de pasta. Na primeira abertura o livro e convertido para um PDF guardado em
+`data/djvu_convertidos/`, o que leva de segundos a alguns minutos; depois e imediato. Essa pasta
+pode ser apagada a qualquer hora: o livro e convertido de novo quando for aberto. O PDF pesa bem mais
+que o DjVu, em geral dezenas de MB por livro, e passa de 100 MB nos escaneados em tons de cinza.
+Nao e preciso instalar o DjVuLibre. A camada de texto do DjVu, quando existe, vai junto, invisivel,
+em alfabeto latino ou cirilico. Uma pagina que nao da para ler sai em branco, com um aviso escrito
+nela, e o resto do livro abre normalmente.
+
 **A janela tem duas familias de abas** (OCR_UI passo 17, ramo `passo-17-trilho`): a aba **Livro**,
 com o trabalho sobre o livro aberto em quatro **modos** -- Resultado, Estudo, Revisao e Texto,
 uma barra de botoes exclusivos no topo dela (`qt/painel_principal.py`) --, e as abas do acervo
@@ -1108,12 +1117,16 @@ src/chess_diagram_ocr/
   games_census.py       censo da base de partidas: quanto ha, e quanto disso e alcancavel
   games_db.py           leitura dos .pgn e a busca por nome e por posicao
   games_index.py        o indice sqlite da base, por nome e por posicao
+  detector_de_marcas.py  acha as marcas de casa pela forma, sem modelo; sugere, e a pessoa confirma
+  djvu_bzz.py           o decodificador BZZ, so para ler os nomes dentro do DIRM de um DjVu
+  djvu_io.py            converte o livro em DjVu para um PDF guardado, e o resto do programa nem fica sabendo
   importacao_de_imagens.py  imagens de fora (relatorio do ChessMeridaOCR, pastas soltas) para o dataset, com conferencia
   inference.py          carga do modelo, predicao de FEN e TTA
   labels.py             a porta unica do labels.csv: LabelStore (S-51)
   lance_seguinte.py     o primeiro lance impresso sob o diagrama jogado sobre a leitura, e a troca unica que o faz fechar (C11)
   livro_com_pgn.py      cada diagrama do PDF digital casado com o no do PGN do livro, e o estado dele (S-587)
   logging_setup.py      configuracao de logging
+  marcas_de_casa.py     as marcas impressas no diagrama (bolinha, estrela, seta...) e o arquivo delas, fora da FEN
   model.py              arquitetura do classificador, configuravel por ArchConfig
   net_correction.py     cliente da correcao remota de FEN (opcional, opt-in)
   ocr.py                os motores de OCR de faixa, atras de uma interface so
@@ -1202,7 +1215,8 @@ A aba Dataset tem o botao **Importar imagens...**, que traz diagramas de fora do
 para o `labels.csv`. Duas fontes:
 
 - **Relatorio do ChessMeridaOCR** (plugin do Sigil): a pasta com um `.html` e a pasta
-  `imagens/` por livro, ou a pasta que junta varios livros. A FEN vem do relatorio, mas so
+  `imagens/` por livro, ou a pasta que junta varios livros (o `diagramas.html`, com as imagens
+  ao lado dele, e lido do mesmo jeito). A FEN vem do relatorio, mas so
   entra sozinha quando o nosso modelo le a mesma posicao no recorte -- **Importar os que o
   modelo confirma**. O que discorda, o tabuleiro vazio e a imagem com duas FENs diferentes no
   relatorio ficam pendentes, com o aviso, para conferir.
@@ -1212,13 +1226,27 @@ para o `labels.csv`. Duas fontes:
 
 O recorte tira coordenadas, numero do diagrama e seta de quem joga: o detector so vale quando
 o quadro cobre boa parte da imagem; senao a imagem inteira e o tabuleiro (o caso das imagens
-ja recortadas rente as casas). **Usar a imagem inteira** troca um pelo outro na conferencia.
+ja recortadas rente as casas), sem a margem de uma cor so em volta, quando ela passa de 2% do
+lado. **Usar a imagem inteira** troca um pelo outro na conferencia.
 
 O andamento de cada pasta fica em `data/importacao/`: reabrir a mesma pasta continua de onde
 parou, e uma imagem ja gravada nao e gravada de novo. A coluna `source_pdf` da amostra leva a
 fonte e o livro (`ChessMeridaOCR: <livro>`), e `corrected_by` diz o caminho:
 `importado-com-fen` (relatorio e modelo concordaram, ninguem olhou), `ocr-aceito` ou
 `ocr-corrigido` (conferida com a leitura do modelo ao lado).
+
+A conferencia tambem anota as marcas impressas no diagrama, pela paleta **Marcas**: bolinha e
+estrela (brancas e pretas), X, cruz e outra marca vao numa casa com um clique; seta, reta e
+moldura se desenham arrastando. Com uma marca na mao, o botao direito tira a marca ou o traco e
+nunca a peca. **Marcar esvazia a casa** tira a peca junto, porque o modelo costuma ler marca como
+peca; desligue quando a marca esta mesmo sobre uma peca. A marca nao entra na FEN nem no
+`labels.csv`: fica em `data/marcas/anotacoes.json`, pelo conteudo da imagem, entao vale para a
+mesma imagem aberta por outra pasta, e cada anotacao ja vai para o disco, sem precisar salvar.
+O recorte mostra as marcas por cima, em contorno azul, para conferir se o lugar bate.
+
+O detector de marcas olha a forma de cada casa e sugere o que viu: bolinha, estrela, X e cruz, em
+casa sem peca. A sugestao aparece apagada no tabuleiro e nao vai para lugar nenhum ate voce usar
+**Aceitar a sugestao** (Ctrl+M). Seta, reta e moldura ainda sao so a mao.
 
 ## Dados e artefatos
 

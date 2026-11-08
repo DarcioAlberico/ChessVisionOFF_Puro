@@ -13,7 +13,7 @@
     },
     "accept_threshold": 0.8,
     "dpi": 220,
-    "code_commit": "604dc8a",
+    "code_commit": "64adf933",
     "code_dirty": false
   },
   "pages": 68,
@@ -73,8 +73,8 @@
     "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945).pdf p20 d0: #3 não fecha na anotação 2B5/1KR3B1/4P3/pN1k2pN/1p4P1/P5B1/3PP1n1/n6q (w)"
   ],
   "repairs_per_diagram": 0.2456,
-  "seconds": 79.2,
-  "seconds_per_diagram": 0.6947,
+  "seconds": 97.611,
+  "seconds_per_diagram": 0.8562,
   "per_regime": {
     "fonte": {
       "pages": 6,
@@ -132,8 +132,8 @@
       "stipulation_truth_closes": 6,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 10.178,
-      "seconds_per_diagram": 0.5655,
+      "seconds": 12.887,
+      "seconds_per_diagram": 0.7159,
       "per_regime": {},
       "per_book": {}
     },
@@ -195,8 +195,8 @@
         "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945).pdf p20 d0: #3 não fecha na anotação 2B5/1KR3B1/4P3/pN1k2pN/1p4P1/P5B1/3PP1n1/n6q (w)"
       ],
       "repairs_per_diagram": 1.0476,
-      "seconds": 21.602,
-      "seconds_per_diagram": 1.0287,
+      "seconds": 24.877,
+      "seconds_per_diagram": 1.1846,
       "per_regime": {},
       "per_book": {}
     },
@@ -256,8 +256,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.1364,
-      "seconds": 23.886,
-      "seconds_per_diagram": 0.5429,
+      "seconds": 29.919,
+      "seconds_per_diagram": 0.68,
       "per_regime": {},
       "per_book": {}
     },
@@ -317,7 +317,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 4.526,
+      "seconds": 5.934,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -378,8 +378,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 19.007,
-      "seconds_per_diagram": 0.6131,
+      "seconds": 23.994,
+      "seconds_per_diagram": 0.774,
       "per_regime": {},
       "per_book": {}
     }
@@ -441,8 +441,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 1.242,
-      "seconds_per_diagram": 0.3105,
+      "seconds": 1.624,
+      "seconds_per_diagram": 0.406,
       "per_regime": {},
       "per_book": {}
     },
@@ -502,8 +502,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 2.965,
-      "seconds_per_diagram": 1.4823,
+      "seconds": 3.84,
+      "seconds_per_diagram": 1.9199,
       "per_regime": {},
       "per_book": {}
     },
@@ -563,8 +563,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 2.145,
-      "seconds_per_diagram": 1.0725,
+      "seconds": 2.716,
+      "seconds_per_diagram": 1.3579,
       "per_regime": {},
       "per_book": {}
     },
@@ -624,8 +624,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 4.185,
-      "seconds_per_diagram": 0.3488,
+      "seconds": 5.243,
+      "seconds_per_diagram": 0.4369,
       "per_regime": {},
       "per_book": {}
     },
@@ -685,8 +685,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 1.144,
-      "seconds_per_diagram": 0.572,
+      "seconds": 1.396,
+      "seconds_per_diagram": 0.6978,
       "per_regime": {},
       "per_book": {}
     },
@@ -746,8 +746,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 1.5,
-      "seconds": 2.298,
-      "seconds_per_diagram": 1.1491,
+      "seconds": 2.909,
+      "seconds_per_diagram": 1.4546,
       "per_regime": {},
       "per_book": {}
     },
@@ -807,8 +807,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 1.2,
-      "seconds": 2.753,
-      "seconds_per_diagram": 0.5505,
+      "seconds": 3.392,
+      "seconds_per_diagram": 0.6783,
       "per_regime": {},
       "per_book": {}
     },
@@ -868,8 +868,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 3.319,
-      "seconds_per_diagram": 0.6638,
+      "seconds": 4.104,
+      "seconds_per_diagram": 0.8209,
       "per_regime": {},
       "per_book": {}
     },
@@ -929,8 +929,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.851,
-      "seconds_per_diagram": 0.851,
+      "seconds": 1.057,
+      "seconds_per_diagram": 1.0571,
       "per_regime": {},
       "per_book": {}
     },
@@ -990,8 +990,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 7.098,
-      "seconds_per_diagram": 0.5915,
+      "seconds": 9.074,
+      "seconds_per_diagram": 0.7562,
       "per_regime": {},
       "per_book": {}
     },
@@ -1051,7 +1051,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.583,
+      "seconds": 0.809,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1112,7 +1112,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.179,
+      "seconds": 0.248,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1173,8 +1173,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 1.5,
-      "seconds": 1.288,
-      "seconds_per_diagram": 0.3219,
+      "seconds": 1.611,
+      "seconds_per_diagram": 0.4028,
       "per_regime": {},
       "per_book": {}
     },
@@ -1234,8 +1234,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.677,
-      "seconds_per_diagram": 0.6774,
+      "seconds": 0.87,
+      "seconds_per_diagram": 0.8701,
       "per_regime": {},
       "per_book": {}
     },
@@ -1295,8 +1295,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 3.0,
-      "seconds": 0.705,
-      "seconds_per_diagram": 0.3523,
+      "seconds": 0.889,
+      "seconds_per_diagram": 0.4443,
       "per_regime": {},
       "per_book": {}
     },
@@ -1356,8 +1356,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 6.541,
-      "seconds_per_diagram": 1.3083,
+      "seconds": 8.192,
+      "seconds_per_diagram": 1.6383,
       "per_regime": {},
       "per_book": {}
     },
@@ -1417,7 +1417,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.191,
+      "seconds": 0.244,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1478,7 +1478,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.126,
+      "seconds": 0.189,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1539,7 +1539,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.095,
+      "seconds": 0.131,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -1600,8 +1600,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 8.729,
-      "seconds_per_diagram": 1.0911,
+      "seconds": 10.976,
+      "seconds_per_diagram": 1.372,
       "per_regime": {},
       "per_book": {}
     },
@@ -1663,8 +1663,8 @@
         "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945).pdf p20 d0: #3 não fecha na anotação 2B5/1KR3B1/4P3/pN1k2pN/1p4P1/P5B1/3PP1n1/n6q (w)"
       ],
       "repairs_per_diagram": 1.0,
-      "seconds": 10.274,
-      "seconds_per_diagram": 2.5685,
+      "seconds": 10.667,
+      "seconds_per_diagram": 2.6668,
       "per_regime": {},
       "per_book": {}
     },
@@ -1724,8 +1724,8 @@
       "stipulation_truth_closes": 6,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 1.549,
-      "seconds_per_diagram": 0.2582,
+      "seconds": 1.9,
+      "seconds_per_diagram": 0.3167,
       "per_regime": {},
       "per_book": {}
     },
@@ -1785,8 +1785,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 2.514,
-      "seconds_per_diagram": 0.2095,
+      "seconds": 3.01,
+      "seconds_per_diagram": 0.2508,
       "per_regime": {},
       "per_book": {}
     },
@@ -1846,8 +1846,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 3.683,
-      "seconds_per_diagram": 0.6139,
+      "seconds": 4.607,
+      "seconds_per_diagram": 0.7678,
       "per_regime": {},
       "per_book": {}
     },
@@ -1907,8 +1907,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 3.0,
-      "seconds": 0.889,
-      "seconds_per_diagram": 0.8889,
+      "seconds": 1.063,
+      "seconds_per_diagram": 1.0626,
       "per_regime": {},
       "per_book": {}
     },
@@ -1968,8 +1968,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.409,
-      "seconds_per_diagram": 0.4088,
+      "seconds": 0.518,
+      "seconds_per_diagram": 0.5178,
       "per_regime": {},
       "per_book": {}
     },
@@ -2029,8 +2029,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 6.029,
-      "seconds_per_diagram": 0.7536,
+      "seconds": 7.707,
+      "seconds_per_diagram": 0.9634,
       "per_regime": {},
       "per_book": {}
     },
@@ -2090,8 +2090,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 2.6,
-      "seconds_per_diagram": 0.6501,
+      "seconds": 3.279,
+      "seconds_per_diagram": 0.8198,
       "per_regime": {},
       "per_book": {}
     },
@@ -2151,7 +2151,7 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 0.214,
+      "seconds": 0.276,
       "seconds_per_diagram": 0.0,
       "per_regime": {},
       "per_book": {}
@@ -2212,8 +2212,8 @@
       "stipulation_truth_closes": 0,
       "stipulation_truth_failed": [],
       "repairs_per_diagram": 0.0,
-      "seconds": 3.927,
-      "seconds_per_diagram": 0.7853,
+      "seconds": 5.072,
+      "seconds_per_diagram": 1.0145,
       "per_regime": {},
       "per_book": {}
     }
@@ -2223,12 +2223,12 @@
       "path": "models/mhsp_20260816.pt",
       "digest": "843fbee08f9e231f"
     },
-    "commit": "604dc8ab83688a42fdef80f1818b69396e8f441c",
+    "commit": "64adf93347d23d0eaf53612b614787c6dc7e6b77",
     "dirty": false,
     "ocr": "off",
-    "note": "remedicao no 604dc8a: a porta do rei e a orientacao mudam decode e orientation; exportados, exatos e exportados errados iguais aos do 3c266da, so a contagem de reparos.",
+    "note": "remedicao sobre o merge da main em religa-as-decisoes-orfas; entradas do commit, sem settings.json",
     "code": {
-      "digest": "3412d74f554af724",
+      "digest": "82195a6ffe3b0e6c",
       "entry": "chess_diagram_ocr.cli.field",
       "modules": {
         "chess_diagram_ocr": "0e8f11cfdf9354d6",
@@ -2238,13 +2238,15 @@
         "cli": "abd1adbe0f277ee5",
         "cli._ocr": "90a255f7cc40b3b1",
         "cli.field": "df6a68113a980466",
-        "config": "f43f7da1c8ba4413",
+        "config": "3bf713280336d648",
         "cor_por_livro": "31c91dcd6a0e27fa",
         "dataset": "37aa70b848138e12",
         "decode": "4161f87a9fc22eb1",
         "detection": "777d96f22a60727b",
         "detection.embedded": "c76b39ff6eb57705",
         "detection.hybrid": "b4739405859f8886",
+        "djvu_bzz": "1b09d47499af1971",
+        "djvu_io": "c5e789e306456223",
         "engine": "bf49d6362f35af63",
         "estipulacao": "66f3a5943a61b48c",
         "fen_utils": "34572ecacbd4d437",
@@ -2257,7 +2259,7 @@
         "ocr": "0a7d53d8a18b27f6",
         "ocr_caption": "f98551e744d4712c",
         "orientation": "0986ad0fd18e8433",
-        "pdf_io": "b90a50ecce6c523b",
+        "pdf_io": "92935742b7c6114f",
         "pdf_text": "624eefaa35b45775",
         "preprocess": "8e0ecda59eb6315f",
         "procedencias": "2411e5c98cef5dd8",

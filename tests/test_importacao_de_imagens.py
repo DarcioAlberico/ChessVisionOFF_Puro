@@ -136,6 +136,57 @@ class RelatorioDoSigilTests(unittest.TestCase):
             imp.ler_relatorios_do_chessmeridaocr(pasta_temporaria(self))
 
 
+def pasta_de_diagramas(caso: unittest.TestCase) -> Path:
+    """O formato `diagramas.html`: imagens ao lado do HTML, e só o campo de peças da FEN.
+
+    `apagada.png` está citada sem arquivo (o dono apagou a imagem) e `solta.png` existe sem FEN.
+    """
+    raiz = pasta_temporaria(caso) / "Extratos"
+    for nome in ("boa", "vazia", "solta"):
+        gravar_png(raiz / "Livro" / f"{nome}.png", diagrama())
+    entradas = (("boa", FINAL), ("apagada", INICIAL), ("vazia", "8/8/8/8/8/8/8/8"))
+    corpo = "".join(
+        f'<div class="diagram">\n<img src="{nome}.png" alt="{nome}.png" />\n<p class="fen">{fen}</p>\n</div>\n'
+        for nome, fen in entradas
+    )
+    (raiz / "Livro" / "diagramas.html").write_text(f"<!DOCTYPE html><html><body>{corpo}</body></html>", encoding="utf-8")
+    return raiz
+
+
+class RelatorioDiagramasHtmlTests(unittest.TestCase):
+    def test_le_uma_entrada_por_div_e_conta_a_imagem_apagada(self) -> None:
+        lote = imp.ler_relatorios_do_chessmeridaocr(pasta_de_diagramas(self))
+        por_nome = {Path(item.imagem).name: item for item in lote.itens}
+
+        self.assertEqual(sorted(por_nome), ["boa.png", "vazia.png"], "imagem sem FEN não entra no lote com FEN")
+        self.assertEqual(lote.ausentes, 1)
+        self.assertEqual(por_nome["boa.png"].fen_da_fonte, FINAL)
+        self.assertEqual(por_nome["boa.png"].livro, "Livro")
+        self.assertEqual(por_nome["boa.png"].lado, "")
+        self.assertEqual(por_nome["boa.png"].motivos, ())
+        self.assertEqual(por_nome["vazia.png"].motivos, ("o relatório deu tabuleiro vazio",))
+
+    def test_entra_no_dataset_so_o_que_o_modelo_confirma(self) -> None:
+        pasta = pasta_de_diagramas(self)
+        destino = pasta_temporaria(self)
+        lote = imp.ler_relatorios_do_chessmeridaocr(pasta)
+
+        conta = imp.importar_os_que_concordam(
+            lote,
+            ler=lambda _tabuleiro: FINAL,
+            csv_path=destino / "labels.csv",
+            samples_dir=destino / "samples",
+            corrected_by=IMPORTADO_COM_FEN,
+            diretorio=destino / "lotes",
+        )
+
+        self.assertEqual((conta["salvos"], conta["com_aviso"]), (1, 1))
+        linhas = linhas_do_csv(destino / "labels.csv")
+        self.assertEqual([linha["fen"].split()[0] for linha in linhas], [FINAL])
+        self.assertEqual(linhas[0]["source_pdf"], "ChessMeridaOCR: Livro")
+        self.assertEqual(linhas[0]["corrected_by"], IMPORTADO_COM_FEN)
+
+
 class PastaSemFenTests(unittest.TestCase):
     def test_le_as_subpastas_pula_as_ocultas_e_usa_o_index_csv(self) -> None:
         raiz = pasta_temporaria(self) / "jbc"
@@ -324,6 +375,65 @@ class RecorteTests(unittest.TestCase):
         quadro = np.array([[0, 0], [30, 0], [30, 30], [0, 30]])
         self.assertLess(imp._fracao_do_quadro(quadro, (300, 300, 3)), imp.FRACAO_MINIMA_DO_QUADRO)
         self.assertEqual(imp._fracao_do_quadro(None, (300, 300, 3)), 0.0)
+
+
+def com_margem(imagem: np.ndarray, *, lados: int = 0, cima: int | None = None, cor: int = 240) -> np.ndarray:
+    """A imagem com uma faixa de uma cor só em volta, como nas imagens exportadas com fundo cinza."""
+    topo = lados if cima is None else cima
+    return cv2.copyMakeBorder(imagem, topo, lados, lados, lados, cv2.BORDER_CONSTANT, value=(cor, cor, cor))
+
+
+class SemMargemTests(unittest.TestCase):
+    """`_sem_margem`: tira a faixa de verdade e não toca no resto. Ver `MARGEM_MINIMA`."""
+
+    def setUp(self) -> None:
+        self.tabuleiro = diagrama(margem=0)
+        self.lado = self.tabuleiro.shape[0]
+
+    def test_margem_de_verdade_sai_inteira_e_nada_mais(self) -> None:
+        aparada = imp._sem_margem(com_margem(self.tabuleiro, lados=7))
+        np.testing.assert_array_equal(aparada, self.tabuleiro)
+
+    def test_imagem_rente_as_casas_passa_intacta(self) -> None:
+        self.assertIs(imp._sem_margem(self.tabuleiro), self.tabuleiro)
+
+    def test_margem_pequena_fica(self) -> None:
+        imagem = com_margem(self.tabuleiro, lados=2)
+        self.assertLess(2 / imagem.shape[0], imp.MARGEM_MINIMA)
+        self.assertIs(imp._sem_margem(imagem), imagem)
+
+    def test_faixa_grande_demais_nao_e_margem(self) -> None:
+        imagem = com_margem(self.tabuleiro, lados=50)
+        self.assertGreater(50 / imagem.shape[0], imp.MARGEM_MAXIMA)
+        self.assertIs(imp._sem_margem(imagem), imagem)
+
+    def test_o_que_sobra_precisa_ser_quase_quadrado(self) -> None:
+        largo = cv2.resize(self.tabuleiro, (300, 240), interpolation=cv2.INTER_AREA)
+        imagem = com_margem(largo, lados=8)
+        self.assertIs(imp._sem_margem(imagem), imagem)
+
+    def test_imagem_de_uma_cor_so_passa_intacta(self) -> None:
+        branca = np.full((300, 300, 3), 255, np.uint8)
+        self.assertIs(imp._sem_margem(branca), branca)
+
+    def test_margem_desigual_sai_de_cada_lado_o_que_tem(self) -> None:
+        aparada = imp._sem_margem(com_margem(self.tabuleiro, lados=7, cima=12))
+        np.testing.assert_array_equal(aparada, self.tabuleiro)
+
+    def test_o_ruido_do_jpeg_nao_interrompe_a_faixa(self) -> None:
+        gerador = np.random.default_rng(0)
+        imagem = com_margem(self.tabuleiro, lados=7).astype(np.int16)
+        ruido = gerador.integers(-3, 4, imagem.shape)
+        ruido[7 : 7 + self.lado, 7 : 7 + self.lado] = 0
+        aparada = imp._sem_margem(np.clip(imagem + ruido, 0, 255).astype(np.uint8))
+        np.testing.assert_array_equal(aparada, self.tabuleiro)
+
+    def test_recortar_inteira_acerta_a_grade_com_margem(self) -> None:
+        """É o defeito: com a margem junto, a borda da casa a8 caía dentro da casa."""
+        referencia, _ = imp.recortar(self.tabuleiro, imp.RECORTE_INTEIRA)
+        recorte, usado = imp.recortar(com_margem(self.tabuleiro, lados=7), imp.RECORTE_INTEIRA)
+        self.assertEqual(usado, imp.RECORTE_INTEIRA)
+        np.testing.assert_array_equal(recorte, referencia)
 
 
 class ImportarOsQueConcordamTests(unittest.TestCase):

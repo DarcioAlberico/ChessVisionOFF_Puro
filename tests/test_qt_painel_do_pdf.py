@@ -786,6 +786,43 @@ class RasterizacaoAoFundoTests(unittest.TestCase):
         self.assertEqual(self.livro, self.painel.source)
         self.assertEqual(0, self.painel.page_loaded_for_index)
 
+    def test_djvu_abre_e_o_painel_fica_com_o_nome_dele(self) -> None:
+        """A primeira abertura avisa que vai demorar, e a segunda já não precisa converter."""
+        fixture = Path(__file__).resolve().parent / "fixtures" / "djvu" / "boy_jb2.djvu"
+        livro = Path(self.pasta.name) / "livro.djvu"
+        livro.write_bytes(fixture.read_bytes())
+        recados: list[str] = []
+        self.painel.estado.connect(recados.append)
+
+        self.painel.load_pdf(livro)
+        self.assertTrue(self.painel.aguardar_pagina())
+
+        self.assertEqual(livro, self.painel.source)
+        self.assertEqual("livro.djvu", self.painel.name)
+        self.assertEqual(1, self.painel.page_count)
+        self.assertIsNotNone(self.painel.page_rgb)
+        self.assertTrue(recados[0].startswith("Convertendo livro.djvu"), recados)
+
+        self.painel.load_pdf(self.livro)
+        self.assertTrue(self.painel.aguardar_pagina())
+        recados.clear()
+        self.painel.load_pdf(livro)
+        self.assertTrue(self.painel.aguardar_pagina())
+        self.assertEqual("Abrindo livro.djvu…", recados[0])
+
+    def test_djvu_danificado_nao_troca_o_livro(self) -> None:
+        from unittest import mock
+
+        self.painel.load_pdf(self.livro)
+        self.painel.aguardar_pagina()
+        quebrado = Path(self.pasta.name) / "quebrado.djvu"
+        quebrado.write_bytes(b"AT&TFORM isto nao e um DjVu")
+        with mock.patch("chess_diagram_ocr.qt.painel_do_pdf.QMessageBox.critical") as caixa:
+            self.painel.load_pdf(quebrado)
+            self.painel.aguardar_pagina()
+        self.assertIn("incompleto ou danificado", caixa.call_args.args[2])
+        self.assertEqual(self.livro, self.painel.source)
+
     def test_em_linha_a_folha_esta_na_tela_ao_voltar(self) -> None:
         """A bandeira desligada é o caminho dos testes de janela: `abrir_pdf` já mostra a folha."""
         painel = qt_pdf.PainelDoPdf(dpi=lambda: 72, rasterizar_ao_fundo=False)

@@ -87,6 +87,8 @@ Da FEN em diante o caminho se divide em três, e todos partem do mesmo `Recogniz
 | `decode.py` | Decodificação sujeita às regras do xadrez. |
 | `semantics.py` | Lado a jogar e direitos de roque, deduzidos da posição. |
 | `pdf_io.py` | Abrir, contar e renderizar página. `OpenPdf` é o empréstimo da S-61: uma varredura abre o documento **uma vez** e o passa adiante, em vez de três aberturas por página. |
+| `djvu_bzz.py` | O decodificador BZZ, só para ler os nomes do `DIRM`, que a `djvu-rs` não expõe. O conteúdo de página fica com ela. |
+| `djvu_io.py` | O livro em DjVu vira um PDF guardado em `data/djvu_convertidos/`, na primeira abertura. `pdf_io` pede o caminho aqui, e quem chamou continua com o do `.djvu`. |
 | `pdf_text.py` | Legenda e metadados da camada de texto do PDF. |
 | `ocr.py` | Motor de OCR opcional e plugável (S-42). Sem o extra, `build_recognizer` devolve `None`. |
 | `ocr_caption.py` | Lê **a faixa em volta do diagrama**, não a página, e devolve a mesma `TextLine` da S-16 (S-43). A faixa de cabeçalho tem altura própria (`SCOPE_BAND`), porque a de descarte cortava a linha ao meio. |
@@ -403,6 +405,9 @@ duplicado e uma linha para um arquivo que este repositório nunca teve.
 | `data/cache_texto/` | **a leitura do Tesseract guardada** (S-725): um `.json` por lote de linhas, com a chave completa, teto de 200 MB e despejo do usado há mais tempo. Só a janela o usa: a régua e os CLIs leem sempre sem ele. É texto de livro comercial | não — **sob demanda**: nasce na primeira folha lida com a fusão na janela; apagar é sempre seguro, e o menu Texto faz isso |
 | `data/quarentena_texto/` | os recortes que saíram da base por rótulo contraditório, na pasta da classe de origem, mais o manifesto que `--desfazer` lê de volta | não — **sob demanda**: nasce no primeiro `cvoff-texto-conflitos --aplicar`. São os mesmos PNGs de `training_data/`, e a pasta existe para que a poda seja reversível |
 | `data/faixas_para_transcrever/` | os PNGs das 123 faixas de legenda exportados por `cvoff-texto-placar --exportar`, um por linha da referência, mais o `indice.json` que liga número a livro e página — **a imagem que os motores leem**, para a transcrição humana da S-183 | não — **sob demanda**: nasce no `--exportar` e é refeito a partir de `docs/metrics/texto_faixa_referencia.jsonl`. São recortes de PDF protegido, como o `review_cache` |
+| `data/djvu_convertidos/` | o PDF de cada livro em DjVu já aberto (`djvu_io`). Descartável: apagado, o livro é convertido de novo na abertura seguinte | não — **sob demanda**: nasce ao abrir o primeiro DjVu |
+| `data/importacao/` | o andamento de cada pasta aberta em *Importar imagens*: um `.json` por pasta e origem, com o status e a leitura de cada imagem. O que um lote decidiu vale para os outros, pelo caminho inteiro da imagem | não — **sob demanda**: nasce ao abrir a primeira pasta |
+| `data/marcas/anotacoes.json` | **as marcas impressas nos diagramas**, anotadas à mão na conferência da importação: as de casa por nome da casa e os traços em unidades de casa, pelo SHA-256 da imagem. É o rótulo do dataset de marcas e fica fora do `labels.csv` de propósito: a marca não é peça. Sem entrada quer dizer que ninguém anotou, e não que a imagem não tem marca. Arquivo ilegível desliga a paleta e nunca é sobrescrito | não — **sob demanda**: nasce na primeira anotação |
 | `models/*.pt` | checkpoints, com semente, split e métrica gravados | não |
 | `PGN/<livro>.pgn` | as posições aceitas | não |
 | `PGN/<livro>.review.pgn` | as rejeitadas e as de baixa confiança, com o motivo | não |
