@@ -27,7 +27,9 @@ dependencies = [
     "pillow>=10.0.0",
     "pymupdf>=1.24.0",
     # Abre os livros em DjVu (`djvu_io`). Pura Rust e MIT, sem DjVuLibre instalado na maquina.
-    "djvu-rs>=0.43.0",
+    # Faixa estreita (do PR #54): projeto de 2026, com 24 versoes em dois meses, e o que foi
+    # medido nos 253 livros do acervo e a 0.43.
+    "djvu-rs>=0.43,<0.44",
     "torch>=2.6",
     "torchvision>=0.21",
     "chess>=1.11",

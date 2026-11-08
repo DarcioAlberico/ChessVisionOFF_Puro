@@ -312,7 +312,7 @@ second-opinion = [
 requires-dist = [
     { name = "cairosvg", marker = "extra == 'second-opinion'", specifier = ">=2.7" },
     { name = "chess", specifier = ">=1.11" },
-    { name = "djvu-rs", specifier = ">=0.43.0" },
+    { name = "djvu-rs", specifier = ">=0.43,<0.44" },
     { name = "matplotlib", marker = "extra == 'second-opinion'", specifier = ">=3.8" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
     { name = "numpy", specifier = ">=1.26.0" },
