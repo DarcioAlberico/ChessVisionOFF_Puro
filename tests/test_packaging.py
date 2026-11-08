@@ -257,8 +257,11 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2312
+    LIMITE = 2313
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.312 -> 2.313 com a identidade do livro numa função só (S-827, 2026-11-08)**: o nome
+    `livros` na importação de `ui`; a decisão em si mora em `ui/livros.py`.
 
     **2.311 -> 2.312 com o processo de trabalho encerrado no fechamento (S-906, 2026-11-08)**:
     uma linha no `closeEvent`, `processo_de_trabalho().encerrar(matar=True)`; sem ela, uma página
