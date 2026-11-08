@@ -449,7 +449,7 @@ teste: o Tesseract nas linhas certas erra 0,15%, então o reconhecimento já est
 
 O dev novo para o leiaute sai da **reserva** de `assets/texto_prosa/ouro.json`: 30 livros digitais que nunca foram ao
 teste, fora os marcados `fora_do_treino` e os reprovados (29 em inglês, 1 em espanhol). O teste só se lê de novo no
-portão. Do dono continua faltando o livro da terceira língua (a pendência `terceira_lingua`), que entra no teste a mais.
+portão. O livro da terceira língua chegou no mesmo dia e entrou no teste a mais: a pendência `terceira_lingua` caiu.
 A Fase 105 fica adiada, e não cancelada: volta se o scan mostrar que lá o gargalo é o reconhecimento.
 
 ---
@@ -615,6 +615,8 @@ em 26 folhas); uma folha escaneada da prata, ~272 (4.084 em 15). Um livro de 300
   repositório. **No sorteio da S-702, o livro em espanhol não deu nenhuma folha com prosa** (é de
   exercícios), e o teste congelou com 16 livros em inglês e português; **falta um livro digital com
   prosa numa terceira língua**, que entra a mais, sem trocar os sorteados (decisão do dono).
+  **Entregue em 2026-11-08:** um livro em espanhol, com prosa, entrou a mais e passou na auditoria visual; o teste
+  fica com 17 livros em três línguas (ver a spec).
 - **Antes de a fusão virar padrão (~dezembro) — D1, D4 e D9.** Levar o Tesseract no instalador (+~48 MB
   e as licenças dele); aceitar que ler a folha com texto fique ~2–3× mais lento; e dizer quem escreve o
   livro exportado (seção 7).
@@ -1758,7 +1760,7 @@ dono não responder até lá — e o recuo **cumpre o próprio portão**, rotula
 | **D3** | Horas humanas para o scan-ouro | sim, ~15 h (30 folhas e a dupla digitação de 6) | começa no primeiro dia; precisa estar pronto antes do G104 | o G104 não fecha (M3/M4 sem número), e o produto sai dizendo que o erro de scan não foi medido | ~15 h humanas |
 | **D4** | Aceitar o orçamento do G4 (a leitura com fusão custa ~2–3× a do glifo, e pela política da S-215 isso pode tirar o texto da varredura padrão) | sim | antes do G102 | a fusão fica atrás de interruptor e não vira padrão | varredura de livro inteiro mais lenta (seção 3, G4) |
 | **D5** | Fontes, livros do acervo e **pesos derivados** (o `traineddata` ajustado da S-745, o modelo da Fase 105) | uso local; peso derivado de livro comercial **não** vai no instalador sem decisão expressa | antes da S-746 | os pesos ficam fora do bundle | licença das fontes comerciais e dos livros |
-| **D6** | Trazer ≥ 12 livros digitais novos (nascidos digitais, com prosa, ≥ 3 línguas; 8 é o mínimo) para o ouro-teste — **entregue em 2026-10-30**: 36 independentes; falta a terceira língua (seção 5a) | **sim** | antes do G102 | os portões G102 e G103 rodam no **teste provisório** (folhas nunca lidas dos 7 livros dev), com o teto recalculado por `amostra.py` para 7 livros e todo número rotulado "provisório (livro visto)"; o G107 não fecha sem eles | trazer os PDFs |
+| **D6** | Trazer ≥ 12 livros digitais novos (nascidos digitais, com prosa, ≥ 3 línguas; 8 é o mínimo) para o ouro-teste — **entregue em 2026-10-30**: 36 independentes; a terceira língua chegou em 2026-11-08 (espanhol, a mais) | **sim** | antes do G102 | os portões G102 e G103 rodam no **teste provisório** (folhas nunca lidas dos 7 livros dev), com o teto recalculado por `amostra.py` para 7 livros e todo número rotulado "provisório (livro visto)"; o G107 não fecha sem eles | trazer os PDFs |
 | **D7** | Downloads da escada e do dataset: `tesstrain`, modelo PP-OCR latino, `frak2021` (se houver Fraktur), fontes completas, corpus de domínio público | sim, um a um, com **nome, origem, tamanho e licença** declarados | antes do item que o usa | o degrau da S-745 que depende dele é pulado e registrado | variável |
 | **D8** | Orçamento de CPU da Fase 105 (dezenas de horas por corrida, várias corridas) | decidir depois da corrida-piloto da S-752 | antes da S-750 | a Fase 105 não começa; vale o plano B da seção 3 | horas de CPU desta máquina |
 | **D9** | Quem escreve o livro exportado: o tronco envia as folhas lidas pelo leitor novo à suíte, ou a suíte adota a fusão que vencer na S-707 | o que a S-707 medir melhor | antes da S-765 | o livro exportado continua com o motor da suíte, e o relatório diz | coordenação entre os dois repositórios |

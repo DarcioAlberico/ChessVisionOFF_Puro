@@ -153,6 +153,13 @@ que aceita também, com um livro aprovado tirado da cópia e acrescentado de vol
 roda de novo com o livro no inventário: ele reproduz o manifesto de antes do acréscimo, e o acréscimo se
 reproduz pelo `acrescentar.py` com a mesma `--data` (sem ela, `entrou_em` é o dia da corrida).
 
+**A pendência se cumpriu em 2026-11-08.** O dono trouxe um livro digital em espanhol, com prosa: ebook convertido pelo
+calibre, de autor sem outro livro no manifesto, acrescentado com `--serie=nenhuma --data=2026-11-08` (identidade
+`082351b7e5da91c0`). Deu seis folhas, todas do estrato de prosa, e as 20 linhas da auditoria visual foram aprovadas por
+um agente que não sorteou, sem divergência; a dúvida dele entre zero e `O` no `0-0` foi conferida no recorte, e é zero.
+O teste fica com 17 livros e 102 folhas em três línguas, e `pendencias` vazia. Ele entra depois da primeira leitura do
+teste (2026-11-06): os portões de 2026-11-06 foram medidos sem ele, e o livro só é lido no próximo portão.
+
 **Achado: o (c) recusa o símbolo de avaliação gravado em uso privado.** Em dois livros do teste a
 admissão recusou a maioria das folhas perguntadas por (c): 22 de 28 num, cuja fonte de texto traz as
 figurinas em Unicode (♕♔♘) e o símbolo de avaliação que vem depois do lance num caractere de uso
