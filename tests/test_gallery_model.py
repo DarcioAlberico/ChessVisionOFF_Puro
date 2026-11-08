@@ -804,6 +804,42 @@ class EscolhaDaPartidaTests(unittest.TestCase):
         self.assertEqual(modelo.annotations.get(1, 0).chosen_game, self.karpov.key)
         self.assertEqual(modelo.position, 0, "e a navegação volta para onde estava")
 
+    def test_vizinho_com_outra_partida_escolhida_nao_e_tocado(self) -> None:
+        """S-892: o vizinho onde a pessoa já escolheu **outra** partida fica como está.
+
+        Ter a partida entre as candidatas não basta: a mesma posição pode vir de duas partidas,
+        e quem escolheu Havasi-Tartakower ali escolheu de propósito. Trocar calado é apagar uma
+        escolha humana sem desfazer, a mesma perda que motivou a trava da S-76.
+        """
+        vizinho = GalleryEntry(1, 0, "posicao-b", caption="")
+        havasi_no_vizinho = self._hit("Havasi, Kornel", "Tartakower, Saviely", 40, data="1929.01.01")
+        modelo = self._modelo_com_cache(
+            (self.entrada, [self.karpov]),
+            (vizinho, [havasi_no_vizinho, self._hit("Karpov, Anatoly", "Korchnoi, Viktor", 31)]),
+        )
+        modelo.go_to(1)
+        modelo.choose_game(havasi_no_vizinho)
+        modelo.go_to(0)
+        antes = modelo.annotations.get(1, 0)
+
+        self.assertEqual(modelo.neighbours_with_game(self.karpov), [])
+        self.assertEqual([v.key for v in modelo.neighbours_keeping_their_game(self.karpov)], [(1, 0)])
+        self.assertEqual(modelo.apply_game_to_neighbours(self.karpov), 0)
+        depois = modelo.annotations.get(1, 0)
+        self.assertEqual(depois, antes, "nem White, nem Black, nem Date, nem o lance 40 mudam")
+        self.assertEqual(depois.chosen_game, havasi_no_vizinho.key)
+
+    def test_vizinho_que_ja_tem_esta_partida_continua_entrando(self) -> None:
+        """Reaplicar a mesma partida não é trocar escolha: o vizinho segue na conta."""
+        vizinho = GalleryEntry(1, 0, "posicao-b", caption="")
+        karpov_no_vizinho = self._hit("Karpov, Anatoly", "Korchnoi, Viktor", 31)
+        modelo = self._modelo_com_cache((self.entrada, [self.karpov]), (vizinho, [karpov_no_vizinho]))
+        modelo.go_to(1)
+        modelo.choose_game(karpov_no_vizinho)
+        modelo.go_to(0)
+        self.assertEqual([v.key for v in modelo.neighbours_with_game(self.karpov)], [(1, 0)])
+        self.assertEqual(modelo.neighbours_keeping_their_game(self.karpov), [])
+
     def test_a_partida_que_os_vizinhos_tambem_tem_sobe_na_lista(self) -> None:
         """S-88 como **dica**, e não como regra: ela reprovou a medição (16,6% contra 20%) e
         só 3 casos tinham como ser conferidos. Como ordenação ela não pode errar -- no pior

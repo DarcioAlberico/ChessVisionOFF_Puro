@@ -655,6 +655,11 @@ a pergunta lista à parte quantos vizinhos foram poupados por já terem outra pa
 
 **Aceite.** O teste passa.
 
+**Entregue** (2026-11-08): sem escolha, `chosen_game` vale `""` e não `None`, e por isso o critério é
+`chosen_game in ("", hit.key)`; com `None` o conserto pouparia todos os vizinhos. Os poupados saem de
+`neighbours_keeping_their_game`, e a mesma varredura decide as duas listas. A dica do botão dizia que ele
+ficava cinza quando os vizinhos "não têm partida escolhida"; agora diz o critério de verdade.
+
 ## S-896 · Folha do caderno que não abre não é relida por cima
 
 **Problema** (confirmado por script). `text/caderno.py:380-387`: `_carregar` devolve `None` para uma folha

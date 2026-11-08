@@ -773,20 +773,38 @@ class GalleryModel:
         **Só os que a têm entre as candidatas**, e é a trava que faltou no "aplicar a todos" da
         S-76 -- aquele clique espalhou quatro campos por 1.405 diagramas. Aqui o vizinho que
         não contém a posição daquela partida simplesmente não entra.
+
+        **Nem o que já tem outra escolhida** (S-892): a mesma posição pode vir de duas partidas,
+        e trocar a que a pessoa escolheu ali é apagar escolha humana sem desfazer. Esses são os
+        de `neighbours_keeping_their_game`, que a pergunta conta à parte.
         """
+        return self._neighbours_split(hit, radius)[0]
+
+    def neighbours_keeping_their_game(self, hit: PositionHit, *, radius: int = 3) -> list[GalleryEntry]:
+        """Os vizinhos que têm esta partida entre as candidatas, mas onde já se escolheu outra."""
+        return self._neighbours_split(hit, radius)[1]
+
+    def _neighbours_split(
+        self, hit: PositionHit, radius: int
+    ) -> tuple[list[GalleryEntry], list[GalleryEntry]]:
+        """Os vizinhos com esta partida entre as candidatas: os que a recebem e os poupados."""
         if self.is_empty:
-            return []
+            return [], []
         centro = self.clamped_position()
         alcance = range(max(0, centro - radius), min(len(self.index), centro + radius + 1))
-        vizinhos = []
+        recebem: list[GalleryEntry] = []
+        poupados: list[GalleryEntry] = []
         for posicao in alcance:
             if posicao == centro:
                 continue
             entrada = self.index.entries[posicao]
             candidatas, _ = self.candidates_for(entrada)
-            if any(candidata.key == hit.key for candidata in candidatas):
-                vizinhos.append(entrada)
-        return vizinhos
+            if not any(candidata.key == hit.key for candidata in candidatas):
+                continue
+            # Sem escolha o campo é "", e não None.
+            escolhida = self.annotations.get(*entrada.key).chosen_game
+            (recebem if escolhida in ("", hit.key) else poupados).append(entrada)
+        return recebem, poupados
 
     def apply_game_to_neighbours(self, hit: PositionHit, *, radius: int = 3) -> int:
         """Aplica a partida aos vizinhos que a contêm. Devolve quantos foram tocados.

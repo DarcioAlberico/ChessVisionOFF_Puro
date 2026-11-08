@@ -21,15 +21,20 @@ from __future__ import annotations
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
+from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
+from chess_diagram_ocr.games_cache import CachedPosition, PositionCache
+from chess_diagram_ocr.games_db import PositionHit
 from chess_diagram_ocr.ui import (
     escopo_da_varredura,
     lista_de_partidas,
     pedido_de_treino,
 )
+from chess_diagram_ocr.ui.gallery_model import GalleryModel
 
 if TEM_PYQT:
     from PyQt6.QtCore import QThread
@@ -128,6 +133,51 @@ class BasesTests(unittest.TestCase):
         dialogo = self.dialogo()
         dialogo.reject()
         self.assertIsNone(dialogo.escolhidas)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class VizinhosTests(unittest.TestCase):
+    """S-892: a pergunta do "Aplicar aos vizinhos" conta à parte os que ela não vai tocar."""
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.addCleanup(self.app.processEvents)
+
+    def _hit(self, brancas: str, pretas: str, lance: int) -> PositionHit:
+        return PositionHit(move_number=lance, side_to_move="b", headers={"White": brancas, "Black": pretas})
+
+    def test_a_pergunta_conta_o_vizinho_poupado_e_ele_nao_muda(self) -> None:
+        karpov = self._hit("Karpov, Anatoly", "Korchnoi, Viktor", 24)
+        havasi = self._hit("Havasi, Kornel", "Tartakower, Saviely", 40)
+        entradas = [GalleryEntry(p, 0, f"posicao-{p}") for p in range(3)]
+        partidas = [
+            [karpov],
+            [havasi, self._hit("Karpov, Anatoly", "Korchnoi, Viktor", 31)],
+            [self._hit("Karpov, Anatoly", "Korchnoi, Viktor", 33)],
+        ]
+        cache = PositionCache()
+        for entrada, delas in zip(entradas, partidas, strict=True):
+            cache.positions[entrada.placement] = CachedPosition(count=len(delas), games=tuple(delas))
+        modelo = GalleryModel(index=GalleryIndex(entries=entradas), position_cache=cache)
+        modelo.go_to(1)
+        modelo.choose_game(havasi)
+        modelo.go_to(0)
+
+        dialogo = qt_dialogos.DialogoDePartidas(modelo=modelo)
+        self.addCleanup(descartar, dialogo)
+        frases: list[str] = []
+        dialogo.aplicou.connect(frases.append)
+        sim = qt_dialogos.QMessageBox.StandardButton.Yes
+        with mock.patch.object(qt_dialogos.QMessageBox, "question", return_value=sim) as pergunta:
+            dialogo.aplicar_aos_vizinhos()
+
+        texto = pergunta.call_args.args[2]
+        self.assertIn("a 1 diagrama(s) vizinho(s)", texto)
+        self.assertIn("1 vizinho(s) com outra partida já escolhida ficam como estão", texto)
+        self.assertEqual(modelo.annotations.get(1, 0).chosen_game, havasi.key)
+        self.assertEqual(modelo.annotations.get(1, 0).move_number, 40)
+        self.assertEqual(modelo.annotations.get(2, 0).move_number, 33)
+        self.assertEqual(frases, [f"{karpov.label}: aplicada a 1 diagrama(s) vizinho(s)."])
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

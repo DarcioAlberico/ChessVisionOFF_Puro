@@ -571,8 +571,8 @@ class DialogoDePartidas(QDialog):
         self.btn_vizinhos.setEnabled(False)
         dica_em(
             self.btn_vizinhos,
-            "Fica cinza quando os diagramas vizinhos desta página não têm partida escolhida:\n"
-            "é deles que sai o palpite, e sem eles não há o que copiar.",
+            "Fica cinza quando nenhum diagrama vizinho tem esta partida entre as candidatas:\n"
+            "o vizinho onde já se escolheu outra partida não é tocado.",
         )
         for botao in (self.btn_aplicar, self.btn_por_nome, self.btn_vizinhos):
             tema.aplicar_papel(botao, estilos.NEUTRO)
@@ -785,12 +785,18 @@ class DialogoDePartidas(QDialog):
         vizinhos = self._modelo.neighbours_with_game(escolhida, radius=NEIGHBOUR_RADIUS)
         if not vizinhos:
             return
+        poupados = self._modelo.neighbours_keeping_their_game(escolhida, radius=NEIGHBOUR_RADIUS)
+        aviso = (
+            f"\n\n{len(poupados)} vizinho(s) com outra partida já escolhida ficam como estão."
+            if poupados
+            else ""
+        )
         resposta = QMessageBox.question(
             self,
             "Partidas da base",
             f"Aplicar {escolhida.label} a {len(vizinhos)} diagrama(s) vizinho(s)?\n\n"
             "Só entram os que têm esta partida entre as candidatas deles, e cada um recebe o "
-            "lance dele -- é a mesma partida em outro momento.",
+            f"lance dele -- é a mesma partida em outro momento.{aviso}",
         )
         if resposta != QMessageBox.StandardButton.Yes:
             return
