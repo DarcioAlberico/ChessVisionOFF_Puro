@@ -78,14 +78,20 @@ CORTE_DA_CAMADA = 0.6
 MINIMO_DA_CAMADA = 200
 """Perda parcial por camada: lidos abaixo de 60% dos caracteres dela, se ela tiver ao menos 200."""
 
-RUIDO_POR_TOKEN = 1.3
+RUIDO_POR_TOKEN = 3.0
 MINIMO_DE_RUIDO = 40
-"""Caracteres por token e caracteres na folha para o que saiu ser sinal solto, e não leitura (S-711).
+"""Caracteres por token e caracteres na folha para o que saiu ser sinal solto ou texto despedaçado, e não leitura (S-711).
 
 **Só vale na folha com moldura.** Tirar a moldura abre o que estava dentro dela, e isso pode ser mancha de
-contracapa ou texto que o glifo despedaça. Medido em 117 folhas com moldura de 10 livros: as que dão ruído vão de
-1,02 a 1,29, e a seguinte já é 1,39. Fora da moldura esse número é uma tabela de torneio, e não ruído. A fração de
-palavras existentes não serve aqui: nos livros holandeses ela fica em 2% com o texto lido."""
+contracapa ou texto que o glifo despedaça. Fora da moldura esse número é uma tabela de torneio, e não ruído. A fração
+de palavras existentes não serve aqui: nos livros holandeses ela fica em 2% com o texto lido.
+
+**Era 1,3, e só pegava a mancha** (1,02 a 1,29 nas folhas medidas). O censo de 2026-11-08 leu as 2.467 folhas com
+moldura do acervo: de 1,3 a 3,0 há 96, quase todas do *Mieses* e do *Niemeijer*, e nelas menos da metade das palavras
+do glifo existe na camada (mediana 0 abaixo de 2,0, 0,45 de 2,8 a 3,0). A reserva do Tesseract revoca mais palavras
+em 88 das 90 que têm camada, e empata nas outras duas. Acima de 3,0 o texto já se lê com erros (0,64 de 3,0 a 3,3), e
+"não lida" seria falso: o *Kmoch* segue pelo glifo. A folha com figurina mais baixa é do *Chess Evolution*, 3,42, onde
+a reserva lê o cabeçalho colorido como lixo."""
 
 CORTE_DO_EXCESSO = 4.0
 MINIMO_DO_EXCESSO = 500

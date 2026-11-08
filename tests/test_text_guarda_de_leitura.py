@@ -394,9 +394,18 @@ class RuidoTests(unittest.TestCase):
         self.assertTrue(guarda_de_leitura.parece_ruido(list("il.,;:-'" * 6)))
 
     def test_o_numero_das_folhas_medidas(self) -> None:
-        """94 caracteres em 76 tokens (a menor das que davam ruído), e 746 em 535 (a primeira que não dá)."""
+        """94 caracteres em 76 tokens (a menor das que davam ruído), e 746 em 535 (texto despedaçado do censo)."""
         self.assertTrue(guarda_de_leitura.parece_ruido(["a"] * 58 + ["ab"] * 18))
-        self.assertFalse(guarda_de_leitura.parece_ruido(["a"] * 324 + ["ab"] * 211))
+        self.assertTrue(guarda_de_leitura.parece_ruido(["a"] * 324 + ["ab"] * 211))
+
+    def test_a_fronteira_do_despedacado(self) -> None:
+        """*Mieses* 41, 858 em 286, ainda despedaçado; *Kmoch* 31, 1.009 em 334, já se lê com erros."""
+        self.assertTrue(guarda_de_leitura.parece_ruido(["abc"] * 286))
+        self.assertFalse(guarda_de_leitura.parece_ruido(["abc"] * 327 + ["abcd"] * 7))
+
+    def test_a_figurina_mais_baixa_nao_e_ruido(self) -> None:
+        """*Chess Evolution* 1079: 41 caracteres em 12 tokens, e a reserva leria o cabeçalho colorido."""
+        self.assertFalse(guarda_de_leitura.parece_ruido(["abcd"] * 5 + ["abc"] * 7))
 
     def test_a_fronteira_da_quantidade(self) -> None:
         self.assertTrue(guarda_de_leitura.parece_ruido(["a"] * 40))

@@ -1950,7 +1950,7 @@ def _ler_pagina_do_livro(
             avisos.append(
                 Aviso(
                     FOLHA_NAO_LIDA,
-                    f"O que saiu desta folha são {guarda.lidos} sinais soltos, e não texto: confira se há o que ler nela."
+                    f"O que saiu desta folha são {guarda.lidos} sinais soltos ou texto despedaçado: confira se há o que ler nela."
                     if guarda.ruido
                     else f"Esta folha não foi lida inteira: saíram {guarda.lidos} caractere(s) para ~{guarda.componentes} letras impressas.",
                     guarda.densidade,

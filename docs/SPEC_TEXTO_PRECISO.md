@@ -591,8 +591,8 @@ antes de medir a escala e de achar as caixas. A folha sem moldura devolve o mesm
 
 **Tirar a moldura abre o que havia dentro, e nem sempre é texto.** Contracapa manchada e marca d'água davam `h` e o aviso de
 folha não lida; sem a moldura, davam milhares de sinais soltos e nenhum aviso. Por isso a folha com moldura que devolve até
-`guarda_de_leitura.RUIDO_POR_TOKEN` = 1,3 caractere por token, com ao menos 40 caracteres, sai com `folha_nao_lida`. O corte
-vem de 117 folhas com moldura de 10 livros, um deles duas vezes no acervo: as que dão ruído vão de 1,02 a 1,29, e a seguinte é
+`guarda_de_leitura.RUIDO_POR_TOKEN` caracteres por token, com ao menos 40 caracteres, sai com `folha_nao_lida`. Ele era 1,3, e
+desde 2026-11-08 é 3,0: ver o texto despedaçado adiante. O primeiro corte veio de 117 folhas com moldura de 10 livros, um deles duas vezes no acervo: as que dão ruído vão de 1,02 a 1,29, e a seguinte é
 1,39. Fora da moldura o mesmo
 número é tabela de torneio, e não avisa. A fração de palavras existentes **não serve de corte**: nos livros holandeses ela é de
 2% com o texto lido.
@@ -602,9 +602,32 @@ tokens, contra 1.624 caracteres de camada. Pela contagem ele "batia" com ela e s
 Entre aquelas 117 folhas, nenhuma com ruído tem camada, e na varredura é a única folha que a regra muda. Somando a leitura do
 crítico, são 498 folhas com moldura e 15 com ruído, todas avisadas: 14 sem camada, e o *Niemeijer*.
 
-**Sem aviso, e ruim: o texto despedaçado acima de 1,3.** Não é um livro só. Entre 1,3 e 1,7 há 14 folhas do *Mieses*, 13 do
+**O texto despedaçado acima de 1,3 saía sem aviso, e ruim.** Não é um livro só. Entre 1,3 e 1,7 há 14 folhas do *Mieses*, 13 do
 *Niemeijer*, 2 do *Kmoch* e uma do *Pachman*, e o *Niemeijer* vai até 3,61. Lendo mais de 1,3 vez o que a camada tem, são 23 de 27 folhas no
-*Niemeijer* e 52 de 63 no *Mieses*. É defeito aberto: o efeito de subir o corte não foi medido.
+*Niemeijer* e 52 de 63 no *Mieses*.
+
+**Medido em 2026-11-08, e o corte subiu para 3,0.** O censo leu as 26.730 folhas do acervo e achou 2.467 com moldura; nas
+emolduradas da faixa de 1,3 a 4,0, a reserva do Tesseract leu de novo. A régua é a fração de palavras de 3+ letras que existem
+na camada do PDF: grosseira, porque a camada desses scans também é OCR, e por isso cada faixa foi conferida lendo as folhas
+([metrics/texto_despedacado_20261108.json](metrics/texto_despedacado_20261108.json), medido com
+`docs/metrics/texto_despedacado_2026-11-08/despedacado.py`).
+
+| caracteres por token | folhas com camada | glifo: precisão / revocação | reserva: precisão / revocação | reserva revoca mais |
+|---|---:|---:|---:|---:|
+| 1,3 a 2,0 | 53 | 0,00 / 0,00 | 0,83 / 0,85 | 52 |
+| 2,0 a 2,5 | 20 | 0,13 / 0,05 | 0,91 / 0,88 | 19 |
+| 2,5 a 2,8 | 9 | 0,23 / 0,15 | 0,89 / 0,88 | 9 |
+| 2,8 a 3,0 | 8 | 0,45 / 0,37 | 0,89 / 0,90 | 8 |
+| 3,0 a 3,3 | 35 | 0,64 / 0,57 | 0,92 / 0,90 | 34 |
+| 3,3 a 4,0 | 55 | 0,66 / 0,61 | 0,94 / 0,91 | 55 |
+
+Até 3,0 menos da metade das palavras do glifo existe, e chamar a folha de "não lida" é a verdade; a reserva ganha em 88 das 90
+que têm camada e empata nas outras duas (*Niemeijer* 29, que ela não lê, e a tabela do *Kmoch* 127). São 96 folhas que saíam
+sem aviso nenhum e agora avisam: 57 do *Mieses*, 26 do *Niemeijer*, 10 do *Kmoch*, e três capas. O sinal não tem vão em 3,0, porque
+o *Kmoch* passa contínuo de 2,7 a 3,6; o corte é onde a leitura deixa de ser lixo. Acima dele a reserva ainda revoca mais,
+mas o texto do glifo já se lê com erros (`vo1gt`, `spe1en`), e é outro defeito, que fica aberto. Não subiu até 4,0 por causa do
+*Chess Evolution*: a folha com figurina mais baixa é a 1079, 3,42, e ali a reserva lê o cabeçalho colorido como lixo
+(`= | 2 | Chess | =`) e às vezes estraga o lance (`h1=♕+` → `hi=W+`). Nenhuma das 96 está no ouro ou no relatório do G3.
 
 ### Critério de aceite
 

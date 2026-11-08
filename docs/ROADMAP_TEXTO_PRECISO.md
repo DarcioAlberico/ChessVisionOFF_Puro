@@ -911,6 +911,10 @@ b`), e consertá-la
     folha do ouro-dev muda": superado, porque 903 e 1210 eram as perdidas. A reversão é `moldura.TIRAR_MOLDURA`.
   - *Achado:* tirar a moldura abre o que havia dentro. Sinal solto de contracapa e de marca d'água saía sem aviso; agora sai com
     `folha_nao_lida`, por `guarda_de_leitura.RUIDO_POR_TOKEN`. Ver a spec.
+  - *Achado (2026-11-08):* o texto despedaçado dentro da moldura (*Mieses*, *Niemeijer*) também saía calado. O corte subiu de 1,3
+    para 3,0 caracteres por token depois do censo das 2.467 folhas com moldura: até ali a reserva revoca mais palavras em 88 de 90,
+    e 96 folhas passam a avisar. Acima de 3,0 o *Kmoch* ainda ganharia com a reserva, e fica aberto; o *Chess Evolution* começa
+    em 3,42 e perderia figurina. [metrics/texto_despedacado_20261108.json](metrics/texto_despedacado_20261108.json).
 - **S-712** · Linha intercalada. ✅ entregue em 2026-11-06, com outro mecanismo: ver o *Achado* no fim deste item.
   - *Entrega:* caixa de linha com altura > 1,8× a mediana da coluna é partida pela projeção
     horizontal antes de ler. As folhas 279 e 578 do *Chess Evolution* são fixture; o efeito é medido

@@ -638,6 +638,14 @@ class RuidoEmolduradoTests(_ComLivro):
         self.assertIn(pagina.FOLHA_NAO_LIDA, [a.codigo for a in lida.avisos])
         self.assertIn("sinais soltos", lida.avisos[0].mensagem)
 
+    def test_o_texto_despedacado_na_folha_com_moldura_avisa(self) -> None:
+        """*Mieses* 22: o glifo parte cada palavra, e a folha sai como não lida, com a reserva atrás."""
+        self._com_moldura()
+        despedacado = " ".join("le.gen11e. i (l s. pelcl (le. liii 1. i e.r par Lij e n".split() * 4)
+        lida = self.ler("glifo", [_crua(despedacado, 60)])
+        self.assertIn(pagina.FOLHA_NAO_LIDA, [a.codigo for a in lida.avisos])
+        self.assertIn("despedaçado", lida.avisos[0].mensagem)
+
     def test_o_mesmo_texto_sem_moldura_e_uma_tabela(self) -> None:
         """Uma tabela de torneio dá esse número, e não tem moldura em volta."""
         lida = self.ler("glifo", [_crua(self.SINAIS, 60)])
