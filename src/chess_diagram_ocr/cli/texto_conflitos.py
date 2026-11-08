@@ -24,7 +24,7 @@ from pathlib import Path
 from ..atomic_io import atomic_write_bytes, atomic_write_text
 from ..config import DATA_DIR, PROJECT_ROOT, caminho_para_relatorio
 from ..logging_setup import configure_logging
-from . import add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -109,8 +109,14 @@ def main(argv: list[str] | None = None) -> int:
     from ..text import conflitos as cf
 
     if args.desfazer:
-        voltaram = cf.desfazer(args.desfazer)
-        print(f"{voltaram} recortes voltaram para a base.")
+        volta = cf.desfazer(args.desfazer)
+        esperados = volta.voltaram + volta.ja_estavam + len(volta.faltam)
+        print(f"{volta.voltaram} de {esperados} recortes voltaram para a base.")
+        if volta.ja_estavam:
+            print(f"  {volta.ja_estavam} ja estavam na base")
+        if volta.faltam:
+            print(f"  FALTAM {len(volta.faltam)}: nem na quarentena nem na base (o primeiro e {volta.faltam[0]})")
+            return EXIT_BAD_INPUT
         return 0
 
     if not Path(args.base).is_dir():
@@ -159,8 +165,8 @@ def main(argv: list[str] | None = None) -> int:
     if plano.sem_decisao:
         print(f"  SEM DECISAO: {len(plano.sem_decisao)} grupos (o primeiro e {plano.sem_decisao[0][:12]}...)")
     if plano.divergentes:
-        print(f"  DIVERGENTES: {len(plano.divergentes)} grupos mudaram no disco desde o julgamento")
-        print("    a decisao descreve outra coisa; refaca o julgamento antes de aplicar")
+        print(f"  DIVERGENTES: {len(plano.divergentes)} grupos nao batem com a decisao")
+        print("    a contagem mudou no disco ou o vencedor nao esta em disputa; refaca o julgamento")
 
     print()
     for motivo, quantos in sorted(plano.por_motivo.items()):

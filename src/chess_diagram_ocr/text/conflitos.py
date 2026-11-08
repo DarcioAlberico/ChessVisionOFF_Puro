@@ -47,8 +47,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .. import config
 from ..atomic_io import atomic_write_text
-from ..config import DATA_DIR, caminho_para_relatorio
+from ..config import DATA_DIR
 from ..relogio import agora, agora_iso
 from .classes import NomeDePastaInvalido, char_to_folder, folder_to_char
 
@@ -60,6 +61,13 @@ TAREFAS_PADRAO = 16
 
 INDECIDIVEL = "indecidivel"
 """`confianca` de um grupo que ninguém conseguiu ler. Ver o cabeçalho: metade dos 83 é assim."""
+
+PENDENTE = "pendente"
+"""Estado no manifesto do recorte que o plano manda mover e que ainda não saiu da base."""
+MOVIDO = "movido"
+"""Estado do recorte que já está na quarentena. O manifesto nunca o diz antes do movimento."""
+AUSENTE = "ausente"
+"""Estado do recorte que o plano mandava mover e que já não estava na base."""
 
 
 class DecisaoInvalida(RuntimeError):
@@ -110,7 +118,19 @@ class Plano:
     por_motivo: dict[str, int] = field(default_factory=dict)
     sem_decisao: list[str] = field(default_factory=list)
     divergentes: list[str] = field(default_factory=list)
-    """Grupos cujo estado no disco não é o que a decisão descreve. Ver `DecisaoInvalida`."""
+    """Grupos cujo estado no disco não é o que a decisão descreve, ou cujo `vencedor` não está em
+    disputa. Ver `conferir`."""
+
+
+@dataclass(frozen=True)
+class Volta:
+    """O que `desfazer` fez com cada recorte que o manifesto diz ter saído."""
+
+    voltaram: int
+    ja_estavam: int
+    """Já estavam de volta na base (um `desfazer` repetido, ou devolvidos à mão)."""
+    faltam: list[str]
+    """`classe/arquivo` que o manifesto diz movido e que não está nem na quarentena nem na base."""
 
 
 def _hash_de(caminho: Path) -> str:
@@ -210,6 +230,10 @@ def conferir(conflitos: list[Conflito], decisoes: dict[str, dict[str, Any]]) -> 
     **Um grupo cujo estado no disco não bate com o que a decisão descreve não é aplicado.** Se a
     contagem por classe mudou desde o julgamento, a imagem passou a significar outra coisa e o
     julgamento tem de ser refeito -- aplicar assim mesmo moveria arquivo que ninguém olhou.
+
+    O mesmo vale para o `vencedor` que não é uma das classes em disputa (S-817): é o nome
+    digitado errado no JSON, e com ele nenhuma pasta ganharia -- todas sairiam contadas como
+    "rótulo errado", o que nenhum julgamento disse.
     """
     plano = Plano()
     for conflito in conflitos:
@@ -217,11 +241,11 @@ def conferir(conflitos: list[Conflito], decisoes: dict[str, dict[str, Any]]) -> 
         if decisao is None:
             plano.sem_decisao.append(conflito.sha256)
             continue
-        if decisao.get("rotulos") != conflito.rotulos:
+        vencedor = decisao.get("vencedor")
+        if decisao.get("rotulos") != conflito.rotulos or (vencedor and vencedor not in conflito.arquivos):
             plano.divergentes.append(conflito.sha256)
             continue
 
-        vencedor = decisao.get("vencedor")
         if vencedor:
             perdedores = [p for p in conflito.arquivos if p != vencedor]
             motivo = "rotulo errado"
@@ -246,68 +270,95 @@ def aplicar(
     *,
     manifesto: Path | None = None,
 ) -> Path:
-    """Move os perdedores para a quarentena e grava o manifesto. Devolve o caminho dele.
+    """Move os perdedores para a quarentena, sob um manifesto. Devolve o caminho dele.
 
-    A ordem é: mover primeiro, gravar o manifesto depois, com o que **de fato** saiu. Gravar o
-    manifesto antes deixaria, numa falha no meio, um mapa de volta que descreve arquivos que
-    continuam na base.
+    **O manifesto é gravado antes do primeiro movimento, e regravado depois de cada um** (S-817).
+    Cada recorte nasce `pendente` e só passa a `movido` depois que saiu: o manifesto descreve a
+    intenção e o que já aconteceu, e nunca diz `movido` do que continua na base. Gravá-lo só no
+    fim deixava, numa queda no meio, recortes na quarentena sem caminho de volta.
+
+    `base` e `quarentena` vão absolutas: relativas à raiz, o `desfazer` rodado de outra pasta as
+    resolvia contra a pasta atual, não achava nada e dizia que 0 voltaram.
     """
-    base, quarentena = Path(base), Path(quarentena)
-    movidos: list[dict[str, str]] = []
-    for pasta, nome in plano.mover:
-        origem = base / pasta / nome
-        if not origem.exists():
-            logger.warning("%s/%s já não está na base; nada a mover.", pasta, nome)
-            continue
-        destino = quarentena / pasta / nome
-        destino.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(origem), str(destino))
-        movidos.append({"classe": pasta, "arquivo": nome})
-
+    base, quarentena = Path(base).resolve(), Path(quarentena).resolve()
     manifesto = Path(manifesto) if manifesto else quarentena / f"manifesto_{agora():%Y%m%d_%H%M%S}.json"
-    manifesto.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(
-        manifesto,
-        json.dumps(
-            {
-                "quando": agora_iso(),
-                "base": caminho_para_relatorio(base),
-                "quarentena": caminho_para_relatorio(quarentena),
-                "por_motivo": plano.por_motivo,
-                "movidos": movidos,
-            },
-            ensure_ascii=False,
-            indent=1,
-        ),
-    )
+    itens = [{"classe": pasta, "arquivo": nome, "estado": PENDENTE} for pasta, nome in plano.mover]
+    cabeca = {
+        "quando": agora_iso(),
+        "base": base.as_posix(),
+        "quarentena": quarentena.as_posix(),
+        "por_motivo": plano.por_motivo,
+    }
+
+    def gravar() -> None:
+        atomic_write_text(manifesto, json.dumps({**cabeca, "movidos": itens}, ensure_ascii=False, indent=1))
+
+    gravar()
+    try:
+        for item in itens:
+            origem = base / item["classe"] / item["arquivo"]
+            if not origem.exists():
+                logger.warning("%s/%s já não está na base; nada a mover.", item["classe"], item["arquivo"])
+                item["estado"] = AUSENTE
+                continue
+            destino = quarentena / item["classe"] / item["arquivo"]
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(origem), str(destino))
+            item["estado"] = MOVIDO
+            gravar()
+    except BaseException:
+        logger.error("A quarentena parou no meio; o que já saiu volta com --desfazer %s", manifesto)
+        raise
+    gravar()
     return manifesto
 
 
-def desfazer(manifesto: Path) -> int:
-    """Devolve à base tudo o que um manifesto diz ter movido. Quantos voltaram."""
+def _do_manifesto(texto: str) -> Path:
+    """Caminho do manifesto. Os gravados antes da S-817 são relativos à raiz, não à pasta atual."""
+    caminho = Path(texto)
+    return caminho if caminho.is_absolute() else config.PROJECT_ROOT / caminho
+
+
+def desfazer(manifesto: Path) -> Volta:
+    """Devolve à base o que um manifesto diz ter movido.
+
+    Volta o `movido`, e o `pendente` que já está na quarentena e falta na base: é a queda entre o
+    movimento e a regravação do manifesto. O `pendente` que nunca saiu fica onde está, e nada é
+    gravado por cima de um recorte que já está na base. Manifesto antigo, sem `estado`, só
+    listava o que saiu.
+    """
     dados = json.loads(Path(manifesto).read_text(encoding="utf-8"))
-    base, quarentena = Path(dados["base"]), Path(dados["quarentena"])
-    voltaram = 0
+    base, quarentena = _do_manifesto(dados["base"]), _do_manifesto(dados["quarentena"])
+    voltaram = ja_estavam = 0
+    faltam: list[str] = []
     for item in dados["movidos"]:
+        estado = item.get("estado", MOVIDO)
         origem = quarentena / item["classe"] / item["arquivo"]
-        if not origem.exists():
-            continue
         destino = base / item["classe"] / item["arquivo"]
-        destino.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(origem), str(destino))
-        voltaram += 1
-    return voltaram
+        if estado in (MOVIDO, PENDENTE) and origem.exists() and not destino.exists():
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(origem), str(destino))
+            voltaram += 1
+        elif estado == MOVIDO and destino.exists():
+            ja_estavam += 1
+        elif estado == MOVIDO:
+            faltam.append(f"{item['classe']}/{item['arquivo']}")
+    return Volta(voltaram=voltaram, ja_estavam=ja_estavam, faltam=faltam)
 
 
 __all__ = [
     "DECISOES_PADRAO",
+    "AUSENTE",
     "INDECIDIVEL",
+    "MOVIDO",
+    "PENDENTE",
     "QUARENTENA_PADRAO",
     "TAREFAS_PADRAO",
     "Achados",
     "Conflito",
     "DecisaoInvalida",
     "Plano",
+    "Volta",
     "achar",
     "aplicar",
     "conferir",

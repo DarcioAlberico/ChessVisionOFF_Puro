@@ -645,6 +645,8 @@ Desfazer zero de N sai com código diferente de 0.
 
 **Aceite.** Os três passam.
 
+**Entregue** (2026-11-08): `desfazer` devolve também o `pendente` que já está na quarentena e falta na base, que é a queda entre o movimento e a regravação do manifesto; o `pendente` que nunca saiu fica, e nada é gravado por cima de recorte que já está na base. Ele devolve uma `Volta` (voltaram, já estavam, faltam), e o código de saída diferente de 0 (`EXIT_BAD_INPUT`) vale quando algum `movido` não está nem na quarentena nem na base, o que inclui o zero de N e não acusa o `desfazer` repetido. O manifesto antigo, com caminho relativo e sem `estado`, é lido contra o `PROJECT_ROOT`, não contra a pasta atual. A chave `movidos` ficou, agora com `estado` em cada entrada. A leitura travada da S-812 não entrou: o manifesto é mapa de operação, não arquivo do dono.
+
 ## S-878 · Lote e Galeria não confundem dois livros de mesmo nome
 
 **Problema** (confirmado por script). `batch.py:300-303`, `pdf_to_pgn.py:1234-1235`, `gallery.py:366`,
