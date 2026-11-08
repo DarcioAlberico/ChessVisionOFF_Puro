@@ -32,6 +32,7 @@ from typing import Any
 
 from ..atomic_io import atomic_write_json
 from . import viewport
+from .livros import caminho_canonico, chave_do_livro
 
 logger = logging.getLogger(__name__)
 
@@ -285,16 +286,30 @@ class AppState:
 
     def page_for(self, pdf_path: Path) -> int:
         """Página em que este PDF foi deixado. 0 se ele nunca foi aberto."""
-        return int(self.pdf_history.get(_history_key(pdf_path), 0))
+        guardada = self._entrada_do_livro(pdf_path)
+        return 0 if guardada is None else int(self.pdf_history[guardada])
 
     def remember_page(self, pdf_path: Path, page_index: int) -> None:
-        key = _history_key(pdf_path)
         history = self.pdf_history
-        history.pop(key, None)
-        history[key] = int(page_index)
+        guardada = self._entrada_do_livro(pdf_path)
+        if guardada is not None:
+            history.pop(guardada)
+        history[_history_key(pdf_path)] = int(page_index)
         while len(history) > MAX_PDF_HISTORY:
             # dict preserva ordem de insercao: o primeiro e o menos recentemente tocado.
             history.pop(next(iter(history)))
+
+    def _entrada_do_livro(self, pdf_path: Path) -> str | None:
+        """A entrada do histórico que é este livro, por qualquer grafia (S-827).
+
+        A grafia gravada é o caso de toda virada de página, e sai sem varrer; as outras (`..`, caixa,
+        a gravada quando o caminho não resolvia) passam por `chave_do_livro`, uma vez por livro.
+        """
+        exata = _history_key(pdf_path)
+        if exata in self.pdf_history:
+            return exata
+        chave = chave_do_livro(pdf_path)
+        return next((gravada for gravada in self.pdf_history if chave_do_livro(gravada) == chave), None)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -339,11 +354,8 @@ class AppState:
 
 
 def _history_key(pdf_path: Path) -> str:
-    try:
-        return str(Path(pdf_path).resolve())
-    except OSError:
-        # Caminho de rede fora do ar: o não resolvido ainda serve de chave.
-        return str(pdf_path)
+    """Como o livro é gravado no histórico: um caminho que se abre, e que `recentes` mostra."""
+    return caminho_canonico(pdf_path)
 
 
 def _migrate(raw: dict[str, Any]) -> dict[str, Any]:

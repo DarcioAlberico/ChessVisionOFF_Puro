@@ -75,6 +75,7 @@ from chess_diagram_ocr.ui.escopo_da_varredura import (
 )
 from chess_diagram_ocr.ui.lista_de_partidas import COLUNAS as COLUNAS_DE_PARTIDA
 from chess_diagram_ocr.ui.lista_de_partidas import NEIGHBOUR_RADIUS, linha, rotulo, texto_busca
+from chess_diagram_ocr.ui.livros import mesmo_livro
 from chess_diagram_ocr.ui.pedido_de_treino import TrainingRequest, format_metrics, summarize_run
 
 logger = logging.getLogger(__name__)
@@ -173,15 +174,6 @@ def mostrar_falha(pai: QWidget | None, titulo: str, mensagem: str, detalhe: str 
     caixa.exec()
 
 
-def _mesmo(um: Path, outro: Path) -> bool:
-    """O mesmo `.pgn`, apesar da grafia do caminho. Sem `resolve` obrigatório: 19 GB não mudam de
-    lugar, e o que interessa aqui é não listar o mesmo arquivo duas vezes."""
-    try:
-        return um.resolve() == outro.resolve()
-    except OSError:  # pragma: no cover - caminho que o sistema recusa resolver
-        return str(um).lower() == str(outro).lower()
-
-
 class DialogoDeBases(QDialog):
     """A lista de `.pgn` com caixas de marcar. Devolve pelo atributo `escolhidas` após `exec`.
 
@@ -209,10 +201,10 @@ class DialogoDeBases(QDialog):
         # índice por nome usa (ver `database_paths`), e embaralhá-la aqui confundiria a leitura.
         da_pasta = database_paths(self._folder)
         marcados = list(selected) if selected is not None else list(da_pasta)
-        de_fora = [caminho for caminho in marcados if not any(_mesmo(caminho, outro) for outro in da_pasta)]
+        de_fora = [caminho for caminho in marcados if not any(mesmo_livro(caminho, outro) for outro in da_pasta)]
         self._bases: list[Path] = [*da_pasta, *de_fora]
         self._marcadas: dict[str, bool] = {
-            str(base): any(_mesmo(base, escolhido) for escolhido in marcados) for base in self._bases
+            str(base): any(mesmo_livro(base, escolhido) for escolhido in marcados) for base in self._bases
         }
         self._caixas: dict[str, QCheckBox] = {}
 
@@ -335,7 +327,7 @@ class DialogoDeBases(QDialog):
             )
         for bruto in trazidos or ():
             caminho = Path(bruto)
-            ja = next((base for base in self._bases if _mesmo(base, caminho)), None)
+            ja = next((base for base in self._bases if mesmo_livro(base, caminho)), None)
             if ja is not None:
                 self._marcadas[str(ja)] = True
                 continue

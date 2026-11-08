@@ -64,6 +64,7 @@ from chess_diagram_ocr.pgn_do_livro import IndiceDoLivro
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.ui import estilos
+from chess_diagram_ocr.ui.livros import mesmo_livro
 
 __all__ = ["COMANDOS", "LivroComPgn", "donos", "itens_da_pagina"]
 
@@ -457,7 +458,7 @@ class LivroComPgn(QObject):
             return
         modelo = self._galeria.model
         aberto = modelo.pdf_path
-        if aberto is None or self._pdf is None or Path(aberto).resolve() != Path(self._pdf).resolve() or modelo.is_empty:
+        if not mesmo_livro(aberto, self._pdf) or modelo.is_empty:
             self._dizer("A Galeria ainda não varreu este livro: varra-o antes (Galeria > Varrer o livro).")
             return
         assert self.indice is not None

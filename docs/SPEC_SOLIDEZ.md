@@ -410,6 +410,15 @@ contra a função única; os chamadores trocados por ela não podem mudar nenhum
 **Aceite.** Nenhuma comparação de caminho de livro fora da função (guarda por `grep` dos padrões acima, com
 piso zero).
 
+**Entregue** (2026-11-08): `ui/livros.py` com `ChaveDoLivro` (congelada, `curta` = 8 hex do SHA-1, para as
+S-815/S-878), `chave_do_livro` (`None` sem livro), `mesmo_livro` e `caminho_canonico` (`resolve`, e
+`abspath` quando ele levanta). A guarda achou um oitavo lugar, `qt/livro_com_pgn.py` (`resolve() !=`), que
+também passou à função; `importacao_de_imagens._chave_absoluta` fica isenta (é imagem, não livro). O
+histórico de páginas continua gravando o caminho na caixa do disco (`recentes` o mostra e o abre) e acha a
+entrada pela chave. Ficam de fora as três chaves gravadas em disco (`estudo.Ancora.chave`,
+`estudo_arquivo.chave_de`, `text/rascunho.chave_de`): são impressões do caminho resolvido, e trocar a
+entrada delas órfã estudos e rascunhos já gravados.
+
 ## S-812 · Leitura travada
 
 **Problema** (confirmado). Seis leitores de arquivo do dono tratam o arquivo que não lê como vazio, e o

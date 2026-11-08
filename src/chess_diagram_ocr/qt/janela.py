@@ -143,6 +143,7 @@ from chess_diagram_ocr.ui import (
     espaco,
     estado_do_rodape,
     geometria,
+    livros,
     pele,
     sala_declarada,
     strings,
@@ -1237,7 +1238,7 @@ class JanelaPrincipal(QMainWindow):
         """
         alvo = Path(str(caminho))
         anterior = self._pdf
-        if self.livro is not None and self.livro.rodando and anterior is not None and anterior != alvo:
+        if self.livro is not None and self.livro.rodando and anterior is not None and not livros.mesmo_livro(anterior, alvo):
             # A importação era do livro anterior: cancelada, e a ponte descarta o resultado
             # que ainda chegar dele (C7 -- a tranca deixou de segurar o «Abrir PDF…»).
             self.livro.cancelar(motivo="troca_de_livro")

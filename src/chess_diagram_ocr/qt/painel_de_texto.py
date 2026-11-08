@@ -123,6 +123,7 @@ from chess_diagram_ocr.text.pagina import BlocoDeDiagrama, BlocoDeTexto
 from chess_diagram_ocr.text.tesseract import LINGUA_PADRAO
 from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, mesa, strings, texto_cores, tipografia, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
+from chess_diagram_ocr.ui.livros import ChaveDoLivro, chave_do_livro, mesmo_livro
 from chess_diagram_ocr.ui.texto_declarado import (
     ACOES_PROPRIAS,
     COMANDOS_DA_ABA,
@@ -514,7 +515,7 @@ class PainelDeTexto(QWidget):
         de novo (item 28). `None` é a aba sozinha, que renderiza por conta própria."""
         self._importacao: Callable[[], Any] | None = None
         """Quem tem a importação do livro pela suíte (a janela), para a volta do R7. `None` é a aba sozinha."""
-        self._posicoes: dict[tuple[str, int], tuple[str, ...]] = {}
+        self._posicoes: dict[tuple[ChaveDoLivro | None, int], tuple[str, ...]] = {}
         """O campo de peças de cada diagrama, por `(livro, folha)`, como o OCR de diagramas do
         produto leu. Por folha porque a leitura dos diagramas e a do texto chegam em qualquer
         ordem; **por livro** porque a folha 14 de um livro não é a folha 14 do outro -- com a chave
@@ -1592,7 +1593,7 @@ class PainelDeTexto(QWidget):
 
         `dpi` é o da `folha_rgb`, quando ela vem: é o que liga os pontos do `bbox` aos pixels dela.
         """
-        guardadas = self._posicoes.get((_chave_de_livro(pagina.documento), int(pagina.pagina)))
+        guardadas = self._posicoes.get((chave_do_livro(pagina.documento), int(pagina.pagina)))
         if guardadas:
             pagina = pagina.com_posicoes(guardadas)
         self._pagina = pagina
@@ -2092,7 +2093,7 @@ class PainelDeTexto(QWidget):
         # O texto da folha 14 na tela com o visualizador na folha 3 é o que fazia a pessoa
         # procurar a página à mão (item 9). Só para o livro que está aberto: um `.cvtxt` de outro
         # livro não troca o livro de ninguém -- é a mesma regra de `definir_livro`.
-        if doc.origem is not None and caminho is not None and self._pdf is not None and _mesmo_livro(caminho, self._pdf):
+        if doc.origem is not None and caminho is not None and self._pdf is not None and mesmo_livro(caminho, self._pdf):
             self.folha_pedida.emit(self._pagina_indice)
         diagramas = len(self.documento.diagramas)
         figuras = sum(1 for c in self.documento.diagramas if self._tem_miniatura(c))
@@ -2194,7 +2195,7 @@ class PainelDeTexto(QWidget):
         origem = self.documento.origem
         if self._caderno is None or origem is None:
             return None
-        if _chave_de_livro(origem.documento) != _chave_de_livro(self._livro_do_caderno):
+        if chave_do_livro(origem.documento) != chave_do_livro(self._livro_do_caderno):
             return None
         return self._caderno
 
@@ -3275,7 +3276,7 @@ class PainelDeTexto(QWidget):
         if (
             origem is not None
             and int(origem.pagina) == pagina
-            and _chave_de_livro(origem.documento) == _chave_de_livro(self._pdf)
+            and chave_do_livro(origem.documento) == chave_do_livro(self._pdf)
         ):
             return
         if not self._guardar_a_folha():
@@ -3923,7 +3924,7 @@ class PainelDeTexto(QWidget):
         Sem o número (livro fechado, ou chamada antiga) o teto fica largo, como era.
         """
         novo = None if pdf is None else Path(pdf)
-        if _chave_de_livro(novo) != _chave_de_livro(self._pdf):
+        if chave_do_livro(novo) != chave_do_livro(self._pdf):
             self._posicoes.clear()  # as posições são do livro que saiu (item 11)
             self._abrir_caderno(novo)
             if self._caderno is None:
@@ -3978,12 +3979,12 @@ class PainelDeTexto(QWidget):
         a folha que já está na tela recebe na hora, **sem virar alteração por gravar** -- a posição
         é leitura, não edição.
         """
-        chave = (_chave_de_livro(self._pdf), int(pagina))
+        chave = (chave_do_livro(self._pdf), int(pagina))
         self._posicoes[chave] = tuple(str(p or "") for p in posicoes)
         if (
             self._pagina is None
             or int(self._pagina.pagina) != int(pagina)
-            or _chave_de_livro(self._pagina.documento) != chave[0]
+            or chave_do_livro(self._pagina.documento) != chave[0]
         ):
             return
         nova = self._pagina.com_posicoes(self._posicoes[chave])
@@ -4651,16 +4652,6 @@ LADO_DO_RECORTE_DESENHADO = 400
 220 dpi mede, para o `.html` não trocar de escala conforme a origem da figura."""
 
 
-def _chave_de_livro(caminho: Path | str | None) -> str:
-    """A identidade de um livro para a aba: o caminho resolvido, ou `""` sem livro."""
-    if not caminho:
-        return ""
-    try:
-        return str(Path(caminho).resolve()).casefold()
-    except OSError:  # pragma: no cover - caminho que o sistema recusa resolver
-        return str(caminho).casefold()
-
-
 def _no_livro(doc: rico.DocumentoRico, livro: Path | None) -> rico.DocumentoRico:
     """O documento apontando para o livro onde ele está agora.
 
@@ -4672,14 +4663,6 @@ def _no_livro(doc: rico.DocumentoRico, livro: Path | None) -> rico.DocumentoRico
     if origem is None or livro is None or origem.documento == str(livro):
         return doc
     return replace(doc, origem=replace(origem, documento=str(livro)))
-
-
-def _mesmo_livro(um: Path, outro: Path) -> bool:
-    """O mesmo PDF apesar da grafia do caminho -- a regra de `qt/dialogos._mesmo`."""
-    try:
-        return Path(um).resolve() == Path(outro).resolve()
-    except OSError:  # pragma: no cover - caminho que o sistema recusa resolver
-        return str(um).lower() == str(outro).lower()
 
 
 def _posicao_de(doc: rico.DocumentoRico, corrida: rico.Corrida) -> str:

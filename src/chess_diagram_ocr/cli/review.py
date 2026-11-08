@@ -21,6 +21,7 @@ from ..review_queue import (
     merge_queues,
     rare_classes_from_labels,
 )
+from ..ui.livros import mesmo_livro
 from . import add_accept_threshold_argument, add_dpi_argument, add_model_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
@@ -112,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.merge:
         existing = ReviewQueue.load(args.queue)
-        if existing.items and existing.source_pdf == queue.source_pdf:
+        if existing.items and mesmo_livro(existing.source_pdf, queue.source_pdf):
             revisados = sum(1 for item in existing.items if item.status != "pending")
             queue = merge_queues(existing, queue)
             print(f"Fila anterior reaproveitada: {revisados} itens ja marcados foram preservados.")

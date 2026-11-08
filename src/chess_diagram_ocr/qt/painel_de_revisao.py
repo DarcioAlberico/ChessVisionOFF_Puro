@@ -58,6 +58,7 @@ from chess_diagram_ocr.review_queue import (
     merge_queues,
 )
 from chess_diagram_ocr.ui import comandos, espaco, estilos, formato, strings, tabela, tipografia
+from chess_diagram_ocr.ui.livros import mesmo_livro
 from chess_diagram_ocr.ui.varredura_de_revisao import AcumuladorDaFila, PedidoDeVarredura
 
 logger = logging.getLogger(__name__)
@@ -464,7 +465,7 @@ class PainelDeRevisao(QWidget):
     def aplicar_varredura(
         self, nova: ReviewQueue, cancelada: bool, *, pages: Collection[int] | None = None
     ) -> None:
-        if self.queue.items and self.queue.source_pdf == nova.source_pdf:
+        if self.queue.items and mesmo_livro(self.queue.source_pdf, nova.source_pdf):
             # Revarredura não pode ressuscitar o que já foi revisado -- é o que `merge_queues`
             # garante. `pages` é o que a passada de fato visitou (S-119): a varredura retoma de
             # onde parou (S-120), e sem isso a fusão encurtaria a fila para as páginas novas.
