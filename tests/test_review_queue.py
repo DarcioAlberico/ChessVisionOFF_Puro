@@ -27,9 +27,9 @@ from chess_diagram_ocr.review_queue import (
     build_review_queue,
     carregar_fila,
     error_rate,
+    fundir_fila_retomada,
     gravar_fila,
     item_from_scanned,
-    merge_queues,
     priority_for,
     rare_classes_from_labels,
 )
@@ -193,6 +193,10 @@ class QueueOrderingTests(unittest.TestCase):
             status=status,  # type: ignore[arg-type]
         )
 
+    @staticmethod
+    def fila(*itens: ReviewItem) -> ReviewQueue:
+        return ReviewQueue(source_pdf="livro.pdf", items=list(itens))
+
     def test_sorts_by_priority_then_book_order(self) -> None:
         queue = ReviewQueue(items=[self.item(10, page=5), self.item(90, page=9), self.item(90, page=2)])
         queue.sort()
@@ -236,9 +240,9 @@ class QueueOrderingTests(unittest.TestCase):
 
     def test_merge_keeps_what_was_already_reviewed(self) -> None:
         """Revarrer o livro não pode ressuscitar item já resolvido."""
-        antiga = ReviewQueue(items=[self.item(10, page=1, status="done"), self.item(10, page=2, status="skipped")])
-        nova = ReviewQueue(items=[self.item(80, page=1), self.item(70, page=2), self.item(60, page=3)])
-        merged = merge_queues(antiga, nova)
+        antiga = self.fila(self.item(10, page=1, status="done"), self.item(10, page=2, status="skipped"))
+        nova = self.fila(self.item(80, page=1), self.item(70, page=2), self.item(60, page=3))
+        merged = fundir_fila_retomada(antiga, nova, paginas_vistas={1, 2, 3})
         estados = {item.page_index: item.status for item in merged.items}
         self.assertEqual(estados, {1: "done", 2: "skipped", 3: "pending"})
         # A prioridade nova manda: o que mudou no livro tem de aparecer.
@@ -251,12 +255,12 @@ class QueueOrderingTests(unittest.TestCase):
         resolvido com a leitura errada que a pessoa tinha consertado.
         """
         corrigida = "4k3/8/8/8/8/8/8/R3K3 b - - 0 1"
-        antiga = ReviewQueue(items=[self.item(10, page=1), self.item(10, page=2)])
+        antiga = self.fila(self.item(10, page=1), self.item(10, page=2))
         antiga.update_fen(0, corrigida, "b")  # o que `aplicar_correcao` do painel faz
         antiga.mark(0, "done")
-        nova = ReviewQueue(items=[self.item(80, page=1), self.item(70, page=2)])
+        nova = self.fila(self.item(80, page=1), self.item(70, page=2))
 
-        merged = merge_queues(antiga, nova)
+        merged = fundir_fila_retomada(antiga, nova, paginas_vistas={1, 2})
 
         feito = next(i for i in merged.items if i.page_index == 1)
         self.assertEqual((feito.fen, feito.side_to_move, feito.status), (corrigida, "b", "done"))
@@ -288,29 +292,36 @@ class QueueOrderingTests(unittest.TestCase):
         Valia também para o cancelamento, e ali o defeito já existia: cancelar uma revarredura
         na página 40 gravava uma fila com as 40 primeiras e só.
         """
-        antiga = ReviewQueue(items=[self.item(10, page=1), self.item(20, page=2), self.item(30, page=8)])
-        parcial = ReviewQueue(items=[self.item(90, page=8), self.item(80, page=9)])
+        antiga = self.fila(self.item(10, page=1), self.item(20, page=2), self.item(30, page=8))
+        parcial = self.fila(self.item(90, page=8), self.item(80, page=9))
 
-        merged = merge_queues(antiga, parcial, pages={8, 9})
+        merged = fundir_fila_retomada(antiga, parcial, paginas_vistas={8, 9})
 
         paginas = sorted(item.page_index for item in merged.items)
         self.assertEqual(paginas, [1, 2, 8, 9], "o que estava fora do que foi visitado sobrevive")
         # A pagina 8 foi visitada: quem manda nela e a leitura nova.
         self.assertAlmostEqual(next(i.priority for i in merged.items if i.page_index == 8), 90.0)
 
-    def test_sem_paginas_a_fusao_continua_sendo_a_de_antes(self) -> None:
-        """O argumento é opcional porque quem varre o livro inteiro não precisa dele -- e o
-        `cvoff-review`, que sempre varre inteiro, não passa a ter de saber disso."""
-        antiga = ReviewQueue(items=[self.item(10, page=1), self.item(30, page=8)])
-        nova = ReviewQueue(items=[self.item(90, page=8)])
-        self.assertEqual([i.page_index for i in merge_queues(antiga, nova).items], [8])
+    def test_fila_de_outro_livro_e_substituida(self) -> None:
+        """A janela e o `cvoff-review` têm uma fila só: a de outro livro não se mistura (S-816)."""
+        antiga = ReviewQueue(source_pdf="outro/livro.pdf", items=[self.item(10, page=1, status="done")])
+        nova = self.fila(self.item(90, page=8))
+        merged = fundir_fila_retomada(antiga, nova, paginas_vistas={8})
+        self.assertEqual([(i.page_index, i.status) for i in merged.items], [(8, "pending")])
+
+    def test_mesmo_livro_por_outra_grafia_e_fundido(self) -> None:
+        """A fonte é conferida pela `ChaveDoLivro` (S-827), e não por igualdade de texto."""
+        antiga = ReviewQueue(source_pdf="sub/../livro.pdf", items=[self.item(10, page=1, status="done")])
+        nova = self.fila(self.item(90, page=1))
+        merged = fundir_fila_retomada(antiga, nova, paginas_vistas={1})
+        self.assertEqual([i.status for i in merged.items], ["done"])
 
     def test_a_pagina_visitada_e_esvaziada_pela_passada_nova(self) -> None:
         """Um diagrama que deixou de ser suspeito sai da fila. Preservar por página não pode
         virar "o que entrou na fila nunca sai dela"."""
-        antiga = ReviewQueue(items=[self.item(10, page=3, diagram=1), self.item(20, page=3, diagram=2)])
-        nova = ReviewQueue(items=[self.item(90, page=3, diagram=1)])
-        merged = merge_queues(antiga, nova, pages={3})
+        antiga = self.fila(self.item(10, page=3, diagram=1), self.item(20, page=3, diagram=2))
+        nova = self.fila(self.item(90, page=3, diagram=1))
+        merged = fundir_fila_retomada(antiga, nova, paginas_vistas={3})
         self.assertEqual([(i.page_index, i.diagram_index) for i in merged.items], [(3, 1)])
 
     def test_error_rate_counts_objective_signals(self) -> None:
@@ -645,7 +656,7 @@ class ReviewSinkTests(unittest.TestCase):
         self.assertEqual(raras.call_count, 1)
 
     def test_a_fila_entregue_diz_que_paginas_a_passada_visitou(self) -> None:
-        """Sem isso a fusão encurtaria a fila numa varredura retomada -- ver `merge_queues`."""
+        """Sem isso a fusão encurtaria a fila numa varredura retomada -- ver `fundir_fila_retomada`."""
         with tempfile.TemporaryDirectory() as tmpdir, patch(
             "chess_diagram_ocr.ui.varredura_de_revisao.rare_classes_from_labels", return_value=()
         ), patch("chess_diagram_ocr.review_queue.load_annotations") as anotacoes:

@@ -630,6 +630,16 @@ fila ganha o mesmo hash da S-815, e a conferência da fonte usa a `ChaveDoLivro`
 
 **Aceite.** O teste passa nos três chamadores (o mesmo caso, parametrizado).
 
+**Entregue** (2026-11-08): `fundir_fila_retomada(anterior, nova, *, paginas_vistas)` substitui o
+`merge_queues`, sem o parâmetro `fonte`: a fonte da passada é `nova.source_pdf`, e um segundo argumento só
+teria como divergir dela. `paginas_vistas` é obrigatório, e quem monta a fila o carrega:
+`ReviewQueue.paginas_vistas` (não gravado) são as páginas visitadas **menos as que o `limit` cortou** --
+sem isso o `--limit` do `cvoff-review` apagava a pendência da página visitada que ficou fora do corte, e
+por isso a fusão também confere a chave (página, diagrama). A fila do `cvoff-scan` passou a
+`<nome>-<hash>.json`; a gravada como `<nome>.json` é renomeada quando leu e diz que é deste livro, e fica
+onde está nos outros casos. O `return 1` do `cvoff-review` sobre fila travada virou `EXIT_FAILURE`, que a
+guarda do código de saída cobrava.
+
 ## S-817 · Quarentena de rótulos em conflito sempre desfazível
 
 **Problema** (confirmado). `text/conflitos.py:242-299`, chamado por `cli/texto_conflitos.py:236`: o

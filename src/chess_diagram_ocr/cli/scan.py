@@ -26,12 +26,21 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..arquivo_do_dono import Lida
+from ..arquivo_do_dono import Leitura, Lida
 from ..config import DEFAULT_MAX_BOARDS, DEFAULT_PDF_DIR, DEFAULT_READING_ORDER
 from ..djvu_io import livros_em
 from ..gallery_scan import build_gallery_index, index_path_for, load_index, save_index
 from ..logging_setup import configure_logging, default_log_file, onde_esta_o_rastro
-from ..review_queue import DEFAULT_CACHE_DIR, ReviewQueueBuilder, carregar_fila, gravar_fila, merge_queues
+from ..review_queue import (
+    DEFAULT_CACHE_DIR,
+    ReviewQueue,
+    ReviewQueueBuilder,
+    carregar_fila,
+    fundir_fila_retomada,
+    gravar_fila,
+    nome_do_livro,
+)
+from ..ui.livros import mesmo_livro
 from . import (
     EXIT_BAD_INPUT,
     EXIT_FAILURE,
@@ -140,7 +149,27 @@ def books_to_scan(args: argparse.Namespace) -> list[Path]:
 
 
 def _queue_path(queue_dir: Path, pdf_path: Path) -> Path:
-    return Path(queue_dir) / f"{pdf_path.stem}.json"
+    """A fila de **um** livro: o nome com o hash da `ChaveDoLivro` (S-816), como as miniaturas.
+
+    Só o nome do arquivo juntava `a/Livro.pdf` e `b/Livro.pdf` numa fila.
+    """
+    return Path(queue_dir) / f"{nome_do_livro(pdf_path)}.json"
+
+
+def _carregar_fila_do_livro(queue_dir: Path, pdf_path: Path) -> Leitura[ReviewQueue]:
+    """A fila do livro, trazendo para o nome novo a gravada como `<nome>.json` antes da S-816.
+
+    A antiga só é trazida quando é inequívoca -- leu, e diz que é deste livro. A de outro livro de
+    mesmo nome, ou a que não leu, fica onde está.
+    """
+    destino = _queue_path(queue_dir, pdf_path)
+    antiga = Path(queue_dir) / f"{pdf_path.stem}.json"
+    if not destino.exists() and antiga.exists():
+        lida = carregar_fila(antiga)
+        if isinstance(lida, Lida) and mesmo_livro(lida.valor.source_pdf, pdf_path):
+            antiga.replace(destino)
+            logger.info("Fila de %s trazida de %s para %s (S-816).", pdf_path.name, antiga.name, destino.name)
+    return carregar_fila(destino)
 
 
 def scan_book(
@@ -187,19 +216,16 @@ def scan_book(
     save_index(pdf_path, indice)
 
     if construtor is not None:
-        destino = _queue_path(args.queue_dir, pdf_path)
-        lida = carregar_fila(destino)
+        lida = _carregar_fila_do_livro(args.queue_dir, pdf_path)
         if not isinstance(lida, Lida):
             # A fila que nao leu nao e regravada (S-812): o indice da Galeria ja foi salvo, e o
             # relatorio diz por que a fila nao foi.
             resultado.error = lida.mensagem
             return resultado
-        fila = construtor.finish()
-        if destino.exists():
-            # Revarrer nao pode ressuscitar o que ja foi revisado -- e a regra do
-            # `merge_queues`, e ela vale tanto aqui quanto na janela.
-            fila = merge_queues(lida.valor, fila)
-        destino.parent.mkdir(parents=True, exist_ok=True)
+        nova = construtor.finish()
+        # A passada pode ter sido retomada (S-120): o que ela nao releu fica como estava (S-816).
+        fila = fundir_fila_retomada(lida.valor, nova, paginas_vistas=nova.paginas_vistas)
+        lida.caminho.parent.mkdir(parents=True, exist_ok=True)
         gravar_fila(lida.com(fila))
         resultado.queued = len(fila.items)
     return resultado

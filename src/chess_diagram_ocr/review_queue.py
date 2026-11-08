@@ -57,7 +57,7 @@ from .gallery import load_annotations
 from .labels import LabelStore
 from .pdf_to_pgn import DiagramPosition, ProgressCallback, ScannedDiagram, iter_pdf_diagrams
 from .relogio import agora_iso
-from .ui.livros import chave_do_livro
+from .ui.livros import chave_do_livro, mesmo_livro
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +178,11 @@ class ReviewQueue:
     """Total varrido, não só o que entrou na fila. É o denominador de qualquer medição."""
 
     pages_scanned: int = 0
+
+    paginas_vistas: frozenset[int] = field(default=frozenset(), compare=False)
+    """As páginas que esta fila descreve por inteiro: as que a passada visitou, menos as que o
+    `limit` cortou. É o que `fundir_fila_retomada` precisa saber da passada (S-816). Não é gravado:
+    a fila lida do disco não é passada nenhuma."""
 
     def __len__(self) -> int:
         return len(self.items)
@@ -557,11 +562,16 @@ class ReviewQueueBuilder:
             pages_scanned=len(self.pages),
         )
         queue.sort()
+        vistas = set(self.pages)
         if self.limit is not None and len(queue.items) > self.limit:
             logger.info(
                 "Fila cortada em %d itens; %d ficaram de fora.", self.limit, len(queue.items) - self.limit
             )
+            # A pagina com item cortado nao foi descrita por inteiro: o que ela tinha na fila
+            # anterior nao "deixou de ser suspeito", so ficou fora do corte (S-816).
+            vistas -= {item.page_index for item in queue.items[self.limit :]}
             queue.items = queue.items[: self.limit]
+        queue.paginas_vistas = frozenset(vistas)
         return queue
 
 
@@ -650,46 +660,54 @@ def build_review_queue(
     return builder.finish()
 
 
-def merge_queues(
-    existing: ReviewQueue, fresh: ReviewQueue, *, pages: Collection[int] | None = None
+def fundir_fila_retomada(
+    anterior: ReviewQueue, nova: ReviewQueue, *, paginas_vistas: Collection[int]
 ) -> ReviewQueue:
-    """Revarredura sem perder o que já foi revisado.
+    """Revarredura sem perder o que já foi revisado. A regra mora aqui, e só aqui (S-816).
+
+    **De outro livro, a fila nova substitui** -- conferido pela `ChaveDoLivro` (S-827), e não
+    pelo nome do arquivo. A janela tem uma fila só, a do livro aberto; o `cvoff-review` também.
 
     O item novo manda em tudo -- prioridade, motivos -- menos no que é trabalho humano: o
     `status`, porque o diagrama que o usuário já resolveu não pode voltar para a fila de
     pendentes, e, no item feito, a FEN e o lado a jogar, porque o feito é a correção do editor
     (S-815): trazer de volta a leitura do OCR deixaria o item resolvido com o erro consertado.
 
-    **`pages` são as páginas que a passada de fato visitou, e sem elas isto encurta a fila**
-    (S-119). Sem o argumento, `fresh` é tomada como a fila inteira e o que ela não tem
-    desaparece -- o que estava certo enquanto toda varredura era do livro inteiro, e deixou de
-    estar quando a varredura passou a retomar de onde parou (S-120): uma passada que leu só as
-    páginas 300 a 420 apagaria as 129 pendências das 300 primeiras. Com `pages`, o que está
-    fora do que foi visitado sobrevive como estava.
-
-    Vale também para o cancelamento, e ali o defeito já existia: cancelar uma revarredura na
-    página 40 gravava uma fila com as 40 primeiras páginas e só.
+    **`paginas_vistas` são as páginas que a passada descreve por inteiro, e é obrigatório**
+    (S-119, S-816). Sem ele a fila nova era tomada como a fila inteira e o que ela não tinha
+    desaparecia: uma passada retomada (S-120) que leu só as páginas 300 a 420 apagava as
+    pendências das 300 primeiras, e o `cvoff-review --start-page` as de fora do intervalo. O
+    argumento era opcional, a janela o passava e os dois CLIs não. O que está fora das páginas
+    vistas sobrevive como estava; o que está numa página vista e a passada não trouxe deixou de
+    ser suspeito, e sai. Quem monta a fila sabe as páginas: `ReviewQueue.paginas_vistas`.
     """
-    previous = {(item.page_index, item.diagram_index): item for item in existing.items}
-    merged = [_herdar(item, previous.get((item.page_index, item.diagram_index))) for item in fresh.items]
-    if pages is not None:
-        visitadas = set(pages)
-        # Ordem: os preservados entram depois e o `sort` decide o lugar de cada um. Chave por
-        # (pagina, diagrama) nao e preciso -- `fresh` so tem paginas visitadas, por construcao.
-        merged.extend(item for item in existing.items if item.page_index not in visitadas)
+    if not mesmo_livro(anterior.source_pdf, nova.source_pdf):
+        return nova
+    previous = {(item.page_index, item.diagram_index): item for item in anterior.items}
+    merged = [_herdar(item, previous.get((item.page_index, item.diagram_index))) for item in nova.items]
+    vistas = set(paginas_vistas)
+    trazidos = {(item.page_index, item.diagram_index) for item in nova.items}
+    # Os preservados entram depois e o `sort` decide o lugar de cada um. A chave por (pagina,
+    # diagrama) importa quando o `limit` cortou: a pagina fica fora das vistas com parte dos itens.
+    merged.extend(
+        item
+        for item in anterior.items
+        if item.page_index not in vistas and (item.page_index, item.diagram_index) not in trazidos
+    )
     result = ReviewQueue(
-        source_pdf=fresh.source_pdf,
-        created_at=fresh.created_at,
+        source_pdf=nova.source_pdf,
+        created_at=nova.created_at,
         items=merged,
-        scanned_diagrams=fresh.scanned_diagrams,
-        pages_scanned=fresh.pages_scanned,
+        scanned_diagrams=nova.scanned_diagrams,
+        pages_scanned=nova.pages_scanned,
+        paginas_vistas=nova.paginas_vistas,
     )
     result.sort()
     return result
 
 
 def _herdar(novo: ReviewItem, antigo: ReviewItem | None) -> ReviewItem:
-    """O item da passada nova com o trabalho humano do antigo. Ver `merge_queues`."""
+    """O item da passada nova com o trabalho humano do antigo. Ver `fundir_fila_retomada`."""
     if antigo is None:
         return novo
     if antigo.status == "done":

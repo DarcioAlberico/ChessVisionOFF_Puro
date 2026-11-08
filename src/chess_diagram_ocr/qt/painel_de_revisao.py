@@ -57,11 +57,10 @@ from chess_diagram_ocr.review_queue import (
     ReviewQueue,
     carregar_fila,
     error_rate,
+    fundir_fila_retomada,
     gravar_fila,
-    merge_queues,
 )
 from chess_diagram_ocr.ui import comandos, espaco, estilos, formato, strings, tabela, tipografia
-from chess_diagram_ocr.ui.livros import mesmo_livro
 from chess_diagram_ocr.ui.varredura_de_revisao import AcumuladorDaFila, PedidoDeVarredura
 
 logger = logging.getLogger(__name__)
@@ -472,15 +471,11 @@ class PainelDeRevisao(QWidget):
         self.lbl_progresso.setText("Varrendo o livro…")
         return SumidouroDeRevisao(self, pedido, cache_dir=self.cache_dir)
 
-    def aplicar_varredura(
-        self, nova: ReviewQueue, cancelada: bool, *, pages: Collection[int] | None = None
-    ) -> None:
-        if self.queue.items and mesmo_livro(self.queue.source_pdf, nova.source_pdf):
-            # Revarredura não pode ressuscitar o que já foi revisado -- é o que `merge_queues`
-            # garante. `pages` é o que a passada de fato visitou (S-119): a varredura retoma de
-            # onde parou (S-120), e sem isso a fusão encurtaria a fila para as páginas novas.
-            nova = merge_queues(self.queue, nova, pages=pages)
-        self.queue = nova
+    def aplicar_varredura(self, nova: ReviewQueue, cancelada: bool, *, pages: Collection[int]) -> None:
+        # `pages` é o que a passada de fato visitou (S-119): a varredura retoma de onde parou
+        # (S-120). A regra da fusão -- outro livro substitui, o revisado não ressuscita -- é de
+        # `fundir_fila_retomada`, a mesma dos dois CLIs (S-816).
+        self.queue = fundir_fila_retomada(self.queue, nova, paginas_vistas=pages)
         self.salvar_fila(quieto=True)
         self.refresh()
         sufixo = " (cancelada)" if cancelada else ""

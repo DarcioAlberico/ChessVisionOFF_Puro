@@ -99,7 +99,7 @@ class AcumuladorDaFila:
         """As páginas que a passada de fato visitou.
 
         Elas viajam junto da fila porque é o que impede a fusão de encurtá-la: a varredura do
-        livro retoma de onde parou (S-120), e sem dizer quais páginas ela viu, `merge_queues`
+        livro retoma de onde parou (S-120), e sem dizer quais páginas ela viu, `fundir_fila_retomada`
         reduziria a fila às páginas novas.
         """
         return frozenset() if self._construtor is None else frozenset(self._construtor.pages)

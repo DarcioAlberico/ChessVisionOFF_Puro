@@ -21,11 +21,10 @@ from ..review_queue import (
     build_review_queue,
     carregar_fila,
     error_rate,
+    fundir_fila_retomada,
     gravar_fila,
-    merge_queues,
     rare_classes_from_labels,
 )
-from ..ui.livros import mesmo_livro
 from . import (
     EXIT_BAD_INPUT,
     add_accept_threshold_argument,
@@ -130,11 +129,17 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.merge:
-        existing = anterior.valor
-        if existing.items and mesmo_livro(existing.source_pdf, queue.source_pdf):
-            revisados = sum(1 for item in existing.items if item.status != "pending")
-            queue = merge_queues(existing, queue)
-            print(f"Fila anterior reaproveitada: {revisados} itens ja marcados foram preservados.")
+        # `--start-page`, `--end-page` e `--limit` descrevem so parte do livro: o resto da fila
+        # anterior fica como estava (S-816).
+        nova = queue
+        queue = fundir_fila_retomada(anterior.valor, nova, paginas_vistas=nova.paginas_vistas)
+        revisados = sum(1 for item in queue.items if item.status != "pending")
+        preservados = len(queue.items) - len(nova.items)
+        if revisados or preservados:
+            print(
+                f"Fila anterior reaproveitada: {revisados} itens ja marcados e {preservados} de fora "
+                "do que foi varrido foram preservados."
+            )
 
     path = gravar_fila(anterior.com(queue))
 
