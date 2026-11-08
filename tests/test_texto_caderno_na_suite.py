@@ -181,14 +181,34 @@ class TrazerDaSuiteTests(_ComCaderno):
         self.assertEqual(volta.trazidas, (7,))
         self.assertEqual(self.caderno.folha(7).para_texto(), "só a revisão leu")  # type: ignore[union-attr]
 
-    def test_corrigida_dos_dois_lados_o_caderno_vence_e_a_revisao_vai_para_anterior(self) -> None:
+    def test_corrigida_dos_dois_lados_o_caderno_vence_e_a_revisao_vai_ao_lado(self) -> None:
+        self._gravar(2, "como a pessoa achou", correcoes=0)
+        self.caderno.visitar(2)
         self._gravar(2, "corrigida aqui", correcoes=1)
         volta = self.trazer(_da_suite(2, _texto("corrigida lá")))
         self.assertEqual((volta.guardadas, volta.trazidas), ((2,), ()))
         self.caderno._ultimos.clear()
         self.assertEqual(self.caderno.folha(2).para_texto(), "corrigida aqui")  # type: ignore[union-attr]
-        self.assertEqual(self.caderno.anterior(2).para_texto(), "corrigida lá")  # type: ignore[union-attr]
+        self.assertEqual(self.caderno.da_suite(2).para_texto(), "corrigida lá")  # type: ignore[union-attr]
+        self.assertEqual(self.caderno.anterior(2).para_texto(), "como a pessoa achou",  # type: ignore[union-attr]
+                         "a volta da suíte gravou por cima da anterior do caderno (S-896)")
         self.assertEqual(self.caderno.estado(2).estado, caderno.EDITADA)  # type: ignore[union-attr]
+
+    def test_volta_da_suite_com_folha_ruim_nao_grava_nenhuma(self) -> None:
+        self._gravar(1, "lida pelo motor", correcoes=0)
+        ruins: list[dict[str, object]] = [
+            {"format": 1, "paragraphs": []},
+            {"format": 1, "page_index": "doze", "paragraphs": []},
+            {"format": 1, "page_index": 3, "paragraphs": ["não é parágrafo"]},
+            {"format": 2, "page_index": 3, "paragraphs": []},
+        ]
+        for ruim in ruins:
+            with self.subTest(ruim=ruim):
+                volta = self.trazer(_da_suite(0, _texto("boa")), _da_suite(1, _texto("boa também")), ruim)
+                self.assertFalse(self.caderno.caminho(0).exists(), "a folha antes da ruim foi gravada")
+                self.assertEqual(self.caderno.folha(1).para_texto(), "lida pelo motor")  # type: ignore[union-attr]
+                self.assertEqual((volta.trazidas, volta.guardadas, volta.iguais, volta.recusadas), ((), (), (), ()))
+                self.assertIn("Nada foi trazido", volta.frase())
 
     def test_a_conferida_tambem_vence(self) -> None:
         self._gravar(3, "conferida aqui", correcoes=0)
@@ -213,7 +233,11 @@ class TrazerDaSuiteTests(_ComCaderno):
     def test_a_frase_conta_as_folhas_de_um(self) -> None:
         self._gravar(2, "aqui", correcoes=1)
         volta = self.trazer(_da_suite(0, _texto("a")), _da_suite(2, _texto("b")))
-        self.assertEqual(volta.frase(), "1 folha(s) trazida(s) da revisão (1); 1 já corrigida(s) aqui, com a da revisão em «anterior» (3).")
+        self.assertEqual(
+            volta.frase(),
+            "1 folha(s) trazida(s) da revisão (1); 1 já corrigida(s) aqui, com a da revisão ao lado, "
+            "no menu da folha (3).",
+        )
         self.assertEqual(caderno_na_suite.Volta().frase(), "Nenhuma folha foi editada na Revisão de texto da suíte.")
 
 

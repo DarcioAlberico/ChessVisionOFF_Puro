@@ -14,12 +14,14 @@ que se lê e o que se corrige fica aqui, uma folha por arquivo:
         folha-0012.cvtxt            a folha como ela está
         folha-0012.anterior.cvtxt   como ela estava quando a pessoa chegou da última vez
         folha-0012.lida.cvtxt       o que o motor leu, para "descartar as correções"
+        folha-0012.suite.cvtxt      a versão da Revisão de texto, quando a folha já era corrigida aqui
+        folha-0012.ilegivel-<data>.cvtxt   a cópia da folha que não abriu (S-896)
         caderno.lock                quem está escrevendo
 
 O número do arquivo é o da folha **como a pessoa o diz** (1-based); a API fala em `pagina`, o
 índice 0-based de `PaginaLida.pagina`, como o resto do programa.
 
-## Seis decisões
+## Sete decisões
 
 **O livro é achado pela identidade do conteúdo, e o caminho é apelido.** Pelo caminho, mover o PDF
 de pasta órfã o caderno, e o mesmo livro em duas pastas -- o acervo tem livros duplicados -- dá dois
@@ -54,6 +56,13 @@ barato de errar e o mais caro de perder.
 
 **Sem poda.** O caderno é trabalho, não cache. Uma folha são poucos KB; um livro de 300 folhas cabe
 em poucos MB.
+
+**A folha que não abre não é gravada por cima** (`TRAVADA`, S-896). Uma folha gravada por uma versão
+mais nova, ou corrompida, era o mesmo `None` da folha que não existe: a aba a relia com o motor, a
+leitura ia por cima, e o índice ia a `lida` com 0 correções -- a correção sobrava só no `.anterior`,
+que a visita seguinte reescrevia. Agora ela passa pela leitura travada da S-812 (`arquivo_do_dono`):
+é copiada ao lado como `folha-0012.ilegivel-<data>.cvtxt`, `trava` diz por quê, e nenhum gravador
+toca nela nem no índice dela. Consertado ou apagado o arquivo, a folha destrava sem reabrir o livro.
 """
 
 from __future__ import annotations
@@ -68,8 +77,9 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
 
+from ..arquivo_do_dono import EsquemaFuturo, GravacaoRecusada, Ilegivel, Lida, VersaoFutura, ler
 from ..atomic_io import atomic_write_json
 from ..config import DATA_DIR
 from ..relogio import agora_iso, com_fuso, do_arquivo, ler_iso
@@ -92,6 +102,7 @@ __all__ = [
     "RECUSADA_VAZIA",
     "SEM_FOLHA",
     "SOMENTE_LEITURA",
+    "TRAVADA",
     "Caderno",
     "EstadoDaFolha",
     "abre_do_caderno",
@@ -119,7 +130,12 @@ IGUAL = "igual"
 RECUSADA_VAZIA = "recusada_vazia"
 SOMENTE_LEITURA = "somente_leitura"
 SEM_FOLHA = "sem_folha"
-"""O que `Caderno.gravar` fez. Só `GRAVADA` e `IGUAL` querem dizer "o trabalho está no disco"."""
+TRAVADA = "travada"
+"""O que `Caderno.gravar` fez. Só `GRAVADA` e `IGUAL` querem dizer "o trabalho está no disco".
+`TRAVADA` é a folha do disco que não abre (S-896): `Caderno.trava` diz por quê."""
+
+Trava: TypeAlias = Ilegivel[DocumentoRico | None] | EsquemaFuturo[DocumentoRico | None]
+"""A leitura de uma folha que não abriu: o arquivo existe, e nada se grava por cima dele."""
 
 ESPERA_DA_MUDANCA = 2.5
 ESPERA_DO_CURSOR = 1.5
@@ -305,6 +321,19 @@ def _gravar_conferido(caminho: Path, texto: str) -> None:
         raise
 
 
+def _interpretar_folha(texto: str) -> DocumentoRico | None:
+    """O documento de um `.cvtxt`, com a versão futura dita no tipo da leitura travada (S-896)."""
+    dados = json.loads(texto)
+    try:
+        return arquivo.de_json(dados)
+    except arquivo.VersaoFutura:
+        raise VersaoFutura(dados.get("versao")) from None
+
+
+def _sem_folha() -> DocumentoRico | None:
+    return None
+
+
 def _texto_de(doc: DocumentoRico) -> str:
     return json.dumps(arquivo.para_json(doc), ensure_ascii=False, indent=2) + "\n"
 
@@ -329,6 +358,8 @@ class Caderno:
         """O que está no disco de cada folha, desde que este caderno o leu ou gravou. É contra ele
         que `difere` compara sem reler o arquivo a cada pausa da digitação."""
         self._por_girar: set[int] = set()
+        self._travadas: dict[int, Trava] = {}
+        """As folhas cujo arquivo existe e não abriu na última leitura (S-896)."""
         self._tem_trava = False
         self._ler_indice()
 
@@ -437,20 +468,30 @@ class Caderno:
         return sum(1 for f in self._folhas.values() if f.estado == CONFERIDA)
 
     def _carregar(self, caminho: Path) -> DocumentoRico | None:
-        if not caminho.exists():
-            return None
-        try:
-            return arquivo.carregar(caminho)
-        except (OSError, ValueError) as erro:  # `arquivo.ArquivoInvalido` é um `ValueError`
-            logger.warning("A folha %s do caderno não abriu: %s", caminho.name, erro)
-            return None
+        """A versão guardada em `caminho`, ou `None`. A que não abre fica copiada ao lado (S-812)."""
+        return ler(caminho, _interpretar_folha, _sem_folha).valor
 
     def folha(self, pagina: int) -> DocumentoRico | None:
-        """A folha como ela está no caderno, ou `None` se ela não tem caderno."""
-        doc = self._carregar(self.caminho(pagina))
-        if doc is not None:
-            self._ultimos[int(pagina)] = doc
-        return doc
+        """A folha como ela está no caderno, ou `None` se ela não tem caderno **ou não abre** (`trava`)."""
+        pagina = int(pagina)
+        leitura = ler(self.caminho(pagina), _interpretar_folha, _sem_folha)
+        if not isinstance(leitura, Lida):
+            self._travadas[pagina] = leitura
+            return None
+        self._travadas.pop(pagina, None)
+        if leitura.valor is not None:
+            self._ultimos[pagina] = leitura.valor
+        return leitura.valor
+
+    def trava(self, pagina: int) -> Trava | None:
+        """Por que a folha não abre, se o arquivo dela existe e não abre (S-896); `None` se ela grava.
+
+        Relê o arquivo enquanto ele não abriu nesta sessão: consertado ou apagado, a folha destrava.
+        """
+        pagina = int(pagina)
+        if pagina not in self._ultimos:
+            self.folha(pagina)
+        return self._travadas.get(pagina)
 
     def anterior(self, pagina: int) -> DocumentoRico | None:
         """Como a folha estava quando a pessoa chegou a ela da última vez (S-611)."""
@@ -465,11 +506,8 @@ class Caderno:
         if doc.origem is None:
             return False
         pagina = int(doc.origem.pagina)
-        if pagina not in self._ultimos:
-            guardado = self._carregar(self.caminho(pagina))
-            if guardado is None:
-                return True
-            self._ultimos[pagina] = guardado
+        if pagina not in self._ultimos and self.folha(pagina) is None:
+            return True
         return self._ultimos[pagina] != doc
 
     # --------------------------------------------------------------------------- gravação
@@ -490,6 +528,8 @@ class Caderno:
         if self.somente_leitura:
             return SOMENTE_LEITURA
         pagina = int(doc.origem.pagina)
+        if self.trava(pagina) is not None:
+            return TRAVADA
         destino = self.caminho(pagina)
         if destino.exists() and not self.difere(doc):
             self._por_girar.discard(pagina)
@@ -518,18 +558,23 @@ class Caderno:
         self._gravar_indice()
         return GRAVADA
 
-    def guardar_anterior(self, doc: DocumentoRico) -> str:
-        """Grava `doc` como a versão `anterior` da folha, sem tocar na folha nem no índice (R7 de volta).
+    def da_suite(self, pagina: int) -> DocumentoRico | None:
+        """A versão que a Revisão de texto da suíte deu a esta folha, quando ela já era corrigida aqui."""
+        return self._carregar(self.caminho(pagina, tipo="suite"))
 
-        É onde a correção que veio da suíte fica quando o caderno já tem a sua: «Voltar à versão
-        anterior» a alcança, e a folha que a pessoa corrigiu aqui continua sendo a folha.
+    def guardar_da_suite(self, doc: DocumentoRico) -> str:
+        """Grava `doc` como a versão da suíte da folha, sem tocar na folha, na anterior nem no índice.
+
+        É onde a correção que veio da suíte fica quando o caderno já tem a sua (R7 de volta). Ela ia
+        para `anterior` e apagava a rede da visita (S-896); no arquivo dela o menu da folha a abre, e
+        a folha que a pessoa corrigiu aqui continua sendo a folha.
         """
         if doc.origem is None:
             return SEM_FOLHA
         if self.somente_leitura:
             return SOMENTE_LEITURA
         self.pasta.mkdir(parents=True, exist_ok=True)
-        _gravar_conferido(self.caminho(int(doc.origem.pagina), tipo="anterior"), _texto_de(doc))
+        _gravar_conferido(self.caminho(int(doc.origem.pagina), tipo="suite"), _texto_de(doc))
         return GRAVADA
 
     def guardar_leitura(self, doc: DocumentoRico, *, motor: str, modo_bloco: bool) -> str:
@@ -543,6 +588,8 @@ class Caderno:
         if self.somente_leitura:
             return SOMENTE_LEITURA
         pagina = int(doc.origem.pagina)
+        if self.trava(pagina) is not None:
+            return TRAVADA
         self.visitar(pagina)
         self._ultimos.pop(pagina, None)
         self.pasta.mkdir(parents=True, exist_ok=True)
@@ -571,9 +618,17 @@ class Caderno:
         return True
 
     def trazer_rascunho(self, doc: DocumentoRico, quando: datetime, *, correcoes: int = 0) -> bool:
-        """Um rascunho de antes do caderno (S-615): entra se a folha não tem caderno mais novo."""
+        """Um rascunho de antes do caderno (S-615): entra se a folha não tem caderno mais novo.
+
+        `False` quer dizer "o caderno tem coisa mais nova, e o rascunho pode sair". Sobre a folha que
+        não abre levanta `GravacaoRecusada` (S-896): o rascunho talvez seja a única versão legível, e
+        a hora do índice não diz nada sobre o que o arquivo dela tem.
+        """
         if doc.origem is None or self.somente_leitura:
             return False
+        trava = self.trava(int(doc.origem.pagina))
+        if trava is not None:
+            raise GravacaoRecusada(trava.mensagem)
         antes = self._folhas.get(int(doc.origem.pagina))
         # Instantes, e não strings: o índice pode ter outro deslocamento, ou nenhum (S-908). Hora
         # ilegível no índice não recusa -- o rascunho é trabalho de alguém, e a folha vai para `anterior`.

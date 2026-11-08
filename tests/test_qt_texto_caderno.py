@@ -9,6 +9,7 @@ por uma função que diz qual folha leu.
 
 from __future__ import annotations
 
+import json
 import unittest
 from collections.abc import Callable
 from pathlib import Path
@@ -374,6 +375,77 @@ class OutraJanelaTests(_Aba):
         self.assertTrue(any("só para leitura" in r for r in recados))
 
 
+class FolhaIlegivelTests(_Aba):
+    """S-896: a folha `editada` que não abre não é relida pelo motor e gravada por cima.
+
+    A leitura corre de verdade em tarefa (`TarefaAdiada`): antes do conserto o motor lia e a
+    `guardar_leitura` gravava por cima quando o resultado chegava -- e o índice ia a `lida` com 0.
+    """
+
+    ESTRAGOS = {
+        "versão futura": json.dumps({"versao": 99, "documento": {"corridas": []}}).encode("utf-8"),
+        "corrompida": b'{"versao": 1, "documento": {"corr',
+    }
+
+    def setUp(self) -> None:
+        super().setUp()
+        TarefaAdiada.pendentes.clear()
+        remendo = mock.patch.object(painel_de_texto, "Tarefa", TarefaAdiada)
+        remendo.start()
+        self.addCleanup(remendo.stop)
+        self.addCleanup(TarefaAdiada.pendentes.clear)
+
+    def aba_com_a_folha_3_estragada(self, ruins: bytes) -> tuple[PainelDeTexto, list[str], Path]:
+        """Uma folha `editada` com 12 correções que deixou de abrir, e uma aba nova no livro dela."""
+        self.painel.fechar_caderno()
+        gravador = caderno.abrir(self.livro, pasta=self.cadernos)
+        assert gravador is not None
+        feito = gravador.gravar(rico.de_pagina(_pagina(str(self.livro), 2, "corrigida à mão")), correcoes=12)
+        self.assertEqual(feito, caderno.GRAVADA)
+        gravador.fechar()
+        gravador.caminho(2).write_bytes(ruins)
+        pasta = gravador.pasta
+        outro = self.novo_painel()
+        recados: list[str] = []
+        outro.estado.connect(recados.append)
+        outro.definir_livro(self.livro, pagina=0, paginas=20)
+        return outro, recados, pasta
+
+    def test_folha_ilegivel_nao_perde_estado_nem_conteudo(self) -> None:
+        for nome, ruins in self.ESTRAGOS.items():
+            with self.subTest(nome):
+                outro, recados, pasta = self.aba_com_a_folha_3_estragada(ruins)
+                outro.campo_de_folha.setValue(3)
+                outro.ler()
+                TarefaAdiada.entregar_todas()
+                self.assertEqual((pasta / "folha-0003.cvtxt").read_bytes(), ruins, "a folha do dono foi regravada")
+                linha = json.loads((pasta / "indice.json").read_text(encoding="utf-8"))["folhas"]["3"]
+                self.assertEqual((linha["estado"], linha["correcoes"]), (caderno.EDITADA, 12))
+                (copia,) = pasta.glob("folha-0003.ilegivel-*.cvtxt")
+                self.assertEqual(copia.read_bytes(), ruins)
+                self.assertIn("não abriu", recados[-1])
+                self.assertIn(copia.name, recados[-1])
+                outro.fechar_caderno()
+                for velha in pasta.glob("folha-0003*.cvtxt"):
+                    velha.unlink()
+
+    def test_virar_a_pagina_para_ela_avisa_e_nao_le(self) -> None:
+        outro, recados, pasta = self.aba_com_a_folha_3_estragada(self.ESTRAGOS["corrompida"])
+        outro.definir_mesa(True)
+        outro.alternar_ler_ao_chegar()
+        outro.definir_livro(self.livro, pagina=2)
+        TarefaAdiada.entregar_todas()
+        self.assertEqual((pasta / "folha-0003.cvtxt").read_bytes(), self.ESTRAGOS["corrompida"])
+        self.assertIn("não abriu", recados[-1])
+
+    def test_o_rascunho_da_folha_ilegivel_fica_na_pasta(self) -> None:
+        doc = rico.de_pagina(_pagina(str(self.livro), 2, "corrigida no rascunho"))
+        self.painel.fechar_caderno()
+        rascunho.gravar(doc, pasta=self.pasta / "rascunhos")
+        self.aba_com_a_folha_3_estragada(self.ESTRAGOS["versão futura"])
+        self.assertIsNotNone(rascunho.achar(self.livro, 2, pasta=self.pasta / "rascunhos"), "o rascunho foi descartado")
+
+
 class IndiceTests(_Aba):
     """S-613: as folhas do caderno numa lista, do `indice.json`, e o clique abre a folha."""
 
@@ -467,8 +539,10 @@ class TrazerDaRevisaoTests(_Aba):
         self.trazer([self.folha(2, "corrigida na revisão")])
         self.assertEqual(self.no_caderno(3), "texto lido da folha 3 e corrigida aqui",
                          "a folha da tela foi ao caderno antes da regra, e a regra a manteve")
-        self.assertEqual(self.cad.anterior(2).para_texto(), "corrigida na revisão")  # type: ignore[union-attr]
+        self.assertEqual(self.cad.da_suite(2).para_texto(), "corrigida na revisão")  # type: ignore[union-attr]
         self.assertIn("já corrigida(s) aqui", self.recados[-1])
+        self.assertTrue(self.painel.abrir_a_da_revisao())
+        self.assertEqual(self.painel.texto(), "corrigida na revisão", "a versão da revisão não chegou à tela")
 
     def test_sem_a_suite_o_rodape_diz_o_motivo(self) -> None:
         from chess_diagram_ocr.qt import revisao_para_o_caderno as volta

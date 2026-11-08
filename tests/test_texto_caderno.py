@@ -19,6 +19,7 @@ from unittest import mock
 from ambiente_de_teste import pasta_temporaria
 from subprocesso import iniciar_python
 
+from chess_diagram_ocr.arquivo_do_dono import GravacaoRecusada
 from chess_diagram_ocr.text import arquivo, caderno, rico
 from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
 
@@ -118,6 +119,51 @@ class AnteriorTests(_ComLivro):
         estado = livro.estado(0)
         assert estado is not None
         self.assertEqual((estado.estado, estado.motor, estado.modo_bloco, estado.correcoes), (caderno.LIDA, "auto", True, 0))
+
+
+class FolhaIlegivelTests(_ComLivro):
+    """S-896: a folha que não abre -- versão futura, ou corrompida -- não é gravada por cima."""
+
+    ESTRAGOS = {
+        "versão futura": json.dumps({"versao": 99, "documento": {"corridas": []}}).encode("utf-8"),
+        "corrompida": b'{"versao": 1, "documento": {"corr',
+    }
+
+    def _corrigida_e_estragada(self, bytes_ruins: bytes) -> caderno.Caderno:
+        """Uma folha `editada` com 12 correções, cujo arquivo depois deixa de abrir; o caderno reaberto."""
+        livro = self.abrir()
+        livro.gravar(_doc(self.livro, 2, "corrigida à mão"), correcoes=12)
+        livro.fechar()
+        livro.caminho(2).write_bytes(bytes_ruins)
+        return self.abrir()
+
+    def test_nenhum_gravador_escreve_por_cima_e_o_indice_fica(self) -> None:
+        for nome, ruins in self.ESTRAGOS.items():
+            with self.subTest(nome):
+                shutil.rmtree(self.pasta, ignore_errors=True)
+                livro = self._corrigida_e_estragada(ruins)
+                self.assertIsNone(livro.folha(2))
+                self.assertIsNotNone(livro.trava(2))
+                self.assertEqual(livro.guardar_leitura(_doc(self.livro, 2, "lida de novo"), motor="glifo", modo_bloco=False), caderno.TRAVADA)
+                self.assertEqual(livro.gravar(_doc(self.livro, 2, "outra coisa"), correcoes=1), caderno.TRAVADA)
+                with self.assertRaises(GravacaoRecusada):
+                    livro.trazer_rascunho(_doc(self.livro, 2, "do rascunho"), datetime.now(timezone.utc))
+                self.assertEqual(livro.caminho(2).read_bytes(), ruins)
+                self.assertFalse(livro.caminho(2, tipo="lida").exists())
+                estado = livro.estado(2)
+                assert estado is not None
+                self.assertEqual((estado.estado, estado.correcoes), (caderno.EDITADA, 12))
+                self.assertEqual([f.pagina for f in livro.corrigidas()], [2])
+                (copia,) = livro.pasta.glob("folha-0003.ilegivel-*.cvtxt")
+                self.assertEqual(copia.read_bytes(), ruins)
+                livro.fechar()
+
+    def test_apagada_a_folha_ruim_o_caderno_grava_de_novo(self) -> None:
+        livro = self._corrigida_e_estragada(self.ESTRAGOS["corrompida"])
+        self.assertIsNotNone(livro.trava(2))
+        livro.caminho(2).unlink()
+        self.assertIsNone(livro.trava(2))
+        self.assertEqual(livro.gravar(_doc(self.livro, 2, "refeita"), correcoes=1), caderno.GRAVADA)
 
 
 class IdentidadeTests(_ComLivro):

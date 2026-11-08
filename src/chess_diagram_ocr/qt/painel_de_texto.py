@@ -107,6 +107,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from chess_diagram_ocr.arquivo_do_dono import GravacaoRecusada
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
@@ -2261,6 +2262,10 @@ class PainelDeTexto(QWidget):
         if feito == caderno.RECUSADA_VAZIA:
             self.estado.emit(f"A folha {pagina + 1} vazia não foi gravada por cima do texto que o caderno tem dela.")
             return True
+        if feito == caderno.TRAVADA:
+            self._avisar_trava(cad, pagina)
+            self.gravar_rascunho()
+            return False
         self._documento_gravado = self.documento
         self._correcoes = feitas
         self._atualizar_status()
@@ -2306,7 +2311,7 @@ class PainelDeTexto(QWidget):
             try:
                 doc = _no_livro(rascunho.carregar(achado), livro)
                 entrou = cad.trazer_rascunho(doc, achado.quando, correcoes=len(correcao.correcoes(doc)))
-            except (OSError, ValueError) as erro:  # `ArquivoInvalido` é um `ValueError`; o rascunho fica
+            except (OSError, ValueError, GravacaoRecusada) as erro:  # `ArquivoInvalido` é um `ValueError`; o rascunho fica
                 logger.debug("Rascunho %s não entrou no caderno: %s", achado.caminho, erro)
                 continue
             if entrou:
@@ -2333,6 +2338,8 @@ class PainelDeTexto(QWidget):
         cad = self._caderno
         doc = None if cad is None else cad.folha(indice)
         if cad is None or doc is None:
+            if cad is not None:
+                self._avisar_trava(cad, indice)
             return False
         dpi = self._dpi_para_ler()
         pronta = self._fornecedor_de_folha(indice) if self._fornecedor_de_folha is not None else None
@@ -2352,6 +2359,14 @@ class PainelDeTexto(QWidget):
             + (f", com {caderno.correcoes_por_extenso(feitas)}" if feitas else "")
             + ". «Ler a folha de novo» fica no menu do botão direito."
         )
+        return True
+
+    def _avisar_trava(self, cad: caderno.Caderno, indice: int) -> bool:
+        """A folha do caderno não abre (S-896)? O rodapé diz, e quem chama não lê nem grava por cima."""
+        trava = cad.trava(indice)
+        if trava is None:
+            return False
+        self.estado.emit(f"A folha {indice + 1} do caderno não abriu, e fica como está. {trava.mensagem}")
         return True
 
     def _renderizar_ao_fundo(self, indice: int) -> None:
@@ -2410,14 +2425,22 @@ class PainelDeTexto(QWidget):
 
     def voltar_a_anterior(self) -> bool:
         """Põe na tela a versão de quando a pessoa chegou da última vez à folha (S-611). `Ctrl+Z` desfaz."""
+        return self._por_versao_na_tela(caderno.Caderno.anterior, "A versão anterior da folha", "Esta folha não tem versão anterior no caderno.")
+
+    def abrir_a_da_revisao(self) -> bool:
+        """Põe na tela a versão que a Revisão de texto da suíte deu à folha corrigida aqui (S-896). `Ctrl+Z` desfaz."""
+        return self._por_versao_na_tela(caderno.Caderno.da_suite, "A versão da Revisão de texto", "Esta folha não tem versão da Revisão de texto no caderno.")
+
+    def _por_versao_na_tela(self, versao_de: Callable[[caderno.Caderno, int], rico.DocumentoRico | None], qual: str, sem: str) -> bool:
         cad = self._caderno_da_tela()
-        anterior = None if cad is None else cad.anterior(self.documento.origem.pagina)  # type: ignore[union-attr]
-        if anterior is None:
-            self.estado.emit("Esta folha não tem versão anterior no caderno.")
+        origem = self.documento.origem
+        versao = None if cad is None or origem is None else versao_de(cad, int(origem.pagina))
+        if versao is None:
+            self.estado.emit(sem)
             return False
-        self._aplicar(_no_livro(anterior, self._livro_do_caderno))
+        self._aplicar(_no_livro(versao, self._livro_do_caderno))
         self._contar_correcoes()
-        self.estado.emit("A versão anterior da folha está na tela; Ctrl+Z volta à de agora.")
+        self.estado.emit(f"{qual} está na tela; Ctrl+Z volta à de agora.")
         return True
 
     def descartar_correcoes(self) -> bool:
@@ -3726,6 +3749,8 @@ class PainelDeTexto(QWidget):
         if not self._guardar_a_folha() and not self._confirmar_descarte("Ler de novo descarta as alterações."):
             return
         indice = int(self.campo_de_folha.value()) - 1
+        if self._caderno is not None and self._avisar_trava(self._caderno, indice):
+            return
         guardada = None if self._caderno is None else self._caderno.estado(indice)
         if guardada is not None:
             if not de_novo and caderno.abre_do_caderno(guardada, motor=self._motor_gravado(), modo_bloco=self._modo_bloco):
@@ -4425,6 +4450,8 @@ class PainelDeTexto(QWidget):
         acoes: list[tuple[str, Callable[[], object]]] = [("Ler a folha de novo", self.ler_de_novo)]
         if cad.caminho(pagina, tipo="anterior").exists():
             acoes.append(("Voltar à versão anterior desta folha", self.voltar_a_anterior))
+        if cad.caminho(pagina, tipo="suite").exists():
+            acoes.append(("Abrir a versão da Revisão de texto", self.abrir_a_da_revisao))
         if cad.caminho(pagina, tipo="lida").exists() and (guardada is None or guardada.correcoes or self._correcoes):
             acoes.append(("Descartar as correções desta folha", self.descartar_correcoes))
         if guardada is not None:

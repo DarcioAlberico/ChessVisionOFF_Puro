@@ -36,8 +36,13 @@ As regiões que alguém **editou** na Revisão de texto da suíte voltam ao cade
 - a folha **sem correção no caderno** (só lida, ou sem caderno) recebe o texto da suíte, e fica
   `editada` -- a leitura do motor que estava nela vai para `anterior`;
 - a folha **corrigida nos dois lados** fica como o caderno a tem, e a versão da suíte vai para
-  `anterior`, onde «Voltar à versão anterior» a alcança. A correção feita aqui não é desfeita por
-  uma feita lá.
+  `folha-NNNN.suite.cvtxt`, que o menu da folha abre. A correção feita aqui não é desfeita por uma
+  feita lá -- e a `anterior` do caderno também não: ela é a rede da visita, e a volta a reescrevia
+  (S-896).
+
+**Tudo ou nada.** As folhas que vêm da suíte são validadas todas antes de a primeira ser gravada
+(S-896): uma folha que não se lê -- sem `page_index`, de outro formato, com um parágrafo que não é
+objeto -- abortava a volta no meio, com as anteriores já gravadas e a exceção subindo ao painel.
 
 A folha que volta precisa de origem (`Caderno.gravar` não grava folha sem página): é a da folha que
 o caderno já tem quando ela tem tantos diagramas quanto as marcas da suíte -- e aí as miniaturas
@@ -260,10 +265,14 @@ class Volta:
     iguais: tuple[int, ...] = ()
     """Folhas em que a suíte diz o mesmo que o caderno: nada a fazer."""
     recusadas: tuple[int, ...] = ()
-    """Folhas que o caderno não gravou (somente leitura, ou o disco recusou)."""
+    """Folhas que o caderno não gravou (somente leitura, folha que não abre, ou o disco recusou)."""
+    invalida: str = ""
+    """Por que a lista da suíte não foi lida: então nenhuma folha foi gravada (S-896)."""
 
     def frase(self) -> str:
         """O resumo para o rodapé, folhas contadas de 1."""
+        if self.invalida:
+            return f"Nada foi trazido da Revisão de texto: {self.invalida}."
         if not (self.trazidas or self.guardadas or self.iguais or self.recusadas):
             return "Nenhuma folha foi editada na Revisão de texto da suíte."
         partes = []
@@ -271,7 +280,8 @@ class Volta:
             partes.append(f"{len(self.trazidas)} folha(s) trazida(s) da revisão ({_lista(self.trazidas)})")
         if self.guardadas:
             partes.append(
-                f"{len(self.guardadas)} já corrigida(s) aqui, com a da revisão em «anterior» ({_lista(self.guardadas)})"
+                f"{len(self.guardadas)} já corrigida(s) aqui, com a da revisão ao lado, no menu da folha "
+                f"({_lista(self.guardadas)})"
             )
         if self.iguais:
             partes.append(f"{len(self.iguais)} igual(is) ao caderno")
@@ -285,22 +295,31 @@ def _lista(paginas: tuple[int, ...]) -> str:
 
 
 def trazer_da_suite(cad: Caderno, folhas: Iterable[Mapping[str, Any]], *, livro: str = "") -> Volta:
-    """Põe no caderno as folhas editadas na Revisão de texto, pela regra do dono (ver o cabeçalho)."""
+    """Põe no caderno as folhas editadas na Revisão de texto, pela regra do dono (ver o cabeçalho).
+
+    Todas as folhas são lidas antes de a primeira ser gravada: uma que não se lê devolve a `Volta`
+    com `invalida`, e o caderno fica como estava (S-896).
+    """
+    lidas: list[tuple[int, DocumentoRico | None, DocumentoRico]] = []
+    for numero, dados in enumerate(folhas, start=1):
+        try:
+            pagina = int(dados["page_index"])
+            atual = cad.folha(pagina) if cad.estado(pagina) is not None else None
+            lidas.append((pagina, atual, folha_da_suite(dados, origem=atual.origem if atual is not None else None, livro=livro)))
+        except (KeyError, TypeError, ValueError, AttributeError) as erro:
+            return Volta(invalida=f"a {numero}ª folha da lista não se lê ({erro.__class__.__name__}: {erro})")
     trazidas: list[int] = []
     guardadas: list[int] = []
     iguais: list[int] = []
     recusadas: list[int] = []
-    for dados in folhas:
-        pagina = int(dados["page_index"])
+    for pagina, atual, doc in lidas:
         estado = cad.estado(pagina)
-        atual = cad.folha(pagina) if estado is not None else None
-        doc = folha_da_suite(dados, origem=atual.origem if atual is not None else None, livro=livro)
         if atual is not None and atual.corridas == doc.corridas:
             iguais.append(pagina)
             continue
         try:
             if estado is not None and estado.estado != LIDA:
-                feito = cad.guardar_anterior(doc)
+                feito = cad.guardar_da_suite(doc)
                 (guardadas if feito == GRAVADA else recusadas).append(pagina)
                 continue
             cad.visitar(pagina)  # a leitura do motor que estava nela vai para `anterior`

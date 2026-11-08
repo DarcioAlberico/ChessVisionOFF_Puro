@@ -711,6 +711,15 @@ de gravar a primeira.
 
 **Aceite.** Os dois passam.
 
+**Entregue** (2026-11-08): `Caderno.trava(pagina)` diz por que a folha não abre, e `gravar` e
+`guardar_leitura` devolvem `TRAVADA` sem tocar na folha nem no índice. A aba nem chama o motor sobre a
+folha que não abre (ler ou virar a página para ela só avisa no rodapé), e a folha da tela que esbarra na
+trava vai ao rascunho. Além da spec: `trazer_rascunho` levanta `GravacaoRecusada` sobre ela, porque o
+`False` fazia a aba apagar o rascunho, talvez a única cópia legível. `guardar_anterior` virou
+`guardar_da_suite`, e a versão da suíte, que «Voltar à versão anterior» já não alcança, ganhou no menu da
+folha «Abrir a versão da Revisão de texto». A lista ruim da suíte volta como `Volta(invalida=...)`, e
+não como exceção, porque quem a aplica é um slot do Qt.
+
 ## S-897 · O caderno acha o seu livro e a sua trava
 
 **Problema** (confirmado por leitura). `text/caderno.py:158-168`: a identidade do livro é o hash do primeiro
