@@ -26,11 +26,12 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..arquivo_do_dono import Lida
 from ..config import DEFAULT_MAX_BOARDS, DEFAULT_PDF_DIR, DEFAULT_READING_ORDER
 from ..djvu_io import livros_em
 from ..gallery_scan import build_gallery_index, index_path_for, load_index, save_index
 from ..logging_setup import configure_logging, default_log_file, onde_esta_o_rastro
-from ..review_queue import DEFAULT_CACHE_DIR, ReviewQueue, ReviewQueueBuilder, merge_queues
+from ..review_queue import DEFAULT_CACHE_DIR, ReviewQueueBuilder, carregar_fila, gravar_fila, merge_queues
 from . import (
     EXIT_BAD_INPUT,
     EXIT_FAILURE,
@@ -187,13 +188,19 @@ def scan_book(
 
     if construtor is not None:
         destino = _queue_path(args.queue_dir, pdf_path)
+        lida = carregar_fila(destino)
+        if not isinstance(lida, Lida):
+            # A fila que nao leu nao e regravada (S-812): o indice da Galeria ja foi salvo, e o
+            # relatorio diz por que a fila nao foi.
+            resultado.error = lida.mensagem
+            return resultado
         fila = construtor.finish()
         if destino.exists():
             # Revarrer nao pode ressuscitar o que ja foi revisado -- e a regra do
             # `merge_queues`, e ela vale tanto aqui quanto na janela.
-            fila = merge_queues(ReviewQueue.load(destino), fila)
+            fila = merge_queues(lida.valor, fila)
         destino.parent.mkdir(parents=True, exist_ok=True)
-        fila.save(destino)
+        gravar_fila(lida.com(fila))
         resultado.queued = len(fila.items)
     return resultado
 

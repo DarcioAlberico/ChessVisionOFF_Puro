@@ -39,6 +39,7 @@ from typing import Any, Literal
 import cv2
 import numpy as np
 
+from .arquivo_do_dono import Leitura, Lida, VersaoFutura, gravavel, ler
 from .atomic_io import atomic_write_json, write_image
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
@@ -229,35 +230,42 @@ class ReviewQueue:
             "items": [item.to_dict() for item in self.items],
         }
 
-    def save(self, path: Path = DEFAULT_QUEUE_PATH) -> Path:
-        path = Path(path)
-        atomic_write_json(path, self.to_dict())
-        logger.info("Fila de revisão gravada em %s (%d itens).", path, len(self.items))
-        return path
 
-    @classmethod
-    def load(cls, path: Path = DEFAULT_QUEUE_PATH) -> ReviewQueue:
-        path = Path(path)
-        if not path.exists():
-            return cls()
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-            logger.warning("Fila de revisão ilegível, começando vazia (%s): %s", path, exc)
-            return cls()
+def carregar_fila(path: Path = DEFAULT_QUEUE_PATH) -> Leitura[ReviewQueue]:
+    """A fila gravada. Vazia quando não há arquivo.
 
-        if not isinstance(raw, dict) or raw.get("version") != QUEUE_VERSION:
-            logger.warning("Fila de revisão em formato desconhecido, ignorada: %s", path)
-            return cls()
+    **Ilegível, ou de outra versão, é leitura travada (S-812).** Antes a fila voltava vazia e a
+    próxima gravação -- a de uma revarredura, ou a de marcar um item -- escrevia a fila vazia por
+    cima das correções. A versão diferente da nossa, mais velha inclusive, trava do mesmo jeito: não
+    há migração, e regravar seria apagar.
+    """
+    return ler(Path(path), _interpretar_fila, ReviewQueue)
 
-        queue = cls(
-            source_pdf=str(raw.get("source_pdf", "")),
-            created_at=str(raw.get("created_at", "")),
-            scanned_diagrams=int(raw.get("scanned_diagrams", 0)),
-            pages_scanned=int(raw.get("pages_scanned", 0)),
-            items=[ReviewItem.from_dict(item) for item in raw.get("items", []) if isinstance(item, dict)],
-        )
-        return queue
+
+def _interpretar_fila(texto: str) -> ReviewQueue:
+    raw = json.loads(texto)
+    if not isinstance(raw, dict):
+        raise ValueError("o topo não é um objeto")
+    versao = raw.get("version")
+    if versao != QUEUE_VERSION:
+        if isinstance(versao, int) and versao > QUEUE_VERSION:
+            raise VersaoFutura(versao)
+        raise ValueError(f"versão {versao!r} desconhecida")
+    return ReviewQueue(
+        source_pdf=str(raw.get("source_pdf", "")),
+        created_at=str(raw.get("created_at", "")),
+        scanned_diagrams=int(raw.get("scanned_diagrams", 0)),
+        pages_scanned=int(raw.get("pages_scanned", 0)),
+        items=[ReviewItem.from_dict(item) for item in raw.get("items", []) if isinstance(item, dict)],
+    )
+
+
+def gravar_fila(lida: Lida[ReviewQueue]) -> Path:
+    """Grava a fila onde ela foi lida. Só sobre uma leitura que leu (S-812)."""
+    lida = gravavel(lida)
+    atomic_write_json(lida.caminho, lida.valor.to_dict())
+    logger.info("Fila de revisão gravada em %s (%d itens).", lida.caminho, len(lida.valor.items))
+    return lida.caminho
 
 
 # ------------------------------------------------------------------- prioridade

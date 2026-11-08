@@ -43,6 +43,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from chess_diagram_ocr.arquivo_do_dono import GravacaoRecusada, Lida, gravavel
 from chess_diagram_ocr.pdf_to_pgn import ScannedDiagram
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
@@ -54,7 +55,9 @@ from chess_diagram_ocr.review_queue import (
     DEFAULT_QUEUE_PATH,
     ReviewItem,
     ReviewQueue,
+    carregar_fila,
     error_rate,
+    gravar_fila,
     merge_queues,
 )
 from chess_diagram_ocr.ui import comandos, espaco, estilos, formato, strings, tabela, tipografia
@@ -172,7 +175,9 @@ class PainelDeRevisao(QWidget):
         self.queue_path = Path(queue_path)
         self.cache_dir = Path(cache_dir)
 
-        self.queue = ReviewQueue.load(self.queue_path)
+        self._leitura_da_fila = carregar_fila(self.queue_path)
+        """De onde a fila veio e se ela pode voltar para lá (S-812)."""
+        self.queue = self._leitura_da_fila.valor
         self.queue.sort()
         self._varrendo = False
         self._posicoes: list[int] = []
@@ -180,6 +185,11 @@ class PainelDeRevisao(QWidget):
 
         self._montar()
         self.refresh()
+        self._dizer_se_travada()
+
+    def _dizer_se_travada(self) -> None:
+        if not isinstance(self._leitura_da_fila, Lida):
+            self.lbl_progresso.setText(self._leitura_da_fila.mensagem)
 
     # ------------------------------------------------------------------------------ montagem
 
@@ -486,9 +496,11 @@ class PainelDeRevisao(QWidget):
 
     def salvar_fila(self, quieto: bool = False) -> None:
         try:
-            self.queue.save(self.queue_path)
+            gravar_fila(gravavel(self._leitura_da_fila).com(self.queue))
             if not quieto:
                 self.estado.emit(f"Fila salva em {self.queue_path}.")
+        except GravacaoRecusada as recusa:
+            self.estado.emit(str(recusa))
         except OSError as exc:
             logger.warning("Não foi possível salvar a fila de revisão: %s", exc)
             if not quieto:
@@ -504,10 +516,14 @@ class PainelDeRevisao(QWidget):
         if not caminho:
             return
         self.queue_path = Path(caminho)
-        self.queue = ReviewQueue.load(self.queue_path)
+        self._leitura_da_fila = carregar_fila(self.queue_path)
+        self.queue = self._leitura_da_fila.valor
         self.queue.sort()
         self.refresh()
-        self.estado.emit(f"Fila carregada de {self.queue_path}.")
+        if isinstance(self._leitura_da_fila, Lida):
+            self.estado.emit(f"Fila carregada de {self.queue_path}.")
+        else:
+            self.estado.emit(self._leitura_da_fila.mensagem)
 
 
 _ = Qt  # noqa: B018 - mantém o import legível para quem estender este painel

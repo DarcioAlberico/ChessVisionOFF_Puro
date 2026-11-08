@@ -13,6 +13,7 @@ import unittest
 from ambiente_de_teste import pasta_temporaria
 
 from chess_diagram_ocr import placar as placar_mod
+from chess_diagram_ocr.arquivo_do_dono import Lida, gravavel
 from chess_diagram_ocr.ui import analise_da_partida as regua
 from chess_diagram_ocr.ui import treino_declarado as declarado
 
@@ -324,38 +325,32 @@ class PlacarTests(unittest.TestCase):
         placar = placar_mod.Placar()
         placar.registrar("um.pdf", placar_mod.CERTO)
         placar.registrar("um.pdf", placar_mod.ERRADO, perda=120)
-        placar_mod.gravar(placar, caminho=self.caminho)
-        lido = placar_mod.carregar(caminho=self.caminho)
+        placar_mod.gravar(Lida(placar, self.caminho))
+        lido = placar_mod.carregar(caminho=self.caminho).valor
         self.assertEqual(placar.livros, lido.livros)
         self.assertEqual(0, lido.sessao.total, "a sessão não é gravada")
 
     def test_arquivo_ausente_e_placar_vazio(self) -> None:
-        self.assertEqual({}, placar_mod.carregar(caminho=self.pasta / "nunca.json").livros)
+        self.assertEqual({}, placar_mod.carregar(caminho=self.pasta / "nunca.json").valor.livros)
 
     def test_esquema_do_futuro_nao_e_lido_pela_metade(self) -> None:
         self.caminho.write_text(json.dumps({"esquema": 99, "livros": []}), encoding="utf-8")
-        self.assertEqual({}, placar_mod.carregar(caminho=self.caminho).livros)
+        self.assertEqual({}, placar_mod.carregar(caminho=self.caminho).valor.livros)
 
     def test_arquivo_ilegivel_nao_derruba_a_sala(self) -> None:
         self.caminho.write_text("{isto não é json", encoding="utf-8")
-        self.assertEqual({}, placar_mod.carregar(caminho=self.caminho).livros)
+        self.assertEqual({}, placar_mod.carregar(caminho=self.caminho).valor.livros)
 
     def test_o_placar_lembra_de_onde_veio_e_volta_para_la(self) -> None:
-        """**A origem existe porque o placar atravessa uma janela que não sabe o caminho dele**
-        (S-541, r2). A sala carrega de `pasta_de_treino/placar.json` e passa o objeto para a janela
-        de treino, que conta os lances; sem a origem, `gravar` cairia em `CAMINHO_PADRAO` -- em
+        """**O caminho vem com a leitura** (S-541, r2; S-812). A sala carrega de
+        `pasta_de_treino/placar.json`; sem o caminho, `gravar` cairia em `CAMINHO_PADRAO` -- em
         `data/placar.json`, que ninguém relê -- e o arquivo da pasta nunca nasceria."""
-        placar = placar_mod.carregar(caminho=self.caminho)
-        self.assertEqual(self.caminho, placar.origem, "vale mesmo sem o arquivo existir ainda")
-        placar.registrar("um.pdf", placar_mod.CERTO)
-        self.assertEqual(self.caminho, placar_mod.gravar(placar))
+        leitura = placar_mod.carregar(caminho=self.caminho)
+        self.assertEqual(self.caminho, leitura.caminho, "vale mesmo sem o arquivo existir ainda")
+        leitura.valor.registrar("um.pdf", placar_mod.CERTO)
+        self.assertEqual(self.caminho, placar_mod.gravar(gravavel(leitura)))
         self.assertTrue(self.caminho.exists())
-        self.assertEqual(1, placar_mod.carregar(caminho=self.caminho).do_livro("um.pdf").certos)
-
-    def test_placar_que_nao_veio_do_disco_nao_tem_origem(self) -> None:
-        """`None` é o placar de um teste ou de quem treina numa posição colada à mão: quem grava
-        sem destino explícito precisa saber que não há para onde voltar."""
-        self.assertIsNone(placar_mod.Placar().origem)
+        self.assertEqual(1, placar_mod.carregar(caminho=self.caminho).valor.do_livro("um.pdf").certos)
 
 
 if __name__ == "__main__":  # pragma: no cover

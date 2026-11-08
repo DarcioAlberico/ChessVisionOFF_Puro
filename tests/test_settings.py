@@ -17,6 +17,7 @@ from unittest import mock
 import numpy as np
 
 from chess_diagram_ocr import net_correction
+from chess_diagram_ocr.arquivo_do_dono import Lida
 from chess_diagram_ocr.net_correction import (
     HttpFenProvider,
     RemoteFenProvider,
@@ -58,7 +59,7 @@ class OcrSettingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as pasta:
             caminho = Path(pasta) / "settings.json"
             original = Settings(ocr=OcrSettings(enabled=True, engine="easyocr", languages=("de",)))
-            save_settings(caminho, original)
+            save_settings(Lida(original, caminho))
             self.assertEqual(load_settings(caminho, env={}).ocr, original.ocr)
 
     def test_secao_ausente_cai_no_padrao(self) -> None:
@@ -190,7 +191,7 @@ class PersistenceTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             caminho = Path(tmp) / "settings.json"
-            save_settings(caminho, original)
+            save_settings(Lida(original, caminho))
             self.assertEqual(load_settings(caminho, env={}), original)
 
     def test_a_corrupt_file_falls_back_to_the_default_which_sends_nothing(self) -> None:
@@ -210,7 +211,7 @@ class PersistenceTests(unittest.TestCase):
         """Sem versão, um esquema novo não teria como distinguir "campo ausente" de "antigo"."""
         with tempfile.TemporaryDirectory() as tmp:
             caminho = Path(tmp) / "settings.json"
-            save_settings(caminho, Settings())
+            save_settings(Lida(Settings(), caminho))
             self.assertIn("version", json.loads(caminho.read_text(encoding="utf-8")))
 
     def test_acknowledging_is_what_the_dialog_persists(self) -> None:

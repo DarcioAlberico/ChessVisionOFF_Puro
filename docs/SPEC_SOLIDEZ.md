@@ -448,6 +448,17 @@ original tem de estar intacto e a cópia `.ilegivel` tem de existir.
 **Aceite.** Os seis testes passam. Nenhum leitor de arquivo do dono devolve o padrão para arquivo ilegível
 sem passar pelo `Ilegivel` (guarda por AST nos seis módulos, com piso de seis).
 
+**Entregue** (2026-11-08): num commit só, e não um por arquivo. A cópia é
+`<nome>.ilegivel-<AAAA-MM-DD><extensão>` (a extensão no fim, a forma que a S-896 pede), e reabrir no mesmo
+dia não a multiplica. `ConteudoIlegivel(parcial=...)` é a porta da leitura parcial da S-814 e da S-896. A
+sala passou a decodificar UTF-8 estrito: o `errors="replace"` regravava o byte como U+FFFD, e agora trava
+(a S-905 dá o cp1252). A fila e o lote de versão **mais velha** também travam, porque não há migração.
+`Placar.origem` saiu: o caminho mora na `Lida`, e a janela de treino grava por `gravar_placar`, que a sala
+lhe passa. `ReviewQueue.load/save` e `Lote.carregar/salvar` viraram `carregar_fila`/`gravar_fila` e
+`carregar_lote`/`gravar_lote`. O `cvoff-review` recusa antes de varrer; o `cvoff-scan` grava o índice e
+põe a recusa da fila no relatório. As opções do motor da sala passaram a gravar sobre a camada de arquivo, e
+por isso já não levam o ambiente ao disco; o diálogo de configurações segue com o defeito até a S-811.
+
 ## S-905 · Arquivo do usuário em BOM, ANSI ou UTF-16 abre, e `UnicodeDecodeError` não escapa
 
 **Problema** (confirmado por script). Nenhuma leitura de texto de `src/` está sem `encoding` (84 com

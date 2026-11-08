@@ -23,6 +23,7 @@ from ambiente_de_teste import pasta_temporaria
 
 from chess_diagram_ocr import revisao_arquivo
 from chess_diagram_ocr import revisao_espacada as fsrs
+from chess_diagram_ocr.arquivo_do_dono import Lida
 
 HOJE = date(2026, 9, 4)
 
@@ -340,9 +341,9 @@ class ArquivoTests(unittest.TestCase):
         não pode mudar é o que se lê de volta -- e uma segunda gravação dá byte a byte o mesmo
         arquivo, que é a propriedade que importa para um arquivo relido todo dia."""
         baralho = self._baralho()
-        revisao_arquivo.gravar(baralho, caminho=self.caminho)
+        revisao_arquivo.gravar(Lida(baralho, self.caminho))
         primeira = self.caminho.read_bytes()
-        lido = revisao_arquivo.carregar(caminho=self.caminho)
+        lido = revisao_arquivo.carregar(caminho=self.caminho).valor
         self.assertEqual(sorted(baralho), sorted(lido))
         um = next(iter(baralho.values()))
         outro = lido[um.chave]
@@ -350,31 +351,31 @@ class ArquivoTests(unittest.TestCase):
         self.assertEqual(um.historico, outro.historico)
         self.assertEqual(2, len(outro.historico))
         self.assertAlmostEqual(um.estabilidade, outro.estabilidade, places=3)
-        revisao_arquivo.gravar(lido, caminho=self.caminho)
+        revisao_arquivo.gravar(Lida(lido, self.caminho))
         self.assertEqual(primeira, self.caminho.read_bytes())
 
     def test_arquivo_ausente_e_baralho_vazio(self) -> None:
-        self.assertEqual({}, revisao_arquivo.carregar(caminho=self.pasta / "nunca.json"))
+        self.assertEqual({}, revisao_arquivo.carregar(caminho=self.pasta / "nunca.json").valor)
 
     def test_baralho_vazio_grava_e_nao_ressuscita_o_antigo(self) -> None:
         """**A diferença para a sala de estudo**: aqui o vazio pode querer dizer "apaguei o
         histórico", e deixar o arquivo antigo o traria de volta na abertura seguinte."""
-        revisao_arquivo.gravar(self._baralho(), caminho=self.caminho)
-        revisao_arquivo.gravar({}, caminho=self.caminho)
+        revisao_arquivo.gravar(Lida(self._baralho(), self.caminho))
+        revisao_arquivo.gravar(Lida({}, self.caminho))
         self.assertTrue(self.caminho.exists())
-        self.assertEqual({}, revisao_arquivo.carregar(caminho=self.caminho))
+        self.assertEqual({}, revisao_arquivo.carregar(caminho=self.caminho).valor)
 
     def test_um_item_corrompido_nao_derruba_os_outros(self) -> None:
         """É o único dado deste programa que não se refaz varrendo o livro de novo."""
-        revisao_arquivo.gravar(self._baralho(3), caminho=self.caminho)
+        revisao_arquivo.gravar(Lida(self._baralho(3), self.caminho))
         dados = json.loads(self.caminho.read_text(encoding="utf-8"))
         dados["itens"][0]["vencimento"] = "isto-nao-e-data"
         self.caminho.write_text(json.dumps(dados), encoding="utf-8")
-        self.assertEqual(2, len(revisao_arquivo.carregar(caminho=self.caminho)))
+        self.assertEqual(2, len(revisao_arquivo.carregar(caminho=self.caminho).valor))
 
     def test_esquema_do_futuro_nao_e_lido_pela_metade(self) -> None:
         self.caminho.write_text(json.dumps({"esquema": 99, "itens": []}), encoding="utf-8")
-        self.assertEqual({}, revisao_arquivo.carregar(caminho=self.caminho))
+        self.assertEqual({}, revisao_arquivo.carregar(caminho=self.caminho).valor)
 
     def test_mil_itens_com_vinte_revisoes_cabem_em_tres_megabytes(self) -> None:
         """**A medição que justifica guardar o log inteiro** (S-540): ele é a entrada do
@@ -389,10 +390,10 @@ class ArquivoTests(unittest.TestCase):
             for volta in range(19):
                 estado = fsrs.proximo(estado, fsrs.BOM, hoje=HOJE + timedelta(days=volta + 1))
             baralho[chave] = estado
-        revisao_arquivo.gravar(baralho, caminho=self.caminho)
+        revisao_arquivo.gravar(Lida(baralho, self.caminho))
         tamanho = self.caminho.stat().st_size
         self.assertLess(tamanho, 3_000_000, f"o baralho ficou com {tamanho} bytes")
-        self.assertEqual(1000, len(revisao_arquivo.carregar(caminho=self.caminho)))
+        self.assertEqual(1000, len(revisao_arquivo.carregar(caminho=self.caminho).valor))
 
     def test_a_gravacao_e_atomica(self) -> None:
         from pathlib import Path

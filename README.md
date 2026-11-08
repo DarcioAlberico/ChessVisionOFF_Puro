@@ -1070,6 +1070,7 @@ src/chess_diagram_ocr/
   service.py            camada de servico: o pipeline de OCR, sem dependencia de UI
   settings.py           preferencias do usuario (endpoint remoto, motor de analise)
   alinhamento.py       regua de alinhamento do recorte: onde o damero ideal encaixa, em pixel (S-526)
+  arquivo_do_dono.py    leitura travada: arquivo do dono que nao le nao e gravado por cima (S-812)
   atomic_io.py          escrita de arquivo que nao deixa arquivo pela metade
   audit.py              auditoria do dataset: legalidade, duplicatas, orfaos
   augment.py            aumento de dados do treino: jitter, afim e ruido, com probabilidade

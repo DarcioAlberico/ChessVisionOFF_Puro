@@ -719,6 +719,23 @@ class OpcoesDoMotorTests(_Sala):
         self.assertEqual(256, gravado.hash_mb)
         self.assertEqual(4, gravado.multipv)
 
+    def test_settings_que_nao_le_nao_e_gravado_por_cima(self) -> None:
+        """**A leitura travada (S-812).** Uma vírgula sobrando fazia as opções do motor gravarem
+        os padrões por cima do arquivo -- e com eles `endpoint: ''`. Agora a sala aplica o motor
+        em memória, diz por que não gravou, e o arquivo fica como a pessoa o deixou."""
+        caminho = self.pasta / "settings.json"
+        original = b'{"remote_fen": {"endpoint": "https://meu/fen", "enabled": true},}'
+        caminho.write_bytes(original)
+        painel = self.sala(self.motor())
+        self._aplicar(
+            painel,
+            EngineSettings(path=str(self.launcher)),
+            EngineSettings(path=str(self.launcher), multipv=4),
+        )
+        self.assertEqual(original, caminho.read_bytes())
+        self.assertTrue(list(self.pasta.glob("settings.ilegivel-*.json")))
+        self.assertIn("settings.json não pôde ser lido", painel.lbl_status.text())
+
 
 class DialogoDoMotorTests(unittest.TestCase):
     """O formulário: tetos desta máquina e recusa com frase (S-536)."""

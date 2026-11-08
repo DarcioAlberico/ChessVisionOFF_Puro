@@ -10,11 +10,13 @@ from __future__ import annotations
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import chess
 from ambiente_de_teste import pasta_temporaria
 
 from chess_diagram_ocr import importacao_de_imagens as imp
+from chess_diagram_ocr.arquivo_do_dono import Lida
 
 PGN = (
     '[Event "Chapter 1"]\n[Site "Game 1"]\n\n\n'  # a linha em branco a mais do Harikrishna (S-585)
@@ -22,6 +24,13 @@ PGN = (
     '[Event "Chapter 1"]\n[Site "Game 2"]\n\n'
     "1.d4 d5 2.c4 e6 3.Nc3 *\n"
 )
+
+
+def _abrir(*args: Any, **kwargs: Any) -> tuple[imp.Lote, Path]:
+    """`abrir_lote` como o teste o usa: o lote e o caminho do andamento, de uma leitura que leu."""
+    leitura = imp.abrir_lote(*args, **kwargs)
+    assert isinstance(leitura, Lida), leitura
+    return leitura.valor, leitura.caminho
 
 
 def _campo(*lances: str) -> str:
@@ -59,7 +68,7 @@ class LoteDoLivroTests(unittest.TestCase):
         self.pasta = pasta_temporaria(self)
         self.livro = _pasta_do_livro(self.pasta)
         self.lotes = self.pasta / "lotes"
-        self.lote, self.arquivo = imp.abrir_lote(self.livro, imp.COM_PGN, diretorio=self.lotes)
+        self.lote, self.arquivo = _abrir(self.livro, imp.COM_PGN, diretorio=self.lotes)
 
     def test_cada_diagrama_com_a_fen_a_pagina_e_a_imagem_do_livro(self) -> None:
         self.assertEqual(3, len(self.lote))
@@ -86,8 +95,8 @@ class LoteDoLivroTests(unittest.TestCase):
 
     def test_reabrir_guarda_o_candidato_que_a_leitura_escolheu(self) -> None:
         self.lote.itens[2] = imp.com_a_leitura(self.lote.itens[2], GAMBITO, imp.RECORTE_DETECTADO)
-        self.lote.salvar(self.arquivo)
-        reaberto, _ = imp.abrir_lote(self.livro, imp.COM_PGN, diretorio=self.lotes)
+        imp.gravar_lote(Lida(self.lote, self.arquivo))
+        reaberto, _ = _abrir(self.livro, imp.COM_PGN, diretorio=self.lotes)
         self.assertEqual(GAMBITO, imp.campo_de_pecas(reaberto.itens[2].fen_da_fonte))
         self.assertEqual(GAMBITO, reaberto.itens[2].fen_do_modelo)
 
@@ -112,7 +121,7 @@ class LoteDoLivroTests(unittest.TestCase):
         vazia = self.pasta / "vazia"
         vazia.mkdir()
         with self.assertRaises(FileNotFoundError):
-            imp.abrir_lote(vazia, imp.COM_PGN, diretorio=self.lotes)
+            _abrir(vazia, imp.COM_PGN, diretorio=self.lotes)
 
 
 if __name__ == "__main__":

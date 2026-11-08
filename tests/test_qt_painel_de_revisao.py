@@ -23,7 +23,8 @@ from pathlib import Path
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
-from chess_diagram_ocr.review_queue import ReviewItem, ReviewQueue
+from chess_diagram_ocr.arquivo_do_dono import Lida
+from chess_diagram_ocr.review_queue import ReviewItem, ReviewQueue, carregar_fila, gravar_fila
 from chess_diagram_ocr.ui import varredura_de_revisao
 
 if TEM_PYQT:
@@ -72,7 +73,7 @@ class PainelTests(unittest.TestCase):
         caminho = self.pasta / "fila.json"
         if itens is not None:
             fila = ReviewQueue(source_pdf="livro.pdf", items=list(itens))
-            fila.save(caminho)
+            gravar_fila(Lida(fila, caminho))
         montado = qt_revisao.PainelDeRevisao(queue_path=caminho, cache_dir=self.pasta, **kwargs)  # type: ignore[arg-type]
         self.addCleanup(descartar, montado)
         montado.show()
@@ -103,7 +104,7 @@ class PainelTests(unittest.TestCase):
         painel.marcar_selecionado("done")
         self.assertEqual(painel.queue.items[1].status, "done")
         self.assertEqual(painel.tabela.topLevelItemCount(), 1, "o revisado saiu da vista")
-        self.assertEqual(ReviewQueue.load(painel.queue_path).items[1].status, "done")
+        self.assertEqual(carregar_fila(painel.queue_path).valor.items[1].status, "done")
         self.assertTrue(vistos and "done" in vistos[-1])
 
     def test_sem_selecao_o_gesto_vira_frase_e_nao_exceção(self) -> None:
@@ -162,7 +163,7 @@ class VarreduraTests(unittest.TestCase):
     def painel(self, itens: list[ReviewItem] | None = None, *, com_pedido: bool = True):  # noqa: ANN201
         caminho = self.pasta / "fila.json"
         if itens is not None:
-            ReviewQueue(source_pdf="livro.pdf", items=list(itens)).save(caminho)
+            gravar_fila(Lida(ReviewQueue(source_pdf="livro.pdf", items=list(itens)), caminho))
         pedido = varredura_de_revisao.PedidoDeVarredura(
             pdf_path=Path("livro.pdf"),
             model_path=Path("modelo.pt"),

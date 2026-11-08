@@ -19,9 +19,15 @@ import chess
 import chess.pgn
 
 from chess_diagram_ocr import estudo_arquivo
+from chess_diagram_ocr.arquivo_do_dono import Lida
 from chess_diagram_ocr.estudo import Ancora, PosicaoDeEstudo, Sala
 
 ITALIANA = "rnbqkb1r/pppp1ppp/5n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R"
+
+
+def _gravar(sala: Sala, *, pasta: Path) -> Path | None:
+    """Grava como a sala grava: sobre a leitura do livro dela, que aqui nunca existiu antes."""
+    return estudo_arquivo.gravar(Lida(sala, estudo_arquivo.caminho_de(sala.documento, pasta=pasta)))
 
 
 class ArquivoDaSalaTests(unittest.TestCase):
@@ -50,8 +56,8 @@ class ArquivoDaSalaTests(unittest.TestCase):
         return sala
 
     def test_a_sala_volta_do_disco_com_tudo(self) -> None:
-        estudo_arquivo.gravar(self._sala(0, 1, 2), pasta=self.pasta)
-        volta = estudo_arquivo.carregar(self.livro, pasta=self.pasta)
+        _gravar(self._sala(0, 1, 2), pasta=self.pasta)
+        volta = estudo_arquivo.carregar(self.livro, pasta=self.pasta).valor
         self.assertEqual(len(volta), 3)
         primeiro = volta.estudos()[0]
         self.assertEqual(primeiro.ancora.pagina, 142)
@@ -64,7 +70,7 @@ class ArquivoDaSalaTests(unittest.TestCase):
 
     def test_o_arquivo_e_um_pgn_de_muitas_partidas(self) -> None:
         """É o que o ChessBase e o Scid chamam de base -- e é por isso que o formato não é nosso."""
-        caminho = estudo_arquivo.gravar(self._sala(0, 1), pasta=self.pasta)
+        caminho = _gravar(self._sala(0, 1), pasta=self.pasta)
         self.assertEqual(caminho.suffix, ".pgn")
         with caminho.open(encoding="utf-8") as arquivo:
             partidas = []
@@ -90,28 +96,28 @@ class ArquivoDaSalaTests(unittest.TestCase):
 
     def test_livro_sem_sala_carrega_vazio_em_vez_de_levantar(self) -> None:
         """Ausência é o caso normal: quase todo livro do acervo nunca foi estudado."""
-        sala = estudo_arquivo.carregar(self.livro, pasta=self.pasta)
+        sala = estudo_arquivo.carregar(self.livro, pasta=self.pasta).valor
         self.assertEqual(len(sala), 0)
         self.assertEqual(sala.documento, self.livro)
 
     def test_sala_sem_documento_nao_grava(self) -> None:
         """Gravá-la num nome inventado criaria um arquivo que ninguém acha de volta."""
-        self.assertIsNone(estudo_arquivo.gravar(Sala(), pasta=self.pasta))
+        self.assertIsNone(_gravar(Sala(), pasta=self.pasta))
 
     def test_sala_que_esvaziou_apaga_o_arquivo(self) -> None:
         """Um PGN de zero partidas faria a próxima abertura carregar nada, e a pessoa concluir que
         a gravação não funciona."""
-        caminho = estudo_arquivo.gravar(self._sala(0), pasta=self.pasta)
+        caminho = _gravar(self._sala(0), pasta=self.pasta)
         self.assertTrue(caminho.exists())
-        self.assertIsNone(estudo_arquivo.gravar(Sala(self.livro), pasta=self.pasta))
+        self.assertIsNone(_gravar(Sala(self.livro), pasta=self.pasta))
         self.assertFalse(caminho.exists())
 
     def test_a_gravacao_e_atomica(self) -> None:
         """`atomic_write_text`: o que está no disco é trabalho humano, e um arquivo truncado por
         cima do anterior seria pior que gravação nenhuma."""
-        estudo_arquivo.gravar(self._sala(0), pasta=self.pasta)
+        _gravar(self._sala(0), pasta=self.pasta)
         antes = estudo_arquivo.caminho_de(self.livro, pasta=self.pasta).read_text(encoding="utf-8")
-        estudo_arquivo.gravar(self._sala(0, 1), pasta=self.pasta)
+        _gravar(self._sala(0, 1), pasta=self.pasta)
         depois = estudo_arquivo.caminho_de(self.livro, pasta=self.pasta).read_text(encoding="utf-8")
         self.assertGreater(len(depois), len(antes))
         self.assertEqual(list(self.pasta.glob("*.tmp*")), [])
@@ -119,12 +125,12 @@ class ArquivoDaSalaTests(unittest.TestCase):
     def test_partida_sem_ancora_no_arquivo_e_descartada_sem_derrubar_as_outras(self) -> None:
         """PGN de fora pode ter sido colado ali à mão. Uma partida que não é de diagrama nenhum não
         entra na sala, e as 49 restantes continuam valendo."""
-        caminho = estudo_arquivo.gravar(self._sala(0, 1), pasta=self.pasta)
+        caminho = _gravar(self._sala(0, 1), pasta=self.pasta)
         caminho.write_text(
             caminho.read_text(encoding="utf-8") + '\n\n[Event "avulsa"]\n[Result "*"]\n\n1. e4 e5 *\n',
             encoding="utf-8",
         )
-        self.assertEqual(len(estudo_arquivo.carregar(self.livro, pasta=self.pasta)), 2)
+        self.assertEqual(len(estudo_arquivo.carregar(self.livro, pasta=self.pasta).valor), 2)
 
 
 class LerPgnSemCarregarTudoTests(unittest.TestCase):
@@ -186,9 +192,9 @@ class LerPgnSemCarregarTudoTests(unittest.TestCase):
                 )
                 estudo.jogo.add_variation(chess.Move.from_uci("f8c5")).comment = f"nota {diagrama}"
                 sala.guardar(estudo)
-            estudo_arquivo.gravar(sala, pasta=pasta)
+            _gravar(sala, pasta=pasta)
 
-            self.assertEqual(len(estudo_arquivo.carregar(livro, pasta=pasta)), 6)
+            self.assertEqual(len(estudo_arquivo.carregar(livro, pasta=pasta).valor), 6)
 
 
 if __name__ == "__main__":  # pragma: no cover

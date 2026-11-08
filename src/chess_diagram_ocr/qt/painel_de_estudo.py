@@ -76,6 +76,7 @@ from PyQt6.QtWidgets import (
 from chess_diagram_ocr import eco, estudo_arquivo, revisao_arquivo, tablebase, taticas_arquivo
 from chess_diagram_ocr import estudo as estudo_mod
 from chess_diagram_ocr import placar as placar_mod
+from chess_diagram_ocr.arquivo_do_dono import GravacaoRecusada, Leitura, Lida, gravavel
 from chess_diagram_ocr.config import DATA_DIR
 from chess_diagram_ocr.engine import EngineAnalyzer, Evaluation
 from chess_diagram_ocr.estudo import Ancora, Estudo, PosicaoDeEstudo, Sala
@@ -91,7 +92,7 @@ from chess_diagram_ocr.qt.motor import BarraDeAvaliacao, LinhasDoMotor
 from chess_diagram_ocr.qt.rotulo import CampoQueAvisaQueContinua
 from chess_diagram_ocr.qt.tabuleiro_de_jogo import TabuleiroDeJogo
 from chess_diagram_ocr.qt.vazio import EstadoVazio
-from chess_diagram_ocr.settings import DEFAULT_SETTINGS_PATH, EngineSettings, load_settings, save_settings
+from chess_diagram_ocr.settings import DEFAULT_SETTINGS_PATH, EngineSettings, ler_arquivo, load_settings, save_settings
 from chess_diagram_ocr.ui import analise_da_partida as analise_declarada
 from chess_diagram_ocr.ui import (
     atalhos,
@@ -224,7 +225,7 @@ class PainelDeEstudo(QWidget):
         teste não pode escrever no `data/` do repositório. O produto usa o padrão, e a janela não
         precisa passar nada -- é o que mantém `qt/janela.py` do tamanho que a catraca exige."""
 
-        self._placar: placar_mod.Placar | None = None
+        self._leitura_do_placar: Leitura[placar_mod.Placar] | None = None
         """O placar do treino, lido do disco no primeiro uso. Ver a propriedade `placar`."""
         self._perda_do_lance: Any = None
         """O medidor do custo do lance errado (S-541), criado no primeiro erro."""
@@ -242,6 +243,8 @@ class PainelDeEstudo(QWidget):
         """De onde saem e para onde voltam as opções do motor (S-536). Argumento porque o teste
         não pode escrever no `data/settings.json` do repositório."""
         self._motor_vivo: Any = None
+        self._recusa_das_preferencias = ""
+        """Por que as opções do motor não foram gravadas, quando não foram (S-812)."""
         """O `MotorVivo` que aplica a troca fora da linha de eventos. Nasce no primeiro uso: sem
         ele, toda sala de teste carregaria uma `QThread` que nunca roda."""
         self._analise_da_partida: Any = None
@@ -278,6 +281,8 @@ class PainelDeEstudo(QWidget):
         mede a esteira da coluna esquerda -- ver `_esteira_da_coluna` (S-551, terceira rodada)."""
 
         self.sala = Sala()
+        self._leitura_da_sala: Leitura[Sala] | None = None
+        """De onde a sala veio e se ela pode voltar para lá (S-812). `None`: sala sem livro."""
         self.estudo = Estudo.de_posicao(PosicaoDeEstudo())
         self._historico = Historico(self.estudo.para_pgn())
         self._edicao = 0
@@ -1643,8 +1648,11 @@ class PainelDeEstudo(QWidget):
         releitura de onde a análise possa vir, então oferecer seria oferecer apagar o trabalho.
         """
         self.salvar_agora()
-        self.sala = estudo_arquivo.carregar(documento, pasta=self._pasta_de_estudos)
-        if len(self.sala):
+        self._leitura_da_sala = estudo_arquivo.carregar(documento, pasta=self._pasta_de_estudos)
+        self.sala = self._leitura_da_sala.valor
+        if not isinstance(self._leitura_da_sala, Lida):
+            self.set_status(self._leitura_da_sala.mensagem)
+        elif len(self.sala):
             self.set_status(f"{len(self.sala)} estudo(s) deste livro carregados.")
 
     @property
@@ -1678,10 +1686,13 @@ class PainelDeEstudo(QWidget):
         """
         self._relogio_de_gravacao.stop()
         self.gravar_comentario()
-        if not self._sujo or not self.sala.documento:
+        if not self._sujo or not self.sala.documento or self._leitura_da_sala is None:
             return None
         try:
-            caminho = estudo_arquivo.gravar(self.sala, pasta=self._pasta_de_estudos)
+            caminho = estudo_arquivo.gravar(gravavel(self._leitura_da_sala).com(self.sala))
+        except GravacaoRecusada as recusa:
+            self.set_status(str(recusa))
+            return None
         except OSError as erro:  # pragma: no cover - disco cheio ou pasta somente leitura
             logger.warning("Sala de estudo não pôde ser gravada: %s", erro)
             return None
@@ -2402,9 +2413,15 @@ class PainelDeEstudo(QWidget):
         """
         from chess_diagram_ocr.qt.preferencias import MotorVivo
 
-        preferencias = load_settings(self._caminho_das_preferencias)
+        leitura = ler_arquivo(self._caminho_das_preferencias)
+        self._recusa_das_preferencias = ""
         try:
-            save_settings(self._caminho_das_preferencias, replace(preferencias, engine=depois))
+            save_settings(gravavel(leitura).com(replace(leitura.valor, engine=depois)))
+        except GravacaoRecusada as recusa:
+            # Vale em memória e não vai para o disco (S-812). A frase sai junto com a do motor
+            # aplicado, que chega depois e cobriria esta.
+            self._recusa_das_preferencias = str(recusa)
+            self.set_status(self._recusa_das_preferencias)
         except OSError as erro:  # pragma: no cover - disco cheio ou pasta somente leitura
             logger.warning("As preferências do motor não puderam ser gravadas: %s", erro)
         # O leitor de finais é reaberto na próxima consulta: a pasta pode ter mudado.
@@ -2420,7 +2437,7 @@ class PainelDeEstudo(QWidget):
 
     def _motor_aplicado(self, motor: Any, frase: str) -> None:
         self.trocar_de_motor(motor)
-        self.set_status(frase)
+        self.set_status(" ".join(parte for parte in (frase, self._recusa_das_preferencias) if parte))
 
     @property
     def analisador(self) -> EngineAnalyzer | None:
@@ -3086,20 +3103,34 @@ class PainelDeEstudo(QWidget):
         treina: carregar o `placar.json` no `__init__` faria toda montagem tocar o disco por causa
         de uma frase que quase nunca aparece.
         """
-        if self._placar is None:
-            self._placar = placar_mod.carregar(caminho=self._caminho_do_placar())
-        return self._placar
+        if self._leitura_do_placar is None:
+            self._leitura_do_placar = placar_mod.carregar(caminho=self._caminho_do_placar())
+        return self._leitura_do_placar.valor
+
+    def _gravar_o_placar(self, _placar: placar_mod.Placar | None = None) -> None:
+        """Grava o placar sobre o arquivo de onde ele veio -- e só se ele leu (S-812).
+
+        O argumento é o que a janela de treino passa; ele é sempre o mesmo objeto de `placar`.
+        """
+        if self._leitura_do_placar is None:
+            return
+        try:
+            placar_mod.gravar(gravavel(self._leitura_do_placar))
+        except GravacaoRecusada as recusa:
+            self.set_status(str(recusa))
+        except OSError as erro:  # pragma: no cover - disco cheio ou arquivo em uso
+            logger.warning("O placar do treino não pôde ser gravado: %s", erro)
 
     def _caminho_do_placar(self) -> Path:
         return self._pasta_de_treino / placar_mod.CAMINHO_PADRAO.name
 
     def _mostrar_placar(self) -> None:
-        if not self.btn_treino.isChecked() or self._placar is None:
+        if not self.btn_treino.isChecked() or self._leitura_do_placar is None:
             self.lbl_placar.setText("")
             return
         livro = self.estudo.ancora.documento or self.sala.documento
         self.lbl_placar.setText(
-            treino_declarado.frase_do_placar(self._placar.sessao, self._placar.do_livro(livro))
+            treino_declarado.frase_do_placar(self.placar.sessao, self.placar.do_livro(livro))
         )
 
     def _treinar(self, move: chess.Move) -> None:
@@ -3169,10 +3200,7 @@ class PainelDeEstudo(QWidget):
         self.placar.registrar(livro, julgamento.resultado, perda=julgamento.perda)
         self._mostrar_placar()
         self.set_status(treino_declarado.frase_do_resultado(julgamento, jogado, gabarito))
-        try:
-            placar_mod.gravar(self.placar, caminho=self._caminho_do_placar())
-        except OSError as erro:  # pragma: no cover - disco cheio ou arquivo em uso
-            logger.warning("O placar do treino não pôde ser gravado: %s", erro)
+        self._gravar_o_placar()
 
     # -------------------------------------------------- táticas e agenda (S-539/S-540)
 
@@ -3222,10 +3250,15 @@ class PainelDeEstudo(QWidget):
     def _caminho_da_revisao(self) -> Path:
         return self._pasta_de_treino / revisao_arquivo.CAMINHO_PADRAO.name
 
-    def _gravar_o_baralho(self, caminho: Path, baralho: dict[str, Any]) -> None:
+    def _gravar_o_baralho(self, leitura: Leitura[dict[str, Any]], baralho: dict[str, Any]) -> None:
         """A gravação que a janela de treino chama ao fechar. Método e não `lambda`: um `lambda`
-        não tem nome para o critério de aceite citar, e a S-546 já registrou o argumento."""
-        revisao_arquivo.gravar(baralho, caminho=caminho)
+        não tem nome para o critério de aceite citar, e a S-546 já registrou o argumento.
+
+        Grava sobre a leitura de onde o baralho veio, e só se ela leu (S-812)."""
+        try:
+            revisao_arquivo.gravar(gravavel(leitura).com(baralho))
+        except GravacaoRecusada as recusa:
+            self.set_status(str(recusa))
 
     def treinar_a_agenda(self) -> Any:
         """Abre a fila de hoje da repetição espaçada (S-540).
@@ -3241,14 +3274,17 @@ class PainelDeEstudo(QWidget):
                 'Não há exercício extraído ainda. Use "Táticas do livro" com um livro aberto.'
             )
             return None
-        caminho = self._caminho_da_revisao()
+        leitura = revisao_arquivo.carregar(caminho=self._caminho_da_revisao())
+        if not isinstance(leitura, Lida):
+            self.set_status(leitura.mensagem)
         janela = JanelaDeTreino(
             self,
             exercicios=exercicios,
-            baralho=revisao_arquivo.carregar(caminho=caminho),
+            baralho=leitura.valor,
             placar=self.placar,
             analisador=self._analyzer,
-            gravar=partial(self._gravar_o_baralho, caminho),
+            gravar=partial(self._gravar_o_baralho, leitura),
+            gravar_placar=self._gravar_o_placar,
         )
         janela.fechada.connect(self._mostrar_placar)
         self._treino = janela

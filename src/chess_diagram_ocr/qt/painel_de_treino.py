@@ -381,6 +381,7 @@ class JanelaDeTreino(QDialog):
         analisador: Any = None,
         hoje: date | None = None,
         gravar: Callable[[dict[str, revisao_espacada.Estado]], None] = lambda _b: None,
+        gravar_placar: Callable[[placar_mod.Placar], None] | None = None,
     ) -> None:
         super().__init__(pai)
         self.setWindowTitle("Treino de táticas")
@@ -390,6 +391,7 @@ class JanelaDeTreino(QDialog):
         self._baralho = dict(baralho or {})
         self._placar = placar if placar is not None else placar_mod.Placar()
         self._gravar = gravar
+        self._gravar_placar = gravar_placar
         self._perda = PerdaDoLance(self, analisador=analisador)
         self._perda.pronta.connect(self._chegou_a_perda)
         self._perda.falhou.connect(self._nao_veio_a_perda)
@@ -775,15 +777,14 @@ class JanelaDeTreino(QDialog):
         arquivo tem uma linha por livro e alguns bytes, e o que se perde numa queda é justamente a
         sessão que ninguém vai repetir. (O baralho é o contrário -- ele reescreve o acervo inteiro.)
 
-        **Sem origem, nada é gravado.** Um `Placar()` que não veio do disco -- o de um teste, o de
-        quem colou uma posição à mão -- não tem para onde voltar, e `placar.gravar` cairia em
-        `CAMINHO_PADRAO`, que é `data/placar.json` da árvore do programa: gravar ali seria escrever
-        na instalação por causa de um objeto que ninguém pediu para persistir.
+        **Sem `gravar_placar`, nada é gravado.** Um `Placar()` que não veio do disco -- o de um
+        teste, o de quem colou uma posição à mão -- não tem para onde voltar. Quem sabe de onde o
+        placar veio, e se ele pode voltar para lá (S-812), é quem o leu: a sala.
         """
-        if self._placar.origem is None:
+        if self._gravar_placar is None:
             return
         try:
-            placar_mod.gravar(self._placar)
+            self._gravar_placar(self._placar)
         except OSError as erro:  # pragma: no cover - disco cheio ou arquivo em uso
             logger.warning("O placar do treino não pôde ser gravado: %s", erro)
 

@@ -26,6 +26,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import urlparse
 
+from .arquivo_do_dono import Leitura, Lida, gravavel, ler
 from .atomic_io import atomic_write_json
 from .config import DATA_DIR
 
@@ -529,41 +530,40 @@ def _flag(raw: str) -> bool | None:
     return None
 
 
+def ler_arquivo(path: Path = DEFAULT_SETTINGS_PATH) -> Leitura[Settings]:
+    """O que está gravado em `settings.json`, sem as variáveis de ambiente (S-812).
+
+    Arquivo ausente é `Lida` com os padrões. Arquivo que não lê -- vírgula sobrando, topo que não é
+    objeto -- é leitura travada: os padrões valem em memória, e `save_settings` recusa gravar por
+    cima. Antes, os padrões voltavam como se fossem o arquivo, e o próximo *Salvar* escrevia
+    `endpoint: ''` sobre o que a pessoa tinha escrito.
+    """
+    return ler(path, _interpretar, Settings)
+
+
+def _interpretar(texto: str) -> Settings:
+    carregado = json.loads(texto)
+    if not isinstance(carregado, Mapping):
+        raise ValueError("o topo não é um objeto")
+    return Settings.from_dict(carregado)
+
+
 def load_settings(
     path: Path = DEFAULT_SETTINGS_PATH,
     *,
     env: Mapping[str, str] | None = None,
 ) -> Settings:
-    """Lê as preferências. Arquivo ausente ou corrompido cai no padrão, que não envia nada.
+    """As preferências que valem agora: o arquivo, com as variáveis de ambiente por cima.
 
-    Falhar para o lado do padrão é seguro aqui exatamente porque o padrão é "desligado":
-    um JSON truncado não pode ligar um envio para fora.
+    Arquivo ausente ou ilegível cai no padrão, que não envia nada: falhar para o lado do padrão é
+    seguro aqui exatamente porque o padrão é "desligado", e um JSON truncado não pode ligar um
+    envio para fora. Gravar é outra conversa -- ver `ler_arquivo`.
     """
-    dados: Mapping[str, object] = {}
-    if path.exists():
-        try:
-            carregado = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(carregado, Mapping):
-                dados = carregado
-            else:
-                logger.warning("settings.json nao contem um objeto; usando os padroes.")
-        except (OSError, json.JSONDecodeError) as exc:
-            logger.warning("Nao foi possivel ler %s (%s); usando os padroes.", path, exc)
-
-    try:
-        return apply_environment(Settings.from_dict(dados), env=env)
-    except Exception:  # noqa: BLE001 - ver abaixo: preferencia nenhuma vale a janela nao abrir
-        # **Rede de seguranca, e nao o conserto** (S-124). O conserto e a coercao por campo
-        # (`_inteiro`, `_flutuante`), que preserva o resto do arquivo; isto aqui cobre a forma
-        # que ninguem previu -- uma secao que e lista, um valor que e dicionario -- e existe
-        # porque o custo do erro e desproporcional: `app_tkinter` chama isto no `__init__`,
-        # antes de a janela existir, e no bundle da S-55 (`console=False`) o traceback nao
-        # aparece em lugar nenhum. O programa nao abre e nao diz por que.
-        logger.exception("settings.json tem uma forma inesperada; abrindo com os padroes.")
-        return apply_environment(Settings(), env=env)
+    return apply_environment(ler_arquivo(path).valor, env=env)
 
 
-def save_settings(path: Path, settings: Settings) -> None:
-    """Grava as preferências de forma atômica (S-25)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(path, settings.to_dict())
+def save_settings(lida: Lida[Settings]) -> None:
+    """Grava as preferências de forma atômica (S-25). Só sobre uma leitura que leu (S-812)."""
+    lida = gravavel(lida)
+    lida.caminho.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(lida.caminho, lida.valor.to_dict())

@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import logging
 import random
+import sys
 from pathlib import Path
 
+from ..arquivo_do_dono import Lida
 from ..config import (
     DEFAULT_DATASET_CSV,
     DEFAULT_MAX_BOARDS,
@@ -17,7 +19,9 @@ from ..review_queue import (
     DEFAULT_QUEUE_PATH,
     ReviewQueue,
     build_review_queue,
+    carregar_fila,
     error_rate,
+    gravar_fila,
     merge_queues,
     rare_classes_from_labels,
 )
@@ -91,6 +95,13 @@ def main(argv: list[str] | None = None) -> int:
             total_positions,
         )
 
+    anterior = carregar_fila(args.queue)
+    if not isinstance(anterior, Lida):
+        # Antes da varredura, e nao depois: a fila que nao leu nao e regravada (S-812), e varrer
+        # o livro inteiro para so entao recusar seria gastar a noite.
+        print(anterior.mensagem, file=sys.stderr)
+        return 1
+
     rare = rare_classes_from_labels(args.labels)
     if rare:
         logger.info("Classes raras no dataset: %s", ", ".join(sorted(rare)))
@@ -112,13 +123,13 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.merge:
-        existing = ReviewQueue.load(args.queue)
+        existing = anterior.valor
         if existing.items and mesmo_livro(existing.source_pdf, queue.source_pdf):
             revisados = sum(1 for item in existing.items if item.status != "pending")
             queue = merge_queues(existing, queue)
             print(f"Fila anterior reaproveitada: {revisados} itens ja marcados foram preservados.")
 
-    path = queue.save(args.queue)
+    path = gravar_fila(anterior.com(queue))
 
     print(f"PDF: {args.pdf}")
     print(f"Fila: {path}")

@@ -50,6 +50,7 @@ from typing import Any
 
 import numpy as np
 
+from .arquivo_do_dono import MARCA_DA_COPIA, Leitura, Lida, VersaoFutura, com_valor, gravavel, ler
 from .atomic_io import atomic_write_bytes, atomic_write_json, read_image
 from .config import BOARD_SIZE, DATA_DIR
 from .relogio import agora_iso
@@ -74,6 +75,8 @@ __all__ = [
     "abrir_lote",
     "andamento_de_outros_lotes",
     "caminho_do_lote",
+    "carregar_lote",
+    "gravar_lote",
     "campo_de_pecas",
     "casas_diferentes",
     "com_a_leitura",
@@ -272,30 +275,41 @@ class Lote:
             "itens": [item.to_dict() for item in self.itens],
         }
 
-    def salvar(self, caminho: Path) -> Path:
-        atomic_write_json(Path(caminho), self.to_dict(), indent=1)
-        return Path(caminho)
 
-    @classmethod
-    def carregar(cls, caminho: Path) -> Lote | None:
-        """O lote gravado, ou `None` quando não há arquivo ou ele não é deste formato."""
-        caminho = Path(caminho)
-        if not caminho.exists():
-            return None
-        try:
-            dados = json.loads(caminho.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-            logger.warning("Andamento da importação ilegível, recomeçando (%s): %s", caminho, exc)
-            return None
-        if not isinstance(dados, dict) or dados.get("versao") != VERSAO_DO_LOTE:
-            return None
-        return cls(
-            pasta=str(dados.get("pasta", "")),
-            origem=str(dados.get("origem", "")),
-            itens=[ItemDeImportacao.from_dict(item) for item in dados.get("itens", []) if isinstance(item, dict)],
-            ausentes=int(dados.get("ausentes", 0) or 0),
-            criado_em=str(dados.get("criado_em", "")),
-        )
+
+def carregar_lote(caminho: Path) -> Leitura[Lote | None]:
+    """O lote gravado; `None` dentro da `Lida` quando não há arquivo.
+
+    **Ilegível, ou de outra versão, é leitura travada (S-812).** Antes ele voltava `None`, e
+    `abrir_lote` recomeçava com todas as imagens pendentes -- o próximo clique gravava esse lote
+    recomeçado por cima do andamento de uma tarde de conferência.
+    """
+    return ler(Path(caminho), _lote_de_json, lambda: None)
+
+
+def _lote_de_json(texto: str) -> Lote:
+    dados = json.loads(texto)
+    if not isinstance(dados, dict):
+        raise ValueError("o topo não é um objeto")
+    versao = dados.get("versao")
+    if versao != VERSAO_DO_LOTE:
+        if isinstance(versao, int) and versao > VERSAO_DO_LOTE:
+            raise VersaoFutura(versao)
+        raise ValueError(f"versão {versao!r} desconhecida")
+    return Lote(
+        pasta=str(dados.get("pasta", "")),
+        origem=str(dados.get("origem", "")),
+        itens=[ItemDeImportacao.from_dict(item) for item in dados.get("itens", []) if isinstance(item, dict)],
+        ausentes=int(dados.get("ausentes", 0) or 0),
+        criado_em=str(dados.get("criado_em", "")),
+    )
+
+
+def gravar_lote(lida: Lida[Lote]) -> Path:
+    """Grava o andamento onde ele foi lido. Só sobre uma leitura que leu (S-812)."""
+    lida = gravavel(lida)
+    atomic_write_json(lida.caminho, lida.valor.to_dict(), indent=1)
+    return lida.caminho
 
 
 def caminho_do_lote(pasta: Path | str, origem: str, *, diretorio: Path | None = None) -> Path:
@@ -306,12 +320,13 @@ def caminho_do_lote(pasta: Path | str, origem: str, *, diretorio: Path | None = 
     return Path(diretorio if diretorio is not None else DIRETORIO_DOS_LOTES) / f"{legivel}_{origem}_{chave}.json"
 
 
-def abrir_lote(pasta: Path | str, origem: str, *, diretorio: Path | None = None) -> tuple[Lote, Path]:
-    """Lê a pasta e junta com o andamento gravado, se houver.
+def abrir_lote(pasta: Path | str, origem: str, *, diretorio: Path | None = None) -> Leitura[Lote]:
+    """Lê a pasta e junta com o andamento gravado, se houver. O caminho do andamento vem na leitura.
 
     A pasta é relida sempre: uma execução nova do plugin acrescenta imagens, e elas têm de
     aparecer. O que já tinha andamento (salvo, pulado, descartado, correção feita) fica como estava
-    -- a chave é o caminho da imagem.
+    -- a chave é o caminho da imagem. Andamento que não leu trava a gravação (S-812): o lote da
+    pasta vale em memória, todo pendente, e `gravar_lote` o recusa.
     """
     pasta = Path(pasta)
     if origem == COM_FEN:
@@ -322,14 +337,14 @@ def abrir_lote(pasta: Path | str, origem: str, *, diretorio: Path | None = None)
         novo = ler_livro_com_pgn(pasta, diretorio=diretorio)
     else:
         raise ValueError(f"Origem desconhecida: {origem!r}")
-    caminho = caminho_do_lote(pasta, origem, diretorio=diretorio)
-    antigo = Lote.carregar(caminho)
+    leitura = carregar_lote(caminho_do_lote(pasta, origem, diretorio=diretorio))
+    antigo = leitura.valor
     if antigo is not None:
         por_imagem = {item.imagem: item for item in antigo.itens}
         novo.itens = [_juntar(item, por_imagem.get(item.imagem)) for item in novo.itens]
         novo.criado_em = antigo.criado_em or novo.criado_em
     _herdar_de_outros_lotes(novo, andamento_de_outros_lotes(novo.pasta, origem, diretorio=diretorio))
-    return novo, caminho
+    return com_valor(leitura, novo)
 
 
 def _chave_absoluta(pasta: str, imagem: str) -> str:
@@ -354,9 +369,9 @@ def andamento_de_outros_lotes(
     if not diretorio.is_dir():
         return decididos
     for arquivo in sorted(diretorio.glob("*.json")):
-        if arquivo.name == proprio:
+        if arquivo.name == proprio or MARCA_DA_COPIA in arquivo.name:
             continue
-        lote = Lote.carregar(arquivo)
+        lote = carregar_lote(arquivo).valor
         if lote is None or not lote.pasta:
             continue
         for item in lote.itens:

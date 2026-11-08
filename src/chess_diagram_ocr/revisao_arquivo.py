@@ -20,9 +20,9 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterable
 from pathlib import Path
 
+from .arquivo_do_dono import Leitura, Lida, VersaoFutura, gravavel, ler
 from .atomic_io import atomic_write_json
 from .config import DATA_DIR
 from .revisao_espacada import Estado
@@ -40,24 +40,26 @@ Baralho = dict[str, Estado]
 """Chave do item -> o estado dele. É o que `revisao_espacada.agenda` recebe."""
 
 
-def carregar(*, caminho: Path | None = None) -> Baralho:
+def carregar(*, caminho: Path | None = None) -> Leitura[Baralho]:
     """O baralho gravado. Vazio quando não há arquivo -- o primeiro dia é o caso normal.
 
     **Um estado ilegível não derruba os outros.** Um baralho de 600 itens em que um tem data
     corrompida ainda tem 599 agendamentos dentro, e perdê-los todos por causa de um seria perder
     meses de revisão -- que é o único dado deste programa que não se refaz varrendo o livro de novo.
+
+    **O arquivo ilegível, ou de esquema mais novo, é leitura travada (S-812):** o baralho vazio vale
+    em memória, e `gravar` recusa escrevê-lo por cima dos 600 itens.
     """
-    origem = Path(caminho) if caminho is not None else CAMINHO_PADRAO
-    if not origem.exists():
-        return {}
-    try:
-        dados = json.loads(origem.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as erro:
-        logger.warning("O baralho de revisão não pôde ser lido (%s): %s", origem, erro)
-        return {}
-    if not isinstance(dados, dict) or int(dados.get("esquema", ESQUEMA)) > ESQUEMA:
-        logger.warning("%s: esquema desconhecido ou topo que não é objeto.", origem.name)
-        return {}
+    return ler(Path(caminho) if caminho is not None else CAMINHO_PADRAO, _interpretar, dict)
+
+
+def _interpretar(texto: str) -> Baralho:
+    dados = json.loads(texto)
+    if not isinstance(dados, dict):
+        raise ValueError("o topo não é um objeto")
+    esquema = int(dados.get("esquema", ESQUEMA))
+    if esquema > ESQUEMA:
+        raise VersaoFutura(esquema)
 
     baralho: Baralho = {}
     for bruto in dados.get("itens", []):
@@ -71,16 +73,17 @@ def carregar(*, caminho: Path | None = None) -> Baralho:
     return baralho
 
 
-def gravar(baralho: Iterable[Estado] | Baralho, *, caminho: Path | None = None) -> Path:
-    """Grava o baralho inteiro. Devolve o caminho, sempre -- inclusive o do baralho vazio.
+def gravar(lida: Lida[Baralho]) -> Path:
+    """Grava o baralho inteiro onde ele foi lido. Devolve o caminho, inclusive o do baralho vazio.
 
     **Vazio não apaga o arquivo**, e é a diferença para `estudo_arquivo` e `taticas_arquivo`. Lá o
     vazio quer dizer "não há nada a guardar"; aqui ele pode querer dizer "a pessoa apagou o
     histórico", e um apagamento que deixa o arquivo antigo no disco ressuscitaria o histórico na
-    abertura seguinte.
+    abertura seguinte. Só sobre uma leitura que leu (S-812).
     """
-    destino = Path(caminho) if caminho is not None else CAMINHO_PADRAO
-    estados = list(baralho.values()) if isinstance(baralho, dict) else list(baralho)
+    lida = gravavel(lida)
+    destino = lida.caminho
+    estados = list(lida.valor.values())
     atomic_write_json(
         destino,
         {

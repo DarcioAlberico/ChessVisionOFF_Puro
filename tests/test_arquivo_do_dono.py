@@ -1,0 +1,227 @@
+"""A leitura travada (S-812): arquivo do dono que não lê não é arquivo vazio.
+
+Para cada um dos seis leitores: o arquivo corrompido (ou de esquema futuro) é carregado, o valor em
+memória é mexido como o programa mexe, e a gravação é pedida. O original tem de estar intacto e a
+cópia `.ilegivel-<data>` tem de existir ao lado dele. Antes, os seis voltavam o padrão e a gravação
+escrevia o vazio por cima (`scratchpad/defeito_s812.py` da sessão de 2026-11-08: seis FALHA).
+"""
+
+from __future__ import annotations
+
+import ast
+import json
+import tempfile
+import unittest
+from dataclasses import replace
+from datetime import date
+from pathlib import Path
+
+from chess_diagram_ocr import arquivo_do_dono, estudo_arquivo, placar, revisao_arquivo, settings
+from chess_diagram_ocr import importacao_de_imagens as imp
+from chess_diagram_ocr.arquivo_do_dono import (
+    EsquemaFuturo,
+    GravacaoRecusada,
+    Ilegivel,
+    Lida,
+    VersaoFutura,
+    gravavel,
+)
+from chess_diagram_ocr.config import PROJECT_ROOT
+from chess_diagram_ocr.review_queue import carregar_fila, gravar_fila
+
+PGN_EM_CP1252 = (
+    '[Event "x"]\n[SourcePDF "Livro.pdf"]\n[Page "3"]\n[Diagram "1"]\n\n1. e4 {an\xe1lise} e5 *\n'
+).encode("cp1252")
+
+
+class SeisLeitoresTests(unittest.TestCase):
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.pasta = Path(tmp.name)
+
+    def _corromper(self, caminho: Path, conteudo: bytes) -> bytes:
+        caminho.parent.mkdir(parents=True, exist_ok=True)
+        caminho.write_bytes(conteudo)
+        return conteudo
+
+    def _conferir(self, caminho: Path, original: bytes, gravar: object) -> None:
+        with self.assertRaises(GravacaoRecusada) as recusa:
+            gravar()  # type: ignore[operator]
+        self.assertEqual(original, caminho.read_bytes(), "o original fica intacto")
+        copias = sorted(caminho.parent.glob(f"*{arquivo_do_dono.MARCA_DA_COPIA}*"))
+        self.assertEqual(1, len(copias), "uma cópia ao lado")
+        self.assertEqual(original, copias[0].read_bytes())
+        self.assertEqual(caminho.suffix, copias[0].suffix, "a extensão fica no fim")
+        self.assertIn(copias[0].name, str(recusa.exception), "a frase diz onde está a cópia")
+
+    def test_settings_com_virgula_sobrando(self) -> None:
+        caminho = self.pasta / "settings.json"
+        original = self._corromper(caminho, b'{"remote_fen": {"endpoint": "http://x", "enabled": true},}')
+        leitura = settings.ler_arquivo(caminho)
+        self.assertIsInstance(leitura, Ilegivel)
+        self.assertEqual(settings.Settings(), leitura.valor, "os padrões valem em memória")
+        novo = replace(leitura.valor, engine=replace(leitura.valor.engine, multipv=5))
+        self._conferir(caminho, original, lambda: settings.save_settings(replace(leitura, valor=novo)))
+
+    def test_baralho_de_esquema_futuro_com_600_itens(self) -> None:
+        caminho = self.pasta / "revisao.json"
+        corpo = {"esquema": 2, "itens": [{"chave": f"k{i}"} for i in range(600)]}
+        original = self._corromper(caminho, json.dumps(corpo).encode())
+        leitura = revisao_arquivo.carregar(caminho=caminho)
+        self.assertIsInstance(leitura, EsquemaFuturo)
+        self.assertEqual(2, leitura.versao)
+        self._conferir(caminho, original, lambda: revisao_arquivo.gravar(leitura))
+
+    def test_placar_truncado(self) -> None:
+        caminho = self.pasta / "placar.json"
+        original = self._corromper(caminho, b'{"esquema": 1, "livros": [')
+        leitura = placar.carregar(caminho=caminho)
+        leitura.valor.registrar("um.pdf", placar.CERTO)
+        self._conferir(caminho, original, lambda: placar.gravar(leitura))
+
+    def test_sala_com_byte_que_nao_e_utf8(self) -> None:
+        """Antes o byte virava U+FFFD em silêncio, e a regravação estragava a análise para sempre."""
+        livro = str(self.pasta / "Livro.pdf")
+        caminho = estudo_arquivo.caminho_de(livro, pasta=self.pasta)
+        original = self._corromper(caminho, PGN_EM_CP1252)
+        leitura = estudo_arquivo.carregar(livro, pasta=self.pasta)
+        self.assertIsInstance(leitura, Ilegivel)
+        self.assertEqual(livro, leitura.valor.documento, "a sala em memória é do livro certo")
+        self.assertIn("UTF-8", leitura.mensagem)
+        self._conferir(caminho, original, lambda: estudo_arquivo.gravar(leitura))
+
+    def test_fila_de_revisao_truncada(self) -> None:
+        caminho = self.pasta / "review_queue.json"
+        original = self._corromper(caminho, b'{"version": 1, "items": [{"page_index": 1')
+        leitura = carregar_fila(caminho)
+        self._conferir(caminho, original, lambda: gravar_fila(leitura))
+
+    def test_lote_de_versao_futura_nao_recomeca_tudo_pendente(self) -> None:
+        imagens = self.pasta / "imgs"
+        imagens.mkdir()
+        lotes = self.pasta / "lotes"
+        caminho = imp.caminho_do_lote(imagens, imp.SEM_FEN, diretorio=lotes)
+        original = self._corromper(caminho, b'{"versao": 9, "itens": []}')
+        leitura = imp.abrir_lote(imagens, imp.SEM_FEN, diretorio=lotes)
+        self.assertIsInstance(leitura, EsquemaFuturo)
+        self.assertEqual(caminho, leitura.caminho)
+        self._conferir(caminho, original, lambda: imp.gravar_lote(gravavel(leitura)))
+
+    def test_outro_lote_ilegivel_nao_vira_copia_de_copia(self) -> None:
+        """A herança entre lotes varre a pasta: a cópia `.ilegivel` não pode ser lida como lote."""
+        imagens = self.pasta / "imgs"
+        imagens.mkdir()
+        lotes = self.pasta / "lotes"
+        lotes.mkdir()
+        (lotes / "outro.json").write_bytes(b"{")
+        imp.abrir_lote(imagens, imp.SEM_FEN, diretorio=lotes)
+        imp.abrir_lote(imagens, imp.SEM_FEN, diretorio=lotes)
+        nomes = sorted(p.name for p in lotes.iterdir())
+        self.assertEqual(1, sum(arquivo_do_dono.MARCA_DA_COPIA in nome for nome in nomes), nomes)
+
+
+class LeituraTests(unittest.TestCase):
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.caminho = Path(tmp.name) / "dados.json"
+
+    def _ler(self) -> arquivo_do_dono.Leitura[dict[str, object]]:
+        def interpretar(texto: str) -> dict[str, object]:
+            dados = json.loads(texto)
+            if dados.get("esquema", 1) > 1:
+                raise VersaoFutura(dados["esquema"])
+            return dict(dados)
+
+        return arquivo_do_dono.ler(self.caminho, interpretar, dict)
+
+    def test_ausente_e_lida_com_o_padrao(self) -> None:
+        leitura = self._ler()
+        self.assertIsInstance(leitura, Lida)
+        self.assertEqual({}, leitura.valor)
+        self.assertEqual([], list(self.caminho.parent.iterdir()), "ausência não cria nada")
+
+    def test_lida_grava_e_ilegivel_nao(self) -> None:
+        self.caminho.write_text('{"a": 1}', encoding="utf-8")
+        self.assertIs(gravavel(self._ler()).valor["a"], 1)
+
+    def test_reabrir_no_mesmo_dia_nao_multiplica_copias(self) -> None:
+        self.caminho.write_bytes(b"{")
+        for _vez in range(3):
+            self.assertIsInstance(self._ler(), Ilegivel)
+        self.assertEqual(1, len(list(self.caminho.parent.glob("*.ilegivel-*"))))
+
+    def test_copia_de_conteudo_diferente_no_mesmo_dia_nao_e_sobrescrita(self) -> None:
+        dia = date(2026, 11, 8)
+        self.caminho.write_bytes(b"{")
+        primeira = arquivo_do_dono.copiar_ao_lado(self.caminho, hoje=dia)
+        self.caminho.write_bytes(b"[")
+        segunda = arquivo_do_dono.copiar_ao_lado(self.caminho, hoje=dia)
+        assert primeira is not None and segunda is not None
+        self.assertEqual("dados.ilegivel-2026-11-08.json", primeira.name)
+        self.assertEqual("dados.ilegivel-2026-11-08-2.json", segunda.name)
+        self.assertEqual(b"{", primeira.read_bytes())
+
+    def test_leitura_parcial_entra_em_memoria_e_trava(self) -> None:
+        """O caminho que a S-814 e a S-896 vão usar: o que leu fica, e a gravação continua travada."""
+        self.caminho.write_text("x", encoding="utf-8")
+
+        def interpretar(_texto: str) -> list[int]:
+            raise arquivo_do_dono.ConteudoIlegivel("a terceira partida não leu", parcial=[1, 2])
+
+        leitura = arquivo_do_dono.ler(self.caminho, interpretar, list)
+        self.assertIsInstance(leitura, Ilegivel)
+        self.assertEqual([1, 2], leitura.valor)
+        self.assertIn("a terceira partida não leu", leitura.mensagem)
+
+
+SEIS_MODULOS = (
+    "settings",
+    "revisao_arquivo",
+    "placar",
+    "estudo_arquivo",
+    "review_queue",
+    "importacao_de_imagens",
+)
+LEITURAS_QUE_NAO_SAO_DO_DONO = {("importacao_de_imagens", "ler_relatorios_do_chessmeridaocr")}
+"""O relatório HTML do ChessMeridaOCR é do plugin de outra pessoa: o programa só o lê, nunca o grava."""
+
+
+class GuardaTests(unittest.TestCase):
+    """Nenhum leitor de arquivo do dono lê o arquivo por fora de `arquivo_do_dono.ler`."""
+
+    def _arvore(self, modulo: str) -> ast.Module:
+        caminho = PROJECT_ROOT / "src" / "chess_diagram_ocr" / f"{modulo}.py"
+        return ast.parse(caminho.read_text(encoding="utf-8"))
+
+    def test_os_seis_leem_pelo_ler(self) -> None:
+        chamadas = 0
+        for modulo in SEIS_MODULOS:
+            daqui = sum(
+                1
+                for no in ast.walk(self._arvore(modulo))
+                if isinstance(no, ast.Call) and isinstance(no.func, ast.Name) and no.func.id == "ler"
+            )
+            self.assertGreaterEqual(daqui, 1, f"{modulo} não lê pelo arquivo_do_dono.ler")
+            chamadas += daqui
+        self.assertGreaterEqual(chamadas, 6, "piso de seis: a guarda não pode passar vazia")
+
+    def test_nenhum_le_o_arquivo_por_fora(self) -> None:
+        achados = []
+        for modulo in SEIS_MODULOS:
+            for funcao in ast.walk(self._arvore(modulo)):
+                if not isinstance(funcao, ast.FunctionDef) or (modulo, funcao.name) in LEITURAS_QUE_NAO_SAO_DO_DONO:
+                    continue
+                for no in ast.walk(funcao):
+                    if (
+                        isinstance(no, ast.Call)
+                        and isinstance(no.func, ast.Attribute)
+                        and no.func.attr in ("read_text", "read_bytes")
+                    ):
+                        achados.append(f"{modulo}.{funcao.name}:{no.lineno}")
+        self.assertEqual([], achados)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    unittest.main()

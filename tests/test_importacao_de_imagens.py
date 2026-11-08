@@ -11,17 +11,26 @@ from __future__ import annotations
 import csv
 import unittest
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
 from ambiente_de_teste import pasta_temporaria
 
 from chess_diagram_ocr import importacao_de_imagens as imp
+from chess_diagram_ocr.arquivo_do_dono import Lida
 from chess_diagram_ocr.importacao_de_imagens import IMPORTADO_COM_FEN, IMPORTADO_CONFERIDO
 from chess_diagram_ocr.labels import OCR_ACEITO, OCR_CORRIGIDO
 
 INICIAL = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"
 FINAL = "8/8/4k3/8/8/4K3/8/8"
+
+
+def _abrir(*args: Any, **kwargs: Any) -> tuple[imp.Lote, Path]:
+    """`abrir_lote` como o teste o usa: o lote e o caminho do andamento, de uma leitura que leu."""
+    leitura = imp.abrir_lote(*args, **kwargs)
+    assert isinstance(leitura, Lida), leitura
+    return leitura.valor, leitura.caminho
 
 
 def diagrama(*, margem: int = 40, casa: int = 30, esquerda: int = 0) -> np.ndarray:
@@ -213,9 +222,9 @@ class AndamentoTests(unittest.TestCase):
     def test_reabrir_a_pasta_mantem_o_andamento_e_acrescenta_o_novo(self) -> None:
         raiz = pasta_do_sigil(self)
         lotes = pasta_temporaria(self)
-        lote, arquivo = imp.abrir_lote(raiz, imp.COM_FEN, diretorio=lotes)
+        lote, arquivo = _abrir(raiz, imp.COM_FEN, diretorio=lotes)
         imp.marcar(lote, 0, imp.DESCARTADO)
-        lote.salvar(arquivo)
+        imp.gravar_lote(Lida(lote, arquivo))
         gravar_png(raiz / "Livro Dois" / "imagens" / "f.png", diagrama())
         relatorio(
             raiz,
@@ -223,7 +232,7 @@ class AndamentoTests(unittest.TestCase):
             [[artigo("imagens/e.png", f"{FINAL} w - - 0 1"), artigo("imagens/f.png", f"{FINAL} w - - 0 1")]],
         )
 
-        de_novo, mesmo_arquivo = imp.abrir_lote(raiz, imp.COM_FEN, diretorio=lotes)
+        de_novo, mesmo_arquivo = _abrir(raiz, imp.COM_FEN, diretorio=lotes)
 
         self.assertEqual(mesmo_arquivo, arquivo)
         self.assertEqual(de_novo.itens[0].status, imp.DESCARTADO)
@@ -263,12 +272,12 @@ class OutrosLotesTests(unittest.TestCase):
         )
 
     def test_abrir_a_pasta_de_cima_herda_o_que_a_do_livro_decidiu(self) -> None:
-        do_livro, arquivo = imp.abrir_lote(self.livro, imp.SEM_FEN, diretorio=self.lotes)
+        do_livro, arquivo = _abrir(self.livro, imp.SEM_FEN, diretorio=self.lotes)
         salvo = self.gravar(do_livro, 0)
         imp.marcar(do_livro, 1, imp.PULADO)
-        do_livro.salvar(arquivo)
+        imp.gravar_lote(Lida(do_livro, arquivo))
 
-        de_cima, outro_arquivo = imp.abrir_lote(self.raiz, imp.SEM_FEN, diretorio=self.lotes)
+        de_cima, outro_arquivo = _abrir(self.raiz, imp.SEM_FEN, diretorio=self.lotes)
 
         self.assertNotEqual(outro_arquivo, arquivo)
         por_imagem = {item.imagem: item for item in de_cima.itens}
@@ -278,33 +287,33 @@ class OutrosLotesTests(unittest.TestCase):
         self.assertEqual(por_imagem["books/Livro/c.png"].status, imp.PENDENTE)
 
     def test_e_a_do_livro_herda_o_que_a_de_cima_decidiu(self) -> None:
-        de_cima, arquivo = imp.abrir_lote(self.raiz, imp.SEM_FEN, diretorio=self.lotes)
+        de_cima, arquivo = _abrir(self.raiz, imp.SEM_FEN, diretorio=self.lotes)
         imp.marcar(de_cima, 2, imp.DESCARTADO)
-        de_cima.salvar(arquivo)
+        imp.gravar_lote(Lida(de_cima, arquivo))
 
-        do_livro, _ = imp.abrir_lote(self.livro, imp.SEM_FEN, diretorio=self.lotes)
+        do_livro, _ = _abrir(self.livro, imp.SEM_FEN, diretorio=self.lotes)
 
         self.assertEqual([item.status for item in do_livro.itens], [imp.PENDENTE, imp.PENDENTE, imp.DESCARTADO])
 
     def test_o_que_esta_no_dataset_vence_o_pulo_do_proprio_lote(self) -> None:
-        de_cima, arquivo_de_cima = imp.abrir_lote(self.raiz, imp.SEM_FEN, diretorio=self.lotes)
+        de_cima, arquivo_de_cima = _abrir(self.raiz, imp.SEM_FEN, diretorio=self.lotes)
         imp.marcar(de_cima, 0, imp.PULADO)
-        de_cima.salvar(arquivo_de_cima)
-        do_livro, arquivo = imp.abrir_lote(self.livro, imp.SEM_FEN, diretorio=self.lotes)
+        imp.gravar_lote(Lida(de_cima, arquivo_de_cima))
+        do_livro, arquivo = _abrir(self.livro, imp.SEM_FEN, diretorio=self.lotes)
         imp.marcar(do_livro, 0, imp.PENDENTE)
         self.gravar(do_livro, 0)
-        do_livro.salvar(arquivo)
+        imp.gravar_lote(Lida(do_livro, arquivo))
 
-        de_novo, _ = imp.abrir_lote(self.raiz, imp.SEM_FEN, diretorio=self.lotes)
+        de_novo, _ = _abrir(self.raiz, imp.SEM_FEN, diretorio=self.lotes)
 
         self.assertEqual(de_novo.itens[0].status, imp.SALVO)
 
     def test_gravar_o_que_outro_lote_ja_gravou_e_recusado(self) -> None:
         # As duas janelas abertas antes de qualquer gravação: o lote de cima não sabe de nada.
-        de_cima, _ = imp.abrir_lote(self.raiz, imp.SEM_FEN, diretorio=self.lotes)
-        do_livro, arquivo = imp.abrir_lote(self.livro, imp.SEM_FEN, diretorio=self.lotes)
+        de_cima, _ = _abrir(self.raiz, imp.SEM_FEN, diretorio=self.lotes)
+        do_livro, arquivo = _abrir(self.livro, imp.SEM_FEN, diretorio=self.lotes)
         self.gravar(do_livro, 0)
-        do_livro.salvar(arquivo)
+        imp.gravar_lote(Lida(do_livro, arquivo))
 
         with self.assertRaisesRegex(ValueError, "outro lote"):
             self.gravar(de_cima, 0)
@@ -318,10 +327,10 @@ class OutrosLotesTests(unittest.TestCase):
             "ler": lambda _tabuleiro: FINAL, "csv_path": self.dados / "labels.csv",
             "samples_dir": self.dados / "samples", "corrected_by": IMPORTADO_COM_FEN, "diretorio": self.lotes,
         }
-        do_livro, arquivo = imp.abrir_lote(raiz / "Livro Dois", imp.COM_FEN, diretorio=self.lotes)
-        de_cima, _ = imp.abrir_lote(raiz, imp.COM_FEN, diretorio=self.lotes)
+        do_livro, arquivo = _abrir(raiz / "Livro Dois", imp.COM_FEN, diretorio=self.lotes)
+        de_cima, _ = _abrir(raiz, imp.COM_FEN, diretorio=self.lotes)
         self.assertEqual(imp.importar_os_que_concordam(do_livro, **argumentos)["salvos"], 1)  # type: ignore[arg-type]
-        do_livro.salvar(arquivo)
+        imp.gravar_lote(Lida(do_livro, arquivo))
 
         conta = imp.importar_os_que_concordam(de_cima, **argumentos)  # type: ignore[arg-type]
 
@@ -441,7 +450,7 @@ class ImportarOsQueConcordamTests(unittest.TestCase):
         raiz = pasta_do_sigil(self)
         dados = pasta_temporaria(self)
         csv_path, samples = dados / "labels.csv", dados / "samples"
-        lote, _arquivo = imp.abrir_lote(raiz, imp.COM_FEN, diretorio=dados / "importacao")
+        lote, _arquivo = _abrir(raiz, imp.COM_FEN, diretorio=dados / "importacao")
         # O modelo de mentira lê a posição final em toda imagem: concorda com b.png e e.png.
         conta = imp.importar_os_que_concordam(
             lote, ler=lambda _tabuleiro: FINAL, csv_path=csv_path, samples_dir=samples, corrected_by=IMPORTADO_COM_FEN
@@ -476,7 +485,7 @@ class ImportarOsQueConcordamTests(unittest.TestCase):
     def test_cancelar_para_e_o_andamento_fica_gravado(self) -> None:
         raiz = pasta_do_sigil(self)
         dados = pasta_temporaria(self)
-        lote, arquivo = imp.abrir_lote(raiz, imp.COM_FEN, diretorio=dados)
+        lote, arquivo = _abrir(raiz, imp.COM_FEN, diretorio=dados)
         gravacoes: list[int] = []
         conta = imp.importar_os_que_concordam(
             lote,

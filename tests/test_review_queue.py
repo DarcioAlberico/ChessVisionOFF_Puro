@@ -10,6 +10,7 @@ import numpy as np
 from qt_app import MOTIVO, TEM_PYQT, aplicacao
 from test_inference import probs_for_fen
 
+from chess_diagram_ocr.arquivo_do_dono import Lida
 from chess_diagram_ocr.detection import DiagramCandidate
 from chess_diagram_ocr.gallery_scan import build_gallery_index
 from chess_diagram_ocr.inference import OrientedPrediction, prediction_from_probs
@@ -22,7 +23,9 @@ from chess_diagram_ocr.review_queue import (
     ReviewQueue,
     ReviewQueueBuilder,
     build_review_queue,
+    carregar_fila,
     error_rate,
+    gravar_fila,
     item_from_scanned,
     merge_queues,
     priority_for,
@@ -214,17 +217,20 @@ class QueueOrderingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "review_queue.json"
             queue = ReviewQueue(source_pdf="livro.pdf", created_at="2026-07-26T10:00:00", items=[self.item(42)])
-            queue.save(path)
-            restored = ReviewQueue.load(path)
+            gravar_fila(Lida(queue, path))
+            restored = carregar_fila(path).valor
             self.assertEqual(restored.source_pdf, "livro.pdf")
             self.assertEqual(len(restored.items), 1)
             self.assertAlmostEqual(restored.items[0].priority, 42.0)
 
-    def test_load_of_a_broken_file_starts_empty(self) -> None:
+    def test_load_of_a_broken_file_starts_empty_and_locked(self) -> None:
+        """Vazia em memória, e travada: a gravação seguinte não pode apagar o arquivo (S-812)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "review_queue.json"
             path.write_text("{quebrado", encoding="utf-8")
-            self.assertEqual(len(ReviewQueue.load(path).items), 0)
+            leitura = carregar_fila(path)
+            self.assertEqual(len(leitura.valor.items), 0)
+            self.assertNotIsInstance(leitura, Lida)
 
     def test_merge_keeps_what_was_already_reviewed(self) -> None:
         """Revarrer o livro não pode ressuscitar item já resolvido."""

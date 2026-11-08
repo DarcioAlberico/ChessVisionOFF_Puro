@@ -41,6 +41,7 @@ from PyQt6.QtWidgets import (
 )
 
 from chess_diagram_ocr import settings as preferencias
+from chess_diagram_ocr.arquivo_do_dono import Lida
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.ui import configuracoes, espaco, estilos, folha_de_estilo
@@ -61,7 +62,9 @@ class DialogoDeConfiguracoes(QDialog):
         *,
         configuracao: preferencias.Settings | None = None,
         ao_salvar: Callable[[preferencias.Settings], None] | None = None,
+        travada: str = "",
     ) -> None:
+        """`travada` é a frase da leitura travada (S-812): com ela, *Salvar* fica desligado."""
         super().__init__(pai)
         self.setWindowTitle(TITULO)
         self.resize(640, 420)
@@ -117,6 +120,9 @@ class DialogoDeConfiguracoes(QDialog):
         self.botoes.rejected.connect(self.reject)
         self.btn_padroes.clicked.connect(lambda _marcado=False: self.preencher(preferencias.Settings()))
         fora.addWidget(self.botoes)
+        if travada:
+            self.lbl_onde.setText(travada)
+            self.btn_salvar.setEnabled(False)
 
         self.preencher(self._inicial)
 
@@ -242,11 +248,18 @@ class _CampoDeCaminho(QWidget):
 def abrir(pai: QWidget | None, *, dizer: Callable[[str], None] | None = None) -> DialogoDeConfiguracoes:
     """Le o arquivo, abre a janela e grava ao salvar. Devolve o dialogo (modal por `exec`)."""
 
+    leitura = preferencias.ler_arquivo(preferencias.DEFAULT_SETTINGS_PATH)
+    travada = "" if isinstance(leitura, Lida) else leitura.mensagem
+
     def gravar(novo: preferencias.Settings) -> None:
-        preferencias.save_settings(preferencias.DEFAULT_SETTINGS_PATH, novo)
+        if not isinstance(leitura, Lida):  # Salvar está desligado; ver `travada`
+            return
+        preferencias.save_settings(leitura.com(novo))
         if dizer is not None:
             dizer(f"Configurações gravadas em {preferencias.DEFAULT_SETTINGS_PATH.name}.")
 
-    dialogo = DialogoDeConfiguracoes(pai, configuracao=preferencias.load_settings(), ao_salvar=gravar)
+    dialogo = DialogoDeConfiguracoes(
+        pai, configuracao=preferencias.load_settings(), ao_salvar=gravar, travada=travada
+    )
     dialogo.exec()
     return dialogo

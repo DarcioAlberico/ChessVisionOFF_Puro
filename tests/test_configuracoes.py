@@ -12,11 +12,13 @@ import dataclasses
 import json
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
 from chess_diagram_ocr import settings as preferencias
+from chess_diagram_ocr.arquivo_do_dono import Lida
 from chess_diagram_ocr.ui import configuracoes
 from chess_diagram_ocr.ui.pedido_de_treino import pedido_de_treino
 
@@ -66,7 +68,7 @@ class TreinoTests(unittest.TestCase):
             preferencias.Settings(),
             {"training.epochs": 25, "training.ocr_iterations": 4000, "recognition.dpi": 300},
         )
-        preferencias.save_settings(caminho, gravado)
+        preferencias.save_settings(Lida(gravado, caminho))
         lido = preferencias.load_settings(caminho, env={})
         self.assertEqual(lido.training.epochs, 25)
         self.assertEqual(lido.training.ocr_iterations, 4000)
@@ -87,7 +89,7 @@ class TreinoTests(unittest.TestCase):
     def test_o_pedido_de_treino_le_o_arquivo(self) -> None:
         caminho = pasta_temporaria(self) / "settings.json"
         preferencias.save_settings(
-            caminho, configuracoes.trocar(preferencias.Settings(), {"training.epochs": 3, "training.lr": 0.01})
+            Lida(configuracoes.trocar(preferencias.Settings(), {"training.epochs": 3, "training.lr": 0.01}), caminho)
         )
         original = preferencias.DEFAULT_SETTINGS_PATH
         preferencias.DEFAULT_SETTINGS_PATH = caminho
@@ -101,9 +103,9 @@ class TreinoTests(unittest.TestCase):
 
     def test_dpi_e_max_boards_releem_quando_o_arquivo_muda(self) -> None:
         caminho = pasta_temporaria(self) / "settings.json"
-        preferencias.save_settings(caminho, configuracoes.trocar(preferencias.Settings(), {"recognition.dpi": 150}))
+        preferencias.save_settings(Lida(configuracoes.trocar(preferencias.Settings(), {"recognition.dpi": 150}), caminho))
         self.assertEqual(configuracoes.reconhecimento(caminho).dpi, 150)
-        preferencias.save_settings(caminho, configuracoes.trocar(preferencias.Settings(), {"recognition.dpi": 400}))
+        preferencias.save_settings(Lida(configuracoes.trocar(preferencias.Settings(), {"recognition.dpi": 400}), caminho))
         self.assertEqual(configuracoes.reconhecimento(caminho).dpi, 400)
 
 
@@ -153,6 +155,31 @@ class DialogoTests(unittest.TestCase):
             self.assertEqual([s.training.epochs for s in recebido], [21])
         finally:
             descartar(dialogo)
+
+    def test_settings_que_nao_le_abre_com_salvar_desligado_e_nao_e_gravado(self) -> None:
+        """**A leitura travada (S-812)**, pela porta do menu: o diálogo diz por que não grava, e nem
+        um `accept` forçado (o Enter) escreve os padrões por cima do arquivo da pessoa."""
+        from chess_diagram_ocr.qt import dialogo_de_configuracoes
+
+        caminho = pasta_temporaria(self) / "settings.json"
+        original = b'{"remote_fen": {"endpoint": "https://meu/fen", "enabled": true},}'
+        caminho.write_bytes(original)
+        vistos: list[tuple[bool, str]] = []
+
+        def exec_(dialogo: DialogoDeConfiguracoes) -> int:
+            vistos.append((dialogo.btn_salvar.isEnabled(), dialogo.lbl_onde.text()))
+            dialogo.accept()
+            return 1
+
+        with (
+            mock.patch.object(preferencias, "DEFAULT_SETTINGS_PATH", caminho),
+            mock.patch.object(DialogoDeConfiguracoes, "exec", exec_),
+        ):
+            descartar(dialogo_de_configuracoes.abrir(None))
+        self.assertEqual(original, caminho.read_bytes())
+        [(salvar_ligado, frase)] = vistos
+        self.assertFalse(salvar_ligado)
+        self.assertIn("settings.json não pôde ser lido", frase)
 
     def test_cancelar_nao_grava(self) -> None:
         recebido: list[preferencias.Settings] = []

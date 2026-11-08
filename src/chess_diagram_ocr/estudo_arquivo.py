@@ -42,6 +42,7 @@ from typing import TextIO
 
 import chess.pgn
 
+from .arquivo_do_dono import Leitura, Lida, gravavel, ler
 from .atomic_io import atomic_write_text
 from .config import DATA_DIR
 from .estudo import Estudo, Sala
@@ -102,19 +103,22 @@ def para_pgn(sala: Sala) -> str:
     return "\n\n".join(estudo.para_pgn() for estudo in sala.estudos())
 
 
-def gravar(sala: Sala, *, pasta: Path | None = None) -> Path | None:
-    """Grava a sala daquele livro. `None` quando não há livro a que atá-la.
+def gravar(lida: Lida[Sala]) -> Path | None:
+    """Grava a sala onde ela foi lida. `None` quando não há livro a que atá-la.
 
     Sala sem documento não tem chave estável: gravá-la num nome inventado criaria um arquivo que
     ninguém acha de volta, que é lixo com aparência de proteção. É a mesma decisão de
     `text/rascunho.gravar`, que devolve `None` para documento sem folha de origem.
 
     **Sala que esvaziou apaga o arquivo.** Deixar um PGN de zero partidas no disco faria a próxima
-    abertura carregar nada e o usuário concluir que a gravação não funciona.
+    abertura carregar nada e o usuário concluir que a gravação não funciona. Só sobre uma leitura
+    que leu (S-812): apagar ou regravar a sala que não abriu levaria as tardes que estão nela.
     """
+    lida = gravavel(lida)
+    sala = lida.valor
     if not sala.documento:
         return None
-    destino = caminho_de(sala.documento, pasta=pasta)
+    destino = lida.caminho
     corpo = para_pgn(sala)
     if not corpo:
         if destino.exists():
@@ -128,27 +132,27 @@ def gravar(sala: Sala, *, pasta: Path | None = None) -> Path | None:
     return destino
 
 
-def carregar(documento: str | Path, *, pasta: Path | None = None) -> Sala:
+def carregar(documento: str | Path, *, pasta: Path | None = None) -> Leitura[Sala]:
     """A sala daquele livro. Sala vazia quando não há arquivo -- ausência é o caso normal.
 
     Uma partida ilegível **não derruba as outras**: ela vira uma linha de log e a leitura segue. Um
     PGN de 50 estudos em que o 12 está corrompido ainda tem 49 tardes de trabalho dentro.
+
+    **O arquivo que não abre é leitura travada (S-812)**: arquivo em uso, ou um byte que não é
+    UTF-8. Antes o byte virava `\ufffd` em silêncio, e a gravação seguinte o regravava assim -- a
+    análise com acento escrita por outro programa saía estragada para sempre.
     """
-    sala = Sala(str(documento or ""))
+    nome = str(documento or "")
     origem = caminho_de(documento, pasta=pasta)
-    if not origem.exists():
+
+    def interpretar(texto: str) -> Sala:
+        sala = Sala(nome)
+        for estudo in estudos_de_pgn(texto, documento=nome, onde=origem.name):
+            if not sala.guardar(estudo):
+                logger.debug("Estudo sem âncora ou sem lance descartado de %s", origem.name)
         return sala
 
-    try:
-        texto = origem.read_text(encoding="utf-8", errors="replace")
-    except OSError as erro:  # pragma: no cover - arquivo em uso
-        logger.warning("Sala de estudo não pôde ser lida (%s): %s", origem, erro)
-        return sala
-
-    for estudo in estudos_de_pgn(texto, documento=str(documento or ""), onde=origem.name):
-        if not sala.guardar(estudo):
-            logger.debug("Estudo sem âncora ou sem lance descartado de %s", origem.name)
-    return sala
+    return ler(origem, interpretar, lambda: Sala(nome))
 
 
 def estudos_de_pgn(
