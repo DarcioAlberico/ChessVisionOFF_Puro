@@ -120,6 +120,38 @@ class SalaTests(unittest.TestCase):
         self.app.processEvents()
         return montada
 
+    def test_a_sala_so_le_o_cache_de_posicoes(self) -> None:
+        """S-806: a sala não cria o cache, não o regrava, e enxerga o que outro processo gravou.
+
+        Ela abria pela porta que esvaziava a tabela quando a lista de bases não batia -- e a sala
+        só pergunta. Agora abre só para ler: sem arquivo, responde "não perguntada" sem criá-lo; com
+        o arquivo gravado depois (um `cvoff-games --all` com a sala aberta), passa a achar.
+        """
+        from chess_diagram_ocr import games_cache
+        from chess_diagram_ocr.games_db import PositionHit, PositionIndex
+
+        base = self.pasta / "base.pgn"
+        base.write_text('[Event "x"]\n', encoding="utf-8")
+        cache = self.pasta / "posicoes.sqlite"
+        painel = self.sala(bases_de_partidas=lambda: [base])
+
+        self.assertIsNone(painel.partidas_da_posicao())
+        self.assertIn("ainda não foi perguntada", painel.lbl_status.text())
+        self.assertFalse(cache.exists(), "a sala não cria o cache")
+
+        colocacao = painel.estudo.tabuleiro.board_fen()
+        achadas = PositionIndex()
+        achadas.hits[colocacao] = [PositionHit(move_number=1, side_to_move="w", headers={"White": "Morphy"})]
+        achadas.counts[colocacao] = 1
+        with games_cache.open_store(cache, database=[base]) as loja:
+            loja.update(achadas, {colocacao})
+        antes = cache.read_bytes()
+
+        janela = painel.partidas_da_posicao()
+        self.assertIsNotNone(janela, painel.lbl_status.text())
+        descartar(janela)
+        self.assertEqual(cache.read_bytes(), antes, "e não grava nada nele")
+
     def test_todo_comando_do_catalogo_tem_metodo_neste_painel(self) -> None:
         """**O critério da S-280 aplicado ao segundo frontend.** Um método com outro nome deixa o
         comando no menu, na paleta e nas três peles -- sem fazer nada, e sem nada acusar."""

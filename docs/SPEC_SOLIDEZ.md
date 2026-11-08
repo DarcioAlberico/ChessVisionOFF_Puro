@@ -291,6 +291,14 @@ com `EXIT_BAD_INPUT` em `cli/games.py:486-492` antes de abrir o cache, e o teste
 **Aceite.** Os dois testes passam. Nenhum `DELETE FROM positions` fora da limpeza explícita (guarda por
 `grep`, com piso de um achado: a própria limpeza).
 
+**Entregue** (2026-11-08): os leitores abrem com `somente_leitura=True` **e com** `database=` — sem as
+bases não há impressão sob a qual perguntar —, e o censo usa as mesmas bases da varredura (`_bases`). A
+chave é `(impressao, placement)`; o cache da versão 1 é migrado na primeira abertura para gravar (a marca
+de `meta` vira a impressão de cada linha) e lido sem migrar por quem só lê (vista temporária).
+`stored_summary` passou a devolver `(valem, guardadas)`. A Galeria segue abrindo para gravar, sem perigo:
+não há mais `DELETE` na abertura. Os docstrings de `config.py` que ainda dizem "`open_store` esvazia" não
+foram tocados (módulo do fecho de medição).
+
 ## S-808 · URI de SQLite por `Path.as_uri()`, e versão ilegível não apaga o índice
 
 **Problema** (confirmado por script). `games_index.py:384` e `:997` montam `f"file:{path}?mode=ro"` sem

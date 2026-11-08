@@ -3,6 +3,7 @@
     cvoff-games --all                        # relata, sem escrever nada
     cvoff-games --all --apply                # grava lance, vez e headers nas anotações
     cvoff-games --all --census               # o estado do acervo; não abre a base
+    cvoff-games --limpar-cache               # apaga do cache o que é de outro conjunto de bases
     cvoff-games --build-index                # o índice por nome; relê só o que mudou (S-532)
     cvoff-games --build-tree                 # a árvore de aberturas por posição (S-535)
     cvoff-games --book "Karpov 1" --names    # só o caminho por nome, ~150 s
@@ -136,6 +137,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--no-cache",
         action="store_true",
         help="ignora o cache e pergunta tudo de novo. Para conferir o próprio cache.",
+    )
+    parser.add_argument(
+        "--limpar-cache",
+        action="store_true",
+        help=(
+            "apaga do cache as posições respondidas por outro conjunto de bases e sai (S-806). É o "
+            "único caminho que apaga: abrir com outra base só deixa de usá-las."
+        ),
     )
     parser.add_argument(
         "--census",
@@ -390,11 +399,20 @@ def _census(indices: dict[Path, GalleryIndex], args: argparse.Namespace) -> int:
 
     Sai antes de qualquer varredura de propósito: um instrumento que precisasse de 30 minutos
     para dizer o estado do acervo não seria consultado, e o que não se consulta não mede nada.
+
+    **Abre o cache só para ler (S-806)**, e sob as mesmas bases que a varredura usaria
+    (`_bases`): era aqui que um `--census --database X` apagava o cache do acervo inteiro.
     """
-    with open_store(args.cache, database=args.database or database_paths()) as cache:
+    with open_store(args.cache, database=_bases(args), somente_leitura=True) as cache:
         perguntadas, com_resposta = len(cache), cache.answered
         if not perguntadas:
-            print(f"Cache vazio em {args.cache}. Para produzi-lo:  cvoff-games --all")
+            if cache.guardadas:
+                print(
+                    f"O cache em {args.cache} guarda {cache.guardadas} posição(ões), todas respondidas por "
+                    "outro conjunto de bases: nenhuma vale para este. Para responder a este:  cvoff-games --all"
+                )
+            else:
+                print(f"Cache vazio em {args.cache}. Para produzi-lo:  cvoff-games --all")
             return EXIT_BAD_INPUT
 
         placares = []
@@ -462,6 +480,19 @@ def main(argv: list[str] | None = None) -> int:
             f"nesta rodada {indexacao.relidas} lidas de {indexacao.arquivos_relidos} arquivo(s), "
             f"{indexacao.arquivos_pulados} arquivo(s) sem mudança, {indexacao.arquivos_removidos} removido(s)"
         )
+        return 0
+
+    # A limpeza do cache, como o indice: descreve a base e nao depende de livro nenhum. Sem base
+    # nenhuma a vista -- a pasta vazia, o disco fora do ar -- "tudo que nao e desta base" seria o
+    # arquivo inteiro, e o comando recusa em vez de apagar (S-806).
+    if args.limpar_cache:
+        bases = _bases(args)
+        if not bases:
+            logger.error("Nenhuma base encontrada: sem saber que bases valem, limpar apagaria o cache inteiro.")
+            return EXIT_BAD_INPUT
+        with open_store(args.cache, database=bases) as cache:
+            removidas = cache.limpar()
+            print(f"cache: {removidas} posição(ões) de outro conjunto de bases apagadas; {len(cache)} ficam")
         return 0
 
     # A árvore por posição, como o índice acima: ela descreve a base e não depende de livro

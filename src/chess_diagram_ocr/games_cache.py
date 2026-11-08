@@ -41,9 +41,15 @@ que podia sobrar de um processo morto.
 **O fingerprint da base é a única guarda, e ela não é opcional.** Trocada a base, as contagens
 guardadas deixam de ser verdade -- e a contagem é o que decide se preencher um header é honesto
 (S-74). Um cache de uma base e uma varredura de outra produziriam procedência inventada, que é
-pior que campo vazio, porque campo vazio ninguém confunde com dado conferido. Não bateu,
-descarta inteiro: reconstruir custa uma varredura, e confiar no que não se pode conferir custa
-o valor da ferramenta.
+pior que campo vazio, porque campo vazio ninguém confunde com dado conferido.
+
+**Não bateu, não responde -- e não apaga (S-806).** Até a S-806 a guarda descartava o cache
+inteiro na abertura, e "o conjunto parece diferente" chegava lá por caminhos que ninguém
+escolheu: um `--census --database X`, que diz não abrir a base; um `--all` com um disco fora do
+ar; um `stat` que falhou. Em 2026-10-18 foram ~9.810 linhas, ~56 minutos de varredura. Agora cada
+linha guarda a impressão do conjunto que a respondeu (coluna `impressao`), e só é lida sob essa
+impressão: a de outra base é ignorada, e volta a valer quando aquela base voltar. Apagar é um
+gesto, `cvoff-games --limpar-cache`, e é o único `DELETE` do módulo.
 """
 
 from __future__ import annotations
@@ -77,7 +83,9 @@ __all__ = [
 DEFAULT_STORE_PATH = DATA_DIR / "games_positions.sqlite"
 """Onde o cache mora. Em `data/`, com o resto do que é derivado e reconstruível."""
 
-STORE_VERSION = 1
+STORE_VERSION = 2
+"""A 2 (S-806) pôs a impressão em cada linha. A 1 tinha a marca da base só em `meta`, e é
+migrada na primeira abertura para gravar sem perder linha -- ver `_migra_da_versao_um`."""
 
 DEFAULT_CACHE_PATH = DATA_DIR / "games_positions.json"
 """O artefato anterior, **lido uma vez e aposentado** -- ver `_migra_json`.
@@ -132,27 +140,38 @@ def database_fingerprint(databases: Path | Sequence[Path]) -> dict[str, Any]:
     return {"files": [{"name": impressao.nome, "size": impressao.tamanho} for impressao in impressoes]}
 
 
-def _same_database(um: dict[str, Any], outro: dict[str, Any]) -> bool:
-    """Duas marcas descrevem o mesmo conjunto de bases? Só nome e tamanho decidem.
+def _arquivos(fingerprint: dict[str, Any]) -> list[dict[str, Any]]:
+    """Os arquivos de uma marca, aceitando a forma anterior à S-93 (um arquivo solto)."""
+    arquivos = fingerprint.get("files")
+    if isinstance(arquivos, list):
+        return [item for item in arquivos if isinstance(item, dict)]
+    return [fingerprint] if "name" in fingerprint else []
 
-    Compara campo a campo em vez de `==` sobre o dicionário **para não invalidar os caches que
-    já estão no disco**: eles foram gravados com `mtime` dentro, e uma igualdade literal
-    descartaria, na primeira execução depois da S-113, exatamente as varreduras que o item
-    existe para deixar de perder.
+
+def _chave(fingerprint: dict[str, Any]) -> str | None:
+    """A marca como a chave gravada em cada linha: `nome:tamanho|...`. `None` se há desconhecido.
+
+    **Só nome e tamanho entram**, e é o que não invalida os caches que já estão no disco: eles
+    foram gravados com `mtime` dentro, e comparar o dicionário inteiro descartaria, na primeira
+    execução depois da S-113, exatamente as varreduras que o item existe para deixar de perder.
+
+    **Desconhecido não casa nem descasa (S-806).** Uma base cujo tamanho não leu não identifica
+    conjunto nenhum: as linhas não são lidas sob ela, nada é gravado sob ela, e nada é apagado
+    por causa dela. É a forma da `impressao_da_base` (S-807) e do `index_fingerprint`.
     """
+    pedacos = []
+    for item in _arquivos(fingerprint):
+        tamanho = item.get("size", 0)
+        if tamanho is None:
+            return None
+        pedacos.append(f"{item.get('name', '?')}:{int(tamanho)}")
+    return "|".join(pedacos)
 
-    def _marcas(fingerprint: dict[str, Any]) -> list[tuple[str, int | None]]:
-        arquivos = fingerprint.get("files")
-        if not isinstance(arquivos, list):
-            arquivos = [fingerprint]
-        return [(str(item.get("name", "?")), _tamanho(item.get("size", 0))) for item in arquivos]
 
-    return _marcas(um) == _marcas(outro)
-
-
-def _tamanho(valor: Any) -> int | None:
-    """O tamanho gravado numa marca: inteiro, ou `None` quando a base não leu (S-807)."""
-    return None if valor is None else int(valor)
+def _same_database(um: dict[str, Any], outro: dict[str, Any]) -> bool:
+    """Duas marcas descrevem o mesmo conjunto de bases? Só nome e tamanho decidem (`_chave`)."""
+    chave = _chave(um)
+    return chave is not None and chave == _chave(outro)
 
 
 @dataclass(frozen=True)
@@ -290,12 +309,19 @@ class PositionStore:
     **Não é um dicionário, e a diferença aparece no `update`.** Escrever é uma transação por
     varredura, e não a substituição de um arquivo -- duas passadas simultâneas somam as linhas
     em vez de uma apagar a outra (ver o cabeçalho do módulo, S-113/S-140).
+
+    **Toda pergunta é feita sob a impressão desta abertura (S-806).** As linhas de outro conjunto
+    de bases estão no mesmo arquivo e não respondem aqui; com a impressão desconhecida (uma base
+    cujo tamanho não leu), nenhuma responde e nada é gravado.
     """
 
     def __init__(self, path: Path, conexao: sqlite3.Connection, fingerprint: dict[str, Any]) -> None:
         self.path = path
         self.fingerprint = fingerprint
         self._conexao = conexao
+        self._chave = _chave(fingerprint)
+        # `None` nao casa com linha nenhuma: `impressao = NULL` e falso no SQL, e e o que se quer.
+        self._sob = (self._chave,)
 
     @classmethod
     def in_memory(cls, fingerprint: dict[str, Any] | None = None) -> PositionStore:
@@ -317,13 +343,21 @@ class PositionStore:
     # ------------------------------------------------------------------ leitura
 
     def __len__(self) -> int:
+        (quantas,) = self._conexao.execute("SELECT count(*) FROM positions WHERE impressao = ?", self._sob).fetchone()
+        return int(quantas)
+
+    @property
+    def guardadas(self) -> int:
+        """Quantas linhas o arquivo tem, **de todas as impressões** -- o que `limpar` poderia apagar."""
         (quantas,) = self._conexao.execute("SELECT count(*) FROM positions").fetchone()
         return int(quantas)
 
     @property
     def answered(self) -> int:
         """Quantas das perguntadas a base conhece. O resto é `count == 0`."""
-        (quantas,) = self._conexao.execute("SELECT count(*) FROM positions WHERE count > 0").fetchone()
+        (quantas,) = self._conexao.execute(
+            "SELECT count(*) FROM positions WHERE impressao = ? AND count > 0", self._sob
+        ).fetchone()
         return int(quantas)
 
     def answered_of(self, targets: Iterable[str]) -> int:
@@ -332,8 +366,8 @@ class PositionStore:
         for pedaco in _pedacos(sorted(set(targets))):
             marcas = ",".join("?" * len(pedaco))
             (quantas,) = self._conexao.execute(
-                f"SELECT count(*) FROM positions WHERE count > 0 AND placement IN ({marcas})",  # noqa: S608
-                tuple(pedaco),
+                f"SELECT count(*) FROM positions WHERE impressao = ? AND count > 0 AND placement IN ({marcas})",  # noqa: S608
+                (*self._sob, *pedaco),
             ).fetchone()
             total += int(quantas)
         return total
@@ -352,8 +386,8 @@ class PositionStore:
             conhecidas.update(
                 str(linha[0])
                 for linha in self._conexao.execute(
-                    f"SELECT placement FROM positions WHERE placement IN ({marcas})",  # noqa: S608
-                    tuple(pedaco),
+                    f"SELECT placement FROM positions WHERE impressao = ? AND placement IN ({marcas})",  # noqa: S608
+                    (*self._sob, *pedaco),
                 )
             )
         return alvos - conhecidas
@@ -365,7 +399,7 @@ class PositionStore:
         `WITHOUT ROWID` põe a resposta na mesma folha da chave (S-140, item 1, aqui de novo).
         """
         linha = self._conexao.execute(
-            "SELECT count, games FROM positions WHERE placement = ?", (placement,)
+            "SELECT count, games FROM positions WHERE impressao = ? AND placement = ?", (*self._sob, placement)
         ).fetchone()
         return _VAZIA if linha is None else _da_linha(linha)
 
@@ -379,7 +413,7 @@ class PositionStore:
         indice = PositionIndex()
         if targets is None:
             for colocacao, contagem, jogos in self._conexao.execute(
-                "SELECT placement, count, games FROM positions WHERE count > 0"
+                "SELECT placement, count, games FROM positions WHERE impressao = ? AND count > 0", self._sob
             ):
                 _acrescenta(indice, str(colocacao), (contagem, jogos))
             return indice
@@ -388,8 +422,8 @@ class PositionStore:
             marcas = ",".join("?" * len(pedaco))
             for colocacao, contagem, jogos in self._conexao.execute(
                 "SELECT placement, count, games FROM positions "  # noqa: S608
-                f"WHERE count > 0 AND placement IN ({marcas})",
-                tuple(pedaco),
+                f"WHERE impressao = ? AND count > 0 AND placement IN ({marcas})",
+                (*self._sob, *pedaco),
             ):
                 _acrescenta(indice, str(colocacao), (contagem, jogos))
         return indice
@@ -426,8 +460,14 @@ class PositionStore:
                 len(set(asked)),
             )
             return 0
+        if self._chave is None:
+            # Uma base cujo tamanho nao leu: a resposta nao teria conjunto a que pertencer, e
+            # nunca mais seria lida -- gravar seria encher o arquivo de linhas mortas (S-806).
+            logger.warning("Uma das bases não pôde ser medida (%s); nada foi gravado no cache.", _descreve(self.fingerprint))
+            return 0
         linhas = [
             (
+                self._chave,
                 colocacao,
                 int(index.counts.get(colocacao, len(index.hits.get(colocacao, [])))),
                 json.dumps(
@@ -440,8 +480,22 @@ class PositionStore:
         if not linhas:
             return 0
         with self._conexao:
-            self._conexao.executemany("INSERT OR REPLACE INTO positions VALUES (?, ?, ?)", linhas)
+            self._conexao.executemany(_GRAVA_LINHA, linhas)
         return len(linhas)
+
+    def limpar(self) -> int:
+        """Apaga as linhas de **outra** impressão e devolve quantas. O único `DELETE` do módulo.
+
+        É o gesto explícito que o `open_store` deixou de fazer sozinho (S-806): `cvoff-games
+        --limpar-cache`. Com a impressão desconhecida recusa, porque "tudo que não é desta base"
+        seria o arquivo inteiro.
+        """
+        if self._chave is None:
+            logger.warning("Limpeza recusada: uma das bases não pôde ser medida (%s).", _descreve(self.fingerprint))
+            return 0
+        with self._conexao:
+            cursor = self._conexao.execute("DELETE FROM positions WHERE impressao <> ?", self._sob)
+        return int(cursor.rowcount)
 
     def close(self) -> None:
         self._conexao.close()
@@ -475,8 +529,14 @@ def open_store(
     *,
     database: Path | Sequence[Path] | None = None,
     de_outra_thread: bool = False,
+    somente_leitura: bool = False,
 ) -> PositionStore:
     """Abre o cache de posições, criando-o se não houver. **Nunca levanta por causa do disco.**
+
+    **Nunca apaga linha (S-806).** As perguntas são feitas sob a impressão de `database`, e as
+    linhas de outro conjunto de bases ficam no arquivo sem responder. Quem só lê -- o censo, a
+    sala de estudo, o aviso da janela -- passa `somente_leitura`: a conexão é `mode=ro`, o arquivo
+    que não existe não é criado (responde vazio), e o de versão anterior é lido sem ser migrado.
 
     `de_outra_thread` é para quem abre o cache numa thread de trabalho e o **usa** na thread da
     janela (OCR_UI passo 15: abrir custou 25–60 ms medidos no disco frio, na thread da
@@ -490,11 +550,14 @@ def open_store(
     -- o arquivo existe e não é um SQLite -- cai num cache em memória, que responde tudo e não
     guarda nada; a alternativa seria apagar um arquivo do usuário para poder continuar.
 
-    Trocada a base, as linhas guardadas são apagadas na abertura: as contagens de outra base
-    não são um cache parcial, são resposta errada (ver o cabeçalho do módulo).
+    Trocada a base, as linhas guardadas deixam de responder, e não são apagadas: as contagens
+    de outra base não são um cache parcial, são resposta errada -- mas são a resposta certa para
+    aquela base, quando ela voltar (ver o cabeçalho do módulo).
     """
     caminho = Path(path)
     atual = database_fingerprint(database) if database is not None else {}
+    if somente_leitura:
+        return _abre_para_ler(caminho, atual, de_outra_thread)
     try:
         caminho.parent.mkdir(parents=True, exist_ok=True)
         criar = not caminho.exists()
@@ -507,43 +570,128 @@ def open_store(
 
     try:
         _prepara(conexao)
-        gravado = _fingerprint_gravado(conexao)
-        if database is not None:
-            if gravado and not _same_database(gravado, atual):
-                logger.warning(
-                    "O cache foi feito com %s e a base de agora é %s: as contagens guardadas "
-                    "deixaram de valer, e o cache será refeito.",
-                    _descreve(gravado),
-                    _descreve(atual),
-                )
-                _esvazia(conexao)
-            _grava_fingerprint(conexao, atual)
-            gravado = atual
         # So o artefato padrao migra o artefato padrao. Um `--cache` apontado para outro lugar
         # nao pode puxar -- nem renomear -- o JSON de `data/`: quem pede um cache separado esta
         # justamente pedindo para nao mexer no do acervo.
         if criar and caminho == DEFAULT_STORE_PATH:
-            _migra_json(conexao, DEFAULT_CACHE_PATH, gravado)
+            _migra_json(conexao, DEFAULT_CACHE_PATH, atual)
     except sqlite3.Error as exc:
         logger.warning("Cache de posições ilegível em %s (%s); seguindo em memória.", caminho, exc)
         conexao.close()
         return PositionStore.in_memory(atual)
 
-    loja = PositionStore(caminho, conexao, gravado)
+    loja = PositionStore(caminho, conexao, atual)
     logger.info("Cache de posições: %d perguntadas, %d com resposta.", len(loja), loja.answered)
     return loja
 
 
+def _abre_para_ler(caminho: Path, atual: dict[str, Any], de_outra_thread: bool) -> PositionStore:
+    """A porta de quem só lê: `mode=ro`, sem criar, sem migrar. Ilegível responde vazio."""
+    if not caminho.exists():
+        return PositionStore.in_memory(atual)
+    conexao: sqlite3.Connection | None = None
+    try:
+        conexao = sqlite3.connect(
+            f"file:{caminho.as_posix()}?mode=ro", uri=True, timeout=BUSY_TIMEOUT, check_same_thread=not de_outra_thread
+        )
+        if _versao_do_esquema(conexao) == 1:
+            _le_a_versao_um(conexao)
+        conexao.execute("SELECT count(*) FROM positions").fetchone()
+    except sqlite3.Error as exc:
+        logger.warning("Cache de posições ilegível em %s (%s); respondendo vazio.", caminho, exc)
+        if conexao is not None:
+            conexao.close()
+        return PositionStore.in_memory(atual)
+    return PositionStore(caminho, conexao, atual)
+
+
+_CRIA_POSICOES = (
+    "CREATE TABLE IF NOT EXISTS {tabela} ("
+    "impressao TEXT NOT NULL, placement TEXT NOT NULL, count INTEGER NOT NULL, games TEXT NOT NULL, "
+    "PRIMARY KEY (impressao, placement)"
+    ") WITHOUT ROWID"
+)
+"""O esquema da S-140 com a impressão na frente da chave (S-806).
+
+A colocação continua sendo a árvore e a resposta continua viajando na folha; a impressão vem antes
+porque toda pergunta é feita sob uma impressão só, e com ela na frente a contagem de uma base e a
+limpeza das outras são faixas contíguas da mesma árvore."""
+
+_GRAVA_LINHA = "INSERT OR REPLACE INTO positions (impressao, placement, count, games) VALUES (?, ?, ?, ?)"
+
+
 def _prepara(conexao: sqlite3.Connection) -> None:
-    """A tabela, no esquema da S-140: a colocação **é** a árvore, e a resposta viaja na folha."""
-    conexao.execute(
-        "CREATE TABLE IF NOT EXISTS positions ("
-        "placement TEXT NOT NULL PRIMARY KEY, count INTEGER NOT NULL, games TEXT NOT NULL"
-        ") WITHOUT ROWID"
-    )
+    """As tabelas na versão de agora. Uma da versão 1 é migrada antes, sem perder linha."""
+    if _versao_do_esquema(conexao) == 1:
+        _migra_da_versao_um(conexao)
+    conexao.execute(_CRIA_POSICOES.format(tabela="positions"))
     conexao.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
     conexao.execute("INSERT OR IGNORE INTO meta VALUES ('version', ?)", (str(STORE_VERSION),))
     conexao.commit()
+
+
+def _versao_do_esquema(conexao: sqlite3.Connection) -> int:
+    """0 sem tabela, 1 sem a coluna `impressao`, 2 com ela. Lido do esquema, e não de `meta`."""
+    colunas = {str(linha[1]) for linha in conexao.execute("PRAGMA main.table_info(positions)")}
+    if not colunas:
+        return 0
+    return 2 if "impressao" in colunas else 1
+
+
+def _chave_da_versao_um(conexao: sqlite3.Connection) -> str:
+    """A impressão das linhas de um cache da versão 1: a marca que ele guardava em `meta`.
+
+    `"?"` quando a marca tinha tamanho desconhecido: não casa com impressão nenhuma, e as linhas
+    ficam guardadas em vez de sumir."""
+    chave = _chave(_fingerprint_gravado(conexao))
+    return "?" if chave is None else chave
+
+
+def _migra_da_versao_um(conexao: sqlite3.Connection) -> None:
+    """Põe a impressão gravada em `meta` em cada linha, numa transação. Nenhuma linha se perde.
+
+    É a única troca de tabela do módulo: cria a nova, copia, e só então derruba a antiga, tudo
+    dentro do mesmo `BEGIN IMMEDIATE` -- um processo morto no meio deixa a versão 1 intacta. O
+    esquema é relido **depois** de tomar a trava, porque um segundo processo que abrisse ao mesmo
+    tempo encontraria a tabela já migrada, e copiá-la de novo com a chave de `meta` (já apagada)
+    trocaria a impressão de todas as linhas.
+    """
+    conexao.execute("BEGIN IMMEDIATE")
+    try:
+        if _versao_do_esquema(conexao) != 1:
+            conexao.rollback()
+            return
+        chave = _chave_da_versao_um(conexao)
+        conexao.execute("DROP TABLE IF EXISTS positions_v2")
+        conexao.execute(_CRIA_POSICOES.format(tabela="positions_v2"))
+        conexao.execute(
+            "INSERT INTO positions_v2 (impressao, placement, count, games) "
+            "SELECT ?, placement, count, games FROM positions",
+            (chave,),
+        )
+        conexao.execute("DROP TABLE positions")
+        conexao.execute("ALTER TABLE positions_v2 RENAME TO positions")
+        conexao.execute("DELETE FROM meta WHERE key = 'database'")
+        conexao.execute("INSERT OR REPLACE INTO meta VALUES ('version', ?)", (str(STORE_VERSION),))
+        conexao.commit()
+    except sqlite3.Error:
+        conexao.rollback()
+        raise
+    logger.info("Cache de posições migrado para a versão %d: cada linha leva agora a impressão da base.", STORE_VERSION)
+
+
+def _le_a_versao_um(conexao: sqlite3.Connection) -> None:
+    """Uma conexão só de leitura sobre a versão 1 enxerga o esquema de agora, sem gravar nada.
+
+    Uma vista temporária chamada `positions` -- o `temp` vem antes do `main` na resolução de nomes
+    do SQLite -- põe a impressão de `meta` como coluna constante. Ela mora no banco temporário da
+    conexão, e o arquivo não é tocado: quem só lê não migra.
+    """
+    literal = _chave_da_versao_um(conexao).replace("'", "''")
+    conexao.execute(
+        "CREATE TEMP VIEW positions AS "  # noqa: S608 - o literal e a marca gravada, escapada acima
+        f"SELECT '{literal}' AS impressao, placement, count, games FROM main.positions"
+    )
 
 
 def _conexao_em_memoria() -> sqlite3.Connection:
@@ -563,73 +711,44 @@ def _fingerprint_gravado(conexao: sqlite3.Connection) -> dict[str, Any]:
     return marca if isinstance(marca, dict) else {}
 
 
-def stored_summary(path: Path = DEFAULT_STORE_PATH) -> tuple[dict[str, Any], int]:
-    """Que base fez este cache, e quantas posições ele guarda -- **sem abri-lo para escrita**.
+def stored_summary(
+    path: Path = DEFAULT_STORE_PATH, *, database: Path | Sequence[Path] | None = None
+) -> tuple[int, int]:
+    """Quantas posições valem para `database`, e quantas o arquivo guarda ao todo. Só lê.
 
-    Existe porque `open_store` é a porta que *descarta*: ele compara o fingerprint e esvazia na
-    hora em que a base não bate. Quem precisa **avisar antes** -- a janela, ao perguntar qual
-    base usar -- não pode usar aquela porta para descobrir o que perderia, porque perguntar já
-    teria custado a resposta.
+    Existe para quem **avisa antes** -- a janela, ao perguntar qual base usar: "N continuam
+    valendo", ou "as N guardadas são de outro conjunto". Desde a S-806 nada é descartado ao abrir,
+    e o aviso diz o que a busca vai aproveitar, não o que ela vai apagar.
 
     Nunca levanta, pela mesma razão do `open_store`: um cache ilegível é "não há cache", e o
     caminho de quem não tem cache é varrer -- que é o comportamento anterior ao módulo.
     """
-    caminho = Path(path)
-    if not caminho.exists():
-        return {}, 0
-    try:
-        conexao = sqlite3.connect(f"file:{caminho.as_posix()}?mode=ro", uri=True, timeout=BUSY_TIMEOUT)
-    except sqlite3.Error as exc:
-        logger.debug("Cache de posições ilegível em %s (%s).", caminho, exc)
-        return {}, 0
-    try:
-        marca = _fingerprint_gravado(conexao)
-        (quantas,) = conexao.execute("SELECT count(*) FROM positions").fetchone()
-        return marca, int(quantas)
-    except sqlite3.Error as exc:
-        logger.debug("Cache de posições sem as tabelas esperadas em %s (%s).", caminho, exc)
-        return {}, 0
-    finally:
-        conexao.close()
+    with open_store(path, database=database, somente_leitura=True) as loja:
+        return len(loja), loja.guardadas
 
 
 def same_database(um: dict[str, Any], outro: dict[str, Any]) -> bool:
     """Duas marcas descrevem o mesmo conjunto de bases? O critério da guarda, exposto.
 
     A regra já existia (`_same_database`) e era privada porque só `open_store` decidia com ela.
-    Quem avisa antes de descartar precisa da **mesma** regra: um aviso que dissesse "vai
-    descartar" onde a guarda não descarta ensinaria a pessoa a ignorar o aviso.
+    Quem compara marcas por fora precisa da **mesma** regra: um aviso que dissesse "vale" onde a
+    guarda não deixa responder ensinaria a pessoa a ignorar o aviso.
     """
     return _same_database(um, outro)
-
-
-def _grava_fingerprint(conexao: sqlite3.Connection, fingerprint: dict[str, Any]) -> None:
-    with conexao:
-        conexao.execute(
-            "INSERT OR REPLACE INTO meta VALUES ('database', ?)",
-            (json.dumps(fingerprint, ensure_ascii=False),),
-        )
-
-
-def _esvazia(conexao: sqlite3.Connection) -> None:
-    with conexao:
-        conexao.execute("DELETE FROM positions")
 
 
 def _descreve(fingerprint: dict[str, Any]) -> str:
     """A marca da base como uma linha legível, para o aviso dizer *qual* base era.
 
     Aceita a forma anterior à S-93 (um arquivo solto) porque é justamente ela que vai aparecer
-    no aviso de quem tem um cache antigo -- e um aviso que imprimisse `None` sobre o cache que
-    está sendo descartado não explicaria nada.
+    no aviso de quem tem um cache antigo -- e um aviso que imprimisse `None` sobre a base que não
+    responde não explicaria nada.
     """
-    arquivos = fingerprint.get("files")
-    if not isinstance(arquivos, list):
-        arquivos = [fingerprint]
+
     def _peso(tamanho: Any) -> str:
         return "tamanho desconhecido" if tamanho is None else f"{tamanho} bytes"
 
-    return ", ".join(f"{item.get('name', '?')} ({_peso(item.get('size', 0))})" for item in arquivos) or "nada"
+    return ", ".join(f"{item.get('name', '?')} ({_peso(item.get('size', 0))})" for item in _arquivos(fingerprint)) or "nada"
 
 
 def _migra_json(conexao: sqlite3.Connection, origem: Path, fingerprint: dict[str, Any]) -> int:
@@ -638,9 +757,9 @@ def _migra_json(conexao: sqlite3.Connection, origem: Path, fingerprint: dict[str
     **Roda só quando o SQLite acabou de ser criado**, que é a única vez em que ela pode não
     apagar trabalho: com o banco já em pé, o JSON que sobrou no disco é mais velho que ele.
 
-    Não migra o que é de outra base -- a mesma regra do `open_store`, aqui pelo mesmo motivo:
-    contagem de outra base é resposta errada, e uma resposta errada guardada é pior que uma
-    varredura a pagar.
+    As linhas entram sob a impressão **do JSON**, e não a de agora (S-806): as de outra base não
+    respondem por esta -- contagem de outra base é resposta errada --, e ficam guardadas para
+    quando aquela base voltar, como qualquer outra linha do cache.
     """
     if not origem.exists():
         return 0
@@ -651,19 +770,24 @@ def _migra_json(conexao: sqlite3.Connection, origem: Path, fingerprint: dict[str
         return 0
 
     antigo = PositionCache.from_dict(dados)
-    if fingerprint and antigo.fingerprint and not _same_database(antigo.fingerprint, fingerprint):
+    chave = _chave(antigo.fingerprint or fingerprint)
+    if chave is None:
+        logger.warning("O cache anterior em %s não diz de que base é; ignorado.", origem)
+        return 0
+    if antigo.fingerprint and fingerprint and not _same_database(antigo.fingerprint, fingerprint):
         logger.warning(
-            "O cache anterior é de %s e a base agora é %s: as posições dele não entram.",
+            "O cache anterior é de %s e a base agora é %s: as posições dele entram guardadas sob "
+            "aquela base, e não respondem por esta.",
             _descreve(antigo.fingerprint),
             _descreve(fingerprint),
         )
-        return 0
 
     with conexao:
         conexao.executemany(
-            "INSERT OR REPLACE INTO positions VALUES (?, ?, ?)",
+            _GRAVA_LINHA,
             [
                 (
+                    chave,
                     colocacao,
                     guardada.count,
                     json.dumps([jogo.to_dict() for jogo in guardada.games], ensure_ascii=False),

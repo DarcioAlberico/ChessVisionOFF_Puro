@@ -2709,18 +2709,22 @@ class PainelDeEstudo(QWidget):
 
         `open_store` nunca levanta por causa do disco (é decisão dele), então o `None` daqui só
         significa uma coisa: não há PGN em `pgn_database/` para o cache falar a respeito.
+
+        **A sala só lê o cache (S-806)**: abre com `somente_leitura`, e não cria o arquivo. Sem
+        arquivo, a loja é a vazia em memória, e é trocada pela do disco quando ele aparece -- um
+        `cvoff-games --all` rodado com a sala aberta passa a responder sem reabri-la.
         """
-        if self._loja is not None:
+        from chess_diagram_ocr import games_cache
+
+        caminho = self._caminho_do_cache if self._caminho_do_cache is not None else games_cache.DEFAULT_STORE_PATH
+        if self._loja is not None and (self._loja.path == caminho or not caminho.exists()):
             return self._loja
         bases = tuple(self._bases())
         if not bases:
             return None
-        from chess_diagram_ocr import games_cache
-
-        if self._caminho_do_cache is None:
-            self._loja = games_cache.open_store(database=list(bases))
-        else:
-            self._loja = games_cache.open_store(self._caminho_do_cache, database=list(bases))
+        if self._loja is not None:
+            self._loja.close()
+        self._loja = games_cache.open_store(caminho, database=list(bases), somente_leitura=True)
         return self._loja
 
     # ------------------------------------------------------------------- entrada (S-288)
