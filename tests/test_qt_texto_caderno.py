@@ -15,7 +15,7 @@ from pathlib import Path
 from unittest import mock
 
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+from qt_app import MOTIVO, TEM_PYQT, TarefaAdiada, aplicacao, descartar
 
 from chess_diagram_ocr.text import caderno, rascunho, rico
 from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
@@ -282,12 +282,27 @@ class RenderizarAoFundoTests(_Aba):
         self.assertIsNotNone(self.painel._pagina_rgb)
 
     def test_a_folha_que_chega_depois_de_outra_e_jogada_fora(self) -> None:
+        """A pessoa abre a 3 e a 4 do caderno antes de a 3 chegar: a 3 atrasada não entra na 4."""
         import numpy as np
 
         self.ler(3)
-        self.painel._folha_pedida_ao_fundo = 5
-        self.painel._folha_chegou((2, 72, np.zeros((10, 10, 3), np.uint8)))
-        self.assertIsNone(self.painel._pagina_rgb)
+        self.ler(4)
+
+        def renderizar(_caminho: Path, indice: int, *, dpi: int) -> np.ndarray:
+            return np.full((40, 40, 3), indice, np.uint8)
+
+        TarefaAdiada.pendentes.clear()
+        with mock.patch.object(painel_de_texto, "Tarefa", TarefaAdiada), mock.patch.object(
+            painel_de_texto, "_renderizar", renderizar
+        ):
+            self.ler(3)
+            self.ler(4)
+        da_3, da_4 = TarefaAdiada.pendentes
+        da_3.entregar()
+        self.assertIsNone(self.painel._pagina_rgb, "a folha 3 chegou atrasada e entrou na 4")
+        da_4.entregar()
+        assert self.painel._pagina_rgb is not None
+        self.assertEqual(int(self.painel._pagina_rgb[0, 0, 0]), 3, "a folha 4 não entrou quando chegou")
 
 
 class DescartarTests(_Aba):

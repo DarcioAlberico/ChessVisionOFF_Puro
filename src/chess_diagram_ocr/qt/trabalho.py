@@ -17,17 +17,19 @@ import logging
 import sys
 import threading
 import traceback
+import weakref
 from collections.abc import Callable
 from functools import partial
 from typing import Any
 
+from PyQt6 import sip
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 from chess_diagram_ocr.cli import message_for
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["INTERVALO_DE_TROCA_S", "DeteccaoDeFundo", "Tarefa", "ceder_a_interface", "manter_viva", "rastro_de"]
+__all__ = ["INTERVALO_DE_TROCA_S", "DeteccaoDeFundo", "Tarefa", "ceder_a_interface", "manter_viva", "rastro_de", "tarefas_rodando"]
 
 INTERVALO_DE_TROCA_S = 0.0001
 """De quanto em quanto o interpretador troca de thread enquanto há tarefa rodando (OCR_UI 15).
@@ -94,6 +96,7 @@ class Tarefa(QThread):
         # `caissa.ui.audit.execucao` atribuem cada `QThread.start` ao arquivo de `qt/` que o
         # chamou, e um `start` daqui seria o chamador de todas as threads do programa.
         ceder_a_interface()
+        _TODAS.add(self)
 
     def run(self) -> None:
         """O `except` largo é deliberado: aqui é a borda da thread.
@@ -256,3 +259,25 @@ def manter_viva(tarefa: Tarefa) -> Tarefa:
 def _soltar(tarefa: Tarefa) -> None:
     _VIVAS.discard(tarefa)
     tarefa.deleteLater()
+
+
+_TODAS: weakref.WeakSet[Tarefa] = weakref.WeakSet()
+"""Toda `Tarefa` construída e ainda viva, com pai ou sem pai (S-805). Ver `tarefas_rodando`."""
+
+
+def tarefas_rodando() -> list[Tarefa]:
+    """As tarefas cuja thread está rodando agora, com pai ou sem pai (S-805).
+
+    **É a pergunta que a guarda de thread da suíte não sabia fazer.** Um `QThread` não aparece em
+    `threading.enumerate()`, ou aparece como `Dummy-N` depois de o código dele chamar
+    `threading.current_thread()` -- e `Dummy` é justamente o que a guarda aceita. Uma tarefa que
+    sobrevive ao teste morria dentro do vizinho, que é o modo de falha que a S-413 fechou para as
+    threads do Python e deixou aberto para as do Qt.
+
+    **Um registro fraco, e não `_VIVAS`.** `_VIVAS` *segura* a tarefa sem pai e a destrói quando
+    ela acaba; pôr nele a tarefa com pai mudaria quem a destrói, e o painel que ainda a consulta
+    depois do `finished` acharia o objeto do C++ apagado. Este só observa: nasce no construtor e
+    sai sozinho quando o Python solta o objeto. A tarefa cujo pai já destruiu o lado do C++ não
+    roda mais, e fica de fora.
+    """
+    return [tarefa for tarefa in list(_TODAS) if not sip.isdeleted(tarefa) and tarefa.isRunning()]

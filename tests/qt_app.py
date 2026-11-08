@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import threading
 import unittest
+from collections.abc import Callable
 from typing import Any
 
 TEM_PYQT = importlib.util.find_spec("PyQt6") is not None
@@ -34,7 +36,12 @@ vez de virar um `s` no meio de quatro mil pontos.
 
 **Ele deixou de ser um extra no corte do Tk (S-506)**, e a checagem continua valendo por outro
 motivo: um `.venv` antigo, de antes de o PyQt6 entrar nas dependências de base, ainda não o tem --
-e ali pular com o motivo escrito é melhor que um `ImportError` na coleta."""
+e ali pular com o motivo escrito é melhor que um `ImportError` na coleta.
+
+**Pular não é passar (S-805).** Duzentas classes pulando deixavam a rodada **verde** num ambiente
+sem a dependência de base, e a única marca era o `-ra`. Quem reprova é
+`test_disciplina_da_suite.PyQtAusenteReprovaTests`: um teste só, que não pula, e que diz o que
+instalar."""
 
 MOTIVO = "o PyQt6 não está instalado (uv sync)"
 
@@ -216,3 +223,96 @@ def descartar(widget: Any) -> None:
     from PyQt6.QtCore import QCoreApplication, QEvent
 
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
+
+
+class _SinalAdiado:
+    """O par `connect`/`emit` de um `pyqtSignal`, sem Qt: chama os alvos na hora do `emit`."""
+
+    def __init__(self) -> None:
+        self._alvos: list[Callable[..., object]] = []
+
+    def connect(self, alvo: Callable[..., object]) -> None:
+        self._alvos.append(alvo)
+
+    def emit(self, *argumentos: object) -> None:
+        for alvo in list(self._alvos):
+            alvo(*argumentos)
+
+
+class TarefaAdiada:
+    """Uma `qt.trabalho.Tarefa` sem thread, cujo resultado só chega **quando o teste manda** (S-805).
+
+    **O defeito que a `_TarefaNaHora` não pega.** Ela emite `pronto` dentro do `start`: a tarefa
+    termina antes de a tela poder mudar, e nenhum teste com ela vê o caso "a folha virou, o livro
+    trocou, a pessoa digitou **enquanto** a tarefa rodava" -- que é o caso normal de uma thread e o
+    que a S-823, a S-824 e a S-894 cobram.
+
+    O trabalho roda no `start`, como numa thread rápida que já acabou; o desfecho espera em
+    `pendentes` até `entregar()`. É a janela entre a thread terminar e o sinal dela, que vai pela
+    fila da linha de eventos, chegar ao painel. Troque-a por `mock.patch.object(modulo, "Tarefa",
+    TarefaAdiada)` e chame `TarefaAdiada.entregar_todas()` -- ou `entregar()` numa só -- quando o
+    teste quiser que o resultado chegue.
+    """
+
+    pendentes: list[TarefaAdiada] = []
+    """As tarefas que já rodaram e ainda não entregaram, na ordem em que começaram. Esvazie no
+    `setUp` (`TarefaAdiada.pendentes.clear()`): a lista é da classe, como o remendo."""
+
+    def __init__(self, funcao: Callable[[], Any], *, parent: Any = None, nome: str = "tarefa") -> None:
+        self._funcao = funcao
+        self._nome = nome
+        self.rastro = ""
+        self.pronto, self.falhou, self.finished = _SinalAdiado(), _SinalAdiado(), _SinalAdiado()
+        self._cancelar = threading.Event()
+        self._desfecho: tuple[str, Any] | None = None
+        self._rodando = False
+
+    @property
+    def nome(self) -> str:
+        return self._nome
+
+    def start(self) -> None:
+        try:
+            self._desfecho = ("pronto", self._funcao())
+        except Exception as erro:  # noqa: BLE001 - a falha vai pelo sinal, como na thread
+            self._desfecho = ("falhou", erro)
+        self._rodando = True
+        TarefaAdiada.pendentes.append(self)
+
+    def entregar(self) -> None:
+        """Emite o desfecho guardado -- `pronto` ou `falhou` -- e depois `finished`, como a thread."""
+        if self._desfecho is None:
+            raise AssertionError(f"a tarefa «{self._nome}» não começou, ou já entregou")
+        tipo, valor = self._desfecho
+        self._desfecho, self._rodando = None, False
+        TarefaAdiada.pendentes.remove(self)
+        if tipo == "pronto":
+            self.pronto.emit(valor)
+        else:
+            from chess_diagram_ocr.qt.trabalho import rastro_de
+
+            self.rastro = rastro_de(valor)
+            self.falhou.emit(str(valor), valor)
+        self.finished.emit()
+
+    @classmethod
+    def entregar_todas(cls) -> None:
+        """Entrega as pendentes na ordem em que começaram, inclusive as que nascerem no caminho."""
+        while cls.pendentes:
+            cls.pendentes[0].entregar()
+
+    def isRunning(self) -> bool:  # noqa: N802 - o nome é o do `QThread`
+        return self._rodando
+
+    def wait(self, _ms: int = 0) -> bool:
+        return not self._rodando
+
+    def cancelar(self) -> None:
+        self._cancelar.set()
+
+    def should_cancel(self) -> bool:
+        return self._cancelar.is_set()
+
+    @property
+    def cancelada(self) -> bool:
+        return self._cancelar.is_set()

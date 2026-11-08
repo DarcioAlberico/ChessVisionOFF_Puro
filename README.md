@@ -720,7 +720,7 @@ sozinha -- adotar a leitura dela e um clique seu, e a procedencia registra que v
 Le o texto **em volta do diagrama** nas paginas que nao tem camada de texto. Medido em
 2026-08-14, quando o acervo tinha 27 livros: **7 deles sao scan puro** e saem inteiros como
 `[SideToMoveSource "default"]`, mesmo quando a pagina tem `LAS BLANCAS JUEGAN PRIMERO`
-impresso no topo. (Hoje o acervo tem 45 PDFs; os 18 que entraram depois nao foram
+impresso no topo. (Hoje o acervo tem 58 PDFs; os 31 que entraram depois nao foram
 classificados, e por isso o denominador aqui continua 27.) Outros 5 livros tem
 camada de texto que falha em parte das paginas.
 
@@ -1247,7 +1247,7 @@ por tamanho ou por direito autoral:
 | Caminho | Conteudo | Por que fora |
 |---|---|---|
 | `PDF/` | livros de origem | material protegido por direito autoral |
-| `data/samples/` | 5.768 PNGs de tabuleiros, 5,0 GB | tamanho |
+| `data/samples/` | 20.758 PNGs de tabuleiros, 17,1 GB | tamanho |
 | `models/*.pt` | checkpoint treinado, ~8,7 MB | binario que muda a cada treino |
 | `PGN/` | saida gerada | reproduzivel a partir dos PDFs |
 | `pgn_database/` | sua base de partidas em PGN (as duas gigabases medidas aqui tem 18,9 GB) | material de terceiro, e o GitHub recusa acima de 100 MB |

@@ -377,7 +377,7 @@ duplicado e uma linha para um arquivo que este repositório nunca teve.
 |---|---|---|
 | `data/labels.csv` | rótulos: imagem, FEN, lado a jogar, origem, split, e a confirmação de ilegalidade deliberada (`illegal_ok`) | sim |
 | `data/splits.csv` | partição treino/validação/teste, estável sob crescimento, atribuída às amostras novas pelo próprio treino (S-56) | sim |
-| `data/samples/` | os PNGs 800×800 dos tabuleiros | não (5,0 GB) |
+| `data/samples/` | os PNGs 800×800 dos tabuleiros | não (17,1 GB) |
 | `data/field_set.jsonl` | as páginas reais anotadas à mão: a régua de campo (S-41, S-77, S-95) | **sim** |
 | `data/quarantine.csv` | as linhas que o `cvoff-audit --fix` tirou do `labels.csv`, com o motivo | não — `.gitignore:28` |
 | `data/settings.json` | preferências do usuário, incluindo o endpoint remoto | não |

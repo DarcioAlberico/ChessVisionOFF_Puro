@@ -213,6 +213,14 @@ mesma âncora. Um teste que reprova, sem pular, quando o pacote PyQt6 não está
 **Aceite.** As três guardas acusam o caso sabotado e passam na suíte atual; a `TarefaAdiada` é usada pelos
 testes das S-823, S-824 e S-894.
 
+**Entregue** (2026-11-08): o registro não é o `_VIVAS`, e sim um `weakref.WeakSet` (`qt/trabalho._TODAS`,
+lido por `tarefas_rodando()`): pôr a tarefa com pai no `_VIVAS` faria o `_soltar` destruí-la no `finished`,
+e o painel que ainda a consulta acharia o C++ apagado. O `git worktree list` saiu de `tests/test_docs.py` para
+`tests/arvores_do_repositorio.py` (`checkout_principal`, `raizes_do_repositorio`). Ancorados no principal, os
+7 pulos rodaram e 3 reprovaram contra números velhos: README e ARCHITECTURE remedidos (58 PDFs, 20.758 PNGs,
+17,1 GB). As ~206 classes continuam pulando sem o PyQt6; quem reprova é `PyQtAusenteReprovaTests`. A
+`TarefaAdiada` já serve a `RenderizarAoFundoTests` da aba Texto.
+
 ## Fase 111 — Caches e índices que não se apagam sozinhos
 
 ## S-807 · Uma impressão digital de base só, que enxerga membro de `.zip`

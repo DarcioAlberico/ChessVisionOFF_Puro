@@ -35,6 +35,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 import pytest
+from arvores_do_repositorio import checkout_principal
 
 PACOTE = "chess_diagram_ocr"
 DISTRIBUICAO = "chessvisionoff-puro"
@@ -156,14 +157,20 @@ Retrato = dict[Path, tuple[int, int] | None]
 
 
 def pastas_de_dados_reais() -> tuple[Path, ...]:
-    """As `data/` que o desvio protege: a do `PROJECT_ROOT` que o pacote resolve, e a desta árvore.
+    """As `data/` que o desvio protege: a do `PROJECT_ROOT`, a desta árvore e a do checkout principal.
 
-    As duas coincidem sob o pytest (`pythonpath = ["src"]`), mas é o `PROJECT_ROOT` que o código
-    usa -- e uma guarda ancorada só na `RAIZ` passaria verde justamente onde as duas divergem.
+    As duas primeiras coincidem sob o pytest (`pythonpath = ["src"]`), mas é o `PROJECT_ROOT` que o
+    código usa -- e uma guarda ancorada só na `RAIZ` passaria verde justamente onde as duas divergem.
+
+    **A terceira é a que tem o que perder (S-805).** Num worktree, `PROJECT_ROOT/data/` é uma pasta
+    sem cache nenhum, e a guarda vigiava o vazio: o cache de ~56 minutos de varredura, o `data/`
+    com o trabalho de quem usa, mora no checkout principal. Um caminho montado a partir da
+    instalação editável -- que aponta para lá -- cairia nele, e é o pior caso e o que menos aparece.
+    As guardas só leem (`stat` e listagem): nada aqui escreve em pasta nenhuma de quem usa.
     """
     from chess_diagram_ocr.config import PROJECT_ROOT
 
-    return tuple(dict.fromkeys((PROJECT_ROOT / "data", RAIZ / "data")))
+    return tuple(dict.fromkeys((PROJECT_ROOT / "data", RAIZ / "data", checkout_principal() / "data")))
 
 
 def caches_de_posicoes(pastas: tuple[Path, ...]) -> list[Path]:
@@ -300,6 +307,20 @@ def _vivas(antes: frozenset[int]) -> list[threading.Thread]:
     ]
 
 
+def _tarefas_rodando() -> list[object]:
+    """As `Tarefa` do Qt rodando agora (S-805), ou nenhuma se o teste não chegou a carregar o Qt.
+
+    **Pelo `sys.modules`, e não por import**: o teste de parser não paga o PyQt6 para a guarda
+    descobrir que não havia tarefa. Quem nunca importou `qt.trabalho` não construiu `Tarefa`.
+    """
+    trabalho = sys.modules.get("chess_diagram_ocr.qt.trabalho")
+    return [] if trabalho is None else list(trabalho.tarefas_rodando())
+
+
+def _tarefas_novas(antes: frozenset[int]) -> list[object]:
+    return [tarefa for tarefa in _tarefas_rodando() if id(tarefa) not in antes]
+
+
 _CADERNOS_DA_SUITE = iter(range(1 << 30))
 
 
@@ -335,13 +356,19 @@ def sem_thread_vazada(request: pytest.FixtureRequest) -> Iterator[None]:
 
     A espera é a parte que faz isto não ser um teste instável: uma thread de trabalho termina
     sozinha, e o que se cobra é que ela **termine**, não que nunca tenha existido.
+
+    **E as `Tarefa` do Qt (S-805)**, que não estão em `threading.enumerate()` -- ou estão como
+    `Dummy-N`, que a lista acima aceita. Vêm de `qt.trabalho.tarefas_rodando`, que vê toda `Tarefa`
+    construída, com pai ou sem pai; a mensagem as nomeia pelo `nome` que a pessoa veria na caixa.
     """
     antes = frozenset(t.ident for t in threading.enumerate() if t.ident is not None)
+    tarefas_antes = frozenset(id(tarefa) for tarefa in _tarefas_rodando())
     yield
     prazo = time.monotonic() + ESPERA_POR_THREAD
-    while time.monotonic() < prazo and _vivas(antes):
+    while time.monotonic() < prazo and (_vivas(antes) or _tarefas_novas(tarefas_antes)):
         time.sleep(0.01)
     vazadas = [t.name for t in _vivas(antes)]
+    vazadas += [f"Tarefa «{getattr(tarefa, 'nome', '?')}»" for tarefa in _tarefas_novas(tarefas_antes)]
     if vazadas:
         pytest.fail(
             f"{request.node.name} deixou thread viva: {', '.join(sorted(vazadas))}. "
@@ -481,29 +508,31 @@ def nada_novo_no_data_de_verdade() -> Iterator[None]:
     quem o constrói não chama `save_index`, ele chama. Todos terminam no mesmo lugar, e é o lugar
     que esta guarda vigia.
 
-    **A pasta é a que o código resolve, e não `RAIZ`.** As duas coincidem sob o pytest, que põe
+    **As pastas são as de `pastas_de_dados_reais`, e não só `RAIZ`.** As duas coincidem sob o pytest, que põe
     `src/` na frente pelo `pythonpath` do `pyproject`. Num processo que importe o pacote da
     instalação editável elas divergem -- e é exatamente aí que a escrita cai no checkout de
     **outra** pessoa, que é o pior caso e o que menos aparece. Uma guarda ancorada em `RAIZ`
-    passaria verde justamente sobre ele; a S-218 já pagou por essa lição uma vez.
+    passaria verde justamente sobre ele; a S-218 já pagou por essa lição uma vez. E num worktree
+    o `data/` com o trabalho acumulado é o do checkout principal (S-805), vigiado junto.
 
     **Relata e não apaga.** O que está em `data/` é trabalho humano acumulado (é o que o
     `_project_root` diz sobre o `labels.csv`), e uma guarda que removesse o que julga sobra
     precisaria estar certa todas as vezes. Errar uma vez custaria mais do que o defeito que ela
     persegue, então ela nomeia os arquivos e a remoção fica com quem sabe o que são.
     """
-    from chess_diagram_ocr.config import PROJECT_ROOT
-
-    pasta = PROJECT_ROOT / "data"
-    antes = _listagem_de(pasta)
+    antes = {pasta: _listagem_de(pasta) for pasta in pastas_de_dados_reais()}
     yield
-    novos = sorted(
-        caminho
-        for caminho in _listagem_de(pasta) - antes
-        if not any(fnmatch(caminho, padrao) for padrao in ESCRITA_LEGITIMA_EM_DATA)
-    )
-    if not novos:
-        return
+    for pasta, listagem in antes.items():
+        novos = sorted(
+            caminho
+            for caminho in _listagem_de(pasta) - listagem
+            if not any(fnmatch(caminho, padrao) for padrao in ESCRITA_LEGITIMA_EM_DATA)
+        )
+        if novos:
+            _reprovar_o_que_nasceu(pasta, novos)
+
+
+def _reprovar_o_que_nasceu(pasta: Path, novos: list[str]) -> None:
     mostrados = ", ".join(novos[:RELATADOS_NO_MAXIMO])
     resto = f" (e mais {len(novos) - RELATADOS_NO_MAXIMO})" if len(novos) > RELATADOS_NO_MAXIMO else ""
     pytest.fail(

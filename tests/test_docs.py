@@ -28,9 +28,19 @@ from collections.abc import Iterable
 from fnmatch import fnmatch
 from pathlib import Path
 
+from arvores_do_repositorio import checkout_principal, normalizada, raizes_do_repositorio
+
 RAIZ = Path(__file__).resolve().parents[1]
 DOCS = RAIZ / "docs"
 README = RAIZ / "README.md"
+
+PRINCIPAL = checkout_principal()
+"""Onde moram os artefatos de uso -- `data/`, `PDF/`, `pgn_database/` --, que o git não versiona.
+
+É a própria `RAIZ` num checkout simples. Num worktree é o checkout principal (S-805): ancorados em
+`RAIZ`, os números vivos da S-135 pulavam ali em toda corrida, e um pulo de sempre é um teste que
+não existe. O que é **versionado** continua lido de `RAIZ`, que é a versão que está sendo conferida.
+"""
 
 SECAO = re.compile(r"^#{1,4} (S-\d{1,3})\b")
 """Uma seção de item: `## S-95 · ...` ou `### S-78 · ...`. O nível varia entre os arquivos."""
@@ -270,48 +280,6 @@ def faixas_declaradas(texto: str) -> dict[int, str]:
                 if numero not in excluidos:
                     declarado[numero] = arquivo.group(1)
     return declarado
-
-
-def _raizes_do_repositorio() -> tuple[str, ...]:
-    """Toda árvore de trabalho deste repositório, e não só aquela em que a suíte está rodando.
-
-    **O furo que isto tapa (S-299).** A guarda abaixo comparava o caminho publicado contra
-    `RAIZ`, que é a árvore *atual*. Num `git worktree` a árvore atual é
-    `.claude/worktrees/algum-nome`, e um relatório que publicasse
-    `C:/Python-Chess2/ChessVisionOFF_Puro/models/piece_classifier.pt` -- o checkout principal, que
-    é onde os `.pt` e o `PDF/` de fato moram -- **não começava pela raiz atual e passava em
-    verde**. A guarda existia, rodava, e não olhava onde o arquivo defeituoso estava.
-
-    É a mesma classe de problema da S-296: guarda que não olha onde o trabalho está. E é o caso
-    normal aqui, não o exótico -- remedir campo a partir de um worktree é o procedimento, porque
-    os artefatos só existem no checkout principal.
-
-    Devolve pelo menos `RAIZ`: sem git, ou com um git que recusa, a guarda volta a ser o que era,
-    e não deixa de existir.
-    """
-    raizes = {str(RAIZ)}
-    try:
-        resultado = subprocess.run(
-            ["git", "worktree", "list", "--porcelain"],
-            cwd=RAIZ,
-            capture_output=True,
-            text=True,
-            check=False,
-            encoding="utf-8",
-            errors="replace",
-        )
-    except OSError:  # pragma: no cover - maquina sem git no PATH
-        return (_normalizada(RAIZ),)
-    if resultado.returncode == 0:
-        for linha in resultado.stdout.splitlines():
-            if linha.startswith("worktree "):
-                raizes.add(linha[len("worktree ") :].strip())
-    return tuple(sorted({_normalizada(Path(raiz)) for raiz in raizes if raiz}))
-
-
-def _normalizada(caminho: Path) -> str:
-    """A forma em que os caminhos são comparados: barra para frente, sem barra final, minúscula."""
-    return str(caminho).replace("\\", "/").rstrip("/").lower()
 
 
 class ItemEntregueTemSpecTests(unittest.TestCase):
@@ -817,7 +785,7 @@ class NumerosVivosTests(unittest.TestCase):
         _perto(self, citado, real, "linhas do labels.csv")
 
     def test_os_pngs_citados_batem_com_o_disco(self) -> None:
-        pasta = RAIZ / "data" / "samples"
+        pasta = PRINCIPAL / "data" / "samples"
         if not pasta.exists():
             self.skipTest("data/samples/ não existe neste checkout")
         real = sum(1 for _ in pasta.rglob("*.png"))
@@ -826,7 +794,7 @@ class NumerosVivosTests(unittest.TestCase):
 
     def test_o_acervo_citado_bate_com_a_pasta_PDF(self) -> None:
         """O número que a S-135 pegou mais desatualizado: 27 contra 39 livros."""
-        pasta = RAIZ / "PDF"
+        pasta = PRINCIPAL / "PDF"
         if not pasta.exists():
             self.skipTest("PDF/ não existe neste checkout")
         real = sum(1 for _ in pasta.glob("*.pdf"))
@@ -834,7 +802,7 @@ class NumerosVivosTests(unittest.TestCase):
         _perto(self, citado, real, "PDFs em PDF/")
 
     def test_a_base_de_partidas_citada_bate_com_o_disco(self) -> None:
-        pasta = RAIZ / "pgn_database"
+        pasta = PRINCIPAL / "pgn_database"
         if not pasta.exists():
             self.skipTest("pgn_database/ não existe neste checkout")
         real = sum(f.stat().st_size for f in pasta.rglob("*") if f.is_file()) / 10**9
@@ -855,7 +823,7 @@ class NumerosVivosTests(unittest.TestCase):
         para o `provenance_index.jsonl`, que este repositório nunca teve.
         """
         citados = set(re.findall(r"`(data/[\w./<>-]+)`", self.arquitetura))
-        pasta = RAIZ / "data"
+        pasta = PRINCIPAL / "data"
         if not pasta.exists():
             self.skipTest("data/ não existe neste checkout")
 
@@ -901,7 +869,7 @@ class NumerosVivosTests(unittest.TestCase):
         self.assertEqual([], sumidos, "A tabela marca como versionado um arquivo que não está no disco.")
 
         def existe(caminho: str) -> bool:
-            return (RAIZ / caminho).exists() or (RAIZ / caminho.rstrip("/")).exists()
+            return (PRINCIPAL / caminho).exists() or (PRINCIPAL / caminho.rstrip("/")).exists()
 
         sob_demanda = set(re.findall(r"`(data/[\w./-]+)`[^|]*\|[^|]*\|[^|]*sob demanda", self.arquitetura))
         de_uso = {c for c in citados - versionados if "<" not in c and c not in sob_demanda}
@@ -1013,9 +981,9 @@ class NumerosVivosTests(unittest.TestCase):
         limpo, que é a única coisa que aquele número não significa. Quem decide é o conteúdo.
         """
         alvos = {
-            "data/samples/": (RAIZ / "data" / "samples", r"os PNGs 800×800 dos tabuleiros \| não \(([\d,]+) GB\)", 10**9),
-            "data/review_cache/": (RAIZ / "data" / "review_cache", r"não reabrir o PDF \| não \(([\d,]+) GB", 10**9),
-            "data/games_index.sqlite": (RAIZ / "data" / "games_index.sqlite", r"\(S-72, S-73\) \| não \((\d+) MB", 10**6),
+            "data/samples/": (PRINCIPAL / "data" / "samples", r"os PNGs 800×800 dos tabuleiros \| não \(([\d,]+) GB\)", 10**9),
+            "data/review_cache/": (PRINCIPAL / "data" / "review_cache", r"não reabrir o PDF \| não \(([\d,]+) GB", 10**9),
+            "data/games_index.sqlite": (PRINCIPAL / "data" / "games_index.sqlite", r"\(S-72, S-73\) \| não \((\d+) MB", 10**6),
         }
         for nome, (caminho, padrao, unidade) in alvos.items():
             with self.subTest(artefato=nome):
@@ -1246,7 +1214,7 @@ class CaminhoPublicadoTests(unittest.TestCase):
         return achados
 
     def test_nenhum_relatorio_publica_a_raiz_do_disco(self) -> None:
-        raizes = _raizes_do_repositorio()
+        raizes = raizes_do_repositorio()
         dentro = []
         for arquivo, onde, valor in self._caminhos_publicados():
             if not _ABSOLUTO.match(valor):
@@ -1270,8 +1238,8 @@ class CaminhoPublicadoTests(unittest.TestCase):
         tem um elemento. O que ele trava é que a lista **venha do git** e não de `RAIZ`, e que a
         raiz atual esteja sempre nela mesmo quando o git não responde.
         """
-        raizes = _raizes_do_repositorio()
-        self.assertIn(_normalizada(RAIZ), raizes)
+        raizes = raizes_do_repositorio()
+        self.assertIn(normalizada(RAIZ), raizes)
         self.assertTrue(all(raiz == raiz.lower() and not raiz.endswith("/") for raiz in raizes))
 
     def test_a_regra_nao_confunde_o_glifo_da_barra_com_caminho(self) -> None:

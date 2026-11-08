@@ -21,8 +21,11 @@ import textwrap
 import tokenize
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ambiente_de_teste import pasta_temporaria
+from arvores_do_repositorio import checkout_principal
+from qt_app import TEM_PYQT
 from subprocesso import rodar_python
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -416,6 +419,7 @@ class DadosDeQuemRodaTests(unittest.TestCase):
         copia = pasta_temporaria(self, prefixo="cvoff-sabotagem-")
         shutil.copytree(FONTES, copia / "src" / "chess_diagram_ocr", ignore=shutil.ignore_patterns("__pycache__"))
         (copia / "tests").mkdir()
+        shutil.copy2(TESTES / "arvores_do_repositorio.py", copia / "tests")
         sabotado = conftest.replace(LINHA_DO_DESVIO, "pass  # sabotagem: o desvio saiu\n")
         (copia / "tests" / "conftest.py").write_text(sabotado, encoding="utf-8", newline="\n")
         (copia / "tests" / "test_abre_o_cache.py").write_text(TESTE_QUE_ABRE_O_CACHE, encoding="utf-8", newline="\n")
@@ -447,3 +451,144 @@ class DadosDeQuemRodaTests(unittest.TestCase):
             (copia / "data" / "games_positions.sqlite").exists(),
             "A sabotagem não gravou no data/ da cópia: a prova não provou nada.",
         )
+
+
+# ------------------------------------------------------- o QThread que a guarda de thread não via (S-805)
+
+TESTE_QUE_DEIXA_A_TAREFA = '''
+import threading
+
+from qt_app import aplicacao
+
+SOLTA = threading.Event()
+TAREFAS = []
+
+
+def test_a_deixa_a_tarefa_rodando():
+    """Uma `Tarefa` sem pai, como as de `manter_viva`, que o teste não espera."""
+    from chess_diagram_ocr.qt.trabalho import Tarefa
+
+    aplicacao()
+    tarefa = Tarefa(lambda: SOLTA.wait(30), nome="tarefa esquecida")
+    TAREFAS.append(tarefa)
+    tarefa.start()
+
+
+def test_b_solta_e_espera():
+    """Solta a tarefa do vizinho e espera o fim: sem isto o processo morre com o `QThread` rodando."""
+    SOLTA.set()
+    assert all(tarefa.wait(30_000) for tarefa in TAREFAS)
+'''
+
+
+class TarefaVazadaTests(unittest.TestCase):
+    """Uma `Tarefa` que sobrevive ao teste reprova **o teste que a deixou** (S-805).
+
+    A `Tarefa` é um `QThread`, e um `QThread` não aparece em `threading.enumerate()` -- ou aparece
+    como `Dummy-N`, que a guarda de thread da S-413 aceita. A guarda via thread Python e não via a
+    thread do Qt, que é por onde passa todo o trabalho pesado da janela.
+    """
+
+    def test_a_guarda_acusa_a_tarefa_deixada_rodando(self) -> None:
+        """**A prova de vida**: um teste de mentira deixa uma `Tarefa` rodando, e é ele que reprova.
+
+        O `conftest` é copiado para uma pasta à parte com o teste de mentira ao lado, e o filho roda
+        o `pytest` de lá: o primeiro teste tem de reprovar nomeando a tarefa, e o segundo -- que a
+        solta -- passar. É o segundo que diz que a falha foi da guarda, e não de um filho quebrado.
+        """
+        copia = pasta_temporaria(self, prefixo="cvoff-sabotagem-")
+        (copia / "tests").mkdir()
+        for ajudante in ("conftest.py", "qt_app.py", "arvores_do_repositorio.py"):
+            shutil.copy2(TESTES / ajudante, copia / "tests" / ajudante)
+        (copia / "tests" / "test_deixa_a_tarefa.py").write_text(TESTE_QUE_DEIXA_A_TAREFA, encoding="utf-8", newline="\n")
+        (copia / "pytest.ini").write_text("[pytest]\n", encoding="utf-8", newline="\n")
+
+        filho = rodar_python(
+            textwrap.dedent(
+                f"""
+                import os, sys
+                os.environ["QT_QPA_PLATFORM"] = "offscreen"
+                os.chdir({str(copia)!r})
+                import pytest
+                sys.exit(pytest.main(["-q", "-p", "no:cacheprovider", "tests"]))
+                """
+            ),
+            check=False,
+        )
+        saida = filho.stdout + filho.stderr
+        self.assertNotEqual(0, filho.returncode, saida)
+        # Os dois corpos passam e a desmontagem do primeiro reprova: quem acusou foi a guarda.
+        self.assertIn("2 passed, 1 error", saida)
+        self.assertIn("test_a_deixa_a_tarefa_rodando deixou thread viva", saida)
+        self.assertIn("tarefa esquecida", saida)
+
+
+class DadosDoCheckoutPrincipalTests(unittest.TestCase):
+    """As guardas de dados vigiam o `data/` do checkout principal, e não só o desta árvore (S-805).
+
+    Num worktree, `PROJECT_ROOT/data/` e `RAIZ/data/` são a mesma pasta sem cache: a guarda que
+    só olhasse para elas passaria verde sobre uma escrita no `data/` que tem o que perder.
+    """
+
+    def test_a_pasta_do_checkout_principal_esta_entre_as_vigiadas(self) -> None:
+        from conftest import pastas_de_dados_reais
+
+        self.assertIn(checkout_principal() / "data", pastas_de_dados_reais())
+
+    def test_a_guarda_acusa_a_escrita_no_data_do_principal(self) -> None:
+        """**A prova de vida**, num checkout principal de mentira: o cache que nasce lá é acusado.
+
+        Nada é escrito no checkout principal de verdade: o `checkout_principal` do `conftest` aponta
+        para uma pasta temporária, e é nela que o "cache" nasce.
+        """
+        import conftest
+
+        principal = pasta_temporaria(self, prefixo="cvoff-principal-")
+        (principal / "data").mkdir()
+        with mock.patch.object(conftest, "checkout_principal", return_value=principal):
+            pastas = conftest.pastas_de_dados_reais()
+        caches = conftest.caches_de_posicoes(pastas)
+        antes, listagem = conftest.retrato(caches), conftest._listagem_de(principal / "data")
+        (principal / "data" / "games_positions.sqlite").write_bytes(b"cache de mentira")
+
+        self.assertEqual(
+            [f"{principal / 'data' / 'games_positions.sqlite'} (criado)"],
+            [m for m in conftest.caches_mexidos(antes, conftest.retrato(caches)) if str(principal) in m],
+        )
+        self.assertEqual({"games_positions.sqlite"}, conftest._listagem_de(principal / "data") - listagem)
+
+
+class PyQtAusenteReprovaTests(unittest.TestCase):
+    """Sem o PyQt6 a rodada **reprova**, em vez de sair verde com duzentas classes puladas (S-805).
+
+    O PyQt6 é dependência de base desde o corte do Tk (S-506), e os testes de janela pulam sem ele
+    (`qt_app.TEM_PYQT`). Pular com o motivo escrito continua melhor que um `ImportError` em cada
+    módulo; o que não pode é a corrida inteira terminar verde -- e o `-ra` era a única marca.
+    """
+
+    def test_o_pyqt6_esta_instalado(self) -> None:
+        self.assertTrue(
+            TEM_PYQT,
+            "O PyQt6 não está instalado, e os testes de janela pularam todos. Ele é dependência "
+            "de base (pyproject.toml): rode `uv sync --extra dev`.",
+        )
+
+    def test_sem_o_pyqt6_o_teste_acima_reprova_e_nao_pula(self) -> None:
+        """O filho esconde o pacote (`sys.modules["PyQt6"] = None`, que é como o `importlib` diz
+        "não há") antes de o pytest começar, e roda só o teste acima: ele tem de **falhar**."""
+        alvo = f"{Path(__file__).resolve()}::PyQtAusenteReprovaTests::test_o_pyqt6_esta_instalado"
+        filho = rodar_python(
+            textwrap.dedent(
+                f"""
+                import sys
+                sys.modules["PyQt6"] = None
+                import pytest
+                sys.exit(pytest.main(["-q", "-p", "no:cacheprovider", {alvo!r}]))
+                """
+            ),
+            check=False,
+        )
+        saida = filho.stdout + filho.stderr
+        self.assertNotEqual(0, filho.returncode, saida)
+        self.assertIn("1 failed", saida)
+        self.assertIn("uv sync", saida)
