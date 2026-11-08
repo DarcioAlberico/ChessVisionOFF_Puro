@@ -16,10 +16,12 @@ janela, e uma exceção aqui é uma janela que não abre em vez de uma janela se
 from __future__ import annotations
 
 import sys
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao
 
 from chess_diagram_ocr.ui import plataforma as plataforma_tk
@@ -151,6 +153,86 @@ class PrepararTests(unittest.TestCase):
         """
         self.assertFalse(hasattr(plataforma, "consciencia_de_dpi"))
         self.assertFalse(hasattr(plataforma.Preparo, "consciencia_de_dpi"))
+
+
+LEVANTA_NUM_SLOT = """
+import os, sys
+from pathlib import Path
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+from chess_diagram_ocr.logging_setup import configure_logging
+configure_logging(log_file=Path(sys.argv[1]))
+from chess_diagram_ocr.qt.plataforma import instalar_borda
+instalar_borda()
+from PyQt6.QtCore import QTimer
+from PyQt6.QtWidgets import QApplication
+aplicacao = QApplication([])
+def levanta():
+    raise RuntimeError("estourou dentro do slot")
+QTimer.singleShot(0, levanta)
+QTimer.singleShot(50, aplicacao.quit)
+sys.exit(aplicacao.exec())
+"""
+"""Um slot que levanta, e o laço que termina logo depois. Sem borda, o PyQt6 chama `qFatal`."""
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class BordaTests(unittest.TestCase):
+    """A exceção que escapa de tudo vira linha de log, e não processo morto (S-800)."""
+
+    def test_excecao_num_slot_vai_ao_log_e_o_processo_segue(self) -> None:
+        """O critério de aceite da S-800: código 0 e a linha `CRITICAL` com o traceback.
+
+        Num subprocesso porque o que se mede é o processo: sem a borda o PyQt6 chama `qFatal`
+        e ele sai com 0xC0000409 (ou 127 sob `offscreen`) sem escrever uma linha.
+        """
+        from subprocesso import rodar_python
+
+        log = pasta_temporaria(self) / "borda.log"
+        feito = rodar_python(LEVANTA_NUM_SLOT.replace("sys.argv[1]", repr(str(log))), check=False, timeout=120)
+        texto = log.read_text(encoding="utf-8") if log.exists() else ""
+        self.assertEqual(0, feito.returncode, f"o processo caiu:\n{feito.stderr[-2000:]}")
+        self.assertIn("CRITICAL", texto)
+        self.assertIn("Traceback (most recent call last)", texto)
+        self.assertIn("RuntimeError: estourou dentro do slot", texto)
+
+    def _borda(self) -> plataforma.Borda:
+        """A borda instalada só durante o teste: os dois ganchos voltam ao que eram."""
+        for alvo in (sys, threading):
+            remendo = mock.patch.object(alvo, "excepthook")
+            remendo.start()
+            self.addCleanup(remendo.stop)
+        return plataforma.instalar_borda()
+
+    def test_com_janela_a_frase_vai_ao_rodape(self) -> None:
+        app = aplicacao()
+        frases: list[str] = []
+        self._borda().frase.connect(frases.append)
+        with self.assertLogs(plataforma.logger, "CRITICAL") as registro:
+            try:
+                raise ValueError("o slot quebrou")
+            except ValueError:
+                sys.excepthook(*sys.exc_info())
+            app.processEvents()
+        self.assertIsInstance((registro.records[0].exc_info or (None, None))[1], ValueError)
+        self.assertEqual([plataforma.FRASE_DA_BORDA], frases)
+
+    def test_excecao_de_thread_chega_ao_log_e_ao_rodape_pela_linha_de_eventos(self) -> None:
+        """A frase sai da thread por sinal: widget tocado fora da linha de eventos derruba o Qt."""
+        app = aplicacao()
+        frases: list[str] = []
+        self._borda().frase.connect(frases.append)
+
+        def quebra() -> None:
+            raise KeyError("da thread")
+
+        with self.assertLogs(plataforma.logger, "CRITICAL") as registro:
+            fio = threading.Thread(target=quebra, name="fio-que-quebra")
+            fio.start()
+            fio.join(5)
+            app.processEvents()
+        self.assertIn("fio-que-quebra", registro.output[0])
+        self.assertIsInstance((registro.records[0].exc_info or (None, None))[1], KeyError)
+        self.assertEqual([plataforma.FRASE_DA_BORDA], frases)
 
 
 if __name__ == "__main__":  # pragma: no cover

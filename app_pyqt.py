@@ -309,36 +309,32 @@ def main() -> None:
     # arredondamento de escala é lida na construção dela; depois disso a chamada não tem efeito, e
     # em 125% o Qt arredonda para 100% e desenha a janela esticada -- o borrão da S-148 por outro
     # caminho. É a mesma pré-condição que `plataforma.consciencia_de_dpi` tem do lado do Tk.
-    from chess_diagram_ocr.qt.plataforma import politica_de_escala
+    from chess_diagram_ocr.qt.plataforma import instalar_borda, politica_de_escala
 
     politica_de_escala()
+    # **E a borda de exceção, também antes dela** (S-800). Sem ela a exceção que escapa de um slot
+    # é `qFatal` e o processo some sem uma linha de log; com ela, a que escapa daqui também vai
+    # ao arquivo -- `stderr`, num processo sem console, não vai a lugar nenhum (S-127).
+    borda = instalar_borda()
 
     from PyQt6.QtWidgets import QApplication
 
     from chess_diagram_ocr.qt.janela import JanelaPrincipal
 
     logger.info("Iniciando a janela em Qt (PyQt6).")
-    try:
-        aplicacao = QApplication(sys.argv)
-        janela = JanelaPrincipal()
-        # **Mostrar antes de abrir o livro.** O "ajustar à página" mede a área visível, e antes
-        # do `show()` ela ainda é a do tamanho pedido e não a que o gerenciador de janelas deu:
-        # o livro nasceria enquadrado para uma janela que não é esta.
-        janela.show()
-        if args.pdf is not None:
-            janela.abrir_pdf(args.pdf)
-        else:
-            # O livro da sessão anterior, e só na falta dele o primeiro da pasta (S-25).
-            janela.abrir_livro_da_sessao()
-        raise SystemExit(aplicacao.exec())
-    except SystemExit:
-        raise
-    except Exception:
-        # Sem isto uma exceção aqui sobe para o `sys.excepthook` e escreve em `stderr`, que num
-        # processo sem console não vai a lugar nenhum: o arquivo de log existiria e a única
-        # falha que ninguém consegue diagnosticar continuaria fora dele (S-127).
-        logger.exception("A janela de teste não abriu.")
-        raise
+    aplicacao = QApplication(sys.argv)
+    janela = JanelaPrincipal()
+    borda.frase.connect(janela.rodape.mostrar)
+    # **Mostrar antes de abrir o livro.** O "ajustar à página" mede a área visível, e antes
+    # do `show()` ela ainda é a do tamanho pedido e não a que o gerenciador de janelas deu:
+    # o livro nasceria enquadrado para uma janela que não é esta.
+    janela.show()
+    if args.pdf is not None:
+        janela.abrir_pdf(args.pdf)
+    else:
+        # O livro da sessão anterior, e só na falta dele o primeiro da pasta (S-25).
+        janela.abrir_livro_da_sessao()
+    raise SystemExit(aplicacao.exec())
 
 
 if __name__ == "__main__":

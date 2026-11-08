@@ -63,6 +63,12 @@ agenda `QTimer.singleShot(0, levanta)` e sai do laço em seguida.
 **Aceite.** O subprocesso sai com código 0 e o arquivo de log tem a linha `CRITICAL` com o traceback. Abrir
 um livro, virar duas páginas e matar o processo deixa `state.json` com o livro e a página.
 
+**Entregue** (2026-11-08): o arquivo é `janela.json` (`CAMINHO_DO_ESTADO`), e não `state.json`; o aceite
+foi medido lendo o disco com a janela ainda aberta, sem matar processo. A frase do rodapé sai por sinal
+(`Borda.frase`), então a exceção de thread também chega a ele pela linha de eventos. O `try/except` do `main`
+saiu: a borda já leva ao log o que escapa dali. Os sete `eventFilter` sem `try` ficam cobertos pela borda, sem
+embrulho um a um. O relógio não reagenda: a primeira virada agenda, e a gravação lê a última página.
+
 ## S-874 · Página que derruba o processo de trabalho nunca roda no processo da janela
 
 **Problema** (confirmado por script). `processo_de_trabalho.py:122-137`: quando o processo filho morre, ele

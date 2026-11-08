@@ -1128,6 +1128,55 @@ class EstadoEntreSessoesTests(unittest.TestCase):
         self.assertEqual(self.livro, segunda.pdf.source)
         self.assertEqual(3, segunda.pdf.page_index)
 
+    def _esperar_o_estado(self, ate_ms: int = 6000) -> bool:
+        from PyQt6.QtTest import QTest
+
+        for _ in range(ate_ms // 50):
+            if self.estado.exists():
+                return True
+            QTest.qWait(50)
+        return self.estado.exists()
+
+    def test_virar_paginas_grava_o_livro_e_a_ultima_pagina_sem_fechar(self) -> None:
+        """A queda não espera o `closeEvent` (S-800): o estado vai ao disco ~2 s depois da virada.
+
+        Não a cada virada -- quem folheia dez páginas não grava dez vezes --, e a página gravada é
+        a última: a gravação lê a tela na hora em que roda, e não na virada que a agendou.
+        """
+        from chess_diagram_ocr.ui.state import load_state
+
+        primeira = self.janela()
+        primeira.abrir_pdf(self.livro)
+        self.app.processEvents()
+        primeira.pdf.ir_para_pagina(2)
+        self.app.processEvents()
+        primeira.pdf.ir_para_pagina(4)
+        self.app.processEvents()
+        self.assertFalse(self.estado.exists(), "gravou na hora da virada, e não adiado")
+
+        self.assertTrue(self._esperar_o_estado(), "virar a página não agendou a gravação")
+        guardado = load_state(self.estado)
+        self.assertEqual(str(self.livro), guardado.last_pdf)
+        self.assertEqual(4, guardado.last_page)
+
+    def test_fechar_grava_o_pendente_na_hora_e_ele_nao_volta_depois(self) -> None:
+        """Sempre concluída: o fechamento grava o que estava pendente, e o relógio para com ele."""
+        from PyQt6.QtTest import QTest
+
+        from chess_diagram_ocr.ui.state import load_state
+
+        primeira = self.janela()
+        primeira.abrir_pdf(self.livro)
+        self.app.processEvents()
+        primeira.pdf.ir_para_pagina(3)
+        self.app.processEvents()
+        primeira.close()
+        self.assertEqual(3, load_state(self.estado).last_page)
+
+        self.estado.unlink()
+        QTest.qWait(janela_mod.ADIAMENTO_DA_GRAVACAO_MS + 500)
+        self.assertFalse(self.estado.exists(), "a gravação adiada rodou de novo depois do fechamento")
+
     def test_a_pagina_e_de_cada_livro_e_nao_so_a_do_ultimo(self) -> None:
         """O histórico guarda 50 livros, e a pergunta que ele responde é "onde eu parei **neste**?"
 

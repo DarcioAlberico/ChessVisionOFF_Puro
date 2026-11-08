@@ -241,6 +241,9 @@ TITULO_DE_TESTE = TITULO_DA_JANELA
 ESPERA_AO_FECHAR_MS = 15_000
 """Quanto o fechamento espera pela tarefa em curso, em milissegundos."""
 
+ADIAMENTO_DA_GRAVACAO_MS = 2_000
+"""Quanto o estado espera, depois de abrir livro ou virar página, para ir ao disco (S-800)."""
+
 CAMINHO_DO_ESTADO = DATA_DIR / "janela.json"
 """Onde o que a janela lembra entre execuções fica (S-25/S-156).
 
@@ -406,6 +409,12 @@ class JanelaPrincipal(QMainWindow):
         sem a espera, o duplo clique numa página não lida era engolido pelo próprio primeiro clique.
         A espera custa ~400 ms antes de uma leitura de segundos; o clique numa caixa já lida não
         espera nada, porque selecionar não tranca."""
+
+        self._gravacao_adiada = QTimer(self)
+        self._gravacao_adiada.setSingleShot(True)
+        self._gravacao_adiada.setInterval(ADIAMENTO_DA_GRAVACAO_MS)
+        self._gravacao_adiada.timeout.connect(self._gravar_estado)
+        """O estado não espera o `closeEvent` (S-800): uma queda perdia o livro, a página e o divisor."""
 
         self._montar()
         self._ligar()
@@ -899,6 +908,7 @@ class JanelaPrincipal(QMainWindow):
         escrevê-lo preserva o que estiver no arquivo; zerá-lo seria apagar a escolha de alguém em
         nome de um widget que não há.
         """
+        self._gravacao_adiada.stop()  # o que estava agendado é este: quem chama direto o conclui
         if not self._estado_aplicado:
             logger.debug("Estado ainda não aplicado aos widgets: gravação adiada (S-322).")
             return
@@ -922,6 +932,12 @@ class JanelaPrincipal(QMainWindow):
         estado.board_zoom = self.estudo.fracao_do_tabuleiro
         self._anotar_arranjo()
         save_state(self._caminho_do_estado, estado)
+
+    def _gravar_em_breve(self) -> None:
+        """Agenda `_gravar_estado` sem reagendar: a gravação lê a tela quando roda, então a última
+        virada dentro do prazo é a que vai ao disco, e folhear sem parar não a adia para sempre."""
+        if not self._gravacao_adiada.isActive():
+            self._gravacao_adiada.start()
 
     # ------------------------------------------------------------------------------ aparência
 
@@ -1258,6 +1274,7 @@ class JanelaPrincipal(QMainWindow):
         self._atualizar_titulo()
         self._atualizar_abas()
         self._aquecimento.agendar(parent=self)  # o modelo carrega quando a janela ociar (C2)
+        self._gravar_em_breve()  # o livro entra no histórico do disco sem esperar o fechamento (S-800)
 
     def _descartar_o_livro(self, anterior: Path) -> bool:
         """Pergunta antes de esquecer correções à mão do livro que saiu (A7). «Não» as guarda."""
@@ -1342,6 +1359,7 @@ class JanelaPrincipal(QMainWindow):
         # livro no meio da sessão -- e é a mesma anotação que ordena o menu de recentes.
         if self._pdf is not None:
             self._estado.remember_page(self._pdf, pagina)
+            self._gravar_em_breve()
         self.painel.restaurar_pagina(pagina)
         guardadas = self._caixas_por_pagina.get(self._chave_do_documento(), pagina, self._parametros())
         self._publicar_caixas(guardadas)

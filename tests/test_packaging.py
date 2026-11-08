@@ -257,8 +257,13 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2293
+    LIMITE = 2311
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.293 -> 2.311 com o estado gravado antes da queda (S-800, 2026-11-08)**: o relógio de
+    disparo único (seis linhas), o prazo dele (três), `_gravar_em_breve` (seis), as duas chamadas
+    (abrir livro e virar página) e a parada no começo de `_gravar_estado`, que é o que faz o
+    fechamento concluir o pendente. Não há decisão a baixar para `ui/`: é ligar sinal a relógio.
 
     **2.287 -> 2.293 com o campo «Lance» de volta ao Resultado (S-71, 2026-11-05)**: o Tk tinha
     o campo e o porte do Qt não o trouxe. Seis linhas: a janela entrega ao painel os dois
