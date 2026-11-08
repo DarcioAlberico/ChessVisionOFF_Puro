@@ -1396,7 +1396,7 @@ class JanelaPrincipal(QMainWindow):
                 self._chave_do_documento(),
                 pagina,
                 lambda: processo_de_trabalho().executar(
-                    detect_diagrams_rendering_page, pdf, pagina, dpi=dpi, max_boards=teto
+                    detect_diagrams_rendering_page, pdf, pagina, dpi=dpi, max_boards=teto, pagina=pagina
                 ),
             )
             return

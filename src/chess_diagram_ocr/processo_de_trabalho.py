@@ -20,9 +20,13 @@ for), e o pai só espera -- e esperar um `Pipe` solta o GIL. O que atravessa é 
 
 **Um filho só, e preguiçoso.** Ele nasce na primeira chamada (ou em `aquecer`, que a abertura
 do livro chama de uma thread para pagar o `spawn` fora da janela) e morre com o processo: o
-`concurrent.futures` já cuida disso no `atexit`. Se ele morrer no meio -- um PDF que derruba o
-MuPDF --, o pai o recria uma vez; se nem isso der, a função roda em linha, com o aviso no log,
-porque uma página lenta é melhor que nenhuma.
+`concurrent.futures` já cuida disso no `atexit`. Se ele morrer no meio, o pai o recria e tenta
+de novo, uma vez; se morrer de novo **na mesma chamada**, sobe `PaginaQueDerruba` (S-874).
+
+**A função que derruba o filho nunca roda aqui.** O isolamento existe para o PDF que derruba o
+MuPDF, e uma página que derruba derruba sempre: rodá-la em linha depois da segunda queda era
+derrubar a janela na terceira. A conta é por chamada: uma queda, horas depois e noutra página,
+começa do zero.
 
 **No bundle congelado o `spawn` reexecuta o `.exe`**, e é o `mp.freeze_support()` do
 `app_pyqt.main` que impede o filho de abrir outra janela.
@@ -44,9 +48,32 @@ from chess_diagram_ocr.pdf_io import PdfSource, render_pdf_page
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["ProcessoDeTrabalho", "processo_de_trabalho"]
+__all__ = ["FalhaDoProcessoDeTrabalho", "PaginaQueDerruba", "ProcessoDeTrabalho", "processo_de_trabalho"]
 
 T = TypeVar("T")
+
+
+class FalhaDoProcessoDeTrabalho(RuntimeError):
+    """O trabalho não voltou do filho. A mensagem é a frase que a tela mostra.
+
+    `pagina` é o índice da página (a primeira é 0) quando o trabalho era de uma página, e `None`
+    quando não era -- a leitura do dataset, a das marcas.
+    """
+
+    def __init__(self, frase: str, pagina: int | None) -> None:
+        super().__init__(frase)
+        self.pagina = pagina
+
+
+class PaginaQueDerruba(FalhaDoProcessoDeTrabalho):
+    """O filho morreu duas vezes na mesma chamada (S-874)."""
+
+    def __init__(self, pagina: int | None) -> None:
+        if pagina is None:
+            frase = "O trabalho derrubou o processo de trabalho duas vezes seguidas e ficou sem fazer."
+        else:
+            frase = f"A página {pagina + 1} derruba o leitor de PDF: ela foi pulada."
+        super().__init__(frase, pagina)
 
 
 def _aquecer() -> bool:
@@ -65,7 +92,6 @@ class ProcessoDeTrabalho:
         self.em_processo = em_processo
         self._pool: ProcessPoolExecutor | None = None
         self._trava = threading.Lock()
-        self._recriou = False
 
     # ------------------------------------------------------------------------------- vida
 
@@ -96,47 +122,58 @@ class ProcessoDeTrabalho:
     def encerrar(self, esperar: bool = False) -> None:
         """Derruba o filho. Sem esperar, por padrão; `esperar` é para quem conta threads (testes)."""
         with self._trava:
-            pool, self._pool = self._pool, None
+            pool = self._pool
         if pool is not None:
-            pool.shutdown(wait=esperar, cancel_futures=True)
+            self._descartar(pool, esperar=esperar)
+
+    def _descartar(self, pool: ProcessPoolExecutor, *, esperar: bool = False) -> None:
+        """Tira `pool` de uso. Só ele: outra thread pode já ter criado o seguinte."""
+        with self._trava:
+            if self._pool is pool:
+                self._pool = None
+        pool.shutdown(wait=esperar, cancel_futures=True)
 
     # ------------------------------------------------------------------------------ trabalho
 
-    def executar(self, funcao: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
+    def executar(
+        self, funcao: Callable[..., T], /, *args: Any, pagina: int | None = None, **kwargs: Any
+    ) -> T:
         """`funcao(*args, **kwargs)` no filho, esperando o resultado. Em linha se ele não existe.
 
         A função e os argumentos atravessam por `pickle`: função de módulo (não `lambda`) e
         argumentos simples. Quem chama está numa `Tarefa`, nunca na thread da janela -- esperar
         aqui é o que a tira de lá.
+
+        `pagina` (o índice; não vai à função) é a página de que o trabalho trata, para a frase de
+        `PaginaQueDerruba`, que sobe quando o filho morre duas vezes nesta chamada.
         """
         if not self.em_processo:
             return funcao(*args, **kwargs)
         try:
             return self._no_filho(funcao, *args, **kwargs)
         except BrokenExecutor as exc:
-            if not self._recriou:
-                self._recriou = True
-                logger.warning("O processo de trabalho morreu (%s); criando outro.", exc)
-                self.encerrar()
-                try:
-                    return self._no_filho(funcao, *args, **kwargs)
-                except BrokenExecutor as de_novo:
-                    exc = de_novo
-            logger.error("O processo de trabalho morreu de novo (%s); seguindo em linha.", exc)
-            self.encerrar()
-            self.em_processo = False
-            return funcao(*args, **kwargs)
+            logger.warning("O processo de trabalho morreu (%s); criando outro.", exc)
+        try:
+            return self._no_filho(funcao, *args, **kwargs)
+        except BrokenExecutor as de_novo:
+            erro = PaginaQueDerruba(pagina)
+            logger.error("O processo de trabalho morreu de novo (%s): %s", de_novo, erro)
+            raise erro from de_novo
 
     def _no_filho(self, funcao: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
         pool = self._garantir()
         if pool is None:
             return funcao(*args, **kwargs)
-        return pool.submit(funcao, *args, **kwargs).result()
+        try:
+            return pool.submit(funcao, *args, **kwargs).result()
+        except BrokenExecutor:
+            self._descartar(pool)
+            raise
 
     def rasterizar(self, source: PdfSource, page_index: int, *, dpi: int) -> np.ndarray:
         """A página como `render_pdf_page` a devolve -- vinda do filho, ou daqui se ele não existe."""
         caminho = Path(source) if isinstance(source, str) else source
-        return self.executar(render_pdf_page, caminho, page_index, dpi=dpi)
+        return self.executar(render_pdf_page, caminho, page_index, dpi=dpi, pagina=page_index)
 
 
 _PARTILHADO: ProcessoDeTrabalho | None = None

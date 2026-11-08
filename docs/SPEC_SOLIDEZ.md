@@ -86,6 +86,13 @@ bem-sucedida.
 
 **Aceite.** O teste passa: o arquivo do pai nunca é criado e o erro tem a página.
 
+**Entregue** (2026-11-08): o erro é `PaginaQueDerruba` (com `pagina`, o índice), e `_recriou` saiu: a
+conta de quedas é da chamada, não do objeto. Nenhuma varredura de livro passa pelo processo de trabalho,
+então não houve varredura a ensinar a pular; quem mostra a frase é a caixa de `_folha_falhou` do visor (a
+rasterização é a primeira a tocar a página), e a detecção ao fundo a deixa no log, como já fazia com
+qualquer falha dela. O pool que caiu é descartado só se ainda for o corrente, para a chamada de outra
+thread não derrubar o filho que esta acabou de recriar.
+
 ## S-906 · O processo de trabalho tem prazo, e o fechamento o encerra
 
 **Problema** (confirmado por leitura e por script). `processo_de_trabalho.py:133` espera

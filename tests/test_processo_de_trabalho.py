@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 
 from chess_diagram_ocr.pdf_io import render_pdf_page
-from chess_diagram_ocr.processo_de_trabalho import ProcessoDeTrabalho, processo_de_trabalho
+from chess_diagram_ocr.processo_de_trabalho import PaginaQueDerruba, ProcessoDeTrabalho, processo_de_trabalho
 
 
 def _soma(a: int, b: int) -> int:
@@ -95,6 +95,61 @@ class NoFilhoTests(unittest.TestCase):
             ultimo = agora
         fio.join()
         self.assertLess(pior * 1000, 40.0, f"a thread principal ficou {pior * 1000:.0f} ms sem andar")
+
+
+def _derruba_no_filho(pid_da_janela: int, marca: str) -> int:
+    """Mata o processo em que roda, se não for o da janela; no da janela, deixa `marca` escrita.
+
+    É a página que derruba o MuPDF, sem o MuPDF: o `os._exit` é a queda que nenhum `except` pega.
+    """
+    import os
+
+    if os.getpid() != pid_da_janela:
+        os._exit(3)
+    Path(marca).write_bytes(b"rodou no processo da janela")
+    return os.getpid()
+
+
+def _derruba_a_primeira_vez(marca: str) -> int:
+    """Derruba o filho na primeira chamada (sem `marca`) e responde o pid nas seguintes."""
+    import os
+
+    if not Path(marca).exists():
+        Path(marca).write_bytes(b"caiu uma vez")
+        os._exit(3)
+    return os.getpid()
+
+
+class QuedaDoFilhoTests(unittest.TestCase):
+    """S-874: a função que derruba o filho nunca roda no processo da janela."""
+
+    def setUp(self) -> None:
+        import tempfile
+
+        self.trabalho = ProcessoDeTrabalho(em_processo=True)
+        self.addCleanup(self.trabalho.encerrar, True)
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        self.pasta = Path(pasta.name)
+
+    def test_funcao_que_derruba_o_filho_nunca_roda_no_pai(self) -> None:
+        marca = self.pasta / "rodou_no_pai"
+        erro: BaseException | None = None
+        try:
+            self.trabalho.executar(_derruba_no_filho, _pid(), str(marca), pagina=11)
+        except Exception as exc:  # noqa: BLE001 - o tipo é conferido abaixo, depois da marca
+            erro = exc
+        self.assertFalse(marca.exists(), "a função que derruba o filho rodou no processo da janela")
+        self.assertIsInstance(erro, PaginaQueDerruba)
+        assert isinstance(erro, PaginaQueDerruba)
+        self.assertEqual(11, erro.pagina)
+        self.assertIn("página 12", str(erro), "a frase diz a página como a pessoa a conta")
+
+    def test_uma_queda_por_chamada_nao_acumula_entre_chamadas(self) -> None:
+        """Duas quedas em chamadas diferentes, com sucesso no meio, não mandam ninguém para a linha."""
+        for nome in ("primeira", "segunda"):
+            pid = self.trabalho.executar(_derruba_a_primeira_vez, str(self.pasta / nome))
+            self.assertNotEqual(_pid(), pid, f"a {nome} chamada rodou no processo da janela")
 
 
 class QuandoNaoHaFilhoTests(unittest.TestCase):
