@@ -1286,6 +1286,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-599 | [docs/PLANO_FAIXAS_REVERSAS.md](docs/PLANO_FAIXAS_REVERSAS.md) |
 | S-601 a S-668 | [docs/SPEC_MESA_DE_TEXTO.md](docs/SPEC_MESA_DE_TEXTO.md) |
 | S-702, S-710 a S-712, S-715 a S-718, S-720 | [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) |
+| S-800 a S-873 | [docs/SPEC_SOLIDEZ.md](docs/SPEC_SOLIDEZ.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1453,6 +1454,13 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   do Tesseract (S-720), com os numeros em `docs/metrics/texto_prosa_primeira_entrega.json`
   e a caixa que nao e letra, que intercalava a coluna inteira (S-712), em
   `docs/metrics/texto_prosa_s712.json`
+- [docs/ROADMAP_SOLIDEZ.md](docs/ROADMAP_SOLIDEZ.md) -- **Fases 110 a 121** (S-800 a S-873), a
+  revisao do programa inteiro em 2026-11-08: as seis premissas que geravam a maior parte dos 80
+  achados (arquivo que nao le tratado como vazio, resultado assincrono marcado so pela pagina, copia
+  para manter igual, mensagem usada como dado, relogio que decide, falta de borda de excecao), as
+  medicoes de complexidade, duplicacao e cobertura, e a ordem das fases
+- [docs/SPEC_SOLIDEZ.md](docs/SPEC_SOLIDEZ.md) -- especificacao das Fases 110 a 121, item a item: o
+  problema com a evidencia, a causa, a solucao, o teste que falha primeiro e o criterio de aceite
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`
