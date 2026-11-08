@@ -696,6 +696,8 @@ criação diferente retoma a trava.
 
 **Aceite.** Os dois passam.
 
+**Entregue** (2026-11-08): o apelido é comparado por `ui.livros.mesmo_livro` (S-827), e entre dois cadernos com o mesmo apelido vence o de índice gravado por último. A trava grava o PID e, na segunda linha, a hora de nascimento do processo (`GetProcessTimes`; no Linux, `/proc`); a trava antiga, só com o PID, usa a hora do arquivo como limite -- quem a escreveu já existia --, o que retoma também as travas vencidas que já estão no disco. A regra é uma só: o vivo com aquele PID que nasceu depois do limite é outro programa. O teste da hora diferente passava no código antigo por outro motivo (a trava de duas linhas era ilegível e retomada); quem falhou antes foram o da mesma hora, que segura a trava, e o da trava antiga mais velha que o processo.
+
 ## S-908 · Hora gravada com fuso, e o rascunho mais novo não é apagado
 
 **Problema** (plausível; o mecanismo foi lido sem ambiguidade). `text/caderno.py:519` compara strings ISO

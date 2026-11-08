@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
+import sys
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -144,6 +146,32 @@ class IdentidadeTests(_ComLivro):
         outro.write_bytes(b"%PDF-1.7\n outro livro")
         self.assertNotEqual(self.abrir().pasta, self.abrir(outro).pasta)
 
+    def test_pdf_pequeno_anotado_acha_o_mesmo_caderno(self) -> None:
+        # Num PDF de menos de 1 MiB o primeiro MiB é o arquivo inteiro: a gravação incremental de uma
+        # anotação muda a identidade, e o caderno ficava órfão (S-897). O caminho é o apelido.
+        livro = self.abrir()
+        livro.gravar(_doc(self.livro, 0, "corrigida antes da anotação"))
+        livro.fechar()
+        with open(self.livro, "ab") as fluxo:
+            fluxo.write(b"\n1 0 obj << /Type /Annot >> endobj\n%%EOF\n")
+        self.assertNotEqual(caderno.identidade_de(self.livro), livro.identidade)
+        reaberto = self.abrir()
+        self.assertEqual(reaberto.pasta, livro.pasta)
+        self.assertIn("corrigida", reaberto.folha(0).para_texto())  # type: ignore[union-attr]
+        self.assertEqual(len(list(self.pasta.iterdir())), 1)
+
+    def test_apelido_gravado_em_outra_caixa_e_barra_ainda_acha(self) -> None:
+        # O índice do dono guarda `str(Path(pdf))` como veio; o mesmo livro é a regra de `ui.livros`.
+        livro = self.abrir()
+        livro.fechar()
+        indice = livro.pasta / "indice.json"
+        dados = json.loads(indice.read_text(encoding="utf-8"))
+        dados["apelidos"] = [str(self.livro.parent / ".." / "livros" / self.livro.name)]
+        indice.write_bytes(json.dumps(dados).encode("utf-8"))
+        with open(self.livro, "ab") as fluxo:
+            fluxo.write(b"%%EOF\n")
+        self.assertEqual(self.abrir().pasta, livro.pasta)
+
     def test_livro_que_nao_abre_nao_tem_caderno(self) -> None:
         self.assertIsNone(caderno.abrir(self.raiz / "nao existe.pdf", pasta=self.pasta))
 
@@ -235,6 +263,46 @@ class TravaTests(_ComLivro):
         segundo = self.abrir()
         self.assertFalse(segundo.somente_leitura)
         self.assertEqual(segundo.gravar(_doc(self.livro)), caderno.GRAVADA)
+
+    def _trava_de_um_vivo(self, segunda_linha: str = "") -> tuple[Path, int]:
+        """A trava em nome de um processo vivo que não é este; `segunda_linha` é a hora de criação."""
+        vivo = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        self.addCleanup(vivo.wait)
+        self.addCleanup(vivo.kill)
+        primeiro = self.abrir()
+        primeiro.fechar()
+        trava = primeiro.pasta / "caderno.lock"
+        trava.write_bytes(f"{vivo.pid}\n{segunda_linha}".encode())
+        return trava, vivo.pid
+
+    def test_pid_vivo_com_hora_de_criacao_diferente_retoma_a_trava(self) -> None:
+        # Depois de uma queda a trava fica, e o Windows reaproveita o PID logo: o processo vivo com
+        # aquele número nasceu depois de quem gravou a trava, e é outro programa (S-897).
+        self._trava_de_um_vivo("1000000000.0\n")
+        segundo = self.abrir()
+        self.assertFalse(segundo.somente_leitura, segundo.motivo)
+        self.assertEqual(segundo.gravar(_doc(self.livro)), caderno.GRAVADA)
+
+    @unittest.skipUnless(sys.platform == "win32" or Path("/proc/self/stat").exists(), "sem a hora de criação do processo")
+    def test_pid_vivo_com_a_mesma_hora_de_criacao_segura_a_trava(self) -> None:
+        trava, pid = self._trava_de_um_vivo()
+        trava.write_bytes(f"{pid}\n{caderno._inicio_do_processo(pid)!r}\n".encode())
+        self.assertTrue(self.abrir().somente_leitura)
+
+    @unittest.skipUnless(sys.platform == "win32" or Path("/proc/self/stat").exists(), "sem a hora de criação do processo")
+    def test_trava_antiga_mais_velha_que_o_processo_vivo_e_retomada(self) -> None:
+        # A trava de antes da S-897 só tem o PID: a hora dela é a do arquivo, e um processo que
+        # nasceu depois que ela foi escrita não pode ser quem a escreveu.
+        trava, _pid = self._trava_de_um_vivo()
+        os.utime(trava, (1_000_000_000, 1_000_000_000))
+        self.assertFalse(self.abrir().somente_leitura)
+
+    def test_trava_nova_grava_o_pid_e_a_hora_de_criacao(self) -> None:
+        livro = self.abrir()
+        linhas = (livro.pasta / "caderno.lock").read_text(encoding="utf-8").split()
+        self.assertEqual(int(linhas[0]), os.getpid())
+        if caderno._inicio_do_processo(os.getpid()) is not None:
+            self.assertEqual(float(linhas[1]), caderno._inicio_do_processo(os.getpid()))
 
     def test_fechar_solta_a_trava(self) -> None:
         livro = self.abrir()

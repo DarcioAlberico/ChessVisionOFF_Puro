@@ -24,16 +24,21 @@ O número do arquivo é o da folha **como a pessoa o diz** (1-based); a API fala
 **O livro é achado pela identidade do conteúdo, e o caminho é apelido.** Pelo caminho, mover o PDF
 de pasta órfã o caderno, e o mesmo livro em duas pastas -- o acervo tem livros duplicados -- dá dois
 cadernos que divergem. A identidade é o resumo do primeiro MiB do arquivo: o mesmo livro copiado
-tem a mesma, e uma gravação incremental do PDF (anotação acrescentada no fim) também. A spec pedia
-"número de folhas e resumo das primeiras folhas"; o número de folhas exigiria abrir o PDF com o
-PyMuPDF a cada troca de livro, e o primeiro MiB já distingue dois livros -- dois PDFs diferentes não
-começam pelos mesmos 1.048.576 bytes. Os caminhos de onde o livro foi aberto ficam no índice como
-apelidos, e é por eles que um `.cvtxt` cujo livro sumiu ainda acha o caderno.
+tem a mesma, e uma gravação incremental do PDF (anotação acrescentada no fim) também -- **desde que
+o PDF passe de 1 MiB**: no menor, o primeiro MiB é o arquivo inteiro, e a anotação muda a
+identidade. A spec pedia "número de folhas e resumo das primeiras folhas"; o número de folhas
+exigiria abrir o PDF com o PyMuPDF a cada troca de livro, e o primeiro MiB já distingue dois livros
+-- dois PDFs diferentes não começam pelos mesmos 1.048.576 bytes. Os caminhos de onde o livro foi
+aberto ficam no índice como apelidos: é por eles que um `.cvtxt` cujo livro sumiu ainda acha o
+caderno, e que o livro pequeno anotado no mesmo lugar acha o seu quando nenhuma pasta tem a
+identidade nova (S-897).
 
 **Uma instância escreve.** O programa não tem trava de instância única, e duas janelas no mesmo
 livro gravariam a mesma folha, com o índice lido-mudado-gravado pelas duas. O caderno cria
-`caderno.lock` com criação exclusiva e o PID dentro; a segunda instância abre **só para leitura** e
-diz por quê. A trava de um processo que não existe mais é retomada.
+`caderno.lock` com criação exclusiva e, dentro, o PID e a hora em que o processo nasceu; a segunda
+instância abre **só para leitura** e diz por quê. A trava de um processo que não existe mais é
+retomada, e também a de um PID vivo que nasceu depois dela: depois de uma queda o Windows
+reaproveita o número, e o vivo é outro programa (S-897).
 
 **Grava conferindo.** Em temporário, relê e compara com o que se quis gravar, e só então renomeia
 por cima -- a escrita de recuperação do WordCraft. O arquivo anterior só sai quando o novo validou,
@@ -68,6 +73,7 @@ from typing import Any
 from ..atomic_io import atomic_write_json
 from ..config import DATA_DIR
 from ..relogio import agora_iso, com_fuso, do_arquivo, ler_iso
+from ..ui.livros import mesmo_livro
 from . import arquivo
 from .rico import DocumentoRico
 
@@ -229,6 +235,58 @@ def _processo_vivo(pid: int) -> bool:
     except PermissionError:
         return True
     return True
+
+
+def _inicio_do_processo(pid: int) -> float | None:
+    """Quando o processo `pid` nasceu, em segundos da época; `None` quando não se sabe.
+
+    É o que separa o dono da trava do programa que herdou o PID dele depois de uma queda (S-897):
+    o Windows reaproveita os números logo.
+    """
+    if sys.platform == "win32":
+        kernel32 = ctypes.windll.kernel32
+        alca = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not alca:
+            return None
+        try:
+            criacao, saida, nucleo, usuario = (ctypes.c_ulonglong() for _ in range(4))  # FILETIME
+            if not kernel32.GetProcessTimes(alca, *(ctypes.byref(t) for t in (criacao, saida, nucleo, usuario))):
+                return None
+            return (criacao.value - 116_444_736_000_000_000) / 1e7  # 100 ns desde 1601
+        finally:
+            kernel32.CloseHandle(alca)
+    try:  # Linux: o campo 22 de /proc/<pid>/stat, em tiques desde o boot
+        campos = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()
+        boot = next(int(linha.split()[1]) for linha in Path("/proc/stat").read_text(encoding="utf-8").splitlines() if linha.startswith("btime "))
+        return boot + int(campos[19]) / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, IndexError, StopIteration):
+        return None
+
+
+def _dono_vivo(pid: int, nascido_ate: float | None) -> bool:
+    """O dono da trava ainda escreve? Um processo vivo com o PID dele que nasceu depois de
+    `nascido_ate` é outro programa. Sem uma das horas, vale `_processo_vivo` -- na dúvida, vivo."""
+    if not _processo_vivo(pid):
+        return False
+    inicio = _inicio_do_processo(pid)
+    return inicio is None or nascido_ate is None or inicio <= nascido_ate
+
+
+def _texto_da_trava() -> str:
+    """O PID deste processo e, na segunda linha, quando ele nasceu."""
+    inicio = _inicio_do_processo(os.getpid())
+    return f"{os.getpid()}\n" if inicio is None else f"{os.getpid()}\n{inicio!r}\n"
+
+
+def _ler_trava(trava: Path) -> tuple[int, float | None]:
+    """O PID do dono e até quando ele nasceu: a hora gravada, ou, na trava de antes da S-897, que
+    só tem o PID, a hora do arquivo -- quem a escreveu já existia. `(0, None)` na trava ilegível."""
+    try:
+        linhas = trava.read_text(encoding="utf-8").split()
+        dono = int(linhas[0]) if linhas else 0
+        return dono, float(linhas[1]) if len(linhas) > 1 else trava.stat().st_mtime
+    except (OSError, ValueError):
+        return 0, None
 
 
 def _gravar_conferido(caminho: Path, texto: str) -> None:
@@ -534,18 +592,15 @@ class Caderno:
         for _tentativa in range(2):
             try:
                 with open(trava, "x", encoding="utf-8") as fluxo:
-                    fluxo.write(str(os.getpid()))
+                    fluxo.write(_texto_da_trava())
                 self._tem_trava = True
                 return
             except FileExistsError:
-                try:
-                    dono = int(trava.read_text(encoding="utf-8").strip() or 0)
-                except (OSError, ValueError):
-                    dono = 0
+                dono, nascido_ate = _ler_trava(trava)
                 if dono == os.getpid():
                     self._tem_trava = True
                     return
-                if dono and _processo_vivo(dono):
+                if dono and _dono_vivo(dono, nascido_ate):
                     self.somente_leitura = True
                     self.motivo = (
                         f"Outra janela do programa (processo {dono}) está gravando o caderno deste "
@@ -568,12 +623,31 @@ class Caderno:
             logger.debug("Trava do caderno %s não saiu: %s", self.pasta, erro)
 
 
+def _pasta_pelo_apelido(raiz: Path, pdf: Path) -> Path | None:
+    """O caderno cujo índice tem `pdf` entre os apelidos; entre dois, o do índice gravado por último."""
+    achadas: list[tuple[float, Path]] = []
+    for indice in raiz.glob(f"*/{_INDICE}"):
+        try:
+            apelidos = json.loads(indice.read_text(encoding="utf-8")).get("apelidos", [])
+            if any(mesmo_livro(str(apelido), pdf) for apelido in apelidos):
+                achadas.append((indice.stat().st_mtime, indice.parent))
+        except (OSError, ValueError, AttributeError, TypeError) as erro:
+            logger.debug("O índice %s não disse os apelidos: %s", indice, erro)
+    return max(achadas)[1] if achadas else None
+
+
 def _pasta_do_livro(raiz: Path, pdf: Path, identidade: str) -> Path:
-    """A pasta do caderno: a que já existe com esta identidade, ou uma nova com o nome do livro."""
+    """A pasta do caderno: a que tem esta identidade, a que tem este caminho por apelido, ou uma
+    nova com o nome do livro. O apelido vem depois do conteúdo, e acha o livro que mudou sem sair
+    do lugar -- o PDF anotado de menos de 1 MiB (S-897). Ver o cabeçalho."""
     if raiz.exists():
         for achada in sorted(raiz.glob(f"*_{identidade}")):
             if achada.is_dir():
                 return achada
+        pelo_apelido = _pasta_pelo_apelido(raiz, pdf)
+        if pelo_apelido is not None:
+            logger.info("O conteúdo de %s mudou: o caderno %s foi achado pelo caminho.", pdf, pelo_apelido.name)
+            return pelo_apelido
     nome = _LIMPEZA.sub("_", pdf.stem)[:40] or "livro"
     return raiz / f"{nome}_{identidade}"
 
