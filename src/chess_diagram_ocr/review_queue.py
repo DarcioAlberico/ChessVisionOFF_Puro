@@ -33,7 +33,6 @@ import threading
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -56,6 +55,7 @@ from .fen_utils import labels_from_fen, square_name
 from .gallery import load_annotations
 from .labels import LabelStore
 from .pdf_to_pgn import DiagramPosition, ProgressCallback, ScannedDiagram, iter_pdf_diagrams
+from .relogio import agora_iso
 
 logger = logging.getLogger(__name__)
 
@@ -525,7 +525,7 @@ class ReviewQueueBuilder:
         """A fila ordenada, e cortada pelo `limit` **depois** de ordenar."""
         queue = ReviewQueue(
             source_pdf=str(self.pdf_path),
-            created_at=created_at or datetime.now().isoformat(timespec="seconds"),
+            created_at=created_at or agora_iso(),
             items=self.items,
             scanned_diagrams=self.scanned_count,
             pages_scanned=len(self.pages),

@@ -35,12 +35,12 @@ import logging
 import math
 import re
 from dataclasses import dataclass, field, replace
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from .atomic_io import atomic_write_json
 from .config import DATA_DIR
+from .relogio import agora_iso
 
 logger = logging.getLogger(__name__)
 
@@ -330,7 +330,7 @@ class ArquivoDeMarcas:
             "livro": livro or anterior.get("livro", ""),
             "amostra": amostra or anterior.get("amostra", ""),
             "recorte": recorte or anterior.get("recorte", ""),
-            "anotado_em": datetime.now().isoformat(timespec="seconds"),
+            "anotado_em": agora_iso(),
         }
         self._escrever()
 

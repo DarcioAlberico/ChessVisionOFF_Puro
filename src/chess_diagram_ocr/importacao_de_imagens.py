@@ -44,7 +44,6 @@ import re
 from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field, replace
-from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -53,6 +52,7 @@ import numpy as np
 
 from .atomic_io import atomic_write_bytes, atomic_write_json, read_image
 from .config import BOARD_SIZE, DATA_DIR
+from .relogio import agora_iso
 
 logger = logging.getLogger(__name__)
 
@@ -517,7 +517,7 @@ def ler_relatorios_do_chessmeridaocr(pasta: Path | str) -> Lote:
         origem=COM_FEN,
         itens=_numerar(itens),
         ausentes=ausentes,
-        criado_em=_agora(),
+        criado_em=agora_iso(),
     )
 
 
@@ -566,7 +566,7 @@ def ler_pasta_de_imagens(pasta: Path | str) -> Lote:
                 legenda=legenda,
             )
         )
-    return Lote(pasta=str(pasta.resolve()), origem=SEM_FEN, itens=_numerar(itens), criado_em=_agora())
+    return Lote(pasta=str(pasta.resolve()), origem=SEM_FEN, itens=_numerar(itens), criado_em=agora_iso())
 
 
 def _par_do_livro(pasta: Path) -> tuple[Path, Path]:
@@ -639,7 +639,7 @@ def ler_livro_com_pgn(pasta: Path | str, *, diretorio: Path | None = None) -> Lo
                 candidatos=_candidatos(diagrama, indice),
             )
         )
-    return Lote(pasta=str(pasta.resolve()), origem=COM_PGN, itens=_numerar(itens), criado_em=_agora())
+    return Lote(pasta=str(pasta.resolve()), origem=COM_PGN, itens=_numerar(itens), criado_em=agora_iso())
 
 
 def _candidatos(diagrama: Any, indice: Any) -> tuple[str, ...]:
@@ -660,10 +660,6 @@ def _numerar(itens: list[ItemDeImportacao]) -> list[ItemDeImportacao]:
         contadores[item.livro] += 1
         numerados.append(replace(item, indice=contadores[item.livro]))
     return numerados
-
-
-def _agora() -> str:
-    return datetime.now().isoformat(timespec="seconds")
 
 
 # ------------------------------------------------------------------------- FEN e recorte

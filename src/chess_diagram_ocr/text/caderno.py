@@ -67,6 +67,7 @@ from typing import Any
 
 from ..atomic_io import atomic_write_json
 from ..config import DATA_DIR
+from ..relogio import agora_iso, com_fuso, do_arquivo, ler_iso
 from . import arquivo
 from .rico import DocumentoRico
 
@@ -333,7 +334,7 @@ class Caderno:
         for caminho in sorted(self.pasta.glob(f"folha-[0-9][0-9][0-9][0-9]{arquivo.EXTENSAO}")):
             pagina = int(caminho.stem.split("-", 1)[1]) - 1
             try:
-                quando = datetime.fromtimestamp(caminho.stat().st_mtime).isoformat(timespec="seconds")
+                quando = do_arquivo(caminho.stat().st_mtime).isoformat(timespec="seconds")
             except OSError:  # pragma: no cover - arquivo sumiu entre o glob e o stat
                 continue
             self._folhas[pagina] = EstadoDaFolha(pagina=pagina, estado=EDITADA, gravada_em=quando)
@@ -453,7 +454,7 @@ class Caderno:
             estado=estado,
             motor=motor or (antes.motor if antes is not None else ""),
             modo_bloco=bool(modo_bloco) if modo_bloco is not None else (antes.modo_bloco if antes is not None else False),
-            gravada_em=datetime.now().isoformat(timespec="seconds"),
+            gravada_em=agora_iso(),
             correcoes=int(correcoes),
         )
         self._gravar_indice()
@@ -516,7 +517,10 @@ class Caderno:
         if doc.origem is None or self.somente_leitura:
             return False
         antes = self._folhas.get(int(doc.origem.pagina))
-        if antes is not None and antes.gravada_em and antes.gravada_em >= quando.isoformat(timespec="seconds"):
+        # Instantes, e não strings: o índice pode ter outro deslocamento, ou nenhum (S-908). Hora
+        # ilegível no índice não recusa -- o rascunho é trabalho de alguém, e a folha vai para `anterior`.
+        gravada = ler_iso(antes.gravada_em) if antes is not None else None
+        if gravada is not None and gravada >= com_fuso(quando).replace(microsecond=0):
             return False
         self.visitar(int(doc.origem.pagina))
         return self.gravar(doc, correcoes=correcoes) in (GRAVADA, IGUAL)

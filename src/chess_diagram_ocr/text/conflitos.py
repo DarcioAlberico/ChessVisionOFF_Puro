@@ -44,12 +44,12 @@ import shutil
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_text
 from ..config import DATA_DIR, caminho_para_relatorio
+from ..relogio import agora, agora_iso
 from .classes import NomeDePastaInvalido, char_to_folder, folder_to_char
 
 logger = logging.getLogger(__name__)
@@ -264,13 +264,13 @@ def aplicar(
         shutil.move(str(origem), str(destino))
         movidos.append({"classe": pasta, "arquivo": nome})
 
-    manifesto = Path(manifesto) if manifesto else quarentena / f"manifesto_{datetime.now():%Y%m%d_%H%M%S}.json"
+    manifesto = Path(manifesto) if manifesto else quarentena / f"manifesto_{agora():%Y%m%d_%H%M%S}.json"
     manifesto.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(
         manifesto,
         json.dumps(
             {
-                "quando": datetime.now().replace(microsecond=0).isoformat(),
+                "quando": agora_iso(),
                 "base": caminho_para_relatorio(base),
                 "quarentena": caminho_para_relatorio(quarentena),
                 "por_motivo": plano.por_motivo,

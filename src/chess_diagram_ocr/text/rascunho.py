@@ -41,6 +41,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ..config import DATA_DIR
+from ..relogio import do_arquivo
 from . import arquivo
 from .rico import DocumentoRico
 
@@ -147,7 +148,7 @@ def achar(documento: str | Path, folha: int, *, pasta: Path | None = None) -> Ra
     if not destino.exists():
         return None
     try:
-        quando = datetime.fromtimestamp(destino.stat().st_mtime)
+        quando = do_arquivo(destino.stat().st_mtime)
     except OSError:  # pragma: no cover - arquivo sumiu entre o `exists` e o `stat`
         return None
     return Rascunho(caminho=destino, quando=quando, folha=int(folha))
@@ -215,7 +216,7 @@ def listar(documento: str | Path, *, pasta: Path | None = None) -> list[Rascunho
         if folha is None:
             continue
         try:
-            quando = datetime.fromtimestamp(caminho.stat().st_mtime)
+            quando = do_arquivo(caminho.stat().st_mtime)
         except OSError:  # pragma: no cover - arquivo sumiu entre o `glob` e o `stat`
             continue
         achados.append(Rascunho(caminho=caminho, quando=quando, folha=int(folha.group(1)) - 1))

@@ -31,13 +31,13 @@ import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from ..atomic_io import atomic_write_text
+from ..relogio import agora_iso
 from . import aumento as aumento_de_texto
 from . import calibracao
 from .classes import char_to_folder
@@ -399,7 +399,7 @@ def gravar_checkpoint(
         "arquitetura": resultado.arquitetura.como_dicionario(),
         "modelo_sha256": impressao_do_arquivo(caminho_pesos),
         "classes_sha256": impressao_das_classes(idx_to_char),
-        "treinado_em": datetime.now().replace(microsecond=0).isoformat(),
+        "treinado_em": agora_iso(),
     }
     if extra:
         meta.update(extra)

@@ -4,7 +4,6 @@ import argparse
 import json
 import logging
 from collections.abc import Mapping, Sequence
-from datetime import datetime
 from pathlib import Path
 
 from ..audit import (
@@ -25,6 +24,7 @@ from ..audit import (
 from ..config import DEFAULT_DATASET_CSV, PIECE_CLASSES, PROJECT_ROOT
 from ..labels import label_origins
 from ..logging_setup import configure_logging, default_log_file
+from ..relogio import agora
 from ..splits import load_splits, split_leaks
 from . import EXIT_FAILURE, add_dataset_arguments, add_splits_argument, add_verbose, cli_errors
 
@@ -326,7 +326,7 @@ def main(argv: list[str] | None = None) -> int:
         caminho = write_dedupe_summary(
             dedupe_summary(report, args.splits),
             DEFAULT_METRICS_DIR,
-            stamp=datetime.now().strftime("%Y%m%d_%H%M%S"),
+            stamp=agora().strftime("%Y%m%d_%H%M%S"),
         )
         print(f"Resumo do dedupe em {caminho}")
 

@@ -700,6 +700,8 @@ instantes de deslocamentos `+01:00` e `+00:00`.
 
 **Aceite.** O teste e a guarda passam.
 
+**Entregue** (2026-11-08): `agora_iso()` mora em `relogio.py`, fora do fecho de medição, com `agora()`, `do_arquivo(mtime)` e `ler_iso()`, que lê a hora antiga sem fuso como hora local e devolve `None` para a ilegível (que não recusa o rascunho). O conserto fica em `Caderno.trazer_rascunho`; `qt/painel_de_texto.py` não mudou. Além das seis gravações, os dois carimbos de nome de arquivo (`cli/audit.py`, manifesto de `text/conflitos.py`) passaram a `agora()`, e a guarda (`tests/test_relogio.py`) ficou sem exceção. `time.strftime` em `batch.py` fica fora da guarda.
+
 ## Fase 113 — Escritas idempotentes e saídas corretas
 
 ## S-818 · Exportação de PGN atômica, e sem `.review.pgn` de rodada anterior

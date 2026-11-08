@@ -7,10 +7,11 @@ livro duplicado abrem um caderno só, e a trava de um processo vivo deixa o segu
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -169,6 +170,50 @@ class IndiceTests(_ComLivro):
         livro.gravar(_doc(self.livro, 6, "do caderno"))
         self.assertFalse(livro.trazer_rascunho(_doc(self.livro, 6, "rascunho velho"), datetime.now() - timedelta(days=2)))
         self.assertIn("do caderno", livro.folha(6).para_texto())  # type: ignore[union-attr]
+
+    def _caderno_gravado_em(self, pagina: int, gravada_em: str) -> caderno.Caderno:
+        """Um caderno com a folha `pagina` cuja hora no índice é `gravada_em` -- como o disco do dono a tem."""
+        livro = self.abrir()
+        livro.gravar(_doc(self.livro, pagina, "do caderno"))
+        livro.fechar()
+        indice = livro.pasta / "indice.json"
+        dados = json.loads(indice.read_text(encoding="utf-8"))
+        dados["folhas"][str(pagina + 1)]["gravada_em"] = gravada_em
+        indice.write_bytes(json.dumps(dados).encode("utf-8"))
+        return self.abrir()
+
+    def test_rascunho_gravado_depois_da_volta_do_horario_entra_no_caderno(self) -> None:
+        # 02:30 em +01:00 é 01:30 UTC; o rascunho das 02:10 em +00:00 é 02:10 UTC, 40 minutos depois.
+        # Como texto, "02:30" > "02:10", e o rascunho mais novo era recusado (e o painel o apagava).
+        livro = self._caderno_gravado_em(3, "2026-10-25T02:30:00+01:00")
+        depois = datetime(2026, 10, 25, 2, 10, tzinfo=timezone(timedelta(hours=0)))
+        self.assertTrue(livro.trazer_rascunho(_doc(self.livro, 3, "do rascunho"), depois))
+        self.assertIn("do rascunho", livro.folha(3).para_texto())  # type: ignore[union-attr]
+
+    def test_rascunho_mais_velho_em_outro_fuso_continua_recusado(self) -> None:
+        # 02:30 em +00:00 é 02:30 UTC; 02:50 em +01:00 é 01:50 UTC: o texto diz mais novo, o instante não.
+        livro = self._caderno_gravado_em(3, "2026-10-25T02:30:00+00:00")
+        antes = datetime(2026, 10, 25, 2, 50, tzinfo=timezone(timedelta(hours=1)))
+        self.assertFalse(livro.trazer_rascunho(_doc(self.livro, 3, "rascunho velho"), antes))
+        self.assertIn("do caderno", livro.folha(3).para_texto())  # type: ignore[union-attr]
+
+    def test_indice_antigo_sem_fuso_vale_como_hora_local(self) -> None:
+        # Os índices gravados antes da S-908 não têm deslocamento: vale a hora local daquele momento.
+        livro = self._caderno_gravado_em(3, "2026-10-24T14:02:11")
+        self.assertFalse(livro.trazer_rascunho(_doc(self.livro, 3, "velho"), datetime(2026, 10, 24, 13, 0).astimezone()))
+        self.assertTrue(livro.trazer_rascunho(_doc(self.livro, 3, "novo"), datetime(2026, 10, 24, 15, 0).astimezone()))
+        self.assertIn("novo", livro.folha(3).para_texto())  # type: ignore[union-attr]
+
+    def test_hora_ilegivel_no_indice_nao_recusa_o_rascunho(self) -> None:
+        livro = self._caderno_gravado_em(3, "ontem à tarde")
+        self.assertTrue(livro.trazer_rascunho(_doc(self.livro, 3, "do rascunho"), datetime(2026, 10, 24, 15, 0)))
+
+    def test_gravar_anota_a_hora_com_fuso(self) -> None:
+        livro = self.abrir()
+        livro.gravar(_doc(self.livro, 2))
+        gravada = datetime.fromisoformat(livro.estado(2).gravada_em)  # type: ignore[union-attr]
+        self.assertIsNotNone(gravada.tzinfo, "a hora do índice saiu sem deslocamento")
+        self.assertLess(abs(gravada - datetime.now(timezone.utc)), timedelta(minutes=1))
 
 
 class TravaTests(_ComLivro):

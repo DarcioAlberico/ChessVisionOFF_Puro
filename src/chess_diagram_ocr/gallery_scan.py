@@ -26,7 +26,6 @@ import logging
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +40,7 @@ from .config import (
 )
 from .gallery import DEFAULT_GALLERY_DIR
 from .pdf_to_pgn import ProgressCallback, ScannedDiagram, iter_pdf_diagrams
+from .relogio import agora_iso
 from .review_queue import DEFAULT_CACHE_DIR, cache_board_image
 
 logger = logging.getLogger(__name__)
@@ -336,7 +336,7 @@ def build_gallery_index(
     cancelada = cancel_event is not None and cancel_event.is_set()
     return GalleryIndex(
         source_pdf=str(pdf_path),
-        created_at=now or datetime.now().isoformat(timespec="seconds"),
+        created_at=now or agora_iso(),
         reading_order=reading_order,
         pages_scanned=len(paginas),
         start_page=start_page,
