@@ -523,6 +523,49 @@ class JanelaTests(unittest.TestCase):
         self.assertTrue(caixa.called)
         self.assertIsNone(janela.pdf.visor.pagina_rgb())
 
+    def _djvu(self, nome: str) -> Path:
+        """O `boy_jb2` dos testes de `djvu_io`: uma página JB2 de verdade, de 279 bytes."""
+        fixture = Path(__file__).resolve().parent / "fixtures" / "djvu" / "boy_jb2.djvu"
+        caminho = self.pasta / nome
+        caminho.write_bytes(fixture.read_bytes())
+        return caminho
+
+    def test_um_djvu_abre_pela_janela_e_ela_continua_com_o_djvu(self) -> None:
+        """Vindo do PR #54, com a decisão do `djvu_io`: o PDF convertido é um detalhe de `pdf_io`, e
+        a janela, a sessão e os rótulos ficam com o `.djvu` (no #54 eles passavam ao PDF)."""
+        from unittest import mock
+
+        from chess_diagram_ocr import djvu_io
+
+        janela = self._janela()
+        with mock.patch.object(djvu_io, "DJVU_CONVERTIDOS_DIR", self.pasta / "convertidos"):
+            janela.abrir_pdf(self._djvu("russo.djvu"))
+
+        self.assertEqual(1, janela.pdf.page_count)
+        self.assertEqual(self.pasta / "russo.djvu", janela.pdf.source)
+        self.assertIn("russo.djvu", janela.windowTitle())
+        self.assertIsNotNone(janela.pdf.visor.pagina_rgb())
+
+    def test_um_djvu_danificado_nao_tira_a_janela_do_livro_aberto(self) -> None:
+        """Do PR #54. A frase é a de `djvu_io`, e não a genérica de PDF corrompido: a tradução de
+        `ui/leitura_do_pdf` a trocava, pelo "format error" da biblioteca (merge da main)."""
+        from unittest import mock
+
+        from chess_diagram_ocr import djvu_io
+
+        janela = self._janela()
+        janela.abrir_pdf(self.pdf)
+        cortado = self.pasta / "cortado.djvu"
+        cortado.write_bytes(self._djvu("inteiro.djvu").read_bytes()[:-6])
+        with (
+            mock.patch.object(djvu_io, "DJVU_CONVERTIDOS_DIR", self.pasta / "convertidos"),
+            mock.patch("chess_diagram_ocr.qt.janela.QMessageBox.critical") as caixa,
+        ):
+            janela.abrir_pdf(cortado)
+
+        self.assertIn("incompleto", caixa.call_args.args[2])
+        self.assertEqual(self.pdf, janela.pdf.source)
+
     def test_marcar_diagramas_desenha_a_caixa_que_o_detector_achou(self) -> None:
         """O caminho de detecção de verdade -- render, detector híbrido, caixas -- sem modelo."""
         janela = self._janela()

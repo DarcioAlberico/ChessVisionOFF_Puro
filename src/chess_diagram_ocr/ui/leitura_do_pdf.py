@@ -136,10 +136,13 @@ def frase_de_abertura(nome: str, erro: BaseException) -> str:
     ela acabou de escolher. O original fica no log.
 
     Uma recusa que **já** é nossa passa intacta: é o caso do PDF protegido por senha (S-331), cuja
-    frase `pdf_io` escreve em pt-BR e começa pelo nome do arquivo.
+    frase `pdf_io` escreve em pt-BR e começa pelo nome do arquivo, e o das recusas de `djvu_io`
+    ("Não dá para ler X.djvu: o arquivo parece incompleto ou danificado"). Estas trazem entre
+    parênteses o texto da djvu-rs, que tem "format error" e cairia em `_CAUSAS` como PDF corrompido:
+    a pessoa leria que o DjVu "não é um PDF".
     """
     texto = str(erro)
-    if texto.startswith(nome) or texto.startswith("O PDF recebido"):
+    if texto.startswith((nome, "O PDF recebido", f"Não dá para ler {nome}", f"Não dá para abrir {nome}")):
         return texto
     baixo = texto.lower()
     for pistas, causa in _CAUSAS:

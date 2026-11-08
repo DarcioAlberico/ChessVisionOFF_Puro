@@ -48,7 +48,7 @@ from chess_diagram_ocr.qt.tabuleiro import (
 )
 from chess_diagram_ocr.ui import board_edit, conjuntos, espaco, estilos, tokens
 
-__all__ = ["APAGAR", "LADO_DO_ICONE", "PaletaDePecas"]
+__all__ = ["APAGAR", "LADO_DO_ICONE", "PaletaDePecas", "folha_da_paleta"]
 
 APAGAR = ""
 """O pincel que esvazia a casa. É o mesmo valor que `BoardModel.brush` já usa para isso -- a
@@ -80,6 +80,23 @@ colunas de peça, e um texto mais largo que elas empurraria o tabuleiro para tr�
 em troca -- daí o `✕`, que é o mesmo símbolo dos editores de posição que se usam por aí, e daí
 `Largar` no lugar de "Sem pincel". Nenhum dos dois é mudo: a dica de cada um diz o que ele faz, e
 a frase de status confirma o que aconteceu."""
+
+
+def folha_da_paleta() -> str:
+    """A folha de uma paleta de botões que ficam acesos, com as cores do tema em vigor."""
+    superficie = tema.cor_atual(tokens.SUPERFICIE_PADRAO)
+    texto = tema.cor_atual(tokens.TEXTO_PADRAO)
+    moldura = tema.cor_atual(tokens.MOLDURA)
+    secundario = tema.cor_atual(tokens.TEXTO_SECUNDARIO)
+    return (
+        f"QToolButton {{ border: 1px solid {moldura}; border-radius: {espaco.minima()}px;"
+        f" padding: {espaco.minima()}px; }}"
+        f"QToolButton:hover {{ background-color: {tokens.mistura(superficie, texto, PESO_SOB_O_PONTEIRO)}; }}"
+        f"QToolButton:checked {{ background-color: {tokens.mistura(superficie, texto, PESO_DO_SELECIONADO)}; }}"
+        # Pela mesma razão da S-506 no `QPushButton`: a cor de letra da folha vale em todos
+        # os estados e anula o acinzentamento que o Qt faria pela paleta.
+        f"QToolButton:disabled {{ color: {secundario}; border-color: {secundario}; }}"
+    )
 
 
 class PaletaDePecas(QWidget):
@@ -293,16 +310,4 @@ class PaletaDePecas(QWidget):
         tem. Um `QToolButton:checked` na folha da aplicação valeria para o botão de recorte e o
         de treino da sala de estudo, que não pediram nada.
         """
-        superficie = tema.cor_atual(tokens.SUPERFICIE_PADRAO)
-        texto = tema.cor_atual(tokens.TEXTO_PADRAO)
-        moldura = tema.cor_atual(tokens.MOLDURA)
-        secundario = tema.cor_atual(tokens.TEXTO_SECUNDARIO)
-        self.setStyleSheet(
-            f"QToolButton {{ border: 1px solid {moldura}; border-radius: {espaco.minima()}px;"
-            f" padding: {espaco.minima()}px; }}"
-            f"QToolButton:hover {{ background-color: {tokens.mistura(superficie, texto, PESO_SOB_O_PONTEIRO)}; }}"
-            f"QToolButton:checked {{ background-color: {tokens.mistura(superficie, texto, PESO_DO_SELECIONADO)}; }}"
-            # Pela mesma razão da S-506 no `QPushButton`: a cor de letra da folha vale em todos
-            # os estados e anula o acinzentamento que o Qt faria pela paleta.
-            f"QToolButton:disabled {{ color: {secundario}; border-color: {secundario}; }}"
-        )
+        self.setStyleSheet(folha_da_paleta())

@@ -57,6 +57,7 @@ from PyQt6.QtWidgets import (
 )
 
 from chess_diagram_ocr.config import DEFAULT_PDF_DIR
+from chess_diagram_ocr.djvu_io import FILTRO_DE_LIVROS
 from chess_diagram_ocr.games_db import DEFAULT_DATABASE_DIR, PositionHit, database_paths
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
@@ -453,7 +454,7 @@ class DialogoDeEscopo(QDialog):
         else:  # pragma: no cover - diálogo do sistema
             inicial = self._livro_aberto.parent if self._livro_aberto is not None else self._folder
             trazidos, _filtro = QFileDialog.getOpenFileNames(
-                self, "Livros a varrer", str(inicial), "PDF (*.pdf);;Todos (*.*)"
+                self, "Livros a varrer", str(inicial), FILTRO_DE_LIVROS
             )
         return [Path(caminho) for caminho in trazidos or ()]
 

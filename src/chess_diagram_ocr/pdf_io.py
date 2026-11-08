@@ -21,6 +21,8 @@ from pathlib import Path
 import fitz
 import numpy as np
 
+from chess_diagram_ocr.djvu_io import pdf_legivel
+
 logger = logging.getLogger(__name__)
 
 
@@ -80,7 +82,8 @@ def _open_document(pdf_source: PdfSource) -> fitz.Document:
         doc = fitz.open(stream=pdf_source, filetype="pdf")
         nome = "O PDF recebido em memória"
     else:
-        doc = fitz.open(str(pdf_source))
+        # O `.djvu` vira o caminho de um PDF só aqui: quem chamou continua com o nome do livro.
+        doc = fitz.open(pdf_legivel(str(pdf_source)))
         nome = Path(str(pdf_source)).name
     if doc.needs_pass:
         doc.close()
