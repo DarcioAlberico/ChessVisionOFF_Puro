@@ -160,6 +160,11 @@ um agente que não sorteou, sem divergência; a dúvida dele entre zero e `O` no
 O teste fica com 17 livros e 102 folhas em três línguas, e `pendencias` vazia. Ele entra depois da primeira leitura do
 teste (2026-11-06): os portões de 2026-11-06 foram medidos sem ele, e o livro só é lido no próximo portão.
 
+No mesmo dia veio um segundo livro em espanhol, e ele **não entra no teste**: é a tradução do *Dvoretsky's Endgame
+Manual*, livro dev (identidade `e39a3d0f9ea1fb77`, de `603581c988ea2bd6`). Com `--serie` declarando o livro dev, o
+`acrescentar.py` o recusou numa cópia do manifesto, que ficou intacta. Ele fica como material de desenvolvimento: um
+ebook em espanhol para o trabalho de leiaute, fora de qualquer medição do teste.
+
 **Achado: o (c) recusa o símbolo de avaliação gravado em uso privado.** Em dois livros do teste a
 admissão recusou a maioria das folhas perguntadas por (c): 22 de 28 num, cuja fonte de texto traz as
 figurinas em Unicode (♕♔♘) e o símbolo de avaliação que vem depois do lance num caractere de uso
