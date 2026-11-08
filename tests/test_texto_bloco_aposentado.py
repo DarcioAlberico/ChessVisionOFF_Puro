@@ -31,7 +31,8 @@ class SemRastroTests(unittest.TestCase):
         achados = set()
         for pasta in ("src", "tests"):
             for caminho in (RAIZ / pasta).rglob("*"):
-                if caminho.is_file() and "__pycache__" not in caminho.parts:
+                artefato = any(parte == "__pycache__" or parte.endswith(".egg-info") for parte in caminho.parts)
+                if caminho.is_file() and not artefato:  # o SOURCES.txt do build lista o nome deste arquivo
                     conteudo = caminho.read_bytes()
                     if CHAVE_DO_ESTADO.encode() in conteudo or CHAVE_DO_INDICE.encode() in conteudo:
                         achados.add(caminho.relative_to(RAIZ).as_posix())

@@ -137,7 +137,7 @@ def _pasta_do_repositorio() -> Path:
 def recusar_dentro_do_repositorio(caminho: str | Path) -> None:
     """Os JSONL de medição têm texto de livro comercial, e o repositório é público."""
     alvo = Path(caminho).resolve()
-    for raiz in (_pasta_do_repositorio(), Path.cwd().resolve()):
+    for raiz in (_pasta_do_repositorio().resolve(), Path.cwd().resolve()):  # os dois lados resolvidos: `RUNNER~1` contra o nome longo
         if (raiz / ".git").exists() and alvo.is_relative_to(raiz):
             raise SystemExit(f"--dados dentro do repositório ({alvo}): o arquivo tem texto de livro. Grave-o fora.")
 
