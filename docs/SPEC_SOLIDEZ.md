@@ -1,4 +1,4 @@
-# Especificação da solidez — Fases 110 a 121 (S-800 a S-873)
+# Especificação da solidez — Fases 110 a 121 (S-800 a S-886)
 
 Base: [ROADMAP_SOLIDEZ.md](ROADMAP_SOLIDEZ.md), que traz as medições de 2026-11-08, as seis premissas
 atacadas, o glossário, a ordem das fases e as decisões do dono. Todo caminho abaixo é relativo a
@@ -29,7 +29,7 @@ linhas citadas são de `origin/main` em `e8c9f64a`.
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
 > | S-702, S-710 a S-712, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
-> | S-800 a S-873 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
+> | S-800 a S-886 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
 
 Cada item traz o **problema** com a evidência, a **causa**, a **solução** (a menor mudança, ou o
 redesenho entregue em pedaços), o **teste que falha primeiro** e o **critério de aceite**. A prova de
@@ -41,20 +41,23 @@ entregue; todos valem como plano até o commit que os fecha.
 
 ## S-800 · Borda de exceção do processo, e o estado da sessão gravado antes da queda
 
-**Problema** (confirmado). `app_pyqt.py:305-341` não instala `sys.excepthook`, e nada em `src/`
+**Problema** (confirmado). O `main` de `app_pyqt.py` (`:281-341`) não instala `sys.excepthook`, e nada em `src/`
 instala. Em PyQt6, exceção que escapa de um slot é `qFatal`: o processo sai (0xC0000409, ou 127 sob
-`offscreen`) sem uma linha de log. Dos dez `eventFilter` de `qt/`, seis não têm `try`
-(`fita_do_texto`, `foco_a_vista`, `painel_de_texto`, `paleta`, `tabela`, `vazio`). E
+`offscreen`) sem uma linha de log. Sete métodos `eventFilter`, em seis módulos de `qt/`, não têm
+`try` (`fita_do_texto`, `foco_a_vista` com dois, em `:127` e `:286`, `painel_de_texto`, `paleta`,
+`tabela`, `vazio`). E
 `JanelaPrincipal._gravar_estado` (`qt/janela.py:889`) só roda no `closeEvent` (`:2251`), então a
 queda perde também o histórico de PDFs, a página e o divisor.
 
-**Causa.** Premissa 6 do roadmap: a defesa foi posta slot por slot (`qt/atalhos.py:298` é o único
-filtro com borda), e não na raiz.
+**Causa.** Premissa 6 do roadmap: a defesa foi posta slot por slot (`qt/atalhos.py:298` e
+`qt/dica.py:153` têm borda que loga; `qt/acessibilidade.py:220` engole a exceção em `debug`), e não
+na raiz.
 
 **Solução.** `qt/plataforma.instalar_borda()`, chamada no `main` antes da `QApplication`: troca
 `sys.excepthook` (e `threading.excepthook`) por `logger.critical(..., exc_info=...)` e, havendo
 janela, uma frase no rodapé. Segundo pedaço: `_gravar_estado` também em `_abriu_livro` e na troca de
-página, com intervalo mínimo de 2 s entre gravações.
+página, adiado por 2 s e sempre concluído: a última troca dentro da janela de 2 s é a que se grava,
+e o `closeEvent` grava o que estiver pendente.
 
 **Teste que falha primeiro.** Subprocesso com `QT_QPA_PLATFORM=offscreen` que chama
 `instalar_borda()`, agenda `QTimer.singleShot(0, levanta)` e sai do laço em seguida.
@@ -79,7 +82,7 @@ temporário: o crapper a reporta com CRAP 12² + 12 = 156.
 
 **Aceite.** `python tools/qualidade/crapper.py` roda em menos de 1 minuto sobre uma cobertura já
 gravada. A catraca falha ao acrescentar a função sintética a `src/` e passa ao removê-la. O CI roda a
-cobertura numa das duas pernas, não nas duas.
+cobertura numa perna só (depois da S-830, a única que sobra).
 
 ## S-802 · dryer no repositório, com catraca de pares duplicados
 
@@ -114,20 +117,24 @@ só pode subir.
 só confere `soma(0, 0) == 0`: a mutação `+` → `-` sobrevive. Com o teste `soma(2, 3) == 5`, ela
 morre.
 
-**Aceite.** O fonte do módulo é byte a byte igual ao de antes, também quando o processo é
-interrompido no meio (o `finally` restaura). O relatório lista cada sobrevivente com linha e
+**Aceite.** O fonte do módulo é byte a byte igual ao de antes, também depois de uma interrupção: o
+`finally` restaura na saída normal e no Ctrl+C, e uma cópia `<modulo>.py.mutator-orig`, gravada antes
+da primeira mutação, é restaurada na partida seguinte quando o processo morreu sem `finally` (um
+`taskkill /F`). O mutator roda com `PYTHONDONTWRITEBYTECODE=1` e apaga o `__pycache__` do módulo a
+cada mutação: a troca `+` → `-` não muda o tamanho do arquivo, e o `.pyc`, validado por mtime em
+segundos e tamanho, poderia deixar a mutação viva depois da restauração. O relatório lista cada sobrevivente com linha e
 operador. A S-873 mata os sobreviventes.
 
 ## S-804 · Catraca de tipos, e as contagens que só descem
 
-**Problema** (confirmado). 192 `# type: ignore` (80 `arg-type`, 63 `attr-defined`), 892 `Any` e 175
-`except Exception`. O `[tool.mypy]` não tem `warn_unused_ignores`, então um `ignore` que já não
-silencia nada fica para sempre. O comentário do `[tool.mypy]` (`pyproject.toml:262`) ainda fala de
-`app_tkinter.py`, que não existe.
+**Problema** (confirmado). 192 `# type: ignore` (80 `arg-type`, 63 `attr-defined`), 892 `Any` e 170
+`except Exception` em `src/` (176 com `app_pyqt.py`). O `[tool.mypy]` não tem `warn_unused_ignores`, então um `ignore` que já não
+silencia nada fica para sempre. Quatro comentários do `pyproject.toml` (`:16`, `:36`, `:226` e o do
+`[tool.mypy]`, `:262`) ainda falam de `app_tkinter.py`, que não existe.
 
 **Solução.** `warn_unused_ignores = true`, apagando os ignores que ele acusar. Um teste de catraca
 com as três contagens por pacote (`qt/`, `text/`, `ui/`, `cli/`, raiz), que reprova se uma delas
-subir. O comentário passa a falar de `app_pyqt.py`.
+subir. Os quatro comentários passam a falar de `app_pyqt.py`.
 
 **Teste que falha primeiro.** Acrescentar um `except Exception: pass` em `src/`: a catraca reprova
 com o nome do pacote.
@@ -139,7 +146,7 @@ acréscimo.
 
 **Problema.** Quatro furos, todos confirmados pela auditoria dos testes:
 
-- os testes da aba Texto usam `_TarefaNaHora` (`tests/test_qt_texto_caderno.py:52`), que emite
+- os testes da aba Texto usam `_TarefaNaHora` (`tests/test_qt_texto_caderno.py:54`), que emite
   `pronto` dentro do `start`. Uma tarefa que termina antes de a tela mudar não pega nenhum defeito
   de "mudou durante a tarefa" (S-823, S-824);
 - a guarda `sem_thread_vazada` (`tests/conftest.py:291`, `:326`) aceita threads `Dummy-N` e
@@ -148,13 +155,16 @@ acréscimo.
 - `dados_de_quem_roda_ficam_onde_estao` (`tests/conftest.py:158-237`) vigia `PROJECT_ROOT/data/`,
   que num worktree não tem o cache: a guarda fica vácua. É o caso da memória "guarda de caminho é
   vácua em worktree";
-- `tests/qt_app.py:30` pula cerca de 206 classes se o PyQt6 não importar, e o PyQt6 é dependência
-  base (`pyproject.toml:43`). Uma instalação quebrada sai verde com pulos.
+- `tests/qt_app.py:30` decide `TEM_PYQT` por `importlib.util.find_spec("PyQt6")`, e cerca de 206
+  classes pulam quando o pacote falta; o PyQt6 é dependência base (`pyproject.toml:43`). Um ambiente
+  sem o pacote sai verde com pulos (com o pacote presente e a DLL quebrada não há pulo: há
+  `ImportError`).
 
 **Solução.** Uma `TarefaAdiada` em `tests/qt_app.py`, que só emite quando o teste manda. Um registro
 de `Tarefa` vivas em `qt/trabalho.py`, conferido pela mesma fixture. A guarda de dados ancorada
-também no `git rev-parse --git-common-dir`, como `_raizes_do_repositorio` já faz. Um teste que
-reprova, sem pular, quando `import PyQt6.QtWidgets` falha.
+também no checkout principal, achado por `git worktree list --porcelain`, como
+`_raizes_do_repositorio` (`tests/test_docs.py:293-300`) já faz. Um teste que
+reprova, sem pular, quando o pacote PyQt6 não está instalado.
 
 **Teste que falha primeiro.** Uma `Tarefa` deixada rodando num teste de mentira: a fixture tem de
 acusar.
@@ -173,7 +183,7 @@ abrir com `database=[a.pgn]` deixa zero. Quem chega aqui sem querer:
   apaga o cache do acervo inteiro;
 - `cli/games.py:250`: `_bases()` tira em silêncio a base que não existe agora. Um disco fora do ar
   ou um arquivo no meio de uma cópia esvazia o cache no `--all` seguinte;
-- `stat()` que falha vira tamanho 0 (`games_cache.py:109-112`), e a impressão "muda";
+- `stat()` que falha vira tamanho 0 (`games_cache.py:125-130`), e a impressão "muda";
 - o painel de estudo (`qt/painel_de_estudo.py:2721`) e a Galeria abrem do mesmo jeito.
 
 O cache é ~56 minutos de varredura, e é o incidente de 2026-10-18 (~9.810 linhas apagadas).
@@ -188,24 +198,27 @@ feita; linha de impressão antiga é ignorada na leitura, e uma limpeza explíci
 com `mode=ro` e sem `database=`; `stat` que falha vira "desconhecido", que não casa nem descasa.
 
 **Teste que falha primeiro.** `test_census_com_subconjunto_nao_apaga_o_cache`: encher com
-`[a, b]`, chamar `cli.games.main(["--census", "--database", a])`, conferir 500 linhas.
-`test_stat_falho_nao_esvazia`.
+`[a, b]`, chamar `cli.games.main(["--census", "--all", "--gallery-dir", g, "--cache", c,
+"--database", a])` com um `*.index.json` falso em `g`, e conferir 500 linhas. Sem `--all` e sem um
+índice da Galeria, o comando sai com `EXIT_BAD_INPUT` em `cli/games.py:486-492` antes de abrir o cache,
+e o teste passaria hoje. `test_stat_falho_nao_esvazia`.
 
 **Aceite.** Os dois testes passam. Nenhum `DELETE FROM positions` fora da limpeza explícita (guarda
 por `grep`, com piso de um achado: a própria limpeza).
 
 ## S-807 · Uma impressão digital de base só, que enxerga membro de `.zip`
 
-**Problema** (confirmado por script). `games_cache.database_fingerprint` (`games_cache.py:107-112`)
-dá tamanho 0 a todo membro de `.zip`: reescrever `z.zip/m.pgn` com 50 vezes o conteúdo não muda a
+**Problema** (confirmado por script). `games_cache.database_fingerprint` (`games_cache.py:107`, corpo em
+`:125-131`) dá tamanho 0 a todo membro de `.zip`: reescrever `z.zip/m.pgn` com 50 vezes o conteúdo não muda a
 impressão. `games_index.index_fingerprint` (`games_index.py:363`) responde a mesma pergunta por
-`nome_da_base` e `tamanho_da_base`, que tratam o zip. A base é identificada só por `caminho.name`, e
+`nome_da_base` e `tamanho_da_base`, que tratam o zip (`games_db.py:316`, `:340`); mas `tamanho_da_base` também devolve 0 em `OSError`, o
+mesmo defeito do `stat` da S-806 do lado do índice. A base é identificada só por `caminho.name`, e
 dois zips com `games.pgn` dentro parecem a mesma base.
 
 **Causa.** Premissa 3: a mesma decisão em dois módulos (a S-113 já tinha juntado metade dela).
 
 **Solução.** `impressao_da_base(caminho) -> ImpressaoDaBase` (nome qualificado pelo zip, tamanho do
-membro) num módulo só, usada por cache e índice.
+membro, ou "desconhecido" quando o tamanho não lê) num módulo só, usada por cache e índice.
 
 **Teste que falha primeiro.** `test_impressao_de_membro_de_zip_muda_com_o_conteudo`, e
 `test_dois_zips_com_mesmo_membro_sao_bases_diferentes`.
@@ -217,11 +230,12 @@ membro) num módulo só, usada por cache e índice.
 **Problema** (confirmado por script). `games_index.py:384` e `:997` montam `f"file:{path}?mode=ro"`
 sem escapar o caminho; `games_cache.py:575` e `arvore_de_aberturas.py:718`, `:814` fazem o mesmo
 com `as_posix()`. Numa pasta `Xadrez #2`, a versão gravada volta `None`; numa pasta `100%25 ok`, o
-SQLite nem abre. E `_abrir_para_escrita` (`games_index.py:416-421`) trata o `None` como "outro
+SQLite nem abre. Pior: com `#`, o `?mode=ro` vira fragmento, e o SQLite abre `.../Xadrez ` (com o
+espaço) **em leitura e escrita**, criando um arquivo vazio na pasta-mãe. E `_abrir_para_escrita` (`games_index.py:416-421`) trata o `None` como "outro
 formato" e faz `unlink` do índice, que é construído de 8,6 GB de PGN.
 
 **Solução.** `uri_somente_leitura(caminho)` = `caminho.resolve().as_uri() + "?mode=ro"`, num lugar,
-usada pelos quatro. `_abrir_para_escrita` apaga só quando leu uma versão **e** ela é outra; versão
+usada pelas cinco chamadas dos três módulos. `_abrir_para_escrita` apaga só quando leu uma versão **e** ela é outra; versão
 que não leu é erro, dito ao usuário.
 
 **Teste que falha primeiro.** `test_indice_em_pasta_com_cerquilha_sobrevive_a_segunda_rodada` e o
@@ -248,17 +262,19 @@ partidas de `b` continuam.
 
 ## S-810 · Booleano estrito e faixas numéricas no `settings.json`
 
-**Problema** (confirmado por script). `RemoteFenSettings.from_dict({"enabled": "false"}).is_usable`
-é `True`, porque `bool("false")` é verdadeiro. Um `"false"` escrito à mão **liga** o envio de
+**Problema** (confirmado por script). `RemoteFenSettings.from_dict({"enabled": "false",
+"endpoint": "http://x"}).is_usable` é `True`, porque `bool("false")` é verdadeiro (sem endpoint,
+`is_usable` é falso por outra razão, `settings.py:91`). Um `"false"` escrito à mão **liga** o envio de
 imagens a um servidor, e o próprio módulo promete que um JSON ruim não liga envio. `timeout` aceita
-`nan` e `-5`; `threads` aceita `-3`.
+`nan` e `-5`; `threads` aceita `-3`. O mesmo `bool(` está em `OcrSettings` (`:311`) e em
+`LocalReaderSettings` (`:357`).
 
 **Solução.** `_booleano(valor)`: só `true` e `false` do JSON; qualquer outra coisa é **desligado**,
 com aviso. Faixas declaradas por campo (timeout em `(0, 600]`, threads em `[1, núcleos]`), com
 o valor fora da faixa trocado pelo padrão e avisado. O par `_inteiro`/`_flutuante`
 (`settings.py:139`, `:162`, idênticos para o dryer) vira um só `_numero(tipo, faixa)`.
 
-**Teste que falha primeiro.** `test_enabled_string_false_e_desligado`;
+**Teste que falha primeiro.** `test_enabled_string_false_e_desligado`, com endpoint preenchido;
 `test_timeout_nan_volta_ao_padrao`.
 
 **Aceite.** Os dois passam. Nenhum `bool(` sobre valor do JSON em `settings.py`.
@@ -269,7 +285,9 @@ o valor fora da faixa trocado pelo padrão e avisado. O par `_inteiro`/`_flutuan
 `CVOFF_*` sobre o que leu, e salvar grava o resultado. Com `remote_fen.enabled=true` no arquivo e
 `CVOFF_REMOTE_FEN_ENABLED=0` no ambiente, uma gravação de outra opção deixa o arquivo com `false`
 para sempre. No sentido contrário, `CVOFF_REMOTE_FEN_URL` vai para o arquivo junto de
-`enabled=true`: um consentimento de privacidade que ninguém deu. Seções e chaves desconhecidas somem
+`enabled=true`: um consentimento de privacidade que ninguém deu.
+`CVOFF_OCR_ENGINE`, `CVOFF_OCR_GLYPH_MODEL` e `CVOFF_LOCAL_READER_PATH` também ligam `enabled=True` e
+vazam para o arquivo do mesmo jeito (`settings.py:490-515`). Seções e chaves desconhecidas somem
 na gravação, e `SETTINGS_VERSION` nunca é conferido na leitura. Quem grava: `qt/painel_de_estudo.py:2405-2407` e
 `qt/dialogo_de_configuracoes.py:246-250`.
 
@@ -288,8 +306,9 @@ conferida: versão futura entra pela S-812.
 **Problema** (confirmado). Sete leitores tratam o arquivo que não lê como vazio, e o gravador
 seguinte escreve o vazio por cima:
 
-- `settings.json` com uma vírgula sobrando vira padrão, e a próxima gravação de motor escreve
-  `endpoint: ''` e `engine.path: ''` sobre o arquivo do usuário (`settings.py:533-569`);
+- `settings.json` com uma vírgula sobrando vira padrão, e a próxima gravação das opções do
+  motor escreve `endpoint: ''` (e `engine.path: ''`, se o diálogo não mudou o caminho) sobre o
+  arquivo do usuário (`settings.py:533-569`);
 - `revisao.json` de esquema 2 com 600 itens carrega com 0, e a gravação seguinte escreve esquema 1
   com 0 itens (`revisao_arquivo.py:43-68`);
 - `placar.json`, o estudo da sala, a fila de revisão, o lote de importação (`Lote.carregar` devolve
@@ -314,11 +333,12 @@ ilegível sem passar pelo `Ilegivel` (guarda por AST nos sete módulos, com piso
 
 **Problema** (confirmado por script). Além da premissa da S-812: `"esquema": "1.0"` levanta
 `ValueError` fora do `try` em `revisao_arquivo.py`; `certos: "x"` derruba `placar.py:120-128`,
-`:195-217`, porque `de_json` não converte campo a campo. O módulo chama o baralho de "o único dado
-que este programa não sabe refazer".
+`:195-217`, porque `de_json` não converte campo a campo. O módulo diz que o baralho é "o
+único dado deste programa que não se refaz varrendo o livro de novo" (`revisao_arquivo.py:48`).
 
-**Solução.** O `esquema` lido por `_inteiro_estrito`; cada item do placar e do baralho lido no seu
-`try`, com o item ruim guardado cru e devolvido igual na gravação.
+**Solução.** O `esquema` dos dois arquivos (também `placar.py:208`) lido por `_inteiro_estrito`. O
+baralho já lê cada item no seu `try` (`:63-68`), mas descarta o ruim: passa a guardá-lo cru e a
+devolvê-lo igual na gravação. O placar ganha o mesmo.
 
 **Teste que falha primeiro.** `test_baralho_de_esquema_futuro_nao_e_sobrescrito`;
 `test_placar_com_campo_ruim_nao_derruba`.
@@ -334,11 +354,17 @@ log de depuração; um `read_game` que levanta faz `break` e derruba **todas** a
 docstring; `OSError` na leitura dá uma `Sala` vazia. A próxima edição marca a sala como suja, e
 `gravar` reescreve o arquivo com a sala parcial, ou faz `unlink` se ela estiver vazia.
 
-**Solução.** `continue` no lugar do `break`. A partida que não lê é guardada como texto PGN cru e
+Há uma perda que não depende de exceção: o `read_game` do python-chess quase nunca levanta, e manda
+o lance ilegal para `game.errors`. `estudos_de_pgn` não confere `errors` (só `estudo.py:617`, no
+colar, confere), então uma partida com um lance ilegal é **truncada** em silêncio e regravada
+cortada.
+
+**Solução.** `continue` no lugar do `break`; partida com `errors` também é guardada crua. A partida que não lê é guardada como texto PGN cru e
 devolvida igual na gravação. Sala de leitura incompleta é `Leitura` travada (S-812).
 
-**Teste que falha primeiro.** `test_estudo_sem_ancora_sobrevive_a_gravacao`; um arquivo com a
-segunda de cinco partidas quebrada carrega quatro e grava cinco.
+**Teste que falha primeiro.** `test_estudo_sem_ancora_sobrevive_a_gravacao`;
+`test_lance_ilegal_nao_trunca_a_partida_na_regravacao`; e, com o `read_game` remendado para levantar
+na segunda de cinco partidas, quatro carregadas e cinco gravadas.
 
 **Aceite.** Os dois passam; o arquivo regravado tem a partida quebrada byte a byte igual.
 
@@ -364,17 +390,20 @@ resolvido`, com migração da pasta antiga quando ela é inequívoca. Cada item 
 destino), fila)` sem `pages=`. Como a varredura retomada só passa pelas páginas depois de
 `last_page_done` (`gallery_scan.py:277-280`), os itens das páginas anteriores somem. O GUI passa
 `pages` (`qt/painel_de_revisao.py:471`, a S-119). O CLI também não confere `source_pdf`, que
-`cli/review.py:115` e o painel conferem, e `_queue_path` (`:141`) usa só o nome do arquivo.
+`cli/review.py` e o painel conferem, e `_queue_path` (`:139`) usa só o nome do arquivo. E há um
+terceiro chamador com o mesmo defeito: `cli/review.py:115` faz `merge_queues(existing, queue)` sem
+`pages=`, e um `--merge` com `--start-page`, `--end-page` ou `--limit` apaga as pendências de fora do
+intervalo.
 
 **Causa.** Premissa 3: a regra de fusão está no chamador, e foi consertada num chamador só.
 
 **Solução.** `fundir_fila_retomada(anterior, nova, paginas_vistas, fonte)` pura em `review_queue.py`,
-que confere a fonte e preserva o que está fora das páginas vistas. O GUI e o CLI a chamam. O nome da
+que confere a fonte e preserva o que está fora das páginas vistas. O GUI e os dois CLIs a chamam. O nome da
 fila ganha o mesmo hash da S-815.
 
 **Teste que falha primeiro.** `test_scan_retomado_preserva_pendencias_das_primeiras_paginas`.
 
-**Aceite.** O teste passa nos dois chamadores (o mesmo caso, parametrizado).
+**Aceite.** O teste passa nos três chamadores (o mesmo caso, parametrizado).
 
 ## S-817 · Quarentena de rótulos em conflito sempre desfazível
 
@@ -382,10 +411,14 @@ fila ganha o mesmo hash da S-815.
 o manifesto guarda caminhos relativos ao `PROJECT_ROOT`, e `desfazer` os resolve contra a pasta
 **atual**. Rodado de outra pasta, ele pula todos os arquivos, diz "0 recortes voltaram" e sai com 0.
 O manifesto só é escrito depois de todos os movimentos, então uma queda no meio deixa arquivos na
-quarentena sem caminho de volta, contra a promessa "nunca apaga".
+quarentena sem caminho de volta, contra a promessa "**Nada é apagado.**" (`text/conflitos.py:31`).
+A docstring de `aplicar` defende de propósito mover primeiro e gravar o manifesto depois, para o
+manifesto nunca descrever um movimento que não aconteceu.
 
-**Solução.** Caminhos absolutos no manifesto. O manifesto é escrito antes de mover e atualizado a
-cada movimento (por `atomic_io`); `desfazer` já tolera o arquivo que falta. Desfazer zero de N sai
+**Solução.** Caminhos absolutos no manifesto. O manifesto é escrito antes de mover, com cada entrada
+em estado `pendente`, e cada movimento o atualiza para `movido` (por `atomic_io`): ele descreve a
+intenção e o que já aconteceu, e nunca diz `movido` do que não saiu, que é o que a docstring
+protegia. `desfazer` devolve só o que está `movido` e já tolera o arquivo que falta. Desfazer zero de N sai
 com código diferente de 0.
 
 **Teste que falha primeiro.** `test_desfazer_de_outra_pasta_devolve_tudo`;
@@ -399,8 +432,8 @@ com código diferente de 0.
 
 **Problema** (confirmado por script). `pdf_to_pgn.py:1019` e `:1038` gravam o PGN do livro e o de
 revisão com `write_text`, que trunca antes de escrever e, no Windows, escreve CRLF. O sidecar de
-proveniência é aberto com `open("w")` (`proveniencia.py:194`), e uma linha pela metade faz
-`read_sidecar` levantar `JSONDecodeError`. Quando a rodada nova não tem nada a revisar, o
+proveniência é aberto com `open("w")` (`proveniencia.py:194`), sem `newline=` (CRLF
+no Windows), e uma linha pela metade faz `read_sidecar` levantar `JSONDecodeError`. Quando a rodada nova não tem nada a revisar, o
 `livro.review.pgn` da rodada anterior fica no disco, e o relatório diz `review_path=None`.
 
 **Solução.** Os três arquivos por `atomic_write_text` com quebra LF. Rodada sem revisão faz
@@ -425,7 +458,8 @@ sai sem dizer que foi reparada.
 
 **Solução.** Serialização derivada de `dataclasses.fields`, com conversão explícita só dos tipos
 aninhados. Leitura que recusa chave desconhecida e preenche ausente pelo padrão do campo. A versão
-do checkpoint sobe, e um checkpoint antigo é retomado com aviso de que os campos novos faltam.
+do checkpoint sobe; `load_partial`, que hoje recusa toda versão diferente
+(`export_checkpoint.py:366`), passa a aceitar a anterior com aviso de que os campos novos faltam.
 
 **Teste que falha primeiro.** Para cada campo de `DiagramPosition` e de `DiagramContext`, um valor
 diferente do padrão; o ida-e-volta tem de ser igual.
@@ -458,13 +492,14 @@ arquivo da amostra é criado com `open(..., "xb")` e um sufixo aleatório curto.
 
 ## S-821 · PDF pesquisável idempotente e atômico
 
-**Problema** (confirmado por leitura). `text/pdf_pesquisavel.py:661` **acrescenta** a marca em
+**Problema** (confirmado por leitura). `text/pdf_pesquisavel.py:664` **acrescenta** a marca em
 `keywords` a cada rodada; `:589` e `:241` gravam com `save` direto no destino. Usar a saída como
-entrada duplica a camada invisível, porque `tinha` conta a camada que nós mesmos escrevemos como
-"já tinha texto". `_sem_uso` (`:745`) não tem chamador.
+entrada duplica a camada invisível, porque nada confere se a camada já é nossa: no padrão
+(`so_sem_camada=False`) toda folha é reescrita, e `tinha` só alimenta o relatório. `_sem_uso` (`:745`) não tem chamador.
 
-**Solução.** A marca é trocada, não somada. Folha cuja camada é nossa (pela marca) é pulada ou
-substituída. A gravação vai por `tobytes()` e `atomic_write_bytes`. `_sem_uso` sai.
+**Solução.** A marca é trocada, não somada. A marca é do documento, não da folha; num documento que
+a traz, o texto invisível (modo de renderização 3) escrito pela nossa fonte é removido de cada folha
+antes de escrever o novo. A gravação vai por `tobytes()` e `atomic_write_bytes`. `_sem_uso` sai.
 
 **Teste que falha primeiro.** Rodar duas vezes, a saída da primeira como entrada da segunda; a marca
 aparece uma vez e a busca por uma palavra devolve um resultado por ocorrência, não dois.
@@ -477,9 +512,16 @@ aparece uma vez e a busca por uma palavra devolve um resultado por ocorrência, 
 direto no destino), `cli/texto_estilo_conjunto.py:169` (`manifesto.csv` direto) e `splits.py:252`
 (`os.linesep`, então os bytes do `splits.csv` mudam com a plataforma).
 
-**Solução.** Os três consertados (ONNX para um temporário ao lado e `os.replace`). Uma guarda por
-AST: nenhum `write_text`, `write_bytes`, `open(..., "w"/"wb"/"a")` ou `.save(` em `src/` fora do
-`atomic_io.py` e de uma lista de exceções com razão escrita (log, temporários).
+Também gravam direto no destino `torch.save` (`cli/texto_estilo_classificador.py:356`,
+`text/treino.py:386`), `np.savez` (`text/dataset.py:647`, `cli/texto_estilo_conjunto.py:159`),
+`detection_census.py:555`, `:571` e `qt/painel_de_estudo.py:3274` (este em `"a"`). E
+`atomic_io.write_image` (`atomic_io.py:141`) não é atômica, dentro do próprio módulo atômico.
+
+**Solução.** Todos consertados (ONNX, `torch.save` e `np.savez` para um temporário ao lado e
+`os.replace`; `write_image` pelo mesmo caminho dos outros escritores do módulo). Uma guarda por AST:
+nenhum `write_text`, `write_bytes`, `open(..., "w"/"wb"/"a")`, `torch.save`, `np.save*`, nem `.save(`
+de documento `fitz`, em `src/` fora das funções atômicas de `atomic_io.py` e de uma lista de exceções
+com razão escrita (log, temporários, anexar a um registro de eventos).
 
 **Teste que falha primeiro.** A guarda, que hoje acusa os pontos acima.
 
@@ -487,7 +529,7 @@ AST: nenhum `write_text`, `write_bytes`, `open(..., "w"/"wb"/"a")` ou `.save(` e
 
 ## Fase 114 — A tela sabe de onde veio cada resultado
 
-## S-823 · `Ancora(documento, pagina)` pura
+## S-823 · `AncoraDaTela(documento, pagina)` pura
 
 **Problema** (confirmado por script e por leitura). `qt/janela.py:1508`: o `quando_pronto` da
 leitura captura só `pagina`, e a guarda de `_chegaram_itens` (`:1663`) compara só a página.
@@ -502,8 +544,9 @@ guarda vácua: virar a página e cancelar arquiva o parcial da página N como p�
 `DeteccaoDeFundo` leva `(documento, pagina)`, `painel_do_pdf._folha_chegou` compara
 `(folha.source, folha.indice)`, e a leitura leva só a página.
 
-**Solução.** `ui/ancora.py`: `Ancora(documento: ChaveDoLivro, pagina: int)` congelada e
-`ainda_vale(ancora, tela) -> bool`. Capturada no pedido e conferida na chegada pelos três. O
+**Solução.** `ui/ancora_da_tela.py`: `AncoraDaTela(documento: ChaveDoLivro, pagina: int)` congelada e
+`ainda_vale(ancora, tela) -> bool`. Capturada no pedido e conferida na chegada pelos três. O nome não é `AncoraDaTela`: `estudo.py` já tem uma
+classe `Ancora(documento, pagina, diagrama)`, que é outra coisa. O
 cancelamento usa a âncora capturada. `_abriu_livro` cancela a tarefa em curso.
 
 **Teste que falha primeiro.** Com a `TarefaAdiada` (S-805): ler A, abrir B, soltar a leitura; o
@@ -515,30 +558,32 @@ parcial não é carregado.
 ## S-824 · Aba Texto arquiva a folha que leu
 
 **Problema** (confirmado por script). `qt/painel_de_texto.py:3871`, em `_leitura_terminou`:
-`self._pagina_indice = int(self.campo_de_folha.value()) - 1`. O índice lido está na closure e não
-volta no resultado. Ler a folha 5, virar o visualizador para a 9 e deixar a leitura chegar deixa
+`self._pagina_indice = int(self.campo_de_folha.value()) - 1`. O índice lido volta no resultado
+(`PaginaLida.pagina`) e é ignorado. Ler a folha 5, virar o visualizador para a 9 e deixar a leitura chegar deixa
 `documento.origem.pagina == 4` e `folha_atual()[0] == 8`: a aba acha que está na 9 com a 5 na tela.
 A troca de livro durante a leitura desenha a folha do livro antigo sob o novo; `_caderno_da_tela`
 impede gravá-la no caderno, mas não impede mostrá-la.
 
 **Solução.** `self._pagina_indice = pagina.pagina` (o que veio do resultado), e o resultado de
-outro livro é descartado pela `Ancora` da S-823.
+outro livro é descartado pela `AncoraDaTela` da S-823.
 
-**Teste que falha primeiro.** `test_folha_trocada` (hoje falha com `8 != 4`).
+**Teste que falha primeiro.** `test_folha_trocada`, a escrever com a `TarefaAdiada`; o script da
+revisão que o antecipa falha hoje com `8 != 4`.
 
 **Aceite.** O teste passa, e o de troca de livro também.
 
 ## S-825 · `eventFilter` por tabela, com borda
 
 **Problema** (confirmado por leitura). `PainelDeTexto.eventFilter` (`qt/painel_de_texto.py:
-4242-4291`, complexidade 34) trata seis assuntos numa cadeia de `if`: histórico do teclado, Esc,
+4242-4291`, complexidade 34) trata nove assuntos numa cadeia de `if`: histórico do teclado, Esc,
 Enter na marca, clique no rodapé, resize do vazio, dica, Ctrl+roda, clique e duplo clique na
 miniatura. O comentário de `:4261` registra um `qFatal` que já houve ali, e a defesa foi um
-`getattr` local. Outros cinco filtros de `qt/` também não têm borda.
+`getattr` local. Outros seis métodos `eventFilter`,
+em cinco módulos de `qt/`, também não têm borda (S-800).
 
 **Solução.** Um dicionário `(objeto, tipo do evento) → tratador`, montado depois de `_montar`, e um
 `eventFilter` de dez linhas com `try`/`except` → `logger.exception` e `return False`, como em
-`qt/atalhos.py:298`. Os outros cinco filtros ganham a mesma borda por um decorador.
+`qt/atalhos.py:298`. Os outros seis ganham a mesma borda por um decorador.
 
 **Teste que falha primeiro.** `Ctrl+roda` e Enter sobre a marca com o tratador remendado para
 levantar: o processo segue e o log registra.
@@ -557,7 +602,7 @@ e a própria tarefa, mas não a da aba Texto. Ler uma folha e fechar a janela ba
 morrer na saída.
 
 **Solução.** `manter_viva(Tarefa(...))` nos 14, com os slots por um `trabalho.slot_se_vivo` (o
-`_se_viva` de `janela.py:1581`, promovido). O `closeEvent` espera também as tarefas registradas pela
+`_se_viva` de `janela.py:1584`, promovido). O `closeEvent` espera também as tarefas registradas pela
 S-805. Uma guarda por AST: nenhum `Tarefa(` com `parent=`.
 
 **Teste que falha primeiro.** A guarda (acusa os 14); um subprocesso que abre o `PainelDeTexto` com
@@ -567,21 +612,23 @@ uma leitura de 2 s, fecha e confere o código de saída 0.
 
 ## S-827 · A identidade do livro numa função só
 
-**Problema** (confirmado por leitura). "Mesmo livro" é decidido em cinco lugares:
-`ui/galeria_declarada.py:230` (`normcase`), `qt/painel_de_texto.py:4654` (`casefold`), `:4677`
-(`Path ==`), `qt/dialogos.py:176` (`resolve ==`, `.lower()` na falha) e `ui/state.py:341`
-(`_history_key`, só `resolve`). Hoje concordam porque `resolve` devolve a caixa do disco; num
+**Problema** (confirmado por leitura). "Mesmo livro" é decidido em pelo menos sete
+lugares: `ui/galeria_declarada.py:230` (`normcase`), `qt/painel_de_texto.py:4659` (`casefold`),
+`:4677` (`resolve ==`, com `.lower()` na falha, `:4680`), `ui/state.py:341` (`_history_key`, só
+`resolve`), `qt/janela.py:1224` (`anterior != alvo`), e `source_pdf ==` em
+`qt/painel_de_revisao.py:467` e `cli/review.py:114`. A mesma comparação, para bases `.pgn`, está em
+`qt/dialogos.py:176` (`_mesmo`). Hoje concordam porque `resolve` devolve a caixa do disco; num
 caminho de rede fora do ar cada um cai num atalho diferente.
 
-**Solução.** `ui/livros.chave_do_livro(caminho) -> ChaveDoLivro`, pura, usada pelos cinco e pela
-`Ancora` da S-823.
+**Solução.** `ui/livros.chave_do_livro(caminho) -> ChaveDoLivro`, pura, usada pelos sete, pela
+`AncoraDaTela` da S-823 e, para bases, pelo `_mesmo` dos diálogos.
 
 **Teste que falha primeiro.** Uma tabela de pares (`..`, barra invertida, caixa, caminho que não
-resolve) contra a função única; os cinco chamadores trocados por ela não podem mudar nenhum
+resolve) contra a função única; os chamadores trocados por ela não podem mudar nenhum
 resultado da tabela.
 
-**Aceite.** Nenhuma comparação de caminho de livro fora da função (guarda por `grep` dos cinco
-padrões, com piso zero).
+**Aceite.** Nenhuma comparação de caminho de livro fora da função (guarda por `grep` dos
+padrões acima, com piso zero).
 
 ## S-828 · `AppState` tipado no `PainelDeTexto`, e o histórico aparado na leitura
 
@@ -610,7 +657,7 @@ somem (a catraca da S-804 desce).
 eventos, sai rotulado com o par da nova; o `finished` velho zera a nova, e duas detecções correm.
 Hoje `parar` só é chamado no `closeEvent`.
 
-**Solução.** A `Ancora` vai no `partial` do sinal `pronto`, e não num atributo que o próximo pedido
+**Solução.** A `AncoraDaTela` vai no `partial` do sinal `pronto`, e não num atributo que o próximo pedido
 sobrescreve.
 
 **Teste que falha primeiro.** `pedir`, `parar`, `pedir` de outra página, e então os dois sinais na
@@ -625,10 +672,12 @@ ordem em que a fila os entregaria: o primeiro resultado sai com a âncora da pri
 **Problema** (confirmado). O `README.md:38-43`, o `pyproject.toml:5-12` e a S-436 registram que o
 3.10 sai de suporte em outubro de 2026. Hoje é 2026-11-08, o `.python-version` diz `3.10`, o
 `.venv` é 3.10 e o `.exe` embarca esse interpretador, sem correção de segurança: o risco que a S-436
-nomeou. O CI já roda 3.13 numa perna (`ci.yml:37-39`, com a lista do que falta).
+nomeou. O CI já roda 3.13 numa perna (a matriz em `ci.yml:43-44`; a ressalva de `:37-39` sobre o Tk do 3.13
+ficou vencida com o corte).
 
 **Solução.** `.python-version` em 3.13, `requires-python >= 3.11` (o piso decidido junto com o dono,
-D5), o PyInstaller e o `--selftest` do bundle no 3.13, a perna 3.10 do CI aposentada. O `.venv` de
+D5), o `python_version` do `[tool.mypy]` (`pyproject.toml:261`), o `target-version` do ruff (`:238`),
+o comentário de `:16`, o `uv.lock` regerado, o PyInstaller e o `--selftest` do bundle no 3.13, a perna 3.10 do CI aposentada. O `.venv` de
 GPU (memória "GPU para treino") conferido à parte.
 
 **Teste que falha primeiro.** O `tests/test_environment.py` passa a exigir 3.11 ou mais.
@@ -638,15 +687,15 @@ GPU (memória "GPU para treino") conferido à parte.
 ## S-831 · Documentos no presente do Qt, e os status que se contradizem
 
 **Problema** (confirmado). Restos do Tk no presente: `README.md:178` ("o mesmo `OcrService` que o
-Tkinter usa"), `README.md:183` ("widgets de Tk"), `ci.yml:26` e `:37`. `ROADMAP_FASE14.md:22` e
-`ROADMAP.md:914` citam "`app_tkinter.py` em 2.226" (o teste compara com `qt/janela.py`, 2.293), e a
-mesma linha 22 traz a faixa invertida "S-324 a S-226". Status em conflito: `ROADMAP_FASE14.md:400` e
+Tkinter usa"), `README.md:183` ("widgets de Tk"), `ci.yml:26` e `:37`. `ROADMAP_FASE14.md:22` cita
+"`app_tkinter.py` em 2.226" e `ROADMAP.md:914` dá 2.226 para `qt/janela.py`, que tem 2.293 (o teste
+compara com tolerância), e a linha 22 traz a faixa invertida "S-324 a S-226". Status em conflito: `ROADMAP_FASE14.md:400` e
 `:487` com ⚠ e a tabela com ✅; `:906` "S-102 continua aberta" e `:492` com ✅;
 `ROADMAP_FASE7.md:1368` "S-36 continua aberta", entregue como S-55; o `ROADMAP_TEXTO_PRECISO.md` só
 marca S-711 e S-712, e a spec marca S-710, S-715 a S-718 e S-720; a S-702 tem `###` e não `##` na
 spec. O README não cita `cvoff-gallery`, `cvoff-scan` nem `cvoff-texto-conflitos`, e diz que
 "`--help` lista o resto", o que nenhum comando faz. O comentário do `pyproject.toml` sobre
-`cvoff-texto-status` diz S-178 a S-216 (são 40 itens, até a S-217). `SPEC_REVISAO.md:1336` cita
+`cvoff-texto-status` diz S-178 a S-216 (são 40 itens, até a S-217). `SPEC_REVISAO.md:1337` cita
 `cvoff-evaluate`; o comando é `cvoff-eval`. `cvoff-texto-status` diz que a S-182 faz
 `tests/test_text_status.py` falhar, e sem os pesos ele pula.
 
@@ -655,15 +704,15 @@ spec. O README não cita `cvoff-gallery`, `cvoff-scan` nem `cvoff-texto-conflito
 
 **Teste que falha primeiro.** O teste da lista de comandos (hoje faltam três).
 
-**Aceite.** O teste passa; `grep -n "Tkinter usa\|widgets de Tk\|app_tkinter.py em" README.md docs/`
-não acha nada.
+**Aceite.** O teste passa; `grep -rn "Tkinter usa\|widgets de Tk\|app_tkinter.py. em" README.md docs/`
+não acha nada, e o número de linhas citado para `qt/janela.py` é o do disco.
 
 ## S-832 · A tabela de faixas e o `ARCHITECTURE.md` que enxergam tudo
 
-**Problema** (confirmado). A spec das S-585 a S-598 mora em `ROADMAP_PDF_COM_PGN.md:53-300`, com
+**Problema** (confirmado). A spec das S-585 a S-598 mora em `ROADMAP_PDF_COM_PGN.md:53-333`, com
 `###`, e a tabela "Onde mora a spec de cada item" não tem a linha. A guarda passa porque arquivo
-`ROADMAP*` é isento. O `ARCHITECTURE.md:155` diz "meia centena de módulos" em `ui/`, que tem 78; 30
-dos 73 módulos de `qt/` e 12 dos 68 de `text/` não são citados, entre eles toda a primeira entrega
+`ROADMAP*` é isento. O `ARCHITECTURE.md:159` diz "meia centena de módulos" em `ui/`, que tem 78; 30
+dos 73 módulos de `qt/`, 12 dos 68 de `text/` e cerca de 45 de `ui/` não são citados, entre eles toda a primeira entrega
 das Fases 100 a 107 (`fusao`, `tesseract`, `leitor_de_linha`, `guarda_de_leitura`, `admissao`,
 `camada_prosa`, `caderno_na_suite`).
 
@@ -671,15 +720,16 @@ das Fases 100 a 107 (`fusao`, `tesseract`, `leitor_de_linha`, `guarda_de_leitura
 cópia da tabela, e a isenção dos `ROADMAP*` restrita a item **não entregue**. O `ARCHITECTURE.md`
 com uma linha por módulo, e uma guarda: todo módulo de `qt/`, `text/` e `ui/` aparece nele.
 
-**Teste que falha primeiro.** A guarda do `ARCHITECTURE.md` (acusa 42 módulos) e a da isenção
+**Teste que falha primeiro.** A guarda do `ARCHITECTURE.md` (acusa cerca de 87 módulos) e a da isenção
 (acusa as S-585 a S-598).
 
 **Aceite.** As duas passam.
 
 ## Fase 116 — Um pipeline só
 
-Os quatro itens desta fase mexem no caminho de medição. Eles entram juntos, e a S-837 remede uma
-vez, do checkout principal, por `python -m`.
+A S-833 troca o caminho da **exportação** pelo que os relatórios já medem, e não muda os relatórios.
+As S-834, S-836, S-880 e, conforme o desenho, a S-835 mexem no caminho **medido**. Elas entram juntas,
+e a S-837 remede uma vez.
 
 ## S-833 · A exportação reconhece pela mesma função que os relatórios medem
 
@@ -691,16 +741,18 @@ cor, lado, próximo lance, estipulação, legalidade) que já se separou da orig
 - `_scan_pages` chama `predict_with_orientation` sem `coordinates=` (`:644-649`), e `service.py:914`
   passa `context.coordinates`, preenchido por `pdf_text.py:1491`. A regra de orientação pelas
   coordenadas da borda funciona no caminho medido e é pulada na exportação;
-- `_scan_pages` ignora as opções `colour`, `next_move` e `stipulation`;
-- a confiança do portão é calculada duas vezes: `pdf_to_pgn.py:670-675` e
-  `RecognizedDiagram.gate_confidence` (`service.py:207-220`).
+- `_scan_pages` ignora as opções `colour`, `next_move` e `stipulation`, e não passa `normalizer=`
+  (`service.py:910` passa);
+- a confiança do portão é calculada duas vezes, e as duas divergem: `pdf_to_pgn.py:670-675` dá
+  `None` quando não houve reparo, e `RecognizedDiagram.gate_confidence` (`service.py:207-220`) dá a
+  confiança mínima.
 
 Os quatro relatórios em `docs/metrics/` descrevem um caminho que não gera PGN nenhum.
 
 **Causa.** Premissa 3.
 
 **Solução.** `_scan_pages` chama `OcrService.recognize_page(..., candidates=...)` e monta
-`DiagramPosition.from_recognized(RecognizedDiagram)`. A corrente duplicada e o segundo cálculo do
+`DiagramPosition.from_recognized(RecognizedDiagram)`, construtor que ainda não existe e é criado aqui. A corrente duplicada e o segundo cálculo do
 portão saem. A complexidade de `_scan_pages` (35) cai junto.
 
 **Teste que falha primeiro.** Uma página falsa cujo contexto tem `coordinates`, passada por
@@ -713,8 +765,8 @@ mesma confiança do portão.
 
 ## S-834 · Decodificação restrita sem relógio
 
-**Problema** (confirmado por script). `decode.py:386-391`, `SEGUNDOS_MAXIMOS = 0.5`: a busca para
-pelo relógio. Em 40 tabuleiros sintéticos com ruído, 2 saem com FEN ou `constraints_satisfied`
+**Problema** (confirmado por script). `decode.py:386-391` usa `SEGUNDOS_MAXIMOS = 0.5` (`:308`): a
+busca para pelo relógio, além do teto de `max_expansions = 5000` (`:325`) que já existe. Em 40 tabuleiros sintéticos com ruído, 2 saem com FEN ou `constraints_satisfied`
 diferentes com orçamento de 50 ms e sem orçamento; 3 levam mais de 50 ms. A mesma probabilidade
 decodifica diferente numa máquina carregada, em rodadas paralelas ou na primeira chamada lenta de
 um processo (uma causa plausível da memória "primeira leitura do processo difere"), e o relatório
@@ -722,8 +774,8 @@ de campo deixa de ser reproduzível.
 
 **Causa.** Premissa 5.
 
-**Solução.** Orçamento em expansões (`max_expansions`), calibrado para o pior caso medido ficar
-abaixo de ~0,5 s nesta máquina. O relógio sai.
+**Solução.** O relógio sai, e o teto de `max_expansions`, que já existe, é recalibrado para o pior
+caso medido ficar abaixo de ~0,5 s nesta máquina.
 
 **Teste que falha primeiro.** Remendar `decode.time.monotonic` para avançar 1 s por chamada: o
 resultado tem de ser igual ao de sem remendo.
@@ -756,50 +808,58 @@ byte o JSON do relatório em fixtures.
 
 **Problema** (confirmado por script). Duas regras de "fonte de diagrama" que discordam:
 `pdf_text.py:348-371` e `text/admissao.py:62-65`. `Leipzig` é diagrama para a `admissao` e texto
-para `page_text_lines`; `Schachfiguren` e `XadrezFont`, o contrário; `ChessMerida` é diagrama e
-figurina ao mesmo tempo na `admissao`. E `leitor.EIXO_SOLTO` e `MIN_EIXOS_NA_FILA`
+para `page_text_lines`; `Schachfiguren` e `XadrezFont`, o contrário; `Kingdom`, `Linares`, `Alpha`,
+`Echecs` e `Ajedrez` também discordam. `ChessMerida`, `SkakNew-Diagram`, `ChessAlpha` e `UsualChess`
+são diagrama e figurina ao mesmo tempo na `admissao`. E `leitor.EIXO_SOLTO` e `MIN_EIXOS_NA_FILA`
 (`text/leitor.py:748-756`) repetem `pdf_text._AXIS_LABEL` e `_MIN_AXIS_LABELS` (`:341-342`), que o
-leitor importa pelo nome privado (`:817`).
+leitor importa pelo nome privado (`:817`); `text/lado.py:106` importa `_side_from_line` do mesmo
+jeito.
 
 **Solução.** `fontes_de_xadrez.py` com os padrões de fonte de diagrama e de figurina, importado
 pelos dois lados; as constantes de eixo públicas nele. `_page_lines` (complexidade 36) parte em
 `_linhas_do_bloco`, `_sem_eixos_no_bloco`, `_sem_eixos_na_pagina` e `_agrupar`.
 
 **Teste que falha primeiro.** Uma tabela de nomes de fonte em que os dois consumidores têm de
-concordar (hoje discordam em quatro).
+concordar (hoje discordam em pelo menos nove).
 
-**Aceite.** O teste passa; nenhum import de nome privado de `pdf_text` fora dele.
+**Aceite.** O teste passa; nenhum import de nome privado de `pdf_text` fora dele (o de `text/lado.py`
+incluído).
 
 ## S-837 · Remedição dos quatro relatórios de campo
 
-**Problema.** As S-833 a S-836 mudam o caminho de medição, e a S-218 obriga a remedir os quatro
-relatórios de `docs/metrics/`.
+**Problema.** As S-834, S-836 e S-880 (e a S-835, se mudar o que `evaluate_page` soma) mudam o
+caminho de medição, e a S-218 obriga a remedir os quatro relatórios de `docs/metrics/`.
 
 **Solução.** Primeiro, reproduzir o relatório arquivado com o `src/` de antes das quatro (memória
-"reproduzir o relatório antes de republicar"). Depois, remedir do checkout principal, que tem os
-`.pt` e o `PDF/`, por `python -m` (não pelo `cvoff-field`, que lê o `settings.json`), e registrar o
-código e o modelo no relatório.
+"reproduzir o relatório antes de republicar"). Depois, remedir a partir de um worktree limpo no commit
+que fecha a fase, com os `.pt` e o `PDF/` lidos do checkout principal por caminho, por `python -m`
+(não pelo `cvoff-field`, que lê o `settings.json`), e registrar o código e o modelo no relatório
+(memórias "remedir campo a partir de um worktree" e "checkout principal tem sessões concorrentes":
+não se remede sobre uma árvore que outras sessões estão mudando).
 
 **Aceite.** Os quatro relatórios declaram o commit e o checkpoint. A diferença para os anteriores
-está explicada item a item, com a S-833 como causa esperada nas páginas com coordenadas na borda.
+está explicada item a item: a S-834 onde a decodificação estourava o relógio, a S-836 nas fontes que
+mudam de lado, a S-880 nas legendas com roque. A S-833 não deve mover número nenhum; se mover, é
+defeito dela.
 
 ## Fase 117 — Treino honesto
 
 ## S-838 · Página de campo nunca vai para o treino
 
-**Problema** (confirmado por leitura). `training.py:325-333` e `:346-359`: `ensure_splits` grava o
-`splits.csv` (com amostras novas talvez sorteadas para `train`) **antes** de `pin_field_pages` mover
-as amostras de página de campo para `test` e gravar de novo. Uma queda entre as duas gravações deixa
+**Problema** (confirmado por leitura). `training.py:325-333`: `ensure_splits` grava o
+`splits.csv` (com amostras novas talvez sorteadas para `train`) **antes** de `pin_field_pages` (`:362-391`)
+mover as amostras de página de campo para `test` e gravar de novo (`:390`). Uma queda entre as duas gravações deixa
 a atribuição a `train` no disco, e na rodada seguinte as amostras já não são novas, então nunca são
-fixadas (split registrado não se move). Se `field_set.jsonl` não lê, `field_pages_beside` avisa no
-log e devolve `set()`, com o mesmo resultado permanente. E o casamento compara `source_pdf` exato,
-enquanto `field_eval._name_keys` (`field_eval.py:1389`) normaliza NFC e dupla codificação.
+fixadas (split registrado não se move). Se `field_set.jsonl` não lê, `field_pages_beside` (`:348-359`)
+avisa no log e devolve `set()`, com o mesmo resultado permanente. E o casamento compara `source_pdf` exato,
+enquanto `field_eval._name_keys` (`field_eval.py:1379`) normaliza NFC, dupla codificação e caixa.
 
 **Solução.** As atribuições forçadas entram em `ensure_splits`, que grava uma vez. Conjunto de
 campo ilegível falha fechado: as amostras novas ficam sem partição e o treino recusa começar, dizendo
 por quê. O casamento usa a chave de nome de `field_eval`, num lugar só.
 
-**Teste que falha primeiro.** `field_set.jsonl` de lixo e um rótulo novo de página de campo:
+**Teste que falha primeiro.** `field_set.jsonl` de lixo e um rótulo novo de página de campo, com
+um nome de amostra que o hash do split manda para `train` (senão o teste passa por sorte):
 `resolve_splits` não o põe em `train`. Segundo caso: `pin_field_pages` remendado para levantar,
 nova rodada, a amostra termina em `test`.
 
@@ -808,7 +868,7 @@ nova rodada, a amostra termina em `test`.
 ## S-839 · O regime do checkpoint guardado inteiro
 
 **Problema** (confirmado por script). `augment.py:103-135`, `:143-183`: `AugmentConfig(hatch=0.9)`
-e a probabilidade padrão de hachura dão a mesma letra, `augh`. `from_letters("augh-j0")` descarta o
+e `AugmentConfig(hatch=0.3)` (o valor que `from_letters` usa para `h`) dão a mesma letra, `augh`. `from_letters("augh-j0")` descarta o
 sufixo `-j0` em silêncio. `version_of_checkpoint` devolve `aug0` tanto para um `.pt` truncado quanto
 para um que não existe. "Retreinar no regime do checkpoint" (`ui/pedido_de_treino.py:90`) pode treinar
 noutro regime e gravar a letra errada: a mesma classe de defeito do incidente `augx` (memória
@@ -817,7 +877,9 @@ noutro regime e gravar a letra errada: a mesma classe de defeito do incidente `a
 **Solução.** O metadado do checkpoint guarda `asdict(augment)`, e o regime é reconstruído dele,
 exato. A letra continua como nome curto, derivada. `from_letters` levanta diante de sufixo que não
 sabe honrar. `version_of_checkpoint` levanta para arquivo ilegível e devolve `None` para arquivo
-ausente.
+ausente; `ui/pedido_de_treino.py:90`, cujo `augment` é `str` e vai para `from_letters`
+(`qt/dialogos.py:1042`), passa a tratar `None` como "treino do zero, regime escolhido no diálogo",
+que é o caminho comum.
 
 **Teste que falha primeiro.** `from_letters(c.version) == c` para configurações com sufixo, ou
 `ValueError`; `version_of_checkpoint` de um `.pt` truncado levanta.
@@ -828,11 +890,14 @@ ausente.
 
 **Problema** (confirmado por script). `model.py:92-97`, com `# type: ignore`: `"cnn-grey-64-linear"`
 monta um modelo de 3 canais (tudo que não é `gray` vira RGB); `"resnet-..."` e `"...-mlp"` montam
-`PieceClassifier` em silêncio; `build_model` e `PieceClassifier` caem num `else` para valor
-desconhecido.
+`PieceClassifier` em silêncio: `build_model` termina num `return PieceClassifier(arch)` (`:294-296`)
+para tudo que não reconhece, e o `else` de `PieceClassifier` (`:140`) recebe também `head="board"`,
+legítimo porque o roteamento é feito em `build_model`.
 
 **Solução.** Cada parte conferida contra `typing.get_args(Backbone)`, `get_args(Channels)` e
-`get_args(Head)`, com `ValueError`. Os `else` viram `assert_never`. O `ignore` sai.
+`get_args(Head)`, com `ValueError`. O `return` final de `build_model` e o `else` de
+`PieceClassifier` viram ramos explícitos (`board` incluído) terminados em `assert_never`. O `ignore`
+sai.
 
 **Teste que falha primeiro.** `pytest.raises(ValueError)` para as três strings acima.
 
@@ -844,7 +909,8 @@ desconhecido.
 contador e sem log, e todo outro descarte do mesmo módulo é registrado. Um rótulo estragado some do
 treino sem ninguém saber.
 
-**Solução.** Contador por motivo de descarte no `Dataset`, logado no fim da carga e gravado no
+**Solução.** Contador por motivo de descarte no `BoardFenDataset` (que o
+`BoardUnitDataset` envolve), logado no fim da carga e gravado no
 metadado do checkpoint. (A colisão de nome de amostra é da S-820.)
 
 **Teste que falha primeiro.** Um CSV com uma FEN inválida entre dez boas: dez amostras, e o
@@ -864,8 +930,9 @@ parsers de FEN que discordam.
 Rótulos, FEN e legalidade consomem o tipo. Entregue em pedaços: o parser primeiro, depois cada
 consumidor.
 
-**Teste que falha primeiro.** As três entradas acima recusadas por `labels_from_fen` **e** por
-`is_syntactically_valid_fen`; `[13] * 64` dá `ValueError`.
+**Teste que falha primeiro.** As três entradas acima recusadas por `labels_from_fen`
+(`is_syntactically_valid_fen` já as recusa: os dois parsers discordam justamente aí); `[13] * 64` dá
+`ValueError`.
 
 **Aceite.** Os testes passam; um teste de propriedade compara `Colocacao.de_fen` com o python-chess
 em 10 mil FENs sorteadas.
@@ -873,12 +940,16 @@ em 10 mil FENs sorteadas.
 ## S-843 · O normalizador de tabuleiro sai
 
 **Problema** (confirmado por leitura). Nada em `src/` constrói um `NormalizerConfig` além do
-`IDENTITY` padrão (`preprocess.py:163`). A docstring (`:28-36`, `:124`) diz que o treino normaliza em
-`_load_board` e que a versão vai para `ArchConfig.version`; nenhuma das duas coisas é verdade. Ligar
+`IDENTITY` padrão (`preprocess.py:163`). A docstring de `:28-36` prescreve normalizar na leitura, em
+`_load_board`, e a de `:124` diz que a versão vai para `ArchConfig.version`, o que não é verdade.
+`ScanConfig` (`:334`), `preparar_pagina_de_scan`, `pagina_e_scan` e `binarizar_pagina` também só têm
+chamador em `tests/test_preprocess.py`. Ligar
 o normalizador criaria um desvio entre treino e serviço que nada registraria.
 
 **Solução.** Subtrair antes de somar: o parâmetro sai de `service` e `inference`, e o normalizador
-sai com ele. Se um dia voltar, volta registrado no checkpoint.
+sai com ele, junto da docstring de `:379` que o cita e dos testes de `tests/test_preprocess.py` que só
+o exercitam (entre eles o de `:173-175`, que a S-870 deixa de reescrever). O que for de scan entra na
+mesma decisão: ou ganha chamador, ou sai. Se um dia voltar, volta registrado no checkpoint.
 
 **Teste que falha primeiro.** Não há teste honesto de "código morto saiu" além do `mypy` e da suíte;
 o item fecha pelo `grep` de `NormalizerConfig` sem resultado e a suíte verde.
@@ -887,30 +958,36 @@ o item fecha pelo `grep` de `NormalizerConfig` sem resultado e a suíte verde.
 
 ## S-844 · Identidade de livro nos splits
 
-**Problema** (plausível). `splits.py:124-186`: `groups_by_book` e `groups_by_origin` agrupam pela
-string exata de `source_pdf`. O acervo tem o mesmo livro sob vários nomes (`...Copia.pdf`,
-`...Copia_hq.pdf`, uma tradução; memória "acervo PDF tem livros duplicados"), e esses grupos não os
-mantêm juntos: a mesma página pode cair no treino e no teste.
+**Problema** (plausível). `splits.py:124-186`. O split usa `groups_by_origin` (`training.py:321`), com
+chave `(pdf, página, diagrama)` exata, e `duplicate_groups_touching`, que já junta recortes idênticos
+(colocação e dHash até 3) entre nomes de livro; `groups_by_book` não tem chamador em produção. O furo
+que sobra é o mesmo diagrama com recorte deslocado sob outro nome de PDF. O acervo tem o mesmo livro
+sob vários nomes (`...Copia.pdf`, `...Copia_hq.pdf`, uma tradução; memória "acervo PDF tem livros
+duplicados"), e nesse caso a mesma página pode cair no treino e no teste.
 
 **Solução.** Uma identidade de livro derivada na fronteira: hash do conteúdo do PDF (D2 opção a) ou
-uma tabela de apelidos em `data/` (D2 opção b). Os dois agrupamentos usam a identidade.
+uma tabela de apelidos em `data/` (D2 opção b). `groups_by_origin` usa a identidade no lugar do
+nome; `groups_by_book` ou ganha chamador ou sai.
 
-**Teste que falha primeiro.** Dois nomes do mesmo livro: os dois caem no mesmo grupo.
+**Teste que falha primeiro.** Dois nomes do mesmo livro, com o mesmo diagrama recortado com 6 px de
+deslocamento (dHash acima de 3): os dois caem no mesmo grupo.
 
 **Aceite.** O teste passa; uma contagem no acervo real diz quantas amostras mudariam de partição, e
 a mudança é decidida com o dono antes de gravar o `splits.csv`.
 
 ## S-845 · `torch.load` só com `weights_only`
 
-**Problema** (confirmado por leitura). `checkpoint.py:110-112`: o recurso de `TypeError` para
-`torch.load` sem `weights_only` é morto no torch atual e abre um caminho de `pickle` para arquivo
-vindo de fora.
+**Problema** (confirmado por leitura; o risco é teórico). `checkpoint.py:110-112`: o recurso de
+`TypeError` para `torch.load` sem `weights_only` é morto no torch exigido (`>= 2.6`), e só abriria um
+caminho de `pickle` num torch antigo. `cli/texto_train.py:406` e `text/modelo.py:463` chamam
+`torch.load` sem `weights_only` explícito, protegidos só pelo padrão do torch atual.
 
-**Solução.** O recurso sai; versão de torch sem `weights_only` é recusada na carga, com mensagem.
+**Solução.** O recurso sai (subtrair), e as três chamadas passam `weights_only=True` explícito.
 
-**Teste que falha primeiro.** Um `.pt` com um objeto `pickle` arbitrário dentro: a carga recusa.
+**Teste que falha primeiro.** Não há: um `.pt` com `__reduce__` arbitrário já dá `UnpicklingError`
+hoje. O item fecha por uma guarda: todo `torch.load` de `src/` passa `weights_only=True`.
 
-**Aceite.** O teste passa.
+**Aceite.** A guarda passa, com piso de três chamadas.
 
 ## S-846 · O sal do split fixado por valor
 
@@ -920,13 +997,15 @@ assign_split("board_00000.png"))`: a função comparada com ela mesma. Mudar `SP
 embaralharia treino, validação e teste com a suíte verde. O mesmo em
 `tests/test_detection_census.py:107` e `tests/test_side_survey.py:53`.
 
-**Solução.** Dez pares `nome → partição` escritos no teste, e a lista de `sample_pages(100, 4)`
-escrita por valor.
+**Solução.** Dez pares `nome → partição` escritos no teste, e as listas de `sample_pages` dos três testes
+escritas por valor (o de `tests/test_side_survey.py:53` usa `sample_pages(402, 12)`).
 
-**Teste que falha primeiro.** O teste novo, contra um `SPLIT_SALT` trocado num remendo: tem de
-reprovar.
+**Teste que falha primeiro.** O teste novo, rodado com o `SPLIT_SALT` trocado no fonte (um
+`mock.patch` não serve: o sal é argumento padrão, avaliado na definição, `splits.py:47`, `:62`, `:272`):
+tem de reprovar.
 
-**Aceite.** Os três testes fixam valores; o mutator (S-803) mata a troca do sal.
+**Aceite.** Os três testes fixam valores. O mutator ganha um operador de constante `str` (troca por
+`""`), e com ele a troca do sal é morta.
 
 ## Fase 118 — Texto: fronteira e decisões únicas
 
@@ -936,17 +1015,21 @@ e o crítico da skill `ocr-texto-preciso` mede a régua antes e depois.
 
 ## S-847 · `ocr.glyph_model` chega à leitura de página
 
-**Problema** (confirmado por leitura). `text/leitor.py:1234` (`_ha_classificador`) carrega o
-`CAMINHO_PADRAO_META` fixo, e `:595-599` chama `build_glyph_recognizer()` sem argumento
-(`text/recognizer.py:186-190`). Quem chama sem `reconhecedor` é a aba Texto
-(`qt/painel_de_texto.py:4578`). Só `ocr.build_recognizer`, o caminho da legenda, lê
-`ocr.glyph_model` e `CVOFF_OCR_GLYPH_MODEL`. O `ModeloInvalido` (`text/modelo.py:432`) manda o
-usuário configurar exatamente isso. Com `motor="auto"`, quem pôs os pesos noutra pasta cai para a
+**Problema** (confirmado por leitura). `_ha_classificador` (`text/leitor.py:1225`) carrega o
+`CAMINHO_PADRAO_META` fixo (`:1234`), e `:600-605` chama `build_glyph_recognizer()` sem argumento
+(`text/recognizer.py:175-190`). Quem chama sem `reconhecedor` é a aba Texto
+(`qt/painel_de_texto.py:4578`), `cli/texto_estilo_motor.py:149` e `cli/texto_flutuante.py:210`. Só
+`ocr.build_recognizer`, o caminho da legenda, e `cli/texto_placar.py:288` leem `ocr.glyph_model`
+(a variável `CVOFF_OCR_GLYPH_MODEL` é aplicada por `load_settings`, `settings.py:499-502`, que ainda
+força `engine="glifo"`). O `ModeloInvalido` levantado em `text/modelo.py:432` manda o usuário
+configurar exatamente isso. Com `motor="auto"`, quem pôs os pesos noutra pasta cai para a
 camada com um aviso no log; com `glifo`, recebe um erro que manda configurar o que já está
 configurado.
 
 **Solução.** `classificador_configurado()` em `recognizer.py`, que lê a configuração uma vez na
-fronteira; `_ha_classificador` e `linhas_do_glifo` recebem o resultado.
+fronteira; `_ha_classificador`, `linhas_do_glifo` e os dois CLIs recebem o resultado. Os dois
+caminhos passam por `carregar_classificador`, que lê o metadado e calcula o hash do `.pt` antes de
+olhar o cache; a ordem é da S-854.
 
 **Teste que falha primeiro.** Configuração apontando para uma cópia temporária do par de pesos,
 caminho padrão ausente: `ler_pagina(motor="auto")` sai com procedência `glifo`.
@@ -957,7 +1040,8 @@ caminho padrão ausente: `ler_pagina(motor="auto")` sai com procedência `glifo`
 
 **Problema** (confirmado por script). `text/pagina.py:399-411`, `:561-573`, `:936-960`:
 `{"largura": null}`, `{"colunas": null}` e `indice: null` levantam `TypeError`, que atravessa o
-`_carregar` do caderno (`caderno.py:385` só pega `OSError` e `ValueError`). `"texto": null` vira a
+`_carregar` do caderno (`text/caderno.py:385` só pega `OSError` e `ValueError`); o `indice: null`
+quebra em `BlocoDeDiagrama.de_json` (`:621`) e em `Coluna.de_json` (`:773`). `"texto": null` vira a
 string `"None"`; `confianca: "nan"` passa. Um bloco gravado como `camada` com confiança 1,0 abre
 assim mesmo quando a linha dele é `glifo` com 0,2, porque os campos derivados são lidos do arquivo
 em vez de recalculados: o estado ilegal que `menos_confiavel` existe para impedir.
@@ -974,14 +1058,17 @@ como `glifo` com 0,2.
 
 ## S-849 · "Camada de OCR" numa regra só
 
-**Problema** (confirmado por script). Três respostas para "esta camada de texto foi feita por OCR?":
-`admissao.PRODUTOR_DE_OCR` (`text/admissao.py:60`), `cli/texto_grade.MARCAS_DE_OCR` (`:107`, com
-`glyphless` em `:277`) e `camada.camada_tipografica` (`text/camada.py:201`). `ocrmypdf ... /
-Tesseract` é OCR para o `texto_grade` e não para a `admissao`; `OmniPage`, o contrário. A memória
+**Problema** (confirmado por script). Quatro respostas para "esta camada de texto foi feita por OCR?":
+`admissao.PRODUTOR_DE_OCR` (`text/admissao.py:60`, ao lado de `FONTE_DE_OCR`, `:61`, aplicado por
+trecho em `:190`), `perfil.de_scan` (`:176`), `cli/texto_grade.MARCAS_DE_OCR` (`:107`, que também lê
+o `creator`, com `glyphless` em `:277`) e `camada.camada_tipografica` (`text/camada.py:192`).
+Pelo produtor, `ocrmypdf ... / Tesseract` é OCR para o `texto_grade` e não para a `admissao`, e
+`OmniPage` o contrário; a `admissao` ainda pega o ocrmypdf pela fonte `GlyphLessFont`, então a
+divergência é de critério, e só às vezes de resposta. A memória
 "medir texto só com camada editorada" depende desta resposta.
 
-**Solução.** `procedencia_da_camada(doc, pagina) -> ProcedenciaDaCamada` pura, num lugar, e os três
-passam a consultá-la.
+**Solução.** `procedencia_da_camada(doc, pagina) -> ProcedenciaDaCamada` pura, num lugar, com
+os três critérios (produtor, `creator`, fonte por trecho), e os quatro passam a consultá-la.
 
 **Teste que falha primeiro.** Uma tabela de produtores e fontes com resposta única.
 
@@ -990,9 +1077,9 @@ de estrato sem decisão do dono.
 
 ## S-850 · Cache de perfil do livro sem `id()`
 
-**Problema** (confirmado por script). `text/camada_prosa.py:218-228`: documento aberto de bytes tem
-`name=None`, e a chave do cache vira `id(doc)`. O id foi reaproveitado e o livro B recebeu o perfil
-do livro A. A chave também não tem `mtime`. `camada._identidade` (`text/camada.py:385-400`) recusa
+**Problema** (confirmado por script). `text/camada_prosa.py:215-228`, `perfil_em_memoria`: documento
+aberto de bytes tem `name=None`, e a chave do cache vira `(id(doc), page_count)`. O id foi
+reaproveitado e o livro B, com o mesmo número de páginas, recebeu o perfil do livro A. A chave também não tem `mtime`. `camada._identidade` (`text/camada.py:385-400`) recusa
 exatamente esse caso, por escrito.
 
 **Solução.** O cache usa `_identidade`, e não guarda nada quando ela é `None`. Uma identidade só para
@@ -1006,10 +1093,12 @@ segundo é recalculado (contador em `perfil_do_livro`).
 ## S-851 · A folha extraída uma vez por leitura
 
 **Problema** (confirmado por script, desempenho). Uma `ler_pagina(motor="camada")` faz 8
-`get_text("dict")` na folha lida e mais 2 ou 3 em cada vizinha (`text/leitor.py:1651-1680`,
-`:1316-1331`): `page_margin_lines`, `page_text_lines`, `spans_com` e `linhas_com` do negrito e do
-itálico, `camada_tipografica`, `quadros` e as correntes das vizinhas. Numa varredura, cada folha é
-reextraída umas 5 vezes como vizinha. A S-725 cobre só o cache do Tesseract.
+`get_text("dict")` na folha lida (`text/leitor.py:1651-1680`, `:1316-1331`): `page_text_lines`,
+`spans_com` e `linhas_com` do negrito e do itálico, `quadros`, `running_page_number`
+(`_bare_integers`) e, quando `correntes()` dispara, `page_margin_lines`; com motor de glifo soma-se
+`camada_tipografica` (`:1687`). `running_page_number` lê também as quatro vizinhas, uma vez cada, e
+`documento_registra` amostra de 7 a 14 folhas na primeira vez por documento. Numa varredura, cada
+folha é reextraída umas quatro vezes como vizinha (medido no Dvoretsky, folhas 20 e 21). A S-725 cobre só o cache do Tesseract.
 
 **Solução.** Um valor congelado `FolhaDaCamada` (dict, palavras, texttrace), extraído uma vez e
 entregue a funções puras; as chaves de corrente das vizinhas memorizadas por documento.
@@ -1023,7 +1112,8 @@ de 50 folhas é medido antes e depois.
 
 **Problema** (confirmado por leitura e pelo dryer). O árbitro está em três cópias:
 `text/leitor.py:496-513`, `cli/texto_colados.py:62-73` e `cli/texto_duas_linhas.py:107-118`
-(semelhança 0,83 a 0,91). O comentário justifica a cópia: "Escrito igual ao de lá de propósito".
+(as duas cópias do CLI com semelhança 0,91 entre si; com a do leitor, 0,73 e 0,76, porque o
+leitor já divergiu). O comentário justifica a cópia: "Escrito igual ao de lá de propósito".
 Uma edição numa cópia separa o que foi medido do que roda. Os módulos `text/colados.py` e
 `text/duas_linhas.py` são gêmeos (`vale` e `_perfil_*` com semelhança 1,00).
 
@@ -1042,19 +1132,21 @@ mesmo objeto.
 **Problema** (confirmado por leitura). O contrato de `text/leitor_de_linha.py:3` diz que `None` é
 "não leu" e `""` é "leu vazio". `tesseract.ler_linhas` (`text/tesseract.py:363-366`) devolve `""`
 para recorte vazio, que nunca foi ao processo. Com essa leitura vazia, `fundir` derruba a prosa do
-glifo, e `text/leitor.py:1395` (`if not tokens: continue`) apaga a linha inteira. E em
-`text/leitor.py:1747`, `leituras_da_reserva, _falha = leitor.ler_folha(...)`: no ramo
+glifo, e `text/leitor.py:1392` (`if not tokens:`) apaga a linha inteira. E em
+`text/leitor.py:1754`, `leituras_da_reserva, _falha = leitor.ler_folha(...)`: no ramo
 `camada_na_folha` a falha é jogada fora, enquanto os outros ramos emitem `LEITOR_INDISPONIVEL`. Um
 terceiro furo, plausível: `_linhas_da_reserva` alinha as confianças por
 `zip(texto.split(), confiancas, strict=False)`, e uma palavra do Tesseract com espaço Unicode dentro
-(U+2009) desloca ou corta as confianças sem erro (`text/fusao.py:233` faz o mesmo).
+(U+2009) desloca ou corta as confianças sem erro; `text/fusao.py:233` tem o mesmo efeito por um
+dicionário truncado por `len(t)`.
 
 **Solução.** `None` para recorte vazio. `if _falha: avisos.append(Aviso(LEITOR_INDISPONIVEL, ...))`.
 Os `Token` construídos direto da lista de `Palavra`, com `strict=True`. A regra 5 da fusão continua
 sendo da S-721.
 
 **Teste que falha primeiro.** Um `LeitorDeLinha` falso devolvendo `([], "sem tesseract")` numa folha
-admitida com `guarda.nao_lida`: o aviso tem de estar na página. Uma palavra com U+2009: as
+admitida com `guarda.nao_lida`, com `reserva=True` e uma palavra que `_pede_outra_leitura` (só assim o
+ramo chama `ler_folha`): o aviso tem de estar na página. Uma palavra com U+2009: as
 confianças continuam alinhadas.
 
 **Aceite.** Os dois passam.
@@ -1064,31 +1156,37 @@ confianças continuam alinhadas.
 **Problema** (confirmado pelo dryer e por leitura). `text/modelo.py:365` e
 `text/onnx_glifos.py:229` (`classificar`) têm semelhança 1,00, e `modelo._entrada` (`:335`) e
 `onnx_glifos.preparar_recortes` (`:187`), 0,82. Duas cópias do pré-processamento de glifo são um
-desvio entre treino e serviço esperando acontecer. E `carregar_classificador` calcula o SHA-256 do
-`.pt` e relê o metadado antes de consultar o cache (`text/modelo.py:423-457`), duas vezes por folha,
-e cria um `GlyphRecognizer` novo a cada uma.
+desvio entre treino e serviço esperando acontecer; hoje um teste as mantém iguais
+(`tests/test_texto_onnx.py:77-83`), mas é a premissa 3: copiar e vigiar a cópia. E
+`carregar_classificador` já chaveia o cache por `(pesos, meta, device, mtime_ns, size)`
+(`text/modelo.py:449`), mas chama `ler_metadado` e `impressao_do_arquivo` (o SHA-256 do `.pt`) **antes**
+de consultar o cache (`:423-457`), duas vezes por folha (S-847), e cria um `GlyphRecognizer` novo a
+cada uma.
 
-**Solução.** O pré-processamento numa função só, que os dois backends chamam. O cache do
-classificador chaveado por `(caminho, mtime_ns, tamanho)`, com o hash calculado só quando a chave
-falta.
+**Solução.** O pré-processamento numa função só, que os dois backends chamam. O cache
+consultado primeiro, pela chave barata `(caminho, mtime_ns, tamanho)`, e o metadado e o hash
+calculados só quando ela falta.
 
-**Teste que falha primeiro.** Os dois backends recebem o mesmo recorte e têm de produzir o mesmo
-tensor de entrada; dez folhas seguidas calculam o hash uma vez.
+**Teste que falha primeiro.** Dez folhas seguidas calculam o hash uma vez (hoje, vinte). A igualdade
+dos dois pré-processamentos já tem teste; o que muda é que, com uma função só, ele vira redundante e
+sai.
 
 **Aceite.** Os dois passam.
 
 ## S-855 · Tipos fechados no texto
 
-**Problema** (confirmado por leitura). `ouro.Manifesto` guarda `split`, `lingua`, `origem`,
-`estrato` e `diagramacao` como `str`, conferidos depois em `problemas`; `LivroDoOuro(**livro)`
+**Problema** (confirmado por leitura). `LivroDoOuro` e `FolhaDoOuro` (de `text/ouro.py`)
+guardam `split`, `lingua`, `origem`, `estrato` e `diagramacao` como `str`, conferidos depois em
+`problemas`; `LivroDoOuro(**livro)`
 levanta `TypeError` com chave desconhecida (`text/ouro.py:137-146`). `fusao.Token.origem: str`
 (`text/fusao.py:206`), `classe_do_token -> str` e `PaginaLida.unidade: str` deveriam ser fechados.
-`_ler_pagina_do_livro` recebe 24 parâmetros nomeados. E `text/vertical.py` (complexidade 28 em
+`_ler_pagina_do_livro` recebe 25 parâmetros, 23 deles só por nome. E `text/vertical.py` (complexidade 28 em
 `candidatos`) só tem chamador no `cli/texto_vertical`; `Caixa.angulo` (`text/boxes.py:84-96`) é
-sempre 0 em produção, e o ramo `girado` de `linhas.quebrar_em_linhas` é morto.
+sempre 0 em produção, e o ramo `girado` de `linhas.quebrar_em_linhas` é morto, como o de ângulo em
+`text/leitura_de_linha.py:176`.
 
 **Solução.** `Literal` ou `StrEnum`, convertidos uma vez em `de_json`. Uma `OpcoesDeLeitura`
-congelada no lugar dos 24 parâmetros. `text/vertical.py`: decisão D3 do roadmap (ligar a S-197 no
+congelada no lugar dos 23 parâmetros nomeados. `text/vertical.py`: decisão D3 do roadmap (ligar a S-197 no
 caminho da página, ou mover o módulo para o CLI e apagar o ramo `girado`).
 
 **Teste que falha primeiro.** Um manifesto com `estrato` desconhecido levanta na leitura, e não em
@@ -1096,21 +1194,26 @@ caminho da página, ou mover o módulo para o CLI e apagar o ramo `girado`).
 
 **Aceite.** O teste passa; o mypy acusa um valor fora do `Literal` escrito num teste de tipo.
 
-## S-856 · Exceções estreitas no texto
+## S-856 · Exceções estreitas no texto e no perfil de cor
 
 **Problema** (confirmado por leitura). `ocr_caption._read_band` (`ocr_caption.py:233-237`) devolve
-`[]` quando o motor quebra: "sem legenda" fica igual a "motor caiu", e só o log diz qual.
-`pdf_text.py:1434` e `text/camada.py:113`, `:158`, `:434`, `:445` usam `except Exception`; em `:434`
+`[]` quando o motor quebra, e também quando a faixa não renderiza (`:227-228`): "sem legenda" fica
+igual a "falhou", e só o log diz qual.
+`pdf_text.py:1434` e `text/camada.py:114`, `:159`, `:434`, `:445` usam `except Exception`; em `:434`
 e `:445` o `False` vai ao chamador, e em `:445`, se todas as folhas da amostra derem erro, o `False`
-vai para o cache.
+vai para o cache. Fora do texto, `cor_por_livro.py:362-365` faz `except Exception: return None` sem
+log nenhum: o perfil de cor vem da suíte de fora (`caissa`), e a leitura muda de resultado conforme
+ela importa ou não sem que nada registre qual caso aconteceu.
 
 **Solução.** Cada `except` pega só o tipo esperado. `_read_band` devolve um resultado que distingue
-"sem legenda" de "motor indisponível". Resposta que veio de exceção não entra no cache.
+"sem legenda" de "motor indisponível". Resposta que veio de exceção não entra no cache. O perfil de cor ilegível vira
+`logger.warning(..., exc_info=True)`.
 
 **Teste que falha primeiro.** Um motor de legenda que levanta: o resultado diz "indisponível", não
 "vazio". Uma amostra em que toda folha levanta: a próxima chamada pergunta de novo.
 
-**Aceite.** Os dois passam; a catraca da S-804 desce.
+**Aceite.** Os dois passam, mais um `assertLogs` com um `colour_for_pdf` que levanta; a catraca da
+S-804 desce.
 
 ## Fase 119 — Complexidade e duplicação
 
@@ -1123,13 +1226,15 @@ de campo.
 
 **Problema** (confirmado pelo dryer e por leitura). Cerca de 30 dos 65 pares do dryer são
 `parse_args` e `build_parser` de `cli/` (`texto_grade` e `texto_ordem` com 1,00; `review` e `sides`
-com 0,88; `export_pgn` com `field`, `review` e `sides`). E `cli/__init__.py:246-259` classifica
+com 0,88; `export_pgn` com `field`, `review` e `sides`). E `cli/__init__.py:243-262` classifica
 qualquer `ValueError`, `OSError` ou `RuntimeError`, inclusive um `int("x")` de defeito interno, como
-saída 2 "entrada inválida"; decide a saída 3 pela substring `".pt"`; e deixa `sqlite3.Error` cair na
-saída 1.
+saída 2 "entrada inválida"; decide a saída 3 por pistas no texto da mensagem (`"checkpoint"`,
+`".pt"`, `"arch_version"`, `"state_dict"`, `:53`); e deixa `sqlite3.Error` cair na saída 1.
 
-**Solução.** `cli/opcoes.py` com as opções repetidas (`--pdf`, `--pages`, `--dpi`, `--checkpoint`,
-`--out`, `--cache`, `--database`) como funções que acrescentam ao parser. Um tipo `EntradaInvalida`
+**Solução.** O mecanismo já existe: `cli/__init__.py:98-138` tem `add_dpi_argument`,
+`add_model_argument`, `add_splits_argument` e `add_dataset_arguments`. Ele ganha as opções que ainda
+se repetem à mão (as de páginas, `--cache`, `--database`, `--gallery-dir`), e os parsers que as
+escrevem à mão passam a usá-lo; nada de um segundo módulo de opções. Um tipo `EntradaInvalida`
 levantado só nas fronteiras de entrada; todo o resto é saída 1, com traceback no log.
 
 **Teste que falha primeiro.** Um `int("x")` dentro de um carregador sai com 1, não com 2; um PDF que
@@ -1180,8 +1285,9 @@ de medição: entra junto da S-837 ou com a caracterização sobre as páginas d
 detecção dos diagramas, o corpo despachado por motor (`_corpo_camada`, `_corpo_glifo` →
 `_guarda_e_reserva` → `_prosa_de_outro_leitor`), devolvendo uma `LeituraDoCorpo(cruas, regioes,
 quadros, procedencia, avisos, por_palavra)` em vez de reatribuir a tupla, `anotar_estilo` pura, e
-`montar` com as margens. `linhas_do_glifo`: o classificador vem de fora (S-847); as sete correções
-viram uma lista `list[Correcao]` montada uma vez das opções.
+`montar` com as margens. `linhas_do_glifo`: o classificador vem de fora (S-847); as nove chaves de
+correção e de segmentação viram uma lista de passos montada uma vez das opções (o nome não é
+`Correcao`, que já é a correção humana de `text/correcao.py:74`; algo como `PassoDoGlifo`).
 
 **Teste que falha primeiro.** A régua da prosa e o JSON de página das folhas do ouro-dev, gravados
 antes, comparados byte a byte depois.
@@ -1207,19 +1313,25 @@ mensagens esperada; para `fundir`, a saída da fusão nas folhas do ouro-dev, gr
 
 ## S-862 · Constantes de caminho e de padrão num lugar
 
-**Problema** (confirmado por leitura). O DPI 220 está em `config.py:289`, `settings.py:418` e
-`provenance.py:73`. `char_classifier.pt` e `char_meta.json` em `settings.py:283`, `:289`,
+**Problema** (confirmado por leitura). O DPI padrão 220 é literal em cerca de 30 lugares, entre
+eles `config.py:289`, `settings.py:418`, `provenance.py:73`, `pdf_io.render_pdf_page` (`:181`),
+`text/leitor.py:1247`, `service.py:555`, `batch.py:83`, `pdf_to_pgn.py:502`, `:731`, `:1060`,
+`detection_census.py` (quatro), `text/tesseract.py:355`, `:392`, `text/faixas.py`,
+`text/guarda_de_leitura.py:61`, `taticas.py:1246` e nove CLIs `texto_*`. `char_classifier.pt` e `char_meta.json` em `settings.py:283`, `:289`,
 `cli/texto_train.py:34-35` e `text/modelo.py:55`. `field_set.jsonl` em `cli/field.py:54`,
 `qt/campo.py:64` e `training.py:350` (derivado de outro jeito). `texto_conflitos.json` em
 `cli/texto_conflitos.py:32` e `text/conflitos.py:57`. `"lado_descritor": 24` escrito à mão em
-`cli/texto_conflitos.py`, ao lado de `dedupe.LADO_DESCRITOR`. Os nomes `procedencias.py`,
-`proveniencia.py` e `provenance.py` não duplicam decisão nenhuma, mas confundem.
+`cli/texto_conflitos.py` e `cli/texto_train.py:484`, ao lado de `dedupe.LADO_DESCRITOR`. Os nomes
+`procedencias.py`, `proveniencia.py`, `provenance.py`, `text/procedencia.py` e `cli/provenance.py` não
+duplicam decisão nenhuma, mas confundem.
 
 **Solução.** Uma constante por valor, no módulo dono, importada pelos outros. A troca de nome de
 `procedencias.py` é a decisão D6 do roadmap.
 
-**Teste que falha primeiro.** Uma guarda por AST: cada um dos literais acima aparece uma vez em
-`src/`.
+**Teste que falha primeiro.** Uma guarda por AST: cada nome de arquivo acima aparece uma vez em
+`src/`, e nenhum parâmetro chamado `dpi` tem `220` literal como padrão fora do módulo dono (a guarda
+olha o nome do parâmetro, porque `220` aparece também como medida de tela, em
+`qt/livro_com_pgn.py:82`, `ui/cortina.py:72` e `ui/sala_declarada.py:259`).
 
 **Aceite.** A guarda passa.
 
@@ -1239,11 +1351,13 @@ função que devolve linhas.
 ## S-864 · Os pares gêmeos do dryer
 
 **Problema** (confirmado pelo dryer). Além dos já tratados (S-848, S-852, S-854, S-857): os
-exportadores `docx_saida.exportar_estudo_docx`/`exportar_texto_docx` e `epub.exportar_estudo_epub`/
-`exportar_texto_epub` (0,90 e 0,91); `qt/painel_da_galeria._confirmar_destrutivo` e
+exportadores de um módulo para o outro, `exportar_estudo_docx` com `exportar_estudo_epub` (0,91) e
+`exportar_texto_docx` com `exportar_texto_epub` (0,90), invólucros de duas linhas, e `_titulo_do_texto`,
+idêntico em `docx_saida.py:645` e `epub.py:474` (1,00); `qt/painel_da_galeria._confirmar_destrutivo` e
 `qt/painel_de_estudo._perguntar` (1,00); `qt/arvore_de_aberturas._rodape` e
 `qt/busca_de_partidas._rodape` (0,88); `qt/painel_de_recorte._anel` e `qt/tabuleiro_editavel._anel`
-(0,81); `detection_census.as_dict` e `side_survey.as_dict` (0,94); `estudo_arquivo.chave_de` e
+(0,81); `detection_census.as_dict` (`:357`) e
+`side_survey.as_dict` (`:125`) (0,94); `estudo_arquivo.chave_de` e
 `text/rascunho.chave_de` (0,88); `cli/texto_grade._linhas_da_camada` e
 `cli/texto_ordem._linhas_da_camada` (0,84); `pdf_substituicao.renderizar_com_operacoes` e
 `renderizar_regiao_com_operacoes` (1,00); `qt/painel_de_estudo.buscar_partidas` e
@@ -1262,13 +1376,15 @@ houver.
 ## S-865 · `PainelDeTexto` em cinco módulos
 
 **Problema** (confirmado). `qt/painel_de_texto.py` tem 5.030 linhas; a classe `PainelDeTexto` vai de
-`:324` a cerca de `:4549`, com 294 métodos, 73 atributos privados e 24 seções marcadas.
+`:324` a `:4546`, com 280 métodos, 79 atributos privados atribuídos (70 no `__init__`) e 28 seções
+marcadas.
 
 **Solução.** Cinco passos, cada um com a suíte verde e a fachada pública (`aplicar_estado`,
 `definir_livro`, `ler`, `confirmar_fechamento`) intacta: (1) `qt/texto_espelho.py`: `_Trecho`,
-`_Mapa`, `_texto_da_tela`, `_do_qt` e a digitação (`:4072-4240`), quase tudo puro; (2)
+`_Mapa`, a digitação (`:4072-4240`) e as funções de módulo `_texto_da_tela` e `_do_qt` (`:4752`,
+`:4770`), quase tudo puro; (2)
 `qt/texto_leitura.py`: a orquestração de tarefa (`:3635-3912`, as exportações e
-`trazer_da_revisao`) num `ExecutorDaAba` com `manter_viva`, `slot_se_vivo` e a `Ancora`; (3)
+`trazer_da_revisao`) num `ExecutorDaAba` com `manter_viva`, `slot_se_vivo` e a `AncoraDaTela`; (3)
 `qt/texto_caderno.py`: caderno, rascunho e mesa; (4) `qt/texto_miniaturas.py`: diagramas no texto,
 miniatura, dica e menu; (5) `qt/texto_correcao.py`: léxico, correção, pincel e busca.
 
@@ -1281,17 +1397,20 @@ testes das S-823 a S-826) é a caracterização.
 
 **Problema.** `qt/painel_de_estudo.py` tem 3.660 linhas e seis classes.
 
-**Solução.** Primeiro sai o motor vivo, a análise, as táticas e o índice (`:2280-2720`,
-`:3185-3280`), com âncora e `manter_viva`; depois a lista de lances.
+**Solução.** Primeiro sai o motor vivo (`:1142-1321`), a partida inteira pelo motor, as opções do
+motor e as partidas da base (`:2262-2726`), e as táticas (`:3185-3280`), com âncora e `manter_viva`;
+depois a lista de lances.
 
 **Aceite.** Suíte verde em cada passo; o arquivo abaixo de 1.500 linhas.
 
 ## S-867 · O bloco de resposta da janela vira decisão pura
 
 **Problema.** `qt/janela.py` (2.293 linhas) é coordenadora legítima, mas o bloco que decide o que
-fazer com a resposta de uma leitura (`:1620-1720`) é lógica de domínio dentro do widget.
+fazer com a resposta de uma leitura (`:1626-1722`) ainda tem a guarda de página, o cancelamento e a
+escolha do que selecionar; o resto já delega a decisões puras (`choose_boxes`,
+`boxes_from_diagrams`). O item é pequeno, e vale pela guarda, que é a da S-823.
 
-**Solução.** `ui/page_results` recebe a `Ancora` (S-823) e a resposta e devolve o que a tela deve
+**Solução.** `ui/page_results` recebe a `AncoraDaTela` (S-823) e a resposta e devolve o que a tela deve
 mostrar; a janela só aplica. É um passo para a S-31.
 
 **Teste que falha primeiro.** A decisão testada sem Qt, com os casos da S-823.
@@ -1303,7 +1422,7 @@ mostrar; a janela só aplica. É um passo para a S-31.
 ## S-868 · Os 26 testes desligados
 
 **Problema** (confirmado). 26 `@unittest.skip` incondicionais: `tests/test_qt_tema.py` (13, motivo
-`FOLHA_DO_MAIN`, `:28`), `tests/test_qt_painel_da_galeria.py:482-602` (8, `GALERIA_DO_MAIN`) e
+`FOLHA_DO_MAIN`, `:28`), `tests/test_qt_painel_da_galeria.py:482-639` (8, `GALERIA_DO_MAIN`) e
 `tests/test_qt_tamanho_da_janela.py` (5, `GALERIA_DO_MAIN` e `RODAPE_DO_MAIN`, `:849`). Eles
 descrevem o leiaute da Galeria, do rodapé e da folha de estilo que o merge do religa largou, nunca
 mais rodam, e contam como testes. O motivo `RODAPE_DO_MAIN` diz que a conferência de 1.024 px
@@ -1317,20 +1436,23 @@ continua sem medida.
 ## S-869 · Guardas de importação que enxergam PyQt6
 
 **Problema** (confirmado). Dezesseis guardas só conferem `assertNotIn("tkinter", imports)`, e o Tk
-saiu: `tests/test_viewport.py:178`, `test_board_model.py:369`, `test_editor_model.py:278`,
+saiu. Treze delas vigiam módulos de `ui/`, que `tests/test_ui_fronteira.py` (S-549) já protege contra
+`PyQt6`, `PySide6`, `tkinter` e `chess_diagram_ocr.qt`; só `text/exportacao`, `text/paleta` e
+`text/rico` ficam sem guarda de PyQt6. As dezesseis: `tests/test_viewport.py:178`, `test_board_model.py:369`, `test_editor_model.py:278`,
 `test_page_overlay.py:303`, `test_qt_fita.py:51`, `test_qt_painel_da_galeria.py:65`,
 `test_qt_painel_de_estudo.py:91`, `test_qt_painel_de_revisao.py:60`, `test_qt_painel_do_pdf.py:70`,
 `test_qt_paleta.py:60`, `test_qt_texto_cauda.py:47`, `test_texto_exportacao.py:152`,
 `test_texto_paleta.py:92`, `test_texto_rico.py:355`, `test_ui_comandos.py:615` e
-`test_ui_texto_cor.py:146`. A docstring de `SEM_TKINTER` (`tests/test_editor_model.py:433-486`) está
+`test_ui_texto_cor.py:146`. A docstring de `SEM_TKINTER` (`tests/test_editor_model.py:433-443`) está
 velha. É a memória "guarda de varredura fica vácua no corte".
 
-**Solução.** As guardas de módulo puro conferem `{"PyQt6", "tkinter"}`, como
-`tests/test_ui_barra_da_sala.py:385`; as de módulo `qt/` saem.
+**Solução.** As treze guardas de `ui/` saem (subtrair: a de fronteira já as cobre). As três de
+`text/` passam a conferir `{"PyQt6", "tkinter"}`, como `tests/test_ui_barra_da_sala.py:385`, ou o
+`test_ui_fronteira` passa a varrer também os módulos puros de `text/`.
 
-**Teste que falha primeiro.** Um `import PyQt6` acrescentado a um módulo puro: a guarda acusa.
+**Teste que falha primeiro.** Um `import PyQt6` acrescentado a `text/rico.py`: hoje nada acusa.
 
-**Aceite.** As guardas acusam o acréscimo.
+**Aceite.** A guarda acusa o acréscimo, e as treze guardas redundantes não existem mais.
 
 ## S-870 · Testes de texto da fonte trocados por testes de comportamento
 
@@ -1338,28 +1460,31 @@ velha. É a memória "guarda de varredura fica vácua no corte".
 qualquer lugar de `Trainer.prepare`, comentário incluído; `:311-313` procura `torch.rand` e
 `random.random()` como texto; `tests/test_labels.py:502` procura `"LabelStore"` em `label_origins`;
 `tests/test_preprocess.py:173-175` confere a ordem da corrente pela posição de `self.config.X` no
-texto.
+texto (este sai com a S-843, que retira o normalizador).
 
 **Solução.** Semente fixa e saída comparada (aumento); `labels.csv` lido por um remendo que conta a
 passagem pelo `LabelStore`; a ordem da corrente conferida por uma imagem em que cada passo deixa
 marca.
 
-**Aceite.** Os quatro testes reprovam com a regra quebrada e com o comentário intacto.
+**Aceite.** Os três que ficam reprovam com a regra quebrada e com o comentário intacto.
 
 ## S-871 · Guardas de varredura com piso, e o registro de comandos como catraca
 
 **Problema** (confirmado). `tests/test_cli_errors.py:145-154` faz glob de `cli/*.py` procurando
 `"\ndef main("`; se o caminho mudar, o glob volta vazio e o teste passa. `tests/
-test_board_detection.py:151-162` varre só três módulos e não vê `importacao_de_imagens.py:743`.
+test_board_detection.py:151-162` varre só três módulos e não vê `importacao_de_imagens.py:743` (que
+hoje já passa `warn_on_cap=False`: ampliar a varredura não acha defeito, mas impede o próximo).
 `tests/test_ui_comandos.py:363-554` faz `assertEqual` contra 140 nomes literais (memória "teste não
 congela lista do catálogo"). E `tests/conftest.py`, `tests/test_docs.py:819-1005`: 7 testes pulam em
 worktree (S-805).
 
 **Solução.** Cada varredura afirma quantos candidatos achou (`assertGreater(len(achados), N)`) e varre
 `src/` inteiro. O registro de comandos vira `assertLessEqual(divergem, REGISTRADOS)` com um
-dicionário de razões por entrada.
+dicionário de razões por entrada. Acrescentar um comando sem `rotulo_curto` já não reprova hoje; o que
+muda é que **remover** um divergente deixa de reprovar, e acrescentar um divergente sem razão continua
+reprovando.
 
-**Aceite.** Mover a pasta varrida reprova as guardas; acrescentar um comando não reprova o registro.
+**Aceite.** Mover a pasta varrida reprova as guardas; remover um divergente não reprova o registro.
 
 ## S-872 · Testes de "não levanta" que conferem o efeito, e tempo escalável
 
@@ -1368,23 +1493,248 @@ dicionário de razões por entrada.
 `test_qt_rodape.py:222`, `test_engine.py:267`, `test_page_results.py:321`. Limites de relógio que
 podem oscilar sob cobertura ou carga (plausível): `test_qt_fila_de_livros.py:174` e
 `test_qt_indice_da_base.py:98` (menos de 1,5 s depois de um `qWait(100)`), `test_games_index.py:610`,
-`test_engine.py:152`, `test_alinhamento.py:96`, `test_tablebase.py:286`; e o `_esperar` de
+`test_engine.py:152`, `test_alinhamento.py:96`, `test_tablebase.py:286`, `test_decode.py:373`,
+`test_eco.py:229`, `test_engine.py:126`, `test_qt_motor.py:315` e, o mais sensível à cobertura,
+`test_processo_de_trabalho.py:97` (a thread principal parada menos de 40 ms); e o `_esperar` de
 `test_qt_fila_de_livros.py:116` volta calado no estouro.
 
 **Solução.** Cada teste de "não levanta" confere o estado depois da chamada. Os limites multiplicados
 por um fator de ambiente (`CVOFF_FATOR_DE_TEMPO`, padrão 1, 3 sob cobertura). `_esperar` reprova no
 estouro.
 
-**Aceite.** Trocar o corpo de cada função testada por `pass` reprova o seu teste; a suíte sob
-cobertura passa sem oscilar em três rodadas.
+**Aceite.** Trocar o corpo de cada função testada por `pass` reprova o seu teste, salvo onde o
+contrato é justamente "não faz nada" (`test_page_results.py:321`, descartar página ausente;
+`test_qt_menu.py:203`; provavelmente `test_qt_rodape.py:222`): ali o teste confere que o estado ficou
+igual, campo a campo. A suíte sob cobertura passa sem oscilar em três rodadas.
 
 ## S-873 · Os sobreviventes do mutator nos seis módulos-piloto
 
-**Problema.** A S-803 lista os mutantes que a suíte deixa viver em `fen_utils.py`, `splits.py`,
-`decode.py`, `atomic_io.py`, `settings.py` e `ui/legality.py`.
+**Problema.** Depende da S-803: o `tools/qualidade/mutator.py` e o `docs/metrics/mutacao.json` ainda
+não existem, e a lista de sobreviventes de `fen_utils.py`, `splits.py`, `decode.py`, `atomic_io.py`,
+`settings.py` e `ui/legality.py` é o que a primeira rodada da S-803 produz.
 
 **Solução.** Para cada sobrevivente: um teste que o mata, ou a remoção do código que ele mostra
 morto, ou a declaração de mutante equivalente com a razão.
 
 **Aceite.** O escore de cada módulo-piloto registrado em `docs/metrics/mutacao.json` acima de 90%, e
 nenhum sobrevivente sem decisão escrita.
+
+## Itens acrescentados pela primeira revisão
+
+Os itens abaixo saíram da primeira revisão desta spec, que auditou os módulos que as cinco auditorias
+iniciais não tinham coberto, e da cobertura medida (85,5% no total, 51,8% em `cli/`). Cada um pertence
+a uma das fases acima; o roadmap os lista dentro delas.
+
+## S-874 · Página que derruba o processo de trabalho nunca roda no processo da janela
+
+**Fase 110.** **Problema** (confirmado por script). `processo_de_trabalho.py:122-137`: quando o
+processo filho morre, ele é recriado; quando morre de novo, a chamada segue **em linha**, no processo
+da janela. O isolamento existe para "um PDF que derruba o MuPDF", então uma página que derruba sempre
+derruba duas vezes e, na terceira, mata a janela. E `_recriou` vale para a vida inteira do processo:
+uma segunda queda horas depois, noutra página, vai direto para "em linha para sempre".
+
+**Solução.** Duas quedas na mesma chamada levantam um erro com frase própria ("a página N derruba o
+leitor de PDF"), que a tela mostra e a varredura registra e pula. `_recriou` volta a zero depois de
+cada chamada bem-sucedida.
+
+**Teste que falha primeiro.** `test_funcao_que_derruba_o_filho_nunca_roda_no_pai`, com uma função
+que faz `os._exit` quando roda no filho e grava um arquivo quando roda no pai.
+
+**Aceite.** O teste passa: o arquivo do pai nunca é criado e o erro tem a página.
+
+## S-875 · O motor que caiu é reaberto na próxima análise
+
+**Fase 114.** **Problema** (confirmado por script). `engine.py:436-442`, `:458-464`, `:490-496`:
+`EngineTerminatedError` é subclasse de `EngineError` e vira `RuntimeError`, mas `self._engine`
+continua apontando para o motor morto, e `start()` sai cedo quando `_engine` não é `None`. Um motor
+falso que sai com código 3 no primeiro `go` deixa as chamadas seguintes falhando com "engine event
+loop dead". A sala de estudo, o treino e a análise da partida ficam sem motor até trocar o binário.
+
+**Solução.** No `except`, motor terminado (`EngineTerminatedError`, ou `returncode` preenchido) faz
+`self._engine = None`, e o próximo `start()` reabre.
+
+**Teste que falha primeiro.** Em `tests/test_engine.py`, um motor falso que morre no primeiro `go` e
+responde no segundo: a segunda `analyse` devolve um lance.
+
+**Aceite.** O teste passa.
+
+## S-876 · Cabeçalho livre inválido não derruba a exportação do livro
+
+**Fase 113.** **Problema** (confirmado por script). `pdf_to_pgn.py:905-906`, `gallery.py:278-290`,
+`ui/gallery_model.py:340-348`: um cabeçalho livre da Galeria com nome `Comentário` ou
+`Torneio Local` faz `build_pgn_games` levantar `ValueError: invalid pgn header tag`, porque o
+python-chess recusa nomes fora de `^[A-Za-z0-9][A-Za-z0-9_+#=:-]*` e valores com quebra de linha. O
+campo (`qt/painel_da_galeria.py:1475`) só faz `strip()`. Um cabeçalho digitado à mão impede de
+exportar o livro inteiro, e a janela mostra a mensagem crua em inglês.
+
+**Solução.** O nome validado pelo `TAG_NAME_REGEX` do `chess.pgn` na entrada (`set_header` e
+`_headers`), com a recusa dita em português; `\r` e `\n` dos valores trocados por espaço.
+
+**Teste que falha primeiro.** `test_cabecalho_livre_com_acento_nao_derruba_exportacao`.
+
+**Aceite.** O teste passa; o campo recusa o nome inválido antes de gravar a Galeria.
+
+## S-877 · Caractere de controle não estraga o EPUB nem o DOCX
+
+**Fase 113.** **Problema** (confirmado por script). `epub.py:264-289`, `:570-605`, `:236-237`
+(`html.escape`) e `docx_saida.py` (ElementTree): um PGN com `\x02` no `Event` e `\x01`/`\x0b` num
+comentário gera `content.opf`, `nav.xhtml` e `estudo_001.xhtml` que o próprio `epub.verificar` acusa
+de XML mal formado, e um DOCX cujos `core.xml`, `document.xml` e `header1.xml` não abrem. A camada de
+texto de PDF e as bases de PGN trazem `\x02`/`\x03` de glifo sem mapa. O exportador grava sem rodar o
+`verificar` que o módulo tem.
+
+**Solução.** `_texto_xml(s)`, num lugar, remove o que o XML 1.0 proíbe
+(`[\x00-\x08\x0b\x0c\x0e-\x1f]`), usada antes de `html.escape` e antes de cada `.text` do
+ElementTree. O exportador de EPUB roda `verificar` antes de dar a exportação por concluída.
+
+**Teste que falha primeiro.** `test_epub_com_controle_passa_no_verificar` e
+`test_docx_com_controle_abre_no_elementtree`.
+
+**Aceite.** Os dois passam.
+
+## S-878 · Lote e Galeria não confundem dois livros de mesmo nome
+
+**Fase 112.** **Problema** (confirmado por script). `batch.py:300-303`, `pdf_to_pgn.py:1234-1235`,
+`gallery.py:366`, `gallery_scan.py:203-205` identificam o livro pelo nome do arquivo sem a pasta e sem
+a extensão. Com `a/Livro.pdf`, `b/Livro.pdf`, `a/Outro.pdf` e `a/Outro.djvu`, o lote diz
+`b/Livro.pdf pulado` e `a/Outro.pdf pulado`, e o `Livro.pgn` tem a saída de `a/Livro.pdf`; com
+`skip_existing=False`, o segundo sobrescreve o primeiro. Na Galeria, o trabalho humano de um livro
+(anotações, partidas escolhidas) cai no outro. O acervo tem livros duplicados e versões em PDF e DjVu.
+
+**Solução.** O lote detecta nomes repetidos antes de varrer e sufixa a saída com o hash curto do
+caminho (o mesmo da S-815). A Galeria grava o caminho de origem no JSON e recusa abrir um índice cujo
+caminho não bate, dizendo qual é.
+
+**Teste que falha primeiro.** `test_dois_livros_de_mesmo_nome_geram_dois_pgn`;
+`test_galeria_de_outro_livro_de_mesmo_nome_e_recusada`.
+
+**Aceite.** Os dois passam.
+
+## S-879 · Legenda com lance inexistente cai no casamento pela posição
+
+**Fase 116.** **Problema** (confirmado por script). `livro_com_pgn.py:269-280`: com `2...Nc6` na
+legenda o estado é `confere`; com `2...Kc6` (o OCR troca N por K) o estado é `sem_no`, mesmo com a
+posição lida idêntica a um nó do livro, porque o ramo `elif lido` só roda quando a legenda não tem
+lance nenhum. E `lance_da_legenda('23.e8Q')` devolve `'23.e8'`, que nunca casa.
+
+**Solução.** Quando `com_rotulo` não acha nó, o casamento cai em `com_posicao(lido)` e depois em
+`_vizinhos`. A promoção entra na expressão do lance.
+
+**Teste que falha primeiro.** `test_legenda_com_lance_inexistente_cai_na_posicao`;
+`test_lance_com_promocao_e_lido_inteiro`.
+
+**Aceite.** Os dois passam.
+
+## S-880 · O lance seguinte e a estipulação jogam com o direito de roque
+
+**Fase 116 (caminho de medição).** **Problema** (confirmado por script). `lance_seguinte.py:133` e
+`estipulacao.py:235` montam a FEN com ` - - 0 1` fixo, sem roque; o mesmo sufixo está em `audit.py:218`,
+`dataset.py:483` e `semantics.py:187`. Depois de `1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5`,
+`infer_castling_rights` dá `KQkq`, e mesmo assim `conferir(linha="4.O-O Nf6 5.d3 d6")` responde que não
+replica "nem com até 2 trocas"; com `4.c3` replica. Livro de abertura imprime `O-O` o tempo todo, e o
+reparo procura trocas à toa. Na estipulação, uma defesa ou chave `O-O` fica invisível, e um problema
+pode sair "fecha" quando o roque o refuta. `taticas.validar_solucao` já usa `compose_fen` com o roque
+inferido: a mesma decisão tomada de dois jeitos (premissa 3).
+
+**Solução.** O `_tabuleiro` dos dois módulos usa `semantics.compose_fen(colocacao, vez, fullmove=...)`.
+Os outros três sufixos fixos são conferidos um a um (o do `dataset` é rótulo de treino e pode ficar).
+
+**Teste que falha primeiro.** `test_linha_com_roque_replica`.
+
+**Aceite.** O teste passa; entra junto da remedição da S-837.
+
+## S-881 · A substituição de diagrama no PDF: ligar ou retirar
+
+**Fase 119.** **Problema** (confirmado). `pdf_substituicao.py` (917 linhas), `ui/substituicao.py` e
+`ui/selecao_de_area.py` têm **0%** de cobertura (626 instruções somadas) e nenhum chamador: a
+funcionalidade F9, absorvida em 2026-09-07, está guardada sem o painel (`tests/test_ui_orfaos.py:276`,
+`GUARDADO_SEM_O_PAINEL`). `achar_coordenadas` tem complexidade 29 e CRAP 870, o maior do programa. E o
+código grava no arquivo do usuário sem guarda contra `entrada == saida`: `substituir_no_pdf(p, p, [])`
+levanta `PermissionError` dizendo que o arquivo "está aberto em outro programa", quando quem o segura
+é o próprio `fitz.open` da função.
+
+**Solução.** Decisão D7 do roadmap: (a) ligar o painel e testar, começando por recusar
+`saida.resolve() == entrada.resolve()` com frase própria; (b) retirar os três módulos (subtrair antes
+de somar), deixando o registro do que existia no `ARCHITECTURE.md`.
+
+**Teste que falha primeiro.** Em (a), `test_saida_igual_a_entrada_recusada`. Em (b), não há teste
+honesto além da suíte verde e da catraca de órfãos baixando.
+
+**Aceite.** Em (a), os três módulos acima de 80% de cobertura; em (b), os três fora de `src/`.
+
+## S-882 · "Segunda opinião remota" só aparece quando tem quem a use
+
+**Fase 114.** **Problema** (confirmado por leitura). `ui/configuracoes.py:122-127` e
+`ui/strings.py:146` põem no diálogo de configurações o interruptor "Segunda opinião remota" e o campo
+de endereço, mas nenhum módulo de `qt/`, `ui/` ou `cli/` chama `net_correction.build_provider` nem
+`predict_fen_via_net`, e `CORRIGIR_PELA_REDE` só existe em `strings.py`. O botão "2ª opinião" usa só o
+leitor local (`qt/painel_de_resultado.py:1217`). Nenhuma imagem sai da máquina; o diálogo promete um
+recurso que não existe.
+
+**Solução.** Os três campos saem do diálogo até o recurso ser ligado. Uma guarda: todo campo do
+diálogo tem um consumidor em `qt/`.
+
+**Teste que falha primeiro.** A guarda (acusa os três campos `remote_fen.*`).
+
+**Aceite.** A guarda passa.
+
+## S-883 · O leitor tsoj não troca a pasta corrente fora da trava
+
+**Fase 114.** **Problema** (plausível). `tsoj_reader.py:67-74` e `:182`: `predict` faz `os.chdir`
+dentro de uma `Tarefa`, fora do `_IMPORT_LOCK`. Dois `predict` ao mesmo tempo restauram a pasta na
+ordem errada. Durante os ~7 s da primeira carga, `Path(".")` e `Path.cwd()` usados pela janela
+(`qt/painel_de_estudo.py:166`, `qt/lote_de_diagramas.py:234`) apontam para o clone. O
+`sys.path.insert(0, checkout)` fica para sempre.
+
+**Solução.** O `chdir` de `predict` sob o `_IMPORT_LOCK`; os dois usos de pasta corrente da janela
+trocados por caminho absoluto.
+
+**Teste que falha primeiro.** Duas threads chamando `predict` com um módulo falso: a pasta corrente
+final é a inicial.
+
+**Aceite.** O teste passa em 100 repetições.
+
+## S-884 · No `.exe`, o OCR que falta é dito na janela
+
+**Fase 115.** **Problema** (confirmado por leitura). `packaging/cvoff.spec:102` exclui `onnxruntime`,
+`settings.py:259` tem `engine = "rapidocr"` como padrão, e `ocr.py:139-146` responde ao `ImportError`
+com um aviso no log que manda rodar `uv sync --extra ocr`, impossível no `.exe`; o pipeline segue
+sem OCR em silêncio.
+
+**Solução.** Com `sys.frozen`, uma frase própria (como a do `tsoj_reader`, S-387) que a janela
+mostra. Ou o `onnxruntime` entra no bundle: decisão de peso, tomada junto da S-830.
+
+**Teste que falha primeiro.** Com `sys.frozen` simulado e o import falhando, a frase é a do bundle.
+
+**Aceite.** O teste passa.
+
+## S-885 · CI com permissão mínima e ações fixadas
+
+**Fase 115.** **Problema** (confirmado). `.github/workflows/ci.yml` não tem bloco `permissions:`, então
+o token tem o padrão do repositório em todo push. `actions/checkout@v4` e `astral-sh/setup-uv@v5`
+estão presos por tag, não por SHA. O extra `second-opinion` nunca é instalado, e o `tsoj_reader` não
+roda no CI.
+
+**Solução.** `permissions: contents: read` no topo; as ações fixadas por SHA com a tag em comentário;
+uma perna (ou um passo) com o extra `second-opinion`.
+
+**Teste que falha primeiro.** Uma guarda em `tests/test_docs.py` (ou num teste do CI) que exige
+`permissions:` e `@<40 hex>` nas ações.
+
+**Aceite.** A guarda passa.
+
+## S-886 · As funções de produção com CRAP acima de 100 ganham teste
+
+**Fase 121.** **Problema** (confirmado pela cobertura). Fora de `cli/` e da S-881, nove funções de
+produção têm CRAP ≥ 100: `app_pyqt.selftest` (complexidade 17, 0%: roda no CI do bundle, fora da
+suíte), `qt/dialogos.DialogoDePartidas._repovoar` (16, 3%), `qt/__init__.dialogos_do_produto` (15, 4%),
+`taticas.tabela_de_solucoes` (19, 22%), `text/leitor.linhas_do_glifo` (37, 53%; dividida na S-860),
+`qt/painel_de_estudo.PainelDeEstudo.jogar_a_linha_do_livro` (13, 4%), `qt/__init__._apelidos` (12,
+5%), `qt/dialogos.DialogoDePartidas.procurar_por_nome` (11, 4%) e
+`qt/painel_da_galeria.PainelDaGaleria._lote_terminou` (11, 5%). E `cli/games.main` (19%) e
+`_census` (4%) são justamente o caminho do defeito da S-806.
+
+**Solução.** Um teste de comportamento por função, pelo caminho do usuário (`QTest` nos diálogos);
+`selftest` exercitado na suíte com o bundle simulado.
+
+**Aceite.** As nove abaixo de CRAP 30 no `crap.json` da S-801.

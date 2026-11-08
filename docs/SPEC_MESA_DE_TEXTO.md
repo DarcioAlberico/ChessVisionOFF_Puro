@@ -31,7 +31,7 @@ riscos. O documento rico e as ferramentas de edição que esta spec usa são os 
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
 > | S-702, S-710 a S-712, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
-> | S-800 a S-873 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
+> | S-800 a S-886 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
 
 Cada item traz o problema (com número quando há), a decisão, onde mora, e o **critério de aceite**,
 escrito para virar teste. "Puro" quer dizer sem toolkit: o módulo importa sem PyQt e o teste dele
