@@ -39,7 +39,7 @@ from typing import Any, Literal
 import cv2
 import numpy as np
 
-from .arquivo_do_dono import Leitura, Lida, conferir_versao, gravar_json, ler
+from .arquivo_do_dono import ConteudoIlegivel, Leitura, Lida, conferir_versao, gravar_json, ler
 from .atomic_io import write_image
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
@@ -57,6 +57,7 @@ from .gallery import load_annotations
 from .labels import LabelStore
 from .pdf_to_pgn import DiagramPosition, ProgressCallback, ScannedDiagram, iter_pdf_diagrams
 from .relogio import agora_iso
+from .ui.livros import chave_do_livro
 
 logger = logging.getLogger(__name__)
 
@@ -245,13 +246,25 @@ def carregar_fila(path: Path = DEFAULT_QUEUE_PATH) -> Leitura[ReviewQueue]:
 def _interpretar_fila(texto: str) -> ReviewQueue:
     raw = json.loads(texto)
     conferir_versao(raw, "version", QUEUE_VERSION, aceita_antiga=False)
-    return ReviewQueue(
+    fila = ReviewQueue(
         source_pdf=str(raw.get("source_pdf", "")),
         created_at=str(raw.get("created_at", "")),
         scanned_diagrams=int(raw.get("scanned_diagrams", 0)),
         pages_scanned=int(raw.get("pages_scanned", 0)),
-        items=[ReviewItem.from_dict(item) for item in raw.get("items", []) if isinstance(item, dict)],
     )
+    # Cada item no seu `try` (S-815): um campo que não é número num item levava a fila inteira a
+    # vazia. O que leu chega à tela; a trava continua, porque gravar o parcial apagaria o resto.
+    falhas: list[str] = []
+    for numero, bruto in enumerate(raw.get("items", []), start=1):
+        try:
+            if not isinstance(bruto, dict):
+                raise ValueError("não é um objeto")
+            fila.items.append(ReviewItem.from_dict(bruto))
+        except (TypeError, ValueError) as erro:
+            falhas.append(f"item {numero}: {erro}")
+    if falhas:
+        raise ConteudoIlegivel("; ".join(falhas[:3]) + (" ..." if len(falhas) > 3 else ""), parcial=fila)
+    return fila
 
 
 def gravar_fila(lida: Lida[ReviewQueue]) -> Path:
@@ -391,20 +404,32 @@ def rare_classes_from_labels(csv_path: Path, *, share: float = RARE_CLASS_SHARE)
 # --------------------------------------------------------------------- varredura
 
 
-def cache_board_image(board_rgb: np.ndarray, cache_dir: Path, pdf_name: str, page_index: int, diagram_index: int) -> Path:
+def cache_board_image(board_rgb: np.ndarray, cache_dir: Path, pdf_path: Path, page_index: int, diagram_index: int) -> Path:
     """Grava a miniatura do diagrama e devolve o caminho. Sobrescreve sem cerimônia.
 
     O nome é determinístico (livro/página/diagrama) para que revarrer o mesmo PDF reaproveite
-    o arquivo em vez de encher o disco com cópias datadas.
+    o arquivo em vez de encher o disco com cópias datadas. A pasta é a do **livro**, e não a do
+    nome do arquivo: ver `nome_do_livro`.
     """
-    directory = Path(cache_dir) / _safe_name(pdf_name)
+    directory = Path(cache_dir) / nome_do_livro(pdf_path)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"p{page_index + 1:05d}_d{diagram_index}.png"
     return write_image(path, cv2.cvtColor(board_rgb, cv2.COLOR_RGB2BGR))
 
 
+def nome_do_livro(pdf_path: Path | str) -> str:
+    """O nome de arquivo que é de um livro só: o nome legível e o hash curto da `ChaveDoLivro` (S-815).
+
+    Só o nome do arquivo não basta: o acervo tem livros duplicados em pastas diferentes, e
+    `a/Livro.pdf` e `b/Livro.pdf` gravavam as miniaturas na mesma pasta, uma por cima da outra.
+    """
+    chave = chave_do_livro(pdf_path)
+    legivel = _safe_name(Path(pdf_path).stem)
+    return legivel if chave is None else f"{legivel}-{chave.curta}"
+
+
 def _safe_name(name: str) -> str:
-    keep = "".join(char if char.isalnum() or char in " -_." else "_" for char in Path(name).stem)
+    keep = "".join(char if char.isalnum() or char in " -_." else "_" for char in name)
     return keep.strip() or "pdf"
 
 
@@ -440,7 +465,7 @@ def item_from_scanned(
     image_path = cache_board_image(
         scanned.board_rgb,
         cache_dir,
-        pdf_path.name,
+        pdf_path,
         position.page_index,
         position.diagram_index,
     )
@@ -630,9 +655,10 @@ def merge_queues(
 ) -> ReviewQueue:
     """Revarredura sem perder o que já foi revisado.
 
-    O item novo manda em tudo -- prioridade, motivos, FEN --, menos no `status`: se o
-    usuário já marcou aquele diagrama como resolvido, revarrer o livro não pode ressuscitá-lo
-    para a fila de pendentes.
+    O item novo manda em tudo -- prioridade, motivos -- menos no que é trabalho humano: o
+    `status`, porque o diagrama que o usuário já resolveu não pode voltar para a fila de
+    pendentes, e, no item feito, a FEN e o lado a jogar, porque o feito é a correção do editor
+    (S-815): trazer de volta a leitura do OCR deixaria o item resolvido com o erro consertado.
 
     **`pages` são as páginas que a passada de fato visitou, e sem elas isto encurta a fila**
     (S-119). Sem o argumento, `fresh` é tomada como a fila inteira e o que ela não tem
@@ -644,11 +670,8 @@ def merge_queues(
     Vale também para o cancelamento, e ali o defeito já existia: cancelar uma revarredura na
     página 40 gravava uma fila com as 40 primeiras páginas e só.
     """
-    previous = {(item.page_index, item.diagram_index): item.status for item in existing.items}
-    merged = [
-        replace(item, status=previous.get((item.page_index, item.diagram_index), item.status))
-        for item in fresh.items
-    ]
+    previous = {(item.page_index, item.diagram_index): item for item in existing.items}
+    merged = [_herdar(item, previous.get((item.page_index, item.diagram_index))) for item in fresh.items]
     if pages is not None:
         visitadas = set(pages)
         # Ordem: os preservados entram depois e o `sort` decide o lugar de cada um. Chave por
@@ -663,6 +686,15 @@ def merge_queues(
     )
     result.sort()
     return result
+
+
+def _herdar(novo: ReviewItem, antigo: ReviewItem | None) -> ReviewItem:
+    """O item da passada nova com o trabalho humano do antigo. Ver `merge_queues`."""
+    if antigo is None:
+        return novo
+    if antigo.status == "done":
+        return replace(novo, status="done", fen=antigo.fen, side_to_move=antigo.side_to_move)
+    return replace(novo, status=antigo.status)
 
 
 def error_rate(items: Iterable[ReviewItem], *, accept_threshold: float = ACCEPT_MIN_CONFIDENCE) -> float:

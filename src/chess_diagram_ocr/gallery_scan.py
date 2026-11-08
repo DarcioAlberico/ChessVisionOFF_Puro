@@ -316,7 +316,7 @@ def build_gallery_index(
         posicao = scanned.position
         paginas.add(posicao.page_index)
         imagem = cache_board_image(
-            scanned.board_rgb, cache_dir, pdf_path.name, posicao.page_index, posicao.diagram_index
+            scanned.board_rgb, cache_dir, pdf_path, posicao.page_index, posicao.diagram_index
         )
         contexto = posicao.context
         entradas.append(

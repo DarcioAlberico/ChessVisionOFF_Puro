@@ -358,7 +358,7 @@ class LivroComPgn(QObject):
         novos = []
         for k, diagrama in discordam:
             item = itens[k]
-            imagem = cache_board_image(item.board_rgb, DEFAULT_CACHE_DIR, self._pdf.name, pagina, k + 1)
+            imagem = cache_board_image(item.board_rgb, DEFAULT_CACHE_DIR, self._pdf, pagina, k + 1)
             novos.append(
                 ReviewItem(
                     pdf_path=str(self._pdf),

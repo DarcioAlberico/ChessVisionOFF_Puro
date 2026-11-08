@@ -602,6 +602,14 @@ falha inteiro por um campo não numérico.
 
 **Aceite.** Os dois passam.
 
+**Entregue** (2026-11-08): o item feito preserva a FEN **e o lado a jogar**, que o editor grava junto;
+o pulado segue a leitura nova. A pasta é `nome_do_livro` (`<nome>-<ChaveDoLivro.curta>`), e
+`cache_board_image` passou a receber o caminho do livro, não o nome. **A migração da pasta antiga não foi
+feita**: a fila e o índice da Galeria guardam o caminho absoluto de cada miniatura, e mover a pasta os
+deixaria apontando para o vazio; a antiga fica onde está, lida por esses caminhos, e a próxima varredura
+grava na nova. O item que não lê não é pulado em silêncio: os outros chegam à tela pela
+`ConteudoIlegivel(parcial=...)` da S-812, e a fila trava, porque gravar o parcial apagaria o item ruim.
+
 ## S-816 · `cvoff-scan` retomado preserva as pendências
 
 **Problema** (confirmado por leitura). `cli/scan.py:191-195` chama

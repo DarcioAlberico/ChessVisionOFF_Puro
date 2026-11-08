@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import chess
+import cv2
 import numpy as np
 from qt_app import MOTIVO, TEM_PYQT, aplicacao
 from test_inference import probs_for_fen
@@ -242,6 +244,40 @@ class QueueOrderingTests(unittest.TestCase):
         # A prioridade nova manda: o que mudou no livro tem de aparecer.
         self.assertAlmostEqual(next(i.priority for i in merged.items if i.page_index == 1), 80.0)
 
+    def test_revarrer_preserva_fen_corrigida(self) -> None:
+        """A correção do editor é o trabalho humano da fila, e o `status` sozinho não o guarda (S-815).
+
+        Antes a revarredura preservava o "feito" e trazia de volta a FEN do OCR: o item ficava
+        resolvido com a leitura errada que a pessoa tinha consertado.
+        """
+        corrigida = "4k3/8/8/8/8/8/8/R3K3 b - - 0 1"
+        antiga = ReviewQueue(items=[self.item(10, page=1), self.item(10, page=2)])
+        antiga.update_fen(0, corrigida, "b")  # o que `aplicar_correcao` do painel faz
+        antiga.mark(0, "done")
+        nova = ReviewQueue(items=[self.item(80, page=1), self.item(70, page=2)])
+
+        merged = merge_queues(antiga, nova)
+
+        feito = next(i for i in merged.items if i.page_index == 1)
+        self.assertEqual((feito.fen, feito.side_to_move, feito.status), (corrigida, "b", "done"))
+        pendente = next(i for i in merged.items if i.page_index == 2)
+        self.assertEqual(pendente.fen, f"{KINGS_ONLY} w - - 0 1", "o pendente segue a leitura nova")
+
+    def test_item_que_nao_le_nao_derruba_a_fila_inteira(self) -> None:
+        """Um campo não numérico num item levava a fila inteira a vazia (S-815). Agora os outros
+        itens chegam à tela, e a gravação continua travada: gravar o parcial apagaria o que não leu."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "review_queue.json"
+            bom = self.item(10, page=1).to_dict()
+            ruim = {**self.item(20, page=2).to_dict(), "page_index": "dois"}
+            path.write_text(json.dumps({"version": 1, "items": [bom, ruim]}), encoding="utf-8")
+
+            leitura = carregar_fila(path)
+
+        self.assertNotIsInstance(leitura, Lida)
+        self.assertEqual([i.page_index for i in leitura.valor.items], [1])
+        self.assertIn("item 2", leitura.mensagem)
+
     def test_a_passada_parcial_nao_encurta_a_fila(self) -> None:
         """**O defeito que a varredura retomável tornaria rotina** (S-119 + S-120).
 
@@ -332,6 +368,30 @@ class ItemFromScannedTests(unittest.TestCase):
             # As 64 confiancas viajam com o item: o heatmap abre sem reprocessar a pagina.
             self.assertEqual(len(item.square_confidences), 64)
             self.assertEqual(item.first_uncertain_square, item.uncertain_squares[0])
+
+    def test_dois_pdfs_de_mesmo_nome_nao_dividem_miniaturas(self) -> None:
+        """O acervo tem livros duplicados em pastas diferentes (S-815). Com a pasta de miniaturas
+        nomeada só pelo nome do arquivo, o segundo livro sobrescrevia as do primeiro, e a fila do
+        primeiro passava a mostrar o tabuleiro do outro."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raiz = Path(tmpdir)
+            itens = []
+            for pasta, tom in (("a", 40), ("b", 200)):
+                scanned = ScannedDiagram(
+                    position=position(page_index=6, min_confidence=0.30),
+                    prediction=prediction_from_probs(probs_for_fen(KINGS_ONLY, 0.30)),
+                    board_rgb=np.full((80, 80, 3), tom, dtype=np.uint8),
+                    detector_score=0.9,
+                )
+                item = item_from_scanned(scanned, pdf_path=raiz / pasta / "Livro.pdf", cache_dir=raiz / "cache")
+                assert item is not None
+                itens.append(item)
+
+            um, outro = (Path(item.board_image) for item in itens)
+            self.assertNotEqual(um, outro)
+            self.assertTrue(um.parent.name.startswith("Livro"), "o nome do livro continua legível na pasta")
+            self.assertEqual(int(cv2.imread(str(um))[0, 0, 0]), 40, "a miniatura do primeiro livro é a dele")
+            self.assertEqual(int(cv2.imread(str(outro))[0, 0, 0]), 200)
 
 
 class BuildQueueTests(unittest.TestCase):
