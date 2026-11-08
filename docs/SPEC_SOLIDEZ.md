@@ -514,6 +514,12 @@ faixa trocado pelo padrão e avisado. A faixa é aplicada na camada efetiva (S-8
 
 **Aceite.** Os dois passam. Nenhum `bool(` sobre valor do JSON em `settings.py`.
 
+**Entregue** (2026-11-08): `_numero(data, chave, padrao)` tira o tipo do padrão, e a faixa é outra
+decisão: `faixas()` (função, porque o teto de `threads` é desta máquina), aplicada por `_nas_faixas` no
+`load_settings`, depois do ambiente; a S-811 a leva para `aplicar_ambiente`. `NaN` e infinito são recusados
+já na leitura, em todo campo numérico, e não só no `timeout`. Os grampos que já existiam em `training` e
+`recognition` (`max(1, ...)`, `dpi` em [72, 600]) ficaram onde estavam. A guarda do aceite é por AST.
+
 ## S-811 · Camada de arquivo e camada efetiva
 
 **Problema** (confirmado por script). `settings.py:533-569`: carregar aplica as variáveis `CVOFF_*` sobre o

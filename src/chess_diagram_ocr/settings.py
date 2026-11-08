@@ -20,10 +20,12 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any, TypeVar
 from urllib.parse import urlparse
 
 from .arquivo_do_dono import Leitura, Lida, gravavel, ler
@@ -45,6 +47,8 @@ ENV_LOCAL_READER_PATH = "CVOFF_LOCAL_READER_PATH"
 ENV_LOCAL_READER_ENABLED = "CVOFF_LOCAL_READER_ENABLED"
 
 SETTINGS_VERSION = 1
+
+_N = TypeVar("_N", int, float)
 
 
 @dataclass(frozen=True)
@@ -127,9 +131,9 @@ class RemoteFenSettings:
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> RemoteFenSettings:
         return cls(
-            enabled=bool(data.get("enabled", False)),
+            enabled=_booleano(data, "enabled"),
             endpoint=str(data.get("endpoint", "") or "").strip(),
-            timeout=_flutuante(data, "timeout", 30.0),
+            timeout=_numero(data, "timeout", 30.0),
             # **O `acknowledged: true` de um arquivo antigo não é migrado (S-319).** Ele não
             # diz para qual endereço valia, e supor que valia para o de hoje seria reintroduzir
             # o defeito na migração: a pessoa vê o aviso uma vez a mais, e isso é o barato.
@@ -137,8 +141,8 @@ class RemoteFenSettings:
         )
 
 
-def _inteiro(data: Mapping[str, object], chave: str, padrao: int) -> int:
-    """O campo como `int`, ou o padrão **daquele campo**, com aviso nomeando-o (S-124).
+def _numero(data: Mapping[str, object], chave: str, padrao: _N) -> _N:
+    """O campo no tipo do padrão (`int` ou `float`), ou o padrão **daquele campo**, com aviso (S-124).
 
     **Por campo, e não um `except ValueError` em volta do arquivo inteiro.** Um `movetime_ms`
     com `"rápido"` dentro não pode zerar também o `endpoint`, que é trabalho do usuário e a
@@ -149,27 +153,84 @@ def _inteiro(data: Mapping[str, object], chave: str, padrao: int) -> int:
     sintaticamente perfeito. `app_tkinter` a chama no `__init__`, antes de a janela existir, e
     no bundle da S-55 (`console=False`) o traceback não aparece em lugar nenhum -- o programa
     simplesmente não abre.
+
+    **`NaN` e infinito não são número aqui (S-810).** O `json` do Python aceita `NaN` e
+    `Infinity`, e um `timeout` `NaN` passava. A faixa de cada campo é outra decisão, e mora em
+    `FAIXAS`, aplicada na camada efetiva.
     """
     bruto = data.get(chave)
     if bruto is None or bruto == "":
         return padrao
     try:
-        return int(str(bruto))
-    except (TypeError, ValueError):
-        logger.warning("settings.json: %r não é um número inteiro em %r; usando %r.", bruto, chave, padrao)
-        return padrao
-
-
-def _flutuante(data: Mapping[str, object], chave: str, padrao: float) -> float:
-    """Idem para `float`. Ver `_inteiro` para por que a coerção é por campo."""
-    bruto = data.get(chave)
-    if bruto is None or bruto == "":
-        return padrao
-    try:
-        return float(str(bruto))
+        valor = type(padrao)(str(bruto))
     except (TypeError, ValueError):
         logger.warning("settings.json: %r não é um número em %r; usando %r.", bruto, chave, padrao)
         return padrao
+    if not math.isfinite(valor):
+        logger.warning("settings.json: %r não é um número finito em %r; usando %r.", bruto, chave, padrao)
+        return padrao
+    return valor
+
+
+def _booleano(data: Mapping[str, object], chave: str) -> bool:
+    """`true` e `false` do JSON; **qualquer outra coisa é desligado**, com aviso (S-810).
+
+    Era `bool(data.get(...))`, e `bool("false")` é verdadeiro: um `"enabled": "false"` escrito à
+    mão ligava o envio da imagem para fora -- o contrário do que o cabeçalho promete. Nenhuma
+    grafia é adivinhada (`"sim"`, `1`): o campo é de ligar, e o lado seguro da dúvida é desligado.
+    Ausente é desligado sem aviso, que é o padrão e não defeito.
+    """
+    bruto = data.get(chave, False)
+    if isinstance(bruto, bool):
+        return bruto
+    logger.warning("settings.json: %r em %r não é true nem false; fica desligado.", bruto, chave)
+    return False
+
+
+@dataclass(frozen=True)
+class Faixa:
+    """Os valores aceitos por um campo numérico. `aberta_embaixo`: o mínimo não vale (S-810)."""
+
+    minimo: float
+    maximo: float
+    aberta_embaixo: bool = False
+
+    def contem(self, valor: float) -> bool:
+        embaixo = valor > self.minimo if self.aberta_embaixo else valor >= self.minimo
+        return embaixo and valor <= self.maximo
+
+    def __str__(self) -> str:
+        return f"{'(' if self.aberta_embaixo else '['}{self.minimo:g}, {self.maximo:g}]"
+
+
+def _nucleos() -> int:
+    return max(1, int(os.cpu_count() or 1))
+
+
+def faixas() -> dict[tuple[str, str], Faixa]:
+    """A faixa de cada campo que tem uma, por `(seção, campo)` (S-810).
+
+    **Uma função e não uma constante**, porque o teto de `threads` é desta máquina: o arquivo pode
+    ter vindo de outra, e é por isso que a faixa vale na camada efetiva e não é regravada.
+    """
+    return {
+        ("remote_fen", "timeout"): Faixa(0, 600, aberta_embaixo=True),
+        ("engine", "threads"): Faixa(1, _nucleos()),
+    }
+
+
+def _nas_faixas(settings: Settings) -> Settings:
+    """O valor fora da faixa vira o padrão **daquele campo**, com aviso -- como o que não é número."""
+    padrao = Settings()
+    for (secao, campo), faixa in faixas().items():
+        atual: Any = getattr(settings, secao)
+        valor = getattr(atual, campo)
+        if faixa.contem(valor):
+            continue
+        de_fabrica = getattr(getattr(padrao, secao), campo)
+        logger.warning("settings.json: %s.%s = %r fora de %s; usando %r.", secao, campo, valor, faixa, de_fabrica)
+        settings = replace(settings, **{secao: replace(atual, **{campo: de_fabrica})})
+    return settings
 
 
 @dataclass(frozen=True)
@@ -229,10 +290,10 @@ class EngineSettings:
     def from_dict(cls, data: Mapping[str, object]) -> EngineSettings:
         return cls(
             path=str(data.get("path", "") or "").strip(),
-            movetime_ms=_inteiro(data, "movetime_ms", 800),
-            threads=_inteiro(data, "threads", 1),
-            hash_mb=_inteiro(data, "hash_mb", 16),
-            multipv=_inteiro(data, "multipv", 3),
+            movetime_ms=_numero(data, "movetime_ms", 800),
+            threads=_numero(data, "threads", 1),
+            hash_mb=_numero(data, "hash_mb", 16),
+            multipv=_numero(data, "multipv", 3),
             syzygy_path=str(data.get("syzygy_path", "") or "").strip(),
         )
 
@@ -309,7 +370,7 @@ class OcrSettings:
         bruto = data.get("languages")
         idiomas = tuple(str(item).strip() for item in bruto if str(item).strip()) if isinstance(bruto, list) else ()
         return cls(
-            enabled=bool(data.get("enabled", False)),
+            enabled=_booleano(data, "enabled"),
             engine=str(data.get("engine", "") or "rapidocr").strip().lower(),
             languages=idiomas or DEFAULT_OCR_LANGUAGES,
             glyph_model=str(data.get("glyph_model", "") or "").strip(),
@@ -355,7 +416,7 @@ class LocalReaderSettings:
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> LocalReaderSettings:
         return cls(
-            enabled=bool(data.get("enabled", False)),
+            enabled=_booleano(data, "enabled"),
             path=str(data.get("path", "") or "").strip(),
         )
 
@@ -397,12 +458,12 @@ class TrainingSettings:
     def from_dict(cls, data: Mapping[str, object]) -> TrainingSettings:
         padrao = cls()
         return cls(
-            epochs=max(1, _inteiro(data, "epochs", padrao.epochs)),
-            batch_size=max(1, _inteiro(data, "batch_size", padrao.batch_size)),
-            lr=_flutuante(data, "lr", padrao.lr),
-            ocr_iterations=max(100, _inteiro(data, "ocr_iterations", padrao.ocr_iterations)),
-            ocr_learning_rate=_flutuante(data, "ocr_learning_rate", padrao.ocr_learning_rate),
-            ocr_negatives=max(0, _inteiro(data, "ocr_negatives", padrao.ocr_negatives)),
+            epochs=max(1, _numero(data, "epochs", padrao.epochs)),
+            batch_size=max(1, _numero(data, "batch_size", padrao.batch_size)),
+            lr=_numero(data, "lr", padrao.lr),
+            ocr_iterations=max(100, _numero(data, "ocr_iterations", padrao.ocr_iterations)),
+            ocr_learning_rate=_numero(data, "ocr_learning_rate", padrao.ocr_learning_rate),
+            ocr_negatives=max(0, _numero(data, "ocr_negatives", padrao.ocr_negatives)),
         )
 
 
@@ -426,8 +487,8 @@ class RecognitionSettings:
     def from_dict(cls, data: Mapping[str, object]) -> RecognitionSettings:
         padrao = cls()
         return cls(
-            dpi=min(600, max(72, _inteiro(data, "dpi", padrao.dpi))),
-            max_boards=min(64, max(1, _inteiro(data, "max_boards", padrao.max_boards))),
+            dpi=min(600, max(72, _numero(data, "dpi", padrao.dpi))),
+            max_boards=min(64, max(1, _numero(data, "max_boards", padrao.max_boards))),
         )
 
 
@@ -559,7 +620,7 @@ def load_settings(
     seguro aqui exatamente porque o padrão é "desligado", e um JSON truncado não pode ligar um
     envio para fora. Gravar é outra conversa -- ver `ler_arquivo`.
     """
-    return apply_environment(ler_arquivo(path).valor, env=env)
+    return _nas_faixas(apply_environment(ler_arquivo(path).valor, env=env))
 
 
 def save_settings(lida: Lida[Settings]) -> None:

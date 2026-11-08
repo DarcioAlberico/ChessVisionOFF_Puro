@@ -28,6 +28,7 @@ from chess_diagram_ocr.settings import (
     ENV_OCR_ENGINE,
     ENV_REMOTE_ENABLED,
     ENV_REMOTE_URL,
+    LocalReaderSettings,
     OcrSettings,
     RemoteFenSettings,
     Settings,
@@ -416,3 +417,78 @@ class ArquivoInvalidoAbreAJanelaTests(unittest.TestCase):
 
         self.assertEqual(settings.engine.movetime_ms, 800)
         self.assertFalse(settings.remote_fen.enabled, "e o padrão continua sendo não enviar nada")
+
+
+class BooleanoEstritoEFaixasTests(unittest.TestCase):
+    """Só `true` e `false` do JSON ligam e desligam, e número fora da faixa volta ao padrão (S-810).
+
+    `bool("false")` é verdadeiro: um `"enabled": "false"` escrito à mão **ligava** o envio da imagem
+    para fora, e o módulo promete o contrário -- um JSON ruim não liga envio. `timeout` aceitava
+    `NaN` e `-5`, e `threads` aceitava `-3`.
+    """
+
+    def setUp(self) -> None:
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        self.arquivo = Path(pasta.name) / "settings.json"
+
+    def _ler(self, texto: str) -> Settings:
+        self.arquivo.write_text(texto, encoding="utf-8")
+        return load_settings(self.arquivo, env={})
+
+    def test_enabled_string_false_e_desligado(self) -> None:
+        with self.assertLogs("chess_diagram_ocr.settings", level="WARNING") as registro:
+            remoto = RemoteFenSettings.from_dict({"enabled": "false", "endpoint": "http://x"})
+        self.assertFalse(remoto.is_usable)
+        self.assertIn("enabled", "\n".join(registro.output))
+
+    def test_qualquer_coisa_que_nao_seja_true_desliga_nas_tres_secoes(self) -> None:
+        for bruto in ("true", 1, "sim", None, [True]):
+            with self.subTest(bruto=bruto), self.assertLogs("chess_diagram_ocr.settings", level="WARNING"):
+                self.assertFalse(RemoteFenSettings.from_dict({"enabled": bruto, "endpoint": "http://x"}).enabled)
+                self.assertFalse(OcrSettings.from_dict({"enabled": bruto}).enabled)
+                self.assertFalse(LocalReaderSettings.from_dict({"enabled": bruto, "path": "x"}).enabled)
+
+    def test_true_e_false_do_json_valem_e_nao_avisam(self) -> None:
+        with self.assertNoLogs("chess_diagram_ocr.settings", level="WARNING"):
+            self.assertTrue(RemoteFenSettings.from_dict({"enabled": True, "endpoint": "http://x"}).is_usable)
+            self.assertFalse(OcrSettings.from_dict({"enabled": False}).enabled)
+            self.assertFalse(LocalReaderSettings.from_dict({}).enabled, "ausente é desligado, sem aviso")
+
+    def test_timeout_nan_volta_ao_padrao(self) -> None:
+        with self.assertLogs("chess_diagram_ocr.settings", level="WARNING"):
+            self.assertEqual(30.0, self._ler('{"remote_fen": {"timeout": NaN}}').remote_fen.timeout)
+
+    def test_timeout_e_threads_fora_da_faixa_voltam_ao_padrao(self) -> None:
+        for texto, ler, esperado in (
+            ('{"remote_fen": {"timeout": -5}}', lambda s: s.remote_fen.timeout, 30.0),
+            ('{"remote_fen": {"timeout": 0}}', lambda s: s.remote_fen.timeout, 30.0),
+            ('{"remote_fen": {"timeout": 601}}', lambda s: s.remote_fen.timeout, 30.0),
+            ('{"remote_fen": {"timeout": 600}}', lambda s: s.remote_fen.timeout, 600.0),
+            ('{"engine": {"threads": -3}}', lambda s: s.engine.threads, 1),
+            ('{"engine": {"threads": 100000}}', lambda s: s.engine.threads, 1),
+        ):
+            with self.subTest(texto=texto):
+                self.assertEqual(esperado, ler(self._ler(texto)))
+
+    def test_threads_ate_os_nucleos_desta_maquina_vale(self) -> None:
+        with mock.patch("os.cpu_count", return_value=8):
+            self.assertEqual(8, self._ler('{"engine": {"threads": 8}}').engine.threads)
+            self.assertEqual(1, self._ler('{"engine": {"threads": 9}}').engine.threads)
+
+    def test_nenhum_bool_sobre_valor_do_json(self) -> None:
+        """O `bool(data.get(...))` é o defeito inteiro: `bool` de qualquer texto não vazio é `True`."""
+        import ast
+
+        import chess_diagram_ocr.settings as modulo
+
+        arvore = ast.parse(Path(modulo.__file__).read_text(encoding="utf-8"))
+        achados = [
+            no.lineno
+            for no in ast.walk(arvore)
+            if isinstance(no, ast.Call)
+            and isinstance(no.func, ast.Name)
+            and no.func.id == "bool"
+            and any(isinstance(sub, ast.Attribute) and sub.attr == "get" for sub in ast.walk(no))
+        ]
+        self.assertEqual([], achados)
