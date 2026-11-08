@@ -167,6 +167,14 @@ declarado "semelhante de propósito" com a razão escrita no próprio JSON.
 
 **Aceite.** Rodada sobre `src/` em menos de 30 s. A catraca acusa uma cópia acrescentada.
 
+**Entregue** (2026-11-08): 2.943 funções com 60+ tokens e **78** pares ≥ 0,8 (20 com 1,00), contra os 65 da
+revisão: o protótipo tokenizava o trecho de cada função solto, e o `TokenError` do trecho indentado truncava
+a sequência; aqui o arquivo é tokenizado inteiro e fatiado por linha. Par de função com a sua própria
+aninhada não conta. Os candidatos saem por filtro de prefixo (exato para Jaccard), e a rodada leva ~8 s. A
+f-string vale um `S` só, para que o 3.13 meça o mesmo que o 3.10 (conferido: os mesmos 78). O par é
+identificado por arquivo e nome qualificado; par que some também reprova até `--gravar`, que é como o teto
+desce, e par novo só entra no registro com `--gravar --aceitar "razão"`, que vai para o campo `proposito`.
+
 ## S-803 · mutator no repositório, com piloto em seis módulos puros
 
 **Problema.** Não se sabe quanto do que a suíte cobre ela de fato verifica. `mutmut` não roda nativo no
