@@ -303,7 +303,7 @@ def _bbox_de(valor: Any, onde: str) -> tuple[float, float, float, float]:
 def _procedencia_de(valor: Any, onde: str) -> Procedencia:
     if valor not in PROCEDENCIAS:
         raise PaginaInvalida(f"{onde}: procedência {valor!r} não é uma de {PROCEDENCIAS}")
-    return valor  # type: ignore[return-value]
+    return valor
 
 
 def _envolver(caixas: Sequence[tuple[float, float, float, float]]) -> tuple[float, float, float, float]:
@@ -732,7 +732,7 @@ def bloco_de_json(dados: Any, onde: str = "bloco") -> Bloco:
     classe = _BLOCOS.get(str(tipo))
     if classe is None:
         raise PaginaInvalida(f"{onde}: tipo de bloco {tipo!r} não é um de {sorted(_BLOCOS)}")
-    return classe.de_json(dados, onde)  # type: ignore[no-any-return]
+    return classe.de_json(dados, onde)
 
 
 @dataclass(frozen=True)

@@ -1167,7 +1167,7 @@ class PainelDeEstudo(QWidget):
             # A tabela de finais **antes** do motor, e na mesma thread (S-538): ela responde em
             # microssegundos e a resposta dela vence a do motor onde existe. Perguntar depois faria
             # a tela mostrar a estimativa e trocá-la um instante depois.
-            self._resultado_de_tabela = self._perguntar_a_tabela(board)  # type: ignore[assignment]
+            self._resultado_de_tabela = self._perguntar_a_tabela(board)
             # **Quantas linhas é preferência desde a S-536**, e `CANDIDATOS_DO_MOTOR` é o que
             # a sala pede quando ela não diz nada -- a medida da S-286, no lugar em que ela
             # sempre esteve.

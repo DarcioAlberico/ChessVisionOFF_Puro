@@ -1,0 +1,39 @@
+{
+ "pacotes": {
+  "app_pyqt.py": {
+   "type_ignore": 0,
+   "any": 2,
+   "except_exception": 5
+  },
+  "cli": {
+   "type_ignore": 7,
+   "any": 191,
+   "except_exception": 24
+  },
+  "detection": {
+   "type_ignore": 0,
+   "any": 0,
+   "except_exception": 3
+  },
+  "qt": {
+   "type_ignore": 82,
+   "any": 217,
+   "except_exception": 77
+  },
+  "raiz": {
+   "type_ignore": 21,
+   "any": 271,
+   "except_exception": 48
+  },
+  "text": {
+   "type_ignore": 44,
+   "any": 107,
+   "except_exception": 8
+  },
+  "ui": {
+   "type_ignore": 10,
+   "any": 45,
+   "except_exception": 10
+  }
+ }
+}

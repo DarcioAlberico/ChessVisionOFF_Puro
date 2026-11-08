@@ -150,9 +150,9 @@ class FieldDraft:
         nova = tuple(float(valor) for valor in bbox)
         if len(nova) != 4:
             return False
-        if any(bbox_iou(nova, existente.bbox) >= SAME_DIAGRAM_IOU for existente in self.diagrams):  # type: ignore[arg-type]
+        if any(bbox_iou(nova, existente.bbox) >= SAME_DIAGRAM_IOU for existente in self.diagrams):
             return False
-        self.diagrams.append(AnnotatedDiagram(bbox=nova, note=note))  # type: ignore[arg-type]
+        self.diagrams.append(AnnotatedDiagram(bbox=nova, note=note))
         self.diagrams.sort(key=lambda item: (round(item.bbox[1], 1), round(item.bbox[0], 1)))
         return True
 

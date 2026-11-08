@@ -228,6 +228,13 @@ nome do pacote.
 **Aceite.** `mypy` verde com `warn_unused_ignores`. A catraca está verde em `main` e vermelha com o
 acréscimo.
 
+**Entregue** (2026-11-08): 24 ignores apagados, nenhum preso a versão -- a CI só roda o mypy na perna
+3.10, no Windows e com o `uv.lock`, que é o ambiente do `.venv`. As contagens são lidas pela árvore e não
+por `grep`, por isso diferem das do problema: 164 `type: ignore` (os que o mypy obedece), 833 usos de `Any`
+(sem o `import`) e 175 `except Exception` (com tupla), em `docs/metrics/catraca_de_tipos.json` por
+`tools/qualidade/catraca_de_tipos.py`. O `detection/` entra como pacote próprio. Contagem que desce
+também reprova, dizendo o número novo, até o `--gravar`.
+
 ## S-805 · Infraestrutura de teste
 
 **Problema.** Quatro furos, todos confirmados pela auditoria dos testes:

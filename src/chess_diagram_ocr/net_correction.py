@@ -64,7 +64,7 @@ class _RedirectRefused(urllib.request.HTTPRedirectHandler):
     é uma requisição que falha, é uma imagem que já saiu da máquina.
     """
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
         destino = urlsplit(newurl).netloc or newurl
         raise RuntimeError(
             f"O serviço respondeu com um redirecionamento para {destino}, que não é o endereço "

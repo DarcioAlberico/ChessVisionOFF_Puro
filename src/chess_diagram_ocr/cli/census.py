@@ -256,7 +256,7 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_BAD_INPUT
         alcance = "livro inteiro" if pages is None else f"{pages} página(s)"
         print(f"Varrendo {pdf_path.name} ({alcance})...")
-        book = census_book(pdf_path, **comuns)  # type: ignore[arg-type]
+        book = census_book(pdf_path, **comuns)
         _print_book(book)
         census = DetectionCensus(
             books=[book],
@@ -274,7 +274,7 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_BAD_INPUT
         alcance = "livro inteiro" if pages is None else f"{pages} página(s) por livro"
         print(f"Varrendo {pdf_dir} ({alcance})...")
-        census = census_collection(pdf_dir, on_book=_print_book, **comuns)  # type: ignore[arg-type]
+        census = census_collection(pdf_dir, on_book=_print_book, **comuns)
 
     _print_census(census)
 

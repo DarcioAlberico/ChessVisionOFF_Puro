@@ -366,7 +366,7 @@ def linhas_da_camada(page: object, *, escala_px: float) -> list[_Cru]:
     from ..pdf_text import page_text_lines
 
     cruas: list[_Cru] = []
-    for linha in page_text_lines(page):  # type: ignore[arg-type]
+    for linha in page_text_lines(page):
         texto = linha.text.strip()
         if not texto:
             continue
@@ -1327,7 +1327,7 @@ def _cruas_da_camada(
 
     return [
         *linhas_da_camada(page, escala_px=escala_px),
-        *margem_no_corpo(margem, altura, escala_px=escala_px, correntes=correntes),  # type: ignore[arg-type]
+        *margem_no_corpo(margem, altura, escala_px=escala_px, correntes=correntes),
     ]
 
 

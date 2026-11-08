@@ -167,7 +167,7 @@ def memoria_da_maquina_mb() -> int:
 
         estado = _Status()
         estado.dwLength = ctypes.sizeof(_Status)
-        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(estado))  # type: ignore[attr-defined]
+        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(estado))
         return int(estado.ullTotalPhys / (1024 * 1024))
     except Exception as exc:  # noqa: BLE001 - ver o docstring: o número é só o teto de um campo
         logger.debug("Memória da máquina não pôde ser lida: %s", exc)

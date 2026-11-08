@@ -64,7 +64,7 @@ def _census(extrato: HumanExtract) -> None:
     escolhas = sum(1 for registro in registros if registro.get("chosen_game"))
     vezes = sum(1 for registro in registros if registro.get("side_to_move"))
     lances = sum(1 for registro in registros if registro.get("move_number"))
-    headers = sum(len(registro.get("headers") or {}) for registro in registros)  # type: ignore[arg-type]
+    headers = sum(len(registro.get("headers") or {}) for registro in registros)
 
     print(f"  Diagramas com algo humano ...... {len(registros)} em {extrato.books} livro(s)")
     print(f"    partida escolhida a mão ...... {escolhas}")

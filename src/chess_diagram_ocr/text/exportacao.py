@@ -609,7 +609,7 @@ def formato_de(extensao: str, **argumentos: object) -> Formato:
     """O formato daquela extensão. Levanta `KeyError` para o que ninguém escreveu."""
     if extensao not in FORMATOS:
         raise KeyError(f"formato desconhecido: {extensao!r}. Os declarados estão em FORMATOS.")
-    return FORMATOS[extensao](**argumentos)  # type: ignore[operator]
+    return FORMATOS[extensao](**argumentos)
 
 
 def suporte_por_formato() -> dict[str, dict[str, bool]]:

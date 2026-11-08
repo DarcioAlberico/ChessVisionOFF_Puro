@@ -33,8 +33,8 @@ dependencies = [
     "torch>=2.6",
     "torchvision>=0.21",
     "chess>=1.11",
-    # A janela (S-505). Era o extra `qt` enquanto o `app_tkinter.py` existia e o Qt era a
-    # segunda janela; no dia do corte ele passou a ser a UNICA, e uma dependencia sem a qual o
+    # A janela (S-505), a do `app_pyqt.py`. Era o extra `qt` enquanto a janela Tk existia e o
+    # Qt era a segunda; no dia do corte ele passou a ser a UNICA, e uma dependencia sem a qual o
     # programa nao abre nao e opcional. O `ttkbootstrap>=2.0` saiu daqui no mesmo movimento:
     # ele vestia o `ttk`, e nao ha mais `ttk` para vestir.
     #
@@ -228,7 +228,7 @@ where = ["src"]
 testpaths = ["tests"]
 markers = ["requer_tesseract: precisa do binário do Tesseract, e pula onde ele não existe (S-720)"]
 # S-37: a suite roda num checkout sem instalacao editavel. Nao substitui `uv sync` -- o
-# `app_tkinter.py` e os `cvoff-*` continuam dependendo dela, e `tests/test_environment.py`
+# `app_pyqt.py` e os `cvoff-*` continuam dependendo dela, e `tests/test_environment.py`
 # e quem confere isso. Aqui o que se garante e que um diretorio movido nao desligue 611
 # testes em silencio, que foi o estado encontrado na analise da Fase 7.
 pythonpath = ["src"]
@@ -264,10 +264,10 @@ ignore = [
 
 [tool.mypy]
 python_version = "3.10"
-# `app_tkinter.py` ficava de fora, e e onde tudo e montado -- 1.302 linhas em que o
-# CONTRIBUTING registra que um `AttributeError` sobreviveu a 509 testes verdes (S-137). Ele
-# passa limpo; o que faltava era a guarda. `packaging/` entra pela mesma razao: o `--selftest`
-# decide o que o usuario recebe.
+# `app_pyqt.py` entra porque e onde tudo e montado. A janela de antes, a Tk, ficava de fora --
+# 1.302 linhas em que o CONTRIBUTING registra que um `AttributeError` sobreviveu a 509 testes
+# verdes (S-137); o que faltava era a guarda. `packaging/` entra pela mesma razao: o
+# `--selftest` decide o que o usuario recebe.
 #
 # **O `.spec` fica de fora do mypy, e a razao e do formato (S-391).** O mypy so le `.py`, e o
 # arquivo nao pode virar um: o PyInstaller o executa injetando `SPECPATH`, `Analysis`, `EXE` e
@@ -280,6 +280,13 @@ python_version = "3.10"
 files = ["src", "app_pyqt.py", "packaging", "tools"]
 ignore_missing_imports = true
 warn_redundant_casts = true
+# S-804: um `# type: ignore` que ja nao silencia nada vira erro. Sem isto ele ficava para sempre,
+# e o proximo erro de verdade naquela linha entrava calado; foram 24 apagados no dia em que
+# ligou. A CI roda o mypy so na perna 3.10 e no Windows, com as versoes do `uv.lock`: um ignore
+# que so serve noutra plataforma leva `unused-ignore` no codigo, e nao sai daqui. As contagens
+# de `type: ignore`, `Any` e `except Exception` por pacote estao em
+# `docs/metrics/catraca_de_tipos.json`, e so descem (`tools/qualidade/catraca_de_tipos.py`).
+warn_unused_ignores = true
 no_implicit_optional = true
 check_untyped_defs = true
 

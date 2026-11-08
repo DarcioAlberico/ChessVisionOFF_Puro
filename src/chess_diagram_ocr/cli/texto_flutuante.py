@@ -97,7 +97,7 @@ def _guarda():  # noqa: ANN202 - a função da suíte, importada de tests/
     raiz = Path(__file__).resolve().parents[3] / "tests"
     if str(raiz) not in sys.path:
         sys.path.insert(0, str(raiz))
-    from paridade_do_texto import divergencias  # type: ignore[import-not-found]
+    from paridade_do_texto import divergencias
 
     return divergencias
 

@@ -168,7 +168,7 @@ def _declared_source(context: DiagramContext | None) -> SideSource:
     existia. Inventar `"unknown"` para ele seria perder informação que se tem.
     """
     origin = getattr(context, "side_to_move_origin", None)
-    return origin if origin in _TEXT_SOURCES else "text"  # type: ignore[return-value]
+    return origin if origin in _TEXT_SOURCES else "text"
 
 
 def _turn_proven_by_legality(placement: str) -> chess.Color | None:

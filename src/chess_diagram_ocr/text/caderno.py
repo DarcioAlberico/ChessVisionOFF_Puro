@@ -211,7 +211,7 @@ def _processo_vivo(pid: int) -> bool:
     if pid <= 0:
         return False
     if sys.platform == "win32":
-        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        kernel32 = ctypes.windll.kernel32
         alca = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
         if not alca:
             return False

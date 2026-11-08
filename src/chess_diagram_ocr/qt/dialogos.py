@@ -245,7 +245,7 @@ class DialogoDeBases(QDialog):
             ("Adicionar .pgn de outra pasta…", self.adicionar_do_disco),
         ):
             botao = QPushButton(texto_botao, self)
-            botao.clicked.connect(funcao)  # type: ignore[arg-type]
+            botao.clicked.connect(funcao)
             tema.aplicar_papel(botao, estilos.NEUTRO)
             botoes.addWidget(botao)
         botoes.addStretch(1)

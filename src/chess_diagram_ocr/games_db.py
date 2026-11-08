@@ -507,13 +507,13 @@ class FluxoDePGN:
 
     def _abrir(self, fisico: Path, membro: tuple[Path, str] | None) -> Any:
         if membro is not None:
-            self._zipado = zipfile.ZipFile(self._contador)  # type: ignore[arg-type]
+            self._zipado = zipfile.ZipFile(self._contador)
             return self._zipado.open(membro[1])
         sufixo = _sufixo_de_base(fisico.name)
         if sufixo == ".pgn.gz":
-            return gzip.GzipFile(fileobj=self._contador, mode="rb")  # type: ignore[arg-type]
+            return gzip.GzipFile(fileobj=self._contador, mode="rb")
         if sufixo == ".pgn.bz2":
-            return bz2.BZ2File(self._contador)  # type: ignore[arg-type]
+            return bz2.BZ2File(self._contador)
         if sufixo == ".pgn.zst":
             if not _TEM_ZSTANDARD:
                 raise OSError(f"Ler {fisico.name} pede o pacote `zstandard` (uv pip install zstandard).")
