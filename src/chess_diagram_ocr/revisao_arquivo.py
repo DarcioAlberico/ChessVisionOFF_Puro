@@ -18,17 +18,17 @@ o mesmo arquivo, que é a propriedade que importa num arquivo relido todo dia.
 
 from __future__ import annotations
 
-import json
 import logging
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from .arquivo_do_dono import Leitura, Lida, conferir_versao, gravar_json, ler
+from .arquivo_do_dono import Leitura, Lida, gravar_lista, ler, ler_lista
 from .config import DATA_DIR
 from .revisao_espacada import Estado
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["CAMINHO_PADRAO", "ESQUEMA", "Baralho", "carregar", "gravar"]
+__all__ = ["CAMINHO_PADRAO", "ESQUEMA", "Baralho", "BaralhoDoArquivo", "carregar", "gravar"]
 
 CAMINHO_PADRAO = DATA_DIR / "revisao.json"
 """Em `data/`, como todo artefato de trabalho, e fora do git: é o histórico de estudo de alguém."""
@@ -39,42 +39,53 @@ Baralho = dict[str, Estado]
 """Chave do item -> o estado dele. É o que `revisao_espacada.agenda` recebe."""
 
 
-def carregar(*, caminho: Path | None = None) -> Leitura[Baralho]:
+@dataclass(frozen=True)
+class BaralhoDoArquivo:
+    """O baralho como está no arquivo: os estados que leram e os itens que não leram (S-813).
+
+    `crus` são os itens que não viraram `Estado` -- data corrompida, chave repetida, item que não é
+    objeto --, guardados como vieram e devolvidos iguais na gravação. Não são agendados, mas
+    também não somem: antes, a primeira sessão depois da corrupção os apagava do disco.
+    """
+
+    estados: Baralho = field(default_factory=dict)
+    crus: tuple[object, ...] = ()
+
+    def com(self, estados: Baralho) -> BaralhoDoArquivo:
+        """O mesmo arquivo com outros estados: é como se grava o que a sessão de treino mudou."""
+        return replace(self, estados=estados)
+
+
+def carregar(*, caminho: Path | None = None) -> Leitura[BaralhoDoArquivo]:
     """O baralho gravado. Vazio quando não há arquivo -- o primeiro dia é o caso normal.
 
     **Um estado ilegível não derruba os outros.** Um baralho de 600 itens em que um tem data
     corrompida ainda tem 599 agendamentos dentro, e perdê-los todos por causa de um seria perder
     meses de revisão -- que é o único dado deste programa que não se refaz varrendo o livro de novo.
+    O item ruim não é agendado, e volta cru na gravação (S-813).
 
     **O arquivo ilegível, ou de esquema mais novo, é leitura travada (S-812):** o baralho vazio vale
     em memória, e `gravar` recusa escrevê-lo por cima dos 600 itens.
     """
-    return ler(Path(caminho) if caminho is not None else CAMINHO_PADRAO, _interpretar, dict)
+    return ler(Path(caminho) if caminho is not None else CAMINHO_PADRAO, _interpretar, BaralhoDoArquivo)
 
 
-def _interpretar(texto: str) -> Baralho:
-    dados = json.loads(texto)
-    conferir_versao(dados, "esquema", ESQUEMA, aceita_antiga=True)
-
-    baralho: Baralho = {}
-    for bruto in dados.get("itens", []):
-        try:
-            estado = Estado.de_json(bruto)
-        except (TypeError, ValueError) as erro:
-            logger.debug("Item ilegível no baralho: %s", erro)
-            continue
-        if estado.chave:
-            baralho[estado.chave] = estado
-    return baralho
+def _interpretar(texto: str) -> BaralhoDoArquivo:
+    estados, crus = ler_lista(
+        texto, esquema=ESQUEMA, lista="itens", ler_item=Estado.de_json, chave=lambda estado: estado.chave
+    )
+    return BaralhoDoArquivo(estados, crus)
 
 
-def gravar(lida: Lida[Baralho]) -> Path:
+def gravar(lida: Lida[BaralhoDoArquivo]) -> Path:
     """Grava o baralho inteiro onde ele foi lido. Devolve o caminho, inclusive o do baralho vazio.
 
     **Vazio não apaga o arquivo**, e é a diferença para `estudo_arquivo` e `taticas_arquivo`. Lá o
     vazio quer dizer "não há nada a guardar"; aqui ele pode querer dizer "a pessoa apagou o
     histórico", e um apagamento que deixa o arquivo antigo no disco ressuscitaria o histórico na
-    abertura seguinte. Só sobre uma leitura que leu (S-812).
+    abertura seguinte. Só sobre uma leitura que leu (S-812). Os itens crus vão depois dos que
+    leram, iguais a como vieram (S-813).
     """
-    estados = sorted(lida.valor.values(), key=lambda e: e.chave)
-    return gravar_json(lida, {"esquema": ESQUEMA, "itens": [estado.para_json() for estado in estados]})
+    estados = sorted(lida.valor.estados.values(), key=lambda e: e.chave)
+    itens = [estado.para_json() for estado in estados]
+    return gravar_lista(lida, esquema=ESQUEMA, lista="itens", itens=itens, crus=lida.valor.crus)

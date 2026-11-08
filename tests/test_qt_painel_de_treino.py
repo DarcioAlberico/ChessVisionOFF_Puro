@@ -16,6 +16,7 @@ existe depois de o Qt desenhar, e são quatro coisas que quebram caladas:
 
 from __future__ import annotations
 
+import json
 import time
 import unittest
 from datetime import date, timedelta
@@ -186,11 +187,11 @@ class JanelaDeTreinoTests(unittest.TestCase):
 
     def test_fechar_grava_o_baralho(self) -> None:
         caminho = self.pasta / "revisao.json"
-        janela = self.janela(gravar=lambda baralho: revisao_arquivo.gravar(Lida(baralho, caminho)))
+        janela = self.janela(gravar=lambda baralho: revisao_arquivo.gravar(Lida(revisao_arquivo.BaralhoDoArquivo(baralho), caminho)))
         janela.jogar(chess.Move.from_uci("f3f7"))
         janela.reject()
         self.app.processEvents()
-        self.assertEqual([_exercicio().chave], list(revisao_arquivo.carregar(caminho=caminho).valor))
+        self.assertEqual([_exercicio().chave], list(revisao_arquivo.carregar(caminho=caminho).valor.estados))
 
     def test_um_item_ja_revisto_hoje_nao_volta_na_fila_de_hoje(self) -> None:
         """**E a fila vazia diz quando o material volta, sem desenhar tabuleiro** (S-540, r2). A
@@ -486,7 +487,9 @@ class TaticasNaSalaTests(unittest.TestCase):
         estado = revisao_espacada.estado_inicial(
             _exercicio().chave, revisao_espacada.FACIL, hoje=date.today() + timedelta(days=1)
         )
-        revisao_arquivo.gravar(Lida({estado.chave: estado}, self.pasta / "revisao.json"))
+        revisao_arquivo.gravar(
+            Lida(revisao_arquivo.BaralhoDoArquivo({estado.chave: estado}), self.pasta / "revisao.json")
+        )
         painel = self.sala()
         janela = painel.treinar_a_agenda()
         self.addCleanup(descartar, janela)
@@ -504,6 +507,29 @@ class TaticasNaSalaTests(unittest.TestCase):
         alvo = self.pasta / "placar.json"
         self.assertTrue(alvo.exists())
         self.assertEqual(1, placar_mod.carregar(caminho=alvo).valor.do_livro(LIVRO).certos)
+
+    def test_item_ruim_do_baralho_e_do_placar_sobrevive_a_sessao(self) -> None:
+        """**S-813, de ponta a ponta.** Um item do baralho e um livro do placar que não leem não
+        entram na sessão, mas a sessão que os grava os devolve iguais."""
+        taticas_arquivo.gravar(LIVRO, [_exercicio()], pasta=self.pasta / "taticas")
+        item_ruim = {"chave": "outro.pdf#3#0", "vencimento": "isto-nao-e-data"}
+        livro_ruim = {"livro": "outro.pdf", "certos": "x"}
+        baralho = self.pasta / "revisao.json"
+        placar = self.pasta / "placar.json"
+        baralho.write_text(json.dumps({"esquema": 1, "itens": [item_ruim]}), encoding="utf-8")
+        placar.write_text(json.dumps({"esquema": 1, "livros": [livro_ruim]}), encoding="utf-8")
+        painel = self.sala()
+        janela = painel.treinar_a_agenda()
+        self.addCleanup(descartar, janela)
+        janela.jogar(chess.Move.from_uci("f3f7"))
+        janela.reject()
+        self.app.processEvents()
+        itens = json.loads(baralho.read_text(encoding="utf-8"))["itens"]
+        self.assertIn(item_ruim, itens)
+        self.assertIn(_exercicio().chave, [item.get("chave") for item in itens])
+        livros = json.loads(placar.read_text(encoding="utf-8"))["livros"]
+        self.assertIn(livro_ruim, livros)
+        self.assertEqual(1, placar_mod.carregar(caminho=placar).valor.do_livro(LIVRO).certos)
 
     def test_os_dois_comandos_tem_metodo_e_botao_no_mais(self) -> None:
         from chess_diagram_ocr.ui import barra_da_sala

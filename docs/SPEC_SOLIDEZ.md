@@ -565,6 +565,14 @@ gravação. O placar ganha o mesmo.
 
 **Aceite.** Os dois passam. Um placar com um item ruim entre dez bons carrega os dez e grava os onze.
 
+**Entregue** (2026-11-08): a S-812 já tinha posto o `ValueError` do `"1.0"` dentro do `try`, mas ele
+travava o arquivo como ilegível. O esquema não é lido pelo `_numero` da S-810, que devolve o padrão para
+o que não é número e leria um `"2.0"` como esquema 1: `arquivo_do_dono.conferir_esquema` o lê como
+número, e `"2.0"` ou `1.5` são esquema futuro. Os dois arquivos têm o mesmo formato, e o formato passou a
+morar em `arquivo_do_dono` (`ler_lista`, `gravar_lista`), o que tirou também o par `gravar` do dryer. O
+item cru inclui a chave vazia ou repetida, não só o que levanta. O baralho em memória virou
+`BaralhoDoArquivo(estados, crus)`, como o `ConfiguracaoDoArquivo` da S-811; o placar ganhou `crus`.
+
 ## S-814 · Sala de estudo: partida que não lê sobrevive à gravação
 
 **Problema** (plausível). `estudo_arquivo.py:150-168`, `:184-202` e `estudo.py:505-512`, `:679-692`: partida

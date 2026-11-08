@@ -3251,13 +3251,17 @@ class PainelDeEstudo(QWidget):
     def _caminho_da_revisao(self) -> Path:
         return self._pasta_de_treino / revisao_arquivo.CAMINHO_PADRAO.name
 
-    def _gravar_o_baralho(self, leitura: Leitura[revisao_arquivo.Baralho], baralho: revisao_arquivo.Baralho) -> None:
+    def _gravar_o_baralho(
+        self, leitura: Leitura[revisao_arquivo.BaralhoDoArquivo], baralho: revisao_arquivo.Baralho
+    ) -> None:
         """A gravação que a janela de treino chama ao fechar. Método e não `lambda`: um `lambda`
         não tem nome para o critério de aceite citar, e a S-546 já registrou o argumento.
 
-        Grava sobre a leitura de onde o baralho veio, e só se ela leu (S-812)."""
+        Grava sobre a leitura de onde o baralho veio, e só se ela leu (S-812), com os itens que não
+        leram de volta ao lado (S-813)."""
         try:
-            revisao_arquivo.gravar(gravavel(leitura).com(baralho))
+            lida = gravavel(leitura)
+            revisao_arquivo.gravar(lida.com(lida.valor.com(baralho)))
         except GravacaoRecusada as recusa:
             self.set_status(str(recusa))
 
@@ -3281,7 +3285,7 @@ class PainelDeEstudo(QWidget):
         janela = JanelaDeTreino(
             self,
             exercicios=exercicios,
-            baralho=leitura.valor,
+            baralho=leitura.valor.estados,
             placar=self.placar,
             analisador=self._analyzer,
             gravar=partial(self._gravar_o_baralho, leitura),

@@ -25,9 +25,11 @@ apagar o arquivo para destravar -- que é a saída que a frase oferece. A cópia
 
 from __future__ import annotations
 
+import json
 import logging
+import math
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -47,8 +49,11 @@ __all__ = [
     "Lida",
     "VersaoFutura",
     "com_valor",
+    "conferir_esquema",
+    "gravar_lista",
     "gravavel",
     "ler",
+    "ler_lista",
 ]
 
 T = TypeVar("T")
@@ -130,6 +135,75 @@ class EsquemaFuturo(Generic[T]):
 
 
 Leitura: TypeAlias = Lida[T] | Ilegivel[T] | EsquemaFuturo[T]
+
+
+def conferir_esquema(declarado: object, atual: int) -> None:
+    """O esquema que o arquivo declara, conferido contra o `atual` deste programa (S-813).
+
+    Levanta `VersaoFutura` se ele é mais novo, e `ValueError` (ilegível) se não é número. Ausente
+    (`None`) é o esquema atual. **É número, e não `int`**: `"1.0"`, escrito à mão, é o esquema 1 --
+    `int("1.0")` levantava, e o arquivo inteiro travava como ilegível --, e `"2.0"` ou `1.5` são
+    futuros, e não ilegíveis nem o 1. Booleano não é número aqui, por mais que o Python o some.
+    """
+    if declarado is None:
+        return
+    if isinstance(declarado, bool):
+        raise ValueError(f"esquema {declarado!r} não é número")
+    try:
+        numero = float(str(declarado))
+    except ValueError:
+        raise ValueError(f"esquema {declarado!r} não é número") from None
+    if not math.isfinite(numero):
+        raise ValueError(f"esquema {declarado!r} não é número")
+    if numero > atual:
+        raise VersaoFutura(declarado)
+
+
+def ler_lista(
+    texto: str, *, esquema: int, lista: str, ler_item: Callable[[object], T], chave: Callable[[T], str]
+) -> tuple[dict[str, T], tuple[object, ...]]:
+    """Um arquivo `{"esquema": N, "<lista>": [...]}`: os itens que leram, pela chave, e os crus (S-813).
+
+    É o formato do baralho de revisão e do placar. Cada item no seu `try`, e um ruim entre
+    seiscentos não trava os outros. O que não lê -- campo que não converte, chave vazia ou
+    repetida -- é guardado como veio, para `gravar_lista` devolvê-lo igual: descartá-lo apagaria
+    do disco, na primeira gravação, o que ninguém refaz. O topo que não é objeto e a lista que não
+    é lista são o arquivo que não lê (`ValueError`); o esquema é o de `conferir_esquema`.
+    """
+    dados = json.loads(texto)
+    if not isinstance(dados, dict):
+        raise ValueError("o topo não é um objeto")
+    conferir_esquema(dados.get("esquema"), esquema)
+    itens = dados.get(lista, [])
+    if not isinstance(itens, list):
+        raise ValueError(f"{lista} não é uma lista")
+    lidos: dict[str, T] = {}
+    crus: list[object] = []
+    for bruto in itens:
+        try:
+            item = ler_item(bruto)
+        except (TypeError, ValueError) as erro:
+            logger.warning("Item ilegível, guardado como veio: %s", erro)
+            crus.append(bruto)
+            continue
+        nome = chave(item)
+        if not nome or nome in lidos:
+            crus.append(bruto)
+            continue
+        lidos[nome] = item
+    return lidos, tuple(crus)
+
+
+def gravar_lista(
+    leitura: Leitura[T], *, esquema: int, lista: str, itens: Iterable[object], crus: Iterable[object]
+) -> Path:
+    """Grava o que `ler_lista` lê, onde foi lido, e só se a leitura deixa (`gravavel`).
+
+    Os itens que leram vão primeiro, e os crus depois deles, iguais a como vieram (S-813).
+    """
+    lida = gravavel(leitura)
+    atomic_write_json(lida.caminho, {"esquema": esquema, lista: [*itens, *crus]})
+    return lida.caminho
 
 
 def _onde_esta(copia: Path | None) -> str:

@@ -24,13 +24,12 @@ não só quantas vezes: dois lances errados de 60 centipeões não são um erro 
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from .arquivo_do_dono import Leitura, Lida, conferir_versao, gravar_json, ler
+from .arquivo_do_dono import Leitura, Lida, gravar_lista, ler, ler_lista
 from .config import DATA_DIR
 
 logger = logging.getLogger(__name__)
@@ -140,6 +139,9 @@ class Placar:
     livros: dict[str, PlacarDoLivro] = field(default_factory=dict)
     sessao: PlacarDoLivro = field(default_factory=PlacarDoLivro)
     """O da sessão em curso. **Não é gravado**: ver o cabeçalho."""
+    crus: tuple[object, ...] = ()
+    """Os livros do arquivo que não leram (`certos: "x"`, livro repetido), guardados como vieram e
+    devolvidos iguais na gravação (S-813). Antes um só travava o placar inteiro."""
 
     def registrar(self, livro: str, resultado: str, *, perda: int = 0) -> None:
         """Conta um lance, no livro e na sessão.
@@ -188,14 +190,10 @@ def carregar(*, caminho: Path | None = None) -> Leitura[Placar]:
 
 
 def _interpretar(texto: str) -> Placar:
-    dados = json.loads(texto)
-    conferir_versao(dados, "esquema", ESQUEMA, aceita_antiga=True)
-    achados: dict[str, PlacarDoLivro] = {}
-    for bruto in dados.get("livros", []):
-        placar = PlacarDoLivro.de_json(bruto)
-        if placar.livro:
-            achados[placar.livro] = placar
-    return Placar(livros=achados)
+    livros, crus = ler_lista(
+        texto, esquema=ESQUEMA, lista="livros", ler_item=PlacarDoLivro.de_json, chave=lambda p: p.livro
+    )
+    return Placar(livros=livros, crus=crus)
 
 
 def gravar(lida: Lida[Placar]) -> Path:
@@ -203,7 +201,7 @@ def gravar(lida: Lida[Placar]) -> Path:
 
     **O destino é o da leitura**, e é por isso que o placar não guarda caminho: a sala lê o arquivo
     de `pasta_de_treino/placar.json`, e é ela quem grava (S-541). Só sobre uma leitura que leu
-    (S-812).
+    (S-812). Os livros crus vão depois dos que leram, iguais a como vieram (S-813).
     """
-    livros = sorted(lida.valor.livros.values(), key=lambda p: p.livro)
-    return gravar_json(lida, {"esquema": ESQUEMA, "livros": [p.para_json() for p in livros]})
+    livros = [p.para_json() for p in sorted(lida.valor.livros.values(), key=lambda p: p.livro)]
+    return gravar_lista(lida, esquema=ESQUEMA, lista="livros", itens=livros, crus=lida.valor.crus)

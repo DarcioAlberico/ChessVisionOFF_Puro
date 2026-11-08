@@ -337,6 +337,29 @@ class PlacarTests(unittest.TestCase):
         self.caminho.write_text(json.dumps({"esquema": 99, "livros": []}), encoding="utf-8")
         self.assertEqual({}, placar_mod.carregar(caminho=self.caminho).valor.livros)
 
+    def test_placar_com_campo_ruim_nao_derruba(self) -> None:
+        """**S-813.** `certos: "x"` num livro levantava no `int` e travava o placar inteiro: os
+        outros dez livros sumiam da tela, e nenhum lance da sessão era gravado. Agora os dez
+        carregam, e o ruim volta cru na gravação -- onze."""
+        bons = [placar_mod.PlacarDoLivro(livro=f"livro{n}.pdf", certos=n + 1).para_json() for n in range(10)]
+        ruim = {"livro": "ruim.pdf", "certos": "x", "equivalentes": 0, "errados": 0, "perda": 0}
+        self.caminho.write_text(json.dumps({"esquema": 1, "livros": [*bons[:5], ruim, *bons[5:]]}), encoding="utf-8")
+        leitura = placar_mod.carregar(caminho=self.caminho)
+        self.assertIsInstance(leitura, Lida)
+        self.assertEqual(10, len(leitura.valor.livros), "os dez bons carregam")
+        leitura.valor.registrar("livro0.pdf", placar_mod.CERTO)
+        placar_mod.gravar(gravavel(leitura))
+        gravados = json.loads(self.caminho.read_text(encoding="utf-8"))["livros"]
+        self.assertEqual(11, len(gravados), "e os onze são gravados")
+        self.assertIn(ruim, gravados, "o ruim volta igual")
+        self.assertEqual(2, placar_mod.carregar(caminho=self.caminho).valor.do_livro("livro0.pdf").certos)
+
+    def test_esquema_em_texto_le_como_numero(self) -> None:
+        self.caminho.write_text(json.dumps({"esquema": "1.0", "livros": [{"livro": "um.pdf", "certos": 2}]}), encoding="utf-8")
+        leitura = placar_mod.carregar(caminho=self.caminho)
+        self.assertIsInstance(leitura, Lida)
+        self.assertEqual(2, leitura.valor.do_livro("um.pdf").certos)
+
     def test_arquivo_ilegivel_nao_derruba_a_sala(self) -> None:
         self.caminho.write_text("{isto não é json", encoding="utf-8")
         self.assertEqual({}, placar_mod.carregar(caminho=self.caminho).valor.livros)
