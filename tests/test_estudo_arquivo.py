@@ -11,15 +11,18 @@ vantagem sequer sobre isso.
 
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
 from pathlib import Path
+from typing import TextIO
+from unittest import mock
 
 import chess
 import chess.pgn
 
 from chess_diagram_ocr import estudo_arquivo
-from chess_diagram_ocr.arquivo_do_dono import Lida
+from chess_diagram_ocr.arquivo_do_dono import GravacaoRecusada, Ilegivel, Leitura, Lida, gravavel
 from chess_diagram_ocr.estudo import Ancora, PosicaoDeEstudo, Sala
 
 ITALIANA = "rnbqkb1r/pppp1ppp/5n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R"
@@ -30,6 +33,25 @@ def _gravar(sala: Sala, *, pasta: Path) -> Path | None:
     return estudo_arquivo.gravar(Lida(sala, estudo_arquivo.caminho_de(sala.documento, pasta=pasta)))
 
 
+def _sala_com(livro: str, *diagramas: int) -> Sala:
+    sala = Sala(livro)
+    for diagrama in diagramas:
+        estudo = sala.abrir(
+            PosicaoDeEstudo(
+                placement=ITALIANA,
+                vez="b",
+                lance=4,
+                ancora=Ancora(documento=livro, pagina=142, diagrama=diagrama),
+            )
+        )
+        no = estudo.jogo.add_variation(chess.Move.from_uci("f8c5"))
+        no.nags.add(5)
+        no.comment = f"a italiana, diagrama {diagrama}"
+        no.add_variation(chess.Move.from_uci("e1g1"))
+        sala.guardar(estudo)
+    return sala
+
+
 class ArquivoDaSalaTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -38,22 +60,7 @@ class ArquivoDaSalaTests(unittest.TestCase):
         self.livro = str(self.pasta / "Secrets.pdf")
 
     def _sala(self, *diagramas: int) -> Sala:
-        sala = Sala(self.livro)
-        for diagrama in diagramas:
-            estudo = sala.abrir(
-                PosicaoDeEstudo(
-                    placement=ITALIANA,
-                    vez="b",
-                    lance=4,
-                    ancora=Ancora(documento=self.livro, pagina=142, diagrama=diagrama),
-                )
-            )
-            no = estudo.jogo.add_variation(chess.Move.from_uci("f8c5"))
-            no.nags.add(5)
-            no.comment = f"a italiana, diagrama {diagrama}"
-            no.add_variation(chess.Move.from_uci("e1g1"))
-            sala.guardar(estudo)
-        return sala
+        return _sala_com(self.livro, *diagramas)
 
     def test_a_sala_volta_do_disco_com_tudo(self) -> None:
         _gravar(self._sala(0, 1, 2), pasta=self.pasta)
@@ -131,6 +138,103 @@ class ArquivoDaSalaTests(unittest.TestCase):
             encoding="utf-8",
         )
         self.assertEqual(len(estudo_arquivo.carregar(self.livro, pasta=self.pasta).valor), 2)
+
+
+class PartidaQueNaoLeTests(unittest.TestCase):
+    """A partida da sala que não lê sobrevive à gravação (S-814).
+
+    O arquivo da sala é trabalho de tardes, e a gravação o reescreve inteiro a cada edição: o que a
+    leitura deixa de fora, a gravação apaga. Antes, deixava de fora a partida sem âncora, a que tinha
+    um lance ilegal (cortada ali, em silêncio) e, se o `read_game` levantasse, todas as seguintes.
+    """
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.pasta = Path(self.tmp.name)
+        self.livro = str(self.pasta / "Secrets.pdf")
+        self.caminho = estudo_arquivo.caminho_de(self.livro, pasta=self.pasta)
+
+    def _sala(self, quantos: int) -> Sala:
+        return _sala_com(self.livro, *range(quantos))
+
+    def _acrescentar(self, bloco: str) -> None:
+        self.caminho.write_text(self.caminho.read_text(encoding="utf-8") + "\n" + bloco, encoding="utf-8")
+
+    def _editar_e_gravar(self, leitura: Leitura[Sala] | None = None) -> str:
+        """Carrega, mexe no primeiro estudo como a sala mexe, e grava: devolve o arquivo gravado."""
+        if leitura is None:
+            leitura = estudo_arquivo.carregar(self.livro, pasta=self.pasta)
+        self.assertIsInstance(leitura, Lida)
+        sala = leitura.valor
+        primeiro = sala.estudos()[0]
+        primeiro.jogo.comment = "editado hoje"
+        sala.guardar(primeiro)
+        estudo_arquivo.gravar(gravavel(leitura))
+        return self.caminho.read_text(encoding="utf-8")
+
+    def test_estudo_sem_ancora_sobrevive_a_gravacao(self) -> None:
+        _gravar(self._sala(2), pasta=self.pasta)
+        avulsa = '[Event "avulsa"]\n[Page "catorze"]\n[Diagram "1"]\n[Result "*"]\n\n1. e4 e5 {minha nota} *'
+        self._acrescentar(avulsa + "\n")
+        self.assertEqual(2, len(estudo_arquivo.carregar(self.livro, pasta=self.pasta).valor))
+        gravado = self._editar_e_gravar()
+        self.assertIn("editado hoje", gravado)
+        self.assertIn(avulsa, gravado, "a partida sem âncora volta byte a byte igual")
+
+    def test_lance_ilegal_nao_trunca_a_partida_na_regravacao(self) -> None:
+        """O `read_game` não levanta: manda o lance ilegal para `errors` e corta a partida ali."""
+        _gravar(self._sala(2), pasta=self.pasta)
+        quebrada = (
+            '[Event "x"]\n[SourcePDF "Secrets.pdf"]\n[Page "200"]\n[Diagram "1"]\n[Result "*"]\n\n'
+            "1. e4 e5 2. Ke3 Nf6 {a análise depois do erro} 3. d4 *"
+        )
+        self._acrescentar(quebrada + "\n")
+        gravado = self._editar_e_gravar()
+        self.assertIn(quebrada, gravado, "a partida inteira, com o que vem depois do lance ilegal")
+
+    def test_read_game_que_levanta_na_segunda_nao_derruba_as_seguintes(self) -> None:
+        _gravar(self._sala(5), pasta=self.pasta)
+        original = self.caminho.read_text(encoding="utf-8")
+        segunda = self._sala(5).estudos()[1].para_pgn()
+        self.assertIn(segunda, original)
+        ler_de_verdade = chess.pgn.read_game
+        chamadas = [0]
+
+        def read_game(fluxo: TextIO) -> chess.pgn.Game | None:
+            jogo = ler_de_verdade(fluxo)
+            chamadas[0] += 1
+            if chamadas[0] == 2:
+                raise RuntimeError("visitante quebrou")
+            return jogo
+
+        with mock.patch.object(chess.pgn, "read_game", read_game):
+            leitura = estudo_arquivo.carregar(self.livro, pasta=self.pasta)
+        self.assertIsInstance(leitura, Lida)
+        self.assertEqual(4, len(leitura.valor), "quatro carregadas")
+        gravado = self._editar_e_gravar(leitura)
+        partidas = []
+        fluxo = io.StringIO(gravado)
+        while (jogo := chess.pgn.read_game(fluxo)) is not None:
+            partidas.append(jogo)
+        self.assertEqual(5, len(partidas), "cinco gravadas")
+        self.assertIn(segunda, gravado, "a que não leu volta igual")
+
+    def test_leitura_que_nao_avanca_trava_a_sala(self) -> None:
+        """Se o `read_game` levanta sem consumir nada, o resto do arquivo não tem como ser lido: a
+        sala fica com o que leu, e a gravação fica travada (S-812) -- e o laço não roda para sempre."""
+        _gravar(self._sala(3), pasta=self.pasta)
+        original = self.caminho.read_bytes()
+
+        def read_game(_fluxo: TextIO) -> chess.pgn.Game | None:
+            raise RuntimeError("não leio nada")
+
+        with mock.patch.object(chess.pgn, "read_game", read_game):
+            leitura = estudo_arquivo.carregar(self.livro, pasta=self.pasta)
+        self.assertIsInstance(leitura, Ilegivel)
+        with self.assertRaises(GravacaoRecusada):
+            estudo_arquivo.gravar(gravavel(leitura))
+        self.assertEqual(original, self.caminho.read_bytes())
 
 
 class LerPgnSemCarregarTudoTests(unittest.TestCase):

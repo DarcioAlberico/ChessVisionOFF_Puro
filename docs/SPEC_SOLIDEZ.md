@@ -594,6 +594,17 @@ segunda de cinco partidas, quatro carregadas e cinco gravadas.
 
 **Aceite.** Os três passam; o arquivo regravado tem a partida quebrada byte a byte igual.
 
+**Entregue** (2026-11-08): a S-812 já cobria o `OSError` e o arquivo que não decodifica (leitura travada,
+sem `unlink`); faltava a partida ilegível dentro de um arquivo que lê. O cru mora em `Sala.crus` e volta
+depois dos estudos, sem os brancos das pontas. O trecho de cada partida sai da posição do fluxo
+(`pgn_do_livro.FluxoTolerante.posicao`, que conta também as linhas em branco que ele junta), e não de um
+corte do texto por conta própria. Vai cru também o estudo de âncora repetida (antes o segundo apagava o
+primeiro) e a partida sem conteúdo. "Leitura incompleta" ficou sendo o `read_game` que levanta sem
+consumir nada: seguir seria um laço sem fim, e a sala trava com o que leu (`ConteudoIlegivel(parcial=...)`)
+-- teste `test_leitura_que_nao_avanca_trava_a_sala`; antes, essa sala voltava vazia e a gravação apagava
+o arquivo. O `estudos_de_pgn` do «Abrir um .pgn…» segue sem conferir `errors`: ali o arquivo é de fora e
+não é regravado.
+
 ## S-815 · Fila de revisão: FEN corrigida sobrevive ao revarrer
 
 **Problema** (confirmado por leitura). `review_queue.py:627-664`: `merge_queues` preserva só o `status`. A

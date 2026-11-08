@@ -37,16 +37,17 @@ import hashlib
 import io
 import logging
 import re
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TextIO
 
 import chess.pgn
 
-from .arquivo_do_dono import Leitura, Lida, gravavel, ler
+from .arquivo_do_dono import ConteudoIlegivel, Leitura, Lida, gravavel, ler
 from .atomic_io import atomic_write_text
 from .config import DATA_DIR
 from .estudo import Estudo, Sala
-from .pgn_do_livro import fluxo_tolerante
+from .pgn_do_livro import FluxoTolerante
 
 logger = logging.getLogger(__name__)
 
@@ -99,8 +100,10 @@ def caminho_de(documento: str | Path, *, pasta: Path | None = None) -> Path:
 
 
 def para_pgn(sala: Sala) -> str:
-    """A sala inteira como um PGN de muitas partidas, em ordem de página e diagrama."""
-    return "\n\n".join(estudo.para_pgn() for estudo in sala.estudos())
+    """A sala inteira como um PGN de muitas partidas, em ordem de página e diagrama.
+
+    As partidas cruas vão depois dos estudos, iguais a como vieram (S-814)."""
+    return "\n\n".join([*(estudo.para_pgn() for estudo in sala.estudos()), *sala.crus])
 
 
 def gravar(lida: Lida[Sala]) -> Path | None:
@@ -135,24 +138,71 @@ def gravar(lida: Lida[Sala]) -> Path | None:
 def carregar(documento: str | Path, *, pasta: Path | None = None) -> Leitura[Sala]:
     """A sala daquele livro. Sala vazia quando não há arquivo -- ausência é o caso normal.
 
-    Uma partida ilegível **não derruba as outras**: ela vira uma linha de log e a leitura segue. Um
-    PGN de 50 estudos em que o 12 está corrompido ainda tem 49 tardes de trabalho dentro.
+    Uma partida ilegível **não derruba as outras**, e **não some** (S-814): a que não lê, a que tem
+    lance ilegal (o `read_game` a cortaria ali, em silêncio), a sem âncora e a de âncora repetida
+    ficam em `Sala.crus`, como texto, e voltam iguais na gravação. Um PGN de 50 estudos em que o 12
+    está corrompido ainda tem 49 tardes de trabalho dentro -- e o 12 continua no disco.
 
     **O arquivo que não abre é leitura travada (S-812)**: arquivo em uso, ou um byte que não é
     UTF-8. Antes o byte virava `\ufffd` em silêncio, e a gravação seguinte o regravava assim -- a
-    análise com acento escrita por outro programa saía estragada para sempre.
+    análise com acento escrita por outro programa saía estragada para sempre. A sala que não pôde
+    ser lida até o fim também: a parte lida vale em memória, e a gravação fica travada.
     """
     nome = str(documento or "")
     origem = caminho_de(documento, pasta=pasta)
 
     def interpretar(texto: str) -> Sala:
         sala = Sala(nome)
-        for estudo in estudos_de_pgn(texto, documento=nome, onde=origem.name):
-            if not sala.guardar(estudo):
-                logger.debug("Estudo sem âncora ou sem lance descartado de %s", origem.name)
+        try:
+            for jogo, trecho in _partidas(texto, onde=origem.name):
+                estudo = _estudo_inteiro(jogo, documento=nome)
+                if estudo is not None and estudo.ancora not in sala and sala.guardar(estudo):
+                    continue
+                if trecho.strip():
+                    logger.warning("Partida de %s guardada como veio, sem abrir como estudo.", origem.name)
+                    sala.crus.append(trecho.strip())
+        except _LeituraParada as parada:
+            raise ConteudoIlegivel(str(parada), parcial=sala) from parada
         return sala
 
     return ler(origem, interpretar, lambda: Sala(nome))
+
+
+def _estudo_inteiro(jogo: chess.pgn.Game | None, *, documento: str) -> Estudo | None:
+    """O estudo da partida, se ela leu inteira e diz alguma coisa. Lance ilegal não é inteira."""
+    if jogo is None or jogo.errors or not _tem_conteudo(jogo):
+        return None
+    return Estudo.de_jogo(jogo, documento=documento)
+
+
+class _LeituraParada(Exception):
+    """O `read_game` levantou sem consumir nada: o resto do PGN não tem como ser lido."""
+
+
+def _partidas(texto: str | TextIO, *, onde: str) -> Iterator[tuple[chess.pgn.Game | None, str]]:
+    """Cada partida do PGN, com o trecho do texto de onde ela saiu. `None` é a que não leu.
+
+    **`continue`, e não `break`, quando o `read_game` levanta (S-814):** ele já consumiu a partida
+    ruim, e a seguinte começa onde ela acabou. Se ele levanta sem consumir nada, seguir seria um
+    laço sem fim, e é `_LeituraParada`. O trecho só existe quando `texto` é `str`: de um fluxo
+    aberto -- a base de 10 GB da S-307 -- não se guarda nada.
+    """
+    original = texto if isinstance(texto, str) else None
+    fluxo = FluxoTolerante(io.StringIO(texto) if isinstance(texto, str) else texto)
+    while True:
+        antes = fluxo.posicao
+        jogo: chess.pgn.Game | None
+        try:
+            jogo = chess.pgn.read_game(fluxo.arquivo)
+        except Exception as erro:  # noqa: BLE001 - PGN de fora pode falhar de muitas formas
+            if fluxo.posicao == antes:
+                raise _LeituraParada(f"a leitura parou numa partida ilegível ({erro})") from erro
+            logger.warning("Partida ilegível em %s: %s", onde, erro)
+            jogo = None
+        else:
+            if jogo is None:
+                return
+        yield jogo, (original[antes:fluxo.posicao] if original is not None else "")
 
 
 def estudos_de_pgn(
@@ -185,26 +235,26 @@ def estudos_de_pgn(
     branco entre o cabeçalho e os lances, e o `read_game` partia a partida em duas -- a metade com
     «Chapter 3 / Game 2» era descartada aqui, por não ter lance. Ver `pgn_do_livro`.
     """
-    fluxo = fluxo_tolerante(io.StringIO(texto or "") if isinstance(texto, str) else texto)
     achados: list[Estudo] = []
-    while True:
-        if limite is not None and len(achados) >= limite:
-            logger.info("%s: leitura parada em %d partidas pelo teto pedido.", onde, limite)
-            break
-        try:
-            jogo = chess.pgn.read_game(fluxo)
-        except Exception as erro:  # noqa: BLE001 - PGN de fora pode falhar de muitas formas
-            logger.warning("Partida ilegível em %s: %s", onde, erro)
-            break
-        if jogo is None:
-            break
-        if not _tem_conteudo(jogo):
-            # **`read_game` devolve uma partida para qualquer texto**: sem lance, sem `[FEN]` e com
-            # os headers de fábrica. É o que sai de um `.txt` qualquer, e abri-lo como estudo daria
-            # um tabuleiro na posição inicial dizendo que veio de um arquivo de xadrez.
-            logger.debug("Bloco sem lance e sem posição descartado de %s", onde)
-            continue
-        achados.append(Estudo.de_jogo(jogo, documento=documento))
+    if limite is not None and limite <= 0:
+        return achados
+    try:
+        for jogo, _trecho in _partidas(texto or "", onde=onde):
+            if jogo is None:
+                continue
+            if not _tem_conteudo(jogo):
+                # **`read_game` devolve uma partida para qualquer texto**: sem lance, sem `[FEN]` e
+                # com os headers de fábrica. É o que sai de um `.txt` qualquer, e abri-lo como
+                # estudo daria um tabuleiro na posição inicial dizendo que veio de um arquivo de
+                # xadrez.
+                logger.debug("Bloco sem lance e sem posição descartado de %s", onde)
+                continue
+            achados.append(Estudo.de_jogo(jogo, documento=documento))
+            if limite is not None and len(achados) >= limite:
+                logger.info("%s: leitura parada em %d partidas pelo teto pedido.", onde, limite)
+                break
+    except _LeituraParada as parada:
+        logger.warning("Partida ilegível em %s: %s", onde, parada)
     return achados
 
 

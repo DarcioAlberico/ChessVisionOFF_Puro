@@ -46,6 +46,7 @@ from .estudo import Caminho, caminho_de, no_em
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "FluxoTolerante",
     "IndiceDoLivro",
     "NoDoLivro",
     "fluxo_tolerante",
@@ -56,21 +57,36 @@ __all__ = [
 ]
 
 
-class _FluxoTolerante:
+class FluxoTolerante:
     """`readline` sobre o arquivo, com as linhas em branco depois do cabeçalho reduzidas a uma.
 
-    Ver o docstring do módulo. É só `readline` porque é tudo o que `chess.pgn.read_game` chama.
+    Ver o docstring do módulo. É só `readline` porque é tudo o que `chess.pgn.read_game` chama; é
+    `arquivo` que se passa a ele.
+
+    `posicao` é quanto do fluxo original já foi entregue, contando as linhas em branco juntadas:
+    entre o antes e o depois de um `read_game`, é o trecho do original de onde aquela partida
+    saiu. É como a sala guarda, igual, a partida que não leu (S-814).
     """
 
     def __init__(self, fluxo: TextIO) -> None:
         self._fluxo = fluxo
         self._guardadas: list[str] = []
         self._depois_de_cabecalho = False
+        self.posicao = 0
+
+    @property
+    def arquivo(self) -> TextIO:
+        return cast(TextIO, self)
 
     def _proxima(self) -> str:
         return self._guardadas.pop() if self._guardadas else self._fluxo.readline()
 
     def readline(self) -> str:
+        linha = self._ler_linha()
+        self.posicao += len(linha)
+        return linha
+
+    def _ler_linha(self) -> str:
         linha = self._proxima()
         if self._depois_de_cabecalho and linha and not linha.strip():
             brancas = [linha]
@@ -83,6 +99,7 @@ class _FluxoTolerante:
             if len(brancas) > 1 and seguinte and not seguinte.lstrip().startswith("["):
                 logger.debug("Linha em branco a mais entre o cabeçalho e os lances: juntada.")
                 self._depois_de_cabecalho = False
+                self.posicao += sum(len(branca) for branca in brancas[1:])
                 return linha
             # antes de outro cabeçalho as linhas em branco separam duas partidas: devolvidas como vieram
             self._guardadas.extend(reversed(brancas[1:]))
@@ -94,7 +111,7 @@ class _FluxoTolerante:
 
 def fluxo_tolerante(texto: str | TextIO) -> TextIO:
     """O PGN (texto ou arquivo aberto) pronto para `chess.pgn.read_game`, sem a partida partida."""
-    return cast(TextIO, _FluxoTolerante(io.StringIO(texto) if isinstance(texto, str) else texto))
+    return FluxoTolerante(io.StringIO(texto) if isinstance(texto, str) else texto).arquivo
 
 
 def ler_partidas(caminho: Path | str) -> list[chess.pgn.Game]:
