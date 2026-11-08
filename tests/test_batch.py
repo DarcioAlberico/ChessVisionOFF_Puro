@@ -32,6 +32,7 @@ from chess_diagram_ocr.batch import (
     run_batch,
 )
 from chess_diagram_ocr.pdf_to_pgn import DiagramPosition, ExportReport
+from chess_diagram_ocr.ui.livros import chave_do_livro
 
 
 def _posicao(min_confidence: float) -> DiagramPosition:
@@ -172,6 +173,52 @@ class RunTests(unittest.TestCase):
             relatorio = run_batch(find_pdfs(biblioteca.pdfs), biblioteca.saida, cancel_event=cancelar)
 
         self.assertEqual(len(relatorio.books), 1, "A varredura deve parar depois do livro em curso.")
+
+    def test_dois_livros_de_mesmo_nome_geram_dois_pgn(self) -> None:
+        """S-878: o PGN era nomeado pelo `stem`, sem a pasta e sem a extensão.
+
+        Com `a/Livro.pdf` e `b/Livro.pdf`, o segundo saía "já exportado, pulado" com o PGN do
+        primeiro; `a/Outro.pdf` e `a/Outro.djvu` idem; e sem `skip_existing` um apagava o outro.
+        Quem tem nome único continua com o nome de sempre -- é o PGN já gravado no disco do dono.
+        """
+        biblioteca = _Biblioteca(self, ["Unico.pdf"])
+        for relativo in ("a/Livro.pdf", "b/Livro.pdf", "a/Outro.pdf", "a/Outro.djvu"):
+            (biblioteca.pdfs / relativo).parent.mkdir(exist_ok=True)
+            (biblioteca.pdfs / relativo).write_bytes(b"%PDF-1.4\n")
+
+        def _exportar(**kw: object) -> ExportReport:
+            saida, origem = kw["output_path"], kw["pdf_source"]
+            assert isinstance(saida, Path)
+            saida.write_bytes(str(origem).encode("utf-8"))
+            return _report(saida)
+
+        livros = find_pdfs(biblioteca.pdfs)
+        self.assertEqual(len(livros), 5)
+        for opcoes in (BatchOptions(), BatchOptions(skip_existing=False)):
+            with self.subTest(skip_existing=opcoes.skip_existing), mock.patch(
+                "chess_diagram_ocr.batch.save_pdf_positions_to_pgn", side_effect=_exportar
+            ):
+                relatorio = run_batch(livros, biblioteca.saida, options=opcoes)
+
+            self.assertEqual([livro.status for livro in relatorio.books], [STATUS_OK] * 5)
+            saidas = {livro.pdf: livro.output for livro in relatorio.books}
+            self.assertEqual(len(set(saidas.values())), 5, saidas)
+            for pdf, saida in saidas.items():
+                assert saida is not None
+                self.assertEqual(saida.read_bytes().decode("utf-8"), str(pdf), "O PGN tem de ser do próprio livro.")
+            self.assertEqual(saidas[biblioteca.pdfs / "Unico.pdf"].name, "Unico.pgn")
+            livro_b = biblioteca.pdfs / "b" / "Livro.pdf"
+            chave = chave_do_livro(livro_b)
+            assert chave is not None
+            self.assertEqual(saidas[livro_b].name, f"Livro-{chave.curta}.pgn")
+
+            relatorios = gravar_relatorios_de_qualidade(relatorio, opcoes, biblioteca.saida)
+            self.assertEqual(len(set(relatorios)), 5)
+            self.assertIn(biblioteca.saida / f"Livro-{chave.curta}.qualidade.json", relatorios)
+
+        with mock.patch("chess_diagram_ocr.batch.save_pdf_positions_to_pgn", side_effect=_exportar):
+            retomada = run_batch(livros, biblioteca.saida)
+        self.assertEqual([livro.status for livro in retomada.books], [STATUS_SKIPPED] * 5)
 
 
 class ReportFileTests(unittest.TestCase):

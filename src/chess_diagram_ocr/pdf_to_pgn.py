@@ -33,7 +33,7 @@ from .export_checkpoint import (
     partial_path_for,
 )
 from .fen_utils import check_position, square_name
-from .gallery import DiagramAnnotation, lichess_analysis_url, load_annotations
+from .gallery import DiagramAnnotation, GaleriaDeOutroLivro, lichess_analysis_url, load_annotations
 from .inference import BoardPrediction, load_model, predict_with_orientation
 from .lance_seguinte import apply_next_move
 from .pdf_io import PdfSource as _PdfSource
@@ -1183,7 +1183,13 @@ def save_pdf_positions_to_pgn(
     # uma vez na numeracao dos diagramas.
     anotacoes: Mapping[tuple[int, int], DiagramAnnotation] | None = None
     if annotations is None and isinstance(pdf_source, (str, Path)):
-        anotacoes = load_annotations(Path(pdf_source), reading_order=reading_order).as_mapping()
+        try:
+            anotacoes = load_annotations(Path(pdf_source), reading_order=reading_order).as_mapping()
+        except GaleriaDeOutroLivro as exc:
+            # A galeria de mesmo nome é de outro livro (S-878): este não tem anotação nenhuma, e
+            # exportá-lo sem elas é a verdade. Derrubar a exportação faria o lote falhar o
+            # segundo de dois livros de mesmo nome, que é o caso que ele agora separa.
+            logger.warning("%s; exportando sem anotações da galeria.", exc)
     elif annotations is not None:
         anotacoes = annotations
 

@@ -23,11 +23,13 @@ lugar para a verdade morar.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
+from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from contextlib import AbstractContextManager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +47,8 @@ from .config import (
     caminho_para_relatorio,
 )
 from .djvu_io import livros_em
-from .pdf_to_pgn import ExportReport, default_pgn_output_path, save_pdf_positions_to_pgn
+from .pdf_to_pgn import ExportReport, save_pdf_positions_to_pgn
+from .ui.livros import chave_do_livro
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +110,9 @@ class BookResult:
     mean_min_confidence: float = 0.0
     elapsed_s: float = 0.0
     error: str = ""
+    nome: str = ""
+    """O nome que o lote deu às saídas do livro, sem extensão (`nomes_de_saida`, S-878). Vazio é o
+    `stem` do livro."""
 
     @property
     def total_diagrams(self) -> int:
@@ -226,6 +232,31 @@ def find_pdfs(source: Path) -> list[Path]:
     return livros_em(source, recursivo=True)
 
 
+def nomes_de_saida(livros: Iterable[Path]) -> dict[Path, str]:
+    """O nome, sem extensão, das saídas de cada livro do lote (S-878).
+
+    É o `stem` do livro, que é o nome que os PGN do disco já têm. **Dois livros distintos de mesmo
+    `stem`** -- `a/Livro.pdf` e `b/Livro.pdf`, ou `Outro.pdf` e `Outro.djvu` -- levam o hash curto
+    da `ChaveDoLivro` (`Livro-1a2b3c4d`): com o `stem` só, o segundo saía "já exportado, pulado" com
+    o PGN do primeiro, e sem `skip_existing` apagava o dele. Os dois levam o sufixo, e não só o
+    segundo, para o nome não depender da ordem da fila; o `Livro.pgn` antigo fica intocado, porque
+    não há como saber de qual dos dois ele é.
+
+    O mesmo arquivo pedido duas vezes é um livro só, e o `stem` compara em `normcase`: no Windows
+    `livro.pgn` e `Livro.pgn` são o mesmo arquivo.
+    """
+    chaves = {Path(livro): chave_do_livro(livro) for livro in livros}
+    um_por_livro = {chave: livro for livro, chave in chaves.items()}.values()
+    por_stem = Counter(os.path.normcase(livro.stem) for livro in um_por_livro)
+
+    def _nome(livro: Path) -> str:
+        chave = chaves[livro]
+        repetido = por_stem[os.path.normcase(livro.stem)] > 1
+        return f"{livro.stem}-{chave.curta}" if repetido and chave is not None else livro.stem
+
+    return {livro: _nome(livro) for livro in chaves}
+
+
 def _mean_min_confidence(report: ExportReport) -> float:
     """Confiança mínima média entre **todos** os diagramas lidos, e não só os aceitos.
 
@@ -271,6 +302,7 @@ def run_batch(
     relatorio = BatchReport(started_at=time.strftime("%Y-%m-%d %H:%M:%S"))
 
     livros = list(sources)
+    nomes = nomes_de_saida(livros)
     for indice, pdf in enumerate(livros, start=1):
         if cancel_event is not None and cancel_event.is_set():
             logger.info("Varredura cancelada antes de %s.", pdf.name)
@@ -279,7 +311,10 @@ def run_batch(
         if on_book_start is not None:
             on_book_start(pdf, indice, len(livros))
 
-        resultado = _run_one(pdf, output_dir, options, cancel_event, on_page, session_factory)
+        saida = output_dir / f"{nomes[pdf]}.pgn"
+        resultado = replace(
+            _run_one(pdf, saida, options, cancel_event, on_page, session_factory), nome=nomes[pdf]
+        )
         relatorio.books.append(resultado)
 
         if on_book_done is not None:
@@ -294,13 +329,12 @@ def run_batch(
 
 def _run_one(
     pdf: Path,
-    output_dir: Path,
+    saida: Path,
     options: BatchOptions,
     cancel_event: threading.Event | None,
     on_page: PageProgress | None = None,
     session_factory: SessionFactory | None = None,
 ) -> BookResult:
-    saida = output_dir / default_pgn_output_path(pdf).name
     if options.skip_existing and saida.exists():
         logger.info("Pulando %s: %s ja existe.", pdf.name, saida.name)
         return BookResult(pdf=pdf, status=STATUS_SKIPPED, output=saida)
@@ -483,13 +517,15 @@ def relatorio_de_qualidade(
     }
 
 
-def caminho_do_relatorio_de_qualidade(pdf: Path, output_dir: Path) -> Path:
+def caminho_do_relatorio_de_qualidade(pdf: Path, output_dir: Path, *, nome: str = "") -> Path:
     """`<pasta>/<livro>.qualidade.json`. O nome sai do PDF e não do PGN.
 
     Do PDF porque o livro pulado nem chega a ter PGN próprio nesta rodada, e o relatório dele --
-    que diz justamente "já estava exportado" -- ainda tem de saber onde nascer.
+    que diz justamente "já estava exportado" -- ainda tem de saber onde nascer. `nome` é o que o
+    lote decidiu para o livro (`BookResult.nome`, S-878): o relatório de `b/Livro.pdf` não pode
+    cair no de `a/Livro.pdf`.
     """
-    return Path(output_dir) / f"{Path(pdf).stem}{SUFIXO_DO_RELATORIO}"
+    return Path(output_dir) / f"{nome or Path(pdf).stem}{SUFIXO_DO_RELATORIO}"
 
 
 def gravar_relatorios_de_qualidade(
@@ -507,7 +543,7 @@ def gravar_relatorios_de_qualidade(
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     gravados: list[Path] = []
     for livro in relatorio.books:
-        destino = caminho_do_relatorio_de_qualidade(livro.pdf, output_dir)
+        destino = caminho_do_relatorio_de_qualidade(livro.pdf, output_dir, nome=livro.nome)
         try:
             atomic_write_json(destino, relatorio_de_qualidade(livro, options, medido_em=relatorio.started_at))
         except OSError as exc:

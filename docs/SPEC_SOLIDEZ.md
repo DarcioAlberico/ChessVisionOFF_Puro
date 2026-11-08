@@ -702,6 +702,15 @@ caminho não bate, dizendo qual é.
 
 **Aceite.** Os dois passam.
 
+**Entregue** (2026-11-08): no lote, os **dois** livros de mesmo `stem` levam o sufixo (o nome não
+depende da ordem da fila; o `Livro.pgn` antigo fica intocado), e o `.qualidade.json` segue o mesmo
+nome; o livro de nome único continua com o nome de sempre. Na Galeria a recusa vale para as
+anotações **e** para o índice, na leitura e na gravação (`gallery.conferir_dono`); passam o arquivo
+sem `source_pdf` (os do dono), o dono relativo lido contra a raiz (`PDF\Livro.pdf`) e o dono que não
+existe mais (livro movido). A exportação de PGN segue sem as anotações do outro livro, em vez de
+falhar. Ficaram fora: `default_pgn_output_path` da exportação avulsa (um livro só, sem colisão a
+detectar) e as miniaturas e a fila por nome, que são da S-815 e da S-816.
+
 ## S-892 · "Aplicar aos vizinhos" não troca a partida que a pessoa escolheu
 
 **Problema** (confirmado por script). `ui/gallery_model.py:767-809` e `qt/dialogos.py:790-806`: com

@@ -61,7 +61,7 @@ from PyQt6.QtWidgets import (
 )
 
 from chess_diagram_ocr.config import DEFAULT_PDF_DIR, DEFAULT_READING_ORDER
-from chess_diagram_ocr.gallery import DiagramAnnotation, load_annotations
+from chess_diagram_ocr.gallery import DiagramAnnotation, GaleriaDeOutroLivro, load_annotations
 from chess_diagram_ocr.gallery_scan import build_gallery_index, load_index, save_index
 from chess_diagram_ocr.games_cache import PositionStore, open_store
 from chess_diagram_ocr.games_db import (
@@ -1310,12 +1310,22 @@ class PainelDaGaleria(QWidget):
             self.refresh(request_page=request_page)
             return
 
-        indice = self._ler_indice(pdf_path)
-        self.model = GalleryModel(
-            index=indice if indice is not None else self.model.index.__class__(),
+        try:
+            indice = self._ler_indice(pdf_path)
             # As anotações são carregadas mesmo sem varredura: elas não dependem do índice, e desde
             # a S-71 a aba Resultado escreve o número do lance por aqui.
-            annotations=self._ler_anotacoes(pdf_path),
+            anotacoes = self._ler_anotacoes(pdf_path)
+        except GaleriaDeOutroLivro as exc:
+            # A galeria de mesmo nome é de outro livro (S-878). Sem livro no modelo, nada daqui
+            # grava por cima dela; a frase diz de quem ela é, que é o que a pessoa precisa.
+            self.model = GalleryModel()
+            self.lbl_varredura.setText("galeria de outro livro")
+            self.refresh(request_page=request_page)
+            self.estado.emit(f"Galeria: {exc}")
+            return
+        self.model = GalleryModel(
+            index=indice if indice is not None else self.model.index.__class__(),
+            annotations=anotacoes,
             pdf_path=pdf_path,
             database_paths=tuple(self._bases_atuais()),
             index_path=DEFAULT_INDEX_PATH,

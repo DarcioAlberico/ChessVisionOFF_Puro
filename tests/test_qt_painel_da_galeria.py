@@ -353,6 +353,26 @@ class AnotacaoTests(unittest.TestCase):
 
         self.assertEqual(12, load_annotations(self.livro, directory=self.pasta).get(2, 0).move_number)
 
+    def test_livro_de_mesmo_nome_em_outra_pasta_nao_abre_a_galeria_do_primeiro(self) -> None:
+        """S-878: `outra/livro.pdf` mostrava os diagramas e o lance de `livro.pdf`, e gravava por cima."""
+        from chess_diagram_ocr.gallery import load_annotations
+
+        painel = self.painel()
+        painel.model.annotations.update(5, 0, move_number=31)
+        painel.model.save()
+        recados: list[str] = []
+        painel.estado.connect(recados.append)
+        outro = self.pasta / "outra" / "livro.pdf"
+        outro.parent.mkdir()
+        outro.write_bytes(b"%PDF-1.4")
+
+        painel.load_pdf(outro, request_page=False)
+
+        self.assertEqual(len(painel.model), 0, "a galeria do outro livro apareceu neste")
+        self.assertIsNone(painel.model.save(), "sem galeria própria, não há o que gravar")
+        self.assertIn(str(self.livro.resolve()), recados[-1], "a recusa diz de quem é a galeria")
+        self.assertEqual(31, load_annotations(self.livro, directory=self.pasta).get(5, 0).move_number)
+
     def test_escolher_o_lado_grava_de_verdade(self) -> None:
         painel = self.painel()
         for botao in painel.lado.buttons():

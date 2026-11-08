@@ -28,23 +28,28 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 from .atomic_io import atomic_write_json, atomic_write_text
-from .config import DATA_DIR, DEFAULT_READING_ORDER, ReadingOrder
+from .config import DATA_DIR, DEFAULT_READING_ORDER, PROJECT_ROOT, ReadingOrder
+from .ui.livros import caminho_canonico, mesmo_livro
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "DEFAULT_HUMAN_EXTRACT",
     "DiagramAnnotation",
+    "GaleriaDeOutroLivro",
     "GalleryAnnotations",
     "HumanExtract",
     "annotations_path_for",
+    "conferir_dono",
     "export_human",
+    "gravar_do_livro",
     "human_only",
     "lichess_analysis_url",
     "load_annotations",
@@ -55,6 +60,66 @@ __all__ = [
 ]
 
 DEFAULT_GALLERY_DIR = DATA_DIR / "gallery"
+
+
+class GaleriaDeOutroLivro(ValueError):
+    """O arquivo da galeria é de outro livro com o mesmo nome (S-878).
+
+    A galeria se chama pelo `stem` (`data/gallery/Livro.json`, `Livro.index.json`), e
+    `a/Livro.pdf` e `b/Livro.pdf` caíam no mesmo arquivo: o lance e a partida escolhida de um
+    apareciam no outro, e a primeira edição no outro os gravava por cima. A recusa diz de quem é o
+    arquivo, que é o que a pessoa precisa para decidir (renomear um dos dois).
+    """
+
+    def __init__(self, arquivo: Path, dono: str, livro: Path) -> None:
+        self.arquivo = arquivo
+        self.dono = dono
+        super().__init__(
+            f"{arquivo.name} é a galeria de {dono}, e não de {caminho_canonico(livro)}: são dois livros "
+            "com o mesmo nome. Renomeie um dos dois para que cada um tenha a sua."
+        )
+
+
+def _dono_gravado(arquivo: Path) -> str:
+    """O `source_pdf` do JSON já gravado em `arquivo`, ou `""` (ausente, ilegível ou anterior a ele)."""
+    try:
+        dados = json.loads(Path(arquivo).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    return str(dados.get("source_pdf") or "") if isinstance(dados, dict) else ""
+
+
+def conferir_dono(arquivo: Path, dono: str, livro: Path) -> None:
+    r"""Levanta `GaleriaDeOutroLivro` quando `arquivo`, gravado para `dono`, é de outro livro.
+
+    A identidade é a `mesmo_livro` (S-827). Os três casos abaixo são dado que o dono já tem:
+
+    - **sem dono** (`""`) passa: o arquivo é anterior à S-878, e era lido assim desde sempre;
+    - **dono relativo** (`PDF\Livro.pdf`, que parte dos índices antigos grava) é lido contra a raiz
+      do projeto, de onde o `cvoff-scan` roda;
+    - **dono que não existe mais** passa: é o livro que mudou de pasta ou de disco, e não um
+      segundo livro -- recusá-lo esconderia o trabalho humano de quem só moveu o arquivo.
+    """
+    if not dono:
+        return
+    if not os.path.isabs(dono):
+        dono = str(PROJECT_ROOT / dono)
+    if mesmo_livro(dono, livro) or not os.path.exists(dono):
+        return
+    raise GaleriaDeOutroLivro(Path(arquivo), caminho_canonico(dono), Path(livro))
+
+
+def gravar_do_livro(caminho: Path, pdf_path: Path, dados: dict[str, object]) -> Path:
+    """Grava `dados` em `caminho` de forma atômica (S-25), com o livro dono dentro (S-878).
+
+    É a gravação dos dois arquivos da galeria, as anotações e o índice: nunca por cima do arquivo
+    de outro livro de mesmo nome (`GaleriaDeOutroLivro`), e sempre dizendo de quem ele é.
+    """
+    conferir_dono(caminho, _dono_gravado(caminho), pdf_path)
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(caminho, {**dados, "source_pdf": caminho_canonico(pdf_path)})
+    return caminho
+
 
 DEFAULT_HUMAN_EXTRACT = DATA_DIR / "gallery_human.jsonl"
 """O extrato do que **uma pessoa** digitou ou escolheu na galeria (S-115).
@@ -297,6 +362,9 @@ class GalleryAnnotations:
     source_name: str = ""
     reading_order: ReadingOrder = DEFAULT_READING_ORDER
     entries: dict[tuple[int, int], DiagramAnnotation] = field(default_factory=dict)
+    source_pdf: str = ""
+    """O caminho do livro dono deste arquivo, gravado por `save_annotations` (S-878). Vazio nos
+    arquivos anteriores a ele."""
 
     def get(self, page_index: int, diagram_index: int) -> DiagramAnnotation:
         """A anotação daquele diagrama, ou uma vazia. Nunca `None`: quem chama não deve ramificar."""
@@ -329,6 +397,7 @@ class GalleryAnnotations:
         return {
             "version": 1,
             "source_name": self.source_name,
+            "source_pdf": self.source_pdf,
             "reading_order": self.reading_order,
             # Chave de JSON e string: "pagina.diagrama", a mesma forma do header [Round].
             "diagrams": {
@@ -360,15 +429,16 @@ class GalleryAnnotations:
             source_name=str(dados.get("source_name") or ""),
             reading_order=ordem,  # type: ignore[arg-type]
             entries=entradas,
+            source_pdf=str(dados.get("source_pdf") or ""),
         )
 
 
 def annotations_path_for(pdf_path: Path, *, directory: Path = DEFAULT_GALLERY_DIR) -> Path:
     """`data/gallery/<nome-do-pdf>.json`.
 
-    Pelo `stem`, que é a convenção que `default_pgn_output_path` já usa para o PGN -- dois
-    livros de mesmo nome em pastas diferentes colidiriam, e é o mesmo risco que o PGN corre
-    desde sempre. Uniformidade vale mais aqui que uma segunda regra de nomeação.
+    Pelo `stem`, que é a convenção que `default_pgn_output_path` já usa para o PGN, e o nome dos
+    arquivos que o dono já tem. Dois livros de mesmo nome em pastas diferentes caem no mesmo
+    arquivo, e é por isso que ele diz de quem é: o outro é recusado (`conferir_dono`, S-878).
     """
     return Path(directory) / f"{Path(pdf_path).stem}.json"
 
@@ -383,6 +453,9 @@ def load_annotations(
 
     Falhar para o lado do vazio é seguro aqui pelo mesmo motivo do `settings.py`: o vazio é
     "exporte como o pipeline decidiu", que é o comportamento anterior a este módulo.
+
+    O arquivo de **outro livro** de mesmo nome não é vazio nem é deste: levanta
+    `GaleriaDeOutroLivro` (S-878).
     """
     caminho = annotations_path_for(pdf_path, directory=directory)
     anotacoes = GalleryAnnotations(source_name=Path(pdf_path).name, reading_order=reading_order)
@@ -396,6 +469,7 @@ def load_annotations(
         return anotacoes
 
     carregado = GalleryAnnotations.from_dict(dados)
+    conferir_dono(caminho, carregado.source_pdf, pdf_path)
     if carregado.reading_order != reading_order:
         # Nao e erro: e um aviso de que os indices podem apontar para outro diagrama, porque
         # a numeracao de uma pagina depende da ordem de leitura (S-14).
@@ -416,11 +490,8 @@ def save_annotations(
     *,
     directory: Path = DEFAULT_GALLERY_DIR,
 ) -> Path:
-    """Grava de forma atômica (S-25) e devolve o caminho escrito."""
-    caminho = annotations_path_for(pdf_path, directory=directory)
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(caminho, annotations.to_dict())
-    return caminho
+    """Grava de forma atômica (S-25) e devolve o caminho escrito. Ver `gravar_do_livro` (S-878)."""
+    return gravar_do_livro(annotations_path_for(pdf_path, directory=directory), pdf_path, annotations.to_dict())
 
 
 # ------------------------------------------------------- o extrato humano (S-115)

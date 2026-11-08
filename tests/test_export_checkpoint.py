@@ -11,6 +11,7 @@ import chess
 import numpy as np
 from test_inference import probs_for_fen
 
+from chess_diagram_ocr.config import ReadingOrder
 from chess_diagram_ocr.detection import DiagramCandidate
 from chess_diagram_ocr.export_checkpoint import (
     CheckpointWriter,
@@ -21,6 +22,7 @@ from chess_diagram_ocr.export_checkpoint import (
     position_from_dict,
     position_to_dict,
 )
+from chess_diagram_ocr.gallery import DiagramAnnotation, GalleryAnnotations, load_annotations, save_annotations
 from chess_diagram_ocr.inference import OrientedPrediction, prediction_from_probs
 from chess_diagram_ocr.pdf_text import DiagramContext
 from chess_diagram_ocr.pdf_to_pgn import DiagramPosition, save_pdf_positions_to_pgn, scan_pdf_positions
@@ -323,6 +325,28 @@ class CancelAndResumeTests(unittest.TestCase):
             report = save_pdf_positions_to_pgn(pdf_source=Path("livro.pdf"), output_path=saida, resume=False)
             self.assertIsNone(report.resumed_from_page)
             self.assertEqual(len(report.accepted), self.page_count)
+
+    def test_galeria_de_outro_livro_de_mesmo_nome_nao_entra_no_pgn(self) -> None:
+        """S-878: `b/Livro.pdf` exporta sem as anotações de `a/Livro.pdf`, e sem falhar o lote."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raiz = Path(tmpdir)
+            livro_a, livro_b, galeria = raiz / "a" / "Livro.pdf", raiz / "b" / "Livro.pdf", raiz / "gallery"
+            for livro in (livro_a, livro_b):
+                livro.parent.mkdir()
+                livro.write_bytes(b"%PDF-1.4\n")
+            do_a = GalleryAnnotations()
+            do_a.set(0, 1, DiagramAnnotation(headers={"White": "Karpov"}))
+            save_annotations(livro_a, do_a, directory=galeria)
+
+            def _da_pasta(pdf: Path, *, reading_order: ReadingOrder) -> GalleryAnnotations:
+                return load_annotations(pdf, directory=galeria, reading_order=reading_order)
+
+            with patch("chess_diagram_ocr.pdf_to_pgn.load_annotations", _da_pasta):
+                for livro in (livro_a, livro_b):
+                    save_pdf_positions_to_pgn(pdf_source=livro, output_path=raiz / f"{livro.parent.name}.pgn")
+
+            self.assertIn('[White "Karpov"]', (raiz / "a.pgn").read_text(encoding="utf-8"))
+            self.assertNotIn("Karpov", (raiz / "b.pgn").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
