@@ -200,6 +200,17 @@ mutator roda com `PYTHONDONTWRITEBYTECODE=1` e apaga o `__pycache__` do módulo 
 mutação viva depois da restauração. O relatório lista cada sobrevivente com linha e operador. A S-873 mata
 os sobreviventes.
 
+**Entregue** (2026-11-08), com o **piloto pela metade**: `mutacao.json` traz `decode.py` 74% (50 mutantes, só
+`test_decode.py` o importa), `ui/legality.py` 60% (50, só `test_legality_panel.py`; 14 dos 20 sobreviventes
+são mensagem trocada por `""`) e `settings.py` 76% (25 mutantes, 9 arquivos). Ficaram de fora `fen_utils.py`,
+`splits.py` e `atomic_io.py`: a linha de base dos arquivos que os importam leva 136 s, 130 s e 218 s
+(`test_app_pyqt`, `test_qt_*`, `test_training`), e com sobrevivente pagando a rodada inteira 50 mutantes
+custam uma a duas horas por módulo. "Importa" é import direto (as quatro grafias), não o fecho
+transitivo; o homônimo roda primeiro, e o `pytest -x` poupa o resto ao mutante que morre nele. O mutante é
+o fonte inteiro reescrito por `ast.unparse` (some comentário, a restauração devolve os bytes). Conferido à
+mão: um `taskkill /F /T` no meio deixou o mutante e a `.mutator-orig`, e a rodada seguinte restaurou; depois
+das três rodadas reais o `git status` do `src/` ficou limpo. `--gravar` recusa escore menor (`--forcar`).
+
 ## S-804 · Catraca de tipos, e as contagens que só descem
 
 **Problema** (confirmado). 192 `# type: ignore` (80 `arg-type`, 63 `attr-defined`), 892 `Any` e 170
