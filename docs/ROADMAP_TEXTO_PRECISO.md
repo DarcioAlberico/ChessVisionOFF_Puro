@@ -928,8 +928,11 @@ b`), e consertá-la
     altura da folha, abre uma banda com o fundo no pé dela, e a coluna entra ordenada por `x`. O conserto principal é
     `text/gigantes.py`, e não a partição; ele tirou sozinho toda linha alta do ouro-dev (0 de 891). A partição pela projeção entrou
     também, em `duas_linhas.partir_linhas_altas`, e paga pouco: ver a spec.
+  - *Achado:* **tirar tudo o que passa de 8 escalas apagava título de verdade**, e o crítico reprovou por isso (`PRACTICAL MATTERS`,
+    `OPENING`, `CHAPTER SIX`). Agora só sai o que não é letra; a letra grande é lida numa linha só dela. A auditoria das caixas achou
+    ainda duas letras da capa do *Estrin* saindo como foto, e o limite de tinta foi a 0,9.
   - *Achado:* a *Saída* se cumpre nos dois pontos: perda de leiaute **+0,56 p.p. [+0,33; +0,86]** em 40 folhas não vistas (era
-    +3,83), e nenhuma linha alta no ouro-dev. No acervo inteiro, não: 1.266 de 42.495 linhas ainda passam de 1,8 mediana.
+    +3,83), e nenhuma linha alta no ouro-dev. No acervo inteiro, não: 1.210 de 41.950 linhas ainda passam de 1,8 mediana.
 - **S-713** · Perda de leiaute como métrica de primeira classe. ✅ entregue em 2026-11-06
   - *Entrega:* o relatório da régua publica, por livro, `perda_de_leiaute = CER(leitor de linha nas
     caixas do glifo) − CER(leitor de linha nas caixas da camada)`, e a variante `tess_pagina` (o

@@ -101,6 +101,16 @@ class TirarMolduraTests(unittest.TestCase):
         self.assertEqual(quantas, 1)
         self.assertEqual(int((limpa[:, :160] > 0).sum()), 0)
 
+    def test_a_faixa_com_letra_grande_ainda_e_faixa(self) -> None:
+        """Pouco mais de um quarto de vão, de letra branca: abaixo de meio, e o miolo sai. Um limite de 0,2 a tomaria por anel."""
+        imagem = _folha(filete=True, faixa=True)
+        for y in range(100, 1300, 200):
+            cv2.rectangle(imagem, (30, y), (130, y + 100), (255, 255, 255), -1)
+            cv2.rectangle(imagem, (70, y + 40), (90, y + 60), (40, 40, 40), -1)
+        limpa, quantas = moldura.tirar_moldura(binarize(imagem))
+        self.assertEqual(quantas, 1)
+        self.assertEqual(int((limpa[:, :160] > 0).sum()), 0)
+
     def test_o_filete_nao_apaga_o_texto_que_ele_cerca(self) -> None:
         limpa, _ = moldura.tirar_moldura(binarize(_folha(filete=True)))
         self.assertGreater(int((limpa > 0).sum()), 1000)

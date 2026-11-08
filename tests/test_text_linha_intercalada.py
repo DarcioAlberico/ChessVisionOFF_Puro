@@ -155,6 +155,18 @@ class SemGigantesTests(unittest.TestCase):
         binaria[10:50, 10:170] = 255
         self.assertEqual(self._fora(Caixa(10, 10, 170, 150), binaria=binaria), [])
 
+    def test_a_letra_grossa_de_capa_fica_e_o_limite_da_tinta(self) -> None:
+        """O `n` da capa do *Estrin*: 0,81 de tinta, e 5 escalas de largo porque a escala da capa sai baixa."""
+        binaria = np.full((2000, 3000), 255, dtype=np.uint8)
+        binaria[0:19, 0:100] = 0
+        self.assertEqual(self._fora(Caixa(0, 0, 100, 100), binaria=binaria), [], "0,81")
+        binaria = np.full((2000, 3000), 255, dtype=np.uint8)
+        binaria[0:11, 0:100] = 0
+        self.assertEqual(self._fora(Caixa(0, 0, 100, 100), binaria=binaria), [], "0,89")
+        binaria[0:11, 0:100] = 255
+        binaria[0:10, 0:100] = 0
+        self.assertEqual(self._fora(foto := Caixa(0, 0, 100, 100), binaria=binaria), [foto], "0,90")
+
     def test_sem_escala_nao_mexe(self) -> None:
         caixas = [Caixa(0, 0, 4, 1900)]
         self.assertIs(gigantes.sem_gigantes(caixas, self.BINARIA, escala=0), caixas)
@@ -296,6 +308,13 @@ class PartirLinhasAltasTests(unittest.TestCase):
         cima, baixo = _fileira(200), _fileira(226)
         descendente = Caixa(200, 200, 212, 240)
         partidas = self._partidas(sorted([*cima, *baixo, descendente], key=lambda c: c.x1))
+        self.assertEqual(len(partidas), 2)
+
+    def test_o_vale_com_um_sexto_corta(self) -> None:
+        """Duas caixas em doze na fileira do vale: abaixo de um quarto, e isso é vale, embora acima de 0,15."""
+        cima, baixo = _fileira(200, n=10), _fileira(226, n=10)
+        atravessam = [Caixa(200 + 16 * k, 200, 212 + 16 * k, 246) for k in range(2)]
+        partidas = self._partidas(sorted([*cima, *baixo, *atravessam], key=lambda c: c.x1))
         self.assertEqual(len(partidas), 2)
 
     def test_o_vale_com_um_terco_nao_corta(self) -> None:

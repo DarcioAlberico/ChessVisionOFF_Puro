@@ -9,29 +9,62 @@
       "folhas": 120
     }
   },
+  "auditoria_conferida_a_vista": "as 47 caixas que tocam a camada ou em que o Tesseract le palavra de 3 letras, e o mosaico das 264 de tamanho de letra: 19 fios sao as barras do codigo de barras de uma contracapa; 7 sao a faixa do Chess Evolution, com o titulo dela; a caixa do Nunn 326 e a moldura de uma tabela, unica a sair da folha, e as letras de dentro ficam; o resto e capa, contracapa, foto, anuncio, ornamento e um tabuleiro que o detector nao viu. Duas eram letra: o n e o u do titulo da capa do Estrin, classe mancha, devolvidas por TINTA_DE_MANCHA 0,9",
   "auditoria_das_caixas": {
-    "caixas_a_menos": 837,
-    "folhas_com_caixa_a_menos": 177,
-    "folhas_no_censo": 808,
-    "nota": "gigantes e miolo da faixa ligados contra desligados; 24 das que tocam são os dígitos do código de barras de uma contracapa",
-    "que_tocam_texto_da_camada": 44
+    "caixas_a_menos": 770,
+    "dessas_sem_camada": 83,
+    "em_folha_sem_camada": {
+      "faixa": 108,
+      "fio": 63,
+      "mancha": 2,
+      "miolo_da_faixa": 1,
+      "moldura_aberta": 164
+    },
+    "em_que_o_tesseract_falhou": 2,
+    "em_que_o_tesseract_le_palavra": {
+      "faixa": 4,
+      "fio": 0,
+      "mancha": 0,
+      "moldura_aberta": 6
+    },
+    "folhas_com_caixa_a_menos": 175,
+    "folhas_no_censo": 812,
+    "nota": "o Tesseract roda só em caixa de ao menos 3 escalas, e alucina em foto: é teto, conferido à vista",
+    "por_classe": {
+      "faixa": 163,
+      "fio": 138,
+      "mancha": 5,
+      "miolo_da_faixa": 280,
+      "moldura_aberta": 184
+    },
+    "que_tocam_texto_da_camada": {
+      "faixa": 14,
+      "fio": 19,
+      "mancha": 0,
+      "miolo_da_faixa": 0,
+      "moldura_aberta": 5
+    }
   },
   "censo_de_linhas_altas": {
     "antes": {
       "altas": 1868,
       "altas_na_primeira_folha_do_livro": 512,
-      "folhas": 809,
+      "folhas": 812,
       "fracao": 0.0441,
       "linhas": 42347,
       "livros": 58
     },
     "depois": {
-      "altas": 1266,
-      "altas_na_primeira_folha_do_livro": 450,
-      "folhas": 808,
-      "fracao": 0.0298,
-      "linhas": 42495,
+      "altas": 1210,
+      "altas_na_primeira_folha_do_livro": 419,
+      "folhas": 812,
+      "fracao": 0.0288,
+      "linhas": 41950,
       "livros": 58
+    },
+    "ouro_dev_antes": {
+      "altas": 6,
+      "linhas": 905
     },
     "ouro_dev_depois": {
       "altas": 0,
@@ -44,9 +77,9 @@
     "so_gigantes": {
       "altas": 1464,
       "altas_na_primeira_folha_do_livro": 410,
-      "folhas": 808,
-      "fracao": 0.0351,
-      "linhas": 41730,
+      "folhas": 812,
+      "fracao": 0.035,
+      "linhas": 41793,
       "livros": 58
     }
   },
@@ -303,18 +336,18 @@
           }
         },
         "segundos_por_folha": {
-          "camada_prosa": 0.995,
-          "fusao": 1.719,
-          "glifo": 0.923,
-          "tess_por_folha": 0.738,
-          "tess_por_processo": 3.577
+          "camada_prosa": 1.035,
+          "fusao": 1.808,
+          "glifo": 0.951,
+          "tess_por_folha": 0.765,
+          "tess_por_processo": 3.773
         },
         "segundos_por_folha_p95": {
-          "camada_prosa": 2.034,
-          "fusao": 3.02,
-          "glifo": 1.943,
-          "tess_por_folha": 1.01,
-          "tess_por_processo": 5.33
+          "camada_prosa": 2.058,
+          "fusao": 3.098,
+          "glifo": 2.017,
+          "tess_por_folha": 1.068,
+          "tess_por_processo": 5.835
         },
         "wer": {
           "camada_prosa": 0.00779,
@@ -575,18 +608,18 @@
           }
         },
         "segundos_por_folha": {
-          "camada_prosa": 0.797,
-          "fusao": 1.478,
-          "glifo": 0.739,
-          "tess_por_folha": 0.689,
-          "tess_por_processo": 3.287
+          "camada_prosa": 0.83,
+          "fusao": 1.564,
+          "glifo": 0.76,
+          "tess_por_folha": 0.713,
+          "tess_por_processo": 3.445
         },
         "segundos_por_folha_p95": {
-          "camada_prosa": 1.21,
-          "fusao": 1.795,
-          "glifo": 1.093,
-          "tess_por_folha": 0.997,
-          "tess_por_processo": 5.805
+          "camada_prosa": 1.437,
+          "fusao": 2.158,
+          "glifo": 1.076,
+          "tess_por_folha": 1.068,
+          "tess_por_processo": 6.699
         },
         "wer": {
           "camada_prosa": 0.00417,
@@ -740,7 +773,7 @@
         },
         "executor": {
           "diferentes_do_processo_por_linha": 0,
-          "linhas": 2001
+          "linhas": 1997
         },
         "figurina": {
           "camada_prosa": {
@@ -748,8 +781,8 @@
             "revocacao": 0.6018
           },
           "fusao": {
-            "precisao": 0.7134,
-            "revocacao": 0.5947
+            "precisao": 0.7128,
+            "revocacao": 0.5929
           },
           "glifo": {
             "precisao": 0.7506,
@@ -758,9 +791,9 @@
         },
         "folhas": 30,
         "g5_provisoria_fusao": {
-          "captura": 0.2609,
-          "fracao_marcada": 0.0481,
-          "palavras_erradas": 943
+          "captura": 0.2611,
+          "fracao_marcada": 0.048,
+          "palavras_erradas": 942
         },
         "livros": 10,
         "notacao": {
@@ -772,10 +805,10 @@
             ]
           },
           "fusao": {
-            "cer": 0.35776,
+            "cer": 0.35626,
             "ic95": [
               0.19888,
-              0.47285
+              0.46918
             ]
           },
           "glifo": {
@@ -786,10 +819,10 @@
             ]
           },
           "tess": {
-            "cer": 0.26105,
+            "cer": 0.26171,
             "ic95": [
               0.09594,
-              0.39935
+              0.40081
             ]
           }
         },
@@ -802,17 +835,17 @@
             ]
           },
           "fusao-glifo_notacao": {
-            "delta_pp": 1.147,
+            "delta_pp": 0.997,
             "ic95_pp": [
-              -1.887,
-              5.173
+              -1.904,
+              4.755
             ]
           },
           "fusao-tess_prosa": {
-            "delta_pp": 0.899,
+            "delta_pp": 0.87,
             "ic95_pp": [
-              0.012,
-              2.151
+              0.017,
+              2.098
             ]
           }
         },
@@ -822,47 +855,47 @@
         },
         "prosa": {
           "camada_prosa": {
-            "cer": 0.23214,
+            "cer": 0.23186,
             "ic95": [
               0.13638,
-              0.34926
+              0.34839
             ]
           },
           "fusao": {
-            "cer": 0.14069,
+            "cer": 0.14038,
             "ic95": [
               0.07994,
-              0.21327
+              0.21302
             ]
           },
           "glifo": {
-            "cer": 0.23214,
+            "cer": 0.23186,
             "ic95": [
               0.13638,
-              0.34926
+              0.34839
             ]
           },
           "tess": {
-            "cer": 0.13171,
+            "cer": 0.13168,
             "ic95": [
               0.07306,
-              0.20082
+              0.20037
             ]
           }
         },
         "segundos_por_folha": {
-          "camada_prosa": 1.67,
-          "fusao": 2.507,
-          "glifo": 1.544,
-          "tess_por_folha": 0.89,
-          "tess_por_processo": 6.908
+          "camada_prosa": 1.761,
+          "fusao": 2.633,
+          "glifo": 1.606,
+          "tess_por_folha": 0.948,
+          "tess_por_processo": 7.388
         },
         "segundos_por_folha_p95": {
-          "camada_prosa": 3.373,
-          "fusao": 3.724,
-          "glifo": 2.83,
-          "tess_por_folha": 1.475,
-          "tess_por_processo": 11.285
+          "camada_prosa": 3.631,
+          "fusao": 4.183,
+          "glifo": 3.179,
+          "tess_por_folha": 1.51,
+          "tess_por_processo": 11.95
         },
         "wer": {
           "camada_prosa": 0.53616,
@@ -876,9 +909,9 @@
   "dpi": 220,
   "estilo": {
     "auto": {
-      "casados": 58097,
+      "casados": 58110,
       "folhas": 70,
-      "italico_a_mais": 834,
+      "italico_a_mais": 851,
       "italico_chegou": 483,
       "italico_declarado": 713,
       "negrito_a_mais": 36,
@@ -890,9 +923,9 @@
       }
     },
     "glifo": {
-      "casados": 58097,
+      "casados": 58110,
       "folhas": 70,
-      "italico_a_mais": 834,
+      "italico_a_mais": 851,
       "italico_chegou": 483,
       "italico_declarado": 713,
       "negrito_a_mais": 36,
@@ -934,7 +967,7 @@
       "folha": 31,
       "linhas": {
         "camada": 72,
-        "lidas": 80
+        "lidas": 79
       },
       "livro": "Kmoch - Inte"
     },
@@ -945,18 +978,18 @@
       "folha": 69,
       "linhas": {
         "camada": 75,
-        "lidas": 83
+        "lidas": 82
       },
       "livro": "Kmoch - Inte"
     },
     {
       "avisos": [],
-      "cer_prosa_glifo": 0.5275,
+      "cer_prosa_glifo": 0.5266,
       "densidade": null,
       "folha": 106,
       "linhas": {
         "camada": 70,
-        "lidas": 79
+        "lidas": 77
       },
       "livro": "Kmoch - Inte"
     },
@@ -985,8 +1018,8 @@
   ],
   "item": "S-712",
   "medido_com": {
-    "arvore_suja_em_src": true,
-    "commit": "fa537741",
+    "arvore_suja_em_src": false,
+    "commit": "08fee20c",
     "modelo_sha256": "ca4bcc00b9c59b07",
     "nota": "tempos sob contenção: outras medições rodavam na máquina, e o G4 não se julga por eles",
     "regua_sha256": "9857cbee6af253dc",
@@ -1002,13 +1035,47 @@
     },
     "tesseract": "5.5.0.20241111"
   },
+  "mudanca_depois_de_medir": {
+    "caixas_que_mudam": [
+      {
+        "caixa": [
+          102,
+          347,
+          140,
+          397
+        ],
+        "escala": 7,
+        "livro": "Estrin - Bauernopfer in der Eroeffnung (1980).pdf",
+        "pagina": 0,
+        "tinta": 0.807
+      },
+      {
+        "caixa": [
+          232,
+          536,
+          258,
+          571
+        ],
+        "escala": 7,
+        "livro": "Estrin - Bauernopfer in der Eroeffnung (1980).pdf",
+        "pagina": 0,
+        "tinta": 0.804
+      }
+    ],
+    "commit": "0d950439",
+    "folhas_conferidas": 1163,
+    "nota": "fora dessas folhas a lista de caixas é a mesma, e o número medido vale; o censo, a auditoria e a varredura contam o limite de 0,8",
+    "o_que": "TINTA_DE_MANCHA de 0,8 a 0,9, depois de medir"
+  },
   "ouro_dev_folha_a_folha": {
     "camada_prosa": {
+      "as_que_pioraram": [],
       "iguais": 25,
       "melhoraram": 3,
       "pioraram": 0
     },
     "glifo": {
+      "as_que_pioraram": [],
       "iguais": 25,
       "melhoraram": 3,
       "pioraram": 0
@@ -1020,22 +1087,24 @@
   },
   "particao_sozinha_na_prata": {
     "glifo": {
-      "iguais": 26,
+      "as_que_pioraram": [],
+      "iguais": 27,
       "melhoraram": 3,
-      "pioraram": 1
+      "pioraram": 0
     },
     "nota": "gigantes ligado nos dois lados; só a partição pela projeção muda",
     "tess": {
-      "iguais": 25,
-      "melhoraram": 4,
-      "pioraram": 1
+      "as_que_pioraram": [],
+      "iguais": 27,
+      "melhoraram": 3,
+      "pioraram": 0
     },
     "tess_cer": {
       "com": {
-        "cer": 0.13171,
+        "cer": 0.13168,
         "ic95": [
           0.07306,
-          0.20082
+          0.20037
         ]
       },
       "sem": {
@@ -1043,6 +1112,37 @@
         "ic95": [
           0.07391,
           0.20184
+        ]
+      }
+    }
+  },
+  "particao_sozinha_nos_chess_evolution": {
+    "glifo": {
+      "as_que_pioraram": [],
+      "iguais": 40,
+      "melhoraram": 0,
+      "pioraram": 0
+    },
+    "nota": "as 40 não vistas; é aqui que a partição muda folha de livro digital",
+    "tess": {
+      "as_que_pioraram": [],
+      "iguais": 40,
+      "melhoraram": 0,
+      "pioraram": 0
+    },
+    "tess_cer": {
+      "com": {
+        "cer": 0.01878,
+        "ic95": [
+          0.01615,
+          0.0217
+        ]
+      },
+      "sem": {
+        "cer": 0.01878,
+        "ic95": [
+          0.01615,
+          0.0217
         ]
       }
     }
@@ -1075,6 +1175,54 @@
         ]
       }
     },
+    "cer_de_prosa_por_motor": {
+      "antes": {
+        "fusao": {
+          "cer": 0.05151,
+          "ic95": [
+            0.02984,
+            0.08312
+          ]
+        },
+        "glifo": {
+          "cer": 0.08413,
+          "ic95": [
+            0.06018,
+            0.11878
+          ]
+        },
+        "tess": {
+          "cer": 0.0514,
+          "ic95": [
+            0.03064,
+            0.08156
+          ]
+        }
+      },
+      "depois": {
+        "fusao": {
+          "cer": 0.01845,
+          "ic95": [
+            0.01596,
+            0.02111
+          ]
+        },
+        "glifo": {
+          "cer": 0.05111,
+          "ic95": [
+            0.04664,
+            0.05667
+          ]
+        },
+        "tess": {
+          "cer": 0.01878,
+          "ic95": [
+            0.01615,
+            0.0217
+          ]
+        }
+      }
+    },
     "depois": {
       "diferenca": {
         "delta_pp": 0.563,
@@ -1085,7 +1233,7 @@
       },
       "folhas": 40,
       "livros": 2,
-      "medido_em": "fa537741",
+      "medido_em": "08fee20c",
       "nota": "rodar.py nas folhas de prosa dos dois Chess Evolution; a Saída da S-711 pedia Tesseract nas linhas do glifo a até 1 p.p. do oráculo",
       "tess_nas_linhas_do_glifo": {
         "cer": 0.01878,
@@ -1103,12 +1251,25 @@
       }
     },
     "glifo_folha_a_folha": {
+      "as_que_pioraram": [],
       "iguais": 5,
       "melhoraram": 35,
       "pioraram": 0
     },
+    "ligaduras_perdidas_na_camada": {
+      "erros_de_prosa_do_tesseract": 1047,
+      "ocorrencias_na_referencia": 60
+    },
     "nota": "40 folhas de prosa, 20 por livro, fora das 24 e das duas fixtures; é o que a Saída pede",
     "tess_folha_a_folha": {
+      "as_que_pioraram": [
+        [
+          "📚Chess Evolution 2014 №097-149.pdf",
+          673,
+          65,
+          74
+        ]
+      ],
       "iguais": 6,
       "melhoraram": 33,
       "pioraram": 1
@@ -1152,7 +1313,7 @@
       },
       "folhas": 24,
       "livros": 2,
-      "medido_em": "fa537741",
+      "medido_em": "08fee20c",
       "nota": "rodar.py nas folhas de prosa dos dois Chess Evolution; a Saída da S-711 pedia Tesseract nas linhas do glifo a até 1 p.p. do oráculo",
       "tess_nas_linhas_do_glifo": {
         "cer": 0.01371,
@@ -1171,21 +1332,48 @@
     },
     "nota": "as 24 folhas do portão da S-711: foram olhadas para achar o conserto, e não julgam nada"
   },
+  "prata_folha_a_folha": {
+    "fusao": {
+      "as_que_pioraram": [
+        [
+          "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf",
+          105,
+          333,
+          366
+        ]
+      ],
+      "iguais": 24,
+      "melhoraram": 5,
+      "pioraram": 1
+    },
+    "glifo": {
+      "as_que_pioraram": [],
+      "iguais": 23,
+      "melhoraram": 7,
+      "pioraram": 0
+    },
+    "tess": {
+      "as_que_pioraram": [],
+      "iguais": 25,
+      "melhoraram": 5,
+      "pioraram": 0
+    }
+  },
   "regua": "texto_prosa_2026-10-30/banco.py",
   "varredura_da_guarda": {
     "densidade_das_avisadas": [
-      0.042,
-      0.134,
+      0.044,
+      0.135,
       0.197,
-      0.443,
-      0.447,
-      0.469,
+      0.44,
+      0.444,
+      0.475,
       1.166,
-      3.161,
-      3.161,
-      18.931,
-      6279.714,
-      48494.0
+      3.145,
+      3.145,
+      18.923,
+      6281.714,
+      48536.0
     ],
     "folhas": 812,
     "folhas_com_camada_abaixo_de_0_7": 0,
@@ -1201,7 +1389,7 @@
       },
       "capa": {
         "densidade_min": 0.0,
-        "densidade_p05": 0.558,
+        "densidade_p05": 0.556,
         "folha_nao_lida": 3,
         "folhas": 55,
         "leitura_parcial": 0
@@ -1222,13 +1410,13 @@
       },
       "prosa": {
         "densidade_min": 0.94,
-        "densidade_p05": 1.03,
+        "densidade_p05": 1.033,
         "folha_nao_lida": 1,
         "folhas": 395,
         "leitura_parcial": 0
       },
       "sem_camada": {
-        "densidade_min": 0.042,
+        "densidade_min": 0.044,
         "densidade_p05": 0.945,
         "folha_nao_lida": 7,
         "folhas": 189,
@@ -1249,6 +1437,6 @@
         "leitura_parcial": 0
       }
     },
-    "segundos_por_folha_p95": 2.868
+    "segundos_por_folha_p95": 2.911
   }
 }

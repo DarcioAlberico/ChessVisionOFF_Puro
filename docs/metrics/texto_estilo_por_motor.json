@@ -2,7 +2,7 @@
   "item": "S-660 · o estilo da camada chega ao documento em cada motor?",
   "medido_em": "2026-11-06",
   "codigo": {
-    "commit": "fa537741",
+    "commit": "08fee20c",
     "arvore_suja": false
   },
   "protocolo": "4 folhas espacadas de cada um dos 58 PDFs; livros sem estilo declarado nas folhas lidas ficam fora",
@@ -10,13 +10,13 @@
   "livros_medidos": 21,
   "total": {
     "auto": {
-      "casados": 58097,
+      "casados": 58110,
       "negrito_declarado": 3886,
       "negrito_chegou": 3601,
       "negrito_a_mais": 36,
       "italico_declarado": 713,
       "italico_chegou": 483,
-      "italico_a_mais": 834,
+      "italico_a_mais": 851,
       "folhas": 70,
       "perda": {
         "negrito": 0.0733,
@@ -24,13 +24,13 @@
       }
     },
     "glifo": {
-      "casados": 58097,
+      "casados": 58110,
       "negrito_declarado": 3886,
       "negrito_chegou": 3601,
       "negrito_a_mais": 36,
       "italico_declarado": 713,
       "italico_chegou": 483,
-      "italico_a_mais": 834,
+      "italico_a_mais": 851,
       "folhas": 70,
       "perda": {
         "negrito": 0.0733,
@@ -529,7 +529,7 @@
     },
     "Gutmayer - Turnierpraxis (1922).pdf": {
       "auto": {
-        "casados": 2700,
+        "casados": 2695,
         "negrito_declarado": 2,
         "negrito_chegou": 1,
         "negrito_a_mais": 0,
@@ -543,7 +543,7 @@
         }
       },
       "glifo": {
-        "casados": 2700,
+        "casados": 2695,
         "negrito_declarado": 2,
         "negrito_chegou": 1,
         "negrito_a_mais": 0,
@@ -559,13 +559,13 @@
     },
     "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf": {
       "auto": {
-        "casados": 4576,
+        "casados": 4594,
         "negrito_declarado": 59,
         "negrito_chegou": 40,
         "negrito_a_mais": 0,
         "italico_declarado": 124,
         "italico_chegou": 63,
-        "italico_a_mais": 246,
+        "italico_a_mais": 263,
         "folhas": 4,
         "perda": {
           "negrito": 0.322,
@@ -573,13 +573,13 @@
         }
       },
       "glifo": {
-        "casados": 4576,
+        "casados": 4594,
         "negrito_declarado": 59,
         "negrito_chegou": 40,
         "negrito_a_mais": 0,
         "italico_declarado": 124,
         "italico_chegou": 63,
-        "italico_a_mais": 246,
+        "italico_a_mais": 263,
         "folhas": 4,
         "perda": {
           "negrito": 0.322,

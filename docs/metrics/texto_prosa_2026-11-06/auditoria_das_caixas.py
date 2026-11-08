@@ -9,7 +9,8 @@ tem contagens, e é o que `compilar.py` publica.
 
 **Folha sem camada é metade do que importa**, e a primeira versão desta conta era cega ali: o que sai dela não toca palavra
 nenhuma por construção. Por isso toda caixa de ao menos `ALTURA_LIDA` escalas passa também pelo Tesseract. Ele alucina em
-foto, então o número é um teto, e cada caso se confere à vista.
+foto, então o número é um teto, e cada caso se confere à vista. **E é um teto só de palavra:** o `n` e o `u` da capa do *Estrin*
+saíram com o Tesseract lendo uma letra só, e quem os achou foi o mosaico das caixas de tamanho de letra. Olhe o mosaico também.
 """
 from __future__ import annotations
 
@@ -61,7 +62,7 @@ def main(detalhe: str, resumo: str, por_livro: int) -> None:
     s = DPI / 72
     motor = tesseract.achar_motor()
     vistos = set()
-    folhas = com_caixa = sem_camada_com_caixa = 0
+    folhas = com_caixa = sem_camada_com_caixa = falhas = 0
     classes: Counter[str] = Counter()
     tocam, em_folha_sem_camada, tess_leu = Counter(), Counter(), Counter()
     with open(detalhe, "w", encoding="utf-8") as f:
@@ -94,7 +95,10 @@ def main(detalhe: str, resumo: str, por_livro: int) -> None:
                     lido = ""
                     if y2 - y1 >= ALTURA_LIDA * escala:
                         recorte = imagem[y1:y2, x1:x2].mean(axis=2).astype(np.uint8)
-                        lido = tesseract.ler_linhas([recorte], lingua="eng", dpi=DPI, motor=motor)[0].texto
+                        try:
+                            lido = tesseract.ler_linhas([recorte], lingua="eng", dpi=DPI, motor=motor)[0].texto
+                        except tesseract.FalhaDoTesseract:  # recorte estreito demais para a escala interna dele
+                            falhas += 1
                         tess_leu[classe] += bool(PALAVRA.search(lido))
                     f.write(json.dumps({"nome": os.path.basename(pdf), "pagina": i, "escala": escala, "caixa": caixa, "classe": classe,
                                         "camada": " ".join(na_camada)[:80], "tesseract": lido[:80]}, ensure_ascii=False) + "\n")
@@ -108,6 +112,7 @@ def main(detalhe: str, resumo: str, por_livro: int) -> None:
         "que_tocam_texto_da_camada": dict(tocam),
         "em_folha_sem_camada": dict(em_folha_sem_camada),
         "em_que_o_tesseract_le_palavra": dict(tess_leu),
+        "em_que_o_tesseract_falhou": falhas,
         "nota": "o Tesseract roda só em caixa de ao menos 3 escalas, e alucina em foto: é teto, conferido à vista",
     }, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8"))
 

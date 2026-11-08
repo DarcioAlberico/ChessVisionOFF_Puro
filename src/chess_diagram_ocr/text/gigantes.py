@@ -49,12 +49,13 @@ LETRAS_DENTRO = 3
 LADO_DE_MANCHA = 3.0
 """Em escalas: a foto pequena fica abaixo de `ALTURA_DE_GRANDE`, e quem a separa da letra é a tinta."""
 
-TINTA_DE_MANCHA = 0.8
-"""Fração de tinta no retângulo. A foto do *Chess Evolution 2014* dá 0,94; a letra deixa o retângulo com vão."""
+TINTA_DE_MANCHA = 0.9
+"""Fração de tinta no retângulo. A foto do *Chess Evolution 2014* dá 0,94. O `n` e o `u` do título em negrito da capa do
+*Estrin* dão 0,81 e 0,80, e a 0,8 sumiam: letra grossa chega perto, e foi a auditoria das caixas que mostrou."""
 
 
 def _e_mancha(caixa: Caixa, binaria: np.ndarray, *, escala: int) -> bool:
-    """Larga e alta como várias letras, e quase toda tinta: é foto, e letra nenhuma é assim."""
+    """Larga e alta como várias letras, e quase toda tinta: é foto. O `I` maciço e gigante de uma capa também cai aqui."""
     if caixa.altura < LADO_DE_MANCHA * escala or caixa.largura < LADO_DE_MANCHA * escala:
         return False
     recorte = caixa.recortar(binaria)
