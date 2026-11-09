@@ -1447,6 +1447,11 @@ o parser com `exit_on_error=False`, e um erro de argumento vai ao log enquanto a
 
 **Aceite.** O teste passa; o `--selftest` do bundle cobre o argumento posicional.
 
+**Entregue** (2026-11-08): além do `exit_on_error=False`, `parse_known_args`, porque no 3.10 o argumento
+que sobra (dois livros arrastados de uma vez) ainda chama `parser.error`; o que sobra vai ao log e abre o
+primeiro. Quem chega ao `selftest` com o livro posicional é afirmado por teste (`MainTests`), sem gerar o
+`.exe`. Fica de fora o `-h` num processo sem `stdout`, que ninguém faz por arrasto.
+
 ## S-909 · O arquivo de log não leva o nome do usuário
 
 **Problema** (plausível). A rotação do log está certa (2 MB × 5, `logging_setup.py:105`), mas o arquivo

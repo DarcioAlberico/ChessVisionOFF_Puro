@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import cv2
 import fitz
@@ -884,6 +885,73 @@ class SelftestTests(unittest.TestCase):
         # virou dependencia de base -- e este assert fixava a instrucao quebrada (S-506).
         self.assertIn("uv sync", app_pyqt.FALTA_O_PYQT)
         self.assertNotIn("--extra qt", app_pyqt.FALTA_O_PYQT)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class MainTests(unittest.TestCase):
+    """O `main` como o Windows o chama: o livro arrastado para o ícone vem posicional (S-907).
+
+    E no `.exe` montado com `console=False`, `sys.stderr` e `sys.stdout` são `None`: um
+    `argparse` que reclama escreve num fluxo que não existe e levanta, sem janela e sem log.
+    A janela, a `QApplication` e a borda são remendadas -- o que se afirma é o caminho do
+    argumento até `abrir_pdf`.
+    """
+
+    LIVRO = r"C:\Livros\Nunn.pdf"
+
+    def _rodar_main(self, *argumentos: str) -> mock.MagicMock:
+        from chess_diagram_ocr.qt import janela as modulo_da_janela
+        from chess_diagram_ocr.qt import plataforma
+
+        app_pyqt = SelftestTests._app_pyqt()
+        janela = mock.MagicMock()
+        with (
+            mock.patch.object(app_pyqt.sys, "argv", ["ChessVisionOFF.exe", *argumentos]),
+            mock.patch.object(app_pyqt.sys, "stderr", None),
+            mock.patch.object(app_pyqt.sys, "stdout", None),
+            mock.patch.object(app_pyqt, "configure_logging"),
+            mock.patch.object(plataforma, "politica_de_escala"),
+            mock.patch.object(plataforma, "instalar_borda"),
+            mock.patch.object(modulo_da_janela, "JanelaPrincipal", return_value=janela),
+            mock.patch("PyQt6.QtWidgets.QApplication"),
+            self.assertRaises(SystemExit),
+        ):
+            app_pyqt.main()
+        return janela
+
+    def test_main_aceita_pdf_posicional_sem_stderr(self) -> None:
+        janela = self._rodar_main(self.LIVRO)
+
+        janela.abrir_pdf.assert_called_once_with(Path(self.LIVRO))
+        janela.abrir_livro_da_sessao.assert_not_called()
+
+    def test_argumento_que_nao_se_entende_vai_ao_log_e_a_janela_abre(self) -> None:
+        with self.assertLogs("app_pyqt", "WARNING") as registro:
+            janela = self._rodar_main("--page", "oitenta")
+
+        janela.show.assert_called_once()
+        janela.abrir_livro_da_sessao.assert_called_once()
+        self.assertIn("oitenta", "\n".join(registro.output))
+
+    def test_dois_livros_arrastados_abre_o_primeiro_e_registra_o_outro(self) -> None:
+        segundo = r"C:\Livros\Kasparov.pdf"
+        with self.assertLogs("app_pyqt", "WARNING") as registro:
+            janela = self._rodar_main(self.LIVRO, segundo)
+
+        janela.abrir_pdf.assert_called_once_with(Path(self.LIVRO))
+        self.assertIn("Kasparov.pdf", "\n".join(registro.output))
+
+    def test_o_auto_teste_recebe_o_livro_posicional(self) -> None:
+        app_pyqt = SelftestTests._app_pyqt()
+        with (
+            mock.patch.object(app_pyqt.sys, "argv", ["ChessVisionOFF.exe", "--selftest", self.LIVRO]),
+            mock.patch.object(app_pyqt, "configure_logging"),
+            mock.patch.object(app_pyqt, "selftest", return_value=0) as auto_teste,
+            self.assertRaises(SystemExit),
+        ):
+            app_pyqt.main()
+
+        auto_teste.assert_called_once_with(Path(self.LIVRO), 0)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
