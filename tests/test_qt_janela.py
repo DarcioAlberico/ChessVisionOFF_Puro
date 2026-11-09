@@ -585,9 +585,9 @@ class FiacaoTests(_JanelaComLivro):
         janela = self.janela()
         janela.pdf.ir_para_pagina(2)
         self.assertEqual(janela.texto._pagina_indice, 2)
-        self.assertEqual(janela.texto.campo_de_folha.value(), 3)
+        self.assertEqual(janela.texto.leitura.campo_de_folha.value(), 3)
         janela.pdf.ir_para_pagina(0)
-        self.assertEqual(janela.texto.campo_de_folha.value(), 1)
+        self.assertEqual(janela.texto.leitura.campo_de_folha.value(), 1)
 
     def test_o_duplo_clique_na_miniatura_da_aba_texto_leva_o_diagrama_a_sala(self) -> None:
         """O mesmo destino do duplo clique na caixa do visualizador (item 8)."""
@@ -621,12 +621,12 @@ class FiacaoTests(_JanelaComLivro):
         with mock.patch.object(QFileDialog, "getOpenFileName", return_value=(str(cvtxt), "")):
             janela.texto.abrir_documento()
         self.assertEqual(janela.pdf.page_index, 2)
-        self.assertEqual(janela.texto.campo_de_folha.value(), 3)
+        self.assertEqual(janela.texto.leitura.campo_de_folha.value(), 3)
 
     def test_o_visualizador_empresta_a_folha_rasterizada_a_aba_texto(self) -> None:
         """A página aberta já custou a rasterização; a aba Texto a reaproveita (item 28)."""
         janela = self.janela()
-        fornecedor = janela.texto._fornecedor_de_folha
+        fornecedor = janela.texto.leitura.fornecedor_de_folha
         assert fornecedor is not None
         self.assertIs(getattr(fornecedor, "__self__", None), janela.pdf)
         self.assertEqual(getattr(fornecedor, "__name__", ""), "folha_renderizada")
@@ -640,7 +640,7 @@ class FiacaoTests(_JanelaComLivro):
     def test_a_aba_texto_sabe_quantas_folhas_o_livro_tem(self) -> None:
         """O campo «Folha a ler» grampeia no número de folhas do livro (item 15)."""
         janela = self.janela()
-        self.assertEqual(janela.texto.campo_de_folha.maximum(), 3)
+        self.assertEqual(janela.texto.leitura.campo_de_folha.maximum(), 3)
 
     def test_a_posicao_de_cada_diagrama_lido_chega_a_aba_texto(self) -> None:
         """A aba Livro lê a posição; a aba Texto só sabia onde o diagrama está (item 6)."""
@@ -1236,28 +1236,28 @@ class EstadoEntreSessoesTests(unittest.TestCase):
     def test_o_zoom_e_a_quebra_da_aba_de_texto_voltam(self) -> None:
         """O terceiro zoom do programa (S-291), e a quebra que quem lê notação desliga."""
         primeira = self.janela()
-        primeira.texto.aplicar_zoom(2, avisar=False)
-        primeira.texto.definir_quebra(False)
+        primeira.texto.vista.aplicar_zoom(2, avisar=False)
+        primeira.texto.vista.definir_quebra(False)
         primeira.close()
 
         segunda = self.janela()
-        self.assertEqual(2, segunda.texto.zoom_da_vista)
-        self.assertFalse(segunda.texto.quebra)
+        self.assertEqual(2, segunda.texto.vista.zoom_da_vista)
+        self.assertFalse(segunda.texto.vista.quebra)
 
     def test_o_motor_e_o_modo_bloco_da_aba_de_texto_voltam(self) -> None:
         """Quem liga o modo bloco paga 40 s por folha de propósito, e não quer religá-lo (item 17)."""
         from chess_diagram_ocr.ui.texto_declarado import MOTORES
 
         primeira = self.janela()
-        primeira.texto.definir_motor(MOTORES[-1])
-        primeira.texto.caixa_de_bloco.setChecked(True)
+        primeira.texto.leitura.definir_motor(MOTORES[-1])
+        primeira.texto.leitura.caixa_de_bloco.setChecked(True)
         primeira.close()
 
         segunda = self.janela()
-        self.assertEqual(MOTORES[-1], segunda.texto.motor)
-        self.assertEqual(MOTORES[-1], segunda.texto.escolha_de_motor.currentData())
-        self.assertTrue(segunda.texto.modo_bloco)
-        self.assertTrue(segunda.texto.caixa_de_bloco.isChecked())
+        self.assertEqual(MOTORES[-1], segunda.texto.leitura.motor)
+        self.assertEqual(MOTORES[-1], segunda.texto.leitura.escolha_de_motor.currentData())
+        self.assertTrue(segunda.texto.leitura.modo_bloco)
+        self.assertTrue(segunda.texto.leitura.caixa_de_bloco.isChecked())
 
     def test_a_aba_aberta_volta_pelo_nome_e_nao_pelo_indice(self) -> None:
         """Índice não sobrevive a reordenar as abas, e a S-162 é reordená-las."""
@@ -1435,7 +1435,7 @@ class EstadoEntreSessoesTests(unittest.TestCase):
                 pasta_da_galeria=self.pasta,
             )
             self.addCleanup(descartar, montada)
-            self.assertEqual(3, montada.texto.zoom_da_vista, "o estado antigo não foi lido")
+            self.assertEqual(3, montada.texto.vista.zoom_da_vista, "o estado antigo não foi lido")
             montada.close()
 
         self.assertTrue(novo.exists(), "gravou de volta no nome antigo")
@@ -1698,7 +1698,7 @@ class DesfazerTests(unittest.TestCase):
         desfaziveis. Antes daqui a tecla desfazia a ultima peca arrastada no tabuleiro.
         """
         janela = self.janela()
-        janela.texto._edicao = 7
+        janela.texto.espelho._edicao = 7
         janela.painel._edicao = 3
         with (
             mock.patch.object(janela, "_foco", lambda: None),
@@ -1712,7 +1712,7 @@ class DesfazerTests(unittest.TestCase):
     def test_o_foco_dentro_de_um_painel_ganha_do_ultimo_editado(self) -> None:
         """O caso 1: quem contem o widget em foco desfaz, mesmo tendo editado antes do outro."""
         janela = self.janela()
-        janela.texto._edicao = 99
+        janela.texto.espelho._edicao = 99
         janela.painel._edicao = 1
         with (
             mock.patch.object(janela, "_foco", lambda: janela.painel.tabuleiro),
@@ -1725,7 +1725,7 @@ class DesfazerTests(unittest.TestCase):
 
     def test_o_refazer_segue_o_mesmo_arbitro(self) -> None:
         janela = self.janela()
-        janela.texto._edicao = 2
+        janela.texto.espelho._edicao = 2
         with (
             mock.patch.object(janela, "_foco", lambda: None),
             mock.patch.object(janela.texto, "refazer") as do_texto,

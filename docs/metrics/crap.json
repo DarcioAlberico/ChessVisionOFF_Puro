@@ -371,9 +371,9 @@
    "crap": 71.0
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto._menu_do_caderno",
-   "linha": 4412,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_caderno.py",
+   "funcao": "CadernoDaAba.menu_do_caderno",
+   "linha": 959,
    "cc": 11,
    "cobertura": 0.2105,
    "crap": 70.5
@@ -699,9 +699,9 @@
    "crap": 40.3
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto.notacao_do_diagrama",
-   "linha": 4042,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_miniaturas.py",
+   "funcao": "MiniaturasDoTexto.notacao_do_diagrama",
+   "linha": 448,
    "cc": 7,
    "cobertura": 0.125,
    "crap": 39.8
@@ -885,7 +885,7 @@
   {
    "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
    "funcao": "PainelDeTexto.eventFilter",
-   "linha": 4242,
+   "linha": 459,
    "cc": 34,
    "cobertura": 0.9714,
    "crap": 34.0
@@ -1243,14 +1243,6 @@
    "crap": 24.7
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto._botao",
-   "linha": 1110,
-   "cc": 5,
-   "cobertura": 0.0769,
-   "crap": 24.7
-  },
-  {
    "arquivo": "src/chess_diagram_ocr/qt/dialogos.py",
    "funcao": "DialogoDePartidas.aplicar_selecionada",
    "linha": 708,
@@ -1515,9 +1507,9 @@
    "crap": 21.7
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto.exportar_caderno",
-   "linha": 2807,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_leitura.py",
+   "funcao": "ExecutorDaAba.exportar_caderno",
+   "linha": 305,
    "cc": 17,
    "cobertura": 0.7458,
    "crap": 21.7
@@ -1627,9 +1619,9 @@
    "crap": 20.6
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto.alinhar_diagramas_do_caderno",
-   "linha": 3121,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_miniaturas.py",
+   "funcao": "MiniaturasDoTexto.alinhar_diagramas_do_caderno",
+   "linha": 322,
    "cc": 15,
    "cobertura": 0.7143,
    "crap": 20.2
@@ -1851,9 +1843,9 @@
    "crap": 18.0
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto._seguir_o_cursor",
-   "linha": 749,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_ferramentas.py",
+   "funcao": "FerramentasDeFormato.seguir_o_cursor",
+   "linha": 76,
    "cc": 18,
    "cobertura": 1.0,
    "crap": 18.0
@@ -1891,9 +1883,9 @@
    "crap": 17.9
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "_gravar_recortes",
-   "linha": 4605,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_leitura.py",
+   "funcao": "gravar_recortes",
+   "linha": 108,
    "cc": 13,
    "cobertura": 0.6923,
    "crap": 17.9
@@ -2059,9 +2051,9 @@
    "crap": 17.0
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto._ler_folha",
-   "linha": 3715,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_leitura.py",
+   "funcao": "ExecutorDaAba._ler_folha",
+   "linha": 634,
    "cc": 17,
    "cobertura": 1.0,
    "crap": 17.0
@@ -2291,9 +2283,9 @@
    "crap": 16.0
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto.inserir_diagramas_do_livro",
-   "linha": 3999,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_miniaturas.py",
+   "funcao": "MiniaturasDoTexto.inserir_diagramas_do_livro",
+   "linha": 405,
    "cc": 16,
    "cobertura": 1.0,
    "crap": 16.0
@@ -2483,9 +2475,9 @@
    "crap": 15.2
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto._mostrar_impresso",
-   "linha": 3309,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_caderno.py",
+   "funcao": "CadernoDaAba.mostrar_impresso",
+   "linha": 757,
    "cc": 15,
    "cobertura": 0.9286,
    "crap": 15.1
@@ -2531,9 +2523,9 @@
    "crap": 15.0
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto.abrir",
-   "linha": 2051,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_caderno.py",
+   "funcao": "CadernoDaAba.abrir",
+   "linha": 169,
    "cc": 15,
    "cobertura": 1.0,
    "crap": 15.0
@@ -2619,9 +2611,9 @@
    "crap": 14.6
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto._conferir_lexico",
-   "linha": 1889,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_correcao.py",
+   "funcao": "CorrecaoDoTexto.conferir_lexico",
+   "linha": 162,
    "cc": 12,
    "cobertura": 0.7368,
    "crap": 14.6
@@ -2747,9 +2739,9 @@
    "crap": 14.0
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "_Mapa.trocar",
-   "linha": 280,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_espelho.py",
+   "funcao": "Mapa.trocar",
+   "linha": 139,
    "cc": 14,
    "cobertura": 1.0,
    "crap": 14.0
@@ -2779,9 +2771,9 @@
    "crap": 13.8
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto._seguir_a_pagina",
-   "linha": 3265,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_caderno.py",
+   "funcao": "CadernoDaAba.seguir_a_pagina",
+   "linha": 717,
    "cc": 11,
    "cobertura": 0.7143,
    "crap": 13.8
@@ -3803,25 +3795,25 @@
    "crap": 11.0
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto._abrir_do_caderno",
-   "linha": 2330,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_caderno.py",
+   "funcao": "CadernoDaAba.abrir_do_caderno",
+   "linha": 437,
    "cc": 11,
    "cobertura": 0.95,
    "crap": 11.0
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto._leitura_terminou",
-   "linha": 3853,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_leitura.py",
+   "funcao": "ExecutorDaAba._leitura_terminou",
+   "linha": 774,
    "cc": 11,
    "cobertura": 1.0,
    "crap": 11.0
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto._trocado",
-   "linha": 4107,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_espelho.py",
+   "funcao": "EspelhoDaFolha._trocado",
+   "linha": 609,
    "cc": 11,
    "cobertura": 1.0,
    "crap": 11.0
@@ -4067,9 +4059,9 @@
    "crap": 10.6
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto._digitado",
-   "linha": 4074,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_espelho.py",
+   "funcao": "EspelhoDaFolha.digitado",
+   "linha": 576,
    "cc": 9,
    "cobertura": 0.7273,
    "crap": 10.6
@@ -4155,9 +4147,9 @@
    "crap": 10.4
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto._refazer_navegacao",
-   "linha": 2507,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_correcao.py",
+   "funcao": "CorrecaoDoTexto.refazer_navegacao",
+   "linha": 313,
    "cc": 8,
    "cobertura": 0.6667,
    "crap": 10.4
@@ -4259,9 +4251,9 @@
    "crap": 10.1
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto._trazer_rascunhos",
-   "linha": 2294,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_caderno.py",
+   "funcao": "CadernoDaAba._trazer_rascunhos",
+   "linha": 401,
    "cc": 8,
    "cobertura": 0.6818,
    "crap": 10.1
@@ -4435,9 +4427,9 @@
    "crap": 10.0
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_texto.py",
-   "funcao": "PainelDeTexto._desenhar",
-   "linha": 1150,
+   "arquivo": "src/chess_diagram_ocr/qt/texto_espelho.py",
+   "funcao": "EspelhoDaFolha.desenhar",
+   "linha": 332,
    "cc": 10,
    "cobertura": 1.0,
    "crap": 10.0

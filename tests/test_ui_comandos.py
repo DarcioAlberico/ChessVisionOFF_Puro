@@ -27,7 +27,30 @@ PDF_PANEL = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "painel_do_pdf.py"
 """Onde os controles do painel do PDF são montados. Na S-528 o `main` passou a declará-los em
 `ui/barra_do_pdf.py` (a barra em fila com o "Mais"); o merge do religa ficou com os blocos nomeados
 da OCR_UI, montados à mão pelo `_botao`, e a guarda voltou a varrer o painel."""
-TEXTO_PANEL = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "painel_de_texto.py"
+TEXTO_PANEL = tuple(
+    RAIZ / "src" / "chess_diagram_ocr" / "qt" / f"{nome}.py"
+    for nome in (
+        "painel_de_texto",
+        "texto_caderno",
+        "texto_correcao",
+        "texto_espelho",
+        "texto_ferramentas",
+        "texto_leitura",
+        "texto_miniaturas",
+        "texto_vista",
+    )
+)
+"""A aba Texto e as sete partes em que ela se divide desde a S-865: a varredura cobre todas, senão o
+rótulo escrito à mão mudaria de arquivo junto com o código e a guarda passaria em verde sobre ele."""
+
+
+def _arvore_da_aba() -> ast.Module:
+    """As oito árvores da aba Texto numa só, para as varreduras que perguntam pelo painel inteiro."""
+    corpo: list[ast.stmt] = []
+    for arquivo in TEXTO_PANEL:
+        corpo += ast.parse(arquivo.read_text(encoding="utf-8")).body
+    return ast.Module(body=corpo, type_ignores=[])
+
 JANELA = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "janela.py"
 CAMPO = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "campo.py"
 
@@ -631,18 +654,18 @@ class ComandosDoEditorTests(unittest.TestCase):
         Com os vinte e poucos comandos desta spec, o rótulo escrito à mão é a S-161 outra vez --
         *"o que não era botão não existia"* --, agora com três peles para divergir.
         """
-        arvore = ast.parse(TEXTO_PANEL.read_text(encoding="utf-8"))
+        arvore = _arvore_da_aba()
         sobraram = [
             achado
             for achado in _rotulos_literais(arvore)
             if not any(f"{rotulo!r}" in achado for rotulo in self.DENTRO_DA_BUSCA)
         ]
-        self.assertEqual([], sobraram, "rótulo escrito à mão em qt/painel_de_texto.py")
+        self.assertEqual([], sobraram, "rótulo escrito à mão na aba Texto (qt/painel_de_texto.py e qt/texto_*.py)")
 
     def test_a_lista_da_busca_nao_guarda_rotulo_que_sumiu(self) -> None:
         """Isenção que sobra é isenção que esconde: o próximo literal daquele arquivo entraria
         sem ninguém assinar."""
-        arvore = ast.parse(TEXTO_PANEL.read_text(encoding="utf-8"))
+        arvore = _arvore_da_aba()
         escritos = " ".join(_rotulos_literais(arvore))
         orfas = [rotulo for rotulo in self.DENTRO_DA_BUSCA if f"{rotulo!r}" not in escritos]
         self.assertEqual([], orfas, "rótulo declarado na isenção que já não existe no painel")

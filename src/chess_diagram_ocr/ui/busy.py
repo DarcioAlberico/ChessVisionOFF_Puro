@@ -269,7 +269,7 @@ FORA_DO_REGISTRO: dict[tuple[str, str], str] = {
     ),
     # `("janela.py", "_rodar")` saiu daqui no passo C2 do ciclo 2: marcar e ler a página
     # registram-se, com total (os diagramas já marcados) e «Cancelar» entre diagramas.
-    ("painel_de_texto.py", "_renderizar_ao_fundo"): (
+    ("texto_leitura.py", "renderizar_ao_fundo"): (
         "Rasterizar a folha aberta do caderno da aba Texto, para as miniaturas (S-612): um a três "
         "décimos de segundo, e o texto já está na tela. Não grava nada -- a folha continua no "
         "PDF --, e a resposta para uma folha que já saiu da tela é jogada fora."

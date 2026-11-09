@@ -28,7 +28,7 @@ if TEM_PYQT:
     from PyQt6.QtWidgets import QMessageBox
     from test_qt_janela import _JanelaComLivro
 
-    from chess_diagram_ocr.qt import dialogos, painel_de_texto, tema
+    from chess_diagram_ocr.qt import dialogos, tema, texto_leitura
     from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
     from chess_diagram_ocr.ui import strings
 else:  # pragma: no cover - sem o PyQt6 as classes pulam, mas precisam de uma base para existir
@@ -107,8 +107,8 @@ class _Aba(unittest.TestCase):
         self.recados: list[str] = []
         self.painel.estado.connect(self.recados.append)
         self.lidas: list[int] = []
-        for alvo, falso in (("Tarefa", _TarefaNaHora), ("_ler", self.motor_de_mentira)):
-            remendo = mock.patch.object(painel_de_texto, alvo, falso)
+        for alvo, falso in (("Tarefa", _TarefaNaHora), ("ler_a_folha", self.motor_de_mentira)):
+            remendo = mock.patch.object(texto_leitura, alvo, falso)
             remendo.start()
             self.addCleanup(remendo.stop)
         self.painel.definir_livro(self.livro, pagina=0, paginas=20)
@@ -116,7 +116,7 @@ class _Aba(unittest.TestCase):
     def novo_painel(self) -> PainelDeTexto:
         painel = PainelDeTexto(dpi=72, pasta_de_rascunhos=self.pasta / "rascunhos", pasta_de_cadernos=self.cadernos)
         self.addCleanup(descartar, painel)
-        self.addCleanup(painel.fechar_caderno)
+        self.addCleanup(painel.caderno.fechar_caderno)
         painel.resize(700, 500)
         painel.show()
         self.app.processEvents()
@@ -127,7 +127,7 @@ class _Aba(unittest.TestCase):
         return _pagina(str(caminho), indice, f"texto lido da folha {indice + 1}")
 
     def ler(self, folha: int) -> None:
-        self.painel.campo_de_folha.setValue(folha)
+        self.painel.leitura.campo_de_folha.setValue(folha)
         self.painel.ler()
 
     def digitar_no_fim(self, texto: str) -> None:
@@ -139,7 +139,7 @@ class _Aba(unittest.TestCase):
 
     @property
     def cad(self) -> caderno.Caderno:
-        aberto = self.painel.caderno_aberto
+        aberto = self.painel.caderno.aberto
         assert aberto is not None
         return aberto
 
@@ -170,7 +170,7 @@ class TrocarDeFolhaGuardaTests(_Aba):
         outro = self.pasta / "livros" / "outro.pdf"
         outro.write_bytes(b"%PDF-1.7\n outro livro")
         self.painel.definir_livro(outro, pagina=0)
-        self.assertIsNot(self.painel.caderno_aberto, primeiro)
+        self.assertIsNot(self.painel.caderno.aberto, primeiro)
         self.assertIn("corrigida", primeiro.folha(0).para_texto())  # type: ignore[union-attr]
 
     def test_fechar_guarda_sem_perguntar_e_solta_a_trava(self) -> None:
@@ -206,19 +206,19 @@ class RodapeDoCadernoTests(_Aba):
     def test_gravado_as_a_hora_do_indice_e_por_gravar_vence(self) -> None:
         self.ler(3)
         hora = self.cad.estado(2).gravada_em[11:16]  # type: ignore[union-attr]
-        self.assertIn(f"gravado às {hora}", self.painel.status.text())
+        self.assertIn(f"gravado às {hora}", self.painel.vista.status.text())
         self.digitar_no_fim(" x")
-        self.assertIn("por gravar", self.painel.status.text())
-        self.assertNotIn("gravado às", self.painel.status.text())
+        self.assertIn("por gravar", self.painel.vista.status.text())
+        self.assertNotIn("gravado às", self.painel.vista.status.text())
 
     def test_o_clique_na_folha_leva_ao_campo_de_folha(self) -> None:
         self.ler(3)
         self.painel.fita.setCurrentIndex(0)
         self.painel.alternar_fita()  # recolhida: o clique tem de devolver a fita
-        QTest.mouseClick(self.painel.status, Qt.MouseButton.LeftButton)
+        QTest.mouseClick(self.painel.vista.status, Qt.MouseButton.LeftButton)
         self.assertFalse(self.painel.fita.recolhida)
-        self.assertTrue(self.painel.campo_de_folha.isVisible())
-        self.assertTrue(self.painel.campo_de_folha.hasFocus() or self.painel.focusWidget() is not None)
+        self.assertTrue(self.painel.leitura.campo_de_folha.isVisible())
+        self.assertTrue(self.painel.leitura.campo_de_folha.hasFocus() or self.painel.focusWidget() is not None)
 
 
 class VoltarAbreOCadernoTests(_Aba):
@@ -227,24 +227,24 @@ class VoltarAbreOCadernoTests(_Aba):
         self.digitar_no_fim(" corrigida")
         self.ler(4)
         self.lidas.clear()
-        self.painel.campo_de_folha.setValue(3)
+        self.painel.leitura.campo_de_folha.setValue(3)
         self.assertEqual(self.painel.botao_de_ler.text(), strings.ABRIR_FOLHA_DO_CADERNO)
         self.painel.ler()
         self.assertEqual(self.lidas, [], "voltar à folha chamou o motor")
         self.assertIn("corrigida", self.painel.documento.para_texto())
         self.assertFalse(self.painel.tem_alteracoes)
-        rodape = self.painel.status.text()
+        rodape = self.painel.vista.status.text()
         self.assertIn("Folha 3 do caderno", rodape)
         self.assertIn("1 correção", rodape)
 
     def test_a_folha_sem_caderno_diz_ler(self) -> None:
         self.ler(3)
-        self.painel.campo_de_folha.setValue(5)
+        self.painel.leitura.campo_de_folha.setValue(5)
         self.assertNotEqual(self.painel.botao_de_ler.text(), strings.ABRIR_FOLHA_DO_CADERNO)
 
     def test_motor_trocado_sem_correcao_le_de_novo_sem_perguntar(self) -> None:
         self.ler(3)
-        self.painel._motor = "glifo"
+        self.painel.leitura._motor = "glifo"
         self.lidas.clear()
         self.ler(3)
         self.assertEqual(self.lidas, [2])
@@ -280,7 +280,7 @@ class RenderizarAoFundoTests(_Aba):
             chamadas.append((indice, _TarefaNaHora.rodando))
             return np.full((400, 400, 3), 200, np.uint8)
 
-        with mock.patch.object(painel_de_texto, "_renderizar", renderizar):
+        with mock.patch.object(texto_leitura, "renderizar", renderizar):
             self.ler(3)
         self.assertEqual(chamadas, [(2, True)], "a folha foi rasterizada fora da tarefa, ou duas vezes")
         self.assertIsNotNone(self.painel._pagina_rgb)
@@ -296,8 +296,8 @@ class RenderizarAoFundoTests(_Aba):
             return np.full((40, 40, 3), indice, np.uint8)
 
         TarefaAdiada.pendentes.clear()
-        with mock.patch.object(painel_de_texto, "Tarefa", TarefaAdiada), mock.patch.object(
-            painel_de_texto, "_renderizar", renderizar
+        with mock.patch.object(texto_leitura, "Tarefa", TarefaAdiada), mock.patch.object(
+            texto_leitura, "renderizar", renderizar
         ):
             self.ler(3)
             self.ler(4)
@@ -313,7 +313,7 @@ class DescartarTests(_Aba):
     def test_descartar_mostra_a_leitura_e_ctrl_z_traz_as_correcoes(self) -> None:
         self.ler(2)
         self.digitar_no_fim(" corrigida")
-        self.painel._guardar_a_folha()
+        self.painel.caderno.guardar_a_folha()
         lida_antes = self.cad.caminho(1, tipo="lida").read_bytes()
         with _Respondendo(QMessageBox.StandardButton.Yes):
             self.assertTrue(self.painel.descartar_correcoes())
@@ -322,7 +322,7 @@ class DescartarTests(_Aba):
         self.assertIn("corrigida", self.cad.anterior(1).para_texto())  # type: ignore[union-attr]
         self.painel.desfazer()
         self.assertIn("corrigida", self.painel.documento.para_texto())
-        self.painel._guardar_a_folha()
+        self.painel.caderno.guardar_a_folha()
         self.assertEqual(self.cad.caminho(1, tipo="lida").read_bytes(), lida_antes, "a leitura guardada mudou")
 
     def test_marcar_conferida_muda_o_indice_sem_redesenhar(self) -> None:
@@ -339,25 +339,25 @@ class SalvamentoAutomaticoTests(_Aba):
         self.painel._relogio = lambda: agora[0]
         self.ler(1)
         self.digitar_no_fim(" corrigida")
-        self.assertEqual(self.painel._rascunho.interval(), int(caderno.ESPERA_DA_MUDANCA * 1000))
-        self.painel._cursor_em = agora[0] = 102.6  # a mudança parou há 2,6 s, o cursor acabou de mexer
-        self.painel._rascunho.timeout.emit()
+        self.assertEqual(self.painel.caderno._rascunho.interval(), int(caderno.ESPERA_DA_MUDANCA * 1000))
+        self.painel.caderno._cursor_em = agora[0] = 102.6  # a mudança parou há 2,6 s, o cursor acabou de mexer
+        self.painel.caderno._rascunho.timeout.emit()
         self.assertNotIn("corrigida", self.no_caderno(1), "gravou com o cursor andando")
-        self.assertTrue(self.painel._rascunho.isActive(), "o relógio não voltou a contar")
+        self.assertTrue(self.painel.caderno._rascunho.isActive(), "o relógio não voltou a contar")
         agora[0] = 104.2
-        self.painel._rascunho.timeout.emit()
+        self.painel.caderno._rascunho.timeout.emit()
         self.assertIn("corrigida", self.no_caderno(1))
-        self.assertNotIn("por gravar", self.painel.status.text())
+        self.assertNotIn("por gravar", self.painel.vista.status.text())
 
 
 class RascunhosDeAntesTests(_Aba):
     def test_o_rascunho_de_antes_entra_no_caderno_e_sai_da_pasta(self) -> None:
-        self.painel.fechar_caderno()
+        self.painel.caderno.fechar_caderno()
         doc = rico.de_pagina(_pagina(str(self.livro), 4, "corrigida no rascunho"))
         rascunho.gravar(doc, pasta=self.pasta / "rascunhos")
         outro = self.novo_painel()
         outro.definir_livro(self.livro, pagina=0)
-        aberto = outro.caderno_aberto
+        aberto = outro.caderno.aberto
         assert aberto is not None
         self.assertIn("corrigida no rascunho", aberto.folha(4).para_texto())  # type: ignore[union-attr]
         self.assertIsNone(rascunho.achar(self.livro, 4, pasta=self.pasta / "rascunhos"))
@@ -368,13 +368,13 @@ class OutraJanelaTests(_Aba):
         import os
 
         pasta = self.cad.pasta
-        self.painel.fechar_caderno()
+        self.painel.caderno.fechar_caderno()
         (pasta / "caderno.lock").write_text(str(os.getppid()), encoding="utf-8")
         outro = self.novo_painel()
         recados: list[str] = []
         outro.estado.connect(recados.append)
         outro.definir_livro(self.livro, pagina=0)
-        self.assertTrue(outro.caderno_aberto.somente_leitura)  # type: ignore[union-attr]
+        self.assertTrue(outro.caderno.aberto.somente_leitura)  # type: ignore[union-attr]
         self.assertTrue(any("só para leitura" in r for r in recados))
 
 
@@ -393,14 +393,14 @@ class FolhaIlegivelTests(_Aba):
     def setUp(self) -> None:
         super().setUp()
         TarefaAdiada.pendentes.clear()
-        remendo = mock.patch.object(painel_de_texto, "Tarefa", TarefaAdiada)
+        remendo = mock.patch.object(texto_leitura, "Tarefa", TarefaAdiada)
         remendo.start()
         self.addCleanup(remendo.stop)
         self.addCleanup(TarefaAdiada.pendentes.clear)
 
     def aba_com_a_folha_3_estragada(self, ruins: bytes) -> tuple[PainelDeTexto, list[str], Path]:
         """Uma folha `editada` com 12 correções que deixou de abrir, e uma aba nova no livro dela."""
-        self.painel.fechar_caderno()
+        self.painel.caderno.fechar_caderno()
         gravador = caderno.abrir(self.livro, pasta=self.cadernos)
         assert gravador is not None
         feito = gravador.gravar(rico.de_pagina(_pagina(str(self.livro), 2, "corrigida à mão")), correcoes=12)
@@ -418,7 +418,7 @@ class FolhaIlegivelTests(_Aba):
         for nome, ruins in self.ESTRAGOS.items():
             with self.subTest(nome):
                 outro, recados, pasta = self.aba_com_a_folha_3_estragada(ruins)
-                outro.campo_de_folha.setValue(3)
+                outro.leitura.campo_de_folha.setValue(3)
                 outro.ler()
                 TarefaAdiada.entregar_todas()
                 self.assertEqual((pasta / "folha-0003.cvtxt").read_bytes(), ruins, "a folha do dono foi regravada")
@@ -428,7 +428,7 @@ class FolhaIlegivelTests(_Aba):
                 self.assertEqual(copia.read_bytes(), ruins)
                 self.assertIn("não abriu", recados[-1])
                 self.assertIn(copia.name, recados[-1])
-                outro.fechar_caderno()
+                outro.caderno.fechar_caderno()
                 for velha in pasta.glob("folha-0003*.cvtxt"):
                     velha.unlink()
 
@@ -443,7 +443,7 @@ class FolhaIlegivelTests(_Aba):
 
     def test_o_rascunho_da_folha_ilegivel_fica_na_pasta(self) -> None:
         doc = rico.de_pagina(_pagina(str(self.livro), 2, "corrigida no rascunho"))
-        self.painel.fechar_caderno()
+        self.painel.caderno.fechar_caderno()
         rascunho.gravar(doc, pasta=self.pasta / "rascunhos")
         self.aba_com_a_folha_3_estragada(self.ESTRAGOS["versão futura"])
         self.assertIsNotNone(rascunho.achar(self.livro, 2, pasta=self.pasta / "rascunhos"), "o rascunho foi descartado")
@@ -460,7 +460,7 @@ class LeituraQueChegaDepoisTests(_Aba):
     def setUp(self) -> None:
         super().setUp()
         TarefaAdiada.pendentes.clear()
-        remendo = mock.patch.object(painel_de_texto, "Tarefa", TarefaAdiada)
+        remendo = mock.patch.object(texto_leitura, "Tarefa", TarefaAdiada)
         remendo.start()
         self.addCleanup(remendo.stop)
         self.addCleanup(TarefaAdiada.pendentes.clear)
@@ -505,7 +505,7 @@ class IndiceTests(_Aba):
         self.assertTrue(self.painel.indice.isVisible())
         self.assertEqual(self.painel.indice.paginas(), (1, 4))
         with mock.patch.object(caderno.arquivo, "carregar", side_effect=AssertionError("o índice abriu um .cvtxt")):
-            self.painel._mostrar_indice()
+            self.painel.caderno.mostrar_indice()
         self.assertIn("corrigida", self.painel.indice.item(0).text())  # type: ignore[union-attr]
 
     def test_o_clique_abre_a_folha_do_caderno(self) -> None:
@@ -520,7 +520,7 @@ class IndiceTests(_Aba):
         documento = self.painel.editor.document()
         self.painel.executar("marcar_folha_conferida")
         self.assertTrue(self.painel.indice.item(1).text().startswith("√ Folha 5"))  # type: ignore[union-attr]
-        self.assertIn("1 de 20 folhas conferidas", self.painel.status.text())
+        self.assertIn("1 de 20 folhas conferidas", self.painel.vista.status.text())
         self.assertIs(self.painel.editor.document(), documento, "marcar redesenhou a folha")
 
     def test_a_tecla_e_a_do_plano(self) -> None:
@@ -586,7 +586,7 @@ class TrazerDaRevisaoTests(_Aba):
                          "a folha da tela foi ao caderno antes da regra, e a regra a manteve")
         self.assertEqual(self.cad.da_suite(2).para_texto(), "corrigida na revisão")  # type: ignore[union-attr]
         self.assertIn("já corrigida(s) aqui", self.recados[-1])
-        self.assertTrue(self.painel.abrir_a_da_revisao())
+        self.assertTrue(self.painel.caderno.abrir_a_da_revisao())
         self.assertEqual(self.painel.texto(), "corrigida na revisão", "a versão da revisão não chegou à tela")
 
     def test_sem_a_suite_o_rodape_diz_o_motivo(self) -> None:
@@ -619,7 +619,7 @@ class FolhasParaASuiteTests(_Aba):
     def test_sem_caderno_nada_vai(self) -> None:
         self.ler(2)
         self.digitar_no_fim(" corrigida")
-        self.painel.fechar_caderno()
+        self.painel.caderno.fechar_caderno()
         self.assertEqual(self.painel.folhas_para_a_suite(None), [])
 
     def test_o_livro_aberto_responde_com_a_folha_da_tela(self) -> None:
@@ -639,7 +639,7 @@ class FolhasParaASuiteTests(_Aba):
         dele.fechar()
         self.assertEqual([f["page_index"] for f in self.painel.folhas_do_livro(outro, None)], [6])
         self.assertFalse((dele.pasta / "caderno.lock").exists(), "ler o caderno de outro livro tomou a trava")
-        self.assertEqual(self.painel.caderno_aberto.identidade, caderno.identidade_de(self.livro), "o caderno aberto mudou")  # type: ignore[union-attr]
+        self.assertEqual(self.painel.caderno.aberto.identidade, caderno.identidade_de(self.livro), "o caderno aberto mudou")  # type: ignore[union-attr]
         self.assertEqual(self.painel.folhas_do_livro(self.pasta / "sumiu.pdf", None), [])
 
 
@@ -748,21 +748,21 @@ class FaixaImpressaTests(_Aba):
         deslocamento = rico.deslocamento_do_bloco(self.painel.documento, bloco)
         assert deslocamento is not None
         cursor = self.painel.editor.textCursor()
-        cursor.setPosition(self.painel._mapa.posicao(deslocamento + 2))
+        cursor.setPosition(self.painel.espelho.mapa.posicao(deslocamento + 2))
         self.painel.editor.setTextCursor(cursor)
 
     def test_o_cursor_no_segundo_bloco_mostra_o_recorte_dele(self) -> None:
         import numpy as np
 
-        from chess_diagram_ocr.qt.painel_de_texto import _recorte_da_folha
+        from chess_diagram_ocr.qt.texto_miniaturas import recorte_da_folha
 
         self.painel.definir_mesa(True)
         self.por_o_cursor_no(1)
         self.assertFalse(self.painel.faixa_impressa.isHidden())
-        esperado = _recorte_da_folha(self.folha, self.painel.documento.origem.blocos[1], dpi=72)  # type: ignore[union-attr]
-        self.assertTrue(np.array_equal(self.painel.recorte_na_faixa, esperado))
+        esperado = recorte_da_folha(self.folha, self.painel.documento.origem.blocos[1], dpi=72)  # type: ignore[union-attr]
+        self.assertTrue(np.array_equal(self.painel.caderno.recorte_na_faixa, esperado))
         self.por_o_cursor_no(2)
-        self.assertEqual(self.painel.recorte_na_faixa.shape[:2], (15, 50))  # type: ignore[union-attr]
+        self.assertEqual(self.painel.caderno.recorte_na_faixa.shape[:2], (15, 50))  # type: ignore[union-attr]
 
     def test_fora_da_mesa_ou_sem_folha_a_faixa_some(self) -> None:
         self.por_o_cursor_no(1)
@@ -795,14 +795,14 @@ class ApontarPorLinhaTests(_Aba):
 
     def cursor_em(self, deslocamento: int) -> None:
         cursor = self.painel.editor.textCursor()
-        cursor.setPosition(self.painel._mapa.posicao(deslocamento))
+        cursor.setPosition(self.painel.espelho.mapa.posicao(deslocamento))
         self.painel.editor.setTextCursor(cursor)
 
     def test_o_contorno_e_da_linha_e_a_faixa_tem_duas_linhas_de_altura(self) -> None:
         texto = self.painel.documento.para_texto()
         self.cursor_em(texto.index("Nf3"))
         self.assertEqual(self.avisados[-1], (10.0, 30.0, 200.0, 40.0))
-        self.assertEqual(self.painel.recorte_na_faixa.shape[:2], (10, 190))  # type: ignore[union-attr]
+        self.assertEqual(self.painel.caderno.recorte_na_faixa.shape[:2], (10, 190))  # type: ignore[union-attr]
         altura = self.painel.faixa_impressa.pixmap().height()
         self.assertLessEqual(altura, 2 * self.painel.editor.fontMetrics().height())
 
@@ -815,7 +815,7 @@ class ApontarPorLinhaTests(_Aba):
         self.assertEqual(self.avisados[-1], tuple(float(v) for v in bloco))
 
     def selecionar_e_trocar(self, inicio: int, fim: int, novo: str) -> None:
-        self.painel._aplicar(rico.editar(self.painel.documento, inicio, fim, novo))
+        self.painel.espelho.aplicar(rico.editar(self.painel.documento, inicio, fim, novo))
 
 
 class ApontarTests(_Aba):
@@ -831,7 +831,7 @@ class ApontarTests(_Aba):
 
     def cursor_em(self, deslocamento: int) -> None:
         cursor = self.painel.editor.textCursor()
-        cursor.setPosition(self.painel._mapa.posicao(deslocamento))
+        cursor.setPosition(self.painel.espelho.mapa.posicao(deslocamento))
         self.painel.editor.setTextCursor(cursor)
 
     def test_o_cursor_em_cada_bloco_contorna_o_bbox_dele(self) -> None:
@@ -846,13 +846,13 @@ class ApontarTests(_Aba):
         for indice, bloco in enumerate(self.painel.documento.origem.blocos):  # type: ignore[union-attr]
             x0, y0, x1, y1 = bloco.bbox
             self.assertTrue(self.painel.ir_ao_ponto((x0 + x1) / 2, (y0 + y1) / 2))
-            posicao = self.painel._mapa.deslocamento(self.painel.editor.textCursor().position())
+            posicao = self.painel.espelho.mapa.deslocamento(self.painel.editor.textCursor().position())
             self.assertEqual(posicao, rico.deslocamento_do_bloco(self.painel.documento, indice))
         self.assertFalse(self.painel.ir_ao_ponto(250.0, 250.0), "o clique fora de todo bloco moveu o cursor")
 
     def test_sem_origem_nada_e_contornado_e_nada_levanta(self) -> None:
         self.painel.abrir(rico.DocumentoRico())
-        self.painel._avisar_bloco()
+        self.painel.caderno.avisar_bloco()
         self.assertIsNone(self.avisados[-1])
         self.assertFalse(self.painel.ir_ao_ponto(20.0, 20.0))
 
@@ -949,11 +949,11 @@ class DiagramasNaTelaTests(_Aba):
         from chess_diagram_ocr.qt import tema as qt_tema
 
         self.painel.mostrar_pagina(_com_diagramas(str(self.livro), 0))
-        self.painel.definir_tamanho_da_miniatura("grande")
-        self.painel.aplicar_zoom(2, avisar=False)
+        self.painel.miniaturas.definir_tamanho_da_miniatura("grande")
+        self.painel.vista.aplicar_zoom(2, avisar=False)
         corpo_do_sistema = qt_tema.fonte_base()[0]
-        corpo_da_vista = self.painel._base[0]  # type: ignore[index]
-        self.assertEqual(self.painel._largura_da_miniatura(), round(320 * corpo_da_vista / corpo_do_sistema))
+        corpo_da_vista = self.painel.espelho.base[0]  # type: ignore[index]
+        self.assertEqual(self.painel.miniaturas.largura_da_miniatura(), round(320 * corpo_da_vista / corpo_do_sistema))
         self.assertFalse(self.painel.tem_alteracoes, "o tamanho tornou a folha por gravar")
 
     def test_alinhar_o_caderno_inteiro_conta_antes_e_guarda_a_anterior_de_cada_folha(self) -> None:
@@ -964,7 +964,7 @@ class DiagramasNaTelaTests(_Aba):
             self.cad.gravar(doc)
         self.ler(9)  # uma folha sem diagrama, na tela
         with _Respondendo(QMessageBox.StandardButton.Yes) as caixa:
-            mudadas = self.painel.alinhar_diagramas_do_caderno("esquerda")
+            mudadas = self.painel.miniaturas.alinhar_diagramas_do_caderno("esquerda")
         self.assertIn("4 diagrama(s) de 2 folha(s)", caixa.call_args.args[2])
         self.assertEqual(mudadas, 2)
         for folha in (1, 4):
@@ -983,7 +983,7 @@ class JanelaTests(_JanelaComLivro):
     def test_a_janela_abre_o_caderno_do_livro_aberto(self) -> None:
         """A janela liga o caderno, na pasta que a suíte dá a este teste (`conftest`)."""
         janela = self.janela()
-        aberto = janela.texto.caderno_aberto
+        aberto = janela.texto.caderno.aberto
         self.assertIsNotNone(aberto)
         self.assertEqual(aberto.pasta.parent, caderno.PASTA_PADRAO)  # type: ignore[union-attr]
         self.assertFalse(aberto.somente_leitura)  # type: ignore[union-attr]

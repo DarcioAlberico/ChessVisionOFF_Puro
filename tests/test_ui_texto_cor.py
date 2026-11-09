@@ -19,7 +19,9 @@ from chess_diagram_ocr.text import rico
 from chess_diagram_ocr.ui import texto_cores, tokens
 
 RAIZ = Path(__file__).resolve().parents[1]
-PAINEL = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "painel_de_texto.py"
+QT = RAIZ / "src" / "chess_diagram_ocr" / "qt"
+PAINEL = (QT / "painel_de_texto.py", *sorted(QT.glob("texto_*.py")))
+"""A aba Texto e as partes dela (S-865): a cor cravada mudaria de arquivo junto com o código."""
 CORES = RAIZ / "src" / "chess_diagram_ocr" / "ui" / "texto_cores.py"
 
 SUPERFICIES_DE_TEXTO = (
@@ -131,7 +133,7 @@ class SemHexadecimalTests(unittest.TestCase):
         ]
 
     def test_nenhum_hexadecimal_no_editor(self) -> None:
-        for caminho in (PAINEL, CORES):
+        for caminho in (*PAINEL, CORES):
             with self.subTest(arquivo=caminho.name):
                 self.assertEqual(self._hexadecimais(caminho), [])
 

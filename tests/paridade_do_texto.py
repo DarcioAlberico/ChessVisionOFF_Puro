@@ -82,7 +82,7 @@ def divergencias(painel: PainelDeTexto) -> list[str]:
     """Tudo em que a tela discorda do documento, em frases. Vazia = concordam."""
     doc = painel.documento
     qdoc = painel.editor.document()
-    base = painel._base
+    base = painel.espelho.base
     erros: list[str] = []
 
     comeco = 0
@@ -91,7 +91,7 @@ def divergencias(painel: PainelDeTexto) -> list[str]:
         for k, letra in enumerate(corrida.texto):
             if letra == "\n":
                 continue
-            posicao = painel._mapa.posicao(comeco + k)
+            posicao = painel.espelho.mapa.posicao(comeco + k)
             cursor = QTextCursor(qdoc)
             cursor.setPosition(posicao + 1)  # `charFormat` é o do caractere **antes** do cursor
             for erro in _do_caractere(esperado, cursor.charFormat()):
@@ -104,15 +104,15 @@ def divergencias(painel: PainelDeTexto) -> list[str]:
         if OBJETO in texto:
             # A figura mora no bloco da marca que vem logo abaixo dela (S-602).
             seguinte = bloco.next()
-            corrida = _corrida_em(doc, painel._mapa.deslocamento(seguinte.position())) if seguinte.isValid() else None
+            corrida = _corrida_em(doc, painel.espelho.mapa.deslocamento(seguinte.position())) if seguinte.isValid() else None
             onde = f"bloco {bloco.blockNumber()} (miniatura)"
         elif not texto:
             corrida = None  # a linha em branco do separador (S-601)
             onde = f"bloco {bloco.blockNumber()} (em branco)"
         else:
-            corrida = _corrida_em(doc, painel._mapa.deslocamento(bloco.position()))
+            corrida = _corrida_em(doc, painel.espelho.mapa.deslocamento(bloco.position()))
             onde = f"bloco {bloco.blockNumber()} ({texto[:20]!r})"
-        esperado = painel.formato_de_bloco(corrida)
+        esperado = painel.espelho.formato_de_bloco(corrida)
         erros.extend(f"{onde}: {erro}" for erro in _do_bloco(esperado, bloco.blockFormat()))
         bloco = bloco.next()
     return erros

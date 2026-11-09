@@ -129,8 +129,8 @@ def conferir(painel: Any) -> Conferencia:
     texto = painel.documento.para_texto()
 
     for k in range(len(texto) + 1):
-        if painel._mapa.deslocamento(painel._mapa.posicao(k)) != k:
-            saida.mapa.append(f"deslocamento {k} volta como {painel._mapa.deslocamento(painel._mapa.posicao(k))}")
+        if painel.espelho.mapa.deslocamento(painel.espelho.mapa.posicao(k)) != k:
+            saida.mapa.append(f"deslocamento {k} volta como {painel.espelho.mapa.deslocamento(painel.espelho.mapa.posicao(k))}")
 
     for numero in _figuras(painel):
         saida.figuras += 1
@@ -149,14 +149,14 @@ def conferir(painel: Any) -> Conferencia:
                 saida.flutuam += 1
 
         # A seleção que atravessa a figura: de três letras antes dela a três depois.
-        marca = painel._mapa.deslocamento(seguinte.position())
+        marca = painel.espelho.mapa.deslocamento(seguinte.position())
         inicio, fim = max(0, marca - 3), min(len(texto), marca + 3)
         cursor = QTextCursor(documento)
-        cursor.setPosition(painel._mapa.posicao(inicio))
-        cursor.setPosition(painel._mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
+        cursor.setPosition(painel.espelho.mapa.posicao(inicio))
+        cursor.setPosition(painel.espelho.mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
         painel.editor.setTextCursor(cursor)
-        if painel._selecao_atual() != (inicio, fim):
-            saida.selecao.append(f"figura do bloco {numero}: ({inicio}, {fim}) voltou {painel._selecao_atual()}")
+        if painel.espelho.selecao_atual() != (inicio, fim):
+            saida.selecao.append(f"figura do bloco {numero}: ({inicio}, {fim}) voltou {painel.espelho.selecao_atual()}")
 
         # A letra digitada ao lado da figura, no começo da linha da marca.
         antes = painel.documento.para_texto()
@@ -164,7 +164,7 @@ def conferir(painel: Any) -> Conferencia:
         cursor.setPosition(seguinte.position())
         painel.editor.setTextCursor(cursor)
         painel.editor.setFocus()
-        onde = painel._mapa.deslocamento(seguinte.position())
+        onde = painel.espelho.mapa.deslocamento(seguinte.position())
         QTest.keyClick(painel.editor, Qt.Key.Key_X)  # type: ignore[call-overload]  # o stub declara keyClick com `self`
         QApplication.processEvents()
         depois = painel.documento.para_texto()

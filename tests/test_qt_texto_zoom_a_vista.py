@@ -61,55 +61,55 @@ class RodapeTests(unittest.TestCase):
         self.base = tema.fonte_base()[0]
 
     def test_o_controle_esta_no_rodape_e_comeca_em_100(self) -> None:
-        self.assertTrue(self.painel.regua_do_zoom.isVisible())
-        self.assertEqual(self.painel.porcentagem_do_zoom.text(), "100%")
+        self.assertTrue(self.painel.vista.regua_do_zoom.isVisible())
+        self.assertEqual(self.painel.vista.porcentagem_do_zoom.text(), "100%")
 
     def test_o_mais_aproxima_e_o_valor_acompanha(self) -> None:
-        self.painel.botao_de_aproximar.click()
-        self.assertEqual(self.painel.zoom_da_vista, 1)
+        self.painel.vista.botao_de_aproximar.click()
+        self.assertEqual(self.painel.vista.zoom_da_vista, 1)
         esperado = texto_declarado.porcentagem_do_zoom(1, self.base)
-        self.assertEqual(self.painel.porcentagem_do_zoom.text(), f"{esperado}%")
+        self.assertEqual(self.painel.vista.porcentagem_do_zoom.text(), f"{esperado}%")
 
     def test_a_regua_e_o_atalho_dao_o_mesmo_resultado(self) -> None:
         paradas = texto_declarado.paradas_do_zoom(self.base)
-        self.painel.regua_do_zoom.setValue(paradas.index(2))
-        self.assertEqual(self.painel.zoom_da_vista, 2)
-        self.painel.aplicar_zoom(4)
-        self.assertEqual(paradas[self.painel.regua_do_zoom.value()], 4, "a régua segue o zoom vindo de outro lugar")
+        self.painel.vista.regua_do_zoom.setValue(paradas.index(2))
+        self.assertEqual(self.painel.vista.zoom_da_vista, 2)
+        self.painel.vista.aplicar_zoom(4)
+        self.assertEqual(paradas[self.painel.vista.regua_do_zoom.value()], 4, "a régua segue o zoom vindo de outro lugar")
 
     def test_o_clique_na_porcentagem_volta_a_100(self) -> None:
-        self.painel.aplicar_zoom(3)
-        self.painel.porcentagem_do_zoom.click()
-        self.assertEqual(self.painel.zoom_da_vista, 0)
-        self.assertEqual(self.painel.porcentagem_do_zoom.text(), "100%")
+        self.painel.vista.aplicar_zoom(3)
+        self.painel.vista.porcentagem_do_zoom.click()
+        self.assertEqual(self.painel.vista.zoom_da_vista, 0)
+        self.assertEqual(self.painel.vista.porcentagem_do_zoom.text(), "100%")
 
     def test_nos_limites_o_botao_daquele_lado_desliga(self) -> None:
         paradas = texto_declarado.paradas_do_zoom(self.base)
-        self.painel.aplicar_zoom(paradas[-1])
-        self.assertFalse(self.painel.botao_de_aproximar.isEnabled())
-        self.assertTrue(self.painel.botao_de_afastar.isEnabled())
-        self.painel.aplicar_zoom(paradas[0])
-        self.assertFalse(self.painel.botao_de_afastar.isEnabled())
+        self.painel.vista.aplicar_zoom(paradas[-1])
+        self.assertFalse(self.painel.vista.botao_de_aproximar.isEnabled())
+        self.assertTrue(self.painel.vista.botao_de_afastar.isEnabled())
+        self.painel.vista.aplicar_zoom(paradas[0])
+        self.assertFalse(self.painel.vista.botao_de_afastar.isEnabled())
 
     def test_cada_clique_muda_a_letra(self) -> None:
         """De parada em parada: nenhum `−` fica sem efeito perto do piso de legibilidade."""
-        vistos = [self.painel._base[0]]
-        while self.painel.botao_de_afastar.isEnabled():
-            self.painel.botao_de_afastar.click()
-            vistos.append(self.painel._base[0])
+        vistos = [self.painel.espelho.base[0]]
+        while self.painel.vista.botao_de_afastar.isEnabled():
+            self.painel.vista.botao_de_afastar.click()
+            vistos.append(self.painel.espelho.base[0])
         self.assertEqual(len(vistos), len(set(vistos)))
 
     def test_o_leitor_de_tela_ouve_o_nome_e_a_porcentagem(self) -> None:
-        self.painel.aplicar_zoom(2)
+        self.painel.vista.aplicar_zoom(2)
         porcentagem = texto_declarado.porcentagem_do_zoom(2, self.base)
-        self.assertEqual(self.painel.regua_do_zoom.accessibleName(), "Zoom do texto")
-        self.assertIn(f"{porcentagem} por cento", self.painel.regua_do_zoom.accessibleDescription())
-        self.assertIn("não muda o documento", self.painel.botao_de_aproximar.toolTip())
+        self.assertEqual(self.painel.vista.regua_do_zoom.accessibleName(), "Zoom do texto")
+        self.assertIn(f"{porcentagem} por cento", self.painel.vista.regua_do_zoom.accessibleDescription())
+        self.assertIn("não muda o documento", self.painel.vista.botao_de_aproximar.toolTip())
 
     def test_o_zoom_nao_vira_alteracao_por_gravar(self) -> None:
         self.painel.desenhar_documento(rico.de_texto("uma folha"))
         self.painel._documento_gravado = self.painel.documento
-        self.painel.botao_de_aproximar.click()
+        self.painel.vista.botao_de_aproximar.click()
         self.assertFalse(self.painel.tem_alteracoes)
 
     def test_a_roda_deixa_parada_a_linha_sob_o_ponteiro(self) -> None:
@@ -132,7 +132,7 @@ class RodapeTests(unittest.TestCase):
         )
         self.app.sendEvent(self.painel.editor.viewport(), evento)
         self.app.processEvents()
-        self.assertEqual(self.painel.zoom_da_vista, 1)
+        self.assertEqual(self.painel.vista.zoom_da_vista, 1)
         depois = self.painel.editor.cursorForPosition(ponto).block().blockNumber()
         self.assertEqual(depois, antes)
 

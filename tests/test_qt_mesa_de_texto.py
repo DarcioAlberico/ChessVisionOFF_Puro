@@ -170,14 +170,14 @@ class DisposicaoTests(_JanelaComLivro):
     def test_a_aba_texto_sabe_que_a_mesa_armou(self) -> None:
         """S-643/S-644: a janela avisa o painel, que passa a acompanhar a página."""
         janela = self.montar()
-        self.assertFalse(janela.texto._na_mesa)
+        self.assertFalse(janela.texto.caderno.na_mesa)
         self.ir_para(janela, abas.TEXTO)
-        self.assertTrue(janela.texto._na_mesa)
+        self.assertTrue(janela.texto.caderno.na_mesa)
         janela.pdf.ir_para_pagina(2)
         self.app.processEvents()
         self.assertEqual(janela.texto._folha_por_ler, 2, "virar a página com a mesa não levou a aba junto")
         self.ir_para(janela, abas.RESULTADO)
-        self.assertFalse(janela.texto._na_mesa)
+        self.assertFalse(janela.texto.caderno.na_mesa)
 
     def test_cada_disposicao_lembra_a_sua_alca(self) -> None:
         """A alça da mesa grava sempre; a de fora, só se alguém a escolheu (S-552).

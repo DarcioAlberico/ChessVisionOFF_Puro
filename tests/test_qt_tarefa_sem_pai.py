@@ -38,7 +38,7 @@ doc.save(livro)
 doc.close()
 
 app = QApplication([])
-from chess_diagram_ocr.qt import painel_de_texto, trabalho
+from chess_diagram_ocr.qt import texto_leitura, trabalho
 from chess_diagram_ocr.qt.janela import JanelaPrincipal
 from chess_diagram_ocr.text.documento import PaginaLida
 
@@ -60,8 +60,8 @@ def ler_devagar(caminho, indice, **_):
     return PaginaLida(documento=str(caminho), pagina=indice, colunas=())
 
 
-painel_de_texto._ler = ler_devagar
-painel_de_texto._renderizar = lambda *_a, **_k: None
+texto_leitura.ler_a_folha = ler_devagar
+texto_leitura.renderizar = lambda *_a, **_k: None
 janela = JanelaPrincipal(
     motor=None, servico=Servico(), csv_de_rotulos=pasta / "labels.csv", pasta_de_estudos=pasta,
     pasta_da_galeria=pasta, caminho_do_cache=pasta / "posicoes.sqlite", caminho_do_estado=pasta / "janela.json",

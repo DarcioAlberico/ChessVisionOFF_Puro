@@ -184,6 +184,8 @@ divisão, não o toolkit, que este documento descreve.
 | `sala_motor.py` · `sala_partidas.py` · `sala_treino.py` · `sala_leiaute.py` | As partes da sala de estudo com estado próprio (S-866): o motor (avaliação, partida inteira, opções), as perguntas à base de partidas e o índice, o treino com o placar, as táticas e a agenda, e a repartição das alças com a régua do tabuleiro (S-551). O painel as compõe e delega os comandos do catálogo. |
 | `sala_lista.py` · `sala_cabecalho.py` · `sala_coluna.py` · `sala_arquivos.py` | Os widgets e as funções da sala de estudo (S-866): a lista de lances com as variantes dobráveis, o cabeçalho da partida e o formulário dele, a faixa de navegação e a miniatura do diagrama, e o estudo que entra e sai -- colar, abrir e salvar PGN, exportar e imprimir. |
 | `painel_de_revisao.py` · `painel_do_dataset.py` · `painel_da_galeria.py` · `painel_de_texto.py` | As abas de Revisão, Dataset, Galeria e Texto. |
+| `texto_espelho.py` · `texto_leitura.py` · `texto_caderno.py` · `texto_miniaturas.py` | As partes da aba Texto com estado próprio (S-865): o documento desenhado no editor com a digitação de volta e a pilha do desfazer, as tarefas (a leitura da folha, as exportações, a volta da Revisão e a folha rasterizada ao fundo), o caderno do livro com o rascunho, o `.cvtxt` e a mesa, e os diagramas no texto com a miniatura, a dica e o menu. O painel as compõe e delega os comandos do catálogo. |
+| `texto_correcao.py` · `texto_vista.py` · `texto_ferramentas.py` | As outras três partes da aba Texto (S-865): o léxico, o pincel, a busca (`JanelaDeBusca`), a paleta de símbolos e o painel de navegação; o zoom, a letra, o modo foco e a barra de estado; e o formato do trecho com os controles da fita que o aplicam. |
 | `menu.py` · `fita.py` · `fila.py` · `barra.py` · `paleta.py` · `atalhos.py` | O menu, as duas peles de cromo (fita e fila), a barra que quebra em vez de cortar, a paleta de comandos e os atalhos -- gerados de `ui/comandos.py` e `ui/atalhos.py`, nunca reescritos. |
 | `tema.py` · `icones.py` · `dica.py` · `legenda.py` | A folha de estilo (os papéis de `ui/tokens.py` virando QSS), os ícones vetoriais, a dica do controle desabilitado e a legenda de atalhos. |
 | `exportador.py` · `dialogos.py` · `trabalho.py` · `campo.py` | A exportação do livro para PGN, os quatro diálogos, o trabalho pesado fora da linha de eventos, e a anotação do conjunto de campo. |
@@ -426,12 +428,12 @@ piorar um livro que já funciona:
 exceção. Vinte e duas são operações longas e estão no `BusyRegistry`; as outras quinze são declaradas
 em `ui/busy.py::FORA_DO_REGISTRO`, com o motivo de cada uma (S-112).
 
-**A última é a volta do R7 (2026-10-29, `qt/painel_de_texto.py`).** *Trazer as correções da
+**A última é a volta do R7 (2026-10-29, `qt/texto_leitura.py` desde a S-865).** *Trazer as correções da
 Revisão de texto* pergunta à suíte que folhas o revisor editou, e quando a importação do livro em
 mãos não serve a suíte importa de novo essas páginas, com OCR: registra-se, com «Cancelar» e sem
 `loses_work`, porque nada é gravado no caderno antes de a resposta chegar.
 
-**As três últimas são do caderno do livro (2026-10-24, `qt/painel_de_texto.py`).** A folha aberta
+**As três últimas são do caderno do livro (2026-10-24, `qt/texto_leitura.py` desde a S-865).** A folha aberta
 do caderno é rasterizada ao fundo para as miniaturas (S-612), décimos de segundo com o texto já na
 tela, e fica declarada. A exportação do caderno (S-614) renderiza de novo cada folha com diagrama
 para tirar as miniaturas, e num livro de centenas de folhas isso é minuto: registra-se como a
@@ -504,8 +506,8 @@ Contar só a primeira deixaria de fora a leitura da página, que é o laço inte
 | busca por nome na base | `qt/painel_da_galeria.py` | sim, entre partidas | não, é curta | não |
 | busca por posição na base | `qt/painel_da_galeria.py` | sim, entre pedaços | **sim**, a passada inteira | não |
 | detecção de duplicatas | `qt/painel_do_dataset.py` | não | não, é derivada | não |
-| leitura do texto da página | `qt/painel_de_texto.py` | sim, entre páginas | não, o `.cvtxt` já está em disco | não (é o classificador de caractere) |
-| exportação do texto lido | `qt/painel_de_texto.py` | não | **sim**, o destino fica pela metade | não |
+| leitura do texto da página | `qt/texto_leitura.py` | sim, entre páginas | não, o `.cvtxt` já está em disco | não (é o classificador de caractere) |
+| exportação do texto lido | `qt/texto_leitura.py` | não | **sim**, o destino fica pela metade | não |
 | avaliação do motor sobre a posição | `qt/sala_motor.py` | não | — declarada | não (é o Stockfish) |
 | índice por nome da base de partidas (S-532) | `qt/indice_da_base.py::IndexadorDaBase` | sim, a cada 16 mil linhas | não: cada arquivo é uma transação, e a rodada seguinte retoma | não |
 | busca por jogador, evento, ano, Elo e ECO (S-533) | `qt/busca_de_partidas.py::DialogoDeBusca` | não (dezenas de ms com índice) | — declarada: nada é gravado | não |

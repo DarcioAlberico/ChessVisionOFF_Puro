@@ -223,8 +223,8 @@ class PainelTests(unittest.TestCase):
     def selecionar(self, inicio: int, fim: int) -> None:
         """Seleciona por deslocamento **do documento**, traduzindo pelo mapa."""
         cursor = self.painel.editor.textCursor()
-        cursor.setPosition(self.painel._mapa.posicao(inicio))
-        cursor.setPosition(self.painel._mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
+        cursor.setPosition(self.painel.espelho.mapa.posicao(inicio))
+        cursor.setPosition(self.painel.espelho.mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
         self.painel.editor.setTextCursor(cursor)
 
 
@@ -236,7 +236,7 @@ class MapaTests(PainelTests):
         self.painel.desenhar_documento(rico.de_texto("Uma frase simples."))
         self.assertEqual(len(self.painel.texto()), len(self.painel.editor.toPlainText()))
         for desloc in (0, 4, 10):
-            self.assertEqual(self.painel._mapa.posicao(desloc), desloc)
+            self.assertEqual(self.painel.espelho.mapa.posicao(desloc), desloc)
 
     def test_com_diagrama_o_widget_tem_caracteres_a_mais(self) -> None:
         """**É o defeito que o mapa existe para não ter.**
@@ -257,7 +257,7 @@ class MapaTests(PainelTests):
         texto = self.painel.texto()
         for desloc in (0, 5, texto.index("Depois"), len(texto) - 1):
             with self.subTest(deslocamento=desloc):
-                self.assertEqual(self.painel._mapa.deslocamento(self.painel._mapa.posicao(desloc)), desloc)
+                self.assertEqual(self.painel.espelho.mapa.deslocamento(self.painel.espelho.mapa.posicao(desloc)), desloc)
 
     def test_o_trecho_depois_do_diagrama_e_o_certo(self) -> None:
         """A conferência que o mapa existe para passar: selecionar pelo documento e conferir
@@ -309,7 +309,7 @@ class FerramentasTests(PainelTests):
         self.selecionar(2, 7)
         self.painel.negrito()
         self.selecionar(2, 7)
-        self.painel.pintar_letra("nota")
+        self.painel.ferramentas.pintar_letra("nota")
         self.selecionar(2, 7)
         self.painel.limpar_formato()
         trecho = next(c for c in self.painel.documento.corridas if c.texto == "bispo")
@@ -320,21 +320,21 @@ class FerramentasTests(PainelTests):
         """Marcar meia frase marcaria meio parágrafo, e o desenho ficaria com dois corpos de
         fonte na mesma linha (S-249)."""
         self.selecionar(2, 7)
-        self.painel.aplicar_estilo(rico.ESTILO_TITULO)
+        self.painel.ferramentas.aplicar_estilo(rico.ESTILO_TITULO)
         estilos_vistos = {c.atributos.estilo for c in self.painel.documento.corridas}
         self.assertEqual(estilos_vistos, {rico.ESTILO_TITULO})
 
     def test_o_alinhamento_tambem_e_do_paragrafo(self) -> None:
         self.selecionar(2, 7)
-        self.painel.alinhar(rico.ALINHAMENTO_CENTRO)
+        self.painel.ferramentas.alinhar(rico.ALINHAMENTO_CENTRO)
         alinhamentos = {c.atributos.alinhamento for c in self.painel.documento.corridas}
         self.assertEqual(alinhamentos, {rico.ALINHAMENTO_CENTRO})
 
     def test_o_corpo_anda_em_degraus(self) -> None:
         self.selecionar(0, 5)
-        self.painel.mudar_corpo(2)
+        self.painel.ferramentas.mudar_corpo(2)
         self.assertEqual({c.atributos.corpo for c in self.painel.documento.corridas}, {2})
-        self.painel.mudar_corpo(-1)
+        self.painel.ferramentas.mudar_corpo(-1)
         self.assertEqual({c.atributos.corpo for c in self.painel.documento.corridas}, {1})
 
     def test_o_desenho_reflete_o_documento(self) -> None:
@@ -342,7 +342,7 @@ class FerramentasTests(PainelTests):
         self.selecionar(2, 7)
         self.painel.negrito()
         cursor = self.painel.editor.textCursor()
-        cursor.setPosition(self.painel._mapa.posicao(4))
+        cursor.setPosition(self.painel.espelho.mapa.posicao(4))
         self.assertEqual(cursor.charFormat().fontWeight(), QFont.Weight.Bold)
 
 
@@ -387,7 +387,7 @@ class HistoricoTests(PainelTests):
         self.selecionar(2, 7)
         self.painel.negrito()
         self.painel.mostrar_pagina(pagina_com_diagrama())
-        self.assertFalse(self.painel.pode_desfazer)
+        self.assertFalse(self.painel.espelho.pode_desfazer)
 
     def test_redesenhar_nao_corrompe_a_pilha(self) -> None:
         """**No Tk isto exige `edit_reset()` depois de todo redesenho**, porque a pilha de lá
@@ -395,8 +395,8 @@ class HistoricoTests(PainelTests):
         novo. Aqui a pilha é o próprio histórico de documentos, e redesenhar não a toca."""
         self.selecionar(2, 7)
         self.painel.negrito()
-        self.painel._desenhar()
-        self.painel._desenhar()
+        self.painel.espelho.desenhar()
+        self.painel.espelho.desenhar()
         self.painel.desfazer()
         self.assertEqual([c.atributos.negrito for c in self.painel.documento.corridas], [False])
 

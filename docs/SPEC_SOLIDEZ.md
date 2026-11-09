@@ -2587,6 +2587,22 @@ das S-824 a S-826, S-896, S-898 e S-904) é a caracterização.
 
 **Aceite.** `PainelDeTexto` com menos de 800 linhas, como composição das cinco partes.
 
+**Entregue** (2026-11-09): a classe `PainelDeTexto` caiu de 4.309 para 784 linhas (o arquivo, de 5.112
+para 911), como composição de `QObject` filhos: `qt/texto_espelho.py` (`EspelhoDaFolha`: o `Mapa`, o
+desenho, a digitação e a pilha do desfazer), `qt/texto_leitura.py` (`ExecutorDaAba`), `qt/texto_caderno.py`
+(`CadernoDaAba`: caderno, rascunho, `.cvtxt` e mesa), `qt/texto_miniaturas.py` e `qt/texto_correcao.py`
+(com a `JanelaDeBusca`). **Divergiu em três pontos.** (1) Só as cinco deixavam a classe em ~1.700 linhas,
+então saíram também `qt/texto_vista.py` (zoom, letra, foco, barra de estado) e `qt/texto_ferramentas.py`
+(o formato do trecho e os controles da fita). (2) As `Tarefa` não foram reunidas num método único do
+executor: `tests/test_busy.py` procura, por função, a prova de registro no **mesmo módulo**, e uma porta
+única deixaria a guarda verde sem olhar cada thread; as seis continuam uma por função, todas em
+`texto_leitura.py` (a chave de `FORA_DO_REGISTRO` virou `("texto_leitura.py", "renderizar_ao_fundo")`).
+(3) A leitura não leva a `AncoraDaTela`: a guarda dela é o livro do resultado (S-824), e a âncora compara
+também a página. Os comandos do catálogo seguem métodos do painel, que delegam; os testes que liam estado
+privado passaram a lê-lo na parte, e os que remendavam `painel_de_texto._renderizar`/`_ler`/`Tarefa`
+remendam `texto_leitura.renderizar`/`ler_a_folha`/`Tarefa`. As varreduras de rótulo, cor e corpo cravados
+passaram a cobrir as partes. Saíram três restos mortos: `_botao`, `_montando` e `_cancelar_exportacao`.
+
 ## S-866 · `PainelDeEstudo` sem o motor, a análise, as táticas e o índice
 
 **Problema.** `qt/painel_de_estudo.py` tem 3.660 linhas e seis classes.

@@ -37,8 +37,8 @@ class FiltroDoPainelTests(diagramas._Aba):
 
     def selecionar(self, inicio: int, fim: int) -> None:
         cursor = self.painel.editor.textCursor()
-        cursor.setPosition(self.painel._mapa.posicao(inicio))
-        cursor.setPosition(self.painel._mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
+        cursor.setPosition(self.painel.espelho.mapa.posicao(inicio))
+        cursor.setPosition(self.painel.espelho.mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
         self.painel.editor.setTextCursor(cursor)
 
     def rodar(self, passo: int, modificador: Qt.KeyboardModifier) -> bool:
@@ -106,9 +106,9 @@ class FiltroDoPainelTests(diagramas._Aba):
         self.painel.fita.setCurrentIndex(0)
         self.painel.alternar_fita()
         self.assertTrue(self.painel.fita.recolhida)
-        QTest.mouseClick(self.painel.status, Qt.MouseButton.RightButton)  # qualquer botão
+        QTest.mouseClick(self.painel.vista.status, Qt.MouseButton.RightButton)  # qualquer botão
         self.assertFalse(self.painel.fita.recolhida)
-        self.assertTrue(self.painel.campo_de_folha.isVisible())
+        self.assertTrue(self.painel.leitura.campo_de_folha.isVisible())
 
     # 5. o vazio acompanha a folha
     def test_o_vazio_acompanha_a_area_da_folha_quando_ela_muda_de_tamanho(self) -> None:
@@ -138,11 +138,11 @@ class FiltroDoPainelTests(diagramas._Aba):
     def test_ctrl_roda_e_o_zoom_da_vista_e_a_roda_sozinha_rola(self) -> None:
         self.painel.desenhar_documento(rico.de_texto("Uma frase."))
         self.assertTrue(self.rodar(+120, Qt.KeyboardModifier.ControlModifier))
-        self.assertEqual(self.painel.zoom_da_vista, 1)
+        self.assertEqual(self.painel.vista.zoom_da_vista, 1)
         self.assertTrue(self.rodar(0, Qt.KeyboardModifier.ControlModifier), "Ctrl+roda parada também é do painel")
-        self.assertEqual(self.painel.zoom_da_vista, 1)
+        self.assertEqual(self.painel.vista.zoom_da_vista, 1)
         self.rodar(+120, Qt.KeyboardModifier.NoModifier)
-        self.assertEqual(self.painel.zoom_da_vista, 1, "a roda sem Ctrl mexeu no zoom")
+        self.assertEqual(self.painel.vista.zoom_da_vista, 1, "a roda sem Ctrl mexeu no zoom")
 
     # 8. o clique na miniatura
     def test_o_clique_esquerdo_na_miniatura_seleciona_a_marca_e_o_direito_nao(self) -> None:

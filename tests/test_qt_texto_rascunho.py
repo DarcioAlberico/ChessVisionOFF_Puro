@@ -63,10 +63,10 @@ class _Aba(unittest.TestCase):
     def chegou(self, pagina: PaginaLida, *, resposta: bool | None = None) -> None:
         """A folha lida volta da thread -- é onde a oferta do rascunho acontece."""
         if resposta is None:
-            self.painel._leitura_terminou((pagina, None))
+            self.painel.leitura._leitura_terminou((pagina, None))
             return
         with _Respondendo(QMessageBox.StandardButton.Yes if resposta else QMessageBox.StandardButton.No):
-            self.painel._leitura_terminou((pagina, None))
+            self.painel.leitura._leitura_terminou((pagina, None))
 
 
 class _Respondendo:
@@ -89,21 +89,21 @@ class GravaPorInatividadeTests(_Aba):
     def test_grava_so_se_houver_o_que_gravar(self) -> None:
         """Duas regras num teste porque elas são a mesma decisão: **quando** gravar."""
         self.painel.mostrar_pagina(_pagina())
-        self.assertIsNone(self.painel.gravar_rascunho(), "gravou com a aba limpa")
+        self.assertIsNone(self.painel.caderno.gravar_rascunho(), "gravou com a aba limpa")
         self.digitar_no_fim(" corrigido a mao")
         self.assertTrue(self.painel.tem_alteracoes)
-        destino = self.painel.gravar_rascunho()
+        destino = self.painel.caderno.gravar_rascunho()
         self.assertIsNotNone(destino)
         self.assertIn("corrigido", arquivo.carregar(destino).para_texto())  # type: ignore[arg-type]
 
     def test_a_tecla_reagenda_em_vez_de_gravar_na_hora(self) -> None:
         """Por inatividade, e não por relógio: um relógio fixo grava no meio da digitação."""
         self.painel.mostrar_pagina(_pagina())
-        self.assertFalse(self.painel._rascunho.isActive(), "a folha recém-lida não tem o que gravar")
+        self.assertFalse(self.painel.caderno._rascunho.isActive(), "a folha recém-lida não tem o que gravar")
         self.digitar_no_fim("a")
-        self.assertTrue(self.painel._rascunho.isActive(), "a tecla não agendou nada")
-        self.assertTrue(self.painel._rascunho.isSingleShot())
-        self.assertEqual(self.painel._rascunho.interval(), int(rascunho.ESPERA_SEGUNDOS * 1000))
+        self.assertTrue(self.painel.caderno._rascunho.isActive(), "a tecla não agendou nada")
+        self.assertTrue(self.painel.caderno._rascunho.isSingleShot())
+        self.assertEqual(self.painel.caderno._rascunho.interval(), int(rascunho.ESPERA_SEGUNDOS * 1000))
         self.assertIsNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta), "gravou antes da pausa")
 
     def test_a_ferramenta_tambem_reagenda(self) -> None:
@@ -113,20 +113,20 @@ class GravaPorInatividadeTests(_Aba):
         cursor.setPosition(3, QTextCursor.MoveMode.KeepAnchor)
         self.painel.editor.setTextCursor(cursor)
         self.painel.negrito()
-        self.assertTrue(self.painel._rascunho.isActive())
+        self.assertTrue(self.painel.caderno._rascunho.isActive())
 
     def test_o_relogio_que_dispara_grava(self) -> None:
         self.painel.mostrar_pagina(_pagina())
         self.digitar_no_fim(" trabalho")
-        self.painel._rascunho.timeout.emit()
+        self.painel.caderno._rascunho.timeout.emit()
         achado = rascunho.achar("livro.pdf", 0, pasta=self.pasta)
         self.assertIsNotNone(achado)
-        self.assertFalse(self.painel._rascunho.isActive())
+        self.assertFalse(self.painel.caderno._rascunho.isActive())
 
     def test_documento_sem_folha_de_origem_nao_vira_rascunho(self) -> None:
         self.painel.desenhar_documento(rico.de_texto("texto solto"))
         self.digitar_no_fim(" mais")
-        self.assertIsNone(self.painel.gravar_rascunho())
+        self.assertIsNone(self.painel.caderno.gravar_rascunho())
         self.assertEqual(list(self.pasta.glob("*")), [])
 
     def test_fechar_grava_o_rascunho_antes_de_perguntar(self) -> None:
@@ -166,7 +166,7 @@ class GravaPorInatividadeTests(_Aba):
     def test_sem_tela_o_fechamento_tambem_deixa_o_rascunho(self) -> None:
         self.painel.mostrar_pagina(_pagina())
         self.digitar_no_fim(" trabalho nao salvo")
-        with self.assertLogs("chess_diagram_ocr.qt.painel_de_texto", level="WARNING"):
+        with self.assertLogs("chess_diagram_ocr.qt.texto_caderno", level="WARNING"):
             self.assertTrue(self.painel.confirmar_fechamento())
         self.assertIsNotNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta))
 
@@ -225,7 +225,7 @@ class ReabrirOfereceTests(_Aba):
         """**Oferece**: sobrescrever o que a pessoa acabou de ler com um rascunho de ontem é o
         contrário do que ela quer."""
         with _Respondendo(QMessageBox.StandardButton.No) as pergunta:
-            self.painel._leitura_terminou((_pagina(texto="versão recém-lida"), None))
+            self.painel.leitura._leitura_terminou((_pagina(texto="versão recém-lida"), None))
         pergunta.assert_called_once()
         self.assertIn("Há um rascunho não salvo desta folha", pergunta.call_args.args[2])
         self.assertIn("recém-lida", self.painel.texto())
@@ -234,7 +234,7 @@ class ReabrirOfereceTests(_Aba):
     def test_aceitar_a_oferta_traz_o_rascunho(self) -> None:
         folha = np.full((40, 40, 3), 200, np.uint8)
         with _Respondendo(QMessageBox.StandardButton.Yes):
-            self.painel._leitura_terminou((_pagina(texto="versão recém-lida"), folha))
+            self.painel.leitura._leitura_terminou((_pagina(texto="versão recém-lida"), folha))
         self.assertIn("rascunho", self.painel.texto())
         self.assertIs(self.painel._pagina_rgb, folha, "a folha recém-lida serve ao rascunho da mesma folha")
         self.assertIn("recuperado", self.recados[-1])
@@ -252,12 +252,12 @@ class ReabrirOfereceTests(_Aba):
         """A outra metade da linha acima (S-308): o segundo travamento não pode perder tudo."""
         self.chegou(_pagina(), resposta=True)
         self.assertTrue(self.painel.tem_alteracoes, "recuperar apagou o arquivo e deu o texto por gravado")
-        self.assertTrue(self.painel._rascunho.isActive(), "e desligou o rascunho automático")
-        self.assertIsNotNone(self.painel.gravar_rascunho())
+        self.assertTrue(self.painel.caderno._rascunho.isActive(), "e desligou o rascunho automático")
+        self.assertIsNotNone(self.painel.caderno.gravar_rascunho())
         self.assertIsNotNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta))
 
     def test_sem_tela_o_rascunho_fica_e_a_leitura_vale(self) -> None:
-        with self.assertLogs("chess_diagram_ocr.qt.painel_de_texto", level="WARNING"):
+        with self.assertLogs("chess_diagram_ocr.qt.texto_caderno", level="WARNING"):
             self.chegou(_pagina(texto="versão recém-lida"))
         self.assertIn("recém-lida", self.painel.texto())
         self.assertIsNotNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta))
@@ -267,14 +267,14 @@ class ReabrirOfereceTests(_Aba):
         from PyQt6.QtCore import QPoint
 
         self.chegou(_pagina(texto="versão recém-lida"), resposta=False)
-        menu = self.painel._menu_de_contexto(QPoint(4, 4))
+        menu = self.painel.miniaturas.menu_de_contexto(QPoint(4, 4))
         self.addCleanup(descartar, menu)
         recuperar = next(a for a in menu.actions() if a.text().startswith("Recuperar o rascunho de "))
         recuperar.trigger()
         self.assertIn("rascunho", self.painel.texto())
         self.assertTrue(self.painel.tem_alteracoes, "recuperado é trabalho por gravar")
         self.assertIsNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta), "recuperar apaga o arquivo")
-        depois = self.painel._menu_de_contexto(QPoint(4, 4))
+        depois = self.painel.miniaturas.menu_de_contexto(QPoint(4, 4))
         self.addCleanup(descartar, depois)
         self.assertFalse([a for a in depois.actions() if a.text().startswith("Recuperar")], "sem rascunho, sem ação")
 
@@ -282,14 +282,14 @@ class ReabrirOfereceTests(_Aba):
         self.chegou(_pagina(texto="versão recém-lida"), resposta=False)
         self.digitar_no_fim(" editado depois")
         with _Respondendo(QMessageBox.StandardButton.No) as pergunta:
-            self.assertFalse(self.painel.recuperar_rascunho())
+            self.assertFalse(self.painel.caderno.recuperar_rascunho())
         self.assertIn("Recuperar o rascunho descarta", pergunta.call_args.args[2])
         self.assertIn("editado depois", self.painel.texto())
         self.assertIsNotNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta))
 
     def test_outra_folha_nao_e_oferecida(self) -> None:
         with _Respondendo(QMessageBox.StandardButton.Yes) as pergunta:
-            self.painel._leitura_terminou((_pagina(folha=3), None))
+            self.painel.leitura._leitura_terminou((_pagina(folha=3), None))
         pergunta.assert_not_called()
 
 
@@ -314,12 +314,12 @@ class GravarCarimbaAMaoTests(_Aba):
     def test_salvar_apaga_o_rascunho(self) -> None:
         self.painel.mostrar_pagina(_pagina())
         self.digitar_no_fim(" corrigido")
-        self.painel.gravar_rascunho()
+        self.painel.caderno.gravar_rascunho()
         self.assertIsNotNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta))
         destino = self.salvar()
         self.assertTrue(destino.exists())
         self.assertIsNone(rascunho.achar("livro.pdf", 0, pasta=self.pasta))
-        self.assertFalse(self.painel._rascunho.isActive())
+        self.assertFalse(self.painel.caderno._rascunho.isActive())
 
     def test_o_arquivo_e_a_tela_dizem_humano_onde_a_mao_passou(self) -> None:
         self.painel.mostrar_pagina(_pagina())
@@ -345,12 +345,12 @@ class GravarCarimbaAMaoTests(_Aba):
         self.salvar()
         self.painel.desfazer()
         self.assertEqual(self.painel.texto(), "uma folha lida", "o Ctrl+Z desfaz a palavra, e não a procedência")
-        self.assertFalse(self.painel.pode_desfazer)
+        self.assertFalse(self.painel.espelho.pode_desfazer)
 
     def test_o_rascunho_tambem_sai_carimbado(self) -> None:
         self.painel.mostrar_pagina(_pagina())
         self.digitar_no_fim(" corrigido")
-        destino = self.painel.gravar_rascunho()
+        destino = self.painel.caderno.gravar_rascunho()
         assert destino is not None
         self.assertEqual({c.procedencia for c in arquivo.carregar(destino).corridas}, {"humano"})
 
@@ -368,7 +368,7 @@ class GravarCarimbaAMaoTests(_Aba):
         destino = self.pasta / "folha.html"
         with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(destino), "")):
             self.painel.exportar_html()
-        tarefa = self.painel._tarefa
+        tarefa = self.painel.leitura.tarefa
         self.assertIsNotNone(tarefa)
         self.assertTrue(tarefa.wait(10_000))  # type: ignore[union-attr]
         self.app.processEvents()

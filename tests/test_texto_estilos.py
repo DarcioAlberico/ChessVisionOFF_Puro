@@ -23,7 +23,9 @@ from chess_diagram_ocr.text.pagina import (
     PaginaLida,
 )
 
-PAINEL = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt" / "painel_de_texto.py"
+QT = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt"
+PAINEL = (QT / "painel_de_texto.py", *sorted(QT.glob("texto_*.py")))
+"""A aba Texto e as partes dela (S-865): o tamanho cravado mudaria de arquivo junto com o código."""
 
 
 def _linha(texto: str, topo: float = 0.0) -> LinhaLida:
@@ -166,14 +168,14 @@ class SemTamanhoCravadoTests(unittest.TestCase):
         como um tamanho entraria. `tipografia` escala pela fonte do sistema desde a S-147, e cravar
         `12` aqui quebraria quem aumentou a fonte do Windows.
         """
-        arvore = ast.parse(PAINEL.read_text(encoding="utf-8"))
         cravados: list[str] = []
-        for no in ast.walk(arvore):
-            if isinstance(no, ast.Call):
-                for chave in no.keywords:
-                    if chave.arg in ("size", "font") and isinstance(chave.value, ast.Constant):
-                        if isinstance(chave.value.value, int):
-                            cravados.append(f"linha {no.lineno}: {chave.arg}={chave.value.value}")
+        for arquivo in PAINEL:
+            for no in ast.walk(ast.parse(arquivo.read_text(encoding="utf-8"))):
+                if isinstance(no, ast.Call):
+                    for chave in no.keywords:
+                        if chave.arg in ("size", "font") and isinstance(chave.value, ast.Constant):
+                            if isinstance(chave.value.value, int):
+                                cravados.append(f"{arquivo.name}:{no.lineno}: {chave.arg}={chave.value.value}")
         self.assertEqual(cravados, [])
 
     def test_todo_estilo_tem_papel_de_tipografia(self) -> None:

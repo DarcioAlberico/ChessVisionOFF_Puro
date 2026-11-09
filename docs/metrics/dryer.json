@@ -2,7 +2,7 @@
  "limiar": 0.8,
  "gramas": 5,
  "min_tokens": 60,
- "total": 38,
+ "total": 37,
  "pares": [
   {
    "a": "src/chess_diagram_ocr/importacao_de_imagens.py::Lote.to_dict",
@@ -11,13 +11,6 @@
    "linha_b": 229,
    "semelhanca": 1.0,
    "proposito": "S-864: só a forma; são dois arquivos do dono (o lote de importação e a fila de revisão), cada um com a sua versão e os seus campos"
-  },
-  {
-   "a": "src/chess_diagram_ocr/qt/painel_de_texto.py::PainelDeTexto.desfazer",
-   "linha_a": 1544,
-   "b": "src/chess_diagram_ocr/qt/painel_de_texto.py::PainelDeTexto.refazer",
-   "linha_b": 1568,
-   "semelhanca": 1.0
   },
   {
    "a": "src/chess_diagram_ocr/cli/texto_estilo_conjunto.py::build_parser",
