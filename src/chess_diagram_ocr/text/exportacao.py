@@ -39,6 +39,7 @@ Nada de `tkinter` aqui: quem escolhe o arquivo é o painel; quem decide o conte�
 from __future__ import annotations
 
 import html as _html
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -64,6 +65,8 @@ __all__ = [
     "formato_de",
     "intervalos",
     "suporte_por_formato",
+    "texto_markdown",
+    "texto_xml",
 ]
 
 ALINHAMENTOS_DO_HTML: dict[str, str] = {
@@ -100,6 +103,35 @@ def classe_de_corpo(degrau: int) -> str:
     quem escreve a regra (`ui/texto_panel`) têm de produzir exatamente o mesmo nome."""
     lado = "mais" if degrau > 0 else "menos"
     return f"{PREFIXO_DE_CORPO}-{lado}-{abs(int(degrau))}"
+
+
+_PROIBIDO_NO_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+"""O que o XML 1.0 não admite em lugar nenhum do documento, nem escapado (`&#2;` também é erro)."""
+
+
+def texto_xml(texto: str, quote: bool = True) -> str:
+    """O texto pronto para dentro de XML: **sem o que o XML 1.0 proíbe**, e escapado (S-877).
+
+    A camada de texto do PDF e as bases de PGN trazem U+0002 e U+0003 onde a fonte não tem mapa, e
+    `html.escape` os deixa passar: um só deles faz o EPUB e o DOCX inteiros não abrirem. Não há
+    escape que os salve, então saem. É o lugar único de EPUB, DOCX e `.html`; `quote` é o de
+    `html.escape`.
+    """
+    return _html.escape(_PROIBIDO_NO_XML.sub("", str(texto)), quote=quote)
+
+
+_MARCACAO_DO_MARKDOWN = re.compile(r"([\\*_])")
+_LISTA_NUMERADA = re.compile(r"(?m)^(\s*\d+)([.)])(?=\s|$)")
+
+
+def texto_markdown(texto: str) -> str:
+    """O irmão de `texto_xml` para o `.md`: o que o livro imprimiu não vira marcação (S-877).
+
+    `*` e `_` abrem ênfase em qualquer ponto da linha, e `1. ` ou `2) ` em começo de linha abrem
+    lista -- num livro de xadrez, toda linha de lances. A barra é escapada junto, para que um `\\*`
+    impresso não volte a ser ênfase. `1.e4` colado não é lista no CommonMark e fica como está.
+    """
+    return _LISTA_NUMERADA.sub(r"\1\\\2", _MARCACAO_DO_MARKDOWN.sub(r"\\\1", texto))
 
 
 ATRIBUTOS: tuple[str, ...] = tuple(campo.name for campo in fields(Atributos))
@@ -221,6 +253,7 @@ class Markdown:
         texto = c.texto
         if not texto.strip():
             return texto
+        texto = texto_markdown(texto)
         # A ordem importa: `***texto***` é o que o Markdown lê como negrito **e** itálico.
         if c.atributos.italico:
             texto = _cercado(texto, "*")
@@ -272,12 +305,12 @@ class Markdown:
             # correr ao lado dela nos visualizadores que leem HTML dentro do Markdown (S-624).
             saida = (
                 f'<img align="left" src="{self.pasta_de_imagens}/{recorte.name}" '
-                f'alt="{_html.escape(c.texto, quote=True)}">'
+                f'alt="{texto_xml(c.texto, quote=True)}">'
             )
             return saida + (f"\n<!-- FEN: {placement} -->" if placement else "")
         saida = (
             f'<p align="{lado}"><img src="{self.pasta_de_imagens}/{recorte.name}" '
-            f'alt="{_html.escape(c.texto, quote=True)}"></p>'
+            f'alt="{texto_xml(c.texto, quote=True)}"></p>'
         )
         if placement:
             saida += f"\n<!-- FEN: {placement} -->"
@@ -321,7 +354,7 @@ class Html:
     fontes: str = "'Segoe UI Symbol', 'DejaVu Sans', 'Noto Sans Symbols 2', sans-serif"
 
     def cabecalho(self, doc: DocumentoRico) -> str:
-        titulo = _html.escape(_titulo_de(doc))
+        titulo = texto_xml(_titulo_de(doc))
         estilo = "\n".join(
             f"    .{nome} {{ {propriedade}: {valor}; }}" for nome, propriedade, valor in self._regras()
         )
@@ -388,7 +421,7 @@ class Html:
     def corrida(self, c: Corrida) -> str:
         # **Escapa o que veio do OCR.** A S-211 mediu 96 caracteres espúrios em 13 páginas, e um
         # `<` não escapado engole o resto do arquivo no navegador.
-        texto = _html.escape(c.texto).replace("\n", "<br>\n")
+        texto = texto_xml(c.texto).replace("\n", "<br>\n")
         atributos = c.atributos
         if atributos.negrito:
             texto = f"<strong>{texto}</strong>"
@@ -432,8 +465,8 @@ class Html:
         editor HTML/CSS lê (`cb-diagram`, `data-fen`), e é por ele que um diagrama exportado
         daqui volta a ser posição, e não só figura.
         """
-        marca = _html.escape(c.texto)
-        fen = f' data-fen="{_html.escape(placement, quote=True)}"' if placement else ""
+        marca = texto_xml(c.texto)
+        fen = f' data-fen="{texto_xml(placement, quote=True)}"' if placement else ""
         if recorte is None:
             return f'<span class="diagrama"{fen}>{marca}</span>' if fen else marca
         return f'<img class="diagrama" src="{self.pasta_de_imagens}/{recorte.name}" alt="{marca}"{fen}>'

@@ -947,6 +947,15 @@ antes de dar a exportação por concluída. O `_texto_xml` ganha um irmão para 
 
 **Aceite.** Os três passam.
 
+**Entregue** (2026-11-08): o lugar único é `texto_xml` em `text/exportacao.py` (público, porque EPUB, DOCX
+e `.html` o chamam), que tira o proibido e escapa numa chamada só, no lugar de cada `html.escape`; o
+`docx_saida.py` monta o XML por texto, e não por ElementTree, então não havia `.text` a cobrir lá. O
+`.text` do `diagrama_svg` ficou de fora: o que entra nele é marca gerada e FEN validada, nunca texto do
+livro. O `verificar` roda dentro de `epub.escrever`, que os dois exportadores chamam, e o pacote com
+defeito sai como `ValueError` sem tocar o disco (o painel de estudo passou a apanhá-lo). O irmão do
+Markdown é `texto_markdown`: `*`, `_` e a barra em qualquer ponto, `1. `/`2) ` em começo de linha;
+`1.e4` colado não é lista no CommonMark e fica como está.
+
 ## S-879 · Legenda com lance inexistente cai no casamento pela posição
 
 **Problema** (confirmado por script). `livro_com_pgn.py:269-280`: com `2...Nc6` na legenda o estado é

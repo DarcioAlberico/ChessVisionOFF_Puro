@@ -42,7 +42,6 @@ quiser. Quem tiver o `epubcheck` na máquina deve rodá-lo: esta é a conferênc
 from __future__ import annotations
 
 import datetime as _dt
-import html as _html
 import io
 import posixpath
 import uuid
@@ -261,7 +260,7 @@ def capitulo_do_estudo(
     for paragrafo in estudo_paragrafos.paragrafos(estudo):
         tipo = paragrafo.tipo
         if tipo == estudo_paragrafos.TITULO:
-            partes.append(f"<h1>{_html.escape(paragrafo.texto)}</h1>")
+            partes.append(f"<h1>{exportacao.texto_xml(paragrafo.texto)}</h1>")
         elif tipo == estudo_paragrafos.DIAGRAMA:
             diagramas += 1
             nome = f"estudo_{indice:03d}_diagrama_{paragrafo.numero:02d}.svg"
@@ -271,11 +270,11 @@ def capitulo_do_estudo(
             ).encode("utf-8")
             partes.append(_figura(nome, alt, legenda=f"FEN: {paragrafo.fen}" if com_fen else ""))
         elif tipo == estudo_paragrafos.COMENTARIO_DO_ESTUDO:
-            partes.append(f'<p class="comentario">{_html.escape(paragrafo.texto)}</p>')
+            partes.append(f'<p class="comentario">{exportacao.texto_xml(paragrafo.texto)}</p>')
         elif tipo == estudo_paragrafos.VARIANTE:
-            partes.append(f'<p class="variante nivel-{paragrafo.nivel}">{_html.escape(paragrafo.texto)}</p>')
+            partes.append(f'<p class="variante nivel-{paragrafo.nivel}">{exportacao.texto_xml(paragrafo.texto)}</p>')
         else:
-            partes.append(f'<p class="lance">{_html.escape(paragrafo.texto)}</p>')
+            partes.append(f'<p class="lance">{exportacao.texto_xml(paragrafo.texto)}</p>')
     return Capitulo(id=f"estudo_{indice:03d}", titulo=titulo, corpo="\n".join(partes)), diagramas
 
 
@@ -284,9 +283,9 @@ def _figura(nome: str, alt: str, *, legenda: str = "") -> str:
     debaixo do diagrama -- ela é encanamento, e quem a quer é quem vai reconferir a leitura do OCR.
     A posição não se perde: ela está no `alt` da imagem, no `<title>` do SVG e em `data-fen`, que é
     onde um leitor de tela e um programa a procuram."""
-    figcaption = f"<figcaption>{_html.escape(legenda)}</figcaption>" if legenda else ""
+    figcaption = f"<figcaption>{exportacao.texto_xml(legenda)}</figcaption>" if legenda else ""
     return (
-        f'<figure class="diagrama"><img src="{PASTA_DE_IMAGENS}/{nome}" alt="{_html.escape(alt, quote=True)}"/>'
+        f'<figure class="diagrama"><img src="{PASTA_DE_IMAGENS}/{nome}" alt="{exportacao.texto_xml(alt, quote=True)}"/>'
         f"{figcaption}</figure>"
     )
 
@@ -404,7 +403,7 @@ def capitulo_do_texto(
 
     titulo = _titulo_do_texto(documento)
     if not montador.teve_h1:
-        partes.insert(0, f"<h1>{_html.escape(titulo)}</h1>")
+        partes.insert(0, f"<h1>{exportacao.texto_xml(titulo)}</h1>")
     return Capitulo(id=f"folha_{indice:03d}", titulo=titulo, corpo="\n".join(partes)), contagem
 
 
@@ -468,7 +467,7 @@ def _diagrama_do_texto(
         contagem.png += 1
         return _figura(nome, marca)
     contagem.so_marca += 1
-    return f'<p class="marca">{_html.escape(marca)}</p>'
+    return f'<p class="marca">{exportacao.texto_xml(marca)}</p>'
 
 
 def _titulo_do_texto(documento: rico.DocumentoRico) -> str:
@@ -533,7 +532,15 @@ def empacotar(livro: Livro) -> bytes:
 
 
 def escrever(caminho: Path, dados: bytes) -> Path:
-    """Grava atomicamente: cancelar no meio não deixa um EPUB pela metade no disco."""
+    """Grava atomicamente: cancelar no meio não deixa um EPUB pela metade no disco.
+
+    **E só grava o pacote que passa em `verificar` (S-877).** O módulo tinha a conferência e o
+    exportador não a rodava: um EPUB que nenhum leitor abre saía do disco com a barra de estado
+    dizendo "3 capítulo(s)". `ValueError` com os defeitos, e o arquivo anterior fica intacto.
+    """
+    problemas = verificar(dados)
+    if problemas:
+        raise ValueError(f"o EPUB saiu com defeito e não foi gravado: {'; '.join(problemas)}")
     atomic_write_bytes(Path(caminho), dados)
     return Path(caminho)
 
@@ -569,12 +576,12 @@ def _opf(livro: Livro, dados: Metadados) -> str:
         '<?xml version="1.0" encoding="utf-8"?>\n'
         f'<package xmlns="{OPF_NS}" version="3.0" unique-identifier="pub-id" xml:lang="{_atributo(dados.idioma)}">\n'
         f'  <metadata xmlns:dc="{DC_NS}">\n'
-        f'    <dc:identifier id="pub-id">{_html.escape(dados.identificador)}</dc:identifier>\n'
-        f"    <dc:title>{_html.escape(dados.titulo)}</dc:title>\n"
-        f"    <dc:language>{_html.escape(dados.idioma)}</dc:language>\n"
+        f'    <dc:identifier id="pub-id">{exportacao.texto_xml(dados.identificador)}</dc:identifier>\n'
+        f"    <dc:title>{exportacao.texto_xml(dados.titulo)}</dc:title>\n"
+        f"    <dc:language>{exportacao.texto_xml(dados.idioma)}</dc:language>\n"
         + _catalogo(dados)
         + _acessibilidade(dados)
-        + f'    <meta property="dcterms:modified">{_html.escape(dados.modificado)}</meta>\n'
+        + f'    <meta property="dcterms:modified">{exportacao.texto_xml(dados.modificado)}</meta>\n'
         "  </metadata>\n"
         "  <manifest>\n" + "\n".join(itens) + "\n  </manifest>\n"
         "  <spine>\n" + espinha + "\n  </spine>\n"
@@ -591,18 +598,18 @@ def _catalogo(dados: Metadados) -> str:
     """
     linhas: list[str] = []
     if dados.autor:
-        linhas.append(f'    <dc:creator id="autor">{_html.escape(dados.autor)}</dc:creator>')
+        linhas.append(f'    <dc:creator id="autor">{exportacao.texto_xml(dados.autor)}</dc:creator>')
         linhas.append('    <meta refines="#autor" property="role" scheme="marc:relators">aut</meta>')
-    linhas.append(f'    <dc:contributor id="produtor">{_html.escape(PRODUTOR)}</dc:contributor>')
+    linhas.append(f'    <dc:contributor id="produtor">{exportacao.texto_xml(PRODUTOR)}</dc:contributor>')
     linhas.append('    <meta refines="#produtor" property="role" scheme="marc:relators">bkp</meta>')
     if dados.data:
-        linhas.append(f"    <dc:date>{_html.escape(dados.data)}</dc:date>")
+        linhas.append(f"    <dc:date>{exportacao.texto_xml(dados.data)}</dc:date>")
     if dados.editora:
-        linhas.append(f"    <dc:publisher>{_html.escape(dados.editora)}</dc:publisher>")
+        linhas.append(f"    <dc:publisher>{exportacao.texto_xml(dados.editora)}</dc:publisher>")
     if dados.direitos:
-        linhas.append(f"    <dc:rights>{_html.escape(dados.direitos)}</dc:rights>")
+        linhas.append(f"    <dc:rights>{exportacao.texto_xml(dados.direitos)}</dc:rights>")
     if dados.isbn:
-        linhas.append(f'    <dc:identifier id="isbn">urn:isbn:{_html.escape(dados.isbn)}</dc:identifier>')
+        linhas.append(f'    <dc:identifier id="isbn">urn:isbn:{exportacao.texto_xml(dados.isbn)}</dc:identifier>')
     if dados.capa:
         linhas.append('    <meta name="cover" content="capa"/>')
     return "".join(f"{linha}\n" for linha in linhas)
@@ -633,7 +640,7 @@ def _acessibilidade(dados: Metadados) -> str:
         ("schema:accessibilitySummary", dados.resumo_de_acessibilidade),
     ]
     return "".join(
-        f'    <meta property="{propriedade}">{_html.escape(valor)}</meta>\n'
+        f'    <meta property="{propriedade}">{exportacao.texto_xml(valor)}</meta>\n'
         for propriedade, valor in valores
         if valor
     )
@@ -643,10 +650,10 @@ def _nav(livro: Livro, dados: Metadados) -> str:
     """O sumário e os marcos. **Os dois `nav`**: o leitor usa o `toc`, a loja e o EAA leem o
     `landmarks` para saber onde o livro começa."""
     entradas = "\n".join(
-        f'      <li><a href="{capitulo.arquivo}">{_html.escape(capitulo.titulo)}</a></li>' for capitulo in livro.capitulos
+        f'      <li><a href="{capitulo.arquivo}">{exportacao.texto_xml(capitulo.titulo)}</a></li>' for capitulo in livro.capitulos
     )
     corpo = (
-        f'<nav epub:type="toc" id="toc">\n    <h1>{_html.escape(dados.titulo)}</h1>\n    <ol>\n{entradas}\n    </ol>\n  </nav>'
+        f'<nav epub:type="toc" id="toc">\n    <h1>{exportacao.texto_xml(dados.titulo)}</h1>\n    <ol>\n{entradas}\n    </ol>\n  </nav>'
     )
     if livro.capitulos:
         corpo += (
@@ -670,7 +677,7 @@ def _documento_xhtml(titulo: str, corpo: str, idioma: str) -> str:
         f'<html xmlns="{XHTML_NS}" xmlns:epub="{EPUB_NS}" xml:lang="{_atributo(idioma)}" lang="{_atributo(idioma)}">\n'
         "<head>\n"
         '  <meta charset="utf-8"/>\n'
-        f"  <title>{_html.escape(titulo)}</title>\n"
+        f"  <title>{exportacao.texto_xml(titulo)}</title>\n"
         f'  <link rel="stylesheet" type="text/css" href="{CSS}"/>\n'
         "</head>\n"
         "<body>\n"
@@ -681,7 +688,7 @@ def _documento_xhtml(titulo: str, corpo: str, idioma: str) -> str:
 
 
 def _atributo(texto: str) -> str:
-    return _html.escape(str(texto), quote=True)
+    return exportacao.texto_xml(str(texto), quote=True)
 
 
 # ------------------------------------------------------------------------------ a conferência

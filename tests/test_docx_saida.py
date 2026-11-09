@@ -378,5 +378,39 @@ class LegendaOpcionalTests(unittest.TestCase):
         self.assertTrue(any(e == docx_saida.LEGENDA and t.startswith("FEN: ") for e, t in paragrafos_com), paragrafos_com)
 
 
+class CaractereDeControleTests(unittest.TestCase):
+    """S-877: o XML 1.0 proíbe os controles abaixo de U+0020 fora tab, LF e CR, e o PGN e a camada os trazem."""
+
+    PGN = (
+        '[Event "Tata\x02 Steel"]\n[Date "2021.01.16"]\n[White "Carlsen, M."]\n[Black "Nepomniachtchi, I."]\n\n'
+        "1. e4 {um\x01 comen\x0btario} e5 2. Nf3 *\n"
+    )
+
+    def _abre(self, caminho: Path) -> dict[str, bytes]:
+        membros = _membros(caminho.read_bytes())
+        for nome, conteudo in membros.items():
+            if nome.endswith((".xml", ".rels", ".svg")):
+                with self.subTest(membro=nome):
+                    ET.fromstring(conteudo)  # o expat é estrito: caractere proibido é ParseError
+        self.assertEqual(docx_saida.verificar(caminho), [])
+        return membros
+
+    def test_docx_com_controle_abre_no_elementtree(self) -> None:
+        pasta = pasta_temporaria(self)
+        relatorio = docx_saida.exportar_estudo_docx(Estudo.de_pgn(self.PGN), pasta / "controle.docx")
+        membros = self._abre(relatorio.caminho)
+        self.assertIn("Tata Steel", "".join(ET.fromstring(membros["docProps/core.xml"]).itertext()))
+        # O U+0001 sai; o U+000B o python-chess já lê como espaço.
+        self.assertIn("um comen tario", "".join(t for _, t in _paragrafos(relatorio.caminho.read_bytes())))
+
+    def test_docx_do_texto_com_glifo_sem_mapa_abre(self) -> None:
+        """A camada de texto do PDF traz U+0002 e U+0003 onde a fonte não tem mapa."""
+        pasta = pasta_temporaria(self)
+        doc = rico.de_pagina(_pagina(_texto("Uma \x03frase\x02 lida.")))
+        relatorio = docx_saida.exportar_texto_docx(doc, pasta / "texto.docx")
+        self._abre(relatorio.caminho)
+        self.assertIn("Uma frase lida.", [t for _, t in _paragrafos(relatorio.caminho.read_bytes())])
+
+
 if __name__ == "__main__":
     unittest.main()

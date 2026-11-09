@@ -2910,7 +2910,7 @@ class PainelDeEstudo(QWidget):
         caminho = Path(destino)
         try:
             relatorio = exportador(self.estudo, caminho)
-        except OSError as erro:
+        except (OSError, ValueError) as erro:  # ValueError: o EPUB que não passa em `verificar` (S-877)
             self.set_status(f"Não foi possível gravar {caminho.name}: {erro}")
             return
         self.set_status(relatorio.resumo())

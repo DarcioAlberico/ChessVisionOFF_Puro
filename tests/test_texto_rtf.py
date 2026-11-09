@@ -101,7 +101,7 @@ class SemDependenciaNovaTests(unittest.TestCase):
                 externos.update(alias.name.split(".")[0] for alias in no.names)
             elif isinstance(no, ast.ImportFrom) and no.module and no.level == 0:
                 externos.add(no.module.split(".")[0])
-        self.assertEqual(externos - {"html", "collections", "dataclasses", "pathlib", "typing", "__future__"}, set())
+        self.assertEqual(externos - {"html", "re", "collections", "dataclasses", "pathlib", "typing", "__future__"}, set())
 
 
 if __name__ == "__main__":  # pragma: no cover

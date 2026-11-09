@@ -340,5 +340,25 @@ class FormatoDesconhecidoTests(unittest.TestCase):
             exportacao.formato_de(".docx")
 
 
+class MarkdownEscapaTests(unittest.TestCase):
+    """S-877: o `.md` não pode ler como marcação o que o livro imprimiu como texto."""
+
+    def test_markdown_escapa_marcacao_em_inicio_de_linha(self) -> None:
+        doc = rico.de_texto("1. e4 e5 é a abertura\n2) Nf3 *forte* e_mais")
+        saida = exportacao.exportar(doc, exportacao.Markdown()).conteudo
+        self.assertIn("1\\. e4 e5 é a abertura", saida)
+        self.assertIn("2\\) Nf3 \\*forte\\* e\\_mais", saida)
+
+    def test_o_lance_colado_ao_numero_nao_e_lista(self) -> None:
+        """`1.e4` sem espaço não abre lista no CommonMark, e escapar ali só sujaria o diff."""
+        saida = exportacao.exportar(rico.de_texto("1.e4 e5 2.Nf3"), exportacao.Markdown()).conteudo
+        self.assertIn("1.e4 e5 2.Nf3", saida)
+
+    def test_a_enfase_de_verdade_continua_marcacao(self) -> None:
+        doc = rico.alternar(rico.de_texto("negrito com * solto"), 0, 7, "negrito")
+        saida = exportacao.exportar(doc, exportacao.Markdown()).conteudo
+        self.assertIn("**negrito** com \\* solto", saida)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

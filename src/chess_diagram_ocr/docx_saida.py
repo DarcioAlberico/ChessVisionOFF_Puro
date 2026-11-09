@@ -39,7 +39,6 @@ relação. O teste a roda sobre o que este módulo escreve.
 from __future__ import annotations
 
 import datetime as _dt
-import html as _html
 import io
 import posixpath
 import re
@@ -237,7 +236,7 @@ class Documento:
         self.corpo.append(
             "<w:p>"
             '<w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r>'
-            f'<w:r><w:instrText xml:space="preserve">{_html.escape(CAMPO_DE_SUMARIO, quote=False)}</w:instrText></w:r>'
+            f'<w:r><w:instrText xml:space="preserve">{exportacao.texto_xml(CAMPO_DE_SUMARIO, quote=False)}</w:instrText></w:r>'
             '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
             f"{run('Índice vazio: clique nele e tecle F9 para o Word montá-lo.')}"
             '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
@@ -384,7 +383,7 @@ def run(
     elif pontilhado:
         propriedades.append('<w:u w:val="dotted"/>')
     rpr = f"<w:rPr>{''.join(propriedades)}</w:rPr>" if propriedades else ""
-    return f'<w:r>{rpr}<w:t xml:space="preserve">{_html.escape(texto, quote=False)}</w:t></w:r>'
+    return f'<w:r>{rpr}<w:t xml:space="preserve">{exportacao.texto_xml(texto, quote=False)}</w:t></w:r>'
 
 
 # ------------------------------------------------------------------------------ o estudo
@@ -717,7 +716,7 @@ def _aplicativo() -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">'
-        f"<Application>{_html.escape(PRODUTOR)}</Application></Properties>"
+        f"<Application>{exportacao.texto_xml(PRODUTOR)}</Application></Properties>"
     )
 
 
@@ -743,18 +742,18 @@ def _nucleo(dados: Metadados) -> str:
     `cp:lastModifiedBy`: um arquivo cujo autor é o nome do exportador atribui a obra a quem não a
     escreveu, e é o Word que mostra esse campo em "Propriedades" e nas colunas do Explorador."""
     agora = dados.modificado or _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    autoria = f"<dc:creator>{_html.escape(dados.autor)}</dc:creator>" if dados.autor else ""
-    editora = f"<cp:category>{_html.escape(dados.editora)}</cp:category>" if dados.editora else ""
-    direitos = f"<dc:description>{_html.escape(dados.direitos)}</dc:description>" if dados.direitos else ""
+    autoria = f"<dc:creator>{exportacao.texto_xml(dados.autor)}</dc:creator>" if dados.autor else ""
+    editora = f"<cp:category>{exportacao.texto_xml(dados.editora)}</cp:category>" if dados.editora else ""
+    direitos = f"<dc:description>{exportacao.texto_xml(dados.direitos)}</dc:description>" if dados.direitos else ""
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         f'<cp:coreProperties xmlns:cp="{NS_CP}" xmlns:dc="{NS_DC}" xmlns:dcterms="{NS_DCTERMS}" xmlns:xsi="{NS_XSI}">'
-        f"<dc:title>{_html.escape(dados.titulo)}</dc:title>"
+        f"<dc:title>{exportacao.texto_xml(dados.titulo)}</dc:title>"
         f"{autoria}{direitos}"
-        f"<dc:language>{_html.escape(dados.idioma)}</dc:language>"
-        f"<cp:lastModifiedBy>{_html.escape(PRODUTOR)}</cp:lastModifiedBy>"
-        f'<dcterms:created xsi:type="dcterms:W3CDTF">{_html.escape(agora)}</dcterms:created>'
-        f'<dcterms:modified xsi:type="dcterms:W3CDTF">{_html.escape(agora)}</dcterms:modified>'
+        f"<dc:language>{exportacao.texto_xml(dados.idioma)}</dc:language>"
+        f"<cp:lastModifiedBy>{exportacao.texto_xml(PRODUTOR)}</cp:lastModifiedBy>"
+        f'<dcterms:created xsi:type="dcterms:W3CDTF">{exportacao.texto_xml(agora)}</dcterms:created>'
+        f'<dcterms:modified xsi:type="dcterms:W3CDTF">{exportacao.texto_xml(agora)}</dcterms:modified>'
         f"{editora}"
         "</cp:coreProperties>"
     )
@@ -802,7 +801,7 @@ def _estilos_xml() -> str:
 
 
 def _atributo(texto: str) -> str:
-    return _html.escape(str(texto), quote=True)
+    return exportacao.texto_xml(str(texto), quote=True)
 
 
 def _extensao(nome: str) -> str:
