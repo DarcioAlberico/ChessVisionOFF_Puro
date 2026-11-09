@@ -12,6 +12,12 @@ if TEM_PYQT:
 
     from chess_diagram_ocr.qt.trabalho import DeteccaoDeFundo
 
+from chess_diagram_ocr.ui.ancora_da_tela import AncoraDaTela
+
+
+def _na(pagina: int) -> AncoraDaTela:
+    return AncoraDaTela.de("livro.pdf", pagina)
+
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class DeteccaoDeFundoTests(unittest.TestCase):
@@ -20,8 +26,8 @@ class DeteccaoDeFundoTests(unittest.TestCase):
         self.detector = DeteccaoDeFundo()
         self.addCleanup(descartar, self.detector)
         self.addCleanup(self.detector.parar, 5000)
-        self.chegou: list[tuple[str, int, object]] = []
-        self.detector.achou.connect(lambda d, p, c: self.chegou.append((d, p, c)))
+        self.chegou: list[tuple[AncoraDaTela, object]] = []
+        self.detector.achou.connect(lambda a, c: self.chegou.append((a, c)))
 
     def _esperar(self, quantos: int, ate_ms: int = 5000) -> None:
         passos = ate_ms // 20
@@ -38,11 +44,11 @@ class DeteccaoDeFundoTests(unittest.TestCase):
             time.sleep(0.15)
             return [1]
 
-        self.detector.pedir("livro.pdf", 0, lenta)
-        self.detector.pedir("livro.pdf", 1, lenta)
-        self.detector.pedir("livro.pdf", 2, lenta)
+        self.detector.pedir(_na(0), lenta)
+        self.detector.pedir(_na(1), lenta)
+        self.detector.pedir(_na(2), lenta)
         self._esperar(2)
-        self.assertEqual([(d, p) for d, p, _ in self.chegou], [("livro.pdf", 0), ("livro.pdf", 2)])
+        self.assertEqual([a for a, _ in self.chegou], [_na(0), _na(2)])
 
     def test_a_falha_vai_para_o_log_e_o_proximo_pedido_ainda_roda(self) -> None:
         """Ninguém pediu esta detecção: uma caixa de erro por ela ensinaria a ignorar caixas."""
@@ -51,10 +57,10 @@ class DeteccaoDeFundoTests(unittest.TestCase):
             raise RuntimeError("sem contorno")
 
         with self.assertLogs("chess_diagram_ocr.qt.trabalho", level="WARNING") as registro:
-            self.detector.pedir("livro.pdf", 0, quebra)
-            self.detector.pedir("livro.pdf", 1, lambda: [1, 2])
+            self.detector.pedir(_na(0), quebra)
+            self.detector.pedir(_na(1), lambda: [1, 2])
             self._esperar(1)
-        self.assertEqual([(d, p) for d, p, _ in self.chegou], [("livro.pdf", 1)])
+        self.assertEqual([a for a, _ in self.chegou], [_na(1)])
         self.assertIn("página 1", registro.output[0])
 
     def test_parar_esquece_o_pedido_guardado_e_espera_o_que_corre(self) -> None:
@@ -62,12 +68,12 @@ class DeteccaoDeFundoTests(unittest.TestCase):
             time.sleep(0.1)
             return []
 
-        self.detector.pedir("livro.pdf", 0, lenta)
-        self.detector.pedir("livro.pdf", 1, lenta)
+        self.detector.pedir(_na(0), lenta)
+        self.detector.pedir(_na(1), lenta)
         self.assertTrue(self.detector.parar(5000))
         self.assertFalse(self.detector.ocupado)
         QTest.qWait(50)
-        self.assertEqual([p for _, p, _ in self.chegou], [0], "o pedido guardado não roda depois de parar")
+        self.assertEqual([a.pagina for a, _ in self.chegou], [0], "o pedido guardado não roda depois de parar")
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

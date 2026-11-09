@@ -1064,6 +1064,16 @@ carregado.
 
 **Aceite.** Os dois testes passam, por `QTest`, sem remendar método privado.
 
+**Entregue** (2026-11-08): `AncoraDaTela.de(caminho, pagina)` monta a âncora pela `chave_do_livro`, e
+`frase_do_descarte` diz no rodapé se a tela mudou de livro ou de página. `_chegaram_itens` e
+`_chegaram_candidatos` passam a receber a âncora (os testes que os chamavam com o número da página
+passam `AncoraDaTela.de(janela._pdf, n)`), e `_chegou_a_deteccao_de_fundo` saiu: o `achou` do detector
+liga direto em `_chegaram_candidatos`, e `painel_do_pdf._folha_chegou` também pergunta `ainda_vale`
+(antes, `Path ==`). A âncora do cancelamento vai por `partial` ao `_falhou`, e a frase
+«Leitura cancelada: N ficaram na lista» só aparece quando o parcial entrou de fato. `qt/janela.py` ficou
+nas mesmas 2.313 linhas. Os testes estão em `tests/test_qt_ancora_da_tela.py`; a `TarefaAdiada` ganhou
+o `deleteLater` que `manter_viva` chama.
+
 ## S-824 · Aba Texto arquiva a folha que leu
 
 **Problema** (confirmado por script). `qt/painel_de_texto.py:3871`, em `_leitura_terminou`:

@@ -29,6 +29,7 @@ from chess_diagram_ocr.qt import (
     painel_de_rotulagem,
 )
 from chess_diagram_ocr.ui import abas, estado_do_rodape, geometria, pele, strings
+from chess_diagram_ocr.ui.ancora_da_tela import AncoraDaTela
 from chess_diagram_ocr.ui.sala_declarada import COMANDOS_DA_ABA as COMANDOS_DA_SALA
 from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_TEXTO
 
@@ -591,14 +592,14 @@ class FiacaoTests(_JanelaComLivro):
     def test_o_duplo_clique_na_miniatura_da_aba_texto_leva_o_diagrama_a_sala(self) -> None:
         """O mesmo destino do duplo clique na caixa do visualizador (item 8)."""
         janela = self.janela()
-        janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
+        janela._chegaram_itens(AncoraDaTela.de(janela._pdf, 0), [self._diagrama(0), self._diagrama(1)], None)
         janela.texto.diagrama_ativado.emit(0, 1)
         self.assertIs(janela.abas.area_atual(), janela.estudo)
         self.assertEqual(janela.painel.lista.currentRow(), 1)
 
     def test_a_miniatura_de_outra_folha_nao_estuda_nada_e_diz_por_que(self) -> None:
         janela = self.janela()
-        janela._chegaram_itens(0, [self._diagrama(0)], None)
+        janela._chegaram_itens(AncoraDaTela.de(janela._pdf, 0), [self._diagrama(0)], None)
         with mock.patch.object(janela, "_estudar_a_caixa") as estudar:
             janela.texto.diagrama_ativado.emit(2, 0)
         estudar.assert_not_called()
@@ -644,7 +645,7 @@ class FiacaoTests(_JanelaComLivro):
     def test_a_posicao_de_cada_diagrama_lido_chega_a_aba_texto(self) -> None:
         """A aba Livro lê a posição; a aba Texto só sabia onde o diagrama está (item 6)."""
         janela = self.janela()
-        janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
+        janela._chegaram_itens(AncoraDaTela.de(janela._pdf, 0), [self._diagrama(0), self._diagrama(1)], None)
         from chess_diagram_ocr.ui.livros import chave_do_livro
 
         chave = (chave_do_livro(self.livro), 0)  # por livro e folha (item 11)
@@ -659,7 +660,7 @@ class FiacaoTests(_JanelaComLivro):
         """
         self._varrido(0, 1)
         janela = self.janela()
-        janela._chegaram_itens(0, [self._diagrama()], None)
+        janela._chegaram_itens(AncoraDaTela.de(janela._pdf, 0), [self._diagrama()], None)
 
         janela.pdf.proxima_pagina()
 
@@ -705,7 +706,7 @@ class FiacaoTests(_JanelaComLivro):
         janela = self.janela()
         item = self._diagrama(0)
         item.bbox_pdf = (10.0, 10.0, 110.0, 110.0)
-        janela._chegaram_itens(0, [item], None)
+        janela._chegaram_itens(AncoraDaTela.de(janela._pdf, 0), [item], None)
 
         def estado() -> str:
             caixas = janela.pdf.boxes
@@ -850,10 +851,10 @@ class FiacaoTests(_JanelaComLivro):
     def test_a_deteccao_de_outro_livro_ou_de_outra_pagina_nao_vai_para_a_tela(self) -> None:
         janela = self.janela()
         candidatos_da_pagina_0 = janela._candidatos
-        janela._chegou_a_deteccao_de_fundo("outro.pdf", 0, [self._candidato()])
+        janela._chegaram_candidatos(AncoraDaTela.de("outro.pdf", 0), [self._candidato()])
         self.assertEqual(len(janela.pdf.boxes.boxes if janela.pdf.boxes else ()), 0)
 
-        janela._chegou_a_deteccao_de_fundo(str(self.livro), 2, [self._candidato()])
+        janela._chegaram_candidatos(AncoraDaTela.de(self.livro, 2), [self._candidato()])
         self.assertEqual(len(janela.pdf.boxes.boxes if janela.pdf.boxes else ()), 0, "página 2 não está na tela")
         self.assertEqual(janela._candidatos, candidatos_da_pagina_0, "candidatos de outra página não são os desta")
         guardadas = janela._caixas_por_pagina.get(str(self.livro), 2, janela._parametros())
@@ -875,7 +876,7 @@ class FiacaoTests(_JanelaComLivro):
         """O clique simples abre o diagrama no editor (S-68); o duplo o leva à sala, e a aba vem
         para a frente. A posição é a do Resultado, ancorada no livro, na página e no diagrama."""
         janela = self.janela()
-        janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
+        janela._chegaram_itens(AncoraDaTela.de(janela._pdf, 0), [self._diagrama(0), self._diagrama(1)], None)
         self.assertIsNot(janela.abas.area_atual(), janela.estudo)
 
         janela.pdf.caixa_para_estudo.emit(1)
@@ -894,7 +895,7 @@ class FiacaoTests(_JanelaComLivro):
         leu.assert_called_once_with(selecionar_depois=0)
         self.assertIsNot(janela.abas.area_atual(), janela.estudo)
 
-        janela._chegaram_itens(0, [self._diagrama(0)], 0)
+        janela._chegaram_itens(AncoraDaTela.de(janela._pdf, 0), [self._diagrama(0)], 0)
         self.assertIs(janela.abas.area_atual(), janela.estudo)
         self.assertEqual(janela.estudo.estudo.ancora.diagrama, 0)
 
@@ -916,7 +917,7 @@ class FiacaoTests(_JanelaComLivro):
     def test_o_clique_na_caixa_ja_lida_nao_espera_nada(self) -> None:
         """Selecionar não tranca o visor, então não há por que adiar -- e a espera seria lentidão."""
         janela = self.janela()
-        janela._chegaram_itens(0, [self._diagrama(0), self._diagrama(1)], None)
+        janela._chegaram_itens(AncoraDaTela.de(janela._pdf, 0), [self._diagrama(0), self._diagrama(1)], None)
         janela.pdf.caixa_clicada.emit(1)
         self.assertFalse(janela._leitura_adiada.isActive())
         self.assertEqual(janela.painel.lista.currentRow(), 1)
@@ -955,7 +956,7 @@ class FiacaoTests(_JanelaComLivro):
         janela._terminou()
         self.assertIsNone(janela._tarefa)
         self.assertIsNone(janela._estudar_ao_ler, "o pedido morre com a tarefa")
-        janela._chegaram_itens(0, [self._diagrama(0)], None)
+        janela._chegaram_itens(AncoraDaTela.de(janela._pdf, 0), [self._diagrama(0)], None)
         self.assertIsNot(janela.abas.area_atual(), janela.estudo)
 
     def test_a_caixa_tirada_some_da_pagina_e_volta_com_o_comando(self) -> None:
@@ -2166,7 +2167,7 @@ class CorrecoesNaoGravadasTests(_JanelaComLivro):
         from chess_diagram_ocr.ui import board_edit
 
         item = self._diagrama(0)
-        janela._chegaram_itens(0, [item], None)
+        janela._chegaram_itens(AncoraDaTela.de(janela._pdf, 0), [item], None)
         janela.painel._tabuleiro_mudou(board_edit.set_piece(item.placement, 27, "Q"))
 
     def _fechar(self, janela: JanelaPrincipal) -> bool:
@@ -2230,7 +2231,7 @@ class CorrecoesNaoGravadasTests(_JanelaComLivro):
         from chess_diagram_ocr.qt import dialogos
 
         janela = self.janela()
-        janela._chegaram_itens(0, [self._diagrama(0)], None)
+        janela._chegaram_itens(AncoraDaTela.de(janela._pdf, 0), [self._diagrama(0)], None)
         with mock.patch.object(dialogos, "ha_quem_responda", return_value=True), mock.patch.object(
             QMessageBox, "question"
         ) as pergunta:
@@ -2440,7 +2441,7 @@ class SincroniaDaSalaTests(unittest.TestCase):
     def test_selecionar_um_diagrama_leva_a_posicao_ao_tabuleiro_de_estudo(self) -> None:
         janela = self.janela()
         janela._chegaram_itens(
-            janela.pdf.page_index,
+            janela._ancora_da_tela(),
             [self._diagrama(0, "8/8/8/8/8/8/8/K6k"), self._diagrama(1, "8/8/8/8/8/8/8/K5nk")],
             None,
         )
@@ -2464,7 +2465,7 @@ class SincroniaDaSalaTests(unittest.TestCase):
         """
         janela = self.janela()
         janela._chegaram_itens(
-            janela.pdf.page_index,
+            janela._ancora_da_tela(),
             [self._diagrama(0, "8/8/8/8/8/8/8/K6k"), self._diagrama(1, "8/8/8/8/8/8/8/K5nk")],
             None,
         )
@@ -2481,7 +2482,7 @@ class SincroniaDaSalaTests(unittest.TestCase):
         continua sendo levado ao editor.
         """
         janela = self.janela()
-        janela._chegaram_itens(janela.pdf.page_index, [self._diagrama(0, "8/8/8/8/8/8/8/K6k")], None)
+        janela._chegaram_itens(janela._ancora_da_tela(), [self._diagrama(0, "8/8/8/8/8/8/8/K6k")], None)
         janela._clicou_na_caixa(0)
         self.app.processEvents()
         # Desde o passo 17 o Resultado é um modo da aba `Livro`: o que está à frente é a área.

@@ -149,6 +149,7 @@ from chess_diagram_ocr.ui import (
     sala_declarada,
     strings,
 )
+from chess_diagram_ocr.ui.ancora_da_tela import AncoraDaTela, ainda_vale, frase_do_descarte
 from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.configuracoes import dpi as _dpi
 from chess_diagram_ocr.ui.configuracoes import max_boards as _max_boards
@@ -389,7 +390,7 @@ class JanelaPrincipal(QMainWindow):
         O par com a página é o contrato que `recognize_page` cobra de quem passa a lista: ela não
         tem como conferir de que página vieram os candidatos."""
         self._detector = DeteccaoDeFundo(self)
-        self._detector.achou.connect(self._chegou_a_deteccao_de_fundo)
+        self._detector.achou.connect(self._chegaram_candidatos)
         """Marca a página que acabou de aparecer sem trancar nada (S-68). Ver `_detectar_ao_fundo`."""
         self._tarefa: Tarefa | None = None
         """A tarefa em curso. Guardada num atributo porque um `QThread` sem referência viva é
@@ -1242,6 +1243,8 @@ class JanelaPrincipal(QMainWindow):
             # que ainda chegar dele (C7 -- a tranca deixou de segurar o «Abrir PDF…»).
             self.livro.cancelar(motivo="troca_de_livro")
             self._dizer(f"A importação de {anterior.name} foi cancelada ao abrir outro livro.")
+        if self._tarefa is not None:  # a leitura é do livro que saiu; o que chegar dela não entra (S-823)
+            self._tarefa.cancelar()
         self._pdf = alvo
         # As caixas são de um arquivo que pode ter mudado no disco. A chave já inclui o documento,
         # então isto não é correção de defeito: é não guardar afirmação sobre um PDF que ninguém
@@ -1393,24 +1396,15 @@ class JanelaPrincipal(QMainWindow):
             # de receber os 26 MB dela -- ver `detect_diagrams_rendering_page`.
             dpi = int(_dpi())
             self._detector.pedir(
-                self._chave_do_documento(),
-                pagina,
+                AncoraDaTela.de(pdf, pagina),
                 lambda: processo_de_trabalho().executar(
                     detect_diagrams_rendering_page, pdf, pagina, dpi=dpi, max_boards=teto, pagina=pagina
                 ),
             )
             return
         self._detector.pedir(
-            self._chave_do_documento(),
-            pagina,
-            lambda: detect_diagrams_in_pdf_page(pdf, pagina, pagina_rgb, max_boards=teto),
+            AncoraDaTela.de(pdf, pagina), lambda: detect_diagrams_in_pdf_page(pdf, pagina, pagina_rgb, max_boards=teto)
         )
-
-    def _chegou_a_deteccao_de_fundo(self, documento: str, pagina: int, candidatos: Any) -> None:
-        """De outro livro, o resultado é descartado: o cache é por documento, e o livro que saiu
-        levou o dele. Da página certa ou de uma que já virou, é o mesmo caminho do botão."""
-        if documento == self._chave_do_documento():
-            self._chegaram_candidatos(pagina, candidatos)
 
     # ------------------------------------------------------------------------------ leitura
 
@@ -1443,6 +1437,9 @@ class JanelaPrincipal(QMainWindow):
     def _chave_do_documento(self) -> str:
         return str(self._pdf) if self._pdf is not None else ""
 
+    def _ancora_da_tela(self) -> AncoraDaTela:
+        return AncoraDaTela.de(self._pdf, self.pdf.page_index)  # o livro e a página de agora (S-823)
+
     def marcar_diagramas(self) -> None:
         """Só localiza: desenha as caixas sem carregar o modelo.
 
@@ -1464,15 +1461,15 @@ class JanelaPrincipal(QMainWindow):
                 self.pdf.page_index + 1,
                 len(guardados),
             )
-            self._chegaram_candidatos(self.pdf.page_index, guardados)
+            self._chegaram_candidatos(self._ancora_da_tela(), guardados)
             return
 
-        pdf, pagina, teto = self._pdf, self.pdf.page_index, _max_boards()
+        pdf, pagina, teto, ancora = self._pdf, self.pdf.page_index, _max_boards(), self._ancora_da_tela()
         self._rodar(
             lambda: detect_diagrams_in_pdf_page(pdf, pagina, pagina_rgb, max_boards=teto),
             nome="detecção",
             aviso=f"Procurando diagramas na página {pagina + 1}…",
-            quando_pronto=lambda candidatos: self._chegaram_candidatos(pagina, candidatos),
+            quando_pronto=lambda candidatos: self._chegaram_candidatos(ancora, candidatos),
         )
 
     def ler_melhor(self) -> None:
@@ -1499,7 +1496,7 @@ class JanelaPrincipal(QMainWindow):
         if self._pdf is None or pagina_rgb is None:
             self._dizer("Abra um PDF antes de ler a página.")
             return
-        pdf, pagina, opcoes = self._pdf, self.pdf.page_index, self._opcoes(max_diagramas)
+        pdf, pagina, opcoes, ancora = self._pdf, self.pdf.page_index, self._opcoes(max_diagramas), self._ancora_da_tela()
         candidatos = self._candidatos_desta_pagina()
         # **A leitura diz no log de onde vieram os diagramas.** Sem esta linha, o rastro de uma
         # sessão não distingue "marcar e depois ler" de "ler sozinho": os dois deixam uma varredura
@@ -1523,9 +1520,10 @@ class JanelaPrincipal(QMainWindow):
             ler,
             nome="leitura",
             aviso=f"Lendo a página {pagina + 1}…",
-            quando_pronto=lambda itens: self._chegaram_itens(pagina, itens, selecionar_depois),
+            quando_pronto=lambda itens: self._chegaram_itens(ancora, itens, selecionar_depois),
             total=len(candidatos) if candidatos is not None else 0,
             cancelavel=True,
+            ancora=ancora,
         )
 
     def _ler_regiao(self, pagina_rgb: object, regiao: object) -> None:
@@ -1562,9 +1560,10 @@ class JanelaPrincipal(QMainWindow):
         *,
         nome: str,
         aviso: str,
-        quando_pronto: Callable[[Any], None],
+        quando_pronto: Callable[[Any], object],
         total: int = 0,
         cancelavel: bool = False,
+        ancora: AncoraDaTela | None = None,
     ) -> Tarefa | None:
         """Uma tarefa de cada vez, e só o **gravar** desligado enquanto ela corre.
 
@@ -1573,7 +1572,7 @@ class JanelaPrincipal(QMainWindow):
         lista da primeira -- que pode ser de outra página.
 
         Registrada no rodapé desde o C2: barra com `total` quando a página já foi marcada, e o
-        «Cancelar» chega à tarefa, que o serviço consulta entre diagramas (`qt/leitura.py`).
+        «Cancelar» chega à tarefa (`qt/leitura.py`), e o parcial volta à `ancora` do pedido (S-823).
         """
         if self._tarefa is not None:
             self._dizer("Já há uma tarefa em andamento.", estado_do_rodape.AVISO)
@@ -1585,7 +1584,7 @@ class JanelaPrincipal(QMainWindow):
         # slots perguntam se a janela ainda existe antes de a tocar.
         tarefa = manter_viva(Tarefa(funcao, nome=nome))
         tarefa.pronto.connect(self._se_viva(quando_pronto))
-        tarefa.falhou.connect(self._se_viva(self._falhou))
+        tarefa.falhou.connect(self._se_viva(partial(self._falhou, ancora=ancora)))
         tarefa.finished.connect(self._se_viva(self._terminou))
         self._tarefa = tarefa
         # O `register` fica aqui, e não na `Ocupacao`, porque o portão `caissa.ui.audit.progresso`
@@ -1617,7 +1616,7 @@ class JanelaPrincipal(QMainWindow):
         self._ocupacao.soltar()
         self._atualizar_controles()
 
-    def _falhou(self, mensagem: str, excecao: object) -> None:
+    def _falhou(self, mensagem: str, excecao: object, ancora: AncoraDaTela | None = None) -> None:
         """Nenhum diagrama na página **não** é erro: é uma página de prosa, e há muitas.
 
         Tratá-la como falha ensinaria a pessoa a ignorar a caixa de erro, que é o que faz a caixa
@@ -1627,10 +1626,9 @@ class JanelaPrincipal(QMainWindow):
             self._dizer("Nenhum diagrama encontrado nesta página.", estado_do_rodape.INFORMACAO)
             return
         if isinstance(excecao, RecognitionCanceled):  # C2: cancelar não é falha; o lido fica
-            lidos = list(excecao.partial)
-            if lidos and self._pdf is not None:
-                self._chegaram_itens(self.pdf.page_index, lidos, None)
-            self._dizer(leitura.frase_de_cancelamento(len(lidos)), estado_do_rodape.INFORMACAO)
+            lidos = list(excecao.partial)  # da página em que foi pedido, e não da que está na tela (S-823)
+            if not lidos or (ancora is not None and self._chegaram_itens(ancora, lidos, None)):
+                self._dizer(leitura.frase_de_cancelamento(len(lidos)), estado_do_rodape.INFORMACAO)
             return
         if leitura.sem_modelo(excecao):  # C2: sem o `.pt`, a frase diz onde se aponta o arquivo
             self._dizer(leitura.FRASE_SEM_MODELO, estado_do_rodape.ERRO)
@@ -1654,15 +1652,16 @@ class JanelaPrincipal(QMainWindow):
             return None
         return self._candidatos[1]
 
-    def _chegaram_candidatos(self, pagina: int, candidatos: Any) -> None:
-        caixas = self._caixas_sem_desaprender(pagina, boxes_from_candidates(candidatos))
+    def _chegaram_candidatos(self, ancora: AncoraDaTela, candidatos: Any) -> None:
+        if ancora.documento != (tela := self._ancora_da_tela()).documento:
+            return  # de outro livro: o cache é por documento, e o livro que saiu levou o dele
+        caixas = self._caixas_sem_desaprender(ancora.pagina, boxes_from_candidates(candidatos))
         self._guardar(caixas)
-        if pagina != self.pdf.page_index:
-            # A página virou enquanto a detecção corria. As caixas ainda valem -- para **aquela**
-            # página --, então ficam no cache e não vão para a tela. Os candidatos também não
-            # ficam: `_candidatos` é da página exibida, e a leitura os passaria como dela.
+        if not ainda_vale(ancora, tela):
+            # A página virou enquanto a detecção corria. As caixas valem para **aquela** página e
+            # ficam no cache; os candidatos não, porque a leitura os passaria como da exibida.
             return
-        self._candidatos = (pagina, tuple(candidatos))
+        self._candidatos = (ancora.pagina, tuple(candidatos))
         self._publicar_caixas(caixas)
         self._dizer_o_que_ha_na_pagina()
 
@@ -1677,11 +1676,11 @@ class JanelaPrincipal(QMainWindow):
         lidas = boxes_from_diagrams(self._itens) if pagina == self.pdf.page_index else ()
         return PageBoxes(pagina, self._parametros(), choose_boxes(recognized=lidas, detected=detectadas))
 
-    def _chegaram_itens(self, pagina: int, itens: list[RecognizedDiagram], selecionar: int | None) -> None:
-        if pagina != self.pdf.page_index:
-            self._dizer(f"A leitura da página {pagina + 1} terminou, mas a tela já está em outra.")
-            return
-        self._itens = list(itens)
+    def _chegaram_itens(self, ancora: AncoraDaTela, itens: list[RecognizedDiagram], selecionar: int | None) -> bool:
+        if not ainda_vale(ancora, tela := self._ancora_da_tela()):  # só na tela que a pediu; diz se entrou (S-823)
+            self._dizer(frase_do_descarte(ancora, tela))
+            return False
+        pagina, self._itens = ancora.pagina, list(itens)
         self.texto.definir_posicoes(pagina, [d.placement for d in self._itens])  # a FEN de cada diagrama vai à aba Texto
         # **O ponto único de troca de vínculo** (S-49), dentro do painel: o vínculo é `PAGE` e a
         # âncora é o par (documento, página), e é ela que faz `Ctrl+S` gravar amostra nova em vez
@@ -1707,6 +1706,7 @@ class JanelaPrincipal(QMainWindow):
             self._levar_ao_estudo()
         self._atualizar_abas()
         self._dizer_o_que_ha_na_pagina()
+        return True
 
     def _guardar(self, caixas: PageBoxes) -> None:
         self._caixas_por_pagina.put(self._chave_do_documento(), caixas)

@@ -29,6 +29,7 @@ from chess_diagram_ocr.fen_utils import check_position
 from chess_diagram_ocr.labels import DatasetEntry, LabelStore
 from chess_diagram_ocr.semantics import compose_fen
 from chess_diagram_ocr.service import RecognizedDiagram
+from chess_diagram_ocr.ui.ancora_da_tela import AncoraDaTela
 
 INICIAL = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"
 LADO_DO_TABULEIRO = 320
@@ -650,7 +651,7 @@ class JanelaTests(unittest.TestCase):
         janela = self._janela(servico)
         janela.abrir_pdf(self.pdf)
 
-        janela._chegaram_itens(3, [diagrama_lido(0)], None)
+        janela._chegaram_itens(AncoraDaTela.de(janela._pdf, 3), [diagrama_lido(0)], None)
         self.assertEqual(0, janela.painel.lista.count())
         self.assertIn("já está em outra", janela.rodape.mensagem())
 
@@ -748,7 +749,7 @@ class JanelaTests(unittest.TestCase):
         janela.abrir_pdf(pdf_de_teste(self.pasta / "duas.pdf", paginas=2))
         janela.pdf.ir_para_pagina(1)
 
-        janela._chegaram_candidatos(0, [_candidato_qualquer()])
+        janela._chegaram_candidatos(AncoraDaTela.de(janela._pdf, 0), [_candidato_qualquer()])
         janela.ler_pagina()
         esperar(janela)
 

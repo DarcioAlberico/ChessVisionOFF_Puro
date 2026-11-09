@@ -26,6 +26,7 @@ from PyQt6 import sip
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 from chess_diagram_ocr.cli import message_for
+from chess_diagram_ocr.ui.ancora_da_tela import AncoraDaTela
 
 logger = logging.getLogger(__name__)
 
@@ -170,23 +171,24 @@ class DeteccaoDeFundo(QObject):
     morre, e uma `lambda` não teria esse cuidado.
     """
 
-    achou = pyqtSignal(str, int, object)
-    """`(documento, página, candidatos)`. Quem decide se ainda interessa é quem recebe: a página
-    pode ter virado, e o livro pode ter trocado."""
+    achou = pyqtSignal(object, object)
+    """`(AncoraDaTela, candidatos)`: onde a detecção foi pedida, e o que ela achou. Quem decide se
+    ainda interessa é quem recebe (`ainda_vale`): a página pode ter virado, e o livro pode ter
+    trocado (S-823)."""
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._pedido: tuple[str, int, Callable[[], Any]] | None = None
-        self._em_curso: tuple[str, int] | None = None
+        self._pedido: tuple[AncoraDaTela, Callable[[], Any]] | None = None
+        self._em_curso: AncoraDaTela | None = None
         self._tarefa: Tarefa | None = None
 
     @property
     def ocupado(self) -> bool:
         return self._tarefa is not None
 
-    def pedir(self, documento: str, pagina: int, funcao: Callable[[], Any]) -> None:
+    def pedir(self, ancora: AncoraDaTela, funcao: Callable[[], Any]) -> None:
         """Detecte esta página assim que der. Substitui o pedido que ainda não começou."""
-        self._pedido = (documento, pagina, funcao)
+        self._pedido = (ancora, funcao)
         self._comecar()
 
     def parar(self, espera_ms: int) -> bool:
@@ -205,10 +207,10 @@ class DeteccaoDeFundo(QObject):
     def _comecar(self) -> None:
         if self._tarefa is not None or self._pedido is None:
             return
-        documento, pagina, funcao = self._pedido
+        ancora, funcao = self._pedido
         self._pedido = None
-        self._em_curso = (documento, pagina)
-        tarefa = manter_viva(Tarefa(funcao, nome=f"detecção da página {pagina + 1}"))
+        self._em_curso = ancora
+        tarefa = manter_viva(Tarefa(funcao, nome=f"detecção da página {ancora.pagina + 1}"))
         tarefa.pronto.connect(self._pronto)
         tarefa.falhou.connect(self._falhou)
         tarefa.finished.connect(self._terminou)
@@ -219,14 +221,13 @@ class DeteccaoDeFundo(QObject):
         # Sem `assert`: uma exceção num slot derruba o processo, e não há o que afirmar aqui.
         if self._em_curso is None:
             return
-        documento, pagina = self._em_curso
-        self.achou.emit(documento, pagina, candidatos)
+        self.achou.emit(self._em_curso, candidatos)
 
     def _falhou(self, mensagem: str, _excecao: object) -> None:
         if self._em_curso is None:
             return
-        documento, pagina = self._em_curso
-        logger.warning("A detecção da página %d de %s falhou: %s", pagina + 1, documento, mensagem)
+        ancora = self._em_curso
+        logger.warning("A detecção da página %d de %s falhou: %s", ancora.pagina + 1, ancora.documento, mensagem)
 
     def _terminou(self) -> None:
         self._tarefa = None

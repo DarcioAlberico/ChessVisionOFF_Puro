@@ -74,6 +74,7 @@ from chess_diagram_ocr.ui import (
     strings,
     tipografia,
 )
+from chess_diagram_ocr.ui.ancora_da_tela import AncoraDaTela, ainda_vale
 from chess_diagram_ocr.ui.leitura_do_pdf import PASSO_DE_ZOOM, open_in_system_reader
 from chess_diagram_ocr.ui.page_overlay import PageBoxes
 from chess_diagram_ocr.ui.viewport import LADO_DO_DESLIZADOR, clamp_zoom, posicao_do_zoom, zoom_da_posicao
@@ -1145,7 +1146,8 @@ class PainelDoPdf(QWidget):
         """A folha rasterizada voltou. Só entra se ainda for a que a tela pede."""
         self._rasterizacao = None
         self._rasterizacao_pedida = None
-        atual = self.source is not None and (folha.source, folha.indice) == (self.source, self._page_index)
+        tela = AncoraDaTela.de(self.source, self._page_index)  # o livro pela chave, e não por `Path ==` (S-823)
+        atual = self.source is not None and ainda_vale(AncoraDaTela.de(folha.source, folha.indice), tela)
         de_novo, self._rasterizar_de_novo = self._rasterizar_de_novo, False
         if atual:
             # Mesmo que outro pedido tenha chegado no meio (o DPI mudou), esta folha é desta

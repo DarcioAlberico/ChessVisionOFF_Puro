@@ -310,6 +310,9 @@ class TarefaAdiada:
     def wait(self, _ms: int = 0) -> bool:
         return not self._rodando
 
+    def deleteLater(self) -> None:  # noqa: N802 - o nome é o do `QObject`
+        """O que `trabalho.manter_viva` chama no `finished`: sem objeto do C++, não há o que apagar."""
+
     def cancelar(self) -> None:
         self._cancelar.set()
 
