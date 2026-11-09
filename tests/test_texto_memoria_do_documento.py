@@ -49,6 +49,11 @@ class _Documento:
         return self._paginas[indice]
 
 
+class _PaginaIlegivel(_Pagina):
+    def get_text(self, _modo: str) -> dict:
+        raise RuntimeError("code=7: no objects found")
+
+
 def _span(*, font: str) -> dict:
     return {"font": font, "flags": 0, "bbox": (0.0, 0.0, 10.0, 10.0), "text": "x"}
 
@@ -108,6 +113,23 @@ class MemoriaPorLivroTests(unittest.TestCase):
         camada.documento_registra(doc, _e_italico)
 
         self.assertGreater(doc.aberturas, primeira)
+
+    def test_a_amostra_toda_ilegivel_nao_vai_para_a_memoria(self) -> None:
+        """S-856: o `False` de uma amostra em que nenhuma folha se deixou ler veio da exceção, e não do
+        livro; memorizá-lo calava o itálico do livro inteiro até o processo acabar."""
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as arquivo:
+            arquivo.write(b"%PDF-1.4\n")
+            caminho = arquivo.name
+        doc = _Documento([_PaginaIlegivel([]) for _ in range(8)], name=caminho)
+
+        self.assertFalse(camada.documento_registra(doc, _e_italico, marca="italico"))
+        primeira = doc.aberturas
+        camada.documento_registra(doc, _e_italico, marca="italico")
+
+        self.assertGreater(primeira, 0)
+        self.assertGreater(doc.aberturas, primeira, "a resposta que veio da exceção foi memorizada")
 
     def test_duas_marcas_nao_se_confundem(self) -> None:
         """Peso e pendor têm respostas diferentes sobre o mesmo livro, e a chave as separa."""

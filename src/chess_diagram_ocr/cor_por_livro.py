@@ -33,6 +33,7 @@ lance seguinte (C11).
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -45,6 +46,8 @@ from .config import PIECE_CLASSES
 if TYPE_CHECKING:
     from .inference import BoardPrediction
     from .orientation import OrientedPrediction
+
+logger = logging.getLogger(__name__)
 
 VERSAO_DA_MEDIDA = "centro40-v3"
 """Identidade da medida: amostras de outra versão não se comparam com esta. A v3 guarda as
@@ -361,5 +364,8 @@ def calibrador_do_livro(pdf_source: Any) -> CalibradorDeCor | None:
         return None
     try:
         return CalibradorDeCor.from_dict(colour_for_pdf(pdf_source))
-    except Exception:  # noqa: BLE001 - um perfil ilegível não pode derrubar a leitura
+    except (OSError, KeyError, TypeError, ValueError):
+        # Um perfil ilegível não derruba a leitura, mas a leitura sem ele é outra (S-856): sem este aviso,
+        # o tabuleiro mudava conforme o perfil abria ou não, e nada dizia qual caso aconteceu.
+        logger.warning("Perfil de cor do livro ilegível; a cor fica com o tabuleiro.", exc_info=True)
         return None

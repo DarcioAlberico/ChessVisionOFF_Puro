@@ -87,6 +87,13 @@ Placement = Literal["above", "below", "left", "right", "overlapping"]
 # inteira (`LAS BLANCAS JUEGAN PRIMERO` no topo do `Reinfeld`) e não para um diagrama: vale menos
 # que uma legenda e mais que o padrão "brancas".
 
+ERROS_DO_PDF: tuple[type[Exception], ...] = (RuntimeError, ValueError, fitz.mupdf.FzErrorBase)
+"""O que o PyMuPDF levanta quando uma folha não se deixa ler (S-856).
+
+`RuntimeError` é o `FileDataError` e a família; `ValueError`, o documento já fechado; e o erro do MuPDF
+chega como `mupdf.FzErrorBase`, que **não** é `RuntimeError` -- um `except RuntimeError` sozinho deixaria a
+folha com o fluxo de conteúdo quebrado derrubar a leitura. É a lista que `text/camada.py` também usa."""
+
 DEFAULT_RADIUS_PT = 60.0
 """Raio de busca em pontos do PDF. As legendas medidas ficam a 0-20 pt do diagrama."""
 
@@ -1446,7 +1453,7 @@ def board_coordinates_for(
     files: list[tuple[float, str]] = []
     try:
         words = page.get_text("words")
-    except Exception:  # noqa: BLE001 - uma página sem camada de texto não tem coordenadas
+    except ERROS_DO_PDF:  # uma página que não se deixa ler não tem coordenadas
         return None
     for word in words:
         wx0, wy0, wx1, wy1, text = word[0], word[1], word[2], word[3], str(word[4]).strip().lower()

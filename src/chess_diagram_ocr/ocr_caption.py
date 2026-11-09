@@ -94,6 +94,26 @@ S-16 mede que o número não anda sozinho.
 """
 
 
+class LinhasDaFaixa(list[TextLine]):
+    """As linhas lidas numa faixa, e o motivo quando nenhuma veio porque a leitura falhou (S-856).
+
+    **Vazio era duas coisas.** "Não havia legenda" e "o motor quebrou" ou "a faixa não renderizou" saíam
+    os dois como `[]`, e só o log dizia qual. `falha` diz: vazia, a faixa foi lida; preenchida, ela não
+    pôde ser lida, e o que vier vazio dali não é ausência de texto.
+
+    **É uma lista**, e não um par, porque todo chamador -- `pdf_text`, que está no caminho de medição de
+    campo, e o `texto_placar` -- lê as linhas como sempre leu e nada do que eles fazem muda.
+    """
+
+    def __init__(self, linhas: Sequence[TextLine] = (), *, falha: str = "") -> None:
+        super().__init__(linhas)
+        self.falha = falha
+
+    @property
+    def indisponivel(self) -> bool:
+        return bool(self.falha)
+
+
 class CaptionReader:
     """Lê a vizinhança de um diagrama com o motor de OCR, e devolve `TextLine`.
 
@@ -138,12 +158,13 @@ class CaptionReader:
         page: fitz.Page,
         bbox_pdf: tuple[float, float, float, float],
         vizinhos: Sequence[tuple[float, float, float, float]] = (),
-    ) -> list[TextLine]:
+    ) -> LinhasDaFaixa:
         """Linhas na vizinhança do diagrama, em pontos do PDF.
 
         O interior de `bbox_pdf` é apagado antes da leitura -- ver o desenho no topo do
         módulo. Devolve lista vazia quando não há texto legível ali, que é o caso normal
-        num livro de diagramas sem legenda.
+        num livro de diagramas sem legenda; quando a faixa não pôde ser lida, a lista vazia
+        traz o motivo (`LinhasDaFaixa.falha`).
 
         ## `vizinhos`, e o defeito que a S-207 mediu
 
@@ -172,7 +193,7 @@ class CaptionReader:
         ) & page.rect
 
         if faixa.is_empty or faixa.width < MIN_BAND_PT or faixa.height < MIN_BAND_PT:
-            return []
+            return LinhasDaFaixa()
 
         # O alvo primeiro, e os vizinhos que tocam a faixa depois. Apagar um retângulo que não
         # cruza o recorte é trabalho sem efeito, e `_blank_region` já o ignora -- filtrar aqui é
@@ -187,7 +208,7 @@ class CaptionReader:
 
     # -------------------------------------------------------------------- faixa de margem
 
-    def margin_lines(self, page: fitz.Page) -> list[TextLine]:
+    def margin_lines(self, page: fitz.Page) -> LinhasDaFaixa:
         """Linhas do topo e do rodapé -- a faixa que `MARGIN_BAND` descarta (S-43).
 
         É onde mora o `LAS BLANCAS JUEGAN PRIMERO` do `Reinfeld`, e nos 7 livros sem camada
@@ -201,6 +222,7 @@ class CaptionReader:
         banda = altura * SCOPE_BAND
 
         lines: list[TextLine] = []
+        falhas: list[str] = []
         for faixa in (
             fitz.Rect(page.rect.x0, page.rect.y0, page.rect.x1, page.rect.y0 + banda),
             fitz.Rect(page.rect.x0, page.rect.y1 - banda, page.rect.x1, page.rect.y1),
@@ -208,8 +230,11 @@ class CaptionReader:
             recorte = faixa & page.rect
             if recorte.is_empty or recorte.height < MIN_BAND_PT:
                 continue
-            lines.extend(self._read_band(page, recorte, group_offset=len(lines)))
-        return lines
+            lidas = self._read_band(page, recorte, group_offset=len(lines))
+            lines.extend(lidas)
+            if lidas.falha:
+                falhas.append(lidas.falha)
+        return LinhasDaFaixa(lines, falha="; ".join(falhas))
 
     # ----------------------------------------------------------------------------- interno
 
@@ -220,24 +245,28 @@ class CaptionReader:
         *,
         blank: Sequence[fitz.Rect] = (),
         group_offset: int = 0,
-    ) -> list[TextLine]:
+    ) -> LinhasDaFaixa:
         try:
             image_rgb, origin, zoom = _render_band(page, band, dpi=self._dpi)
         except (RuntimeError, ValueError) as exc:
             logger.warning("Nao foi possivel renderizar a faixa %s para OCR (%s).", band, exc)
-            return []
+            return LinhasDaFaixa(falha=f"a faixa não renderizou: {exc}")
 
         for retangulo in blank:
             _blank_region(image_rgb, retangulo, origin=origin, zoom=zoom)
 
         try:
             boxes = self._recognizer.read(image_rgb)
+        # `Exception`, e não uma lista: o protocolo `TextRecognizer` não declara o que o motor levanta, e o
+        # de terceiro levanta o que quiser -- o erro do `onnxruntime` é filho direto de `Exception`, e não
+        # de `RuntimeError`. É a fronteira, a mesma de `ocr.build_recognizer`; o que mudou é que a falha
+        # agora sai como falha (S-856).
         except Exception as exc:  # noqa: BLE001 - motor de terceiro no meio de uma varredura
             logger.warning("Motor de OCR %r falhou nesta faixa (%s); a página segue sem ele.", self.name, exc)
-            return []
+            return LinhasDaFaixa(falha=f"o motor {self.name} falhou: {exc}")
 
-        return _boxes_to_lines(
-            boxes, origin=origin, zoom=zoom, group_offset=group_offset, procedencia=self.procedencia
+        return LinhasDaFaixa(
+            _boxes_to_lines(boxes, origin=origin, zoom=zoom, group_offset=group_offset, procedencia=self.procedencia)
         )
 
 

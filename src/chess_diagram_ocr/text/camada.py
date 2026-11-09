@@ -107,15 +107,32 @@ acaso. Abaixo do meio, os intervalos saem vazios e quem desenha volta ao campo d
 comportamento de antes -- degradar para o que já existia é melhor que pintar palpite."""
 
 
+def _erros_do_pdf() -> tuple[type[Exception], ...]:
+    """`pdf_text.ERROS_DO_PDF`, importado na hora em que um deles chega: o PyMuPDF não entra no topo de `text/`."""
+    from ..pdf_text import ERROS_DO_PDF
+
+    return ERROS_DO_PDF
+
+
+def _dicionario(page: object) -> dict | None:
+    """O `get_text("dict")` da folha, ou `None` quando ela não se deixa ler (S-856: só o erro do PDF)."""
+    try:
+        dicionario: dict = page.get_text("dict")  # type: ignore[attr-defined]
+    except _erros_do_pdf():
+        return None
+    return dicionario
+
+
 def spans_com(page: object, e_do_estilo: Callable[[dict], bool]) -> list[Retangulo]:
     """Os retângulos daquele estilo na página, em **pontos do PDF**. Vazio quando não há nenhum.
 
     Pontos e não pixels, como todo bbox da `PaginaLida`: quem converte é quem tem o DPI.
     """
-    try:
-        dicionario = page.get_text("dict")  # type: ignore[attr-defined]
-    except Exception:  # pragma: no cover - página sem camada nenhuma
-        return []
+    dicionario = _dicionario(page)
+    return [] if dicionario is None else _retangulos(dicionario, e_do_estilo)
+
+
+def _retangulos(dicionario: dict, e_do_estilo: Callable[[dict], bool]) -> list[Retangulo]:
     saida: list[Retangulo] = []
     for bloco in dicionario.get("blocks", []):
         for linha in bloco.get("lines", []):
@@ -157,9 +174,8 @@ def linhas_com(page: object, e_do_estilo: Callable[[dict], bool]) -> list[LinhaD
     devolve texto e serve aos intervalos. Os dois leem o mesmo `get_text("dict")`, e por isso a
     mesma página responde a mesma coisa às duas perguntas.
     """
-    try:
-        dicionario = page.get_text("dict")  # type: ignore[attr-defined]
-    except Exception:  # pragma: no cover - página sem camada nenhuma
+    dicionario = _dicionario(page)
+    if dicionario is None:
         return []
     saida: list[LinhaDeCamada] = []
     for bloco in dicionario.get("blocks", []):
@@ -438,20 +454,28 @@ def documento_registra(
             return guardada
     try:
         total = int(doc.page_count)  # type: ignore[attr-defined]
-    except Exception:  # pragma: no cover
+    except _erros_do_pdf():  # pragma: no cover - documento fechado
         return False
     if total <= 0:
         return False
     passos = max(1, total // (amostra + 1))
     resposta = False
+    lidas = 0
     for indice in range(passos, total, passos):
         try:
-            if spans_com(doc[indice], e_do_estilo):  # type: ignore[index]
-                resposta = True
-                break
-        except Exception:  # pragma: no cover - página ilegível
+            pagina = doc[indice]  # type: ignore[index]
+        except _erros_do_pdf():
             continue
-    if identidade is not None:
+        dicionario = _dicionario(pagina)
+        if dicionario is None:
+            continue
+        lidas += 1
+        if _retangulos(dicionario, e_do_estilo):
+            resposta = True
+            break
+    # **O `False` de uma amostra em que nenhuma folha se deixou ler veio da exceção, e não do livro**
+    # (S-856): memorizado, ele calava o estilo do livro inteiro até o processo acabar. Não entra.
+    if identidade is not None and lidas:
         _RESPOSTAS[(marca, identidade[0], identidade[1], amostra)] = resposta
     return resposta
 

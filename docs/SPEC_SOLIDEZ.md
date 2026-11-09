@@ -2183,6 +2183,18 @@ Uma amostra em que toda folha levanta: a próxima chamada pergunta de novo.
 **Aceite.** Os dois passam, mais um `assertLogs` com um `colour_for_pdf` que levanta; a catraca da S-804
 desce.
 
+**Entregue** (2026-11-09): `pdf_text.ERROS_DO_PDF` = `(RuntimeError, ValueError, mupdf.FzErrorBase)` é a
+lista do que o PyMuPDF levanta numa folha ilegível -- o erro do MuPDF **não** é `RuntimeError`, e estreitar
+para `(RuntimeError, ValueError)` deixaria a folha de conteúdo quebrado derrubar a leitura; `board_coordinates_for`
+e os quatro `except` de `text/camada.py` a usam (a camada a importa na hora, porque `text/` não importa o PyMuPDF
+no topo). `documento_registra` só memoriza quando ao menos uma folha da amostra foi lida. `_read_band`,
+`lines_around` e `margin_lines` devolvem `LinhasDaFaixa`, uma `list[TextLine]` com `falha` e `indisponivel`:
+lista, para que `pdf_text` e `texto_placar` sigam idênticos. `calibrador_do_livro` pega
+`(OSError, KeyError, TypeError, ValueError)` e avisa com `exc_info`. **Divergência:** o `except` do motor em
+`_read_band` continua `Exception` -- o protocolo `TextRecognizer` não declara o que o motor levanta, e o erro
+do `onnxruntime` é filho direto de `Exception`; é a mesma fronteira de `ocr.build_recognizer`, e o que mudou
+ali é que a falha sai como falha. A catraca desceu: `raiz` 41 → 39, `text` 8 → 4 (`except Exception`).
+
 ## S-898 · Apagar um bloco inteiro conta como correção
 
 **Problema** (confirmado por script). `text/correcao.py:96-127`: `_blocos_comparaveis` percorre só os blocos

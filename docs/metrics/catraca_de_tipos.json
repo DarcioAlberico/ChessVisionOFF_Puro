@@ -23,12 +23,12 @@
   "raiz": {
    "type_ignore": 20,
    "any": 259,
-   "except_exception": 41
+   "except_exception": 39
   },
   "text": {
-   "type_ignore": 38,
+   "type_ignore": 36,
    "any": 107,
-   "except_exception": 8
+   "except_exception": 4
   },
   "ui": {
    "type_ignore": 10,

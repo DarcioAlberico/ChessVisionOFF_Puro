@@ -266,5 +266,47 @@ class OrientacaoTests(unittest.TestCase):
         self.assertEqual(cells_as_read(board, black_pov)[63].mean(), 255.0)
 
 
+class PerfilDaSuiteTests(unittest.TestCase):
+    """O perfil de cor vem da suíte de fora (`caissa`); o ilegível não derruba a leitura, mas fica no log (S-856)."""
+
+    def _suite(self, colour_for_pdf: object) -> dict[str, object]:
+        import types
+
+        modulo = types.ModuleType("caissa.ocr.book_profile")
+        modulo.colour_for_pdf = colour_for_pdf  # type: ignore[attr-defined]
+        return {"caissa": types.ModuleType("caissa"), "caissa.ocr": types.ModuleType("caissa.ocr"),
+                "caissa.ocr.book_profile": modulo}
+
+    def test_perfil_ilegivel_avisa_e_le_sem_ele(self) -> None:
+        import sys
+        from unittest import mock
+
+        from chess_diagram_ocr.cor_por_livro import calibrador_do_livro
+
+        def quebra(_pdf: object) -> dict[str, object]:
+            raise ValueError("perfil.json truncado")
+
+        with (
+            mock.patch.dict(sys.modules, self._suite(quebra)),
+            self.assertLogs("chess_diagram_ocr.cor_por_livro", level="WARNING") as log,
+        ):
+            self.assertIsNone(calibrador_do_livro("livro.pdf"))
+        self.assertIn("perfil.json truncado", log.output[0])
+        self.assertIsNotNone(log.records[0].exc_info)
+
+    def test_o_perfil_legivel_vira_calibrador(self) -> None:
+        import sys
+        from unittest import mock
+
+        from chess_diagram_ocr.cor_por_livro import calibrador_do_livro
+
+        perfil = {"brancas": {"P": [1.0]}, "pretas": {"p": [2.0]}, "diagramas": 3}
+        with mock.patch.dict(sys.modules, self._suite(lambda _pdf: perfil)):
+            calibrador = calibrador_do_livro("livro.pdf")
+        self.assertIsNotNone(calibrador)
+        assert calibrador is not None
+        self.assertEqual(calibrador.diagramas, 3)
+
+
 if __name__ == "__main__":
     unittest.main()
