@@ -1717,6 +1717,8 @@ a tratar `None` como "treino do zero, regime escolhido no diálogo", que é o ca
 
 **Aceite.** Os três passam; um checkpoint antigo, sem o dicionário, é lido pela letra com aviso.
 
+**Entregue** (2026-11-08): `version_of_checkpoint` virou `regime_of_checkpoint`, que devolve o `AugmentConfig` exato (ou `None` para arquivo ausente, `ValueError` para ilegível), e `TrainingRequest.augment` deixou de ser `str`: passar pela letra no `qt/dialogos.py` perderia de novo o que o dicionário guardou. O diálogo não tem escolha de regime; `None` treina no `DEFAULT_AUGMENT`, que era o `aug0` de antes. A recusa chega como caixa de erro em `ControladorDeTreino.iniciar`, que é slot (uma exceção ali seria qFatal). O dicionário (`augment`) e a letra (`augment_version`) passaram de `Trainer.prepare` para `_optim_metadata`, onde o teste os lê sem treinar. Os `.pt` de hoje são todos anteriores à S-839 e saem pela letra, com aviso: `piece_classifier.pt` continua `augx`.
+
 ## S-840 · `ArchConfig.from_version` recusa o que não conhece
 
 **Problema** (confirmado por script). `model.py:92-97`, com `# type: ignore`: `"cnn-grey-64-linear"` monta

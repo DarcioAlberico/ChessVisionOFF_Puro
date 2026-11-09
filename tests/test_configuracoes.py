@@ -20,7 +20,7 @@ from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 from chess_diagram_ocr import settings as preferencias
 from chess_diagram_ocr.arquivo_do_dono import Lida
 from chess_diagram_ocr.ui import configuracoes
-from chess_diagram_ocr.ui.pedido_de_treino import pedido_de_treino
+from chess_diagram_ocr.ui.pedido_de_treino import TrainingRequest, pedido_de_treino
 
 if TEM_PYQT:
     from chess_diagram_ocr.qt.dialogo_de_configuracoes import DialogoDeConfiguracoes
@@ -151,8 +151,8 @@ class TreinoTests(unittest.TestCase):
         preferencias.DEFAULT_SETTINGS_PATH = caminho
         try:
             pedido = pedido_de_treino(Path("l.csv"), Path("s"), None, model_path=Path("m.pt"))
-            # C4: sem checkpoint legível o regime é o genérico, e o pedido o carrega.
-            self.assertEqual(pedido.augment, "aug0")
+            # C4/S-839: sem checkpoint no disco não há regime a continuar.
+            self.assertIsNone(pedido.augment)
         finally:
             preferencias.DEFAULT_SETTINGS_PATH = original
         self.assertEqual((pedido.epochs, pedido.lr, pedido.batch_size), (3, 0.01, 16))
@@ -255,22 +255,35 @@ if __name__ == "__main__":
 class RegimeDeAumentoTests(unittest.TestCase):
     """C4 do ciclo 2: a janela retreina no regime que produziu o checkpoint de produção."""
 
+    def _pedido(self, pasta: Path, modelo: Path) -> TrainingRequest:
+        original = preferencias.DEFAULT_SETTINGS_PATH
+        preferencias.DEFAULT_SETTINGS_PATH = pasta / "settings.json"
+        try:
+            return pedido_de_treino(Path("l.csv"), Path("s"), None, model_path=modelo)
+        finally:
+            preferencias.DEFAULT_SETTINGS_PATH = original
+
     def test_o_pedido_le_o_regime_do_checkpoint(self) -> None:
         import tempfile
 
         import torch
 
-        from chess_diagram_ocr.augment import AugmentConfig, from_letters
+        from chess_diagram_ocr.augment import AugmentConfig
         from chess_diagram_ocr.checkpoint import save_checkpoint
 
         with tempfile.TemporaryDirectory() as tmp:
             modelo = Path(tmp) / "m.pt"
             save_checkpoint(modelo, {"w": torch.zeros(1)}, metadata={"augment_version": "augmhsp"})
-            original = preferencias.DEFAULT_SETTINGS_PATH
-            preferencias.DEFAULT_SETTINGS_PATH = Path(tmp) / "settings.json"
-            try:
-                pedido = pedido_de_treino(Path("l.csv"), Path("s"), None, model_path=modelo)
-            finally:
-                preferencias.DEFAULT_SETTINGS_PATH = original
-            self.assertEqual(pedido.augment, "augmhsp")
-            self.assertEqual(from_letters(pedido.augment), AugmentConfig(hflip=0.5, hatch=0.30, speckle=0.25, paper=0.30))
+            with self.assertLogs("chess_diagram_ocr.augment", "WARNING"):
+                pedido = self._pedido(Path(tmp), modelo)
+            self.assertEqual(pedido.augment, AugmentConfig(hflip=0.5, hatch=0.30, speckle=0.25, paper=0.30))
+
+    def test_o_pedido_recusa_checkpoint_truncado(self) -> None:
+        """S-839: era `aug0`, e o retreino rodava no genérico por cima de um modelo que não era."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            modelo = Path(tmp) / "m.pt"
+            modelo.write_bytes(b"PK truncado")
+            with self.assertRaises(ValueError):
+                self._pedido(Path(tmp), modelo)

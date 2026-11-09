@@ -30,6 +30,7 @@ if TYPE_CHECKING:  # pragma: no cover - `TrainingRun` só é usado em anotação
     # define três `nn.Module` no escopo de módulo -- não dá para adiar lá dentro. Aqui o
     # nome só aparece na assinatura de `summarize_run`, que o `from __future__ import
     # annotations` já deixa como texto.
+    from ..augment import AugmentConfig
     from ..training import TrainingRun
 
 __all__ = ["TrainingRequest", "format_metrics", "pedido_de_treino", "summarize_run"]
@@ -49,13 +50,17 @@ class TrainingRequest:
     lr: float
     fresh: bool = False
     splits_path: Path | None = None
-    augment: str = "aug0"
-    """O regime de aumento (`AugmentConfig.version`, letras `mhspiex`) com que treinar (C4).
+    augment: AugmentConfig | None = None
+    """O regime de aumento com que treinar (C4); `None` quando não há checkpoint de onde lê-lo.
 
     Lido do checkpoint de produção no clique: retreinar continua o regime que produziu o
     modelo, e um retreino do zero também parte dele. Antes era sempre o genérico
     (`AugmentConfig()`), e um `.pt` de produção treinado com `mhsp` seria retreinado sem a
-    hachura que o fez -- `docs/OCR_UI_ANALISE_C2.md` §3.4."""
+    hachura que o fez -- `docs/OCR_UI_ANALISE_C2.md` §3.4.
+
+    **O regime inteiro, e não a letra (S-839).** Era a `str` de `AugmentConfig.version`,
+    reconvertida por `from_letters` no treino: `hatch=0.9` voltava `0.3`, e um `-j0` sumia.
+    `None` é o primeiro treino, sem modelo no disco, e treina no regime padrão do treino."""
 
 
 def pedido_de_treino(
@@ -68,6 +73,10 @@ def pedido_de_treino(
 ) -> TrainingRequest:
     """O pedido com épocas, lote e taxa de `data/settings.json` -- lidos agora, no clique.
 
+    Levanta `ValueError` quando `model_path` existe e o regime dele não se lê (S-839): um `.pt`
+    truncado, ou um regime que este código não sabe reproduzir. Treinar no genérico por cima de
+    um modelo que não foi genérico é o defeito que aquilo evita.
+
     Eram `epochs=8, batch_size=16, lr=1e-3` escritos em `qt/janela.py`; a janela de
     configurações (`ui/configuracoes.py`) é onde a pessoa os muda, e este é o único lugar que
     os transforma em pedido.
@@ -78,7 +87,7 @@ def pedido_de_treino(
     # o teste aponta `DEFAULT_SETTINGS_PATH` para uma pasta temporária, e o bundle o resolve
     # para a pasta do `.exe` -- nos dois casos o que vale é o valor no instante do clique.
     treino = preferencias.load_settings(preferencias.DEFAULT_SETTINGS_PATH).training
-    from ..augment import version_of_checkpoint
+    from ..augment import regime_of_checkpoint
 
     return TrainingRequest(
         csv_path=csv_path,
@@ -89,7 +98,7 @@ def pedido_de_treino(
         lr=treino.lr,
         fresh=fresh,
         splits_path=splits_path,
-        augment=version_of_checkpoint(model_path),
+        augment=regime_of_checkpoint(model_path),
     )
 
 

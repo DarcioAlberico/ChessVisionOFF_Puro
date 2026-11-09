@@ -23,7 +23,7 @@ import random
 import threading
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -788,9 +788,9 @@ def labels_hash(entries: Iterable[DatasetEntry]) -> str:
 def _optim_metadata(optim: OptimPlan, arch: ArchConfig) -> dict[str, Any]:
     """Os hiperparâmetros que reproduzem o número, prefixados para não colidir (S-105).
 
-    `asdict(optim)` traria `augment` como dicionário aninhado e `class_weights`/`seed`
-    duplicados -- os três já estão nos metadados com nome próprio desde a S-27 e a S-40.
-    O que faltava são estes quatro, e é neles que `--lr 1e-4` e `--lr 1e-3` diferem.
+    `asdict(optim)` traria `class_weights`/`seed` duplicados -- os dois já estão nos metadados
+    com nome próprio desde a S-27. O que faltava são estes quatro, e é neles que `--lr 1e-4` e
+    `--lr 1e-3` diferem. O regime de aumento entra aqui inteiro, e não só pela letra (S-839).
 
     **E o lote tem duas unidades desde a S-62b (S-372).** A cabeça por tabuleiro monta o
     `DataLoader` com `boards_per_batch` e ignora `batch_size`; a cabeça por janela faz o
@@ -810,6 +810,13 @@ def _optim_metadata(optim: OptimPlan, arch: ArchConfig) -> dict[str, Any]:
         # sao a mesma coisa **ate** o dia em que o otimizador mudar, e ai o segundo continua
         # verdadeiro sobre os checkpoints antigos e o primeiro nao diz nada sobre nenhum.
         "optimizer": "adam",
+        # Sem isto, "o modelo A e melhor que o B" pode estar comparando dois regimes de
+        # aumento -- a mesma armadilha que a S-27 fechou para arquitetura e semente (S-40).
+        # A letra e o nome curto; o dicionario e o regime inteiro, e e dele que
+        # `augment.regime_of_checkpoint` reconstroi o retreino (S-839): `hatch=0.9` e
+        # `hatch=0.3` saem os dois `augh`.
+        "augment_version": optim.augment.version,
+        "augment": asdict(optim.augment),
     }
 
 
@@ -1109,9 +1116,6 @@ class Trainer:
             "class_names": list(PIECE_CLASSES),
             "seed": optim.seed,
             "class_weights": optim.class_weights,
-            # Sem isto, "o modelo A e melhor que o B" pode estar comparando dois regimes de
-            # aumento -- a mesma armadilha que a S-27 fechou para arquitetura e semente (S-40).
-            "augment_version": optim.augment.version,
             # C16: um checkpoint treinado com ruído de rótulo (sabotagem) ou com os corrigidos
             # à mão repetidos tem de dizê-lo, pela mesma razão do `augment_version`.
             "label_noise": float(optim.label_noise),

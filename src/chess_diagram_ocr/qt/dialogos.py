@@ -935,7 +935,13 @@ class ControladorDeTreino(QDialog):
             self.estado.emit("Já existe um treino em execução.")
             return
 
-        pedido = self._pedido()
+        try:
+            pedido = self._pedido()
+        except ValueError as exc:
+            # O regime do checkpoint que não se lê (S-839) é recusa, e não treino no genérico.
+            # Aqui dentro de um slot, uma exceção que escapasse mataria o processo (qFatal).
+            self._mostrar_falha(str(exc))
+            return
         self._rodando = True
         self._total_de_epocas = pedido.epochs
         self._cancelar = threading.Event()
@@ -1018,7 +1024,7 @@ class ControladorDeTreino(QDialog):
             )
 
     def _trabalho(self, pedido: TrainingRequest, cancelar: threading.Event) -> None:
-        from chess_diagram_ocr.augment import from_letters
+        from chess_diagram_ocr.augment import DEFAULT_AUGMENT
         from chess_diagram_ocr.training import train_model
 
         try:
@@ -1036,8 +1042,9 @@ class ControladorDeTreino(QDialog):
                 fresh=pedido.fresh,
                 # O `Event` que o botão "Cancelar" do rodapé aciona (S-309).
                 cancel_event=cancelar,
-                # C4: o regime do checkpoint de produção, não o genérico de sempre.
-                augment=from_letters(pedido.augment),
+                # C4: o regime do checkpoint de produção, inteiro (S-839), não o genérico de
+                # sempre. Sem checkpoint no disco não há regime a continuar.
+                augment=pedido.augment if pedido.augment is not None else DEFAULT_AUGMENT,
             )
             resumo = summarize_run(run)
             # Sem caixa modal ao fim (S-164): o modal do treino **já está aberto** e mostra o

@@ -306,6 +306,23 @@ class TreinoTests(unittest.TestCase):
         controlador.iniciar()
         self.assertEqual(vistos, ["Já existe um treino em execução."])
 
+    def test_regime_ilegivel_vira_caixa_de_erro_e_nao_treina(self) -> None:
+        """S-839: o pedido recusa um checkpoint cujo regime não se lê, e a recusa chega à pessoa.
+
+        `iniciar` é slot do botão: a exceção que escapasse dele seria qFatal no PyQt6."""
+
+        def pedido() -> pedido_de_treino.TrainingRequest:
+            raise ValueError("Não deu para ler o regime de aumento de modelo.pt: truncado")
+
+        controlador = qt_dialogos.ControladorDeTreino(pedido=pedido)
+        self.addCleanup(descartar, controlador)
+        with mock.patch.object(qt_dialogos.QMessageBox, "critical") as caixa:
+            controlador.iniciar()
+        caixa.assert_called_once()
+        self.assertIn("regime de aumento de modelo.pt", caixa.call_args.args[2])
+        self.assertFalse(controlador.rodando)
+        self.assertIsNone(controlador.dialogo, "o modal do treino não abre para um treino que não começou")
+
     def test_cancelar_sem_treino_em_curso_nao_faz_nada(self) -> None:
         controlador = self.controlador()
         vistos: list[str] = []
