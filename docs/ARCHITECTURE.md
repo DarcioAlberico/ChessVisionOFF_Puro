@@ -135,6 +135,7 @@ palavra, e quem monta parágrafo não sabe o que é um pixel.
 | `trama.py` | Texto sobre trama de meio-tom, e o bloco que engoliu a tabela (S-196, S-199). |
 | `negativo.py` | Texto impresso em negativo: branco sobre tarja preta ou colorida (S-195). |
 | `faixas.py` | Texto claro sobre faixa preta: achar a faixa e devolvê-la como tinta sobre papel (S-599). |
+| `folha_da_camada.py` | A folha do PDF extraída uma vez por leitura, e a vizinha uma vez por varredura (S-851). |
 | `moldura.py` | A moldura que envolve a folha, e por que ela apagava a folha inteira (S-711). |
 | `gigantes.py` | A caixa alta demais para ser letra, que intercalava a coluna inteira (S-712). |
 | `marca_fina.py` | Apóstrofo ou vírgula, decidido pela posição na linha (S-211). |

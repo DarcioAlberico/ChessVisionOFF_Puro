@@ -154,7 +154,7 @@ import math
 import re as _re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
@@ -187,6 +187,7 @@ from . import regioes as _regioes
 from . import tesseract as _tesseract
 from . import traco as _traco
 from .binarizacao import binarize
+from .folha_da_camada import LivroDaCamada
 from .grade import Arranjo
 from .leitor_de_linha import LeitorDeLinha
 from .pagina import (
@@ -204,6 +205,9 @@ from .pagina import (
     PaginaLida,
     Procedencia,
 )
+
+if TYPE_CHECKING:
+    from ..pdf_io import OpenPdf
 
 logger = logging.getLogger(__name__)
 
@@ -1605,7 +1609,7 @@ def _linhas_da_reserva(
 
 
 def _ler_pagina_do_livro(
-    livro: object,
+    livro: OpenPdf,
     indice: int,
     *,
     dpi: int,
@@ -1631,56 +1635,61 @@ def _ler_pagina_do_livro(
     reserva: bool,
     marca_por_palavra: bool,
 ) -> PaginaLida:
-    """O corpo de `ler_pagina`, com o documento **já aberto**. Ver a nota da S-351."""
+    """O corpo de `ler_pagina`, com o documento **já aberto**. Ver a nota da S-351.
+
+    **A folha é extraída uma vez** (S-851): `doc` entrega `FolhaDaCamada`, e todo leitor da camada abaixo -- a
+    margem, as linhas, o negrito, o itálico, os quadros, o número impresso e as vizinhas dele -- recebe a mesma
+    extração. Ver `text/folha_da_camada.py`.
+    """
     from ..detection.hybrid import detect_diagrams_in_pdf_page
-    from ..pdf_io import open_document, render_pdf_page
+    from ..pdf_io import render_pdf_page
     from ..pdf_text import page_margin_lines, running_page_number
 
     pdf_source = livro
-    imagem = render_pdf_page(pdf_source, indice, dpi=dpi) if imagem_rgb is None else imagem_rgb  # type: ignore[arg-type]
+    imagem = render_pdf_page(pdf_source, indice, dpi=dpi) if imagem_rgb is None else imagem_rgb
 
-    with open_document(pdf_source) as doc:  # type: ignore[arg-type]
-        page = doc[indice]
-        largura = float(page.rect.width)
-        altura = float(page.rect.height)
-        margem = [linha for linha in page_margin_lines(page) if linha.text.strip()]
-        cruas = _cruas_da_camada(page, doc, indice, margem, altura, escala_px) if qual == "camada" else []
-        # Os quadros de largura inteira da camada, para `montar` cortar a folha em volta (S-583).
-        quadros = (
-            [(int(y0 * escala_px), int(y1 * escala_px)) for y0, y1 in _quadros.quadros_da_camada(page)]
-            if qual == "camada"
-            else []
-        )
-        numero = running_page_number(doc, indice)
-        documento = str(getattr(doc, "name", "") or "")
-        spans_negrito = _negrito.spans_de_negrito(page) if marcar_negrito else []
-        registra_negrito = (
-            bool(spans_negrito) or _negrito.documento_registra_negrito(doc)
-            if marcar_negrito
-            else False
-        )
-        # **A leitura fina, do mesmo `get_text("dict")`** (S-429). Ela só é pedida quando há span
-        # do estilo na folha: sem nenhum, não há intervalo a achar, e varrer a página de novo
-        # custaria o dobro da leitura de spans para devolver vazio.
-        linhas_negrito = _negrito.linhas_de_negrito(page) if spans_negrito else []
-        # **O itálico da camada tem a mesma máquina do peso** (S-237), e a mesma pergunta de
-        # documento: uma folha sem itálico num livro que o registra é `False`; num livro que não o
-        # registra é `None`.
-        spans_italico = _italico.spans_de_italico(page) if marcar_italico else []
-        registra_italico = (
-            bool(spans_italico) or _italico.documento_registra_italico(doc)
-            if marcar_italico
-            else False
-        )
-        linhas_italico = _italico.linhas_de_italico(page) if spans_italico else []
-        # A camada é a tipografia do livro, e não o palpite de outro OCR? Só então o itálico dela
-        # vale no glifo também (S-660): ver o comentário de `_com_italico_da_camada` lá embaixo.
-        tipografica = bool(spans_italico) and qual in _MOTORES_DO_GLIFO and _camada.camada_tipografica(page)
+    doc = LivroDaCamada(livro.doc)
+    page = doc[indice]
+    largura = float(page.rect.width)
+    altura = float(page.rect.height)
+    margem = [linha for linha in page_margin_lines(page) if linha.text.strip()]
+    cruas = _cruas_da_camada(page, doc, indice, margem, altura, escala_px) if qual == "camada" else []
+    # Os quadros de largura inteira da camada, para `montar` cortar a folha em volta (S-583).
+    quadros = (
+        [(int(y0 * escala_px), int(y1 * escala_px)) for y0, y1 in _quadros.quadros_da_camada(page)]
+        if qual == "camada"
+        else []
+    )
+    numero = running_page_number(doc, indice)
+    documento = str(getattr(doc, "name", "") or "")
+    spans_negrito = _negrito.spans_de_negrito(page) if marcar_negrito else []
+    registra_negrito = (
+        bool(spans_negrito) or _negrito.documento_registra_negrito(doc)
+        if marcar_negrito
+        else False
+    )
+    # **A leitura fina, do mesmo `get_text("dict")`** (S-429). Ela só é pedida quando há span
+    # do estilo na folha: sem nenhum, não há intervalo a achar, e varrer a página de novo
+    # custaria o dobro da leitura de spans para devolver vazio.
+    linhas_negrito = _negrito.linhas_de_negrito(page) if spans_negrito else []
+    # **O itálico da camada tem a mesma máquina do peso** (S-237), e a mesma pergunta de
+    # documento: uma folha sem itálico num livro que o registra é `False`; num livro que não o
+    # registra é `None`.
+    spans_italico = _italico.spans_de_italico(page) if marcar_italico else []
+    registra_italico = (
+        bool(spans_italico) or _italico.documento_registra_italico(doc)
+        if marcar_italico
+        else False
+    )
+    linhas_italico = _italico.linhas_de_italico(page) if spans_italico else []
+    # A camada é a tipografia do livro, e não o palpite de outro OCR? Só então o itálico dela
+    # vale no glifo também (S-660): ver o comentário de `_com_italico_da_camada` lá embaixo.
+    tipografica = bool(spans_italico) and qual in _MOTORES_DO_GLIFO and _camada.camada_tipografica(page)
 
     if max_boards:
-        candidatos = detect_diagrams_in_pdf_page(pdf_source, indice, imagem, max_boards=max_boards)  # type: ignore[arg-type]
+        candidatos = detect_diagrams_in_pdf_page(pdf_source, indice, imagem, max_boards=max_boards)
     else:
-        candidatos = detect_diagrams_in_pdf_page(pdf_source, indice, imagem)  # type: ignore[arg-type]
+        candidatos = detect_diagrams_in_pdf_page(pdf_source, indice, imagem)
     retangulos = [
         (
             c.bbox_pdf[0] * escala_px,
@@ -1704,27 +1713,26 @@ def _ler_pagina_do_livro(
         )
         pontos = [(r[0] / escala_px, r[1] / escala_px, r[2] / escala_px, r[3] / escala_px) for r in retangulos]
         existe = _fusao.existe_no(_lexico_mod.carregar())
-        with open_document(pdf_source) as doc:  # type: ignore[arg-type]
-            page = doc[indice]
-            palavras = _camada_prosa.palavras_da_folha(page) if qual == "camada_prosa" else []
-            caracteres_da_camada = _camada_prosa.caracteres_fora(page, pontos)
-            admissao = _camada_prosa.admitir(doc, indice, pontos) if qual == "camada_prosa" else None
-            guarda = _guarda.medir(
-                imagem,
-                retangulos,
-                lidos=sum(len("".join(c.texto.split())) for c in cruas),
-                linhas_lidas=len(cruas),
-                dpi=dpi,
-                caracteres_da_camada=caracteres_da_camada,
-                ruido=_e_ruido_emoldurado(imagem, cruas),
-            )
-            camada_na_folha = admissao is not None and admissao.admitida and guarda.nao_lida
-            da_camada = _cruas_da_camada(page, doc, indice, margem, altura, escala_px) if camada_na_folha else []
-            quadros_da_camada = (
-                [(int(y0 * escala_px), int(y1 * escala_px)) for y0, y1 in _quadros.quadros_da_camada(page)]
-                if da_camada
-                else []
-            )
+        palavras = _camada_prosa.palavras_da_folha(page) if qual == "camada_prosa" else []
+        caracteres_da_camada = _camada_prosa.caracteres_fora(page, pontos)
+        # O documento cru, e não o da camada: o perfil do livro é guardado pela identidade dele.
+        admissao = _camada_prosa.admitir(livro.doc, indice, pontos) if qual == "camada_prosa" else None
+        guarda = _guarda.medir(
+            imagem,
+            retangulos,
+            lidos=sum(len("".join(c.texto.split())) for c in cruas),
+            linhas_lidas=len(cruas),
+            dpi=dpi,
+            caracteres_da_camada=caracteres_da_camada,
+            ruido=_e_ruido_emoldurado(imagem, cruas),
+        )
+        camada_na_folha = admissao is not None and admissao.admitida and guarda.nao_lida
+        da_camada = _cruas_da_camada(page, doc, indice, margem, altura, escala_px) if camada_na_folha else []
+        quadros_da_camada = (
+            [(int(y0 * escala_px), int(y1 * escala_px)) for y0, y1 in _quadros.quadros_da_camada(page)]
+            if da_camada
+            else []
+        )
         if admissao is not None and not admissao.admitida and admissao.criterio != _admissao.SEM_TEXTO:
             avisos.append(
                 Aviso(

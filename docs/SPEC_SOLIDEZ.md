@@ -2047,6 +2047,16 @@ funções puras; as chaves de corrente das vizinhas memorizadas por documento.
 **Aceite.** O teste passa; a régua da prosa sai igual byte a byte; o tempo por folha numa varredura de 50
 folhas é medido antes e depois.
 
+**Entregue** (2026-11-09): divergiu na forma. Quem extrai mora em `pdf_text` (fecho da S-218), `camada` e
+`camada_prosa`, que outra frente tinha abertos; reescrevê-los para receber o dicionário não cabia. A
+`FolhaDaCamada` (`text/folha_da_camada.py`) é a página com `get_text` e `get_texttrace` memorizados por
+argumento, e o `LivroDaCamada` a entrega, guardando o extraído (nunca a página) por `camada._identidade` entre
+leituras, 16 folhas no total: os extratores recebem a página que já pediam. O `admitir` recebe o documento cru,
+porque o perfil do livro é guardado pela identidade dele (S-850). Medido: uma leitura `camada` de 8 para 1
+`get_text("dict")` na folha, e a varredura de 6 folhas de 12 para 1 por folha; 28 leituras reais (7 folhas de 6
+livros, auto/camada/camada_prosa com reserva/fusão) iguais byte a byte; 50 folhas do Dvoretsky com `camada`,
+0,684 → 0,500 s por folha, e na ordem inversa 0,483 → 0,416 s.
+
 ## S-852 · Um árbitro de confiança só
 
 **Problema** (confirmado por leitura e pelo dryer). O árbitro está em três cópias: `text/leitor.py:496-513`,

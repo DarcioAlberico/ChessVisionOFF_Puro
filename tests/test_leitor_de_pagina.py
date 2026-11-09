@@ -502,6 +502,68 @@ class UmaAberturaPorFolhaTests(unittest.TestCase):
             self.assertEqual(pdf_io.open_count() - antes, 1)
 
 
+class UmaExtracaoPorFolhaTests(unittest.TestCase):
+    """A folha extraída uma vez por leitura, e a vizinha uma vez por varredura (S-851).
+
+    Uma `ler_pagina(motor="camada")` fazia oito `get_text("dict")` na folha lida -- margem, linhas,
+    negrito e itálico duas vezes cada, quadros e número impresso --, e o número impresso lê ainda as
+    quatro vizinhas, que a leitura da folha seguinte extraía de novo.
+    """
+
+    FOLHAS = 6
+
+    def setUp(self) -> None:
+        import fitz
+
+        from chess_diagram_ocr.text import folha_da_camada
+
+        folha_da_camada.limpar()
+        self.addCleanup(folha_da_camada.limpar)
+        self._dir = TemporaryDirectory()
+        self.addCleanup(self._dir.cleanup)
+        self.caminho = Path(self._dir.name) / "livro.pdf"
+        doc = fitz.open()
+        for i in range(self.FOLHAS):
+            pagina = doc.new_page(width=300.0, height=400.0)
+            pagina.insert_text((40.0, 20.0), "CABEÇALHO CORRENTE", fontsize=8)
+            pagina.insert_text((40.0, 80.0), f"uma linha de prosa da folha {i}", fontsize=11)
+            pagina.insert_text((40.0, 100.0), "outra linha, em negrito", fontsize=11, fontname="hebo")
+            pagina.insert_text((40.0, 120.0), "e uma em itálico", fontsize=11, fontname="heit")
+            pagina.insert_text((150.0, 390.0), str(10 + i), fontsize=8)
+        doc.save(str(self.caminho))
+        doc.close()
+
+        self.extracoes: dict[int, int] = {}
+        original = fitz.Page.get_text
+
+        def contado(pagina: fitz.Page, *args: object, **kwargs: object) -> object:
+            if (args[0] if args else kwargs.get("option")) == "dict":
+                self.extracoes[pagina.number] = self.extracoes.get(pagina.number, 0) + 1
+            return original(pagina, *args, **kwargs)
+
+        from unittest import mock
+
+        remendo = mock.patch.object(fitz.Page, "get_text", contado)
+        remendo.start()
+        self.addCleanup(remendo.stop)
+
+    def _ler(self, indice: int) -> PaginaLida:
+        return leitor.ler_pagina(self.caminho, indice, dpi=72, motor="camada")
+
+    def test_uma_leitura_extrai_cada_folha_no_maximo_uma_vez(self) -> None:
+        pagina = self._ler(2)
+        self.assertIn("folha 2", pagina.texto())
+        self.assertEqual(12, pagina.numero_impresso, "o número impresso ainda vem das vizinhas")
+        self.assertTrue(self.extracoes, "o remendo tem de ver a leitura")
+        self.assertLessEqual(max(self.extracoes.values()), 1, self.extracoes)
+
+    def test_a_varredura_extrai_cada_folha_uma_vez(self) -> None:
+        for indice in range(self.FOLHAS):
+            self._ler(indice)
+        self.assertEqual(set(range(self.FOLHAS)), set(self.extracoes))
+        self.assertLessEqual(max(self.extracoes.values()), 1, self.extracoes)
+
+
 class HifenDaQuebraTests(unittest.TestCase):
     """A palavra que a quebra de linha partiu volta inteira (S-353).
 
