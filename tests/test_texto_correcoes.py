@@ -341,9 +341,23 @@ class ForaDaContaTests(unittest.TestCase):
         """Só aparece em arquivo mexido por fora, e ali a resposta é ignorar, não estourar."""
         doc = rico.de_pagina(_pagina(_texto("lido")))
         torto = rico.DocumentoRico(
-            corridas=(rico.Corrida(texto="?", bloco=99),), origem=doc.origem
+            corridas=(*doc.corridas, rico.Corrida(texto="?", bloco=99)), origem=doc.origem
         )
         self.assertEqual(correcao.correcoes(torto), ())
+
+    def test_apagar_o_bloco_inteiro_e_uma_correcao(self) -> None:
+        """S-898: o parágrafo-lixo apagado é a correção mais comum, e o bloco some das corridas."""
+        doc = rico.de_pagina(_pagina(_texto("Um parágrafo bom."), _texto("~~ lixo de OCR ~~")))
+        texto = doc.para_texto()
+        inicio = texto.index("~~") - len("\n\n")
+        apagado = rico.apagar(doc, inicio, len(texto))  # o que a tecla Del faz com a seleção
+        self.assertEqual(apagado.para_texto(), "Um parágrafo bom.")
+        self.assertNotIn(1, correcao.texto_por_bloco(apagado), "a premissa: o bloco saiu das corridas")
+        self.assertEqual(
+            [(c.bloco, c.antes, c.depois) for c in correcao.correcoes(apagado)], [(1, "~~ lixo de OCR ~~", "")]
+        )
+        self.assertEqual(correcao.blocos_editados(apagado), frozenset({1}))
+        self.assertIs(correcao.com_procedencia_humana(apagado), apagado, "nada na tela a carimbar")
 
 
 class ResumoTests(unittest.TestCase):

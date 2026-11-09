@@ -2088,6 +2088,14 @@ e levantariam `KeyError`, fazem o mesmo.
 
 **Aceite.** O teste passa.
 
+**Entregue** (2026-11-09): percorre todos os blocos da origem que não são diagrama (tabela e tarja
+inclusive, como antes), e não só os `BlocoDeTexto`. `_marcas_intactas` não precisou mudar: ela só indexa
+blocos que ainda têm corrida. `com_procedencia_humana` devolve o próprio documento quando nada muda, porque
+o bloco apagado entra em `editados` sem corrida a carimbar e o painel redesenha quando a resposta não é o
+documento. `test_bloco_fora_da_pagina_e_ignorado` passou a manter o bloco lido na tela: sem ele, o bloco
+agora conta como apagado. A folha que volta da suíte com texto sem bloco conta cada bloco da origem como
+apagado; o estado dela já era `editada`.
+
 ## S-901 · Letras de peça por língua e meia-risca numa constante só
 
 **Problema** (confirmado por script). Três decisões para a mesma pergunta: `text/notacao.py:46` usa

@@ -113,23 +113,22 @@ def texto_por_bloco(doc: DocumentoRico) -> dict[int, str]:
 
 
 def _blocos_comparaveis(doc: DocumentoRico) -> dict[int, tuple[str, Procedencia]]:
-    """Por bloco: o que o motor leu, e quem leu. Só os que podem ser corrigidos.
+    """Por bloco da origem: o que o motor leu, e quem leu. Só os que podem ser corrigidos.
 
-    Fora ficam os diagramas -- ver o cabeçalho -- e os índices que a página não tem, que só
-    aparecem num arquivo mexido por fora.
+    **Todos os da página, e não só os que ainda estão na tela** (S-898). Apagar o parágrafo-lixo
+    inteiro é a correção mais comum, e o bloco apagado some de `texto_por_bloco`: percorrer a tela
+    dava zero correções, e a folha ficava `lida` no caderno. Quem compara usa `""` para o que sumiu.
+
+    Fora ficam os diagramas -- ver o cabeçalho. A corrida com um índice que a página não tem, que só
+    aparece num arquivo mexido por fora, não é de bloco nenhum daqui e não entra.
     """
     if doc.origem is None:
         return {}
-    blocos = doc.origem.blocos
-    saida: dict[int, tuple[str, Procedencia]] = {}
-    for indice in texto_por_bloco(doc):
-        if not 0 <= indice < len(blocos):
-            continue
-        bloco = blocos[indice]
-        if isinstance(bloco, BlocoDeDiagrama):
-            continue
-        saida[indice] = (bloco.texto, bloco.procedencia)
-    return saida
+    return {
+        indice: (bloco.texto, bloco.procedencia)
+        for indice, bloco in enumerate(doc.origem.blocos)
+        if not isinstance(bloco, BlocoDeDiagrama)
+    }
 
 
 def correcoes(doc: DocumentoRico) -> tuple[Correcao, ...]:
@@ -141,7 +140,7 @@ def correcoes(doc: DocumentoRico) -> tuple[Correcao, ...]:
     atual = texto_por_bloco(doc)
     achadas: list[Correcao] = []
     for indice, (antes, motor) in sorted(_blocos_comparaveis(doc).items()):
-        depois = atual[indice]
+        depois = atual.get(indice, "")
         if antes == depois:
             continue
         achadas.extend(_pares(indice, antes, depois, motor))
@@ -167,7 +166,7 @@ def blocos_editados(doc: DocumentoRico) -> frozenset[int]:
     return frozenset(
         indice
         for indice, (antes, _motor) in _blocos_comparaveis(doc).items()
-        if atual[indice] != antes
+        if atual.get(indice, "") != antes
     )
 
 
@@ -195,13 +194,13 @@ def com_procedencia_humana(doc: DocumentoRico) -> DocumentoRico:
     palavra apagava as outras marcas do parágrafo, na folha reaberta e em silêncio. Ver `_marcas_intactas`.
     """
     editados = blocos_editados(doc)
-    if not editados and all(c.procedencia is not None or c.bloco != SEM_BLOCO for c in doc.corridas):
-        return doc
     intactas = _marcas_intactas(doc, editados)
     novas = tuple(
         corrida if indice in intactas else _marcada(corrida, editados) for indice, corrida in enumerate(doc.corridas)
     )
-    return DocumentoRico(corridas=novas, origem=doc.origem)
+    # O documento de antes quando nada mudou: o painel redesenha quando a resposta não é ele, e o
+    # bloco apagado está em `editados` sem ter corrida nenhuma a carimbar.
+    return doc if novas == doc.corridas else DocumentoRico(corridas=novas, origem=doc.origem)
 
 
 def _marcas_intactas(doc: DocumentoRico, editados: frozenset[int]) -> frozenset[int]:
