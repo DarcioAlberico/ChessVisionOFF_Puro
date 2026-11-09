@@ -15,6 +15,7 @@ import time
 import unittest
 
 import chess
+from tempo_da_suite import limite
 
 from chess_diagram_ocr import eco
 
@@ -226,7 +227,7 @@ class CustoTests(unittest.TestCase):
         for _ in range(2000):
             eco.classificar_lances(self.LANCES)
         por_partida = (time.perf_counter() - inicio) * 1000 / 2000
-        self.assertLess(por_partida, self.TETO_POR_PARTIDA_MS, f"{por_partida:.4f} ms por partida")
+        self.assertLess(por_partida, limite(self.TETO_POR_PARTIDA_MS), f"{por_partida:.4f} ms por partida")
 
     def test_a_classificacao_por_posicao_custa_muito_mais_e_e_por_isso_que_ha_duas(self) -> None:
         """Sem este número, "há duas classificações" parece redundância em vez de decisão."""

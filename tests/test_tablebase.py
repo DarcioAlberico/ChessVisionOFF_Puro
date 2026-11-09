@@ -26,6 +26,7 @@ from typing import Any
 
 import chess
 from ambiente_de_teste import pasta_temporaria
+from tempo_da_suite import limite
 
 from chess_diagram_ocr import tablebase
 from chess_diagram_ocr.ui import finais
@@ -283,7 +284,7 @@ class TabelaRealTests(unittest.TestCase):
             inicio = time.perf_counter()
             self.leitor.consultar(board)
             tempos.append(time.perf_counter() - inicio)
-        self.assertLess(sorted(tempos)[25], 0.005, "a mediana tem de ficar em microssegundos")
+        self.assertLess(sorted(tempos)[25], limite(0.005), "a mediana tem de ficar em microssegundos")
 
 
 if __name__ == "__main__":  # pragma: no cover

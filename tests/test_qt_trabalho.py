@@ -6,7 +6,7 @@ import time
 import unittest
 from unittest import mock
 
-from qt_app import MOTIVO, TEM_PYQT, TarefaAdiada, aplicacao, descartar
+from qt_app import MOTIVO, TEM_PYQT, TarefaAdiada, aplicacao, descartar, esperar_ate
 
 if TEM_PYQT:
     from PyQt6.QtTest import QTest
@@ -31,11 +31,11 @@ class DeteccaoDeFundoTests(unittest.TestCase):
         self.detector.achou.connect(lambda a, c: self.chegou.append((a, c)))
 
     def _esperar(self, quantos: int, ate_ms: int = 5000) -> None:
-        passos = ate_ms // 20
-        for _ in range(passos):
-            QTest.qWait(20)
-            if len(self.chegou) >= quantos and not self.detector.ocupado:
-                return
+        esperar_ate(
+            lambda: len(self.chegou) >= quantos and not self.detector.ocupado,
+            limite_s=ate_ms / 1000,
+            o_que=f"{quantos} resultados com o detector parado",
+        )
 
     def test_so_o_ultimo_pedido_espera_enquanto_um_roda(self) -> None:
         """Virar dez páginas com a roda não enfileira dez detecções: as do meio são puladas, e

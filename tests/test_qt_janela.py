@@ -20,7 +20,7 @@ from unittest import mock
 
 import pytest
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, esperar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, esperar, esperar_ate
 
 from chess_diagram_ocr.qt import (
     exportador_de_livro,
@@ -462,12 +462,7 @@ class _JanelaComLivro(unittest.TestCase):
         self.addCleanup(mock.patch.stopall)
 
     def _esperar_o_detector(self, janela: JanelaPrincipal, ate_ms: int = 3000) -> None:
-        from PyQt6.QtTest import QTest
-
-        for _ in range(ate_ms // 10):
-            QTest.qWait(10)
-            if not janela._detector.ocupado:
-                return
+        esperar_ate(lambda: not janela._detector.ocupado, limite_s=ate_ms / 1000, o_que="o fim do detector")
 
     def _candidato(self, indice: int = 0) -> mock.Mock:
         return mock.Mock(bbox_pdf=(10.0 + 60 * indice, 10.0, 60.0 + 60 * indice, 60.0), source="contour")
@@ -1129,14 +1124,8 @@ class EstadoEntreSessoesTests(unittest.TestCase):
         self.assertEqual(self.livro, segunda.pdf.source)
         self.assertEqual(3, segunda.pdf.page_index)
 
-    def _esperar_o_estado(self, ate_ms: int = 6000) -> bool:
-        from PyQt6.QtTest import QTest
-
-        for _ in range(ate_ms // 50):
-            if self.estado.exists():
-                return True
-            QTest.qWait(50)
-        return self.estado.exists()
+    def _esperar_o_estado(self, ate_ms: int = 6000) -> None:
+        esperar_ate(self.estado.exists, limite_s=ate_ms / 1000, o_que="virar a página agendar a gravação")
 
     def test_virar_paginas_grava_o_livro_e_a_ultima_pagina_sem_fechar(self) -> None:
         """A queda não espera o `closeEvent` (S-800): o estado vai ao disco ~2 s depois da virada.
@@ -1155,7 +1144,7 @@ class EstadoEntreSessoesTests(unittest.TestCase):
         self.app.processEvents()
         self.assertFalse(self.estado.exists(), "gravou na hora da virada, e não adiado")
 
-        self.assertTrue(self._esperar_o_estado(), "virar a página não agendou a gravação")
+        self._esperar_o_estado()
         guardado = load_state(self.estado)
         self.assertEqual(str(self.livro), guardado.last_pdf)
         self.assertEqual(4, guardado.last_page)

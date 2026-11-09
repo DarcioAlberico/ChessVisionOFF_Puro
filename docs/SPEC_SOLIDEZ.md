@@ -2803,6 +2803,19 @@ justamente "não faz nada" (`test_page_results.py:321`, descartar página ausent
 `test_qt_rodape.py:222`, clique de cancelar sem cancelador): ali o teste confere que o estado ficou igual,
 campo a campo. A suíte sob cobertura passa sem oscilar em três rodadas.
 
+**Entregue** (2026-11-09): o fator mora em `tests/tempo_da_suite.py` (`limite`, `limite_ms`), e a espera
+que reprova no estouro em `qt_app.esperar_ate`; as quinze esperas caladas que havia nos testes (não só a da
+fila) passaram por ela, e `test_tempo_da_suite` acusa a próxima. `qt_app.esperar` também escala e reprova --
+e com isso apareceram três testes de `test_qt_ancora_da_tela` que esperavam calados os 60 s inteiros pela
+leitura que eles mesmos seguravam (`tarefa_segurada=True` agora; três minutos a menos por rodada).
+Divergências: `test_engine.py:126` não é limite de relógio (é `doze - oito < 0,05`, na barra), e as linhas
+267 e 610 andaram (`test_closing_twice_is_harmless`; o cancelamento do índice está em 758, e agora mede do
+pedido, não do começo). `test_qt_menu.py:203` não é «não faz nada»: valor desconhecido **apaga** a marca, e
+é isso que o teste confere. `test_qt_tabuleiro_editavel.py` não tem limite de relógio; a queda sob carga
+relatada não reproduziu aqui. A alavanca da integração veio junto, em commit próprio: nenhuma caixa modal
+de verdade abre na suíte (`tests/caixas_modais.py`). As três rodadas sob cobertura foram só dos arquivos
+com limite de relógio (227 testes, três vezes verdes), não da suíte inteira.
+
 ## S-873 · Os sobreviventes do mutator nos seis módulos-piloto
 
 **Problema.** Depende da S-803: o `tools/qualidade/mutator.py` e o `docs/metrics/mutacao.json` ainda não

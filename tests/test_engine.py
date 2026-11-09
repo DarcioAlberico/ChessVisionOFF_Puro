@@ -24,6 +24,7 @@ from pathlib import Path
 import chess
 import chess.engine
 from ambiente_de_teste import pasta_temporaria_da_classe
+from tempo_da_suite import limite
 
 from chess_diagram_ocr.engine import (
     ENV_ENGINE_PATH,
@@ -149,7 +150,7 @@ class AnalyzerTests(unittest.TestCase):
             avaliacao = motor.analyse(chess.Board())
             decorrido = time.monotonic() - inicio
 
-        self.assertLess(decorrido, 2.0, "A S-33 exige avaliação em menos de 2 s.")
+        self.assertLess(decorrido, limite(2.0), "A S-33 exige avaliação em menos de 2 s.")
         self.assertEqual(avaliacao.depth, 12)
         self.assertTrue(avaliacao.best_move_san)
 
@@ -290,10 +291,15 @@ class AnalyzerTests(unittest.TestCase):
                     self.assertTrue(chamar(motor), "a análise depois da queda tem de devolver um lance")
 
     def test_closing_twice_is_harmless(self) -> None:
+        """O primeiro `close` encerra o processo; o segundo não levanta (S-872: conferia só isto)."""
         motor = EngineAnalyzer(self.launcher, movetime_ms=100)
         motor.start()
+        processo = motor._engine
+        assert processo is not None
         motor.close()
+        self.assertTrue(processo.protocol.returncode.done(), "o processo do motor continua vivo")
         motor.close()
+        self.assertIsNone(motor._engine)
 
     def test_the_engine_reports_the_name_it_announced(self) -> None:
         with EngineAnalyzer(self.launcher, movetime_ms=100) as motor:

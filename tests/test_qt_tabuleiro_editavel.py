@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import unittest
 
-from qt_app import MOTIVO, TEM_PYQT, aplicacao
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, pixels_diferentes, renderizar
 
 from chess_diagram_ocr.ui import board_edit
 
@@ -121,7 +121,17 @@ class TabuleiroEditavelTests(unittest.TestCase):
         self.clicar(0)
         self.assertNotIn("a8", self.tabuleiro.accessibleName())
 
-    def test_clicar_fora_do_tabuleiro_nao_levanta(self) -> None:
+    def test_clicar_fora_do_tabuleiro_cancela_sem_mexer_em_nada(self) -> None:
+        """O botão que sobe fora do tabuleiro é um arraste cancelado: diz isso, e a posição e a
+        casa selecionada ficam como estavam (S-872; era «não levanta»)."""
+        recados: list[str] = []
+        self.tabuleiro.recado.connect(recados.append)
+        self.clicar(12)
+        self.assertEqual(self.tabuleiro.modelo.selected, 12)
+        self.posicoes.clear()
+        self.selecoes.clear()
+        recados.clear()
+
         fora = QPoint(2, 2)
         self.tabuleiro.mousePressEvent(
             self._evento(QEvent.Type.MouseButtonPress, fora, Qt.MouseButton.LeftButton)
@@ -129,6 +139,10 @@ class TabuleiroEditavelTests(unittest.TestCase):
         self.tabuleiro.mouseReleaseEvent(
             self._evento(QEvent.Type.MouseButtonRelease, fora, Qt.MouseButton.LeftButton)
         )
+        self.assertEqual(recados, ["Arraste cancelado."])
+        self.assertEqual(self.tabuleiro.posicao(), INICIAL)
+        self.assertEqual(self.tabuleiro.modelo.selected, 12)
+        self.assertEqual((self.posicoes, self.selecoes), ([], []))
 
     # ------------------------------------------------------------------------ correção
 
@@ -222,8 +236,9 @@ class TabuleiroEditavelTests(unittest.TestCase):
              "disputadas": ()},   # C3: a segunda opinião ainda não leu
         )
 
-    def test_desenhar_com_marcas_e_arrasto_nao_levanta(self) -> None:
-        """O `paintEvent` inteiro, com tudo aceso ao mesmo tempo."""
+    def test_desenhar_com_marcas_e_arrasto_pinta_o_que_esta_aceso(self) -> None:
+        """O `paintEvent` inteiro, com tudo aceso ao mesmo tempo -- e o desenho muda (S-872)."""
+        sem_marcas = renderizar(self.tabuleiro)
         self.tabuleiro.definir_casas_corrigidas([5])
         self.tabuleiro.definir_casas_problematicas([4])
         self.clicar(0)
@@ -233,7 +248,7 @@ class TabuleiroEditavelTests(unittest.TestCase):
         self.tabuleiro.mouseMoveEvent(
             self._evento(QEvent.Type.MouseMove, self.centro(40), Qt.MouseButton.LeftButton)
         )
-        self.assertFalse(self.tabuleiro.grab().isNull())
+        self.assertGreater(pixels_diferentes(sem_marcas, renderizar(self.tabuleiro)), 0)
 
     # -------------------------------------------------------------------------- o giro
 

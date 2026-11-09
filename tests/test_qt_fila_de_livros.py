@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Any
 
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, esperar_ate
+from tempo_da_suite import limite
 
 from chess_diagram_ocr.batch import STATUS_FAILED, STATUS_OK, STATUS_SKIPPED, BatchReport, BookResult
 from chess_diagram_ocr.ui.busy import BusyRegistry
@@ -114,11 +115,9 @@ class VarreduraTests(unittest.TestCase):
         self.addCleanup(self.varredura.esperar, 10_000)
 
     def _esperar(self, varredura: Any = None, ate_ms: int = 10_000) -> None:
+        """Reprova no estouro (S-872): voltar calado deixava a asserção seguinte dizer outra coisa."""
         alvo = varredura or self.varredura
-        for _ in range(ate_ms // 20):
-            QTest.qWait(20)
-            if not alvo.ocupado:
-                return
+        esperar_ate(lambda: not alvo.ocupado, limite_s=ate_ms / 1000, o_que="o fim da varredura")
 
     def test_cada_livro_termina_com_o_resultado_ao_lado_do_nome(self) -> None:
         self.varredura.acrescentar([A, B])
@@ -171,7 +170,7 @@ class VarreduraTests(unittest.TestCase):
         inicio = time.perf_counter()
         self.varredura.cancelar()
         self._esperar()
-        self.assertLess(time.perf_counter() - inicio, 1.5)
+        self.assertLess(time.perf_counter() - inicio, limite(1.5))
         estados = [livro.estado for livro in self.varredura.fila]
         self.assertEqual(estados[0], CANCELADO, "o livro em curso volta cancelado, com o que leu")
         self.assertEqual(estados[1:], [CANCELADO, CANCELADO], "os que nunca começaram")
@@ -258,10 +257,7 @@ class DialogoTests(unittest.TestCase):
         return dialogo
 
     def _esperar(self, dialogo: Any, ate_ms: int = 10_000) -> None:
-        for _ in range(ate_ms // 20):
-            QTest.qWait(20)
-            if not dialogo.varredura.ocupado:
-                return
+        esperar_ate(lambda: not dialogo.varredura.ocupado, limite_s=ate_ms / 1000, o_que="o fim da varredura")
 
     def test_a_fila_vazia_diz_o_que_fazer_e_nao_deixa_comecar(self) -> None:
         dialogo = self._montar()

@@ -18,6 +18,7 @@ from pathlib import Path
 
 import numpy as np
 from subprocesso import rodar_python
+from tempo_da_suite import fator
 
 from chess_diagram_ocr.pdf_io import render_pdf_page
 from chess_diagram_ocr.processo_de_trabalho import (
@@ -86,13 +87,18 @@ class NoFilhoTests(unittest.TestCase):
 
         O mesmo `_segura_o_gil` numa `threading.Thread` deixaria o laço abaixo parado por quase
         os 150 ms inteiros -- é o que o `bloqueio` mediu com o PyMuPDF e com o `labels.csv`.
+
+        **O trabalho e o limite escalam juntos** (S-872): sob cobertura o laço daqui fica mais lento,
+        e 40 ms deixam de caber; com o filho segurando 150 ms × fator e o limite em 40 ms × fator, a
+        razão que se afirma -- a parada daqui é menos de um terço do que o filho segura -- é a mesma.
         """
         self.trabalho.executar(_soma, 1, 1)  # o filho já nasceu e importou
 
         pior = 0.0
+        escala = fator()
 
         def pedir() -> None:
-            self.trabalho.executar(_segura_o_gil, 150)
+            self.trabalho.executar(_segura_o_gil, round(150 * escala))
 
         fio = threading.Thread(target=pedir)
         fio.start()
@@ -103,7 +109,7 @@ class NoFilhoTests(unittest.TestCase):
             pior = max(pior, agora - ultimo)
             ultimo = agora
         fio.join()
-        self.assertLess(pior * 1000, 40.0, f"a thread principal ficou {pior * 1000:.0f} ms sem andar")
+        self.assertLess(pior * 1000, 40.0 * escala, f"a thread principal ficou {pior * 1000:.0f} ms sem andar")
 
 
 def _derruba_no_filho(pid_da_janela: int, marca: str) -> int:

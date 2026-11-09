@@ -22,7 +22,7 @@ import cv2
 import fitz
 import numpy as np
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, esperar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, esperar, esperar_ate
 
 from chess_diagram_ocr.detection import DiagramCandidate
 from chess_diagram_ocr.fen_utils import check_position
@@ -400,12 +400,7 @@ class VisorTests(unittest.TestCase):
     # ------------------------------------------------------- reescalonamento ao fundo (passo 15)
 
     def _esperar_a_nitida(self) -> None:
-        from PyQt6.QtTest import QTest
-
-        for _ in range(200):
-            if self.visor._reescalonamento is None:
-                return
-            QTest.qWait(10)
+        esperar_ate(lambda: self.visor._reescalonamento is None, limite_s=2, o_que="a pixmap nítida")
 
     def test_em_linha_o_zoom_novo_ja_vem_nitido(self) -> None:
         """A bandeira desligada (o resto desta classe): a pixmap acompanha o zoom na hora."""

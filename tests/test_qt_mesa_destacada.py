@@ -10,7 +10,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from qt_app import MOTIVO, TEM_PYQT
+from qt_app import MOTIVO, TEM_PYQT, esperar_ate
 
 from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
 from chess_diagram_ocr.ui import abas, mesa
@@ -68,14 +68,6 @@ class MesaDestacadaTests(_JanelaComLivro):
         janela.show()  # type: ignore[attr-defined]
         janela.activateWindow()  # type: ignore[attr-defined]
         self.app.processEvents()
-
-    def esperar(self, condicao: object, ate_ms: int = 3000) -> bool:
-        passos = max(1, ate_ms // 20)
-        for _ in range(passos):
-            if condicao():  # type: ignore[operator]
-                return True
-            QTest.qWait(20)
-        return bool(condicao())  # type: ignore[operator]
 
     def rolagem_do_texto(self) -> QScrollArea:
         return self.principal.principal.pilha.widget(self.principal.principal.modos().index(abas.TEXTO))  # type: ignore[return-value]
@@ -159,14 +151,14 @@ class MesaDestacadaTests(_JanelaComLivro):
         self.assertTrue(janela.botao_seguinte.isEnabled())
         self.assertIs(janela.pilha_da_folha.currentWidget(), janela.visor)
         janela.botao_seguinte.click()
-        self.assertTrue(self.esperar(lambda: self.texto.folha_atual()[0] == pagina + 1), "a aba não acompanhou a folha")
+        esperar_ate(lambda: self.texto.folha_atual()[0] == pagina + 1, limite_s=3, o_que="a aba acompanhar a folha")
         self.assertEqual(self.principal.pdf.page_index, pagina + 1, "o visualizador do livro não foi junto")
         total = self.principal.pdf.page_count
         self.assertEqual(janela.rotulo_da_folha.text(), mesa.frase_da_folha_da_mesa(pagina + 1, total))
         self.assertIs(janela.pilha_da_folha.currentWidget(), janela.aviso_da_folha, "a vista mostrava a folha de antes")
         self.assertTrue(janela.botao_anterior.isEnabled())
         janela.botao_anterior.click()
-        self.assertTrue(self.esperar(lambda: self.texto.folha_atual()[0] == pagina))
+        esperar_ate(lambda: self.texto.folha_atual()[0] == pagina, limite_s=3, o_que="a aba voltar à folha")
         self.assertIn("cavalo", self.texto.texto(), "a folha lida não voltou do caderno")
         self.assertIs(janela.pilha_da_folha.currentWidget(), janela.visor)
 

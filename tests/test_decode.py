@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 import numpy as np
+from tempo_da_suite import limite
 from test_inference import probs_for_fen
 
 from chess_diagram_ocr.config import ACCEPT_MIN_CONFIDENCE, PIECE_CLASSES, PIECE_TO_IDX
@@ -374,7 +375,7 @@ class TetoDaBuscaTests(unittest.TestCase):
 
         # ~0,5 s numa máquina ociosa; o dobro dá folga para a suíte em paralelo sem deixar
         # passar o teto de antes, que levava sete vezes isso.
-        self.assertLess(gasto, 2.0, "o teto padrão de expansões não segura o pior caso")
+        self.assertLess(gasto, limite(2.0), "o teto padrão de expansões não segura o pior caso")
         self.assertFalse(resultado.constraints_satisfied)
 
     def test_o_teto_de_expansoes_vale(self) -> None:

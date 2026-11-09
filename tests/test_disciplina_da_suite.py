@@ -750,6 +750,7 @@ def test_o_proprio_processo_grava_no_data():
 AJUDANTES_DA_GUARDA = (
     "conftest.py",
     "qt_app.py",
+    "tempo_da_suite.py",
     "arvores_do_repositorio.py",
     "sonda_de_escrita.py",
     "caixas_modais.py",

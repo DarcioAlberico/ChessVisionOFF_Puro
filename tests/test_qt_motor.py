@@ -30,6 +30,7 @@ import chess
 from ambiente_de_teste import pasta_temporaria
 from fake_uci_engine import ENGINE_NAME
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, cor_em, descartar, pixels_diferentes, renderizar
+from tempo_da_suite import limite, limite_ms
 from test_engine import _launcher
 
 from chess_diagram_ocr import tablebase
@@ -308,11 +309,11 @@ class AnaliseDaPartidaTests(unittest.TestCase):
         self.assertTrue(_girar(self.app, lambda: len(rodada.resultado) or rodada.ocupado, 2.0))
         inicio = time.monotonic()
         rodada.cancelar()
-        parou = rodada.esperar(1500)
+        parou = rodada.esperar(limite_ms(1500))
         gasto = time.monotonic() - inicio
         self.app.processEvents()
         self.assertTrue(parou, "a rodada não parou em 1,5 s")
-        self.assertLess(gasto, 1.5)
+        self.assertLess(gasto, limite(1.5))
         self.assertFalse(rodada.ocupado)
 
     def test_o_que_ja_foi_avaliado_fica(self) -> None:

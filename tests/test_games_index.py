@@ -21,6 +21,7 @@ from unittest import mock
 import chess
 import varredura
 from subprocesso import rodar_python
+from tempo_da_suite import limite
 
 from chess_diagram_ocr import games_db, games_index
 from chess_diagram_ocr.games_db import GameRecord, database_paths
@@ -748,15 +749,21 @@ class CancelamentoDoIndiceTests(unittest.TestCase):
 
     def test_cancelar_para_em_menos_de_um_segundo_e_a_consulta_recusa_o_indice(self) -> None:
         cancelar = threading.Event()
-        relogio = threading.Timer(0.3, cancelar.set)
+        pedido: list[float] = []
+
+        def pedir() -> None:
+            pedido.append(time.perf_counter())
+            cancelar.set()
+
+        relogio = threading.Timer(0.3, pedir)
         relogio.start()
         self.addCleanup(relogio.cancel)
-        inicio = time.perf_counter()
         rodada = build_index([self.pequena, self.grande], self.indice, cancel=cancelar)
-        decorrido = time.perf_counter() - inicio
+        honrado = time.perf_counter()
 
         self.assertTrue(rodada.cancelado)
-        self.assertLess(decorrido, 1.3, "0,3 s até o pedido, e menos de 1 s para honrá-lo")
+        # Do pedido, e não do começo (S-872): o atraso do `Timer` numa máquina carregada não é do índice.
+        self.assertLess(honrado - pedido[0], limite(1.0), "menos de 1 s para honrar o pedido")
         self.assertGreaterEqual(
             rodada.partidas,
             3,

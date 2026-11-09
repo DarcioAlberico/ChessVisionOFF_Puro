@@ -89,7 +89,7 @@ class ChegadaDepoisDaTrocaTests(unittest.TestCase):
         self._ler_adiado(janela)
 
         janela.abrir_pdf(pdf_de_teste(self.pasta / "B.pdf"))  # abre na página 1, a mesma
-        esperar(janela)
+        esperar(janela, tarefa_segurada=True)
         TarefaAdiada.entregar_todas()
         QTest.qWait(0)
 
@@ -103,7 +103,7 @@ class ChegadaDepoisDaTrocaTests(unittest.TestCase):
         esperar(janela)
         self._ler_adiado(janela)
         janela.abrir_pdf(pdf_de_teste(self.pasta / "B.pdf"))
-        esperar(janela)
+        esperar(janela, tarefa_segurada=True)
         self.assertTrue(TarefaAdiada.pendentes[0].cancelada, "a leitura do livro que saiu seguiu correndo")
         TarefaAdiada.entregar_todas()
 
@@ -115,7 +115,7 @@ class ChegadaDepoisDaTrocaTests(unittest.TestCase):
         self._ler_adiado(janela)
 
         janela.pdf.ir_para_pagina(1)
-        esperar(janela)
+        esperar(janela, tarefa_segurada=True)
         QTest.mouseClick(janela.rodape._btn_cancelar, Qt.MouseButton.LeftButton)
         TarefaAdiada.entregar_todas()
         QTest.qWait(0)

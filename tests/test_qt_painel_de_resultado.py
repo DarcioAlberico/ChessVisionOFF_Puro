@@ -21,7 +21,7 @@ from unittest import mock
 import numpy as np
 import pytest
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, esperar_ate
 
 from chess_diagram_ocr.config import PIECE_CLASSES
 from chess_diagram_ocr.service import RecognizedDiagram
@@ -838,12 +838,7 @@ class SegundaOpiniaoTests(PainelTests):
             return self.placement
 
     def _esperar(self, condicao, ate_ms: int = 4000) -> None:
-        from PyQt6.QtTest import QTest
-
-        for _ in range(ate_ms // 10):
-            QTest.qWait(10)
-            if condicao():
-                return
+        esperar_ate(condicao, limite_s=ate_ms / 1000)
 
     def test_as_casas_em_disputa_ficam_marcadas_e_a_posicao_e_adotada(self) -> None:
         self.carregar(LEGAL)
@@ -899,7 +894,6 @@ class SegundaOpiniaoTests(PainelTests):
         """Uma `Tarefa` filha do painel é destruída com ele e o destrutor de `QThread` aborta o
         processo com a thread a correr (F9-C2). A tarefa fica sem pai (`manter_viva`) e os slots
         perguntam se o painel ainda existe -- se isto passar, o processo sobreviveu."""
-        from PyQt6.QtTest import QTest
         from qt_app import descartar
 
         from chess_diagram_ocr.qt import trabalho
@@ -915,11 +909,7 @@ class SegundaOpiniaoTests(PainelTests):
         self.assertIsNone(tarefa.parent(), "sem pai: não morre com o painel")
         self.assertIn(tarefa, trabalho._VIVAS)
         descartar(painel)
-        for _ in range(200):
-            QTest.qWait(10)
-            if tarefa not in trabalho._VIVAS:
-                break
-        self.assertNotIn(tarefa, trabalho._VIVAS, "a tarefa terminou e foi solta")
+        esperar_ate(lambda: tarefa not in trabalho._VIVAS, limite_s=2, o_que="a tarefa terminar e ser solta")
         self.assertEqual(leitor.lidos, 1)
 
     def test_a_copia_do_primeiro_nao_marca_nada(self) -> None:
@@ -1103,10 +1093,7 @@ class ComoAPessoaTests(PainelTests):
         with mock.patch.object(self.painel, "leitor_da_segunda_opiniao", return_value=leitor):
             self.painel.segunda_opiniao()
             self.clicar(self.painel.proximo)
-            for _ in range(400):
-                self.QTest.qWait(10)
-                if self.painel._segunda_em_curso is None:
-                    break
+            esperar_ate(lambda: self.painel._segunda_em_curso is None, limite_s=4, o_que="o parecer da 2ª opinião")
         self.assertEqual(leitor.lidos, 1)
         self.assertEqual(self.painel.modelo.fen_at(0), OUTRA, "o parecer foi para o diagrama 0")
         self.assertEqual(self.painel.tabuleiro.posicao(), LIVRO_0, "o 1 está na tela")
@@ -1126,10 +1113,7 @@ class ComoAPessoaTests(PainelTests):
         with mock.patch.object(self.painel, "leitor_da_segunda_opiniao", return_value=leitor),                 mock.patch.object(self.painel, "_segunda_opiniao_configurada", return_value=True):
             self.painel._atualizar_tudo()
             self.clicar(self.painel.btn_segunda)
-            for _ in range(400):
-                self.QTest.qWait(10)
-                if self.painel._segunda_em_curso is None:
-                    break
+            esperar_ate(lambda: self.painel._segunda_em_curso is None, limite_s=4, o_que="o parecer da 2ª opinião")
 
     def test_desfazer_a_segunda_opiniao_volta_a_rota_ocr_aceito(self) -> None:
         """S-888: desfazer a segunda opinião devolvia a posição e deixava a procedência -- a

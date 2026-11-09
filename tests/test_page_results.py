@@ -325,7 +325,13 @@ class DiscardTests(unittest.TestCase):
         self.assertIsNotNone(cache.get("b.pdf", 1, PARAMS))
 
     def test_discarding_a_missing_page_is_not_an_error(self) -> None:
-        PageResultsCache().discard(DOC, 99)
+        """O contrato é «não faz nada» (S-872): o que estava guardado continua, página a página."""
+        cache = PageResultsCache()
+        cache.put(DOC, _results(1))
+        cache.put(DOC, _results(2))
+        antes = (cache.cached_pages, cache.get(DOC, 1, PARAMS), cache.get(DOC, 2, PARAMS))
+        cache.discard(DOC, 99)
+        self.assertEqual((cache.cached_pages, cache.get(DOC, 1, PARAMS), cache.get(DOC, 2, PARAMS)), antes)
 
     def test_clear_empties_everything(self) -> None:
         cache = PageResultsCache()

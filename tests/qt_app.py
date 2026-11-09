@@ -29,6 +29,8 @@ import unittest
 from collections.abc import Callable
 from typing import Any
 
+import tempo_da_suite
+
 TEM_PYQT = importlib.util.find_spec("PyQt6") is not None
 """Se o PyQt6 está instalado. Sem ele os testes de janela **pulam**, e o `-ra` do `pyproject.toml`
 faz o motivo aparecer no fim da rodada -- que é o que a S-417 exige de todo pulo: ser visível em
@@ -62,13 +64,20 @@ def aplicacao() -> Any:
     return _APLICACAO
 
 
-def esperar(janela: Any, *, limite_ms: int = 60_000) -> None:
+def esperar(janela: Any, *, limite_ms: int = 60_000, tarefa_segurada: bool = False) -> None:
     """Roda a linha de eventos até a janela ficar ociosa: tarefa, leitura adiada e detector.
 
     Sem isto o teste que dispara uma leitura termina antes da thread, e o `QThread` morre com
     o objeto Python dele -- o que derruba o processo inteiro e leva junto os testes seguintes,
     com uma mensagem (`QThread: Destroyed while thread is still running`) que não nomeia quem
     fez isso.
+
+    O prazo escala com `tempo_da_suite.fator()`, e o estouro **reprova** (S-872): a janela ainda
+    ocupada no fim é o defeito, e voltar calado o empurrava para a asserção seguinte.
+
+    `tarefa_segurada=True` é para o teste que **segura** a leitura (`TarefaAdiada`) e quer só o resto
+    assentado: sem ele a espera esperava a tarefa que o próprio teste não solta -- e, calada, gastava
+    os 60 s inteiros a cada chamada (três testes de `test_qt_ancora_da_tela`, três minutos por rodada).
     """
     from PyQt6.QtCore import QEventLoop, QTimer
 
@@ -78,7 +87,7 @@ def esperar(janela: Any, *, limite_ms: int = 60_000) -> None:
         detector = getattr(janela, "_detector", None)
         adiada = getattr(janela, "_leitura_adiada", None)
         return (
-            janela._tarefa is not None
+            (janela._tarefa is not None and not tarefa_segurada)
             or bool(adiada is not None and adiada.isActive())
             or bool(detector is not None and detector.ocupado)
         )
@@ -89,9 +98,31 @@ def esperar(janela: Any, *, limite_ms: int = 60_000) -> None:
     relogio = QTimer()
     relogio.timeout.connect(lambda: laco.quit() if not ocupada() else None)
     relogio.start(20)
-    QTimer.singleShot(limite_ms, laco.quit)
+    prazo_ms = tempo_da_suite.limite_ms(limite_ms)
+    QTimer.singleShot(prazo_ms, laco.quit)
     laco.exec()
     relogio.stop()
+    if ocupada():
+        raise AssertionError(f"a janela continuou ocupada depois de {prazo_ms / 1000:.0f} s")
+
+
+def esperar_ate(condicao: Callable[[], object], *, limite_s: float = 10.0, o_que: str = "a condição") -> None:
+    """Gira a linha de eventos até `condicao()` valer, e **reprova** se o prazo acabar antes (S-872).
+
+    As esperas copiadas nos testes de fila e de índice voltavam caladas no estouro, e a asserção
+    seguinte reprovava dizendo outra coisa -- «o livro não está pronto» --, quando o que houve foi o
+    prazo acabar numa máquina carregada. O prazo escala com `tempo_da_suite.fator()`.
+    """
+    import time
+
+    from PyQt6.QtTest import QTest
+
+    prazo = tempo_da_suite.limite(limite_s)
+    fim = time.monotonic() + prazo
+    while not condicao():
+        if time.monotonic() >= fim:
+            raise AssertionError(f"{o_que} não aconteceu em {prazo:.1f} s")
+        QTest.qWait(20)
 
 
 def renderizar(widget: Any) -> Any:
