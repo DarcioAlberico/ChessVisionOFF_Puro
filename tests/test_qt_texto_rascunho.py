@@ -48,6 +48,8 @@ class _Aba(unittest.TestCase):
         self.painel.resize(700, 500)
         self.painel.show()
         self.app.processEvents()
+        # O livro das folhas de `_pagina()`: a folha de outro livro que chega fica de lado (S-824).
+        self.painel.definir_livro(Path("livro.pdf"), pagina=0)
         self.recados: list[str] = []
         self.painel.estado.connect(self.recados.append)
 

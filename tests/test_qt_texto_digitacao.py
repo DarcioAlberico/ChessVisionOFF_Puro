@@ -478,6 +478,7 @@ class AlteracoesPorGravarTests(_Folha):
     def test_o_digitado_durante_a_leitura_nao_some_quando_ela_chega(self) -> None:
         """A pergunta de `ler` foi sobre o texto de antes; o que se escreveu esperando a folha
         não foi confirmado por ninguém."""
+        self.painel.definir_livro(Path(_pagina().documento), pagina=0)  # o livro da folha que chega
         self.painel._documento_ao_ler = self.painel.documento  # a leitura partiu
         self.cursor_em(0)
         self.digitar("Esperando ")
@@ -486,11 +487,12 @@ class AlteracoesPorGravarTests(_Folha):
         ):
             self.painel._leitura_terminou(_pagina())
         self.assertTrue(self.painel.texto().startswith("Esperando "))
-        self.assertIn("ficou de lado", self.recados[-1])
+        self.assertIn("ficou de lado: o texto editado durante a leitura", self.recados[-1])
 
     def test_sem_edicao_durante_a_leitura_a_folha_chega_sem_segunda_pergunta(self) -> None:
         """A pergunta de `ler` já foi respondida: sem tecla no meio, a folha lida só chega."""
         self.cursor_em(0)
+        self.painel.definir_livro(Path(_pagina().documento), pagina=0)  # o livro da folha que chega
         self.digitar("x")  # editado antes; `ler` perguntou e a pessoa mandou descartar
         self.painel._documento_ao_ler = self.painel.documento  # a leitura partiu
         with mock.patch.object(dialogos, "ha_quem_responda", return_value=True), mock.patch.object(

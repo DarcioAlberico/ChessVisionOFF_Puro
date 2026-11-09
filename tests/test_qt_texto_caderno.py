@@ -446,6 +446,48 @@ class FolhaIlegivelTests(_Aba):
         self.assertIsNotNone(rascunho.achar(self.livro, 2, pasta=self.pasta / "rascunhos"), "o rascunho foi descartado")
 
 
+class LeituraQueChegaDepoisTests(_Aba):
+    """S-824: a tela muda **enquanto** a leitura corre, e o que chega é o que foi lido.
+
+    A `TarefaAdiada` segura o resultado até o teste mandar, como a fila de eventos segura o sinal
+    da thread. Antes do conserto a aba anotava a folha do campo -- a que o visualizador mostrava
+    quando o resultado chegou -- e não a que o motor leu.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        TarefaAdiada.pendentes.clear()
+        remendo = mock.patch.object(painel_de_texto, "Tarefa", TarefaAdiada)
+        remendo.start()
+        self.addCleanup(remendo.stop)
+        self.addCleanup(TarefaAdiada.pendentes.clear)
+
+    def test_folha_trocada(self) -> None:
+        self.ler(5)
+        self.painel.definir_livro(self.livro, pagina=8)  # o visualizador virou para a 9
+        TarefaAdiada.entregar_todas()
+        origem = self.painel.documento.origem
+        assert origem is not None
+        self.assertEqual(int(origem.pagina), 4)
+        self.assertEqual(self.painel.folha_atual()[0], 4, "a aba acha que está numa folha e mostra outra")
+        self.assertIn("folha 5", self.no_caderno(5))
+        self.assertEqual(self.no_caderno(9), "")
+
+    def test_livro_trocado(self) -> None:
+        self.ler(5)
+        primeiro = self.cad
+        outro = self.pasta / "livros" / "Outro.pdf"
+        outro.write_bytes(b"%PDF-1.7\n" + b"outro livro inteiro " * 100)
+        self.painel.definir_livro(outro, pagina=0, paginas=20)
+        TarefaAdiada.entregar_todas()
+        self.assertNotIn("folha 5", self.painel.documento.para_texto(), "a folha do livro antigo foi desenhada sob o novo")
+        self.assertEqual(self.painel.folha_atual()[0], 0)
+        self.assertIsNot(self.cad, primeiro)
+        self.assertEqual(self.no_caderno(5), "")
+        self.assertIn("Nunn.pdf", self.recados[-1])
+        self.assertIn("outro livro", self.recados[-1])
+
+
 class IndiceTests(_Aba):
     """S-613: as folhas do caderno numa lista, do `indice.json`, e o clique abre a folha."""
 

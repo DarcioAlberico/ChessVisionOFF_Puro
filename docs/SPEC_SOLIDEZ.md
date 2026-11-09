@@ -1069,6 +1069,14 @@ o antecipa falha hoje com `8 != 4`.
 
 **Aceite.** O teste passa, e o de troca de livro também.
 
+**Entregue** (2026-11-08): `test_folha_trocada` e `test_livro_trocado` em `tests/test_qt_texto_caderno.py`,
+com a `TarefaAdiada`; o primeiro falhava com `8 != 4`, o segundo desenhava «texto lido da folha 5» sob o
+livro novo. A folha de outro livro é descartada comparando `chave_do_livro(pagina.documento)` com a do livro
+na tela (S-827), e não pela `AncoraDaTela`: a S-823 corria em paralelo, e aqui a folha **não** se compara
+(ela vem do resultado), só o livro. O rodapé diz qual folha ficou de lado e por quê. Seis testes que
+remendavam `_ler` com uma folha de outro livro (`livro.pdf` contra `pasta/livro.pdf`, ou nenhum livro
+aberto) passaram a abrir o livro da folha que chega.
+
 ## S-825 · O `eventFilter` do `PainelDeTexto` por tabela
 
 **Problema** (confirmado por leitura). `PainelDeTexto.eventFilter` (`qt/painel_de_texto.py:4242-4291`,

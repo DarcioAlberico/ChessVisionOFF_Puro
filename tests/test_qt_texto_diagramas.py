@@ -93,7 +93,7 @@ class LeituraEntregaAFolhaTests(_Aba):
     def test_a_leitura_traz_a_miniatura_do_diagrama(self) -> None:
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
         with mock.patch.object(qt_texto, "_renderizar", return_value=_folha()) as renderizar, mock.patch.object(
-            qt_texto, "_ler", return_value=_pagina()
+            qt_texto, "_ler", return_value=_pagina(str(self.pasta / "livro.pdf"))
         ) as ler:
             self.painel.ler()
             self.esperar_a_tarefa()
@@ -117,7 +117,7 @@ class LeituraEntregaAFolhaTests(_Aba):
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
         self.painel.definir_fornecedor_de_folha(lambda indice: (folha, 72) if indice == 0 else None)
         with mock.patch.object(qt_texto, "_renderizar") as renderizar, mock.patch.object(
-            qt_texto, "_ler", return_value=_pagina()
+            qt_texto, "_ler", return_value=_pagina(str(self.pasta / "livro.pdf"))
         ) as ler:
             self.painel.ler()
             self.esperar_a_tarefa()
@@ -131,7 +131,7 @@ class LeituraEntregaAFolhaTests(_Aba):
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
         self.painel.definir_fornecedor_de_folha(lambda _indice: (_folha(), 220))
         with mock.patch.object(qt_texto, "_renderizar", return_value=None) as renderizar, mock.patch.object(
-            qt_texto, "_ler", return_value=_pagina()
+            qt_texto, "_ler", return_value=_pagina(str(self.pasta / "livro.pdf"))
         ):
             self.painel.ler()
             self.esperar_a_tarefa()
@@ -151,7 +151,7 @@ class LeituraEntregaAFolhaTests(_Aba):
         """A miniatura é conforto: um PDF que não renderiza não impede a leitura do texto."""
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
         with mock.patch.object(qt_texto, "_renderizar", return_value=None), mock.patch.object(
-            qt_texto, "_ler", return_value=_pagina()
+            qt_texto, "_ler", return_value=_pagina(str(self.pasta / "livro.pdf"))
         ):
             self.painel.ler()
             self.esperar_a_tarefa()
@@ -939,7 +939,7 @@ class TetoDoCampoDeFolhaTests(_Aba):
         assert linha is not None
         self.painel.campo_de_folha.setValue(7)
         with mock.patch.object(qt_texto, "_renderizar", return_value=None), mock.patch.object(
-            qt_texto, "_ler", return_value=_pagina()
+            qt_texto, "_ler", return_value=_pagina(str(self.pasta / "livro.pdf"))
         ) as ler:
             QTest.keyClick(linha, Qt.Key.Key_Return)
             self.esperar_a_tarefa()
@@ -1109,7 +1109,7 @@ class ConfiguracoesDaLeituraTests(unittest.TestCase):
         with mock.patch.object(configuracoes, "dpi", return_value=150), mock.patch.object(
             configuracoes, "max_boards", return_value=2
         ), mock.patch.object(qt_texto, "_renderizar", return_value=_folha()) as renderizar, mock.patch.object(
-            qt_texto, "_ler", return_value=_pagina()
+            qt_texto, "_ler", return_value=_pagina(str(self.pasta / "livro.pdf"))
         ) as ler:
             painel.ler()
             tarefa = painel._tarefa

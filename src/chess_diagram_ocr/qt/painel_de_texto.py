@@ -3886,6 +3886,14 @@ class PainelDeTexto(QWidget):
         assert isinstance(pagina, PaginaLida)
         partida = self._documento_ao_ler
         self._documento_ao_ler = None
+        # **A folha e o livro são os do resultado (S-824)**, e não os da tela quando ele chega: a
+        # página pode ter virado e o livro trocado enquanto o motor lia.
+        if chave_do_livro(pagina.documento) != chave_do_livro(self._pdf):
+            self.estado.emit(
+                f"A folha {pagina.pagina + 1} de «{Path(pagina.documento).name}» ficou de lado: "
+                "a leitura chegou com outro livro na tela."
+            )
+            return
         editado_na_leitura = partida is not None and self.documento is not partida
         if (
             editado_na_leitura
@@ -3894,7 +3902,7 @@ class PainelDeTexto(QWidget):
         ):
             self.estado.emit("A folha lida ficou de lado: o texto editado durante a leitura continua na tela.")
             return
-        self._pagina_indice = int(self.campo_de_folha.value()) - 1
+        self._pagina_indice = int(pagina.pagina)
         self.mostrar_pagina(pagina, folha_rgb=imagem, dpi=dpi)
         self._guardar_leitura()
         diagramas = len(pagina.diagramas)
