@@ -94,7 +94,7 @@ from chess_diagram_ocr.ui import (
     tokens,
 )
 from chess_diagram_ocr.ui import recorte_do_diagrama as regra_do_recorte
-from chess_diagram_ocr.ui.editor_model import DiagramEditorModel, EditorBinding, SaveKind, SaveTarget
+from chess_diagram_ocr.ui.editor_model import DiagramEditorModel, DiagramState, EditorBinding, SaveKind, SaveTarget
 from chess_diagram_ocr.ui.historico import Historico
 from chess_diagram_ocr.ui.legality import ILLEGAL_SAVE_TITLE, explain_position, illegal_save_question
 from chess_diagram_ocr.ui.page_results import (
@@ -245,9 +245,10 @@ class PainelDeResultado(QWidget):
         self._segunda_em_curso: Any = None
         self._csv_de_rotulos = Path(csv_de_rotulos)
         self.modelo = DiagramEditorModel()
-        self.historico: Historico[tuple[str, str]] = Historico(("", "w"))
-        """A pilha de desfazer, **por diagrama e com o lado** (S-229; OCR_UI C2, A7): cada estado
-        é `(placement, side)`, então trocar a vez entra na pilha e `Ctrl+Z` a devolve."""
+        self.historico: Historico[DiagramState] = Historico(DiagramState())
+        """A pilha de desfazer, **por diagrama, com o lado e a procedência** (S-229; OCR_UI C2, A7;
+        S-888): cada estado é um `DiagramState`, então trocar a vez entra na pilha, e `Ctrl+Z`
+        depois da segunda opinião ou do livro devolve a leitura **e** a rota de rótulo dela."""
         self._mostrando_reparadas = False
         """Se as casas que o decodificador trocou estão pintadas no tabuleiro (C1/X5)."""
         self._edicao = 0
@@ -1003,9 +1004,9 @@ class PainelDeResultado(QWidget):
         self.selecionou.emit(linha)
         self._atualizar_tudo()
 
-    def _estado_de(self, indice: int | None = None) -> tuple[str, str]:
-        """O que entra na pilha: a colocação **e** o lado do diagrama (A7)."""
-        return (self.modelo.fen_at(indice), self.modelo.side_at(indice))
+    def _estado_de(self, indice: int | None = None) -> DiagramState:
+        """O que entra na pilha: colocação, lado e procedência do diagrama (A7, S-888)."""
+        return self.modelo.state_at(indice)
 
     # ---------------------------------------------------------------------------- edição
 
@@ -1147,17 +1148,12 @@ class PainelDeResultado(QWidget):
         """`Ctrl+Y`: repõe o que o desfazer tirou."""
         self._voltar(self.historico.refazer(), MOTIVO_SEM_REFAZER)
 
-    def _voltar(self, estado: tuple[str, str] | None, motivo: str) -> None:
-        """Repõe um estado da pilha: só a colocação, só o lado, ou os dois -- o que mudou."""
+    def _voltar(self, estado: DiagramState | None, motivo: str) -> None:
+        """Repõe um estado da pilha inteiro -- posição, vez e procedência (S-888)."""
         if estado is None:
             self.estado.emit(motivo)
             return
-        placement, lado = estado
-        indice = self.modelo.clamped_index()
-        if placement != self.modelo.fen_at(indice):
-            self.modelo.apply_placement(placement, indice)
-        if lado != self.modelo.side_at(indice):
-            self.modelo.set_side(lado, indice)
+        self.modelo.restore(estado, self.modelo.clamped_index())
         self._atualizar_tudo()
 
     def limpar_tabuleiro(self) -> None:

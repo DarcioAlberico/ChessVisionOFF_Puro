@@ -201,6 +201,29 @@ class EditTests(unittest.TestCase):
         self.assertEqual(model.side_at(0), "b")
         self.assertEqual(model.items[0].side_to_move, "b")
 
+    def test_restaurar_o_estado_lido_desfaz_a_edicao_e_a_procedencia(self) -> None:
+        """S-888: o estado da pilha leva a procedência, e repô-lo não marca edição à mão."""
+        model = DiagramEditorModel()
+        model.load([_diagrama()], binding=EditorBinding.NONE)
+        lido = model.state_at(0)
+        model.mark_second_opinion(0, OUTRO, reader="outro")
+        model.apply_placement(PLACEMENT)
+        model.set_side("b")
+        model.mark_net_corrected(0, OUTRO)
+        self.assertNotEqual(model.state_at(0), lido)
+
+        self.assertTrue(model.restore(lido, 0))
+        self.assertEqual(model.state_at(0), lido)
+        self.assertFalse(model.has_hand_edits)
+        self.assertFalse(model.has_unsaved_hand_edits)
+        self.assertEqual(model.save_target().route, "ocr-aceito")
+        self.assertEqual(model.items[0].side_to_move_source, lido.side_source)
+
+    def test_restaurar_fora_da_faixa_nao_faz_nada(self) -> None:
+        model = DiagramEditorModel()
+        self.assertFalse(model.restore(model.state_at(0), 0))
+        self.assertEqual(model.state_at(3).placement, "")
+
 
 class AdoptTests(unittest.TestCase):
     def test_restaurar_do_cache_mantem_as_listas_por_referencia(self) -> None:

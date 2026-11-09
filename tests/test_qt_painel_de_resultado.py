@@ -1117,3 +1117,70 @@ class ComoAPessoaTests(PainelTests):
         self.assertEqual(self.painel.tabuleiro.posicao(), LIVRO_0, "o Ctrl+Z pôs no 1 a posição do 0")
         self.assertFalse(self.painel.btn_desfazer.isEnabled(), "a pilha do 1 tinha o parecer do 0")
 
+    def escolher_o_lado(self, lado: str) -> None:
+        botao = next(b for b in self.painel._lados.buttons() if b.property("lado") == lado)
+        self.clicar(botao)
+
+    def esperar_a_segunda(self, leitor: object) -> None:
+        """Clica «2ª opinião» com um leitor configurado e espera o parecer chegar."""
+        with mock.patch.object(self.painel, "leitor_da_segunda_opiniao", return_value=leitor),                 mock.patch.object(self.painel, "_segunda_opiniao_configurada", return_value=True):
+            self.painel._atualizar_tudo()
+            self.clicar(self.painel.btn_segunda)
+            for _ in range(400):
+                self.QTest.qWait(10)
+                if self.painel._segunda_em_curso is None:
+                    break
+
+    def test_desfazer_a_segunda_opiniao_volta_a_rota_ocr_aceito(self) -> None:
+        """S-888: desfazer a segunda opinião devolvia a posição e deixava a procedência -- a
+        amostra da leitura do modelo, aceita, saía gravada como «segunda opinião», e as casas
+        roxas continuavam marcadas sobre uma posição em que ninguém discorda de nada."""
+        self.carregar(LEGAL)
+        self.esperar_a_segunda(SegundaOpiniaoTests._Leitor(OUTRA))
+        self.assertEqual(self.painel.modelo.save_target().route, "segunda-opiniao")
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["disputadas"], (4, 28))
+
+        self.desfazer()
+        self.assertEqual(self.painel.tabuleiro.posicao(), LEGAL)
+        self.assertEqual(self.painel.modelo.save_target().route, "ocr-aceito")
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["disputadas"], (), "as casas roxas ficaram")
+
+        # E o refazer devolve as duas coisas juntas, pela mesma razão.
+        self.clicar(self.painel.btn_refazer)
+        self.assertEqual(self.painel.modelo.save_target().route, "segunda-opiniao")
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["disputadas"], (4, 28))
+
+    def test_desfazer_o_livro_tira_a_nota_e_as_casas_do_livro(self) -> None:
+        """S-888, o PGN do livro: a explicação seguia dizendo «PGN do livro» sob a leitura."""
+        self.carregar(LEGAL)
+        self.assertTrue(self.painel.adotar_do_livro(0, self.painel.modelo.items[0], LIVRO_0, "b", "Game 1 · confere"))
+        self.assertIn("PGN do livro", self.painel.detalhes.text())
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["disputadas"], (51,))
+
+        self.desfazer()
+        self.assertEqual((self.painel.tabuleiro.posicao(), self.painel.modelo.side_at(0)), (LEGAL, "w"))
+        self.assertNotIn("PGN do livro", self.painel.detalhes.text())
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["disputadas"], ())
+        self.assertFalse(self.painel.modelo.has_unsaved_hand_edits)
+
+    def test_desfazer_ate_a_leitura_nao_deixa_pendencia(self) -> None:
+        """S-888: desfazer até a leitura passava por `apply_placement` e `set_side`, que marcam
+        edição à mão -- e ao fechar vinha a pergunta «vai perder trabalho?» sobre nada, e a página
+        não saía mais do cache de navegação."""
+        self.carregar(LEGAL)
+        lido = self.painel.detalhes.text()
+        self.clicar_casa(60)   # o rei branco
+        self.QTest.keyClick(self.painel.tabuleiro, self.Qt.Key.Key_Up)
+        self.tecla("N")
+        self.escolher_o_lado("b")
+        self.assertTrue(self.painel.modelo.has_unsaved_hand_edits)
+
+        self.desfazer()
+        self.desfazer()
+        self.assertEqual((self.painel.tabuleiro.posicao(), self.painel.modelo.side_at(0)), (LEGAL, "w"))
+        self.assertFalse(self.painel.btn_desfazer.isEnabled())
+        self.assertFalse(self.painel.modelo.has_unsaved_hand_edits, "a leitura ficou como pendência")
+        self.assertFalse(self.painel.modelo.has_hand_edits)
+        self.assertEqual(self.painel.detalhes.text(), lido, "a procedência da vez ficou «manual»")
+        self.painel.lembrar_pagina()
+        self.assertEqual(self.painel.paginas.pages_with_hand_edits(), [], "a página ficou presa no cache")
