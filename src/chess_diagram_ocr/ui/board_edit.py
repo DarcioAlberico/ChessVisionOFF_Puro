@@ -47,6 +47,21 @@ def placement_of(fen: str) -> str:
     return str(fen).strip().split(" ")[0]
 
 
+def side_of(fen: str) -> str | None:
+    """A vez do segundo campo da FEN (`"w"` ou `"b"`), ou `None` quando só veio o campo de peças.
+
+    Levanta `ValueError` quando o segundo campo existe e não é a vez: o campo de FEN do Resultado
+    mostra a vez, e aceitar `... x - - 0 1` aplicando só as peças descartaria a metade digitada
+    sem aviso (S-893).
+    """
+    campos = str(fen).split()
+    if len(campos) < 2:
+        return None
+    if campos[1] not in ("w", "b"):
+        raise ValueError(f"a vez da FEN é w ou b, não {campos[1]!r}")
+    return campos[1]
+
+
 def squares_from_placement(placement: str) -> list[str]:
     """As 64 casas em ordem de leitura; casa vazia é string vazia.
 

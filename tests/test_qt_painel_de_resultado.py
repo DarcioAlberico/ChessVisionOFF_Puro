@@ -1184,3 +1184,43 @@ class ComoAPessoaTests(PainelTests):
         self.assertEqual(self.painel.detalhes.text(), lido, "a procedência da vez ficou «manual»")
         self.painel.lembrar_pagina()
         self.assertEqual(self.painel.paginas.pages_with_hand_edits(), [], "a página ficou presa no cache")
+
+    def digitar_fen(self, texto: str) -> None:
+        """Clica no campo, apaga o que há, digita e aperta Ctrl+Enter -- como a pessoa."""
+        campo = self.painel.campo_fen
+        self.clicar(campo)
+        self.QTest.keyClick(campo, self.Qt.Key.Key_A, self.Qt.KeyboardModifier.ControlModifier)
+        self.QTest.keyClicks(campo, texto)
+        self.QTest.keyClick(campo, self.Qt.Key.Key_Return, self.Qt.KeyboardModifier.ControlModifier)
+        self.app.processEvents()
+
+    def lado_marcado(self) -> str:
+        return next(str(b.property("lado")) for b in self.painel._lados.buttons() if b.isChecked())
+
+    def test_aplicar_fen_com_vez_preta_troca_o_lado(self) -> None:
+        """S-893: o campo mostra a FEN inteira, com a vez, e aplicá-la só lia o campo de peças --
+        a vez digitada sumia, e o campo era reescrito com a vez de antes, sem aviso."""
+        self.carregar(LEGAL)
+        self.assertTrue(self.painel.campo_fen.text().endswith(" w - - 0 1"))
+        self.digitar_fen(f"{LIVRO_0} b - - 0 1")
+
+        self.assertEqual(self.painel.tabuleiro.posicao(), LIVRO_0)
+        self.assertEqual(self.lado_marcado(), "b", "o rádio não mostra a vez digitada")
+        self.assertEqual(self.painel.campo_fen.text(), f"{LIVRO_0} b - - 0 1", "o campo trocou a vez digitada")
+        self.assertEqual(self.painel.modelo.save_target().side, "b")
+        # Um Ctrl+Z devolve as duas coisas: foi um gesto só.
+        self.desfazer()
+        self.assertEqual((self.painel.tabuleiro.posicao(), self.lado_marcado()), (LEGAL, "w"))
+
+    def test_so_a_vez_digitada_tambem_se_aplica(self) -> None:
+        self.carregar(LEGAL)
+        self.digitar_fen(f"{LEGAL} b - - 0 1")
+        self.assertEqual((self.painel.tabuleiro.posicao(), self.lado_marcado()), (LEGAL, "b"))
+        self.assertTrue(self.painel.btn_desfazer.isEnabled())
+
+    def test_a_vez_invalida_e_recusada_com_mensagem(self) -> None:
+        self.carregar(LEGAL)
+        self.digitar_fen(f"{LIVRO_0} x - - 0 1")
+        self.assertEqual((self.painel.tabuleiro.posicao(), self.lado_marcado()), (LEGAL, "w"), "aplicou meia FEN")
+        self.assertIn("vez", self.recados[-1])
+        self.assertFalse(self.painel.btn_desfazer.isEnabled())

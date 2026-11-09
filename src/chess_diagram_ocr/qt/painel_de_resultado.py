@@ -1032,16 +1032,29 @@ class PainelDeResultado(QWidget):
 
         FEN inválida **avisa e não muda nada**: aceitar um campo de peças malformado daria 64
         casas inventadas, e quem digitou não saberia que o que está na tela não é o que escreveu.
+
+        **A vez digitada também se aplica** (S-893): o campo mostra a FEN inteira, e ler só as
+        peças descartava o `b` digitado e reescrevia o campo com o `w` de antes. Peças e vez são
+        um gesto só, então um `Ctrl+Z` desfaz os dois; a vez que não é `w` nem `b` recusa tudo.
         """
         if not self.modelo.items:
             return
         texto = self.campo_fen.text().strip()
-        if not board_edit.is_valid_placement(board_edit.placement_of(texto)):
+        placement = board_edit.placement_of(texto)
+        if not board_edit.is_valid_placement(placement):
             self.estado.emit("A FEN digitada não descreve um tabuleiro: nada foi aplicado.")
             return
-        placement = board_edit.placement_of(texto)
-        self.modelo.apply_placement(placement, self.modelo.clamped_index())
-        self.historico.registrar(self._estado_de())
+        try:
+            lado = board_edit.side_of(texto)
+        except ValueError:
+            self.estado.emit("A vez da FEN digitada não é w nem b: nada foi aplicado.")
+            return
+        indice = self.modelo.clamped_index()
+        if placement != self.modelo.fen_at(indice):
+            self.modelo.apply_placement(placement, indice)
+        if lado is not None and lado != self.modelo.side_at(indice):
+            self.modelo.set_side(lado, indice)
+        self.historico.registrar(self._estado_de(indice))
         self._atualizar_tudo()
 
     # ---------------------------------------------------------------- número do lance (S-71)

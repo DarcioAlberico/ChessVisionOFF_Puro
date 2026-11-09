@@ -118,6 +118,23 @@ class EditOperationTests(unittest.TestCase):
         self.assertEqual(resultado, "8/8/8/8/8/8/8/7K")
 
 
+class SideOfTests(unittest.TestCase):
+    """S-893: a vez do segundo campo, para o campo de FEN do Resultado aplicá-la."""
+
+    def test_a_vez_do_segundo_campo(self) -> None:
+        self.assertEqual(board_edit.side_of("8/8/8/8/8/8/8/8 b - - 0 1"), "b")
+        self.assertEqual(board_edit.side_of("8/8/8/8/8/8/8/8 w"), "w")
+
+    def test_so_o_campo_de_pecas_nao_diz_a_vez(self) -> None:
+        self.assertIsNone(board_edit.side_of("8/8/8/8/8/8/8/8"))
+        self.assertIsNone(board_edit.side_of(""))
+
+    def test_segundo_campo_que_nao_e_a_vez_e_recusado(self) -> None:
+        for texto in ("8/8/8/8/8/8/8/8 x - - 0 1", "8/8/8/8/8/8/8/8 B"):
+            with self.subTest(texto=texto), self.assertRaises(ValueError):
+                board_edit.side_of(texto)
+
+
 class DifferingSquaresTests(unittest.TestCase):
     def test_reports_only_what_changed(self) -> None:
         depois = board_edit.set_piece(KINGS_ONLY, 60, "Q")
