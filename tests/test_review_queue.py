@@ -424,7 +424,7 @@ class BuildQueueTests(unittest.TestCase):
     def test_only_diagrams_with_a_reason_enter_the_queue(self) -> None:
         leituras = [oriented(KINGS_ONLY, 0.999), oriented(KINGS_ONLY, 0.20), oriented(EMPTY_BOARD, 0.95)]
         with tempfile.TemporaryDirectory() as tmpdir, patch(
-            "chess_diagram_ocr.pdf_to_pgn.predict_with_orientation",
+            "chess_diagram_ocr.service.predict_with_orientation",
             side_effect=leituras,
         ):
             queue = build_review_queue(Path("livro.pdf"), cache_dir=Path(tmpdir))
@@ -439,7 +439,7 @@ class BuildQueueTests(unittest.TestCase):
     def test_limit_cuts_after_sorting(self) -> None:
         leituras = [oriented(EMPTY_BOARD, 0.95), oriented(KINGS_ONLY, 0.20), oriented(KINGS_ONLY, 0.50)]
         with tempfile.TemporaryDirectory() as tmpdir, patch(
-            "chess_diagram_ocr.pdf_to_pgn.predict_with_orientation",
+            "chess_diagram_ocr.service.predict_with_orientation",
             side_effect=leituras,
         ):
             queue = build_review_queue(Path("livro.pdf"), cache_dir=Path(tmpdir), limit=1)
@@ -509,11 +509,11 @@ class UmaVarreduraPorLivroTests(unittest.TestCase):
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = Path(tmpdir)
-            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+            with patch("chess_diagram_ocr.service.predict_with_orientation", side_effect=self._leituras()):
                 direta = build_review_queue(Path("livro.pdf"), cache_dir=cache)
 
             construtor = ReviewQueueBuilder(Path("livro.pdf"), cache_dir=cache, confirmed={})
-            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+            with patch("chess_diagram_ocr.service.predict_with_orientation", side_effect=self._leituras()):
                 indice = build_gallery_index(
                     Path("livro.pdf"), cache_dir=cache, on_scanned=construtor.feed, now="2026-08-17"
                 )
@@ -531,11 +531,11 @@ class UmaVarreduraPorLivroTests(unittest.TestCase):
         """A varredura da Galeria não pode passar a depender de quem está ouvindo."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = Path(tmpdir)
-            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+            with patch("chess_diagram_ocr.service.predict_with_orientation", side_effect=self._leituras()):
                 sozinho = build_gallery_index(Path("livro.pdf"), cache_dir=cache, now="2026-08-17")
 
             construtor = ReviewQueueBuilder(Path("livro.pdf"), cache_dir=cache, confirmed={})
-            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+            with patch("chess_diagram_ocr.service.predict_with_orientation", side_effect=self._leituras()):
                 com_fila = build_gallery_index(
                     Path("livro.pdf"), cache_dir=cache, on_scanned=construtor.feed, now="2026-08-17"
                 )
@@ -547,7 +547,7 @@ class UmaVarreduraPorLivroTests(unittest.TestCase):
         depois da ordenação, senão "fila truncada" pareceria "o livro só tinha 30 problemas"."""
         with tempfile.TemporaryDirectory() as tmpdir:
             construtor = ReviewQueueBuilder(Path("livro.pdf"), cache_dir=Path(tmpdir), confirmed={}, limit=1)
-            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+            with patch("chess_diagram_ocr.service.predict_with_orientation", side_effect=self._leituras()):
                 build_gallery_index(Path("livro.pdf"), cache_dir=Path(tmpdir), on_scanned=construtor.feed)
             fila = construtor.finish()
 
@@ -563,7 +563,7 @@ class UmaVarreduraPorLivroTests(unittest.TestCase):
         ) as anotacoes:
             anotacoes.return_value.entries = {}
             construtor = ReviewQueueBuilder(Path("livro.pdf"), cache_dir=Path(tmpdir))
-            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+            with patch("chess_diagram_ocr.service.predict_with_orientation", side_effect=self._leituras()):
                 build_gallery_index(Path("livro.pdf"), cache_dir=Path(tmpdir), on_scanned=construtor.feed)
             construtor.finish()
 

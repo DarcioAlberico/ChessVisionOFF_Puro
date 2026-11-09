@@ -1586,6 +1586,8 @@ confiança do portão.
 
 **Aceite.** O teste passa, e `pdf_to_pgn.py` não chama `predict_with_orientation` (guarda por `grep`).
 
+**Entregue** (2026-11-09): `recognize_page` ganhou `contexts=`, pelo mesmo motivo de `candidates=`: a varredura lê o contexto pela própria indireção, com o leitor de legenda que recebeu, e o `read_text=False` do `cvoff-export-pgn` continua valendo. O `DiagramPosition.gate_confidence` continua `None` sem reparo externo (é o que o header `[OCR...]` sempre disse); o valor, quando há, é o de `RecognizedDiagram`. Nas 114 posições do conjunto de campo exportadas antes e depois, FEN, rotação, veredito e portão são idênticos; mudou só o motivo da orientação em 22 (`coordenadas da borda` no lugar de `única orientação legal` ou da margem), que o PGN só imprime quando a orientação é incerta. Fora do conjunto, o que muda no PGN: diagrama com coordenadas legíveis deixa de ir à revisão por orientação incerta, e o de ponto de vista das pretas sai com a FEN canônica.
+
 ## S-834 · Decodificação restrita sem relógio
 
 **Problema** (confirmado por script). `decode.py:386-391` usa `SEGUNDOS_MAXIMOS = 0.5` (`:308`): a busca

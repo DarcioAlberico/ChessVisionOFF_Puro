@@ -702,6 +702,7 @@ class OcrService:
         *,
         options: RecognitionOptions,
         candidates: Sequence[DiagramCandidate] | None = None,
+        contexts: Sequence[DiagramContext] | None = None,
         progress: Callable[[int, int], None] | None = None,
         should_cancel: Callable[[], bool] | None = None,
     ) -> list[RecognizedDiagram]:
@@ -733,6 +734,10 @@ class OcrService:
         veio --, e conferir pelo que ele carrega (contar caixas, comparar bbox) daria uma
         resposta que parece garantia e não é. Quem chama guarda a lista com a página ao lado; a
         janela em Qt faz isso em `_candidatos_desta_pagina`.
+
+        **`contexts` é pelo mesmo motivo, e é da exportação** (S-833): a varredura de um livro lê
+        o contexto textual pela própria indireção, com o leitor de legenda que recebeu, e pode
+        desligá-lo (`read_text=False` dá `[]`). `None` lê aqui, com o leitor deste serviço.
         """
         if page_rgb is None:
             page_rgb = self.render_page(pdf_source, page_index, dpi=options.dpi)
@@ -744,12 +749,13 @@ class OcrService:
         boards = [(candidate.board_rgb, None) for candidate in candidates]
         # Mesmo contexto textual que a exportação lê (S-16): a interface mostrando um lado a
         # jogar e o PGN gravando outro seria pior que não mostrar nada.
-        contexts = contexts_for_pdf_page(
-            pdf_source,
-            page_index,
-            [c.bbox_pdf for c in candidates],
-            caption_reader=self._caption_reader,
-        )
+        if contexts is None:
+            contexts = contexts_for_pdf_page(
+                pdf_source,
+                page_index,
+                [c.bbox_pdf for c in candidates],
+                caption_reader=self._caption_reader,
+            )
 
         return self._predict_boards(
             image_rgb=page_rgb,

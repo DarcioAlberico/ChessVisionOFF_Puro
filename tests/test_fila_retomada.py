@@ -74,7 +74,7 @@ class FilaRetomadaTests(unittest.TestCase):
             mock.patch("chess_diagram_ocr.pdf_to_pgn._page_contexts", side_effect=lambda *a, **k: [DiagramContext()]),
             # Toda leitura é suspeita: cada página visitada põe um item na fila.
             mock.patch(
-                "chess_diagram_ocr.pdf_to_pgn.predict_with_orientation",
+                "chess_diagram_ocr.service.predict_with_orientation",
                 side_effect=lambda *a, **k: oriented(KINGS_ONLY, 0.20),
             ),
             mock.patch("chess_diagram_ocr.review_queue.load_annotations", return_value=mock.Mock(entries={})),

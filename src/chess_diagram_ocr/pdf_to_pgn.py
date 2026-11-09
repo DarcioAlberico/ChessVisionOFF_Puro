@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 import chess.pgn
 import numpy as np
@@ -24,8 +24,7 @@ from .config import (
     OrientationMode,
     ReadingOrder,
 )
-from .cor_por_livro import apply_colour, calibrador_do_livro
-from .estipulacao import apply_stipulation
+from .cor_por_livro import calibrador_do_livro
 from .export_checkpoint import (
     DEFAULT_CHECKPOINT_EVERY,
     CheckpointWriter,
@@ -33,18 +32,18 @@ from .export_checkpoint import (
     load_partial,
     partial_path_for,
 )
-from .fen_utils import check_position, square_name
+from .fen_utils import square_name
 from .gallery import DiagramAnnotation, GaleriaDeOutroLivro, lichess_analysis_url, load_annotations
-from .inference import BoardPrediction, load_model, predict_with_orientation
-from .lance_seguinte import apply_next_move
+from .inference import BoardPrediction, load_model
 from .pdf_io import PdfSource as _PdfSource
 from .pdf_text import DiagramContext
 from .provenance import hash_board_rgb
 from .proveniencia import Cabecalho, chave, hash_do_arquivo, write_sidecar
-from .semantics import SideToMove, compose_fen, infer_castling_rights, infer_side_to_move
+from .semantics import SideSource, SideToMove, compose_fen, infer_castling_rights
 
 if TYPE_CHECKING:
     from .detection import DiagramCandidate
+    from .service import RecognizedDiagram
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +156,50 @@ class DiagramPosition:
     repairs: tuple[tuple[str, str, str], ...] = ()
     """`(casa, lida, final)` de cada troca do decodificador, da tinta ou do lance (A11)."""
 
+    @classmethod
+    def from_recognized(cls, lido: RecognizedDiagram, *, page_index: int) -> DiagramPosition:
+        """A posição que vai ao PGN, a partir do que `OcrService.recognize_page` leu (S-833).
+
+        Nada aqui decide: cada campo é o que o reconhecimento já respondeu, na forma do PGN --
+        casas por nome (`e5`) em vez de índice, e o diagrama numerado a partir de 1.
+        `gate_confidence` é o de `RecognizedDiagram`, e fica `None` quando não houve reparo
+        externo, que é o que o header `[OCR...]` sempre disse (o portão julga `min_confidence`).
+        """
+        prediction = lido.prediction
+        decode = prediction.decode if prediction is not None else None
+        return cls(
+            page_index=page_index,
+            diagram_index=lido.index + 1,
+            fen=lido.placement,
+            confidence=lido.mean_confidence,
+            min_confidence=lido.min_confidence,
+            bbox_pdf=lido.bbox_pdf,
+            image_hash=hash_board_rgb(lido.board_rgb),
+            square_confidences=tuple(round(float(c), 4) for c in lido.square_confidences),
+            repairs=tuple(
+                (square_name(sq), _piece_letter(before), _piece_letter(after))
+                for sq, before, after in (decode.changed_squares if decode is not None else [])
+            ),
+            colour_repairs=tuple(square_name(c) for c in lido.colour_repairs),
+            next_move=lido.next_move,
+            next_move_repairs=tuple(square_name(c) for c in lido.next_move_repairs),
+            stipulation=lido.stipulation,
+            stipulation_closes=lido.stipulation_closes,
+            stipulation_keys=lido.stipulation_keys,
+            stipulation_repairs=tuple(square_name(c) for c in lido.stipulation_repairs),
+            stipulation_reason=lido.stipulation_reason,
+            gate_confidence=lido.gate_confidence if lido.external_repairs else None,
+            is_legal=lido.is_legal,
+            is_fatal=lido.is_fatal,
+            problems=lido.problems,
+            rotation=lido.rotation,
+            orientation_ambiguous=lido.orientation_ambiguous,
+            orientation_reason=lido.orientation_reason,
+            side_to_move=_lado_lido(lido),
+            context=lido.context,
+            detection_source=lido.detection_source,
+        )
+
     @property
     def full_fen(self) -> str:
         """A FEN que vai para o PGN, com o lado a jogar decidido e o roque inferido.
@@ -219,6 +262,23 @@ class DiagramPosition:
     @property
     def page_number(self) -> int:
         return self.page_index + 1
+
+
+
+def _lado_lido(lido: RecognizedDiagram) -> SideToMove:
+    """O lado a jogar de volta na forma da `semantics`, de onde `RecognizedDiagram` o tirou.
+
+    A leitura guarda a procedência como texto porque a interface acrescenta as suas
+    (`"queue"`); na varredura ela é sempre uma das da `semantics`, e o que não for cai em
+    `"default"`, que é a resposta honesta para uma procedência que não se reconhece.
+    """
+    cor = chess.WHITE if lido.side_to_move == "w" else chess.BLACK
+    for fonte in get_args(SideSource):
+        if fonte == lido.side_to_move_source:
+            return SideToMove(color=cor, source=fonte, reason=lido.side_to_move_reason,
+                              conflicting=lido.side_conflicting)
+    return SideToMove(color=cor, source="default", reason=lido.side_to_move_reason,
+                      conflicting=lido.side_conflicting)
 
 
 Verdict = Literal["accepted", "needs_review", "rejected"]
@@ -585,17 +645,6 @@ def _own_model_session(model_path: Path, device: str | None) -> Iterator[tuple[A
     yield load_model(model_path, device=device)
 
 
-def _motor_para(context: Any) -> Any:
-    """O motor UCI só quando a exigência deste diagrama precisa de um (mate em 3+), como em
-    `OcrService._stipulation_engine`; `None` nos outros casos e quando a máquina não tem motor."""
-    from .estipulacao import LANCES_DA_BUSCA, motor_padrao
-
-    exigencia = getattr(context, "stipulation", None) if context is not None else None
-    if exigencia is None or exigencia.lances <= LANCES_DA_BUSCA:
-        return None
-    return motor_padrao()
-
-
 def _scan_pages(
     pdf_source: PdfSource,
     model: Any,
@@ -614,10 +663,27 @@ def _scan_pages(
     progress_callback: ProgressCallback | None,
     page_callback: PageCallback | None,
 ) -> Iterator[ScannedDiagram]:
-    """O laço de páginas, com o modelo já em mãos. Separado só para manter o `with` legível."""
+    """O laço de páginas, com o modelo já em mãos.
+
+    **O reconhecimento é o `OcrService.recognize_page`, o mesmo que os relatórios de campo
+    medem** (S-833). Aqui ficava uma cópia da corrente -- orientação, cor, lado, lance seguinte,
+    exigência, legalidade, portão -- que já tinha se separado da original: as coordenadas da
+    borda não chegavam à orientação, e o portão era calculado de outro jeito. O que sobra aqui é
+    o que só a varredura faz: renderizar, detectar na ordem de leitura pedida e ler o contexto
+    pelo leitor de legenda que ela recebeu.
+    """
+    from .service import OcrService, RecognitionOptions
+
     # C5: o calibrador de cor do livro, uma vez por PDF (o perfil da suíte quando
     # ela está importável; `None` sem perfil -- e o tabuleiro responde sozinho).
     calibrador_de_cor = calibrador_do_livro(pdf_source)
+    servico = OcrService(loader=lambda _caminho: (model, resolved_device))
+    opcoes = RecognitionOptions(
+        orientation=orientation,
+        max_boards=max_boards_per_page,
+        dpi=dpi,
+        colour_calibrator=lambda _fonte: calibrador_de_cor,
+    )
     seen = 0
 
     for page_index in range(start_page, last_page_exclusive):
@@ -638,83 +704,23 @@ def _scan_pages(
             if read_text
             else []
         )
+        lidos = (
+            servico.recognize_page(
+                pdf_source, page_index, page_rgb, options=opcoes, candidates=candidates, contexts=contexts
+            )
+            if candidates
+            else []
+        )
 
         page_positions: list[DiagramPosition] = []
-        for diagram_index, candidate in enumerate(candidates, start=1):
-            oriented = predict_with_orientation(
-                candidate.board_rgb,
-                model,
-                resolved_device,
-                mode=orientation,
-            )
-            prediction = oriented.prediction
-            context = contexts[diagram_index - 1] if diagram_index - 1 < len(contexts) else None
-            # C5: a cor pela tinta, pelo mesmo caminho da janela (`OcrService._predict_boards`).
-            prediction, trocas_cor, _motivo_cor = apply_colour(
-                prediction, candidate.board_rgb, oriented, calibrador_de_cor)
-            side = infer_side_to_move(prediction.fen_board, context)
-            # C11: o lance seguinte devolvido à posição, pelo mesmo caminho da janela.
-            prediction, reparo = apply_next_move(prediction, context, side)
-            if reparo is not None and reparo.trocas:
-                side = infer_side_to_move(prediction.fen_board, context)
-            # C12: a exigência do problema, pelo mesmo caminho da janela (`_stipulation_engine`).
-            prediction, exigencia = apply_stipulation(
-                prediction, context, side, motor=_motor_para(context))
-            if exigencia is not None and exigencia.trocas:
-                side = infer_side_to_move(prediction.fen_board, context)
-
-            # Legalidade re-avaliada com o lado a jogar decidido, e nao com o "w" fixo que a
-            # inferencia usou: e o que faz o xeque invertido deixar de ser "ilegal" quando a
-            # S-17 descobre que a vez era das pretas.
-            resolved = check_position(compose_fen(prediction.fen_board, side))
-
-            gate_confidence: float | None = None
-            excluded = (set(reparo.casas if reparo is not None else []) | {t.casa for t in trocas_cor}
-                        | set(exigencia.casas if exigencia is not None else []))
-            if excluded:
-                others = [float(c) for i, c in enumerate(prediction.square_confidences) if i not in excluded]
-                gate_confidence = min(others) if others else None
-
-            decode = prediction.decode
-            position = DiagramPosition(
-                page_index=page_index,
-                diagram_index=diagram_index,
-                fen=prediction.fen_board,
-                confidence=prediction.mean_confidence,
-                min_confidence=prediction.min_confidence,
-                bbox_pdf=candidate.bbox_pdf,
-                image_hash=hash_board_rgb(candidate.board_rgb),
-                square_confidences=tuple(round(float(c), 4) for c in prediction.square_confidences),
-                repairs=tuple(
-                    (square_name(sq), _piece_letter(before), _piece_letter(after))
-                    for sq, before, after in (decode.changed_squares if decode is not None else [])
-                ),
-                colour_repairs=tuple(square_name(t.casa) for t in trocas_cor),
-                next_move=reparo.lance if reparo is not None else "",
-                next_move_repairs=tuple(square_name(c) for c in reparo.casas) if reparo is not None else (),
-                stipulation=(exigencia.estipulacao.rotulo
-                             if exigencia is not None and exigencia.estipulacao is not None else ""),
-                stipulation_closes=exigencia.fecha if exigencia is not None else None,
-                stipulation_keys=exigencia.chaves if exigencia is not None else (),
-                stipulation_repairs=(tuple(square_name(c) for c in exigencia.casas)
-                                     if exigencia is not None else ()),
-                stipulation_reason=exigencia.motivo if exigencia is not None else "",
-                gate_confidence=gate_confidence,
-                is_legal=resolved.is_legal,
-                is_fatal=resolved.is_fatal,
-                problems=resolved.problems,
-                rotation=oriented.rotation,
-                orientation_ambiguous=oriented.ambiguous,
-                orientation_reason=oriented.reason,
-                side_to_move=side,
-                context=context,
-                detection_source=candidate.source,
-            )
+        for candidate, lido in zip(candidates, lidos, strict=True):
+            position = DiagramPosition.from_recognized(lido, page_index=page_index)
             page_positions.append(position)
             seen += 1
+            assert lido.prediction is not None  # recognize_page sempre lê
             yield ScannedDiagram(
                 position=position,
-                prediction=prediction,
+                prediction=lido.prediction,
                 board_rgb=candidate.board_rgb,
                 detector_score=candidate.detector_score,
             )

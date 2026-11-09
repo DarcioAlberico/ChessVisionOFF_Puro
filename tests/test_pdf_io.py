@@ -79,7 +79,7 @@ class BorrowingTests(unittest.TestCase):
 class ScanOpenCountTests(unittest.TestCase):
     """O critério de aceite da S-61, escrito como teste."""
 
-    @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
+    @patch("chess_diagram_ocr.service.predict_with_orientation")
     @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
     @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
     def test_uma_abertura_por_pagina_e_nao_tres(self, mock_load, mock_detect, mock_predict) -> None:
@@ -101,7 +101,7 @@ class ScanOpenCountTests(unittest.TestCase):
         # deteccao e camada de texto --, mais a contagem de paginas: dez para estas tres.
         self.assertEqual(aberturas, 1)
 
-    @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
+    @patch("chess_diagram_ocr.service.predict_with_orientation")
     @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
     @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
     def test_a_varredura_le_o_mesmo_com_documento_emprestado(self, mock_load, mock_detect, mock_predict) -> None:

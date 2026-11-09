@@ -207,7 +207,7 @@ class PdfToPgnTests(unittest.TestCase):
                 self.assertIn(f'[OCRRotation "{rotation}"]', payload)
 
     @patch("chess_diagram_ocr.pdf_to_pgn._page_contexts")
-    @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
+    @patch("chess_diagram_ocr.service.predict_with_orientation")
     @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
     @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
     @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
@@ -239,7 +239,7 @@ class PdfToPgnTests(unittest.TestCase):
         self.assertIs(mock_contexts.call_args.args[3], sentinela)
 
     @patch("chess_diagram_ocr.pdf_to_pgn._page_contexts")
-    @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
+    @patch("chess_diagram_ocr.service.predict_with_orientation")
     @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
     @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
     @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
@@ -298,7 +298,7 @@ class PdfToPgnTests(unittest.TestCase):
         self.assertEqual(mock_predict.call_count, 3)
 
     @patch("chess_diagram_ocr.pdf_to_pgn._page_contexts")
-    @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
+    @patch("chess_diagram_ocr.service.predict_with_orientation")
     @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
     @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
     @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
@@ -368,7 +368,7 @@ class PdfToPgnTests(unittest.TestCase):
         self.assertEqual(fonte.count("load_model("), 1)
 
     @patch("chess_diagram_ocr.pdf_to_pgn._page_contexts")
-    @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
+    @patch("chess_diagram_ocr.service.predict_with_orientation")
     @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
     @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
     @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
@@ -935,6 +935,91 @@ class ExportGateTests(unittest.TestCase):
 
         self.assertEqual(verdict, "needs_review")
         self.assertIn("0.550", reason)
+
+
+class MesmaLeituraQueOsRelatoriosTests(unittest.TestCase):
+    """S-833: a exportação reconhece pela mesma função que os relatórios de campo medem.
+
+    `field_eval` mede `OcrService.recognize_page`; o lote, o `cvoff-export-pgn`, a Galeria, a fila e
+    as táticas passam por `iter_pdf_diagrams`. Com uma cópia da corrente em cada lado, as
+    coordenadas da borda (`DiagramContext.coordinates`) chegavam à orientação num e não no outro.
+    """
+
+    # Peão branco em e2: girar o mapeamento (ponto de vista das pretas) muda a FEN.
+    LIDA = "4k3/8/8/8/8/8/4P3/4K3"
+
+    def _ler_pelos_dois_caminhos(self):
+        from chess_diagram_ocr import inference, pdf_to_pgn, service
+        from chess_diagram_ocr.orientation import BoardCoordinates
+        from chess_diagram_ocr.service import OcrService, RecognitionOptions
+
+        contexto = DiagramContext(coordinates=BoardCoordinates(ranks_top_to_bottom=(1, 2, 3, 4, 5, 6, 7, 8)))
+        candidato = candidate_for(np.zeros((800, 800, 3), dtype=np.uint8))
+        pagina = np.zeros((10, 10, 3), dtype=np.uint8)
+        argumentos: list[dict] = []
+        real = inference.predict_with_orientation
+
+        def gravador(board_rgb, model, device, **kwargs):
+            argumentos.append(dict(kwargs))
+            return real(board_rgb, model, device, **kwargs)
+
+        def probabilidades(boards, *_a, **_k):
+            return [probs_for_fen(self.LIDA, 0.95) for _ in boards]
+
+        # O nome é remendado onde quer que o módulo o tenha importado: depois da S-833 a
+        # exportação não o importa mais, e o teste não pode depender de que importe.
+        remendos = [
+            patch.object(modulo, "predict_with_orientation", side_effect=gravador)
+            for modulo in (pdf_to_pgn, service)
+            if hasattr(modulo, "predict_with_orientation")
+        ]
+        remendos += [
+            patch("chess_diagram_ocr.inference.board_probabilities_batch", side_effect=probabilidades),
+            patch("chess_diagram_ocr.pdf_to_pgn.calibrador_do_livro", return_value=None),
+            patch("chess_diagram_ocr.service.contexts_for_pdf_page", return_value=[contexto]),
+            patch("chess_diagram_ocr.pdf_to_pgn._get_pdf_page_count", return_value=1),
+            patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page", return_value=pagina),
+            patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams", return_value=[candidato]),
+            patch("chess_diagram_ocr.pdf_to_pgn._page_contexts", return_value=[contexto]),
+            patch("chess_diagram_ocr.pdf_to_pgn.load_model", return_value=("model", "cpu")),
+        ]
+        for remendo in remendos:
+            remendo.start()
+            self.addCleanup(remendo.stop)
+
+        medido = OcrService(loader=lambda _caminho: ("model", "cpu")).recognize_page(
+            Path("sample.pdf"),
+            0,
+            pagina,
+            options=RecognitionOptions(colour_calibrator=lambda _fonte: None),
+            candidates=[candidato],
+        )
+        exportado = scan_pdf_positions(Path("sample.pdf"))
+        return argumentos, medido, exportado
+
+    def test_os_dois_caminhos_leem_igual_com_coordenadas_na_borda(self) -> None:
+        argumentos, medido, exportado = self._ler_pelos_dois_caminhos()
+
+        self.assertEqual(len(argumentos), 2)
+        self.assertEqual(argumentos[1], argumentos[0])
+        self.assertEqual(len(medido), 1)
+        self.assertEqual(len(exportado), 1)
+        lido, posicao = medido[0], exportado[0]
+        self.assertEqual(posicao.fen, lido.placement)
+        self.assertEqual(posicao.rotation, lido.rotation)
+        self.assertEqual(posicao.orientation_ambiguous, lido.orientation_ambiguous)
+        julgada = posicao.gate_confidence if posicao.gate_confidence is not None else posicao.min_confidence
+        self.assertAlmostEqual(julgada, lido.gate_confidence, places=6)
+        # E a regra das coordenadas decidiu nos dois: ponto de vista das pretas, sem dúvida.
+        self.assertIn("coordenadas da borda", posicao.orientation_reason)
+
+    def test_a_exportacao_nao_tem_corrente_propria(self) -> None:
+        from chess_diagram_ocr import pdf_to_pgn
+
+        fonte = Path(pdf_to_pgn.__file__).read_text(encoding="utf-8")
+        for nome in ("predict_with_orientation", "apply_next_move", "apply_stipulation", "apply_colour"):
+            with self.subTest(nome=nome):
+                self.assertFalse(nome in fonte, f"pdf_to_pgn.py ainda cita {nome}: a corrente mora no OcrService")
 
 
 if __name__ == "__main__":
