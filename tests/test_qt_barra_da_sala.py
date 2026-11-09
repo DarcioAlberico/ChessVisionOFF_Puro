@@ -440,7 +440,7 @@ class NoPainelTests(unittest.TestCase):
         dialogo.partida_escolhida.emit(base, 0)
         self.app.processEvents()
         self.assertIn("Carlsen", painel.lbl_origem.text())
-        self.assertEqual("ECO B90 · Sicilian, Najdorf", painel.lbl_eco.text(), "o ECO da partida aberta")
+        self.assertEqual("ECO B90 · Sicilian, Najdorf", painel.navegacao.lbl_eco.text(), "o ECO da partida aberta")
 
     def test_o_dialogo_de_busca_e_reusado_e_a_posicao_e_atualizada(self) -> None:
         """Um `QThread` destruído enquanto roda derruba o processo: abrir a busca duas vezes não
@@ -473,7 +473,7 @@ class NoPainelTests(unittest.TestCase):
         self.addCleanup(descartar, painel)
         base = self.pasta / "vazia.pgn"
         base.write_text("nada aqui\n", encoding="utf-8")
-        self.assertFalse(painel.abrir_partida_da_base(base, 0))
+        self.assertFalse(painel.partidas.abrir_partida_da_base(base, 0))
         self.assertIn("Refaça o índice", painel.lbl_status.text())
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

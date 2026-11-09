@@ -390,8 +390,8 @@ class TreinoNaSalaTests(unittest.TestCase):
         painel.push_move(chess.Move.from_uci("e2e4"))
         painel.alternar_treino()
         painel.alternar_treino()
-        self.assertEqual(0, painel.placar.sessao.total, "a sessão zera")
-        self.assertEqual(1, painel.placar.total.total, "o livro não zera")
+        self.assertEqual(0, painel.treino.placar.sessao.total, "a sessão zera")
+        self.assertEqual(1, painel.treino.placar.total.total, "o livro não zera")
 
     def test_o_placar_esta_no_disco_depois_do_lance(self) -> None:
         """Uma gravação por lance: o arquivo tem alguns bytes, e o que se perde numa queda é a
@@ -410,7 +410,7 @@ class TreinoNaSalaTests(unittest.TestCase):
         painel.push_move(chess.Move.from_uci("d2d4"))
         self.assertIn("não é o lance da linha", painel.lbl_status.text())
         self.assertNotIn("perde", painel.lbl_status.text())
-        self.assertEqual(1, painel.placar.sessao.errados)
+        self.assertEqual(1, painel.treino.placar.sessao.errados)
 
     def test_com_motor_a_frase_e_escrita_duas_vezes(self) -> None:
         """O veredicto chega na hora; o preço chega quando o motor termina."""
@@ -420,9 +420,9 @@ class TreinoNaSalaTests(unittest.TestCase):
             painel.alternar_treino()
             painel.push_move(chess.Move.from_uci("d2d4"))
             self.assertIn("perguntando ao motor", painel.lbl_status.text())
-            self.assertTrue(_girar(self.app, lambda: painel.placar.sessao.total > 0))
+            self.assertTrue(_girar(self.app, lambda: painel.treino.placar.sessao.total > 0))
             self.assertIn("d4", painel.lbl_status.text())
-            self.assertTrue(painel._medidor_da_perda().esperar(5000))
+            self.assertTrue(painel.treino._medidor_da_perda().esperar(5000))
             self.app.processEvents()
 
     def test_o_lance_da_linha_e_certo_e_anda(self) -> None:
@@ -431,7 +431,7 @@ class TreinoNaSalaTests(unittest.TestCase):
         painel.alternar_treino()
         painel.push_move(chess.Move.from_uci("e2e4"))
         self.assertEqual("e4", painel.estudo.no.san())
-        self.assertEqual(1, painel.placar.sessao.certos)
+        self.assertEqual(1, painel.treino.placar.sessao.certos)
 
     def test_o_fim_da_linha_nao_cobra_lance(self) -> None:
         painel = self.sala()

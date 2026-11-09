@@ -443,9 +443,9 @@
    "crap": 62.9
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_estudo.py",
-   "funcao": "PainelDeEstudo._receber_do_pgn",
-   "linha": 2789,
+   "arquivo": "src/chess_diagram_ocr/qt/sala_arquivos.py",
+   "funcao": "_receber_do_pgn",
+   "linha": 128,
    "cc": 8,
    "cobertura": 0.0526,
    "crap": 62.4
@@ -739,9 +739,9 @@
    "crap": 38.3
   },
   {
-   "arquivo": "src/chess_diagram_ocr/qt/painel_de_estudo.py",
-   "funcao": "PainelDeEstudo.save_pgn",
-   "linha": 3281,
+   "arquivo": "src/chess_diagram_ocr/qt/sala_arquivos.py",
+   "funcao": "save_pgn",
+   "linha": 390,
    "cc": 6,
    "cobertura": 0.04,
    "crap": 37.9

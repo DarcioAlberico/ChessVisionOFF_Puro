@@ -977,7 +977,7 @@ class JanelaDoAutoTesteTests(unittest.TestCase):
         self.addCleanup(janela.close)
         self.assertNotEqual(CAMINHO_DO_ESTADO, janela._caminho_do_estado)
         self.assertEqual(self.pasta, janela._caminho_do_estado.parent)
-        self.assertFalse(janela.estudo.has_engine)
+        self.assertFalse(janela.estudo.motor.has_engine)
 
 
 if __name__ == "__main__":  # pragma: no cover - conveniência de quem roda o arquivo direto

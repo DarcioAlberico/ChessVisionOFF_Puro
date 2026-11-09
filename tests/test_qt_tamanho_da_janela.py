@@ -428,8 +428,8 @@ class SalaA1024SemMotorTests(unittest.TestCase):
         coluna = self.sala.divisor_vertical
         teto = sala_declarada.piso_da_leitura(
             sum(self.sala.divisor.sizes()),
-            minimo=self.sala._caixa_minima_do_tabuleiro(),
-            esteira=self.sala._esteira_da_coluna(),
+            minimo=self.sala.leiaute._caixa_minima_do_tabuleiro(),
+            esteira=self.sala.leiaute._esteira_da_coluna(),
             alca=max(1, self.sala.divisor.handleWidth()),
         )
         self.assertEqual(
@@ -443,7 +443,7 @@ class SalaA1024SemMotorTests(unittest.TestCase):
         self.sala.lista.setMinimumWidth(1)
         self.sala.comentario.setMinimumWidth(1)
         self.app.processEvents()
-        self.sala._acomodar_o_tabuleiro()
+        self.sala.leiaute.acomodar_o_tabuleiro()
         self.app.processEvents()
         pedido = coluna.minimumSizeHint().width()
         self.assertLess(pedido, teto, "o regime da janela de verdade não foi reproduzido")
@@ -551,12 +551,12 @@ class SalaA1024ComMotorTests(unittest.TestCase):
         """
         self.sala.alternar_analise_continua()
         self.addCleanup(self.parar_a_analise)
-        self.assertTrue(self._girar(lambda: bool(self.sala._candidatos)))
+        self.assertTrue(self._girar(lambda: bool(self.sala.motor._candidatos)))
 
     def parar_a_analise(self) -> None:
         if self.sala.btn_continua is not None and self.sala.btn_continua.isChecked():
             self.sala.alternar_analise_continua()
-        self._girar(lambda: not self.sala._analysing)
+        self._girar(lambda: not self.sala.motor._analysing)
 
     def _no_painel(self, x: float, y: float) -> QPoint:
         return self.sala.tabuleiro.mapTo(self.sala, QPoint(int(x), int(y)))
@@ -583,8 +583,8 @@ class SalaA1024ComMotorTests(unittest.TestCase):
         """
         self.assertEqual(qt_janela.LARGURA_MINIMA_DAS_ABAS, self.janela.divisor.sizes()[0])
         precisam = (
-            self.sala._caixa_minima_do_tabuleiro()
-            + self.sala._esteira_da_coluna()
+            self.sala.leiaute._caixa_minima_do_tabuleiro()
+            + self.sala.leiaute._esteira_da_coluna()
             + sala_declarada.LARGURA_MINIMA_DA_LEITURA
             + self.sala.divisor.handleWidth()
         )
@@ -673,7 +673,7 @@ class SalaA1024ComMotorTests(unittest.TestCase):
 
     def test_os_quatro_botoes_de_navegacao_ficam_na_mesma_fileira(self) -> None:
         """Eles quebravam em duas porque o que sobrava da coluna eram 203 px."""
-        faixa = self.sala.lbl_lance.parentWidget()
+        faixa = self.sala.navegacao.lbl_lance.parentWidget()
         assert faixa is not None
         botoes = list(faixa.findChildren(QPushButton))[:4]
         self.assertEqual(4, len(botoes), "a faixa de navegação não tem os quatro botões")
@@ -685,10 +685,10 @@ class SalaA1024ComMotorTests(unittest.TestCase):
         coluna = self.sala.divisor.widget(0)
         assert coluna is not None and coluna.layout() is not None
         margens = coluna.layout().contentsMargins()
-        faixa = self.sala._faixa_do_tabuleiro
+        faixa = self.sala.leiaute.faixa_do_tabuleiro
         assert faixa is not None and self.sala.vantagem is not None
         self.assertEqual(
-            self.sala._esteira_da_coluna(),
+            self.sala.leiaute._esteira_da_coluna(),
             margens.left()
             + margens.right()
             + self.sala.vantagem.sizeHint().width()
@@ -862,7 +862,7 @@ class ColunaQueEncolheNaJanelaTests(unittest.TestCase):
     **A guarda que faltava, e é o defeito mais perigoso da base.** `ColunaQueEncolheTests`, em
     `tests/test_ui_sala_declarada.py`, prova que a régua pura sabe o que fazer com
     `largura_anterior`; nada provava que o painel **lhe passa** esse argumento. Tirada a linha
-    `self._largura_acomodada = largura` de `qt/painel_de_estudo.py`, o degrau da quinta rodada
+    `self._largura_acomodada = largura` de `qt/sala_leiaute.py`, o degrau da quinta rodada
     volta -- a coluna de leitura cai de 203 para 183 px depois de 1400 -> 1600 -> 1400 -- e a suíte
     inteira fica verde.
 
@@ -932,15 +932,15 @@ class ColunaQueEncolheNaJanelaTests(unittest.TestCase):
         if do_tabuleiro is not None:
             do_tabuleiro.setMinimumWidth(1)
         self.app.processEvents()
-        self.sala._acomodar_o_tabuleiro()
+        self.sala.leiaute.acomodar_o_tabuleiro()
         self.app.processEvents()
 
     def piso_de_agora(self) -> int:
         """O piso que a régua declara para a coluna que a sala tem **neste** instante."""
         return sala_declarada.piso_da_leitura(
             sum(self.sala.divisor.sizes()),
-            minimo=self.sala._caixa_minima_do_tabuleiro(),
-            esteira=self.sala._esteira_da_coluna(),
+            minimo=self.sala.leiaute._caixa_minima_do_tabuleiro(),
+            esteira=self.sala.leiaute._esteira_da_coluna(),
             alca=max(1, self.sala.divisor.handleWidth()),
         )
 

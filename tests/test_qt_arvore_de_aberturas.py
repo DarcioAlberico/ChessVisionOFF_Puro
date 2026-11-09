@@ -289,7 +289,7 @@ class SalaTests(unittest.TestCase):
         self.addCleanup(self._fechar)
 
     def _fechar(self) -> None:
-        arvore = self.sala._arvore
+        arvore = self.sala.partidas._arvore
         if arvore is not None:
             arvore.esperar(20_000)
             self.app.processEvents()
@@ -331,7 +331,7 @@ class SalaTests(unittest.TestCase):
     def test_um_lance_que_a_posicao_nao_sustenta_vira_frase_e_nao_lance(self) -> None:
         """A posição pode ter andado entre a consulta e o clique -- e aí o SAN é de outra."""
         self._abrir()
-        self.assertFalse(self.sala.jogar_da_arvore("Qxh7"))
+        self.assertFalse(self.sala.partidas.jogar_da_arvore("Qxh7"))
         self.assertIsNone(self.sala.estudo.no.move, "a sala jogou um lance ilegal")
 
     def test_a_arvore_aberta_acompanha_a_posicao_da_sala(self) -> None:
@@ -346,7 +346,7 @@ class SalaTests(unittest.TestCase):
 
     def test_ver_as_partidas_abre_a_busca_ja_preenchida(self) -> None:
         dialogo = self._abrir()
-        busca = self.sala.partidas_da_arvore(
+        busca = self.sala.partidas.partidas_da_arvore(
             arvore_ui.busca_da_posicao(self.sala.estudo.tabuleiro.board_fen(), "B90")
         )
         self.assertIsNotNone(busca)

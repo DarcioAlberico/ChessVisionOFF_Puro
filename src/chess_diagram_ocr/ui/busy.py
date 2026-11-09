@@ -285,7 +285,7 @@ FORA_DO_REGISTRO: dict[tuple[str, str], str] = {
         "trancar nada. Ninguém a pediu, ela custa décimos de segundo, e o que produz é um "
         "conjunto de retângulos que a próxima visita à página refaz."
     ),
-    ("painel_de_estudo.py", "analyse"): (
+    ("sala_motor.py", "analyse"): (
         "Uma avaliação do motor sobre a posição na tela (S-33). Segundos, e derivada: a "
         "posição continua lá para pedir de novo."
     ),

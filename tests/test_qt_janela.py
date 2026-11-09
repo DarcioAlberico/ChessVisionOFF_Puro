@@ -2534,10 +2534,10 @@ class MotorDasPreferenciasTests(unittest.TestCase):
         return montada
 
     def test_o_motor_injetado_chega_a_sala(self) -> None:
-        self.assertTrue(self._janela(motor=_MotorFalso()).estudo.has_engine)
+        self.assertTrue(self._janela(motor=_MotorFalso()).estudo.motor.has_engine)
 
     def test_sem_motor_a_secao_nao_existe(self) -> None:
-        self.assertFalse(self._janela(motor=None).estudo.has_engine)
+        self.assertFalse(self._janela(motor=None).estudo.motor.has_engine)
 
     def test_o_padrao_e_o_motor_das_preferencias(self) -> None:
         """`motor` omitido é o produto: a janela pergunta às preferências, e não a `None`."""
@@ -2545,7 +2545,7 @@ class MotorDasPreferenciasTests(unittest.TestCase):
         with mock.patch.object(janela_mod, "motor_das_preferencias", return_value=motor) as procura:
             janela = self._janela()
         procura.assert_called_once()
-        self.assertTrue(janela.estudo.has_engine)
+        self.assertTrue(janela.estudo.motor.has_engine)
 
     def test_fechar_a_janela_encerra_o_motor(self) -> None:
         """Um motor é um processo, não um widget: sem isto cada abertura deixaria um `stockfish.exe` vivo."""

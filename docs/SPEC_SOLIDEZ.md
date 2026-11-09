@@ -2467,6 +2467,23 @@ S-883, que tocam o painel) é a caracterização.
 
 **Aceite.** Suíte verde em cada passo; o arquivo abaixo de 1.500 linhas.
 
+**Entregue** (2026-11-09): `qt/painel_de_estudo.py` 3.708 → 1.495 linhas, como composição. As quatro
+partes pedidas saíram com o estado delas, cada uma um `QObject` filho da sala: `qt/sala_motor.py`
+(`MotorDaSala`: avaliação com a geração como âncora, partida inteira, linha na árvore, opções e troca
+de motor), `qt/sala_partidas.py` (`PartidasDaBase`: posição, busca, árvore de aberturas, índice e o
+cache), `qt/sala_treino.py` (`TreinoDaSala`: lance cobrado, placar, táticas e agenda) e
+`qt/sala_lista.py` (`ListaDeLances`). **Divergiu em dois pontos.** (1) Só as quatro deixavam o
+arquivo em ~1.930 linhas -- as faixas citadas tinham andado, e o arquivo era 48 linhas maior que a
+spec diz --, então saíram também `qt/sala_leiaute.py` (as alças e a régua da S-551),
+`qt/sala_coluna.py` (faixa de navegação e miniatura do recorte), `qt/sala_cabecalho.py` e
+`qt/sala_arquivos.py` (colar, abrir e salvar PGN, exportar, imprimir, lote). (2) Nenhuma `Tarefa` nasce
+no painel (as rodadas já vinham de `indexar_com_dialogo` e afins, com `manter_viva` desde a S-826),
+então não houve âncora nova a pôr: a do motor é a geração de sempre. Os comandos do catálogo seguem
+métodos do painel, que delegam; os testes que liam estado privado passaram a lê-lo na parte
+(`painel.motor._candidatos`, `painel.leiaute._esteira_da_coluna`...). O par do dryer
+`buscar_partidas`/`arvore_de_aberturas` só mudou de arquivo e foi regravado com a razão, e as duas
+entradas de `crap.json` acima do teto (`_receber_do_pgn`, `save_pgn`) trocaram de endereço.
+
 ## S-867 · O bloco de resposta da janela vira decisão pura
 
 **Problema.** `qt/janela.py` (2.293 linhas) é coordenadora legítima, mas o bloco que decide o que fazer com

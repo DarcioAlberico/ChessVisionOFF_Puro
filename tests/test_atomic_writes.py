@@ -66,7 +66,7 @@ EXCECOES = {
         "o .partial.jsonl da S-24 é um registro de eventos que só cresce: acrescentar não reescreve "
         "o que já estava, e a linha rasgada no fim não parseia e é descartada na retomada"
     ),
-    "qt/painel_de_estudo.py::PainelDeEstudo.write_pgn": (
+    "qt/sala_arquivos.py::write_pgn": (
         "o 'acrescentar ao PGN' da S-346: o arquivo é a base de partidas da pessoa, e reescrevê-la "
         "inteira por troca atômica para pôr um jogo no fim custaria a base toda a cada estudo -- o "
         "append nunca trunca, e a interrupção deixa só o jogo novo pela metade; sobrescrever já é atômico"

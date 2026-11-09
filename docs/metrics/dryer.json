@@ -22,7 +22,7 @@
    "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
    "linha_a": 278,
    "b": "src/chess_diagram_ocr/cli/texto_vertical.py::parse_args",
-   "linha_b": 277,
+   "linha_b": 401,
    "semelhanca": 1.0
   },
   {
@@ -57,14 +57,14 @@
    "a": "src/chess_diagram_ocr/cli/texto_linha.py::parse_args",
    "linha_a": 242,
    "b": "src/chess_diagram_ocr/cli/texto_vertical.py::parse_args",
-   "linha_b": 277,
+   "linha_b": 401,
    "semelhanca": 1.0
   },
   {
    "a": "src/chess_diagram_ocr/cli/texto_placar_final.py::parse_args",
    "linha_a": 239,
    "b": "src/chess_diagram_ocr/cli/texto_vertical.py::parse_args",
-   "linha_b": 277,
+   "linha_b": 401,
    "semelhanca": 1.0
   },
   {
@@ -78,14 +78,14 @@
    "a": "src/chess_diagram_ocr/qt/painel_da_galeria.py::PainelDaGaleria._confirmar_destrutivo",
    "linha_a": 1530,
    "b": "src/chess_diagram_ocr/qt/painel_de_estudo.py::PainelDeEstudo._perguntar",
-   "linha_b": 1759,
+   "linha_b": 900,
    "semelhanca": 1.0
   },
   {
    "a": "src/chess_diagram_ocr/qt/painel_de_texto.py::PainelDeTexto.desfazer",
-   "linha_a": 1547,
+   "linha_a": 1545,
    "b": "src/chess_diagram_ocr/qt/painel_de_texto.py::PainelDeTexto.refazer",
-   "linha_b": 1571,
+   "linha_b": 1569,
    "semelhanca": 1.0
   },
   {
@@ -124,13 +124,6 @@
    "semelhanca": 1.0
   },
   {
-   "a": "src/chess_diagram_ocr/qt/painel_de_estudo.py::PainelDeEstudo.buscar_partidas",
-   "linha_a": 2527,
-   "b": "src/chess_diagram_ocr/qt/painel_de_estudo.py::PainelDeEstudo.arvore_de_aberturas",
-   "linha_b": 2556,
-   "semelhanca": 0.948
-  },
-  {
    "a": "src/chess_diagram_ocr/cli/texto_estilo_classificador.py::build_parser",
    "linha_a": 257,
    "b": "src/chess_diagram_ocr/cli/texto_estilo_motor.py::build_parser",
@@ -143,6 +136,14 @@
    "b": "src/chess_diagram_ocr/cli/texto_estilo_motor.py::build_parser",
    "linha_b": 193,
    "semelhanca": 0.941
+  },
+  {
+   "a": "src/chess_diagram_ocr/qt/sala_partidas.py::PartidasDaBase.buscar_partidas",
+   "linha_a": 130,
+   "b": "src/chess_diagram_ocr/qt/sala_partidas.py::PartidasDaBase.arvore_de_aberturas",
+   "linha_b": 157,
+   "semelhanca": 0.936,
+   "proposito": "S-866: o par da S-535 (buscar_partidas e arvore_de_aberturas) so mudou de arquivo, do painel para qt/sala_partidas.py; mesma semelhanca"
   },
   {
    "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
@@ -169,7 +170,7 @@
    "a": "src/chess_diagram_ocr/cli/texto_inventario.py::parse_args",
    "linha_a": 223,
    "b": "src/chess_diagram_ocr/cli/texto_vertical.py::parse_args",
-   "linha_b": 277,
+   "linha_b": 401,
    "semelhanca": 0.935
   },
   {
@@ -251,7 +252,7 @@
   },
   {
    "a": "src/chess_diagram_ocr/qt/arvore_de_aberturas.py::ConstrutorDaArvore.__init__",
-   "linha_a": 409,
+   "linha_a": 408,
    "b": "src/chess_diagram_ocr/qt/lote_de_diagramas.py::ExportacaoDoLote.__init__",
    "linha_b": 101,
    "semelhanca": 0.877
@@ -356,9 +357,9 @@
   },
   {
    "a": "src/chess_diagram_ocr/text/ouro.py::para_json",
-   "linha_a": 149,
+   "linha_a": 192,
    "b": "src/chess_diagram_ocr/text/pagina.py::LinhaLida.para_json",
-   "linha_b": 400,
+   "linha_b": 401,
    "semelhanca": 0.846
   },
   {

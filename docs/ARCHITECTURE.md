@@ -180,6 +180,8 @@ divisão, não o toolkit, que este documento descreve.
 | `painel_do_pdf.py` · `visor.py` | O lado direito: o PDF, a navegação, a seleção, e a página com os diagramas marcados por cima. A roda e o zoom são de `ui/viewport.py`; onde as caixas estão e o que um clique nelas significa, de `ui/page_overlay.py`. |
 | `painel_de_resultado.py` · `tabuleiro_editavel.py` · `tabuleiro.py` | O editor de diagramas reconhecidos: o tabuleiro que se corrige por clique, arrasto e pincel, a FEN, a legalidade e a gravação. O estado é de `ui/editor_model.py` e `ui/board_model.py`; o desenho puro, de `ui/desenho_do_tabuleiro.py`. |
 | `painel_de_estudo.py` · `tabuleiro_de_jogo.py` | A sala de estudo: um estudo por diagrama, árvore de variantes, anotação, motor, e o tabuleiro em que se joga (Fases 43 a 50 e 73 a 77). |
+| `sala_motor.py` · `sala_partidas.py` · `sala_treino.py` · `sala_leiaute.py` | As partes da sala de estudo com estado próprio (S-866): o motor (avaliação, partida inteira, opções), as perguntas à base de partidas e o índice, o treino com o placar, as táticas e a agenda, e a repartição das alças com a régua do tabuleiro (S-551). O painel as compõe e delega os comandos do catálogo. |
+| `sala_lista.py` · `sala_cabecalho.py` · `sala_coluna.py` · `sala_arquivos.py` | Os widgets e as funções da sala de estudo (S-866): a lista de lances com as variantes dobráveis, o cabeçalho da partida e o formulário dele, a faixa de navegação e a miniatura do diagrama, e o estudo que entra e sai -- colar, abrir e salvar PGN, exportar e imprimir. |
 | `painel_de_revisao.py` · `painel_do_dataset.py` · `painel_da_galeria.py` · `painel_de_texto.py` | As abas de Revisão, Dataset, Galeria e Texto. |
 | `menu.py` · `fita.py` · `fila.py` · `barra.py` · `paleta.py` · `atalhos.py` | O menu, as duas peles de cromo (fita e fila), a barra que quebra em vez de cortar, a paleta de comandos e os atalhos -- gerados de `ui/comandos.py` e `ui/atalhos.py`, nunca reescritos. |
 | `tema.py` · `icones.py` · `dica.py` · `legenda.py` | A folha de estilo (os papéis de `ui/tokens.py` virando QSS), os ícones vetoriais, a dica do controle desabilitado e a legenda de atalhos. |
@@ -503,7 +505,7 @@ Contar só a primeira deixaria de fora a leitura da página, que é o laço inte
 | detecção de duplicatas | `qt/painel_do_dataset.py` | não | não, é derivada | não |
 | leitura do texto da página | `qt/painel_de_texto.py` | sim, entre páginas | não, o `.cvtxt` já está em disco | não (é o classificador de caractere) |
 | exportação do texto lido | `qt/painel_de_texto.py` | não | **sim**, o destino fica pela metade | não |
-| avaliação do motor sobre a posição | `qt/painel_de_estudo.py` | não | — declarada | não (é o Stockfish) |
+| avaliação do motor sobre a posição | `qt/sala_motor.py` | não | — declarada | não (é o Stockfish) |
 | índice por nome da base de partidas (S-532) | `qt/indice_da_base.py::IndexadorDaBase` | sim, a cada 16 mil linhas | não: cada arquivo é uma transação, e a rodada seguinte retoma | não |
 | busca por jogador, evento, ano, Elo e ECO (S-533) | `qt/busca_de_partidas.py::DialogoDeBusca` | não (dezenas de ms com índice) | — declarada: nada é gravado | não |
 | fila de livros (S-546) | `qt/fila_de_livros.py::VarreduraDeLivros`, uma thread para a fila inteira | sim, entre páginas e entre livros | não: cada livro pronto tem o PGN, e o em curso tem o parcial da S-24 | sim (S-57), um livro de cada vez |

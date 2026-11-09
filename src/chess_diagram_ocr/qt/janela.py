@@ -758,11 +758,11 @@ class JanelaPrincipal(QMainWindow):
         self.texto.aplicar_estado(estado)  # zoom, quebra, motor, modo bloco e os diagramas (S-620, S-623)
         for nome, ligado in {**self.mesa.estados(), **self.texto.interruptores_da_vista()}.items():
             self.menu.marcar(nome, ligado=ligado)  # a mesa (S-640) e a vista dos diagramas (S-620, S-624)
-        self.estudo.posicionar_divisor(estado.estudo_divisor)
-        self.estudo.posicionar_divisor_vertical(estado.estudo_divisor_vertical)
+        self.estudo.leiaute.posicionar_divisor(estado.estudo_divisor)
+        self.estudo.leiaute.posicionar_divisor_vertical(estado.estudo_divisor_vertical)
         # O leitor que `board_zoom` nunca teve (S-518): o campo era gravado, era lido do disco, e
         # não chegava a widget nenhum.
-        self.estudo.definir_fracao_do_tabuleiro(estado.board_zoom)
+        self.estudo.leiaute.definir_fracao_do_tabuleiro(estado.board_zoom)
         # Daqui para baixo o disco já está nos widgets, e gravar volta a ser honesto (S-322).
         self._estado_aplicado = True
 
@@ -931,11 +931,11 @@ class JanelaPrincipal(QMainWindow):
         estado.estudo_aberto = self.estudo.chave_do_estudo_aberto
         # `or` o guardado: o divisor devolve `0.0` enquanto não há geometria medida, e zero
         # significa "nunca guardado" -- gravá-lo apagaria a alça da sessão anterior.
-        estado.estudo_divisor = self.estudo.fracao_do_divisor or estado.estudo_divisor
+        estado.estudo_divisor = self.estudo.leiaute.fracao_do_divisor or estado.estudo_divisor
         estado.estudo_divisor_vertical = (
-            self.estudo.fracao_do_divisor_vertical or estado.estudo_divisor_vertical
+            self.estudo.leiaute.fracao_do_divisor_vertical or estado.estudo_divisor_vertical
         )
-        estado.board_zoom = self.estudo.fracao_do_tabuleiro
+        estado.board_zoom = self.estudo.leiaute.fracao_do_tabuleiro
         self._anotar_arranjo()
         save_state(self._caminho_do_estado, estado)
 
@@ -2262,7 +2262,7 @@ class JanelaPrincipal(QMainWindow):
         self._gravar_estado()
         # O motor é um processo (S-523) e a sala pode tê-lo trocado nas preferências (S-536): o
         # fechado é o dela, e sem levantar (`encerrar_o_motor`, F9-C16).
-        sala_declarada.encerrar_o_motor(self.estudo.analisador)
+        sala_declarada.encerrar_o_motor(self.estudo.motor.analisador)
         processo_de_trabalho().encerrar(matar=True)  # o filho pendurado não segura o processo (S-906)
         self._detector.parar(ESPERA_AO_FECHAR_MS)
         # Nenhuma tarefa tem pai (F9-C2, S-826): destruí-las a correr derrubava o processo sem

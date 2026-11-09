@@ -22,7 +22,7 @@ ninguém notar: ele continua no catálogo, continua no menu, e não faz nada.
    resolvido **na hora** -- promover ou apagar variante muda os índices de variação, e um caminho
    guardado na montagem apontaria para o lance que ocupou o lugar do antigo (S-268).
 2. **A resposta do motor atravessa a thread por sinal.** A geração continua sendo a guarda: ela
-   cresce em `refresh`, e a resposta que chegar com geração velha é descartada (S-285).
+   cresce a cada `refresh`, e a resposta que chegar com geração velha é descartada (S-285).
 3. **A gravação por inatividade é um `QTimer` de disparo único**, e o `adiar=False` da S-345 vira
    "não reinicie o relógio": com a análise contínua ligada, o motor escreve a cada ~800 ms, e cada
    escrita reagendando fazia o prazo nunca vencer -- a sala **nunca** era gravada.
@@ -33,117 +33,91 @@ a 715 px quebravam em quatro fileiras. Quem decide grupo, o que é principal, í
 na largura é `ui/barra_da_sala.py`; `qt/barra_da_sala.py` mede e executa. Os botões que o resto deste
 arquivo chama pelo nome -- `btn_dobra`, `btn_recorte`, `btn_treino`, `btn_continua`, `seguir_ocr` --
 são `QAction`s daquela barra, e respondem aos mesmos `setChecked`, `setText` e `setEnabled`.
+
+**E desde a S-866 o painel é composição.** Eram 3.708 linhas; o que tem estado próprio saiu com ele
+-- `self.motor` (`qt/sala_motor.py`), `self.partidas`, `self.treino` e `self.leiaute` --, e os widgets
+e as funções de arquivo foram para `qt/sala_*.py`. Aqui ficam a árvore, a navegação, a anotação, a
+sala no disco, e um método por comando do catálogo, que delega quando o trabalho é de uma parte.
 """
 
 from __future__ import annotations
 
-import html
 import logging
-import threading
 from collections.abc import Callable, Sequence
-from dataclasses import replace
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import chess
 import chess.engine
 import chess.pgn
-from PyQt6.QtCore import QSize, Qt, QTimer, QUrl, pyqtSignal
-from PyQt6.QtGui import QAction, QFontMetrics, QResizeEvent, QShowEvent
+from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
+from PyQt6.QtGui import QAction, QResizeEvent, QShowEvent
 from PyQt6.QtWidgets import (
     QAbstractButton,
-    QComboBox,
     QDialog,
-    QDialogButtonBox,
-    QFileDialog,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMenu,
     QMessageBox,
-    QPushButton,
     QSplitter,
     QTextBrowser,
     QTextEdit,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from chess_diagram_ocr import eco, estudo_arquivo, revisao_arquivo, tablebase, taticas_arquivo
+from chess_diagram_ocr import eco, estudo_arquivo
 from chess_diagram_ocr import estudo as estudo_mod
-from chess_diagram_ocr import placar as placar_mod
 from chess_diagram_ocr.arquivo_do_dono import GravacaoRecusada, Leitura, Lida, gravavel
-from chess_diagram_ocr.config import DATA_DIR, DEFAULT_PDF_DIR
-from chess_diagram_ocr.engine import EngineAnalyzer, Evaluation
+from chess_diagram_ocr.config import DEFAULT_PDF_DIR
+from chess_diagram_ocr.engine import EngineAnalyzer
 from chess_diagram_ocr.estudo import Ancora, Estudo, PosicaoDeEstudo, Sala
 from chess_diagram_ocr.fen_utils import is_valid_fen, reading_index_from_square, square_from_reading_index
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
-from chess_diagram_ocr.qt import icones as qt_icones
-from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
+from chess_diagram_ocr.qt import sala_arquivos as arquivos
 from chess_diagram_ocr.qt import tema
-from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.barra_da_sala import BarraDaSala
-from chess_diagram_ocr.qt.dica import dica_em
-from chess_diagram_ocr.qt.motor import BarraDeAvaliacao, LinhasDoMotor
+from chess_diagram_ocr.qt.motor import BarraDeAvaliacao
 from chess_diagram_ocr.qt.rotulo import CampoQueAvisaQueContinua
+from chess_diagram_ocr.qt.sala_cabecalho import CabecalhoDaPartida, JanelaDoCabecalho
+from chess_diagram_ocr.qt.sala_coluna import LADO_DO_ICONE_DA_SALA, FaixaDeNavegacao, RecorteDoDiagrama
+from chess_diagram_ocr.qt.sala_leiaute import LeiauteDaSala
+from chess_diagram_ocr.qt.sala_lista import ListaDeLances
+from chess_diagram_ocr.qt.sala_motor import MotorDaSala
+from chess_diagram_ocr.qt.sala_partidas import PartidasDaBase
+from chess_diagram_ocr.qt.sala_treino import TreinoDaSala
 from chess_diagram_ocr.qt.tabuleiro_de_jogo import TabuleiroDeJogo
-from chess_diagram_ocr.qt.vazio import EstadoVazio
-from chess_diagram_ocr.settings import DEFAULT_SETTINGS_PATH, EngineSettings, ler_arquivo, load_settings, save_settings
-from chess_diagram_ocr.ui import analise_da_partida as analise_declarada
+from chess_diagram_ocr.settings import DEFAULT_SETTINGS_PATH
 from chess_diagram_ocr.ui import (
     atalhos,
     barra_da_sala,
     cabecalho_da_partida,
     comandos,
     espaco,
-    estilos,
-    estudo_dobra,
-    estudo_lista,
-    formato,
-    geometria,
-    motor_declarado,
-    strings,
     tipografia,
-    tokens,
-    treino_declarado,
 )
-from chess_diagram_ocr.ui import finais as finais_declarados
 from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.historico import Historico
 from chess_diagram_ocr.ui.sala_declarada import (
     ACOES_PROPRIAS,
-    CANDIDATOS_DO_MOTOR,
     COMANDOS_DA_ABA,
-    FRACAO_PADRAO_DO_TABULEIRO,
-    LADO_AMPLIADO,
-    LADO_DO_RECORTE,
-    PAPEIS_COLADOS,
-    PARTIDAS_MAXIMAS_DE_PGN,
-    RECUO_POR_NIVEL,
-    TAMANHO_MAXIMO_DE_PGN,
     Sincronia,
     decidir_sincronia,
-    fracao_para_o_tabuleiro,
     nags_oferecidos,
-    piso_da_leitura,
 )
+
+if TYPE_CHECKING:
+    from PyQt6.QtPrintSupport import QPrintPreviewDialog
+
+    from chess_diagram_ocr.qt.analise_da_partida import AnalisadorDaPartida
+    from chess_diagram_ocr.qt.lote_de_diagramas import DialogoDoLote
+    from chess_diagram_ocr.qt.painel_de_treino import ExtratorDeTaticas, JanelaDeTreino
 
 logger = logging.getLogger(__name__)
 
-DADOS = DATA_DIR
-"""Onde os arquivos de trabalho do treino moram por omissão (S-539 a S-541). Ver `pasta_de_treino`
-no construtor: o padrão é este, e o teste passa outro."""
-
-LADO_DO_ICONE_DA_SALA = 16
-"""Lado do ícone nos botões desta aba, em pixel (S-520).
-
-Menor que o da fita (20 a 32): ali o ícone **é** o botão, com o rótulo embaixo; aqui ele acompanha
-um rótulo ao lado, numa barra que já tem 28 botões. Dezesseis é a altura da letra da interface na
-base 9, que é o que faz o par ícone-texto parecer uma coisa só em vez de duas."""
 
 __all__ = ["LADO_DO_ICONE_DA_SALA", "PainelDeEstudo"]
 
@@ -153,12 +127,6 @@ class PainelDeEstudo(QWidget):
 
     estado = pyqtSignal(str)
     """Uma frase para a barra de status desta aba. Ela sempre carrega a vez a jogar junto."""
-
-    _motor_respondeu = pyqtSignal(int, object, object)
-    """Interno: `(geração, nó, avaliações)` vindo da thread do motor."""
-
-    _motor_falhou = pyqtSignal(int, str)
-    _motor_terminou = pyqtSignal(int)
 
     def __init__(
         self,
@@ -179,107 +147,35 @@ class PainelDeEstudo(QWidget):
         pasta_de_treino: Path | None = None,
     ) -> None:
         super().__init__(parent)
-        self._caminho_do_cache = caminho_do_cache
-        """Onde o cache de posições da base mora. `None` é o padrão do produto,
-        `data/games_positions.sqlite`.
-
-        **Existe pela mesma razão do `pasta_da_galeria` e do `caminho_do_estado`** (S-415): sem
-        ele, um teste que chegue a `_loja_de_posicoes` cria o arquivo no `data/` de quem roda a
-        suíte -- e a guarda de sessão do `conftest` acusa a rodada inteira, num teste que não é o
-        culpado. Foi a CI que pegou este, e não a máquina de ninguém: aqui o arquivo já existia
-        de uso normal, e a guarda não tinha o que reportar."""
         self._posicao = posicao
         """De onde vem a posição do diagrama selecionado -- **inteira**, com vez, número de lance e
         âncora no livro. Era `current_fen` no Tk, e o que ela devolvia era só o campo de peças
         (S-269)."""
 
         self._pasta_inicial = Path(pasta_inicial)
-        self._analyzer = analyzer
-        """O motor, se houver um. `None` esconde a seção inteira em vez de deixá-la cinza (S-33)."""
         self._recorte = recorte
         self._linha_impressa = linha_impressa
         self._abrir_pagina = abrir_pagina
-        self._bases = bases_de_partidas
         self._para_o_texto = para_o_texto
         self._busy = busy
-        """O registro de operações longas da janela, para o índice da base (S-532) aparecer no rodapé
-        como as outras. Sem ele, a janela que nos contém pode tê-lo: ver `indexar_base`."""
-        self._indexador: Any = None
-        """A rodada do índice em curso -- guardada porque um `QObject` sem referência é recolhido
-        com a thread dentro (`qt/indice_da_base.py`)."""
-        self._busca: Any = None
-        """O diálogo de busca (S-533), guardado e **reusado**: ele não é modal, tem uma thread
-        dentro, e abrir o segundo enquanto o primeiro procura destruiria um `QThread` em curso."""
-        self._arvore: Any = None
-        """A janela da árvore de aberturas (S-535), guardada e reusada pela mesma razão -- e mais
-        uma: ela **acompanha** a posição da sala a cada `refresh`, então destruí-la e recriá-la a
-        cada abertura descartaria a consulta em curso a cada lance."""
-        self._construtor_da_arvore: Any = None
-        """A passada que constrói a árvore, guardada porque um `QObject` sem referência é recolhido
-        com a thread dentro -- a mesma razão de `_indexador`."""
+        """O registro de operações longas da janela. As partes que rodam passadas longas o recebem
+        também; aqui ele serve ao lote de diagramas."""
         self._pasta_de_estudos = pasta_de_estudos
 
-        self._pasta_de_treino = Path(pasta_de_treino) if pasta_de_treino is not None else DADOS
-        """Onde moram a coleção de táticas, o baralho de revisão e o placar (S-539 a S-541).
-
-        **Um argumento e não três**, e ele existe pelo motivo dos outros caminhos deste painel: o
-        teste não pode escrever no `data/` do repositório. O produto usa o padrão, e a janela não
-        precisa passar nada -- é o que mantém `qt/janela.py` do tamanho que a catraca exige."""
-
-        self._leitura_do_placar: Leitura[placar_mod.Placar] | None = None
-        """O placar do treino, lido do disco no primeiro uso. Ver a propriedade `placar`."""
-        self._perda_do_lance: Any = None
-        """O medidor do custo do lance errado (S-541), criado no primeiro erro."""
-        self._extrator: Any = None
-        """A extração de táticas em curso, guardada porque um `QObject` sem referência é recolhido
-        com a thread dentro -- a mesma razão de `_indexador`."""
-        self._treino: Any = None
-        """A janela de treino aberta (S-540). Não modal, e guardada pela mesma razão."""
-        self._analysing = False
-        self._geracao = 0
-        """Cresce a cada mudança de nó. A resposta do motor que chegar com geração velha é
-        descartada -- ver `analyse` (S-285)."""
-        self._candidatos: list[Evaluation] = []
-        self._caminho_das_preferencias = Path(caminho_das_preferencias)
-        """De onde saem e para onde voltam as opções do motor (S-536). Argumento porque o teste
-        não pode escrever no `data/settings.json` do repositório."""
-        self._motor_vivo: Any = None
-        self._recusa_das_preferencias = ""
-        """Por que as opções do motor não foram gravadas, quando não foram (S-812)."""
-        """O `MotorVivo` que aplica a troca fora da linha de eventos. Nasce no primeiro uso: sem
-        ele, toda sala de teste carregaria uma `QThread` que nunca roda."""
-        self._analise_da_partida: Any = None
-        """A rodada de análise da partida inteira (S-537), guardada porque um `QObject` sem
-        referência é recolhido com a thread dentro -- a mesma razão de `_indexador`."""
-        self._finais: Any = None
-        """O leitor de tablebases (S-538), aberto na primeira consulta. `None` é "sem pasta"."""
-        self._resultado_de_tabela: Any = None
-        """O que a tabela disse da posição analisada, ou `None`. Escrito na thread do motor e lido
-        na da interface, na mesma volta em que a avaliação chega -- os dois viajam juntos."""
-        self._loja: Any = None
-        self._recorte_de = ""
+        # **As partes com estado próprio** (S-866). Nascem antes da montagem porque ela
+        # pergunta ao motor se há seção a desenhar, e cada uma é um `QObject` filho desta sala: o
+        # slot ligado a um método delas cai junto com a sala, como caía quando era método dela.
+        self.motor = MotorDaSala(
+            self, analyzer=analyzer, caminho_das_preferencias=caminho_das_preferencias, busy=busy
+        )
+        self.partidas = PartidasDaBase(
+            self, bases=bases_de_partidas, caminho_do_cache=caminho_do_cache, busy=busy
+        )
+        self.treino = TreinoDaSala(self, pasta_de_treino=pasta_de_treino, busy=busy)
+        self.leiaute = LeiauteDaSala(self)
         self._sujo = False
-        self._trechos: tuple[estudo_lista.Trecho, ...] = ()
-        self._variantes: tuple[estudo_dobra.Variante, ...] = ()
-        self._dobradas: set[tuple[int, ...]] = set()
-        """As variantes dobradas, por caminho do primeiro lance delas (S-516).
-
-        Estado de **vista**: não entra na pilha de desfazer, não vai para o PGN e não sobrevive
-        à sessão. Caminho que deixou de existir simplesmente não casa com variante nenhuma."""
         self._comentario_do_no: chess.pgn.GameNode | None = None
         self._montando = False
-        self._fracao_do_tabuleiro = FRACAO_PADRAO_DO_TABULEIRO
-        self._divisor_escolhido = False
-        """A pessoa (ou a sessão anterior) decidiu onde fica a alça? Ver `_acomodar_o_tabuleiro`."""
-        self._largura_acomodada = 0
-        """A largura em que a régua da S-551 rodou da última vez, em pixel.
-
-        Existe para a régua saber se a coluna está **encolhendo** -- o `QSplitter` já repartiu em
-        proporção quando ela roda, e sem esta lembrança "só empurra para a direita" vira "guarda a
-        fração de uma janela larga numa estreita". Ver `sala_declarada.fracao_para_o_tabuleiro`."""
-        self._faixa_do_tabuleiro: QHBoxLayout | None = None
-        """A fila "barra de avaliação + tabuleiro", quando há motor. Guardada porque é nela que se
-        mede a esteira da coluna esquerda -- ver `_esteira_da_coluna` (S-551, terceira rodada)."""
 
         self.sala = Sala()
         self._leitura_da_sala: Leitura[Sala] | None = None
@@ -293,10 +189,7 @@ class PainelDeEstudo(QWidget):
         self._relogio_de_gravacao.timeout.connect(self.salvar_agora)
 
         self._montar()
-        self.tabuleiro.definir_fracao(self._fracao_do_tabuleiro)
-        self._motor_respondeu.connect(self._mostrar_avaliacao)
-        self._motor_falhou.connect(self._mostrar_erro_do_motor)
-        self._motor_terminou.connect(self._terminar_analise)
+        self.leiaute.definir_fracao_do_tabuleiro(0.0)
         self.refresh()
         self.set_status("Clique em uma peça para estudar.")
         atalhos.conferir_dono(self, "PainelDeEstudo")
@@ -325,7 +218,7 @@ class PainelDeEstudo(QWidget):
         self.divisor.setStretchFactor(1, 2)
         # Arrastar a alça desliga a regra da S-551 até o fim da sessão: a partir daí quem decide a
         # repartição é quem arrastou, e a janela guarda a fração ao fechar.
-        self.divisor.splitterMoved.connect(self._divisor_movido_a_mao)
+        self.divisor.splitterMoved.connect(self.leiaute.divisor_movido_a_mao)
         fora.addWidget(self.divisor, 1)
 
     def _montar_barra(self) -> BarraDaSala:
@@ -340,7 +233,7 @@ class PainelDeEstudo(QWidget):
         `seguir_ocr` nasce marcado **sem avisar**: o `toggled` já está ligado ao método, e o método
         sincroniza com um tabuleiro que pode ainda não existir.
         """
-        barra = BarraDaSala(self, com_motor=self._analyzer is not None, executar=self.executar)
+        barra = BarraDaSala(self, com_motor=self.motor.has_engine, executar=self.executar)
         # Os nomes que o resto do painel sempre usou apontam para as `QAction`s: `setChecked`,
         # `setText`, `setEnabled` e `isChecked` são os mesmos, e é isso que deixa cada método como
         # estava.
@@ -354,51 +247,6 @@ class PainelDeEstudo(QWidget):
         self.btn_continua: QAction | None = barra.acoes.get("analise_continua")
         return barra
 
-    def _botao(self, barra: BarraFluida, acao: str) -> QPushButton:
-        """Um botão do catálogo, ligado ao método que `COMANDOS_DA_ABA` nomeia.
-
-        **O método vem da tabela, e não é escrito aqui.** É o que faz um comando novo da sala
-        chegar à barra, ao menu e à paleta de uma vez -- e o que garante que os dois frontends
-        chamem exatamente os mesmos métodos.
-        """
-        from chess_diagram_ocr.ui import atalhos
-
-        botao = QPushButton(comandos.rotulo_de_botao(acao), barra)
-        # **O nome acessível é o rótulo por extenso, e não o texto do botão** (F9-C2).
-        # O crítico do ciclo 1 mediu 28 controles que chegavam ao leitor de tela como "-",
-        # "+", "|◀" ou ".md" -- o `rotulo_curto` passando pela cascata de
-        # `ui/nomes_acessiveis.py` no passo `text()`. Ver `comandos.Comando.no_leitor`.
-        botao.setAccessibleName(comandos.nome_acessivel(acao))
-        # Qual ação este botão serve, legível de fora. O rótulo não responde: os quatro de
-        # navegação passaram a desenhar só o ícone (S-520), e um teste que perguntasse pelo texto
-        # deixaria de achá-los -- que é a guarda medindo o desenho em vez do arranjo.
-        botao.setProperty("acao", acao)
-        botao.clicked.connect(lambda _marcado=False, nome=acao: self.executar(nome))
-        tema.aplicar_papel(botao, comandos.papel(acao))
-        # **O ícone quando o catálogo declara um** (S-520), do mesmo jeito que a fita faz. Aqui
-        # ele alcança só os quatro de navegação, e não é decoração: `⏮ ◀ ▶ ⏭` não existem na fonte
-        # da interface -- `inFont` responde `False` para os quatro em Segoe UI --, então o rótulo
-        # deles vinha de uma fonte de queda, com desenho que não é o da janela. O texto **fica**:
-        # ícone que não desenhou devolve `None` e o botão continua legível.
-        nome_do_icone = comandos.comando(acao).icone
-        if nome_do_icone:
-            lado = LADO_DO_ICONE_DA_SALA
-            desenho = qt_icones.icone(nome_do_icone, 2 * lado, tema.cor_atual(tokens.TEXTO_PADRAO))
-            if desenho is not None:
-                botao.setIcon(desenho)
-                botao.setIconSize(qt_icones.tamanho(lado))
-        motivo = comandos.rotulo(acao)
-        tecla = atalhos.acelerador(acao)
-        dica_em(botao, f"{motivo}\nTecla: {tecla}" if tecla else motivo)
-        # **Um glifo de texto nao e um icone** (F9-C7, §4.7). Quando o rotulo do botao nao tem
-        # letra nenhuma -- `◀`, `▶|` -- e o catalogo declara um desenho, o desenho entra e o
-        # glifo sai: medido, `◀` rendia 5x3 px de tinta contra 6x6 do `▶` ao lado, e "voltar um
-        # lance" ficava sem direcao legivel em tres paineis. Rotulo com letra continua texto.
-        if not any(letra.isalpha() for letra in botao.text()):
-            qt_icones.vestir(botao, comandos.comando(acao).icone, comandos.papel(acao))
-        barra.adicionar(botao)
-        return botao
-
     def executar(self, acao: str) -> None:
         """Roda o método que o catálogo liga àquela ação. Levanta para ação que a aba não tem.
 
@@ -407,54 +255,6 @@ class PainelDeEstudo(QWidget):
         """
         metodo = COMANDOS_DA_ABA.get(acao) or barra_da_sala.METODOS_PROPRIOS[acao]
         getattr(self, metodo)()
-
-    def _barra_de_navegacao(self) -> BarraFluida:
-        """Os quatro de navegação, **sob o tabuleiro**, com o lance corrente e a vez (S-517).
-
-        As duas informações ao lado não são decoração: o lance corrente só existia como fundo
-        amarelo no meio da lista, e a vez a jogar só como sufixo da frase do rodapé -- que é a
-        última linha da janela, longe do olho de quem está olhando o tabuleiro.
-        """
-        barra = BarraFluida(self)
-        for acao in barra_da_sala.NAVEGACAO:
-            botao = self._botao(barra, acao)
-            if not botao.icon().isNull():
-                # **Só aqui o ícone substitui o rótulo** (S-520), e é o único grupo em que isso é
-                # honesto: o `rotulo_curto` destes quatro **é** um símbolo (`⏮ ◀ ▶ ⏭`), então
-                # mantê-lo ao lado do ícone desenharia a mesma seta duas vezes -- uma da fonte de
-                # queda e outra do traço vetorial. O rótulo longo e a tecla continuam na dica, que
-                # é onde eles sempre estiveram.
-                botao.setText("")
-                botao.setIconSize(qt_icones.tamanho(2 * LADO_DO_ICONE_DA_SALA))
-        self.lbl_lance = QLabel("", barra)
-        self.lbl_lance.setFont(tema.fonte_atual(tipografia.TITULO))
-        barra.adicionar(self.lbl_lance)
-        # O símbolo do lance corrente **ao lado do lance** (S-527): ele ficava ao lado do botão
-        # "Símbolo", na segunda fileira, e o botão foi para a fila de cima. `12. Ba4 !` é como o
-        # livro escreve, e é aqui que o olho já está.
-        self.lbl_simbolo = QLabel("", barra)
-        tema.pintar(self.lbl_simbolo, "color", tokens.TEXTO_SECUNDARIO)
-        barra.adicionar(self.lbl_simbolo)
-        self.lbl_vez = QLabel("", barra)
-        tema.pintar(self.lbl_vez, "color", tokens.TEXTO_SECUNDARIO)
-        barra.adicionar(self.lbl_vez)
-        # **O ECO da posição corrente** (S-534), na mesma faixa e pela mesma razão que a vez: é o
-        # que um enxadrista lê para saber *em que abertura ele está*, e ele mudava a cada lance
-        # sem aparecer em lugar nenhum da janela. Ao lado do tabuleiro, que é onde o olho está.
-        self.lbl_eco = QLabel("", barra)
-        tema.pintar(self.lbl_eco, "color", tokens.TEXTO_SECUNDARIO)
-        dica_em(
-            self.lbl_eco,
-            "O código ECO da posição. O header [ECO] da partida vence; sem ele, a tabela embutida\n"
-            "classifica pela posição -- então uma transposição chega ao mesmo código.",
-        )
-        barra.adicionar(self.lbl_eco)
-        # E o placar do treino, pela mesma razão: ele acompanhava o botão "Treinar" na quarta
-        # fileira, e o que ele conta acontece no tabuleiro.
-        self.lbl_placar = QLabel("", barra)
-        tema.pintar(self.lbl_placar, "color", tokens.TEXTO_SECUNDARIO)
-        barra.adicionar(self.lbl_placar)
-        return barra
 
     def _esquerda(self) -> QWidget:
         coluna = QWidget(self.divisor)
@@ -465,7 +265,8 @@ class PainelDeEstudo(QWidget):
         # headers existiam -- `Estudo.de_posicao` escreve cinco, um `.pgn` traz os nove -- e nenhum
         # aparecia na tela: quem abrisse Capablanca-Alekhine via um tabuleiro sem nome, sem torneio
         # e sem resultado. Quem decide o que a frase diz é `ui/cabecalho_da_partida.py`.
-        pilha.addWidget(self._cabecalho())
+        self.cabecalho = CabecalhoDaPartida(self, lado_do_icone=LADO_DO_ICONE_DA_SALA, editar=self.editar_cabecalho)
+        pilha.addWidget(self.cabecalho)
 
         self.tabuleiro = TabuleiroDeJogo(coluna, escolher_promocao=self.choose_promotion)
         self.tabuleiro.lance.connect(self.push_move)
@@ -488,9 +289,9 @@ class PainelDeEstudo(QWidget):
         # como a caixa -- guardar a resposta a deixaria de um lado enquanto o tabuleiro já virou.
         self.vantagem = (
             BarraDeAvaliacao(
-                coluna, caixa=self._caixa_do_tabuleiro, virado=lambda: self.estudo.invertido
+                coluna, caixa=self.leiaute.caixa_do_tabuleiro, virado=lambda: self.estudo.invertido
             )
-            if self._analyzer is not None
+            if self.motor.has_engine
             else None
         )
         if self.vantagem is None:
@@ -502,16 +303,13 @@ class PainelDeEstudo(QWidget):
             faixa.addWidget(self.vantagem)
             faixa.addWidget(self.tabuleiro, 1)
             pilha.addLayout(faixa)
-            self._faixa_do_tabuleiro = faixa
-        pilha.addWidget(self._barra_de_navegacao())
+            self.leiaute.faixa_do_tabuleiro = faixa
+        self.navegacao = FaixaDeNavegacao(self, executar=self.executar)
+        pilha.addWidget(self.navegacao)
 
         # A miniatura do diagrama (S-282). Ela nasce escondida: estudo sem âncora não mostra
         # espaço reservado para o que não existe.
-        self.recorte_label = QLabel("", coluna)
-        self.recorte_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.recorte_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.recorte_label.hide()
-        self.recorte_label.mousePressEvent = lambda _evento: self.ampliar_recorte()  # type: ignore[method-assign,assignment]
+        self.recorte_label = RecorteDoDiagrama(coluna, recorte=self._recorte, ampliar=self.ampliar_recorte)
         pilha.addWidget(self.recorte_label)
 
         self.lbl_origem = QLabel("Base: posição inicial", coluna)
@@ -544,74 +342,13 @@ class PainelDeEstudo(QWidget):
 
     # ----------------------------------------------------- o cabeçalho da partida (S-530)
 
-    def _cabecalho(self) -> QWidget:
-        """Duas linhas e um lápis: quem jogou, e onde. Clicar em qualquer uma abre a edição.
-
-        **Duas linhas, e a segunda é secundária.** Jogadores e resultado numa; torneio, local, data
-        e rodada na outra, na cor de texto secundário. É a hierarquia do ChessBase, e é o que faz a
-        faixa caber em 494 px -- a largura da coluna a 1400x950 -- sem elidir o nome de ninguém.
-
-        **O botão existe porque não há comando.** Editar o cabeçalho ainda não está em
-        `ui/comandos.py`, então não há item de menu, tecla nem entrada na paleta para ele -- e uma
-        faixa que só responde a duplo clique é uma função que ninguém acha. O lápis ao lado é a
-        afirmação de que aquilo é editável; o duplo clique na frase faz o mesmo, que é o gesto que
-        quem vem do ChessBase já tem no dedo.
-        """
-        faixa = QWidget(self)
-        linha = QHBoxLayout(faixa)
-        linha.setContentsMargins(0, 0, 0, 0)
-        linha.setSpacing(espaco.folga())
-
-        textos = QVBoxLayout()
-        textos.setContentsMargins(0, 0, 0, 0)
-        textos.setSpacing(0)
-        self.lbl_partida = _RotuloElidido(faixa)
-        self.lbl_partida.setFont(tema.fonte_atual(tipografia.TITULO))
-        textos.addWidget(self.lbl_partida)
-        self.lbl_torneio = _RotuloElidido(faixa)
-        self.lbl_torneio.setFont(tema.fonte_atual(tipografia.AUXILIAR))
-        tema.pintar(self.lbl_torneio, "color", tokens.TEXTO_SECUNDARIO)
-        textos.addWidget(self.lbl_torneio)
-        linha.addLayout(textos, 1)
-
-        self.btn_cabecalho = QToolButton(faixa)
-        self.btn_cabecalho.setProperty("acao", "editar_cabecalho")
-        self.btn_cabecalho.setAutoRaise(True)
-        self.btn_cabecalho.setIconSize(qt_icones.tamanho(LADO_DO_ICONE_DA_SALA))
-        self.btn_cabecalho.clicked.connect(self.editar_cabecalho)
-        linha.addWidget(self.btn_cabecalho)
-
-        for alvo in (self.lbl_partida, self.lbl_torneio):
-            alvo.setCursor(Qt.CursorShape.PointingHandCursor)
-            alvo.mouseDoubleClickEvent = lambda _evento: self.editar_cabecalho()  # type: ignore[assignment]
-        self._pintar_o_lapis()
-        tema.ao_repintar(self._pintar_o_lapis)
-        return faixa
-
-    def _pintar_o_lapis(self) -> None:
-        """O traço do botão do cabeçalho na cor da pele em uso -- a medição da S-220."""
-        desenho = qt_icones.icone(
-            cabecalho_da_partida.ICONE,
-            LADO_DO_ICONE_DA_SALA,
-            tema.cor_atual(tokens.TEXTO_PADRAO),
-            escala=self.devicePixelRatioF(),
-        )
-        if desenho is not None:
-            self.btn_cabecalho.setIcon(desenho)
-
     def _mostrar_cabecalho(self) -> None:
-        """Põe na faixa o que os headers dizem. Quem elide é o próprio rótulo, a cada largura."""
-        primeira, segunda = cabecalho_da_partida.linhas(self.estudo.jogo.headers)
-        self.lbl_partida.definir_texto(primeira)
-        self.lbl_torneio.definir_texto(segunda)
-        dica_em(
-            self.btn_cabecalho,
-            f"{cabecalho_da_partida.TITULO}\nDuplo clique na frase ao lado faz o mesmo.",
-        )
+        """Põe na faixa o que os headers dizem. A faixa é `qt/sala_cabecalho.CabecalhoDaPartida`."""
+        self.cabecalho.mostrar(self.estudo.jogo.headers)
 
     def editar_cabecalho(self) -> QDialog:
         """Abre o formulário dos nove campos. O que ele gravar entra no `Ctrl+Z` da sala."""
-        return _JanelaDoCabecalho(self, self.estudo.jogo.headers, self._gravar_cabecalho)
+        return JanelaDoCabecalho(self, self.estudo.jogo.headers, self._gravar_cabecalho)
 
     def _gravar_cabecalho(self, valores: dict[str, str]) -> None:
         """Escreve nos headers **só o que mudou**, e trata a mudança como edição da sala.
@@ -639,138 +376,9 @@ class PainelDeEstudo(QWidget):
 
     def resizeEvent(self, a0: QResizeEvent | None) -> None:  # noqa: N802 - assinatura do Qt
         super().resizeEvent(a0)
-        self._acomodar_o_tabuleiro()
+        self.leiaute.acomodar_o_tabuleiro()
         if self.vantagem is not None:
             self.vantagem.update()
-
-    def _caixa_do_tabuleiro(self) -> tuple[int, int]:
-        """Onde o **tabuleiro desenhado** começa e quanto ele mede, para a barra o acompanhar.
-
-        Perguntado pela barra no `paintEvent` dela, e não guardado num `resizeEvent`: `geometria()`
-        é a mesma conta que o tabuleiro usa para se desenhar, e ler o resultado dela na hora é o
-        que garante que os dois quadrados coincidam sempre -- inclusive na primeira exibição, em
-        que a coluna ainda não tem largura (S-529).
-        """
-        geo = self.tabuleiro.geometria()
-        return int(geo.origin_y), int(geo.size)
-
-    def _divisor_movido_a_mao(self, _posicao: int, _indice: int) -> None:
-        self._divisor_escolhido = True
-
-    def _altura_livre_para_o_tabuleiro(self) -> int:
-        """Quanta altura da coluna esquerda sobraria para o tabuleiro se ele não a disputasse.
-
-        É a altura da coluna menos o que os vizinhos pedem -- cabeçalho, faixa de navegação,
-        recorte **visível**, os dois rótulos, a FEN -- e menos os vãos entre eles. O recorte
-        escondido não conta, e é a diferença que explica a foto do crítico: com um diagrama do
-        livro aberto, os 220 px de `LADO_DO_RECORTE` ocupam justamente o vazio que ele mediu.
-        """
-        coluna = self.divisor.widget(0)
-        leiaute = coluna.layout() if coluna is not None else None
-        if coluna is None or leiaute is None:
-            return 0
-        margens = leiaute.contentsMargins()
-        ocupado = margens.top() + margens.bottom()
-        vizinhos = 0
-        for indice in range(leiaute.count()):
-            item = leiaute.itemAt(indice)
-            widget = item.widget() if item is not None else None
-            if widget is None or widget is self.tabuleiro:
-                continue
-            if widget.isHidden():
-                continue
-            ocupado += widget.sizeHint().height()
-            vizinhos += 1
-        ocupado += leiaute.spacing() * vizinhos
-        return max(0, coluna.height() - ocupado)
-
-    def _caixa_minima_do_tabuleiro(self) -> int:
-        """O lado mínimo da **caixa** do tabuleiro: o piso do desenho mais a margem da coordenada.
-
-        **A régua trabalha na caixa, e não no quadriculado** (S-551, terceira rodada). Passar
-        `LADO_MINIMO` cru dava uma coluna de 245 px para um tabuleiro de 240: `BoardGeometry.fit`
-        desenha os 240 -- o `max(min_size, ...)` dela vence --, sobram 2,5 px de cada lado, e a
-        régua de linhas, escrita em `origin_x - 11`, cai **fora** do widget. Medido a 1024x768 com
-        o motor ligado: as letras `a`..`h` apareciam e os números `1`..`8` não.
-        """
-        return qt_tabuleiro.LADO_MINIMO + qt_tabuleiro.MARGEM
-
-    def _esteira_da_coluna(self) -> int:
-        """Quanto da coluna esquerda **não** é tabuleiro, na horizontal (S-551, terceira rodada).
-
-        As margens da coluna mais, quando há motor, a barra de avaliação e o vão até o tabuleiro.
-        Medida e não cravada: são 42 px na base de referência (0 + 6 de margem, 26 da barra e 10 de
-        vão), e quem aumentar a fonte do sistema ou trocar a densidade muda os dois últimos.
-
-        Vai por argumento para `sala_declarada`, que é onde a decisão mora: a régua precisa saber
-        que a coluna carrega essa esteira, e **de que ela é feita** é assunto do widget.
-        """
-        coluna = self.divisor.widget(0)
-        leiaute = coluna.layout() if coluna is not None else None
-        if leiaute is None:
-            return 0
-        margens = leiaute.contentsMargins()
-        esteira = margens.left() + margens.right()
-        faixa = self._faixa_do_tabuleiro
-        if self.vantagem is not None and faixa is not None:
-            esteira += self.vantagem.sizeHint().width() + max(0, faixa.spacing())
-        return esteira
-
-    def _acomodar_o_tabuleiro(self) -> None:
-        """Move a alça para o tabuleiro usar a altura que sobra, se ninguém escolheu a alça.
-
-        **A regra é pura** (`sala_declarada.fracao_para_o_tabuleiro`) e só empurra para a direita:
-        a fração de agora é o piso. Ela não roda depois de a pessoa arrastar a alça nem depois de
-        `posicionar_divisor` restaurar a da sessão anterior -- ali a repartição já foi escolhida, e
-        a fração guardada acompanha a largura sozinha, porque é fração e não pixel.
-
-        **O piso da coluna de leitura é aplicado antes, e fora da guarda** (S-551, terceira
-        rodada). Ele não é posição, é limite: os `QGroupBox` da leitura declaravam 266 px de mínimo
-        -- **386** com o motor ligado, porque o texto das linhas entra na conta --, e numa aba de
-        496 px nem esse mínimo nem o do tabuleiro cabiam. O `QSplitter` então não atendia nenhum
-        dos dois, repartia 240/240, e o tabuleiro saía **36 px cortado**: sem a coluna `h`, sem as
-        duas réguas, com a faixa de navegação em duas fileiras -- e sem volta, porque o mínimo do
-        `QGroupBox` não desce quando o motor é desligado. Quem declara o piso da leitura é
-        `sala_declarada`, e é ele que passa a valer aqui.
-
-        **E o que a coluna pede vai junto na pergunta -- é a correção da quarta rodada.**
-        `piso_da_leitura` responde "o quanto a leitura *pode* exigir"; `setMinimumWidth` é piso, e
-        um piso aplicado cru também **sobe** o que a coluna pedia sozinha. Onde os `QGroupBox`
-        declaravam 136 px -- a sala sem motor --, a régua os punha em 192, e o tabuleiro pagava a
-        diferença sem ninguém ter pedido: medido a 1024x768, ele caiu de 298 para 245 px (301 para
-        245 na pele fita, menos 18%), e a 1400x950 de 454 para 447. Quem mede o pedido é o widget,
-        e por isso ele vai por argumento, como a esteira e a alça.
-        """
-        largura = sum(self.divisor.sizes())
-        if largura <= 0:
-            return
-        esteira = self._esteira_da_coluna()
-        alca = max(1, self.divisor.handleWidth())
-        self.divisor_vertical.setMinimumWidth(
-            piso_da_leitura(
-                largura,
-                minimo=self._caixa_minima_do_tabuleiro(),
-                esteira=esteira,
-                alca=alca,
-                pedido=self.divisor_vertical.minimumSizeHint().width(),
-            )
-        )
-        if self._divisor_escolhido:
-            return
-        alvo = fracao_para_o_tabuleiro(
-            largura,
-            self._altura_livre_para_o_tabuleiro(),
-            minimo=self._caixa_minima_do_tabuleiro(),
-            fracao_atual=self.fracao_do_divisor,
-            esteira=esteira,
-            alca=alca,
-            largura_anterior=self._largura_acomodada,
-        )
-        self._largura_acomodada = largura
-        if abs(alvo - self.fracao_do_divisor) < 0.005:
-            return
-        esquerda = int(largura * alvo)
-        self.divisor.setSizes([esquerda, max(1, largura - esquerda)])
 
     def _direita(self) -> QWidget:
         """A coluna de leitura, repartida por um divisor vertical (S-519).
@@ -791,17 +399,8 @@ class PainelDeEstudo(QWidget):
         dentro.setContentsMargins(*(espaco.linha(),) * 4)
         # `QTextBrowser` e não `QLabel`: a lista rola, o texto é rico, e o clique num lance chega
         # por `anchorClicked` -- que é o `tag_bind` do outro lado sem o mapa de tags à mão.
-        self.lista = QTextBrowser(lances)
-        self.lista.setOpenLinks(False)
-        # Uma parada do Tab, e não uma por lance: o `QTextBrowser` anda de âncora em âncora com o
-        # Tab (180 teclas numa partida de 120 lances), e de volta, com o Shift+Tab, não sai mais
-        # dela -- medido: 2.000 teclas (OCR_UI ciclo 2, fase 5, crítico do ciclo 4, o portão
-        # `teclado` com a tecla de verdade). Os lances se percorrem pelas setas da sala, e o clique
-        # num lance continua levando a ele.
-        self.lista.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse
-                                           | Qt.TextInteractionFlag.LinksAccessibleByMouse)
+        self.lista = ListaDeLances(lances)
         self.lista.anchorClicked.connect(self._clique_na_lista)
-        self.lista.setFont(tema.fonte_atual(tipografia.CORPO))
         dentro.addWidget(self.lista)
 
         anotacao = QGroupBox("Comentário do lance", coluna)
@@ -822,8 +421,8 @@ class PainelDeEstudo(QWidget):
         self.comentario.focusOutEvent = self._saiu_do_comentario  # type: ignore[method-assign,assignment]
         dentro.addWidget(self.comentario)
 
-        if self._analyzer is not None:
-            self._secao_do_motor(coluna)
+        if self.motor.has_engine:
+            self.motor.montar_secao(coluna)
         # A altura de fábrica reparte por uso, e não em partes iguais: a lista é a maior, o
         # comentário cabe um parágrafo, e o motor fica no que a seção dele pede.
         # **O motor pesa como o comentario desde a S-529**: com tres linhas de MultiPV e o rodape
@@ -833,78 +432,6 @@ class PainelDeEstudo(QWidget):
             coluna.setStretchFactor(indice, peso)
         self.divisor_vertical = coluna
         return coluna
-
-    def _secao_do_motor(self, pai: QWidget) -> QGroupBox:
-        """A seção do motor. Sem binário, ela simplesmente não existe (S-33).
-
-        **A S-529 trocou os dois widgets de dentro.** A avaliação era um `QProgressBar` horizontal
-        de 0 a 100 aqui embaixo -- ela subiu para a barra vertical ao lado do tabuleiro, que é onde
-        se lê --, e as linhas do MultiPV eram um `QLabel` de texto cinza, do qual não havia caminho
-        nenhum para pôr a segunda ou a terceira na árvore. Agora são `LinhasDoMotor`, e o clique
-        insere. O que ficou aqui é o botão, a frase de estado e o rodapé de desempenho.
-        """
-        assert self._analyzer is not None
-        caixa = QGroupBox(
-            motor_declarado.titulo_da_secao(self._analyzer.name, self._analyzer.path.name), pai
-        )
-        self.caixa_do_motor = caixa
-        pilha = QVBoxLayout(caixa)
-        pilha.setContentsMargins(*(espaco.linha(),) * 4)
-
-        # **Uma `BarraFluida` e não um `QHBoxLayout`** (S-551, terceira rodada): numa janela de
-        # 1024 a coluna de leitura cede para o tabuleiro caber inteiro, e um `QHBoxLayout` não
-        # reflui -- o botão saía com o rótulo cortado dos dois lados (`nalisar posiçã`). A fila põe
-        # a frase de estado na linha de baixo, que é o que este widget existe para fazer.
-        linha = BarraFluida(caixa)
-        self.btn_analisar = QPushButton("Analisar posição", linha)
-        self.btn_analisar.clicked.connect(self.analyse)
-        tema.aplicar_papel(self.btn_analisar, estilos.NEUTRO)
-        dica_em(
-            self.btn_analisar,
-            "Fica cinza enquanto o motor está pensando nesta posição, e volta quando\n"
-            "ele responde. Sem motor UCI instalado, esta seção inteira não aparece.",
-        )
-        linha.adicionar(self.btn_analisar)
-        self.lbl_motor = QLabel("", linha)
-        linha.adicionar(self.lbl_motor)
-        pilha.addWidget(linha)
-
-        self.lbl_linha_do_motor = LinhasDoMotor(caixa)
-        self.lbl_linha_do_motor.escolhida.connect(self.inserir_linha_do_motor)
-        pilha.addWidget(self.lbl_linha_do_motor, 1)
-
-        # **Profundidade e nós por segundo**, na linha de baixo (S-529). Eles estavam no `summary`
-        # da frase de cima, misturados com a avaliação e o melhor lance; separados, o número que
-        # diz *o quanto confiar* deixa de disputar espaço com o número que diz *quanto vale*.
-        self.lbl_desempenho = QLabel("", caixa)
-        tema.pintar(self.lbl_desempenho, "color", tokens.TEXTO_SECUNDARIO)
-        dica_em(
-            self.lbl_desempenho,
-            "Profundidade em plies e nós por segundo. Os nós por segundo são o único número da\n"
-            "tela que muda quando a opção «Núcleos» muda -- é por ele que se vê que ela pegou.",
-        )
-        pilha.addWidget(self.lbl_desempenho)
-        return caixa
-
-    def _mostrar_o_titulo_do_motor(self) -> None:
-        """`Motor (Stockfish dev-20230303)`: o nome que o **motor** diz, e não o do arquivo (S-529).
-
-        **O nome UCI chega depois da montagem, e é por isso que isto é um método.** O processo só
-        sobe na primeira análise -- é decisão de `motor_das_preferencias`, e ela paga os 100 a
-        300 ms só de quem pede avaliação --, então na hora de desenhar a seção `EngineAnalyzer.name`
-        ainda responde o nome do executável. Chamado outra vez quando o motor responde, o título
-        passa a distinguir dois Stockfish de versões diferentes, que é o que este item existe para
-        fazer. Quem monta a frase é `ui/motor_declarado`.
-
-        Só escreve quando muda: com a análise contínua isto passa aqui a cada ~800 ms, e um
-        `setTitle` por resposta repintaria a moldura da caixa para dizer a mesma coisa.
-        """
-        motor = self._analyzer
-        if motor is None:  # pragma: no cover - sem motor não há seção nem título
-            return
-        titulo = motor_declarado.titulo_da_secao(motor.name, motor.path.name)
-        if titulo != self.caixa_do_motor.title():
-            self.caixa_do_motor.setTitle(titulo)
 
     def showEvent(self, a0: QShowEvent | None) -> None:  # noqa: N802 - assinatura do Qt
         """**O teclado vem junto com a aba** (S-281): o `<Map>` do outro lado.
@@ -922,160 +449,29 @@ class PainelDeEstudo(QWidget):
         # geometria final de uma vez --, então a regra rodava uma única vez, com o divisor ainda
         # invisível e de largura zero, e desistia ali. Medido a 1920×1080: o tabuleiro ficava em
         # 547 px com a régua respondendo 565, e a 2560×1440 em 738 com ela respondendo 800.
-        # `_acomodar_o_tabuleiro` já não faz nada quando a alça foi escolhida, então chamá-la aqui
+        # `acomodar_o_tabuleiro` já não faz nada quando a alça foi escolhida, então chamá-la aqui
         # não atropela nem a pessoa nem a sessão anterior.
-        self._acomodar_o_tabuleiro()
+        self.leiaute.acomodar_o_tabuleiro()
 
     # -------------------------------------------------------------------------------- lista
 
     def _redesenhar_lista(self) -> None:
-        """Refaz a lista inteira e **reancora os trechos** (S-274).
-
-        O índice do trecho vai no `href` e é resolvido **na hora do clique**: promover ou apagar
-        variante muda os índices de variação, e um caminho guardado na montagem apontaria para o
-        lance que ocupou o lugar do antigo (S-268).
-        """
-        self._trechos = estudo_lista.trechos(self.estudo)
-        corrente = self.estudo.caminho()
-        if self.btn_treino.isChecked():
-            # O corte do treino (S-290): o que vem depois do lance corrente some da tela e continua
-            # na árvore. É o item inteiro -- "a linha some, e o tabuleiro cobra o lance".
-            self._trechos = estudo_lista.ate(self._trechos, corrente)
-
-        secundario = tema.cor_atual(tokens.TEXTO_SECUNDARIO)
-        fundo = tema.cor_atual(tokens.SUPERFICIE_DICA)
-        # As variantes dobradas (S-516). O miolo some, os dois parênteses ficam, e o `(` é o
-        # controle: clicar nele desdobra. Quem decide o que some é `ui/estudo_dobra`, e o lance
-        # corrente nunca some -- ver o cabeçalho de lá.
-        self._variantes = estudo_dobra.variantes(self._trechos)
-        ocultos = estudo_dobra.escondidos(self._trechos, self._dobradas, corrente)
-        # **Dobrada de verdade**, e não só declarada: a que contém o lance corrente continua na
-        # lista de dobradas e é desenhada aberta, então ela não pode mostrar o `(…)`.
-        dobrados = {
-            variante.abre
-            for variante in self._variantes
-            if variante.fecha > variante.abre + 1 and variante.abre + 1 in ocultos
-        }
-        partes: list[str] = []
-        aberto: int | None = None
-        for indice, trecho in enumerate(self._trechos):
-            if not trecho.texto or indice in ocultos:
-                continue
-            # **Cada corrida de mesmo recuo é um bloco, e o bloco é o que recua** (S-514). Era um
-            # `margin-left` no `<span>`, e o `QTextDocument` descarta margem em elemento inline: o
-            # número era lido, estava certo, e não pintava um pixel.
-            #
-            # A variante abre bloco mesmo no mesmo recuo, senão duas irmãs -- `( 2. Bc4 ) ( 2. d4 )`
-            # -- correriam na mesma linha. É o que os dois `<br>` de antes faziam, ditos pela
-            # estrutura em vez de por quebra solta.
-            comeca = trecho.papel == estudo_lista.ABRE
-            if aberto != trecho.recuo or comeca:
-                if aberto is not None:
-                    partes.append("</div>")
-                partes.append(f'<div style="margin-left:{trecho.recuo * RECUO_POR_NIVEL}px">')
-                aberto = trecho.recuo
-            partes.append(self._trecho_em_html(indice, trecho, secundario, fundo, corrente))
-            if indice in dobrados:
-                partes.append(
-                    f'<a href="dobra:{indice}" style="text-decoration:none">'
-                    f'<span style="color:{secundario}">…&nbsp;</span></a>'
-                )
-        if aberto is not None:
-            partes.append("</div>")
-        self.lista.setHtml("".join(partes))
-        self.lista.scrollToAnchor("corrente")
-
-    def _trecho_em_html(
-        self,
-        indice: int,
-        trecho: estudo_lista.Trecho,
-        secundario: str,
-        fundo: str,
-        corrente: object,
-    ) -> str:
-        """Um trecho como HTML: cor por papel, e âncora quando ele é navegável.
-
-        **Cor e peso saem de `ui/tokens.py` e de `ui/tipografia.py`**, como as tags do outro lado:
-        nada de hexadecimal escrito aqui. A linha principal em negrito e as variantes em peso
-        normal é a hierarquia sem gastar matiz -- o recurso escasso do programa depois da S-158.
-
-        **O recuo não está mais aqui** (S-514): quem recua é o bloco que `_redesenhar_lista` abre,
-        porque margem em `<span>` o `QTextDocument` ignora.
-        """
-        estilo: list[str] = []
-        apagados = (
-            estudo_lista.NUMERO,
-            estudo_lista.ABRE,
-            estudo_lista.FECHA,
-            estudo_lista.RESULTADO,
-            estudo_lista.RAIZ,
-        )
-        if trecho.papel in apagados:
-            estilo.append(f"color:{secundario}")
-        if trecho.papel == estudo_lista.COMENTARIO:
-            estilo.append(f"color:{secundario}")
-            estilo.append("font-size:smaller")
-        if trecho.papel == estudo_lista.NAG or (trecho.papel == estudo_lista.LANCE and trecho.nivel == 0):
-            estilo.append("font-weight:bold")
-        e_corrente = trecho.caminho is not None and trecho.caminho == corrente and trecho.papel in (
-            estudo_lista.LANCE,
-            estudo_lista.RAIZ,
-        )
-        if e_corrente:
-            estilo.append(f"background-color:{fundo}")
-            estilo.append(f"color:{tokens.sobre_superficie(fundo)}")
-
-        # **Só o que gruda no vizinho leva `&nbsp;`** (S-515). Era *todo* espaço, e sem nenhuma
-        # fronteira de palavra o `QTextEdit` -- `WrapAtWordBoundaryOrAnywhere` de fábrica -- quebrava
-        # em qualquer caractere: `O-O` saía `O-`/`O`, e a frase do comentário, `guard`/`am`. Quais
-        # papéis grudam é decisão de `ui/sala_declarada.PAPEIS_COLADOS`.
-        texto = html.escape(trecho.texto)
-        if trecho.papel in PAPEIS_COLADOS:
-            texto = texto.replace(" ", "&nbsp;")
-        marca = ' name="corrente"' if e_corrente else ""
-        corpo = f'<span style="{";".join(estilo)}">{texto}</span>' if estilo else f"<span>{texto}</span>"
-        if trecho.papel == estudo_lista.ABRE:
-            # **O `(` é o controle da dobra** (S-516), e não um glifo novo ao lado dele. Um `▸`
-            # sairia de fonte de queda -- é o que a S-508 mediu nos quatro botões de navegação --,
-            # e um triângulo desenhado ao lado de cada variante seria ruído numa lista de notação.
-            # O parêntese já delimita a variante; o que faltava era ele responder ao clique.
-            return f'<a href="dobra:{indice}" style="text-decoration:none">{corpo}</a>'
-        if trecho.caminho is None:
-            return f"<a{marca}>{corpo}</a>" if marca else corpo
-        return f'<a href="trecho:{indice}"{marca} style="text-decoration:none">{corpo}</a>'
+        """Refaz a lista de lances (`qt/sala_lista.py`); treinando, cortada no lance corrente."""
+        self.lista.desenhar(self.estudo, treinando=self.btn_treino.isChecked())
 
     def _mostrar_lance_corrente(self) -> None:
         """O lance corrente e a vez, na faixa sob o tabuleiro (S-517).
 
-        **O texto sai dos mesmos trechos que a lista desenha**, e não de uma segunda formatação:
-        `estudo_lista.trecho_do_caminho` acha o trecho do nó corrente, e o `NUMERO` colado nele --
-        quando há um -- é o mesmo `12.` que a lista mostra. Uma segunda montagem daria `12. Ba4`
-        aqui e `12...Ba4` ali no dia em que a numeração de variante mudasse.
-
-        Na raiz o trecho é o `RAIZ`, e o texto dele já é "posição do diagrama" ou "posição inicial"
-        conforme o estudo tenha vindo do livro -- que é exatamente o que se quer ler ali.
+        **O texto sai dos mesmos trechos que a lista desenha** -- ver `ListaDeLances.texto_do_lance`.
 
         **E o ECO** (S-534), que muda com o lance e por isso é atualizado aqui. O header `[ECO]` da
         partida vence -- é a classificação de quem a publicou --, e sem ele a tabela embutida
         classifica pela posição, o que faz a transposição chegar ao mesmo código. Custa ~0,5 ms por
         lance, medido; a tabela por posição é montada uma vez (84 ms) e fica em cache.
         """
-        indice = estudo_lista.trecho_do_caminho(self._trechos, self.estudo.caminho())
-        if indice < 0:
-            self.lbl_lance.setText("")
-        else:
-            trecho = self._trechos[indice]
-            anterior = self._trechos[indice - 1] if indice else None
-            numero = (
-                anterior.texto
-                if anterior is not None
-                and anterior.papel == estudo_lista.NUMERO
-                and anterior.caminho == trecho.caminho
-                else ""
-            )
-            self.lbl_lance.setText(f"{numero}{trecho.texto}".strip())
-        self.lbl_vez.setText("brancas jogam" if self.estudo.tabuleiro.turn else "pretas jogam")
-        self.lbl_eco.setText(
+        self.navegacao.lbl_lance.setText(self.lista.texto_do_lance(self.estudo.caminho()))
+        self.navegacao.lbl_vez.setText("brancas jogam" if self.estudo.tabuleiro.turn else "pretas jogam")
+        self.navegacao.lbl_eco.setText(
             eco.frase_do_tabuleiro(self.estudo.tabuleiro, self.estudo.jogo.headers.get("ECO", ""))
         )
 
@@ -1087,10 +483,7 @@ class PainelDeEstudo(QWidget):
             return
         if not endereco.startswith("trecho:"):
             return
-        indice = int(endereco.removeprefix("trecho:"))
-        if not 0 <= indice < len(self._trechos):
-            return
-        caminho = self._trechos[indice].caminho
+        caminho = self.lista.caminho_do_trecho(int(endereco.removeprefix("trecho:")))
         if caminho is None:
             return
         self.gravar_comentario()
@@ -1102,13 +495,8 @@ class PainelDeEstudo(QWidget):
 
     def _alternar_uma_dobra(self, indice: int) -> None:
         """Dobra ou desdobra a variante cujo `(` foi clicado. **A identidade é o caminho.**"""
-        alvo = next((v for v in self._variantes if v.abre == indice), None)
-        if alvo is None:  # pragma: no cover - a lista foi refeita entre o desenho e o clique
+        if not self.lista.alternar_uma_dobra(indice):  # pragma: no cover - a lista foi refeita entre o desenho e o clique
             return
-        if alvo.chave in self._dobradas:
-            self._dobradas.discard(alvo.chave)
-        else:
-            self._dobradas.add(alvo.chave)
         self._redesenhar_lista()
         self._atualizar_botao_da_dobra()
 
@@ -1121,14 +509,7 @@ class PainelDeEstudo(QWidget):
 
         Dobrar não muda a árvore nem o PGN: é vista. `edicao` não sobe, e o `Ctrl+Z` não a enxerga.
         """
-        if self._dobradas:
-            self._dobradas.clear()
-            frase = "Variantes desdobradas."
-        elif self._variantes:
-            self._dobradas = {variante.chave for variante in self._variantes}
-            frase = f"{len(self._dobradas)} variante(s) dobrada(s)."
-        else:
-            frase = "Este estudo não tem variante para dobrar."
+        frase = self.lista.alternar_todas()
         self._redesenhar_lista()
         self._atualizar_botao_da_dobra()
         self.set_status(frase)
@@ -1137,192 +518,31 @@ class PainelDeEstudo(QWidget):
         """Cinza sem variante, e com o rótulo do que de fato está na tela -- como a S-347 fez
         com o botão do recorte, e pela mesma razão: um botão que alterna sobre o que não existe
         troca de texto sem que nada mude."""
-        self.btn_dobra.setEnabled(bool(self._variantes))
-        self.btn_dobra.setChecked(bool(self._dobradas))
+        self.btn_dobra.setEnabled(bool(self.lista.variantes))
+        self.btn_dobra.setChecked(bool(self.lista.dobradas))
         self.btn_dobra.setText(
             comandos.rotulo_alternado("dobrar_variantes")
-            if self._dobradas
+            if self.lista.dobradas
             else comandos.rotulo_de_botao("dobrar_variantes")
         )
 
-    # -------------------------------------------------------------------------------- motor
-
-    @property
-    def has_engine(self) -> bool:
-        return self._analyzer is not None
+    # ------------------------------------------- o motor, em qt/sala_motor.py (S-866)
 
     def analyse(self) -> None:
-        """Pede a análise da posição corrente. A resposta atrasada é descartada (S-285)."""
-        if self._analyzer is None:
-            self.set_status(strings.SEM_MOTOR_STATUS)
-            return
-        if self._analysing:
-            return
-        self._analysing = True
-        self.btn_analisar.setEnabled(False)
-        self.lbl_motor.setText("pensando…")
-        threading.Thread(
-            target=self._trabalho_do_motor,
-            args=(self._geracao, self.estudo.tabuleiro.copy(stack=False), self.estudo.no),
-            daemon=True,
-        ).start()
-
-    def _trabalho_do_motor(self, geracao: int, board: chess.Board, no: chess.pgn.GameNode) -> None:
-        assert self._analyzer is not None
-        try:
-            # A tabela de finais **antes** do motor, e na mesma thread (S-538): ela responde em
-            # microssegundos e a resposta dela vence a do motor onde existe. Perguntar depois faria
-            # a tela mostrar a estimativa e trocá-la um instante depois.
-            self._resultado_de_tabela = self._perguntar_a_tabela(board)
-            # **Quantas linhas é preferência desde a S-536**, e `CANDIDATOS_DO_MOTOR` é o que
-            # a sala pede quando ela não diz nada -- a medida da S-286, no lugar em que ela
-            # sempre esteve.
-            avaliacoes = self._analyzer.analyse_multi(
-                board, count=self._analyzer.multipv or CANDIDATOS_DO_MOTOR
-            )
-            self._motor_respondeu.emit(geracao, no, avaliacoes)
-        except Exception as exc:  # noqa: BLE001 - o motor é binário de terceiro
-            logger.warning("Falha na análise: %s", exc)
-            self._motor_falhou.emit(geracao, str(exc))
-        finally:
-            self._motor_terminou.emit(geracao)
-
-    def _perguntar_a_tabela(self, board: chess.Board) -> Any:
-        """O `Resultado` exato deste final, ou `None`. Sem pasta configurada, sempre `None` (S-538).
-
-        `deve_consultar` é o que impede a ida ao disco em toda posição de meio-jogo: a sala passa
-        o tempo em posições de 20 peças, e nenhuma tabela cobre essas.
-
-        Devolve o **resultado** e não a frase: a frase depende da cor a jogar, e montá-la aqui --
-        na thread do motor -- obrigaria a passar mais um dado pela fronteira. Quem a escreve é
-        `_mostrar_avaliacao`, que já tem o tabuleiro corrente na mão.
-        """
-        leitor = self._leitor_de_finais()
-        if not finais_declarados.deve_consultar(
-            chess.popcount(board.occupied), tem_pasta=leitor is not None
-        ):
-            return None
-        assert leitor is not None
-        achado = leitor.consultar(board)
-        return achado if achado is not None and finais_declarados.vence_o_motor(achado.wdl) else None
-
-    def _leitor_de_finais(self) -> Any:
-        """O leitor de tablebases, aberto na primeira consulta. `None` quando não há pasta."""
-        if self._finais is None:
-            self._finais = tablebase.abrir(self._opcoes_do_motor().syzygy_path)
-        return self._finais
-
-    def _mostrar_avaliacao(
-        self, geracao: int, no: chess.pgn.GameNode, avaliacoes: list[Evaluation]
-    ) -> None:
-        """Só escreve se ainda estamos no mesmo lance -- ver `analyse`.
-
-        **A tabela de finais vence o motor onde ela responde** (S-538): a frase de cima passa a ser
-        o resultado exato, e a barra vai para onde o resultado manda em vez de ficar na estimativa.
-        As linhas candidatas continuam sendo as do motor -- a tabela diz o resultado, não a
-        variante --, e é por isso que ela substitui uma parte da tela e não a seção inteira.
-        """
-        if geracao != self._geracao or not avaliacoes:
-            return
-        self._candidatos = list(avaliacoes)
-        melhor = avaliacoes[0]
-        brancas = bool(self.estudo.tabuleiro.turn)
-        achado = self._resultado_de_tabela
-        frase = (
-            finais_declarados.frase_do_resultado(achado.wdl, achado.dtz, brancas_jogam=brancas)
-            if achado is not None
-            else ""
-        )
-        self.lbl_motor.setText(frase or melhor.display())
-        self._pintar_a_barra(melhor, achado, brancas=brancas)
-        self.lbl_linha_do_motor.mostrar(
-            motor_declarado.linhas_do_motor(
-                avaliacoes,
-                numero_do_lance=self.estudo.tabuleiro.fullmove_number,
-                brancas_jogam=bool(self.estudo.tabuleiro.turn),
-            ),
-            vazio="Sem lance legal nesta posição.",
-        )
-        self.lbl_desempenho.setText(
-            motor_declarado.frase_de_desempenho(
-                profundidade=melhor.depth, nos=melhor.nodes, nos_por_segundo=melhor.nps
-            )
-        )
-        self._gravar_avaliacao(no, melhor)
-
-    def _pintar_a_barra(self, melhor: Evaluation, achado: Any, *, brancas: bool) -> None:
-        """Põe a barra lateral onde a avaliação -- ou o resultado da tabela -- manda.
-
-        Com tabela, o número dentro da barra vira o **resultado** (`1-0`, `0-1`, `=`) e não uma
-        avaliação: são os tokens do PGN, que não têm idioma e que qualquer enxadrista lê. Escrever
-        `+12,80` ali seria pôr uma estimativa em cima de uma certeza.
-        """
-        if self.vantagem is None:  # pragma: no cover - sem motor não há barra
-            return
-        if achado is None:
-            self.vantagem.definir(melhor.score_cp, melhor.mate_in, melhor.display())
-            return
-        exatos = finais_declarados.centipeoes_de(
-            achado.wdl, brancas_jogam=brancas, teto=analise_declarada.TETO_DE_AVALIACAO
-        )
-        self.vantagem.definir(exatos, None, "=" if not exatos else ("1-0" if exatos > 0 else "0-1"))
-
-    def _gravar_avaliacao(self, no: chess.pgn.GameNode, avaliacao: Evaluation) -> None:
-        """`[%eval 0.35,18]` no lance, que é onde o Lichess e o ChessBase o leem (S-285).
-
-        **Fora da pilha de desfazer, e de propósito.** A avaliação não é edição de quem estuda:
-        pô-la no histórico faria `Ctrl+Z` desfazer um número que o motor escreveu sozinho, e a
-        pilha de quem analisou dez lances seria dez passos de nada.
-        """
-        if avaliacao.score_cp is None and avaliacao.mate_in is None:
-            return
-        pontuacao = (
-            chess.engine.Mate(avaliacao.mate_in)
-            if avaliacao.mate_in is not None
-            else chess.engine.Cp(int(avaliacao.score_cp or 0))
-        )
-        no.set_eval(chess.engine.PovScore(pontuacao, chess.WHITE), avaliacao.depth or None)
-        self._marcar_sujo(historico=False, da_maquina=True)
-
-    def _mostrar_erro_do_motor(self, geracao: int, mensagem: str) -> None:
-        if geracao != self._geracao:
-            return
-        self.lbl_motor.setText("O motor não respondeu.")
-        self.lbl_linha_do_motor.mostrar((), vazio=mensagem)
-
-    def _terminar_analise(self, _geracao: int) -> None:
-        self._analysing = False
-        self.btn_analisar.setEnabled(True)
-        # O processo já subiu (foi ele quem respondeu), então o `id name` do UCI existe: é aqui que
-        # o título deixa de ser o nome do arquivo (S-529). Ver `_mostrar_o_titulo_do_motor`.
-        self._mostrar_o_titulo_do_motor()
-        # A posição pode ter mudado enquanto o motor pensava: com a análise contínua ligada, é aqui
-        # que a próxima começa. Sem isto, navegar durante uma análise deixaria o motor parado.
-        self._analisar_se_continuo()
-
-    def _analisar_se_continuo(self) -> None:
-        if (
-            self.btn_continua is not None
-            and self.btn_continua.isChecked()
-            and self._analyzer is not None
-            and not self._analysing
-        ):
-            self.analyse()
+        self.motor.analyse()
 
     def alternar_analise_continua(self) -> None:
-        """Liga e desliga o motor acompanhando o lance corrente."""
-        if self._analyzer is None or self.btn_continua is None:
-            self.set_status(strings.SEM_MOTOR_STATUS)
-            return
-        self.btn_continua.setChecked(not self.btn_continua.isChecked())
-        if self.btn_continua.isChecked():
-            self.analyse()
-        else:
-            self.lbl_motor.setText("")
-            self.lbl_desempenho.setText("")
-            self.lbl_linha_do_motor.mostrar(())
-            if self.vantagem is not None:
-                self.vantagem.limpar()
+        self.motor.alternar_analise_continua()
+
+    def variante_do_motor(self) -> None:
+        """Põe a **primeira** linha do motor na árvore, a partir do lance corrente (S-286)."""
+        self.motor.inserir_linha_do_motor(1)
+
+    def analisar_partida(self) -> AnalisadorDaPartida | None:
+        return self.motor.analisar_partida()
+
+    def opcoes_do_motor(self) -> QDialog | None:
+        return self.motor.opcoes_do_motor()
 
     # ------------------------------------------------------------------------------- estado
 
@@ -1376,23 +596,15 @@ class PainelDeEstudo(QWidget):
             self._atualizar_botao_do_recorte()
             self._atualizar_botao_da_dobra()
             self._mostrar_lance_corrente()
-            self._mostrar_placar()
+            self.treino.mostrar_placar()
             self._mostrar_cabecalho()
             self._aplicar_modo_da_barra()
         finally:
             self._montando = False
-        # A geração muda **aqui**, e não em cada método de navegação: `refresh` é o único ponto por
-        # onde toda mudança de nó passa, e é isso que faz a resposta atrasada do motor ser sempre
-        # descartada -- inclusive a de um caminho de navegação que ainda não existe (S-285).
-        self._geracao += 1
-        self._candidatos = []
-        self._analisar_se_continuo()
-        # A árvore de aberturas acompanha a posição (S-535). Aqui, e não em cada método de
-        # navegação, pela razão que a geração acima já usa: `refresh` é o único ponto por onde
-        # toda mudança de nó passa. Fechada, ela não custa nada -- e a consulta em curso não é
-        # atropelada: `definir_posicao` guarda o pedido e o refaz quando a thread volta.
-        if self._arvore is not None and self._arvore.isVisible():
-            self._arvore.definir_posicao(self.estudo.tabuleiro)
+        # O motor e a árvore de aberturas acompanham o nó corrente aqui, e não em cada método de
+        # navegação: `refresh` é o único ponto por onde toda mudança de nó passa (S-285, S-535).
+        self.motor.posicao_mudou()
+        self.partidas.acompanhar(self.estudo.tabuleiro)
 
     def _aplicar_modo_da_barra(self) -> None:
         """Sem estudo, variante e exportar ficam cinza; treinando, a árvore fica cinza (S-527).
@@ -1404,7 +616,7 @@ class PainelDeEstudo(QWidget):
         self.barra.aplicar_modo(
             barra_da_sala.modo(vazio=self.estudo.vazio(), treinando=self.btn_treino.isChecked()),
             {
-                "dobrar_variantes": bool(self._variantes),
+                "dobrar_variantes": bool(self.lista.variantes),
                 "mostrar_diagrama": self.estudo.ancora.valida,
             },
         )
@@ -1477,77 +689,6 @@ class PainelDeEstudo(QWidget):
         self._agendar_gravacao()
         self.refresh()
         self.set_status("Estudo restaurado.")
-
-    # ------------------------------------------------------------------ o divisor (S-276)
-
-    @property
-    def fracao_do_divisor_vertical(self) -> float:
-        """Onde está a alça entre lances e comentário, como fração da altura (S-519)."""
-        tamanhos = self.divisor_vertical.sizes()
-        altura = sum(tamanhos)
-        if len(tamanhos) < 2 or altura <= 0:
-            return 0.0
-        return geometria.fracao_de_divisor(tamanhos[0], altura)
-
-    def posicionar_divisor_vertical(self, fracao: float) -> None:
-        """Põe a alça vertical naquela fração. `0.0` deixa os pesos decidirem."""
-        if fracao <= 0.0:
-            return
-        tamanhos = self.divisor_vertical.sizes()
-        altura = max(1, sum(tamanhos) or self.divisor_vertical.height())
-        primeiro = int(altura * fracao)
-        resto = max(1, altura - primeiro)
-        if len(tamanhos) <= 2:
-            self.divisor_vertical.setSizes([primeiro, resto])
-            return
-        # Com o motor são três partes, e a fração guardada é só a da primeira: as outras duas
-        # repartem o que sobra na proporção que já tinham, senão mover a alça de cima esmagaria a
-        # seção do motor sem ninguém ter pedido.
-        antes = sum(tamanhos[1:]) or 1
-        self.divisor_vertical.setSizes(
-            [primeiro, *(max(1, int(resto * lado / antes)) for lado in tamanhos[1:])]
-        )
-
-    @property
-    def fracao_do_divisor(self) -> float:
-        """Onde a alça está, como fração da largura. `0.0` quando ainda não há geometria medida."""
-        tamanhos = self.divisor.sizes()
-        largura = sum(tamanhos)
-        if len(tamanhos) < 2 or largura <= 0:
-            return 0.0
-        return geometria.fracao_de_divisor(tamanhos[0], largura)
-
-    def posicionar_divisor(self, fracao: float) -> None:
-        """Põe a alça naquela fração. `0.0` deixa o peso do `QSplitter` decidir.
-
-        **Uma fração guardada desliga a regra da S-551**, e é o que impede as duas de brigarem: a
-        sessão anterior fechou com uma repartição, e ela é uma escolha -- ou da pessoa, que
-        arrastou, ou da própria regra, que rodou na primeira abertura e teve o resultado gravado.
-        Recalculá-la a cada `resize` sobrescreveria a primeira; nunca calculá-la deixaria a
-        primeira abertura com o vazio que este item foi consertar.
-        """
-        if fracao <= 0.0:
-            return
-        self._divisor_escolhido = True
-        largura = max(1, sum(self.divisor.sizes()) or self.divisor.width())
-        esquerda = int(largura * fracao)
-        self.divisor.setSizes([esquerda, max(1, largura - esquerda)])
-
-    @property
-    def fracao_do_tabuleiro(self) -> float:
-        """Que fração da coluna o tabuleiro ocupa. É o leitor que `AppState.board_zoom` não tinha.
-
-        **O campo existia, era gravado, era lido do disco e não tinha ninguém do outro lado**
-        (S-518). O commit que religou o estado da janela registrou "`board_zoom` fica sem uso de
-        propósito: o tabuleiro do Qt se ajusta ao painel" -- o que era verdade sobre o piso e não
-        sobre o teto, porque `MAX_DO_TABULEIRO` o parava em 560 px.
-        """
-        return self._fracao_do_tabuleiro
-
-    def definir_fracao_do_tabuleiro(self, fracao: float) -> None:
-        """Aplica a fração ao tabuleiro da sala. `0.0` é "nunca escolhi", e aí vale o padrão."""
-        self._fracao_do_tabuleiro = FRACAO_PADRAO_DO_TABULEIRO if fracao <= 0.0 else float(fracao)
-        self.tabuleiro.definir_fracao(self._fracao_do_tabuleiro)
 
     # --------------------------------------------------------------- vínculo com o OCR
 
@@ -1868,7 +1009,7 @@ class PainelDeEstudo(QWidget):
         É o comportamento do ChessBase, e era o único acerto de peso que a aba já tinha.
         """
         if self.btn_treino.isChecked():
-            self._treinar(move)
+            self.treino.treinar(move)
             return
         san = self.estudo.tabuleiro.san(move)
         self.gravar_comentario()
@@ -1998,7 +1139,7 @@ class PainelDeEstudo(QWidget):
     def _mostrar_nag(self) -> None:
         """Os símbolos do lance corrente, ao lado do botão que os põe."""
         nags = sorted(self.estudo.no.nags)
-        self.lbl_simbolo.setText(" ".join(estudo_mod.simbolo_de_nag(codigo) for codigo in nags))
+        self.navegacao.lbl_simbolo.setText(" ".join(estudo_mod.simbolo_de_nag(codigo) for codigo in nags))
 
     def alternar_nag(self, codigo: int) -> None:
         """Liga, desliga ou troca o símbolo do lance corrente (S-278)."""
@@ -2114,53 +1255,14 @@ class PainelDeEstudo(QWidget):
         )
 
     def _desenhar_recorte(self) -> None:
-        """A miniatura do diagrama âncora, ou nada.
-
-        **Nada, e não um retângulo vazio**: estudo sem âncora não veio de diagrama nenhum, e um
-        espaço reservado para o que não existe rouba largura do tabuleiro sem dizer por quê.
-
-        A imagem é reconstruída só quando a **âncora** muda, e não a cada lance: navegar redesenha
-        o tabuleiro dezenas de vezes por minuto, e reamostrar o recorte junto seria trabalho por
-        nada.
-        """
-        chave = self.estudo.ancora.chave() if self.estudo.ancora.valida else ""
-        if not self.btn_recorte.isChecked() or not chave:
-            self.recorte_label.hide()
-            self._recorte_de = ""
-            return
-        if chave != self._recorte_de:
-            pixmap = _miniatura(self._recorte(self.estudo.ancora), LADO_DO_RECORTE)
-            if pixmap is None:
-                self.recorte_label.hide()
-                return
-            self.recorte_label.setPixmap(pixmap)
-            self._recorte_de = chave
-        self.recorte_label.show()
+        """A miniatura do diagrama âncora, ou nada. Ver `qt/sala_coluna.RecorteDoDiagrama`."""
+        self.recorte_label.mostrar(self.estudo.ancora, ligado=self.btn_recorte.isChecked())
 
     def ampliar_recorte(self) -> QDialog | None:
-        """O recorte no tamanho em que o modelo o leu, numa janela própria (S-282).
-
-        A miniatura cabe na coluna e serve para conferir *que* diagrama é; conferir **uma casa**
-        pede o recorte inteiro. Uma janela e não um zoom no lugar: a comparação que se está fazendo
-        é com o tabuleiro ao lado, e trocar a miniatura por uma imagem grande o empurraria para
-        fora.
-        """
-        imagem = self._recorte(self.estudo.ancora) if self.estudo.ancora.valida else None
-        pixmap = _miniatura(imagem, LADO_AMPLIADO)
-        if pixmap is None:
+        """O recorte no tamanho em que o modelo o leu, numa janela própria (S-282)."""
+        janela = self.recorte_label.ampliado(self.estudo.ancora, self)
+        if janela is None:
             self.set_status("Não há recorte deste diagrama para ampliar.")
-            return None
-        janela = QDialog(self)
-        janela.setWindowTitle(self.estudo.ancora.rotulo())
-        pilha = QVBoxLayout(janela)
-        pilha.setContentsMargins(*(espaco.folga(),) * 4)
-        rotulo = QLabel(janela)
-        rotulo.setPixmap(pixmap)
-        pilha.addWidget(rotulo)
-        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=janela)
-        botoes.rejected.connect(janela.reject)
-        pilha.addWidget(botoes)
-        janela.show()
         return janela
 
     # ------------------------------------------------------- a linha impressa (S-283/S-208)
@@ -2225,147 +1327,6 @@ class PainelDeEstudo(QWidget):
             return
         self.set_status(f"Página {self.estudo.ancora.pagina + 1} do livro.")
 
-    def variante_do_motor(self) -> None:
-        """Põe a **primeira** linha do motor na árvore, a partir do lance corrente (S-286)."""
-        self.inserir_linha_do_motor(1)
-
-    def inserir_linha_do_motor(self, indice: int = 1) -> None:
-        """Põe a `indice`-ésima linha do motor na árvore, a partir do lance corrente (S-286/S-529).
-
-        **A procedência vai junto, no PGN.** O que a máquina sugeriu e o que a pessoa jogou não
-        podem ficar indistinguíveis no arquivo -- é a regra 2 da SPEC_EDITOR aplicada a lance --, e
-        a forma padrão de dizê-lo é o comentário de entrada da variante.
-
-        **O índice existe desde a S-529**, e é o clique numa linha do MultiPV. Até aqui só a
-        primeira era alcançável: as outras duas apareciam num `QLabel` e não havia caminho nenhum
-        para pô-las na árvore -- o que anulava metade da razão de o MultiPV existir, que é comparar
-        o lance do livro com os **candidatos** e não com o preferido.
-        """
-        if self._analyzer is None:
-            self.set_status(strings.SEM_MOTOR_STATUS)
-            return
-        posicao = max(1, int(indice)) - 1
-        melhor = self._candidatos[posicao] if posicao < len(self._candidatos) else None
-        if melhor is None or not melhor.pv_san:
-            self.set_status("O motor ainda não respondeu sobre esta posição.")
-            return
-
-        tabuleiro = self.estudo.tabuleiro
-        no = self.estudo.no
-        primeiro: chess.pgn.GameNode | None = None
-        for san in melhor.pv_san:
-            try:
-                lance = tabuleiro.parse_san(san)
-            except ValueError:  # pragma: no cover - a linha veio do motor sobre esta posição
-                break
-            existente = next((filho for filho in no.variations if filho.move == lance), None)
-            no = existente if existente is not None else no.add_variation(lance)
-            primeiro = primeiro or no
-            tabuleiro.push(lance)
-        if primeiro is None:
-            self.set_status("O motor não deu lance jogável nesta posição.")
-            return
-        if not primeiro.starting_comment:
-            primeiro.starting_comment = f"{self._analyzer.path.name}: {melhor.display()}"
-        self.refresh()
-        self._marcar_sujo()
-        self.set_status(f"Linha do motor na árvore: {' '.join(melhor.pv_san)}")
-
-    # ------------------------------------------- a partida inteira pelo motor (S-537)
-
-    def analisar_partida(self) -> Any:
-        """Passa a linha principal pelo motor, grava a avaliação e marca os erros (S-537).
-
-        **É a pergunta do dia seguinte ao torneio**: *em que lance eu perdi?* A sala sabia avaliar
-        uma posição desde a S-33 e gravar o número no lance desde a S-285; o que faltava era a
-        passada inteira e a leitura dela em uma tela.
-
-        Devolve a rodada, para o teste esperá-la. Quem decide profundidade é o diálogo; quem
-        classifica e desenha é `ui/analise_da_partida.py` e `qt/analise_da_partida.py`.
-        """
-        from chess_diagram_ocr.qt import analise_da_partida as qt_analise
-
-        if self._analyzer is None:
-            self.set_status(strings.SEM_MOTOR_STATUS)
-            return None
-        if self._analise_da_partida is not None and self._analise_da_partida.ocupado:
-            self.set_status("A partida já está sendo analisada.")
-            return None
-        _fens, passos = analise_declarada.percurso(self.estudo.jogo)
-        if not passos:
-            self.set_status("Não há lance na linha principal para analisar.")
-            return None
-        pedido = qt_analise.DialogoDaProfundidade(self, lances=len(passos))
-        if pedido.exec() != QDialog.DialogCode.Accepted:
-            return None
-        rodada = qt_analise.analisar_com_dialogo(
-            self,
-            analisador=self._analyzer,
-            jogo=self.estudo.jogo,
-            profundidade=pedido.profundidade(),
-            busy=self._busy,
-        )
-        rodada.terminou.connect(self._chegou_a_analise_da_partida)
-        rodada.falhou.connect(lambda mensagem, _erro: self.set_status(f"A análise da partida falhou: {mensagem}"))
-        self._analise_da_partida = rodada
-        return rodada
-
-    def _chegou_a_analise_da_partida(self, avaliados: Any) -> Any:
-        """Grava `[%eval]` e o símbolo em cada lance, e abre o relatório (S-537).
-
-        **O símbolo é NAG e não cor de tela**, e é o que faz a análise sobreviver ao arquivo: um
-        `??` gravado como `$4` aparece na lista de lances pelo caminho que já existe, vai para o
-        PGN e é lido por qualquer programa de xadrez. Uma marca só de tela morreria ao fechar.
-
-        `_marcar_sujo` uma vez no fim, e não por lance: quarenta chamadas empilhariam quarenta
-        passos de desfazer para uma operação que a pessoa mandou fazer uma vez.
-        """
-        from chess_diagram_ocr.qt import analise_da_partida as qt_analise
-
-        cancelada = bool(self._analise_da_partida is not None and self._analise_da_partida.cancelada)
-        marcados = self._marcar_os_lances(avaliados)
-        self.refresh()
-        if avaliados:
-            self._marcar_sujo(historico=False, da_maquina=True)
-        self.set_status(analise_declarada.frase_final(len(avaliados or []), marcados, cancelado=cancelada))
-        if not avaliados:
-            return None
-        return qt_analise.JanelaDaAnalise(self, avaliados, ir_para=self.ir_para_o_ply)
-
-    def _marcar_os_lances(self, avaliados: Any) -> int:
-        """Escreve a avaliação e o símbolo nos nós da linha principal. Devolve quantos ganharam
-        símbolo.
-
-        O casamento é **por posição na linha principal**, e não por nó guardado: a árvore pode ter
-        mudado enquanto o motor pensava, e um nó guardado apontaria para um lance que saiu dela.
-
-        **A posição já matada não recebe `[%eval]`** (S-537): o UCI responde `score mate 0` ali, o
-        `engine` normaliza para `±1` -- que a barra precisa --, e o que saía no arquivo era um
-        `[%eval #1]` numa posição em que o mate **já aconteceu**. Quem decide é `grava_avaliacao`.
-
-        O que se pula é a **avaliação**, e não o nó: a posição que acaba a partida também pode ser
-        um afogamento, e afogar no lugar de matar é justamente o `??` que esta passada existe para
-        achar. O símbolo continua sendo escrito, e é do símbolo que a análise vive.
-        """
-        no: Any = self.estudo.raiz
-        marcados = 0
-        for lance in avaliados or []:
-            if not no.variations:
-                break
-            no = no.variations[0]
-            if analise_declarada.grava_avaliacao(lance):
-                pontuacao = (
-                    chess.engine.Mate(lance.mate_em)
-                    if lance.mate_em is not None
-                    else chess.engine.Cp(int(lance.centipeoes))
-                )
-                no.set_eval(chess.engine.PovScore(pontuacao, chess.WHITE))
-            codigo = analise_declarada.NAG_DE_JUIZO.get(lance.juizo)
-            if codigo is not None:
-                no.nags = estudo_mod.alternar_nag(set(no.nags) - {codigo}, codigo)
-                marcados += 1
-        return marcados
-
     def ir_para_o_ply(self, ply: int) -> None:
         """Leva o tabuleiro ao `ply`-ésimo lance da linha principal (S-537).
 
@@ -2379,106 +1340,6 @@ class PainelDeEstudo(QWidget):
                 break
             no = no.variations[0]
         self.estudo.no = no
-        self.refresh()
-
-    # ----------------------------------------- as opções do motor, sem reiniciar (S-536)
-
-    def _opcoes_do_motor(self) -> EngineSettings:
-        """As preferências do motor como estão no disco. Arquivo ausente dá os padrões (S-32)."""
-        return load_settings(self._caminho_das_preferencias).engine
-
-    def opcoes_do_motor(self) -> QDialog | None:
-        """Abre o formulário das opções do motor e aplica o que ele devolver (S-536).
-
-        **Existe com e sem motor**, e é a única ação do grupo Motor que existe sem: numa máquina em
-        que a procura automática não achou binário nenhum, este é o caminho para dizer onde ele
-        está -- e escondê-lo justamente ali seria escondê-lo de quem precisa dele.
-
-        A gravação é atômica e vale para a próxima sessão; a aplicação é imediata e não reinicia
-        nada. Quem sabe o que cada mudança faz com o processo é `plano_de_aplicacao`.
-        """
-        from chess_diagram_ocr.qt.preferencias import DialogoDoMotor
-
-        antes = self._opcoes_do_motor()
-        dialogo = DialogoDoMotor(self, opcoes=antes)
-        if dialogo.exec() != QDialog.DialogCode.Accepted:
-            return dialogo
-        self.aplicar_opcoes_do_motor(antes, dialogo.valores())
-        return dialogo
-
-    def aplicar_opcoes_do_motor(self, antes: EngineSettings, depois: EngineSettings) -> Any:
-        """Grava as preferências e põe o motor de acordo, fora da linha de eventos (S-536).
-
-        Separada de `opcoes_do_motor` porque é a parte afirmável sem abrir diálogo -- e porque é
-        ela que a fotografia e o teste exercitam.
-        """
-        from chess_diagram_ocr.qt.preferencias import MotorVivo
-
-        leitura = ler_arquivo(self._caminho_das_preferencias)
-        self._recusa_das_preferencias = ""
-        try:
-            arquivo = leitura.valor
-            save_settings(gravavel(leitura).com(arquivo.com(replace(arquivo.preferencias, engine=depois))))
-        except GravacaoRecusada as recusa:
-            # Vale em memória e não vai para o disco (S-812). A frase sai junto com a do motor
-            # aplicado, que chega depois e cobriria esta.
-            self._recusa_das_preferencias = str(recusa)
-            self.set_status(self._recusa_das_preferencias)
-        except OSError as erro:  # pragma: no cover - disco cheio ou pasta somente leitura
-            logger.warning("As preferências do motor não puderam ser gravadas: %s", erro)
-        # O leitor de finais é reaberto na próxima consulta: a pasta pode ter mudado.
-        if self._finais is not None:
-            self._finais.close()
-            self._finais = None
-        if self._motor_vivo is None:
-            self._motor_vivo = MotorVivo(self, analisador=self._analyzer)
-            self._motor_vivo.aplicado.connect(self._motor_aplicado)
-            self._motor_vivo.falhou.connect(lambda mensagem, _erro: self._motor_aplicado(None, mensagem))
-        self._motor_vivo.aplicar(antes, depois)
-        return self._motor_vivo
-
-    def _motor_aplicado(self, motor: Any, frase: str) -> None:
-        self.trocar_de_motor(motor)
-        self.set_status(" ".join(parte for parte in (frase, self._recusa_das_preferencias) if parte))
-
-    @property
-    def analisador(self) -> EngineAnalyzer | None:
-        """O motor que a sala está usando **agora**. É por ele que a janela o fecha ao sair.
-
-        A janela guarda o motor que ela construiu, e a sala pode tê-lo trocado (S-536): perguntar
-        aqui é o que faz o `closeEvent` fechar o processo que está vivo, e não o que morreu.
-        """
-        return self._analyzer
-
-    def trocar_de_motor(self, novo: EngineAnalyzer | None) -> None:
-        """Troca o motor da sala e acomoda a tela ao que passou a existir (S-536).
-
-        **Três casos, e só o terceiro custa alguma coisa.** Trocar um motor por outro é atualizar
-        o título da seção -- o objeto muitas vezes é o mesmo, com outro binário dentro. Perder o
-        motor esconde a seção e a barra lateral, como se ele nunca tivesse existido (S-33). Ganhar
-        um motor numa sala que abriu sem nenhum é o caso que obriga a montar a seção agora e a
-        **remontar a fila**: uma `QAction` não muda de barra depois de criada, e sem a remontagem o
-        grupo Motor continuaria ausente até a próxima abertura -- que é o "reiniciar" que este item
-        veio tirar.
-
-        A barra lateral **não** nasce depois: ela mora dentro do arranjo da coluna do tabuleiro, e
-        recriá-lo mexeria na repartição que a S-551 calcula. A promessa da S-536 é o motor sem
-        reiniciar; a barra chega junto com ele na abertura seguinte, e a seção já mostra tudo.
-        """
-        tinha = self._analyzer is not None
-        self._analyzer = novo
-        if novo is None and tinha:
-            self.btn_continua = None
-            self.caixa_do_motor.hide()
-        elif novo is not None and tinha:
-            # O motor que a troca entrega já está aberto (`MotorVivo` chama `start`), então aqui o
-            # título sai com o nome UCI e não com o do binário.
-            self._mostrar_o_titulo_do_motor()
-            self.caixa_do_motor.show()
-        elif novo is not None and not tinha:
-            self._secao_do_motor(self.divisor_vertical)
-        if (novo is not None) != tinha:
-            self._remontar_a_barra()
         self.refresh()
 
     def _remontar_a_barra(self) -> None:
@@ -2501,180 +1362,19 @@ class PainelDeEstudo(QWidget):
                 acao.setChecked(ligado)
                 acao.blockSignals(False)
 
-    # ------------------------------------------------- as partidas da base (S-287)
+    # ------------------------------- as partidas da base, em qt/sala_partidas.py (S-866)
 
     def partidas_da_posicao(self) -> QDialog | None:
-        """Que partidas da base do usuário chegam a esta posição.
-
-        **Lê o cache, não a base**, e o motivo está em `estudo_partidas`: reproduzir os lances da
-        base inteira custa ~104 min em dez processos, e o custo é da passada e não da posição.
-        Quando a posição nunca foi perguntada, a resposta diz **isso** em vez de dizer "nenhuma
-        partida" -- que seria um número sobre uma pergunta que ninguém fez.
-
-        O `import` mora aqui e não no topo: `games_cache` alcança `games_db` e `pdf_text`, e a aba
-        é construída na abertura da janela.
-        """
-        from chess_diagram_ocr import estudo_partidas
-
-        resposta = estudo_partidas.consultar(
-            self._loja_de_posicoes(), self.estudo.tabuleiro.board_fen(), bases=tuple(self._bases())
-        )
-        self.set_status(resposta.frase)
-        if not resposta.achou:
-            return None
-        return _JanelaDePartidas(self, resposta)
+        return self.partidas.partidas_da_posicao()
 
     def buscar_partidas(self) -> QDialog | None:
-        """Abre o formulário de busca sobre o índice por nome (S-533).
-
-        **A outra pergunta.** `partidas_da_posicao` responde pela posição que está no tabuleiro, e
-        só por ela -- e lê o cache, que só conhece o que já foi perguntado. Esta pergunta não nasce
-        do tabuleiro: *as partidas de Carlsen em 2019 com Elo acima de 2700 na Najdorf*. Quem
-        responde é `games_index.buscar`, e a posição corrente entra como filtro **opcional**.
-
-        O diálogo é guardado e reusado: ele não é modal e tem uma `Tarefa` dentro, e destruir o
-        primeiro para abrir o segundo destruiria um `QThread` em curso -- que derruba o processo
-        sem exceção. Reabrir só atualiza a posição, que é a única coisa dele que envelhece.
-        """
-        from chess_diagram_ocr.games_db import database_paths
-        from chess_diagram_ocr.qt import busca_de_partidas as qt_busca
-
-        if self._busca is None:
-            bases = tuple(self._bases()) or tuple(database_paths())
-            if not bases:
-                self.set_status("Não há base de partidas (.pgn) para procurar.")
-                return None
-            dialogo = qt_busca.DialogoDeBusca(self.window(), bases=bases)
-            dialogo.partida_escolhida.connect(self.abrir_partida_da_base)
-            dialogo.indice_pedido.connect(self.indexar_base)
-            self._busca = dialogo
-        self._busca.definir_posicao(self.estudo.tabuleiro.board_fen())
-        self._busca.show()
-        self._busca.raise_()
-        return self._busca
+        return self.partidas.buscar_partidas()
 
     def arvore_de_aberturas(self) -> QDialog | None:
-        """A árvore de aberturas da posição corrente: que lances a base joga daqui (S-535).
+        return self.partidas.arvore_de_aberturas()
 
-        **A terceira pergunta à base, e ela é a de quem estuda uma abertura.**
-        `partidas_da_posicao` diz *quais* partidas passam por aqui (e só sabe o que já foi
-        perguntado, pelo cache); `buscar_partidas` responde a um formulário de seis campos. Esta
-        responde *o que se joga daqui*, com o número de partidas, o resultado, o Elo e o ano de
-        cada lance -- e ela lê um índice por **posição**, que é o que a S-535 construiu.
-
-        O diálogo é guardado e reusado pelas razões de `buscar_partidas`, e mais uma: ele segue a
-        posição da sala a cada `refresh`.
-        """
-        from chess_diagram_ocr.games_db import database_paths
-        from chess_diagram_ocr.qt import arvore_de_aberturas as qt_arvore
-
-        if self._arvore is None:
-            bases = tuple(self._bases()) or tuple(database_paths())
-            if not bases:
-                self.set_status("Não há base de partidas (.pgn) para a árvore de aberturas.")
-                return None
-            dialogo = qt_arvore.DialogoDaArvore(self.window(), bases=bases)
-            dialogo.lance_escolhido.connect(self.jogar_da_arvore)
-            dialogo.partidas_pedidas.connect(self.partidas_da_arvore)
-            dialogo.construcao_pedida.connect(self.construir_a_arvore)
-            self._arvore = dialogo
-        self._arvore.definir_posicao(self.estudo.tabuleiro)
-        self._arvore.show()
-        self._arvore.raise_()
-        return self._arvore
-
-    def jogar_da_arvore(self, san: str) -> bool:
-        """Joga na árvore de estudo o lance escolhido na árvore de aberturas. Devolve se jogou.
-
-        **Reinterpreta o SAN no tabuleiro da sala**, e não recebe um `chess.Move`: o lance veio de
-        uma consulta que rodou numa thread sobre uma cópia, e um `Move` daquela cópia é um par de
-        casas sem dono. Ilegal aqui quer dizer que a posição andou entre a consulta e o clique --
-        a frase diz isso em vez de jogar outra coisa.
-
-        Quem redesenha a árvore de aberturas é o `refresh` de `push_move`, e não esta função: a
-        posição mudaria pelas setas do teclado do mesmo jeito.
-        """
-        try:
-            lance = self.estudo.tabuleiro.parse_san(san)
-        except (ValueError, AssertionError):
-            self.set_status(f"{san} não é um lance legal na posição que está no tabuleiro agora.")
-            return False
-        self.push_move(lance)
-        return True
-
-    def partidas_da_arvore(self, filtro: Any) -> Any:
-        """Abre a busca da S-533 já preenchida com a posição da árvore e o ECO dela.
-
-        É o "mesmo gesto da busca" que o item pede: a lista de partidas que chegam a esta posição
-        é a tabela que já existe, com a paginação e a thread que já existem -- e não uma segunda
-        lista de partidas neste programa.
-        """
-        # `Any` e nao `DialogoDeBusca`: o tipo concreto so existe atras do `import` tardio de
-        # `buscar_partidas` -- nomea-lo aqui traria o PyQt do dialogo para o topo deste arquivo.
-        dialogo: Any = self.buscar_partidas()
-        if dialogo is not None:
-            dialogo.aplicar_filtro(filtro)
-        return dialogo
-
-    def construir_a_arvore(self) -> Any:
-        """Constrói a árvore de aberturas com barra e Cancelar, sem sair da janela (S-535).
-
-        A forma é a de `indexar_base` (S-532) e pela mesma razão: a saída de "o arquivo não existe"
-        tem de ser um comando da janela e não uma frase mandando abrir um terminal. A diferença é
-        o que o cancelamento custa -- aqui a passada inteira é descartada, porque meia árvore dá
-        percentagem sobre a metade que se leu, e ela pareceria certa.
-        """
-        from chess_diagram_ocr.games_db import database_paths
-        from chess_diagram_ocr.qt import arvore_de_aberturas as qt_arvore
-
-        if self._construtor_da_arvore is not None and self._construtor_da_arvore.ocupado:
-            self.set_status("A árvore de aberturas já está sendo construída.")
-            return None
-        bases = tuple(self._bases()) or tuple(database_paths())
-        if not bases:
-            self.set_status("Não há base de partidas (.pgn) para construir a árvore.")
-            return None
-        busy = self._busy if self._busy is not None else getattr(self.window(), "busy", None)
-        construtor = qt_arvore.construir_com_dialogo(self.window(), bases, busy=busy)
-        construtor.terminou.connect(lambda feito: self.set_status(qt_arvore.frase_final(feito)))
-        construtor.falhou.connect(
-            lambda mensagem, _excecao: self.set_status(f"A árvore de aberturas falhou: {mensagem}")
-        )
-        self._construtor_da_arvore = construtor
-        return construtor
-
-    def abrir_partida_da_base(self, caminho: Any, offset: int) -> bool:
-        """Põe na mesa a partida que a busca escolheu, lida direto do byte dela (S-533).
-
-        **É o que o índice existe para permitir**: `Achado` guarda em que arquivo e em que byte a
-        partida começa, e ler dali custa um `seek` -- não a passada de minutos que a busca por
-        posição paga. Se a leitura não devolver partida, o índice está adiantado em relação ao
-        arquivo (alguém reescreveu o `.pgn`), e a frase diz isso em vez de abrir meia partida.
-
-        O estudo aberto é guardado na sala antes da troca, como em `_aceitar_colado`: escolher uma
-        partida na lista não pode custar a análise que estava na mesa.
-        """
-        from chess_diagram_ocr import estudo_partidas, games_index
-
-        partida = games_index.partida_em(Path(caminho), int(offset))
-        if partida is None or not partida.movetext:
-            self.set_status(
-                "A partida escolhida não foi encontrada onde o índice diz que ela está. "
-                "Refaça o índice: a base mudou depois da última rodada."
-            )
-            return False
-        novo, motivo = estudo_mod.colar(estudo_partidas.como_pgn(partida))
-        if novo is None:
-            self.set_status(f"A partida escolhida não pôde ser lida: {motivo}")
-            return False
-        if not self._confirmar_abandono("abrir a partida escolhida na busca"):
-            return False
-        self.seguir_ocr.setChecked(False)
-        self.sala.guardar(self.estudo)
-        nomes = f"{partida.headers.get('White', '?')} - {partida.headers.get('Black', '?')}"
-        self._trocar_de_estudo(novo, f"Base: {nomes}")
-        self.set_status(f"{nomes}: {novo.contagem_de_lances()} lance(s) da base.")
-        return True
+    def indexar_base(self) -> None:
+        self.partidas.indexar_base()
 
     def abrir_no_livro(self, jogo: Any, caminho: tuple[int, ...], *, origem: str) -> bool:
         """Põe na mesa a partida do PGN do livro inteira, posicionada no nó do diagrama (S-592).
@@ -2695,150 +1395,6 @@ class PainelDeEstudo(QWidget):
         self.set_status(f"{origem}: a árvore do livro, no lance do diagrama.")
         return True
 
-    def indexar_base(self) -> None:
-        """Constrói o índice por nome da base, com barra e Cancelar, sem sair da janela (S-532).
-
-        **A fiação que a S-532 deixou pendente**: o indexador existia e ninguém o chamava -- a janela
-        continuava mandando abrir um terminal. A ação mora no grupo Base da barra da sala (dentro do
-        "Mais": indexa-se uma vez por torneio acrescentado) e no menu Estudo, pelo catálogo.
-
-        As bases são as que a sala já consulta (`bases_de_partidas`) ou, sem elas, a pasta padrão
-        (`database_paths`). O `busy` é o da janela quando ela o passou; senão, o que a janela que
-        nos contém tiver -- é o mesmo registro, e uma segunda rodada em curso é recusada pelo
-        indexador. A frase final vai para `set_status`, que é o rodapé da aba **e** o da janela.
-        """
-        from chess_diagram_ocr.games_db import database_paths
-        from chess_diagram_ocr.qt import indice_da_base
-
-        if self._indexador is not None and self._indexador.ocupado:
-            self.set_status("O índice da base já está sendo construído.")
-            return
-        bases = tuple(self._bases()) or tuple(database_paths())
-        if not bases:
-            self.set_status("Não há base de partidas (.pgn) para indexar.")
-            return
-        busy = self._busy if self._busy is not None else getattr(self.window(), "busy", None)
-        indexador = indice_da_base.indexar_com_dialogo(self.window(), bases, busy=busy)
-        indexador.terminou.connect(lambda resultado: self.set_status(indice_da_base.frase_final(resultado)))
-        indexador.falhou.connect(lambda mensagem, _excecao: self.set_status(f"O índice da base falhou: {mensagem}"))
-        self._indexador = indexador
-
-    def _loja_de_posicoes(self) -> Any:
-        """O cache de posições, aberto uma vez e mantido. `None` quando não há base.
-
-        `open_store` nunca levanta por causa do disco (é decisão dele), então o `None` daqui só
-        significa uma coisa: não há PGN em `pgn_database/` para o cache falar a respeito.
-
-        **A sala só lê o cache (S-806)**: abre com `somente_leitura`, e não cria o arquivo. Sem
-        arquivo, a loja é a vazia em memória, e é trocada pela do disco quando ele aparece -- um
-        `cvoff-games --all` rodado com a sala aberta passa a responder sem reabri-la.
-        """
-        from chess_diagram_ocr import games_cache
-
-        caminho = self._caminho_do_cache if self._caminho_do_cache is not None else games_cache.DEFAULT_STORE_PATH
-        if self._loja is not None and (self._loja.path == caminho or not caminho.exists()):
-            return self._loja
-        bases = tuple(self._bases())
-        if not bases:
-            return None
-        if self._loja is not None:
-            self._loja.close()
-        self._loja = games_cache.open_store(caminho, database=list(bases), somente_leitura=True)
-        return self._loja
-
-    # ------------------------------------------------------------------- entrada (S-288)
-
-    def colar_estudo(self) -> QDialog:
-        """Abre a caixa de colar posição ou partida.
-
-        **Uma caixa e não dois comandos**: quem tem uma FEN e quem tem um PGN faz o mesmo gesto --
-        copia de algum lugar e cola aqui --, e obrigá-los a escolher o comando certo antes é
-        perguntar o que o próprio texto responde. Quem responde é `estudo.colar`.
-        """
-        return _JanelaDeColar(self, self._aceitar_colado)
-
-    def _aceitar_colado(self, texto: str) -> None:
-        """O que veio da caixa. **Não descarta nada antes de saber que deu certo.**"""
-        novo, motivo = estudo_mod.colar(texto)
-        if novo is None:
-            self.set_status(motivo)
-            return
-        if not self._confirmar_abandono("abrir o que foi colado"):
-            return
-        self.seguir_ocr.setChecked(False)
-        self.sala.guardar(self.estudo)
-        self._trocar_de_estudo(novo, "Base: colado")
-        self.set_status(f"{novo.contagem_de_lances()} lance(s) colados.")
-
-    def abrir_pgn(self) -> None:
-        """Abre um `.pgn` do disco: um estudo, ou a coleção de um livro (S-288).
-
-        **Três respostas para três arquivos**, e a diferença não é de tamanho: o `.pgn` que este
-        programa gravou traz `SourcePDF`, `Page` e `Diagram`, e as partidas dele entram **na sala**;
-        um `.pgn` de uma partida qualquer abre como estudo avulso; um de muitas partidas sem âncora
-        abre uma lista para escolher.
-        """
-        nome, _filtro = QFileDialog.getOpenFileName(
-            self, "Abrir PGN", str(self._pasta_inicial), "PGN (*.pgn);;Todos (*.*)"
-        )
-        if not nome:
-            return
-        caminho = Path(nome)
-        try:
-            tamanho = caminho.stat().st_size
-        except OSError as erro:
-            self.set_status(f"Não foi possível ler {caminho.name}: {erro}")
-            return
-        if tamanho > TAMANHO_MAXIMO_DE_PGN:
-            self.set_status(
-                f"{caminho.name} tem {formato.decimal(tamanho / 1_048_576, 0)} MB, e a sala abre até "
-                f"{TAMANHO_MAXIMO_DE_PGN // 1_048_576} MB. Base de partidas desse tamanho se "
-                f"consulta pela busca por posição, que não carrega o arquivo inteiro."
-            )
-            return
-        try:
-            with caminho.open(encoding="utf-8", errors="replace") as fluxo:
-                achados = estudo_arquivo.estudos_de_pgn(
-                    fluxo,
-                    documento=self.sala.documento,
-                    onde=caminho.name,
-                    limite=PARTIDAS_MAXIMAS_DE_PGN,
-                )
-        except OSError as erro:
-            self.set_status(f"Não foi possível ler {caminho.name}: {erro}")
-            return
-        self._receber_do_pgn(caminho, achados)
-
-    def _receber_do_pgn(self, caminho: Path, achados: Sequence[Estudo]) -> None:
-        if not achados:
-            self.set_status(f"{caminho.name} não tem nenhuma partida legível.")
-            return
-        if len(achados) >= PARTIDAS_MAXIMAS_DE_PGN:
-            self.set_status(
-                f"{caminho.name}: lidas as primeiras {PARTIDAS_MAXIMAS_DE_PGN} partidas; "
-                f"o arquivo tem mais."
-            )
-        # Os que têm âncora deste livro entram na sala; `guardar` recusa os demais sozinho.
-        anexados = [e for e in achados if self.sala.guardar(e)]
-        if anexados:
-            self._trocar_de_estudo(anexados[0], f"Base: {caminho.name}")
-            self.set_status(f"{len(anexados)} estudo(s) de {caminho.name} entraram na sala deste livro.")
-            self._marcar_sujo()
-            return
-        if len(achados) == 1:
-            if not self._confirmar_abandono(f"abrir {caminho.name}"):
-                return
-            self._trocar_de_estudo(achados[0], f"Base: {caminho.name}")
-            self.set_status(f"{achados[0].contagem_de_lances()} lance(s) de {caminho.name}.")
-            return
-        _JanelaDeColecao(self, caminho.name, list(achados), self._escolher_da_colecao)
-
-    def _escolher_da_colecao(self, escolhido: Estudo) -> None:
-        if not self._confirmar_abandono("abrir a partida escolhida"):
-            return
-        self._trocar_de_estudo(escolhido, "Base: PGN aberto")
-        self.set_status(f"{escolhido.contagem_de_lances()} lance(s) da partida escolhida.")
-
     def _trocar_de_estudo(self, novo: Estudo, origem: str) -> None:
         """Põe outro estudo na mesa, recomeçando a pilha de desfazer nele.
 
@@ -2851,514 +1407,68 @@ class PainelDeEstudo(QWidget):
         self.lbl_origem.setText(origem)
         self.refresh()
 
-    # -------------------------------------------------------------- saída (S-289)
+    # --------------------------------- entrada e saída, em qt/sala_arquivos.py (S-866)
+
+    def colar_estudo(self) -> QDialog:
+        return arquivos.colar_estudo(self)
+
+    def abrir_pgn(self) -> None:
+        arquivos.abrir_pgn(self)
 
     def exportar_estudo_md(self) -> None:
         """`.md` **porque ele diffa**: dois estudos da mesma posição comparam linha a linha."""
-        self._exportar_estudo(".md")
+        arquivos.exportar_texto_marcado(self, ".md")
 
     def exportar_estudo_html(self) -> None:
         """`.html` **porque ele abre**: é o formato para mandar a análise para alguém."""
-        self._exportar_estudo(".html")
+        arquivos.exportar_texto_marcado(self, ".html")
 
     def exportar_estudo_rtf(self) -> None:
         """`.rtf` porque o Word abre -- e sem dependência nova nenhuma (S-252)."""
-        self._exportar_estudo(".rtf")
+        arquivos.exportar_texto_marcado(self, ".rtf")
 
     def exportar_estudo_epub(self) -> None:
-        """`.epub` **porque o leitor de livro repagina** (S-542).
-
-        Os três de cima entregam um arquivo de texto marcado, e a página é do programa que o abrir;
-        o PDF sai com a página cravada. O EPUB é o meio-termo que um livro de xadrez pede: o
-        diagrama vai em SVG e acompanha o corpo de letra que a pessoa escolher no leitor.
-        """
+        """`.epub` **porque o leitor de livro repagina** (S-542)."""
         from chess_diagram_ocr import epub
 
-        self._exportar_empacotado(".epub", "EPUB", epub.exportar_estudo_epub)
+        arquivos.exportar_empacotado(self, ".epub", "EPUB", epub.exportar_estudo_epub)
 
     def exportar_estudo_docx(self) -> None:
-        """`.docx` **porque o texto continua sendo escrito** (S-543).
-
-        O RTF já abre no Word, e a diferença é o que se faz depois: o DOCX sai com estilos de
-        título nomeados, sumário e o diagrama como imagem numa moldura -- é o formato de quem vai
-        continuar escrevendo por cima da análise, e não só lê-la.
-        """
+        """`.docx` **porque o texto continua sendo escrito** (S-543)."""
         from chess_diagram_ocr import docx_saida
 
-        self._exportar_empacotado(".docx", "DOCX", docx_saida.exportar_estudo_docx)
-
-    def _exportar_empacotado(self, extensao: str, formato: str, exportador: Callable[..., Any]) -> None:
-        """O caminho comum do EPUB e do DOCX: escolher o destino, gravar, dizer o que saiu.
-
-        **Os dois não passam por `text/exportacao.py`, e é a mesma razão do PDF**: aquele módulo
-        entrega texto marcado, e estes três entregam um **pacote** -- um zip com manifesto,
-        imagens e metadados. Quem monta o pacote são `epub.py` e `docx_saida.py`, que já contam o
-        que escreveram; aqui só se escolhe o arquivo.
-
-        **A falha vai para a barra de status e não para uma caixa**, como no PDF: a pessoa acabou
-        de escolher o destino e clicou em gravar, então ela está olhando para esta tela, e a mesma
-        linha que diria "3 capítulo(s)" diz por que não deu (S-164).
-        """
-        destino, _filtro = QFileDialog.getSaveFileName(
-            self,
-            f"Exportar o estudo para {formato}",
-            str(self._pasta_inicial / f"{self._nome_sugerido()}{extensao}"),
-            f"{formato} (*{extensao});;Todos (*.*)",
-        )
-        if not destino:
-            return
-        self.gravar_comentario()
-        caminho = Path(destino)
-        try:
-            relatorio = exportador(self.estudo, caminho)
-        except (OSError, ValueError) as erro:  # ValueError: o EPUB que não passa em `verificar` (S-877)
-            self.set_status(f"Não foi possível gravar {caminho.name}: {erro}")
-            return
-        self.set_status(relatorio.resumo())
-
-    # ------------------------------------------------------- a folha e o lote (S-544/S-545)
+        arquivos.exportar_empacotado(self, ".docx", "DOCX", docx_saida.exportar_estudo_docx)
 
     def exportar_estudo_pdf(self) -> None:
-        """`.pdf` **porque a página é decidida aqui** (S-545).
+        arquivos.exportar_estudo_pdf(self)
 
-        Os três de cima entregam o estudo como texto marcado, e quem pagina é o programa que
-        abrir o arquivo. O PDF sai já paginado como livro -- margem, cabeçalho, número de página,
-        e a quebra que não separa o diagrama do lance que o pede --, e o diagrama vai em vetor.
-        Por isso ele não passa por `text/exportacao.py`: aquele módulo não tem página.
+    def imprimir_estudo(self) -> QPrintPreviewDialog:
+        return arquivos.imprimir_estudo(self)
 
-        **A falha vai para a barra de status, e não para uma caixa** -- ao contrário dos três
-        vizinhos. É a régua da S-164 e a catraca de `tests/test_ui_retorno_modal.py`: a pessoa
-        acabou de escolher o destino e clicou em gravar, então ela está olhando para esta tela, e
-        a mesma linha que diria "6 página(s) em …" diz por que não deu. Uma caixa a mais aqui
-        seria interrupção para informar o que o rodapé informa sem parar ninguém.
-        """
-        from chess_diagram_ocr.qt import impressao_do_estudo as qt_impressao
-        from chess_diagram_ocr.ui.impressao_do_estudo import frase_do_pdf
-
-        destino, _filtro = QFileDialog.getSaveFileName(
-            self,
-            "Exportar o estudo para PDF",
-            str(self._pasta_inicial / f"{self._nome_sugerido()}.pdf"),
-            "PDF (*.pdf);;Todos (*.*)",
-        )
-        if not destino:
-            return
-        self.gravar_comentario()
-        caminho = Path(destino)
-        try:
-            paginas = qt_impressao.pdf_do_estudo(self.estudo, caminho)
-            tamanho = caminho.stat().st_size
-        except OSError as erro:
-            self.set_status(f"Não foi possível gravar {caminho.name}: {erro}")
-            return
-        self.set_status(frase_do_pdf(str(caminho), paginas, tamanho))
-
-    def imprimir_estudo(self) -> Any:
-        """A pré-visualização paginada, e a impressora atrás dela (S-545).
-
-        **Prévia e não impressão direta.** A quebra de página é a decisão que o programa toma por
-        quem imprime, e ela tem de ser conferível antes de gastar folha -- é a mesma razão de a
-        prévia do lote de diagramas existir. A caixa de escolher impressora vem da própria prévia.
-        """
-        from chess_diagram_ocr.qt import impressao_do_estudo as qt_impressao
-
-        self.gravar_comentario()
-        return qt_impressao.abrir_previa_de_impressao(self, self.estudo)
-
-    def exportar_diagramas_em_lote(self) -> Any:
-        """Os diagramas desta sala como arquivos soltos, um por posição (S-544).
-
-        **A origem é a sala quando ela tem estudos, e o estudo aberto quando não.** A sala *é* o
-        conjunto de diagramas deste livro (S-270), e é ele que quem diagrama noutro programa quer
-        -- quinhentos arquivos de uma vez, nomeados pela página. Um estudo avulso, colado ou
-        digitado, não está em sala nenhuma, e aí o lote é ele.
-        """
-        from chess_diagram_ocr.qt.lote_de_diagramas import abrir_lote_de_diagramas
-        from chess_diagram_ocr.ui.lote_de_diagramas import de_estudos, do_estudo
-
-        self.gravar_comentario()
-        guardados = self.sala.estudos()
-        if guardados:
-            itens = de_estudos(guardados, origem=Path(self.sala.documento).stem)
-            origem = f"{len(guardados)} estudo(s) da sala deste livro."
-        else:
-            itens = do_estudo(self.estudo)
-            origem = "O estudo aberto."
-        if not itens:
-            self.set_status("Não há diagrama para exportar: o estudo não pede nenhum.")
-            return None
-        return abrir_lote_de_diagramas(
-            self, itens=itens, origem=origem, pasta=self._pasta_inicial, busy=self._busy
-        )
-
-    def _exportar_estudo(self, extensao: str) -> None:
-        """O estudo naquele formato, com o recorte do diagrama ao lado (S-289).
-
-        **Quem decide o que cada formato faz é `text/exportacao.py`**, e não este painel: aquele
-        módulo existe porque "quatro exportadores escritos separadamente dariam quatro respostas, e
-        três estariam erradas em silêncio". Aqui só se converte o estudo em `DocumentoRico` e se
-        escolhe o destino.
-        """
-        from chess_diagram_ocr import estudo_saida
-        from chess_diagram_ocr.text import exportacao
-
-        formato = exportacao.formato_de(extensao)
-        destino, _filtro = QFileDialog.getSaveFileName(
-            self,
-            f"Exportar o estudo para {formato.nome}",
-            str(self._pasta_inicial / f"{self._nome_sugerido()}{extensao}"),
-            f"{formato.nome} (*{extensao});;Todos (*.*)",
-        )
-        if not destino:
-            return
-
-        self.gravar_comentario()
-        caminho = Path(destino)
-        try:
-            recortes = self._gravar_recorte(caminho)
-            relatorio = exportacao.exportar(
-                estudo_saida.para_documento(self.estudo), formato, recortes=recortes
-            )
-            exportacao.escrever(caminho, relatorio)
-        except OSError as erro:
-            QMessageBox.critical(self, "Exportar o estudo", f"Falha ao exportar o estudo:\n{erro}")
-            return
-        self.set_status(exportacao.texto_do_relatorio(caminho, relatorio, tamanho=caminho.stat().st_size))
-
-    def _nome_sugerido(self) -> str:
-        """`Secrets_p143_d2`, ou `estudo`. É o nome do arquivo que o diálogo oferece."""
-        ancora = self.estudo.ancora
-        if not ancora.valida:
-            return "estudo"
-        livro = Path(ancora.nome_do_livro).stem[:40] or "estudo"
-        return f"{livro}_p{ancora.pagina + 1}_d{ancora.diagrama + 1}"
-
-    def _gravar_recorte(self, destino: Path) -> dict[int, Path]:
-        """Grava o recorte do diagrama ao lado do arquivo, e devolve o mapa que `exportar` quer.
-
-        `diagramas/` ao lado do destino, porque é a pasta que os formatos escrevem no caminho da
-        imagem. Sem recorte devolve `{}`, e aí a marca `[Diagrama 1]` sai sozinha.
-        """
-        from chess_diagram_ocr import estudo_saida
-
-        imagem = self._recorte(self.estudo.ancora) if self.estudo.ancora.valida else None
-        if imagem is None:
-            return {}
-        pasta = destino.parent / "diagramas"
-        pasta.mkdir(parents=True, exist_ok=True)
-        arquivo = pasta / f"{destino.stem}.png"
-        try:
-            from PIL import Image
-
-            from chess_diagram_ocr.atomic_io import atomic_write_pil
-
-            atomic_write_pil(arquivo, Image.fromarray(imagem).convert("RGB"), formato="PNG")
-        except Exception as erro:  # noqa: BLE001 - recorte de origem desconhecida
-            logger.debug("Recorte não pôde ser gravado (%s): %s", arquivo, erro)
-            return {}
-        return {estudo_saida.BLOCO_DO_DIAGRAMA: arquivo}
+    def exportar_diagramas_em_lote(self) -> DialogoDoLote | None:
+        return arquivos.exportar_diagramas_em_lote(self)
 
     def levar_para_o_texto(self) -> None:
-        """Manda a linha do estudo para a aba de texto, no cursor (S-289).
+        arquivos.levar_para_o_texto(self)
 
-        **É o inverso exato da S-283.** Lá o parágrafo do livro vira variante; aqui a variante vira
-        parágrafo -- e as duas pontas passam pelo mesmo `estudo_lista`, que é o que garante que a
-        numeração seja a mesma nos dois sentidos.
-        """
-        from chess_diagram_ocr import estudo_saida
-
-        linha = estudo_saida.notacao_do_estudo(self.estudo)
-        if not linha:
-            self.set_status("Não há lance no estudo para levar ao texto.")
-            return
-        if not self._para_o_texto(linha):
-            self.set_status("A aba Texto não está pronta para receber a linha.")
-            return
-        self.set_status("Linha do estudo inserida na aba Texto.")
-
-    # ----------------------------------------------------------- treinar (S-290/S-541)
+    # ------------------------------------------ o treino, em qt/sala_treino.py (S-866)
 
     def alternar_treino(self) -> None:
-        """Liga e desliga o modo de treino: a linha some, e o tabuleiro cobra o lance.
+        self.treino.alternar_treino()
 
-        **A sessão zera aqui, e o placar do livro não** (S-541). Até a S-541 os dois contadores
-        eram os mesmos, e desligar o treino -- que é o gesto declarado para guardar um lance que se
-        quis jogar -- apagava a tarde inteira. Agora o que zera é a sessão; o que o livro acumulou
-        está no disco desde o primeiro lance.
-        """
-        self.btn_treino.setChecked(not self.btn_treino.isChecked())
-        self.btn_treino.setText(
-            comandos.rotulo_alternado("modo_treino")
-            if self.btn_treino.isChecked()
-            else comandos.rotulo_de_botao("modo_treino")
-        )
-        self.placar.zerar_sessao()
-        self.refresh()
-        if self.btn_treino.isChecked():
-            self.set_status("Treino: jogue o lance da linha. O que vem depois está escondido.")
-        else:
-            self.set_status("Treino desligado.")
+    def extrair_taticas(self) -> ExtratorDeTaticas | None:
+        return self.treino.extrair_taticas()
 
-    @property
-    def placar(self) -> placar_mod.Placar:
-        """O placar do treino, lido do disco na primeira vez que alguém treina (S-541).
-
-        Preguiçoso porque a sala é montada em toda janela e em dezenas de testes, e nenhum deles
-        treina: carregar o `placar.json` no `__init__` faria toda montagem tocar o disco por causa
-        de uma frase que quase nunca aparece.
-        """
-        if self._leitura_do_placar is None:
-            self._leitura_do_placar = placar_mod.carregar(caminho=self._caminho_do_placar())
-        return self._leitura_do_placar.valor
-
-    def _gravar_o_placar(self, _placar: placar_mod.Placar | None = None) -> None:
-        """Grava o placar sobre o arquivo de onde ele veio -- e só se ele leu (S-812).
-
-        O argumento é o que a janela de treino passa; ele é sempre o mesmo objeto de `placar`.
-        """
-        if self._leitura_do_placar is None:
-            return
-        try:
-            placar_mod.gravar(gravavel(self._leitura_do_placar))
-        except GravacaoRecusada as recusa:
-            self.set_status(str(recusa))
-        except OSError as erro:  # pragma: no cover - disco cheio ou arquivo em uso
-            logger.warning("O placar do treino não pôde ser gravado: %s", erro)
-
-    def _caminho_do_placar(self) -> Path:
-        return self._pasta_de_treino / placar_mod.CAMINHO_PADRAO.name
-
-    def _mostrar_placar(self) -> None:
-        if not self.btn_treino.isChecked() or self._leitura_do_placar is None:
-            self.lbl_placar.setText("")
-            return
-        livro = self.estudo.ancora.documento or self.sala.documento
-        self.lbl_placar.setText(
-            treino_declarado.frase_do_placar(self.placar.sessao, self.placar.do_livro(livro))
-        )
-
-    def _treinar(self, move: chess.Move) -> None:
-        """Um lance jogado com o treino ligado. **A árvore não muda** (S-290/S-541).
-
-        O gabarito é o nó seguinte da linha, e ele já está lá: o estudo tem tudo de que o treino
-        precisa. **Errar não cria variante**, e o caminho de guardar o lance é declarado na própria
-        frase: desligar o treino.
-
-        **O veredicto chega na hora e o preço chega depois** (S-541). Se o lance é o da linha, não
-        há nada a perguntar. Se não é, ele ainda pode valer o mesmo -- e responder isso custa duas
-        buscas do motor, que não cabem na linha de eventos. A frase do rodapé é escrita duas vezes:
-        uma dizendo que o lance não é o da linha, outra dizendo quanto ele custou. Sem motor, a
-        primeira é a única, e ela continua sendo verdade.
-        """
-        esperado = self.estudo.no.variations[0] if self.estudo.no.variations else None
-        if esperado is None:
-            self.set_status("Fim da linha: não há lance a adivinhar aqui.")
-            return
-        antes = self.estudo.tabuleiro.copy(stack=False)
-        jogado = antes.san(move)
-        gabarito = antes.san(esperado.move)
-        if move == esperado.move:
-            self.estudo.no = esperado
-            self.refresh()
-            self._contar_no_treino(treino_declarado.classificar_o_lance(jogado, gabarito), jogado, gabarito)
-            return
-        # **O redesenho desfaz o lance na tela.** O modelo do tabuleiro jogou sobre a cópia dele, e
-        # sem isto a pessoa fica olhando uma posição que a árvore não tem -- o defeito que a S-290
-        # deixou passar porque o caminho de erro não redesenhava nada.
-        self.refresh()
-        if not self._medidor_da_perda().pedir(antes, move, (jogado, gabarito, bool(antes.turn))):
-            self._contar_no_treino(treino_declarado.classificar_o_lance(jogado, gabarito), jogado, gabarito)
-            return
-        self.set_status(f"{jogado} não é o lance da linha: perguntando ao motor quanto custou…")
-
-    def _medidor_da_perda(self) -> Any:
-        """O `PerdaDoLance` da sala, criado no primeiro erro. `pedir` recusa sem motor (S-541)."""
-        if self._perda_do_lance is None:
-            from chess_diagram_ocr.qt.painel_de_treino import PerdaDoLance
-
-            self._perda_do_lance = PerdaDoLance(self, analisador=self._analyzer)
-            self._perda_do_lance.pronta.connect(self._chegou_a_perda)
-            self._perda_do_lance.falhou.connect(self._nao_veio_a_perda)
-        return self._perda_do_lance
-
-    def _chegou_a_perda(self, ficha: Any, antes: int, depois: int) -> None:
-        jogado, gabarito, brancas = ficha
-        julgamento = treino_declarado.classificar_o_lance(
-            jogado, gabarito, antes=int(antes), depois=int(depois), brancas=bool(brancas)
-        )
-        self._contar_no_treino(julgamento, jogado, gabarito)
-
-    def _nao_veio_a_perda(self, ficha: Any, _mensagem: str) -> None:
-        jogado, gabarito, _brancas = ficha
-        self._contar_no_treino(treino_declarado.classificar_o_lance(jogado, gabarito), jogado, gabarito)
-
-    def _contar_no_treino(self, julgamento: Any, jogado: str, gabarito: str) -> None:
-        """Conta o lance nos dois placares e grava o do livro **agora** (S-541).
-
-        Uma gravação por lance e não por sessão, ao contrário do baralho de revisão: o arquivo tem
-        uma linha por livro e alguns bytes, e o que se perde numa queda é justamente a sessão que
-        ninguém vai repetir. É a decisão inversa da de `qt/painel_de_treino.JanelaDeTreino`, e a
-        diferença é o tamanho do que se grava.
-        """
-        livro = self.estudo.ancora.documento or self.sala.documento
-        self.placar.registrar(livro, julgamento.resultado, perda=julgamento.perda)
-        self._mostrar_placar()
-        self.set_status(treino_declarado.frase_do_resultado(julgamento, jogado, gabarito))
-        self._gravar_o_placar()
-
-    # -------------------------------------------------- táticas e agenda (S-539/S-540)
-
-    def extrair_taticas(self) -> Any:
-        """Casa os diagramas deste livro com a solução impressa e grava a coleção (S-539).
-
-        **O livro é o da sala, e não um `filedialog`.** A sala já está aberta sobre um diagrama
-        dele, a aba de texto já leu folhas dele, e perguntar de novo qual é o arquivo seria
-        desconhecer o que a janela inteira está mostrando.
-
-        A varredura carrega o classificador por conta própria, do caminho padrão -- é o mesmo que
-        `cvoff-scan` faz, e é o preço de a extração rodar fora do `OcrService` (que está sob o lock
-        da S-31 servindo à página exibida). Dezessete megabytes de modelo por alguns minutos.
-        """
-        from chess_diagram_ocr.qt import painel_de_treino
-
-        livro = self.estudo.ancora.documento or self.sala.documento
-        if not livro or not Path(livro).exists():
-            self.set_status("Abra um livro na sala antes de extrair as táticas dele.")
-            return None
-        if self._extrator is not None and self._extrator.ocupado:
-            self.set_status("A extração de táticas deste livro já está em curso.")
-            return None
-        rodada = painel_de_treino.extrair_com_dialogo(
-            self, Path(livro), analisador=self._analyzer, busy=self._busy
-        )
-        rodada.terminou.connect(partial(self._chegaram_as_taticas, str(livro)))
-        rodada.falhou.connect(lambda mensagem, _e: self.set_status(f"A extração falhou: {mensagem}"))
-        self._extrator = rodada
-        return rodada
-
-    def _chegaram_as_taticas(self, livro: str, extracao: Any) -> None:
-        """Grava o que a extração achou e diz o número -- inclusive quando ele é ruim."""
-        if extracao is None:
-            self.set_status("Extração de táticas cancelada.")
-            return
-        try:
-            taticas_arquivo.gravar(livro, extracao.exercicios, pasta=self._pasta_das_taticas())
-        except OSError as erro:
-            self.set_status(f"Os exercícios não puderam ser gravados: {erro}")
-            return
-        self.set_status(extracao.resumo())
-
-    def _pasta_das_taticas(self) -> Path:
-        return self._pasta_de_treino / taticas_arquivo.PASTA_PADRAO.name
-
-    def _caminho_da_revisao(self) -> Path:
-        return self._pasta_de_treino / revisao_arquivo.CAMINHO_PADRAO.name
-
-    def _gravar_o_baralho(
-        self, leitura: Leitura[revisao_arquivo.BaralhoDoArquivo], baralho: revisao_arquivo.Baralho
-    ) -> None:
-        """A gravação que a janela de treino chama ao fechar. Método e não `lambda`: um `lambda`
-        não tem nome para o critério de aceite citar, e a S-546 já registrou o argumento.
-
-        Grava sobre a leitura de onde o baralho veio, e só se ela leu (S-812), com os itens que não
-        leram de volta ao lado (S-813)."""
-        try:
-            lida = gravavel(leitura)
-            revisao_arquivo.gravar(lida.com(lida.valor.com(baralho)))
-        except GravacaoRecusada as recusa:
-            self.set_status(str(recusa))
-
-    def treinar_a_agenda(self) -> Any:
-        """Abre a fila de hoje da repetição espaçada (S-540).
-
-        Sem exercício nenhum extraído, a janela **não abre**: uma tela de treino vazia não diz o
-        que fazer, e a frase diz -- o comando que a preenche está ao lado, no mesmo menu.
-        """
-        from chess_diagram_ocr.qt.painel_de_treino import JanelaDeTreino
-
-        exercicios = taticas_arquivo.carregar_tudo(pasta=self._pasta_das_taticas())
-        if not exercicios:
-            self.set_status(
-                'Não há exercício extraído ainda. Use "Táticas do livro" com um livro aberto.'
-            )
-            return None
-        leitura = revisao_arquivo.carregar(caminho=self._caminho_da_revisao())
-        if not isinstance(leitura, Lida):
-            self.set_status(leitura.mensagem)
-        janela = JanelaDeTreino(
-            self,
-            exercicios=exercicios,
-            baralho=leitura.valor.estados,
-            placar=self.placar,
-            analisador=self._analyzer,
-            gravar=partial(self._gravar_o_baralho, leitura),
-            gravar_placar=self._gravar_o_placar,
-        )
-        janela.fechada.connect(self._mostrar_placar)
-        self._treino = janela
-        janela.show()
-        return janela
+    def treinar_a_agenda(self) -> JanelaDeTreino | None:
+        return self.treino.treinar_a_agenda()
 
     # --------------------------------------------------------------------------------- PGN
 
     def pgn_payload(self) -> str:
         return self.estudo.para_pgn()
 
-    def write_pgn(self, path: Path, append: bool) -> None:
-        """Grava o estudo em PGN. **Sobrescrever é atômico** (S-346).
-
-        O caminho de sobrescrita com `write_text` trunca antes de escrever: interrompido no meio,
-        ele deixa zero byte no lugar do PGN que estava lá -- e o que estava lá é análise salva de
-        outro dia.
-
-        **Acrescentar continua sendo um `append`**, e a diferença é o modo de falha: ele nunca
-        trunca, então uma interrupção deixa o arquivo anterior inteiro com um jogo pela metade no
-        fim -- ruim de ler, e nada perdido.
-        """
-        from chess_diagram_ocr.atomic_io import atomic_write_text
-
-        conteudo = self.pgn_payload()
-        if append and path.exists() and path.stat().st_size > 0:
-            with path.open("a", encoding="utf-8") as arquivo:
-                arquivo.write("\n\n")
-                arquivo.write(conteudo)
-                arquivo.write("\n")
-            return
-        atomic_write_text(path, conteudo + "\n")
-
     def save_pgn(self) -> None:
-        self.gravar_comentario()
-        nome, _filtro = QFileDialog.getSaveFileName(
-            self, "Salvar estudo em PGN", str(self._pasta_inicial), "PGN (*.pgn);;Todos (*.*)"
-        )
-        if not nome:
-            return
-
-        caminho = Path(nome)
-        append = False
-        if caminho.exists():
-            # Três respostas, não duas: acrescentar é o caso comum (um arquivo por livro), e
-            # oferecer só "sobrescrever ou cancelar" faria perder análise já salva.
-            caixa = QMessageBox(self)
-            caixa.setWindowTitle("PGN existente")
-            caixa.setText("O arquivo já existe.")
-            acrescentar = caixa.addButton("Acrescentar ao final", QMessageBox.ButtonRole.AcceptRole)
-            sobrescrever = caixa.addButton("Sobrescrever", QMessageBox.ButtonRole.DestructiveRole)
-            caixa.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
-            caixa.exec()
-            escolhido = caixa.clickedButton()
-            if escolhido not in (acrescentar, sobrescrever):
-                return
-            append = escolhido is acrescentar
-
-        try:
-            self.write_pgn(caminho, append=append)
-        except OSError as exc:
-            QMessageBox.critical(self, "Salvar PGN", f"Falha ao salvar PGN:\n{exc}")
-            return
-        self.set_status(
-            f"Análise acrescentada em {caminho.name}." if append else f"PGN salvo em {caminho.name}."
-        )
+        arquivos.save_pgn(self)
 
 
 def _tamanho_da_subarvore(raizes: Sequence[chess.pgn.GameNode]) -> tuple[int, bool]:
@@ -3383,326 +1493,3 @@ def _tamanho_da_subarvore(raizes: Sequence[chess.pgn.GameNode]) -> tuple[int, bo
         pilha.extend(atual.variations)
     return lances, anotado
 
-
-def _miniatura(imagem: Any, lado: int) -> Any:
-    """O recorte do diagrama como `QPixmap`, ou `None` quando não há o que desenhar (S-282).
-
-    `Any` na assinatura porque a entrada é um `np.ndarray` RGB, e tipá-la obrigaria este módulo a
-    importar numpy no topo por causa de uma anotação.
-
-    Falha para o lado do nada: um recorte estragado esconde a miniatura e deixa a aba inteira em
-    pé, que é o contrato de degradação do projeto desde a S-53.
-    """
-    if imagem is None:
-        return None
-    try:
-        from chess_diagram_ocr.qt.imagens import pixmap_de_rgb
-
-        pixmap = pixmap_de_rgb(imagem)
-        maior = max(pixmap.width(), pixmap.height()) or 1
-        if maior <= lado:
-            return pixmap
-        return pixmap.scaled(
-            lado, lado, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
-        )
-    except Exception as erro:  # noqa: BLE001 - recorte de origem desconhecida
-        logger.debug("Recorte do diagrama não pôde ser desenhado: %s", erro)
-        return None
-
-
-class _RotuloElidido(QLabel):
-    """Um `QLabel` de uma linha que corta o próprio texto com `...` quando ele não cabe (S-530).
-
-    **Elidir no momento de escrever não funciona**, e foi medido: `_mostrar_cabecalho` roda dentro
-    de `refresh`, que é chamado na montagem -- ali o rótulo ainda tem a largura de fábrica, e a
-    frase saía como `Jogadores nã...` numa faixa de 494 px. Quem sabe a largura é o rótulo, e ele
-    só a sabe no `resizeEvent` dele.
-
-    A dica carrega a frase inteira: o nome que não coube continua alcançável sem abrir o diálogo,
-    que é o que um `...` sozinho não dá.
-    """
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__("", parent)
-        self._inteiro = ""
-
-    def definir_texto(self, texto: str) -> None:
-        self._inteiro = str(texto)
-        self.setToolTip(self._inteiro)
-        self.setVisible(bool(self._inteiro))
-        self._reescrever()
-
-    def texto_inteiro(self) -> str:
-        """O que a frase diz antes de ser cortada. É por ele que o teste pergunta."""
-        return self._inteiro
-
-    def minimumSizeHint(self) -> QSize:  # noqa: N802 - assinatura do Qt
-        """O mínimo é o da reticência, e não o da frase inteira (o merge do religa com o `main`).
-
-        Um `QLabel` de uma linha pede a largura do texto como mínimo, e um rótulo que corta o
-        próprio texto não precisa dela -- é para isso que ele corta. Com a fonte de título do
-        religa a frase pedia 384 px, a coluna do tabuleiro não descia abaixo disso, e a fração que
-        a sessão guardou não voltava: 0,4 virava 0,48 numa sala de 900 px.
-        """
-        dica = super().minimumSizeHint()
-        return QSize(QFontMetrics(self.font()).horizontalAdvance("…"), dica.height())
-
-    def resizeEvent(self, a0: QResizeEvent | None) -> None:  # noqa: N802 - assinatura do Qt
-        super().resizeEvent(a0)
-        self._reescrever()
-
-    def _reescrever(self) -> None:
-        largura = self.width()
-        if largura <= 0:
-            self.setText(self._inteiro)
-            return
-        metrica = QFontMetrics(self.font())
-        self.setText(metrica.elidedText(self._inteiro, Qt.TextElideMode.ElideRight, largura))
-
-
-class _JanelaDoCabecalho(QDialog):
-    """O formulário dos nove headers da partida (S-530).
-
-    **Um `QComboBox` para o resultado, e campo livre para o resto.** `1:0`, `1-0 ` e `1–0` com
-    travessão são o que se digita sem querer, e qualquer um faz o PGN ser recusado por quem o ler;
-    os outros oito não têm forma fechada -- nome de jogador e de torneio são o que o livro imprimiu.
-
-    Quem diz quais são os campos, em que ordem e o que um campo vazio grava é
-    `ui/cabecalho_da_partida.py`. Este arquivo só desenha.
-    """
-
-    def __init__(
-        self,
-        pai: QWidget,
-        headers: Any,
-        gravar: Callable[[dict[str, str]], None],
-    ) -> None:
-        super().__init__(pai)
-        self.setWindowTitle(cabecalho_da_partida.TITULO)
-        self._gravar = gravar
-        self.campos: dict[str, QWidget] = {}
-        pilha = QVBoxLayout(self)
-        pilha.setContentsMargins(*(espaco.moldura(),) * 4)
-        pilha.setSpacing(espaco.folga())
-
-        grade = QGridLayout()
-        grade.setHorizontalSpacing(espaco.folga())
-        grade.setVerticalSpacing(espaco.linha())
-        valores = cabecalho_da_partida.valores_para_o_formulario(headers)
-        # **O campo estreito fica na linha do anterior**, e não na seguinte: `Brancas [nome] Elo
-        # [2720]` é uma pergunta só, e separá-los em duas linhas dobraria a altura do formulário
-        # para dizer a mesma coisa. `linha` só avança em campo largo.
-        linha, coluna = -1, 0
-        for campo in cabecalho_da_partida.CAMPOS:
-            if campo.estreito and linha >= 0:
-                coluna = 2
-            else:
-                linha += 1
-                coluna = 0
-            grade.addWidget(QLabel(campo.rotulo, self), linha, coluna)
-            editor: QWidget
-            if campo.escolhas:
-                caixa = QComboBox(self)
-                caixa.addItems(campo.escolhas)
-                atual = valores.get(campo.chave) or campo.escolhas[0]
-                caixa.setCurrentIndex(max(0, caixa.findText(atual)))
-                editor = caixa
-            else:
-                texto = QLineEdit(valores.get(campo.chave, ""), self)
-                if campo.estreito:
-                    texto.setMaximumWidth(8 * tema.altura_de_linha_atual())
-                editor = texto
-            if campo.dica:
-                dica_em(editor, campo.dica)
-            grade.addWidget(editor, linha, coluna + 1)
-            self.campos[campo.chave] = editor
-        grade.setColumnStretch(1, 1)
-        pilha.addLayout(grade)
-
-        # **Os dois botões com texto próprio**, e não `StandardButton.Save`: o texto padrão do Qt
-        # é "Save"/"Cancel" em inglês, e a janela inteira fala português. É a forma que
-        # `qt/dialogos.py` já usa nos dois diálogos de base.
-        botoes = QDialogButtonBox(parent=self)
-        botoes.addButton("Gravar", QDialogButtonBox.ButtonRole.AcceptRole)
-        botoes.addButton("Cancelar", QDialogButtonBox.ButtonRole.RejectRole)
-        botoes.accepted.connect(self._confirmar)
-        botoes.rejected.connect(self.reject)
-        pilha.addWidget(botoes)
-        # O nome de um jogador não cabe no que a grade pede: `Capablanca, José Raúl` saía cortado
-        # num diálogo de 328 px. A altura continua sendo a que os nove campos pedem.
-        self.resize(max(520, self.sizeHint().width()), self.sizeHint().height())
-        self.show()
-
-    def valores(self) -> dict[str, str]:
-        """O que está nos campos agora, por chave de PGN."""
-        lidos: dict[str, str] = {}
-        for chave, editor in self.campos.items():
-            if isinstance(editor, QComboBox):
-                lidos[chave] = editor.currentText()
-            elif isinstance(editor, QLineEdit):
-                lidos[chave] = editor.text()
-        return lidos
-
-    def _confirmar(self) -> None:
-        valores = self.valores()
-        self.accept()
-        self._gravar(valores)
-
-
-class _JanelaDeColar(QDialog):
-    """A caixa de colar posição ou partida (S-288).
-
-    Um campo só para as duas, porque o gesto é o mesmo -- copia de algum lugar e cola aqui -- e o
-    próprio texto diz o que é. Quem responde é `estudo.colar`.
-    """
-
-    def __init__(self, pai: QWidget, aceitar: Callable[[str], None]) -> None:
-        super().__init__(pai)
-        self.setWindowTitle("Colar posição ou partida")
-        self.resize(520, 320)
-        self._aceitar = aceitar
-        pilha = QVBoxLayout(self)
-        pilha.setContentsMargins(*(espaco.moldura(),) * 4)
-        pilha.addWidget(QLabel("Cole aqui uma FEN ou um PGN. O texto diz qual dos dois é.", self))
-        self.campo = QTextEdit(self)
-        self.campo.setFont(tema.fonte_atual(tipografia.DADO))
-        # **Nome próprio, e não a frase de cima** (F9-C12). Sem ele a varredura de
-        # `qt/acessibilidade` acha o rótulo vizinho e o campo passa a anunciar a instrução
-        # inteira -- "Cole aqui uma FEN ou um PGN. O texto diz qual dos dois é." --, que é uma
-        # ajuda e não um nome. O rótulo continua na tela e continua sendo lido como texto.
-        self.campo.setAccessibleName("Posição ou partida colada")
-        # O `Tab` sai do campo, para o «Colar»: uma FEN ou um PGN colados não pedem tabulação, e
-        # guardado pelo campo ele a escrevia e prendia a tecla ali (o portão `teclado` da suíte
-        # com a tecla de verdade, OCR_UI ciclo 2, fase 5, crítico do ciclo 4).
-        self.campo.setTabChangesFocus(True)
-        pilha.addWidget(self.campo, 1)
-        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel, parent=self)
-        # **O botão diz o verbo, e por isso é feito à mão** (F9-C12). Um `Ok` padrão chega ao
-        # leitor de tela como "OK" -- duas letras, da mesma família do `-` e do `+` que o ciclo 1
-        # mediu --, e diz menos do que o botão faz. Feito com `addButton`, ele também escapa da
-        # tabela de `ui/strings.BOTOES_PADRAO`, que é o contrato de sempre: o explícito vence o
-        # derivado. O texto é o mesmo na tela e no anúncio, que é o que a WCAG 2.5.3 pede.
-        botoes.addButton("Colar", QDialogButtonBox.ButtonRole.AcceptRole)
-        botoes.accepted.connect(self._confirmar)
-        botoes.rejected.connect(self.reject)
-        pilha.addWidget(botoes)
-        self.show()
-
-    def _confirmar(self) -> None:
-        texto = self.campo.toPlainText()
-        self.accept()
-        self._aceitar(texto)
-
-
-class _JanelaDeColecao(QDialog):
-    """A lista de partidas de um `.pgn` de muitas, para escolher uma (S-288)."""
-
-    def __init__(self, pai: QWidget, nome: str, achados: list[Estudo], escolher: Callable[[Estudo], None]) -> None:
-        from PyQt6.QtWidgets import QListWidget
-
-        super().__init__(pai)
-        self.setWindowTitle(nome)
-        self.resize(560, 420)
-        self._achados = achados
-        self._escolher = escolher
-        pilha = QVBoxLayout(self)
-        pilha.setContentsMargins(*(espaco.moldura(),) * 4)
-        # **A frase deixou de se contradizer** (F9-C14): ela dizia `"0 partida(s) em x.pgn.
-        # Escolha uma:"` sobre uma lista vazia, e a segunda oração pede o que a primeira acabou
-        # de dizer que não existe. Sem partida, quem fala é o estado vazio.
-        pilha.addWidget(
-            QLabel(
-                f"{len(achados)} partida(s) em {nome}. Escolha uma:"
-                if achados
-                else f"{nome}",
-                self,
-            )
-        )
-        self.lista = QListWidget(self)
-        # Ver `_JanelaDeColar.campo`: sem nome próprio a lista herda a frase do rótulo acima.
-        self.lista.setAccessibleName("Partidas do arquivo")
-        for estudo in achados:
-            self.lista.addItem(estudo.ancora.rotulo() or f"{estudo.contagem_de_lances()} lance(s)")
-        self.lista.itemDoubleClicked.connect(lambda *_: self._confirmar())
-        pilha.addWidget(self.lista, 1)
-        self.vazio = EstadoVazio(
-            self.lista,
-            titulo=strings.COLECAO_VAZIA_TITULO,
-            frase=strings.COLECAO_VAZIA_FRASE,
-            rotulo_do_botao="Escolher outro arquivo",
-            nome_acessivel="Escolher outro arquivo PGN",
-            acao=self.reject,
-        )
-        self.vazio.setVisible(not achados)
-        botoes = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Open | QDialogButtonBox.StandardButton.Cancel, parent=self
-        )
-        botoes.accepted.connect(self._confirmar)
-        botoes.rejected.connect(self.reject)
-        pilha.addWidget(botoes)
-        self.show()
-
-    def _confirmar(self) -> None:
-        linha = self.lista.currentRow()
-        if not 0 <= linha < len(self._achados):
-            return
-        escolhido = self._achados[linha]
-        self.accept()
-        self._escolher(escolhido)
-
-
-class _JanelaDePartidas(QDialog):
-    """As partidas da base que chegam a esta posição (S-287). Só mostra: a escolha é da Galeria."""
-
-    def __init__(self, pai: QWidget, resposta: Any) -> None:
-        from PyQt6.QtWidgets import QListWidget
-
-        super().__init__(pai)
-        self.setWindowTitle("Partidas da posição")
-        self.resize(560, 400)
-        pilha = QVBoxLayout(self)
-        pilha.setContentsMargins(*(espaco.moldura(),) * 4)
-        rotulo = QLabel(resposta.frase, self)
-        rotulo.setWordWrap(True)
-        # **Uma frase, e não duas** (F9-C14). Quando a lista está vazia quem explica é o estado
-        # vazio, que diz a mesma coisa **dentro** do vazio e com o botão junto; deixar as duas na
-        # tela é a duplicação que o §7 do ciclo 2 mandou apagar na Galeria -- lá eram duas frases
-        # iguais a 320 px uma da outra.
-        rotulo.setVisible(bool(resposta.partidas))
-        pilha.addWidget(rotulo)
-        self.lista = QListWidget(self)
-        self.lista.setAccessibleName("Partidas que chegam a esta posição")
-        for hit in resposta.partidas:
-            self.lista.addItem(hit.label)
-        pilha.addWidget(self.lista, 1)
-        # **Tinha a frase e não tinha o botão** (F9-C13, §5.3): a frase de `resposta` explicava,
-        # e a pessoa ficava olhando uma lista branca sem saída desenhada dentro dela.
-        # **Sem botão, e a ausência é a correção do §5.1 do ciclo 15.** Ele desenhava `Fechar`
-        # ligado a `self.reject` -- que é exatamente o que o `Fechar` do rodapé faz --, e a tela
-        # saía com **dois botões de mesma legenda** a 160 px um do outro numa janela de 560x400.
-        # A distinção tinha sido dada ao `accessibleName` (`Fechar e escolher outra posição`), de
-        # modo que quem **ouve** recebia dois nomes e quem **vê** recebia `Fechar` duas vezes: é a
-        # inversão que esta frente já nomeou e consertou uma vez, no par `outro` da Galeria
-        # (F9-C7 §1.8).
-        #
-        # Entre as duas saídas que o crítico ofereceu -- "faz alguma coisa, ou sai" --, sai: o
-        # gesto que resolve aqui é escolher outra posição no tabuleiro, e este diálogo não tem
-        # como oferecê-lo (quem sabe trocar de base é a Galeria, e a sala só **lê** a lista de
-        # bases). Um botão que repete o rodapé não é uma saída a mais; é a mesma saída desenhada
-        # duas vezes. O título e a frase continuam dizendo o que falta e por quê.
-        self.vazio = EstadoVazio(
-            self.lista,
-            titulo=strings.POSICAO_SEM_PARTIDA_TITULO,
-            frase=resposta.frase or strings.POSICAO_SEM_PARTIDA_FRASE,
-        )
-        self.vazio.setVisible(not resposta.partidas)
-        if resposta.truncada:
-            # **Quem exibe tem de dizer que a lista é menor que a base**: sem isto, escolher
-            # achando que se viu tudo é o defeito que a Galeria já mede na sua própria lista.
-            aviso = QLabel(f"{len(resposta.partidas)} de {resposta.total} partida(s).", self)
-            tema.pintar(aviso, "color", tokens.TEXTO_SECUNDARIO)
-            pilha.addWidget(aviso)
-        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=self)
-        botoes.rejected.connect(self.reject)
-        pilha.addWidget(botoes)
-        self.show()
