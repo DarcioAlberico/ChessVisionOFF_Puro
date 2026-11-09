@@ -327,6 +327,7 @@ def prediction_with_squares(
         changed_squares=changed,
         constraints_satisfied=previous.constraints_satisfied if previous is not None else True,
         remaining_problems=previous.remaining_problems if previous is not None else (),
+        remaining_kinds=previous.remaining_kinds if previous is not None else (),
     )
     return BoardPrediction(
         probs=probs,

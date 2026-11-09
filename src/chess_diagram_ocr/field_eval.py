@@ -1006,6 +1006,127 @@ class FieldReport:
     def seconds_per_diagram(self) -> float:
         return self.seconds / self.detected if self.detected else 0.0
 
+    def somar_leitura(self, lido: RecognizedDiagram) -> None:
+        """Os contadores de uma leitura, casada ou não, a partir dos campos tipados dela (S-835).
+
+        Nenhum conta frase: `next_move_ambiguous` e `stipulation_ambiguous` contavam
+        `"trocas diferentes" in motivo`, e reescrever a mensagem zerava um número publicado."""
+        self.repaired_squares += len(lido.changed_squares)
+        self.repaired_diagrams += int(bool(lido.changed_squares))
+        self.next_move_checked += int(lido.next_move_replays is not None)
+        self.next_move_replayed += int(lido.next_move_replays is True)
+        self.next_move_repaired += int(bool(lido.next_move_repairs))
+        self.next_move_ambiguous += int(lido.next_move_ambiguous)
+        self.colour_repaired += int(bool(lido.colour_repairs))
+        self.colour_repaired_squares += len(lido.colour_repairs)
+        if lido.stipulation:
+            self.stipulation_checked += 1
+            self.stipulation_closed += int(lido.stipulation_closes is True)
+            self.stipulation_failed += int(lido.stipulation_closes is False)
+            self.stipulation_unverified += int(lido.stipulation_closes is None)
+        self.stipulation_repaired += int(bool(lido.stipulation_repairs))
+        self.stipulation_ambiguous += int(lido.stipulation_ambiguous)
+
+    def somar_casado(
+        self,
+        page: FieldPage,
+        indice: int,
+        anotado: AnnotatedDiagram,
+        lido: RecognizedDiagram,
+        veredito: Veredito,
+        *,
+        contaminada: bool,
+        fecha_na_verdade: bool | None = None,
+    ) -> None:
+        """Os contadores de uma anotação casada com uma leitura, já julgada.
+
+        `fecha_na_verdade` é a verdade anotada jogada contra a exigência lida (`_truth_closes`),
+        `None` quando não há exigência, posição anotada ou como verificar."""
+        self._somar_portao(page, indice, lido, veredito, contaminada=contaminada)
+        if veredito.certo is None:
+            return
+        self._somar_exatidao(page, indice, anotado, lido, veredito.certo, fecha_na_verdade)
+        # S-96: exportado e errado e a categoria que mais custa, e por isso ela e contada
+        # separada em vez de sair no complemento de uma taxa. O que nao sai vai para o
+        # `.review.pgn`; o que sai errado entra no PGN e no dataset como verdade.
+        if veredito.exportado:
+            self._somar_exportado(page, anotado, lido, veredito.certo, contaminada=contaminada)
+
+    def _somar_portao(
+        self, page: FieldPage, indice: int, lido: RecognizedDiagram, veredito: Veredito, *, contaminada: bool
+    ) -> None:
+        exportado = veredito.exportado
+        self.legal += int(veredito.legal)
+        self.above_gate += int(veredito.acima)
+        if lido.changed_squares:
+            # A separação da S-132. `repaired_exported` é estruturalmente zero -- ver
+            # `decode.decode_constrained` --, e é por isso que ele é publicado: um número que
+            # só pode ser zero, impresso, é uma afirmação; somado ao outro, é um disfarce.
+            self.repaired_exported += int(exportado)
+            self.repaired_blocked += int(not exportado)
+        if exportado:
+            self.exported += 1
+            self.contaminated_exported += int(contaminada)
+        else:
+            motivo = "ilegal" if not veredito.legal else f"confiança {lido.min_confidence:.3f}"
+            self.misses.append(f"{page.pdf} p{page.page}: detectado mas barrado ({motivo})")
+        # C17: a linha do diagrama, para a curva risco × cobertura refazer o gate em qualquer
+        # limiar -- `exact` é `None` quando a anotação não traz posição.
+        self.diagrams.append({
+            "pdf": page.pdf, "page": page.page, "index": indice, "legal": veredito.legal,
+            "gate_confidence": round(float(lido.gate_confidence), 4),
+            "min_confidence": round(float(lido.min_confidence), 4),
+            "exact": veredito.certo,
+            "contaminated": contaminada,
+        })
+
+    def _somar_exatidao(
+        self,
+        page: FieldPage,
+        indice: int,
+        anotado: AnnotatedDiagram,
+        lido: RecognizedDiagram,
+        certo: bool,
+        fecha_na_verdade: bool | None,
+    ) -> None:
+        self.comparable += 1
+        self.exact += int(certo)
+        if lido.next_move_repairs:
+            self.next_move_repaired_exact += int(certo)
+            self.next_move_repaired_wrong += int(not certo)
+        if lido.colour_repairs:
+            self.colour_repaired_exact += int(certo)
+            self.colour_repaired_wrong += int(not certo)
+        if lido.stipulation_repairs:
+            self.stipulation_repaired_exact += int(certo)
+            self.stipulation_repaired_wrong += int(not certo)
+        # C12 (portão a): a verdade anotada tem de cumprir a exigência lida. Se não cumpre,
+        # a gramática ou a anotação está errada -- e é isto que o relatório aponta.
+        if fecha_na_verdade is None:
+            return
+        self.stipulation_truth_checked += 1
+        self.stipulation_truth_closes += int(fecha_na_verdade)
+        if not fecha_na_verdade:
+            self.stipulation_truth_failed.append(
+                f"{page.pdf} p{page.page} d{indice}: {lido.stipulation} não fecha na anotação "
+                f"{anotado.placement} ({lido.side_to_move})")
+
+    def _somar_exportado(
+        self, page: FieldPage, anotado: AnnotatedDiagram, lido: RecognizedDiagram, certo: bool, *, contaminada: bool
+    ) -> None:
+        self.exported_comparable += 1
+        self.exported_exact += int(certo)
+        if contaminada:
+            self.contaminated_exported_comparable += 1
+            self.contaminated_exported_exact += int(certo)
+        if not certo:
+            self.wrong.append(
+                f"{page.pdf} p{page.page}: exportado e errado "
+                f"(confiança {lido.min_confidence:.3f})\n"
+                f"        leu       {lido.placement}\n"
+                f"        referência {anotado.placement}"
+            )
+
     def as_dict(self) -> dict[str, Any]:
         dados: dict[str, Any] = {
             "pages": self.pages,
@@ -1193,6 +1314,33 @@ def _match(annotated: Sequence[AnnotatedDiagram], read: Sequence[RecognizedDiagr
     return casados
 
 
+@dataclass(frozen=True)
+class Veredito:
+    """O julgamento de um diagrama anotado contra a leitura casada com ele (S-835)."""
+
+    legal: bool
+    """A leitura não é fatalmente ilegal (`is_fatal` não é `True`)."""
+
+    acima: bool
+    """C11: a confiança que o gate julga exclui as casas que a evidência externa provou
+    (`RecognizedDiagram.gate_confidence`); sem reparo externo é a `min_confidence`."""
+
+    certo: bool | None
+    """A leitura bate com a anotação casa por casa; `None` quando a anotação não traz posição."""
+
+    @property
+    def exportado(self) -> bool:
+        return self.legal and self.acima
+
+
+def _julgar(anotado: AnnotatedDiagram, lido: RecognizedDiagram, limiar: float) -> Veredito:
+    return Veredito(
+        legal=lido.is_fatal is not True,
+        acima=lido.gate_confidence >= limiar,
+        certo=(lido.placement == anotado.placement) if anotado.placement else None,
+    )
+
+
 def evaluate_page(
     page: FieldPage,
     read: Sequence[RecognizedDiagram],
@@ -1208,6 +1356,9 @@ def evaluate_page(
     diagramas dela contam em `contaminated` e saem da taxa limpa -- ver
     `labels.pages_with_training_samples` para o que o número significa e o que ele **não**
     significa.
+
+    O que é de cada leitura soma `FieldReport.somar_leitura`; o que é de cada anotação casada,
+    `FieldReport.somar_casado`, a partir do `Veredito` de `_julgar` (S-835).
     """
     relatorio = FieldReport(
         pages=1,
@@ -1215,23 +1366,11 @@ def evaluate_page(
         annotated=len(page.diagrams),
         detected=len(read),
         seconds=seconds,
-        # Sobre **tudo** que foi lido, inclusive o falso positivo: o reparo mede o trabalho
-        # que o decodificador teve, e ele teve esse trabalho ali tambem (S-62).
-        repaired_squares=sum(len(lido.changed_squares) for lido in read),
-        repaired_diagrams=sum(1 for lido in read if lido.changed_squares),
-        next_move_checked=sum(1 for lido in read if lido.next_move_replays is not None),
-        next_move_replayed=sum(1 for lido in read if lido.next_move_replays is True),
-        next_move_repaired=sum(1 for lido in read if lido.next_move_repairs),
-        next_move_ambiguous=sum(1 for lido in read if "trocas diferentes" in lido.next_move_reason),
-        colour_repaired=sum(1 for lido in read if lido.colour_repairs),
-        colour_repaired_squares=sum(len(lido.colour_repairs) for lido in read),
-        stipulation_checked=sum(1 for lido in read if lido.stipulation),
-        stipulation_closed=sum(1 for lido in read if lido.stipulation and lido.stipulation_closes is True),
-        stipulation_failed=sum(1 for lido in read if lido.stipulation and lido.stipulation_closes is False),
-        stipulation_unverified=sum(1 for lido in read if lido.stipulation and lido.stipulation_closes is None),
-        stipulation_repaired=sum(1 for lido in read if lido.stipulation_repairs),
-        stipulation_ambiguous=sum(1 for lido in read if "trocas diferentes" in lido.stipulation_reason),
     )
+    # Sobre **tudo** que foi lido, inclusive o falso positivo: o reparo mede o trabalho que o
+    # decodificador teve, e ele teve esse trabalho ali tambem (S-62).
+    for lido in read:
+        relatorio.somar_leitura(lido)
 
     casados = _match(page.diagrams, read)
     relatorio.matched = len(casados)
@@ -1250,81 +1389,15 @@ def evaluate_page(
         if alvo is None:
             relatorio.misses.append(f"{page.pdf} p{page.page}: não detectado {anotado.bbox}")
             continue
-
         lido = read[alvo]
-        legal = lido.is_fatal is not True
-        # C11: a confiança que o gate julga exclui as casas que o lance seguinte provou
-        # (`RecognizedDiagram.gate_confidence`); sem reparo pelo lance é a `min_confidence`.
-        acima = lido.gate_confidence >= accept_threshold
-        exportado = legal and acima
-        relatorio.legal += int(legal)
-        relatorio.above_gate += int(acima)
-        if lido.changed_squares:
-            # A separação da S-132. `repaired_exported` é estruturalmente zero -- ver
-            # `decode.decode_constrained` --, e é por isso que ele é publicado: um número que
-            # só pode ser zero, impresso, é uma afirmação; somado ao outro, é um disfarce.
-            relatorio.repaired_exported += int(exportado)
-            relatorio.repaired_blocked += int(not exportado)
-        if exportado:
-            relatorio.exported += 1
-            relatorio.contaminated_exported += int(contaminada)
-        else:
-            motivo = "ilegal" if not legal else f"confiança {lido.min_confidence:.3f}"
-            relatorio.misses.append(f"{page.pdf} p{page.page}: detectado mas barrado ({motivo})")
-
-        # C17: a linha do diagrama, para a curva risco × cobertura refazer o gate em qualquer
-        # limiar -- `exact` é `None` quando a anotação não traz posição.
-        relatorio.diagrams.append({
-            "pdf": page.pdf, "page": page.page, "index": indice, "legal": legal,
-            "gate_confidence": round(float(lido.gate_confidence), 4),
-            "min_confidence": round(float(lido.min_confidence), 4),
-            "exact": (lido.placement == anotado.placement) if anotado.placement else None,
-            "contaminated": contaminada,
-        })
-
-        if not anotado.placement:
-            continue
-
-        certo = lido.placement == anotado.placement
-        relatorio.comparable += 1
-        relatorio.exact += int(certo)
-        if lido.next_move_repairs:
-            relatorio.next_move_repaired_exact += int(certo)
-            relatorio.next_move_repaired_wrong += int(not certo)
-        if lido.colour_repairs:
-            relatorio.colour_repaired_exact += int(certo)
-            relatorio.colour_repaired_wrong += int(not certo)
-        if lido.stipulation_repairs:
-            relatorio.stipulation_repaired_exact += int(certo)
-            relatorio.stipulation_repaired_wrong += int(not certo)
-        if lido.stipulation:
-            # C12 (portão a): a verdade anotada tem de cumprir a exigência lida. Se não cumpre,
-            # a gramática ou a anotação está errada -- e é isto que o relatório aponta.
-            fecha_na_verdade = _truth_closes(anotado.placement, lido, stipulation_engine)
-            if fecha_na_verdade is not None:
-                relatorio.stipulation_truth_checked += 1
-                relatorio.stipulation_truth_closes += int(fecha_na_verdade)
-                if not fecha_na_verdade:
-                    relatorio.stipulation_truth_failed.append(
-                        f"{page.pdf} p{page.page} d{indice}: {lido.stipulation} não fecha na anotação "
-                        f"{anotado.placement} ({lido.side_to_move})")
-
-        # S-96: exportado e errado e a categoria que mais custa, e por isso ela e contada
-        # separada em vez de sair no complemento de uma taxa. O que nao sai vai para o
-        # `.review.pgn`; o que sai errado entra no PGN e no dataset como verdade.
-        if exportado:
-            relatorio.exported_comparable += 1
-            relatorio.exported_exact += int(certo)
-            if contaminada:
-                relatorio.contaminated_exported_comparable += 1
-                relatorio.contaminated_exported_exact += int(certo)
-            if not certo:
-                relatorio.wrong.append(
-                    f"{page.pdf} p{page.page}: exportado e errado "
-                    f"(confiança {lido.min_confidence:.3f})\n"
-                    f"        leu       {lido.placement}\n"
-                    f"        referência {anotado.placement}"
-                )
+        fecha_na_verdade = (
+            _truth_closes(anotado.placement, lido, stipulation_engine)
+            if anotado.placement and lido.stipulation else None
+        )
+        relatorio.somar_casado(
+            page, indice, anotado, lido, _julgar(anotado, lido, accept_threshold),
+            contaminada=contaminada, fecha_na_verdade=fecha_na_verdade,
+        )
 
     return relatorio
 

@@ -170,6 +170,10 @@ class RecognizedDiagram:
     next_move_reason: str = ""
     """Em pt-BR: por que replicou, o que foi trocado, ou por que não (`ReparoPeloLance.motivo`)."""
 
+    next_move_ambiguous: bool = False
+    """Mais de uma troca fazia o lance replicar, e nenhuma foi adotada (`ReparoPeloLance.ambiguo`).
+    Campo, e não a frase do motivo, porque é contado no relatório de campo (S-835)."""
+
     colour_repairs: list[int] = field(default_factory=list)
     """As casas (ordem de leitura) cuja cor a tinta contradisse e o calibrador do livro trocou
     (C5, `cor_por_livro`). Também em `changed_squares`; separadas pelo mesmo motivo das do
@@ -195,6 +199,9 @@ class RecognizedDiagram:
 
     stipulation_reason: str = ""
     """Em pt-BR: fecha e com que chave, o que foi trocado, ou por que não fecha."""
+
+    stipulation_ambiguous: bool = False
+    """Mais de uma troca fazia a exigência fechar, e nenhuma foi adotada (S-835)."""
 
     @property
     def external_repairs(self) -> list[int]:
@@ -267,6 +274,7 @@ class RecognizedDiagram:
             next_move_replays=next_move.replicou if next_move is not None else None,
             next_move_repairs=list(next_move.casas) if next_move is not None else [],
             next_move_reason=next_move.motivo if next_move is not None else "",
+            next_move_ambiguous=next_move.ambiguo if next_move is not None else False,
             colour_repairs=[t.casa for t in colour[0]] if colour is not None else [],
             colour_reason=colour[1] if colour is not None else "",
             stipulation=(stipulation.estipulacao.rotulo
@@ -275,6 +283,7 @@ class RecognizedDiagram:
             stipulation_keys=stipulation.chaves if stipulation is not None else (),
             stipulation_repairs=list(stipulation.casas) if stipulation is not None else [],
             stipulation_reason=stipulation.motivo if stipulation is not None else "",
+            stipulation_ambiguous=stipulation.ambiguo if stipulation is not None else False,
             side_to_move="w" if side.color else "b",
             side_to_move_source=str(side.source),
             side_to_move_reason=side.reason,

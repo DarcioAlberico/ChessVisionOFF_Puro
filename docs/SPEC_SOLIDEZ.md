@@ -1632,6 +1632,8 @@ relatório em fixtures.
 **Aceite.** Os dois passam, e o commit remede os quatro relatórios (fecho de medição); `evaluate_page`
 abaixo de complexidade 15.
 
+**Entregue** (2026-11-09): os reparos já tinham `ambiguo`; o que faltava era `RecognizedDiagram` carregá-lo (`next_move_ambiguous`, `stipulation_ambiguous`). `_Violation.tipo` e `DecodeResult.remaining_kinds` (`TipoDeViolacao`) decidem `only_king_missing`; as frases de `fen_utils` e `ui/legality` traduzem `chess.Status` para a tela e nada as conta, então ficaram. `evaluate_page` caiu de 50 para 9: `FieldReport.somar_leitura` por leitura, `_julgar` → `Veredito`, e `FieldReport.somar_casado` (com três partes privadas) por anotação casada; a verdade contra a exigência (`_truth_closes`) é calculada em `evaluate_page` e entra pronta, para o motor não atravessar mais assinaturas como `Any`. A caracterização é `tests/test_field_eval_caracterizacao.py`, contra `tests/fixtures/field_eval_caracterizacao.json` gravado antes da partição. O campo dos dois modelos voltou idêntico.
+
 ## S-836 · Fonte de diagrama e rótulo de eixo numa regra só
 
 **Problema** (confirmado por script). Duas regras de "fonte de diagrama" que discordam:

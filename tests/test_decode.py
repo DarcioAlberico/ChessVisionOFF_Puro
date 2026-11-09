@@ -512,3 +512,33 @@ class OrcamentoSemRelogioTests(unittest.TestCase):
         self.assertEqual(sob_carga.fen_board, esperado.fen_board)
         self.assertEqual(sob_carga.constraints_satisfied, esperado.constraints_satisfied)
         self.assertEqual(sob_carga.changed_squares, esperado.changed_squares)
+
+
+class ViolacaoTipadaTests(unittest.TestCase):
+    """S-835: `only_king_missing` confere o tipo da violação, e não o começo da frase.
+
+    Conferia `startswith("falta o rei")`, frase escrita também em `fen_utils` e `ui/legality`:
+    reescrever uma delas mudava a orientação sem teste nenhum falhar.
+    """
+
+    def test_a_frase_nao_decide(self) -> None:
+        from chess_diagram_ocr.decode import DecodeResult, TipoDeViolacao
+
+        sem_rei = DecodeResult(
+            class_indices=[0] * 64, fen_board="8/8/8/8/8/8/8/8", log_prob=0.0, changed_squares=[],
+            constraints_satisfied=False, remaining_problems=("o rei branco sumiu",),
+            remaining_kinds=(TipoDeViolacao.REI_FALTANDO,),
+        )
+        self.assertTrue(sem_rei.only_king_missing)
+
+    def test_a_busca_registra_o_tipo(self) -> None:
+        from chess_diagram_ocr.decode import TipoDeViolacao
+
+        probs = probs_for_fen("4k3/8/8/8/8/8/8/8", confidence=0.99)
+        probs[:, PIECE_TO_IDX["K"]] = 1e-6
+        probs = probs / probs.sum(axis=1, keepdims=True)
+
+        result = decode_constrained(probs)
+
+        self.assertEqual(result.remaining_kinds, (TipoDeViolacao.REI_FALTANDO,))
+        self.assertTrue(result.only_king_missing)

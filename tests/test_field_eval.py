@@ -324,6 +324,42 @@ class PageMetricTests(unittest.TestCase):
         self.assertEqual((r.matched, r.false_positives), (0, 1))
 
 
+class ContadoresPorCampoTipadoTests(unittest.TestCase):
+    """S-835: os contadores publicados contam campo tipado, e não frase em português.
+
+    `next_move_ambiguous` e `stipulation_ambiguous` contavam `"trocas diferentes" in motivo`; reescrever
+    a mensagem zerava um número publicado sem teste nenhum falhar.
+    """
+
+    def test_os_ambiguos_contam_com_qualquer_frase(self) -> None:
+        from test_inference import probs_for_fen
+
+        from chess_diagram_ocr.estipulacao import Estipulacao, ReparoPelaEstipulacao
+        from chess_diagram_ocr.inference import prediction_from_probs
+        from chess_diagram_ocr.lance_seguinte import ReparoPeloLance
+        from chess_diagram_ocr.semantics import SideToMove
+
+        predicao = prediction_from_probs(probs_for_fen(LEGAL, 0.95))
+        lido = RecognizedDiagram.from_prediction(
+            0,
+            np.zeros((8, 8, 3), dtype=np.uint8),
+            predicao,
+            side=SideToMove(color=True, source="default"),
+            legality=check_position(f"{LEGAL} w - - 0 1"),
+            bbox_pdf=(0, 0, 10, 10),
+            next_move=ReparoPeloLance(False, lance="1.e4", ambiguo=True, motivo="duas leituras servem ao lance"),
+            stipulation=ReparoPelaEstipulacao(False, Estipulacao(2, texto="#2"), ambiguo=True,
+                                              motivo="duas leituras cumprem a exigência"),
+        )
+        pagina = FieldPage(pdf="a.pdf", page=1, reviewed=True,
+                           diagrams=(AnnotatedDiagram(bbox=(0, 0, 10, 10), placement=LEGAL),))
+
+        r = evaluate_page(pagina, [lido], stipulation_engine=lambda: None)
+
+        self.assertEqual((r.next_move_checked, r.next_move_ambiguous), (1, 1))
+        self.assertEqual((r.stipulation_checked, r.stipulation_ambiguous), (1, 1))
+
+
 class _FakeService:
     """Devolve leituras fixas por página, sem abrir PDF nenhum."""
 

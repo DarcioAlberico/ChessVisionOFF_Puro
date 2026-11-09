@@ -31,8 +31,9 @@ from __future__ import annotations
 
 import heapq
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from enum import Enum
 
 import numpy as np
 
@@ -41,7 +42,17 @@ from .fen_utils import fen_from_class_indices
 
 _EPS = 1e-12
 
-_KING_MISSING = "falta o rei"
+
+class TipoDeViolacao(Enum):
+    """Que regra uma leitura viola (S-835). A frase vai para a tela; quem decide confere o tipo."""
+
+    REI_FALTANDO = "rei_faltando"
+    REIS_DEMAIS = "reis_demais"
+    PEAO_NA_BORDA = "peao_na_borda"
+    PEOES_DEMAIS = "peoes_demais"
+    PECAS_DEMAIS = "pecas_demais"
+    PROMOVIDAS_DEMAIS = "promovidas_demais"
+    REIS_SE_TOCAM = "reis_se_tocam"
 
 EMPTY = PIECE_TO_IDX["empty"]
 WHITE_KING = PIECE_TO_IDX["K"]
@@ -103,7 +114,10 @@ class DecodeResult:
     """False quando a busca esgotou o limite sem achar atribuição legal."""
 
     remaining_problems: tuple[str, ...] = ()
-    """O que continuou violado, quando `constraints_satisfied` é False."""
+    """O que continuou violado, quando `constraints_satisfied` é False, em pt-BR para a tela."""
+
+    remaining_kinds: tuple[TipoDeViolacao, ...] = ()
+    """O tipo de cada violação de `remaining_problems`, na mesma ordem. É o que se confere (S-835)."""
 
     @property
     def changed_square_count(self) -> int:
@@ -112,7 +126,7 @@ class DecodeResult:
     @property
     def only_king_missing(self) -> bool:
         """O único defeito é o rei que nenhuma casa sustenta: a leitura pode estar certa."""
-        return bool(self.remaining_problems) and all(p.startswith(_KING_MISSING) for p in self.remaining_problems)
+        return bool(self.remaining_kinds) and all(k is TipoDeViolacao.REI_FALTANDO for k in self.remaining_kinds)
 
 
 @dataclass(frozen=True)
@@ -125,6 +139,7 @@ class _Violation:
     indício. Vazio quer dizer que nenhuma troca resolve: o rei falta e nenhuma casa o sustenta.
     """
 
+    tipo: TipoDeViolacao
     description: str
     squares: tuple[int, ...]
     targets: tuple[int, ...] | None
@@ -190,7 +205,8 @@ def _find_violations(state: tuple[int, ...], probs: np.ndarray, rules: DecodeRul
         if total == 0:
             violations.append(
                 _Violation(
-                    f"{_KING_MISSING} {color}",
+                    TipoDeViolacao.REI_FALTANDO,
+                    f"falta o rei {color}",
                     tuple(square for square in range(64) if not _king_without_evidence(square, king, probs, rules)),
                     (king,),
                 )
@@ -198,6 +214,7 @@ def _find_violations(state: tuple[int, ...], probs: np.ndarray, rules: DecodeRul
         elif total > 1:
             violations.append(
                 _Violation(
+                    TipoDeViolacao.REIS_DEMAIS,
                     f"mais de um rei {color}",
                     tuple(square for square in range(64) if state[square] == king),
                     None,
@@ -206,12 +223,13 @@ def _find_violations(state: tuple[int, ...], probs: np.ndarray, rules: DecodeRul
 
     on_backrank = tuple(square for square in BACKRANK_SQUARES if state[square] in (WHITE_PAWN, BLACK_PAWN))
     if on_backrank:
-        violations.append(_Violation("peão na primeira ou na oitava fila", on_backrank, None))
+        violations.append(_Violation(TipoDeViolacao.PEAO_NA_BORDA, "peão na primeira ou na oitava fila", on_backrank, None))
 
     for color, pawn in (("brancos", WHITE_PAWN), ("pretos", BLACK_PAWN)):
         if counts[pawn] > MAX_PAWNS:
             violations.append(
                 _Violation(
+                    TipoDeViolacao.PEOES_DEMAIS,
                     f"peões {color} demais",
                     tuple(square for square in range(64) if state[square] == pawn),
                     None,
@@ -221,7 +239,7 @@ def _find_violations(state: tuple[int, ...], probs: np.ndarray, rules: DecodeRul
     for color, classes, upper in (("brancas", WHITE_CLASSES, True), ("pretas", BLACK_CLASSES, False)):
         squares = tuple(square for square in range(64) if state[square] in classes)
         if len(squares) > MAX_PIECES:
-            violations.append(_Violation(f"peças {color} demais", squares, None))
+            violations.append(_Violation(TipoDeViolacao.PECAS_DEMAIS, f"peças {color} demais", squares, None))
             continue
 
         pawn = WHITE_PAWN if upper else BLACK_PAWN
@@ -231,6 +249,7 @@ def _find_violations(state: tuple[int, ...], probs: np.ndarray, rules: DecodeRul
         if counts[pawn] + promoted > MAX_PAWNS:
             violations.append(
                 _Violation(
+                    TipoDeViolacao.PROMOVIDAS_DEMAIS,
                     f"peças {color} promovidas demais para o número de peões",
                     squares,
                     None,
@@ -240,7 +259,7 @@ def _find_violations(state: tuple[int, ...], probs: np.ndarray, rules: DecodeRul
     if rules.adjacent_kings:
         touching = _adjacent_kings(state)
         if touching:
-            violations.append(_Violation("os reis se tocam", touching, None))
+            violations.append(_Violation(TipoDeViolacao.REIS_SE_TOCAM, "os reis se tocam", touching, None))
 
     return violations
 
@@ -290,7 +309,7 @@ def _build_result(
     logp: np.ndarray,
     *,
     satisfied: bool,
-    problems: tuple[str, ...] = (),
+    violations: Sequence[_Violation] = (),
 ) -> DecodeResult:
     changed = [(square, base[square], state[square]) for square in range(64) if state[square] != base[square]]
     log_prob = float(sum(logp[square, state[square]] for square in range(64)))
@@ -300,7 +319,8 @@ def _build_result(
         log_prob=log_prob,
         changed_squares=changed,
         constraints_satisfied=satisfied,
-        remaining_problems=problems,
+        remaining_problems=tuple(v.description for v in violations),
+        remaining_kinds=tuple(v.tipo for v in violations),
     )
 
 
@@ -399,8 +419,7 @@ def decode_constrained(
         # melhor estado possível, e seguir buscando só gastaria o tempo da S-358.
         repairable = [violation for violation in violations if violation.squares]
         if not repairable:
-            problems = tuple(violation.description for violation in violations)
-            return _build_result(state, base, logp, satisfied=False, problems=problems)
+            return _build_result(state, base, logp, satisfied=False, violations=violations)
 
         key = (len(violations), cost)
         if key < best_key:
@@ -424,5 +443,4 @@ def decode_constrained(
             delta = float(logp[square, state[square]] - logp[square, target])
             heapq.heappush(heap, (cost + delta, counter, successor))
 
-    problems = tuple(violation.description for violation in _find_violations(best_state, probs, rules))
-    return _build_result(best_state, base, logp, satisfied=False, problems=problems)
+    return _build_result(best_state, base, logp, satisfied=False, violations=_find_violations(best_state, probs, rules))
