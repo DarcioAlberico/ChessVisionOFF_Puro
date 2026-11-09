@@ -90,6 +90,27 @@ class SideToMoveProblemTests(unittest.TestCase):
     def test_flipping_the_side_to_move_resolves_it(self) -> None:
         self.assertTrue(explain_position("R3k3/8/8/8/8/8/8/4K3 b - - 0 1").is_legal)
 
+    def test_reis_adjacentes_sao_fatais(self) -> None:
+        """S-890: quando nenhuma das duas vezes torna a posição legal, trocar a vez não
+        conserta nada. Era "lado a jogar", o painel mandava trocar, e a gravação não perguntava:
+        a amostra entrava no dataset sem a marca de ilegal confirmada."""
+        casos = {
+            "reis adjacentes": ("8/8/8/3kK3/8/8/8/8", {"d5", "e5"}),
+            "os dois em xeque": ("4k3/4R3/8/8/8/8/4r3/4K3", {"e8", "e7", "e2", "e1"}),
+        }
+        for caso, (colocacao, casas) in casos.items():
+            for vez in ("w", "b"):
+                with self.subTest(caso=caso, vez=vez):
+                    explicacao = explain_position(f"{colocacao} {vez} - - 0 1")
+                    self.assertTrue(explicacao.is_fatal)
+                    self.assertEqual(explicacao.label, "ilegal")
+                    self.assertNotIn("Só o lado a jogar", explicacao.summary())
+                    self.assertTrue(casas <= named(explicacao), named(explicacao))
+                    pergunta = illegal_save_question(f"{colocacao} {vez} - - 0 1")
+                    self.assertIsNotNone(pergunta)
+                    assert pergunta is not None
+                    self.assertIn("nenhum lado a jogar torna a posição legal", pergunta)
+
 
 class IllegalSaveQuestionTests(unittest.TestCase):
     """Quando perguntar antes de gravar, e o que a pergunta precisa dizer."""
