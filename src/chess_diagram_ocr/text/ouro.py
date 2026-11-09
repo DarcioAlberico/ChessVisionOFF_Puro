@@ -223,70 +223,138 @@ def problemas(manifesto: Manifesto) -> list[str]:
     """O que faz o manifesto não valer. Vazio quer dizer que ele vale.
 
     Os campos fechados não passam por aqui: o valor de fora não chega a virar `Manifesto` (`de_json`).
+    As mensagens saem nesta ordem: cabeçalho, livros, folhas, teste e pendências (S-861).
     """
+    return [
+        *_do_cabecalho(manifesto),
+        *_dos_livros(manifesto),
+        *_das_folhas(manifesto),
+        *_do_teste(manifesto),
+        *_das_pendencias(manifesto),
+    ]
+
+
+def _e_data(texto: str) -> bool:
+    return bool(_DATA.fullmatch(texto))
+
+
+def _do_cabecalho(manifesto: Manifesto) -> list[str]:
     erros: list[str] = []
     if manifesto.versao != VERSAO:
         erros.append(f"versão {manifesto.versao}, esperada {VERSAO}")
-    if not _DATA.fullmatch(manifesto.congelado_em):
+    if not _e_data(manifesto.congelado_em):
         erros.append(f"congelado_em sem data AAAA-MM-DD: {manifesto.congelado_em!r}")
     leitura = manifesto.primeira_leitura_do_teste
-    if leitura is not None and (not _DATA.fullmatch(str(leitura)) or str(leitura) < manifesto.congelado_em):
+    if leitura is not None and (not _e_data(str(leitura)) or str(leitura) < manifesto.congelado_em):
         erros.append(f"o teste foi lido em {leitura}, antes de o manifesto ser congelado em {manifesto.congelado_em}")
-    splits_do_livro: dict[str, set[str]] = {}
-    lingua_do_livro = {livro.identidade: livro.lingua for livro in manifesto.livros}
+    return erros
+
+
+def _splits_do_livro(manifesto: Manifesto) -> dict[str, set[str]]:
+    splits: dict[str, set[str]] = {}
     for livro in manifesto.livros:
-        if not livro.identidade:
-            erros.append("livro sem identidade")
-        if livro.entrou_em and (livro.split != TESTE or not _DATA.fullmatch(livro.entrou_em)
-                                or livro.entrou_em < manifesto.congelado_em):
-            erros.append(f"livro {livro.identidade} com entrou_em {livro.entrou_em!r}")
-        splits_do_livro.setdefault(livro.identidade, set()).add(livro.split)
-        if livro.reprovado and (livro.split != RESERVA or not livro.fora_do_treino):
-            erros.append(f"livro {livro.identidade} reprovado ({livro.reprovado}) fora da reserva ou dentro do treino")
-    for identidade, splits in splits_do_livro.items():
-        if len(splits) > 1:
-            erros.append(f"livro {identidade} em dois splits: {sorted(splits)}")
+        splits.setdefault(livro.identidade, set()).add(livro.split)
+    return splits
+
+
+def _do_livro(livro: LivroDoOuro, congelado_em: str) -> list[str]:
+    erros: list[str] = []
+    if not livro.identidade:
+        erros.append("livro sem identidade")
+    if livro.entrou_em and (livro.split != TESTE or not _e_data(livro.entrou_em) or livro.entrou_em < congelado_em):
+        erros.append(f"livro {livro.identidade} com entrou_em {livro.entrou_em!r}")
+    if livro.reprovado and (livro.split != RESERVA or not livro.fora_do_treino):
+        erros.append(f"livro {livro.identidade} reprovado ({livro.reprovado}) fora da reserva ou dentro do treino")
+    return erros
+
+
+def _dos_livros(manifesto: Manifesto) -> list[str]:
+    erros = [erro for livro in manifesto.livros for erro in _do_livro(livro, manifesto.congelado_em)]
+    erros += [
+        f"livro {identidade} em dois splits: {sorted(splits)}"
+        for identidade, splits in _splits_do_livro(manifesto).items()
+        if len(splits) > 1
+    ]
+    return erros
+
+
+def _da_folha(folha: FolhaDoOuro, splits_do_livro: dict[str, set[str]], lingua_do_livro: dict[str, str]) -> list[str]:
+    """O que está errado nesta folha contra o livro dela. A folha sem identidade só dá esse erro."""
+    if not folha.identidade:
+        return [f"folha {folha.folha} sem identidade"]
+    erros: list[str] = []
+    if folha.identidade not in splits_do_livro:
+        erros.append(f"folha {folha.folha} de um livro que o manifesto não lista: {folha.identidade}")
+    elif folha.split not in splits_do_livro[folha.identidade]:
+        erros.append(f"folha {folha.folha} de {folha.identidade} no split {folha.split}, e o livro não")
+    lingua = lingua_do_livro.get(folha.identidade)
+    if lingua is not None and folha.lingua != lingua:
+        erros.append(f"folha {folha.folha} de {folha.identidade} em {folha.lingua!r}, e o livro em {lingua!r}")
+    if folha.folha < 1:
+        erros.append(f"folha {folha.folha} de {folha.identidade}: a folha é em base 1")
+    return erros
+
+
+def _das_folhas(manifesto: Manifesto) -> list[str]:
+    splits_do_livro = _splits_do_livro(manifesto)
+    lingua_do_livro: dict[str, str] = {livro.identidade: livro.lingua for livro in manifesto.livros}
+    erros: list[str] = []
     vistas: set[tuple[str, int]] = set()
     for folha in manifesto.folhas:
+        erros += _da_folha(folha, splits_do_livro, lingua_do_livro)
         if not folha.identidade:
-            erros.append(f"folha {folha.folha} sem identidade")
             continue
-        if folha.identidade not in splits_do_livro:
-            erros.append(f"folha {folha.folha} de um livro que o manifesto não lista: {folha.identidade}")
-        elif folha.split not in splits_do_livro[folha.identidade]:
-            erros.append(f"folha {folha.folha} de {folha.identidade} no split {folha.split}, e o livro não")
-        if folha.identidade in lingua_do_livro and folha.lingua != lingua_do_livro[folha.identidade]:
-            erros.append(f"folha {folha.folha} de {folha.identidade} em {folha.lingua!r}, e o livro em "
-                         f"{lingua_do_livro[folha.identidade]!r}")
-        if folha.folha < 1:
-            erros.append(f"folha {folha.folha} de {folha.identidade}: a folha é em base 1")
         if (folha.identidade, folha.folha) in vistas:
             erros.append(f"folha {folha.folha} de {folha.identidade} repetida")
         vistas.add((folha.identidade, folha.folha))
-    teste = {livro.identidade: livro for livro in manifesto.livros if livro.split == TESTE}
-    if teste:
-        if len(teste) < TESTE_MINIMO:
-            erros.append(f"o teste tem {len(teste)} livros, e o mínimo é {TESTE_MINIMO}")
-        linguas = {livro.lingua for livro in teste.values()}
-        pendente = PENDENCIA_DE_LINGUA in manifesto.pendencias
-        if len(linguas) < LINGUAS_MINIMAS_NO_TESTE and not pendente:
-            erros.append(f"o teste tem {len(linguas)} línguas, e o mínimo é {LINGUAS_MINIMAS_NO_TESTE}")
-        if len(linguas) >= LINGUAS_MINIMAS_NO_TESTE and pendente:
-            erros.append(f"o teste já tem {len(linguas)} línguas, e a pendência {PENDENCIA_DE_LINGUA} não saiu")
-        vistas_no_teste = sorted(i for i, livro in teste.items() if livro.diagramacao != "nova")
-        if vistas_no_teste:
-            erros.append(f"livros do teste com diagramação de livro dev: {vistas_no_teste}")
-        sem_folha = sorted(set(teste) - {f.identidade for f in manifesto.folhas})
-        if sem_folha:
-            erros.append(f"livros do teste sem folha: {sem_folha}")
-        grupos_do_teste = {livro.grupo or livro.identidade for livro in teste.values()}
-        for livro in manifesto.livros:
-            if livro.split == RESERVA and (livro.grupo or livro.identidade) in grupos_do_teste and not livro.fora_do_treino:
-                erros.append(f"livro {livro.identidade} é do grupo de um livro do teste e não está fora_do_treino")
-    desconhecidas = sorted(set(manifesto.pendencias) - {PENDENCIA_DE_LINGUA})
-    if desconhecidas:
-        erros.append(f"pendências sem regra: {desconhecidas}")
     return erros
+
+
+def _do_teste(manifesto: Manifesto) -> list[str]:
+    """As regras do split de teste: a composição dele, e os irmãos de série que ficaram na reserva."""
+    teste = {livro.identidade: livro for livro in manifesto.livros if livro.split == TESTE}
+    if not teste:
+        return []
+    return [*_da_composicao_do_teste(teste, manifesto), *_dos_irmaos_do_teste(teste, manifesto.livros)]
+
+
+def _da_composicao_do_teste(teste: dict[str, LivroDoOuro], manifesto: Manifesto) -> list[str]:
+    erros: list[str] = []
+    if len(teste) < TESTE_MINIMO:
+        erros.append(f"o teste tem {len(teste)} livros, e o mínimo é {TESTE_MINIMO}")
+    erros += _das_linguas_do_teste(len({livro.lingua for livro in teste.values()}), manifesto.pendencias)
+    vistas_no_teste = sorted(i for i, livro in teste.items() if livro.diagramacao != "nova")
+    if vistas_no_teste:
+        erros.append(f"livros do teste com diagramação de livro dev: {vistas_no_teste}")
+    sem_folha = sorted(set(teste) - {f.identidade for f in manifesto.folhas})
+    if sem_folha:
+        erros.append(f"livros do teste sem folha: {sem_folha}")
+    return erros
+
+
+def _dos_irmaos_do_teste(teste: dict[str, LivroDoOuro], livros: Sequence[LivroDoOuro]) -> list[str]:
+    """O livro da reserva que é da série de um livro do teste não pode treinar: viu a mesma diagramação."""
+    grupos_do_teste = {livro.grupo or livro.identidade for livro in teste.values()}
+    return [
+        f"livro {livro.identidade} é do grupo de um livro do teste e não está fora_do_treino"
+        for livro in livros
+        if livro.split == RESERVA and (livro.grupo or livro.identidade) in grupos_do_teste and not livro.fora_do_treino
+    ]
+
+
+def _das_linguas_do_teste(linguas: int, pendencias: Sequence[str]) -> list[str]:
+    """A pendência de língua vale enquanto falta língua, e tem de sair quando não falta mais."""
+    pendente = PENDENCIA_DE_LINGUA in pendencias
+    if linguas < LINGUAS_MINIMAS_NO_TESTE and not pendente:
+        return [f"o teste tem {linguas} línguas, e o mínimo é {LINGUAS_MINIMAS_NO_TESTE}"]
+    if linguas >= LINGUAS_MINIMAS_NO_TESTE and pendente:
+        return [f"o teste já tem {linguas} línguas, e a pendência {PENDENCIA_DE_LINGUA} não saiu"]
+    return []
+
+
+def _das_pendencias(manifesto: Manifesto) -> list[str]:
+    desconhecidas = sorted(set(manifesto.pendencias) - {PENDENCIA_DE_LINGUA})
+    return [f"pendências sem regra: {desconhecidas}"] if desconhecidas else []
 
 
 def acrescentar_ao_teste(

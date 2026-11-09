@@ -2426,6 +2426,18 @@ mensagens esperada; para `fundir`, a saída da fusão nas folhas do ouro-dev, gr
 
 **Aceite.** As duas caracterizações passam; as duas abaixo de complexidade 10.
 
+**Entregue** (2026-11-09): `problemas` foi de 48 a 1 e virou `_do_cabecalho`, `_dos_livros`,
+`_das_folhas`, `_do_teste` e `_das_pendencias` (a ordem das mensagens é essa), com
+`_da_composicao_do_teste`, `_dos_irmaos_do_teste` e `_das_linguas_do_teste` para o teste caber abaixo
+de 10; a caracterização é `TodosOsDefeitosTests`, um manifesto com um defeito de cada tipo e a lista
+inteira na ordem. `fundir` foi de 37 a 8; `_decidir_par` devolve três valores, e não `Origem`
+(`glifo`, `lance` e `outro`: o lance do glifo é o único que passa por `_ajustar_lance`, e mandar por
+ele a barra contra letra mudaria a saída). A saída da fusão no ouro-dev **não** foi para a suíte,
+porque é texto de livro: as 1.516 chamadas de `fundir` nas 27 folhas dev, pelos motores `fusao` e
+`camada_prosa`, foram gravadas antes (entradas, respostas do léxico e saída) e reproduzidas depois,
+iguais; mais 100 mil sorteios contra a cópia de antes, iguais. Na suíte ficou
+`OrigemDeCadaTokenTests`, que prende origem, glifo e confiança de cada regra.
+
 ## S-862 · Constantes de caminho e de padrão num lugar
 
 **Problema** (confirmado por leitura). O DPI padrão 220 é literal em cerca de 30 lugares, entre eles

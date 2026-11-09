@@ -236,49 +236,102 @@ def fundir(
     `bloqueados[j]` diz que o token `j` do outro leitor não é confiável (a camada com figurina em código
     de fonte, ou ligadura que perde letra): no par, fica o glifo; sem par, sai. `guarda_prosa_sem_par`
     é a regra 5 da S-721: o leitor que "não viu" não apaga texto. A camada é a tinta, e ali é `False`.
+
+    Quem escreve cada token do par é `_decidir_par`; o que fica sem par, `_sem_par_do_glifo` e
+    `_sem_par_do_leitor` (S-861).
     """
     g, t = glifo.split(), leitor.split()
-    if confiancas_do_leitor and len(confiancas_do_leitor) != len(t):
-        # Truncar aqui deslocava a confiança em silêncio: a palavra com U+2009 dentro vira dois tokens (S-853).
-        raise ValueError(f"{len(confiancas_do_leitor)} confianças para {len(t)} tokens do leitor: {leitor!r}")
+    confianca = _confiancas_por_token(confiancas_do_leitor, t, leitor)
     saida: list[Token] = []
-    confianca = {j: float(c) for j, c in enumerate(confiancas_do_leitor)}
 
     def do_glifo(i: int) -> float | None:
         return confiancas_do_glifo[i] if i < len(confiancas_do_glifo) else None
 
     for i, j in alinhar_tokens(g, t):
-        bloqueado = j != -1 and j < len(bloqueados) and bool(bloqueados[j])
-        if i != -1 and j != -1:
-            if _SO_FIO.match(t[j]) and any(c.isalnum() for c in g[i]):
+        bloqueado = _bloqueado(bloqueados, j)
+        if i == -1:
+            if _sem_par_do_leitor(t[j], bloqueado=bloqueado):
+                saida.append(Token(t[j], "outro", "", confianca.get(j)))
+        elif j == -1:
+            if _sem_par_do_glifo(g[i], guarda_prosa_sem_par=guarda_prosa_sem_par):
                 saida.append(Token(g[i], "glifo", g[i], do_glifo(i)))
-            elif (
-                not bloqueado
-                and classe_do_token(g[i]) == PROSA
-                and classe_do_token(t[j]) == PROSA
-                and existe(g[i])
-                and not existe(t[j])
-            ):
-                # Regra 4 da S-721: divergem, e só a versão do glifo é palavra que existe.
-                saida.append(Token(g[i], "glifo", g[i], do_glifo(i)))
-            elif bloqueado or ((e_notacao(g[i]) or e_notacao(t[j])) and not existe(t[j])):
-                token = _numero_partido(g[i], t[j])
-                # O dígito que o glifo deixou solto antes do número (`1 7.♔xf3`) é absorvido aqui.
-                if token != g[i] and saida and saida[-1].texto.isdigit() and t[j].lstrip("(").startswith(saida[-1].texto):
-                    saida.pop()
-                # A palavra que o glifo colou no lance (`of2.exf6`), com o `of` já vindo do outro leitor.
-                anterior = saida[-1].texto if saida and saida[-1].origem == "outro" else ""
-                if anterior and token.startswith(anterior) and e_notacao(token[len(anterior) :]):
-                    token = token[len(anterior) :]
-                saida.append(Token(token, "glifo", g[i], do_glifo(i)))
-            else:
+        else:
+            decisao = _decidir_par(g[i], t[j], bloqueado=bloqueado, existe=existe)
+            if decisao == "outro":
                 saida.append(Token(t[j], "outro", g[i], confianca.get(j)))
-        elif i != -1:
-            if e_notacao(g[i]) or g[i].isdigit() or guarda_prosa_sem_par:
-                saida.append(Token(g[i], "glifo", g[i], do_glifo(i)))
-        elif not e_notacao(t[j]) and not bloqueado and not _SO_FIO.match(t[j]):
-            saida.append(Token(t[j], "outro", "", confianca.get(j)))
+            else:
+                texto = _ajustar_lance(g[i], t[j], saida) if decisao == "lance" else g[i]
+                saida.append(Token(texto, "glifo", g[i], do_glifo(i)))
     return saida
+
+
+def _confiancas_por_token(confiancas: Sequence[float], tokens: Sequence[str], leitor: str) -> dict[int, float]:
+    """A confiança de cada token do outro leitor, por índice. Vazia quando ele não deu confiança nenhuma."""
+    if confiancas and len(confiancas) != len(tokens):
+        # Truncar aqui deslocava a confiança em silêncio: a palavra com U+2009 dentro vira dois tokens (S-853).
+        raise ValueError(f"{len(confiancas)} confianças para {len(tokens)} tokens do leitor: {leitor!r}")
+    return {j: float(c) for j, c in enumerate(confiancas)}
+
+
+def _bloqueado(bloqueados: Sequence[bool], j: int) -> bool:
+    """O token `j` do outro leitor veio marcado como não confiável. `-1` (sem token do leitor) não está."""
+    return j != -1 and j < len(bloqueados) and bool(bloqueados[j])
+
+
+_DecisaoDoPar = Literal["glifo", "lance", "outro"]
+"""Quem escreve o token do par: o glifo como leu, o glifo com o lance consertado, ou o outro leitor."""
+
+
+def _decidir_par(g: str, t: str, *, bloqueado: bool, existe: Callable[[str], bool]) -> _DecisaoDoPar:
+    """A tabela de decisão do par. **A ordem das linhas é a precedência**: a primeira que casa decide."""
+    if _fio_contra_letra(g, t):
+        return "glifo"
+    if not bloqueado and _so_o_glifo_e_palavra(g, t, existe):
+        return "glifo"
+    if bloqueado or ((e_notacao(g) or e_notacao(t)) and not existe(t)):
+        return "lance"
+    return "outro"
+
+
+def _fio_contra_letra(g: str, t: str) -> bool:
+    """A barra do outro leitor contra a letra do glifo: ver `_SO_FIO`."""
+    return bool(_SO_FIO.match(t)) and any(c.isalnum() for c in g)
+
+
+def _so_o_glifo_e_palavra(g: str, t: str, existe: Callable[[str], bool]) -> bool:
+    """Regra 4 da S-721: os dois leram prosa, divergem, e só a versão do glifo é palavra que existe."""
+    return classe_do_token(g) == PROSA and classe_do_token(t) == PROSA and existe(g) and not existe(t)
+
+
+def _ajustar_lance(g: str, t: str, saida: list[Token]) -> str:
+    """O lance do glifo consertado contra o outro leitor e contra o que já saiu. **Pode tirar de `saida`**
+    o dígito que o glifo deixou solto antes do número (`1 7.♔xf3`): ele é absorvido aqui."""
+    token = _numero_partido(g, t)
+    if token != g and _digito_solto_do_numero(t, saida):
+        saida.pop()
+    return _sem_a_palavra_colada(token, saida)
+
+
+def _digito_solto_do_numero(t: str, saida: Sequence[Token]) -> bool:
+    return bool(saida) and saida[-1].texto.isdigit() and t.lstrip("(").startswith(saida[-1].texto)
+
+
+def _sem_a_palavra_colada(token: str, saida: Sequence[Token]) -> str:
+    """A palavra que o glifo colou no lance (`of2.exf6`), com o `of` já vindo do outro leitor, sai dele."""
+    anterior = saida[-1].texto if saida and saida[-1].origem == "outro" else ""
+    if anterior and token.startswith(anterior) and e_notacao(token[len(anterior) :]):
+        return token[len(anterior) :]
+    return token
+
+
+def _sem_par_do_glifo(g: str, *, guarda_prosa_sem_par: bool) -> bool:
+    """O token do glifo sem par fica quando é notação ou dígito -- ou sempre, com a guarda da S-721."""
+    return e_notacao(g) or g.isdigit() or guarda_prosa_sem_par
+
+
+def _sem_par_do_leitor(t: str, *, bloqueado: bool) -> bool:
+    """O token do outro leitor sem par entra quando é prosa confiável: nem notação, nem bloqueado, nem barra."""
+    return not e_notacao(t) and not bloqueado and not _SO_FIO.match(t)
 
 
 def texto_fundido(tokens: Sequence[Token]) -> str:

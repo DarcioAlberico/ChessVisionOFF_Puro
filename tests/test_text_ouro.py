@@ -223,6 +223,75 @@ class ManifestoTests(unittest.TestCase):
             self.assertEqual(_teste_valido(), ouro.carregar(caminho))
 
 
+class TodosOsDefeitosTests(unittest.TestCase):
+    """Um manifesto com um defeito de cada tipo, e a lista inteira, **na ordem** (S-861).
+
+    É a caracterização da partição de `problemas`: cada guarda já tem o seu teste acima, mas só esta
+    lista prende a ordem das mensagens e o texto de cada uma -- é o que a ferramenta de linha imprime.
+    """
+
+    def test_um_de_cada_e_a_ordem(self) -> None:
+        T, R, D, P = ouro.TESTE, ouro.RESERVA, ouro.DEV, ouro.PROSA
+        livros = [
+            L("", D, "eng"),
+            L(_id(1), T, "eng", entrou_em="2026/11/05"),
+            L(_id(2), T, "eng"), L(_id(2), D, "eng"),
+            L(_id(3), T, "eng", reprovado="auditoria: x"),
+            L(_id(4), T, "eng", diagramacao="vista"),
+            L(_id(5), T, "eng"),
+            L(_id(6), R, "eng", grupo=_id(4)),
+        ]
+        folhas = [
+            F("", 3, "eng", P, T),
+            F(_id(9), 4, "eng", P, T),
+            F(_id(1), 5, "eng", P, D),
+            F(_id(1), 6, "por", P, T),
+            F(_id(1), 0, "eng", P, T),
+            F(_id(3), 7, "eng", P, T), F(_id(3), 7, "eng", P, T),
+            F(_id(4), 8, "eng", P, T), F(_id(2), 9, "eng", P, T),
+        ]
+        m = _manifesto(livros, folhas, versao=0, congelado_em="30/10/2026",
+                       primeira_leitura_do_teste="2026-01-01", pendencias=("inventada",))
+        self.assertEqual(
+            [
+                "versão 0, esperada 1",
+                "congelado_em sem data AAAA-MM-DD: '30/10/2026'",
+                "o teste foi lido em 2026-01-01, antes de o manifesto ser congelado em 30/10/2026",
+                "livro sem identidade",
+                f"livro {_id(1)} com entrou_em '2026/11/05'",
+                f"livro {_id(3)} reprovado (auditoria: x) fora da reserva ou dentro do treino",
+                f"livro {_id(2)} em dois splits: ['dev', 'teste']",
+                "folha 3 sem identidade",
+                f"folha 4 de um livro que o manifesto não lista: {_id(9)}",
+                f"folha 5 de {_id(1)} no split dev, e o livro não",
+                f"folha 6 de {_id(1)} em 'por', e o livro em 'eng'",
+                f"folha 0 de {_id(1)}: a folha é em base 1",
+                f"folha 7 de {_id(3)} repetida",
+                "o teste tem 5 livros, e o mínimo é 8",
+                "o teste tem 1 línguas, e o mínimo é 3",
+                f"livros do teste com diagramação de livro dev: ['{_id(4)}']",
+                f"livros do teste sem folha: ['{_id(5)}']",
+                f"livro {_id(6)} é do grupo de um livro do teste e não está fora_do_treino",
+                "pendências sem regra: ['inventada']",
+            ],
+            ouro.problemas(m),
+        )
+
+    def test_sem_livro_no_teste_as_regras_do_teste_nao_valem(self) -> None:
+        """O manifesto antes do sorteio do teste: só dev e reserva, e nada a acusar."""
+        livros = [L(_id(1), ouro.DEV, "eng"), L(_id(2), ouro.RESERVA, "por", grupo=_id(1))]
+        self.assertEqual([], ouro.problemas(_manifesto(livros, [F(_id(1), 5, "eng", ouro.PROSA, ouro.DEV)])))
+
+    def test_a_pendencia_cumprida_que_nao_saiu(self) -> None:
+        tres = [L(_id(20 + i), ouro.TESTE, lingua) for i, lingua in enumerate(["eng", "por", "spa"])]
+        folhas = [F(x.identidade, 10, x.lingua, ouro.PROSA, ouro.TESTE) for x in tres]
+        m = _manifesto(tres, folhas, pendencias=(ouro.PENDENCIA_DE_LINGUA,))
+        self.assertEqual(
+            ["o teste tem 3 livros, e o mínimo é 8", "o teste já tem 3 línguas, e a pendência terceira_lingua não saiu"],
+            ouro.problemas(m),
+        )
+
+
 class LeituraTests(unittest.TestCase):
     """O valor fora da lista não chega ao `Manifesto`: a leitura recusa, e `problemas` não o vê (S-855)."""
 
