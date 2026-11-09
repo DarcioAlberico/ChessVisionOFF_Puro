@@ -1967,6 +1967,13 @@ teste (o par real só existe no checkout principal e faria o teste pular no CI),
 
 **Aceite.** O teste passa.
 
+**Entregue** (2026-11-09): a fronteira é `ler_pagina`, e não os chamadores: sem `reconhecedor`, ela o
+constrói uma vez por `classificador_configurado()`, e assim a aba Texto e o `cvoff-texto-flutuante` chegam
+lá sem mudar; o `cvoff-texto-estilo-motor` pergunta à mesma função. `_ha_classificador` saiu, e
+`linhas_do_glifo` passou a exigir o reconhecedor (todos os chamadores já o passavam) e perdeu o
+`modo_bloco`, que só servia para construí-lo. Um motor do glifo pedido explicitamente sem pesos levanta
+agora antes de segmentar, e não só quando a folha tem caixa.
+
 ## S-848 · `PaginaLida.de_json` na fronteira
 
 **Problema** (confirmado por script). `text/pagina.py:399-411`, `:561-573`, `:936-960`: `{"largura": null}`,
@@ -2097,6 +2104,13 @@ verdadeiro (só assim o ramo chama `ler_folha`): o aviso tem de estar na página
 confianças continuam alinhadas.
 
 **Aceite.** Os dois passam.
+
+**Entregue** (2026-11-09): além do pedido, `tesseract.confiancas_por_token` dá uma confiança por token de
+`split()` (a palavra com U+2009 vale por quantos tokens der) e serve aos dois lugares que montavam a linha
+do Tesseract -- `ler_linhas` e a reserva --, e `fusao.fundir` passou a recusar com `ValueError` a lista de
+confianças que não casa com os tokens, em vez de truncá-la. O roteiro arquivado
+`docs/metrics/texto_prosa_2026-11-06/auditoria_das_caixas.py` lê `ler_linhas(...)[0].texto` e quebraria num
+recorte vazio; ficou como está, porque é o script que o relatório daquele dia identifica.
 
 ## S-855 · Tipos fechados no texto
 

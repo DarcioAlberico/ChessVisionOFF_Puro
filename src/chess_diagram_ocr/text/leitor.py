@@ -1553,7 +1553,7 @@ def _linhas_da_reserva(
             max(p.caixa[2] for p in grupo),
             max(p.caixa[3] for p in grupo),
         )
-        confiancas = [p.confianca for p in grupo]
+        confiancas = _tesseract.confiancas_por_token(grupo)
         texto = " ".join(p.texto for p in grupo)
         par = next(
             (
@@ -1570,7 +1570,7 @@ def _linhas_da_reserva(
             tokens.append(_fusao.fundir(par.texto, texto, existe=existe, confiancas_do_leitor=confiancas))
         else:
             tokens.append(
-                [_fusao.Token(t, "outro", t, c) for t, c in zip(texto.split(), confiancas, strict=False)]
+                [_fusao.Token(t, "outro", t, c) for t, c in zip(texto.split(), confiancas, strict=True)]
             )
     marcadas = _fusao.marcar(tokens, existe=existe) if marca_por_palavra else [frozenset[int]() for _ in tokens]
     return (
@@ -1729,9 +1729,10 @@ def _ler_pagina_do_livro(
             # é o que devolve o `after` que a ligadura perdeu. A primeira versão fazia o contrário, com as
             # linhas do Tesseract no lugar do glifo, e trocava `10.Qxd2` por `10.8xd2`.
             leituras_da_reserva: list[_tesseract.Palavra] = []
+            falha = ""
             if reserva and any(_pede_outra_leitura(p) for p in palavras):
                 leitor = _leitor_de_linha.leitor_padrao() if leitor_de_linha is None else leitor_de_linha
-                leituras_da_reserva, _falha = leitor.ler_folha(_com_diagramas_em_branco(_imagem_do_leitor(imagem, dpi), retangulos), lingua=lingua, dpi=dpi)
+                leituras_da_reserva, falha = leitor.ler_folha(_com_diagramas_em_branco(_imagem_do_leitor(imagem, dpi), retangulos), lingua=lingua, dpi=dpi)
             cruas, regioes, quadros, qual = (
                 _camada_montada(da_camada, palavras, leituras_da_reserva, escala_px),
                 None,
@@ -1746,6 +1747,9 @@ def _ler_pagina_do_livro(
                     guarda.densidade,
                 )
             )
+            if falha:
+                # A falha era jogada fora aqui, e os outros dois ramos a avisam (S-853).
+                avisos.append(Aviso(LEITOR_INDISPONIVEL, f"A reserva não leu as palavras suspeitas. {falha}"))
         elif guarda.nao_lida:
             avisos.append(
                 Aviso(

@@ -258,6 +258,17 @@ class ReservaTests(_ComLivro):
         self.assertTrue(lida.marca_por_palavra)
         self.assertEqual(sum(len(linha.revisar_em) for linha in _linhas(lida)), 1)
 
+    def test_a_palavra_com_espaco_dentro_nao_desloca_as_confiancas(self) -> None:
+        """U+2009 dentro da palavra do Tesseract: a dúvida fica na palavra em que ele duvidou (S-853)."""
+        textos = ["white knight", "pawn", *(["white"] * 23)]
+        palavras = [
+            tesseract.Palavra(t, 0.2 if t == "pawn" else 0.99, (180 + 40 * n, 100, 210 + 40 * n, 140), linha=0)
+            for n, t in enumerate(textos)
+        ]
+        lida = self.ler("glifo", [_crua("h", 50)], leitor_de_linha=_Falso(folha=palavras), reserva=True)
+        marcadas = [linha.texto[a:b] for linha in _linhas(lida) for a, b in linha.revisar_em]
+        self.assertEqual(marcadas, ["pawn"])
+
     def test_a_partida_na_calha_nao_parte_no_espaco(self) -> None:
         palavras = [tesseract.Palavra(t, 0.9, (100 + 80 * n, 100, 170 + 80 * n, 125)) for n, t in enumerate("abc")]
         self.assertEqual(len(leitor._partida_no_vao(palavras)), 1)  # noqa: SLF001
@@ -312,6 +323,16 @@ class CamadaNaFolhaPerdidaTests(_ComLivro):
         montada = leitor._camada_montada([_crua("Nf6", 50)], palavras, leituras, ESCALA)[0]  # noqa: SLF001
         self.assertEqual(montada.texto, "Nf6")
         self.assertEqual(montada.revisar_em, ())
+
+    def test_a_reserva_que_nao_le_avisa(self) -> None:
+        """A falha do leitor era jogada fora neste ramo, e os outros dois a avisam (S-853)."""
+        falso = _Falso(falha="Sem Tesseract.")
+        with mock.patch.object(camada_prosa, "palavras_da_folha", return_value=self._suspeita()):
+            lida = self.ler("camada_prosa", [_crua("h", 50)], leitor_de_linha=falso, reserva=True)
+        self.assertIsNotNone(falso.cinza, "a palavra suspeita tem de chamar o leitor")
+        self.assertEqual([a.codigo for a in lida.avisos], [pagina.CAMADA_NA_FOLHA, pagina.LEITOR_INDISPONIVEL])
+        self.assertIn("Sem Tesseract.", lida.avisos[1].mensagem)
+        self.assertIn(LINHA, lida.texto(com_marcas=False), "e a folha continua lida pela camada")
 
     def test_sem_palavra_suspeita_o_tesseract_nem_abre(self) -> None:
         falso = _Falso()

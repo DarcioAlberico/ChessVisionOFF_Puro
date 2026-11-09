@@ -238,8 +238,11 @@ def fundir(
     é a regra 5 da S-721: o leitor que "não viu" não apaga texto. A camada é a tinta, e ali é `False`.
     """
     g, t = glifo.split(), leitor.split()
+    if confiancas_do_leitor and len(confiancas_do_leitor) != len(t):
+        # Truncar aqui deslocava a confiança em silêncio: a palavra com U+2009 dentro vira dois tokens (S-853).
+        raise ValueError(f"{len(confiancas_do_leitor)} confianças para {len(t)} tokens do leitor: {leitor!r}")
     saida: list[Token] = []
-    confianca = {j: float(c) for j, c in enumerate(confiancas_do_leitor) if j < len(t)}
+    confianca = {j: float(c) for j, c in enumerate(confiancas_do_leitor)}
 
     def do_glifo(i: int) -> float | None:
         return confiancas_do_glifo[i] if i < len(confiancas_do_glifo) else None
