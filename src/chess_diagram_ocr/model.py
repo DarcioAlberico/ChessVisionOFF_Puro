@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, NoReturn, TypeVar, get_args
 
 import cv2
 import numpy as np
@@ -39,6 +39,28 @@ faz do item uma troca de cabeça e não uma troca de modelo."""
 
 COORDINATE_CHANNELS = 3
 """Paridade da casa, fila normalizada, coluna normalizada (S-62a)."""
+
+
+_T = TypeVar("_T")
+
+
+def _assert_never(valor: NoReturn) -> NoReturn:
+    """O `typing.assert_never` do 3.11, que o piso 3.10 do projeto ainda não tem.
+
+    O mypy só aceita chamá-lo onde o tipo de `valor` já se estreitou a nada: um `Literal` novo
+    em `Head` ou `Backbone` sem ramo próprio vira erro de tipo aqui, e não um modelo errado."""
+    raise AssertionError(f"Valor não tratado: {valor!r}")
+
+
+def _conhecido(nome: str, valor: str, admitidos: tuple[_T, ...]) -> _T:
+    """`valor` como o membro de `admitidos` igual a ele, ou `ValueError` (S-840).
+
+    Devolve o membro, e não `valor`, para que `from_version` passe ao construtor um nome que o
+    mypy já sabe estar no `Literal`, sem `type: ignore`."""
+    for admitido in admitidos:
+        if valor == admitido:
+            return admitido
+    raise ValueError(f"{nome} {valor!r} não existe; os conhecidos são {', '.join(map(str, admitidos))}.")
 
 
 @dataclass(frozen=True)
@@ -64,6 +86,11 @@ class ArchConfig:
     """
 
     def __post_init__(self) -> None:
+        # O `Literal` só vale para o mypy. Em execução `from_version` monta isto de texto lido
+        # do checkpoint, e `grey` virava RGB, `resnet` e `mlp` viravam a CNN, em silêncio (S-840).
+        _conhecido("backbone", self.backbone, get_args(Backbone))
+        _conhecido("channels", self.channels, get_args(Channels))
+        _conhecido("head", self.head, get_args(Head))
         if self.image_size % 8 != 0 or self.image_size <= 0:
             raise ValueError(f"image_size deve ser múltiplo positivo de 8 (três MaxPool2d); recebido {self.image_size}.")
 
@@ -90,11 +117,20 @@ class ArchConfig:
 
     @classmethod
     def from_version(cls, version: str) -> ArchConfig:
+        """`arch_version` → `ArchConfig`. Levanta `ValueError` para o que não conhece (S-840)."""
         coords = version.endswith("-coords")
-        if coords:
-            version = version[: -len("-coords")]
-        backbone, channels, size, head = version.rsplit("-", 3)
-        return cls(backbone=backbone, channels=channels, image_size=int(size), head=head, coords=coords)  # type: ignore[arg-type]
+        base = version[: -len("-coords")] if coords else version
+        partes = base.rsplit("-", 3)
+        if len(partes) != 4 or not partes[2].isdigit():
+            raise ValueError(f"arch_version {version!r} não tem a forma <tronco>-<canais>-<tamanho>-<cabeça>[-coords].")
+        backbone, channels, size, head = partes
+        return cls(
+            backbone=_conhecido("backbone", backbone, get_args(Backbone)),
+            channels=_conhecido("channels", channels, get_args(Channels)),
+            image_size=int(size),
+            head=_conhecido("head", head, get_args(Head)),
+            coords=coords,
+        )
 
 
 DEFAULT_ARCH = ArchConfig()
@@ -137,7 +173,7 @@ class PieceClassifier(nn.Module):
                 nn.Dropout(p=0.25),
                 nn.Linear(128, num_classes),
             )
-        else:
+        elif arch.head == "linear":
             side = arch.image_size // 8
             self.classifier = nn.Sequential(
                 nn.Flatten(),
@@ -146,6 +182,12 @@ class PieceClassifier(nn.Module):
                 nn.Dropout(p=0.25),
                 nn.Linear(256, num_classes),
             )
+        elif arch.head == "board":
+            # `build_model` desvia a cabeça por tabuleiro para `BoardHeadClassifier`; montá-la
+            # aqui seria uma CNN por casa com o nome da outra (S-840).
+            raise ValueError("A cabeça 'board' é a BoardHeadClassifier; use build_model.")
+        else:
+            _assert_never(arch.head)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Devolve logits crus. A temperatura é aplicada na inferência, não aqui --
@@ -293,7 +335,9 @@ def build_model(arch: ArchConfig = DEFAULT_ARCH, *, pretrained: bool = True) -> 
         return BoardHeadClassifier(arch)
     if arch.backbone == "mobilenet_v3_small":
         return MobileNetClassifier(arch, pretrained=pretrained)
-    return PieceClassifier(arch)
+    if arch.backbone == "cnn":
+        return PieceClassifier(arch)
+    _assert_never(arch.backbone)
 
 
 def count_parameters(model: nn.Module) -> int:

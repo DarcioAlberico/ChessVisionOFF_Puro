@@ -34,6 +34,31 @@ class ArchConfigTests(unittest.TestCase):
         ):
             self.assertEqual(ArchConfig.from_version(arch.version), arch)
 
+    def test_from_version_recusa_o_que_nao_conhece(self) -> None:
+        """S-840: `grey` montava um modelo RGB, `resnet` e `mlp` montavam a CNN, em silêncio."""
+        for texto in ("cnn-grey-64-linear", "resnet-gray-64-linear", "cnn-gray-64-mlp", "cnn-gray-64-linear-cords"):
+            with self.subTest(texto=texto), self.assertRaises(ValueError):
+                ArchConfig.from_version(texto)
+
+    def test_as_versoes_gravadas_em_models_continuam_lidas(self) -> None:
+        """As `arch_version` dos `.pt` de `models/` em 2026-11-09, escritas por valor."""
+        for texto in (
+            "cnn-gray-64-linear",
+            "cnn-gray-32-linear",
+            "mobilenet_v3_small-gray-64-linear",
+            "cnn-gray-64-linear-coords",
+            "cnn-gray-64-board",
+            "cnn-gray-64-board-coords",
+        ):
+            with self.subTest(texto=texto):
+                self.assertEqual(ArchConfig.from_version(texto).version, texto)
+
+    def test_o_construtor_recusa_o_que_o_tipo_nao_admite(self) -> None:
+        """A recusa mora no `__post_init__`: quem monta `ArchConfig` à mão passa por ela também."""
+        with self.assertRaises(ValueError):
+            # O `ignore` é o teste: o tipo já recusa "mlp", e a pergunta é o que acontece em execução.
+            ArchConfig(head="mlp")  # type: ignore[arg-type]
+
     def test_image_size_must_survive_three_max_pools(self) -> None:
         with self.assertRaises(ValueError):
             ArchConfig(image_size=50)

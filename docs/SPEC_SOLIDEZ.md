@@ -1736,6 +1736,8 @@ e `cnn-gray-64-mlp`.
 
 **Aceite.** O teste passa; o mypy acusa um `Literal` novo não tratado.
 
+**Entregue** (2026-11-08): a conferência mora no `__post_init__` (por `_conhecido`, que devolve o membro do `Literal` e por isso dispensa o `ignore`), e não só no `from_version`: `ArchConfig(head="mlp")` montado à mão também levanta. O `assert_never` é um `_assert_never(valor: NoReturn)` local, porque o `.venv` e o piso do `pyproject` ainda são 3.10 (o `typing.assert_never` é do 3.11). Conferido acrescentando `"mlp"` a `Head` e `"resnet"` a `Backbone`: o mypy acusa os dois ramos. As seis `arch_version` dos `.pt` de `models/` ficam escritas no teste e continuam lidas. `model.py` é do fecho de medição.
+
 ## S-841 · O dataset conta e diz o que descarta
 
 **Problema** (confirmado por leitura). `dataset.py:140-141` descarta linha de FEN inválida sem contador e
