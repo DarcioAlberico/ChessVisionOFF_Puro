@@ -10,6 +10,7 @@ extração por PDFs gerados aqui.
 from __future__ import annotations
 
 import unittest
+from dataclasses import astuple
 
 import fitz
 
@@ -384,6 +385,57 @@ class ImagemCheiaTests(unittest.TestCase):
             pagina.insert_image(fitz.Rect(0, 0, 400, altura), pixmap=pix, keep_proportion=False)
         self.assertFalse(ad.imagem_cobre_texto(doc[0]))
         self.assertTrue(ad.imagem_cobre_texto(doc[1]))
+
+
+PROCEDENCIAS = (
+    # (produtor, criador, fonte do texto ou "", a camada é de OCR?, o caso que ensinou)
+    ("ocrmypdf 13.4.0 / Tesseract OCR-PDF 5.0", "", "", True, "a admissão não o via"),
+    ("OmniPage CSDK 21", "", "", True, "o texto_grade não o via"),
+    ("CCS docWorks 7.2", "Omniscan 12.0", "", True, "o Niemeijer: só o criador denuncia"),
+    ("Adobe Acrobat 9.0", "", "HiddenHorzOCR", True, "a camada tipográfica e o texto_grade não a viam"),
+    ("ORPALIS PDF Reducer 2.0.4", "", "Fd101376-Identity-H", True, "o Yusupov: o texto_grade pedia quatro Fd"),
+    ("PDFill PDF Editor 15.0", "", "GlyphLessFont", True, "a fonte invisível do Tesseract"),
+    ("Adobe InDesign 16.0 (Windows)", "Adobe InDesign 16.0 (Windows)", "", False, "editorado"),
+    ("calibre 3.48.0", "calibre 3.48.0", "", False, "ebook"),
+    ("Acrobat Web Capture 11.0", "Adobe Acrobat 11.0", "", False, "o Hansen: Capture não é Paper Capture"),
+    ("pdfTeX-1.40.13", "LaTeX with hyperref package", "", False, "o Chess Evolution 2014"),
+)
+
+
+def _livro_de(produtor: str, criador: str, fonte: str) -> fitz.Document:
+    """Uma folha de prosa visível com aqueles metadados, e com a fonte renomeada quando `fonte` vem."""
+    rascunho = fitz.open()
+    pagina = _pagina_com_texto(rascunho)
+    if fonte:
+        for xref, *_ in pagina.get_fonts(full=True):
+            rascunho.xref_set_key(xref, "BaseFont", f"/{fonte}")
+    rascunho.set_metadata({"producer": produtor, "creator": criador})
+    return fitz.open("pdf", rascunho.tobytes())
+
+
+class ProcedenciaUnicaTests(unittest.TestCase):
+    """S-849: "esta camada foi feita por OCR?" tem uma resposta, e os consumidores a dão igual."""
+
+    def test_os_consumidores_respondem_igual(self) -> None:
+        from chess_diagram_ocr.cli import texto_grade
+        from chess_diagram_ocr.text import camada, camada_prosa
+
+        for produtor, criador, fonte, de_ocr, caso in PROCEDENCIAS:
+            with self.subTest(caso=caso):
+                doc = _livro_de(produtor, criador, fonte)
+                self.addCleanup(doc.close)
+                admissao = camada_prosa.admitir(doc, 0, [])
+                self.assertEqual(de_ocr, admissao.criterio in (ad.PRODUTOR, ad.FONTE), f"admissão: {admissao.criterio}")
+                self.assertEqual(de_ocr, texto_grade.camada_de_ocr(doc) is not None, "texto_grade")
+                self.assertEqual(not de_ocr, camada.camada_tipografica(doc[0]), "camada tipográfica")
+                self.assertEqual(de_ocr, ad.procedencia_da_camada(doc, doc[0]).de_ocr, "a regra")
+
+    def test_a_regra_e_pura_e_diz_o_que_denunciou(self) -> None:
+        self.assertEqual((ad.PRODUTOR, "paper capture"),
+                         astuple(ad.procedencia("Adobe Acrobat 9.0 Paper Capture Plug-in", "", ())))
+        self.assertEqual((ad.PRODUTOR, "omniscan"), astuple(ad.procedencia("CCS docWorks 7.2", "Omniscan 12.0")))
+        self.assertEqual((ad.FONTE, "ABCDEF+GlyphLessFont"), astuple(ad.procedencia(fontes=["Arial", "ABCDEF+GlyphLessFont"])))
+        self.assertEqual((None, ""), astuple(ad.procedencia("calibre 3.48.0", "calibre 3.48.0", ["Fdx-Bold"])))
 
 
 if __name__ == "__main__":

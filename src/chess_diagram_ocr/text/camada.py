@@ -61,6 +61,8 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 
+from . import admissao
+
 __all__ = [
     "CASAMENTO_MINIMO",
     "COBERTURA_MINIMA",
@@ -193,12 +195,13 @@ def camada_tipografica(page: object) -> bool:
     """A camada desta folha é a **tipografia** de quem editou o livro, e não o palpite de outro OCR?
 
     Por folha, e não por livro, porque a pergunta é feita na leitura de uma folha só e o acervo tem
-    os dois casos no mesmo livro (a capa digitalizada do editorado). Duas marcas de OCR, as de
-    `camada_de_ocr`: a fonte invisível (`GlyphLessFont`, do Tesseract e afins) e a folha que é uma
-    imagem só com texto por cima. Sem texto nenhum, não há camada a ser de alguém.
+    os dois casos no mesmo livro (a capa digitalizada do editorado). Duas marcas de OCR: o que o PDF
+    declara -- produtor, criador e as fontes desta folha, pela regra única da `admissao.procedencia`
+    (S-849) -- e a folha que é uma imagem só com texto por cima. Sem texto nenhum, não há camada a ser
+    de alguém.
     """
     try:
-        if any("glyphless" in str(fonte[3]).lower() for fonte in page.get_fonts(full=True)):  # type: ignore[attr-defined]
+        if admissao.procedencia_da_camada(getattr(page, "parent", None), page).de_ocr:
             return False
         blocos = page.get_text("dict")["blocks"]  # type: ignore[attr-defined]
         area = float(page.rect.width * page.rect.height)  # type: ignore[attr-defined]

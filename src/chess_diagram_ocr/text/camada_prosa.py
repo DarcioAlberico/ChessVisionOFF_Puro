@@ -247,6 +247,7 @@ def admitir(documento: Any, indice: int, retangulos: Sequence[Retangulo]) -> adm
         documento[indice],
         retangulos,
         produtor=admissao.produtor_de(documento),
+        criador=admissao.criador_de(documento),
         perfil=perfil_em_memoria(documento),
     )
 

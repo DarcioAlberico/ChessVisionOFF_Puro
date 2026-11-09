@@ -8,9 +8,11 @@ melhor ou pior mude.
 
 Os quatro critérios, na ordem em que reprovam:
 
-- **(d) o PDF não é produção de OCR.** Produtor `Paper Capture`, `Image Conversion`, `FineReader`,
-  `OmniPage`, `Omniscan`, `Google`, ABBYY, ou fontes `GlyphLessFont`, `HiddenHorzOCR`, `Fd\\d+`. O
-  ClearScan **parece** digital -- o glifo é vetorizado --, mas o Unicode dele veio de um OCR.
+- **(d) o PDF não é produção de OCR.** Produtor ou criador `Paper Capture`, `Image Conversion`,
+  `FineReader`, `OmniPage`, `Omniscan`, `Google`, ABBYY, Tesseract ou `ocr`, ou fontes `GlyphLessFont`,
+  `HiddenHorzOCR`, `Fd\\d+`. O ClearScan **parece** digital -- o glifo é vetorizado --, mas o Unicode
+  dele veio de um OCR. A regra é `procedencia`, a mesma que `camada.camada_tipografica` e
+  `cli/texto_grade.camada_de_ocr` consultam (S-849).
 - **(a) o texto é visível e é a tinta.** Nenhum trecho fora dos diagramas em modo de renderização 3 ou
   opacidade 0; nenhuma imagem de página inteira desenhada **depois** de algum texto (a de fundo,
   desenhada antes, como no *Chess Evolution*, não reprova); e o **livro** não é scan com camada
@@ -48,8 +50,12 @@ from typing import Any
 
 from ..fontes_de_xadrez import e_fonte_de_diagrama, e_fonte_de_xadrez
 
-VERSAO = 2
-"""Sobe quando um critério muda: o manifesto do ouro grava a versão com que admitiu cada folha."""
+VERSAO = 3
+"""Sobe quando um critério muda: o manifesto do ouro grava a versão com que admitiu cada folha.
+
+A 3 é a da S-849: o (d) passou a ler o criador, e o produtor ganhou `tesseract` e `ocr`, que eram só do
+`texto_grade`. Medido nos 136 PDFs de `PDF/` e `PDF Digitais/`, nenhum dos 70 livros do ouro muda de
+estrato; fora dele, o *Niemeijer* (criador `Omniscan`) passa a sair pelo (d)."""
 
 FOLHAS_DE_PERFIL = 30
 FILEIRA = 6
@@ -59,8 +65,13 @@ tabuleiro. Uma figurina é um; um lance com figurina e captura, dois ou três.""
 FRACAO_DE_IMAGEM_CHEIA = 0.6
 """Uma imagem cobre a folha quando a área dela passa disto da área da página."""
 
-PRODUTOR_DE_OCR = re.compile(r"paper capture|image conversion|finereader|omnipage|omniscan|google|abbyy", re.I)
+PRODUTOR_DE_OCR = re.compile(
+    r"paper capture|image conversion|finereader|omnipage|omniscan|google|abbyy|tesseract|ocr", re.I
+)
+"""O programa de OCR, no `producer` **ou** no `creator`: o *Niemeijer* só se denuncia no criador (`Omniscan`)."""
 FONTE_DE_OCR = re.compile(r"glyphlessfont|hiddenhorzocr|^fd\d+", re.I)
+"""A fonte que só um OCR cria: a invisível do Tesseract, a do Acrobat e as `Fd` do Paper Capture."""
+_PREFIXO_DE_SUBCONJUNTO = re.compile(r"^[A-Z]{6}\+")
 LIXO_DE_FIGURINA = re.compile(r"l:l'|'ii'|\.tg")
 """O ponto de `.tg` é literal: sem ele, `Stuttgart` e `outgoing` seriam lixo."""
 USO_PRIVADO = re.compile("[-]")
@@ -102,6 +113,52 @@ class PerfilDoLivro:
     @property
     def de_scan(self) -> bool:
         return self.com_texto > 0 and self.invisiveis > self.com_texto / 2
+
+
+@dataclass(frozen=True)
+class ProcedenciaDaCamada:
+    """De onde veio a camada de texto: `criterio` é `PRODUTOR`, `FONTE` ou `None` (não é de OCR)."""
+
+    criterio: str | None = None
+    marca: str = ""
+    """O que denunciou: o trecho do produtor ou do criador, em minúsculas, ou o nome da fonte."""
+
+    @property
+    def de_ocr(self) -> bool:
+        return self.criterio is not None
+
+
+def e_fonte_de_ocr(nome: str) -> bool:
+    """A fonte é das que só um OCR cria? O prefixo de subconjunto (`ABCDEF+`) não conta."""
+    return bool(FONTE_DE_OCR.search(_PREFIXO_DE_SUBCONJUNTO.sub("", nome or "")))
+
+
+def procedencia(produtor: str = "", criador: str = "", fontes: Iterable[str] = ()) -> ProcedenciaDaCamada:
+    """**A** resposta a "esta camada de texto foi feita por OCR?" pelo que o PDF declara (S-849).
+
+    Pura: os três critérios -- produtor, criador e fonte -- sobre o que já foi lido do PDF. Havia quatro
+    respostas, e elas discordavam: `ocrmypdf ... / Tesseract` era OCR para o `texto_grade` e não para a
+    admissão, `OmniPage` o contrário, a camada tipográfica só olhava a `GlyphLessFont`, e o `texto_grade`
+    pedia quatro fontes `Fd`. A resposta é a união delas. O que a **geometria** diz -- texto invisível,
+    folha que é uma imagem só -- não é declaração, e fica com quem a mede: o perfil do livro aqui
+    (`PerfilDoLivro.de_scan`), a fração de bitmap na camada tipográfica e no `texto_grade`.
+    """
+    for declarado in (produtor, criador):
+        achado = PRODUTOR_DE_OCR.search(declarado or "")
+        if achado:
+            return ProcedenciaDaCamada(PRODUTOR, achado.group(0).lower())
+    for fonte in fontes:
+        if e_fonte_de_ocr(fonte):
+            return ProcedenciaDaCamada(FONTE, fonte)
+    return ProcedenciaDaCamada()
+
+
+def procedencia_da_camada(documento: object, pagina: object = None) -> ProcedenciaDaCamada:
+    """`procedencia` de uma `fitz.Document`, com as fontes da folha `pagina` (`fitz.Page`) quando ela vem."""
+    metadados = getattr(documento, "metadata", None) or {}
+    fontes_da_folha = getattr(pagina, "get_fonts", None)
+    fontes = [str(fonte[3]) for fonte in fontes_da_folha(full=True)] if fontes_da_folha is not None else []
+    return procedencia(metadados.get("producer") or "", metadados.get("creator") or "", fontes)
 
 
 @dataclass(frozen=True)
@@ -164,12 +221,13 @@ def decidir(
     retangulos: Sequence[Retangulo],
     *,
     produtor: str = "",
+    criador: str = "",
     perfil: PerfilDoLivro | None = None,
     imagem_cobre_texto: bool = False,
 ) -> Admissao:
     """A admissão de uma folha a partir do que já foi extraído dela. Pura: é o que os testes exercitam."""
     criterio: str | None = None
-    if PRODUTOR_DE_OCR.search(produtor or ""):
+    if procedencia(produtor, criador).de_ocr:
         criterio = PRODUTOR
     elif perfil is not None and perfil.de_scan:
         criterio = LIVRO_DE_SCAN
@@ -185,7 +243,7 @@ def decidir(
         fora += 1
         if e_de_diagrama:
             caixas_de_diagrama.extend(trecho.caixas)
-        if criterio is None and FONTE_DE_OCR.search(trecho.fonte):
+        if criterio is None and e_fonte_de_ocr(trecho.fonte):
             criterio = FONTE
         if criterio is None and trecho.invisivel:
             criterio = INVISIVEL
@@ -271,11 +329,16 @@ def produtor_de(documento: Any) -> str:
     return ((documento.metadata or {}).get("producer") or "").strip()
 
 
+def criador_de(documento: object) -> str:
+    return ((getattr(documento, "metadata", None) or {}).get("creator") or "").strip()
+
+
 def admitir_folha(
     pagina: Any,
     retangulos: Sequence[Retangulo],
     *,
     produtor: str = "",
+    criador: str = "",
     perfil: PerfilDoLivro | None = None,
 ) -> Admissao:
     """A admissão de uma `fitz.Page`, com os retângulos de diagrama em pontos do PDF."""
@@ -283,6 +346,7 @@ def admitir_folha(
         trechos_da_folha(pagina),
         retangulos,
         produtor=produtor,
+        criador=criador,
         perfil=perfil,
         imagem_cobre_texto=imagem_cobre_texto(pagina),
     )

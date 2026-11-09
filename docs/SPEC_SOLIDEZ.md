@@ -2020,6 +2020,23 @@ critérios (produtor, `creator`, fonte por trecho), e os quatro passam a consult
 **Aceite.** O teste passa; o ouro-teste (S-702) é reconferido com a regra única, e nenhum livro muda de
 estrato sem decisão do dono (D9 da solidez).
 
+**Entregue** (2026-11-09): `admissao.procedencia(produtor, criador, fontes)`, pura, e
+`admissao.procedencia_da_camada(doc, pagina)`, que lê os metadados e as fontes da folha; a regra é a união
+das listas (produtor **ou** criador com `paper capture|image conversion|finereader|omnipage|omniscan|google|abbyy|tesseract|ocr`;
+uma fonte `GlyphLessFont`, `HiddenHorzOCR` ou `Fd\d+`, sem o prefixo de subconjunto, basta). A admissão
+(`decidir` e `admitir_folha` ganharam `criador`), `camada.camada_tipografica` e `texto_grade.camada_de_ocr`
+a consultam; `MARCAS_DE_OCR` saiu. **Divergência:** `PerfilDoLivro.de_scan` não consulta a regra -- ele mede
+texto invisível, que é geometria e não declaração, e fica no critério (a), como a fração de bitmap fica na
+camada tipográfica e no `texto_grade`. `admissao.VERSAO` subiu para 3. **D9 (a), medido nos 136 PDFs de
+`PDF/` e `PDF Digitais/`: nenhum dos 70 livros do ouro muda de estrato** (nenhum tem produtor, criador ou fonte
+de OCR, nem antes nem depois). Fora do ouro: na admissão só o *Niemeijer* muda (criador `Omniscan`; já saía
+pelo perfil de scan); no `texto_grade`, *Gallagher*, *Gaprindashvili*, *Pachman (Modern Chess Strategy)* e
+*Stefaniu* passam a ser camada de OCR (`Image Conversion`), o que muda `livros_com_camada_de_ocr` e o léxico de
+editorados quando esses comandos forem rodados de novo; na camada tipográfica, os quinze livros de Paper Capture
+ou `Image Conversion` do acervo (AAGAARD, Euwe 1-2 e 7, Gaprindashvili, Karpov 1, Pachman 2 e 3, Schiller,
+Secrets, Zhuravlev, Burgess, Nunn x2, Yusupov, Keres) deixam de ser tipográficos, e o glifo para de usar o
+itálico da camada deles (S-660). Nenhum relatório foi remedido.
+
 ## S-850 · Cache de perfil do livro sem `id()`
 
 **Problema** (confirmado por script). `text/camada_prosa.py:215-228`, `perfil_em_memoria`: documento aberto

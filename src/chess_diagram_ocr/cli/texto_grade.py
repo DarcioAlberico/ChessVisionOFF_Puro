@@ -88,6 +88,7 @@ from typing import TYPE_CHECKING, Any
 from ..atomic_io import atomic_write_json
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
+from ..text import admissao
 from . import (
     EXIT_FAILURE,
     add_amostra_do_acervo,
@@ -114,9 +115,6 @@ NUMERO_NA_LINHA = re.compile(r"^\D{0,4}(\d{1,4})\b")
 A folga cobre o que os livros põem na frente: `№`, `#`, `(`, e o lixo que o OCR deixa no lugar
 deles -- o `Karpov` sai como `N!!311.` na camada do Acrobat. Quatro é o que basta para esses, e
 pouco o bastante para não pescar o número que vem no meio de uma frase."""
-
-MARCAS_DE_OCR = ("paper capture", "abbyy", "finereader", "tesseract", "ocr")
-"""Trechos de `producer`/`creator` que denunciam camada de texto gerada por máquina."""
 
 CONCORDANCIA_MINIMA = 0.80
 """Fração das páginas decidíveis que precisa votar na mesma direção para o livro ser calibrado.
@@ -244,8 +242,11 @@ acervo dão 100% e os editorados, 0% ou 5%."""
 def camada_de_ocr(doc: Any) -> str | None:
     """O que denuncia a camada de texto como gerada por máquina, ou `None` se nada denunciar.
 
-    Três marcas, e a terceira é a que pega quem não se identifica: **a maior parte do livro é
-    bitmap com texto por cima**. Um livro editorado não desenha as próprias páginas como imagem.
+    Duas marcas. A primeira é o que o PDF declara -- produtor, criador e fontes das páginas
+    amostradas --, e é a regra única da `admissao.procedencia` (S-849): até ali este comando tinha a
+    sua lista, que não via o `OmniPage` e pedia quatro fontes `Fd`. A segunda é a que pega quem não
+    se identifica: **a maior parte do livro é bitmap com texto por cima**. Um livro editorado não
+    desenha as próprias páginas como imagem.
 
     **O acervo é misto, e o comando não pode fingir que não é.** Dos livros com camada de texto,
     uns são digitalização com OCR (`Karpov`, `Schiller`, `Burgess` e `Secrets` -- justamente os
@@ -253,11 +254,9 @@ def camada_de_ocr(doc: Any) -> str | None:
     `Dvoretsky` e o `1001` saem de conversão de ebook. A distinção importa porque é ela que diz
     quanto vale a referência da S-194 em cada livro.
     """
-    metadados = doc.metadata or {}
-    assinatura = f"{metadados.get('producer', '')} {metadados.get('creator', '')}".lower()
-    for marca in MARCAS_DE_OCR:
-        if marca in assinatura:
-            return marca
+    declarada = admissao.procedencia_da_camada(doc)
+    if declarada.de_ocr:
+        return declarada.marca
 
     amostradas = digitalizadas = 0
     fontes: set[str] = set()
@@ -285,12 +284,11 @@ def camada_de_ocr(doc: Any) -> str | None:
         if tem_texto and maior / area > 0.7:
             digitalizadas += 1
 
-    if any("glyphless" in fonte.lower() for fonte in fontes):
-        return "fonte invisível (Tesseract e afins)"
-    # As fontes sintéticas que o Paper Capture cria ao vetorizar o glifo reconhecido. Entram
-    # porque nem toda cópia carrega o `producer` original -- `Yusupov` passou por um redutor.
-    if sum(1 for fonte in fontes if fonte.startswith("Fd")) >= 4:
-        return "fontes Fd######## (Paper Capture)"
+    # A fonte entra porque nem toda cópia carrega o `producer` original -- `Yusupov` passou por um
+    # redutor, e só as fontes `Fd` do Paper Capture o denunciam.
+    pela_fonte = admissao.procedencia(fontes=sorted(fontes))
+    if pela_fonte.de_ocr:
+        return f"fonte de OCR ({pela_fonte.marca})"
     if amostradas and digitalizadas / amostradas >= FRACAO_DIGITALIZADA:
         return "imagem de página inteira com texto por cima"
     return None
