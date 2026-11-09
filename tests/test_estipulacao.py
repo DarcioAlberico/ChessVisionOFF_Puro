@@ -98,6 +98,13 @@ class GramaticaTests(unittest.TestCase):
 
 
 class BuscaTests(unittest.TestCase):
+    def test_chave_com_roque_fecha(self) -> None:
+        """S-880: o rei em e1 e a torre em h1 podem rocar (`K` inferido), e só `O-O` dá mate -- `Rf1+`
+        deixa `g2` livre. Com ` - - 0 1` fixo a chave não existia, e o problema saía «não fecha»."""
+        verificacao = verificar("8/8/8/8/8/2N2k1P/7P/2B1K2R", chess.WHITE, Estipulacao(1, texto="#1"))
+        self.assertTrue(verificacao.fecha, verificacao.motivo)
+        self.assertEqual(verificacao.chaves, ("O-O#",))
+
     def test_the_truth_closes_with_one_key(self) -> None:
         resposta = verificar(TRUTH, chess.BLACK, Estipulacao(2))
         self.assertTrue(resposta.fecha)

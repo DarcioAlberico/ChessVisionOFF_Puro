@@ -1674,6 +1674,8 @@ outros três sufixos fixos são conferidos um a um (o do `dataset` é rótulo de
 
 **Aceite.** O teste passa; muda número no caminho de medição e entra na remedição da S-837.
 
+**Entregue** (2026-11-09): os dois `_tabuleiro` montam a FEN por `semantics.compose_fen` (roque inferido; o `fullmove` do lance seguinte continua passando). Além de `test_linha_com_roque_replica`, `test_chave_com_roque_fecha` prova o lado da estipulação: em `8/8/8/8/8/2N2k1P/7P/2B1K2R`, mate em 1 só por `O-O#`. Os outros três sufixos fixos ficam, conferidos: `semantics._with_turn` só pergunta legalidade (e é dele que `infer_castling_rights` sai, então não pode depender do roque inferido); `audit._fen_with_turn` e o de `dataset` escrevem rótulo de treino. **No conjunto de campo não mudou número**: os dois lances seguintes e as dez estipulações conferidos não envolvem roque (produção e `mhsp` idênticos aos da S-836).
+
 ## S-837 · Remedição dos quatro relatórios de campo
 
 **Problema.** As S-834, S-836 e S-880 mudam o que o caminho de medição produz. As remedições dos outros
