@@ -97,7 +97,8 @@ def _bridge_skimage() -> None:
         transformacao.estimate(origem, destino)
         return transformacao
 
-    ProjectiveTransform.from_estimate = classmethod(_from_estimate)  # type: ignore[attr-defined]
+    # O scikit-image novo já tem `from_estimate` (o CI, com o extra second-opinion); o antigo não.
+    ProjectiveTransform.from_estimate = classmethod(_from_estimate)  # type: ignore[attr-defined, unused-ignore]
     logger.debug("Ponte de compatibilidade do scikit-image instalada para o leitor externo.")
 
 
