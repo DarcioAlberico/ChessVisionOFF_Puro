@@ -24,7 +24,7 @@ from pathlib import Path
 from ..atomic_io import atomic_write_bytes, atomic_write_text
 from ..config import DATA_DIR, PROJECT_ROOT, caminho_para_relatorio
 from ..logging_setup import configure_logging
-from . import EXIT_BAD_INPUT, add_base_de_caractere_argument, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, EntradaInvalida, add_base_de_caractere_argument, add_verbose, cli_errors, fronteira
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if not Path(args.base).is_dir():
-        raise ValueError(f"a base de treino nao esta em {args.base}")
+        raise EntradaInvalida(f"a base de treino nao esta em {args.base}")
 
     print(f"Procurando a mesma imagem sob dois rotulos em {args.base}...")
 
@@ -152,7 +152,8 @@ def main(argv: list[str] | None = None) -> int:
             f"({100 * quase.reducao:.1f}% absorvidos, {quase.fundidos:,} fusoes)".replace(",", ".")
         )
 
-    decisoes = cf.ler_decisoes(args.decisoes) if Path(args.decisoes).exists() else {}
+    with fronteira(f"--decisoes {args.decisoes}"):
+        decisoes = cf.ler_decisoes(args.decisoes) if Path(args.decisoes).exists() else {}
     if not decisoes:
         print(f"nenhuma decisao lida de {args.decisoes}: nada pode ser aplicado.")
     plano = cf.conferir(achados, decisoes)

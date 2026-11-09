@@ -44,7 +44,7 @@ from typing import Any
 
 from ..atomic_io import atomic_write_text
 from ..logging_setup import configure_logging
-from . import add_json_argument, add_pdf_dir_argument, add_verbose, cli_errors
+from . import EntradaInvalida, add_json_argument, add_pdf_dir_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ def folha_do_argumento(texto: str) -> tuple[str, int]:
     """`"Livro.pdf:53"` -> `("Livro.pdf", 52)`: a folha é contada de 1, como a pessoa a vê. Pura."""
     nome, _, numero = texto.rpartition(":")
     if not nome or not numero.isdigit() or int(numero) < 1:
-        raise ValueError(f"folha {texto!r}: o formato é Livro.pdf:N, com N a partir de 1")
+        raise EntradaInvalida(f"folha {texto!r}: o formato é Livro.pdf:N, com N a partir de 1")
     return nome, int(numero) - 1
 
 

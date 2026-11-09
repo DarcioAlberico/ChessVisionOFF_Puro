@@ -90,12 +90,14 @@ from ..logging_setup import configure_logging
 from ..text.boxes import Caixa
 from . import (
     EXIT_FAILURE,
+    EntradaInvalida,
     add_amostra_do_acervo,
     add_baseline_argument,
     add_pesos_de_caractere_argument,
     add_verbose,
     cli_errors,
     confere_baseline,
+    fronteira,
 )
 
 logger = logging.getLogger(__name__)
@@ -363,7 +365,7 @@ def medir(pdfs: list[Path], *, por_livro: int, por_pagina: int, classificador: A
         logger.info("%s: %d linha(s).", caminho.name, deste_livro)
 
     if not total:
-        raise ValueError("nenhuma linha de texto medida: os PDFs deste acervo têm camada de texto?")
+        raise EntradaInvalida("nenhuma linha de texto medida: os PDFs deste acervo têm camada de texto?")
 
     return {
         "dpi": DPI,
@@ -457,7 +459,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\nRelatorio em {Path(args.saida)}")
 
     if args.baseline:
-        anterior = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
+        with fronteira(f"--baseline {args.baseline}"):
+            anterior = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
         for angulo in ANGULOS_IMPRESSOS:
             antes = anterior["argmax_da_media"][str(angulo)]["taxa"]
             agora = relatorio["argmax_da_media"][str(angulo)]["taxa"]

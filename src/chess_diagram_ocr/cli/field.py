@@ -32,6 +32,7 @@ from ..field_eval import (
     evaluate_field,
     load_field_set,
     measurement_fingerprint,
+    require_field_pdfs,
     save_field_set,
 )
 from ..labels import LabelStore, pages_with_training_samples
@@ -46,6 +47,7 @@ from . import (
     add_splits_argument,
     add_verbose,
     cli_errors,
+    fronteira,
 )
 from ._ocr import add_ocr_argument, caption_reader_from_args
 
@@ -376,6 +378,9 @@ def main(argv: list[str] | None = None) -> int:
         print('Comece com: cvoff-field --draft "1937 Kemeri.pdf:80,140,201" --regime scan')
         return EXIT_BAD_INPUT
 
+    # A fronteira (S-857): o PDF que o conjunto cita e não está na pasta é entrada inválida.
+    with fronteira(f"--set {args.field_set}"):
+        require_field_pdfs(paginas, pdf_dir=args.pdf_dir)
     revisadas = sum(1 for pagina in paginas if pagina.reviewed)
     print(f"{len(paginas)} página(s) no conjunto, {revisadas} revisada(s).")
 

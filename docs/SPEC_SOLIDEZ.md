@@ -2294,6 +2294,16 @@ existe sai com 2.
 
 **Aceite.** Os dois passam; o dryer não acusa mais os pares de `cli/`.
 
+**Entregue** (2026-11-08): `--database` só existe no `cvoff-games`, e o `--cache` dele é outra coisa que o
+do treino de caractere; o mecanismo ganhou o `--cache` da base de caractere (`add_cache_da_base_arguments`).
+Cinquenta textos de ajuda mudaram, harmonizados; nenhum flag, padrão ou tipo parseado mudou. O dryer
+caiu de 72 para 52 pares, e **os pares de parser que restam em `cli/` não somem**: são o mesmo esqueleto
+de `argparse` com as opções próprias de cada comando (`scan` e `texto_conflitos` não dividem opção
+nenhuma), e estão declarados com `proposito` no `dryer.json`. Os outros pares de `cli/`
+(`_arbitro_de_caixas`, `Placar.para_json`, `_linhas_da_camada`) não são de argumento e ficaram para a
+S-864. A fronteira é `cli.fronteira`, `exige_documento` e `exige_checkpoint`; as travas de split vazado
+do treino de caractere passam a sair 1, como defeito.
+
 ## S-858 · Partir `build_pgn_games` e `Trainer.prepare`
 
 **Problema.** `pdf_to_pgn.build_pgn_games` (complexidade 42) e `training.Trainer.prepare` (36).

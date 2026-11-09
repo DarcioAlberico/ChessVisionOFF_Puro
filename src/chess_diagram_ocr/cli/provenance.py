@@ -44,6 +44,7 @@ from . import (
     add_pdf_dir_argument,
     add_verbose,
     cli_errors,
+    fronteira,
 )
 
 logger = logging.getLogger(__name__)
@@ -101,7 +102,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _run_build(args: argparse.Namespace) -> int:
-    base = ProvenanceIndex.load(args.index)
+    with fronteira(f"--index {args.index}"):
+        base = ProvenanceIndex.load(args.index)
     if base.entries and base.dpi != args.dpi:
         print(f"O índice existente foi construído com dpi={base.dpi}; use --dpi {base.dpi} ou apague-o.")
         return EXIT_BAD_INPUT
@@ -174,7 +176,8 @@ def main(argv: list[str] | None = None) -> int:
     if not args.match:
         return 0
 
-    indice = ProvenanceIndex.load(args.index)
+    with fronteira(f"--index {args.index}"):
+        indice = ProvenanceIndex.load(args.index)
     if not indice.entries:
         print(f"Índice vazio ou inexistente: {args.index}")
         print("Construa-o primeiro: cvoff-provenance --build --book \"1937 Kemeri.pdf\"")

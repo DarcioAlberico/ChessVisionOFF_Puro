@@ -28,6 +28,7 @@ from . import (
     add_tolerance_argument,
     add_verbose,
     cli_errors,
+    fronteira,
 )
 
 logger = logging.getLogger(__name__)
@@ -101,12 +102,14 @@ def main(argv: list[str] | None = None) -> int:
         print("Conferencia de paridade pulada (--verify-split none).")
         return 0
 
-    splits = load_splits(args.splits)
+    with fronteira(f"--splits {args.splits}"):
+        splits = load_splits(args.splits)
     if not splits:
         print(f"Sem arquivo de splits em {args.splits}: nao da para conferir paridade.")
         return EXIT_BAD_INPUT
 
-    torch_model, device = load_model(Path(args.model))
+    with fronteira(f"--model {args.model}", checkpoint=True):
+        torch_model, device = load_model(Path(args.model))
     arch = getattr(torch_model, "arch", DEFAULT_ARCH)
     dataset = BoardFenDataset(args.csv, args.samples, split=args.verify_split, splits=splits, arch=arch, cache_size=0)
     if not dataset.entries:

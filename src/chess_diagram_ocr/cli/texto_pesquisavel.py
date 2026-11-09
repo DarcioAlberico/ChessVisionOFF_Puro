@@ -38,7 +38,7 @@ from typing import Any
 
 from ..logging_setup import configure_logging
 from ..text import pdf_pesquisavel as _camada
-from . import EXIT_BAD_INPUT, EXIT_OK, add_dpi_argument, add_paginas_argument, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, EXIT_OK, add_dpi_argument, add_paginas_argument, add_verbose, cli_errors, exige_documento
 from .texto_pagina import intervalo_de_paginas
 
 logger = logging.getLogger(__name__)
@@ -98,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.pdf.exists():
         logger.error("PDF não encontrado: %s", args.pdf)
         return EXIT_BAD_INPUT
+    exige_documento(args.pdf)
     try:
         indices = intervalo_de_paginas(args.paginas)
     except ValueError as exc:

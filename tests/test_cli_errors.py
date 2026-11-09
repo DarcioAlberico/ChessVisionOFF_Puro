@@ -22,7 +22,7 @@ from pathlib import Path
 from chess_diagram_ocr.cli import (
     EXIT_BAD_INPUT,
     EXIT_NO_CHECKPOINT,
-    classify,
+    EntradaInvalida,
     message_for,
     run_main,
 )
@@ -37,15 +37,8 @@ próprio seria testar o `argparse` de quinze comandos, e não a guarda -- e um a
 comando nem aceita produz `SystemExit` do `argparse`, que passa direto de propósito."""
 
 
-class ClassificacaoTests(unittest.TestCase):
-    def test_arquivo_invalido_e_entrada_invalida(self) -> None:
-        self.assertEqual(classify(OSError("Failed to open file 'x.pdf'")), EXIT_BAD_INPUT)
-
-    def test_checkpoint_e_uma_classe_propria(self) -> None:
-        """Quem consome isto é script: `cvoff-scan --all && ...` precisa distinguir "este livro
-        estava corrompido" de "o modelo sumiu"."""
-        self.assertEqual(classify(RuntimeError("size mismatch for checkpoint")), EXIT_NO_CHECKPOINT)
-        self.assertEqual(classify(OSError("models/piece_classifier.pt não encontrado")), EXIT_NO_CHECKPOINT)
+class MensagemTests(unittest.TestCase):
+    """A classe da falha (2 ou 3) vem do tipo desde a S-857: ver `SoAFronteiraDizQue...`."""
 
     def test_a_mensagem_sai_em_pt_br_com_o_original_ao_lado(self) -> None:
         """A tradução ajuda quem lê; o texto original é o que se pesquisa."""
@@ -67,7 +60,7 @@ class RunMainTests(unittest.TestCase):
 
     def test_falha_conhecida_vira_codigo_e_linha_em_pt_br(self) -> None:
         def _falha(_argv: object) -> int:
-            raise OSError("Failed to open file 'x.pdf'")
+            raise EntradaInvalida(message_for(OSError("Failed to open file 'x.pdf'")))
 
         saida = io.StringIO()
         with redirect_stdout(saida):
@@ -94,9 +87,9 @@ class RunMainTests(unittest.TestCase):
         """Quem está depurando pede o rastro, e continua podendo pedi-lo."""
 
         def _falha(_argv: object) -> int:
-            raise OSError("Failed to open file 'x.pdf'")
+            raise EntradaInvalida("o livro x.pdf: arquivo ou diretório não encontrado")
 
-        with redirect_stdout(io.StringIO()), self.assertRaises(OSError):
+        with redirect_stdout(io.StringIO()), self.assertRaises(EntradaInvalida):
             run_main(_falha, ["-v"])
 
     def test_interrupcao_do_usuario_nao_e_falha_do_programa(self) -> None:
@@ -152,6 +145,98 @@ class ComandosContraLixoTests(unittest.TestCase):
                 faltando.append(caminho.name)
 
         self.assertEqual(faltando, [], "Todo `main` de CLI precisa do decorador `@cli_errors`.")
+
+
+class SoAFronteiraDizQueAEntradaEInvalidaTests(unittest.TestCase):
+    """A classe da falha vem do tipo levantado na fronteira, e não do texto da mensagem (S-857).
+
+    O `run_main` tratava todo `ValueError`, `OSError` e `RuntimeError` como "entrada inválida":
+    um `int("x")` de defeito interno saía 2, dizendo à pessoa que a culpa era do que ela apontou.
+    E o 3 era decidido por palavras no texto (`"checkpoint"`, `".pt"`).
+    """
+
+    def setUp(self) -> None:
+        import fitz
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.raiz = Path(self.tmp.name)
+        self.pdf = self.raiz / "livro.pdf"
+        doc = fitz.open()
+        doc.new_page()
+        doc.save(self.pdf)
+        doc.close()
+
+    def _rodar(self, argv: list[str]) -> tuple[int, str]:
+        from chess_diagram_ocr.cli import infer
+
+        saida = io.StringIO()
+        with redirect_stdout(saida):
+            codigo = infer.main(argv)
+        return codigo, saida.getvalue()
+
+    def test_int_x_dentro_de_um_carregador_sai_com_1(self) -> None:
+        """O defeito do programa não é culpa de quem chamou."""
+        from unittest import mock
+
+        def carregador_com_defeito(*_args: object, **_kwargs: object) -> object:
+            return int("x")
+
+        with mock.patch("chess_diagram_ocr.cli.infer.render_pdf_page", carregador_com_defeito):
+            codigo, saida = self._rodar([str(self.pdf), "--model", str(self._checkpoint())])
+        self.assertEqual(codigo, 1, saida)
+        self.assertIn("Falha inesperada", saida)
+
+    def test_pdf_que_nao_existe_sai_com_2(self) -> None:
+        codigo, saida = self._rodar([str(self.raiz / "nao_existe.pdf")])
+        self.assertEqual(codigo, EXIT_BAD_INPUT, saida)
+        self.assertNotIn("Traceback", saida)
+
+    def test_checkpoint_que_nao_existe_sai_com_3(self) -> None:
+        codigo, saida = self._rodar([str(self.pdf), "--model", str(self.raiz / "nao_existe.pt")])
+        self.assertEqual(codigo, EXIT_NO_CHECKPOINT, saida)
+
+    def test_a_mensagem_nao_decide_a_classe(self) -> None:
+        """Um `ValueError` que fala de `.pt` continua sendo defeito: era o que a pista lia."""
+
+        def _falha(_argv: object) -> int:
+            raise ValueError("o arquivo pesos.pt veio com um campo estranho")
+
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(run_main(_falha), 1)
+
+    def test_a_entrada_invalida_e_o_checkpoint_invalido_tem_codigo_proprio(self) -> None:
+        from chess_diagram_ocr.cli import CheckpointInvalido
+
+        def _entrada(_argv: object) -> int:
+            raise EntradaInvalida("--csv: arquivo não encontrado")
+
+        def _checkpoint(_argv: object) -> int:
+            raise CheckpointInvalido("--model: arquivo não encontrado")
+
+        with redirect_stdout(io.StringIO()) as saida:
+            self.assertEqual(run_main(_entrada), EXIT_BAD_INPUT)
+            self.assertEqual(run_main(_checkpoint), EXIT_NO_CHECKPOINT)
+        self.assertIn("Erro: --csv: arquivo não encontrado", saida.getvalue())
+
+    def test_banco_sqlite_corrompido_na_fronteira_e_entrada_invalida(self) -> None:
+        import sqlite3
+
+        from chess_diagram_ocr.cli import fronteira
+
+        with self.assertRaises(EntradaInvalida), fronteira("--cache"):
+            raise sqlite3.DatabaseError("file is not a database")
+
+    def _checkpoint(self) -> Path:
+        """Um `.pt` que carrega: o teste do `int("x")` precisa passar da fronteira do modelo."""
+        from chess_diagram_ocr.checkpoint import save_checkpoint
+        from chess_diagram_ocr.config import PIECE_CLASSES
+        from chess_diagram_ocr.model import ArchConfig, PieceClassifier
+
+        caminho = self.raiz / "m.pt"
+        metadados = {"arch_version": ArchConfig().version, "class_names": list(PIECE_CLASSES)}
+        save_checkpoint(caminho, PieceClassifier().state_dict(), metadata=metadados)
+        return caminho
 
 
 class IntervaloDePaginasTests(unittest.TestCase):

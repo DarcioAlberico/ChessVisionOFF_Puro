@@ -9,7 +9,16 @@ from ..config import DEFAULT_ORIENTATION_MODE
 from ..inference import load_model, predict_with_orientation
 from ..logging_setup import configure_logging, default_log_file
 from ..pdf_io import render_pdf_page
-from . import EXIT_BAD_INPUT, add_dpi_argument, add_model_argument, add_orientation_argument, add_verbose, cli_errors
+from . import (
+    EXIT_BAD_INPUT,
+    add_dpi_argument,
+    add_model_argument,
+    add_orientation_argument,
+    add_verbose,
+    cli_errors,
+    exige_documento,
+    fronteira,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +39,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
 
+    # A fronteira (S-857): o livro e o modelo apontados, conferidos antes de qualquer trabalho.
+    exige_documento(args.pdf)
+    with fronteira(f"--model {args.model}", checkpoint=True):
+        model, device = load_model(args.model)
+
     try:
         page_rgb = render_pdf_page(args.pdf, args.page, dpi=args.dpi)
         board_rgb, _quad = detect_board(page_rgb)
@@ -37,7 +51,6 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("%s", exc)
         return EXIT_BAD_INPUT
 
-    model, device = load_model(args.model)
     oriented = predict_with_orientation(board_rgb, model, device, mode=args.orientation)
     prediction = oriented.prediction
 

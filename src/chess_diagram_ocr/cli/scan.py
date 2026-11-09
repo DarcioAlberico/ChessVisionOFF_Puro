@@ -51,6 +51,7 @@ from . import (
     add_pdf_dir_argument,
     add_verbose,
     cli_errors,
+    exige_checkpoint,
     message_for,
 )
 from ._ocr import add_ocr_argument, caption_reader_from_args
@@ -243,6 +244,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Nenhum livro pedido. Passe caminhos de PDF, ou --all para a pasta inteira.")
         print(f"Pasta padrão: {args.pdf_dir}")
         return EXIT_BAD_INPUT
+    exige_checkpoint(args.model)
     if args.limit_books is not None:
         livros = livros[: args.limit_books]
 

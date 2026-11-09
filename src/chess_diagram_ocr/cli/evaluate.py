@@ -23,6 +23,8 @@ from . import (
     add_model_argument,
     add_verbose,
     cli_errors,
+    exige_checkpoint,
+    fronteira,
 )
 
 logger = logging.getLogger(__name__)
@@ -187,11 +189,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
 
-    splits = load_splits(args.splits)
+    with fronteira(f"--splits {args.splits}"):
+        splits = load_splits(args.splits)
     if not splits:
         print(f"Arquivo de splits vazio ou ausente: {args.splits}")
         print("Gere-o antes de avaliar (ver docs/SPEC.md, S-07).")
         return EXIT_BAD_INPUT
+    exige_checkpoint(args.model)
 
     report = evaluate_split(
         args.csv,

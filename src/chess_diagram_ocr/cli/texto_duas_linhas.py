@@ -68,12 +68,14 @@ from ..logging_setup import configure_logging
 from ..text.colados import arbitro_de_confianca
 from . import (
     EXIT_FAILURE,
+    EntradaInvalida,
     add_amostra_do_acervo,
     add_baseline_argument,
     add_pesos_de_caractere_argument,
     add_verbose,
     cli_errors,
     confere_baseline,
+    fronteira,
 )
 from .texto_grade import camada_de_ocr
 from .texto_placar import cer
@@ -245,7 +247,7 @@ def medir(pdfs: list[Path], *, por_livro: int, por_pagina: int, classificador: A
         logger.info("%s: %d faixa(s).", caminho.name, deste_livro)
 
     if not total:
-        raise ValueError("nenhuma faixa medida: os PDFs deste acervo têm camada de texto?")
+        raise EntradaInvalida("nenhuma faixa medida: os PDFs deste acervo têm camada de texto?")
 
     medias = {nome: soma[nome] / total for nome, _ in BRACOS}
     return {
@@ -330,7 +332,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\nRelatorio em {Path(args.saida)}")
 
     if args.baseline:
-        anterior = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
+        with fronteira(f"--baseline {args.baseline}"):
+            anterior = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
         for nome, _ in BRACOS:
             antes = anterior["cer"][nome]
             agora = relatorio["cer"][nome]

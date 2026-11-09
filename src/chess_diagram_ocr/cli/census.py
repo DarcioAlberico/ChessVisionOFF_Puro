@@ -51,6 +51,7 @@ from . import (
     add_reading_order_argument,
     add_verbose,
     cli_errors,
+    exige_documento,
 )
 
 logger = logging.getLogger(__name__)
@@ -260,6 +261,7 @@ def main(argv: list[str] | None = None) -> int:
         if not pdf_path.is_file():
             print(f"PDF não encontrado: {pdf_path}")
             return EXIT_BAD_INPUT
+        exige_documento(pdf_path)
         alcance = "livro inteiro" if pages is None else f"{pages} página(s)"
         print(f"Varrendo {pdf_path.name} ({alcance})...")
         book = census_book(pdf_path, **comuns)

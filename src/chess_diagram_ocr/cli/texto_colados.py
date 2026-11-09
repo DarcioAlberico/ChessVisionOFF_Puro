@@ -48,7 +48,7 @@ from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import colados
 from ..text.colados import arbitro_de_confianca
-from . import add_amostra_do_acervo, add_pesos_de_caractere_argument, add_verbose, cli_errors
+from . import EntradaInvalida, add_amostra_do_acervo, add_pesos_de_caractere_argument, add_verbose, cli_errors
 from .texto_duas_linhas import DPI, RAIO_PT, faixas_da_camada, recorte_da_faixa
 from .texto_grade import camada_de_ocr
 from .texto_placar import cer
@@ -188,7 +188,7 @@ def medir(
         logger.info("%s: %d faixa(s).", caminho.name, deste_livro if not marca else 0)
 
     if not total:
-        raise ValueError("nenhuma faixa medida: os PDFs deste acervo têm camada editorada?")
+        raise EntradaInvalida("nenhuma faixa medida: os PDFs deste acervo têm camada editorada?")
 
     medias = {modo: soma[modo] / total for modo in MODOS_MEDIDOS}
     return {

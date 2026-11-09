@@ -11,7 +11,7 @@ from ..config import PROJECT_ROOT
 from ..experiments import default_grid, markdown_table, run_variant, save_results
 from ..logging_setup import configure_logging, default_log_file
 from ..splits import load_splits
-from . import EXIT_BAD_INPUT, add_dataset_arguments, add_json_argument, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, add_dataset_arguments, add_json_argument, add_verbose, cli_errors, fronteira
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
 
-    splits = load_splits(args.splits)
+    with fronteira(f"--splits {args.splits}"):
+        splits = load_splits(args.splits)
     if not splits:
         print(f"Arquivo de splits vazio ou ausente: {args.splits}")
         return EXIT_BAD_INPUT

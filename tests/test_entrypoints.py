@@ -138,12 +138,12 @@ class BandeiraVerboseTests(unittest.TestCase):
         """
         from unittest.mock import patch
 
-        from chess_diagram_ocr.cli import EXIT_BAD_INPUT, run_main
+        from chess_diagram_ocr.cli import EXIT_BAD_INPUT, EntradaInvalida, run_main
         from chess_diagram_ocr.logging_setup import configure_logging
 
         def explode(argv: object) -> int:
             configure_logging(verbose=False)
-            raise ValueError("falha de teste")
+            raise EntradaInvalida("falha de teste")
 
         with patch("sys.argv", ["pytest", "-v", "tests/"]):
             self.assertEqual(EXIT_BAD_INPUT, run_main(explode, None))
@@ -151,10 +151,10 @@ class BandeiraVerboseTests(unittest.TestCase):
     def test_sem_a_bandeira_o_rastro_nao_sobe_a_tela(self) -> None:
         from unittest.mock import patch
 
-        from chess_diagram_ocr.cli import EXIT_BAD_INPUT, run_main
+        from chess_diagram_ocr.cli import EXIT_BAD_INPUT, EntradaInvalida, run_main
 
         def explode(argv: object) -> int:
-            raise ValueError("falha de teste")
+            raise EntradaInvalida("falha de teste")
 
         with patch("sys.argv", ["cvoff-qualquer"]):
             self.assertEqual(run_main(explode, None), EXIT_BAD_INPUT)

@@ -22,6 +22,8 @@ from . import (
     add_reading_order_argument,
     add_verbose,
     cli_errors,
+    exige_checkpoint,
+    exige_documento,
 )
 from ._ocr import add_ocr_argument, caption_reader_from_args
 
@@ -101,6 +103,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
+    exige_documento(args.pdf)
+    exige_checkpoint(args.model)
 
     output_path = args.output or default_pgn_output_path(args.pdf)
 

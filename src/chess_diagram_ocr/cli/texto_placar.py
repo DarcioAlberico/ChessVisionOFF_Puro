@@ -76,7 +76,7 @@ from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..ocr import KNOWN_ENGINES, build_recognizer
 from ..settings import OcrSettings, load_settings
-from . import EXIT_BAD_INPUT, add_pdf_dir_argument, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, EntradaInvalida, add_pdf_dir_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ EXEMPLO = {
 }
 
 
-class ReferenciaInvalida(ValueError):
+class ReferenciaInvalida(EntradaInvalida):
     """A linha do conjunto de referência não tem a forma que o comando sabe ler."""
 
 

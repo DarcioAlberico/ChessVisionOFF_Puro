@@ -35,6 +35,7 @@ from . import (
     add_pdf_dir_argument,
     add_verbose,
     cli_errors,
+    exige_checkpoint,
 )
 from ._ocr import OFF, add_ocr_argument, caption_reader_from_args
 
@@ -109,6 +110,7 @@ def main(argv: list[str] | None = None) -> int:
     if not pdf_dir.is_dir():
         print(f"Diretório de PDFs não encontrado: {pdf_dir}")
         return EXIT_BAD_INPUT
+    exige_checkpoint(args.model)
 
     options = RecognitionOptions(
         model_path=args.model,

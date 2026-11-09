@@ -53,6 +53,7 @@ from . import (
     add_verbose,
     cli_errors,
     confere_baseline,
+    fronteira,
 )
 
 logger = logging.getLogger(__name__)
@@ -238,7 +239,9 @@ def main(argv: list[str] | None = None) -> int:
     if (codigo := confere_baseline(args.anotadas, rotulo="--anotadas")) is not None:
         return codigo
 
-    relatorio = medir(carregar_anotadas(args.anotadas), pdf_dir=args.pdf_dir, motor=args.motor)
+    with fronteira(f"--anotadas {args.anotadas}"):
+        anotadas = carregar_anotadas(args.anotadas)
+    relatorio = medir(anotadas, pdf_dir=args.pdf_dir, motor=args.motor)
     atomic_write_json(args.saida, relatorio)
     print(
         f"motor {args.motor}: {relatorio['acertos']} de {relatorio['paginas_medidas']} paginas com a "
@@ -254,7 +257,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{len(relatorio['nao_encontradas'])} pagina(s) de livro que nao esta neste checkout.")
 
     if args.baseline:
-        anterior = json.loads(args.baseline.read_text(encoding="utf-8"))
+        with fronteira(f"--baseline {args.baseline}"):
+            anterior = json.loads(args.baseline.read_text(encoding="utf-8"))
         if anterior.get("motor") not in (None, args.motor):
             logger.error("O baseline foi medido com o motor %s, e esta medicao com %s.", anterior.get("motor"), args.motor)
             return EXIT_BAD_INPUT

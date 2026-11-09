@@ -44,7 +44,7 @@ from ..atomic_io import atomic_write_text
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import lado as _lado
-from . import EXIT_BAD_INPUT, EXIT_OK, add_pdf_dir_argument, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, EXIT_OK, add_pdf_dir_argument, add_verbose, cli_errors, exige_documento
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.pdf.exists():
             logger.error("PDF não encontrado: %s", args.pdf)
             return EXIT_BAD_INPUT
+        exige_documento(args.pdf)
         livros = [args.pdf]
     else:
         if not args.pdf_dir.is_dir():

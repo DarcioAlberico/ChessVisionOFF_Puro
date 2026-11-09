@@ -23,6 +23,7 @@ from . import (
     add_reading_order_argument,
     add_verbose,
     cli_errors,
+    exige_checkpoint,
 )
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     if not livros:
         print(f"Nenhum PDF encontrado em {args.source}.")
         return EXIT_BAD_INPUT
+    exige_checkpoint(args.model)
 
     print(f"{len(livros)} PDF(s) a processar. Saída em {args.output}, relatório em {args.report}.")
 

@@ -88,7 +88,15 @@ from typing import Any
 from ..atomic_io import atomic_write_json
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import EXIT_FAILURE, add_amostra_do_acervo, add_baseline_argument, add_verbose, cli_errors, confere_baseline
+from . import (
+    EXIT_FAILURE,
+    add_amostra_do_acervo,
+    add_baseline_argument,
+    add_verbose,
+    cli_errors,
+    confere_baseline,
+    fronteira,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -645,7 +653,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.baseline:
         # A existência do caminho já foi conferida antes de medir (S-381).
-        antes = json.loads(args.baseline.read_text(encoding="utf-8")).get("acerto")
+        with fronteira(f"--baseline {args.baseline}"):
+            antes = json.loads(args.baseline.read_text(encoding="utf-8")).get("acerto")
         if antes is not None and acerto is not None and acerto < antes - QUEDA_TOLERADA:
             logger.error(
                 "A calibração piorou: acerto %.1f%% contra %.1f%% do baseline (tolerância %.0f p.p.).",

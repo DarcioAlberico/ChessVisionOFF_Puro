@@ -83,6 +83,10 @@ class FilaRetomadaTests(unittest.TestCase):
             mock.patch("chess_diagram_ocr.cli.scan.load_index", side_effect=lambda _pdf: _indice_interrompido(self.pdf)),
             mock.patch("chess_diagram_ocr.cli.scan.configure_logging"),
             mock.patch("chess_diagram_ocr.cli.review.configure_logging"),
+            # O PDF e o modelo daqui são de mentira, e a fronteira da S-857 os abriria de verdade.
+            mock.patch("chess_diagram_ocr.cli.scan.exige_checkpoint"),
+            mock.patch("chess_diagram_ocr.cli.review.exige_checkpoint"),
+            mock.patch("chess_diagram_ocr.cli.review.exige_documento"),
         ]
         for remendo in remendos:
             remendo.start()

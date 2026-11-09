@@ -26,12 +26,14 @@ from ..atomic_io import atomic_write_text
 from ..config import PROJECT_ROOT, caminho_para_relatorio
 from ..logging_setup import configure_logging
 from . import (
+    EntradaInvalida,
     add_base_de_caractere_argument,
     add_cache_da_base_arguments,
     add_device_argument,
     add_fracoes_do_split_arguments,
     add_verbose,
     cli_errors,
+    fronteira,
 )
 
 logger = logging.getLogger(__name__)
@@ -126,10 +128,11 @@ def _carregar(args: argparse.Namespace):  # noqa: ANN202 - o tipo mora em text.d
 
     if not args.revarrer and Path(args.cache).exists():
         print(f"Lendo a varredura em cache de {args.cache}...")
-        return ds.ler_cache(args.cache)
+        with fronteira(f"--cache {args.cache}"):
+            return ds.ler_cache(args.cache)
 
     if not Path(args.base).is_dir():
-        raise ValueError(f"a base de treino nao esta em {args.base}")
+        raise EntradaInvalida(f"a base de treino nao esta em {args.base}")
 
     print(f"Varrendo {args.base}...")
 
@@ -218,7 +221,8 @@ def main(argv: list[str] | None = None) -> int:
     # valer sozinha -- e `--desconhecida-no-teste` e o unico jeito de desliga-la, com registro.
     from ..text import procedencia as pr
 
-    registro = pr.ler(args.procedencia)
+    with fronteira(f"--procedencia {args.procedencia}"):
+        registro = pr.ler(args.procedencia)
     print()
     print(f"procedencia: {pr.resumo(registro)}")
     aviso = ds.aviso_de_distribuicao(varredura.classes)
@@ -407,8 +411,9 @@ def main(argv: list[str] | None = None) -> int:
 
         from ..text import modelo as md
 
-        classificador = md.carregar_classificador(args.meta, args.modelo, device=device)
-        estado = torch.load(args.modelo, map_location=device, weights_only=True)
+        with fronteira(f"--modelo {args.modelo}", checkpoint=True):
+            classificador = md.carregar_classificador(args.meta, args.modelo, device=device)
+            estado = torch.load(args.modelo, map_location=device, weights_only=True)
         logits, verdade = tr.logits_de(
             estado, varredura.X, varredura.y, idx_val, len(varredura.classes), device=device, lote=lote
         )

@@ -67,6 +67,7 @@ from . import (
     add_fracoes_do_split_arguments,
     add_verbose,
     cli_errors,
+    fronteira,
 )
 
 logger = logging.getLogger(__name__)
@@ -141,7 +142,11 @@ def preparar(args: argparse.Namespace) -> Preparo:
     from ..text import dataset as ds
     from ..text import dedupe
 
-    varredura = ds.ler_cache(args.cache) if Path(args.cache).exists() and not args.revarrer else ds.varrer(args.base)
+    if Path(args.cache).exists() and not args.revarrer:
+        with fronteira(f"--cache {args.cache}"):
+            varredura = ds.ler_cache(args.cache)
+    else:
+        varredura = ds.varrer(args.base)
     grupos, resumo_quase = dedupe.agrupar(
         varredura.X, varredura.y, varredura.grupos, dims=varredura.dims, limiar=dedupe.LIMIAR_PADRAO
     )

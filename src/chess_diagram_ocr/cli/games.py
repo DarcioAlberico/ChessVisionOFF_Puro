@@ -39,6 +39,7 @@ import argparse
 import json
 import logging
 import multiprocessing as mp
+import sqlite3
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -65,11 +66,20 @@ from ..games_db import (
     scan_by_players,
     scan_by_positions,
     tamanho_da_base,
+    uri_somente_leitura,
 )
 from ..games_index import DEFAULT_INDEX_PATH, build_index
 from ..logging_setup import configure_logging, default_log_file
 from ..ui.gallery_model import GalleryModel
-from . import EXIT_BAD_INPUT, EXIT_FAILURE, add_gallery_dir_argument, add_pdf_dir_argument, add_verbose, cli_errors
+from . import (
+    EXIT_BAD_INPUT,
+    EXIT_FAILURE,
+    add_gallery_dir_argument,
+    add_pdf_dir_argument,
+    add_verbose,
+    cli_errors,
+    fronteira,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -466,11 +476,29 @@ def _census(indices: dict[Path, GalleryIndex], args: argparse.Namespace) -> int:
     return 0
 
 
+def _exige_banco(caminho: Path, *, rotulo: str) -> None:
+    """Um banco SQLite apontado que existe e não é banco sai 2 antes do trabalho (S-857).
+
+    O que não existe passa: o cache nasce vazio na primeira corrida. Até a S-857 um `--cache`
+    corrompido levantava `sqlite3.DatabaseError` no meio do comando, e ele não era `ValueError`
+    nem `OSError`: caía na saída 1, "falha inesperada".
+    """
+    if not Path(caminho).exists():
+        return
+    with fronteira(f"{rotulo} {caminho}"):
+        conexao = sqlite3.connect(uri_somente_leitura(Path(caminho)), uri=True)
+        try:
+            conexao.execute("PRAGMA schema_version").fetchone()
+        finally:
+            conexao.close()
+
+
 @cli_errors
 def main(argv: list[str] | None = None) -> int:
     mp.freeze_support()  # o bundle da S-55 congela o processo; sem isto, `spawn` o reexecuta
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
+    _exige_banco(args.cache, rotulo="--cache")
 
     # O indice por nome nao depende de livro nenhum: ele descreve a base, e e construido uma
     # vez para o acervo inteiro. Por isso sai antes de resolver quais livros processar.
@@ -547,7 +575,8 @@ def main(argv: list[str] | None = None) -> int:
         # que se vai fazer com o resultado. Separar as duas coisas e o que permite mudar o
         # `--max-games`, ou corrigir a regra de preenchimento, sem pagar a base de novo.
         print(f"casamentos lidos de {args.from_matches}")
-        casamentos_por_livro = _matches_from_json(args.from_matches, list(indices))
+        with fronteira(f"--from-matches {args.from_matches}"):
+            casamentos_por_livro = _matches_from_json(args.from_matches, list(indices))
         return _finish(indices, casamentos_por_livro, args)
 
     print(f"livros: {len(indices)}  |  modo: {args.mode}")

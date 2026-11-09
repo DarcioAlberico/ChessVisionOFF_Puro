@@ -51,7 +51,7 @@ import numpy as np
 from ..atomic_io import atomic_write_text
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import add_amostra_do_acervo, add_pesos_de_caractere_argument, add_verbose, cli_errors
+from . import EntradaInvalida, add_amostra_do_acervo, add_pesos_de_caractere_argument, add_verbose, cli_errors
 from .texto_duas_linhas import DPI, RAIO_PT, faixas_da_camada, recorte_da_faixa
 from .texto_grade import camada_de_ocr
 from .texto_placar import cer
@@ -217,7 +217,7 @@ def medir(
         logger.info("%s: %d faixa(s).", caminho.name, 0 if marca else deste_livro)
 
     if not total:
-        raise ValueError("nenhuma faixa medida: os PDFs deste acervo têm camada editorada?")
+        raise EntradaInvalida("nenhuma faixa medida: os PDFs deste acervo têm camada editorada?")
 
     por_caractere = soma_caractere / total
     por_linha = soma_linha / total
@@ -268,7 +268,7 @@ def main(argv: list[str] | None = None) -> int:
 
     leitor = build_recognizer(OcrSettings(enabled=True, engine=args.motor))
     if leitor is None:
-        raise ValueError(
+        raise EntradaInvalida(
             f"o motor de linha `{args.motor}` nao subiu. Sem leitor de linha nao ha o que medir: "
             "o braco `por_linha` seria uma copia do `por_caractere`."
         )

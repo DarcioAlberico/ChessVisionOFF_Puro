@@ -16,8 +16,11 @@ from __future__ import annotations
 
 import argparse
 import logging
+import pickle
+import sqlite3
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
 from typing import Any
@@ -63,13 +66,35 @@ Por classe e não por comando porque quem consome isto é script: `cvoff-scan --
 precisa distinguir "este livro estava corrompido" de "o modelo sumiu", e as duas de "houve um
 defeito no programa"."""
 
-_CHECKPOINT_PISTAS = ("checkpoint", ".pt", "arch_version", "state_dict")
-"""Palavras que classificam a falha como 3 em vez de 2.
 
-Heurística sobre o texto da exceção, e ela é honesta sobre o que é: as bibliotecas que
-levantam aqui (`torch`, `pymupdf`) não têm tipo de exceção para "isto era um checkpoint". O
-erro que sobra é classificar como 2 algo que era 3, e os dois já dizem a mesma frase em
-pt-BR -- a diferença só importa para quem lê o código de saída num script."""
+
+class EntradaInvalida(ValueError):
+    """O que a pessoa apontou não serve: a falha sai com 2 (S-857).
+
+    **Levantada só na fronteira de entrada** -- onde o comando confere ou abre o que lhe deram
+    (ver `fronteira`, `exige_documento`, `exige_checkpoint`). Até a S-857 o `run_main` tratava
+    todo `ValueError`, `OSError` e `RuntimeError` como entrada inválida: um `int("x")` de defeito
+    interno saía 2, dizendo à pessoa que a culpa era do arquivo dela, e o 3 era decidido por
+    palavras no texto da mensagem (`"checkpoint"`, `".pt"`). Agora a classe vem do tipo, e o tipo
+    de quem sabe -- o código que abriu o arquivo. Todo o resto é defeito: código 1.
+
+    Herda de `ValueError` porque é o que ela é, e para que quem já esperava `ValueError` de uma
+    validação de argumento (como `texto_pagina.intervalo_de_paginas`) continue esperando.
+    """
+
+    codigo = EXIT_BAD_INPUT
+
+
+class CheckpointInvalido(EntradaInvalida):
+    """O checkpoint apontado não existe, não carrega, ou é de outra `arch_version`: código 3."""
+
+    codigo = EXIT_NO_CHECKPOINT
+
+
+_FALHAS_DE_ENTRADA = (OSError, ValueError, RuntimeError, EOFError, pickle.UnpicklingError, sqlite3.Error)
+"""O que abrir um arquivo de terceiro levanta. `pymupdf.FileDataError` herda de `RuntimeError`;
+um `torch.load` de lixo levanta `UnpicklingError` (que não é `ValueError`), e um truncado,
+`RuntimeError` ou `EOFError`; um banco que não é banco, `sqlite3.DatabaseError`."""
 
 
 _TRADUCOES = (
@@ -100,12 +125,48 @@ def message_for(exc: BaseException) -> str:
     return texto or type(exc).__name__
 
 
-def classify(exc: BaseException) -> int:
-    """A classe de falha de uma exceção. Ver `EXIT_NO_CHECKPOINT` para a heurística."""
-    texto = str(exc).lower()
-    if any(pista in texto for pista in _CHECKPOINT_PISTAS):
-        return EXIT_NO_CHECKPOINT
-    return EXIT_BAD_INPUT
+@contextmanager
+def fronteira(rotulo: str, *, checkpoint: bool = False) -> Iterator[None]:
+    """O que falhar aqui dentro é culpa da entrada `rotulo`, e não do programa (S-857).
+
+    Envolva **só** a abertura do que a pessoa apontou -- o `open`, o `fitz.open`, o `torch.load`,
+    o `sqlite3.connect` --, e nunca o trabalho que vem depois: um defeito dentro da fronteira
+    sairia 2, que é o engano que a S-857 desfaz. `checkpoint=True` faz a falha sair 3.
+    """
+    try:
+        yield
+    except EntradaInvalida:
+        raise
+    except _FALHAS_DE_ENTRADA as exc:
+        classe = CheckpointInvalido if checkpoint else EntradaInvalida
+        raise classe(f"{rotulo}: {message_for(exc)}") from exc
+
+
+def exige_documento(caminho: Path, *, rotulo: str = "o livro") -> None:
+    """Abre e fecha o PDF ou DjVu apontado: o que não abre sai 2 **antes** de o comando trabalhar.
+
+    Abrir duas vezes custa milissegundos, e é o que mantém a fronteira estreita: o PDF que abre
+    e quebra no meio da varredura é defeito (1), e não entrada inválida.
+    """
+    from ..pdf_io import open_document
+
+    with fronteira(f"{rotulo} {caminho}"), open_document(caminho):
+        pass
+
+
+def exige_checkpoint(caminho: Path, *, rotulo: str = "--model") -> None:
+    """Carrega o `.pt` apontado como o programa o carrega: o que não serve sai 3 antes do trabalho.
+
+    Para os comandos que passam o caminho a um serviço que carrega por dentro: lá dentro, um
+    checkpoint truncado ou de outra arquitetura já não tem como chegar aqui como 3. Carregar
+    duas vezes custa uma fração de segundo diante da varredura de um livro. Quem carrega o
+    modelo ele mesmo envolve o `load_model` com `fronteira(..., checkpoint=True)` e não precisa
+    disto.
+    """
+    from ..inference import load_model
+
+    with fronteira(f"{rotulo} {caminho}", checkpoint=True):
+        load_model(Path(caminho), device="cpu")
 
 
 def add_verbose(parser: Declarador) -> None:
@@ -350,10 +411,11 @@ def _pediu_verboso(argv: Sequence[str] | None) -> bool:
 def run_main(fn: Callable[..., int], argv: Sequence[str] | None = None) -> int:
     """Roda um `main` de CLI traduzindo falha em mensagem pt-BR e código de saída (S-126).
 
-    **O que é capturado, e o que não é.** `ValueError`, `OSError` e o que as bibliotecas de
-    terceiros levantam ao abrir um arquivo que não é o que dizem ser -- `pymupdf.FileDataError`
-    herda de `RuntimeError`. `KeyboardInterrupt` e `SystemExit` passam direto: a primeira é o
-    usuário mandando parar, e a segunda é o `argparse` já tendo dito o que faltava.
+    **O que é capturado, e o que não é.** `EntradaInvalida` sai com o código dela (2, ou 3 para
+    `CheckpointInvalido`) -- e ela só nasce na fronteira de entrada (S-857). Qualquer outra
+    exceção é defeito do programa: código 1, com o rastro no log. `KeyboardInterrupt` e
+    `SystemExit` passam direto: a primeira é o usuário mandando parar, e a segunda é o
+    `argparse` já tendo dito o que faltava.
 
     `-v` continua mostrando o traceback, porque é o que quem está depurando pede -- e o
     traceback vai para o **log** em todos os casos, pelo `logger.exception`.
@@ -375,20 +437,20 @@ def run_main(fn: Callable[..., int], argv: Sequence[str] | None = None) -> int:
         return fn(argv)
     except (KeyboardInterrupt, SystemExit):
         raise
-    except (ValueError, OSError, RuntimeError) as exc:
+    except EntradaInvalida as exc:
         # `debug` e nao `exception`: o traceback vai para o **log** e nao para a tela, que e o
         # que o item pede. O handler de arquivo esta em DEBUG desde a S-126 justamente aqui.
         logger.debug("O comando falhou.", exc_info=True)
         verboso = _pediu_verboso(argv)
         print()
-        print(f"Erro: {message_for(exc)}")
+        print(f"Erro: {exc}")
         print()
         if verboso:
             raise
         # **Onde o rastro está, e não "no log"** (S-421): num checkout não há arquivo de log,
         # e mandar procurá-lo é mandar procurar o que ninguém escreveu.
         print(f"Rode de novo com -v para ver o rastro completo. {onde_esta_o_rastro()}")
-        return classify(exc)
+        return exc.codigo
     except Exception as exc:  # noqa: BLE001 - falha inesperada e uma classe propria (codigo 1)
         logger.debug("Falha inesperada.", exc_info=True)
         verboso = _pediu_verboso(argv)

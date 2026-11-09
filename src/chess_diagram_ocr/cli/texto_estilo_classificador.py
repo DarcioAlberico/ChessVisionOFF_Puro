@@ -53,7 +53,7 @@ from ..atomic_io import atomic_write_stream, atomic_write_text
 from ..config import DATA_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import estilo
-from . import add_json_argument, add_verbose, cli_errors
+from . import add_json_argument, add_verbose, cli_errors, fronteira
 
 logger = logging.getLogger(__name__)
 
@@ -276,7 +276,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Sem o conjunto em {args.conjunto}: rode antes o cvoff-texto-estilo-conjunto.")
         return 0
     torch.set_num_threads(max(1, torch.get_num_threads()))
-    dados = carregar(Path(args.conjunto))
+    with fronteira(f"--conjunto {args.conjunto}"):
+        dados = carregar(Path(args.conjunto))
     resumo = hashlib.sha1(Path(args.conjunto).read_bytes()).hexdigest()[:12]
     classes, alturas, livros = dados["classes"], dados["alturas"], dados["livros"]
     total = len(dados["identidades"])

@@ -239,6 +239,8 @@ class AcervoVarridoSemJanelaTests(unittest.TestCase):
             mock.patch.object(cli_scan, "build_gallery_index", _varre),
             mock.patch.object(cli_scan, "save_index", lambda pdf, indice: self.indices.setdefault(Path(pdf).name, indice)),
             mock.patch.object(cli_scan, "load_index", lambda pdf: self.indices.get(Path(pdf).name)),
+            # Não há modelo aqui: a varredura é de mentira, e a fronteira da S-857 o carregaria.
+            mock.patch.object(cli_scan, "exige_checkpoint"),
         ]
         for remendo in remendos:
             remendo.start()

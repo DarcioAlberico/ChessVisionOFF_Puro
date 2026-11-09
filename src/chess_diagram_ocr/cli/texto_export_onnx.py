@@ -33,6 +33,7 @@ from . import (
     add_tolerance_argument,
     add_verbose,
     cli_errors,
+    fronteira,
 )
 
 logger = logging.getLogger(__name__)
@@ -101,7 +102,8 @@ def main(argv: list[str] | None = None) -> int:
         print("onnxruntime não está instalado: `uv sync --extra onnx`. O .onnx foi gravado mesmo assim.")
         return EXIT_FAILURE
 
-    torch_ = carregar_classificador(args.meta, args.pesos, device="cpu")
+    with fronteira(f"--pesos {args.pesos}", checkpoint=True):
+        torch_ = carregar_classificador(args.meta, args.pesos, device="cpu")
     report = comparar(torch_.probabilidades(recortes), onnx.probabilidades(recortes), args.tolerance)
     origem = "sintéticos (aleatórios)" if args.recortes is None else str(args.recortes)
 

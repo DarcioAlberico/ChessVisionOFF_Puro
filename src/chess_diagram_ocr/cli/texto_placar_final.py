@@ -49,7 +49,7 @@ import numpy as np
 from ..atomic_io import atomic_write_text
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import add_amostra_do_acervo, add_pesos_de_caractere_argument, add_verbose, cli_errors
+from . import EntradaInvalida, add_amostra_do_acervo, add_pesos_de_caractere_argument, add_verbose, cli_errors
 from .texto_grade import camada_de_ocr
 from .texto_placar import cer
 
@@ -82,7 +82,7 @@ def regua_do_recorte(meta_sha: str) -> dict[str, Any]:
                 "n": dados["amostras"]["teste"],
                 "split": dados.get("split", ""),
             }
-    raise ValueError(
+    raise EntradaInvalida(
         "nenhum relatorio de treino em docs/metrics/ descreve o modelo publicado. Sem a regua do "
         "recorte nao ha o que comparar: rode `cvoff-texto-train` ou aponte o par certo."
     )
@@ -216,7 +216,7 @@ def regua_da_pagina(pdfs: list[Path], *, por_livro: int, classificador: Any) -> 
         logger.info("%s: %d pagina(s).", caminho.name, 0 if marca else deste)
 
     if not paginas:
-        raise ValueError(
+        raise EntradaInvalida(
             "nenhuma pagina medida. **Este comando recusa publicar so a regua do recorte** -- e o "
             "criterio de aceite da S-206, e a metade lisonjeira sozinha e o defeito que ele evita."
         )
@@ -257,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.limite:
         pdfs = pdfs[: args.limite]
     if not pdfs:
-        raise ValueError(f"nenhum PDF em {args.pdf_dir}: sem pagina nao ha a segunda regua.")
+        raise EntradaInvalida(f"nenhum PDF em {args.pdf_dir}: sem pagina nao ha a segunda regua.")
 
     classificador = carregar_classificador(pesos=args.modelo)
     do_recorte: dict[str, Any] = regua_do_recorte(classificador.meta.modelo_sha256)

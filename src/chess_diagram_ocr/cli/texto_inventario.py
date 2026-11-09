@@ -54,7 +54,7 @@ from typing import Any
 from ..atomic_io import atomic_write_text
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import add_base_de_caractere_argument, add_verbose, cli_errors
+from . import EntradaInvalida, add_base_de_caractere_argument, add_verbose, cli_errors, fronteira
 
 logger = logging.getLogger(__name__)
 
@@ -161,12 +161,10 @@ def inventariar(
     base: Path, *, minimo: int = 1, tarefas: int = TAREFAS_PADRAO, registro: Any = None
 ) -> dict[str, Any]:
     """O manifesto inteiro. **Não escreve nada dentro de `base`.**"""
-    from ..text.dataset import BaseVazia
-
     base = Path(base)
     pastas = sorted(p for p in base.iterdir() if p.is_dir())
     if not pastas:
-        raise BaseVazia(f"{base} não tem nenhuma pasta de classe.")
+        raise EntradaInvalida(f"{base} não tem nenhuma pasta de classe.")
 
     medidas: list[Pasta] = []
     for posicao, caminho in enumerate(pastas, start=1):
@@ -239,7 +237,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose)
 
-    registro = pr.ler(args.procedencia)
+    with fronteira(f"--procedencia {args.procedencia}"):
+        registro = pr.ler(args.procedencia)
+    if not Path(args.base).is_dir():
+        raise EntradaInvalida(f"a base de caractere nao esta em {args.base}")
     logger.info("Inventariando %s...", args.base)
     manifesto = inventariar(args.base, minimo=args.minimo, tarefas=args.tarefas, registro=registro)
 

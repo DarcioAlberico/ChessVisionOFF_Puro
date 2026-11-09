@@ -62,6 +62,8 @@ from . import (
     add_verbose,
     cli_errors,
     confere_baseline,
+    exige_documento,
+    fronteira,
 )
 
 logger = logging.getLogger(__name__)
@@ -302,6 +304,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.pdf.exists():
             logger.error("PDF não encontrado: %s", args.pdf)
             return EXIT_BAD_INPUT
+        exige_documento(args.pdf)
         livros = [args.pdf]
     else:
         if not args.pdf_dir.is_dir():
@@ -357,7 +360,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.baseline is not None:
         # A existência do caminho já foi conferida antes de medir (S-381).
-        arquivado = json.loads(args.baseline.read_text(encoding="utf-8"))
+        with fronteira(f"--baseline {args.baseline}"):
+            arquivado = json.loads(args.baseline.read_text(encoding="utf-8"))
         pioras = _custo.comparar(arquivado, perfil, margem=args.margem)
         if pioras:
             print("")

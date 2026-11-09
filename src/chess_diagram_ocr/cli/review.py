@@ -33,6 +33,9 @@ from . import (
     add_reading_order_argument,
     add_verbose,
     cli_errors,
+    exige_checkpoint,
+    exige_documento,
+    fronteira,
 )
 
 logger = logging.getLogger(__name__)
@@ -79,6 +82,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
+    exige_documento(args.pdf)
+    exige_checkpoint(args.model)
 
     def _progress(page_index: int, total_pages: int, page_boards: int, total_positions: int) -> None:
         logger.info(
@@ -96,7 +101,8 @@ def main(argv: list[str] | None = None) -> int:
         print(anterior.mensagem, file=sys.stderr)
         return EXIT_BAD_INPUT
 
-    rare = rare_classes_from_labels(args.labels)
+    with fronteira(f"--labels {args.labels}"):
+        rare = rare_classes_from_labels(args.labels)
     if rare:
         logger.info("Classes raras no dataset: %s", ", ".join(sorted(rare)))
 
