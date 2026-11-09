@@ -1848,6 +1848,8 @@ item fecha por uma guarda: todo `torch.load` de `src/` passa `weights_only=True`
 
 **Aceite.** A guarda passa, com piso de três chamadas.
 
+**Entregue** (2026-11-08): a guarda é `CargaSoComWeightsOnlyTests` em `tests/test_checkpoint.py`, ancorada no arquivo do teste (não em `PROJECT_ROOT`) e falhou antes do conserto apontando as três cargas sem o argumento (o recurso de `checkpoint.py`, `cli/texto_train.py`, `text/modelo.py`). Os quatro `.pt` dos relatórios de campo e o `char_classifier.pt` carregam pelo caminho de produção, e os 24 `.pt` de `models/` pelo `load_checkpoint`. `checkpoint.py` é do fecho de medição.
+
 ## S-846 · O sal do split fixado por valor
 
 **Problema** (confirmado). `tests/test_splits.py:30-35` diz "Valores fixos: se o algoritmo de hash mudar,

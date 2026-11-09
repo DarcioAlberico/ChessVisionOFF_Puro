@@ -405,7 +405,7 @@ def main(argv: list[str] | None = None) -> int:
         from ..text import modelo as md
 
         classificador = md.carregar_classificador(args.meta, args.modelo, device=device)
-        estado = torch.load(args.modelo, map_location=device)
+        estado = torch.load(args.modelo, map_location=device, weights_only=True)
         logits, verdade = tr.logits_de(
             estado, varredura.X, varredura.y, idx_val, len(varredura.classes), device=device, lote=lote
         )

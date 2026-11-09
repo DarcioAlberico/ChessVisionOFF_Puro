@@ -509,7 +509,7 @@ def carregar_classificador(
 
     rede = _construir_rede(metadado.num_classes, metadado.arquitetura)
     try:
-        rede.load_state_dict(torch.load(pesos, map_location=device))
+        rede.load_state_dict(torch.load(pesos, map_location=device, weights_only=True))
     except (RuntimeError, KeyError) as exc:
         raise ModeloInvalido(
             f"{pesos.name} tem o hash certo mas não carrega na rede de {metadado.num_classes} "
