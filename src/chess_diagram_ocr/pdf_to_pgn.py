@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import chess.pgn
 import numpy as np
 
+from .atomic_io import atomic_write_text
 from .checkpoint import checkpoint_identity
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
@@ -1016,14 +1017,17 @@ def write_gated_pgn(
         lichess_links=lichess_links,
         provenance_file=sidecar_name,
     )
-    output_path.write_text(payload + "\n" if payload else "", encoding="utf-8")
+    atomic_write_text(output_path, payload + "\n" if payload else "")
 
     review_items = sorted(
         needs_review + rejected,
         key=lambda item: (item[0].page_index, item[0].diagram_index),
     )
     review_path: Path | None = None
-    if review_items:
+    if not review_items:
+        # O `.review.pgn` da rodada anterior não pode ficar ao lado do PGN de agora (S-818).
+        review_output_path(output_path).unlink(missing_ok=True)
+    else:
         review_path = review_output_path(output_path)
         review_payload = build_pgn_text(
             [position for position, _ in review_items],
@@ -1035,7 +1039,7 @@ def write_gated_pgn(
             lichess_links=lichess_links,
             provenance_file=sidecar_name,
         )
-        review_path.write_text(review_payload + "\n" if review_payload else "", encoding="utf-8")
+        atomic_write_text(review_path, review_payload + "\n" if review_payload else "")
 
     return ExportReport(
         accepted=accepted,

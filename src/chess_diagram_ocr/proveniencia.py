@@ -30,6 +30,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypeVar
 
+from .atomic_io import atomic_write_text
+
 VERSAO = 1
 SUFIXO = ".proveniencia.jsonl"
 
@@ -190,10 +192,7 @@ def write_sidecar(
         linhas.append(linha)
     verificar(linhas)
     destino = sidecar_path(output_path)
-    destino.parent.mkdir(parents=True, exist_ok=True)
-    with destino.open("w", encoding="utf-8") as handle:
-        for linha in linhas:
-            handle.write(json.dumps(linha, ensure_ascii=False) + "\n")
+    atomic_write_text(destino, "".join(json.dumps(linha, ensure_ascii=False) + "\n" for linha in linhas))
     return destino
 
 

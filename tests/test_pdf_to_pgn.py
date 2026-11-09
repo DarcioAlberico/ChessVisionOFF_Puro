@@ -827,6 +827,83 @@ class ExportGateTests(unittest.TestCase):
             self.assertIsNone(report.review_path)
             self.assertFalse((Path(tmpdir) / "book.review.pgn").exists())
 
+    def test_exportar_sem_revisao_remove_review_pgn_antigo(self) -> None:
+        """S-818: a rodada que não tem nada a revisar não deixa o `.review.pgn` da anterior.
+
+        O relatório diz `review_path=None`; um arquivo de revisão velho ao lado do PGN novo
+        mandaria a pessoa consertar posições que a rodada de agora já não exportou assim.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "book.pgn"
+            primeira = write_gated_pgn(self.positions(), output_path, source_name="book.pdf")
+            self.assertIsNotNone(primeira.review_path)
+
+            segunda = write_gated_pgn(self.positions()[:1], output_path, source_name="book.pdf")
+
+            self.assertIsNone(segunda.review_path)
+            self.assertFalse((Path(tmpdir) / "book.review.pgn").exists())
+
+    def test_pgn_exportado_e_lf(self) -> None:
+        """S-818: o PGN, o `.review.pgn` e o sidecar saem com quebra LF também no Windows."""
+        from chess_diagram_ocr.proveniencia import Cabecalho, read_sidecar
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "book.pgn"
+            report = write_gated_pgn(
+                self.positions(), output_path, source_name="book.pdf",
+                provenance=Cabecalho(source_name="book.pdf"),
+            )
+
+            assert report.review_path is not None and report.provenance_path is not None
+            for caminho in (output_path, report.review_path, report.provenance_path):
+                conteudo = caminho.read_bytes()
+                self.assertIn(b"\n", conteudo, caminho.name)
+                self.assertNotIn(b"\r", conteudo, caminho.name)
+            _, linhas = read_sidecar(report.provenance_path)
+            self.assertEqual(len(linhas), 3)
+
+    def test_queda_na_gravacao_deixa_o_pgn_anterior_inteiro(self) -> None:
+        """S-818: interrompida a troca, os três arquivos da rodada anterior ficam como estavam."""
+        from chess_diagram_ocr import atomic_io
+        from chess_diagram_ocr.proveniencia import Cabecalho
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "book.pgn"
+            anterior = write_gated_pgn(
+                self.positions(), output_path, source_name="book.pdf",
+                provenance=Cabecalho(source_name="book.pdf"),
+            )
+            assert anterior.review_path is not None and anterior.provenance_path is not None
+            arquivos = (output_path, anterior.review_path, anterior.provenance_path)
+            antes = {caminho: caminho.read_bytes() for caminho in arquivos}
+
+            original = atomic_io._substituir
+            for alvo in arquivos:
+                def queda(temp_path: Path, path: Path, alvo: Path = alvo) -> None:
+                    if path == alvo:
+                        raise KeyboardInterrupt("queda simulada")
+                    original(temp_path, path)
+
+                with patch.object(atomic_io, "_substituir", side_effect=queda):
+                    with self.assertRaises(KeyboardInterrupt):
+                        write_gated_pgn(
+                            list(reversed(self.positions())), output_path, source_name="outro.pdf",
+                            provenance=Cabecalho(source_name="outro.pdf"),
+                        )
+                self.assertEqual(alvo.read_bytes(), antes[alvo], alvo.name)
+                self.assertEqual(sorted(p.name for p in Path(tmpdir).iterdir()),
+                                 sorted(p.name for p in arquivos))
+                for caminho in arquivos:
+                    caminho.write_bytes(antes[caminho])
+
+            # Sem a queda a rodada nova reescreve os três: a guarda acima não é vácua.
+            write_gated_pgn(
+                list(reversed(self.positions())), output_path, source_name="outro.pdf",
+                provenance=Cabecalho(source_name="outro.pdf"),
+            )
+            for caminho in arquivos:
+                self.assertNotEqual(caminho.read_bytes(), antes[caminho], caminho.name)
+
     def test_review_items_keep_pdf_order(self) -> None:
         positions = list(reversed(self.positions()))
         with tempfile.TemporaryDirectory() as tmpdir:

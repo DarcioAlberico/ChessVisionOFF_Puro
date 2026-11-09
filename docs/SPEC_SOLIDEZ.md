@@ -836,6 +836,8 @@ sem item a revisar); `test_pgn_exportado_e_lf`.
 
 **Aceite.** Os dois passam. Uma queda simulada no meio da gravação deixa o PGN anterior inteiro.
 
+**Entregue** (2026-11-08): sem divergência. A queda simulada virou o terceiro teste (`test_queda_na_gravacao_deixa_o_pgn_anterior_inteiro`), que interrompe a troca de cada um dos três arquivos por vez e confere que o anterior fica byte a byte e que nenhum temporário sobra.
+
 ## S-819 · Retomada de exportação sem perda de campo
 
 **Problema** (confirmado por script). `export_checkpoint.py:216-276`:
