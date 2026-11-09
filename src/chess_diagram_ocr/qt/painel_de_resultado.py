@@ -1313,7 +1313,7 @@ class PainelDeResultado(QWidget):
             return
         if parecer is None:
             return
-        self.historico.registrar(self._estado_de(indice))
+        self._registrar_se_selecionado(indice)
         self._edicao += 1
         self._atualizar_tudo()
         self.estado.emit(parecer.describe())
@@ -1322,16 +1322,31 @@ class PainelDeResultado(QWidget):
         """A posição e o lado a jogar do nó do PGN do livro no lugar da leitura (S-590).
 
         Mesma guarda da segunda opinião: o livro casa em segundo plano, e um índice de outra
-        página não é este diagrama. Desfazível como qualquer edição -- o histórico registra.
+        página não é este diagrama. Desfazível como qualquer edição **quando o diagrama é o
+        selecionado**; nos outros da página a adoção não entra na pilha (S-887, ver
+        `_registrar_se_selecionado`).
         """
         if not (0 <= indice < len(self.modelo.items)) or self.modelo.items[indice] is not item_lido:
             return False
         if not self.modelo.mark_from_book(indice, placement, lado, note=nota):
             return False
-        self.historico.registrar(self._estado_de(indice))
+        self._registrar_se_selecionado(indice)
         self._edicao += 1
         self._atualizar_tudo()
         return True
+
+    def _registrar_se_selecionado(self, indice: int) -> None:
+        """Põe na pilha a mudança que chegou de segundo plano, se ela é do diagrama selecionado.
+
+        **A pilha é do selecionado** (S-229), e o que chega em segundo plano -- o parecer da
+        segunda opinião, o PGN do livro adotado em cada diagrama da página -- pode ser de outro.
+        Registrar o estado do diagrama 1 na pilha do 0 fazia o `Ctrl+Z` seguinte pôr no 0 a
+        posição e a vez do 1, sem aviso, e o `Ctrl+S` gravá-las com o rótulo do 0 (S-887). A
+        mudança num índice não selecionado fica sem desfazer: a pilha zera ao trocar de diagrama,
+        então não haveria como desfazê-la de qualquer modo.
+        """
+        if indice == self.modelo.clamped_index():
+            self.historico.registrar(self._estado_de(indice))
 
     def _girar_180(self) -> None:
         """A outra leitura possível: a posição girada de 180°, como edição desfazível."""

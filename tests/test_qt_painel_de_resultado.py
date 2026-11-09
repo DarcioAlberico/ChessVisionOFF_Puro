@@ -1025,3 +1025,95 @@ class NumeroDoLanceTests(PainelTests):
         self.anotado[(0, 0)] = 40
         self.painel.sincronizar_lance()
         self.assertEqual(self.painel.campo_lance.text(), "40")
+
+
+LIVRO_0 = "4k3/8/8/8/8/8/3P4/4K3"
+"""O que o PGN do livro diz do diagrama 0: a leitura com um peão a mais em d2."""
+LIVRO_1 = OUTRA
+"""E do diagrama 1: outra posição, com as pretas a jogar."""
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class ComoAPessoaTests(PainelTests):
+    """O editor dirigido pelo que a pessoa faz -- clique na casa, letra, botão Desfazer -- e
+    conferido pelo que ela vê: o tabuleiro, o campo de FEN, a pendência ao fechar."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtTest import QTest
+
+        self.QTest = QTest
+        self.Qt = Qt
+        self.painel.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.painel.resize(900, 760)
+        self.painel.show()
+        self.app.processEvents()
+
+    def clicar_casa(self, casa: int) -> None:
+        from PyQt6.QtCore import QPoint
+
+        tabuleiro = self.painel.tabuleiro
+        linha, coluna = tabuleiro.modelo.display_from_index(casa)
+        x0, y0, x1, y1 = tabuleiro.geometria().rect(linha, coluna)
+        self.QTest.mouseClick(tabuleiro, self.Qt.MouseButton.LeftButton, pos=QPoint(int((x0 + x1) / 2), int((y0 + y1) / 2)))
+        self.app.processEvents()
+
+    def tecla(self, texto: str) -> None:
+        """Uma letra de peça no tabuleiro em foco: maiúscula com Shift, como no teclado."""
+        modificador = self.Qt.KeyboardModifier.ShiftModifier if texto.isupper() else self.Qt.KeyboardModifier.NoModifier
+        self.QTest.keyClick(self.painel.tabuleiro, texto, modificador)
+        self.app.processEvents()
+
+    def desfazer(self) -> None:
+        self.QTest.mouseClick(self.painel.btn_desfazer, self.Qt.MouseButton.LeftButton)
+        self.app.processEvents()
+
+    def test_adotar_do_livro_em_outro_indice_nao_entra_na_pilha(self) -> None:
+        """S-887: `livro_com_pgn.aplicar` adota o livro em **cada** diagrama da página, e a pilha é
+        do selecionado. A adoção no diagrama 1 entrava na pilha do 0, e o Ctrl+Z depois de uma
+        casa corrigida no 0 punha nele a posição e a vez do 1 -- gravável com o Ctrl+S seguinte."""
+        self.carregar(LEGAL, LEGAL)
+        itens = self.painel.modelo.items
+        self.assertTrue(self.painel.adotar_do_livro(0, itens[0], LIVRO_0, "w", "Game 1 · confere"))
+        self.assertTrue(self.painel.adotar_do_livro(1, itens[1], LIVRO_1, "b", "Game 2 · confere"))
+        self.assertEqual(self.painel.tabuleiro.posicao(), LIVRO_0, "o diagrama 0 segue na tela")
+
+        self.clicar_casa(51)   # o peão de d2, que o livro pôs
+        self.tecla("N")        # vira cavalo
+        self.assertEqual(board_edit.piece_at(self.painel.tabuleiro.posicao(), 51), "N")
+        self.desfazer()
+
+        self.assertNotEqual(self.painel.modelo.fen_at(0), LIVRO_1, "o Ctrl+Z pôs no 0 a posição do diagrama 1")
+        self.assertEqual(self.painel.tabuleiro.posicao(), LIVRO_0)
+        self.assertEqual(self.painel.modelo.side_at(0), "w", "o Ctrl+Z pôs no 0 a vez do diagrama 1")
+        self.assertTrue(self.painel.campo_fen.text().endswith(" w - - 0 1"), self.painel.campo_fen.text())
+        self.assertEqual((self.painel.modelo.fen_at(1), self.painel.modelo.side_at(1)), (LIVRO_1, "b"))
+
+    def clicar(self, botao) -> None:
+        self.QTest.mouseClick(botao, self.Qt.MouseButton.LeftButton)
+        self.app.processEvents()
+
+    def test_a_segunda_opiniao_do_diagrama_deixado_nao_entra_na_pilha_do_novo(self) -> None:
+        """S-887, o outro caminho: pedir a segunda opinião do 0, ir ao 1 enquanto ela é lida,
+        corrigir uma casa do 1 e desfazer. O parecer do 0 entrava na pilha do 1, e o Ctrl+Z
+        punha no 1 a posição do 0."""
+        self.carregar(LEGAL, LIVRO_0)
+        leitor = SegundaOpiniaoTests._LeitorLento(OUTRA)
+        with mock.patch.object(self.painel, "leitor_da_segunda_opiniao", return_value=leitor):
+            self.painel.segunda_opiniao()
+            self.clicar(self.painel.proximo)
+            for _ in range(400):
+                self.QTest.qWait(10)
+                if self.painel._segunda_em_curso is None:
+                    break
+        self.assertEqual(leitor.lidos, 1)
+        self.assertEqual(self.painel.modelo.fen_at(0), OUTRA, "o parecer foi para o diagrama 0")
+        self.assertEqual(self.painel.tabuleiro.posicao(), LIVRO_0, "o 1 está na tela")
+
+        self.clicar_casa(51)
+        self.tecla("N")
+        self.desfazer()
+        self.assertEqual(self.painel.tabuleiro.posicao(), LIVRO_0, "o Ctrl+Z pôs no 1 a posição do 0")
+        self.assertFalse(self.painel.btn_desfazer.isEnabled(), "a pilha do 1 tinha o parecer do 0")
+
