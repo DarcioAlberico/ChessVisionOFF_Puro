@@ -2499,6 +2499,22 @@ vira item datado de qualquer jeito.
 
 **Aceite.** Nenhum `@unittest.skip` incondicional em `tests/` (guarda por `grep`).
 
+**Entregue** (2026-11-09): a guarda é `PuloQueNinguemContaTests.test_nenhum_teste_pula_sem_condicao`, por
+`ast` e não por `grep` (o próprio arquivo cita as formas), com controle contra exemplos literais; o `-ra` fica.
+Dos 26, pela D4: 11 reescritos contra o leiaute atual (sete da folha, dois do arranjo da Galeria, dois da
+Galeria na largura preferida), 1 religado sem mudança (`test_o_foco_se_distingue_do_marcado_e_sobrevive_a_ele`,
+que passa na folha da F9) e 14 apagados -- o empilhamento, o limiar e o recorte fixo de 420 px não existem
+mais, a moldura derivada da superfície e a gramática única do menu marcado também não, e o que restava deles
+está coberto por outro teste. Reescrever achou quatro propriedades do `main` que o leiaute atual não tem, e
+que ficam como pergunta ao dono, sem teste: (a) o rádio marcado e desabilitado pinta igual ao desmarcado e
+desabilitado (a F9 não declara `:checked:disabled`); (b) o indicador da caixa e do rádio encolhe na pele
+compacta, de 14 para 10 px na "fita" (o `main` o fixava pela fonte, `tema.lado_do_indicador`, sem entrar na
+folha); (c) o anel de foco dos campos (`QLineEdit` e afins) é borda de 2 px sem recheio compensado, e o campo
+cresce 2 px e a letra anda 1 px a cada `Tab`; (d) `LARGURA_MINIMA_DA_GALERIA` (522) não é a ocupação medida do
+corpo da Galeria (546 px, 535 na "fita", sob `offscreen`: falta a barra da lateral) e só alimenta
+`galeria_empilhada`, que não tem chamador. A conferência de 1.024 px continua sem medida -- sob `offscreen` o
+piso da janela é 1.314 px -- e fica como item datado.
+
 ## S-869 · As dezesseis guardas "sem tkinter" saem
 
 **Problema** (confirmado). Dezesseis guardas só conferem `assertNotIn("tkinter", imports)`, e o Tk saiu:

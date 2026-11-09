@@ -32,31 +32,15 @@ from collections.abc import Callable
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, cor_em, descartar, renderizar
 from test_engine import _launcher
+from test_qt_painel_da_galeria import rolagem_da_lateral
 
 from chess_diagram_ocr.engine import EngineAnalyzer
 from chess_diagram_ocr.ui import (
-    estado_do_rodape,
-    galeria_declarada,
     geometria,
     pele,
     sala_declarada,
     state,
 )
-
-GALERIA_DO_MAIN = (
-    "cobra o arranjo da Galeria do `main` (S-552: o recorte fixo de 420 px, a aba que rola inteira "
-    "e o empilhamento abaixo de 702 px), que o merge do religa não trouxe: ficou a Galeria da "
-    "OCR_UI, com o recorte elástico e a lateral rolável sob o seguidor de foco -- decisão do PR do "
-    "merge, e `galeria_declarada.galeria_empilhada` fica declarada sem chamador até lá"
-)
-"""O motivo dos testes do arranjo da Galeria do `main` que não rodam depois do merge do religa."""
-
-RODAPE_DO_MAIN = (
-    "cobra a zona de mensagem de 100 px fixos do `main` (S-552); o rodapé do merge do religa "
-    "reserva o lugar da mensagem só enquanto há uma (até 320 px, zero vazia) -- decisão do PR do "
-    "merge, e a reserva foi medida contra o piso de 1.248 px do religa: falta medi-la a 1.024"
-)
-"""O motivo do teste da zona de mensagem do `main` que não roda depois do merge do religa."""
 
 if TEM_PYQT:
     from PyQt6.QtCore import QPoint, Qt
@@ -64,7 +48,6 @@ if TEM_PYQT:
     from PyQt6.QtWidgets import QGroupBox, QPushButton
 
     from chess_diagram_ocr.qt import janela as qt_janela
-    from chess_diagram_ocr.qt import painel_da_galeria as qt_galeria
     from chess_diagram_ocr.qt import painel_de_resultado as qt_resultado
     from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
     from chess_diagram_ocr.qt import tema
@@ -104,28 +87,6 @@ class PainelSemExigenciaTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.app = aplicacao()
-
-    @unittest.skip(GALERIA_DO_MAIN)
-    def test_a_galeria_rola_em_vez_de_exigir_800_px_de_altura(self) -> None:
-        """Os 420 px do recorte e os 260 da lateral são medidos (S-154) e continuam inteiros: o que
-        muda é que a soma deles deixa de ser o piso da janela."""
-        pasta = pasta_temporaria(self)
-        painel = qt_galeria.PainelDaGaleria(
-            service=_ServicoFalso(),
-            pdf_path=lambda: None,
-            model_path=lambda: pasta / "modelo.pt",
-            max_boards=lambda: 4,
-            pasta_da_galeria=pasta / "galeria",
-        )
-        self.addCleanup(descartar, painel)
-        pedido = painel.minimumSizeHint()
-        self.assertLess(pedido.height(), TELA_MINIMA[1] - CROMO[1])
-        self.assertLess(pedido.width(), TELA_MINIMA[0])
-        # O conteúdo não encolheu: ele está dentro da área rolável.
-        self.assertEqual(
-            qt_galeria.BOARD_VIEW_SIZE, painel.recorte.width(), "o recorte medido da S-154 mudou"
-        )
-        self.assertIsNotNone(painel.rolagem.widget())
 
     def test_o_resultado_nao_cresce_de_piso_quando_o_texto_cresce(self) -> None:
         """`detalhes` quebra linha, e um `QLabel` com `wordWrap` responde a altura mínima calculada
@@ -175,22 +136,6 @@ class PisoDaJanelaTests(unittest.TestCase):
             with self.subTest(aba=nome):
                 pedido = self.janela.abas.widget(indice).minimumSizeHint()
                 self.assertLessEqual(pedido.height(), TELA_MINIMA[1] - CROMO[1])
-
-    @unittest.skip(GALERIA_DO_MAIN)
-    def test_as_duas_abas_que_seguravam_o_piso_nao_o_seguram_mais(self) -> None:
-        """A Galeria pedia `711 x 800` e o Resultado chegava a `301 x 1095` depois de ler.
-
-        **A largura não é medida em número absoluto**, e é por isso que a régua é a constante
-        declarada: sob `offscreen` não há a fonte da interface, e todo widget de texto mede mais --
-        a aba Dataset responde 842 px aqui e 516 na janela de verdade. O que se afirma é que a
-        Galeria deixou de pedir a soma das partes dela (S-154), e não um número de tela.
-        """
-        indices = {self.janela.abas.tabText(i).replace("&", ""): i for i in range(self.janela.abas.count())}
-        galeria = self.janela.abas.widget(indices["Galeria"]).minimumSizeHint()
-        self.assertLess(galeria.width(), galeria_declarada.LARGURA_MINIMA_DA_GALERIA)
-        self.assertLess(galeria.height(), TELA_MINIMA[1] - CROMO[1])
-        resultado = self.janela.abas.widget(indices["Resultado"]).minimumSizeHint()
-        self.assertLess(resultado.height(), TELA_MINIMA[1] - CROMO[1])
 
     def test_os_dois_literais_da_janela_cabem_na_tela_minima(self) -> None:
         """**É o caso que estava quebrado.** O piso de largura é `LARGURA_MINIMA_DAS_ABAS +
@@ -334,6 +279,9 @@ class GaleriaNaLarguraPreferidaTests(unittest.TestCase):
     que a janela de verdade entrega a 1280, e a altura de 700 põe a barra vertical na tela -- que é
     a metade do defeito que o número sozinho não mostra. Com os 720 antigos, esta classe empilha
     nas três peles.
+
+    **O empilhamento saiu com o merge do religa** (S-868): a Galeria de hoje é a da OCR_UI, que não
+    empilha, e a faixa continua cobrando dela as duas colunas inteiras.
     """
 
     JANELA = (1700, 700)
@@ -380,9 +328,12 @@ class GaleriaNaLarguraPreferidaTests(unittest.TestCase):
         self.app.processEvents()
         return janela
 
-    @unittest.skip(GALERIA_DO_MAIN)
     def test_na_largura_preferida_a_galeria_fica_em_duas_colunas_nas_tres_peles(self) -> None:
-        """**É a faixa de 1280 a 1700 px de janela**, reproduzida pela largura que ela dá à aba."""
+        """**É a faixa de 1280 a 1700 px de janela**, reproduzida pela largura que ela dá à aba.
+
+        **Reescrito contra o leiaute atual** (S-868): a Galeria de hoje não empilha nem rola
+        inteira -- o recorte é elástico e a lateral rola só na vertical --, e o que a faixa cobra
+        dela é o mesmo de antes: o recorte e a lateral lado a lado, com a lateral inteira à vista."""
         for uma in pele.PELES:
             with self.subTest(pele=uma.nome):
                 janela = self.janela_na(uma)
@@ -392,36 +343,32 @@ class GaleriaNaLarguraPreferidaTests(unittest.TestCase):
                     janela.divisor.sizes()[0],  # type: ignore[attr-defined]
                     "a janela deixou de entregar a largura preferida à aba",
                 )
-                self.assertTrue(
-                    galeria.rolagem.verticalScrollBar().isVisible(),
-                    "sem a barra vertical na tela este teste não mede a trava",
-                )
-                lateral = galeria.lateral.mapTo(galeria, galeria.lateral.rect().topLeft())
-                recorte = galeria.recorte.mapTo(galeria, galeria.recorte.rect().topLeft())
-                self.assertEqual(lateral.y(), recorte.y(), "a Galeria empilhou numa aba que comporta duas colunas")
-                self.assertEqual(
-                    0, galeria.rolagem.horizontalScrollBar().maximum(), "as duas colunas não couberam"
-                )
+                visivel = galeria._pilha_do_recorte.currentWidget()  # noqa: SLF001 - o recorte, ou o vazio no lugar dele
+                rolagem = rolagem_da_lateral(galeria)
+                recorte = visivel.mapTo(galeria, visivel.rect().topLeft())
+                lateral = rolagem.mapTo(galeria, rolagem.rect().topLeft())
+                self.assertEqual(lateral.y(), recorte.y(), "o recorte e a lateral não estão lado a lado")
+                self.assertLessEqual(recorte.x() + visivel.width(), lateral.x())
+                self.assertLessEqual(lateral.x() + rolagem.width(), galeria.width(), "a lateral saiu da aba")
+                self.assertEqual(0, rolagem.horizontalScrollBar().maximum(), "a lateral rola de lado")
 
-    @unittest.skip(GALERIA_DO_MAIN)
     def test_a_largura_preferida_das_abas_cobre_o_que_a_galeria_ocupa(self) -> None:
         """**A invariante que faltava, e ela liga os dois números que se desencontraram.**
 
-        A aba não recebe `LARGURA_PREFERIDA_DAS_ABAS`: recebe isso menos a moldura do `QTabWidget`,
-        e o corpo da Galeria recebe menos ainda -- a moldura da área de rolagem e a barra vertical.
-        Enquanto a preferida (720) e o limiar (720) fossem o mesmo número, a conta **nunca** fechava,
-        e nada no projeto dizia isso. Os dois lados são medidos aqui: quem subir o limiar ou baixar
-        a preferida vê a diferença nesta linha, e não numa foto seis rodadas depois.
-        """
+        A aba não recebe `LARGURA_PREFERIDA_DAS_ABAS`: recebe isso menos a moldura do `QTabWidget`.
+        Quem subir o mínimo da Galeria ou baixar a preferida vê a diferença nesta linha, e não numa
+        foto seis rodadas depois.
+
+        **Reescrito contra o leiaute atual** (S-868): o outro lado da conta era o limiar de
+        empilhamento, que saiu com o empilhamento; ficou o mínimo **medido** da aba, com a fonte
+        que esta corrida tem."""
         janela = self.janela_na(pele.PELES[0])
         galeria = janela.galeria  # type: ignore[attr-defined]
         cromo_da_aba = janela.divisor.sizes()[0] - galeria.width()  # type: ignore[attr-defined]
-        rolagem = galeria.rolagem
-        cromo_da_rolagem = 2 * rolagem.frameWidth() + rolagem.verticalScrollBar().sizeHint().width()
         self.assertGreaterEqual(
-            qt_janela.LARGURA_PREFERIDA_DAS_ABAS - cromo_da_aba - cromo_da_rolagem,
-            galeria_declarada.LARGURA_MINIMA_DA_GALERIA,
-            "a largura preferida das abas deixou de caber as duas colunas da Galeria",
+            qt_janela.LARGURA_PREFERIDA_DAS_ABAS - cromo_da_aba,
+            galeria.minimumSizeHint().width(),
+            "a largura preferida das abas deixou de caber a Galeria",
         )
 
 
@@ -845,47 +792,6 @@ class RodapeNaoEPisoDeJanelaTests(unittest.TestCase):
         janela.resize(*TELA_MINIMA)  # type: ignore[attr-defined]
         self.app.processEvents()
         self.assertEqual(sem_frase, janela.width(), "a frase longa recusou o tamanho pedido")  # type: ignore[attr-defined]
-
-    @unittest.skip(RODAPE_DO_MAIN)
-    def test_a_zona_declarada_cabe_na_folga_do_rodape_nas_tres_peles(self) -> None:
-        """**A invariante que a S-552 nomeia, e que ninguém afirmava** (sexta rodada).
-
-        *"Ele não sobe o piso da janela"* é o que faz de `LARGURA_MINIMA_DA_MENSAGEM` um teto e não
-        uma exigência nova, e era uma frase de spec sem guarda: a constante podia ir a 900 e só um
-        teste de elisão caía. Medido na janela de verdade a 1024x768, o resto do rodapé pede **443
-        px** (clássica e "Foco") e **431** ("Fita"); o piso do divisor é **955** e **945**. A zona
-        pode pedir até **512** px (514 na "Fita") antes de o piso subir, e ela pede 100.
-
-        **Os dois lados são medidos e não cravados**, e é o que faz a guarda valer nas duas ordens
-        de execução. O resto do rodapé sai de encolher a zona a 1 px e descontar esse pixel -- quem
-        o compõe, as três outras zonas mais a barra e o botão, muda de largura com a fonte e com a
-        densidade --, e o piso do divisor é o do arquivo rodando sozinho (1314 px) ou o da suíte
-        inteira (1000), conforme o refluxo da fila de botões do PDF já tenha acontecido. Sob
-        `offscreen` o resto é 693 px, e um literal de qualquer um dos dois lados seria uma guarda
-        que acusa em metade das corridas.
-        """
-        for uma in pele.PELES:
-            with self.subTest(pele=uma.nome):
-                janela = self.janela_na(uma)
-                zona = janela.rodape._lbl_mensagem  # type: ignore[attr-defined]
-                declarado = zona.minimumWidth()
-                self.assertEqual(estado_do_rodape.LARGURA_MINIMA_DA_MENSAGEM, declarado)
-                piso_com_a_zona = janela.minimumSizeHint().width()  # type: ignore[attr-defined]
-                zona.setMinimumWidth(1)
-                self.app.processEvents()
-                resto = janela.rodape.minimumSizeHint().width() - 1  # type: ignore[attr-defined]
-                self.assertEqual(
-                    piso_com_a_zona,
-                    janela.minimumSizeHint().width(),  # type: ignore[attr-defined]
-                    "a zona declarada já está segurando o piso da janela",
-                )
-                zona.setMinimumWidth(declarado)
-                self.app.processEvents()
-                self.assertLess(
-                    resto + estado_do_rodape.LARGURA_MINIMA_DA_MENSAGEM,
-                    janela.divisor.minimumSizeHint().width(),  # type: ignore[attr-defined]
-                    "o rodapé com a zona declarada passou a pedir mais que o divisor",
-                )
 
     def test_a_troca_de_pele_refaz_a_elisao(self) -> None:
         """A pele nova traz outra fonte, e o que cabia na anterior pode não caber mais (S-393).

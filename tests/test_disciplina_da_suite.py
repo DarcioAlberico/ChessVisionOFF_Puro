@@ -290,6 +290,104 @@ class PuloQueNinguemContaTests(unittest.TestCase):
         self.assertIn("addopts", pyproject, "o `pyproject` perdeu a configuração do pytest")
         self.assertIn('"-ra"', pyproject, "sem `-ra` o motivo de cada pulo não é impresso")
 
+    def test_nenhum_teste_pula_sem_condicao(self) -> None:
+        """**O `-ra` mostra o pulo, e não o impede** (S-868).
+
+        Vinte e seis testes ficaram atrás de `@unittest.skip` desde o merge do religa, com o motivo
+        impresso em toda rodada, e continuaram contando como testes: a Galeria, o rodapé e a folha
+        de estilo do `main` que o merge largou. Pulo com condição -- falta o PyQt, falta o arquivo
+        não versionado -- é legítimo; pulo sem condição é um teste que não existe. Ou ele mede o
+        leiaute de hoje, ou sai.
+        """
+        achados = [
+            f"{caminho.name}:{linha}"
+            for caminho in MODULOS
+            for linha in pulos_incondicionais(caminho.read_text(encoding="utf-8"))
+        ]
+        self.assertEqual([], achados, "teste desligado sem condição: reescreva contra o leiaute atual ou apague")
+
+    def test_a_leitura_de_pulos_acha_e_deixa_de_achar(self) -> None:
+        """O controle, contra exemplos literais: sem ele, uma leitura que não reconhecesse forma
+        nenhuma deixaria a guarda de cima verde para sempre."""
+        desligados = textwrap.dedent(
+            """
+            import unittest, pytest
+
+            @unittest.skip("motivo")
+            class Um(unittest.TestCase):
+                @unittest.skip("motivo")
+                def test_a(self): ...
+
+                def test_b(self):
+                    self.skipTest("motivo")
+
+            @pytest.mark.skip(reason="motivo")
+            def test_c(): ...
+
+            @pytest.mark.skip
+            def test_d(): ...
+
+            def test_e():
+                raise unittest.SkipTest("motivo")
+            """
+        )
+        self.assertEqual([4, 6, 10, 12, 15, 19], pulos_incondicionais(desligados))
+        condicionais = textwrap.dedent(
+            """
+            import unittest, pytest
+
+            @unittest.skipUnless(TEM, "motivo")
+            class Um(unittest.TestCase):
+                @unittest.skipIf(FALTA, "motivo")
+                def test_a(self): ...
+
+                def test_b(self):
+                    if not ARQUIVO.exists():
+                        self.skipTest("motivo")
+
+            @pytest.mark.skipif(FALTA, reason="motivo")
+            def test_c(): ...
+
+            def _familia():
+                for candidata in CANDIDATAS:
+                    return candidata
+                raise unittest.SkipTest("motivo")
+            """
+        )
+        self.assertEqual([], pulos_incondicionais(condicionais))
+
+
+def _e_pulo(no: ast.expr) -> bool:
+    """`unittest.skip`, `pytest.mark.skip`, `x.skipTest` ou `unittest.SkipTest` -- chamados ou não."""
+    alvo = no.func if isinstance(no, ast.Call) else no
+    return isinstance(alvo, ast.Attribute) and alvo.attr in {"skip", "skipTest", "SkipTest"}
+
+
+def pulos_incondicionais(fonte: str) -> list[int]:
+    """As linhas em que um teste é desligado sem condição: decorador `skip` (e não `skipIf`/
+    `skipUnless`/`skipif`), ou `skipTest`/`raise SkipTest` direto no corpo da função, fora de
+    qualquer `if`. Por `ast`: o texto deste arquivo cita as três formas, e um `grep` se acharia."""
+    linhas: list[int] = []
+    for no in ast.walk(ast.parse(fonte)):
+        if not isinstance(no, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            continue
+        linhas += [decorador.lineno for decorador in no.decorator_list if _e_pulo(decorador)]
+        if isinstance(no, ast.ClassDef):
+            continue
+        for comando in no.body:
+            if isinstance(comando, ast.Expr) and _e_pulo(comando.value):
+                linhas.append(comando.lineno)
+            elif isinstance(comando, ast.Raise) and comando.exc is not None and _e_pulo(comando.exc):
+                linhas.append(comando.lineno)
+            elif not isinstance(comando, _SEM_DESVIO):
+                # Um `if`, um laço ou um `return` antes: o pulo que vem depois já é condicional.
+                break
+    return sorted(linhas)
+
+
+_SEM_DESVIO = (ast.Expr, ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Import, ast.ImportFrom, ast.Pass)
+"""Os comandos que não desviam o fluxo: um pulo depois só deles roda sempre."""
+
 
 # --------------------------------------------------------- o que a suíte estraga fora dela
 

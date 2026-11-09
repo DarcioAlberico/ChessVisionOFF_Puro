@@ -565,8 +565,9 @@ class BarraQueSeLeTests(unittest.TestCase):
         for registro in barra_da_sala.principais(com_motor=True):
             # `estudo_do_diagrama` fica de fora: era o primário, e neutro desde o merge do religa
             # ele passaria a ser o representante do neutro -- e é ele que abre a fila com o foco,
-            # que na folha da F9 muda o tamanho do botão (o defeito que `test_qt_tema.FOLHA_DO_MAIN`
-            # registra). O neutro medido continua sendo o de antes do merge.
+            # que na folha da F9 mudava o tamanho do botão (o defeito que
+            # `test_qt_tema.MarcadoEFocoNaFolhaTests` cobra desde a S-556). O neutro medido continua
+            # sendo o de antes do merge.
             if registro.acao == "estudo_do_diagrama":
                 continue
             if registro.icone and registro.papel not in papeis:
