@@ -14,6 +14,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 import numpy as np
 
@@ -697,3 +698,46 @@ class MargemNoCorpoTests(unittest.TestCase):
         self.assertEqual(textos[-1], "Position after: 20...Qxd5")
         self.assertNotIn("Chapter 3 - folha 2", textos)
         self.assertEqual((lida.cabecalho and lida.cabecalho.texto, lida.rodape and lida.rodape.texto), ("O LIVRO", "2"))
+
+
+class OpcoesDeLeituraTests(unittest.TestCase):
+    """As chaves de `ler_pagina` descem num valor só, e as correções do glifo são uma lista de passos (S-855, S-860)."""
+
+    def test_as_chaves_de_ler_pagina_chegam_ao_glifo_num_valor_so(self) -> None:
+        """Uma chave esquecida na montagem da `OpcoesDoGlifo` voltaria ao padrão em silêncio: aqui ela quebra."""
+        import fitz
+
+        with TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "livro.pdf"
+            doc = fitz.open()
+            doc.new_page(width=300.0, height=400.0).insert_text((40.0, 60.0), "uma linha de prosa", fontsize=11)
+            doc.save(str(caminho))
+            doc.close()
+            with (
+                mock.patch.object(leitor, "linhas_do_glifo", return_value=([], [])) as glifo,
+                mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=[]),
+            ):
+                leitor.ler_pagina(
+                    caminho, 0, dpi=110, motor="glifo", reconhecedor=object(), colados="nunca", traco=False,
+                    numeros=False, juntar_lance=False, marcar_negrito=False, marcar_italico=False,
+                )
+
+        self.assertEqual(glifo.call_args.kwargs["opcoes"], leitor.OpcoesDoGlifo(colados="nunca", traco=False, numeros=False, juntar_lance=False))
+        self.assertEqual(glifo.call_args.kwargs["dpi"], 110)
+
+    def test_o_dicionario_e_o_ultimo_passo_e_so_entra_com_lexico(self) -> None:
+        """As correções de geometria mudam a palavra que o léxico julga: ele julga o texto que sai, por último."""
+        sem_geometria = leitor.OpcoesDoGlifo(traco=False, marca_fina=False, empilhados=False, italico=False, numeros=False)
+        self.assertEqual(sem_geometria.passos(frozenset()), ())
+        self.assertEqual(len(leitor.OpcoesDoGlifo().passos(frozenset())), 5)
+
+        visto: list[str] = []
+        linha = leitor.LinhaDoGlifo(np.zeros((1, 1)), [Caixa(0, 0, 1, 1)], {0: "a"}, np.zeros((1, 1)), 10, None)
+        so_numeros = leitor.OpcoesDoGlifo(traco=False, marca_fina=False, empilhados=False, italico=False)
+        with (
+            mock.patch.object(leitor._dicionario, "corrigir", side_effect=lambda lidos, *_: visto.append("lexico") or lidos),
+            mock.patch.object(leitor._numero, "corrigir", side_effect=lambda lidos, *_: visto.append("numeros") or lidos),
+        ):
+            for passo in so_numeros.passos(frozenset({"x"})):
+                passo([("a", 1.0)], linha)
+        self.assertEqual(visto, ["numeros", "lexico"])

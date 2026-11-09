@@ -462,15 +462,19 @@ class _Classificador:
         return [("a", 0.5 + i / 1000) for i in range(len(recortes))]
 
 
+SEM_CORRECAO = leitor.OpcoesDoGlifo(
+    colados="nunca", caixa_alta=False, traco=False, marca_fina=False, empilhados=False, italico=False,
+    dicionario=False, numeros=False,
+)
+"""O glifo sem nenhuma das correções: só a segmentação e o classificador (S-860)."""
+
+
 class ConfiancaPorCaractereTests(unittest.TestCase):
     def test_um_numero_por_caractere_que_nao_e_espaco(self) -> None:
         imagem = np.full((200, 800, 3), 255, dtype=np.uint8)
         cv2.putText(imagem, "white wins a pawn", (40, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 2, cv2.LINE_AA)
         reconhecedor = mock.Mock(classifier=_Classificador(), _leitor_de_linha=None)
-        cruas, _ = leitor.linhas_do_glifo(
-            imagem, reconhecedor=reconhecedor, colados="nunca", caixa_alta=False, traco=False, marca_fina=False,
-            empilhados=False, italico=False, dicionario=False, numeros=False,
-        )
+        cruas, _ = leitor.linhas_do_glifo(imagem, reconhecedor=reconhecedor, opcoes=SEM_CORRECAO)
         self.assertTrue(cruas)
         self.assertEqual(len(cruas[0].confiancas), len("".join(cruas[0].texto.split())))
 

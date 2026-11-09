@@ -2167,6 +2167,10 @@ valor saíram de `problemas`; `PaginaLida.unidade` virou `Unidade`, `Token.orige
 `leitura_de_linha`). **Fica de fora** a `OpcoesDeLeitura`: `_ler_pagina_do_livro` mora em `text/leitor.py`,
 que a S-836 tinha aberto ao mesmo tempo.
 
+**Entregue** (2026-11-09, com a S-860): a `OpcoesDeLeitura` congelada é o que `_ler_pagina_do_livro` recebe
+no lugar dos 23 parâmetros nomeados, com as nove chaves do glifo numa `OpcoesDoGlifo` dentro dela; quem a
+monta é `ler_pagina`, uma vez, e a assinatura pública dela não mudou.
+
 ## S-856 · Exceções estreitas no texto e no perfil de cor
 
 **Problema** (confirmado por leitura). `ocr_caption._read_band` (`ocr_caption.py:233-237`) devolve `[]`
@@ -2393,6 +2397,19 @@ comparados byte a byte depois.
 
 **Aceite.** A caracterização passa; as duas abaixo de complexidade 15. Coordenado com as Fases 100 a 107
 (seção da Fase 118).
+
+**Entregue** (2026-11-09): `_ler_pagina_do_livro` (complexidade 72) ficou com 3, e chama `_extrair_folha`
+(a `_Folha`, com o `_EstiloDaCamada` lido uma vez), `_diagramas`, `_corpo_camada` ou `_corpo_glifo` →
+`_guarda_e_reserva` (com `_camada_na_folha`) / `_prosa_de_outro_leitor` (com `_prosa_da_camada` e
+`_prosa_do_leitor_de_linha`), todos devolvendo `LeituraDoCorpo`, `anotar_estilo` e `_montar_pagina`;
+`linhas_do_glifo` (35) ficou com 7, e as correções são `PassoDoGlifo` montados uma vez por folha em
+`OpcoesDoGlifo.passos` (o dicionário por último, e só com léxico). Nenhuma das funções novas passa de 8.
+**Divergência:** a caracterização não foi o ouro-dev, e sim a da S-847/S-851: 28 leituras reais (7 folhas de
+6 livros; `auto`, `camada`, `camada_prosa` com reserva e `fusao` com o Tesseract desta máquina), 57 leituras
+com cada chave desligada uma a uma (3 folhas) e 2 em modo bloco, todas iguais byte a byte antes e depois.
+`linhas_do_glifo` passou a receber `opcoes: OpcoesDoGlifo` no lugar das nove chaves soltas (os três testes
+que a chamavam foram reescritos); `ler_pagina` manteve a assinatura, porque os scripts da régua a chamam com
+`**variante`, e lê os padrões de `PADRAO_DE_LEITURA`.
 
 ## S-861 · Partir `problemas` e `fundir`
 
