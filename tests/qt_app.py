@@ -304,6 +304,9 @@ class TarefaAdiada:
     def isRunning(self) -> bool:  # noqa: N802 - o nome é o do `QThread`
         return self._rodando
 
+    def deleteLater(self) -> None:  # noqa: N802 - o nome é o do `QObject`
+        """`manter_viva` solta a tarefa por aqui no `finished`; sem thread não há o que apagar."""
+
     def wait(self, _ms: int = 0) -> bool:
         return not self._rodando
 

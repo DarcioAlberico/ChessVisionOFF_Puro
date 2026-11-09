@@ -1235,6 +1235,8 @@ afirmar que a edição ficou.
 
 **Aceite.** O teste passa.
 
+**Entregue** (2026-11-09): a pergunta mora em `ui/editor_model.touched(item, fen)` (a que `unsaved_hand_edit` já fazia por dentro) e `DiagramEditorModel.touched_at(k)`, sem pilha; `aplicar` a faz só quando `items[k]` do Resultado ainda é o item lido. Além da letra, o rodapé diz «N diagrama(s) já corrigido(s) à mão ficaram como estavam», e a vez escolhida sem mexer em peça também conta como mexer. A correção desfeita antes de o índice chegar deixa o livro entrar (S-888). A `TarefaAdiada` ganhou `deleteLater`, que o `manter_viva` chama no `finished`.
+
 ## S-891 · As setas andam na direção da tela com o tabuleiro virado
 
 **Problema** (confirmado por script). `qt/tabuleiro_editavel.py:237-247` e `ui/teclado_do_tabuleiro.py:79`:

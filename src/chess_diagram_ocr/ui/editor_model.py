@@ -121,10 +121,19 @@ class DiagramState:
     net_corrected: bool = False
 
 
+def touched(item: RecognizedDiagram, fen: str) -> bool:
+    """Se o que está no editor já não é a leitura deste diagrama tal como chegou. Pura.
+
+    Uma peça arrastada, uma FEN diferente da lida (à mão ou adotada de outro leitor) ou a vez
+    escolhida pela pessoa. Não consulta a pilha: desde a S-888 desfazer devolve também
+    `edited_by_hand` e a procedência da vez, e a correção desfeita deixa de contar.
+    """
+    return item.edited_by_hand or fen != item.placement or item.side_to_move_source == "manual"
+
+
 def unsaved_hand_edit(item: RecognizedDiagram, fen: str, side: str) -> bool:
     """Se este diagrama tem correção à mão que ainda não foi gravada (A7). Pura."""
-    edited = item.edited_by_hand or fen != item.placement or item.side_to_move_source == "manual"
-    if not edited:
+    if not touched(item, fen):
         return False
     return item.saved_placement != fen or (item.saved_side is not None and item.saved_side != side)
 
@@ -330,6 +339,16 @@ class DiagramEditorModel:
             book_squares=self.book_squares.get(idx),
             net_corrected=idx in self.net_corrected,
         )
+
+    def touched_at(self, index: int) -> bool:
+        """Se o diagrama `index` já não está como foi lido (`touched`). Fora da faixa, `False`.
+
+        É a pergunta de quem adota algo em segundo plano por cima do editor: o PGN do livro que
+        chega depois de a pessoa ter corrigido o diagrama não pode trocar a correção (S-894).
+        """
+        if not (0 <= index < len(self.items) and index < len(self.fen_edits)):
+            return False
+        return touched(self.items[index], self.fen_edits[index])
 
     def restore(self, state: DiagramState, index: int | None = None) -> bool:
         """Repõe um estado da pilha, procedência inclusive. Devolve se o índice existe.
