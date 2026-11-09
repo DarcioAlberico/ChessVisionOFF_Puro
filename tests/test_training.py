@@ -485,6 +485,64 @@ class SplitAssignmentTests(unittest.TestCase):
         )
 
 
+class IdentidadeDoLivroNoSplitTests(unittest.TestCase):
+    """S-844: o mesmo livro sob dois nomes de arquivo é um livro só para o split.
+
+    O acervo guarda o mesmo PDF com nomes diferentes. A mesma página reextraída com recorte
+    deslocado escapa do guarda de imagem (dHash acima de 3), e o agrupamento por origem
+    comparava o **nome** do PDF: as duas amostras sorteavam split cada uma pelo seu nome, e o
+    mesmo diagrama impresso podia cair no treino e no teste. A identidade do livro é o hash do
+    conteúdo (D2 da solidez, opção a).
+    """
+
+    CABECALHO = "filename,fen,side_to_move,source_pdf,source_page,source_diagram"
+
+    def _cenario(self, root: Path, *, mesmo_conteudo: bool) -> tuple[dict[str, str], dict[str, str]]:
+        import numpy as np
+
+        from chess_diagram_ocr.audit import dhash, hamming_distance
+        from chess_diagram_ocr.splits import assign_split
+        from chess_diagram_ocr.training import resolve_splits
+
+        pdfs = root / "PDF"
+        pdfs.mkdir()
+        (pdfs / "Livro.pdf").write_bytes(b"%PDF-1.4 o mesmo livro\n")
+        (pdfs / "Livro - Copia.pdf").write_bytes(b"%PDF-1.4 o mesmo livro\n" if mesmo_conteudo else b"%PDF-1.4 outro\n")
+
+        # Duas amostras que, pelo nome, sorteiam splits diferentes: é o que a reextração faz.
+        primeiro = "board_00000.png"
+        segundo = next(
+            f"board_{i:05d}.png" for i in range(1, 100) if assign_split(f"board_{i:05d}.png") != assign_split(primeiro)
+        )
+
+        samples = root / "samples"
+        samples.mkdir()
+        pagina = np.random.default_rng(7).integers(0, 256, (212, 212, 3), dtype=np.uint8)
+        recorte, deslocado = pagina[:200, :200], pagina[6:206, 6:206]
+        self.assertGreater(hamming_distance(dhash(recorte), dhash(deslocado)), 3, "o guarda de imagem já os juntaria")
+        write_image(samples / primeiro, recorte)
+        write_image(samples / segundo, deslocado)
+
+        csv_path = root / "labels.csv"
+        csv_path.write_text(
+            f"{self.CABECALHO}\n{primeiro},{LEGAL},w,Livro.pdf,41,1\n{segundo},{LEGAL},w,Livro - Copia.pdf,41,1\n",
+            encoding="utf-8",
+        )
+        mapa = resolve_splits(csv_path, samples, root / "splits.csv", pdf_dir=pdfs)
+        return {"primeiro": mapa[primeiro], "segundo": mapa[segundo]}, {"primeiro": primeiro, "segundo": segundo}
+
+    def test_o_mesmo_pdf_sob_dois_nomes_cai_de_um_lado_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            splits, nomes = self._cenario(Path(tmp), mesmo_conteudo=True)
+        self.assertEqual(splits["primeiro"], splits["segundo"], f"o mesmo diagrama impresso cruzou split: {nomes}")
+
+    def test_livros_diferentes_continuam_sorteando_cada_um_o_seu(self) -> None:
+        """O contraste: com conteúdos distintos nada se junta, e o par segue o sorteio do nome."""
+        with tempfile.TemporaryDirectory() as tmp:
+            splits, _nomes = self._cenario(Path(tmp), mesmo_conteudo=False)
+        self.assertNotEqual(splits["primeiro"], splits["segundo"])
+
+
 def _tiny_dataset(root: Path, boards: int = 6) -> tuple[Path, Path, Path]:
     """Dataset sintético mínimo: `boards` tabuleiros, os dois últimos em `val`.
 

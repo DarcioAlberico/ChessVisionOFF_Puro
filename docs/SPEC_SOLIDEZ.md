@@ -1817,6 +1817,13 @@ dois caem no mesmo grupo.
 **Aceite.** O teste passa; uma contagem no acervo real diz quantas amostras mudariam de partição, e a
 mudança é decidida com o dono antes de gravar o `splits.csv`.
 
+**Entregue** (2026-11-09): opção (a). `training.identidade_dos_livros` faz o hash na fronteira (o
+`proveniencia.hash_do_arquivo` que já existia), `groups_by_origin` recebe o mapa, e `groups_by_book`
+saiu, com os seus testes. No acervo real os 58 PDFs de `PDF/` têm 58 conteúdos distintos (os 22 citados
+no `labels.csv` também): **nenhuma** amostra muda de partição e o `splits.csv` não foi regravado. A
+opção (a) não alcança a cópia `_hq` nem a tradução, que são outros bytes; para elas seria a (b). O
+`split_leaks` da auditoria continua comparando pelo nome.
+
 ## S-845 · `torch.load` só com `weights_only`
 
 **Problema** (confirmado por leitura; o risco é teórico). `checkpoint.py:110-112`: o recurso de `TypeError`

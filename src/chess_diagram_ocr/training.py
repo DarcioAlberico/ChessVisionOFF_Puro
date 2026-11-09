@@ -37,7 +37,7 @@ from .audit import duplicate_groups_touching, read_label_rows
 from .augment import DEFAULT_AUGMENT, AugmentConfig, build_augmentations, build_marca
 from .calibration import expected_calibration_error, fit_temperature, negative_log_likelihood
 from .checkpoint import Checkpoint, check_compatible, git_commit, load_checkpoint, save_checkpoint
-from .config import BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE, PIECE_CLASSES, VAL_BOARD_CACHE_SIZE
+from .config import BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE, DEFAULT_PDF_DIR, PIECE_CLASSES, VAL_BOARD_CACHE_SIZE
 from .dataset import (
     EMPTY_LABEL,
     BoardFenDataset,
@@ -50,6 +50,7 @@ from .dataset import (
 from .fen_utils import labels_from_fen
 from .labels import DatasetEntry, filenames_with_provenance, label_origins
 from .model import DEFAULT_ARCH, ArchConfig, build_model, count_parameters
+from .proveniencia import hash_do_arquivo
 from .splits import Split, ensure_splits, groups_by_origin, load_splits, save_splits, splits_hash
 
 logger = logging.getLogger(__name__)
@@ -282,6 +283,7 @@ def resolve_splits(
     splits_path: Path,
     *,
     assign_new: bool = True,
+    pdf_dir: Path = DEFAULT_PDF_DIR,
 ) -> dict[str, Split]:
     """Mapa de splits do `labels.csv`, atribuindo split às amostras novas (S-56).
 
@@ -318,7 +320,8 @@ def resolve_splits(
     # partições. O de origem vê, e é exato, mas só alcança as amostras com procedência.
     origens = label_origins(Path(csv_path))
     grupos = list(duplicate_groups_touching(Path(samples_dir), linhas, novos)) if novos else []
-    grupos += groups_by_origin(origens)
+    # S-844: o mesmo PDF sob dois nomes é um livro só; a chave de origem é o conteúdo.
+    grupos += groups_by_origin(origens, identidade_dos_livros((pdf for pdf, _p, _d in origens.values()), pdf_dir))
     # A procedência que escolhe quem o `--dedupe` mantém é a mesma que dá a chave de split ao
     # grupo (S-452). Sem passá-la aqui, os dois lados voltariam a escolher representantes
     # diferentes -- e "quem representa este grupo" tem de ter uma resposta só.
@@ -343,6 +346,31 @@ def resolve_splits(
             ", ".join(f"{quantas} para {split}" for split, quantas in sorted(distribuicao.items())) or "nenhuma",
         )
     return mapa
+
+
+def identidade_dos_livros(nomes: Iterable[str], pdf_dir: Path) -> dict[str, str]:
+    """`{source_pdf: SHA-256 do conteúdo}` dos PDFs que estão em `pdf_dir` (S-844, D2 opção a).
+
+    A fronteira em que o nome do livro vira identidade: o `labels.csv` grava o **nome** do
+    arquivo (S-19), e o acervo tem o mesmo arquivo sob nomes diferentes. Nome cujo PDF não está
+    na pasta fica de fora, e `groups_by_origin` o trata pelo nome, como antes. Custa ler os
+    PDFs citados uma vez por treino: 22 livros, 480 MB, 0,4 s nesta máquina em 2026-11-09.
+    """
+    identidades: dict[str, str] = {}
+    ausentes: set[str] = set()
+    for nome in {nome for nome in nomes if nome}:
+        conteudo = hash_do_arquivo(Path(pdf_dir) / nome)
+        if conteudo:
+            identidades[nome] = conteudo
+        else:
+            ausentes.add(nome)
+    if ausentes:
+        logger.info(
+            "%d livro(s) do labels.csv fora de %s: agrupados pelo nome, não pelo conteúdo (S-844).",
+            len(ausentes),
+            pdf_dir,
+        )
+    return identidades
 
 
 def field_pages_beside(csv_path: Path) -> set[tuple[str, int]]:
