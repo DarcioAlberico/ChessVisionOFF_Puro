@@ -57,7 +57,6 @@ from .inference import (
 from .lance_seguinte import ReparoPeloLance, apply_next_move
 from .pdf_io import get_pdf_page_count, render_pdf_page
 from .pdf_text import DiagramContext, contexts_for_pdf_page
-from .preprocess import IDENTITY, NormalizerConfig
 from .semantics import SideToMove, compose_fen, infer_side_to_move
 
 logger = logging.getLogger(__name__)
@@ -554,13 +553,6 @@ class RecognitionOptions:
     max_boards: int = DEFAULT_MAX_BOARDS
     dpi: int = 220
 
-    normalizer: NormalizerConfig = IDENTITY
-    """Normalização do tabuleiro antes do corte em casas (S-39).
-
-    Padrão `IDENTITY`, que é o pipeline anterior. Ligar etapas aqui muda o domínio que o
-    modelo vê, e um checkpoint treinado sem elas não é o mesmo modelo -- ver
-    `NormalizerConfig.version`."""
-
     refine_detected_boards: bool = False
     next_move: bool = True
     """C11 do ciclo 2: o primeiro lance impresso sob o diagrama é jogado na posição lida; se
@@ -861,7 +853,6 @@ class OcrService:
                 orientation=options.orientation,
                 max_boards=options.max_boards,
                 dpi=options.dpi,
-                normalizer=options.normalizer,
                 refine_detected_boards=options.refine_detected_boards,
                 fallback_to_full_image=True,
             ),
@@ -908,7 +899,6 @@ class OcrService:
                     model,
                     device,
                     mode=options.orientation,  # type: ignore[arg-type]
-                    normalizer=options.normalizer,
                     # Passo C10: as coordenadas da borda, quando a camada de texto as tem. O
                     # campo é de `DiagramContext`; sem contexto (imagem solta), não há borda.
                     coordinates=context.coordinates if context is not None else None,

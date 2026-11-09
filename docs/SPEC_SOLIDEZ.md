@@ -1555,6 +1555,8 @@ fecha pelo `grep` de `NormalizerConfig` sem resultado e a suíte verde.
 medição: o commit remede, e os números voltam idênticos (o normalizador era identidade). Vem antes da S-833,
 que deixa de precisar passar `normalizer=`.
 
+**Entregue** (2026-11-09): saiu o `preprocess.py` inteiro, e não só o normalizador: o caminho de scan (`ScanConfig`, `preparar_pagina_de_scan`, `pagina_e_scan`, `binarizar_pagina`, `reamostrar_pagina`) não ganhou chamador e saiu com ele, junto com `tests/test_preprocess.py` e a linha do README. A medição que o justificava continua na SPEC_SUITE e na EXPERIMENTS_FASE7. O campo com o modelo de produção voltou idêntico à linha de base.
+
 ## S-833 · A exportação reconhece pela mesma função que os relatórios medem
 
 **Problema** (confirmado por leitura). Os relatórios de campo medem `OcrService.recognize_page`

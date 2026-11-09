@@ -1188,7 +1188,6 @@ src/chess_diagram_ocr/
   pdf_to_pgn.py         varredura de PDF e exportacao PGN
   pgn_do_livro.py       o PGN que vem com o livro: leitura tolerante e o indice da arvore por lance e por posicao (S-585)
   placar.py             o placar do treino: por livro e por sessao, em tres baldes (S-541)
-  preprocess.py         o recorte do tabuleiro virando as 64 casas que o modelo le, e o caminho de pagina de scan (S-547)
   procedencias.py       de onde veio cada amostra, e o que isso permite fazer com ela
   processo_de_trabalho.py  o filho que rasteriza, le o CSV e detecta, porque o PyMuPDF e o Python seguram o GIL
   provenance.py         o registro de procedencia gravado ao lado de cada rotulo
