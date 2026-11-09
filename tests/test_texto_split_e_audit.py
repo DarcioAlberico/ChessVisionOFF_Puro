@@ -202,3 +202,28 @@ class CorridaComLivroTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class ReceitaDaCorridaTests(unittest.TestCase):
+    """`cvoff-texto-train`: o que a linha de comando pede vence a receita, e só onde pede (S-886)."""
+
+    def test_sem_pedido_vale_a_receita_e_o_pedido_vence_campo_a_campo(self) -> None:
+        from chess_diagram_ocr.cli import texto_train
+        from chess_diagram_ocr.text import treino as tr
+
+        receita = texto_train._receita(texto_train.parse_args(["--device", "cpu"]))
+        self.assertEqual(
+            (receita.device, receita.epocas, receita.lote, receita.taxa, receita.paciencia),
+            ("cpu", tr.EPOCAS_PADRAO, tr.LOTE_PADRAO, tr.TAXA_PADRAO, tr.PACIENCIA_PADRAO),
+        )
+        pedida = texto_train._receita(
+            texto_train.parse_args(["--device", "cpu", "--epocas", "3", "--taxa", "0.5", "--paciencia", "1"])
+        )
+        self.assertEqual(
+            (pedida.epocas, pedida.lote, pedida.taxa, pedida.paciencia), (3, tr.LOTE_PADRAO, 0.5, 1)
+        )
+
+    def test_sem_device_pedido_a_corrida_escolhe_um_que_existe(self) -> None:
+        from chess_diagram_ocr.cli import texto_train
+
+        self.assertIn(texto_train._receita(texto_train.parse_args([])).device, ("cuda", "cpu"))

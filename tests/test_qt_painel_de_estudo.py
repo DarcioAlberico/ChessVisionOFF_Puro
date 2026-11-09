@@ -1514,3 +1514,90 @@ class SaidasQueNaoTinhamChamadorTests(unittest.TestCase):
             with self.subTest(comando=comando):
                 metodo = sala_declarada.COMANDOS_DA_ABA[comando]
                 self.assertTrue(callable(getattr(self.painel, metodo)))
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class LinhaImpressaNaArvoreTests(unittest.TestCase):
+    """S-886: `Livro ▸ Jogar a linha do livro` -- o que entra na árvore e o que a sala diz."""
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+        self.impressa = ""
+
+    def sala(self, *, ancorada: bool = True) -> qt_estudo.PainelDeEstudo:
+        painel = qt_estudo.PainelDeEstudo(
+            pasta_inicial=self.pasta,
+            pasta_de_estudos=self.pasta,
+            pasta_de_treino=self.pasta,
+            caminho_do_cache=self.pasta / "posicoes.sqlite",
+            linha_impressa=lambda _ancora: self.impressa,
+        )
+        self.addCleanup(descartar, painel)
+        if ancorada:
+            painel.abrir_livro("livro.pdf")
+            ancora = Ancora(documento="livro.pdf", pagina=3, diagrama=0)
+            painel._abrir(PosicaoDeEstudo(ancora=ancora), origem="Base: teste", status="aberto")
+        return painel
+
+    def _jogar(self, painel: qt_estudo.PainelDeEstudo, impressa: str) -> str:
+        self.impressa = impressa
+        metodo = sala_declarada.COMANDOS_DA_ABA["linha_do_livro"]
+        getattr(painel, metodo)()
+        return painel.lbl_status.text()
+
+    def _principal(self, painel: qt_estudo.PainelDeEstudo) -> list[str]:
+        return [no.san() for no in painel.estudo.raiz.mainline()]
+
+    def test_a_linha_que_fecha_entra_inteira_com_a_procedencia(self) -> None:
+        painel = self.sala()
+        status = self._jogar(painel, " 1.e4 e5 2.Nf3 ")
+        self.assertEqual(self._principal(painel), ["e4", "e5", "Nf3"])
+        self.assertEqual(painel.estudo.raiz.variations[0].starting_comment, "linha impressa no livro")
+        self.assertIs(painel.estudo.no, painel.estudo.raiz.end(), "a sala fica no último lance da linha")
+        self.assertIn("3 lance(s) da linha impressa entraram na árvore", status)
+        self.assertTrue(painel.tem_trabalho_por_gravar())
+
+    def test_a_linha_que_para_diz_em_que_lance_parou(self) -> None:
+        painel = self.sala()
+        status = self._jogar(painel, "1.e4 e5 2.Ke3 Nc6")
+        self.assertEqual(self._principal(painel), ["e4", "e5"])
+        self.assertIn("2 lance(s) entraram; a linha parou em «2.Ke3»", status)
+
+    def test_a_linha_entra_a_partir_do_lance_corrente_e_nao_se_duplica(self) -> None:
+        painel = self.sala()
+        painel.push_move(chess.Move.from_uci("d2d4"))
+        self._jogar(painel, "d5 2.c4")
+        self._jogar(painel, "d5 2.c4")
+        self.assertEqual(self._principal(painel), ["d4", "d5", "c4"])
+        primeiro_do_livro = painel.estudo.raiz.variations[0].variations[0]
+        self.assertEqual(len(painel.estudo.raiz.variations[0].variations), 1, "apertar de novo não abre variante")
+        self.assertEqual(primeiro_do_livro.starting_comment, "linha impressa no livro")
+        self.assertEqual(painel.estudo.raiz.variations[0].starting_comment, "", "o lance de quem estuda fica sem marca")
+
+    def test_a_marca_de_procedencia_nao_apaga_o_comentario_que_ja_havia(self) -> None:
+        painel = self.sala()
+        self._jogar(painel, "1.e4")
+        painel.estudo.raiz.variations[0].starting_comment = "o meu"
+        painel.estudo.no = painel.estudo.raiz
+        self._jogar(painel, "1.e4 c5")
+        self.assertEqual(painel.estudo.raiz.variations[0].starting_comment, "o meu")
+        self.assertEqual(self._principal(painel), ["e4", "c5"])
+
+    def test_nada_entra_quando_nao_ha_linha_ou_nada_fecha(self) -> None:
+        painel = self.sala()
+        casos = [
+            ("   ", "Não há linha lida para este diagrama"),
+            ("Ke2?? Qh5", "Nada da linha impressa fechou"),
+        ]
+        for impressa, frase in casos:
+            with self.subTest(impressa=impressa):
+                self.assertIn(frase, self._jogar(painel, impressa))
+                self.assertEqual(self._principal(painel), [])
+                self.assertFalse(painel.tem_trabalho_por_gravar())
+
+    def test_estudo_sem_diagrama_nao_tem_linha_impressa(self) -> None:
+        painel = self.sala(ancorada=False)
+        self.assertIn("não veio de um diagrama do livro", self._jogar(painel, "1.e4"))
+        self.assertEqual(self._principal(painel), [])

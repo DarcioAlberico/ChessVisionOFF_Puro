@@ -2851,6 +2851,22 @@ o crapper da S-801 é a medida.
 
 **Aceite.** As nove abaixo de CRAP 30 no `crap.json` da S-801.
 
+**Entregue** (2026-11-09): a cobertura foi remedida com a suíte inteira sob `coverage` (16 pedaços
+combinados, `src/` de `d1d1f364`), e a lista de hoje não é a da spec. Das nove, três já estavam abaixo
+de 30: `_repovoar` (cobertura 80%, pelos testes da S-892), `linhas_do_glifo` (dividida na S-860, CRAP
+7) e `app_pyqt.selftest`, que mora fora de `src/`, o crapper não mede, e já é exercitado em
+`tests/test_app_pyqt.py`. As seis restantes ganharam teste de comportamento e chegaram a 100% de
+cobertura, CRAP igual à complexidade: `dialogos_do_produto` 15 e `_apelidos` 12 (as três sabotagens
+do ciclo 13 num pacote de brinquedo, e a varredura conferida contra a importação do `qt/` de
+verdade), `tabela_de_solucoes` 19 (uma folha em tabela montada com bbox), `jogar_a_linha_do_livro`
+13, `procurar_por_nome` 11 (e `_repovoar` 16) e `_lote_terminou` 11 (a thread da varredura rodando
+na hora). Cada teste novo foi conferido por sabotagem: doze trocas no `src/`, doze reprovações.
+Nenhuma função foi partida, e nenhum módulo do fecho de medição foi tocado. O `cli/texto_train._receita`,
+nascido da S-863 com CRAP 37,9, ganhou teste para a catraca não reprovar a regravação. Contagem,
+do `crap.json` registrado ao regravado: CRAP ≥ 10 de 580 para 536; ≥ 30 de 123 para 84; > 100 de
+40 para 25 (as 25 em `cli/`, fora do escopo deste item; a medida de antes dos testes, com o código
+de hoje, era 548, 95 e 31).
+
 ## S-895 · A guarda de órfãos enxerga módulo sem `__all__`
 
 **Problema** (confirmado por script). `tests/test_ui_orfaos.py:413-433`: `_exportados` devolve `[]` para

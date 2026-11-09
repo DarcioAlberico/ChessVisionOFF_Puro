@@ -20,7 +20,9 @@ O que só existe deste lado são as cinco coisas em que o Qt difere do Tk e que 
 
 from __future__ import annotations
 
+import threading
 import unittest
+from collections.abc import Callable
 from pathlib import Path
 
 from ambiente_de_teste import pasta_temporaria
@@ -617,3 +619,145 @@ class ArranjoDaAbaTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class _ThreadNaHora:
+    """A thread da varredura rodando **na hora**, na thread do teste: o sinal do fim chega ao slot
+    sem fila de eventos, e o teste lê a tela logo depois de `varrer()`. `antes` é o que a pessoa
+    faz entre o clique e o começo do primeiro livro."""
+
+    antes: Callable[[], None] = staticmethod(lambda: None)
+
+    def __init__(self, *, target: Callable[..., None], args: tuple[object, ...], daemon: bool) -> None:
+        self._alvo, self._args = target, args
+
+    def start(self) -> None:
+        type(self).antes()
+        self._alvo(*self._args)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class FimDaVarreduraTests(unittest.TestCase):
+    """S-886: o que a aba diz e faz quando a varredura acaba -- um livro, o lote, o erro, o cancelar."""
+
+    def setUp(self) -> None:
+        from unittest import mock
+
+        self.app = aplicacao()
+        self.pasta = pasta_temporaria(self)
+        self.addCleanup(self.app.processEvents)
+        self.aberto = self.pasta / "aberto.pdf"
+        self.indices: dict[str, object] = {}
+        _ThreadNaHora.antes = staticmethod(lambda: None)
+        # Só a `Thread` é trocada: o `Event` do cancelar continua o de verdade.
+        so_a_thread = mock.Mock(Thread=_ThreadNaHora, Event=threading.Event)
+        for alvo, falso in (("threading", so_a_thread), ("build_gallery_index", self._indexar)):
+            remendo = mock.patch.object(qt_galeria, alvo, falso)
+            remendo.start()
+            self.addCleanup(remendo.stop)
+
+    def _indexar(self, caminho: Path, *_args: object, **_kwargs: object) -> GalleryIndex:
+        resposta = self.indices[caminho.name]
+        if isinstance(resposta, Exception):
+            raise resposta
+        assert isinstance(resposta, GalleryIndex)
+        return resposta
+
+    def _indice(self, diagramas: int, *, ate: int | None = None) -> GalleryIndex:
+        from chess_diagram_ocr.gallery_scan import GalleryEntry
+
+        entradas = [GalleryEntry(page_index=i, diagram_index=0, placement="8/8/8/8/8/8/8/K6k") for i in range(diagramas)]
+        if ate is None:
+            return GalleryIndex(entries=entradas)
+        return GalleryIndex(entries=entradas, last_page_done=ate, complete=False)
+
+    def _varrer(
+        self,
+        *livros: Path,
+        antes: Callable[[qt_galeria.PainelDaGaleria], Callable[[], None]] = lambda _painel: lambda: None,
+        **kwargs: object,
+    ) -> tuple[qt_galeria.PainelDaGaleria, list[str], list[None]]:
+        from chess_diagram_ocr.ui.busy import BusyRegistry
+        from chess_diagram_ocr.ui.escopo_da_varredura import ESCOLHER, ScanScope
+
+        registro = BusyRegistry()
+        painel = qt_galeria.PainelDaGaleria(
+            service=_ServicoFalso(),  # type: ignore[arg-type]
+            pdf_path=lambda: self.aberto,
+            model_path=lambda: self.pasta / "modelo.pt",
+            max_boards=lambda: 4,
+            caminho_do_cache=self.pasta / "posicoes.sqlite",
+            pasta_da_galeria=self.pasta,
+            busy=registro,
+            perguntar_escopo_de_varredura=lambda _aberto: ScanScope(ESCOLHER, livros),
+            **kwargs,  # type: ignore[arg-type]
+        )
+        self.addCleanup(descartar, painel)
+        _ThreadNaHora.antes = staticmethod(antes(painel))
+        frases: list[str] = []
+        avisos: list[None] = []
+        painel.estado.connect(frases.append)
+        painel.anotacoes_mudaram.connect(lambda: avisos.append(None))
+        painel.varrer()
+        self.assertTrue(painel.btn_varrer.isEnabled(), "a aba volta a aceitar outra varredura")
+        self.assertFalse(painel.btn_cancelar.isEnabled())
+        self.assertFalse(registro.is_busy, "a operação longa não fica registrada depois de acabar")
+        return painel, frases, avisos
+
+    def test_o_livro_aberto_varrido_inteiro_volta_para_a_tela(self) -> None:
+        self.indices["aberto.pdf"] = self._indice(3)
+        painel, frases, avisos = self._varrer(self.aberto)
+        self.assertEqual(painel.lbl_varredura.text(), "3 diagrama(s)")
+        self.assertEqual(frases[-1], "Galeria: 3 diagrama(s) varrido(s), livro inteiro.")
+        self.assertEqual(len(painel.model), 3, "o índice novo foi carregado na aba")
+        self.assertEqual(avisos, [None], "os números das abas mudaram, e a janela é avisada")
+
+    def test_outro_livro_parcial_diz_ate_onde_foi_e_nao_troca_a_tela(self) -> None:
+        outro = self.pasta / "outro.pdf"
+        self.indices["outro.pdf"] = self._indice(2, ate=9)
+        painel, frases, _avisos = self._varrer(outro)
+        self.assertEqual(painel.lbl_varredura.text(), "2 diagrama(s) — parcial até a página 10")
+        self.assertIn("**parcial**. 2 diagrama(s) em outro.pdf até a página 10", frases[-1])
+        self.assertEqual(len(painel.model), 0, "a galeria não mostra diagramas de um livro que não está aberto")
+
+    def test_o_livro_que_falha_diz_o_erro_numa_caixa(self) -> None:
+        from unittest import mock
+
+        self.indices["aberto.pdf"] = ValueError("pdf corrompido")
+        with mock.patch.object(qt_galeria.QMessageBox, "critical") as caixa:
+            painel, _frases, _avisos = self._varrer(self.aberto)
+        self.assertEqual(painel.lbl_varredura.text(), "falhou")
+        self.assertIn("pdf corrompido", caixa.call_args.args[2])
+
+    def test_o_lote_conta_em_uma_linha_e_um_erro_nao_para_os_outros(self) -> None:
+        livros = [self.pasta / nome for nome in ("a.pdf", "b.pdf", "c.pdf")]
+        self.indices.update({"a.pdf": self._indice(4), "b.pdf": RuntimeError("quebrou"), "c.pdf": self._indice(1, ate=0)})
+        painel, frases, _avisos = self._varrer(*livros)
+        self.assertEqual(painel.lbl_varredura.text(), "2 de 3 livro(s)")
+        self.assertEqual(
+            frases[-1],
+            "Galeria: "
+            + galeria_declarada.resumo_do_lote(
+                [
+                    galeria_declarada.LivroVarrido(livros[0], indice=self._indice(4)),
+                    galeria_declarada.LivroVarrido(livros[1], erro=RuntimeError("quebrou")),
+                    galeria_declarada.LivroVarrido(livros[2], indice=self._indice(1, ate=0)),
+                ],
+                pedidos=3,
+            )
+            + ".",
+        )
+        self.assertIn("1 com erro", frases[-1])
+
+    def test_cancelar_antes_do_primeiro_livro_entrega_a_fila_cancelada(self) -> None:
+        from unittest import mock
+
+        coletor = mock.Mock()
+        painel, frases, _avisos = self._varrer(
+            self.aberto,
+            antes=lambda painel: painel.cancelar_varredura,
+            sumidouro_de_revisao=lambda: coletor,
+        )
+        self.assertEqual(painel.lbl_varredura.text(), "cancelada")
+        self.assertEqual(frases[-1], "Varredura cancelada antes do primeiro livro: nada foi lido.")
+        coletor.deliver.assert_called_once_with(cancelled=True)
