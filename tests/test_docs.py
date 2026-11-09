@@ -1274,6 +1274,55 @@ class ArquiteturaCitaTodoModuloTests(unittest.TestCase):
         self.assertEqual([], fantasmas, "A ARCHITECTURE descreve um módulo que não existe.")
 
 
+WORKFLOWS = RAIZ / ".github" / "workflows"
+
+
+class WorkflowDoCiTests(unittest.TestCase):
+    """O CI roda com o token mínimo e com ações fixadas por commit (S-885).
+
+    Sem bloco `permissions:` o `GITHUB_TOKEN` recebe o padrão do repositório em todo push, e uma
+    ação presa por tag (`@v4`) roda o que o dono da tag mover para ela amanhã. Fixar por SHA, com
+    a tag num comentário ao lado, é o que faz a ação que rodou ser a que foi lida.
+    """
+
+    USO = re.compile(r"^\s*(?:-\s+)?uses:\s*(\S+)(.*)$")
+
+    def _workflows(self) -> dict[str, str]:
+        textos = {p.name: p.read_text(encoding="utf-8") for p in sorted(WORKFLOWS.glob("*.y*ml"))}
+        self.assertTrue(textos, "não há workflow em .github/workflows/")
+        return textos
+
+    def test_todo_workflow_declara_permissao_minima_no_topo(self) -> None:
+        sem = [
+            nome
+            for nome, texto in self._workflows().items()
+            if not re.search(r"^permissions:\s*\n\s+contents:\s*read\s*$", texto, re.M)
+        ]
+        self.assertEqual([], sem, "Workflow sem `permissions: contents: read` no topo.")
+
+    def test_toda_acao_e_fixada_por_sha_com_a_tag_ao_lado(self) -> None:
+        usos = [
+            (nome, achado.group(1), achado.group(2))
+            for nome, texto in self._workflows().items()
+            for linha in texto.splitlines()
+            if (achado := self.USO.match(linha))
+        ]
+        self.assertTrue(usos, "a varredura de `uses:` deixou de achar ações.")
+        soltas = [
+            f"{nome}: {alvo}"
+            for nome, alvo, resto in usos
+            if not re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}", alvo) or not re.search(r"#\s*v\d", resto)
+        ]
+        self.assertEqual([], soltas, "Ação presa por tag, ou fixada sem a tag em comentário.")
+
+    def test_o_extra_second_opinion_e_instalado_em_algum_passo(self) -> None:
+        """O `tsoj_reader` e as dependências do clone nunca rodavam no CI."""
+        instala = any(
+            re.search(r"uv sync\b.*--extra second-opinion", texto) for texto in self._workflows().values()
+        )
+        self.assertTrue(instala, "Nenhum passo do CI instala o extra `second-opinion`.")
+
+
 CHAVES_DE_CAMINHO = ("path", "base", "dir", "diretorio", "caminho", "pasta", "arquivo")
 """Campos de `docs/metrics/*.json` que guardam caminho, e só eles (S-219).
 

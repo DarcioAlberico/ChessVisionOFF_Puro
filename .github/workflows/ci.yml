@@ -17,6 +17,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# **O token so le (S-885).** Sem este bloco o `GITHUB_TOKEN` recebe o padrao do repositorio em todo
+# push, e nenhum passo daqui escreve no GitHub: ler o codigo e guardar um artefato e tudo o que
+# ele faz. Um job que um dia precisar de mais pede no proprio bloco, e so ele.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -53,7 +59,11 @@ jobs:
       UV_PYTHON: ${{ matrix.python }}
 
     steps:
-      - uses: actions/checkout@v4
+      # **Acoes fixadas por commit, e nao por tag (S-885).** `@v4` roda o que o dono da tag mover
+      # para ela amanha; o SHA e o codigo que foi lido. A tag fica no comentario para quem atualiza:
+      # `gh api repos/<dono>/<acao>/git/ref/tags/<tag>` da o SHA (e, se o objeto for `tag`, mais
+      # um `gh api repos/<dono>/<acao>/git/tags/<sha>` chega ao commit).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # O historico inteiro, e nao o clone raso padrao (S-134). `tests/test_docs.py` tira de
           # `git log --oneline` a lista de itens entregues, para falhar quando um deles nao tem
@@ -63,7 +73,7 @@ jobs:
           fetch-depth: 0
 
       - name: Instalar uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -110,6 +120,19 @@ jobs:
         if: matrix.python != '3.13'
         run: uv run pytest -v
 
+      # **O extra `second-opinion` instalado e o leitor externo medido (S-885).** O sync acima nao
+      # o pede, e por isso o `tsoj_reader` nunca rodava aqui contra o scikit-image de verdade --
+      # so contra remendos. O clone e os 232,8 MiB de pesos continuam fora (sao de terceiro); o que
+      # roda e o que nao depende deles: a ponte do scikit-image e os testes do leitor. Numa perna
+      # so, depois da suite, para o ambiente da suite continuar o do CONTRIBUTING.
+      - name: Sincronizar com o extra second-opinion
+        if: matrix.python == '3.10'
+        run: uv sync --extra dev --extra onnx --extra ocr --extra second-opinion --frozen
+
+      - name: Testes do leitor externo (tsoj_reader)
+        if: matrix.python == '3.10'
+        run: uv run pytest tests/test_second_opinion.py -v
+
       # **A cobertura roda numa perna so, a do 3.13 (S-801).** E a mesma suite da outra perna,
       # medida: o `coverage` vem do extra `dev` e escreve o `coverage.json` que o
       # `tools/qualidade/crapper.py` le. So nesta ponta porque e nela que o `sys.monitoring`
@@ -140,7 +163,7 @@ jobs:
 
       - name: Guardar a cobertura
         if: matrix.python == '3.13'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cobertura-3.13
           path: coverage.json
@@ -174,7 +197,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           # O checkout ja nasce no caminho acentuado -- copiar depois deixaria de fora o `.git`,
@@ -182,7 +205,7 @@ jobs:
           path: "acentuado-áéíóúç"
 
       - name: Instalar uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
           cache-dependency-glob: acentuado-áéíóúç/uv.lock

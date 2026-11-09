@@ -1456,6 +1456,8 @@ perna (ou um passo) com o extra `second-opinion`.
 
 **Aceite.** A guarda passa.
 
+**Entregue** (2026-11-09): as três ações fixadas pelo commit que a tag em uso apontava em 2026-11-09 — `actions/checkout` v4.4.0, `astral-sh/setup-uv` v5.4.2 e `actions/upload-artifact` v4.6.2 —, com a versão exata em comentário. O extra `second-opinion` entra num passo da perna 3.10, depois da suíte, que roda `tests/test_second_opinion.py`; para esse passo medir alguma coisa, o teste ganhou `test_a_ponte_do_skimage_estima_como_o_metodo_antigo`, que exercita `_bridge_skimage` contra o scikit-image real e pula sem o extra. O clone do tsoj e os pesos dele continuam fora do CI: são de terceiro, e baixá-los a cada push seria outro item.
+
 ## S-907 · Arrastar um PDF para o ícone abre o livro
 
 **Problema** (confirmado por script). `app_pyqt.py:286-295`: o parser só aceita `--pdf`, e o

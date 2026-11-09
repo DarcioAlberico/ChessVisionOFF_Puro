@@ -142,6 +142,29 @@ class TestTsojReader(unittest.TestCase):
                 leitor.predict(np.zeros((32, 32, 3), dtype=np.uint8))
         self.assertIn("os pesos não foram", str(capturado.exception))
 
+    def test_a_ponte_do_skimage_estima_como_o_metodo_antigo(self) -> None:
+        """`_bridge_skimage` contra o scikit-image de verdade, que o extra `second-opinion` instala.
+
+        É o pedaço do leitor externo que roda sem o clone, e o passo do CI com o extra existe para
+        ele rodar lá também (S-885). Sem o extra, pula: a ponte é dele.
+        """
+        from chess_diagram_ocr import tsoj_reader
+
+        try:
+            from skimage.transform import ProjectiveTransform
+        except ImportError:
+            self.skipTest("scikit-image ausente: o extra `second-opinion` não está instalado")
+        if not hasattr(ProjectiveTransform, "from_estimate"):
+            self.addCleanup(delattr, ProjectiveTransform, "from_estimate")
+        tsoj_reader._bridge_skimage()
+
+        origem = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=float)
+        destino = np.array([[0, 0], [2, 0], [2, 3], [0, 3]], dtype=float)
+        antigo = ProjectiveTransform()
+        antigo.estimate(origem, destino)
+        novo = ProjectiveTransform.from_estimate(origem, destino)
+        np.testing.assert_allclose(novo.params, antigo.params, atol=1e-9)
+
     def test_imagem_que_nao_e_rgb_e_recusada_antes_de_carregar_peso(self) -> None:
         """A checagem vem antes do import: 232,8 MiB nao devem ser lidos para depois recusar."""
         leitor = TsojDiagramReader(Path("/clone"))
