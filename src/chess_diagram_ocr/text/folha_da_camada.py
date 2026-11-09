@@ -21,7 +21,7 @@ nenhum deles saiba.
 fim dela, e uma página guardada de documento fechado levanta no primeiro `rect`. O valor guardado é
 compartilhado, então quem o recebe não o altera -- todos os leitores de hoje só o percorrem.
 
-**Sem identidade no disco, sem memória entre leituras** (`camada._identidade`): o documento aberto de
+**Sem identidade no disco, sem memória entre leituras** (`camada.identidade_do_documento`): o documento aberto de
 `bytes` não tem nome, e uma chave sem ele devolveria a extração de outro livro. Dentro da leitura a
 memória vale do mesmo jeito.
 """
@@ -109,7 +109,7 @@ class LivroDaCamada:
 
     def __init__(self, doc: fitz.Document) -> None:
         self._doc = doc
-        self._identidade = _camada._identidade(doc)
+        self._identidade = _camada.identidade_do_documento(doc)
         self._folhas: dict[int, FolhaDaCamada] = {}
 
     def __getitem__(self, indice: int) -> FolhaDaCamada:
