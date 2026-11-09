@@ -815,120 +815,197 @@ def build_pgn_games(
     original da S-67, e um padrão que a atropelasse tornaria a anotação inútil.
     """
     games: list[chess.pgn.Game] = []
-
     for position in positions:
-        context = position.context
-        annotation = (annotations or {}).get((position.page_index, position.diagram_index))
-        side_to_move = position.annotated_side_to_move(annotation)
+        identidade = (position.page_index, position.diagram_index)
+        annotation = (annotations or {}).get(identidade)
+        reason = (review_reasons or {}).get(identidade)
         game = chess.pgn.Game()
-        game.headers["Event"] = (context.event if context and context.event else None) or event_name
-        game.headers["Site"] = "Local"
-        game.headers["Round"] = f"{position.page_number}.{position.diagram_index}"
-        players = context.players if context and context.players else ("?", "?")
-        game.headers["White"], game.headers["Black"] = players
-        if context is not None and context.year is not None:
-            game.headers["Date"] = f"{context.year}.??.??"
-        game.headers["Result"] = "*"
-        game.headers["Annotator"] = "ChessVisionOFF"
-        game.headers["SetUp"] = "1"
-        game.headers["FEN"] = position.annotated_fen(annotation)
-        game.headers["SourcePDF"] = source_name
-        game.headers["Page"] = str(position.page_number)
-        game.headers["Diagram"] = str(position.diagram_index)
-        game.headers["ReadingOrder"] = reading_order
-        game.headers["OCRConfidence"] = f"{position.confidence:.3f}"
-
-        if side_to_move is not None:
-            game.headers["SideToMove"] = side_to_move.label
-            game.headers["SideToMoveSource"] = side_to_move.source
-            # So quando quem decidiu foi o OCR (S-43). Escrever a confianca de uma decisao
-            # de legalidade -- que pode ter derrubado uma leitura de OCR de 0,55 -- diria
-            # que a resposta gravada vale 0,55, e ela nao veio de la. E 1,0 em todo jogo de
-            # um livro com camada de texto e ruido que ensina a ignorar o header.
-            if side_to_move.source in _OCR_SOURCES and context is not None:
-                game.headers["SideToMoveConfidence"] = f"{context.side_to_move_confidence:.3f}"
-            if infer_castling_rights(position.fen) != "-":
-                # So quando ha o que declarar: escrever a proveniencia de um "-" nao informa
-                # nada e enche o header de ruido.
-                game.headers["CastlingSource"] = "inferred"
-        if context is not None:
-            if context.exercise_number is not None:
-                game.headers["ExerciseNumber"] = str(context.exercise_number)
-            if context.caption:
-                game.headers["Caption"] = _flatten_caption(context.caption)
-        if position.detection_source is not None:
-            game.headers["DetectionSource"] = position.detection_source
-        if position.duplicate_of is not None:
-            page_number, diagram_index = position.duplicate_of
-            game.headers["DuplicateOf"] = f"{page_number}.{diagram_index}"
-        if position.min_confidence is not None:
-            game.headers["OCRMinConfidence"] = f"{position.min_confidence:.3f}"
-        if position.next_move_repairs:
-            # C11: a casa trocada por evidência externa e a confiança que o gate julgou. A
-            # `OCRMinConfidence` acima continua sendo a da matriz -- o PGN não mente sobre ela.
-            game.headers["OCRNextMove"] = (
-                f"{position.next_move} prova {' '.join(position.next_move_repairs)}"
-                + (f"; gate {position.gate_confidence:.3f}" if position.gate_confidence is not None else ""))
-        if position.colour_repairs:
-            # C5: a cor que a tinta contradisse, trocada pelo calibrador do livro.
-            game.headers["OCRColour"] = "tinta trocou " + " ".join(position.colour_repairs)
-        if position.stipulation:
-            # C12: a exigência impressa e o que ela disse da leitura. `Stipulation` é o header
-            # que os leitores de PGN de problemas já conhecem (`#2`); `StipulationCheck` diz
-            # se a posição exportada a cumpre -- «fecha», «não fecha» ou «não verificada».
-            game.headers["Stipulation"] = position.stipulation
-            if position.stipulation_closes is True:
-                veredito = "fecha" + (f": 1.{position.stipulation_keys[0]}" if position.stipulation_keys else "")
-            elif position.stipulation_closes is False:
-                veredito = "não fecha"
-            else:
-                veredito = "não verificada"
-            game.headers["StipulationCheck"] = veredito
-            if position.stipulation_repairs:
-                game.headers["OCRStipulation"] = (
-                    f"{position.stipulation} prova {' '.join(position.stipulation_repairs)}"
-                    + (f"; gate {position.gate_confidence:.3f}" if position.gate_confidence is not None else ""))
-        if provenance_file:
-            # A11: o PGN aponta para o sidecar; a chave é a mesma identidade do `[Diagram]`.
-            game.headers["ProvenanceFile"] = provenance_file
-            game.headers["ProvenanceKey"] = chave(position.page_index, position.diagram_index)
-        if position.is_legal is not None:
-            game.headers["OCRLegality"] = position.legality_label
-            if not position.is_legal and position.problems:
-                game.headers["OCRProblems"] = "; ".join(position.problems)
-        if position.rotation is not None:
-            # Registrado sempre, e nao so quando girou: sem isso nao ha como saber depois se
-            # a leitura de um diagrama suspeito foi feita de pe ou de cabeca para baixo.
-            game.headers["OCRRotation"] = str(position.rotation)
-
-        reason = (review_reasons or {}).get((position.page_index, position.diagram_index))
-        if reason:
-            game.headers["Review"] = reason
-
-        if annotation is not None:
-            # Por ultimo, e de proposito: o que a pessoa escreveu na galeria vence tudo que
-            # foi inferido acima. `RESERVED_HEADERS` ja tirou `FEN`, `SetUp` e `Result` da
-            # jogada -- aqueles mudam pelos campos proprios, que sabem recompor a posicao.
-            for nome, valor in annotation.headers.items():
-                game.headers[nome] = valor
-            if annotation.filled_from:
-                # A evidencia do casamento (S-72). Sem ela, `[White "Ljubojevic, Ljubomir"]`
-                # num PGN nao diz se alguem digitou aquilo ou se as 64 casas bateram com uma
-                # partida registrada -- e as duas coisas valem muito diferente.
-                game.headers["GameSource"] = annotation.filled_from
-
-        quer_link = annotation.lichess_link if annotation is not None else None
-        if quer_link is None:
-            quer_link = lichess_links
-        if quer_link:
+        # A ordem das partes é a ordem dos headers no arquivo, e a anotação vem por último.
+        for parte in (
+            _headers_de_identidade(position, annotation, source_name, event_name, reading_order),
+            _headers_do_lado_a_jogar(position, annotation),
+            _headers_do_contexto(position.context),
+            _headers_da_deteccao(position),
+            _headers_dos_reparos(position),
+            _headers_da_estipulacao(position),
+            _headers_de_proveniencia(position, provenance_file),
+            _headers_de_legalidade(position),
+            {"Review": reason} if reason else {},
+            _headers_da_anotacao(annotation),
+        ):
+            game.headers.update(parte)
+        if _quer_link(annotation, lichess_links):
             # Comentario, e nao header: o link e para uma pessoa clicar, e leitor de PGN
             # mostra comentario junto do diagrama. Header seria metadado de maquina.
             game.comment = lichess_analysis_url(game.headers["FEN"])
-
         games.append(game)
-
     return games
 
+
+Headers = dict[str, str]
+"""Uma parte dos headers de um jogo, devolvida por um construtor por assunto (S-858)."""
+
+
+def _headers_de_identidade(
+    position: DiagramPosition,
+    annotation: DiagramAnnotation | None,
+    source_name: str,
+    event_name: str,
+    reading_order: ReadingOrder,
+) -> Headers:
+    """Quem jogou, de onde a posição saiu e a FEN -- o que todo jogo tem."""
+    context = position.context
+    white, black = context.players if context and context.players else ("?", "?")
+    headers = {
+        "Event": (context.event if context and context.event else None) or event_name,
+        "Site": "Local",
+        "Round": f"{position.page_number}.{position.diagram_index}",
+        "White": white,
+        "Black": black,
+    }
+    if context is not None and context.year is not None:
+        headers["Date"] = f"{context.year}.??.??"
+    return headers | {
+        "Result": "*",
+        "Annotator": "ChessVisionOFF",
+        "SetUp": "1",
+        "FEN": position.annotated_fen(annotation),
+        "SourcePDF": source_name,
+        "Page": str(position.page_number),
+        "Diagram": str(position.diagram_index),
+        "ReadingOrder": reading_order,
+        "OCRConfidence": f"{position.confidence:.3f}",
+    }
+
+
+def _headers_do_lado_a_jogar(position: DiagramPosition, annotation: DiagramAnnotation | None) -> Headers:
+    side_to_move = position.annotated_side_to_move(annotation)
+    if side_to_move is None:
+        return {}
+    headers = {"SideToMove": side_to_move.label, "SideToMoveSource": side_to_move.source}
+    # So quando quem decidiu foi o OCR (S-43). Escrever a confianca de uma decisao
+    # de legalidade -- que pode ter derrubado uma leitura de OCR de 0,55 -- diria
+    # que a resposta gravada vale 0,55, e ela nao veio de la. E 1,0 em todo jogo de
+    # um livro com camada de texto e ruido que ensina a ignorar o header.
+    if side_to_move.source in _OCR_SOURCES and position.context is not None:
+        headers["SideToMoveConfidence"] = f"{position.context.side_to_move_confidence:.3f}"
+    if infer_castling_rights(position.fen) != "-":
+        # So quando ha o que declarar: escrever a proveniencia de um "-" nao informa
+        # nada e enche o header de ruido.
+        headers["CastlingSource"] = "inferred"
+    return headers
+
+
+def _headers_do_contexto(context: DiagramContext | None) -> Headers:
+    """O número do exercício e a legenda, quando a página os tem."""
+    headers: Headers = {}
+    if context is not None and context.exercise_number is not None:
+        headers["ExerciseNumber"] = str(context.exercise_number)
+    if context is not None and context.caption:
+        headers["Caption"] = _flatten_caption(context.caption)
+    return headers
+
+
+def _headers_da_deteccao(position: DiagramPosition) -> Headers:
+    """De onde o recorte veio, se repete outro, e a casa mais insegura da leitura."""
+    headers: Headers = {}
+    if position.detection_source is not None:
+        headers["DetectionSource"] = position.detection_source
+    if position.duplicate_of is not None:
+        page_number, diagram_index = position.duplicate_of
+        headers["DuplicateOf"] = f"{page_number}.{diagram_index}"
+    if position.min_confidence is not None:
+        headers["OCRMinConfidence"] = f"{position.min_confidence:.3f}"
+    return headers
+
+
+def _sufixo_do_gate(position: DiagramPosition) -> str:
+    return f"; gate {position.gate_confidence:.3f}" if position.gate_confidence is not None else ""
+
+
+def _headers_dos_reparos(position: DiagramPosition) -> Headers:
+    headers: Headers = {}
+    if position.next_move_repairs:
+        # C11: a casa trocada por evidência externa e a confiança que o gate julgou. A
+        # `OCRMinConfidence` continua sendo a da matriz -- o PGN não mente sobre ela.
+        headers["OCRNextMove"] = (
+            f"{position.next_move} prova {' '.join(position.next_move_repairs)}" + _sufixo_do_gate(position)
+        )
+    if position.colour_repairs:
+        # C5: a cor que a tinta contradisse, trocada pelo calibrador do livro.
+        headers["OCRColour"] = "tinta trocou " + " ".join(position.colour_repairs)
+    return headers
+
+
+def _veredito_da_estipulacao(position: DiagramPosition) -> str:
+    if position.stipulation_closes is True:
+        return "fecha" + (f": 1.{position.stipulation_keys[0]}" if position.stipulation_keys else "")
+    if position.stipulation_closes is False:
+        return "não fecha"
+    return "não verificada"
+
+
+def _headers_da_estipulacao(position: DiagramPosition) -> Headers:
+    """C12: a exigência impressa e o que ela disse da leitura.
+
+    `Stipulation` é o header que os leitores de PGN de problemas já conhecem (`#2`);
+    `StipulationCheck` diz se a posição exportada a cumpre -- «fecha», «não fecha» ou «não
+    verificada».
+    """
+    if not position.stipulation:
+        return {}
+    headers = {"Stipulation": position.stipulation, "StipulationCheck": _veredito_da_estipulacao(position)}
+    if position.stipulation_repairs:
+        headers["OCRStipulation"] = (
+            f"{position.stipulation} prova {' '.join(position.stipulation_repairs)}" + _sufixo_do_gate(position)
+        )
+    return headers
+
+
+def _headers_de_proveniencia(position: DiagramPosition, provenance_file: str) -> Headers:
+    """A11: o PGN aponta para o sidecar; a chave é a mesma identidade do `[Diagram]`."""
+    if not provenance_file:
+        return {}
+    return {
+        "ProvenanceFile": provenance_file,
+        "ProvenanceKey": chave(position.page_index, position.diagram_index),
+    }
+
+
+def _headers_de_legalidade(position: DiagramPosition) -> Headers:
+    headers: Headers = {}
+    if position.is_legal is not None:
+        headers["OCRLegality"] = position.legality_label
+        if not position.is_legal and position.problems:
+            headers["OCRProblems"] = "; ".join(position.problems)
+    if position.rotation is not None:
+        # Registrado sempre, e nao so quando girou: sem isso nao ha como saber depois se
+        # a leitura de um diagrama suspeito foi feita de pe ou de cabeca para baixo.
+        headers["OCRRotation"] = str(position.rotation)
+    return headers
+
+
+def _headers_da_anotacao(annotation: DiagramAnnotation | None) -> Headers:
+    """O que a pessoa escreveu na galeria, que vence tudo que foi inferido.
+
+    Por isso entra por ultimo. `RESERVED_HEADERS` ja tirou `FEN`, `SetUp` e `Result` da
+    jogada -- aqueles mudam pelos campos proprios, que sabem recompor a posicao.
+    """
+    if annotation is None:
+        return {}
+    headers = dict(annotation.headers)
+    if annotation.filled_from:
+        # A evidencia do casamento (S-72). Sem ela, `[White "Ljubojevic, Ljubomir"]`
+        # num PGN nao diz se alguem digitou aquilo ou se as 64 casas bateram com uma
+        # partida registrada -- e as duas coisas valem muito diferente.
+        headers["GameSource"] = annotation.filled_from
+    return headers
+
+
+def _quer_link(annotation: DiagramAnnotation | None, lichess_links: bool) -> bool:
+    """A decisão do diagrama, quando ele declarou uma; senão o padrão da exportação (S-67)."""
+    declarado = annotation.lichess_link if annotation is not None else None
+    return lichess_links if declarado is None else declarado
 
 def build_pgn_text(
     positions: Iterable[DiagramPosition],

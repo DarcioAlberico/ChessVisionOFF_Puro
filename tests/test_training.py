@@ -1288,6 +1288,106 @@ class EmpateEntreEpocasTests(unittest.TestCase):
             self.assertEqual(list((raiz / "pior").glob("*.tie-*.pt")), [])
 
 
+class MetadadoDeUmaEpocaTests(unittest.TestCase):
+    """S-858: os metadados de um treino de uma época, campo a campo, nos dois regimes.
+
+    `Trainer.prepare` foi partido em etapas (datasets, sabotagem, carregadores, metadado). O
+    que ele produz não pode mudar: os dois regimes daqui atravessam os dois ramos de cada
+    etapa -- split gravado com cabeça por janela, sabotagem e repetição; e sorteio com cabeça
+    por tabuleiro e pesos de classe.
+    """
+
+    COMUM = {
+        "class_names": list(PIECE_CLASSES),
+        "seed": 7,
+        "lr": 0.001,
+        "batch_size": 64,
+        "epochs_requested": 1,
+        "patience": 0,
+        "optimizer": "adam",
+        "augment_version": "aug0",
+        "descartes": {"fen_invalida": 0, "sem_split": 0, "ilegal": 0, "imagem_ausente": 0},
+        "val_size": 2,
+        "best_metric_name": "val_board_exact_acc",
+        "best_metric": 0.0,
+        "best_epoch": 1,
+    }
+
+    def _treinar(self, root: Path, *, com_split: bool, boards: int, arch, **optim) -> dict:
+        import dataclasses
+
+        from chess_diagram_ocr.checkpoint import git_commit
+        from chess_diagram_ocr.training import DataPlan, OptimPlan, OutputPlan, Trainer, TrainingPlan
+
+        csv_path, samples, splits_path = _tiny_dataset(root, boards=boards)
+        plano = TrainingPlan(
+            data=DataPlan(
+                csv_path=csv_path,
+                samples_dir=samples,
+                splits_path=splits_path if com_split else None,
+                val_ratio=0.25,
+                num_workers=0,
+            ),
+            output=OutputPlan(model_path=root / "m.pt", fresh=True, calibrate=False, pretrained=False),
+            model=arch,
+            optim=OptimPlan(epochs=1, batch_size=64, patience=0, seed=7, **optim),
+        )
+        metadados = dict(Trainer(plano).fit().metadata)
+        self.assertEqual(metadados.pop("git_commit"), git_commit())
+        self.assertEqual(metadados.pop("augment"), dataclasses.asdict(plano.optim.augment))
+        self.assertEqual(metadados.pop("splits_path"), str(splits_path) if com_split else "")
+        return metadados
+
+    def _conferir(self, obtido: dict, esperado: dict) -> None:
+        self.assertEqual(sorted(obtido), sorted(esperado))
+        for campo, valor in esperado.items():
+            with self.subTest(campo=campo):
+                self.assertEqual(obtido[campo], valor)
+
+    def test_split_gravado_com_cabeca_por_janela_sabotagem_e_repeticao(self) -> None:
+        from chess_diagram_ocr.model import ArchConfig
+
+        with tempfile.TemporaryDirectory() as tmp:
+            obtido = self._treinar(
+                Path(tmp), com_split=True, boards=6, arch=ArchConfig(), label_noise=0.25, corrected_repeat=2
+            )
+        self._conferir(obtido, {
+            **self.COMUM,
+            "arch_version": "cnn-gray-64-linear",
+            "class_weights": "none",
+            "label_noise": 0.25,
+            "corrected_repeat": 2,
+            "boards_per_batch": 4,
+            "batch_unit": "square",
+            "split_hash": "baaf38698d5c8dd9",
+            "labels_hash": "9bd61f342d94b4e1",
+            "dataset_size": 4,
+            "val_descartes": {"fen_invalida": 0, "sem_split": 0, "ilegal": 0, "imagem_ausente": 0},
+        })
+
+    def test_sorteio_com_cabeca_por_tabuleiro_e_pesos(self) -> None:
+        from chess_diagram_ocr.model import ArchConfig
+
+        with tempfile.TemporaryDirectory() as tmp:
+            obtido = self._treinar(
+                Path(tmp), com_split=False, boards=8, arch=ArchConfig(head="board"),
+                boards_per_batch=2, class_weights="balanced",
+            )
+        self._conferir(obtido, {
+            **self.COMUM,
+            "arch_version": "cnn-gray-64-board",
+            "class_weights": "balanced",
+            "label_noise": 0.0,
+            "corrected_repeat": 1,
+            "boards_per_batch": 2,
+            "batch_unit": "board",
+            "split_hash": "",
+            "labels_hash": "983d54f1fbc97284",
+            "dataset_size": 8,
+            "val_descartes": {},
+        })
+
+
 class MetadadosQueReproduzemTests(unittest.TestCase):
     """O checkpoint guarda o que reproduz o número (S-105).
 

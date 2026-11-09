@@ -1022,5 +1022,176 @@ class MesmaLeituraQueOsRelatoriosTests(unittest.TestCase):
                 self.assertFalse(nome in fonte, f"pdf_to_pgn.py ainda cita {nome}: a corrente mora no OcrService")
 
 
+class PgnDeOuroTests(unittest.TestCase):
+    """S-858: o PGN de cada ramo do construtor de headers, fixado byte a byte.
+
+    `build_pgn_games` foi partido em construtores por assunto. A ordem dos headers fora do
+    "Seven Tag Roster" é a ordem de inserção, então este texto pega tanto um header perdido
+    quanto um que trocou de lugar -- e as anotações da galeria por cima de tudo, que só vencem
+    se forem aplicadas por último.
+    """
+
+    ROQUE = "4k3/8/8/8/8/8/4P3/R3K2R"
+
+    def _posicoes(self) -> list[DiagramPosition]:
+        return [
+            DiagramPosition(0, 1, self.ROQUE, 0.9),
+            DiagramPosition(
+                1, 1, self.ROQUE, 0.8, min_confidence=0.4, is_legal=False, is_fatal=True, problems=("a", "b"),
+                rotation=180, side_to_move=SideToMove(chess.BLACK, "ocr"),
+                context=DiagramContext(
+                    caption="Legenda\nem duas linhas", side_to_move_confidence=0.55, exercise_number=17,
+                    players=("Alekhine", "Capablanca"), event="Nottingham", year=1936,
+                ),
+                detection_source="embedded", duplicate_of=(1, 2), colour_repairs=("e5", "d4"), next_move="Nf3",
+                next_move_repairs=("g1",), stipulation="#2", stipulation_closes=True, stipulation_keys=("Ra8",),
+                stipulation_repairs=("a1",), gate_confidence=0.77,
+            ),
+            DiagramPosition(
+                1, 2, self.ROQUE, 0.8, is_legal=False, is_fatal=False, side_to_move=SideToMove(chess.WHITE, "glifo"),
+                context=DiagramContext(), next_move="e4", next_move_repairs=("e2",), stipulation="#3",
+                stipulation_closes=False, stipulation_repairs=("h1",),
+            ),
+            DiagramPosition(
+                2, 1, "4k3/8/8/8/8/8/8/4K3", 0.7, is_legal=True, rotation=0,
+                side_to_move=SideToMove(chess.WHITE, "legality"), context=DiagramContext(players=("A", "B")),
+                stipulation="h#2", stipulation_keys=("Kd1",),
+            ),
+        ]
+
+    def test_o_pgn_de_cada_ramo_sai_igual_byte_a_byte(self) -> None:
+        from chess_diagram_ocr.gallery import DiagramAnnotation
+
+        anotacoes = {
+            (1, 1): DiagramAnnotation(headers={"Event": "Manual", "Round": "9"}, filled_from="base X"),
+            (2, 1): DiagramAnnotation(side_to_move="b", move_number=12, lichess_link=False),
+        }
+        texto = build_pgn_text(
+            self._posicoes(),
+            source_name="s.pdf",
+            review_reasons={(1, 1): "r", (1, 2): ""},
+            annotations=anotacoes,
+            lichess_links=True,
+            provenance_file="p.jsonl",
+        )
+        self.maxDiff = None
+        self.assertEqual(texto, OURO_S858)
+
+
+OURO_S858 = """[Event "ChessVisionOFF PDF OCR"]
+[Site "Local"]
+[Date "????.??.??"]
+[Round "1.1"]
+[White "?"]
+[Black "?"]
+[Result "*"]
+[Annotator "ChessVisionOFF"]
+[SetUp "1"]
+[FEN "4k3/8/8/8/8/8/4P3/R3K2R w - - 0 1"]
+[SourcePDF "s.pdf"]
+[Page "1"]
+[Diagram "1"]
+[ReadingOrder "column"]
+[OCRConfidence "0.900"]
+[ProvenanceFile "p.jsonl"]
+[ProvenanceKey "p0:d1"]
+
+{ https://lichess.org/analysis/4k3/8/8/8/8/8/4P3/R3K2R_w_-_-_0_1 } *
+
+[Event "Manual"]
+[Site "Local"]
+[Date "1936.??.??"]
+[Round "9"]
+[White "Alekhine"]
+[Black "Capablanca"]
+[Result "*"]
+[Annotator "ChessVisionOFF"]
+[SetUp "1"]
+[FEN "4k3/8/8/8/8/8/4P3/R3K2R b KQ - 0 1"]
+[SourcePDF "s.pdf"]
+[Page "2"]
+[Diagram "1"]
+[ReadingOrder "column"]
+[OCRConfidence "0.800"]
+[SideToMove "pretas"]
+[SideToMoveSource "ocr"]
+[SideToMoveConfidence "0.550"]
+[CastlingSource "inferred"]
+[ExerciseNumber "17"]
+[Caption "Legenda / em duas linhas"]
+[DetectionSource "embedded"]
+[DuplicateOf "1.2"]
+[OCRMinConfidence "0.400"]
+[OCRNextMove "Nf3 prova g1; gate 0.770"]
+[OCRColour "tinta trocou e5 d4"]
+[Stipulation "#2"]
+[StipulationCheck "fecha: 1.Ra8"]
+[OCRStipulation "#2 prova a1; gate 0.770"]
+[ProvenanceFile "p.jsonl"]
+[ProvenanceKey "p1:d1"]
+[OCRLegality "ilegal"]
+[OCRProblems "a; b"]
+[OCRRotation "180"]
+[Review "r"]
+[GameSource "base X"]
+
+{ https://lichess.org/analysis/4k3/8/8/8/8/8/4P3/R3K2R_b_KQ_-_0_1 } *
+
+[Event "ChessVisionOFF PDF OCR"]
+[Site "Local"]
+[Date "????.??.??"]
+[Round "2.2"]
+[White "?"]
+[Black "?"]
+[Result "*"]
+[Annotator "ChessVisionOFF"]
+[SetUp "1"]
+[FEN "4k3/8/8/8/8/8/4P3/R3K2R w KQ - 0 1"]
+[SourcePDF "s.pdf"]
+[Page "2"]
+[Diagram "2"]
+[ReadingOrder "column"]
+[OCRConfidence "0.800"]
+[SideToMove "brancas"]
+[SideToMoveSource "glifo"]
+[SideToMoveConfidence "1.000"]
+[CastlingSource "inferred"]
+[OCRNextMove "e4 prova e2"]
+[Stipulation "#3"]
+[StipulationCheck "não fecha"]
+[OCRStipulation "#3 prova h1"]
+[ProvenanceFile "p.jsonl"]
+[ProvenanceKey "p1:d2"]
+[OCRLegality "lado-a-jogar"]
+
+{ https://lichess.org/analysis/4k3/8/8/8/8/8/4P3/R3K2R_w_KQ_-_0_1 } *
+
+[Event "ChessVisionOFF PDF OCR"]
+[Site "Local"]
+[Date "????.??.??"]
+[Round "3.1"]
+[White "A"]
+[Black "B"]
+[Result "*"]
+[Annotator "ChessVisionOFF"]
+[SetUp "1"]
+[FEN "4k3/8/8/8/8/8/8/4K3 b - - 0 12"]
+[SourcePDF "s.pdf"]
+[Page "3"]
+[Diagram "1"]
+[ReadingOrder "column"]
+[OCRConfidence "0.700"]
+[SideToMove "pretas"]
+[SideToMoveSource "manual"]
+[Stipulation "h#2"]
+[StipulationCheck "não verificada"]
+[ProvenanceFile "p.jsonl"]
+[ProvenanceKey "p2:d1"]
+[OCRLegality "legal"]
+[OCRRotation "0"]
+
+*"""
+
+
 if __name__ == "__main__":
     unittest.main()

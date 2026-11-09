@@ -2361,6 +2361,13 @@ treino de uma época sobre o dataset de brinquedo, comparado campo a campo.
 
 **Aceite.** Os dois passam antes e depois; as duas funções abaixo de complexidade 10.
 
+**Entregue** (2026-11-09): `build_pgn_games` 42 → 7 e `Trainer.prepare` 37 (não 36) → 3. O PGN de
+ouro versionado é sintético (`PgnDeOuroTests`), porque os PDFs do acervo não vão ao git; o PGN de 56
+diagramas reais de 7 livros do conjunto de campo, em quatro variantes de exportação, saiu idêntico
+byte a byte fora da suíte. Além das etapas pedidas saíram `_tabuleiros_repetidos`,
+`_criterio_e_otimizador`, `_cache_por_processo`, `_loader_extra` (com `ExtrasDoCarregador` tipado) e
+`_aumentos`; os dois `type: ignore[arg-type]` dos `BoardFenDataset(**common)` caíram com o `dict`.
+
 ## S-859 · Partir a detecção em cadeias de filtros
 
 **Problema.** `detection/hybrid.detect_diagrams` (36), `board_detection._contour_candidates` (28) e
