@@ -1468,6 +1468,14 @@ traz `~`, não o nome.
 
 **Aceite.** O teste passa.
 
+**Entregue** (2026-11-08): `RedigeCaminho` é o **formatador** do handler de arquivo, e não um filtro: o
+filtro vê a mensagem antes do `format`, e o traceback, que traz um caminho por quadro, só ganha texto ali.
+Cobre `\` e `/`, sem caixa no Windows. O arquivo deixa de gravar DEBUG sem `-v`, **com uma exceção**: o
+registro com `exc_info` entra em qualquer nível, porque o `cli.run_main` manda o traceback em DEBUG para não
+sujá-lo na tela, e é para isso que o arquivo existe (S-126); com `-v` o arquivo recebe DEBUG inteiro. Foram
+para DEBUG as duas linhas de `pdf_text.py` que levam texto do livro (declaração e exigência de escopo) e `dataset_browser.py:309` (FEN); o `games_db.py:678`
+citado não loga mais nada ali, e os `warning` de `desenho_de_diagrama.py` que levam a FEN de uma falha ficaram.
+
 ## Fase 116 — Um pipeline só
 
 O caminho de medição é o fecho de importação que `field_eval.measured_modules()` calcula (36 módulos com o

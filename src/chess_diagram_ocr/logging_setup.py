@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -16,6 +17,44 @@ LOGS_GUARDADOS = 5
 """Quantos arquivos anteriores ficam. Cinco de 2 MB: a sessão de ontem cabe, e o disco tem teto."""
 
 _configured = False
+
+
+class RedigeCaminho(logging.Formatter):
+    r"""O formato do arquivo de log, com a pasta do usuário trocada por `~` (S-909).
+
+    **O arquivo é o que a pessoa anexa a um relato**: a mensagem de erro da S-421 diz onde ele
+    está. E dezenas de chamadas interpolam o caminho inteiro -- `C:\Users\<nome>\...` --, com
+    o nome de quem usa. Trocar aqui, num lugar só, vale para as que existem e para as que vierem.
+
+    **Formatador, e não filtro**: o filtro vê a mensagem antes de o registro ser formatado, e o
+    traceback só ganha texto no `format`. É o traceback que mais carrega caminho -- um quadro
+    por linha, e o programa instalado mora na pasta do usuário.
+
+    As duas grafias (`\` e `/`), e sem distinguir caixa no Windows, onde `c:\users` é a mesma
+    pasta. O `(?!\w)` não deixa `C:\Users\Ana` comer o começo de `C:\Users\Anabela`.
+    """
+
+    def __init__(self, pasta_do_usuario: Path | None = None) -> None:
+        super().__init__(LOG_FORMAT, DATE_FORMAT)
+        pasta = pasta_do_usuario or Path.home()
+        grafias = sorted({str(pasta), pasta.as_posix()}, key=len, reverse=True)
+        self._pasta = re.compile(
+            "(?:" + "|".join(map(re.escape, grafias)) + r")(?!\w)",
+            re.IGNORECASE if os.name == "nt" else 0,
+        )
+
+    def format(self, record: logging.LogRecord) -> str:
+        return self._pasta.sub("~", super().format(record))
+
+
+def _info_ou_rastro(registro: logging.LogRecord) -> bool:
+    """O que o arquivo grava sem `-v`: INFO para cima, e o traceback em qualquer nível (S-909).
+
+    O DEBUG leva texto do livro e FEN, e deixou de ser o padrão do arquivo. O traceback não:
+    o `cli.run_main` o manda em DEBUG para não despejá-lo na tela, e é para recebê-lo que o
+    arquivo existe (S-126).
+    """
+    return registro.levelno >= logging.INFO or registro.exc_info is not None
 
 
 def _force_utf8_output() -> None:
@@ -97,19 +136,24 @@ def configure_logging(*, verbose: bool = False, log_file: Path | None = None) ->
     if log_file is not None:
         try:
             log_file.parent.mkdir(parents=True, exist_ok=True)
-            # **Rotativo, e não crescente para sempre (S-389).** O arquivo grava em DEBUG por
-            # decisão da S-126, e DEBUG num programa que lê 402 páginas são dezenas de MB por
-            # sessão: `logs/chessvisionoff.log` era um arquivo que só crescia, na pasta do
-            # usuário, sem nada que o aparasse. Cinco arquivos de 2 MB é rastro suficiente para
+            # **Rotativo, e não crescente para sempre (S-389).** O arquivo gravava em DEBUG por
+            # decisão da S-126 (até a S-909), e DEBUG num programa que lê 402 páginas são
+            # dezenas de MB por sessão: `logs/chessvisionoff.log` era um arquivo que só crescia,
+            # na pasta do usuário, sem nada que o aparasse. Cinco arquivos de 2 MB é rastro suficiente para
             # a falha de ontem e teto para o disco de amanhã.
             arquivo: logging.Handler = RotatingFileHandler(
                 log_file, maxBytes=TAMANHO_DO_LOG, backupCount=LOGS_GUARDADOS, encoding="utf-8"
             )
-            # **O arquivo sempre em DEBUG, a tela no nivel pedido** (S-126). E o que permite ao
+            # **O traceback no arquivo, e nao na tela** (S-126). E o que permite ao
             # `cli.run_main` mandar o traceback para o log sem despeja-lo na tela: sem isso, a
             # unica escolha era "traceback em ingles no terminal" ou "rastro nenhum em lugar
             # nenhum", e a segunda e o modo de falha que a Fase 18 existe para fechar.
+            # **O resto do DEBUG so com `-v`** (S-909): ele leva texto do livro e FEN, e o
+            # arquivo e o que a pessoa anexa a um relato. Ver `_info_ou_rastro`.
             arquivo.setLevel(logging.DEBUG)
+            if not verbose:
+                arquivo.addFilter(_info_ou_rastro)
+            arquivo.setFormatter(RedigeCaminho())
             handlers.append(arquivo)
         except OSError as exc:  # disco cheio, permissao, caminho invalido
             logging.getLogger(__name__).warning("Nao foi possivel abrir o arquivo de log %s: %s", log_file, exc)

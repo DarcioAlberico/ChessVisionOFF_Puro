@@ -1318,7 +1318,8 @@ def page_scope_declaration(page: fitz.Page, *, caption_reader: CaptionSource | N
             return None
 
         (color, evidence), line = declarations[0]
-        logger.info("declaração de escopo de página (%s): %r", origin, evidence)
+        # Texto do livro: só em DEBUG, que o arquivo de log não grava por padrão (S-909).
+        logger.debug("declaração de escopo de página (%s): %r", origin, evidence)
         return PageScope(color=color, evidence=evidence, origin=origin, confidence=line.confidence)
     return None
 
@@ -1525,7 +1526,7 @@ def page_stipulation_declaration(
     del caption_reader  # ver o docstring: a margem por OCR não é consultada
     exigencia = estipulacao_de_pagina([line.text for line in page_margin_lines(page)])
     if exigencia is not None:
-        logger.info("exigência de escopo de página: %r", exigencia.texto)
+        logger.debug("exigência de escopo de página: %r", exigencia.texto)  # texto do livro (S-909)
     return exigencia
 
 

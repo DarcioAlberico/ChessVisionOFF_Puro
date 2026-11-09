@@ -306,7 +306,8 @@ def update_row(
     ):
         return False
 
-    logger.info("Rótulo de %s regravado como %s.", filename, full_fen)
+    # A FEN só em DEBUG, que o arquivo de log não grava por padrão (S-909).
+    logger.debug("Rótulo de %s regravado como %s.", filename, full_fen)
     return True
 
 

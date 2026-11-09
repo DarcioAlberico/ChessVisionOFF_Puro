@@ -225,6 +225,64 @@ class LogQueNaoCresceParaSempreTests(unittest.TestCase):
         self.assertEqual(len(arquivos), 1)
         self.assertTrue(str(arquivos[0].baseFilename).startswith(str(self.pasta)))
 
+    def _gravado(self) -> str:
+        """O texto do arquivo de log, depois de esvaziar o buffer dos handlers."""
+        for handler in self.raiz.handlers:
+            handler.flush()
+        return (self.pasta / "cvoff.log").read_text(encoding="utf-8")
+
+    def test_caminho_na_pasta_do_usuario_sai_com_til_no_arquivo(self) -> None:
+        """A mensagem de erro diz onde está o log, e isso convida a anexá-lo a um relato (S-909)."""
+        livro = Path.home() / "Livros" / "Nunn.pdf"
+        self.setup.configure_logging(log_file=self.pasta / "cvoff.log")
+
+        logging.getLogger("teste.s909").warning("Não abriu %s nem %s", livro, livro.as_posix())
+
+        gravado = self._gravado()
+        self.assertIn(str(Path("~") / "Livros" / "Nunn.pdf"), gravado)
+        self.assertIn("~/Livros/Nunn.pdf", gravado)
+        self.assertNotIn(str(Path.home()), gravado)
+        self.assertNotIn(Path.home().as_posix(), gravado)
+
+    def test_o_rastro_de_excecao_tambem_sai_com_til(self) -> None:
+        """O traceback traz o caminho de cada quadro, e o programa instalado mora na pasta do usuário."""
+        self.setup.configure_logging(log_file=self.pasta / "cvoff.log")
+
+        try:
+            raise OSError(f"sem acesso a {Path.home() / 'Livros'}")
+        except OSError:
+            logging.getLogger("teste.s909").exception("falhou")
+
+        gravado = self._gravado()
+        self.assertIn("OSError: sem acesso a ~", gravado)
+        self.assertNotIn(str(Path.home()), gravado)
+
+    def test_sem_verboso_o_arquivo_fica_sem_debug_mas_com_o_rastro(self) -> None:
+        """Texto do livro e FEN só em DEBUG, que deixa de ser o padrão do arquivo (S-909).
+
+        O traceback que o `cli.run_main` manda em DEBUG para não sujar a tela continua indo
+        ao arquivo: é para ele que o arquivo existe (S-126).
+        """
+        self.setup.configure_logging(log_file=self.pasta / "cvoff.log")
+        teste = logging.getLogger("teste.s909")
+
+        teste.debug("FEN lida: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")
+        try:
+            raise ValueError("o comando quebrou")
+        except ValueError:
+            teste.debug("O comando falhou.", exc_info=True)
+
+        gravado = self._gravado()
+        self.assertNotIn("rnbqkbnr", gravado)
+        self.assertIn("ValueError: o comando quebrou", gravado)
+
+    def test_com_verboso_o_arquivo_recebe_debug(self) -> None:
+        self.setup.configure_logging(verbose=True, log_file=self.pasta / "cvoff.log")
+
+        logging.getLogger("teste.s909").debug("FEN lida: 8/8/8/8/8/8/8/8")
+
+        self.assertIn("FEN lida: 8/8/8/8/8/8/8/8", self._gravado())
+
 
 class TamanhoDaJanelaTests(unittest.TestCase):
     """`qt/janela.py` não volta a crescer sem alguém decidir (S-136/S-506).
