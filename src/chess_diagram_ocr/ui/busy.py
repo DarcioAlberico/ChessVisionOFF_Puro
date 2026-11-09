@@ -25,6 +25,13 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
+__all__ = [
+    "BusyOperation",
+    "BusyRegistry",
+    "BusyToken",
+    "FORA_DO_REGISTRO",
+]
+
 logger = logging.getLogger(__name__)
 
 

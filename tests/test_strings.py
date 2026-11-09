@@ -365,8 +365,6 @@ class VocabularyTests(unittest.TestCase):
         """Melhor mostrar a chave crua do que esconder que existe uma fonte nova."""
         self.assertEqual(strings.detection_source_label("futuro"), "futuro")
 
-    def test_the_orientation_labels_cover_the_tri_state_of_s13(self) -> None:
-        self.assertEqual(set(strings.ORIENTATION_LABELS), {"auto", "0", "180"})
 
 
 class TermosProibidosTests(unittest.TestCase):
@@ -382,7 +380,7 @@ class TermosProibidosTests(unittest.TestCase):
     """
 
     PROIBIDOS = {
-        "board": "\"board\" é tabuleiro; ver strings.ZOOM_DO_TABULEIRO e VIRAR_TABULEIRO",
+        "board": "\"board\" é tabuleiro; ver strings.VIRAR_TABULEIRO",
         "heatmap": "virou strings.MAPA_DE_INCERTEZA",
         "batch size": "virou strings.TAMANHO_DO_LOTE",
         "learning rate": "virou strings.TAXA_DE_APRENDIZADO",

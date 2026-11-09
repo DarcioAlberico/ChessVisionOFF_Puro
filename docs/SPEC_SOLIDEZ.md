@@ -2646,3 +2646,14 @@ chamador acima saem ou ganham chamador (o de `mark_net_corrected` segue a decis�
 `ui/__init__.py` fica isento, como `orfaos()` já faz).
 
 **Aceite.** O teste passa; a catraca de órfãos continua em zero, agora sobre todos os módulos.
+
+**Entregue** (2026-11-09): `sem_all` na guarda, provado contra um pacote de brinquedo (módulo sem `__all__`
+e com `__all__` montado são acusados; o `__init__.py` fica isento). O `__all__` de cada um dos sete lista o
+que outro módulo de `src/` usa; o que só o próprio módulo ou só os testes usam ficou fora, como nos lotes de
+2026-09-02. Além dos nomes da spec, a leitura achou mais: saíram também `strings.ORIENTACAO_DO_DIAGRAMA` (só
+`ROTULOS_DA_CONFIGURACAO` o lia) e `strings.EDITOR_VAZIO` (frase que tela nenhuma mostra; os dois testes de
+frases de estado vazio a listavam); `TAMANHO_DO_LOTE` e `TAXA_DE_APRENDIZADO` ganharam chamador em
+`configuracoes.CAMPOS`, que escrevia os dois à mão; e seis ficaram em `SEM_CHAMADOR` com motivo
+(`busy.FORA_DO_REGISTRO`, `strings.WORDS_REQUIRING_ACCENTS`, `ALINHAR`, `CORRIGIR_PELA_REDE`,
+`TRADUZIDOS_PELO_QT`, `DIVERGENCIAS_DECLARADAS`). `DiagramEditorModel.mark_net_corrected` fica, pela decisão
+da S-882 que guardou `CORRIGIR_PELA_REDE` para voltar com o recurso; a guarda não lê método.

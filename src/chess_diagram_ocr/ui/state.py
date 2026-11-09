@@ -35,6 +35,12 @@ from ..atomic_io import atomic_write_json
 from . import viewport
 from .livros import caminho_canonico, chave_do_livro
 
+__all__ = [
+    "AppState",
+    "load_state",
+    "save_state",
+]
+
 logger = logging.getLogger(__name__)
 
 STATE_VERSION = 7

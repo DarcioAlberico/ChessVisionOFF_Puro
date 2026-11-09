@@ -769,7 +769,6 @@ class EstadoVazioNomeiaControleQueExisteTests(unittest.TestCase):
 
         mensagens = {
             "ui/strings.TEXTO_VAZIO_FRASE": strings.TEXTO_VAZIO_FRASE,
-            "ui/strings.EDITOR_VAZIO": strings.EDITOR_VAZIO,
         }
         try:
             from chess_diagram_ocr.qt import painel_de_resultado

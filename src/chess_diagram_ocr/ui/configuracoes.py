@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from chess_diagram_ocr import settings as preferencias
+from chess_diagram_ocr.ui import strings
 
 __all__ = ["ABAS", "CAMPOS", "FORA_DA_JANELA", "Campo", "dpi", "ler", "max_boards", "trocar"]
 
@@ -76,9 +77,9 @@ CAMPOS: tuple[Campo, ...] = (
           "Quantas passagens pelo dataset o treino do modelo de peças faz ao clicar em "
           "Treinar. Mais épocas: mais tempo e, até certo ponto, um modelo melhor -- o "
           "treino só grava por cima quando a validação melhora.", 1, 200, 1),
-    Campo("training.batch_size", "Tamanho do lote", INTEIRO,
+    Campo("training.batch_size", strings.TAMANHO_DO_LOTE, INTEIRO,
           "Casas por passo do treino. Maior é mais rápido e usa mais memória.", 1, 512, 8),
-    Campo("training.lr", "Taxa de aprendizado", DECIMAL,
+    Campo("training.lr", strings.TAXA_DE_APRENDIZADO, DECIMAL,
           "Passo do otimizador. 0,001 é o padrão medido; dez vezes maior costuma divergir.",
           1e-6, 1.0, 1e-4, decimais=6),
     Campo("training.ocr_iterations", "Iterações do ajuste fino do OCR", INTEIRO,

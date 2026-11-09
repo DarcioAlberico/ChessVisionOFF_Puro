@@ -19,6 +19,12 @@ import chess
 
 from ..fen_utils import PositionCheck, check_position, reading_index_from_square, square_name
 
+__all__ = [
+    "ILLEGAL_SAVE_TITLE",
+    "explain_position",
+    "illegal_save_question",
+]
+
 
 @dataclass(frozen=True)
 class LegalityProblem:

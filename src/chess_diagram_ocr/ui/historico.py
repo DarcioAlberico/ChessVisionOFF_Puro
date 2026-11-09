@@ -2,7 +2,7 @@
 
 **A função que faltava.** Quando este módulo foi escrito, `grep -rn 'undo' src/` devolvia zero
 linhas de implementação -- os únicos acertos eram comentários, entre eles o de `ui/board_edit.py`,
-que descreve `apply_edits` como *"útil para desfazer em bloco"*. A Imagem 2 põe Desfazer, Refazer e
+que descrevia `apply_edits` como *"útil para desfazer em bloco"* (ela saiu na S-895, sem chamador). A Imagem 2 põe Desfazer, Refazer e
 Limpar no grupo Edição, e nenhum dos três existia.
 
 **E o registro do que custa não tê-los já existe neste projeto: a S-76**, em que um clique

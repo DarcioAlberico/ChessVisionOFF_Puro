@@ -31,6 +31,17 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+__all__ = [
+    "DEFAULT_MAX_CACHED_PAGES",
+    "PageOcrParams",
+    "PageResults",
+    "PageResultsCache",
+    "PageSwitch",
+    "colocacoes_conferidas",
+    "decide_page_switch",
+    "paginas_editadas",
+]
+
 if TYPE_CHECKING:  # pragma: no cover - só para os tipos
     from chess_diagram_ocr.service import RecognitionOrigin, RecognizedDiagram
 

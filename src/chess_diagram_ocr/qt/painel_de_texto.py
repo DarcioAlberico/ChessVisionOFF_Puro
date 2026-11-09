@@ -627,7 +627,6 @@ class PainelDeTexto(QWidget):
             titulo=strings.TEXTO_VAZIO_TITULO,
             # A frase **sem** o "Nenhuma folha lida." da frente: o título já o diz, e repeti-lo
             # a 20 px de distância é a mesma duplicação que o §7 mandou apagar na Galeria.
-            # `EDITOR_VAZIO` continua inteiro, porque ele é a frase de quem não tem título.
             frase=strings.TEXTO_VAZIO_FRASE,
             rotulo_do_botao=comandos.rotulo_de_botao("ler_folha"),
             nome_acessivel="Ler a folha da página aberta",

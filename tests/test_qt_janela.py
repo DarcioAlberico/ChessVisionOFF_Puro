@@ -1819,7 +1819,6 @@ class EstadoVazioNaTelaTests(unittest.TestCase):
 
         return {
             "ui/strings.TEXTO_VAZIO_FRASE": strings.TEXTO_VAZIO_FRASE,
-            "ui/strings.EDITOR_VAZIO": strings.EDITOR_VAZIO,
             "qt/painel_de_resultado.MENSAGEM_VAZIA": painel_de_resultado.MENSAGEM_VAZIA,
         }
 

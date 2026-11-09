@@ -98,7 +98,7 @@ class EditOperationTests(unittest.TestCase):
     def test_illegal_positions_are_allowed(self) -> None:
         """Estado intermediário ilegal é normal no meio de uma correção (ver docstring)."""
         dois_reis = board_edit.set_piece(KINGS_ONLY, 0, "K")
-        self.assertEqual(board_edit.counts_by_symbol(dois_reis)["K"], 2)
+        self.assertEqual(board_edit.squares_from_placement(dois_reis).count("K"), 2)
         # Peao na oitava fila: o modelo erra isso, e o usuario precisa poder reproduzi-lo
         # antes de consertar.
         com_peao = board_edit.set_piece(KINGS_ONLY, 1, "P")
@@ -113,9 +113,6 @@ class EditOperationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 board_edit.set_piece(KINGS_ONLY, index, "Q")
 
-    def test_apply_edits_in_bulk(self) -> None:
-        resultado = board_edit.apply_edits(board_edit.EMPTY_PLACEMENT, [(0, "k"), (63, "K"), (0, None)])
-        self.assertEqual(resultado, "8/8/8/8/8/8/8/7K")
 
 
 class SideOfTests(unittest.TestCase):

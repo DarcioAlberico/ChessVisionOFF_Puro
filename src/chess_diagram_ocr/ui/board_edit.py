@@ -17,9 +17,25 @@ de `labels_from_fen` e de `square_name`.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 
 from ..config import PIECE_CLASSES
+
+__all__ = [
+    "EMPTY_PLACEMENT",
+    "PIECE_NAMES_PT",
+    "PIECE_SYMBOLS",
+    "clear_square",
+    "differing_squares",
+    "is_valid_placement",
+    "move_piece",
+    "piece_at",
+    "placement_from_squares",
+    "placement_of",
+    "set_piece",
+    "side_of",
+    "squares_from_placement",
+]
 
 EMPTY_PLACEMENT = "8/8/8/8/8/8/8/8"
 
@@ -162,31 +178,12 @@ def differing_squares(before: str, after: str) -> tuple[int, ...]:
     return tuple(index for index in range(64) if left[index] != right[index])
 
 
-def counts_by_symbol(placement: str) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for symbol in squares_from_placement(placement):
-        if symbol:
-            counts[symbol] = counts.get(symbol, 0) + 1
-    return counts
-
-
 def is_valid_placement(placement: str) -> bool:
     try:
         squares_from_placement(placement)
         return True
     except ValueError:
         return False
-
-
-def apply_edits(placement: str, edits: Iterable[tuple[int, str | None]]) -> str:
-    """Aplica uma sequência de (casa, símbolo) de uma vez. Útil para desfazer em bloco."""
-    squares = squares_from_placement(placement)
-    for index, symbol in edits:
-        _check_index(index)
-        if symbol is not None and symbol not in PIECE_NAMES_PT:
-            raise ValueError(f"Símbolo de peça desconhecido: {symbol!r}")
-        squares[index] = symbol or ""
-    return placement_from_squares(squares)
 
 
 def _check_index(index: int) -> None:
