@@ -2,71 +2,8 @@
  "limiar": 0.8,
  "gramas": 5,
  "min_tokens": 60,
- "total": 65,
+ "total": 45,
  "pares": [
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
-   "linha_a": 264,
-   "b": "src/chess_diagram_ocr/cli/texto_linha.py::parse_args",
-   "linha_b": 242,
-   "semelhanca": 1.0
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
-   "linha_a": 264,
-   "b": "src/chess_diagram_ocr/cli/texto_placar_final.py::parse_args",
-   "linha_b": 239,
-   "semelhanca": 1.0
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
-   "linha_a": 264,
-   "b": "src/chess_diagram_ocr/cli/texto_vertical.py::parse_args",
-   "linha_b": 401,
-   "semelhanca": 1.0
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_estilo_classificador.py::build_parser",
-   "linha_a": 257,
-   "b": "src/chess_diagram_ocr/cli/texto_estilo_conjunto.py::build_parser",
-   "linha_b": 196,
-   "semelhanca": 1.0
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_estilo_conjunto.py::folhas_de",
-   "linha_a": 57,
-   "b": "src/chess_diagram_ocr/cli/texto_estilo_motor.py::folhas_de",
-   "linha_b": 139,
-   "semelhanca": 1.0
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_grade.py::parse_args",
-   "linha_a": 570,
-   "b": "src/chess_diagram_ocr/cli/texto_ordem.py::parse_args",
-   "linha_b": 293,
-   "semelhanca": 1.0
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_linha.py::parse_args",
-   "linha_a": 242,
-   "b": "src/chess_diagram_ocr/cli/texto_placar_final.py::parse_args",
-   "linha_b": 239,
-   "semelhanca": 1.0
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_linha.py::parse_args",
-   "linha_a": 242,
-   "b": "src/chess_diagram_ocr/cli/texto_vertical.py::parse_args",
-   "linha_b": 401,
-   "semelhanca": 1.0
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_placar_final.py::parse_args",
-   "linha_a": 239,
-   "b": "src/chess_diagram_ocr/cli/texto_vertical.py::parse_args",
-   "linha_b": 401,
-   "semelhanca": 1.0
-  },
   {
    "a": "src/chess_diagram_ocr/importacao_de_imagens.py::Lote.to_dict",
    "linha_a": 276,
@@ -83,9 +20,9 @@
   },
   {
    "a": "src/chess_diagram_ocr/qt/painel_de_texto.py::PainelDeTexto.desfazer",
-   "linha_a": 1545,
+   "linha_a": 1544,
    "b": "src/chess_diagram_ocr/qt/painel_de_texto.py::PainelDeTexto.refazer",
-   "linha_b": 1569,
+   "linha_b": 1568,
    "semelhanca": 1.0
   },
   {
@@ -110,18 +47,18 @@
    "semelhanca": 1.0
   },
   {
-   "a": "src/chess_diagram_ocr/cli/texto_estilo_classificador.py::build_parser",
-   "linha_a": 257,
-   "b": "src/chess_diagram_ocr/cli/texto_estilo_motor.py::build_parser",
-   "linha_b": 193,
-   "semelhanca": 0.941
-  },
-  {
    "a": "src/chess_diagram_ocr/cli/texto_estilo_conjunto.py::build_parser",
    "linha_a": 196,
    "b": "src/chess_diagram_ocr/cli/texto_estilo_motor.py::build_parser",
-   "linha_b": 193,
-   "semelhanca": 0.941
+   "linha_b": 186,
+   "semelhanca": 0.962
+  },
+  {
+   "a": "src/chess_diagram_ocr/cli/scan.py::parse_args",
+   "linha_a": 121,
+   "b": "src/chess_diagram_ocr/cli/texto_conflitos.py::parse_args",
+   "linha_b": 45,
+   "semelhanca": 0.944
   },
   {
    "a": "src/chess_diagram_ocr/qt/sala_partidas.py::PartidasDaBase.buscar_partidas",
@@ -132,39 +69,18 @@
    "proposito": "S-866: o par da S-535 (buscar_partidas e arvore_de_aberturas) so mudou de arquivo, do painel para qt/sala_partidas.py; mesma semelhanca"
   },
   {
-   "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
-   "linha_a": 264,
-   "b": "src/chess_diagram_ocr/cli/texto_inventario.py::parse_args",
-   "linha_b": 223,
-   "semelhanca": 0.935
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_inventario.py::parse_args",
-   "linha_a": 223,
-   "b": "src/chess_diagram_ocr/cli/texto_linha.py::parse_args",
-   "linha_b": 242,
-   "semelhanca": 0.935
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_inventario.py::parse_args",
-   "linha_a": 223,
-   "b": "src/chess_diagram_ocr/cli/texto_placar_final.py::parse_args",
-   "linha_b": 239,
-   "semelhanca": 0.935
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_inventario.py::parse_args",
-   "linha_a": 223,
-   "b": "src/chess_diagram_ocr/cli/texto_vertical.py::parse_args",
-   "linha_b": 401,
-   "semelhanca": 0.935
-  },
-  {
    "a": "src/chess_diagram_ocr/detection_census.py::DetectionCensus.as_dict",
    "linha_a": 358,
    "b": "src/chess_diagram_ocr/side_survey.py::SideSurvey.as_dict",
    "linha_b": 125,
    "semelhanca": 0.935
+  },
+  {
+   "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
+   "linha_a": 274,
+   "b": "src/chess_diagram_ocr/cli/texto_vertical.py::parse_args",
+   "linha_b": 411,
+   "semelhanca": 0.918
   },
   {
    "a": "src/chess_diagram_ocr/cli/texto_paragrafo.py::Placar.para_json",
@@ -181,18 +97,11 @@
    "semelhanca": 0.908
   },
   {
-   "a": "src/chess_diagram_ocr/cli/scan.py::parse_args",
-   "linha_a": 118,
-   "b": "src/chess_diagram_ocr/cli/texto_conflitos.py::parse_args",
-   "linha_b": 37,
+   "a": "src/chess_diagram_ocr/cli/evaluate.py::parse_args",
+   "linha_a": 34,
+   "b": "src/chess_diagram_ocr/cli/export_onnx.py::parse_args",
+   "linha_b": 38,
    "semelhanca": 0.903
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/experiment.py::parse_args",
-   "linha_a": 22,
-   "b": "src/chess_diagram_ocr/cli/texto_train.py::parse_args",
-   "linha_b": 43,
-   "semelhanca": 0.901
   },
   {
    "a": "src/chess_diagram_ocr/docx_saida.py::exportar_texto_docx",
@@ -209,11 +118,11 @@
    "semelhanca": 0.893
   },
   {
-   "a": "src/chess_diagram_ocr/cli/gallery.py::parse_args",
-   "linha_a": 38,
-   "b": "src/chess_diagram_ocr/cli/text_status.py::parse_args",
-   "linha_b": 67,
-   "semelhanca": 0.89
+   "a": "src/chess_diagram_ocr/cli/texto_estilo_classificador.py::build_parser",
+   "linha_a": 257,
+   "b": "src/chess_diagram_ocr/cli/texto_estilo_conjunto.py::build_parser",
+   "linha_b": 196,
+   "semelhanca": 0.891
   },
   {
    "a": "src/chess_diagram_ocr/qt/arvore_de_aberturas.py::DialogoDaArvore._rodape",
@@ -230,11 +139,11 @@
    "semelhanca": 0.877
   },
   {
-   "a": "src/chess_diagram_ocr/cli/review.py::parse_args",
-   "linha_a": 40,
-   "b": "src/chess_diagram_ocr/cli/sides.py::parse_args",
-   "linha_b": 37,
-   "semelhanca": 0.876
+   "a": "src/chess_diagram_ocr/cli/texto_grade.py::parse_args",
+   "linha_a": 611,
+   "b": "src/chess_diagram_ocr/cli/texto_ordem.py::parse_args",
+   "linha_b": 301,
+   "semelhanca": 0.875
   },
   {
    "a": "src/chess_diagram_ocr/estudo_arquivo.py::chave_de",
@@ -258,41 +167,6 @@
    "semelhanca": 0.87
   },
   {
-   "a": "src/chess_diagram_ocr/cli/texto_train.py::parse_args",
-   "linha_a": 43,
-   "b": "src/chess_diagram_ocr/cli/texto_variantes.py::parse_args",
-   "linha_b": 244,
-   "semelhanca": 0.868
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_correcoes.py::build_parser",
-   "linha_a": 93,
-   "b": "src/chess_diagram_ocr/cli/texto_flutuante.py::build_parser",
-   "linha_b": 258,
-   "semelhanca": 0.868
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/export_pgn.py::parse_args",
-   "linha_a": 31,
-   "b": "src/chess_diagram_ocr/cli/sides.py::parse_args",
-   "linha_b": 37,
-   "semelhanca": 0.861
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/export_pgn.py::parse_args",
-   "linha_a": 31,
-   "b": "src/chess_diagram_ocr/cli/field.py::parse_args",
-   "linha_b": 69,
-   "semelhanca": 0.861
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_conflitos.py::parse_args",
-   "linha_a": 37,
-   "b": "src/chess_diagram_ocr/cli/texto_train.py::parse_args",
-   "linha_b": 43,
-   "semelhanca": 0.861
-  },
-  {
    "a": "src/chess_diagram_ocr/cli/text_status.py::parse_args",
    "linha_a": 67,
    "b": "src/chess_diagram_ocr/cli/texto_transcrever.py::parse_args",
@@ -300,24 +174,31 @@
    "semelhanca": 0.857
   },
   {
-   "a": "src/chess_diagram_ocr/cli/field.py::parse_args",
-   "linha_a": 69,
-   "b": "src/chess_diagram_ocr/cli/sides.py::parse_args",
-   "linha_b": 37,
-   "semelhanca": 0.854
+   "a": "src/chess_diagram_ocr/cli/texto_estilo_classificador.py::build_parser",
+   "linha_a": 257,
+   "b": "src/chess_diagram_ocr/cli/texto_estilo_motor.py::build_parser",
+   "linha_b": 186,
+   "semelhanca": 0.855
   },
   {
-   "a": "src/chess_diagram_ocr/cli/evaluate.py::parse_args",
-   "linha_a": 25,
-   "b": "src/chess_diagram_ocr/cli/sides.py::parse_args",
-   "linha_b": 37,
+   "a": "src/chess_diagram_ocr/cli/texto_linha.py::parse_args",
+   "linha_a": 242,
+   "b": "src/chess_diagram_ocr/cli/texto_vertical.py::parse_args",
+   "linha_b": 411,
    "semelhanca": 0.853
   },
   {
    "a": "src/chess_diagram_ocr/cli/export_pgn.py::parse_args",
-   "linha_a": 31,
+   "linha_a": 42,
    "b": "src/chess_diagram_ocr/cli/review.py::parse_args",
-   "linha_b": 40,
+   "linha_b": 44,
+   "semelhanca": 0.847
+  },
+  {
+   "a": "src/chess_diagram_ocr/cli/experiment.py::parse_args",
+   "linha_a": 22,
+   "b": "src/chess_diagram_ocr/cli/texto_train.py::parse_args",
+   "linha_b": 58,
    "semelhanca": 0.846
   },
   {
@@ -328,59 +209,77 @@
    "semelhanca": 0.846
   },
   {
-   "a": "src/chess_diagram_ocr/cli/export_onnx.py::parse_args",
-   "linha_a": 35,
-   "b": "src/chess_diagram_ocr/cli/sides.py::parse_args",
-   "linha_b": 37,
-   "semelhanca": 0.84
+   "a": "src/chess_diagram_ocr/cli/texto_train.py::parse_args",
+   "linha_a": 58,
+   "b": "src/chess_diagram_ocr/cli/texto_variantes.py::parse_args",
+   "linha_b": 253,
+   "semelhanca": 0.843
+  },
+  {
+   "a": "src/chess_diagram_ocr/cli/infer.py::parse_args",
+   "linha_a": 26,
+   "b": "src/chess_diagram_ocr/cli/texto_export_onnx.py::parse_args",
+   "linha_b": 42,
+   "semelhanca": 0.843,
+   "proposito": "S-857: os parse_args dos CLIs ja leem as opcoes comuns de cli/__init__.py; o que sobra e a forma do argparse, com opcoes proprias de cada comando"
   },
   {
    "a": "src/chess_diagram_ocr/cli/texto_grade.py::_linhas_da_camada",
-   "linha_a": 210,
+   "linha_a": 221,
    "b": "src/chess_diagram_ocr/cli/texto_ordem.py::_linhas_da_camada",
-   "linha_b": 147,
+   "linha_b": 155,
    "semelhanca": 0.839
   },
   {
-   "a": "src/chess_diagram_ocr/cli/evaluate.py::parse_args",
-   "linha_a": 25,
-   "b": "src/chess_diagram_ocr/cli/export_onnx.py::parse_args",
-   "linha_b": 35,
-   "semelhanca": 0.839
+   "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
+   "linha_a": 274,
+   "b": "src/chess_diagram_ocr/cli/texto_linha.py::parse_args",
+   "linha_b": 242,
+   "semelhanca": 0.836
   },
   {
-   "a": "src/chess_diagram_ocr/cli/texto_inventario.py::parse_args",
-   "linha_a": 223,
+   "a": "src/chess_diagram_ocr/cli/scan.py::parse_args",
+   "linha_a": 121,
    "b": "src/chess_diagram_ocr/cli/texto_train.py::parse_args",
-   "linha_b": 43,
-   "semelhanca": 0.826
+   "linha_b": 58,
+   "semelhanca": 0.835,
+   "proposito": "S-857: os parse_args dos CLIs ja leem as opcoes comuns de cli/__init__.py; o que sobra e a forma do argparse, com opcoes proprias de cada comando"
+  },
+  {
+   "a": "src/chess_diagram_ocr/cli/texto_conflitos.py::parse_args",
+   "linha_a": 45,
+   "b": "src/chess_diagram_ocr/cli/texto_train.py::parse_args",
+   "linha_b": 58,
+   "semelhanca": 0.833
+  },
+  {
+   "a": "src/chess_diagram_ocr/cli/games.py::parse_args",
+   "linha_a": 90,
+   "b": "src/chess_diagram_ocr/cli/provenance.py::parse_args",
+   "linha_b": 53,
+   "semelhanca": 0.83,
+   "proposito": "S-857: os parse_args dos CLIs ja leem as opcoes comuns de cli/__init__.py; o que sobra e a forma do argparse, com opcoes proprias de cada comando"
   },
   {
    "a": "src/chess_diagram_ocr/cli/experiment.py::parse_args",
    "linha_a": 22,
    "b": "src/chess_diagram_ocr/cli/texto_export_onnx.py::parse_args",
-   "linha_b": 32,
-   "semelhanca": 0.819
+   "linha_b": 42,
+   "semelhanca": 0.818
   },
   {
-   "a": "src/chess_diagram_ocr/cli/text_status.py::parse_args",
-   "linha_a": 67,
-   "b": "src/chess_diagram_ocr/cli/texto_colunas.py::parse_args",
-   "linha_b": 209,
-   "semelhanca": 0.819
+   "a": "src/chess_diagram_ocr/cli/games.py::parse_args",
+   "linha_a": 90,
+   "b": "src/chess_diagram_ocr/cli/review.py::parse_args",
+   "linha_b": 44,
+   "semelhanca": 0.817,
+   "proposito": "S-857: os parse_args dos CLIs ja leem as opcoes comuns de cli/__init__.py; o que sobra e a forma do argparse, com opcoes proprias de cada comando"
   },
   {
    "a": "src/chess_diagram_ocr/cli/audit.py::parse_args",
-   "linha_a": 37,
+   "linha_a": 38,
    "b": "src/chess_diagram_ocr/cli/text_status.py::parse_args",
    "linha_b": 67,
-   "semelhanca": 0.812
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/export_onnx.py::parse_args",
-   "linha_a": 35,
-   "b": "src/chess_diagram_ocr/cli/export_pgn.py::parse_args",
-   "linha_b": 31,
    "semelhanca": 0.812
   },
   {
@@ -391,59 +290,26 @@
    "semelhanca": 0.811
   },
   {
-   "a": "src/chess_diagram_ocr/cli/audit.py::parse_args",
-   "linha_a": 37,
-   "b": "src/chess_diagram_ocr/cli/texto_grade.py::parse_args",
-   "linha_b": 570,
-   "semelhanca": 0.81
+   "a": "src/chess_diagram_ocr/cli/field.py::parse_args",
+   "linha_a": 71,
+   "b": "src/chess_diagram_ocr/cli/games.py::parse_args",
+   "linha_b": 90,
+   "semelhanca": 0.809,
+   "proposito": "S-857: os parse_args dos CLIs ja leem as opcoes comuns de cli/__init__.py; o que sobra e a forma do argparse, com opcoes proprias de cada comando"
   },
   {
-   "a": "src/chess_diagram_ocr/cli/audit.py::parse_args",
-   "linha_a": 37,
-   "b": "src/chess_diagram_ocr/cli/texto_ordem.py::parse_args",
-   "linha_b": 293,
-   "semelhanca": 0.81
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_export_onnx.py::parse_args",
-   "linha_a": 32,
-   "b": "src/chess_diagram_ocr/cli/texto_train.py::parse_args",
-   "linha_b": 43,
-   "semelhanca": 0.808
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_correcoes.py::build_parser",
-   "linha_a": 93,
-   "b": "src/chess_diagram_ocr/cli/texto_estilo_classificador.py::build_parser",
-   "linha_b": 257,
-   "semelhanca": 0.808
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_correcoes.py::build_parser",
-   "linha_a": 93,
-   "b": "src/chess_diagram_ocr/cli/texto_estilo_conjunto.py::build_parser",
-   "linha_b": 196,
-   "semelhanca": 0.808
+   "a": "src/chess_diagram_ocr/cli/evaluate.py::parse_args",
+   "linha_a": 34,
+   "b": "src/chess_diagram_ocr/cli/field.py::parse_args",
+   "linha_b": 71,
+   "semelhanca": 0.804,
+   "proposito": "S-857: os parse_args dos CLIs ja leem as opcoes comuns de cli/__init__.py; o que sobra e a forma do argparse, com opcoes proprias de cada comando"
   },
   {
    "a": "src/chess_diagram_ocr/qt/arvore_de_aberturas.py::DialogoDaArvore._montar",
    "linha_a": 216,
    "b": "src/chess_diagram_ocr/qt/busca_de_partidas.py::DialogoDeBusca._montar",
    "linha_b": 124,
-   "semelhanca": 0.803
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/text_status.py::parse_args",
-   "linha_a": 67,
-   "b": "src/chess_diagram_ocr/cli/texto_grade.py::parse_args",
-   "linha_b": 570,
-   "semelhanca": 0.803
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/text_status.py::parse_args",
-   "linha_a": 67,
-   "b": "src/chess_diagram_ocr/cli/texto_ordem.py::parse_args",
-   "linha_b": 293,
    "semelhanca": 0.803
   },
   {
@@ -454,10 +320,10 @@
    "semelhanca": 0.8
   },
   {
-   "a": "src/chess_diagram_ocr/cli/evaluate.py::parse_args",
-   "linha_a": 25,
-   "b": "src/chess_diagram_ocr/cli/review.py::parse_args",
-   "linha_b": 40,
+   "a": "src/chess_diagram_ocr/cli/texto_inventario.py::parse_args",
+   "linha_a": 220,
+   "b": "src/chess_diagram_ocr/cli/texto_train.py::parse_args",
+   "linha_b": 58,
    "semelhanca": 0.8
   }
  ]

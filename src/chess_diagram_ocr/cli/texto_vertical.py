@@ -131,16 +131,13 @@ PIORA_TOLERADA = 0.02
 """Quanto o acerto pode cair contra o `--baseline` antes de o comando falhar."""
 
 
+_VOLTAS_POR_ANGULO = {90: -1, 180: 2, 270: 1}
+"""Ângulo do texto -> giros de 90° (anti-horários, `np.rot90`) que o endireitam."""
+
+
 def _voltas(angulo: int) -> int:
     """Quantos giros anti-horários de 90° desfazem `angulo`."""
-    resto = angulo % 360
-    if resto == 90:
-        return -1
-    if resto == 270:
-        return 1
-    if resto == 180:
-        return 2
-    return 0
+    return _VOLTAS_POR_ANGULO.get(angulo % 360, 0)
 
 
 def endireitar(recorte: np.ndarray, angulo: int) -> np.ndarray:
