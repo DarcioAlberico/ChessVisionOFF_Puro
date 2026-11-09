@@ -1094,6 +1094,13 @@ cada um dos nove assuntos acima.
 
 **Aceite.** A caracterização passa antes e depois; a complexidade do `eventFilter` fica abaixo de 5.
 
+**Entregue** (2026-11-08): a caracterização é `tests/test_qt_texto_filtro.py`, nove testes (um por assunto,
+cada um com o lado em que o evento **não** é comido); tirar qualquer uma das sete entradas da tabela
+reprova o teste do seu assunto e só ele. A tabela tem sete pares e não nove: o histórico, o `Esc` e o
+`Enter` são o mesmo `KeyPress` do editor, e ficam num tratador só (`_tecla_na_folha`, complexidade 6). O
+`eventFilter` tem complexidade 4. A tabela nasce vazia antes de `_montar` e é cheia depois dele, o que
+tira o `getattr(self, "status")`.
+
 ## S-826 · Tarefa sem pai em todos os painéis
 
 **Problema** (confirmado por script, no mecanismo). `trabalho.manter_viva` documenta que uma `Tarefa` com

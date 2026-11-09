@@ -525,7 +525,10 @@ class PainelDeTexto(QWidget):
         self._documento_ao_ler: rico.DocumentoRico | None = None
         """O documento na tela quando a leitura em curso partiu. Ver `_leitura_terminou`."""
 
+        self._filtros: dict[tuple[object, QEvent.Type], Callable[[QEvent], bool]] = {}
+        """Quem trata cada evento filtrado (S-825): vazia durante `_montar`. Ver `eventFilter`."""
         self._montar()
+        self._filtros = self._tabela_de_filtros()
         self._desenhar()
         # Toda edição -- tecla ou ferramenta -- reinicia o relógio do rascunho. É o único ouvinte
         # deste sinal dentro do painel; o `desenhar_documento` de uma folha recém-lida também o
@@ -4274,55 +4277,103 @@ class PainelDeTexto(QWidget):
     # ------------------------------------------------------------------------------ teclado
 
     def eventFilter(self, a0: object, a1: object) -> bool:  # noqa: N802 - assinatura do Qt
-        """`Ctrl+Z` e `Ctrl+Y` dentro da folha são deste painel; o estado vazio acompanha o poço.
+        """O evento vai ao tratador do par `(objeto, tipo)` da tabela (S-825); o que ela não tem é do Qt.
+
+        O tratador que devolve `False` deixa o evento seguir: é o `Esc` sem nada armado, o `Enter`
+        fora de uma marca, a roda sem `Ctrl`. Uma exceção num tratador vai ao `sys.excepthook` pela
+        borda da S-800, como em qualquer slot.
+        """
+        if isinstance(a1, QEvent):
+            tratador = self._filtros.get((a0, a1.type()))
+            if tratador is not None and tratador(a1):
+                return True
+        return super().eventFilter(a0, a1)  # type: ignore[arg-type]
+
+    def _tabela_de_filtros(self) -> dict[tuple[object, QEvent.Type], Callable[[QEvent], bool]]:
+        """Quem trata o quê, nos três objetos em que o filtro está instalado (`_montar`).
+
+        Montada **depois** de `_montar`, e por isso sem o `getattr` de antes: o filtro já está no
+        editor quando o corpo é montado, e os eventos dessa montagem chegam com a tabela vazia.
+        """
+        folha = self.editor.viewport()
+        return {
+            (self.editor, QEvent.Type.KeyPress): self._tecla_na_folha,
+            (self.status, QEvent.Type.MouseButtonRelease): self._clique_no_rodape,
+            (folha, QEvent.Type.Resize): self._folha_mudou_de_tamanho,
+            (folha, QEvent.Type.ToolTip): self._dica_na_folha,
+            (folha, QEvent.Type.Wheel): self._roda_na_folha,
+            (folha, QEvent.Type.MouseButtonPress): self._clique_na_folha,
+            (folha, QEvent.Type.MouseButtonDblClick): self._duplo_clique_na_folha,
+        }
+
+    def _tecla_na_folha(self, evento: QEvent) -> bool:
+        """`Ctrl+Z` e `Ctrl+Y` dentro da folha são deste painel; `Esc` desarma; `Enter` ativa a marca.
 
         A tecla de desfazer chega ao editor porque a guarda de atalhos a cede a todo campo de
         texto -- e o desfazer do `QTextEdit` está desligado. Ver `TECLAS_DO_HISTORICO`.
         """
-        if a0 is self.editor and isinstance(a1, QKeyEvent) and a1.type() == QEvent.Type.KeyPress:
-            combinacao = QKeySequence(a1.keyCombination())
-            for acao, tecla in self._teclas_do_historico.items():
-                alvo = self.atender(acao) if tecla == combinacao else None
-                if alvo is not None:
-                    alvo()
-                    return True
-            if a1.key() == Qt.Key.Key_Escape and self._sair_com_esc():
+        if not isinstance(evento, QKeyEvent):
+            return False
+        combinacao = QKeySequence(evento.keyCombination())
+        for acao, tecla in self._teclas_do_historico.items():
+            alvo = self.atender(acao) if tecla == combinacao else None
+            if alvo is not None:
+                alvo()
                 return True
-            # Enter com a marca inteira selecionada abre o diagrama no Estudo (item 30): é o
-            # duplo clique do item 8 para quem anda pelo teclado -- o clique (ou Shift+setas)
-            # seleciona a marca, o Enter a ativa. Com qualquer outra seleção o Enter é o Enter.
-            if a1.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not a1.modifiers() and self._ativar_marca_selecionada():
-                return True
-        # O filtro já está no editor quando o corpo é montado, antes de o rodapé existir: os
-        # eventos dessa montagem chegam aqui sem `self.status`, e a exceção num filtro é `qFatal`
-        # no PyQt6 do 3.13.
-        if a0 is getattr(self, "status", None) and isinstance(a1, QMouseEvent) and a1.type() == QEvent.Type.MouseButtonRelease:
-            self.ir_ao_campo_de_folha()
-            return True
-        if a0 is self.editor.viewport() and isinstance(a1, QEvent) and a1.type() == QEvent.Type.Resize:
-            self.vazio.setGeometry(self._area_da_folha())
-        if a0 is self.editor.viewport() and isinstance(a1, QHelpEvent) and a1.type() == QEvent.Type.ToolTip:
-            # A dica sobre a miniatura (item 23): o que ela é, a posição, e o que o clique faz.
-            dica = self._dica_da_marca(a1.pos())
-            if dica:
-                QToolTip.showText(a1.globalPos(), dica, self.editor.viewport())
-            else:
-                QToolTip.hideText()
-            return True
-        if a0 is self.editor.viewport() and isinstance(a1, QWheelEvent) and a1.modifiers() & Qt.KeyboardModifier.ControlModifier:
-            # Ctrl+roda é o zoom da vista (item 13). O `QTextEdit` responderia mudando a fonte do
-            # editor -- que nenhuma letra segue, porque cada trecho sai com corpo explícito (S-264).
-            passo = a1.angleDelta().y()
-            if passo:
-                self._zoom_ancorado(a1.position().toPoint(), +1 if passo > 0 else -1)
-            return True
-        if a0 is self.editor.viewport() and isinstance(a1, QMouseEvent) and a1.button() == Qt.MouseButton.LeftButton:
-            ponto = a1.position().toPoint()
-            if a1.type() == QEvent.Type.MouseButtonPress and self._clicou_na_miniatura(ponto):
-                return True
-            if a1.type() == QEvent.Type.MouseButtonDblClick and self._ativou_a_miniatura(ponto):
-                return True
-        return super().eventFilter(a0, a1)  # type: ignore[arg-type]
+        if evento.key() == Qt.Key.Key_Escape:
+            return self._sair_com_esc()
+        # Enter com a marca inteira selecionada abre o diagrama no Estudo (item 30): é o duplo
+        # clique do item 8 para quem anda pelo teclado -- o clique (ou Shift+setas) seleciona a
+        # marca, o Enter a ativa. Com qualquer outra seleção o Enter é o Enter.
+        if evento.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not evento.modifiers():
+            return self._ativar_marca_selecionada()
+        return False
+
+    def _clique_no_rodape(self, _evento: QEvent) -> bool:
+        """O clique na folha do rodapé leva ao campo da folha (S-655), com qualquer botão."""
+        self.ir_ao_campo_de_folha()
+        return True
+
+    def _folha_mudou_de_tamanho(self, _evento: QEvent) -> bool:
+        """O estado vazio acompanha a área da folha; o `Resize` segue para o editor."""
+        self.vazio.setGeometry(self._area_da_folha())
+        return False
+
+    def _dica_na_folha(self, evento: QEvent) -> bool:
+        """A dica sobre a miniatura (item 23): o que ela é, a posição, e o que o clique faz."""
+        if not isinstance(evento, QHelpEvent):
+            return False
+        dica = self._dica_da_marca(evento.pos())
+        if dica:
+            QToolTip.showText(evento.globalPos(), dica, self.editor.viewport())
+        else:
+            QToolTip.hideText()
+        return True
+
+    def _roda_na_folha(self, evento: QEvent) -> bool:
+        """Ctrl+roda é o zoom da vista (item 13); sem `Ctrl` a roda rola a folha.
+
+        O `QTextEdit` responderia mudando a fonte do editor -- que nenhuma letra segue, porque cada
+        trecho sai com corpo explícito (S-264).
+        """
+        if not isinstance(evento, QWheelEvent) or not evento.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            return False
+        passo = evento.angleDelta().y()
+        if passo:
+            self._zoom_ancorado(evento.position().toPoint(), +1 if passo > 0 else -1)
+        return True
+
+    def _clique_na_folha(self, evento: QEvent) -> bool:
+        """O clique esquerdo na miniatura seleciona a marca dela (item 8)."""
+        if not isinstance(evento, QMouseEvent) or evento.button() != Qt.MouseButton.LeftButton:
+            return False
+        return self._clicou_na_miniatura(evento.position().toPoint())
+
+    def _duplo_clique_na_folha(self, evento: QEvent) -> bool:
+        """O duplo clique esquerdo na miniatura pede o diagrama na sala (item 8)."""
+        if not isinstance(evento, QMouseEvent) or evento.button() != Qt.MouseButton.LeftButton:
+            return False
+        return self._ativou_a_miniatura(evento.position().toPoint())
 
     # ------------------------------------------------------------------- a miniatura (item 8)
 
