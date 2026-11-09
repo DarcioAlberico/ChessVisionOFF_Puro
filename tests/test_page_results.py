@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import subprocess
-import sys
 import unittest
 
 import numpy as np
 import pytest
+from subprocesso import rodar_python
 
 from chess_diagram_ocr.service import RecognizedDiagram
 from chess_diagram_ocr.ui import estado_do_rodape
@@ -408,7 +407,7 @@ class RespostaDaLeituraTests(unittest.TestCase):
     def test_a_decisao_nao_importa_o_toolkit(self) -> None:
         """O aceite da S-867: a decisão é testada sem PyQt6."""
         codigo = "import sys, chess_diagram_ocr.ui.page_results; print('PyQt6' in sys.modules)"
-        saida = subprocess.run([sys.executable, "-c", codigo], capture_output=True, text=True, check=True)
+        saida = rodar_python(codigo)
         self.assertEqual("False", saida.stdout.strip())
 
 
