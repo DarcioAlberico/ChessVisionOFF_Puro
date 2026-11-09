@@ -1694,10 +1694,12 @@ class PainelDeTexto(QWidget):
 
         **Muda o texto**, e por isso passa pela mesma pilha das outras ferramentas: o documento
         anterior é guardado antes do redesenho. Sem isso, desfazer uma troca de caixa sobre um
-        parágrafo seria impossível.
+        parágrafo seria impossível. A seleção segue o texto trocado, que pode ter crescido (S-904);
+        sem seleção, o cursor fica onde estava, como nas outras ferramentas.
         """
         inicio, fim = self._intervalo()
-        self._aplicar(rico.mudar_caixa(self.documento, inicio, fim, caixa))
+        novo, selecao = rico.mudar_caixa_com_selecao(self.documento, inicio, fim, caixa)
+        self._aplicar(novo, selecao=selecao if inicio != fim else None)
 
     def maiusculas(self) -> None:
         self.mudar_caixa(rico.CAIXA_ALTA)

@@ -85,6 +85,25 @@ class CaudaTests(unittest.TestCase):
         painel.desfazer()
         self.assertEqual(painel.texto(), "uma frase")
 
+    def test_maiuscula_de_strasse_seleciona_a_palavra_inteira(self) -> None:
+        """`straße` (6) vira `STRASSE` (7), e a seleção acompanha (S-904): o pincel seguinte cai na
+        palavra inteira. A letra fora do BMP antes dela vale duas posições no Qt e uma no documento."""
+        from PyQt6.QtGui import QTextCursor
+
+        for texto, comeco in (("uma straße aqui", 4), ("𝔸 straße aqui", 3)):
+            with self.subTest(texto=texto):
+                painel = self.painel(texto)
+                cursor = painel.editor.textCursor()
+                cursor.setPosition(comeco)
+                cursor.setPosition(comeco + len("straße"), QTextCursor.MoveMode.KeepAnchor)
+                painel.editor.setTextCursor(cursor)
+                painel.maiusculas()
+                self.assertEqual(painel.texto(), texto.replace("straße", "STRASSE"))
+                self.assertEqual(painel.editor.textCursor().selectedText(), "STRASSE")
+                painel.negrito()
+                negritos = [c.texto for c in painel.documento.corridas if c.atributos.negrito]
+                self.assertEqual(negritos, ["STRASSE"])
+
     def test_a_caixa_tem_as_tres_formas(self) -> None:
         for metodo, esperado in (("maiusculas", "UMA FRASE"), ("minusculas", "uma frase"), ("capitular", "Uma Frase")):
             with self.subTest(metodo=metodo):

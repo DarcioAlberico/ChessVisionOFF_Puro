@@ -1053,22 +1053,36 @@ def mudar_caixa(doc: DocumentoRico, inicio: int, fim: int, caixa: str) -> Docume
     ser a marca que `text/documento.py` escreve, e o que se perderia não é a caixa: é o vínculo entre
     o texto e a figura.
     """
+    return mudar_caixa_com_selecao(doc, inicio, fim, caixa)[0]
+
+
+def mudar_caixa_com_selecao(
+    doc: DocumentoRico, inicio: int, fim: int, caixa: str
+) -> tuple[DocumentoRico, tuple[int, int]]:
+    """`mudar_caixa`, e o intervalo que o texto trocado ocupa no documento novo (S-904).
+
+    **A caixa muda o comprimento**: `straße` (6) vira `STRASSE` (7), `ﬁ` vira `FI`, `İ` minúsculo vira
+    `i̇`. A seleção antiga cairia um caractere antes do fim, e o pincel seguinte deixaria a última letra
+    de fora. Sem nada a trocar, o intervalo é o alvo como `intervalo_alvo` o devolveu.
+    """
     if caixa not in _TROCAS_DE_CAIXA:
         raise KeyError(f"caixa desconhecida: {caixa!r}. As válidas estão em CAIXAS.")
     inicio, fim = intervalo_alvo(doc, inicio, fim)
     if inicio == fim:
-        return doc
+        return doc, (inicio, fim)
     troca = _TROCAS_DE_CAIXA[caixa]
     novas: list[Corrida] = []
+    crescimento = 0
     for corrida, esta in _fatiado(doc, inicio, fim):
         if not esta or not _editavel(corrida):
             novas.append(corrida)
             continue
         trocado = troca(corrida.texto)
+        crescimento += len(trocado) - len(corrida.texto)
         novas.append(
             corrida if trocado == corrida.texto else replace(corrida, texto=trocado, procedencia="humano")
         )
-    return DocumentoRico(corridas=fundir(novas), origem=doc.origem)
+    return DocumentoRico(corridas=fundir(novas), origem=doc.origem), (inicio, fim + crescimento)
 
 
 def substituir_intervalo(doc: DocumentoRico, inicio: int, fim: int, novo: str) -> DocumentoRico:
@@ -1657,6 +1671,7 @@ __all__ = [
     "mover",
     "mover_paragrafo",
     "mudar_caixa",
+    "mudar_caixa_com_selecao",
     "mudar_corpo",
     "palavra_em",
     "pintar",

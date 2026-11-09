@@ -2151,6 +2151,11 @@ a usa e passa o intervalo em `selecao=`; `mudar_caixa` fica como está, porque c
 
 **Aceite.** O teste passa.
 
+**Entregue** (2026-11-09): `mudar_caixa` passou a ser `mudar_caixa_com_selecao(...)[0]`, para a troca morar
+num lugar só. O painel só passa o intervalo novo quando havia seleção; sem ela o cursor fica onde estava, como
+nas outras ferramentas. O teste está em `tests/test_qt_texto_cauda.py`, também com letra fora do BMP antes da
+palavra.
+
 ## Fase 119 — Complexidade e duplicação
 
 Toda divisão desta fase segue a mesma ordem: fixar o que o código faz (teste de caracterização, byte a byte
