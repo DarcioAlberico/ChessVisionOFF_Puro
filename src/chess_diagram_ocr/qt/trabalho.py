@@ -164,11 +164,14 @@ class DeteccaoDeFundo(QObject):
     **Não tranca a janela, e é a diferença para `_rodar`.** Ninguém pediu esta detecção, então a
     falha dela vai para o log e não para uma caixa: a página continua legível no visualizador.
 
-    **A thread não é filha deste objeto, e os sinais chegam por método ligado.** Um `QThread`
-    destruído enquanto roda derruba o processo -- e quem descarta a janela sem `close()` (os
-    testes, por `deleteLater`) destruiria este objeto com a detecção no meio. A thread vive em
-    `_VIVAS` até terminar; as ligações a métodos deste objeto o PyQt desfaz sozinho quando ele
-    morre, e uma `lambda` não teria esse cuidado.
+    **A thread não é filha deste objeto.** Um `QThread` destruído enquanto roda derruba o processo
+    -- e quem descarta a janela sem `close()` (os testes, por `deleteLater`) destruiria este objeto
+    com a detecção no meio. A thread vive em `_VIVAS` até terminar, e os sinais dela chegam por
+    `_enquanto_vivo`, que pergunta se este objeto ainda existe antes de o tocar.
+
+    **A âncora vai na ligação de cada tarefa, e não num atributo** (S-829). Com `_em_curso`, o
+    `parar` seguido de `pedir` deixava o `pronto` velho, ainda na fila, sair rotulado com a página
+    do pedido novo, e o `finished` velho zerava a tarefa nova -- duas detecções correndo juntas.
     """
 
     achou = pyqtSignal(object, object)
@@ -179,7 +182,6 @@ class DeteccaoDeFundo(QObject):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._pedido: tuple[AncoraDaTela, Callable[[], Any]] | None = None
-        self._em_curso: AncoraDaTela | None = None
         self._tarefa: Tarefa | None = None
 
     @property
@@ -199,8 +201,8 @@ class DeteccaoDeFundo(QObject):
             return True
         terminou = bool(tarefa.wait(espera_ms))
         if terminou:
-            # O `finished` ainda vai chegar pela fila e cair em `_terminou`, que não acha pedido.
-            # Mas quem perguntou "acabou?" merece a resposta agora, e não na próxima volta.
+            # O `finished` ainda vai chegar pela fila, e `_terminou` o reconhece como de outra
+            # tarefa. Mas quem perguntou "acabou?" merece a resposta agora, e não na próxima volta.
             self._tarefa = None
         return terminou
 
@@ -209,30 +211,40 @@ class DeteccaoDeFundo(QObject):
             return
         ancora, funcao = self._pedido
         self._pedido = None
-        self._em_curso = ancora
         tarefa = manter_viva(Tarefa(funcao, nome=f"detecção da página {ancora.pagina + 1}"))
-        tarefa.pronto.connect(self._pronto)
-        tarefa.falhou.connect(self._falhou)
-        tarefa.finished.connect(self._terminou)
+        tarefa.pronto.connect(_enquanto_vivo(self, partial(self._pronto, ancora)))
+        tarefa.falhou.connect(_enquanto_vivo(self, partial(self._falhou, ancora)))
+        tarefa.finished.connect(_enquanto_vivo(self, partial(self._terminou, tarefa)))
         self._tarefa = tarefa
         tarefa.start()
 
-    def _pronto(self, candidatos: Any) -> None:
-        # Sem `assert`: uma exceção num slot derruba o processo, e não há o que afirmar aqui.
-        if self._em_curso is None:
-            return
-        self.achou.emit(self._em_curso, candidatos)
+    def _pronto(self, ancora: AncoraDaTela, candidatos: Any) -> None:
+        self.achou.emit(ancora, candidatos)
 
-    def _falhou(self, mensagem: str, _excecao: object) -> None:
-        if self._em_curso is None:
-            return
-        ancora = self._em_curso
+    def _falhou(self, ancora: AncoraDaTela, mensagem: str, _excecao: object) -> None:
         logger.warning("A detecção da página %d de %s falhou: %s", ancora.pagina + 1, ancora.documento, mensagem)
 
-    def _terminou(self) -> None:
+    def _terminou(self, tarefa: Tarefa) -> None:
+        if tarefa is not self._tarefa:
+            return  # a de antes de um `parar`: a que corre agora é outra, e ela avisa quando acabar
         self._tarefa = None
-        self._em_curso = None
         self._comecar()
+
+
+def _enquanto_vivo(dono: QObject, slot: Callable[..., object]) -> Callable[..., None]:
+    """`slot`, só enquanto `dono` existir no C++.
+
+    **O PyQt não desfaz a ligação a um `functools.partial`**, nem quando o `partial` embrulha um
+    método de `QObject` (medido no PyQt6 desta máquina: o slot ainda é chamado depois de
+    `sip.delete`). Com o objeto apagado, `achou.emit` levantaria `RuntimeError` dentro do slot,
+    e o PyQt6 faz disso um `qFatal`.
+    """
+
+    def chamar(*argumentos: object) -> None:
+        if not sip.isdeleted(dono):
+            slot(*argumentos)
+
+    return chamar
 
 
 _VIVAS: set[Tarefa] = set()

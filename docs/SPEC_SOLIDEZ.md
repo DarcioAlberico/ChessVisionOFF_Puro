@@ -1184,6 +1184,13 @@ que a fila os entregaria: o primeiro resultado sai com a âncora da primeira pá
 
 **Aceite.** O teste passa.
 
+**Entregue** (2026-11-08): `_em_curso` saiu; a âncora vai por `partial` no `pronto` e no `falhou`, e a
+tarefa vai no `finished`, para que o `finished` velho não zere a tarefa nova (a segunda metade do
+problema, que a solução da spec não cobria). **O PyQt não desfaz a ligação a um `partial`** quando o
+objeto morre (medido: o slot é chamado depois de `sip.delete`), e o docstring dizia que o método ligado
+era o que protegia: as três ligações passam por `_enquanto_vivo`, que pergunta `sip.isdeleted`. O
+teste usa uma `TarefaAdiada` cujo `wait` diz que a thread já acabou com os sinais ainda na fila.
+
 ## S-887 · O Ctrl+Z do editor nunca aplica a posição de outro diagrama
 
 **Problema** (confirmado por script). `qt/painel_de_resultado.py:1316` e `:1331` (`_chegou_a_segunda` e

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import time
 import unittest
+from unittest import mock
 
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+from qt_app import MOTIVO, TEM_PYQT, TarefaAdiada, aplicacao, descartar
 
 if TEM_PYQT:
     from PyQt6.QtTest import QTest
@@ -74,6 +75,56 @@ class DeteccaoDeFundoTests(unittest.TestCase):
         self.assertFalse(self.detector.ocupado)
         QTest.qWait(50)
         self.assertEqual([a.pagina for a, _ in self.chegou], [0], "o pedido guardado não roda depois de parar")
+
+
+class _TarefaQueJaAcabou(TarefaAdiada):
+    """A thread terminou e os sinais dela ainda estão na fila: `wait` diz que acabou (S-829)."""
+
+    def wait(self, _ms: int = 0) -> bool:
+        return True
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class SinalLevaAAncoraTests(unittest.TestCase):
+    """`parar` e um `pedir` novo antes de a fila entregar o `pronto` velho (S-829)."""
+
+    def setUp(self) -> None:
+        aplicacao()
+        TarefaAdiada.pendentes.clear()
+        self.addCleanup(TarefaAdiada.pendentes.clear)
+        self.detector = DeteccaoDeFundo()
+        self.addCleanup(descartar, self.detector)
+        self.chegou: list[tuple[AncoraDaTela, object]] = []
+        self.detector.achou.connect(lambda a, c: self.chegou.append((a, c)))
+
+    def test_o_resultado_velho_sai_com_a_ancora_do_pedido_dele(self) -> None:
+        from chess_diagram_ocr.qt import trabalho
+
+        with mock.patch.object(trabalho, "Tarefa", _TarefaQueJaAcabou):
+            self.detector.pedir(_na(0), lambda: ["da 0"])
+            self.assertTrue(self.detector.parar(0))
+            self.detector.pedir(_na(1), lambda: ["da 1"])
+        da_0, da_1 = TarefaAdiada.pendentes
+
+        da_0.entregar()
+        self.assertEqual([(_na(0), ["da 0"])], self.chegou, "o resultado da página 1 saiu rotulado com a 2")
+        self.assertTrue(self.detector.ocupado, "o `finished` velho zerou a detecção que ainda corre")
+        da_1.entregar()
+        self.assertEqual([(_na(0), ["da 0"]), (_na(1), ["da 1"])], self.chegou)
+        self.assertFalse(self.detector.ocupado)
+
+    def test_o_resultado_que_chega_depois_do_detector_morrer_nao_o_toca(self) -> None:
+        """O PyQt não desfaz a ligação a um `partial`: sem a guarda, `achou.emit` num objeto apagado
+        levantaria dentro do slot, que no PyQt6 é `qFatal`."""
+        from chess_diagram_ocr.qt import trabalho
+
+        detector = DeteccaoDeFundo()
+        detector.achou.connect(lambda a, c: self.chegou.append((a, c)))
+        with mock.patch.object(trabalho, "Tarefa", TarefaAdiada):
+            detector.pedir(_na(0), lambda: ["da 0"])
+        descartar(detector)
+        TarefaAdiada.entregar_todas()  # não levanta
+        self.assertEqual([], self.chegou)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
