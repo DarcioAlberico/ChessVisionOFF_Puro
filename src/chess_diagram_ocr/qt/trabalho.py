@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import sys
 import threading
+import time
 import traceback
 import weakref
 from collections.abc import Callable
@@ -30,7 +31,17 @@ from chess_diagram_ocr.ui.ancora_da_tela import AncoraDaTela
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["INTERVALO_DE_TROCA_S", "DeteccaoDeFundo", "Tarefa", "ceder_a_interface", "manter_viva", "rastro_de", "tarefas_rodando"]
+__all__ = [
+    "INTERVALO_DE_TROCA_S",
+    "DeteccaoDeFundo",
+    "Tarefa",
+    "ceder_a_interface",
+    "esperar_as_tarefas",
+    "manter_viva",
+    "rastro_de",
+    "slot_se_vivo",
+    "tarefas_rodando",
+]
 
 INTERVALO_DE_TROCA_S = 0.0001
 """De quanto em quanto o interpretador troca de thread enquanto há tarefa rodando (OCR_UI 15).
@@ -80,13 +91,16 @@ class Tarefa(QThread):
     se lê; o traceback é o que se cola num relato -- e até aqui ele só existia no log, que a caixa
     de erro mandava a pessoa ir procurar. Formatado **na thread**, no instante da falha, porque é
     ali que a pilha está inteira; a caixa o mostra em «Detalhes» e o botão «Copiar» o leva junto.
+
+    **E não tem pai** (S-826): ver `manter_viva`. O parâmetro `parent` existia, só por nome, e
+    dezesseis tarefas dos painéis o usavam; tirá-lo é o que faz o mypy recusar a forma que aborta.
     """
 
     pronto = pyqtSignal(object)
     falhou = pyqtSignal(str, object)
 
-    def __init__(self, funcao: Callable[[], Any], *, parent: Any = None, nome: str = "tarefa") -> None:
-        super().__init__(parent)
+    def __init__(self, funcao: Callable[[], Any], *, nome: str = "tarefa") -> None:
+        super().__init__()
         self._funcao = funcao
         self._nome = nome
         self.rastro = ""
@@ -167,7 +181,7 @@ class DeteccaoDeFundo(QObject):
     **A thread não é filha deste objeto.** Um `QThread` destruído enquanto roda derruba o processo
     -- e quem descarta a janela sem `close()` (os testes, por `deleteLater`) destruiria este objeto
     com a detecção no meio. A thread vive em `_VIVAS` até terminar, e os sinais dela chegam por
-    `_enquanto_vivo`, que pergunta se este objeto ainda existe antes de o tocar.
+    `slot_se_vivo`, que pergunta se este objeto ainda existe antes de o tocar.
 
     **A âncora vai na ligação de cada tarefa, e não num atributo** (S-829). Com `_em_curso`, o
     `parar` seguido de `pedir` deixava o `pronto` velho, ainda na fila, sair rotulado com a página
@@ -212,9 +226,9 @@ class DeteccaoDeFundo(QObject):
         ancora, funcao = self._pedido
         self._pedido = None
         tarefa = manter_viva(Tarefa(funcao, nome=f"detecção da página {ancora.pagina + 1}"))
-        tarefa.pronto.connect(_enquanto_vivo(self, partial(self._pronto, ancora)))
-        tarefa.falhou.connect(_enquanto_vivo(self, partial(self._falhou, ancora)))
-        tarefa.finished.connect(_enquanto_vivo(self, partial(self._terminou, tarefa)))
+        tarefa.pronto.connect(slot_se_vivo(self, partial(self._pronto, ancora)))
+        tarefa.falhou.connect(slot_se_vivo(self, partial(self._falhou, ancora)))
+        tarefa.finished.connect(slot_se_vivo(self, partial(self._terminou, tarefa)))
         self._tarefa = tarefa
         tarefa.start()
 
@@ -231,17 +245,21 @@ class DeteccaoDeFundo(QObject):
         self._comecar()
 
 
-def _enquanto_vivo(dono: QObject, slot: Callable[..., object]) -> Callable[..., None]:
-    """`slot`, só enquanto `dono` existir no C++.
+def slot_se_vivo(dono: QObject, slot: Callable[..., object]) -> Callable[..., None]:
+    """`slot`, só enquanto `dono` existir -- no Python e no C++. Para todo sinal de `Tarefa`.
 
-    **O PyQt não desfaz a ligação a um `functools.partial`**, nem quando o `partial` embrulha um
-    método de `QObject` (medido no PyQt6 desta máquina: o slot ainda é chamado depois de
-    `sip.delete`). Com o objeto apagado, `achou.emit` levantaria `RuntimeError` dentro do slot,
-    e o PyQt6 faz disso um `qFatal`.
+    **A tarefa sem pai termina depois do painel que a pediu** (`manter_viva`), e o slot que tocasse
+    o widget apagado levantaria `RuntimeError` dentro da linha de eventos, que o PyQt6 faz `qFatal`.
+    **E o PyQt não desfaz a ligação a um `functools.partial` nem a um `lambda`**, nem quando eles
+    embrulham um método de `QObject` (medido no PyQt6 desta máquina: o slot ainda é chamado depois
+    de `sip.delete`). Era o `_se_viva` da janela e o `_enquanto_vivo` da detecção; é um só desde a
+    S-826, que o levou aos painéis.
     """
+    vivo = weakref.ref(dono)
 
     def chamar(*argumentos: object) -> None:
-        if not sip.isdeleted(dono):
+        objeto = vivo()
+        if objeto is not None and not sip.isdeleted(objeto):
             slot(*argumentos)
 
     return chamar
@@ -275,11 +293,11 @@ def _soltar(tarefa: Tarefa) -> None:
 
 
 _TODAS: weakref.WeakSet[Tarefa] = weakref.WeakSet()
-"""Toda `Tarefa` construída e ainda viva, com pai ou sem pai (S-805). Ver `tarefas_rodando`."""
+"""Toda `Tarefa` construída e ainda viva, segura por `manter_viva` ou não (S-805). Ver `tarefas_rodando`."""
 
 
 def tarefas_rodando() -> list[Tarefa]:
-    """As tarefas cuja thread está rodando agora, com pai ou sem pai (S-805).
+    """As tarefas cuja thread está rodando agora, seguras por `manter_viva` ou não (S-805).
 
     **É a pergunta que a guarda de thread da suíte não sabia fazer.** Um `QThread` não aparece em
     `threading.enumerate()`, ou aparece como `Dummy-N` depois de o código dele chamar
@@ -287,10 +305,22 @@ def tarefas_rodando() -> list[Tarefa]:
     sobrevive ao teste morria dentro do vizinho, que é o modo de falha que a S-413 fechou para as
     threads do Python e deixou aberto para as do Qt.
 
-    **Um registro fraco, e não `_VIVAS`.** `_VIVAS` *segura* a tarefa sem pai e a destrói quando
-    ela acaba; pôr nele a tarefa com pai mudaria quem a destrói, e o painel que ainda a consulta
-    depois do `finished` acharia o objeto do C++ apagado. Este só observa: nasce no construtor e
-    sai sozinho quando o Python solta o objeto. A tarefa cujo pai já destruiu o lado do C++ não
-    roda mais, e fica de fora.
+    **Um registro fraco, e não `_VIVAS`.** `_VIVAS` *segura* a tarefa e a destrói quando ela acaba;
+    este só observa -- nasce no construtor e sai sozinho quando o Python solta o objeto --, e por
+    isso vê também a tarefa que alguém construiu sem `manter_viva` (um teste, por exemplo).
     """
     return [tarefa for tarefa in list(_TODAS) if not sip.isdeleted(tarefa) and tarefa.isRunning()]
+
+
+def esperar_as_tarefas(espera_ms: int) -> list[Tarefa]:
+    """Espera as tarefas que rodam, todas num prazo só; devolve as que ainda rodam no fim dele.
+
+    **É a espera do `closeEvent` da janela** (S-826). Ela esperava a tarefa dela, a detecção e o
+    aquecimento, e não as dos painéis: a exportação da aba Texto seguia escrevendo o arquivo
+    enquanto o programa saía. Perguntar ao registro, e não a cada painel, é o que faz o painel novo
+    entrar na espera sem ninguém lembrar de pô-lo nela.
+    """
+    prazo = time.monotonic() + espera_ms / 1000
+    for tarefa in tarefas_rodando():
+        tarefa.wait(max(0, int((prazo - time.monotonic()) * 1000)))
+    return tarefas_rodando()

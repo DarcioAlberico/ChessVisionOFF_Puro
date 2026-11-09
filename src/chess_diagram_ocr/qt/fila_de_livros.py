@@ -54,7 +54,7 @@ from chess_diagram_ocr.batch import (
 )
 from chess_diagram_ocr.qt import tabela as tabela_qt
 from chess_diagram_ocr.qt import tema
-from chess_diagram_ocr.qt.trabalho import Tarefa
+from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva, slot_se_vivo
 from chess_diagram_ocr.ui import estilos
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.fila_de_livros import (
@@ -201,10 +201,10 @@ class VarreduraDeLivros(QObject):
                 cancel_event=cancelar,
             )
 
-        tarefa = Tarefa(_trabalho, parent=self, nome="fila de livros")
-        tarefa.pronto.connect(self._pronto)
-        tarefa.falhou.connect(self._falhou)
-        tarefa.finished.connect(self._terminou)
+        tarefa = manter_viva(Tarefa(_trabalho, nome="fila de livros"))
+        tarefa.pronto.connect(slot_se_vivo(self, self._pronto))
+        tarefa.falhou.connect(slot_se_vivo(self, self._falhou))
+        tarefa.finished.connect(slot_se_vivo(self, self._terminou))
         self._registrar_ocupado(len(livros))
         self._tarefa = tarefa
         tarefa.start()

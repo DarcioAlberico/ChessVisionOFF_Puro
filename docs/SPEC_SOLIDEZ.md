@@ -1145,6 +1145,16 @@ confere o código de saída 0.
 
 **Aceite.** O teste passa e o mypy está verde sem o parâmetro.
 
+**Entregue** (2026-11-09): o subprocesso monta a `JanelaPrincipal`, e não o painel solto, porque a espera
+é do `closeEvent` dela: lê uma folha de 2 s na aba Texto, fecha, destrói a janela (`sip.delete`) e exige
+código 0 e nenhuma tarefa rodando. Antes do conserto saía com 0xC0000409 no `sip.delete`. A espera é
+`trabalho.esperar_as_tarefas`, um prazo só para todas as do registro da S-805, e o `Aquecimento.esperar`
+saiu sem chamador. O `slot_se_vivo` junta o `_se_viva` da janela e o `_enquanto_vivo` da S-829 (fraco e
+`sip.isdeleted`). Medido: o processo que sai com uma tarefa **sem pai** ainda rodando sai com 0, então a
+queda vinha só do pai, e a espera é cortesia. Além do mypy, `tests/test_qt_tarefa_sem_pai.py` traz uma
+guarda AST: toda `Tarefa` do pacote sem pai e dentro de `manter_viva`, piso zero e prova de que acha cada
+forma.
+
 ## S-828 · `AppState` tipado no `PainelDeTexto`, e o histórico aparado na leitura
 
 **Problema** (confirmado por leitura). `state_from_dict` (`ui/state.py:364`, complexidade 51) é um parse

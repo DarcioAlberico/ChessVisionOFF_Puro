@@ -56,13 +56,11 @@ o que cada painel oferece é um sinal, e quem escuta é esta janela.
 from __future__ import annotations
 
 import logging
-import weakref
 from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from PyQt6 import sip
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
@@ -130,7 +128,14 @@ from chess_diagram_ocr.qt.painel_do_dataset import PainelDoDataset
 from chess_diagram_ocr.qt.painel_do_pdf import PainelDoPdf
 from chess_diagram_ocr.qt.preferencias import motor_das_preferencias, servico_das_preferencias
 from chess_diagram_ocr.qt.rodape import RodapeDaJanela
-from chess_diagram_ocr.qt.trabalho import DeteccaoDeFundo, Tarefa, manter_viva, rastro_de
+from chess_diagram_ocr.qt.trabalho import (
+    DeteccaoDeFundo,
+    Tarefa,
+    esperar_as_tarefas,
+    manter_viva,
+    rastro_de,
+    slot_se_vivo,
+)
 from chess_diagram_ocr.qt.trilho import TrilhoDoLivro
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
 from chess_diagram_ocr.service import OcrService, RecognitionCanceled, RecognitionOptions, RecognizedDiagram
@@ -1583,9 +1588,9 @@ class JanelaPrincipal(QMainWindow):
         # ciclo 1) não pode derrubar quem fecha. `manter_viva` solta e destrói a thread ao fim; os
         # slots perguntam se a janela ainda existe antes de a tocar.
         tarefa = manter_viva(Tarefa(funcao, nome=nome))
-        tarefa.pronto.connect(self._se_viva(quando_pronto))
-        tarefa.falhou.connect(self._se_viva(partial(self._falhou, ancora=ancora)))
-        tarefa.finished.connect(self._se_viva(self._terminou))
+        tarefa.pronto.connect(slot_se_vivo(self, quando_pronto))
+        tarefa.falhou.connect(slot_se_vivo(self, partial(self._falhou, ancora=ancora)))
+        tarefa.finished.connect(slot_se_vivo(self, self._terminou))
         self._tarefa = tarefa
         # O `register` fica aqui, e não na `Ocupacao`, porque o portão `caissa.ui.audit.progresso`
         # atribui cada thread ao registro feito na mesma função -- e é ele que exige `total=`.
@@ -1597,18 +1602,6 @@ class JanelaPrincipal(QMainWindow):
         self._atualizar_controles()
         tarefa.start()
         return tarefa
-
-    def _se_viva(self, slot: Callable[..., Any]) -> Callable[..., None]:
-        """`slot`, só enquanto esta janela existir: uma tarefa sem pai termina depois de a janela
-        fechar, e um slot que tocasse widget morto levantaria dentro do laço de eventos."""
-        janela = weakref.ref(self)
-
-        def chamar(*args: Any) -> None:
-            viva = janela()
-            if viva is not None and not sip.isdeleted(viva):
-                slot(*args)
-
-        return chamar
 
     def _terminou(self) -> None:
         self._tarefa = None
@@ -2272,14 +2265,13 @@ class JanelaPrincipal(QMainWindow):
         sala_declarada.encerrar_o_motor(self.estudo.analisador)
         processo_de_trabalho().encerrar(matar=True)  # o filho pendurado não segura o processo (S-906)
         self._detector.parar(ESPERA_AO_FECHAR_MS)
-        # As tarefas (a leitura, o aquecimento do modelo) não têm pai desde a fase 2 do ciclo 2:
-        # destruí-las a correr derrubava o processo sem rastro (o portão `comandos` mediu: exit
-        # 255, nada no log). A espera é cortesia -- sair com a leitura no meio deixa uma thread
-        # a terminar sozinha, e `manter_viva` a solta quando acaba.
+        # Nenhuma tarefa tem pai (F9-C2, S-826): destruí-las a correr derrubava o processo sem
+        # rastro (o portão `comandos` mediu: exit 255, nada no log). A espera é cortesia, e é de
+        # **todas** -- a leitura, o aquecimento, as dos painéis (a exportação do texto que acaba
+        # em vez de ficar pela metade) --; a que estoura o prazo fica no log e termina sozinha.
         self._aquecimento.cancelar()   # o relógio de uma janela fechada não dispara mais
-        self._aquecimento.esperar(ESPERA_AO_FECHAR_MS)
-        if self._tarefa is not None and not self._tarefa.wait(ESPERA_AO_FECHAR_MS):
-            logger.warning("A janela fechou com uma tarefa ainda em andamento; ela termina sozinha.")
+        if pendentes := esperar_as_tarefas(ESPERA_AO_FECHAR_MS):
+            logger.warning("A janela fechou com tarefas em andamento (%s); elas terminam sozinhas.", ", ".join(t.nome for t in pendentes))
         if a0 is not None:
             a0.accept()
 

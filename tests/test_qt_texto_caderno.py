@@ -58,9 +58,12 @@ class _TarefaNaHora:
     rodando = False
     """Verdade enquanto um trabalho roda: é como o teste sabe que algo foi feito "na thread"."""
 
-    def __init__(self, trabalho: Callable[[], object], parent: object = None, nome: str = "tarefa") -> None:
+    def __init__(self, trabalho: Callable[[], object], *, nome: str = "tarefa") -> None:
         self._trabalho = trabalho
         self.pronto, self.falhou, self.finished = _Sinal(), _Sinal(), _Sinal()
+
+    def deleteLater(self) -> None:  # noqa: N802 - o nome é o do `QObject`
+        """`manter_viva` solta a tarefa por aqui no `finished`; sem thread não há o que apagar."""
 
     def start(self) -> None:
         try:

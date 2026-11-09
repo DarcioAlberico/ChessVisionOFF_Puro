@@ -61,7 +61,7 @@ from chess_diagram_ocr.engine import EngineAnalyzer, find_engine
 from chess_diagram_ocr.ocr_caption import caption_reader_from_settings
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
-from chess_diagram_ocr.qt.trabalho import Tarefa
+from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva, slot_se_vivo
 from chess_diagram_ocr.service import OcrService
 from chess_diagram_ocr.settings import EngineSettings, Settings
 from chess_diagram_ocr.ui import espaco, estilos, motor_declarado, tokens
@@ -425,10 +425,10 @@ class MotorVivo(QObject):
             novo.start()
             return novo
 
-        tarefa = Tarefa(_trabalho, parent=self, nome="opções do motor")
-        tarefa.pronto.connect(lambda motor: self._pronto(motor, plano.frase()))
-        tarefa.falhou.connect(self._falhou)
-        tarefa.finished.connect(self._terminou)
+        tarefa = manter_viva(Tarefa(_trabalho, nome="opções do motor"))
+        tarefa.pronto.connect(slot_se_vivo(self, lambda motor: self._pronto(motor, plano.frase())))
+        tarefa.falhou.connect(slot_se_vivo(self, self._falhou))
+        tarefa.finished.connect(slot_se_vivo(self, self._terminou))
         self._tarefa = tarefa
         tarefa.start()
         return True

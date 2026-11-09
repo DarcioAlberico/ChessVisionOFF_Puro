@@ -315,8 +315,12 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2313
+    LIMITE = 2304
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.313 -> 2.304 com a tarefa sem pai em todos os painéis (S-826, 2026-11-09)**: o `_se_viva`
+    da janela virou `trabalho.slot_se_vivo`, que os painéis usam também, e a espera do `closeEvent`
+    passou a ser `trabalho.esperar_as_tarefas` -- a de todas, e não só a da janela e do aquecimento.
 
     **2.312 -> 2.313 com a identidade do livro numa função só (S-827, 2026-11-08)**: o nome
     `livros` na importação de `ui`; a decisão em si mora em `ui/livros.py`.

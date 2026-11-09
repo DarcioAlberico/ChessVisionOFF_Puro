@@ -47,7 +47,7 @@ from chess_diagram_ocr.fen_utils import reading_index_from_square
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.tabuleiro_de_jogo import TabuleiroDeJogo
-from chess_diagram_ocr.qt.trabalho import Tarefa
+from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva, slot_se_vivo
 from chess_diagram_ocr.ui import espaco, estilos, tipografia, tokens
 from chess_diagram_ocr.ui import treino_declarado as declarado
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
@@ -158,13 +158,13 @@ class PerdaDoLance(QObject):
             seguinte = analisador.analyse(depois, movetime_ms=TEMPO_DA_PERDA_MS)
             return guardadas[chave], regua.avaliacao_em_centipeoes(seguinte.score_cp, seguinte.mate_in)
 
-        tarefa = Tarefa(_trabalho, parent=self, nome="perda do lance")
+        tarefa = manter_viva(Tarefa(_trabalho, nome="perda do lance"))
         # **Livre quando a resposta chega, e não quando a thread avisa que acabou.** Os dois sinais
         # chegam em fila, a resposta primeiro: quem recebia a nota e errava de novo antes do
         # `finished` era recusado como "ocupado" -- e a CI acusava isso uma vez em duas.
-        tarefa.pronto.connect(partial(self._chegou, tarefa, ficha))
-        tarefa.falhou.connect(partial(self._nao_chegou, tarefa, ficha))
-        tarefa.finished.connect(partial(self._acabou, tarefa))
+        tarefa.pronto.connect(slot_se_vivo(self, partial(self._chegou, tarefa, ficha)))
+        tarefa.falhou.connect(slot_se_vivo(self, partial(self._nao_chegou, tarefa, ficha)))
+        tarefa.finished.connect(slot_se_vivo(self, partial(self._acabou, tarefa)))
         self._tarefa = tarefa
         tarefa.start()
         return True
@@ -260,10 +260,10 @@ class ExtratorDeTaticas(QObject):
                 avaliar=_avaliar if analisador is not None else None,
             )
 
-        tarefa = Tarefa(_trabalho, parent=self, nome=f"táticas de {caminho.name}")
-        tarefa.pronto.connect(self._pronto)
-        tarefa.falhou.connect(self._falhou)
-        tarefa.finished.connect(self._terminou)
+        tarefa = manter_viva(Tarefa(_trabalho, nome=f"táticas de {caminho.name}"))
+        tarefa.pronto.connect(slot_se_vivo(self, self._pronto))
+        tarefa.falhou.connect(slot_se_vivo(self, self._falhou))
+        tarefa.finished.connect(slot_se_vivo(self, self._terminou))
         self._registrar_ocupado(caminho.name)
         self._tarefa = tarefa
         tarefa.start()

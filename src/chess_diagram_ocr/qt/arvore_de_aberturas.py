@@ -56,7 +56,7 @@ from chess_diagram_ocr.eco import classificar
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.tabela import TabelaQt
-from chess_diagram_ocr.qt.trabalho import Tarefa
+from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva, slot_se_vivo
 from chess_diagram_ocr.ui import espaco, estilos, tokens
 from chess_diagram_ocr.ui.arvore_de_aberturas import (
     COLUNAS,
@@ -306,14 +306,13 @@ class DialogoDaArvore(QDialog):
         self.tabela.preencher(())
         self._linhas = ()
         self._escrever(EM_BUSCA)
-        tarefa = Tarefa(
+        tarefa = manter_viva(Tarefa(
             lambda: consultar(colocacao, vez, ply=ply, path=arquivo, bases=bases),
-            parent=self,
             nome="árvore de aberturas",
-        )
-        tarefa.pronto.connect(self._chegou)
-        tarefa.falhou.connect(self._falhou)
-        tarefa.finished.connect(self._terminou)
+        ))
+        tarefa.pronto.connect(slot_se_vivo(self, self._chegou))
+        tarefa.falhou.connect(slot_se_vivo(self, self._falhou))
+        tarefa.finished.connect(slot_se_vivo(self, self._terminou))
         self._tarefa = tarefa
         tarefa.start()
         return True
@@ -438,10 +437,10 @@ class ConstrutorDaArvore(QObject):
         def _trabalho() -> Any:
             return construir(lista, caminho, profundidade=profundidade, progress=relatar, cancel=cancelar)
 
-        tarefa = Tarefa(_trabalho, parent=self, nome="árvore de aberturas")
-        tarefa.pronto.connect(self._pronto)
-        tarefa.falhou.connect(self._falhou)
-        tarefa.finished.connect(self._acabou)
+        tarefa = manter_viva(Tarefa(_trabalho, nome="árvore de aberturas"))
+        tarefa.pronto.connect(slot_se_vivo(self, self._pronto))
+        tarefa.falhou.connect(slot_se_vivo(self, self._falhou))
+        tarefa.finished.connect(slot_se_vivo(self, self._acabou))
         self._registrar_ocupado(len(lista), profundidade)
         self._tarefa = tarefa
         tarefa.start()

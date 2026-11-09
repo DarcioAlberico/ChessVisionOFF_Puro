@@ -116,7 +116,7 @@ from chess_diagram_ocr.qt.fita_do_texto import FitaDoTexto
 from chess_diagram_ocr.qt.imagens import pixmap_de_rgb
 from chess_diagram_ocr.qt.painel_de_navegacao import CORRECOES, FOLHAS, RESULTADOS, PainelDeNavegacao
 from chess_diagram_ocr.qt.texto_formato import bloco_de, formato_de
-from chess_diagram_ocr.qt.trabalho import Tarefa, rastro_de
+from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva, rastro_de, slot_se_vivo
 from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.text import busca, caderno, correcao, rascunho, rico
 from chess_diagram_ocr.text.documento import PaginaLida
@@ -511,8 +511,6 @@ class PainelDeTexto(QWidget):
         self.recorte_na_faixa: np.ndarray | None = None
         """O recorte da folha que a faixa do bloco impresso mostra, antes da escala (S-643)."""
         self._folha_pedida_ao_fundo: int | None = None
-        self._renderizacao: Tarefa | None = None
-        """A folha do caderno sendo rasterizada ao fundo, para as miniaturas (`_renderizar_ao_fundo`)."""
         """O motor e o modo bloco da leitura em curso, como eram quando ela partiu."""
         self._sincronizando = False
         """O painel está repintando o que acabou de ser digitado: a mudança de formato que isso
@@ -2399,9 +2397,8 @@ class PainelDeTexto(QWidget):
             return
         dpi = self._dpi_para_ler()
         self._folha_pedida_ao_fundo = indice
-        tarefa = Tarefa(lambda: (indice, dpi, _renderizar(livro, indice, dpi=dpi)), parent=self, nome="folha do caderno")
-        tarefa.pronto.connect(self._folha_chegou)
-        self._renderizacao = tarefa
+        tarefa = manter_viva(Tarefa(lambda: (indice, dpi, _renderizar(livro, indice, dpi=dpi)), nome="folha do caderno"))
+        tarefa.pronto.connect(slot_se_vivo(self, self._folha_chegou))
         tarefa.start()
 
     def _folha_chegou(self, resultado: object) -> None:
@@ -2926,10 +2923,10 @@ class PainelDeTexto(QWidget):
             detail=caminho.name,
             cancelar=desistir.set,
         )
-        self._tarefa = Tarefa(_trabalho, parent=self)
-        self._tarefa.pronto.connect(self._exportacao_terminou)
-        self._tarefa.falhou.connect(self._exportacao_falhou)
-        self._tarefa.finished.connect(self._soltar_ocupado)
+        self._tarefa = manter_viva(Tarefa(_trabalho, nome="exportação do caderno"))
+        self._tarefa.pronto.connect(slot_se_vivo(self, self._exportacao_terminou))
+        self._tarefa.falhou.connect(slot_se_vivo(self, self._exportacao_falhou))
+        self._tarefa.finished.connect(slot_se_vivo(self, self._soltar_ocupado))
         self._tarefa.start()
 
     def _exportar_caderno_pesquisavel(self, cad: caderno.Caderno, livro: Path, caminho: Path) -> None:
@@ -2960,10 +2957,10 @@ class PainelDeTexto(QWidget):
         self._registrar_ocupado(
             "Exportando o caderno para PDF pesquisável", loses_work=True, detail=caminho.name, cancelar=desistir.set
         )
-        self._tarefa = Tarefa(_trabalho, parent=self)
-        self._tarefa.pronto.connect(self._exportacao_terminou)
-        self._tarefa.falhou.connect(self._exportacao_falhou)
-        self._tarefa.finished.connect(self._soltar_ocupado)
+        self._tarefa = manter_viva(Tarefa(_trabalho, nome="PDF pesquisável do caderno"))
+        self._tarefa.pronto.connect(slot_se_vivo(self, self._exportacao_terminou))
+        self._tarefa.falhou.connect(slot_se_vivo(self, self._exportacao_falhou))
+        self._tarefa.finished.connect(slot_se_vivo(self, self._soltar_ocupado))
         self._tarefa.start()
 
     # ----------------------------------------------------------- o rascunho automático (S-255)
@@ -3611,10 +3608,10 @@ class PainelDeTexto(QWidget):
             detail=caminho.name,
             cancelar=desistir.set,
         )
-        self._tarefa = Tarefa(_trabalho, parent=self)
-        self._tarefa.pronto.connect(self._exportacao_terminou)
-        self._tarefa.falhou.connect(self._exportacao_falhou)
-        self._tarefa.finished.connect(self._soltar_ocupado)
+        self._tarefa = manter_viva(Tarefa(_trabalho, nome="exportação"))
+        self._tarefa.pronto.connect(slot_se_vivo(self, self._exportacao_terminou))
+        self._tarefa.falhou.connect(slot_se_vivo(self, self._exportacao_falhou))
+        self._tarefa.finished.connect(slot_se_vivo(self, self._soltar_ocupado))
         self._tarefa.start()
 
     def _registrar_ocupado(
@@ -3814,10 +3811,10 @@ class PainelDeTexto(QWidget):
             loses_work=False,
             detail=f"motor {strings.ROTULOS_DE_MOTOR.get(motor, motor)}" + (" · modo bloco" if bloco else ""),
         )
-        self._tarefa = Tarefa(_trabalho, parent=self)
-        self._tarefa.pronto.connect(self._leitura_terminou)
-        self._tarefa.falhou.connect(self._leitura_falhou)
-        self._tarefa.finished.connect(self._soltar_ocupado)
+        self._tarefa = manter_viva(Tarefa(_trabalho, nome="leitura da folha"))
+        self._tarefa.pronto.connect(slot_se_vivo(self, self._leitura_terminou))
+        self._tarefa.falhou.connect(slot_se_vivo(self, self._leitura_falhou))
+        self._tarefa.finished.connect(slot_se_vivo(self, self._soltar_ocupado))
         self._tarefa.start()
 
     def definir_fornecedor_de_folha(self, fornecedor: Callable[[int], tuple[np.ndarray, int] | None] | None) -> None:
@@ -3852,10 +3849,10 @@ class PainelDeTexto(QWidget):
         desistir = threading.Event()
         self.estado.emit("Procurando as folhas editadas na Revisão de texto…")
         self._registrar_ocupado("Trazendo as correções da Revisão de texto", loses_work=False, detail=livro.name, cancelar=desistir.set)
-        self._tarefa = Tarefa(lambda: volta.buscar(livro, documento=documento, desistir=desistir.is_set), parent=self)
-        self._tarefa.pronto.connect(self._revisao_chegou)
-        self._tarefa.falhou.connect(self._revisao_falhou)
-        self._tarefa.finished.connect(self._soltar_ocupado)
+        self._tarefa = manter_viva(Tarefa(lambda: volta.buscar(livro, documento=documento, desistir=desistir.is_set), nome="volta da revisão"))
+        self._tarefa.pronto.connect(slot_se_vivo(self, self._revisao_chegou))
+        self._tarefa.falhou.connect(slot_se_vivo(self, self._revisao_falhou))
+        self._tarefa.finished.connect(slot_se_vivo(self, self._soltar_ocupado))
         self._tarefa.start()
         return True
 

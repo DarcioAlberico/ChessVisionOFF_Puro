@@ -132,17 +132,6 @@ class Aquecimento:
         """A carga já correu (bem ou mal) nesta sessão -- o que o portão `--frio` espera."""
         return self._feito and self._tarefa is None
 
-    def esperar(self, ms: int) -> bool:
-        """Espera a carga em curso ao fechar a janela: um `QThread` filho destruído a correr
-        derruba o processo. `True` quando não há carga ou ela terminou a tempo."""
-        tarefa = self._tarefa
-        if tarefa is None:
-            return True
-        try:
-            return bool(tarefa.wait(ms))
-        except RuntimeError:  # pragma: no cover - a tarefa já foi destruída pelo Qt
-            return True
-
     def agendar(self, parent: QObject | None = None, *, ms: int = ESPERA_PARA_AQUECER_MS) -> None:
         """Aquece quando a janela estiver ociosa há `ms`: cada gesto que a janela anuncia
         (`adiar`, chamado ao virar a página) reinicia a contagem, e uma tarefa ou operação

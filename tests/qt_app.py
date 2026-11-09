@@ -258,7 +258,7 @@ class TarefaAdiada:
     """As tarefas que já rodaram e ainda não entregaram, na ordem em que começaram. Esvazie no
     `setUp` (`TarefaAdiada.pendentes.clear()`): a lista é da classe, como o remendo."""
 
-    def __init__(self, funcao: Callable[[], Any], *, parent: Any = None, nome: str = "tarefa") -> None:
+    def __init__(self, funcao: Callable[[], Any], *, nome: str = "tarefa") -> None:
         self._funcao = funcao
         self._nome = nome
         self.rastro = ""

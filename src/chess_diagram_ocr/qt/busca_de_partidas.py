@@ -48,7 +48,7 @@ from chess_diagram_ocr.games_index import DEFAULT_INDEX_PATH, PAGINA, IndiceIndi
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.tabela import TabelaQt
-from chess_diagram_ocr.qt.trabalho import Tarefa
+from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva, slot_se_vivo
 from chess_diagram_ocr.ui import espaco, estilos, tokens
 from chess_diagram_ocr.ui.busca_de_partidas import (
     COLUNAS,
@@ -338,14 +338,13 @@ class DialogoDeBusca(QDialog):
         self._escrever(EM_BUSCA)
         self.btn_buscar.setEnabled(False)
         bases, indice = self._bases, self._indice
-        tarefa = Tarefa(
+        tarefa = manter_viva(Tarefa(
             lambda: buscar(filtro, bases, indice, limite=PAGINA, offset=offset),
-            parent=self,
             nome="busca de partidas",
-        )
-        tarefa.pronto.connect(self._chegou)
-        tarefa.falhou.connect(self._falhou)
-        tarefa.finished.connect(self._terminou)
+        ))
+        tarefa.pronto.connect(slot_se_vivo(self, self._chegou))
+        tarefa.falhou.connect(slot_se_vivo(self, self._falhou))
+        tarefa.finished.connect(slot_se_vivo(self, self._terminou))
         self._tarefa = tarefa
         tarefa.start()
         return True
