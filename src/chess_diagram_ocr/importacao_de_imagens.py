@@ -42,7 +42,7 @@ import logging
 import os
 import re
 from collections import Counter
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from html.parser import HTMLParser
 from pathlib import Path
@@ -819,6 +819,15 @@ def origem_da_amostra(lote: Lote, item: ItemDeImportacao) -> str:
     return f"{fonte}: {item.livro}"
 
 
+Procedencia = tuple[str, str, str]
+"""`(source_pdf, source_page, source_diagram)` de uma linha do `labels.csv`, como texto."""
+
+
+def _procedencia(lote: Lote, item: ItemDeImportacao) -> Procedencia:
+    """A procedência com que `gravar_item` grava este item."""
+    return (origem_da_amostra(lote, item), str(item.pagina or ""), str(item.indice))
+
+
 def gravar_item(
     lote: Lote,
     posicao: int,
@@ -833,12 +842,18 @@ def gravar_item(
     allow_illegal: bool = False,
     diretorio: Path | None = None,
     outros: dict[str, ItemDeImportacao] | None = None,
+    gravadas: Mapping[Procedencia, Sequence[str]] | None = None,
 ) -> ItemDeImportacao:
     """Grava a amostra no dataset e marca o item como salvo. Devolve o item novo.
 
     Recusa gravar duas vezes a mesma imagem: o item salvo já tem `amostra`, e uma segunda linha no
     `labels.csv` com a mesma imagem só pesaria em dobro no treino, e com `source_pdf` diferente se
     cada lote a gravou. Vale também para a imagem que **outro lote** já gravou: `outros` é o `andamento_de_outros_lotes`, lido de `diretorio` quando não vem pronto.
+
+    E para a que o **dataset** já tem sem que o lote saiba (S-820): o processo morto entre a linha
+    do CSV e a gravação do lote deixava a amostra lá e o item pendente, e a rodada seguinte a
+    gravava de novo, com nome novo. Ver `ja_no_dataset`; `gravadas` é o `amostras_por_procedencia`,
+    lido de `csv_path` quando não vem pronto.
     """
     from .dataset import append_training_sample
 
@@ -850,6 +865,12 @@ def gravar_item(
     outro = outros.get(_chave_absoluta(lote.pasta, item.imagem))
     if outro is not None and outro.status == SALVO:
         raise ValueError(f"Esta imagem já foi gravada no dataset por outro lote ({outro.amostra}).")
+    if gravadas is None:
+        gravadas = amostras_por_procedencia(csv_path)
+    ja_gravada = ja_no_dataset(lote, item, tabuleiro_rgb, samples_dir=samples_dir, gravadas=gravadas)
+    if ja_gravada:
+        raise ValueError(f"Esta imagem já está no dataset ({ja_gravada}), e o andamento do lote não sabia.")
+    fonte, pagina, diagrama = _procedencia(lote, item)
     caminho = append_training_sample(
         tabuleiro_rgb,
         fen,
@@ -857,15 +878,54 @@ def gravar_item(
         samples_dir,
         allow_illegal=allow_illegal,
         side_to_move=lado if lado in ("w", "b") else None,
-        source_pdf=origem_da_amostra(lote, item),
-        source_page=item.pagina or "",
-        source_diagram=item.indice,
+        source_pdf=fonte,
+        source_page=pagina,
+        source_diagram=diagrama,
         detection_source=f"importacao-{recorte}" if recorte else "importacao",
         corrected_by=corrected_by,
     )
     salvo = replace(item, status=SALVO, amostra=Path(caminho).name, recorte=recorte)
     lote.itens[posicao] = salvo
     return salvo
+
+
+def amostras_por_procedencia(csv_path: Path) -> dict[Procedencia, list[str]]:
+    """As amostras do `labels.csv` por procedência. O lote automático lê uma vez, no começo."""
+    from .labels import LabelStore
+
+    gravadas: dict[Procedencia, list[str]] = {}
+    for entrada in LabelStore(csv_path).read():
+        chave = (entrada.source_pdf, entrada.source_page, entrada.source_diagram)
+        gravadas.setdefault(chave, []).append(entrada.filename)
+    return gravadas
+
+
+def ja_no_dataset(
+    lote: Lote,
+    item: ItemDeImportacao,
+    tabuleiro_rgb: np.ndarray,
+    *,
+    samples_dir: Path,
+    gravadas: Mapping[Procedencia, Sequence[str]],
+) -> str:
+    """O nome da amostra que já guarda esta imagem, desta procedência; vazio quando não há (S-820).
+
+    A procedência escolhe as candidatas, que são zero ou uma; o conteúdo decide. Só a procedência
+    não bastaria: uma execução nova do plugin renumera o livro, e o mesmo número passa a ser outra
+    imagem. Só o conteúdo também não: o mesmo tabuleiro sai em pixels iguais em dois livros, ou
+    duas vezes no mesmo, e cada um é uma amostra.
+    """
+    from .dataset import amostra_canonica
+
+    candidatas = gravadas.get(_procedencia(lote, item), ())
+    if not candidatas:
+        return ""
+    canonica = amostra_canonica(tabuleiro_rgb)
+    for nome in candidatas:
+        gravada = read_image(Path(samples_dir) / nome)
+        if gravada is not None and np.array_equal(gravada, canonica):
+            return nome
+    return ""
 
 
 def marcar(lote: Lote, posicao: int, status: str) -> ItemDeImportacao:
@@ -899,65 +959,90 @@ def importar_os_que_concordam(
     modelo guardados, para a conferência abrir sem ler de novo.
 
     Devolve a contagem: `salvos`, `discordam`, `com_aviso` (não foram lidos: o relatório já tinha
-    levantado suspeita), `falhas` (a imagem não abriu ou não gravou).
+    levantado suspeita), `falhas` (a imagem não abriu ou não gravou) e `ja_no_dataset`.
 
     O andamento dos outros lotes (em `diretorio`) é lido uma vez, no começo: o que outro lote já
     decidiu deixa de ser pendente aqui, e não é lido nem gravado de novo.
+
+    **A importação é idempotente (S-820).** `gravar_andamento` roda a cada `a_cada` itens e num
+    `finally`: antes ele só rodava no fim feliz, e a exceção que não fosse `OSError`/`ValueError`
+    (um `cv2.error`, o modelo que cai) deixava até 24 amostras no `labels.csv` que o lote mostrava
+    pendentes -- e a rodada seguinte as gravava de novo. Para o que nem o `finally` cobre (o
+    processo morto), quem responde é o dataset: a imagem que já está lá, com a mesma procedência,
+    volta a ser salva no lote sem segunda linha (`ja_no_dataset`). Gravar o lote a cada item não
+    seria a saída: com 5.600 imagens ele tem 2,5 MB e leva 0,64 s para gravar, mais que a leitura
+    do modelo (~0,55 s por imagem).
     """
     conta: Counter[str] = Counter()
     outros = andamento_de_outros_lotes(lote.pasta, lote.origem, diretorio=diretorio)
     _herdar_de_outros_lotes(lote, outros)
+    gravadas = amostras_por_procedencia(csv_path)
     alvos = [
         posicao
         for posicao, item in enumerate(lote.itens)
         if item.status == PENDENTE and item.fen_da_fonte
     ]
-    for passo, posicao in enumerate(alvos, start=1):
-        if cancelar is not None and cancelar():
-            break
-        item = lote.itens[posicao]
-        if item.motivos:
-            conta["com_aviso"] += 1
-        else:
-            try:
-                tabuleiro, recorte = recortar(ler_imagem(lote.caminho_da_imagem(item)), item.recorte)
-                lida = ler(tabuleiro)
-                item = com_a_leitura(item, lida, recorte)
-                lote.itens[posicao] = item
-                if concorda(item):
-                    gravar_item(
-                        lote,
-                        posicao,
-                        tabuleiro,
-                        item.fen_da_fonte,
-                        lado=item.lado,
-                        recorte=recorte,
-                        csv_path=csv_path,
-                        samples_dir=samples_dir,
-                        corrected_by=corrected_by,
-                        outros=outros,
-                    )
-                    conta["salvos"] += 1
-                else:
-                    diferentes = len(casas_diferentes(item.fen_da_fonte, lida))
-                    motivo = (
-                        f"o modelo leu outra posição ({diferentes} casas diferentes)"
-                        if diferentes
-                        else "posição ilegal"
-                    )
-                    lote.itens[posicao] = replace(item, motivos=(*item.motivos, motivo))
-                    conta["discordam"] += 1
-            except (OSError, ValueError) as exc:
-                logger.warning("Importação: %s ficou de fora: %s", item.imagem, exc)
-                lote.itens[posicao] = replace(item, motivos=(*item.motivos, f"falhou: {exc}"))
-                conta["falhas"] += 1
-        if progresso is not None:
-            progresso(passo, len(alvos), conta["salvos"])
-        if gravar_andamento is not None and passo % a_cada == 0:
+    try:
+        for passo, posicao in enumerate(alvos, start=1):
+            if cancelar is not None and cancelar():
+                break
+            conta[_importar_um(lote, posicao, ler, csv_path, samples_dir, corrected_by, outros, gravadas)] += 1
+            if progresso is not None:
+                progresso(passo, len(alvos), conta["salvos"])
+            if gravar_andamento is not None and passo % a_cada == 0:
+                gravar_andamento()
+    finally:
+        if gravar_andamento is not None:
             gravar_andamento()
-    if gravar_andamento is not None:
-        gravar_andamento()
     return conta
+
+
+def _importar_um(
+    lote: Lote,
+    posicao: int,
+    ler: Callable[[np.ndarray], str],
+    csv_path: Path,
+    samples_dir: Path,
+    corrected_by: str,
+    outros: dict[str, ItemDeImportacao],
+    gravadas: Mapping[Procedencia, Sequence[str]],
+) -> str:
+    """Um item do `importar_os_que_concordam`. Devolve a chave da contagem em que ele cai."""
+    item = lote.itens[posicao]
+    if item.motivos:
+        return "com_aviso"
+    try:
+        tabuleiro, recorte = recortar(ler_imagem(lote.caminho_da_imagem(item)), item.recorte)
+        ja_gravada = ja_no_dataset(lote, item, tabuleiro, samples_dir=samples_dir, gravadas=gravadas)
+        if ja_gravada:
+            lote.itens[posicao] = replace(item, status=SALVO, amostra=ja_gravada, recorte=recorte)
+            return "ja_no_dataset"
+        lida = ler(tabuleiro)
+        item = com_a_leitura(item, lida, recorte)
+        lote.itens[posicao] = item
+        if not concorda(item):
+            diferentes = len(casas_diferentes(item.fen_da_fonte, lida))
+            motivo = f"o modelo leu outra posição ({diferentes} casas diferentes)" if diferentes else "posição ilegal"
+            lote.itens[posicao] = replace(item, motivos=(*item.motivos, motivo))
+            return "discordam"
+        gravar_item(
+            lote,
+            posicao,
+            tabuleiro,
+            item.fen_da_fonte,
+            lado=item.lado,
+            recorte=recorte,
+            csv_path=csv_path,
+            samples_dir=samples_dir,
+            corrected_by=corrected_by,
+            outros=outros,
+            gravadas=gravadas,
+        )
+        return "salvos"
+    except (OSError, ValueError) as exc:
+        logger.warning("Importação: %s ficou de fora: %s", item.imagem, exc)
+        lote.itens[posicao] = replace(item, motivos=(*item.motivos, f"falhou: {exc}"))
+        return "falhas"
 
 
 def rota_da_conferencia(item: ItemDeImportacao, fen: str) -> str:

@@ -9,6 +9,7 @@ andamento que sobrevive a reabrir a pasta, e a mesma imagem nunca gravada duas v
 from __future__ import annotations
 
 import csv
+import hashlib
 import unittest
 from pathlib import Path
 from typing import Any
@@ -445,6 +446,35 @@ class SemMargemTests(unittest.TestCase):
         np.testing.assert_array_equal(recorte, referencia)
 
 
+def pasta_de_imagens_distintas(caso: unittest.TestCase, quantas: int) -> Path:
+    """Um livro com `quantas` imagens que diferem no conteúdo (as da `pasta_do_sigil` são iguais).
+
+    Cada uma tem a casa clara de a8 num tom só dela, e o relatório dá a posição final a todas.
+    """
+    raiz = pasta_temporaria(caso) / "Distintas"
+    artigos = []
+    for numero in range(quantas):
+        imagem = diagrama()
+        imagem[45:65, 45:65] = 150 + 10 * numero
+        gravar_png(raiz / "Livro" / "imagens" / f"{numero}.png", imagem)
+        artigos.append(artigo(f"imagens/{numero}.png", f"{FINAL} w - - 0 1"))
+    relatorio(raiz, "Livro", [artigos])
+    return raiz
+
+
+def argumentos_da_importacao(dados: Path) -> dict[str, Any]:
+    return {
+        "csv_path": dados / "labels.csv", "samples_dir": dados / "samples",
+        "corrected_by": IMPORTADO_COM_FEN, "diretorio": dados / "importacao",
+    }
+
+
+def conteudo(caminho: Path) -> str:
+    """O conteúdo da amostra, pelos pixels: é o que o treino vê."""
+    imagem = cv2.imdecode(np.frombuffer(caminho.read_bytes(), np.uint8), cv2.IMREAD_COLOR)
+    return hashlib.sha1(imagem.tobytes()).hexdigest()
+
+
 class ImportarOsQueConcordamTests(unittest.TestCase):
     def test_grava_so_o_que_o_modelo_confirma_e_nao_grava_duas_vezes(self) -> None:
         raiz = pasta_do_sigil(self)
@@ -499,6 +529,74 @@ class ImportarOsQueConcordamTests(unittest.TestCase):
         self.assertEqual(sum(conta.values()), 0)
         self.assertEqual(gravacoes, [1])
         self.assertFalse(arquivo.exists(), "quem grava o arquivo é quem passou gravar_andamento")
+
+    def test_importacao_interrompida_nao_duplica_linhas(self) -> None:
+        """S-820: a amostra ia ao `labels.csv` na hora, e o lote que a marca como salva só a cada 25.
+
+        A queda no terceiro item deixava as duas primeiras no CSV e pendentes no lote; a segunda
+        rodada as gravava de novo, com nome novo -- a mesma imagem no treino e no teste.
+        """
+        raiz, dados = pasta_de_imagens_distintas(self, 5), pasta_temporaria(self)
+        lote, arquivo = _abrir(raiz, imp.COM_FEN, diretorio=dados / "importacao")
+        lidas: list[int] = []
+
+        def cai_no_terceiro(_tabuleiro: np.ndarray) -> str:
+            lidas.append(1)
+            if len(lidas) == 3:
+                raise RuntimeError("o modelo caiu")
+            return FINAL
+
+        argumentos = argumentos_da_importacao(dados)
+        with self.assertRaises(RuntimeError):
+            imp.importar_os_que_concordam(
+                lote, ler=cai_no_terceiro, gravar_andamento=lambda: imp.gravar_lote(Lida(lote, arquivo)), **argumentos
+            )
+        gravado = imp.carregar_lote(arquivo).valor
+        assert gravado is not None, "a queda tem de deixar o andamento gravado"
+        self.assertEqual(gravado.contagem()[imp.SALVO], 2)
+        de_novo, _ = _abrir(raiz, imp.COM_FEN, diretorio=dados / "importacao")
+        conta = imp.importar_os_que_concordam(de_novo, ler=lambda _tabuleiro: FINAL, **argumentos)
+
+        self.assertEqual(conta["salvos"], 3)
+        linhas = linhas_do_csv(dados / "labels.csv")
+        self.assertEqual(len(linhas), 5)
+        self.assertEqual(len({conteudo(dados / "samples" / linha["filename"]) for linha in linhas}), 5)
+
+    def test_a_amostra_que_o_lote_perdeu_nao_entra_de_novo(self) -> None:
+        """S-820: a queda entre a linha do CSV e a gravação do lote (o processo morto) não duplica.
+
+        O lote não sabe da amostra, mas o dataset sabe: a mesma imagem, da mesma procedência, já
+        está lá, e a segunda rodada a marca como salva, apontando para ela, sem gravar a cópia.
+        """
+        raiz, dados = pasta_de_imagens_distintas(self, 3), pasta_temporaria(self)
+        argumentos = argumentos_da_importacao(dados)
+        lote, _ = _abrir(raiz, imp.COM_FEN, diretorio=dados / "importacao")
+        self.assertEqual(imp.importar_os_que_concordam(lote, ler=lambda _tabuleiro: FINAL, **argumentos)["salvos"], 3)
+
+        perdido, _ = _abrir(raiz, imp.COM_FEN, diretorio=dados / "importacao")  # nada gravou o lote
+        conta = imp.importar_os_que_concordam(perdido, ler=lambda _tabuleiro: FINAL, **argumentos)
+
+        self.assertEqual((conta["salvos"], conta["ja_no_dataset"]), (0, 3))
+        linhas = linhas_do_csv(dados / "labels.csv")
+        self.assertEqual(len(linhas), 3)
+        self.assertEqual([item.status for item in perdido.itens], [imp.SALVO] * 3)
+        self.assertEqual([item.amostra for item in perdido.itens], [item.amostra for item in lote.itens])
+
+    def test_a_conferencia_recusa_a_imagem_que_o_dataset_ja_tem(self) -> None:
+        """S-820, o mesmo pela tela: gravar à mão o item que o lote perdeu não faz segunda linha."""
+        raiz, dados = pasta_de_imagens_distintas(self, 1), pasta_temporaria(self)
+        lote, _ = _abrir(raiz, imp.COM_FEN, diretorio=dados / "importacao")
+        imp.importar_os_que_concordam(lote, ler=lambda _tabuleiro: FINAL, **argumentos_da_importacao(dados))
+        perdido, _ = _abrir(raiz, imp.COM_FEN, diretorio=dados / "importacao")
+        tabuleiro, usado = imp.recortar(imp.ler_imagem(perdido.caminho_da_imagem(perdido.itens[0])))
+
+        with self.assertRaisesRegex(ValueError, "já está no dataset"):
+            imp.gravar_item(
+                perdido, 0, tabuleiro, f"{FINAL} w - - 0 1", lado="w", recorte=usado,
+                csv_path=dados / "labels.csv", samples_dir=dados / "samples",
+                corrected_by=OCR_ACEITO, diretorio=dados / "importacao",
+            )
+        self.assertEqual(len(linhas_do_csv(dados / "labels.csv")), 1)
 
     def test_gravar_duas_vezes_a_mesma_imagem_e_recusado(self) -> None:
         raiz = pasta_do_sigil(self)

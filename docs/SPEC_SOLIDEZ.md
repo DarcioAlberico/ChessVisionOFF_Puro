@@ -879,6 +879,18 @@ recomeça.
 
 **Aceite.** Os dois passam.
 
+**Entregue** (2026-11-08): divergiu em dois pontos. (1) O andamento não é gravado a cada item: continua a
+cada 25, agora também num `finally`. Medido: o lote de 5.600 imagens tem 2,5 MB e leva 0,64 s para gravar,
+mais que a leitura do modelo (~0,55 s por imagem). O processo morto, que nem o `finally` cobre, fica com o
+dataset: o lote automático reconhece a imagem que já está no `labels.csv` e a marca como salva, apontando
+para a amostra que já existe, sem gravar segunda linha (função `ja_no_dataset`, contada à parte na chave
+`ja_no_dataset`). Pela conferência, `gravar_item` recusa. (2) Essa conferência mora em `importacao_de_imagens.py`, e não em
+`append_training_sample`. Ela compara a procedência (`source_pdf`, página, diagrama) e depois os pixels.
+Só pelo conteúdo, o mesmo tabuleiro em pixels iguais em dois livros seria recusado; e conferir o conteúdo
+na janela principal leria centenas de PNGs de 800 px a cada «Salvar». `LabelStore.append` recusa nome
+repetido, e o PNG nasce com `open(..., "xb")` e sufixo aleatório. Se a gravação falha, o arquivo
+reservado é apagado. A leitura travada do lote já vinha da S-812.
+
 ## S-821 · PDF pesquisável idempotente e atômico
 
 **Problema** (confirmado por leitura). `text/pdf_pesquisavel.py:664` **acrescenta** a marca em `keywords` a

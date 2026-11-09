@@ -382,9 +382,16 @@ class LabelStore:
     # -------------------------------------------------------------------------- escrita
 
     def append(self, entry: DatasetEntry | LabelRow) -> None:
-        """Acrescenta uma linha ao fim, preservando a ordem do arquivo."""
+        """Acrescenta uma linha ao fim, preservando a ordem do arquivo.
+
+        Recusa o `filename` que já está no arquivo (S-820): duas linhas com o mesmo nome apontam
+        para um PNG só, e uma delas mente sobre ele.
+        """
         row = entry.to_row() if isinstance(entry, DatasetEntry) else dict(entry)
         rows = self._working_rows()
+        nome = _clean(row.get("filename"))
+        if any(_clean(existente.get("filename")) == nome for existente in rows):
+            raise ValueError(f"{self.path} já tem uma linha para {nome}.")
         rows.append(row)
         self._commit(rows)
 

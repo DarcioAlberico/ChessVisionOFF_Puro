@@ -4,11 +4,13 @@ import tempfile
 import unittest
 import unittest.mock
 import warnings
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+import chess_diagram_ocr.dataset as dataset_module
 from chess_diagram_ocr.atomic_io import read_image, write_image
 from chess_diagram_ocr.config import BOARD_SIZE
 from chess_diagram_ocr.dataset import (
@@ -278,6 +280,29 @@ class AppendSampleTests(unittest.TestCase):
                     append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
 
             self.assertEqual((root / "labels.csv").read_text(encoding="utf-8"), antes)
+
+    def test_duas_amostras_no_mesmo_instante_nao_se_sobrescrevem(self) -> None:
+        """S-820: o nome saía só do relógio, cujo passo nesta máquina é ~1,5 ms.
+
+        Duas gravações no mesmo passo davam o mesmo nome: o segundo PNG apagava o primeiro, e o
+        CSV ficava com duas linhas apontando para uma imagem só.
+        """
+        congelado = unittest.mock.Mock(wraps=datetime)
+        congelado.now.return_value = datetime(2026, 11, 8, 12, 0, 0, 123456, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            claro = np.full((BOARD_SIZE, BOARD_SIZE, 3), 200, dtype=np.uint8)
+            escuro = np.full((BOARD_SIZE, BOARD_SIZE, 3), 40, dtype=np.uint8)
+
+            with unittest.mock.patch.object(dataset_module, "datetime", congelado):
+                primeiro = append_training_sample(claro, LEGAL, root / "labels.csv", root / "samples")
+                segundo = append_training_sample(escuro, LEGAL, root / "labels.csv", root / "samples")
+
+            nomes = [entry.filename for entry in LabelStore(root / "labels.csv").read()]
+            self.assertEqual(nomes, [primeiro.name, segundo.name])
+            self.assertNotEqual(primeiro, segundo)
+            self.assertEqual(int(read_image(primeiro)[0, 0, 0]), 200)
+            self.assertEqual(int(read_image(segundo)[0, 0, 0]), 40)
 
     def test_fatal_position_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

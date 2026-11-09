@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import random
+import secrets
 import warnings
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -41,6 +42,7 @@ __all__ = [
     "BoardUnitDataset",
     "DatasetEntry",
     "ROTAS_HUMANAS",
+    "amostra_canonica",
     "append_training_sample",
     "board_groups",
     "migrate_labels_csv",
@@ -483,6 +485,34 @@ def _fen_with_side(fen: str, side_to_move: str | None) -> tuple[str, str]:
     return f"{parts[0]} {declared} - - 0 1", declared
 
 
+def amostra_canonica(board_rgb: np.ndarray) -> np.ndarray:
+    """O tabuleiro como ele vai para o PNG da amostra: `BOARD_SIZE` de lado, em BGR.
+
+    O PNG não perde nada, então é também o que `read_image` devolve da amostra gravada -- quem
+    quer saber se uma imagem já está no dataset compara com isto (S-820).
+    """
+    board = board_rgb
+    if board.shape[:2] != (BOARD_SIZE, BOARD_SIZE):
+        board = cv2.resize(board, (BOARD_SIZE, BOARD_SIZE))
+    return cv2.cvtColor(board, cv2.COLOR_RGB2BGR)
+
+
+def _reservar_amostra(samples_dir: Path, instante: datetime) -> Path:
+    """Cria, vazio e exclusivo, o arquivo da amostra nova (S-820).
+
+    O nome saía só do relógio, e o passo dele nesta máquina é ~1,5 ms: duas gravações no mesmo
+    passo davam o mesmo nome, e a segunda imagem apagava a primeira. O sufixo aleatório separa as
+    duas, e o `"xb"` garante que nenhuma gravação reuse o arquivo de outra, sorteio repetido incluso.
+    """
+    while True:
+        caminho = samples_dir / f"board_{instante.strftime('%Y%m%d_%H%M%S_%f')}_{secrets.token_hex(3)}.png"
+        try:
+            with open(caminho, "xb"):
+                return caminho
+        except FileExistsError:
+            continue
+
+
 def append_training_sample(
     board_rgb: np.ndarray,
     fen: str,
@@ -526,29 +556,28 @@ def append_training_sample(
     csv_path.parent.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc)
-    filename = f"board_{timestamp.strftime('%Y%m%d_%H%M%S_%f')}.png"
-    image_path = samples_dir / filename
-
-    board = board_rgb
-    if board.shape[:2] != (BOARD_SIZE, BOARD_SIZE):
-        board = cv2.resize(board, (BOARD_SIZE, BOARD_SIZE))
-    board_bgr = cv2.cvtColor(board, cv2.COLOR_RGB2BGR)
-    write_image(image_path, board_bgr)
-
-    LabelStore(csv_path).append(
-        DatasetEntry(
-            filename=filename,
-            fen=fen,
-            side_to_move=resolved_side,
-            source_pdf=source_pdf,
-            source_page=str(source_page),
-            source_diagram=str(source_diagram),
-            detection_source=detection_source,
-            created_at=timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            corrected_by=corrected_by,
-            illegal_ok=ILLEGAL_OK if position.is_fatal else "",
+    image_path = _reservar_amostra(samples_dir, timestamp)
+    gravada = False
+    try:
+        write_image(image_path, amostra_canonica(board_rgb))
+        LabelStore(csv_path).append(
+            DatasetEntry(
+                filename=image_path.name,
+                fen=fen,
+                side_to_move=resolved_side,
+                source_pdf=source_pdf,
+                source_page=str(source_page),
+                source_diagram=str(source_diagram),
+                detection_source=detection_source,
+                created_at=timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                corrected_by=corrected_by,
+                illegal_ok=ILLEGAL_OK if position.is_fatal else "",
+            )
         )
-    )
+        gravada = True
+    finally:
+        if not gravada:  # o arquivo reservado não pode sobrar sem linha, nem vazio
+            image_path.unlink(missing_ok=True)
     return image_path
 
 

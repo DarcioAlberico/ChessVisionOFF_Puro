@@ -164,6 +164,15 @@ class MutationTests(unittest.TestCase):
         self.store.append(entry("d.png"))
         self.assertEqual([e.filename for e in self.store.read()], ["a.png", "b.png", "c.png", "d.png"])
 
+    def test_append_recusa_nome_repetido(self) -> None:
+        """S-820: duas linhas com o mesmo `filename` apontam para um PNG só -- uma delas mente."""
+        antes = self.csv.read_bytes()
+
+        with self.assertRaisesRegex(ValueError, "b.png"):
+            self.store.append(entry("b.png"))
+
+        self.assertEqual(self.csv.read_bytes(), antes)
+
     def test_update_devolve_falso_para_quem_nao_existe(self) -> None:
         self.assertFalse(self.store.update("z.png", fen=LEGAL))
 
