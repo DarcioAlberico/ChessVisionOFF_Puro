@@ -281,7 +281,7 @@ porque o teste dele continua verde medindo a decisão sozinha.
 | `leitura_do_pdf.py` | O que o visualizador de PDF decide fora do widget (S-31/S-69/S-330/S-503). |
 | `viewport.py` | A vista da página: o que a roda faz, para onde o zoom puxa, quanto cabe (S-70). |
 | `page_overlay.py` | Onde estão os diagramas da página exibida, para desenhá-los e para clicá-los (S-68). |
-| `page_results.py` | Os resultados de OCR guardados por página, para navegar sem perder o reconhecimento. |
+| `page_results.py` | Os resultados de OCR guardados por página, para navegar sem perder o reconhecimento, e o que a tela faz com a resposta de uma leitura (`responder_a_leitura`, S-867). |
 | `cortina.py` | A cortina de comparação: onde fica a divisa entre o antes e o depois (F9). |
 | `trilho.py` | O que o trilho de páginas diz de cada página (OCR_UI passo 17). |
 | `mesa.py` | A mesa de texto: o PDF à esquerda e o editor à direita, na própria janela (S-640/S-645). |

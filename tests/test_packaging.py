@@ -315,8 +315,13 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2304
+    LIMITE = 2299
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **2.304 -> 2.299 com a resposta da leitura decidida em `ui/` (S-867, 2026-11-09)**: a guarda de
+    tela, o que selecionar, o duplo clique pendente e a frase do cancelamento viraram
+    `page_results.responder_a_leitura`; `_chegaram_itens` só aplica, e o ramo de cancelamento de
+    `_falhou` virou uma chamada a ele. As caixas da chegada reusam `_caixas_sem_desaprender`.
 
     **2.313 -> 2.304 com a tarefa sem pai em todos os painéis (S-826, 2026-11-09)**: o `_se_viva`
     da janela virou `trabalho.slot_se_vivo`, que os painéis usam também, e a espera do `closeEvent`

@@ -73,6 +73,7 @@ SEM_CHAMADOR: dict[str, str] = {
     "icones.Arco": E_O_TIPO,
     "icones.Poli": E_O_TIPO,
     "menu.Menu": E_O_TIPO,
+    "page_results.RespostaDaLeitura": E_O_TIPO,
     "varredura_de_revisao.ScanRequest": E_O_TIPO,
     # --- os instrumentos: o que a guarda usa para medir, e o produto não
     # `tokens.razao_de_contraste` estava aqui como instrumento e saiu no merge do religa **por ter

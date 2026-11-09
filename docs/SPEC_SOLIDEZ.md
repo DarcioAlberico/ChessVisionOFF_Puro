@@ -2648,6 +2648,8 @@ mostrar; a janela só aplica. É um passo para a S-31.
 
 **Aceite.** O teste passa sem importar PyQt6; a janela perde o bloco.
 
+**Entregue** (2026-11-09): `page_results.responder_a_leitura(ancora, tela, lidos=, selecionar=, estudar_ao_ler=, cancelada=)` devolve a `RespostaDaLeitura` (página onde os itens entram, linha a selecionar, se vai à sala, frase e severidade do rodapé); `_chegaram_itens` só a aplica, e o cancelamento de `_falhou` virou uma chamada a ele com `cancelada=True` -- o `bool` de "entrou" que as duas metades trocavam sumiu. A frase do cancelamento saiu de `qt/leitura.py` e mora com a decisão. Diferença invisível: quando o clique e o duplo clique pendente apontavam linhas diferentes, a janela selecionava as duas em sequência; agora seleciona só a que vence.
+
 ## Fase 121 — Testes que medem comportamento
 
 ## S-868 · Os 26 testes desligados

@@ -28,7 +28,6 @@ if TEM_PYQT:
         ESPERA_PARA_AQUECER_MS,
         Aquecimento,
         Ocupacao,
-        frase_de_cancelamento,
         sem_modelo,
     )
     from chess_diagram_ocr.qt.trabalho import Tarefa
@@ -143,9 +142,8 @@ class PecasTests(unittest.TestCase):
                 break
         self.assertTrue(ditos and "Configurações" in ditos[-1][0], ditos)
 
-    def test_as_frases(self) -> None:
-        self.assertIn("antes do primeiro", frase_de_cancelamento(0))
-        self.assertIn("2 diagrama(s)", frase_de_cancelamento(2))
+    def test_a_falta_do_modelo(self) -> None:
+        """As frases do cancelamento moram com a decisão, em `ui/page_results` (S-867)."""
         self.assertTrue(sem_modelo(FileNotFoundError("models/piece_classifier.pt")))
         self.assertFalse(sem_modelo(FileNotFoundError("outro.txt")))
         self.assertFalse(sem_modelo(RuntimeError("piece_classifier")))

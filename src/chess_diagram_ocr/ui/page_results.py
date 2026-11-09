@@ -31,15 +31,20 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from chess_diagram_ocr.ui import estado_do_rodape
+from chess_diagram_ocr.ui.ancora_da_tela import AncoraDaTela, ainda_vale, frase_do_descarte
+
 __all__ = [
     "DEFAULT_MAX_CACHED_PAGES",
     "PageOcrParams",
     "PageResults",
     "PageResultsCache",
     "PageSwitch",
+    "RespostaDaLeitura",
     "colocacoes_conferidas",
     "decide_page_switch",
     "paginas_editadas",
+    "responder_a_leitura",
 ]
 
 if TYPE_CHECKING:  # pragma: no cover - só para os tipos
@@ -309,6 +314,70 @@ def decide_page_switch(*, stored: PageResults | None, current_is_page_result: bo
         return PageSwitch.RESTORE
     return PageSwitch.CLEAR if current_is_page_result else PageSwitch.KEEP
 
+
+
+@dataclass(frozen=True)
+class RespostaDaLeitura:
+    """O que a tela faz com a resposta de uma leitura de página. A janela só aplica (S-867)."""
+
+    pagina: int | None
+    """A página em que os itens entram; `None` quando eles não entram em lugar nenhum."""
+
+    selecionar: int | None = None
+    """A linha do Resultado a selecionar depois de carregar, se houver."""
+
+    estudar: bool = False
+    """Levar a linha selecionada à sala: o duplo clique pedido antes de a página ser lida."""
+
+    frase: str | None = None
+    """O que o rodapé diz por último; `None` deixa o resumo da página que o carregar já diz."""
+
+    severidade: str | None = None
+    """A severidade da `frase` (`ui/estado_do_rodape`); `None` cai na heurística de lá."""
+
+
+def _frase_de_cancelamento(lidos: int) -> str:
+    return (
+        f"Leitura cancelada: {lidos} diagrama(s) lido(s) ficaram na lista."
+        if lidos
+        else "Leitura cancelada antes do primeiro diagrama."
+    )
+
+
+def responder_a_leitura(
+    ancora: AncoraDaTela | None,
+    tela: AncoraDaTela,
+    *,
+    lidos: int,
+    selecionar: int | None = None,
+    estudar_ao_ler: tuple[int, int] | None = None,
+    cancelada: bool = False,
+) -> RespostaDaLeitura:
+    """Os `lidos` diagramas pedidos em `ancora` chegaram, e a tela está em `tela`: o que ela mostra?
+
+    Era o fim de `_chegaram_itens` e o ramo de cancelamento de `_falhou`, na janela, e as duas
+    metades se chamavam uma à outra pelo `bool` de "entrou". As regras, juntas:
+
+    - **Só entra na tela que pediu** (`ainda_vale`, S-823), e quem descarta diz onde a tela está.
+    - **Cancelar não é falha** (C2): o parcial entra como uma leitura inteira, e o rodapé diz
+      quantos ficaram. Sem parcial não há o que carregar, em tela nenhuma.
+    - **Sem âncora não há onde entrar**: só a leitura da página leva a dela.
+    - `selecionar` é o diagrama da caixa clicada; o duplo clique anotado em `estudar_ao_ler`
+      (`(página, diagrama)`) vence, e só se for desta página e de um diagrama que foi lido.
+    """
+    if cancelada and not lidos:
+        return RespostaDaLeitura(None, frase=_frase_de_cancelamento(0), severidade=estado_do_rodape.INFORMACAO)
+    if ancora is None:
+        return RespostaDaLeitura(None)
+    if not ainda_vale(ancora, tela):
+        return RespostaDaLeitura(None, frase=frase_do_descarte(ancora, tela))
+    pedido = estudar_ao_ler if estudar_ao_ler and estudar_ao_ler[0] == ancora.pagina and estudar_ao_ler[1] < lidos else None
+    linha = pedido[1] if pedido else selecionar if lidos and selecionar is not None and selecionar < lidos else None
+    if not cancelada:
+        return RespostaDaLeitura(ancora.pagina, linha, pedido is not None)
+    return RespostaDaLeitura(
+        ancora.pagina, linha, pedido is not None, _frase_de_cancelamento(lidos), estado_do_rodape.INFORMACAO
+    )
 
 # `page_index_from_origin` morava aqui e interpretava a origem por manipulação de string.
 # Ela virou `service.RecognitionOrigin` na S-31: o formato passou a ter um único lugar que

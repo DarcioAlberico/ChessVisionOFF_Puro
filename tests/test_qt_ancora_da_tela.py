@@ -138,6 +138,21 @@ class ChegadaDepoisDaTrocaTests(unittest.TestCase):
         self.assertEqual(1, janela.painel.lista.count())
         self.assertIn("Leitura cancelada", janela.rodape.mensagem())
 
+    def test_cancelar_antes_do_primeiro_diagrama_diz_e_nao_carrega_nada(self) -> None:
+        """Sem parcial, a lista não é tocada, e o rodapé diz que nada foi lido -- mesmo na mesma tela."""
+        janela = self._janela(ServicoQueCancela([]))
+        janela.abrir_pdf(pdf_de_teste(self.pasta / "duas.pdf", paginas=2))
+        esperar(janela)
+        self._ler_adiado(janela)
+
+        QTest.mouseClick(janela.rodape._btn_cancelar, Qt.MouseButton.LeftButton)
+        TarefaAdiada.entregar_todas()
+        QTest.qWait(0)
+
+        self.assertEqual(0, janela.painel.lista.count())
+        self.assertIsNone(janela.editor.origin)
+        self.assertIn("antes do primeiro", janela.rodape.mensagem())
+
 
 if __name__ == "__main__":
     unittest.main()

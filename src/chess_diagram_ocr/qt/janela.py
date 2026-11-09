@@ -150,11 +150,12 @@ from chess_diagram_ocr.ui import (
     geometria,
     livros,
     ocr_que_falta,
+    page_results,
     pele,
     sala_declarada,
     strings,
 )
-from chess_diagram_ocr.ui.ancora_da_tela import AncoraDaTela, ainda_vale, frase_do_descarte
+from chess_diagram_ocr.ui.ancora_da_tela import AncoraDaTela, ainda_vale
 from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.configuracoes import dpi as _dpi
 from chess_diagram_ocr.ui.configuracoes import max_boards as _max_boards
@@ -1618,10 +1619,8 @@ class JanelaPrincipal(QMainWindow):
         if isinstance(excecao, NoBoardDetectedError):
             self._dizer("Nenhum diagrama encontrado nesta página.", estado_do_rodape.INFORMACAO)
             return
-        if isinstance(excecao, RecognitionCanceled):  # C2: cancelar não é falha; o lido fica
-            lidos = list(excecao.partial)  # da página em que foi pedido, e não da que está na tela (S-823)
-            if not lidos or (ancora is not None and self._chegaram_itens(ancora, lidos, None)):
-                self._dizer(leitura.frase_de_cancelamento(len(lidos)), estado_do_rodape.INFORMACAO)
+        if isinstance(excecao, RecognitionCanceled):  # C2: cancelar não é falha; o lido volta à âncora (S-823)
+            self._chegaram_itens(ancora, list(excecao.partial), None, cancelada=True)
             return
         if leitura.sem_modelo(excecao):  # C2: sem o `.pt`, a frase diz onde se aponta o arquivo
             self._dizer(leitura.FRASE_SEM_MODELO, estado_do_rodape.ERRO)
@@ -1669,37 +1668,33 @@ class JanelaPrincipal(QMainWindow):
         lidas = boxes_from_diagrams(self._itens) if pagina == self.pdf.page_index else ()
         return PageBoxes(pagina, self._parametros(), choose_boxes(recognized=lidas, detected=detectadas))
 
-    def _chegaram_itens(self, ancora: AncoraDaTela, itens: list[RecognizedDiagram], selecionar: int | None) -> bool:
-        if not ainda_vale(ancora, tela := self._ancora_da_tela()):  # só na tela que a pediu; diz se entrou (S-823)
-            self._dizer(frase_do_descarte(ancora, tela))
-            return False
-        pagina, self._itens = ancora.pagina, list(itens)
-        self.texto.definir_posicoes(pagina, [d.placement for d in self._itens])  # a FEN de cada diagrama vai à aba Texto
-        # **O ponto único de troca de vínculo** (S-49), dentro do painel: o vínculo é `PAGE` e a
-        # âncora é o par (documento, página), e é ela que faz `Ctrl+S` gravar amostra nova em vez
-        # de regravar a linha de um dataset que não está aberto.
-        self.painel.carregar_pagina(self._itens, chave=self._chave_do_documento(), pagina=pagina)
-        self.pgn_do_livro.aplicar(pagina, self._itens)  # a posição do PGN do livro, se ele tiver um (S-590)
-
-        lidas = boxes_from_diagrams(self._itens)
-        guardadas = self._caixas_por_pagina.get(self._chave_do_documento(), pagina, self._parametros())
-        caixas = PageBoxes(
-            pagina,
-            self._parametros(),
-            choose_boxes(recognized=lidas, detected=guardadas.boxes if guardadas else ()),
+    def _chegaram_itens(
+        self, ancora: AncoraDaTela | None, itens: list[RecognizedDiagram], selecionar: int | None, *, cancelada: bool = False
+    ) -> None:
+        resposta = page_results.responder_a_leitura(  # a decisão é pura; aqui ela só é aplicada (S-867)
+            ancora, self._ancora_da_tela(), lidos=len(itens), selecionar=selecionar,
+            estudar_ao_ler=self._estudar_ao_ler, cancelada=cancelada,
         )
-        self._guardar(caixas)
-        self._publicar_caixas(caixas)
-
-        if self._itens and selecionar is not None and selecionar < len(self._itens):
-            self.painel.lista.setCurrentRow(selecionar)
-        pendente, self._estudar_ao_ler = self._estudar_ao_ler, None
-        if pendente is not None and pendente[0] == pagina and pendente[1] < len(self._itens):
-            self.painel.lista.setCurrentRow(pendente[1])
-            self._levar_ao_estudo()
-        self._atualizar_abas()
-        self._dizer_o_que_ha_na_pagina()
-        return True
+        if (pagina := resposta.pagina) is not None:
+            self._itens, self._estudar_ao_ler = list(itens), None  # o duplo clique pendente é atendido ou morre
+            self.texto.definir_posicoes(pagina, [d.placement for d in self._itens])  # a FEN de cada diagrama vai à aba Texto
+            # **O ponto único de troca de vínculo** (S-49), dentro do painel: o vínculo é `PAGE` e a
+            # âncora é o par (documento, página), e é ela que faz `Ctrl+S` gravar amostra nova em vez
+            # de regravar a linha de um dataset que não está aberto.
+            self.painel.carregar_pagina(self._itens, chave=self._chave_do_documento(), pagina=pagina)
+            self.pgn_do_livro.aplicar(pagina, self._itens)  # a posição do PGN do livro, se ele tiver um (S-590)
+            guardadas = self._caixas_por_pagina.get(self._chave_do_documento(), pagina, self._parametros())
+            caixas = self._caixas_sem_desaprender(pagina, guardadas.boxes if guardadas else ())
+            self._guardar(caixas)
+            self._publicar_caixas(caixas)
+            if resposta.selecionar is not None:
+                self.painel.lista.setCurrentRow(resposta.selecionar)
+            if resposta.estudar:
+                self._levar_ao_estudo()
+            self._atualizar_abas()
+            self._dizer_o_que_ha_na_pagina()
+        if resposta.frase:
+            self._dizer(resposta.frase, resposta.severidade)
 
     def _guardar(self, caixas: PageBoxes) -> None:
         self._caixas_por_pagina.put(self._chave_do_documento(), caixas)
