@@ -1748,6 +1748,12 @@ inválida" em 1.
 
 **Aceite.** O teste passa; o metadado do checkpoint traz os contadores.
 
+**Entregue** (2026-11-09): `BoardFenDataset.descartes` (`fen_invalida`, `sem_split`, `ilegal`,
+`imagem_ausente`), derivado das listas `skipped_*`, com aviso próprio para a FEN inválida e uma linha de
+resumo no fim da carga; o checkpoint grava `descartes` (treino) e `val_descartes`. Diverge num ponto: o
+filtro de split passou para antes do teste de FEN, para que cada dataset conte só os descartes dos seus
+rótulos; as entradas carregadas são as mesmas (no `labels.csv` versionado não há FEN inválida).
+
 ## S-842 · Colocação: um parser de FEN só, na fronteira
 
 **Problema** (confirmado por script). `fen_utils.py:196-228`: `labels_from_fen` aceita `8/.../44`,

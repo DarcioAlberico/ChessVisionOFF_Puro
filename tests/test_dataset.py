@@ -20,6 +20,7 @@ from chess_diagram_ocr.dataset import (
     migrate_labels_csv,
 )
 from chess_diagram_ocr.labels import ILLEGAL_OK, LabelStore
+from chess_diagram_ocr.splits import Split
 
 LEGAL = "4k3/8/8/8/8/8/8/4K3"
 FATAL = "4n3/8/8/4B2n/8/8/8/8"  # sem reis
@@ -78,6 +79,68 @@ class MalformedCsvTests(unittest.TestCase):
 
             self.assertEqual(len(dataset.entries), 0)
             self.assertTrue(any("imagem ausente" in str(w.message) for w in caught))
+
+
+
+class DescartesContadosTests(unittest.TestCase):
+    """S-841: todo descarte da carga é contado por motivo, e a FEN inválida também.
+
+    A linha de FEN inválida saía do treino sem contador e sem log, enquanto os outros
+    descartes do mesmo laço eram registrados: um rótulo estragado sumia sem ninguém saber.
+    """
+
+    def test_fen_invalida_entre_dez_boas_e_contada_e_dita(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            samples = root / "samples"
+            samples.mkdir()
+            linhas = [(f"b{i}.png", LEGAL) for i in range(10)]
+            for nome, _fen in linhas:
+                _write_board(samples, nome, size=64)
+            _write_board(samples, "estragada.png", size=64)
+            linhas.insert(5, ("estragada.png", "4k3/8/8/44/8/8/8/4K3"))
+            _write_csv(root / "labels.csv", linhas)
+
+            with self.assertLogs("chess_diagram_ocr.dataset", level="INFO") as registro:
+                dataset = BoardFenDataset(root / "labels.csv", samples)
+
+        self.assertEqual(len(dataset.entries), 10)
+        self.assertEqual(dataset.descartes["fen_invalida"], 1)
+        self.assertEqual(sum(dataset.descartes.values()), 1, dataset.descartes)
+        self.assertTrue(
+            any("estragada.png" in linha and "FEN" in linha for linha in registro.output),
+            f"o descarte não foi dito: {registro.output}",
+        )
+
+    def test_cada_motivo_tem_o_seu_contador(self) -> None:
+        """Os quatro motivos lado a lado, para que nenhum seja contado no lugar de outro."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            samples = root / "samples"
+            samples.mkdir()
+            for nome in ("ok.png", "ilegal.png", "sem_split.png", "fen.png"):
+                _write_board(samples, nome, size=64)
+            _write_csv(
+                root / "labels.csv",
+                [
+                    ("ok.png", LEGAL),
+                    ("ilegal.png", FATAL),
+                    ("ausente.png", LEGAL),
+                    ("sem_split.png", LEGAL),
+                    ("fen.png", "nao-e-fen"),
+                ],
+            )
+            splits: dict[str, Split] = dict.fromkeys(("ok.png", "ilegal.png", "ausente.png", "fen.png"), "train")
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                dataset = BoardFenDataset(root / "labels.csv", samples, split="train", splits=splits)
+
+        self.assertEqual([e.filename for e in dataset.entries], ["ok.png"])
+        self.assertEqual(
+            dataset.descartes,
+            {"fen_invalida": 1, "sem_split": 1, "ilegal": 1, "imagem_ausente": 1},
+        )
 
 
 class LegalityFilterTests(unittest.TestCase):

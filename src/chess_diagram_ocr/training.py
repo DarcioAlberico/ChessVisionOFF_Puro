@@ -1127,6 +1127,10 @@ class Trainer:
             "labels_hash": labels_hash([dataset.entries[i] for i in sorted(train_board_ids)]),
             "splits_path": str(data.splits_path) if data.splits_path else "",
             "dataset_size": len(dataset.entries),
+            # S-841: o que a carga descartou, por motivo. Sem split o `val` é um pedaço do
+            # mesmo dataset, e os descartes dele já estão em `descartes`.
+            "descartes": dataset.descartes,
+            "val_descartes": val_dataset.descartes if val_dataset is not None else {},
             "val_size": len(val_dataset.entries) if val_dataset is not None else len(val_indices) // 64,
             "git_commit": git_commit(),
             "best_metric_name": "val_board_exact_acc" if self.val_loader is not None else "train_loss",

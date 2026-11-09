@@ -117,6 +117,11 @@ class BoardFenDataset(Dataset):
 
         Não é o mesmo que "de outro split": é "de split nenhum", e significa que a amostra
         está invisível a **todos** os três datasets. Separá-los é o que permite avisar."""
+        self.skipped_invalid_fen: list[str] = []
+        """Rótulos descartados por FEN vazia ou inválida (S-841). Até a S-841 este era o único
+        descarte da carga sem contador e sem log: um rótulo estragado sumia do treino calado."""
+        self.skipped_missing_image: list[str] = []
+        """Rótulos descartados porque a imagem não está em `samples_dir`."""
         self._board_cache: OrderedDict[int, np.ndarray] = OrderedDict()
         self.cache_hits = 0
         self.cache_misses = 0
@@ -136,14 +141,12 @@ class BoardFenDataset(Dataset):
         if not self.csv_path.exists():
             return
 
-        missing_files: list[str] = []
         for entry in LabelStore(self.csv_path).read():
             fen = entry.fen
-            if not fen or not is_syntactically_valid_fen(fen):
-                continue
-
             filename = entry.filename
 
+            # O split vem antes da FEN (S-841): cada dataset conta só o que descartou dos seus,
+            # e a linha estragada do treino não aparece como descarte da validação.
             if self.split is not None:
                 if self.splits is None:
                     raise ValueError("Para filtrar por split é necessário informar o mapa `splits`.")
@@ -153,6 +156,10 @@ class BoardFenDataset(Dataset):
                     continue
                 if registrado != self.split:
                     continue
+
+            if not fen or not is_syntactically_valid_fen(fen):
+                self.skipped_invalid_fen.append(filename)
+                continue
 
             if self.skip_illegal:
                 position = check_position(fen)
@@ -164,15 +171,23 @@ class BoardFenDataset(Dataset):
 
             img_path = self.samples_dir / filename
             if not img_path.exists():
-                missing_files.append(filename)
+                self.skipped_missing_image.append(filename)
                 continue
             self.entries.append(entry)
 
-        if missing_files:
-            preview = ", ".join(sorted(set(missing_files))[:3])
-            suffix = "..." if len(set(missing_files)) > 3 else ""
+        if self.skipped_invalid_fen:
+            logger.warning(
+                "%d rótulo(s) ignorados por FEN vazia ou inválida. Primeiros casos: %s",
+                len(self.skipped_invalid_fen),
+                ", ".join(self.skipped_invalid_fen[:3]),
+            )
+
+        if self.skipped_missing_image:
+            ausentes = sorted(set(self.skipped_missing_image))
+            preview = ", ".join(ausentes[:3])
+            suffix = "..." if len(ausentes) > 3 else ""
             warnings.warn(
-                f"{len(missing_files)} linhas ignoradas por imagem ausente: {preview}{suffix}",
+                f"{len(self.skipped_missing_image)} linhas ignoradas por imagem ausente: {preview}{suffix}",
                 RuntimeWarning,
                 stacklevel=2,
             )
@@ -210,6 +225,28 @@ class BoardFenDataset(Dataset):
             )
 
         self.index_map = [(entry_idx, sq) for entry_idx in range(len(self.entries)) for sq in range(64)]
+        if any(self.descartes.values()):
+            logger.info(
+                "Carga de %s%s: %d amostra(s); descartes: %s.",
+                self.csv_path.name,
+                f" ({self.split})" if self.split else "",
+                len(self.entries),
+                ", ".join(f"{motivo}={quantos}" for motivo, quantos in self.descartes.items()),
+            )
+
+    @property
+    def descartes(self) -> dict[str, int]:
+        """Quantos rótulos a carga descartou, por motivo (S-841). Vai para o metadado do checkpoint.
+
+        Rótulo de outro split não é descarte: é de outro dataset. Os ilegais mantidos por
+        `illegal_ok` também não; estão em `kept_illegal`.
+        """
+        return {
+            "fen_invalida": len(self.skipped_invalid_fen),
+            "sem_split": len(self.skipped_without_split),
+            "ilegal": len(self.skipped_illegal),
+            "imagem_ausente": len(self.skipped_missing_image),
+        }
 
     def __len__(self) -> int:
         return len(self.index_map)

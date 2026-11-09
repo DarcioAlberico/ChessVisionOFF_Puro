@@ -726,6 +726,39 @@ class ReproducibilityTests(unittest.TestCase):
             self.assertEqual(checkpoint.metadata["dataset_size"], 4)
             self.assertEqual(checkpoint.metadata["best_epoch"], run.best_epoch)
 
+    def test_checkpoint_diz_o_que_a_carga_descartou(self) -> None:
+        """S-841: o metadado do checkpoint traz os contadores de descarte do treino e da validação."""
+        import tempfile
+
+        from chess_diagram_ocr.checkpoint import load_checkpoint
+        from chess_diagram_ocr.splits import load_splits, save_splits
+        from chess_diagram_ocr.training import train_model
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "a").mkdir()
+            csv_path, samples, splits_path = self._tiny_dataset(root / "a")
+            with csv_path.open("a", encoding="utf-8") as arquivo:
+                arquivo.write("estragada.png,4k3/8/8/44/8/8/8/4K3\n")
+            save_splits(splits_path, {**load_splits(splits_path), "estragada.png": "train"})
+            train_model(
+                csv_path=csv_path,
+                samples_dir=samples,
+                model_path=root / "a" / "m.pt",
+                epochs=1,
+                batch_size=64,
+                splits_path=splits_path,
+                fresh=True,
+                seed=7,
+                num_workers=0,
+                patience=0,
+            )
+            metadados = load_checkpoint(root / "a" / "m.pt").metadata
+
+        self.assertEqual(metadados["descartes"]["fen_invalida"], 1)
+        # A linha estragada é do treino: a validação não a descartou, porque nunca foi dela.
+        self.assertEqual(metadados["val_descartes"]["fen_invalida"], 0)
+
     def test_resume_keeps_the_best_metric_instead_of_restarting_it(self) -> None:
         """A pendencia aberta desde a Fase 1: retomar sobrescrevia o melhor checkpoint.
 
