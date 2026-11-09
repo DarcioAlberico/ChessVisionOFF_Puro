@@ -16,7 +16,7 @@
    "except_exception": 3
   },
   "qt": {
-   "type_ignore": 81,
+   "type_ignore": 67,
    "any": 216,
    "except_exception": 77
   },

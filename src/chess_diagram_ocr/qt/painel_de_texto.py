@@ -125,6 +125,7 @@ from chess_diagram_ocr.text.tesseract import LINGUA_PADRAO
 from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, mesa, strings, texto_cores, tipografia, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.livros import ChaveDoLivro, chave_do_livro, mesmo_livro
+from chess_diagram_ocr.ui.state import AppState
 from chess_diagram_ocr.ui.texto_declarado import (
     ACOES_PROPRIAS,
     COMANDOS_DA_ABA,
@@ -3198,44 +3199,47 @@ class PainelDeTexto(QWidget):
         self.estado.emit(f"{total} diagrama(s) de {len(mudar)} folha(s) alinhado(s) {destino}.")
         return len(mudar)
 
-    def aplicar_estado(self, estado: object) -> None:
-        """A vista da aba como a sessão anterior a deixou: zoom, quebra, motor, modo bloco, os diagramas e a letra."""
-        self.aplicar_zoom(int(getattr(estado, "texto_zoom", 0)), avisar=False)
-        self.definir_quebra(bool(getattr(estado, "texto_quebra", True)))
-        self.definir_motor(str(getattr(estado, "texto_motor", "")))  # o motor e o modo bloco da sessão anterior (item 17)
-        self.definir_lingua(str(getattr(estado, "texto_lingua", "")))
-        self.definir_modo_bloco(bool(getattr(estado, "texto_bloco", False)))
-        self.definir_diagramas(str(getattr(estado, "texto_diagramas", "")))
-        self.definir_tamanho_da_miniatura(str(getattr(estado, "texto_miniatura", "")))
-        self.definir_familia_da_letra(str(getattr(estado, "texto_familia", "")))
-        self.definir_texto_ao_lado(bool(getattr(estado, "texto_ao_lado", False)))
-        self._ler_ao_chegar = bool(getattr(estado, "texto_ler_ao_chegar", False))
-        for canal, chave in (("letra", "texto_ultima_cor"), ("realce", "texto_ultimo_realce")):
-            nome = str(getattr(estado, chave, ""))
+    def aplicar_estado(self, estado: AppState) -> None:
+        """A vista da aba como a sessão anterior a deixou: zoom, quebra, motor, modo bloco, os diagramas e a letra.
+
+        **Os padrões são os do `AppState`** (S-828): o campo que o disco não trouxe já chega com
+        ele, e repeti-lo aqui num `getattr` era um segundo lugar para a mesma decisão.
+        """
+        self.aplicar_zoom(estado.texto_zoom, avisar=False)
+        self.definir_quebra(estado.texto_quebra)
+        self.definir_motor(estado.texto_motor)  # o motor e o modo bloco da sessão anterior (item 17)
+        self.definir_lingua(estado.texto_lingua)
+        self.definir_modo_bloco(estado.texto_bloco)
+        self.definir_diagramas(estado.texto_diagramas)
+        self.definir_tamanho_da_miniatura(estado.texto_miniatura)
+        self.definir_familia_da_letra(estado.texto_familia)
+        self.definir_texto_ao_lado(estado.texto_ao_lado)
+        self._ler_ao_chegar = estado.texto_ler_ao_chegar
+        for canal, nome in (("letra", estado.texto_ultima_cor), ("realce", estado.texto_ultimo_realce)):
             if nome in texto_cores.nomes():
                 self._ultimas_cores[canal] = nome
         self._mostrar_ultima_cor(self.cor_rapida, "letra")
         self._mostrar_ultima_cor(self.realce_rapido, "realce")
-        self.fita.definir_recolhida(bool(getattr(estado, "texto_fita_recolhida", False)))
-        self._glifos_recentes = [str(g) for g in getattr(estado, "texto_glifos_recentes", [])][:GLIFOS_RECENTES]
+        self.fita.definir_recolhida(estado.texto_fita_recolhida)
+        self._glifos_recentes = list(estado.texto_glifos_recentes)[:GLIFOS_RECENTES]
         self._encher_a_paleta()
 
-    def anotar_estado(self, estado: object) -> None:
+    def anotar_estado(self, estado: AppState) -> None:
         """O contrário de `aplicar_estado`: a vista da aba vai ao estado que a janela grava."""
-        estado.texto_zoom = int(self.zoom_da_vista)  # type: ignore[attr-defined]
-        estado.texto_quebra = bool(self.quebra)  # type: ignore[attr-defined]
-        estado.texto_motor = self.motor  # type: ignore[attr-defined]
-        estado.texto_lingua = self.lingua  # type: ignore[attr-defined]
-        estado.texto_bloco = bool(self.modo_bloco)  # type: ignore[attr-defined]
-        estado.texto_diagramas = self._diagramas  # type: ignore[attr-defined]
-        estado.texto_miniatura = self._tamanho_da_miniatura  # type: ignore[attr-defined]
-        estado.texto_familia = self._familia_da_letra  # type: ignore[attr-defined]
-        estado.texto_ao_lado = self._texto_ao_lado  # type: ignore[attr-defined]
-        estado.texto_ler_ao_chegar = self._ler_ao_chegar  # type: ignore[attr-defined]
-        estado.texto_ultima_cor = self._ultimas_cores["letra"]  # type: ignore[attr-defined]
-        estado.texto_ultimo_realce = self._ultimas_cores["realce"]  # type: ignore[attr-defined]
-        estado.texto_fita_recolhida = self.fita.recolhida  # type: ignore[attr-defined]
-        estado.texto_glifos_recentes = list(self._glifos_recentes)  # type: ignore[attr-defined]
+        estado.texto_zoom = int(self.zoom_da_vista)
+        estado.texto_quebra = bool(self.quebra)
+        estado.texto_motor = self.motor
+        estado.texto_lingua = self.lingua
+        estado.texto_bloco = bool(self.modo_bloco)
+        estado.texto_diagramas = self._diagramas
+        estado.texto_miniatura = self._tamanho_da_miniatura
+        estado.texto_familia = self._familia_da_letra
+        estado.texto_ao_lado = self._texto_ao_lado
+        estado.texto_ler_ao_chegar = self._ler_ao_chegar
+        estado.texto_ultima_cor = self._ultimas_cores["letra"]
+        estado.texto_ultimo_realce = self._ultimas_cores["realce"]
+        estado.texto_fita_recolhida = self.fita.recolhida
+        estado.texto_glifos_recentes = list(self._glifos_recentes)
 
     def folha_rasterizada(self) -> tuple[np.ndarray | None, int]:
         """A folha que o editor tem rasterizada e o DPI dela: é o que a vista da mesa destacada mostra (S-646)."""

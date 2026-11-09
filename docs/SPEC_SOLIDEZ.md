@@ -1141,6 +1141,13 @@ entradas.
 **Aceite.** O teste passa; a complexidade de `state_from_dict` fica abaixo de 10; os 14 `ignore` somem (a
 catraca da S-804 desce).
 
+**Entregue** (2026-11-08): o teste é `test_o_historico_lido_e_aparado_ao_teto` (falhava com `80 != 50`), e
+ficam as **últimas** 50 entradas, porque a ordem do arquivo é a de uso (`recentes`). A tabela é
+`(campo, leitor)` e não `(campo, tipo, faixa, padrão)`: o leitor (`_texto`, `_fracao(0,25, 2,0)`...) junta
+tipo e faixa, e o padrão continua só no `AppState` -- pô-lo na tabela seria o segundo lugar que o item tira
+do painel. `state_from_dict` tem complexidade 3; `LeituraPorTabelaTests` confere que todo campo do
+`AppState` faz ida e volta e que o de tipo errado cai no padrão. `qt: type_ignore` desceu de 81 para 67.
+
 ## S-829 · `DeteccaoDeFundo` leva a âncora no próprio sinal
 
 **Problema** (plausível, latente). `qt/trabalho.py:181-216`: `parar` zera `_tarefa` mas não `_em_curso`. Um

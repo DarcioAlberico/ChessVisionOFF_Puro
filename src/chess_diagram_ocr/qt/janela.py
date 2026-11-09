@@ -903,11 +903,9 @@ class JanelaPrincipal(QMainWindow):
         de fábrica, e escrevê-los por cima do disco apagaria a escolha da sessão anterior sem que
         ninguém tivesse mudado nada.
 
-        `board_zoom` não é tocado aqui, e a omissão é deliberada: é um controle que **este**
-        frontend não tem, porque não precisa -- o tabuleiro do Qt se ajusta ao painel, e o
-        deslizador de zoom do outro existia porque lá ele era um canvas de tamanho fixo. Não
-        escrevê-lo preserva o que estiver no arquivo; zerá-lo seria apagar a escolha de alguém em
-        nome de um widget que não há.
+        `board_zoom` **é** gravado (a docstring dizia o contrário até a S-828): é a fração do
+        tabuleiro da sala (S-518), que `_aplicar_estado` entrega a `definir_fracao_do_tabuleiro`
+        e que volta daqui por `fracao_do_tabuleiro`, como as alças dos divisores.
         """
         self._gravacao_adiada.stop()  # o que estava agendado é este: quem chama direto o conclui
         if not self._estado_aplicado:
