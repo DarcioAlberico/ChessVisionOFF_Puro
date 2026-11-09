@@ -16,6 +16,7 @@ from chess_diagram_ocr.splits import (
     save_splits,
     split_counts,
     split_leaks,
+    splits_hash,
 )
 
 
@@ -324,6 +325,65 @@ class RepresentanteDoGrupoTests(unittest.TestCase):
             self.assertNotEqual(assign_split(novo), registrado, "sem herança o par cruzaria split")
             self.assertEqual(crescido[novo], registrado)
             self.assertEqual(crescido[antigo], registrado, "e o que já estava registrado não se move")
+
+
+class OQueOsTestesNaoConferiamTests(unittest.TestCase):
+    """Os sobreviventes do mutator neste módulo (S-873): cada um, o que a pessoa perderia."""
+
+    def test_zero_por_cento_e_uma_particao_sem_aquele_lado(self) -> None:
+        """`test_pct=0` é "sem teste", e não erro; e a fronteira entre `val` e `train` é aberta:
+        com `val_pct=0`, nenhuma chave cai em `val`, nem a que está bem na borda."""
+        nomes = _names(2000)
+        sem_val = compute_splits(nomes, val_pct=0, test_pct=10)
+        sem_teste = compute_splits(nomes, val_pct=10, test_pct=0)
+
+        self.assertNotIn("val", set(sem_val.values()))
+        self.assertNotIn("test", set(sem_teste.values()))
+        self.assertEqual(set(sem_teste.values()), {"train", "val"})
+
+    def test_o_hash_da_particao_nao_muda_entre_versoes(self) -> None:
+        """O `split_hash` fica gravado no checkpoint, e `evaluation` o compara com o de hoje para
+        dizer se a avaliação está contaminada. Mudar a conta muda o hash de toda partição já
+        gravada, e todo checkpoint antigo passaria a acusar "outra partição"."""
+        self.assertEqual(splits_hash({"a.png": "train", "b.png": "test", "c.png": "val"}), "aaa5fa238a9cfec7")
+
+    def test_a_contagem_comeca_do_zero(self) -> None:
+        self.assertEqual(split_counts({"a.png": "val"}), {"train": 0, "val": 1, "test": 0})
+        self.assertEqual(split_counts({}), {"train": 0, "val": 0, "test": 0})
+
+    def test_nada_novo_nao_regrava_o_arquivo(self) -> None:
+        """Sem amostra nova e sem amostra que saiu, o `splits.csv` fica como a pessoa o deixou:
+        reescrevê-lo a cada treino é risco sem ganho, e muda bytes que ninguém pediu."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "splits.csv"
+            escrito = b"filename,split\nb.png,train\na.png,test\n"
+            path.write_bytes(escrito)
+
+            resultado = ensure_splits(["a.png", "b.png"], path)
+
+            self.assertEqual(resultado, {"a.png": "test", "b.png": "train"})
+            self.assertEqual(path.read_bytes(), escrito)
+
+    def test_vazamento_so_conta_quem_declara_pagina(self) -> None:
+        """Sem página não há procedência, como em `groups_by_origin`: duas amostras do mesmo
+        livro sem página não são o mesmo diagrama, e não são vazamento."""
+        origens = {"x.png": ("livro.pdf", "", "d1"), "y.png": ("livro.pdf", "", "d1")}
+        self.assertEqual(split_leaks(origens, {"x.png": "train", "y.png": "test"}), [])
+
+    def test_o_arquivo_que_nao_le_diz_o_que_falta_e_onde(self) -> None:
+        """A mensagem chega a quem clicou em Treinar: ela tem de dizer qual arquivo e o que nele
+        está errado, para a pessoa consertá-lo à mão."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "splits.csv"
+            path.write_bytes(b"nome,split\na.png,train\n")
+            with self.assertRaises(ValueError) as sem_coluna:
+                load_splits(path)
+            path.write_bytes(b"filename,split\na.png,treino\n")
+            with self.assertRaises(ValueError) as split_errado:
+                load_splits(path)
+
+        self.assertTrue(str(sem_coluna.exception).startswith(f"{path} precisa das colunas {{"), sem_coluna.exception)
+        self.assertEqual(str(split_errado.exception), f"Split inválido em {path}: 'treino'")
 
 
 if __name__ == "__main__":

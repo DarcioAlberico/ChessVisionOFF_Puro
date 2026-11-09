@@ -1,90 +1,96 @@
 {
  "modulos": {
+  "src/chess_diagram_ocr/atomic_io.py": {
+   "data": "2026-11-09",
+   "limite": 50,
+   "mutantes": 40,
+   "mortos": 40,
+   "escore": 1.0,
+   "testes": [
+    "test_atomic_io.py",
+    "test_atomic_writes.py",
+    "test_audit.py",
+    "test_board_detection.py",
+    "test_board_head.py",
+    "test_dataset.py",
+    "test_dataset_browser.py",
+    "test_dataset_cache.py",
+    "test_experiments.py",
+    "test_falso_positivo_vence.py",
+    "test_fixtures.py",
+    "test_image_io.py",
+    "test_lote_de_diagramas.py",
+    "test_pdf_to_pgn.py",
+    "test_provenance.py",
+    "test_review_queue.py",
+    "test_texto_coleta.py",
+    "test_training.py",
+    "test_ui_state.py"
+   ],
+   "sobreviventes": []
+  },
   "src/chess_diagram_ocr/decode.py": {
-   "data": "2026-11-08",
+   "data": "2026-11-09",
    "limite": 50,
    "mutantes": 50,
-   "mortos": 37,
-   "escore": 0.74,
+   "mortos": 48,
+   "escore": 0.96,
    "testes": [
     "test_decode.py"
    ],
    "sobreviventes": [
     {
-     "linha": 151,
+     "linha": 166,
      "operador": "int",
      "trecho": "return (row + col) % 2 == 0"
     },
     {
-     "linha": 176,
-     "operador": "cmp",
-     "trecho": "if abs(white // 8 - black // 8) <= 1 and abs(white % 8 - black % 8) <= 1:"
-    },
-    {
-     "linha": 176,
+     "linha": 385,
      "operador": "int",
-     "trecho": "if abs(white // 8 - black // 8) <= 1 and abs(white % 8 - black % 8) <= 1:"
-    },
+     "trecho": "heap: list[tuple[float, int, tuple[int, ...]]] = [(0.0, 0, base)]"
+    }
+   ]
+  },
+  "src/chess_diagram_ocr/fen_utils.py": {
+   "data": "2026-11-09",
+   "limite": 50,
+   "mutantes": 50,
+   "mortos": 49,
+   "escore": 0.98,
+   "testes": [
+    "test_fen_utils.py",
+    "test_app_pyqt.py",
+    "test_board_edit.py",
+    "test_cor_por_livro.py",
+    "test_decode.py",
+    "test_estipulacao.py",
+    "test_field_eval.py",
+    "test_field_eval_caracterizacao.py",
+    "test_inference.py",
+    "test_lance_seguinte.py",
+    "test_legality_panel.py",
+    "test_marcas_de_casa.py",
+    "test_orientation.py",
+    "test_qt_painel_de_estudo.py",
+    "test_qt_tabuleiro.py"
+   ],
+   "sobreviventes": [
     {
-     "linha": 176,
-     "operador": "bin",
-     "trecho": "if abs(white // 8 - black // 8) <= 1 and abs(white % 8 - black % 8) <= 1:"
-    },
-    {
-     "linha": 202,
-     "operador": "str",
-     "trecho": "f\"mais de um rei {color}\","
-    },
-    {
-     "linha": 217,
-     "operador": "cmp",
-     "trecho": "tuple(square for square in range(64) if state[square] == pawn),"
-    },
-    {
-     "linha": 225,
-     "operador": "str",
-     "trecho": "violations.append(_Violation(f\"peças {color} demais\", squares, None))"
-    },
-    {
-     "linha": 244,
-     "operador": "str",
-     "trecho": "violations.append(_Violation(\"os reis se tocam\", touching, None))"
-    },
-    {
-     "linha": 263,
-     "operador": "bool",
-     "trecho": "if EMPTY != current and EMPTY not in chosen:"
-    },
-    {
-     "linha": 370,
-     "operador": "str",
-     "trecho": "raise ValueError(f\"Esperada matriz {expected}, recebida {probs.shape}.\")"
-    },
-    {
-     "linha": 381,
-     "operador": "int",
-     "trecho": "expansions = 0"
-    },
-    {
-     "linha": 391,
-     "operador": "cmp",
-     "trecho": "if prazo is not None and expansions % 64 == 0 and time.monotonic() > prazo:"
-    },
-    {
-     "linha": 391,
-     "operador": "int",
-     "trecho": "if prazo is not None and expansions % 64 == 0 and time.monotonic() > prazo:"
+     "linha": 110,
+     "operador": "boolc",
+     "trecho": "probe = board.copy(stack=False)"
     }
    ]
   },
   "src/chess_diagram_ocr/settings.py": {
-   "data": "2026-11-08",
-   "limite": 25,
-   "mutantes": 25,
-   "mortos": 19,
-   "escore": 0.76,
+   "data": "2026-11-09",
+   "limite": 50,
+   "mutantes": 50,
+   "mortos": 50,
+   "escore": 1.0,
    "testes": [
     "test_settings.py",
+    "test_arquivo_do_dono.py",
     "test_configuracoes.py",
     "test_ocr.py",
     "test_ocr_caption.py",
@@ -92,150 +98,47 @@
     "test_qt_preferencias.py",
     "test_second_opinion.py",
     "test_text_recognizer.py",
-    "test_ui_motor_declarado.py"
+    "test_ui_motor_declarado.py",
+    "test_ui_ocr_que_falta.py"
+   ],
+   "sobreviventes": []
+  },
+  "src/chess_diagram_ocr/splits.py": {
+   "data": "2026-11-09",
+   "limite": 50,
+   "mutantes": 50,
+   "mortos": 49,
+   "escore": 0.98,
+   "testes": [
+    "test_splits.py",
+    "test_audit.py",
+    "test_dataset.py",
+    "test_experiments.py",
+    "test_split_caveat.py",
+    "test_training.py"
    ],
    "sobreviventes": [
     {
-     "linha": 106,
+     "linha": 65,
      "operador": "str",
-     "trecho": "return f\"Correção remota desligada. O endpoint configurado é {self.host}.\""
-    },
-    {
-     "linha": 224,
-     "operador": "str",
-     "trecho": "\"syzygy_path\": self.syzygy_path,"
-    },
-    {
-     "linha": 289,
-     "operador": "str",
-     "trecho": "candidato = Path(self.glyph_model.strip()) if self.glyph_model.strip() else meta.parent / \"char_clas"
-    },
-    {
-     "linha": 348,
-     "operador": "str",
-     "trecho": "return f\"Segunda opinião desligada. O leitor configurado está em {self.path}.\""
-    },
-    {
-     "linha": 392,
-     "operador": "str",
-     "trecho": "\"ocr_negatives\": self.ocr_negatives,"
-    },
-    {
-     "linha": 402,
-     "operador": "int",
-     "trecho": "ocr_iterations=max(100, _inteiro(data, \"ocr_iterations\", padrao.ocr_iterations)),"
+     "trecho": "raise ValueError(\"val_pct e test_pct devem ser positivos e somar menos de 100.\")"
     }
    ]
   },
   "src/chess_diagram_ocr/ui/legality.py": {
-   "data": "2026-11-08",
+   "data": "2026-11-09",
    "limite": 50,
    "mutantes": 50,
-   "mortos": 30,
-   "escore": 0.6,
+   "mortos": 49,
+   "escore": 0.98,
    "testes": [
     "test_legality_panel.py"
    ],
    "sobreviventes": [
     {
-     "linha": 38,
-     "operador": "str",
-     "trecho": "return f\"{self.text} ({names})\""
-    },
-    {
-     "linha": 71,
-     "operador": "str",
-     "trecho": "detail = \"; \".join(problem.describe() for problem in self.problems)"
-    },
-    {
-     "linha": 73,
-     "operador": "str",
-     "trecho": "return f\"Posição ilegal: {detail}\""
-    },
-    {
-     "linha": 80,
-     "operador": "str",
-     "trecho": "white = \" \".join(f\"{symbol}×{self.piece_counts[symbol]}\" for symbol in \"KQRBNP\" if self.piece_counts"
-    },
-    {
-     "linha": 81,
-     "operador": "str",
-     "trecho": "black = \" \".join(f\"{symbol}×{self.piece_counts[symbol]}\" for symbol in \"kqrbnp\" if self.piece_counts"
-    },
-    {
-     "linha": 82,
-     "operador": "str",
-     "trecho": "return f\"brancas: {white or '—'} | pretas: {black or '—'}\""
-    },
-    {
-     "linha": 82,
-     "operador": "str",
-     "trecho": "return f\"brancas: {white or '—'} | pretas: {black or '—'}\""
-    },
-    {
-     "linha": 82,
-     "operador": "str",
-     "trecho": "return f\"brancas: {white or '—'} | pretas: {black or '—'}\""
-    },
-    {
-     "linha": 102,
+     "linha": 108,
      "operador": "ret",
      "trecho": "return ()"
-    },
-    {
-     "linha": 134,
-     "operador": "boolc",
-     "trecho": "fatal=True,"
-    },
-    {
-     "linha": 140,
-     "operador": "boolc",
-     "trecho": "fatal=True,"
-    },
-    {
-     "linha": 146,
-     "operador": "boolc",
-     "trecho": "fatal=True,"
-    },
-    {
-     "linha": 150,
-     "operador": "str",
-     "trecho": "\"peças pretas demais\","
-    },
-    {
-     "linha": 154,
-     "operador": "str",
-     "trecho": "add(chess.STATUS_PAWNS_ON_BACKRANK, \"peão na primeira ou na oitava fila\", _pawns_on_backrank(board),"
-    },
-    {
-     "linha": 158,
-     "operador": "str",
-     "trecho": "\"o lado que não joga está em xeque\","
-    },
-    {
-     "linha": 162,
-     "operador": "str",
-     "trecho": "add(chess.STATUS_TOO_MANY_CHECKERS, \"peças demais dando xeque\", _check_squares(board, board.turn), f"
-    },
-    {
-     "linha": 162,
-     "operador": "boolc",
-     "trecho": "add(chess.STATUS_TOO_MANY_CHECKERS, \"peças demais dando xeque\", _check_squares(board, board.turn), f"
-    },
-    {
-     "linha": 167,
-     "operador": "boolc",
-     "trecho": "fatal=False,"
-    },
-    {
-     "linha": 225,
-     "operador": "str",
-     "trecho": "detalhe = \"; \".join(problem.describe() for problem in explicacao.problems if problem.fatal)"
-    },
-    {
-     "linha": 227,
-     "operador": "str",
-     "trecho": "f\"Esta posição é ilegal: {detalhe}.\\n\\n\""
     }
    ]
   }

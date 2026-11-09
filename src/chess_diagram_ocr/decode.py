@@ -24,7 +24,7 @@ Stefaniu f1. As duas ficam em `DecodeRules`, com `CLASSIC_RULES` para medir sem 
 **O rei que falta só é reparado onde a rede vê rei.** Diagrama de esquema ou de marcas pode não ter
 rei nenhum, e a busca punha um na casa menos contrariada, com probabilidade quase zero: uma casa
 vazia e limpa virava rei. Ver `MIN_KING_PROBABILITY`. Sem indício, a falta fica declarada em
-`remaining_problems`, e os outros reparos continuam.
+`remaining_kinds`, e os outros reparos continuam.
 """
 
 from __future__ import annotations
@@ -113,11 +113,13 @@ class DecodeResult:
     constraints_satisfied: bool
     """False quando a busca esgotou o limite sem achar atribuição legal."""
 
-    remaining_problems: tuple[str, ...] = ()
-    """O que continuou violado, quando `constraints_satisfied` é False, em pt-BR para a tela."""
-
     remaining_kinds: tuple[TipoDeViolacao, ...] = ()
-    """O tipo de cada violação de `remaining_problems`, na mesma ordem. É o que se confere (S-835)."""
+    """O que continuou violado, quando `constraints_satisfied` é False (S-835).
+
+    Havia ao lado uma frase em pt-BR por violação, `remaining_problems`, "para a tela" -- e
+    nenhuma tela a lia: a S-835 tirou dela a última decisão, e o mutator da S-873 achou as frases
+    trocáveis por vazio sem nada notar. Saiu. A frase que a pessoa lê sobre a posição é a de
+    `fen_utils.check_position` e a do painel de `ui/legality`."""
 
     @property
     def changed_square_count(self) -> int:
@@ -140,7 +142,6 @@ class _Violation:
     """
 
     tipo: TipoDeViolacao
-    description: str
     squares: tuple[int, ...]
     targets: tuple[int, ...] | None
     """Classes-alvo fixas. `None` significa "qualquer outra classe plausível da casa"."""
@@ -200,46 +201,35 @@ def _find_violations(state: tuple[int, ...], probs: np.ndarray, rules: DecodeRul
     counts = _color_counts(state)
     violations: list[_Violation] = []
 
-    for color, king in (("branco", WHITE_KING), ("preto", BLACK_KING)):
+    for king in (WHITE_KING, BLACK_KING):
         total = counts[king]
         if total == 0:
             violations.append(
                 _Violation(
                     TipoDeViolacao.REI_FALTANDO,
-                    f"falta o rei {color}",
                     tuple(square for square in range(64) if not _king_without_evidence(square, king, probs, rules)),
                     (king,),
                 )
             )
         elif total > 1:
             violations.append(
-                _Violation(
-                    TipoDeViolacao.REIS_DEMAIS,
-                    f"mais de um rei {color}",
-                    tuple(square for square in range(64) if state[square] == king),
-                    None,
-                )
+                _Violation(TipoDeViolacao.REIS_DEMAIS, tuple(square for square in range(64) if state[square] == king), None)
             )
 
     on_backrank = tuple(square for square in BACKRANK_SQUARES if state[square] in (WHITE_PAWN, BLACK_PAWN))
     if on_backrank:
-        violations.append(_Violation(TipoDeViolacao.PEAO_NA_BORDA, "peão na primeira ou na oitava fila", on_backrank, None))
+        violations.append(_Violation(TipoDeViolacao.PEAO_NA_BORDA, on_backrank, None))
 
-    for color, pawn in (("brancos", WHITE_PAWN), ("pretos", BLACK_PAWN)):
+    for pawn in (WHITE_PAWN, BLACK_PAWN):
         if counts[pawn] > MAX_PAWNS:
             violations.append(
-                _Violation(
-                    TipoDeViolacao.PEOES_DEMAIS,
-                    f"peões {color} demais",
-                    tuple(square for square in range(64) if state[square] == pawn),
-                    None,
-                )
+                _Violation(TipoDeViolacao.PEOES_DEMAIS, tuple(square for square in range(64) if state[square] == pawn), None)
             )
 
-    for color, classes, upper in (("brancas", WHITE_CLASSES, True), ("pretas", BLACK_CLASSES, False)):
+    for classes, upper in ((WHITE_CLASSES, True), (BLACK_CLASSES, False)):
         squares = tuple(square for square in range(64) if state[square] in classes)
         if len(squares) > MAX_PIECES:
-            violations.append(_Violation(TipoDeViolacao.PECAS_DEMAIS, f"peças {color} demais", squares, None))
+            violations.append(_Violation(TipoDeViolacao.PECAS_DEMAIS, squares, None))
             continue
 
         pawn = WHITE_PAWN if upper else BLACK_PAWN
@@ -247,19 +237,12 @@ def _find_violations(state: tuple[int, ...], probs: np.ndarray, rules: DecodeRul
         if rules.bishop_colors:
             promoted += _bishop_promotion_excess(state, upper)
         if counts[pawn] + promoted > MAX_PAWNS:
-            violations.append(
-                _Violation(
-                    TipoDeViolacao.PROMOVIDAS_DEMAIS,
-                    f"peças {color} promovidas demais para o número de peões",
-                    squares,
-                    None,
-                )
-            )
+            violations.append(_Violation(TipoDeViolacao.PROMOVIDAS_DEMAIS, squares, None))
 
     if rules.adjacent_kings:
         touching = _adjacent_kings(state)
         if touching:
-            violations.append(_Violation(TipoDeViolacao.REIS_SE_TOCAM, "os reis se tocam", touching, None))
+            violations.append(_Violation(TipoDeViolacao.REIS_SE_TOCAM, touching, None))
 
     return violations
 
@@ -319,7 +302,6 @@ def _build_result(
         log_prob=log_prob,
         changed_squares=changed,
         constraints_satisfied=satisfied,
-        remaining_problems=tuple(v.description for v in violations),
         remaining_kinds=tuple(v.tipo for v in violations),
     )
 

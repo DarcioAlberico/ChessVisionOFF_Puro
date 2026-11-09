@@ -17,22 +17,27 @@ from unittest import mock
 import numpy as np
 
 from chess_diagram_ocr import net_correction
-from chess_diagram_ocr.arquivo_do_dono import EsquemaFuturo, GravacaoRecusada, Lida
+from chess_diagram_ocr.arquivo_do_dono import EsquemaFuturo, GravacaoRecusada, Ilegivel, Lida
 from chess_diagram_ocr.net_correction import (
     HttpFenProvider,
     RemoteFenProvider,
     build_provider,
 )
 from chess_diagram_ocr.settings import (
+    ENV_LOCAL_READER_PATH,
     ENV_OCR_ENABLED,
     ENV_OCR_ENGINE,
+    ENV_OCR_GLYPH_MODEL,
     ENV_REMOTE_ENABLED,
     ENV_REMOTE_URL,
     ConfiguracaoDoArquivo,
+    EngineSettings,
     LocalReaderSettings,
     OcrSettings,
+    RecognitionSettings,
     RemoteFenSettings,
     Settings,
+    TrainingSettings,
     apply_environment,
     ler_arquivo,
     load_settings,
@@ -642,3 +647,112 @@ class CamadaDeArquivoTests(unittest.TestCase):
                     [str(trecho), "--follow-imports=silent", "--no-incremental", "--no-site-packages"]
                 )
                 self.assertEqual(esperado, codigo, saida)
+
+
+class SobreviventesDoMutatorTests(unittest.TestCase):
+    """O que a suíte executava sem conferir neste módulo (S-873).
+
+    Os textos conferidos inteiros são os que a pessoa lê: o tooltip do botão desabilitado
+    (`disabled_reason`, `glyph_disabled_reason`), o motivo da leitura travada e o aviso do valor
+    fora da faixa. O resto é a ida e volta pelo arquivo, campo por campo.
+    """
+
+    def test_todo_campo_volta_igual_do_arquivo(self) -> None:
+        """Cada campo com valor que não é o padrão, nas bordas que o `from_dict` aceita: o nome
+        trocado de uma chave, de um lado ou do outro, devolve o padrão e não o gravado."""
+        for original in (
+            Settings(
+                remote_fen=RemoteFenSettings(enabled=True, endpoint=ENDPOINT, timeout=7.5, acknowledged_host=HOST),
+                engine=EngineSettings(
+                    path="C:/motor/sf.exe", movetime_ms=1500, threads=3, hash_mb=64, multipv=5, syzygy_path="C:/tb"
+                ),
+                ocr=OcrSettings(enabled=True, engine="tesseract", languages=("de",), glyph_model="C:/g.pt"),
+                local_reader=LocalReaderSettings(enabled=True, path="C:/leitor"),
+                training=TrainingSettings(
+                    epochs=1, batch_size=1, lr=0.005, ocr_iterations=100, ocr_learning_rate=0.002, ocr_negatives=0
+                ),
+                recognition=RecognitionSettings(dpi=72, max_boards=1),
+            ),
+            Settings(recognition=RecognitionSettings(dpi=600, max_boards=64)),
+        ):
+            with self.subTest(original=original), tempfile.TemporaryDirectory() as tmp:
+                caminho = Path(tmp) / "settings.json"
+                save_settings(Lida(ConfiguracaoDoArquivo(original), caminho))
+                lida = ler_arquivo(caminho)
+                self.assertIsInstance(lida, Lida)
+                self.assertEqual(lida.valor.preferencias, original)
+
+    def test_secoes_ausentes_leem_os_padroes_da_classe(self) -> None:
+        self.assertEqual(Settings.from_dict({}), Settings())
+
+    def test_ligado_que_nao_e_booleano_grava_false_e_nao_null(self) -> None:
+        with self.assertLogs("chess_diagram_ocr.settings", level="WARNING"):
+            remoto = RemoteFenSettings.from_dict({"enabled": "sim", "endpoint": ENDPOINT})
+        self.assertIs(remoto.enabled, False)
+        self.assertIs(remoto.to_dict()["enabled"], False)
+
+    def test_sem_endpoint_o_host_e_vazio(self) -> None:
+        self.assertEqual(RemoteFenSettings().host, "")
+
+    def test_o_aviso_da_faixa_mostra_a_faixa(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "settings.json"
+            caminho.write_bytes(b'{"remote_fen": {"timeout": -5}}')
+            with self.assertLogs("chess_diagram_ocr.settings", level="WARNING") as registro:
+                load_settings(caminho, env={})
+        self.assertIn("remote_fen.timeout = -5.0 fora de (0, 600]; usando 30.0", "\n".join(registro.output))
+
+    def test_o_topo_que_nao_e_objeto_diz_isso_a_quem_le_a_trava(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "settings.json"
+            caminho.write_bytes(b"[1, 2]")
+            with self.assertLogs("chess_diagram_ocr", level="WARNING"):
+                lida = ler_arquivo(caminho)
+        assert isinstance(lida, Ilegivel)
+        self.assertEqual(lida.motivo, "o topo não é um objeto")
+
+    def test_os_tooltips_da_segunda_opiniao_e_da_correcao_remota(self) -> None:
+        self.assertEqual(
+            LocalReaderSettings().disabled_reason(),
+            "Segunda opinião não configurada. Ela lê o diagrama com um segundo modelo, local e offline: aponte "
+            "um clone de tsoj/Chess_diagram_to_FEN com os pesos baixados em data/settings.json ou em "
+            f"{ENV_LOCAL_READER_PATH}.",
+        )
+        self.assertEqual(
+            LocalReaderSettings(path="C:/leitor").disabled_reason(),
+            "Segunda opinião desligada. O leitor configurado está em C:/leitor.",
+        )
+        self.assertEqual(
+            RemoteFenSettings(endpoint=ENDPOINT).disabled_reason(),
+            f"Correção remota desligada. O endpoint configurado é {HOST}.",
+        )
+        self.assertIs(LocalReaderSettings(enabled=True, path="C:/leitor").is_usable, True)
+        self.assertEqual(LocalReaderSettings(enabled=True, path="C:/leitor").disabled_reason(), "")
+
+    def test_o_caminho_do_leitor_no_ambiente_liga_o_leitor(self) -> None:
+        leitor = apply_environment(Settings(), env={ENV_LOCAL_READER_PATH: " C:/leitor "}).local_reader
+        self.assertEqual(leitor, LocalReaderSettings(enabled=True, path="C:/leitor"))
+
+    def test_o_tooltip_do_glifo_em_cada_estado(self) -> None:
+        """Sem o metadado, sem os pesos (no lugar padrão ou no apontado), e com os dois."""
+        from chess_diagram_ocr import config
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(config, "PROJECT_ROOT", Path(tmp)):
+            modelos = Path(tmp) / "models"
+            self.assertEqual(
+                OcrSettings().glyph_disabled_reason(),
+                "O motor `glifo` precisa de char_meta.json, que descreve as classes de caractere, e ele não "
+                "está em models/.",
+            )
+            modelos.mkdir()
+            (modelos / "char_meta.json").write_bytes(b"{}")
+            for apontado, onde in (("", modelos / "char_classifier.pt"), (" C:/nao/existe.pt ", Path("C:/nao/existe.pt"))):
+                with self.subTest(apontado=apontado):
+                    self.assertEqual(
+                        OcrSettings(glyph_model=apontado).glyph_disabled_reason(),
+                        f"Os pesos do classificador de caracteres não estão em {onde}. Eles não vêm no "
+                        "repositório (2,6 MB de binário; `*.pt` é ignorado). Aponte o arquivo em "
+                        f"data/settings.json (`ocr.glyph_model`) ou em {ENV_OCR_GLYPH_MODEL}.",
+                    )
+            (modelos / "char_classifier.pt").write_bytes(b"pesos")
+            self.assertEqual(OcrSettings().glyph_disabled_reason(), "")

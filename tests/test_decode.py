@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import unittest
 
+import chess
 import numpy as np
 from tempo_da_suite import limite
 from test_inference import probs_for_fen
 
 from chess_diagram_ocr.config import ACCEPT_MIN_CONFIDENCE, PIECE_CLASSES, PIECE_TO_IDX
-from chess_diagram_ocr.decode import CLASSIC_RULES, MIN_KING_PROBABILITY, DecodeRules, decode_constrained
-from chess_diagram_ocr.fen_utils import check_position, labels_from_fen, square_name
+from chess_diagram_ocr.decode import (
+    CLASSIC_RULES,
+    MIN_KING_PROBABILITY,
+    DecodeRules,
+    TipoDeViolacao,
+    decode_constrained,
+)
+from chess_diagram_ocr.fen_utils import check_position, labels_from_fen, square_from_reading_index, square_name
 from chess_diagram_ocr.inference import prediction_from_probs
 
 LEGAL = "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R"
@@ -93,13 +100,13 @@ class KingEvidenceTests(unittest.TestCase):
         self.assertEqual(result.fen_board, self.NO_BLACK_KING)
         self.assertEqual(result.changed_squares, [])
         self.assertFalse(result.constraints_satisfied)
-        self.assertEqual(result.remaining_problems, ("falta o rei preto",))
+        self.assertEqual(result.remaining_kinds, (TipoDeViolacao.REI_FALTANDO,))
 
     def test_no_king_on_the_board_names_both(self) -> None:
         result = decode_constrained(probs_for_fen("8/8/8/3P4/8/8/8/8", confidence=0.99))
 
         self.assertEqual(result.changed_squares, [])
-        self.assertEqual(result.remaining_problems, ("falta o rei branco", "falta o rei preto"))
+        self.assertEqual(result.remaining_kinds, (TipoDeViolacao.REI_FALTANDO, TipoDeViolacao.REI_FALTANDO))
 
     def test_the_threshold_decides_at_the_square(self) -> None:
         d4 = square_index("d4")
@@ -124,7 +131,7 @@ class KingEvidenceTests(unittest.TestCase):
         result = decode_constrained(probs)
 
         self.assertEqual(result.class_indices[a8], PIECE_TO_IDX["R"])
-        self.assertEqual(result.remaining_problems, ("falta o rei preto",))
+        self.assertEqual(result.remaining_kinds, (TipoDeViolacao.REI_FALTANDO,))
 
     def test_repair_of_another_rule_does_not_smuggle_a_king(self) -> None:
         """O rei sem indício também não entra como alternativa de outra regra."""
@@ -144,7 +151,7 @@ class KingEvidenceTests(unittest.TestCase):
 
         result = decode_constrained(probs, max_expansions=1)
 
-        self.assertEqual(result.remaining_problems, ("falta o rei preto",))
+        self.assertEqual(result.remaining_kinds, (TipoDeViolacao.REI_FALTANDO,))
 
     def test_threshold_zero_is_the_old_decoder(self) -> None:
         probs = probs_for_fen(self.NO_BLACK_KING, confidence=0.99)
@@ -242,7 +249,7 @@ class SearchLimitTests(unittest.TestCase):
         result = decode_constrained(probs, max_changes=2)
 
         self.assertFalse(result.constraints_satisfied)
-        self.assertTrue(result.remaining_problems)
+        self.assertTrue(result.remaining_kinds)
         self.assertLessEqual(result.changed_square_count, 2)
 
     def test_result_never_increases_probability(self) -> None:
@@ -522,19 +529,15 @@ class ViolacaoTipadaTests(unittest.TestCase):
     reescrever uma delas mudava a orientação sem teste nenhum falhar.
     """
 
-    def test_a_frase_nao_decide(self) -> None:
-        from chess_diagram_ocr.decode import DecodeResult, TipoDeViolacao
+    def test_rei_faltando_com_outra_violacao_nao_e_so_o_rei(self) -> None:
+        """A leitura "pode estar certa" só quando o rei sem indício é o **único** defeito: com um
+        peão na oitava ao lado, ela está errada, e a orientação não pode tratá-la como boa."""
+        result = decode_constrained(probs_for_fen("P7/8/8/8/7K/8/8/8", confidence=0.99), max_changes=0)
 
-        sem_rei = DecodeResult(
-            class_indices=[0] * 64, fen_board="8/8/8/8/8/8/8/8", log_prob=0.0, changed_squares=[],
-            constraints_satisfied=False, remaining_problems=("o rei branco sumiu",),
-            remaining_kinds=(TipoDeViolacao.REI_FALTANDO,),
-        )
-        self.assertTrue(sem_rei.only_king_missing)
+        self.assertEqual(result.remaining_kinds, (TipoDeViolacao.REI_FALTANDO, TipoDeViolacao.PEAO_NA_BORDA))
+        self.assertFalse(result.only_king_missing)
 
     def test_a_busca_registra_o_tipo(self) -> None:
-        from chess_diagram_ocr.decode import TipoDeViolacao
-
         probs = probs_for_fen("4k3/8/8/8/8/8/8/8", confidence=0.99)
         probs[:, PIECE_TO_IDX["K"]] = 1e-6
         probs = probs / probs.sum(axis=1, keepdims=True)
@@ -543,3 +546,106 @@ class ViolacaoTipadaTests(unittest.TestCase):
 
         self.assertEqual(result.remaining_kinds, (TipoDeViolacao.REI_FALTANDO,))
         self.assertTrue(result.only_king_missing)
+
+
+class OQueABuscaGaranteTests(unittest.TestCase):
+    """O que a busca promete e nenhum teste conferia: os sobreviventes do mutator (S-873)."""
+
+    def test_reis_se_tocam_exatamente_quando_estao_a_uma_casa(self) -> None:
+        """Todos os pares de casas, contra a distância do python-chess. O de antes conferia um par
+        no meio do tabuleiro, e a régua errada na borda (`black // 9`) passava."""
+        for branco in range(64):
+            for preto in range(64):
+                if branco == preto:
+                    continue
+                probs = np.full((64, len(PIECE_CLASSES)), 1e-3)
+                probs[:, PIECE_TO_IDX["empty"]] = 0.9
+                probs[branco, PIECE_TO_IDX["K"]] = 0.99
+                probs[preto, PIECE_TO_IDX["k"]] = 0.99
+                distancia = chess.square_distance(
+                    square_from_reading_index(branco), square_from_reading_index(preto)
+                )
+
+                result = decode_constrained(probs, max_changes=0)
+
+                tocam = (TipoDeViolacao.REIS_SE_TOCAM,) if distancia == 1 else ()
+                self.assertEqual(result.remaining_kinds, tocam, (square_name(branco), square_name(preto)))
+
+    def test_casa_vazia_e_sempre_um_reparo_possivel(self) -> None:
+        """O docstring de `_alternatives`: `empty` entra mesmo fora das melhores, porque é o
+        conserto certo quando a casa é ruído -- e o modelo nem por isso lhe dá probabilidade."""
+        a8 = square_index("a8")
+        probs = probs_for_fen("P3k3/8/8/8/7K/8/8/8", confidence=0.99)
+        probs[a8] = 1e-4
+        probs[a8, PIECE_TO_IDX["P"]] = 0.90
+        probs[a8, PIECE_TO_IDX["p"]] = 0.09
+
+        result = decode_constrained(probs, alternatives_per_square=1)
+
+        self.assertTrue(result.constraints_satisfied)
+        self.assertEqual(result.class_indices[a8], PIECE_TO_IDX["empty"])
+
+    def test_sem_conserto_devolve_o_argmax_e_nao_uma_troca_inutil(self) -> None:
+        """Dois peões na borda e uma troca permitida: nada resolve. A troca de custo zero (a casa
+        empatada entre `P` e `p`) não diminui problema nenhum, e não pode ir para a tela como
+        casa reparada."""
+        a8, h1 = square_index("a8"), square_index("h1")
+        probs = probs_for_fen("P3k3/8/8/8/8/8/8/4K2P", confidence=0.99)
+        probs[a8] = 0.0
+        probs[a8, PIECE_TO_IDX["P"]] = 0.45
+        probs[a8, PIECE_TO_IDX["p"]] = 0.45
+        probs[a8, PIECE_TO_IDX["empty"]] = 0.10
+        probs[h1] = 0.0
+        probs[h1, PIECE_TO_IDX["P"]] = 0.90
+        probs[h1, PIECE_TO_IDX["empty"]] = 0.10
+
+        result = decode_constrained(probs, max_changes=1)
+
+        self.assertFalse(result.constraints_satisfied)
+        self.assertEqual(result.changed_squares, [])
+        self.assertEqual(result.fen_board, "P3k3/8/8/8/8/8/8/4K2P")
+
+    def test_os_dois_tetos_contam_uma_vez_cada(self) -> None:
+        """`max_expansions=2` é o argmax e mais uma: basta para a troca única do Kemeri. E
+        `max_changes=2` deixa trocar duas casas: basta para separar os reis que se tocam."""
+        kemeri = probs_for_fen(KEMERI_NO_WHITE_KING, confidence=0.99)
+        a7 = square_index("a7")
+        kemeri[a7] = 0.0
+        kemeri[a7, PIECE_TO_IDX["Q"]] = 0.55
+        kemeri[a7, PIECE_TO_IDX["K"]] = 0.45
+        self.assertEqual(decode_constrained(kemeri, max_expansions=2).fen_board, KEMERI_FIXED)
+
+        reis = probs_for_fen(AdjacentKingsTests.TOUCHING, confidence=0.99)
+        d5, c1 = square_index("d5"), square_index("c1")
+        reis[d5] = 0.0
+        reis[d5, PIECE_TO_IDX["k"]] = 0.60
+        reis[d5, PIECE_TO_IDX["q"]] = 0.40
+        reis[c1] = 0.0
+        reis[c1, PIECE_TO_IDX["q"]] = 0.55
+        reis[c1, PIECE_TO_IDX["k"]] = 0.45
+        resultado = decode_constrained(reis, max_changes=2)
+        self.assertTrue(resultado.constraints_satisfied)
+        self.assertEqual(resultado.changed_square_count, 2)
+
+    def test_peao_demais_ramifica_so_sobre_os_peoes(self) -> None:
+        """A violação mais estreita guia a busca: com nove peões, os nove são as casas a trocar.
+        Ramificar sobre todas as peças brancas (a regra dos promovidos também acusa) gasta a
+        segunda expansão num cavalo que vira bispo de graça e não conserta nada."""
+        a4, b3 = square_index("a4"), square_index("b3")
+        probs = probs_for_fen("4k3/8/8/8/P7/1N6/PPPPPPPP/4K3", confidence=0.99)
+        probs[a4] = 0.0
+        probs[a4, PIECE_TO_IDX["P"]] = 0.60
+        probs[a4, PIECE_TO_IDX["empty"]] = 0.40
+        probs[b3] = 0.0
+        probs[b3, PIECE_TO_IDX["N"]] = 0.50
+        probs[b3, PIECE_TO_IDX["B"]] = 0.49
+        probs[b3, PIECE_TO_IDX["empty"]] = 0.01
+
+        result = decode_constrained(probs, max_expansions=2)
+
+        self.assertTrue(result.constraints_satisfied)
+        self.assertEqual(result.fen_board, "4k3/8/8/8/8/1N6/PPPPPPPP/4K3")
+
+    def test_a_matriz_errada_diz_o_formato_que_veio(self) -> None:
+        with self.assertRaisesRegex(ValueError, r"^Esperada matriz \(64, 13\), recebida \(64, 5\)\.$"):
+            decode_constrained(np.full((64, 5), 0.2))

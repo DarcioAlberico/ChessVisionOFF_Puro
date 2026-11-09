@@ -236,8 +236,6 @@ class Colocacao:
     def de_classes(cls, indices: Iterable[int]) -> Colocacao:
         """A colocação da saída do modelo: um índice de `PIECE_CLASSES` por casa."""
         numeros = [int(indice) for indice in indices]
-        if len(numeros) != 64:
-            raise ValueError(f"Esperadas exatamente 64 casas, vieram {len(numeros)}.")
         fora = sorted({numero for numero in numeros if numero not in IDX_TO_CLASS})
         if fora:
             raise ValueError(f"Classe fora do alfabeto do modelo: {fora}.")

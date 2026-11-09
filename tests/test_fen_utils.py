@@ -5,6 +5,7 @@ import unittest
 import chess
 
 from chess_diagram_ocr.fen_utils import (
+    Colocacao,
     check_position,
     describe_status,
     fen_from_class_indices,
@@ -12,6 +13,9 @@ from chess_diagram_ocr.fen_utils import (
     is_syntactically_valid_fen,
     labels_from_fen,
     pawn_direction_score,
+    reading_index_from_square,
+    square_from_reading_index,
+    square_name,
 )
 
 # Posicoes legais de referencia.
@@ -269,3 +273,79 @@ class UmParserDeColocacaoTests(unittest.TestCase):
                 self.assertEqual(casa, peca.symbol() if peca else None, (fen, indice))
             self.assertEqual(colocacao.fen(), referencia.board_fen(), fen)
         self.assertGreater(min(aceitas, recusadas), 1_000, "o sorteio não chegou perto da fronteira")
+
+
+class AsMensagensEAsBordasTests(unittest.TestCase):
+    """Os sobreviventes do mutator neste módulo (S-873).
+
+    As mensagens da FEN recusada são conferidas inteiras: são elas que dizem a quem colou ou
+    leu a FEN **o que** nela está errado, e o mutator as trocava por um pedaço sem nada notar.
+    """
+
+    def test_a_fen_que_nao_parseia_nunca_e_legal(self) -> None:
+        verificada = check_position("isto não é uma fen")
+        self.assertFalse(verificada.is_legal)
+        self.assertTrue(verificada.is_fatal)
+        self.assertFalse(is_legal_position("isto não é uma fen"))
+
+    def test_cada_fen_recusada_diz_por_que(self) -> None:
+        casos = {
+            "8/8/8/8/8/8/8/44": "Dois dígitos seguidos na fila '44' da FEN.",
+            "4k3/8/8/8/8/8/8/4X3": (
+                "Caractere de peça desconhecido na FEN: 'X'. Os válidos são BKNPQRbknpqr e os dígitos de 1 a 8."
+            ),
+            "4k3/8/8/8/8/8/8/4K2": "Cada fila da FEN deve resolver para 8 casas.",
+            "4k3/8/8/8/8/8/4K3": "A FEN deve ter 8 filas.",
+        }
+        for fen, mensagem in casos.items():
+            with self.subTest(fen=fen), self.assertRaises(ValueError) as capturado:
+                labels_from_fen(fen)
+            self.assertEqual(str(capturado.exception), mensagem)
+
+    def test_a_saida_do_modelo_recusada_diz_por_que(self) -> None:
+        casos = {
+            (13,) * 64: "Classe fora do alfabeto do modelo: [13].",
+            (0,) * 63: "Esperadas exatamente 64 casas, vieram 63.",
+        }
+        for classes, mensagem in casos.items():
+            with self.subTest(n=len(classes)), self.assertRaises(ValueError) as capturado:
+                fen_from_class_indices(classes)
+            self.assertEqual(str(capturado.exception), mensagem)
+        with self.assertRaises(ValueError) as capturado:
+            pawn_direction_score([0] * 63)
+        self.assertEqual(str(capturado.exception), "Esperadas exatamente 64 casas.")
+
+    def test_as_duas_numeracoes_de_casa_concordam_nas_64(self) -> None:
+        """Ordem de leitura (0 = a8) contra o python-chess (0 = a1), nos dois sentidos e pelo nome."""
+        for indice in range(64):
+            casa = square_from_reading_index(indice)
+            with self.subTest(indice=indice):
+                self.assertEqual(square_name(indice), chess.square_name(casa))
+                self.assertEqual(reading_index_from_square(casa), indice)
+
+    def test_fora_do_tabuleiro_e_recusado(self) -> None:
+        for indice in (-1, 64):
+            with self.subTest(indice=indice):
+                with self.assertRaises(ValueError) as nome:
+                    square_name(indice)
+                self.assertEqual(str(nome.exception), f"Índice de casa fora do intervalo 0..63: {indice}")
+                with self.assertRaises(ValueError) as casa:
+                    reading_index_from_square(indice)
+                self.assertEqual(str(casa.exception), f"Casa fora do intervalo 0..63: {indice}")
+                with self.assertRaises(ValueError) as leitura:
+                    square_from_reading_index(indice)
+                self.assertEqual(str(leitura.exception), f"Índice de casa fora do intervalo 0..63: {indice}")
+
+    def test_a_posicao_verificada_carrega_a_fen_inteira(self) -> None:
+        """Só a colocação entra; o que sai é a FEN completa que foi de fato avaliada."""
+        self.assertEqual(check_position(f"  {KINGS_ONLY}  ").fen, f"{KINGS_ONLY} w - - 0 1")
+        self.assertEqual(check_position(f"{KINGS_ONLY} b - - 0 1").fen, f"{KINGS_ONLY} b - - 0 1")
+
+    def test_a_sintaxe_responde_sim_ou_nao(self) -> None:
+        self.assertIs(is_syntactically_valid_fen("isto não é uma fen"), False)
+        self.assertIs(is_syntactically_valid_fen(KINGS_ONLY), True)
+
+    def test_a_colocacao_montada_a_mao_recusa_peca_estranha(self) -> None:
+        with self.assertRaises(ValueError) as capturado:
+            Colocacao(("X", *([None] * 63)))
+        self.assertEqual(str(capturado.exception), "Peça fora do alfabeto: ['X'].")

@@ -140,5 +140,88 @@ class IllegalSaveQuestionTests(unittest.TestCase):
         self.assertIsNone(illegal_save_question("R3k3/8/8/8/8/8/8/4K3 w - - 0 1"))
 
 
+class OQueAPessoaLeTests(unittest.TestCase):
+    """O texto do painel e da caixa de gravação, frase inteira (S-873).
+
+    O painel de legalidade da S-21 é texto: o problema, onde ele está e o material, no
+    `lbl_legalidade` e no `lbl_material` do painel de resultado, e na caixa que pergunta antes de
+    gravar. Uma frase trocada, um separador perdido ou um problema que some da pergunta é o defeito
+    que a pessoa vê -- e os testes acima conferiam um pedaço de cada frase, com o que o mutator da
+    S-803 trocava a frase por vazio, ou a vírgula por nada, sem nenhum deles reprovar.
+    """
+
+    def test_o_resumo_de_cada_problema(self) -> None:
+        casos = {
+            "8/8/8/8/8/8/8/8 w - - 0 1": "Posição ilegal: tabuleiro vazio; falta o rei branco; falta o rei preto",
+            "4k3/8/8/8/8/8/8/K3K3 w - - 0 1": "Posição ilegal: mais de um rei da mesma cor (a1, e1)",
+            "4k3/pppppppp/p7/8/8/8/8/4K3 w - - 0 1": (
+                "Posição ilegal: peões pretos demais (a7, b7, c7, d7, e7, f7, g7, h7, a6)"
+            ),
+            "nnnnknnn/nnnnnnnn/n7/8/8/8/8/4K3 w - - 0 1": (
+                "Posição ilegal: peças pretas demais (a8, b8, c8, d8, e8, f8, g8, h8, a7, b7, c7, d7, e7, f7, g7, "
+                "h7, a6)"
+            ),
+            "P3k3/8/8/8/8/8/8/4K3 w - - 0 1": "Posição ilegal: peão na primeira ou na oitava fila (a8)",
+            "R3k3/8/8/8/8/8/8/4K3 w - - 0 1": "Só o lado a jogar não fecha: o lado que não joga está em xeque (a8, e8)",
+            "k6k/8/8/8/8/8/8/r3K2r w - - 0 1": (
+                "Posição ilegal: mais de um rei da mesma cor (a8, h8); configuração de xeque impossível (a1, e1, h1)"
+            ),
+            "k3r3/k7/8/8/8/3n1n2/8/4K3 w - - 0 1": (
+                "Posição ilegal: mais de um rei da mesma cor (a8, a7); peças demais dando xeque (e8, d3, f3, e1); "
+                "configuração de xeque impossível (e8, d3, f3, e1)"
+            ),
+        }
+        for fen, resumo in casos.items():
+            with self.subTest(fen=fen):
+                self.assertEqual(explain_position(fen).summary(), resumo)
+
+    def test_a_linha_de_material(self) -> None:
+        """Na ordem de valor, a contagem de cada símbolo, e o travessão no lado que não tem nada."""
+        casos = {
+            "8/8/8/8/8/8/PP6/KQ6": "brancas: K×1 Q×1 P×2 | pretas: —",
+            "kn6/pp6/8/8/8/8/8/8": "brancas: — | pretas: k×1 n×1 p×2",
+            "8/8/8/8/8/8/8/8": "brancas: — | pretas: —",
+        }
+        for colocacao, linha in casos.items():
+            with self.subTest(colocacao=colocacao):
+                self.assertEqual(explain_position(colocacao).material_line(), linha)
+
+    def test_a_pergunta_nomeia_todo_problema_fatal_e_nenhum_de_lado_a_jogar(self) -> None:
+        """A primeira frase da caixa é a lista do que está errado nas peças. O que é palpite
+        sobre a vez -- xeque invertido, xeque demais, xeque impossível -- fica de fora mesmo
+        quando a posição pergunta por outro motivo."""
+        casos = {
+            "8/8/8/8/8/8/8/8 w - - 0 1": "tabuleiro vazio; falta o rei branco; falta o rei preto",
+            "4k3/pppppppp/p7/8/8/8/8/4K3 w - - 0 1": "peões pretos demais (a7, b7, c7, d7, e7, f7, g7, h7, a6)",
+            "4k3/8/8/8/NNNNNNNN/NNNNNNNN/8/4K3 w - - 0 1": (
+                "peças brancas demais (a4, b4, c4, d4, e4, f4, g4, h4, a3, b3, c3, d3, e3, f3, g3, h3, e1)"
+            ),
+            "nnnnknnn/nnnnnnnn/n7/8/8/8/8/4K3 w - - 0 1": (
+                "peças pretas demais (a8, b8, c8, d8, e8, f8, g8, h8, a7, b7, c7, d7, e7, f7, g7, h7, a6)"
+            ),
+            "P3k3/8/8/8/8/8/8/4K3 w - - 0 1": "peão na primeira ou na oitava fila (a8)",
+            "R3k3/8/8/8/8/8/8/8 w - - 0 1": "falta o rei branco",
+            "k6k/8/8/8/8/8/8/r3K2r w - - 0 1": "mais de um rei da mesma cor (a8, h8)",
+            "k3r3/k7/8/8/8/3n1n2/8/4K3 w - - 0 1": "mais de um rei da mesma cor (a8, a7)",
+        }
+        for fen, problemas in casos.items():
+            with self.subTest(fen=fen):
+                pergunta = illegal_save_question(fen)
+                assert pergunta is not None
+                self.assertEqual(pergunta.split("\n")[0], f"Esta posição é ilegal: {problemas}.")
+
+    def test_a_pergunta_inteira(self) -> None:
+        self.assertEqual(
+            illegal_save_question("4k3/8/8/8/8/8/8/K3K3 w - - 0 1"),
+            "Esta posição é ilegal: mais de um rei da mesma cor (a1, e1).\n\n"
+            "brancas: K×2 | pretas: k×1\n\n"
+            "Se o diagrama é assim mesmo -- estrutura de peões, final parcial, tabuleiro de "
+            "ilustração --, salvar está correto e a amostra entra no treino marcada como "
+            "confirmada.\n"
+            "Se foi o leitor que errou uma casa, cancele e conserte o tabuleiro.\n\n"
+            "Salvar mesmo assim?",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
