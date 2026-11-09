@@ -206,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     configure_logging(verbose=args.verbose)
     from ..checkpoint import git_commit, git_worktree_dirty
-    from ..text.leitor import _ha_classificador
+    from ..text.recognizer import ModeloInvalido, classificador_configurado
 
     pdfs = sorted(Path(args.pdf_dir).glob("*.pdf"))
     if args.livros:
@@ -214,8 +214,10 @@ def main(argv: list[str] | None = None) -> int:
     if not pdfs:
         print(f"Nenhum PDF em {args.pdf_dir}.")
         return 0
-    if not _ha_classificador():
-        print("Sem o classificador de glifo (models/char_classifier.pt): o glifo e o auto leriam pela camada, e a medida nao diria nada.")
+    try:
+        classificador_configurado()
+    except ModeloInvalido as exc:
+        print(f"Sem o classificador de glifo: o glifo e o auto leriam pela camada, e a medida nao diria nada.\n{exc}")
         return 0
 
     por_livro = medir(pdfs, folhas=args.folhas, dpi=args.dpi, motores=MOTORES_MEDIDOS)

@@ -518,9 +518,8 @@ def linhas_do_glifo(
     imagem_rgb: np.ndarray,
     diagramas: Sequence[Retangulo] = (),
     *,
-    reconhecedor: object | None = None,
+    reconhecedor: object,
     escala: int | None = None,
-    modo_bloco: bool = False,
     colados: str = COLADOS_NA_PAGINA,
     caixa_alta: bool = True,
     traco: bool = True,
@@ -535,9 +534,12 @@ def linhas_do_glifo(
     """As linhas lidas pelo classificador de glifo, **região a região e coluna a coluna**, e as
     regiões achadas.
 
-    `escala=None` a mede com `escala_fora_dos_diagramas`. `modo_bloco=True` liga a S-188 -- ler a
-    linha, e não o caractere. **Desligado por padrão, e o número que decidiu isso está no cabeçalho
-    deste módulo**: na página inteira ele custa ~50x o tempo e piora o livro nativo digital.
+    `reconhecedor` é obrigatório (S-847): quem o constrói é a fronteira, `ler_pagina`, que lê a
+    configuração. O modo bloco da S-188 é o leitor de linha dele -- ler a linha, e não o caractere --, e
+    é `ler_pagina(modo_bloco=True)` que o põe. **Desligado por padrão, e o número que decidiu isso está
+    no cabeçalho deste módulo**: na página inteira ele custa ~50x o tempo e piora o livro nativo digital.
+
+    `escala=None` a mede com `escala_fora_dos_diagramas`.
 
     `dpi` é o da imagem, e vai para `segmentar` virar as faixas de texto claro sobre preto (S-599).
 
@@ -598,12 +600,6 @@ def linhas_do_glifo(
     if not caixas:
         return ([], regioes)
 
-    if reconhecedor is None:
-        from .recognizer import build_glyph_recognizer
-
-        reconhecedor = build_glyph_recognizer(
-            leitor_de_linha=leitor_de_linha_padrao() if modo_bloco else None
-        )
     classificador = reconhecedor.classifier  # type: ignore[attr-defined]
     leitor_de_linha = getattr(reconhecedor, "_leitor_de_linha", None)
     lexico = _dicionario.carregar() if dicionario else frozenset()
@@ -1213,22 +1209,23 @@ def motor_escolhido(motor: MotorDeTexto = MOTOR_PADRAO, *, tem_modelo: bool = Tr
     return "glifo" if tem_modelo else "camada"
 
 
-def _ha_classificador(reconhecedor: object | None = None) -> bool:
-    """Dá para ler com o glifo? Só isto decide a reserva do `auto`.
+def _reconhecedor_configurado(motor: MotorDeTexto, *, modo_bloco: bool) -> object | None:
+    """O glifo que a configuração aponta (S-847), ou `None` quando `auto` não tem pesos que carreguem.
 
-    Um reconhecedor já construído responde sozinho. Sem ele, a pergunta é se os pesos carregam --
-    e ela é feita **uma vez**, porque `carregar_classificador` guarda o resultado em cache.
+    **Só `auto` tem reserva**: sem classificador ele cai para a camada, e avisa (ver `ler_pagina`). Pedido
+    explícito de um motor do glifo levanta `ModeloInvalido` com o motivo -- e o motivo agora é verdade,
+    porque a configuração que ele manda ajustar é a que foi lida aqui.
     """
-    if reconhecedor is not None:
-        return True
-    try:
-        from .modelo import CAMINHO_PADRAO_META, carregar_classificador
+    from .recognizer import GlyphRecognizer, classificador_configurado
 
-        carregar_classificador(CAMINHO_PADRAO_META, None)
-    except Exception as exc:  # noqa: BLE001 - pesos ausentes é caminho normal, não erro
+    try:
+        classificador = classificador_configurado()
+    except Exception as exc:  # noqa: BLE001 - pesos ausentes é caminho normal do `auto`, não erro
+        if motor != "auto":
+            raise
         logger.debug("Classificador de glifo indisponível: %s", exc)
-        return False
-    return True
+        return None
+    return GlyphRecognizer(classificador, leitor_de_linha_padrao() if modo_bloco else None)
 
 
 def ler_pagina(
@@ -1268,6 +1265,8 @@ def ler_pagina(
     `marca_por_palavra` troca a faixa de confiança do bloco pela marca por palavra nos dois motores que
     combinam leitores (S-718). `leitor_de_linha` existe para o teste: `None` é o Tesseract desta máquina.
 
+    `reconhecedor=None` é o glifo que a configuração aponta (`ocr.glyph_model`, S-847), lido aqui e só aqui.
+
     `imagem_rgb` deixa quem já renderizou a página (a interface, sempre) não renderizá-la de novo:
     são ~200 ms por página a 220 dpi, e a aba de texto abriria com um atraso que ela não precisa
     ter. Quando vem, o `dpi` tem de ser o mesmo com que ela foi renderizada -- é o que liga pixels
@@ -1277,7 +1276,9 @@ def ler_pagina(
 
     escala_px = dpi / 72.0
 
-    qual = motor_escolhido(motor, tem_modelo=_ha_classificador(reconhecedor))
+    if reconhecedor is None and motor != "camada":
+        reconhecedor = _reconhecedor_configurado(motor, modo_bloco=modo_bloco)
+    qual = motor_escolhido(motor, tem_modelo=reconhecedor is not None)
     if motor == "auto" and qual == "camada":
         logger.warning(
             "Sem classificador de glifo: a folha %d vai pela camada de texto do PDF, que não "
@@ -1293,7 +1294,7 @@ def ler_pagina(
     with opened(pdf_source) as livro:  # type: ignore[arg-type]
         return _ler_pagina_do_livro(
             livro, indice, dpi=dpi, imagem_rgb=imagem_rgb, qual=qual, escala_px=escala_px,
-            max_boards=max_boards, arranjo=arranjo, reconhecedor=reconhecedor, modo_bloco=modo_bloco,
+            max_boards=max_boards, arranjo=arranjo, reconhecedor=reconhecedor,
             colados=colados, caixa_alta=caixa_alta, traco=traco, marca_fina=marca_fina,
             empilhados=empilhados, italico=italico, dicionario=dicionario, numeros=numeros, juntar_lance=juntar_lance,
             marcar_negrito=marcar_negrito, marcar_italico=marcar_italico,
@@ -1614,7 +1615,6 @@ def _ler_pagina_do_livro(
     max_boards: int | None,
     arranjo: Arranjo,
     reconhecedor: object | None,
-    modo_bloco: bool,
     colados: str,
     caixa_alta: bool,
     traco: bool,
@@ -1697,7 +1697,7 @@ def _ler_pagina_do_livro(
     por_palavra = False
     if qual in _MOTORES_DO_GLIFO:
         cruas, regioes = linhas_do_glifo(
-            imagem, retangulos, reconhecedor=reconhecedor, modo_bloco=modo_bloco, colados=colados, caixa_alta=caixa_alta,
+            imagem, retangulos, reconhecedor=reconhecedor, colados=colados, caixa_alta=caixa_alta,
             traco=traco, marca_fina=marca_fina, empilhados=empilhados, italico=italico,
             dicionario=dicionario, numeros=numeros,
             juntar_lance=juntar_lance, dpi=dpi,
