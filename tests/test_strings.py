@@ -16,6 +16,8 @@ import re
 import unittest
 from pathlib import Path
 
+import varredura
+
 from chess_diagram_ocr.ui import strings
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -24,8 +26,7 @@ ARQUIVOS_DE_UI = [
     # `strings.py` fica de fora: ele **contém** a lista das formas erradas, de propósito.
     caminho
     for caminho in [
-        *sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")),
-        *sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py")),
+        *varredura.da_interface(),
     ]
     if caminho.name != "strings.py"
 ] + [RAIZ / "src" / "chess_diagram_ocr" / "qt" / "janela.py", RAIZ / "examples" / "streamlit_demo.py"]
@@ -255,7 +256,7 @@ class AccentTests(unittest.TestCase):
             re.IGNORECASE,
         )
         faltas: list[str] = []
-        for caminho in sorted(raiz.rglob("*.py")):
+        for caminho in varredura.fontes(raiz, recursivo=True, piso=300):
             if caminho.parent.name in ("ui", "cli"):
                 continue
             arvore = ast.parse(caminho.read_text(encoding="utf-8"))

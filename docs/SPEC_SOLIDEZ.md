@@ -2755,6 +2755,17 @@ razões por entrada. Acrescentar um comando sem `rotulo_curto` já não reprova 
 
 **Aceite.** Mover a pasta varrida reprova as guardas; remover um divergente não reprova o registro.
 
+**Entregue** (2026-11-09): além das duas citadas, a suíte foi rodada numa raiz falsa (cópia de `tests/`
+sem `src/` nem `docs/`, o pacote importado do worktree), e as guardas que passavam verdes lá ganharam piso
+pelo mesmo caminho: `tests/varredura.py` (`fontes(pasta, padrao, piso=..., recursivo=...)` e
+`da_interface()`), que reprova abaixo do piso. Entraram 26 arquivos de teste; as guardas que já falhavam
+na raiz falsa (piso próprio ou teste-controle, como as de `test_ui_fronteira`, `test_ui_orfaos`,
+`test_checkpoint` e `test_second_opinion`) ficaram como estavam. A varredura de `cli/` virou leitura da
+árvore (`def main` no corpo do módulo, decoradores pelo nome) com piso de 40 `main` (47 hoje) e controle
+sintético; a de `detect_boards(max_boards=1)` varre `src/` inteiro, acha os 4 chamadores e tem controle
+sintético. O registro virou `ROTULOS_CURTOS_REGISTRADOS`, 140 entradas com a razão de cada uma. Ficou de
+fora uma catraca que impeça a próxima guarda de nascer com glob sem piso.
+
 ## S-872 · Testes de "não levanta" que conferem o efeito, e tempo escalável
 
 **Problema.** Testes que passariam com a função vazia (confirmado): `tests/test_qt_menu.py:203`,

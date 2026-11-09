@@ -11,6 +11,8 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import varredura
+
 from chess_diagram_ocr import relogio
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -43,7 +45,7 @@ def _sem_fuso(arvore: ast.AST) -> list[int]:
 class GuardaTests(unittest.TestCase):
     def test_nenhuma_hora_sem_fuso_em_src(self) -> None:
         achados = []
-        for caminho in sorted(SRC.rglob("*.py")):
+        for caminho in varredura.fontes(SRC, recursivo=True, piso=300):
             nome = caminho.relative_to(SRC).as_posix()
             if nome in PERMITIDAS:
                 continue

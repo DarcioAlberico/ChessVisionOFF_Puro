@@ -19,12 +19,13 @@ import re
 import tokenize
 import unittest
 
+import varredura
+
 from chess_diagram_ocr.ui import espaco, pele, tipografia
 
 RAIZ = pathlib.Path(__file__).resolve().parents[1]
 ALVOS = [
-    *sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")),
-    *sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py")),
+    *varredura.da_interface(),
 ]
 
 PADROES = (

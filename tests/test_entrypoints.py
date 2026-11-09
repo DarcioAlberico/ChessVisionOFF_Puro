@@ -15,6 +15,8 @@ import importlib
 import unittest
 from pathlib import Path
 
+import varredura
+
 RAIZ = Path(__file__).resolve().parents[1]
 
 
@@ -66,7 +68,7 @@ class EntrypointsTests(unittest.TestCase):
         """
         declarados = {alvo.partition(":")[0] for alvo in _entrypoints().values()}
         faltando = []
-        for caminho in sorted((RAIZ / "src" / "chess_diagram_ocr" / "cli").glob("*.py")):
+        for caminho in varredura.fontes(RAIZ / "src" / "chess_diagram_ocr" / "cli", piso=40):
             if caminho.name in ("__init__.py", "_ocr.py"):
                 continue
             modulo = f"chess_diagram_ocr.cli.{caminho.stem}"
@@ -89,7 +91,7 @@ class BandeiraVerboseTests(unittest.TestCase):
         pasta = RAIZ / "src" / "chess_diagram_ocr" / "cli"
         return [
             caminho
-            for caminho in sorted(pasta.glob("*.py"))
+            for caminho in varredura.fontes(pasta, piso=40)
             if caminho.name not in ("__init__.py", "_ocr.py")
             and "\ndef main(" in caminho.read_text(encoding="utf-8")
         ]
@@ -177,7 +179,7 @@ class CodigoDeSaidaPelaTabelaTests(unittest.TestCase):
     def _returns_soltos(self) -> list[str]:
         pasta = RAIZ / "src" / "chess_diagram_ocr" / "cli"
         achados = []
-        for caminho in sorted(pasta.glob("*.py")):
+        for caminho in varredura.fontes(pasta, piso=40):
             arvore = ast.parse(caminho.read_text(encoding="utf-8"))
             for funcao in [n for n in ast.walk(arvore) if isinstance(n, ast.FunctionDef)]:
                 if not str(funcao.returns and getattr(funcao.returns, "id", "")) == "int":
@@ -233,7 +235,7 @@ class VocabularioDasBandeirasTests(unittest.TestCase):
     def _opcoes_por_arquivo(self) -> dict[str, list[tuple[str, ...]]]:
         pasta = RAIZ / "src" / "chess_diagram_ocr" / "cli"
         por_arquivo: dict[str, list[tuple[str, ...]]] = {}
-        for caminho in sorted(pasta.glob("*.py")):
+        for caminho in varredura.fontes(pasta, piso=40):
             arvore = ast.parse(caminho.read_text(encoding="utf-8"))
             chamadas = []
             for no in ast.walk(arvore):
@@ -286,7 +288,7 @@ class AjudaDeTodoArgumentoTests(unittest.TestCase):
     def _sem_ajuda(self) -> list[str]:
         pasta = RAIZ / "src" / "chess_diagram_ocr" / "cli"
         achados = []
-        for caminho in sorted(pasta.glob("*.py")):
+        for caminho in varredura.fontes(pasta, piso=40):
             arvore = ast.parse(caminho.read_text(encoding="utf-8"))
             for no in ast.walk(arvore):
                 if isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute) and no.func.attr == "add_argument":
@@ -312,7 +314,7 @@ class AjudaDeTodoArgumentoTests(unittest.TestCase):
         """
         pasta = RAIZ / "src" / "chess_diagram_ocr" / "cli"
         total = 0
-        for caminho in sorted(pasta.glob("*.py")):
+        for caminho in varredura.fontes(pasta, piso=40):
             arvore = ast.parse(caminho.read_text(encoding="utf-8"))
             total += sum(
                 1
@@ -335,7 +337,7 @@ class BlocoDeMedicaoTests(unittest.TestCase):
         pasta = RAIZ / "src" / "chess_diagram_ocr" / "cli"
         do_bloco = {"--csv", "--samples", "--splits", "--model", "--dpi", "--accept-threshold"}
         a_mao = []
-        for caminho in sorted(pasta.glob("*.py")):
+        for caminho in varredura.fontes(pasta, piso=40):
             if caminho.name in ("__init__.py", "census.py"):
                 continue  # o `--csv` do censo é saída, e não o dataset: outro argumento, mesmo nome
             arvore = ast.parse(caminho.read_text(encoding="utf-8"))
@@ -355,7 +357,7 @@ class BlocoDeMedicaoTests(unittest.TestCase):
         pasta = RAIZ / "src" / "chess_diagram_ocr" / "cli"
         donos = [
             caminho.name
-            for caminho in sorted(pasta.glob("*.py"))
+            for caminho in varredura.fontes(pasta, piso=40)
             if "DEFAULT_SPLITS" in caminho.read_text(encoding="utf-8").replace("DEFAULT_SPLITS_PATH,", "")
             and caminho.name != "__init__.py"
         ]

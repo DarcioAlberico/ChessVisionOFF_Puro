@@ -13,6 +13,8 @@ import ast
 import unittest
 from pathlib import Path
 
+import varredura
+
 from chess_diagram_ocr.pdf_text import _is_diagram_font_row
 from chess_diagram_ocr.text import admissao
 
@@ -70,7 +72,7 @@ class UmaRegraSoTests(unittest.TestCase):
     def test_ninguem_importa_nome_privado_de_pdf_text(self) -> None:
         raiz = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr"
         privados = []
-        for arquivo in raiz.rglob("*.py"):
+        for arquivo in varredura.fontes(raiz, recursivo=True, piso=300):
             if arquivo.name == "pdf_text.py":
                 continue
             for no in ast.walk(ast.parse(arquivo.read_text(encoding="utf-8"))):

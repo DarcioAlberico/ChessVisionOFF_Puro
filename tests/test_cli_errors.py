@@ -12,6 +12,7 @@ inexistente -- essa interface era um traceback em inglês e um código de saída
 
 from __future__ import annotations
 
+import ast
 import importlib
 import io
 import tempfile
@@ -28,6 +29,19 @@ from chess_diagram_ocr.cli import (
 )
 
 COMANDOS_COM_PDF = ("infer", "export_pgn", "batch")
+
+#: 47 `main` em `cli/` em 2026-11-09; o piso deixa espaço para tirar alguns, não para achar zero.
+PISO_DE_MAINS = 40
+
+
+def mains_de_cli(pasta: Path) -> dict[str, set[str]]:
+    """`{arquivo: nomes dos decoradores}` de cada `def main` no nível do módulo em `pasta`."""
+    achados: dict[str, set[str]] = {}
+    for caminho in sorted(pasta.glob("*.py")):
+        for no in ast.parse(caminho.read_text(encoding="utf-8")).body:
+            if isinstance(no, ast.FunctionDef) and no.name == "main":
+                achados[caminho.name] = {ast.unparse(d).rsplit(".", 1)[-1] for d in no.decorator_list}
+    return achados
 """Os comandos que recebem um PDF como argumento posicional -- os que dá para dirigir contra um
 arquivo de lixo sem inventar um dataset inteiro.
 
@@ -134,17 +148,24 @@ class ComandosContraLixoTests(unittest.TestCase):
 
         Mesma ideia do `SEM_REGISTRO` da S-112: a lista é o teste. Um `cvoff-*` novo sem o
         decorador falha a suíte, e não fica esperando alguém reparar num traceback em inglês.
+
+        Pela árvore e com piso (S-871): era um glob procurando `"\\ndef main("` no texto, e com a
+        pasta movida o glob voltava vazio e a guarda passava verde sobre nada.
         """
         raiz = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "cli"
-        faltando = []
-        for caminho in sorted(raiz.glob("*.py")):
-            if caminho.name in ("__init__.py", "_ocr.py"):
-                continue
-            texto = caminho.read_text(encoding="utf-8")
-            if "\ndef main(" in texto and "@cli_errors\ndef main(" not in texto:
-                faltando.append(caminho.name)
-
+        mains = mains_de_cli(raiz)
+        self.assertGreaterEqual(len(mains), PISO_DE_MAINS, f"a varredura de {raiz} achou só {len(mains)} `main`")
+        faltando = [nome for nome, decoradores in mains.items() if "cli_errors" not in decoradores]
         self.assertEqual(faltando, [], "Todo `main` de CLI precisa do decorador `@cli_errors`.")
+
+    def test_a_varredura_reconhece_o_main_sem_decorador(self) -> None:
+        """O controle da guarda de cima, sobre fonte escrita aqui: ela tem de saber achar."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pasta = Path(tmp)
+            (pasta / "protegido.py").write_text("@cli_errors\ndef main(argv=None):\n    pass\n", encoding="utf-8")
+            (pasta / "nu.py").write_text("import x\n\n\ndef main(argv=None):\n    pass\n", encoding="utf-8")
+            (pasta / "biblioteca.py").write_text("def ajuda():\n    pass\n", encoding="utf-8")
+            self.assertEqual({"protegido.py": {"cli_errors"}, "nu.py": set()}, mains_de_cli(pasta))
 
 
 class SoAFronteiraDizQueAEntradaEInvalidaTests(unittest.TestCase):

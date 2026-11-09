@@ -18,6 +18,8 @@ import re
 import unittest
 from pathlib import Path
 
+import varredura
+
 from chess_diagram_ocr.ui import strings
 from chess_diagram_ocr.ui.formato import (
     AUSENTE,
@@ -133,7 +135,7 @@ def _especificacao(no: ast.FormattedValue) -> str:
 def _decimais_escritos_a_mao() -> list[tuple[str, str, int]]:
     achados = []
     for pacote in ("ui", "qt"):
-        for arquivo in sorted((_FONTE / pacote).rglob("*.py")):
+        for arquivo in varredura.fontes(_FONTE / pacote, recursivo=True, piso=60):
             relativo = arquivo.relative_to(_FONTE).as_posix()
             if relativo == "ui/formato.py":
                 continue

@@ -15,12 +15,14 @@ import ast
 import unittest
 from pathlib import Path
 
+import varredura
+
 from chess_diagram_ocr.text import rico
 from chess_diagram_ocr.ui import texto_cores, tokens
 
 RAIZ = Path(__file__).resolve().parents[1]
 QT = RAIZ / "src" / "chess_diagram_ocr" / "qt"
-PAINEL = (QT / "painel_de_texto.py", *sorted(QT.glob("texto_*.py")))
+PAINEL = (QT / "painel_de_texto.py", *varredura.fontes(QT, "texto_*.py", piso=5))
 """A aba Texto e as partes dela (S-865): a cor cravada mudaria de arquivo junto com o código."""
 CORES = RAIZ / "src" / "chess_diagram_ocr" / "ui" / "texto_cores.py"
 

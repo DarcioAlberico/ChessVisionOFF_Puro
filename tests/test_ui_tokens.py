@@ -14,6 +14,8 @@ import re
 import unittest
 from pathlib import Path
 
+import varredura
+
 from chess_diagram_ocr.ui import tokens
 from chess_diagram_ocr.ui.tokens import (
     AA_GRAFICO,
@@ -335,8 +337,7 @@ class SemHexCravadoTests(unittest.TestCase):
 
     def _arquivos(self) -> list[Path]:
         return [
-            *sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")),
-            *sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py")),
+            *varredura.da_interface(),
         ]
 
     def test_so_o_modulo_de_tokens_escreve_hexadecimal(self) -> None:

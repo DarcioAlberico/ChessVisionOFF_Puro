@@ -13,13 +13,14 @@ import re
 import unittest
 from pathlib import Path
 
+import varredura
+
 from chess_diagram_ocr.ui import comandos, estilos
 from chess_diagram_ocr.ui.estilos import NEUTRO, PAPEIS_DE_BOTAO, estilo_de_botao
 
 RAIZ = Path(__file__).resolve().parents[1]
 ARQUIVOS = [
-    *sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")),
-    *sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py")),
+    *varredura.da_interface(),
 ]
 
 

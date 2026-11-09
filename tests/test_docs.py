@@ -28,6 +28,7 @@ from collections.abc import Iterable
 from fnmatch import fnmatch
 from pathlib import Path
 
+import varredura
 from arvores_do_repositorio import checkout_principal, normalizada, raizes_do_repositorio
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -205,7 +206,7 @@ def secoes_de_spec(arquivos: Iterable[Path] | None = None) -> dict[int, list[str
     sobre o defeito.
     """
     ocorrencias: dict[int, list[str]] = {}
-    for arquivo in sorted(arquivos if arquivos is not None else DOCS.glob("*.md")):
+    for arquivo in sorted(arquivos if arquivos is not None else varredura.fontes(DOCS, "*.md", piso=30)):
         if arquivo.name in ARQUIVOS_DE_MEDICAO:
             continue
         for numero_da_linha, linha in enumerate(arquivo.read_text(encoding="utf-8").splitlines(), start=1):
@@ -1370,7 +1371,7 @@ class CaminhoPublicadoTests(unittest.TestCase):
                 for indice, item in enumerate(no):
                     anda(item, arquivo, f"{trilha}[{indice}]")
 
-        for caminho in sorted((RAIZ / "docs" / "metrics").glob("*.json")):
+        for caminho in varredura.fontes(RAIZ / "docs" / "metrics", "*.json", piso=80):
             try:
                 anda(json.loads(caminho.read_text(encoding="utf-8")), caminho.name)
             except (OSError, ValueError):  # pragma: no cover - JSON em edição

@@ -23,6 +23,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
+import varredura
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
@@ -250,7 +251,7 @@ class GuardaDosAtalhosTests(unittest.TestCase):
 
     def test_nenhuma_comparacao_de_caminho_de_livro_fora_da_funcao(self) -> None:
         achados: list[str] = []
-        for arquivo in sorted(SRC.rglob("*.py")):
+        for arquivo in varredura.fontes(SRC, recursivo=True, piso=300):
             relativo = arquivo.relative_to(SRC).as_posix()
             if relativo in self.ISENTOS:
                 continue

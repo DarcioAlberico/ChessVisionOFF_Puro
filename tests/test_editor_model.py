@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+import varredura
 
 from chess_diagram_ocr.service import RecognitionOrigin, RecognizedDiagram
 from chess_diagram_ocr.ui.editor_model import DiagramEditorModel, EditorBinding, SaveKind
@@ -498,7 +499,7 @@ class SemTkinterTests(unittest.TestCase):
         raiz = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "ui"
         fora = [
             caminho.name
-            for caminho in sorted(raiz.glob("*.py"))
+            for caminho in varredura.fontes(raiz, piso=60)
             if caminho.name not in SEM_TKINTER
             and caminho.name != "__init__.py"
             and not {"tkinter", "PIL"} & self._importados(caminho)

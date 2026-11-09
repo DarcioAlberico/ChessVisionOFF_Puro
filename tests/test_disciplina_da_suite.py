@@ -25,6 +25,7 @@ from pathlib import Path
 from unittest import mock
 from urllib.parse import quote
 
+import varredura
 from ambiente_de_teste import pasta_temporaria
 from arvores_do_repositorio import checkout_principal
 from qt_app import TEM_PYQT
@@ -477,7 +478,7 @@ class DadosDeQuemRodaTests(unittest.TestCase):
         """
         soltos = [
             f"{caminho.relative_to(FONTES).as_posix()}:{linha}"
-            for caminho in sorted(FONTES.rglob("*.py"))
+            for caminho in varredura.fontes(FONTES, recursivo=True, piso=300)
             if caminho != FONTES / "config.py"
             for linha in caminhos_montados_a_mao(caminho.read_text(encoding="utf-8"))
         ]
@@ -841,3 +842,28 @@ class PyQtAusenteReprovaTests(unittest.TestCase):
         self.assertNotEqual(0, filho.returncode, saida)
         self.assertIn("1 failed", saida)
         self.assertIn("uv sync", saida)
+
+
+class VarreduraComPisoTests(unittest.TestCase):
+    """As guardas que percorrem fonte pedem a lista a `varredura.fontes`, que tem piso (S-871).
+
+    Um glob sobre uma pasta que mudou de lugar devolve vazio, e a guarda fica verde sobre nada.
+    """
+
+    def test_pasta_que_mudou_de_lugar_reprova(self) -> None:
+        with self.assertRaisesRegex(AssertionError, "abaixo do piso"):
+            varredura.fontes(pasta_temporaria(self) / "sumiu", piso=1)
+
+    def test_padrao_que_deixou_de_casar_reprova(self) -> None:
+        pasta = pasta_temporaria(self)
+        (pasta / "a.py").write_bytes(b"")
+        with self.assertRaisesRegex(AssertionError, "achou 0"):
+            varredura.fontes(pasta, "texto_*.py", piso=1)
+
+    def test_no_piso_devolve_os_arquivos_em_ordem(self) -> None:
+        pasta = pasta_temporaria(self)
+        for nome in ("b.py", "a.py", "c.md", "sub/d.py"):
+            (pasta / nome).parent.mkdir(exist_ok=True)
+            (pasta / nome).write_bytes(b"")
+        self.assertEqual([pasta / "a.py", pasta / "b.py"], varredura.fontes(pasta, piso=2))
+        self.assertEqual(3, len(varredura.fontes(pasta, recursivo=True, piso=3)))

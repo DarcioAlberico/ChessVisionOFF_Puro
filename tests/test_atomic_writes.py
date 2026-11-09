@@ -33,6 +33,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import IO
 
+import varredura
+
 RAIZ = Path(__file__).resolve().parents[1]
 SRC = RAIZ / "src" / "chess_diagram_ocr"
 
@@ -219,7 +221,7 @@ def _relativo(caminho: Path) -> str:
 
 def _todas_as_gravacoes() -> list[tuple[str, int, str]]:
     achados: list[tuple[str, int, str]] = []
-    for caminho in sorted(SRC.rglob("*.py")):
+    for caminho in varredura.fontes(SRC, recursivo=True, piso=300):
         achados.extend(gravacoes_diretas(caminho.read_text(encoding="utf-8"), _relativo(caminho)))
     return achados
 
@@ -326,7 +328,7 @@ class EscritaAtomicaTests(unittest.TestCase):
 
     def _sem_lf_explicito(self) -> list[str]:
         achados = []
-        for caminho in sorted(SRC.rglob("*.py")):
+        for caminho in varredura.fontes(SRC, recursivo=True, piso=300):
             nome = _relativo(caminho)
             if nome in SEM_LF_DECLARADO:
                 continue

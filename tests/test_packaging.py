@@ -17,6 +17,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import varredura
 from ambiente_de_teste import pasta_temporaria
 from subprocesso import rodar_roteiro
 
@@ -1239,7 +1240,7 @@ class DependenciasDoBundleTests(unittest.TestCase):
         raiz = PROJETO / "src" / "chess_diagram_ocr"
         culpados = [
             caminho.relative_to(PROJETO).as_posix()
-            for caminho in raiz.rglob("*.py")
+            for caminho in varredura.fontes(raiz, recursivo=True, piso=300)
             if "import pandas" in caminho.read_text(encoding="utf-8")
         ]
         self.assertEqual(culpados, [])

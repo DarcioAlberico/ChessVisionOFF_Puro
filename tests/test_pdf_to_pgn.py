@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import chess
 import numpy as np
+import varredura
 from test_inference import probs_for_fen
 
 from chess_diagram_ocr.detection import DiagramCandidate
@@ -356,7 +357,7 @@ class PdfToPgnTests(unittest.TestCase):
         permitidos = {"inference.py", "service.py", "evaluation.py"}
         culpados = [
             caminho.relative_to(raiz).as_posix()
-            for caminho in sorted(raiz.rglob("*.py"))
+            for caminho in varredura.fontes(raiz, recursivo=True, piso=300)
             if caminho.name not in permitidos
             and caminho.parent.name != "cli"
             and "load_model(" in caminho.read_text(encoding="utf-8")

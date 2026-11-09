@@ -19,6 +19,7 @@ from pathlib import Path, PureWindowsPath
 from unittest import mock
 
 import chess
+import varredura
 from subprocesso import rodar_python
 
 from chess_diagram_ocr import games_db, games_index
@@ -405,7 +406,7 @@ class CaminhoComCaractereDeUriTests(unittest.TestCase):
         fontes = Path(games_index.__file__).resolve().parent
         soltas = [
             f"{caminho.relative_to(fontes).as_posix()}:{numero}"
-            for caminho in sorted(fontes.rglob("*.py"))
+            for caminho in varredura.fontes(fontes, recursivo=True, piso=300)
             for numero, linha in enumerate(caminho.read_text(encoding="utf-8").splitlines(), 1)
             if 'f"file:' in linha or "f'file:" in linha
         ]

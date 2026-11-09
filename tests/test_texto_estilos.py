@@ -13,6 +13,8 @@ import ast
 import unittest
 from pathlib import Path
 
+import varredura
+
 from chess_diagram_ocr.text import documento, rico
 from chess_diagram_ocr.text.pagina import (
     BlocoDeDiagrama,
@@ -24,7 +26,7 @@ from chess_diagram_ocr.text.pagina import (
 )
 
 QT = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt"
-PAINEL = (QT / "painel_de_texto.py", *sorted(QT.glob("texto_*.py")))
+PAINEL = (QT / "painel_de_texto.py", *varredura.fontes(QT, "texto_*.py", piso=5))
 """A aba Texto e as partes dela (S-865): o tamanho cravado mudaria de arquivo junto com o código."""
 
 

@@ -23,6 +23,7 @@ import ast
 import unittest
 from pathlib import Path
 
+import varredura
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
@@ -70,7 +71,7 @@ class NomesLigaveisTests(unittest.TestCase):
         raiz = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt"
         culpados = [
             f"{arquivo.name}:{no.lineno} {no.name}"
-            for arquivo in sorted(raiz.glob("*.py"))
+            for arquivo in varredura.fontes(raiz, piso=60)
             for no in ast.walk(ast.parse(arquivo.read_text(encoding="utf-8")))
             if isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef)) and not no.name.isascii()
         ]

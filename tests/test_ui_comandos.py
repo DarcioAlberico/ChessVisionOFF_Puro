@@ -215,6 +215,138 @@ def _funcao(arvore: ast.AST, nome: str) -> ast.FunctionDef:
     raise AssertionError(f"função {nome} não existe mais em qt/janela.py")
 
 
+#: Os comandos cujo botão diz menos que o menu, cada um com a razão (S-871).
+#:
+#: A guarda é catraca: um divergente novo sem razão reprova; um que deixa de divergir, ou que sai
+#: do catálogo, não reprova -- a lista literal que vivia no teste reprovava as duas coisas, e
+#: congelava o catálogo (memória "teste não congela lista do catálogo").
+ROTULOS_CURTOS_REGISTRADOS: dict[str, str] = {
+    acao: razao
+    for razao, acoes in (
+        (
+            'Fases 37 e 41: o menu diz "Exportar o texto para .txt" porque é onde cabe dizê-lo, e o botão '
+            'da aba diz "Salvar .txt", o rótulo que a janela já mostrava (achado 1 do ROADMAP_APARENCIA).',
+            (
+                "abrir_texto", "afastar_texto", "alinhar_centro", "alinhar_direita", "alinhar_esquerda",
+                "aproximar_texto", "aumentar_corpo", "capitular", "colar", "copiar", "corpo_normal",
+                "diminuir_corpo", "estilo_legenda", "estilo_notacao", "estilo_prosa", "estilo_titulo",
+                "exportar_txt", "folha_da_pagina_aberta", "justificar", "ler_folha", "limpar_cor",
+                "limpar_formato", "limpar_marcas_do_lexico", "maiusculas", "marcar_fora_do_lexico",
+                "minusculas", "modo_bloco", "paleta_de_glifos", "quebrar_linha", "recortar", "salvar_texto",
+                "selecionar_tudo", "zoom_do_texto_normal",
+            ),
+        ),
+        (
+            'S-516: o menu diz "Dobrar todas as variantes", e o botão diz "Dobrar" porque fica numa '
+            "fileira que a Fase 76 já vai apertar.",
+            ("dobrar_variantes",),
+        ),
+        (
+            'Mesa de texto (Fases 91 a 95), pela razão da Fase 41: o menu diz "Marcar a folha como '
+            'conferida no caderno", e o botão da fita diz "Conferida".',
+            (
+                "bloco_impresso", "codigo_unicode", "colar_formato", "copiar_formato", "descartar_correcoes",
+                "destacar_mesa", "diagramas_a_esquerda", "diagramas_da_folha_a_esquerda",
+                "diagramas_da_folha_ao_centro", "diagramas_da_folha_como_a_preferencia", "exportar_caderno",
+                "exportar_html", "exportar_md", "exportar_pdf_pesquisavel", "exportar_rtf", "familia_da_letra",
+                "indice_do_caderno", "ler_folha_de_novo", "lista_de_correcoes", "marcar_folha_conferida",
+                "marcas_de_formatacao", "mesa_de_texto", "mesa_sempre", "modo_foco", "mover_paragrafo_abaixo",
+                "mover_paragrafo_acima", "painel_de_navegacao", "pincel_de_formatacao", "proxima_a_revisar",
+                "proxima_fora_do_lexico", "recolher_fita", "tamanho_da_miniatura", "texto_ao_lado",
+                "trazer_da_revisao", "ler_ao_chegar", "voltar_a_versao_anterior",
+            ),
+        ),
+        (
+            'Barras do PDF: "OCR todos diagramas" é o texto que a janela mostra hoje, e trocá-lo mudaria a '
+            "pele clássica, que a regra 1 da SPEC_APARENCIA proíbe.",
+            (
+                "abrir_pdf", "cancelar_exportacao", "exportar_pgn", "ler_melhor", "ler_pagina",
+                "marcar_diagramas", "roda_vira_pagina", "selecionar_area", "tirar_caixa", "zoom_mais",
+                "zoom_menos",
+            ),
+        ),
+        (
+            'S-229: o menu diz "Desfazer a última mudança no tabuleiro", e o botão de fita diz '
+            '"Desfazer": nove palavras embaixo de um ícone são uma fita de duas linhas.',
+            ("desfazer", "refazer", "limpar_tabuleiro"),
+        ),
+        (
+            'Sala de estudo (S-280): o menu diz "Promover a variante a linha principal", e o botão diz '
+            '"Principal" porque a barra da sala tem três linhas; a navegação usa as setas de ui/strings.py.',
+            (
+                "analisar_posicao", "analise_continua", "apagar_continuacao", "apagar_variante", "copiar_fen",
+                "estudo_aplicar_fen", "estudo_da_posicao_inicial", "estudo_do_diagrama", "fim_da_linha",
+                "inicio_da_linha", "ir_para_a_pagina", "lance_anterior", "linha_do_livro", "mostrar_diagrama",
+                "partidas_da_posicao", "promover_a_principal", "promover_variante", "proximo_lance",
+                "rebaixar_variante", "salvar_estudo", "simbolo_do_lance", "trocar_vez", "variante_do_motor",
+            ),
+        ),
+        (
+            'Fase 82 (S-536/S-537): o menu diz "Analisar a partida inteira com o motor…", e a barra da '
+            "sala tem de caber num botão de 16 px com o rótulo na dica.",
+            ("analisar_partida", "opcoes_do_motor"),
+        ),
+        (
+            'Fases 49 e 50: o menu diz "Exportar o estudo para Markdown…" e o botão diz ".md", porque a '
+            "barra da sala tem quatro linhas.",
+            (
+                "abrir_pgn", "colar_estudo", "estudo_para_o_texto", "exportar_estudo_html", "exportar_estudo_md",
+                "exportar_estudo_rtf", "modo_treino",
+            ),
+        ),
+        (
+            'S-527/S-532: o menu diz "Indexar a base de partidas por nome…" e o botão do "Mais" da sala '
+            'diz "Indexar base".',
+            ("indexar_base",),
+        ),
+        (
+            "S-533: o menu diz por que campos se busca, porque é ali que a lista cabe; o botão diz "
+            '"Buscar partidas".',
+            ("buscar_partidas",),
+        ),
+        (
+            "Fase 83 (S-539/S-540): o menu diz o que o comando faz com o livro inteiro, e o botão do "
+            '"Mais" diz "Táticas do livro" e "Revisar hoje", que são como se fala deles.',
+            ("taticas_do_livro", "treinar_agenda"),
+        ),
+        (
+            'Fase 84 (S-544/S-545) e S-542/S-543: o menu diz "Exportar o estudo para PDF…" e o item do '
+            'agrupador diz ".pdf"; no "Mais" o rótulo longo não caberia.',
+            (
+                "exportar_estudo_pdf", "imprimir_estudo", "exportar_diagramas_lote", "exportar_estudo_epub",
+                "exportar_estudo_docx",
+            ),
+        ),
+        (
+            'S-233, a terceira barra em fila: o menu diz "Salvar a posição" e o botão da fila diz "Salvar".',
+            ("salvar", "salvar_todos", "aplicar_fen"),
+        ),
+        (
+            'Fase 81 (S-535): o menu diz "Árvore de aberturas desta posição", e o botão do grupo Base diz '
+            '"Árvore", ao lado de "Partidas".',
+            ("arvore_de_aberturas",),
+        ),
+        (
+            'Trilho de páginas (OCR_UI passo 17, C8): numa coluna de 176 px, "Importar o livro (ler todas '
+            'as páginas)…" vira "Importar o livro", e "Ir à primeira página duvidosa" vira "Primeira '
+            'duvidosa".',
+            (
+                "importar_livro", "cancelar_importacao", "primeira_duvidosa", "proxima_duvidosa",
+                "anterior_duvidosa",
+            ),
+        ),
+        (
+            "Abas da suíte (C8): o menu diz a aba por extenso, e o botão da paleta só o gesto.",
+            (
+                "segunda_opiniao", "rotulagem_ler_pagina", "rotulagem_salvar", "rotulagem_desenhar",
+                "revisao_texto_gravar", "revisao_texto_abrir",
+            ),
+        ),
+    )
+    for acao in acoes
+}
+
+
 class CoberturaDoCatalogoTests(unittest.TestCase):
     """Os quatro lugares que declaravam comando estão todos cobertos pelo registro.
 
@@ -384,198 +516,17 @@ class CoberturaDoCatalogoTests(unittest.TestCase):
         porque um rótulo de nove palavras embaixo de um ícone é uma fita de duas linhas.
         """
         divergem = {registro.acao for registro in comandos.CATALOGO if registro.rotulo_curto}
-        self.assertEqual(
-            {
-                # Os da Fase 37 e os da Fase 41 nascem divergentes, e é a divergência certa: o menu diz
-                # "Exportar o texto para .txt" porque é onde cabe dizê-lo, e o botão da aba diz
-                # "Salvar .txt" porque é o rótulo que a janela mostra hoje -- trocá-lo mudaria a
-                # aba sem pedido, que é o achado 1 do ROADMAP_APARENCIA.
-                "abrir_texto",
-                "afastar_texto",
-                # A S-516: o menu diz "Dobrar todas as variantes" porque é onde cabe dizê-lo, e o
-                # botão diz "Dobrar" porque ele fica numa fileira que a Fase 76 já vai apertar.
-                "dobrar_variantes",
-                "alinhar_centro",
-                "alinhar_direita",
-                "alinhar_esquerda",
-                "aproximar_texto",
-                "aumentar_corpo",
-                "capitular",
-                "colar",
-                "copiar",
-                "corpo_normal",
-                "diminuir_corpo",
-                "estilo_legenda",
-                "estilo_notacao",
-                "estilo_prosa",
-                "estilo_titulo",
-                "exportar_txt",
-                "folha_da_pagina_aberta",
-                "justificar",
-                "ler_folha",
-                "limpar_cor",
-                "limpar_formato",
-                "limpar_marcas_do_lexico",
-                "maiusculas",
-                "marcar_fora_do_lexico",
-                "minusculas",
-                "modo_bloco",
-                "paleta_de_glifos",
-                "quebrar_linha",
-                "recortar",
-                "salvar_texto",
-                "selecionar_tudo",
-                "zoom_do_texto_normal",
-                # Os da mesa de texto (Fases 91 a 95) nascem divergentes pela razão da Fase 41: o menu
-                # diz "Marcar a folha como conferida no caderno", e o botão da fita diz "Conferida".
-                "bloco_impresso",
-                "codigo_unicode",
-                "colar_formato",
-                "copiar_formato",
-                "descartar_correcoes",
-                "destacar_mesa",
-                "diagramas_a_esquerda",
-                "diagramas_da_folha_a_esquerda",
-                "diagramas_da_folha_ao_centro",
-                "diagramas_da_folha_como_a_preferencia",
-                "exportar_caderno",
-                "exportar_html",
-                "exportar_md",
-                "exportar_pdf_pesquisavel",
-                "exportar_rtf",
-                "familia_da_letra",
-                "indice_do_caderno",
-                "ler_folha_de_novo",
-                "lista_de_correcoes",
-                "marcar_folha_conferida",
-                "marcas_de_formatacao",
-                "mesa_de_texto",
-                "mesa_sempre",
-                "modo_foco",
-                "mover_paragrafo_abaixo",
-                "mover_paragrafo_acima",
-                "painel_de_navegacao",
-                "pincel_de_formatacao",
-                "proxima_a_revisar",
-                "proxima_fora_do_lexico",
-                "recolher_fita",
-                "tamanho_da_miniatura",
-                "texto_ao_lado",
-                "trazer_da_revisao",
-                "ler_ao_chegar",
-                "voltar_a_versao_anterior",
-                "abrir_pdf",
-                "cancelar_exportacao",
-                "desfazer",
-                "exportar_pgn",
-                "limpar_tabuleiro",
-                "ler_melhor",
-                "ler_pagina",
-                "marcar_diagramas",
-                "refazer",
-                "roda_vira_pagina",
-                "selecionar_area",
-                "tirar_caixa",
-                "zoom_mais",
-                "zoom_menos",
-                # Os vinte e três da sala de estudo (S-280) nascem divergentes pela mesma razão: o
-                # menu diz "Promover a variante a linha principal" porque é onde cabe dizê-lo, e o
-                # botão diz "Principal" porque a barra da sala tem três linhas e vinte e quatro
-                # comandos. Os quatro de navegação usam as setas de `ui/strings.py`, que são as
-                # mesmas que a aba já mostrava antes de haver catálogo.
-                "analisar_posicao",
-                "analise_continua",
-                # Os dois da Fase 82: o menu diz "Analisar a partida inteira com o motor…" e
-                # "Opções do motor de análise…" porque é onde cabe dizê-lo, e a barra da sala tem
-                # de caber num botão de 16 px com o rótulo na dica (S-536/S-537).
-                "analisar_partida",
-                "opcoes_do_motor",
-                "apagar_continuacao",
-                "apagar_variante",
-                "copiar_fen",
-                "estudo_aplicar_fen",
-                "estudo_da_posicao_inicial",
-                "estudo_do_diagrama",
-                "fim_da_linha",
-                "inicio_da_linha",
-                "ir_para_a_pagina",
-                "lance_anterior",
-                "linha_do_livro",
-                "mostrar_diagrama",
-                "partidas_da_posicao",
-                "promover_a_principal",
-                "promover_variante",
-                "proximo_lance",
-                "rebaixar_variante",
-                "salvar_estudo",
-                "simbolo_do_lance",
-                "trocar_vez",
-                "variante_do_motor",
-                # Os sete das Fases 49 e 50, pela mesma razão: o menu diz "Exportar o estudo para
-                # Markdown…" e o botão diz ".md", porque a barra da sala tem quatro linhas.
-                "abrir_pgn",
-                "colar_estudo",
-                "estudo_para_o_texto",
-                "exportar_estudo_html",
-                "exportar_estudo_md",
-                "exportar_estudo_rtf",
-                "modo_treino",
-                # A S-527/S-532: o menu diz "Indexar a base de partidas por nome…" e o botão do
-                # "Mais" da sala diz "Indexar base", pela mesma razão dos vinte e três acima.
-                "indexar_base",
-                # E a S-533: o menu diz por que campos se busca ("por jogador, evento, ano, Elo e
-                # ECO…") porque é ali que a lista de campos cabe; o botão diz "Buscar partidas".
-                "buscar_partidas",
-                # E os dois da Fase 83 (S-539/S-540): o menu diz o que o comando faz com o
-                # livro inteiro, e o botão do "Mais" diz o nome curto -- "Táticas do livro" e
-                # "Revisar hoje", que são como se fala deles.
-                "taticas_do_livro",
-                "treinar_agenda",
-                # E os três da Fase 84 (S-544/S-545), pela razão dos formatos acima: o menu diz
-                # "Exportar o estudo para PDF…" e o item do agrupador diz ".pdf", ao lado dos
-                # outros três; "Imprimir o estudo…" e "Exportar os diagramas em lote…" viram
-                # "Imprimir" e "Diagramas em lote" no "Mais", onde o rótulo longo não caberia.
-                "exportar_estudo_pdf",
-                "imprimir_estudo",
-                "exportar_diagramas_lote",
-                # E os dois da segunda rodada da S-542/S-543, pela razão idêntica: o menu diz
-                # "Exportar o estudo para EPUB…" e o item do agrupador diz ".epub". Eles chegaram
-                # ao catálogo três dias depois dos módulos que os escrevem -- até aqui não havia
-                # gesto nenhum que chamasse `epub.py` nem `docx_saida.py`.
-                "exportar_estudo_epub",
-                "exportar_estudo_docx",
-                # E os três que a S-233 registrou como dívida e a terceira barra em fila pagou: o
-                # menu diz "Salvar a posição" e o botão da fila diz "Salvar". Enquanto o painel de
-                # Resultado escrevia os rótulos à mão eles não declaravam `rotulo_curto`, "que
-                # seria uma promessa que ninguém cumpre".
-                "salvar",
-                "salvar_todos",
-                "aplicar_fen",
-                # E o da Fase 81 (S-535), pelo mesmo motivo: o menu diz "Árvore de aberturas desta
-                # posição" porque é onde cabe dizer de que posição se fala, e o botão do grupo Base
-                # diz "Árvore" -- ao lado de "Partidas", que responde a outra pergunta sobre a
-                # mesma posição.
-                "arvore_de_aberturas",
-                # Os três do trilho de páginas (OCR_UI passo 17): o menu diz "Importar o livro
-                # (ler todas as páginas)…" e o botão, numa coluna de 176 px, diz "Importar o
-                # livro"; "Cancelar a importação" vira "Cancelar" ao lado dele; "Ir à primeira
-                # página duvidosa" vira "Primeira duvidosa" sob a lista.
-                "importar_livro",
-                "cancelar_importacao",
-                "primeira_duvidosa",
-                "proxima_duvidosa",   # C8: os dois seguem o molde da «Primeira duvidosa»
-                "anterior_duvidosa",
-                # As cinco das abas da suíte (C8): o menu diz a aba por extenso, o botão da
-                # paleta só o gesto.
-                "segunda_opiniao",
-                "rotulagem_ler_pagina",
-                "rotulagem_salvar",
-                "rotulagem_desenhar",
-                "revisao_texto_gravar",
-                "revisao_texto_abrir",
-            },
+        sem_razao = sorted(divergem - set(ROTULOS_CURTOS_REGISTRADOS))
+        self.assertLessEqual(
             divergem,
+            set(ROTULOS_CURTOS_REGISTRADOS),
+            f"rótulo curto sem razão em ROTULOS_CURTOS_REGISTRADOS: {sem_razao}",
         )
+
+    def test_toda_razao_do_registro_diz_alguma_coisa(self) -> None:
+        """Uma entrada sem razão é a lista literal de antes com outro nome (S-871)."""
+        caladas = sorted(acao for acao, razao in ROTULOS_CURTOS_REGISTRADOS.items() if len(razao.split()) < 5)
+        self.assertEqual([], caladas)
 
 
 class DisciplinaDoRegistroTests(unittest.TestCase):
