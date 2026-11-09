@@ -242,6 +242,10 @@ class GuardaDosAtalhosTests(unittest.TestCase):
         "ui/livros.py": "é a função",
         # A imagem do lote de importação, não um livro: o mesmo arquivo de imagem em dois lotes.
         "importacao_de_imagens.py": "imagem, não livro",
+        # O nome de saída do lote (S-878): a identidade já veio de `chave_do_livro`, e o `normcase`
+        # do `stem` decide se dois **nomes de arquivo** colidem no disco do Windows, não se são o
+        # mesmo livro.
+        "batch.py": "colisão de nome de arquivo, não identidade",
     }
 
     def test_nenhuma_comparacao_de_caminho_de_livro_fora_da_funcao(self) -> None:
