@@ -44,6 +44,7 @@ from ..board_detection import RejectedQuad as RejectedQuad
 from ..board_detection import (
     _bbox_iou,
     _board_pattern_score,
+    _registrar,
     _sort_selected_candidates,
     board_checker_score,
     detect_boards,
@@ -586,6 +587,283 @@ def _pixel_bbox(bbox_pdf: tuple[float, float, float, float], scale: float) -> tu
     )
 
 
+def _escala(page: fitz.Page, page_rgb: np.ndarray) -> float:
+    """Pixels de `page_rgb` por ponto do PDF, na média dos dois eixos."""
+    scale_x = page_rgb.shape[1] / page.rect.width if page.rect.width else 1.0
+    scale_y = page_rgb.shape[0] / page.rect.height if page.rect.height else 1.0
+    return (scale_x + scale_y) / 2.0
+
+
+def _caixa_do_quad(quad: np.ndarray | None, page_shape: tuple[int, ...]) -> tuple[int, int, int, int]:
+    """A caixa `(x, y, largura, altura)` do quad em pixels da página; a página inteira sem quad."""
+    if quad is None:
+        return (0, 0, page_shape[1], page_shape[0])
+    xs, ys = quad[:, 0], quad[:, 1]
+    return (int(xs.min()), int(ys.min()), max(1, int(xs.max() - xs.min())), max(1, int(ys.max() - ys.min())))
+
+
+def _recusa_de_contorno(caixa: tuple[int, int, int, int], board_rgb: np.ndarray, motivo: str) -> RejectedQuad:
+    """A recusa de um achado de contorno deste módulo, com o contraste **medido** (S-364).
+
+    O recorte está em mãos, e `RejectedQuad.checker` documenta o `0.0` como "a recusa foi antes de
+    haver recorte". Gravar zero sobre um recorte existente faz o censo de recusas dizer que o
+    candidato não tinha contraste nenhum -- que é uma afirmação, e falsa.
+    """
+    return RejectedQuad(caixa, 0.5, round(board_checker_contrast(board_rgb), 4), motivo)
+
+
+def _acima_do_piso(embedded: list[DiagramCandidate], recall: RecallOptions | None) -> list[DiagramCandidate]:
+    """Os embutidos cujo recorte tem contraste de casa acima de `RecallOptions.embedded_floor`."""
+    if recall is None or recall.embedded_floor is None:
+        return embedded
+    piso = recall.embedded_floor
+    return [c for c in embedded if board_checker_contrast(c.board_rgb) > piso]
+
+
+def _estagio_embutido(
+    page: fitz.Page,
+    scale: float,
+    recall: RecallOptions | None,
+    *,
+    refine_embedded: bool,
+    band_board_fill: float | None,
+    rejected: list[RejectedQuad] | None,
+) -> list[DiagramCandidate]:
+    """Os candidatos das imagens embutidas: o piso de contraste, a guarda de faixa e o refino.
+
+    O piso é `RecallOptions.embedded_floor` -- ver o docstring de `detect_diagrams` sobre o
+    `recall`. A guarda de faixa (S-176) e o refino (S-38) leem a mesma passada de contorno.
+    """
+    embedded = _acima_do_piso(candidates_from_embedded_images(page), recall)
+    if not refine_embedded and band_board_fill is None:
+        return embedded
+    # Uma passada de contorno por candidato, dois consumidores dela (S-176): a guarda de
+    # faixa pergunta *o que a imagem e* e o refino pergunta *onde a grade esta*. Medir duas
+    # vezes custaria um `get_pixmap` e um `detect_boards` a mais por candidato, em toda
+    # pagina de todo livro exportado -- e as duas leem o mesmo achado.
+    sobreviventes: list[DiagramCandidate] = []
+    for candidate in embedded:
+        achado = contour_inside_candidate(page, candidate)
+        if achado is None:
+            sobreviventes.append(candidate)
+            continue
+        if band_board_fill is not None and is_page_band(achado, min_fill=band_board_fill):
+            _registrar(rejected, _recusa_de_faixa(candidate, achado, band_board_fill, scale))
+            continue
+        sobreviventes.append(_apply_refinement(candidate, achado) if refine_embedded else candidate)
+    return sobreviventes
+
+
+def _recusa_de_faixa(
+    candidate: DiagramCandidate, achado: ContourInside, band_board_fill: float, scale: float
+) -> RejectedQuad:
+    """A recusa da imagem embutida que é faixa da página (S-176), com a linha de log dela."""
+    # `info` e nao `debug`, pelo mesmo motivo do prior de tamanho: esta linha apaga
+    # um candidato inteiro, e sem ela o sintoma e uma caixa que simplesmente deixou
+    # de aparecer.
+    logger.info(
+        "Imagem embutida %s descartada como faixa da pagina: o tabuleiro achado "
+        "dentro dela ocupa %.0f%% do lado (piso de %.0f%%).",
+        tuple(round(valor) for valor in candidate.bbox_pdf),
+        achado.board_fill * 100,
+        band_board_fill * 100,
+    )
+    return RejectedQuad(
+        _pixel_bbox(candidate.bbox_pdf, scale),
+        round(candidate.detector_score, 4),
+        round(board_checker_contrast(achado.board_rgb), 4),
+        "faixa-da-pagina",
+    )
+
+
+@dataclass
+class _PaginaHibrida:
+    """O que o estágio de contorno consulta e altera: os candidatos e as caixas dos embutidos.
+
+    `caixas_embutidas[i]` é a caixa de `embutidos[i]` em pixels; `None` é a lápide de quem já saiu
+    da lista (S-359) -- a caixa `(0, 0, 1, 1)` que marcava isso antes **é uma caixa**, e
+    `_same_region` a compara como tal: qualquer contorno ancorado na origem da página voltava a
+    "casar" com um candidato que não existe mais. Ancorado na origem não é caso raro: é a moldura
+    da página inteira.
+    """
+
+    candidatos: list[DiagramCandidate]
+    embutidos: list[DiagramCandidate]
+    caixas_embutidas: list[tuple[int, int, int, int] | None]
+    lado_esperado: float | None
+    tolerancia_de_tamanho: float | None
+
+
+def _pagina_hibrida(
+    embedded: list[DiagramCandidate], scale: float, size_prior_tolerance: float | None
+) -> _PaginaHibrida:
+    """O estado de partida do estágio de contorno, com o gabarito de lado da página.
+
+    O lado típico do diagrama nesta página, em pixels, segundo as imagens embutidas, serve de
+    gabarito para separar achado de contorno que é diagrama de achado que é figura.
+
+    União de ladrilhos não entra no gabarito (S-81), pela mesma razão que ela não suprime
+    contorno em `_contour_wins_over_merged`: ela é inferência nossa e não declaração do PDF.
+    Medido no `GALLAGHER`: uma união de 91 px definia o gabarito da página e o prior recusava
+    por tamanho o diagrama de 120 px que o contorno tinha achado -- sem sobreposição nenhuma
+    entre os dois, então a guarda de IoU nem chegava a opinar.
+    """
+    caixas: list[tuple[int, int, int, int] | None] = [_pixel_bbox(c.bbox_pdf, scale) for c in embedded]
+    lado: float | None = None
+    if embedded and size_prior_tolerance is not None:
+        sides = [
+            float(max(box[2], box[3]))
+            for box, candidate in zip(caixas, embedded, strict=True)
+            if box is not None and not candidate.merged_tiles
+        ]
+        lado = _typical_side(sides, size_prior_tolerance)
+    return _PaginaHibrida(list(embedded), embedded, caixas, lado, size_prior_tolerance)
+
+
+def _filtro_de_sobreposicao(
+    pagina: _PaginaHibrida, caixa: tuple[int, int, int, int], board_rgb: np.ndarray
+) -> str | None:
+    """`perdeu-para-embutido` quando o achado cai sobre um embutido que o vence (S-12, S-81).
+
+    Quando é o contorno que vence -- só contra união de ladrilhos --, ele passa a ser o candidato
+    daquela região, e a união sai já aqui, mesmo que outro filtro recuse o contorno depois. Sem
+    remover a caixa, o próximo achado de contorno da mesma região seria suprimido por um candidato
+    que já não está na lista.
+    """
+    conflito = next(
+        (
+            indice
+            for indice, outra in enumerate(pagina.caixas_embutidas)
+            if outra is not None
+            and _same_region(caixa, outra, merged=bool(pagina.embutidos[indice].merged_tiles))
+        ),
+        None,
+    )
+    if conflito is None:
+        return None
+    if not _contour_wins_over_merged(pagina.embutidos[conflito], board_rgb):
+        return "perdeu-para-embutido"
+    pagina.candidatos.remove(pagina.embutidos[conflito])
+    pagina.caixas_embutidas[conflito] = None
+    return None
+
+
+def _filtro_de_tamanho(pagina: _PaginaHibrida, caixa: tuple[int, int, int, int], board_rgb: np.ndarray) -> str | None:
+    """`prior-de-tamanho` quando o lado do achado foge do gabarito da página (S-12, S-79)."""
+    esperado, tolerancia = pagina.lado_esperado, pagina.tolerancia_de_tamanho
+    if esperado is None or tolerancia is None:
+        return None
+    side = max(caixa[2], caixa[3])
+    if abs(side - esperado) <= esperado * tolerancia:
+        return None
+    # `info` e nao `debug` (S-79): esta linha apaga um diagrama em potencial, e a
+    # unica evidencia de que ela agiu. Quando o gabarito estava envenenado, o
+    # sintoma era um diagrama que simplesmente nao aparecia na tela -- sem log,
+    # sem numero, sem nada a que voltar.
+    logger.info(
+        "Contorno descartado por tamanho: %d px contra gabarito de %.0f px da pagina (tolerancia %.0f%%).",
+        side,
+        esperado,
+        tolerancia * 100,
+    )
+    return "prior-de-tamanho"
+
+
+_FILTROS_DE_CONTORNO = (_filtro_de_sobreposicao, _filtro_de_tamanho)
+"""A cadeia do estágio de contorno, na ordem em que roda: cada filtro devolve o motivo ou `None`."""
+
+
+def _estagio_de_contorno(
+    pagina: _PaginaHibrida,
+    page_rgb: np.ndarray,
+    scale: float,
+    *,
+    max_boards: int,
+    reading_order: ReadingOrder,
+    checker_contrast_floor: float | None,
+    recall: RecallOptions | None,
+    rejected: list[RejectedQuad] | None,
+) -> None:
+    """Acrescenta a `pagina.candidatos` os achados de contorno que passam pela cadeia de filtros.
+
+    O contorno na página inteira é a única fonte quando não há imagem embutida -- o caso da
+    maioria do acervo: 12 dos 27 PDFs são scan de página inteira e 2 são vetoriais.
+
+    O piso de contraste de casa da S-143 vai **dentro** do `detect_boards` (S-160), e não sobre o
+    que ele devolve. A regra que este laço enunciava continua sendo a certa -- guarda que julga o
+    que a coisa é vem antes de guarda que julga com quem ela compete --, mas o laço só alcança os
+    sobreviventes da ordenação por score e da supressão por IoU que acontecem lá dentro. Aplicada
+    aqui, ela removia o falso positivo **depois** de ele já ter comido o diagrama de verdade. Ver
+    `board_detection.MIN_CHECKER_CONTRAST`.
+    """
+    for board_rgb, quad in detect_boards(
+        page_rgb,
+        max_boards=max_boards,
+        reading_order=reading_order,
+        rejected=rejected,
+        checker_floor=checker_contrast_floor,
+        recall=recall,
+    ):
+        box = _caixa_do_quad(quad, page_rgb.shape)
+        motivo = next((m for filtro in _FILTROS_DE_CONTORNO if (m := filtro(pagina, box, board_rgb)) is not None), None)
+        if motivo is not None:
+            _registrar(rejected, _recusa_de_contorno(box, board_rgb, motivo))
+            continue
+        pagina.candidatos.append(
+            DiagramCandidate(
+                board_rgb=board_rgb,
+                bbox_pdf=(box[0] / scale, box[1] / scale, (box[0] + box[2]) / scale, (box[1] + box[3]) / scale),
+                source="contour",
+                detector_score=0.5,
+                native_size=(BOARD_SIZE, BOARD_SIZE),
+            )
+        )
+
+
+def _selecionar(
+    candidates: list[DiagramCandidate],
+    *,
+    max_boards: int,
+    scale: float,
+    reading_order: ReadingOrder,
+    rejected: list[RejectedQuad] | None,
+) -> list[DiagramCandidate]:
+    """O teto por score e a ordem de leitura sobre os candidatos das duas fontes.
+
+    **Quem passa do teto sai por score, e não por posição na página (S-362).** O corte era
+    aplicado depois da ordenação de leitura: numa página de treze diagramas com teto de doze, o que
+    sumia era o **último a ser lido** -- o do canto inferior direito --, e não o pior. A S-14 já
+    tinha visto o sintoma pela tela ("o nono pode ser o do canto superior direito"). A ordem de
+    leitura continua sendo a da saída; ela só deixou de decidir *quem* fica.
+    """
+    por_score = sorted(candidates, key=lambda c: -float(c.detector_score))
+    escolhidos = por_score[:max_boards]
+    cortados = por_score[max_boards:]
+    ordered = _order_candidates(escolhidos, scale=scale, reading_order=reading_order)
+
+    if cortados:
+        # `warning`, como em `detect_boards` (S-362): o corte por contagem é a recusa que mais
+        # engana -- o candidato passou por todas as guardas e sumiu porque não coube --, e era a
+        # única sem nada no log. Quem vê doze diagramas numa página de treze precisa saber por quê.
+        logger.warning(
+            "max_boards=%d cortou %d candidato(s) que passaram nas guardas (scores %s contra "
+            "%.4f do último aceito). Se a página tem mais diagramas que isso, aumente "
+            "'Max diagramas'.",
+            max_boards,
+            len(cortados),
+            ", ".join(f"{c.detector_score:.4f}" for c in cortados[:4]),
+            escolhidos[-1].detector_score if escolhidos else 0.0,
+        )
+    # O corte final tambem e uma recusa, e e a que mais engana: o candidato passou por
+    # todas as guardas e sumiu por contagem.
+    for excedente in cortados:
+        _registrar(
+            rejected,
+            RejectedQuad(_pixel_bbox(excedente.bbox_pdf, scale), excedente.detector_score, 0.0, "teto-da-pagina"),
+        )
+    return ordered
+
+
 def detect_diagrams(
     page: fitz.Page,
     page_rgb: np.ndarray,
@@ -644,186 +922,30 @@ def detect_diagrams(
     fotografia que sobrevive até a disputa vence por tamanho e suprime por IoU o diagrama de
     verdade da mesma página. Não contradiz a S-12: o PDF declarou uma *imagem* ali, e nunca
     declarou que ela é um diagrama (o argumento da S-176). `None` é o detector cru.
+
+    Desde a S-859 são três estágios, nesta ordem: o embutido (`_estagio_embutido`: piso, faixa e
+    refino), o de contorno (`_estagio_de_contorno`, a cadeia `_FILTROS_DE_CONTORNO`) e a seleção
+    (`_selecionar`: teto por score e ordem de leitura).
     """
-    scale_x = page_rgb.shape[1] / page.rect.width if page.rect.width else 1.0
-    scale_y = page_rgb.shape[0] / page.rect.height if page.rect.height else 1.0
-    scale = (scale_x + scale_y) / 2.0
-
-    embedded = candidates_from_embedded_images(page)
+    scale = _escala(page, page_rgb)
     recall = recall_em_vigor(recall)
-    if recall is not None and recall.embedded_floor is not None:
-        embedded = [c for c in embedded if board_checker_contrast(c.board_rgb) > recall.embedded_floor]
-    if refine_embedded or band_board_fill is not None:
-        # Uma passada de contorno por candidato, dois consumidores dela (S-176): a guarda de
-        # faixa pergunta *o que a imagem e* e o refino pergunta *onde a grade esta*. Medir duas
-        # vezes custaria um `get_pixmap` e um `detect_boards` a mais por candidato, em toda
-        # pagina de todo livro exportado -- e as duas leem o mesmo achado.
-        sobreviventes: list[DiagramCandidate] = []
-        for candidate in embedded:
-            achado = contour_inside_candidate(page, candidate)
-            if achado is None:
-                sobreviventes.append(candidate)
-                continue
-            if band_board_fill is not None and is_page_band(achado, min_fill=band_board_fill):
-                caixa = _pixel_bbox(candidate.bbox_pdf, scale)
-                # `info` e nao `debug`, pelo mesmo motivo do prior de tamanho: esta linha apaga
-                # um candidato inteiro, e sem ela o sintoma e uma caixa que simplesmente deixou
-                # de aparecer.
-                logger.info(
-                    "Imagem embutida %s descartada como faixa da pagina: o tabuleiro achado "
-                    "dentro dela ocupa %.0f%% do lado (piso de %.0f%%).",
-                    tuple(round(valor) for valor in candidate.bbox_pdf),
-                    achado.board_fill * 100,
-                    band_board_fill * 100,
-                )
-                if rejected is not None:
-                    rejected.append(
-                        RejectedQuad(
-                            caixa,
-                            round(candidate.detector_score, 4),
-                            round(board_checker_contrast(achado.board_rgb), 4),
-                            "faixa-da-pagina",
-                        )
-                    )
-                continue
-            sobreviventes.append(_apply_refinement(candidate, achado) if refine_embedded else candidate)
-        embedded = sobreviventes
-
-    embedded_boxes: list[tuple[int, int, int, int] | None] = [
-        _pixel_bbox(candidate.bbox_pdf, scale) for candidate in embedded
-    ]
-    candidates = list(embedded)
-
-    # Lado tipico do diagrama nesta pagina, em pixels, segundo as imagens embutidas. Serve de
-    # gabarito para separar achado de contorno que e diagrama de achado que e figura.
-    #
-    # Uniao de ladrilhos nao entra no gabarito (S-81), pela mesma razao que ela nao suprime
-    # contorno em `_contour_wins_over_merged`: ela e inferencia nossa e nao declaracao do PDF.
-    # Medido no `GALLAGHER`: uma uniao de 91 px definia o gabarito da pagina e o prior recusava
-    # por tamanho o diagrama de 120 px que o contorno tinha achado -- sem sobreposicao nenhuma
-    # entre os dois, entao a guarda de IoU nem chegava a opinar.
-    expected_side: float | None = None
-    if embedded and size_prior_tolerance is not None:
-        sides = [
-            float(max(box[2], box[3]))
-            for box, candidate in zip(embedded_boxes, embedded, strict=True)
-            if box is not None and not candidate.merged_tiles
-        ]
-        expected_side = _typical_side(sides, size_prior_tolerance)
-
-    # O contorno na pagina inteira e a unica fonte quando nao ha imagem embutida -- o caso da
-    # maioria do acervo: 12 dos 27 PDFs sao scan de pagina inteira e 2 sao vetoriais.
-    def _recusado(caixa: tuple[int, int, int, int], contraste: float, motivo: str) -> None:
-        if rejected is not None:
-            rejected.append(RejectedQuad(caixa, 0.5, round(contraste, 4), motivo))
-
-    def _caixa_do_quad(quad: np.ndarray | None) -> tuple[int, int, int, int]:
-        if quad is None:
-            return (0, 0, page_rgb.shape[1], page_rgb.shape[0])
-        xs, ys = quad[:, 0], quad[:, 1]
-        return (int(xs.min()), int(ys.min()), max(1, int(xs.max() - xs.min())), max(1, int(ys.max() - ys.min())))
-
-    # O piso de contraste de casa da S-143 vai **dentro** do `detect_boards` (S-160), e nao
-    # sobre o que ele devolve. A regra que este laco enunciava continua sendo a certa -- guarda
-    # que julga o que a coisa e vem antes de guarda que julga com quem ela compete --, mas o
-    # laco so alcanca os sobreviventes da ordenacao por score e da supressao por IoU que
-    # acontecem la dentro. Aplicada aqui, ela removia o falso positivo **depois** de ele ja ter
-    # comido o diagrama de verdade. Ver `board_detection.MIN_CHECKER_CONTRAST`.
-    for board_rgb, quad in detect_boards(
+    embedded = _estagio_embutido(
+        page, scale, recall, refine_embedded=refine_embedded, band_board_fill=band_board_fill, rejected=rejected
+    )
+    pagina = _pagina_hibrida(embedded, scale, size_prior_tolerance)
+    _estagio_de_contorno(
+        pagina,
         page_rgb,
+        scale,
         max_boards=max_boards,
         reading_order=reading_order,
-        rejected=rejected,
-        checker_floor=checker_contrast_floor,
+        checker_contrast_floor=checker_contrast_floor,
         recall=recall,
-    ):
-        box = _caixa_do_quad(quad)
-
-        conflito = next(
-            (
-                indice
-                for indice, outra in enumerate(embedded_boxes)
-                # `None` é a lápide de quem já saiu da lista (S-359): a caixa `(0, 0, 1, 1)` que
-                # marcava isso antes **é uma caixa**, e `_same_region` a compara como tal --
-                # qualquer contorno ancorado na origem da página voltava a "casar" com um
-                # candidato que não existe mais, e o `candidates.remove` abaixo levantaria sobre
-                # ele. Ancorado na origem não é caso raro: é a moldura da página inteira.
-                if outra is not None
-                and _same_region(box, outra, merged=bool(embedded[indice].merged_tiles))
-            ),
-            None,
-        )
-        if conflito is not None:
-            if not _contour_wins_over_merged(embedded[conflito], board_rgb):
-                # O contraste é **medido**, e não zero (S-364): o recorte está aqui, e
-                # `RejectedQuad.checker` documenta o `0.0` como "a recusa foi antes de haver
-                # recorte". Gravar zero sobre um recorte existente faz o censo de recusas dizer
-                # que o candidato não tinha contraste nenhum -- que é uma afirmação, e falsa.
-                _recusado(box, board_checker_contrast(board_rgb), "perdeu-para-embutido")
-                continue
-            # O contorno ganhou de uma uniao de ladrilhos: ele passa a ser o candidato daquela
-            # regiao, e a uniao sai. Sem remover a caixa, o proximo achado de contorno da mesma
-            # regiao seria suprimido por um candidato que ja nao esta na lista.
-            candidates.remove(embedded[conflito])
-            embedded_boxes[conflito] = None
-
-        if expected_side is not None and size_prior_tolerance is not None:
-            side = max(box[2], box[3])
-            if abs(side - expected_side) > expected_side * size_prior_tolerance:
-                # `info` e nao `debug` (S-79): esta linha apaga um diagrama em potencial, e a
-                # unica evidencia de que ela agiu. Quando o gabarito estava envenenado, o
-                # sintoma era um diagrama que simplesmente nao aparecia na tela -- sem log,
-                # sem numero, sem nada a que voltar.
-                logger.info(
-                    "Contorno descartado por tamanho: %d px contra gabarito de %.0f px da pagina (tolerancia %.0f%%).",
-                    side,
-                    expected_side,
-                    size_prior_tolerance * 100,
-                )
-                _recusado(box, board_checker_contrast(board_rgb), "prior-de-tamanho")
-                continue
-
-        candidates.append(
-            DiagramCandidate(
-                board_rgb=board_rgb,
-                bbox_pdf=(box[0] / scale, box[1] / scale, (box[0] + box[2]) / scale, (box[1] + box[3]) / scale),
-                source="contour",
-                detector_score=0.5,
-                native_size=(BOARD_SIZE, BOARD_SIZE),
-            )
-        )
-
-    # **Quem passa do teto sai por score, e não por posição na página (S-362).** O corte era
-    # aplicado depois da ordenação de leitura: numa página de treze diagramas com teto de doze,
-    # o que sumia era o **último a ser lido** -- o do canto inferior direito --, e não o pior. A
-    # S-14 já tinha visto o sintoma pela tela ("o nono pode ser o do canto superior direito").
-    # A ordem de leitura continua sendo a da saída; ela só deixou de decidir *quem* fica.
-    por_score = sorted(candidates, key=lambda c: -float(c.detector_score))
-    escolhidos = por_score[:max_boards]
-    cortados = por_score[max_boards:]
-    ordered = _order_candidates(escolhidos, scale=scale, reading_order=reading_order)
-
-    if cortados:
-        # `warning`, como em `detect_boards` (S-362): o corte por contagem é a recusa que mais
-        # engana -- o candidato passou por todas as guardas e sumiu porque não coube --, e era a
-        # única sem nada no log. Quem vê doze diagramas numa página de treze precisa saber por quê.
-        logger.warning(
-            "max_boards=%d cortou %d candidato(s) que passaram nas guardas (scores %s contra "
-            "%.4f do último aceito). Se a página tem mais diagramas que isso, aumente "
-            "'Max diagramas'.",
-            max_boards,
-            len(cortados),
-            ", ".join(f"{c.detector_score:.4f}" for c in cortados[:4]),
-            escolhidos[-1].detector_score if escolhidos else 0.0,
-        )
-    if rejected is not None:
-        # O corte final tambem e uma recusa, e e a que mais engana: o candidato passou por
-        # todas as guardas e sumiu por contagem.
-        for excedente in cortados:
-            x0, y0, x1, y1 = excedente.bbox_pdf
-            caixa = (int(x0 * scale), int(y0 * scale), max(1, int((x1 - x0) * scale)), max(1, int((y1 - y0) * scale)))
-            rejected.append(RejectedQuad(caixa, excedente.detector_score, 0.0, "teto-da-pagina"))
-    return ordered
+        rejected=rejected,
+    )
+    return _selecionar(
+        pagina.candidatos, max_boards=max_boards, scale=scale, reading_order=reading_order, rejected=rejected
+    )
 
 
 def detect_diagrams_in_pdf_page(

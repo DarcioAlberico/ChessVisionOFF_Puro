@@ -2380,6 +2380,17 @@ regras, primeiro as de forma (proporção, toca a borda, tamanho), depois a fam�
 **Aceite.** A caracterização passa; as três abaixo de complexidade 10. `detect_diagrams` e
 `_contour_candidates` estão no fecho de medição: o commit remede, e os números têm de voltar idênticos.
 
+**Entregue** (2026-11-09): complexidade 36 → 1 (`detect_diagrams`), 28 → 4 (`_contour_candidates`) e 31 → 4
+(`classificar`). Três divergências. (1) O X fica entre as regras de forma, antes da borda e do tamanho, como já
+estava: ele pode tocar a borda e passar de 0,72 da casa, e pô-lo depois mudaria a resposta. (2) A partição
+achou duas decisões em dobro e tirou a segunda: `_score_quad` repetia as guardas de `_contour_candidates` e
+virou `_medir_quad`, a régua única dos três caminhos; o fim de `_contour_candidates` repetia `_pool_finish`, que
+passou a registrar a `area-relativa`. Com isso `_extract_candidate_quads` foi de 22 para 6. (3) O campo foi
+medido antes e depois com o modelo de produção (detected 114, false_positives 0, matched 114, nos dois), mas
+os relatórios de `docs/metrics/` não foram remedidos neste ramo. A caracterização (`test_deteccao_caracterizacao`)
+cobre 18 páginas e os onze motivos de recusa. Fora do repositório, as 68 páginas do conjunto de campo em quatro
+variantes de opção e 300 mil medidas sorteadas para `classificar` saíram iguais byte a byte.
+
 ## S-860 · Partir `_ler_pagina_do_livro` e `linhas_do_glifo`
 
 **Problema.** `text/leitor._ler_pagina_do_livro` (71, a maior do projeto) e `linhas_do_glifo` (37).

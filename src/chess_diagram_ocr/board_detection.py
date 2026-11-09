@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 import cv2
@@ -200,8 +201,8 @@ MOTIVOS_DE_RECUSA = (
 Tupla e não texto livre para que o relatório possa agrupar sem depender de ortografia, e para
 que acrescentar uma guarda sem acrescentar o motivo seja um erro visível.
 
-**Não há motivo para "abaixo do piso de área", e a ausência é decisão.** Ver o comentário em
-`_extract_candidate_quads`: registrá-lo produziu 2,6 milhões de linhas de speckle de 4,6 pt num
+**Não há motivo para "abaixo do piso de área", e a ausência é decisão.** Ver o docstring de
+`_recusa_de_aspecto`: registrá-lo produziu 2,6 milhões de linhas de speckle de 4,6 pt num
 CSV de 280 MB, contra 499 candidatos aceitos. Instrumento que ninguém abre não instrumenta.
 """
 
@@ -671,7 +672,7 @@ def _square_forced_quads(quad: np.ndarray) -> list[np.ndarray]:
     não piora nenhuma leitura -- ver a S-454 no `docs/ANALISE_DETECCAO.md`.
 
     **Quem chama só entrega quad que já tem contraste de casa**, e isso é a metade da regra --
-    ver `_contour_candidates`, e as 812 ressurreições que custaram 5 diagramas.
+    ver `_quadrado_forcado`, e as 812 ressurreições que custaram 5 diagramas.
 
     **Por que duas variantes e não cinco.** A legenda mora de **um** lado, então o tabuleiro
     encosta numa das duas pontas do eixo comprido -- ancorar no meio não corresponde a defeito
@@ -704,16 +705,20 @@ def _square_forced_quads(quad: np.ndarray) -> list[np.ndarray]:
     ]
 
 
-def _contour_candidates(
-    image_rgb: np.ndarray,
-    rejected: list[RejectedQuad] | None = None,
-    checker_floor: float | None = MIN_CHECKER_CONTRAST,
-) -> list[tuple[np.ndarray, float, tuple[int, int, int, int]]]:
-    """A busca de contorno numa escala só: o detector cru, sem recuperação nenhuma.
+_Scored = tuple[np.ndarray, float, tuple[int, int, int, int], float]
+"""Um candidato medido: quad, score, caixa e a área do quad, que só serve ao corte de área relativa."""
 
-    Era o corpo de `_extract_candidate_quads` até o passo A1 do OCR_UI ciclo 2; ela ficou com
-    o nome e ganhou as recuperações de `RecallOptions` **em volta** deste passe, que não mudou
-    em nada -- inclusive a lista `rejected`, que sai com os mesmos motivos.
+
+def _registrar(rejected: list[RejectedQuad] | None, recusa: RejectedQuad) -> None:
+    """O lugar só onde uma recusa vira linha do instrumento da S-131. Sem lista, não custa nada."""
+    if rejected is not None:
+        rejected.append(recusa)
+
+
+def _quads_dos_contornos(image_rgb: np.ndarray) -> Iterator[np.ndarray]:
+    """Um quad por contorno das três binarizações (`_threshold_passes`), na ordem do `findContours`.
+
+    O contorno que fecha em quatro vértices entrega os quatro; o outro, a caixa girada mínima.
     """
     gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -725,11 +730,7 @@ def _contour_candidates(
         41,
         8,
     )
-    image_area = float(image_rgb.shape[0] * image_rgb.shape[1])
-    raw_candidates: list[tuple[np.ndarray, float, tuple[int, int, int, int], float]] = []
-    threshold_passes = _threshold_passes(thresh_base)
-
-    for thresh in threshold_passes:
+    for thresh in _threshold_passes(thresh_base):
         # RETR_LIST keeps inner contours too. This helps when board is inside a larger rectangle.
         contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         for contour in contours:
@@ -739,119 +740,142 @@ def _contour_candidates(
             if perimeter <= 0:
                 continue
             approx = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
-
             if len(approx) == 4:
-                quad = approx.reshape(4, 2).astype(np.float32)
+                yield approx.reshape(4, 2).astype(np.float32)
             else:
-                rect = cv2.minAreaRect(contour)
-                quad = cv2.boxPoints(rect).astype(np.float32)
+                yield cv2.boxPoints(cv2.minAreaRect(contour)).astype(np.float32)
 
-            geom_score = _contour_geometry_score(quad, image_area)
-            if geom_score <= 0:
-                # **O que fica de fora do registro, e por quê.** Medido na primeira corrida do
-                # instrumento: 2.627.289 recusas contra 499 aceitos, e o lado mediano da recusa
-                # era 4,6 pt. Um CSV de 280 MB de manchas de contorno não é instrumento, é
-                # ruído com cabeçalho. Só entra o que passou do piso de área -- abaixo dele o
-                # `_contour_geometry_score` não está julgando um candidato, está descartando
-                # speckle, e a recusa não pode ser recall perdido. Sobram as recusas por
-                # **aspecto**, que são as informativas: algo do tamanho de um diagrama que foi
-                # barrado por não ser quadrado o bastante.
-                if rejected is not None and cv2.contourArea(quad.astype(np.float32)) >= image_area * MIN_AREA_FRACTION:
-                    rejected.append(RejectedQuad(_bbox_from_quad(quad), 0.0, 0.0, "aspecto"))
-                continue
 
-            bbox = _bbox_from_quad(quad)
-            # Reject heavily out-of-frame quads; they tend to produce page-level false positives.
-            fora = (
-                _bbox_visible_ratio(bbox, image_rgb.shape) < MIN_VISIBLE_RATIO
-                or _quad_point_inside_ratio(quad, image_rgb.shape) < MIN_QUAD_INSIDE_RATIO
-            )
-            if fora:
-                if rejected is not None:
-                    rejected.append(RejectedQuad(bbox, geom_score, 0.0, "fora-da-pagina"))
-                continue
+def _recusa_de_aspecto(quad: np.ndarray, image_area: float) -> RejectedQuad | None:
+    """A recusa da guarda de geometria, ou `None` quando o quad é mancha e não vai para o registro.
 
-            small = _small_gray(warp_from_quad(image_rgb, quad, target_size=320))
-            checker = _checker_score(small)
-            # Antes de qualquer disputa (S-143, reposicionada na S-160). O achado sem contraste
-            # de casa nenhum não é tabuleiro -- é foto, retrato, moldura ou faixa de hachura --,
-            # e deixá-lo entrar na competição não o fazia vencer sozinho: fazia com que, ao
-            # vencer por score, ele suprimisse por IoU o diagrama de verdade e morresse depois,
-            # levando o diagrama junto. Ver `MIN_CHECKER_CONTRAST`.
-            if checker_floor is not None and checker <= checker_floor:
-                if rejected is not None:
-                    rejected.append(RejectedQuad(bbox, round(geom_score, 4), round(checker, 4), "sem-contraste-de-casa"))
-                continue
+    **O que fica de fora do registro, e por quê.** Medido na primeira corrida do instrumento:
+    2.627.289 recusas contra 499 aceitos, e o lado mediano da recusa era 4,6 pt. Um CSV de 280 MB
+    de manchas de contorno não é instrumento, é ruído com cabeçalho. Só entra o que passou do piso
+    de área -- abaixo dele o `_contour_geometry_score` não está julgando um candidato, está
+    descartando speckle, e a recusa não pode ser recall perdido. Sobram as recusas por
+    **aspecto**, que são as informativas: algo do tamanho de um diagrama que foi barrado por não
+    ser quadrado o bastante.
+    """
+    if cv2.contourArea(quad.astype(np.float32)) >= image_area * MIN_AREA_FRACTION:
+        return RejectedQuad(_bbox_from_quad(quad), 0.0, 0.0, "aspecto")
+    return None
 
-            pattern_score = _texture_from_parts(checker, _grid_score(small))
-            # **A segunda chance (S-454).** Um tabuleiro é quadrado, então um quad que não
-            # é quadrado está errado por construção -- e as duas variantes são hipóteses
-            # estritamente melhores do que ele. Quem decide é o contraste de casa, que é a
-            # medida de estar em registro com a grade; a variante só entra se **melhorar**.
-            #
-            # **Não é filtrado por contraste zerado, e a diferença importa.** A primeira
-            # versão só tentava quando o candidato lia 0,0000 -- o que é verdade nas 6
-            # páginas do `Reinfeld` e é sorte daquele acervo. Um tabuleiro achatado por uma
-            # fileira pode guardar contraste de sobra e mesmo assim ler errado: no tabuleiro
-            # sintético de `_board_with_glued_caption` o borrão lê 0,2254 e a guarda o
-            # deixaria passar achatado. O gatilho é a forma, que é o que de fato está errado.
-            #
-            # Duas condições, e as duas foram cobradas pelo censo do acervo, não por
-            # raciocínio:
-            #
-            # 1. **Só mexe em quem já tem contraste de casa.** Ressuscitar candidato que a
-            #    guarda da S-143 condenou parece o ganho principal -- é dali que sai o sexto
-            #    diagrama da página 39 do `Reinfeld` -- e medido no acervo é o contrário: 812
-            #    ressurreições produzem **1** recorte legível. As outras 811 voltam como
-            #    caixa quadrada com um fiapo de contraste, e algumas suprimem diagrama de
-            #    verdade por IoU. Medido no `Karpov 2`, 4 diagramas perdidos; no
-            #    `Vishy_Anand`, 1.
-            #
-            #    E não há piso de contraste que separe: no `GALLAGHER` a ressurreição chega
-            #    a **0,4254** e lê 0,3050, contra **0,2053** e 0,9997 do resgate bom do
-            #    `Reinfeld`. O sinal que separa não é o contraste da variante -- é a guarda
-            #    já ter dito que ali havia tabuleiro.
-            #
-            # 2. **A variante herda o score.** Recalcular a nota sobre a caixa nova sobe a
-            #    parcela de geometria, e com ela o candidato muda de posição na página. O
-            #    quadrado forçado conserta o **recorte**, e não decide quem ganha; por isso
-            #    só `quad`, `bbox` e o contraste viajam daqui.
-            if checker > 0.0:
-                for variante in _square_forced_quads(quad):
-                    c_var = _checker_score(_small_gray(warp_from_quad(image_rgb, variante, target_size=320)))
-                    if c_var > checker:
-                        quad, checker = variante, c_var
-                        bbox = _bbox_from_quad(quad)
-            score = geom_score * (0.55 + 0.45 * pattern_score)
-            quad_area = float(cv2.contourArea(quad.astype(np.float32)))
-            raw_candidates.append((quad, float(score), bbox, quad_area))
 
-    if not raw_candidates:
-        return []
+def _fora_da_pagina(quad: np.ndarray, bbox: tuple[int, int, int, int], image_shape: tuple[int, int, int]) -> bool:
+    """O quad sangra para fora da folha: caixa pouco visível, ou cantos demais fora da página."""
+    # Reject heavily out-of-frame quads; they tend to produce page-level false positives.
+    return (
+        _bbox_visible_ratio(bbox, image_shape) < MIN_VISIBLE_RATIO
+        or _quad_point_inside_ratio(quad, image_shape) < MIN_QUAD_INSIDE_RATIO
+    )
 
-    raw_candidates.sort(key=lambda item: item[1], reverse=True)
-    deduped: list[tuple[np.ndarray, float, tuple[int, int, int, int], float]] = []
-    for candidate in raw_candidates:
-        _, _, bbox, _ = candidate
-        # A duplicata das três passadas de limiar **não** vai para as recusas: ela é o mesmo
-        # candidato visto mais de uma vez, e registrá-la faria o relatório contar cada achado
-        # como um achado mais uma perda.
-        if any(_bbox_iou(bbox, kept_bbox) > DEDUPE_IOU for _, _, kept_bbox, _ in deduped):
-            continue
-        deduped.append(candidate)
 
-    largest_area = max(item[3] for item in deduped)
-    min_relative_area = largest_area * MIN_RELATIVE_AREA
-    if rejected is not None:
-        rejected.extend(
-            RejectedQuad(item[2], round(item[1], 4), 0.0, "area-relativa")
-            for item in deduped
-            if item[3] < min_relative_area
-        )
-    candidates = [item[:3] for item in deduped if item[3] >= min_relative_area]
+def _quadrado_forcado(image_rgb: np.ndarray, quad: np.ndarray, checker: float) -> np.ndarray:
+    """O quad, ou a variante quadrada dele que tem mais contraste de casa (S-454).
 
-    candidates.sort(key=lambda item: item[1], reverse=True)
-    return candidates
+    **A segunda chance.** Um tabuleiro é quadrado, então um quad que não é quadrado está errado por
+    construção -- e as duas variantes são hipóteses estritamente melhores do que ele. Quem decide é
+    o contraste de casa, que é a medida de estar em registro com a grade; a variante só entra se
+    **melhorar**.
+
+    **Não é filtrado por contraste zerado, e a diferença importa.** A primeira versão só tentava
+    quando o candidato lia 0,0000 -- o que é verdade nas 6 páginas do `Reinfeld` e é sorte daquele
+    acervo. Um tabuleiro achatado por uma fileira pode guardar contraste de sobra e mesmo assim ler
+    errado: no tabuleiro sintético de `_board_with_glued_caption` o borrão lê 0,2254 e a guarda o
+    deixaria passar achatado. O gatilho é a forma, que é o que de fato está errado.
+
+    Duas condições, e as duas foram cobradas pelo censo do acervo, não por raciocínio:
+
+    1. **Só mexe em quem já tem contraste de casa.** Ressuscitar candidato que a guarda da S-143
+       condenou parece o ganho principal -- é dali que sai o sexto diagrama da página 39 do
+       `Reinfeld` -- e medido no acervo é o contrário: 812 ressurreições produzem **1** recorte
+       legível. As outras 811 voltam como caixa quadrada com um fiapo de contraste, e algumas
+       suprimem diagrama de verdade por IoU. Medido no `Karpov 2`, 4 diagramas perdidos; no
+       `Vishy_Anand`, 1.
+
+       E não há piso de contraste que separe: no `GALLAGHER` a ressurreição chega a **0,4254** e
+       lê 0,3050, contra **0,2053** e 0,9997 do resgate bom do `Reinfeld`. O sinal que separa não
+       é o contraste da variante -- é a guarda já ter dito que ali havia tabuleiro.
+
+    2. **A variante herda o score.** Recalcular a nota sobre a caixa nova sobe a parcela de
+       geometria, e com ela o candidato muda de posição na página. O quadrado forçado conserta o
+       **recorte**, e não decide quem ganha; por isso só o quad sai daqui, e quem chama mantém a
+       nota que já tinha.
+    """
+    if checker <= 0.0:
+        return quad
+    for variante in _square_forced_quads(quad):
+        c_var = _checker_score(_small_gray(warp_from_quad(image_rgb, variante, target_size=320)))
+        if c_var > checker:
+            quad, checker = variante, c_var
+    return quad
+
+
+def _medir_quad(
+    image_rgb: np.ndarray,
+    quad: np.ndarray,
+    image_area: float,
+    checker_floor: float | None,
+    *,
+    forcar_quadrado: bool,
+) -> _Scored | RejectedQuad | None:
+    """Um quad pela cadeia de guardas: o candidato medido, a recusa, ou `None` para a mancha.
+
+    As guardas, na ordem em que rodam e na de `MOTIVOS_DE_RECUSA`: geometria (`aspecto`, ou mancha
+    abaixo do piso de área, que não registra), `fora-da-pagina` e `sem-contraste-de-casa`. A
+    última vem antes de qualquer disputa (S-143, reposicionada na S-160): o achado sem contraste de
+    casa nenhum não é tabuleiro -- é foto, retrato, moldura ou faixa de hachura --, e deixá-lo
+    entrar na competição não o fazia vencer sozinho: fazia com que, ao vencer por score, ele
+    suprimisse por IoU o diagrama de verdade e morresse depois, levando o diagrama junto. Ver
+    `MIN_CHECKER_CONTRAST`.
+
+    **Uma régua só.** O passe cru, a escala reduzida e o resgate de quadrado medem aqui, com a conta
+    ``geometria × (0,55 + 0,45 × textura)``: um quad resgatado ou vindo da escala reduzida compete
+    com os da escala cheia, e tem de ser medido pela mesma régua, senão a lista somada é ordenada
+    por duas. Só o passe cru tenta o quadrado forçado (`forcar_quadrado`), que é o que ele sempre fez.
+    """
+    geom_score = _contour_geometry_score(quad, image_area)
+    if geom_score <= 0:
+        return _recusa_de_aspecto(quad, image_area)
+    bbox = _bbox_from_quad(quad)
+    if _fora_da_pagina(quad, bbox, image_rgb.shape):
+        return RejectedQuad(bbox, geom_score, 0.0, "fora-da-pagina")
+    small = _small_gray(warp_from_quad(image_rgb, quad, target_size=320))
+    checker = _checker_score(small)
+    if checker_floor is not None and checker <= checker_floor:
+        return RejectedQuad(bbox, round(geom_score, 4), round(checker, 4), "sem-contraste-de-casa")
+    pattern_score = _texture_from_parts(checker, _grid_score(small))
+    if forcar_quadrado:
+        quad = _quadrado_forcado(image_rgb, quad, checker)
+    score = geom_score * (0.55 + 0.45 * pattern_score)
+    return quad, float(score), _bbox_from_quad(quad), float(cv2.contourArea(quad.astype(np.float32)))
+
+
+def _contour_candidates(
+    image_rgb: np.ndarray,
+    rejected: list[RejectedQuad] | None = None,
+    checker_floor: float | None = MIN_CHECKER_CONTRAST,
+) -> list[tuple[np.ndarray, float, tuple[int, int, int, int]]]:
+    """A busca de contorno numa escala só: o detector cru, sem recuperação nenhuma.
+
+    Era o corpo de `_extract_candidate_quads` até o passo A1 do OCR_UI ciclo 2; ela ficou com
+    o nome e ganhou as recuperações de `RecallOptions` **em volta** deste passe, que não mudou
+    em nada -- inclusive a lista `rejected`, que sai com os mesmos motivos.
+
+    Desde a S-859 é uma cadeia: cada quad dos contornos passa pelas guardas de `_medir_quad`, e o
+    que sobra pela deduplicação e pelo corte de área relativa de `_pool_finish`. A recusa sai de
+    cada filtro como um `RejectedQuad` e é registrada num lugar só, `_registrar`.
+    """
+    image_area = float(image_rgb.shape[0] * image_rgb.shape[1])
+    medidos: list[_Scored] = []
+    for quad in _quads_dos_contornos(image_rgb):
+        medido = _medir_quad(image_rgb, quad, image_area, checker_floor, forcar_quadrado=True)
+        if isinstance(medido, RejectedQuad):
+            _registrar(rejected, medido)
+        elif medido is not None:
+            medidos.append(medido)
+    return _pool_finish(medidos, rejected)
 
 
 SQUARE_MIN_ELONGATION = 1.02
@@ -861,31 +885,6 @@ Abaixo disto o maior quadrado que cabe no achado **é** o próprio achado, e o r
 o mesmo recorte que a guarda acabou de recusar -- custo sem chance de ganho. Os dois casos
 medidos do `Reinfeld` estão em 1,087 e 1,090: nove por cento de legenda a mais no eixo vertical.
 """
-
-_Scored = tuple[np.ndarray, float, tuple[int, int, int, int], float]
-
-
-def _score_quad(image_rgb: np.ndarray, quad: np.ndarray, image_area: float) -> tuple[float, float] | None:
-    """``(score, contraste)`` de um quad pelas guardas e pela conta de `_contour_candidates`.
-
-    ``None`` quando uma guarda -- geometria, aspecto, fora-da-página -- já diz que este quad não
-    é candidato. A conta é a **mesma** de `_contour_candidates` (``geometria × (0,55 + 0,45 ×
-    textura)``): um quad resgatado ou vindo da escala reduzida compete com os da escala cheia,
-    e tem de ser medido pela mesma régua, senão a lista somada é ordenada por duas.
-    """
-    geom = _contour_geometry_score(quad, image_area)
-    if geom <= 0:
-        return None
-    bbox = _bbox_from_quad(quad)
-    if (
-        _bbox_visible_ratio(bbox, image_rgb.shape) < MIN_VISIBLE_RATIO
-        or _quad_point_inside_ratio(quad, image_rgb.shape) < MIN_QUAD_INSIDE_RATIO
-    ):
-        return None
-    small = _small_gray(warp_from_quad(image_rgb, quad, target_size=320))
-    checker = _checker_score(small)
-    pattern = _texture_from_parts(checker, _grid_score(small))
-    return float(geom * (0.55 + 0.45 * pattern)), float(checker)
 
 
 def square_anchors(bbox: tuple[int, int, int, int]) -> list[np.ndarray]:
@@ -915,27 +914,89 @@ def square_anchors(bbox: tuple[int, int, int, int]) -> list[np.ndarray]:
     return quads
 
 
-def _pool_finish(pooled: list[_Scored]) -> list[tuple[np.ndarray, float, tuple[int, int, int, int]]]:
+def _pool_finish(
+    pooled: list[_Scored], rejected: list[RejectedQuad] | None = None
+) -> list[tuple[np.ndarray, float, tuple[int, int, int, int]]]:
     """A deduplicação e o corte de área relativa, sobre a lista somada das fontes.
 
     São as duas únicas etapas de `_contour_candidates` que olham a lista inteira e não um
     candidato por vez, e por isso as duas que precisam rodar **depois** de as fontes extras
     entrarem. Os limiares são os mesmos (`DEDUPE_IOU`, `MIN_RELATIVE_AREA`); nada aqui é
-    número novo.
+    número novo. `rejected` recebe as recusas por `area-relativa`; o passe cru passa a lista, e a
+    soma das recuperações não (era assim antes de as duas etapas morarem num lugar só, na S-859).
     """
     if not pooled:
         return []
     pooled.sort(key=lambda item: item[1], reverse=True)
     kept: list[_Scored] = []
     for candidate in pooled:
+        # A duplicata das três passadas de limiar **não** vai para as recusas: ela é o mesmo
+        # candidato visto mais de uma vez, e registrá-la faria o relatório contar cada achado
+        # como um achado mais uma perda.
         if any(_bbox_iou(candidate[2], other[2]) > DEDUPE_IOU for other in kept):
             continue
         kept.append(candidate)
-    largest = max(item[3] for item in kept)
-    floor = largest * MIN_RELATIVE_AREA
-    out = [item[:3] for item in kept if item[3] >= floor]
+    out = _corte_de_area_relativa(kept, rejected)
     out.sort(key=lambda item: item[1], reverse=True)
     return out
+
+
+def _corte_de_area_relativa(
+    kept: list[_Scored], rejected: list[RejectedQuad] | None
+) -> list[tuple[np.ndarray, float, tuple[int, int, int, int]]]:
+    """O que tem área de pelo menos `MIN_RELATIVE_AREA` da do maior; o resto vai para as recusas."""
+    largest = max(item[3] for item in kept)
+    floor = largest * MIN_RELATIVE_AREA
+    for item in kept:
+        if item[3] < floor:
+            _registrar(rejected, RejectedQuad(item[2], round(item[1], 4), 0.0, "area-relativa"))
+    return [item[:3] for item in kept if item[3] >= floor]
+
+
+def _somar_escala(
+    image_rgb: np.ndarray, scale: float, pooled: list[_Scored], checker_floor: float | None
+) -> None:
+    """Acrescenta a `pooled` os achados do passe cru sobre a página reduzida a `scale`.
+
+    O quad volta multiplicado e é **repontuado na resolução cheia** por `_medir_quad`. O achado que
+    já duplica um da lista (IoU acima de `DEDUPE_IOU`) sai **antes** de ser repontuado: a
+    deduplicação ficaria com o outro de qualquer jeito e o warp de 320×320 é a parte cara. A lista
+    cresce durante a varredura, então dois achados reduzidos também se deduplicam entre si.
+    """
+    if scale <= 0.0 or scale >= 1.0:
+        raise ValueError(f"escala de busca deve estar em (0, 1); recebida {scale!r}")
+    height, width = image_rgb.shape[:2]
+    image_area = float(height * width)
+    smaller = cv2.resize(
+        image_rgb,
+        (max(1, int(width * scale)), max(1, int(height * scale))),
+        interpolation=cv2.INTER_AREA,
+    )
+    for quad, _, _ in _contour_candidates(smaller, None, checker_floor):
+        back = np.asarray(quad, dtype=np.float32) / scale
+        if any(_bbox_iou(_bbox_from_quad(back), other[2]) > DEDUPE_IOU for other in pooled):
+            continue
+        medido = _medir_quad(image_rgb, back, image_area, checker_floor, forcar_quadrado=False)
+        if isinstance(medido, tuple):
+            pooled.append(medido)
+
+
+def _resgates(image_rgb: np.ndarray, recusas: list[RejectedQuad], checker_floor: float | None) -> list[_Scored]:
+    """O resgate de quadrado sobre cada recusa por `sem-contraste-de-casa` alongada o bastante."""
+    image_area = float(image_rgb.shape[0] * image_rgb.shape[1])
+    resgatados: list[_Scored] = []
+    for item in recusas:
+        if item.reason != "sem-contraste-de-casa":
+            continue
+        _, _, box_w, box_h = item.bbox
+        shorter = min(box_w, box_h)
+        if shorter <= 0 or max(box_w, box_h) / shorter < SQUARE_MIN_ELONGATION:
+            continue
+        for quad in square_anchors(item.bbox):
+            medido = _medir_quad(image_rgb, quad, image_area, checker_floor, forcar_quadrado=False)
+            if isinstance(medido, tuple):
+                resgatados.append(medido)
+    return resgatados
 
 
 def _extract_candidate_quads(
@@ -951,29 +1012,24 @@ def _extract_candidate_quads(
     (padrão `DEFAULT_RECALL`; `None` é o detector cru) a lista devolvida passa a incluir:
 
     * os achados do mesmo passe rodando sobre a página reduzida a cada escala de
-      `recall.scales`, com o quad multiplicado de volta e **repontuado na resolução cheia**
-      (senão dois candidatos da mesma página teriam sido medidos em imagens diferentes e o
-      score não os ordenaria). `INTER_AREA` a meia escala faz a média da hachura: uma casa
-      escura desenhada com traços vira cinza chapado e o limiar adaptativo passa a ver casa
-      sólida em vez de cerca -- o único jeito de o `Niemeijer` fechar contorno. **Somando, e
+      `recall.scales` (`_somar_escala`), com o quad multiplicado de volta e **repontuado na
+      resolução cheia** (senão dois candidatos da mesma página teriam sido medidos em imagens
+      diferentes e o score não os ordenaria). `INTER_AREA` a meia escala faz a média da hachura:
+      uma casa escura desenhada com traços vira cinza chapado e o limiar adaptativo passa a ver
+      casa sólida em vez de cerca -- o único jeito de o `Niemeijer` fechar contorno. **Somando, e
       não substituindo**: buscar só a meia escala perde seis diagramas do `Reinfeld`, cujo
       tabuleiro de 116 pt não sobrevive à redução;
-    * o resgate de quadrado (`square_anchors`) sobre cada recusa por `sem-contraste-de-casa`
-      alongada além de `SQUARE_MIN_ELONGATION`: quando o contorno emenda o diagrama com a
-      legenda, as 64 casas saem fora de registro, o contraste dá exatamente zero e a guarda
-      mata o candidato. A guarda está certa sobre o recorte que viu; ela viu o recorte errado.
-      O resgate oferece o maior quadrado que cabe no achado e deixa a **mesma** guarda julgar
-      (medido no `Reinfeld`: o contraste sobe de 0,0000 para 0,2317 e 0,3209).
-
-    Um achado da escala reduzida que já duplica um da escala cheia (IoU acima de `DEDUPE_IOU`)
-    é descartado **antes** de ser repontuado: a deduplicação ficaria com o da escala cheia de
-    qualquer jeito e o warp de 320×320 é a parte cara.
+    * o resgate de quadrado (`square_anchors`, em `_resgates`) sobre cada recusa por
+      `sem-contraste-de-casa` alongada além de `SQUARE_MIN_ELONGATION`: quando o contorno emenda o
+      diagrama com a legenda, as 64 casas saem fora de registro, o contraste dá exatamente zero e
+      a guarda mata o candidato. A guarda está certa sobre o recorte que viu; ela viu o recorte
+      errado. O resgate oferece o maior quadrado que cabe no achado e deixa a **mesma** guarda
+      julgar (medido no `Reinfeld`: o contraste sobe de 0,0000 para 0,2317 e 0,3209).
     """
     recall = recall_em_vigor(recall)
     if recall is None:
         return _contour_candidates(image_rgb, rejected, checker_floor)
 
-    image_area = float(image_rgb.shape[0] * image_rgb.shape[1])
     local: list[RejectedQuad] = []
     pooled: list[_Scored] = [
         (quad, score, bbox, float(cv2.contourArea(quad)))
@@ -981,46 +1037,10 @@ def _extract_candidate_quads(
     ]
     if rejected is not None:
         rejected.extend(local)
-
-    height, width = image_rgb.shape[:2]
     for scale in recall.scales:
-        if scale <= 0.0 or scale >= 1.0:
-            raise ValueError(f"escala de busca deve estar em (0, 1); recebida {scale!r}")
-        smaller = cv2.resize(
-            image_rgb,
-            (max(1, int(width * scale)), max(1, int(height * scale))),
-            interpolation=cv2.INTER_AREA,
-        )
-        for quad, _, _ in _contour_candidates(smaller, None, checker_floor):
-            back = np.asarray(quad, dtype=np.float32) / scale
-            bbox = _bbox_from_quad(back)
-            if any(_bbox_iou(bbox, other[2]) > DEDUPE_IOU for other in pooled):
-                continue
-            measured = _score_quad(image_rgb, back, image_area)
-            if measured is None:
-                continue
-            score, checker = measured
-            if checker_floor is not None and checker <= checker_floor:
-                continue
-            pooled.append((back, score, bbox, float(cv2.contourArea(back))))
-
+        _somar_escala(image_rgb, scale, pooled, checker_floor)
     if recall.rescue_squares:
-        for item in local:
-            if item.reason != "sem-contraste-de-casa":
-                continue
-            _, _, box_w, box_h = item.bbox
-            shorter = min(box_w, box_h)
-            if shorter <= 0 or max(box_w, box_h) / shorter < SQUARE_MIN_ELONGATION:
-                continue
-            for quad in square_anchors(item.bbox):
-                measured = _score_quad(image_rgb, quad, image_area)
-                if measured is None:
-                    continue
-                score, checker = measured
-                if checker_floor is not None and checker <= checker_floor:
-                    continue
-                pooled.append((quad, score, _bbox_from_quad(quad), float(cv2.contourArea(quad))))
-
+        pooled.extend(_resgates(image_rgb, local, checker_floor))
     return _pool_finish(pooled)
 
 
