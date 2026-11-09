@@ -192,3 +192,80 @@ class FenComCaractereEstranhoTests(unittest.TestCase):
         """É o caso real: a leitura de glifo devolve `♔` e ninguém a converte antes."""
         with self.assertRaises(ValueError):
             labels_from_fen("4k3/8/8/8/8/8/8/4♔3")
+
+
+class UmParserDeColocacaoTests(unittest.TestCase):
+    """S-842: um parser de FEN só, `Colocacao`, e ele concorda com o python-chess.
+
+    `labels_from_fen` aceitava o que o python-chess recusa (dois dígitos seguidos, o zero), e
+    `is_syntactically_valid_fen` recusava: os dois parsers do projeto discordavam justamente
+    aí. E `fen_from_class_indices` indexava antes de conferir, levantando `KeyError`.
+    """
+
+    def test_labels_from_fen_recusa_o_que_o_python_chess_recusa(self) -> None:
+        for fen in ("8/8/8/8/8/8/8/44", "4k3/8/8/8/8/8/8/4004", "4k3/8/8/8/8/8/8/08"):
+            with self.subTest(fen=fen):
+                self.assertFalse(is_syntactically_valid_fen(fen))
+                with self.assertRaises(ValueError):
+                    labels_from_fen(fen)
+
+    def test_classe_fora_do_alfabeto_e_value_error(self) -> None:
+        with self.assertRaises(ValueError):
+            fen_from_class_indices([13] * 64)
+        with self.assertRaises(ValueError):
+            fen_from_class_indices([13] * 63)
+
+    def test_colocacao_concorda_com_o_python_chess_em_dez_mil_fens(self) -> None:
+        """Propriedade: aceita exatamente o que `chess.BaseBoard` aceita, e lê as mesmas peças.
+
+        As FENs são sorteadas perto da fronteira: fileiras boas, e estragos do tipo que a
+        leitura produz (dígito partido em dois, zero, nove, letra fora do alfabeto, fileira a
+        mais ou a menos). O `~` da variante crazyhouse fica de fora: o python-chess o aceita, e
+        nenhum livro o imprime.
+        """
+        import random
+
+        from chess_diagram_ocr.fen_utils import Colocacao, square_from_reading_index
+
+        sorteio = random.Random(842)
+        pecas = "PNBRQKpnbrqk"
+
+        def fileira() -> str:
+            casas = [sorteio.choice(pecas) if sorteio.random() < 0.4 else "" for _ in range(8)]
+            texto, vazias = "", 0
+            for casa in casas:
+                if not casa:
+                    vazias += 1
+                    continue
+                texto += (str(vazias) if vazias else "") + casa
+                vazias = 0
+            texto += str(vazias) if vazias else ""
+            if sorteio.random() < 0.08:
+                posicao = sorteio.randrange(len(texto) + 1)
+                texto = texto[:posicao] + sorteio.choice("0912345678xX♔ ") + texto[posicao:]
+            if sorteio.random() < 0.05 and "8" in texto:
+                texto = texto.replace("8", sorteio.choice(("44", "71", "17", "35")), 1)
+            return texto
+
+        aceitas = recusadas = 0
+        for _ in range(10_000):
+            quantas = 8 if sorteio.random() < 0.95 else sorteio.choice((7, 9))
+            fen = "/".join(fileira() for _ in range(quantas))
+            try:
+                referencia: chess.BaseBoard | None = chess.BaseBoard(fen)
+            except ValueError:
+                referencia = None
+            try:
+                colocacao: Colocacao | None = Colocacao.de_fen(fen)
+            except ValueError:
+                colocacao = None
+            self.assertEqual(colocacao is None, referencia is None, fen)
+            if colocacao is None or referencia is None:
+                recusadas += 1
+                continue
+            aceitas += 1
+            for indice, casa in enumerate(colocacao.casas):
+                peca = referencia.piece_at(square_from_reading_index(indice))
+                self.assertEqual(casa, peca.symbol() if peca else None, (fen, indice))
+            self.assertEqual(colocacao.fen(), referencia.board_fen(), fen)
+        self.assertGreater(min(aceitas, recusadas), 1_000, "o sorteio não chegou perto da fronteira")

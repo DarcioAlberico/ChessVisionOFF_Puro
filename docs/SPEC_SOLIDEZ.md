@@ -1799,6 +1799,8 @@ legalidade consomem o tipo. Entregue em pedaços: o parser primeiro, depois cada
 **Aceite.** Os testes passam; um teste de propriedade compara `Colocacao.de_fen` com o python-chess em 10
 mil FENs sorteadas.
 
+**Entregue** (2026-11-09), o primeiro pedaço: `fen_utils.Colocacao` (com `Peca` como `Literal`), e `labels_from_fen` e `fen_from_class_indices` passam a ser uma linha sobre ela. Os demais consumidores ficam para os pedaços seguintes. O sorteio do teste de propriedade não usa o `~` da variante crazyhouse, que o python-chess aceita e a `Colocacao` recusa. Nenhuma FEN do `labels.csv` (versionado e do checkout principal) nem do `field_set.jsonl` muda de resultado; o campo medido antes e depois difere só em tempo.
+
 ## S-889 · A posição do PGN do livro tem rota própria no rótulo
 
 **Problema** (confirmado por script). `labels.label_route` não recebe `from_book`

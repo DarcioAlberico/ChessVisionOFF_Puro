@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from typing import Literal, get_args
 
 import chess
 
@@ -193,39 +194,112 @@ def board_from_fen(fen: str) -> chess.Board:
     return chess.Board(_normalize_fen(fen))
 
 
-def labels_from_fen(fen: str) -> list[int]:
-    board_part = fen.split()[0] if " " in fen else fen
-    rows = board_part.split("/")
-    if len(rows) != 8:
-        raise ValueError("A FEN deve ter 8 filas.")
+Peca = Literal["P", "N", "B", "R", "Q", "K", "p", "n", "b", "r", "q", "k"]
+_PECAS: tuple[Peca, ...] = get_args(Peca)
+_PECA_DO_SIMBOLO: dict[str, Peca] = {peca: peca for peca in _PECAS}
+_VAZIAS = "12345678"
 
-    labels: list[int] = []
-    for row in rows:
-        expanded: list[str] = []
-        for ch in row:
-            if ch.isdigit():
-                expanded.extend(["empty"] * int(ch))
-            else:
-                expanded.append(ch)
-        if len(expanded) != 8:
-            raise ValueError("Cada fila da FEN deve resolver para 8 casas.")
-        for peca in expanded:
-            # **Caractere desconhecido levanta, e não vira casa vazia (S-361).** O `.get(peca,
-            # empty)` de antes transformava qualquer lixo -- um `x` da leitura, uma figurina
-            # Unicode, uma letra fora do alfabeto de peça -- numa casa vazia perfeitamente
-            # plausível. E o pior cliente disso é a segunda opinião: as duas leituras viravam
-            # `empty` na mesma casa e ela anunciava **acordo total** sobre um tabuleiro que
-            # nenhuma das duas leu.
-            #
-            # As FEN válidas não passam por aqui: `PIECE_TO_IDX` tem exatamente as doze peças, e
-            # o dígito já foi expandido acima.
-            if peca not in PIECE_TO_IDX:
-                raise ValueError(
-                    f"Caractere de peça desconhecido na FEN: {peca!r}. "
-                    f"Os válidos são {''.join(sorted(k for k in PIECE_TO_IDX if k != 'empty'))}."
-                )
-            labels.append(PIECE_TO_IDX[peca])
-    return labels
+
+@dataclass(frozen=True)
+class Colocacao:
+    """As 64 casas em ordem de leitura (0 = a8, 63 = h1): a peça, ou `None` na casa vazia.
+
+    **O parser de FEN do projeto, um só (S-842).** Havia dois, e discordavam:
+    `labels_from_fen` expandia qualquer dígito, e aceitava `8/.../44`, `.../4004` e `.../08`,
+    que o python-chess (e por ele `is_syntactically_valid_fen`) recusa. Construa por
+    `de_fen` ou `de_classes`; a regra é a do python-chess -- oito fileiras de oito casas,
+    dígitos de 1 a 8, nunca dois seguidos --, e um teste de propriedade a compara com ele.
+    """
+
+    casas: tuple[Peca | None, ...]
+
+    def __post_init__(self) -> None:
+        if len(self.casas) != 64:
+            raise ValueError(f"Esperadas exatamente 64 casas, vieram {len(self.casas)}.")
+        estranhas = {casa for casa in self.casas if casa is not None and casa not in _PECAS}
+        if estranhas:
+            raise ValueError(f"Peça fora do alfabeto: {sorted(estranhas)!r}.")
+
+    @classmethod
+    def de_fen(cls, texto: str) -> Colocacao:
+        """A colocação do primeiro campo de uma FEN; o resto (vez, roque) não é dela."""
+        campos = str(texto).split()
+        fileiras = campos[0].split("/") if campos else []
+        if len(fileiras) != 8:
+            raise ValueError("A FEN deve ter 8 filas.")
+        casas: list[Peca | None] = []
+        for fileira in fileiras:
+            casas.extend(_fileira(fileira))
+        return cls(tuple(casas))
+
+    @classmethod
+    def de_classes(cls, indices: Iterable[int]) -> Colocacao:
+        """A colocação da saída do modelo: um índice de `PIECE_CLASSES` por casa."""
+        numeros = [int(indice) for indice in indices]
+        if len(numeros) != 64:
+            raise ValueError(f"Esperadas exatamente 64 casas, vieram {len(numeros)}.")
+        fora = sorted({numero for numero in numeros if numero not in IDX_TO_CLASS})
+        if fora:
+            raise ValueError(f"Classe fora do alfabeto do modelo: {fora}.")
+        return cls(tuple(_peca(IDX_TO_CLASS[numero]) for numero in numeros))
+
+    def classes(self) -> list[int]:
+        """Um índice de `PIECE_CLASSES` por casa, a ordem do modelo."""
+        return [PIECE_TO_IDX[casa or "empty"] for casa in self.casas]
+
+    def fen(self) -> str:
+        """O campo de colocação da FEN, com as vazias contadas."""
+        fileiras: list[str] = []
+        for inicio in range(0, 64, 8):
+            texto, vazias = "", 0
+            for casa in self.casas[inicio : inicio + 8]:
+                if casa is None:
+                    vazias += 1
+                    continue
+                texto += (str(vazias) if vazias else "") + casa
+                vazias = 0
+            fileiras.append(texto + (str(vazias) if vazias else ""))
+        return "/".join(fileiras)
+
+
+def _peca(simbolo: str) -> Peca | None:
+    """O símbolo como `Peca`, ou `None` quando não é uma das doze."""
+    return _PECA_DO_SIMBOLO.get(simbolo)
+
+
+def _fileira(fileira: str) -> list[Peca | None]:
+    """As oito casas de uma fileira da FEN, na regra do python-chess."""
+    casas: list[Peca | None] = []
+    digito_antes = False
+    for caractere in fileira:
+        if caractere in _VAZIAS:
+            if digito_antes:
+                raise ValueError(f"Dois dígitos seguidos na fila {fileira!r} da FEN.")
+            casas.extend([None] * int(caractere))
+            digito_antes = True
+            continue
+        # **Caractere desconhecido levanta, e não vira casa vazia (S-361).** O `.get(peca,
+        # empty)` de antes transformava qualquer lixo -- um `x` da leitura, uma figurina
+        # Unicode, uma letra fora do alfabeto de peça -- numa casa vazia perfeitamente
+        # plausível. E o pior cliente disso é a segunda opinião: as duas leituras viravam
+        # `empty` na mesma casa e ela anunciava **acordo total** sobre um tabuleiro que
+        # nenhuma das duas leu.
+        peca = _peca(caractere)
+        if peca is None:
+            raise ValueError(
+                f"Caractere de peça desconhecido na FEN: {caractere!r}. "
+                f"Os válidos são {''.join(sorted(_PECAS))} e os dígitos de 1 a 8."
+            )
+        casas.append(peca)
+        digito_antes = False
+    if len(casas) != 8:
+        raise ValueError("Cada fila da FEN deve resolver para 8 casas.")
+    return casas
+
+
+def labels_from_fen(fen: str) -> list[int]:
+    """Um índice de `PIECE_CLASSES` por casa, pela `Colocacao` (S-842)."""
+    return Colocacao.de_fen(fen).classes()
 
 
 def square_name(index: int) -> str:
@@ -285,24 +359,5 @@ def pawn_direction_score(class_indices: Sequence[int]) -> float | None:
 
 
 def fen_from_class_indices(class_indices: Iterable[int]) -> str:
-    classes = [IDX_TO_CLASS[int(idx)] for idx in class_indices]
-    if len(classes) != 64:
-        raise ValueError("Esperadas exatamente 64 casas.")
-
-    rows: list[str] = []
-    for row_start in range(0, 64, 8):
-        row = classes[row_start : row_start + 8]
-        chunks: list[str] = []
-        empty_count = 0
-        for item in row:
-            if item == "empty":
-                empty_count += 1
-                continue
-            if empty_count > 0:
-                chunks.append(str(empty_count))
-                empty_count = 0
-            chunks.append(item)
-        if empty_count > 0:
-            chunks.append(str(empty_count))
-        rows.append("".join(chunks))
-    return "/".join(rows)
+    """O campo de colocação da FEN da saída do modelo, pela `Colocacao` (S-842)."""
+    return Colocacao.de_classes(class_indices).fen()
