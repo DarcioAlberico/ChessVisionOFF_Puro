@@ -46,6 +46,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from chess_diagram_ocr.config import DEFAULT_PDF_DIR
 from chess_diagram_ocr.diagramas_em_lote import RelatorioDoLote, bytes_do_item, frase_do_relatorio, gravar_lote
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.trabalho import Tarefa
@@ -231,7 +232,7 @@ class DialogoDoLote(QDialog):
         super().__init__(parent)
         self.itens = tuple(itens)
         self.exportacao = exportacao or ExportacaoDoLote(self)
-        self._pasta = Path(pasta) if pasta is not None else Path.cwd()
+        self._pasta = Path(pasta) if pasta is not None else DEFAULT_PDF_DIR
         self._recado = ""
         """A frase de fim ou de falha, guardada e não escrita direto: o `finished` da tarefa chega
         depois e redesenharia por cima. É a regra de `DialogoDaFila._parada`."""

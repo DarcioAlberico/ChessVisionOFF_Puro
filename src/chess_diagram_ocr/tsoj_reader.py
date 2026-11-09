@@ -52,11 +52,16 @@ __all__ = ["TsojDiagramReader", "TsojUnavailableError", "build_local_provider"]
 MODULE_NAME = "chess_diagram_to_fen"
 """O módulo de entrada do clone. Também serve de sonda: sem ele, o caminho não é um clone."""
 
-_IMPORT_LOCK = threading.Lock()
+_IMPORT_LOCK = threading.RLock()
 """O import mexe em `sys.path` e no diretório corrente, que são globais do processo.
 
 A leitura roda em thread (o primeiro carregamento leva ~7 s), e duas threads importando ao
 mesmo tempo deixariam o processo num diretório que ninguém pediu.
+
+**Todo `chdir` passa por ela, e não só o do import** (S-883). O `predict` também troca de pasta,
+e fora da trava dois `predict` ao mesmo tempo restauravam na ordem errada: o segundo guardava
+como "anterior" a pasta do clone do primeiro e a repunha por último. É `RLock` porque o import
+já a segura quando entra em `_cwd`.
 """
 
 
@@ -66,12 +71,13 @@ class TsojUnavailableError(RuntimeError):
 
 @contextlib.contextmanager
 def _cwd(path: Path) -> Iterator[None]:
-    anterior = Path.cwd()
-    os.chdir(path)
-    try:
-        yield
-    finally:
-        os.chdir(anterior)
+    with _IMPORT_LOCK:
+        anterior = Path.cwd()
+        os.chdir(path)
+        try:
+            yield
+        finally:
+            os.chdir(anterior)
 
 
 def _bridge_skimage() -> None:

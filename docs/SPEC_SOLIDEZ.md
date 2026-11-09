@@ -1276,6 +1276,12 @@ a inicial.
 
 **Aceite.** O teste passa em 100 repetições.
 
+**Entregue** (2026-11-08): a trava entrou no próprio `_cwd` (virou `RLock`, porque o import já a segura
+ali), e as 100 repetições estão dentro do teste. A janela tinha um terceiro uso, `qt/painel_do_pdf.py:222`;
+os três caem em `DEFAULT_PDF_DIR`, e uma guarda acusa `Path(".")`, `Path.cwd()` e `os.getcwd()` em `qt/`.
+O `sys.path.insert(0, checkout)` ficou: a solução não o pede, e tirá-lo depois do import quebraria
+qualquer import tardio do clone, o que não foi conferido sem o clone instalado.
+
 ## S-910 · Número com vírgula e ordem alfabética pela mesma régua da tela
 
 **Problema** (plausível). Cerca de 13 lugares fazem `.replace(".", ",")` à mão, e cerca de 8 mostram ponto

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -146,6 +147,72 @@ class TestTsojReader(unittest.TestCase):
         leitor = TsojDiagramReader(Path("/clone"))
         with self.assertRaises(ValueError):
             leitor.predict(np.zeros((32, 32), dtype=np.uint8))
+
+    def test_dois_predict_ao_mesmo_tempo_devolvem_a_pasta_corrente_inicial(self) -> None:
+        """**O `chdir` do `predict` corria fora da trava** (S-883).
+
+        O segundo `predict` guardava como "anterior" a pasta do clone do primeiro, o primeiro
+        restaurava a pasta inicial, e o segundo restaurava por cima a do clone: o processo ficava
+        dentro de uma pasta que ninguém pediu, e `Path.cwd()` da janela apontava para ela. Aqui o
+        módulo do clone é falso; o primeiro avisa quando entrou, o segundo entra nesse momento e
+        sai depois dele, que é a ordem que trocava a restauração.
+        """
+        import threading
+        import time
+
+        from ambiente_de_teste import pasta_temporaria
+
+        from chess_diagram_ocr.tsoj_reader import MODULE_NAME
+
+        inicial = Path.cwd()
+        self.addCleanup(os.chdir, inicial)
+        clone_a, clone_b = pasta_temporaria(self), pasta_temporaria(self)
+        dentro = threading.Event()
+
+        class _Posicao:
+            def fen(self) -> str:
+                return f"{UM_REI} w - - 0 1"
+
+        def _ler(_imagem: object, _jogo: str) -> _Posicao:
+            if Path.cwd().samefile(clone_a):
+                dentro.set()
+                time.sleep(0.005)
+            else:
+                time.sleep(0.01)
+            return _Posicao()
+
+        falso = mock.Mock(get_board_from_cropped_img=_ler, is_board_flipped=lambda *_: False)
+        imagem = np.zeros((32, 32, 3), dtype=np.uint8)
+        with mock.patch.dict(sys.modules, {MODULE_NAME: falso}):
+            for _ in range(100):
+                dentro.clear()
+                primeiro = threading.Thread(target=TsojDiagramReader(clone_a).predict, args=(imagem,))
+                primeiro.start()
+                self.assertTrue(dentro.wait(5))
+                segundo = threading.Thread(target=TsojDiagramReader(clone_b).predict, args=(imagem,))
+                segundo.start()
+                primeiro.join(5)
+                segundo.join(5)
+                self.assertEqual(inicial, Path.cwd())
+
+    def test_a_janela_nao_resolve_pasta_pela_pasta_corrente(self) -> None:
+        """A pasta corrente é do processo, e o leitor tsoj a troca por ~7 s na primeira carga (S-883).
+
+        Um `Path(".")` ou `Path.cwd()` da janela resolvido nesse intervalo abria o diálogo de
+        arquivo dentro do clone de terceiro. A janela usa caminho absoluto.
+        """
+        import re
+
+        qt = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt"
+        padrao = re.compile(r"""Path\(\s*["']\.["']\s*\)|Path\.cwd\(\)|os\.getcwd\(\)""")
+        achados = [
+            f"{arquivo.name}:{numero}"
+            for arquivo in sorted(qt.glob("*.py"))
+            for numero, linha in enumerate(arquivo.read_text(encoding="utf-8").splitlines(), 1)
+            if padrao.search(linha)
+        ]
+        self.assertTrue(list(qt.glob("*.py")), "a guarda não achou o pacote qt/ e ficou vácua")
+        self.assertEqual([], achados)
 
     def test_nao_importa_o_leitor_ao_importar_este_projeto(self) -> None:
         """O adaptador e preguicoso: importar `tsoj_reader` nao pode puxar torch de terceiro."""

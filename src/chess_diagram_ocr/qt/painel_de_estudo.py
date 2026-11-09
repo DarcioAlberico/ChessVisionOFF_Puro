@@ -77,7 +77,7 @@ from chess_diagram_ocr import eco, estudo_arquivo, revisao_arquivo, tablebase, t
 from chess_diagram_ocr import estudo as estudo_mod
 from chess_diagram_ocr import placar as placar_mod
 from chess_diagram_ocr.arquivo_do_dono import GravacaoRecusada, Leitura, Lida, gravavel
-from chess_diagram_ocr.config import DATA_DIR
+from chess_diagram_ocr.config import DATA_DIR, DEFAULT_PDF_DIR
 from chess_diagram_ocr.engine import EngineAnalyzer, Evaluation
 from chess_diagram_ocr.estudo import Ancora, Estudo, PosicaoDeEstudo, Sala
 from chess_diagram_ocr.fen_utils import is_valid_fen, reading_index_from_square, square_from_reading_index
@@ -164,7 +164,7 @@ class PainelDeEstudo(QWidget):
         parent: QWidget | None = None,
         *,
         posicao: Callable[[], PosicaoDeEstudo | None] = lambda: None,
-        pasta_inicial: Path = Path("."),
+        pasta_inicial: Path = DEFAULT_PDF_DIR,
         analyzer: EngineAnalyzer | None = None,
         pasta_de_estudos: Path | None = None,
         recorte: Callable[[Ancora], Any] = lambda _ancora: None,

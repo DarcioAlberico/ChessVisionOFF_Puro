@@ -51,6 +51,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from chess_diagram_ocr.config import DEFAULT_PDF_DIR
 from chess_diagram_ocr.djvu_io import FILTRO_DE_LIVROS, e_djvu, ja_convertido
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
@@ -219,7 +220,7 @@ class PainelDoPdf(QWidget):
         *,
         dpi: Callable[[], int],
         pagina_inicial_de: Callable[[Path], int] = lambda _livro: 0,
-        pasta_inicial: Path = Path("."),
+        pasta_inicial: Path = DEFAULT_PDF_DIR,
         rasterizar_ao_fundo: bool | None = None,
     ) -> None:
         super().__init__(parent)
