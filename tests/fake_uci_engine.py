@@ -16,7 +16,9 @@ processo" medir o caminho de degradação em vez do caminho normal. O que ele re
 
 from __future__ import annotations
 
+import os
 import sys
+from pathlib import Path
 
 import chess
 
@@ -29,6 +31,13 @@ ENGINE_NAME = "FakeEngine 1.0"
 
 OPCOES: dict[str, str] = {"Hash": "16", "Threads": "1", "MultiPV": "1", "SyzygyPath": ""}
 """O que o motor recebeu por `setoption`, com os padrões que ele anuncia no `uci`."""
+
+ENV_CAI_UMA_VEZ = "CVOFF_MOTOR_CAI_UMA_VEZ"
+"""Caminho de uma marca: sem ela, o primeiro `go` cria a marca e o processo sai com código 3 (S-875).
+
+É o motor que cai no meio da análise e volta quando reaberto -- o processo seguinte acha a marca e
+responde. Vai pelo ambiente pela mesma razão que o caminho do interpretador vai (S-434): o `.bat`
+do teste fica ASCII e não carrega caminho nenhum."""
 
 
 def _responder(linha: str, board: chess.Board) -> chess.Board:
@@ -53,8 +62,16 @@ def _responder(linha: str, board: chess.Board) -> chess.Board:
     elif comando == "position":
         board = _posicao(partes)
     elif comando == "go":
+        _cair_se_for_a_primeira_vez()
         _analisar(board, partes)
     return board
+
+
+def _cair_se_for_a_primeira_vez() -> None:
+    marca = os.environ.get(ENV_CAI_UMA_VEZ, "")
+    if marca and not Path(marca).exists():
+        Path(marca).write_bytes(b"caiu\n")
+        sys.exit(3)
 
 
 def _guardar_opcao(partes: list[str]) -> None:

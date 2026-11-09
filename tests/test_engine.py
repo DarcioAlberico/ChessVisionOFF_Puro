@@ -264,6 +264,31 @@ class AnalyzerTests(unittest.TestCase):
             motor.analyse(chess.Board())
             self.assertIs(motor._engine, primeiro)
 
+    def test_o_motor_que_caiu_e_reaberto_na_proxima_analise(self) -> None:
+        """**O motor que morria deixava a sala sem motor até trocar o binário** (S-875).
+
+        `EngineTerminatedError` virava `RuntimeError`, mas `_engine` seguia apontando para o
+        processo morto, e `start()` sai cedo quando ele não é `None`: toda análise seguinte falhava
+        com "engine event loop dead". O motor falso aqui sai com código 3 no primeiro `go` e
+        responde no processo seguinte; a análise que pegou a queda falha, a próxima responde.
+        """
+        from unittest import mock
+
+        from fake_uci_engine import ENV_CAI_UMA_VEZ
+
+        pasta = pasta_temporaria_da_classe(type(self), prefixo="cvoff-engine-")
+        chamadas = {
+            "analyse": lambda motor: motor.analyse(chess.Board()).best_move_san,
+            "analyse_multi": lambda motor: motor.analyse_multi(chess.Board(), count=2)[0].best_move_san,
+            "mate_in": lambda motor: motor.mate_in(chess.Board(), 2, time_s=0.2).best_move_san,
+        }
+        for nome, chamar in chamadas.items():
+            with self.subTest(nome), mock.patch.dict(os.environ, {ENV_CAI_UMA_VEZ: str(pasta / f"{nome}.caiu")}):
+                with EngineAnalyzer(self.launcher, movetime_ms=100) as motor:
+                    with self.assertRaises(RuntimeError):
+                        chamar(motor)
+                    self.assertTrue(chamar(motor), "a análise depois da queda tem de devolver um lance")
+
     def test_closing_twice_is_harmless(self) -> None:
         motor = EngineAnalyzer(self.launcher, movetime_ms=100)
         motor.start()
