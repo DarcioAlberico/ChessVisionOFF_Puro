@@ -33,10 +33,8 @@ Abrir o livro carrega a sala, e pronto.
 
 from __future__ import annotations
 
-import hashlib
 import io
 import logging
-import re
 from collections.abc import Iterator
 from pathlib import Path
 from typing import TextIO
@@ -48,6 +46,7 @@ from .atomic_io import atomic_write_text
 from .config import DATA_DIR
 from .estudo import Estudo, Sala
 from .pgn_do_livro import FluxoTolerante
+from .ui.livros import nome_e_impressao
 
 logger = logging.getLogger(__name__)
 
@@ -73,9 +72,6 @@ ESPERA_SEGUNDOS = 4.0
 """Quanto tempo de **inatividade** antes de gravar. É o número da S-255, e pela mesma razão: mais
 longo que a pausa entre dois lances e mais curto que a pausa entre duas ideias."""
 
-_SUFIXO_DA_CHAVE = 10
-_LIMPEZA = re.compile(r"[^A-Za-z0-9_.-]+")
-
 
 def chave_de(documento: str | Path) -> str:
     """A chave estável daquele livro: nome legível mais a impressão do caminho resolvido.
@@ -83,13 +79,7 @@ def chave_de(documento: str | Path) -> str:
     **Resolvido**, como `ui/state._history_key` e `text/rascunho.chave_de`: dois livros de mesmo nome
     em pastas diferentes têm salas diferentes, e é exatamente o caso que aqueles módulos já tratam.
     """
-    bruto = str(documento or "sem-documento")
-    try:
-        bruto = str(Path(bruto).resolve())
-    except OSError:  # pragma: no cover - caminho de rede fora do ar
-        pass
-    impressao = hashlib.sha1(bruto.encode("utf-8")).hexdigest()[:_SUFIXO_DA_CHAVE]
-    nome = _LIMPEZA.sub("_", Path(bruto).stem)[:40] or "estudo"
+    nome, impressao = nome_e_impressao(documento, sem_nome="estudo")
     return f"{nome}_{impressao}"
 
 

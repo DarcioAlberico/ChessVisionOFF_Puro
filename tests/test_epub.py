@@ -251,6 +251,17 @@ class CapituloDoTextoTests(unittest.TestCase):
         capitulo = ET.fromstring(sem_titulo[f"{epub.PASTA}/folha_001.xhtml"])
         self.assertIn("livro.pdf — folha 58", capitulo.find(f".//{XHTML}h1").text or "")  # type: ignore[union-attr]
 
+    def test_sem_metadados_o_titulo_do_livro_e_o_da_folha(self) -> None:
+        """O mesmo título que o DOCX dá (S-864): `livro.pdf — folha 58`, ou o do programa sem página."""
+        for documento, esperado in (
+            (_documento(), "livro.pdf — folha 58"),
+            (rico.de_texto("Só o que alguém escreveu."), "Texto do ChessVisionOFF"),
+        ):
+            with self.subTest(esperado=esperado):
+                _, membros = self._exportar(documento)
+                titulo = ET.fromstring(membros[f"{epub.PASTA}/{epub.OPF}"]).find(f".//{DC}title")
+                self.assertEqual(esperado, titulo.text)  # type: ignore[union-attr]
+
     def test_o_diagrama_lido_vira_svg_e_o_sem_nada_vira_a_marca(self) -> None:
         """**A marca nunca desaparece** (S-250): é o `alt` da imagem, e é o parágrafo quando não há
         imagem. E o relatório distingue os dois, porque "não havia" e "havia e saiu só a marca" são

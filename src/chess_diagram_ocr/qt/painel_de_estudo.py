@@ -80,6 +80,7 @@ from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import sala_arquivos as arquivos
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra_da_sala import BarraDaSala
+from chess_diagram_ocr.qt.dialogos import perguntar_recusando
 from chess_diagram_ocr.qt.motor import BarraDeAvaliacao
 from chess_diagram_ocr.qt.rotulo import CampoQueAvisaQueContinua
 from chess_diagram_ocr.qt.sala_cabecalho import CabecalhoDaPartida, JanelaDoCabecalho
@@ -891,25 +892,12 @@ class PainelDeEstudo(QWidget):
             if sempre
             else "e não está atado a um diagrama do livro, então ele não será guardado"
         )
-        return self._perguntar(
+        return perguntar_recusando(
+            self,
             "Estudo em andamento",
             f"Este estudo tem {self.estudo.contagem_de_lances()} lance(s) {onde}."
             f"\n\nQuer mesmo {o_que}?",
         )
-
-    def _perguntar(self, titulo: str, pergunta: str) -> bool:
-        """Sim/Não com **Não como padrão**, que é o `default=messagebox.NO` do outro lado.
-
-        Num `QMessageBox` o padrão é o primeiro botão, e as perguntas que passam por aqui descartam
-        análise humana: um `Enter` de reflexo não pode ser a confirmação.
-        """
-        caixa = QMessageBox(self)
-        caixa.setIcon(QMessageBox.Icon.Question)
-        caixa.setWindowTitle(titulo)
-        caixa.setText(pergunta)
-        caixa.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        caixa.setDefaultButton(QMessageBox.StandardButton.No)
-        return caixa.exec() == QMessageBox.StandardButton.Yes
 
     def copy_fen(self) -> None:
         from PyQt6.QtWidgets import QApplication
@@ -1104,7 +1092,8 @@ class PainelDeEstudo(QWidget):
         lances, anotado = _tamanho_da_subarvore(raizes)
         if lances <= 1 and not anotado:
             return True
-        return self._perguntar(
+        return perguntar_recusando(
+            self,
             "Apagar",
             f"Isto apaga {lances} lance(s)" + (" e a anotação deles" if anotado else "") + ".\n\nApagar?",
         )

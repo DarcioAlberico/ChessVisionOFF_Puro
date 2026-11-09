@@ -262,6 +262,13 @@ class TextoTests(unittest.TestCase):
         self.assertEqual(membros["word/media/folha_001_bloco_002.png"], png)
         self.assertEqual(docx_saida.verificar(_membros_para_bytes(membros)), [])
 
+    def test_sem_metadados_o_titulo_do_arquivo_e_o_da_folha(self) -> None:
+        """O mesmo título que o EPUB dá (S-864): `livro.pdf — folha 58`, ou o do programa sem página."""
+        _, membros = self._exportar(_documento())
+        self.assertIn("<dc:title>livro.pdf — folha 58</dc:title>", membros["docProps/core.xml"].decode("utf-8"))
+        _, sem_pagina = self._exportar(rico.de_texto("Só o que alguém escreveu."))
+        self.assertIn("<dc:title>Texto do ChessVisionOFF</dc:title>", sem_pagina["docProps/core.xml"].decode("utf-8"))
+
 
 def _membros_para_bytes(membros: dict[str, bytes]) -> bytes:
     buffer = io.BytesIO()

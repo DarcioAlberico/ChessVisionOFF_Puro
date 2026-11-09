@@ -33,7 +33,6 @@ continua lá para a próxima abertura.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import re
 from dataclasses import dataclass
@@ -42,6 +41,7 @@ from pathlib import Path
 
 from ..config import DATA_DIR
 from ..relogio import do_arquivo
+from ..ui.livros import nome_e_impressao
 from . import arquivo
 from .rico import DocumentoRico
 
@@ -75,14 +75,6 @@ disco. Não é relógio -- ver o cabeçalho."""
 # rascunho, e a correção da folha 1 sumia quando a folha 9 gravava o dela. Um rascunho é uma folha
 # de texto, poucos KB; o que sai da pasta sai porque chegou a um lugar melhor (`descartar`).
 
-_SUFIXO_DA_CHAVE = 10
-"""Quantos caracteres da impressão do caminho entram no nome do arquivo.
-
-Dez hexadecimais são 40 bits: numa pasta de dezenas de rascunhos, a chance de dois caminhos
-diferentes colidirem é desprezível, e o nome continua legível."""
-
-_LIMPEZA = re.compile(r"[^A-Za-z0-9_.-]+")
-
 
 @dataclass(frozen=True)
 class Rascunho:
@@ -105,13 +97,7 @@ def chave_de(documento: str | Path, folha: int) -> str:
     rascunhos diferentes, e é exatamente o caso que aquele módulo já tratava. Caminho de rede fora
     do ar não levanta -- o não resolvido ainda serve de chave.
     """
-    bruto = str(documento or "sem-documento")
-    try:
-        bruto = str(Path(bruto).resolve())
-    except OSError:  # pragma: no cover - caminho de rede fora do ar
-        pass
-    impressao = hashlib.sha1(bruto.encode("utf-8")).hexdigest()[:_SUFIXO_DA_CHAVE]
-    nome = _LIMPEZA.sub("_", Path(bruto).stem)[:40] or "texto"
+    nome, impressao = nome_e_impressao(documento, sem_nome="texto")
     return f"{nome}_f{int(folha) + 1}_{impressao}"
 
 

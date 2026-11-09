@@ -98,6 +98,22 @@ class ArquivoDaSalaTests(unittest.TestCase):
             estudo_arquivo.caminho_de(um, pasta=self.pasta), estudo_arquivo.caminho_de(dois, pasta=self.pasta)
         )
 
+    def test_a_sala_e_o_rascunho_nomeiam_o_livro_do_mesmo_jeito(self) -> None:
+        """O nome do arquivo é contrato com o disco: mudar uma vírgula dele perde as salas e os
+        rascunhos já gravados. Nome legível do `stem`, e dez hexadecimais do sha1 do caminho
+        resolvido, sem `normcase` (S-864: a regra mora em `ui/livros.nome_e_impressao`)."""
+        import hashlib
+
+        from chess_diagram_ocr.text import rascunho
+
+        livro = self.pasta / "sub" / ".." / "Meu Livro (2ª ed.).pdf"
+        impressao = hashlib.sha1(str(livro.resolve()).encode("utf-8")).hexdigest()[:10]
+        self.assertEqual(f"Meu_Livro_2_ed.__{impressao}", estudo_arquivo.chave_de(livro))
+        self.assertEqual(f"Meu_Livro_2_ed.__f8_{impressao}", rascunho.chave_de(livro, 7))
+        sem = hashlib.sha1(str(Path("sem-documento").resolve()).encode("utf-8")).hexdigest()[:10]
+        self.assertEqual(f"sem-documento_{sem}", estudo_arquivo.chave_de(""))
+        self.assertEqual(f"sem-documento_f1_{sem}", rascunho.chave_de("", 0))
+
     def test_o_nome_do_arquivo_e_legivel_por_quem_abrir_a_pasta(self) -> None:
         self.assertTrue(estudo_arquivo.chave_de(self.livro).startswith("Secrets_"))
 

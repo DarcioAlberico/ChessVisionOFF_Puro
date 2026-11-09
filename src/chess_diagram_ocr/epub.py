@@ -76,6 +76,9 @@ __all__ = [
     "exportar_texto_epub",
     "exportar_textos_epub",
     "folha_de_estilo",
+    "metadados_da_folha",
+    "metadados_do_estudo",
+    "titulo_da_folha",
     "verificar",
 ]
 
@@ -215,8 +218,14 @@ def exportar_estudo_epub(
     com_fen: bool = False,
 ) -> Relatorio:
     """Um estudo, um capítulo. O título do livro é o do estudo quando ninguém deu outro."""
-    dados = metadados or Metadados(titulo=estudo_paragrafos.titulo_do_estudo(estudo))
-    return exportar_estudos_epub([estudo], caminho, dados, largura_em=largura_em, com_fen=com_fen)
+    return exportar_estudos_epub(
+        [estudo], caminho, metadados_do_estudo(metadados, estudo), largura_em=largura_em, com_fen=com_fen
+    )
+
+
+def metadados_do_estudo(metadados: Metadados | None, estudo: Estudo) -> Metadados:
+    """Os dados de um estudo exportado sozinho: os que vieram, ou o título do estudo. Valem no EPUB e no DOCX."""
+    return metadados or Metadados(titulo=estudo_paragrafos.titulo_do_estudo(estudo))
 
 
 def exportar_estudos_epub(
@@ -304,10 +313,20 @@ def exportar_texto_epub(
     largura_em: float = diagrama_svg.LARGURA_PADRAO_EM,
 ) -> Relatorio:
     """Uma folha do livro, um capítulo. `imagens` é `bloco -> PNG` para o diagrama sem posição lida."""
-    dados = metadados or Metadados(titulo=_titulo_do_texto(documento))
     return exportar_textos_epub(
-        [documento], caminho, dados, imagens=imagens, cores=cores, corpos=corpos, largura_em=largura_em
+        [documento],
+        caminho,
+        metadados_da_folha(metadados, documento),
+        imagens=imagens,
+        cores=cores,
+        corpos=corpos,
+        largura_em=largura_em,
     )
+
+
+def metadados_da_folha(metadados: Metadados | None, documento: rico.DocumentoRico) -> Metadados:
+    """Os dados de uma folha exportada sozinha: os que vieram, ou `titulo_da_folha`. Valem no EPUB e no DOCX."""
+    return metadados or Metadados(titulo=titulo_da_folha(documento))
 
 
 def exportar_textos_epub(
@@ -401,7 +420,7 @@ def capitulo_do_texto(
             montador.pedaco(html.corrida(replace(corrida, texto=pedaco, atributos=atributos)), pedaco, e_titulo)
     montador.fechar()
 
-    titulo = _titulo_do_texto(documento)
+    titulo = titulo_da_folha(documento)
     if not montador.teve_h1:
         partes.insert(0, f"<h1>{exportacao.texto_xml(titulo)}</h1>")
     return Capitulo(id=f"folha_{indice:03d}", titulo=titulo, corpo="\n".join(partes)), contagem
@@ -470,7 +489,9 @@ def _diagrama_do_texto(
     return f'<p class="marca">{exportacao.texto_xml(marca)}</p>'
 
 
-def _titulo_do_texto(documento: rico.DocumentoRico) -> str:
+def titulo_da_folha(documento: rico.DocumentoRico) -> str:
+    """O nome de uma folha exportada, `livro.pdf — folha 58`: o título do arquivo sem metadados, e o do
+    capítulo (ou da seção do DOCX) que não traz título. Um lugar só, para os dois formatos dizerem o mesmo."""
     pagina = documento.origem
     if pagina is None:
         return "Texto do ChessVisionOFF"

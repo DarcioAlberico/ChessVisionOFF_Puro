@@ -2504,6 +2504,21 @@ O par `pdf_substituicao.renderizar_*` espera a D7 (S-881): pode sumir.
 
 **Aceite.** Nenhum par ≥ 0,8 sem decisão escrita.
 
+**Entregue** (2026-11-09): juntaram-se `_titulo_do_texto` (`epub.titulo_da_folha`, com
+`metadados_da_folha` e `metadados_do_estudo`, que o DOCX chama), a pergunta que recusa
+(`qt/dialogos.perguntar_recusando`), o Enter da tabela e o rodapé sem botão padrão
+(`TabelaQt.enter_escolhe` e `qt/tabela.rodape_sem_botao_padrao`), o anel
+(`qt/desenho_de_marcas.pintar_anel`), a chave da sala e do rascunho (`ui/livros.nome_e_impressao`,
+que **não** é `ChaveDoLivro.curta`: o nome dos arquivos no disco é outro) e as linhas da camada
+(`cli/texto_ordem.linhas_da_camada`); e, fora da lista, três pares do mesmo módulo
+(`trilho._ir_para`, `italico._mediana_dos_boxes`, `motor_declarado._por_que_nao_serve`). Os
+exportadores não viraram "um percurso com dois escritores": o percurso já é um só,
+`estudo_paragrafos.paragrafos`, e o que se repetia era o título padrão; sobra a assinatura de cada
+formato (cm e em), declarada. Treze pares ficaram com `proposito` no `dryer.json` (45 para 38
+pares). O par de `pdf_substituicao` saiu com a S-881, e o da sala com a S-866. Sem decisão
+continuam os `parse_args` e `build_parser` dos CLIs (S-857) e `PainelDeTexto.desfazer`/`refazer`,
+que é da S-865.
+
 ## S-881 · A substituição de diagrama no PDF: ligar ou retirar
 
 **Problema** (confirmado). `pdf_substituicao.py` (917 linhas), `ui/substituicao.py` e

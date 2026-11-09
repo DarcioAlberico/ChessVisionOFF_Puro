@@ -92,6 +92,7 @@ __all__ = [
     "perguntar_bases",
     "perguntar_descarte",
     "perguntar_escopo",
+    "perguntar_recusando",
 ]
 
 
@@ -135,6 +136,25 @@ def perguntar_descarte(pai: QWidget | None, paginas: Sequence[int], *, livro: st
         QMessageBox.StandardButton.No,
     )
     return resposta == QMessageBox.StandardButton.Yes
+
+
+def perguntar_recusando(pai: QWidget | None, titulo: str, pergunta: str, *, aviso: bool = False) -> bool:
+    """Sim/Não -- ou OK/Cancelar com o ícone de aviso, com `aviso` -- e **a recusa como padrão**.
+
+    Num `QMessageBox` o padrão é o primeiro botão, e as perguntas que passam por aqui apagam ou
+    descartam trabalho humano: um `Enter` de reflexo não pode ser a confirmação. É o
+    `default=messagebox.NO` (e o `CANCEL`) do Tk, e mora aqui para a galeria e a sala não
+    discordarem sobre ele (S-864).
+    """
+    botoes = QMessageBox.StandardButton
+    aceitar, recusar = (botoes.Ok, botoes.Cancel) if aviso else (botoes.Yes, botoes.No)
+    caixa = QMessageBox(pai)
+    caixa.setIcon(QMessageBox.Icon.Warning if aviso else QMessageBox.Icon.Question)
+    caixa.setWindowTitle(titulo)
+    caixa.setText(pergunta)
+    caixa.setStandardButtons(aceitar | recusar)
+    caixa.setDefaultButton(recusar)
+    return caixa.exec() == aceitar
 
 
 def caixa_de_falha(pai: QWidget | None, titulo: str, mensagem: str, detalhe: str = "") -> QMessageBox:

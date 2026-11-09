@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 
 import chess
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, pixels_diferentes, renderizar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, botoes_do_rodape, descartar, pixels_diferentes, renderizar
 
 from chess_diagram_ocr import arvore_de_aberturas as arv
 
@@ -162,6 +162,33 @@ class DialogoDaArvoreTests(unittest.TestCase):
         self.dialogo.tabela.setCurrentItem(self.dialogo.tabela.topLevelItem(2))
         self.dialogo.jogar_selecionado()
         self.assertEqual(["e4"], escolhidos)
+
+    def test_a_tecla_Enter_na_tabela_joga_a_linha_marcada(self) -> None:
+        """A tecla de verdade, e não o método: o atalho é da tabela, e o botão padrão do diálogo não o rouba."""
+        self._perguntar()
+        escolhidos: list[str] = []
+        self.dialogo.lance_escolhido.connect(escolhidos.append)
+        self.dialogo.show()
+        self.dialogo.activateWindow()
+        self.dialogo.tabela.setFocus()
+        self.app.processEvents()
+        self.dialogo.tabela.setCurrentItem(self.dialogo.tabela.topLevelItem(2))
+        QTest.keyClick(self.dialogo.tabela, Qt.Key.Key_Return)
+        self.app.processEvents()
+        self.assertEqual(["e4"], escolhidos, "o Enter não chegou à tabela")
+
+    def test_o_rodape_nao_tem_botao_padrao_e_o_primeiro_e_o_primario(self) -> None:
+        """Com `autoDefault`, o Enter da lista dispararia o primeiro botão em vez do atalho da tabela."""
+        self.assertEqual(
+            [
+                ("Jogar o lance", False, "PRIMARIO"),
+                ("Ver as partidas…", False, "NEUTRO"),
+                ("<vão>", False, None),
+                ("Construir a árvore…", False, "NEUTRO"),
+                ("Fechar", False, "NEUTRO"),
+            ],
+            botoes_do_rodape(self.dialogo),
+        )
 
     def test_reordenada_pelo_cabecalho_a_escolha_continua_certa(self) -> None:
         """Com a ordenação ligada, a altura na tela deixa de ser a posição na lista -- e sem

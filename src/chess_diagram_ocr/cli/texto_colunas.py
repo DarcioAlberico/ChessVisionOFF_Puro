@@ -117,9 +117,9 @@ def regioes_pela_camada(page: Any) -> list[Any] | None:
     from ..text.leitor import calha_de_linhas
     from ..text.quadros import quadros_da_camada
     from ..text.regioes import detectar_regioes
-    from .texto_ordem import _linhas_da_camada
+    from .texto_ordem import linhas_da_camada
 
-    linhas = _linhas_da_camada(page)
+    linhas = linhas_da_camada(page)
     if len(linhas) < MIN_LINHAS:
         return None
     caixas = [Caixa(int(b[0]), int(b[1]), int(b[2]), int(b[3])) for _, b in linhas]

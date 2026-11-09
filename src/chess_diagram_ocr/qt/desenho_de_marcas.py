@@ -19,7 +19,7 @@ from chess_diagram_ocr import marcas_de_casa as mc
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.ui import tokens
 
-__all__ = ["pintar_marca", "pintar_marcas", "pintar_traco"]
+__all__ = ["pintar_anel", "pintar_marca", "pintar_marcas", "pintar_traco"]
 
 RAIO_DA_BOLINHA = 0.2
 RAIO_DA_ESTRELA = 0.36
@@ -51,6 +51,23 @@ def _estrela(centro: QPointF, raio: float) -> QPolygonF:
         alcance = raio if passo % 2 == 0 else raio * MIOLO_DA_ESTRELA
         pontos.append(QPointF(centro.x() + alcance * math.cos(angulo), centro.y() + alcance * math.sin(angulo)))
     return QPolygonF(pontos)
+
+
+def pintar_anel(pintor: QPainter, casa: QRectF, cor: str, *, espessura: float, tracejado: bool = False) -> None:
+    """O contorno da casa **por dentro dela**: caneta de `espessura` (2 px no mínimo), recuada meia largura.
+
+    É o anel de seleção, de apontada e de hesitação do recorte e do tabuleiro editável (S-864): o
+    recuo é o que deixa dois anéis vizinhos lado a lado em vez de um sobre o outro. Quem chama diz a
+    espessura, porque cada tabuleiro tem a sua fração da casa.
+    """
+    caneta = QPen(QColor(cor))
+    caneta.setWidthF(max(2.0, espessura))
+    if tracejado:
+        caneta.setStyle(Qt.PenStyle.DashLine)
+    pintor.setPen(caneta)
+    pintor.setBrush(Qt.BrushStyle.NoBrush)
+    folga = caneta.widthF() / 2.0
+    pintor.drawRect(casa.adjusted(folga, folga, -folga, -folga))
 
 
 def pintar_marca(pintor: QPainter, tipo: str, casa: QRectF, *, cor_unica: str | None = None) -> None:

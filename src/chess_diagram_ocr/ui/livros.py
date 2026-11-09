@@ -25,10 +25,11 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
-__all__ = ["ChaveDoLivro", "caminho_canonico", "chave_do_livro", "mesmo_livro"]
+__all__ = ["ChaveDoLivro", "caminho_canonico", "chave_do_livro", "mesmo_livro", "nome_e_impressao"]
 
 Caminho = str | os.PathLike[str]
 
@@ -77,3 +78,28 @@ def mesmo_livro(um: Caminho | None, outro: Caminho | None) -> bool:
     """
     chave = chave_do_livro(um)
     return chave is not None and chave == chave_do_livro(outro)
+
+
+_LIMPEZA_DO_NOME = re.compile(r"[^A-Za-z0-9_.-]+")
+_TAMANHO_DA_IMPRESSAO = 10
+"""Dez hexadecimais são 40 bits: numa pasta de dezenas de arquivos de trabalho, a chance de dois
+caminhos diferentes colidirem é desprezível, e o nome continua legível."""
+
+
+def nome_e_impressao(documento: Caminho | None, *, sem_nome: str) -> tuple[str, str]:
+    """O nome legível do livro e a impressão do caminho dele: as duas partes do nome de um arquivo
+    de trabalho daquele livro -- a sala de estudo (`estudo_arquivo.chave_de`) e o rascunho de cada
+    folha (`text/rascunho.chave_de`). `sem_nome` é o nome quando o do arquivo não deixa nada.
+
+    **Não é `ChaveDoLivro.curta`, e não pode passar a ser.** A impressão é o sha1 do caminho
+    resolvido **sem** `normcase`, e o caminho que não resolve entra como veio, sem `abspath`: é a
+    regra com que as salas e os rascunhos que estão no disco foram nomeados, e mudar uma vírgula
+    dela faz a pessoa perder de vista o trabalho guardado (S-864: as duas cópias viraram esta).
+    """
+    bruto = str(documento or "sem-documento")
+    try:
+        bruto = str(Path(bruto).resolve())
+    except OSError:  # pragma: no cover - caminho de rede fora do ar
+        pass
+    impressao = hashlib.sha1(bruto.encode("utf-8")).hexdigest()[:_TAMANHO_DA_IMPRESSAO]
+    return _LIMPEZA_DO_NOME.sub("_", Path(bruto).stem)[:40] or sem_nome, impressao

@@ -30,11 +30,12 @@ from collections.abc import Iterable
 from typing import Any
 
 from PyQt6.QtCore import QEvent, QPoint, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFocusEvent, QKeyEvent, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap
+from PyQt6.QtGui import QFocusEvent, QKeyEvent, QMouseEvent, QPainter, QPaintEvent, QPixmap
 from PyQt6.QtWidgets import QToolTip, QWidget
 
 from chess_diagram_ocr.fen_utils import square_name
 from chess_diagram_ocr.qt import tema
+from chess_diagram_ocr.qt.desenho_de_marcas import pintar_anel
 from chess_diagram_ocr.qt.tabuleiro import TabuleiroQt
 from chess_diagram_ocr.ui import board_edit, tokens
 from chess_diagram_ocr.ui import recorte_do_diagrama as regra
@@ -491,14 +492,9 @@ class TabuleiroEditavel(TabuleiroQt):
         return QRectF(x0, y0, x1 - x0, y1 - y0)
 
     def _anel(self, pintor: QPainter, geo: BoardGeometry, indice: int, cor: str, *, tracejado: bool = False) -> None:
-        caneta = QPen(QColor(cor))
-        caneta.setWidthF(max(2.0, geo.cell * LARGURA_DO_CONTORNO))
-        if tracejado:
-            caneta.setStyle(Qt.PenStyle.DashLine)
-        pintor.setPen(caneta)
-        pintor.setBrush(Qt.BrushStyle.NoBrush)
-        folga = caneta.widthF() / 2.0
-        pintor.drawRect(self._retangulo(geo, indice).adjusted(folga, folga, -folga, -folga))
+        pintar_anel(
+            pintor, self._retangulo(geo, indice), cor, espessura=geo.cell * LARGURA_DO_CONTORNO, tracejado=tracejado
+        )
 
     def _desenhar_marcas(self, pintor: QPainter, geo: BoardGeometry) -> None:
         """Seleção, casa corrigida e casa problemática -- **nesta ordem, e ela é a do Tk**.

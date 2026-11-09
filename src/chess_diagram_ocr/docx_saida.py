@@ -50,7 +50,7 @@ from pathlib import Path
 
 from chess_diagram_ocr import diagrama_png, diagrama_svg, estudo_paragrafos
 from chess_diagram_ocr.atomic_io import atomic_write_bytes
-from chess_diagram_ocr.epub import PRODUTOR, Metadados
+from chess_diagram_ocr.epub import PRODUTOR, Metadados, metadados_da_folha, metadados_do_estudo, titulo_da_folha
 from chess_diagram_ocr.estudo import Estudo
 from chess_diagram_ocr.text import documento as _documento
 from chess_diagram_ocr.text import exportacao, rico
@@ -398,8 +398,9 @@ def exportar_estudo_docx(
     com_fen: bool = False,
 ) -> Relatorio:
     """Um estudo, um documento. O título do arquivo é o do estudo quando ninguém deu outro."""
-    dados = metadados or Metadados(titulo=estudo_paragrafos.titulo_do_estudo(estudo))
-    return exportar_estudos_docx([estudo], caminho, dados, largura_cm=largura_cm, com_fen=com_fen)
+    return exportar_estudos_docx(
+        [estudo], caminho, metadados_do_estudo(metadados, estudo), largura_cm=largura_cm, com_fen=com_fen
+    )
 
 
 def exportar_estudos_docx(
@@ -465,9 +466,14 @@ def exportar_texto_docx(
     largura_cm: float = LARGURA_PADRAO_CM,
 ) -> Relatorio:
     """Uma folha do livro. `imagens` é `bloco -> PNG` para o diagrama sem posição lida."""
-    dados = metadados or Metadados(titulo=_titulo_do_texto(documento))
     return exportar_textos_docx(
-        [documento], caminho, dados, imagens=imagens, cores=cores, corpos=corpos, largura_cm=largura_cm
+        [documento],
+        caminho,
+        metadados_da_folha(metadados, documento),
+        imagens=imagens,
+        cores=cores,
+        corpos=corpos,
+        largura_cm=largura_cm,
     )
 
 
@@ -559,7 +565,7 @@ def _texto(
                 montador.pedaco(corrida, formatador.run(corrida, pedaco), pedaco)
     montador.fechar()
     if not montador.teve_titulo:
-        doc.corpo.insert(inicio, _paragrafo_de_titulo(_titulo_do_texto(documento)))
+        doc.corpo.insert(inicio, _paragrafo_de_titulo(titulo_da_folha(documento)))
         doc.paragrafos += 1
     return so_marca
 
@@ -639,14 +645,6 @@ def _svg_de_arquivo(fen: str, *, virado: bool = False, largura_cm: float, titulo
     return diagrama_svg.svg_da_posicao(
         fen, virado=virado, largura_em=largura_cm, unidade="cm", declaracao=True, titulo=titulo
     ).encode("utf-8")
-
-
-def _titulo_do_texto(documento: rico.DocumentoRico) -> str:
-    pagina = documento.origem
-    if pagina is None:
-        return "Texto do ChessVisionOFF"
-    origem = Path(pagina.documento or "texto").name
-    return f"{origem} — folha {pagina.pagina + 1}"
 
 
 # ------------------------------------------------------------------------------ as partes

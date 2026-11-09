@@ -59,6 +59,48 @@ class DeclaracaoTests(unittest.TestCase):
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
+class PerguntaQueRecusaTests(unittest.TestCase):
+    """S-864: a pergunta cujo padrão é a recusa mora num lugar, e a galeria e a sala a chamam."""
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.addCleanup(self.app.processEvents)
+
+    def _perguntar(self, resposta: object, **opcoes: bool) -> tuple[bool, qt_dialogos.QMessageBox]:
+        Caixa = qt_dialogos.QMessageBox
+        vistas: list[qt_dialogos.QMessageBox] = []
+
+        def espiar(caixa: qt_dialogos.QMessageBox) -> int:
+            vistas.append(caixa)
+            return int(resposta)  # type: ignore[call-overload]
+
+        with mock.patch.object(Caixa, "exec", espiar):
+            escolheu = qt_dialogos.perguntar_recusando(None, "Título", "Quer mesmo?", **opcoes)
+        (caixa,) = vistas
+        self.addCleanup(caixa.deleteLater)
+        return escolheu, caixa
+
+    def test_sim_ou_nao_com_nao_de_padrao(self) -> None:
+        Caixa = qt_dialogos.QMessageBox
+        escolheu, caixa = self._perguntar(Caixa.StandardButton.No)
+        self.assertFalse(escolheu)
+        self.assertEqual(caixa.icon(), Caixa.Icon.Question)
+        self.assertEqual((caixa.windowTitle(), caixa.text()), ("Título", "Quer mesmo?"))
+        self.assertEqual(caixa.standardButtons(), Caixa.StandardButton.Yes | Caixa.StandardButton.No)
+        self.assertEqual(caixa.defaultButton(), caixa.button(Caixa.StandardButton.No))
+        self.assertTrue(self._perguntar(Caixa.StandardButton.Yes)[0])
+
+    def test_o_aviso_e_ok_ou_cancelar_com_cancelar_de_padrao(self) -> None:
+        Caixa = qt_dialogos.QMessageBox
+        escolheu, caixa = self._perguntar(Caixa.StandardButton.Cancel, aviso=True)
+        self.assertFalse(escolheu)
+        self.assertEqual(caixa.icon(), Caixa.Icon.Warning)
+        self.assertEqual(caixa.standardButtons(), Caixa.StandardButton.Ok | Caixa.StandardButton.Cancel)
+        self.assertEqual(caixa.defaultButton(), caixa.button(Caixa.StandardButton.Cancel))
+        self.assertTrue(self._perguntar(Caixa.StandardButton.Ok, aviso=True)[0])
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
 class BasesTests(unittest.TestCase):
     """A lista de `.pgn` com caixas de marcar."""
 

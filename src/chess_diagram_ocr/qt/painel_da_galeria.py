@@ -83,7 +83,7 @@ from chess_diagram_ocr.logging_setup import onde_esta_o_rastro
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
-from chess_diagram_ocr.qt.dialogos import DialogoDePartidas, perguntar_bases, perguntar_escopo
+from chess_diagram_ocr.qt.dialogos import DialogoDePartidas, perguntar_bases, perguntar_escopo, perguntar_recusando
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.foco_a_vista import seguir_o_foco
 from chess_diagram_ocr.qt.rotulo import RecorteElastico
@@ -1513,11 +1513,13 @@ class PainelDaGaleria(QWidget):
             self.estado.emit("Este diagrama não tem header declarado; não há o que limpar.")
             return
         listados = "\n".join(f"    {nome} = {valor}" for nome, valor in sorted(valores.items()))
-        if not self._confirmar_destrutivo(
+        if not perguntar_recusando(
+            self,
             "Limpar os headers",
             f"Apagar {len(valores)} header(s) deste diagrama?\n\n{listados}\n\n"
             "Só deste diagrama, e não dá para desfazer. O lance, a vez e a partida escolhida na "
             "lista de candidatas ficam como estão.",
+            aviso=True,
         ):
             self.estado.emit("Limpeza cancelada.")
             return
@@ -1526,21 +1528,6 @@ class PainelDaGaleria(QWidget):
         self._gravar()
         self.refresh(request_page=False)
         self.estado.emit(f"{len(apagados)} header(s) apagado(s) deste diagrama: {', '.join(apagados)}.")
-
-    def _confirmar_destrutivo(self, titulo: str, pergunta: str) -> bool:
-        """Uma pergunta de aviso cujo botão **padrão é cancelar**.
-
-        É o `default=messagebox.CANCEL` do outro lado, e ele não é zelo: as duas perguntas que
-        passam por aqui apagam trabalho manual, e num diálogo cujo padrão é OK um `Enter` de
-        reflexo confirma o que a pessoa ia ler.
-        """
-        caixa = QMessageBox(self)
-        caixa.setIcon(QMessageBox.Icon.Warning)
-        caixa.setWindowTitle(titulo)
-        caixa.setText(pergunta)
-        caixa.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
-        caixa.setDefaultButton(QMessageBox.StandardButton.Cancel)
-        return caixa.exec() == QMessageBox.StandardButton.Ok
 
     def copiar_para_todos(self) -> None:
         """Copia os headers deste diagrama para o livro inteiro -- **perguntando antes**.
@@ -1556,11 +1543,13 @@ class PainelDaGaleria(QWidget):
             return
         alvos = max(0, len(self.model) - 1)
         listados = "\n".join(f"    {nome} = {valor}" for nome, valor in valores.items())
-        if not self._confirmar_destrutivo(
+        if not perguntar_recusando(
+            self,
             "Copiar headers para todos",
             f"Copiar estes valores para os outros {alvos} diagrama(s) do livro?\n\n{listados}\n\n"
             "O que esses diagramas tiverem nesses campos será sobrescrito, e o valor anterior não "
             "poderá ser recuperado.",
+            aviso=True,
         ):
             self.estado.emit("Cópia cancelada.")
             return

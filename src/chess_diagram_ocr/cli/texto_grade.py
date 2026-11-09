@@ -216,17 +216,6 @@ class PaginaDeGrade:
     tau_grade: float | None = None
 
 
-def _linhas_da_camada(page: Any) -> list[tuple[str, tuple[float, float, float, float]]]:
-    saida: list[tuple[str, tuple[float, float, float, float]]] = []
-    for bloco in page.get_text("dict")["blocks"]:
-        for linha in bloco.get("lines", []):
-            texto = "".join(span["text"] for span in linha["spans"]).strip()
-            if texto:
-                x0, y0, x1, y1 = (float(v) for v in linha["bbox"])
-                saida.append((texto, (x0, y0, x1, y1)))
-    return saida
-
-
 PAGINAS_DE_PROCEDENCIA = 20
 """Quantas páginas se amostram para dizer de onde veio a camada de texto."""
 
@@ -306,9 +295,9 @@ def medir_pagina(page: Any) -> PaginaDeGrade | None:
         parece_grade,
     )
     from ..text.pagina import sequencia_de_leitura
-    from .texto_ordem import descidas, kendall_tau
+    from .texto_ordem import descidas, kendall_tau, linhas_da_camada
 
-    da_camada = _linhas_da_camada(page)
+    da_camada = linhas_da_camada(page)
     if len(da_camada) < MIN_LINHAS:
         return None
 

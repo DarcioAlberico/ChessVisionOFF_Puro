@@ -26,12 +26,14 @@ leitura inteira.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 
 from PyQt6.QtCore import QEvent, QObject, Qt
-from PyQt6.QtGui import QFontMetrics
-from PyQt6.QtWidgets import QHeaderView, QTreeWidget, QTreeWidgetItem, QWidget
+from PyQt6.QtGui import QFontMetrics, QKeySequence, QShortcut
+from PyQt6.QtWidgets import QHBoxLayout, QHeaderView, QPushButton, QTreeWidget, QTreeWidgetItem, QWidget
 
+from chess_diagram_ocr.qt import tema
+from chess_diagram_ocr.ui import estilos
 from chess_diagram_ocr.ui.tabela import (
     ANCORA_NUMERO,
     Coluna,
@@ -50,6 +52,7 @@ __all__ = [
     "largura_total",
     "montar",
     "precisa_de_barra_horizontal",
+    "rodape_sem_botao_padrao",
 ]
 
 _ALINHAMENTO: dict[str, Qt.AlignmentFlag] = {
@@ -371,6 +374,36 @@ class TabelaQt(QTreeWidget):
         """
         vista = self.viewport()
         return precisa_de_barra_horizontal(self.colunas, vista.width() if vista else self.width())
+
+    def enter_escolhe(self, acao: Callable[[], object]) -> None:
+        """O `Return` e o `Enter` sobre a tabela fazem `acao` -- por atalho **da tabela**, e não pelo
+        botão padrão do diálogo: num `QDialog` o Return vai para o botão com `autoDefault`, e quem
+        acabou de rolar a lista com as setas espera que ele abra a linha marcada, não que refaça a
+        busca. O rodapé sem botão padrão é a outra metade (`rodape_sem_botao_padrao`, S-864)."""
+        for tecla in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            atalho = QShortcut(QKeySequence(tecla), self)
+            atalho.setContext(Qt.ShortcutContext.WidgetShortcut)
+            atalho.activated.connect(acao)
+
+
+def rodape_sem_botao_padrao(esquerda: Sequence[QPushButton], direita: Sequence[QPushButton]) -> QHBoxLayout:
+    """O rodapé de um diálogo de tabela: os botões da `esquerda`, um vão, e os da `direita`.
+
+    **Nenhum é `autoDefault`**: com ele, o Enter da lista dispararia o primeiro botão do rodapé em
+    vez do atalho da tabela (`TabelaQt.enter_escolhe`) -- é a outra metade da mesma decisão. O
+    primeiro da esquerda é o primário, e os outros, neutros (S-864).
+    """
+    rodape = QHBoxLayout()
+    primario = esquerda[0]
+    for botao in (*esquerda, *direita):
+        botao.setAutoDefault(False)
+        tema.aplicar_papel(botao, estilos.PRIMARIO if botao is primario else estilos.NEUTRO)
+    for botao in esquerda:
+        rodape.addWidget(botao)
+    rodape.addStretch(1)
+    for botao in direita:
+        rodape.addWidget(botao)
+    return rodape
 
 
 def montar(pai: QWidget, colunas: Iterable[Coluna], *, ordenavel: bool = False) -> TabelaQt:

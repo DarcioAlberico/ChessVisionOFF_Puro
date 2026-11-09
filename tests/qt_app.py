@@ -225,6 +225,25 @@ def descartar(widget: Any) -> None:
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
 
 
+def botoes_do_rodape(dialogo: Any) -> list[tuple[str, bool, object]]:
+    """Os botões do rodapé do diálogo (o último leiaute dele), na ordem da tela: texto, `autoDefault`
+    e o papel declarado. O vão entre os grupos sai como `("<vão>", False, None)`."""
+    from PyQt6.QtWidgets import QPushButton
+
+    from chess_diagram_ocr.qt import tema
+
+    fora = dialogo.layout()
+    rodape = fora.itemAt(fora.count() - 1).layout()
+    saida: list[tuple[str, bool, object]] = []
+    for n in range(rodape.count()):
+        botao = rodape.itemAt(n).widget()
+        if isinstance(botao, QPushButton):
+            saida.append((botao.text(), botao.autoDefault(), botao.property(tema.PROPRIEDADE_DE_PAPEL)))
+        else:
+            saida.append(("<vão>", False, None))
+    return saida
+
+
 class _SinalAdiado:
     """O par `connect`/`emit` de um `pyqtSignal`, sem Qt: chama os alvos na hora do `emit`."""
 

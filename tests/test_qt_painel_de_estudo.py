@@ -424,6 +424,28 @@ class SalaTests(unittest.TestCase):
         self.assertEqual(vistas, ["FEN inválida"])
         self.assertEqual(painel.estudo.contagem_de_lances(), 1, "a árvore ficou como estava")
 
+    def test_largar_o_estudo_avulso_pergunta_com_nao_como_padrao(self) -> None:
+        """Um `Enter` de reflexo não descarta análise: o padrão da pergunta é Não (S-864)."""
+        from PyQt6.QtWidgets import QMessageBox
+
+        painel = self.sala()
+        painel.push_move(chess.Move.from_uci("e2e4"))
+        vistas: list[QMessageBox] = []
+        original = QMessageBox.exec
+
+        def espiar(caixa: QMessageBox) -> int:
+            vistas.append(caixa)
+            return int(QMessageBox.StandardButton.No)
+
+        QMessageBox.exec = espiar  # type: ignore[method-assign]
+        self.addCleanup(lambda: setattr(QMessageBox, "exec", original))
+        painel.campo_fen.setText("8/8/8/8/8/8/8/K6k w - - 0 1")
+        painel.apply_fen()
+        self.assertEqual(1, len(vistas))
+        self.assertEqual(vistas[0].icon(), QMessageBox.Icon.Question)
+        self.assertEqual(vistas[0].defaultButton(), vistas[0].button(QMessageBox.StandardButton.No))
+        self.assertEqual(painel.estudo.contagem_de_lances(), 1, "Não deixa o estudo como estava")
+
     def test_a_fen_estreita_mostra_o_comeco_e_nao_o_fim(self) -> None:
         """**A FEN saía cortada pela esquerda a 1024** (S-552, quinta rodada).
 

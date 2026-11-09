@@ -32,7 +32,7 @@ from typing import Any
 
 import chess
 from PyQt6.QtCore import QModelIndex, QObject, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QKeySequence, QPainter, QShortcut
+from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -55,9 +55,9 @@ from chess_diagram_ocr.arvore_de_aberturas import (
 from chess_diagram_ocr.eco import classificar
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
-from chess_diagram_ocr.qt.tabela import TabelaQt
+from chess_diagram_ocr.qt.tabela import TabelaQt, rodape_sem_botao_padrao
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva, slot_se_vivo
-from chess_diagram_ocr.ui import espaco, estilos, tokens
+from chess_diagram_ocr.ui import espaco, tokens
 from chess_diagram_ocr.ui.arvore_de_aberturas import (
     COLUNAS,
     CONTORNO_DA_BARRA,
@@ -226,10 +226,7 @@ class DialogoDaArvore(QDialog):
         self.tabela.setSelectionMode(TabelaQt.SelectionMode.SingleSelection)
         self.tabela.setItemDelegateForColumn(COLUNA_DA_BARRA, BarraDeResultado(self.tabela))
         self.tabela.itemClicked.connect(self._clicou)
-        for tecla in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            atalho = QShortcut(QKeySequence(tecla), self.tabela)
-            atalho.setContext(Qt.ShortcutContext.WidgetShortcut)
-            atalho.activated.connect(self.jogar_selecionado)
+        self.tabela.enter_escolhe(self.jogar_selecionado)
         fora.addWidget(self.tabela, 1)
 
         self.lbl_resumo = QLabel("", self)
@@ -240,10 +237,8 @@ class DialogoDaArvore(QDialog):
         self.btn_jogar.setEnabled(False)
 
     def _rodape(self) -> QHBoxLayout:
-        rodape = QHBoxLayout()
         self.btn_jogar = QPushButton("Jogar o lance", self)
         self.btn_jogar.clicked.connect(self.jogar_selecionado)
-        tema.aplicar_papel(self.btn_jogar, estilos.PRIMARIO)
         self.btn_partidas = QPushButton("Ver as partidas…", self)
         self.btn_partidas.clicked.connect(self.pedir_partidas)
         dica_em(
@@ -260,16 +255,7 @@ class DialogoDaArvore(QDialog):
         )
         fechar = QPushButton("Fechar", self)
         fechar.clicked.connect(self.reject)
-        for botao in (self.btn_jogar, self.btn_partidas, self.btn_construir, fechar):
-            botao.setAutoDefault(False)
-            if botao is not self.btn_jogar:
-                tema.aplicar_papel(botao, estilos.NEUTRO)
-        rodape.addWidget(self.btn_jogar)
-        rodape.addWidget(self.btn_partidas)
-        rodape.addStretch(1)
-        rodape.addWidget(self.btn_construir)
-        rodape.addWidget(fechar)
-        return rodape
+        return rodape_sem_botao_padrao((self.btn_jogar, self.btn_partidas), (self.btn_construir, fechar))
 
     # -------------------------------------------------------------------------- consulta
 
