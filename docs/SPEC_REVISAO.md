@@ -1334,7 +1334,7 @@ a usá-lo -- inclusive os 28 que a declaravam à mão. `run_main` cai para `sys.
 
 **Problema.** A tabela da S-126 dá três classes de falha -- 1 defeito do programa, 2 entrada
 inválida, 3 checkpoint --, e trinta e cinco `return` escreviam o número à mão. Em onze deles o
-número dizia a classe errada: `cvoff-evaluate` e `cvoff-experiment` classificavam "o arquivo de
+número dizia a classe errada: `cvoff-eval` e `cvoff-experiment` classificavam "o arquivo de
 splits que você apontou não existe" como **defeito do programa**; `cvoff-batch`, `cvoff-gallery`,
 `cvoff-field`, `cvoff-provenance` (duas vezes), `cvoff-texto-grade`, `cvoff-texto-ordem` e
 `cvoff-texto-placar` faziam o mesmo com o caminho vazio ou ausente; e `cvoff-infer` devolvia 1

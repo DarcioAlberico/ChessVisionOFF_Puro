@@ -1371,6 +1371,9 @@ Empacotamento para Windows nunca foi feito. Hoje, usar o projeto exige Python 3.
 linha de comando. Com a Fase 6 fechada e a interface estável, é o item que transforma "meu
 projeto" em "programa que outra pessoa usa". → **S-55**.
 
+> Fechada na Fase 10: a S-55 entregou o `dist/ChessVisionOFF/`. O título acima é o estado de quando
+> este roadmap foi escrito.
+
 ---
 
 ### 10.5 — A Fase 10 fechada: o tema, a decisão e o programa ✅ (S-53, S-54, S-55)

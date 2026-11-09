@@ -1404,6 +1404,8 @@ acha depois; entre elas, `grep -n "Tkinter usa\|widgets de Tk" README.md` e
 `grep -n "app_tkinter.py. em" docs/ROADMAP_FASE14.md` vazios, e o número de linhas citado para
 `qt/janela.py` igual ao do disco. O texto histórico de `ROADMAP.md` e `ROADMAP_FASE7.md` fica como está.
 
+**Entregue** (2026-11-09): o `qt/janela.py` tem 2.311 linhas no disco de hoje, e não 2.293; é o número citado agora nos dois placares, e a guarda continua com a tolerância da S-135. A faixa invertida virou "S-324 e S-221 a S-226" (a conta da catraca: 1.800 → 1.865). Do `ROADMAP.md` mudou só a coluna "hoje" do placar da Fase 6 e o "hoje são 1.677" logo abaixo, que virou "em 2026-08-18 eram"; no `ROADMAP_FASE7.md` o título "S-36 continua aberta" ficou, com uma nota de que a S-55 a fechou. A regra "falta artefato não versionado" passou a morar em `text_status.so_falta_artefato`, usada pelo teste e pelo comando, que mostra essas divergências à parte. A lista dos 47 comandos sai de `lista_de_comandos` em `tests/test_docs.py`.
+
 ## S-832 · A tabela de faixas e o `ARCHITECTURE.md` que enxergam tudo
 
 **Problema** (confirmado). A spec das S-585 a S-598 mora em `ROADMAP_PDF_COM_PGN.md:53-333`, com `###`, e a

@@ -38,7 +38,7 @@ forem entregues; até lá, o que vale para eles é o roadmap.
 
 ## Fase 100 — A régua da prosa
 
-### S-702 · Conjuntos ouro-dev e ouro-teste congelados, com admissão que não usa motor nenhum
+## S-702 · Conjuntos ouro-dev e ouro-teste congelados, com admissão que não usa motor nenhum
 
 **Problema.** Todos os números de prosa de 2026-10-30 foram medidos em livros que serviram para
 desenhar a régua, a taxonomia e as regras de fusão: dev contaminado. Um portão medido neles promete

@@ -1,4 +1,4 @@
-"""`cvoff-texto-status` — o que do plano de texto já existe no disco (S-178 a S-216).
+"""`cvoff-texto-status` — o que do plano de texto já existe no disco (S-178 a S-217).
 
     cvoff-texto-status                 # tudo, agrupado por fase
     cvoff-texto-status --fase 25       # só uma fase
@@ -36,6 +36,7 @@ from ..text_status import (
     Resultado,
     marcacoes_da_spec,
     resumo,
+    so_falta_artefato,
     verificar,
 )
 from . import EXIT_FAILURE, add_verbose, cli_errors
@@ -65,7 +66,7 @@ def _so_ascii(stream: IO[str] | None = None) -> bool:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Diz quais itens do plano de reconhecimento de texto já existem no disco (S-178 a S-216).",
+        description="Diz quais itens do plano de reconhecimento de texto já existem no disco (S-178 a S-217).",
         epilog=(
             "Sonda atendida quer dizer que o codigo foi escrito, nao que o item passa no criterio "
             "de aceite -- esse esta na docs/SPEC_TEXTO.md e quem o verifica e a suite."
@@ -122,11 +123,18 @@ def _texto(
         f"{total['pendente']} pendentes, de {len(resultados)} itens."
     )
 
-    divergentes = _divergencias(resultados, marcado)
+    divergentes = _divergencias([r for r in resultados if not so_falta_artefato(r)], marcado)
     if divergentes:
         saida.append("")
         saida.append("A spec e o disco discordam nestes itens (tests/test_text_status.py falha por isso):")
         saida.extend(f"  {linha}" for linha in divergentes)
+    sem_artefato = _divergencias([r for r in resultados if so_falta_artefato(r)], marcado)
+    if sem_artefato:
+        saida.append("")
+        saida.append(
+            "Discordam porque falta artefato nao versionado no disco (o teste pula estes, nao falha):"
+        )
+        saida.extend(f"  {linha}" for linha in sem_artefato)
     return "\n".join(saida)
 
 

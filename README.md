@@ -175,12 +175,12 @@ O `streamlit` esta no extra `demo` e **nao** vem no ambiente padrao (S-386): ele
 `No module named streamlit` num clone novo.
 
 **Isto nao e uma segunda interface, e sim um exemplo.** Ela abre um PDF, reconhece os
-diagramas e mostra a FEN e a legalidade -- tudo pelo mesmo `OcrService` que o Tkinter usa,
+diagramas e mostra a FEN e a legalidade -- tudo pelo mesmo `OcrService` que a janela PyQt6 usa,
 sem uma linha de reconhecimento propria. Serve para **ver** o resultado e para provar que o
 pipeline nao depende de janela.
 
 O que ela nao tem, e nunca teve: editor de posicao por clique, painel de legalidade com as
-casas culpadas, fila de revisao e aba de dataset. Os quatro sao widgets de Tk, e sao onde
+casas culpadas, fila de revisao e aba de dataset. Os quatro sao widgets da janela PyQt6, e sao onde
 mora o fluxo de valor do produto -- *corrigir, salvar, treinar*. Ate a Fase 10 este README
 a chamava de "interface web alternativa", o que prometia uma paridade que nao existe; a
 S-54 escolheu desfazer a promessa em vez de perseguir ~1 semana de trabalho por um uso
@@ -191,7 +191,7 @@ remoto que ninguem pediu ainda.
 Depois da instalacao, **47 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
-usados estao abaixo; `--help` lista o resto.
+usados estao no bloco abaixo, com exemplos; a lista inteira vem logo depois dele.
 
 ```bash
 # Treino. Usa data/splits.csv: treina no split 'train', valida em 'val',
@@ -483,6 +483,60 @@ cvoff-texto-placar --exportar faixas/
 cvoff-texto-transcrever
 cvoff-texto-transcrever --pngs data/faixas_para_transcrever
 ```
+
+Todos os comandos, na ordem de `[project.scripts]`, com o modulo de cada um. O bloco sai
+do `pyproject.toml` e e conferido por `tests/test_docs.py` (S-831): comando novo sem linha
+aqui reprova a suite, e a falha imprime o bloco certo.
+
+<!-- comandos: gerado de [project.scripts], conferido por tests/test_docs.py -->
+- `cvoff-train` -- `chess_diagram_ocr.cli.train`
+- `cvoff-infer` -- `chess_diagram_ocr.cli.infer`
+- `cvoff-export` -- `chess_diagram_ocr.cli.export_pgn`
+- `cvoff-batch` -- `chess_diagram_ocr.cli.batch`
+- `cvoff-audit` -- `chess_diagram_ocr.cli.audit`
+- `cvoff-census` -- `chess_diagram_ocr.cli.census`
+- `cvoff-eval` -- `chess_diagram_ocr.cli.evaluate`
+- `cvoff-field` -- `chess_diagram_ocr.cli.field`
+- `cvoff-migrate-labels` -- `chess_diagram_ocr.cli.migrate_labels`
+- `cvoff-provenance` -- `chess_diagram_ocr.cli.provenance`
+- `cvoff-games` -- `chess_diagram_ocr.cli.games`
+- `cvoff-review` -- `chess_diagram_ocr.cli.review`
+- `cvoff-sides` -- `chess_diagram_ocr.cli.sides`
+- `cvoff-experiment` -- `chess_diagram_ocr.cli.experiment`
+- `cvoff-gallery` -- `chess_diagram_ocr.cli.gallery`
+- `cvoff-scan` -- `chess_diagram_ocr.cli.scan`
+- `cvoff-export-onnx` -- `chess_diagram_ocr.cli.export_onnx`
+- `cvoff-texto-status` -- `chess_diagram_ocr.cli.text_status`
+- `cvoff-texto-placar` -- `chess_diagram_ocr.cli.texto_placar`
+- `cvoff-texto-transcrever` -- `chess_diagram_ocr.cli.texto_transcrever`
+- `cvoff-texto-ordem` -- `chess_diagram_ocr.cli.texto_ordem`
+- `cvoff-texto-colunas` -- `chess_diagram_ocr.cli.texto_colunas`
+- `cvoff-texto-inventario` -- `chess_diagram_ocr.cli.texto_inventario`
+- `cvoff-editor-inventario` -- `chess_diagram_ocr.cli.editor_inventario`
+- `cvoff-texto-train` -- `chess_diagram_ocr.cli.texto_train`
+- `cvoff-texto-export-onnx` -- `chess_diagram_ocr.cli.texto_export_onnx`
+- `cvoff-texto-conflitos` -- `chess_diagram_ocr.cli.texto_conflitos`
+- `cvoff-texto-variantes` -- `chess_diagram_ocr.cli.texto_variantes`
+- `cvoff-texto-grade` -- `chess_diagram_ocr.cli.texto_grade`
+- `cvoff-texto-vertical` -- `chess_diagram_ocr.cli.texto_vertical`
+- `cvoff-texto-duas-linhas` -- `chess_diagram_ocr.cli.texto_duas_linhas`
+- `cvoff-texto-colados` -- `chess_diagram_ocr.cli.texto_colados`
+- `cvoff-texto-linha` -- `chess_diagram_ocr.cli.texto_linha`
+- `cvoff-texto-placar-final` -- `chess_diagram_ocr.cli.texto_placar_final`
+- `cvoff-texto-pagina` -- `chess_diagram_ocr.cli.texto_pagina`
+- `cvoff-texto-correcoes` -- `chess_diagram_ocr.cli.texto_correcoes`
+- `cvoff-texto-lexico` -- `chess_diagram_ocr.cli.texto_lexico`
+- `cvoff-texto-custo` -- `chess_diagram_ocr.cli.texto_custo`
+- `cvoff-texto-semelhanca` -- `chess_diagram_ocr.cli.texto_semelhanca`
+- `cvoff-texto-lado` -- `chess_diagram_ocr.cli.texto_lado`
+- `cvoff-texto-estilo-motor` -- `chess_diagram_ocr.cli.texto_estilo_motor`
+- `cvoff-texto-flutuante` -- `chess_diagram_ocr.cli.texto_flutuante`
+- `cvoff-livro-com-pgn` -- `chess_diagram_ocr.cli.livro_com_pgn`
+- `cvoff-texto-estilo-conjunto` -- `chess_diagram_ocr.cli.texto_estilo_conjunto`
+- `cvoff-texto-estilo-classificador` -- `chess_diagram_ocr.cli.texto_estilo_classificador`
+- `cvoff-texto-pesquisavel` -- `chess_diagram_ocr.cli.texto_pesquisavel`
+- `cvoff-texto-paragrafo` -- `chess_diagram_ocr.cli.texto_paragrafo`
+<!-- fim dos comandos -->
 
 Os scripts `train_model.py`, `infer_pdf.py` e `export_pdf_pgn.py` na raiz continuam
 funcionando como invocadores equivalentes (`uv run python infer_pdf.py ...`).

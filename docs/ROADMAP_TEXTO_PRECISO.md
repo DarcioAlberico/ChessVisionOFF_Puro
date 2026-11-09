@@ -785,7 +785,7 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
 
 ### Fase 101 — Nenhuma folha perdida em silêncio
 
-- **S-710** · Guarda de leitura incompleta, e o campo de avisos que a página ainda não tem.
+- **S-710** · Guarda de leitura incompleta, e o campo de avisos que a página ainda não tem. ✅ entregue em 2026-11-05.
   - *Contexto:* nas cinco folhas perdidas de 2026-10-30 — *Chess Evolution* 903 e 1210, *Kmoch* 31, 69 e
     106 (base 1) — a página inteira some, sem log. `PaginaLida` **não tem** campo de aviso
     (`text/pagina.py`); a decisão 4 e as S-715, S-720, S-721 e S-723 dependem de um. **A primeira versão
@@ -889,7 +889,7 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     `texto_prosa_2026-10-30/`) no degradado calibrado, pareado contra o leiaute de hoje.
   - *Saída:* perda de leiaute ≤ 2 p.p. no perfil médio, sem piorar o ouro limpo.
   - *Reversão:* cada mudança de binarização ou filtro atrás de constante; desligada, volta a de hoje.
-- **S-715** · O leiaute de reserva.
+- **S-715** · O leiaute de reserva. ✅ entregue em 2026-11-05.
   - *Contexto:* o Tesseract lendo a página inteira com o leiaute dele **nunca desaba** — resgata as
     folhas 903 e 1210 do *Chess Evolution* (99,9% → 4,2% e 2,1%), as de linha intercalada (16% → 2,2%)
     e devolve 71 e 73 linhas às folhas do *Kmoch* que o glifo lê com uma —, mas numa folha normal é pior
@@ -909,7 +909,7 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   - *Achado:* a reserva vem **desligada** em `ler_pagina`, e só a janela a liga: ligada por padrão, a régua e os CLIs
     passavam a depender de haver Tesseract. E em folha de duas colunas com fio, o `psm 3` intercala as colunas, o que
     pediu a partição na calha (`leitor._partida_no_vao`).
-- **S-716** · Primeira entrega: a prosa da camada nos livros digitais.
+- **S-716** · Primeira entrega: a prosa da camada nos livros digitais. ✅ entregue em 2026-11-05.
   - *Contexto:* nos livros nascidos digitais a camada **é** a tinta — é a referência do ouro. O
     `leitor.py` recusou a camada como motor por causa da **notação** (ela não representa figurina), não
     da prosa. Rotear a prosa para a camada e a notação para o glifo leva o erro de prosa a perto de zero
@@ -969,7 +969,7 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     código de fonte e a figurina fora da linha. A S-716 não põe a prosa da camada por (a)–(d)
     sozinhos: acrescenta a checagem da ligadura — o caractere cuja caixa é mais larga que a letra que
     ele diz ser — ou fica, no padrão, nos livros aprovados na auditoria; e a M0 se mede só nesses.
-- **S-717** · Primeira entrega: a fusão experimental na janela.
+- **S-717** · Primeira entrega: a fusão experimental na janela. ✅ entregue em 2026-11-05.
   - *Entrega:* a S-721 **mínima** — regra v5, léxico de hoje, língua escolhida à mão — exposta como
     "Glifo + Tesseract (experimental)" na caixa de motor da aba, sem mudar o padrão; a leitura pode
     mostrar o glifo primeiro e trocar a prosa quando o Tesseract responder. Rótulos em `ui/strings.py`,
@@ -978,7 +978,7 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     texto mostrado (memória `patch-nao-intercepta-slot-ligado`: afirmar efeito, não chamada).
   - *Saída:* o dono lê os livros dele com a opção, e o relatório da S-706 a mede.
   - *Reversão:* é uma opção a mais na caixa.
-- **S-718** · Primeira entrega: a marca "revisar" honesta, por palavra.
+- **S-718** · Primeira entrega: a marca "revisar" honesta, por palavra. ✅ entregue em 2026-11-05.
   - *Contexto:* entre a primeira fusão e a S-760, a linha fundida carregaria a confiança do glifo
     pintada sobre o texto do Tesseract — no Hertan, o texto certo do Tesseract sairia "revisar" porque o
     glifo errou ali; `fila.py` já diz que isso "destrói a confiança na fila inteira".
@@ -1016,7 +1016,7 @@ invalida os intervalos e desfaz a junção. A fusão entra **no fim de `linhas_d
 e rodapé que vêm da camada (procedência `camada`, S-356) nunca entram na fusão. O número de 1,25%
 da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-lo.
 
-- **S-720** · O executor do Tesseract e o contrato `LeitorDeLinha`.
+- **S-720** · O executor do Tesseract e o contrato `LeitorDeLinha`. ✅ entregue em 2026-11-05.
   - *Contexto:* `ocr.py` já tem `TextRecognizer` e um `TesseractRecognizer` via `pytesseract` (o
     motor da S-42 para faixa e página, que descarta palavra abaixo de `MIN_CONFIDENCE` e não conhece
     `nl`). **`ocr.py` está no digest da S-218** (`field_eval.measured_modules()`), e mexer nele obriga

@@ -23,7 +23,9 @@ concurrency:
 
 jobs:
   check:
-    # Windows porque e a maquina de desenvolvimento e os testes de Tk precisam de display.
+    # Windows porque e a maquina de desenvolvimento e o alvo do bundle. A janela e PyQt6 desde o
+    # corte do Tk (S-506), e os testes dela rodam sem display: `tests/qt_app.py` liga o
+    # `QT_QPA_PLATFORM=offscreen` antes de criar a `QApplication`.
     # Nao ha mais dependencia de plataforma no codigo: WebView2/pythonnet sairam na S-69.
     runs-on: windows-latest
 
@@ -34,10 +36,9 @@ jobs:
     # aparece: foi no 3.13 que `with sqlite3.connect(...)` -- que **nao** fecha a conexao --
     # deixou de ser um `ResourceWarning` no fim da suite e virou `WinError 32` (S-435).
     #
-    # Ressalva honesta: o Tk do interpretador que o `uv` entrega para 3.13 pode vir incompleto,
-    # e ai os ~14 testes de janela **pulam** em vez de rodar. A perna do 3.13 e mais fraca que a
-    # do 3.10 por isso, e nao por desenho. Quem for promover o 3.13 a padrao do bundle tem de
-    # abrir a janela numa maquina de verdade antes.
+    # A ressalva que morava aqui -- o Tk do 3.13 que o `uv` entrega podia vir incompleto e os
+    # testes de janela pulavam nessa perna -- venceu com o corte do Tk (S-506): o PyQt6 vem por
+    # roda, igual nas duas pernas, e a janela roda `offscreen` nas duas.
     strategy:
       fail-fast: false
       matrix:

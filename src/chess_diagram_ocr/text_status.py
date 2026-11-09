@@ -340,6 +340,17 @@ class Resultado:
         return tabela[self.estado]
 
 
+def so_falta_artefato(resultado: Resultado) -> bool:
+    """O item diverge porque falta um **arquivo** do disco, e não código (S-327, S-831).
+
+    As sondas `arquivo:` apontam, em parte, para o que o `.gitignore` deixa fora -- os
+    `models/*.pt`, o `data/` --, e num clone limpo elas respondem "não" sobre um item entregue.
+    `tests/test_text_status.py` pula essa divergência, e o comando a mostra à parte: dizer que o
+    teste falha por ela era dizer o que ele não faz.
+    """
+    return any(sonda.startswith("arquivo:") for sonda in resultado.faltando)
+
+
 def verificar(raiz: Path = RAIZ, *, fase: int | None = None) -> list[Resultado]:
     """O manifesto inteiro (ou uma fase) respondido contra o disco."""
     saida: list[Resultado] = []

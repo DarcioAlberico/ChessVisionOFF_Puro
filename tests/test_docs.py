@@ -689,9 +689,14 @@ def chaves_da_secao(secao: str) -> list[str]:
     depender do que ninguém declarou é como um teste passa hoje e some amanhã, que é a mesma
     família de defeito que a S-128 consertou na CI.
     """
+    return [chave for chave, _ in pares_da_secao(secao)]
+
+
+def pares_da_secao(secao: str) -> list[tuple[str, str]]:
+    """`chave = valor` de uma seção do `pyproject.toml`, com o valor cru da mesma linha."""
     texto = (RAIZ / "pyproject.toml").read_text(encoding="utf-8")
     dentro = False
-    chaves: list[str] = []
+    pares: list[tuple[str, str]] = []
     for linha in texto.splitlines():
         despida = linha.strip()
         if despida.startswith("["):
@@ -699,10 +704,23 @@ def chaves_da_secao(secao: str) -> list[str]:
             continue
         if not dentro:
             continue
-        achado = re.match(r"([A-Za-z0-9_-]+)\s*=", despida)
+        achado = re.match(r"([A-Za-z0-9_-]+)\s*=\s*(.*)$", despida)
         if achado:
-            chaves.append(achado.group(1))
-    return chaves
+            pares.append((achado.group(1), achado.group(2)))
+    return pares
+
+
+MARCA_DOS_COMANDOS = "<!-- comandos: gerado de [project.scripts], conferido por tests/test_docs.py -->"
+FIM_DOS_COMANDOS = "<!-- fim dos comandos -->"
+
+
+def lista_de_comandos() -> str:
+    """O bloco do README com todo comando de `[project.scripts]`, um por linha (S-831)."""
+    linhas = []
+    for nome, alvo in pares_da_secao("project.scripts"):
+        modulo = alvo.strip("\"'").split(":", 1)[0]
+        linhas.append(f"- `{nome}` -- `{modulo}`")
+    return "\n".join(linhas)
 
 
 def _citado(texto: str, padrao: str) -> float:
@@ -1046,6 +1064,33 @@ class NumerosVivosTests(unittest.TestCase):
         citado = int(_citado(self.readme, r"\*\*(\d+) comandos\*\* ficam disponiveis"))
         self.assertEqual(len(comandos), citado)
 
+    def test_o_readme_lista_todo_comando_de_project_scripts(self) -> None:
+        """A lista do README é a de `[project.scripts]`, na mesma ordem (S-831).
+
+        O número batia e a lista não: o README dizia "47 comandos", mostrava exemplos de uns
+        quarenta e mandava o resto para um `--help` que nenhum comando tem. `cvoff-gallery`,
+        `cvoff-scan` e `cvoff-texto-conflitos` não eram citados em lugar nenhum. A lista agora sai
+        do `pyproject.toml` por `lista_de_comandos`, e a falha imprime o bloco certo para colar.
+        """
+        nao_citados = [
+            nome
+            for nome in chaves_da_secao("project.scripts")
+            if not re.search(rf"(?<![\w-]){re.escape(nome)}(?![\w-])", self.readme)
+        ]
+        self.assertEqual([], nao_citados, "Comando de [project.scripts] que o README não cita.")
+
+        esperado = lista_de_comandos()
+        achado = re.search(
+            re.escape(MARCA_DOS_COMANDOS) + r"\n(.*?)\n" + re.escape(FIM_DOS_COMANDOS), self.readme, re.S
+        )
+        self.assertIsNotNone(achado, "o README perdeu o bloco da lista de comandos.")
+        assert achado is not None
+        self.assertEqual(
+            esperado,
+            achado.group(1),
+            "A lista de comandos do README diverge de [project.scripts]. O bloco certo é:\n" + esperado,
+        )
+
     def test_o_bundle_citado_bate_com_o_que_o_build_gravou(self) -> None:
         """O README publicava 5.247 arquivos de um build que tinha 4.723 (S-135).
 
@@ -1137,7 +1182,7 @@ class NumerosVivosTests(unittest.TestCase):
         roadmap = (DOCS / "ROADMAP.md").read_text(encoding="utf-8")
         criterio = roadmap.split("## Fase 6", 1)[1].split("## Fase 7", 1)[0]
         citado = _citado(criterio, r"\*\*([\d.]+)\*\*, e o arquivo dobrou")
-        _perto(self, citado, real, "linhas de app_tkinter.py citadas na Fase 6")
+        _perto(self, citado, real, "linhas de qt/janela.py citadas na Fase 6")
 
     def test_o_placar_das_fases_bate_com_o_da_janela(self) -> None:
         """O quadro "Onde o projeto está" cita o mesmo número da catraca (2026-08-18).
@@ -1155,8 +1200,8 @@ class NumerosVivosTests(unittest.TestCase):
         # separadoras, e cortar ali deixaria o quadro sem as linhas que se quer conferir.
         quadro = roadmap.split("## Onde o projeto está", 1)[1]
         quadro = quadro.split(chr(10) + "---" + chr(10), 1)[0]
-        citado = _citado(quadro, r"`app_tkinter\.py` em ([\d.]+) contra")
-        _perto(self, citado, real, "linhas de app_tkinter.py no quadro das fases")
+        citado = _citado(quadro, r"`qt/janela\.py` em ([\d.]+) contra")
+        _perto(self, citado, real, "linhas de qt/janela.py no quadro das fases")
 
 
 CHAVES_DE_CAMINHO = ("path", "base", "dir", "diretorio", "caminho", "pasta", "arquivo")
