@@ -34,7 +34,7 @@ lance o que casa com a forma inteira -- não há "parece um lance".
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
 import chess
@@ -433,37 +433,15 @@ def validar(tokens: Sequence[str], board: chess.Board) -> LinhaValidada:
 
     **O número de lance impresso é conferido, e não obedecido.** Quem decide de quem é a vez é a
     posição; o número serve para acusar divergência -- um `15.` numa posição de pretas é sinal de
-    que a leitura perdeu ou inventou um meio-lance, e isso vale mais dito que corrigido.
+    que a leitura perdeu ou inventou um meio-lance, e isso vale mais dito que corrigido. O ponto
+    também é conferido: `15.` é lance das brancas e `15...` das pretas (S-899).
 
     `board` não é modificado: a linha é jogada numa cópia.
     """
     tabuleiro = board.copy(stack=False)
     lidos: list[LanceLido] = []
-    numero: int | None = None
 
-    for indice, bruto in enumerate(tokens):
-        token = str(bruto or "").strip()
-        if not token:
-            continue
-
-        nu = _sem_envoltorio(token)
-        if nu in RESULTADOS:
-            # O resultado fecha a partida: o que vier depois dele é prosa, não lance.
-            break
-        if RETICENCIA.match(nu):
-            continue
-        if e_numero_de_lance(token):
-            numero = int(nu.rstrip(".…"))
-            continue
-
-        # **`token` continua sendo o que o livro escreveu**, e `parte` é o que vai ao tabuleiro. A
-        # distinção não é cosmética: quem for conferir procura `5.exd6` na página, e não `exd6`.
-        parte = token
-        composto = COMPOSTO.match(para_ingles(nu))
-        if composto is not None:
-            numero = int(composto.group(1))
-            parte = composto.group(3)
-
+    for indice, token, limpo, numero, lado in _lances_numerados(tokens):
         esperado = tabuleiro.fullmove_number
         if numero is not None and numero != esperado:
             return LinhaValidada(
@@ -472,10 +450,16 @@ def validar(tokens: Sequence[str], board: chess.Board) -> LinhaValidada:
                 token=token,
                 posicao=indice,
             )
-
-        limpo = _limpo(parte)
-        if not limpo:
-            continue
+        if lado is not None and lado != tabuleiro.turn:
+            return LinhaValidada(
+                tuple(lidos),
+                motivo=(
+                    f"o livro escreveu {numero}{'.' if lado == chess.WHITE else '...'}, lance das "
+                    f"{_NOME_DO_LADO[lado]}, e a vez é das {_NOME_DO_LADO[tabuleiro.turn]}"
+                ),
+                token=token,
+                posicao=indice,
+            )
         try:
             move = tabuleiro.parse_san(limpo)
         except (chess.IllegalMoveError, chess.InvalidMoveError, chess.AmbiguousMoveError, ValueError) as erro:
@@ -489,9 +473,71 @@ def validar(tokens: Sequence[str], board: chess.Board) -> LinhaValidada:
         san = tabuleiro.san(move)
         tabuleiro.push(move)
         lidos.append(LanceLido(token=token, san=san, move=move, numero=numero))
-        numero = None
 
     return LinhaValidada(tuple(lidos))
+
+
+_NOME_DO_LADO = {chess.WHITE: "brancas", chess.BLACK: "pretas"}
+
+
+def _lado_dos_pontos(pontos: str) -> chess.Color | None:
+    """`15.` é das brancas, `15...` (ou `15…`) das pretas; o número sem ponto não diz o lado."""
+    if not pontos:
+        return None
+    return chess.WHITE if pontos == "." else chess.BLACK
+
+
+def _lances_numerados(
+    tokens: Sequence[str],
+) -> Iterator[tuple[int, str, str, int | None, chess.Color | None]]:
+    """Cada lance da linha: `(índice, token, lance limpo, número, lado)` como o livro os imprimiu.
+
+    O número e o lado são os do número de lance que veio antes -- solto (`15.`, `15 ...`) ou
+    grudado (`15...♘f6`) -- e valem só para o lance seguinte. `None` quando o livro não os disse.
+    O resultado (`1-0`) fecha a linha: o que vier depois dele é prosa.
+    """
+    numero: int | None = None
+    lado: chess.Color | None = None
+    for indice, bruto in enumerate(tokens):
+        token = str(bruto or "").strip()
+        if not token:
+            continue
+        nu = _sem_envoltorio(token)
+        if nu in RESULTADOS:
+            return
+        if RETICENCIA.match(nu):
+            if numero is not None:
+                lado = chess.BLACK
+            continue
+        if e_numero_de_lance(token):
+            digitos = nu.rstrip(".…")
+            numero, lado = int(digitos), _lado_dos_pontos(nu[len(digitos):])
+            continue
+
+        # **`token` continua sendo o que o livro escreveu**, e `parte` é o que vai ao tabuleiro. A
+        # distinção não é cosmética: quem for conferir procura `5.exd6` na página, e não `exd6`.
+        parte = token
+        composto = COMPOSTO.match(para_ingles(nu))
+        if composto is not None:
+            numero, lado = int(composto.group(1)), _lado_dos_pontos(composto.group(2))
+            parte = composto.group(3)
+        limpo = _limpo(parte)
+        if not limpo:
+            continue
+        yield indice, token, limpo, numero, lado
+        numero, lado = None, None
+
+
+def numero_do_primeiro_lance(tokens: Sequence[str]) -> tuple[int | None, chess.Color | None]:
+    """O número e o lado que o livro imprimiu no primeiro lance da linha (S-899).
+
+    `(23, WHITE)` de `23.Qxh7+`, `(4, BLACK)` de `4...♗c5`, `(None, None)` de `Qxh7+`. É o que a
+    posição de um diagrama do meio da partida precisa para `validar` conferir o resto da linha.
+    Vale o número grudado no lance, e não um anterior: em «12. 1.Qxf7#» o 12 é o do problema.
+    """
+    for _indice, _token, _limpo, numero, lado in _lances_numerados(tokens):
+        return numero, lado
+    return None, None
 
 
 def _motivo_de(erro: Exception, limpo: str) -> str:
@@ -524,6 +570,7 @@ __all__ = [
     "e_numero_de_lance",
     "fatiar",
     "juntar_numero_de_lance",
+    "numero_do_primeiro_lance",
     "peso_de_notacao",
     "para_ingles",
     "validar",

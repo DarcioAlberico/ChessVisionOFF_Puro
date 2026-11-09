@@ -974,6 +974,8 @@ pretas) e os passa a `compose_fen`; `validar` confere o ponto contra a reticênc
 
 **Aceite.** Os dois passam.
 
+**Entregue** (2026-11-08): o número e o lado saem do **primeiro lance** e não do primeiro token numérico (`notacao.numero_do_primeiro_lance`, sobre o mesmo laço de `validar`): em «12. 1.Qxf7#» o 12 é o do problema, e lê-lo como lance recusaria a linha que antes fechava. A reticência solta (`4 ... ♗c5`) também diz pretas, e `test_o_numero_e_a_reticencia_soltos_nao_sao_lance_nem_erro` passou a esperar o motivo do lado. O `Exercicio` continua com a FEN no lance 1 (`_exercicio`), o que não muda os lances em SAN.
+
 ## Fase 114 — A tela e o editor sabem de onde veio cada resultado
 
 ## S-823 · `AncoraDaTela(documento, pagina)` pura

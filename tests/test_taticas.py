@@ -333,6 +333,21 @@ class ValidacaoDaSolucaoTests(unittest.TestCase):
         self.assertFalse(solucao.fechou)
         self.assertIn("Qh8", solucao.motivo + solucao.token)
 
+    def test_solucao_numerada_no_meio_da_partida_fecha(self) -> None:
+        """S-899: livro de partidas imprime `4.Qxf7#`, e não `1.Qxf7#`. O tabuleiro nascia no
+        lance 1 e `validar` recusava o número; agora o número e o lado saem do primeiro lance."""
+        mate_do_pastor = "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR"
+        solucao = taticas.validar_solucao(mate_do_pastor, ["4.Qxf7#"])
+        self.assertEqual((("Qxf7#",), "w", True), (solucao.lances, solucao.vez, solucao.fechou))
+        mate_do_louco = "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR"
+        solucao = taticas.validar_solucao(mate_do_louco, ["2...Qh4#"], vez="w")
+        self.assertEqual((("Qh4#",), "b", True), (solucao.lances, solucao.vez, solucao.fechou))
+
+    def test_o_numero_do_problema_antes_da_linha_nao_e_o_do_lance(self) -> None:
+        """«12. 1.Qxf7#»: o número que vale é o grudado no primeiro lance."""
+        mate_do_pastor = "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR"
+        self.assertEqual(("Qxf7#",), taticas.validar_solucao(mate_do_pastor, ["12.", "1.Qxf7#"]).lances)
+
     def test_posicao_ilegal_nao_derruba_o_modulo(self) -> None:
         solucao = taticas.validar_solucao("isto-nao-e-uma-fen", ["1.", "e4"])
         self.assertFalse(solucao.fechou)
