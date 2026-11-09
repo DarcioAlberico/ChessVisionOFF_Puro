@@ -857,6 +857,11 @@ do padrão; o ida-e-volta tem de ser igual.
 
 **Aceite.** O teste é gerado a partir de `fields()`, então um campo acrescentado depois entra nele sozinho.
 
+**Entregue** (2026-11-08): como especificado; o checkpoint vai à versão 2 e a 1 retoma com aviso. Além dos dez
+campos citados, o ida-e-volta perdia também `side_to_move_confidence` igual a 0,0 (o `or 1.0` da leitura o
+trocava por 1,0). Chave desconhecida numa linha de página cai no mesmo descarte da linha rasgada, com o nome
+da chave no aviso.
+
 ## S-820 · Importação de imagens idempotente
 
 **Problema** (confirmado por leitura). `importacao_de_imagens.py:871-955`, `:279-293`: cada amostra vai para

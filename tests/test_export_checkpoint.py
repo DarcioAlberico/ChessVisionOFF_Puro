@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import dataclasses
+import json
 import logging
 import tempfile
 import threading
+import types
+import typing
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -92,6 +96,134 @@ class SerializationTests(unittest.TestCase):
         assert restored.side_to_move is not None
         self.assertEqual(restored.side_to_move.color, chess.BLACK)
         self.assertTrue(restored.side_to_move.conflicting)
+
+
+def _valor_diferente(tipo: object, padrao: object, nome: str) -> object:
+    """Um valor do tipo anotado que não é o padrão do campo -- gerado da anotação, não escrito.
+
+    É o que deixa um campo acrescentado depois entrar no teste sozinho (S-819): ninguém
+    precisa lembrar de escrever um exemplo para ele, assim como ninguém lembrou de escrever
+    a chave dele na serialização.
+    """
+    origem, args = typing.get_origin(tipo), typing.get_args(tipo)
+    if origem in (typing.Union, types.UnionType):
+        return _valor_diferente(next(a for a in args if a is not type(None)), padrao, nome)
+    if origem is typing.Literal:
+        return next(a for a in args if a != padrao)
+    if origem is tuple:
+        if len(args) == 2 and args[1] is Ellipsis:
+            return (_valor_diferente(args[0], None, nome),)
+        return tuple(_valor_diferente(a, None, nome) for a in args)
+    if isinstance(tipo, type) and dataclasses.is_dataclass(tipo):
+        return _exemplar(tipo)
+    if tipo is bool:
+        return not padrao if isinstance(padrao, bool) else True
+    if tipo is int:
+        return 7
+    if tipo is float:
+        return 0.25
+    if tipo is str:
+        return f"<{nome}>"
+    raise AssertionError(f"{nome}: tipo sem gerador no teste: {tipo!r}")
+
+
+def _padrao(campo: dataclasses.Field) -> object:
+    if campo.default is not dataclasses.MISSING:
+        return campo.default
+    if campo.default_factory is not dataclasses.MISSING:
+        return campo.default_factory()
+    return None
+
+
+def _exemplar(cls: type) -> object:
+    """Uma instância de `cls` com **todo** campo fora do padrão."""
+    dicas = typing.get_type_hints(cls)
+    return cls(**{
+        campo.name: _valor_diferente(dicas[campo.name], _padrao(campo), campo.name)
+        for campo in dataclasses.fields(cls)
+    })
+
+
+def _ida_e_volta_pelo_arquivo(original: DiagramPosition) -> DiagramPosition:
+    """O caminho de quem cancela e retoma: grava o parcial e lê de volta."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "livro.partial.jsonl"
+        CheckpointWriter(path, params(), every=1).record_page(original.page_index, [original])
+        partial = load_partial(path, params())
+    assert partial is not None
+    [restored] = partial.positions
+    return restored
+
+
+class EveryFieldSurvivesResumeTests(unittest.TestCase):
+    """S-819: a retomada não perde campo nenhum, nem os que vierem depois.
+
+    A lista de campos da serialização estava escrita à mão e a dataclass cresceu sem ela: a
+    página lida antes da interrupção saía sem `[Stipulation]` nem `[OCRStipulation]`, e como
+    `gate_confidence` sobrevivia, uma posição aceita por reparo de estipulação saía sem dizer
+    que foi reparada.
+    """
+
+    BASE = DiagramPosition(page_index=0, diagram_index=1, fen=KINGS_ONLY, confidence=0.5)
+
+    def test_cada_campo_da_posicao_sobrevive(self) -> None:
+        dicas = typing.get_type_hints(DiagramPosition)
+        for campo in dataclasses.fields(DiagramPosition):
+            with self.subTest(campo=campo.name):
+                valor = _valor_diferente(dicas[campo.name], _padrao(campo), campo.name)
+                original = dataclasses.replace(self.BASE, **{campo.name: valor})
+                self.assertEqual(getattr(_ida_e_volta_pelo_arquivo(original), campo.name), valor)
+
+    def test_cada_campo_do_contexto_sobrevive(self) -> None:
+        dicas = typing.get_type_hints(DiagramContext)
+        for campo in dataclasses.fields(DiagramContext):
+            with self.subTest(campo=campo.name):
+                valor = _valor_diferente(dicas[campo.name], _padrao(campo), campo.name)
+                original = dataclasses.replace(self.BASE, context=DiagramContext(**{campo.name: valor}))
+                restored = _ida_e_volta_pelo_arquivo(original)
+                assert restored.context is not None
+                self.assertEqual(getattr(restored.context, campo.name), valor)
+
+    def test_posicao_com_tudo_preenchido_volta_igual(self) -> None:
+        original = _exemplar(DiagramPosition)
+        assert isinstance(original, DiagramPosition)
+        self.assertEqual(_ida_e_volta_pelo_arquivo(original), original)
+
+    def test_chave_desconhecida_e_recusada(self) -> None:
+        """Ler em silêncio uma chave que a dataclass não tem é perder campo do outro lado."""
+        cru = position_to_dict(self.BASE)
+        cru["campo_do_futuro"] = 1
+        with self.assertRaises(ValueError) as erro:
+            position_from_dict(cru)
+        self.assertIn("campo_do_futuro", str(erro.exception))
+
+    def test_parcial_da_versao_anterior_retoma_com_aviso(self) -> None:
+        """O parcial v1 não tinha os campos novos: retoma, com eles no padrão, e avisa."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "livro.partial.jsonl"
+            cabecalho = {"kind": "header", "version": 1, "params": params().to_dict()}
+            pagina_v1 = {
+                "kind": "page",
+                "page_index": 0,
+                "positions": [{
+                    "page_index": 0, "diagram_index": 1, "fen": KINGS_ONLY, "confidence": 0.97,
+                    "side_to_move": {"color": False, "source": "text", "reason": "", "conflicting": False},
+                    "context": {"caption": "5", "side_to_move": False, "players": ["A", "B"]},
+                    "duplicate_of": [3, 2], "gate_confidence": 0.8,
+                }],
+            }
+            path.write_bytes(
+                (json.dumps(cabecalho) + "\n" + json.dumps(pagina_v1) + "\n").encode("utf-8")
+            )
+            with self.assertLogs("chess_diagram_ocr.export_checkpoint", level=logging.WARNING) as captured:
+                partial = load_partial(path, params())
+            assert partial is not None
+            [restored] = partial.positions
+            self.assertEqual(restored.duplicate_of, (3, 2))
+            self.assertEqual(restored.stipulation, "")
+            assert restored.context is not None
+            self.assertEqual(restored.context.players, ("A", "B"))
+            self.assertTrue(any("versão anterior" in line for line in captured.output))
 
 
 class ModelIdentityTests(unittest.TestCase):

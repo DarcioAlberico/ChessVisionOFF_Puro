@@ -20,22 +20,34 @@ recomeça, com aviso no log.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
-
-import chess
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from .arquivo_do_dono import ler_texto
 
 if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
+
+    from .pdf_text import DiagramContext
     from .pdf_to_pgn import DiagramPosition
+    from .semantics import SideToMove
 
 logger = logging.getLogger(__name__)
 
-CHECKPOINT_VERSION = 1
+CHECKPOINT_VERSION = 2
+"""2 (S-819): a posição sai inteira, campo por campo de `dataclasses.fields`.
+
+A 1 escrevia uma lista de chaves à mão que a dataclass deixou para trás: a página lida antes da
+interrupção voltava sem a estipulação (`[Stipulation]`, `[OCRStipulation]`) e sem cinco campos
+do contexto, e a posição aceita por reparo de estipulação saía sem dizer que foi reparada."""
+
+VERSAO_ANTERIOR = 1
+"""Ainda é retomada, com aviso: o que ela não guardou volta no padrão do campo."""
 
 DEFAULT_CHECKPOINT_EVERY = 5
 """Páginas entre gravações. 5 a 220 DPI é ~1 s de trabalho arriscado por vez."""
@@ -154,129 +166,83 @@ class PartialExport:
 # ---------------------------------------------------------------------- serialização
 
 
-def _context_to_dict(context: Any) -> dict[str, Any] | None:
-    if context is None:
-        return None
-    return {
-        "caption": context.caption,
-        "side_to_move": None if context.side_to_move is None else bool(context.side_to_move),
-        "side_to_move_evidence": context.side_to_move_evidence,
-        "side_to_move_origin": context.side_to_move_origin,
-        "side_to_move_confidence": context.side_to_move_confidence,
-        "exercise_number": context.exercise_number,
-        "players": list(context.players) if context.players else None,
-        "event": context.event,
-        "year": context.year,
+_T = TypeVar("_T", bound="DataclassInstance")
+
+_Conversor = Callable[[object], object]
+
+
+def _para_json(valor: object) -> object:
+    """Dataclass vira objeto campo a campo, tupla vira lista; o resto o JSON já sabe escrever."""
+    if dataclasses.is_dataclass(valor) and not isinstance(valor, type):
+        return _campos_para_json(valor)
+    if isinstance(valor, (tuple, list)):
+        return [_para_json(item) for item in valor]
+    return valor
+
+
+def _campos_para_json(instancia: DataclassInstance) -> dict[str, object]:
+    return {campo.name: _para_json(getattr(instancia, campo.name)) for campo in dataclasses.fields(instancia)}
+
+
+def _em_tuplas(valor: object) -> object:
+    """O inverso do `_para_json` para o que não é dataclass: toda sequência destas dataclasses é tupla."""
+    if isinstance(valor, list):
+        return tuple(_em_tuplas(item) for item in valor)
+    return valor
+
+
+def _de_json(
+    classe: type[_T],
+    cru: object,
+    aninhados: Mapping[str, _Conversor] | None = None,
+) -> _T:
+    """Remonta `classe` a partir de `fields()`, e não de uma lista de chaves escrita à mão (S-819).
+
+    Chave que falta fica com o padrão do campo -- é o parcial gravado antes de o campo existir.
+    Chave que sobra é recusada: lê-la em silêncio seria perder um campo do outro lado, o defeito
+    que esta função existe para não ter. Só os campos que são dataclass têm conversor próprio
+    (`aninhados`); os demais saem do JSON como estão, com lista de volta a tupla.
+    """
+    if not isinstance(cru, dict):
+        raise TypeError(f"{classe.__name__}: esperava objeto, veio {type(cru).__name__}")
+    conhecidos = {campo.name for campo in dataclasses.fields(classe)}
+    sobra = sorted(set(cru) - conhecidos)
+    if sobra:
+        raise ValueError(f"{classe.__name__}: chave desconhecida no parcial: {', '.join(sobra)}")
+    conversores = aninhados or {}
+    argumentos = {
+        nome: None if valor is None else conversores.get(nome, _em_tuplas)(valor)
+        for nome, valor in cru.items()
     }
+    return classe(**argumentos)
 
 
-def _context_from_dict(raw: dict[str, Any] | None) -> Any:
-    if raw is None:
-        return None
+def _context_from_json(cru: object) -> DiagramContext:
+    from .estipulacao import Estipulacao
+    from .orientation import BoardCoordinates
     from .pdf_text import DiagramContext
 
-    players = raw.get("players")
-    return DiagramContext(
-        caption=str(raw.get("caption", "")),
-        side_to_move=None if raw.get("side_to_move") is None else chess.Color(bool(raw["side_to_move"])),
-        side_to_move_evidence=str(raw.get("side_to_move_evidence", "")),
-        # Parcial gravado antes da S-43 nao tem procedencia; `None` aqui faz a cascata da
-        # `semantics` cair no `"text"` de sempre, que e o que aquele parcial de fato usou.
-        side_to_move_origin=raw.get("side_to_move_origin"),
-        side_to_move_confidence=float(raw.get("side_to_move_confidence") or 1.0),
-        exercise_number=raw.get("exercise_number"),
-        players=(str(players[0]), str(players[1])) if players and len(players) == 2 else None,
-        event=raw.get("event"),
-        year=raw.get("year"),
-    )
-
-
-def _side_to_dict(side: Any) -> dict[str, Any] | None:
-    if side is None:
-        return None
-    return {
-        "color": bool(side.color),
-        "source": side.source,
-        "reason": side.reason,
-        "conflicting": side.conflicting,
+    aninhados: dict[str, _Conversor] = {
+        "coordinates": lambda valor: _de_json(BoardCoordinates, valor),
+        "stipulation": lambda valor: _de_json(Estipulacao, valor),
     }
+    return _de_json(DiagramContext, cru, aninhados)
 
 
-def _side_from_dict(raw: dict[str, Any] | None) -> Any:
-    if raw is None:
-        return None
+def _side_from_json(cru: object) -> SideToMove:
     from .semantics import SideToMove
 
-    return SideToMove(
-        color=chess.Color(bool(raw.get("color", True))),
-        source=raw.get("source", "default"),
-        reason=str(raw.get("reason", "")),
-        conflicting=bool(raw.get("conflicting", False)),
-    )
+    return _de_json(SideToMove, cru)
 
 
-def position_to_dict(position: DiagramPosition) -> dict[str, Any]:
-    return {
-        "page_index": position.page_index,
-        "diagram_index": position.diagram_index,
-        "fen": position.fen,
-        "confidence": position.confidence,
-        "min_confidence": position.min_confidence,
-        "is_legal": position.is_legal,
-        "is_fatal": position.is_fatal,
-        "problems": list(position.problems),
-        "rotation": position.rotation,
-        "orientation_ambiguous": position.orientation_ambiguous,
-        "orientation_reason": position.orientation_reason,
-        "side_to_move": _side_to_dict(position.side_to_move),
-        "context": _context_to_dict(position.context),
-        "detection_source": position.detection_source,
-        "duplicate_of": list(position.duplicate_of) if position.duplicate_of else None,
-        "bbox_pdf": list(position.bbox_pdf) if position.bbox_pdf else None,
-        "image_hash": position.image_hash,
-        "square_confidences": list(position.square_confidences),
-        "repairs": [list(r) for r in position.repairs],
-        "colour_repairs": list(position.colour_repairs),
-        "next_move": position.next_move,
-        "next_move_repairs": list(position.next_move_repairs),
-        "gate_confidence": position.gate_confidence,
-    }
+def position_to_dict(position: DiagramPosition) -> dict[str, object]:
+    return _campos_para_json(position)
 
 
-def position_from_dict(raw: dict[str, Any]) -> DiagramPosition:
+def position_from_dict(raw: object) -> DiagramPosition:
     from .pdf_to_pgn import DiagramPosition
 
-    duplicate = raw.get("duplicate_of")
-    return DiagramPosition(
-        page_index=int(raw["page_index"]),
-        diagram_index=int(raw["diagram_index"]),
-        fen=str(raw["fen"]),
-        confidence=float(raw.get("confidence", 0.0)),
-        min_confidence=None if raw.get("min_confidence") is None else float(raw["min_confidence"]),
-        is_legal=raw.get("is_legal"),
-        is_fatal=raw.get("is_fatal"),
-        problems=tuple(str(item) for item in raw.get("problems", ())),
-        rotation=None if raw.get("rotation") is None else int(raw["rotation"]),
-        orientation_ambiguous=bool(raw.get("orientation_ambiguous", False)),
-        orientation_reason=str(raw.get("orientation_reason", "")),
-        side_to_move=_side_from_dict(raw.get("side_to_move")),
-        context=_context_from_dict(raw.get("context")),
-        detection_source=raw.get("detection_source"),
-        duplicate_of=(int(duplicate[0]), int(duplicate[1])) if duplicate and len(duplicate) == 2 else None,
-        bbox_pdf=(
-            cast("tuple[float, float, float, float]", tuple(float(v) for v in raw["bbox_pdf"]))
-            if raw.get("bbox_pdf") else None
-        ),
-        image_hash=str(raw.get("image_hash", "") or ""),
-        square_confidences=tuple(float(v) for v in raw.get("square_confidences", ()) or ()),
-        repairs=tuple(
-            cast("tuple[str, str, str]", tuple(str(x) for x in r)) for r in raw.get("repairs", ()) or ()
-        ),
-        colour_repairs=tuple(str(x) for x in raw.get("colour_repairs", ()) or ()),
-        next_move=str(raw.get("next_move", "") or ""),
-        next_move_repairs=tuple(str(x) for x in raw.get("next_move_repairs", ()) or ()),
-        gate_confidence=None if raw.get("gate_confidence") is None else float(raw["gate_confidence"]),
-    )
+    return _de_json(DiagramPosition, raw, {"side_to_move": _side_from_json, "context": _context_from_json})
 
 
 # ------------------------------------------------------------------------ escrita
@@ -367,7 +333,8 @@ def load_partial(path: Path, params: ScanParams) -> PartialExport | None:
         logger.warning("Parcial de exportação sem cabeçalho válido, será ignorado (%s): %s", path, exc)
         return None
 
-    if header.get("kind") != "header" or header.get("version") != CHECKPOINT_VERSION:
+    version = header.get("version")
+    if header.get("kind") != "header" or version not in (CHECKPOINT_VERSION, VERSAO_ANTERIOR):
         logger.warning("Parcial de exportação de formato desconhecido, será ignorado: %s", path)
         return None
 
@@ -378,6 +345,16 @@ def load_partial(path: Path, params: ScanParams) -> PartialExport | None:
             _params_diff(stored, params),
         )
         return None
+
+    if version == VERSAO_ANTERIOR:
+        # Recusar jogaria fora a varredura inteira por campos que só a estipulação e o contexto
+        # fino usam; retomar sem avisar faria a metade antiga do PGN calar sem que se saiba por quê.
+        logger.warning(
+            "Parcial de exportação da versão anterior (%d): as páginas já lidas voltam sem a "
+            "estipulação e sem parte do contexto da legenda; reexporte do zero para tê-los: %s",
+            VERSAO_ANTERIOR,
+            path,
+        )
 
     partial = PartialExport(params=stored)
     for line_number, line in enumerate(lines[1:], start=2):
