@@ -6,18 +6,10 @@
   "gerada_em": "2026-11-08T11:55:29.861025",
   "versao_do_coverage": "7.16.2"
  },
- "funcoes_medidas": 5928,
- "funcoes_acima_do_limiar": 609,
- "funcoes_acima_do_teto": 137,
+ "funcoes_medidas": 5841,
+ "funcoes_acima_do_limiar": 582,
+ "funcoes_acima_do_teto": 124,
  "funcoes": [
-  {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "achar_coordenadas",
-   "linha": 516,
-   "cc": 29,
-   "cobertura": 0.0,
-   "crap": 870.0
-  },
   {
    "arquivo": "src/chess_diagram_ocr/cli/texto_conflitos.py",
    "funcao": "main",
@@ -177,14 +169,6 @@
    "cc": 15,
    "cobertura": 0.04,
    "crap": 214.1
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "aplicar_na_pagina",
-   "linha": 607,
-   "cc": 14,
-   "cobertura": 0.0,
-   "crap": 210.0
   },
   {
    "arquivo": "src/chess_diagram_ocr/cli/texto_paragrafo.py",
@@ -379,22 +363,6 @@
    "crap": 82.9
   },
   {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "ServicoDeSubstituicao._pagina_de_previa",
-   "linha": 733,
-   "cc": 8,
-   "cobertura": 0.0,
-   "crap": 72.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "substituir_no_pdf",
-   "linha": 871,
-   "cc": 8,
-   "cobertura": 0.0,
-   "crap": 72.0
-  },
-  {
    "arquivo": "src/chess_diagram_ocr/text/leitor.py",
    "funcao": "_ler_pagina_do_livro",
    "linha": 1615,
@@ -542,14 +510,6 @@
    "arquivo": "src/chess_diagram_ocr/cli/texto_duas_linhas.py",
    "funcao": "_arbitro_de_caixas.julgar",
    "linha": 110,
-   "cc": 7,
-   "cobertura": 0.0,
-   "crap": 56.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "apagar_retangulos",
-   "linha": 258,
    "cc": 7,
    "cobertura": 0.0,
    "crap": 56.0
@@ -715,30 +675,6 @@
    "crap": 42.1
   },
   {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "_inserir_link",
-   "linha": 374,
-   "cc": 6,
-   "cobertura": 0.0,
-   "crap": 42.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "_fileira_alinhada",
-   "linha": 488,
-   "cc": 6,
-   "cobertura": 0.0,
-   "crap": 42.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "_corridas_que_cobrem",
-   "linha": 504,
-   "cc": 6,
-   "cobertura": 0.0,
-   "crap": 42.0
-  },
-  {
    "arquivo": "src/chess_diagram_ocr/pdf_to_pgn.py",
    "funcao": "build_pgn_games",
    "linha": 781,
@@ -750,14 +686,6 @@
    "arquivo": "src/chess_diagram_ocr/ui/cortina.py",
    "funcao": "Cortina.rotulos",
    "linha": 219,
-   "cc": 6,
-   "cobertura": 0.0,
-   "crap": 42.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/ui/selecao_de_area.py",
-   "funcao": "decidir_gesto",
-   "linha": 248,
    "cc": 6,
    "cobertura": 0.0,
    "crap": 42.0
@@ -1067,41 +995,9 @@
    "crap": 30.0
   },
   {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "_tipo_de_corrida",
-   "linha": 473,
-   "cc": 5,
-   "cobertura": 0.0,
-   "crap": 30.0
-  },
-  {
    "arquivo": "src/chess_diagram_ocr/qt/painel_do_dataset.py",
    "funcao": "PainelDoDataset.detectar_duplicatas._rotulos_contados",
    "linha": 867,
-   "cc": 5,
-   "cobertura": 0.0,
-   "crap": 30.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/ui/selecao_de_area.py",
-   "funcao": "redimensionado",
-   "linha": 146,
-   "cc": 5,
-   "cobertura": 0.0,
-   "crap": 30.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/ui/substituicao.py",
-   "funcao": "texto_do_estado",
-   "linha": 347,
-   "cc": 5,
-   "cobertura": 0.0,
-   "crap": 30.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/ui/substituicao.py",
-   "funcao": "PilhaDeSubstituicoes.indice_em",
-   "linha": 493,
    "cc": 5,
    "cobertura": 0.0,
    "crap": 30.0
@@ -1787,30 +1683,6 @@
    "crap": 20.0
   },
   {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "url_de_analise",
-   "linha": 303,
-   "cc": 4,
-   "cobertura": 0.0,
-   "crap": 20.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "_area_livre",
-   "linha": 354,
-   "cc": 4,
-   "cobertura": 0.0,
-   "crap": 20.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "_vagas_do_rotulo",
-   "linha": 366,
-   "cc": 4,
-   "cobertura": 0.0,
-   "crap": 20.0
-  },
-  {
    "arquivo": "src/chess_diagram_ocr/qt/painel_de_resultado.py",
    "funcao": "PainelDeResultado._pintar_estados",
    "linha": 1641,
@@ -1824,14 +1696,6 @@
    "linha": 259,
    "cc": 20,
    "cobertura": 0.9583,
-   "crap": 20.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/ui/substituicao.py",
-   "funcao": "estado_do_texto",
-   "linha": 390,
-   "cc": 4,
-   "cobertura": 0.0,
    "crap": 20.0
   },
   {
@@ -3451,46 +3315,6 @@
    "crap": 12.0
   },
   {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "recorte_de_png",
-   "linha": 179,
-   "cc": 3,
-   "cobertura": 0.0,
-   "crap": 12.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "_guardado",
-   "linha": 221,
-   "cc": 3,
-   "cobertura": 0.0,
-   "crap": 12.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "_pdf_do_diagrama",
-   "linha": 242,
-   "cc": 3,
-   "cobertura": 0.0,
-   "crap": 12.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "_palavras",
-   "linha": 337,
-   "cc": 3,
-   "cobertura": 0.0,
-   "crap": 12.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/pdf_substituicao.py",
-   "funcao": "ServicoDeSubstituicao._descartar_previa",
-   "linha": 724,
-   "cc": 3,
-   "cobertura": 0.0,
-   "crap": 12.0
-  },
-  {
    "arquivo": "src/chess_diagram_ocr/pdf_text.py",
    "funcao": "_axis_label_strip",
    "linha": 414,
@@ -3614,46 +3438,6 @@
    "arquivo": "src/chess_diagram_ocr/ui/cortina.py",
    "funcao": "Cortina.faixa_visivel",
    "linha": 197,
-   "cc": 3,
-   "cobertura": 0.0,
-   "crap": 12.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/ui/selecao_de_area.py",
-   "funcao": "centros_das_alcas",
-   "linha": 106,
-   "cc": 3,
-   "cobertura": 0.0,
-   "crap": 12.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/ui/selecao_de_area.py",
-   "funcao": "alca_em",
-   "linha": 126,
-   "cc": 3,
-   "cobertura": 0.0,
-   "crap": 12.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/ui/substituicao.py",
-   "funcao": "assinatura_da_pagina",
-   "linha": 314,
-   "cc": 3,
-   "cobertura": 0.0,
-   "crap": 12.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/ui/substituicao.py",
-   "funcao": "PilhaDeSubstituicoes.na_pagina",
-   "linha": 486,
-   "cc": 3,
-   "cobertura": 0.0,
-   "crap": 12.0
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/ui/substituicao.py",
-   "funcao": "PilhaDeSubstituicoes.apagamentos_na_pagina",
-   "linha": 490,
    "cc": 3,
    "cobertura": 0.0,
    "crap": 12.0

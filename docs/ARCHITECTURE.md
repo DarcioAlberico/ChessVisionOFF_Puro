@@ -277,10 +277,8 @@ porque o teste dele continua verde medindo a decisão sozinha.
 | `viewport.py` | A vista da página: o que a roda faz, para onde o zoom puxa, quanto cabe (S-70). |
 | `page_overlay.py` | Onde estão os diagramas da página exibida, para desenhá-los e para clicá-los (S-68). |
 | `page_results.py` | Os resultados de OCR guardados por página, para navegar sem perder o reconhecimento. |
-| `selecao_de_area.py` | O retângulo vivo sobre a página: alça, arrasto, ajuste fino e grampeamento (F9). |
 | `cortina.py` | A cortina de comparação: onde fica a divisa entre o antes e o depois (F9). |
 | `trilho.py` | O que o trilho de páginas diz de cada página (OCR_UI passo 17). |
-| `substituicao.py` | O que é uma substituição de diagrama dentro de um PDF, antes de qualquer PyMuPDF (F9). |
 | `mesa.py` | A mesa de texto: o PDF à esquerda e o editor à direita, na própria janela (S-640/S-645). |
 | `editor_model.py` | O estado do editor de diagramas, fora do widget (S-49). |
 | `board_model.py` | O estado e as regras do tabuleiro (S-50). |
@@ -324,6 +322,20 @@ porque o teste dele continua verde medindo a decisão sozinha.
 
 A tabela tem todo módulo de `ui/`, e `tests/test_docs.py` reprova o que entrar sem linha (S-832); ela
 dizia "meia centena" quando eram 78.
+
+**O que saiu: a substituição de diagrama no PDF (retirada na S-881, decisão D7 da solidez).** A F9
+absorveu em 2026-09-07 três módulos para trocar um diagrama impresso por um desenhado dentro do
+próprio PDF do livro: `pdf_substituicao.py` (917 linhas, na raiz do pacote: apagar retângulos,
+carimbar o diagrama novo, inserir o link do Lichess, achar as coordenadas impressas em volta do
+tabuleiro e gravar o PDF de saída), `ui/substituicao.py` (o que é uma substituição, um
+apagamento, o espaço de escrita da página, a assinatura da prévia e a pilha de desfazer) e
+`ui/selecao_de_area.py` (o retângulo vivo sobre a página: alças, arrasto, ajuste fino e
+grampeamento). O painel do Qt que os chamaria nunca veio: nenhum dos três tinha chamador nem
+teste (0% de cobertura em 626 instruções), `pdf_substituicao.achar_coordenadas` era o maior CRAP
+do programa (870), e o código gravava no arquivo do usuário sem recusar `saida == entrada`. Os
+três foram apagados em vez de ligados; quem retomar a funcionalidade os acha no histórico do git,
+no commit anterior ao da S-881. `desenho_de_diagrama.py` ficou, porque a aba Texto e o livro com
+PGN desenham com ele.
 
 ---
 

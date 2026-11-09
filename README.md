@@ -1141,7 +1141,7 @@ src/chess_diagram_ocr/
   dataset.py            dataset de treino, cache limitado e amostrador por tabuleiro
   dataset_browser.py    listar, filtrar, recorrigir e remover amostras
   decode.py             decodificacao sujeita as regras do xadrez
-  desenho_de_diagrama.py  o diagrama desenhado de novo (fonte Merida ou PNGs das pecas) para substituir no PDF
+  desenho_de_diagrama.py  o diagrama desenhado de novo (fonte Merida ou PNGs das pecas), em PNG, PDF ou SVG
   detection_census.py   censo da deteccao: quantos diagramas cada regra achou, por livro
   diagrama_png.py       o diagrama em PNG a partir da FEN, com as pecas de assets/ (S-543)
   diagrama_svg.py       o diagrama vetorial a partir da FEN, com as pecas do python-chess (S-542)
@@ -1184,7 +1184,6 @@ src/chess_diagram_ocr/
   onnx_export.py        exportacao ONNX e conferencia de paridade com o torch
   orientation.py        a cascata de regras que decide a orientacao do diagrama
   pdf_io.py             render de paginas de PDF (PyMuPDF)
-  pdf_substituicao.py   as operacoes de escrita no PDF: apagar, substituir o diagrama, link do lichess
   pdf_text.py           legenda e metadados da camada de texto do PDF
   pdf_to_pgn.py         varredura de PDF e exportacao PGN
   pgn_do_livro.py       o PGN que vem com o livro: leitura tolerante e o indice da arvore por lance e por posicao (S-585)

@@ -23,7 +23,7 @@
   "raiz": {
    "type_ignore": 20,
    "any": 261,
-   "except_exception": 48
+   "except_exception": 44
   },
   "text": {
    "type_ignore": 44,

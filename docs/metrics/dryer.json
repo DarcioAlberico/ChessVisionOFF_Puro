@@ -2,7 +2,7 @@
  "limiar": 0.8,
  "gramas": 5,
  "min_tokens": 60,
- "total": 72,
+ "total": 71,
  "pares": [
   {
    "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
@@ -72,13 +72,6 @@
    "linha_a": 276,
    "b": "src/chess_diagram_ocr/review_queue.py::ReviewQueue.to_dict",
    "linha_b": 229,
-   "semelhanca": 1.0
-  },
-  {
-   "a": "src/chess_diagram_ocr/pdf_substituicao.py::ServicoDeSubstituicao.renderizar_com_operacoes",
-   "linha_a": 775,
-   "b": "src/chess_diagram_ocr/pdf_substituicao.py::ServicoDeSubstituicao.renderizar_regiao_com_operacoes",
-   "linha_b": 797,
    "semelhanca": 1.0
   },
   {

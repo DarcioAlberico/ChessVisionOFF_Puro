@@ -2404,6 +2404,18 @@ além da suíte verde e da catraca de órfãos baixando.
 
 **Aceite.** Em (a), os três módulos acima de 80% de cobertura; em (b), os três fora de `src/`.
 
+**Entregue** (2026-11-09): opção (b). Os três saíram de `src/`, e o registro do que eram ficou em
+prosa na `ARCHITECTURE.md`, abaixo da tabela de `ui/`. Diferenças em relação à spec: (1) o
+`TETO_DE_ORFAOS` já estava em 0 e continua em 0; o que baixou foi o `SEM_CHAMADOR` de
+`tests/test_ui_orfaos.py`, com 16 isenções a menos (2 de `substituicao`, 14 de `selecao_de_area`),
+e era o `test_a_excecao_declarada_ainda_e_orfa` que reprovava enquanto elas estavam lá; (2) o
+`crap.json` não foi remedido, porque isso pede a suíte inteira sob `coverage`: as 27 funções dos três
+arquivos foram tiradas do registro e os contadores recalculados (87 funções medidas a menos, 582
+acima do limiar, 124 acima do teto); (3) `desenho_de_diagrama.escopo_do_desenho`,
+`pdf_do_diagrama` e `svg_do_diagrama` perderam o único chamador e ficaram, porque a aba Texto e o
+livro com PGN usam o `png_do_diagrama` do mesmo módulo; nenhuma guarda de órfãos cobre a raiz do
+pacote. Nenhuma dependência saiu: `fitz` e `PIL` têm outros importadores.
+
 ## Fase 120 — Os arquivos-deus do Qt
 
 ## S-865 · `PainelDeTexto` em cinco módulos

@@ -10,9 +10,10 @@
 #         `semantics.compose_fen`, que é o que este projeto usa desde a S-67.
 """Um campo de peças virando bytes: PDF vetorial, PNG e SVG (F9).
 
-**Para que serve.** Substituir um diagrama dentro de um livro precisa de um diagrama **novo** para
-carimbar no lugar do velho, e ele tem de existir como bytes que o PyMuPDF saiba pôr numa página --
-não como widget. O tronco desenha tabuleiro muito bem em `qt/tabuleiro.py`, mas ali o desenho é um
+**Para que serve.** Nasceu para a substituição de diagrama dentro do PDF (F9), que precisava de
+um diagrama **novo** para carimbar no lugar do velho, como bytes que o PyMuPDF soubesse pôr numa
+página -- não como widget. A substituição foi retirada na S-881 (decisão D7 da solidez); quem
+desenha com este módulo hoje são a aba Texto e o livro com PGN, pelo `png_do_diagrama`. O tronco desenha tabuleiro muito bem em `qt/tabuleiro.py`, mas ali o desenho é um
 `QPainter` sobre um `QWidget`: ele precisa de `QApplication`, e um serviço de PDF que exigisse
 janela aberta não poderia rodar em lote nem em thread de trabalho.
 
@@ -67,9 +68,9 @@ __all__ = [
 LADO_PADRAO_PX = 1024
 """O lado do tabuleiro renderizado, quando ninguém pede outro.
 
-Quem carimba num PDF **não** usa este valor: `pdf_substituicao` deriva o lado do tamanho em
-pontos do retângulo a 450 dpi, porque o que importa ali é a resolução na folha impressa e não um
-número redondo."""
+Quem carimbava num PDF **não** usava este valor: o `pdf_substituicao`, retirado na S-881,
+derivava o lado do tamanho em pontos do retângulo a 450 dpi, porque o que importava ali era a
+resolução na folha impressa e não um número redondo."""
 
 FONTE_MERIDA_ENV = "CVOFF_MERIDA_FONT"
 """A variável que aponta uma fonte de xadrez para o desenho vetorial.
@@ -112,9 +113,10 @@ def _rgb(papel: str) -> tuple[int, int, int]:
 def escopo_do_desenho() -> str:
     """O que muda o desenho e **não** está na operação: a fonte e o conjunto de peças em vigor.
 
-    Entra na assinatura da prévia (`ui.substituicao.assinatura_da_pagina`). Sem isto, trocar a
-    fonte de xadrez em execução deixaria a prévia mostrando o desenho anterior -- o mesmo defeito
-    que a origem teve com o link do Lichess, encontrado por outro caminho.
+    Entrava na assinatura da prévia da substituição de diagrama (`ui/substituicao`, retirado na
+    S-881). Sem isto, trocar a fonte de xadrez em execução deixaria a prévia mostrando o desenho
+    anterior -- o mesmo defeito que a origem teve com o link do Lichess, encontrado por outro
+    caminho. Hoje não tem chamador.
     """
     fonte = fonte_merida()
     return f"{fonte if fonte is None else fonte.name}|{conjuntos.escolhido()}"

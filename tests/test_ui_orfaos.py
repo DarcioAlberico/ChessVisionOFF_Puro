@@ -273,8 +273,11 @@ SEM_CHAMADOR.update(
             "rolável com o seguidor de foco), e o empilhamento da S-552 supõe a imagem fixa de 420 px "
             "-- o porte não o trouxe. Fica declarada para quando for, como `LARGURA_DO_CIRCULO`"
         ),
-        "substituicao.SEM_ROTACAO": GUARDADO_SEM_O_PAINEL,
-        "substituicao.PilhaDeSubstituicoes": GUARDADO_SEM_O_PAINEL,
+        # `substituicao.SEM_ROTACAO` e `substituicao.PilhaDeSubstituicoes` estavam aqui, e os
+        # catorze nomes de `selecao_de_area` no lote abaixo: saíram na S-881 (decisão D7 da
+        # solidez), que respondeu a pergunta adiada **apagando**. A substituição de diagrama no
+        # PDF -- `pdf_substituicao.py`, `ui/substituicao.py` e `ui/selecao_de_area.py` -- não tinha
+        # chamador nem teste; o registro do que ela era mora na `ARCHITECTURE.md`.
         # --- os que têm cliente fora de `src/`: os portões e as medições da suíte (`caissa`), que lê
         # o tronco como biblioteca -- o mesmo caso de `plataforma.gravar_icone`
         "folha_de_estilo.QUEM_PINTA": (
@@ -311,15 +314,6 @@ SEM_CHAMADOR.update(
                         "ano_no_titulo", "casa_com", "colunas_que_cabem", "editora_no_titulo",
                         "era_de", "faixa_de_diagramas", "idioma_provavel", "item_de", "janela_visivel",
                         "peso_no_disco", "resumo_de", "titulo_do_arquivo",
-                    ),
-                ),
-                (
-                    "selecao_de_area",
-                    (
-                        "ALCAS", "LADO_DA_ALCA", "LADO_MINIMO_PARA_ALCAS_DE_BORDA", "PASSO_FINO_PT",
-                        "PASSO_PT", "TOLERANCIA_DA_ALCA", "Gesto", "alca_em", "centros_das_alcas",
-                        "decidir_gesto", "e_clique", "grampeado_ponto", "redimensionado",
-                        "selecao_pequena_demais",
                     ),
                 ),
                 (
