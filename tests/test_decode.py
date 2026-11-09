@@ -348,12 +348,14 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class PrazoDaBuscaTests(unittest.TestCase):
-    """A busca sujeita às regras tem teto de **tempo**, e não só de expansões (S-358).
+class TetoDaBuscaTests(unittest.TestCase):
+    """A busca sujeita às regras tem um teto que cabe no tempo, e ele é de expansões (S-358, S-834).
 
     Um tabuleiro legal nem entra na busca (~0,1 ms); um tabuleiro ilegal gastava as 5.000
     expansões inteiras para no fim admitir que não achou -- 3,5 s medidos aqui, e **duas vezes por
-    diagrama**, porque o modo `auto` lê a 0° e a 180°.
+    diagrama**, porque o modo `auto` lê a 0° e a 180°. A S-358 pôs um prazo de relógio; a S-834 o
+    tirou (o relógio fazia a mesma matriz sair diferente numa máquina carregada) e baixou o teto
+    de expansões até o pior caso caber no mesmo meio segundo.
     """
 
     def _ilegal(self) -> np.ndarray:
@@ -363,19 +365,20 @@ class PrazoDaBuscaTests(unittest.TestCase):
         probs[:, PIECE_CLASSES.index("empty")] = 0.28
         return probs / probs.sum(axis=1, keepdims=True)
 
-    def test_o_tabuleiro_ilegal_para_no_prazo(self) -> None:
+    def test_o_pior_caso_cabe_no_teto_padrao(self) -> None:
         import time
 
         inicio = time.perf_counter()
-        resultado = decode_constrained(self._ilegal(), max_seconds=0.05)
+        resultado = decode_constrained(self._ilegal())
         gasto = time.perf_counter() - inicio
 
-        self.assertLess(gasto, 1.0, "a busca ignorou o prazo")
+        # ~0,5 s numa máquina ociosa; o dobro dá folga para a suíte em paralelo sem deixar
+        # passar o teto de antes, que levava sete vezes isso.
+        self.assertLess(gasto, 2.0, "o teto padrão de expansões não segura o pior caso")
         self.assertFalse(resultado.constraints_satisfied)
 
-    def test_o_prazo_desligado_continua_valendo_o_teto_de_expansoes(self) -> None:
-        """`max_seconds=0` é o comportamento de antes, e ele continua disponível."""
-        resultado = decode_constrained(self._ilegal(), max_seconds=0, max_expansions=50)
+    def test_o_teto_de_expansoes_vale(self) -> None:
+        resultado = decode_constrained(self._ilegal(), max_expansions=50)
         self.assertFalse(resultado.constraints_satisfied)
 
     def test_o_tabuleiro_legal_nao_e_afetado(self) -> None:
@@ -387,7 +390,7 @@ class PrazoDaBuscaTests(unittest.TestCase):
         probs[60, PIECE_CLASSES.index("k")] = 0.95
         probs = probs / probs.sum(axis=1, keepdims=True)
 
-        resultado = decode_constrained(probs, max_seconds=0.05)
+        resultado = decode_constrained(probs)
 
         self.assertTrue(resultado.constraints_satisfied)
         self.assertEqual(resultado.changed_square_count, 0)
@@ -475,3 +478,37 @@ class AdjacentKingsTests(unittest.TestCase):
         result = decode_constrained(probs_for_fen("8/8/8/3k4/8/4K3/8/8"))
         self.assertTrue(result.constraints_satisfied)
         self.assertEqual(result.changed_squares, [])
+
+
+class OrcamentoSemRelogioTests(unittest.TestCase):
+    """A busca sujeita às regras para por expansões, e não pelo relógio (S-834).
+
+    Com o prazo de 0,5 s da S-358 a mesma matriz de probabilidades podia sair em FEN diferente numa
+    máquina carregada, em rodadas paralelas ou na primeira chamada lenta de um processo: o
+    relatório de campo deixava de ser reproduzível. O teto é de expansões, e só dele.
+    """
+
+    def _kemeri(self) -> np.ndarray:
+        """A leitura do `Kemeri` sem rei branco (S-11): o reparo precisa da busca."""
+        probs = probs_for_fen(KEMERI_NO_WHITE_KING, confidence=0.80)
+        a7 = square_index("a7")
+        probs[a7] = 0.01
+        probs[a7, PIECE_TO_IDX["Q"]] = 0.60
+        probs[a7, PIECE_TO_IDX["K"]] = 0.30
+        return probs / probs.sum(axis=1, keepdims=True)
+
+    def test_um_relogio_que_corre_nao_muda_o_resultado(self) -> None:
+        from unittest import mock
+
+        esperado = decode_constrained(self._kemeri())
+        instantes = iter(float(segundo) for segundo in range(10**6))
+
+        # Um segundo a cada pergunta das horas: a máquina mais carregada que se pode imaginar.
+        with mock.patch("time.monotonic", side_effect=lambda: next(instantes)):
+            sob_carga = decode_constrained(self._kemeri())
+
+        self.assertTrue(esperado.constraints_satisfied)
+        self.assertEqual(esperado.fen_board, KEMERI_FIXED)
+        self.assertEqual(sob_carga.fen_board, esperado.fen_board)
+        self.assertEqual(sob_carga.constraints_satisfied, esperado.constraints_satisfied)
+        self.assertEqual(sob_carga.changed_squares, esperado.changed_squares)

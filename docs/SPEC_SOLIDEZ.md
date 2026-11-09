@@ -1608,6 +1608,8 @@ para avançar 1 s por chamada: hoje a busca sai na expansão 0 (o relógio é co
 
 **Aceite.** O teste passa; os 40 tabuleiros dão o mesmo resultado em dez rodadas com carga paralela.
 
+**Entregue** (2026-11-09): `decode.MAX_EXPANSOES = 600`, e `max_seconds` saiu da assinatura. O pior caso medido é o tabuleiro da S-358 (rei como argmax nas 64 casas): 500 expansões em 0,40 s, 600 em ~0,5 s, 700 em 0,67 s; um tabuleiro real custa cerca de um sétimo disso por expansão. O teste remenda `time.monotonic` (o módulo não importa mais `time`) e usa a leitura do `Kemeri` sem rei branco, que saía crua na expansão 0. No campo, o modelo de produção sai idêntico; o `mhsp` sai com 27 casas reparadas em vez de 28 (um diagrama do `Euwe Band 1-2` cujo reparo pedia mais de 600 expansões), e três rodadas do `mhsp`, duas delas em paralelo, saíram idênticas fora o tempo.
+
 ## S-835 · Contadores de campo por campo tipado, não por frase
 
 **Problema** (confirmado por leitura). `field_eval.py:1225` e `:1233` contam `next_move_ambiguous` e

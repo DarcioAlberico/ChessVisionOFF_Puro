@@ -30,7 +30,6 @@ vazia e limpa virava rei. Ver `MIN_KING_PROBABILITY`. Sem indício, a falta fica
 from __future__ import annotations
 
 import heapq
-import time
 from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -305,26 +304,32 @@ def _build_result(
     )
 
 
-SEGUNDOS_MAXIMOS = 0.5
-"""Quanto tempo a busca pode gastar num tabuleiro só (S-358).
+MAX_EXPANSOES = 600
+"""Quantos estados a busca retira da fila num tabuleiro só, e o único teto que ela tem (S-834).
 
-**O teto de expansões não é teto de tempo.** Um tabuleiro legal é resolvido em ~0,1 ms -- nem
-entra na busca --, e um tabuleiro ilegal gasta as 5.000 expansões inteiras para no fim admitir que
-não achou: medido em 3,4 s no relatório da revisão, e **duas vezes por diagrama**, porque o modo
-`auto` lê a 0° e a 180°. Sete segundos de janela parada num diagrama que vai ser recusado de
-qualquer jeito.
+**O relógio decidia, e não pode.** A S-358 pôs um prazo de 0,5 s de `time.monotonic` por cima das
+5.000 expansões, porque um tabuleiro ilegal gastava todas elas (3,4 s medidos, duas vezes por
+diagrama no modo `auto`). Com o prazo, a mesma matriz de probabilidades saía em FEN diferente numa
+máquina carregada, em rodadas paralelas ou na primeira chamada lenta do processo: o modelo `mhsp`
+deu 28 e 27 casas reparadas sobre o mesmo código, conforme a carga. O teto agora é de expansões, e
+só de expansões, e por isso a leitura é função da matriz e de nada mais.
 
-Meio segundo é quatro mil vezes o caso normal e sete vezes menos que o pior medido: nenhum reparo
-que hoje termina é cortado por ele, e o que não termina para de custar o que custava."""
+**600, medidos nesta máquina em 2026-11-09.** O pior caso conhecido é o da S-358 -- rei branco
+como argmax nas 64 casas --, que ramifica em ~200 sucessores por expansão: 400 expansões levam
+0,32 s, 500 levam 0,40 s, 600 levam ~0,5 s e 700 já 0,67 s. Um tabuleiro real custa cerca de um
+sétimo disso por expansão (as 228 leituras do conjunto de campo com o `mhsp`, a 0° e a 180°: 5.000
+expansões em até 0,6 s). No conjunto de campo, com 600, o modelo de produção sai idêntico ao
+relatório arquivado, e o `mhsp` sai com 27 casas reparadas em vez de 28: a do `Euwe Band 1-2` cujo
+reparo precisava de mais de 600 expansões e que o relógio só concedia com a máquina ociosa.
+"""
 
 
 def decode_constrained(
     probs: np.ndarray,
     *,
     max_changes: int = 6,
-    max_expansions: int = 5000,
+    max_expansions: int = MAX_EXPANSOES,
     alternatives_per_square: int = 4,
-    max_seconds: float = SEGUNDOS_MAXIMOS,
     rules: DecodeRules = DEFAULT_RULES,
 ) -> DecodeResult:
     """Atribuição de maior probabilidade que respeita as regras verificáveis do xadrez.
@@ -383,13 +388,7 @@ def decode_constrained(
     best_state = base
     best_key = (len(_find_violations(base, probs, rules)), 0.0)
 
-    prazo = time.monotonic() + max_seconds if max_seconds > 0 else None
     while heap and expansions < max_expansions:
-        # **O relógio é conferido a cada 64 expansões**, e não a cada uma: `time.monotonic` custa
-        # ~50 ns e o corpo do laço custa pouco mais que isso -- perguntar as horas cinco mil vezes
-        # seria pagar pelo cronômetro o que se quer economizar na busca.
-        if prazo is not None and expansions % 64 == 0 and time.monotonic() > prazo:
-            break
         cost, _, state = heapq.heappop(heap)
         expansions += 1
 
