@@ -92,7 +92,7 @@ def lado_por_glifo(
     """A declaração de lado a jogar nesta linha lida pelo glifo, ou `None`.
 
     **A régua é a mesma da camada de texto, e isso é a decisão do item.** Quem reconhece o padrão
-    é `pdf_text._side_from_line` -- as mesmas expressões, nos mesmos idiomas, com a mesma exigência
+    é `pdf_text.side_from_line` -- as mesmas expressões, nos mesmos idiomas, com a mesma exigência
     de formato de legenda. Um segundo reconhecedor de "White to move" aqui divergiria do primeiro
     na primeira frase que só um dos dois cobrisse, e o acervo tem oito idiomas para produzi-la.
 
@@ -103,9 +103,9 @@ def lado_por_glifo(
     recortada em volta do diagrama. A exigência de abertura de linha existe para prosa, e prosa é
     o que não chega aqui.
     """
-    from ..pdf_text import _side_from_line
+    from ..pdf_text import side_from_line
 
-    achado = _side_from_line(texto, caption_like=True)
+    achado = side_from_line(texto, caption_like=True)
     if achado is None:
         return None
     cor, evidencia = achado

@@ -158,6 +158,7 @@ from typing import Literal
 
 import numpy as np
 
+from ..fontes_de_xadrez import MIN_ROTULOS_DE_EIXO, ROTULO_DE_EIXO
 from . import admissao as _admissao
 from . import boxes as _boxes
 from . import caixa_alta as _caixa_alta
@@ -745,16 +746,6 @@ def _para_pontos(caixa: _boxes.Caixa, escala_px: float) -> Retangulo:
     return (caixa.x1 / fator, caixa.y1 / fator, caixa.x2 / fator, caixa.y2 / fator)
 
 
-EIXO_SOLTO = _re.compile(r"^[a-h1-8]$")
-"""Uma linha que é só um rótulo de eixo. A mesma régua da `pdf_text._AXIS_LABEL`."""
-
-MIN_EIXOS_NA_FILA = 6
-"""Quantos rótulos distintos numa linha só a fazem ser a borda de um tabuleiro.
-
-Seis, e não oito, e o número é o mesmo `_MIN_AXIS_LABELS` da S-217 pela mesma razão: o scan perde
-rótulo de canto, e exigir os oito faria a régua falhar justamente nas páginas piores."""
-
-
 def e_fila_de_eixo(texto: str) -> bool:
     """A linha é a fila `a b c d e f g h` (ou a coluna de filas) de um tabuleiro?
 
@@ -763,17 +754,17 @@ def e_fila_de_eixo(texto: str) -> bool:
     fila como `a b d f a C e h`, porque rótulo isolado é o pior caso para um leitor de linha, e a
     régua literal deixou de casar. A borda voltou ao texto da página em todo diagrama.
 
-    O que ela é de fato é o mesmo da `pdf_text._axis_label_strip`: rótulos **de um caractere só**,
+    O que ela é de fato é o mesmo da `pdf_text.axis_label_strip`: rótulos **de um caractere só**,
     do alfabeto do tabuleiro, e **distintos**. É por serem distintos que a coluna de resultados de
     uma tabela de torneio (`1 1 0 1`) não cai aqui -- ver a docstring de lá, que mediu o caso.
     """
     partes = texto.split()
-    if len(partes) < MIN_EIXOS_NA_FILA:
+    if len(partes) < MIN_ROTULOS_DE_EIXO:
         return False
     marcas = [p.lower() for p in partes]
-    if any(not EIXO_SOLTO.match(m) for m in marcas):
+    if any(not ROTULO_DE_EIXO.match(m) for m in marcas):
         return False
-    return len(set(marcas)) >= MIN_EIXOS_NA_FILA
+    return len(set(marcas)) >= MIN_ROTULOS_DE_EIXO
 
 
 VAOS_DE_ALTURA_ATE_O_DIAGRAMA = 2.0
@@ -803,7 +794,7 @@ def sem_rotulos_de_eixo(cruas: Sequence[_Cru], diagramas: Sequence[Retangulo] = 
     mesma distância. Quem os separa de texto de verdade não é a distância: é serem **alinhados** e
     **distintos** -- as oito filas, cada uma uma vez. A coluna de resultados de uma tabela de
     torneio também é alinhada, mas é `1`, `1`, `0`, `1`, e sobrevive à conta. Ver
-    `pdf_text._axis_label_strip`, que é a função que decide, reusada aqui em vez de reescrita.
+    `pdf_text.axis_label_strip`, que é a função que decide, reusada aqui em vez de reescrita.
 
     **E é preciso haver um diagrama por perto (S-355).** A régua estrutural aceita
     `1 2 3 4 5 6 7 8` -- oito rótulos de um caractere, distintos --, e essa é a linha de cabeçalho
@@ -814,21 +805,21 @@ def sem_rotulos_de_eixo(cruas: Sequence[_Cru], diagramas: Sequence[Retangulo] = 
     `diagramas` vazio é o caminho de quem não os tem -- e aí nada é apagado, que é a resposta
     certa para "não sei onde estão os tabuleiros".
     """
-    from ..pdf_text import _MIN_AXIS_LABELS, _axis_label_strip
+    from ..pdf_text import axis_label_strip
 
     fora: set[int] = {
         i
         for i, c in enumerate(cruas)
         if e_fila_de_eixo(c.texto) and _junto_de_diagrama(c.caixa, diagramas)
     }
-    soltos = [i for i, c in enumerate(cruas) if EIXO_SOLTO.match(c.texto.strip())]
-    if len(soltos) >= _MIN_AXIS_LABELS:
+    soltos = [i for i, c in enumerate(cruas) if ROTULO_DE_EIXO.match(c.texto.strip())]
+    if len(soltos) >= MIN_ROTULOS_DE_EIXO:
         itens = [
             (cruas[i].texto.strip(), (float(cruas[i].caixa.x1), float(cruas[i].caixa.y1),
                                       float(cruas[i].caixa.x2), float(cruas[i].caixa.y2)))
             for i in soltos
         ]
-        fora |= {soltos[k] for k in _axis_label_strip(itens)}
+        fora |= {soltos[k] for k in axis_label_strip(itens)}
     return [c for i, c in enumerate(cruas) if i not in fora]
 
 

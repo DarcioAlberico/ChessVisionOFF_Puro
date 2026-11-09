@@ -270,7 +270,7 @@ def _module_file(dotted: str, root: Path) -> Path | None:
     return arquivo if arquivo.exists() else None
 
 
-def _imports_of(arquivo: Path, dotted: str) -> set[str]:
+def _imports_of(arquivo: Path, dotted: str, *, with_ocr: bool = False) -> set[str]:
     """Os módulos **do pacote** que este importa, achados por `ast`.
 
     `ast` e não `import`: importar puxaria `torch` e abriria o modelo só para responder de que
@@ -297,7 +297,13 @@ def _imports_of(arquivo: Path, dotted: str) -> set[str]:
     # import poria `ui/tokens.py` no digest, e cada troca de cor pediria remedição. O `import` de
     # `ui/` **no topo** de um módulo medido continua entrando, que é o que
     # `test_a_interface_nao_invalida_uma_medicao` vigia.
+    # **O motor de OCR importado tarde também não entra, sem `--ocr`** (`OPTIONAL_BACKENDS`). Só o
+    # tardio: o `text/` importado no topo de um módulo medido roda em toda medição, e entra.
     fora_da_interface = not _e_da_interface(dotted)
+
+    def podado(alvo: str, tardio: bool) -> bool:
+        return tardio and ((fora_da_interface and _e_da_interface(alvo)) or (not with_ocr and _e_opcional(alvo)))
+
     achados: set[str] = set()
     for no, tardio in _nos_com_escopo(arvore):
         if isinstance(no, ast.ImportFrom):
@@ -310,7 +316,7 @@ def _imports_of(arquivo: Path, dotted: str) -> set[str]:
                 alvo = no.module
             else:
                 continue
-            if tardio and fora_da_interface and _e_da_interface(alvo):
+            if podado(alvo, tardio):
                 continue
             achados.add(alvo)
             achados.update(f"{alvo}.{a.name}" for a in no.names)
@@ -318,7 +324,7 @@ def _imports_of(arquivo: Path, dotted: str) -> set[str]:
             achados.update(
                 a.name
                 for a in no.names
-                if a.name.startswith(PACOTE) and not (tardio and fora_da_interface and _e_da_interface(a.name))
+                if a.name.startswith(PACOTE) and not podado(a.name, tardio)
             )
     return achados
 
@@ -337,6 +343,10 @@ def _e_da_interface(dotted: str) -> bool:
     return dotted == f"{PACOTE}.ui" or dotted.startswith(f"{PACOTE}.ui.")
 
 
+def _e_opcional(dotted: str) -> bool:
+    return any(dotted == b or dotted.startswith(f"{b}.") for b in OPTIONAL_BACKENDS)
+
+
 PACOTE = "chess_diagram_ocr"
 
 
@@ -352,6 +362,11 @@ que hoje muda várias vezes por dia: a guarda ficaria vermelha o tempo todo por 
 comprovadamente não toca a medição, e uma guarda que grita sempre é apagada. O que mantém isso
 honesto é que o motor usado sai **gravado no relatório** -- então a poda é visível, e uma
 corrida com `--ocr glifo` digere o `text/` junto.
+
+**A poda é do import tardio, e não do pacote (S-836).** Ela tirava o `text/` inteiro, e o
+`lance_seguinte`, no caminho medido, importa `text.notacao` **no topo**: a régua de notação roda
+em toda medição e move `next_move_*`, e mexer nela não acusava a guarda. Agora só o que é
+alcançado por import dentro de função (o motor de `ocr.build_recognizer`) fica de fora sem `--ocr`.
 """
 
 
@@ -380,13 +395,11 @@ def measured_modules(
         if dotted in vistos:
             continue
         vistos.add(dotted)
-        if not with_ocr and any(dotted == b or dotted.startswith(f"{b}.") for b in OPTIONAL_BACKENDS):
-            continue
         arquivo = _module_file(dotted, raiz)
         if arquivo is None:
             continue
         arquivos[dotted] = arquivo
-        fila.extend(_imports_of(arquivo, dotted) - vistos)
+        fila.extend(_imports_of(arquivo, dotted, with_ocr=with_ocr) - vistos)
     return sorted(arquivos)
 
 

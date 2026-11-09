@@ -1425,6 +1425,30 @@ class ImpressaoDaMedicaoTests(unittest.TestCase):
         self.assertNotIn("chess_diagram_ocr.ui.frase", modulos, "o import tardio de texto de tela entrou")
         self.assertIn("chess_diagram_ocr.ui.cor", modulos, "o import de ui/ no topo saiu do fecho")
 
+    def test_o_text_importado_no_topo_entra_mesmo_com_o_motor_desligado(self) -> None:
+        """A brecha da poda (S-836): `lance_seguinte`, no caminho medido, importa `text.notacao` no
+        topo -- e a poda tirava **todo** o `text/` sem `--ocr glifo`. Mexer na régua de notação movia
+        `next_move_*` sem a guarda acusar. Só o import tardio do motor fica de fora."""
+        self.assertIn("chess_diagram_ocr.text.notacao", measured_modules(with_ocr=False))
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            pacote = raiz / "src" / "chess_diagram_ocr"
+            (pacote / "cli").mkdir(parents=True)
+            (pacote / "text").mkdir()
+            for vazio in ("__init__.py", "cli/__init__.py", "text/__init__.py", "text/regua.py", "text/glifo.py"):
+                (pacote / vazio).write_text("", encoding="utf-8")
+            (pacote / "cli" / "field.py").write_text("from ..medido import ler\nfrom ..ocr import motor\n",
+                                                     encoding="utf-8")
+            (pacote / "medido.py").write_text("from .text.regua import x\n\ndef ler():\n    return x\n",
+                                              encoding="utf-8")
+            (pacote / "ocr.py").write_text("def motor():\n    from .text.glifo import y\n    return y\n",
+                                           encoding="utf-8")
+            desligado = measured_modules(root=raiz)
+            ligado = measured_modules(root=raiz, with_ocr=True)
+        self.assertIn("chess_diagram_ocr.text.regua", desligado, "o text/ importado no topo saiu do fecho")
+        self.assertNotIn("chess_diagram_ocr.text.glifo", desligado, "o motor desligado entrou no fecho")
+        self.assertIn("chess_diagram_ocr.text.glifo", ligado)
+
     def test_o_motor_desligado_fica_fora_do_digest(self) -> None:
         """`--ocr` nasce `off`, e o glifo entra por import tardio dentro de `build_recognizer`.
 
@@ -1435,8 +1459,10 @@ class ImpressaoDaMedicaoTests(unittest.TestCase):
         """
         desligado = measured_modules(with_ocr=False)
         ligado = measured_modules(with_ocr=True)
-        self.assertFalse([m for m in desligado if m.startswith("chess_diagram_ocr.text")])
-        self.assertTrue([m for m in ligado if m.startswith("chess_diagram_ocr.text")])
+        # Só o motor e o que ele puxa: o `text/` que o caminho medido importa no topo entra nos dois
+        # (S-836, ver o teste acima).
+        self.assertNotIn("chess_diagram_ocr.text.recognizer", desligado)
+        self.assertIn("chess_diagram_ocr.text.recognizer", ligado)
         self.assertLess(len(desligado), len(ligado))
 
     def test_a_impressao_muda_quando_um_modulo_medido_muda(self) -> None:

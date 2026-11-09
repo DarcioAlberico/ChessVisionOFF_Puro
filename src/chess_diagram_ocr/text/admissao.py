@@ -46,7 +46,9 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-VERSAO = 1
+from ..fontes_de_xadrez import e_fonte_de_diagrama, e_fonte_de_xadrez
+
+VERSAO = 2
 """Sobe quando um critério muda: o manifesto do ouro grava a versão com que admitiu cada folha."""
 
 FOLHAS_DE_PERFIL = 30
@@ -59,10 +61,6 @@ FRACAO_DE_IMAGEM_CHEIA = 0.6
 
 PRODUTOR_DE_OCR = re.compile(r"paper capture|image conversion|finereader|omnipage|omniscan|google|abbyy", re.I)
 FONTE_DE_OCR = re.compile(r"glyphlessfont|hiddenhorzocr|^fd\d+", re.I)
-FONTE_DE_DIAGRAMA = re.compile(r"merida|diagram|alpha|leipzig|kingdom|chess-?berlin|usualchess|linares", re.I)
-"""O protótipo listava também `skaknew-diagram`, `diagramtt` e `chessalpha`, que `diagram` e `alpha` já
-cobrem: saíram para cada alternativa que fica ter um teste que a pegue sozinha."""
-FONTE_DE_FIGURINA = re.compile(r"figurine|merida|skak|chess|alpha|leipzig|segoe ui symbol|ms gothic", re.I)
 LIXO_DE_FIGURINA = re.compile(r"l:l'|'ii'|\.tg")
 """O ponto de `.tg` é literal: sem ele, `Stuttgart` e `outgoing` seriam lixo."""
 USO_PRIVADO = re.compile("[-]")
@@ -180,7 +178,7 @@ def decidir(
     for trecho in trechos:
         if not trecho.texto.strip():
             continue
-        e_de_diagrama = bool(FONTE_DE_DIAGRAMA.search(trecho.fonte))
+        e_de_diagrama = e_fonte_de_diagrama(trecho.fonte)
         if dentro_de_algum(trecho.bbox, retangulos):
             dentro_diagrama += e_de_diagrama
             continue
@@ -193,7 +191,7 @@ def decidir(
             criterio = INVISIVEL
         if criterio is None and (
             LIXO_DE_FIGURINA.search(trecho.texto)
-            or (USO_PRIVADO.search(trecho.texto) and not FONTE_DE_FIGURINA.search(trecho.fonte))
+            or (USO_PRIVADO.search(trecho.texto) and not e_fonte_de_xadrez(trecho.fonte))
         ):
             criterio = LIXO
     fileira = maior_fileira(caixas_de_diagrama)

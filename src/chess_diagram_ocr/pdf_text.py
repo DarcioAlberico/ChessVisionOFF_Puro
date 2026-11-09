@@ -42,7 +42,7 @@ Quatro armadilhas que a medição impôs ao desenho
 3. **Prosa não é legenda.** Rodar os padrões na página inteira produz falso positivo em 8
    livros: "se as brancas jogarem 32 f2×g2", "it was possible for White to play 20.Nd3".
    O que separa não é o padrão, é o formato -- mas cortar toda prosa custa recall no
-   `AAGAARD`, que gruda o enunciado no comentário. Ver `_side_from_line`.
+   `AAGAARD`, que gruda o enunciado no comentário. Ver `side_from_line`.
 4. **Número de página parece número de exercício.** No `Reinfeld 1001` o único texto da
    página é o número impresso, a 16 pt do diagrama -- proximidade o entrega como se fosse o
    exercício. Dois filtros complementares, ambos necessários: faixa de margem (pega o
@@ -66,6 +66,7 @@ import chess
 import fitz
 
 from .estipulacao import Estipulacao, estipulacao_de_pagina, parse_estipulacao
+from .fontes_de_xadrez import MIN_ROTULOS_DE_EIXO, ROTULO_DE_EIXO, e_fonte_de_diagrama
 from .orientation import BoardCoordinates
 from .pdf_io import PdfSource
 from .procedencias import DA_CAMADA, DE_TERCEIROS, LineOrigin, SideOrigin, escopo_de_pagina
@@ -338,26 +339,6 @@ def _match_side_symbol(text: str) -> tuple[chess.Color, str] | None:
 
 _BOARD_FONT_ROW = re.compile(r"^[1-8]?[0-9A-Za-z]{8}$")
 _FILE_LABELS = re.compile(r"^a\W*b\W*c\W*d\W*e\W*f\W*g\W*h$", re.IGNORECASE)
-_AXIS_LABEL = re.compile(r"^[a-h1-8]$")
-_MIN_AXIS_LABELS = 6
-"""A partir de tantos rótulos de eixo soltos na mesma faixa, são as bordas de um diagrama."""
-
-_FONT_SUBSET_PREFIX = re.compile(r"^[A-Z]{6}\+")
-"""`ABCDEF+ChessMerida`: o prefixo de subconjunto do PDF, que não faz parte do nome."""
-
-_DIAGRAM_FONT_NAME = re.compile(
-    r"chess|skak|merida|diagram|schach|echecs|scacchi|ajedrez|xadrez", re.IGNORECASE
-)
-_FIGURINE_FONT_NAME = re.compile(r"figurine|semfig", re.IGNORECASE)
-"""Fonte de **figurina**, que desenha a peça no meio do lance (`♘f3`) e não o tabuleiro.
-
-Precisa ser excluída à mão porque o nome dela casa com `_DIAGRAM_FONT_NAME`: no `Polgar` a
-família é `SkakNew-Diagram` para o tabuleiro e `SkakNew-Figurine` para o lance. Medido no
-acervo, as duas de figurina desenham **1.892 linhas que também têm prosa** -- são as listas
-de lances, e descartá-las apagaria o texto que a S-208 vai precisar ler.
-"""
-
-
 def is_diagram_font(name: str) -> bool:
     """O nome desta fonte é o de uma fonte que desenha tabuleiro?
 
@@ -365,10 +346,7 @@ def is_diagram_font(name: str) -> bool:
     `SkakNew-Diagram`, `ChessMerida` e `Chess-Merida` --, **2 são excluídas** por serem de
     figurina, e as 959 restantes não casam. Nenhuma fonte de prosa casa por engano.
     """
-    limpo = _FONT_SUBSET_PREFIX.sub("", name)
-    if _FIGURINE_FONT_NAME.search(limpo):
-        return False
-    return bool(_DIAGRAM_FONT_NAME.search(limpo))
+    return e_fonte_de_diagrama(name)
 
 
 def _is_diagram_font_row(text: str, fonts: Sequence[str] = ()) -> bool:
@@ -411,14 +389,14 @@ def _is_diagram_font_row(text: str, fonts: Sequence[str] = ()) -> bool:
     return sum(compact.count(ch) for ch in "0Zz") >= 4
 
 
-def _axis_label_strip(
+def axis_label_strip(
     items: Sequence[tuple[str, tuple[float, float, float, float]]],
 ) -> set[int]:
     """Índices dos rótulos que formam a **borda** de um diagrama, e não texto solto.
 
     Existe porque contar por bloco não bastava (S-217). O `Polgar` põe cada dígito de fila
     no seu **próprio bloco** -- `8`, `7`, `6` ... são 8 blocos de uma linha --, então o
-    `_MIN_AXIS_LABELS` nunca disparava e os oito dígitos entravam na legenda. As letras
+    `MIN_ROTULOS_DE_EIXO` nunca disparava e os oito dígitos entravam na legenda. As letras
     `a b c d e f g h`, que o mesmo livro põe num bloco só, sempre caíram.
 
     Contar a página inteira em vez do bloco resolveria o `Polgar` e quebraria o `1937
@@ -455,7 +433,7 @@ def _axis_label_strip(
             marks = {items[index][0].lower() for index in group}
             ranks = sum(1 for mark in marks if mark.isdigit())
             files = len(marks) - ranks
-            if ranks >= _MIN_AXIS_LABELS or files >= _MIN_AXIS_LABELS:
+            if ranks >= MIN_ROTULOS_DE_EIXO or files >= MIN_ROTULOS_DE_EIXO:
                 dropped |= set(group)
     return dropped
 
@@ -520,65 +498,101 @@ def _texto_girado(page: fitz.Page, bbox: Sequence[float]) -> tuple[float, float,
     return float(x0), float(y0), float(x1), float(y1)
 
 
+_Item = tuple[str, tuple[float, float, float, float]]
+"""Uma linha guardada: o texto e a caixa dela, já no sistema girado da página."""
+
+
 def _page_lines(page: fitz.Page, *, margin: bool) -> list[TextLine]:
     height = page.rect.height or 1.0
-    top_limit = page.rect.y0 + height * MARGIN_BAND
-    bottom_limit = page.rect.y1 - height * MARGIN_BAND
+    faixa = (page.rect.y0 + height * MARGIN_BAND, page.rect.y1 - height * MARGIN_BAND)
 
-    blocks: list[tuple[int, list[tuple[str, tuple[float, float, float, float]]]]] = []
+    blocks: list[tuple[int, list[_Item]]] = []
     for block in page.get_text("dict").get("blocks", ()):
         if block.get("type") != 0:
             continue
-        block_words = sum(
-            len(span.get("text", "").split())
-            for line in block.get("lines", ())
-            for span in line.get("spans", ())
-        )
-
-        kept: list[tuple[str, tuple[float, float, float, float]]] = []
-        for line in block.get("lines", ()):
-            spans = [span for span in line.get("spans", ()) if span.get("text", "").strip()]
-            text = "".join(span.get("text", "") for span in line.get("spans", ()))
-            text = re.sub(r"\s+", " ", text).strip()
-            fonts = [str(span.get("font", "")) for span in spans]
-            if not text or _is_diagram_font_row(text, fonts):
-                continue
-
-            x0, y0, x1, y1 = _texto_girado(page, line["bbox"])
-            if (y1 <= top_limit or y0 >= bottom_limit) != margin:
-                continue
-            kept.append((text, (x0, y0, x1, y1)))
-
-        # As coordenadas do diagrama de fonte chegam como caracteres avulsos ("a", "7"), e um
-        # "7" avulso seria lido como numero de exercicio. Em bloco nenhum de legenda de
-        # verdade eles aparecem aos seis.
-        if sum(1 for text, _ in kept if _AXIS_LABEL.match(text)) >= _MIN_AXIS_LABELS:
-            kept = [item for item in kept if not _AXIS_LABEL.match(item[0])]
-
+        block_words, kept = _linhas_do_bloco(page, block, faixa, margin=margin)
+        kept = _sem_eixos_no_bloco(kept)
         if kept:
             blocks.append((block_words, kept))
+    return _agrupar(_sem_eixos_na_pagina(blocks))
 
-    # **A borda do diagrama nao respeita o bloco, e por isso a segunda passada e por pagina.**
-    # O `Polgar` poe cada digito de fila num bloco proprio, e o corte por bloco acima nunca
-    # os alcanca. Ver `_axis_label_strip` -- e por que ela e uma faixa, e nao a pagina toda.
+
+def _linhas_do_bloco(
+    page: fitz.Page, block: dict, faixa: tuple[float, float], *, margin: bool
+) -> tuple[int, list[_Item]]:
+    """As linhas de um bloco que ficam: sem o tabuleiro desenhado em fonte, e do lado certo da margem."""
+    top_limit, bottom_limit = faixa
+    kept: list[_Item] = []
+    for line in block.get("lines", ()):
+        text, fonts = _texto_e_fontes(line)
+        if not text or _is_diagram_font_row(text, fonts):
+            continue
+
+        x0, y0, x1, y1 = _texto_girado(page, line["bbox"])
+        if (y1 <= top_limit or y0 >= bottom_limit) != margin:
+            continue
+        kept.append((text, (x0, y0, x1, y1)))
+    return _palavras_do_bloco(block), kept
+
+
+def _palavras_do_bloco(block: dict) -> int:
+    return sum(
+        len(span.get("text", "").split())
+        for line in block.get("lines", ())
+        for span in line.get("spans", ())
+    )
+
+
+def _texto_e_fontes(line: dict) -> tuple[str, list[str]]:
+    """O texto da linha, com os espaços colapsados, e as fontes dos trechos que têm texto."""
+    spans = [span for span in line.get("spans", ()) if span.get("text", "").strip()]
+    text = "".join(span.get("text", "") for span in line.get("spans", ()))
+    return re.sub(r"\s+", " ", text).strip(), [str(span.get("font", "")) for span in spans]
+
+
+def _sem_eixos_no_bloco(kept: list[_Item]) -> list[_Item]:
+    """As coordenadas do diagrama de fonte chegam como caracteres avulsos ("a", "7"), e um "7"
+    avulso seria lido como número de exercício. Em bloco nenhum de legenda de verdade eles
+    aparecem aos seis."""
+    if sum(1 for text, _ in kept if ROTULO_DE_EIXO.match(text)) >= MIN_ROTULOS_DE_EIXO:
+        return [item for item in kept if not ROTULO_DE_EIXO.match(item[0])]
+    return kept
+
+
+def _sem_eixos_na_pagina(blocks: list[tuple[int, list[_Item]]]) -> list[tuple[int, list[_Item]]]:
+    """**A borda do diagrama não respeita o bloco, e por isso a segunda passada é por página.**
+
+    O `Polgar` põe cada dígito de fila num bloco próprio, e o corte por bloco nunca os alcança. Ver
+    `axis_label_strip` -- e por que ela é uma faixa, e não a página toda.
+    """
     marks = [
         (block_index, item_index, text, bbox)
         for block_index, (_, kept) in enumerate(blocks)
         for item_index, (text, bbox) in enumerate(kept)
-        if _AXIS_LABEL.match(text)
+        if ROTULO_DE_EIXO.match(text)
     ]
-    if len(marks) >= _MIN_AXIS_LABELS:
-        strip = _axis_label_strip([(text, bbox) for _, _, text, bbox in marks])
-        drop = {(marks[i][0], marks[i][1]) for i in strip}
-        if drop:
-            blocks = [
-                (
-                    block_words,
-                    [item for item_index, item in enumerate(kept) if (block_index, item_index) not in drop],
-                )
-                for block_index, (block_words, kept) in enumerate(blocks)
-            ]
+    if len(marks) < MIN_ROTULOS_DE_EIXO:
+        return blocks
+    strip = axis_label_strip([(text, bbox) for _, _, text, bbox in marks])
+    drop = {(marks[i][0], marks[i][1]) for i in strip}
+    return _sem_os_itens(blocks, drop) if drop else blocks
 
+
+def _sem_os_itens(
+    blocks: list[tuple[int, list[_Item]]], drop: set[tuple[int, int]]
+) -> list[tuple[int, list[_Item]]]:
+    return [
+        (
+            block_words,
+            [item for item_index, item in enumerate(kept) if (block_index, item_index) not in drop],
+        )
+        for block_index, (block_words, kept) in enumerate(blocks)
+    ]
+
+
+def _agrupar(blocks: list[tuple[int, list[_Item]]]) -> list[TextLine]:
+    """As linhas de cada bloco, numeradas por coluna: um bloco com as legendas de duas colunas vira
+    dois grupos (`_split_into_columns`)."""
     lines: list[TextLine] = []
     next_group = 0
     for block_words, kept in blocks:
@@ -969,7 +983,7 @@ def _parse_event_year(text: str) -> tuple[str | None, int | None]:
     return (event or None), year
 
 
-def _side_from_line(text: str, *, caption_like: bool) -> tuple[chess.Color, str] | None:
+def side_from_line(text: str, *, caption_like: bool) -> tuple[chess.Color, str] | None:
     """Lado a jogar declarado nesta linha, com a exigência valendo pelo formato dela.
 
     Em legenda o padrão vale onde estiver. Em parágrafo vale só quando **abre** a linha --
@@ -1107,7 +1121,7 @@ def _side_from_tier(lines: Sequence[_ParsedLine]) -> _SideDecision | None:
     found = [
         _SideDecision(color=declaration[0], evidence=declaration[1], origin=line.origin, confidence=line.confidence)
         for line in lines
-        if (declaration := _side_from_line(line.text, caption_like=line.caption_like)) is not None
+        if (declaration := side_from_line(line.text, caption_like=line.caption_like)) is not None
     ]
     if not found:
         return None
@@ -1211,7 +1225,7 @@ def context_from_lines(nearby: Sequence[NearbyLine], *, page_number: int | None 
 
     Linha de parágrafo entra na legenda -- o comentário do exercício é o que o `[Caption]`
     do PGN carrega e vale para o leitor humano --, mas com o crivo mais duro para o que
-    vira dado estruturado. Ver `_side_from_line` e `MAX_CAPTION_WORDS`.
+    vira dado estruturado. Ver `side_from_line` e `MAX_CAPTION_WORDS`.
 
     Quando nenhuma linha foi marcada como legenda (página sem lado dominante detectável),
     todas contam como tal: um único escalão é melhor que nenhum.
@@ -1309,7 +1323,7 @@ def page_scope_declaration(page: fitz.Page, *, caption_reader: CaptionSource | N
         declarations = [
             (found, line)
             for line in lines
-            if (found := _side_from_line(line.text, caption_like=True)) is not None
+            if (found := side_from_line(line.text, caption_like=True)) is not None
         ]
         if not declarations:
             continue

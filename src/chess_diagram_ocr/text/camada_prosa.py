@@ -28,6 +28,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from ..fontes_de_xadrez import e_fonte_de_xadrez
 from . import admissao
 
 Retangulo = tuple[float, float, float, float]
@@ -98,7 +99,7 @@ def _caracteres(pagina: Any) -> list[_Caractere]:
     for trecho in trechos:
         fonte = trecho.get("font", "") or ""
         corpo = max(float(trecho.get("size", 0) or 0), 1e-3)
-        de_figurina = bool(admissao.FONTE_DE_FIGURINA.search(fonte) or admissao.FONTE_DE_DIAGRAMA.search(fonte))
+        de_figurina = e_fonte_de_xadrez(fonte)
         caracteres = trecho.get("chars", ())
         for posicao, caractere in enumerate(caracteres):
             codigo = caractere[0]

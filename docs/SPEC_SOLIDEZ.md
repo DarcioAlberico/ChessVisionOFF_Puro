@@ -1654,6 +1654,8 @@ lados; as constantes de eixo públicas nele. `_page_lines` (complexidade 36) par
 **Aceite.** O teste passa; nenhum import de nome privado de `pdf_text` fora dele (o de `text/lado.py`
 incluído).
 
+**Entregue** (2026-11-09): `fontes_de_xadrez.py` na raiz do pacote, com `e_fonte_de_diagrama`, `e_fonte_de_figurina`, `e_fonte_de_xadrez`, `ROTULO_DE_EIXO` e `MIN_ROTULOS_DE_EIXO`. A regra de diagrama é a união das duas listas menos a de figurina; "de xadrez" (diagrama ou figurina) é o que a admissão e a camada de prosa precisavam para o caractere de uso privado. Medido sobre os 1.928 nomes de fonte do `PDF/`: sete são de xadrez, e as duas regras antigas já concordavam neles, então **o campo não muda** -- a diferença é para livro ainda não medido. `admissao.VERSAO` subiu para 2 (o critério mudou para nomes fora do acervo). `_axis_label_strip` e `_side_from_line` viraram `axis_label_strip` e `side_from_line`. `_page_lines` (36) ficou em 5, partida em `_linhas_do_bloco`, `_sem_eixos_no_bloco`, `_sem_eixos_na_pagina` e `_agrupar`, mais três auxiliares abaixo de 6. A guarda da S-218 também foi consertada aqui: a poda de `OPTIONAL_BACKENDS` tirava o `text/` inteiro sem `--ocr glifo`, e o `lance_seguinte` importa `text.notacao` no topo; agora só o import tardio do motor é podado, e o fecho padrão tem 38 módulos (com `text.notacao` e `fontes_de_xadrez`, sem o `preprocess` da S-843).
+
 ## S-880 · O lance seguinte e a estipulação jogam com o direito de roque
 
 **Problema** (confirmado por script). `lance_seguinte.py:133` e `estipulacao.py:235` montam a FEN com

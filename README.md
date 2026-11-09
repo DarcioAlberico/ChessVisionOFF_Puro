@@ -1161,6 +1161,7 @@ src/chess_diagram_ocr/
   export_checkpoint.py  parcial da exportacao, para cancelar e retomar
   fen_utils.py          conversao de FEN e checagem de legalidade
   field_eval.py         metricas sobre paginas reais anotadas: recall, precisao, exportacao
+  fontes_de_xadrez.py   que fonte desenha tabuleiro, que fonte desenha figurina, e o rotulo de eixo: a regra unica da legenda e da admissao (S-836)
   gallery.py            as anotacoes de exportacao de cada diagrama do livro
   gallery_scan.py       o indice da galeria: varre o livro e guarda o que achou
   games_cache.py        cache das posicoes da base, para a busca por posicao nao reler tudo
