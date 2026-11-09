@@ -1184,12 +1184,12 @@ src/chess_diagram_ocr/
   ocr_caption.py        a legenda impressa lida da faixa abaixo do diagrama
   onnx_export.py        exportacao ONNX e conferencia de paridade com o torch
   orientation.py        a cascata de regras que decide a orientacao do diagrama
+  origem_do_texto.py    de onde veio um texto lido (camada, OCR de terceiros, glifo) e o escopo de pagina do lado a jogar
   pdf_io.py             render de paginas de PDF (PyMuPDF)
   pdf_text.py           legenda e metadados da camada de texto do PDF
   pdf_to_pgn.py         varredura de PDF e exportacao PGN
   pgn_do_livro.py       o PGN que vem com o livro: leitura tolerante e o indice da arvore por lance e por posicao (S-585)
   placar.py             o placar do treino: por livro e por sessao, em tres baldes (S-541)
-  procedencias.py       de onde veio cada amostra, e o que isso permite fazer com ela
   processo_de_trabalho.py  o filho que rasteriza, le o CSV e detecta, porque o PyMuPDF e o Python seguram o GIL
   provenance.py         o registro de procedencia gravado ao lado de cada rotulo
   proveniencia.py       o sidecar .proveniencia.jsonl ao lado do PGN: retangulo, hash, confiancas, reparos e veredito por diagrama (A11)

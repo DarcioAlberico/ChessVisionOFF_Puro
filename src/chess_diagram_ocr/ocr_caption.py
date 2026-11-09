@@ -49,8 +49,8 @@ import fitz
 import numpy as np
 
 from .ocr import TextBox, TextRecognizer, build_recognizer
+from .origem_do_texto import DE_TERCEIROS, LineOrigin, procedencia_do_motor
 from .pdf_text import DEFAULT_RADIUS_PT, TextLine
-from .procedencias import DE_TERCEIROS, LineOrigin, procedencia_do_motor
 from .settings import OcrSettings
 
 logger = logging.getLogger(__name__)
@@ -145,7 +145,7 @@ class CaptionReader:
         motor declara sobre si e um argumento seria uma segunda fonte para a mesma pergunta -- que
         divergiria da primeira vez que alguém construísse o leitor sem passá-lo.
 
-        Quem traduz nome em procedência é `procedencias.procedencia_do_motor`: este módulo passa o
+        Quem traduz nome em procedência é `origem_do_texto.procedencia_do_motor`: este módulo passa o
         nome e recebe a resposta, **sem saber que motores existem** -- é a regra da S-181, e é o
         que permite um motor novo entrar sem uma linha de mudança aqui.
         """

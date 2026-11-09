@@ -12,7 +12,7 @@ from typing import get_args
 
 import chess
 
-from chess_diagram_ocr import procedencias
+from chess_diagram_ocr import origem_do_texto
 from chess_diagram_ocr.semantics import SideSource, SideToMove, infer_side_to_move
 from chess_diagram_ocr.text.lado import (
     FONTE,
@@ -53,7 +53,7 @@ class FonteDeclaradaTests(unittest.TestCase):
 
     def test_o_glifo_nao_e_disfarcado_de_motor_de_terceiros(self) -> None:
         """O que a S-207 acrescenta: `ocr` é o RapidOCR, e não o classificador desta casa."""
-        self.assertNotEqual(procedencias.DE_TERCEIROS, FONTE)
+        self.assertNotEqual(origem_do_texto.DE_TERCEIROS, FONTE)
 
     def test_o_glifo_leva_confianca_para_o_pgn(self) -> None:
         """`[SideToMoveConfidence]` só sai das fontes de motor -- as duas do glifo entre elas."""
@@ -202,40 +202,40 @@ class VocabularioTests(unittest.TestCase):
     def test_o_escopo_de_pagina_e_sufixo_para_as_tres_fontes(self) -> None:
         for origem in ("text", "ocr", "glifo"):
             with self.subTest(origem=origem):
-                self.assertEqual(f"{origem}-page-scope", procedencias.escopo_de_pagina(origem))
+                self.assertEqual(f"{origem}-page-scope", origem_do_texto.escopo_de_pagina(origem))
 
     def test_o_escopo_de_pagina_e_idempotente(self) -> None:
         """Aplicado duas vezes daria `text-page-scope-page-scope`, que não é `SideOrigin` nenhum."""
-        uma = procedencias.escopo_de_pagina("text")
-        self.assertEqual(uma, procedencias.escopo_de_pagina(uma))
+        uma = origem_do_texto.escopo_de_pagina("text")
+        self.assertEqual(uma, origem_do_texto.escopo_de_pagina(uma))
 
     def test_todo_escopo_de_pagina_e_um_SideOrigin(self) -> None:
-        validos = set(get_args(procedencias.SideOrigin))
-        for origem in get_args(procedencias.LineOrigin):
+        validos = set(get_args(origem_do_texto.SideOrigin))
+        for origem in get_args(origem_do_texto.LineOrigin):
             with self.subTest(origem=origem):
-                self.assertIn(procedencias.escopo_de_pagina(origem), validos)
+                self.assertIn(origem_do_texto.escopo_de_pagina(origem), validos)
 
     def test_a_procedencia_sai_do_nome_do_motor(self) -> None:
-        self.assertEqual(FONTE, procedencias.procedencia_do_motor(procedencias.MOTOR_DE_CASA))
+        self.assertEqual(FONTE, origem_do_texto.procedencia_do_motor(origem_do_texto.MOTOR_DE_CASA))
         for terceiro in ("rapidocr", "easyocr", "tesseract", "um_motor_que_ainda_nao_existe"):
             with self.subTest(motor=terceiro):
-                self.assertEqual(procedencias.DE_TERCEIROS, procedencias.procedencia_do_motor(terceiro))
+                self.assertEqual(origem_do_texto.DE_TERCEIROS, origem_do_texto.procedencia_do_motor(terceiro))
 
     def test_o_motor_de_casa_e_o_nome_que_o_reconhecedor_declara(self) -> None:
         """Quatro lugares leem esta constante; escrita quatro vezes, uma sairia errada."""
         from chess_diagram_ocr.ocr import KNOWN_ENGINES
         from chess_diagram_ocr.text.recognizer import NOME
 
-        self.assertEqual(procedencias.MOTOR_DE_CASA, NOME)
-        self.assertIn(procedencias.MOTOR_DE_CASA, KNOWN_ENGINES)
+        self.assertEqual(origem_do_texto.MOTOR_DE_CASA, NOME)
+        self.assertIn(origem_do_texto.MOTOR_DE_CASA, KNOWN_ENGINES)
 
     def test_todo_LineOrigin_e_um_SideOrigin(self) -> None:
         """A declaração de diagrama é o caso de escopo estreito da mesma procedência."""
-        self.assertTrue(set(get_args(procedencias.LineOrigin)) <= set(get_args(procedencias.SideOrigin)))
+        self.assertTrue(set(get_args(origem_do_texto.LineOrigin)) <= set(get_args(origem_do_texto.SideOrigin)))
 
     def test_todo_SideOrigin_e_um_SideSource(self) -> None:
         """`pdf_text` decide a origem e `semantics` a publica: uma que não atravessasse sumiria."""
-        self.assertTrue(set(get_args(procedencias.SideOrigin)) <= set(get_args(SideSource)))
+        self.assertTrue(set(get_args(origem_do_texto.SideOrigin)) <= set(get_args(SideSource)))
 
 
 if __name__ == "__main__":  # pragma: no cover

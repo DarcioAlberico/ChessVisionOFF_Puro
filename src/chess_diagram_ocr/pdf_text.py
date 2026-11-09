@@ -68,14 +68,14 @@ import fitz
 from .estipulacao import Estipulacao, estipulacao_de_pagina, parse_estipulacao
 from .fontes_de_xadrez import MIN_ROTULOS_DE_EIXO, ROTULO_DE_EIXO, e_fonte_de_diagrama
 from .orientation import BoardCoordinates
+from .origem_do_texto import DA_CAMADA, DE_TERCEIROS, LineOrigin, SideOrigin, escopo_de_pagina
 from .pdf_io import PdfSource
-from .procedencias import DA_CAMADA, DE_TERCEIROS, LineOrigin, SideOrigin, escopo_de_pagina
 
 logger = logging.getLogger(__name__)
 
 Placement = Literal["above", "below", "left", "right", "overlapping"]
 
-# **`LineOrigin` e `SideOrigin` moram em `procedencias.py`, e não aqui** (S-207). Este módulo não
+# **`LineOrigin` e `SideOrigin` moram em `origem_do_texto.py`, e não aqui** (S-207). Este módulo não
 # pode nomear motor nenhum -- é a regra que
 # `test_text_recognizer.py::test_a_s43_nao_precisou_saber_que_o_glifo_existe` cobra desde a S-181,
 # e um `Literal` com o nome de um motor escrito dentro dele a quebraria tanto quanto um `if`.
