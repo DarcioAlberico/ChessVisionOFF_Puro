@@ -26,6 +26,38 @@ if TEM_PYQT:
     from chess_diagram_ocr.qt.dialogo_de_configuracoes import DialogoDeConfiguracoes
 
 
+RAIZ_DO_PACOTE = Path(preferencias.__file__).resolve().parent
+
+
+def _secoes_lidas_pela_interface() -> set[str]:
+    """As seções de `Settings` que algum módulo de `qt/` ou `ui/` lê como atributo (S-882).
+
+    O diálogo de configurações fica de fora: ele lê e grava todas, e é justamente o que não
+    conta como uso. Um atributo sobre um nome importado como módulo também não conta.
+    """
+    import ast
+
+    secoes = {campo.name for campo in dataclasses.fields(preferencias.Settings)}
+    lidas: set[str] = set()
+    for pasta in ("qt", "ui"):
+        for arquivo in sorted((RAIZ_DO_PACOTE / pasta).glob("*.py")):
+            if arquivo.name == "dialogo_de_configuracoes.py":
+                continue
+            arvore = ast.parse(arquivo.read_bytes().decode("utf-8"))
+            modulos = {
+                (apelido.asname or apelido.name).split(".")[0]
+                for no in ast.walk(arvore) if isinstance(no, ast.Import)
+                for apelido in no.names
+            }
+            for no in ast.walk(arvore):
+                if not (isinstance(no, ast.Attribute) and no.attr in secoes):
+                    continue
+                if isinstance(no.value, ast.Name) and no.value.id in modulos:
+                    continue
+                lidas.add(no.attr)
+    return lidas
+
+
 class TabelaTests(unittest.TestCase):
     """A declaração e o dataclass dizem a mesma coisa."""
 
@@ -46,9 +78,28 @@ class TabelaTests(unittest.TestCase):
         self.assertEqual(declarados - existentes, set(), "declaração sem campo no dataclass")
 
     def test_toda_secao_dos_campos_tem_aba(self) -> None:
-        abas = {secao for secao, _titulo in configuracoes.ABAS} | {"local_reader"}
+        abas = {secao for secao, _titulo in configuracoes.ABAS}
         for campo in configuracoes.CAMPOS:
             self.assertIn(campo.secao, abas, campo.chave)
+
+    def test_todo_campo_da_janela_tem_quem_o_leia(self) -> None:
+        """S-882: a janela oferecia «Segunda opinião remota», o endereço e o tempo limite, e
+        nenhum módulo da interface lia a seção `remote_fen` -- o recurso não existe, e o diálogo
+        o prometia. Todo campo da janela tem de ter a sua seção lida por `qt/` ou `ui/`.
+
+        A leitura é a do `Settings`: o atributo `.secao` sobre algo que não é um módulo importado
+        (`chess.engine.Mate` não é ler a seção `engine`). É por seção e não por campo -- quem lê
+        a seção a entrega inteira a quem usa (`build_local_provider(...local_reader)`).
+        """
+        lidas = _secoes_lidas_pela_interface()
+        sem_leitor = [campo.chave for campo in configuracoes.CAMPOS if campo.secao not in lidas]
+        self.assertEqual(sem_leitor, [], "campo na janela sem ninguém que o leia")
+
+    def test_a_guarda_dos_leitores_acha_o_que_existe(self) -> None:
+        """A guarda não é vácua: as seções de fato lidas aparecem, e a que ninguém lê, não."""
+        lidas = _secoes_lidas_pela_interface()
+        self.assertLessEqual({"training", "recognition", "ocr", "engine", "local_reader"}, lidas)
+        self.assertNotIn("remote_fen", lidas)
 
     def test_trocar_devolve_um_settings_novo_e_nao_toca_no_antigo(self) -> None:
         antigo = preferencias.Settings()

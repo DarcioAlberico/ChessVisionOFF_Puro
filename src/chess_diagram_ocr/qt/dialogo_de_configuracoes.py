@@ -49,8 +49,6 @@ from chess_diagram_ocr.ui import configuracoes, espaco, estilos, folha_de_estilo
 __all__ = ["DialogoDeConfiguracoes", "abrir"]
 
 TITULO = "Configurações"
-ABA_DO_LEITOR_LOCAL = "remote_fen"
-"""A seção `local_reader` não tem aba própria; ver `configuracoes.ABAS`."""
 
 
 class DialogoDeConfiguracoes(QDialog):
@@ -87,12 +85,11 @@ class DialogoDeConfiguracoes(QDialog):
             formularios[secao] = formulario
             self.abas.addTab(pagina, titulo)
         for campo in configuracoes.CAMPOS:
-            secao = ABA_DO_LEITOR_LOCAL if campo.secao == "local_reader" else campo.secao
             controle = self._controle(campo)
             self._controles[campo.chave] = controle
             rotulo = QLabel(campo.rotulo, self)
             rotulo.setBuddy(controle)
-            formularios[secao].addRow(rotulo, controle)
+            formularios[campo.secao].addRow(rotulo, controle)
 
         self.lbl_onde = QLabel(
             f"Gravado em {preferencias.DEFAULT_SETTINGS_PATH}. Vale a partir do próximo uso: "

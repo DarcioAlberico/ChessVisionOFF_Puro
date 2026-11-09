@@ -1261,6 +1261,8 @@ um consumidor em `qt/`.
 
 **Aceite.** A guarda passa.
 
+**Entregue** (2026-11-08): os três campos foram para `FORA_DA_JANELA` com o motivo, e a aba «Segunda opinião» passou a ser da seção `local_reader` (some o desvio `ABA_DO_LEITOR_LOCAL` do diálogo). A guarda (`tests/test_configuracoes.py`) lê `qt/` **e** `ui/`, e não só `qt/`: o treino e o reconhecimento são lidos pela camada pura (`ui/pedido_de_treino`, `ui/configuracoes.reconhecimento`) a pedido do `qt/`. Ela é por seção -- quem lê a seção a entrega inteira a quem usa -- e tem o controle positivo das cinco seções lidas. `strings.CORRIGIR_PELA_REDE` ficou: não aparece em tela nenhuma e volta com o recurso.
+
 ## S-883 · O leitor tsoj não troca a pasta corrente fora da trava
 
 **Problema** (plausível). `tsoj_reader.py:67-74` e `:182`: `predict` faz `os.chdir` dentro de uma `Tarefa`,
