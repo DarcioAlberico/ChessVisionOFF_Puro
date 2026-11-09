@@ -143,6 +143,23 @@ class RouteTests(unittest.TestCase):
         model.load([_diagrama()], binding=EditorBinding.NONE)
         self.assertEqual(model.net_corrected, set())
 
+    def test_rota_da_posicao_do_livro(self) -> None:
+        """S-889: a posição adotada do PGN do livro não é «corrigida à mão».
+
+        Ela saía `ocr-corrigido` quando o livro trocava casas e `ocr-aceito` quando confirmava a
+        leitura -- nos dois casos sem toque da pessoa, e o primeiro inflava a rota humana que o
+        treino reforça (`dataset.ROTAS_HUMANAS`).
+        """
+        for posicao in (OUTRO, PLACEMENT):
+            with self.subTest(posicao=posicao):
+                model = DiagramEditorModel()
+                model.load([_diagrama()], binding=EditorBinding.PAGE, page_key=("livro.pdf", 3))
+                model.mark_from_book(0, posicao, "b", note="Chapter 1 · Game 3 · 5.dxc5")
+                self.assertEqual(model.save_target().route, "pgn-do-livro")
+
+        model.load([_diagrama()], binding=EditorBinding.PAGE, page_key=("livro.pdf", 4))
+        self.assertEqual(model.save_target().route, "ocr-aceito", "a marca do livro é por carregamento")
+
     def test_regravar_linha_do_dataset_tem_rota_propria(self) -> None:
         model = DiagramEditorModel()
         model.load([_diagrama()], binding=EditorBinding.SAMPLE, editing_sample="b1.png")

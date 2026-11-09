@@ -518,6 +518,7 @@ class DiagramEditorModel:
         return label_route(
             from_net=index in self.net_corrected,
             from_second_opinion=index in self.second_opinion,
+            from_book=index in self.from_book,
             from_queue=self.binding is EditorBinding.REVIEW,
             read_placement=self.items[index].placement if 0 <= index < len(self.items) else "",
             saved_placement=fen,

@@ -474,6 +474,7 @@ class LabelRouteTests(unittest.TestCase):
             {"from_net": True},
             {"from_queue": True},
             {"from_dataset": True},
+            {"from_book": True},
             {"read_placement": self.LIDO, "saved_placement": self.CORRIGIDO},
         ]
         for kwargs in combinacoes:
