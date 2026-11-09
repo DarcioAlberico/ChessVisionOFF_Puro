@@ -2409,6 +2409,12 @@ devolve linhas.
 
 **Aceite.** As caracterizações passam; os seis abaixo de complexidade 15.
 
+**Entregue** (2026-11-08): a caracterização não foi para a suíte como texto congelado: é um script de 30
+cenários sobre fixtures (código de saída, stdout, log e todo arquivo escrito, com datas normalizadas),
+rodado antes e depois e comparado byte a byte -- duas corridas seguidas dão o mesmo, e a de depois deu o
+de antes. Os seis saíram da faixa de risco (todos abaixo de 11), e nenhuma função extraída passa de 13.
+`texto_grade.medir` virou `_ler_livro` e `linha_do_livro`; `audit._print_report` é a tupla `_SECOES`.
+
 ## S-864 · Os pares gêmeos do dryer
 
 **Problema** (confirmado pelo dryer). Além dos já tratados (S-848, S-852, S-854, S-857): os exportadores de

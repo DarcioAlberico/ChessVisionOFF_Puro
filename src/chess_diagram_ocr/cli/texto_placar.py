@@ -560,70 +560,81 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-@cli_errors
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    configure_logging(verbose=args.verbose)
-
+def _modo(args: argparse.Namespace) -> str:
+    """O que esta chamada faz: imprimir o exemplo, exportar as faixas, semear, ou medir. Pura."""
     if args.exemplo:
-        print(json.dumps(EXEMPLO, ensure_ascii=False))
-        return 0
-
+        return "exemplo"
     if args.exportar:
-        if not args.referencia.exists():
-            logger.error("%s não existe. Semeie primeiro com --semear.", args.referencia)
-            return EXIT_BAD_INPUT
-        faixas = carregar_referencia(args.referencia)
-        gravadas = exportar(faixas, args.exportar, pdf_dir=args.pdf_dir)
-        pendentes = sum(1 for f in faixas if not f.conferido)
-        print(f"{gravadas} faixa(s) em {args.exportar}")
-        for aviso in (
-            f"  {pendentes} de {len(faixas)} ainda estao com `conferido: false`, e a medicao as recusa.",
-            "  Transcreva o que esta impresso em cada PNG para o campo `texto` da linha de",
-            f"  mesmo numero em {args.referencia}, e troque `conferido` por true.",
-            "  **A referencia tem de vir da pagina, e nao de um motor** -- se ela vier de um,",
-            "  a tabela mede o motor contra ele mesmo, que e o defeito que a S-183 evita.",
-        ):
-            print(aviso)
-        return 0
-
+        return "exportar"
     if args.semear:
-        if args.referencia.exists():
-            # **Sobrescrever apagaria conferência humana**, que é a coisa mais cara do processo.
-            # Semear noutro arquivo e mesclar à mão é chato; apagar em silêncio é pior.
-            logger.error(
-                "%s já existe, e semear por cima apagaria o que já foi conferido. "
-                "Use --referencia com outro caminho e mescle à mão.",
-                args.referencia,
-            )
-            return EXIT_BAD_INPUT
-        pdfs = sorted(p for p in args.pdf_dir.glob("*.pdf") if p.is_file())
-        if not pdfs:
-            logger.warning("Nenhum PDF em %s. Nada a semear.", args.pdf_dir)
-            return 0
+        return "semear"
+    return "medir"
 
-        logger.info("Semeando até %d faixas por livro em %d PDFs...", args.por_livro, len(pdfs))
-        faixas, avisos = semear(pdfs, por_livro=args.por_livro)
-        for aviso in avisos:
-            logger.warning("%s", aviso)
 
-        atomic_write_text(
+def _exemplo(args: argparse.Namespace) -> int:
+    print(json.dumps(EXEMPLO, ensure_ascii=False))
+    return 0
+
+
+def _exportar(args: argparse.Namespace) -> int:
+    if not args.referencia.exists():
+        logger.error("%s não existe. Semeie primeiro com --semear.", args.referencia)
+        return EXIT_BAD_INPUT
+    faixas = carregar_referencia(args.referencia)
+    gravadas = exportar(faixas, args.exportar, pdf_dir=args.pdf_dir)
+    pendentes = sum(1 for f in faixas if not f.conferido)
+    print(f"{gravadas} faixa(s) em {args.exportar}")
+    for aviso in (
+        f"  {pendentes} de {len(faixas)} ainda estao com `conferido: false`, e a medicao as recusa.",
+        "  Transcreva o que esta impresso em cada PNG para o campo `texto` da linha de",
+        f"  mesmo numero em {args.referencia}, e troque `conferido` por true.",
+        "  **A referencia tem de vir da pagina, e nao de um motor** -- se ela vier de um,",
+        "  a tabela mede o motor contra ele mesmo, que e o defeito que a S-183 evita.",
+    ):
+        print(aviso)
+    return 0
+
+
+def _semear(args: argparse.Namespace) -> int:
+    if args.referencia.exists():
+        # **Sobrescrever apagaria conferência humana**, que é a coisa mais cara do processo.
+        # Semear noutro arquivo e mesclar à mão é chato; apagar em silêncio é pior.
+        logger.error(
+            "%s já existe, e semear por cima apagaria o que já foi conferido. "
+            "Use --referencia com outro caminho e mescle à mão.",
             args.referencia,
-            "\n".join(json.dumps(f.para_json(), ensure_ascii=False) for f in faixas) + "\n",
         )
-        com_semente = sum(1 for f in faixas if f.semeado_de)
-        logger.info(
-            "%d faixas em %s (%d com texto da camada, %d em branco).\n"
-            "**Nenhuma entra na tabela ainda**: confira cada `texto` contra a página impressa e "
-            "troque `\"conferido\": false` por `true`. As em branco são os livros de scan puro, "
-            "e são elas que decidem a fase.",
-            len(faixas),
-            args.referencia,
-            com_semente,
-            len(faixas) - com_semente,
-        )
+        return EXIT_BAD_INPUT
+    pdfs = sorted(p for p in args.pdf_dir.glob("*.pdf") if p.is_file())
+    if not pdfs:
+        logger.warning("Nenhum PDF em %s. Nada a semear.", args.pdf_dir)
         return 0
 
+    logger.info("Semeando até %d faixas por livro em %d PDFs...", args.por_livro, len(pdfs))
+    faixas, avisos = semear(pdfs, por_livro=args.por_livro)
+    for aviso in avisos:
+        logger.warning("%s", aviso)
+
+    atomic_write_text(
+        args.referencia,
+        "\n".join(json.dumps(f.para_json(), ensure_ascii=False) for f in faixas) + "\n",
+    )
+    com_semente = sum(1 for f in faixas if f.semeado_de)
+    logger.info(
+        "%d faixas em %s (%d com texto da camada, %d em branco).\n"
+        "**Nenhuma entra na tabela ainda**: confira cada `texto` contra a página impressa e "
+        "troque `\"conferido\": false` por `true`. As em branco são os livros de scan puro, "
+        "e são elas que decidem a fase.",
+        len(faixas),
+        args.referencia,
+        com_semente,
+        len(faixas) - com_semente,
+    )
+    return 0
+
+
+def _faixas_conferidas(args: argparse.Namespace) -> tuple[list[Faixa], int] | None:
+    """As faixas que entram na tabela e quantas ficaram de fora, ou `None` quando não há o que medir."""
     if not args.referencia.exists():
         # **Não é erro de uso: é o estado normal enquanto ninguém transcreveu.** Dizer o que
         # falta e sair com 0 é o que permite a CI rodar isto sem o conjunto.
@@ -635,12 +646,12 @@ def main(argv: list[str] | None = None) -> int:
             "`cvoff-texto-placar --exemplo` imprime o formato de uma linha.",
             args.referencia,
         )
-        return 0
+        return None
 
     todas = carregar_referencia(args.referencia)
     if not todas:
         logger.warning("%s está vazio. Sem faixa transcrita não há o que medir.", args.referencia)
-        return 0
+        return None
 
     # **A recusa do não-conferido é o que sustenta a tabela inteira.** Uma faixa semeada da
     # camada de texto e medida contra a camada de texto dá zero por construção; o `conferido`
@@ -656,7 +667,15 @@ def main(argv: list[str] | None = None) -> int:
         )
     if not faixas:
         logger.warning("Nenhuma faixa conferida. Não há o que medir ainda.")
+        return None
+    return faixas, pendentes
+
+
+def _medir(args: argparse.Namespace) -> int:
+    conferidas = _faixas_conferidas(args)
+    if conferidas is None:
         return 0
+    faixas, pendentes = conferidas
 
     fontes = tuple(args.fonte) if args.fonte else FONTES_PADRAO
     tabela = medir(faixas, fontes, pdf_dir=args.pdf_dir)
@@ -680,6 +699,16 @@ def main(argv: list[str] | None = None) -> int:
             "circular."
         )
     return 0
+
+
+_MODOS = {"exemplo": _exemplo, "exportar": _exportar, "semear": _semear, "medir": _medir}
+
+
+@cli_errors
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    configure_logging(verbose=args.verbose)
+    return _MODOS[_modo(args)](args)
 
 
 __all__ = [

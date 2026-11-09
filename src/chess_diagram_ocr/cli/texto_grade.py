@@ -83,7 +83,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..atomic_io import atomic_write_json
 from ..config import PROJECT_ROOT
@@ -97,6 +97,9 @@ from . import (
     confere_baseline,
     fronteira,
 )
+
+if TYPE_CHECKING:
+    import fitz
 
 logger = logging.getLogger(__name__)
 
@@ -417,6 +420,85 @@ def calibrar(paginas: Sequence[PaginaDeGrade]) -> Calibracao:
                       palpites_grade, palpites_prosa)
 
 
+@dataclass(frozen=True)
+class _LeituraDoLivro:
+    """O que as primeiras `por_livro` páginas com referência de um livro deram."""
+
+    marca: str | None
+    vistas: int
+    medidas: list[PaginaDeGrade]
+
+
+def _ler_livro(doc: fitz.Document, caminho: Path, *, por_livro: int, avisos: list[str]) -> _LeituraDoLivro:
+    """As páginas de grade do livro, parando em `por_livro` páginas com referência."""
+    marca = camada_de_ocr(doc)
+    medidas: list[PaginaDeGrade] = []
+    vistas = 0
+    for indice in range(doc.page_count):
+        if vistas >= por_livro:
+            break
+        try:
+            resultado = medir_pagina(doc[indice])
+        except Exception as exc:  # noqa: BLE001 - PDF de terceiro
+            avisos.append(f"{caminho.name} p.{indice + 1}: {exc}")
+            continue
+        if resultado is None:
+            continue
+        vistas += 1
+        if resultado.e_grade:
+            medidas.append(replace(resultado, pagina=indice + 1))
+    return _LeituraDoLivro(marca, vistas, medidas)
+
+
+def _palpites_da_camada(decidiveis: list[PaginaDeGrade]) -> dict[str, int]:
+    """O palpite da camada conferido onde o número impresso responde. Puro.
+
+    É ele que diz quanto vale uma calibração por hipótese, e por isso é contado mesmo nos livros
+    que não precisam dela.
+    """
+    certo = sum(1 for p in decidiveis if direcao_pela_camada(p) == p.direcao_impressa)
+    errado = sum(1 for p in decidiveis if (opiniao := direcao_pela_camada(p)) and opiniao != p.direcao_impressa)
+    return {"acertos": certo, "erros": errado}
+
+
+def _tau_medio(com_tau: list[PaginaDeGrade], campo: str) -> float | None:
+    """A média do `tau` de `campo` (`tau_prosa` ou `tau_grade`) nas páginas que o têm. Pura."""
+    if not com_tau:
+        return None
+    return sum(getattr(p, campo) or 0 for p in com_tau) / len(com_tau)
+
+
+def linha_do_livro(marca: str | None, medidas: list[PaginaDeGrade]) -> dict[str, object]:
+    """A linha do relatório para um livro com páginas de grade. Pura."""
+    calibracao = calibrar(medidas)
+    decidiveis = [p for p in medidas if p.direcao_impressa]
+    concordam = sum(1 for p in decidiveis if p.direcao_emitida == p.direcao_impressa)
+    com_tau = [p for p in medidas if p.tau_prosa is not None]
+    return {
+        "camada": marca or "editorado",
+        "paginas_de_grade": len(medidas),
+        "paginas_decidiveis": len(decidiveis),
+        "arranjo": calibracao.arranjo,
+        "fonte": calibracao.fonte,
+        "hipotese": calibracao.hipotese,
+        "votos": {"grade": calibracao.votos_impressos_grade, "prosa": calibracao.votos_impressos_prosa},
+        "votos_da_camada": {
+            "grade": calibracao.votos_da_camada_grade,
+            "prosa": calibracao.votos_da_camada_prosa,
+        },
+        "camada_como_palpite": _palpites_da_camada(decidiveis),
+        # A prova de que o `tau` não pode arbitrar: em quantas páginas a camada e o número
+        # impresso discordam sobre a direção da própria grade.
+        "emissao_contra_impresso": {
+            "de_acordo": concordam,
+            "contra": len(decidiveis) - concordam,
+        },
+        "paginas_com_tau": len(com_tau),
+        "tau_prosa": _tau_medio(com_tau, "tau_prosa"),
+        "tau_grade": _tau_medio(com_tau, "tau_grade"),
+    }
+
+
 def medir(pdfs: list[Path], *, por_livro: int) -> dict[str, Any]:
     """Uma linha por livro, e o agregado. Ver o cabeçalho para o que cada número quer dizer."""
     import fitz
@@ -433,63 +515,14 @@ def medir(pdfs: list[Path], *, por_livro: int) -> dict[str, Any]:
             avisos.append(f"{caminho.name}: não abriu ({exc})")
             continue
         with doc:
-            marca = camada_de_ocr(doc)
-            medidas: list[PaginaDeGrade] = []
-            vistas = 0
-            for indice in range(doc.page_count):
-                if vistas >= por_livro:
-                    break
-                try:
-                    resultado = medir_pagina(doc[indice])
-                except Exception as exc:  # noqa: BLE001 - idem
-                    avisos.append(f"{caminho.name} p.{indice + 1}: {exc}")
-                    continue
-                if resultado is None:
-                    continue
-                vistas += 1
-                if resultado.e_grade:
-                    medidas.append(replace(resultado, pagina=indice + 1))
-        if vistas == 0:
+            lido = _ler_livro(doc, caminho, por_livro=por_livro, avisos=avisos)
+        if lido.vistas == 0:
             sem_referencia.append(caminho.name)
             continue
-        if marca is None:
+        if lido.marca is None:
             editorados.append(caminho.name)
-        if not medidas:
-            continue
-
-        calibracao = calibrar(medidas)
-        decidiveis = [p for p in medidas if p.direcao_impressa]
-        concordam = sum(1 for p in decidiveis if p.direcao_emitida == p.direcao_impressa)
-        com_tau = [p for p in medidas if p.tau_prosa is not None]
-        # O palpite da camada conferido onde o número impresso responde: é ele que diz quanto vale
-        # uma calibração por hipótese, e por isso é contado mesmo nos livros que não precisam dela.
-        palpite_certo = sum(1 for p in decidiveis if direcao_pela_camada(p) == p.direcao_impressa)
-        palpite_errado = sum(
-            1 for p in decidiveis if (opiniao := direcao_pela_camada(p)) and opiniao != p.direcao_impressa
-        )
-        por_livro_saida[caminho.name] = {
-            "camada": marca or "editorado",
-            "paginas_de_grade": len(medidas),
-            "paginas_decidiveis": len(decidiveis),
-            "arranjo": calibracao.arranjo,
-            "fonte": calibracao.fonte,
-            "hipotese": calibracao.hipotese,
-            "votos": {"grade": calibracao.votos_impressos_grade, "prosa": calibracao.votos_impressos_prosa},
-            "votos_da_camada": {
-                "grade": calibracao.votos_da_camada_grade,
-                "prosa": calibracao.votos_da_camada_prosa,
-            },
-            "camada_como_palpite": {"acertos": palpite_certo, "erros": palpite_errado},
-            # A prova de que o `tau` não pode arbitrar: em quantas páginas a camada e o número
-            # impresso discordam sobre a direção da própria grade.
-            "emissao_contra_impresso": {
-                "de_acordo": concordam,
-                "contra": len(decidiveis) - concordam,
-            },
-            "paginas_com_tau": len(com_tau),
-            "tau_prosa": (sum(p.tau_prosa or 0 for p in com_tau) / len(com_tau)) if com_tau else None,
-            "tau_grade": (sum(p.tau_grade or 0 for p in com_tau) / len(com_tau)) if com_tau else None,
-        }
+        if lido.medidas:
+            por_livro_saida[caminho.name] = linha_do_livro(lido.marca, lido.medidas)
 
     return _agregar(por_livro_saida, sem_referencia, editorados, avisos)
 

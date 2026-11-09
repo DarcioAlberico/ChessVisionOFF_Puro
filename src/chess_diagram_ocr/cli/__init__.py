@@ -23,7 +23,6 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
-from typing import Any
 
 from ..config import (
     ACCEPT_MIN_CONFIDENCE,
@@ -345,7 +344,7 @@ def add_gallery_dir_argument(parser: Declarador, default: Path) -> None:
     parser.add_argument("--gallery-dir", type=Path, default=default, help="Pasta dos índices da Galeria.")
 
 
-def confere_baseline(caminho: Any | None, *, rotulo: str = "--baseline") -> int | None:
+def confere_baseline(caminho: Path | str | None, *, rotulo: str = "--baseline") -> int | None:
     """`None` libera; `EXIT_BAD_INPUT` recusa **antes** de medir (S-381).
 
     Os cinco comandos de regressão têm o mesmo desenho: medem o acervo inteiro e, no fim,

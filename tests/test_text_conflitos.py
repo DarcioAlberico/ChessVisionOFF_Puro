@@ -322,6 +322,60 @@ class DesfazerSempreVoltaTests(BaseDeTeste):
         self.assertTrue((self.base / "lower_l" / "l0.png").exists())
 
 
+class ComandoTests(BaseDeTeste):
+    """O `cvoff-texto-conflitos` de ponta a ponta: relata, desenha, aplica e desfaz (S-863)."""
+
+    def _main(self, *argv: object) -> tuple[int, str]:
+        import contextlib
+        import io
+
+        from chess_diagram_ocr.cli import texto_conflitos
+
+        with contextlib.redirect_stdout(io.StringIO()) as saida:
+            codigo = texto_conflitos.main([str(a) for a in argv])
+        return codigo, saida.getvalue()
+
+    def test_o_julgado_e_aplicado_relatado_e_desfeito(self) -> None:
+        self.base_com_um_conflito()
+        achado = achar(self.base, tarefas=2)[0]
+        decisoes = self.raiz / "decisoes.json"
+        decisoes.write_text(
+            json.dumps([{"sha256": achado.sha256, "rotulos": achado.rotulos, "vencedor": "digit_1", "motivo": "o 1 tem serifa"}]),
+            encoding="utf-8",
+        )
+        relatorio = self.raiz / "relatorio.json"
+        comum = ["--base", self.base, "--decisoes", decisoes, "--quarentena", self.quarentena, "--relatorio", relatorio]
+
+        codigo, saida = self._main(*comum, "--folha", self.raiz / "folha.png", "--aplicar")
+
+        self.assertEqual(codigo, 0, saida)
+        self.assertIn("grupos em conflito: 1", saida)
+        self.assertFalse((self.base / "lower_l" / "l0.png").exists(), "o perdedor saiu da base")
+        self.assertTrue((self.raiz / "folha.png").exists())
+        dados = json.loads(relatorio.read_text(encoding="utf-8"))
+        self.assertEqual((dados["grupos_em_conflito"], dados["com_vencedor"], dados["a_mover"]["total"]), (1, 1, 1))
+        self.assertEqual(dados["decisoes"][0]["vencedor"], "digit_1")
+        self.assertIn("NAO MEDIDA", dados["quase_duplicata"])
+
+        manifesto = next(linha.split("--desfazer ")[1] for linha in saida.splitlines() if "--desfazer " in linha)
+        codigo, saida = self._main("--desfazer", manifesto.strip())
+        self.assertEqual(codigo, 0, saida)
+        self.assertTrue((self.base / "lower_l" / "l0.png").exists(), "o desfazer devolveu o perdedor")
+
+    def test_sem_decisao_nada_se_move(self) -> None:
+        self.base_com_um_conflito()
+        codigo, saida = self._main(
+            "--base", self.base, "--decisoes", self.raiz / "nao_ha.json", "--relatorio", self.raiz / "r.json", "--aplicar"
+        )
+        self.assertEqual(codigo, 0, saida)
+        self.assertIn("SEM DECISAO: 1", saida)
+        self.assertTrue((self.base / "lower_l" / "l0.png").exists())
+
+    def test_base_que_nao_existe_e_entrada_invalida(self) -> None:
+        codigo, saida = self._main("--base", self.raiz / "nao_ha", "--relatorio", self.raiz / "r.json")
+        self.assertEqual(codigo, 2, saida)
+
+
 class DecisoesReaisTests(unittest.TestCase):
     """O `data/texto_conflitos.json` do repositório. Não é código: é julgamento humano."""
 

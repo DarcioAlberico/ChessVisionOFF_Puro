@@ -18,15 +18,24 @@ import argparse
 import json
 import logging
 from collections import Counter
+from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from ..atomic_io import atomic_write_bytes, atomic_write_text
 from ..config import DATA_DIR, PROJECT_ROOT, caminho_para_relatorio
 from ..logging_setup import configure_logging
 from . import EXIT_BAD_INPUT, EntradaInvalida, add_base_de_caractere_argument, add_verbose, cli_errors, fronteira
 
+if TYPE_CHECKING:
+    from ..text.conflitos import Achados, Conflito, Plano
+    from ..text.dedupe import Resumo
+
 logger = logging.getLogger(__name__)
+
+Decisoes = Mapping[str, Mapping[str, Any]]
+"""`sha256 -> decisão`, como `text.conflitos.ler_decisoes` a lê do JSON escrito à mão."""
 
 DECISOES = DATA_DIR / "texto_conflitos.json"
 QUARENTENA = DATA_DIR / "quarentena_texto"
@@ -100,34 +109,33 @@ def _desenhar_folha(conflitos: list, base: Path, destino: Path, decisoes: dict) 
     atomic_write_bytes(destino, buffer.tobytes())
 
 
-@cli_errors
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    configure_logging(verbose=args.verbose)
+def _progresso(nome: str, i: int, n: int) -> None:
+    if i % 50 == 0 or i == n:
+        print(f"  {i:3d}/{n}  {nome}", flush=True)
 
+
+def _desfazer(args: argparse.Namespace) -> int:
     from ..text import conflitos as cf
 
-    if args.desfazer:
-        volta = cf.desfazer(args.desfazer)
-        esperados = volta.voltaram + volta.ja_estavam + len(volta.faltam)
-        print(f"{volta.voltaram} de {esperados} recortes voltaram para a base.")
-        if volta.ja_estavam:
-            print(f"  {volta.ja_estavam} ja estavam na base")
-        if volta.faltam:
-            print(f"  FALTAM {len(volta.faltam)}: nem na quarentena nem na base (o primeiro e {volta.faltam[0]})")
-            return EXIT_BAD_INPUT
-        return 0
+    volta = cf.desfazer(args.desfazer)
+    esperados = volta.voltaram + volta.ja_estavam + len(volta.faltam)
+    print(f"{volta.voltaram} de {esperados} recortes voltaram para a base.")
+    if volta.ja_estavam:
+        print(f"  {volta.ja_estavam} ja estavam na base")
+    if volta.faltam:
+        print(f"  FALTAM {len(volta.faltam)}: nem na quarentena nem na base (o primeiro e {volta.faltam[0]})")
+        return EXIT_BAD_INPUT
+    return 0
+
+
+def _varrer(args: argparse.Namespace) -> Achados:
+    from ..text import conflitos as cf
 
     if not Path(args.base).is_dir():
         raise EntradaInvalida(f"a base de treino nao esta em {args.base}")
 
     print(f"Procurando a mesma imagem sob dois rotulos em {args.base}...")
-
-    def progresso(nome: str, i: int, n: int) -> None:
-        if i % 50 == 0 or i == n:
-            print(f"  {i:3d}/{n}  {nome}", flush=True)
-
-    varredura = cf.varrer_hashes(args.base, tarefas=args.tarefas or cf.TAREFAS_PADRAO, progresso=progresso)
+    varredura = cf.varrer_hashes(args.base, tarefas=args.tarefas or cf.TAREFAS_PADRAO, progresso=_progresso)
     achados = varredura.conflitos
     print()
     print(
@@ -136,28 +144,27 @@ def main(argv: list[str] | None = None) -> int:
         f"({100 * varredura.copias_exatas / max(1, varredura.recortes):.1f}%)".replace(",", ".")
     )
     print(f"grupos em conflito: {len(achados)}  |  recortes envolvidos: {sum(c.total for c in achados)}")
+    return varredura
 
-    quase = None
-    if args.quase:
-        from ..text import dataset as ds
-        from ..text import dedupe
 
-        limiar = args.limiar_quase if args.limiar_quase is not None else dedupe.LIMIAR_PADRAO
-        print()
-        print(f"medindo a quase-duplicata (limiar {limiar:.2f}, descritor de lado {dedupe.LADO_DESCRITOR})...")
-        v = ds.varrer(args.base, tarefas=args.tarefas or ds.TAREFAS_PADRAO, progresso=progresso)
-        _, quase = dedupe.agrupar(v.X, v.y, v.grupos, dims=v.dims, limiar=limiar)
-        print(
-            f"  {quase.grupos_antes:,} grupos exatos -> {quase.grupos_depois:,} grupos  "
-            f"({100 * quase.reducao:.1f}% absorvidos, {quase.fundidos:,} fusoes)".replace(",", ".")
-        )
+def _medir_quase(args: argparse.Namespace) -> Resumo:
+    """A quase-duplicata da S-202: decodifica a base inteira, e por isso só com `--quase`."""
+    from ..text import dataset as ds
+    from ..text import dedupe
 
-    with fronteira(f"--decisoes {args.decisoes}"):
-        decisoes = cf.ler_decisoes(args.decisoes) if Path(args.decisoes).exists() else {}
-    if not decisoes:
-        print(f"nenhuma decisao lida de {args.decisoes}: nada pode ser aplicado.")
-    plano = cf.conferir(achados, decisoes)
+    limiar = args.limiar_quase if args.limiar_quase is not None else dedupe.LIMIAR_PADRAO
+    print()
+    print(f"medindo a quase-duplicata (limiar {limiar:.2f}, descritor de lado {dedupe.LADO_DESCRITOR})...")
+    v = ds.varrer(args.base, tarefas=args.tarefas or ds.TAREFAS_PADRAO, progresso=_progresso)
+    _, quase = dedupe.agrupar(v.X, v.y, v.grupos, dims=v.dims, limiar=limiar)
+    print(
+        f"  {quase.grupos_antes:,} grupos exatos -> {quase.grupos_depois:,} grupos  "
+        f"({100 * quase.reducao:.1f}% absorvidos, {quase.fundidos:,} fusoes)".replace(",", ".")
+    )
+    return quase
 
+
+def _imprimir_plano(achados: list[Conflito], decisoes: Decisoes, plano: Plano) -> None:
     julgados = [c for c in achados if c.sha256 in decisoes]
     com_vencedor = [c for c in julgados if decisoes[c.sha256].get("vencedor")]
     print(f"  julgados: {len(julgados)}  |  com vencedor: {len(com_vencedor)}  |  "
@@ -173,73 +180,71 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  sairiam por {motivo}: {quantos} recortes")
     print(f"  total: {len(plano.mover)} recortes")
 
-    if args.folha:
-        _desenhar_folha(achados, Path(args.base), Path(args.folha), decisoes)
-        print(f"\nfolha de contato -> {args.folha}")
 
-    relatorio = Path(args.relatorio) if args.relatorio else METRICAS / f"texto_dedupe_{date.today():%Y%m%d}.json"
-    pares = Counter(" x ".join(sorted(c.rotulos)) for c in achados)
-    atomic_write_text(
-        relatorio,
-        json.dumps(
+def _quase_para_json(quase: Resumo | None) -> dict[str, object] | str:
+    if quase is None:
+        return "NAO MEDIDA NESTA CORRIDA. Rode com --quase; o padrao so faz a passada de hash."
+    return {
+        "limiar": quase.limiar,
+        "lado_descritor": 24,
+        "grupos_antes": quase.grupos_antes,
+        "grupos_depois": quase.grupos_depois,
+        "fusoes": quase.fundidos,
+        "maior_grupo": quase.maior_grupo,
+    }
+
+
+def _relatorio_json(
+    args: argparse.Namespace,
+    varredura: Achados,
+    decisoes: Decisoes,
+    plano: Plano,
+    quase: Resumo | None,
+) -> dict[str, object]:
+    """O relatório JSON da corrida. Puro: tudo o que ele diz já foi medido."""
+    achados = varredura.conflitos
+    julgados = [c for c in achados if c.sha256 in decisoes]
+    com_vencedor = [c for c in julgados if decisoes[c.sha256].get("vencedor")]
+    return {
+        "quando": date.today().isoformat(),
+        "base": caminho_para_relatorio(args.base),
+        "recortes": varredura.recortes,
+        "imagens_distintas": varredura.imagens_distintas,
+        "copias_exatas": varredura.copias_exatas,
+        "grupos_em_conflito": len(achados),
+        "recortes_em_conflito": sum(c.total for c in achados),
+        "julgados": len(julgados),
+        "com_vencedor": len(com_vencedor),
+        "indecidiveis": len(julgados) - len(com_vencedor),
+        "a_mover": {"total": len(plano.mover), **plano.por_motivo},
+        "pares": dict(Counter(" x ".join(sorted(c.rotulos)) for c in achados).most_common()),
+        # O julgamento registrado, e nao so o que sobrou no disco. Depois de `--aplicar`
+        # a base fica limpa e `grupos_em_conflito` cai para zero -- e um relatorio que so
+        # dissesse isso apagaria a memoria de que os 83 existiram e de como foram
+        # decididos. Esta secao e o que sobrevive ao conserto.
+        "julgamentos_registrados": {
+            "arquivo": caminho_para_relatorio(args.decisoes),
+            "grupos": len(decisoes),
+            "com_vencedor": sum(1 for d in decisoes.values() if d.get("vencedor")),
+            "indecidiveis": sum(1 for d in decisoes.values() if not d.get("vencedor")),
+            "pares": dict(Counter(" x ".join(sorted(d["rotulos"])) for d in decisoes.values()).most_common()),
+        },
+        "quase_duplicata": _quase_para_json(quase),
+        "decisoes": [
             {
-                "quando": date.today().isoformat(),
-                "base": caminho_para_relatorio(args.base),
-                "recortes": varredura.recortes,
-                "imagens_distintas": varredura.imagens_distintas,
-                "copias_exatas": varredura.copias_exatas,
-                "grupos_em_conflito": len(achados),
-                "recortes_em_conflito": sum(c.total for c in achados),
-                "julgados": len(julgados),
-                "com_vencedor": len(com_vencedor),
-                "indecidiveis": len(julgados) - len(com_vencedor),
-                "a_mover": {"total": len(plano.mover), **plano.por_motivo},
-                "pares": dict(pares.most_common()),
-                # O julgamento registrado, e nao so o que sobrou no disco. Depois de `--aplicar`
-                # a base fica limpa e `grupos_em_conflito` cai para zero -- e um relatorio que so
-                # dissesse isso apagaria a memoria de que os 83 existiram e de como foram
-                # decididos. Esta secao e o que sobrevive ao conserto.
-                "julgamentos_registrados": {
-                    "arquivo": caminho_para_relatorio(args.decisoes),
-                    "grupos": len(decisoes),
-                    "com_vencedor": sum(1 for d in decisoes.values() if d.get("vencedor")),
-                    "indecidiveis": sum(1 for d in decisoes.values() if not d.get("vencedor")),
-                    "pares": dict(
-                        Counter(" x ".join(sorted(d["rotulos"])) for d in decisoes.values()).most_common()
-                    ),
-                },
-                "quase_duplicata": (
-                    {
-                        "limiar": quase.limiar,
-                        "lado_descritor": 24,
-                        "grupos_antes": quase.grupos_antes,
-                        "grupos_depois": quase.grupos_depois,
-                        "fusoes": quase.fundidos,
-                        "maior_grupo": quase.maior_grupo,
-                    }
-                    if quase is not None
-                    else "NAO MEDIDA NESTA CORRIDA. Rode com --quase; o padrao so faz a passada de hash."
-                ),
-                "decisoes": [
-                    {
-                        "sha256": c.sha256,
-                        "rotulos": c.rotulos,
-                        "vencedor": decisoes.get(c.sha256, {}).get("vencedor"),
-                        "confianca": decisoes.get(c.sha256, {}).get("confianca"),
-                        "motivo": decisoes.get(c.sha256, {}).get("motivo"),
-                    }
-                    for c in achados
-                ],
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-    )
-    print(f"relatorio -> {relatorio}")
+                "sha256": c.sha256,
+                "rotulos": c.rotulos,
+                "vencedor": decisoes.get(c.sha256, {}).get("vencedor"),
+                "confianca": decisoes.get(c.sha256, {}).get("confianca"),
+                "motivo": decisoes.get(c.sha256, {}).get("motivo"),
+            }
+            for c in achados
+        ],
+    }
 
-    if not args.aplicar:
-        print("\n(nada foi movido: use --aplicar)")
-        return 0
+
+def _aplicar(args: argparse.Namespace, plano: Plano) -> int:
+    from ..text import conflitos as cf
 
     manifesto = cf.aplicar(plano, args.base, args.quarentena)
     print()
@@ -248,6 +253,41 @@ def main(argv: list[str] | None = None) -> int:
     print(f"para desfazer: cvoff-texto-conflitos --desfazer {manifesto}")
     print("\nA base mudou: rode `cvoff-texto-train --revarrer` para refazer o cache e treinar.")
     return 0
+
+
+@cli_errors
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    configure_logging(verbose=args.verbose)
+
+    from ..text import conflitos as cf
+
+    if args.desfazer:
+        return _desfazer(args)
+
+    varredura = _varrer(args)
+    quase = _medir_quase(args) if args.quase else None
+
+    with fronteira(f"--decisoes {args.decisoes}"):
+        decisoes = cf.ler_decisoes(args.decisoes) if Path(args.decisoes).exists() else {}
+    if not decisoes:
+        print(f"nenhuma decisao lida de {args.decisoes}: nada pode ser aplicado.")
+    plano = cf.conferir(varredura.conflitos, decisoes)
+    _imprimir_plano(varredura.conflitos, decisoes, plano)
+
+    if args.folha:
+        _desenhar_folha(varredura.conflitos, Path(args.base), Path(args.folha), decisoes)
+        print(f"\nfolha de contato -> {args.folha}")
+
+    relatorio = Path(args.relatorio) if args.relatorio else METRICAS / f"texto_dedupe_{date.today():%Y%m%d}.json"
+    conteudo = _relatorio_json(args, varredura, decisoes, plano, quase)
+    atomic_write_text(relatorio, json.dumps(conteudo, ensure_ascii=False, indent=2))
+    print(f"relatorio -> {relatorio}")
+
+    if not args.aplicar:
+        print("\n(nada foi movido: use --aplicar)")
+        return 0
+    return _aplicar(args, plano)
 
 
 if __name__ == "__main__":  # pragma: no cover
