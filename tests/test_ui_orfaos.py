@@ -308,7 +308,7 @@ SEM_CHAMADOR.update(
                         "PROCESSADO", "ROTULOS_DE_EIXO", "ROTULOS_DE_ORDEM", "SEM_ANO", "SEM_EDITORA",
                         "SEM_IDIOMA", "SEM_RESULTADO", "SOBRA", "Faceta", "FaixaVisivel",
                         "IndiceDaBiblioteca", "ItemDaBiblioteca", "NAO_PROCESSADO", "ValorDeFaceta",
-                        "ano_no_titulo", "casa_com", "colunas_que_cabem", "dobrar", "editora_no_titulo",
+                        "ano_no_titulo", "casa_com", "colunas_que_cabem", "editora_no_titulo",
                         "era_de", "faixa_de_diagramas", "idioma_provavel", "item_de", "janela_visivel",
                         "peso_no_disco", "resumo_de", "titulo_do_arquivo",
                     ),

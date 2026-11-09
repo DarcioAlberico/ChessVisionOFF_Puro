@@ -103,6 +103,7 @@ from chess_diagram_ocr.ui import (
     estilos,
     estudo_dobra,
     estudo_lista,
+    formato,
     geometria,
     motor_declarado,
     strings,
@@ -2790,7 +2791,7 @@ class PainelDeEstudo(QWidget):
             return
         if tamanho > TAMANHO_MAXIMO_DE_PGN:
             self.set_status(
-                f"{caminho.name} tem {tamanho / 1_048_576:.0f} MB, e a sala abre até "
+                f"{caminho.name} tem {formato.decimal(tamanho / 1_048_576, 0)} MB, e a sala abre até "
                 f"{TAMANHO_MAXIMO_DE_PGN // 1_048_576} MB. Base de partidas desse tamanho se "
                 f"consulta pela busca por posição, que não carrega o arquivo inteiro."
             )

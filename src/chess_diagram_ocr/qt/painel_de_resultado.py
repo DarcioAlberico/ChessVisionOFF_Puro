@@ -89,6 +89,7 @@ from chess_diagram_ocr.ui import (
     comandos,
     espaco,
     estilos,
+    formato,
     strings,
     tipografia,
     tokens,
@@ -1732,7 +1733,7 @@ class PainelDeResultado(QWidget):
         """A linha da lista: número, legalidade, confiança e de quem é a vez."""
         explicacao = explain_position(compose_fen(item.placement, item.side_is_white))
         vez = "brancas" if item.side_is_white else "pretas"
-        return f"{posicao + 1} · {explicacao.label} · conf. mín. {item.min_confidence:.2f} · {vez}"
+        return f"{posicao + 1} · {explicacao.label} · conf. mín. {formato.confianca(item.min_confidence)} · {vez}"
 
     def _detalhes_do_item(self, item: RecognizedDiagram) -> str:
         """O parágrafo abaixo do tabuleiro: o que se sabe, e **de onde** se sabe.
@@ -1753,7 +1754,7 @@ class PainelDeResultado(QWidget):
         linhas = [
             f"Lado a jogar: {'brancas' if item.side_is_white else 'pretas'}"
             f" — {strings.side_source_label(item.side_to_move_source, conflicting=item.side_conflicting)}",
-            f"Confiança: mínima {item.min_confidence:.3f} · média {item.mean_confidence:.3f}"
+            f"Confiança: mínima {formato.confianca(item.min_confidence)} · média {formato.confianca(item.mean_confidence)}"
             f" · {len(item.uncertain_squares)} casa(s) incerta(s)",
         ]
         if item.changed_squares:

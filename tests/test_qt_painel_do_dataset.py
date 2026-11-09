@@ -145,6 +145,17 @@ class PainelTests(unittest.TestCase):
         itens = [painel.combo_livro.itemText(i) for i in range(painel.combo_livro.count())]
         self.assertEqual(itens, [resumo_do_dataset.TODOS, "Aagaard", "Dvoretsky"])
 
+    def test_o_filtro_de_livro_ordena_como_quem_le_e_nao_pelo_codigo(self) -> None:
+        """S-910: o `sorted` cru punha `Ádám` depois de `Zukertort`, porque `Á` vem depois
+        de `Z` na tabela Unicode. A biblioteca ordena por `dobrar`, e a caixa do dataset também."""
+        self.escrever(
+            "a.png,8/8/8/8/8/8/8/K6k,w,Zukertort,3,2026-01-01",
+            "b.png,8/8/8/8/8/8/8/K6k,b,Ádám,4,2026-01-02",
+        )
+        painel = self.painel()
+        itens = [painel.combo_livro.itemText(i) for i in range(painel.combo_livro.count())]
+        self.assertEqual(itens, [resumo_do_dataset.TODOS, "Ádám", "Zukertort"])
+
     def test_filtrar_por_livro_reduz_a_tabela_e_nao_o_dataset(self) -> None:
         self.escrever(
             "a.png,8/8/8/8/8/8/8/K6k,w,Aagaard,3,2026-01-01",

@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from . import formato
+
 __all__ = [
     "POR_MIL",
     "Andamento",
@@ -30,10 +32,10 @@ cabem num `int` de `QProgressDialog` sem conversão."""
 def _legivel(bytes_: int) -> str:
     """`8,6 GB`, `62 MB`, `40 kB` -- como quem vai esperar por ele o lê (`escolha_de_bases`)."""
     if bytes_ >= 1_000_000_000:
-        return f"{bytes_ / 1e9:.1f} GB".replace(".", ",")
+        return f"{formato.decimal(bytes_ / 1e9, 1)} GB"
     if bytes_ >= 1_000_000:
-        return f"{bytes_ / 1e6:.0f} MB"
-    return f"{bytes_ / 1e3:.0f} kB"
+        return f"{formato.decimal(bytes_ / 1e6, 0)} MB"
+    return f"{formato.decimal(bytes_ / 1e3, 0)} kB"
 
 
 class Andamento:

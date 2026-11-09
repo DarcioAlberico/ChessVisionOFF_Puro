@@ -334,7 +334,7 @@ class PainelDeRevisao(QWidget):
         if self.queue.items:
             taxa = error_rate(self.queue.items)
             # Ver `qt/painel_de_estudo.set_status`: a grafia do separador é `" · "`.
-            self.lbl_resumo.setText(f"{self.queue.summary()} · {taxa:.0%} com sinal objetivo de erro")
+            self.lbl_resumo.setText(f"{self.queue.summary()} · {formato.porcentagem(taxa, casas=0)} com sinal objetivo de erro")
         else:
             self.lbl_resumo.setText(f"Fila vazia. Abra um PDF e use '{strings.VARRER_LIVRO}'.")
         self._mostrar_motivo()

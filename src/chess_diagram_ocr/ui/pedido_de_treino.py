@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from . import formato
+
 if TYPE_CHECKING:  # pragma: no cover - `TrainingRun` só é usado em anotação
     # `training.py` importa `torch`, `torch.nn` e `torchvision.transforms.v2` no topo e
     # define três `nn.Module` no escopo de módulo -- não dá para adiar lá dentro. Aqui o
@@ -109,7 +111,7 @@ def format_metrics(row: dict[str, Any]) -> str:
         ("val_square_acc", "val_acc/casa"),
     ):
         if chave in row:
-            partes.append(f"{rotulo}={float(row[chave]):.4f}")
+            partes.append(f"{rotulo}={formato.decimal(float(row[chave]), 4)}")
     if row.get("is_best"):
         partes.append("(melhor até agora)")
     return " · ".join(partes)
@@ -134,6 +136,6 @@ def summarize_run(run: TrainingRun) -> str:
     melhor = melhores[-1] if melhores else {}
     resumo = format_metrics(melhor)
     if run.ece_after is not None:
-        resumo += f" | T={run.temperature:.3f}"
+        resumo += f" | T={formato.decimal(run.temperature, 3)}"
     return resumo
 

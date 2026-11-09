@@ -48,7 +48,7 @@ from typing import Any
 
 from ..engine import fracao_de_vantagem
 from ..settings import EngineSettings
-from . import tokens
+from . import formato, tokens
 
 __all__ = [
     "HASH",
@@ -602,5 +602,5 @@ def numero_curto(valor: int) -> str:
         if numero >= corte:
             reduzido = numero / corte
             casas = 0 if reduzido >= 100 else 1
-            return f"{reduzido:.{casas}f} {sufixo}".replace(".", ",")
+            return f"{formato.decimal(reduzido, casas)} {sufixo}"
     return str(numero)

@@ -90,7 +90,7 @@ from chess_diagram_ocr.qt.rotulo import RecorteElastico
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.service import OcrService
-from chess_diagram_ocr.ui import atalhos, espaco, estilos, folha_de_estilo, strings, tokens
+from chess_diagram_ocr.ui import atalhos, espaco, estilos, folha_de_estilo, formato, strings, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.escolha_de_bases import store_path_for
 from chess_diagram_ocr.ui.escopo_da_varredura import ScanScope
@@ -965,7 +965,7 @@ class PainelDaGaleria(QWidget):
             partidas = scan_by_players(
                 bases,
                 pares,
-                progress=lambda lidas: self._progrediu.emit(f"base: {lidas / 1e6:.1f} M partidas lidas…"),
+                progress=lambda lidas: self._progrediu.emit(f"base: {formato.decimal(lidas / 1e6, 1)} M partidas lidas…"),
                 cancel=self._cancelar,
             )
             casamentos = match_entries(self.model.index.entries, partidas)
@@ -1136,7 +1136,7 @@ class PainelDaGaleria(QWidget):
         if not games_read:
             origem = "sem abrir a base (tudo do cache)"
         elif games_read >= 1_000_000:
-            origem = f"{games_read / 1e6:.1f} M partidas lidas"
+            origem = f"{formato.decimal(games_read / 1e6, 1)} M partidas lidas"
         else:
             # Uma base pequena lida em "0,0 M" pareceria uma varredura que não leu nada.
             origem = f"{games_read} partidas lidas"

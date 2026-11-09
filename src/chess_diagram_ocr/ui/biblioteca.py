@@ -64,6 +64,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from . import formato
+
 __all__ = [
     "COM_RESULTADO",
     "DIAGRAMAS_ROTULOS",
@@ -1252,4 +1254,4 @@ def peso_no_disco(bytes_no_disco: int) -> str:
         unidade += 1
     if unidade == 0 or valor >= 100:
         return f"{round(valor)} {_UNIDADES[unidade]}"
-    return f"{valor:.1f}".replace(".", ",") + f" {_UNIDADES[unidade]}"
+    return f"{formato.decimal(valor, 1)} {_UNIDADES[unidade]}"

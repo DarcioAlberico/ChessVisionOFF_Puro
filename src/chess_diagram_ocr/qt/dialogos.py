@@ -64,7 +64,7 @@ from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.foco_a_vista import seguir_o_foco
 from chess_diagram_ocr.qt.tabela import Coluna, TabelaQt
 from chess_diagram_ocr.qt.vazio import EstadoVazio
-from chess_diagram_ocr.ui import espaco, estilos, folha_de_estilo, strings, tipografia, tokens
+from chess_diagram_ocr.ui import espaco, estilos, folha_de_estilo, formato, strings, tipografia, tokens
 from chess_diagram_ocr.ui.escolha_de_bases import cache_note, describe_size
 from chess_diagram_ocr.ui.escopo_da_varredura import (
     ABERTO,
@@ -312,7 +312,7 @@ class DialogoDeBases(QDialog):
                 bytes_ += base.stat().st_size
             except OSError:
                 pass
-        total = f"{bytes_ / 1e9:.1f} GB".replace(".", ",")
+        total = f"{formato.decimal(bytes_ / 1e9, 1)} GB"
         self.lbl_total.setText(f"{len(escolhidas)} base(s) marcada(s), {total} no total.")
         self.lbl_nota.setText(self._nota(escolhidas))
         self.btn_ok.setEnabled(bool(escolhidas))

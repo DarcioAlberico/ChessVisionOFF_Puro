@@ -24,6 +24,7 @@ from pathlib import Path
 
 from ..games_cache import DEFAULT_STORE_PATH, stored_summary
 from ..games_db import database_paths
+from . import formato
 
 __all__ = ["cache_note", "describe_size", "store_path_for"]
 
@@ -34,10 +35,10 @@ def describe_size(caminho: Path) -> str:
     except OSError:
         return "ausente"
     if bytes_ >= 1_000_000_000:
-        return f"{bytes_ / 1e9:.1f} GB".replace(".", ",")
+        return f"{formato.decimal(bytes_ / 1e9, 1)} GB"
     if bytes_ >= 1_000_000:
-        return f"{bytes_ / 1e6:.0f} MB"
-    return f"{bytes_ / 1e3:.0f} kB"
+        return f"{formato.decimal(bytes_ / 1e6, 0)} MB"
+    return f"{formato.decimal(bytes_ / 1e3, 0)} kB"
 
 
 def _mesmo_conjunto(um: Sequence[Path], outro: Sequence[Path]) -> bool:

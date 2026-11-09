@@ -43,6 +43,7 @@ from dataclasses import dataclass
 
 from ..estudo import Estudo
 from ..estudo_paragrafos import DIAGRAMA, TITULO, paragrafos
+from . import formato
 
 __all__ = [
     "LARGURA_DO_DIAGRAMA",
@@ -258,4 +259,4 @@ def frase_do_pdf(caminho: str, paginas: int, tamanho: int) -> str:
     Traz o **caminho inteiro** pela razão da S-546: quem acabou de gravar precisa saber onde
     procurar, e "na pasta escolhida" não é um caminho.
     """
-    return f"{paginas} página(s) em {caminho} ({tamanho / 1024:.1f} KB)."
+    return f"{paginas} página(s) em {caminho} ({formato.decimal(tamanho / 1024, 1)} KB)."

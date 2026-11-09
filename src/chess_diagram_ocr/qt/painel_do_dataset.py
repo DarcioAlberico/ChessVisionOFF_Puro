@@ -77,6 +77,7 @@ from chess_diagram_ocr.qt.tabela import TabelaQt
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.ui import espaco, estilos, strings, tipografia
+from chess_diagram_ocr.ui.biblioteca import dobrar
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.resumo_do_dataset import (
     COLUNAS,
@@ -600,7 +601,7 @@ class PainelDoDataset(QWidget):
         self.setEnabled(True)
         self.rows = list(linhas) if isinstance(linhas, list) else []
 
-        livros = sorted({row.source_pdf for row in self.rows if row.source_pdf})
+        livros = sorted({row.source_pdf for row in self.rows if row.source_pdf}, key=lambda nome: (dobrar(nome), nome))
         escolhido = self.combo_livro.currentText()
         self.combo_livro.clear()
         self.combo_livro.addItems([TODOS, *livros])

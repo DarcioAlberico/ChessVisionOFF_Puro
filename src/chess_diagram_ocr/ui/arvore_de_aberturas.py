@@ -43,7 +43,7 @@ import chess
 
 from .. import eco as eco_mod
 from ..arvore_de_aberturas import ACHOU, COMO_CONSTRUIR, FUNDO_DEMAIS, SEM_ARVORE, SEM_PARTIDA
-from . import tokens
+from . import formato, tokens
 from .busca_de_partidas import Filtro
 from .tabela import Coluna
 
@@ -444,8 +444,8 @@ def frase_do_fim(passada: Passada) -> str:
     partidas = f"{passada.partidas:,}".replace(",", ".")
     return (
         f"Árvore de aberturas pronta: {ramos} lance(s) de {partidas} partida(s), "
-        f"até o lance {passada.profundidade // 2}, em {passada.segundos / 60:.0f} min "
-        f"e {passada.bytes_no_disco / 1e6:.0f} MB."
+        f"até o lance {passada.profundidade // 2}, em {formato.decimal(passada.segundos / 60, 0)} min "
+        f"e {formato.decimal(passada.bytes_no_disco / 1e6, 0)} MB."
     )
 
 

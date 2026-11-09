@@ -1335,6 +1335,13 @@ de Z).
 
 **Aceite.** Os dois passam.
 
+**Entregue** (2026-11-08): `formato.decimal` e `formato.porcentagem` cobrem os 28 lugares que a guarda (AST,
+`:.Nf}`, `:.N%}` e `:.{casas}f}`) achou em `ui/` e `qt/`, incluindo os `:.0f}` de MB e minutos. Divergiu: a
+confiança de `qt/painel_de_resultado.py` foi para `formato.confianca` (`82,0%`), e não para `decimal`, porque
+a S-169 já decidiu que confiança se lê em porcentagem; `qt/painel_de_texto.py` (`segundos`) ficou como exceção
+nomeada na guarda, por estar em edição paralela; `dobrar` saiu da lista de órfãs de `tests/test_ui_orfaos.py`,
+porque agora tem chamador.
+
 ## Fase 115 — Interpretador, empacotamento e documentos
 
 ## S-830 · Python 3.13 como interpretador padrão

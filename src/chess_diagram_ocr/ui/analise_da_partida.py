@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..engine import TETO_DE_CENTIPEOES, fracao_de_vantagem
+from . import formato
 
 __all__ = [
     "ERRO",
@@ -195,7 +196,7 @@ def peoes(centipeoes: int) -> str:
     treino da S-541 e o placar --, e três `f"{x/100:.2f}".replace(".", ",")` divergiriam na
     primeira vez que alguém mudasse a casa decimal de um deles.
     """
-    return f"{int(centipeoes) / 100:.2f}".replace(".", ",")
+    return formato.decimal(int(centipeoes) / 100, 2)
 
 
 def avaliacao_em_centipeoes(score_cp: int | None, mate_in: int | None) -> int:
