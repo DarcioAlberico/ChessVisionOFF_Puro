@@ -416,6 +416,33 @@ class AnotacaoTests(unittest.TestCase):
         painel.refresh(request_page=False)
         self.assertTrue(painel.btn_limpar.isEnabled())
 
+    def test_o_campo_livre_recusa_o_nome_invalido_antes_de_gravar(self) -> None:
+        """S-876: a recusa vem em português, na hora, e o que foi digitado fica para corrigir."""
+        from PyQt6.QtWidgets import QPushButton
+
+        from chess_diagram_ocr.gallery import annotations_path_for
+
+        painel = self.painel()
+        recados: list[str] = []
+        painel.estado.connect(recados.append)
+        gravar = next(b for b in painel.findChildren(QPushButton) if b.text() == "Gravar")
+        painel.campo_livre_nome.setText("Torneio Local")
+        painel.campo_livre_valor.setText("Clube")
+
+        gravar.click()
+
+        self.assertEqual(painel.model.current_annotation.headers, {})
+        self.assertFalse(annotations_path_for(self.livro, directory=self.pasta).exists(),
+                         "a Galeria foi gravada com o nome recusado")
+        self.assertIn("Torneio Local", recados[-1])
+        self.assertNotIn("gravado", recados[-1])
+        self.assertEqual(painel.campo_livre_nome.text(), "Torneio Local", "o nome digitado sumiu")
+
+        painel.campo_livre_nome.setText("TorneioLocal")
+        gravar.click()
+        self.assertEqual(painel.model.current_annotation.headers, {"TorneioLocal": "Clube"})
+        self.assertIn("gravado", recados[-1])
+
     def test_a_pergunta_destrutiva_tem_cancelar_como_padrao(self) -> None:
         """Num `QMessageBox` o padrão é OK, e um `Enter` de reflexo apagaria meia hora de
         digitação. É o `default=messagebox.CANCEL` do outro lado."""

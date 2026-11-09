@@ -959,6 +959,8 @@ com a recusa dita em português; `\r` e `\n` dos valores trocados por espaço.
 
 **Aceite.** O teste passa; o campo recusa o nome inválido antes de gravar a Galeria.
 
+**Entregue** (2026-11-08): a decisão mora em `gallery.recusa_do_nome_de_header` e `gallery.valor_de_header`, usadas por `_headers`, `GalleryModel.set_header` e pelo campo livre do `PainelDaGaleria`. Duas coisas além da letra: a recusa cobre também `FEN` e `SetUp` (o campo livre dizia «Header FEN gravado» sem gravar nada), e o nome inválido que já está num `.json` de Galeria gravado antes sai na leitura com aviso no log -- não há nome válido para onde levá-lo, e mantê-lo pararia a exportação.
+
 ## S-877 · Caractere de controle não estraga o EPUB nem o DOCX
 
 **Problema** (confirmado por script). `epub.py:264-289`, `:570-605`, `:646-649` (`html.escape`) e

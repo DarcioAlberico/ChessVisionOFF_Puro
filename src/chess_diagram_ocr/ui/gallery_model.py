@@ -23,7 +23,9 @@ from chess_diagram_ocr.gallery import (
     DiagramAnnotation,
     GalleryAnnotations,
     lichess_analysis_url,
+    recusa_do_nome_de_header,
     save_annotations,
+    valor_de_header,
 )
 from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
 from chess_diagram_ocr.games_cache import PositionCache, PositionStore
@@ -338,12 +340,12 @@ class GalleryModel:
         if atual is None:
             return None
         nome = name.strip()
-        if not nome or nome in RESERVED_HEADERS:
+        if not nome or recusa_do_nome_de_header(nome):
             return self.current_annotation
 
         anotacao = self.current_annotation
         headers = dict(anotacao.headers)
-        texto = value.strip()
+        texto = valor_de_header(value)
         if texto:
             headers[nome] = texto
         else:

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import unittest
 from pathlib import Path
 
 import chess
+import chess.pgn
 
 from chess_diagram_ocr.gallery import (
     DiagramAnnotation,
@@ -74,6 +76,32 @@ class AnotacaoTests(unittest.TestCase):
 
     def test_header_vazio_some(self) -> None:
         self.assertEqual(DiagramAnnotation.from_dict({"headers": {"White": "   "}}).headers, {})
+
+
+    def test_cabecalho_livre_com_acento_nao_derruba_exportacao(self) -> None:
+        """S-876: um nome que o PGN não aceita, ou um valor de duas linhas, não para o livro.
+
+        O python-chess recusa nome fora de `TAG_NAME_REGEX` e valor com quebra de linha com um
+        `ValueError` em inglês -- e um só cabeçalho digitado à mão impedia de exportar o livro
+        inteiro. Na leitura da Galeria o nome inválido sai, e a quebra vira espaço.
+        """
+        anotacao = DiagramAnnotation.from_dict({"headers": {
+            "Comentário": "bela combinação",
+            "Torneio Local": "Clube",
+            "Event": "Kemeri\r\n1937",
+            "Annotator": "Tal\nKoblents",
+            "White": "Tal",
+        }})
+
+        texto = build_pgn_text([_posicao()], source_name="livro.pdf", annotations={(0, 0): anotacao})
+
+        jogo = chess.pgn.read_game(io.StringIO(texto))
+        assert jogo is not None
+        self.assertEqual(jogo.headers["Event"], "Kemeri 1937")
+        self.assertEqual(jogo.headers["Annotator"], "Tal Koblents")
+        self.assertEqual(jogo.headers["White"], "Tal")
+        self.assertNotIn("Comentário", texto)
+        self.assertNotIn("Torneio", texto)
 
 
 class ConjuntoTests(unittest.TestCase):

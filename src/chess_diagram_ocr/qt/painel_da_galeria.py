@@ -61,7 +61,12 @@ from PyQt6.QtWidgets import (
 )
 
 from chess_diagram_ocr.config import DEFAULT_PDF_DIR, DEFAULT_READING_ORDER
-from chess_diagram_ocr.gallery import DiagramAnnotation, GaleriaDeOutroLivro, load_annotations
+from chess_diagram_ocr.gallery import (
+    DiagramAnnotation,
+    GaleriaDeOutroLivro,
+    load_annotations,
+    recusa_do_nome_de_header,
+)
 from chess_diagram_ocr.gallery_scan import build_gallery_index, load_index, save_index
 from chess_diagram_ocr.games_cache import PositionStore, open_store
 from chess_diagram_ocr.games_db import (
@@ -1484,6 +1489,11 @@ class PainelDaGaleria(QWidget):
     def _gravar_header_livre(self) -> None:
         nome = self.campo_livre_nome.text().strip()
         if not nome:
+            return
+        recusa = recusa_do_nome_de_header(nome)
+        if recusa:
+            # Antes de gravar, e com o que foi digitado ainda nos campos para corrigir (S-876).
+            self.estado.emit(recusa)
             return
         self.model.set_header(nome, self.campo_livre_valor.text())
         self.campo_livre_nome.clear()

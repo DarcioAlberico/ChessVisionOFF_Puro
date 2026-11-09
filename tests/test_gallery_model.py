@@ -107,6 +107,18 @@ class AnotacaoTests(unittest.TestCase):
         modelo.set_header("FEN", "lixo")
         self.assertEqual(modelo.current_annotation.headers, {})
 
+    def test_header_com_nome_que_o_pgn_nao_aceita_e_recusado(self) -> None:
+        """S-876: `Torneio Local` gravado aqui derrubaria a exportação do livro inteiro."""
+        modelo = _modelo((0, 0))
+        modelo.set_header("Torneio Local", "Clube")
+        modelo.set_header("Comentário", "bela")
+        self.assertEqual(modelo.current_annotation.headers, {})
+
+    def test_quebra_de_linha_no_valor_do_header_vira_espaco(self) -> None:
+        modelo = _modelo((0, 0))
+        modelo.set_header("Event", "Kemeri\r\n1937")
+        self.assertEqual(modelo.current_annotation.headers, {"Event": "Kemeri 1937"})
+
     def test_anotacao_esvaziada_some_do_conjunto(self) -> None:
         """Visitar não é anotar: o JSON não deve crescer por diagrama visitado."""
         modelo = _modelo((0, 0))

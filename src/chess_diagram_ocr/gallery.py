@@ -34,6 +34,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+import chess.pgn
+
 from .arquivo_do_dono import ler_texto
 from .atomic_io import atomic_write_json, atomic_write_text
 from .config import DATA_DIR, DEFAULT_READING_ORDER, PROJECT_ROOT, ReadingOrder
@@ -55,8 +57,10 @@ __all__ = [
     "lichess_analysis_url",
     "load_annotations",
     "read_human_extract",
+    "recusa_do_nome_de_header",
     "restore_human",
     "save_annotations",
+    "valor_de_header",
     "write_human_extract",
 ]
 
@@ -153,6 +157,33 @@ Vez a jogar e número do lance mudam a FEN pelos campos próprios, que sabem rec
 resultado declarável, e `"*"` é o padrão de quem não declarou, não uma verdade sobre a
 posição.
 """
+
+
+def recusa_do_nome_de_header(nome: str) -> str:
+    """Por que `nome` não serve de header da anotação, em português; vazio quando serve (S-876).
+
+    O critério do nome é o do python-chess (`chess.pgn.TAG_NAME_REGEX`), que é quem escreve o
+    PGN: fora dele o `game.headers[nome] = ...` da exportação levanta `ValueError` em inglês, e
+    um só cabeçalho digitado à mão na Galeria parava a exportação do livro inteiro. Acento e
+    espaço -- `Comentário`, `Torneio Local` -- são justamente o que um nome em português tem.
+    """
+    if nome in RESERVED_HEADERS:
+        return (
+            f"O cabeçalho {nome} não se declara à mão: ele sai do próprio diagrama, e a vez e o "
+            "lance mudam pelos campos deles."
+        )
+    if not chess.pgn.TAG_NAME_REGEX.match(nome):
+        return (
+            f"«{nome}» não serve de nome de cabeçalho de PGN: use só letras sem acento, algarismos "
+            "e _ + # = : -, sem espaço, começando por letra ou algarismo (por exemplo, "
+            "TorneioLocal ou Comentario)."
+        )
+    return ""
+
+
+def valor_de_header(texto: str) -> str:
+    """O valor numa linha só, sem as bordas: o header de PGN não tem segunda linha (S-876)."""
+    return texto.replace("\r\n", " ").replace("\r", " ").replace("\n", " ").strip()
 
 
 def lichess_analysis_url(fen: str) -> str:
@@ -342,15 +373,24 @@ def _campos(valor: Any) -> tuple[str, ...]:
 
 
 def _headers(valor: Any) -> dict[str, str]:
-    """Só pares de texto, e nunca os reservados. Chave vazia some junto."""
+    """Só pares de texto que o PGN aceita, e nunca os reservados. Chave vazia some junto.
+
+    Nome que o PGN não aceita sai com aviso no log (S-876): ele só pode ter sido gravado por uma
+    versão anterior à recusa do campo, e mantê-lo pararia a exportação do livro.
+    """
     if not isinstance(valor, dict):
         return {}
     limpos: dict[str, str] = {}
     for chave, conteudo in valor.items():
         nome = str(chave).strip()
-        if not nome or nome in RESERVED_HEADERS:
+        if not nome:
             continue
-        texto = str(conteudo).strip()
+        recusa = recusa_do_nome_de_header(nome)
+        if recusa:
+            if nome not in RESERVED_HEADERS:
+                logger.warning("Cabeçalho %r da Galeria descartado na leitura: %s", nome, recusa)
+            continue
+        texto = valor_de_header(str(conteudo))
         if texto:
             limpos[nome] = texto
     return limpos
