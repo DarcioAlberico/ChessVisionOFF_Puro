@@ -82,14 +82,6 @@ class DeclaracaoTests(unittest.TestCase):
             with self.subTest(caso=nome):
                 self.assertIs(esperada, decidir(ancora, posicao, vazio=vazio))
 
-    def test_o_modulo_puro_nao_carrega_tkinter(self) -> None:
-        import ast
-
-        arvore = ast.parse(Path(sala_declarada.__file__).read_text(encoding="utf-8"))
-        nomes = {no.names[0].name.split(".")[0] for no in ast.walk(arvore) if isinstance(no, ast.Import)}
-        nomes |= {(no.module or "").split(".")[0] for no in ast.walk(arvore) if isinstance(no, ast.ImportFrom)}
-        self.assertNotIn("tkinter", nomes)
-
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class SalaTests(unittest.TestCase):

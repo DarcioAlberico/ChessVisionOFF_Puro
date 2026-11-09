@@ -45,17 +45,6 @@ class _ServicoFalso:
 class DeclaracaoTests(unittest.TestCase):
     """A decisão é a mesma dos dois lados, e nenhum dos dois a reescreve."""
 
-    def test_o_modulo_puro_nao_carrega_tkinter_nem_imagetk(self) -> None:
-        """O painel de Tk que este substituiu importava `tkinter` **e** `PIL.ImageTk` na primeira
-        linha; o módulo puro que sobrou dele não pode voltar a importar nenhum dos dois."""
-        import ast
-
-        arvore = ast.parse(Path(galeria_declarada.__file__).read_text(encoding="utf-8"))
-        nomes = {no.names[0].name.split(".")[0] for no in ast.walk(arvore) if isinstance(no, ast.Import)}
-        nomes |= {(no.module or "").split(".")[0] for no in ast.walk(arvore) if isinstance(no, ast.ImportFrom)}
-        self.assertNotIn("tkinter", nomes)
-        self.assertNotIn("PIL", nomes)
-
     def test_o_resumo_do_lote_distingue_as_quatro_situacoes(self) -> None:
         """É a única linha que alguém lê depois de deixar o acervo varrendo por três horas.
 

@@ -37,15 +37,6 @@ class DeclaracaoTests(unittest.TestCase):
         funcionar, tendo `auto` na mesma caixa."""
         self.assertEqual(texto_declarado.MOTORES[0], "auto")
 
-    def test_o_modulo_puro_nao_carrega_tkinter(self) -> None:
-        import ast
-        from pathlib import Path
-
-        arvore = ast.parse(Path(texto_declarado.__file__).read_text(encoding="utf-8"))
-        nomes = {no.names[0].name.split(".")[0] for no in ast.walk(arvore) if isinstance(no, ast.Import)}
-        nomes |= {(no.module or "").split(".")[0] for no in ast.walk(arvore) if isinstance(no, ast.ImportFrom)}
-        self.assertNotIn("tkinter", nomes)
-
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class CaudaTests(unittest.TestCase):

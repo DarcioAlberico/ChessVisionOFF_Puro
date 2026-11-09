@@ -12,7 +12,6 @@ figurinas pretas move os símbolos de prateleira sem que ninguém toque em códi
 
 from __future__ import annotations
 
-import ast
 import json
 import tempfile
 import unittest
@@ -80,16 +79,6 @@ class DerivadaDoMetadadoTests(unittest.TestCase):
             paleta = P.paleta(Path(pasta) / "nao_existe.json")
         self.assertEqual(set(paleta.simbolos), set(P.MINIMA) | set(paleta.fora_do_modelo))
         self.assertIn("♘", paleta.simbolos)
-
-    def test_o_modulo_nao_importa_tkinter(self) -> None:
-        arvore = ast.parse(Path(P.__file__).read_text(encoding="utf-8"))
-        importados: set[str] = set()
-        for no in ast.walk(arvore):
-            if isinstance(no, ast.Import):
-                importados.update(alias.name.split(".")[0] for alias in no.names)
-            elif isinstance(no, ast.ImportFrom) and no.module:
-                importados.add(no.module.split(".")[0])
-        self.assertNotIn("tkinter", importados)
 
     def test_a_prateleira_do_simbolo_so_nomeia_o_que_existe_ou_o_que_se_oferece(self) -> None:
         """Uma tabela que nomeasse símbolo que ninguém oferece seria promessa vazia -- e a

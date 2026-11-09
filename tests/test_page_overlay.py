@@ -280,29 +280,6 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(len(self.cache), 0)
 
 
-class NoTkinterTests(unittest.TestCase):
-    def test_o_modulo_nao_importa_tkinter(self) -> None:
-        """A mesma varredura do `editor_model` e do `board_model`, pelo mesmo motivo.
-
-        É sobre a árvore de importação e não sobre o texto: o docstring do módulo fala do
-        canvas, e um `assertNotIn` sobre o texto reprovaria a própria explicação.
-        """
-        import ast
-        from pathlib import Path
-
-        from chess_diagram_ocr.ui import page_overlay
-
-        arvore = ast.parse(Path(page_overlay.__file__).read_text(encoding="utf-8"))
-        importados: set[str] = set()
-        for node in ast.walk(arvore):
-            if isinstance(node, ast.Import):
-                importados.update(alias.name.split(".")[0] for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                importados.add(node.module.split(".")[0])
-
-        self.assertNotIn("tkinter", importados)
-
-
 class CanalRedundanteTests(unittest.TestCase):
     """A cor não é o único portador do estado (S-159).
 

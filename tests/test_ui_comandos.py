@@ -601,19 +601,6 @@ class DisciplinaDoRegistroTests(unittest.TestCase):
             with self.subTest(grupo=grupo):
                 self.assertTrue(comandos.rotulo_do_grupo(grupo).strip())
 
-    def test_o_catalogo_nao_importa_tkinter(self) -> None:
-        """A mesma varredura da S-145 sobre `ui/tokens.py`, e pelo mesmo motivo: o que decide
-        precisa ser afirmável sem janela, e é isso que faz cada teste acima caber num
-        `assertEqual`."""
-        arvore = ast.parse(Path(comandos.__file__).read_text(encoding="utf-8"))
-        importados: set[str] = set()
-        for no in ast.walk(arvore):
-            if isinstance(no, ast.Import):
-                importados.update(alias.name.split(".")[0] for alias in no.names)
-            elif isinstance(no, ast.ImportFrom) and no.module:
-                importados.add(no.module.split(".")[0])
-        self.assertNotIn("tkinter", importados)
-
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

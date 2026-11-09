@@ -141,16 +141,6 @@ class TodosSaemDoMesmoDocumentoTests(unittest.TestCase):
                 segunda = exportacao.exportar(doc, formato).conteudo
                 self.assertEqual(primeira, segunda)
 
-    def test_o_modulo_nao_importa_tkinter(self) -> None:
-        arvore = ast.parse(MODULO.read_text(encoding="utf-8"))
-        importados: set[str] = set()
-        for no in ast.walk(arvore):
-            if isinstance(no, ast.Import):
-                importados.update(alias.name.split(".")[0] for alias in no.names)
-            elif isinstance(no, ast.ImportFrom) and no.module:
-                importados.add(no.module.split(".")[0])
-        self.assertNotIn("tkinter", importados)
-
 
 class PerdaExplicitaTests(unittest.TestCase):
     def test_cada_formato_declara_o_que_perde(self) -> None:

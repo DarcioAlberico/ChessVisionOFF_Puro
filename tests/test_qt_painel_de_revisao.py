@@ -49,17 +49,6 @@ def _item(pagina: int, *, status: str = "pending", prioridade: float = 1.0) -> R
     )
 
 
-class DeclaracaoTests(unittest.TestCase):
-    """A decisão é a mesma dos dois lados, e nenhum dos dois a reescreve."""
-
-    def test_o_modulo_compartilhado_nao_carrega_tkinter(self) -> None:
-        import ast
-
-        arvore = ast.parse(Path(varredura_de_revisao.__file__).read_text(encoding="utf-8"))
-        nomes = {no.names[0].name.split(".")[0] for no in ast.walk(arvore) if isinstance(no, ast.Import)}
-        nomes |= {(no.module or "").split(".")[0] for no in ast.walk(arvore) if isinstance(no, ast.ImportFrom)}
-        self.assertNotIn("tkinter", nomes)
-
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class PainelTests(unittest.TestCase):
     """O painel montado sobre uma fila de arquivo."""

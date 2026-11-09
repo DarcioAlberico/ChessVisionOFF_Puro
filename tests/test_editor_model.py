@@ -294,30 +294,6 @@ class AdoptTests(unittest.TestCase):
         self.assertEqual(model.count, 1, "o conteúdo continua editável, só não pertence a página nenhuma")
 
 
-class NoTkinterTests(unittest.TestCase):
-    def test_o_modelo_nao_importa_tkinter(self) -> None:
-        """O critério de aceite literal da S-49, e o que torna estes testes possíveis.
-
-        A varredura é sobre a **árvore de importação** e não sobre o texto: o docstring do
-        módulo cita `import tkinter` para dizer que ele não existe ali, e um `assertNotIn`
-        sobre o texto reprovaria a própria explicação.
-        """
-        import ast
-        from pathlib import Path
-
-        from chess_diagram_ocr.ui import editor_model
-
-        arvore = ast.parse(Path(editor_model.__file__).read_text(encoding="utf-8"))
-        importados: set[str] = set()
-        for node in ast.walk(arvore):
-            if isinstance(node, ast.Import):
-                importados.update(alias.name.split(".")[0] for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                importados.add(node.module.split(".")[0])
-
-        self.assertNotIn("tkinter", importados)
-
-
 if __name__ == "__main__":
     unittest.main()
 
@@ -471,23 +447,26 @@ SEM_TKINTER = {
     "varredura_de_revisao.py": "o pedido de varredura e o acumulador da fila (S-116/S-119/S-503)",
     "viewport.py": "o zoom e a rolagem, como aritmética",
 }
-"""Os módulos de `ui/` que **não** podem importar `tkinter`, e o que cada um é (S-137).
+"""Os módulos de `ui/` que decidem sem janela e sem imagem, e o que cada um é (S-137).
 
 A separação que sustenta toda a testabilidade da interface estava declarada em seis docstrings
-e verificada em **quatro** módulos. A lista é o teste: um módulo novo sem Tk que não esteja
-aqui não é vigiado, e um daqui que passe a importar `tkinter` falha a suíte.
+e verificada em **quatro** módulos. A lista é o teste: um módulo novo que não esteja aqui não é
+vigiado, e um daqui que passe a importar `tkinter` ou `PIL` falha a suíte.
 
-**Importar `tkinter` não é proibido em `ui/`** -- a maioria dos painéis o faz, e é o que eles
-são. O que a lista fixa é o conjunto que decidiu **não** fazê-lo, porque é dele que sai a
-possibilidade de testar decisão de interface sem abrir janela."""
+**O toolkit já não é a pergunta desta lista** (S-869). Até o corte do Tk a maioria dos painéis
+de `ui/` importava `tkinter`, e a lista fixava os que decidiram não fazê-lo; desde o corte nenhum
+módulo de `ui/` pode importar toolkit nenhum, e quem cobra isso -- `PyQt6`, `PySide6`, `tkinter`,
+`ttkbootstrap` e `qt/`, em `ui/` e em todo o pacote fora de `qt/` -- é `tests/test_ui_fronteira.py`.
+As dezesseis guardas de um módulo só que repetiam `assertNotIn("tkinter", ...)` saíram por isso.
+O que só esta lista cobra é a outra metade: estes módulos também não importam `PIL`, e todo
+módulo de `ui/` sem `PIL` está nela com o que decide."""
 
 
 class SemTkinterTests(unittest.TestCase):
     """A varredura é sobre a **árvore de importação** e não sobre o texto.
 
     Vários destes módulos citam `import tkinter` no docstring para dizer que ele não existe
-    ali, e um `assertNotIn` sobre o texto reprovaria a própria explicação -- é a razão que o
-    `NoTkinterTests` acima já registrava para um módulo só.
+    ali, e um `assertNotIn` sobre o texto reprovaria a própria explicação.
     """
 
     def _importados(self, caminho: Path) -> set[str]:

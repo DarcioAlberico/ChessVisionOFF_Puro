@@ -135,16 +135,6 @@ class SemHexadecimalTests(unittest.TestCase):
             with self.subTest(arquivo=caminho.name):
                 self.assertEqual(self._hexadecimais(caminho), [])
 
-    def test_o_modulo_de_cor_nao_importa_tkinter(self) -> None:
-        arvore = ast.parse(CORES.read_text(encoding="utf-8"))
-        importados: set[str] = set()
-        for no in ast.walk(arvore):
-            if isinstance(no, ast.Import):
-                importados.update(alias.name.split(".")[0] for alias in no.names)
-            elif isinstance(no, ast.ImportFrom) and no.module:
-                importados.add(no.module.split(".")[0])
-        self.assertNotIn("tkinter", importados)
-
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

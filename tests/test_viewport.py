@@ -160,24 +160,6 @@ class FitWidthTests(unittest.TestCase):
         self.assertIsNone(fit_width_zoom(viewport_px=800, page_px=0))
 
 
-class NoTkinterTests(unittest.TestCase):
-    def test_o_modulo_nao_importa_tkinter(self) -> None:
-        import ast
-        from pathlib import Path
-
-        from chess_diagram_ocr.ui import viewport
-
-        arvore = ast.parse(Path(viewport.__file__).read_text(encoding="utf-8"))
-        importados: set[str] = set()
-        for node in ast.walk(arvore):
-            if isinstance(node, ast.Import):
-                importados.update(alias.name.split(".")[0] for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                importados.add(node.module.split(".")[0])
-
-        self.assertNotIn("tkinter", importados)
-
-
 class AjustarAPaginaTests(unittest.TestCase):
     """"Ajustar à página": ver a folha toda para escolher qual diagrama abrir (S-157)."""
 
