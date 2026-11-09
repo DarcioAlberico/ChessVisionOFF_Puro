@@ -114,10 +114,6 @@ _SPEC_DECIMAL = re.compile(r"\.(\d+|\{\})[f%]$")
 """`:.2f`, `:>7.2%`, `:.{casas}f` -- toda especificação que escreve um separador decimal."""
 
 EXCECOES_DECIMAL: dict[tuple[str, str], str] = {
-    ("qt/painel_de_texto.py", "segundos"): (
-        "a frase da leitura em lote já sai com vírgula pelo `.replace`; o arquivo estava em edição "
-        "paralela quando a S-910 entrou, e a troca por `formato.decimal` ficou para depois"
-    ),
 }
 """(arquivo, expressão formatada) -> por que ela pode escrever o próprio separador.
 

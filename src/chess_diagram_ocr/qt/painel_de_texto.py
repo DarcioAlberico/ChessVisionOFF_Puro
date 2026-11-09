@@ -122,7 +122,18 @@ from chess_diagram_ocr.text import busca, caderno, correcao, rascunho, rico
 from chess_diagram_ocr.text.documento import PaginaLida
 from chess_diagram_ocr.text.pagina import BlocoDeDiagrama, BlocoDeTexto
 from chess_diagram_ocr.text.tesseract import LINGUA_PADRAO
-from chess_diagram_ocr.ui import atalhos, comandos, espaco, estilos, mesa, strings, texto_cores, tipografia, tokens
+from chess_diagram_ocr.ui import (
+    atalhos,
+    comandos,
+    espaco,
+    estilos,
+    formato,
+    mesa,
+    strings,
+    texto_cores,
+    tipografia,
+    tokens,
+)
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.livros import ChaveDoLivro, chave_do_livro, mesmo_livro
 from chess_diagram_ocr.ui.state import AppState
@@ -3915,7 +3926,7 @@ class PainelDeTexto(QWidget):
         diagramas = len(pagina.diagramas)
         figuras = f", {diagramas} diagrama(s)" if diagramas else ""
         # «em 3,9 s»: a pessoa escolhe o motor e o modo bloco pelo preço, e o preço tem de ser dito.
-        tempo = "" if segundos is None else f" em {segundos:.1f} s".replace(".", ",")
+        tempo = "" if segundos is None else f" em {formato.decimal(segundos, 1)} s"
         if not self.documento.para_texto().strip():
             # A folha vazia não é falha nem é «0 trecho(s)» (item 26): é uma página sem texto para
             # este motor -- capa, figura inteira, ou scan que o glifo não leu --, e a frase diz o
