@@ -30,9 +30,10 @@ import sys
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from pathlib import Path
 
+import caixas_modais
 import pytest
 import sonda_de_escrita
 from arvores_do_repositorio import checkout_principal
@@ -373,54 +374,54 @@ def erro_de_thread_e_do_teste_que_a_criou(request: pytest.FixtureRequest) -> Ite
         pytest.fail(f"{request.node.name} deixou exceção em thread: {'; '.join(estouros)}")
 
 
-# ------------------------------------------------------- a caixa modal que trava a suíte (S-414)
+# ------------------------------------------------- a caixa modal que trava a suíte (S-414, S-872)
 
-CAIXAS = ("information", "warning", "critical", "question", "about")
-"""Os cinco atalhos estáticos do `QMessageBox` que a interface usa.
 
-**Eram as sete do `tkinter.messagebox` até o corte (S-506), e a guarda seguiu o toolkit porque o
-modo de falha seguiu.** Com um `QMessageBox` é pior, não melhor: sob `QT_QPA_PLATFORM=offscreen`
-a caixa **abre**, e o `exec()` dela espera para sempre por um clique que ninguém vai dar -- sem
-tempo limite, sem mensagem e sem sequer nomear o teste que travou, porque o `-v` já imprimiu o
-nome do anterior. Custou duas horas nesta suíte antes de existir esta linha."""
+@pytest.fixture(autouse=True, scope="session")
+def caixas_desarmadas() -> Iterator[caixas_modais.Desarme | None]:
+    """Toda entrada modal do Qt trocada por um substituto que anota e não espera (`tests/caixas_modais.py`).
+
+    **De sessão**, e não de teste, para cobrir também o `setUpClass` e o que roda na coleta; a fixture
+    de cada teste só rearma, que é barato. Sem PyQt6 não há caixa a desarmar.
+    """
+    if importlib.util.find_spec("PyQt6") is None:
+        yield None
+        return
+    desarme = caixas_modais.Desarme()
+    desarme.armar()
+    try:
+        yield desarme
+    finally:
+        desarme.desarmar()
 
 
 @pytest.fixture(autouse=True)
-def nenhuma_caixa_modal_de_verdade() -> Iterator[None]:
-    """Uma caixa aberta de verdade **para** a suíte, e nada a interrompia (S-414).
+def nenhuma_caixa_modal_de_verdade(
+    request: pytest.FixtureRequest, caixas_desarmadas: caixas_modais.Desarme | None
+) -> Iterator[None]:
+    """Uma caixa aberta de verdade **para** a suíte, e nada a interrompia (S-414, S-872).
 
-    **O caso medido:** um painel de texto construído sem `pasta_de_rascunhos` lê `data/rascunhos/`
-    da máquina de quem roda a suíte. Se houver um rascunho ali -- e há, na máquina de quem usa o
-    programa --, a aba oferece recuperá-lo com uma pergunta, e a suíte fica parada esperando um
-    clique que ninguém vai dar. Sem tempo limite, sem mensagem, e o CI mataria a corrida por
-    silêncio uma hora depois.
+    **Os casos medidos.** Um painel de texto construído sem `pasta_de_rascunhos` lia `data/rascunhos/`
+    da máquina, e um rascunho ali abria a pergunta de recuperação (`QMessageBox.question`). Em
+    2026-11-09 foi a caixa de falha da aba Texto -- um `QMessageBox` montado e aberto por `exec()` de
+    instância, que o desarme dos atalhos estáticos não via -- e a integração da solidez parou dentro de
+    `tests/test_qt_texto_prosa.py`. Sem tempo limite, sem mensagem, e o `-v` já tinha impresso o nome
+    do teste anterior.
 
-    Agora ela falha na hora, dizendo qual caixa e com que título. Quem **precisa** exercitar uma
-    caixa continua podendo: `mock.patch.object(QMessageBox, "question", ...)` no próprio teste
-    sobrescreve isto, que é o que a suíte já faz em vinte lugares.
+    Agora o teste **reprova**, na desmontagem, dizendo qual entrada, o que a caixa diria e a linha que
+    a abriu. A que abriu entre dois testes -- num `setUpClass`, na desmontagem de outra fixture --
+    reprova o seguinte, e a linha diz de onde veio. Quem **precisa** de uma resposta diz qual:
+    `mock.patch.object(QMessageBox, "question", ...)`, ou `"exec"`, no próprio teste, vence o
+    substituto -- é aplicado depois e desfeito antes.
     """
-    def recusar(nome: str) -> Callable[..., object]:
-        def _recusa(*args: object, **kwargs: object) -> object:
-            titulo = args[0] if args else kwargs.get("title", "?")
-            raise AssertionError(
-                f"caixa modal `{nome}` aberta durante o teste (título: {titulo!r}). Uma caixa de "
-                "verdade trava a suíte esperando clique: finja-a com `mock.patch.object`, ou "
-                "passe ao painel o que evita a pergunta (por exemplo `pasta_de_rascunhos=`)."
-            )
-
-        return _recusa
-
-    try:
-        from PyQt6.QtWidgets import QMessageBox
-    except ImportError:  # pragma: no cover - ambiente sem o extra instalado
-        yield
-        return
-
-    originais = {nome: getattr(QMessageBox, nome) for nome in CAIXAS}
-    for nome in CAIXAS:
-        setattr(QMessageBox, nome, staticmethod(recusar(nome)))
-    try:
-        yield
-    finally:
-        for nome, funcao in originais.items():
-            setattr(QMessageBox, nome, funcao)
+    if caixas_desarmadas is not None:
+        caixas_desarmadas.armar()
+    yield
+    abertas = caixas_modais.recolher()
+    if abertas:
+        pytest.fail(
+            f"{request.node.name} abriu caixa modal sem dizer a resposta: "
+            f"{'; '.join(caixa.descrita() for caixa in abertas)}. Uma caixa de verdade trava a suíte "
+            "esperando clique: diga a resposta com `mock.patch.object` no teste, ou passe ao painel o "
+            "que evita a pergunta (por exemplo `pasta_de_rascunhos=`)."
+        )

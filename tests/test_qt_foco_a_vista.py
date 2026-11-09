@@ -971,9 +971,13 @@ class DialogoDeBasesTests(unittest.TestCase):
         """O crítico da fase 5 (ciclo 6): cada abertura podia deixar um diálogo filho da janela, com
         o seguidor ligado à aplicação -- 7 → 16 seguidores em 20 aberturas (quantos sobram varia:
         o Qt recolhe alguns por conta própria). Com a pergunta, nenhum sobra. A sabotagem: o
-        diálogo que não morre, e os seguidores ficam."""
-        from PyQt6.QtCore import QCoreApplication, QEvent, QObject, QTimer
-        from PyQt6.QtWidgets import QApplication
+        diálogo que não morre, e os seguidores ficam.
+
+        **A pessoa responde «Cancelar» a cada pergunta**, e o teste diz isso trocando o `exec` por
+        um `reject` (S-872): o `QTimer` que fechava a caixa de verdade dependia de ela estar aberta
+        quando ele disparasse, e o `conftest` não deixa caixa nenhuma abrir."""
+        from PyQt6.QtCore import QCoreApplication, QEvent, QObject
+        from PyQt6.QtWidgets import QDialog
 
         for k in range(3):
             (self.pasta / f"base_{k}.pgn").write_bytes(b"x" * 1000)
@@ -984,10 +988,14 @@ class DialogoDeBasesTests(unittest.TestCase):
         def seguidores() -> int:
             return sum(1 for o in janela.findChildren(QObject) if type(o).__name__ == "RolagemSegueOFoco")
 
+        def cancelar(dialogo: QDialog) -> int:
+            dialogo.reject()
+            return int(QDialog.DialogCode.Rejected.value)
+
         def perguntar_vinte_vezes() -> None:
             for _ in range(20):
-                QTimer.singleShot(0, lambda: QApplication.activeModalWidget().reject())
-                qt_dialogos.perguntar_bases(janela, folder=self.pasta, nota=lambda _bases: "")
+                with mock.patch.object(qt_dialogos.DialogoDeBases, "exec", cancelar):
+                    self.assertIsNone(qt_dialogos.perguntar_bases(janela, folder=self.pasta, nota=lambda _bases: ""))
                 QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
                 self.app.processEvents()
 

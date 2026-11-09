@@ -159,7 +159,8 @@ class NenhumaCaixaDeVerdadeTests(unittest.TestCase):
     aba oferece recuperá-lo com um `askyesno`, e a suíte fica parada esperando um clique que
     ninguém vai dar. Nada impedia, e nada interrompia.
 
-    A interrupção é do `conftest`, que troca as sete caixas por uma que falha dizendo o título. A
+    A interrupção é do `conftest`, que troca toda entrada modal do Qt por uma que reprova o teste
+    dizendo o que a caixa mostraria (`tests/caixas_modais.py`, S-872). A
     prevenção é esta: quem constrói a aba num teste diz onde ficam os rascunhos, e a pergunta não
     tem por que aparecer.
     """
@@ -523,7 +524,7 @@ class DadosDeQuemRodaTests(unittest.TestCase):
         copia = pasta_temporaria(self, prefixo="cvoff-sabotagem-")
         shutil.copytree(FONTES, copia / "src" / "chess_diagram_ocr", ignore=shutil.ignore_patterns("__pycache__"))
         (copia / "tests").mkdir()
-        for ajudante in ("arvores_do_repositorio.py", "sonda_de_escrita.py"):
+        for ajudante in ("arvores_do_repositorio.py", "sonda_de_escrita.py", "caixas_modais.py"):
             shutil.copy2(TESTES / ajudante, copia / "tests")
         sabotado = conftest.replace(LINHA_DO_DESVIO, "pass  # sabotagem: o desvio saiu\n")
         (copia / "tests" / "conftest.py").write_text(sabotado, encoding="utf-8", newline="\n")
@@ -751,6 +752,7 @@ AJUDANTES_DA_GUARDA = (
     "qt_app.py",
     "arvores_do_repositorio.py",
     "sonda_de_escrita.py",
+    "caixas_modais.py",
     "subprocesso.py",
 )
 """O que o `conftest` copiado precisa ao lado para importar, e o `subprocesso` que o teste de mentira usa."""
