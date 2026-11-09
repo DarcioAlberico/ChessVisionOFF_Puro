@@ -35,29 +35,15 @@ jobs:
     # Nao ha mais dependencia de plataforma no codigo: WebView2/pythonnet sairam na S-69.
     runs-on: windows-latest
 
-    # **As duas pontas da faixa de `requires-python`, e nao uma so (S-437).** O projeto era
-    # pinado em `==3.10.*` e a CI provava exatamente uma versao; quando o pino virou
-    # `>=3.10,<3.14` (S-436, pelo fim do suporte ao 3.10 em outubro de 2026) uma faixa nao
-    # provada seria promessa sem lastro. Sao as duas PONTAS porque e onde a incompatibilidade
-    # aparece: foi no 3.13 que `with sqlite3.connect(...)` -- que **nao** fecha a conexao --
-    # deixou de ser um `ResourceWarning` no fim da suite e virou `WinError 32` (S-435).
+    # **Uma versao so, a do piso (S-830, D5 da solidez).** De 2026-08 a 2026-11 a CI rodou as
+    # duas pontas da faixa `>=3.10,<3.14` (S-437), porque faixa nao provada e promessa sem
+    # lastro. Com o piso em 3.13 a faixa e uma versao, e a matriz de uma perna seria decoracao:
+    # o interpretador e o do `.python-version`, que o `uv` le em todo comando do job, e o passo
+    # abaixo reprova se ainda assim for outro. O que a perna do 3.10 provava -- `ruff` e `mypy`
+    # na ponta velha, a suite sem cobertura e o leitor externo -- passou para esta.
     #
-    # A ressalva que morava aqui -- o Tk do 3.13 que o `uv` entrega podia vir incompleto e os
-    # testes de janela pulavam nessa perna -- venceu com o corte do Tk (S-506): o PyQt6 vem por
-    # roda, igual nas duas pernas, e a janela roda `offscreen` nas duas.
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.10", "3.13"]
-
-    # **`UV_PYTHON`, e nao `--python` no `uv sync`.** Com a flag so no sync, o `uv run` seguinte
-    # volta a ler o `.python-version` do repositorio -- que continua em 3.10 -- e a perna do 3.13
-    # rodaria 3.10 em silencio: guarda que nao olha o que devia, que e o defeito da S-296 outra
-    # vez. A variavel de ambiente vale para todo comando `uv` do job, e o passo abaixo reprova
-    # se ainda assim a versao nao for a pedida.
-    env:
-      UV_PYTHON: ${{ matrix.python }}
-
+    # A ressalva sobre o Tk do 3.13 que o `uv` entrega venceu com o corte do Tk (S-506): o
+    # PyQt6 vem por roda, e a janela roda `offscreen`.
     steps:
       # **Acoes fixadas por commit, e nao por tag (S-885).** `@v4` roda o que o dono da tag mover
       # para ela amanha; o SHA e o codigo que foi lido. A tag fica no comentario para quem atualiza:
@@ -94,61 +80,35 @@ jobs:
         # E o mesmo comando que o CONTRIBUTING.md manda rodar na maquina de quem contribui.
         run: uv sync --extra dev --extra onnx --extra ocr --frozen
 
-      - name: Conferir que esta perna roda a versao que ela diz rodar
-        # Sem isto, uma perna que caisse para outro interpretador passaria em verde e a matriz
-        # seria decoracao. A frase de erro nomeia as duas versoes.
+      - name: Conferir que o job roda a versao do .python-version
+        # Sem isto, um job que caisse para outro interpretador passaria em verde provando a versao
+        # errada. A frase de erro nomeia as duas versoes.
         run: >
-          uv run python -c "import sys, os;
-          pedida = os.environ['UV_PYTHON'];
+          uv run python -c "import sys, pathlib;
+          pedida = pathlib.Path('.python-version').read_text().strip();
           real = '.'.join(map(str, sys.version_info[:2]));
-          sys.exit(0) if real == pedida else sys.exit(f'perna pedida {pedida}, interpretador {real}')"
+          sys.exit(0) if real == pedida else sys.exit(f'pedida {pedida}, interpretador {real}')"
 
-      # So na ponta velha: os dois estao configurados para `py310` / `python_version = "3.10"`,
-      # entao a analise e identica nas duas pernas -- rodar de novo pagaria o dobro pelo mesmo
-      # resultado. E a ponta VELHA, e nao a nova, porque quem lima e ela: sintaxe de 3.11+ que
-      # entrasse sem aviso quebraria na maquina de quem nao atualizou.
       - name: Lint (ruff)
-        if: matrix.python == '3.10'
         run: uv run ruff check .
 
       - name: Tipos (mypy)
-        if: matrix.python == '3.10'
         run: uv run mypy
 
-      - name: Testes (pytest)
-        # data/samples/ e PDF/ nao sao versionados: os testes que dependem deles pulam.
-        if: matrix.python != '3.13'
-        run: uv run pytest -v
-
-      # **O extra `second-opinion` instalado e o leitor externo medido (S-885).** O sync acima nao
-      # o pede, e por isso o `tsoj_reader` nunca rodava aqui contra o scikit-image de verdade --
-      # so contra remendos. O clone e os 232,8 MiB de pesos continuam fora (sao de terceiro); o que
-      # roda e o que nao depende deles: a ponte do scikit-image e os testes do leitor. Numa perna
-      # so, depois da suite, para o ambiente da suite continuar o do CONTRIBUTING.
-      - name: Sincronizar com o extra second-opinion
-        if: matrix.python == '3.10'
-        run: uv sync --extra dev --extra onnx --extra ocr --extra second-opinion --frozen
-
-      - name: Testes do leitor externo (tsoj_reader)
-        if: matrix.python == '3.10'
-        run: uv run pytest tests/test_second_opinion.py -v
-
-      # **A cobertura roda numa perna so, a do 3.13 (S-801).** E a mesma suite da outra perna,
-      # medida: o `coverage` vem do extra `dev` e escreve o `coverage.json` que o
-      # `tools/qualidade/crapper.py` le. So nesta ponta porque e nela que o `sys.monitoring`
-      # existe (`COVERAGE_CORE=sysmon`, 3.12+), e medir custa quase nada; na de 3.10 o rastreio
-      # classico deixaria a suite mais lenta e os testes de tempo (`test_engine`,
-      # `test_tablebase`) mais perto do limite. Passos separados, e nao um `run` de duas linhas:
-      # no PowerShell do runner so o codigo de saida do ULTIMO comando reprova o passo, e uma
-      # suite vermelha seguida de um `coverage json` verde passaria.
+      # **A suite roda sob cobertura (S-801).** O `coverage` vem do extra `dev` e escreve o
+      # `coverage.json` que o `tools/qualidade/crapper.py` le. No 3.13 o `sys.monitoring` existe
+      # (`COVERAGE_CORE=sysmon`, 3.12+), e medir custa quase nada; era por isso que, com duas
+      # pernas, a suite sem cobertura rodava na do 3.10 e a medida so nesta -- o rastreio classico
+      # deixaria os testes de tempo (`test_engine`, `test_tablebase`) mais perto do limite. Ha uma
+      # perna so agora, e ela roda a suite uma vez, medida. Passos separados, e nao um `run` de
+      # duas linhas: no PowerShell do runner so o codigo de saida do ULTIMO comando reprova o
+      # passo, e uma suite vermelha seguida de um `coverage json` verde passaria.
       - name: Testes com cobertura (pytest sob coverage)
-        if: matrix.python == '3.13'
         env:
           COVERAGE_CORE: sysmon
         run: uv run coverage run -m pytest -v
 
       - name: Gravar coverage.json
-        if: matrix.python == '3.13'
         run: uv run coverage json -o coverage.json
 
       - name: Catraca do CRAP (S-801)
@@ -157,16 +117,25 @@ jobs:
         # perna e de outro ambiente, e a diferenca de pulo vira diferenca de CRAP sem que o
         # codigo tenha mudado. Quando o registro for regravado a partir do artefato abaixo
         # (`crapper.py --cobertura coverage.json --gravar --forcar`), o `continue-on-error` sai.
-        if: matrix.python == '3.13'
         continue-on-error: true
         run: uv run python tools/qualidade/crapper.py
 
       - name: Guardar a cobertura
-        if: matrix.python == '3.13'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cobertura-3.13
           path: coverage.json
+
+      # **O extra `second-opinion` instalado e o leitor externo medido (S-885).** O sync acima nao
+      # o pede, e por isso o `tsoj_reader` nunca rodava aqui contra o scikit-image de verdade --
+      # so contra remendos. O clone e os 232,8 MiB de pesos continuam fora (sao de terceiro); o que
+      # roda e o que nao depende deles: a ponte do scikit-image e os testes do leitor. Depois da
+      # suite e da cobertura, para o ambiente da suite continuar o do CONTRIBUTING.
+      - name: Sincronizar com o extra second-opinion
+        run: uv sync --extra dev --extra onnx --extra ocr --extra second-opinion --frozen
+
+      - name: Testes do leitor externo (tsoj_reader)
+        run: uv run pytest tests/test_second_opinion.py -v
 
       - name: Verificar que o pacote e importavel fora do diretorio do projeto
         run: |

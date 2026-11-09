@@ -10,7 +10,7 @@ assim", volte para o README -- a resposta esta la.
 uv sync --extra dev
 ```
 
-Requer Python 3.10 a 3.13; o `uv` baixa o interpretador se faltar.
+Requer Python 3.13; o `uv` baixa o interpretador se faltar.
 
 ## 2. Por os arquivos no lugar
 

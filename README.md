@@ -36,12 +36,15 @@ pip install -e ".[dev]"
 Em qualquer um dos casos o pacote `chess_diagram_ocr` fica instalado em modo editavel,
 e os comandos `cvoff-*` passam a existir no PATH do ambiente.
 
-**A faixa de versao mudou (S-436)**: era `==3.10.*` e passou a `>=3.10,<3.14`. O motivo e prazo,
-nao gosto -- o Python 3.10 sai de suporte em outubro de 2026, e o bundle do PyInstaller **embarca
-o interpretador**, de modo que o pino passaria a distribuir um Python sem correcao de seguranca
-para quem baixa o .zip. A CI prova as duas pontas da faixa (3.10 e 3.13); o `.python-version` do
-repositorio continua em 3.10, que e o padrao de quem so roda `uv sync`. Promover o 3.13 a padrao
-Requer Python 3.10, 3.11, 3.12 ou 3.13. Os arquivos de dados (`PDF/`, `data/samples/`) e o checkpoint
+**Requer Python 3.13 (S-830).** O piso subiu de 3.10 para 3.13 e o `.python-version` do
+repositorio diz 3.13, que e o que `uv sync` instala (e baixa, se faltar). O motivo e prazo, nao
+gosto: o Python 3.10 saiu de suporte em outubro de 2026, e o bundle do PyInstaller **embarca o
+interpretador**, de modo que um `.exe` gerado num 3.10 distribuiria um Python sem correcao de
+seguranca para quem baixa o .zip. A CI roda so o 3.13. Um `.venv` criado antes da troca continua
+em 3.10: feche o programa e rode `uv sync --extra dev --python 3.13` (com os mesmos extras de
+antes), e `tests/test_environment.py` reprova ate isso ser feito.
+
+Os arquivos de dados (`PDF/`, `data/samples/`) e o checkpoint
 (`models/piece_classifier.pt`) nao vem no repositorio -- veja
 [Dados e artefatos](#dados-e-artefatos).
 

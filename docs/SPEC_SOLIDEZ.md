@@ -1391,6 +1391,15 @@ vencida com o corte).
 
 **Aceite.** CI verde no piso e em 3.13; o `.exe` gerado roda `--selftest`; o README diz a versão nova.
 
+**Entregue** (2026-11-09): D5 (a), `requires-python = ">=3.13,<3.14"` e a CI sem matriz (o interpretador é o
+do `.python-version`, conferido num passo). O `ruff` em `py313` acusou 40 linhas de modernização (UP017,
+UP040, UP042, UP046, UP047): ficaram desligadas no `pyproject.toml`, porque reescrevê-las quebraria o
+`.venv` de 3.10 e o python de GPU (3.11.9, do Suite_de_Edicao_de_Xadrez) — é um item à parte. O `.venv` de
+desenvolvimento não foi recriado aqui (o programa do dono o usa), e por isso o `--selftest` do bundle no
+3.13 não foi rodado; `tests/test_environment.py` reprova no 3.10 até o dono recriá-lo. Os três leitores
+de TOML escritos à mão (`test_docs.py`, `text_status.py`, `build_windows.py`) e o `tomli` de recurso
+continuam: viram `tomllib` depois que nenhum ambiente estiver abaixo do 3.11.
+
 ## S-831 · Documentos no presente do Qt, e os status que se contradizem
 
 **Problema** (confirmado). Restos do Tk no presente: `README.md:178` ("o mesmo `OcrService` que o Tkinter
