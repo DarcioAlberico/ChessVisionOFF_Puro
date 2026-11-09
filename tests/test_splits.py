@@ -29,11 +29,25 @@ class DeterminismTests(unittest.TestCase):
             self.assertEqual(assign_split(name), assign_split(name))
 
     def test_split_does_not_depend_on_process(self) -> None:
-        # Valores fixos: se o algoritmo de hash mudar, isto quebra de proposito.
-        # Usa SHA-256 justamente porque hash() de str e randomizado por processo.
-        self.assertEqual(assign_split("board_00000.png"), assign_split("board_00000.png"))
-        expected = {name: assign_split(name) for name in _names(20)}
-        self.assertEqual({name: assign_split(name) for name in _names(20)}, expected)
+        """Valores fixos, escritos por valor (S-846): trocar o sal ou o hash quebra isto de proposito.
+
+        A versao anterior comparava `assign_split(x)` com `assign_split(x)`, e passava com qualquer
+        sal. Um `mock.patch` do `SPLIT_SALT` nao serviria para prova-lo: o sal e argumento padrao,
+        avaliado na definicao. Os dez pares cobrem as tres particoes, e vieram do sal `cvoff-v1`.
+        """
+        esperado: dict[str, Split] = {
+            "board_00000.png": "train",
+            "board_00001.png": "train",
+            "board_00002.png": "train",
+            "board_00003.png": "val",
+            "board_00004.png": "val",
+            "board_00008.png": "val",
+            "board_00009.png": "train",
+            "board_00029.png": "test",
+            "board_00033.png": "test",
+            "board_00039.png": "test",
+        }
+        self.assertEqual({name: assign_split(name) for name in esperado}, esperado)
 
     def test_proportions_are_approximately_respected(self) -> None:
         splits = compute_splits(_names(3000), val_pct=10, test_pct=10)

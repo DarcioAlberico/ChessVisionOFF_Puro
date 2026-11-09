@@ -50,7 +50,7 @@ class SamplePagesTests(unittest.TestCase):
 
     def test_is_deterministic(self) -> None:
         # Se sorteasse, comparar "com OCR" e "sem OCR" mediria o sorteio.
-        self.assertEqual(sample_pages(402, 12), sample_pages(402, 12))
+        self.assertEqual(sample_pages(402, 12), [31, 62, 93, 124, 155, 186, 216, 247, 278, 309, 340, 371])
 
     def test_degenerate_inputs_are_empty(self) -> None:
         self.assertEqual(sample_pages(0, 12), [])
