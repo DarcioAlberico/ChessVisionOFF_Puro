@@ -7,12 +7,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import chess
-import cv2
 import numpy as np
 from qt_app import MOTIVO, TEM_PYQT, aplicacao
 from test_inference import probs_for_fen
 
 from chess_diagram_ocr.arquivo_do_dono import Lida
+from chess_diagram_ocr.atomic_io import read_image
 from chess_diagram_ocr.detection import DiagramCandidate
 from chess_diagram_ocr.gallery_scan import build_gallery_index
 from chess_diagram_ocr.inference import OrientedPrediction, prediction_from_probs
@@ -401,8 +401,8 @@ class ItemFromScannedTests(unittest.TestCase):
             um, outro = (Path(item.board_image) for item in itens)
             self.assertNotEqual(um, outro)
             self.assertTrue(um.parent.name.startswith("Livro"), "o nome do livro continua legível na pasta")
-            self.assertEqual(int(cv2.imread(str(um))[0, 0, 0]), 40, "a miniatura do primeiro livro é a dele")
-            self.assertEqual(int(cv2.imread(str(outro))[0, 0, 0]), 200)
+            self.assertEqual(int(read_image(um)[0, 0, 0]), 40, "a miniatura do primeiro livro é a dele")
+            self.assertEqual(int(read_image(outro)[0, 0, 0]), 200)
 
 
 class BuildQueueTests(unittest.TestCase):
