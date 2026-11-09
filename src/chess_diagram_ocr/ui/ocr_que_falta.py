@@ -28,7 +28,7 @@ from ..ocr import KNOWN_ENGINES, MOTOR_DE_CASA
 from ..settings import OcrSettings
 from . import estado_do_rodape
 
-__all__ = ["ABERTURA", "ServicoComLeitor", "frase", "frase_de_abertura"]
+__all__ = ["frase", "frase_de_abertura"]
 
 
 class ServicoComLeitor(Protocol):

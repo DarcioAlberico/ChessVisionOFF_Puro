@@ -242,6 +242,8 @@ porque o teste dele continua verde medindo a decisão sozinha.
 |---|---|
 | `state.py` | O estado persistido da aplicação: tipado, versionado e gravado de forma atômica (S-25). |
 | `livros.py` | A identidade de um livro pelo caminho: `ChaveDoLivro`, `chave_do_livro`, `mesmo_livro` (S-827). |
+| `ancora_da_tela.py` | De onde veio um resultado que chega depois: `AncoraDaTela(documento, pagina)` e se ele ainda vale para a tela (S-823). |
+| `ocr_que_falta.py` | A frase de abertura da janela quando o OCR de legenda foi pedido e não subiu, no checkout e no `.exe` (S-884). |
 | `busy.py` | O que está rodando agora, e o que se perde ao fechar a janela (S-60). |
 | `strings.py` | O vocabulário compartilhado da interface: as frases que os painéis repetem (S-04). |
 | `formato.py` | Como um número vira texto na tela, e a precisão que ele não tem (S-169, S-910). |

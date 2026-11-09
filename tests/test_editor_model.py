@@ -388,6 +388,8 @@ SEM_TKINTER = {
     "finais.py": "quando perguntar à tabela de finais e o que a resposta dela diz (S-538)",
     "motor_declarado.py": "os tetos das opções do motor, a barra de avaliação e as linhas do MultiPV (S-529/S-536)",
     "livros.py": "se dois caminhos são o mesmo livro: a chave do livro numa função só (S-827)",
+    "ancora_da_tela.py": "se um resultado que chega depois ainda é da tela: o livro e a página (S-823)",
+    "ocr_que_falta.py": "o que a janela diz ao abrir quando o OCR pedido não subiu (S-884)",
     "biblioteca.py": "o acervo inteiro como uma decisão só: busca, facetas e a janela que se realiza (F9)",
     "configuracoes.py": "a tabela da janela Configurações…: um campo por preferência de settings.Settings, DPI e teto relidos do arquivo",
     "cortina.py": "a cortina de comparação: onde está a divisa entre o antes e o depois (F9)",
