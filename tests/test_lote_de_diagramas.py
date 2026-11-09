@@ -268,6 +268,21 @@ class GravarLoteTests(unittest.TestCase):
             self.assertEqual(b"\x89PNG", caminho.read_bytes()[:4])
         self.assertGreater(relatorio.media_de_bytes, 0)
 
+    def test_arquivo_que_ja_estava_na_pasta_nao_e_sobrescrito(self) -> None:
+        """A pasta escolhida pode ser a de um lote anterior, ou a da diagramação (S-822).
+
+        A colisão era resolvida só **dentro** do lote: um `Livro_p1.png` que já estava lá era
+        trocado pelo novo sem pergunta. O que já existe conta como nome tomado -- comparado sem
+        maiúscula, como os do lote --, e o novo sai com o sufixo.
+        """
+        anterior = self.pasta / "LIVRO_P1.png"
+        anterior.write_bytes(b"o diagrama de outro dia")
+        relatorio = gravar_lote([_item(livro="Livro", pagina=1)], Opcoes(tamanho=240), self.pasta)
+
+        self.assertEqual(b"o diagrama de outro dia", anterior.read_bytes())
+        self.assertEqual(["Livro_p1-2.png"], [caminho.name for caminho in relatorio.gravados])
+        self.assertEqual(b"\x89PNG", relatorio.gravados[0].read_bytes()[:4])
+
     def test_o_svg_sai_como_arquivo_com_declaracao_e_medida_em_pixel(self) -> None:
         """Aqui ele é arquivo, e não elemento dentro do XHTML de um EPUB."""
         relatorio = gravar_lote([_item(livro="Livro")], Opcoes(formato=SVG, tamanho=480), self.pasta)
@@ -361,12 +376,24 @@ class DiscoNoRelatorioTests(unittest.TestCase):
 
     def test_o_arquivo_que_nao_grava_e_falha_daquele_arquivo(self) -> None:
         """A régua do "um diagrama ruim não derruba o lote", aplicada ao disco: o vizinho segue."""
+        import errno
+        from unittest import mock
+
+        from chess_diagram_ocr import diagramas_em_lote
+        from chess_diagram_ocr.atomic_io import atomic_write_bytes
+
         pasta = pasta_temporaria(self) / "saida"
-        pasta.mkdir(parents=True)
         nomes = nomes_do_lote([_item(), _item(fen=INICIAL + " b - - 0 1")], PNG)
-        # O primeiro nome ocupado por uma **pasta**: `atomic_write_bytes` não escreve por cima dela.
-        (pasta / nomes[0]).mkdir()
-        relatorio = gravar_lote([_item(), _item(fen=INICIAL + " b - - 0 1")], Opcoes(formato=PNG), pasta)
+
+        # O primeiro arquivo recusado pelo disco. (Uma **pasta** com o nome dele já não serve de
+        # recusa desde a S-822: o que está na pasta é nome tomado, e o lote sai com o sufixo.)
+        def recusa_o_primeiro(caminho: Path, dados: bytes) -> None:
+            if caminho.name == nomes[0]:
+                raise PermissionError(errno.EACCES, "Acesso negado", str(caminho))
+            atomic_write_bytes(caminho, dados)
+
+        with mock.patch.object(diagramas_em_lote, "atomic_write_bytes", side_effect=recusa_o_primeiro):
+            relatorio = gravar_lote([_item(), _item(fen=INICIAL + " b - - 0 1")], Opcoes(formato=PNG), pasta)
         self.assertEqual(1, len(relatorio.gravados))
         self.assertEqual(1, len(relatorio.falhas))
         self.assertEqual(nomes[0], relatorio.falhas[0][0])

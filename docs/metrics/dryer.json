@@ -2,7 +2,7 @@
  "limiar": 0.8,
  "gramas": 5,
  "min_tokens": 60,
- "total": 77,
+ "total": 75,
  "pares": [
   {
    "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
@@ -29,12 +29,12 @@
    "a": "src/chess_diagram_ocr/cli/texto_estilo_classificador.py::build_parser",
    "linha_a": 257,
    "b": "src/chess_diagram_ocr/cli/texto_estilo_conjunto.py::build_parser",
-   "linha_b": 192,
+   "linha_b": 196,
    "semelhanca": 1.0
   },
   {
    "a": "src/chess_diagram_ocr/cli/texto_estilo_conjunto.py::folhas_de",
-   "linha_a": 56,
+   "linha_a": 57,
    "b": "src/chess_diagram_ocr/cli/texto_estilo_motor.py::folhas_de",
    "linha_b": 139,
    "semelhanca": 1.0
@@ -83,7 +83,7 @@
   },
   {
    "a": "src/chess_diagram_ocr/qt/painel_da_galeria.py::PainelDaGaleria._confirmar_destrutivo",
-   "linha_a": 1510,
+   "linha_a": 1530,
    "b": "src/chess_diagram_ocr/qt/painel_de_estudo.py::PainelDeEstudo._perguntar",
    "linha_b": 1758,
    "semelhanca": 1.0
@@ -127,7 +127,7 @@
    "a": "src/chess_diagram_ocr/text/modelo.py::ClassificadorDeGlifo.classificar",
    "linha_a": 365,
    "b": "src/chess_diagram_ocr/text/onnx_glifos.py::ClassificadorDeGlifoOnnx.classificar",
-   "linha_b": 229,
+   "linha_b": 231,
    "semelhanca": 1.0
   },
   {
@@ -153,7 +153,7 @@
   },
   {
    "a": "src/chess_diagram_ocr/cli/texto_estilo_conjunto.py::build_parser",
-   "linha_a": 192,
+   "linha_a": 196,
    "b": "src/chess_diagram_ocr/cli/texto_estilo_motor.py::build_parser",
    "linha_b": 193,
    "semelhanca": 0.941
@@ -188,7 +188,7 @@
   },
   {
    "a": "src/chess_diagram_ocr/detection_census.py::DetectionCensus.as_dict",
-   "linha_a": 357,
+   "linha_a": 358,
    "b": "src/chess_diagram_ocr/side_survey.py::SideSurvey.as_dict",
    "linha_b": 125,
    "semelhanca": 0.935
@@ -209,9 +209,9 @@
   },
   {
    "a": "src/chess_diagram_ocr/docx_saida.py::exportar_estudo_docx",
-   "linha_a": 393,
+   "linha_a": 392,
    "b": "src/chess_diagram_ocr/epub.py::exportar_estudo_epub",
-   "linha_b": 210,
+   "linha_b": 209,
    "semelhanca": 0.908
   },
   {
@@ -230,9 +230,9 @@
   },
   {
    "a": "src/chess_diagram_ocr/docx_saida.py::exportar_texto_docx",
-   "linha_a": 458,
+   "linha_a": 457,
    "b": "src/chess_diagram_ocr/epub.py::exportar_texto_epub",
-   "linha_b": 297,
+   "linha_b": 296,
    "semelhanca": 0.896
   },
   {
@@ -267,7 +267,7 @@
    "a": "src/chess_diagram_ocr/qt/arvore_de_aberturas.py::ConstrutorDaArvore.__init__",
    "linha_a": 409,
    "b": "src/chess_diagram_ocr/qt/lote_de_diagramas.py::ExportacaoDoLote.__init__",
-   "linha_b": 100,
+   "linha_b": 101,
    "semelhanca": 0.877
   },
   {
@@ -435,7 +435,7 @@
    "a": "src/chess_diagram_ocr/text/modelo.py::ClassificadorDeGlifo._entrada",
    "linha_a": 335,
    "b": "src/chess_diagram_ocr/text/onnx_glifos.py::preparar_recortes",
-   "linha_b": 187,
+   "linha_b": 189,
    "semelhanca": 0.818
   },
   {
@@ -451,13 +451,6 @@
    "b": "src/chess_diagram_ocr/cli/export_pgn.py::parse_args",
    "linha_b": 31,
    "semelhanca": 0.812
-  },
-  {
-   "a": "src/chess_diagram_ocr/atomic_io.py::atomic_write_text",
-   "linha_a": 73,
-   "b": "src/chess_diagram_ocr/atomic_io.py::atomic_write_bytes",
-   "linha_b": 196,
-   "semelhanca": 0.811
   },
   {
    "a": "src/chess_diagram_ocr/qt/painel_de_recorte.py::PainelDeRecorte._anel",
@@ -498,7 +491,7 @@
    "a": "src/chess_diagram_ocr/cli/texto_correcoes.py::build_parser",
    "linha_a": 93,
    "b": "src/chess_diagram_ocr/cli/texto_estilo_conjunto.py::build_parser",
-   "linha_b": 192,
+   "linha_b": 196,
    "semelhanca": 0.808
   },
   {
@@ -524,7 +517,7 @@
   },
   {
    "a": "src/chess_diagram_ocr/batch.py::BookResult.to_dict",
-   "linha_a": 120,
+   "linha_a": 126,
    "b": "src/chess_diagram_ocr/text/semelhanca.py::Placar.para_json",
    "linha_b": 328,
    "semelhanca": 0.8
@@ -534,13 +527,6 @@
    "linha_a": 25,
    "b": "src/chess_diagram_ocr/cli/review.py::parse_args",
    "linha_b": 40,
-   "semelhanca": 0.8
-  },
-  {
-   "a": "src/chess_diagram_ocr/detection_census.py::write_census_csv",
-   "linha_a": 552,
-   "b": "src/chess_diagram_ocr/detection_census.py::write_rejections_csv",
-   "linha_b": 562,
    "semelhanca": 0.8
   }
  ]

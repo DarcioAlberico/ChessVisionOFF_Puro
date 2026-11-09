@@ -26,7 +26,6 @@ import csv
 import hashlib
 import io
 import logging
-import os
 from collections.abc import Collection, Iterable, Mapping
 from pathlib import Path
 from typing import Literal
@@ -249,7 +248,8 @@ def save_splits(path: Path, splits: Mapping[str, Split]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     buffer = io.StringIO(newline="")
-    writer = csv.writer(buffer, lineterminator=os.linesep)
+    # LF, e nao `os.linesep` (S-822): a mesma particao dava bytes diferentes no Windows.
+    writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(["filename", "split"])
     writer.writerows(sorted(splits.items()))
 

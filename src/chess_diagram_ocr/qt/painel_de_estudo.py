@@ -3050,7 +3050,9 @@ class PainelDeEstudo(QWidget):
         try:
             from PIL import Image
 
-            Image.fromarray(imagem).convert("RGB").save(arquivo)
+            from chess_diagram_ocr.atomic_io import atomic_write_pil
+
+            atomic_write_pil(arquivo, Image.fromarray(imagem).convert("RGB"), formato="PNG")
         except Exception as erro:  # noqa: BLE001 - recorte de origem desconhecida
             logger.debug("Recorte não pôde ser gravado (%s): %s", arquivo, erro)
             return {}

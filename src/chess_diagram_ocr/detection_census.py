@@ -34,6 +34,7 @@ S-78 — que este módulo existe para poder medir.
 from __future__ import annotations
 
 import csv
+import io
 import json
 import logging
 from collections import Counter
@@ -551,12 +552,12 @@ def census_collection(
 
 def write_census_csv(path: Path, census: DetectionCensus) -> None:
     """Uma linha por candidato. É este arquivo que a corrida seguinte compara."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(CSV_FIELDS))
-        writer.writeheader()
-        for row in census.rows:
-            writer.writerow({campo: getattr(row, campo) for campo in CSV_FIELDS})
+    corpo = io.StringIO()
+    writer = csv.DictWriter(corpo, fieldnames=list(CSV_FIELDS))
+    writer.writeheader()
+    for row in census.rows:
+        writer.writerow({campo: getattr(row, campo) for campo in CSV_FIELDS})
+    atomic_write_text(path, corpo.getvalue())
 
 
 def write_rejections_csv(path: Path, rejections: list[RejectionRow]) -> None:
@@ -567,12 +568,12 @@ def write_rejections_csv(path: Path, rejections: list[RejectionRow]) -> None:
     por um filtro. Além disso o diff da S-82 casa por canto de bbox, e uma linha de recusa não
     é um candidato que a corrida seguinte deva procurar como se fosse entrega.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(REJECTION_CSV_FIELDS))
-        writer.writeheader()
-        for row in rejections:
-            writer.writerow({campo: getattr(row, campo) for campo in REJECTION_CSV_FIELDS})
+    corpo = io.StringIO()
+    writer = csv.DictWriter(corpo, fieldnames=list(REJECTION_CSV_FIELDS))
+    writer.writeheader()
+    for row in rejections:
+        writer.writerow({campo: getattr(row, campo) for campo in REJECTION_CSV_FIELDS})
+    atomic_write_text(path, corpo.getvalue())
 
 
 def rejections_by_reason(rejections: list[RejectionRow]) -> Counter[str]:

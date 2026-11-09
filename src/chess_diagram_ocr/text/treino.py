@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from ..atomic_io import atomic_write_text
+from ..atomic_io import atomic_write_stream, atomic_write_text
 from ..relogio import agora_iso
 from . import aumento as aumento_de_texto
 from . import calibracao
@@ -382,8 +382,7 @@ def gravar_checkpoint(
 
     caminho_pesos = Path(caminho_pesos)
     caminho_meta = Path(caminho_meta)
-    caminho_pesos.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(resultado.estado, caminho_pesos)
+    atomic_write_stream(caminho_pesos, lambda fluxo: torch.save(resultado.estado, fluxo))
 
     idx_to_char = {i: c.caractere for i, c in enumerate(classes)}
     for i, c in enumerate(classes):

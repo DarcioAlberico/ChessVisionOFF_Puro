@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from chess_diagram_ocr.splits import (
+    Split,
     assign_split,
     compute_splits,
     ensure_splits,
@@ -203,6 +204,22 @@ class PersistenceTests(unittest.TestCase):
             save_splits(path, data)  # type: ignore[arg-type]
 
             self.assertEqual(load_splits(path), data)
+
+    def test_os_bytes_nao_dependem_da_plataforma(self) -> None:
+        """O `splits.csv` sai em LF em qualquer sistema (S-822).
+
+        Ele terminava as linhas com `os.linesep`: o mesmo particionamento dava bytes diferentes no
+        Windows e no Linux, e o arquivo semeava CRLF numa árvore que o `.gitattributes` declara LF.
+        O `os.linesep` remendado para CRLF é o Windows visto de qualquer máquina.
+        """
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("os.linesep", "\r\n"):
+            path = Path(tmp) / "splits.csv"
+            particao: dict[str, Split] = {"b.png": "val", "a.png": "train"}
+            save_splits(path, particao)
+
+            self.assertEqual(path.read_bytes(), b"filename,split\na.png,train\nb.png,val\n")
 
     def test_missing_file_returns_empty(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

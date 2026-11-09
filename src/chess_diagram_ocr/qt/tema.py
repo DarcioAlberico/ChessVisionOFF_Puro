@@ -43,6 +43,7 @@ from typing import TypeVar
 from PyQt6.QtGui import QFont, QFontDatabase
 from PyQt6.QtWidgets import QApplication, QWidget
 
+from chess_diagram_ocr.atomic_io import atomic_write_pil
 from chess_diagram_ocr.ui import espaco, estilos, icones, pele, tipografia, tokens
 from chess_diagram_ocr.ui import folha_de_estilo as folha_de_estilo_pura
 
@@ -790,8 +791,10 @@ def gravar_marcas(
             # O nome carrega a cor e o lado: duas peles abertas na mesma sessão gravariam o mesmo
             # arquivo com tintas diferentes, e a segunda leria o cache da primeira.
             arquivo = pasta / f"{nome}_{tinta.lstrip('#')}_{lado}.png"
+            # Atômica (S-822): o cache só é escrito se não existe, então um PNG truncado com o
+            # nome certo ficaria para sempre -- a próxima sessão o acharia e não o refaria.
             if not arquivo.exists():
-                desenho.save(arquivo)
+                atomic_write_pil(arquivo, desenho, formato="PNG")
             caminhos[nome] = str(arquivo)
     except Exception as exc:  # noqa: BLE001 - ver o docstring: sem marca, a face sólida serve
         logger.warning("Marcas do indicador não gravadas (%s): a caixa fica só com a cor.", exc)

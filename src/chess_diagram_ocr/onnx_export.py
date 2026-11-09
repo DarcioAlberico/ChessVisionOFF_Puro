@@ -26,6 +26,7 @@ from typing import Any
 import numpy as np
 import torch
 
+from .atomic_io import atomic_write_path
 from .checkpoint import load_checkpoint
 from .config import PIECE_CLASSES
 from .model import DEFAULT_ARCH, SQUARES_PER_BOARD, ArchConfig, build_model
@@ -56,25 +57,27 @@ def export_onnx(model_path: Path, output_path: Path, *, arch: ArchConfig | None 
     # export, falharia na primeira inferencia, que e o pior lugar para descobrir isso.
     cells_in_example = SQUARES_PER_BOARD if arch.head == "board" else 1
     example = torch.zeros(cells_in_example, arch.in_channels, arch.image_size, arch.image_size)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.onnx.export(
-        model,
-        (example,),
-        str(output_path),
-        input_names=["cells"],
-        output_names=["logits"],
-        dynamic_axes={"cells": {0: "batch"}, "logits": {0: "batch"}},
-        opset_version=ONNX_OPSET,
-        # Exportador TorchScript, nao o dynamo. O dynamo e o padrao no torch 2.10 e exige
-        # `onnxscript`, uma dependencia a mais para um extra que existe justamente para
-        # reduzir o que a distribuicao empacotada (S-36) precisa carregar. Esta rede sao
-        # tres blocos conv e uma cabeca linear -- nao ha nada aqui que o tracing perca.
-        #
-        # Este caminho esta marcado como deprecado pelo torch e um dia sai. Quando sair, a
-        # migracao e remover este argumento e acrescentar `onnxscript` ao extra `onnx`; o
-        # `cvoff-export-onnx` confere paridade de 1e-4 contra o torch, entao a troca e
-        # verificavel em um comando.
-        dynamo=False,
+    atomic_write_path(
+        output_path,
+        lambda temporario: torch.onnx.export(
+            model,
+            (example,),
+            str(temporario),
+            input_names=["cells"],
+            output_names=["logits"],
+            dynamic_axes={"cells": {0: "batch"}, "logits": {0: "batch"}},
+            opset_version=ONNX_OPSET,
+            # Exportador TorchScript, nao o dynamo. O dynamo e o padrao no torch 2.10 e exige
+            # `onnxscript`, uma dependencia a mais para um extra que existe justamente para
+            # reduzir o que a distribuicao empacotada (S-36) precisa carregar. Esta rede sao
+            # tres blocos conv e uma cabeca linear -- nao ha nada aqui que o tracing perca.
+            #
+            # Este caminho esta marcado como deprecado pelo torch e um dia sai. Quando sair, a
+            # migracao e remover este argumento e acrescentar `onnxscript` ao extra `onnx`; o
+            # `cvoff-export-onnx` confere paridade de 1e-4 contra o torch, entao a troca e
+            # verificavel em um comando.
+            dynamo=False,
+        ),
     )
     logger.info(
         "ONNX gravado em %s (arquitetura %s, opset %d, %.1f MB). Temperatura %.4f NÃO vai "

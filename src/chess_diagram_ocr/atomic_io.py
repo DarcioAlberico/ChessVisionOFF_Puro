@@ -18,8 +18,12 @@ import logging
 import os
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import IO, TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -70,15 +74,20 @@ def _substituir(temp_path: Path, path: Path) -> None:
     ) from ultima
 
 
-def atomic_write_text(path: Path, payload: str, *, encoding: str = "utf-8") -> None:
-    """Grava `payload` em `path` sem passar por um estado de arquivo truncado."""
+def atomic_write_stream(path: Path, escrever: Callable[[IO[bytes]], object]) -> None:
+    """Grava em `path` o que `escrever` puser no fluxo binário, sem estado de arquivo truncado.
+
+    É o caminho dos gravadores que querem um arquivo aberto e não bytes prontos (S-822):
+    `torch.save`, `np.savez`, `torch.onnx.export`. Montar os bytes em memória para depois
+    chamar `atomic_write_bytes` dobraria o pico de memória -- e o cache da varredura de glifos
+    tem ~600 MB. Aqui `escrever` recebe o temporário vizinho, e a troca só acontece se ele
+    voltar sem exceção.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     handle = tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding=encoding,
-        newline="\n",
+        mode="wb",
         dir=str(path.parent),
         prefix=f".{path.name}.",
         suffix=".tmp",
@@ -87,7 +96,7 @@ def atomic_write_text(path: Path, payload: str, *, encoding: str = "utf-8") -> N
     temp_path = Path(handle.name)
     try:
         with handle:
-            handle.write(payload)
+            escrever(handle)
             handle.flush()
             # Sem o fsync, o rename pode chegar ao disco antes do conteudo: o arquivo
             # existe, tem o nome certo e esta vazio -- exatamente o que se quis evitar.
@@ -96,6 +105,40 @@ def atomic_write_text(path: Path, payload: str, *, encoding: str = "utf-8") -> N
     except BaseException:
         temp_path.unlink(missing_ok=True)
         raise
+
+
+def atomic_write_path(path: Path, escrever: Callable[[Path], object]) -> None:
+    """Como `atomic_write_stream`, para a biblioteca que só aceita **caminho** (S-822).
+
+    É o `torch.onnx.export`, que declara `f: str | PathLike`. `escrever` recebe o caminho do
+    temporário vizinho, já criado e vazio, e o abre por conta própria; no Windows isso funciona
+    porque o Python abre arquivo sem negar compartilhamento, e o `fsync` de depois alcança o
+    que a biblioteca escreveu, que é do mesmo arquivo.
+    """
+    atomic_write_stream(path, lambda fluxo: escrever(Path(fluxo.name)))
+
+
+def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    """Grava `payload` em `path` sem passar por um estado de arquivo truncado."""
+    atomic_write_stream(path, lambda fluxo: fluxo.write(payload))
+
+
+def atomic_write_text(path: Path, payload: str, *, encoding: str = "utf-8") -> None:
+    """Grava `payload` em `path` sem passar por um estado de arquivo truncado.
+
+    Os bytes são os do texto, sem traduzir `\\n` para a quebra da plataforma: no Windows,
+    `Path.write_text` gravaria `CR LF` (ver `tests/test_atomic_writes.py`).
+    """
+    atomic_write_bytes(path, payload.encode(encoding))
+
+
+def atomic_write_pil(path: Path, imagem: Image.Image, *, formato: str, **opcoes: object) -> None:
+    """`imagem.save(path)` da Pillow, pela mesma troca atômica (S-822).
+
+    O formato vai explícito porque a Pillow, recebendo um arquivo aberto, o deduz do `name` dele
+    -- e o temporário vizinho termina em `.tmp`.
+    """
+    atomic_write_stream(path, lambda fluxo: imagem.save(fluxo, format=formato, **opcoes))
 
 
 def atomic_write_json(path: Path, data: Any, *, indent: int = 2) -> None:
@@ -122,9 +165,11 @@ def write_image(path: Path, image_bgr: Any) -> Path:
     espaço em disco e permissão, que estavam ambos em ordem. Codificar em memória e escrever
     os bytes pelo Python tira o CRT do caminho -- `net_correction.py` já fazia assim.
 
-    Não é escrita atômica, e é de propósito: o nome do PNG é único por timestamp
-    (`dataset.py`) ou determinístico e reescrito por inteiro (`review_queue.py`), então não há
-    versão anterior a proteger. O que faltava era conferir a resposta.
+    **E é atômica, como os outros escritores do módulo** (S-822). Ela não era, com o argumento de
+    que o nome do PNG é único por timestamp (`dataset.py`) ou reescrito por inteiro
+    (`review_queue.py`), então não havia versão anterior a proteger. Mas o defeito não é só
+    perder a anterior: um PNG truncado com o nome certo é lido depois como amostra boa, e a
+    `labels.csv` aponta para ele.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -138,7 +183,7 @@ def write_image(path: Path, image_bgr: Any) -> Path:
         raise OSError(f"O OpenCV não conseguiu codificar a imagem de {path}.")
 
     try:
-        path.write_bytes(buffer.tobytes())
+        atomic_write_bytes(path, buffer.tobytes())
     except OSError as exc:
         raise OSError(
             f"Não foi possível gravar {path}: {exc}. "
@@ -191,27 +236,3 @@ def read_board_image(path_text: str | Path) -> Any | None:
     if imagem_bgr is None:
         return None
     return cv2.cvtColor(imagem_bgr, cv2.COLOR_BGR2RGB)
-
-
-def atomic_write_bytes(path: Path, payload: bytes) -> None:
-    """Versão binária, para o `labels.csv` que o pandas escreve via buffer."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    handle = tempfile.NamedTemporaryFile(
-        mode="wb",
-        dir=str(path.parent),
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        delete=False,
-    )
-    temp_path = Path(handle.name)
-    try:
-        with handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        _substituir(temp_path, path)
-    except BaseException:
-        temp_path.unlink(missing_ok=True)
-        raise

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
 import logging
 from collections import Counter
@@ -34,7 +35,7 @@ from typing import Any
 
 import numpy as np
 
-from ..atomic_io import atomic_write_text
+from ..atomic_io import atomic_write_stream, atomic_write_text
 from ..config import DATA_DIR, DEFAULT_PDF_DIR
 from ..logging_setup import configure_logging
 from ..text import estilo
@@ -155,21 +156,24 @@ def gravar(coleta: dict[str, Any], pasta: Path) -> dict[str, Any]:
             classes.append(estilo.CLASSES.index(classe))
             livros.append(ordem.index(ident))
             linhas.append((ident, arquivo, folha + 1, texto, classe, particao[ident], altura))
-    pasta.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
+    atomic_write_stream(
         pasta / "palavras.npz",
-        imagens=np.stack(imagens) if imagens else np.zeros((0, estilo.ALTURA, estilo.LARGURA_MAXIMA), np.uint8),
-        larguras=np.asarray(larguras, np.int16),
-        alturas=np.asarray(alturas, np.int16),
-        classes=np.asarray(classes, np.int8),
-        livros=np.asarray(livros, np.int16),
-        identidades=np.asarray(ordem),
-        particoes=np.asarray([particao[i] for i in ordem]),
+        lambda fluxo: np.savez_compressed(
+            fluxo,
+            imagens=np.stack(imagens) if imagens else np.zeros((0, estilo.ALTURA, estilo.LARGURA_MAXIMA), np.uint8),
+            larguras=np.asarray(larguras, np.int16),
+            alturas=np.asarray(alturas, np.int16),
+            classes=np.asarray(classes, np.int8),
+            livros=np.asarray(livros, np.int16),
+            identidades=np.asarray(ordem),
+            particoes=np.asarray([particao[i] for i in ordem]),
+        ),
     )
-    with (pasta / "manifesto.csv").open("w", encoding="utf-8", newline="") as saida:
-        escritor = csv.writer(saida, lineterminator="\n")
-        escritor.writerow(("identidade", "arquivo", "folha", "palavra", "rotulo", "particao", "altura_px"))
-        escritor.writerows(linhas)
+    manifesto = io.StringIO()
+    escritor = csv.writer(manifesto, lineterminator="\n")
+    escritor.writerow(("identidade", "arquivo", "folha", "palavra", "rotulo", "particao", "altura_px"))
+    escritor.writerows(linhas)
+    atomic_write_text(pasta / "manifesto.csv", manifesto.getvalue())
 
     por_particao: dict[str, Counter[str]] = {p: Counter() for p in estilo.PARTICOES}
     for linha in linhas:

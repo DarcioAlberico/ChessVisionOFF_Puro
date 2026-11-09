@@ -32,7 +32,7 @@ from typing import Any
 
 import numpy as np
 
-from ..atomic_io import atomic_write_text
+from ..atomic_io import atomic_write_path, atomic_write_text
 from .modelo import (
     CAMINHO_PADRAO_META,
     LADO,
@@ -75,19 +75,21 @@ def exportar_glifos_onnx(
     rede.eval()
 
     saida = Path(saida)
-    saida.parent.mkdir(parents=True, exist_ok=True)
     exemplo = torch.zeros(1, 1, LADO, LADO)
-    torch.onnx.export(
-        rede,
-        (exemplo,),
-        str(saida),
-        input_names=[NOME_DA_ENTRADA],
-        output_names=[NOME_DA_SAIDA],
-        dynamic_axes={NOME_DA_ENTRADA: {0: "lote"}, NOME_DA_SAIDA: {0: "lote"}},
-        opset_version=ONNX_OPSET,
-        # O exportador TorchScript, pelo mesmo motivo da S-30 (ver `onnx_export.py`): o dynamo
-        # exige `onnxscript`, e esta rede são três blocos conv e duas densas.
-        dynamo=False,
+    atomic_write_path(
+        saida,
+        lambda temporario: torch.onnx.export(
+            rede,
+            (exemplo,),
+            str(temporario),
+            input_names=[NOME_DA_ENTRADA],
+            output_names=[NOME_DA_SAIDA],
+            dynamic_axes={NOME_DA_ENTRADA: {0: "lote"}, NOME_DA_SAIDA: {0: "lote"}},
+            opset_version=ONNX_OPSET,
+            # O exportador TorchScript, pelo mesmo motivo da S-30 (ver `onnx_export.py`): o dynamo
+            # exige `onnxscript`, e esta rede são três blocos conv e duas densas.
+            dynamo=False,
+        ),
     )
 
     descricao = _metadado_onnx(classificador, saida)

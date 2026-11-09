@@ -953,6 +953,8 @@ temporários, anexar a um registro de eventos).
 
 **Aceite.** A guarda passa com a lista de exceções, e a lista só pode encolher (catraca).
 
+**Entregue** (2026-11-08): a guarda é a de `tests/test_atomic_writes.py`, estendida em vez de duplicada, e a exceção passou de arquivo para `arquivo::função` (com `TETO_DE_EXCECOES = 4` e reprovação para exceção que não desculpa mais nada); o `pdf_to_pgn.py` saiu das duas listas, já vazias de motivo desde a S-818. O temporário vizinho mora em `atomic_io.atomic_write_stream`, que recebe quem escreve num fluxo (`torch.save`, `np.savez`); `atomic_write_path` dá o caminho do temporário ao `torch.onnx.export`, que só aceita caminho, e `atomic_write_pil` serve à Pillow; `atomic_write_bytes`, `atomic_write_text` e `write_image` passaram a ser ele. Além da lista: `text/onnx_glifos.py`, o cache de marcas de `qt/tema.py` (só gravado se não existe, então um PNG truncado ficaria para sempre), o `.ico` de `ui/plataforma.py` e os recortes de `qt/painel_de_estudo.py` e `qt/painel_de_texto.py`. Divergência: o `write_pgn` em `"a"` ficou como exceção declarada -- é o "acrescentar ao PGN" da S-346, e reescrever a base de partidas inteira para pôr um jogo no fim custaria a base a cada estudo, quando o append nunca trunca. O lote de diagramas não pergunta: o que já está na pasta conta como nome tomado, e o item novo sai com o sufixo. O CSV do censo manteve os bytes (o `\r\n` do módulo `csv`).
+
 ## S-876 · Cabeçalho livre inválido não derruba a exportação do livro
 
 **Problema** (confirmado por script). `pdf_to_pgn.py:905-906`, `gallery.py:278-290`,

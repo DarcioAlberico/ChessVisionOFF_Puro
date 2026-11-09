@@ -49,6 +49,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ..atomic_io import atomic_write_stream
 from . import procedencia
 from .classes import NomeDePastaInvalido, char_to_folder, folder_to_char
 from .modelo import LADO
@@ -642,23 +643,24 @@ def gravar_cache(caminho: Path, varredura: Varredura) -> None:
     não alcançava o cache, e o comando ia treinar sobre o split defeituoso -- só não foi porque
     a trava de vazamento o barrou.
     """
-    caminho = Path(caminho)
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(
-        caminho,
-        X=varredura.X,
-        y=varredura.y,
-        grupos=varredura.grupos,
-        dims=varredura.dims,
-        # **Os nomes entram; a procedência e o livro, não.** Nome de arquivo é fato da varredura
-        # e não envelhece. Procedência é leitura de um registro que pode mudar entre duas
-        # corridas, e guardá-la aqui criaria exatamente o estado que o parágrafo acima recusa --
-        # um conserto em `data/texto_procedencia.csv` não alcançaria quem lê do cache.
-        nomes=varredura.nomes,
-        pastas=np.array([c.pasta for c in varredura.classes]),
-        caracteres=np.array([c.caractere for c in varredura.classes]),
-        ilegiveis=np.array(varredura.ilegiveis),
-        indecifraveis=np.array(varredura.pastas_indecifraveis),
+    atomic_write_stream(
+        Path(caminho),
+        lambda fluxo: np.savez(
+            fluxo,
+            X=varredura.X,
+            y=varredura.y,
+            grupos=varredura.grupos,
+            dims=varredura.dims,
+            # **Os nomes entram; a procedência e o livro, não.** Nome de arquivo é fato da varredura
+            # e não envelhece. Procedência é leitura de um registro que pode mudar entre duas
+            # corridas, e guardá-la aqui criaria exatamente o estado que o parágrafo acima recusa --
+            # um conserto em `data/texto_procedencia.csv` não alcançaria quem lê do cache.
+            nomes=varredura.nomes,
+            pastas=np.array([c.pasta for c in varredura.classes]),
+            caracteres=np.array([c.caractere for c in varredura.classes]),
+            ilegiveis=np.array(varredura.ilegiveis),
+            indecifraveis=np.array(varredura.pastas_indecifraveis),
+        ),
     )
 
 
