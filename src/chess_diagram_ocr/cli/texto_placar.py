@@ -72,7 +72,7 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_bytes, atomic_write_json, atomic_write_text
-from ..config import PROJECT_ROOT
+from ..config import DEFAULT_DPI, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..ocr import KNOWN_ENGINES, build_recognizer
 from ..settings import OcrSettings, load_settings
@@ -437,7 +437,7 @@ def semear(
     pdfs: list[Path],
     *,
     por_livro: int,
-    dpi: float = 220.0,
+    dpi: float = float(DEFAULT_DPI),
 ) -> tuple[list[Faixa], list[str]]:
     """Uma linha de referência por diagrama achado, com o `bbox_pt` pronto e `conferido: false`.
 

@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import DEFAULT_DPI, DEFAULT_PDF_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import paragrafos as _paragrafos
 from . import EXIT_BAD_INPUT, EXIT_OK, add_verbose, cli_errors, fronteira
@@ -337,7 +337,7 @@ def semear(
     livros: int,
     folhas_por_livro: int,
     com_glifo: bool,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
 ) -> list[dict[str, Any]]:
     """Monta a referência a partir de `PDF/`. Ver o cabeçalho para o sinal.
 

@@ -63,7 +63,7 @@ from typing import Any
 import numpy as np
 
 from ..atomic_io import atomic_write_json
-from ..config import PROJECT_ROOT
+from ..config import DEFAULT_DPI, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text.colados import arbitro_de_confianca
 from . import (
@@ -84,7 +84,7 @@ logger = logging.getLogger(__name__)
 
 SAIDA_PADRAO = PROJECT_ROOT / "docs" / "metrics" / "texto_duas_linhas.json"
 
-DPI = 220.0
+DPI = float(DEFAULT_DPI)
 """O mesmo do `cvoff-texto-vertical` e da varredura de produção."""
 
 RAIO_PT = 2.0

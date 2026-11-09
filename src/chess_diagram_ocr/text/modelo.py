@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from ..config import PROJECT_ROOT
+from ..config import DEFAULT_GLYPH_META_PATH
 from .classes import char_to_folder
 
 if TYPE_CHECKING:  # pragma: no cover - só para o verificador de tipos
@@ -52,8 +52,9 @@ if TYPE_CHECKING:  # pragma: no cover - só para o verificador de tipos
 
 logger = logging.getLogger(__name__)
 
-CAMINHO_PADRAO_META = PROJECT_ROOT / "models" / "char_meta.json"
-"""O metadado é versionado. Os pesos não -- ver o cabeçalho deste módulo."""
+CAMINHO_PADRAO_META = DEFAULT_GLYPH_META_PATH
+"""O metadado é versionado. Os pesos não -- ver o cabeçalho deste módulo. O caminho mora em
+`config.DEFAULT_GLYPH_META_PATH` (S-862); este nome fica porque é o que os chamadores do `text/` usam."""
 
 LADO = 32
 """Lado do recorte que a rede recebe. **Não é ajustável**: a base de treino inteira foi gravada

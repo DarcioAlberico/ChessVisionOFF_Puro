@@ -54,6 +54,7 @@ from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QKeyEvent, QKeySequence, QShortcut
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QTextEdit, QVBoxLayout, QWidget
 
+from chess_diagram_ocr.config import DEFAULT_DPI
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import texto_correcao, texto_leitura
 from chess_diagram_ocr.qt.fita_do_texto import FitaDoTexto
@@ -143,7 +144,7 @@ class PainelDeTexto(QWidget):
         self.ferramentas = FerramentasDeFormato(self)
         self._pdf = pdf
         self._pagina_indice = pagina
-        self._dpi = dpi or 220
+        self._dpi = dpi or DEFAULT_DPI
         """O DPI da folha que está na tela -- o que liga ponto a pixel nos recortes. Muda quando
         uma folha chega (leitura ou arquivo), e **não** quando a configuração muda: a folha já
         renderizada continua na escala em que foi renderizada."""

@@ -24,8 +24,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..atomic_io import atomic_write_bytes, atomic_write_text
-from ..config import DATA_DIR, PROJECT_ROOT, caminho_para_relatorio
+from ..config import PROJECT_ROOT, caminho_para_relatorio
 from ..logging_setup import configure_logging
+from ..text.conflitos import DECISOES_PADRAO, QUARENTENA_PADRAO
 from . import EXIT_BAD_INPUT, EntradaInvalida, add_base_de_caractere_argument, add_verbose, cli_errors, fronteira
 
 if TYPE_CHECKING:
@@ -37,8 +38,6 @@ logger = logging.getLogger(__name__)
 Decisoes = Mapping[str, Mapping[str, Any]]
 """`sha256 -> decisão`, como `text.conflitos.ler_decisoes` a lê do JSON escrito à mão."""
 
-DECISOES = DATA_DIR / "texto_conflitos.json"
-QUARENTENA = DATA_DIR / "quarentena_texto"
 METRICAS = PROJECT_ROOT / "docs" / "metrics"
 
 
@@ -47,8 +46,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Acha a mesma imagem arquivada sob dois caracteres, e move o rotulo perdedor."
     )
     add_base_de_caractere_argument(parser)
-    parser.add_argument("--decisoes", type=Path, default=DECISOES, help="Onde as decisões tomadas ficam registradas.")
-    parser.add_argument("--quarentena", type=Path, default=QUARENTENA, help="Para onde vão as amostras perdedoras.")
+    parser.add_argument("--decisoes", type=Path, default=DECISOES_PADRAO, help="Onde as decisões tomadas ficam registradas.")
+    parser.add_argument("--quarentena", type=Path, default=QUARENTENA_PADRAO, help="Para onde vão as amostras perdedoras.")
     parser.add_argument("--aplicar", "--apply", action="store_true", help="Move os perdedores. Sem isto, so relata.")
     parser.add_argument("--desfazer", type=Path, metavar="MANIFESTO", help="Devolve a base o que um manifesto moveu.")
     parser.add_argument("--folha", type=Path, metavar="PNG", help="Desenha os glifos em disputa para revisao humana.")
@@ -184,9 +183,11 @@ def _imprimir_plano(achados: list[Conflito], decisoes: Decisoes, plano: Plano) -
 def _quase_para_json(quase: Resumo | None) -> dict[str, object] | str:
     if quase is None:
         return "NAO MEDIDA NESTA CORRIDA. Rode com --quase; o padrao so faz a passada de hash."
+    from ..text import dedupe
+
     return {
         "limiar": quase.limiar,
-        "lado_descritor": 24,
+        "lado_descritor": dedupe.LADO_DESCRITOR,
         "grupos_antes": quase.grupos_antes,
         "grupos_depois": quase.grupos_depois,
         "fusoes": quase.fundidos,

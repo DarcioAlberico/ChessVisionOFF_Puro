@@ -38,6 +38,7 @@ from .checkpoint import checkpoint_identity
 from .cli import message_for
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
+    DEFAULT_DPI,
     DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
@@ -83,7 +84,7 @@ class BatchOptions:
     """Os parâmetros de leitura, iguais para todos os livros da varredura."""
 
     model_path: Path = DEFAULT_MODEL_PATH
-    dpi: int = 220
+    dpi: int = DEFAULT_DPI
     max_boards_per_page: int = DEFAULT_MAX_BOARDS
     orientation: OrientationMode = DEFAULT_ORIENTATION_MODE
     reading_order: ReadingOrder = DEFAULT_READING_ORDER

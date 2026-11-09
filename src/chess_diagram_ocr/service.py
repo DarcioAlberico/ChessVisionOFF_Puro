@@ -39,6 +39,7 @@ import numpy as np
 from .board_detection import NoBoardDetectedError, detect_boards
 from .config import (
     BOARD_SIZE,
+    DEFAULT_DPI,
     DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
@@ -560,7 +561,7 @@ class RecognitionOptions:
     model_path: Path = DEFAULT_MODEL_PATH
     orientation: str = DEFAULT_ORIENTATION_MODE
     max_boards: int = DEFAULT_MAX_BOARDS
-    dpi: int = 220
+    dpi: int = DEFAULT_DPI
 
     refine_detected_boards: bool = False
     next_move: bool = True

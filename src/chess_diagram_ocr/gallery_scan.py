@@ -31,6 +31,7 @@ from typing import Any
 
 from .arquivo_do_dono import ler_texto
 from .config import (
+    DEFAULT_DPI,
     DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
@@ -235,7 +236,7 @@ def build_gallery_index(
     pdf_source: Path,
     model_path: Path = DEFAULT_MODEL_PATH,
     *,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     max_boards_per_page: int = DEFAULT_MAX_BOARDS,
     orientation: OrientationMode = DEFAULT_ORIENTATION_MODE,
     start_page: int = 0,

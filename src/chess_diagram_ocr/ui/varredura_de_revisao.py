@@ -32,7 +32,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..config import ACCEPT_MIN_CONFIDENCE, DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, OrientationMode, ReadingOrder
+from ..config import (
+    ACCEPT_MIN_CONFIDENCE,
+    DEFAULT_DPI,
+    DEFAULT_MAX_BOARDS,
+    DEFAULT_READING_ORDER,
+    OrientationMode,
+    ReadingOrder,
+)
 from ..pdf_to_pgn import ScannedDiagram
 from ..review_queue import ReviewQueue, ReviewQueueBuilder, rare_classes_from_labels
 
@@ -46,7 +53,7 @@ class PedidoDeVarredura:
     pdf_path: Path
     model_path: Path
     labels_csv: Path
-    dpi: int = 220
+    dpi: int = DEFAULT_DPI
     max_boards_per_page: int = DEFAULT_MAX_BOARDS
     orientation: OrientationMode = "auto"
     reading_order: ReadingOrder = DEFAULT_READING_ORDER

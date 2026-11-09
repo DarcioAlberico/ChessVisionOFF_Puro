@@ -37,7 +37,14 @@ from .audit import duplicate_groups_touching, read_label_rows
 from .augment import DEFAULT_AUGMENT, AugmentConfig, build_augmentations, build_marca
 from .calibration import expected_calibration_error, fit_temperature, negative_log_likelihood
 from .checkpoint import Checkpoint, check_compatible, git_commit, load_checkpoint, save_checkpoint
-from .config import BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE, DEFAULT_PDF_DIR, PIECE_CLASSES, VAL_BOARD_CACHE_SIZE
+from .config import (
+    BOARDS_PER_CHUNK,
+    DEFAULT_BOARD_CACHE_SIZE,
+    DEFAULT_FIELD_SET,
+    DEFAULT_PDF_DIR,
+    PIECE_CLASSES,
+    VAL_BOARD_CACHE_SIZE,
+)
 from .dataset import (
     EMPTY_LABEL,
     BoardFenDataset,
@@ -383,7 +390,7 @@ def field_pages_beside(csv_path: Path) -> set[tuple[str, int]]:
     `train` e, registrada, nunca mais saía de lá. Sem saber quais páginas são de campo, nenhuma
     amostra nova recebe partição, e o treino não começa.
     """
-    caminho = Path(csv_path).parent / "field_set.jsonl"
+    caminho = Path(csv_path).parent / DEFAULT_FIELD_SET.name
     if not caminho.is_file():
         return set()
     from .field_eval import load_field_set, name_keys

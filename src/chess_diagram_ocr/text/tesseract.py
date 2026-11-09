@@ -34,6 +34,8 @@ from pathlib import Path
 
 import numpy as np
 
+from ..config import DEFAULT_DPI
+
 logger = logging.getLogger(__name__)
 
 VERSOES_MEDIDAS = (5,)
@@ -361,7 +363,7 @@ def ler_linhas(
     recortes: Sequence[np.ndarray],
     *,
     lingua: str = LINGUA_PADRAO,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     motor: Motor | None = None,
     rodar_tesseract: Callable[..., str] = rodar,
 ) -> list[LinhaDoTesseract | None]:
@@ -398,7 +400,7 @@ def ler_folha(
     cinza: np.ndarray,
     *,
     lingua: str = LINGUA_PADRAO,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     psm: int = 3,
     motor: Motor | None = None,
     rodar_tesseract: Callable[..., str] = rodar,

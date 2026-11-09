@@ -274,6 +274,20 @@ DJVU_CONVERTIDOS_DIR = DATA_DIR / "djvu_convertidos"
 DEFAULT_DATASET_CSV = DATA_DIR / "labels.csv"
 DEFAULT_SAMPLES_DIR = DATA_DIR / "samples"
 DEFAULT_MODEL_PATH = PROJECT_ROOT / "models" / "piece_classifier.pt"
+
+DEFAULT_GLYPH_META_PATH = PROJECT_ROOT / "models" / "char_meta.json"
+"""O metadado do classificador de caractere (motor `glifo`), versionado. Ver `text/modelo.py`.
+
+Era escrito à mão em `settings`, `text/modelo` e `cli/texto_train` (S-862). Mora aqui, e não em
+`text/modelo`, porque `settings` está no caminho da medição de campo e importar o `text/` de lá
+puxaria o motor para o fecho que o relatório digere."""
+
+DEFAULT_GLYPH_MODEL_PATH = PROJECT_ROOT / "models" / "char_classifier.pt"
+"""Os pesos do classificador de caractere, ao lado do metadado. Não vêm no repositório."""
+
+DEFAULT_FIELD_SET = DATA_DIR / "field_set.jsonl"
+"""O conjunto de campo anotado à mão: `cvoff-field --set` o lê e a janela de campo o grava. O treino
+procura o mesmo **nome** ao lado do `labels.csv` que recebe (S-862: eram três literais)."""
 DEFAULT_PDF_DIR = PROJECT_ROOT / "PDF"
 
 DEFAULT_SPLITS_PATH = DATA_DIR / "splits.csv"

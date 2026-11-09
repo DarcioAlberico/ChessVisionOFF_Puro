@@ -63,16 +63,16 @@ import numpy as np
 
 from .atomic_io import atomic_write_bytes, read_image
 from .audit import DUPLICATE_HASH_SIZE, dhash
-from .config import DATA_DIR, DEFAULT_MAX_BOARDS
+from .config import DATA_DIR, DEFAULT_DPI, DEFAULT_MAX_BOARDS
 from .labels import LabelStore
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_INDEX_PATH = DATA_DIR / "provenance_index.jsonl"
 
-DEFAULT_DPI = 220
-"""O mesmo DPI do pipeline. Não é escolha livre: o índice precisa ver o diagrama como o
-detector o viu quando a amostra foi salva, e mudar o DPI muda o recorte."""
+# O DPI é o do pipeline, `config.DEFAULT_DPI` (S-862: era uma segunda definição aqui). Não é
+# escolha livre: o índice precisa ver o diagrama como o detector o viu quando a amostra foi
+# salva, e mudar o DPI muda o recorte.
 
 DEFAULT_MAX_DISTANCE = 6
 """Distância de Hamming máxima, em 256 bits, para aceitar um casamento.

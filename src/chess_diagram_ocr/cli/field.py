@@ -19,8 +19,8 @@ from pathlib import Path
 
 from ..atomic_io import atomic_write_text
 from ..config import (
-    DATA_DIR,
     DEFAULT_DATASET_CSV,
+    DEFAULT_FIELD_SET,
     DEFAULT_PDF_DIR,
 )
 from ..field_eval import (
@@ -52,8 +52,6 @@ from . import (
 from ._ocr import add_ocr_argument, caption_reader_from_args
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_FIELD_SET = DATA_DIR / "field_set.jsonl"
 
 
 def _training_pages(labels: Path, splits: Path) -> dict[tuple[str, int], int]:

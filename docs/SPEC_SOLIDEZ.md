@@ -2481,6 +2481,20 @@ medida de tela, em `qt/livro_com_pgn.py:82`, `ui/cortina.py:72` e `ui/sala_decla
 
 **Aceite.** A guarda passa.
 
+**Entregue** (2026-11-09): D6 (a) num commit próprio (`procedencias.py` → `origem_do_texto.py`; as
+frases históricas ficam com o nome velho). Os donos: `config` para o DPI, para `char_meta.json`,
+`char_classifier.pt` e `field_set.jsonl` (e não `text/modelo`, que puxaria o `text/` para o fecho
+pelo `settings`); `text/conflitos` para `texto_conflitos.json` (a `quarentena_texto` repetida no CLI
+saiu junto); `dedupe.LADO_DESCRITOR` nos dois relatórios. A guarda (`tests/test_constantes_num_lugar.py`)
+cobra mais que a spec pedia: além do parâmetro `dpi`, campo, constante (`DPI = 220.0`), `dpi or 220`,
+`dpi=220` e uma segunda `DEFAULT_DPI` (havia uma em `provenance.py`); `settings.max_boards` passou a
+vir de `config.DEFAULT_MAX_BOARDS`, porque a razão escrita para repeti-lo (não importar o `config`)
+já não valia. Ficou de fora, de propósito, `text/guarda_de_leitura.DPI_DA_REGUA`: é o DPI em que a
+régua foi **medida**, e amarrá-lo ao padrão faria uma troca de padrão mudar a régua em silêncio. Os
+nomes `provenance`, `proveniencia`, `text/procedencia` e `cli/provenance` ficaram. Campo medido antes
+e depois com o modelo de produção: idêntico fora `seconds` e a impressão do código; relatórios não
+remedidos.
+
 ## S-863 · Os `main` de CLI de complexidade alta
 
 **Problema.** `cli/texto_train.main` (49), `cli/audit._print_report` (39), `cli/audit.main` (29),

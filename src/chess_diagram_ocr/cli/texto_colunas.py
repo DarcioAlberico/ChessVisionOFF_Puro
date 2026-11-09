@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from ..atomic_io import atomic_write_json
-from ..config import PROJECT_ROOT
+from ..config import DEFAULT_DPI, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from . import (
     EXIT_BAD_INPUT,
@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 ANOTADAS_PADRAO = PROJECT_ROOT / "docs" / "metrics" / "colunas_anotadas.json"
 SAIDA_PADRAO = PROJECT_ROOT / "docs" / "metrics" / "texto_colunas.json"
 
-DPI = 220
+DPI = DEFAULT_DPI
 """O mesmo da aba Texto e da varredura de produção."""
 
 MIN_LINHAS = 6

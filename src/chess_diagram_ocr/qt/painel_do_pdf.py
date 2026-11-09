@@ -51,7 +51,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from chess_diagram_ocr.config import DEFAULT_PDF_DIR
+from chess_diagram_ocr.config import DEFAULT_DPI, DEFAULT_PDF_DIR
 from chess_diagram_ocr.djvu_io import FILTRO_DE_LIVROS, e_djvu, ja_convertido
 from chess_diagram_ocr.pdf_io import get_pdf_page_count, render_pdf_page
 from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
@@ -1125,7 +1125,7 @@ class PainelDoPdf(QWidget):
         try:
             dpi = int(self._dpi())
         except (TypeError, ValueError):
-            dpi = self._dpi_rasterizado or 220
+            dpi = self._dpi_rasterizado or DEFAULT_DPI
         pedido = (self.source, self._page_index, dpi)
         enquadramento, area = self.visor.foto_do_enquadramento()
         zoom = self.visor.zoom

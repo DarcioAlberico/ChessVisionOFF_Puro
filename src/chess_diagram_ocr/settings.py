@@ -37,7 +37,7 @@ from urllib.parse import urlparse
 
 from .arquivo_do_dono import Leitura, Lida, VersaoFutura, gravavel, ler
 from .atomic_io import atomic_write_json
-from .config import DATA_DIR
+from .config import DATA_DIR, DEFAULT_DPI, DEFAULT_GLYPH_META_PATH, DEFAULT_GLYPH_MODEL_PATH, DEFAULT_MAX_BOARDS
 
 logger = logging.getLogger(__name__)
 
@@ -347,15 +347,13 @@ class OcrSettings:
 
     def glyph_disabled_reason(self) -> str:
         """Por que o motor `glifo` não vai subir, em pt-BR. Vazio quando ele vai."""
-        from .config import PROJECT_ROOT
-
-        meta = PROJECT_ROOT / "models" / "char_meta.json"
+        meta = DEFAULT_GLYPH_META_PATH
         if not meta.exists():
             return (
                 f"O motor `glifo` precisa de {meta.name}, que descreve as classes de "
                 "caractere, e ele não está em models/."
             )
-        candidato = Path(self.glyph_model.strip()) if self.glyph_model.strip() else meta.parent / "char_classifier.pt"
+        candidato = Path(self.glyph_model.strip()) if self.glyph_model.strip() else DEFAULT_GLYPH_MODEL_PATH
         if not candidato.exists():
             return (
                 f"Os pesos do classificador de caracteres não estão em {candidato}. Eles não vêm "
@@ -478,14 +476,13 @@ class TrainingSettings:
 class RecognitionSettings:
     """Como a página é rasterizada e quantos diagramas se procuram nela.
 
-    Os padrões são `config.DEFAULT_DPI` e `config.DEFAULT_MAX_BOARDS`, repetidos aqui como
-    número para que este módulo continue sem importar o `config` inteiro. O DPI muda o
-    tamanho do recorte que o classificador vê -- 220 é o que os relatórios de campo medem;
+    Os padrões são `config.DEFAULT_DPI` e `config.DEFAULT_MAX_BOARDS` (S-862). O DPI muda o
+    tamanho do recorte que o classificador vê -- o padrão é o que os relatórios de campo medem;
     subir ajuda em scans fracos e custa tempo por página.
     """
 
-    dpi: int = 220
-    max_boards: int = 12
+    dpi: int = DEFAULT_DPI
+    max_boards: int = DEFAULT_MAX_BOARDS
 
     def to_dict(self) -> dict[str, object]:
         return {"dpi": self.dpi, "max_boards": self.max_boards}

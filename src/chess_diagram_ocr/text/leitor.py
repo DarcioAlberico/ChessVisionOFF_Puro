@@ -158,6 +158,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
+from ..config import DEFAULT_DPI
 from ..fontes_de_xadrez import MIN_ROTULOS_DE_EIXO, ROTULO_DE_EIXO
 from . import admissao as _admissao
 from . import boxes as _boxes
@@ -1334,7 +1335,7 @@ class OpcoesDeLeitura:
     Os padrões moram aqui: os da assinatura de `ler_pagina` são lidos de `PADRAO_DE_LEITURA`.
     """
 
-    dpi: int = 220
+    dpi: int = DEFAULT_DPI
     max_boards: int | None = None
     arranjo: Arranjo = "prosa"
     glifo: OpcoesDoGlifo = GLIFO_PADRAO

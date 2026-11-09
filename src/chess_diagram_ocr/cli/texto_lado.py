@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_text
-from ..config import PROJECT_ROOT
+from ..config import DEFAULT_DPI, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import lado as _lado
 from . import EXIT_BAD_INPUT, EXIT_OK, add_pdf_dir_argument, add_verbose, cli_errors, exige_documento
@@ -60,7 +60,7 @@ def _lados_da_pagina(
     indice: int,
     *,
     caption_reader: Any,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
 ) -> tuple[list[Any], list[float]]:
     """`(as decisões de lado, as confianças)` dos diagramas desta página.
 
@@ -98,7 +98,7 @@ def medir_livro(
     *,
     paginas: int,
     caption_reader: Any,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
 ) -> _lado.PorLivro:
     """A linha da tabela de um livro, sobre as `paginas` primeiras folhas com diagrama."""
     from ..pdf_io import open_document

@@ -47,6 +47,7 @@ from typing import Any
 
 import chess
 
+from .config import DEFAULT_DPI
 from .semantics import compose_fen
 from .text import notacao
 from .text.pagina import BlocoDeTexto, PaginaLida
@@ -1249,7 +1250,7 @@ def de_pdf(
     modelo: Any = None,
     inicio: int = 0,
     fim: int | None = None,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     progresso: Callable[[int, int], None] | None = None,
     avaliar: Callable[[chess.Board], tuple[int | None, int | None]] | None = None,
 ) -> Extracao:

@@ -47,7 +47,7 @@ from typing import Any
 import numpy as np
 
 from ..atomic_io import atomic_write_text
-from ..config import PROJECT_ROOT
+from ..config import DEFAULT_DPI, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from . import EntradaInvalida, add_amostra_do_acervo, add_pesos_de_caractere_argument, add_verbose, cli_errors
 from .texto_grade import camada_de_ocr
@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 
 METRICAS = PROJECT_ROOT / "docs" / "metrics"
 SAIDA_PADRAO = METRICAS / "texto_placar_final.json"
-DPI = 220.0
+DPI = float(DEFAULT_DPI)
 
 SEM_LIVRO = (
     "esta base nao registra livro de origem (S-203), entao nenhum split deixa um livro inteiro "

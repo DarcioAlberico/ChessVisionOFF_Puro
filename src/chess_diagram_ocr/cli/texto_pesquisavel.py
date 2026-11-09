@@ -36,6 +36,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from ..config import DEFAULT_DPI
 from ..logging_setup import configure_logging
 from ..text import pdf_pesquisavel as _camada
 from . import EXIT_BAD_INPUT, EXIT_OK, add_dpi_argument, add_paginas_argument, add_verbose, cli_errors, exige_documento
@@ -55,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("pdf", type=Path, help="O livro a tornar pesquisável.")
     add_paginas_argument(parser)
     parser.add_argument("--saida", type=Path, default=None, help=f"Padrão: o nome do livro com '{SUFIXO}'.")
-    add_dpi_argument(parser, help="DPI da leitura. Padrão: 220.")
+    add_dpi_argument(parser, help=f"DPI da leitura. Padrão: {DEFAULT_DPI}.")
     parser.add_argument(
         "--motor",
         choices=("glifo", "camada", "auto"),

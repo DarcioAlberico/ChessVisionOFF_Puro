@@ -21,6 +21,7 @@ from pathlib import Path
 import fitz
 import numpy as np
 
+from chess_diagram_ocr.config import DEFAULT_DPI
 from chess_diagram_ocr.djvu_io import pdf_legivel
 
 logger = logging.getLogger(__name__)
@@ -178,7 +179,7 @@ def sample_pages(page_count: int, wanted: int) -> list[int]:
     return sorted({min(page_count - 1, int(round(passo * (i + 1)))) for i in range(wanted)})
 
 
-def render_pdf_page(pdf_source: PdfSource, page_index: int, dpi: int = 220) -> np.ndarray:
+def render_pdf_page(pdf_source: PdfSource, page_index: int, dpi: int = DEFAULT_DPI) -> np.ndarray:
     """Renderiza uma pagina do PDF como array RGB (H, W, 3) proprio e gravavel."""
     with open_document(pdf_source) as doc:
         if page_index < 0 or page_index >= doc.page_count:

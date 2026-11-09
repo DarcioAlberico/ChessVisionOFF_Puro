@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from ..atomic_io import atomic_write_text
-from ..config import PROJECT_ROOT, caminho_para_relatorio
+from ..config import DEFAULT_GLYPH_META_PATH, DEFAULT_GLYPH_MODEL_PATH, PROJECT_ROOT, caminho_para_relatorio
 from ..logging_setup import configure_logging
 from . import (
     EntradaInvalida,
@@ -46,8 +46,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-PESOS_PADRAO = PROJECT_ROOT / "models" / "char_classifier.pt"
-META_PADRAO = PROJECT_ROOT / "models" / "char_meta.json"
 METRICAS = PROJECT_ROOT / "docs" / "metrics"
 
 SEMENTE_PADRAO = 20260823
@@ -62,8 +60,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     add_base_de_caractere_argument(parser)
     add_cache_da_base_arguments(parser)
     parser.add_argument("--so-varrer", action="store_true", help="Varre, relata e para. Nao treina.")
-    parser.add_argument("--modelo", type=Path, default=PESOS_PADRAO, help="Onde gravar os pesos do classificador.")
-    parser.add_argument("--meta", type=Path, default=META_PADRAO, help="Onde gravar os metadados do treino.")
+    parser.add_argument("--modelo", type=Path, default=DEFAULT_GLYPH_MODEL_PATH, help="Onde gravar os pesos do classificador.")
+    parser.add_argument("--meta", type=Path, default=DEFAULT_GLYPH_META_PATH, help="Onde gravar os metadados do treino.")
     parser.add_argument("--relatorio", type=Path, help="Padrao: docs/metrics/texto_treino_<data>.json")
     parser.add_argument("--epocas", type=int, default=None, help="Épocas de treino. Padrão: o da receita.")
     parser.add_argument("--lote", type=int, default=None, help="Amostras por lote. Padrão: o da receita.")
@@ -582,6 +580,7 @@ def resumo_do_treino(
     metricas_teste: dict[str, float],
 ) -> dict[str, object]:
     """O que o checkpoint e o relatório de treino levam da corrida. Puro."""
+    from ..text import dedupe
     from ..text import procedencia as pr
 
     return {
@@ -599,7 +598,7 @@ def resumo_do_treino(
             if resumo_quase is None
             else {
                 "limiar": resumo_quase.limiar,
-                "lado_descritor": 24,
+                "lado_descritor": dedupe.LADO_DESCRITOR,
                 "grupos_antes": resumo_quase.grupos_antes,
                 "grupos_depois": resumo_quase.grupos_depois,
                 "fusoes": resumo_quase.fundidos,

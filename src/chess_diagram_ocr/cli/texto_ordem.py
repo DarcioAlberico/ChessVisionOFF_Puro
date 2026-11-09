@@ -77,7 +77,7 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_json
-from ..config import PROJECT_ROOT
+from ..config import DEFAULT_DPI, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from . import (
     EXIT_FAILURE,
@@ -93,7 +93,7 @@ logger = logging.getLogger(__name__)
 
 SAIDA_PADRAO = PROJECT_ROOT / "docs" / "metrics" / "texto_ordem.json"
 
-DPI = 220.0
+DPI = float(DEFAULT_DPI)
 """O mesmo da varredura de produção. A ordem não deveria mudar com o DPI, e há teste."""
 
 MIN_LINHAS = 6
