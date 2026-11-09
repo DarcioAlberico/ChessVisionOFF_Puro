@@ -883,6 +883,12 @@ uma vez e a busca por uma palavra devolve um resultado por ocorrência, não doi
 
 **Aceite.** O teste passa.
 
+**Entregue** (2026-11-08): a camada nossa sai das folhas que a rodada reescreve (a folha que esta rodada
+não leu guarda a camada da anterior); a marca do documento é o `producer` ou a palavra nas `keywords`, e o
+fluxo reconhecido é o `BT ... ET` em `3 Tr` na `helv` que o `insert_textbox` grava. A S-253 (`escrever`)
+recebeu a mesma limpeza, porque copia a folha de um livro que pode ser saída da S-210. Gravar por bytes
+depois de fechar o livro deixa a saída ser a própria entrada, o que o `save` recusava.
+
 ## S-822 · Catraca de escrita: nada em `src/` grava fora do `atomic_io` sem exceção declarada
 
 **Problema** (confirmado). Além dos casos das S-818 a S-821: `onnx_export.py:61` (`torch.onnx.export` direto
