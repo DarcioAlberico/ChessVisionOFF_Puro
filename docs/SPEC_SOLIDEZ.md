@@ -1931,6 +1931,14 @@ procedência, negrito e itálico por `de_linhas`, e lê do arquivo só `recuado`
 
 **Aceite.** Os dois passam.
 
+**Entregue** (2026-11-09): o caderno de hoje já não morria com o `TypeError` (a leitura travada da S-896
+pega qualquer exceção), mas o `.cvtxt` aberto pelo diálogo sim -- e também com `PaginaInvalida`, que
+não é `ArquivoInvalido`, a única que o painel pega: `arquivo.de_json` passou a convertê-la. "Os dois `de_json` viram um" foi feito
+como `_linhas_de`, o campo que os dois guardam igual: a tarja continua lendo bbox, confiança e procedência
+do arquivo, porque nenhum leitor a produz e os testes a montam com campos que as linhas não dão. O teste
+antigo de procedência fora da lista passou a estragar a linha (é dela que o bloco de texto a tira) e o
+diagrama. NaN e infinito recusam, e confiança que não é número também.
+
 ## S-849 · "Camada de OCR" numa regra só
 
 **Problema** (confirmado por script). Quatro respostas para "esta camada de texto foi feita por OCR?":

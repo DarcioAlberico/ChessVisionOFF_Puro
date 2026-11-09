@@ -44,7 +44,8 @@ medição, que aquele livro é uma grade lida em fileiras.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import math
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
@@ -300,6 +301,19 @@ def _bbox_de(valor: Any, onde: str) -> tuple[float, float, float, float]:
     return (x0, y0, x1, y1)
 
 
+def _confianca_de(valor: object, onde: str) -> float:
+    """Um número finito, e ausente é 1,0. **NaN recusa**: ele passa por toda comparação como falso,
+    e um bloco com confiança NaN nunca sairia como o pior da página (S-848)."""
+    if valor is None:
+        return 1.0
+    if not isinstance(valor, (int, float, str)):
+        raise PaginaInvalida(f"{onde}: confiança precisa ser um número, veio {valor!r}")
+    numero = float(valor)
+    if not math.isfinite(numero):
+        raise PaginaInvalida(f"{onde}: confiança precisa ser um número finito, veio {valor!r}")
+    return numero
+
+
 def _procedencia_de(valor: Any, onde: str) -> Procedencia:
     if valor not in PROCEDENCIAS:
         raise PaginaInvalida(f"{onde}: procedência {valor!r} não é uma de {PROCEDENCIAS}")
@@ -399,16 +413,27 @@ class LinhaLida:
     def de_json(cls, dados: Any, onde: str = "linha") -> LinhaLida:
         if not isinstance(dados, dict):
             raise PaginaInvalida(f"{onde}: esperava objeto, veio {type(dados).__name__}")
+        texto = dados.get("texto", "")
+        if not isinstance(texto, str):
+            raise PaginaInvalida(f"{onde}: texto precisa ser texto, veio {texto!r}")
         return cls(
-            texto=str(dados.get("texto", "")),
+            texto=texto,
             bbox=_bbox_de(dados.get("bbox"), onde),
-            confianca=float(dados.get("confianca", 1.0)),
+            confianca=_confianca_de(dados.get("confianca"), onde),
             procedencia=_procedencia_de(dados.get("procedencia"), onde),
             negrito=_negrito_de(dados.get("negrito"), onde),
             italico=_tres_estados(dados.get("italico"), onde, "italico"),
             negrito_em=_trechos_de(dados.get("negrito_em"), onde, "negrito_em"),
             italico_em=_trechos_de(dados.get("italico_em"), onde, "italico_em"),
         )
+
+
+def _linhas_de(dados: Mapping[str, object], onde: str) -> tuple[LinhaLida, ...]:
+    """As linhas de um bloco de texto ou de tarja: o campo que os dois guardam igual."""
+    linhas = dados.get("linhas", [])
+    if not isinstance(linhas, list):
+        raise PaginaInvalida(f"{onde}: linhas é uma lista -- veio {linhas!r}")
+    return tuple(LinhaLida.de_json(item, f"{onde}.linhas[{i}]") for i, item in enumerate(linhas))
 
 
 def _trechos_de(valor: Any, onde: str, campo: str) -> tuple[tuple[int, int], ...]:
@@ -525,7 +550,7 @@ class BlocoDeTexto:
         pintá-lo como registro.
         """
         if not linhas:
-            return cls()
+            return cls(recuado=recuado)
         pesos = {linha.negrito for linha in linhas}
         pendores = {linha.italico for linha in linhas}
         return cls(
@@ -559,18 +584,15 @@ class BlocoDeTexto:
 
     @classmethod
     def de_json(cls, dados: dict[str, Any], onde: str) -> BlocoDeTexto:
-        return cls(
-            linhas=tuple(
-                LinhaLida.de_json(item, f"{onde}.linhas[{i}]") for i, item in enumerate(dados.get("linhas", []))
-            ),
-            bbox=_bbox_de(dados.get("bbox"), onde),
-            confianca=float(dados.get("confianca", 1.0)),
-            procedencia=_procedencia_de(dados.get("procedencia"), onde),
-            recuado=bool(dados.get("recuado", False)),
-            negrito=_negrito_de(dados.get("negrito"), onde),
-            italico=_tres_estados(dados.get("italico"), onde, "italico"),
-            legenda_de=_indice_de_legenda(dados.get("legenda_de"), onde),
-        )
+        """Pelas linhas, como a leitura o fecha (S-848). Do arquivo só sai o que as linhas não dizem.
+
+        Bbox, confiança, procedência, negrito e itálico do bloco **são derivados**, e lê-los do arquivo
+        abria um bloco `camada` com 1,0 sobre uma linha `glifo` com 0,2 -- o estado ilegal que
+        `menos_confiavel` existe para impedir. Os campos continuam gravados por `para_json`, para quem
+        lê o arquivo sem este código.
+        """
+        bloco = cls.de_linhas(_linhas_de(dados, onde), recuado=bool(dados.get("recuado", False)))
+        return replace(bloco, legenda_de=_indice_de_legenda(dados.get("legenda_de"), onde))
 
 
 @dataclass(frozen=True)
@@ -621,7 +643,7 @@ class BlocoDeDiagrama:
         return cls(
             indice=int(dados.get("indice", 0)),
             bbox=_bbox_de(dados.get("bbox"), onde),
-            confianca=float(dados.get("confianca", 1.0)),
+            confianca=_confianca_de(dados.get("confianca"), onde),
             procedencia=_procedencia_de(dados.get("procedencia"), onde),
             placement=str(dados.get("placement", "")),
         )
@@ -664,7 +686,7 @@ class BlocoDeTabela:
         return cls(
             celulas=tuple(tuple(str(c) for c in linha) for linha in dados.get("celulas", [])),
             bbox=_bbox_de(dados.get("bbox"), onde),
-            confianca=float(dados.get("confianca", 1.0)),
+            confianca=_confianca_de(dados.get("confianca"), onde),
             procedencia=_procedencia_de(dados.get("procedencia"), onde),
         )
 
@@ -700,11 +722,9 @@ class BlocoDeTarja:
     @classmethod
     def de_json(cls, dados: dict[str, Any], onde: str) -> BlocoDeTarja:
         return cls(
-            linhas=tuple(
-                LinhaLida.de_json(item, f"{onde}.linhas[{i}]") for i, item in enumerate(dados.get("linhas", []))
-            ),
+            linhas=_linhas_de(dados, onde),
             bbox=_bbox_de(dados.get("bbox"), onde),
-            confianca=float(dados.get("confianca", 1.0)),
+            confianca=_confianca_de(dados.get("confianca"), onde),
             procedencia=_procedencia_de(dados.get("procedencia"), onde),
         )
 
@@ -938,7 +958,20 @@ class PaginaLida:
 
         Não aceita esquema de versão futura: um arquivo gravado por uma versão que sabe mais campos
         que esta seria lido pela metade, e "lido pela metade" é o que ninguém percebe.
+
+        **Qualquer arquivo que não descreve página sai como `PaginaInvalida`** (S-848), e é só aqui
+        que isso se decide: um `null` onde ia número (`largura`, `indice`) ou lista (`colunas`) dava
+        `TypeError`, que nenhum leitor de arquivo espera, e os campos não precisam de guarda um a um.
         """
+        try:
+            return cls._de_json(dados)
+        except PaginaInvalida:
+            raise
+        except (TypeError, ValueError, KeyError) as erro:
+            raise PaginaInvalida(f"a página não se lê: {type(erro).__name__}: {erro}") from erro
+
+    @classmethod
+    def _de_json(cls, dados: object) -> PaginaLida:
         if not isinstance(dados, dict):
             raise PaginaInvalida(f"esperava objeto no topo, veio {type(dados).__name__}")
         esquema = int(dados.get("esquema", ESQUEMA))

@@ -85,7 +85,11 @@ def de_json(dados: Any) -> DocumentoRico:
         )
     if "documento" not in dados:
         raise ArquivoInvalido("o arquivo não traz documento nenhum")
-    return DocumentoRico.de_json(dados["documento"])
+    try:
+        return DocumentoRico.de_json(dados["documento"])
+    except (TypeError, ValueError, KeyError) as erro:
+        # A folha de origem estragada é `PaginaInvalida` (S-848), e quem abre o arquivo só pega esta.
+        raise ArquivoInvalido(f"o documento do arquivo não se lê: {erro}") from erro
 
 
 def gravar(caminho: Path, doc: DocumentoRico) -> Path:

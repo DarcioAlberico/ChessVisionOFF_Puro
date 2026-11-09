@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import unittest
+from collections.abc import Callable
+from typing import Any
 
 from chess_diagram_ocr.text.pagina import (
     PROCEDENCIAS,
@@ -125,8 +127,12 @@ class SerializacaoTests(unittest.TestCase):
         self.assertIn("grafico", str(erro.exception))
 
     def test_uma_procedencia_de_fora_da_lista_recusa(self) -> None:
+        """Na linha, que é de onde o bloco de texto a tira (S-848), e no bloco que a guarda."""
+        linha = {"texto": "x", "bbox": [0, 0, 1, 1], "procedencia": "chute"}
         with self.assertRaises(PaginaInvalida):
-            bloco_de_json({"tipo": "texto", "bbox": [0, 0, 1, 1], "procedencia": "chute"})
+            bloco_de_json({"tipo": "texto", "bbox": [0, 0, 1, 1], "linhas": [linha]})
+        with self.assertRaises(PaginaInvalida):
+            bloco_de_json({"tipo": "diagrama", "bbox": [0, 0, 1, 1], "procedencia": "chute"})
 
     def test_um_esquema_do_futuro_recusa_em_vez_de_ler_pela_metade(self) -> None:
         dados = _pagina_cheia().para_json()
@@ -141,6 +147,48 @@ class SerializacaoTests(unittest.TestCase):
         dados["unidade"] = "polegadas"
         with self.assertRaises(PaginaInvalida):
             PaginaLida.de_json(dados)
+
+
+class FronteiraTests(unittest.TestCase):
+    """S-848: o arquivo estragado é `PaginaInvalida`, e o que o bloco deriva das linhas não se lê dele."""
+
+    def _estragada(self, estragar: Callable[[dict[str, Any]], object]) -> dict[str, Any]:
+        dados: dict[str, Any] = json.loads(json.dumps(_pagina_cheia().para_json()))
+        estragar(dados)
+        return dados
+
+    def test_campo_nulo_ou_ilegivel_e_pagina_invalida(self) -> None:
+        def primeira_linha(d: dict[str, Any]) -> dict[str, Any]:
+            linha: dict[str, Any] = d["colunas"][0]["blocos"][0]["linhas"][0]
+            return linha
+
+        casos: dict[str, Callable[[dict[str, Any]], object]] = {
+            "largura nula": lambda d: d.update(largura=None),
+            "colunas nulas": lambda d: d.update(colunas=None),
+            "índice de coluna nulo": lambda d: d["colunas"][0].update(indice=None),
+            "índice de diagrama nulo": lambda d: d["colunas"][0]["blocos"][1].update(indice=None),
+            "texto nulo": lambda d: primeira_linha(d).update(texto=None),
+            "confiança NaN": lambda d: primeira_linha(d).update(confianca="nan"),
+            "confiança NaN no diagrama": lambda d: d["colunas"][0]["blocos"][1].update(confianca=float("nan")),
+        }
+        for nome, estragar in casos.items():
+            with self.subTest(nome), self.assertRaises(PaginaInvalida):
+                PaginaLida.de_json(self._estragada(estragar))
+
+    def test_o_bloco_inconsistente_abre_como_as_linhas_dizem(self) -> None:
+        """Gravado `camada` com 1,0 sobre uma linha `glifo` com 0,2: o estado que `menos_confiavel` impede."""
+        def mentir(d: dict[str, Any]) -> None:
+            bloco = d["colunas"][0]["blocos"][0]
+            bloco.update(confianca=1.0, procedencia="camada", bbox=[0, 0, 9999, 9999], negrito=True)
+            bloco["linhas"][0].update(procedencia="glifo", confianca=0.2)
+
+        bloco = PaginaLida.de_json(self._estragada(mentir)).blocos[0]
+        self.assertEqual((bloco.procedencia, bloco.confianca), ("glifo", 0.2))
+        self.assertEqual(bloco.bbox, (1.0, 2.0, 3.0, 4.0))
+        self.assertIsNone(bloco.negrito)
+        self.assertIsInstance(bloco, BlocoDeTexto)
+        assert isinstance(bloco, BlocoDeTexto)
+        self.assertTrue(bloco.recuado, "recuado continua vindo do arquivo")
 
 
 class EquivalenciaComOHojeTests(unittest.TestCase):

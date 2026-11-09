@@ -2,7 +2,7 @@
  "limiar": 0.8,
  "gramas": 5,
  "min_tokens": 60,
- "total": 73,
+ "total": 72,
  "pares": [
   {
    "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
@@ -334,13 +334,6 @@
    "semelhanca": 0.857
   },
   {
-   "a": "src/chess_diagram_ocr/text/pagina.py::BlocoDeTexto.de_json",
-   "linha_a": 561,
-   "b": "src/chess_diagram_ocr/text/pagina.py::BlocoDeTarja.de_json",
-   "linha_b": 701,
-   "semelhanca": 0.857
-  },
-  {
    "a": "src/chess_diagram_ocr/cli/field.py::parse_args",
    "linha_a": 69,
    "b": "src/chess_diagram_ocr/cli/sides.py::parse_args",
@@ -372,7 +365,7 @@
    "a": "src/chess_diagram_ocr/text/ouro.py::para_json",
    "linha_a": 149,
    "b": "src/chess_diagram_ocr/text/pagina.py::LinhaLida.para_json",
-   "linha_b": 386,
+   "linha_b": 400,
    "semelhanca": 0.846
   },
   {
