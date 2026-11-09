@@ -144,6 +144,7 @@ from chess_diagram_ocr.ui import (
     estado_do_rodape,
     geometria,
     livros,
+    ocr_que_falta,
     pele,
     sala_declarada,
     strings,
@@ -422,7 +423,7 @@ class JanelaPrincipal(QMainWindow):
         self._aplicar_estado()
         self._atualizar_titulo()
         self._atualizar_abas()
-        self.rodape.mostrar("Abra um livro em PDF para começar.")
+        self._dizer(*ocr_que_falta.frase_de_abertura(self._servico, self._ocr))  # o OCR pedido e ausente é dito (S-884)
 
     # ------------------------------------------------------------------------------ montagem
 

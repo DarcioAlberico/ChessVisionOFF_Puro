@@ -1418,6 +1418,8 @@ manda rodar `uv sync --extra ocr`, impossível no `.exe`; o pipeline segue sem O
 
 **Aceite.** O teste passa.
 
+**Entregue** (2026-11-08): a frase mora em `ui/ocr_que_falta.py` e a janela a põe no rodapé ao abrir, no lugar de "Abra um livro em PDF para começar."; o fecho de medição não foi tocado, e por isso a linha de log de `ocr.py` que manda rodar `uv sync --extra ocr` continua igual também no `.exe` (mudá-la obriga a remedir os quatro relatórios). A D8 segue aberta: com o `onnxruntime` no bundle, o `rapidocr` sobe e a frase deixa de aparecer para ele, sem mudança de código.
+
 ## S-885 · CI com permissão mínima e ações fixadas
 
 **Problema** (confirmado). `.github/workflows/ci.yml` não tem bloco `permissions:`, então o token tem o
