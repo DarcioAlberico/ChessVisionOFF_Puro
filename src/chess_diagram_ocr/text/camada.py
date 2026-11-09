@@ -72,6 +72,7 @@ __all__ = [
     "Trecho",
     "cobertura",
     "documento_registra",
+    "identidade_do_documento",
     "linhas_com",
     "marcar",
     "remapear",
@@ -385,8 +386,11 @@ _RESPOSTAS: dict[tuple[str, str, float, int], bool] = {}
 """A resposta de `documento_registra` por (marca, arquivo, mtime, amostra). Ver o docstring dela."""
 
 
-def _identidade(doc: object) -> tuple[str, float] | None:
+def identidade_do_documento(doc: object) -> tuple[str, float] | None:
     """`(caminho, mtime)` do PDF, ou `None` quando ele não tem identidade estável no disco.
+
+    É a chave de toda memória por livro de `text/`: esta, e o perfil de `camada_prosa.perfil_em_memoria`
+    (S-850), que usava `id(doc)` e deu ao livro B o perfil do livro A.
 
     `PdfSource` aceita `bytes` e um documento já aberto, e nesses casos `doc.name` é vazio: um
     cache chaveado por nome vazio devolveria a resposta de **outro** documento. Sem identidade,
@@ -426,7 +430,7 @@ def documento_registra(
     duas funções diferentes com o mesmo comportamento não têm chave comum. Sem `marca`, não há
     cache -- é o padrão, para que nenhum chamador ganhe memória sem pedir.
     """
-    identidade = _identidade(doc) if marca else None
+    identidade = identidade_do_documento(doc) if marca else None
     if identidade is not None:
         chave = (marca, identidade[0], identidade[1], amostra)
         guardada = _RESPOSTAS.get(chave)

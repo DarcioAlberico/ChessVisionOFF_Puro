@@ -689,20 +689,57 @@ class PalavraSuspeitaTests(unittest.TestCase):
         linhas, fora = camada_prosa.por_linha([caixa], [palavra])
         self.assertEqual((len(linhas[0]), fora), (1, []))
 
-    def test_o_perfil_do_livro_e_calculado_uma_vez(self) -> None:
-        documento_falso = mock.Mock(page_count=5)
-        documento_falso.name = "uma-vez.pdf"
-        with mock.patch.object(camada_prosa.admissao, "perfil_do_livro", return_value="perfil") as perfil:
-            camada_prosa.perfil_em_memoria(documento_falso)
-            camada_prosa.perfil_em_memoria(documento_falso)
-        camada_prosa._perfis.clear()  # noqa: SLF001
-        perfil.assert_called_once()
-
     def test_vale_a_linha_de_centro_mais_proximo(self) -> None:
         caixas = [(0.0, 0.0, 100.0, 10.0), (0.0, 10.5, 100.0, 20.5)]
         palavra = camada_prosa.PalavraDaCamada("x", (10.0, 10.5, 20.0, 12.5))  # centro em 11,5, na segunda
         linhas, _ = camada_prosa.por_linha(caixas, [palavra])
         self.assertEqual([len(linha) for linha in linhas], [0, 1])
+
+
+class PerfilEmMemoriaTests(unittest.TestCase):
+    """O perfil do livro (S-716) é guardado por documento, e o documento é o do disco (S-850)."""
+
+    def setUp(self) -> None:
+        camada_prosa._perfis.clear()  # noqa: SLF001
+        self.addCleanup(camada_prosa._perfis.clear)  # noqa: SLF001
+
+    @staticmethod
+    def _bytes(titulo: str) -> bytes:
+        import fitz
+
+        with fitz.open() as rascunho:
+            rascunho.new_page().insert_text((50, 100), f"O livro {titulo}.", fontsize=11)
+            rascunho.set_metadata({"title": titulo})
+            return rascunho.tobytes()
+
+    def test_o_perfil_do_livro_do_disco_e_calculado_uma_vez(self) -> None:
+        import fitz
+
+        caminho = pasta_temporaria(self) / "uma-vez.pdf"
+        caminho.write_bytes(self._bytes("A"))
+        with mock.patch.object(camada_prosa.admissao, "perfil_do_livro", return_value="perfil") as perfil:
+            for _ in range(2):
+                with fitz.open(caminho) as documento:
+                    camada_prosa.perfil_em_memoria(documento)
+        perfil.assert_called_once()
+
+    def test_o_livro_de_bytes_nao_herda_o_perfil_de_outro(self) -> None:
+        """Dois documentos de bytes, do mesmo tamanho, abertos e fechados em sequência: sem nome, a chave
+        era `id(doc)`, o id do primeiro voltava no segundo e o livro B lia com o perfil do livro A."""
+        import fitz
+
+        def perfil_pelo_titulo(documento: Any) -> str:
+            return str(documento.metadata["title"])
+
+        vistos = []
+        with mock.patch.object(camada_prosa.admissao, "perfil_do_livro", side_effect=perfil_pelo_titulo) as perfil:
+            for titulo in ("A", "B", "C"):
+                documento = fitz.open("pdf", self._bytes(titulo))
+                vistos.append(camada_prosa.perfil_em_memoria(documento))
+                documento.close()
+                del documento
+        self.assertEqual(vistos, ["A", "B", "C"])
+        self.assertEqual(perfil.call_count, 3)
 
 
 class GuardaTests(unittest.TestCase):

@@ -30,6 +30,7 @@ from typing import Any
 
 from ..fontes_de_xadrez import e_fonte_de_xadrez
 from . import admissao
+from .camada import identidade_do_documento
 
 Retangulo = tuple[float, float, float, float]
 
@@ -213,12 +214,19 @@ def por_linha(
     return linhas, fora
 
 
-_perfis: OrderedDict[tuple[str, int], admissao.PerfilDoLivro] = OrderedDict()
+_perfis: OrderedDict[tuple[str, float], admissao.PerfilDoLivro] = OrderedDict()
 
 
 def perfil_em_memoria(documento: Any) -> admissao.PerfilDoLivro:
-    """O perfil do livro, uma vez por documento: ~30 `get_texttrace` não cabem em toda folha lida."""
-    chave = (str(getattr(documento, "name", "") or id(documento)), int(documento.page_count))
+    """O perfil do livro, uma vez por documento: ~30 `get_texttrace` não cabem em toda folha lida.
+
+    A chave é a de `camada.identidade_do_documento`, caminho e `mtime` (S-850). O documento sem
+    identidade no disco -- aberto de bytes -- não entra na memória: a chave antiga era `id(doc)`, o id
+    de um documento fechado volta no seguinte, e o livro B recebia o perfil do livro A.
+    """
+    chave = identidade_do_documento(documento)
+    if chave is None:
+        return admissao.perfil_do_livro(documento)
     if chave in _perfis:
         _perfis.move_to_end(chave)
         return _perfis[chave]

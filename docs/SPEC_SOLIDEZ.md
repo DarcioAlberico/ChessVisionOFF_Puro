@@ -2052,6 +2052,11 @@ B, com o mesmo número de páginas, recebeu o perfil do livro A. A chave também
 
 **Aceite.** O teste passa.
 
+**Entregue** (2026-11-09): `camada._identidade` virou `camada.identidade_do_documento` (pública, porque agora
+tem dois chamadores), e `perfil_em_memoria` a usa como chave; sem identidade, o perfil é calculado e não
+guardado. A chave perdeu o `page_count`, que o `mtime` cobre. O teste antigo "calculado uma vez" usava um
+`Mock` com nome de arquivo inexistente e foi reescrito sobre um PDF de verdade no disco.
+
 ## S-851 · A folha extraída uma vez por leitura
 
 **Problema** (confirmado por script, desempenho). Uma `ler_pagina(motor="camada")` faz 8 `get_text("dict")`
