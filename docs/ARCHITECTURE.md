@@ -335,7 +335,8 @@ teste (0% de cobertura em 626 instruções), `pdf_substituicao.achar_coordenadas
 do programa (870), e o código gravava no arquivo do usuário sem recusar `saida == entrada`. Os
 três foram apagados em vez de ligados; quem retomar a funcionalidade os acha no histórico do git,
 no commit anterior ao da S-881. `desenho_de_diagrama.py` ficou, porque a aba Texto e o livro com
-PGN desenham com ele.
+PGN desenham com ele, mas só a saída em PNG: o PDF vetorial e o SVG, que só a substituição pedia,
+saíram com ela.
 
 ---
 

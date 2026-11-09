@@ -1141,7 +1141,7 @@ src/chess_diagram_ocr/
   dataset.py            dataset de treino, cache limitado e amostrador por tabuleiro
   dataset_browser.py    listar, filtrar, recorrigir e remover amostras
   decode.py             decodificacao sujeita as regras do xadrez
-  desenho_de_diagrama.py  o diagrama desenhado de novo (fonte Merida ou PNGs das pecas), em PNG, PDF ou SVG
+  desenho_de_diagrama.py  o diagrama desenhado de novo (fonte Merida ou PNGs das pecas), em PNG
   detection_census.py   censo da deteccao: quantos diagramas cada regra achou, por livro
   diagrama_png.py       o diagrama em PNG a partir da FEN, com as pecas de assets/ (S-543)
   diagrama_svg.py       o diagrama vetorial a partir da FEN, com as pecas do python-chess (S-542)

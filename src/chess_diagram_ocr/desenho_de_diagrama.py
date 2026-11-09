@@ -7,35 +7,29 @@
 #         seria a duplicação que a `ASSETS §6` proíbe; (b) as cores das casas saíram de
 #         `(240, 217, 181)` cravado e passaram a ser `ui/tokens.CASA_CLARA`/`CASA_ESCURA`, que
 #         são exatamente os mesmos valores e agora têm um dono só; (c) `to_full_fen` virou
-#         `semantics.compose_fen`, que é o que este projeto usa desde a S-67.
-"""Um campo de peças virando bytes: PDF vetorial, PNG e SVG (F9).
+#         `semantics.compose_fen`, que é o que este projeto usa desde a S-67; (d) as saídas em
+#         PDF vetorial e SVG saíram na S-881, com a substituição de diagrama que as chamava.
+"""Um campo de peças virando PNG, sem Qt.
 
-**Para que serve.** Nasceu para a substituição de diagrama dentro do PDF (F9), que precisava de
-um diagrama **novo** para carimbar no lugar do velho, como bytes que o PyMuPDF soubesse pôr numa
-página -- não como widget. A substituição foi retirada na S-881 (decisão D7 da solidez); quem
-desenha com este módulo hoje são a aba Texto e o livro com PGN, pelo `png_do_diagrama`. O tronco desenha tabuleiro muito bem em `qt/tabuleiro.py`, mas ali o desenho é um
-`QPainter` sobre um `QWidget`: ele precisa de `QApplication`, e um serviço de PDF que exigisse
-janela aberta não poderia rodar em lote nem em thread de trabalho.
+**Para que serve.** A aba Texto desenha a posição lida quando a folha não está à mão, e o livro
+com PGN desenha o diagrama a partir da partida; os dois pedem bytes de imagem, não widget. O
+tronco desenha tabuleiro muito bem em `qt/tabuleiro.py`, mas ali o desenho é um `QPainter` sobre
+um `QWidget`: precisa de `QApplication`, e não roda em lote nem em thread de trabalho. Por isso o
+módulo mora na raiz do pacote, só com PIL, e não em `ui/` nem em `qt/`.
 
-**Três saídas, e a ordem entre elas não é gosto.**
+O módulo nasceu para a substituição de diagrama dentro do PDF (F9), com PDF vetorial e SVG além
+do PNG; a substituição foi retirada na S-881 (decisão D7 da solidez), e as duas saídas com ela.
 
-1. **PDF vetorial**, quando há uma fonte de xadrez (Merida) para embutir. É a melhor: o diagrama
-   entra no livro como texto e curva, escala sem borrar e pesa poucos quilobytes.
-2. **PDF vetorial via `cairosvg`**, quando ele está instalado. Vem do `python-chess`, e é
-   opcional de propósito -- no Windows ele exige runtime nativo, e faltar não é erro.
-3. **PNG**, sempre. É a reserva que não depende de nada opcional, e é aqui que este módulo se
-   afasta da origem: lá o raster era glifo Unicode em Arial, um desenho que nenhuma outra tela do
-   programa usa. Aqui ele compõe os **mesmos PNGs** que a janela desenha.
+**Duas fontes de desenho.** Com uma fonte de xadrez (Merida) instalada, o PNG sai dela; sem ela,
+que é o caso normal (o tronco não a distribui), sai das peças do próprio tronco.
 
 **Por que reusar as peças do tronco é o item, e não detalhe.** A `ASSETS §6` manda procurar a
 implementação existente e estendê-la. O tronco tem doze peças em `assets/piece_images/`, tem um
 registro de conjuntos (`ui/conjuntos.py`), tem o filtro de traço grosso medido da S-230
 (`ui/pecas.engrossar_traco`) e tem as cores das casas com papel em `ui/tokens.py`. Um segundo
-desenho de tabuleiro produziria diagramas **diferentes** dentro do PDF exportado e na tela que o
-exportou -- duas respostas para a mesma pergunta, que é o defeito que a S-158 nomeia.
-
-**Sem Qt aqui**: PIL e `fitz`. É o que permite exportar um livro inteiro de linha de comando, e é
-por isso que o módulo mora na raiz do pacote, ao lado de `pdf_io.py`, e não em `ui/` nem em `qt/`.
+desenho de tabuleiro produziria diagramas **diferentes** no que se exporta e na tela que o
+exportou -- duas respostas para a mesma pergunta, que é o defeito que a S-158 nomeia. A origem
+desenhava glifo Unicode em Arial, um desenho que nenhuma outra tela do programa usa.
 """
 
 from __future__ import annotations
@@ -57,23 +51,14 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "FONTE_MERIDA_ENV",
     "LADO_PADRAO_PX",
-    "escopo_do_desenho",
-    "fonte_merida",
-    "limpar_cache",
-    "svg_do_diagrama",
-    "pdf_do_diagrama",
     "png_do_diagrama",
 ]
 
 LADO_PADRAO_PX = 1024
-"""O lado do tabuleiro renderizado, quando ninguém pede outro.
-
-Quem carimbava num PDF **não** usava este valor: o `pdf_substituicao`, retirado na S-881,
-derivava o lado do tamanho em pontos do retângulo a 450 dpi, porque o que importava ali era a
-resolução na folha impressa e não um número redondo."""
+"""O lado do tabuleiro renderizado, quando ninguém pede outro."""
 
 FONTE_MERIDA_ENV = "CVOFF_MERIDA_FONT"
-"""A variável que aponta uma fonte de xadrez para o desenho vetorial.
+"""A variável que aponta uma fonte de xadrez para o desenho.
 
 **Renomeada da origem** (`CHESS_MERIDA_FONT`) para o prefixo do projeto, que é o de
 `conjuntos.CONJUNTO_ENV` (`CVOFF_PIECES`) -- duas variáveis de ambiente com prefixos diferentes
@@ -84,8 +69,7 @@ PASTA_DE_FONTES = BUNDLE_ROOT / "assets" / "fonts"
 somente-leitura viaja dentro do pacote.
 
 A pasta **não** faz parte do repositório: a Merida é uma fonte de terceiros, e o tronco não a
-distribui. Sem ela o caminho vetorial cai no `cairosvg` e, sem ele, no raster -- que é o único
-que sempre existe."""
+distribui. Sem ela o desenho sai das peças do tronco, que sempre existem."""
 
 _NOMES_DE_MERIDA = ("Merida.ttf", "MERIDA.TTF", "Merida.otf", "MERIDA.OTF", "chessmerida.otf")
 
@@ -108,18 +92,6 @@ def _rgb(papel: str) -> tuple[int, int, int]:
     """O papel de `ui/tokens.py` como triplo para o PIL. **Nenhum hexadecimal cravado aqui.**"""
     valor = tokens.cor(papel).lstrip("#")
     return (int(valor[0:2], 16), int(valor[2:4], 16), int(valor[4:6], 16))
-
-
-def escopo_do_desenho() -> str:
-    """O que muda o desenho e **não** está na operação: a fonte e o conjunto de peças em vigor.
-
-    Entrava na assinatura da prévia da substituição de diagrama (`ui/substituicao`, retirado na
-    S-881). Sem isto, trocar a fonte de xadrez em execução deixaria a prévia mostrando o desenho
-    anterior -- o mesmo defeito que a origem teve com o link do Lichess, encontrado por outro
-    caminho. Hoje não tem chamador.
-    """
-    fonte = fonte_merida()
-    return f"{fonte if fonte is None else fonte.name}|{conjuntos.escolhido()}"
 
 
 @lru_cache(maxsize=1)
@@ -151,13 +123,6 @@ def fonte_merida() -> Path | None:
     return _procurar_merida(os.getenv(FONTE_MERIDA_ENV, ""), str(PASTA_DE_FONTES))
 
 
-def limpar_cache() -> None:
-    """Esquece a fonte encontrada e as peças carregadas. Existe para o teste e para a troca de
-    conjunto: as duas coisas mudam o desenho sem mudar a posição."""
-    _procurar_merida.cache_clear()
-    _pecas_carregadas.cache_clear()
-
-
 def _linhas_de_merida(placement: str) -> list[str]:
     """As oito fileiras como texto da fonte legada -- glifo por casa, variante por cor da casa."""
     casas = board_edit.squares_from_placement(board_edit.placement_of(placement))
@@ -171,97 +136,6 @@ def _linhas_de_merida(placement: str) -> list[str]:
             letras.append(tabela[simbolo])
         linhas.append("".join(letras))
     return linhas
-
-
-# --------------------------------------------------------------------------- PDF vetorial
-
-
-def pdf_do_diagrama(placement: str, *, lado_px: int = LADO_PADRAO_PX) -> bytes | None:
-    """O diagrama como PDF de uma página quadrada, ou `None` quando não há caminho vetorial.
-
-    `None` e não uma exceção: quem chama tem uma reserva boa (`png_do_diagrama`), e a ausência da
-    fonte é uma condição **normal** de instalação -- o tronco não distribui a Merida. Levantar
-    aqui faria a exportação inteira falhar por causa de um arquivo que nunca foi obrigatório.
-    """
-    vetorial = _pdf_com_merida(placement, lado_px=lado_px)
-    if vetorial is not None:
-        return vetorial
-    return _pdf_com_cairosvg(placement, lado_px=lado_px)
-
-
-def _pdf_com_merida(placement: str, *, lado_px: int) -> bytes | None:
-    caminho = fonte_merida()
-    if caminho is None:
-        return None
-    try:
-        import fitz
-
-        linhas = _linhas_de_merida(placement)
-        casa = float(lado_px) / 8.0
-        corpo = casa * 0.98
-        fonte = fitz.Font(fontfile=str(caminho))
-        # A linha de base, e não o topo da caixa: `insert_text` ancora ali. Centrar a **caixa**
-        # da fonte na casa é o que faz o glifo não subir nem descer meia casa.
-        altura = (fonte.ascender - fonte.descender) * corpo
-        base = (casa - altura) / 2.0 + (fonte.ascender * corpo)
-
-        documento = fitz.open()
-        pagina = documento.new_page(width=float(lado_px), height=float(lado_px))
-        nome = "MeridaEmbutida"
-        pagina.insert_font(fontname=nome, fontfile=str(caminho))
-        for fileira, linha in enumerate(linhas):
-            y = fileira * casa + base
-            for coluna, glifo in enumerate(linha):
-                if glifo == " ":
-                    continue
-                largura = fonte.text_length(glifo, fontsize=corpo)
-                x = coluna * casa + (casa - largura) / 2.0
-                pagina.insert_text(
-                    fitz.Point(x, y), glifo, fontsize=corpo, fontname=nome, color=(0, 0, 0)
-                )
-        saida: bytes = documento.tobytes(deflate=True, garbage=3)
-        documento.close()
-        return saida
-    except Exception:  # noqa: BLE001 - fonte exótica não pode derrubar a exportação
-        logger.warning("Falha no PDF vetorial com a fonte de xadrez para %r", placement, exc_info=True)
-        return None
-
-
-def _pdf_com_cairosvg(placement: str, *, lado_px: int) -> bytes | None:
-    try:
-        import cairosvg
-    except Exception:  # noqa: BLE001 - `cairosvg` exige runtime nativo no Windows; faltar não é erro
-        logger.debug("cairosvg indisponível; o caminho vetorial do python-chess está desligado")
-        return None
-    try:
-        svg = svg_do_diagrama(placement, lado_px=lado_px)
-        saida: bytes = cairosvg.svg2pdf(
-            bytestring=svg.encode("utf-8"), output_width=lado_px, output_height=lado_px
-        )
-        return saida
-    except Exception:  # noqa: BLE001 - ver acima: cair no raster é melhor que não exportar
-        logger.warning("Falha no PDF via cairosvg para %r; caindo no raster", placement, exc_info=True)
-        return None
-
-
-def svg_do_diagrama(placement: str, *, lado_px: int = LADO_PADRAO_PX) -> str:
-    """O diagrama como SVG, via `python-chess`. É a única saída que não depende de nada opcional.
-
-    **O desenho é o do `python-chess`, e não o das peças do tronco**, e a diferença é
-    deliberada: quem exporta SVG quer editar o vetor em outro programa, e ali ter caminhos
-    editáveis vale mais que ser idêntico ao que a janela mostra. Um SVG que embutisse os PNGs
-    seria um raster com extensão de vetor.
-    """
-    import chess
-    import chess.svg
-
-    from chess_diagram_ocr.semantics import compose_fen
-
-    tabuleiro = chess.Board(compose_fen(board_edit.placement_of(placement), chess.WHITE))
-    return str(chess.svg.board(board=tabuleiro, size=int(lado_px), coordinates=False))
-
-
-# --------------------------------------------------------------------------- raster
 
 
 @lru_cache(maxsize=4)
@@ -297,8 +171,8 @@ def _pasta_do_conjunto(pasta_do_usuario: str = "") -> tuple[str, bool]:
     """A pasta das peças em vigor e se aquele conjunto engrossa o traço.
 
     Pergunta a `ui/conjuntos.py`, que é o registro do tronco, e não a um caminho fixo: quem
-    trocou o conjunto exporta com o conjunto que escolheu, e o traço grosso da S-230 vale igual
-    dentro do PDF.
+    trocou o conjunto vê o desenho com o conjunto que escolheu, e o traço grosso da S-230 vale
+    igual no PNG.
 
     **A pasta do usuário entra por argumento e não é lida daqui.** Ela mora no estado da
     aplicação, e este módulo roda em lote e em thread de trabalho -- ler estado de janela num
@@ -353,7 +227,7 @@ def _png_com_pecas(placement: str, *, lado_px: int, pasta_do_usuario: str = "") 
 
     **O tabuleiro não segue tema**, e é o que `ui/tokens.CASA_CLARA` já registra: xadrez impresso
     é claro-e-escuro em qualquer tema, e um diagrama que mudasse de cor com a janela deixaria de
-    ser reconhecível como diagrama -- ainda mais dentro de um PDF, que ninguém abre na janela.
+    ser reconhecível como diagrama -- ainda mais num PNG exportado, que ninguém abre na janela.
     """
     casas = board_edit.squares_from_placement(board_edit.placement_of(placement))
     clara = _rgb(tokens.CASA_CLARA)

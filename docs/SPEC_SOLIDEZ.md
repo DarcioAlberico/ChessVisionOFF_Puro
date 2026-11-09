@@ -2416,6 +2416,12 @@ acima do limiar, 124 acima do teto); (3) `desenho_de_diagrama.escopo_do_desenho`
 livro com PGN usam o `png_do_diagrama` do mesmo módulo; nenhuma guarda de órfãos cobre a raiz do
 pacote. Nenhuma dependência saiu: `fitz` e `PIL` têm outros importadores.
 
+**Entregue** (2026-11-09, segundo commit): o que ficou morto em `desenho_de_diagrama.py` saiu:
+`escopo_do_desenho`, `pdf_do_diagrama`, `_pdf_com_merida`, `_pdf_com_cairosvg`, `svg_do_diagrama` e
+`limpar_cache` (este nunca teve chamador, nem antes da S-881); o módulo exporta só `png_do_diagrama` e
+as duas constantes, e ganhou `tests/test_desenho_de_diagrama.py`. O extra `cairosvg` do
+`pyproject.toml` fica: ele está no `second-opinion`, para o clone do tsoj, e não era deste módulo.
+
 ## Fase 120 — Os arquivos-deus do Qt
 
 ## S-865 · `PainelDeTexto` em cinco módulos

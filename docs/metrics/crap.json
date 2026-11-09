@@ -6,9 +6,9 @@
   "gerada_em": "2026-11-08T11:55:29.861025",
   "versao_do_coverage": "7.16.2"
  },
- "funcoes_medidas": 5841,
- "funcoes_acima_do_limiar": 582,
- "funcoes_acima_do_teto": 124,
+ "funcoes_medidas": 5835,
+ "funcoes_acima_do_limiar": 580,
+ "funcoes_acima_do_teto": 123,
  "funcoes": [
   {
    "arquivo": "src/chess_diagram_ocr/cli/texto_conflitos.py",
@@ -728,14 +728,6 @@
    "linha": 222,
    "cc": 21,
    "cobertura": 0.6591,
-   "crap": 38.5
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/desenho_de_diagrama.py",
-   "funcao": "_pdf_com_merida",
-   "linha": 190,
-   "cc": 6,
-   "cobertura": 0.0333,
    "crap": 38.5
   },
   {
@@ -4232,14 +4224,6 @@
    "linha": 385,
    "cc": 10,
    "cobertura": 0.9,
-   "crap": 10.1
-  },
-  {
-   "arquivo": "src/chess_diagram_ocr/desenho_de_diagrama.py",
-   "funcao": "_pdf_com_cairosvg",
-   "linha": 228,
-   "cc": 3,
-   "cobertura": 0.0769,
    "crap": 10.1
   },
   {
