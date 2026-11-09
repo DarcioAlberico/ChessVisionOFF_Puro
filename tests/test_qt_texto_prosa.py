@@ -82,6 +82,7 @@ class _Aba(unittest.TestCase):
 
     def ler(self, cruas: Sequence[Any], falso: _Falso | None = None) -> None:
         with (
+            mock.patch.object(leitor, "_reconhecedor_configurado", return_value=mock.MagicMock(name="glifo")),
             mock.patch.object(leitor, "linhas_do_glifo", return_value=(list(cruas), [])),
             mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=[]),
             mock.patch("chess_diagram_ocr.text.leitor_de_linha.leitor_padrao", return_value=falso or _Falso()),

@@ -92,6 +92,7 @@ class _ComLivro(unittest.TestCase):
 
     def ler(self, motor: str, cruas: Sequence[Any], *, diagramas: Sequence[Any] = (), **opcoes: Any) -> pagina.PaginaLida:
         with (
+            mock.patch.object(leitor, "_reconhecedor_configurado", return_value=mock.MagicMock(name="glifo")),
             mock.patch.object(leitor, "linhas_do_glifo", return_value=(list(cruas), [])),
             mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=list(diagramas)),
         ):
