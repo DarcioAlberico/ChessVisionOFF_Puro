@@ -247,7 +247,7 @@ class AppendSampleTests(unittest.TestCase):
             root = Path(tmp)
             board = np.full((BOARD_SIZE, BOARD_SIZE, 3), 128, dtype=np.uint8)
 
-            with unittest.mock.patch.object(Path, "write_bytes", side_effect=OSError("disco cheio")):
+            with unittest.mock.patch("chess_diagram_ocr.atomic_io.atomic_write_bytes", side_effect=OSError("disco cheio")):
                 with self.assertRaises(OSError) as ctx:
                     append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
 
@@ -275,7 +275,7 @@ class AppendSampleTests(unittest.TestCase):
             append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
             antes = (root / "labels.csv").read_text(encoding="utf-8")
 
-            with unittest.mock.patch.object(Path, "write_bytes", side_effect=OSError("disco cheio")):
+            with unittest.mock.patch("chess_diagram_ocr.atomic_io.atomic_write_bytes", side_effect=OSError("disco cheio")):
                 with self.assertRaises(OSError):
                     append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
 
