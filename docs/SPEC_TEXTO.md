@@ -1644,8 +1644,14 @@ para baixo sairiam marcadas como 90 ou 270 e seriam lidas erradas. Livro impress
 assim, que é o motivo declarado de 180 não ser candidato -- a fileira existe para que o preço
 dessa decisão esteja escrito em vez de suposto.
 
-**Sonda.** `simbolo:chess_diagram_ocr.text.vertical:candidatos`,
-`simbolo:chess_diagram_ocr.text.vertical:recorte_de_pe`, `metrica:texto_vertical`.
+**Mudou de casa em 2026-11-09 (S-855, D3 da solidez).** A regra nunca foi ligada na página -- o
+ângulo da caixa era sempre 0 em produção --, e o único chamador do `text/vertical.py` era o
+`cvoff-texto-vertical`. O giro e a decisão de ângulo foram para `cli/texto_vertical.py`; a geometria
+da pilha (`candidatos`, `marcar`, `recorte_de_pe`) e o ramo girado do corte de linha saíram, sem
+chamador, e estão no histórico do git.
+
+**Sonda.** `simbolo:chess_diagram_ocr.cli.texto_vertical:decidir_angulo`,
+`simbolo:chess_diagram_ocr.cli.texto_vertical:girar`, `metrica:texto_vertical`.
 
 ---
 

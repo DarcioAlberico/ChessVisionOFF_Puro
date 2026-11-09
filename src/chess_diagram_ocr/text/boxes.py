@@ -84,16 +84,16 @@ alturas de caractere. Ver "O diagrama sai antes" no cabeçalho."""
 class Caixa:
     """Um contorno aceito como caractere, em pixels da imagem que foi passada.
 
-    `angulo` são graus **anti-horários do texto impresso**, a convenção do PDF: 0 normal, 90 o
-    texto sobe, 270 o texto desce. Fica aqui desde já, e sempre 0 por enquanto, porque quem o
-    preenche é a S-197 e mudar a forma do dado depois obrigaria a mexer em tudo que o consome.
+    **Sem ângulo.** A S-197 deixou aqui um `angulo` que ninguém preenchia na página -- era sempre 0
+    em produção --, e com ele um ramo girado no corte de linha e no modo bloco. A decisão de ângulo
+    foi para o comando que a mede (`cli/texto_vertical`, S-855), que diz em que ângulo lê a caixa
+    em vez de guardá-lo nela.
     """
 
     x1: int
     y1: int
     x2: int
     y2: int
-    angulo: int = 0
 
     @property
     def largura(self) -> int:
@@ -341,7 +341,6 @@ def unir_pingos(
             min(atual.y1, pingo.y1),
             max(atual.x2, pingo.x2),
             max(atual.y2, pingo.y2),
-            atual.angulo,
         )
 
     return [uniao.get(i, caixa) for i, caixa in enumerate(caixas) if i not in absorvido]

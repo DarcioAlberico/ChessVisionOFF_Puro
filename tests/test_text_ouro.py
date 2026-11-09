@@ -10,6 +10,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 from unittest import mock
 
 from chess_diagram_ocr.text import ouro
@@ -222,6 +223,50 @@ class ManifestoTests(unittest.TestCase):
             self.assertEqual(_teste_valido(), ouro.carregar(caminho))
 
 
+class LeituraTests(unittest.TestCase):
+    """O valor fora da lista não chega ao `Manifesto`: a leitura recusa, e `problemas` não o vê (S-855)."""
+
+    def _json(self) -> dict[str, Any]:
+        return ouro.para_json(_teste_valido())
+
+    def test_estrato_desconhecido_levanta_na_leitura(self) -> None:
+        dados = self._json()
+        dados["folhas"][0]["estrato"] = "titulo"
+        with self.assertRaisesRegex(ouro.ManifestoInvalido, "estrato 'titulo'"):
+            ouro.de_json(dados)
+
+    def test_cada_campo_fechado_levanta_na_leitura(self) -> None:
+        casos = (
+            ("livros", "split", "treino"),
+            ("livros", "lingua", "en"),
+            ("livros", "origem", ""),
+            ("livros", "diagramacao", "outra"),
+            ("folhas", "split", "treino"),
+            ("folhas", "lingua", "en"),
+        )
+        for lista, campo, valor in casos:
+            with self.subTest(lista=lista, campo=campo):
+                dados = self._json()
+                dados[lista][0][campo] = valor
+                with self.assertRaisesRegex(ouro.ManifestoInvalido, f"{campo} {valor!r}"):
+                    ouro.de_json(dados)
+
+    def test_chave_desconhecida_diz_qual_e(self) -> None:
+        """Era `TypeError` do construtor, sem dizer de que livro."""
+        dados = self._json()
+        dados["livros"][0]["cor"] = "azul"
+        with self.assertRaisesRegex(ouro.ManifestoInvalido, "cor"):
+            ouro.de_json(dados)
+
+    def test_o_arquivo_com_estrato_desconhecido_nao_carrega(self) -> None:
+        with TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "ouro.json"
+            ouro.gravar(_teste_valido(), caminho)
+            caminho.write_bytes(caminho.read_bytes().replace(b'"estrato": "prosa"', b'"estrato": "titulo"', 1))
+            with self.assertRaises(ouro.ManifestoInvalido):
+                ouro.carregar(caminho)
+
+
 class SobrasTests(unittest.TestCase):
     """O estrato que falta se completa com **todas** as folhas do outro (achado B1 do crítico)."""
 
@@ -385,20 +430,14 @@ class CadaGuardaTests(unittest.TestCase):
         self._so(_manifesto([*m.livros, L(_id(71), ouro.RESERVA, "eng", reprovado="auditoria: x")], list(m.folhas)),
                  "reprovado")
 
-    def test_origem_e_diagramacao_invalidas(self) -> None:
-        m = _teste_valido()
-        self._so(_manifesto([*m.livros, L(_id(72), ouro.RESERVA, "eng", origem="")], list(m.folhas)), "origem ''")
-        self._so(_manifesto([*m.livros, L(_id(73), ouro.RESERVA, "eng", diagramacao="outra")], list(m.folhas)),
-                 "diagramação 'outra'")
-
     def test_data_com_lixo_no_fim(self) -> None:
         m = _teste_valido()
         self._so(_manifesto(list(m.livros), list(m.folhas), congelado_em="2026-10-30x"), "congelado_em")
         self._so(_manifesto(list(m.livros), list(m.folhas), primeira_leitura_do_teste="2026-11-02x"), "foi lido")
 
-    def test_lingua_fora_da_lista_e_folha_noutra_lingua(self) -> None:
+    def test_folha_noutra_lingua(self) -> None:
+        """A língua fora da lista não chega aqui: é `LeituraTests`."""
         m = _teste_valido()
-        self._so(_manifesto([*m.livros, L(_id(74), ouro.RESERVA, "en")], list(m.folhas)), "língua 'en'")
         self._so(_manifesto(list(m.livros), [*m.folhas, F(_id(0), 300, "por", ouro.PROSA, ouro.TESTE)]), "em 'por'")
 
     def test_as_linguas_sao_as_oito_do_acervo(self) -> None:
@@ -448,15 +487,13 @@ class CadaGuardaTests(unittest.TestCase):
         m = _teste_valido()
         self._so(_manifesto(list(m.livros), list(m.folhas), versao=2), "versão 2")
 
-    def test_livro_sem_identidade_e_split_invalido(self) -> None:
+    def test_livro_sem_identidade(self) -> None:
         m = _teste_valido()
         self._so(_manifesto([*m.livros, L("", ouro.RESERVA, "eng")], list(m.folhas)), "livro sem identidade")
-        self._so(_manifesto([*m.livros, L(_id(70), "treino", "eng")], list(m.folhas)), "split 'treino'")
 
-    def test_estrato_invalido_folha_zero_e_repetida(self) -> None:
+    def test_folha_zero_e_repetida(self) -> None:
         m = _teste_valido()
         base = list(m.folhas)
-        self._so(_manifesto(list(m.livros), [*base, F(_id(99), 300, "eng", "titulo", ouro.DEV)]), "estrato 'titulo'")
         self._so(_manifesto(list(m.livros), [*base, F(_id(99), 0, "eng", ouro.PROSA, ouro.DEV)]), "base 1")
         self._so(_manifesto(list(m.livros), [*base, base[0]]), "repetida")
 

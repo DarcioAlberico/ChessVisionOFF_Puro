@@ -108,8 +108,8 @@ def partir(
     if corte <= caixa.y1 or corte >= caixa.y2:
         return [caixa]
 
-    de_cima = Caixa(caixa.x1, caixa.y1, caixa.x2, corte, caixa.angulo)
-    de_baixo = Caixa(caixa.x1, corte, caixa.x2, caixa.y2, caixa.angulo)
+    de_cima = Caixa(caixa.x1, caixa.y1, caixa.x2, corte)
+    de_baixo = Caixa(caixa.x1, corte, caixa.x2, caixa.y2)
     if arbitro is None:
         return [caixa]
 

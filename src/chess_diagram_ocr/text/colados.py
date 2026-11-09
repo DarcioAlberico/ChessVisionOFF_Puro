@@ -108,8 +108,8 @@ def partir(
     if corte <= caixa.x1 or corte >= caixa.x2:
         return [caixa]
 
-    esquerda = Caixa(caixa.x1, caixa.y1, corte, caixa.y2, caixa.angulo)
-    direita = Caixa(corte, caixa.y1, caixa.x2, caixa.y2, caixa.angulo)
+    esquerda = Caixa(caixa.x1, caixa.y1, corte, caixa.y2)
+    direita = Caixa(corte, caixa.y1, caixa.x2, caixa.y2)
     if modo == SEMPRE:
         return [esquerda, direita]
     if arbitro is None:

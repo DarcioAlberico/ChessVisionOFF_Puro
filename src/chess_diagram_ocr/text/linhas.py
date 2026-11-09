@@ -1,8 +1,8 @@
 """Onde uma linha de texto acaba e a próxima começa (S-187).
 
 **A linha sai da ordem de leitura, e não da geometria da página.** É a decisão central deste
-módulo, e ela é o oposto do que a intuição sugere. Quem já resolveu coluna, elemento transversal
-e pilha girada é a ordenação; refazer isso aqui por coordenada desfaria o trabalho dela e
+módulo, e ela é o oposto do que a intuição sugere. Quem já resolveu coluna e elemento transversal
+é a ordenação; refazer isso aqui por coordenada desfaria o trabalho dela e
 voltaria a intercalar as duas colunas de um livro de duas colunas.
 
 O que sobra é cortar a sequência em três situações -- ela **desce**, **volta para a esquerda** ou
@@ -26,10 +26,10 @@ aspas, e o defeito voltaria pela porta dos fundos. Enquanto só houver caixa cur
 `desceu` não opina -- quem corta ali é o `voltou`, que é o fim de linha de verdade e dispara nos
 mesmos pontos.
 
-**A pilha girada fica de fora, e não é detalhe.** A 90° o texto se lê de baixo para cima, então
-subir ali é o andamento normal da linha; cortar faria de cada letra uma linha. Quem preenche o
-ângulo é a S-197, e até lá ele é sempre 0 -- a guarda está escrita porque escrevê-la depois
-significaria reabrir este arquivo com a S-197 já dentro dele.
+**Texto girado não chega aqui.** A 90° o texto se lê de baixo para cima, e subir seria o andamento
+normal da linha. A S-197 deixou uma guarda para isso, sobre um ângulo que a página nunca preencheu;
+ela saiu com a S-855, e a decisão de ângulo mora no `cli/texto_vertical`, que a mede. Quem ligar
+texto girado na página tem de voltar a pôr a guarda, e o teste dela, junto.
 """
 
 from __future__ import annotations
@@ -153,8 +153,7 @@ def quebrar_em_linhas(caixas: Sequence[Caixa]) -> list[list[Caixa]]:
             anterior = atual[-1]
             desceu = base is not None and (caixa.y1 + caixa.y2) / 2 > base + folga
             voltou = caixa.x1 < anterior.x1 - anterior.altura
-            girado = bool(caixa.angulo or anterior.angulo)
-            subiu = not girado and caixa.y2 < min(c.y1 for c in atual) - folga_acima
+            subiu = caixa.y2 < min(c.y1 for c in atual) - folga_acima
             if desceu or voltou or subiu:
                 linhas.append(atual)
                 atual, base = [], None

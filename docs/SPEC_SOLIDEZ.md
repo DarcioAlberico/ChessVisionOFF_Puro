@@ -2081,6 +2081,15 @@ página, ou mover o módulo para o CLI e apagar o ramo `girado`).
 
 **Aceite.** O teste passa; o mypy acusa um valor fora do `Literal` escrito num teste de tipo.
 
+**Entregue** (2026-11-09): `Literal`, e não `StrEnum` (o mypy ainda mira 3.10, e o JSON grava a string
+crua). O ouro levanta `ManifestoInvalido` em `de_json`, também na chave desconhecida, e as cinco guardas de
+valor saíram de `problemas`; `PaginaLida.unidade` virou `Unidade`, `Token.origem` `OrigemDoToken` e
+`classe_do_token` devolve `ClasseDoToken`. D3 (b): o que o `cvoff-texto-vertical` usa (`endireitar`, `girar`,
+`confianca_media`, `decidir_angulo`) foi para `cli/texto_vertical.py`; `candidatos`, `marcar` e
+`recorte_de_pe`, sem chamador, saíram com o `Caixa.angulo` e os dois ramos girados (`linhas`,
+`leitura_de_linha`). **Fica de fora** a `OpcoesDeLeitura`: `_ler_pagina_do_livro` mora em `text/leitor.py`,
+que a S-836 tinha aberto ao mesmo tempo.
+
 ## S-856 · Exceções estreitas no texto e no perfil de cor
 
 **Problema** (confirmado por leitura). `ocr_caption._read_band` (`ocr_caption.py:233-237`) devolve `[]`

@@ -47,7 +47,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from .boxes import Caixa
 from .colunas import atravessa, atribuir_coluna
@@ -279,7 +279,8 @@ def menos_confiavel(procedencias: Sequence[Procedencia]) -> Procedencia:
         return "camada"
     return min(procedencias, key=ORDEM_DE_CONFIANCA.index)
 
-UNIDADES = ("pt", "px")
+Unidade = Literal["pt", "px"]
+UNIDADES: tuple[Unidade, ...] = get_args(Unidade)
 """`pt` são pontos do PDF, `px` são pixels da imagem renderizada.
 
 **A unidade viaja com a página porque perdê-la é um defeito silencioso.** Um bbox em pixels a 220
@@ -872,7 +873,7 @@ class PaginaLida:
 
     largura: float = 0.0
     altura: float = 0.0
-    unidade: str = "pt"
+    unidade: Unidade = "pt"
     colunas: tuple[Coluna, ...] = ()
     cabecalho: LinhaLida | None = None
     rodape: LinhaLida | None = None
@@ -977,9 +978,9 @@ class PaginaLida:
         esquema = int(dados.get("esquema", ESQUEMA))
         if esquema > ESQUEMA:
             raise PaginaInvalida(f"esquema {esquema} é mais novo que o que esta versão lê ({ESQUEMA})")
-        unidade = str(dados.get("unidade", "pt"))
-        if unidade not in UNIDADES:
-            raise PaginaInvalida(f"unidade {unidade!r} não é uma de {UNIDADES}")
+        unidade = next((u for u in UNIDADES if u == dados.get("unidade", "pt")), None)
+        if unidade is None:
+            raise PaginaInvalida(f"unidade {dados.get('unidade')!r} não é uma de {UNIDADES}")
         numero = dados.get("numero_impresso")
         cabecalho = dados.get("cabecalho")
         rodape = dados.get("rodape")
@@ -1026,7 +1027,7 @@ def de_diagramas(
     pagina: int = 0,
     largura: float = 0.0,
     altura: float = 0.0,
-    unidade: str = "pt",
+    unidade: Unidade = "pt",
     documento: str = "",
     confiancas: Sequence[float] = (),
     placements: Sequence[str] = (),
@@ -1070,6 +1071,7 @@ __all__ = [
     "ORDEM_DE_CONFIANCA",
     "PROCEDENCIAS",
     "UNIDADES",
+    "Unidade",
     "Aviso",
     "Bloco",
     "BlocoDeDiagrama",

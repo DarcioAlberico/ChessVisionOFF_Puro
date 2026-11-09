@@ -33,12 +33,17 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from typing import Final, Literal
 
 from .notacao import FIGURINAS, LETRAS_DE_PECA, MEIAS_RISCAS
 
-PROSA = "prosa"
-NOTACAO = "notacao"
-OUTRO = "outro"
+ClasseDoToken = Literal["prosa", "notacao", "outro"]
+OrigemDoToken = Literal["glifo", "outro"]
+"""`glifo` ou `outro`: o leitor que não é o glifo (o Tesseract, o RapidOCR ou a camada)."""
+
+PROSA: Final = "prosa"
+NOTACAO: Final = "notacao"
+OUTRO: Final = "outro"
 
 _PECA = LETRAS_DE_PECA + FIGURINAS
 _HIFEN = f"-{MEIAS_RISCAS}"
@@ -90,7 +95,7 @@ CURTAS = frozenset(
 """Palavras que existem e o léxico compartilhado descarta. Privadas daqui: ver o cabeçalho."""
 
 
-def classe_do_token(token: str) -> str:
+def classe_do_token(token: str) -> ClasseDoToken:
     """`prosa`, `notacao` ou `outro`. Próprio deste módulo: ver o cabeçalho."""
     nu = token.strip("()[]{},;:\"'")
     if not nu:
@@ -209,8 +214,7 @@ class Token:
     """Um token da linha fundida, e de onde ele veio."""
 
     texto: str
-    origem: str
-    """`glifo` ou `outro`: o leitor que não é o glifo."""
+    origem: OrigemDoToken
     do_glifo: str = ""
     """O que o glifo leu ali, quando teve par: a diferença é o sinal de discordância."""
     confianca: float | None = None
@@ -359,6 +363,8 @@ def intervalos_de(tokens: Sequence[Token], marcados: Iterable[int]) -> tuple[tup
 __all__ = [
     "CURTAS",
     "FRACAO_MARCADA",
+    "ClasseDoToken",
+    "OrigemDoToken",
     "NOTACAO",
     "OUTRO",
     "PROSA",
