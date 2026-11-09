@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..arquivo_do_dono import ler_texto
 from ..atomic_io import atomic_write_json
 from . import viewport
 from .livros import caminho_canonico, chave_do_livro
@@ -531,8 +532,8 @@ def load_state(path: Path) -> AppState:
         return AppState()
 
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raw = json.loads(ler_texto(path, do_usuario=False))
+    except (OSError, ValueError) as exc:
         logger.warning("Estado da aplicação descartado (%s): %s", path, exc)
         return AppState()
 

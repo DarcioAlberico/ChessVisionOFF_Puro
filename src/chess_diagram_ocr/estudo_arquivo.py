@@ -143,8 +143,8 @@ def carregar(documento: str | Path, *, pasta: Path | None = None) -> Leitura[Sal
     ficam em `Sala.crus`, como texto, e voltam iguais na gravação. Um PGN de 50 estudos em que o 12
     está corrompido ainda tem 49 tardes de trabalho dentro -- e o 12 continua no disco.
 
-    **O arquivo que não abre é leitura travada (S-812)**: arquivo em uso, ou um byte que não é
-    UTF-8. Antes o byte virava `\ufffd` em silêncio, e a gravação seguinte o regravava assim -- a
+    **O arquivo que não abre é leitura travada (S-812)**: arquivo em uso, ou bytes que nem UTF-8
+    nem cp1252 leem -- o PGN em ANSI de outro programa abre (S-905, `ler_texto`). Antes o byte virava `\ufffd` em silêncio, e a gravação seguinte o regravava assim -- a
     análise com acento escrita por outro programa saía estragada para sempre. A sala que não pôde
     ser lida até o fim também: a parte lida vale em memória, e a gravação fica travada.
     """

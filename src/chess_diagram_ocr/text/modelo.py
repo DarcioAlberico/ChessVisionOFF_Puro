@@ -169,7 +169,7 @@ def ler_metadado(caminho: Path = CAMINHO_PADRAO_META) -> MetadadoDeClasses:
         bruto = json.loads(caminho.read_text(encoding="utf-8"))
     except OSError as exc:
         raise ModeloInvalido(f"Não foi possível ler o metadado das classes em {caminho}: {exc}") from exc
-    except json.JSONDecodeError as exc:
+    except ValueError as exc:
         raise ModeloInvalido(f"{caminho.name} não é um JSON válido: {exc}") from exc
 
     if not isinstance(bruto, dict):

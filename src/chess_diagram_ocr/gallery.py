@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+from .arquivo_do_dono import ler_texto
 from .atomic_io import atomic_write_json, atomic_write_text
 from .config import DATA_DIR, DEFAULT_READING_ORDER, PROJECT_ROOT, ReadingOrder
 from .ui.livros import caminho_canonico, mesmo_livro
@@ -83,8 +84,8 @@ class GaleriaDeOutroLivro(ValueError):
 def _dono_gravado(arquivo: Path) -> str:
     """O `source_pdf` do JSON já gravado em `arquivo`, ou `""` (ausente, ilegível ou anterior a ele)."""
     try:
-        dados = json.loads(Path(arquivo).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        dados = json.loads(ler_texto(Path(arquivo), do_usuario=False))
+    except (OSError, ValueError):
         return ""
     return str(dados.get("source_pdf") or "") if isinstance(dados, dict) else ""
 
@@ -463,8 +464,8 @@ def load_annotations(
         return anotacoes
 
     try:
-        dados = json.loads(caminho.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        dados = json.loads(ler_texto(caminho, do_usuario=False))
+    except (OSError, ValueError) as exc:
         logger.warning("Nao foi possivel ler %s (%s); seguindo sem anotacoes.", caminho, exc)
         return anotacoes
 
@@ -576,8 +577,8 @@ def export_human(*, directory: Path = DEFAULT_GALLERY_DIR) -> HumanExtract:
         if caminho.name.endswith(".index.json") or ".bak-" in caminho.name:
             continue
         try:
-            dados = json.loads(caminho.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+            dados = json.loads(ler_texto(caminho, do_usuario=False))
+        except (OSError, ValueError) as exc:
             logger.warning("Galeria ilegível em %s (%s); fora do extrato.", caminho, exc)
             continue
         extrato.books += 1
@@ -615,12 +616,12 @@ def read_human_extract(path: Path = DEFAULT_HUMAN_EXTRACT) -> list[dict[str, Any
     if not caminho.exists():
         return []
     registros = []
-    for numero, linha in enumerate(caminho.read_text(encoding="utf-8").splitlines(), start=1):
+    for numero, linha in enumerate(ler_texto(caminho, do_usuario=False).splitlines(), start=1):
         if not linha.strip():
             continue
         try:
             registro = json.loads(linha)
-        except json.JSONDecodeError as exc:
+        except ValueError as exc:
             logger.warning("Linha %d do extrato humano ignorada (%s).", numero, exc)
             continue
         if isinstance(registro, dict) and registro.get("book") and registro.get("at"):
@@ -649,8 +650,8 @@ def restore_human(
         anotacoes = GalleryAnnotations(source_name=livro)
         if caminho.exists():
             try:
-                anotacoes = GalleryAnnotations.from_dict(json.loads(caminho.read_text(encoding="utf-8")))
-            except (OSError, json.JSONDecodeError) as exc:
+                anotacoes = GalleryAnnotations.from_dict(json.loads(ler_texto(caminho, do_usuario=False)))
+            except (OSError, ValueError) as exc:
                 logger.warning("Galeria ilegível em %s (%s); será refeita a partir do extrato.", caminho, exc)
 
         tocados = 0

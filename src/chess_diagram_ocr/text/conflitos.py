@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import Any
 
 from .. import config
+from ..arquivo_do_dono import ler_texto
 from ..atomic_io import atomic_write_text
 from ..config import DATA_DIR
 from ..relogio import agora, agora_iso
@@ -203,10 +204,10 @@ def ler_decisoes(caminho: Path = DECISOES_PADRAO) -> dict[str, dict[str, Any]]:
     """`sha256 -> decisão`. Levanta `DecisaoInvalida` com o motivo em pt-BR."""
     caminho = Path(caminho)
     try:
-        bruto = json.loads(caminho.read_text(encoding="utf-8"))
+        bruto = json.loads(ler_texto(caminho, do_usuario=True))
     except OSError as exc:
         raise DecisaoInvalida(f"não foi possível ler as decisões em {caminho}: {exc}") from exc
-    except json.JSONDecodeError as exc:
+    except ValueError as exc:
         raise DecisaoInvalida(f"{caminho.name} não é um JSON válido: {exc}") from exc
     if not isinstance(bruto, list):
         raise DecisaoInvalida(f"{caminho.name} devia ser uma lista de decisões.")

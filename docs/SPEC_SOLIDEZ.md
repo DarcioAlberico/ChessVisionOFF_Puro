@@ -494,6 +494,18 @@ para arquivo do programa, decodifica linha a linha com `errors="replace"`. Falha
 **Aceite.** Os quatro passam, e a guarda por AST passa com piso zero. `settings` está no fecho de medição (o
 `export_checkpoint` não): o commit que o toca remede.
 
+**Entregue** (2026-11-09): `ler_texto` e `ArquivoIlegivel` moram em `arquivo_do_dono.py`, e não em
+`atomic_io`: `ler` já era a borda dos arquivos do dono e passou a chamá-la como arquivo do usuário, para os
+sete leitores de uma vez -- `settings.py` não mudou, e a sala em ANSI abre, como a S-812 deixou anotado. O
+arquivo do programa decodifica com `errors="replace"` o arquivo inteiro, que estraga só o byte rasgado (o
+mesmo que linha a linha), e nunca levanta; o do usuário cai em cp1252 por arquivo, e não por linha como a
+base PGN da S-531. Eram 19 `except`, e não 17. A guarda não reconhece "arquivo do dono" pela AST; o que ela
+procura é leitura de texto no corpo de um `try` -- quem a põe lá promete tolerância --, com dez exceções
+nomeadas por módulo e função, cada uma com a razão (código-fonte, `/proc`, a trava, metadado de modelo, o
+dataset de marcas que já recusa alto). Dezoito leituras passaram por `ler_texto`; as decisões de conflito e
+o `lexico.txt` do caderno como do usuário. Fica de fora o arquivo misto: UTF-8 com um byte ANSI no meio lê
+inteiro como cp1252.
+
 ## S-810 · Booleano estrito e faixas numéricas no `settings.json`
 
 **Problema** (confirmado por script).

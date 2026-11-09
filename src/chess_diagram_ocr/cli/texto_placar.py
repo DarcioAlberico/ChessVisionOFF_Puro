@@ -185,7 +185,7 @@ def carregar_referencia(caminho: Path) -> list[Faixa]:
             continue
         try:
             dados = json.loads(bruta)
-        except json.JSONDecodeError as exc:
+        except ValueError as exc:
             raise ReferenciaInvalida(f"linha {numero}: JSON inválido ({exc})") from exc
         faixas.append(Faixa.de_json(dados, linha=numero))
     return faixas

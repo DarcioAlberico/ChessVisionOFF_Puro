@@ -62,6 +62,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .arquivo_do_dono import ler_texto
 from .config import DATA_DIR
 from .games_db import (
     MAX_HITS_PER_POSITION,
@@ -518,7 +519,7 @@ def _da_linha(linha: Sequence[Any]) -> CachedPosition:
     """`(count, games)` como o SQLite os devolve, virando a resposta que o resto do projeto usa."""
     try:
         crus = json.loads(linha[1]) if linha[1] else []
-    except json.JSONDecodeError:
+    except ValueError:
         crus = []
     return CachedPosition(
         count=int(linha[0]), games=tuple(PositionHit.from_dict(item) for item in crus)
@@ -713,7 +714,7 @@ def _fingerprint_gravado(conexao: sqlite3.Connection) -> dict[str, Any]:
         return {}
     try:
         marca = json.loads(linha[0])
-    except json.JSONDecodeError:
+    except ValueError:
         return {}
     return marca if isinstance(marca, dict) else {}
 
@@ -771,8 +772,8 @@ def _migra_json(conexao: sqlite3.Connection, origem: Path, fingerprint: dict[str
     if not origem.exists():
         return 0
     try:
-        dados = json.loads(origem.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        dados = json.loads(ler_texto(origem, do_usuario=False))
+    except (OSError, ValueError) as exc:
         logger.warning("Cache de posições anterior ilegível em %s (%s); ignorado.", origem, exc)
         return 0
 

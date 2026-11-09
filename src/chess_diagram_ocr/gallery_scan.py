@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .arquivo_do_dono import ler_texto
 from .config import (
     DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
@@ -217,8 +218,8 @@ def load_index(pdf_path: Path, *, directory: Path = DEFAULT_GALLERY_DIR) -> Gall
     if not caminho.exists():
         return None
     try:
-        indice = GalleryIndex.from_dict(json.loads(caminho.read_text(encoding="utf-8")))
-    except (OSError, json.JSONDecodeError) as exc:
+        indice = GalleryIndex.from_dict(json.loads(ler_texto(caminho, do_usuario=False)))
+    except (OSError, ValueError) as exc:
         logger.warning("Nao foi possivel ler %s (%s); tratando como nao varrido.", caminho, exc)
         return None
     conferir_dono(caminho, indice.source_pdf, pdf_path)

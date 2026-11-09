@@ -81,16 +81,29 @@ class SeisLeitoresTests(unittest.TestCase):
         leitura.valor.registrar("um.pdf", placar.CERTO)
         self._conferir(caminho, original, lambda: placar.gravar(leitura))
 
-    def test_sala_com_byte_que_nao_e_utf8(self) -> None:
-        """Antes o byte virava U+FFFD em silêncio, e a regravação estragava a análise para sempre."""
+    def test_sala_com_byte_que_nem_a_cp1252_le(self) -> None:
+        """Antes o byte virava U+FFFD em silêncio, e a regravação estragava a análise para sempre.
+
+        O 0x81 é um dos cinco que a cp1252 não define: depois da S-905 é o que sobra de ilegível.
+        """
         livro = str(self.pasta / "Livro.pdf")
         caminho = estudo_arquivo.caminho_de(livro, pasta=self.pasta)
-        original = self._corromper(caminho, PGN_EM_CP1252)
+        original = self._corromper(caminho, PGN_EM_CP1252.replace(b"\xe1", b"\x81"))
         leitura = estudo_arquivo.carregar(livro, pasta=self.pasta)
         self.assertIsInstance(leitura, Ilegivel)
         self.assertEqual(livro, leitura.valor.documento, "a sala em memória é do livro certo")
-        self.assertIn("UTF-8", leitura.mensagem)
+        self.assertIn("não é UTF-8 nem ANSI", leitura.mensagem)
         self._conferir(caminho, original, lambda: estudo_arquivo.gravar(leitura))
+
+    def test_sala_em_cp1252_abre_e_regrava_a_analise_com_acento(self) -> None:
+        """O PGN que outro programa gravou em ANSI abre, e a gravação o devolve em UTF-8 (S-905)."""
+        livro = str(self.pasta / "Livro.pdf")
+        caminho = estudo_arquivo.caminho_de(livro, pasta=self.pasta)
+        self._corromper(caminho, PGN_EM_CP1252)
+        leitura = estudo_arquivo.carregar(livro, pasta=self.pasta)
+        self.assertIsInstance(leitura, Lida)
+        estudo_arquivo.gravar(leitura)
+        self.assertIn("análise", caminho.read_bytes().decode("utf-8"))
 
     def test_fila_de_revisao_truncada(self) -> None:
         caminho = self.pasta / "review_queue.json"
@@ -222,6 +235,168 @@ class GuardaTests(unittest.TestCase):
                     ):
                         achados.append(f"{modulo}.{funcao.name}:{no.lineno}")
         self.assertEqual([], achados)
+
+
+class LerTextoTests(unittest.TestCase):
+    """`ler_texto` (S-905): o arquivo que passou pelo Bloco de Notas abre, e o do programa não levanta."""
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.caminho = Path(tmp.name) / "arquivo.txt"
+
+    def _ler(self, dados: bytes, *, do_usuario: bool = True) -> str:
+        self.caminho.write_bytes(dados)
+        return arquivo_do_dono.ler_texto(self.caminho, do_usuario=do_usuario)
+
+    def test_as_quatro_formas_do_bloco_de_notas_dao_o_mesmo_texto(self) -> None:
+        texto = "José\nanálise\n"
+        for nome, dados in (
+            ("utf-8", texto.encode("utf-8")),
+            ("utf-8 com BOM", texto.encode("utf-8-sig")),
+            ("ansi", texto.encode("cp1252")),
+            ("utf-16 le", texto.encode("utf-16")),
+            ("utf-16 be", b"\xfe\xff" + texto.encode("utf-16-be")),
+        ):
+            with self.subTest(nome):
+                self.assertEqual(texto, self._ler(dados))
+
+    def test_o_que_nem_a_cp1252_le_e_ilegivel_com_o_byte_no_motivo(self) -> None:
+        with self.assertRaises(arquivo_do_dono.ArquivoIlegivel) as erro:
+            self._ler(b"abc \x81 def")
+        self.assertIsInstance(erro.exception, ValueError, "cai em todo except (OSError, ValueError)")
+        self.assertIn("b'\\x81'", str(erro.exception))
+        with self.assertRaises(arquivo_do_dono.ArquivoIlegivel):
+            self._ler(b"\xff\xfea\x00b")  # UTF-16 de tamanho ímpar
+
+    def test_arquivo_do_programa_estraga_so_o_byte_rasgado(self) -> None:
+        dados = b"linha boa\nan" + "á".encode()[:1] + b"\nlinha boa\n"
+        self.assertEqual("linha boa\nan\ufffd\nlinha boa\n", self._ler(dados, do_usuario=False))
+        self.assertEqual("ab", self._ler(b"\xef\xbb\xbfab", do_usuario=False), "o BOM sai também")
+
+
+PACOTE = Path(arquivo_do_dono.__file__).parent
+"""O pacote que foi importado, e não `PROJECT_ROOT`: num worktree os dois podem ser diferentes."""
+
+LEITURAS_ESTRITAS = {
+    ("cli/audit.py", "violacoes_do_texto"): "relatório que o próprio programa gravou, lido pela linha de comando",
+    ("field_eval.py", "_imports_of"): "código-fonte do repositório, lido para o fecho de importação",
+    ("text_status.py", "_define_no_topo"): "código-fonte do repositório",
+    ("qt/__init__.py", "dialogos_do_produto"): "código-fonte do repositório",
+    ("text/caderno.py", "_inicio_do_processo"): "o /proc do Linux, que não é arquivo de ninguém",
+    ("text/caderno.py", "_ler_trava"): "a trava do processo: o programa a grava, e só ele a lê",
+    ("text/caderno.py", "_gravar_conferido"): "a conferência, igual por igual, do temporário que acabou de ser gravado",
+    ("marcas_de_casa.py", "_ler"): "o dataset de marcas: o arquivo que não lê levanta ValueError alto, de propósito",
+    ("text/modelo.py", "ler_metadado"): "metadado que o treino gravou: byte errado é modelo ilegível, e recusa",
+    ("text/onnx_glifos.py", "ler_metadado_onnx"): "metadado que o treino gravou: byte errado é modelo ilegível, e recusa",
+}
+"""Leituras num `try` que ficam fora de `ler_texto`, e por quê: nenhuma é arquivo que a pessoa edite ou escolha."""
+
+
+def _nomes_do_except(tratador: ast.ExceptHandler) -> set[str]:
+    tipos = tratador.type.elts if isinstance(tratador.type, ast.Tuple) else [tratador.type]
+    return {t.attr if isinstance(t, ast.Attribute) else getattr(t, "id", "") for t in tipos if t is not None}
+
+
+def _eh_leitura_de_texto(no: ast.AST) -> bool:
+    """`p.read_text(...)` ou `p.read_bytes().decode(...)`."""
+    if not isinstance(no, ast.Call) or not isinstance(no.func, ast.Attribute):
+        return False
+    if no.func.attr == "read_text":
+        return True
+    alvo = no.func.value
+    return (
+        no.func.attr == "decode"
+        and isinstance(alvo, ast.Call)
+        and isinstance(alvo.func, ast.Attribute)
+        and alvo.func.attr == "read_bytes"
+    )
+
+
+def achados_da_s905(fonte: str) -> tuple[list[int], dict[int, str]]:
+    """As duas coisas que a guarda da S-905 procura numa fonte.
+
+    - as linhas dos `except` que nomeiam `JSONDecodeError` sem `ValueError` -- e o
+      `UnicodeDecodeError`, que é `ValueError` e não `JSONDecodeError`, passa por eles;
+    - as leituras de texto dentro do corpo de um `try`, pela linha, com a função mais interna
+      em volta (`<módulo>` fora de função). Quem põe a leitura num `try` está prometendo
+      tolerância, e a tolerância mora em `ler_texto`.
+    """
+    arvore = ast.parse(fonte)
+    excepts = [
+        tratador.lineno
+        for tratador in ast.walk(arvore)
+        if isinstance(tratador, ast.ExceptHandler)
+        and tratador.type is not None
+        and "JSONDecodeError" in (nomes := _nomes_do_except(tratador))
+        and "ValueError" not in nomes
+    ]
+    leituras: dict[int, str] = {}
+    escopos: list[tuple[str, ast.AST]] = [("<módulo>", arvore)]
+    escopos += [(f.name, f) for f in ast.walk(arvore) if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    for nome, escopo in escopos:  # o `ast.walk` vai de fora para dentro: a função mais interna fica
+        for tentativa in ast.walk(escopo):
+            if isinstance(tentativa, ast.Try):
+                for comando in tentativa.body:
+                    for no in ast.walk(comando):
+                        if _eh_leitura_de_texto(no):
+                            leituras[no.lineno] = nome
+    return excepts, leituras
+
+
+class GuardaDaS905Tests(unittest.TestCase):
+    """Nenhum `except` deixa `UnicodeDecodeError` passar, e a leitura tolerante passa por `ler_texto`."""
+
+    def _varrer(self) -> tuple[list[str], list[str], set[tuple[str, str]]]:
+        excepts: list[str] = []
+        leituras: list[str] = []
+        vistas: set[tuple[str, str]] = set()
+        for arquivo in sorted(PACOTE.rglob("*.py")):
+            relativo = arquivo.relative_to(PACOTE).as_posix()
+            linhas, lidas = achados_da_s905(arquivo.read_text(encoding="utf-8"))
+            excepts += [f"{relativo}:{linha}" for linha in linhas]
+            for linha, funcao in lidas.items():
+                if relativo == "arquivo_do_dono.py":
+                    continue
+                if (relativo, funcao) in LEITURAS_ESTRITAS:
+                    vistas.add((relativo, funcao))
+                else:
+                    leituras.append(f"{relativo}:{linha} ({funcao})")
+        return excepts, leituras, vistas
+
+    def test_nenhum_except_de_json_sem_valueerror(self) -> None:
+        excepts, _leituras, _vistas = self._varrer()
+        self.assertEqual([], excepts)
+
+    def test_leitura_num_try_passa_por_ler_texto(self) -> None:
+        _excepts, leituras, vistas = self._varrer()
+        self.assertEqual([], leituras)
+        self.assertEqual(set(LEITURAS_ESTRITAS), vistas, "exceção que não acha mais nada sai da lista")
+
+    def test_a_guarda_acha_o_que_procura(self) -> None:
+        """Piso: a guarda não pode passar verde por não saber olhar."""
+        fonte = (
+            "import json\n"
+            "def carregar(p):\n"
+            "    try:\n"
+            "        return json.loads(p.read_text(encoding='utf-8'))\n"
+            "    except (OSError, json.JSONDecodeError):\n"
+            "        return {}\n"
+            "def bruto(p):\n"
+            "    try:\n"
+            "        return p.read_bytes().decode('utf-8')\n"
+            "    except (OSError, ValueError):\n"
+            "        return ''\n"
+            "def certo(p):\n"
+            "    texto = p.read_text(encoding='utf-8')\n"
+            "    try:\n"
+            "        return json.loads(texto)\n"
+            "    except json.JSONDecodeError as e:\n"
+            "        raise ValueError(e)\n"
+        )
+        excepts, leituras = achados_da_s905(fonte)
+        self.assertEqual([5, 16], excepts)
+        self.assertEqual({4: "carregar", 9: "bruto"}, leituras)
 
 
 if __name__ == "__main__":  # pragma: no cover

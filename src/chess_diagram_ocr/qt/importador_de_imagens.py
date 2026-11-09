@@ -46,7 +46,7 @@ from PyQt6.QtWidgets import (
 from chess_diagram_ocr import detector_de_marcas
 from chess_diagram_ocr import importacao_de_imagens as imp
 from chess_diagram_ocr import marcas_de_casa as mc
-from chess_diagram_ocr.arquivo_do_dono import GravacaoRecusada, Leitura, gravavel
+from chess_diagram_ocr.arquivo_do_dono import GravacaoRecusada, Leitura, gravavel, ler_texto
 from chess_diagram_ocr.fen_utils import is_syntactically_valid_fen
 from chess_diagram_ocr.qt import desenho_de_marcas, tema
 from chess_diagram_ocr.qt.dica import dica_em
@@ -441,7 +441,7 @@ class JanelaDeImportacao(QDialog):
 
     def _ultimas_pastas(self) -> dict[str, str]:
         try:
-            dados = json.loads((self._diretorio / ARQUIVO_DAS_PASTAS).read_text(encoding="utf-8"))
+            dados = json.loads(ler_texto(self._diretorio / ARQUIVO_DAS_PASTAS, do_usuario=False))
         except (OSError, ValueError):
             return {}
         return {str(k): str(v) for k, v in dados.items()} if isinstance(dados, dict) else {}

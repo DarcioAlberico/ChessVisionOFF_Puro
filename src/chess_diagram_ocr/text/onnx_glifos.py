@@ -158,7 +158,7 @@ def ler_metadado_onnx(onnx: Path) -> MetadadoOnnx:
             f"O metadado de {onnx.name} não está em {caminho}. Sem ele não há como traduzir "
             "índice em caractere."
         ) from exc
-    except json.JSONDecodeError as exc:
+    except ValueError as exc:
         raise ModeloInvalido(f"{caminho.name} não é um JSON válido: {exc}") from exc
 
     classes = bruto.get("classes") if isinstance(bruto, dict) else None

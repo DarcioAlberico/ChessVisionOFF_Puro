@@ -203,6 +203,24 @@ class ReabrirOArquivoTests(_Aba):
             self.painel.abrir_documento()
         self.assertEqual(pedidas, [2], "o .cvtxt de outro livro não pede folha nenhuma")
 
+    def test_abrir_documento_que_nao_e_utf8_mostra_erro_e_nao_levanta(self) -> None:
+        """`Todos (*.*)` deixa escolher um PDF: a caixa de erro abre, e o slot não derruba o programa (S-905).
+
+        Antes, o `UnicodeDecodeError` não era `ArquivoInvalido`, saía do slot, e o PyQt6 matava o
+        processo. Os bytes são os de um PDF de verdade, com o 0x81 que nem a cp1252 define.
+        """
+        escolhido = self.pasta / "livro.pdf"
+        escolhido.write_bytes(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<< /Length 4 >>\nstream\n\x81\x8d\x00\xff\nendstream\n")
+        texto_antes = self.painel.texto()
+        with mock.patch.object(QFileDialog, "getOpenFileName", return_value=(str(escolhido), "")), mock.patch.object(
+            qt_texto.QMessageBox, "critical"
+        ) as erro:
+            self.painel.abrir_documento()
+        erro.assert_called_once()
+        self.assertIn("livro.pdf", erro.call_args.args[2])
+        self.assertEqual(texto_antes, self.painel.texto(), "o documento da tela continua o mesmo")
+        self.assertIsNone(self.painel._caminho_do_documento)
+
     def test_sem_o_livro_o_texto_abre_e_o_rodape_diz_qual_falta(self) -> None:
         destino = self.gravar(self.pasta / "sumiu" / "livro.pdf")
         with mock.patch.object(qt_texto, "_renderizar") as renderizar, mock.patch.object(

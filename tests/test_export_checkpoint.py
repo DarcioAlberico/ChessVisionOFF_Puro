@@ -188,6 +188,26 @@ class PartialFileTests(unittest.TestCase):
             self.assertEqual(partial.last_page_done, 1)
             self.assertEqual(len(partial.positions), 2)
 
+    def test_parcial_rasgado_no_meio_de_um_acento_retoma_da_pagina_anterior(self) -> None:
+        """A queda no meio do `á` (dois bytes) rasga só a última linha, e não o arquivo (S-905).
+
+        Antes, o arquivo inteiro era decodificado antes do laço que descarta a linha rasgada: o
+        `UnicodeDecodeError` jogava fora as páginas boas, e a exportação recomeçava do zero.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "livro.partial.jsonl"
+            writer = CheckpointWriter(path, params(), every=1)
+            writer.record_page(0, [position(0, 1)])
+            writer.record_page(1, [position(1, 1)])
+            with path.open("ab") as handle:
+                handle.write(b'{"kind": "page", "page_index": 2, "legenda": "an' + "á".encode()[:1])
+
+            with self.assertLogs("chess_diagram_ocr.export_checkpoint", level=logging.WARNING):
+                partial = load_partial(path, params())
+            assert partial is not None
+            self.assertEqual(1, partial.last_page_done)
+            self.assertEqual(2, partial.resume_from)
+
     def test_missing_file_is_not_an_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             self.assertIsNone(load_partial(Path(tmpdir) / "nao-existe.jsonl", params()))

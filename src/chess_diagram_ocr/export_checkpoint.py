@@ -28,6 +28,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 import chess
 
+from .arquivo_do_dono import ler_texto
+
 if TYPE_CHECKING:
     from .pdf_to_pgn import DiagramPosition
 
@@ -348,8 +350,10 @@ def load_partial(path: Path, params: ScanParams) -> PartialExport | None:
         return None
 
     try:
-        raw_lines = path.read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError) as exc:
+        # Do programa (S-905): o acento rasgado pela queda estraga só a última linha, que o laço
+        # abaixo descarta. Decodificar estrito jogava fora as páginas boas junto.
+        raw_lines = ler_texto(path, do_usuario=False).splitlines()
+    except OSError as exc:
         logger.warning("Parcial de exportação ilegível, será ignorado (%s): %s", path, exc)
         return None
 
@@ -359,7 +363,7 @@ def load_partial(path: Path, params: ScanParams) -> PartialExport | None:
 
     try:
         header = json.loads(lines[0])
-    except json.JSONDecodeError as exc:
+    except ValueError as exc:
         logger.warning("Parcial de exportação sem cabeçalho válido, será ignorado (%s): %s", path, exc)
         return None
 

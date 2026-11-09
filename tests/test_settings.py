@@ -204,6 +204,27 @@ class PersistenceTests(unittest.TestCase):
             caminho.write_text("{ isto nao e json", encoding="utf-8")
             self.assertFalse(load_settings(caminho, env={}).remote_fen.is_usable)
 
+    def test_settings_em_cp1252_abre_com_o_caminho_acentuado(self) -> None:
+        """O Bloco de Notas antigo grava ANSI: o caminho de José tem de chegar, e a gravação valer (S-905)."""
+        texto = '{"engine": {"path": "C:\\\\Users\\\\José\\\\stockfish.exe", "multipv": 3}}'
+        for codificacao in ("cp1252", "utf-16"):  # o `>` do PowerShell 5.1 grava UTF-16 com BOM
+            with self.subTest(codificacao=codificacao), tempfile.TemporaryDirectory() as tmp:
+                caminho = Path(tmp) / "settings.json"
+                caminho.write_bytes(texto.encode(codificacao))
+                leitura = ler_arquivo(caminho)
+                self.assertIsInstance(leitura, Lida)
+                self.assertEqual("C:\\Users\\José\\stockfish.exe", leitura.valor.preferencias.engine.path)
+                self.assertEqual(3, load_settings(caminho, env={}).engine.multipv)
+
+    def test_settings_com_bom_le_os_valores(self) -> None:
+        """O BOM do UTF-8 que o Bloco de Notas acrescenta não faz o arquivo virar os padrões (S-905)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "settings.json"
+            caminho.write_bytes(b"\xef\xbb\xbf" + '{"engine": {"path": "C:\\\\José\\\\sf.exe"}}'.encode())
+            leitura = ler_arquivo(caminho)
+            self.assertIsInstance(leitura, Lida, "lida: o próximo Salvar grava, e não trava")
+            self.assertEqual("C:\\José\\sf.exe", leitura.valor.preferencias.engine.path)
+
     def test_a_file_that_is_not_an_object_does_not_crash(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             caminho = Path(tmp) / "settings.json"

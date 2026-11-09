@@ -283,7 +283,7 @@ class ArquivoDeMarcas:
             return {}
         try:
             dados = json.loads(self.caminho.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        except (OSError, ValueError) as exc:
             raise ValueError(f"Arquivo de marcas ilegível ({self.caminho}): {exc}") from exc
         if not isinstance(dados, dict) or dados.get("versao") != VERSAO_DO_ARQUIVO:
             raise ValueError(f"Arquivo de marcas em formato desconhecido: {self.caminho}")

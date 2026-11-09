@@ -249,7 +249,7 @@ class ProvenanceIndex:
 
         try:
             cabecalho = json.loads(linhas[0])
-        except json.JSONDecodeError:
+        except ValueError:
             raise ValueError(f"{path} não começa com um cabeçalho de índice válido.") from None
 
         indice = cls(

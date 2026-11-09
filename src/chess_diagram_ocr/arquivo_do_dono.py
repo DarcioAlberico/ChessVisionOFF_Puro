@@ -21,10 +21,16 @@ para a pessoa. É a decisão D1(a) da solidez: o arquivo ilegível é copiado ao
 
 **Por que copiar, se nada vai ser gravado por cima.** Porque a trava dura a sessão, e a pessoa pode
 apagar o arquivo para destravar -- que é a saída que a frase oferece. A cópia é o que sobra dela.
+
+**Os bytes viram texto em `ler_texto`, e só lá (S-905).** O README manda editar o
+`settings.json` à mão, e o Bloco de Notas grava BOM, ANSI (cp1252) ou, pelo `>` do PowerShell 5.1,
+UTF-16: os três abrem. O UTF-8 estrito fazia o primeiro cair nos padrões e os outros dois
+travarem, com o caminho do motor de José dentro.
 """
 
 from __future__ import annotations
 
+import codecs
 import json
 import logging
 import math
@@ -41,6 +47,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "MARCA_DA_COPIA",
+    "ArquivoIlegivel",
     "ConteudoIlegivel",
     "EsquemaFuturo",
     "GravacaoRecusada",
@@ -54,6 +61,7 @@ __all__ = [
     "gravavel",
     "ler",
     "ler_lista",
+    "ler_texto",
 ]
 
 T = TypeVar("T")
@@ -73,6 +81,49 @@ class VersaoFutura(Exception):
     def __init__(self, versao: object) -> None:
         super().__init__(f"esquema {versao!r}")
         self.versao = versao
+
+
+class ArquivoIlegivel(ValueError):
+    """Os bytes do arquivo não viram texto (S-905). `str(erro)` é o motivo, para a pessoa.
+
+    É `ValueError` como o `UnicodeDecodeError` que ela substitui, e por isso cai em todo
+    `except (OSError, ValueError)` de quem lê.
+    """
+
+
+def ler_texto(caminho: Path, *, do_usuario: bool) -> str:
+    """O texto do arquivo. Único lugar do programa em que bytes de arquivo viram texto tolerante.
+
+    O BOM sai, e o de UTF-16 decide a codificação. Depois:
+
+    - `do_usuario` -- arquivo que a pessoa edita ou escolhe: UTF-8, e cp1252 quando o UTF-8
+      falha, que é o "ANSI" do Bloco de Notas numa máquina brasileira. O que nem a cp1252 lê
+      (os cinco bytes que ela não define, o UTF-16 de tamanho ímpar) levanta `ArquivoIlegivel`.
+      **Por arquivo, e não por linha**: um arquivo de configuração é gravado de uma vez, por um
+      programa só, e não mistura as duas coisas como a base PGN da S-531 (`decodificar_linha`).
+    - senão -- arquivo que o programa gravou: UTF-8 com `errors="replace"`, que nunca levanta.
+      O byte rasgado estraga só a linha dele: a gravação interrompida no meio de um acento
+      deixa as linhas de antes intactas, e quem lê descarta a rasgada.
+
+    `OSError` passa: não poder abrir é outra coisa que não ler mal.
+    """
+    dados = Path(caminho).read_bytes()
+    erros = "strict" if do_usuario else "replace"
+    if dados.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        try:
+            return dados.decode("utf-16", erros)
+        except UnicodeDecodeError:
+            raise ArquivoIlegivel("o arquivo começa como UTF-16 e não termina como UTF-16") from None
+    if dados.startswith(codecs.BOM_UTF8):
+        dados = dados[len(codecs.BOM_UTF8) :]
+    try:
+        return dados.decode("utf-8", erros)
+    except UnicodeDecodeError as utf8:
+        try:
+            return dados.decode("cp1252")
+        except UnicodeDecodeError:
+            byte = dados[utf8.start : utf8.start + 1]
+            raise ArquivoIlegivel(f"o byte {byte!r} na posição {utf8.start} não é UTF-8 nem ANSI") from None
 
 
 class ConteudoIlegivel(ValueError):
@@ -215,7 +266,8 @@ def _onde_esta(copia: Path | None) -> str:
 def ler(caminho: Path, interpretar: Callable[[str], T], padrao: Callable[[], T]) -> Leitura[T]:
     """Lê um arquivo do dono. Único lugar em que "não leu" vira um dos três estados.
 
-    `interpretar` recebe o texto e devolve o valor; levanta `VersaoFutura` para esquema mais novo,
+    O texto sai de `ler_texto` como arquivo do usuário: todo arquivo do dono pode ter passado
+    pelo Bloco de Notas. `interpretar` recebe o texto e devolve o valor; levanta `VersaoFutura` para esquema mais novo,
     `ConteudoIlegivel` para leitura parcial, e qualquer outra exceção quer dizer ilegível. `padrao`
     dá o valor do primeiro dia e o da memória quando não leu.
     """
@@ -223,7 +275,7 @@ def ler(caminho: Path, interpretar: Callable[[str], T], padrao: Callable[[], T])
     if not caminho.exists():
         return Lida(padrao(), caminho)
     try:
-        texto = caminho.read_bytes().decode("utf-8")
+        texto = ler_texto(caminho, do_usuario=True)
         return Lida(interpretar(texto), caminho)
     except VersaoFutura as futura:
         logger.warning("%s é de um esquema mais novo (%r); a gravação fica travada.", caminho, futura.versao)
@@ -240,8 +292,6 @@ def ler(caminho: Path, interpretar: Callable[[str], T], padrao: Callable[[], T])
 
 
 def _motivo(erro: BaseException) -> str:
-    if isinstance(erro, UnicodeDecodeError):
-        return f"o byte {erro.object[erro.start:erro.start + 1]!r} na posição {erro.start} não é UTF-8"
     if isinstance(erro, OSError):
         return erro.strerror or erro.__class__.__name__
     return str(erro) or erro.__class__.__name__

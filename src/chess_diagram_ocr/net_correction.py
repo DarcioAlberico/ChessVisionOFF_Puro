@@ -164,7 +164,7 @@ def parse_net_response(payload: str) -> str:
     """
     try:
         parsed = json.loads(payload)
-    except json.JSONDecodeError as exc:
+    except ValueError as exc:
         raise RuntimeError("Resposta da API não está em JSON.") from exc
 
     results = parsed.get("results") if isinstance(parsed, dict) else None

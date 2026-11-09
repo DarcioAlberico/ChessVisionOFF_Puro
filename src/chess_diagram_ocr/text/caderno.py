@@ -79,7 +79,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeAlias
 
-from ..arquivo_do_dono import EsquemaFuturo, GravacaoRecusada, Ilegivel, Lida, VersaoFutura, ler
+from ..arquivo_do_dono import EsquemaFuturo, GravacaoRecusada, Ilegivel, Lida, VersaoFutura, ler, ler_texto
 from ..atomic_io import atomic_write_json
 from ..config import DATA_DIR
 from ..relogio import agora_iso, com_fuso, do_arquivo, ler_iso
@@ -371,8 +371,9 @@ class Caderno:
     def lexico(self) -> frozenset[str]:
         """As palavras que este livro acrescentou ao léxico: os nomes próprios dele, em caixa baixa."""
         try:
-            linhas = (self.pasta / "lexico.txt").read_text(encoding="utf-8").splitlines()
-        except OSError:
+            # Do usuário (S-905): é texto de uma palavra por linha, e a pessoa o abre no Bloco de Notas.
+            linhas = ler_texto(self.pasta / "lexico.txt", do_usuario=True).splitlines()
+        except (OSError, ValueError):
             return frozenset()
         return frozenset(linha.strip().lower() for linha in linhas if linha.strip())
 
@@ -407,7 +408,7 @@ class Caderno:
     def _ler_indice(self) -> None:
         caminho = self.pasta / _INDICE
         try:
-            dados = json.loads(caminho.read_text(encoding="utf-8"))
+            dados = json.loads(ler_texto(caminho, do_usuario=False))
             folhas = dados["folhas"]
             self._folhas = {int(k) - 1: EstadoDaFolha.de_json(int(k) - 1, v) for k, v in folhas.items()}
             self._apelidos = [str(a) for a in dados.get("apelidos", [])]
@@ -684,7 +685,7 @@ def _pasta_pelo_apelido(raiz: Path, pdf: Path) -> Path | None:
     achadas: list[tuple[float, Path]] = []
     for indice in raiz.glob(f"*/{_INDICE}"):
         try:
-            apelidos = json.loads(indice.read_text(encoding="utf-8")).get("apelidos", [])
+            apelidos = json.loads(ler_texto(indice, do_usuario=False)).get("apelidos", [])
             if any(mesmo_livro(str(apelido), pdf) for apelido in apelidos):
                 achadas.append((indice.stat().st_mtime, indice.parent))
         except (OSError, ValueError, AttributeError, TypeError) as erro:
