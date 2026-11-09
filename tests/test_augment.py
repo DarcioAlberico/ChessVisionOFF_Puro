@@ -309,16 +309,32 @@ class DeterminismTests(unittest.TestCase):
         segunda = transformacao(cell(0.7))
         self.assertFalse(torch.equal(primeira, segunda))
 
-    def test_o_sorteio_usa_o_rng_do_torch(self) -> None:
+    def test_o_sorteio_usa_so_o_rng_do_torch(self) -> None:
         """O `DataLoader` semeia o RNG do torch por worker; com `random`, dois workers
-        aplicariam a mesma sequência de degradações."""
-        import inspect
+        aplicariam a mesma sequência de degradações.
 
-        from chess_diagram_ocr import augment
+        Mesma semente do torch e sementes diferentes do `random` e do numpy: a saída não pode
+        mudar. Era uma busca de `torch.rand` no texto do módulo (S-870), e um sorteio por
+        `random.uniform` ou `np.random` passava por ela. Vinte sementes para que cada etapa
+        de probabilidade 0,5 dispare algumas vezes; a marca entra com probabilidade 1.
+        """
+        import random
 
-        fonte = inspect.getsource(augment)
-        self.assertNotIn("random.random()", fonte)
-        self.assertIn("torch.rand", fonte)
+        import numpy as np
+
+        transformacao = build_train_transform(TODAS)
+        marca = build_marca(replace(TODAS, marca=1.0))
+        assert marca is not None
+        for semente in range(20):
+            saidas = []
+            for alheia in (1, 2):
+                random.seed(alheia)
+                np.random.seed(alheia)
+                torch.manual_seed(semente)
+                saidas.append((transformacao(cell(0.7)), marca(cell(0.9))))
+            with self.subTest(semente=semente):
+                self.assertTrue(torch.equal(saidas[0][0], saidas[1][0]), "a pipeline sorteou fora do torch")
+                self.assertTrue(torch.equal(saidas[0][1], saidas[1][1]), "a marca sorteou fora do torch")
 
 
 class MarcaTests(unittest.TestCase):

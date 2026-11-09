@@ -14,11 +14,11 @@ uma sexta em `review_queue.rare_classes_from_labels`, que ninguém tinha listado
 
 from __future__ import annotations
 
-import inspect
 import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import pandas as pd
 
@@ -508,9 +508,19 @@ class LabelOriginsTests(unittest.TestCase):
             self.assertEqual(labels_module.label_origins(caminho), {"a.png": ("", "", "")})
 
     def test_passa_pela_porta_unica_do_labels_csv(self) -> None:
-        """S-51: nada lê o `labels.csv` fora do `LabelStore`, nem o agrupamento novo."""
-        origem = inspect.getsource(labels_module.label_origins)
-        self.assertIn("LabelStore", origem)
+        """S-51: nada lê o `labels.csv` fora do `LabelStore`, nem o agrupamento novo.
+
+        Conta a passagem pela leitura do `LabelStore` (S-870): era uma busca do nome no fonte
+        da função, e um comentário com ele bastava para passar uma leitura por `csv` direto.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = self._grava(tmp, [{"filename": "a.png", "source_pdf": "livro.pdf", "source_page": "41"}])
+            ler = labels_module.LabelStore.read
+            with mock.patch.object(labels_module.LabelStore, "read", autospec=True, side_effect=ler) as lida:
+                origens = labels_module.label_origins(caminho)
+            self.assertEqual(origens, {"a.png": ("livro.pdf", "41", "")})
+            self.assertEqual(lida.call_count, 1)
+            self.assertEqual(lida.call_args.args[0].path, caminho)
 
 
 class SavedDiagramsByPageTests(unittest.TestCase):

@@ -2728,6 +2728,14 @@ os antigos passam nesse caso.
 
 **Aceite.** Os três que ficam reprovam com a regra quebrada e com o comentário intacto.
 
+**Entregue** (2026-11-09): dos três, só dois ainda liam o fonte. O de `augment_version` já tinha virado
+leitura de `_optim_metadata` na S-839 (e `Trainer.fit` gravando o `lr` no checkpoint cobre o espalhamento
+em `prepare`); o de `test_preprocess.py` saiu com a S-843. O do RNG passou a semear o torch igual e o
+`random`/numpy diferentes, em 20 sementes, pela pipeline e pela marca; o do `LabelStore` conta a chamada a
+`LabelStore.read`. Sabotagens: `random.uniform` no portão de probabilidade, `random.randrange` no tipo da
+marca e leitura por `csv.DictReader` com comentário citando o `LabelStore` reprovam os novos e passavam
+nos antigos. Os dois `#[0-9a-f]{6}` no fonte (`diagrama_svg`, `docx_saida`) são proibição, e ficam.
+
 ## S-871 · Guardas de varredura com piso, e o registro de comandos como catraca
 
 **Problema** (confirmado). `tests/test_cli_errors.py:145-154` faz glob de `cli/*.py` procurando
