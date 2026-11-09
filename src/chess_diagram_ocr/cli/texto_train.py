@@ -247,12 +247,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if not registro or livros.max(initial=-1) < 0:
             raise ds.BaseVazia("sem registro de livro")
-        lado = ds.split_por_livro(
+        lado, por_livro = ds.split_por_livro(
             varredura.y, grupos, livros, fracoes=fracoes, semente=args.semente
         )
         tipo_de_split = "livro"
         ressalva = "livros inteiros em validacao e teste; o teste tem livro que o treino nao viu"
     except ds.BaseVazia as motivo:
+        # Sem split por livro a trava gemea conta toda amostra com livro, como sempre contou.
+        por_livro = livros >= 0
         lado = ds.split_por_grupo(
             varredura.y, grupos, medivel=pode_medir, fracoes=fracoes, semente=args.semente
         )
@@ -271,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # E a trava gemea, para o split por livro: um livro em dois lados desfaz o unico teste que
     # mede generalizacao de fonte, e desfaz em silencio.
-    livros_vazados = ds.livros_em_dois_lados(livros, lado)
+    livros_vazados = ds.livros_em_dois_lados(livros, lado, aptos=por_livro)
     if livros_vazados:
         raise ValueError(
             f"o split deixou {len(livros_vazados)} livro(s) em mais de um lado. O teste do "

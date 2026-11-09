@@ -1855,6 +1855,12 @@ a regra já mandou para o treino de propósito; `split_por_livro` passa a devolv
 
 **Aceite.** O teste passa.
 
+**Entregue** (2026-11-08): `split_por_livro` devolve `(lado, aptos)`, a máscara das amostras que o livro
+colocou, em vez da lista de grupos atravessados; `aptos` é argumento obrigatório de `livros_em_dois_lados`.
+Antes do conserto o teste reprovou em 8 de 10 sementes. Quando o `cvoff-texto-train` cai para o split por
+grupo, a trava continua contando toda amostra com livro, como antes (lá ela ainda aborta com registro e
+menos de três livros; não mudei).
+
 ## Fase 118 — Texto: fronteira e decisões únicas
 
 Os itens desta fase mexem em `text/leitor.py`, `text/fusao.py` e `text/pagina.py`, os mesmos arquivos das
