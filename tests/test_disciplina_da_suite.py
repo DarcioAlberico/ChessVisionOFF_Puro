@@ -15,6 +15,7 @@ from __future__ import annotations
 import ast
 import inspect
 import io
+import os
 import shutil
 import subprocess
 import textwrap
@@ -22,10 +23,12 @@ import tokenize
 import unittest
 from pathlib import Path
 from unittest import mock
+from urllib.parse import quote
 
 from ambiente_de_teste import pasta_temporaria
 from arvores_do_repositorio import checkout_principal
 from qt_app import TEM_PYQT
+from sonda_de_escrita import Sonda, normalizado
 from subprocesso import rodar_python
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -133,7 +136,8 @@ class NadaVazaDoTesteTests(unittest.TestCase):
         pegaria a primeira chamada e não a segunda: no `GalleryModel` quem grava é um campo posto
         na construção, a suíte constrói vinte modelos sem ele que nunca gravam, e o teste que
         grava direito põe o campo por atribuição depois. Não há forma sintática que separe os
-        três, e por isso a guarda é do `conftest` e olha o efeito.
+        três, e por isso a guarda é do `conftest` e olha a escrita -- a deste processo, por auditoria
+        (`tests/sonda_de_escrita.py`, S-805), e não a mudança na pasta, que pode ser de outro programa.
 
         Esta linha é o que impede que ela seja removida sem que ninguém note. `PROJECT_ROOT` está
         cobrado junto de propósito: a guarda tem de vigiar a pasta que o **código** resolve, e não
@@ -141,7 +145,8 @@ class NadaVazaDoTesteTests(unittest.TestCase):
         passa despercebido -- a S-218 já foi vácua exatamente assim.
         """
         conftest = (TESTES / "conftest.py").read_text(encoding="utf-8")
-        self.assertIn("nada_novo_no_data_de_verdade", conftest)
+        self.assertIn("dados_de_quem_roda_ficam_onde_estao", conftest)
+        self.assertIn("sonda_de_escrita.instalar(pastas_de_dados_reais())", conftest)
         self.assertIn("PROJECT_ROOT", conftest, "a guarda tem de vigiar a pasta que o código resolve")
 
 
@@ -419,7 +424,8 @@ class DadosDeQuemRodaTests(unittest.TestCase):
         copia = pasta_temporaria(self, prefixo="cvoff-sabotagem-")
         shutil.copytree(FONTES, copia / "src" / "chess_diagram_ocr", ignore=shutil.ignore_patterns("__pycache__"))
         (copia / "tests").mkdir()
-        shutil.copy2(TESTES / "arvores_do_repositorio.py", copia / "tests")
+        for ajudante in ("arvores_do_repositorio.py", "sonda_de_escrita.py"):
+            shutil.copy2(TESTES / ajudante, copia / "tests")
         sabotado = conftest.replace(LINHA_DO_DESVIO, "pass  # sabotagem: o desvio saiu\n")
         (copia / "tests" / "conftest.py").write_text(sabotado, encoding="utf-8", newline="\n")
         (copia / "tests" / "test_abre_o_cache.py").write_text(TESTE_QUE_ABRE_O_CACHE, encoding="utf-8", newline="\n")
@@ -445,8 +451,8 @@ class DadosDeQuemRodaTests(unittest.TestCase):
         saida = filho.stdout + filho.stderr
         self.assertNotEqual(0, filho.returncode, saida)
         self.assertIn("1 passed", saida)
-        self.assertIn("mexeu nos dados de quem roda a suíte", saida)
-        self.assertIn("games_positions.sqlite (criado)", saida)
+        self.assertIn("test_abre_o_cache_padrao escreveu nos dados de quem roda a suíte", saida)
+        self.assertIn("games_positions.sqlite (sqlite3.connect", saida)
         self.assertTrue(
             (copia / "data" / "games_positions.sqlite").exists(),
             "A sabotagem não gravou no data/ da cópia: a prova não provou nada.",
@@ -498,7 +504,7 @@ class TarefaVazadaTests(unittest.TestCase):
         """
         copia = pasta_temporaria(self, prefixo="cvoff-sabotagem-")
         (copia / "tests").mkdir()
-        for ajudante in ("conftest.py", "qt_app.py", "arvores_do_repositorio.py"):
+        for ajudante in AJUDANTES_DA_GUARDA:
             shutil.copy2(TESTES / ajudante, copia / "tests" / ajudante)
         (copia / "tests" / "test_deixa_a_tarefa.py").write_text(TESTE_QUE_DEIXA_A_TAREFA, encoding="utf-8", newline="\n")
         (copia / "pytest.ini").write_text("[pytest]\n", encoding="utf-8", newline="\n")
@@ -530,32 +536,177 @@ class DadosDoCheckoutPrincipalTests(unittest.TestCase):
     só olhasse para elas passaria verde sobre uma escrita no `data/` que tem o que perder.
     """
 
-    def test_a_pasta_do_checkout_principal_esta_entre_as_vigiadas(self) -> None:
+    def test_as_pastas_do_checkout_principal_estao_entre_as_vigiadas(self) -> None:
         from conftest import pastas_de_dados_reais
 
-        self.assertIn(checkout_principal() / "data", pastas_de_dados_reais())
+        principal = checkout_principal()
+        self.assertIn(principal / "data", pastas_de_dados_reais())
+        self.assertIn(principal / "pgn_database", pastas_de_dados_reais())
 
-    def test_a_guarda_acusa_a_escrita_no_data_do_principal(self) -> None:
-        """**A prova de vida**, num checkout principal de mentira: o cache que nasce lá é acusado.
+    def test_a_sonda_anota_a_escrita_no_data_do_principal(self) -> None:
+        """**A prova de vida**, num checkout principal de mentira: a escrita que cai lá é anotada.
 
-        Nada é escrito no checkout principal de verdade: o `checkout_principal` do `conftest` aponta
-        para uma pasta temporária, e é nela que o "cache" nasce.
+        A sonda aqui é uma à parte, chamada com os eventos que o interpretador levantaria: nada é
+        escrito em pasta nenhuma, e a sonda da sessão não vê nada disto.
         """
         import conftest
 
         principal = pasta_temporaria(self, prefixo="cvoff-principal-")
-        (principal / "data").mkdir()
         with mock.patch.object(conftest, "checkout_principal", return_value=principal):
             pastas = conftest.pastas_de_dados_reais()
-        caches = conftest.caches_de_posicoes(pastas)
-        antes, listagem = conftest.retrato(caches), conftest._listagem_de(principal / "data")
-        (principal / "data" / "games_positions.sqlite").write_bytes(b"cache de mentira")
+        sonda = Sonda()
+        sonda.vigiar(pastas)
+        cache = principal / "data" / "games_positions.sqlite"
+        sonda("open", (str(cache), "wb", os.O_WRONLY | os.O_CREAT | os.O_TRUNC))
 
-        self.assertEqual(
-            [f"{principal / 'data' / 'games_positions.sqlite'} (criado)"],
-            [m for m in conftest.caches_mexidos(antes, conftest.retrato(caches)) if str(principal) in m],
+        self.assertEqual([(normalizado(cache), "open")], [(e.caminho, e.evento) for e in sonda.recolher()])
+        self.assertEqual([], sonda.recolher(), "recolher esvazia o que entregou")
+
+
+class SondaDeEscritaTests(unittest.TestCase):
+    """O que a sonda conta como escrita, evento por evento, sem escrever nada (S-805)."""
+
+    def setUp(self) -> None:
+        self.dados = pasta_temporaria(self, prefixo="cvoff-sonda-") / "data"
+        self.sonda = Sonda()
+        self.sonda.vigiar([self.dados])
+
+    def _anotadas(self, evento: str, *args: object) -> list[str]:
+        self.sonda(evento, args)
+        return [escrita.evento for escrita in self.sonda.recolher()]
+
+    def test_leitura_nao_e_escrita(self) -> None:
+        arquivo = str(self.dados / "labels.csv")
+        self.assertEqual([], self._anotadas("open", arquivo, "r", os.O_RDONLY))
+        self.assertEqual([], self._anotadas("os.listdir", str(self.dados)))
+        uri = "file:" + quote((self.dados / "games_positions.sqlite").as_posix()) + "?mode=ro"
+        self.assertEqual([], self._anotadas("sqlite3.connect", uri))
+
+    def test_cada_forma_de_escrever_e_anotada(self) -> None:
+        arquivo, outro = str(self.dados / "labels.csv"), str(self.dados / "novo.csv")
+        cache = self.dados / "games_positions.sqlite"
+        casos = [
+            ("open", (arquivo, "a", os.O_WRONLY | os.O_APPEND | os.O_CREAT)),
+            ("open", (arquivo, "r+", os.O_RDWR)),
+            ("open", (outro, None, os.O_WRONLY | os.O_CREAT | os.O_EXCL)),
+            ("os.remove", (arquivo, -1)),
+            ("os.mkdir", (str(self.dados / "gallery"), 0o777, -1)),
+            ("shutil.rmtree", (str(self.dados / "gallery"),)),
+            ("os.utime", (arquivo, None, None, -1)),
+            ("sqlite3.connect", (os.fsencode(cache),)),
+            ("sqlite3.connect", ("file:" + quote(cache.as_posix()),)),
+        ]
+        for evento, args in casos:
+            with self.subTest(evento=evento, args=args):
+                self.assertEqual([evento], self._anotadas(evento, *args))
+
+    def test_renomear_conta_a_origem_e_o_destino(self) -> None:
+        dentro, fora = str(self.dados / "labels.csv"), str(self.dados.parent / "fora.csv")
+        self.assertEqual(["os.rename"], self._anotadas("os.rename", dentro, fora, -1, -1))
+        self.assertEqual(["os.rename"], self._anotadas("os.rename", fora, dentro, -1, -1))
+
+    def test_pasta_vizinha_de_nome_parecido_nao_e_vigiada(self) -> None:
+        vizinha = str(self.dados.parent / "data_antiga" / "x.png")
+        self.assertEqual([], self._anotadas("open", vizinha, "wb", os.O_WRONLY | os.O_CREAT))
+
+    def test_caixa_diferente_e_a_mesma_pasta_no_windows(self) -> None:
+        if os.path.normcase("A") == "A":
+            self.skipTest("sistema de arquivos que distingue caixa")
+        maiuscula = str(self.dados / "samples" / "x.png").upper()
+        self.assertEqual(["open"], self._anotadas("open", maiuscula, "wb", os.O_WRONLY | os.O_CREAT))
+
+    def test_descritor_de_arquivo_nao_derruba_o_gancho(self) -> None:
+        self.assertEqual([], self._anotadas("open", 3, "wb", os.O_WRONLY))
+        self.assertEqual([], self._anotadas("os.utime", 3, None, None, -1))
+
+
+TESTE_COM_OUTRO_PROCESSO_GRAVANDO = '''
+from pathlib import Path
+
+from subprocesso import rodar_python
+
+AMOSTRA = Path(__file__).resolve().parents[1] / "data" / "samples" / "rotulada_ao_lado.png"
+
+
+def test_outro_processo_grava_no_data():
+    """O programa do dono, aberto ao lado, grava uma amostra nova no meio do teste."""
+    rodar_python(f"from pathlib import Path; Path({str(AMOSTRA)!r}).write_bytes(b'png')")
+    assert AMOSTRA.exists()
+'''
+
+TESTE_QUE_GRAVA_NO_DATA = '''
+import os
+from pathlib import Path
+
+DADOS = Path(__file__).resolve().parents[1] / "data"
+
+
+def test_o_proprio_processo_grava_no_data():
+    """O teste grava por conta própria, por um `open` e por um `os.replace`."""
+    (DADOS / "samples" / "do_proprio.png").write_bytes(b"png")
+    os.replace(DADOS / "samples" / "do_proprio.png", DADOS / "samples" / "renomeada.png")
+'''
+
+AJUDANTES_DA_GUARDA = (
+    "conftest.py",
+    "qt_app.py",
+    "arvores_do_repositorio.py",
+    "sonda_de_escrita.py",
+    "subprocesso.py",
+)
+"""O que o `conftest` copiado precisa ao lado para importar, e o `subprocesso` que o teste de mentira usa."""
+
+
+class EscritaDeQuemRodaTests(unittest.TestCase):
+    """A guarda de dados pergunta se **este** processo escreveu, e não se alguém escreveu (S-805).
+
+    **O falso positivo, de 2026-11-09.** O dono rotulava diagramas no checkout principal -- uma amostra
+    nova em `data/samples/` a cada ~15 s -- enquanto a suíte rodava num worktree. A guarda comparava a
+    listagem e o `mtime` do `data/` antes e depois, e acusava ERROR na desmontagem de testes que não
+    gravaram nada (`test_ui_orfaos`, `test_qualidade_dryer`, `test_packaging`).
+
+    As duas provas rodam o `conftest` numa cópia, cujo `data/` faz o papel do de verdade: o
+    `checkout_principal` de uma pasta fora do git é a própria cópia.
+    """
+
+    def _rodar(self, teste: str) -> tuple[subprocess.CompletedProcess[str], Path]:
+        copia = pasta_temporaria(self, prefixo="cvoff-guarda-de-escrita-")
+        (copia / "tests").mkdir()
+        for ajudante in AJUDANTES_DA_GUARDA:
+            shutil.copy2(TESTES / ajudante, copia / "tests" / ajudante)
+        (copia / "tests" / "test_de_mentira.py").write_text(teste, encoding="utf-8", newline="\n")
+        (copia / "pytest.ini").write_text("[pytest]\n", encoding="utf-8", newline="\n")
+        (copia / "data" / "samples").mkdir(parents=True)
+        filho = rodar_python(
+            textwrap.dedent(
+                f"""
+                import os, sys
+                os.chdir({str(copia)!r})
+                import pytest
+                sys.exit(pytest.main(["-q", "-p", "no:cacheprovider", "tests"]))
+                """
+            ),
+            check=False,
         )
-        self.assertEqual({"games_positions.sqlite"}, conftest._listagem_de(principal / "data") - listagem)
+        return filho, copia / "data" / "samples"
+
+    def test_outro_processo_gravando_no_data_nao_reprova_ninguem(self) -> None:
+        filho, amostras = self._rodar(TESTE_COM_OUTRO_PROCESSO_GRAVANDO)
+        saida = filho.stdout + filho.stderr
+        self.assertTrue((amostras / "rotulada_ao_lado.png").exists(), "o outro processo não gravou: nada foi provado")
+        self.assertEqual(0, filho.returncode, saida)
+        self.assertIn("1 passed", saida)
+        self.assertNotIn("error", saida)
+
+    def test_o_proprio_processo_gravando_no_data_reprova_o_teste_que_gravou(self) -> None:
+        filho, _ = self._rodar(TESTE_QUE_GRAVA_NO_DATA)
+        saida = filho.stdout + filho.stderr
+        self.assertNotEqual(0, filho.returncode, saida)
+        # O corpo passa e a desmontagem reprova: quem acusou foi a guarda, e no teste que gravou.
+        self.assertIn("1 passed, 1 error", saida)
+        self.assertIn("test_o_proprio_processo_grava_no_data escreveu nos dados de quem roda a suíte", saida)
+        self.assertIn("do_proprio.png (open", saida)
+        self.assertIn("renomeada.png (os.rename", saida)
 
 
 class PyQtAusenteReprovaTests(unittest.TestCase):

@@ -31,10 +31,10 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterator
-from fnmatch import fnmatch
 from pathlib import Path
 
 import pytest
+import sonda_de_escrita
 from arvores_do_repositorio import checkout_principal
 
 PACOTE = "chess_diagram_ocr"
@@ -144,119 +144,92 @@ def trabalho_em_linha() -> Iterator[None]:
     painel_do_pdf.RASTERIZAR_AO_FUNDO = anterior
 
 
-# ------------------------------------------------- o cache de posições de quem roda a suíte
+# ------------------------------- o que a suíte grava em data/ e pgn_database/ de quem a roda (S-415, S-805)
+
+PASTAS_DE_QUEM_USA = ("data", "pgn_database")
 
 AVISO_DO_DESVIO = (
     "A suíte desvia data/ e pgn_database/ para uma pasta temporária antes de importar o pacote "
     "(CVOFF_DATA_DIR e CVOFF_PGN_DATABASE_DIR, em tests/conftest.py). O que escapou foi um caminho "
-    "montado sem passar por `config.DATA_DIR` -- ou o desvio saiu do conftest. Refazer o cache de "
-    "posições do acervo custa ~56 minutos de varredura."
+    "montado sem passar por `config.DATA_DIR`, um padrão aceito sem dizer onde gravar -- `directory=` "
+    "em `save_index` e `save_annotations`, `gallery_dir=` no `GalleryModel`, `pasta_da_galeria=` no "
+    "painel da galeria, com a pasta de `pasta_temporaria(self)` --, ou o desvio saiu do conftest. "
+    "Refazer o cache de posições do acervo custa ~56 minutos de varredura."
 )
 
-Retrato = dict[Path, tuple[int, int] | None]
+RELATADOS_NO_MAXIMO = 20
+"""Quantas escritas a falha imprime. Uma já é o defeito; trezentas são o mesmo defeito com a mensagem
+ilegível."""
 
 
 def pastas_de_dados_reais() -> tuple[Path, ...]:
-    """As `data/` que o desvio protege: a do `PROJECT_ROOT`, a desta árvore e a do checkout principal.
+    """`data/` e `pgn_database/` do `PROJECT_ROOT`, desta árvore e do checkout principal.
 
-    As duas primeiras coincidem sob o pytest (`pythonpath = ["src"]`), mas é o `PROJECT_ROOT` que o
-    código usa -- e uma guarda ancorada só na `RAIZ` passaria verde justamente onde as duas divergem.
+    As duas primeiras raízes coincidem sob o pytest (`pythonpath = ["src"]`), mas é o `PROJECT_ROOT`
+    que o código usa -- e uma guarda ancorada só na `RAIZ` passaria verde justamente onde as duas
+    divergem: num processo que importe o pacote da instalação editável a escrita cai no checkout de
+    **outra** pessoa, que é o pior caso e o que menos aparece. A S-218 já pagou por essa lição.
 
-    **A terceira é a que tem o que perder (S-805).** Num worktree, `PROJECT_ROOT/data/` é uma pasta
-    sem cache nenhum, e a guarda vigiava o vazio: o cache de ~56 minutos de varredura, o `data/`
-    com o trabalho de quem usa, mora no checkout principal. Um caminho montado a partir da
-    instalação editável -- que aponta para lá -- cairia nele, e é o pior caso e o que menos aparece.
-    As guardas só leem (`stat` e listagem): nada aqui escreve em pasta nenhuma de quem usa.
+    **A terceira é a que tem o que perder (S-805).** Num worktree, `PROJECT_ROOT/data/` não tem cache
+    nenhum: o cache de ~56 minutos de varredura e o trabalho de quem usa moram no checkout principal.
     """
     from chess_diagram_ocr.config import PROJECT_ROOT
 
-    return tuple(dict.fromkeys((PROJECT_ROOT / "data", RAIZ / "data", checkout_principal() / "data")))
-
-
-def caches_de_posicoes(pastas: tuple[Path, ...]) -> list[Path]:
-    """O cache do acervo -- exista ou não, porque nascer também é ser tocado -- e o de cada conjunto.
-
-    São os arquivos que custam uma varredura para refazer: `games_positions.sqlite` e os
-    `games_positions__<bases>.sqlite` de `escolha_de_bases.store_path_for`.
-    """
-    caminhos: list[Path] = []
-    for pasta in pastas:
-        caminhos.append(pasta / "games_positions.sqlite")
-        caminhos.extend(sorted(pasta.glob("games_positions__*.sqlite")))
-    return list(dict.fromkeys(caminhos))
-
-
-def retrato(caminhos: list[Path]) -> Retrato:
-    """Tamanho e `mtime` de cada caminho; `None` para o que não existe.
-
-    **Mudar de `mtime` é ter sido tocado**: o SQLite regrava o arquivo até para escrever a mesma
-    marca de bases, e foi exatamente assim que o defeito se mostrou -- a marca era a mesma, e o
-    carimbo não. Só `stat`, sem abrir nada: a guarda não pode ser mais um leitor do cache.
-    """
-    fotos: Retrato = {}
-    for caminho in caminhos:
-        try:
-            estado = caminho.stat()
-        except OSError:
-            fotos[caminho] = None
-        else:
-            fotos[caminho] = (estado.st_size, estado.st_mtime_ns)
-    return fotos
-
-
-def caches_mexidos(antes: Retrato, depois: Retrato) -> list[str]:
-    """O que mudou entre dois retratos, arquivo por arquivo. Ausente num dos lados é `None`."""
-    mexidos = []
-    for caminho in sorted(set(antes) | set(depois)):
-        era, ficou = antes.get(caminho), depois.get(caminho)
-        if era == ficou:
-            continue
-        estado = "criado" if era is None else "apagado" if ficou is None else "gravado"
-        mexidos.append(f"{caminho} ({estado})")
-    return mexidos
-
-
-_PASTAS_REAIS: list[Path] = []
-_CACHES_VIGIADOS: list[Path] = []
-_RETRATO_DA_SESSAO: Retrato = {}
+    raizes = dict.fromkeys((PROJECT_ROOT, RAIZ, checkout_principal()))
+    return tuple(raiz / pasta for raiz in raizes for pasta in PASTAS_DE_QUEM_USA)
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
-    _PASTAS_REAIS[:] = pastas_de_dados_reais()
-    _CACHES_VIGIADOS[:] = caches_de_posicoes(tuple(_PASTAS_REAIS))
-    _RETRATO_DA_SESSAO.update(retrato(_CACHES_VIGIADOS))
+    sonda_de_escrita.instalar(pastas_de_dados_reais())
+
+
+def _escritas_relatadas(escritas: list[sonda_de_escrita.Escrita]) -> str:
+    descritas = list(dict.fromkeys(escrita.descrita() for escrita in escritas))
+    resto = len(descritas) - RELATADOS_NO_MAXIMO
+    return "; ".join(descritas[:RELATADOS_NO_MAXIMO]) + (f" (e mais {resto})" if resto > 0 else "")
 
 
 @pytest.fixture(autouse=True)
 def dados_de_quem_roda_ficam_onde_estao(request: pytest.FixtureRequest) -> Iterator[None]:
-    """Reprova **o teste** que gravou num cache de posições de quem roda a suíte.
+    """Reprova **o teste** em cujo processo houve escrita nos dados de quem roda a suíte.
 
-    Falha no teste que tocou, e não no fim da corrida, pela regra da S-413: o rastro aponta para
-    quem fez. Vigia os caches que existiam quando a sessão começou (mais o do acervo); um
-    `games_positions__<bases>.sqlite` que nasça no meio, ou uma `Tarefa` do Qt que grave depois de
-    o teste acabar, a conferência da sessão pega. Um programa aberto ao mesmo tempo que grave o
-    cache também acusa -- e o caminho na mensagem diz qual foi.
+    **A pergunta é "este processo escreveu?", e não "a pasta mudou?" (S-805).** Quem responde é a
+    `tests/sonda_de_escrita.py`, por auditoria: a guarda de antes comparava `mtime` e listagem, e
+    acusava o programa do dono, aberto ao lado, gravando uma amostra a cada ~15 s. O que ela não vê
+    -- subprocesso e escrita feita em C -- está escrito lá.
+
+    **Os casos medidos.** Em 2026-08-31 um teste chamou `gallery_scan.save_index(livro)` e
+    `GalleryModel.save()` sem dizer onde gravar; os dois resolvem `data/gallery/` na definição do
+    argumento, e a rodada gravou dois arquivos que o `.gitignore` esconde do `git status` (S-415). Em
+    2026-09-24 a janela regravou o `data/games_positions.sqlite` do dono, de 10,9 MB, que o
+    `open_store` esvazia quando a lista de bases muda (S-84). A guarda olha a escrita, e não a chamada,
+    porque já são quatro nomes para dizer onde gravar e no `GalleryModel` quem decide é um campo.
+
+    **Falha no teste, e não no fim da corrida**, pela regra da S-413: o rastro aponta para quem fez. A
+    thread vai na mensagem: uma `Tarefa` que grave depois de o seu teste acabar aparece no seguinte,
+    fora da thread principal, e a escrita depois do último teste a conferência da sessão pega.
+
+    **Relata e não apaga.** O que está em `data/` é trabalho humano acumulado, e uma guarda que
+    removesse o que julga sobra precisaria estar certa todas as vezes.
     """
-    antes = retrato(_CACHES_VIGIADOS)
     yield
-    mexidos = caches_mexidos(antes, retrato(_CACHES_VIGIADOS))
-    if mexidos:
-        pytest.fail(f"{request.node.name} mexeu nos dados de quem roda a suíte: {'; '.join(mexidos)}. {AVISO_DO_DESVIO}")
+    escritas = sonda_de_escrita.SONDA.recolher()
+    if escritas:
+        pytest.fail(
+            f"{request.node.name} escreveu nos dados de quem roda a suíte: {_escritas_relatadas(escritas)}. "
+            f"{AVISO_DO_DESVIO}"
+        )
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """A mesma conferência para a corrida inteira, com a pasta varrida de novo no fim."""
-    if not _PASTAS_REAIS:
-        return
-    agora = retrato(caches_de_posicoes(tuple(_PASTAS_REAIS)) + _CACHES_VIGIADOS)
-    mexidos = caches_mexidos(_RETRATO_DA_SESSAO, agora)
-    if not mexidos:
+    """A mesma conferência para o que foi escrito depois do último teste."""
+    escritas = sonda_de_escrita.SONDA.recolher()
+    if not escritas:
         return
     relator = session.config.pluginmanager.get_plugin("terminalreporter")
     if relator is not None:
-        relator.write_sep("=", "a suíte mexeu nos dados de quem a roda", red=True)
-        for linha in mexidos:
-            relator.write_line(linha)
+        relator.write_sep("=", "a suíte escreveu nos dados de quem a roda", red=True)
+        relator.write_line(_escritas_relatadas(escritas))
         relator.write_line(AVISO_DO_DESVIO)
     session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
@@ -451,95 +424,3 @@ def nenhuma_caixa_modal_de_verdade() -> Iterator[None]:
     finally:
         for nome, funcao in originais.items():
             setattr(QMessageBox, nome, funcao)
-
-
-# ------------------------------------------- o que a rodada grava no `data/` de verdade (S-415)
-
-ESCRITA_LEGITIMA_EM_DATA: tuple[str, ...] = ()
-"""Padrões `fnmatch`, relativos a `data/`, que a suíte pode criar sem que isso seja defeito.
-
-Vazia é o estado medido, e não um começo por preguiça: a rodada inteira não cria caminho nenhum
-ali. Uma entrada aqui é licença para escrever na árvore de quem roda a suíte, então ela vem com
-o motivo escrito ao lado -- e nunca por profilaxia, que é como uma lista destas deixa de valer.
-"""
-
-RELATADOS_NO_MAXIMO = 20
-"""Quantos nomes a falha imprime. Um caminho novo já é o defeito; trezentos são o mesmo defeito
-com a mensagem ilegível."""
-
-
-def _listagem_de(pasta: Path) -> frozenset[str]:
-    """Tudo o que existe sob a pasta, em caminho relativo a ela.
-
-    Custa 0,25 s nos ~20 mil arquivos que `data/samples/` traz numa máquina em uso: barato para
-    a rodada inteira e caro demais para cada teste. É o que decide o escopo `session` da guarda
-    abaixo, e o preço do escopo é não saber **qual** teste gravou -- os nomes dos arquivos
-    criados costumam dizer isso melhor que o nome do teste diria.
-    """
-    if not pasta.is_dir():
-        return frozenset()
-    return frozenset(item.relative_to(pasta).as_posix() for item in pasta.rglob("*"))
-
-
-@pytest.fixture(scope="session", autouse=True)
-def nada_novo_no_data_de_verdade() -> Iterator[None]:
-    """A suíte não cria arquivo no `data/` de quem a roda (S-415).
-
-    **O caso medido, em 2026-08-31.** Um teste novo chamou `gallery_scan.save_index(livro)` e
-    `GalleryModel.save()` sem dizer onde gravar. Os dois resolvem `DEFAULT_GALLERY_DIR` -- que é
-    `PROJECT_ROOT / "data" / "gallery"` -- **na definição do argumento**, e um padrão resolvido na
-    definição não tem como ser remendado por quem chama. A rodada gravou `data/gallery/livro.json`
-    e `data/gallery/livro.index.json` na árvore de trabalho do usuário, e terminou verde.
-
-    **Por que nada acusou, e por que nada acusaria.** `data/gallery/` está no `.gitignore` (a
-    S-115 deixa de fora tudo menos o extrato humano), então nem `git status` nem a leitura do diff
-    veriam os dois arquivos. Não foi caso de ninguém ter olhado: não havia onde olhar. É a mesma
-    forma das outras três desta fase -- o que vaza, o que trava e o que some --, e esta é a que
-    **sobrevive à rodada**: pasta temporária e widget morrem no fim, um arquivo em `data/` fica.
-
-    **Por que a guarda olha o efeito, e não a chamada.** Uma varredura estática -- no molde das de
-    `tests/test_disciplina_da_suite.py`, que seria o lugar natural -- teria de conhecer cada forma
-    de escrever, e já são quatro nomes para a mesma coisa: `directory=` em `save_index` e em
-    `save_annotations`, `gallery_dir=` no `GalleryModel`, `pasta_da_galeria=` no painel da galeria.
-    Só a primeira vira regra sintática limpa. No `GalleryModel` quem grava é um **campo**, e não a
-    chamada: a suíte constrói vinte modelos sem ele que nunca gravam, e o único teste que grava
-    direito põe o campo por atribuição **depois** de construir (`test_grava_e_le_de_volta`) --
-    cobrar o argumento na construção reprovaria os vinte e o certo junto. O painel é o caso pior:
-    quem o constrói não chama `save_index`, ele chama. Todos terminam no mesmo lugar, e é o lugar
-    que esta guarda vigia.
-
-    **As pastas são as de `pastas_de_dados_reais`, e não só `RAIZ`.** As duas coincidem sob o pytest, que põe
-    `src/` na frente pelo `pythonpath` do `pyproject`. Num processo que importe o pacote da
-    instalação editável elas divergem -- e é exatamente aí que a escrita cai no checkout de
-    **outra** pessoa, que é o pior caso e o que menos aparece. Uma guarda ancorada em `RAIZ`
-    passaria verde justamente sobre ele; a S-218 já pagou por essa lição uma vez. E num worktree
-    o `data/` com o trabalho acumulado é o do checkout principal (S-805), vigiado junto.
-
-    **Relata e não apaga.** O que está em `data/` é trabalho humano acumulado (é o que o
-    `_project_root` diz sobre o `labels.csv`), e uma guarda que removesse o que julga sobra
-    precisaria estar certa todas as vezes. Errar uma vez custaria mais do que o defeito que ela
-    persegue, então ela nomeia os arquivos e a remoção fica com quem sabe o que são.
-    """
-    antes = {pasta: _listagem_de(pasta) for pasta in pastas_de_dados_reais()}
-    yield
-    for pasta, listagem in antes.items():
-        novos = sorted(
-            caminho
-            for caminho in _listagem_de(pasta) - listagem
-            if not any(fnmatch(caminho, padrao) for padrao in ESCRITA_LEGITIMA_EM_DATA)
-        )
-        if novos:
-            _reprovar_o_que_nasceu(pasta, novos)
-
-
-def _reprovar_o_que_nasceu(pasta: Path, novos: list[str]) -> None:
-    mostrados = ", ".join(novos[:RELATADOS_NO_MAXIMO])
-    resto = f" (e mais {len(novos) - RELATADOS_NO_MAXIMO})" if len(novos) > RELATADOS_NO_MAXIMO else ""
-    pytest.fail(
-        f"A rodada criou {len(novos)} caminho(s) em {pasta}: {mostrados}{resto}. Algum teste "
-        "gravou no `data/` de quem roda a suíte, que é uma árvore de trabalho e não um destino "
-        "de teste -- e `data/gallery/` está no `.gitignore`, então o `git status` não vai "
-        "mostrar isto. Diga onde gravar em vez de aceitar o padrão: `directory=` em `save_index` "
-        "e `save_annotations`, `gallery_dir=` no `GalleryModel`, `pasta_da_galeria=` no painel "
-        "da galeria. A pasta sai de `pasta_temporaria(self)`, em `tests/ambiente_de_teste.py`."
-    )

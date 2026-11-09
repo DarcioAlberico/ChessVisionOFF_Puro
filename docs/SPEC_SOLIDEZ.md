@@ -272,6 +272,16 @@ e o painel que ainda a consulta acharia o C++ apagado. O `git worktree list` sai
 17,1 GB). As ~206 classes continuam pulando sem o PyQt6; quem reprova é `PyQtAusenteReprovaTests`. A
 `TarefaAdiada` já serve a `RenderizarAoFundoTests` da aba Texto.
 
+**Entregue** (2026-11-09, conserto da guarda de dados): comparar `mtime` e listagem do `data/` do principal
+acusava o programa do dono, aberto ao lado, gravando uma amostra a cada ~15 s, em testes que não gravaram
+nada. A guarda agora pergunta se **este** processo escreveu: `tests/sonda_de_escrita.py` põe um
+`sys.addaudithook` por sessão, que anota `open` de escrita, `os.remove`/`rename`/`mkdir`/`rmdir`/`utime`,
+`shutil.rmtree` e `sqlite3.connect` fora de `mode=ro` sob `data/` e `pgn_database/` das três raízes, e
+`dados_de_quem_roda_ficam_onde_estao` confere e limpa a lista a cada teste. Saíram o retrato dos caches e
+a listagem de sessão (`nada_novo_no_data_de_verdade`) com a lista vazia `ESCRITA_LEGITIMA_EM_DATA`; o
+`pgn_database/` passou a ser vigiado. Subprocesso e escrita feita em C não são vistos: o filho é protegido
+pelo `CVOFF_DATA_DIR` desviado.
+
 ## Fase 111 — Caches e índices que não se apagam sozinhos
 
 ## S-807 · Uma impressão digital de base só, que enxerga membro de `.zip`
