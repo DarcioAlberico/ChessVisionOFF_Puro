@@ -33,6 +33,7 @@ from test_detection import board_image, board_with_caption, pdf_with_images, pho
 
 from chess_diagram_ocr import board_detection as bd
 from chess_diagram_ocr import detector_de_marcas as dm
+from chess_diagram_ocr.atomic_io import read_image
 from chess_diagram_ocr.config import RecallOptions
 from chess_diagram_ocr.detection import hybrid
 
@@ -52,7 +53,7 @@ def _fora_da_pagina(centro: tuple[float, float], lados: tuple[float, float], gir
 
 
 def _png(caminho: Path) -> np.ndarray:
-    imagem = cv2.imread(str(caminho))
+    imagem = read_image(caminho)
     if imagem is None:
         raise FileNotFoundError(caminho)
     return cv2.cvtColor(imagem, cv2.COLOR_BGR2RGB)
