@@ -364,6 +364,21 @@ class EsperaTests(unittest.TestCase):
         self.assertAlmostEqual(caderno.espera_restante(10.0, mudou_em=9.0, cursor_em=0.0), 1.5)
 
 
+class LexicoDoLivroTests(_ComLivro):
+    """S-903: o léxico do livro grava com a chave com que `lexico.conhecida` confere."""
+
+    def test_palavra_com_eszett_acrescentada_deixa_de_ser_desconhecida(self) -> None:
+        from chess_diagram_ocr.text import lexico
+
+        cad = self.abrir()
+        texto = "Der Großmeister spielt"
+        base = frozenset({"der", "spielt"})
+        self.assertEqual([p for _i, _f, p in lexico.desconhecidas(texto, base)], ["Großmeister"])
+        self.assertTrue(cad.acrescentar_ao_lexico("Großmeister"))
+        self.assertEqual(lexico.desconhecidas(texto, base | cad.lexico()), ())
+        self.assertFalse(cad.acrescentar_ao_lexico("GROSSMEISTER"), "é a mesma palavra, e não entra duas vezes")
+
+
 class AbreDoCadernoTests(unittest.TestCase):
     def estado(self, **campos: object) -> caderno.EstadoDaFolha:
         base: dict[str, object] = {"pagina": 0, "estado": caderno.LIDA, "motor": "auto", "modo_bloco": False}

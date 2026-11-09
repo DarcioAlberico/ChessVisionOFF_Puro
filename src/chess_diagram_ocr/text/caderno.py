@@ -85,6 +85,7 @@ from ..config import DATA_DIR
 from ..relogio import agora_iso, com_fuso, do_arquivo, ler_iso
 from ..ui.livros import mesmo_livro
 from . import arquivo
+from .lexico import chave_do_lexico
 from .rico import DocumentoRico
 
 logger = logging.getLogger(__name__)
@@ -369,13 +370,13 @@ class Caderno:
     # ----------------------------------------------------------------- o léxico do livro (S-657)
 
     def lexico(self) -> frozenset[str]:
-        """As palavras que este livro acrescentou ao léxico: os nomes próprios dele, em caixa baixa."""
+        """As palavras que este livro acrescentou ao léxico: os nomes próprios dele, por `chave_do_lexico`."""
         try:
             # Do usuário (S-905): é texto de uma palavra por linha, e a pessoa o abre no Bloco de Notas.
             linhas = ler_texto(self.pasta / "lexico.txt", do_usuario=True).splitlines()
         except (OSError, ValueError):
             return frozenset()
-        return frozenset(linha.strip().lower() for linha in linhas if linha.strip())
+        return frozenset(chave_do_lexico(linha.strip()) for linha in linhas if linha.strip())
 
     def acrescentar_ao_lexico(self, palavra: str) -> bool:
         """Acrescenta a palavra ao léxico do livro. **Relê e mescla antes de gravar**, ordenado.
@@ -383,7 +384,7 @@ class Caderno:
         A regra do dicionário do usuário do WordCraft: duas gravações seguidas não se apagam, porque
         a segunda parte do que está no disco, e não do que esta instância leu na abertura.
         """
-        palavra = palavra.strip().lower()
+        palavra = chave_do_lexico(palavra.strip())
         if not palavra or self.somente_leitura:
             return False
         atuais = self.lexico()

@@ -8,7 +8,10 @@ prova é que a que existe devolve o texto sem tocá-lo.
 
 from __future__ import annotations
 
+import gzip
 import unittest
+
+from ambiente_de_teste import pasta_temporaria
 
 from chess_diagram_ocr.text import lexico
 from chess_diagram_ocr.text.lexico import (
@@ -195,3 +198,15 @@ class LexicoVazioDesligaTests(unittest.TestCase):
     def test_com_lista_a_conferencia_continua_apontando(self) -> None:
         achados = lexico.desconhecidas("the positon features", frozenset({"the", "features"}))
         self.assertEqual([texto for _i, _f, texto in achados], ["positon"])
+
+
+class DobraDeCaixaTests(unittest.TestCase):
+    """S-903: grava e confere com a mesma chave, `NFC` e `casefold`."""
+
+    def test_palavra_em_nfd_casa_com_nfc(self) -> None:
+        nfd, nfc = "cafe\u0301", "caf\u00e9"
+        self.assertTrue(conhecida(nfd, frozenset({nfc})), "a camada em NFD contra a lista em NFC")
+        lista = pasta_temporaria(self) / "nfd.txt.gz"
+        with gzip.open(lista, "wt", encoding="utf-8") as fh:
+            fh.write(f"{nfd}\n")
+        self.assertTrue(conhecida(nfc, lexico.carregar(caminho=lista)), "a lista em NFD contra o texto em NFC")

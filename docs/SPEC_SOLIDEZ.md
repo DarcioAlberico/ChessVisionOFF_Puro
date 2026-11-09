@@ -2144,6 +2144,12 @@ usada em `lexico()`, `acrescentar_ao_lexico`, `_de_um_arquivo` e `conhecida`.
 
 **Aceite.** Os dois passam.
 
+**Entregue** (2026-11-09): `chave_do_lexico` mora em `text/lexico.py`, e o caderno a importa. O grego não
+serve de prova pela tela: `e_palavra` só aceita `A-Za-zÀ-ÿ`, então `Παπαδόπουλος` nunca é marcada, e pela
+mesma régua a palavra em NFD (com o acento combinante) não é candidata a palavra -- o teste de NFD prova a
+chave por `conhecida` e pela lista lida por `carregar`. Ficaram com dobra própria, fora do escopo:
+`sugestao.sugestoes` (`lower` contra o léxico) e o "Ignorar nesta folha" do painel (`lower` dos dois lados).
+
 ## S-904 · Mudar a caixa devolve a seleção certa
 
 **Problema** (confirmado por script). `text/rico.py:1045-1071`: `mudar_caixa` muda o comprimento do texto
