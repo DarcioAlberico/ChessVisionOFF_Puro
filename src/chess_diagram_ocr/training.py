@@ -51,7 +51,7 @@ from .fen_utils import labels_from_fen
 from .labels import DatasetEntry, filenames_with_provenance, label_origins
 from .model import DEFAULT_ARCH, ArchConfig, build_model, count_parameters
 from .proveniencia import hash_do_arquivo
-from .splits import Split, ensure_splits, groups_by_origin, load_splits, save_splits, splits_hash
+from .splits import Split, ensure_splits, groups_by_origin, load_splits, splits_hash
 
 logger = logging.getLogger(__name__)
 
@@ -325,19 +325,21 @@ def resolve_splits(
     # A procedência que escolhe quem o `--dedupe` mantém é a mesma que dá a chave de split ao
     # grupo (S-452). Sem passá-la aqui, os dois lados voltariam a escolher representantes
     # diferentes -- e "quem representa este grupo" tem de ter uma resposta só.
+    #
+    # C15 do ciclo 2 OCR/UI: um rótulo tirado de uma página do conjunto de campo nunca cai
+    # em `train` -- o campo mede, nunca alimenta (a regra de `CORPUS.md` 5.3 e do C6). Vai
+    # para `test`, que também é retido; e é dito, porque o sorteio o teria posto em `train`.
+    # Decidido **antes** de gravar, e gravado uma vez (S-838).
+    de_campo = pin_field_pages(novos, Path(csv_path))
     mapa = ensure_splits(
-        nomes, splits_path, groups=grupos, with_provenance=filenames_with_provenance(origens)
+        nomes, splits_path, groups=grupos, with_provenance=filenames_with_provenance(origens), forced=de_campo
     )
 
     if novos:
-        # C15 do ciclo 2 OCR/UI: um rótulo tirado de uma página do conjunto de campo nunca cai
-        # em `train` -- o campo mede, nunca alimenta (a regra de `CORPUS.md` 5.3 e do C6). Vai
-        # para `test`, que também é retido; e é dito, porque o sorteio o teria posto em `train`.
-        movidos = pin_field_pages(mapa, novos, Path(csv_path), splits_path)
-        if movidos:
+        if de_campo:
             logger.warning(
                 "%d rótulo(s) novo(s) vêm de página do conjunto de campo e foram para `test`, "
-                "não para o sorteio: %s", len(movidos), ", ".join(sorted(movidos)))
+                "não para o sorteio: %s", len(de_campo), ", ".join(sorted(de_campo)))
         distribuicao = Counter(mapa[nome] for nome in novos if nome in mapa)
         logger.info(
             "%d amostra(s) sem split receberam um agora: %s. Antes da S-56 elas ficavam "
@@ -374,35 +376,48 @@ def identidade_dos_livros(nomes: Iterable[str], pdf_dir: Path) -> dict[str, str]
 
 
 def field_pages_beside(csv_path: Path) -> set[tuple[str, int]]:
-    """`{(livro, página base 0)}` do `field_set.jsonl` ao lado do `labels.csv`, ou vazio."""
+    """`{(chave do nome do livro, página base 0)}` do `field_set.jsonl` ao lado do `labels.csv`.
+
+    Vazio quando não há arquivo. **Ilegível levanta (S-838):** antes era um aviso no log e
+    `set()`, e as amostras novas sorteavam split sem a guarda -- uma página de campo caía em
+    `train` e, registrada, nunca mais saía de lá. Sem saber quais páginas são de campo, nenhuma
+    amostra nova recebe partição, e o treino não começa.
+    """
     caminho = Path(csv_path).parent / "field_set.jsonl"
     if not caminho.is_file():
         return set()
+    from .field_eval import load_field_set, name_keys
+
     try:
-        from .field_eval import load_field_set
+        paginas = load_field_set(caminho)
+    except (OSError, ValueError) as exc:
+        raise ValueError(
+            f"{caminho} ilegível ({exc}). Sem ele não há como saber se um rótulo novo vem de "
+            "página do conjunto de campo, que nunca vai para o treino; os rótulos novos ficam sem "
+            "partição e o treino não começa até o arquivo ser consertado (S-838)."
+        ) from exc
+    return {(chave, int(page.page)) for page in paginas if page.diagrams for chave in name_keys(page.pdf)}
 
-        return {(page.pdf, int(page.page)) for page in load_field_set(caminho) if page.diagrams}
-    except Exception:  # noqa: BLE001 - um conjunto de campo ilegível não pode parar o treino
-        logger.warning("field_set.jsonl ilegível; a guarda de página de campo não rodou.", exc_info=True)
-        return set()
 
-
-def pin_field_pages(
-    mapa: dict[str, Split], novos: Sequence[str], csv_path: Path, splits_path: Path,
-) -> list[str]:
-    """Move para `test` os rótulos **novos** cuja página está no conjunto de campo (C15).
+def pin_field_pages(novos: Sequence[str], csv_path: Path) -> dict[str, Split]:
+    """`{rótulo novo: "test"}` para os **novos** cuja página está no conjunto de campo (C15).
 
     Só os novos: a fronteira das amostras já registradas nunca muda (S-07). `source_page` do
     `labels.csv` é base 1 (a janela), o campo é base 0 -- a armadilha da fase 3, convertida aqui
-    como em `labels.pages_with_training_samples`. Regrava o arquivo quando moveu alguma.
+    como em `labels.pages_with_training_samples`. O livro casa por `field_eval.name_keys`, a
+    mesma regra de "mesmo nome" da medição (S-838). Não grava: o resultado vai para
+    `ensure_splits` como `forced`, e o arquivo é gravado uma vez.
     """
+    if not novos:
+        return {}
     paginas = field_pages_beside(csv_path)
-    if not paginas or not novos:
-        return []
+    if not paginas:
+        return {}
+    from .field_eval import name_keys
     from .labels import LabelStore
 
     por_nome = {entry.filename: entry for entry in LabelStore(Path(csv_path)).read()}
-    movidos: list[str] = []
+    fixados: dict[str, Split] = {}
     for nome in novos:
         entry = por_nome.get(nome)
         if entry is None or not entry.source_pdf.strip():
@@ -411,12 +426,9 @@ def pin_field_pages(
             pagina = int(float(entry.source_page)) - 1
         except (TypeError, ValueError):
             continue
-        if (entry.source_pdf.strip(), pagina) in paginas and mapa.get(nome) != "test":
-            mapa[nome] = "test"
-            movidos.append(nome)
-    if movidos:
-        save_splits(splits_path, mapa)
-    return movidos
+        if any((chave, pagina) in paginas for chave in name_keys(entry.source_pdf.strip())):
+            fixados[nome] = "test"
+    return fixados
 
 
 def _split_square_indices_by_board(dataset: BoardFenDataset, val_ratio: float, seed: int) -> tuple[list[int], list[int]]:

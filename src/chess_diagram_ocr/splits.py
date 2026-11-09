@@ -252,6 +252,7 @@ def ensure_splits(
     *,
     groups: Iterable[Iterable[str]] = (),
     with_provenance: Collection[str] = (),
+    forced: Mapping[str, Split] | None = None,
     val_pct: int = DEFAULT_VAL_PCT,
     test_pct: int = DEFAULT_TEST_PCT,
     salt: str = SPLIT_SALT,
@@ -273,6 +274,12 @@ def ensure_splits(
     volta a ser sorteada. E o aviso que existia para isso, o `ValueError("Dataset vazio")` de
     `Trainer.prepare`, só aparece **depois** da poda. Um `--csv` digitado errado bastava, e o
     botão "Treinar modelo" da janela não tem portão nenhum antes daqui.
+
+    **`forced` decide antes do sorteio, e o arquivo é gravado uma vez (S-838).** É
+    `{amostra nova: split}`, e vence o hash e a herança de grupo; amostra já registrada não se
+    move por ele. Existe para a página de campo, que vai para `test`. Quando ela era movida
+    *depois* desta função gravar, uma queda entre as duas gravações deixava no disco o `train`
+    sorteado -- e na rodada seguinte a amostra já não era nova, então ficava lá.
     """
     names = list(filenames)
     existing = load_splits(splits_path)
@@ -302,10 +309,11 @@ def ensure_splits(
             result[name] = existing[name]
             continue
 
-        # Amostra nova: se o grupo dela já tem split definido, herda; senão, calcula.
+        # Amostra nova: o split forçado, se há (S-838); senão, se o grupo dela já tem split
+        # definido, herda; senão, calcula.
         representative = keys[name]
         inherited = existing.get(representative) or do_grupo.get(representative) or result.get(representative)
-        result[name] = inherited or assign_split(representative, val_pct=val_pct, test_pct=test_pct, salt=salt)
+        result[name] = (forced or {}).get(name) or inherited or assign_split(representative, val_pct=val_pct, test_pct=test_pct, salt=salt)
         added += 1
 
     removed = set(existing) - set(names)

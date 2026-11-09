@@ -1718,6 +1718,8 @@ em `train`. Segundo caso: `pin_field_pages` remendado para levantar, nova rodada
 
 **Aceite.** Os dois passam.
 
+**Entregue** (2026-11-09): `pin_field_pages(novos, csv_path)` não grava mais: devolve `{nome: "test"}`, que entra em `ensure_splits(..., forced=...)`; `field_pages_beside` levanta `ValueError` diante de `field_set.jsonl` ilegível, e `field_eval._name_keys` virou `name_keys`, pública. Um terceiro teste cobre o casamento por NFD, dupla codificação e caixa. A partição não muda: no `data/` versionado não há amostra nova, e no do checkout principal as 1.491 novas não são de página de campo. Fora do alcance (a S-07 não move registrada): 19 das 25 amostras de página de campo já estão em `train` no `splits.csv` versionado (Kemeri p80 e p187, Karpov p80 ×6, Anand p62, Yusupov p11 ×7 e p14 ×3, base 0), registradas antes da guarda C15; mover é decisão do dono.
+
 ## S-839 · O regime do checkpoint guardado inteiro
 
 **Problema** (confirmado por script). `augment.py:103-135`, `:143-183`: `AugmentConfig(hatch=0.9)` e

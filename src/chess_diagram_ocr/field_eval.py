@@ -1462,11 +1462,14 @@ def _undo_double_encoding(nome: str) -> str | None:
     return recuperado if recuperado != nome else None
 
 
-def _name_keys(nome: str) -> set[str]:
+def name_keys(nome: str) -> set[str]:
     """As formas do nome que são "o mesmo arquivo" para efeito de sugestão.
 
     Codificação dupla desfeita, NFC (o macOS grava NFD) e caixa dobrada: são as três maneiras
     de o conjunto e o disco discordarem sobre um nome que um humano leria como igual.
+
+    É também a chave com que o treino reconhece um rótulo tirado de página de campo
+    (`training.pin_field_pages`, S-838): o mesmo livro, uma regra só de "mesmo nome".
     """
     variantes = {nome}
     recuperado = _undo_double_encoding(nome)
@@ -1483,12 +1486,12 @@ def _look_alike(caminho: Path) -> str | None:
     os arquivos estavam ali o tempo todo, com o nome certo.
     """
     pasta = caminho.parent
-    procuradas = _name_keys(caminho.name)
+    procuradas = name_keys(caminho.name)
     try:
         existentes = sorted(item.name for item in pasta.iterdir() if item.is_file())
     except OSError:
         return None
-    return next((nome for nome in existentes if _name_keys(nome) & procuradas), None)
+    return next((nome for nome in existentes if name_keys(nome) & procuradas), None)
 
 
 def missing_field_pdfs(pages: Sequence[FieldPage], *, pdf_dir: Path | None = None) -> list[Path]:

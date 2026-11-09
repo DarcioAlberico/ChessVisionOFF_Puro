@@ -392,6 +392,88 @@ class SplitAssignmentTests(unittest.TestCase):
             self.assertTrue(any("página do conjunto de campo" in linha for linha in registro.output))
             self.assertEqual(load_splits(splits_path)["campo.png"], "test", "gravado, não só em memória")
 
+    def _campo(self, root: Path, *, pdf_no_rotulo: str = "Livro.pdf", campo: str | None = None) -> tuple[Path, Path, Path, str]:
+        """Um rótulo novo da página 51 (base 1) do livro, e o `field_set.jsonl` com a página 50.
+
+        O nome da amostra é um que o hash do split manda para `train`: com outro, o teste
+        passaria por sorte, porque o sorteio já o poria em `val` ou `test`.
+        """
+        import json
+
+        import numpy as np
+
+        from chess_diagram_ocr.splits import assign_split
+
+        nome = next(f"campo_{i:03d}.png" for i in range(100) if assign_split(f"campo_{i:03d}.png") == "train")
+        samples = root / "samples"
+        samples.mkdir()
+        write_image(samples / nome, np.random.default_rng(3).integers(0, 256, (64, 64, 3), dtype=np.uint8))
+        csv_path = root / "labels.csv"
+        csv_path.write_text(
+            "filename,fen,side_to_move,source_pdf,source_page,source_diagram\n"
+            f"{nome},{LEGAL},w,{pdf_no_rotulo},51,1\n",
+            encoding="utf-8",
+        )
+        if campo is None:
+            campo = json.dumps({"pdf": "Livro.pdf", "page": 50, "reviewed": True,
+                                "diagrams": [{"bbox": [0, 0, 10, 10], "placement": LEGAL}]}) + "\n"
+        (root / "field_set.jsonl").write_text(campo, encoding="utf-8")
+        return csv_path, samples, root / "splits.csv", nome
+
+    def test_conjunto_de_campo_ilegivel_deixa_a_amostra_nova_sem_particao(self) -> None:
+        """S-838: com o `field_set.jsonl` ilegível não há como saber se a amostra é de campo.
+
+        Antes, um aviso no log e `set()`: a amostra sorteava `train`, e na rodada seguinte já
+        não era nova, então nunca mais seria fixada. Agora o treino recusa começar, e nada é
+        gravado: a amostra continua nova até o conjunto voltar a ser lido.
+        """
+        from chess_diagram_ocr.splits import load_splits
+        from chess_diagram_ocr.training import resolve_splits
+
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path, samples, splits_path, nome = self._campo(Path(tmp), campo="isto não é json\n")
+
+            with self.assertRaisesRegex(ValueError, "field_set.jsonl"):
+                resolve_splits(csv_path, samples, splits_path)
+
+            self.assertNotIn(nome, load_splits(splits_path), "a amostra ganhou partição sem a guarda de campo")
+
+    def test_queda_ao_fixar_a_pagina_de_campo_nao_deixa_train_no_disco(self) -> None:
+        """S-838: o `splits.csv` era gravado com o sorteio e só depois regravado com a página
+        de campo em `test`. Uma queda no meio deixava `train` no disco, para sempre."""
+        from chess_diagram_ocr.splits import load_splits
+        from chess_diagram_ocr.training import resolve_splits
+
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path, samples, splits_path, nome = self._campo(Path(tmp))
+
+            with patch("chess_diagram_ocr.training.pin_field_pages", side_effect=RuntimeError("queda")):
+                with self.assertRaises(RuntimeError):
+                    resolve_splits(csv_path, samples, splits_path)
+            mapa = resolve_splits(csv_path, samples, splits_path)
+
+            self.assertEqual(mapa[nome], "test")
+            self.assertEqual(load_splits(splits_path)[nome], "test")
+
+    def test_o_nome_do_livro_casa_como_na_medicao_de_campo(self) -> None:
+        """S-838: o casamento comparava `source_pdf` exato; a medição normaliza NFC, dupla
+        codificação e caixa. O mesmo livro escrito de outro jeito escapava da guarda."""
+        import json
+        import unicodedata
+
+        from chess_diagram_ocr.training import resolve_splits
+
+        no_campo = "Eröffnungswege.pdf"
+        for no_rotulo in (unicodedata.normalize("NFD", no_campo), no_campo.encode("utf-8").decode("latin-1"),
+                          no_campo.upper()):
+            with self.subTest(no_rotulo=no_rotulo), tempfile.TemporaryDirectory() as tmp:
+                campo = json.dumps({"pdf": no_campo, "page": 50, "reviewed": True,
+                                    "diagrams": [{"bbox": [0, 0, 10, 10], "placement": LEGAL}]}) + "\n"
+                csv_path, samples, splits_path, nome = self._campo(Path(tmp), pdf_no_rotulo=no_rotulo, campo=campo)
+                with self.assertLogs("chess_diagram_ocr.training", level="WARNING"):
+                    mapa = resolve_splits(csv_path, samples, splits_path)
+                self.assertEqual(mapa[nome], "test")
+
     def test_assign_new_false_le_e_nao_escreve(self) -> None:
         import tempfile
 
