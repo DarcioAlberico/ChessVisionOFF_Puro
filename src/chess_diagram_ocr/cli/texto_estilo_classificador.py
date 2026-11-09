@@ -53,7 +53,7 @@ from ..atomic_io import atomic_write_stream, atomic_write_text
 from ..config import DATA_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import estilo
-from . import add_verbose, cli_errors
+from . import add_json_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -259,7 +259,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--conjunto", type=Path, default=CONJUNTO_PADRAO, help="O npz da S-661 (padrao: data/estilo/palavras.npz).")
     parser.add_argument("--epocas", type=int, default=6, help="Epocas de treino por rodada (padrao: 6).")
     parser.add_argument("--pesos", type=Path, default=PESOS_PADRAO, help="Onde gravar os pesos (padrao: models/estilo_palavra.pt).")
-    parser.add_argument("--json", type=Path, help="Grava o relatorio neste caminho.")
+    add_json_argument(parser)
     add_verbose(parser)
     return parser
 

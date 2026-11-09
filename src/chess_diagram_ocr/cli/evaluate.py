@@ -4,7 +4,6 @@ import argparse
 import json
 import logging
 import textwrap
-from pathlib import Path
 
 from ..atomic_io import atomic_write_text
 from ..calibration import confidence_for_accuracy
@@ -16,7 +15,15 @@ from ..evaluation import EvaluationReport, evaluate_split
 from ..inference import describe_device
 from ..logging_setup import configure_logging, default_log_file
 from ..splits import load_splits
-from . import EXIT_BAD_INPUT, add_dataset_arguments, add_model_argument, add_verbose, cli_errors
+from . import (
+    EXIT_BAD_INPUT,
+    add_dataset_arguments,
+    add_device_argument,
+    add_json_argument,
+    add_model_argument,
+    add_verbose,
+    cli_errors,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +38,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     add_dataset_arguments(parser)
     add_model_argument(parser)
-    parser.add_argument("--device", type=str, default=None, help="cpu ou cuda. Padrão: detecta.")
+    add_device_argument(parser)
     parser.add_argument("--batch-boards", type=int, default=8, help="Tabuleiros por lote de inferência.")
-    parser.add_argument("--json", type=Path, default=None, help="Grava as métricas em JSON.")
+    add_json_argument(parser, help="Grava as métricas em JSON.")
     parser.add_argument("--show-errors", type=int, default=5, help="Tabuleiros com erro exibidos em detalhe.")
     parser.add_argument(
         "--no-constrained-decoding",

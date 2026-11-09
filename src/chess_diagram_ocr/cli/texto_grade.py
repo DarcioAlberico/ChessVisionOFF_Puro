@@ -86,9 +86,9 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_json
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import EXIT_FAILURE, add_verbose, cli_errors, confere_baseline
+from . import EXIT_FAILURE, add_amostra_do_acervo, add_baseline_argument, add_verbose, cli_errors, confere_baseline
 
 logger = logging.getLogger(__name__)
 
@@ -575,15 +575,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "spans: nesta colecao essa ordem e de um motor de OCR, e ela erra a direcao da grade."
         ),
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
-    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
-    parser.add_argument("--por-livro", type=int, default=40, help="Paginas medidas por livro (padrao 40).")
-    parser.add_argument("--limite", "--limit", type=int, help="So os N primeiros livros.")
-    parser.add_argument(
-        "--baseline",
-        type=Path,
-        help="Falha (codigo 1) se o acerto cair contra este relatorio.",
-    )
+    add_amostra_do_acervo(parser, saida=SAIDA_PADRAO, por_livro=40)
+    add_baseline_argument(parser, help="Falha (codigo 1) se o acerto cair contra este relatorio.")
     add_verbose(parser)
     return parser.parse_args(argv)
 

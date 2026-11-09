@@ -305,7 +305,11 @@ class AjudaDeTodoArgumentoTests(unittest.TestCase):
         )
 
     def test_a_varredura_ve_os_argumentos(self) -> None:
-        """A guarda da guarda: um scanner cego passaria sempre."""
+        """A guarda da guarda: um scanner cego passaria sempre.
+
+        O piso desceu de 300 para 250 com a S-857, que juntou em `cli/__init__.py` as declarações
+        repetidas: são 300 hoje, e um scanner cego veria zero.
+        """
         pasta = RAIZ / "src" / "chess_diagram_ocr" / "cli"
         total = 0
         for caminho in sorted(pasta.glob("*.py")):
@@ -315,7 +319,7 @@ class AjudaDeTodoArgumentoTests(unittest.TestCase):
                 for no in ast.walk(arvore)
                 if isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute) and no.func.attr == "add_argument"
             )
-        self.assertGreater(total, 300)
+        self.assertGreater(total, 250)
 
 
 class BlocoDeMedicaoTests(unittest.TestCase):

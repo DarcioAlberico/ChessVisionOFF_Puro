@@ -30,7 +30,7 @@ from ..gallery import (
     write_human_extract,
 )
 from ..logging_setup import configure_logging, default_log_file
-from . import EXIT_BAD_INPUT, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, add_gallery_dir_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +43,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "com `cvoff-games --apply`."
         ),
     )
-    parser.add_argument(
-        "--gallery-dir", type=Path, default=DEFAULT_GALLERY_DIR, help="Pasta dos índices da Galeria."
-    )
+    add_gallery_dir_argument(parser, DEFAULT_GALLERY_DIR)
     parser.add_argument("--extract", type=Path, default=DEFAULT_HUMAN_EXTRACT, help="O .jsonl do extrato.")
     grupo = parser.add_mutually_exclusive_group(required=True)
     grupo.add_argument("--export-human", action="store_true", help="Galeria -> extrato.")

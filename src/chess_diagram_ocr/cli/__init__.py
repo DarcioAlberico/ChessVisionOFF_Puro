@@ -14,6 +14,7 @@ assim. O `cli_errors` abaixo é o que fecha isso.
 
 from __future__ import annotations
 
+import argparse
 import logging
 import sys
 from collections.abc import Callable, Sequence
@@ -25,13 +26,25 @@ from ..config import (
     ACCEPT_MIN_CONFIDENCE,
     DEFAULT_DATASET_CSV,
     DEFAULT_DPI,
+    DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
+    DEFAULT_ORIENTATION_MODE,
+    DEFAULT_PDF_DIR,
+    DEFAULT_READING_ORDER,
     DEFAULT_SAMPLES_DIR,
     DEFAULT_SPLITS_PATH,
+    PROJECT_ROOT,
 )
 from ..logging_setup import onde_esta_o_rastro, verbosidade_pedida
 
 logger = logging.getLogger(__name__)
+
+Declarador = argparse._ActionsContainer
+"""Onde um argumento é declarado: o parser ou um grupo dele (S-857).
+
+O tipo é o ancestral comum de `ArgumentParser` e dos grupos que `add_mutually_exclusive_group`
+devolve -- o `cvoff-census` declara `--pdf-dir` e `--pages` dentro de grupos. Ele é privado no
+`argparse`, mas é o que o `typeshed` declara como dono de `add_argument`; a alternativa era `Any`."""
 
 EXIT_OK = 0
 EXIT_FAILURE = 1
@@ -95,7 +108,7 @@ def classify(exc: BaseException) -> int:
     return EXIT_BAD_INPUT
 
 
-def add_verbose(parser: Any) -> None:
+def add_verbose(parser: Declarador) -> None:
     """Declara `-v/--verbose` no molde único dos 40 comandos (S-377).
 
     O README garante que todo `cvoff-*` aceita `-v`, e a mensagem de erro da S-126 manda usá-lo
@@ -110,18 +123,18 @@ def add_verbose(parser: Any) -> None:
     parser.add_argument("-v", "--verbose", action="store_true", help="Log em nível DEBUG.")
 
 
-def add_model_argument(parser: Any, *, help: str = "Checkpoint .pt do classificador de peças.") -> None:
+def add_model_argument(parser: Declarador, *, help: str = "Checkpoint .pt do classificador de peças.") -> None:
     """`--model`, com o padrão que vale para os catorze comandos que o aceitam (S-383)."""
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL_PATH, help=help)
 
 
-def add_dpi_argument(parser: Any, *, help: str = f"DPI de renderização da página. Padrão: {DEFAULT_DPI}.") -> None:
+def add_dpi_argument(parser: Declarador, *, help: str = f"DPI de renderização da página. Padrão: {DEFAULT_DPI}.") -> None:
     """`--dpi`. O número mora no `config`, e não em doze literais iguais (S-383)."""
     parser.add_argument("--dpi", type=int, default=DEFAULT_DPI, help=help)
 
 
 def add_accept_threshold_argument(
-    parser: Any,
+    parser: Declarador,
     *,
     help: str = "Confiança mínima por casa para a posição ser aceita. "
     f"Padrão: {ACCEPT_MIN_CONFIDENCE}.",
@@ -130,12 +143,12 @@ def add_accept_threshold_argument(
     parser.add_argument("--accept-threshold", type=float, default=ACCEPT_MIN_CONFIDENCE, help=help)
 
 
-def add_splits_argument(parser: Any, *, help: str = "Arquivo de partição treino/val/teste.") -> None:
+def add_splits_argument(parser: Declarador, *, help: str = "Arquivo de partição treino/val/teste.") -> None:
     """`--splits`. O caminho mora no `config` desde a S-383 -- eram seis declarações."""
     parser.add_argument("--splits", type=Path, default=DEFAULT_SPLITS_PATH, help=help)
 
 
-def add_dataset_arguments(parser: Any, *, splits: bool = True, samples: bool = True) -> None:
+def add_dataset_arguments(parser: Declarador, *, splits: bool = True, samples: bool = True) -> None:
     """`--csv`, `--samples` e `--splits`: de onde a medição tira o dado (S-383).
 
     O bloco era copiado à mão em sete comandos, e a cópia divergia: o `--splits` do
@@ -150,6 +163,125 @@ def add_dataset_arguments(parser: Any, *, splits: bool = True, samples: bool = T
         )
     if splits:
         add_splits_argument(parser)
+
+
+BASE_DE_CARACTERE = PROJECT_ROOT / "training_data"
+"""A base de amostras de caractere, uma subpasta por classe. Eram cinco `BASE_PADRAO` iguais (S-857)."""
+
+CACHE_DA_BASE = PROJECT_ROOT / "models" / ".texto_base_cache.npz"
+"""A varredura da base em cache, que o treino e a grade de variantes dividem (S-857)."""
+
+
+def add_pdf_dir_argument(parser: Declarador, *, help: str = "Pasta do acervo de livros.") -> None:
+    """`--pdf-dir`, a pasta do acervo. Vinte comandos o escreviam à mão (S-857)."""
+    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help=help)
+
+
+def add_json_argument(parser: Declarador, *, default: Path | None = None, help: str = "Grava o relatório em JSON.") -> None:
+    """`--json`, o caminho onde o comando grava o que mediu (S-857)."""
+    parser.add_argument("--json", type=Path, default=default, help=help)
+
+
+def add_baseline_argument(parser: Declarador, *, help: str) -> None:
+    """`--baseline`, o relatório anterior contra o qual o comando falha. Ver `confere_baseline`."""
+    parser.add_argument("--baseline", type=Path, help=help)
+
+
+def add_amostra_do_acervo(
+    parser: Declarador, *, saida: Path, por_livro: int, por_pagina: int | None = None, o_que: str = "Linhas"
+) -> None:
+    """`--pdf-dir`, `--saida`, `--por-livro`, `--por-pagina` e `--limite` das medições de texto (S-857).
+
+    Sete comandos medem uma amostra do acervo -- tantas páginas por livro, tantas linhas (ou
+    faixas) por página, nos N primeiros livros -- e cada um copiava o bloco à mão, com o texto da
+    ajuda divergindo de cópia em cópia. `o_que` é o que se conta na página: linhas ou faixas.
+    """
+    add_pdf_dir_argument(parser)
+    parser.add_argument("--saida", type=Path, default=saida, help="Onde gravar o relatório desta medição.")
+    parser.add_argument(
+        "--por-livro", type=int, default=por_livro, help=f"Páginas medidas por livro (padrão {por_livro})."
+    )
+    if por_pagina is not None:
+        parser.add_argument(
+            "--por-pagina", type=int, default=por_pagina, help=f"{o_que} medidas por página (padrão {por_pagina})."
+        )
+    parser.add_argument("--limite", "--limit", type=int, help="Só os N primeiros livros.")
+
+
+def add_pesos_de_caractere_argument(parser: Declarador) -> None:
+    """`--modelo` dos comandos que leem com o classificador de caractere: `None` é o publicado."""
+    parser.add_argument(
+        "--modelo", type=Path, help="Pesos do classificador de caractere. Padrão: ao lado do char_meta.json."
+    )
+
+
+def add_base_de_caractere_argument(parser: Declarador, *, help: str = "Pasta com uma subpasta por classe.") -> None:
+    """`--base`, a base de amostras de caractere (S-857)."""
+    parser.add_argument("--base", type=Path, default=BASE_DE_CARACTERE, help=help)
+
+
+def add_cache_da_base_arguments(parser: Declarador) -> None:
+    """`--cache` e `--revarrer`: a varredura da base guardada, e como ignorá-la (S-857)."""
+    parser.add_argument("--cache", type=Path, default=CACHE_DA_BASE, help="Varredura da base em cache (.npz).")
+    parser.add_argument("--revarrer", action="store_true", help="Ignora o cache e varre a base de novo.")
+
+
+def add_fracoes_do_split_arguments(parser: Declarador) -> None:
+    """`--val` e `--teste`, as frações da base de caractere fora do treino (S-857)."""
+    parser.add_argument("--val", type=float, default=0.1, help="Fração da base reservada à validação.")
+    parser.add_argument("--teste", type=float, default=0.1, help="Fração da base reservada ao teste.")
+
+
+def add_device_argument(parser: Declarador) -> None:
+    """`--device`. `None` deixa quem treina escolher: cuda se houver (S-857)."""
+    parser.add_argument("--device", default=None, help="cpu ou cuda. Padrão: cuda se houver.")
+
+
+def add_tolerance_argument(parser: Declarador) -> None:
+    """`--tolerance`, a paridade da exportação ONNX (S-30)."""
+    parser.add_argument("--tolerance", type=float, default=1e-4, help="Tolerância da S-30.")
+
+
+def add_orientation_argument(
+    parser: Declarador, *, help: str = "Rotação do tabuleiro. `auto` decide pela confiança das duas leituras."
+) -> None:
+    """`--orientation`, a rotação do diagrama (S-13). Seis cópias, duas com `'auto'` literal (S-857)."""
+    parser.add_argument("--orientation", choices=("auto", "0", "180"), default=DEFAULT_ORIENTATION_MODE, help=help)
+
+
+def add_reading_order_argument(parser: Declarador, *, help: str) -> None:
+    """`--reading-order`, a ordem dos diagramas na página (S-14)."""
+    parser.add_argument("--reading-order", choices=("column", "row"), default=DEFAULT_READING_ORDER, help=help)
+
+
+def add_max_boards_argument(
+    parser: Declarador, flag: str = "--max-boards", *, help: str = "Teto de diagramas aceitos por página."
+) -> None:
+    """O teto de diagramas por página. Dois nomes no acervo de comandos, o mesmo número (S-857)."""
+    parser.add_argument(flag, type=int, default=DEFAULT_MAX_BOARDS, help=help)
+
+
+def add_page_range_arguments(parser: Declarador) -> None:
+    """`--start-page` e `--end-page`, o trecho do PDF a varrer, base 0 e fim exclusivo (S-857)."""
+    parser.add_argument("--start-page", type=int, default=0, help="Primeira página a varrer, base 0.")
+    parser.add_argument("--end-page", type=int, default=None, help="Exclusivo. Padrão: até o fim do PDF.")
+
+
+def add_pages_per_book_argument(parser: Declarador, *, default: int) -> None:
+    """`--pages`, quantas páginas de cada livro a amostra visita (S-857)."""
+    parser.add_argument("--pages", type=int, default=default, help="Páginas amostradas por livro.")
+
+
+def add_paginas_argument(parser: Declarador) -> None:
+    """`--paginas`, as páginas 1-based que o comando lê. Ver `texto_pagina.intervalo_de_paginas`."""
+    parser.add_argument(
+        "--paginas", default="1", help="Páginas 1-based: '58', '58-62' ou '58,60,62'. Padrão: a primeira."
+    )
+
+
+def add_gallery_dir_argument(parser: Declarador, default: Path) -> None:
+    """`--gallery-dir`. O padrão vem de quem chama: ele mora em `gallery`, fora do fecho deste módulo."""
+    parser.add_argument("--gallery-dir", type=Path, default=default, help="Pasta dos índices da Galeria.")
 
 
 def confere_baseline(caminho: Any | None, *, rotulo: str = "--baseline") -> int | None:

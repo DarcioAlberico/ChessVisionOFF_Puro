@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..arquivo_do_dono import Leitura, Lida
-from ..config import DEFAULT_MAX_BOARDS, DEFAULT_PDF_DIR, DEFAULT_READING_ORDER
+from ..config import DEFAULT_READING_ORDER
 from ..djvu_io import livros_em
 from ..gallery_scan import build_gallery_index, index_path_for, load_index, save_index
 from ..logging_setup import configure_logging, default_log_file, onde_esta_o_rastro
@@ -46,7 +46,9 @@ from . import (
     EXIT_FAILURE,
     EXIT_OK,
     add_dpi_argument,
+    add_max_boards_argument,
     add_model_argument,
+    add_pdf_dir_argument,
     add_verbose,
     cli_errors,
     message_for,
@@ -122,11 +124,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("books", nargs="*", type=Path, help="PDFs ou DjVus a varrer. Vazio com --all: a pasta inteira.")
     parser.add_argument("--all", action="store_true", help="Varre todos os PDFs de --pdf-dir.")
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    add_pdf_dir_argument(parser)
     add_model_argument(parser)
     parser.add_argument("--queue-dir", type=Path, default=DEFAULT_QUEUE_DIR, help="Onde as filas de revisão são gravadas.")
     add_dpi_argument(parser)
-    parser.add_argument("--max-boards", type=int, default=DEFAULT_MAX_BOARDS, help="Teto de diagramas aceitos por página.")
+    add_max_boards_argument(parser)
     parser.add_argument(
         "--force",
         action="store_true",

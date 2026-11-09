@@ -47,9 +47,9 @@ from typing import Any
 import numpy as np
 
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import add_verbose, cli_errors
+from . import add_amostra_do_acervo, add_pesos_de_caractere_argument, add_verbose, cli_errors
 from .texto_grade import camada_de_ocr
 from .texto_placar import cer
 
@@ -240,11 +240,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="As duas reguas lado a lado: o classificador e a pagina (S-206).",
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
-    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
-    parser.add_argument("--por-livro", type=int, default=2, help="Paginas medidas por livro.")
-    parser.add_argument("--limite", "--limit", type=int, help="So os N primeiros livros.")
-    parser.add_argument("--modelo", type=Path, help="Pesos do classificador.")
+    add_amostra_do_acervo(parser, saida=SAIDA_PADRAO, por_livro=2)
+    add_pesos_de_caractere_argument(parser)
     add_verbose(parser)
     return parser.parse_args(argv)
 

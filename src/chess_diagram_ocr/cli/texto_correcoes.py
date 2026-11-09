@@ -29,7 +29,7 @@ from typing import Any
 from ..atomic_io import atomic_write_text
 from ..logging_setup import configure_logging
 from ..text import arquivo, correcao
-from . import add_verbose, cli_errors
+from . import add_json_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ def linhas_do_resumo(dados: dict[str, Any], *, teto: int | None = TETO_DE_TROCAS
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("alvos", nargs="+", type=Path, help="Arquivos .cvtxt ou pastas.")
-    parser.add_argument("--json", type=Path, help="Grava o relatorio completo neste caminho.")
+    add_json_argument(parser, help="Grava o relatório completo em JSON.")
     parser.add_argument("--todas", action="store_true", help="Imprime todas as trocas, sem teto.")
     add_verbose(parser)
     return parser

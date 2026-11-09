@@ -14,7 +14,6 @@ import argparse
 import logging
 from pathlib import Path
 
-from ..config import DEFAULT_PDF_DIR
 from ..logging_setup import configure_logging, default_log_file
 from ..service import OcrService, RecognitionOptions
 from ..side_survey import (
@@ -25,7 +24,18 @@ from ..side_survey import (
     survey_collection,
     write_survey,
 )
-from . import EXIT_BAD_INPUT, add_dpi_argument, add_model_argument, add_verbose, cli_errors
+from . import (
+    EXIT_BAD_INPUT,
+    add_dpi_argument,
+    add_json_argument,
+    add_max_boards_argument,
+    add_model_argument,
+    add_orientation_argument,
+    add_pages_per_book_argument,
+    add_pdf_dir_argument,
+    add_verbose,
+    cli_errors,
+)
 from ._ocr import OFF, add_ocr_argument, caption_reader_from_args
 
 logger = logging.getLogger(__name__)
@@ -42,18 +52,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "coluna de texto é o que a Fase 8 acrescentou; a de legalidade já existia."
         ),
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    add_pdf_dir_argument(parser)
     add_model_argument(parser)
-    parser.add_argument("--pages", type=int, default=DEFAULT_PAGES_PER_BOOK, help="Páginas amostradas por livro.")
+    add_pages_per_book_argument(parser, default=DEFAULT_PAGES_PER_BOOK)
     add_dpi_argument(parser)
-    parser.add_argument("--max-boards", type=int, default=12, help="Teto de diagramas aceitos por página.")
-    parser.add_argument(
-        "--orientation",
-        default="auto",
-        choices=("auto", "0", "180"),
-        help="Rotação do tabuleiro. `auto` decide pela confiança das duas leituras.",
-    )
-    parser.add_argument("--json", type=Path, default=None, help="Grava o levantamento em JSON.")
+    add_max_boards_argument(parser)
+    add_orientation_argument(parser)
+    add_json_argument(parser, help="Grava o levantamento em JSON.")
     add_ocr_argument(parser)
     add_verbose(parser)
     return parser.parse_args(argv)

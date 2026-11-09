@@ -54,11 +54,10 @@ from typing import Any
 from ..atomic_io import atomic_write_text
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import add_verbose, cli_errors
+from . import add_base_de_caractere_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
-BASE_PADRAO = PROJECT_ROOT / "training_data"
 METRICAS = PROJECT_ROOT / "docs" / "metrics"
 
 TAREFAS_PADRAO = 16
@@ -224,7 +223,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Inventaria a base de caractere e grava o manifesto. Nao escreve na pasta (S-200).",
     )
-    parser.add_argument("--base", type=Path, default=BASE_PADRAO, help="Pasta com uma subpasta por classe.")
+    add_base_de_caractere_argument(parser)
     parser.add_argument("--saida", type=Path, help="Padrao: docs/metrics/texto_inventario_<data>.json")
     parser.add_argument("--minimo", type=int, default=3, help="Abaixo disto a classe vira achado (padrao 3).")
     parser.add_argument("--tarefas", type=int, default=TAREFAS_PADRAO, help="Threads da leitura.")

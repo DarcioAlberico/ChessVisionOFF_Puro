@@ -24,11 +24,10 @@ from pathlib import Path
 from ..atomic_io import atomic_write_bytes, atomic_write_text
 from ..config import DATA_DIR, PROJECT_ROOT, caminho_para_relatorio
 from ..logging_setup import configure_logging
-from . import EXIT_BAD_INPUT, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, add_base_de_caractere_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
-BASE_PADRAO = PROJECT_ROOT / "training_data"
 DECISOES = DATA_DIR / "texto_conflitos.json"
 QUARENTENA = DATA_DIR / "quarentena_texto"
 METRICAS = PROJECT_ROOT / "docs" / "metrics"
@@ -38,7 +37,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Acha a mesma imagem arquivada sob dois caracteres, e move o rotulo perdedor."
     )
-    parser.add_argument("--base", type=Path, default=BASE_PADRAO, help="Base de amostras de caractere.")
+    add_base_de_caractere_argument(parser)
     parser.add_argument("--decisoes", type=Path, default=DECISOES, help="Onde as decisões tomadas ficam registradas.")
     parser.add_argument("--quarentena", type=Path, default=QUARENTENA, help="Para onde vão as amostras perdedoras.")
     parser.add_argument("--aplicar", "--apply", action="store_true", help="Move os perdedores. Sem isto, so relata.")

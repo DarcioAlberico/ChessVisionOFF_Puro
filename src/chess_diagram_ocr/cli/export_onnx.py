@@ -23,7 +23,9 @@ from . import (
     EXIT_NO_CHECKPOINT,
     EXIT_OK,
     add_dataset_arguments,
+    add_json_argument,
     add_model_argument,
+    add_tolerance_argument,
     add_verbose,
     cli_errors,
 )
@@ -44,8 +46,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Split usado na conferencia de paridade. 'none' pula a conferencia.",
     )
     parser.add_argument("--verify-boards", type=int, default=0, help="Limita a conferencia a N tabuleiros. 0 = todos.")
-    parser.add_argument("--tolerance", type=float, default=1e-4, help="Tolerancia da S-30.")
-    parser.add_argument("--json", type=Path, default=None, help="Grava o relatorio de paridade em JSON.")
+    add_tolerance_argument(parser)
+    add_json_argument(parser, help="Grava o relatório de paridade em JSON.")
     add_verbose(parser)
     return parser.parse_args(argv)
 

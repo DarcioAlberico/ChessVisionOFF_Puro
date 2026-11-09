@@ -44,11 +44,11 @@ from typing import Any
 import numpy as np
 
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import colados
 from ..text.colados import arbitro_de_confianca
-from . import add_verbose, cli_errors
+from . import add_amostra_do_acervo, add_pesos_de_caractere_argument, add_verbose, cli_errors
 from .texto_duas_linhas import DPI, RAIO_PT, faixas_da_camada, recorte_da_faixa
 from .texto_grade import camada_de_ocr
 from .texto_placar import cer
@@ -222,12 +222,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Mede o separador de glifo colado nos tres modos, antes de liga-lo (S-186).",
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
-    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
-    parser.add_argument("--por-livro", type=int, default=3, help="Paginas medidas por livro.")
-    parser.add_argument("--por-pagina", type=int, default=6, help="Faixas medidas por pagina.")
-    parser.add_argument("--limite", "--limit", type=int, help="So os N primeiros livros.")
-    parser.add_argument("--modelo", type=Path, help="Pesos. Padrao: ao lado do char_meta.json.")
+    add_amostra_do_acervo(parser, saida=SAIDA_PADRAO, por_livro=3, por_pagina=6, o_que="Faixas")
+    add_pesos_de_caractere_argument(parser)
     parser.add_argument(
         "--limiares",
         type=float,

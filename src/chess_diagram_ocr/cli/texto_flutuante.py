@@ -43,9 +43,8 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_PDF_DIR
 from ..logging_setup import configure_logging
-from . import add_verbose, cli_errors
+from . import add_json_argument, add_pdf_dir_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -257,10 +256,10 @@ def veredito(resultados: list[dict[str, Any]]) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta dos livros (padrao: PDF/).")
+    add_pdf_dir_argument(parser)
     parser.add_argument("--folha", action="append", default=[], help="Livro.pdf:N (a folha contada de 1). Repita.")
     parser.add_argument("--motor", default="auto", help="O motor de leitura (padrao: auto).")
-    parser.add_argument("--json", type=Path, help="Grava o relatorio neste caminho.")
+    add_json_argument(parser)
     add_verbose(parser)
     return parser
 

@@ -63,10 +63,18 @@ from typing import Any
 import numpy as np
 
 from ..atomic_io import atomic_write_json
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text.colados import arbitro_de_confianca
-from . import EXIT_FAILURE, add_verbose, cli_errors, confere_baseline
+from . import (
+    EXIT_FAILURE,
+    add_amostra_do_acervo,
+    add_baseline_argument,
+    add_pesos_de_caractere_argument,
+    add_verbose,
+    cli_errors,
+    confere_baseline,
+)
 from .texto_grade import camada_de_ocr
 from .texto_placar import cer
 
@@ -265,13 +273,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Mede o ganho do corte de linha e do descarte de fragmento (S-198).",
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
-    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
-    parser.add_argument("--por-livro", type=int, default=3, help="Paginas medidas por livro (padrao 3).")
-    parser.add_argument("--por-pagina", type=int, default=6, help="Faixas medidas por pagina (padrao 6).")
-    parser.add_argument("--limite", "--limit", type=int, help="So os N primeiros livros.")
-    parser.add_argument("--modelo", type=Path, help="Pesos. Padrao: ao lado do char_meta.json.")
-    parser.add_argument("--baseline", type=Path, help="Relatorio anterior: falha se o CER subir.")
+    add_amostra_do_acervo(parser, saida=SAIDA_PADRAO, por_livro=3, por_pagina=6, o_que="Faixas")
+    add_pesos_de_caractere_argument(parser)
+    add_baseline_argument(parser, help="Relatorio anterior: falha se o CER subir.")
     add_verbose(parser)
     return parser.parse_args(argv)
 

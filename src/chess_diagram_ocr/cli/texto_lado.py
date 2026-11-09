@@ -41,10 +41,10 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import lado as _lado
-from . import EXIT_BAD_INPUT, EXIT_OK, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, EXIT_OK, add_pdf_dir_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="cvoff-texto-lado",
         description="Mede quantos diagramas deixam de sair `default` com o glifo lendo a legenda (S-207).",
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo.")
+    add_pdf_dir_argument(parser)
     parser.add_argument("--pdf", type=Path, default=None, help="Um PDF só, em vez do acervo.")
     parser.add_argument("--livros", type=int, default=LIVROS, help=f"Quantos livros. Padrão: {LIVROS}.")
     parser.add_argument("--paginas", type=int, default=PAGINAS, help=f"Páginas com diagrama por livro. Padrão: {PAGINAS}.")

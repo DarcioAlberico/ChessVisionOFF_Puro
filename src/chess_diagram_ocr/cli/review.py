@@ -9,9 +9,6 @@ from pathlib import Path
 from ..arquivo_do_dono import Lida
 from ..config import (
     DEFAULT_DATASET_CSV,
-    DEFAULT_MAX_BOARDS,
-    DEFAULT_ORIENTATION_MODE,
-    DEFAULT_READING_ORDER,
 )
 from ..logging_setup import configure_logging, default_log_file
 from ..review_queue import (
@@ -29,7 +26,11 @@ from . import (
     EXIT_BAD_INPUT,
     add_accept_threshold_argument,
     add_dpi_argument,
+    add_max_boards_argument,
     add_model_argument,
+    add_orientation_argument,
+    add_page_range_arguments,
+    add_reading_order_argument,
     add_verbose,
     cli_errors,
 )
@@ -47,23 +48,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--labels", type=Path, default=DEFAULT_DATASET_CSV, help="CSV usado para achar classes raras.")
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR, help="Onde os recortes da fila são gravados.")
     add_dpi_argument(parser)
-    parser.add_argument(
-        "--max-boards-per-page", type=int, default=DEFAULT_MAX_BOARDS, help="Teto de diagramas aceitos por página."
-    )
-    parser.add_argument(
-        "--orientation",
-        choices=("auto", "0", "180"),
-        default=DEFAULT_ORIENTATION_MODE,
-        help="Rotação do tabuleiro. `auto` decide pela confiança das duas leituras.",
-    )
-    parser.add_argument("--start-page", type=int, default=0, help="Primeira página a varrer, base 0.")
-    parser.add_argument("--end-page", type=int, default=None, help="Exclusivo. Padrao: ate o fim do PDF.")
-    parser.add_argument(
-        "--reading-order",
-        choices=("column", "row"),
-        default=DEFAULT_READING_ORDER,
-        help="Ordem em que os diagramas da página entram na fila.",
-    )
+    add_max_boards_argument(parser, "--max-boards-per-page")
+    add_orientation_argument(parser)
+    add_page_range_arguments(parser)
+    add_reading_order_argument(parser, help="Ordem em que os diagramas da página entram na fila.")
     add_accept_threshold_argument(parser)
     parser.add_argument("--limit", "--limite", type=int, default=None, help="Corta a fila apos ordenar.")
     parser.add_argument("--show", type=int, default=20, help="Itens listados no fim.")

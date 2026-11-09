@@ -43,9 +43,17 @@ from pathlib import Path
 from typing import Any, Literal
 
 from ..atomic_io import atomic_write_json
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import EXIT_BAD_INPUT, EXIT_FAILURE, add_verbose, cli_errors, confere_baseline
+from . import (
+    EXIT_BAD_INPUT,
+    EXIT_FAILURE,
+    add_baseline_argument,
+    add_pdf_dir_argument,
+    add_verbose,
+    cli_errors,
+    confere_baseline,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -212,10 +220,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         epilog="O --baseline reprova se qualquer pagina certa no relatorio anterior estiver errada agora.",
     )
     parser.add_argument("--anotadas", type=Path, default=ANOTADAS_PADRAO, help="O conjunto anotado (JSON).")
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    add_pdf_dir_argument(parser)
     parser.add_argument("--motor", choices=("camada", "glifo"), default="camada", help="Por onde ler a pagina.")
     parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
-    parser.add_argument("--baseline", type=Path, help="Falha (codigo 1) se alguma pagina certa neste relatorio errar.")
+    add_baseline_argument(parser, help="Falha (codigo 1) se alguma pagina certa neste relatorio errar.")
     add_verbose(parser)
     return parser.parse_args(argv)
 

@@ -9,7 +9,7 @@ from ..config import DEFAULT_ORIENTATION_MODE
 from ..inference import load_model, predict_with_orientation
 from ..logging_setup import configure_logging, default_log_file
 from ..pdf_io import render_pdf_page
-from . import EXIT_BAD_INPUT, add_dpi_argument, add_model_argument, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, add_dpi_argument, add_model_argument, add_orientation_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +19,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("pdf", type=Path, help="O livro de onde vem a página.")
     parser.add_argument("--page", type=int, default=0, help="Indice da pagina, base 0.")
     add_model_argument(parser)
-    parser.add_argument(
-        "--orientation",
-        choices=("auto", "0", "180"),
-        default=DEFAULT_ORIENTATION_MODE,
-        help=f"Orientacao do diagrama (S-13). Padrao: {DEFAULT_ORIENTATION_MODE}.",
-    )
+    add_orientation_argument(parser, help=f"Orientacao do diagrama (S-13). Padrao: {DEFAULT_ORIENTATION_MODE}.")
     add_dpi_argument(parser)
     add_verbose(parser)
     return parser.parse_args(argv)

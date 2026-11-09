@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from ..logging_setup import configure_logging
-from . import EXIT_BAD_INPUT, add_dpi_argument, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, add_dpi_argument, add_paginas_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -106,11 +106,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Lê a página inteira como texto (S-211) e escreve o texto ou a PaginaLida.",
     )
     parser.add_argument("pdf", type=Path, help="O PDF a ler.")
-    parser.add_argument(
-        "--paginas",
-        default="1",
-        help="Páginas 1-based: '58', '58-62' ou '58,60,62'. Padrão: a primeira.",
-    )
+    add_paginas_argument(parser)
     parser.add_argument("--lingua", default="eng", help="língua do Tesseract nos motores fusao e na reserva (S-717)")
     parser.add_argument(
         "--motor",

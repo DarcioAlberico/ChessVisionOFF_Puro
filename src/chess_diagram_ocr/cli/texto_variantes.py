@@ -61,13 +61,17 @@ from ..atomic_io import atomic_write_text
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text.modelo import ARQUITETURA_PADRAO, Arquitetura
-from . import add_verbose, cli_errors
+from . import (
+    add_base_de_caractere_argument,
+    add_cache_da_base_arguments,
+    add_fracoes_do_split_arguments,
+    add_verbose,
+    cli_errors,
+)
 
 logger = logging.getLogger(__name__)
 
 METRICAS = PROJECT_ROOT / "docs" / "metrics"
-BASE_PADRAO = PROJECT_ROOT / "training_data"
-CACHE_PADRAO = PROJECT_ROOT / "models" / ".texto_base_cache.npz"
 
 EPOCAS_DA_GRADE = 10
 """O orçamento de cada braço. Ver "O orçamento é curto" no cabeçalho."""
@@ -245,17 +249,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="A grade de variantes do treino de caractere, medida no val (S-204).",
     )
-    parser.add_argument("--base", type=Path, default=BASE_PADRAO, help="Base de amostras de caractere.")
-    parser.add_argument("--cache", type=Path, default=CACHE_PADRAO, help="Onde os recortes preparados ficam guardados.")
-    parser.add_argument("--revarrer", action="store_true", help="Refaz o cache em vez de reaproveitá-lo.")
+    add_base_de_caractere_argument(parser)
+    add_cache_da_base_arguments(parser)
     parser.add_argument("--saida", type=Path, help="Padrao: docs/metrics/texto_variantes_<data>.json")
     parser.add_argument("--bracos", nargs="+", choices=sorted(POR_NOME), help="Padrao: todos.")
     parser.add_argument("--epocas", type=int, default=EPOCAS_DA_GRADE, help="Épocas de treino por variante.")
     parser.add_argument("--lote", type=int, default=256, help="Amostras por lote.")
     parser.add_argument("--taxa", type=float, default=1e-3, help="Taxa de aprendizado.")
     parser.add_argument("--semente", type=int, default=20260823, help="Semente das operações aleatórias.")
-    parser.add_argument("--val", type=float, default=0.1, help="Fração da base reservada à validação.")
-    parser.add_argument("--teste", type=float, default=0.1, help="Fração da base reservada ao teste.")
+    add_fracoes_do_split_arguments(parser)
     parser.add_argument("--device", default=None, help="Onde treinar: cuda ou cpu. Padrão: o que houver.")
     add_verbose(parser)
     return parser.parse_args(argv)

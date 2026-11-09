@@ -72,11 +72,11 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_bytes, atomic_write_json, atomic_write_text
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..ocr import KNOWN_ENGINES, build_recognizer
 from ..settings import OcrSettings, load_settings
-from . import EXIT_BAD_INPUT, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, add_pdf_dir_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -531,7 +531,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--referencia", type=Path, default=REFERENCIA_PADRAO, help="O .jsonl conferido à mão que serve de gabarito."
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    add_pdf_dir_argument(parser)
     parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
     parser.add_argument(
         "--fonte",

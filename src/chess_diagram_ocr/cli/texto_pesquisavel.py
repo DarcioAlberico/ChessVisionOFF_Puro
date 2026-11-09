@@ -38,7 +38,7 @@ from typing import Any
 
 from ..logging_setup import configure_logging
 from ..text import pdf_pesquisavel as _camada
-from . import EXIT_BAD_INPUT, EXIT_OK, add_dpi_argument, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, EXIT_OK, add_dpi_argument, add_paginas_argument, add_verbose, cli_errors
 from .texto_pagina import intervalo_de_paginas
 
 logger = logging.getLogger(__name__)
@@ -53,11 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Escreve o livro com a camada de texto invisível do que o motor leu (S-210).",
     )
     parser.add_argument("pdf", type=Path, help="O livro a tornar pesquisável.")
-    parser.add_argument(
-        "--paginas",
-        default="1",
-        help="Páginas 1-based a ler: '58', '58-62' ou '58,60,62'. Padrão: a primeira.",
-    )
+    add_paginas_argument(parser)
     parser.add_argument("--saida", type=Path, default=None, help=f"Padrão: o nome do livro com '{SUFIXO}'.")
     add_dpi_argument(parser, help="DPI da leitura. Padrão: 220.")
     parser.add_argument(

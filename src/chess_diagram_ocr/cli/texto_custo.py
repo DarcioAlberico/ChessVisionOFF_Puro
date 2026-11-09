@@ -49,7 +49,7 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import custo as _custo
 from . import (
@@ -58,6 +58,7 @@ from . import (
     EXIT_OK,
     add_dpi_argument,
     add_model_argument,
+    add_pdf_dir_argument,
     add_verbose,
     cli_errors,
     confere_baseline,
@@ -259,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
             "o número escolhe (S-215)."
         ),
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo.")
+    add_pdf_dir_argument(parser)
     parser.add_argument("--pdf", type=Path, default=None, help="Um PDF só, em vez do acervo.")
     parser.add_argument("--livros", type=int, default=LIVROS, help=f"Quantos livros. Padrão: {LIVROS}.")
     parser.add_argument(

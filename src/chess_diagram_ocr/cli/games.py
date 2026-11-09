@@ -47,7 +47,6 @@ from typing import Any
 from ..arvore_de_aberturas import DEFAULT_TREE_PATH, PROFUNDIDADE
 from ..arvore_de_aberturas import construir as construir_arvore
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_PDF_DIR
 from ..gallery import DEFAULT_GALLERY_DIR, load_annotations, save_annotations
 from ..gallery_scan import GalleryIndex, load_index
 from ..games_cache import DEFAULT_STORE_PATH, open_store
@@ -70,7 +69,7 @@ from ..games_db import (
 from ..games_index import DEFAULT_INDEX_PATH, build_index
 from ..logging_setup import configure_logging, default_log_file
 from ..ui.gallery_model import GalleryModel
-from . import EXIT_BAD_INPUT, EXIT_FAILURE, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, EXIT_FAILURE, add_gallery_dir_argument, add_pdf_dir_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -107,8 +106,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=[],
         help=f"um .pgn. Repetível. Padrão: TODOS os .pgn de {DEFAULT_DATABASE_DIR}",
     )
-    parser.add_argument("--gallery-dir", type=Path, default=DEFAULT_GALLERY_DIR, help="Pasta dos índices da Galeria.")
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    add_gallery_dir_argument(parser, DEFAULT_GALLERY_DIR)
+    add_pdf_dir_argument(parser)
     parser.add_argument("--workers", type=int, default=None, help="processos na busca por posição. 1 = sem paralelismo.")
     parser.add_argument(
         "--max-games",
