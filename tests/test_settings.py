@@ -735,9 +735,15 @@ class SobreviventesDoMutatorTests(unittest.TestCase):
 
     def test_o_tooltip_do_glifo_em_cada_estado(self) -> None:
         """Sem o metadado, sem os pesos (no lugar padrão ou no apontado), e com os dois."""
-        from chess_diagram_ocr import config
+        from chess_diagram_ocr import settings as modulo
 
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(config, "PROJECT_ROOT", Path(tmp)):
+        # Os dois caminhos padrão moram em `config` (S-862) e `settings` os importa pelo nome: é ali
+        # que o teste os aponta para a pasta vazia.
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(modulo, "DEFAULT_GLYPH_META_PATH", Path(tmp) / "models" / "char_meta.json"),
+            mock.patch.object(modulo, "DEFAULT_GLYPH_MODEL_PATH", Path(tmp) / "models" / "char_classifier.pt"),
+        ):
             modelos = Path(tmp) / "models"
             self.assertEqual(
                 OcrSettings().glyph_disabled_reason(),
