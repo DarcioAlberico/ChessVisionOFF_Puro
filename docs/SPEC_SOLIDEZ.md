@@ -1879,6 +1879,15 @@ dois pré-processamentos já tem teste; o que muda é que, com uma função só,
 
 **Aceite.** O teste do hash passa, e o de igualdade sai.
 
+**Entregue** (2026-11-08): `preparar_recortes` mora em `text/modelo.py`, e `classificar` e `margem` numa base
+`SuperficieDeGlifo` que os dois backends herdam (o ONNX ganha `margem`); o dryer perdeu os dois pares (75 → 73).
+Divergiu: a chave barata leva o `mtime_ns` e o tamanho **também do metadado** -- sem reler o metadado a cada
+carga, editar só a temperatura serviria o classificador velho, e isso já acontecia antes (o metadado era relido,
+mas a chave não o via; `test_editar_so_o_metadado_invalida_o_cache` falhava com 7,25 != 1,5). O
+`GlyphRecognizer` novo por folha ficou: é um invólucro de dois campos, e quem o pede por folha é `text/leitor.py`
+(S-847/S-836). Paridade com o modelo publicado em 3.000 recortes de `training_data/`: |Δp| ≤ 5,4e-07, nenhum
+caractere diferente (tolerância 1e-4).
+
 ## S-847 · `ocr.glyph_model` chega à leitura de página
 
 **Problema** (confirmado por leitura). `_ha_classificador` (`text/leitor.py:1225`) carrega o

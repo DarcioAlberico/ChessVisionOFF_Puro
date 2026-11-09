@@ -313,62 +313,49 @@ def _construir_rede(num_classes: int, arquitetura: Arquitetura = ARQUITETURA_PAD
     return SimpleCNN(num_classes)
 
 
-class ClassificadorDeGlifo:
-    """Um recorte de 32x32 em cinza -> (caractere, confiança calibrada).
+def preparar_recortes(recortes: list[np.ndarray]) -> np.ndarray:
+    """Lote de recortes -> `(n, 1, 32, 32)` float32 em [0, 1]. **O único preparo de glifo** (S-854).
 
-    Construído só por `carregar_classificador`, que é quem confere o par.
+    Os dois backends -- o torch daqui e o ONNX de `text/onnx_glifos.py` -- chamam esta função, e
+    por isso ela não importa torch: o consumidor ONNX roda sem ele. Antes eram duas cópias e um
+    teste vigiando que continuassem iguais; uma cópia que diverge é desvio entre treino e serviço.
+
+    **A polaridade é a da página: tinta escura sobre papel claro, em cinza cru.** A base de
+    treino foi gravada assim -- não binarizada, não invertida --, e alimentar o modelo com
+    tinta branca troca todas as classes por outras com folga de confiança. Quem inverte é
+    `text/negativo.py` (S-195), antes de chegar aqui, e só onde a página está em negativo.
+    """
+    import cv2
+
+    lote = np.empty((len(recortes), 1, LADO, LADO), dtype=np.float32)
+    for i, recorte in enumerate(recortes):
+        cinza = cv2.cvtColor(recorte, cv2.COLOR_RGB2GRAY) if recorte.ndim == 3 else recorte
+        lote[i, 0] = cv2.resize(cinza, (LADO, LADO)).astype(np.float32) / 255.0
+    return lote
+
+
+class SuperficieDeGlifo:
+    """O que os dois backends respondem a partir de `probabilidades` (S-854).
+
+    `classificar` e `margem` moram aqui uma vez só; cada backend diz só como chega às
+    probabilidades e qual é o alfabeto, em ordem de índice.
     """
 
-    def __init__(self, modelo: Any, meta: MetadadoDeClasses, device: str) -> None:
-        self._modelo = modelo
-        self._meta = meta
-        self._device = device
-
     @property
-    def meta(self) -> MetadadoDeClasses:
-        return self._meta
+    def classes(self) -> tuple[str, ...]:  # pragma: no cover - cada backend define
+        raise NotImplementedError
 
-    @property
-    def device(self) -> str:
-        return self._device
-
-    def _entrada(self, recortes: list[np.ndarray]) -> torch.Tensor:
-        """Lote de recortes -> tensor `(n, 1, 32, 32)` em [0, 1].
-
-        **A polaridade é a da página: tinta escura sobre papel claro, em cinza cru.** A base de
-        treino foi gravada assim -- não binarizada, não invertida --, e alimentar o modelo com
-        tinta branca troca todas as classes por outras com folga de confiança. Quem inverte é
-        `text/negativo.py` (S-195), antes de chegar aqui, e só onde a página está em negativo.
-        """
-        import cv2
-        import torch
-
-        lote = np.empty((len(recortes), 1, LADO, LADO), dtype=np.float32)
-        for i, recorte in enumerate(recortes):
-            cinza = cv2.cvtColor(recorte, cv2.COLOR_RGB2GRAY) if recorte.ndim == 3 else recorte
-            lote[i, 0] = cv2.resize(cinza, (LADO, LADO)).astype(np.float32) / 255.0
-        return torch.from_numpy(lote).to(self._device)
-
-    def probabilidades(self, recortes: list[np.ndarray]) -> np.ndarray:
-        """Matriz `(n, num_classes)` já dividida pela temperatura. Vazia para lote vazio."""
-        import torch
-        import torch.nn.functional as F
-
-        if not recortes:
-            return np.empty((0, self._meta.num_classes), dtype=np.float32)
-
-        with torch.no_grad():
-            logits = self._modelo(self._entrada(recortes))
-            probs = F.softmax(logits / self._meta.temperatura, dim=1)
-        return probs.cpu().numpy().astype(np.float32)
+    def probabilidades(self, recortes: list[np.ndarray]) -> np.ndarray:  # pragma: no cover
+        raise NotImplementedError
 
     def classificar(self, recortes: list[np.ndarray]) -> list[tuple[str, float]]:
         """`[(caractere, confiança), ...]`, um por recorte, na mesma ordem."""
         probs = self.probabilidades(recortes)
         if probs.size == 0:
             return []
+        classes = self.classes
         indices = probs.argmax(axis=1)
-        return [(self._meta.idx_to_char[int(i)], float(probs[linha, i])) for linha, i in enumerate(indices)]
+        return [(classes[int(i)], float(probs[linha, i])) for linha, i in enumerate(indices)]
 
     def margem(self, recortes: list[np.ndarray]) -> list[float]:
         """`1 - p2/p1` por recorte: o vencedor estava claramente à frente?
@@ -388,14 +375,86 @@ class ClassificadorDeGlifo:
         return [float(min(1.0, max(0.0, m))) for m in margens]
 
 
-_CACHE: dict[tuple[str, str, str, int, int], ClassificadorDeGlifo] = {}
-"""Chave: (caminho dos pesos, caminho do metadado, device, mtime_ns, tamanho).
+class ClassificadorDeGlifo(SuperficieDeGlifo):
+    """Um recorte de 32x32 em cinza -> (caractere, confiança calibrada), pelo torch.
+
+    Construído só por `carregar_classificador`, que é quem confere o par.
+    """
+
+    def __init__(self, modelo: Any, meta: MetadadoDeClasses, device: str) -> None:
+        self._modelo = modelo
+        self._meta = meta
+        self._device = device
+        self._classes = meta.alfabeto
+
+    @property
+    def meta(self) -> MetadadoDeClasses:
+        return self._meta
+
+    @property
+    def device(self) -> str:
+        return self._device
+
+    @property
+    def classes(self) -> tuple[str, ...]:
+        return self._classes
+
+    def probabilidades(self, recortes: list[np.ndarray]) -> np.ndarray:
+        """Matriz `(n, num_classes)` já dividida pela temperatura. Vazia para lote vazio."""
+        import torch
+        import torch.nn.functional as F
+
+        if not recortes:
+            return np.empty((0, self._meta.num_classes), dtype=np.float32)
+
+        with torch.no_grad():
+            logits = self._modelo(torch.from_numpy(preparar_recortes(recortes)).to(self._device))
+            probs = F.softmax(logits / self._meta.temperatura, dim=1)
+        return probs.cpu().numpy().astype(np.float32)
+
+
+ChaveDoCache = tuple[str, int, int, str, int, int, str]
+"""(pesos, mtime_ns, tamanho, metadado, mtime_ns, tamanho, device)."""
+
+_CACHE: dict[ChaveDoCache, ClassificadorDeGlifo] = {}
+"""Chave: o caminho, o `mtime_ns` e o tamanho **dos dois arquivos do par**, e o device.
+
+É a chave barata, e é consultada **antes** de ler o metadado e de calcular o SHA-256 dos pesos
+(S-854): as duas contas só se fazem quando ela falta, e não a cada folha.
 
 O `mtime_ns` e o tamanho estão na chave para que **trocar o arquivo no disco invalide o
 cache**. Sem eles, retreinar durante uma sessão deixaria o classificador antigo em memória
 respondendo com o mapa novo -- que é o descasamento que este módulo inteiro existe para
-impedir, entrando pela porta dos fundos.
+impedir, entrando pela porta dos fundos. Os do metadado entraram com a S-854: o metadado
+deixou de ser relido a cada carga, e editar só a temperatura tem de valer.
 """
+
+
+def _chave_do_cache(pesos: Path, meta: Path, device: str) -> ChaveDoCache | None:
+    """A chave barata, ou `None` quando um dos dois arquivos não pode ser inspecionado."""
+    try:
+        de_pesos, de_meta = pesos.stat(), meta.stat()
+        return (
+            str(pesos.resolve()),
+            de_pesos.st_mtime_ns,
+            de_pesos.st_size,
+            str(meta.resolve()),
+            de_meta.st_mtime_ns,
+            de_meta.st_size,
+            device,
+        )
+    except OSError:
+        return None
+
+
+def _caminho_dos_pesos(meta: Path, pesos: Path | None) -> Path:
+    """`pesos=None` procura o `.pt` ao lado do metadado, com o mesmo nome-base."""
+    if pesos is not None:
+        return Path(pesos)
+    ao_lado = meta.with_suffix(".pt")
+    if ao_lado.exists():
+        return ao_lado
+    return meta.parent / f"{meta.stem.replace('_meta', '')}_classifier.pt"
 
 
 def _escolher_device(pedido: str | None) -> str:
@@ -414,17 +473,18 @@ def carregar_classificador(
 ) -> ClassificadorDeGlifo:
     """Recusa por hash **antes** do `torch.load`. Não devolve `None`: ou carrega, ou levanta.
 
-    `pesos=None` procura o `.pt` ao lado do metadado, com o mesmo nome-base.
+    `pesos=None` procura o `.pt` ao lado do metadado, com o mesmo nome-base. O cache é
+    consultado primeiro, pela chave barata; o metadado e o hash só quando ela falta (S-854).
     """
     meta = Path(meta)
+    pesos = _caminho_dos_pesos(meta, pesos)
+    device = _escolher_device(device)
+    chave = _chave_do_cache(pesos, meta, device)
+    em_cache = _CACHE.get(chave) if chave is not None else None
+    if em_cache is not None:
+        return em_cache
+
     metadado = ler_metadado(meta)
-
-    if pesos is None:
-        pesos = meta.with_suffix(".pt")
-        if not pesos.exists():
-            pesos = meta.parent / f"{meta.stem.replace('_meta', '')}_classifier.pt"
-    pesos = Path(pesos)
-
     if not pesos.exists():
         raise ModeloInvalido(
             f"Os pesos do classificador de caracteres não estão em {pesos}.\n\n"
@@ -445,17 +505,6 @@ def carregar_classificador(
             "nenhum e sem aviso nenhum."
         )
 
-    device = _escolher_device(device)
-    try:
-        estado = pesos.stat()
-        chave = (str(pesos.resolve()), str(meta.resolve()), device, estado.st_mtime_ns, estado.st_size)
-    except OSError as exc:  # pragma: no cover - arquivo sumiu entre o hash e o stat
-        raise ModeloInvalido(f"Não foi possível inspecionar {pesos}: {exc}") from exc
-
-    em_cache = _CACHE.get(chave)
-    if em_cache is not None:
-        return em_cache
-
     import torch
 
     rede = _construir_rede(metadado.num_classes, metadado.arquitetura)
@@ -471,7 +520,8 @@ def carregar_classificador(
     rede.eval()
 
     classificador = ClassificadorDeGlifo(rede, metadado, device)
-    _CACHE[chave] = classificador
+    if chave is not None:
+        _CACHE[chave] = classificador
     logger.info(
         "Classificador de caracteres pronto: %d classes, temperatura %.4f, treinado em %s, em %s.",
         metadado.num_classes,
@@ -514,6 +564,7 @@ __all__ = [
     "ClassificadorDeGlifo",
     "MetadadoDeClasses",
     "ModeloInvalido",
+    "SuperficieDeGlifo",
     "carregar_classificador",
     "dispositivo_em_uso",
     "impressao_das_classes",
@@ -521,4 +572,5 @@ __all__ = [
     "ler_metadado",
     "limpar_cache",
     "pastas_do_metadado",
+    "preparar_recortes",
 ]

@@ -38,8 +38,10 @@ from .modelo import (
     LADO,
     ClassificadorDeGlifo,
     ModeloInvalido,
+    SuperficieDeGlifo,
     carregar_classificador,
     impressao_do_arquivo,
+    preparar_recortes,
 )
 
 logger = logging.getLogger(__name__)
@@ -186,23 +188,12 @@ def ler_metadado_onnx(onnx: Path) -> MetadadoOnnx:
     return MetadadoOnnx(classes=tuple(classes), temperatura=float(temperatura), onnx_sha256=encontrado)
 
 
-def preparar_recortes(recortes: list[np.ndarray]) -> np.ndarray:
-    """Lote de recortes -> `(n, 1, 32, 32)` float32 em [0, 1], igual a `ClassificadorDeGlifo._entrada`.
+class ClassificadorDeGlifoOnnx(SuperficieDeGlifo):
+    """A mesma superfície de `ClassificadorDeGlifo`, sem torch.
 
-    Repetido aqui sem torch de propósito: é o que o consumidor ONNX roda. O teste de paridade
-    confere que os dois preparos dão o mesmo número.
+    O preparo do recorte e a decisão (`classificar`, `margem`) são os de `text/modelo.py`, as
+    mesmas funções e não cópias (S-854); daqui é só a sessão do onnxruntime e o softmax.
     """
-    import cv2
-
-    lote = np.empty((len(recortes), 1, LADO, LADO), dtype=np.float32)
-    for i, recorte in enumerate(recortes):
-        cinza = cv2.cvtColor(recorte, cv2.COLOR_RGB2GRAY) if recorte.ndim == 3 else recorte
-        lote[i, 0] = cv2.resize(cinza, (LADO, LADO)).astype(np.float32) / 255.0
-    return lote
-
-
-class ClassificadorDeGlifoOnnx:
-    """A mesma superfície de `ClassificadorDeGlifo` (`probabilidades`, `classificar`), sem torch."""
 
     def __init__(self, onnx: Path, *, providers: list[str] | None = None) -> None:
         import onnxruntime  # importado aqui: o pacote é opcional (extra `onnx`)
@@ -216,6 +207,10 @@ class ClassificadorDeGlifoOnnx:
         )
         self._entrada = self._sessao.get_inputs()[0].name
 
+    @property
+    def classes(self) -> tuple[str, ...]:
+        return self.meta.classes
+
     def logits(self, lote: np.ndarray) -> np.ndarray:
         if lote.shape[0] == 0:
             return np.empty((0, len(self.meta.classes)), dtype=np.float32)
@@ -227,11 +222,3 @@ class ClassificadorDeGlifoOnnx:
         logits -= logits.max(axis=1, keepdims=True) if logits.size else 0.0
         exp = np.exp(logits)
         return (exp / exp.sum(axis=1, keepdims=True)).astype(np.float32) if exp.size else exp.astype(np.float32)
-
-    def classificar(self, recortes: list[np.ndarray]) -> list[tuple[str, float]]:
-        """`[(caractere, confiança), ...]`, um por recorte, na mesma ordem."""
-        probs = self.probabilidades(recortes)
-        if probs.size == 0:
-            return []
-        indices = probs.argmax(axis=1)
-        return [(self.meta.classes[int(i)], float(probs[linha, i])) for linha, i in enumerate(indices)]

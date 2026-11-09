@@ -238,6 +238,39 @@ class CargaTests(unittest.TestCase):
         self.meta.write_text(json.dumps(_meta_de(self.idx, self.pesos), ensure_ascii=False), encoding="utf-8")
         self.assertIsNot(primeiro, mod.carregar_classificador(self.meta, self.pesos))
 
+    def test_dez_folhas_seguidas_calculam_o_hash_uma_vez(self) -> None:
+        """S-854: o SHA-256 dos pesos e a leitura do metadado só quando o cache falta.
+
+        Cada folha lida constrói o reconhecedor pela mesma porta que o leitor usa
+        (`build_glyph_recognizer`); antes, cada uma relia o metadado e refazia o hash do `.pt`
+        inteiro antes de olhar o cache.
+        """
+        from unittest import mock
+
+        from chess_diagram_ocr.text.recognizer import build_glyph_recognizer
+
+        with (
+            mock.patch.object(mod, "impressao_do_arquivo", wraps=mod.impressao_do_arquivo) as hash_,
+            mock.patch.object(mod, "ler_metadado", wraps=mod.ler_metadado) as metadado,
+        ):
+            folhas = [build_glyph_recognizer(self.pesos, self.meta) for _ in range(10)]
+
+        self.assertEqual(1, hash_.call_count)
+        self.assertEqual(1, metadado.call_count)
+        self.assertEqual(1, len({id(folha.classifier) for folha in folhas}))
+
+    def test_editar_so_o_metadado_invalida_o_cache(self) -> None:
+        """O cache deixa de reler o metadado, então o metadado tem de estar na chave.
+
+        A temperatura muda e os pesos não: o classificador servido tem de ser o da temperatura nova.
+        """
+        antes = mod.carregar_classificador(self.meta, self.pesos)
+        dados = _meta_de(self.idx, self.pesos, temperatura=7.25)
+        self.meta.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
+        depois = mod.carregar_classificador(self.meta, self.pesos)
+        self.assertEqual(1.5, antes.meta.temperatura)
+        self.assertEqual(7.25, depois.meta.temperatura)
+
     def test_a_temperatura_muda_a_confianca_e_nao_a_classe(self) -> None:
         """É o que a calibração faz, e é por isso que ela não desarruma quem já decidiu."""
         recorte = [np.full((16, 16), 120, dtype=np.uint8)]

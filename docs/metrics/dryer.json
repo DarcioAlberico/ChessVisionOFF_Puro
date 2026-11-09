@@ -2,7 +2,7 @@
  "limiar": 0.8,
  "gramas": 5,
  "min_tokens": 60,
- "total": 75,
+ "total": 73,
  "pares": [
   {
    "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
@@ -85,14 +85,14 @@
    "a": "src/chess_diagram_ocr/qt/painel_da_galeria.py::PainelDaGaleria._confirmar_destrutivo",
    "linha_a": 1530,
    "b": "src/chess_diagram_ocr/qt/painel_de_estudo.py::PainelDeEstudo._perguntar",
-   "linha_b": 1758,
+   "linha_b": 1759,
    "semelhanca": 1.0
   },
   {
    "a": "src/chess_diagram_ocr/qt/painel_de_texto.py::PainelDeTexto.desfazer",
-   "linha_a": 1532,
+   "linha_a": 1547,
    "b": "src/chess_diagram_ocr/qt/painel_de_texto.py::PainelDeTexto.refazer",
-   "linha_b": 1556,
+   "linha_b": 1571,
    "semelhanca": 1.0
   },
   {
@@ -124,13 +124,6 @@
    "semelhanca": 1.0
   },
   {
-   "a": "src/chess_diagram_ocr/text/modelo.py::ClassificadorDeGlifo.classificar",
-   "linha_a": 365,
-   "b": "src/chess_diagram_ocr/text/onnx_glifos.py::ClassificadorDeGlifoOnnx.classificar",
-   "linha_b": 231,
-   "semelhanca": 1.0
-  },
-  {
    "a": "src/chess_diagram_ocr/ui/motor_declarado.py::validar_caminho",
    "linha_a": 242,
    "b": "src/chess_diagram_ocr/ui/motor_declarado.py::validar_pasta_de_tablebase",
@@ -139,9 +132,9 @@
   },
   {
    "a": "src/chess_diagram_ocr/qt/painel_de_estudo.py::PainelDeEstudo.buscar_partidas",
-   "linha_a": 2526,
+   "linha_a": 2527,
    "b": "src/chess_diagram_ocr/qt/painel_de_estudo.py::PainelDeEstudo.arvore_de_aberturas",
-   "linha_b": 2555,
+   "linha_b": 2556,
    "semelhanca": 0.948
   },
   {
@@ -253,7 +246,7 @@
    "a": "src/chess_diagram_ocr/cli/gallery.py::parse_args",
    "linha_a": 38,
    "b": "src/chess_diagram_ocr/cli/text_status.py::parse_args",
-   "linha_b": 66,
+   "linha_b": 67,
    "semelhanca": 0.89
   },
   {
@@ -293,9 +286,9 @@
   },
   {
    "a": "src/chess_diagram_ocr/ui/editor_model.py::DiagramEditorModel.apply_placement",
-   "linha_a": 293,
+   "linha_a": 393,
    "b": "src/chess_diagram_ocr/ui/editor_model.py::DiagramEditorModel.set_side",
-   "linha_b": 302,
+   "linha_b": 402,
    "semelhanca": 0.87
   },
   {
@@ -335,7 +328,7 @@
   },
   {
    "a": "src/chess_diagram_ocr/cli/text_status.py::parse_args",
-   "linha_a": 66,
+   "linha_a": 67,
    "b": "src/chess_diagram_ocr/cli/texto_transcrever.py::parse_args",
    "linha_b": 370,
    "semelhanca": 0.857
@@ -426,23 +419,16 @@
   },
   {
    "a": "src/chess_diagram_ocr/cli/text_status.py::parse_args",
-   "linha_a": 66,
+   "linha_a": 67,
    "b": "src/chess_diagram_ocr/cli/texto_colunas.py::parse_args",
    "linha_b": 209,
    "semelhanca": 0.819
   },
   {
-   "a": "src/chess_diagram_ocr/text/modelo.py::ClassificadorDeGlifo._entrada",
-   "linha_a": 335,
-   "b": "src/chess_diagram_ocr/text/onnx_glifos.py::preparar_recortes",
-   "linha_b": 189,
-   "semelhanca": 0.818
-  },
-  {
    "a": "src/chess_diagram_ocr/cli/audit.py::parse_args",
    "linha_a": 37,
    "b": "src/chess_diagram_ocr/cli/text_status.py::parse_args",
-   "linha_b": 66,
+   "linha_b": 67,
    "semelhanca": 0.812
   },
   {
@@ -456,7 +442,7 @@
    "a": "src/chess_diagram_ocr/qt/painel_de_recorte.py::PainelDeRecorte._anel",
    "linha_a": 279,
    "b": "src/chess_diagram_ocr/qt/tabuleiro_editavel.py::TabuleiroEditavel._anel",
-   "linha_b": 491,
+   "linha_b": 493,
    "semelhanca": 0.811
   },
   {
@@ -503,14 +489,14 @@
   },
   {
    "a": "src/chess_diagram_ocr/cli/text_status.py::parse_args",
-   "linha_a": 66,
+   "linha_a": 67,
    "b": "src/chess_diagram_ocr/cli/texto_grade.py::parse_args",
    "linha_b": 570,
    "semelhanca": 0.803
   },
   {
    "a": "src/chess_diagram_ocr/cli/text_status.py::parse_args",
-   "linha_a": 66,
+   "linha_a": 67,
    "b": "src/chess_diagram_ocr/cli/texto_ordem.py::parse_args",
    "linha_b": 293,
    "semelhanca": 0.803
