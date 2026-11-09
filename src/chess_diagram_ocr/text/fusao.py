@@ -34,11 +34,14 @@ import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 
+from .notacao import FIGURINAS, LETRAS_DE_PECA, MEIAS_RISCAS
+
 PROSA = "prosa"
 NOTACAO = "notacao"
 OUTRO = "outro"
 
-_PECA = "KQRBNDTCSLFAP♔♕♖♗♘♙♚♛♜♝♞♟"
+_PECA = LETRAS_DE_PECA + FIGURINAS
+_HIFEN = f"-{MEIAS_RISCAS}"
 _FIGURINA = re.compile(r"[♔-♟]")
 _LANCE = re.compile(
     rf"^(\d+\.+|\.\.\.|…)?([{_PECA}]?[a-h]?[1-8]?[xX:×]?[a-h][1-8](=?[{_PECA}])?:?|O-O(-O)?|0-0(-0)?)"
@@ -55,17 +58,19 @@ uma letra só é o que tira `af7anca` daqui. Sem isto, 41 lances do *Chess Evolu
 fossem prosa, e voltavam `19.2d3+` (S-716, terceira rodada do crítico)."""
 _NUMERO_DE_LANCE = re.compile(r"^\d+\.+$")
 _AVALIACAO = re.compile(r"^([+\-=±∓⩲⩱∞!?#†□△⌓→↑⇆○●N]|\+/-|-/\+|\+-|-\+|=/\+|\+/=|=/∞)+$")
-_RESULTADO = re.compile(r"^(1[-–—]0|0[-–—]1|½[-–—]½|1/2[-–—]1/2|\*)$")
+_RESULTADO = re.compile(rf"^(1[{_HIFEN}]0|0[{_HIFEN}]1|½[{_HIFEN}]½|1/2[{_HIFEN}]1/2|\*)$")
 _SIMBOLOS = "ʘ⊕⊞⨀□△▲▼○●↑→←⇆⇄∆∇⌓⩲⩱±∓∞#†‡"
 _DESCRITIVA = re.compile(
-    r"^(\d+\.+)?[KQRBNPTDACS]{1,3}[1-8]?(-|[xX:])?[KQRBNPTDACS]{0,3}[1-8]?[a-z]{0,2}(ch|mate|\+|#|!|\?)*$"
+    rf"^(\d+\.+)?[{LETRAS_DE_PECA}]{{1,3}}[1-8]?(-|[xX:])?[{LETRAS_DE_PECA}]{{0,3}}[1-8]?[a-z]{{0,2}}(ch|mate|\+|#|!|\?)*$"
 )
 _CIRILICA = re.compile(r"^(\d+\.+)?(Кр|[КФЛС])?[a-hаеЬсd]?[1-8]?[:xх]?[a-hаеЬсd][1-8][+#!?]*$")
 """Com âncora no fim, ao contrário da régua: sem ela `af7anca` era lance, e a palavra certa perdia (S-716)."""
 _ACENTOS_DE_FONTE = re.compile(r"^[^A-Za-z]*[À-ÿ]{3,}[^A-Za-z]*$")
 _LONGA = re.compile(rf"^(\d+\.+)?[{_PECA}]?[a-h][1-8][-x×:–][a-h][1-8]")
-_LETRA_DE_PECA = re.compile(r"^[KQRBNDTCSLF]$")
-_ROQUE = re.compile(r"^(\d+\.+)?(O-O(-O)?|0-0(-0)?|O–O(–O)?|0–0(–0)?)")
+_LETRA_DE_PECA = re.compile(f"^[{LETRAS_DE_PECA.replace('A', '')}]$")
+"""A inicial sozinha é notação, menos o `A`: é o artigo do português, do inglês e do italiano, e o léxico
+(`_PALAVRA`) não guarda palavra de uma letra para o salvar (S-901)."""
+_ROQUE = re.compile(rf"^(\d+\.+)?(O[{_HIFEN}]O([{_HIFEN}]O)?|0[{_HIFEN}]0([{_HIFEN}]0)?)")
 _PALAVRA = re.compile(r"^[A-Za-zÀ-ÿ]{2,}(?:['’-][A-Za-zÀ-ÿ]+)*$")
 _NUMERO = re.compile(r"^\(?(\d+)(?=\.)")
 _SO_FIO = re.compile(r"^[|¦]+$")

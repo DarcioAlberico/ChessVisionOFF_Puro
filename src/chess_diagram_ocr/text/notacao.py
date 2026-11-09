@@ -43,8 +43,33 @@ FIGURINAS = "♔♕♖♗♘♙♚♛♜♝♞♟"
 """As peças como o classificador as devolve. O livro usa **um** conjunto para os dois lados, e
 quem decide a cor é a paridade do número do lance -- que é trabalho da validação, não daqui."""
 
-LETRAS_DE_PECA = "KQRBNSTLDCP"
-"""As iniciais de peça nas notações que o acervo tem: inglesa, alemã, portuguesa, espanhola."""
+INICIAIS_POR_LINGUA: dict[str, str] = {
+    "en": "KQRBN",  # king, queen, rook, bishop, knight
+    "de": "KDTLS",  # König, Dame, Turm, Läufer, Springer
+    "pt": "RDTBC",  # rei, dama, torre, bispo, cavalo
+    "es": "RDTAC",  # rey, dama, torre, alfil, caballo
+    "it": "RDTAC",  # re, donna, torre, alfiere, cavallo
+    "fr": "RDTFC",  # roi, dame, tour, fou, cavalier
+    "nl": "KDTLP",  # koning, dame, toren, loper, paard
+}
+"""As iniciais de peça de cada notação do acervo (S-901). **É a única lista delas**: `LETRAS_DE_PECA`
+e o roteador de `fusao` derivam daqui, e língua nova entra por aqui e por nenhum outro lugar.
+
+O peão não tem inicial em notação algébrica; o `P` da lista é o *paard* holandês."""
+
+LETRAS_DE_PECA = "".join(dict.fromkeys("".join(INICIAIS_POR_LINGUA.values())))
+"""Todas as iniciais de `INICIAIS_POR_LINGUA`, sem repetir: `KQRBNDTLSCAFP`."""
+
+MEIAS_RISCAS = "–—"
+"""A meia-risca e o travessão que a tipografia põe no lugar do hífen de `0-0` e de `1-0` (S-901). `_limpo`
+os troca pelo hífen antes do tabuleiro, `RESULTADOS` traz as duas grafias, e `fusao` lê a mesma constante."""
+
+
+def sem_meia_risca(texto: str) -> str:
+    """`0–0` -> `0-0`: as `MEIAS_RISCAS` trocadas pelo hífen."""
+    for risca in MEIAS_RISCAS:
+        texto = texto.replace(risca, "-")
+    return texto
 
 FIGURINAS_DA_LETRA: dict[str, str] = {
     "K": "♔♚",
@@ -128,7 +153,11 @@ ENVOLVE = "([{)]},;:"
 O ponto final **não** entra: ele é parte do número de lance (`15.`), e tirá-lo aqui apagaria a
 única coisa que distingue `15.` de um `15` qualquer no meio da prosa."""
 
-RESULTADOS = ("1-0", "0-1", "½-½", "1/2-1/2", "½–½")
+_RESULTADOS_COM_HIFEN = ("1-0", "0-1", "½-½", "1/2-1/2")
+RESULTADOS = _RESULTADOS_COM_HIFEN + tuple(
+    resultado.replace("-", risca) for risca in MEIAS_RISCAS for resultado in _RESULTADOS_COM_HIFEN
+)
+"""Os resultados de partida, com hífen e com cada uma das `MEIAS_RISCAS`: `1-0`, `1–0`, `1—0`."""
 
 COMPOSTO = re.compile(r"^(\d{1,3})(\.{1,3}|…)(.+)$")
 """`19...♖g8` -- número, reticência e lance grudados num token só.
@@ -180,7 +209,7 @@ def _e_lance(texto: str) -> bool:
 
     O ponto não entra em `ENVOLVE` porque ele é parte do **número** (`15.`); aqui ele é o fim da
     frase, e um lance nunca termina em ponto."""
-    return bool(LANCE.match(texto.rstrip(".")))
+    return bool(LANCE.match(sem_meia_risca(texto).rstrip(".")))
 
 
 SO_PONTUACAO = re.compile(r"^[.,;:!?+=…()\[\]{}'\"\-—–△⌓✝#]+$")
@@ -402,20 +431,26 @@ class LinhaValidada:
         return tuple(lance.san for lance in self.lances)
 
 
+_PEOES = FIGURINAS_DA_LETRA["P"]
+"""O peão em figurina sai sem letra: o SAN não tem `P`, e `parse_san("Pe4")` recusa o `♙e4` que `LANCE` aceita."""
+
+
 def para_ingles(token: str) -> str:
-    """O lance com as figurinas trocadas pelas iniciais inglesas: `♗xb7` -> `Bxb7`.
+    """O lance com as figurinas trocadas pelas iniciais inglesas: `♗xb7` -> `Bxb7`, `♙e4` -> `e4`.
 
     Só as figurinas. As iniciais de outras línguas ficam como estão, e é a decisão que
     `FIGURINAS_DA_LETRA` já documenta: `R` é *rook* em inglês e *rei* em português, `C` é *cavalo*
     e nada em inglês. Traduzi-las exigiria saber a língua do livro, e errar a língua troca uma peça
     por outra **num lance que o tabuleiro aceita** -- que é o pior defeito possível aqui.
     """
-    return "".join(LETRA_DA_FIGURINA.get(caractere, caractere) for caractere in str(token or ""))
+    return "".join(
+        "" if caractere in _PEOES else LETRA_DA_FIGURINA.get(caractere, caractere) for caractere in str(token or "")
+    )
 
 
 def _limpo(token: str) -> str:
-    """O token pronto para o `parse_san`: sem envoltório, sem sufixo e com a peça em inglês."""
-    return para_ingles(_sem_envoltorio(token)).rstrip(_SUFIXO_SOLTO)
+    """O token pronto para o `parse_san`: sem envoltório, sem sufixo, com hífen no lugar da meia-risca e com a peça em inglês."""
+    return sem_meia_risca(para_ingles(_sem_envoltorio(token))).rstrip(_SUFIXO_SOLTO)
 
 
 def validar(tokens: Sequence[str], board: chess.Board) -> LinhaValidada:
@@ -559,9 +594,11 @@ __all__ = [
     "LinhaValidada",
     "ENVOLVE",
     "FIGURINAS",
+    "INICIAIS_POR_LINGUA",
     "LANCE",
     "LETRAS_DE_PECA",
     "MAX_DIGITOS",
+    "MEIAS_RISCAS",
     "NUMERO_DE_LANCE",
     "RESULTADOS",
     "RETICENCIA",
@@ -573,5 +610,6 @@ __all__ = [
     "numero_do_primeiro_lance",
     "peso_de_notacao",
     "para_ingles",
+    "sem_meia_risca",
     "validar",
 ]

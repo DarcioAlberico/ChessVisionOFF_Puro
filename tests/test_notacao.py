@@ -117,6 +117,38 @@ class JuntarTests(unittest.TestCase):
         )
 
 
+class LinguaEMeiaRiscaTests(unittest.TestCase):
+    """As iniciais de peça de cada língua do acervo e a meia-risca, numa decisão só (S-901)."""
+
+    def test_notacao_espanhola_francesa_e_meia_risca(self) -> None:
+        import chess
+
+        from chess_diagram_ocr.text import fusao
+
+        # alfil (espanhol, italiano) e fou (francês) são peça, na régua e no roteador
+        for lance in ("Axf7+", "Fxe5", "Ab5", "Fg7"):
+            with self.subTest(lance=lance):
+                self.assertEqual(nt.peso_de_notacao(lance), 1)
+                self.assertTrue(fusao.e_notacao(lance))
+        self.assertEqual(nt.juntar_numero_de_lance("1 5.Axf7+"), "15.Axf7+")
+
+        # roque e resultado com meia-risca ou travessão são notação como os de hífen
+        for token in ("0–0", "O–O", "0–0–0", "O—O", "1–0", "0–1", "1—0"):
+            with self.subTest(token=token):
+                self.assertEqual(nt.peso_de_notacao(token), 1)
+                self.assertTrue(fusao.e_notacao(token))
+
+        # e o tabuleiro joga o roque de meia-risca, e para no resultado de meia-risca
+        roque = chess.Board("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1")
+        lida = nt.validar("1.0–0 0–0–0 1–0 lixo".split(), roque)
+        self.assertTrue(lida.fechou, lida.motivo)
+        self.assertEqual(lida.san, ("O-O", "O-O-O"))
+
+        # o peão em figurina é lance para `LANCE`, e o tabuleiro o aceita
+        self.assertTrue(nt.LANCE.match("♙e4"))
+        self.assertEqual(nt.validar(["♙e4", "♟e5"], chess.Board()).san, ("e4", "e5"))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
 

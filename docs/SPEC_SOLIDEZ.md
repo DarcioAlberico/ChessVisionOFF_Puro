@@ -2100,6 +2100,12 @@ entra no fecho com `--ocr glifo`.
 
 **Aceite.** O teste passa; o dryer não vê mais duas listas de iniciais.
 
+**Entregue** (2026-11-09): a constante (`INICIAIS_POR_LINGUA`, com `MEIAS_RISCAS` ao lado) mora em
+`text/notacao.py`, e não num terceiro módulo; `fusao` a importa de lá. O `P` fica em `LETRAS_DE_PECA` como o
+*paard* holandês, e o `A` sozinho continua prosa no roteador, porque é artigo e o léxico não guarda palavra de
+uma letra. `para_ingles` tira a figurina de peão; `LETRA_DA_FIGURINA` segue com `♙ -> P`, que a busca usa. Muda
+o caminho medido com `--ocr glifo` (`lance_seguinte` usa `peso_de_notacao`, `RESULTADOS` e `validar`).
+
 ## S-902 · A busca com figurina não troca peão por bispo
 
 **Problema** (confirmado por script). `text/busca.py:192-200`: `_alternativas` faz `caractere.upper()`, e a
