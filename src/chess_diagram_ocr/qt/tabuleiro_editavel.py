@@ -235,16 +235,18 @@ class TabuleiroEditavel(TabuleiroQt):
         a0.accept()
 
     def andar_selecao(self, passo: int) -> None:
-        """Move a seleção `passo` casas (±1 na fila, sem dar a volta; ±8 entre filas)."""
+        """Move a seleção uma casa **na tela** (±1 na fila, ±8 entre filas), sem dar a volta.
+
+        Com o tabuleiro virado a seta para cima continua subindo na tela (S-891): a conta é de
+        `teclado.andar_na_tela`, sobre a linha e a coluna que o modelo diz que a casa ocupa.
+        """
         if not self.modelo.items_ok():
             return
         atual = self.modelo.selected
         base = atual if atual is not None else 0
-        if passo in (-1, 1) and (base % 8) + passo not in range(8):
-            return
-        nova = base + passo
-        if 0 <= nova < 64:
-            self._aplicar(self.modelo.select(nova))
+        alvo = teclado.andar_na_tela(*self.modelo.display_from_index(base), passo)
+        if alvo is not None:
+            self._aplicar(self.modelo.select(self.modelo.index_from_display(*alvo)))
 
     # As setas `←`/`→` são atalhos globais (diagrama anterior/próximo) e a guarda de atalhos as
     # entrega à janela antes de o widget em foco as ver. Pela S-244 o tabuleiro em foco **toma
