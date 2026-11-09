@@ -956,6 +956,8 @@ nó do livro, porque o ramo `elif lido` só roda quando a legenda não tem lance
 
 **Aceite.** Os dois passam.
 
+**Entregue** (2026-11-08): como na spec. A promoção sem `=` só é lida em lance de peão à última fileira, porque depois de outro lance a letra é avaliação (`12.Re8N`, novidade); e `test_legenda_com_lance_inexistente_cai_nos_vizinhos` cobre a queda em `_vizinhos`.
+
 ## S-899 · Solução de tática com número do meio da partida fecha
 
 **Problema** (confirmado por script). `taticas.py:1023-1029` chama `compose_fen` sem `fullmove`, e o

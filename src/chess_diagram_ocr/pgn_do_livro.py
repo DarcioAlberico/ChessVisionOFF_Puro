@@ -138,8 +138,13 @@ def rotulo_do_lance(no: chess.pgn.ChildNode) -> str:
     return f"{numero}.{san}" if antes.turn == chess.WHITE else f"{numero}...{san}"
 
 
-_LANCE = re.compile(r"\d+\.(?:\.\.)?(?:O-O-O|O-O|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](?:=[QRBN])?)")
-"""O número e o lance, sem xeque, mate nem avaliação -- é a parte que o rótulo do nó tem igual."""
+_LANCE = re.compile(r"\d+\.(?:\.\.)?(?:O-O-O|O-O|[a-h](?:x[a-h])?[18]=?[QRBN]|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8])")
+"""O número e o lance, sem xeque, mate nem avaliação -- é a parte que o rótulo do nó tem igual.
+
+A promoção é a primeira alternativa, e só de peão à última fileira: ali a letra é a peça nova, com
+`=` ou sem (`23.e8Q`, S-879). Depois de outro lance a letra é avaliação -- `12.Re8N` é novidade."""
+
+_PROMOCAO_SEM_IGUAL = re.compile(r"([18])([QRBN])$")
 
 
 def lance_da_legenda(legenda: str) -> str | None:
@@ -147,10 +152,11 @@ def lance_da_legenda(legenda: str) -> str | None:
 
     O roque vem com zero em muitos livros (`0-0`) e com letra no PGN (`O-O`). O que segue o lance
     -- `+`, `!?`, `±` e o `²` que a fonte de figurinos põe no lugar de `⩲` -- é avaliação do autor.
+    A promoção sai como o PGN a escreve, com o `=` (`23.e8=Q` de «23.e8Q»).
     """
     texto = legenda.strip().replace("0-0-0", "O-O-O").replace("0-0", "O-O")
     achado = _LANCE.match(texto)
-    return achado.group(0) if achado else None
+    return _PROMOCAO_SEM_IGUAL.sub(r"\1=\2", achado.group(0)) if achado else None
 
 
 def sem_desambiguacao(lance: str) -> str:
