@@ -26,6 +26,7 @@ um arquivo da raiz. As linhas citadas são de `origin/main` em `e8c9f64a`.
 > | S-522 a S-526 | [SPEC_REVISAO_EXTERNA_2.md](SPEC_REVISAO_EXTERNA_2.md) |
 > | S-500 a S-506, S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
 > | S-581 a S-584 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
+> | S-585 a S-598 | [ROADMAP_PDF_COM_PGN.md](ROADMAP_PDF_COM_PGN.md) |
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
 > | S-702, S-710 a S-712, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
@@ -1423,6 +1424,8 @@ módulo, e uma guarda: todo módulo de `qt/`, `text/` e `ui/` aparece nele.
 (acusa as S-585 a S-598).
 
 **Aceite.** As duas passam.
+
+**Entregue** (2026-11-09): a guarda conta só a linha de **tabela** da seção do pacote, e por isso `ui/` ganhou seção própria (`### A camada pura da interface`) e tabela; contada assim ela acusava 149 módulos (41 de `qt/`, 29 de `text/` e os 79 de `ui/`, que só tinham citação em prosa), e não os cerca de 87 da estimativa. Os doze "outros" de `text/` saíram da prosa para a tabela. Uma segunda guarda acusa linha que cita módulo que não existe. O `ROADMAP_PDF_COM_PGN.md`, agora casa declarada, passou a trazer a tabela de faixas também.
 
 ## S-884 · No `.exe`, o OCR que falta é dito na janela
 

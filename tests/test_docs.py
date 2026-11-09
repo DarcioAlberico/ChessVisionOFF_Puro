@@ -397,10 +397,16 @@ class IndiceNaoEVacuoTests(unittest.TestCase):
         """O outro lado de `test_o_indice_nao_declara_faixa_sem_dono`: seção que o índice não
         cita é seção que ninguém acha pelo índice -- que é para o que o índice existe."""
         declarado = faixas_declaradas(README.read_text(encoding="utf-8"))
+        # **A isenção dos `ROADMAP*` vale só para item não entregue** (S-832). Ela existe porque
+        # um roadmap descreve o que ainda vai ser feito, e o item ganha casa na tabela quando
+        # ganha spec. Isenção irrestrita deixou as S-585 a S-598 -- entregues, com a spec morando
+        # no `ROADMAP_PDF_COM_PGN.md` -- sem linha na tabela, e a guarda verde sobre elas.
+        entregues = itens_entregues()
         sem_faixa = sorted(
             numero
             for numero, onde in secoes_de_spec().items()
-            if numero not in declarado and not all(arquivo.startswith("ROADMAP") for arquivo in onde)
+            if numero not in declarado
+            and not (numero not in entregues and all(arquivo.startswith("ROADMAP") for arquivo in onde))
         )
         self.assertEqual(
             [],
@@ -1202,6 +1208,70 @@ class NumerosVivosTests(unittest.TestCase):
         quadro = quadro.split(chr(10) + "---" + chr(10), 1)[0]
         citado = _citado(quadro, r"`qt/janela\.py` em ([\d.]+) contra")
         _perto(self, citado, real, "linhas de qt/janela.py no quadro das fases")
+
+
+PACOTES_DA_ARQUITETURA = ("qt", "text", "ui")
+"""Os pacotes que a `ARCHITECTURE.md` descreve módulo a módulo, cada um na sua seção (S-832)."""
+
+
+def secao_do_pacote(texto: str, pacote: str) -> str:
+    """A seção `### ... (`src/chess_diagram_ocr/<pacote>/`)` da arquitetura, até o próximo título."""
+    marca = f"`src/chess_diagram_ocr/{pacote}/`"
+    linhas = texto.splitlines()
+    inicio = next((i for i, linha in enumerate(linhas) if linha.startswith("### ") and marca in linha), None)
+    assert inicio is not None, f"a ARCHITECTURE perdeu a seção de {marca}"
+    fim = next(
+        (i for i in range(inicio + 1, len(linhas)) if linhas[i].startswith(("## ", "### "))),
+        len(linhas),
+    )
+    return "\n".join(linhas[inicio:fim])
+
+
+def modulos_na_tabela(secao: str) -> set[str]:
+    """Os `nome.py` citados em linha de tabela da seção. Prosa não conta: era nela que os doze
+    "outros" de `text/` moravam sem dizer o que fazem."""
+    return {
+        nome
+        for linha in secao.splitlines()
+        if linha.startswith("|")
+        for nome in re.findall(r"`(\w+\.py)`", linha)
+    }
+
+
+class ArquiteturaCitaTodoModuloTests(unittest.TestCase):
+    """Todo módulo de `qt/`, `text/` e `ui/` tem linha na `ARCHITECTURE.md` (S-832).
+
+    O documento dizia "meia centena de módulos" de `ui/`, que tinha 78, e não citava 30 dos 73 de
+    `qt/`, 12 dos 68 de `text/` e cerca de 45 de `ui/` -- entre eles a primeira entrega inteira
+    das Fases 100 a 107. Um mapa que mostra metade é uma amostra, e quem o lê não sabe qual
+    metade está vendo: é a S-412 da árvore do README, um nível abaixo.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.arquitetura = (DOCS / "ARCHITECTURE.md").read_text(encoding="utf-8")
+
+    def test_todo_modulo_tem_linha_na_secao_do_seu_pacote(self) -> None:
+        ausentes = []
+        for pacote in PACOTES_DA_ARQUITETURA:
+            pasta = RAIZ / "src" / "chess_diagram_ocr" / pacote
+            no_disco = {p.name for p in pasta.glob("*.py") if p.name != "__init__.py"}
+            citados = modulos_na_tabela(secao_do_pacote(self.arquitetura, pacote))
+            ausentes += [f"{pacote}/{nome}" for nome in sorted(no_disco - citados)]
+        self.assertEqual(
+            [],
+            ausentes,
+            "Módulo sem linha na tabela do seu pacote em docs/ARCHITECTURE.md. Uma linha, com o "
+            "que ele responde.",
+        )
+
+    def test_a_tabela_nao_cita_modulo_que_nao_existe(self) -> None:
+        fantasmas = []
+        for pacote in PACOTES_DA_ARQUITETURA:
+            pasta = RAIZ / "src" / "chess_diagram_ocr" / pacote
+            citados = modulos_na_tabela(secao_do_pacote(self.arquitetura, pacote))
+            fantasmas += [f"{pacote}/{nome}" for nome in sorted(citados) if not (pasta / nome).exists()]
+        self.assertEqual([], fantasmas, "A ARCHITECTURE descreve um módulo que não existe.")
 
 
 CHAVES_DE_CAMINHO = ("path", "base", "dir", "diretorio", "caminho", "pasta", "arquivo")
