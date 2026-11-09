@@ -178,150 +178,150 @@ Os títulos são os da spec, na ordem em que os itens devem ser feitos dentro de
 
 ### Fase 110 — Alavancas
 
-- **S-800** · Borda de exceção do processo, e o estado da sessão gravado antes da queda
-- **S-874** · Página que derruba o processo de trabalho nunca roda no processo da janela
-- **S-906** · O processo de trabalho tem prazo, e o fechamento o encerra
-- **S-801** · crapper no repositório, com catraca de CRAP por função
-- **S-802** · dryer no repositório, com catraca de pares duplicados
-- **S-803** · mutator no repositório, com piloto em seis módulos puros
-- **S-804** · Catraca de tipos, e as contagens que só descem
-- **S-805** · Infraestrutura de teste
+- ✅ **S-800** · Borda de exceção do processo, e o estado da sessão gravado antes da queda
+- ✅ **S-874** · Página que derruba o processo de trabalho nunca roda no processo da janela
+- ✅ **S-906** · O processo de trabalho tem prazo, e o fechamento o encerra
+- ✅ **S-801** · crapper no repositório, com catraca de CRAP por função
+- ✅ **S-802** · dryer no repositório, com catraca de pares duplicados
+- ✅ **S-803** · mutator no repositório, com piloto em seis módulos puros
+- ✅ **S-804** · Catraca de tipos, e as contagens que só descem
+- ✅ **S-805** · Infraestrutura de teste
 
 ### Fase 111 — Caches e índices que não se apagam sozinhos
 
-- **S-807** · Uma impressão digital de base só, que enxerga membro de `.zip`
-- **S-806** · `open_store` nunca esvazia o cache
-- **S-808** · URI de SQLite por `Path.as_uri()`, e versão ilegível não apaga o índice
-- **S-809** · `--build-index` com subconjunto não apaga as outras bases
+- ✅ **S-807** · Uma impressão digital de base só, que enxerga membro de `.zip`
+- ✅ **S-806** · `open_store` nunca esvazia o cache
+- ✅ **S-808** · URI de SQLite por `Path.as_uri()`, e versão ilegível não apaga o índice
+- ✅ **S-809** · `--build-index` com subconjunto não apaga as outras bases
 
 ### Fase 112 — Arquivos do dono e a identidade do livro
 
-- **S-827** · A identidade do livro numa função só
-- **S-812** · Leitura travada
-- **S-905** · Arquivo do usuário em BOM, ANSI ou UTF-16 abre, e `UnicodeDecodeError` não escapa
-- **S-810** · Booleano estrito e faixas numéricas no `settings.json`
-- **S-811** · Camada de arquivo e camada efetiva
-- **S-813** · Baralho de revisão e placar sob a leitura travada
-- **S-814** · Sala de estudo: partida que não lê sobrevive à gravação
-- **S-815** · Fila de revisão: FEN corrigida sobrevive ao revarrer
-- **S-816** · `cvoff-scan` retomado preserva as pendências
-- **S-817** · Quarentena de rótulos em conflito sempre desfazível
-- **S-878** · Lote e Galeria não confundem dois livros de mesmo nome
-- **S-892** · "Aplicar aos vizinhos" não troca a partida que a pessoa escolheu
-- **S-896** · Folha do caderno que não abre não é relida por cima
-- **S-897** · O caderno acha o seu livro e a sua trava
-- **S-908** · Hora gravada com fuso, e o rascunho mais novo não é apagado
+- ✅ **S-827** · A identidade do livro numa função só
+- ✅ **S-812** · Leitura travada
+- ✅ **S-905** · Arquivo do usuário em BOM, ANSI ou UTF-16 abre, e `UnicodeDecodeError` não escapa
+- ✅ **S-810** · Booleano estrito e faixas numéricas no `settings.json`
+- ✅ **S-811** · Camada de arquivo e camada efetiva
+- ✅ **S-813** · Baralho de revisão e placar sob a leitura travada
+- ✅ **S-814** · Sala de estudo: partida que não lê sobrevive à gravação
+- ✅ **S-815** · Fila de revisão: FEN corrigida sobrevive ao revarrer
+- ✅ **S-816** · `cvoff-scan` retomado preserva as pendências
+- ✅ **S-817** · Quarentena de rótulos em conflito sempre desfazível
+- ✅ **S-878** · Lote e Galeria não confundem dois livros de mesmo nome
+- ✅ **S-892** · "Aplicar aos vizinhos" não troca a partida que a pessoa escolheu
+- ✅ **S-896** · Folha do caderno que não abre não é relida por cima
+- ✅ **S-897** · O caderno acha o seu livro e a sua trava
+- ✅ **S-908** · Hora gravada com fuso, e o rascunho mais novo não é apagado
 
 ### Fase 113 — Escritas idempotentes e saídas corretas
 
-- **S-818** · Exportação de PGN atômica, e sem `.review.pgn` de rodada anterior
-- **S-819** · Retomada de exportação sem perda de campo
-- **S-820** · Importação de imagens idempotente
-- **S-821** · PDF pesquisável idempotente e atômico
-- **S-822** · Catraca de escrita: nada em `src/` grava fora do `atomic_io` sem exceção declarada
-- **S-876** · Cabeçalho livre inválido não derruba a exportação do livro
-- **S-877** · Caractere de controle não estraga o EPUB nem o DOCX
-- **S-879** · Legenda com lance inexistente cai no casamento pela posição
-- **S-899** · Solução de tática com número do meio da partida fecha
+- ✅ **S-818** · Exportação de PGN atômica, e sem `.review.pgn` de rodada anterior
+- ✅ **S-819** · Retomada de exportação sem perda de campo
+- ✅ **S-820** · Importação de imagens idempotente
+- ✅ **S-821** · PDF pesquisável idempotente e atômico
+- ✅ **S-822** · Catraca de escrita: nada em `src/` grava fora do `atomic_io` sem exceção declarada
+- ✅ **S-876** · Cabeçalho livre inválido não derruba a exportação do livro
+- ✅ **S-877** · Caractere de controle não estraga o EPUB nem o DOCX
+- ✅ **S-879** · Legenda com lance inexistente cai no casamento pela posição
+- ✅ **S-899** · Solução de tática com número do meio da partida fecha
 
 ### Fase 114 — A tela e o editor sabem de onde veio cada resultado
 
-- **S-823** · `AncoraDaTela(documento, pagina)` pura
-- **S-824** · Aba Texto arquiva a folha que leu
-- **S-825** · O `eventFilter` do `PainelDeTexto` por tabela
-- **S-826** · Tarefa sem pai em todos os painéis
-- **S-828** · `AppState` tipado no `PainelDeTexto`, e o histórico aparado na leitura
-- **S-829** · `DeteccaoDeFundo` leva a âncora no próprio sinal
-- **S-887** · O Ctrl+Z do editor nunca aplica a posição de outro diagrama
-- **S-888** · Desfazer volta a posição e a procedência juntas
-- **S-893** · O campo de FEN aplica também a vez que mostra
-- **S-894** · O PGN do livro que chega atrasado não apaga a correção em andamento
-- **S-891** · As setas andam na direção da tela com o tabuleiro virado
-- **S-875** · O motor que caiu é reaberto na próxima análise
-- **S-882** · "Segunda opinião remota" só aparece quando tem quem a use
-- **S-883** · O leitor tsoj não troca a pasta corrente fora da trava
-- **S-910** · Número com vírgula e ordem alfabética pela mesma régua da tela
+- ✅ **S-823** · `AncoraDaTela(documento, pagina)` pura
+- ✅ **S-824** · Aba Texto arquiva a folha que leu
+- ✅ **S-825** · O `eventFilter` do `PainelDeTexto` por tabela
+- ✅ **S-826** · Tarefa sem pai em todos os painéis
+- ✅ **S-828** · `AppState` tipado no `PainelDeTexto`, e o histórico aparado na leitura
+- ✅ **S-829** · `DeteccaoDeFundo` leva a âncora no próprio sinal
+- ✅ **S-887** · O Ctrl+Z do editor nunca aplica a posição de outro diagrama
+- ✅ **S-888** · Desfazer volta a posição e a procedência juntas
+- ✅ **S-893** · O campo de FEN aplica também a vez que mostra
+- ✅ **S-894** · O PGN do livro que chega atrasado não apaga a correção em andamento
+- ✅ **S-891** · As setas andam na direção da tela com o tabuleiro virado
+- ✅ **S-875** · O motor que caiu é reaberto na próxima análise
+- ✅ **S-882** · "Segunda opinião remota" só aparece quando tem quem a use
+- ✅ **S-883** · O leitor tsoj não troca a pasta corrente fora da trava
+- ✅ **S-910** · Número com vírgula e ordem alfabética pela mesma régua da tela
 
 ### Fase 115 — Interpretador, empacotamento e documentos
 
-- **S-830** · Python 3.13 como interpretador padrão
-- **S-831** · Documentos no presente do Qt, e os status que se contradizem
-- **S-832** · A tabela de faixas e o `ARCHITECTURE.md` que enxergam tudo
-- **S-884** · No `.exe`, o OCR que falta é dito na janela
-- **S-885** · CI com permissão mínima e ações fixadas
-- **S-907** · Arrastar um PDF para o ícone abre o livro
-- **S-909** · O arquivo de log não leva o nome do usuário
+- ✅ **S-830** · Python 3.13 como interpretador padrão
+- ✅ **S-831** · Documentos no presente do Qt, e os status que se contradizem
+- ✅ **S-832** · A tabela de faixas e o `ARCHITECTURE.md` que enxergam tudo
+- ✅ **S-884** · No `.exe`, o OCR que falta é dito na janela
+- ✅ **S-885** · CI com permissão mínima e ações fixadas
+- ✅ **S-907** · Arrastar um PDF para o ícone abre o livro
+- ✅ **S-909** · O arquivo de log não leva o nome do usuário
 
 ### Fase 116 — Um pipeline só
 
-- **S-843** · O normalizador de tabuleiro sai
-- **S-833** · A exportação reconhece pela mesma função que os relatórios medem
-- **S-834** · Decodificação restrita sem relógio
-- **S-835** · Contadores de campo por campo tipado, não por frase
-- **S-836** · Fonte de diagrama e rótulo de eixo numa regra só
-- **S-880** · O lance seguinte e a estipulação jogam com o direito de roque
-- **S-837** · Remedição dos quatro relatórios de campo
+- ✅ **S-843** · O normalizador de tabuleiro sai
+- ✅ **S-833** · A exportação reconhece pela mesma função que os relatórios medem
+- ✅ **S-834** · Decodificação restrita sem relógio
+- ✅ **S-835** · Contadores de campo por campo tipado, não por frase
+- ✅ **S-836** · Fonte de diagrama e rótulo de eixo numa regra só
+- ✅ **S-880** · O lance seguinte e a estipulação jogam com o direito de roque
+- ✅ **S-837** · Remedição dos quatro relatórios de campo
 
 ### Fase 117 — Treino honesto
 
-- **S-838** · Página de campo nunca vai para o treino
-- **S-839** · O regime do checkpoint guardado inteiro
-- **S-840** · `ArchConfig.from_version` recusa o que não conhece
-- **S-841** · O dataset conta e diz o que descarta
-- **S-842** · Colocação: um parser de FEN só, na fronteira
-- **S-889** · A posição do PGN do livro tem rota própria no rótulo
-- **S-890** · Posição que nenhum lado a jogar torna legal é fatal
-- **S-844** · Identidade de livro nos splits
-- **S-845** · `torch.load` só com `weights_only`
-- **S-846** · O sal do split fixado por valor
-- **S-900** · O split por livro do texto não aborta o treino
+- ✅ **S-838** · Página de campo nunca vai para o treino
+- ✅ **S-839** · O regime do checkpoint guardado inteiro
+- ✅ **S-840** · `ArchConfig.from_version` recusa o que não conhece
+- ✅ **S-841** · O dataset conta e diz o que descarta
+- ✅ **S-842** · Colocação: um parser de FEN só, na fronteira
+- ✅ **S-889** · A posição do PGN do livro tem rota própria no rótulo
+- ✅ **S-890** · Posição que nenhum lado a jogar torna legal é fatal
+- ✅ **S-844** · Identidade de livro nos splits
+- ✅ **S-845** · `torch.load` só com `weights_only`
+- ✅ **S-846** · O sal do split fixado por valor
+- ✅ **S-900** · O split por livro do texto não aborta o treino
 
 ### Fase 118 — Texto: fronteira e decisões únicas
 
-- **S-854** · Classificador de glifo e pré-processamento, um só para PyTorch e ONNX
-- **S-847** · `ocr.glyph_model` chega à leitura de página
-- **S-848** · `PaginaLida.de_json` na fronteira
-- **S-849** · "Camada de OCR" numa regra só
-- **S-850** · Cache de perfil do livro sem `id()`
-- **S-851** · A folha extraída uma vez por leitura
-- **S-852** · Um árbitro de confiança só
-- **S-853** · Contrato do leitor de linha: `None` é "não leu"
-- **S-855** · Tipos fechados no texto
-- **S-856** · Exceções estreitas no texto e no perfil de cor
-- **S-898** · Apagar um bloco inteiro conta como correção
-- **S-901** · Letras de peça por língua e meia-risca numa constante só
-- **S-902** · A busca com figurina não troca peão por bispo
-- **S-903** · O léxico do livro grava e confere com a mesma dobra de caixa
-- **S-904** · Mudar a caixa devolve a seleção certa
+- ✅ **S-854** · Classificador de glifo e pré-processamento, um só para PyTorch e ONNX
+- ✅ **S-847** · `ocr.glyph_model` chega à leitura de página
+- ✅ **S-848** · `PaginaLida.de_json` na fronteira
+- ✅ **S-849** · "Camada de OCR" numa regra só
+- ✅ **S-850** · Cache de perfil do livro sem `id()`
+- ✅ **S-851** · A folha extraída uma vez por leitura
+- ✅ **S-852** · Um árbitro de confiança só
+- ✅ **S-853** · Contrato do leitor de linha: `None` é "não leu"
+- ✅ **S-855** · Tipos fechados no texto
+- ✅ **S-856** · Exceções estreitas no texto e no perfil de cor
+- ✅ **S-898** · Apagar um bloco inteiro conta como correção
+- ✅ **S-901** · Letras de peça por língua e meia-risca numa constante só
+- ✅ **S-902** · A busca com figurina não troca peão por bispo
+- ✅ **S-903** · O léxico do livro grava e confere com a mesma dobra de caixa
+- ✅ **S-904** · Mudar a caixa devolve a seleção certa
 
 ### Fase 119 — Complexidade e duplicação
 
-- **S-857** · Argumentos comuns dos 47 comandos num lugar
-- **S-858** · Partir `build_pgn_games` e `Trainer.prepare`
-- **S-859** · Partir a detecção em cadeias de filtros
-- **S-860** · Partir `_ler_pagina_do_livro` e `linhas_do_glifo`
-- **S-861** · Partir `problemas` e `fundir`
-- **S-862** · Constantes de caminho e de padrão num lugar
-- **S-863** · Os `main` de CLI de complexidade alta
-- **S-864** · Os pares gêmeos do dryer
-- **S-881** · A substituição de diagrama no PDF: ligar ou retirar
+- ✅ **S-857** · Argumentos comuns dos 47 comandos num lugar
+- ✅ **S-858** · Partir `build_pgn_games` e `Trainer.prepare`
+- ✅ **S-859** · Partir a detecção em cadeias de filtros
+- ✅ **S-860** · Partir `_ler_pagina_do_livro` e `linhas_do_glifo`
+- ✅ **S-861** · Partir `problemas` e `fundir`
+- ✅ **S-862** · Constantes de caminho e de padrão num lugar
+- ✅ **S-863** · Os `main` de CLI de complexidade alta
+- ✅ **S-864** · Os pares gêmeos do dryer
+- ✅ **S-881** · A substituição de diagrama no PDF: ligar ou retirar
 
 ### Fase 120 — Os arquivos-deus do Qt
 
-- **S-865** · `PainelDeTexto` em cinco módulos
-- **S-866** · `PainelDeEstudo` sem o motor, a análise, as táticas e o índice
-- **S-867** · O bloco de resposta da janela vira decisão pura
+- ✅ **S-865** · `PainelDeTexto` em cinco módulos
+- ✅ **S-866** · `PainelDeEstudo` sem o motor, a análise, as táticas e o índice
+- ✅ **S-867** · O bloco de resposta da janela vira decisão pura
 
 ### Fase 121 — Testes que medem comportamento
 
-- **S-868** · Os 26 testes desligados
-- **S-869** · As dezesseis guardas "sem tkinter" saem
-- **S-870** · Testes de texto da fonte trocados por testes de comportamento
-- **S-871** · Guardas de varredura com piso, e o registro de comandos como catraca
-- **S-872** · Testes de "não levanta" que conferem o efeito, e tempo escalável
+- ✅ **S-868** · Os 26 testes desligados
+- ✅ **S-869** · As dezesseis guardas "sem tkinter" saem
+- ✅ **S-870** · Testes de texto da fonte trocados por testes de comportamento
+- ✅ **S-871** · Guardas de varredura com piso, e o registro de comandos como catraca
+- ✅ **S-872** · Testes de "não levanta" que conferem o efeito, e tempo escalável
 - **S-873** · Os sobreviventes do mutator nos seis módulos-piloto
 - **S-886** · As funções de produção com CRAP acima de 100 ganham teste
-- **S-895** · A guarda de órfãos enxerga módulo sem `__all__`
+- ✅ **S-895** · A guarda de órfãos enxerga módulo sem `__all__`
 
 ## 6. Decisões que são do dono
 
@@ -339,6 +339,8 @@ Na spec elas aparecem como "D1 da solidez" a "D9 da solidez", para não confundi
 | D7. A substituição de diagrama no PDF | S-881 | (a) ligar o painel e testar, (b) retirar os três módulos |
 | D8. O `onnxruntime` no `.exe` | S-884 | (a) entra no bundle, (b) fica fora e a janela diz por quê |
 | D9. Livro que muda de estrato pela regra única da camada de OCR | S-849 | (a) aceitar a regra, (b) manter o estrato antigo com nota |
+
+**Decididas pelo dono em 2026-11-09:** D1 (a) — a opção recomendada, seguida na S-812 antes da pergunta; D2 (a) hash do conteúdo do PDF; D3 (b) o giro mora no CLI; D4 reescrever os desligados que medem algo e apagar os que não medem; D5 (a) piso 3.13; D6 (a) `origem_do_texto.py`; D7 (b) retirar; D8 (b) o `onnxruntime` fica fora e a janela diz por quê; D9 (a) aceitar a regra única.
 
 ## 7. Como cada fase fecha
 
@@ -373,3 +375,4 @@ limpo, lendo-os do checkout principal por caminho, por `python -m`.
 | 10 | piloto do mutator num worktree separado: 50 mutantes em `splits.py`, `fen_utils.py` e `decode.py` | 68%, 58% e 74% só com o arquivo homônimo; os dois sobreviventes de `decode.py` conferidos morreram noutros arquivos, então a S-803 roda os testes que importam o módulo |
 | 11 | revisão 2: um revisor da coerência e do método, e dois caçadores (camada `ui/` com os painéis Qt restantes, e os módulos secundários de `text/`) | a regra de remedição corrigida (o fecho tem 36 módulos e é tocado fora da Fase 116), dependências reordenadas (a S-827 abre a Fase 112, a S-843 abre a 116, a S-854 abre a 118), títulos regerados da spec, glossário e decisões completados, a S-869 reduzida a subtração e a S-825 sem `try` novo; 18 itens novos (S-887 a S-904), entre eles o Ctrl+Z que aplica a posição de outro diagrama e a folha do caderno relida por cima da correção |
 | 12 | revisão 3: um verificador conferiu contra o código, rodando os testes, tudo o que a revisão 2 escreveu; um leitor de olhos novos conferiu os dois documentos por script; uma varredura transversal procurou padrões no programa inteiro | ~90 correções (16 lugares de `Tarefa` com pai, e não 14; o teste da S-834 refeito; a correção de UNC da S-808, que a proposta anterior quebraria; o fecho com `--ocr glifo`); 6 itens novos (S-905 a S-910), entre eles o `settings.json` em ANSI que impede o `.exe` de abrir, o processo de trabalho sem prazo e o PDF arrastado para o ícone |
+| 13 | implementação (2026-11-08 a 11-09): um agente por item ou grupo, cada um num worktree `sol-<item>`, trazido por cherry-pick para `claude/revisao-ub-mode`; as guardas que a junção acusou consertadas em commits próprios; os quatro relatórios de campo remedidos a cada mudança do fecho | 109 itens entregues (✅ no §5); a S-837 só mudou o `repaired_squares` do mhsp (28 → 27, S-834) e a S-875 o controle (estipulação 6 → 10 conferidas); achados da junção: a guarda S-218 não via `text.notacao` (consertada na S-836), a verificação de estipulação também depende do relógio do Stockfish (3 s), e uma caixa de diálogo real travava a suíte (guarda de caixas modais na S-872) |
