@@ -47,6 +47,20 @@ class AcharTests(unittest.TestCase):
         achadas = [o.texto for o in busca.achar(doc, "♘", casar_figurina=True)]
         self.assertEqual(achadas, ["N", "♘"])
 
+    def test_coluna_b_nao_casa_figurina_de_bispo(self) -> None:
+        """Com a caixa diferenciada, `b` minúsculo é coluna, e só `B` é o bispo (S-902)."""
+        doc = rico.de_texto("11.bxc6 e 12.♗xc6 e 13.Bxc6")
+        achadas = [o.texto for o in busca.achar(doc, "bxc6", casar_figurina=True, diferenciar_caixa=True)]
+        self.assertEqual(achadas, ["bxc6"])
+        trocado, n = busca.substituir_todas(doc, "bxc6", "dxc6", casar_figurina=True, diferenciar_caixa=True)
+        self.assertEqual((trocado.para_texto(), n), ("11.dxc6 e 12.♗xc6 e 13.Bxc6", 1))
+
+        bispo = [o.texto for o in busca.achar(doc, "Bxc6", casar_figurina=True, diferenciar_caixa=True)]
+        self.assertEqual(bispo, ["♗xc6", "Bxc6"])
+        # sem diferenciar a caixa, a busca continua achando o cavalo por `nf3`
+        cavalo = [o.texto for o in busca.achar(rico.de_texto("1.♘f3 Nf3"), "nf3", casar_figurina=True)]
+        self.assertEqual(cavalo, ["♘f3", "Nf3"])
+
     def test_o_contexto_traz_o_que_esta_em_volta(self) -> None:
         """A lista da confirmação é o que impede a troca errada, e ela se lê pelo contexto."""
         doc = rico.de_texto("uma frase comprida com a palavra alvo no meio dela, e mais texto")
