@@ -141,5 +141,46 @@ class ModoTests(unittest.TestCase):
             separar(_duas_colunas(), self.CAIXAS, escala=ESCALA, modo="talvez")
 
 
+class UmArbitroSoTests(unittest.TestCase):
+    """O árbitro que se mede é o que roda (S-852).
+
+    Ele estava em três cópias -- o leitor de página e os dois CLIs que mediram o separador e o corte
+    de linha --, com um comentário justificando a cópia. Uma edição numa delas separava o que foi
+    medido do que está ligado, sem teste nenhum acusar.
+    """
+
+    def test_os_tres_chamadores_usam_o_mesmo_arbitro(self) -> None:
+        from chess_diagram_ocr.cli import texto_colados, texto_duas_linhas
+        from chess_diagram_ocr.text import colados, leitor
+
+        for chamador in (leitor, texto_colados, texto_duas_linhas):
+            with self.subTest(chamador=chamador.__name__):
+                self.assertIs(colados.arbitro_de_confianca, chamador.arbitro_de_confianca)
+
+    def test_o_arbitro_e_a_confianca_media_dos_recortes_que_tem_tinta(self) -> None:
+        from chess_diagram_ocr.text.colados import arbitro_de_confianca
+
+        class Classificador:
+            def classificar(self, recortes: Sequence[np.ndarray]) -> list[tuple[str, float]]:
+                return [("a", float(r.shape[1]) / 10) for r in recortes]
+
+        julgar = arbitro_de_confianca(np.zeros((40, 60), np.uint8), Classificador())
+        self.assertAlmostEqual(0.3, julgar([Caixa(0, 0, 2, 10), Caixa(0, 0, 4, 10), Caixa(5, 5, 5, 5)]))
+        self.assertEqual(0.0, julgar([]))
+
+
+class ValeNosDoisEixosTests(unittest.TestCase):
+    """Os gêmeos `colados` e `duas_linhas` acham o vale pela mesma conta, cada um no seu eixo (S-852)."""
+
+    def test_o_vale_de_linha_e_o_vale_de_coluna_da_figura_transposta(self) -> None:
+        from chess_diagram_ocr.text import duas_linhas
+
+        binaria = _duas_colunas()
+        de_coluna = vale(binaria, Caixa(6, 8, 46, 32))
+        de_linha = duas_linhas.vale(np.ascontiguousarray(binaria.T), Caixa(8, 6, 32, 46))
+        self.assertIsNotNone(de_coluna)
+        self.assertEqual(de_coluna, de_linha)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

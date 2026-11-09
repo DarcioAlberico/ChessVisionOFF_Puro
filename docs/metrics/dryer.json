@@ -2,25 +2,25 @@
  "limiar": 0.8,
  "gramas": 5,
  "min_tokens": 60,
- "total": 71,
+ "total": 65,
  "pares": [
   {
    "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
-   "linha_a": 278,
+   "linha_a": 264,
    "b": "src/chess_diagram_ocr/cli/texto_linha.py::parse_args",
    "linha_b": 242,
    "semelhanca": 1.0
   },
   {
    "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
-   "linha_a": 278,
+   "linha_a": 264,
    "b": "src/chess_diagram_ocr/cli/texto_placar_final.py::parse_args",
    "linha_b": 239,
    "semelhanca": 1.0
   },
   {
    "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
-   "linha_a": 278,
+   "linha_a": 264,
    "b": "src/chess_diagram_ocr/cli/texto_vertical.py::parse_args",
    "linha_b": 401,
    "semelhanca": 1.0
@@ -96,20 +96,6 @@
    "semelhanca": 1.0
   },
   {
-   "a": "src/chess_diagram_ocr/text/colados.py::_perfil_vertical",
-   "linha_a": 66,
-   "b": "src/chess_diagram_ocr/text/duas_linhas.py::_perfil_horizontal",
-   "linha_b": 69,
-   "semelhanca": 1.0
-  },
-  {
-   "a": "src/chess_diagram_ocr/text/colados.py::vale",
-   "linha_a": 74,
-   "b": "src/chess_diagram_ocr/text/duas_linhas.py::vale",
-   "linha_b": 77,
-   "semelhanca": 1.0
-  },
-  {
    "a": "src/chess_diagram_ocr/text/italico.py::inclinacao_da_linha",
    "linha_a": 209,
    "b": "src/chess_diagram_ocr/text/italico.py::pendor_da_linha",
@@ -147,7 +133,7 @@
   },
   {
    "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::parse_args",
-   "linha_a": 278,
+   "linha_a": 264,
    "b": "src/chess_diagram_ocr/cli/texto_inventario.py::parse_args",
    "linha_b": 223,
    "semelhanca": 0.935
@@ -179,13 +165,6 @@
    "b": "src/chess_diagram_ocr/side_survey.py::SideSurvey.as_dict",
    "linha_b": 125,
    "semelhanca": 0.935
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_colados.py::_arbitro_de_caixas",
-   "linha_a": 62,
-   "b": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::_arbitro_de_caixas",
-   "linha_b": 107,
-   "semelhanca": 0.91
   },
   {
    "a": "src/chess_diagram_ocr/cli/texto_paragrafo.py::Placar.para_json",
@@ -221,13 +200,6 @@
    "b": "src/chess_diagram_ocr/epub.py::exportar_texto_epub",
    "linha_b": 296,
    "semelhanca": 0.896
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::_arbitro_de_caixas.julgar",
-   "linha_a": 110,
-   "b": "src/chess_diagram_ocr/text/leitor.py::_arbitro_de_confianca.julgar",
-   "linha_b": 505,
-   "semelhanca": 0.895
   },
   {
    "a": "src/chess_diagram_ocr/qt/visor.py::VisorDePagina.dispensar_em",
@@ -335,13 +307,6 @@
    "semelhanca": 0.854
   },
   {
-   "a": "src/chess_diagram_ocr/cli/texto_colados.py::_arbitro_de_caixas.julgar",
-   "linha_a": 65,
-   "b": "src/chess_diagram_ocr/cli/texto_duas_linhas.py::_arbitro_de_caixas.julgar",
-   "linha_b": 110,
-   "semelhanca": 0.853
-  },
-  {
    "a": "src/chess_diagram_ocr/cli/evaluate.py::parse_args",
    "linha_a": 25,
    "b": "src/chess_diagram_ocr/cli/sides.py::parse_args",
@@ -382,13 +347,6 @@
    "b": "src/chess_diagram_ocr/cli/export_onnx.py::parse_args",
    "linha_b": 35,
    "semelhanca": 0.839
-  },
-  {
-   "a": "src/chess_diagram_ocr/cli/texto_colados.py::_arbitro_de_caixas.julgar",
-   "linha_a": 65,
-   "b": "src/chess_diagram_ocr/text/leitor.py::_arbitro_de_confianca.julgar",
-   "linha_b": 505,
-   "semelhanca": 0.831
   },
   {
    "a": "src/chess_diagram_ocr/cli/texto_inventario.py::parse_args",

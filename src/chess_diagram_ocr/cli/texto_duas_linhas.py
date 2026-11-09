@@ -57,7 +57,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +65,7 @@ import numpy as np
 from ..atomic_io import atomic_write_json
 from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
+from ..text.colados import arbitro_de_confianca
 from . import EXIT_FAILURE, add_verbose, cli_errors, confere_baseline
 from .texto_grade import camada_de_ocr
 from .texto_placar import cer
@@ -104,20 +104,6 @@ def faixas_da_camada(page: Any) -> list[tuple[str, tuple[float, float, float, fl
     return saida
 
 
-def _arbitro_de_caixas(cinza: np.ndarray, classificador: Any) -> Any:
-    """O árbitro que `duas_linhas.partir` espera: caixas -> confiança média delas."""
-
-    def julgar(caixas: Sequence[Any]) -> float:
-        recortes = [c.recortar(cinza) for c in caixas]
-        recortes = [r for r in recortes if r.size]
-        if not recortes:
-            return 0.0
-        lidos = classificador.classificar(recortes)
-        return float(sum(c for _, c in lidos) / len(lidos)) if lidos else 0.0
-
-    return julgar
-
-
 def ler_faixa(cinza: np.ndarray, classificador: Any, *, descartar: bool, cortar: bool) -> tuple[str, int]:
     """A faixa lida por um dos três braços. Devolve `(texto, caixas partidas)`.
 
@@ -139,7 +125,7 @@ def ler_faixa(cinza: np.ndarray, classificador: Any, *, descartar: bool, cortar:
     if cortar:
         antes = len(caixas)
         caixas = separar(
-            binaria, caixas, escala=escala, arbitro=_arbitro_de_caixas(cinza, classificador)
+            binaria, caixas, escala=escala, arbitro=arbitro_de_confianca(cinza, classificador)
         )
         partidas = len(caixas) - antes
 

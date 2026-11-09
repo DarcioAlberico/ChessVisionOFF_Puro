@@ -187,6 +187,7 @@ from . import regioes as _regioes
 from . import tesseract as _tesseract
 from . import traco as _traco
 from .binarizacao import binarize
+from .colados import arbitro_de_confianca
 from .folha_da_camada import LivroDaCamada
 from .grade import Arranjo
 from .leitor_de_linha import LeitorDeLinha
@@ -498,26 +499,6 @@ def segmentar(
     return (cinza, binaria, escala, caixas, regioes)
 
 
-def _arbitro_de_confianca(
-    cinza: np.ndarray, classificador: object
-) -> Callable[[Sequence[_boxes.Caixa]], float]:
-    """Caixas -> confiança média delas. **O mesmo árbitro que o `cvoff-texto-colados` mede.**
-
-    Escrito igual ao de lá de propósito: se o separador for medido com um árbitro e rodar com
-    outro, a tabela que decidiu ligá-lo deixa de descrever o que está ligado.
-    """
-
-    def julgar(caixas: Sequence[_boxes.Caixa]) -> float:
-        recortes = [c.recortar(cinza) for c in caixas]
-        recortes = [r for r in recortes if r.size]
-        if not recortes:
-            return 0.0
-        lidos = classificador.classificar(recortes)  # type: ignore[attr-defined]
-        return float(sum(c for _, c in lidos) / len(lidos)) if lidos else 0.0
-
-    return julgar
-
-
 def linhas_do_glifo(
     imagem_rgb: np.ndarray,
     diagramas: Sequence[Retangulo] = (),
@@ -617,7 +598,7 @@ def linhas_do_glifo(
             binaria,
             caixas,
             escala=escala,
-            arbitro=_arbitro_de_confianca(cinza, classificador),
+            arbitro=arbitro_de_confianca(cinza, classificador),
             modo=colados,
         )
 

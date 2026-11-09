@@ -7,7 +7,7 @@
   },
   "cli": {
    "type_ignore": 7,
-   "any": 187,
+   "any": 181,
    "except_exception": 24
   },
   "detection": {
@@ -26,7 +26,7 @@
    "except_exception": 41
   },
   "text": {
-   "type_ignore": 39,
+   "type_ignore": 38,
    "any": 107,
    "except_exception": 8
   },

@@ -47,6 +47,7 @@ from ..atomic_io import atomic_write_text
 from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import colados
+from ..text.colados import arbitro_de_confianca
 from . import add_verbose, cli_errors
 from .texto_duas_linhas import DPI, RAIO_PT, faixas_da_camada, recorte_da_faixa
 from .texto_grade import camada_de_ocr
@@ -57,20 +58,6 @@ logger = logging.getLogger(__name__)
 SAIDA_PADRAO = PROJECT_ROOT / "docs" / "metrics" / "texto_colados.json"
 
 MODOS_MEDIDOS = (colados.NUNCA, colados.AUTO, colados.SEMPRE)
-
-
-def _arbitro_de_caixas(cinza: np.ndarray, classificador: Any) -> Any:
-    """Caixas -> confiança média delas. O mesmo árbitro que a S-198 usa, e de propósito."""
-
-    def julgar(caixas: Any) -> float:
-        recortes = [c.recortar(cinza) for c in caixas]
-        recortes = [r for r in recortes if r.size]
-        if not recortes:
-            return 0.0
-        lidos = classificador.classificar(recortes)
-        return float(sum(c for _, c in lidos) / len(lidos)) if lidos else 0.0
-
-    return julgar
 
 
 def ler_faixa(cinza: np.ndarray, classificador: Any, *, modo: str) -> tuple[str, int]:
@@ -93,7 +80,7 @@ def ler_faixa(cinza: np.ndarray, classificador: Any, *, modo: str) -> tuple[str,
 
     antes = len(caixas)
     caixas = colados.separar(
-        binaria, caixas, escala=escala, arbitro=_arbitro_de_caixas(cinza, classificador), modo=modo
+        binaria, caixas, escala=escala, arbitro=arbitro_de_confianca(cinza, classificador), modo=modo
     )
     partidas = len(caixas) - antes
 
