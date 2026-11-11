@@ -133,14 +133,6 @@ def main(argv: list[str] | None = None) -> int:
         help="grade lê fileira a fileira, para folha de exercícios (S-216). Padrão: prosa.",
     )
     parser.add_argument(
-        "--bloco",
-        action="store_true",
-        help=(
-            "Liga o modo bloco da S-188 no motor de glifo. Desligado por padrão: medido em "
-            "docs/metrics/texto_pagina.json, ele custa ~50x o tempo e na média piora."
-        ),
-    )
-    parser.add_argument(
         "--colados",
         choices=("auto", "nunca", "sempre"),
         default="auto",
@@ -265,13 +257,10 @@ def main(argv: list[str] | None = None) -> int:
     # por página faria um livro de 60 páginas gastar três minutos só abrindo o mesmo arquivo.
     reconhecedor = None
     if args.motor != "camada":
-        from ..text.leitor import leitor_de_linha_padrao
         from ..text.recognizer import ModeloInvalido, build_glyph_recognizer
 
         try:
-            reconhecedor = build_glyph_recognizer(
-                leitor_de_linha=leitor_de_linha_padrao() if args.bloco else None
-            )
+            reconhecedor = build_glyph_recognizer()
         except ModeloInvalido as exc:
             if args.motor == "glifo":
                 logger.error("O motor de glifo não pôde ser carregado: %s", exc)
@@ -288,7 +277,6 @@ def main(argv: list[str] | None = None) -> int:
                 motor=args.motor,
                 arranjo=args.arranjo,
                 reconhecedor=reconhecedor,
-                modo_bloco=args.bloco,
                 lingua=args.lingua,
                 colados=args.colados,
                 caixa_alta=not args.sem_caixa_alta,

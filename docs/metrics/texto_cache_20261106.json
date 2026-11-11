@@ -1,0 +1,40 @@
+{
+  "item": "S-725: o lote por folha, a leitura por linha e o cache, nas folhas do ouro-dev",
+  "como": "docs/metrics/texto_cache_2026-11-06/medir.py",
+  "commit": "080d56e579e4039854cd592b1724313abd40d372",
+  "src_sujo": false,
+  "folhas": 27,
+  "livros": 5,
+  "linhas_lidas": 758,
+  "folhas_diferentes_do_lote": {
+    "por_linha": {
+      "texto_da_pagina": 0,
+      "linhas_do_leitor": 0,
+      "avisos": 0
+    },
+    "cache_frio": {
+      "texto_da_pagina": 0,
+      "linhas_do_leitor": 0,
+      "avisos": 0
+    },
+    "cache_quente": {
+      "texto_da_pagina": 0,
+      "linhas_do_leitor": 0,
+      "avisos": 0
+    }
+  },
+  "bytes_por_entrada": {
+    "media": 5477,
+    "maximo": 7868
+  },
+  "segundos_por_folha_sob_contencao": {
+    "lote": 2.63,
+    "por_linha": 7.75,
+    "cache_frio": 2.5,
+    "cache_quente": 1.55
+  },
+  "ressalvas": [
+    "Os tempos foram medidos com a máquina dividida com outras duas corridas, com OMP_NUM_THREADS=3. Não julgam o G4, que se mede depois, com a máquina parada, na janela e com o cache desligado.",
+    "As 27 folhas são dev: os livros já foram vistos. O split teste não foi aberto."
+  ]
+}

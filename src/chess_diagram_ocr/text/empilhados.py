@@ -137,7 +137,12 @@ def unir(caixas: Sequence[Caixa], *, escala: int, extras: Sequence[Caixa] = ()) 
     for i, acima in enumerate(ordenadas):
         if id(acima) in usada:
             continue
-        for abaixo in ordenadas[i + 1 :]:
+        for j in range(i + 1, len(ordenadas)):
+            abaixo = ordenadas[j]
+            # A lista vem por `y1`: passado o vão, nenhuma das seguintes casa. Sem este corte a busca
+            # é quadrática, e a capa do Estrin, de ruído, ficava minutos aqui.
+            if abaixo.y1 - acima.y2 > VAO_MAXIMO * escala:
+                break
             if id(abaixo) in usada or not _casam(acima, abaixo, escala):
                 continue
             usada.update({id(acima), id(abaixo)})

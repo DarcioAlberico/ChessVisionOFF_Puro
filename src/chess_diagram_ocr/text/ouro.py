@@ -36,6 +36,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
@@ -137,9 +138,45 @@ class Manifesto:
     sorteio: dict[str, Any] = field(default_factory=dict)
     pendencias: tuple[str, ...] = ()
     """O que o teste ainda não cumpre e foi aceito assim, com nome. Ver `PENDENCIA_DE_LINGUA`."""
+    leituras_dos_acrescentados: dict[str, str] = field(default_factory=dict)
+    """A primeira leitura de cada livro que entrou **a mais** no teste (`entrou_em`), por identidade (S-706). A data do
+    manifesto cobre os congelados; um livro que chegou depois tem o seu próprio "antes de ser lido"."""
 
     def do_split(self, split: Split) -> tuple[FolhaDoOuro, ...]:
         return tuple(f for f in self.folhas if f.split == split)
+
+
+CAMINHO_DA_EXCLUSAO = Path("assets") / "texto_prosa" / "exclusao_do_teste.json"
+"""A lista de exclusão da S-750, por identidade **e** por série, independente do inventário: o manifesto só conhece os livros
+sorteados, e o volume 4 de uma série que tem o 2 no teste não está nele. Só resumos: nenhum nome de livro no repositório."""
+
+_RUIDO_DE_SERIE = frozenset({"pdf", "vol", "volume", "book", "part", "parte", "tomo", "edition", "edicao", "hq", "copia", "ocr"})
+
+
+def chave_de_serie(nome_do_arquivo: str) -> str:
+    """O resumo do nome sem número, ano e pontuação: `Autor - Título 2 (2019)` e `Autor - Título 4 (2023)` dão a mesma chave."""
+    sem_acento = "".join(c for c in unicodedata.normalize("NFKD", nome_do_arquivo.casefold()) if not unicodedata.combining(c))
+    pedacos = [p for p in re.split(r"[^a-z]+", sem_acento) if p and p not in _RUIDO_DE_SERIE]
+    # O nome só em cirílico não tem letra de a a z, e a chave vazia seria a mesma para todos eles: recusaria todo livro russo.
+    pedacos = pedacos or [p for p in re.findall(r"[^\W\d_]+", sem_acento) if p not in _RUIDO_DE_SERIE]
+    return hashlib.sha256(" ".join(pedacos).encode("utf-8")).hexdigest()[:16]
+
+
+@dataclass(frozen=True)
+class Exclusao:
+    identidades: frozenset[str] = frozenset()
+    series: frozenset[str] = frozenset()
+
+    def recusa(self, identidade: str | None, nome_do_arquivo: str) -> str:
+        if identidade in self.identidades:
+            return "da série de um livro do teste"
+        return "da série de um livro do teste, pelo nome" if chave_de_serie(nome_do_arquivo) in self.series else ""
+
+
+def carregar_exclusao(caminho: str | Path | None = None) -> Exclusao:
+    alvo = Path(caminho) if caminho is not None else BUNDLE_ROOT / CAMINHO_DA_EXCLUSAO
+    dados = json.loads(alvo.read_text(encoding="utf-8"))
+    return Exclusao(frozenset(dados["identidades"]), frozenset(dados["series"]))
 
 
 def caminho_padrao() -> Path:
@@ -186,11 +223,13 @@ def de_json(dados: dict[str, Any]) -> Manifesto:
         folhas=tuple(_registro(FolhaDoOuro, folha, f"folha {n}") for n, folha in enumerate(dados.get("folhas", ()))),
         sorteio=dict(dados.get("sorteio", {})),
         pendencias=tuple(dados.get("pendencias", ())),
+        leituras_dos_acrescentados=dict(dados.get("leituras_dos_acrescentados", {})),
     )
 
 
 def para_json(manifesto: Manifesto) -> dict[str, Any]:
-    return {
+    """`leituras_dos_acrescentados` só aparece quando existe: sem ela, o manifesto sai byte a byte o congelado."""
+    dados: dict[str, Any] = {
         "versao": manifesto.versao,
         "congelado_em": manifesto.congelado_em,
         "primeira_leitura_do_teste": manifesto.primeira_leitura_do_teste,
@@ -199,6 +238,9 @@ def para_json(manifesto: Manifesto) -> dict[str, Any]:
         "livros": [vars(livro) for livro in manifesto.livros],
         "folhas": [vars(folha) for folha in manifesto.folhas],
     }
+    if manifesto.leituras_dos_acrescentados:
+        dados["leituras_dos_acrescentados"] = dict(sorted(manifesto.leituras_dos_acrescentados.items()))
+    return dados
 
 
 def carregar(caminho: str | Path | None = None) -> Manifesto:
@@ -210,8 +252,9 @@ def gravar(manifesto: Manifesto, caminho: str | Path) -> None:
     """Grava em LF e UTF-8, uma folha por linha, para o diff de uma troca ser de uma linha."""
     dados = para_json(manifesto)
     linhas = ["{"]
-    for chave in ("versao", "congelado_em", "primeira_leitura_do_teste", "pendencias", "sorteio"):
-        linhas.append(f"  {json.dumps(chave)}: {json.dumps(dados[chave], ensure_ascii=False)},")
+    for chave in ("versao", "congelado_em", "primeira_leitura_do_teste", "leituras_dos_acrescentados", "pendencias", "sorteio"):
+        if chave in dados:
+            linhas.append(f"  {json.dumps(chave)}: {json.dumps(dados[chave], ensure_ascii=False)},")
     for chave in ("livros", "folhas"):
         itens = [f"    {json.dumps(item, ensure_ascii=False)}" for item in dados[chave]]
         fim = "," if chave == "livros" else ""
@@ -223,13 +266,14 @@ def problemas(manifesto: Manifesto) -> list[str]:
     """O que faz o manifesto não valer. Vazio quer dizer que ele vale.
 
     Os campos fechados não passam por aqui: o valor de fora não chega a virar `Manifesto` (`de_json`).
-    As mensagens saem nesta ordem: cabeçalho, livros, folhas, teste e pendências (S-861).
+    As mensagens saem nesta ordem: cabeçalho, livros, folhas, teste, leituras dos acrescentados e pendências (S-861).
     """
     return [
         *_do_cabecalho(manifesto),
         *_dos_livros(manifesto),
         *_das_folhas(manifesto),
         *_do_teste(manifesto),
+        *_das_leituras_dos_acrescentados(manifesto),
         *_das_pendencias(manifesto),
     ]
 
@@ -332,6 +376,33 @@ def _da_composicao_do_teste(teste: dict[str, LivroDoOuro], manifesto: Manifesto)
     return erros
 
 
+def registrar_leitura_do_teste(manifesto: Manifesto, data: str, identidades: Iterable[str]) -> Manifesto:
+    """O manifesto depois de `identidades` do teste serem lidas em `data`: quem abre o teste chama isto **antes** de ler.
+
+    Só a primeira leitura grava. Um livro congelado marca `primeira_leitura_do_teste`; um acrescentado depois, a
+    linha dele em `leituras_dos_acrescentados`. Livro que não é do teste levanta: a data diria que algo foi aberto, e
+    não foi.
+    """
+    if not _DATA.fullmatch(data):
+        raise ValueError(f"data de leitura sem o formato AAAA-MM-DD: {data!r}")
+    livros = {livro.identidade: livro for livro in manifesto.livros}
+    leituras = dict(manifesto.leituras_dos_acrescentados)
+    primeira = manifesto.primeira_leitura_do_teste
+    for identidade in identidades:
+        livro = livros.get(identidade)
+        if livro is None or livro.split != TESTE:
+            raise ValueError(f"o livro {identidade} não é do teste")
+        if livro.entrou_em:
+            leituras.setdefault(identidade, data)
+        elif primeira is None:
+            primeira = data
+    novo = replace(manifesto, primeira_leitura_do_teste=primeira, leituras_dos_acrescentados=leituras)
+    erros = problemas(novo)
+    if erros:
+        raise ValueError(f"a leitura de {data} reprova o manifesto: {erros}")
+    return novo
+
+
 def _dos_irmaos_do_teste(teste: dict[str, LivroDoOuro], livros: Sequence[LivroDoOuro]) -> list[str]:
     """O livro da reserva que é da série de um livro do teste não pode treinar: viu a mesma diagramação."""
     grupos_do_teste = {livro.grupo or livro.identidade for livro in teste.values()}
@@ -350,6 +421,18 @@ def _das_linguas_do_teste(linguas: int, pendencias: Sequence[str]) -> list[str]:
     if linguas >= LINGUAS_MINIMAS_NO_TESTE and pendente:
         return [f"o teste já tem {linguas} línguas, e a pendência {PENDENCIA_DE_LINGUA} não saiu"]
     return []
+
+
+def _das_leituras_dos_acrescentados(manifesto: Manifesto) -> list[str]:
+    """A leitura de um livro acrescentado é dele, e não pode ser anterior à entrada dele no teste."""
+    entrou_em = {livro.identidade: livro.entrou_em for livro in manifesto.livros}
+    erros: list[str] = []
+    for identidade, lido_em in manifesto.leituras_dos_acrescentados.items():
+        if not entrou_em.get(identidade):
+            erros.append(f"leitura registrada de {identidade}, que não é um livro acrescentado ao teste")
+        elif not _DATA.fullmatch(str(lido_em)) or str(lido_em) < entrou_em[identidade]:
+            erros.append(f"o livro {identidade} foi lido em {lido_em!r}, antes de entrar no teste em {entrou_em[identidade]}")
+    return erros
 
 
 def _das_pendencias(manifesto: Manifesto) -> list[str]:

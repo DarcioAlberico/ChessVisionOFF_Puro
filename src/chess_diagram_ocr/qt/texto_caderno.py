@@ -367,12 +367,56 @@ class CadernoDaAba(QObject):
             self.avisar_trava(cad, pagina)
             self.gravar_rascunho()
             return False
+        if feitas and feito == caderno.GRAVADA:
+            self._ensinar_as_palavras(cad)
         self._aba._documento_gravado = self._aba.documento
         self._aba._correcoes = feitas
         self._aba.vista.atualizar_status()
         self.rotular_leitura()
         self.mostrar_indice()
         return True
+
+    def _ensinar_as_palavras(self, cad: caderno.Caderno) -> None:
+        """O que a mão escreveu e o léxico não conhece vai ao léxico do livro, e os árbitros passam a ouvir nas folhas seguintes (S-766)."""
+        from chess_diagram_ocr.text import correcao_no_livro, dado_corrigido, fusao
+
+        if not dado_corrigido.pares_tocados(self._aba.documento):
+            return
+        try:
+            novas = correcao_no_livro.ensinar(cad, self._aba.documento, existe=fusao.existe_do_livro(self._aba.leitura.lingua, cad.lexico()))
+        except OSError as erro:
+            logger.warning("O léxico do livro não gravou: %s", erro)
+            return
+        if novas:
+            self._aba.estado.emit(f"No léxico do livro: {', '.join(novas)}.")
+
+    def corrigir_em_todas_as_folhas(self) -> Any:
+        """Abre a janela da troca em massa, com a prévia obrigatória (S-766). A palavra selecionada, ou a última corrigida, já vem nos campos."""
+        from chess_diagram_ocr.qt.correcao_no_livro import JanelaDeCorrecaoNoLivro
+        from chess_diagram_ocr.text import dado_corrigido
+
+        cad = self._caderno
+        if cad is None or cad.somente_leitura:
+            self._aba.estado.emit("Só há o que corrigir em todas as folhas com o caderno do livro aberto para escrita.")
+            return None
+        self.guardar_a_folha()  # o que está na tela entra na procura
+        selecionada = self._aba.editor.textCursor().selectedText().strip()
+        pares = dado_corrigido.pares_tocados(self._aba.documento)
+        antes, depois = (selecionada, "") if selecionada else (pares[-1].antes, pares[-1].depois) if pares else ("", "")
+        janela = JanelaDeCorrecaoNoLivro(self._aba, cad, antes=antes, depois=depois)
+        self._janela_de_correcao_no_livro = janela
+        janela.show()
+        return janela
+
+    def folhas_corrigidas_no_livro(self, feito: Any) -> None:
+        """A troca em massa terminou: a frase no rodapé, o índice, e a folha da tela, se ela mudou, relida do caderno."""
+        from chess_diagram_ocr.text import correcao_no_livro
+
+        pagina = None if self._aba.documento.origem is None else int(self._aba.documento.origem.pagina)
+        if pagina is not None and pagina in feito.folhas:
+            self.abrir_do_caderno(pagina)
+        self.mostrar_indice()
+        self._aba.estado.emit(correcao_no_livro.frase_do_resultado(feito))
 
     def abrir_caderno(self, livro: Path | None) -> None:
         """Troca o caderno pelo do livro que chegou. A folha da tela vai antes ao do livro que sai."""
@@ -431,7 +475,7 @@ class CadernoDaAba(QObject):
         if not hasattr(self._aba, "botao_de_ler"):
             return
         guardada = None if self._caderno is None else self._caderno.estado(int(self._aba.leitura.campo_de_folha.value()) - 1)
-        abre = guardada is not None and caderno.abre_do_caderno(guardada, motor=self._aba.leitura.motor_gravado(), modo_bloco=self._aba.leitura.modo_bloco)
+        abre = guardada is not None and caderno.abre_do_caderno(guardada, motor=self._aba.leitura.motor_gravado())
         self._aba.botao_de_ler.setText(strings.ABRIR_FOLHA_DO_CADERNO if abre else comandos.rotulo_de_botao("ler_folha"))
 
     def abrir_do_caderno(self, indice: int) -> bool:

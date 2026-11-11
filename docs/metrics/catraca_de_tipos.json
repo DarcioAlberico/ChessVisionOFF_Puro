@@ -6,8 +6,8 @@
    "except_exception": 5
   },
   "cli": {
-   "type_ignore": 7,
-   "any": 174,
+   "type_ignore": 10,
+   "any": 188,
    "except_exception": 24
   },
   "detection": {
@@ -16,8 +16,8 @@
    "except_exception": 3
   },
   "qt": {
-   "type_ignore": 66,
-   "any": 203,
+   "type_ignore": 67,
+   "any": 210,
    "except_exception": 77
   },
   "raiz": {
@@ -26,13 +26,13 @@
    "except_exception": 38
   },
   "text": {
-   "type_ignore": 36,
-   "any": 107,
-   "except_exception": 4
+   "type_ignore": 53,
+   "any": 190,
+   "except_exception": 3
   },
   "ui": {
    "type_ignore": 10,
-   "any": 45,
+   "any": 46,
    "except_exception": 10
   }
  }

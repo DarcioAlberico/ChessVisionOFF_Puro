@@ -111,14 +111,14 @@ class AnteriorTests(_ComLivro):
 
     def test_ler_de_novo_guarda_a_corrigida_como_anterior_e_a_leitura_como_lida(self) -> None:
         livro = self.abrir()
-        livro.guardar_leitura(_doc(self.livro, 0, "lida pelo glifo"), motor="glifo", modo_bloco=False)
+        livro.guardar_leitura(_doc(self.livro, 0, "lida pelo glifo"), motor="glifo")
         livro.gravar(_doc(self.livro, 0, "corrigida à mão"), correcoes=3)
-        livro.guardar_leitura(_doc(self.livro, 0, "lida pelo auto"), motor="auto", modo_bloco=True)
+        livro.guardar_leitura(_doc(self.livro, 0, "lida pelo auto"), motor="auto")
         self.assertIn("corrigida", livro.anterior(0).para_texto())  # type: ignore[union-attr]
         self.assertIn("auto", livro.lida(0).para_texto())  # type: ignore[union-attr]
         estado = livro.estado(0)
         assert estado is not None
-        self.assertEqual((estado.estado, estado.motor, estado.modo_bloco, estado.correcoes), (caderno.LIDA, "auto", True, 0))
+        self.assertEqual((estado.estado, estado.motor, estado.correcoes), (caderno.LIDA, "auto", 0))
 
 
 class FolhaIlegivelTests(_ComLivro):
@@ -144,7 +144,7 @@ class FolhaIlegivelTests(_ComLivro):
                 livro = self._corrigida_e_estragada(ruins)
                 self.assertIsNone(livro.folha(2))
                 self.assertIsNotNone(livro.trava(2))
-                self.assertEqual(livro.guardar_leitura(_doc(self.livro, 2, "lida de novo"), motor="glifo", modo_bloco=False), caderno.TRAVADA)
+                self.assertEqual(livro.guardar_leitura(_doc(self.livro, 2, "lida de novo"), motor="glifo"), caderno.TRAVADA)
                 self.assertEqual(livro.gravar(_doc(self.livro, 2, "outra coisa"), correcoes=1), caderno.TRAVADA)
                 with self.assertRaises(GravacaoRecusada):
                     livro.trazer_rascunho(_doc(self.livro, 2, "do rascunho"), datetime.now(timezone.utc))
@@ -381,20 +381,19 @@ class LexicoDoLivroTests(_ComLivro):
 
 class AbreDoCadernoTests(unittest.TestCase):
     def estado(self, **campos: object) -> caderno.EstadoDaFolha:
-        base: dict[str, object] = {"pagina": 0, "estado": caderno.LIDA, "motor": "auto", "modo_bloco": False}
+        base: dict[str, object] = {"pagina": 0, "estado": caderno.LIDA, "motor": "auto"}
         base.update(campos)
         return caderno.EstadoDaFolha(**base)  # type: ignore[arg-type]
 
     def test_o_mesmo_motor_abre_o_caderno(self) -> None:
-        self.assertTrue(caderno.abre_do_caderno(self.estado(), motor="auto", modo_bloco=False))
+        self.assertTrue(caderno.abre_do_caderno(self.estado(), motor="auto"))
 
     def test_motor_trocado_sem_correcao_le_de_novo(self) -> None:
-        self.assertFalse(caderno.abre_do_caderno(self.estado(), motor="glifo", modo_bloco=False))
-        self.assertFalse(caderno.abre_do_caderno(self.estado(), motor="auto", modo_bloco=True))
+        self.assertFalse(caderno.abre_do_caderno(self.estado(), motor="glifo"))
 
     def test_com_correcao_ou_conferida_abre_o_caderno_mesmo_com_outro_motor(self) -> None:
-        self.assertTrue(caderno.abre_do_caderno(self.estado(correcoes=2, estado=caderno.EDITADA), motor="glifo", modo_bloco=False))
-        self.assertTrue(caderno.abre_do_caderno(self.estado(estado=caderno.CONFERIDA), motor="glifo", modo_bloco=False))
+        self.assertTrue(caderno.abre_do_caderno(self.estado(correcoes=2, estado=caderno.EDITADA), motor="glifo"))
+        self.assertTrue(caderno.abre_do_caderno(self.estado(estado=caderno.CONFERIDA), motor="glifo"))
 
     def test_a_pergunta_diz_o_tamanho_da_perda(self) -> None:
         self.assertEqual(

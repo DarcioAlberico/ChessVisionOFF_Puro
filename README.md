@@ -130,7 +130,7 @@ sem Python e sem `uv`.
 
 **Tamanho: o build grava em [docs/metrics/bundle.json](docs/metrics/bundle.json), e o numero
 citado aqui e conferido contra esse arquivo por `tests/test_docs.py` (S-135).** A ultima
-medida registrada e de **684 MB, 4.275 arquivos**, do build de 2026-08-18 (commit `9a683d1`).
+medida registrada e de **677 MB, 4.264 arquivos**, do build de 2026-11-06 (commit `3f780eb5`).
 Ela substitui a de 2026-08-09, que estava obsoleta -- e refaze-la achou uma coisa: o
 `streamlit` de fato tinha saido, mas o `pythonnet` e o `clr_loader` **continuavam dentro do
 bundle**, muito depois de a S-69 ter removido o codigo que os usava. O PyInstaller coleta o
@@ -191,7 +191,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **47 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **48 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao no bloco abaixo, com exemplos; a lista inteira vem logo depois dele.
@@ -405,6 +405,7 @@ cvoff-texto-pagina LIVRO.pdf --paginas 40 --motor fusao --lingua por
 cvoff-texto-lexico "Lista de Palavras"
 cvoff-texto-lexico "Lista de Palavras" --dry-run   # conta e imprime, sem escrever nada
 cvoff-texto-lexico --medir --com-glifo             # o alarme falso por perfil, e a juncao (S-209)
+cvoff-texto-lexico --linguas-de "C:/Program Files/Tesseract-OCR"   # as listas por lingua, do tessdata (S-728)
 
 # Quanto o texto soma a varredura, etapa a etapa (S-215). As duas pontas da divisao sao medidas
 # na mesma corrida -- a varredura de diagramas como ela e hoje, e a leitura de texto --, porque
@@ -470,6 +471,7 @@ cvoff-texto-paragrafo                        # varre os candidatos sobre a refer
 # transforma correcao em rotulo e a fila de revisao de caractere, que tem o criterio.
 cvoff-texto-correcoes trabalho/
 cvoff-texto-correcoes folha58.cvtxt --todas --json docs/metrics/texto_correcoes.json
+cvoff-texto-correcoes trabalho/ --quarentena revisao_ocr/   # S-762: o par que a mao tocou, com a versao do modelo; nunca vai a teste
 
 # As duas reguas lado a lado (S-206). O comando **recusa** publicar so a do recorte: publicar
 # "99,1% de acerto" sobre recorte segmentado quando a pagina da outro numero e a forma de
@@ -539,6 +541,7 @@ aqui reprova a suite, e a falha imprime o bloco certo.
 - `cvoff-texto-estilo-classificador` -- `chess_diagram_ocr.cli.texto_estilo_classificador`
 - `cvoff-texto-pesquisavel` -- `chess_diagram_ocr.cli.texto_pesquisavel`
 - `cvoff-texto-paragrafo` -- `chess_diagram_ocr.cli.texto_paragrafo`
+- `cvoff-texto-prosa` -- `chess_diagram_ocr.cli.texto_prosa`
 <!-- fim dos comandos -->
 
 Os scripts `train_model.py`, `infer_pdf.py` e `export_pdf_pgn.py` na raiz continuam
@@ -951,6 +954,12 @@ as 6 confirmadas pela camada de texto, nenhuma palavra certa quebrada, e +1,1% d
 Antes das listas ele corrigia zero, e por isso vinha desligado. `--sem-dicionario` desliga, e a
 procedencia de cada lista esta em `assets/lexico/PROCEDENCIA.md`.
 
+Ao lado delas ha **listas por lingua** em `assets/lexico/linguas/` (S-728), tiradas do `tessdata` do proprio Tesseract, com
+licenca Apache-2.0: `eng.txt.gz` (87.680 entradas), `por.txt.gz` (52.199 entradas), `spa.txt.gz` (67.361 entradas),
+`deu.txt.gz` (52.854 entradas), `nld.txt.gz` (172.929 entradas), `fra.txt.gz` (31.986 entradas),
+`ron.txt.gz` (74.038 entradas) e `rus.txt.gz` (139.107 entradas). O sha de cada uma esta em `linguas/manifesto.json`, e o dicionario do glifo
+**nao** as le: o texto dele nao muda.
+
 **O negrito e mostrado na aba**, e vem da **camada de texto** -- nome da fonte e bit de peso,
 que sao metadado e nao erram. No Dvoretsky ele marca exatamente os lances da variante principal.
 A cobertura e irregular: **13 dos 41 livros** registram peso, 16 tem camada sem peso e 12 nao tem
@@ -971,9 +980,9 @@ propria pagina como referencia (`docs/metrics/texto_pagina.json`): CER **0,0961*
 um piso que nao e do modelo -- num dos dois livros a propria camada e OCR de terceiro e traz os
 proprios erros --, entao ele **nao** vira "90% de acerto". E ele mede **prosa**: pela tabela acima,
 na notacao a camada nao e referencia de coisa nenhuma, e ali o glifo e penalizado justamente onde
-acerta a figurina. O que a medicao decide de fato e o
-padrao do modo bloco da S-188, que fica **desligado**: ele custa ~50x o tempo e piora a media em
-41% -- 0,0961 contra 0,1354 nas mesmas 10 paginas. `--bloco` liga para quem quiser medir de novo.
+acerta a figurina. A mesma medicao ja dizia que o modo bloco da S-188 nao pagava na pagina: ~50x o
+tempo e 41% pior, 0,0961 contra 0,1354 nas mesmas 10 paginas. Ele saiu na S-726, depois de remedido
+so na prosa: 6,33% contra 0,95% do glifo (`docs/metrics/texto_prosa_bloco_2026-11-06.json`).
 
 ## Resolucao de problemas
 
@@ -1193,6 +1202,7 @@ src/chess_diagram_ocr/
   processo_de_trabalho.py  o filho que rasteriza, le o CSV e detecta, porque o PyMuPDF e o Python seguram o GIL
   provenance.py         o registro de procedencia gravado ao lado de cada rotulo
   proveniencia.py       o sidecar .proveniencia.jsonl ao lado do PGN: retangulo, hash, confiancas, reparos e veredito por diagrama (A11)
+  pgn_revisado.py       a decisao da fila de revisao de volta ao .pgn ja exportado, com copia
   relogio.py            a hora gravada com fuso, e a leitura da antiga sem fuso como hora local (S-908)
   review_queue.py       fila de revisao ordenada por valor de informacao
   revisao_arquivo.py    o baralho da repeticao espacada no disco, um para o acervo (S-540)
@@ -1344,7 +1354,7 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-585 a S-598 | [docs/ROADMAP_PDF_COM_PGN.md](docs/ROADMAP_PDF_COM_PGN.md) |
 | S-599 | [docs/PLANO_FAIXAS_REVERSAS.md](docs/PLANO_FAIXAS_REVERSAS.md) |
 | S-601 a S-668 | [docs/SPEC_MESA_DE_TEXTO.md](docs/SPEC_MESA_DE_TEXTO.md) |
-| S-702, S-710 a S-712, S-715 a S-718, S-720 | [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) |
+| S-700 a S-772 | [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) |
 | S-800 a S-910 | [docs/SPEC_SOLIDEZ.md](docs/SPEC_SOLIDEZ.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
@@ -1512,7 +1522,11 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   "Camada na prosa" (S-716) e "Glifo + Tesseract" (S-717), a marca por palavra (S-718) e o executor
   do Tesseract (S-720), com os numeros em `docs/metrics/texto_prosa_primeira_entrega.json`
   e a caixa que nao e letra, que intercalava a coluna inteira (S-712), em
-  `docs/metrics/texto_prosa_s712.json`
+  `docs/metrics/texto_prosa_s712.json`; e a regua no pacote com `cvoff-texto-prosa` (S-700 a S-707, S-713),
+  com a linha de base em `docs/metrics/texto_prosa_20261106.json`: glifo 2,82% no ouro-dev e 6,93% no
+  ouro-teste, aberto uma vez, e a suite irma na mesma regua. Os portoes de 2026-11-06, com o codigo
+  congelado, estao em `docs/metrics/texto_prosa_portoes_20261106.json`: fusao 2,11% e glifo 4,87% no
+  ouro-teste, contra 0,15% do Tesseract nas linhas certas. O G102 nao passou, e o padrao continua o glifo
 - [docs/ROADMAP_SOLIDEZ.md](docs/ROADMAP_SOLIDEZ.md) -- **Fases 110 a 121** (S-800 a S-910), a
   revisao do programa inteiro em 2026-11-08: as seis premissas que geravam a maior parte dos 117
   achados (arquivo que nao le tratado como vazio, resultado assincrono marcado so pela pagina, copia

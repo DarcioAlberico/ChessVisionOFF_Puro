@@ -150,6 +150,9 @@ Proposta de interface/
 # `cvoff-texto-conflitos --desfazer <manifesto>` os devolve. O que **fica** versionado e o
 # julgamento humano, em data/texto_conflitos.json.
 data/quarentena_texto/
+# A leitura do Tesseract guardada (S-725): e texto de livro comercial, folha a folha, pela mesma regra
+# do review_cache e da galeria. Apagar a pasta e sempre seguro, e e o que o menu faz.
+data/cache_texto/
 # O PDF de cada DjVu ja aberto (`djvu_io`): recorte inteiro de livro protegido, e reconstruivel
 # abrindo o livro de novo. Chega a dezenas de MB por livro.
 data/djvu_convertidos/
@@ -191,3 +194,6 @@ fonts (2)/
 # aceito, o que mudou de forma na conferencia e o que foi medido e recusado. Um documento que
 # cita o achado de fora vale mais que uma copia dele que ninguem vai reler.
 Perego/
+
+# A quarentena da S-214: recorte de livro, e o par corrigido da S-762 tem palavra de livro.
+revisao_ocr/

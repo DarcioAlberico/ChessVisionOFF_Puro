@@ -44,6 +44,23 @@ class AtrasoTests(unittest.TestCase):
         self.assertTrue(dica.ajustar_atraso(700))
         self.assertEqual(dica.atraso_em_vigor(), 700)
 
+    def test_ajustar_de_novo_nao_troca_o_estilo_da_aplicacao(self) -> None:
+        """`setStyle` apaga o estilo anterior, e o widget vivo que apontava para ele derruba o processo no
+        próximo evento: depois do primeiro ajuste, o número muda no mesmo estilo."""
+        from unittest import mock
+
+        from PyQt6.QtWidgets import QApplication
+
+        aplicacao()
+        self.addCleanup(dica.ajustar_atraso)
+        self.assertTrue(dica.ajustar_atraso(700))
+        with mock.patch.object(QApplication, "setStyle") as troca:
+            self.assertTrue(dica.ajustar_atraso(900))
+            self.assertEqual(dica.atraso_em_vigor(), 900)
+            self.assertTrue(dica.ajustar_atraso())
+        troca.assert_not_called()
+        self.assertEqual(dica.atraso_em_vigor(), dica.ATRASO_DA_DICA)
+
     def test_o_padrao_e_o_atraso_do_projeto(self) -> None:
         aplicacao()
         self.assertTrue(dica.ajustar_atraso())

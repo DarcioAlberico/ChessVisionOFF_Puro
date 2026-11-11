@@ -28,7 +28,7 @@ Uma revisão técnica independente do repositório, feita por terceiro em 2026-0
 > | S-585 a S-598 | [ROADMAP_PDF_COM_PGN.md](ROADMAP_PDF_COM_PGN.md) |
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
-> | S-702, S-710 a S-712, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
+> | S-700 a S-772 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
 > | S-800 a S-910 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
 
 Este documento não propõe recurso novo. Ele é o que sobrou de dez achados de fora **depois de
@@ -285,7 +285,8 @@ $ uv run pytest -q         4.870 passaram, 2 pulados, 3.652 subtests    169 s
   verde se a linha mudar de lugar e parar de rodar. A versão que ficou chama `gravar_metricas`
   com `PROJETO` e `SAIDA` numa pasta temporária e lê o JSON. O `docs/metrics/bundle.json`
   versionado não é tocado: nenhum build foi rodado, e o número publicado continua o de
-  2026-08-18.
+  2026-08-18. **Refeito em 2026-11-06**, o primeiro depois do corte do Tk: 677 MB e 4.264 arquivos. O `.exe`
+  abriu em `offscreen` por 30 s sem erro no log; a janela de verdade, na tela, não foi aberta.
 - **O `.bat` do motor foi reescrito à mão**, porque o hunk do patch não aplicava -- a única
   colisão dos 27 arquivos, e a causa era nossa.
 
@@ -296,5 +297,7 @@ $ uv run pytest -q         4.870 passaram, 2 pulados, 3.652 subtests    169 s
   do interpretador que o `uv` entrega para 3.13 já veio incompleto uma vez.
 - **A matriz da CI ainda não rodou.** Ela é YAML válido e a estrutura foi conferida, mas quem a
   prova é o GitHub. A perna do 3.13 é a primeira coisa a olhar no próximo push.
+  *Rodou: `gh run view 42141235858`, na `main` em 2026-11-06 (merge do PR #58), com `check (3.10)`,
+  `check (3.13)` e `caminho-com-acento` em `success`.*
 - **A S-440 não tem código, e nunca vai ter.** É o registro de uma recomendação medida e
   recusada.

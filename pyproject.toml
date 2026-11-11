@@ -210,6 +210,9 @@ cvoff-texto-pesquisavel = "chess_diagram_ocr.cli.texto_pesquisavel:main"
 # Versiona o instrumento -- a medicao da S-257 saiu de um script no diretorio da sessao.
 cvoff-texto-paragrafo = "chess_diagram_ocr.cli.texto_paragrafo:main"
 
+# S-706: a regua da prosa sobre um manifesto (ouro ou prata), e o relatorio publicado, sem texto de livro.
+cvoff-texto-prosa = "chess_diagram_ocr.cli.texto_prosa:main"
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

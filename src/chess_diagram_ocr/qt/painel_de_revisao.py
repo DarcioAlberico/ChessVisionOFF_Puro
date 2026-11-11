@@ -43,8 +43,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from chess_diagram_ocr import pgn_revisado
 from chess_diagram_ocr.arquivo_do_dono import GravacaoRecusada, Lida, gravavel
-from chess_diagram_ocr.pdf_to_pgn import ScannedDiagram
+from chess_diagram_ocr.pdf_to_pgn import ScannedDiagram, default_pgn_output_path
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
 from chess_diagram_ocr.qt.dica import dica_em
@@ -220,6 +221,12 @@ class PainelDeRevisao(QWidget):
         )
         self._botao(barra, "Abrir fila", self.abrir_arquivo_de_fila, estilos.NEUTRO)
         self._botao(barra, "Salvar fila", self.salvar_fila, estilos.NEUTRO)
+        self.btn_reescrever = self._botao(barra, "Corrigir o PGN…", self.reescrever_pgn, estilos.NEUTRO)
+        dica_em(
+            self.btn_reescrever,
+            "Leva os itens marcados como revisados ao .pgn já exportado deste livro, sem exportar de\n"
+            "novo. Pergunta antes de gravar, e o arquivo anterior fica ao lado como cópia.",
+        )
         self.so_pendentes = QCheckBox("Só pendentes", barra)
         self.so_pendentes.setChecked(True)
         self.so_pendentes.stateChanged.connect(lambda _valor: self.refresh())
@@ -488,6 +495,43 @@ class PainelDeRevisao(QWidget):
         self.btn_cancelar.setEnabled(False)
 
     # ------------------------------------------------------------------------------- arquivo
+
+    def reescrever_pgn(self) -> None:
+        """Leva as decisões da fila ao `.pgn` já exportado, sem reler o livro (`pgn_revisado.py`)."""
+        decisoes = pgn_revisado.decisoes_da_fila(self.queue)
+        if not decisoes:
+            self.estado.emit("Nenhum item revisado na fila: não há o que levar ao PGN.")
+            return
+        sugerido = default_pgn_output_path(Path(self.queue.source_pdf)) if self.queue.source_pdf else self.queue_path
+        caminho, _filtro = QFileDialog.getOpenFileName(
+            self, "PGN a corrigir", str(sugerido), "PGN (*.pgn);;Todos (*.*)"
+        )
+        if not caminho:
+            return
+        try:
+            plano = pgn_revisado.planejar(Path(caminho), decisoes)
+        except (OSError, UnicodeError) as exc:
+            QMessageBox.critical(self, "Corrigir o PGN", f"Não foi possível ler o arquivo:\n{exc}")
+            return
+        if not plano.trocados:
+            self.estado.emit(plano.frase_sem_trocas())
+            return
+        resposta = QMessageBox.question(
+            self,
+            "Corrigir o PGN",
+            plano.pergunta(),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            copias = pgn_revisado.gravar(plano)
+        except OSError as exc:
+            QMessageBox.critical(self, "Corrigir o PGN", f"Não foi possível gravar:\n{exc}")
+            return
+        nomes = ", ".join(copia.name for copia in copias)
+        self.estado.emit(f"{plano.trocados} diagrama(s) reescrito(s). O arquivo anterior ficou em {nomes}.")
 
     def salvar_fila(self, quieto: bool = False) -> None:
         try:

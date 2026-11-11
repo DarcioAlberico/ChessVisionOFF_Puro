@@ -111,6 +111,14 @@ class LeiturasTests(unittest.TestCase):
         sem = regra.tinta_do_diagrama(None, casas_incertas=[3], confiancas=[0.5, 0.6])
         self.assertEqual(sem.valores, ())
 
+    def test_a_casa_corrigida_sai_da_tinta_nas_duas_reguas(self) -> None:
+        """A dúvida era sobre o que o modelo leu ali; os valores continuam 64, a casa é que sai."""
+        com = regra.tinta_do_diagrama(_matriz(c12=(0.6, 0.35), c20=(0.6, 0.35)), corrigidas={12})
+        self.assertEqual(com.casas, (20,))
+        self.assertEqual(len(com.valores), 64)
+        sem = regra.tinta_do_diagrama(None, casas_incertas=[3, 5], confiancas=[0.5] * 64, corrigidas=(5,))
+        self.assertEqual(sem.casas, (3,))
+
     def test_duvidoso_e_ter_alguma_casa_a_conferir(self) -> None:
         self.assertTrue(regra.e_duvidoso(_matriz(c12=(0.6, 0.35))))
         self.assertFalse(regra.e_duvidoso(_matriz()))

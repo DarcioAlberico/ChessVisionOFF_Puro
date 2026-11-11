@@ -161,6 +161,27 @@ palavra, e quem monta parágrafo não sabe o que é um pixel.
 | `guarda_de_leitura.py` | A folha que saiu vazia avisa: a densidade de leitura (S-710). |
 | `admissao.py` | A admissão de folha ao ouro sem rodar OCR nenhum: a camada só é referência quando é a tinta (S-702). |
 | `ouro.py` | O ouro da régua da prosa: que livros e que folhas medem, e em que split (S-702). |
+| `acento.py` | Til contra trema, circunflexo contra agudo: a letra certa com o acento errado (S-735). |
+| `arbitro.py` | O árbitro de notação: a gramática, a continuidade e a legalidade decidem o lance disputado (S-729, S-743). |
+| `bancada_prosa.py` | A bancada da régua da prosa: uma folha, a referência montada, e cada motor lendo a mesma imagem (S-706, S-713). |
+| `cache_texto.py` | A leitura do Tesseract guardada: quem relê uma folha não paga o processo de novo (S-725). |
+| `confianca_palavra.py` | Quanto vale cada palavra da linha fundida: a confiança calibrada por domínio (S-760). |
+| `correcao_no_livro.py` | Corrigir uma vez, corrigir no livro inteiro: as palavras do livro e a troca em todas as folhas do caderno (S-766). |
+| `dado_corrigido.py` | A correção humana como dado, sem contaminar nada (S-762). |
+| `degradacao.py` | Escaneamento simulado de uma folha digital, sem mexer na geometria (S-704). |
+| `espacado.py` | O texto espaçado (*gesperrt*), que é ênfase e não são letras soltas (S-744). |
+| `fronteira.py` | O espaço que o vão entre as caixas não mostra, e o léxico como árbitro dele (S-732). |
+| `ligadura.py` | A ligadura sem o `1` a mais (S-733): `first` saía `fi1rst`, e `flee` saía `f1ee`. |
+| `lingua.py` | A língua do livro: detectada pelas palavras funcionais das primeiras folhas lidas, e a escolhida à mão vence (S-723). |
+| `monitor_prosa.py` | O monitor da prosa sem referência: os sinais, o alarme que a medição deixou, e a folha-canário (S-763). |
+| `palavras_curtas.py` | As palavras curtas que o léxico não tem de propósito, para quem precisa delas (S-732, S-735). |
+| `poeira.py` | A poeira que estica a linha (S-714). |
+| `prata.py` | A prata da régua da prosa: scans reais com camada de terceiro, que **só ordenam** motores (S-705). |
+| `regua_prosa.py` | A régua da prosa: quanto um leitor erra no texto que não é lance nem avaliação (S-700, S-701). |
+| `relatorio_prosa.py` | O relatório da régua da prosa: agrega os registros de folha, sem texto de livro nenhum (S-706, S-705, S-713). |
+| `scan_ouro.py` | O scan-ouro: que folhas escaneadas recebem verdade humana, e em que split (S-703). |
+| `traco_vertical.py` | Traço vertical contra ponto, decidido pela **geometria da caixa** (S-730). |
+| `transcricao_scan.py` | A transcrição do scan-ouro: a verdade humana, às cegas, fora do repositório (S-703). |
 
 A tabela tem todo módulo de `text/`, e `tests/test_docs.py` reprova o que entrar sem linha (S-832):
 a prosa dizia "os outros doze" e não dizia o que cada um faz, e a primeira entrega das Fases 100 a
@@ -231,6 +252,10 @@ divisão, não o toolkit, que este documento descreve.
 | `tabuleiro_de_marcas.py` | O tabuleiro da conferência de importação: corrige peças e anota as marcas impressas. |
 | `trilho.py` | O trilho de páginas: uma miniatura por página, com estado, ao lado do visor (OCR_UI passo 17); o que cada uma diz é de `ui/trilho.py`. |
 | `vazio.py` | O estado vazio: título, frase e o botão que resolve, dentro do vazio (F9-C2). |
+| `correcao_no_livro.py` | A janela de «Corrigir em todas as folhas» (S-766): quem decide é `text/correcao_no_livro.py`, e aqui só se mostra a prévia. |
+| `modo_transcricao.py` | O modo transcrição da aba Texto: a folha do scan-ouro, linha a linha, às cegas (S-703). |
+| `montagem_da_janela.py` | A montagem da janela: o que existe na tela, e o que cada comando do catálogo faz nela (S-31). |
+| `sessao_da_janela.py` | A sessão da janela: o que ela lembra entre execuções, e como ela fecha (S-31). |
 
 A tabela tem todo módulo de `qt/`, e `tests/test_docs.py` reprova o que entrar sem linha (S-832).
 
@@ -423,9 +448,9 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**37** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**38** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
-exceção. Vinte e duas são operações longas e estão no `BusyRegistry`; as outras quinze são declaradas
+exceção. Vinte e duas são operações longas e estão no `BusyRegistry`; as outras dezesseis são declaradas
 em `ui/busy.py::FORA_DO_REGISTRO`, com o motivo de cada uma (S-112).
 
 **A última é a volta do R7 (2026-10-29, `qt/texto_leitura.py` desde a S-865).** *Trazer as correções da
@@ -579,7 +604,8 @@ duplicado e uma linha para um arquivo que este repositório nunca teve.
 | `data/estudos/` | **a sala de estudo de cada livro** (S-271): um `.pgn` por PDF, com uma partida por diagrama analisado e `SourcePDF`/`Page`/`Diagram` nos headers. É PGN de verdade -- abre no ChessBase e no Scid como base de partidas | não -- é análise de uma pessoa sobre um livro que nem está no repositório, e a chave do arquivo carrega o caminho dele |
 | `data/estilo/` | **o conjunto do estilo da palavra** (S-661): `palavras.npz` com os recortes de palavra das folhas tipográficas do acervo em 32x192, a classe (normal, negrito, itálico, negrito-itálico) que a camada declara e o livro de cada um, e `manifesto.csv` com identidade do livro, arquivo, folha, palavra, rótulo e partição. Feito por `cvoff-texto-estilo-conjunto` e lido por `cvoff-texto-estilo-classificador` | não — **sob demanda**: só existe onde alguém mediu a Fase 96, e se refaz do `PDF/` |
 | `data/rascunhos/` | **o rascunho automático da aba de texto** (S-255): um `.cvtxt` por folha de cada livro, gravado alguns segundos depois da última tecla e apagado quando alguém salva ou recupera. É a rede que impede uma tarde de correção de morrer com a janela | não — **sob demanda**: nasce na primeira folha editada. **Sem teto** desde a S-605: com o caderno (S-610) ela só guarda o trabalho de quem não tem caderno — a folha cujo livro sumiu, ou o caderno que outra janela trava |
-| `data/cadernos/<livro>_<identidade>/` | **o caderno do livro da aba Texto** (S-610): uma folha lida ou corrigida por `.cvtxt` (`folha-0012.cvtxt`), a versão de quando a pessoa chegou a ela (`.anterior.cvtxt`), o que o motor leu (`.lida.cvtxt`), o `indice.json` com o estado de cada folha e a trava `caderno.lock`. Achado pelo **conteúdo** do PDF (o primeiro MiB), e não pelo caminho: o livro movido e o duplicado abrem o mesmo | não — **sob demanda**: nasce na primeira folha lida com um livro aberto. É trabalho humano e não tem poda, mas descreve um livro protegido, como `data/estudos/` |
+| `data/cadernos/<livro>_<identidade>/` | **o caderno do livro da aba Texto** (S-610): uma folha lida ou corrigida por `.cvtxt` (`folha-0012.cvtxt`), a versão de quando a pessoa chegou a ela (`.anterior.cvtxt`), o que o motor leu (`.lida.cvtxt`), o `indice.json` com o estado de cada folha, a `lingua.json` com a língua do livro (S-723) e a trava `caderno.lock`. Achado pelo **conteúdo** do PDF (o primeiro MiB), e não pelo caminho: o livro movido e o duplicado abrem o mesmo | não — **sob demanda**: nasce na primeira folha lida com um livro aberto. É trabalho humano e não tem poda, mas descreve um livro protegido, como `data/estudos/` |
+| `data/cache_texto/` | **a leitura do Tesseract guardada** (S-725): um `.json` por lote de linhas, com a chave completa, teto de 200 MB e despejo do usado há mais tempo. Só a janela o usa: a régua e os CLIs leem sempre sem ele. É texto de livro comercial | não — **sob demanda**: nasce na primeira folha lida com a fusão na janela; apagar é sempre seguro, e o menu Texto faz isso |
 | `data/quarentena_texto/` | os recortes que saíram da base por rótulo contraditório, na pasta da classe de origem, mais o manifesto que `--desfazer` lê de volta | não — **sob demanda**: nasce no primeiro `cvoff-texto-conflitos --aplicar`. São os mesmos PNGs de `training_data/`, e a pasta existe para que a poda seja reversível |
 | `data/faixas_para_transcrever/` | os PNGs das 123 faixas de legenda exportados por `cvoff-texto-placar --exportar`, um por linha da referência, mais o `indice.json` que liga número a livro e página — **a imagem que os motores leem**, para a transcrição humana da S-183 | não — **sob demanda**: nasce no `--exportar` e é refeito a partir de `docs/metrics/texto_faixa_referencia.jsonl`. São recortes de PDF protegido, como o `review_cache` |
 | `data/djvu_convertidos/` | o PDF de cada livro em DjVu já aberto (`djvu_io`). Descartável: apagado, o livro é convertido de novo na abertura seguinte | não — **sob demanda**: nasce ao abrir o primeiro DjVu |

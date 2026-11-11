@@ -40,6 +40,10 @@ BoardMode = Literal["play", "edit"]
 
 __all__ = ["BoardChange", "BoardMode", "BoardModel", "ChangeKind"]
 
+SEM_CONFIANCA = float("nan")
+"""A confiança de uma casa que a pessoa reescreveu. NaN porque não há medida, e porque nenhuma
+comparação com o limiar o tinge: `heatmap_confidence` devolve `None` sem caso especial."""
+
 
 class ChangeKind(str, Enum):
     """O que a interação produziu. Quem observa reage a isto, não a sete flags."""
@@ -88,7 +92,9 @@ class BoardModel:
     last_move: chess.Move | None = None
 
     confidences: tuple[float, ...] = ()
-    """64 confianças em ordem de leitura, ou vazio quando não há heatmap."""
+    """64 confianças em ordem de leitura, ou vazio quando não há heatmap.
+
+    A casa reescrita fica com `SEM_CONFIANCA` e as outras seguem como vieram (`_apply_placement`)."""
 
     probs: np.ndarray | None = None
     """Matriz (64, 13) da S-10, para as três classes mais prováveis por casa."""
@@ -377,10 +383,13 @@ class BoardModel:
 
     def _apply_placement(self, placement: str, *, dirty: set[int], message: str = "") -> BoardChange:
         self.board.set_board_fen(placement)
-        # A correção inválida os sinais do modelo: a confiança era da leitura antiga, e
-        # deixa-la na tela afirmaria algo sobre uma casa que o usuário acabou de reescrever.
-        antes = set(self.changed) | {i for i, c in enumerate(self.confidences) if c < self.uncertain_threshold}
-        self.confidences = ()
+        # A correção invalida os sinais da leitura antiga. A confiança é por casa: só a casa
+        # reescrita a perde, e as outras continuam dizendo o que o modelo disse delas (pendência
+        # da Fase 4). Apagar as 64 custava a informação sobre as 63 que ninguém tocou.
+        antes = set(self.changed)
+        self.confidences = tuple(
+            SEM_CONFIANCA if indice in dirty else valor for indice, valor in enumerate(self.confidences)
+        )
         self.probs = None
         self.changed = frozenset()
         return BoardChange(

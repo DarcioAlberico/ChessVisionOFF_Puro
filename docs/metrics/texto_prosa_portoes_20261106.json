@@ -1,0 +1,5930 @@
+{
+ "codigo": {
+  "commit": [
+   "3f780eb5421b5aced122b581a2755142e687c31a"
+  ],
+  "modelo_sha256": [
+   "ca4bcc00b9c59b07"
+  ],
+  "src_sujo": false,
+  "tessdata_sha256": {
+   "deu": "19d219bbb6672c86",
+   "eng": "7d4322bd2a774972",
+   "fra": "ced037562e8c80c1",
+   "nld": "ced0e5e046a84c90",
+   "por": "c4932b937207a951",
+   "spa": "6f2e04d02774a18f"
+  },
+  "tesseract": [
+   "5.5.0.20241111"
+  ]
+ },
+ "conjuntos": {
+  "ouro_dev": {
+   "avisos": {},
+   "caracteres_de_notacao": 5430,
+   "caracteres_de_prosa": 23788,
+   "caracteres_de_ruido": 0,
+   "codigo_das_folhas": [
+    {
+     "commit": "3f780eb5421b5aced122b581a2755142e687c31a",
+     "folhas": [
+      "603581c988ea2bd6:155",
+      "603581c988ea2bd6:340",
+      "603581c988ea2bd6:509",
+      "603581c988ea2bd6:677",
+      "18d93bd07b7a826c:286",
+      "18d93bd07b7a826c:485",
+      "18d93bd07b7a826c:643",
+      "18d93bd07b7a826c:659",
+      "69343a5746264fae:58",
+      "69343a5746264fae:116",
+      "69343a5746264fae:186",
+      "69343a5746264fae:247",
+      "a728e2c7e968913c:112",
+      "a728e2c7e968913c:228",
+      "a728e2c7e968913c:350",
+      "a728e2c7e968913c:435",
+      "7a548a47f20f5f1f:172",
+      "7a548a47f20f5f1f:566",
+      "7a548a47f20f5f1f:1077",
+      "7a548a47f20f5f1f:1167",
+      "603581c988ea2bd6:240",
+      "603581c988ea2bd6:564",
+      "18d93bd07b7a826c:224",
+      "18d93bd07b7a826c:653",
+      "a728e2c7e968913c:154",
+      "a728e2c7e968913c:417",
+      "7a548a47f20f5f1f:1144"
+     ],
+     "pacote": "roadmaps-em-aberto/src",
+     "src_sujo": false
+    }
+   ],
+   "conjunto": "ouro",
+   "filtro": {},
+   "folhas": 27,
+   "folhas_perdidas_pelo_leiaute": 0,
+   "fora_pelo_filtro": [],
+   "guarda_de_notacao": {
+    "camada_prosa": {
+     "g1a_chegam_identicas": 720,
+     "g1a_figurinas": 724,
+     "g1a_fracao_fora_dos_vetos": 1.0,
+     "g1a_vetos_registrados": 5,
+     "g2_precisao": {
+      "delta_pp": 0.086,
+      "ic95_pp": [
+       -0.098,
+       0.535
+      ]
+     },
+     "g2_revocacao": {
+      "delta_pp": -0.119,
+      "ic95_pp": [
+       -0.999,
+       0.524
+      ]
+     }
+    },
+    "fusao": {
+     "g1a_chegam_identicas": 721,
+     "g1a_figurinas": 724,
+     "g1a_fracao_fora_dos_vetos": 1.0,
+     "g1a_vetos_registrados": 3,
+     "g2_precisao": {
+      "delta_pp": -0.017,
+      "ic95_pp": [
+       -0.098,
+       -0.0
+      ]
+     },
+     "g2_revocacao": {
+      "delta_pp": -0.119,
+      "ic95_pp": [
+       -0.539,
+       -0.0
+      ]
+     }
+    }
+   },
+   "linhas_da_camada_fora_por_cruzar_diagrama": 30,
+   "livros": 5,
+   "motores": {
+    "camada_prosa": {
+     "cru": {
+      "cer_espaco": 0.03358,
+      "cer_notacao": 0.18036,
+      "cer_outro": 0.05865,
+      "cer_prosa": 0.00164,
+      "cer_ruido": 0.0,
+      "figurina_precisao": 1.0,
+      "figurina_revocacao": 0.22121,
+      "ic95_prosa_dois_niveis": [
+       0.0,
+       0.00562
+      ],
+      "insercoes": 534,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 1.0,
+      "wer_partes": {
+       "d": 1,
+       "i": 4,
+       "n": 4140,
+       "s": 1
+      },
+      "wer_prosa_sdi": 0.00145
+     },
+     "tip": {
+      "cer_espaco": 0.03211,
+      "cer_notacao": 0.1011,
+      "cer_outro": 0.05623,
+      "cer_prosa": 0.00189,
+      "cer_ruido": 0.0,
+      "figurina_precisao": 0.86005,
+      "figurina_revocacao": 0.85697,
+      "ic95_prosa_dois_niveis": [
+       0.0,
+       0.00623
+      ],
+      "insercoes": 459,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.99952,
+      "wer_partes": {
+       "d": 1,
+       "i": 6,
+       "n": 4142,
+       "s": 3
+      },
+      "wer_prosa_sdi": 0.00241
+     }
+    },
+    "fusao": {
+     "cru": {
+      "cer_espaco": 0.04812,
+      "cer_notacao": 0.17487,
+      "cer_outro": 0.1305,
+      "cer_prosa": 0.0032,
+      "cer_ruido": 0.0,
+      "figurina_precisao": 1.0,
+      "figurina_revocacao": 0.21938,
+      "ic95_prosa_dois_niveis": [
+       0.00042,
+       0.00805
+      ],
+      "insercoes": 542,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.99396,
+      "wer_partes": {
+       "d": 1,
+       "i": 7,
+       "n": 4140,
+       "s": 26
+      },
+      "wer_prosa_sdi": 0.00821
+     },
+     "tip": {
+      "cer_espaco": 0.04666,
+      "cer_notacao": 0.0895,
+      "cer_outro": 0.06839,
+      "cer_prosa": 0.00231,
+      "cer_ruido": 0.0,
+      "figurina_precisao": 0.85902,
+      "figurina_revocacao": 0.85697,
+      "ic95_prosa_dois_niveis": [
+       0.00034,
+       0.00621
+      ],
+      "insercoes": 428,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.99759,
+      "wer_partes": {
+       "d": 1,
+       "i": 11,
+       "n": 4142,
+       "s": 11
+      },
+      "wer_prosa_sdi": 0.00555
+     }
+    },
+    "glifo": {
+     "cru": {
+      "cer_espaco": 0.04912,
+      "cer_notacao": 0.19209,
+      "cer_outro": 0.11877,
+      "cer_prosa": 0.01182,
+      "cer_ruido": 0.0,
+      "figurina_precisao": 1.0,
+      "figurina_revocacao": 0.21938,
+      "ic95_prosa_dois_niveis": [
+       0.00404,
+       0.0207
+      ],
+      "insercoes": 652,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.96208,
+      "wer_partes": {
+       "d": 11,
+       "i": 17,
+       "n": 4140,
+       "s": 152
+      },
+      "wer_prosa_sdi": 0.04348
+     },
+     "tip": {
+      "cer_espaco": 0.03111,
+      "cer_notacao": 0.10847,
+      "cer_outro": 0.07599,
+      "cer_prosa": 0.00954,
+      "cer_ruido": 0.0,
+      "figurina_precisao": 0.85919,
+      "figurina_revocacao": 0.85816,
+      "ic95_prosa_dois_niveis": [
+       0.00287,
+       0.01885
+      ],
+      "insercoes": 526,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.97296,
+      "wer_partes": {
+       "d": 11,
+       "i": 20,
+       "n": 4142,
+       "s": 106
+      },
+      "wer_prosa_sdi": 0.03308
+     }
+    },
+    "tess": {
+     "cru": {
+      "cer_espaco": 0.05263,
+      "cer_notacao": 0.22483,
+      "cer_outro": 0.09384,
+      "cer_prosa": 0.00273,
+      "cer_ruido": 0.0,
+      "figurina_precisao": 0.66851,
+      "figurina_revocacao": 0.22121,
+      "ic95_prosa_dois_niveis": [
+       0.0004,
+       0.00747
+      ],
+      "insercoes": 275,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.9942,
+      "wer_partes": {
+       "d": 3,
+       "i": 12,
+       "n": 4140,
+       "s": 25
+      },
+      "wer_prosa_sdi": 0.00966
+     },
+     "tip": {
+      "cer_espaco": 0.04666,
+      "cer_notacao": 0.19337,
+      "cer_outro": 0.02432,
+      "cer_prosa": 0.00265,
+      "cer_ruido": 0.0,
+      "figurina_precisao": 0.66851,
+      "figurina_revocacao": 0.14422,
+      "ic95_prosa_dois_niveis": [
+       0.00033,
+       0.00742
+      ],
+      "insercoes": 168,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.99445,
+      "wer_partes": {
+       "d": 3,
+       "i": 12,
+       "n": 4142,
+       "s": 24
+      },
+      "wer_prosa_sdi": 0.00942
+     }
+    },
+    "tess_oraculo": {
+     "cru": {
+      "cer_espaco": 0.0401,
+      "cer_notacao": 0.22937,
+      "cer_outro": 0.08651,
+      "cer_prosa": 0.00122,
+      "cer_ruido": 0.0,
+      "figurina_precisao": 0.65591,
+      "figurina_revocacao": 0.22303,
+      "ic95_prosa_dois_niveis": [
+       0.00046,
+       0.00218
+      ],
+      "insercoes": 225,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.9942,
+      "wer_partes": {
+       "d": 1,
+       "i": 8,
+       "n": 4140,
+       "s": 25
+      },
+      "wer_prosa_sdi": 0.00821
+     },
+     "tip": {
+      "cer_espaco": 0.03462,
+      "cer_notacao": 0.19669,
+      "cer_outro": 0.01216,
+      "cer_prosa": 0.00114,
+      "cer_ruido": 0.0,
+      "figurina_precisao": 0.65591,
+      "figurina_revocacao": 0.14541,
+      "ic95_prosa_dois_niveis": [
+       0.0004,
+       0.00211
+      ],
+      "insercoes": 117,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.99445,
+      "wer_partes": {
+       "d": 1,
+       "i": 8,
+       "n": 4142,
+       "s": 24
+      },
+      "wer_prosa_sdi": 0.00797
+     }
+    },
+    "tess_pagina": {
+     "cru": {
+      "cer_espaco": 0.11278,
+      "cer_notacao": 0.24129,
+      "cer_outro": 0.17155,
+      "cer_prosa": 0.00374,
+      "cer_ruido": 0.0,
+      "figurina_precisao": 0.70175,
+      "figurina_revocacao": 0.21938,
+      "ic95_prosa_dois_niveis": [
+       0.00048,
+       0.01031
+      ],
+      "insercoes": 569,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.99444,
+      "wer_partes": {
+       "d": 1,
+       "i": 67,
+       "n": 4140,
+       "s": 24
+      },
+      "wer_prosa_sdi": 0.02222
+     },
+     "tip": {
+      "cer_espaco": 0.10788,
+      "cer_notacao": 0.20755,
+      "cer_outro": 0.10334,
+      "cer_prosa": 0.00366,
+      "cer_ruido": 0.0,
+      "figurina_precisao": 0.70175,
+      "figurina_revocacao": 0.14303,
+      "ic95_prosa_dois_niveis": [
+       0.00042,
+       0.0103
+      ],
+      "insercoes": 458,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.99469,
+      "wer_partes": {
+       "d": 1,
+       "i": 67,
+       "n": 4142,
+       "s": 23
+      },
+      "wer_prosa_sdi": 0.02197
+     }
+    }
+   },
+   "palavras_de_prosa": 4142,
+   "pares": {
+    "camada_prosa - glifo (notacao)": {
+     "delta_pp": -0.737,
+     "folhas_melhores": 17,
+     "folhas_piores": 3,
+     "ic95_pp": [
+      -1.972,
+      0.208
+     ]
+    },
+    "camada_prosa - glifo (prosa)": {
+     "delta_pp": -0.765,
+     "folhas_melhores": 20,
+     "folhas_piores": 1,
+     "ic95_pp": [
+      -1.79,
+      -0.196
+     ]
+    },
+    "fusao - camada_prosa (notacao)": {
+     "delta_pp": -1.16,
+     "folhas_melhores": 16,
+     "folhas_piores": 6,
+     "ic95_pp": [
+      -2.447,
+      -0.127
+     ]
+    },
+    "fusao - camada_prosa (prosa)": {
+     "delta_pp": 0.042,
+     "folhas_melhores": 1,
+     "folhas_piores": 8,
+     "ic95_pp": [
+      -0.033,
+      0.118
+     ]
+    },
+    "fusao - glifo (notacao)": {
+     "delta_pp": -1.897,
+     "folhas_melhores": 18,
+     "folhas_piores": 2,
+     "ic95_pp": [
+      -3.946,
+      -0.74
+     ]
+    },
+    "fusao - glifo (prosa)": {
+     "delta_pp": -0.723,
+     "folhas_melhores": 20,
+     "folhas_piores": 3,
+     "ic95_pp": [
+      -1.739,
+      -0.149
+     ]
+    },
+    "fusao - tess (notacao)": {
+     "delta_pp": -10.387,
+     "folhas_melhores": 22,
+     "folhas_piores": 2,
+     "ic95_pp": [
+      -15.831,
+      -4.119
+     ]
+    },
+    "fusao - tess (prosa)": {
+     "delta_pp": -0.034,
+     "folhas_melhores": 4,
+     "folhas_piores": 1,
+     "ic95_pp": [
+      -0.123,
+      0.025
+     ]
+    },
+    "tess - tess_oraculo (notacao)": {
+     "delta_pp": -0.331,
+     "folhas_melhores": 7,
+     "folhas_piores": 8,
+     "ic95_pp": [
+      -1.937,
+      0.695
+     ]
+    },
+    "tess - tess_oraculo (prosa)": {
+     "delta_pp": 0.151,
+     "folhas_melhores": 1,
+     "folhas_piores": 2,
+     "ic95_pp": [
+      -0.015,
+      0.557
+     ]
+    }
+   },
+   "perda_de_leiaute": {
+    "cer_tess": 0.00265,
+    "cer_tess_oraculo": 0.00114,
+    "cer_tess_pagina": 0.00366,
+    "delta_pp": 0.151,
+    "folhas_melhores": 1,
+    "folhas_piores": 2,
+    "ic95_pp": [
+     -0.015,
+     0.557
+    ],
+    "o_que_e": "CER de prosa (tess) - CER de prosa (tess_oraculo), mesmas folhas; negativo é permitido",
+    "por_livro": {
+     "18d93bd07b7a826c": {
+      "cer_tess": 0.00817,
+      "cer_tess_oraculo": 0.00187,
+      "cer_tess_pagina": 0.00204,
+      "delta_pp": 0.629,
+      "folhas_melhores": 0,
+      "folhas_piores": 2,
+      "ic95_pp": [
+       0.0,
+       1.586
+      ]
+     },
+     "603581c988ea2bd6": {
+      "cer_tess": 0.00186,
+      "cer_tess_oraculo": 0.00186,
+      "cer_tess_pagina": 0.00144,
+      "delta_pp": 0.0,
+      "folhas_melhores": 0,
+      "folhas_piores": 0,
+      "ic95_pp": [
+       0.0,
+       0.0
+      ]
+     },
+     "69343a5746264fae": {
+      "cer_tess": 0.00087,
+      "cer_tess_oraculo": 0.00087,
+      "cer_tess_pagina": 0.01441,
+      "delta_pp": 0.0,
+      "folhas_melhores": 0,
+      "folhas_piores": 0,
+      "ic95_pp": [
+       0.0,
+       0.0
+      ]
+     },
+     "7a548a47f20f5f1f": {
+      "cer_tess": 0.0,
+      "cer_tess_oraculo": 0.00027,
+      "cer_tess_pagina": 0.0,
+      "delta_pp": -0.027,
+      "folhas_melhores": 1,
+      "folhas_piores": 0,
+      "ic95_pp": [
+       -0.109,
+       0.0
+      ]
+     },
+     "a728e2c7e968913c": {
+      "cer_tess": 0.00042,
+      "cer_tess_oraculo": 0.00042,
+      "cer_tess_pagina": 0.00042,
+      "delta_pp": 0.0,
+      "folhas_melhores": 0,
+      "folhas_piores": 0,
+      "ic95_pp": [
+       0.0,
+       0.0
+      ]
+     }
+    }
+   },
+   "perfil": "",
+   "por_estrato": {
+    "misto": {
+     "folhas": 7,
+     "livros": 4,
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.00199,
+       "ic95_prosa_dois_niveis": [
+        0.0,
+        0.00787
+       ]
+      },
+      "fusao": {
+       "cer_prosa": 0.00232,
+       "ic95_prosa_dois_niveis": [
+        0.0,
+        0.00463
+       ]
+      },
+      "glifo": {
+       "cer_prosa": 0.00432,
+       "ic95_prosa_dois_niveis": [
+        0.0,
+        0.01062
+       ]
+      },
+      "tess": {
+       "cer_prosa": 0.00266,
+       "ic95_prosa_dois_niveis": [
+        0.0,
+        0.00495
+       ]
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.00299,
+       "ic95_prosa_dois_niveis": [
+        0.00062,
+        0.00524
+       ]
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.00199,
+       "ic95_prosa_dois_niveis": [
+        0.0,
+        0.00449
+       ]
+      }
+     }
+    },
+    "prosa": {
+     "folhas": 20,
+     "livros": 5,
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.00188,
+       "ic95_prosa_dois_niveis": [
+        0.0,
+        0.00622
+       ]
+      },
+      "fusao": {
+       "cer_prosa": 0.00231,
+       "ic95_prosa_dois_niveis": [
+        0.00029,
+        0.00646
+       ]
+      },
+      "glifo": {
+       "cer_prosa": 0.0103,
+       "ic95_prosa_dois_niveis": [
+        0.00323,
+        0.02147
+       ]
+      },
+      "tess": {
+       "cer_prosa": 0.00265,
+       "ic95_prosa_dois_niveis": [
+        0.00027,
+        0.00766
+       ]
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.00087,
+       "ic95_prosa_dois_niveis": [
+        0.00023,
+        0.00168
+       ]
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.0039,
+       "ic95_prosa_dois_niveis": [
+        0.00031,
+        0.01063
+       ]
+      }
+     }
+    }
+   },
+   "por_livro": {
+    "18d93bd07b7a826c": {
+     "estrato": "prosa",
+     "folhas": [
+      286,
+      485,
+      643,
+      659,
+      224,
+      653
+     ],
+     "lingua": "eng",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.00732
+      },
+      "fusao": {
+       "cer_prosa": 0.00681
+      },
+      "glifo": {
+       "cer_prosa": 0.00953
+      },
+      "tess": {
+       "cer_prosa": 0.00817
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.00187
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.00204
+      }
+     }
+    },
+    "603581c988ea2bd6": {
+     "estrato": "prosa",
+     "folhas": [
+      155,
+      340,
+      509,
+      677,
+      240,
+      564
+     ],
+     "lingua": "eng",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.00041
+      },
+      "fusao": {
+       "cer_prosa": 0.00186
+      },
+      "glifo": {
+       "cer_prosa": 0.00372
+      },
+      "tess": {
+       "cer_prosa": 0.00186
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.00186
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.00144
+      }
+     }
+    },
+    "69343a5746264fae": {
+     "estrato": "prosa",
+     "folhas": [
+      58,
+      116,
+      186,
+      247
+     ],
+     "lingua": "por",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.0
+      },
+      "fusao": {
+       "cer_prosa": 0.00087
+      },
+      "glifo": {
+       "cer_prosa": 0.00349
+      },
+      "tess": {
+       "cer_prosa": 0.00087
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.00087
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.01441
+      }
+     }
+    },
+    "7a548a47f20f5f1f": {
+     "estrato": "prosa",
+     "folhas": [
+      172,
+      566,
+      1077,
+      1167,
+      1144
+     ],
+     "lingua": "por",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.0
+      },
+      "fusao": {
+       "cer_prosa": 0.0
+      },
+      "glifo": {
+       "cer_prosa": 0.00267
+      },
+      "tess": {
+       "cer_prosa": 0.0
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.00027
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.0
+      }
+     }
+    },
+    "a728e2c7e968913c": {
+     "estrato": "prosa",
+     "folhas": [
+      112,
+      228,
+      350,
+      435,
+      154,
+      417
+     ],
+     "lingua": "por",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.0
+      },
+      "fusao": {
+       "cer_prosa": 0.00042
+      },
+      "glifo": {
+       "cer_prosa": 0.02682
+      },
+      "tess": {
+       "cer_prosa": 0.00042
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.00042
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.00042
+      }
+     }
+    }
+   },
+   "preservacao_de_figurina_do_glifo": {
+    "camada_prosa": 0.9945,
+    "fusao": 0.9959
+   },
+   "segundos_por_folha": {
+    "camada_prosa": 0.86,
+    "fusao": 1.529,
+    "glifo": 0.802,
+    "tess": 0.674,
+    "tess_oraculo": 0.671,
+    "tess_pagina": 0.686
+   },
+   "segundos_por_folha_p95": {
+    "camada_prosa": 1.192,
+    "fusao": 1.935,
+    "glifo": 1.125,
+    "tess": 0.879,
+    "tess_oraculo": 0.893,
+    "tess_pagina": 0.9
+   },
+   "split": "dev",
+   "taxonomia": {
+    "camada_prosa": {
+     "familias": {
+      "palavra perdida": {
+       "fracao": 0.4,
+       "livros": {
+        "18d93bd07b7a826c": 2
+       },
+       "palavras": 2
+      },
+      "pontuacao": {
+       "fracao": 0.6,
+       "livros": {
+        "18d93bd07b7a826c": 3
+       },
+       "palavras": 3
+      }
+     },
+     "palavras_erradas": 5
+    },
+    "fusao": {
+     "familias": {
+      "acento": {
+       "fracao": 0.0769,
+       "livros": {
+        "603581c988ea2bd6": 1
+       },
+       "palavras": 1
+      },
+      "espaco": {
+       "fracao": 0.0769,
+       "livros": {
+        "18d93bd07b7a826c": 1
+       },
+       "palavras": 1
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.2308,
+       "livros": {
+        "603581c988ea2bd6": 3
+       },
+       "palavras": 3
+      },
+      "letra trocada": {
+       "fracao": 0.3077,
+       "livros": {
+        "69343a5746264fae": 2,
+        "a728e2c7e968913c": 2
+       },
+       "palavras": 4
+      },
+      "palavra perdida": {
+       "fracao": 0.1538,
+       "livros": {
+        "18d93bd07b7a826c": 2
+       },
+       "palavras": 2
+      },
+      "pontuacao": {
+       "fracao": 0.1538,
+       "livros": {
+        "18d93bd07b7a826c": 2
+       },
+       "palavras": 2
+      }
+     },
+     "palavras_erradas": 13
+    },
+    "glifo": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.0087,
+       "livros": {
+        "18d93bd07b7a826c": 1
+       },
+       "palavras": 1
+      },
+      "acento": {
+       "fracao": 0.0522,
+       "livros": {
+        "603581c988ea2bd6": 1,
+        "69343a5746264fae": 1,
+        "7a548a47f20f5f1f": 2,
+        "a728e2c7e968913c": 2
+       },
+       "palavras": 6
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.0087,
+       "livros": {
+        "a728e2c7e968913c": 1
+       },
+       "palavras": 1
+      },
+      "espaco": {
+       "fracao": 0.1043,
+       "livros": {
+        "18d93bd07b7a826c": 4,
+        "603581c988ea2bd6": 1,
+        "a728e2c7e968913c": 7
+       },
+       "palavras": 12
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.0783,
+       "livros": {
+        "603581c988ea2bd6": 3,
+        "a728e2c7e968913c": 6
+       },
+       "palavras": 9
+      },
+      "letra trocada": {
+       "fracao": 0.687,
+       "livros": {
+        "603581c988ea2bd6": 10,
+        "69343a5746264fae": 8,
+        "7a548a47f20f5f1f": 5,
+        "a728e2c7e968913c": 56
+       },
+       "palavras": 79
+      },
+      "palavra cortada": {
+       "fracao": 0.0087,
+       "livros": {
+        "7a548a47f20f5f1f": 1
+       },
+       "palavras": 1
+      },
+      "palavra perdida": {
+       "fracao": 0.0174,
+       "livros": {
+        "18d93bd07b7a826c": 2
+       },
+       "palavras": 2
+      },
+      "pontuacao": {
+       "fracao": 0.0348,
+       "livros": {
+        "18d93bd07b7a826c": 2,
+        "69343a5746264fae": 1,
+        "a728e2c7e968913c": 1
+       },
+       "palavras": 4
+      }
+     },
+     "palavras_erradas": 115
+    },
+    "tess": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.3462,
+       "livros": {
+        "18d93bd07b7a826c": 9
+       },
+       "palavras": 9
+      },
+      "acento": {
+       "fracao": 0.0385,
+       "livros": {
+        "603581c988ea2bd6": 1
+       },
+       "palavras": 1
+      },
+      "espaco": {
+       "fracao": 0.0385,
+       "livros": {
+        "18d93bd07b7a826c": 1
+       },
+       "palavras": 1
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.1923,
+       "livros": {
+        "603581c988ea2bd6": 3,
+        "a728e2c7e968913c": 2
+       },
+       "palavras": 5
+      },
+      "letra trocada": {
+       "fracao": 0.2692,
+       "livros": {
+        "18d93bd07b7a826c": 1,
+        "603581c988ea2bd6": 2,
+        "69343a5746264fae": 2,
+        "a728e2c7e968913c": 2
+       },
+       "palavras": 7
+      },
+      "palavra perdida": {
+       "fracao": 0.0769,
+       "livros": {
+        "18d93bd07b7a826c": 2
+       },
+       "palavras": 2
+      },
+      "pontuacao": {
+       "fracao": 0.0385,
+       "livros": {
+        "18d93bd07b7a826c": 1
+       },
+       "palavras": 1
+      }
+     },
+     "palavras_erradas": 26
+    },
+    "tess_oraculo": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.3478,
+       "livros": {
+        "18d93bd07b7a826c": 8
+       },
+       "palavras": 8
+      },
+      "acento": {
+       "fracao": 0.0435,
+       "livros": {
+        "603581c988ea2bd6": 1
+       },
+       "palavras": 1
+      },
+      "espaco": {
+       "fracao": 0.0435,
+       "livros": {
+        "18d93bd07b7a826c": 1
+       },
+       "palavras": 1
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.2609,
+       "livros": {
+        "603581c988ea2bd6": 3,
+        "7a548a47f20f5f1f": 1,
+        "a728e2c7e968913c": 2
+       },
+       "palavras": 6
+      },
+      "letra trocada": {
+       "fracao": 0.3043,
+       "livros": {
+        "18d93bd07b7a826c": 1,
+        "603581c988ea2bd6": 2,
+        "69343a5746264fae": 2,
+        "a728e2c7e968913c": 2
+       },
+       "palavras": 7
+      }
+     },
+     "palavras_erradas": 23
+    },
+    "tess_pagina": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.4091,
+       "livros": {
+        "18d93bd07b7a826c": 9
+       },
+       "palavras": 9
+      },
+      "acento": {
+       "fracao": 0.0455,
+       "livros": {
+        "603581c988ea2bd6": 1
+       },
+       "palavras": 1
+      },
+      "espaco": {
+       "fracao": 0.0455,
+       "livros": {
+        "18d93bd07b7a826c": 1
+       },
+       "palavras": 1
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.1818,
+       "livros": {
+        "603581c988ea2bd6": 2,
+        "a728e2c7e968913c": 2
+       },
+       "palavras": 4
+      },
+      "letra trocada": {
+       "fracao": 0.3182,
+       "livros": {
+        "18d93bd07b7a826c": 1,
+        "603581c988ea2bd6": 2,
+        "69343a5746264fae": 2,
+        "a728e2c7e968913c": 2
+       },
+       "palavras": 7
+      }
+     },
+     "palavras_erradas": 22
+    }
+   },
+   "uso": "dev contaminado: desenvolver e diagnosticar, nenhum portão"
+  },
+  "ouro_teste": {
+   "avisos": {},
+   "caracteres_de_notacao": 26243,
+   "caracteres_de_prosa": 86328,
+   "caracteres_de_ruido": 312,
+   "codigo_das_folhas": [
+    {
+     "commit": "3f780eb5421b5aced122b581a2755142e687c31a",
+     "folhas": [
+      "b90299fb20e850a4:159",
+      "b90299fb20e850a4:194",
+      "b90299fb20e850a4:264",
+      "b90299fb20e850a4:34",
+      "b90299fb20e850a4:73",
+      "b90299fb20e850a4:227",
+      "1dcffcfe34cbdf27:187",
+      "1dcffcfe34cbdf27:282",
+      "1dcffcfe34cbdf27:419",
+      "1dcffcfe34cbdf27:469",
+      "1dcffcfe34cbdf27:510",
+      "1dcffcfe34cbdf27:515",
+      "e9392c7a763b0e2c:158",
+      "e9392c7a763b0e2c:415",
+      "e9392c7a763b0e2c:828",
+      "e9392c7a763b0e2c:298",
+      "e9392c7a763b0e2c:316",
+      "e9392c7a763b0e2c:603",
+      "f6c7732e8e79c38b:80",
+      "f6c7732e8e79c38b:629",
+      "f6c7732e8e79c38b:681",
+      "f6c7732e8e79c38b:90",
+      "f6c7732e8e79c38b:420",
+      "f6c7732e8e79c38b:769",
+      "ebac366ecc7dd62c:72",
+      "ebac366ecc7dd62c:79",
+      "ebac366ecc7dd62c:164",
+      "ebac366ecc7dd62c:285",
+      "ebac366ecc7dd62c:211",
+      "ebac366ecc7dd62c:222",
+      "2895629ff9bcaf12:270",
+      "2895629ff9bcaf12:415",
+      "2895629ff9bcaf12:640",
+      "2895629ff9bcaf12:845",
+      "2895629ff9bcaf12:975",
+      "2895629ff9bcaf12:1031",
+      "21219810e13862ab:135",
+      "21219810e13862ab:317",
+      "21219810e13862ab:383",
+      "21219810e13862ab:403",
+      "21219810e13862ab:536",
+      "21219810e13862ab:220",
+      "eb5f84375eaa3db2:241",
+      "eb5f84375eaa3db2:284",
+      "eb5f84375eaa3db2:417",
+      "eb5f84375eaa3db2:41",
+      "eb5f84375eaa3db2:136",
+      "eb5f84375eaa3db2:164",
+      "0fda74daf4efa244:88",
+      "0fda74daf4efa244:424",
+      "0fda74daf4efa244:450",
+      "0fda74daf4efa244:242",
+      "0fda74daf4efa244:260",
+      "0fda74daf4efa244:404",
+      "ca5838f6715afaba:71",
+      "ca5838f6715afaba:141",
+      "ca5838f6715afaba:188",
+      "ca5838f6715afaba:608",
+      "ca5838f6715afaba:621",
+      "ca5838f6715afaba:710",
+      "1e66e323147e34ca:218",
+      "1e66e323147e34ca:351",
+      "1e66e323147e34ca:352",
+      "1e66e323147e34ca:40",
+      "1e66e323147e34ca:188",
+      "1e66e323147e34ca:366",
+      "d000b5b6d9d106f5:224",
+      "d000b5b6d9d106f5:226",
+      "d000b5b6d9d106f5:547",
+      "d000b5b6d9d106f5:127",
+      "d000b5b6d9d106f5:555",
+      "d000b5b6d9d106f5:807",
+      "c4c6ff99d18b7ee5:231",
+      "c4c6ff99d18b7ee5:306",
+      "c4c6ff99d18b7ee5:603",
+      "c4c6ff99d18b7ee5:67",
+      "c4c6ff99d18b7ee5:299",
+      "c4c6ff99d18b7ee5:742",
+      "5395ba70281b859d:40",
+      "5395ba70281b859d:117",
+      "5395ba70281b859d:380",
+      "5395ba70281b859d:260",
+      "5395ba70281b859d:323",
+      "5395ba70281b859d:353",
+      "2332932d4733f2e0:30",
+      "2332932d4733f2e0:50",
+      "2332932d4733f2e0:52",
+      "2332932d4733f2e0:197",
+      "2332932d4733f2e0:207",
+      "2332932d4733f2e0:244",
+      "9324b6c4efdff247:92",
+      "9324b6c4efdff247:97",
+      "9324b6c4efdff247:495",
+      "9324b6c4efdff247:133",
+      "9324b6c4efdff247:508",
+      "9324b6c4efdff247:631"
+     ],
+     "pacote": "roadmaps-em-aberto/src",
+     "src_sujo": false
+    }
+   ],
+   "conjunto": "ouro",
+   "filtro": {},
+   "folhas": 96,
+   "folhas_perdidas_pelo_leiaute": 0,
+   "fora_pelo_filtro": [],
+   "guarda_de_notacao": {
+    "camada_prosa": {
+     "g1a_chegam_identicas": 2840,
+     "g1a_figurinas": 2888,
+     "g1a_fracao_fora_dos_vetos": 1.0,
+     "g1a_vetos_registrados": 48,
+     "g2_precisao": {
+      "delta_pp": 0.024,
+      "ic95_pp": [
+       -0.13,
+       0.22
+      ]
+     },
+     "g2_revocacao": {
+      "delta_pp": -0.0,
+      "ic95_pp": [
+       -0.228,
+       0.256
+      ]
+     }
+    },
+    "fusao": {
+     "g1a_chegam_identicas": 2866,
+     "g1a_figurinas": 2888,
+     "g1a_fracao_fora_dos_vetos": 1.0,
+     "g1a_vetos_registrados": 22,
+     "g2_precisao": {
+      "delta_pp": -0.033,
+      "ic95_pp": [
+       -0.262,
+       0.181
+      ]
+     },
+     "g2_revocacao": {
+      "delta_pp": -0.26,
+      "ic95_pp": [
+       -0.655,
+       -0.0
+      ]
+     }
+    }
+   },
+   "linhas_da_camada_fora_por_cruzar_diagrama": 434,
+   "livros": 16,
+   "motores": {
+    "camada_prosa": {
+     "cru": {
+      "cer_espaco": 0.07449,
+      "cer_notacao": 0.12923,
+      "cer_outro": 0.07651,
+      "cer_prosa": 0.01828,
+      "cer_ruido": 0.1015,
+      "figurina_precisao": 0.99548,
+      "figurina_revocacao": 0.30337,
+      "ic95_prosa_dois_niveis": [
+       0.00735,
+       0.03383
+      ],
+      "insercoes": 1642,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.99342,
+      "wer_partes": {
+       "d": 110,
+       "i": 107,
+       "n": 15037,
+       "s": 82
+      },
+      "wer_prosa_sdi": 0.01988
+     },
+     "tip": {
+      "cer_espaco": 0.07516,
+      "cer_notacao": 0.0644,
+      "cer_outro": 0.06976,
+      "cer_prosa": 0.01823,
+      "cer_ruido": 0.09936,
+      "figurina_precisao": 0.87974,
+      "figurina_revocacao": 0.84605,
+      "ic95_prosa_dois_niveis": [
+       0.00733,
+       0.03367
+      ],
+      "insercoes": 1607,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.99335,
+      "wer_partes": {
+       "d": 117,
+       "i": 144,
+       "n": 15038,
+       "s": 76
+      },
+      "wer_prosa_sdi": 0.02241
+     }
+    },
+    "fusao": {
+     "cru": {
+      "cer_espaco": 0.08522,
+      "cer_notacao": 0.12327,
+      "cer_outro": 0.12086,
+      "cer_prosa": 0.02143,
+      "cer_ruido": 0.2594,
+      "figurina_precisao": 0.98978,
+      "figurina_revocacao": 0.30028,
+      "ic95_prosa_dois_niveis": [
+       0.00873,
+       0.03739
+      ],
+      "insercoes": 1582,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.9873,
+      "wer_partes": {
+       "d": 127,
+       "i": 118,
+       "n": 15037,
+       "s": 143
+      },
+      "wer_prosa_sdi": 0.0258
+     },
+     "tip": {
+      "cer_espaco": 0.08551,
+      "cer_notacao": 0.05796,
+      "cer_outro": 0.08096,
+      "cer_prosa": 0.02108,
+      "cer_ruido": 0.20833,
+      "figurina_precisao": 0.87917,
+      "figurina_revocacao": 0.84345,
+      "ic95_prosa_dois_niveis": [
+       0.00831,
+       0.03716
+      ],
+      "insercoes": 1537,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.98876,
+      "wer_partes": {
+       "d": 134,
+       "i": 159,
+       "n": 15038,
+       "s": 113
+      },
+      "wer_prosa_sdi": 0.027
+     }
+    },
+    "glifo": {
+     "cru": {
+      "cer_espaco": 0.07268,
+      "cer_notacao": 0.13049,
+      "cer_outro": 0.12865,
+      "cer_prosa": 0.05053,
+      "cer_ruido": 0.20301,
+      "figurina_precisao": 0.99203,
+      "figurina_revocacao": 0.29993,
+      "ic95_prosa_dois_niveis": [
+       0.02699,
+       0.07683
+      ],
+      "insercoes": 2368,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.88987,
+      "wer_partes": {
+       "d": 162,
+       "i": 365,
+       "n": 15037,
+       "s": 1574
+      },
+      "wer_prosa_sdi": 0.13972
+     },
+     "tip": {
+      "cer_espaco": 0.07555,
+      "cer_notacao": 0.06684,
+      "cer_outro": 0.09114,
+      "cer_prosa": 0.04872,
+      "cer_ruido": 0.16667,
+      "figurina_precisao": 0.8795,
+      "figurina_revocacao": 0.84605,
+      "ic95_prosa_dois_niveis": [
+       0.02514,
+       0.07553
+      ],
+      "insercoes": 2345,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.89753,
+      "wer_partes": {
+       "d": 171,
+       "i": 405,
+       "n": 15038,
+       "s": 1447
+      },
+      "wer_prosa_sdi": 0.13453
+     }
+    },
+    "tess": {
+     "cru": {
+      "cer_espaco": 0.07112,
+      "cer_notacao": 0.166,
+      "cer_outro": 0.11306,
+      "cer_prosa": 0.01954,
+      "cer_ruido": 0.21053,
+      "figurina_precisao": 0.7689,
+      "figurina_revocacao": 0.31164,
+      "ic95_prosa_dois_niveis": [
+       0.00856,
+       0.03248
+      ],
+      "insercoes": 1100,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.98697,
+      "wer_partes": {
+       "d": 156,
+       "i": 88,
+       "n": 15037,
+       "s": 116
+      },
+      "wer_prosa_sdi": 0.02394
+     },
+     "tip": {
+      "cer_espaco": 0.07025,
+      "cer_notacao": 0.16218,
+      "cer_outro": 0.07536,
+      "cer_prosa": 0.01939,
+      "cer_ruido": 0.22115,
+      "figurina_precisao": 0.76956,
+      "figurina_revocacao": 0.23574,
+      "ic95_prosa_dois_niveis": [
+       0.00842,
+       0.03226
+      ],
+      "insercoes": 1052,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.98756,
+      "wer_partes": {
+       "d": 158,
+       "i": 88,
+       "n": 15038,
+       "s": 105
+      },
+      "wer_prosa_sdi": 0.02334
+     }
+    },
+    "tess_oraculo": {
+     "cru": {
+      "cer_espaco": 0.01229,
+      "cer_notacao": 0.16276,
+      "cer_outro": 0.07066,
+      "cer_prosa": 0.00154,
+      "cer_ruido": 0.15414,
+      "figurina_precisao": 0.7678,
+      "figurina_revocacao": 0.31198,
+      "ic95_prosa_dois_niveis": [
+       0.00064,
+       0.0026
+      ],
+      "insercoes": 485,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.99475,
+      "wer_partes": {
+       "d": 4,
+       "i": 6,
+       "n": 15037,
+       "s": 75
+      },
+      "wer_prosa_sdi": 0.00565
+     },
+     "tip": {
+      "cer_espaco": 0.01087,
+      "cer_notacao": 0.15856,
+      "cer_outro": 0.03055,
+      "cer_prosa": 0.00146,
+      "cer_ruido": 0.16667,
+      "figurina_precisao": 0.76845,
+      "figurina_revocacao": 0.236,
+      "ic95_prosa_dois_niveis": [
+       0.00051,
+       0.00252
+      ],
+      "insercoes": 439,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.99535,
+      "wer_partes": {
+       "d": 4,
+       "i": 6,
+       "n": 15038,
+       "s": 66
+      },
+      "wer_prosa_sdi": 0.00505
+     }
+    },
+    "tess_pagina": {
+     "cru": {
+      "cer_espaco": 0.06854,
+      "cer_notacao": 0.17262,
+      "cer_outro": 0.10331,
+      "cer_prosa": 0.01581,
+      "cer_ruido": 0.18421,
+      "figurina_precisao": 0.76361,
+      "figurina_revocacao": 0.30923,
+      "ic95_prosa_dois_niveis": [
+       0.00375,
+       0.03754
+      ],
+      "insercoes": 1666,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.99588,
+      "wer_partes": {
+       "d": 30,
+       "i": 227,
+       "n": 15037,
+       "s": 151
+      },
+      "wer_prosa_sdi": 0.02713
+     },
+     "tip": {
+      "cer_espaco": 0.06805,
+      "cer_notacao": 0.16854,
+      "cer_outro": 0.06466,
+      "cer_prosa": 0.01568,
+      "cer_ruido": 0.18269,
+      "figurina_precisao": 0.76361,
+      "figurina_revocacao": 0.23392,
+      "ic95_prosa_dois_niveis": [
+       0.00361,
+       0.03747
+      ],
+      "insercoes": 1619,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.99648,
+      "wer_partes": {
+       "d": 30,
+       "i": 230,
+       "n": 15038,
+       "s": 142
+      },
+      "wer_prosa_sdi": 0.02673
+     }
+    }
+   },
+   "palavras_de_prosa": 15038,
+   "pares": {
+    "camada_prosa - glifo (notacao)": {
+     "delta_pp": -0.244,
+     "folhas_melhores": 36,
+     "folhas_piores": 18,
+     "ic95_pp": [
+      -0.642,
+      0.042
+     ]
+    },
+    "camada_prosa - glifo (prosa)": {
+     "delta_pp": -3.049,
+     "folhas_melhores": 76,
+     "folhas_piores": 7,
+     "ic95_pp": [
+      -5.201,
+      -1.347
+     ]
+    },
+    "fusao - camada_prosa (notacao)": {
+     "delta_pp": -0.644,
+     "folhas_melhores": 45,
+     "folhas_piores": 17,
+     "ic95_pp": [
+      -1.214,
+      -0.108
+     ]
+    },
+    "fusao - camada_prosa (prosa)": {
+     "delta_pp": 0.285,
+     "folhas_melhores": 13,
+     "folhas_piores": 28,
+     "ic95_pp": [
+      -0.045,
+      0.831
+     ]
+    },
+    "fusao - glifo (notacao)": {
+     "delta_pp": -0.888,
+     "folhas_melhores": 54,
+     "folhas_piores": 15,
+     "ic95_pp": [
+      -1.631,
+      -0.245
+     ]
+    },
+    "fusao - glifo (prosa)": {
+     "delta_pp": -2.764,
+     "folhas_melhores": 77,
+     "folhas_piores": 7,
+     "ic95_pp": [
+      -4.476,
+      -1.283
+     ]
+    },
+    "fusao - tess (notacao)": {
+     "delta_pp": -10.422,
+     "folhas_melhores": 83,
+     "folhas_piores": 4,
+     "ic95_pp": [
+      -13.542,
+      -6.623
+     ]
+    },
+    "fusao - tess (prosa)": {
+     "delta_pp": 0.169,
+     "folhas_melhores": 13,
+     "folhas_piores": 18,
+     "ic95_pp": [
+      -0.154,
+      0.716
+     ]
+    },
+    "tess - tess_oraculo (notacao)": {
+     "delta_pp": 0.362,
+     "folhas_melhores": 7,
+     "folhas_piores": 21,
+     "ic95_pp": [
+      -0.058,
+      1.126
+     ]
+    },
+    "tess - tess_oraculo (prosa)": {
+     "delta_pp": 1.793,
+     "folhas_melhores": 2,
+     "folhas_piores": 41,
+     "ic95_pp": [
+      0.744,
+      3.046
+     ]
+    }
+   },
+   "perda_de_leiaute": {
+    "cer_tess": 0.01939,
+    "cer_tess_oraculo": 0.00146,
+    "cer_tess_pagina": 0.01568,
+    "delta_pp": 1.793,
+    "folhas_melhores": 2,
+    "folhas_piores": 41,
+    "ic95_pp": [
+     0.744,
+     3.046
+    ],
+    "o_que_e": "CER de prosa (tess) - CER de prosa (tess_oraculo), mesmas folhas; negativo é permitido"
+   },
+   "perfil": "",
+   "pior_livro_sem_nome": {
+    "camada_prosa": {
+     "cer_prosa": 0.13023
+    },
+    "fusao": {
+     "cer_prosa": 0.13094
+    },
+    "glifo": {
+     "cer_prosa": 0.15985
+    },
+    "tess": {
+     "cer_prosa": 0.0905
+    },
+    "tess_oraculo": {
+     "cer_prosa": 0.00453
+    },
+    "tess_pagina": {
+     "cer_prosa": 0.15773
+    }
+   },
+   "por_estrato": {
+    "misto": {
+     "folhas": 33,
+     "livros": 12,
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.01328,
+       "ic95_prosa_dois_niveis": [
+        0.00376,
+        0.02891
+       ]
+      },
+      "fusao": {
+       "cer_prosa": 0.01334,
+       "ic95_prosa_dois_niveis": [
+        0.00453,
+        0.02704
+       ]
+      },
+      "glifo": {
+       "cer_prosa": 0.04015,
+       "ic95_prosa_dois_niveis": [
+        0.02273,
+        0.06323
+       ]
+      },
+      "tess": {
+       "cer_prosa": 0.01455,
+       "ic95_prosa_dois_niveis": [
+        0.00531,
+        0.02793
+       ]
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.00139,
+       "ic95_prosa_dois_niveis": [
+        0.00014,
+        0.0029
+       ]
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.01793,
+       "ic95_prosa_dois_niveis": [
+        0.00214,
+        0.04055
+       ]
+      }
+     }
+    },
+    "prosa": {
+     "folhas": 63,
+     "livros": 16,
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.01941,
+       "ic95_prosa_dois_niveis": [
+        0.00607,
+        0.03799
+       ]
+      },
+      "fusao": {
+       "cer_prosa": 0.02292,
+       "ic95_prosa_dois_niveis": [
+        0.00739,
+        0.04102
+       ]
+      },
+      "glifo": {
+       "cer_prosa": 0.05076,
+       "ic95_prosa_dois_niveis": [
+        0.02159,
+        0.08024
+       ]
+      },
+      "tess": {
+       "cer_prosa": 0.02054,
+       "ic95_prosa_dois_niveis": [
+        0.00747,
+        0.03562
+       ]
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.00148,
+       "ic95_prosa_dois_niveis": [
+        0.00044,
+        0.00267
+       ]
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.01515,
+       "ic95_prosa_dois_niveis": [
+        0.00198,
+        0.04063
+       ]
+      }
+     }
+    }
+   },
+   "preservacao_de_figurina_do_glifo": {
+    "camada_prosa": 0.9834,
+    "fusao": 0.9924
+   },
+   "segundos_por_folha": {
+    "camada_prosa": 1.005,
+    "fusao": 1.683,
+    "glifo": 0.938,
+    "tess": 0.677,
+    "tess_oraculo": 0.683,
+    "tess_pagina": 0.697
+   },
+   "segundos_por_folha_p95": {
+    "camada_prosa": 1.588,
+    "fusao": 2.699,
+    "glifo": 1.574,
+    "tess": 1.12,
+    "tess_oraculo": 1.095,
+    "tess_pagina": 1.04
+   },
+   "split": "teste",
+   "taxonomia": {
+    "camada_prosa": {
+     "familias": {
+      "espaco": {
+       "fracao": 0.2524,
+       "palavras": 53
+      },
+      "letra trocada": {
+       "fracao": 0.1238,
+       "palavras": 26
+      },
+      "palavra cortada": {
+       "fracao": 0.0762,
+       "palavras": 16
+      },
+      "palavra perdida": {
+       "fracao": 0.5429,
+       "palavras": 114
+      },
+      "pontuacao": {
+       "fracao": 0.0048,
+       "palavras": 1
+      }
+     },
+     "palavras_erradas": 210
+    },
+    "fusao": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.0037,
+       "palavras": 1
+      },
+      "acento": {
+       "fracao": 0.0332,
+       "palavras": 9
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.0037,
+       "palavras": 1
+      },
+      "espaco": {
+       "fracao": 0.1218,
+       "palavras": 33
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.0185,
+       "palavras": 5
+      },
+      "letra trocada": {
+       "fracao": 0.2251,
+       "palavras": 61
+      },
+      "palavra cortada": {
+       "fracao": 0.0959,
+       "palavras": 26
+      },
+      "palavra perdida": {
+       "fracao": 0.4465,
+       "palavras": 121
+      },
+      "pontuacao": {
+       "fracao": 0.0517,
+       "palavras": 14
+      }
+     },
+     "palavras_erradas": 271
+    },
+    "glifo": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.0226,
+       "palavras": 37
+      },
+      "acento": {
+       "fracao": 0.0067,
+       "palavras": 11
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.0122,
+       "palavras": 20
+      },
+      "espaco": {
+       "fracao": 0.0796,
+       "palavras": 130
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.0685,
+       "palavras": 112
+      },
+      "letra trocada": {
+       "fracao": 0.5765,
+       "palavras": 942
+      },
+      "palavra cortada": {
+       "fracao": 0.033,
+       "palavras": 54
+      },
+      "palavra perdida": {
+       "fracao": 0.093,
+       "palavras": 152
+      },
+      "pontuacao": {
+       "fracao": 0.1071,
+       "palavras": 175
+      },
+      "pontuacao+caixa": {
+       "fracao": 0.0006,
+       "palavras": 1
+      }
+     },
+     "palavras_erradas": 1634
+    },
+    "tess": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.0179,
+       "palavras": 5
+      },
+      "acento": {
+       "fracao": 0.0323,
+       "palavras": 9
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.0036,
+       "palavras": 1
+      },
+      "espaco": {
+       "fracao": 0.0645,
+       "palavras": 18
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.0179,
+       "palavras": 5
+      },
+      "letra trocada": {
+       "fracao": 0.2437,
+       "palavras": 68
+      },
+      "palavra cortada": {
+       "fracao": 0.1075,
+       "palavras": 30
+      },
+      "palavra perdida": {
+       "fracao": 0.4875,
+       "palavras": 136
+      },
+      "pontuacao": {
+       "fracao": 0.0251,
+       "palavras": 7
+      }
+     },
+     "palavras_erradas": 279
+    },
+    "tess_oraculo": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.0714,
+       "palavras": 5
+      },
+      "acento": {
+       "fracao": 0.1429,
+       "palavras": 10
+      },
+      "espaco": {
+       "fracao": 0.0286,
+       "palavras": 2
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.1714,
+       "palavras": 12
+      },
+      "letra trocada": {
+       "fracao": 0.4143,
+       "palavras": 29
+      },
+      "palavra cortada": {
+       "fracao": 0.0143,
+       "palavras": 1
+      },
+      "pontuacao": {
+       "fracao": 0.1571,
+       "palavras": 11
+      }
+     },
+     "palavras_erradas": 70
+    },
+    "tess_pagina": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.0272,
+       "palavras": 5
+      },
+      "acento": {
+       "fracao": 0.0489,
+       "palavras": 9
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.0054,
+       "palavras": 1
+      },
+      "espaco": {
+       "fracao": 0.2283,
+       "palavras": 42
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.0272,
+       "palavras": 5
+      },
+      "juncao com vizinha (espaco perdido)": {
+       "fracao": 0.0054,
+       "palavras": 1
+      },
+      "letra trocada": {
+       "fracao": 0.4348,
+       "palavras": 80
+      },
+      "palavra cortada": {
+       "fracao": 0.0272,
+       "palavras": 5
+      },
+      "palavra perdida": {
+       "fracao": 0.1685,
+       "palavras": 31
+      },
+      "pontuacao": {
+       "fracao": 0.0272,
+       "palavras": 5
+      }
+     },
+     "palavras_erradas": 184
+    }
+   },
+   "uso": "linha de base no teste, aberta uma vez pelo G100; nada se ajusta olhando isto"
+  },
+  "prata": {
+   "avisos": {
+    "camada_recusada": 30
+   },
+   "caracteres_de_notacao": 5979,
+   "caracteres_de_prosa": 42779,
+   "caracteres_de_ruido": 4459,
+   "codigo_das_folhas": [
+    {
+     "commit": "3f780eb5421b5aced122b581a2755142e687c31a",
+     "folhas": [
+      "43beb378084291b0:280",
+      "43beb378084291b0:602",
+      "43beb378084291b0:927",
+      "1033806d3d63e61e:64",
+      "1033806d3d63e61e:157",
+      "1033806d3d63e61e:234",
+      "93cc211e9236033f:194",
+      "93cc211e9236033f:434",
+      "93cc211e9236033f:692",
+      "c22d5e70aad4d523:64",
+      "c22d5e70aad4d523:145",
+      "c22d5e70aad4d523:227",
+      "d611aba22cf122df:67",
+      "d611aba22cf122df:147",
+      "d611aba22cf122df:226",
+      "0da3a0e835775d81:27",
+      "0da3a0e835775d81:60",
+      "0da3a0e835775d81:92",
+      "a9c024a3cd4ebd2e:15",
+      "a9c024a3cd4ebd2e:39",
+      "a9c024a3cd4ebd2e:55",
+      "9267efd2d15c3bb8:31",
+      "9267efd2d15c3bb8:69",
+      "9267efd2d15c3bb8:106",
+      "05a0e10f297ee860:10",
+      "05a0e10f297ee860:18",
+      "05a0e10f297ee860:39",
+      "9013f3b8725ba985:56",
+      "9013f3b8725ba985:118",
+      "9013f3b8725ba985:177"
+     ],
+     "pacote": "roadmaps-em-aberto/src",
+     "src_sujo": false
+    }
+   ],
+   "conjunto": "prata",
+   "filtro": {},
+   "folhas": 30,
+   "folhas_perdidas_pelo_leiaute": 0,
+   "fora_pelo_filtro": [],
+   "guarda_de_notacao": {
+    "camada_prosa": {
+     "g1a_chegam_identicas": 1106,
+     "g1a_figurinas": 1106,
+     "g1a_fracao_fora_dos_vetos": 1.0,
+     "g1a_vetos_registrados": 0,
+     "g2_precisao": {
+      "delta_pp": -0.0,
+      "ic95_pp": [
+       -0.0,
+       -0.0
+      ],
+      "uso": "ordenação"
+     },
+     "g2_revocacao": {
+      "delta_pp": -0.0,
+      "ic95_pp": [
+       -0.0,
+       -0.0
+      ],
+      "uso": "ordenação"
+     }
+    },
+    "fusao": {
+     "g1a_chegam_identicas": 1030,
+     "g1a_figurinas": 1106,
+     "g1a_fracao_fora_dos_vetos": 1.0,
+     "g1a_vetos_registrados": 76,
+     "g2_precisao": {
+      "delta_pp": 1.299,
+      "ic95_pp": [
+       -5.293,
+       13.85
+      ],
+      "uso": "ordenação"
+     },
+     "g2_revocacao": {
+      "delta_pp": 12.416,
+      "ic95_pp": [
+       -1.897,
+       38.581
+      ],
+      "uso": "ordenação"
+     }
+    }
+   },
+   "linhas_da_camada_fora_por_cruzar_diagrama": 74,
+   "livros": 10,
+   "motores": {
+    "camada_prosa": {
+     "cru": {
+      "cer_espaco": 0.30985,
+      "cer_notacao": 0.32697,
+      "cer_outro": 0.35452,
+      "cer_prosa": 0.19549,
+      "cer_ruido": 0.44814,
+      "figurina_precisao": 0.9207,
+      "figurina_revocacao": 0.70134,
+      "ic95_prosa_dois_niveis": [
+       0.08985,
+       0.32388
+      ],
+      "insercoes": 4193,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.68744,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 138,
+       "i": 745,
+       "n": 7317,
+       "s": 2320
+      },
+      "wer_prosa_sdi": 0.43775
+     },
+     "tip": {
+      "cer_espaco": 0.30976,
+      "cer_notacao": 0.32781,
+      "cer_outro": 0.33842,
+      "cer_prosa": 0.1954,
+      "cer_ruido": 0.44674,
+      "figurina_precisao": 0.78571,
+      "figurina_revocacao": 0.70134,
+      "ic95_prosa_dois_niveis": [
+       0.08977,
+       0.3238
+      ],
+      "insercoes": 4253,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.68776,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 138,
+       "i": 754,
+       "n": 7318,
+       "s": 2319
+      },
+      "wer_prosa_sdi": 0.43878
+     }
+    },
+    "fusao": {
+     "cru": {
+      "cer_espaco": 0.32798,
+      "cer_notacao": 0.25452,
+      "cer_outro": 0.34496,
+      "cer_prosa": 0.09199,
+      "cer_ruido": 0.41976,
+      "figurina_precisao": 0.90573,
+      "figurina_revocacao": 0.82215,
+      "ic95_prosa_dois_niveis": [
+       0.04119,
+       0.16294
+      ],
+      "insercoes": 1746,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.90092,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 245,
+       "i": 206,
+       "n": 7317,
+       "s": 677
+      },
+      "wer_prosa_sdi": 0.15416
+     },
+     "tip": {
+      "cer_espaco": 0.33502,
+      "cer_notacao": 0.23482,
+      "cer_outro": 0.34235,
+      "cer_prosa": 0.09009,
+      "cer_ruido": 0.41983,
+      "figurina_precisao": 0.7987,
+      "figurina_revocacao": 0.8255,
+      "ic95_prosa_dois_niveis": [
+       0.03923,
+       0.16076
+      ],
+      "insercoes": 1791,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.90776,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 248,
+       "i": 220,
+       "n": 7318,
+       "s": 625
+      },
+      "wer_prosa_sdi": 0.14936
+     }
+    },
+    "glifo": {
+     "cru": {
+      "cer_espaco": 0.30985,
+      "cer_notacao": 0.32697,
+      "cer_outro": 0.35452,
+      "cer_prosa": 0.19544,
+      "cer_ruido": 0.44814,
+      "figurina_precisao": 0.9207,
+      "figurina_revocacao": 0.70134,
+      "ic95_prosa_dois_niveis": [
+       0.08985,
+       0.32376
+      ],
+      "insercoes": 4193,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.68758,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 138,
+       "i": 745,
+       "n": 7317,
+       "s": 2319
+      },
+      "wer_prosa_sdi": 0.43761
+     },
+     "tip": {
+      "cer_espaco": 0.30976,
+      "cer_notacao": 0.32781,
+      "cer_outro": 0.33842,
+      "cer_prosa": 0.19535,
+      "cer_ruido": 0.44674,
+      "figurina_precisao": 0.78571,
+      "figurina_revocacao": 0.70134,
+      "ic95_prosa_dois_niveis": [
+       0.08974,
+       0.32368
+      ],
+      "insercoes": 4253,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.68789,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 138,
+       "i": 754,
+       "n": 7318,
+       "s": 2318
+      },
+      "wer_prosa_sdi": 0.43864
+     }
+    },
+    "tess": {
+     "cru": {
+      "cer_espaco": 0.32201,
+      "cer_notacao": 0.25739,
+      "cer_outro": 0.33827,
+      "cer_prosa": 0.08916,
+      "cer_ruido": 0.43786,
+      "figurina_precisao": 0.87143,
+      "figurina_revocacao": 0.81879,
+      "ic95_prosa_dois_niveis": [
+       0.03948,
+       0.15691
+      ],
+      "insercoes": 1471,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.89982,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 274,
+       "i": 183,
+       "n": 7317,
+       "s": 643
+      },
+      "wer_prosa_sdi": 0.15033
+     },
+     "tip": {
+      "cer_espaco": 0.32882,
+      "cer_notacao": 0.237,
+      "cer_outro": 0.33645,
+      "cer_prosa": 0.08731,
+      "cer_ruido": 0.43799,
+      "figurina_precisao": 0.87344,
+      "figurina_revocacao": 0.82215,
+      "ic95_prosa_dois_niveis": [
+       0.03783,
+       0.15471
+      ],
+      "insercoes": 1519,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.90667,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 279,
+       "i": 192,
+       "n": 7318,
+       "s": 589
+      },
+      "wer_prosa_sdi": 0.14485
+     }
+    },
+    "tess_oraculo": {
+     "cru": {
+      "cer_espaco": 0.2543,
+      "cer_notacao": 0.27141,
+      "cer_outro": 0.26565,
+      "cer_prosa": 0.09439,
+      "cer_ruido": 0.44278,
+      "figurina_precisao": 0.91776,
+      "figurina_revocacao": 0.82383,
+      "ic95_prosa_dois_niveis": [
+       0.02931,
+       0.17724
+      ],
+      "insercoes": 162,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.8524,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 572,
+       "i": 15,
+       "n": 7317,
+       "s": 515
+      },
+      "wer_prosa_sdi": 0.15061
+     },
+     "tip": {
+      "cer_espaco": 0.25442,
+      "cer_notacao": 0.25222,
+      "cer_outro": 0.26267,
+      "cer_prosa": 0.09203,
+      "cer_ruido": 0.44091,
+      "figurina_precisao": 0.91434,
+      "figurina_revocacao": 0.82383,
+      "ic95_prosa_dois_niveis": [
+       0.02701,
+       0.17441
+      ],
+      "insercoes": 167,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.85925,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 573,
+       "i": 15,
+       "n": 7318,
+       "s": 465
+      },
+      "wer_prosa_sdi": 0.14389
+     }
+    },
+    "tess_pagina": {
+     "cru": {
+      "cer_espaco": 0.33555,
+      "cer_notacao": 0.24844,
+      "cer_outro": 0.47683,
+      "cer_prosa": 0.08582,
+      "cer_ruido": 0.4468,
+      "figurina_precisao": 0.89114,
+      "figurina_revocacao": 0.8104,
+      "ic95_prosa_dois_niveis": [
+       0.03271,
+       0.18475
+      ],
+      "insercoes": 1607,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.91663,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 278,
+       "i": 233,
+       "n": 7317,
+       "s": 642
+      },
+      "wer_prosa_sdi": 0.15758
+     },
+     "tip": {
+      "cer_espaco": 0.35821,
+      "cer_notacao": 0.2298,
+      "cer_outro": 0.47172,
+      "cer_prosa": 0.08252,
+      "cer_ruido": 0.44517,
+      "figurina_precisao": 0.91573,
+      "figurina_revocacao": 0.82047,
+      "ic95_prosa_dois_niveis": [
+       0.03122,
+       0.17805
+      ],
+      "insercoes": 1728,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.92307,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 279,
+       "i": 235,
+       "n": 7318,
+       "s": 594
+      },
+      "wer_prosa_sdi": 0.15141
+     }
+    }
+   },
+   "palavras_de_prosa": 7318,
+   "pares": {
+    "camada_prosa - glifo (notacao)": {
+     "delta_pp": 0.0,
+     "folhas_melhores": 0,
+     "folhas_piores": 0,
+     "ic95_pp": [
+      0.0,
+      0.0
+     ],
+     "uso": "ordenação"
+    },
+    "camada_prosa - glifo (prosa)": {
+     "delta_pp": 0.005,
+     "folhas_melhores": 0,
+     "folhas_piores": 1,
+     "ic95_pp": [
+      0.0,
+      0.018
+     ],
+     "uso": "ordenação"
+    },
+    "fusao - camada_prosa (notacao)": {
+     "delta_pp": -9.299,
+     "folhas_melhores": 18,
+     "folhas_piores": 10,
+     "ic95_pp": [
+      -15.002,
+      -0.515
+     ],
+     "uso": "ordenação"
+    },
+    "fusao - camada_prosa (prosa)": {
+     "delta_pp": -10.531,
+     "folhas_melhores": 30,
+     "folhas_piores": 0,
+     "ic95_pp": [
+      -18.323,
+      -3.952
+     ],
+     "uso": "ordenação"
+    },
+    "fusao - glifo (notacao)": {
+     "delta_pp": -9.299,
+     "folhas_melhores": 18,
+     "folhas_piores": 10,
+     "ic95_pp": [
+      -15.002,
+      -0.515
+     ],
+     "uso": "ordenação"
+    },
+    "fusao - glifo (prosa)": {
+     "delta_pp": -10.526,
+     "folhas_melhores": 30,
+     "folhas_piores": 0,
+     "ic95_pp": [
+      -18.323,
+      -3.952
+     ],
+     "uso": "ordenação"
+    },
+    "fusao - tess (notacao)": {
+     "delta_pp": -0.217,
+     "folhas_melhores": 15,
+     "folhas_piores": 11,
+     "ic95_pp": [
+      -2.194,
+      2.804
+     ],
+     "uso": "ordenação"
+    },
+    "fusao - tess (prosa)": {
+     "delta_pp": 0.278,
+     "folhas_melhores": 11,
+     "folhas_piores": 17,
+     "ic95_pp": [
+      -0.114,
+      0.88
+     ],
+     "uso": "ordenação"
+    },
+    "tess - tess_oraculo (notacao)": {
+     "delta_pp": -1.522,
+     "folhas_melhores": 10,
+     "folhas_piores": 14,
+     "ic95_pp": [
+      -6.227,
+      3.83
+     ],
+     "uso": "ordenação"
+    },
+    "tess - tess_oraculo (prosa)": {
+     "delta_pp": -0.472,
+     "folhas_melhores": 11,
+     "folhas_piores": 18,
+     "ic95_pp": [
+      -2.466,
+      1.525
+     ],
+     "uso": "ordenação"
+    }
+   },
+   "perda_de_leiaute": {
+    "cer_tess": 0.08731,
+    "cer_tess_oraculo": 0.09203,
+    "cer_tess_pagina": 0.08252,
+    "delta_pp": -0.472,
+    "folhas_melhores": 11,
+    "folhas_piores": 18,
+    "ic95_pp": [
+     -2.466,
+     1.525
+    ],
+    "o_que_e": "CER de prosa (tess) - CER de prosa (tess_oraculo), mesmas folhas; negativo é permitido",
+    "por_livro": {
+     "05a0e10f297ee860": {
+      "cer_tess": 0.03982,
+      "cer_tess_oraculo": 0.00722,
+      "cer_tess_pagina": 0.01514,
+      "delta_pp": 3.26,
+      "folhas_melhores": 0,
+      "folhas_piores": 3,
+      "ic95_pp": [
+       0.232,
+       7.637
+      ],
+      "uso": "ordenação"
+     },
+     "0da3a0e835775d81": {
+      "cer_tess": 0.02158,
+      "cer_tess_oraculo": 0.02033,
+      "cer_tess_pagina": 0.02001,
+      "delta_pp": 0.125,
+      "folhas_melhores": 1,
+      "folhas_piores": 2,
+      "ic95_pp": [
+       -0.193,
+       0.397
+      ],
+      "uso": "ordenação"
+     },
+     "1033806d3d63e61e": {
+      "cer_tess": 0.04076,
+      "cer_tess_oraculo": 0.01857,
+      "cer_tess_pagina": 0.04545,
+      "delta_pp": 2.219,
+      "folhas_melhores": 0,
+      "folhas_piores": 3,
+      "ic95_pp": [
+       0.169,
+       9.329
+      ],
+      "uso": "ordenação"
+     },
+     "43beb378084291b0": {
+      "cer_tess": 0.01788,
+      "cer_tess_oraculo": 0.00746,
+      "cer_tess_pagina": 0.01602,
+      "delta_pp": 1.042,
+      "folhas_melhores": 0,
+      "folhas_piores": 3,
+      "ic95_pp": [
+       0.263,
+       1.861
+      ],
+      "uso": "ordenação"
+     },
+     "9013f3b8725ba985": {
+      "cer_tess": 0.15481,
+      "cer_tess_oraculo": 0.15575,
+      "cer_tess_pagina": 0.15481,
+      "delta_pp": -0.094,
+      "folhas_melhores": 1,
+      "folhas_piores": 2,
+      "ic95_pp": [
+       -1.7,
+       1.401
+      ],
+      "uso": "ordenação"
+     },
+     "9267efd2d15c3bb8": {
+      "cer_tess": 0.35589,
+      "cer_tess_oraculo": 0.42888,
+      "cer_tess_pagina": 0.4834,
+      "delta_pp": -7.299,
+      "folhas_melhores": 3,
+      "folhas_piores": 0,
+      "ic95_pp": [
+       -10.878,
+       -3.567
+      ],
+      "uso": "ordenação"
+     },
+     "93cc211e9236033f": {
+      "cer_tess": 0.02862,
+      "cer_tess_oraculo": 0.02044,
+      "cer_tess_pagina": 0.02317,
+      "delta_pp": 0.818,
+      "folhas_melhores": 0,
+      "folhas_piores": 3,
+      "ic95_pp": [
+       0.17,
+       2.667
+      ],
+      "uso": "ordenação"
+     },
+     "a9c024a3cd4ebd2e": {
+      "cer_tess": 0.08061,
+      "cer_tess_oraculo": 0.11954,
+      "cer_tess_pagina": 0.05625,
+      "delta_pp": -3.893,
+      "folhas_melhores": 3,
+      "folhas_piores": 0,
+      "ic95_pp": [
+       -5.679,
+       -0.959
+      ],
+      "uso": "ordenação"
+     },
+     "c22d5e70aad4d523": {
+      "cer_tess": 0.02542,
+      "cer_tess_oraculo": 0.02203,
+      "cer_tess_pagina": 0.03107,
+      "delta_pp": 0.339,
+      "folhas_melhores": 1,
+      "folhas_piores": 1,
+      "ic95_pp": [
+       -0.074,
+       1.048
+      ],
+      "uso": "ordenação"
+     },
+     "d611aba22cf122df": {
+      "cer_tess": 0.15813,
+      "cer_tess_oraculo": 0.1836,
+      "cer_tess_pagina": 0.09536,
+      "delta_pp": -2.547,
+      "folhas_melhores": 2,
+      "folhas_piores": 1,
+      "ic95_pp": [
+       -7.149,
+       0.784
+      ],
+      "uso": "ordenação"
+     }
+    },
+    "uso": "ordenação"
+   },
+   "perfil": "",
+   "por_estrato": {
+    "ate_150": {
+     "folhas": 9,
+     "livros": 3,
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.35374,
+       "ic95_prosa_dois_niveis": [
+        0.14715,
+        0.57866
+       ],
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.15754,
+       "ic95_prosa_dois_niveis": [
+        0.03569,
+        0.35492
+       ],
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.35374,
+       "ic95_prosa_dois_niveis": [
+        0.14715,
+        0.57866
+       ],
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.14713,
+       "ic95_prosa_dois_niveis": [
+        0.02261,
+        0.33812
+       ],
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.18415,
+       "ic95_prosa_dois_niveis": [
+        0.02129,
+        0.40032
+       ],
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.17653,
+       "ic95_prosa_dois_niveis": [
+        0.02151,
+        0.44989
+       ],
+       "uso": "ordenação"
+      }
+     }
+    },
+    "clearscan": {
+     "folhas": 9,
+     "livros": 3,
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.04373,
+       "ic95_prosa_dois_niveis": [
+        0.02053,
+        0.08273
+       ],
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.0275,
+       "ic95_prosa_dois_niveis": [
+        0.01445,
+        0.0497
+       ],
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.04373,
+       "ic95_prosa_dois_niveis": [
+        0.02053,
+        0.08273
+       ],
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.02702,
+       "ic95_prosa_dois_niveis": [
+        0.0157,
+        0.04772
+       ],
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.01453,
+       "ic95_prosa_dois_niveis": [
+        0.00771,
+        0.02267
+       ],
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.02906,
+       "ic95_prosa_dois_niveis": [
+        0.01518,
+        0.05212
+       ],
+       "uso": "ordenação"
+      }
+     }
+    },
+    "de_300": {
+     "folhas": 12,
+     "livros": 4,
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.22811,
+       "ic95_prosa_dois_niveis": [
+        0.06991,
+        0.37126
+       ],
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.10237,
+       "ic95_prosa_dois_niveis": [
+        0.0314,
+        0.16073
+       ],
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.228,
+       "ic95_prosa_dois_niveis": [
+        0.06991,
+        0.37102
+       ],
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.10214,
+       "ic95_prosa_dois_niveis": [
+        0.03332,
+        0.15896
+       ],
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.1022,
+       "ic95_prosa_dois_niveis": [
+        0.01192,
+        0.18063
+       ],
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.07172,
+       "ic95_prosa_dois_niveis": [
+        0.01806,
+        0.12401
+       ],
+       "uso": "ordenação"
+      }
+     }
+    }
+   },
+   "por_livro": {
+    "05a0e10f297ee860": {
+     "estrato": "de_300",
+     "folhas": [
+      10,
+      18,
+      39
+     ],
+     "lingua": "fra",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.10317,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.0361,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.10317,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.03982,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.00722,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.01514,
+       "uso": "ordenação"
+      }
+     }
+    },
+    "0da3a0e835775d81": {
+     "estrato": "ate_150",
+     "folhas": [
+      27,
+      60,
+      92
+     ],
+     "lingua": "deu",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.38774,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.03471,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.38774,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.02158,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.02033,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.02001,
+       "uso": "ordenação"
+      }
+     }
+    },
+    "1033806d3d63e61e": {
+     "estrato": "clearscan",
+     "folhas": [
+      64,
+      157,
+      234
+     ],
+     "lingua": "eng",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.08088,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.04481,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.08088,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.04076,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.01857,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.04545,
+       "uso": "ordenação"
+      }
+     }
+    },
+    "43beb378084291b0": {
+     "estrato": "clearscan",
+     "folhas": [
+      280,
+      602,
+      927
+     ],
+     "lingua": "eng",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.02286,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.01726,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.02286,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.01788,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.00746,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.01602,
+       "uso": "ordenação"
+      }
+     }
+    },
+    "9013f3b8725ba985": {
+     "estrato": "de_300",
+     "folhas": [
+      56,
+      118,
+      177
+     ],
+     "lingua": "spa",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.267,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.16515,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.267,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.15481,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.15575,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.15481,
+       "uso": "ordenação"
+      }
+     }
+    },
+    "9267efd2d15c3bb8": {
+     "estrato": "ate_150",
+     "folhas": [
+      31,
+      69,
+      106
+     ],
+     "lingua": "nld",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.58365,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.37907,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.58365,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.35589,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.42888,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.4834,
+       "uso": "ordenação"
+      }
+     }
+    },
+    "93cc211e9236033f": {
+     "estrato": "de_300",
+     "folhas": [
+      194,
+      434,
+      692
+     ],
+     "lingua": "eng",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.03598,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.02916,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.03598,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.02862,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.02044,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.02317,
+       "uso": "ordenação"
+      }
+     }
+    },
+    "a9c024a3cd4ebd2e": {
+     "estrato": "ate_150",
+     "folhas": [
+      15,
+      39,
+      55
+     ],
+     "lingua": "spa",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.14214,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.0786,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.14214,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.08061,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.11954,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.05625,
+       "uso": "ordenação"
+      }
+     }
+    },
+    "c22d5e70aad4d523": {
+     "estrato": "clearscan",
+     "folhas": [
+      64,
+      145,
+      227
+     ],
+     "lingua": "eng",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.03249,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.02316,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.03249,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.02542,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.02203,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.03107,
+       "uso": "ordenação"
+      }
+     }
+    },
+    "d611aba22cf122df": {
+     "estrato": "de_300",
+     "folhas": [
+      67,
+      147,
+      226
+     ],
+     "lingua": "deu",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.39751,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.15585,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.39721,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.15813,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.1836,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.09536,
+       "uso": "ordenação"
+      }
+     }
+    }
+   },
+   "preservacao_de_figurina_do_glifo": {
+    "camada_prosa": 1.0,
+    "fusao": 0.9313
+   },
+   "segundos_por_folha": {
+    "camada_prosa": 1.808,
+    "fusao": 2.663,
+    "glifo": 1.706,
+    "tess": 0.921,
+    "tess_oraculo": 0.859,
+    "tess_pagina": 0.969
+   },
+   "segundos_por_folha_p95": {
+    "camada_prosa": 2.883,
+    "fusao": 3.724,
+    "glifo": 2.786,
+    "tess": 1.554,
+    "tess_oraculo": 1.404,
+    "tess_pagina": 1.677
+   },
+   "split": "",
+   "taxonomia": {
+    "camada_prosa": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.1178,
+       "livros": {
+        "05a0e10f297ee860": 64,
+        "0da3a0e835775d81": 8,
+        "1033806d3d63e61e": 3,
+        "43beb378084291b0": 15,
+        "9013f3b8725ba985": 33,
+        "9267efd2d15c3bb8": 20,
+        "93cc211e9236033f": 3,
+        "a9c024a3cd4ebd2e": 119,
+        "c22d5e70aad4d523": 3,
+        "d611aba22cf122df": 18
+       },
+       "palavras": 286
+      },
+      "acento": {
+       "fracao": 0.007,
+       "livros": {
+        "05a0e10f297ee860": 8,
+        "0da3a0e835775d81": 1,
+        "43beb378084291b0": 1,
+        "9013f3b8725ba985": 1,
+        "a9c024a3cd4ebd2e": 2,
+        "d611aba22cf122df": 4
+       },
+       "palavras": 17
+      },
+      "aspas duplas": {
+       "fracao": 0.0004,
+       "livros": {
+        "a9c024a3cd4ebd2e": 1
+       },
+       "palavras": 1
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.0049,
+       "livros": {
+        "05a0e10f297ee860": 1,
+        "0da3a0e835775d81": 2,
+        "1033806d3d63e61e": 6,
+        "9013f3b8725ba985": 1,
+        "a9c024a3cd4ebd2e": 2
+       },
+       "palavras": 12
+      },
+      "espaco": {
+       "fracao": 0.1474,
+       "livros": {
+        "05a0e10f297ee860": 29,
+        "0da3a0e835775d81": 28,
+        "1033806d3d63e61e": 7,
+        "43beb378084291b0": 4,
+        "9013f3b8725ba985": 18,
+        "9267efd2d15c3bb8": 95,
+        "93cc211e9236033f": 3,
+        "a9c024a3cd4ebd2e": 20,
+        "c22d5e70aad4d523": 1,
+        "d611aba22cf122df": 153
+       },
+       "palavras": 358
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.0597,
+       "livros": {
+        "05a0e10f297ee860": 12,
+        "0da3a0e835775d81": 24,
+        "1033806d3d63e61e": 39,
+        "43beb378084291b0": 14,
+        "9013f3b8725ba985": 1,
+        "9267efd2d15c3bb8": 20,
+        "a9c024a3cd4ebd2e": 5,
+        "c22d5e70aad4d523": 5,
+        "d611aba22cf122df": 25
+       },
+       "palavras": 145
+      },
+      "letra trocada": {
+       "fracao": 0.5647,
+       "livros": {
+        "05a0e10f297ee860": 106,
+        "0da3a0e835775d81": 318,
+        "1033806d3d63e61e": 85,
+        "43beb378084291b0": 22,
+        "9013f3b8725ba985": 122,
+        "9267efd2d15c3bb8": 185,
+        "93cc211e9236033f": 16,
+        "a9c024a3cd4ebd2e": 63,
+        "c22d5e70aad4d523": 27,
+        "d611aba22cf122df": 427
+       },
+       "palavras": 1371
+      },
+      "ligadura fi/fl com 1 a mais": {
+       "fracao": 0.0004,
+       "livros": {
+        "d611aba22cf122df": 1
+       },
+       "palavras": 1
+      },
+      "palavra cortada": {
+       "fracao": 0.0128,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 8,
+        "1033806d3d63e61e": 2,
+        "9013f3b8725ba985": 3,
+        "9267efd2d15c3bb8": 11,
+        "93cc211e9236033f": 1,
+        "a9c024a3cd4ebd2e": 1,
+        "d611aba22cf122df": 1
+       },
+       "palavras": 31
+      },
+      "palavra perdida": {
+       "fracao": 0.0231,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 6,
+        "1033806d3d63e61e": 11,
+        "9267efd2d15c3bb8": 15,
+        "a9c024a3cd4ebd2e": 12,
+        "c22d5e70aad4d523": 7,
+        "d611aba22cf122df": 1
+       },
+       "palavras": 56
+      },
+      "pontuacao": {
+       "fracao": 0.0601,
+       "livros": {
+        "05a0e10f297ee860": 14,
+        "0da3a0e835775d81": 6,
+        "1033806d3d63e61e": 10,
+        "43beb378084291b0": 6,
+        "9013f3b8725ba985": 2,
+        "9267efd2d15c3bb8": 47,
+        "93cc211e9236033f": 2,
+        "a9c024a3cd4ebd2e": 15,
+        "c22d5e70aad4d523": 6,
+        "d611aba22cf122df": 38
+       },
+       "palavras": 146
+      },
+      "pontuacao+caixa": {
+       "fracao": 0.0012,
+       "livros": {
+        "1033806d3d63e61e": 1,
+        "a9c024a3cd4ebd2e": 1,
+        "d611aba22cf122df": 1
+       },
+       "palavras": 3
+      },
+      "traco vertical lido como ponto (l/I -> .)": {
+       "fracao": 0.0004,
+       "livros": {
+        "0da3a0e835775d81": 1
+       },
+       "palavras": 1
+      }
+     },
+     "palavras_erradas": 2428
+    },
+    "fusao": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.0593,
+       "livros": {
+        "0da3a0e835775d81": 14,
+        "1033806d3d63e61e": 2,
+        "43beb378084291b0": 12,
+        "9013f3b8725ba985": 1,
+        "9267efd2d15c3bb8": 5,
+        "a9c024a3cd4ebd2e": 9,
+        "c22d5e70aad4d523": 2,
+        "d611aba22cf122df": 8
+       },
+       "palavras": 53
+      },
+      "acento": {
+       "fracao": 0.0034,
+       "livros": {
+        "9267efd2d15c3bb8": 1,
+        "a9c024a3cd4ebd2e": 2
+       },
+       "palavras": 3
+      },
+      "aspas duplas": {
+       "fracao": 0.0011,
+       "livros": {
+        "0da3a0e835775d81": 1
+       },
+       "palavras": 1
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.0045,
+       "livros": {
+        "43beb378084291b0": 2,
+        "a9c024a3cd4ebd2e": 1,
+        "d611aba22cf122df": 1
+       },
+       "palavras": 4
+      },
+      "espaco": {
+       "fracao": 0.123,
+       "livros": {
+        "05a0e10f297ee860": 3,
+        "0da3a0e835775d81": 2,
+        "1033806d3d63e61e": 2,
+        "43beb378084291b0": 3,
+        "9013f3b8725ba985": 11,
+        "9267efd2d15c3bb8": 49,
+        "93cc211e9236033f": 1,
+        "a9c024a3cd4ebd2e": 5,
+        "c22d5e70aad4d523": 2,
+        "d611aba22cf122df": 32
+       },
+       "palavras": 110
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.1779,
+       "livros": {
+        "05a0e10f297ee860": 23,
+        "0da3a0e835775d81": 26,
+        "1033806d3d63e61e": 10,
+        "43beb378084291b0": 16,
+        "9267efd2d15c3bb8": 22,
+        "a9c024a3cd4ebd2e": 12,
+        "c22d5e70aad4d523": 9,
+        "d611aba22cf122df": 41
+       },
+       "palavras": 159
+      },
+      "juncao com vizinha (espaco perdido)": {
+       "fracao": 0.0045,
+       "livros": {
+        "43beb378084291b0": 2,
+        "9013f3b8725ba985": 1,
+        "d611aba22cf122df": 1
+       },
+       "palavras": 4
+      },
+      "letra trocada": {
+       "fracao": 0.4306,
+       "livros": {
+        "05a0e10f297ee860": 5,
+        "0da3a0e835775d81": 12,
+        "1033806d3d63e61e": 30,
+        "43beb378084291b0": 3,
+        "9013f3b8725ba985": 93,
+        "9267efd2d15c3bb8": 117,
+        "93cc211e9236033f": 9,
+        "a9c024a3cd4ebd2e": 14,
+        "c22d5e70aad4d523": 12,
+        "d611aba22cf122df": 90
+       },
+       "palavras": 385
+      },
+      "ligadura fi/fl com 1 a mais": {
+       "fracao": 0.0011,
+       "livros": {
+        "0da3a0e835775d81": 1
+       },
+       "palavras": 1
+      },
+      "palavra cortada": {
+       "fracao": 0.0481,
+       "livros": {
+        "05a0e10f297ee860": 3,
+        "1033806d3d63e61e": 1,
+        "9013f3b8725ba985": 2,
+        "9267efd2d15c3bb8": 15,
+        "93cc211e9236033f": 1,
+        "a9c024a3cd4ebd2e": 4,
+        "d611aba22cf122df": 17
+       },
+       "palavras": 43
+      },
+      "palavra perdida": {
+       "fracao": 0.1096,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 7,
+        "1033806d3d63e61e": 11,
+        "9013f3b8725ba985": 3,
+        "9267efd2d15c3bb8": 29,
+        "a9c024a3cd4ebd2e": 14,
+        "c22d5e70aad4d523": 9,
+        "d611aba22cf122df": 21
+       },
+       "palavras": 98
+      },
+      "pontuacao": {
+       "fracao": 0.0347,
+       "livros": {
+        "05a0e10f297ee860": 2,
+        "0da3a0e835775d81": 3,
+        "1033806d3d63e61e": 3,
+        "43beb378084291b0": 1,
+        "9013f3b8725ba985": 1,
+        "9267efd2d15c3bb8": 3,
+        "93cc211e9236033f": 1,
+        "a9c024a3cd4ebd2e": 6,
+        "c22d5e70aad4d523": 1,
+        "d611aba22cf122df": 10
+       },
+       "palavras": 31
+      },
+      "pontuacao+caixa": {
+       "fracao": 0.0011,
+       "livros": {
+        "a9c024a3cd4ebd2e": 1
+       },
+       "palavras": 1
+      },
+      "traco vertical lido como ponto (l/I -> .)": {
+       "fracao": 0.0011,
+       "livros": {
+        "0da3a0e835775d81": 1
+       },
+       "palavras": 1
+      }
+     },
+     "palavras_erradas": 894
+    },
+    "glifo": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.1178,
+       "livros": {
+        "05a0e10f297ee860": 64,
+        "0da3a0e835775d81": 8,
+        "1033806d3d63e61e": 3,
+        "43beb378084291b0": 15,
+        "9013f3b8725ba985": 33,
+        "9267efd2d15c3bb8": 20,
+        "93cc211e9236033f": 3,
+        "a9c024a3cd4ebd2e": 119,
+        "c22d5e70aad4d523": 3,
+        "d611aba22cf122df": 18
+       },
+       "palavras": 286
+      },
+      "acento": {
+       "fracao": 0.007,
+       "livros": {
+        "05a0e10f297ee860": 8,
+        "0da3a0e835775d81": 1,
+        "43beb378084291b0": 1,
+        "9013f3b8725ba985": 1,
+        "a9c024a3cd4ebd2e": 2,
+        "d611aba22cf122df": 4
+       },
+       "palavras": 17
+      },
+      "aspas duplas": {
+       "fracao": 0.0004,
+       "livros": {
+        "a9c024a3cd4ebd2e": 1
+       },
+       "palavras": 1
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.0049,
+       "livros": {
+        "05a0e10f297ee860": 1,
+        "0da3a0e835775d81": 2,
+        "1033806d3d63e61e": 6,
+        "9013f3b8725ba985": 1,
+        "a9c024a3cd4ebd2e": 2
+       },
+       "palavras": 12
+      },
+      "espaco": {
+       "fracao": 0.1471,
+       "livros": {
+        "05a0e10f297ee860": 29,
+        "0da3a0e835775d81": 28,
+        "1033806d3d63e61e": 7,
+        "43beb378084291b0": 4,
+        "9013f3b8725ba985": 18,
+        "9267efd2d15c3bb8": 95,
+        "93cc211e9236033f": 3,
+        "a9c024a3cd4ebd2e": 20,
+        "c22d5e70aad4d523": 1,
+        "d611aba22cf122df": 152
+       },
+       "palavras": 357
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.0597,
+       "livros": {
+        "05a0e10f297ee860": 12,
+        "0da3a0e835775d81": 24,
+        "1033806d3d63e61e": 39,
+        "43beb378084291b0": 14,
+        "9013f3b8725ba985": 1,
+        "9267efd2d15c3bb8": 20,
+        "a9c024a3cd4ebd2e": 5,
+        "c22d5e70aad4d523": 5,
+        "d611aba22cf122df": 25
+       },
+       "palavras": 145
+      },
+      "letra trocada": {
+       "fracao": 0.5649,
+       "livros": {
+        "05a0e10f297ee860": 106,
+        "0da3a0e835775d81": 318,
+        "1033806d3d63e61e": 85,
+        "43beb378084291b0": 22,
+        "9013f3b8725ba985": 122,
+        "9267efd2d15c3bb8": 185,
+        "93cc211e9236033f": 16,
+        "a9c024a3cd4ebd2e": 63,
+        "c22d5e70aad4d523": 27,
+        "d611aba22cf122df": 427
+       },
+       "palavras": 1371
+      },
+      "ligadura fi/fl com 1 a mais": {
+       "fracao": 0.0004,
+       "livros": {
+        "d611aba22cf122df": 1
+       },
+       "palavras": 1
+      },
+      "palavra cortada": {
+       "fracao": 0.0128,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 8,
+        "1033806d3d63e61e": 2,
+        "9013f3b8725ba985": 3,
+        "9267efd2d15c3bb8": 11,
+        "93cc211e9236033f": 1,
+        "a9c024a3cd4ebd2e": 1,
+        "d611aba22cf122df": 1
+       },
+       "palavras": 31
+      },
+      "palavra perdida": {
+       "fracao": 0.0231,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 6,
+        "1033806d3d63e61e": 11,
+        "9267efd2d15c3bb8": 15,
+        "a9c024a3cd4ebd2e": 12,
+        "c22d5e70aad4d523": 7,
+        "d611aba22cf122df": 1
+       },
+       "palavras": 56
+      },
+      "pontuacao": {
+       "fracao": 0.0602,
+       "livros": {
+        "05a0e10f297ee860": 14,
+        "0da3a0e835775d81": 6,
+        "1033806d3d63e61e": 10,
+        "43beb378084291b0": 6,
+        "9013f3b8725ba985": 2,
+        "9267efd2d15c3bb8": 47,
+        "93cc211e9236033f": 2,
+        "a9c024a3cd4ebd2e": 15,
+        "c22d5e70aad4d523": 6,
+        "d611aba22cf122df": 38
+       },
+       "palavras": 146
+      },
+      "pontuacao+caixa": {
+       "fracao": 0.0012,
+       "livros": {
+        "1033806d3d63e61e": 1,
+        "a9c024a3cd4ebd2e": 1,
+        "d611aba22cf122df": 1
+       },
+       "palavras": 3
+      },
+      "traco vertical lido como ponto (l/I -> .)": {
+       "fracao": 0.0004,
+       "livros": {
+        "0da3a0e835775d81": 1
+       },
+       "palavras": 1
+      }
+     },
+     "palavras_erradas": 2427
+    },
+    "tess": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.038,
+       "livros": {
+        "0da3a0e835775d81": 3,
+        "1033806d3d63e61e": 1,
+        "43beb378084291b0": 15,
+        "9013f3b8725ba985": 1,
+        "9267efd2d15c3bb8": 1,
+        "a9c024a3cd4ebd2e": 9,
+        "c22d5e70aad4d523": 2,
+        "d611aba22cf122df": 2
+       },
+       "palavras": 34
+      },
+      "acento": {
+       "fracao": 0.0034,
+       "livros": {
+        "9267efd2d15c3bb8": 1,
+        "a9c024a3cd4ebd2e": 2
+       },
+       "palavras": 3
+      },
+      "aspas duplas": {
+       "fracao": 0.0022,
+       "livros": {
+        "0da3a0e835775d81": 2
+       },
+       "palavras": 2
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.0045,
+       "livros": {
+        "43beb378084291b0": 2,
+        "a9c024a3cd4ebd2e": 1,
+        "d611aba22cf122df": 1
+       },
+       "palavras": 4
+      },
+      "espaco": {
+       "fracao": 0.0996,
+       "livros": {
+        "05a0e10f297ee860": 3,
+        "0da3a0e835775d81": 2,
+        "1033806d3d63e61e": 2,
+        "43beb378084291b0": 3,
+        "9013f3b8725ba985": 10,
+        "9267efd2d15c3bb8": 46,
+        "93cc211e9236033f": 1,
+        "a9c024a3cd4ebd2e": 3,
+        "d611aba22cf122df": 19
+       },
+       "palavras": 89
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.1935,
+       "livros": {
+        "05a0e10f297ee860": 23,
+        "0da3a0e835775d81": 31,
+        "1033806d3d63e61e": 12,
+        "43beb378084291b0": 21,
+        "9267efd2d15c3bb8": 22,
+        "a9c024a3cd4ebd2e": 12,
+        "c22d5e70aad4d523": 10,
+        "d611aba22cf122df": 42
+       },
+       "palavras": 173
+      },
+      "juncao com vizinha (espaco perdido)": {
+       "fracao": 0.0011,
+       "livros": {
+        "d611aba22cf122df": 1
+       },
+       "palavras": 1
+      },
+      "letra trocada": {
+       "fracao": 0.4385,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 12,
+        "1033806d3d63e61e": 29,
+        "43beb378084291b0": 3,
+        "9013f3b8725ba985": 89,
+        "9267efd2d15c3bb8": 122,
+        "93cc211e9236033f": 9,
+        "a9c024a3cd4ebd2e": 12,
+        "c22d5e70aad4d523": 13,
+        "d611aba22cf122df": 99
+       },
+       "palavras": 392
+      },
+      "palavra cortada": {
+       "fracao": 0.0492,
+       "livros": {
+        "05a0e10f297ee860": 3,
+        "1033806d3d63e61e": 1,
+        "9013f3b8725ba985": 5,
+        "9267efd2d15c3bb8": 15,
+        "93cc211e9236033f": 1,
+        "a9c024a3cd4ebd2e": 5,
+        "d611aba22cf122df": 14
+       },
+       "palavras": 44
+      },
+      "palavra perdida": {
+       "fracao": 0.1286,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 4,
+        "1033806d3d63e61e": 11,
+        "9013f3b8725ba985": 4,
+        "9267efd2d15c3bb8": 28,
+        "a9c024a3cd4ebd2e": 16,
+        "c22d5e70aad4d523": 10,
+        "d611aba22cf122df": 38
+       },
+       "palavras": 115
+      },
+      "pontuacao": {
+       "fracao": 0.0391,
+       "livros": {
+        "05a0e10f297ee860": 2,
+        "0da3a0e835775d81": 2,
+        "1033806d3d63e61e": 3,
+        "43beb378084291b0": 1,
+        "9013f3b8725ba985": 3,
+        "9267efd2d15c3bb8": 3,
+        "93cc211e9236033f": 1,
+        "a9c024a3cd4ebd2e": 8,
+        "c22d5e70aad4d523": 1,
+        "d611aba22cf122df": 11
+       },
+       "palavras": 35
+      },
+      "pontuacao+caixa": {
+       "fracao": 0.0011,
+       "livros": {
+        "a9c024a3cd4ebd2e": 1
+       },
+       "palavras": 1
+      },
+      "traco vertical lido como ponto (l/I -> .)": {
+       "fracao": 0.0011,
+       "livros": {
+        "0da3a0e835775d81": 1
+       },
+       "palavras": 1
+      }
+     },
+     "palavras_erradas": 894
+    },
+    "tess_oraculo": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.0349,
+       "livros": {
+        "0da3a0e835775d81": 4,
+        "1033806d3d63e61e": 1,
+        "43beb378084291b0": 15,
+        "9013f3b8725ba985": 1,
+        "9267efd2d15c3bb8": 1,
+        "a9c024a3cd4ebd2e": 10,
+        "c22d5e70aad4d523": 2,
+        "d611aba22cf122df": 3
+       },
+       "palavras": 37
+      },
+      "acento": {
+       "fracao": 0.0019,
+       "livros": {
+        "a9c024a3cd4ebd2e": 2
+       },
+       "palavras": 2
+      },
+      "aspas duplas": {
+       "fracao": 0.0019,
+       "livros": {
+        "0da3a0e835775d81": 2
+       },
+       "palavras": 2
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.0038,
+       "livros": {
+        "43beb378084291b0": 1,
+        "a9c024a3cd4ebd2e": 2,
+        "d611aba22cf122df": 1
+       },
+       "palavras": 4
+      },
+      "espaco": {
+       "fracao": 0.0255,
+       "livros": {
+        "05a0e10f297ee860": 3,
+        "0da3a0e835775d81": 1,
+        "1033806d3d63e61e": 1,
+        "9013f3b8725ba985": 7,
+        "9267efd2d15c3bb8": 12,
+        "a9c024a3cd4ebd2e": 1,
+        "c22d5e70aad4d523": 1,
+        "d611aba22cf122df": 1
+       },
+       "palavras": 27
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.1745,
+       "livros": {
+        "05a0e10f297ee860": 13,
+        "0da3a0e835775d81": 36,
+        "1033806d3d63e61e": 12,
+        "43beb378084291b0": 21,
+        "9013f3b8725ba985": 3,
+        "9267efd2d15c3bb8": 19,
+        "a9c024a3cd4ebd2e": 15,
+        "c22d5e70aad4d523": 14,
+        "d611aba22cf122df": 52
+       },
+       "palavras": 185
+      },
+      "letra trocada": {
+       "fracao": 0.2613,
+       "livros": {
+        "0da3a0e835775d81": 10,
+        "1033806d3d63e61e": 29,
+        "43beb378084291b0": 6,
+        "9013f3b8725ba985": 92,
+        "9267efd2d15c3bb8": 50,
+        "93cc211e9236033f": 10,
+        "a9c024a3cd4ebd2e": 18,
+        "c22d5e70aad4d523": 18,
+        "d611aba22cf122df": 44
+       },
+       "palavras": 277
+      },
+      "palavra cortada": {
+       "fracao": 0.1151,
+       "livros": {
+        "0da3a0e835775d81": 3,
+        "1033806d3d63e61e": 1,
+        "9013f3b8725ba985": 5,
+        "9267efd2d15c3bb8": 48,
+        "a9c024a3cd4ebd2e": 20,
+        "d611aba22cf122df": 45
+       },
+       "palavras": 122
+      },
+      "palavra perdida": {
+       "fracao": 0.3509,
+       "livros": {
+        "0da3a0e835775d81": 4,
+        "9013f3b8725ba985": 8,
+        "9267efd2d15c3bb8": 174,
+        "a9c024a3cd4ebd2e": 58,
+        "c22d5e70aad4d523": 4,
+        "d611aba22cf122df": 124
+       },
+       "palavras": 372
+      },
+      "pontuacao": {
+       "fracao": 0.0302,
+       "livros": {
+        "05a0e10f297ee860": 2,
+        "0da3a0e835775d81": 1,
+        "1033806d3d63e61e": 3,
+        "43beb378084291b0": 2,
+        "9013f3b8725ba985": 1,
+        "9267efd2d15c3bb8": 5,
+        "93cc211e9236033f": 1,
+        "a9c024a3cd4ebd2e": 5,
+        "c22d5e70aad4d523": 1,
+        "d611aba22cf122df": 11
+       },
+       "palavras": 32
+      }
+     },
+     "palavras_erradas": 1060
+    },
+    "tess_pagina": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.0406,
+       "livros": {
+        "0da3a0e835775d81": 2,
+        "43beb378084291b0": 15,
+        "9013f3b8725ba985": 2,
+        "9267efd2d15c3bb8": 2,
+        "a9c024a3cd4ebd2e": 10,
+        "c22d5e70aad4d523": 2,
+        "d611aba22cf122df": 4
+       },
+       "palavras": 37
+      },
+      "acento": {
+       "fracao": 0.0022,
+       "livros": {
+        "a9c024a3cd4ebd2e": 2
+       },
+       "palavras": 2
+      },
+      "aspas duplas": {
+       "fracao": 0.0022,
+       "livros": {
+        "0da3a0e835775d81": 2
+       },
+       "palavras": 2
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.0022,
+       "livros": {
+        "43beb378084291b0": 1,
+        "d611aba22cf122df": 1
+       },
+       "palavras": 2
+      },
+      "espaco": {
+       "fracao": 0.1447,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 2,
+        "1033806d3d63e61e": 3,
+        "43beb378084291b0": 1,
+        "9013f3b8725ba985": 9,
+        "9267efd2d15c3bb8": 91,
+        "93cc211e9236033f": 1,
+        "a9c024a3cd4ebd2e": 2,
+        "d611aba22cf122df": 19
+       },
+       "palavras": 132
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.1963,
+       "livros": {
+        "05a0e10f297ee860": 22,
+        "0da3a0e835775d81": 33,
+        "1033806d3d63e61e": 11,
+        "43beb378084291b0": 19,
+        "9267efd2d15c3bb8": 17,
+        "a9c024a3cd4ebd2e": 13,
+        "c22d5e70aad4d523": 10,
+        "d611aba22cf122df": 54
+       },
+       "palavras": 179
+      },
+      "juncao com vizinha (espaco perdido)": {
+       "fracao": 0.0066,
+       "livros": {
+        "9013f3b8725ba985": 2,
+        "a9c024a3cd4ebd2e": 4
+       },
+       "palavras": 6
+      },
+      "letra trocada": {
+       "fracao": 0.4463,
+       "livros": {
+        "05a0e10f297ee860": 1,
+        "0da3a0e835775d81": 12,
+        "1033806d3d63e61e": 30,
+        "43beb378084291b0": 5,
+        "9013f3b8725ba985": 84,
+        "9267efd2d15c3bb8": 173,
+        "93cc211e9236033f": 9,
+        "a9c024a3cd4ebd2e": 7,
+        "c22d5e70aad4d523": 15,
+        "d611aba22cf122df": 71
+       },
+       "palavras": 407
+      },
+      "palavra cortada": {
+       "fracao": 0.034,
+       "livros": {
+        "1033806d3d63e61e": 1,
+        "9013f3b8725ba985": 10,
+        "9267efd2d15c3bb8": 14,
+        "a9c024a3cd4ebd2e": 1,
+        "d611aba22cf122df": 5
+       },
+       "palavras": 31
+      },
+      "palavra perdida": {
+       "fracao": 0.091,
+       "livros": {
+        "05a0e10f297ee860": 5,
+        "0da3a0e835775d81": 3,
+        "1033806d3d63e61e": 13,
+        "9013f3b8725ba985": 7,
+        "9267efd2d15c3bb8": 21,
+        "a9c024a3cd4ebd2e": 14,
+        "c22d5e70aad4d523": 8,
+        "d611aba22cf122df": 12
+       },
+       "palavras": 83
+      },
+      "pontuacao": {
+       "fracao": 0.0307,
+       "livros": {
+        "05a0e10f297ee860": 1,
+        "0da3a0e835775d81": 1,
+        "1033806d3d63e61e": 3,
+        "43beb378084291b0": 1,
+        "9013f3b8725ba985": 3,
+        "9267efd2d15c3bb8": 2,
+        "93cc211e9236033f": 1,
+        "a9c024a3cd4ebd2e": 7,
+        "c22d5e70aad4d523": 1,
+        "d611aba22cf122df": 8
+       },
+       "palavras": 28
+      },
+      "pontuacao+caixa": {
+       "fracao": 0.0022,
+       "livros": {
+        "a9c024a3cd4ebd2e": 2
+       },
+       "palavras": 2
+      },
+      "traco vertical lido como ponto (l/I -> .)": {
+       "fracao": 0.0011,
+       "livros": {
+        "0da3a0e835775d81": 1
+       },
+       "palavras": 1
+      }
+     },
+     "palavras_erradas": 912
+    }
+   },
+   "uso": "ordenação"
+  },
+  "prata_admitida": {
+   "avisos": {
+    "camada_recusada": 19
+   },
+   "caracteres_de_notacao": 2345,
+   "caracteres_de_prosa": 26817,
+   "caracteres_de_ruido": 3316,
+   "codigo_das_folhas": [
+    {
+     "commit": "3f780eb5421b5aced122b581a2755142e687c31a",
+     "folhas": [
+      "43beb378084291b0:280",
+      "43beb378084291b0:602",
+      "43beb378084291b0:927",
+      "1033806d3d63e61e:64",
+      "1033806d3d63e61e:157",
+      "1033806d3d63e61e:234",
+      "93cc211e9236033f:194",
+      "93cc211e9236033f:434",
+      "93cc211e9236033f:692",
+      "c22d5e70aad4d523:64",
+      "c22d5e70aad4d523:145",
+      "c22d5e70aad4d523:227",
+      "0da3a0e835775d81:27",
+      "0da3a0e835775d81:60",
+      "0da3a0e835775d81:92",
+      "05a0e10f297ee860:10",
+      "05a0e10f297ee860:18",
+      "05a0e10f297ee860:39",
+      "9013f3b8725ba985:177"
+     ],
+     "pacote": "roadmaps-em-aberto/src",
+     "src_sujo": false
+    }
+   ],
+   "conjunto": "prata",
+   "filtro": {
+    "oraculo_max": 0.1
+   },
+   "folhas": 19,
+   "folhas_perdidas_pelo_leiaute": 0,
+   "fora_pelo_filtro": [
+    {
+     "folha": 67,
+     "identidade": "d611aba22cf122df",
+     "motivo": "oraculo acima de 0.1"
+    },
+    {
+     "folha": 147,
+     "identidade": "d611aba22cf122df",
+     "motivo": "oraculo acima de 0.1"
+    },
+    {
+     "folha": 226,
+     "identidade": "d611aba22cf122df",
+     "motivo": "oraculo acima de 0.1"
+    },
+    {
+     "folha": 15,
+     "identidade": "a9c024a3cd4ebd2e",
+     "motivo": "oraculo acima de 0.1"
+    },
+    {
+     "folha": 39,
+     "identidade": "a9c024a3cd4ebd2e",
+     "motivo": "oraculo acima de 0.1"
+    },
+    {
+     "folha": 55,
+     "identidade": "a9c024a3cd4ebd2e",
+     "motivo": "oraculo acima de 0.1"
+    },
+    {
+     "folha": 31,
+     "identidade": "9267efd2d15c3bb8",
+     "motivo": "oraculo acima de 0.1"
+    },
+    {
+     "folha": 69,
+     "identidade": "9267efd2d15c3bb8",
+     "motivo": "oraculo acima de 0.1"
+    },
+    {
+     "folha": 106,
+     "identidade": "9267efd2d15c3bb8",
+     "motivo": "oraculo acima de 0.1"
+    },
+    {
+     "folha": 56,
+     "identidade": "9013f3b8725ba985",
+     "motivo": "oraculo acima de 0.1"
+    },
+    {
+     "folha": 118,
+     "identidade": "9013f3b8725ba985",
+     "motivo": "oraculo acima de 0.1"
+    }
+   ],
+   "guarda_de_notacao": {
+    "camada_prosa": {
+     "g1a_chegam_identicas": 843,
+     "g1a_figurinas": 843,
+     "g1a_fracao_fora_dos_vetos": 1.0,
+     "g1a_vetos_registrados": 0,
+     "g2_precisao": {
+      "delta_pp": -0.0,
+      "ic95_pp": [
+       -0.0,
+       -0.0
+      ],
+      "uso": "ordenação"
+     },
+     "g2_revocacao": {
+      "delta_pp": -0.0,
+      "ic95_pp": [
+       -0.0,
+       -0.0
+      ],
+      "uso": "ordenação"
+     }
+    },
+    "fusao": {
+     "g1a_chegam_identicas": 770,
+     "g1a_figurinas": 843,
+     "g1a_fracao_fora_dos_vetos": 1.0,
+     "g1a_vetos_registrados": 73,
+     "g2_precisao": {
+      "delta_pp": 17.632,
+      "ic95_pp": [
+       -0.0,
+       20.101
+      ],
+      "uso": "ordenação"
+     },
+     "g2_revocacao": {
+      "delta_pp": 41.615,
+      "ic95_pp": [
+       -0.0,
+       50.355
+      ],
+      "uso": "ordenação"
+     }
+    }
+   },
+   "linhas_da_camada_fora_por_cruzar_diagrama": 72,
+   "livros": 7,
+   "motores": {
+    "camada_prosa": {
+     "cru": {
+      "cer_espaco": 0.27728,
+      "cer_notacao": 0.23787,
+      "cer_outro": 0.15404,
+      "cer_prosa": 0.1027,
+      "cer_ruido": 0.42763,
+      "figurina_precisao": 0.94444,
+      "figurina_revocacao": 0.42236,
+      "ic95_prosa_dois_niveis": [
+       0.04196,
+       0.21376
+      ],
+      "insercoes": 890,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.79575,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 87,
+       "i": 144,
+       "n": 4754,
+       "s": 924
+      },
+      "wer_prosa_sdi": 0.24295
+     },
+     "tip": {
+      "cer_espaco": 0.27416,
+      "cer_notacao": 0.23156,
+      "cer_outro": 0.14398,
+      "cer_prosa": 0.10292,
+      "cer_ruido": 0.42642,
+      "figurina_precisao": 0.55738,
+      "figurina_revocacao": 0.42236,
+      "ic95_prosa_dois_niveis": [
+       0.04136,
+       0.21525
+      ],
+      "insercoes": 890,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.79584,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 87,
+       "i": 152,
+       "n": 4756,
+       "s": 924
+      },
+      "wer_prosa_sdi": 0.24453
+     }
+    },
+    "fusao": {
+     "cru": {
+      "cer_espaco": 0.29749,
+      "cer_notacao": 0.15457,
+      "cer_outro": 0.17298,
+      "cer_prosa": 0.0357,
+      "cer_ruido": 0.42372,
+      "figurina_precisao": 0.99265,
+      "figurina_revocacao": 0.83851,
+      "ic95_prosa_dois_niveis": [
+       0.02459,
+       0.05333
+      ],
+      "insercoes": 613,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.935,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 93,
+       "i": 48,
+       "n": 4754,
+       "s": 234
+      },
+      "wer_prosa_sdi": 0.07888
+     },
+     "tip": {
+      "cer_espaco": 0.29559,
+      "cer_notacao": 0.12324,
+      "cer_outro": 0.17016,
+      "cer_prosa": 0.03371,
+      "cer_ruido": 0.4234,
+      "figurina_precisao": 0.7337,
+      "figurina_revocacao": 0.83851,
+      "ic95_prosa_dois_niveis": [
+       0.0222,
+       0.0522
+      ],
+      "insercoes": 610,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.94491,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 93,
+       "i": 57,
+       "n": 4756,
+       "s": 187
+      },
+      "wer_prosa_sdi": 0.07086
+     }
+    },
+    "glifo": {
+     "cru": {
+      "cer_espaco": 0.27728,
+      "cer_notacao": 0.23787,
+      "cer_outro": 0.15404,
+      "cer_prosa": 0.1027,
+      "cer_ruido": 0.42763,
+      "figurina_precisao": 0.94444,
+      "figurina_revocacao": 0.42236,
+      "ic95_prosa_dois_niveis": [
+       0.04196,
+       0.21376
+      ],
+      "insercoes": 890,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.79575,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 87,
+       "i": 144,
+       "n": 4754,
+       "s": 924
+      },
+      "wer_prosa_sdi": 0.24295
+     },
+     "tip": {
+      "cer_espaco": 0.27416,
+      "cer_notacao": 0.23156,
+      "cer_outro": 0.14398,
+      "cer_prosa": 0.10292,
+      "cer_ruido": 0.42642,
+      "figurina_precisao": 0.55738,
+      "figurina_revocacao": 0.42236,
+      "ic95_prosa_dois_niveis": [
+       0.04136,
+       0.21525
+      ],
+      "insercoes": 890,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.79584,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 87,
+       "i": 152,
+       "n": 4756,
+       "s": 924
+      },
+      "wer_prosa_sdi": 0.24453
+     }
+    },
+    "tess": {
+     "cru": {
+      "cer_espaco": 0.29709,
+      "cer_notacao": 0.1331,
+      "cer_outro": 0.16781,
+      "cer_prosa": 0.03354,
+      "cer_ruido": 0.44114,
+      "figurina_precisao": 0.92715,
+      "figurina_revocacao": 0.86957,
+      "ic95_prosa_dois_niveis": [
+       0.02332,
+       0.0497
+      ],
+      "insercoes": 514,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.93584,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 102,
+       "i": 44,
+       "n": 4754,
+       "s": 221
+      },
+      "wer_prosa_sdi": 0.0772
+     },
+     "tip": {
+      "cer_espaco": 0.29519,
+      "cer_notacao": 0.10064,
+      "cer_outro": 0.16492,
+      "cer_prosa": 0.03162,
+      "cer_ruido": 0.44089,
+      "figurina_precisao": 0.92715,
+      "figurina_revocacao": 0.86957,
+      "ic95_prosa_dois_niveis": [
+       0.0214,
+       0.04784
+      ],
+      "insercoes": 514,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.94575,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 102,
+       "i": 48,
+       "n": 4756,
+       "s": 174
+      },
+      "wer_prosa_sdi": 0.06812
+     }
+    },
+    "tess_oraculo": {
+     "cru": {
+      "cer_espaco": 0.2114,
+      "cer_notacao": 0.11335,
+      "cer_outro": 0.0938,
+      "cer_prosa": 0.02003,
+      "cer_ruido": 0.43724,
+      "figurina_precisao": 0.9172,
+      "figurina_revocacao": 0.89441,
+      "ic95_prosa_dois_niveis": [
+       0.01383,
+       0.0319
+      ],
+      "insercoes": 80,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.9369,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 89,
+       "i": 4,
+       "n": 4754,
+       "s": 211
+      },
+      "wer_prosa_sdi": 0.06395
+     },
+     "tip": {
+      "cer_espaco": 0.21148,
+      "cer_notacao": 0.07761,
+      "cer_outro": 0.0925,
+      "cer_prosa": 0.01779,
+      "cer_ruido": 0.43727,
+      "figurina_precisao": 0.9172,
+      "figurina_revocacao": 0.89441,
+      "ic95_prosa_dois_niveis": [
+       0.01098,
+       0.02978
+      ],
+      "insercoes": 80,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.94743,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 90,
+       "i": 4,
+       "n": 4756,
+       "s": 160
+      },
+      "wer_prosa_sdi": 0.05341
+     }
+    },
+    "tess_pagina": {
+     "cru": {
+      "cer_espaco": 0.36257,
+      "cer_notacao": 0.12108,
+      "cer_outro": 0.2074,
+      "cer_prosa": 0.02969,
+      "cer_ruido": 0.45045,
+      "figurina_precisao": 0.91667,
+      "figurina_revocacao": 0.8882,
+      "ic95_prosa_dois_niveis": [
+       0.02005,
+       0.04557
+      ],
+      "insercoes": 695,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.93753,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 100,
+       "i": 97,
+       "n": 4754,
+       "s": 219
+      },
+      "wer_prosa_sdi": 0.08751
+     },
+     "tip": {
+      "cer_espaco": 0.3615,
+      "cer_notacao": 0.08699,
+      "cer_outro": 0.20506,
+      "cer_prosa": 0.02767,
+      "cer_ruido": 0.45024,
+      "figurina_precisao": 0.91667,
+      "figurina_revocacao": 0.8882,
+      "ic95_prosa_dois_niveis": [
+       0.01763,
+       0.04388
+      ],
+      "insercoes": 695,
+      "palavras_de_prosa_achadas_em_qualquer_ordem": 0.94765,
+      "uso": "ordenação",
+      "wer_partes": {
+       "d": 100,
+       "i": 99,
+       "n": 4756,
+       "s": 171
+      },
+      "wer_prosa_sdi": 0.0778
+     }
+    }
+   },
+   "palavras_de_prosa": 4756,
+   "pares": {
+    "camada_prosa - glifo (notacao)": {
+     "delta_pp": 0.0,
+     "folhas_melhores": 0,
+     "folhas_piores": 0,
+     "ic95_pp": [
+      0.0,
+      0.0
+     ],
+     "uso": "ordenação"
+    },
+    "camada_prosa - glifo (prosa)": {
+     "delta_pp": 0.0,
+     "folhas_melhores": 0,
+     "folhas_piores": 0,
+     "ic95_pp": [
+      0.0,
+      0.0
+     ],
+     "uso": "ordenação"
+    },
+    "fusao - camada_prosa (notacao)": {
+     "delta_pp": -10.832,
+     "folhas_melhores": 10,
+     "folhas_piores": 7,
+     "ic95_pp": [
+      -18.495,
+      6.28
+     ],
+     "uso": "ordenação"
+    },
+    "fusao - camada_prosa (prosa)": {
+     "delta_pp": -6.921,
+     "folhas_melhores": 19,
+     "folhas_piores": 0,
+     "ic95_pp": [
+      -17.587,
+      -1.52
+     ],
+     "uso": "ordenação"
+    },
+    "fusao - glifo (notacao)": {
+     "delta_pp": -10.832,
+     "folhas_melhores": 10,
+     "folhas_piores": 7,
+     "ic95_pp": [
+      -18.495,
+      6.28
+     ],
+     "uso": "ordenação"
+    },
+    "fusao - glifo (prosa)": {
+     "delta_pp": -6.921,
+     "folhas_melhores": 19,
+     "folhas_piores": 0,
+     "ic95_pp": [
+      -17.587,
+      -1.52
+     ],
+     "uso": "ordenação"
+    },
+    "fusao - tess (notacao)": {
+     "delta_pp": 2.26,
+     "folhas_melhores": 6,
+     "folhas_piores": 9,
+     "ic95_pp": [
+      -0.361,
+      8.835
+     ],
+     "uso": "ordenação"
+    },
+    "fusao - tess (prosa)": {
+     "delta_pp": 0.209,
+     "folhas_melhores": 7,
+     "folhas_piores": 11,
+     "ic95_pp": [
+      -0.166,
+      0.787
+     ],
+     "uso": "ordenação"
+    },
+    "tess - tess_oraculo (notacao)": {
+     "delta_pp": 2.303,
+     "folhas_melhores": 5,
+     "folhas_piores": 8,
+     "ic95_pp": [
+      -0.501,
+      4.77
+     ],
+     "uso": "ordenação"
+    },
+    "tess - tess_oraculo (prosa)": {
+     "delta_pp": 1.383,
+     "folhas_melhores": 2,
+     "folhas_piores": 16,
+     "ic95_pp": [
+      0.438,
+      2.687
+     ],
+     "uso": "ordenação"
+    }
+   },
+   "perda_de_leiaute": {
+    "cer_tess": 0.03162,
+    "cer_tess_oraculo": 0.01779,
+    "cer_tess_pagina": 0.02767,
+    "delta_pp": 1.383,
+    "folhas_melhores": 2,
+    "folhas_piores": 16,
+    "ic95_pp": [
+     0.438,
+     2.687
+    ],
+    "o_que_e": "CER de prosa (tess) - CER de prosa (tess_oraculo), mesmas folhas; negativo é permitido",
+    "por_livro": {
+     "05a0e10f297ee860": {
+      "cer_tess": 0.03982,
+      "cer_tess_oraculo": 0.00722,
+      "cer_tess_pagina": 0.01514,
+      "delta_pp": 3.26,
+      "folhas_melhores": 0,
+      "folhas_piores": 3,
+      "ic95_pp": [
+       0.232,
+       7.637
+      ],
+      "uso": "ordenação"
+     },
+     "0da3a0e835775d81": {
+      "cer_tess": 0.02158,
+      "cer_tess_oraculo": 0.02033,
+      "cer_tess_pagina": 0.02001,
+      "delta_pp": 0.125,
+      "folhas_melhores": 1,
+      "folhas_piores": 2,
+      "ic95_pp": [
+       -0.193,
+       0.397
+      ],
+      "uso": "ordenação"
+     },
+     "1033806d3d63e61e": {
+      "cer_tess": 0.04076,
+      "cer_tess_oraculo": 0.01857,
+      "cer_tess_pagina": 0.04545,
+      "delta_pp": 2.219,
+      "folhas_melhores": 0,
+      "folhas_piores": 3,
+      "ic95_pp": [
+       0.169,
+       9.329
+      ],
+      "uso": "ordenação"
+     },
+     "43beb378084291b0": {
+      "cer_tess": 0.01788,
+      "cer_tess_oraculo": 0.00746,
+      "cer_tess_pagina": 0.01602,
+      "delta_pp": 1.042,
+      "folhas_melhores": 0,
+      "folhas_piores": 3,
+      "ic95_pp": [
+       0.263,
+       1.861
+      ],
+      "uso": "ordenação"
+     },
+     "9013f3b8725ba985": {
+      "cer_tess": 0.10711,
+      "cer_tess_oraculo": 0.09309,
+      "cer_tess_pagina": 0.1021,
+      "delta_pp": 1.401,
+      "folhas_melhores": 0,
+      "folhas_piores": 1,
+      "ic95_pp": [
+       1.401,
+       1.401
+      ],
+      "uso": "ordenação"
+     },
+     "93cc211e9236033f": {
+      "cer_tess": 0.02862,
+      "cer_tess_oraculo": 0.02044,
+      "cer_tess_pagina": 0.02317,
+      "delta_pp": 0.818,
+      "folhas_melhores": 0,
+      "folhas_piores": 3,
+      "ic95_pp": [
+       0.17,
+       2.667
+      ],
+      "uso": "ordenação"
+     },
+     "c22d5e70aad4d523": {
+      "cer_tess": 0.02542,
+      "cer_tess_oraculo": 0.02203,
+      "cer_tess_pagina": 0.03107,
+      "delta_pp": 0.339,
+      "folhas_melhores": 1,
+      "folhas_piores": 1,
+      "ic95_pp": [
+       -0.074,
+       1.048
+      ],
+      "uso": "ordenação"
+     }
+    },
+    "uso": "ordenação"
+   },
+   "perfil": "",
+   "por_estrato": {
+    "ate_150": {
+     "folhas": 3,
+     "livros": 1,
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.38774,
+       "ic95_prosa_dois_niveis": [
+        0.33141,
+        0.4221
+       ],
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.03471,
+       "ic95_prosa_dois_niveis": [
+        0.01734,
+        0.051
+       ],
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.38774,
+       "ic95_prosa_dois_niveis": [
+        0.33141,
+        0.4221
+       ],
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.02158,
+       "ic95_prosa_dois_niveis": [
+        0.01541,
+        0.02941
+       ],
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.02033,
+       "ic95_prosa_dois_niveis": [
+        0.01663,
+        0.02544
+       ],
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.02001,
+       "ic95_prosa_dois_niveis": [
+        0.01441,
+        0.02862
+       ],
+       "uso": "ordenação"
+      }
+     }
+    },
+    "clearscan": {
+     "folhas": 9,
+     "livros": 3,
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.04373,
+       "ic95_prosa_dois_niveis": [
+        0.02053,
+        0.08273
+       ],
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.0275,
+       "ic95_prosa_dois_niveis": [
+        0.01445,
+        0.0497
+       ],
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.04373,
+       "ic95_prosa_dois_niveis": [
+        0.02053,
+        0.08273
+       ],
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.02702,
+       "ic95_prosa_dois_niveis": [
+        0.0157,
+        0.04772
+       ],
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.01453,
+       "ic95_prosa_dois_niveis": [
+        0.00771,
+        0.02267
+       ],
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.02906,
+       "ic95_prosa_dois_niveis": [
+        0.01518,
+        0.05212
+       ],
+       "uso": "ordenação"
+      }
+     }
+    },
+    "de_300": {
+     "folhas": 7,
+     "livros": 3,
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.09808,
+       "ic95_prosa_dois_niveis": [
+        0.03798,
+        0.3043
+       ],
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.04352,
+       "ic95_prosa_dois_niveis": [
+        0.02331,
+        0.12813
+       ],
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.09808,
+       "ic95_prosa_dois_niveis": [
+        0.03798,
+        0.3043
+       ],
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.04274,
+       "ic95_prosa_dois_niveis": [
+        0.02266,
+        0.10711
+       ],
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.0222,
+       "ic95_prosa_dois_niveis": [
+        0.00821,
+        0.09309
+       ],
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.02812,
+       "ic95_prosa_dois_niveis": [
+        0.01412,
+        0.1021
+       ],
+       "uso": "ordenação"
+      }
+     }
+    }
+   },
+   "por_livro": {
+    "05a0e10f297ee860": {
+     "estrato": "de_300",
+     "folhas": [
+      10,
+      18,
+      39
+     ],
+     "lingua": "fra",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.10317,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.0361,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.10317,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.03982,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.00722,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.01514,
+       "uso": "ordenação"
+      }
+     }
+    },
+    "0da3a0e835775d81": {
+     "estrato": "ate_150",
+     "folhas": [
+      27,
+      60,
+      92
+     ],
+     "lingua": "deu",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.38774,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.03471,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.38774,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.02158,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.02033,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.02001,
+       "uso": "ordenação"
+      }
+     }
+    },
+    "1033806d3d63e61e": {
+     "estrato": "clearscan",
+     "folhas": [
+      64,
+      157,
+      234
+     ],
+     "lingua": "eng",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.08088,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.04481,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.08088,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.04076,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.01857,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.04545,
+       "uso": "ordenação"
+      }
+     }
+    },
+    "43beb378084291b0": {
+     "estrato": "clearscan",
+     "folhas": [
+      280,
+      602,
+      927
+     ],
+     "lingua": "eng",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.02286,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.01726,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.02286,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.01788,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.00746,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.01602,
+       "uso": "ordenação"
+      }
+     }
+    },
+    "9013f3b8725ba985": {
+     "estrato": "de_300",
+     "folhas": [
+      177
+     ],
+     "lingua": "spa",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.3043,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.12813,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.3043,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.10711,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.09309,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.1021,
+       "uso": "ordenação"
+      }
+     }
+    },
+    "93cc211e9236033f": {
+     "estrato": "de_300",
+     "folhas": [
+      194,
+      434,
+      692
+     ],
+     "lingua": "eng",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.03598,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.02916,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.03598,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.02862,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.02044,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.02317,
+       "uso": "ordenação"
+      }
+     }
+    },
+    "c22d5e70aad4d523": {
+     "estrato": "clearscan",
+     "folhas": [
+      64,
+      145,
+      227
+     ],
+     "lingua": "eng",
+     "motores": {
+      "camada_prosa": {
+       "cer_prosa": 0.03249,
+       "uso": "ordenação"
+      },
+      "fusao": {
+       "cer_prosa": 0.02316,
+       "uso": "ordenação"
+      },
+      "glifo": {
+       "cer_prosa": 0.03249,
+       "uso": "ordenação"
+      },
+      "tess": {
+       "cer_prosa": 0.02542,
+       "uso": "ordenação"
+      },
+      "tess_oraculo": {
+       "cer_prosa": 0.02203,
+       "uso": "ordenação"
+      },
+      "tess_pagina": {
+       "cer_prosa": 0.03107,
+       "uso": "ordenação"
+      }
+     }
+    }
+   },
+   "preservacao_de_figurina_do_glifo": {
+    "camada_prosa": 1.0,
+    "fusao": 0.9134
+   },
+   "segundos_por_folha": {
+    "camada_prosa": 1.981,
+    "fusao": 2.756,
+    "glifo": 1.895,
+    "tess": 0.837,
+    "tess_oraculo": 0.831,
+    "tess_pagina": 0.868
+   },
+   "segundos_por_folha_p95": {
+    "camada_prosa": 3.579,
+    "fusao": 4.189,
+    "glifo": 3.537,
+    "tess": 1.317,
+    "tess_oraculo": 1.302,
+    "tess_pagina": 1.354
+   },
+   "split": "",
+   "taxonomia": {
+    "camada_prosa": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.1055,
+       "livros": {
+        "05a0e10f297ee860": 64,
+        "0da3a0e835775d81": 8,
+        "1033806d3d63e61e": 3,
+        "43beb378084291b0": 15,
+        "9013f3b8725ba985": 9,
+        "93cc211e9236033f": 3,
+        "c22d5e70aad4d523": 3
+       },
+       "palavras": 105
+      },
+      "acento": {
+       "fracao": 0.0111,
+       "livros": {
+        "05a0e10f297ee860": 8,
+        "0da3a0e835775d81": 1,
+        "43beb378084291b0": 1,
+        "9013f3b8725ba985": 1
+       },
+       "palavras": 11
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.009,
+       "livros": {
+        "05a0e10f297ee860": 1,
+        "0da3a0e835775d81": 2,
+        "1033806d3d63e61e": 6
+       },
+       "palavras": 9
+      },
+      "espaco": {
+       "fracao": 0.0764,
+       "livros": {
+        "05a0e10f297ee860": 29,
+        "0da3a0e835775d81": 28,
+        "1033806d3d63e61e": 7,
+        "43beb378084291b0": 4,
+        "9013f3b8725ba985": 4,
+        "93cc211e9236033f": 3,
+        "c22d5e70aad4d523": 1
+       },
+       "palavras": 76
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.0945,
+       "livros": {
+        "05a0e10f297ee860": 12,
+        "0da3a0e835775d81": 24,
+        "1033806d3d63e61e": 39,
+        "43beb378084291b0": 14,
+        "c22d5e70aad4d523": 5
+       },
+       "palavras": 94
+      },
+      "letra trocada": {
+       "fracao": 0.6131,
+       "livros": {
+        "05a0e10f297ee860": 106,
+        "0da3a0e835775d81": 318,
+        "1033806d3d63e61e": 85,
+        "43beb378084291b0": 22,
+        "9013f3b8725ba985": 36,
+        "93cc211e9236033f": 16,
+        "c22d5e70aad4d523": 27
+       },
+       "palavras": 610
+      },
+      "palavra cortada": {
+       "fracao": 0.0161,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 8,
+        "1033806d3d63e61e": 2,
+        "9013f3b8725ba985": 1,
+        "93cc211e9236033f": 1
+       },
+       "palavras": 16
+      },
+      "palavra perdida": {
+       "fracao": 0.0281,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 6,
+        "1033806d3d63e61e": 11,
+        "c22d5e70aad4d523": 7
+       },
+       "palavras": 28
+      },
+      "pontuacao": {
+       "fracao": 0.0442,
+       "livros": {
+        "05a0e10f297ee860": 14,
+        "0da3a0e835775d81": 6,
+        "1033806d3d63e61e": 10,
+        "43beb378084291b0": 6,
+        "93cc211e9236033f": 2,
+        "c22d5e70aad4d523": 6
+       },
+       "palavras": 44
+      },
+      "pontuacao+caixa": {
+       "fracao": 0.001,
+       "livros": {
+        "1033806d3d63e61e": 1
+       },
+       "palavras": 1
+      },
+      "traco vertical lido como ponto (l/I -> .)": {
+       "fracao": 0.001,
+       "livros": {
+        "0da3a0e835775d81": 1
+       },
+       "palavras": 1
+      }
+     },
+     "palavras_erradas": 995
+    },
+    "fusao": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.1075,
+       "livros": {
+        "0da3a0e835775d81": 14,
+        "1033806d3d63e61e": 2,
+        "43beb378084291b0": 12,
+        "c22d5e70aad4d523": 2
+       },
+       "palavras": 30
+      },
+      "aspas duplas": {
+       "fracao": 0.0036,
+       "livros": {
+        "0da3a0e835775d81": 1
+       },
+       "palavras": 1
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.0072,
+       "livros": {
+        "43beb378084291b0": 2
+       },
+       "palavras": 2
+      },
+      "espaco": {
+       "fracao": 0.0573,
+       "livros": {
+        "05a0e10f297ee860": 3,
+        "0da3a0e835775d81": 2,
+        "1033806d3d63e61e": 2,
+        "43beb378084291b0": 3,
+        "9013f3b8725ba985": 3,
+        "93cc211e9236033f": 1,
+        "c22d5e70aad4d523": 2
+       },
+       "palavras": 16
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.3011,
+       "livros": {
+        "05a0e10f297ee860": 23,
+        "0da3a0e835775d81": 26,
+        "1033806d3d63e61e": 10,
+        "43beb378084291b0": 16,
+        "c22d5e70aad4d523": 9
+       },
+       "palavras": 84
+      },
+      "juncao com vizinha (espaco perdido)": {
+       "fracao": 0.0108,
+       "livros": {
+        "43beb378084291b0": 2,
+        "9013f3b8725ba985": 1
+       },
+       "palavras": 3
+      },
+      "letra trocada": {
+       "fracao": 0.3369,
+       "livros": {
+        "05a0e10f297ee860": 5,
+        "0da3a0e835775d81": 12,
+        "1033806d3d63e61e": 30,
+        "43beb378084291b0": 3,
+        "9013f3b8725ba985": 23,
+        "93cc211e9236033f": 9,
+        "c22d5e70aad4d523": 12
+       },
+       "palavras": 94
+      },
+      "ligadura fi/fl com 1 a mais": {
+       "fracao": 0.0036,
+       "livros": {
+        "0da3a0e835775d81": 1
+       },
+       "palavras": 1
+      },
+      "palavra cortada": {
+       "fracao": 0.0179,
+       "livros": {
+        "05a0e10f297ee860": 3,
+        "1033806d3d63e61e": 1,
+        "93cc211e9236033f": 1
+       },
+       "palavras": 5
+      },
+      "palavra perdida": {
+       "fracao": 0.1111,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 7,
+        "1033806d3d63e61e": 11,
+        "c22d5e70aad4d523": 9
+       },
+       "palavras": 31
+      },
+      "pontuacao": {
+       "fracao": 0.0394,
+       "livros": {
+        "05a0e10f297ee860": 2,
+        "0da3a0e835775d81": 3,
+        "1033806d3d63e61e": 3,
+        "43beb378084291b0": 1,
+        "93cc211e9236033f": 1,
+        "c22d5e70aad4d523": 1
+       },
+       "palavras": 11
+      },
+      "traco vertical lido como ponto (l/I -> .)": {
+       "fracao": 0.0036,
+       "livros": {
+        "0da3a0e835775d81": 1
+       },
+       "palavras": 1
+      }
+     },
+     "palavras_erradas": 279
+    },
+    "glifo": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.1055,
+       "livros": {
+        "05a0e10f297ee860": 64,
+        "0da3a0e835775d81": 8,
+        "1033806d3d63e61e": 3,
+        "43beb378084291b0": 15,
+        "9013f3b8725ba985": 9,
+        "93cc211e9236033f": 3,
+        "c22d5e70aad4d523": 3
+       },
+       "palavras": 105
+      },
+      "acento": {
+       "fracao": 0.0111,
+       "livros": {
+        "05a0e10f297ee860": 8,
+        "0da3a0e835775d81": 1,
+        "43beb378084291b0": 1,
+        "9013f3b8725ba985": 1
+       },
+       "palavras": 11
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.009,
+       "livros": {
+        "05a0e10f297ee860": 1,
+        "0da3a0e835775d81": 2,
+        "1033806d3d63e61e": 6
+       },
+       "palavras": 9
+      },
+      "espaco": {
+       "fracao": 0.0764,
+       "livros": {
+        "05a0e10f297ee860": 29,
+        "0da3a0e835775d81": 28,
+        "1033806d3d63e61e": 7,
+        "43beb378084291b0": 4,
+        "9013f3b8725ba985": 4,
+        "93cc211e9236033f": 3,
+        "c22d5e70aad4d523": 1
+       },
+       "palavras": 76
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.0945,
+       "livros": {
+        "05a0e10f297ee860": 12,
+        "0da3a0e835775d81": 24,
+        "1033806d3d63e61e": 39,
+        "43beb378084291b0": 14,
+        "c22d5e70aad4d523": 5
+       },
+       "palavras": 94
+      },
+      "letra trocada": {
+       "fracao": 0.6131,
+       "livros": {
+        "05a0e10f297ee860": 106,
+        "0da3a0e835775d81": 318,
+        "1033806d3d63e61e": 85,
+        "43beb378084291b0": 22,
+        "9013f3b8725ba985": 36,
+        "93cc211e9236033f": 16,
+        "c22d5e70aad4d523": 27
+       },
+       "palavras": 610
+      },
+      "palavra cortada": {
+       "fracao": 0.0161,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 8,
+        "1033806d3d63e61e": 2,
+        "9013f3b8725ba985": 1,
+        "93cc211e9236033f": 1
+       },
+       "palavras": 16
+      },
+      "palavra perdida": {
+       "fracao": 0.0281,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 6,
+        "1033806d3d63e61e": 11,
+        "c22d5e70aad4d523": 7
+       },
+       "palavras": 28
+      },
+      "pontuacao": {
+       "fracao": 0.0442,
+       "livros": {
+        "05a0e10f297ee860": 14,
+        "0da3a0e835775d81": 6,
+        "1033806d3d63e61e": 10,
+        "43beb378084291b0": 6,
+        "93cc211e9236033f": 2,
+        "c22d5e70aad4d523": 6
+       },
+       "palavras": 44
+      },
+      "pontuacao+caixa": {
+       "fracao": 0.001,
+       "livros": {
+        "1033806d3d63e61e": 1
+       },
+       "palavras": 1
+      },
+      "traco vertical lido como ponto (l/I -> .)": {
+       "fracao": 0.001,
+       "livros": {
+        "0da3a0e835775d81": 1
+       },
+       "palavras": 1
+      }
+     },
+     "palavras_erradas": 995
+    },
+    "tess": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.0764,
+       "livros": {
+        "0da3a0e835775d81": 3,
+        "1033806d3d63e61e": 1,
+        "43beb378084291b0": 15,
+        "c22d5e70aad4d523": 2
+       },
+       "palavras": 21
+      },
+      "aspas duplas": {
+       "fracao": 0.0073,
+       "livros": {
+        "0da3a0e835775d81": 2
+       },
+       "palavras": 2
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.0073,
+       "livros": {
+        "43beb378084291b0": 2
+       },
+       "palavras": 2
+      },
+      "espaco": {
+       "fracao": 0.0473,
+       "livros": {
+        "05a0e10f297ee860": 3,
+        "0da3a0e835775d81": 2,
+        "1033806d3d63e61e": 2,
+        "43beb378084291b0": 3,
+        "9013f3b8725ba985": 2,
+        "93cc211e9236033f": 1
+       },
+       "palavras": 13
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.3527,
+       "livros": {
+        "05a0e10f297ee860": 23,
+        "0da3a0e835775d81": 31,
+        "1033806d3d63e61e": 12,
+        "43beb378084291b0": 21,
+        "c22d5e70aad4d523": 10
+       },
+       "palavras": 97
+      },
+      "letra trocada": {
+       "fracao": 0.3345,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 12,
+        "1033806d3d63e61e": 29,
+        "43beb378084291b0": 3,
+        "9013f3b8725ba985": 22,
+        "93cc211e9236033f": 9,
+        "c22d5e70aad4d523": 13
+       },
+       "palavras": 92
+      },
+      "palavra cortada": {
+       "fracao": 0.0255,
+       "livros": {
+        "05a0e10f297ee860": 3,
+        "1033806d3d63e61e": 1,
+        "9013f3b8725ba985": 2,
+        "93cc211e9236033f": 1
+       },
+       "palavras": 7
+      },
+      "palavra perdida": {
+       "fracao": 0.1055,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 4,
+        "1033806d3d63e61e": 11,
+        "c22d5e70aad4d523": 10
+       },
+       "palavras": 29
+      },
+      "pontuacao": {
+       "fracao": 0.04,
+       "livros": {
+        "05a0e10f297ee860": 2,
+        "0da3a0e835775d81": 2,
+        "1033806d3d63e61e": 3,
+        "43beb378084291b0": 1,
+        "9013f3b8725ba985": 1,
+        "93cc211e9236033f": 1,
+        "c22d5e70aad4d523": 1
+       },
+       "palavras": 11
+      },
+      "traco vertical lido como ponto (l/I -> .)": {
+       "fracao": 0.0036,
+       "livros": {
+        "0da3a0e835775d81": 1
+       },
+       "palavras": 1
+      }
+     },
+     "palavras_erradas": 275
+    },
+    "tess_oraculo": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.0876,
+       "livros": {
+        "0da3a0e835775d81": 4,
+        "1033806d3d63e61e": 1,
+        "43beb378084291b0": 15,
+        "c22d5e70aad4d523": 2
+       },
+       "palavras": 22
+      },
+      "aspas duplas": {
+       "fracao": 0.008,
+       "livros": {
+        "0da3a0e835775d81": 2
+       },
+       "palavras": 2
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.004,
+       "livros": {
+        "43beb378084291b0": 1
+       },
+       "palavras": 1
+      },
+      "espaco": {
+       "fracao": 0.0319,
+       "livros": {
+        "05a0e10f297ee860": 3,
+        "0da3a0e835775d81": 1,
+        "1033806d3d63e61e": 1,
+        "9013f3b8725ba985": 2,
+        "c22d5e70aad4d523": 1
+       },
+       "palavras": 8
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.3865,
+       "livros": {
+        "05a0e10f297ee860": 13,
+        "0da3a0e835775d81": 36,
+        "1033806d3d63e61e": 12,
+        "43beb378084291b0": 21,
+        "9013f3b8725ba985": 1,
+        "c22d5e70aad4d523": 14
+       },
+       "palavras": 97
+      },
+      "letra trocada": {
+       "fracao": 0.3745,
+       "livros": {
+        "0da3a0e835775d81": 10,
+        "1033806d3d63e61e": 29,
+        "43beb378084291b0": 6,
+        "9013f3b8725ba985": 21,
+        "93cc211e9236033f": 10,
+        "c22d5e70aad4d523": 18
+       },
+       "palavras": 94
+      },
+      "palavra cortada": {
+       "fracao": 0.0199,
+       "livros": {
+        "0da3a0e835775d81": 3,
+        "1033806d3d63e61e": 1,
+        "9013f3b8725ba985": 1
+       },
+       "palavras": 5
+      },
+      "palavra perdida": {
+       "fracao": 0.0478,
+       "livros": {
+        "0da3a0e835775d81": 4,
+        "9013f3b8725ba985": 4,
+        "c22d5e70aad4d523": 4
+       },
+       "palavras": 12
+      },
+      "pontuacao": {
+       "fracao": 0.0398,
+       "livros": {
+        "05a0e10f297ee860": 2,
+        "0da3a0e835775d81": 1,
+        "1033806d3d63e61e": 3,
+        "43beb378084291b0": 2,
+        "93cc211e9236033f": 1,
+        "c22d5e70aad4d523": 1
+       },
+       "palavras": 10
+      }
+     },
+     "palavras_erradas": 251
+    },
+    "tess_pagina": {
+     "familias": {
+      "1/l/I/|": {
+       "fracao": 0.0706,
+       "livros": {
+        "0da3a0e835775d81": 2,
+        "43beb378084291b0": 15,
+        "c22d5e70aad4d523": 2
+       },
+       "palavras": 19
+      },
+      "aspas duplas": {
+       "fracao": 0.0074,
+       "livros": {
+        "0da3a0e835775d81": 2
+       },
+       "palavras": 2
+      },
+      "caixa (maiusc/minusc)": {
+       "fracao": 0.0037,
+       "livros": {
+        "43beb378084291b0": 1
+       },
+       "palavras": 1
+      },
+      "espaco": {
+       "fracao": 0.0446,
+       "livros": {
+        "05a0e10f297ee860": 4,
+        "0da3a0e835775d81": 2,
+        "1033806d3d63e61e": 3,
+        "43beb378084291b0": 1,
+        "9013f3b8725ba985": 1,
+        "93cc211e9236033f": 1
+       },
+       "palavras": 12
+      },
+      "fronteira (espaco perdido junto a vizinha)": {
+       "fracao": 0.3532,
+       "livros": {
+        "05a0e10f297ee860": 22,
+        "0da3a0e835775d81": 33,
+        "1033806d3d63e61e": 11,
+        "43beb378084291b0": 19,
+        "c22d5e70aad4d523": 10
+       },
+       "palavras": 95
+      },
+      "juncao com vizinha (espaco perdido)": {
+       "fracao": 0.0037,
+       "livros": {
+        "9013f3b8725ba985": 1
+       },
+       "palavras": 1
+      },
+      "letra trocada": {
+       "fracao": 0.342,
+       "livros": {
+        "05a0e10f297ee860": 1,
+        "0da3a0e835775d81": 12,
+        "1033806d3d63e61e": 30,
+        "43beb378084291b0": 5,
+        "9013f3b8725ba985": 20,
+        "93cc211e9236033f": 9,
+        "c22d5e70aad4d523": 15
+       },
+       "palavras": 92
+      },
+      "palavra cortada": {
+       "fracao": 0.026,
+       "livros": {
+        "1033806d3d63e61e": 1,
+        "9013f3b8725ba985": 6
+       },
+       "palavras": 7
+      },
+      "palavra perdida": {
+       "fracao": 0.1115,
+       "livros": {
+        "05a0e10f297ee860": 5,
+        "0da3a0e835775d81": 3,
+        "1033806d3d63e61e": 13,
+        "9013f3b8725ba985": 1,
+        "c22d5e70aad4d523": 8
+       },
+       "palavras": 30
+      },
+      "pontuacao": {
+       "fracao": 0.0335,
+       "livros": {
+        "05a0e10f297ee860": 1,
+        "0da3a0e835775d81": 1,
+        "1033806d3d63e61e": 3,
+        "43beb378084291b0": 1,
+        "9013f3b8725ba985": 1,
+        "93cc211e9236033f": 1,
+        "c22d5e70aad4d523": 1
+       },
+       "palavras": 9
+      },
+      "traco vertical lido como ponto (l/I -> .)": {
+       "fracao": 0.0037,
+       "livros": {
+        "0da3a0e835775d81": 1
+       },
+       "palavras": 1
+      }
+     },
+     "palavras_erradas": 269
+    }
+   },
+   "uso": "ordenação"
+  }
+ },
+ "item": "Portões G102, G103 e G4: a fusão, o glifo e a camada na prosa, com a máquina parada",
+ "medido_em": "2026-11-06",
+ "motores": {
+  "auto": "o padrão de hoje, que é o glifo",
+  "tess": "Tesseract nas caixas do glifo",
+  "tess_oraculo": "Tesseract nas linhas visuais da camada",
+  "tess_pagina": "Tesseract na folha inteira, psm 3"
+ },
+ "pergunta": "Quanto cada motor erra na prosa (o texto que não é lance nem avaliação), por conjunto?",
+ "referencia": "a camada montada por ler_pagina(motor='camada'), sem as linhas que cruzam diagrama e sem as de nenhuma palavra nem lance que cruzam o retângulo crescido de uma casa",
+ "regua": {
+  "classes": [
+   "prosa",
+   "notacao",
+   "outro",
+   "ruido",
+   "espaco"
+  ],
+  "classificador": "s701-2026-11-06",
+  "estatistica": "IC95 em dois níveis (livro, folha), 2000 reamostras, semente 7",
+  "modulo": "src/chess_diagram_ocr/text/regua_prosa.py",
+  "normalizacoes": [
+   "tip",
+   "cru"
+  ]
+ },
+ "ressalvas": [
+  "ouro_teste foi lido uma vez para os portões G102 e G103, com o código congelado no commit em codigo; só agregados, e nada se ajusta depois.",
+  "ouro_dev é dev contaminado; prata só ordena."
+ ]
+}

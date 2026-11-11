@@ -77,6 +77,14 @@ EXCECOES = {
         "é uma escrita atômica própria -- temporário vizinho, fsync e os.replace -- com a releitura "
         "que confere o conteúdo antes da troca, que o atomic_io não faz"
     ),
+    "cli/texto_prosa.py::medir": (
+        "o JSONL da coleta da régua (S-706) é o registro de eventos da S-24 com outro dono: uma folha por linha, "
+        "acrescentada assim que lida, para a coleta de horas retomar de onde parou; a linha rasgada não parseia e é refeita"
+    ),
+    "text/transcricao_scan.py::CadernoDaPassada.gravar": (
+        "o caderno da transcrição do scan-ouro (S-703) só cresce, com fsync a cada folha: são horas de digitação, "
+        "e reescrevê-lo inteiro por troca atômica arriscaria todas para guardar uma; a linha cortada é isolada pela quebra"
+    ),
     "cli/provenance.py::_run_build": (
         "`indice.save(...)` é o ProvenanceIndex.save do projeto, não o da Pillow: ele grava por "
         "atomic_write_bytes, e esta mesma varredura o confere em provenance.py"
@@ -97,7 +105,7 @@ que a S-818 levou o PGN exportado ao `atomic_write_text`; e o `atomic_io.py` sai
 `write_image` dele passou a gravar pelo mesmo caminho que os outros escritores do módulo.
 """
 
-TETO_DE_EXCECOES = 4
+TETO_DE_EXCECOES = 6
 """**A catraca.** Só desce. Subir é decisão de revisão, não efeito colateral de um commit."""
 
 

@@ -1225,6 +1225,10 @@ Por isso o comando **não grava por padrão**: `--match` relata a taxa e o histo
 distância, e `--apply` é um segundo passo. O histograma existe exatamente para que o limiar
 seja escolhido olhando dados em vez de herdado desta linha.
 
+**Indexado em 2026-11-06**, e o que sobra é a decisão de gravar: 1.038 das 3.356 órfãs casam a 0 bits,
+e o resto é um platô de impostores, então o limiar de 6 bits não serve
+([metrics/provenance_match_20261106.json](metrics/provenance_match_20261106.json)).
+
 **O que falta, e é decisão sua:** indexar os 27 PDFs (~12 mil páginas, horas de CPU). Sem
 isso não há taxa real sobre os 3.195 órfãos — só a garantia de que o mecanismo acerta quando
 tem o que casar.
@@ -1911,7 +1915,7 @@ Se houver duas semanas:
 | 10a | **S-51 (`LabelStore`)** | o `labels.csv` passa a ter uma porta, e o campo novo da S-52 tem onde entrar | ✅ |
 | 10b | **S-52, metade: `corrected_by`** | a coluna sai de 0 de 3.313 preenchidas; a outra metade (hash perceptual) precisa de horas de CPU | ✅ metade |
 | 10c | **S-52, metade: procedência por hash perceptual** | `provenance.py` + `cvoff-provenance`; validado contra verdade de referência (12/12 na página certa) | ✅ código |
-| 10d | S-52 — **indexar o acervo e medir** | `cvoff-provenance --build` nos 32 PDFs (~12 mil páginas). Horas de CPU; é a sua decisão de quando | ← **a única pendência que sobrou** |
+| 10d | S-52 — **indexar o acervo e medir** | `cvoff-provenance --build` nos 32 PDFs (~12 mil páginas). Horas de CPU; é a sua decisão de quando | ← **a única pendência que sobrou** *(em 2026-11-06 segue sem rodar: `data/provenance_index.jsonl` não existe. O `labels.csv` declara `source_pdf` em 16.495 de 19.851 linhas, então o índice só serviria às outras 3.356)* |
 | 11–14 | **S-47 a S-50** (as extrações) | por último de propósito: refatorar antes de medir é refatorar no escuro | ✅ |
 | 15 | **S-53** (`ttkbootstrap` + gatilhos de Qt) | a única mudança de UI que não fecha porta nenhuma | ✅ |
 | 16 | **S-54** (o Streamlit) | a pior saída era continuar sem escolher. Aposentado | ✅ |
@@ -1931,7 +1935,7 @@ de varredura:
 | — | **S-71** (lance e o verde de "já salvo") | "onde eu parei neste livro?", respondido pelo CSV antes de qualquer OCR | ✅ |
 | — | **S-72** (base por nome) | a legenda dá o nome e cala sobre o resto: 12,6% com jogadores, 1,1% com ano | ✅ medido |
 | — | **S-73** (base por posição) | 54,2% das posições do livro estão numa partida real, e o custo é por varredura e não por livro | ✅ medido |
-| — | **medir um segundo livro** | o livro medido é do Dvoretsky, feito de partidas reais — é o melhor caso possível | ← pendente |
+| — | **medir um segundo livro** | o livro medido é do Dvoretsky, feito de partidas reais — é o melhor caso possível | ← pendente *(feito: a tabela da seção 13.1 mede quatro livros, de 0% a 54,3%, com 46,1% no total)* |
 
 A ordem tem uma regra: **medição antes de mudança, e mudança antes de refatoração.** É a
 mesma que as Fases 1 a 6 seguiram, e é o que permitiu à Fase 5 descartar TTA, pesos de classe
@@ -1969,10 +1973,10 @@ Nenhum foi adiado por preguiça. Os quatro têm número:
 
 | pendência | o que falta | custo |
 |---|---|---|
-| **Crescer o conjunto de campo** | a S-41 planejava 60 páginas e entregou 15. **É a pendência que destrava as outras**: quatro itens desta fase foram julgados por uma métrica que hoje não tem resolução para julgá-los | ~2 h suas |
-| **Anotar os livros hachurados** | os 8 diagramas barrados estão todos abaixo de 0,43 — falha de domínio, não de margem | tempo seu |
-| **S-52** (procedência) | `cvoff-provenance --build` nos 32 PDFs, depois `--match` | horas de CPU |
-| **Retreinar produção com `mhsp`** | `models/s40_mhsp_16ep.pt` domina o controle em tudo que é mensurável hoje. A troca do padrão de `AugmentConfig()` espera o item 1 | decisão sua |
+| **Crescer o conjunto de campo** | a S-41 planejava 60 páginas e entregou 15. **É a pendência que destrava as outras**: quatro itens desta fase foram julgados por uma métrica que hoje não tem resolução para julgá-los | ~2 h suas. *Feito: S-99 em 2026-08-22; hoje são 68 páginas e 115 diagramas (2026-11-06)* |
+| **Anotar os livros hachurados** | os 8 diagramas barrados estão todos abaixo de 0,43 — falha de domínio, não de margem | tempo seu. *Feito: 13 páginas no regime `scan-hachurado`, 21 diagramas, todos com FEN (2026-11-06)* |
+| **S-52** (procedência) | `cvoff-provenance --build` nos 32 PDFs, depois `--match` | horas de CPU. *Segue sem rodar em 2026-11-06* |
+| **Retreinar produção com `mhsp`** | `models/s40_mhsp_16ep.pt` domina o controle em tudo que é mensurável hoje. A troca do padrão de `AugmentConfig()` espera o item 1 | decisão sua. *Decidido em 2026-08-16: não (`ROADMAP_FASE14.md`, S-107)* |
 
 ### O que este dia mediu, e que vale mais que os vereditos
 

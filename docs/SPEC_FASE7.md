@@ -30,7 +30,7 @@ motiva cada item: [ROADMAP_FASE7.md](ROADMAP_FASE7.md).
 > | S-585 a S-598 | [ROADMAP_PDF_COM_PGN.md](ROADMAP_PDF_COM_PGN.md) |
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
-> | S-702, S-710 a S-712, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
+> | S-700 a S-772 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
 > | S-800 a S-910 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
 
 > **Ressalva de 2026-08-16.** Quatro itens deste documento — **S-38b, S-40, S-62a e S-62b** —
@@ -1826,6 +1826,13 @@ por `LabelStore` é byte a byte igual ao de hoje para a mesma entrada.
 >
 > **Não feito: a varredura do acervo.** Indexar os 27 PDFs (~12 mil páginas) é horas de CPU e
 > uma decisão de quando, como a medição da S-40. Sem ela não há taxa real sobre os 3.195.
+>
+> **Medida em 2026-11-06** ([metrics/provenance_match_20261106.json](metrics/provenance_match_20261106.json)):
+> 43.389 entradas de índice, 3.356 órfãs. No limiar padrão de 6 bits casam 1.339 (39,9%) e 494 saem
+> ambíguas, mas o histograma é **1.038 a 0 bits e um platô de ~125 por bit** até 12 bits. Platô é
+> impostor: casamento verdadeiro com ruído cairia com a distância. O limiar de 6 herdado da S-52 não
+> serve, e a recomendação é `--apply --max-distance 0`, com a conferência de uma amostra. Gravar no
+> `labels.csv` continua decisão do dono, e não foi feito.
 
 **Problema.** Medido no `data/labels.csv` de 3.241 linhas:
 

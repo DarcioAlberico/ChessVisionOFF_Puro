@@ -1,0 +1,20 @@
+{
+ "rotulo": "canário de camada, não humano",
+ "nota": "A referência é a camada do próprio livro digital admitido, porque a humana depende da S-703 e da D3. Ver a spec da S-763. Só o dev: eng e por.",
+ "folhas": [
+  {
+   "identidade": "18d93bd07b7a826c",
+   "folha": 643,
+   "lingua": "eng",
+   "motor": "fusao",
+   "cer_de_base": 0.0
+  },
+  {
+   "identidade": "69343a5746264fae",
+   "folha": 186,
+   "lingua": "por",
+   "motor": "fusao",
+   "cer_de_base": 0.0
+  }
+ ]
+}

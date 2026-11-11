@@ -46,7 +46,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
-from typing import Any
+from time import perf_counter
+from typing import Any, Literal
 
 from ..atomic_io import atomic_write_text
 from ..config import PROJECT_ROOT
@@ -126,8 +127,6 @@ def _custo_de_hoje(pdf: Path, indice: int, *, dpi: int, sessao: Any) -> float:
     vez por livro, então contá-la por página inflava o lado *hoje* da divisão e fazia o fator
     sair **menor** do que é. O erro tinha o sinal cômodo, que é o pior tipo.
     """
-    from time import perf_counter
-
     from ..pdf_to_pgn import iter_pdf_diagrams
 
     inicio = perf_counter()
@@ -169,12 +168,22 @@ def _modelo_emprestado(modelo: Path) -> Iterator[tuple[Any, str]]:
     yield load_model(modelo)
 
 
-def _medir_pagina(pdf: Path, indice: int, *, dpi: int, reconhecedor: Any) -> _custo.Cronometro:
-    """O cronômetro de uma leitura de página, com as nove etapas envolvidas."""
+MOTOR_MEDIDO: Literal["glifo"] = "glifo"
+"""O motor cujo custo este comando mede por omissão, escrito aqui e no relatório: virar o padrão não o muda (S-727)."""
+
+MOTORES_MEDIVEIS = ("glifo", "fusao")
+"""`fusao` é a S-725, com a reserva, como a janela: é a resposta à D4. **O cache fica desligado**: ele é da janela, e o G4 se mede sem ele."""
+
+
+def _medir_pagina(
+    pdf: Path, indice: int, *, dpi: int, reconhecedor: Any, motor: str = MOTOR_MEDIDO, lingua: str = "eng"
+) -> _custo.Cronometro:
+    """O cronômetro de uma leitura de página, com as etapas envolvidas."""
     from ..text.leitor import ler_pagina
 
+    pedido: dict[str, Any] = {"lingua": lingua, "reserva": True} if motor != MOTOR_MEDIDO else {}
     with _custo.medindo() as relogio:
-        ler_pagina(pdf, indice, dpi=dpi, motor="glifo", reconhecedor=reconhecedor)
+        ler_pagina(pdf, indice, dpi=dpi, motor=motor, reconhecedor=reconhecedor, **pedido)  # type: ignore[arg-type]
     return relogio
 
 
@@ -196,6 +205,7 @@ def relatorio(
     *,
     hoje_por_pagina: float,
     paginas_do_acervo: int,
+    motor: str = MOTOR_MEDIDO,
 ) -> tuple[str, dict[str, Any]]:
     """`(a tabela para a tela, o dicionário para o JSON)`.
 
@@ -238,6 +248,7 @@ def relatorio(
     dados.update(
         {
             "item": "S-215",
+            "motor": motor,
             "hoje_por_pagina": round(hoje_por_pagina, 4),
             "texto_por_pagina": round(texto_por_pagina, 4),
             "total_por_pagina": round(total_por_pagina, 4),
@@ -292,6 +303,10 @@ def main(argv: list[str] | None = None) -> int:
         default=_custo.MARGEM_PADRAO,
         help=f"Quanto pode piorar antes de --baseline acusar. Padrão: {_custo.MARGEM_PADRAO}.",
     )
+    parser.add_argument("--motor", choices=MOTORES_MEDIVEIS, default=MOTOR_MEDIDO, help=f"Que leitura medir. Padrão: {MOTOR_MEDIDO}.")
+    parser.add_argument("--lingua", default="eng", help="A língua do Tesseract, com --motor fusao. Padrão: eng.")
+    parser.add_argument("--limite-segundos", type=float, default=0.0, help="Para depois da página em curso, e publica o que mediu.")
+    parser.add_argument("--ressalva", action="append", default=[], help="Frase para a chave ressalvas do relatório.")
     add_verbose(parser)
     args = parser.parse_args(argv)
 
@@ -330,6 +345,8 @@ def main(argv: list[str] | None = None) -> int:
     hoje_total = 0.0
     medidas = 0
 
+    inicio = perf_counter()
+    parou = False
     with _modelo_emprestado(args.model) as sessao_do_modelo:
         # `contextmanager` devolve um objeto de uso unico, e `iter_pdf_diagrams` faz `with` nele a
         # cada pagina. O que se empresta e um envoltorio que devolve sempre o mesmo par ja
@@ -340,10 +357,18 @@ def main(argv: list[str] | None = None) -> int:
                 total_de_paginas = doc.page_count
             indices = paginas_amostradas(total_de_paginas, args.paginas_por_livro)
             for indice in indices:
+                if args.limite_segundos and perf_counter() - inicio > args.limite_segundos:
+                    parou = True
+                    break
                 logger.info("%s p%d", pdf.name, indice + 1)
                 hoje_total += _custo_de_hoje(pdf, indice, dpi=args.dpi, sessao=emprestimo)
-                _acumular(acumulado, _medir_pagina(pdf, indice, dpi=args.dpi, reconhecedor=reconhecedor))
+                _acumular(
+                    acumulado,
+                    _medir_pagina(pdf, indice, dpi=args.dpi, reconhecedor=reconhecedor, motor=args.motor, lingua=args.lingua),
+                )
                 medidas += 1
+            if parou:
+                break
 
     if not medidas:
         logger.error("Nenhuma página foi medida.")
@@ -354,8 +379,13 @@ def main(argv: list[str] | None = None) -> int:
         perfil,
         hoje_por_pagina=hoje_total / medidas,
         paginas_do_acervo=args.paginas_do_acervo,
+        motor=args.motor,
     )
     dados["livros"] = [pdf.name for pdf in livros]
+    if parou:
+        dados["parou_pelo_limite"] = args.limite_segundos
+    if args.ressalva:
+        dados["ressalvas"] = list(args.ressalva)
     print(tabela)
 
     if args.baseline is not None:

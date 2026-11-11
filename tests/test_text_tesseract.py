@@ -7,6 +7,7 @@ import subprocess
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -280,6 +281,60 @@ class IntegracaoTests(unittest.TestCase):
         lidas = tesseract.ler_linhas([self._recorte("White wins"), self._recorte("the knight")], lingua="eng")
         self.assertEqual(lidas[0].texto, "White wins")
         self.assertEqual(lidas[1].texto, "the knight")
+
+
+
+class AjustesDaS721Tests(unittest.TestCase):
+    """Os três ajustes que a S-720 adiou, atrás de constante, e o `rus+eng` da S-729."""
+
+    def _comando(self, **opcoes: object) -> list[str]:
+        vistos: list[list[str]] = []
+
+        class Processo:
+            returncode = 0
+            _handle = 0
+
+            def communicate(self, *_a: object, **_k: object) -> tuple[bytes, bytes]:
+                return (b"", b"")
+
+        def popen(comando: list[str], **_k: object) -> Processo:
+            vistos.append(comando)
+            return Processo()
+
+        motor = tesseract.Motor(binario=Path("C:/t/tesseract.exe"), tessdata=None, versao="5.5")
+        with mock.patch.object(tesseract, "_no_trabalho"):
+            tesseract.rodar(motor, b"x", dpi=220, psm=7, timeout=1.0, popen=popen, **opcoes)  # type: ignore[arg-type]
+        return vistos[0]
+
+    def test_o_russo_vai_com_o_ingles_ao_lado(self) -> None:
+        self.assertIn("rus+eng", self._comando(lingua="rus"))
+        with mock.patch.object(tesseract, "RUS_COM_ENG", False):
+            self.assertNotIn("rus+eng", self._comando(lingua="rus"))
+        self.assertIn("deu", self._comando(lingua="deu"))
+
+    def test_as_opcoes_e_o_formato_chegam_ao_comando(self) -> None:
+        comando = self._comando(lingua="eng", opcoes=("-c", "lstm_choice_mode=2"), formato="hocr")
+        self.assertEqual("hocr", comando[-1])
+        self.assertIn("lstm_choice_mode=2", comando)
+
+    def test_as_palavras_do_usuario_so_entram_com_lista(self) -> None:
+        self.assertNotIn("--user-words", self._comando(lingua="eng"))
+        with mock.patch.object(tesseract, "PALAVRAS_DO_USUARIO", Path("C:/t/nomes.txt")):
+            self.assertIn("--user-words", self._comando(lingua="eng"))
+
+    def test_a_altura_x_mede_a_faixa_mais_cheia(self) -> None:
+        linha = np.full((40, 200), 255, dtype=np.uint8)
+        linha[10:24, 10:190] = 0  # corpo da letra, 14 px
+        linha[4:10, 20:30] = 0  # ascendente, pouca tinta
+        self.assertEqual(14.0, tesseract.altura_x(linha))
+
+    def test_a_escala_leva_a_altura_x_ao_alvo_e_fora_dela_nao_mexe(self) -> None:
+        linha = np.full((40, 200), 255, dtype=np.uint8)
+        linha[10:20, 10:190] = 0
+        self.assertAlmostEqual(20.0, tesseract.altura_x(tesseract.escalado(linha)) or 0, delta=2)
+        no_alvo = np.full((60, 200), 255, dtype=np.uint8)
+        no_alvo[10:35, 10:190] = 0
+        self.assertIs(no_alvo, tesseract.escalado(no_alvo))
 
 
 if __name__ == "__main__":

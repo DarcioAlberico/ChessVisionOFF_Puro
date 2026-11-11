@@ -550,6 +550,7 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("ler_folha_de_novo", "Ler a folha de novo (o motor relê o que está no caderno)", OCR, estilos.NEUTRO, rotulo_curto="Ler de novo"),
     Comando("voltar_a_versao_anterior", "Voltar à versão anterior desta folha", EDICAO, estilos.NEUTRO, rotulo_curto="Versão anterior"),
     Comando("descartar_correcoes", "Descartar as correções desta folha…", EDICAO, estilos.NEUTRO, rotulo_curto="Descartar correções…"),
+    Comando("corrigir_em_todas_as_folhas", "Corrigir em todas as folhas do caderno…", EDICAO, estilos.NEUTRO, rotulo_curto="Em todas as folhas…"),
     # Os diagramas no texto (Fase 92): a preferência e o tamanho são vista; alinhar os da folha é edição.
     Comando("diagramas_a_esquerda", "Diagramas no texto à esquerda (o padrão é ao centro)", VISUALIZACAO, estilos.NEUTRO, rotulo_curto="Diagramas à esquerda"),
     Comando(
@@ -700,19 +701,15 @@ CATALOGO: tuple[Comando, ...] = (
     # `estilos.PRIMARIO` é "a ação que o atalho de teclado também faz", e `Ler folha` não tem
     # tecla -- a ênfase de hoje já contrariava o critério, e é ela que sai.
     Comando("ler_folha", "Ler o texto desta folha", OCR, estilos.NEUTRO, rotulo_curto="Ler folha"),
+    Comando("lingua_do_livro", "Língua do livro…", OCR, estilos.NEUTRO, rotulo_curto="Língua"),
+    Comando("modo_transcricao", "Modo transcrição: digitar a verdade do scan-ouro, às cegas", OCR, estilos.NEUTRO, rotulo_curto="Transcrever"),
+    Comando("limpar_cache_de_leitura", "Limpar o cache de leitura", OCR, estilos.NEUTRO, rotulo_curto="Limpar cache"),
     Comando(
         "folha_da_pagina_aberta",
         "Pôr no campo a folha que o visualizador mostra",
         OCR,
         estilos.NEUTRO,
         rotulo_curto="Da página aberta",
-    ),
-    Comando(
-        "modo_bloco",
-        "Ler o texto em modo bloco (lento)",
-        OCR,
-        estilos.NEUTRO,
-        rotulo_curto="Modo bloco (lento)",
     ),
     Comando(
         "selecionar_area",

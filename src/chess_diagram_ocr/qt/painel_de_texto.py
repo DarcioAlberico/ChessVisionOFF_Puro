@@ -48,11 +48,12 @@ import time
 from collections.abc import Callable, Iterable, Sequence
 from functools import partial
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QKeyEvent, QKeySequence, QShortcut
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QTextEdit, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QMenu, QTextEdit, QVBoxLayout, QWidget
 
 from chess_diagram_ocr.config import DEFAULT_DPI
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
@@ -173,6 +174,9 @@ class PainelDeTexto(QWidget):
         ordem; **por livro** porque a folha 14 de um livro não é a folha 14 do outro -- com a chave
         só pela folha, trocar de livro levava as posições do anterior para as folhas do novo
         (item 11). `definir_livro` para outro livro esquece tudo."""
+        self.transcricao: Any = None
+        """O modo transcrição do scan-ouro (S-703), que nasce na primeira vez que é pedido. Ver `qt/modo_transcricao.py`."""
+        self._pasta_da_transcricao = ""
         self._filtros: dict[tuple[object, QEvent.Type], Callable[[QEvent], bool]] = {}
         """Quem trata cada evento filtrado (S-825): vazia durante `_montar`. Ver `eventFilter`."""
         self._montar()
@@ -208,7 +212,6 @@ class PainelDeTexto(QWidget):
                 "@folha": self.leitura.campo_de_folha,
                 "@motor": self.leitura.escolha_de_motor,
                 "@lingua": self.leitura.escolha_de_lingua,
-                "@modo_bloco": self.leitura.caixa_de_bloco,
             },
             rotulos_do_desfazer=self.espelho.rotulos_do_desfazer,
             desfazer_ate=self.desfazer_ate,
@@ -293,6 +296,7 @@ class PainelDeTexto(QWidget):
         self.navegacao.ir_para.connect(self.correcao.ir_para_intervalo)
         self.navegacao.busca_mudou.connect(self.correcao.refazer_resultados)
         self.navegacao.currentChanged.connect(lambda _i: self.correcao.refazer_navegacao())
+        self._corpo = corpo
         corpo.addWidget(self.navegacao)
         corpo.addWidget(self.editor, 1)
         corpo.addWidget(self.correcao.montar_paleta())
@@ -381,21 +385,21 @@ class PainelDeTexto(QWidget):
     # --------------------------------------------------------------------------- a sessão (S-291)
 
     def aplicar_estado(self, estado: AppState) -> None:
-        """A vista da aba como a sessão anterior a deixou: zoom, quebra, motor, modo bloco, os diagramas e a letra.
+        """A vista da aba como a sessão anterior a deixou: zoom, quebra, motor, os diagramas e a letra.
 
         **Os padrões são os do `AppState`** (S-828): o campo que o disco não trouxe já chega com
         ele, e repeti-lo aqui num `getattr` era um segundo lugar para a mesma decisão.
         """
         self.vista.aplicar_zoom(estado.texto_zoom, avisar=False)
         self.vista.definir_quebra(estado.texto_quebra)
-        self.leitura.definir_motor(estado.texto_motor)  # o motor e o modo bloco da sessão anterior (item 17)
+        self.leitura.definir_motor(estado.texto_motor)  # o motor da sessão anterior (item 17)
         self.leitura.definir_lingua(estado.texto_lingua)
-        self.leitura.definir_modo_bloco(estado.texto_bloco)
         self.miniaturas.definir_diagramas(estado.texto_diagramas)
         self.miniaturas.definir_tamanho_da_miniatura(estado.texto_miniatura)
         self.vista.definir_familia_da_letra(estado.texto_familia)
         self.miniaturas.definir_texto_ao_lado(estado.texto_ao_lado)
         self.caderno.ler_ao_chegar = estado.texto_ler_ao_chegar
+        self._pasta_da_transcricao = estado.texto_transcricao_pasta
         for canal, nome in (("letra", estado.texto_ultima_cor), ("realce", estado.texto_ultimo_realce)):
             if nome in texto_cores.nomes():
                 self.ferramentas.ultimas_cores[canal] = nome
@@ -410,13 +414,14 @@ class PainelDeTexto(QWidget):
         estado.texto_zoom = int(self.vista.zoom_da_vista)
         estado.texto_quebra = bool(self.vista.quebra)
         estado.texto_motor = self.leitura.motor
-        estado.texto_lingua = self.leitura.lingua
-        estado.texto_bloco = bool(self.leitura.modo_bloco)
+        # **O padrão, e não a língua do livro aberto**: esta mora no caderno, e não pode vazar para o livro seguinte (S-723).
+        estado.texto_lingua = self.leitura.lingua_padrao
         estado.texto_diagramas = self.miniaturas.diagramas
         estado.texto_miniatura = self.miniaturas.tamanho_da_miniatura
         estado.texto_familia = self.vista.familia_da_letra
         estado.texto_ao_lado = self.miniaturas.texto_ao_lado
         estado.texto_ler_ao_chegar = self.caderno.ler_ao_chegar
+        estado.texto_transcricao_pasta = self._pasta_da_transcricao
         estado.texto_ultima_cor = self.ferramentas.ultimas_cores["letra"]
         estado.texto_ultimo_realce = self.ferramentas.ultimas_cores["realce"]
         estado.texto_fita_recolhida = self.fita.recolhida
@@ -439,6 +444,7 @@ class PainelDeTexto(QWidget):
         if chave_do_livro(novo) != chave_do_livro(self._pdf):
             self._posicoes.clear()  # as posições são do livro que saiu (item 11)
             self.caderno.abrir_caderno(novo)
+            self.leitura.carregar_lingua_do_livro()
             if self.caderno.aberto is None:
                 self.caderno.anunciar_rascunhos(novo)
             self.caderno.rotular_leitura()
@@ -771,8 +777,11 @@ class PainelDeTexto(QWidget):
     def sincronizar_com_a_pagina(self) -> None:
         self.leitura.sincronizar_com_a_pagina()
 
-    def modo_bloco_mudou(self) -> None:
-        self.leitura.modo_bloco_mudou()
+    def escolher_lingua_do_livro(self) -> None:
+        self.leitura.escolher_lingua_do_livro()
+
+    def limpar_cache_de_leitura(self) -> None:
+        self.leitura.limpar_cache_de_leitura()
 
     def salvar(self) -> None:
         """O `.txt` puro, ao lado do `.cvtxt`: quem quer colar num e-mail quer este."""
@@ -810,6 +819,11 @@ class PainelDeTexto(QWidget):
         self.caderno.mostrar_pagina(pagina, folha_rgb=folha_rgb, dpi=dpi)
 
     def confirmar_fechamento(self) -> bool:
+        # São horas de alguém, e o relógio de gravação pode não ter disparado (S-703). O que não gravou pergunta antes de se perder.
+        if self.transcricao is not None and not self.transcricao.desativar() and not self.caderno.confirmar_descarte(
+            "Fechar a janela descarta a transcrição que não foi gravada.", ao_fechar=True
+        ):
+            return False
         return self.caderno.confirmar_fechamento()
 
     def abrir(self, doc: rico.DocumentoRico, *, folha_rgb: np.ndarray | None = None, renderizar: bool = True) -> None:
@@ -826,6 +840,12 @@ class PainelDeTexto(QWidget):
 
     def voltar_a_anterior(self) -> bool:
         return self.caderno.voltar_a_anterior()
+
+    def corrigir_em_todas_as_folhas(self) -> QDialog | None:
+        return self.caderno.corrigir_em_todas_as_folhas()
+
+    def folhas_corrigidas_no_livro(self, feito: Any) -> None:
+        self.caderno.folhas_corrigidas_no_livro(feito)
 
     def descartar_correcoes(self) -> bool:
         return self.caderno.descartar_correcoes()
@@ -872,6 +892,37 @@ class PainelDeTexto(QWidget):
 
     def ir_ao_ponto(self, x: float, y: float) -> bool:
         return self.caderno.ir_ao_ponto(x, y)
+
+    # ------------------------------------------------------------- o modo transcrição (S-703)
+
+    @property
+    def em_transcricao(self) -> bool:
+        return self.transcricao is not None and self.transcricao.isVisibleTo(self)
+
+    def alternar_transcricao(self) -> None:
+        """Liga ou desliga o modo. **O editor sai de cena**: ele mostra a leitura de um motor, e quem transcreve não pode vê-la."""
+        if self.transcricao is None:
+            from chess_diagram_ocr.qt.modo_transcricao import ModoTranscricao
+
+            self.transcricao = ModoTranscricao(self)
+            self.transcricao.fechar_pedido.connect(self.alternar_transcricao)
+            self.transcricao.pasta_mudou.connect(self._anotar_pasta_da_transcricao)
+            self._corpo.insertWidget(self._corpo.indexOf(self.editor) + 1, self.transcricao, 1)
+            self.transcricao.hide()
+            if self._pasta_da_transcricao:
+                self.transcricao.definir_pasta(self._pasta_da_transcricao)
+        ligar = not self.em_transcricao
+        if ligar:
+            self.transcricao.definir_livro(self._pdf)
+            self.transcricao.ativar()
+        elif not self.transcricao.desativar():
+            self.transcricao.ativar()  # o digitado não foi gravado: o modo fica, com a frase da recusa
+            return
+        self.editor.setVisible(not ligar)
+        self.transcricao.setVisible(ligar)
+
+    def _anotar_pasta_da_transcricao(self, pasta: str) -> None:
+        self._pasta_da_transcricao = pasta
 
 
 def _no_catalogo(acao: str) -> bool:

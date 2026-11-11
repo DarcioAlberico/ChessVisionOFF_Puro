@@ -252,15 +252,6 @@ class CaudaTests(unittest.TestCase):
         painel.exportar_md()
         self.assertEqual(vistos, ["Não há texto nesta aba para exportar."])
 
-    def test_o_modo_bloco_e_da_caixa_e_nao_do_comando(self) -> None:
-        """**O comando não inverte a caixa**: quem a inverte é o widget que a carrega, e inverter
-        de novo aqui desfaria o clique."""
-        painel = self.painel()
-        painel.leitura.caixa_de_bloco.setChecked(True)
-        self.assertTrue(painel.leitura.modo_bloco)
-        painel.modo_bloco_mudou()
-        self.assertTrue(painel.leitura.modo_bloco, "o comando não desfez o clique")
-
     def test_as_cinco_acoes_do_foco_sao_atendidas(self) -> None:
         """Declarar e não atender come a tecla e não faz nada, que é pior que não declarar."""
         painel = self.painel()

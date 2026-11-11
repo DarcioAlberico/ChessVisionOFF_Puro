@@ -48,6 +48,8 @@ class OndeEstaORastroTests(unittest.TestCase):
         """A varredura é o item: a frase estava escrita à mão em quatro lugares."""
         alvos = [
             RAIZ / "src" / "chess_diagram_ocr" / "qt" / "janela.py",
+            RAIZ / "src" / "chess_diagram_ocr" / "qt" / "sessao_da_janela.py",
+            RAIZ / "src" / "chess_diagram_ocr" / "qt" / "montagem_da_janela.py",
             *varredura.fontes(RAIZ / "src" / "chess_diagram_ocr" / "ui", piso=60),
             *varredura.fontes(RAIZ / "src" / "chess_diagram_ocr" / "cli", piso=40),
         ]

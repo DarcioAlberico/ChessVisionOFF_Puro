@@ -233,7 +233,7 @@ class RecusaTests(unittest.TestCase):
 
     def test_as_procedencias_saem_do_Literal(self) -> None:
         """Derivadas, e não recopiadas: a lista copiada é a que fica para trás."""
-        self.assertEqual(set(rico.PROCEDENCIAS), {"camada", "glifo", "rapidocr", "humano"})
+        self.assertEqual(set(rico.PROCEDENCIAS), {"camada", "glifo", "tesseract", "rapidocr", "humano"})
 
 
 class EdicaoTests(unittest.TestCase):

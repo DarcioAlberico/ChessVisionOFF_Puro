@@ -387,6 +387,9 @@ medição as recusa -- **que é o desenho certo**: é o único ponto do processo
 o texto com a página impressa, que é onde a verdade está. Uma referência vinda de um motor faria a
 tabela medir o motor contra ele mesmo.
 
+*Em 2026-11-06: 14 das 123 faixas estão com `conferido: true`, e 109 seguem recusadas. A S-183
+continua sem fechar pelo mesmo motivo: o que falta é conferência humana.*
+
 **O que foi feito em 2026-08-24 é tornar essa transcrição barata.**
 `cvoff-texto-placar --exportar <pasta>` grava um PNG por faixa -- **exatamente a imagem que os
 motores leem**, a banda dilatada em `radius_pt` com o interior do diagrama apagado. Transcrever

@@ -1,0 +1,3011 @@
+{
+ "item": "S-723 · a língua do livro, nas primeiras folhas lidas",
+ "medido_em": "2026-11-06",
+ "conjunto": "PDF/ deduplicado: uma cópia de cada livro, língua declarada à mão em linguas_declaradas.json",
+ "folhas": "as primeiras folhas com texto de cada livro, até 10 e abrindo no máximo 25; com a folga folgada de 4 folhas e cinco vezes o mínimo, a leitura para antes, e `folhas` diz quantas contaram",
+ "fontes": "glifo: só o texto lido. camada: só a camada do PDF. produto: a camada da folha quando ela traz palavras, senão o lido (lingua.texto_da_folha), que é o que a janela faz",
+ "perfil_sha": "8b88b09aa61b09fa",
+ "codigo": "e453df2f mais a S-723 ainda por commitar; o perfil_sha amarra o decisor",
+ "modelo_sha256": "ca4bcc00b9c59b074780f48aa739358b2baa379267427d7d5edeaf44dd2ee162",
+ "como_foi_lido": "glifo e camada numa corrida só; o `produto` veio depois, por produto_reaproveitado.py, relendo com o glifo só as folhas de camada rala. Tempo não é veredito: três medições rodavam na máquina",
+ "livros_medidos": 54,
+ "acertos": {
+  "glifo": 50,
+  "camada": 38,
+  "produto": 52
+ },
+ "sem_resposta": {
+  "glifo": 4,
+  "camada": 16,
+  "produto": 2
+ },
+ "erradas": {
+  "glifo": 0,
+  "camada": 0,
+  "produto": 0
+ },
+ "por_lingua_declarada": {
+  "deu": 10,
+  "eng": 27,
+  "fra": 1,
+  "nld": 3,
+  "por": 4,
+  "ron": 2,
+  "rus": 3,
+  "spa": 4
+ },
+ "bilingues": {
+  "Журавлев_Н_The_Manual_of_Chess_Combinations_5_2021.pdf": [
+   "rus",
+   "eng"
+  ]
+ },
+ "sem_acerto_no_produto": [
+  {
+   "livro": "1000 Chess Problems - Yakov Vladimirov 2015 .pdf",
+   "declarada": "eng",
+   "produto": "",
+   "glifo": "",
+   "camada": ""
+  },
+  {
+   "livro": "Пилавов Г. Изолированная пешка.pdf",
+   "declarada": "rus",
+   "produto": "",
+   "glifo": "",
+   "camada": ""
+  }
+ ],
+ "livros": [
+  {
+   "livro": "1000 Chess Problems - Yakov Vladimirov 2015 .pdf",
+   "declarada": "eng",
+   "folhas_abertas": 12,
+   "decidiu_em": {
+    "glifo": null,
+    "camada": null,
+    "produto": null
+   },
+   "glifo": {
+    "detectada": "",
+    "folhas": 10,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 5.5,
+     "fra": 2.0,
+     "por": 12.0,
+     "ron": 1.0,
+     "spa": 10.0
+    },
+    "palavras": 2157,
+    "cirilicas": 0,
+    "latinas": 12127
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 0,
+    "pontos": {},
+    "palavras": 0,
+    "cirilicas": 0,
+    "latinas": 0
+   },
+   "produto": {
+    "detectada": "",
+    "folhas": 10,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 5.5,
+     "fra": 2.0,
+     "por": 12.0,
+     "ron": 1.0,
+     "spa": 10.0
+    },
+    "palavras": 2157,
+    "cirilicas": 0,
+    "latinas": 12127
+   }
+  },
+  {
+   "livro": "1937 Kemeri.pdf",
+   "declarada": "deu",
+   "folhas_abertas": 7,
+   "decidiu_em": {
+    "glifo": 6,
+    "camada": 6,
+    "produto": 6
+   },
+   "glifo": {
+    "detectada": "deu",
+    "folhas": 4,
+    "pontos": {
+     "deu": 118.5,
+     "eng": 6.833,
+     "fra": 7.233,
+     "nld": 22.567,
+     "por": 10.9,
+     "ron": 6.733,
+     "spa": 1.233
+    },
+    "palavras": 965,
+    "cirilicas": 0,
+    "latinas": 4436
+   },
+   "camada": {
+    "detectada": "deu",
+    "folhas": 3,
+    "pontos": {
+     "deu": 149.0,
+     "eng": 7.833,
+     "fra": 7.2,
+     "nld": 26.033,
+     "por": 8.2,
+     "ron": 6.533,
+     "spa": 1.2
+    },
+    "palavras": 791,
+    "cirilicas": 0,
+    "latinas": 4417
+   },
+   "produto": {
+    "detectada": "deu",
+    "folhas": 4,
+    "pontos": {
+     "deu": 149.0,
+     "eng": 7.833,
+     "fra": 7.2,
+     "nld": 26.033,
+     "por": 8.2,
+     "ron": 6.533,
+     "spa": 1.2
+    },
+    "palavras": 921,
+    "cirilicas": 0,
+    "latinas": 4551
+   }
+  },
+  {
+   "livro": "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 7,
+   "decidiu_em": {
+    "glifo": 4,
+    "camada": 4,
+    "produto": 4
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 86.167,
+     "fra": 0.5,
+     "nld": 5.167,
+     "por": 2.0,
+     "ron": 1.667
+    },
+    "palavras": 474,
+    "cirilicas": 0,
+    "latinas": 2328
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 105.667,
+     "fra": 1.0,
+     "nld": 5.167,
+     "por": 3.0,
+     "ron": 1.667
+    },
+    "palavras": 465,
+    "cirilicas": 0,
+    "latinas": 2469
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 105.667,
+     "fra": 1.0,
+     "nld": 5.167,
+     "por": 3.0,
+     "ron": 1.667
+    },
+    "palavras": 465,
+    "cirilicas": 0,
+    "latinas": 2469
+   }
+  },
+  {
+   "livro": "400 Quebra-cabeças de Estratégia de Xadrez.pdf",
+   "declarada": "por",
+   "folhas_abertas": 5,
+   "decidiu_em": {
+    "glifo": 3,
+    "camada": 3,
+    "produto": 3
+   },
+   "glifo": {
+    "detectada": "por",
+    "folhas": 4,
+    "pontos": {
+     "deu": 0.5,
+     "eng": 0.5,
+     "fra": 3.533,
+     "nld": 3.2,
+     "por": 48.033,
+     "ron": 3.7,
+     "spa": 9.533
+    },
+    "palavras": 369,
+    "cirilicas": 0,
+    "latinas": 1989
+   },
+   "camada": {
+    "detectada": "por",
+    "folhas": 4,
+    "pontos": {
+     "deu": 0.5,
+     "eng": 0.5,
+     "fra": 4.067,
+     "nld": 3.4,
+     "por": 50.567,
+     "ron": 3.9,
+     "spa": 11.067
+    },
+    "palavras": 374,
+    "cirilicas": 0,
+    "latinas": 1983
+   },
+   "produto": {
+    "detectada": "por",
+    "folhas": 4,
+    "pontos": {
+     "deu": 0.5,
+     "eng": 0.5,
+     "fra": 4.067,
+     "nld": 3.4,
+     "por": 50.567,
+     "ron": 3.9,
+     "spa": 11.067
+    },
+    "palavras": 374,
+    "cirilicas": 0,
+    "latinas": 1983
+   }
+  },
+  {
+   "livro": "A Matter of Endgame Technique – Jacob Aagaard.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 6,
+   "decidiu_em": {
+    "glifo": 3,
+    "camada": 3,
+    "produto": 3
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 177.667,
+     "fra": 3.5,
+     "nld": 10.667,
+     "por": 5.0,
+     "ron": 5.667
+    },
+    "palavras": 754,
+    "cirilicas": 0,
+    "latinas": 3947
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 197.333,
+     "fra": 4.0,
+     "nld": 11.333,
+     "por": 5.5,
+     "ron": 6.333
+    },
+    "palavras": 864,
+    "cirilicas": 0,
+    "latinas": 4638
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 197.333,
+     "fra": 4.0,
+     "nld": 11.333,
+     "por": 5.5,
+     "ron": 6.333
+    },
+    "palavras": 864,
+    "cirilicas": 0,
+    "latinas": 4638
+   }
+  },
+  {
+   "livro": "AAGAARD - Practical Chess Defence.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 5,
+   "decidiu_em": {
+    "glifo": 2,
+    "camada": 2,
+    "produto": 2
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 4.5,
+     "eng": 165.667,
+     "fra": 3.0,
+     "nld": 11.167,
+     "por": 4.0,
+     "ron": 6.667
+    },
+    "palavras": 780,
+    "cirilicas": 0,
+    "latinas": 3806
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 4.0,
+     "eng": 186.167,
+     "fra": 2.0,
+     "nld": 12.667,
+     "por": 3.5,
+     "ron": 7.667
+    },
+    "palavras": 768,
+    "cirilicas": 0,
+    "latinas": 3890
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 4.0,
+     "eng": 186.167,
+     "fra": 2.0,
+     "nld": 12.667,
+     "por": 3.5,
+     "ron": 7.667
+    },
+    "palavras": 768,
+    "cirilicas": 0,
+    "latinas": 3890
+   }
+  },
+  {
+   "livro": "Bachmann - Schachjahrbuch für 1899. I. Theil (1899).pdf",
+   "declarada": "deu",
+   "folhas_abertas": 13,
+   "decidiu_em": {
+    "glifo": 13,
+    "camada": null,
+    "produto": 13
+   },
+   "glifo": {
+    "detectada": "deu",
+    "folhas": 8,
+    "pontos": {
+     "deu": 58.0,
+     "eng": 6.333,
+     "fra": 11.45,
+     "nld": 11.033,
+     "por": 4.45,
+     "ron": 5.283,
+     "spa": 5.45
+    },
+    "palavras": 1687,
+    "cirilicas": 0,
+    "latinas": 5839
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 0,
+    "pontos": {},
+    "palavras": 0,
+    "cirilicas": 0,
+    "latinas": 0
+   },
+   "produto": {
+    "detectada": "deu",
+    "folhas": 8,
+    "pontos": {
+     "deu": 58.0,
+     "eng": 6.333,
+     "fra": 11.45,
+     "nld": 11.033,
+     "por": 4.45,
+     "ron": 5.283,
+     "spa": 5.45
+    },
+    "palavras": 1687,
+    "cirilicas": 0,
+    "latinas": 5839
+   }
+  },
+  {
+   "livro": "Brinckmann - Matt in zwanzig Zügen (1963).pdf",
+   "declarada": "deu",
+   "folhas_abertas": 4,
+   "decidiu_em": {
+    "glifo": 2,
+    "camada": 2,
+    "produto": 2
+   },
+   "glifo": {
+    "detectada": "deu",
+    "folhas": 4,
+    "pontos": {
+     "deu": 36.0,
+     "eng": 2.833,
+     "fra": 0.9,
+     "nld": 3.233,
+     "por": 0.9,
+     "ron": 1.733,
+     "spa": 0.4
+    },
+    "palavras": 276,
+    "cirilicas": 0,
+    "latinas": 1341
+   },
+   "camada": {
+    "detectada": "deu",
+    "folhas": 4,
+    "pontos": {
+     "deu": 49.5,
+     "eng": 2.833,
+     "fra": 1.4,
+     "nld": 2.233,
+     "por": 1.9,
+     "ron": 1.733,
+     "spa": 0.4
+    },
+    "palavras": 267,
+    "cirilicas": 0,
+    "latinas": 1405
+   },
+   "produto": {
+    "detectada": "deu",
+    "folhas": 4,
+    "pontos": {
+     "deu": 49.5,
+     "eng": 2.833,
+     "fra": 1.4,
+     "nld": 2.233,
+     "por": 1.9,
+     "ron": 1.733,
+     "spa": 0.4
+    },
+    "palavras": 267,
+    "cirilicas": 0,
+    "latinas": 1405
+   }
+  },
+  {
+   "livro": "Dufresne_Die_probleme_des_Londoner_schach_turniers_von_1862_1865.pdf",
+   "declarada": "deu",
+   "folhas_abertas": 12,
+   "decidiu_em": {
+    "glifo": 3,
+    "camada": null,
+    "produto": 3
+   },
+   "glifo": {
+    "detectada": "deu",
+    "folhas": 4,
+    "pontos": {
+     "deu": 54.0,
+     "eng": 1.333,
+     "nld": 1.333,
+     "ron": 1.333,
+     "spa": 1.0
+    },
+    "palavras": 443,
+    "cirilicas": 0,
+    "latinas": 2105
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 2,
+    "pontos": {},
+    "palavras": 101,
+    "cirilicas": 0,
+    "latinas": 28
+   },
+   "produto": {
+    "detectada": "deu",
+    "folhas": 10,
+    "pontos": {
+     "deu": 7.0
+    },
+    "palavras": 578,
+    "cirilicas": 0,
+    "latinas": 581
+   }
+  },
+  {
+   "livro": "Dvoretsky - Dvoretsky's Endgame Manual (2025).pdf",
+   "declarada": "eng",
+   "folhas_abertas": 5,
+   "decidiu_em": {
+    "glifo": 2,
+    "camada": 2,
+    "produto": 2
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 146.333,
+     "fra": 13.5,
+     "nld": 5.833,
+     "ron": 2.333
+    },
+    "palavras": 894,
+    "cirilicas": 0,
+    "latinas": 4199
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 165.333,
+     "fra": 13.5,
+     "nld": 5.833,
+     "ron": 2.333
+    },
+    "palavras": 904,
+    "cirilicas": 0,
+    "latinas": 4235
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 165.333,
+     "fra": 13.5,
+     "nld": 5.833,
+     "ron": 2.333
+    },
+    "palavras": 904,
+    "cirilicas": 0,
+    "latinas": 4235
+   }
+  },
+  {
+   "livro": "Estrin - Bauernopfer in der Eroeffnung (1980).pdf",
+   "declarada": "deu",
+   "folhas_abertas": 6,
+   "decidiu_em": {
+    "glifo": 4,
+    "camada": null,
+    "produto": 4
+   },
+   "glifo": {
+    "detectada": "deu",
+    "folhas": 4,
+    "pontos": {
+     "deu": 110.0,
+     "eng": 5.833,
+     "fra": 5.033,
+     "nld": 4.867,
+     "por": 6.2,
+     "ron": 4.533,
+     "spa": 2.533
+    },
+    "palavras": 655,
+    "cirilicas": 0,
+    "latinas": 3373
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 0,
+    "pontos": {},
+    "palavras": 0,
+    "cirilicas": 0,
+    "latinas": 0
+   },
+   "produto": {
+    "detectada": "deu",
+    "folhas": 4,
+    "pontos": {
+     "deu": 110.0,
+     "eng": 5.833,
+     "fra": 5.033,
+     "nld": 4.867,
+     "por": 6.2,
+     "ron": 4.533,
+     "spa": 2.533
+    },
+    "palavras": 655,
+    "cirilicas": 0,
+    "latinas": 3373
+   }
+  },
+  {
+   "livro": "Euwe, Kramer - Das Mittelspiel Band 1-2 (1956).pdf",
+   "declarada": "deu",
+   "folhas_abertas": 6,
+   "decidiu_em": {
+    "glifo": 5,
+    "camada": 5,
+    "produto": 5
+   },
+   "glifo": {
+    "detectada": "deu",
+    "folhas": 5,
+    "pontos": {
+     "deu": 63.0,
+     "eng": 4.333,
+     "fra": 4.0,
+     "nld": 5.333,
+     "por": 4.5,
+     "ron": 2.333,
+     "spa": 1.5
+    },
+    "palavras": 498,
+    "cirilicas": 0,
+    "latinas": 2109
+   },
+   "camada": {
+    "detectada": "deu",
+    "folhas": 4,
+    "pontos": {
+     "deu": 72.0,
+     "eng": 3.667,
+     "fra": 3.5,
+     "nld": 3.167,
+     "por": 2.5,
+     "ron": 1.667,
+     "spa": 1.5
+    },
+    "palavras": 429,
+    "cirilicas": 1,
+    "latinas": 2383
+   },
+   "produto": {
+    "detectada": "deu",
+    "folhas": 5,
+    "pontos": {
+     "deu": 73.0,
+     "eng": 3.667,
+     "fra": 3.5,
+     "nld": 3.167,
+     "por": 2.5,
+     "ron": 1.667,
+     "spa": 1.5
+    },
+    "palavras": 495,
+    "cirilicas": 1,
+    "latinas": 2495
+   }
+  },
+  {
+   "livro": "Euwe, Kramer - Das Mittelspiel Band 7 (1958).pdf",
+   "declarada": "deu",
+   "folhas_abertas": 5,
+   "decidiu_em": {
+    "glifo": 4,
+    "camada": 4,
+    "produto": 4
+   },
+   "glifo": {
+    "detectada": "deu",
+    "folhas": 5,
+    "pontos": {
+     "deu": 90.0,
+     "eng": 6.5,
+     "fra": 4.5,
+     "nld": 7.5,
+     "por": 3.5,
+     "ron": 4.0,
+     "spa": 2.0
+    },
+    "palavras": 739,
+    "cirilicas": 0,
+    "latinas": 2783
+   },
+   "camada": {
+    "detectada": "deu",
+    "folhas": 4,
+    "pontos": {
+     "deu": 102.5,
+     "eng": 5.0,
+     "fra": 4.0,
+     "nld": 5.5,
+     "por": 3.0,
+     "ron": 3.0,
+     "spa": 2.0
+    },
+    "palavras": 488,
+    "cirilicas": 0,
+    "latinas": 2753
+   },
+   "produto": {
+    "detectada": "deu",
+    "folhas": 5,
+    "pontos": {
+     "deu": 103.0,
+     "eng": 6.0,
+     "fra": 4.5,
+     "nld": 6.5,
+     "por": 3.0,
+     "ron": 4.0,
+     "spa": 2.0
+    },
+    "palavras": 728,
+    "cirilicas": 0,
+    "latinas": 3125
+   }
+  },
+  {
+   "livro": "GALLAGHER - Winning With the King's Gambit.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 7,
+   "decidiu_em": {
+    "glifo": 4,
+    "camada": null,
+    "produto": 4
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.5,
+     "eng": 60.5,
+     "fra": 0.5,
+     "nld": 4.5,
+     "por": 0.5,
+     "ron": 3.0,
+     "spa": 1.5
+    },
+    "palavras": 361,
+    "cirilicas": 0,
+    "latinas": 1725
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 0,
+    "pontos": {},
+    "palavras": 0,
+    "cirilicas": 0,
+    "latinas": 0
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.5,
+     "eng": 60.5,
+     "fra": 0.5,
+     "nld": 4.5,
+     "por": 0.5,
+     "ron": 3.0,
+     "spa": 1.5
+    },
+    "palavras": 361,
+    "cirilicas": 0,
+    "latinas": 1725
+   }
+  },
+  {
+   "livro": "Gaprindashvili, Paata - Imagination in Chess. How To Think Creatively And Avoid Foolish Mistakes (Bastford, 2005) 2p 145p_OCR_Aprimorar_Aprimorar.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 7,
+   "decidiu_em": {
+    "glifo": 4,
+    "camada": null,
+    "produto": 4
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 0.5,
+     "eng": 107.667,
+     "fra": 3.0,
+     "nld": 6.667,
+     "por": 1.5,
+     "ron": 2.667
+    },
+    "palavras": 458,
+    "cirilicas": 0,
+    "latinas": 2170
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 0,
+    "pontos": {},
+    "palavras": 0,
+    "cirilicas": 0,
+    "latinas": 0
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 0.5,
+     "eng": 107.667,
+     "fra": 3.0,
+     "nld": 6.667,
+     "por": 1.5,
+     "ron": 2.667
+    },
+    "palavras": 458,
+    "cirilicas": 0,
+    "latinas": 2170
+   }
+  },
+  {
+   "livro": "Gunderam - Neue Eröffnungswege Ein Schach-Praktikum (1961).pdf",
+   "declarada": "deu",
+   "folhas_abertas": 8,
+   "decidiu_em": {
+    "glifo": 6,
+    "camada": 5,
+    "produto": 5
+   },
+   "glifo": {
+    "detectada": "deu",
+    "folhas": 7,
+    "pontos": {
+     "deu": 46.5,
+     "eng": 5.0,
+     "fra": 5.5,
+     "nld": 3.0,
+     "por": 3.0,
+     "ron": 3.0,
+     "spa": 2.0
+    },
+    "palavras": 1134,
+    "cirilicas": 0,
+    "latinas": 3047
+   },
+   "camada": {
+    "detectada": "deu",
+    "folhas": 7,
+    "pontos": {
+     "deu": 62.5,
+     "eng": 4.5,
+     "fra": 3.7,
+     "nld": 4.2,
+     "por": 2.7,
+     "ron": 3.2,
+     "spa": 2.2
+    },
+    "palavras": 1010,
+    "cirilicas": 0,
+    "latinas": 2965
+   },
+   "produto": {
+    "detectada": "deu",
+    "folhas": 7,
+    "pontos": {
+     "deu": 62.5,
+     "eng": 4.5,
+     "fra": 3.7,
+     "nld": 4.2,
+     "por": 2.7,
+     "ron": 3.2,
+     "spa": 2.2
+    },
+    "palavras": 1010,
+    "cirilicas": 0,
+    "latinas": 2965
+   }
+  },
+  {
+   "livro": "Gutmayer - Turnierpraxis (1922).pdf",
+   "declarada": "deu",
+   "folhas_abertas": 7,
+   "decidiu_em": {
+    "glifo": 1,
+    "camada": 1,
+    "produto": 1
+   },
+   "glifo": {
+    "detectada": "deu",
+    "folhas": 4,
+    "pontos": {
+     "deu": 45.0,
+     "eng": 2.667,
+     "fra": 1.7,
+     "nld": 3.867,
+     "por": 6.7,
+     "ron": 0.867,
+     "spa": 2.2
+    },
+    "palavras": 456,
+    "cirilicas": 0,
+    "latinas": 1667
+   },
+   "camada": {
+    "detectada": "deu",
+    "folhas": 3,
+    "pontos": {
+     "deu": 67.0,
+     "eng": 3.333,
+     "fra": 0.2,
+     "nld": 3.533,
+     "por": 6.2,
+     "ron": 0.533,
+     "spa": 1.2
+    },
+    "palavras": 373,
+    "cirilicas": 0,
+    "latinas": 1674
+   },
+   "produto": {
+    "detectada": "deu",
+    "folhas": 4,
+    "pontos": {
+     "deu": 67.5,
+     "eng": 3.667,
+     "fra": 1.7,
+     "nld": 4.867,
+     "por": 6.2,
+     "ron": 0.867,
+     "spa": 1.2
+    },
+    "palavras": 403,
+    "cirilicas": 0,
+    "latinas": 1760
+   }
+  },
+  {
+   "livro": "Karpov A - Chess Combinations -World Champions-1 (2011).pdf",
+   "declarada": "eng",
+   "folhas_abertas": 8,
+   "decidiu_em": {
+    "glifo": 5,
+    "camada": 5,
+    "produto": 5
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 95.333,
+     "nld": 5.833,
+     "por": 3.5,
+     "ron": 3.333,
+     "spa": 1.5
+    },
+    "palavras": 793,
+    "cirilicas": 0,
+    "latinas": 5122
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 3.5,
+     "eng": 130.167,
+     "fra": 0.5,
+     "nld": 6.667,
+     "por": 4.0,
+     "ron": 3.667,
+     "spa": 1.5
+    },
+    "palavras": 883,
+    "cirilicas": 0,
+    "latinas": 5555
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 3.5,
+     "eng": 130.167,
+     "fra": 0.5,
+     "nld": 6.667,
+     "por": 4.0,
+     "ron": 3.667,
+     "spa": 1.5
+    },
+    "palavras": 883,
+    "cirilicas": 0,
+    "latinas": 5555
+   }
+  },
+  {
+   "livro": "Karpov A - Chess Combinations -World Champions-2 (2011).pdf",
+   "declarada": "eng",
+   "folhas_abertas": 8,
+   "decidiu_em": {
+    "glifo": 5,
+    "camada": null,
+    "produto": 5
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 3.5,
+     "eng": 84.5,
+     "nld": 8.5,
+     "por": 2.5,
+     "ron": 6.0,
+     "spa": 1.0
+    },
+    "palavras": 889,
+    "cirilicas": 0,
+    "latinas": 5376
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 0,
+    "pontos": {},
+    "palavras": 0,
+    "cirilicas": 0,
+    "latinas": 0
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 3.5,
+     "eng": 84.5,
+     "nld": 8.5,
+     "por": 2.5,
+     "ron": 6.0,
+     "spa": 1.0
+    },
+    "palavras": 889,
+    "cirilicas": 0,
+    "latinas": 5376
+   }
+  },
+  {
+   "livro": "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936).pdf",
+   "declarada": "nld",
+   "folhas_abertas": 12,
+   "decidiu_em": {
+    "glifo": 9,
+    "camada": 9,
+    "produto": 9
+   },
+   "glifo": {
+    "detectada": "nld",
+    "folhas": 4,
+    "pontos": {
+     "deu": 14.0,
+     "eng": 8.333,
+     "fra": 13.367,
+     "nld": 92.2,
+     "por": 9.7,
+     "ron": 7.533,
+     "spa": 14.867
+    },
+    "palavras": 1173,
+    "cirilicas": 0,
+    "latinas": 5007
+   },
+   "camada": {
+    "detectada": "nld",
+    "folhas": 4,
+    "pontos": {
+     "deu": 20.0,
+     "eng": 7.333,
+     "fra": 12.2,
+     "nld": 97.533,
+     "por": 9.2,
+     "ron": 7.533,
+     "spa": 14.2
+    },
+    "palavras": 1036,
+    "cirilicas": 0,
+    "latinas": 5150
+   },
+   "produto": {
+    "detectada": "nld",
+    "folhas": 4,
+    "pontos": {
+     "deu": 20.0,
+     "eng": 7.333,
+     "fra": 12.2,
+     "nld": 97.533,
+     "por": 9.2,
+     "ron": 7.533,
+     "spa": 14.2
+    },
+    "palavras": 1036,
+    "cirilicas": 0,
+    "latinas": 5150
+   }
+  },
+  {
+   "livro": "Koblenz - El dominio del arte de la combinacion (1978).pdf",
+   "declarada": "spa",
+   "folhas_abertas": 8,
+   "decidiu_em": {
+    "glifo": 6,
+    "camada": 6,
+    "produto": 6
+   },
+   "glifo": {
+    "detectada": "spa",
+    "folhas": 4,
+    "pontos": {
+     "deu": 4.0,
+     "fra": 20.817,
+     "nld": 13.067,
+     "por": 25.15,
+     "ron": 14.15,
+     "spa": 53.817
+    },
+    "palavras": 683,
+    "cirilicas": 0,
+    "latinas": 3193
+   },
+   "camada": {
+    "detectada": "spa",
+    "folhas": 5,
+    "pontos": {
+     "deu": 4.5,
+     "eng": 2.0,
+     "fra": 29.817,
+     "nld": 13.067,
+     "por": 24.15,
+     "ron": 25.15,
+     "spa": 110.317
+    },
+    "palavras": 768,
+    "cirilicas": 0,
+    "latinas": 3694
+   },
+   "produto": {
+    "detectada": "spa",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.5,
+     "eng": 1.0,
+     "fra": 22.7,
+     "nld": 9.867,
+     "por": 16.533,
+     "ron": 18.7,
+     "spa": 74.7
+    },
+    "palavras": 560,
+    "cirilicas": 0,
+    "latinas": 2794
+   }
+  },
+  {
+   "livro": "La_Combinacion_En_El_Ajedrez_Constantin_Dobonov_83p,1974_OCR.pdf",
+   "declarada": "spa",
+   "folhas_abertas": 7,
+   "decidiu_em": {
+    "glifo": 6,
+    "camada": 6,
+    "produto": 6
+   },
+   "glifo": {
+    "detectada": "spa",
+    "folhas": 4,
+    "pontos": {
+     "deu": 3.5,
+     "eng": 7.667,
+     "fra": 11.0,
+     "nld": 7.333,
+     "por": 16.167,
+     "ron": 8.833,
+     "spa": 30.5
+    },
+    "palavras": 925,
+    "cirilicas": 0,
+    "latinas": 2575
+   },
+   "camada": {
+    "detectada": "spa",
+    "folhas": 3,
+    "pontos": {
+     "deu": 3.0,
+     "eng": 0.333,
+     "fra": 20.667,
+     "nld": 8.667,
+     "por": 25.833,
+     "ron": 11.833,
+     "spa": 86.667
+    },
+    "palavras": 483,
+    "cirilicas": 0,
+    "latinas": 2473
+   },
+   "produto": {
+    "detectada": "spa",
+    "folhas": 4,
+    "pontos": {
+     "deu": 3.0,
+     "eng": 0.333,
+     "fra": 21.2,
+     "nld": 8.867,
+     "por": 27.033,
+     "ron": 12.367,
+     "spa": 87.2
+    },
+    "palavras": 525,
+    "cirilicas": 0,
+    "latinas": 2551
+   }
+  },
+  {
+   "livro": "La_casa_del_Ajedrez_El_metodo_Yusupov_4_Yusupov_Artur_Fundamentos.pdf",
+   "declarada": "spa",
+   "folhas_abertas": 6,
+   "decidiu_em": {
+    "glifo": 2,
+    "camada": 2,
+    "produto": 2
+   },
+   "glifo": {
+    "detectada": "spa",
+    "folhas": 5,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 2.333,
+     "fra": 13.867,
+     "nld": 9.533,
+     "por": 11.7,
+     "ron": 11.2,
+     "spa": 33.867
+    },
+    "palavras": 674,
+    "cirilicas": 0,
+    "latinas": 2803
+   },
+   "camada": {
+    "detectada": "spa",
+    "folhas": 5,
+    "pontos": {
+     "deu": 0.5,
+     "eng": 0.333,
+     "fra": 12.067,
+     "nld": 9.733,
+     "por": 12.4,
+     "ron": 10.4,
+     "spa": 44.567
+    },
+    "palavras": 550,
+    "cirilicas": 0,
+    "latinas": 3199
+   },
+   "produto": {
+    "detectada": "spa",
+    "folhas": 4,
+    "pontos": {
+     "eng": 0.333,
+     "fra": 11.867,
+     "nld": 9.533,
+     "por": 12.2,
+     "ron": 10.2,
+     "spa": 36.867
+    },
+    "palavras": 477,
+    "cirilicas": 0,
+    "latinas": 2812
+   }
+  },
+  {
+   "livro": "Levenfis - Cartea sahistului inceparator (1962).pdf",
+   "declarada": "ron",
+   "folhas_abertas": 7,
+   "decidiu_em": {
+    "glifo": 7,
+    "camada": null,
+    "produto": 7
+   },
+   "glifo": {
+    "detectada": "ron",
+    "folhas": 5,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 6.5,
+     "fra": 28.183,
+     "nld": 11.1,
+     "por": 10.35,
+     "ron": 46.183,
+     "spa": 16.683
+    },
+    "palavras": 834,
+    "cirilicas": 0,
+    "latinas": 3928
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 0,
+    "pontos": {},
+    "palavras": 0,
+    "cirilicas": 0,
+    "latinas": 0
+   },
+   "produto": {
+    "detectada": "ron",
+    "folhas": 5,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 6.5,
+     "fra": 28.183,
+     "nld": 11.1,
+     "por": 10.35,
+     "ron": 46.183,
+     "spa": 16.683
+    },
+    "palavras": 834,
+    "cirilicas": 0,
+    "latinas": 3928
+   }
+  },
+  {
+   "livro": "Mauricio Flores Rios - Chess Structures - A Grandmaster Guide[Quality Chess, 2015].pdf",
+   "declarada": "eng",
+   "folhas_abertas": 5,
+   "decidiu_em": {
+    "glifo": 2,
+    "camada": null,
+    "produto": 2
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "eng": 55.0,
+     "nld": 2.0,
+     "por": 1.0,
+     "ron": 2.0
+    },
+    "palavras": 504,
+    "cirilicas": 0,
+    "latinas": 2219
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 0,
+    "pontos": {},
+    "palavras": 0,
+    "cirilicas": 0,
+    "latinas": 0
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "eng": 55.0,
+     "nld": 2.0,
+     "por": 1.0,
+     "ron": 2.0
+    },
+    "palavras": 504,
+    "cirilicas": 0,
+    "latinas": 2219
+   }
+  },
+  {
+   "livro": "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia.pdf",
+   "declarada": "por",
+   "folhas_abertas": 8,
+   "decidiu_em": {
+    "glifo": 6,
+    "camada": 6,
+    "produto": 6
+   },
+   "glifo": {
+    "detectada": "por",
+    "folhas": 7,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 1.0,
+     "fra": 15.2,
+     "nld": 9.2,
+     "por": 118.867,
+     "ron": 18.033,
+     "spa": 24.7
+    },
+    "palavras": 1369,
+    "cirilicas": 0,
+    "latinas": 6013
+   },
+   "camada": {
+    "detectada": "por",
+    "folhas": 5,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 0.5,
+     "fra": 14.2,
+     "nld": 9.2,
+     "por": 117.367,
+     "ron": 12.533,
+     "spa": 22.2
+    },
+    "palavras": 1005,
+    "cirilicas": 0,
+    "latinas": 5821
+   },
+   "produto": {
+    "detectada": "por",
+    "folhas": 7,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 0.5,
+     "fra": 14.2,
+     "nld": 9.2,
+     "por": 118.367,
+     "ron": 12.533,
+     "spa": 22.2
+    },
+    "palavras": 1241,
+    "cirilicas": 0,
+    "latinas": 6083
+   }
+  },
+  {
+   "livro": "Mieses - Blind Schaken (1938).pdf",
+   "declarada": "nld",
+   "folhas_abertas": 12,
+   "decidiu_em": {
+    "glifo": 9,
+    "camada": 7,
+    "produto": 7
+   },
+   "glifo": {
+    "detectada": "nld",
+    "folhas": 8,
+    "pontos": {
+     "deu": 8.5,
+     "eng": 13.0,
+     "fra": 25.467,
+     "nld": 46.467,
+     "por": 8.3,
+     "ron": 7.8,
+     "spa": 19.467
+    },
+    "palavras": 3755,
+    "cirilicas": 0,
+    "latinas": 5937
+   },
+   "camada": {
+    "detectada": "nld",
+    "folhas": 7,
+    "pontos": {
+     "deu": 36.5,
+     "eng": 25.667,
+     "fra": 20.6,
+     "nld": 322.767,
+     "por": 12.1,
+     "ron": 18.767,
+     "spa": 19.6
+    },
+    "palavras": 1375,
+    "cirilicas": 0,
+    "latinas": 7250
+   },
+   "produto": {
+    "detectada": "nld",
+    "folhas": 4,
+    "pontos": {
+     "deu": 3.5,
+     "eng": 4.5,
+     "fra": 4.4,
+     "nld": 47.4,
+     "por": 2.4,
+     "ron": 4.4,
+     "spa": 5.4
+    },
+    "palavras": 300,
+    "cirilicas": 0,
+    "latinas": 1648
+   }
+  },
+  {
+   "livro": "Minhas 60 partidas memoráveis Bobby Fischer pt-br algébrico.pdf",
+   "declarada": "por",
+   "folhas_abertas": 5,
+   "decidiu_em": {
+    "glifo": 2,
+    "camada": 2,
+    "produto": 2
+   },
+   "glifo": {
+    "detectada": "por",
+    "folhas": 4,
+    "pontos": {
+     "eng": 1.0,
+     "fra": 5.35,
+     "nld": 3.6,
+     "por": 39.85,
+     "ron": 3.85,
+     "spa": 13.35
+    },
+    "palavras": 380,
+    "cirilicas": 0,
+    "latinas": 1947
+   },
+   "camada": {
+    "detectada": "por",
+    "folhas": 4,
+    "pontos": {
+     "eng": 1.0,
+     "fra": 5.85,
+     "nld": 3.6,
+     "por": 41.35,
+     "ron": 3.85,
+     "spa": 13.35
+    },
+    "palavras": 387,
+    "cirilicas": 0,
+    "latinas": 1949
+   },
+   "produto": {
+    "detectada": "por",
+    "folhas": 4,
+    "pontos": {
+     "eng": 1.0,
+     "fra": 5.85,
+     "nld": 3.6,
+     "por": 41.35,
+     "ron": 3.85,
+     "spa": 13.35
+    },
+    "palavras": 387,
+    "cirilicas": 0,
+    "latinas": 1949
+   }
+  },
+  {
+   "livro": "Neumann - Traité élémentaire du jeu des échecs (1870).pdf",
+   "declarada": "fra",
+   "folhas_abertas": 6,
+   "decidiu_em": {
+    "glifo": 3,
+    "camada": 3,
+    "produto": 3
+   },
+   "glifo": {
+    "detectada": "fra",
+    "folhas": 5,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 2.0,
+     "fra": 32.433,
+     "nld": 4.267,
+     "por": 5.6,
+     "ron": 4.767,
+     "spa": 4.933
+    },
+    "palavras": 342,
+    "cirilicas": 0,
+    "latinas": 1224
+   },
+   "camada": {
+    "detectada": "fra",
+    "folhas": 4,
+    "pontos": {
+     "deu": 4.5,
+     "fra": 49.183,
+     "nld": 4.267,
+     "por": 5.85,
+     "ron": 8.017,
+     "spa": 8.183
+    },
+    "palavras": 320,
+    "cirilicas": 0,
+    "latinas": 1450
+   },
+   "produto": {
+    "detectada": "fra",
+    "folhas": 4,
+    "pontos": {
+     "deu": 4.0,
+     "fra": 34.217,
+     "nld": 2.467,
+     "por": 3.05,
+     "ron": 4.55,
+     "spa": 4.717
+    },
+    "palavras": 263,
+    "cirilicas": 0,
+    "latinas": 1103
+   }
+  },
+  {
+   "livro": "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945).pdf",
+   "declarada": "nld",
+   "folhas_abertas": 12,
+   "decidiu_em": {
+    "glifo": null,
+    "camada": 5,
+    "produto": 5
+   },
+   "glifo": {
+    "detectada": "",
+    "folhas": 10,
+    "pontos": {
+     "deu": 1.5,
+     "eng": 0.5,
+     "fra": 2.2,
+     "nld": 4.2,
+     "por": 0.7,
+     "ron": 0.2,
+     "spa": 0.7
+    },
+    "palavras": 1154,
+    "cirilicas": 0,
+    "latinas": 1820
+   },
+   "camada": {
+    "detectada": "nld",
+    "folhas": 8,
+    "pontos": {
+     "deu": 7.0,
+     "eng": 7.667,
+     "fra": 9.733,
+     "nld": 114.4,
+     "por": 13.4,
+     "ron": 10.067,
+     "spa": 10.733
+    },
+    "palavras": 683,
+    "cirilicas": 0,
+    "latinas": 3557
+   },
+   "produto": {
+    "detectada": "nld",
+    "folhas": 4,
+    "pontos": {
+     "deu": 6.0,
+     "eng": 7.0,
+     "fra": 6.6,
+     "nld": 85.6,
+     "por": 7.6,
+     "ron": 7.6,
+     "spa": 7.6
+    },
+    "palavras": 407,
+    "cirilicas": 0,
+    "latinas": 2031
+   }
+  },
+  {
+   "livro": "Pachman L. Modern Chess Strateg.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 6,
+   "decidiu_em": {
+    "glifo": 5,
+    "camada": null,
+    "produto": 5
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.5,
+     "eng": 77.667,
+     "fra": 1.833,
+     "nld": 2.167,
+     "por": 1.5,
+     "ron": 1.0,
+     "spa": 0.333
+    },
+    "palavras": 390,
+    "cirilicas": 0,
+    "latinas": 1738
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 0,
+    "pontos": {},
+    "palavras": 0,
+    "cirilicas": 0,
+    "latinas": 0
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.5,
+     "eng": 77.667,
+     "fra": 1.833,
+     "nld": 2.167,
+     "por": 1.5,
+     "ron": 1.0,
+     "spa": 0.333
+    },
+    "palavras": 390,
+    "cirilicas": 0,
+    "latinas": 1738
+   }
+  },
+  {
+   "livro": "Pachman_Ludek_Complete_Chess_Strategy_2_Principles_of_Pawn_Play.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 8,
+   "decidiu_em": {
+    "glifo": 5,
+    "camada": 5,
+    "produto": 5
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 148.833,
+     "fra": 2.0,
+     "nld": 7.833,
+     "por": 3.0,
+     "ron": 2.333,
+     "spa": 1.5
+    },
+    "palavras": 566,
+    "cirilicas": 0,
+    "latinas": 2755
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 166.833,
+     "fra": 2.0,
+     "nld": 7.833,
+     "por": 3.0,
+     "ron": 2.333,
+     "spa": 1.5
+    },
+    "palavras": 573,
+    "cirilicas": 0,
+    "latinas": 2768
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 166.833,
+     "fra": 2.0,
+     "nld": 7.833,
+     "por": 3.0,
+     "ron": 2.333,
+     "spa": 1.5
+    },
+    "palavras": 573,
+    "cirilicas": 0,
+    "latinas": 2768
+   }
+  },
+  {
+   "livro": "Pachman_Ludek_Complete_Chess_Strategy_3_Play_on_the_Wings,_1978.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 7,
+   "decidiu_em": {
+    "glifo": 5,
+    "camada": 4,
+    "produto": 4
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 3.5,
+     "eng": 236.833,
+     "fra": 10.5,
+     "nld": 13.333,
+     "por": 4.0,
+     "ron": 6.333,
+     "spa": 1.5
+    },
+    "palavras": 920,
+    "cirilicas": 0,
+    "latinas": 4211
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 3.5,
+     "eng": 253.5,
+     "fra": 10.5,
+     "nld": 13.0,
+     "por": 4.0,
+     "ron": 6.0,
+     "spa": 1.5
+    },
+    "palavras": 897,
+    "cirilicas": 0,
+    "latinas": 4213
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 3.5,
+     "eng": 253.5,
+     "fra": 10.5,
+     "nld": 13.0,
+     "por": 4.0,
+     "ron": 6.0,
+     "spa": 1.5
+    },
+    "palavras": 897,
+    "cirilicas": 0,
+    "latinas": 4213
+   }
+  },
+  {
+   "livro": "Polgar,_Laszlo_Chess_5334_Problems,_Combinations,_and_Games.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 7,
+   "decidiu_em": {
+    "glifo": 3,
+    "camada": 6,
+    "produto": 3
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "eng": 135.5,
+     "fra": 1.833,
+     "nld": 8.333,
+     "por": 1.0,
+     "ron": 10.0,
+     "spa": 1.333
+    },
+    "palavras": 865,
+    "cirilicas": 0,
+    "latinas": 3972
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 3,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 167.667,
+     "fra": 2.0,
+     "nld": 7.667,
+     "por": 3.0,
+     "ron": 6.667,
+     "spa": 1.0
+    },
+    "palavras": 611,
+    "cirilicas": 0,
+    "latinas": 3036
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 177.833,
+     "fra": 2.0,
+     "nld": 8.833,
+     "por": 3.0,
+     "ron": 7.333,
+     "spa": 1.0
+    },
+    "palavras": 805,
+    "cirilicas": 0,
+    "latinas": 3660
+   }
+  },
+  {
+   "livro": "Polugajewski_Sizilianisch_Najdorf_system_bis_Polugajewski_variante.pdf",
+   "declarada": "deu",
+   "folhas_abertas": 10,
+   "decidiu_em": {
+    "glifo": 1,
+    "camada": null,
+    "produto": 1
+   },
+   "glifo": {
+    "detectada": "deu",
+    "folhas": 4,
+    "pontos": {
+     "deu": 158.5,
+     "eng": 9.333,
+     "fra": 4.333,
+     "nld": 9.333,
+     "por": 5.0,
+     "ron": 6.667,
+     "spa": 0.833
+    },
+    "palavras": 655,
+    "cirilicas": 0,
+    "latinas": 3872
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 0,
+    "pontos": {},
+    "palavras": 0,
+    "cirilicas": 0,
+    "latinas": 0
+   },
+   "produto": {
+    "detectada": "deu",
+    "folhas": 4,
+    "pontos": {
+     "deu": 158.5,
+     "eng": 9.333,
+     "fra": 4.333,
+     "nld": 9.333,
+     "por": 5.0,
+     "ron": 6.667,
+     "spa": 0.833
+    },
+    "palavras": 655,
+    "cirilicas": 0,
+    "latinas": 3872
+   }
+  },
+  {
+   "livro": "Reinfeld_1001_Sacrificios_y_Combinaciones_Brillantes_1977.pdf",
+   "declarada": "spa",
+   "folhas_abertas": 25,
+   "decidiu_em": {
+    "glifo": 5,
+    "camada": 5,
+    "produto": 5
+   },
+   "glifo": {
+    "detectada": "spa",
+    "folhas": 4,
+    "pontos": {
+     "deu": 10.0,
+     "fra": 21.65,
+     "nld": 12.733,
+     "por": 32.817,
+     "ron": 19.65,
+     "spa": 93.15
+    },
+    "palavras": 739,
+    "cirilicas": 0,
+    "latinas": 3354
+   },
+   "camada": {
+    "detectada": "spa",
+    "folhas": 1,
+    "pontos": {
+     "deu": 2.0,
+     "fra": 10.55,
+     "nld": 3.8,
+     "por": 10.383,
+     "ron": 7.717,
+     "spa": 35.55
+    },
+    "palavras": 206,
+    "cirilicas": 0,
+    "latinas": 993
+   },
+   "produto": {
+    "detectada": "spa",
+    "folhas": 4,
+    "pontos": {
+     "deu": 10.0,
+     "fra": 26.65,
+     "nld": 13.067,
+     "por": 35.15,
+     "ron": 21.983,
+     "spa": 103.15
+    },
+    "palavras": 738,
+    "cirilicas": 0,
+    "latinas": 3376
+   }
+  },
+  {
+   "livro": "Schiller - The Big Book of Combinations (1994).pdf",
+   "declarada": "eng",
+   "folhas_abertas": 11,
+   "decidiu_em": {
+    "glifo": 6,
+    "camada": 6,
+    "produto": 6
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "eng": 123.5,
+     "fra": 1.0,
+     "nld": 6.5,
+     "por": 0.5,
+     "ron": 2.0,
+     "spa": 0.5
+    },
+    "palavras": 599,
+    "cirilicas": 0,
+    "latinas": 2712
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 3,
+    "pontos": {
+     "eng": 137.833,
+     "fra": 1.0,
+     "nld": 6.833,
+     "por": 0.5,
+     "ron": 2.333,
+     "spa": 0.5
+    },
+    "palavras": 522,
+    "cirilicas": 0,
+    "latinas": 2670
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "eng": 137.833,
+     "fra": 1.0,
+     "nld": 6.833,
+     "por": 0.5,
+     "ron": 2.333,
+     "spa": 0.5
+    },
+    "palavras": 571,
+    "cirilicas": 0,
+    "latinas": 2756
+   }
+  },
+  {
+   "livro": "Secrets of Chess Training School of Future Champions 1_ao_5.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 4,
+   "decidiu_em": {
+    "glifo": 2,
+    "camada": 2,
+    "produto": 2
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "eng": 40.0,
+     "fra": 0.5,
+     "nld": 0.5,
+     "por": 1.0
+    },
+    "palavras": 270,
+    "cirilicas": 0,
+    "latinas": 1075
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 3,
+    "pontos": {
+     "eng": 42.0,
+     "fra": 0.5,
+     "nld": 0.5,
+     "por": 1.0
+    },
+    "palavras": 197,
+    "cirilicas": 0,
+    "latinas": 1018
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "eng": 42.0,
+     "fra": 0.5,
+     "nld": 0.5,
+     "por": 1.0
+    },
+    "palavras": 247,
+    "cirilicas": 0,
+    "latinas": 1112
+   }
+  },
+  {
+   "livro": "Simple Chess - Stean, M_.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 6,
+   "decidiu_em": {
+    "glifo": 2,
+    "camada": null,
+    "produto": 2
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 4.5,
+     "eng": 276.333,
+     "fra": 0.583,
+     "nld": 16.167,
+     "por": 4.25,
+     "ron": 6.583,
+     "spa": 1.583
+    },
+    "palavras": 1017,
+    "cirilicas": 0,
+    "latinas": 4811
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 0,
+    "pontos": {},
+    "palavras": 0,
+    "cirilicas": 0,
+    "latinas": 0
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 4.5,
+     "eng": 276.333,
+     "fra": 0.583,
+     "nld": 16.167,
+     "por": 4.25,
+     "ron": 6.583,
+     "spa": 1.583
+    },
+    "palavras": 1017,
+    "cirilicas": 0,
+    "latinas": 4811
+   }
+  },
+  {
+   "livro": "Stefaniu - Problematica Deschideriliol in sah (1992).pdf",
+   "declarada": "ron",
+   "folhas_abertas": 8,
+   "decidiu_em": {
+    "glifo": 6,
+    "camada": null,
+    "produto": 6
+   },
+   "glifo": {
+    "detectada": "ron",
+    "folhas": 4,
+    "pontos": {
+     "eng": 10.333,
+     "fra": 25.45,
+     "nld": 18.533,
+     "por": 12.95,
+     "ron": 90.283,
+     "spa": 17.45
+    },
+    "palavras": 1113,
+    "cirilicas": 0,
+    "latinas": 4534
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 0,
+    "pontos": {},
+    "palavras": 0,
+    "cirilicas": 0,
+    "latinas": 0
+   },
+   "produto": {
+    "detectada": "ron",
+    "folhas": 4,
+    "pontos": {
+     "eng": 10.333,
+     "fra": 25.45,
+     "nld": 18.533,
+     "por": 12.95,
+     "ron": 90.283,
+     "spa": 17.45
+    },
+    "palavras": 1113,
+    "cirilicas": 0,
+    "latinas": 4534
+   }
+  },
+  {
+   "livro": "Vishy_Anand_Great_Chess_Combinations.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 8,
+   "decidiu_em": {
+    "glifo": 5,
+    "camada": 5,
+    "produto": 5
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 5,
+    "pontos": {
+     "deu": 1.5,
+     "eng": 34.333,
+     "fra": 1.2,
+     "nld": 2.533,
+     "por": 0.7,
+     "ron": 2.533,
+     "spa": 0.2
+    },
+    "palavras": 264,
+    "cirilicas": 0,
+    "latinas": 1216
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 5,
+    "pontos": {
+     "deu": 1.5,
+     "eng": 56.167,
+     "fra": 0.7,
+     "nld": 2.867,
+     "por": 1.7,
+     "ron": 2.867,
+     "spa": 1.2
+    },
+    "palavras": 362,
+    "cirilicas": 0,
+    "latinas": 1929
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 43.167,
+     "fra": 0.2,
+     "nld": 2.867,
+     "por": 1.7,
+     "ron": 2.867,
+     "spa": 1.2
+    },
+    "palavras": 291,
+    "cirilicas": 0,
+    "latinas": 1550
+   }
+  },
+  {
+   "livro": "Xadrez Vitorioso - Finais - Yasser Seirawan.pdf",
+   "declarada": "por",
+   "folhas_abertas": 11,
+   "decidiu_em": {
+    "glifo": 4,
+    "camada": 4,
+    "produto": 4
+   },
+   "glifo": {
+    "detectada": "por",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 6.5,
+     "fra": 21.017,
+     "nld": 9.1,
+     "por": 135.017,
+     "ron": 10.85,
+     "spa": 28.517
+    },
+    "palavras": 952,
+    "cirilicas": 0,
+    "latinas": 4842
+   },
+   "camada": {
+    "detectada": "por",
+    "folhas": 6,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 6.5,
+     "fra": 22.217,
+     "nld": 10.3,
+     "por": 137.217,
+     "ron": 12.05,
+     "spa": 29.717
+    },
+    "palavras": 1016,
+    "cirilicas": 0,
+    "latinas": 5187
+   },
+   "produto": {
+    "detectada": "por",
+    "folhas": 4,
+    "pontos": {
+     "eng": 5.5,
+     "fra": 10.933,
+     "nld": 6.1,
+     "por": 76.433,
+     "ron": 6.1,
+     "spa": 14.933
+    },
+    "palavras": 618,
+    "cirilicas": 0,
+    "latinas": 3253
+   }
+  },
+  {
+   "livro": "Журавлев_Н_The_Manual_of_Chess_Combinations_5_2021.pdf",
+   "declarada": "rus",
+   "folhas_abertas": 6,
+   "decidiu_em": {
+    "glifo": null,
+    "camada": null,
+    "produto": null
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 6,
+    "pontos": {
+     "deu": 3.0,
+     "eng": 183.5,
+     "fra": 2.4,
+     "nld": 6.4,
+     "por": 7.4,
+     "ron": 5.4,
+     "spa": 5.9
+    },
+    "palavras": 1275,
+    "cirilicas": 0,
+    "latinas": 6912
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 5,
+    "pontos": {
+     "deu": 2.0,
+     "eng": 190.5,
+     "fra": 2.4,
+     "nld": 6.4,
+     "por": 3.9,
+     "ron": 4.4,
+     "spa": 3.4
+    },
+    "palavras": 1289,
+    "cirilicas": 0,
+    "latinas": 7390
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 6,
+    "pontos": {
+     "deu": 3.0,
+     "eng": 191.5,
+     "fra": 2.4,
+     "nld": 6.4,
+     "por": 3.9,
+     "ron": 4.4,
+     "spa": 3.4
+    },
+    "palavras": 1312,
+    "cirilicas": 0,
+    "latinas": 7512
+   }
+  },
+  {
+   "livro": "Пилавов Г. Изолированная пешка.pdf",
+   "declarada": "rus",
+   "folhas_abertas": 11,
+   "decidiu_em": {
+    "glifo": null,
+    "camada": null,
+    "produto": null
+   },
+   "glifo": {
+    "detectada": "",
+    "folhas": 10,
+    "pontos": {
+     "fra": 1.5,
+     "por": 3.5,
+     "ron": 3.5,
+     "spa": 3.5
+    },
+    "palavras": 1405,
+    "cirilicas": 0,
+    "latinas": 7084
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 0,
+    "pontos": {},
+    "palavras": 0,
+    "cirilicas": 0,
+    "latinas": 0
+   },
+   "produto": {
+    "detectada": "",
+    "folhas": 10,
+    "pontos": {
+     "fra": 1.5,
+     "por": 3.5,
+     "ron": 3.5,
+     "spa": 3.5
+    },
+    "palavras": 1405,
+    "cirilicas": 0,
+    "latinas": 7084
+   }
+  },
+  {
+   "livro": "📚Aagaard J. Excelling at chess calculation.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 6,
+   "decidiu_em": {
+    "glifo": 3,
+    "camada": null,
+    "produto": 3
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.5,
+     "eng": 116.333,
+     "fra": 4.0,
+     "nld": 8.333,
+     "por": 5.5,
+     "ron": 4.333,
+     "spa": 2.0
+    },
+    "palavras": 756,
+    "cirilicas": 0,
+    "latinas": 3569
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 0,
+    "pontos": {},
+    "palavras": 0,
+    "cirilicas": 0,
+    "latinas": 0
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.5,
+     "eng": 116.333,
+     "fra": 4.0,
+     "nld": 8.333,
+     "por": 5.5,
+     "ron": 4.333,
+     "spa": 2.0
+    },
+    "palavras": 756,
+    "cirilicas": 0,
+    "latinas": 3569
+   }
+  },
+  {
+   "livro": "📚Burgess G. The Gambit Book of Instructive.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 5,
+   "decidiu_em": {
+    "glifo": 3,
+    "camada": 3,
+    "produto": 3
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.5,
+     "eng": 130.333,
+     "fra": 1.5,
+     "nld": 6.333,
+     "por": 3.5,
+     "ron": 4.333,
+     "spa": 1.5
+    },
+    "palavras": 676,
+    "cirilicas": 0,
+    "latinas": 3270
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 3,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 134.333,
+     "fra": 1.0,
+     "nld": 6.333,
+     "por": 3.5,
+     "ron": 4.333,
+     "spa": 0.5
+    },
+    "palavras": 638,
+    "cirilicas": 0,
+    "latinas": 3175
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 134.333,
+     "fra": 1.0,
+     "nld": 6.333,
+     "por": 3.5,
+     "ron": 4.333,
+     "spa": 0.5
+    },
+    "palavras": 677,
+    "cirilicas": 0,
+    "latinas": 3278
+   }
+  },
+  {
+   "livro": "📚Chess Evolution 2013 №045-096.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 5,
+   "decidiu_em": {
+    "glifo": 2,
+    "camada": 2,
+    "produto": 2
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 235.333,
+     "fra": 5.2,
+     "nld": 14.033,
+     "por": 0.7,
+     "ron": 5.533,
+     "spa": 0.2
+    },
+    "palavras": 830,
+    "cirilicas": 0,
+    "latinas": 3575
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 232.333,
+     "fra": 4.0,
+     "nld": 13.833,
+     "por": 0.5,
+     "ron": 5.833,
+     "spa": 1.5
+    },
+    "palavras": 826,
+    "cirilicas": 0,
+    "latinas": 3668
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.0,
+     "eng": 232.333,
+     "fra": 4.0,
+     "nld": 13.833,
+     "por": 0.5,
+     "ron": 5.833,
+     "spa": 1.5
+    },
+    "palavras": 826,
+    "cirilicas": 0,
+    "latinas": 3668
+   }
+  },
+  {
+   "livro": "📚Chess Evolution 2014 №097-149.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 5,
+   "decidiu_em": {
+    "glifo": 2,
+    "camada": 2,
+    "produto": 2
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 4.5,
+     "eng": 265.333,
+     "fra": 4.5,
+     "nld": 20.333,
+     "por": 7.0,
+     "ron": 5.333,
+     "spa": 1.0
+    },
+    "palavras": 1025,
+    "cirilicas": 0,
+    "latinas": 4321
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 3.5,
+     "eng": 266.333,
+     "fra": 5.5,
+     "nld": 19.333,
+     "por": 5.0,
+     "ron": 4.333,
+     "spa": 1.0
+    },
+    "palavras": 951,
+    "cirilicas": 0,
+    "latinas": 4257
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 3.5,
+     "eng": 266.333,
+     "fra": 5.5,
+     "nld": 19.333,
+     "por": 5.0,
+     "ron": 4.333,
+     "spa": 1.0
+    },
+    "palavras": 951,
+    "cirilicas": 0,
+    "latinas": 4257
+   }
+  },
+  {
+   "livro": "📚Hertan Charles. Forcing Chess Moves.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 6,
+   "decidiu_em": {
+    "glifo": 2,
+    "camada": 2,
+    "produto": 2
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 109.833,
+     "fra": 1.0,
+     "nld": 8.833,
+     "por": 2.0,
+     "ron": 2.333,
+     "spa": 0.5
+    },
+    "palavras": 584,
+    "cirilicas": 0,
+    "latinas": 2949
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 109.833,
+     "fra": 1.0,
+     "nld": 6.833,
+     "por": 2.0,
+     "ron": 2.333,
+     "spa": 0.5
+    },
+    "palavras": 581,
+    "cirilicas": 0,
+    "latinas": 3023
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 2.5,
+     "eng": 109.833,
+     "fra": 1.0,
+     "nld": 6.833,
+     "por": 2.0,
+     "ron": 2.333,
+     "spa": 0.5
+    },
+    "palavras": 581,
+    "cirilicas": 0,
+    "latinas": 3023
+   }
+  },
+  {
+   "livro": "📚Nunn J. Secrets of Minor Piece Endings.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 7,
+   "decidiu_em": {
+    "glifo": 4,
+    "camada": 4,
+    "produto": 4
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 5.0,
+     "eng": 247.0,
+     "fra": 2.5,
+     "nld": 12.5,
+     "por": 2.5,
+     "ron": 6.0,
+     "spa": 0.5
+    },
+    "palavras": 970,
+    "cirilicas": 0,
+    "latinas": 4538
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 4.5,
+     "eng": 271.167,
+     "fra": 2.5,
+     "nld": 12.667,
+     "por": 2.0,
+     "ron": 5.667,
+     "spa": 0.5
+    },
+    "palavras": 1076,
+    "cirilicas": 0,
+    "latinas": 4754
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 4.5,
+     "eng": 271.167,
+     "fra": 2.5,
+     "nld": 12.667,
+     "por": 2.0,
+     "ron": 5.667,
+     "spa": 0.5
+    },
+    "palavras": 1076,
+    "cirilicas": 0,
+    "latinas": 4754
+   }
+  },
+  {
+   "livro": "📚Nunn J. Secrets of Pawnless Endings.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 7,
+   "decidiu_em": {
+    "glifo": 4,
+    "camada": 4,
+    "produto": 4
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 5.5,
+     "eng": 292.5,
+     "fra": 2.0,
+     "nld": 19.0,
+     "por": 4.0,
+     "ron": 7.0,
+     "spa": 1.0
+    },
+    "palavras": 1152,
+    "cirilicas": 0,
+    "latinas": 5340
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 5.0,
+     "eng": 325.167,
+     "fra": 2.0,
+     "nld": 19.667,
+     "por": 3.5,
+     "ron": 6.667,
+     "spa": 1.0
+    },
+    "palavras": 1198,
+    "cirilicas": 0,
+    "latinas": 5503
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 5.0,
+     "eng": 325.167,
+     "fra": 2.0,
+     "nld": 19.667,
+     "por": 3.5,
+     "ron": 6.667,
+     "spa": 1.0
+    },
+    "palavras": 1198,
+    "cirilicas": 0,
+    "latinas": 5503
+   }
+  },
+  {
+   "livro": "📚Silman J. The Complete Book of Chess Strategy.pdf",
+   "declarada": "eng",
+   "folhas_abertas": 13,
+   "decidiu_em": {
+    "glifo": 6,
+    "camada": null,
+    "produto": 6
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 9,
+    "pontos": {
+     "eng": 34.167,
+     "fra": 1.5,
+     "nld": 2.667,
+     "ron": 2.167,
+     "spa": 0.5
+    },
+    "palavras": 601,
+    "cirilicas": 0,
+    "latinas": 2845
+   },
+   "camada": {
+    "detectada": "",
+    "folhas": 0,
+    "pontos": {},
+    "palavras": 0,
+    "cirilicas": 0,
+    "latinas": 0
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 9,
+    "pontos": {
+     "eng": 34.167,
+     "fra": 1.5,
+     "nld": 2.667,
+     "ron": 2.167,
+     "spa": 0.5
+    },
+    "palavras": 601,
+    "cirilicas": 0,
+    "latinas": 2845
+   }
+  },
+  {
+   "livro": "📚Yusupov Artur. Build Up Your Chess (all volumes).pdf",
+   "declarada": "eng",
+   "folhas_abertas": 6,
+   "decidiu_em": {
+    "glifo": 2,
+    "camada": 6,
+    "produto": 2
+   },
+   "glifo": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.5,
+     "eng": 101.5,
+     "fra": 2.5,
+     "nld": 8.0,
+     "por": 1.5,
+     "ron": 4.5,
+     "spa": 0.5
+    },
+    "palavras": 580,
+    "cirilicas": 0,
+    "latinas": 2681
+   },
+   "camada": {
+    "detectada": "eng",
+    "folhas": 1,
+    "pontos": {
+     "eng": 45.833,
+     "fra": 1.5,
+     "nld": 3.333,
+     "por": 1.0,
+     "ron": 2.333
+    },
+    "palavras": 213,
+    "cirilicas": 0,
+    "latinas": 1175
+   },
+   "produto": {
+    "detectada": "eng",
+    "folhas": 4,
+    "pontos": {
+     "deu": 1.5,
+     "eng": 107.5,
+     "fra": 2.5,
+     "nld": 8.0,
+     "por": 2.5,
+     "ron": 4.5,
+     "spa": 0.5
+    },
+    "palavras": 590,
+    "cirilicas": 0,
+    "latinas": 2686
+   }
+  },
+  {
+   "livro": "📚Болеславский_И_Избранные_партии.pdf",
+   "declarada": "rus",
+   "folhas_abertas": 12,
+   "decidiu_em": {
+    "glifo": null,
+    "camada": 4,
+    "produto": 4
+   },
+   "glifo": {
+    "detectada": "",
+    "folhas": 10,
+    "pontos": {
+     "fra": 2.4,
+     "nld": 0.4,
+     "por": 4.4,
+     "ron": 1.4,
+     "spa": 2.4
+    },
+    "palavras": 1541,
+    "cirilicas": 0,
+    "latinas": 7577
+   },
+   "camada": {
+    "detectada": "rus",
+    "folhas": 9,
+    "pontos": {
+     "eng": 2.0,
+     "fra": 0.6,
+     "nld": 0.6,
+     "por": 0.6,
+     "ron": 0.6,
+     "spa": 2.6
+    },
+    "palavras": 1765,
+    "cirilicas": 7872,
+    "latinas": 401
+   },
+   "produto": {
+    "detectada": "rus",
+    "folhas": 10,
+    "pontos": {
+     "eng": 2.0,
+     "fra": 0.6,
+     "nld": 0.6,
+     "por": 0.6,
+     "ron": 0.6,
+     "spa": 2.6
+    },
+    "palavras": 1789,
+    "cirilicas": 7872,
+    "latinas": 444
+   }
+  }
+ ],
+ "fusao_no_ouro_dev": {
+  "folhas": 28,
+  "folhas_com_texto_igual": 20,
+  "cer_de_prosa_tip": {
+   "antes": 0.00469,
+   "depois": 0.00457
+  },
+  "cer_de_notacao_tip": {
+   "antes": 0.09751,
+   "depois": 0.09769
+  },
+  "folhas_melhores": 3,
+  "folhas_piores": 1,
+  "caracteres_de_prosa": 32407,
+  "linguas": [
+   "eng",
+   "por"
+  ]
+ },
+ "glifo_no_ouro_dev": {
+  "folhas": 28,
+  "iguais_a_base": 28,
+  "base": "a2937260"
+ }
+}

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 
+from PyQt6 import sip
 from PyQt6.QtCore import QEvent, QObject, Qt
 from PyQt6.QtGui import QHelpEvent
 from PyQt6.QtWidgets import QApplication, QProxyStyle, QStyle, QToolTip, QWidget
@@ -78,6 +79,10 @@ class _EstiloComAtrasoDeDica(QProxyStyle):
         return super().styleHint(hint, option, widget, returnData)  # type: ignore[arg-type]
 
 
+_INSTALADO: list[_EstiloComAtrasoDeDica] = []
+"""O estilo que `ajustar_atraso` pôs na aplicação, quando pôs. Um só por processo: ver ali."""
+
+
 def ajustar_atraso(atraso: int = ATRASO_DA_DICA) -> bool:
     """Fixa o tempo de espera das dicas do processo inteiro. Chame uma vez, ao montar a janela.
 
@@ -93,8 +98,22 @@ def ajustar_atraso(atraso: int = ATRASO_DA_DICA) -> bool:
     if not isinstance(aplicacao, QApplication):
         logger.info("Sem QApplication: o atraso da dica não foi ajustado.")
         return False
+    # **O estilo é trocado uma vez só por processo, e depois o número muda nele.** `setStyle` apaga o
+    # estilo anterior, e o widget ainda vivo -- o de outra janela, o que espera o `deleteLater` -- fica
+    # apontando para memória solta: o próximo evento que o pinta derruba o processo sem exceção nenhuma
+    # (`access violation` na CI, no primeiro `processEvents` depois do `AtrasoTests`). Cada janela nova
+    # chama isto, e a suíte abre dezenas.
+    # O instalado é guardado aqui, e não lido de `aplicacao.style()`: com folha de estilo em vigor, o
+    # estilo do app é o embrulho dela, e o nosso fica por baixo.
+    instalado = _INSTALADO[0] if _INSTALADO else None
+    if instalado is not None and not sip.isdeleted(instalado):
+        instalado._atraso = atraso
+        if atraso_em_vigor() == atraso:
+            return True
     try:
-        aplicacao.setStyle(_EstiloComAtrasoDeDica(atraso))
+        estilo = _EstiloComAtrasoDeDica(atraso)
+        aplicacao.setStyle(estilo)
+        _INSTALADO[:] = [estilo]
     except Exception as exc:  # noqa: BLE001 - aparência não derruba a ferramenta
         logger.info("Atraso da dica não ajustado (%s): vale o do sistema.", exc)
         return False

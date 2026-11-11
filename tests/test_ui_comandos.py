@@ -90,7 +90,6 @@ COMANDOS_DO_EDITOR: tuple[str, ...] = (
     "maiusculas",
     "marcar_fora_do_lexico",
     "minusculas",
-    "modo_bloco",
     "negrito",
     "paleta_de_glifos",
     "quebrar_linha",
@@ -232,7 +231,7 @@ ROTULOS_CURTOS_REGISTRADOS: dict[str, str] = {
                 "diminuir_corpo", "estilo_legenda", "estilo_notacao", "estilo_prosa", "estilo_titulo",
                 "exportar_txt", "folha_da_pagina_aberta", "justificar", "ler_folha", "limpar_cor",
                 "limpar_formato", "limpar_marcas_do_lexico", "maiusculas", "marcar_fora_do_lexico",
-                "minusculas", "modo_bloco", "paleta_de_glifos", "quebrar_linha", "recortar", "salvar_texto",
+                "minusculas", "paleta_de_glifos", "quebrar_linha", "recortar", "salvar_texto",
                 "selecionar_tudo", "zoom_do_texto_normal",
             ),
         ),
@@ -255,6 +254,11 @@ ROTULOS_CURTOS_REGISTRADOS: dict[str, str] = {
                 "proxima_fora_do_lexico", "recolher_fita", "tamanho_da_miniatura", "texto_ao_lado",
                 "trazer_da_revisao", "ler_ao_chegar", "voltar_a_versao_anterior",
             ),
+        ),
+        (
+            "Texto preciso (S-703, S-723, S-725, S-766): o menu diz o que o comando faz com o livro ou com a folha, "
+            'e o botão da fita diz o verbo -- "Em todas as folhas…", "Limpar cache", "Transcrever".',
+            ("corrigir_em_todas_as_folhas", "lingua_do_livro", "modo_transcricao", "limpar_cache_de_leitura"),
         ),
         (
             'Barras do PDF: "OCR todos diagramas" é o texto que a janela mostra hoje, e trocá-lo mudaria a '
@@ -668,7 +672,6 @@ class ComandosDoEditorTests(unittest.TestCase):
         """
         self.assertEqual(comandos.rotulo_de_botao("ler_folha"), "Ler folha")
         self.assertEqual(comandos.rotulo_de_botao("folha_da_pagina_aberta"), "Da página aberta")
-        self.assertEqual(comandos.rotulo_de_botao("modo_bloco"), "Modo bloco (lento)")
         self.assertEqual(comandos.rotulo_de_botao("exportar_txt"), "Salvar .txt")
         self.assertEqual(comandos.rotulo_de_botao("salvar_texto"), "Salvar")
         self.assertEqual(comandos.rotulo_de_botao("abrir_texto"), "Abrir…")

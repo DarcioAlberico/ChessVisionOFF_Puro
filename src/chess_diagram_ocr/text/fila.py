@@ -35,8 +35,8 @@ lá com um comentário dizendo que quem decidiria se ele está no lugar certo se
 
 ## A régua muda quando o leitor de linha não roda, e a fila diz qual usou
 
-`modo_bloco` está **desligado por padrão** desde a S-188 -- na página inteira ele custa ~50x o
-tempo e piora o livro nativo digital. Sem ele não há segunda leitura, e portanto não há
+A leitura em blocos saiu do caminho da página na S-726 -- na prosa ela erra 6,33% contra 0,95% do
+glifo sozinho. Sem ela não há segunda leitura, e portanto não há
 divergência: todo box tem `do_glifo == do_bloco`, e a fila ordena pela confiança do classificador
 sozinho. Isso não é defeito, é o estado normal do programa -- e a fila **declara** em qual dos
 dois mundos ela foi montada (`Fila.regua`), porque uma fila que não diz por que ordenou assim é
@@ -351,12 +351,29 @@ def _entra_na_fila(item: Item, aceitas: frozenset[str]) -> bool:
     return item.faixa in aceitas or item.divergem
 
 
+def _itens_de_palavra(linha: Any, base: Item, aceitas: frozenset[str]) -> list[Item]:
+    """A linha que sabe quanto vale cada palavra (S-760) vira um item por palavra, com a confiança **dela**.
+
+    É a mesma fila: a cor sai do mesmo número que a ordem. A palavra que a marca da S-761 apontou entra mesmo com a faixa tranquila, porque quem
+    admite não é quem ordena: é o `ou` de `_entra_na_fila`, e ela fica no fim, atrás de toda palavra vermelha. `box` é o índice do trecho na linha.
+    """
+    marcas = getattr(linha, "revisar_em", ())
+    saida = []
+    for numero, (inicio, fim, valor) in enumerate(linha.confianca_em):
+        item = replace(base, texto=linha.texto[inicio:fim], confianca=float(valor), box=numero, procedencia=str(linha.procedencia_no(inicio)))
+        if _entra_na_fila(item, aceitas) or any(a < fim and inicio < b for a, b in marcas):
+            saida.append(item)
+    return saida
+
+
 def de_pagina(
     pagina: Any,
     *,
     faixas: Sequence[str] = SO_O_QUE_PEDE_OLHO,
 ) -> list[Item]:
-    """Uma `PaginaLida` como itens de fila, **uma linha por item**, já ordenados.
+    """Uma `PaginaLida` como itens de fila, **uma linha por item** (ou uma palavra, na fusão), já ordenados.
+
+    Quem tem `confianca_em` é a fusão, com a confiança calibrada da S-760: lá o item é a palavra. Sem ele, a linha, como sempre foi.
 
     ## Por que linha, e não caractere, neste caminho
 
@@ -387,7 +404,9 @@ def de_pagina(
                     bbox=tuple(float(v) for v in linha.bbox),  # type: ignore[arg-type]
                     procedencia=str(linha.procedencia),
                 )
-                if _entra_na_fila(item, aceitas):
+                if getattr(linha, "confianca_em", ()):
+                    achados.extend(_itens_de_palavra(linha, item, aceitas))
+                elif _entra_na_fila(item, aceitas):
                     achados.append(item)
     return ordenar(achados)
 

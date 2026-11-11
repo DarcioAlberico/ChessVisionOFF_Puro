@@ -1,0 +1,96 @@
+{
+  "item": "S-728",
+  "origem": "lstm-word-dawg do tessdata fast instalado com o Tesseract, extraído com combine_tessdata -u e dawg2wordlist",
+  "licenca": "Apache-2.0, cópia em LICENSE.tessdata",
+  "regra": "cli/texto_lexico.py, aceita_na_lingua",
+  "linguas": {
+    "eng": {
+      "arquivo": "eng.txt.gz",
+      "entradas": 87680,
+      "linhas_no_tessdata": 338080,
+      "traineddata": {
+        "arquivo": "eng.traineddata",
+        "sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+        "versao": "4.00.00alpha:eng:synth20170629"
+      },
+      "sha256": "d1c4e39521be80fd51033cda52edbc672783a3f825cb5c2f449ec93cb4fdf923"
+    },
+    "por": {
+      "arquivo": "por.txt.gz",
+      "entradas": 52199,
+      "linhas_no_tessdata": 145870,
+      "traineddata": {
+        "arquivo": "por.traineddata",
+        "sha256": "c4932b937207a9514b7514d518b931a99938c02a28a5a5a553f8599ed58b7deb",
+        "versao": "4.00.00alpha:por:synth20170629"
+      },
+      "sha256": "8cabbf5ff9a8839de794722ba3dcad0dfaca3534f4e5a7916e1eaec289a236d2"
+    },
+    "spa": {
+      "arquivo": "spa.txt.gz",
+      "entradas": 67361,
+      "linhas_no_tessdata": 179447,
+      "traineddata": {
+        "arquivo": "spa.traineddata",
+        "sha256": "6f2e04d02774a18f01bed44b1111f2cd7f3ba7ac9dc4373cd3f898a40ea6b464",
+        "versao": "4.00.00alpha:spa:synth20170629"
+      },
+      "sha256": "f42bc7d56689e26306d76a523c4543d5b5fc7517e020e36728b9250170be1000"
+    },
+    "deu": {
+      "arquivo": "deu.txt.gz",
+      "entradas": 52854,
+      "linhas_no_tessdata": 89378,
+      "traineddata": {
+        "arquivo": "deu.traineddata",
+        "sha256": "19d219bbb6672c869d20a9636c6816a81eb9a71796cb93ebe0cb1530e2cdb22d",
+        "versao": "4.00.00alpha:deu:synth20170629:[1,36,0,1Ct3,3,16Mp3,3Lfys64Lfx96Lrx96Lfx192O1c1]"
+      },
+      "sha256": "d051d43ce5ec06a3ad879ff8689a9608a237c3bf1f3a0471b9cc68836994b4e8"
+    },
+    "nld": {
+      "arquivo": "nld.txt.gz",
+      "entradas": 172929,
+      "linhas_no_tessdata": 478341,
+      "traineddata": {
+        "arquivo": "nld.traineddata",
+        "sha256": "ced0e5e046a84c908a6aa7accbef9a232c4a5d9a8276691b81c6ee64d02963f6",
+        "versao": "4.00.00alpha:nld:synth20170629:[1,36,0,1Ct3,3,16Mp3,3Lfys48Lfx96Lrx96Lfx192O1c1]"
+      },
+      "sha256": "12580a1f73fd0e06b8591f55039f5be968120bd4f2df7dec9d9c683c3cc8b651"
+    },
+    "fra": {
+      "arquivo": "fra.txt.gz",
+      "entradas": 31986,
+      "linhas_no_tessdata": 74068,
+      "traineddata": {
+        "arquivo": "fra.traineddata",
+        "sha256": "ced037562e8c80c13122dece28dd477d399af80911a28791a66a63ac1e3445ca",
+        "versao": "4.00.00alpha:fra:synth20170629:[1,36,0,1Ct3,3,16Mp3,3Lfys48Lfx96Lrx96Lfx128O1c1]"
+      },
+      "sha256": "e4a4d6b2e040f63132dbaa5b41d6e84b5f5b925bfa752d58d6fc268bb342e08a"
+    },
+    "ron": {
+      "arquivo": "ron.txt.gz",
+      "entradas": 74038,
+      "linhas_no_tessdata": 185844,
+      "traineddata": {
+        "arquivo": "ron.traineddata",
+        "sha256": "9adfde6b51ba4b97efd10ea37c3070fd3fc2bad7815e81f5c3c198cd96216cc9",
+        "versao": "4.00.00alpha:ron:synth20170629:[1,36,0,1Ct3,3,16Mp3,3Lfys48Lfx96Lrx96Lfx128O1c1]"
+      },
+      "sha256": "c31a9165494424168ed908113dbf9d3933416d6b147b36f043fbd2eaa43642cc"
+    },
+    "rus": {
+      "arquivo": "rus.txt.gz",
+      "entradas": 139107,
+      "linhas_no_tessdata": 293898,
+      "traineddata": {
+        "arquivo": "rus.traineddata",
+        "sha256": "e16e5e036cce1d9ec2b00063cf8b54472625b9e14d893a169e2b0dedeb4df225",
+        "versao": "4.00.00alpha:rus:synth20170629:[1,36,0,1Ct3,3,16Mp3,3Lfys64Lfx96Lrx96Lfx128O1c1]"
+      },
+      "sha256": "59a1161ed8deff3c4ef36a4cd9e66212745b6127e41c585ccaa1689803fa339f"
+    }
+  }
+}

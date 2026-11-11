@@ -269,6 +269,11 @@ FORA_DO_REGISTRO: dict[tuple[str, str], str] = {
     ),
     # `("janela.py", "_rodar")` saiu daqui no passo C2 do ciclo 2: marcar e ler a página
     # registram-se, com total (os diagramas já marcados) e «Cancelar» entre diagramas.
+    ("texto_leitura.py", "limpar_cache_de_leitura"): (
+        "Apagar a leitura guardada do Tesseract (S-725), que o menu pede: segundos, no pior caso. Só "
+        "apaga o que a próxima leitura refaz, e fechar no meio não perde nada: o que ficou continua "
+        "válido, entrada por entrada."
+    ),
     ("texto_leitura.py", "renderizar_ao_fundo"): (
         "Rasterizar a folha aberta do caderno da aba Texto, para as miniaturas (S-612): um a três "
         "décimos de segundo, e o texto já está na tela. Não grava nada -- a folha continua no "

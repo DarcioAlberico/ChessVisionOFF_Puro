@@ -1,7 +1,7 @@
 """O que a aba de texto faz fora da thread da janela: ler a folha, exportar, e a volta da Revisão (S-865).
 
 **Saiu de `qt/painel_de_texto.py` com o estado das tarefas** -- a que está em curso, o registro de
-ocupação, o motor, a língua e o modo bloco com que a próxima leitura parte, e o documento que
+ocupação, o motor e a língua com que a próxima leitura parte, e o documento que
 estava na tela quando ela partiu. Toda `Tarefa` da aba nasce aqui, sem pai e segura por
 `manter_viva`, e responde por `slot_se_vivo`: a tarefa sobrevive ao painel que a pediu, e a resposta
 não pode tocar um widget apagado. As que registram ocupação o fazem pelo `_registrar_ocupado`
@@ -25,23 +25,25 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 import numpy as np
 from PyQt6.QtCore import QObject
-from PyQt6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QMessageBox, QSpinBox
+from PyQt6.QtWidgets import QComboBox, QFileDialog, QInputDialog, QMessageBox, QSpinBox
 
 from chess_diagram_ocr.qt import texto_miniaturas
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva, rastro_de, slot_se_vivo
 from chess_diagram_ocr.text import caderno, correcao, rico
+from chess_diagram_ocr.text import lingua as lingua_do_livro
 from chess_diagram_ocr.text.documento import PaginaLida
+from chess_diagram_ocr.text.lingua import LinguaDoLivro
 from chess_diagram_ocr.text.pagina import BlocoDeDiagrama
 from chess_diagram_ocr.text.tesseract import LINGUA_PADRAO
-from chess_diagram_ocr.ui import comandos, formato, strings
+from chess_diagram_ocr.ui import formato, strings
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.livros import chave_do_livro
 from chess_diagram_ocr.ui.texto_declarado import MOTORES, alinhamento_dos_diagramas
@@ -91,18 +93,33 @@ def ler_a_folha(
     *,
     dpi: int,
     motor: str,
-    modo_bloco: bool,
     imagem_rgb: np.ndarray | None,
     max_boards: int | None = None,
     lingua: str = LINGUA_PADRAO,
+    palavras_do_livro: Iterable[str] = (),
 ) -> PaginaLida:
     """`ler_pagina` com a folha já renderizada. **O `import` do leitor mora aqui** -- ver `ler`."""
+    from chess_diagram_ocr.text import cache_texto, leitor_de_linha
     from chess_diagram_ocr.text.leitor import ler_pagina
 
     return ler_pagina(
-        caminho, indice, dpi=dpi, motor=motor, modo_bloco=modo_bloco, imagem_rgb=imagem_rgb, max_boards=max_boards, lingua=lingua,  # type: ignore[arg-type]
+        caminho, indice, dpi=dpi, motor=motor, imagem_rgb=imagem_rgb, max_boards=max_boards, lingua=lingua,  # type: ignore[arg-type]
         reserva=True,  # só aqui: a régua e os CLIs não dependem de haver Tesseract na máquina
+        leitor_de_linha=leitor_de_linha.leitor_padrao(cache=cache_texto.padrao()),  # e só aqui a leitura volta do disco (S-725)
+        palavras_do_livro=palavras_do_livro,
     )
+
+
+def camada_da_folha(caminho: object, indice: int) -> str:
+    """O texto da camada do PDF, para a detecção da língua (S-723). PDF que não responde é "sem camada", e nunca um erro."""
+    from chess_diagram_ocr.pdf_io import open_document
+
+    try:
+        with open_document(caminho) as doc:  # type: ignore[arg-type]
+            return str(doc[indice].get_text())
+    except (OSError, RuntimeError, ValueError, IndexError) as erro:
+        logger.debug("Sem camada para a língua na folha %d: %s", indice + 1, erro)
+        return ""
 
 
 def gravar_recortes(
@@ -185,12 +202,16 @@ class ExecutorDaAba(QObject):
         self.tarefa: Tarefa | None = None
         """A leitura ou a exportação em curso. Uma por vez nesta aba."""
         self._motor = MOTORES[0]
-        self._lingua = LINGUA_PADRAO
         """O motor de leitura. O primeiro da lista é o padrão, e a S-423 explica por que ele é o
         `auto` e não o `glifo`."""
-        self._modo_bloco = False
-        self._leitura_de: tuple[str, bool] = ("", False)
-        """O motor e o modo bloco da leitura em curso, como eram quando ela partiu."""
+        self._lingua = LINGUA_PADRAO
+        self._lingua_padrao = LINGUA_PADRAO
+        """Quem responde enquanto o livro não tem língua, escolhida nem detectada. Vem do estado gravado."""
+        self._lingua_do_livro = LinguaDoLivro()
+        self._leitura_de = ""
+        """O motor da leitura em curso, como era quando ela partiu."""
+        self._limpeza_do_cache: Tarefa | None = None
+        """A limpeza do cache de leitura em curso (S-725). Uma por vez."""
         self._folha_pedida_ao_fundo: int | None = None
         self.fornecedor_de_folha: Callable[[int], tuple[np.ndarray, int] | None] | None = None
         """Quem já tem a folha rasterizada -- o visualizador --, perguntado antes de rasterizar
@@ -201,9 +222,9 @@ class ExecutorDaAba(QObject):
         """O documento na tela quando a leitura em curso partiu. Ver `_leitura_terminou`."""
 
     def montar(self) -> None:
-        """A folha, o motor, a língua e o modo bloco: os controles da leitura que a fita põe no grupo dela."""
+        """A folha, o motor e a língua: os controles da leitura que a fita põe no grupo dela."""
         barra = self._aba
-        # **A folha, o motor e o modo bloco ficam na mesma barra que o "Ler".** É a linha do gesto:
+        # **A folha e o motor ficam na mesma barra que o "Ler".** É a linha do gesto:
         # escolher a folha, escolher como lê-la, e ler -- e separá-la em duas faria a escolha do
         # motor parecer configuração, que é o que a S-423 mostrou custar a primeira leitura de quem
         # instala o programa.
@@ -240,10 +261,7 @@ class ExecutorDaAba(QObject):
         for lingua, rotulo in strings.ROTULOS_DE_LINGUA.items():
             self.escolha_de_lingua.addItem(rotulo, lingua)
         self.escolha_de_lingua.activated.connect(self._lingua_escolhida)
-        dica_em(self.escolha_de_lingua, "A língua em que o Tesseract lê a prosa, no motor «Glifo + Tesseract» e na reserva.")
-
-        self.caixa_de_bloco = QCheckBox(comandos.rotulo_de_botao("modo_bloco"), barra)
-        self.caixa_de_bloco.toggled.connect(lambda _ligado: self.modo_bloco_mudou())
+        dica_em(self.escolha_de_lingua, strings.DICA_DA_LINGUA_DO_LIVRO)
 
     # ------------------------------------------- a folha do caderno, rasterizada ao fundo (S-612)
 
@@ -558,10 +576,6 @@ class ExecutorDaAba(QObject):
         """O motor de leitura escolhido -- o que a janela grava no estado (item 17)."""
         return str(self._motor)
 
-    @property
-    def modo_bloco(self) -> bool:
-        return bool(self._modo_bloco)
-
     def definir_motor(self, nome: str) -> None:
         """Repõe o motor gravado na sessão anterior; um nome que a aba não conhece é ignorado."""
         if nome not in MOTORES:
@@ -574,17 +588,102 @@ class ExecutorDaAba(QObject):
         """A língua do livro que o Tesseract lê (S-717) -- a que a janela grava no estado."""
         return str(self._lingua)
 
+    @property
+    def lingua_padrao(self) -> str:
+        """A língua que vale enquanto o livro não tem a dele -- a que a janela grava no estado (S-723)."""
+        return str(self._lingua_padrao)
+
     def definir_lingua(self, codigo: str) -> None:
-        """Repõe a língua gravada; um código que a aba não conhece é ignorado, como no motor."""
-        indice = self.escolha_de_lingua.findData(codigo)
-        if indice < 0:
+        """Repõe o padrão gravado; um código que a aba não conhece é ignorado, como no motor.
+
+        É o que responde enquanto o livro não tem língua: a do caderno e a escolhida à mão vencem este.
+        """
+        if self.escolha_de_lingua.findData(codigo) < 0:
             return
-        self._lingua = codigo
-        self.escolha_de_lingua.setCurrentIndex(indice)
+        self._lingua_padrao = codigo
+        self._mostrar_lingua_do_livro()
+
+    def _mostrar_lingua_do_livro(self) -> None:
+        """A língua que vai ler é a do livro (S-723): a escolhida à mão, senão a detectada, senão o padrão."""
+        self._lingua = self._lingua_do_livro.efetiva(self._lingua_padrao)
+        self.escolha_de_lingua.setCurrentIndex(self.escolha_de_lingua.findData(self._lingua))
+        self._aba.caderno.rotular_leitura()
+
+    def carregar_lingua_do_livro(self) -> None:
+        """O livro mudou: a língua dele vem do caderno, e a do livro que saiu não passa para este."""
+        cad = self._aba.caderno.aberto
+        self._lingua_do_livro = LinguaDoLivro() if cad is None else cad.lingua()
+        self._mostrar_lingua_do_livro()
+
+    def _guardar_lingua_do_livro(self) -> None:
+        """Vai ao caderno. **Disco cheio não é exceção em slot** (qFatal no PyQt6): a língua fica na memória e o rodapé diz."""
+        cad = self._aba.caderno.aberto
+        if cad is None:
+            return
+        try:
+            cad.guardar_lingua(self._lingua_do_livro)
+        except OSError as erro:
+            logger.warning("A língua do livro não foi ao caderno: %s", erro)
+            self._aba.estado.emit(f"A língua do livro não foi ao caderno: {erro}.")
 
     def _lingua_escolhida(self, _indice: int) -> None:
-        self._lingua = str(self.escolha_de_lingua.currentData())
-        self._aba.caderno.rotular_leitura()
+        self._escolher_lingua(str(self.escolha_de_lingua.currentData()))
+
+    def _escolher_lingua(self, codigo: str) -> None:
+        """A escolha à mão, da caixa ou do menu. `""` devolve a decisão à detecção. Vale para este livro, e só para ele."""
+        self._lingua_do_livro = self._lingua_do_livro.com_manual(codigo)
+        self._guardar_lingua_do_livro()
+        self._mostrar_lingua_do_livro()
+        self._aba.estado.emit(strings.frase_da_lingua_do_livro(self._lingua, manual=bool(codigo)))
+
+    def escolher_lingua_do_livro(self) -> None:
+        """«Língua do livro…» no menu Texto: as oito, mais a volta à detecção."""
+        rotulos = [strings.LINGUA_DETECTADA_PELO_LIVRO, *strings.ROTULOS_DE_LINGUA.values()]
+        codigos = ["", *strings.ROTULOS_DE_LINGUA]
+        atual = codigos.index(self._lingua_do_livro.manual)
+        rotulo, aceitou = QInputDialog.getItem(self._aba, "Língua do livro", strings.PERGUNTA_DA_LINGUA_DO_LIVRO, rotulos, atual, False)
+        if aceitou:
+            self._escolher_lingua(codigos[rotulos.index(rotulo)])
+
+    def _anotar_lingua_da_folha(self, pagina: PaginaLida, camada: str) -> str:
+        """A folha lida soma na detecção (S-723). Devolve a frase do rodapé, quando há o que dizer sobre a língua."""
+        texto = lingua_do_livro.texto_da_folha(camada, pagina.texto())
+        novo = self._lingua_do_livro.com_folha(int(pagina.pagina), texto)
+        if novo == self._lingua_do_livro:
+            return ""
+        self._lingua_do_livro = novo
+        self._guardar_lingua_do_livro()
+        antes = self._lingua
+        self._mostrar_lingua_do_livro()
+        if len(novo.folhas) == lingua_do_livro.FOLHAS_DA_DETECCAO and not novo.efetiva():
+            return " " + strings.LINGUA_NAO_DETECTADA  # as dez folhas não bastaram, e calar seria ler em inglês para sempre
+        return "" if self._lingua == antes else " " + strings.frase_da_lingua_do_livro(self._lingua, manual=False)
+
+    # ------------------------------------------------------- o cache de leitura do Tesseract (S-725)
+
+    def limpar_cache_de_leitura(self) -> None:
+        """«Limpar o cache de leitura» no menu Texto (S-725). Sem pergunta: apagar é sempre seguro, e a próxima leitura o refaz.
+
+        Numa `Tarefa`, porque são dezenas de milhares de arquivos pequenos. Uma de cada vez, e uma limpeza em curso responde à segunda.
+        """
+        if self._limpeza_do_cache is not None:
+            return
+        from chess_diagram_ocr.text import cache_texto
+
+        tarefa = manter_viva(Tarefa(cache_texto.padrao().limpar, nome="limpeza do cache de leitura"))
+        tarefa.pronto.connect(slot_se_vivo(self._aba, self._cache_limpo))
+        tarefa.falhou.connect(slot_se_vivo(self._aba, self._cache_nao_limpo))
+        self._limpeza_do_cache = tarefa
+        tarefa.start()
+
+    def _cache_limpo(self, resultado: object) -> None:
+        quantas, tamanho = cast("tuple[int, int]", resultado)
+        self._limpeza_do_cache = None
+        self._aba.estado.emit(strings.frase_do_cache_limpo(quantas, tamanho))
+
+    def _cache_nao_limpo(self, erro: str, _excecao: object = None) -> None:
+        self._limpeza_do_cache = None
+        self._aba.estado.emit(f"O cache de leitura não foi limpo: {erro}")
 
     def motor_gravado(self) -> str:
         """O que o caderno anota como motor da folha. **Na fusão a língua vai junto** (S-717).
@@ -593,24 +692,6 @@ class ExecutorDaAba(QObject):
         sabe comparar o motor. É texto anotado no índice, e nenhum outro lugar o interpreta como `MOTORES`.
         """
         return f"{self._motor}:{self._lingua}" if self._motor == "fusao" else str(self._motor)
-
-    def definir_modo_bloco(self, ligado: bool) -> None:
-        """Repõe o modo bloco gravado -- sem a frase do rodapé, que é para quem acabou de clicar."""
-        self._modo_bloco = bool(ligado)
-        self.caixa_de_bloco.blockSignals(True)
-        try:
-            self.caixa_de_bloco.setChecked(bool(ligado))
-        finally:
-            self.caixa_de_bloco.blockSignals(False)
-
-    def modo_bloco_mudou(self) -> None:
-        """Liga e desliga o modo bloco. **O comando não inverte a caixa**: quem a inverte é ela."""
-        self._modo_bloco = self.caixa_de_bloco.isChecked()
-        self._aba.estado.emit(
-            "Modo bloco: a folha é lida em blocos, e não linha a linha."
-            if self._modo_bloco
-            else "Modo linha: a folha volta a ser lida linha a linha."
-        )
 
     def sincronizar_com_a_pagina(self) -> None:
         """Lê a folha que o visualizador está mostrando -- e não a que o campo diz (S-236)."""
@@ -626,7 +707,7 @@ class ExecutorDaAba(QObject):
         por uma aba que talvez ninguém abra.
 
         **A folha que já tem caderno abre dele, sem motor** (S-612) -- salvo quando a pessoa trocou
-        o motor ou o modo bloco e a folha não tem correção: aí ela quer a leitura nova. Ler de novo
+        o motor e a folha não tem correção: aí ela quer a leitura nova. Ler de novo
         uma folha corrigida é `ler_de_novo`, que pergunta.
         """
         self._ler_folha(de_novo=False)
@@ -648,7 +729,7 @@ class ExecutorDaAba(QObject):
             return
         guardada = None if self._aba.caderno.aberto is None else self._aba.caderno.aberto.estado(indice)
         if guardada is not None:
-            if not de_novo and caderno.abre_do_caderno(guardada, motor=self.motor_gravado(), modo_bloco=self._modo_bloco):
+            if not de_novo and caderno.abre_do_caderno(guardada, motor=self.motor_gravado()):
                 if self._aba.caderno.abrir_do_caderno(indice):
                     return
             elif de_novo and guardada.correcoes and not self._confirmar_releitura(indice, guardada.correcoes):
@@ -658,9 +739,8 @@ class ExecutorDaAba(QObject):
         self._documento_ao_ler = self._aba.documento
 
         motor = self._motor
-        bloco = self._modo_bloco
         lingua = self._lingua
-        self._leitura_de = (self.motor_gravado(), bloco)
+        self._leitura_de = self.motor_gravado()
         caminho = self._aba._pdf
         dpi = self.dpi_para_ler()
         teto = self._teto_de_diagramas()
@@ -668,26 +748,32 @@ class ExecutorDaAba(QObject):
         # copiada aqui, na thread da janela, porque o visualizador pode trocá-la enquanto se lê.
         pronta = self.fornecedor_de_folha(indice) if self.fornecedor_de_folha is not None else None
         imagem_pronta = np.array(pronta[0], copy=True) if pronta is not None and int(pronta[1]) == dpi else None
+        conta_lingua = len(self._lingua_do_livro.folhas) < lingua_do_livro.FOLHAS_DA_DETECCAO
+        cad = self._aba.caderno.aberto
+        palavras_do_livro = frozenset() if cad is None else cad.lexico()  # o que o dono ensinou (S-766)
 
-        def _trabalho() -> tuple[PaginaLida, np.ndarray | None, int, float]:
+        def _trabalho() -> tuple[PaginaLida, np.ndarray | None, int, float, str]:
             # **A folha é rasterizada uma vez, e aqui (S-352).** `ler_pagina` a renderiza sozinha
             # quando ninguém lhe dá a imagem, e as miniaturas precisariam dela de novo -- na thread
             # da janela, que congelava ~355 ms por leitura no outro frontend. O mesmo `dpi` dos
             # dois lados é o que liga pixel a ponto -- e ele viaja com a folha, porque a
             # configuração pode mudar enquanto a leitura corre. O tempo vai junto (item 16): é o
-            # número que decide entre o motor rápido e o modo bloco de 40 s.
+            # número que decide entre o motor rápido e o que lê com o Tesseract.
             inicio = time.perf_counter()
             imagem = imagem_pronta if imagem_pronta is not None else renderizar(caminho, indice, dpi=dpi)
             lida = ler_a_folha(
-                caminho, indice, dpi=dpi, motor=motor, modo_bloco=bloco, imagem_rgb=imagem, max_boards=teto, lingua=lingua
+                caminho, indice, dpi=dpi, motor=motor, imagem_rgb=imagem, max_boards=teto, lingua=lingua,
+                palavras_do_livro=palavras_do_livro,
             )
-            return lida, imagem, dpi, time.perf_counter() - inicio
+            # A camada só enquanto a detecção conta: são dez folhas por livro, e aqui, fora da thread da janela (S-723).
+            camada = camada_da_folha(caminho, indice) if conta_lingua else ""
+            return lida, imagem, dpi, time.perf_counter() - inicio, camada
 
         self._aba.estado.emit(f"Lendo a folha {indice + 1}…")
         self._registrar_ocupado(
             f"Lendo o texto da folha {indice + 1}",
             loses_work=False,
-            detail=f"motor {strings.ROTULOS_DE_MOTOR.get(motor, motor)}" + (" · modo bloco" if bloco else ""),
+            detail=f"motor {strings.ROTULOS_DE_MOTOR.get(motor, motor)}",
         )
         self.tarefa = manter_viva(Tarefa(_trabalho, nome="leitura da folha"))
         self.tarefa.pronto.connect(slot_se_vivo(self._aba, self._leitura_terminou))
@@ -775,9 +861,9 @@ class ExecutorDaAba(QObject):
         """A folha lida voltou da thread -- **e a imagem vem com ela** (S-352), com o DPI dela."""
         self.tarefa = None
         if isinstance(resultado, tuple):
-            pagina, imagem, dpi, segundos = (*resultado, None, None)[:4]
+            pagina, imagem, dpi, segundos, camada = (*resultado, None, None, "")[:5]
         else:
-            pagina, imagem, dpi, segundos = resultado, None, None, None
+            pagina, imagem, dpi, segundos, camada = resultado, None, None, None, ""
         assert isinstance(pagina, PaginaLida)
         partida = self._documento_ao_ler
         self._documento_ao_ler = None
@@ -800,21 +886,21 @@ class ExecutorDaAba(QObject):
         self._aba._pagina_indice = int(pagina.pagina)
         self._aba.caderno.mostrar_pagina(pagina, folha_rgb=imagem, dpi=dpi)
         self._guardar_leitura()
+        lingua_nova = self._anotar_lingua_da_folha(pagina, str(camada or ""))
         diagramas = len(pagina.diagramas)
         figuras = f", {diagramas} diagrama(s)" if diagramas else ""
-        # «em 3,9 s»: a pessoa escolhe o motor e o modo bloco pelo preço, e o preço tem de ser dito.
+        # «em 3,9 s»: a pessoa escolhe o motor pelo preço, e o preço tem de ser dito.
         tempo = "" if segundos is None else f" em {formato.decimal(segundos, 1)} s"
         if not self._aba.documento.para_texto().strip():
             # A folha vazia não é falha nem é «0 trecho(s)» (item 26): é uma página sem texto para
             # este motor -- capa, figura inteira, ou scan que o glifo não leu --, e a frase diz o
             # que tentar. O estado vazio do editor já está na tela.
-            como = f"motor {strings.ROTULOS_DE_MOTOR.get(self._motor, self._motor)}" + (", modo bloco" if self._modo_bloco else "")
-            self._aba.estado.emit(
-                f"A folha {pagina.pagina + 1} não tem texto lido ({como}{tempo.replace(' em ', ', ')}): "
-                "tente outro motor ou o modo bloco."
-            )
+            como = f"motor {strings.ROTULOS_DE_MOTOR.get(self._motor, self._motor)}"
+            self._aba.estado.emit(strings.FOLHA_SEM_TEXTO_LIDO.format(folha=pagina.pagina + 1, como=f"{como}{tempo.replace(' em ', ', ')}"))
             return
-        self._aba.estado.emit(f"Folha lida{tempo}: {len(self._aba.documento.corridas)} trecho(s){figuras}.")
+        # **O bloco misto é `glifo` por regra, e a frase diz de quem é o texto de verdade** (S-722).
+        de_quem = f" {strings.frase_de_procedencia(pagina.caracteres_por_procedencia())}" if pagina.tem_detalhe_de_procedencia else ""
+        self._aba.estado.emit(f"Folha lida{tempo}: {len(self._aba.documento.corridas)} trecho(s){figuras}.{de_quem}{lingua_nova}")
         # **Depois de desenhar, e não antes**: se a pessoa recusar a oferta, o que fica na tela é
         # a leitura que ela acabou de pedir (S-255).
         self._aba.caderno.oferecer_rascunho(pagina)
@@ -824,9 +910,8 @@ class ExecutorDaAba(QObject):
         cad = self._aba.caderno.caderno_da_tela()
         if cad is None:
             return
-        motor, bloco = self._leitura_de
         try:
-            cad.guardar_leitura(self._aba.documento, motor=motor or self._motor, modo_bloco=bloco)
+            cad.guardar_leitura(self._aba.documento, motor=self._leitura_de or self._motor)
         except OSError as erro:
             logger.warning("A leitura da folha não foi ao caderno: %s", erro)
             self._aba.estado.emit(f"A folha lida não foi ao caderno: {erro}.")
