@@ -154,6 +154,7 @@ class CacheDeLeituraNaTelaTests(_Aba):
         imagem = texto_leitura.renderizar(self.livro, 0, dpi=72)
         with (
             mock.patch.object(leitor, "linhas_do_glifo", return_value=(self.boas(), [])),
+            mock.patch.object(leitor, "_reconhecedor_configurado", return_value=mock.MagicMock(name="glifo")),  # sem o .pt na CI (S-847)
             mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=[]),
         ):
             return texto_leitura.ler_a_folha(self.livro, 0, dpi=72, motor="fusao", imagem_rgb=imagem)

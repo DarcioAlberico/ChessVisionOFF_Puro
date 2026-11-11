@@ -113,6 +113,7 @@ class PalavrasDoLivroTests(_ComCaderno):
         cruas = [leitor._Cru(texto="the Xyzzyq line", caixa=Caixa(40, 50, 300, 70), confianca=0.9, procedencia="glifo") for _ in range(1)]  # noqa: SLF001
         with (
             mock.patch.object(leitor, "linhas_do_glifo", return_value=(cruas, [])),
+            mock.patch.object(leitor, "_reconhecedor_configurado", return_value=mock.MagicMock(name="glifo")),  # sem o .pt na CI (S-847)
             mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=[]),
             mock.patch.object(fusao, "existe_do_livro", espiao),
         ):
@@ -453,6 +454,7 @@ class LeituraDaAbaTests(unittest.TestCase):
         cruas = [leitor._Cru(texto="o Xyzzyq vence", caixa=Caixa(58, 50 + 18 * n, 300, 63 + 18 * n), confianca=0.9, procedencia="glifo") for n in range(30)]  # noqa: SLF001
         with (
             mock.patch.object(leitor, "linhas_do_glifo", return_value=(cruas, [])),
+            mock.patch.object(leitor, "_reconhecedor_configurado", return_value=mock.MagicMock(name="glifo")),  # sem o .pt na CI (S-847)
             mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=[]),
             mock.patch("chess_diagram_ocr.text.leitor_de_linha.leitor_padrao", return_value=Falso()),
         ):
