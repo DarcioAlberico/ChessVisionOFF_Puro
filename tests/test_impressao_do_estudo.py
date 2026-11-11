@@ -209,7 +209,7 @@ class MargensTests(unittest.TestCase):
         frase = frase_do_pdf("C:/PDF/estudo.pdf", 12, 250 * 1024)
         self.assertIn("C:/PDF/estudo.pdf", frase)
         self.assertIn("12 página(s)", frase)
-        self.assertIn("250.0 KB", frase)
+        self.assertIn("250,0 KB", frase)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -162,9 +162,33 @@ class LinesAroundTests(unittest.TestCase):
         doc = blank_page()
         try:
             with self.assertLogs("chess_diagram_ocr.ocr_caption", level="WARNING"):
-                self.assertEqual(CaptionReader(Quebrado()).lines_around(doc[0], BBOX), [])
+                lidas = CaptionReader(Quebrado()).lines_around(doc[0], BBOX)
+            sem_legenda = reader([]).lines_around(doc[0], BBOX)
         finally:
             doc.close()
+        # S-856: as duas listas são vazias, e só uma é "não havia legenda".
+        self.assertEqual(lidas, [])
+        self.assertTrue(lidas.indisponivel, "o motor quebrado saiu igual a 'sem legenda'")
+        self.assertIn("onnxruntime session collapsed", lidas.falha)
+        self.assertEqual(sem_legenda, [])
+        self.assertFalse(sem_legenda.indisponivel)
+
+    def test_faixa_que_nao_renderiza_e_indisponivel_e_nao_vazia(self) -> None:
+        from unittest import mock
+
+        from chess_diagram_ocr import ocr_caption
+
+        doc = blank_page()
+        try:
+            with (
+                mock.patch.object(ocr_caption, "_render_band", side_effect=RuntimeError("pixmap")),
+                self.assertLogs("chess_diagram_ocr.ocr_caption", level="WARNING"),
+            ):
+                lidas = reader([]).margin_lines(doc[0])
+        finally:
+            doc.close()
+        self.assertEqual(lidas, [])
+        self.assertTrue(lidas.indisponivel)
 
 
 class GroupingTests(unittest.TestCase):

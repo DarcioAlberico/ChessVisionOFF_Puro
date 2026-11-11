@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 
 import chess
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, pixels_diferentes, renderizar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, botoes_do_rodape, descartar, pixels_diferentes, renderizar
 
 from chess_diagram_ocr import arvore_de_aberturas as arv
 
@@ -163,6 +163,33 @@ class DialogoDaArvoreTests(unittest.TestCase):
         self.dialogo.jogar_selecionado()
         self.assertEqual(["e4"], escolhidos)
 
+    def test_a_tecla_Enter_na_tabela_joga_a_linha_marcada(self) -> None:
+        """A tecla de verdade, e não o método: o atalho é da tabela, e o botão padrão do diálogo não o rouba."""
+        self._perguntar()
+        escolhidos: list[str] = []
+        self.dialogo.lance_escolhido.connect(escolhidos.append)
+        self.dialogo.show()
+        self.dialogo.activateWindow()
+        self.dialogo.tabela.setFocus()
+        self.app.processEvents()
+        self.dialogo.tabela.setCurrentItem(self.dialogo.tabela.topLevelItem(2))
+        QTest.keyClick(self.dialogo.tabela, Qt.Key.Key_Return)
+        self.app.processEvents()
+        self.assertEqual(["e4"], escolhidos, "o Enter não chegou à tabela")
+
+    def test_o_rodape_nao_tem_botao_padrao_e_o_primeiro_e_o_primario(self) -> None:
+        """Com `autoDefault`, o Enter da lista dispararia o primeiro botão em vez do atalho da tabela."""
+        self.assertEqual(
+            [
+                ("Jogar o lance", False, "PRIMARIO"),
+                ("Ver as partidas…", False, "NEUTRO"),
+                ("<vão>", False, None),
+                ("Construir a árvore…", False, "NEUTRO"),
+                ("Fechar", False, "NEUTRO"),
+            ],
+            botoes_do_rodape(self.dialogo),
+        )
+
     def test_reordenada_pelo_cabecalho_a_escolha_continua_certa(self) -> None:
         """Com a ordenação ligada, a altura na tela deixa de ser a posição na lista -- e sem
         `posicao_de` o clique jogaria o lance da linha que calhou de estar ali."""
@@ -289,7 +316,7 @@ class SalaTests(unittest.TestCase):
         self.addCleanup(self._fechar)
 
     def _fechar(self) -> None:
-        arvore = self.sala._arvore
+        arvore = self.sala.partidas._arvore
         if arvore is not None:
             arvore.esperar(20_000)
             self.app.processEvents()
@@ -331,7 +358,7 @@ class SalaTests(unittest.TestCase):
     def test_um_lance_que_a_posicao_nao_sustenta_vira_frase_e_nao_lance(self) -> None:
         """A posição pode ter andado entre a consulta e o clique -- e aí o SAN é de outra."""
         self._abrir()
-        self.assertFalse(self.sala.jogar_da_arvore("Qxh7"))
+        self.assertFalse(self.sala.partidas.jogar_da_arvore("Qxh7"))
         self.assertIsNone(self.sala.estudo.no.move, "a sala jogou um lance ilegal")
 
     def test_a_arvore_aberta_acompanha_a_posicao_da_sala(self) -> None:
@@ -346,7 +373,7 @@ class SalaTests(unittest.TestCase):
 
     def test_ver_as_partidas_abre_a_busca_ja_preenchida(self) -> None:
         dialogo = self._abrir()
-        busca = self.sala.partidas_da_arvore(
+        busca = self.sala.partidas.partidas_da_arvore(
             arvore_ui.busca_da_posicao(self.sala.estudo.tabuleiro.board_fen(), "B90")
         )
         self.assertIsNotNone(busca)

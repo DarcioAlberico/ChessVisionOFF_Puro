@@ -16,6 +16,8 @@ import re
 import unittest
 from pathlib import Path
 
+import varredura
+
 from chess_diagram_ocr.ui import strings
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -24,8 +26,7 @@ ARQUIVOS_DE_UI = [
     # `strings.py` fica de fora: ele **contém** a lista das formas erradas, de propósito.
     caminho
     for caminho in [
-        *sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")),
-        *sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py")),
+        *varredura.da_interface(),
     ]
     if caminho.name != "strings.py"
 ] + [RAIZ / "src" / "chess_diagram_ocr" / "qt" / "janela.py", RAIZ / "examples" / "streamlit_demo.py"]
@@ -255,7 +256,7 @@ class AccentTests(unittest.TestCase):
             re.IGNORECASE,
         )
         faltas: list[str] = []
-        for caminho in sorted(raiz.rglob("*.py")):
+        for caminho in varredura.fontes(raiz, recursivo=True, piso=300):
             if caminho.parent.name in ("ui", "cli"):
                 continue
             arvore = ast.parse(caminho.read_text(encoding="utf-8"))
@@ -365,8 +366,6 @@ class VocabularyTests(unittest.TestCase):
         """Melhor mostrar a chave crua do que esconder que existe uma fonte nova."""
         self.assertEqual(strings.detection_source_label("futuro"), "futuro")
 
-    def test_the_orientation_labels_cover_the_tri_state_of_s13(self) -> None:
-        self.assertEqual(set(strings.ORIENTATION_LABELS), {"auto", "0", "180"})
 
 
 class TermosProibidosTests(unittest.TestCase):
@@ -382,7 +381,7 @@ class TermosProibidosTests(unittest.TestCase):
     """
 
     PROIBIDOS = {
-        "board": "\"board\" é tabuleiro; ver strings.ZOOM_DO_TABULEIRO e VIRAR_TABULEIRO",
+        "board": "\"board\" é tabuleiro; ver strings.VIRAR_TABULEIRO",
         "heatmap": "virou strings.MAPA_DE_INCERTEZA",
         "batch size": "virou strings.TAMANHO_DO_LOTE",
         "learning rate": "virou strings.TAXA_DE_APRENDIZADO",

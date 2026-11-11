@@ -41,7 +41,6 @@ from .orientation import (
     TightMarginFallback,
     BoardCoordinates,
 )
-from .preprocess import IDENTITY, BoardNormalizer, NormalizerConfig
 
 if TYPE_CHECKING:  # pragma: no cover - só para as anotações
     # `from __future__ import annotations` (linha 1) já transforma toda anotação em texto,
@@ -327,7 +326,7 @@ def prediction_with_squares(
         log_prob=float(np.log(np.clip(confidences, _EPS, None)).sum()),
         changed_squares=changed,
         constraints_satisfied=previous.constraints_satisfied if previous is not None else True,
-        remaining_problems=previous.remaining_problems if previous is not None else (),
+        remaining_kinds=previous.remaining_kinds if previous is not None else (),
     )
     return BoardPrediction(
         probs=probs,
@@ -348,13 +347,8 @@ def board_probabilities(
     device: str,
     *,
     tta: bool = False,
-    normalizer: NormalizerConfig = IDENTITY,
 ) -> np.ndarray:
     """Matriz (64, 13) de probabilidades por casa.
-
-    `normalizer` roda no **tabuleiro inteiro**, antes do corte em casas (S-39): iluminação e
-    trama são propriedades da página, e estimá-las sobre 100×100 px de uma casa é estimá-las
-    sobre ruído. `IDENTITY` (o padrão) devolve a mesma imagem e não custa nada.
 
     A temperatura da S-28 é aplicada aqui, sobre os logits, e não dentro do `forward`:
     dividir no treino mudaria o gradiente. Com `tta`, as vistas são somadas **depois** do
@@ -362,7 +356,7 @@ def board_probabilities(
     discordam, e a de probabilidades é a que o voto da S-29 descreve: uma vista muito
     confiante e errada não domina as outras seis como dominaria em espaço de logit.
     """
-    return board_probabilities_batch([board_rgb], model, device, tta=tta, normalizer=normalizer)[0]
+    return board_probabilities_batch([board_rgb], model, device, tta=tta)[0]
 
 
 def board_probabilities_batch(
@@ -371,7 +365,6 @@ def board_probabilities_batch(
     device: str,
     *,
     tta: bool = False,
-    normalizer: NormalizerConfig = IDENTITY,
 ) -> list[np.ndarray]:
     """Uma matriz (64, 13) por tabuleiro, **num único `forward`** (S-61).
 
@@ -393,12 +386,7 @@ def board_probabilities_batch(
 
     arch = getattr(model, "arch", DEFAULT_ARCH)
     temperature = float(getattr(model, "temperature", 1.0))
-    normalizador = BoardNormalizer(normalizer)
-
-    por_tabuleiro = [
-        tta_views(normalizador.normalize(board)) if tta else [normalizador.normalize(board)]
-        for board in boards_rgb
-    ]
+    por_tabuleiro = [tta_views(board) if tta else [board] for board in boards_rgb]
     tensors = [
         with_coordinate_channels(preprocess_cell_to_tensor(cell, arch), square_index, arch)
         for views in por_tabuleiro
@@ -430,12 +418,11 @@ def predict_board(
     uncertain_threshold: float = UNCERTAIN_SQUARE_THRESHOLD,
     constrained: bool = CONSTRAINED_DECODING,
     tta: bool = TTA_ENABLED,
-    normalizer: NormalizerConfig = IDENTITY,
 ) -> BoardPrediction:
     """Reconhece um tabuleiro já recortado, preservando as probabilidades."""
     board = cv2.rotate(board_rgb, cv2.ROTATE_180) if rotate_180 else board_rgb
     return prediction_from_probs(
-        board_probabilities(board, model, device, tta=tta, normalizer=normalizer),
+        board_probabilities(board, model, device, tta=tta),
         uncertain_threshold=uncertain_threshold,
         constrained=constrained,
     )
@@ -452,7 +439,6 @@ def predict_with_orientation(
     decisive_margin: float = ORIENTATION_DECISIVE_MARGIN,
     pawn_prior_margin: float = ORIENTATION_PAWN_PRIOR_MARGIN,
     tta: bool = TTA_ENABLED,
-    normalizer: NormalizerConfig = IDENTITY,
     policy: OrientationPolicy | None = None,
     coordinates: BoardCoordinates | None = None,
 ) -> OrientedPrediction:
@@ -491,7 +477,6 @@ def predict_with_orientation(
             uncertain_threshold=uncertain_threshold,
             constrained=constrained,
             tta=tta,
-            normalizer=normalizer,
         )
 
     if mode != "auto":
@@ -513,7 +498,6 @@ def predict_with_orientation(
             model,
             device,
             tta=tta,
-            normalizer=normalizer,
         )
     )
 

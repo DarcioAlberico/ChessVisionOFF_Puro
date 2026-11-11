@@ -190,4 +190,19 @@ def build_glyph_recognizer(
     return GlyphRecognizer(carregar_classificador(meta, pesos), leitor_de_linha)
 
 
-__all__ = ["NOME", "Caixa", "GlyphRecognizer", "ModeloInvalido", "build_glyph_recognizer"]
+def classificador_configurado() -> ClassificadorDeGlifo:
+    """O classificador que a configuração aponta (S-847). Levanta `ModeloInvalido` com o motivo.
+
+    `ocr.glyph_model` (ou `CVOFF_OCR_GLYPH_MODEL`) diz onde estão os pesos; vazio, o `.pt` ao lado do
+    metadado. **Lida na fronteira, uma vez por leitura**: até a S-847 só a legenda a lia, e a página
+    carregava o `.pt` fixo -- quem pôs os pesos noutra pasta lia a folha pela camada com `auto`, e com
+    `glifo` recebia um erro que mandava configurar o que já estava configurado.
+    """
+    from ..settings import load_settings
+    from .modelo import CAMINHO_PADRAO_META
+
+    pesos = load_settings().ocr.glyph_model.strip()
+    return carregar_classificador(CAMINHO_PADRAO_META, Path(pesos) if pesos else None)
+
+
+__all__ = ["NOME", "Caixa", "GlyphRecognizer", "ModeloInvalido", "build_glyph_recognizer", "classificador_configurado"]

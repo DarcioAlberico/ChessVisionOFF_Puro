@@ -29,6 +29,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from ..atomic_io import atomic_write_pil
 from ..config import BUNDLE_ROOT
 from . import tokens
 
@@ -128,6 +129,5 @@ def gravar_icone(destino: Path = CAMINHO_DO_ICONE, tamanhos: tuple[int, ...] = T
     empacotamento. O teste garante que o arquivo em disco e este gerador não divergiram.
     """
     maior = compor_icone(max(tamanhos))
-    destino.parent.mkdir(parents=True, exist_ok=True)
-    maior.save(destino, format="ICO", sizes=[(lado, lado) for lado in sorted(tamanhos)])
+    atomic_write_pil(destino, maior, formato="ICO", sizes=[(lado, lado) for lado in sorted(tamanhos)])
     return destino

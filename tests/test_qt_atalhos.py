@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import unittest
 
+import varredura
 from qt_app import MOTIVO, TEM_PYQT, aplicacao
 
 from chess_diagram_ocr.ui import atalhos
@@ -131,7 +132,7 @@ class FonteUnicaTests(unittest.TestCase):
         pacote = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt"
         infratores = [
             f"{caminho.name}: {tecla}"
-            for caminho in sorted(pacote.glob("*.py"))
+            for caminho in varredura.fontes(pacote, piso=60)
             if caminho.name != self.TRADUTOR
             for tecla in self._teclas_escritas(caminho)
         ]
@@ -163,7 +164,7 @@ class FonteUnicaTests(unittest.TestCase):
 
         pacote = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "qt"
         fontes = {
-            caminho.name: caminho.read_text(encoding="utf-8") for caminho in pacote.glob("*.py")
+            caminho.name: caminho.read_text(encoding="utf-8") for caminho in varredura.fontes(pacote, piso=60)
         }
         for comando in self.BARRA:
             with self.subTest(comando=comando):

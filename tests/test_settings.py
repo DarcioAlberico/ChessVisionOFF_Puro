@@ -17,20 +17,29 @@ from unittest import mock
 import numpy as np
 
 from chess_diagram_ocr import net_correction
+from chess_diagram_ocr.arquivo_do_dono import EsquemaFuturo, GravacaoRecusada, Ilegivel, Lida
 from chess_diagram_ocr.net_correction import (
     HttpFenProvider,
     RemoteFenProvider,
     build_provider,
 )
 from chess_diagram_ocr.settings import (
+    ENV_LOCAL_READER_PATH,
     ENV_OCR_ENABLED,
     ENV_OCR_ENGINE,
+    ENV_OCR_GLYPH_MODEL,
     ENV_REMOTE_ENABLED,
     ENV_REMOTE_URL,
+    ConfiguracaoDoArquivo,
+    EngineSettings,
+    LocalReaderSettings,
     OcrSettings,
+    RecognitionSettings,
     RemoteFenSettings,
     Settings,
+    TrainingSettings,
     apply_environment,
+    ler_arquivo,
     load_settings,
     save_settings,
 )
@@ -58,7 +67,7 @@ class OcrSettingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as pasta:
             caminho = Path(pasta) / "settings.json"
             original = Settings(ocr=OcrSettings(enabled=True, engine="easyocr", languages=("de",)))
-            save_settings(caminho, original)
+            save_settings(Lida(ConfiguracaoDoArquivo(original), caminho))
             self.assertEqual(load_settings(caminho, env={}).ocr, original.ocr)
 
     def test_secao_ausente_cai_no_padrao(self) -> None:
@@ -190,7 +199,7 @@ class PersistenceTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             caminho = Path(tmp) / "settings.json"
-            save_settings(caminho, original)
+            save_settings(Lida(ConfiguracaoDoArquivo(original), caminho))
             self.assertEqual(load_settings(caminho, env={}), original)
 
     def test_a_corrupt_file_falls_back_to_the_default_which_sends_nothing(self) -> None:
@@ -199,6 +208,27 @@ class PersistenceTests(unittest.TestCase):
             caminho = Path(tmp) / "settings.json"
             caminho.write_text("{ isto nao e json", encoding="utf-8")
             self.assertFalse(load_settings(caminho, env={}).remote_fen.is_usable)
+
+    def test_settings_em_cp1252_abre_com_o_caminho_acentuado(self) -> None:
+        """O Bloco de Notas antigo grava ANSI: o caminho de José tem de chegar, e a gravação valer (S-905)."""
+        texto = '{"engine": {"path": "C:\\\\Users\\\\José\\\\stockfish.exe", "multipv": 3}}'
+        for codificacao in ("cp1252", "utf-16"):  # o `>` do PowerShell 5.1 grava UTF-16 com BOM
+            with self.subTest(codificacao=codificacao), tempfile.TemporaryDirectory() as tmp:
+                caminho = Path(tmp) / "settings.json"
+                caminho.write_bytes(texto.encode(codificacao))
+                leitura = ler_arquivo(caminho)
+                self.assertIsInstance(leitura, Lida)
+                self.assertEqual("C:\\Users\\José\\stockfish.exe", leitura.valor.preferencias.engine.path)
+                self.assertEqual(3, load_settings(caminho, env={}).engine.multipv)
+
+    def test_settings_com_bom_le_os_valores(self) -> None:
+        """O BOM do UTF-8 que o Bloco de Notas acrescenta não faz o arquivo virar os padrões (S-905)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "settings.json"
+            caminho.write_bytes(b"\xef\xbb\xbf" + '{"engine": {"path": "C:\\\\José\\\\sf.exe"}}'.encode())
+            leitura = ler_arquivo(caminho)
+            self.assertIsInstance(leitura, Lida, "lida: o próximo Salvar grava, e não trava")
+            self.assertEqual("C:\\José\\sf.exe", leitura.valor.preferencias.engine.path)
 
     def test_a_file_that_is_not_an_object_does_not_crash(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -210,7 +240,7 @@ class PersistenceTests(unittest.TestCase):
         """Sem versão, um esquema novo não teria como distinguir "campo ausente" de "antigo"."""
         with tempfile.TemporaryDirectory() as tmp:
             caminho = Path(tmp) / "settings.json"
-            save_settings(caminho, Settings())
+            save_settings(Lida(ConfiguracaoDoArquivo(Settings()), caminho))
             self.assertIn("version", json.loads(caminho.read_text(encoding="utf-8")))
 
     def test_acknowledging_is_what_the_dialog_persists(self) -> None:
@@ -415,3 +445,320 @@ class ArquivoInvalidoAbreAJanelaTests(unittest.TestCase):
 
         self.assertEqual(settings.engine.movetime_ms, 800)
         self.assertFalse(settings.remote_fen.enabled, "e o padrão continua sendo não enviar nada")
+
+
+class BooleanoEstritoEFaixasTests(unittest.TestCase):
+    """Só `true` e `false` do JSON ligam e desligam, e número fora da faixa volta ao padrão (S-810).
+
+    `bool("false")` é verdadeiro: um `"enabled": "false"` escrito à mão **ligava** o envio da imagem
+    para fora, e o módulo promete o contrário -- um JSON ruim não liga envio. `timeout` aceitava
+    `NaN` e `-5`, e `threads` aceitava `-3`.
+    """
+
+    def setUp(self) -> None:
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        self.arquivo = Path(pasta.name) / "settings.json"
+
+    def _ler(self, texto: str) -> Settings:
+        self.arquivo.write_text(texto, encoding="utf-8")
+        return load_settings(self.arquivo, env={})
+
+    def test_enabled_string_false_e_desligado(self) -> None:
+        with self.assertLogs("chess_diagram_ocr.settings", level="WARNING") as registro:
+            remoto = RemoteFenSettings.from_dict({"enabled": "false", "endpoint": "http://x"})
+        self.assertFalse(remoto.is_usable)
+        self.assertIn("enabled", "\n".join(registro.output))
+
+    def test_qualquer_coisa_que_nao_seja_true_desliga_nas_tres_secoes(self) -> None:
+        for bruto in ("true", 1, "sim", None, [True]):
+            with self.subTest(bruto=bruto), self.assertLogs("chess_diagram_ocr.settings", level="WARNING"):
+                self.assertFalse(RemoteFenSettings.from_dict({"enabled": bruto, "endpoint": "http://x"}).enabled)
+                self.assertFalse(OcrSettings.from_dict({"enabled": bruto}).enabled)
+                self.assertFalse(LocalReaderSettings.from_dict({"enabled": bruto, "path": "x"}).enabled)
+
+    def test_true_e_false_do_json_valem_e_nao_avisam(self) -> None:
+        with self.assertNoLogs("chess_diagram_ocr.settings", level="WARNING"):
+            self.assertTrue(RemoteFenSettings.from_dict({"enabled": True, "endpoint": "http://x"}).is_usable)
+            self.assertFalse(OcrSettings.from_dict({"enabled": False}).enabled)
+            self.assertFalse(LocalReaderSettings.from_dict({}).enabled, "ausente é desligado, sem aviso")
+
+    def test_timeout_nan_volta_ao_padrao(self) -> None:
+        with self.assertLogs("chess_diagram_ocr.settings", level="WARNING"):
+            self.assertEqual(30.0, self._ler('{"remote_fen": {"timeout": NaN}}').remote_fen.timeout)
+
+    def test_timeout_e_threads_fora_da_faixa_voltam_ao_padrao(self) -> None:
+        for texto, ler, esperado in (
+            ('{"remote_fen": {"timeout": -5}}', lambda s: s.remote_fen.timeout, 30.0),
+            ('{"remote_fen": {"timeout": 0}}', lambda s: s.remote_fen.timeout, 30.0),
+            ('{"remote_fen": {"timeout": 601}}', lambda s: s.remote_fen.timeout, 30.0),
+            ('{"remote_fen": {"timeout": 600}}', lambda s: s.remote_fen.timeout, 600.0),
+            ('{"engine": {"threads": -3}}', lambda s: s.engine.threads, 1),
+            ('{"engine": {"threads": 100000}}', lambda s: s.engine.threads, 1),
+        ):
+            with self.subTest(texto=texto):
+                self.assertEqual(esperado, ler(self._ler(texto)))
+
+    def test_threads_ate_os_nucleos_desta_maquina_vale(self) -> None:
+        with mock.patch("os.cpu_count", return_value=8):
+            self.assertEqual(8, self._ler('{"engine": {"threads": 8}}').engine.threads)
+            self.assertEqual(1, self._ler('{"engine": {"threads": 9}}').engine.threads)
+
+    def test_nenhum_bool_sobre_valor_do_json(self) -> None:
+        """O `bool(data.get(...))` é o defeito inteiro: `bool` de qualquer texto não vazio é `True`."""
+        import ast
+
+        import chess_diagram_ocr.settings as modulo
+
+        arvore = ast.parse(Path(modulo.__file__).read_text(encoding="utf-8"))
+        achados = [
+            no.lineno
+            for no in ast.walk(arvore)
+            if isinstance(no, ast.Call)
+            and isinstance(no.func, ast.Name)
+            and no.func.id == "bool"
+            and any(isinstance(sub, ast.Attribute) and sub.attr == "get" for sub in ast.walk(no))
+        ]
+        self.assertEqual([], achados)
+
+
+class CamadaDeArquivoTests(unittest.TestCase):
+    """O que está gravado e o que vale agora são dois valores, e só o primeiro é gravado (S-811).
+
+    Carregar aplicava as variáveis `CVOFF_*` sobre o que leu, e salvar gravava o resultado: com
+    `remote_fen.enabled=true` no arquivo e `CVOFF_REMOTE_FEN_ENABLED=0` no ambiente, mudar outra
+    opção deixava `false` no arquivo para sempre; com `CVOFF_REMOTE_FEN_URL`, o endpoint ia para o
+    arquivo junto de `enabled=true` -- um consentimento de privacidade que ninguém deu.
+    """
+
+    def setUp(self) -> None:
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        self.arquivo = Path(pasta.name) / "settings.json"
+
+    def _salvar_pelo_dialogo(self, env: dict[str, str]) -> dict:
+        """A porta do menu: abre o diálogo, muda as épocas do treino e salva."""
+        from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+
+        if not TEM_PYQT:
+            self.skipTest(MOTIVO)
+        aplicacao()
+        from chess_diagram_ocr import settings as preferencias
+        from chess_diagram_ocr.qt import dialogo_de_configuracoes
+        from chess_diagram_ocr.qt.dialogo_de_configuracoes import DialogoDeConfiguracoes
+
+        def exec_(dialogo: DialogoDeConfiguracoes) -> int:
+            dialogo._controles["training.epochs"].setValue(21)
+            dialogo.btn_salvar.click()
+            return 1
+
+        with (
+            mock.patch.dict("os.environ", env),
+            mock.patch.object(preferencias, "DEFAULT_SETTINGS_PATH", self.arquivo),
+            mock.patch.object(DialogoDeConfiguracoes, "exec", exec_),
+        ):
+            descartar(dialogo_de_configuracoes.abrir(None))
+        return json.loads(self.arquivo.read_text(encoding="utf-8"))
+
+    def test_salvar_nao_grava_o_ambiente_que_desliga(self) -> None:
+        self.arquivo.write_text(
+            json.dumps({"version": 1, "remote_fen": {"enabled": True, "endpoint": ENDPOINT}}), encoding="utf-8"
+        )
+        gravado = self._salvar_pelo_dialogo({ENV_REMOTE_ENABLED: "0"})
+        self.assertEqual(21, gravado["training"]["epochs"], "a mudança pedida foi gravada")
+        self.assertTrue(gravado["remote_fen"]["enabled"], "o ambiente não vai para o arquivo")
+        self.assertEqual(ENDPOINT, gravado["remote_fen"]["endpoint"])
+
+    def test_salvar_nao_grava_o_ambiente_que_liga(self) -> None:
+        """O sentido que importa para a privacidade: endereço e motor do ambiente ligam em memória."""
+        self.arquivo.write_text(json.dumps({"version": 1}), encoding="utf-8")
+        gravado = self._salvar_pelo_dialogo({ENV_REMOTE_URL: ENDPOINT, ENV_OCR_ENGINE: "tesseract"})
+        self.assertEqual(21, gravado["training"]["epochs"])
+        self.assertEqual(("", False), (gravado["remote_fen"]["endpoint"], gravado["remote_fen"]["enabled"]))
+        self.assertEqual(("rapidocr", False), (gravado["ocr"]["engine"], gravado["ocr"]["enabled"]))
+
+    def test_chave_desconhecida_sobrevive_a_gravacao(self) -> None:
+        """Seção e chave que esta versão não conhece eram apagadas pela primeira gravação."""
+        self.arquivo.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "secao_futura": {"x": [1, 2]},
+                    "engine": {"threads": 2, "opcao_nova": "sim"},
+                    "nota": "escrita à mão",
+                }
+            ),
+            encoding="utf-8",
+        )
+        leitura = ler_arquivo(self.arquivo)
+        assert isinstance(leitura, Lida)
+        arquivo = leitura.valor
+        mudado = replace(arquivo.preferencias, engine=replace(arquivo.preferencias.engine, multipv=5))
+        save_settings(leitura.com(arquivo.com(mudado)))
+        gravado = json.loads(self.arquivo.read_text(encoding="utf-8"))
+        self.assertEqual({"x": [1, 2]}, gravado["secao_futura"])
+        self.assertEqual("escrita à mão", gravado["nota"])
+        self.assertEqual(("sim", 2, 5), (gravado["engine"]["opcao_nova"], gravado["engine"]["threads"], gravado["engine"]["multipv"]))
+
+    def test_faixa_vale_na_memoria_e_nao_e_regravada(self) -> None:
+        """O `threads` de outra máquina fica no arquivo; nesta, vale o padrão (S-810)."""
+        self.arquivo.write_text(json.dumps({"engine": {"threads": 100000}}), encoding="utf-8")
+        self.assertEqual(1, load_settings(self.arquivo, env={}).engine.threads)
+        leitura = ler_arquivo(self.arquivo)
+        assert isinstance(leitura, Lida)
+        save_settings(leitura)
+        self.assertEqual(100000, json.loads(self.arquivo.read_text(encoding="utf-8"))["engine"]["threads"])
+
+    def test_versao_futura_trava_a_gravacao(self) -> None:
+        self.arquivo.write_text(json.dumps({"version": 2, "remote_fen": {"endpoint": ENDPOINT}}), encoding="utf-8")
+        original = self.arquivo.read_bytes()
+        leitura = ler_arquivo(self.arquivo)
+        self.assertIsInstance(leitura, EsquemaFuturo)
+        self.assertFalse(load_settings(self.arquivo, env={}).remote_fen.is_usable, "os padrões valem")
+        with self.assertRaises(GravacaoRecusada):
+            save_settings(leitura)  # type: ignore[arg-type]
+        self.assertEqual(original, self.arquivo.read_bytes())
+
+    def test_o_tipo_efetivo_nao_grava(self) -> None:
+        """**O mypy acusa a tentativa**: `save_settings` só aceita a camada de arquivo.
+
+        Com o caso certo ao lado, que tem de passar: sem ele, um `chess_diagram_ocr` que o mypy não
+        achasse viraria `Any`, e o teste passaria sem ter conferido nada.
+        """
+        from mypy import api
+
+        import chess_diagram_ocr.settings as modulo
+
+        cabeca = (
+            "from pathlib import Path\n"
+            "from chess_diagram_ocr.arquivo_do_dono import Lida\n"
+            "from chess_diagram_ocr.settings import ler_arquivo, load_settings, save_settings\n"
+        )
+        casos = {
+            "efetiva": (cabeca + "save_settings(Lida(load_settings(), Path('x.json')))\n", 1),
+            "arquivo": (cabeca + "lida = ler_arquivo(Path('x.json'))\nif isinstance(lida, Lida):\n    save_settings(lida)\n", 0),
+        }
+        raiz_de_src = str(Path(modulo.__file__).resolve().parents[1])
+        for nome, (fonte, esperado) in casos.items():
+            trecho = self.arquivo.parent / f"{nome}.py"
+            trecho.write_text(fonte, encoding="utf-8")
+            with self.subTest(nome), mock.patch.dict("os.environ", {"MYPYPATH": raiz_de_src}):
+                saida, _erro, codigo = api.run(
+                    [str(trecho), "--follow-imports=silent", "--no-incremental", "--no-site-packages"]
+                )
+                self.assertEqual(esperado, codigo, saida)
+
+
+class SobreviventesDoMutatorTests(unittest.TestCase):
+    """O que a suíte executava sem conferir neste módulo (S-873).
+
+    Os textos conferidos inteiros são os que a pessoa lê: o tooltip do botão desabilitado
+    (`disabled_reason`, `glyph_disabled_reason`), o motivo da leitura travada e o aviso do valor
+    fora da faixa. O resto é a ida e volta pelo arquivo, campo por campo.
+    """
+
+    def test_todo_campo_volta_igual_do_arquivo(self) -> None:
+        """Cada campo com valor que não é o padrão, nas bordas que o `from_dict` aceita: o nome
+        trocado de uma chave, de um lado ou do outro, devolve o padrão e não o gravado."""
+        for original in (
+            Settings(
+                remote_fen=RemoteFenSettings(enabled=True, endpoint=ENDPOINT, timeout=7.5, acknowledged_host=HOST),
+                engine=EngineSettings(
+                    path="C:/motor/sf.exe", movetime_ms=1500, threads=3, hash_mb=64, multipv=5, syzygy_path="C:/tb"
+                ),
+                ocr=OcrSettings(enabled=True, engine="tesseract", languages=("de",), glyph_model="C:/g.pt"),
+                local_reader=LocalReaderSettings(enabled=True, path="C:/leitor"),
+                training=TrainingSettings(
+                    epochs=1, batch_size=1, lr=0.005, ocr_iterations=100, ocr_learning_rate=0.002, ocr_negatives=0
+                ),
+                recognition=RecognitionSettings(dpi=72, max_boards=1),
+            ),
+            Settings(recognition=RecognitionSettings(dpi=600, max_boards=64)),
+        ):
+            with self.subTest(original=original), tempfile.TemporaryDirectory() as tmp:
+                caminho = Path(tmp) / "settings.json"
+                save_settings(Lida(ConfiguracaoDoArquivo(original), caminho))
+                lida = ler_arquivo(caminho)
+                self.assertIsInstance(lida, Lida)
+                self.assertEqual(lida.valor.preferencias, original)
+
+    def test_secoes_ausentes_leem_os_padroes_da_classe(self) -> None:
+        self.assertEqual(Settings.from_dict({}), Settings())
+
+    def test_ligado_que_nao_e_booleano_grava_false_e_nao_null(self) -> None:
+        with self.assertLogs("chess_diagram_ocr.settings", level="WARNING"):
+            remoto = RemoteFenSettings.from_dict({"enabled": "sim", "endpoint": ENDPOINT})
+        self.assertIs(remoto.enabled, False)
+        self.assertIs(remoto.to_dict()["enabled"], False)
+
+    def test_sem_endpoint_o_host_e_vazio(self) -> None:
+        self.assertEqual(RemoteFenSettings().host, "")
+
+    def test_o_aviso_da_faixa_mostra_a_faixa(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "settings.json"
+            caminho.write_bytes(b'{"remote_fen": {"timeout": -5}}')
+            with self.assertLogs("chess_diagram_ocr.settings", level="WARNING") as registro:
+                load_settings(caminho, env={})
+        self.assertIn("remote_fen.timeout = -5.0 fora de (0, 600]; usando 30.0", "\n".join(registro.output))
+
+    def test_o_topo_que_nao_e_objeto_diz_isso_a_quem_le_a_trava(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "settings.json"
+            caminho.write_bytes(b"[1, 2]")
+            with self.assertLogs("chess_diagram_ocr", level="WARNING"):
+                lida = ler_arquivo(caminho)
+        assert isinstance(lida, Ilegivel)
+        self.assertEqual(lida.motivo, "o topo não é um objeto")
+
+    def test_os_tooltips_da_segunda_opiniao_e_da_correcao_remota(self) -> None:
+        self.assertEqual(
+            LocalReaderSettings().disabled_reason(),
+            "Segunda opinião não configurada. Ela lê o diagrama com um segundo modelo, local e offline: aponte "
+            "um clone de tsoj/Chess_diagram_to_FEN com os pesos baixados em data/settings.json ou em "
+            f"{ENV_LOCAL_READER_PATH}.",
+        )
+        self.assertEqual(
+            LocalReaderSettings(path="C:/leitor").disabled_reason(),
+            "Segunda opinião desligada. O leitor configurado está em C:/leitor.",
+        )
+        self.assertEqual(
+            RemoteFenSettings(endpoint=ENDPOINT).disabled_reason(),
+            f"Correção remota desligada. O endpoint configurado é {HOST}.",
+        )
+        self.assertIs(LocalReaderSettings(enabled=True, path="C:/leitor").is_usable, True)
+        self.assertEqual(LocalReaderSettings(enabled=True, path="C:/leitor").disabled_reason(), "")
+
+    def test_o_caminho_do_leitor_no_ambiente_liga_o_leitor(self) -> None:
+        leitor = apply_environment(Settings(), env={ENV_LOCAL_READER_PATH: " C:/leitor "}).local_reader
+        self.assertEqual(leitor, LocalReaderSettings(enabled=True, path="C:/leitor"))
+
+    def test_o_tooltip_do_glifo_em_cada_estado(self) -> None:
+        """Sem o metadado, sem os pesos (no lugar padrão ou no apontado), e com os dois."""
+        from chess_diagram_ocr import settings as modulo
+
+        # Os dois caminhos padrão moram em `config` (S-862) e `settings` os importa pelo nome: é ali
+        # que o teste os aponta para a pasta vazia.
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(modulo, "DEFAULT_GLYPH_META_PATH", Path(tmp) / "models" / "char_meta.json"),
+            mock.patch.object(modulo, "DEFAULT_GLYPH_MODEL_PATH", Path(tmp) / "models" / "char_classifier.pt"),
+        ):
+            modelos = Path(tmp) / "models"
+            self.assertEqual(
+                OcrSettings().glyph_disabled_reason(),
+                "O motor `glifo` precisa de char_meta.json, que descreve as classes de caractere, e ele não "
+                "está em models/.",
+            )
+            modelos.mkdir()
+            (modelos / "char_meta.json").write_bytes(b"{}")
+            for apontado, onde in (("", modelos / "char_classifier.pt"), (" C:/nao/existe.pt ", Path("C:/nao/existe.pt"))):
+                with self.subTest(apontado=apontado):
+                    self.assertEqual(
+                        OcrSettings(glyph_model=apontado).glyph_disabled_reason(),
+                        f"Os pesos do classificador de caracteres não estão em {onde}. Eles não vêm no "
+                        "repositório (2,6 MB de binário; `*.pt` é ignorado). Aponte o arquivo em "
+                        f"data/settings.json (`ocr.glyph_model`) ou em {ENV_OCR_GLYPH_MODEL}.",
+                    )
+            (modelos / "char_classifier.pt").write_bytes(b"pesos")
+            self.assertEqual(OcrSettings().glyph_disabled_reason(), "")

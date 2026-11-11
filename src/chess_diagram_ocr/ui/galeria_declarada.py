@@ -27,7 +27,6 @@ consome agora é `qt/painel_da_galeria.py`.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +34,7 @@ from pathlib import Path
 from ..gallery_scan import GalleryIndex
 from ..games_db import DEFAULT_DATABASE_DIR
 from ..logging_setup import onde_esta_o_rastro
+from .livros import mesmo_livro
 
 __all__ = [
     "ACOES_PROPRIAS",
@@ -234,13 +234,10 @@ def mesmo_arquivo(um: Path | None, outro: Path | None) -> bool:
     diferentes -- e é dessa comparação que dependem *duas* decisões: se a fila de revisão é
     alimentada, e se a galeria recarrega no fim. Errar para menos deixa a fila vazia sem dizer por
     quê; errar para mais mistura livros na mesma fila.
+
+    A regra é a de `ui.livros.mesmo_livro` (S-827), que vale também para o caminho que não resolve.
     """
-    if um is None or outro is None:
-        return False
-    try:
-        return os.path.normcase(Path(um).resolve()) == os.path.normcase(Path(outro).resolve())
-    except OSError:  # pragma: no cover - caminho que o sistema recusa resolver
-        return os.path.normcase(str(um)) == os.path.normcase(str(outro))
+    return mesmo_livro(um, outro)
 
 
 def resumo_do_lote(resultados: Sequence[LivroVarrido], *, pedidos: int) -> str:

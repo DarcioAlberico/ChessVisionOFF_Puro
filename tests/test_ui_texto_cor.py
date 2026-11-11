@@ -15,11 +15,15 @@ import ast
 import unittest
 from pathlib import Path
 
+import varredura
+
 from chess_diagram_ocr.text import rico
 from chess_diagram_ocr.ui import texto_cores, tokens
 
 RAIZ = Path(__file__).resolve().parents[1]
-PAINEL = RAIZ / "src" / "chess_diagram_ocr" / "qt" / "painel_de_texto.py"
+QT = RAIZ / "src" / "chess_diagram_ocr" / "qt"
+PAINEL = (QT / "painel_de_texto.py", *varredura.fontes(QT, "texto_*.py", piso=5))
+"""A aba Texto e as partes dela (S-865): a cor cravada mudaria de arquivo junto com o código."""
 CORES = RAIZ / "src" / "chess_diagram_ocr" / "ui" / "texto_cores.py"
 
 SUPERFICIES_DE_TEXTO = (
@@ -131,19 +135,9 @@ class SemHexadecimalTests(unittest.TestCase):
         ]
 
     def test_nenhum_hexadecimal_no_editor(self) -> None:
-        for caminho in (PAINEL, CORES):
+        for caminho in (*PAINEL, CORES):
             with self.subTest(arquivo=caminho.name):
                 self.assertEqual(self._hexadecimais(caminho), [])
-
-    def test_o_modulo_de_cor_nao_importa_tkinter(self) -> None:
-        arvore = ast.parse(CORES.read_text(encoding="utf-8"))
-        importados: set[str] = set()
-        for no in ast.walk(arvore):
-            if isinstance(no, ast.Import):
-                importados.update(alias.name.split(".")[0] for alias in no.names)
-            elif isinstance(no, ast.ImportFrom) and no.module:
-                importados.add(no.module.split(".")[0])
-        self.assertNotIn("tkinter", importados)
 
 
 if __name__ == "__main__":  # pragma: no cover

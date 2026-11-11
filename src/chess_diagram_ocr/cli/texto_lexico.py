@@ -280,7 +280,7 @@ def medir(livros: int, paginas: int) -> dict[str, Any]:
                 "candidatos": cand,
                 "marcados": marc,
                 "alarme": round(marc / max(1, cand), 4),
-                "arquivos": [c.name for c in PERFIS[nome]],  # type: ignore[index]
+                "arquivos": [c.name for c in PERFIS[nome]],
             }
             for nome, (cand, marc) in contagem.items()
         },

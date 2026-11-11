@@ -14,7 +14,7 @@ import unittest
 from typing import Any
 
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, esperar_ate
 
 from chess_diagram_ocr.estudo import Ancora, Estudo, PosicaoDeEstudo
 from chess_diagram_ocr.ui import conjuntos
@@ -30,7 +30,6 @@ from chess_diagram_ocr.ui.lote_de_diagramas import (
 )
 
 if TEM_PYQT:
-    from PyQt6.QtTest import QTest
 
     from chess_diagram_ocr.qt import painel_de_estudo as qt_estudo
     from chess_diagram_ocr.qt import tabuleiro as qt_tabuleiro
@@ -85,10 +84,7 @@ class DialogoTests(unittest.TestCase):
         self.addCleanup(self.dialogo.exportacao.esperar, 10_000)
 
     def _esperar(self, ate_ms: int = 10_000) -> None:
-        for _ in range(ate_ms // 20):
-            QTest.qWait(20)
-            if not self.dialogo.exportacao.ocupado:
-                return
+        esperar_ate(lambda: not self.dialogo.exportacao.ocupado, limite_s=ate_ms / 1000, o_que="o fim da exportação")
 
     def test_as_escolhas_da_tela_viram_as_opcoes(self) -> None:
         self.dialogo.cmb_formato.setCurrentIndex(self.dialogo.cmb_formato.findData(SVG))
@@ -183,10 +179,7 @@ class ExportacaoTests(unittest.TestCase):
         self.addCleanup(self.exportacao.esperar, 10_000)
 
     def _esperar(self, ate_ms: int = 10_000) -> None:
-        for _ in range(ate_ms // 20):
-            QTest.qWait(20)
-            if not self.exportacao.ocupado:
-                return
+        esperar_ate(lambda: not self.exportacao.ocupado, limite_s=ate_ms / 1000, o_que="o fim da exportação")
 
     def test_o_progresso_chega_por_sinal_e_termina_no_total(self) -> None:
         from chess_diagram_ocr.ui.lote_de_diagramas import Opcoes

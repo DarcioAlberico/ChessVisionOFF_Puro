@@ -76,18 +76,19 @@ class _Aba(unittest.TestCase):
         self.painel.definir_livro(self.livro, pagina=0)
 
     def escolher(self, motor: str) -> None:
-        caixa = self.painel.escolha_de_motor
+        caixa = self.painel.leitura.escolha_de_motor
         caixa.setCurrentIndex(caixa.findData(motor))
         caixa.activated.emit(caixa.currentIndex())
 
     def ler(self, cruas: Sequence[Any], falso: _Falso | None = None) -> None:
         with (
+            mock.patch.object(leitor, "_reconhecedor_configurado", return_value=mock.MagicMock(name="glifo")),
             mock.patch.object(leitor, "linhas_do_glifo", return_value=(list(cruas), [])),
             mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=[]),
             mock.patch("chess_diagram_ocr.text.leitor_de_linha.leitor_padrao", return_value=falso or _Falso()),
         ):
             self.painel.ler()
-            tarefa = self.painel._tarefa
+            tarefa = self.painel.leitura.tarefa
             self.assertIsNotNone(tarefa, "a tarefa não partiu")
             self.assertTrue(tarefa.wait(30_000))  # type: ignore[union-attr]
             self.app.processEvents()
@@ -98,12 +99,12 @@ class _Aba(unittest.TestCase):
 
 class CaixaDeMotorTests(_Aba):
     def test_os_dois_novos_tem_rotulo_e_nunca_o_identificador_cru(self) -> None:
-        caixa = self.painel.escolha_de_motor
+        caixa = self.painel.leitura.escolha_de_motor
         self.assertEqual(caixa.itemText(caixa.findData("camada_prosa")), "Camada na prosa (livro digital)")
         self.assertEqual(caixa.itemText(caixa.findData("fusao")), "Glifo + Tesseract (experimental)")
 
     def test_o_padrao_nao_mudou(self) -> None:
-        self.assertEqual(self.painel.motor, "auto")
+        self.assertEqual(self.painel.leitura.motor, "auto")
 
     def test_escolher_a_camada_na_prosa_muda_o_texto_na_tela(self) -> None:
         self.escolher("camada_prosa")
@@ -115,7 +116,7 @@ class CaixaDeMotorTests(_Aba):
     def test_escolher_a_fusao_muda_o_texto_na_tela_e_le_na_lingua_escolhida(self) -> None:
         falso = _Falso()
         self.escolher("fusao")
-        caixa = self.painel.escolha_de_lingua
+        caixa = self.painel.leitura.escolha_de_lingua
         caixa.setCurrentIndex(caixa.findData("por"))
         caixa.activated.emit(caixa.currentIndex())
         self.ler(self.boas(), falso)
@@ -123,22 +124,22 @@ class CaixaDeMotorTests(_Aba):
         self.assertEqual(falso.linguas, ["por"])
 
     def test_motor_e_lingua_sobrevivem_a_sessao(self) -> None:
-        self.painel.definir_motor("fusao")
-        self.painel.definir_lingua("deu")
+        self.painel.leitura.definir_motor("fusao")
+        self.painel.leitura.definir_lingua("deu")
         guardado = estado_da_janela.AppState()
         self.painel.anotar_estado(guardado)
         self.assertEqual((guardado.texto_motor, guardado.texto_lingua), ("fusao", "deu"))
         relido = estado_da_janela.state_from_dict(guardado.to_dict())
         self.assertEqual(relido.texto_lingua, "deu")
-        self.painel.definir_motor("glifo")
-        self.painel.definir_lingua("eng")
+        self.painel.leitura.definir_motor("glifo")
+        self.painel.leitura.definir_lingua("eng")
         self.painel.aplicar_estado(relido)
-        self.assertEqual((self.painel.motor, self.painel.lingua), ("fusao", "deu"))
-        self.assertEqual(self.painel.escolha_de_lingua.currentData(), "deu")
+        self.assertEqual((self.painel.leitura.motor, self.painel.leitura.lingua), ("fusao", "deu"))
+        self.assertEqual(self.painel.leitura.escolha_de_lingua.currentData(), "deu")
 
     def test_lingua_desconhecida_e_ignorada(self) -> None:
-        self.painel.definir_lingua("klingon")
-        self.assertEqual(self.painel.lingua, tesseract.LINGUA_PADRAO)
+        self.painel.leitura.definir_lingua("klingon")
+        self.assertEqual(self.painel.leitura.lingua, tesseract.LINGUA_PADRAO)
 
 
 class SeloTests(_Aba):
@@ -170,7 +171,7 @@ class SeloTests(_Aba):
         lida = pagina.PaginaLida(colunas=(pagina.Coluna(indice=0, blocos=(bloco,)),), avisos=(aviso,))
         reaberto = arquivo.de_json(arquivo.para_json(rico.de_pagina(lida)))
         self.painel.desenhar_documento(reaberto)
-        self.painel._atualizar_status()
+        self.painel.vista.atualizar_status()
         self.assertEqual(self.painel.selo_da_folha.text(), "Relida pela reserva.")
 
 
@@ -178,21 +179,21 @@ class LinguaNoCadernoTests(_Aba):
     """Trocar a língua da fusão é pedir a leitura nova, como trocar de motor (S-717)."""
 
     def test_o_motor_gravado_leva_a_lingua_so_na_fusao(self) -> None:
-        self.painel.definir_motor("fusao")
-        self.painel.definir_lingua("por")
-        self.assertEqual(self.painel._motor_gravado(), "fusao:por")
-        self.painel.definir_motor("glifo")
-        self.assertEqual(self.painel._motor_gravado(), "glifo")
+        self.painel.leitura.definir_motor("fusao")
+        self.painel.leitura.definir_lingua("por")
+        self.assertEqual(self.painel.leitura.motor_gravado(), "fusao:por")
+        self.painel.leitura.definir_motor("glifo")
+        self.assertEqual(self.painel.leitura.motor_gravado(), "glifo")
 
     def test_a_folha_lida_em_outra_lingua_nao_abre_do_caderno(self) -> None:
         from chess_diagram_ocr.text import caderno
 
         estado = caderno.EstadoDaFolha(pagina=0, estado=caderno.LIDA, motor="fusao:eng", modo_bloco=False)
-        self.painel.definir_motor("fusao")
-        self.painel.definir_lingua("eng")
-        self.assertTrue(caderno.abre_do_caderno(estado, motor=self.painel._motor_gravado(), modo_bloco=False))
-        self.painel.definir_lingua("por")
-        self.assertFalse(caderno.abre_do_caderno(estado, motor=self.painel._motor_gravado(), modo_bloco=False))
+        self.painel.leitura.definir_motor("fusao")
+        self.painel.leitura.definir_lingua("eng")
+        self.assertTrue(caderno.abre_do_caderno(estado, motor=self.painel.leitura.motor_gravado(), modo_bloco=False))
+        self.painel.leitura.definir_lingua("por")
+        self.assertFalse(caderno.abre_do_caderno(estado, motor=self.painel.leitura.motor_gravado(), modo_bloco=False))
 
 
 class ProximaARevisarTests(_Aba):
@@ -249,7 +250,7 @@ class CorrigirAMarcaNoEditorTests(_Aba):
 
         with tempfile.TemporaryDirectory() as pasta:
             caminho = Path(pasta) / "folha.cvtxt"
-            self.painel._salvar_documento_em(caminho)  # noqa: SLF001
+            self.painel.caderno._salvar_documento_em(caminho)  # noqa: SLF001
             reaberto = arquivo.carregar(caminho)
         texto = reaberto.para_texto()
         return [texto[a:b] for a, b in rico.intervalos_a_revisar(reaberto)]
@@ -343,7 +344,7 @@ class CorrigirAMarcaNoEditorTests(_Aba):
         self._folha("the wbite knight wlns a pawm", (4, 9), (17, 21))
         self._trocar_letra(5, "h")
         caminho = self.pasta / "folha.cvtxt"
-        self.painel._salvar_documento_em(caminho)  # noqa: SLF001
+        self.painel.caderno._salvar_documento_em(caminho)  # noqa: SLF001
         self.painel.desenhar_documento(arquivo.carregar(caminho))
         self._trocar_letra(27, "n")
         self._so_sobra("wlns")

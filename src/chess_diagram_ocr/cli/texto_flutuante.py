@@ -43,9 +43,8 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_PDF_DIR
 from ..logging_setup import configure_logging
-from . import add_verbose, cli_errors
+from . import EntradaInvalida, add_json_argument, add_pdf_dir_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +88,7 @@ def folha_do_argumento(texto: str) -> tuple[str, int]:
     """`"Livro.pdf:53"` -> `("Livro.pdf", 52)`: a folha é contada de 1, como a pessoa a vê. Pura."""
     nome, _, numero = texto.rpartition(":")
     if not nome or not numero.isdigit() or int(numero) < 1:
-        raise ValueError(f"folha {texto!r}: o formato é Livro.pdf:N, com N a partir de 1")
+        raise EntradaInvalida(f"folha {texto!r}: o formato é Livro.pdf:N, com N a partir de 1")
     return nome, int(numero) - 1
 
 
@@ -97,7 +96,7 @@ def _guarda():  # noqa: ANN202 - a função da suíte, importada de tests/
     raiz = Path(__file__).resolve().parents[3] / "tests"
     if str(raiz) not in sys.path:
         sys.path.insert(0, str(raiz))
-    from paridade_do_texto import divergencias  # type: ignore[import-not-found]
+    from paridade_do_texto import divergencias
 
     return divergencias
 
@@ -130,8 +129,8 @@ def conferir(painel: Any) -> Conferencia:
     texto = painel.documento.para_texto()
 
     for k in range(len(texto) + 1):
-        if painel._mapa.deslocamento(painel._mapa.posicao(k)) != k:
-            saida.mapa.append(f"deslocamento {k} volta como {painel._mapa.deslocamento(painel._mapa.posicao(k))}")
+        if painel.espelho.mapa.deslocamento(painel.espelho.mapa.posicao(k)) != k:
+            saida.mapa.append(f"deslocamento {k} volta como {painel.espelho.mapa.deslocamento(painel.espelho.mapa.posicao(k))}")
 
     for numero in _figuras(painel):
         saida.figuras += 1
@@ -150,14 +149,14 @@ def conferir(painel: Any) -> Conferencia:
                 saida.flutuam += 1
 
         # A seleção que atravessa a figura: de três letras antes dela a três depois.
-        marca = painel._mapa.deslocamento(seguinte.position())
+        marca = painel.espelho.mapa.deslocamento(seguinte.position())
         inicio, fim = max(0, marca - 3), min(len(texto), marca + 3)
         cursor = QTextCursor(documento)
-        cursor.setPosition(painel._mapa.posicao(inicio))
-        cursor.setPosition(painel._mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
+        cursor.setPosition(painel.espelho.mapa.posicao(inicio))
+        cursor.setPosition(painel.espelho.mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
         painel.editor.setTextCursor(cursor)
-        if painel._selecao_atual() != (inicio, fim):
-            saida.selecao.append(f"figura do bloco {numero}: ({inicio}, {fim}) voltou {painel._selecao_atual()}")
+        if painel.espelho.selecao_atual() != (inicio, fim):
+            saida.selecao.append(f"figura do bloco {numero}: ({inicio}, {fim}) voltou {painel.espelho.selecao_atual()}")
 
         # A letra digitada ao lado da figura, no começo da linha da marca.
         antes = painel.documento.para_texto()
@@ -165,7 +164,7 @@ def conferir(painel: Any) -> Conferencia:
         cursor.setPosition(seguinte.position())
         painel.editor.setTextCursor(cursor)
         painel.editor.setFocus()
-        onde = painel._mapa.deslocamento(seguinte.position())
+        onde = painel.espelho.mapa.deslocamento(seguinte.position())
         QTest.keyClick(painel.editor, Qt.Key.Key_X)  # type: ignore[call-overload]  # o stub declara keyClick com `self`
         QApplication.processEvents()
         depois = painel.documento.para_texto()
@@ -257,10 +256,10 @@ def veredito(resultados: list[dict[str, Any]]) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta dos livros (padrao: PDF/).")
+    add_pdf_dir_argument(parser)
     parser.add_argument("--folha", action="append", default=[], help="Livro.pdf:N (a folha contada de 1). Repita.")
     parser.add_argument("--motor", default="auto", help="O motor de leitura (padrao: auto).")
-    parser.add_argument("--json", type=Path, help="Grava o relatorio neste caminho.")
+    add_json_argument(parser)
     add_verbose(parser)
     return parser
 

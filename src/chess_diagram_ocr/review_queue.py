@@ -33,17 +33,18 @@ import threading
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
 import cv2
 import numpy as np
 
-from .atomic_io import atomic_write_json, write_image
+from .arquivo_do_dono import ConteudoIlegivel, Leitura, Lida, conferir_versao_exata, gravar_json, ler
+from .atomic_io import write_image
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
     DATA_DIR,
+    DEFAULT_DPI,
     DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
@@ -56,6 +57,8 @@ from .fen_utils import labels_from_fen, square_name
 from .gallery import load_annotations
 from .labels import LabelStore
 from .pdf_to_pgn import DiagramPosition, ProgressCallback, ScannedDiagram, iter_pdf_diagrams
+from .relogio import agora_iso
+from .ui.livros import chave_do_livro, mesmo_livro
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +180,11 @@ class ReviewQueue:
 
     pages_scanned: int = 0
 
+    paginas_vistas: frozenset[int] = field(default=frozenset(), compare=False)
+    """As páginas que esta fila descreve por inteiro: as que a passada visitou, menos as que o
+    `limit` cortou. É o que `fundir_fila_retomada` precisa saber da passada (S-816). Não é gravado:
+    a fila lida do disco não é passada nenhuma."""
+
     def __len__(self) -> int:
         return len(self.items)
 
@@ -229,35 +237,47 @@ class ReviewQueue:
             "items": [item.to_dict() for item in self.items],
         }
 
-    def save(self, path: Path = DEFAULT_QUEUE_PATH) -> Path:
-        path = Path(path)
-        atomic_write_json(path, self.to_dict())
-        logger.info("Fila de revisão gravada em %s (%d itens).", path, len(self.items))
-        return path
 
-    @classmethod
-    def load(cls, path: Path = DEFAULT_QUEUE_PATH) -> ReviewQueue:
-        path = Path(path)
-        if not path.exists():
-            return cls()
+def carregar_fila(path: Path = DEFAULT_QUEUE_PATH) -> Leitura[ReviewQueue]:
+    """A fila gravada. Vazia quando não há arquivo.
+
+    **Ilegível, ou de outra versão, é leitura travada (S-812).** Antes a fila voltava vazia e a
+    próxima gravação -- a de uma revarredura, ou a de marcar um item -- escrevia a fila vazia por
+    cima das correções. A versão diferente da nossa, mais velha inclusive, trava do mesmo jeito: não
+    há migração, e regravar seria apagar.
+    """
+    return ler(Path(path), _interpretar_fila, ReviewQueue)
+
+
+def _interpretar_fila(texto: str) -> ReviewQueue:
+    raw = json.loads(texto)
+    conferir_versao_exata(raw, "version", QUEUE_VERSION)
+    fila = ReviewQueue(
+        source_pdf=str(raw.get("source_pdf", "")),
+        created_at=str(raw.get("created_at", "")),
+        scanned_diagrams=int(raw.get("scanned_diagrams", 0)),
+        pages_scanned=int(raw.get("pages_scanned", 0)),
+    )
+    # Cada item no seu `try` (S-815): um campo que não é número num item levava a fila inteira a
+    # vazia. O que leu chega à tela; a trava continua, porque gravar o parcial apagaria o resto.
+    falhas: list[str] = []
+    for numero, bruto in enumerate(raw.get("items", []), start=1):
         try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-            logger.warning("Fila de revisão ilegível, começando vazia (%s): %s", path, exc)
-            return cls()
+            if not isinstance(bruto, dict):
+                raise ValueError("não é um objeto")
+            fila.items.append(ReviewItem.from_dict(bruto))
+        except (TypeError, ValueError) as erro:
+            falhas.append(f"item {numero}: {erro}")
+    if falhas:
+        raise ConteudoIlegivel("; ".join(falhas[:3]) + (" ..." if len(falhas) > 3 else ""), parcial=fila)
+    return fila
 
-        if not isinstance(raw, dict) or raw.get("version") != QUEUE_VERSION:
-            logger.warning("Fila de revisão em formato desconhecido, ignorada: %s", path)
-            return cls()
 
-        queue = cls(
-            source_pdf=str(raw.get("source_pdf", "")),
-            created_at=str(raw.get("created_at", "")),
-            scanned_diagrams=int(raw.get("scanned_diagrams", 0)),
-            pages_scanned=int(raw.get("pages_scanned", 0)),
-            items=[ReviewItem.from_dict(item) for item in raw.get("items", []) if isinstance(item, dict)],
-        )
-        return queue
+def gravar_fila(lida: Lida[ReviewQueue]) -> Path:
+    """Grava a fila onde ela foi lida. Só sobre uma leitura que leu (S-812)."""
+    destino = gravar_json(lida, lida.valor.to_dict())
+    logger.info("Fila de revisão gravada em %s (%d itens).", destino, len(lida.valor.items))
+    return destino
 
 
 # ------------------------------------------------------------------- prioridade
@@ -390,20 +410,32 @@ def rare_classes_from_labels(csv_path: Path, *, share: float = RARE_CLASS_SHARE)
 # --------------------------------------------------------------------- varredura
 
 
-def cache_board_image(board_rgb: np.ndarray, cache_dir: Path, pdf_name: str, page_index: int, diagram_index: int) -> Path:
+def cache_board_image(board_rgb: np.ndarray, cache_dir: Path, pdf_path: Path, page_index: int, diagram_index: int) -> Path:
     """Grava a miniatura do diagrama e devolve o caminho. Sobrescreve sem cerimônia.
 
     O nome é determinístico (livro/página/diagrama) para que revarrer o mesmo PDF reaproveite
-    o arquivo em vez de encher o disco com cópias datadas.
+    o arquivo em vez de encher o disco com cópias datadas. A pasta é a do **livro**, e não a do
+    nome do arquivo: ver `nome_do_livro`.
     """
-    directory = Path(cache_dir) / _safe_name(pdf_name)
+    directory = Path(cache_dir) / nome_do_livro(pdf_path)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"p{page_index + 1:05d}_d{diagram_index}.png"
     return write_image(path, cv2.cvtColor(board_rgb, cv2.COLOR_RGB2BGR))
 
 
+def nome_do_livro(pdf_path: Path | str) -> str:
+    """O nome de arquivo que é de um livro só: o nome legível e o hash curto da `ChaveDoLivro` (S-815).
+
+    Só o nome do arquivo não basta: o acervo tem livros duplicados em pastas diferentes, e
+    `a/Livro.pdf` e `b/Livro.pdf` gravavam as miniaturas na mesma pasta, uma por cima da outra.
+    """
+    chave = chave_do_livro(pdf_path)
+    legivel = _safe_name(Path(pdf_path).stem)
+    return legivel if chave is None else f"{legivel}-{chave.curta}"
+
+
 def _safe_name(name: str) -> str:
-    keep = "".join(char if char.isalnum() or char in " -_." else "_" for char in Path(name).stem)
+    keep = "".join(char if char.isalnum() or char in " -_." else "_" for char in name)
     return keep.strip() or "pdf"
 
 
@@ -439,7 +471,7 @@ def item_from_scanned(
     image_path = cache_board_image(
         scanned.board_rgb,
         cache_dir,
-        pdf_path.name,
+        pdf_path,
         position.page_index,
         position.diagram_index,
     )
@@ -525,17 +557,22 @@ class ReviewQueueBuilder:
         """A fila ordenada, e cortada pelo `limit` **depois** de ordenar."""
         queue = ReviewQueue(
             source_pdf=str(self.pdf_path),
-            created_at=created_at or datetime.now().isoformat(timespec="seconds"),
+            created_at=created_at or agora_iso(),
             items=self.items,
             scanned_diagrams=self.scanned_count,
             pages_scanned=len(self.pages),
         )
         queue.sort()
+        vistas = set(self.pages)
         if self.limit is not None and len(queue.items) > self.limit:
             logger.info(
                 "Fila cortada em %d itens; %d ficaram de fora.", self.limit, len(queue.items) - self.limit
             )
+            # A pagina com item cortado nao foi descrita por inteiro: o que ela tinha na fila
+            # anterior nao "deixou de ser suspeito", so ficou fora do corte (S-816).
+            vistas -= {item.page_index for item in queue.items[self.limit :]}
             queue.items = queue.items[: self.limit]
+        queue.paginas_vistas = frozenset(vistas)
         return queue
 
 
@@ -559,7 +596,7 @@ def build_review_queue(
     pdf_source: Path,
     model_path: Path = DEFAULT_MODEL_PATH,
     *,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     max_boards_per_page: int = DEFAULT_MAX_BOARDS,
     orientation: OrientationMode = DEFAULT_ORIENTATION_MODE,
     start_page: int = 0,
@@ -624,44 +661,59 @@ def build_review_queue(
     return builder.finish()
 
 
-def merge_queues(
-    existing: ReviewQueue, fresh: ReviewQueue, *, pages: Collection[int] | None = None
+def fundir_fila_retomada(
+    anterior: ReviewQueue, nova: ReviewQueue, *, paginas_vistas: Collection[int]
 ) -> ReviewQueue:
-    """Revarredura sem perder o que já foi revisado.
+    """Revarredura sem perder o que já foi revisado. A regra mora aqui, e só aqui (S-816).
 
-    O item novo manda em tudo -- prioridade, motivos, FEN --, menos no `status`: se o
-    usuário já marcou aquele diagrama como resolvido, revarrer o livro não pode ressuscitá-lo
-    para a fila de pendentes.
+    **De outro livro, a fila nova substitui** -- conferido pela `ChaveDoLivro` (S-827), e não
+    pelo nome do arquivo. A janela tem uma fila só, a do livro aberto; o `cvoff-review` também.
 
-    **`pages` são as páginas que a passada de fato visitou, e sem elas isto encurta a fila**
-    (S-119). Sem o argumento, `fresh` é tomada como a fila inteira e o que ela não tem
-    desaparece -- o que estava certo enquanto toda varredura era do livro inteiro, e deixou de
-    estar quando a varredura passou a retomar de onde parou (S-120): uma passada que leu só as
-    páginas 300 a 420 apagaria as 129 pendências das 300 primeiras. Com `pages`, o que está
-    fora do que foi visitado sobrevive como estava.
+    O item novo manda em tudo -- prioridade, motivos -- menos no que é trabalho humano: o
+    `status`, porque o diagrama que o usuário já resolveu não pode voltar para a fila de
+    pendentes, e, no item feito, a FEN e o lado a jogar, porque o feito é a correção do editor
+    (S-815): trazer de volta a leitura do OCR deixaria o item resolvido com o erro consertado.
 
-    Vale também para o cancelamento, e ali o defeito já existia: cancelar uma revarredura na
-    página 40 gravava uma fila com as 40 primeiras páginas e só.
+    **`paginas_vistas` são as páginas que a passada descreve por inteiro, e é obrigatório**
+    (S-119, S-816). Sem ele a fila nova era tomada como a fila inteira e o que ela não tinha
+    desaparecia: uma passada retomada (S-120) que leu só as páginas 300 a 420 apagava as
+    pendências das 300 primeiras, e o `cvoff-review --start-page` as de fora do intervalo. O
+    argumento era opcional, a janela o passava e os dois CLIs não. O que está fora das páginas
+    vistas sobrevive como estava; o que está numa página vista e a passada não trouxe deixou de
+    ser suspeito, e sai. Quem monta a fila sabe as páginas: `ReviewQueue.paginas_vistas`.
     """
-    previous = {(item.page_index, item.diagram_index): item.status for item in existing.items}
-    merged = [
-        replace(item, status=previous.get((item.page_index, item.diagram_index), item.status))
-        for item in fresh.items
-    ]
-    if pages is not None:
-        visitadas = set(pages)
-        # Ordem: os preservados entram depois e o `sort` decide o lugar de cada um. Chave por
-        # (pagina, diagrama) nao e preciso -- `fresh` so tem paginas visitadas, por construcao.
-        merged.extend(item for item in existing.items if item.page_index not in visitadas)
+    if not mesmo_livro(anterior.source_pdf, nova.source_pdf):
+        return nova
+    previous = {(item.page_index, item.diagram_index): item for item in anterior.items}
+    merged = [_herdar(item, previous.get((item.page_index, item.diagram_index))) for item in nova.items]
+    vistas = set(paginas_vistas)
+    trazidos = {(item.page_index, item.diagram_index) for item in nova.items}
+    # Os preservados entram depois e o `sort` decide o lugar de cada um. A chave por (pagina,
+    # diagrama) importa quando o `limit` cortou: a pagina fica fora das vistas com parte dos itens.
+    merged.extend(
+        item
+        for item in anterior.items
+        if item.page_index not in vistas and (item.page_index, item.diagram_index) not in trazidos
+    )
     result = ReviewQueue(
-        source_pdf=fresh.source_pdf,
-        created_at=fresh.created_at,
+        source_pdf=nova.source_pdf,
+        created_at=nova.created_at,
         items=merged,
-        scanned_diagrams=fresh.scanned_diagrams,
-        pages_scanned=fresh.pages_scanned,
+        scanned_diagrams=nova.scanned_diagrams,
+        pages_scanned=nova.pages_scanned,
+        paginas_vistas=nova.paginas_vistas,
     )
     result.sort()
     return result
+
+
+def _herdar(novo: ReviewItem, antigo: ReviewItem | None) -> ReviewItem:
+    """O item da passada nova com o trabalho humano do antigo. Ver `fundir_fila_retomada`."""
+    if antigo is None:
+        return novo
+    if antigo.status == "done":
+        return replace(novo, status="done", fen=antigo.fen, side_to_move=antigo.side_to_move)
+    return replace(novo, status=antigo.status)
 
 
 def error_rate(items: Iterable[ReviewItem], *, accept_threshold: float = ACCEPT_MIN_CONFIDENCE) -> float:

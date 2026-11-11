@@ -27,6 +27,7 @@ from . import strings
 
 __all__ = [
     "confianca",
+    "decimal",
     "inteiro",
     "lado_a_jogar",
     "porcentagem",
@@ -68,6 +69,22 @@ def prioridade(valor: float | None) -> str:
     return inteiro(valor)
 
 
+def decimal(valor: float | None, casas: int = 1) -> str:
+    """Um número com `casas` casas decimais e vírgula de pt-BR (`4,10`, `18,4`) (S-910).
+
+    **É a única troca de ponto por vírgula da interface.** Eram treze `.replace(".", ",")`
+    espalhados e oito lugares que esqueciam a troca -- `conf. mín. 0.93` e `250.0 KB` na mesma
+    janela que diz `8,2%`. Sem separador de milhar, como os treze faziam: os números daqui são
+    tamanhos, tempos e métricas de no máximo quatro algarismos inteiros.
+
+    Só para o que a pessoa **lê**. O número que vai a arquivo, log ou JSON continua com ponto,
+    porque quem o lê é um programa; a guarda em `tests/test_ui_formato.py` lista as exceções.
+    """
+    if valor is None:
+        return AUSENTE
+    return f"{float(valor):.{int(casas)}f}".replace(".", ",")
+
+
 def porcentagem(fracao: float | None, *, casas: int = 1) -> str:
     """Uma fração de 0 a 1 como porcentagem em pt-BR (`8,2%`).
 
@@ -76,7 +93,7 @@ def porcentagem(fracao: float | None, *, casas: int = 1) -> str:
     """
     if fracao is None:
         return AUSENTE
-    return f"{float(fracao) * 100:.{casas}f}".replace(".", ",") + "%"
+    return decimal(float(fracao) * 100, casas) + "%"
 
 
 def confianca(valor: float | None) -> str:

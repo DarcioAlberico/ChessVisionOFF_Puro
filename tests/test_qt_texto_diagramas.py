@@ -30,7 +30,7 @@ if TEM_PYQT:
     from PyQt6.QtWidgets import QFileDialog
 
     from chess_diagram_ocr.qt import painel_de_texto as qt_texto
-    from chess_diagram_ocr.qt import tema
+    from chess_diagram_ocr.qt import tema, texto_leitura, texto_miniaturas
     from chess_diagram_ocr.qt.painel_de_texto import OBJETO, PainelDeTexto
 
 
@@ -81,7 +81,7 @@ class _Aba(unittest.TestCase):
         return self.painel.editor.toPlainText().count(OBJETO)
 
     def esperar_a_tarefa(self) -> None:
-        tarefa = self.painel._tarefa
+        tarefa = self.painel.leitura.tarefa
         self.assertIsNotNone(tarefa, "a tarefa não partiu")
         self.assertTrue(tarefa.wait(10_000))  # type: ignore[union-attr]
         self.app.processEvents()
@@ -92,8 +92,8 @@ class LeituraEntregaAFolhaTests(_Aba):
 
     def test_a_leitura_traz_a_miniatura_do_diagrama(self) -> None:
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
-        with mock.patch.object(qt_texto, "_renderizar", return_value=_folha()) as renderizar, mock.patch.object(
-            qt_texto, "_ler", return_value=_pagina()
+        with mock.patch.object(texto_leitura, "renderizar", return_value=_folha()) as renderizar, mock.patch.object(
+            texto_leitura, "ler_a_folha", return_value=_pagina(str(self.pasta / "livro.pdf"))
         ) as ler:
             self.painel.ler()
             self.esperar_a_tarefa()
@@ -106,9 +106,9 @@ class LeituraEntregaAFolhaTests(_Aba):
 
     def test_o_rodape_diz_quanto_a_leitura_custou(self) -> None:
         """A pessoa escolhe o motor e o modo bloco pelo preço, e o preço tem de ser dito (item 16)."""
-        self.painel._leitura_terminou((_pagina(), None, None, 3.94))
+        self.painel.leitura._leitura_terminou((_pagina(), None, None, 3.94))
         self.assertEqual(self.recados[-1], f"Folha lida em 3,9 s: {len(self.painel.documento.corridas)} trecho(s), 1 diagrama(s).")
-        self.painel._leitura_terminou((_pagina(), None))  # o formato antigo, sem tempo, continua a valer
+        self.painel.leitura._leitura_terminou((_pagina(), None))  # o formato antigo, sem tempo, continua a valer
         self.assertTrue(self.recados[-1].startswith("Folha lida: "))
 
     def test_a_folha_do_visualizador_serve_a_leitura_no_mesmo_dpi(self) -> None:
@@ -116,8 +116,8 @@ class LeituraEntregaAFolhaTests(_Aba):
         folha = _folha()
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
         self.painel.definir_fornecedor_de_folha(lambda indice: (folha, 72) if indice == 0 else None)
-        with mock.patch.object(qt_texto, "_renderizar") as renderizar, mock.patch.object(
-            qt_texto, "_ler", return_value=_pagina()
+        with mock.patch.object(texto_leitura, "renderizar") as renderizar, mock.patch.object(
+            texto_leitura, "ler_a_folha", return_value=_pagina(str(self.pasta / "livro.pdf"))
         ) as ler:
             self.painel.ler()
             self.esperar_a_tarefa()
@@ -130,8 +130,8 @@ class LeituraEntregaAFolhaTests(_Aba):
     def test_a_folha_do_visualizador_noutro_dpi_nao_serve(self) -> None:
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
         self.painel.definir_fornecedor_de_folha(lambda _indice: (_folha(), 220))
-        with mock.patch.object(qt_texto, "_renderizar", return_value=None) as renderizar, mock.patch.object(
-            qt_texto, "_ler", return_value=_pagina()
+        with mock.patch.object(texto_leitura, "renderizar", return_value=None) as renderizar, mock.patch.object(
+            texto_leitura, "ler_a_folha", return_value=_pagina(str(self.pasta / "livro.pdf"))
         ):
             self.painel.ler()
             self.esperar_a_tarefa()
@@ -139,7 +139,7 @@ class LeituraEntregaAFolhaTests(_Aba):
 
     def test_a_folha_sem_texto_diz_o_que_tentar(self) -> None:
         """Capa, figura inteira, scan que o glifo não leu: não é «0 trecho(s)» (item 26)."""
-        self.painel._leitura_terminou((PaginaLida(documento="livro.pdf", pagina=3), None, None, 2.04))
+        self.painel.leitura._leitura_terminou((PaginaLida(documento="livro.pdf", pagina=3), None, None, 2.04))
         self.assertEqual(
             self.recados[-1],
             "A folha 4 não tem texto lido (motor auto, 2,0 s): tente outro motor ou o modo bloco.",
@@ -150,8 +150,8 @@ class LeituraEntregaAFolhaTests(_Aba):
     def test_sem_imagem_a_folha_abre_igual_e_a_marca_fica(self) -> None:
         """A miniatura é conforto: um PDF que não renderiza não impede a leitura do texto."""
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
-        with mock.patch.object(qt_texto, "_renderizar", return_value=None), mock.patch.object(
-            qt_texto, "_ler", return_value=_pagina()
+        with mock.patch.object(texto_leitura, "renderizar", return_value=None), mock.patch.object(
+            texto_leitura, "ler_a_folha", return_value=_pagina(str(self.pasta / "livro.pdf"))
         ):
             self.painel.ler()
             self.esperar_a_tarefa()
@@ -172,7 +172,7 @@ class ReabrirOArquivoTests(_Aba):
         livro = self.pasta / "livro.pdf"
         livro.write_bytes(b"%PDF-1.4 de mentira")
         destino = self.gravar(livro)
-        with mock.patch.object(qt_texto, "_renderizar", return_value=_folha()) as renderizar, mock.patch.object(
+        with mock.patch.object(texto_leitura, "renderizar", return_value=_folha()) as renderizar, mock.patch.object(
             QFileDialog, "getOpenFileName", return_value=(str(destino), "")
         ):
             self.painel.abrir_documento()
@@ -180,7 +180,7 @@ class ReabrirOArquivoTests(_Aba):
         self.assertEqual(self.miniaturas(), 1)
         self.assertFalse(self.painel.tem_alteracoes)
         self.assertEqual(self.painel._caminho_do_documento, destino, "Salvar grava de volta no arquivo aberto")
-        self.assertEqual(self.painel.campo_de_folha.value(), 1)
+        self.assertEqual(self.painel.leitura.campo_de_folha.value(), 1)
         self.assertIn("1 com miniatura", self.recados[-1])
 
     def test_o_cvtxt_do_livro_aberto_pede_a_folha_dele_e_o_de_outro_livro_nao(self) -> None:
@@ -192,7 +192,7 @@ class ReabrirOArquivoTests(_Aba):
         self.painel.definir_livro(livro, pagina=0)
         destino = self.pasta / "folha3.cvtxt"
         arquivo.gravar(destino, rico.de_pagina(PaginaLida(documento=str(livro), pagina=2)))
-        with mock.patch.object(qt_texto, "_renderizar", return_value=None), mock.patch.object(
+        with mock.patch.object(texto_leitura, "renderizar", return_value=None), mock.patch.object(
             QFileDialog, "getOpenFileName", return_value=(str(destino), "")
         ):
             self.painel.abrir_documento()
@@ -203,9 +203,27 @@ class ReabrirOArquivoTests(_Aba):
             self.painel.abrir_documento()
         self.assertEqual(pedidas, [2], "o .cvtxt de outro livro não pede folha nenhuma")
 
+    def test_abrir_documento_que_nao_e_utf8_mostra_erro_e_nao_levanta(self) -> None:
+        """`Todos (*.*)` deixa escolher um PDF: a caixa de erro abre, e o slot não derruba o programa (S-905).
+
+        Antes, o `UnicodeDecodeError` não era `ArquivoInvalido`, saía do slot, e o PyQt6 matava o
+        processo. Os bytes são os de um PDF de verdade, com o 0x81 que nem a cp1252 define.
+        """
+        escolhido = self.pasta / "livro.pdf"
+        escolhido.write_bytes(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<< /Length 4 >>\nstream\n\x81\x8d\x00\xff\nendstream\n")
+        texto_antes = self.painel.texto()
+        with mock.patch.object(QFileDialog, "getOpenFileName", return_value=(str(escolhido), "")), mock.patch.object(
+            texto_leitura.QMessageBox, "critical"
+        ) as erro:
+            self.painel.abrir_documento()
+        erro.assert_called_once()
+        self.assertIn("livro.pdf", erro.call_args.args[2])
+        self.assertEqual(texto_antes, self.painel.texto(), "o documento da tela continua o mesmo")
+        self.assertIsNone(self.painel._caminho_do_documento)
+
     def test_sem_o_livro_o_texto_abre_e_o_rodape_diz_qual_falta(self) -> None:
         destino = self.gravar(self.pasta / "sumiu" / "livro.pdf")
-        with mock.patch.object(qt_texto, "_renderizar") as renderizar, mock.patch.object(
+        with mock.patch.object(texto_leitura, "renderizar") as renderizar, mock.patch.object(
             QFileDialog, "getOpenFileName", return_value=(str(destino), "")
         ):
             self.painel.abrir_documento()
@@ -264,18 +282,18 @@ class RecorteDaFolhaTests(unittest.TestCase):
 
     def test_o_bbox_em_pontos_vira_pixel_pelo_dpi(self) -> None:
         folha = np.zeros((600, 400, 3), np.uint8)
-        recorte = qt_texto._recorte_da_folha(folha, BlocoDeDiagrama(indice=0, bbox=(10.0, 20.0, 30.0, 50.0)), dpi=144)
+        recorte = texto_miniaturas.recorte_da_folha(folha, BlocoDeDiagrama(indice=0, bbox=(10.0, 20.0, 30.0, 50.0)), dpi=144)
         assert recorte is not None
         self.assertEqual(recorte.shape[:2], (60, 40))
 
     def test_fora_da_folha_e_sem_bbox_nao_ha_recorte(self) -> None:
         folha = np.zeros((100, 100, 3), np.uint8)
-        self.assertIsNone(qt_texto._recorte_da_folha(folha, BlocoDeDiagrama(indice=0, bbox=(200.0, 200.0, 300.0, 300.0)), dpi=72))
-        self.assertIsNone(qt_texto._recorte_da_folha(folha, object(), dpi=72))
+        self.assertIsNone(texto_miniaturas.recorte_da_folha(folha, BlocoDeDiagrama(indice=0, bbox=(200.0, 200.0, 300.0, 300.0)), dpi=72))
+        self.assertIsNone(texto_miniaturas.recorte_da_folha(folha, object(), dpi=72))
 
     def test_o_recorte_e_grampeado_na_borda(self) -> None:
         folha = np.zeros((100, 100, 3), np.uint8)
-        recorte = qt_texto._recorte_da_folha(folha, BlocoDeDiagrama(indice=0, bbox=(80.0, 80.0, 300.0, 300.0)), dpi=72)
+        recorte = texto_miniaturas.recorte_da_folha(folha, BlocoDeDiagrama(indice=0, bbox=(80.0, 80.0, 300.0, 300.0)), dpi=72)
         assert recorte is not None
         self.assertEqual(recorte.shape[:2], (20, 20))
 
@@ -291,9 +309,9 @@ class ZoomDaVistaTests(_Aba):
     def test_aproximar_aumenta_a_letra_desenhada(self) -> None:
         self.painel.desenhar_documento(rico.de_texto("Uma frase."))
         antes = self.corpo_do_primeiro_trecho()
-        self.painel.aplicar_zoom(+3, avisar=False)
+        self.painel.vista.aplicar_zoom(+3, avisar=False)
         self.assertEqual(self.corpo_do_primeiro_trecho(), antes + 3)
-        self.painel.aplicar_zoom(0, avisar=False)
+        self.painel.vista.aplicar_zoom(0, avisar=False)
         self.assertEqual(self.corpo_do_primeiro_trecho(), antes, "o degrau parte da origem, não da tela")
 
     def test_o_digitado_sai_no_corpo_da_vista(self) -> None:
@@ -301,7 +319,7 @@ class ZoomDaVistaTests(_Aba):
         from PyQt6.QtTest import QTest
 
         self.painel.desenhar_documento(rico.de_texto("Uma frase."))
-        self.painel.aplicar_zoom(+2, avisar=False)
+        self.painel.vista.aplicar_zoom(+2, avisar=False)
         corpo = self.corpo_do_primeiro_trecho()
         self.painel.editor.setFocus()
         cursor = self.painel.editor.textCursor()
@@ -326,14 +344,14 @@ class MiniaturaAcompanhaOZoomTests(_Aba):
         self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
         normal = self.largura_da_miniatura()
         self.assertEqual(normal, qt_texto.LARGURA_DA_MINIATURA)
-        self.painel.aplicar_zoom(+4, avisar=False)
+        self.painel.vista.aplicar_zoom(+4, avisar=False)
         maior = self.largura_da_miniatura()
         self.assertGreater(maior, normal)
         corpo = tema.fonte_base()[0]
         self.assertEqual(maior, round(qt_texto.LARGURA_DA_MINIATURA * (corpo + 4) / corpo))
-        self.painel.aplicar_zoom(-2, avisar=False)
+        self.painel.vista.aplicar_zoom(-2, avisar=False)
         self.assertLess(self.largura_da_miniatura(), normal)
-        self.painel.aplicar_zoom(0, avisar=False)
+        self.painel.vista.aplicar_zoom(0, avisar=False)
         self.assertEqual(self.largura_da_miniatura(), normal)
 
 
@@ -362,14 +380,14 @@ class RodaComCtrlTests(_Aba):
         self.painel.desenhar_documento(rico.de_texto("Uma frase."))
         corpo = self.painel.editor.font().pointSize()
         self.rodar(+120)
-        self.assertEqual(self.painel.zoom_da_vista, 1)
+        self.assertEqual(self.painel.vista.zoom_da_vista, 1)
         self.rodar(+120)
         self.rodar(-120)
-        self.assertEqual(self.painel.zoom_da_vista, 1)
-        self.assertEqual(self.painel._base[0], tema.fonte_base()[0] + 1, "o degrau chegou à base do desenho")  # type: ignore[index]
+        self.assertEqual(self.painel.vista.zoom_da_vista, 1)
+        self.assertEqual(self.painel.espelho.base[0], tema.fonte_base()[0] + 1, "o degrau chegou à base do desenho")  # type: ignore[index]
         self.assertIn("Zoom do texto: +1", self.recados[-1])
         self.rodar(-120)
-        self.assertEqual(self.painel.zoom_da_vista, 0)
+        self.assertEqual(self.painel.vista.zoom_da_vista, 0)
         self.assertGreaterEqual(corpo, 1)
 
     def test_a_roda_sem_ctrl_e_rolagem(self) -> None:
@@ -377,7 +395,7 @@ class RodaComCtrlTests(_Aba):
         barra = self.painel.editor.verticalScrollBar()
         assert barra is not None
         self.rodar(-120, ctrl=False)
-        self.assertEqual(self.painel.zoom_da_vista, 0)
+        self.assertEqual(self.painel.vista.zoom_da_vista, 0)
         self.assertGreater(barra.value(), 0, "a roda sem Ctrl continua rolando a folha")
 
 
@@ -412,7 +430,7 @@ class LexicoSobreviveAoRedesenhoTests(_Aba):
         cursor.setPosition(3, QTextCursor.MoveMode.KeepAnchor)
         self.painel.editor.setTextCursor(cursor)
         self.painel.negrito()
-        self.assertTrue(self.painel.pode_desfazer, "o negrito não redesenhou")
+        self.assertTrue(self.painel.espelho.pode_desfazer, "o negrito não redesenhou")
         self.assertTrue(self.painel.editor.extraSelections(), "o redesenho apagou a marcação")
         self.painel.limpar_marcas_do_lexico()
         self.painel.desfazer()
@@ -446,16 +464,16 @@ class LexicoSobreviveAoRedesenhoTests(_Aba):
         self.painel.editor.setTextCursor(cursor)
         QTest.keyClicks(self.painel.editor, " qzxvk")
         self.assertEqual(self.painel.editor.extraSelections(), [], "a tecla não reconfere (caminho rápido)")
-        self.assertTrue(self.painel._rascunho.isActive(), "a tecla não armou a pausa")
-        self.painel._rascunho.timeout.emit()
+        self.assertTrue(self.painel.caderno._rascunho.isActive(), "a tecla não armou a pausa")
+        self.painel.caderno._rascunho.timeout.emit()
         # A palavra ainda em digitação não é marcada (S-657): o cursor está colado no fim dela.
         self.assertEqual(self.painel.editor.extraSelections(), [], "marcou a palavra que ainda se digita")
         QTest.keyClicks(self.painel.editor, " ")
-        self.painel._rascunho.timeout.emit()
+        self.painel.caderno._rascunho.timeout.emit()
         marcadas = self.painel.editor.extraSelections()
         self.assertEqual([s.cursor.selectedText() for s in marcadas], ["qzxvk"])
         self.painel.limpar_marcas_do_lexico()
-        self.painel._rascunho.timeout.emit()
+        self.painel.caderno._rascunho.timeout.emit()
         self.assertEqual(self.painel.editor.extraSelections(), [], "desligada, a pausa não marca")
 
 
@@ -495,19 +513,19 @@ class RodapeDaAbaTests(_Aba):
     def test_o_rodape_acompanha_a_folha_a_edicao_e_a_gravacao(self) -> None:
         from PyQt6.QtTest import QTest
 
-        self.assertEqual(self.painel.status.text(), "")
+        self.assertEqual(self.painel.vista.status.text(), "")
         self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
         trechos = len(self.painel.documento.corridas)
-        self.assertEqual(self.painel.status.text(), f"Folha 1 · {trechos} trecho(s) · 1 diagrama(s)")
+        self.assertEqual(self.painel.vista.status.text(), f"Folha 1 · {trechos} trecho(s) · 1 diagrama(s)")
         self.painel.editor.setFocus()
         cursor = self.painel.editor.textCursor()
         cursor.setPosition(0)
         self.painel.editor.setTextCursor(cursor)
         QTest.keyClicks(self.painel.editor, "x")
-        self.assertTrue(self.painel.status.text().endswith(" · por gravar"))
+        self.assertTrue(self.painel.vista.status.text().endswith(" · por gravar"))
         with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(self.pasta / "f.cvtxt"), "")):
             self.painel.salvar_documento_como()
-        self.assertFalse(self.painel.status.text().endswith("por gravar"))
+        self.assertFalse(self.painel.vista.status.text().endswith("por gravar"))
 
     def test_o_rodape_conta_as_correcoes_na_pausa_na_gravacao_e_na_abertura(self) -> None:
         """O número que o `.cvtxt` tem de mais caro, contado quando a digitação para (item 24)."""
@@ -519,27 +537,27 @@ class RodapeDaAbaTests(_Aba):
         self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
         self.painel.editor.setFocus()
         cursor = self.painel.editor.textCursor()
-        cursor.setPosition(self.painel._mapa.posicao(self.painel.texto().index("Antes") + 5))
+        cursor.setPosition(self.painel.espelho.mapa.posicao(self.painel.texto().index("Antes") + 5))
         self.painel.editor.setTextCursor(cursor)
         QTest.keyClicks(self.painel.editor, "x")
-        self.assertNotIn("correção", self.painel.status.text(), "a tecla não conta")
-        self.painel._rascunho.timeout.emit()
-        self.assertIn("1 correção(ões)", self.painel.status.text())
+        self.assertNotIn("correção", self.painel.vista.status.text(), "a tecla não conta")
+        self.painel.caderno._rascunho.timeout.emit()
+        self.assertIn("1 correção(ões)", self.painel.vista.status.text())
         destino = self.pasta / "f.cvtxt"
         with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(destino), "")):
             self.painel.salvar_documento_como()
-        self.assertIn("1 correção(ões)", self.painel.status.text())
+        self.assertIn("1 correção(ões)", self.painel.vista.status.text())
         outro = PainelDeTexto(dpi=72, pasta_de_rascunhos=self.pasta / "r2")
         self.addCleanup(descartar, outro)
-        with mock.patch.object(qt_texto, "_renderizar", return_value=None), mock.patch.object(
+        with mock.patch.object(texto_leitura, "renderizar", return_value=None), mock.patch.object(
             QFileDialog, "getOpenFileName", return_value=(str(destino), "")
         ):
             outro.abrir_documento()
-        self.assertIn("1 correção(ões)", outro.status.text(), "o arquivo traz a correção de ontem")
+        self.assertIn("1 correção(ões)", outro.vista.status.text(), "o arquivo traz a correção de ontem")
 
     def test_sem_miniatura_o_rodape_diz_quantas_faltam(self) -> None:
         self.painel.mostrar_pagina(_pagina())
-        self.assertIn("1 diagrama(s), 0 com miniatura", self.painel.status.text())
+        self.assertIn("1 diagrama(s), 0 com miniatura", self.painel.vista.status.text())
 
 
 FEN = "r1bqkbnr/pppppppp/2n5/8/4P3/8/PPPP1PPP/RNBQKBNR"
@@ -602,8 +620,8 @@ class DiagramaDoLivroNaFolhaTests(_Aba):
         self.painel.diagrama_sem_caixa_ativado.connect(lambda p, c: pela_posicao.append((p, c)))
         self.painel.diagrama_ativado.connect(lambda p, i: pelo_indice.append((p, i)))
         inserido = self.painel.documento.diagramas[1]
-        self.assertTrue(self.painel._ativar(inserido))
-        self.assertTrue(self.painel._ativar(self.painel.documento.diagramas[0]))
+        self.assertTrue(self.painel.miniaturas._ativar(inserido))
+        self.assertTrue(self.painel.miniaturas._ativar(self.painel.documento.diagramas[0]))
         self.assertEqual(([(0, FEN)], [(0, 0)]), (pela_posicao, pelo_indice))
 
 
@@ -691,7 +709,7 @@ class DesenhadaDaPosicaoTests(_Aba):
     def test_sem_folha_a_miniatura_e_desenhada_da_fen(self) -> None:
         self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]))
         self.assertEqual(self.miniaturas(), 1)
-        self.assertNotIn("com miniatura", self.painel.status.text(), "o rodapé não conta falta nenhuma")
+        self.assertNotIn("com miniatura", self.painel.vista.status.text(), "o rodapé não conta falta nenhuma")
 
     def test_a_posicao_que_chega_depois_desenha_a_miniatura_que_faltava(self) -> None:
         self.painel.mostrar_pagina(_pagina())
@@ -701,8 +719,8 @@ class DesenhadaDaPosicaoTests(_Aba):
 
     def test_o_recorte_da_folha_vem_primeiro(self) -> None:
         self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]), folha_rgb=_folha())
-        with mock.patch.object(qt_texto, "_png_da_posicao") as desenhar:
-            self.painel.aplicar_zoom(+1, avisar=False)
+        with mock.patch.object(texto_miniaturas, "png_da_posicao") as desenhar:
+            self.painel.vista.aplicar_zoom(+1, avisar=False)
         desenhar.assert_not_called()
         self.assertEqual(self.miniaturas(), 1)
 
@@ -720,13 +738,13 @@ class DesenhadaDaPosicaoTests(_Aba):
         from PIL import Image
 
         with Image.open(png) as imagem:
-            self.assertEqual(imagem.size, (qt_texto.LADO_DO_RECORTE_DESENHADO, qt_texto.LADO_DO_RECORTE_DESENHADO))
+            self.assertEqual(imagem.size, (texto_leitura.LADO_DO_RECORTE_DESENHADO, texto_leitura.LADO_DO_RECORTE_DESENHADO))
         self.assertNotIn("sem recorte", self.recados[-1])
 
     def test_sem_folha_e_sem_posicao_continua_sem_figura(self) -> None:
         self.painel.mostrar_pagina(_pagina())
         self.assertEqual(self.miniaturas(), 0)
-        self.assertIsNone(qt_texto._png_da_posicao("", lado_px=100))
+        self.assertIsNone(texto_miniaturas.png_da_posicao("", lado_px=100))
 
 
 class CliqueNaMiniaturaTests(_Aba):
@@ -747,7 +765,7 @@ class CliqueNaMiniaturaTests(_Aba):
         self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
         QTest.mouseClick(self.painel.editor.viewport(), Qt.MouseButton.LeftButton, pos=self.ponto_da_miniatura())
         self.assertEqual(self.painel.editor.textCursor().selectedText(), "[Diagrama 1]")
-        self.assertEqual(self.painel._selecao_atual(), (self.painel.texto().index("[Diagrama 1]"), self.painel.texto().index("]") + 1))
+        self.assertEqual(self.painel.espelho.selecao_atual(), (self.painel.texto().index("[Diagrama 1]"), self.painel.texto().index("]") + 1))
 
     def test_o_clique_fora_da_miniatura_e_do_editor(self) -> None:
         from PyQt6.QtCore import QPoint
@@ -756,14 +774,14 @@ class CliqueNaMiniaturaTests(_Aba):
         self.painel.mostrar_pagina(_pagina(), folha_rgb=_folha())
         QTest.mouseClick(self.painel.editor.viewport(), Qt.MouseButton.LeftButton, pos=QPoint(4, 4))
         self.assertEqual(self.painel.editor.textCursor().selectedText(), "")
-        self.assertIsNone(self.painel._marca_sob(QPoint(4, 4)))
+        self.assertIsNone(self.painel.miniaturas._marca_sob(QPoint(4, 4)))
 
     def ponto_da_marca(self) -> object:
         """Um ponto sobre o texto `[Diagrama 1]`, e não sobre a figura."""
         from PyQt6.QtCore import QPoint
 
         cursor = QTextCursor(self.painel.editor.document())
-        cursor.setPosition(self.painel._mapa.posicao(self.painel.texto().index("[Diagrama 1]") + 3))
+        cursor.setPosition(self.painel.espelho.mapa.posicao(self.painel.texto().index("[Diagrama 1]") + 3))
         caixa = self.painel.editor.cursorRect(cursor)
         return QPoint(caixa.left() + 1, caixa.center().y())
 
@@ -775,7 +793,7 @@ class CliqueNaMiniaturaTests(_Aba):
         self.assertEqual(self.miniaturas(), 0)
         QTest.mouseClick(self.painel.editor.viewport(), Qt.MouseButton.LeftButton, pos=self.ponto_da_marca())
         self.assertEqual(self.painel.editor.textCursor().selectedText(), "[Diagrama 1]")
-        menu = self.painel._menu_de_contexto(self.ponto_da_marca())  # type: ignore[arg-type]
+        menu = self.painel.miniaturas.menu_de_contexto(self.ponto_da_marca())  # type: ignore[arg-type]
         self.addCleanup(descartar, menu)
         self.assertIn("Apagar o diagrama 1 da folha", [a.text() for a in menu.actions()])
 
@@ -790,16 +808,16 @@ class CliqueNaMiniaturaTests(_Aba):
         texto = self.painel.texto()
         inicio = texto.index("[Diagrama 1]")
         cursor = self.painel.editor.textCursor()
-        cursor.setPosition(self.painel._mapa.posicao(inicio))
-        cursor.setPosition(self.painel._mapa.posicao(inicio + len("[Diagrama 1]")), QTextCursor.MoveMode.KeepAnchor)
+        cursor.setPosition(self.painel.espelho.mapa.posicao(inicio))
+        cursor.setPosition(self.painel.espelho.mapa.posicao(inicio + len("[Diagrama 1]")), QTextCursor.MoveMode.KeepAnchor)
         self.painel.editor.setTextCursor(cursor)
         antes = self.painel.texto()
         QTest.keyClick(self.painel.editor, Qt.Key.Key_Return)
         self.assertEqual(pedidos, [(0, 0)])
         self.assertEqual(self.painel.texto(), antes, "o Enter não escreveu nada no lugar da marca")
         # Com outra seleção, o Enter é o Enter: troca o selecionado por uma quebra de linha.
-        cursor.setPosition(self.painel._mapa.posicao(0))
-        cursor.setPosition(self.painel._mapa.posicao(5), QTextCursor.MoveMode.KeepAnchor)
+        cursor.setPosition(self.painel.espelho.mapa.posicao(0))
+        cursor.setPosition(self.painel.espelho.mapa.posicao(5), QTextCursor.MoveMode.KeepAnchor)
         self.painel.editor.setTextCursor(cursor)
         QTest.keyClick(self.painel.editor, Qt.Key.Key_Return)
         self.assertEqual(pedidos, [(0, 0)])
@@ -822,7 +840,7 @@ class MenuDaMiniaturaTests(_Aba):
     ponto_da_marca = CliqueNaMiniaturaTests.ponto_da_marca
 
     def acoes(self, ponto: object) -> list[str]:
-        menu = self.painel._menu_de_contexto(ponto)  # type: ignore[arg-type]
+        menu = self.painel.miniaturas.menu_de_contexto(ponto)  # type: ignore[arg-type]
         self.addCleanup(descartar, menu)
         self.menu = menu
         return [a.text() for a in menu.actions() if a.text()]
@@ -869,7 +887,7 @@ class MenuDaMiniaturaTests(_Aba):
         from PyQt6.QtWidgets import QApplication
 
         self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]))
-        with mock.patch.object(qt_texto, "_png_da_posicao", return_value=None):
+        with mock.patch.object(texto_miniaturas, "png_da_posicao", return_value=None):
             self.painel.desenhar_documento(self.painel.documento)
             QApplication.clipboard().clear()
             self.acoes(self.ponto_da_marca())
@@ -902,26 +920,26 @@ class TetoDoCampoDeFolhaTests(_Aba):
     """O campo «Folha a ler» não aceita folha que o livro não tem (item 15)."""
 
     def test_o_livro_poe_o_teto_e_fechar_o_tira(self) -> None:
-        self.assertEqual(self.painel.campo_de_folha.maximum(), qt_texto.TETO_DE_FOLHAS)
+        self.assertEqual(self.painel.leitura.campo_de_folha.maximum(), texto_leitura.TETO_DE_FOLHAS)
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0, paginas=289)
-        self.assertEqual(self.painel.campo_de_folha.maximum(), 289)
-        self.painel.campo_de_folha.setValue(500)
-        self.assertEqual(self.painel.campo_de_folha.value(), 289, "o campo grampeia no teto")
+        self.assertEqual(self.painel.leitura.campo_de_folha.maximum(), 289)
+        self.painel.leitura.campo_de_folha.setValue(500)
+        self.assertEqual(self.painel.leitura.campo_de_folha.value(), 289, "o campo grampeia no teto")
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=5)  # a virada de página não sabe o número
-        self.assertEqual(self.painel.campo_de_folha.maximum(), 289, "e não devolve o teto largo")
+        self.assertEqual(self.painel.leitura.campo_de_folha.maximum(), 289, "e não devolve o teto largo")
         self.painel.definir_livro(None)
-        self.assertEqual(self.painel.campo_de_folha.maximum(), qt_texto.TETO_DE_FOLHAS)
+        self.assertEqual(self.painel.leitura.campo_de_folha.maximum(), texto_leitura.TETO_DE_FOLHAS)
 
     def test_enter_no_campo_le_a_folha_digitada(self) -> None:
         """Digitar o número e ter de ir ao botão com o mouse era o atrito de quem lê folha a folha (item 27)."""
         from PyQt6.QtTest import QTest
 
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0, paginas=50)
-        linha = self.painel.campo_de_folha.lineEdit()
+        linha = self.painel.leitura.campo_de_folha.lineEdit()
         assert linha is not None
-        self.painel.campo_de_folha.setValue(7)
-        with mock.patch.object(qt_texto, "_renderizar", return_value=None), mock.patch.object(
-            qt_texto, "_ler", return_value=_pagina()
+        self.painel.leitura.campo_de_folha.setValue(7)
+        with mock.patch.object(texto_leitura, "renderizar", return_value=None), mock.patch.object(
+            texto_leitura, "ler_a_folha", return_value=_pagina(str(self.pasta / "livro.pdf"))
         ) as ler:
             QTest.keyClick(linha, Qt.Key.Key_Return)
             self.esperar_a_tarefa()
@@ -930,7 +948,7 @@ class TetoDoCampoDeFolhaTests(_Aba):
 
     def test_sem_o_numero_o_teto_fica_largo(self) -> None:
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
-        self.assertEqual(self.painel.campo_de_folha.maximum(), qt_texto.TETO_DE_FOLHAS)
+        self.assertEqual(self.painel.leitura.campo_de_folha.maximum(), texto_leitura.TETO_DE_FOLHAS)
 
 
 class MotorEModoBlocoTests(_Aba):
@@ -939,17 +957,17 @@ class MotorEModoBlocoTests(_Aba):
     def test_repor_o_motor_e_o_modo_bloco_sem_frase_no_rodape(self) -> None:
         from chess_diagram_ocr.ui.texto_declarado import MOTORES
 
-        self.painel.definir_motor(MOTORES[-1])
-        self.assertEqual(self.painel.motor, MOTORES[-1])
-        self.assertEqual(self.painel.escolha_de_motor.currentData(), MOTORES[-1])
-        self.painel.definir_motor("motor-que-nao-existe")
-        self.assertEqual(self.painel.motor, MOTORES[-1], "um nome desconhecido é ignorado")
-        self.painel.definir_modo_bloco(True)
-        self.assertTrue(self.painel.modo_bloco)
-        self.assertTrue(self.painel.caixa_de_bloco.isChecked())
+        self.painel.leitura.definir_motor(MOTORES[-1])
+        self.assertEqual(self.painel.leitura.motor, MOTORES[-1])
+        self.assertEqual(self.painel.leitura.escolha_de_motor.currentData(), MOTORES[-1])
+        self.painel.leitura.definir_motor("motor-que-nao-existe")
+        self.assertEqual(self.painel.leitura.motor, MOTORES[-1], "um nome desconhecido é ignorado")
+        self.painel.leitura.definir_modo_bloco(True)
+        self.assertTrue(self.painel.leitura.modo_bloco)
+        self.assertTrue(self.painel.leitura.caixa_de_bloco.isChecked())
         self.assertEqual(self.recados, [], "repor não é clicar: nada no rodapé")
-        self.painel.caixa_de_bloco.setChecked(False)
-        self.assertFalse(self.painel.modo_bloco)
+        self.painel.leitura.caixa_de_bloco.setChecked(False)
+        self.assertFalse(self.painel.leitura.modo_bloco)
         self.assertIn("Modo linha", self.recados[-1])
 
     def test_o_estado_grava_e_le_o_motor_e_o_modo_bloco(self) -> None:
@@ -971,8 +989,8 @@ class FalhaComRastroTests(_Aba):
 
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
         with mock.patch.object(dialogos, "mostrar_falha") as caixa, mock.patch.object(
-            qt_texto, "_renderizar", return_value=None
-        ), mock.patch.object(qt_texto, "_ler", side_effect=RuntimeError("o motor caiu")):
+            texto_leitura, "renderizar", return_value=None
+        ), mock.patch.object(texto_leitura, "ler_a_folha", side_effect=RuntimeError("o motor caiu")):
             self.painel.ler()
             self.esperar_a_tarefa()
         caixa.assert_called_once()
@@ -982,13 +1000,13 @@ class FalhaComRastroTests(_Aba):
         self.assertIn("o motor caiu", mensagem)
         self.assertIn("Traceback", detalhe)
         self.assertIn("RuntimeError: o motor caiu", detalhe)
-        self.assertIsNone(self.painel._tarefa, "a tarefa quebrada ficou pendurada")
+        self.assertIsNone(self.painel.leitura.tarefa, "a tarefa quebrada ficou pendurada")
 
     def test_a_exportacao_que_quebra_traz_o_rastro(self) -> None:
         from chess_diagram_ocr.qt import dialogos
 
         with mock.patch.object(dialogos, "mostrar_falha") as caixa:
-            self.painel._exportacao_falhou("disco cheio", OSError("disco cheio"))
+            self.painel.leitura._exportacao_falhou("disco cheio", OSError("disco cheio"))
         _pai, titulo, mensagem, detalhe = caixa.call_args.args
         self.assertEqual(titulo, "Exportar")
         self.assertIn("disco cheio", mensagem)
@@ -1000,9 +1018,9 @@ class BarraSegueOCursorTests(_Aba):
 
     def cursor_em(self, inicio: int, fim: int | None = None) -> None:
         cursor = self.painel.editor.textCursor()
-        cursor.setPosition(self.painel._mapa.posicao(inicio))
+        cursor.setPosition(self.painel.espelho.mapa.posicao(inicio))
         if fim is not None:
-            cursor.setPosition(self.painel._mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
+            cursor.setPosition(self.painel.espelho.mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
         self.painel.editor.setTextCursor(cursor)
 
     def test_as_caixas_mostram_o_que_vale_sob_o_cursor(self) -> None:
@@ -1012,24 +1030,24 @@ class BarraSegueOCursorTests(_Aba):
         doc = rico.aplicar(doc, texto.index("Depois"), texto.index("Depois") + 6, cor="nota", realce="destaque")
         self.painel.desenhar_documento(doc)
         self.cursor_em(3)
-        self.assertEqual(self.painel.estilo_na_galeria(), "titulo")  # a galeria da S-651, no lugar da lista
+        self.assertEqual(self.painel.ferramentas.estilo_na_galeria(), "titulo")  # a galeria da S-651, no lugar da lista
         self.cursor_em(texto.index("Depois") + 1)
-        self.assertEqual(self.painel.estilo_na_galeria(), "")
-        self.assertEqual(self.painel.escolha_de_cor.currentData(), "nota")
-        self.assertEqual(self.painel.escolha_de_realce.currentData(), "destaque")
+        self.assertEqual(self.painel.ferramentas.estilo_na_galeria(), "")
+        self.assertEqual(self.painel.ferramentas.escolha_de_cor.currentData(), "nota")
+        self.assertEqual(self.painel.ferramentas.escolha_de_realce.currentData(), "destaque")
         self.cursor_em(texto.index("diagrama."))
-        self.assertEqual(self.painel.escolha_de_cor.currentData(), "")
+        self.assertEqual(self.painel.ferramentas.escolha_de_cor.currentData(), "")
 
     def test_a_selecao_mista_volta_ao_vazio_e_repor_nao_aplica(self) -> None:
         doc = rico.aplicar(rico.de_texto("abc def"), 0, 3, cor="nota")
         self.painel.desenhar_documento(doc)
         antes = self.painel.documento
         self.cursor_em(1, 6)
-        self.assertEqual(self.painel.escolha_de_cor.currentData(), "", "metade com cor, metade sem: a caixa não escolhe")
+        self.assertEqual(self.painel.ferramentas.escolha_de_cor.currentData(), "", "metade com cor, metade sem: a caixa não escolhe")
         self.cursor_em(0, 3)
-        self.assertEqual(self.painel.escolha_de_cor.currentData(), "nota")
+        self.assertEqual(self.painel.ferramentas.escolha_de_cor.currentData(), "nota")
         self.assertIs(self.painel.documento, antes, "seguir o cursor não aplica nada")
-        self.assertFalse(self.painel.pode_desfazer)
+        self.assertFalse(self.painel.espelho.pode_desfazer)
 
 
 class DicaDaMiniaturaTests(_Aba):
@@ -1042,13 +1060,13 @@ class DicaDaMiniaturaTests(_Aba):
         from PyQt6.QtCore import QPoint
 
         self.painel.mostrar_pagina(_pagina().com_posicoes([FEN]), folha_rgb=_folha())
-        dica = self.painel._dica_da_marca(self.ponto_da_miniatura())  # type: ignore[arg-type]
+        dica = self.painel.miniaturas._dica_da_marca(self.ponto_da_miniatura())  # type: ignore[arg-type]
         self.assertEqual(dica.split("\n")[0], "Diagrama 1 da folha 1")
         self.assertIn(f"FEN: {FEN}", dica)
         self.assertIn("Duplo clique", dica)
-        self.assertEqual(self.painel._dica_da_marca(QPoint(4, 4)), "", "fora da miniatura não há dica")
+        self.assertEqual(self.painel.miniaturas._dica_da_marca(QPoint(4, 4)), "", "fora da miniatura não há dica")
         self.painel.mostrar_pagina(_pagina())
-        self.assertIn("ainda não lida", self.painel._dica_da_marca(self.ponto_da_marca()))  # type: ignore[arg-type]
+        self.assertIn("ainda não lida", self.painel.miniaturas._dica_da_marca(self.ponto_da_marca()))  # type: ignore[arg-type]
 
     def test_o_evento_de_dica_mostra_o_texto(self) -> None:
         from PyQt6.QtCore import QEvent
@@ -1090,11 +1108,11 @@ class ConfiguracoesDaLeituraTests(unittest.TestCase):
         painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
         with mock.patch.object(configuracoes, "dpi", return_value=150), mock.patch.object(
             configuracoes, "max_boards", return_value=2
-        ), mock.patch.object(qt_texto, "_renderizar", return_value=_folha()) as renderizar, mock.patch.object(
-            qt_texto, "_ler", return_value=_pagina()
+        ), mock.patch.object(texto_leitura, "renderizar", return_value=_folha()) as renderizar, mock.patch.object(
+            texto_leitura, "ler_a_folha", return_value=_pagina(str(self.pasta / "livro.pdf"))
         ) as ler:
             painel.ler()
-            tarefa = painel._tarefa
+            tarefa = painel.leitura.tarefa
             assert tarefa is not None
             self.assertTrue(tarefa.wait(10_000))
             self.app.processEvents()
@@ -1123,7 +1141,7 @@ class ConfiguracoesDaLeituraTests(unittest.TestCase):
         self.ler(painel)
         with mock.patch.object(configuracoes, "dpi", return_value=300):
             self.assertEqual(painel._dpi, 150)
-            self.assertEqual(painel._dpi_para_ler(), 300)
+            self.assertEqual(painel.leitura.dpi_para_ler(), 300)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -29,8 +29,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QKeySequence, QShortcut
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -47,9 +46,9 @@ from PyQt6.QtWidgets import (
 from chess_diagram_ocr.games_index import DEFAULT_INDEX_PATH, PAGINA, IndiceIndisponivel, buscar
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
-from chess_diagram_ocr.qt.tabela import TabelaQt
-from chess_diagram_ocr.qt.trabalho import Tarefa
-from chess_diagram_ocr.ui import espaco, estilos, tokens
+from chess_diagram_ocr.qt.tabela import TabelaQt, rodape_sem_botao_padrao
+from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva, slot_se_vivo
+from chess_diagram_ocr.ui import espaco, tokens
 from chess_diagram_ocr.ui.busca_de_partidas import (
     COLUNAS,
     EM_BUSCA,
@@ -138,10 +137,7 @@ class DialogoDeBusca(QDialog):
         # **Enter também abre**, e por atalho de widget e não pelo botão padrão do diálogo: num
         # `QDialog` o Return vai para o botão com `autoDefault`, e quem acabou de rolar a lista com
         # as setas espera que ele abra a linha marcada -- não que refaça a busca.
-        for tecla in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            atalho = QShortcut(QKeySequence(tecla), self.tabela)
-            atalho.setContext(Qt.ShortcutContext.WidgetShortcut)
-            atalho.activated.connect(self.escolher_selecionada)
+        self.tabela.enter_escolhe(self.escolher_selecionada)
         fora.addWidget(self.tabela, 1)
 
         self.lbl_resumo = QLabel("", self)
@@ -228,13 +224,11 @@ class DialogoDeBusca(QDialog):
         return grade
 
     def _rodape(self) -> QHBoxLayout:
-        rodape = QHBoxLayout()
         self.btn_buscar = QPushButton("Buscar", self)
         # `lambda` e nao `self.buscar` direto: o `clicked` do Qt carrega um `checked: bool`, e
         # `buscar` so aceita `offset` por nome -- um posicional a mais ali seria `TypeError` no
         # clique, num caminho que nenhum teste de unidade percorre.
         self.btn_buscar.clicked.connect(lambda: self.buscar())
-        tema.aplicar_papel(self.btn_buscar, estilos.PRIMARIO)
         self.btn_anterior = QPushButton("Página anterior", self)
         self.btn_anterior.clicked.connect(self.pagina_anterior)
         self.btn_proxima = QPushButton("Próxima página", self)
@@ -248,19 +242,7 @@ class DialogoDeBusca(QDialog):
         )
         fechar = QPushButton("Fechar", self)
         fechar.clicked.connect(self.reject)
-        for botao in (self.btn_buscar, self.btn_anterior, self.btn_proxima, self.btn_indexar, fechar):
-            # Sem `autoDefault`: com ele, o Enter da lista dispararia o primeiro botão do rodapé em
-            # vez do atalho da tabela.
-            botao.setAutoDefault(False)
-            if botao is not self.btn_buscar:
-                tema.aplicar_papel(botao, estilos.NEUTRO)
-        rodape.addWidget(self.btn_buscar)
-        rodape.addWidget(self.btn_anterior)
-        rodape.addWidget(self.btn_proxima)
-        rodape.addStretch(1)
-        rodape.addWidget(self.btn_indexar)
-        rodape.addWidget(fechar)
-        return rodape
+        return rodape_sem_botao_padrao((self.btn_buscar, self.btn_anterior, self.btn_proxima), (self.btn_indexar, fechar))
 
     # --------------------------------------------------------------------------- busca
 
@@ -338,14 +320,13 @@ class DialogoDeBusca(QDialog):
         self._escrever(EM_BUSCA)
         self.btn_buscar.setEnabled(False)
         bases, indice = self._bases, self._indice
-        tarefa = Tarefa(
+        tarefa = manter_viva(Tarefa(
             lambda: buscar(filtro, bases, indice, limite=PAGINA, offset=offset),
-            parent=self,
             nome="busca de partidas",
-        )
-        tarefa.pronto.connect(self._chegou)
-        tarefa.falhou.connect(self._falhou)
-        tarefa.finished.connect(self._terminou)
+        ))
+        tarefa.pronto.connect(slot_se_vivo(self, self._chegou))
+        tarefa.falhou.connect(slot_se_vivo(self, self._falhou))
+        tarefa.finished.connect(slot_se_vivo(self, self._terminou))
         self._tarefa = tarefa
         tarefa.start()
         return True

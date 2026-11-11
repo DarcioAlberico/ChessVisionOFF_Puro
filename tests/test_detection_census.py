@@ -104,7 +104,7 @@ class SamplePagesMovedTests(unittest.TestCase):
         self.assertIs(pelo_nome_antigo, sample_pages)
 
     def test_a_amostragem_nao_mudou(self) -> None:
-        self.assertEqual(sample_pages(100, 4), sample_pages(100, 4))
+        self.assertEqual(sample_pages(100, 4), [20, 40, 60, 80])
         self.assertEqual(sample_pages(3, 12), [0, 1, 2])
         self.assertEqual(sample_pages(0, 12), [])
 

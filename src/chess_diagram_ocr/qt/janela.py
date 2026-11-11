@@ -56,13 +56,11 @@ o que cada painel oferece é um sinal, e quem escuta é esta janela.
 from __future__ import annotations
 
 import logging
-import weakref
 from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from PyQt6 import sip
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
@@ -130,7 +128,14 @@ from chess_diagram_ocr.qt.painel_do_dataset import PainelDoDataset
 from chess_diagram_ocr.qt.painel_do_pdf import PainelDoPdf
 from chess_diagram_ocr.qt.preferencias import motor_das_preferencias, servico_das_preferencias
 from chess_diagram_ocr.qt.rodape import RodapeDaJanela
-from chess_diagram_ocr.qt.trabalho import DeteccaoDeFundo, Tarefa, manter_viva, rastro_de
+from chess_diagram_ocr.qt.trabalho import (
+    DeteccaoDeFundo,
+    Tarefa,
+    esperar_as_tarefas,
+    manter_viva,
+    rastro_de,
+    slot_se_vivo,
+)
 from chess_diagram_ocr.qt.trilho import TrilhoDoLivro
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
 from chess_diagram_ocr.service import OcrService, RecognitionCanceled, RecognitionOptions, RecognizedDiagram
@@ -143,10 +148,14 @@ from chess_diagram_ocr.ui import (
     espaco,
     estado_do_rodape,
     geometria,
+    livros,
+    ocr_que_falta,
+    page_results,
     pele,
     sala_declarada,
     strings,
 )
+from chess_diagram_ocr.ui.ancora_da_tela import AncoraDaTela, ainda_vale
 from chess_diagram_ocr.ui.busy import BusyRegistry
 from chess_diagram_ocr.ui.configuracoes import dpi as _dpi
 from chess_diagram_ocr.ui.configuracoes import max_boards as _max_boards
@@ -240,6 +249,9 @@ TITULO_DE_TESTE = TITULO_DA_JANELA
 
 ESPERA_AO_FECHAR_MS = 15_000
 """Quanto o fechamento espera pela tarefa em curso, em milissegundos."""
+
+ADIAMENTO_DA_GRAVACAO_MS = 2_000
+"""Quanto o estado espera, depois de abrir livro ou virar página, para ir ao disco (S-800)."""
 
 CAMINHO_DO_ESTADO = DATA_DIR / "janela.json"
 """Onde o que a janela lembra entre execuções fica (S-25/S-156).
@@ -384,7 +396,7 @@ class JanelaPrincipal(QMainWindow):
         O par com a página é o contrato que `recognize_page` cobra de quem passa a lista: ela não
         tem como conferir de que página vieram os candidatos."""
         self._detector = DeteccaoDeFundo(self)
-        self._detector.achou.connect(self._chegou_a_deteccao_de_fundo)
+        self._detector.achou.connect(self._chegaram_candidatos)
         """Marca a página que acabou de aparecer sem trancar nada (S-68). Ver `_detectar_ao_fundo`."""
         self._tarefa: Tarefa | None = None
         """A tarefa em curso. Guardada num atributo porque um `QThread` sem referência viva é
@@ -407,12 +419,18 @@ class JanelaPrincipal(QMainWindow):
         A espera custa ~400 ms antes de uma leitura de segundos; o clique numa caixa já lida não
         espera nada, porque selecionar não tranca."""
 
+        self._gravacao_adiada = QTimer(self)
+        self._gravacao_adiada.setSingleShot(True)
+        self._gravacao_adiada.setInterval(ADIAMENTO_DA_GRAVACAO_MS)
+        self._gravacao_adiada.timeout.connect(self._gravar_estado)
+        """O estado não espera o `closeEvent` (S-800): uma queda perdia o livro, a página e o divisor."""
+
         self._montar()
         self._ligar()
         self._aplicar_estado()
         self._atualizar_titulo()
         self._atualizar_abas()
-        self.rodape.mostrar("Abra um livro em PDF para começar.")
+        self._dizer(*ocr_que_falta.frase_de_abertura(self._servico, self._ocr))  # o OCR pedido e ausente é dito (S-884)
 
     # ------------------------------------------------------------------------------ montagem
 
@@ -741,11 +759,11 @@ class JanelaPrincipal(QMainWindow):
         self.texto.aplicar_estado(estado)  # zoom, quebra, motor, modo bloco e os diagramas (S-620, S-623)
         for nome, ligado in {**self.mesa.estados(), **self.texto.interruptores_da_vista()}.items():
             self.menu.marcar(nome, ligado=ligado)  # a mesa (S-640) e a vista dos diagramas (S-620, S-624)
-        self.estudo.posicionar_divisor(estado.estudo_divisor)
-        self.estudo.posicionar_divisor_vertical(estado.estudo_divisor_vertical)
+        self.estudo.leiaute.posicionar_divisor(estado.estudo_divisor)
+        self.estudo.leiaute.posicionar_divisor_vertical(estado.estudo_divisor_vertical)
         # O leitor que `board_zoom` nunca teve (S-518): o campo era gravado, era lido do disco, e
         # não chegava a widget nenhum.
-        self.estudo.definir_fracao_do_tabuleiro(estado.board_zoom)
+        self.estudo.leiaute.definir_fracao_do_tabuleiro(estado.board_zoom)
         # Daqui para baixo o disco já está nos widgets, e gravar volta a ser honesto (S-322).
         self._estado_aplicado = True
 
@@ -893,12 +911,11 @@ class JanelaPrincipal(QMainWindow):
         de fábrica, e escrevê-los por cima do disco apagaria a escolha da sessão anterior sem que
         ninguém tivesse mudado nada.
 
-        `board_zoom` não é tocado aqui, e a omissão é deliberada: é um controle que **este**
-        frontend não tem, porque não precisa -- o tabuleiro do Qt se ajusta ao painel, e o
-        deslizador de zoom do outro existia porque lá ele era um canvas de tamanho fixo. Não
-        escrevê-lo preserva o que estiver no arquivo; zerá-lo seria apagar a escolha de alguém em
-        nome de um widget que não há.
+        `board_zoom` **é** gravado (a docstring dizia o contrário até a S-828): é a fração do
+        tabuleiro da sala (S-518), que `_aplicar_estado` entrega a `definir_fracao_do_tabuleiro`
+        e que volta daqui por `fracao_do_tabuleiro`, como as alças dos divisores.
         """
+        self._gravacao_adiada.stop()  # o que estava agendado é este: quem chama direto o conclui
         if not self._estado_aplicado:
             logger.debug("Estado ainda não aplicado aos widgets: gravação adiada (S-322).")
             return
@@ -915,13 +932,19 @@ class JanelaPrincipal(QMainWindow):
         estado.estudo_aberto = self.estudo.chave_do_estudo_aberto
         # `or` o guardado: o divisor devolve `0.0` enquanto não há geometria medida, e zero
         # significa "nunca guardado" -- gravá-lo apagaria a alça da sessão anterior.
-        estado.estudo_divisor = self.estudo.fracao_do_divisor or estado.estudo_divisor
+        estado.estudo_divisor = self.estudo.leiaute.fracao_do_divisor or estado.estudo_divisor
         estado.estudo_divisor_vertical = (
-            self.estudo.fracao_do_divisor_vertical or estado.estudo_divisor_vertical
+            self.estudo.leiaute.fracao_do_divisor_vertical or estado.estudo_divisor_vertical
         )
-        estado.board_zoom = self.estudo.fracao_do_tabuleiro
+        estado.board_zoom = self.estudo.leiaute.fracao_do_tabuleiro
         self._anotar_arranjo()
         save_state(self._caminho_do_estado, estado)
+
+    def _gravar_em_breve(self) -> None:
+        """Agenda `_gravar_estado` sem reagendar: a gravação lê a tela quando roda, então a última
+        virada dentro do prazo é a que vai ao disco, e folhear sem parar não a adia para sempre."""
+        if not self._gravacao_adiada.isActive():
+            self._gravacao_adiada.start()
 
     # ------------------------------------------------------------------------------ aparência
 
@@ -1221,11 +1244,13 @@ class JanelaPrincipal(QMainWindow):
         """
         alvo = Path(str(caminho))
         anterior = self._pdf
-        if self.livro is not None and self.livro.rodando and anterior is not None and anterior != alvo:
+        if self.livro is not None and self.livro.rodando and anterior is not None and not livros.mesmo_livro(anterior, alvo):
             # A importação era do livro anterior: cancelada, e a ponte descarta o resultado
             # que ainda chegar dele (C7 -- a tranca deixou de segurar o «Abrir PDF…»).
             self.livro.cancelar(motivo="troca_de_livro")
             self._dizer(f"A importação de {anterior.name} foi cancelada ao abrir outro livro.")
+        if self._tarefa is not None:  # a leitura é do livro que saiu; o que chegar dela não entra (S-823)
+            self._tarefa.cancelar()
         self._pdf = alvo
         # As caixas são de um arquivo que pode ter mudado no disco. A chave já inclui o documento,
         # então isto não é correção de defeito: é não guardar afirmação sobre um PDF que ninguém
@@ -1258,6 +1283,7 @@ class JanelaPrincipal(QMainWindow):
         self._atualizar_titulo()
         self._atualizar_abas()
         self._aquecimento.agendar(parent=self)  # o modelo carrega quando a janela ociar (C2)
+        self._gravar_em_breve()  # o livro entra no histórico do disco sem esperar o fechamento (S-800)
 
     def _descartar_o_livro(self, anterior: Path) -> bool:
         """Pergunta antes de esquecer correções à mão do livro que saiu (A7). «Não» as guarda."""
@@ -1342,6 +1368,7 @@ class JanelaPrincipal(QMainWindow):
         # livro no meio da sessão -- e é a mesma anotação que ordena o menu de recentes.
         if self._pdf is not None:
             self._estado.remember_page(self._pdf, pagina)
+            self._gravar_em_breve()
         self.painel.restaurar_pagina(pagina)
         guardadas = self._caixas_por_pagina.get(self._chave_do_documento(), pagina, self._parametros())
         self._publicar_caixas(guardadas)
@@ -1375,24 +1402,15 @@ class JanelaPrincipal(QMainWindow):
             # de receber os 26 MB dela -- ver `detect_diagrams_rendering_page`.
             dpi = int(_dpi())
             self._detector.pedir(
-                self._chave_do_documento(),
-                pagina,
+                AncoraDaTela.de(pdf, pagina),
                 lambda: processo_de_trabalho().executar(
-                    detect_diagrams_rendering_page, pdf, pagina, dpi=dpi, max_boards=teto
+                    detect_diagrams_rendering_page, pdf, pagina, dpi=dpi, max_boards=teto, pagina=pagina
                 ),
             )
             return
         self._detector.pedir(
-            self._chave_do_documento(),
-            pagina,
-            lambda: detect_diagrams_in_pdf_page(pdf, pagina, pagina_rgb, max_boards=teto),
+            AncoraDaTela.de(pdf, pagina), lambda: detect_diagrams_in_pdf_page(pdf, pagina, pagina_rgb, max_boards=teto)
         )
-
-    def _chegou_a_deteccao_de_fundo(self, documento: str, pagina: int, candidatos: Any) -> None:
-        """De outro livro, o resultado é descartado: o cache é por documento, e o livro que saiu
-        levou o dele. Da página certa ou de uma que já virou, é o mesmo caminho do botão."""
-        if documento == self._chave_do_documento():
-            self._chegaram_candidatos(pagina, candidatos)
 
     # ------------------------------------------------------------------------------ leitura
 
@@ -1425,6 +1443,9 @@ class JanelaPrincipal(QMainWindow):
     def _chave_do_documento(self) -> str:
         return str(self._pdf) if self._pdf is not None else ""
 
+    def _ancora_da_tela(self) -> AncoraDaTela:
+        return AncoraDaTela.de(self._pdf, self.pdf.page_index)  # o livro e a página de agora (S-823)
+
     def marcar_diagramas(self) -> None:
         """Só localiza: desenha as caixas sem carregar o modelo.
 
@@ -1446,15 +1467,15 @@ class JanelaPrincipal(QMainWindow):
                 self.pdf.page_index + 1,
                 len(guardados),
             )
-            self._chegaram_candidatos(self.pdf.page_index, guardados)
+            self._chegaram_candidatos(self._ancora_da_tela(), guardados)
             return
 
-        pdf, pagina, teto = self._pdf, self.pdf.page_index, _max_boards()
+        pdf, pagina, teto, ancora = self._pdf, self.pdf.page_index, _max_boards(), self._ancora_da_tela()
         self._rodar(
             lambda: detect_diagrams_in_pdf_page(pdf, pagina, pagina_rgb, max_boards=teto),
             nome="detecção",
             aviso=f"Procurando diagramas na página {pagina + 1}…",
-            quando_pronto=lambda candidatos: self._chegaram_candidatos(pagina, candidatos),
+            quando_pronto=lambda candidatos: self._chegaram_candidatos(ancora, candidatos),
         )
 
     def ler_melhor(self) -> None:
@@ -1481,7 +1502,7 @@ class JanelaPrincipal(QMainWindow):
         if self._pdf is None or pagina_rgb is None:
             self._dizer("Abra um PDF antes de ler a página.")
             return
-        pdf, pagina, opcoes = self._pdf, self.pdf.page_index, self._opcoes(max_diagramas)
+        pdf, pagina, opcoes, ancora = self._pdf, self.pdf.page_index, self._opcoes(max_diagramas), self._ancora_da_tela()
         candidatos = self._candidatos_desta_pagina()
         # **A leitura diz no log de onde vieram os diagramas.** Sem esta linha, o rastro de uma
         # sessão não distingue "marcar e depois ler" de "ler sozinho": os dois deixam uma varredura
@@ -1505,9 +1526,10 @@ class JanelaPrincipal(QMainWindow):
             ler,
             nome="leitura",
             aviso=f"Lendo a página {pagina + 1}…",
-            quando_pronto=lambda itens: self._chegaram_itens(pagina, itens, selecionar_depois),
+            quando_pronto=lambda itens: self._chegaram_itens(ancora, itens, selecionar_depois),
             total=len(candidatos) if candidatos is not None else 0,
             cancelavel=True,
+            ancora=ancora,
         )
 
     def _ler_regiao(self, pagina_rgb: object, regiao: object) -> None:
@@ -1544,9 +1566,10 @@ class JanelaPrincipal(QMainWindow):
         *,
         nome: str,
         aviso: str,
-        quando_pronto: Callable[[Any], None],
+        quando_pronto: Callable[[Any], object],
         total: int = 0,
         cancelavel: bool = False,
+        ancora: AncoraDaTela | None = None,
     ) -> Tarefa | None:
         """Uma tarefa de cada vez, e só o **gravar** desligado enquanto ela corre.
 
@@ -1555,7 +1578,7 @@ class JanelaPrincipal(QMainWindow):
         lista da primeira -- que pode ser de outra página.
 
         Registrada no rodapé desde o C2: barra com `total` quando a página já foi marcada, e o
-        «Cancelar» chega à tarefa, que o serviço consulta entre diagramas (`qt/leitura.py`).
+        «Cancelar» chega à tarefa (`qt/leitura.py`), e o parcial volta à `ancora` do pedido (S-823).
         """
         if self._tarefa is not None:
             self._dizer("Já há uma tarefa em andamento.", estado_do_rodape.AVISO)
@@ -1566,9 +1589,9 @@ class JanelaPrincipal(QMainWindow):
         # ciclo 1) não pode derrubar quem fecha. `manter_viva` solta e destrói a thread ao fim; os
         # slots perguntam se a janela ainda existe antes de a tocar.
         tarefa = manter_viva(Tarefa(funcao, nome=nome))
-        tarefa.pronto.connect(self._se_viva(quando_pronto))
-        tarefa.falhou.connect(self._se_viva(self._falhou))
-        tarefa.finished.connect(self._se_viva(self._terminou))
+        tarefa.pronto.connect(slot_se_vivo(self, quando_pronto))
+        tarefa.falhou.connect(slot_se_vivo(self, partial(self._falhou, ancora=ancora)))
+        tarefa.finished.connect(slot_se_vivo(self, self._terminou))
         self._tarefa = tarefa
         # O `register` fica aqui, e não na `Ocupacao`, porque o portão `caissa.ui.audit.progresso`
         # atribui cada thread ao registro feito na mesma função -- e é ele que exige `total=`.
@@ -1581,25 +1604,13 @@ class JanelaPrincipal(QMainWindow):
         tarefa.start()
         return tarefa
 
-    def _se_viva(self, slot: Callable[..., Any]) -> Callable[..., None]:
-        """`slot`, só enquanto esta janela existir: uma tarefa sem pai termina depois de a janela
-        fechar, e um slot que tocasse widget morto levantaria dentro do laço de eventos."""
-        janela = weakref.ref(self)
-
-        def chamar(*args: Any) -> None:
-            viva = janela()
-            if viva is not None and not sip.isdeleted(viva):
-                slot(*args)
-
-        return chamar
-
     def _terminou(self) -> None:
         self._tarefa = None
         self._estudar_ao_ler = None
         self._ocupacao.soltar()
         self._atualizar_controles()
 
-    def _falhou(self, mensagem: str, excecao: object) -> None:
+    def _falhou(self, mensagem: str, excecao: object, ancora: AncoraDaTela | None = None) -> None:
         """Nenhum diagrama na página **não** é erro: é uma página de prosa, e há muitas.
 
         Tratá-la como falha ensinaria a pessoa a ignorar a caixa de erro, que é o que faz a caixa
@@ -1608,11 +1619,8 @@ class JanelaPrincipal(QMainWindow):
         if isinstance(excecao, NoBoardDetectedError):
             self._dizer("Nenhum diagrama encontrado nesta página.", estado_do_rodape.INFORMACAO)
             return
-        if isinstance(excecao, RecognitionCanceled):  # C2: cancelar não é falha; o lido fica
-            lidos = list(excecao.partial)
-            if lidos and self._pdf is not None:
-                self._chegaram_itens(self.pdf.page_index, lidos, None)
-            self._dizer(leitura.frase_de_cancelamento(len(lidos)), estado_do_rodape.INFORMACAO)
+        if isinstance(excecao, RecognitionCanceled):  # C2: cancelar não é falha; o lido volta à âncora (S-823)
+            self._chegaram_itens(ancora, list(excecao.partial), None, cancelada=True)
             return
         if leitura.sem_modelo(excecao):  # C2: sem o `.pt`, a frase diz onde se aponta o arquivo
             self._dizer(leitura.FRASE_SEM_MODELO, estado_do_rodape.ERRO)
@@ -1636,15 +1644,16 @@ class JanelaPrincipal(QMainWindow):
             return None
         return self._candidatos[1]
 
-    def _chegaram_candidatos(self, pagina: int, candidatos: Any) -> None:
-        caixas = self._caixas_sem_desaprender(pagina, boxes_from_candidates(candidatos))
+    def _chegaram_candidatos(self, ancora: AncoraDaTela, candidatos: Any) -> None:
+        if ancora.documento != (tela := self._ancora_da_tela()).documento:
+            return  # de outro livro: o cache é por documento, e o livro que saiu levou o dele
+        caixas = self._caixas_sem_desaprender(ancora.pagina, boxes_from_candidates(candidatos))
         self._guardar(caixas)
-        if pagina != self.pdf.page_index:
-            # A página virou enquanto a detecção corria. As caixas ainda valem -- para **aquela**
-            # página --, então ficam no cache e não vão para a tela. Os candidatos também não
-            # ficam: `_candidatos` é da página exibida, e a leitura os passaria como dela.
+        if not ainda_vale(ancora, tela):
+            # A página virou enquanto a detecção corria. As caixas valem para **aquela** página e
+            # ficam no cache; os candidatos não, porque a leitura os passaria como da exibida.
             return
-        self._candidatos = (pagina, tuple(candidatos))
+        self._candidatos = (ancora.pagina, tuple(candidatos))
         self._publicar_caixas(caixas)
         self._dizer_o_que_ha_na_pagina()
 
@@ -1659,36 +1668,33 @@ class JanelaPrincipal(QMainWindow):
         lidas = boxes_from_diagrams(self._itens) if pagina == self.pdf.page_index else ()
         return PageBoxes(pagina, self._parametros(), choose_boxes(recognized=lidas, detected=detectadas))
 
-    def _chegaram_itens(self, pagina: int, itens: list[RecognizedDiagram], selecionar: int | None) -> None:
-        if pagina != self.pdf.page_index:
-            self._dizer(f"A leitura da página {pagina + 1} terminou, mas a tela já está em outra.")
-            return
-        self._itens = list(itens)
-        self.texto.definir_posicoes(pagina, [d.placement for d in self._itens])  # a FEN de cada diagrama vai à aba Texto
-        # **O ponto único de troca de vínculo** (S-49), dentro do painel: o vínculo é `PAGE` e a
-        # âncora é o par (documento, página), e é ela que faz `Ctrl+S` gravar amostra nova em vez
-        # de regravar a linha de um dataset que não está aberto.
-        self.painel.carregar_pagina(self._itens, chave=self._chave_do_documento(), pagina=pagina)
-        self.pgn_do_livro.aplicar(pagina, self._itens)  # a posição do PGN do livro, se ele tiver um (S-590)
-
-        lidas = boxes_from_diagrams(self._itens)
-        guardadas = self._caixas_por_pagina.get(self._chave_do_documento(), pagina, self._parametros())
-        caixas = PageBoxes(
-            pagina,
-            self._parametros(),
-            choose_boxes(recognized=lidas, detected=guardadas.boxes if guardadas else ()),
+    def _chegaram_itens(
+        self, ancora: AncoraDaTela | None, itens: list[RecognizedDiagram], selecionar: int | None, *, cancelada: bool = False
+    ) -> None:
+        resposta = page_results.responder_a_leitura(  # a decisão é pura; aqui ela só é aplicada (S-867)
+            ancora, self._ancora_da_tela(), lidos=len(itens), selecionar=selecionar,
+            estudar_ao_ler=self._estudar_ao_ler, cancelada=cancelada,
         )
-        self._guardar(caixas)
-        self._publicar_caixas(caixas)
-
-        if self._itens and selecionar is not None and selecionar < len(self._itens):
-            self.painel.lista.setCurrentRow(selecionar)
-        pendente, self._estudar_ao_ler = self._estudar_ao_ler, None
-        if pendente is not None and pendente[0] == pagina and pendente[1] < len(self._itens):
-            self.painel.lista.setCurrentRow(pendente[1])
-            self._levar_ao_estudo()
-        self._atualizar_abas()
-        self._dizer_o_que_ha_na_pagina()
+        if (pagina := resposta.pagina) is not None:
+            self._itens, self._estudar_ao_ler = list(itens), None  # o duplo clique pendente é atendido ou morre
+            self.texto.definir_posicoes(pagina, [d.placement for d in self._itens])  # a FEN de cada diagrama vai à aba Texto
+            # **O ponto único de troca de vínculo** (S-49), dentro do painel: o vínculo é `PAGE` e a
+            # âncora é o par (documento, página), e é ela que faz `Ctrl+S` gravar amostra nova em vez
+            # de regravar a linha de um dataset que não está aberto.
+            self.painel.carregar_pagina(self._itens, chave=self._chave_do_documento(), pagina=pagina)
+            self.pgn_do_livro.aplicar(pagina, self._itens)  # a posição do PGN do livro, se ele tiver um (S-590)
+            guardadas = self._caixas_por_pagina.get(self._chave_do_documento(), pagina, self._parametros())
+            caixas = self._caixas_sem_desaprender(pagina, guardadas.boxes if guardadas else ())
+            self._guardar(caixas)
+            self._publicar_caixas(caixas)
+            if resposta.selecionar is not None:
+                self.painel.lista.setCurrentRow(resposta.selecionar)
+            if resposta.estudar:
+                self._levar_ao_estudo()
+            self._atualizar_abas()
+            self._dizer_o_que_ha_na_pagina()
+        if resposta.frase:
+            self._dizer(resposta.frase, resposta.severidade)
 
     def _guardar(self, caixas: PageBoxes) -> None:
         self._caixas_por_pagina.put(self._chave_do_documento(), caixas)
@@ -2251,16 +2257,16 @@ class JanelaPrincipal(QMainWindow):
         self._gravar_estado()
         # O motor é um processo (S-523) e a sala pode tê-lo trocado nas preferências (S-536): o
         # fechado é o dela, e sem levantar (`encerrar_o_motor`, F9-C16).
-        sala_declarada.encerrar_o_motor(self.estudo.analisador)
+        sala_declarada.encerrar_o_motor(self.estudo.motor.analisador)
+        processo_de_trabalho().encerrar(matar=True)  # o filho pendurado não segura o processo (S-906)
         self._detector.parar(ESPERA_AO_FECHAR_MS)
-        # As tarefas (a leitura, o aquecimento do modelo) não têm pai desde a fase 2 do ciclo 2:
-        # destruí-las a correr derrubava o processo sem rastro (o portão `comandos` mediu: exit
-        # 255, nada no log). A espera é cortesia -- sair com a leitura no meio deixa uma thread
-        # a terminar sozinha, e `manter_viva` a solta quando acaba.
+        # Nenhuma tarefa tem pai (F9-C2, S-826): destruí-las a correr derrubava o processo sem
+        # rastro (o portão `comandos` mediu: exit 255, nada no log). A espera é cortesia, e é de
+        # **todas** -- a leitura, o aquecimento, as dos painéis (a exportação do texto que acaba
+        # em vez de ficar pela metade) --; a que estoura o prazo fica no log e termina sozinha.
         self._aquecimento.cancelar()   # o relógio de uma janela fechada não dispara mais
-        self._aquecimento.esperar(ESPERA_AO_FECHAR_MS)
-        if self._tarefa is not None and not self._tarefa.wait(ESPERA_AO_FECHAR_MS):
-            logger.warning("A janela fechou com uma tarefa ainda em andamento; ela termina sozinha.")
+        if pendentes := esperar_as_tarefas(ESPERA_AO_FECHAR_MS):
+            logger.warning("A janela fechou com tarefas em andamento (%s); elas terminam sozinhas.", ", ".join(t.nome for t in pendentes))
         if a0 is not None:
             a0.accept()
 

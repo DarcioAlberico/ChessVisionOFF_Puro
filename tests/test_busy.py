@@ -19,13 +19,14 @@ import unittest
 from collections.abc import Sequence
 from pathlib import Path
 
+import varredura
 from qt_app import MOTIVO, TEM_PYQT
 
 from chess_diagram_ocr.ui.busy import FORA_DO_REGISTRO, BusyRegistry
 
 RAIZ = Path(__file__).resolve().parents[1]
 
-ARQUIVOS_COM_THREAD = sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py"))
+ARQUIVOS_COM_THREAD = varredura.fontes(RAIZ / "src" / "chess_diagram_ocr" / "qt", piso=60)
 """Onde a interface abre threads.
 
 **Era `ui/` mais o `app_tkinter.py` até o corte (S-506).** Depois dele `ui/` não abre thread
@@ -224,8 +225,7 @@ def _apelidos(arvore: ast.AST) -> dict[str, str]:
 def _classes_de_thread(arquivos: Sequence[Path] = ()) -> set[str]:
     """`CLASSES_DE_THREAD` mais toda subclasse delas declarada na interface, em ponto fixo."""
     alvos = list(arquivos) or (
-        sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py"))
-        + sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py"))
+        varredura.da_interface()
     )
     nomes = set(CLASSES_DE_THREAD)
     bases: dict[str, set[str]] = {}

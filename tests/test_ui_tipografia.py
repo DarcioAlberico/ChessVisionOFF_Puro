@@ -18,6 +18,8 @@ import re
 import unittest
 from pathlib import Path
 
+import varredura
+
 from chess_diagram_ocr.ui import tipografia
 from chess_diagram_ocr.ui.tipografia import (
     AUXILIAR,
@@ -143,8 +145,7 @@ class SemFonteCravadaTests(unittest.TestCase):
     def test_nenhum_painel_crava_familia_e_tamanho(self) -> None:
         infratores = []
         arquivos = [
-            *sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")),
-            *sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py")),
+            *varredura.da_interface(),
         ]
         for arquivo in arquivos:
             if arquivo.name in self.LIVRES:

@@ -28,11 +28,12 @@ amarra os dois e falha quando um muda sozinho.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 
 import numpy as np
 
 from .boxes import Caixa
+from .colados import Arbitro, vale_no_eixo
 
 ALTURA_SUSPEITA = 1.6
 """Acima de quantas escalas de caractere a caixa é candidata a ter engolido duas linhas."""
@@ -66,39 +67,20 @@ FRAGMENTO_FRACAO = 0.7
 Uma linha com um `.` e cinco letras não é fragmento; uma com quatro pedaços de 4 px é."""
 
 
-def _perfil_horizontal(binaria: np.ndarray, caixa: Caixa) -> np.ndarray:
-    """Tinta por linha do recorte. É onde o vale entre duas linhas de texto aparece."""
-    recorte = caixa.recortar(binaria)
-    if recorte.size == 0:
-        return np.zeros(0, dtype=np.float64)
-    return (recorte > 0).mean(axis=1)
-
-
 def vale(binaria: np.ndarray, caixa: Caixa) -> int | None:
     """A linha do recorte com menos tinta, em coordenadas da página. `None` quando não há vale.
 
-    Ignora as pontas: o mínimo colado na borda é o fim do próprio glifo, e cortar ali produz um
-    pedaço vazio.
+    A conta é a do gêmeo `colados`, no outro eixo (S-852): sem vale, o descendente preenche a faixa, e quem
+    corta é a fronteira da banda.
     """
-    perfil = _perfil_horizontal(binaria, caixa)
-    if perfil.size < 3:
-        return None
-
-    margem = max(1, int(len(perfil) * MARGEM_DO_VALE))
-    miolo = perfil[margem : len(perfil) - margem]
-    if miolo.size == 0:
-        return None
-    if float(miolo.min()) >= float(perfil.mean()):
-        # Sem vale: o descendente preenche a faixa. Quem corta é a fronteira da banda.
-        return None
-    return caixa.y1 + margem + int(miolo.argmin())
+    return vale_no_eixo(binaria, caixa, "y", margem_do_vale=MARGEM_DO_VALE)
 
 
 def partir(
     caixa: Caixa,
     corte: int,
     *,
-    arbitro: Callable[[Sequence[Caixa]], float] | None = None,
+    arbitro: Arbitro | None = None,
 ) -> list[Caixa]:
     """A caixa partida em duas no `corte`, ou intacta quando o árbitro não confirma.
 
@@ -108,8 +90,8 @@ def partir(
     if corte <= caixa.y1 or corte >= caixa.y2:
         return [caixa]
 
-    de_cima = Caixa(caixa.x1, caixa.y1, caixa.x2, corte, caixa.angulo)
-    de_baixo = Caixa(caixa.x1, corte, caixa.x2, caixa.y2, caixa.angulo)
+    de_cima = Caixa(caixa.x1, caixa.y1, caixa.x2, corte)
+    de_baixo = Caixa(caixa.x1, corte, caixa.x2, caixa.y2)
     if arbitro is None:
         return [caixa]
 
@@ -123,7 +105,7 @@ def separar(
     caixas: Sequence[Caixa],
     *,
     escala: int,
-    arbitro: Callable[[Sequence[Caixa]], float] | None = None,
+    arbitro: Arbitro | None = None,
     fronteira: dict[int, int] | None = None,
 ) -> list[Caixa]:
     """As caixas com as que engoliram duas linhas partidas.

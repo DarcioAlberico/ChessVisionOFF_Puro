@@ -43,7 +43,7 @@ from PyQt6.QtWidgets import (
 
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
-from chess_diagram_ocr.qt.trabalho import Tarefa
+from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva, slot_se_vivo
 from chess_diagram_ocr.ui import analise_da_partida as declarada
 from chess_diagram_ocr.ui import espaco, motor_declarado, tipografia, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
@@ -113,10 +113,10 @@ class AnalisadorDaPartida(QObject):
         def _trabalho() -> list[Any]:
             return _avaliar(analisador, fens, passos, fundura, cancelar, relatar)
 
-        tarefa = Tarefa(_trabalho, parent=self, nome="análise da partida")
-        tarefa.pronto.connect(self._pronto)
-        tarefa.falhou.connect(self._falhou)
-        tarefa.finished.connect(self._terminou)
+        tarefa = manter_viva(Tarefa(_trabalho, nome="análise da partida"))
+        tarefa.pronto.connect(slot_se_vivo(self, self._pronto))
+        tarefa.falhou.connect(slot_se_vivo(self, self._falhou))
+        tarefa.finished.connect(slot_se_vivo(self, self._terminou))
         self._registrar_ocupado(len(passos))
         self._tarefa = tarefa
         tarefa.start()

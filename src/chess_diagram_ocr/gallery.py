@@ -28,33 +28,103 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+import chess.pgn
+
+from .arquivo_do_dono import ler_texto
 from .atomic_io import atomic_write_json, atomic_write_text
-from .config import DATA_DIR, DEFAULT_READING_ORDER, ReadingOrder
+from .config import DATA_DIR, DEFAULT_READING_ORDER, PROJECT_ROOT, ReadingOrder
+from .ui.livros import caminho_canonico, mesmo_livro
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "DEFAULT_HUMAN_EXTRACT",
     "DiagramAnnotation",
+    "GaleriaDeOutroLivro",
     "GalleryAnnotations",
     "HumanExtract",
     "annotations_path_for",
+    "conferir_dono",
     "export_human",
+    "gravar_do_livro",
     "human_only",
     "lichess_analysis_url",
     "load_annotations",
     "read_human_extract",
+    "recusa_do_nome_de_header",
     "restore_human",
     "save_annotations",
+    "valor_de_header",
     "write_human_extract",
 ]
 
 DEFAULT_GALLERY_DIR = DATA_DIR / "gallery"
+
+
+class GaleriaDeOutroLivro(ValueError):
+    """O arquivo da galeria é de outro livro com o mesmo nome (S-878).
+
+    A galeria se chama pelo `stem` (`data/gallery/Livro.json`, `Livro.index.json`), e
+    `a/Livro.pdf` e `b/Livro.pdf` caíam no mesmo arquivo: o lance e a partida escolhida de um
+    apareciam no outro, e a primeira edição no outro os gravava por cima. A recusa diz de quem é o
+    arquivo, que é o que a pessoa precisa para decidir (renomear um dos dois).
+    """
+
+    def __init__(self, arquivo: Path, dono: str, livro: Path) -> None:
+        self.arquivo = arquivo
+        self.dono = dono
+        super().__init__(
+            f"{arquivo.name} é a galeria de {dono}, e não de {caminho_canonico(livro)}: são dois livros "
+            "com o mesmo nome. Renomeie um dos dois para que cada um tenha a sua."
+        )
+
+
+def _dono_gravado(arquivo: Path) -> str:
+    """O `source_pdf` do JSON já gravado em `arquivo`, ou `""` (ausente, ilegível ou anterior a ele)."""
+    try:
+        dados = json.loads(ler_texto(Path(arquivo), do_usuario=False))
+    except (OSError, ValueError):
+        return ""
+    return str(dados.get("source_pdf") or "") if isinstance(dados, dict) else ""
+
+
+def conferir_dono(arquivo: Path, dono: str, livro: Path) -> None:
+    r"""Levanta `GaleriaDeOutroLivro` quando `arquivo`, gravado para `dono`, é de outro livro.
+
+    A identidade é a `mesmo_livro` (S-827). Os três casos abaixo são dado que o dono já tem:
+
+    - **sem dono** (`""`) passa: o arquivo é anterior à S-878, e era lido assim desde sempre;
+    - **dono relativo** (`PDF\Livro.pdf`, que parte dos índices antigos grava) é lido contra a raiz
+      do projeto, de onde o `cvoff-scan` roda;
+    - **dono que não existe mais** passa: é o livro que mudou de pasta ou de disco, e não um
+      segundo livro -- recusá-lo esconderia o trabalho humano de quem só moveu o arquivo.
+    """
+    if not dono:
+        return
+    if not os.path.isabs(dono):
+        dono = str(PROJECT_ROOT / dono)
+    if mesmo_livro(dono, livro) or not os.path.exists(dono):
+        return
+    raise GaleriaDeOutroLivro(Path(arquivo), caminho_canonico(dono), Path(livro))
+
+
+def gravar_do_livro(caminho: Path, pdf_path: Path, dados: dict[str, object]) -> Path:
+    """Grava `dados` em `caminho` de forma atômica (S-25), com o livro dono dentro (S-878).
+
+    É a gravação dos dois arquivos da galeria, as anotações e o índice: nunca por cima do arquivo
+    de outro livro de mesmo nome (`GaleriaDeOutroLivro`), e sempre dizendo de quem ele é.
+    """
+    conferir_dono(caminho, _dono_gravado(caminho), pdf_path)
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(caminho, {**dados, "source_pdf": caminho_canonico(pdf_path)})
+    return caminho
+
 
 DEFAULT_HUMAN_EXTRACT = DATA_DIR / "gallery_human.jsonl"
 """O extrato do que **uma pessoa** digitou ou escolheu na galeria (S-115).
@@ -87,6 +157,33 @@ Vez a jogar e número do lance mudam a FEN pelos campos próprios, que sabem rec
 resultado declarável, e `"*"` é o padrão de quem não declarou, não uma verdade sobre a
 posição.
 """
+
+
+def recusa_do_nome_de_header(nome: str) -> str:
+    """Por que `nome` não serve de header da anotação, em português; vazio quando serve (S-876).
+
+    O critério do nome é o do python-chess (`chess.pgn.TAG_NAME_REGEX`), que é quem escreve o
+    PGN: fora dele o `game.headers[nome] = ...` da exportação levanta `ValueError` em inglês, e
+    um só cabeçalho digitado à mão na Galeria parava a exportação do livro inteiro. Acento e
+    espaço -- `Comentário`, `Torneio Local` -- são justamente o que um nome em português tem.
+    """
+    if nome in RESERVED_HEADERS:
+        return (
+            f"O cabeçalho {nome} não se declara à mão: ele sai do próprio diagrama, e a vez e o "
+            "lance mudam pelos campos deles."
+        )
+    if not chess.pgn.TAG_NAME_REGEX.match(nome):
+        return (
+            f"«{nome}» não serve de nome de cabeçalho de PGN: use só letras sem acento, algarismos "
+            "e _ + # = : -, sem espaço, começando por letra ou algarismo (por exemplo, "
+            "TorneioLocal ou Comentario)."
+        )
+    return ""
+
+
+def valor_de_header(texto: str) -> str:
+    """O valor numa linha só, sem as bordas: o header de PGN não tem segunda linha (S-876)."""
+    return texto.replace("\r\n", " ").replace("\r", " ").replace("\n", " ").strip()
 
 
 def lichess_analysis_url(fen: str) -> str:
@@ -276,15 +373,24 @@ def _campos(valor: Any) -> tuple[str, ...]:
 
 
 def _headers(valor: Any) -> dict[str, str]:
-    """Só pares de texto, e nunca os reservados. Chave vazia some junto."""
+    """Só pares de texto que o PGN aceita, e nunca os reservados. Chave vazia some junto.
+
+    Nome que o PGN não aceita sai com aviso no log (S-876): ele só pode ter sido gravado por uma
+    versão anterior à recusa do campo, e mantê-lo pararia a exportação do livro.
+    """
     if not isinstance(valor, dict):
         return {}
     limpos: dict[str, str] = {}
     for chave, conteudo in valor.items():
         nome = str(chave).strip()
-        if not nome or nome in RESERVED_HEADERS:
+        if not nome:
             continue
-        texto = str(conteudo).strip()
+        recusa = recusa_do_nome_de_header(nome)
+        if recusa:
+            if nome not in RESERVED_HEADERS:
+                logger.warning("Cabeçalho %r da Galeria descartado na leitura: %s", nome, recusa)
+            continue
+        texto = valor_de_header(str(conteudo))
         if texto:
             limpos[nome] = texto
     return limpos
@@ -297,6 +403,9 @@ class GalleryAnnotations:
     source_name: str = ""
     reading_order: ReadingOrder = DEFAULT_READING_ORDER
     entries: dict[tuple[int, int], DiagramAnnotation] = field(default_factory=dict)
+    source_pdf: str = ""
+    """O caminho do livro dono deste arquivo, gravado por `save_annotations` (S-878). Vazio nos
+    arquivos anteriores a ele."""
 
     def get(self, page_index: int, diagram_index: int) -> DiagramAnnotation:
         """A anotação daquele diagrama, ou uma vazia. Nunca `None`: quem chama não deve ramificar."""
@@ -329,6 +438,7 @@ class GalleryAnnotations:
         return {
             "version": 1,
             "source_name": self.source_name,
+            "source_pdf": self.source_pdf,
             "reading_order": self.reading_order,
             # Chave de JSON e string: "pagina.diagrama", a mesma forma do header [Round].
             "diagrams": {
@@ -360,15 +470,16 @@ class GalleryAnnotations:
             source_name=str(dados.get("source_name") or ""),
             reading_order=ordem,  # type: ignore[arg-type]
             entries=entradas,
+            source_pdf=str(dados.get("source_pdf") or ""),
         )
 
 
 def annotations_path_for(pdf_path: Path, *, directory: Path = DEFAULT_GALLERY_DIR) -> Path:
     """`data/gallery/<nome-do-pdf>.json`.
 
-    Pelo `stem`, que é a convenção que `default_pgn_output_path` já usa para o PGN -- dois
-    livros de mesmo nome em pastas diferentes colidiriam, e é o mesmo risco que o PGN corre
-    desde sempre. Uniformidade vale mais aqui que uma segunda regra de nomeação.
+    Pelo `stem`, que é a convenção que `default_pgn_output_path` já usa para o PGN, e o nome dos
+    arquivos que o dono já tem. Dois livros de mesmo nome em pastas diferentes caem no mesmo
+    arquivo, e é por isso que ele diz de quem é: o outro é recusado (`conferir_dono`, S-878).
     """
     return Path(directory) / f"{Path(pdf_path).stem}.json"
 
@@ -383,6 +494,9 @@ def load_annotations(
 
     Falhar para o lado do vazio é seguro aqui pelo mesmo motivo do `settings.py`: o vazio é
     "exporte como o pipeline decidiu", que é o comportamento anterior a este módulo.
+
+    O arquivo de **outro livro** de mesmo nome não é vazio nem é deste: levanta
+    `GaleriaDeOutroLivro` (S-878).
     """
     caminho = annotations_path_for(pdf_path, directory=directory)
     anotacoes = GalleryAnnotations(source_name=Path(pdf_path).name, reading_order=reading_order)
@@ -390,12 +504,13 @@ def load_annotations(
         return anotacoes
 
     try:
-        dados = json.loads(caminho.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        dados = json.loads(ler_texto(caminho, do_usuario=False))
+    except (OSError, ValueError) as exc:
         logger.warning("Nao foi possivel ler %s (%s); seguindo sem anotacoes.", caminho, exc)
         return anotacoes
 
     carregado = GalleryAnnotations.from_dict(dados)
+    conferir_dono(caminho, carregado.source_pdf, pdf_path)
     if carregado.reading_order != reading_order:
         # Nao e erro: e um aviso de que os indices podem apontar para outro diagrama, porque
         # a numeracao de uma pagina depende da ordem de leitura (S-14).
@@ -416,11 +531,8 @@ def save_annotations(
     *,
     directory: Path = DEFAULT_GALLERY_DIR,
 ) -> Path:
-    """Grava de forma atômica (S-25) e devolve o caminho escrito."""
-    caminho = annotations_path_for(pdf_path, directory=directory)
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(caminho, annotations.to_dict())
-    return caminho
+    """Grava de forma atômica (S-25) e devolve o caminho escrito. Ver `gravar_do_livro` (S-878)."""
+    return gravar_do_livro(annotations_path_for(pdf_path, directory=directory), pdf_path, annotations.to_dict())
 
 
 # ------------------------------------------------------- o extrato humano (S-115)
@@ -505,8 +617,8 @@ def export_human(*, directory: Path = DEFAULT_GALLERY_DIR) -> HumanExtract:
         if caminho.name.endswith(".index.json") or ".bak-" in caminho.name:
             continue
         try:
-            dados = json.loads(caminho.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+            dados = json.loads(ler_texto(caminho, do_usuario=False))
+        except (OSError, ValueError) as exc:
             logger.warning("Galeria ilegível em %s (%s); fora do extrato.", caminho, exc)
             continue
         extrato.books += 1
@@ -544,12 +656,12 @@ def read_human_extract(path: Path = DEFAULT_HUMAN_EXTRACT) -> list[dict[str, Any
     if not caminho.exists():
         return []
     registros = []
-    for numero, linha in enumerate(caminho.read_text(encoding="utf-8").splitlines(), start=1):
+    for numero, linha in enumerate(ler_texto(caminho, do_usuario=False).splitlines(), start=1):
         if not linha.strip():
             continue
         try:
             registro = json.loads(linha)
-        except json.JSONDecodeError as exc:
+        except ValueError as exc:
             logger.warning("Linha %d do extrato humano ignorada (%s).", numero, exc)
             continue
         if isinstance(registro, dict) and registro.get("book") and registro.get("at"):
@@ -578,8 +690,8 @@ def restore_human(
         anotacoes = GalleryAnnotations(source_name=livro)
         if caminho.exists():
             try:
-                anotacoes = GalleryAnnotations.from_dict(json.loads(caminho.read_text(encoding="utf-8")))
-            except (OSError, json.JSONDecodeError) as exc:
+                anotacoes = GalleryAnnotations.from_dict(json.loads(ler_texto(caminho, do_usuario=False)))
+            except (OSError, ValueError) as exc:
                 logger.warning("Galeria ilegível em %s (%s); será refeita a partir do extrato.", caminho, exc)
 
         tocados = 0

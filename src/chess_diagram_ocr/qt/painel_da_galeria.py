@@ -61,7 +61,12 @@ from PyQt6.QtWidgets import (
 )
 
 from chess_diagram_ocr.config import DEFAULT_PDF_DIR, DEFAULT_READING_ORDER
-from chess_diagram_ocr.gallery import DiagramAnnotation, load_annotations
+from chess_diagram_ocr.gallery import (
+    DiagramAnnotation,
+    GaleriaDeOutroLivro,
+    load_annotations,
+    recusa_do_nome_de_header,
+)
 from chess_diagram_ocr.gallery_scan import build_gallery_index, load_index, save_index
 from chess_diagram_ocr.games_cache import PositionStore, open_store
 from chess_diagram_ocr.games_db import (
@@ -78,14 +83,14 @@ from chess_diagram_ocr.logging_setup import onde_esta_o_rastro
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.barra import BarraFluida
-from chess_diagram_ocr.qt.dialogos import DialogoDePartidas, perguntar_bases, perguntar_escopo
+from chess_diagram_ocr.qt.dialogos import DialogoDePartidas, perguntar_bases, perguntar_escopo, perguntar_recusando
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.foco_a_vista import seguir_o_foco
 from chess_diagram_ocr.qt.rotulo import RecorteElastico
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.qt.vazio import EstadoVazio
 from chess_diagram_ocr.service import OcrService
-from chess_diagram_ocr.ui import atalhos, espaco, estilos, folha_de_estilo, strings, tokens
+from chess_diagram_ocr.ui import atalhos, espaco, estilos, folha_de_estilo, formato, strings, tokens
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.escolha_de_bases import store_path_for
 from chess_diagram_ocr.ui.escopo_da_varredura import ScanScope
@@ -960,7 +965,7 @@ class PainelDaGaleria(QWidget):
             partidas = scan_by_players(
                 bases,
                 pares,
-                progress=lambda lidas: self._progrediu.emit(f"base: {lidas / 1e6:.1f} M partidas lidas…"),
+                progress=lambda lidas: self._progrediu.emit(f"base: {formato.decimal(lidas / 1e6, 1)} M partidas lidas…"),
                 cancel=self._cancelar,
             )
             casamentos = match_entries(self.model.index.entries, partidas)
@@ -1131,7 +1136,7 @@ class PainelDaGaleria(QWidget):
         if not games_read:
             origem = "sem abrir a base (tudo do cache)"
         elif games_read >= 1_000_000:
-            origem = f"{games_read / 1e6:.1f} M partidas lidas"
+            origem = f"{formato.decimal(games_read / 1e6, 1)} M partidas lidas"
         else:
             # Uma base pequena lida em "0,0 M" pareceria uma varredura que não leu nada.
             origem = f"{games_read} partidas lidas"
@@ -1310,12 +1315,22 @@ class PainelDaGaleria(QWidget):
             self.refresh(request_page=request_page)
             return
 
-        indice = self._ler_indice(pdf_path)
-        self.model = GalleryModel(
-            index=indice if indice is not None else self.model.index.__class__(),
+        try:
+            indice = self._ler_indice(pdf_path)
             # As anotações são carregadas mesmo sem varredura: elas não dependem do índice, e desde
             # a S-71 a aba Resultado escreve o número do lance por aqui.
-            annotations=self._ler_anotacoes(pdf_path),
+            anotacoes = self._ler_anotacoes(pdf_path)
+        except GaleriaDeOutroLivro as exc:
+            # A galeria de mesmo nome é de outro livro (S-878). Sem livro no modelo, nada daqui
+            # grava por cima dela; a frase diz de quem ela é, que é o que a pessoa precisa.
+            self.model = GalleryModel()
+            self.lbl_varredura.setText("galeria de outro livro")
+            self.refresh(request_page=request_page)
+            self.estado.emit(f"Galeria: {exc}")
+            return
+        self.model = GalleryModel(
+            index=indice if indice is not None else self.model.index.__class__(),
+            annotations=anotacoes,
             pdf_path=pdf_path,
             database_paths=tuple(self._bases_atuais()),
             index_path=DEFAULT_INDEX_PATH,
@@ -1475,6 +1490,11 @@ class PainelDaGaleria(QWidget):
         nome = self.campo_livre_nome.text().strip()
         if not nome:
             return
+        recusa = recusa_do_nome_de_header(nome)
+        if recusa:
+            # Antes de gravar, e com o que foi digitado ainda nos campos para corrigir (S-876).
+            self.estado.emit(recusa)
+            return
         self.model.set_header(nome, self.campo_livre_valor.text())
         self.campo_livre_nome.clear()
         self.campo_livre_valor.clear()
@@ -1493,11 +1513,13 @@ class PainelDaGaleria(QWidget):
             self.estado.emit("Este diagrama não tem header declarado; não há o que limpar.")
             return
         listados = "\n".join(f"    {nome} = {valor}" for nome, valor in sorted(valores.items()))
-        if not self._confirmar_destrutivo(
+        if not perguntar_recusando(
+            self,
             "Limpar os headers",
             f"Apagar {len(valores)} header(s) deste diagrama?\n\n{listados}\n\n"
             "Só deste diagrama, e não dá para desfazer. O lance, a vez e a partida escolhida na "
             "lista de candidatas ficam como estão.",
+            aviso=True,
         ):
             self.estado.emit("Limpeza cancelada.")
             return
@@ -1506,21 +1528,6 @@ class PainelDaGaleria(QWidget):
         self._gravar()
         self.refresh(request_page=False)
         self.estado.emit(f"{len(apagados)} header(s) apagado(s) deste diagrama: {', '.join(apagados)}.")
-
-    def _confirmar_destrutivo(self, titulo: str, pergunta: str) -> bool:
-        """Uma pergunta de aviso cujo botão **padrão é cancelar**.
-
-        É o `default=messagebox.CANCEL` do outro lado, e ele não é zelo: as duas perguntas que
-        passam por aqui apagam trabalho manual, e num diálogo cujo padrão é OK um `Enter` de
-        reflexo confirma o que a pessoa ia ler.
-        """
-        caixa = QMessageBox(self)
-        caixa.setIcon(QMessageBox.Icon.Warning)
-        caixa.setWindowTitle(titulo)
-        caixa.setText(pergunta)
-        caixa.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
-        caixa.setDefaultButton(QMessageBox.StandardButton.Cancel)
-        return caixa.exec() == QMessageBox.StandardButton.Ok
 
     def copiar_para_todos(self) -> None:
         """Copia os headers deste diagrama para o livro inteiro -- **perguntando antes**.
@@ -1536,11 +1543,13 @@ class PainelDaGaleria(QWidget):
             return
         alvos = max(0, len(self.model) - 1)
         listados = "\n".join(f"    {nome} = {valor}" for nome, valor in valores.items())
-        if not self._confirmar_destrutivo(
+        if not perguntar_recusando(
+            self,
             "Copiar headers para todos",
             f"Copiar estes valores para os outros {alvos} diagrama(s) do livro?\n\n{listados}\n\n"
             "O que esses diagramas tiverem nesses campos será sobrescrito, e o valor anterior não "
             "poderá ser recuperado.",
+            aviso=True,
         ):
             self.estado.emit("Cópia cancelada.")
             return

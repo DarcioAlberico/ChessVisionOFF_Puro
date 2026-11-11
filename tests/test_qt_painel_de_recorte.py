@@ -10,7 +10,7 @@ from __future__ import annotations
 import unittest
 
 import numpy as np
-from qt_app import MOTIVO, TEM_PYQT, aplicacao
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, pixels_diferentes, renderizar
 
 from chess_diagram_ocr.config import PIECE_CLASSES
 from chess_diagram_ocr.ui import recorte_do_diagrama as regra
@@ -146,13 +146,21 @@ class PainelDeRecorteTests(unittest.TestCase):
         self.recorte.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier))
         self.assertEqual(self.recorte.apontada(), 7, "h8 → Direita não vai para a7")
 
-    def test_desenhar_com_marcas_nao_levanta(self) -> None:
+    def test_desenhar_com_marcas_pinta_o_anel_nas_duas_casas(self) -> None:
+        """O anel aparece na casa selecionada e na apontada, e o `limpar` desenha o vazio (S-872).
+
+        Era «não levanta»: com o `paintEvent` trocado por `pass` o teste passava."""
         self.mostrar(virado=True)
+        sem_marcas = renderizar(self.recorte)
         self.recorte.apontar(3)
         self.recorte.selecionar(12)
-        self.recorte.repaint()
+        com_marcas = renderizar(self.recorte)
+        for casa in (3, 12):
+            with self.subTest(casa=casa):
+                retangulo = self.recorte.retangulo_da_casa(casa).toAlignedRect()
+                self.assertGreater(pixels_diferentes(sem_marcas.copy(retangulo), com_marcas.copy(retangulo)), 0)
         self.recorte.limpar()
-        self.recorte.repaint()
+        self.assertGreater(pixels_diferentes(com_marcas, renderizar(self.recorte)), 0, "o vazio não foi desenhado")
 
 
 if __name__ == "__main__":  # pragma: no cover

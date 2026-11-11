@@ -44,14 +44,19 @@ caractere fora dela sai da camada e entra na contagem.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
+from ..atomic_io import atomic_write_bytes
 from ..djvu_io import pdf_legivel
 from .pagina import BlocoDeDiagrama
 from .rico import DocumentoRico
+
+if TYPE_CHECKING:
+    import fitz
 
 __all__ = [
     "FIGURINA_PARA_LETRA",
@@ -210,13 +215,14 @@ def escrever(
     if not caminho.exists():
         return Relatorio(avisos=(f"o livro {caminho.name} não está no lugar de antes",), seco=seco)
 
+    payload: bytes | None = None
     livro = fitz.open(pdf_legivel(caminho))
     try:
         if not 0 <= pagina_lida.pagina < livro.page_count:
             return Relatorio(avisos=(f"a folha {pagina_lida.pagina + 1} não existe em {caminho.name}",), seco=seco)
         saida = fitz.open()
         saida.insert_pdf(livro, from_page=pagina_lida.pagina, to_page=pagina_lida.pagina)
-        folha = saida[0]
+        folha = _sem_a_nossa_camada(saida, 0) if _e_documento_nosso(livro) else saida[0]
         escritos = 0
         for trecho in trechos:
             x0, y0, x1, y1 = trecho.bbox
@@ -236,13 +242,13 @@ def escrever(
             seco=seco,
             avisos=_avisos(relatorio),
         )
-        if not seco:
-            Path(destino).parent.mkdir(parents=True, exist_ok=True)
-            saida.save(str(destino))
+        payload = None if seco else saida.tobytes(garbage=1)
         saida.close()
-        return relatorio
     finally:
         livro.close()
+    if payload is not None:
+        atomic_write_bytes(Path(destino), payload)
+    return relatorio
 
 
 def _escrever_no_maior_corpo(folha: object, caixa: object, texto: str) -> float:
@@ -524,6 +530,11 @@ def escrever_camada(
     quer um livro sem texto duplicado; o padrão escreve, porque a S-211 mediu que a camada de
     origem **não representa figurina** e para notação ela não é alternativa à nossa.
 
+    **A camada que é nossa não soma: é trocada (S-821).** Num livro que já traz a nossa marca (a
+    saída de uma rodada anterior usada como entrada), o texto invisível que este módulo escreveu sai
+    de cada folha antes de entrar o novo, e a marca do metadado é substituída. Sem isso cada rodada
+    duplicava a camada, e a busca devolvia dois acertos por palavra.
+
     `seco=True` diz o que faria e não grava nada -- critério de aceite `test_o_dry_run_nao_escreve`.
     """
     import fitz
@@ -542,8 +553,10 @@ def escrever_camada(
 
     total = RelatorioDaCamada()
     avisos: list[str] = []
+    payload: bytes | None = None
     livro = fitz.open(pdf_legivel(caminho))
     try:
+        nosso = _e_documento_nosso(livro)
         fontes: dict[int, object] = {int(getattr(lida, "pagina", -1)): lida for lida in lidas}
         fontes.update(do_caderno)
         for indice in sorted(fontes):
@@ -551,7 +564,7 @@ def escrever_camada(
             if not 0 <= indice < livro.page_count:
                 avisos.append(f"a folha {indice + 1} não existe em {caminho.name}")
                 continue
-            folha = livro[indice]
+            folha = _sem_a_nossa_camada(livro, indice) if nosso else livro[indice]
             tinha = bool(folha.get_text().strip())
             if tinha and so_sem_camada:
                 total = _somar(total, RelatorioDaCamada(ja_tinham_camada=1))
@@ -585,10 +598,13 @@ def escrever_camada(
 
         livro.set_metadata(_metadado_da_camada(livro, quando, piso, figurinas, do_caderno=total.do_caderno))
         if not seco:
-            Path(destino).parent.mkdir(parents=True, exist_ok=True)
-            livro.save(str(destino))
+            # `garbage=1` leva junto os fluxos da camada antiga que `_sem_a_nossa_camada` soltou.
+            payload = livro.tobytes(garbage=1)
     finally:
         livro.close()
+    # Gravado depois de fechar o livro: o destino pode ser a própria entrada (S-821).
+    if payload is not None:
+        atomic_write_bytes(Path(destino), payload)
 
     if total.abaixo_do_piso:
         avisos.append(
@@ -654,16 +670,67 @@ def _metadado_da_camada(
     inclusive com que piso ela foi feita, que é o que decide o que ficou de fora.
     """
     atual = dict(getattr(livro, "metadata", None) or {})
-    marca = f"ChessVisionOFF S-210: camada de glifo, piso {piso:.2f}"
+    marca = f"{MARCA_DA_CAMADA}: camada de glifo, piso {piso:.2f}"
     if figurinas:
         marca += ", figurina como letra"
     if do_caderno:
         marca += f", {do_caderno} folha(s) do caderno corrigidas à mão"
     if quando:
         marca += f", {quando}"
-    atual["keywords"] = " · ".join(x for x in (atual.get("keywords", ""), marca) if x)
-    atual["producer"] = "ChessVisionOFF"
+    # A marca é **trocada**, e não somada (S-821): a rodada anterior sai e a de agora entra.
+    alheias = [x for x in str(atual.get("keywords", "")).split(" · ") if x and not _e_marca_nossa(x)]
+    atual["keywords"] = " · ".join([*alheias, marca])
+    atual["producer"] = PRODUTOR
     return atual
+
+
+PRODUTOR = "ChessVisionOFF"
+"""O começo do `producer` de todo PDF que este módulo grava -- a S-253 o estende, a S-210 o usa puro."""
+
+MARCA_DA_CAMADA = "ChessVisionOFF S-210"
+"""O começo da marca da S-210 em `keywords`. A da S-253 começa por `camada=humana`."""
+
+
+def _e_marca_nossa(palavra: str) -> bool:
+    return palavra.startswith((MARCA_DA_CAMADA, "camada=humana"))
+
+
+def _e_documento_nosso(livro: object) -> bool:
+    """O documento traz a nossa marca -- e então a camada invisível em `helv` dele é nossa (S-821).
+
+    **A marca é do documento, e não da folha.** O `producer` basta, e as `keywords` cobrem o PDF que
+    outro programa regravou trocando o produtor.
+    """
+    metadado = getattr(livro, "metadata", None) or {}
+    if str(metadado.get("producer") or "").startswith(PRODUTOR):
+        return True
+    return any(_e_marca_nossa(x) for x in str(metadado.get("keywords") or "").split(" · "))
+
+
+_LINHA_NOSSA = (
+    rb"(?:-?[\d.]+\s+){6}Tm\s+/" + re.escape(FONTE_DA_CAMADA.encode()) + rb"\s+[\d.]+\s+Tf\s+3\s+Tr"
+    rb"(?:\s+[\d.]+\s+[wM])*\s*\[<[0-9a-fA-F]*>\]\s*TJ\s*"
+)
+_TRECHO_NOSSO = re.compile(rb"\s*q\s+BT\s+(?:" + _LINHA_NOSSA + rb")+ET\s+Q\s*")
+"""O fluxo que o `insert_textbox` grava para um trecho da camada: um `BT ... ET` só, com toda linha
+em `render_mode=3` (`3 Tr`) na fonte da camada. Estreito de propósito: fluxo com qualquer outro
+operador -- o que pinta a página -- não casa, e não sai."""
+
+
+def _sem_a_nossa_camada(livro: fitz.Document, indice: int) -> fitz.Page:
+    """Tira da folha os fluxos de texto invisível que este módulo escreveu, e devolve a folha relida.
+
+    Sem isto, usar a saída como entrada punha a camada duas vezes: a nossa antiga continuava lá e a
+    nova entrava por cima (S-821). Só os fluxos que casam `_TRECHO_NOSSO` saem; o pixel não muda,
+    porque texto em `3 Tr` não pinta.
+    """
+    folha = livro[indice]
+    contents = folha.get_contents()
+    ficam = [x for x in contents if not _TRECHO_NOSSO.fullmatch(livro.xref_stream(x) or b"")]
+    if len(ficam) == len(contents):
+        return folha
+    livro.xref_set_key(folha.xref, "Contents", "[" + " ".join(f"{x} 0 R" for x in ficam) + "]")
+    return livro.reload_page(folha)
 
 # --------------------------------------------------------------------------------------
 # O caminho vizinho da S-210, e a medicao que decidiu nao construi-lo
@@ -740,7 +807,3 @@ def contar_losangos(folhas: Sequence[Mapping[str, object]]) -> tuple[ParSemMapea
         ParSemMapeamento(fonte=fonte, ocorrencias=n)
         for fonte, n in sorted(contagem.items(), key=lambda par: (-par[1], par[0]))
     )
-
-
-def _sem_uso(_: Sequence[object]) -> None:  # pragma: no cover - reservado
-    return None

@@ -4,11 +4,13 @@ import tempfile
 import unittest
 import unittest.mock
 import warnings
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+import chess_diagram_ocr.dataset as dataset_module
 from chess_diagram_ocr.atomic_io import read_image, write_image
 from chess_diagram_ocr.config import BOARD_SIZE
 from chess_diagram_ocr.dataset import (
@@ -18,6 +20,7 @@ from chess_diagram_ocr.dataset import (
     migrate_labels_csv,
 )
 from chess_diagram_ocr.labels import ILLEGAL_OK, LabelStore
+from chess_diagram_ocr.splits import Split
 
 LEGAL = "4k3/8/8/8/8/8/8/4K3"
 FATAL = "4n3/8/8/4B2n/8/8/8/8"  # sem reis
@@ -76,6 +79,68 @@ class MalformedCsvTests(unittest.TestCase):
 
             self.assertEqual(len(dataset.entries), 0)
             self.assertTrue(any("imagem ausente" in str(w.message) for w in caught))
+
+
+
+class DescartesContadosTests(unittest.TestCase):
+    """S-841: todo descarte da carga é contado por motivo, e a FEN inválida também.
+
+    A linha de FEN inválida saía do treino sem contador e sem log, enquanto os outros
+    descartes do mesmo laço eram registrados: um rótulo estragado sumia sem ninguém saber.
+    """
+
+    def test_fen_invalida_entre_dez_boas_e_contada_e_dita(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            samples = root / "samples"
+            samples.mkdir()
+            linhas = [(f"b{i}.png", LEGAL) for i in range(10)]
+            for nome, _fen in linhas:
+                _write_board(samples, nome, size=64)
+            _write_board(samples, "estragada.png", size=64)
+            linhas.insert(5, ("estragada.png", "4k3/8/8/44/8/8/8/4K3"))
+            _write_csv(root / "labels.csv", linhas)
+
+            with self.assertLogs("chess_diagram_ocr.dataset", level="INFO") as registro:
+                dataset = BoardFenDataset(root / "labels.csv", samples)
+
+        self.assertEqual(len(dataset.entries), 10)
+        self.assertEqual(dataset.descartes["fen_invalida"], 1)
+        self.assertEqual(sum(dataset.descartes.values()), 1, dataset.descartes)
+        self.assertTrue(
+            any("estragada.png" in linha and "FEN" in linha for linha in registro.output),
+            f"o descarte não foi dito: {registro.output}",
+        )
+
+    def test_cada_motivo_tem_o_seu_contador(self) -> None:
+        """Os quatro motivos lado a lado, para que nenhum seja contado no lugar de outro."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            samples = root / "samples"
+            samples.mkdir()
+            for nome in ("ok.png", "ilegal.png", "sem_split.png", "fen.png"):
+                _write_board(samples, nome, size=64)
+            _write_csv(
+                root / "labels.csv",
+                [
+                    ("ok.png", LEGAL),
+                    ("ilegal.png", FATAL),
+                    ("ausente.png", LEGAL),
+                    ("sem_split.png", LEGAL),
+                    ("fen.png", "nao-e-fen"),
+                ],
+            )
+            splits: dict[str, Split] = dict.fromkeys(("ok.png", "ilegal.png", "ausente.png", "fen.png"), "train")
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                dataset = BoardFenDataset(root / "labels.csv", samples, split="train", splits=splits)
+
+        self.assertEqual([e.filename for e in dataset.entries], ["ok.png"])
+        self.assertEqual(
+            dataset.descartes,
+            {"fen_invalida": 1, "sem_split": 1, "ilegal": 1, "imagem_ausente": 1},
+        )
 
 
 class LegalityFilterTests(unittest.TestCase):
@@ -245,7 +310,7 @@ class AppendSampleTests(unittest.TestCase):
             root = Path(tmp)
             board = np.full((BOARD_SIZE, BOARD_SIZE, 3), 128, dtype=np.uint8)
 
-            with unittest.mock.patch.object(Path, "write_bytes", side_effect=OSError("disco cheio")):
+            with unittest.mock.patch("chess_diagram_ocr.atomic_io.atomic_write_bytes", side_effect=OSError("disco cheio")):
                 with self.assertRaises(OSError) as ctx:
                     append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
 
@@ -273,11 +338,34 @@ class AppendSampleTests(unittest.TestCase):
             append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
             antes = (root / "labels.csv").read_text(encoding="utf-8")
 
-            with unittest.mock.patch.object(Path, "write_bytes", side_effect=OSError("disco cheio")):
+            with unittest.mock.patch("chess_diagram_ocr.atomic_io.atomic_write_bytes", side_effect=OSError("disco cheio")):
                 with self.assertRaises(OSError):
                     append_training_sample(board, LEGAL, root / "labels.csv", root / "samples")
 
             self.assertEqual((root / "labels.csv").read_text(encoding="utf-8"), antes)
+
+    def test_duas_amostras_no_mesmo_instante_nao_se_sobrescrevem(self) -> None:
+        """S-820: o nome saía só do relógio, cujo passo nesta máquina é ~1,5 ms.
+
+        Duas gravações no mesmo passo davam o mesmo nome: o segundo PNG apagava o primeiro, e o
+        CSV ficava com duas linhas apontando para uma imagem só.
+        """
+        congelado = unittest.mock.Mock(wraps=datetime)
+        congelado.now.return_value = datetime(2026, 11, 8, 12, 0, 0, 123456, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            claro = np.full((BOARD_SIZE, BOARD_SIZE, 3), 200, dtype=np.uint8)
+            escuro = np.full((BOARD_SIZE, BOARD_SIZE, 3), 40, dtype=np.uint8)
+
+            with unittest.mock.patch.object(dataset_module, "datetime", congelado):
+                primeiro = append_training_sample(claro, LEGAL, root / "labels.csv", root / "samples")
+                segundo = append_training_sample(escuro, LEGAL, root / "labels.csv", root / "samples")
+
+            nomes = [entry.filename for entry in LabelStore(root / "labels.csv").read()]
+            self.assertEqual(nomes, [primeiro.name, segundo.name])
+            self.assertNotEqual(primeiro, segundo)
+            self.assertEqual(int(read_image(primeiro)[0, 0, 0]), 200)
+            self.assertEqual(int(read_image(segundo)[0, 0, 0]), 40)
 
     def test_fatal_position_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

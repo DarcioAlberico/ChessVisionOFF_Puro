@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, esperar_ate
 
 from chess_diagram_ocr.service import RecognitionCanceled
 from chess_diagram_ocr.ui.busy import BusyRegistry
@@ -28,7 +28,6 @@ if TEM_PYQT:
         ESPERA_PARA_AQUECER_MS,
         Aquecimento,
         Ocupacao,
-        frase_de_cancelamento,
         sem_modelo,
     )
     from chess_diagram_ocr.qt.trabalho import Tarefa
@@ -123,10 +122,7 @@ class PecasTests(unittest.TestCase):
         self.assertTrue(aquecimento.em_curso)
         # Sem pai (`manter_viva`): fechar a janela numa carga longa não pode abortar o processo.
         self.assertIsNone(tarefa.parent())
-        for _ in range(200):
-            QTest.qWait(10)
-            if not aquecimento.em_curso:
-                break
+        esperar_ate(lambda: not aquecimento.em_curso, limite_s=2, o_que='o fim do aquecimento')
         self.assertEqual(servico.carregado, 1)
         self.assertEqual(busy.running(), [])
         self.assertIsNone(aquecimento.iniciar(), "uma vez por processo")
@@ -137,15 +133,11 @@ class PecasTests(unittest.TestCase):
 
         falho = Aquecimento(_SemPt(), busy, dizer=lambda frase, nivel: ditos.append((frase, nivel)))
         tarefa = falho.iniciar()
-        for _ in range(200):
-            QTest.qWait(10)
-            if not falho.em_curso:
-                break
+        esperar_ate(lambda: not falho.em_curso, limite_s=2, o_que='o fim do aquecimento sem modelo')
         self.assertTrue(ditos and "Configurações" in ditos[-1][0], ditos)
 
-    def test_as_frases(self) -> None:
-        self.assertIn("antes do primeiro", frase_de_cancelamento(0))
-        self.assertIn("2 diagrama(s)", frase_de_cancelamento(2))
+    def test_a_falta_do_modelo(self) -> None:
+        """As frases do cancelamento moram com a decisão, em `ui/page_results` (S-867)."""
         self.assertTrue(sem_modelo(FileNotFoundError("models/piece_classifier.pt")))
         self.assertFalse(sem_modelo(FileNotFoundError("outro.txt")))
         self.assertFalse(sem_modelo(RuntimeError("piece_classifier")))
@@ -173,17 +165,15 @@ class LeituraNaJanelaTests(unittest.TestCase):
         self.addCleanup(descartar, montada)
         montada.resize(1400, 900)
         montada.abrir_pdf(self.livro)
-        for _ in range(300):
-            QTest.qWait(10)
-            if not montada._detector.ocupado and montada.pdf.page_rgb is not None:
-                break
+        esperar_ate(
+            lambda: not montada._detector.ocupado and montada.pdf.page_rgb is not None,
+            limite_s=3,
+            o_que='a página aberta com o detector parado',
+        )
         return montada
 
     def _esperar(self, condicao, ate_ms: int = 4000) -> None:
-        for _ in range(ate_ms // 10):
-            QTest.qWait(10)
-            if condicao():
-                return
+        esperar_ate(condicao, limite_s=ate_ms / 1000)
 
     def test_abrir_o_livro_aquece_o_modelo_quando_a_janela_ocia(self) -> None:
         """O aquecimento é agendado (`ESPERA_PARA_AQUECER_MS`), não disparado: o portão
@@ -200,7 +190,7 @@ class LeituraNaJanelaTests(unittest.TestCase):
         janela = self.janela()
         self.assertEqual(self.servico.carregado, 0)
         janela.close()
-        self._esperar(lambda: False, ate_ms=ESPERA_PARA_AQUECER_MS + 1500)
+        QTest.qWait(ESPERA_PARA_AQUECER_MS + 1500)  # passa da hora em que o relógio dispararia
         self.assertEqual(self.servico.carregado, 0, "o relógio de uma janela fechada disparou")
         self.assertFalse(janela._aquecimento.em_curso)
 

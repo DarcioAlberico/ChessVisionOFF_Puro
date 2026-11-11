@@ -42,6 +42,7 @@ import chess
 
 from .config import PIECE_CLASSES
 from .fen_utils import check_position, fen_from_class_indices
+from .semantics import compose_fen
 
 if TYPE_CHECKING:
     from .engine import EngineAnalyzer
@@ -231,8 +232,9 @@ class Verificacao:
 
 
 def _tabuleiro(placement: str, turn: chess.Color) -> chess.Board | None:
+    """A posição lida, com o roque que ela permite (S-880): uma chave ou defesa `O-O` existe."""
     try:
-        board = chess.Board(f"{placement} {'w' if turn == chess.WHITE else 'b'} - - 0 1")
+        board = chess.Board(compose_fen(placement, turn))
     except ValueError:
         return None
     if check_position(board.fen()).is_fatal:

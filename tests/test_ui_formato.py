@@ -13,13 +13,18 @@ formatar é da apresentação, ordenar é do dado.
 
 from __future__ import annotations
 
+import ast
+import re
 import unittest
 from pathlib import Path
+
+import varredura
 
 from chess_diagram_ocr.ui import strings
 from chess_diagram_ocr.ui.formato import (
     AUSENTE,
     confianca,
+    decimal,
     inteiro,
     lado_a_jogar,
     porcentagem,
@@ -83,6 +88,92 @@ class PorcentagemTests(unittest.TestCase):
     def test_o_numero_de_casas_e_do_chamador(self) -> None:
         self.assertEqual(porcentagem(0.08234, casas=0), "8%")
         self.assertEqual(porcentagem(0.08234, casas=2), "8,23%")
+
+
+class DecimalTests(unittest.TestCase):
+    """O número com casa decimal, pela mesma régua da porcentagem (S-910)."""
+
+    def test_o_valor_tipico_sai_com_virgula(self) -> None:
+        self.assertEqual(decimal(4.1, 2), "4,10")
+        self.assertEqual(decimal(18.44, 1), "18,4")
+
+    def test_zero_negativo_e_ausente(self) -> None:
+        self.assertEqual(decimal(0.0, 1), "0,0")
+        self.assertEqual(decimal(-0.25, 2), "-0,25")
+        self.assertEqual(decimal(None, 2), AUSENTE)
+
+    def test_sem_casas_nao_sobra_separador(self) -> None:
+        self.assertEqual(decimal(62.4, 0), "62")
+
+    def test_a_porcentagem_e_um_decimal_com_o_sinal(self) -> None:
+        """Uma régua só: a porcentagem não reescreve a troca do separador."""
+        self.assertEqual(porcentagem(0.08234, casas=2), decimal(8.234, 2) + "%")
+
+
+_FONTE = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr"
+
+_SPEC_DECIMAL = re.compile(r"\.(\d+|\{\})[f%]$")
+"""`:.2f`, `:>7.2%`, `:.{casas}f` -- toda especificação que escreve um separador decimal."""
+
+EXCECOES_DECIMAL: dict[tuple[str, str], str] = {
+}
+"""(arquivo, expressão formatada) -> por que ela pode escrever o próprio separador.
+
+Só entra aqui número que **não** é lido pelo usuário -- o que vai a arquivo, log ou JSON continua
+com ponto, porque quem o lê é um programa -- ou uma pendência com nome."""
+
+
+def _especificacao(no: ast.FormattedValue) -> str:
+    """O texto da especificação de formato, com `{}` no lugar de um campo aninhado."""
+    if not isinstance(no.format_spec, ast.JoinedStr):
+        return ""
+    return "".join(
+        parte.value if isinstance(parte, ast.Constant) else "{}" for parte in no.format_spec.values
+    )
+
+
+def _decimais_escritos_a_mao() -> list[tuple[str, str, int]]:
+    achados = []
+    for pacote in ("ui", "qt"):
+        for arquivo in varredura.fontes(_FONTE / pacote, recursivo=True, piso=60):
+            relativo = arquivo.relative_to(_FONTE).as_posix()
+            if relativo == "ui/formato.py":
+                continue
+            arvore = ast.parse(arquivo.read_text(encoding="utf-8"))
+            for no in ast.walk(arvore):
+                if isinstance(no, ast.FormattedValue) and _SPEC_DECIMAL.search(_especificacao(no)):
+                    achados.append((relativo, ast.unparse(no.value), no.lineno))
+    return achados
+
+
+class GuardaDoSeparadorDecimalTests(unittest.TestCase):
+    """Nenhum `:.Nf}` nem `:.N%}` em `ui/` e `qt/` fora de `formato` (S-910).
+
+    Treze lugares trocavam o ponto pela vírgula à mão, e oito esqueciam -- `conf. mín. 0.93` ao
+    lado de `8,2%` na mesma janela. A régua é uma só: `formato.decimal` e `formato.porcentagem`.
+    """
+
+    def test_ninguem_escreve_o_separador_decimal_a_mao(self) -> None:
+        culpados = [
+            f"{arquivo}:{linha} {{{expressao}:...}}"
+            for arquivo, expressao, linha in _decimais_escritos_a_mao()
+            if (arquivo, expressao) not in EXCECOES_DECIMAL
+        ]
+        self.assertEqual(culpados, [], "use formato.decimal / formato.porcentagem")
+
+    def test_toda_excecao_ainda_existe(self) -> None:
+        """Uma exceção que não acha mais nada é a guarda ficando vácua aos poucos."""
+        presentes = {(arquivo, expressao) for arquivo, expressao, _ in _decimais_escritos_a_mao()}
+        self.assertEqual(sorted(set(EXCECOES_DECIMAL) - presentes), [])
+
+    def test_a_guarda_acha_o_que_procura(self) -> None:
+        amostra = ast.parse('f"{x:.2f} {y:>7.2%} {z:.{casas}f} {w:.0f} {n:,} {p:>6}"')
+        achados = [
+            ast.unparse(no.value)
+            for no in ast.walk(amostra)
+            if isinstance(no, ast.FormattedValue) and _SPEC_DECIMAL.search(_especificacao(no))
+        ]
+        self.assertEqual(sorted(achados), ["w", "x", "y", "z"])
 
 
 class LadoTests(unittest.TestCase):

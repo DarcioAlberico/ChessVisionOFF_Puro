@@ -30,9 +30,11 @@ documento rico é o da Fase 36 ([SPEC_EDITOR.md](SPEC_EDITOR.md)); o estudo é o
 > | S-522 a S-526 | [SPEC_REVISAO_EXTERNA_2.md](SPEC_REVISAO_EXTERNA_2.md) |
 > | S-500 a S-506, S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
 > | S-581 a S-584 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
+> | S-585 a S-598 | [ROADMAP_PDF_COM_PGN.md](ROADMAP_PDF_COM_PGN.md) |
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
 > | S-702, S-710 a S-712, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
+> | S-800 a S-910 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
 
 Cada item tem **Problema** (com arquivo:linha do estado atual), **Solução**, **Critério de aceite**
 e **Testes**. Nome de módulo é sugestão; o que importa é a fronteira de responsabilidade.
@@ -1333,7 +1335,7 @@ a usá-lo -- inclusive os 28 que a declaravam à mão. `run_main` cai para `sys.
 
 **Problema.** A tabela da S-126 dá três classes de falha -- 1 defeito do programa, 2 entrada
 inválida, 3 checkpoint --, e trinta e cinco `return` escreviam o número à mão. Em onze deles o
-número dizia a classe errada: `cvoff-evaluate` e `cvoff-experiment` classificavam "o arquivo de
+número dizia a classe errada: `cvoff-eval` e `cvoff-experiment` classificavam "o arquivo de
 splits que você apontou não existe" como **defeito do programa**; `cvoff-batch`, `cvoff-gallery`,
 `cvoff-field`, `cvoff-provenance` (duas vezes), `cvoff-texto-grade`, `cvoff-texto-ordem` e
 `cvoff-texto-placar` faziam o mesmo com o caminho vazio ou ausente; e `cvoff-infer` devolvia 1

@@ -284,22 +284,21 @@ class TrilhoDoLivro(QWidget):
         return dict(self._marcas)
 
     def _ir_para_a_primeira_duvidosa(self) -> None:
-        alvo = primeira_duvidosa([self._marcas[p] for p in sorted(self._marcas)])
-        if alvo is not None:
-            self.pagina_pedida.emit(alvo)
-            self.marcar_pagina_atual(alvo)
+        self._ir_para(primeira_duvidosa(self._marcas_em_ordem()))
 
     def ir_para_a_proxima_duvidosa(self) -> int | None:
         """A duvidosa depois da página atual (passo C8); devolve a página, ou `None`."""
-        alvo = proxima_duvidosa([self._marcas[p] for p in sorted(self._marcas)], self.lista.currentRow())
-        if alvo is not None:
-            self.pagina_pedida.emit(alvo)
-            self.marcar_pagina_atual(alvo)
-        return alvo
+        return self._ir_para(proxima_duvidosa(self._marcas_em_ordem(), self.lista.currentRow()))
 
     def ir_para_a_anterior_duvidosa(self) -> int | None:
         """A duvidosa antes da página atual (passo C8); devolve a página, ou `None`."""
-        alvo = anterior_duvidosa([self._marcas[p] for p in sorted(self._marcas)], self.lista.currentRow())
+        return self._ir_para(anterior_duvidosa(self._marcas_em_ordem(), self.lista.currentRow()))
+
+    def _marcas_em_ordem(self) -> list[MarcaDaPagina]:
+        return [self._marcas[p] for p in sorted(self._marcas)]
+
+    def _ir_para(self, alvo: int | None) -> int | None:
+        """Pede a página `alvo` e a marca como a atual; `None` (não há duvidosa) não sai do lugar (S-864)."""
         if alvo is not None:
             self.pagina_pedida.emit(alvo)
             self.marcar_pagina_atual(alvo)

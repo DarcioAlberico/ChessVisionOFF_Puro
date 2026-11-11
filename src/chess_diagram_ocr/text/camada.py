@@ -61,6 +61,8 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 
+from . import admissao
+
 __all__ = [
     "CASAMENTO_MINIMO",
     "COBERTURA_MINIMA",
@@ -70,6 +72,7 @@ __all__ = [
     "Trecho",
     "cobertura",
     "documento_registra",
+    "identidade_do_documento",
     "linhas_com",
     "marcar",
     "remapear",
@@ -104,15 +107,32 @@ acaso. Abaixo do meio, os intervalos saem vazios e quem desenha volta ao campo d
 comportamento de antes -- degradar para o que já existia é melhor que pintar palpite."""
 
 
+def _erros_do_pdf() -> tuple[type[Exception], ...]:
+    """`pdf_text.ERROS_DO_PDF`, importado na hora em que um deles chega: o PyMuPDF não entra no topo de `text/`."""
+    from ..pdf_text import ERROS_DO_PDF
+
+    return ERROS_DO_PDF
+
+
+def _dicionario(page: object) -> dict | None:
+    """O `get_text("dict")` da folha, ou `None` quando ela não se deixa ler (S-856: só o erro do PDF)."""
+    try:
+        dicionario: dict = page.get_text("dict")  # type: ignore[attr-defined]
+    except _erros_do_pdf():
+        return None
+    return dicionario
+
+
 def spans_com(page: object, e_do_estilo: Callable[[dict], bool]) -> list[Retangulo]:
     """Os retângulos daquele estilo na página, em **pontos do PDF**. Vazio quando não há nenhum.
 
     Pontos e não pixels, como todo bbox da `PaginaLida`: quem converte é quem tem o DPI.
     """
-    try:
-        dicionario = page.get_text("dict")  # type: ignore[attr-defined]
-    except Exception:  # pragma: no cover - página sem camada nenhuma
-        return []
+    dicionario = _dicionario(page)
+    return [] if dicionario is None else _retangulos(dicionario, e_do_estilo)
+
+
+def _retangulos(dicionario: dict, e_do_estilo: Callable[[dict], bool]) -> list[Retangulo]:
     saida: list[Retangulo] = []
     for bloco in dicionario.get("blocks", []):
         for linha in bloco.get("lines", []):
@@ -154,9 +174,8 @@ def linhas_com(page: object, e_do_estilo: Callable[[dict], bool]) -> list[LinhaD
     devolve texto e serve aos intervalos. Os dois leem o mesmo `get_text("dict")`, e por isso a
     mesma página responde a mesma coisa às duas perguntas.
     """
-    try:
-        dicionario = page.get_text("dict")  # type: ignore[attr-defined]
-    except Exception:  # pragma: no cover - página sem camada nenhuma
+    dicionario = _dicionario(page)
+    if dicionario is None:
         return []
     saida: list[LinhaDeCamada] = []
     for bloco in dicionario.get("blocks", []):
@@ -193,12 +212,13 @@ def camada_tipografica(page: object) -> bool:
     """A camada desta folha é a **tipografia** de quem editou o livro, e não o palpite de outro OCR?
 
     Por folha, e não por livro, porque a pergunta é feita na leitura de uma folha só e o acervo tem
-    os dois casos no mesmo livro (a capa digitalizada do editorado). Duas marcas de OCR, as de
-    `camada_de_ocr`: a fonte invisível (`GlyphLessFont`, do Tesseract e afins) e a folha que é uma
-    imagem só com texto por cima. Sem texto nenhum, não há camada a ser de alguém.
+    os dois casos no mesmo livro (a capa digitalizada do editorado). Duas marcas de OCR: o que o PDF
+    declara -- produtor, criador e as fontes desta folha, pela regra única da `admissao.procedencia`
+    (S-849) -- e a folha que é uma imagem só com texto por cima. Sem texto nenhum, não há camada a ser
+    de alguém.
     """
     try:
-        if any("glyphless" in str(fonte[3]).lower() for fonte in page.get_fonts(full=True)):  # type: ignore[attr-defined]
+        if admissao.procedencia_da_camada(getattr(page, "parent", None), page).de_ocr:
             return False
         blocos = page.get_text("dict")["blocks"]  # type: ignore[attr-defined]
         area = float(page.rect.width * page.rect.height)  # type: ignore[attr-defined]
@@ -382,8 +402,11 @@ _RESPOSTAS: dict[tuple[str, str, float, int], bool] = {}
 """A resposta de `documento_registra` por (marca, arquivo, mtime, amostra). Ver o docstring dela."""
 
 
-def _identidade(doc: object) -> tuple[str, float] | None:
+def identidade_do_documento(doc: object) -> tuple[str, float] | None:
     """`(caminho, mtime)` do PDF, ou `None` quando ele não tem identidade estável no disco.
+
+    É a chave de toda memória por livro de `text/`: esta, e o perfil de `camada_prosa.perfil_em_memoria`
+    (S-850), que usava `id(doc)` e deu ao livro B o perfil do livro A.
 
     `PdfSource` aceita `bytes` e um documento já aberto, e nesses casos `doc.name` é vazio: um
     cache chaveado por nome vazio devolveria a resposta de **outro** documento. Sem identidade,
@@ -423,7 +446,7 @@ def documento_registra(
     duas funções diferentes com o mesmo comportamento não têm chave comum. Sem `marca`, não há
     cache -- é o padrão, para que nenhum chamador ganhe memória sem pedir.
     """
-    identidade = _identidade(doc) if marca else None
+    identidade = identidade_do_documento(doc) if marca else None
     if identidade is not None:
         chave = (marca, identidade[0], identidade[1], amostra)
         guardada = _RESPOSTAS.get(chave)
@@ -431,20 +454,28 @@ def documento_registra(
             return guardada
     try:
         total = int(doc.page_count)  # type: ignore[attr-defined]
-    except Exception:  # pragma: no cover
+    except _erros_do_pdf():  # pragma: no cover - documento fechado
         return False
     if total <= 0:
         return False
     passos = max(1, total // (amostra + 1))
     resposta = False
+    lidas = 0
     for indice in range(passos, total, passos):
         try:
-            if spans_com(doc[indice], e_do_estilo):  # type: ignore[index]
-                resposta = True
-                break
-        except Exception:  # pragma: no cover - página ilegível
+            pagina = doc[indice]  # type: ignore[index]
+        except _erros_do_pdf():
             continue
-    if identidade is not None:
+        dicionario = _dicionario(pagina)
+        if dicionario is None:
+            continue
+        lidas += 1
+        if _retangulos(dicionario, e_do_estilo):
+            resposta = True
+            break
+    # **O `False` de uma amostra em que nenhuma folha se deixou ler veio da exceção, e não do livro**
+    # (S-856): memorizado, ele calava o estilo do livro inteiro até o processo acabar. Não entra.
+    if identidade is not None and lidas:
         _RESPOSTAS[(marca, identidade[0], identidade[1], amostra)] = resposta
     return resposta
 

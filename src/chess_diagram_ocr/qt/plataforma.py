@@ -18,6 +18,8 @@ O que sobra deste lado, então, é o que o Qt **não** faz sozinho:
    defeito da S-148, com outro desenho.
 2. *A escala de arredondamento.* Em 125% e 150% o Qt precisa saber o que fazer com a fração; o
    padrão dele arredonda, e o que a janela quer é a densidade real. Ver `PoliticaDeEscala`.
+3. *A borda de exceção* (S-800). Em PyQt6 a exceção que escapa de um slot é `qFatal`, e o
+   processo some sem uma linha de log. Ver `instalar_borda`.
 
 **O gerador do `.ico` continua sendo o de `ui/plataforma.py`**, e é de propósito: ele compõe o
 cavalo sobre a esteira com o Pillow, não toca `tkinter` numa linha, e é o arquivo em disco que o
@@ -32,9 +34,11 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
+from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QWidget
 
@@ -46,11 +50,14 @@ __all__ = [
     "CAMINHO_DO_ICONE",
     "DPI_DE_REFERENCIA",
     "ENV_ALTO_CONTRASTE",
+    "FRASE_DA_BORDA",
     "ID_NA_BARRA_DE_TAREFAS",
+    "Borda",
     "Preparo",
     "alto_contraste_ativo",
     "aplicar_icone",
     "identificar_na_barra_de_tarefas",
+    "instalar_borda",
     "monitores",
     "politica_de_escala",
     "preparar_janela",
@@ -103,6 +110,47 @@ def politica_de_escala() -> None:
     diagnosticar um problema de escala sem editar código.
     """
     os.environ.setdefault("QT_SCALE_FACTOR_ROUNDING_POLICY", "PassThrough")
+
+
+FRASE_DA_BORDA = "Erro inesperado: o programa segue, e o detalhe foi para o arquivo de log."
+"""O que o rodapé diz quando uma exceção escapou de todo tratamento (S-800). "Erro" é marca de
+severidade `ERRO` em `ui/estado_do_rodape`, e a frase fica na tela até a próxima."""
+
+
+class Borda(QObject):
+    """O último lugar por onde passa a exceção que ninguém tratou (S-800).
+
+    `frase` sai de qualquer thread, e quem a liga a um widget a recebe pela linha de eventos: o
+    Qt enfileira o sinal para a thread do receptor, e widget tocado de outra thread derruba o Qt.
+    """
+
+    frase = pyqtSignal(str)
+
+    def registrar(self, valor: BaseException | None) -> None:
+        logger.critical(
+            "Exceção que nada tratou, na thread %s.", threading.current_thread().name, exc_info=valor
+        )
+        self.frase.emit(FRASE_DA_BORDA)
+
+    def do_processo(self, _tipo: object, valor: BaseException | None, _rastro: object) -> None:
+        self.registrar(valor)
+
+    def da_thread(self, args: threading.ExceptHookArgs) -> None:
+        if args.exc_type is not SystemExit:  # o padrão do `threading` também cala o `SystemExit`
+            self.registrar(args.exc_value)
+
+
+def instalar_borda() -> Borda:
+    """Troca `sys.excepthook` e `threading.excepthook` pela `Borda`. **Antes da `QApplication`.**
+
+    É o que tira a exceção de slot do `qFatal`: o PyQt6 só derruba o processo quando o gancho é o
+    padrão. A defesa estava posta slot por slot (`qt/atalhos.py`, `qt/dica.py`), e os
+    `eventFilter` sem `try` de seis módulos ficavam de fora; aqui ela fica na raiz.
+    """
+    borda = Borda()
+    sys.excepthook = borda.do_processo
+    threading.excepthook = borda.da_thread
+    return borda
 
 
 def identificar_na_barra_de_tarefas(identificador: str = ID_NA_BARRA_DE_TAREFAS) -> bool:

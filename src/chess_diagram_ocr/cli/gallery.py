@@ -30,7 +30,7 @@ from ..gallery import (
     write_human_extract,
 )
 from ..logging_setup import configure_logging, default_log_file
-from . import EXIT_BAD_INPUT, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, add_gallery_dir_argument, add_verbose, cli_errors, fronteira
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +43,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "com `cvoff-games --apply`."
         ),
     )
-    parser.add_argument(
-        "--gallery-dir", type=Path, default=DEFAULT_GALLERY_DIR, help="Pasta dos índices da Galeria."
-    )
+    add_gallery_dir_argument(parser, DEFAULT_GALLERY_DIR)
     parser.add_argument("--extract", type=Path, default=DEFAULT_HUMAN_EXTRACT, help="O .jsonl do extrato.")
     grupo = parser.add_mutually_exclusive_group(required=True)
     grupo.add_argument("--export-human", action="store_true", help="Galeria -> extrato.")
@@ -64,7 +62,7 @@ def _census(extrato: HumanExtract) -> None:
     escolhas = sum(1 for registro in registros if registro.get("chosen_game"))
     vezes = sum(1 for registro in registros if registro.get("side_to_move"))
     lances = sum(1 for registro in registros if registro.get("move_number"))
-    headers = sum(len(registro.get("headers") or {}) for registro in registros)  # type: ignore[arg-type]
+    headers = sum(len(registro.get("headers") or {}) for registro in registros)
 
     print(f"  Diagramas com algo humano ...... {len(registros)} em {extrato.books} livro(s)")
     print(f"    partida escolhida a mão ...... {escolhas}")
@@ -89,7 +87,8 @@ def main(argv: list[str] | None = None) -> int:
     configure_logging(verbose=args.verbose, log_file=default_log_file())
 
     if args.import_human:
-        registros = read_human_extract(args.extract)
+        with fronteira(f"--extract {args.extract}"):
+            registros = read_human_extract(args.extract)
         if not registros:
             print(f"Extrato vazio ou inexistente: {args.extract}")
             return EXIT_BAD_INPUT

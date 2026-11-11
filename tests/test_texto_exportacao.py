@@ -141,16 +141,6 @@ class TodosSaemDoMesmoDocumentoTests(unittest.TestCase):
                 segunda = exportacao.exportar(doc, formato).conteudo
                 self.assertEqual(primeira, segunda)
 
-    def test_o_modulo_nao_importa_tkinter(self) -> None:
-        arvore = ast.parse(MODULO.read_text(encoding="utf-8"))
-        importados: set[str] = set()
-        for no in ast.walk(arvore):
-            if isinstance(no, ast.Import):
-                importados.update(alias.name.split(".")[0] for alias in no.names)
-            elif isinstance(no, ast.ImportFrom) and no.module:
-                importados.add(no.module.split(".")[0])
-        self.assertNotIn("tkinter", importados)
-
 
 class PerdaExplicitaTests(unittest.TestCase):
     def test_cada_formato_declara_o_que_perde(self) -> None:
@@ -338,6 +328,26 @@ class FormatoDesconhecidoTests(unittest.TestCase):
     def test_extensao_que_ninguem_escreveu_levanta(self) -> None:
         with self.assertRaises(KeyError):
             exportacao.formato_de(".docx")
+
+
+class MarkdownEscapaTests(unittest.TestCase):
+    """S-877: o `.md` não pode ler como marcação o que o livro imprimiu como texto."""
+
+    def test_markdown_escapa_marcacao_em_inicio_de_linha(self) -> None:
+        doc = rico.de_texto("1. e4 e5 é a abertura\n2) Nf3 *forte* e_mais")
+        saida = exportacao.exportar(doc, exportacao.Markdown()).conteudo
+        self.assertIn("1\\. e4 e5 é a abertura", saida)
+        self.assertIn("2\\) Nf3 \\*forte\\* e\\_mais", saida)
+
+    def test_o_lance_colado_ao_numero_nao_e_lista(self) -> None:
+        """`1.e4` sem espaço não abre lista no CommonMark, e escapar ali só sujaria o diff."""
+        saida = exportacao.exportar(rico.de_texto("1.e4 e5 2.Nf3"), exportacao.Markdown()).conteudo
+        self.assertIn("1.e4 e5 2.Nf3", saida)
+
+    def test_a_enfase_de_verdade_continua_marcacao(self) -> None:
+        doc = rico.alternar(rico.de_texto("negrito com * solto"), 0, 7, "negrito")
+        saida = exportacao.exportar(doc, exportacao.Markdown()).conteudo
+        self.assertIn("**negrito** com \\* solto", saida)
 
 
 if __name__ == "__main__":  # pragma: no cover

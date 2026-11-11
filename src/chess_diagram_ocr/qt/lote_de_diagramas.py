@@ -46,9 +46,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from chess_diagram_ocr.config import DEFAULT_PDF_DIR
 from chess_diagram_ocr.diagramas_em_lote import RelatorioDoLote, bytes_do_item, frase_do_relatorio, gravar_lote
 from chess_diagram_ocr.qt import tema
-from chess_diagram_ocr.qt.trabalho import Tarefa
+from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva, slot_se_vivo
 from chess_diagram_ocr.ui import conjuntos, estilos
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.lote_de_diagramas import (
@@ -121,10 +122,10 @@ class ExportacaoDoLote(QObject):
         def _trabalho() -> RelatorioDoLote:
             return gravar_lote(lote, escolhas, destino, cancelar=cancelar, progresso=self._relatar)
 
-        tarefa = Tarefa(_trabalho, parent=self, nome="lote de diagramas")
-        tarefa.pronto.connect(self._pronto)
-        tarefa.falhou.connect(self._deu_errado)
-        tarefa.finished.connect(self._acabou)
+        tarefa = manter_viva(Tarefa(_trabalho, nome="lote de diagramas"))
+        tarefa.pronto.connect(slot_se_vivo(self, self._pronto))
+        tarefa.falhou.connect(slot_se_vivo(self, self._deu_errado))
+        tarefa.finished.connect(slot_se_vivo(self, self._acabou))
         self._registrar_ocupado(len(lote))
         self._tarefa = tarefa
         tarefa.start()
@@ -231,7 +232,7 @@ class DialogoDoLote(QDialog):
         super().__init__(parent)
         self.itens = tuple(itens)
         self.exportacao = exportacao or ExportacaoDoLote(self)
-        self._pasta = Path(pasta) if pasta is not None else Path.cwd()
+        self._pasta = Path(pasta) if pasta is not None else DEFAULT_PDF_DIR
         self._recado = ""
         """A frase de fim ou de falha, guardada e não escrita direto: o `finished` da tarefa chega
         depois e redesenharia por cima. É a regra de `DialogoDaFila._parada`."""

@@ -46,11 +46,10 @@ from ..atomic_io import atomic_write_text
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import semelhanca as _sem
-from . import EXIT_BAD_INPUT, EXIT_OK, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, EXIT_OK, add_base_de_caractere_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
-BASE_PADRAO = PROJECT_ROOT / "training_data"
 DESTINO_PADRAO = PROJECT_ROOT / "docs" / "metrics" / "texto_semelhanca.json"
 
 AMOSTRAS = 3000
@@ -157,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="cvoff-texto-semelhanca",
         description="Mede a precisão e a cobertura de 'aplicar a todos os semelhantes' (S-213).",
     )
-    parser.add_argument("--base", type=Path, default=BASE_PADRAO, help="Pasta de classes rotuladas.")
+    add_base_de_caractere_argument(parser)
     parser.add_argument("--amostras", type=int, default=AMOSTRAS, help=f"Recortes na amostra. Padrão: {AMOSTRAS}.")
     parser.add_argument("--semente", type=int, default=SEMENTE, help=f"Semente do sorteio. Padrão: {SEMENTE}.")
     parser.add_argument("--json", type=Path, default=DESTINO_PADRAO, help="Onde gravar a tabela.")

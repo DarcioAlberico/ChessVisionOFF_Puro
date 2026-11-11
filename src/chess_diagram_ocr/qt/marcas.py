@@ -143,7 +143,7 @@ def amostras_de_treino_guardadas(csv: Path, splits: Path) -> dict[tuple[str, int
 def _guardar_treino(chave: object, paginas: object) -> None:
     global _TREINO
     if isinstance(chave, tuple) and isinstance(paginas, dict):
-        _TREINO = (chave, paginas)  # type: ignore[assignment]
+        _TREINO = (chave, paginas)
 
 
 def ler_marcas_e_treino(

@@ -11,6 +11,7 @@ import time
 import unittest
 
 import numpy as np
+from tempo_da_suite import limite
 
 from chess_diagram_ocr import alinhamento
 from chess_diagram_ocr.alinhamento import Encaixe, encaixe_do_damero
@@ -93,7 +94,7 @@ class EncaixeTests(unittest.TestCase):
         imagem = _damero(5, 5, pecas=True)
         inicio = time.perf_counter()
         encaixe_do_damero(imagem)
-        self.assertLess(time.perf_counter() - inicio, 1.0)
+        self.assertLess(time.perf_counter() - inicio, limite(1.0))
 
 
 if __name__ == "__main__":  # pragma: no cover

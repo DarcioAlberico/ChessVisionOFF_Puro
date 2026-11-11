@@ -37,6 +37,7 @@ from qt_app import MOTIVO, TEM_PYQT, aplicacao
 
 from chess_diagram_ocr.service import RecognizedDiagram
 from chess_diagram_ocr.ui import board_edit
+from chess_diagram_ocr.ui.ancora_da_tela import AncoraDaTela
 from chess_diagram_ocr.ui.editor_model import EditorBinding
 
 if TEM_PYQT:
@@ -235,7 +236,7 @@ class VinculoTests(unittest.TestCase):
     def test_a_pagina_lida_vincula_por_pagina(self) -> None:
         """`Ctrl+S` numa página de PDF grava **amostra nova**; o vínculo é quem diz isso."""
         self.janela._pdf = Path("livro.pdf")
-        self.janela._chegaram_itens(0, [diagrama()], None)
+        self.janela._chegaram_itens(AncoraDaTela.de(self.janela._pdf, 0), [diagrama()], None)
         self.assertIs(self.janela.editor.binding, EditorBinding.PAGE)
         self.assertIsNone(self.janela.editor.editing_sample)
         self.assertIsNone(self.janela.editor.review_position)
@@ -246,7 +247,7 @@ class VinculoTests(unittest.TestCase):
         # resultado que chega depois de a pessoa virar a página, e é isso que impede a amostra
         # de ser gravada com a origem da página errada.
         self.janela.pdf._page_index = 3
-        self.janela._chegaram_itens(3, [diagrama()], None)
+        self.janela._chegaram_itens(AncoraDaTela.de(self.janela._pdf, 3), [diagrama()], None)
         origem = self.janela.editor.origin
         self.assertIsNotNone(origem)
         self.assertEqual(origem.page_index, 3)
@@ -255,7 +256,7 @@ class VinculoTests(unittest.TestCase):
         """O outro lado do mesmo guard, e é ele que protege a procedência da amostra."""
         self.janela._pdf = Path("livro.pdf")
         self.janela.pdf._page_index = 0
-        self.janela._chegaram_itens(7, [diagrama()], None)
+        self.janela._chegaram_itens(AncoraDaTela.de(self.janela._pdf, 7), [diagrama()], None)
         self.assertIsNone(self.janela.editor.origin)
         self.assertIn("já está em outra", self.janela.rodape.mensagem())
 

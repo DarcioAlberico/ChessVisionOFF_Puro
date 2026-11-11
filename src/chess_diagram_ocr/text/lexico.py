@@ -56,6 +56,7 @@ from __future__ import annotations
 import gzip
 import logging
 import re
+import unicodedata
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
@@ -126,7 +127,7 @@ def carregar(
     *,
     caminho: Path | None = None,
 ) -> frozenset[str]:
-    """As palavras do léxico, dobradas para minúscula. Vazio quando não há arquivo nenhum.
+    """As palavras do léxico, dobradas por `chave_do_lexico`. Vazio quando não há arquivo nenhum.
 
     Sem argumento é o perfil `completo` -- acervo, idioma e nomes unidos. `caminho` lê **aquele
     arquivo e só ele**, que é como a medição compara uma lista contra outra.
@@ -146,18 +147,29 @@ def carregar(
     return frozenset().union(*(_de_um_arquivo(c) for c in arquivos))
 
 
+def chave_do_lexico(palavra: str) -> str:
+    """A forma em que o léxico guarda e confere uma palavra: `NFC`, e depois `casefold` (S-903).
+
+    **Quem grava e quem confere têm de dobrar igual**, e eram duas dobras: o léxico do livro gravava
+    com `lower` e `conhecida` conferia com `casefold`, então `Großmeister` acrescentado continuava
+    marcado (`großmeister` contra `grossmeister`). O `NFC` vem antes porque a camada de um PDF pode
+    vir decomposta -- `e` e o acento combinante -- e aí `café` não casava com `café`.
+    """
+    return unicodedata.normalize("NFC", palavra).casefold()
+
+
 def _de_um_arquivo(caminho: Path) -> frozenset[str]:
     """Um `.txt.gz` de uma palavra por linha, ou o conjunto vazio se ele não estiver lá."""
     try:
         with gzip.open(caminho, "rt", encoding="utf-8") as fh:
-            return frozenset(linha.strip().casefold() for linha in fh if linha.strip())
+            return frozenset(chave_do_lexico(linha.strip()) for linha in fh if linha.strip())
     except OSError:
         return frozenset()
 
 
 def conhecida(palavra: str, lexico: frozenset[str]) -> bool:
     """A palavra está no léxico, ignorando caixa? Pontuação nas pontas não é considerada."""
-    return palavra.strip(PONTUACAO_DE_BORDA).casefold() in lexico
+    return chave_do_lexico(palavra.strip(PONTUACAO_DE_BORDA)) in lexico
 
 
 def e_palavra(texto: str) -> bool:

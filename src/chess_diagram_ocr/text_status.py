@@ -120,11 +120,12 @@ MANIFESTO: tuple[Item, ...] = (
          ("simbolo:chess_diagram_ocr.text.negativo:candidatos",)),
     Item("S-196", 28, "A trama de meio-tom",
          ("simbolo:chess_diagram_ocr.text.trama:candidatos",)),
-    # As sondas de código estão atendidas; a métrica só existe com o classificador de verdade --
-    # a tabela dos quatro ângulos precisa de um árbitro, e o árbitro são os pesos que faltam.
+    # A métrica só existe com o classificador de verdade -- a tabela dos quatro ângulos precisa de
+    # um árbitro. A decisão de ângulo mora no comando que a mede desde a S-855 (D3 da solidez): na
+    # página ela nunca foi ligada, e a geometria que propunha a pilha saiu sem chamador.
     Item("S-197", 28, "O texto girado, que hoje sairia errado em silêncio",
-         ("simbolo:chess_diagram_ocr.text.vertical:candidatos",
-          "simbolo:chess_diagram_ocr.text.vertical:recorte_de_pe",
+         ("simbolo:chess_diagram_ocr.cli.texto_vertical:decidir_angulo",
+          "simbolo:chess_diagram_ocr.cli.texto_vertical:girar",
           "metrica:texto_vertical")),
     Item("S-198", 28, "O box que engoliu duas linhas",
          ("simbolo:chess_diagram_ocr.text.duas_linhas:partir", "metrica:texto_duas_linhas")),
@@ -338,6 +339,17 @@ class Resultado:
     def simbolo(self, *, ascii_puro: bool = False) -> str:
         tabela = SIMBOLO_ASCII if ascii_puro else SIMBOLO_DE_ESTADO
         return tabela[self.estado]
+
+
+def so_falta_artefato(resultado: Resultado) -> bool:
+    """O item diverge porque falta um **arquivo** do disco, e não código (S-327, S-831).
+
+    As sondas `arquivo:` apontam, em parte, para o que o `.gitignore` deixa fora -- os
+    `models/*.pt`, o `data/` --, e num clone limpo elas respondem "não" sobre um item entregue.
+    `tests/test_text_status.py` pula essa divergência, e o comando a mostra à parte: dizer que o
+    teste falha por ela era dizer o que ele não faz.
+    """
+    return any(sonda.startswith("arquivo:") for sonda in resultado.faltando)
 
 
 def verificar(raiz: Path = RAIZ, *, fase: int | None = None) -> list[Resultado]:

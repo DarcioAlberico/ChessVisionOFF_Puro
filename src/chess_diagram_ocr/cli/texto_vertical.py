@@ -7,6 +7,31 @@
 decide o ângulo, e até 2026-08-23 não havia classificador nesta máquina para decidir coisa
 alguma: a tabela que faltava era a única parte da S-197 que dependia dos pesos.
 
+**A decisão de ângulo mora aqui, e não em `text/`** (S-855, decisão D3 da solidez). A S-197 a
+escreveu para a página, num `text/vertical.py`, e ela nunca foi ligada: o ângulo da caixa era
+sempre 0 em produção, e o único chamador era este comando. O módulo veio para cá com o que a
+medição usa -- `endireitar`, `girar`, `confianca_media` e `decidir_angulo` --, e a geometria que
+propunha a pilha (`candidatos`, `marcar`) e o ramo girado do corte de linha saíram, sem chamador.
+Para ligá-la na página um dia, a S-197 inteira está no histórico:
+`git log --diff-filter=D -- src/chess_diagram_ocr/text/vertical.py` acha o commit que a tirou.
+
+## O ângulo é do texto, não do recorte
+
+São graus **anti-horários do texto impresso**, a convenção do PDF:
+
+    0    texto normal
+    90   o texto sobe (lê-se de baixo para cima); o glifo saiu girado 90° AH
+    270  o texto desce (lê-se de cima para baixo); o glifo saiu girado 90° H
+
+Quem classifica não quer o recorte como está na página, quer o glifo **de pé** -- `endireitar`
+faz essa volta num lugar só, para ninguém ter de refazer o raciocínio do sinal. E **girar por
+múltiplo de 90° é transposição**, não reamostragem: medido, os mesmos 9.987 caracteres que o
+modelo acerta de pé voltam a ser acertados depois de ir e voltar, um a um.
+
+O classificador no recorte de pé acerta 94,2%, e no mesmo recorte girado 90°, 8,4% (10.606
+caracteres rotulados no projeto de origem): não é falhar, é responder outra letra com a confiança
+de sempre. É essa a distância que a tabela mede.
+
 ## O que se mede, e por que a linha girada é simulada
 
 O acervo é de texto de pé. Anotar rótulos girados à mão daria dezenas de amostras, e uma régua
@@ -22,9 +47,16 @@ byte a byte, e a resposta certa vem de graça ao lado da leitura.
 | decisão de produção | `decidir_angulo` -- só 0, 90 e 270, e o vencedor supera o de pé por `MARGEM` |
 
 A primeira é a do projeto de origem (99,7% em 1.312 linhas simuladas) e mede o **classificador**.
-A segunda mede o que a S-197 de fato faz, com as duas decisões que ela tomou de propósito: 180°
-não é candidato, e na dúvida não se mexe. Publicar só a primeira diria que o módulo acerta o que
-ele nem tenta.
+A segunda mede a regra que a S-197 escreveu para a página, com as duas decisões que ela tomou de
+propósito: 180° não é candidato, e na dúvida não se mexe. Publicar só a primeira diria que a regra
+acerta o que ela nem tenta. O nome `decisao_de_producao` fica no relatório porque o `--baseline`
+compara com os arquivados.
+
+## 180° não é candidato
+
+Livro impresso não traz linha de cabeça para baixo, e cada ângulo a mais é uma chance a mais de
+virar uma pilha curta pelo lado errado. A medição mostra que o classificador *saberia* separar
+180° (99,7% também); ele não entra por não existir no material, e não por não dar.
 
 ## A linha é de texto porque o PDF diz, e não porque o modelo gostou dela
 
@@ -46,39 +78,140 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from ..atomic_io import atomic_write_json
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import DEFAULT_DPI, PROJECT_ROOT
 from ..logging_setup import configure_logging
-from ..text import vertical
-from . import EXIT_FAILURE, add_verbose, cli_errors, confere_baseline
+from ..text.boxes import Caixa
+from . import (
+    EXIT_FAILURE,
+    EntradaInvalida,
+    add_amostra_do_acervo,
+    add_baseline_argument,
+    add_pesos_de_caractere_argument,
+    add_verbose,
+    cli_errors,
+    confere_baseline,
+    fronteira,
+)
 
 logger = logging.getLogger(__name__)
 
 SAIDA_PADRAO = PROJECT_ROOT / "docs" / "metrics" / "texto_vertical.json"
 
-DPI = 220.0
+DPI = float(DEFAULT_DPI)
 """O mesmo da varredura de produção e o mesmo do `cvoff-texto-ordem`."""
 
 ANGULOS_IMPRESSOS = (0, 90, 180, 270)
-"""Os quatro do papel. `vertical.ANGULOS` são os dois que a produção tenta -- ver as duas réguas.
+"""Os quatro do papel. `ANGULOS` são os dois que `decidir_angulo` tenta -- ver as duas réguas.
 
 180° está aqui **porque não é candidato lá**: a linha dele diz o preço daquela decisão em vez de
 escondê-lo, e livro impresso não traz linha de cabeça para baixo."""
 
-MARGEM_DA_PRODUCAO = vertical.MARGEM
-"""A margem que `decidir_angulo` exige, lida de onde ela mora. Ver `folga_contra_o_de_pe`."""
+ANGULOS = (90, 270)
+"""Os ângulos que `decidir_angulo` reconhece. Ver "180° não é candidato" no cabeçalho."""
+
+MARGEM = 0.05
+"""Quanto a confiança média no ângulo escolhido precisa superar a do texto de pé.
+
+A mediana da folga medida é 0,074; este valor é conservador de propósito -- **na dúvida, não
+mexer**, porque mexer em texto de pé para acertar o raro é o defeito que a regra evita. Ver
+`folga_contra_o_de_pe` no relatório."""
 
 MIN_CAIXAS = 5
-"""O mesmo `vertical.MIN_ITENS`: abaixo disso a média da confiança é ruído."""
+"""Abaixo disso a média da confiança é ruído: com quatro, uma coluna de peças dentro do diagrama
+passava por pilha (medido em 81 páginas na S-197)."""
 
 PIORA_TOLERADA = 0.02
 """Quanto o acerto pode cair contra o `--baseline` antes de o comando falhar."""
+
+
+_VOLTAS_POR_ANGULO = {90: -1, 180: 2, 270: 1}
+"""Ângulo do texto -> giros de 90° (anti-horários, `np.rot90`) que o endireitam."""
+
+
+def _voltas(angulo: int) -> int:
+    """Quantos giros anti-horários de 90° desfazem `angulo`."""
+    return _VOLTAS_POR_ANGULO.get(angulo % 360, 0)
+
+
+def endireitar(recorte: np.ndarray, angulo: int) -> np.ndarray:
+    """O recorte com o glifo de pé, pronto para o classificador.
+
+    Devolve array **contíguo**: `np.rot90` devolve uma vista de passo negativo, e o OpenCV recusa
+    isso mais adiante no caminho.
+    """
+    voltas = _voltas(angulo)
+    if voltas == 0:
+        return recorte
+    return np.ascontiguousarray(np.rot90(recorte, voltas))
+
+
+def girar(imagem: np.ndarray, caixas: Sequence[Caixa], angulo: int) -> tuple[np.ndarray, list[Caixa]]:
+    """A página como se o texto dela tivesse sido impresso em `angulo`. **O avesso de `endireitar`.**
+
+    A tabela dos quatro ângulos precisa de linhas giradas, e o acervo só tem linhas de pé. Girar o
+    que já se conhece é o único jeito de ter a resposta certa ao lado da leitura.
+
+    Gira a imagem **e** as caixas, para que `caixa.recortar` continue pegando o mesmo glifo. É
+    transposição, como `endireitar`: nenhum pixel é reamostrado, e por isso a ida e a volta fecham
+    byte a byte. A caixa não carrega o ângulo: quem lê diz em que ângulo lê, e uma simulação que já
+    entregasse a resposta mediria outra coisa.
+    """
+    voltas = -_voltas(angulo)
+    if voltas == 0:
+        return imagem, list(caixas)
+
+    altura, largura = imagem.shape[:2]
+    virada = np.ascontiguousarray(np.rot90(imagem, voltas))
+
+    if voltas % 4 == 1:  # anti-horário: (x, y) -> (y, largura - 1 - x)
+        novas = [Caixa(c.y1, largura - c.x2, c.y2, largura - c.x1) for c in caixas]
+    elif voltas % 4 == 2:
+        novas = [Caixa(largura - c.x2, altura - c.y2, largura - c.x1, altura - c.y1) for c in caixas]
+    else:  # horário: (x, y) -> (altura - 1 - y, x)
+        novas = [Caixa(altura - c.y2, c.x1, altura - c.y1, c.x2) for c in caixas]
+    return virada, novas
+
+
+Arbitro = Callable[[list[np.ndarray]], list[float]]
+"""Recebe recortes já de pé e devolve a confiança de cada um. É o classificador da S-179, por
+`arbitro_de`; os testes passam um travado, que é o que permite afirmar *por que* um ângulo venceu."""
+
+
+def confianca_media(imagem: np.ndarray, pilha: Sequence[Caixa], angulo: int, arbitro: Arbitro) -> float:
+    """A confiança média da pilha inteira, lida no ângulo dado -- e não a da primeira caixa."""
+    recortes = [endireitar(c.recortar(imagem), angulo) for c in pilha]
+    recortes = [r for r in recortes if r.size]
+    if not recortes:
+        return 0.0
+    confiancas = arbitro(recortes)
+    return float(sum(confiancas) / len(confiancas)) if confiancas else 0.0
+
+
+def decidir_angulo(imagem: np.ndarray, pilha: Sequence[Caixa], arbitro: Arbitro | None) -> int:
+    """O ângulo do texto desta pilha. **`0` sempre que não houver árbitro.**
+
+    O vencedor precisa superar o texto de pé por `MARGEM`: na dúvida, não mexer.
+    """
+    if arbitro is None or not pilha:
+        return 0
+
+    de_pe = confianca_media(imagem, pilha, 0, arbitro)
+    melhor_angulo, melhor = 0, de_pe
+    for angulo in ANGULOS:
+        media = confianca_media(imagem, pilha, angulo, arbitro)
+        if media > melhor:
+            melhor_angulo, melhor = angulo, media
+
+    if melhor_angulo == 0 or melhor <= de_pe + MARGEM:
+        return 0
+    return melhor_angulo
 
 
 def _linhas_da_camada(page: Any, escala: float) -> list[tuple[float, float, float, float]]:
@@ -98,7 +231,7 @@ def _dentro(centro: tuple[float, float], retangulos: Sequence[tuple[float, float
 
 def linhas_de_texto(
     cinza: np.ndarray, retangulos: Sequence[tuple[float, float, float, float]]
-) -> list[list[Any]]:
+) -> list[list[Caixa]]:
     """As linhas segmentadas da página que a camada de texto confirma serem texto."""
     from ..text.binarizacao import binarize
     from ..text.boxes import caixas_de_caractere, escala_de_texto, unir_pingos
@@ -121,14 +254,12 @@ def linhas_de_texto(
     return escolhidas
 
 
-def medir_linha(cinza: np.ndarray, linha: Sequence[Any], arbitro: Any) -> dict[str, Any]:
+def medir_linha(cinza: np.ndarray, linha: Sequence[Caixa], arbitro: Arbitro) -> dict[str, Any]:
     """Uma linha lida nos quatro ângulos, depois de impressa em cada um deles.
 
     Devolve a matriz 4x4 de confiança média -- fileira é o ângulo impresso, coluna o ângulo em
     que se leu --, o argmax de cada fileira e o que `decidir_angulo` responderia.
     """
-    from ..text.vertical import confianca_media, decidir_angulo, girar
-
     matriz: list[list[float]] = []
     argmax: list[int] = []
     producao: list[int] = []
@@ -154,8 +285,8 @@ def medir_linha(cinza: np.ndarray, linha: Sequence[Any], arbitro: Any) -> dict[s
     }
 
 
-def arbitro_de(classificador: Any) -> Any:
-    """O `vertical.Arbitro` que empresta o classificador de verdade à decisão de ângulo."""
+def arbitro_de(classificador: Any) -> Arbitro:
+    """O `Arbitro` que empresta o classificador de verdade à decisão de ângulo."""
 
     def ler(recortes: list[np.ndarray]) -> list[float]:
         return [confianca for _, confianca in classificador.classificar(recortes)]
@@ -231,7 +362,7 @@ def medir(pdfs: list[Path], *, por_livro: int, por_pagina: int, classificador: A
         logger.info("%s: %d linha(s).", caminho.name, deste_livro)
 
     if not total:
-        raise ValueError("nenhuma linha de texto medida: os PDFs deste acervo têm camada de texto?")
+        raise EntradaInvalida("nenhuma linha de texto medida: os PDFs deste acervo têm camada de texto?")
 
     return {
         "dpi": DPI,
@@ -259,12 +390,12 @@ def medir(pdfs: list[Path], *, por_livro: int, por_pagina: int, classificador: A
             str(a): {
                 "mediana": float(np.median(folgas[a])),
                 "media": float(np.mean(folgas[a])),
-                "acima_da_margem": int(sum(1 for f in folgas[a] if f > MARGEM_DA_PRODUCAO)),
+                "acima_da_margem": int(sum(1 for f in folgas[a] if f > MARGEM)),
                 "de": len(folgas[a]),
             }
             for a in ANGULOS_IMPRESSOS
         },
-        "margem": MARGEM_DA_PRODUCAO,
+        "margem": MARGEM,
         "confianca_media": {
             str(impresso): {str(lido): float(soma[i, j] / total) for j, lido in enumerate(ANGULOS_IMPRESSOS)}
             for i, impresso in enumerate(ANGULOS_IMPRESSOS)
@@ -278,13 +409,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Mede a tabela dos quatro angulos do texto girado, neste acervo (S-197).",
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
-    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
-    parser.add_argument("--por-livro", type=int, default=3, help="Paginas medidas por livro (padrao 3).")
-    parser.add_argument("--por-pagina", type=int, default=8, help="Linhas medidas por pagina (padrao 8).")
-    parser.add_argument("--limite", "--limit", type=int, help="So os N primeiros livros.")
-    parser.add_argument("--modelo", type=Path, help="Pesos. Padrao: ao lado do char_meta.json.")
-    parser.add_argument("--baseline", type=Path, help="Relatorio anterior: falha se o acerto cair.")
+    add_amostra_do_acervo(parser, saida=SAIDA_PADRAO, por_livro=3, por_pagina=8)
+    add_pesos_de_caractere_argument(parser)
+    add_baseline_argument(parser, help="Relatorio anterior: falha se o acerto cair.")
     add_verbose(parser)
     return parser.parse_args(argv)
 
@@ -329,7 +456,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\nRelatorio em {Path(args.saida)}")
 
     if args.baseline:
-        anterior = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
+        with fronteira(f"--baseline {args.baseline}"):
+            anterior = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
         for angulo in ANGULOS_IMPRESSOS:
             antes = anterior["argmax_da_media"][str(angulo)]["taxa"]
             agora = relatorio["argmax_da_media"][str(angulo)]["taxa"]

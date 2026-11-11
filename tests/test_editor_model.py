@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+import varredura
 
 from chess_diagram_ocr.service import RecognitionOrigin, RecognizedDiagram
 from chess_diagram_ocr.ui.editor_model import DiagramEditorModel, EditorBinding, SaveKind
@@ -143,6 +144,23 @@ class RouteTests(unittest.TestCase):
         model.load([_diagrama()], binding=EditorBinding.NONE)
         self.assertEqual(model.net_corrected, set())
 
+    def test_rota_da_posicao_do_livro(self) -> None:
+        """S-889: a posição adotada do PGN do livro não é «corrigida à mão».
+
+        Ela saía `ocr-corrigido` quando o livro trocava casas e `ocr-aceito` quando confirmava a
+        leitura -- nos dois casos sem toque da pessoa, e o primeiro inflava a rota humana que o
+        treino reforça (`dataset.ROTAS_HUMANAS`).
+        """
+        for posicao in (OUTRO, PLACEMENT):
+            with self.subTest(posicao=posicao):
+                model = DiagramEditorModel()
+                model.load([_diagrama()], binding=EditorBinding.PAGE, page_key=("livro.pdf", 3))
+                model.mark_from_book(0, posicao, "b", note="Chapter 1 · Game 3 · 5.dxc5")
+                self.assertEqual(model.save_target().route, "pgn-do-livro")
+
+        model.load([_diagrama()], binding=EditorBinding.PAGE, page_key=("livro.pdf", 4))
+        self.assertEqual(model.save_target().route, "ocr-aceito", "a marca do livro é por carregamento")
+
     def test_regravar_linha_do_dataset_tem_rota_propria(self) -> None:
         model = DiagramEditorModel()
         model.load([_diagrama()], binding=EditorBinding.SAMPLE, editing_sample="b1.png")
@@ -201,6 +219,29 @@ class EditTests(unittest.TestCase):
         self.assertEqual(model.side_at(0), "b")
         self.assertEqual(model.items[0].side_to_move, "b")
 
+    def test_restaurar_o_estado_lido_desfaz_a_edicao_e_a_procedencia(self) -> None:
+        """S-888: o estado da pilha leva a procedência, e repô-lo não marca edição à mão."""
+        model = DiagramEditorModel()
+        model.load([_diagrama()], binding=EditorBinding.NONE)
+        lido = model.state_at(0)
+        model.mark_second_opinion(0, OUTRO, reader="outro")
+        model.apply_placement(PLACEMENT)
+        model.set_side("b")
+        model.mark_net_corrected(0, OUTRO)
+        self.assertNotEqual(model.state_at(0), lido)
+
+        self.assertTrue(model.restore(lido, 0))
+        self.assertEqual(model.state_at(0), lido)
+        self.assertFalse(model.has_hand_edits)
+        self.assertFalse(model.has_unsaved_hand_edits)
+        self.assertEqual(model.save_target().route, "ocr-aceito")
+        self.assertEqual(model.items[0].side_to_move_source, lido.side_source)
+
+    def test_restaurar_fora_da_faixa_nao_faz_nada(self) -> None:
+        model = DiagramEditorModel()
+        self.assertFalse(model.restore(model.state_at(0), 0))
+        self.assertEqual(model.state_at(3).placement, "")
+
 
 class AdoptTests(unittest.TestCase):
     def test_restaurar_do_cache_mantem_as_listas_por_referencia(self) -> None:
@@ -252,30 +293,6 @@ class AdoptTests(unittest.TestCase):
         self.assertIsNone(model.page_key)
         self.assertIs(model.binding, EditorBinding.NONE)
         self.assertEqual(model.count, 1, "o conteúdo continua editável, só não pertence a página nenhuma")
-
-
-class NoTkinterTests(unittest.TestCase):
-    def test_o_modelo_nao_importa_tkinter(self) -> None:
-        """O critério de aceite literal da S-49, e o que torna estes testes possíveis.
-
-        A varredura é sobre a **árvore de importação** e não sobre o texto: o docstring do
-        módulo cita `import tkinter` para dizer que ele não existe ali, e um `assertNotIn`
-        sobre o texto reprovaria a própria explicação.
-        """
-        import ast
-        from pathlib import Path
-
-        from chess_diagram_ocr.ui import editor_model
-
-        arvore = ast.parse(Path(editor_model.__file__).read_text(encoding="utf-8"))
-        importados: set[str] = set()
-        for node in ast.walk(arvore):
-            if isinstance(node, ast.Import):
-                importados.update(alias.name.split(".")[0] for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                importados.add(node.module.split(".")[0])
-
-        self.assertNotIn("tkinter", importados)
 
 
 if __name__ == "__main__":
@@ -364,6 +381,9 @@ SEM_TKINTER = {
     "analise_da_partida.py": "os cortes de imprecisão/erro/erro grave e onde o gráfico põe cada ply (S-537)",
     "finais.py": "quando perguntar à tabela de finais e o que a resposta dela diz (S-538)",
     "motor_declarado.py": "os tetos das opções do motor, a barra de avaliação e as linhas do MultiPV (S-529/S-536)",
+    "livros.py": "se dois caminhos são o mesmo livro: a chave do livro numa função só (S-827)",
+    "ancora_da_tela.py": "se um resultado que chega depois ainda é da tela: o livro e a página (S-823)",
+    "ocr_que_falta.py": "o que a janela diz ao abrir quando o OCR pedido não subiu (S-884)",
     "biblioteca.py": "o acervo inteiro como uma decisão só: busca, facetas e a janela que se realiza (F9)",
     "configuracoes.py": "a tabela da janela Configurações…: um campo por preferência de settings.Settings, DPI e teto relidos do arquivo",
     "cortina.py": "a cortina de comparação: onde está a divisa entre o antes e o depois (F9)",
@@ -416,10 +436,8 @@ SEM_TKINTER = {
     "recorte_do_diagrama.py": "casa ↔ pixel do recorte, as três leituras da casa e o âmbar por margem (OCR_UI passo 13)",
     "resumo_do_dataset.py": "as colunas, a paginação e os textos da aba Dataset (S-23/S-503)",
     "sala_declarada.py": "a tabela comando->método da sala e as seis medidas (S-280/S-503)",
-    "selecao_de_area.py": "o retângulo vivo sobre a página: alça, arrasto, ajuste fino e grampeamento (F9)",
     "state.py": "o estado da aplicação em disco",
     "strings.py": "o vocabulário da interface (S-04)",
-    "substituicao.py": "o que é uma substituição de diagrama dentro de um PDF, antes do PyMuPDF (F9)",
     "teclado_do_tabuleiro.py": "o que cada tecla faz no tabuleiro e qual é a próxima duvidosa, sem widget (OCR_UI C8)",
     "texto_declarado.py": "a tabela comando->método da aba de texto e o zoom da vista (S-240/S-504)",
     "texto_cores.py": "a paleta do autor e o canal que a confiança não usa (S-242)",
@@ -430,23 +448,26 @@ SEM_TKINTER = {
     "varredura_de_revisao.py": "o pedido de varredura e o acumulador da fila (S-116/S-119/S-503)",
     "viewport.py": "o zoom e a rolagem, como aritmética",
 }
-"""Os módulos de `ui/` que **não** podem importar `tkinter`, e o que cada um é (S-137).
+"""Os módulos de `ui/` que decidem sem janela e sem imagem, e o que cada um é (S-137).
 
 A separação que sustenta toda a testabilidade da interface estava declarada em seis docstrings
-e verificada em **quatro** módulos. A lista é o teste: um módulo novo sem Tk que não esteja
-aqui não é vigiado, e um daqui que passe a importar `tkinter` falha a suíte.
+e verificada em **quatro** módulos. A lista é o teste: um módulo novo que não esteja aqui não é
+vigiado, e um daqui que passe a importar `tkinter` ou `PIL` falha a suíte.
 
-**Importar `tkinter` não é proibido em `ui/`** -- a maioria dos painéis o faz, e é o que eles
-são. O que a lista fixa é o conjunto que decidiu **não** fazê-lo, porque é dele que sai a
-possibilidade de testar decisão de interface sem abrir janela."""
+**O toolkit já não é a pergunta desta lista** (S-869). Até o corte do Tk a maioria dos painéis
+de `ui/` importava `tkinter`, e a lista fixava os que decidiram não fazê-lo; desde o corte nenhum
+módulo de `ui/` pode importar toolkit nenhum, e quem cobra isso -- `PyQt6`, `PySide6`, `tkinter`,
+`ttkbootstrap` e `qt/`, em `ui/` e em todo o pacote fora de `qt/` -- é `tests/test_ui_fronteira.py`.
+As dezesseis guardas de um módulo só que repetiam `assertNotIn("tkinter", ...)` saíram por isso.
+O que só esta lista cobra é a outra metade: estes módulos também não importam `PIL`, e todo
+módulo de `ui/` sem `PIL` está nela com o que decide."""
 
 
 class SemTkinterTests(unittest.TestCase):
     """A varredura é sobre a **árvore de importação** e não sobre o texto.
 
     Vários destes módulos citam `import tkinter` no docstring para dizer que ele não existe
-    ali, e um `assertNotIn` sobre o texto reprovaria a própria explicação -- é a razão que o
-    `NoTkinterTests` acima já registrava para um módulo só.
+    ali, e um `assertNotIn` sobre o texto reprovaria a própria explicação.
     """
 
     def _importados(self, caminho: Path) -> set[str]:
@@ -478,7 +499,7 @@ class SemTkinterTests(unittest.TestCase):
         raiz = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr" / "ui"
         fora = [
             caminho.name
-            for caminho in sorted(raiz.glob("*.py"))
+            for caminho in varredura.fontes(raiz, piso=60)
             if caminho.name not in SEM_TKINTER
             and caminho.name != "__init__.py"
             and not {"tkinter", "PIL"} & self._importados(caminho)

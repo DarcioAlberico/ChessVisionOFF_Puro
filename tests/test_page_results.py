@@ -6,16 +6,21 @@ import unittest
 
 import numpy as np
 import pytest
+from subprocesso import rodar_python
 
 from chess_diagram_ocr.service import RecognizedDiagram
+from chess_diagram_ocr.ui import estado_do_rodape
+from chess_diagram_ocr.ui.ancora_da_tela import AncoraDaTela
 from chess_diagram_ocr.ui.page_results import (
     DEFAULT_MAX_CACHED_PAGES,
     PageOcrParams,
     PageResults,
     PageResultsCache,
     PageSwitch,
+    RespostaDaLeitura,
     decide_page_switch,
     paginas_editadas,
+    responder_a_leitura,
 )
 
 DOC = "livro.pdf"
@@ -319,7 +324,13 @@ class DiscardTests(unittest.TestCase):
         self.assertIsNotNone(cache.get("b.pdf", 1, PARAMS))
 
     def test_discarding_a_missing_page_is_not_an_error(self) -> None:
-        PageResultsCache().discard(DOC, 99)
+        """O contrato é «não faz nada» (S-872): o que estava guardado continua, página a página."""
+        cache = PageResultsCache()
+        cache.put(DOC, _results(1))
+        cache.put(DOC, _results(2))
+        antes = (cache.cached_pages, cache.get(DOC, 1, PARAMS), cache.get(DOC, 2, PARAMS))
+        cache.discard(DOC, 99)
+        self.assertEqual((cache.cached_pages, cache.get(DOC, 1, PARAMS), cache.get(DOC, 2, PARAMS)), antes)
 
     def test_clear_empties_everything(self) -> None:
         cache = PageResultsCache()
@@ -333,6 +344,71 @@ class DiscardTests(unittest.TestCase):
             cache.put(DOC, _results(page))
         self.assertIn((DOC, 5), cache)
         self.assertEqual(cache.cached_pages, [(DOC, 5), (DOC, 6), (DOC, 7)])
+
+
+class RespostaDaLeituraTests(unittest.TestCase):
+    """O que a tela faz com a resposta de uma leitura, sem Qt (S-867).
+
+    Era o fim de `_chegaram_itens` e o ramo de cancelamento de `_falhou`, na janela: a guarda de
+    tela (S-823), o que selecionar, se o duplo clique pendente vai à sala e o que o rodapé diz.
+    """
+
+    A1 = AncoraDaTela.de("PDF/A.pdf", 1)
+
+    def test_a_leitura_da_tela_entra_na_pagina_pedida_sem_frase(self) -> None:
+        resposta = responder_a_leitura(self.A1, self.A1, lidos=2)
+        self.assertEqual(RespostaDaLeitura(pagina=1), resposta, "o rodapé fica com o resumo da página")
+
+    def test_a_leitura_de_outra_tela_nao_entra_e_diz_onde_a_tela_esta(self) -> None:
+        outro_livro = responder_a_leitura(self.A1, AncoraDaTela.de("PDF/B.pdf", 1), lidos=2, selecionar=0)
+        self.assertIsNone(outro_livro.pagina)
+        self.assertIsNone(outro_livro.selecionar)
+        self.assertIn("outro livro", outro_livro.frase or "")
+        outra_pagina = responder_a_leitura(self.A1, AncoraDaTela.de("PDF/A.pdf", 0), lidos=2)
+        self.assertIn("outra página", outra_pagina.frase or "")
+
+    def test_o_clique_na_caixa_seleciona_o_diagrama_se_ele_foi_lido(self) -> None:
+        self.assertEqual(1, responder_a_leitura(self.A1, self.A1, lidos=2, selecionar=1).selecionar)
+        self.assertIsNone(responder_a_leitura(self.A1, self.A1, lidos=1, selecionar=1).selecionar, "não há linha 1")
+        self.assertIsNone(responder_a_leitura(self.A1, self.A1, lidos=0, selecionar=0).selecionar)
+
+    def test_o_duplo_clique_pendente_desta_pagina_vai_a_sala(self) -> None:
+        resposta = responder_a_leitura(self.A1, self.A1, lidos=2, selecionar=0, estudar_ao_ler=(1, 1))
+        self.assertEqual((1, True), (resposta.selecionar, resposta.estudar), "o pedido do duplo clique vence")
+
+    def test_o_duplo_clique_pendente_de_outra_pagina_ou_de_diagrama_nao_lido_nao_vai(self) -> None:
+        de_outra = responder_a_leitura(self.A1, self.A1, lidos=2, selecionar=0, estudar_ao_ler=(0, 1))
+        self.assertEqual((0, False), (de_outra.selecionar, de_outra.estudar))
+        nao_lido = responder_a_leitura(self.A1, self.A1, lidos=1, estudar_ao_ler=(1, 1))
+        self.assertEqual((None, False), (nao_lido.selecionar, nao_lido.estudar))
+
+    def test_o_cancelamento_com_parcial_carrega_o_lido_e_diz_quantos(self) -> None:
+        resposta = responder_a_leitura(self.A1, self.A1, lidos=2, cancelada=True)
+        self.assertEqual(1, resposta.pagina)
+        self.assertIn("2 diagrama(s)", resposta.frase or "")
+        self.assertEqual(estado_do_rodape.INFORMACAO, resposta.severidade)
+
+    def test_o_cancelamento_sem_parcial_so_diz_que_nada_foi_lido(self) -> None:
+        for tela in (self.A1, AncoraDaTela.de("PDF/A.pdf", 0)):
+            with self.subTest(tela=tela):
+                resposta = responder_a_leitura(self.A1, tela, lidos=0, cancelada=True)
+                self.assertIsNone(resposta.pagina)
+                self.assertIn("antes do primeiro", resposta.frase or "")
+
+    def test_o_parcial_cancelado_depois_da_troca_de_tela_nao_entra(self) -> None:
+        resposta = responder_a_leitura(self.A1, AncoraDaTela.de("PDF/A.pdf", 0), lidos=2, cancelada=True)
+        self.assertIsNone(resposta.pagina)
+        self.assertIn("outra página", resposta.frase or "")
+
+    def test_o_parcial_sem_ancora_nao_tem_onde_entrar(self) -> None:
+        """Só a leitura da página leva âncora; o cancelamento de outra tarefa não é dela."""
+        self.assertEqual(RespostaDaLeitura(pagina=None), responder_a_leitura(None, self.A1, lidos=2, cancelada=True))
+
+    def test_a_decisao_nao_importa_o_toolkit(self) -> None:
+        """O aceite da S-867: a decisão é testada sem PyQt6."""
+        codigo = "import sys, chess_diagram_ocr.ui.page_results; print('PyQt6' in sys.modules)"
+        saida = rodar_python(codigo)
+        self.assertEqual("False", saida.stdout.strip())
 
 
 if __name__ == "__main__":

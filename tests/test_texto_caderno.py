@@ -7,15 +7,19 @@ livro duplicado abrem um caderno só, e a trava de um processo vivo deixa o segu
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
+import sys
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
 from ambiente_de_teste import pasta_temporaria
+from subprocesso import iniciar_python
 
+from chess_diagram_ocr.arquivo_do_dono import GravacaoRecusada
 from chess_diagram_ocr.text import arquivo, caderno, rico
 from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
 
@@ -117,6 +121,51 @@ class AnteriorTests(_ComLivro):
         self.assertEqual((estado.estado, estado.motor, estado.modo_bloco, estado.correcoes), (caderno.LIDA, "auto", True, 0))
 
 
+class FolhaIlegivelTests(_ComLivro):
+    """S-896: a folha que não abre -- versão futura, ou corrompida -- não é gravada por cima."""
+
+    ESTRAGOS = {
+        "versão futura": json.dumps({"versao": 99, "documento": {"corridas": []}}).encode("utf-8"),
+        "corrompida": b'{"versao": 1, "documento": {"corr',
+    }
+
+    def _corrigida_e_estragada(self, bytes_ruins: bytes) -> caderno.Caderno:
+        """Uma folha `editada` com 12 correções, cujo arquivo depois deixa de abrir; o caderno reaberto."""
+        livro = self.abrir()
+        livro.gravar(_doc(self.livro, 2, "corrigida à mão"), correcoes=12)
+        livro.fechar()
+        livro.caminho(2).write_bytes(bytes_ruins)
+        return self.abrir()
+
+    def test_nenhum_gravador_escreve_por_cima_e_o_indice_fica(self) -> None:
+        for nome, ruins in self.ESTRAGOS.items():
+            with self.subTest(nome):
+                shutil.rmtree(self.pasta, ignore_errors=True)
+                livro = self._corrigida_e_estragada(ruins)
+                self.assertIsNone(livro.folha(2))
+                self.assertIsNotNone(livro.trava(2))
+                self.assertEqual(livro.guardar_leitura(_doc(self.livro, 2, "lida de novo"), motor="glifo", modo_bloco=False), caderno.TRAVADA)
+                self.assertEqual(livro.gravar(_doc(self.livro, 2, "outra coisa"), correcoes=1), caderno.TRAVADA)
+                with self.assertRaises(GravacaoRecusada):
+                    livro.trazer_rascunho(_doc(self.livro, 2, "do rascunho"), datetime.now(timezone.utc))
+                self.assertEqual(livro.caminho(2).read_bytes(), ruins)
+                self.assertFalse(livro.caminho(2, tipo="lida").exists())
+                estado = livro.estado(2)
+                assert estado is not None
+                self.assertEqual((estado.estado, estado.correcoes), (caderno.EDITADA, 12))
+                self.assertEqual([f.pagina for f in livro.corrigidas()], [2])
+                (copia,) = livro.pasta.glob("folha-0003.ilegivel-*.cvtxt")
+                self.assertEqual(copia.read_bytes(), ruins)
+                livro.fechar()
+
+    def test_apagada_a_folha_ruim_o_caderno_grava_de_novo(self) -> None:
+        livro = self._corrigida_e_estragada(self.ESTRAGOS["corrompida"])
+        self.assertIsNotNone(livro.trava(2))
+        livro.caminho(2).unlink()
+        self.assertIsNone(livro.trava(2))
+        self.assertEqual(livro.gravar(_doc(self.livro, 2, "refeita"), correcoes=1), caderno.GRAVADA)
+
+
 class IdentidadeTests(_ComLivro):
     def test_mover_o_pdf_abre_o_caderno_de_antes(self) -> None:
         livro = self.abrir()
@@ -142,6 +191,32 @@ class IdentidadeTests(_ComLivro):
         outro = self.raiz / "livros" / "outro.pdf"
         outro.write_bytes(b"%PDF-1.7\n outro livro")
         self.assertNotEqual(self.abrir().pasta, self.abrir(outro).pasta)
+
+    def test_pdf_pequeno_anotado_acha_o_mesmo_caderno(self) -> None:
+        # Num PDF de menos de 1 MiB o primeiro MiB é o arquivo inteiro: a gravação incremental de uma
+        # anotação muda a identidade, e o caderno ficava órfão (S-897). O caminho é o apelido.
+        livro = self.abrir()
+        livro.gravar(_doc(self.livro, 0, "corrigida antes da anotação"))
+        livro.fechar()
+        with open(self.livro, "ab") as fluxo:
+            fluxo.write(b"\n1 0 obj << /Type /Annot >> endobj\n%%EOF\n")
+        self.assertNotEqual(caderno.identidade_de(self.livro), livro.identidade)
+        reaberto = self.abrir()
+        self.assertEqual(reaberto.pasta, livro.pasta)
+        self.assertIn("corrigida", reaberto.folha(0).para_texto())  # type: ignore[union-attr]
+        self.assertEqual(len(list(self.pasta.iterdir())), 1)
+
+    def test_apelido_gravado_em_outra_caixa_e_barra_ainda_acha(self) -> None:
+        # O índice do dono guarda `str(Path(pdf))` como veio; o mesmo livro é a regra de `ui.livros`.
+        livro = self.abrir()
+        livro.fechar()
+        indice = livro.pasta / "indice.json"
+        dados = json.loads(indice.read_text(encoding="utf-8"))
+        dados["apelidos"] = [str(self.livro.parent / ".." / "livros" / self.livro.name)]
+        indice.write_bytes(json.dumps(dados).encode("utf-8"))
+        with open(self.livro, "ab") as fluxo:
+            fluxo.write(b"%%EOF\n")
+        self.assertEqual(self.abrir().pasta, livro.pasta)
 
     def test_livro_que_nao_abre_nao_tem_caderno(self) -> None:
         self.assertIsNone(caderno.abrir(self.raiz / "nao existe.pdf", pasta=self.pasta))
@@ -170,6 +245,50 @@ class IndiceTests(_ComLivro):
         self.assertFalse(livro.trazer_rascunho(_doc(self.livro, 6, "rascunho velho"), datetime.now() - timedelta(days=2)))
         self.assertIn("do caderno", livro.folha(6).para_texto())  # type: ignore[union-attr]
 
+    def _caderno_gravado_em(self, pagina: int, gravada_em: str) -> caderno.Caderno:
+        """Um caderno com a folha `pagina` cuja hora no índice é `gravada_em` -- como o disco do dono a tem."""
+        livro = self.abrir()
+        livro.gravar(_doc(self.livro, pagina, "do caderno"))
+        livro.fechar()
+        indice = livro.pasta / "indice.json"
+        dados = json.loads(indice.read_text(encoding="utf-8"))
+        dados["folhas"][str(pagina + 1)]["gravada_em"] = gravada_em
+        indice.write_bytes(json.dumps(dados).encode("utf-8"))
+        return self.abrir()
+
+    def test_rascunho_gravado_depois_da_volta_do_horario_entra_no_caderno(self) -> None:
+        # 02:30 em +01:00 é 01:30 UTC; o rascunho das 02:10 em +00:00 é 02:10 UTC, 40 minutos depois.
+        # Como texto, "02:30" > "02:10", e o rascunho mais novo era recusado (e o painel o apagava).
+        livro = self._caderno_gravado_em(3, "2026-10-25T02:30:00+01:00")
+        depois = datetime(2026, 10, 25, 2, 10, tzinfo=timezone(timedelta(hours=0)))
+        self.assertTrue(livro.trazer_rascunho(_doc(self.livro, 3, "do rascunho"), depois))
+        self.assertIn("do rascunho", livro.folha(3).para_texto())  # type: ignore[union-attr]
+
+    def test_rascunho_mais_velho_em_outro_fuso_continua_recusado(self) -> None:
+        # 02:30 em +00:00 é 02:30 UTC; 02:50 em +01:00 é 01:50 UTC: o texto diz mais novo, o instante não.
+        livro = self._caderno_gravado_em(3, "2026-10-25T02:30:00+00:00")
+        antes = datetime(2026, 10, 25, 2, 50, tzinfo=timezone(timedelta(hours=1)))
+        self.assertFalse(livro.trazer_rascunho(_doc(self.livro, 3, "rascunho velho"), antes))
+        self.assertIn("do caderno", livro.folha(3).para_texto())  # type: ignore[union-attr]
+
+    def test_indice_antigo_sem_fuso_vale_como_hora_local(self) -> None:
+        # Os índices gravados antes da S-908 não têm deslocamento: vale a hora local daquele momento.
+        livro = self._caderno_gravado_em(3, "2026-10-24T14:02:11")
+        self.assertFalse(livro.trazer_rascunho(_doc(self.livro, 3, "velho"), datetime(2026, 10, 24, 13, 0).astimezone()))
+        self.assertTrue(livro.trazer_rascunho(_doc(self.livro, 3, "novo"), datetime(2026, 10, 24, 15, 0).astimezone()))
+        self.assertIn("novo", livro.folha(3).para_texto())  # type: ignore[union-attr]
+
+    def test_hora_ilegivel_no_indice_nao_recusa_o_rascunho(self) -> None:
+        livro = self._caderno_gravado_em(3, "ontem à tarde")
+        self.assertTrue(livro.trazer_rascunho(_doc(self.livro, 3, "do rascunho"), datetime(2026, 10, 24, 15, 0)))
+
+    def test_gravar_anota_a_hora_com_fuso(self) -> None:
+        livro = self.abrir()
+        livro.gravar(_doc(self.livro, 2))
+        gravada = datetime.fromisoformat(livro.estado(2).gravada_em)  # type: ignore[union-attr]
+        self.assertIsNotNone(gravada.tzinfo, "a hora do índice saiu sem deslocamento")
+        self.assertLess(abs(gravada - datetime.now(timezone.utc)), timedelta(minutes=1))
+
 
 class TravaTests(_ComLivro):
     def test_trava_de_processo_vivo_abre_so_para_leitura(self) -> None:
@@ -191,6 +310,46 @@ class TravaTests(_ComLivro):
         self.assertFalse(segundo.somente_leitura)
         self.assertEqual(segundo.gravar(_doc(self.livro)), caderno.GRAVADA)
 
+    def _trava_de_um_vivo(self, segunda_linha: str = "") -> tuple[Path, int]:
+        """A trava em nome de um processo vivo que não é este; `segunda_linha` é a hora de criação."""
+        vivo = iniciar_python("import time; time.sleep(60)")
+        self.addCleanup(vivo.wait)
+        self.addCleanup(vivo.kill)
+        primeiro = self.abrir()
+        primeiro.fechar()
+        trava = primeiro.pasta / "caderno.lock"
+        trava.write_bytes(f"{vivo.pid}\n{segunda_linha}".encode())
+        return trava, vivo.pid
+
+    def test_pid_vivo_com_hora_de_criacao_diferente_retoma_a_trava(self) -> None:
+        # Depois de uma queda a trava fica, e o Windows reaproveita o PID logo: o processo vivo com
+        # aquele número nasceu depois de quem gravou a trava, e é outro programa (S-897).
+        self._trava_de_um_vivo("1000000000.0\n")
+        segundo = self.abrir()
+        self.assertFalse(segundo.somente_leitura, segundo.motivo)
+        self.assertEqual(segundo.gravar(_doc(self.livro)), caderno.GRAVADA)
+
+    @unittest.skipUnless(sys.platform == "win32" or Path("/proc/self/stat").exists(), "sem a hora de criação do processo")
+    def test_pid_vivo_com_a_mesma_hora_de_criacao_segura_a_trava(self) -> None:
+        trava, pid = self._trava_de_um_vivo()
+        trava.write_bytes(f"{pid}\n{caderno._inicio_do_processo(pid)!r}\n".encode())
+        self.assertTrue(self.abrir().somente_leitura)
+
+    @unittest.skipUnless(sys.platform == "win32" or Path("/proc/self/stat").exists(), "sem a hora de criação do processo")
+    def test_trava_antiga_mais_velha_que_o_processo_vivo_e_retomada(self) -> None:
+        # A trava de antes da S-897 só tem o PID: a hora dela é a do arquivo, e um processo que
+        # nasceu depois que ela foi escrita não pode ser quem a escreveu.
+        trava, _pid = self._trava_de_um_vivo()
+        os.utime(trava, (1_000_000_000, 1_000_000_000))
+        self.assertFalse(self.abrir().somente_leitura)
+
+    def test_trava_nova_grava_o_pid_e_a_hora_de_criacao(self) -> None:
+        livro = self.abrir()
+        linhas = (livro.pasta / "caderno.lock").read_text(encoding="utf-8").split()
+        self.assertEqual(int(linhas[0]), os.getpid())
+        if caderno._inicio_do_processo(os.getpid()) is not None:
+            self.assertEqual(float(linhas[1]), caderno._inicio_do_processo(os.getpid()))
+
     def test_fechar_solta_a_trava(self) -> None:
         livro = self.abrir()
         self.assertTrue((livro.pasta / "caderno.lock").exists())
@@ -203,6 +362,21 @@ class EsperaTests(unittest.TestCase):
         self.assertEqual(caderno.espera_restante(10.0, mudou_em=7.5, cursor_em=8.5), 0.0)
         self.assertAlmostEqual(caderno.espera_restante(10.0, mudou_em=7.5, cursor_em=9.5), 1.0)
         self.assertAlmostEqual(caderno.espera_restante(10.0, mudou_em=9.0, cursor_em=0.0), 1.5)
+
+
+class LexicoDoLivroTests(_ComLivro):
+    """S-903: o léxico do livro grava com a chave com que `lexico.conhecida` confere."""
+
+    def test_palavra_com_eszett_acrescentada_deixa_de_ser_desconhecida(self) -> None:
+        from chess_diagram_ocr.text import lexico
+
+        cad = self.abrir()
+        texto = "Der Großmeister spielt"
+        base = frozenset({"der", "spielt"})
+        self.assertEqual([p for _i, _f, p in lexico.desconhecidas(texto, base)], ["Großmeister"])
+        self.assertTrue(cad.acrescentar_ao_lexico("Großmeister"))
+        self.assertEqual(lexico.desconhecidas(texto, base | cad.lexico()), ())
+        self.assertFalse(cad.acrescentar_ao_lexico("GROSSMEISTER"), "é a mesma palavra, e não entra duas vezes")
 
 
 class AbreDoCadernoTests(unittest.TestCase):

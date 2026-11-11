@@ -105,11 +105,11 @@ def _load_raw(path: Path, *, map_location: str) -> Any:
     # ordens de grandeza mais do que isso.
     import torch
 
-    try:
-        return torch.load(path, map_location=map_location, weights_only=True)
-    except TypeError:
-        logger.debug("torch.load sem weights_only nesta versao; usando fallback.")
-        return torch.load(path, map_location=map_location)
+    #
+    # Só pesos, e sem recurso para o `pickle` inteiro (S-845): o `except TypeError` que chamava
+    # `torch.load` sem `weights_only` era morto no torch exigido (>= 2.6) e só abriria esse
+    # caminho num torch antigo.
+    return torch.load(path, map_location=map_location, weights_only=True)
 
 
 def load_checkpoint(path: Path, *, map_location: str = "cpu") -> Checkpoint:

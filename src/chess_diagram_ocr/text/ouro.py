@@ -37,9 +37,9 @@ import hashlib
 import json
 import re
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Final, Literal, TypeVar, get_args
 
 from chess_diagram_ocr.atomic_io import atomic_write_bytes
 from chess_diagram_ocr.config import BUNDLE_ROOT
@@ -50,17 +50,27 @@ CAMINHO = Path("assets") / "texto_prosa" / "ouro.json"
 uma pasta vazia, e a guarda do manifesto ficaria vácua."""
 
 VERSAO = 1
-DEV = "dev"
-TESTE = "teste"
-RESERVA = "reserva"
-SPLITS = (DEV, TESTE, RESERVA)
-PROSA = "prosa"
-MISTO = "misto"
-ESTRATOS = (PROSA, MISTO)
-ORIGENS = ("pdf", "ebook")
-LINGUAS = ("eng", "por", "spa", "deu", "nld", "fra", "ron", "rus")
+
+Split = Literal["dev", "teste", "reserva"]
+Estrato = Literal["prosa", "misto"]
+Origem = Literal["pdf", "ebook"]
+Lingua = Literal["eng", "por", "spa", "deu", "nld", "fra", "ron", "rus"]
 """As línguas do acervo, nos códigos de três letras do Tesseract (os do relatório de 2026-10-30)."""
-DIAGRAMACOES = ("nova", "vista")
+Diagramacao = Literal["nova", "vista"]
+"""**Os cinco campos fechados do ouro são `Literal`, e a leitura os confere uma vez** (S-855): o valor de
+fora levanta `ManifestoInvalido` em `de_json`, e o que o código escreve à mão o mypy acusa. Antes eram
+`str`, e só `problemas` os via -- quem esquecesse de chamá-lo usava um manifesto que não vale."""
+
+DEV: Final = "dev"
+TESTE: Final = "teste"
+RESERVA: Final = "reserva"
+SPLITS: tuple[Split, ...] = get_args(Split)
+PROSA: Final = "prosa"
+MISTO: Final = "misto"
+ESTRATOS: tuple[Estrato, ...] = get_args(Estrato)
+ORIGENS: tuple[Origem, ...] = get_args(Origem)
+LINGUAS: tuple[Lingua, ...] = get_args(Lingua)
+DIAGRAMACOES: tuple[Diagramacao, ...] = get_args(Diagramacao)
 
 PULAR = 0.08
 """A fração do começo e do fim do livro que o sorteio não olha: capa, sumário, índice, bibliografia."""
@@ -81,14 +91,18 @@ livro **a mais**, sem mexer nos já sorteados, e a pendência sai do manifesto n
 _DATA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
+class ManifestoInvalido(ValueError):
+    """O JSON não descreve um manifesto: chave que não existe, ou valor fora de um campo fechado."""
+
+
 @dataclass(frozen=True)
 class LivroDoOuro:
     identidade: str
-    split: str
-    lingua: str
-    origem: str = "pdf"
+    split: Split
+    lingua: Lingua
+    origem: Origem = "pdf"
     """`pdf` (o PDF da editora ou de outra origem) ou `ebook` (ebook convertido em PDF)."""
-    diagramacao: str = "nova"
+    diagramacao: Diagramacao = "nova"
     """`vista` quando o livro tem o produtor e as fontes de um livro dev."""
     grupo: str = ""
     """Série ou diagramação: a identidade do livro que representa o grupo. Vazio, o livro é o grupo."""
@@ -108,9 +122,9 @@ class FolhaDoOuro:
     identidade: str
     folha: int
     """Base 1, como nos relatórios."""
-    lingua: str
-    estrato: str
-    split: str
+    lingua: Lingua
+    estrato: Estrato
+    split: Split
 
 
 @dataclass(frozen=True)
@@ -124,7 +138,7 @@ class Manifesto:
     pendencias: tuple[str, ...] = ()
     """O que o teste ainda não cumpre e foi aceito assim, com nome. Ver `PENDENCIA_DE_LINGUA`."""
 
-    def do_split(self, split: str) -> tuple[FolhaDoOuro, ...]:
+    def do_split(self, split: Split) -> tuple[FolhaDoOuro, ...]:
         return tuple(f for f in self.folhas if f.split == split)
 
 
@@ -134,13 +148,42 @@ def caminho_padrao() -> Path:
     return BUNDLE_ROOT / CAMINHO
 
 
+_Registro = TypeVar("_Registro", LivroDoOuro, FolhaDoOuro)
+
+_CAMPOS_FECHADOS: dict[str, tuple[str, ...]] = {
+    "split": SPLITS,
+    "lingua": LINGUAS,
+    "origem": ORIGENS,
+    "diagramacao": DIAGRAMACOES,
+    "estrato": ESTRATOS,
+}
+
+
+def _registro(classe: type[_Registro], dados: object, onde: str) -> _Registro:
+    """Um `LivroDoOuro` ou uma `FolhaDoOuro` do JSON, com cada campo fechado conferido aqui, uma vez."""
+    if not isinstance(dados, dict):
+        raise ManifestoInvalido(f"{onde}: esperava objeto, veio {type(dados).__name__}")
+    conhecidos = {campo.name for campo in fields(classe)}
+    estranhas = sorted(set(dados) - conhecidos)
+    if estranhas:
+        raise ManifestoInvalido(f"{onde}: chave que não existe: {estranhas}")
+    for campo, valores in _CAMPOS_FECHADOS.items():
+        if campo in dados and dados[campo] not in valores:
+            raise ManifestoInvalido(f"{onde}: {campo} {dados[campo]!r} não é um de {valores}")
+    try:
+        return classe(**dados)
+    except TypeError as exc:
+        raise ManifestoInvalido(f"{onde}: {exc}") from exc
+
+
 def de_json(dados: dict[str, Any]) -> Manifesto:
+    """O manifesto do JSON, ou `ManifestoInvalido` dizendo o livro ou a folha e o campo."""
     return Manifesto(
         versao=int(dados.get("versao", 0)),
         congelado_em=str(dados.get("congelado_em", "")),
         primeira_leitura_do_teste=dados.get("primeira_leitura_do_teste"),
-        livros=tuple(LivroDoOuro(**livro) for livro in dados.get("livros", ())),
-        folhas=tuple(FolhaDoOuro(**folha) for folha in dados.get("folhas", ())),
+        livros=tuple(_registro(LivroDoOuro, livro, f"livro {n}") for n, livro in enumerate(dados.get("livros", ()))),
+        folhas=tuple(_registro(FolhaDoOuro, folha, f"folha {n}") for n, folha in enumerate(dados.get("folhas", ()))),
         sorteio=dict(dados.get("sorteio", {})),
         pendencias=tuple(dados.get("pendencias", ())),
     )
@@ -177,86 +220,147 @@ def gravar(manifesto: Manifesto, caminho: str | Path) -> None:
 
 
 def problemas(manifesto: Manifesto) -> list[str]:
-    """O que faz o manifesto não valer. Vazio quer dizer que ele vale."""
+    """O que faz o manifesto não valer. Vazio quer dizer que ele vale.
+
+    Os campos fechados não passam por aqui: o valor de fora não chega a virar `Manifesto` (`de_json`).
+    As mensagens saem nesta ordem: cabeçalho, livros, folhas, teste e pendências (S-861).
+    """
+    return [
+        *_do_cabecalho(manifesto),
+        *_dos_livros(manifesto),
+        *_das_folhas(manifesto),
+        *_do_teste(manifesto),
+        *_das_pendencias(manifesto),
+    ]
+
+
+def _e_data(texto: str) -> bool:
+    return bool(_DATA.fullmatch(texto))
+
+
+def _do_cabecalho(manifesto: Manifesto) -> list[str]:
     erros: list[str] = []
     if manifesto.versao != VERSAO:
         erros.append(f"versão {manifesto.versao}, esperada {VERSAO}")
-    if not _DATA.fullmatch(manifesto.congelado_em):
+    if not _e_data(manifesto.congelado_em):
         erros.append(f"congelado_em sem data AAAA-MM-DD: {manifesto.congelado_em!r}")
     leitura = manifesto.primeira_leitura_do_teste
-    if leitura is not None and (not _DATA.fullmatch(str(leitura)) or str(leitura) < manifesto.congelado_em):
+    if leitura is not None and (not _e_data(str(leitura)) or str(leitura) < manifesto.congelado_em):
         erros.append(f"o teste foi lido em {leitura}, antes de o manifesto ser congelado em {manifesto.congelado_em}")
-    splits_do_livro: dict[str, set[str]] = {}
-    lingua_do_livro = {livro.identidade: livro.lingua for livro in manifesto.livros}
+    return erros
+
+
+def _splits_do_livro(manifesto: Manifesto) -> dict[str, set[str]]:
+    splits: dict[str, set[str]] = {}
     for livro in manifesto.livros:
-        if not livro.identidade:
-            erros.append("livro sem identidade")
-        if livro.split not in SPLITS:
-            erros.append(f"livro {livro.identidade} com split {livro.split!r}")
-        if livro.origem not in ORIGENS:
-            erros.append(f"livro {livro.identidade} com origem {livro.origem!r}")
-        if livro.diagramacao not in DIAGRAMACOES:
-            erros.append(f"livro {livro.identidade} com diagramação {livro.diagramacao!r}")
-        if livro.lingua not in LINGUAS:
-            erros.append(f"livro {livro.identidade} com língua {livro.lingua!r}")
-        if livro.entrou_em and (livro.split != TESTE or not _DATA.fullmatch(livro.entrou_em)
-                                or livro.entrou_em < manifesto.congelado_em):
-            erros.append(f"livro {livro.identidade} com entrou_em {livro.entrou_em!r}")
-        splits_do_livro.setdefault(livro.identidade, set()).add(livro.split)
-        if livro.reprovado and (livro.split != RESERVA or not livro.fora_do_treino):
-            erros.append(f"livro {livro.identidade} reprovado ({livro.reprovado}) fora da reserva ou dentro do treino")
-    for identidade, splits in splits_do_livro.items():
-        if len(splits) > 1:
-            erros.append(f"livro {identidade} em dois splits: {sorted(splits)}")
+        splits.setdefault(livro.identidade, set()).add(livro.split)
+    return splits
+
+
+def _do_livro(livro: LivroDoOuro, congelado_em: str) -> list[str]:
+    erros: list[str] = []
+    if not livro.identidade:
+        erros.append("livro sem identidade")
+    if livro.entrou_em and (livro.split != TESTE or not _e_data(livro.entrou_em) or livro.entrou_em < congelado_em):
+        erros.append(f"livro {livro.identidade} com entrou_em {livro.entrou_em!r}")
+    if livro.reprovado and (livro.split != RESERVA or not livro.fora_do_treino):
+        erros.append(f"livro {livro.identidade} reprovado ({livro.reprovado}) fora da reserva ou dentro do treino")
+    return erros
+
+
+def _dos_livros(manifesto: Manifesto) -> list[str]:
+    erros = [erro for livro in manifesto.livros for erro in _do_livro(livro, manifesto.congelado_em)]
+    erros += [
+        f"livro {identidade} em dois splits: {sorted(splits)}"
+        for identidade, splits in _splits_do_livro(manifesto).items()
+        if len(splits) > 1
+    ]
+    return erros
+
+
+def _da_folha(folha: FolhaDoOuro, splits_do_livro: dict[str, set[str]], lingua_do_livro: dict[str, str]) -> list[str]:
+    """O que está errado nesta folha contra o livro dela. A folha sem identidade só dá esse erro."""
+    if not folha.identidade:
+        return [f"folha {folha.folha} sem identidade"]
+    erros: list[str] = []
+    if folha.identidade not in splits_do_livro:
+        erros.append(f"folha {folha.folha} de um livro que o manifesto não lista: {folha.identidade}")
+    elif folha.split not in splits_do_livro[folha.identidade]:
+        erros.append(f"folha {folha.folha} de {folha.identidade} no split {folha.split}, e o livro não")
+    lingua = lingua_do_livro.get(folha.identidade)
+    if lingua is not None and folha.lingua != lingua:
+        erros.append(f"folha {folha.folha} de {folha.identidade} em {folha.lingua!r}, e o livro em {lingua!r}")
+    if folha.folha < 1:
+        erros.append(f"folha {folha.folha} de {folha.identidade}: a folha é em base 1")
+    return erros
+
+
+def _das_folhas(manifesto: Manifesto) -> list[str]:
+    splits_do_livro = _splits_do_livro(manifesto)
+    lingua_do_livro: dict[str, str] = {livro.identidade: livro.lingua for livro in manifesto.livros}
+    erros: list[str] = []
     vistas: set[tuple[str, int]] = set()
     for folha in manifesto.folhas:
+        erros += _da_folha(folha, splits_do_livro, lingua_do_livro)
         if not folha.identidade:
-            erros.append(f"folha {folha.folha} sem identidade")
             continue
-        if folha.identidade not in splits_do_livro:
-            erros.append(f"folha {folha.folha} de um livro que o manifesto não lista: {folha.identidade}")
-        elif folha.split not in splits_do_livro[folha.identidade]:
-            erros.append(f"folha {folha.folha} de {folha.identidade} no split {folha.split}, e o livro não")
-        if folha.identidade in lingua_do_livro and folha.lingua != lingua_do_livro[folha.identidade]:
-            erros.append(f"folha {folha.folha} de {folha.identidade} em {folha.lingua!r}, e o livro em "
-                         f"{lingua_do_livro[folha.identidade]!r}")
-        if folha.estrato not in ESTRATOS:
-            erros.append(f"folha {folha.folha} de {folha.identidade} com estrato {folha.estrato!r}")
-        if folha.folha < 1:
-            erros.append(f"folha {folha.folha} de {folha.identidade}: a folha é em base 1")
         if (folha.identidade, folha.folha) in vistas:
             erros.append(f"folha {folha.folha} de {folha.identidade} repetida")
         vistas.add((folha.identidade, folha.folha))
-    teste = {livro.identidade: livro for livro in manifesto.livros if livro.split == TESTE}
-    if teste:
-        if len(teste) < TESTE_MINIMO:
-            erros.append(f"o teste tem {len(teste)} livros, e o mínimo é {TESTE_MINIMO}")
-        linguas = {livro.lingua for livro in teste.values()}
-        pendente = PENDENCIA_DE_LINGUA in manifesto.pendencias
-        if len(linguas) < LINGUAS_MINIMAS_NO_TESTE and not pendente:
-            erros.append(f"o teste tem {len(linguas)} línguas, e o mínimo é {LINGUAS_MINIMAS_NO_TESTE}")
-        if len(linguas) >= LINGUAS_MINIMAS_NO_TESTE and pendente:
-            erros.append(f"o teste já tem {len(linguas)} línguas, e a pendência {PENDENCIA_DE_LINGUA} não saiu")
-        vistas_no_teste = sorted(i for i, livro in teste.items() if livro.diagramacao != "nova")
-        if vistas_no_teste:
-            erros.append(f"livros do teste com diagramação de livro dev: {vistas_no_teste}")
-        sem_folha = sorted(set(teste) - {f.identidade for f in manifesto.folhas})
-        if sem_folha:
-            erros.append(f"livros do teste sem folha: {sem_folha}")
-        grupos_do_teste = {livro.grupo or livro.identidade for livro in teste.values()}
-        for livro in manifesto.livros:
-            if livro.split == RESERVA and (livro.grupo or livro.identidade) in grupos_do_teste and not livro.fora_do_treino:
-                erros.append(f"livro {livro.identidade} é do grupo de um livro do teste e não está fora_do_treino")
-    desconhecidas = sorted(set(manifesto.pendencias) - {PENDENCIA_DE_LINGUA})
-    if desconhecidas:
-        erros.append(f"pendências sem regra: {desconhecidas}")
     return erros
+
+
+def _do_teste(manifesto: Manifesto) -> list[str]:
+    """As regras do split de teste: a composição dele, e os irmãos de série que ficaram na reserva."""
+    teste = {livro.identidade: livro for livro in manifesto.livros if livro.split == TESTE}
+    if not teste:
+        return []
+    return [*_da_composicao_do_teste(teste, manifesto), *_dos_irmaos_do_teste(teste, manifesto.livros)]
+
+
+def _da_composicao_do_teste(teste: dict[str, LivroDoOuro], manifesto: Manifesto) -> list[str]:
+    erros: list[str] = []
+    if len(teste) < TESTE_MINIMO:
+        erros.append(f"o teste tem {len(teste)} livros, e o mínimo é {TESTE_MINIMO}")
+    erros += _das_linguas_do_teste(len({livro.lingua for livro in teste.values()}), manifesto.pendencias)
+    vistas_no_teste = sorted(i for i, livro in teste.items() if livro.diagramacao != "nova")
+    if vistas_no_teste:
+        erros.append(f"livros do teste com diagramação de livro dev: {vistas_no_teste}")
+    sem_folha = sorted(set(teste) - {f.identidade for f in manifesto.folhas})
+    if sem_folha:
+        erros.append(f"livros do teste sem folha: {sem_folha}")
+    return erros
+
+
+def _dos_irmaos_do_teste(teste: dict[str, LivroDoOuro], livros: Sequence[LivroDoOuro]) -> list[str]:
+    """O livro da reserva que é da série de um livro do teste não pode treinar: viu a mesma diagramação."""
+    grupos_do_teste = {livro.grupo or livro.identidade for livro in teste.values()}
+    return [
+        f"livro {livro.identidade} é do grupo de um livro do teste e não está fora_do_treino"
+        for livro in livros
+        if livro.split == RESERVA and (livro.grupo or livro.identidade) in grupos_do_teste and not livro.fora_do_treino
+    ]
+
+
+def _das_linguas_do_teste(linguas: int, pendencias: Sequence[str]) -> list[str]:
+    """A pendência de língua vale enquanto falta língua, e tem de sair quando não falta mais."""
+    pendente = PENDENCIA_DE_LINGUA in pendencias
+    if linguas < LINGUAS_MINIMAS_NO_TESTE and not pendente:
+        return [f"o teste tem {linguas} línguas, e o mínimo é {LINGUAS_MINIMAS_NO_TESTE}"]
+    if linguas >= LINGUAS_MINIMAS_NO_TESTE and pendente:
+        return [f"o teste já tem {linguas} línguas, e a pendência {PENDENCIA_DE_LINGUA} não saiu"]
+    return []
+
+
+def _das_pendencias(manifesto: Manifesto) -> list[str]:
+    desconhecidas = sorted(set(manifesto.pendencias) - {PENDENCIA_DE_LINGUA})
+    return [f"pendências sem regra: {desconhecidas}"] if desconhecidas else []
 
 
 def acrescentar_ao_teste(
     manifesto: Manifesto,
     livro: LivroDoOuro,
-    folhas: Sequence[tuple[int, str]],
+    folhas: Sequence[tuple[int, Estrato]],
     *,
     entrou_em: str,
     folhas_minimas: int = 6,
@@ -313,7 +417,7 @@ def ordem_das_folhas(identidade: str, n_folhas: int, pular: float = PULAR) -> li
     return sorted(folhas, key=lambda folha: (_sha(f"{identidade}{folha}"), folha))
 
 
-def estrato_do_texto(texto: str, classificar: Callable[[str], str]) -> str | None:
+def estrato_do_texto(texto: str, classificar: Callable[[str], str]) -> Estrato | None:
     """O estrato de uma folha pelo texto da camada, com o classificador de token dado."""
     if len(texto) < ESTRATO_MISTO[0]:
         return None
@@ -321,7 +425,8 @@ def estrato_do_texto(texto: str, classificar: Callable[[str], str]) -> str | Non
     total = sum(len(t) for t in tokens)
     prosa = sum(len(t) for t in tokens if classificar(t) == "prosa")
     fracao = prosa / max(1, total)
-    for nome, (minimo, de, ate) in ((PROSA, ESTRATO_PROSA), (MISTO, ESTRATO_MISTO)):
+    limites: tuple[tuple[Estrato, tuple[int, float, float]], ...] = ((PROSA, ESTRATO_PROSA), (MISTO, ESTRATO_MISTO))
+    for nome, (minimo, de, ate) in limites:
         if len(texto) >= minimo and prosa >= minimo and de <= fracao < ate:
             return nome
     return None
@@ -330,11 +435,11 @@ def estrato_do_texto(texto: str, classificar: Callable[[str], str]) -> str | Non
 def sortear_folhas(
     identidade: str,
     n_folhas: int,
-    estrato_de: Callable[[int], str | None],
+    estrato_de: Callable[[int], Estrato | None],
     admitida: Callable[[int], bool],
     *,
     por_estrato: int = 3,
-) -> list[tuple[int, str]]:
+) -> list[tuple[int, Estrato]]:
     """As folhas sorteadas de um livro: `por_estrato` de cada estrato, ou o outro completando.
 
     `estrato_de` e `admitida` recebem a folha em base 1. A admissão, que custa uma montagem da
@@ -344,8 +449,8 @@ def sortear_folhas(
     folhas de prosa cedeu a vaga por isso (crítico da S-702). O livro que não chega lá volta com
     menos, e quem sorteia decide trocá-lo pelo seguinte.
     """
-    escolhidas: dict[str, list[int]] = {PROSA: [], MISTO: []}
-    sobras: dict[str, list[int]] = {PROSA: [], MISTO: []}
+    escolhidas: dict[Estrato, list[int]] = {PROSA: [], MISTO: []}
+    sobras: dict[Estrato, list[int]] = {PROSA: [], MISTO: []}
     alvo = 2 * por_estrato
     for folha in ordem_das_folhas(identidade, n_folhas):
         if all(len(v) >= por_estrato for v in escolhidas.values()):

@@ -19,7 +19,7 @@ import cv2
 import numpy as np
 
 from chess_diagram_ocr import board_detection as bd
-from chess_diagram_ocr.board_detection import SQUARE_MIN_ELONGATION, _score_quad, detect_boards, square_anchors
+from chess_diagram_ocr.board_detection import SQUARE_MIN_ELONGATION, _medir_quad, detect_boards, square_anchors
 from chess_diagram_ocr.config import DEFAULT_RECALL, RecallOptions
 from chess_diagram_ocr.detection.hybrid import detect_diagrams
 
@@ -90,9 +90,9 @@ class UmaReguaSoTests(unittest.TestCase):
         self.assertTrue(crus, "a página sintética precisa produzir candidatos")
         area = float(imagem.shape[0] * imagem.shape[1])
         for quad, score, _ in crus:
-            medido = _score_quad(imagem, quad, area)
-            self.assertIsNotNone(medido)
-            self.assertAlmostEqual(medido[0], score, places=9)  # type: ignore[index]
+            medido = _medir_quad(imagem, quad, area, None, forcar_quadrado=False)
+            assert isinstance(medido, tuple), f"o quad aceito pelo passe cru foi recusado: {medido}"
+            self.assertAlmostEqual(medido[1], score, places=9)
 
     def test_o_pacote_nunca_perde_o_que_o_cru_achava(self) -> None:
         imagem, alvo = pagina_com_tabuleiro()

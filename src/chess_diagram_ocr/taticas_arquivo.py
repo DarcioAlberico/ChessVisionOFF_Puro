@@ -23,6 +23,7 @@ import logging
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
+from .arquivo_do_dono import ler_texto
 from .atomic_io import atomic_write_json
 from .config import DATA_DIR
 from .estudo_arquivo import chave_de
@@ -99,7 +100,7 @@ def carregar(livro: str | Path, *, pasta: Path | None = None) -> list[Exercicio]
     if not origem.exists():
         return []
     try:
-        dados = json.loads(origem.read_text(encoding="utf-8"))
+        dados = json.loads(ler_texto(origem, do_usuario=False))
     except (OSError, ValueError) as erro:
         logger.warning("A coleção de táticas não pôde ser lida (%s): %s", origem, erro)
         return []
@@ -142,7 +143,7 @@ def carregar_tudo(*, pasta: Path | None = None) -> list[Exercicio]:
     achados: list[Exercicio] = []
     for arquivo in livros(pasta=pasta):
         try:
-            dados = json.loads(arquivo.read_text(encoding="utf-8"))
+            dados = json.loads(ler_texto(arquivo, do_usuario=False))
         except (OSError, ValueError) as erro:
             logger.warning("A coleção %s não pôde ser lida: %s", arquivo.name, erro)
             continue

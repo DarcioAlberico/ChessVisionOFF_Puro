@@ -3,13 +3,12 @@ from __future__ import annotations
 import argparse
 import logging
 import random
+import sys
 from pathlib import Path
 
+from ..arquivo_do_dono import Lida
 from ..config import (
     DEFAULT_DATASET_CSV,
-    DEFAULT_MAX_BOARDS,
-    DEFAULT_ORIENTATION_MODE,
-    DEFAULT_READING_ORDER,
 )
 from ..logging_setup import configure_logging, default_log_file
 from ..review_queue import (
@@ -17,11 +16,27 @@ from ..review_queue import (
     DEFAULT_QUEUE_PATH,
     ReviewQueue,
     build_review_queue,
+    carregar_fila,
     error_rate,
-    merge_queues,
+    fundir_fila_retomada,
+    gravar_fila,
     rare_classes_from_labels,
 )
-from . import add_accept_threshold_argument, add_dpi_argument, add_model_argument, add_verbose, cli_errors
+from . import (
+    EXIT_BAD_INPUT,
+    add_accept_threshold_argument,
+    add_dpi_argument,
+    add_max_boards_argument,
+    add_model_argument,
+    add_orientation_argument,
+    add_page_range_arguments,
+    add_reading_order_argument,
+    add_verbose,
+    cli_errors,
+    exige_checkpoint,
+    exige_documento,
+    fronteira,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,23 +51,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--labels", type=Path, default=DEFAULT_DATASET_CSV, help="CSV usado para achar classes raras.")
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR, help="Onde os recortes da fila são gravados.")
     add_dpi_argument(parser)
-    parser.add_argument(
-        "--max-boards-per-page", type=int, default=DEFAULT_MAX_BOARDS, help="Teto de diagramas aceitos por página."
-    )
-    parser.add_argument(
-        "--orientation",
-        choices=("auto", "0", "180"),
-        default=DEFAULT_ORIENTATION_MODE,
-        help="Rotação do tabuleiro. `auto` decide pela confiança das duas leituras.",
-    )
-    parser.add_argument("--start-page", type=int, default=0, help="Primeira página a varrer, base 0.")
-    parser.add_argument("--end-page", type=int, default=None, help="Exclusivo. Padrao: ate o fim do PDF.")
-    parser.add_argument(
-        "--reading-order",
-        choices=("column", "row"),
-        default=DEFAULT_READING_ORDER,
-        help="Ordem em que os diagramas da página entram na fila.",
-    )
+    add_max_boards_argument(parser, "--max-boards-per-page")
+    add_orientation_argument(parser)
+    add_page_range_arguments(parser)
+    add_reading_order_argument(parser, help="Ordem em que os diagramas da página entram na fila.")
     add_accept_threshold_argument(parser)
     parser.add_argument("--limit", "--limite", type=int, default=None, help="Corta a fila apos ordenar.")
     parser.add_argument("--show", type=int, default=20, help="Itens listados no fim.")
@@ -80,6 +82,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
+    exige_documento(args.pdf)
+    exige_checkpoint(args.model)
 
     def _progress(page_index: int, total_pages: int, page_boards: int, total_positions: int) -> None:
         logger.info(
@@ -90,7 +94,15 @@ def main(argv: list[str] | None = None) -> int:
             total_positions,
         )
 
-    rare = rare_classes_from_labels(args.labels)
+    anterior = carregar_fila(args.queue)
+    if not isinstance(anterior, Lida):
+        # Antes da varredura, e nao depois: a fila que nao leu nao e regravada (S-812), e varrer
+        # o livro inteiro para so entao recusar seria gastar a noite.
+        print(anterior.mensagem, file=sys.stderr)
+        return EXIT_BAD_INPUT
+
+    with fronteira(f"--labels {args.labels}"):
+        rare = rare_classes_from_labels(args.labels)
     if rare:
         logger.info("Classes raras no dataset: %s", ", ".join(sorted(rare)))
 
@@ -111,13 +123,19 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.merge:
-        existing = ReviewQueue.load(args.queue)
-        if existing.items and existing.source_pdf == queue.source_pdf:
-            revisados = sum(1 for item in existing.items if item.status != "pending")
-            queue = merge_queues(existing, queue)
-            print(f"Fila anterior reaproveitada: {revisados} itens ja marcados foram preservados.")
+        # `--start-page`, `--end-page` e `--limit` descrevem so parte do livro: o resto da fila
+        # anterior fica como estava (S-816).
+        nova = queue
+        queue = fundir_fila_retomada(anterior.valor, nova, paginas_vistas=nova.paginas_vistas)
+        revisados = sum(1 for item in queue.items if item.status != "pending")
+        preservados = len(queue.items) - len(nova.items)
+        if revisados or preservados:
+            print(
+                f"Fila anterior reaproveitada: {revisados} itens ja marcados e {preservados} de fora "
+                "do que foi varrido foram preservados."
+            )
 
-    path = queue.save(args.queue)
+    path = gravar_fila(anterior.com(queue))
 
     print(f"PDF: {args.pdf}")
     print(f"Fila: {path}")

@@ -77,15 +77,23 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_json
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import DEFAULT_DPI, PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import EXIT_FAILURE, add_verbose, cli_errors, confere_baseline
+from . import (
+    EXIT_FAILURE,
+    add_amostra_do_acervo,
+    add_baseline_argument,
+    add_verbose,
+    cli_errors,
+    confere_baseline,
+    fronteira,
+)
 
 logger = logging.getLogger(__name__)
 
 SAIDA_PADRAO = PROJECT_ROOT / "docs" / "metrics" / "texto_ordem.json"
 
-DPI = 220.0
+DPI = float(DEFAULT_DPI)
 """O mesmo da varredura de produção. A ordem não deveria mudar com o DPI, e há teste."""
 
 MIN_LINHAS = 6
@@ -144,15 +152,19 @@ def kendall_tau(ordem: list[int]) -> float:
     return invertidos / (n * (n - 1) / 2)
 
 
-def _linhas_da_camada(page: Any) -> list[tuple[int, tuple[float, float, float, float]]]:
-    """`(posição na camada, bbox)` por linha, na ordem em que o PDF as emitiu."""
-    saida: list[tuple[int, tuple[float, float, float, float]]] = []
+def linhas_da_camada(page: Any) -> list[tuple[str, tuple[float, float, float, float]]]:
+    """`(texto, bbox)` de cada linha não vazia da camada, **na ordem em que o PDF as emitiu**.
+
+    É a régua das duas medições de ordem -- esta e a da grade (`texto_grade`) -- e por isso mora
+    num lugar só (S-864): a posição na lista é a ordem da camada que as duas comparam.
+    """
+    saida: list[tuple[str, tuple[float, float, float, float]]] = []
     for bloco in page.get_text("dict")["blocks"]:
         for linha in bloco.get("lines", []):
             texto = "".join(span["text"] for span in linha["spans"]).strip()
             if texto:
                 x0, y0, x1, y1 = (float(v) for v in linha["bbox"])
-                saida.append((len(saida), (x0, y0, x1, y1)))
+                saida.append((texto, (x0, y0, x1, y1)))
     return saida
 
 
@@ -179,12 +191,12 @@ def medir_pagina(page: Any) -> Pagina | None:
     from ..text.quadros import quadros_da_camada
     from ..text.regioes import colunas_da_folha, detectar_regioes
 
-    da_camada = _linhas_da_camada(page)
+    da_camada = linhas_da_camada(page)
     if len(da_camada) < MIN_LINHAS:
         return None
 
     caixas = [Caixa(int(b[0]), int(b[1]), int(b[2]), int(b[3])) for _, b in da_camada]
-    posicao = {_centro(b): i for i, b in da_camada}
+    posicao = {_centro(b): i for i, (_, b) in enumerate(da_camada)}
 
     # **O piso é o de linha, e não o de caractere** (S-507). Aqui as caixas são **linhas** da
     # camada, e `piso_de_calha` multiplicaria o piso por vinte -- ver `leitor.calha_de_linhas`,
@@ -298,13 +310,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "relatorio como 'sem referencia', que e o que sao."
         ),
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
-    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
-    parser.add_argument("--por-livro", type=int, default=5, help="Paginas medidas por livro (padrao 5).")
-    parser.add_argument("--limite", "--limit", type=int, help="So os N primeiros livros.")
-    parser.add_argument(
-        "--baseline",
-        type=Path,
+    add_amostra_do_acervo(parser, saida=SAIDA_PADRAO, por_livro=5)
+    add_baseline_argument(
+        parser,
         help="Falha (codigo 1) se a distancia media piorar contra este relatorio. Regressao de ordem e regressao.",
     )
     add_verbose(parser)
@@ -349,7 +357,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.baseline:
         # A existência do caminho já foi conferida antes de medir (S-381).
-        antes = json.loads(args.baseline.read_text(encoding="utf-8")).get("tau_medio")
+        with fronteira(f"--baseline {args.baseline}"):
+            antes = json.loads(args.baseline.read_text(encoding="utf-8")).get("tau_medio")
         if antes is not None and medio is not None and medio > antes + PIORA_TOLERADA:
             logger.error(
                 "A ordem piorou: tau médio %.4f contra %.4f do baseline (tolerância %.2f).",
@@ -361,7 +370,7 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["Pagina", "kendall_tau", "main", "medir", "medir_pagina", "parse_args"]
+__all__ = ["Pagina", "kendall_tau", "linhas_da_camada", "main", "medir", "medir_pagina", "parse_args"]
 
 
 if __name__ == "__main__":  # pragma: no cover

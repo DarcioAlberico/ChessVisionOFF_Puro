@@ -47,6 +47,7 @@ from typing import Any
 
 import chess
 
+from .config import DEFAULT_DPI
 from .semantics import compose_fen
 from .text import notacao
 from .text.pagina import BlocoDeTexto, PaginaLida
@@ -1017,12 +1018,18 @@ def validar_solucao(placement: str, tokens: Sequence[str], *, vez: str = "") -> 
     if not limpo:
         return Solucao(motivo="não há lance impresso nesta linha")
 
-    preferido = "b" if str(vez).lower().startswith("b") else "w"
+    # o livro de partidas imprime `23.Qxh7+`: o número e o lado do primeiro lance põem a posição
+    # no lance certo, e sem eles `validar` recusava o número (S-899)
+    numero, lado_impresso = notacao.numero_do_primeiro_lance(limpo)
+    if lado_impresso is not None:
+        preferido = "w" if lado_impresso == chess.WHITE else "b"
+    else:
+        preferido = "b" if str(vez).lower().startswith("b") else "w"
     tentativas: list[tuple[int, str, notacao.LinhaValidada]] = []
     for lado in (preferido, "b" if preferido == "w" else "w"):
         try:
             tabuleiro = chess.Board(
-                compose_fen(placement, chess.WHITE if lado == "w" else chess.BLACK)
+                compose_fen(placement, chess.WHITE if lado == "w" else chess.BLACK, fullmove=numero or 1)
             )
         except (ValueError, AttributeError, TypeError, IndexError) as erro:
             return Solucao(motivo=f"a posição lida não é uma FEN válida ({erro})")
@@ -1243,7 +1250,7 @@ def de_pdf(
     modelo: Any = None,
     inicio: int = 0,
     fim: int | None = None,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     progresso: Callable[[int, int], None] | None = None,
     avaliar: Callable[[chess.Board], tuple[int | None, int | None]] | None = None,
 ) -> Extracao:

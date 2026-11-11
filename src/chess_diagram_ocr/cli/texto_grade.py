@@ -83,12 +83,24 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..atomic_io import atomic_write_json
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import EXIT_FAILURE, add_verbose, cli_errors, confere_baseline
+from ..text import admissao
+from . import (
+    EXIT_FAILURE,
+    add_amostra_do_acervo,
+    add_baseline_argument,
+    add_verbose,
+    cli_errors,
+    confere_baseline,
+    fronteira,
+)
+
+if TYPE_CHECKING:
+    import fitz
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +115,6 @@ NUMERO_NA_LINHA = re.compile(r"^\D{0,4}(\d{1,4})\b")
 A folga cobre o que os livros põem na frente: `№`, `#`, `(`, e o lixo que o OCR deixa no lugar
 deles -- o `Karpov` sai como `N!!311.` na camada do Acrobat. Quatro é o que basta para esses, e
 pouco o bastante para não pescar o número que vem no meio de uma frase."""
-
-MARCAS_DE_OCR = ("paper capture", "abbyy", "finereader", "tesseract", "ocr")
-"""Trechos de `producer`/`creator` que denunciam camada de texto gerada por máquina."""
 
 CONCORDANCIA_MINIMA = 0.80
 """Fração das páginas decidíveis que precisa votar na mesma direção para o livro ser calibrado.
@@ -207,17 +216,6 @@ class PaginaDeGrade:
     tau_grade: float | None = None
 
 
-def _linhas_da_camada(page: Any) -> list[tuple[str, tuple[float, float, float, float]]]:
-    saida: list[tuple[str, tuple[float, float, float, float]]] = []
-    for bloco in page.get_text("dict")["blocks"]:
-        for linha in bloco.get("lines", []):
-            texto = "".join(span["text"] for span in linha["spans"]).strip()
-            if texto:
-                x0, y0, x1, y1 = (float(v) for v in linha["bbox"])
-                saida.append((texto, (x0, y0, x1, y1)))
-    return saida
-
-
 PAGINAS_DE_PROCEDENCIA = 20
 """Quantas páginas se amostram para dizer de onde veio a camada de texto."""
 
@@ -233,8 +231,11 @@ acervo dão 100% e os editorados, 0% ou 5%."""
 def camada_de_ocr(doc: Any) -> str | None:
     """O que denuncia a camada de texto como gerada por máquina, ou `None` se nada denunciar.
 
-    Três marcas, e a terceira é a que pega quem não se identifica: **a maior parte do livro é
-    bitmap com texto por cima**. Um livro editorado não desenha as próprias páginas como imagem.
+    Duas marcas. A primeira é o que o PDF declara -- produtor, criador e fontes das páginas
+    amostradas --, e é a regra única da `admissao.procedencia` (S-849): até ali este comando tinha a
+    sua lista, que não via o `OmniPage` e pedia quatro fontes `Fd`. A segunda é a que pega quem não
+    se identifica: **a maior parte do livro é bitmap com texto por cima**. Um livro editorado não
+    desenha as próprias páginas como imagem.
 
     **O acervo é misto, e o comando não pode fingir que não é.** Dos livros com camada de texto,
     uns são digitalização com OCR (`Karpov`, `Schiller`, `Burgess` e `Secrets` -- justamente os
@@ -242,11 +243,9 @@ def camada_de_ocr(doc: Any) -> str | None:
     `Dvoretsky` e o `1001` saem de conversão de ebook. A distinção importa porque é ela que diz
     quanto vale a referência da S-194 em cada livro.
     """
-    metadados = doc.metadata or {}
-    assinatura = f"{metadados.get('producer', '')} {metadados.get('creator', '')}".lower()
-    for marca in MARCAS_DE_OCR:
-        if marca in assinatura:
-            return marca
+    declarada = admissao.procedencia_da_camada(doc)
+    if declarada.de_ocr:
+        return declarada.marca
 
     amostradas = digitalizadas = 0
     fontes: set[str] = set()
@@ -274,12 +273,11 @@ def camada_de_ocr(doc: Any) -> str | None:
         if tem_texto and maior / area > 0.7:
             digitalizadas += 1
 
-    if any("glyphless" in fonte.lower() for fonte in fontes):
-        return "fonte invisível (Tesseract e afins)"
-    # As fontes sintéticas que o Paper Capture cria ao vetorizar o glifo reconhecido. Entram
-    # porque nem toda cópia carrega o `producer` original -- `Yusupov` passou por um redutor.
-    if sum(1 for fonte in fontes if fonte.startswith("Fd")) >= 4:
-        return "fontes Fd######## (Paper Capture)"
+    # A fonte entra porque nem toda cópia carrega o `producer` original -- `Yusupov` passou por um
+    # redutor, e só as fontes `Fd` do Paper Capture o denunciam.
+    pela_fonte = admissao.procedencia(fontes=sorted(fontes))
+    if pela_fonte.de_ocr:
+        return f"fonte de OCR ({pela_fonte.marca})"
     if amostradas and digitalizadas / amostradas >= FRACAO_DIGITALIZADA:
         return "imagem de página inteira com texto por cima"
     return None
@@ -297,9 +295,9 @@ def medir_pagina(page: Any) -> PaginaDeGrade | None:
         parece_grade,
     )
     from ..text.pagina import sequencia_de_leitura
-    from .texto_ordem import descidas, kendall_tau
+    from .texto_ordem import descidas, kendall_tau, linhas_da_camada
 
-    da_camada = _linhas_da_camada(page)
+    da_camada = linhas_da_camada(page)
     if len(da_camada) < MIN_LINHAS:
         return None
 
@@ -409,6 +407,85 @@ def calibrar(paginas: Sequence[PaginaDeGrade]) -> Calibracao:
                       palpites_grade, palpites_prosa)
 
 
+@dataclass(frozen=True)
+class _LeituraDoLivro:
+    """O que as primeiras `por_livro` páginas com referência de um livro deram."""
+
+    marca: str | None
+    vistas: int
+    medidas: list[PaginaDeGrade]
+
+
+def _ler_livro(doc: fitz.Document, caminho: Path, *, por_livro: int, avisos: list[str]) -> _LeituraDoLivro:
+    """As páginas de grade do livro, parando em `por_livro` páginas com referência."""
+    marca = camada_de_ocr(doc)
+    medidas: list[PaginaDeGrade] = []
+    vistas = 0
+    for indice in range(doc.page_count):
+        if vistas >= por_livro:
+            break
+        try:
+            resultado = medir_pagina(doc[indice])
+        except Exception as exc:  # noqa: BLE001 - PDF de terceiro
+            avisos.append(f"{caminho.name} p.{indice + 1}: {exc}")
+            continue
+        if resultado is None:
+            continue
+        vistas += 1
+        if resultado.e_grade:
+            medidas.append(replace(resultado, pagina=indice + 1))
+    return _LeituraDoLivro(marca, vistas, medidas)
+
+
+def _palpites_da_camada(decidiveis: list[PaginaDeGrade]) -> dict[str, int]:
+    """O palpite da camada conferido onde o número impresso responde. Puro.
+
+    É ele que diz quanto vale uma calibração por hipótese, e por isso é contado mesmo nos livros
+    que não precisam dela.
+    """
+    certo = sum(1 for p in decidiveis if direcao_pela_camada(p) == p.direcao_impressa)
+    errado = sum(1 for p in decidiveis if (opiniao := direcao_pela_camada(p)) and opiniao != p.direcao_impressa)
+    return {"acertos": certo, "erros": errado}
+
+
+def _tau_medio(com_tau: list[PaginaDeGrade], campo: str) -> float | None:
+    """A média do `tau` de `campo` (`tau_prosa` ou `tau_grade`) nas páginas que o têm. Pura."""
+    if not com_tau:
+        return None
+    return sum(getattr(p, campo) or 0 for p in com_tau) / len(com_tau)
+
+
+def linha_do_livro(marca: str | None, medidas: list[PaginaDeGrade]) -> dict[str, object]:
+    """A linha do relatório para um livro com páginas de grade. Pura."""
+    calibracao = calibrar(medidas)
+    decidiveis = [p for p in medidas if p.direcao_impressa]
+    concordam = sum(1 for p in decidiveis if p.direcao_emitida == p.direcao_impressa)
+    com_tau = [p for p in medidas if p.tau_prosa is not None]
+    return {
+        "camada": marca or "editorado",
+        "paginas_de_grade": len(medidas),
+        "paginas_decidiveis": len(decidiveis),
+        "arranjo": calibracao.arranjo,
+        "fonte": calibracao.fonte,
+        "hipotese": calibracao.hipotese,
+        "votos": {"grade": calibracao.votos_impressos_grade, "prosa": calibracao.votos_impressos_prosa},
+        "votos_da_camada": {
+            "grade": calibracao.votos_da_camada_grade,
+            "prosa": calibracao.votos_da_camada_prosa,
+        },
+        "camada_como_palpite": _palpites_da_camada(decidiveis),
+        # A prova de que o `tau` não pode arbitrar: em quantas páginas a camada e o número
+        # impresso discordam sobre a direção da própria grade.
+        "emissao_contra_impresso": {
+            "de_acordo": concordam,
+            "contra": len(decidiveis) - concordam,
+        },
+        "paginas_com_tau": len(com_tau),
+        "tau_prosa": _tau_medio(com_tau, "tau_prosa"),
+        "tau_grade": _tau_medio(com_tau, "tau_grade"),
+    }
+
+
 def medir(pdfs: list[Path], *, por_livro: int) -> dict[str, Any]:
     """Uma linha por livro, e o agregado. Ver o cabeçalho para o que cada número quer dizer."""
     import fitz
@@ -425,63 +502,14 @@ def medir(pdfs: list[Path], *, por_livro: int) -> dict[str, Any]:
             avisos.append(f"{caminho.name}: não abriu ({exc})")
             continue
         with doc:
-            marca = camada_de_ocr(doc)
-            medidas: list[PaginaDeGrade] = []
-            vistas = 0
-            for indice in range(doc.page_count):
-                if vistas >= por_livro:
-                    break
-                try:
-                    resultado = medir_pagina(doc[indice])
-                except Exception as exc:  # noqa: BLE001 - idem
-                    avisos.append(f"{caminho.name} p.{indice + 1}: {exc}")
-                    continue
-                if resultado is None:
-                    continue
-                vistas += 1
-                if resultado.e_grade:
-                    medidas.append(replace(resultado, pagina=indice + 1))
-        if vistas == 0:
+            lido = _ler_livro(doc, caminho, por_livro=por_livro, avisos=avisos)
+        if lido.vistas == 0:
             sem_referencia.append(caminho.name)
             continue
-        if marca is None:
+        if lido.marca is None:
             editorados.append(caminho.name)
-        if not medidas:
-            continue
-
-        calibracao = calibrar(medidas)
-        decidiveis = [p for p in medidas if p.direcao_impressa]
-        concordam = sum(1 for p in decidiveis if p.direcao_emitida == p.direcao_impressa)
-        com_tau = [p for p in medidas if p.tau_prosa is not None]
-        # O palpite da camada conferido onde o número impresso responde: é ele que diz quanto vale
-        # uma calibração por hipótese, e por isso é contado mesmo nos livros que não precisam dela.
-        palpite_certo = sum(1 for p in decidiveis if direcao_pela_camada(p) == p.direcao_impressa)
-        palpite_errado = sum(
-            1 for p in decidiveis if (opiniao := direcao_pela_camada(p)) and opiniao != p.direcao_impressa
-        )
-        por_livro_saida[caminho.name] = {
-            "camada": marca or "editorado",
-            "paginas_de_grade": len(medidas),
-            "paginas_decidiveis": len(decidiveis),
-            "arranjo": calibracao.arranjo,
-            "fonte": calibracao.fonte,
-            "hipotese": calibracao.hipotese,
-            "votos": {"grade": calibracao.votos_impressos_grade, "prosa": calibracao.votos_impressos_prosa},
-            "votos_da_camada": {
-                "grade": calibracao.votos_da_camada_grade,
-                "prosa": calibracao.votos_da_camada_prosa,
-            },
-            "camada_como_palpite": {"acertos": palpite_certo, "erros": palpite_errado},
-            # A prova de que o `tau` não pode arbitrar: em quantas páginas a camada e o número
-            # impresso discordam sobre a direção da própria grade.
-            "emissao_contra_impresso": {
-                "de_acordo": concordam,
-                "contra": len(decidiveis) - concordam,
-            },
-            "paginas_com_tau": len(com_tau),
-            "tau_prosa": (sum(p.tau_prosa or 0 for p in com_tau) / len(com_tau)) if com_tau else None,
-            "tau_grade": (sum(p.tau_grade or 0 for p in com_tau) / len(com_tau)) if com_tau else None,
-        }
+        if lido.medidas:
+            por_livro_saida[caminho.name] = linha_do_livro(lido.marca, lido.medidas)
 
     return _agregar(por_livro_saida, sem_referencia, editorados, avisos)
 
@@ -575,15 +603,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "spans: nesta colecao essa ordem e de um motor de OCR, e ela erra a direcao da grade."
         ),
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
-    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
-    parser.add_argument("--por-livro", type=int, default=40, help="Paginas medidas por livro (padrao 40).")
-    parser.add_argument("--limite", "--limit", type=int, help="So os N primeiros livros.")
-    parser.add_argument(
-        "--baseline",
-        type=Path,
-        help="Falha (codigo 1) se o acerto cair contra este relatorio.",
-    )
+    add_amostra_do_acervo(parser, saida=SAIDA_PADRAO, por_livro=40)
+    add_baseline_argument(parser, help="Falha (codigo 1) se o acerto cair contra este relatorio.")
     add_verbose(parser)
     return parser.parse_args(argv)
 
@@ -652,7 +673,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.baseline:
         # A existência do caminho já foi conferida antes de medir (S-381).
-        antes = json.loads(args.baseline.read_text(encoding="utf-8")).get("acerto")
+        with fronteira(f"--baseline {args.baseline}"):
+            antes = json.loads(args.baseline.read_text(encoding="utf-8")).get("acerto")
         if antes is not None and acerto is not None and acerto < antes - QUEDA_TOLERADA:
             logger.error(
                 "A calibração piorou: acerto %.1f%% contra %.1f%% do baseline (tolerância %.0f p.p.).",

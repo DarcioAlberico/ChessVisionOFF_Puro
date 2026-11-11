@@ -163,6 +163,64 @@ class PdfHistoryTests(unittest.TestCase):
         self.assertEqual(state.page_for(Path(f"livro_{MAX_PDF_HISTORY + 9}.pdf")), MAX_PDF_HISTORY + 9)
         self.assertEqual(state.page_for(Path("livro_0.pdf")), 0)
 
+    def test_o_historico_lido_e_aparado_ao_teto(self) -> None:
+        """S-828: o teto valia para `remember_page` e não para a leitura; 500 entradas seguiam 500."""
+        state = state_from_dict({"pdf_history": {str(i): i for i in range(80)}})
+        self.assertEqual(len(state.pdf_history), MAX_PDF_HISTORY)
+        # A ordem do arquivo é a de uso (`recentes`): ficam as últimas, que são as mais recentes.
+        self.assertEqual(list(state.pdf_history), [str(i) for i in range(80 - MAX_PDF_HISTORY, 80)])
+
+
+class LeituraPorTabelaTests(unittest.TestCase):
+    """S-828: todo campo do `AppState` é lido, e o de tipo errado cai no padrão do próprio `AppState`."""
+
+    def test_todo_campo_faz_ida_e_volta(self) -> None:
+        import dataclasses
+
+        from chess_diagram_ocr.ui import viewport
+
+        padrao = AppState()
+        self.assertNotEqual(padrao.pdf_enquadramento, viewport.ENQUADRAMENTO_PAGINA)
+        mudado = AppState(
+            **{
+                campo.name: _outro_valor(getattr(padrao, campo.name))
+                for campo in dataclasses.fields(AppState)
+                if campo.name != "pdf_enquadramento"
+            },
+            pdf_enquadramento=viewport.ENQUADRAMENTO_PAGINA,
+        )
+        relido = state_from_dict(mudado.to_dict())
+        for campo in dataclasses.fields(AppState):
+            with self.subTest(campo.name):
+                self.assertEqual(getattr(relido, campo.name), getattr(mudado, campo.name))
+                self.assertNotEqual(getattr(relido, campo.name), getattr(padrao, campo.name), "o campo não foi lido")
+
+    def test_todo_campo_de_tipo_errado_cai_no_padrao(self) -> None:
+        import dataclasses
+
+        padrao = AppState()
+        estragado: dict[str, object] = {campo.name: object() for campo in dataclasses.fields(AppState)}
+        estragado.update(last_page=True, texto_zoom=False, pdf_zoom=True, texto_glifos_recentes="abc")
+        relido = state_from_dict(estragado)
+        self.assertEqual(relido, padrao)
+
+
+def _outro_valor(valor: object) -> object:
+    """Um valor do mesmo tipo e diferente do padrão, dentro das faixas que a leitura grampeia."""
+    if isinstance(valor, bool):
+        return not valor
+    if isinstance(valor, int):
+        return valor + 3
+    if isinstance(valor, float):
+        return 0.5 if valor != 0.5 else 0.6
+    if isinstance(valor, str):
+        return valor + "x"
+    if isinstance(valor, dict):
+        return {"C:/PDF/livro.pdf": 7}
+    if isinstance(valor, list):
+        return ["♔", "♘"]
+    raise AssertionError(f"tipo sem valor de teste: {type(valor).__name__}")
+
 
 class ArranjoDaJanelaTests(unittest.TestCase):
     """Os três campos que faltavam: geometria, divisor e aba (S-156).

@@ -41,6 +41,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from .arquivo_do_dono import ler_texto
 from .atomic_io import atomic_write_json
 from .config import DATA_DIR
 from .pgn_do_livro import IndiceDoLivro, lance_da_legenda
@@ -267,16 +268,14 @@ def _resolver(
 ) -> DiagramaDoLivro:
     lido = ler(diagrama) if (ler is not None and diagrama.caixa is not None) else ""
     lance = lance_da_legenda(diagrama.legenda) if diagrama.legenda else None
+    candidatos: list[int] = []
     if lance:
         candidatos = indice.com_rotulo(diagrama.capitulo, lance) if diagrama.capitulo else []
         if not candidatos:
             candidatos = [k for cap in indice.capitulos for k in indice.com_rotulo(cap, lance)]
-    elif lido:
-        candidatos = indice.com_posicao(lido)
-        if not candidatos:
-            candidatos = _vizinhos(indice, lido)
-    else:
-        candidatos = []
+    if not candidatos and lido:
+        # sem legenda, ou com um lance que o livro não tem (o OCR leu «Kc6» por «Nc6», S-879): a posição
+        candidatos = indice.com_posicao(lido) or _vizinhos(indice, lido)
     if not candidatos:
         return replace(diagrama, lido=lido, estado=SEM_NO)
     chave = diagrama.capitulo
@@ -491,7 +490,7 @@ seu PGN."""
 
 def _associacoes(arquivo: Path) -> dict[str, dict[str, str]]:
     try:
-        dados = json.loads(arquivo.read_text(encoding="utf-8"))
+        dados = json.loads(ler_texto(arquivo, do_usuario=False))
     except (OSError, ValueError):
         return {}
     return dados if isinstance(dados, dict) else {}

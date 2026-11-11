@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import varredura
 from subprocesso import rodar_python
 
 from chess_diagram_ocr import logging_setup
@@ -47,8 +48,8 @@ class OndeEstaORastroTests(unittest.TestCase):
         """A varredura é o item: a frase estava escrita à mão em quatro lugares."""
         alvos = [
             RAIZ / "src" / "chess_diagram_ocr" / "qt" / "janela.py",
-            *sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")),
-            *sorted((RAIZ / "src" / "chess_diagram_ocr" / "cli").glob("*.py")),
+            *varredura.fontes(RAIZ / "src" / "chess_diagram_ocr" / "ui", piso=60),
+            *varredura.fontes(RAIZ / "src" / "chess_diagram_ocr" / "cli", piso=40),
         ]
         promessas = [
             f"{caminho.name}:{numero}"

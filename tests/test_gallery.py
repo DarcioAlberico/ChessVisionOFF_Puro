@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import unittest
 from pathlib import Path
 
 import chess
+import chess.pgn
 
 from chess_diagram_ocr.gallery import (
     DiagramAnnotation,
+    GaleriaDeOutroLivro,
     GalleryAnnotations,
     annotations_path_for,
     export_human,
@@ -73,6 +76,32 @@ class AnotacaoTests(unittest.TestCase):
 
     def test_header_vazio_some(self) -> None:
         self.assertEqual(DiagramAnnotation.from_dict({"headers": {"White": "   "}}).headers, {})
+
+
+    def test_cabecalho_livre_com_acento_nao_derruba_exportacao(self) -> None:
+        """S-876: um nome que o PGN não aceita, ou um valor de duas linhas, não para o livro.
+
+        O python-chess recusa nome fora de `TAG_NAME_REGEX` e valor com quebra de linha com um
+        `ValueError` em inglês -- e um só cabeçalho digitado à mão impedia de exportar o livro
+        inteiro. Na leitura da Galeria o nome inválido sai, e a quebra vira espaço.
+        """
+        anotacao = DiagramAnnotation.from_dict({"headers": {
+            "Comentário": "bela combinação",
+            "Torneio Local": "Clube",
+            "Event": "Kemeri\r\n1937",
+            "Annotator": "Tal\nKoblents",
+            "White": "Tal",
+        }})
+
+        texto = build_pgn_text([_posicao()], source_name="livro.pdf", annotations={(0, 0): anotacao})
+
+        jogo = chess.pgn.read_game(io.StringIO(texto))
+        assert jogo is not None
+        self.assertEqual(jogo.headers["Event"], "Kemeri 1937")
+        self.assertEqual(jogo.headers["Annotator"], "Tal Koblents")
+        self.assertEqual(jogo.headers["White"], "Tal")
+        self.assertNotIn("Comentário", texto)
+        self.assertNotIn("Torneio", texto)
 
 
 class ConjuntoTests(unittest.TestCase):
@@ -143,6 +172,62 @@ class ArquivoTests(unittest.TestCase):
     def test_nome_do_arquivo_segue_o_stem_como_o_pgn(self) -> None:
         caminho = annotations_path_for(Path("/livros/1937 Kemeri.pdf"), directory=Path("/g"))
         self.assertEqual(caminho.name, "1937 Kemeri.json")
+
+
+class DonoDaGaleriaTests(unittest.TestCase):
+    """S-878: a galeria é nomeada pelo `stem`, e `a/Livro.pdf` e `b/Livro.pdf` dividiam o arquivo.
+
+    O trabalho humano de um (lance, partida escolhida) aparecia no outro, e a primeira edição no
+    outro o gravava por cima. O arquivo agora diz de que livro é, e o outro é recusado pelo nome.
+    """
+
+    def setUp(self) -> None:
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        self.raiz = Path(pasta.name)
+        self.galeria = self.raiz / "gallery"
+        self.livro_a = self.raiz / "a" / "Livro.pdf"
+        self.livro_b = self.raiz / "b" / "Livro.pdf"
+        for livro in (self.livro_a, self.livro_b):
+            livro.parent.mkdir()
+            livro.write_bytes(b"%PDF-1.4\n")
+
+    def test_galeria_de_outro_livro_de_mesmo_nome_e_recusada(self) -> None:
+        do_a = GalleryAnnotations()
+        do_a.set(3, 0, DiagramAnnotation(move_number=12, chosen_game="karpov"))
+        save_annotations(self.livro_a, do_a, directory=self.galeria)
+
+        with self.assertRaises(GaleriaDeOutroLivro) as recusa:
+            load_annotations(self.livro_b, directory=self.galeria)
+        self.assertIn(str(self.livro_a.resolve()), str(recusa.exception), "A recusa diz de quem é a galeria.")
+        with self.assertRaises(GaleriaDeOutroLivro):
+            save_annotations(self.livro_b, GalleryAnnotations(), directory=self.galeria)
+
+        voltou = load_annotations(self.livro_a, directory=self.galeria).get(3, 0)
+        self.assertEqual((voltou.move_number, voltou.chosen_game), (12, "karpov"))
+
+    def test_galeria_antiga_sem_dono_continua_lida_e_ganha_dono_ao_gravar(self) -> None:
+        """Os JSON do dono não têm `source_pdf`: são lidos como sempre, e passam a ter na gravação."""
+        caminho = annotations_path_for(self.livro_a, directory=self.galeria)
+        caminho.parent.mkdir()
+        caminho.write_bytes(
+            json.dumps({"version": 1, "source_name": "Livro.pdf", "diagrams": {"3.0": {"move_number": 12}}}).encode()
+        )
+        conjunto = load_annotations(self.livro_a, directory=self.galeria)
+        self.assertEqual(conjunto.get(3, 0).move_number, 12)
+
+        save_annotations(self.livro_a, conjunto, directory=self.galeria)
+        with self.assertRaises(GaleriaDeOutroLivro):
+            load_annotations(self.livro_b, directory=self.galeria)
+
+    def test_livro_que_mudou_de_pasta_continua_com_a_sua_galeria(self) -> None:
+        """O dono gravado que não existe mais é o livro movido, e não um segundo livro."""
+        do_a = GalleryAnnotations()
+        do_a.set(3, 0, DiagramAnnotation(move_number=12))
+        save_annotations(self.livro_a, do_a, directory=self.galeria)
+        self.livro_a.unlink()
+
+        self.assertEqual(load_annotations(self.livro_b, directory=self.galeria).get(3, 0).move_number, 12)
 
 
 class LichessTests(unittest.TestCase):

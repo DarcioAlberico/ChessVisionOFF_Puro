@@ -26,8 +26,8 @@ ALTURA = 20
 """Altura de letra do fixture. Tudo abaixo é em frações dela, como no código."""
 
 
-def letra(x: int, y: int = 100, *, largura: int = 14, altura: int = ALTURA, angulo: int = 0) -> Caixa:
-    return Caixa(x, y, x + largura, y + altura, angulo)
+def letra(x: int, y: int = 100, *, largura: int = 14, altura: int = ALTURA) -> Caixa:
+    return Caixa(x, y, x + largura, y + altura)
 
 
 def curta(x: int, y: int, *, altura: int = 6) -> Caixa:
@@ -132,14 +132,6 @@ class ColunaTests(unittest.TestCase):
         virgula = Caixa(60, 100 + ALTURA - 4, 65, 100 + ALTURA)
         ano = [letra(x, 100) for x in (75, 95)]
         self.assertEqual(1, len(quebrar_em_linhas([*nome, virgula, *ano])))
-
-    def test_a_pilha_girada_nao_e_cortada_por_subir(self) -> None:
-        """A 90° o texto se lê de baixo para cima: subir ali é o andamento normal da linha.
-
-        Sem a guarda, cada letra de um rótulo vertical vira uma linha.
-        """
-        pilha = [Caixa(100, y, 118, y + ALTURA, 90) for y in (400, 360, 320, 280, 240)]
-        self.assertEqual(1, len(quebrar_em_linhas(pilha)))
 
 
 class ConstantesTests(unittest.TestCase):

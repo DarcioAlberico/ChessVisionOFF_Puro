@@ -39,17 +39,6 @@ AMARRADOS = {acao: (lambda: None) for acao in medidas_da_fita.acoes_da_fita()}
 class DeclaracaoTests(unittest.TestCase):
     """A decisão é a mesma dos dois lados, e nenhum dos dois a reescreve."""
 
-    def test_o_modulo_puro_nao_carrega_tkinter(self) -> None:
-        """É a razão de ele existir: `Fita` herda de `ttk.Frame` pela `BarraFluida`, e classe-base
-        é avaliada na importação -- então ler o orçamento pelo módulo antigo carrega o Tk junto."""
-        import ast
-        from pathlib import Path
-
-        arvore = ast.parse(Path(medidas_da_fita.__file__).read_text(encoding="utf-8"))
-        importados = {no.names[0].name.split(".")[0] for no in ast.walk(arvore) if isinstance(no, ast.Import)}
-        importados |= {(no.module or "").split(".")[0] for no in ast.walk(arvore) if isinstance(no, ast.ImportFrom)}
-        self.assertNotIn("tkinter", importados)
-
     @unittest.skipUnless(TEM_PYQT, MOTIVO)
     def test_a_conta_da_altura_e_a_mesma_nos_dois(self) -> None:
         """Um segundo modelo de altura faria as duas janelas trocarem de modo em larguras

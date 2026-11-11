@@ -146,7 +146,6 @@ def unir(caixas: Sequence[Caixa], *, escala: int, extras: Sequence[Caixa] = ()) 
                 acima.y1,
                 max(acima.x2, abaixo.x2),
                 abaixo.y2,
-                acima.angulo,
             )
             absorvida.add(id(abaixo))
             break

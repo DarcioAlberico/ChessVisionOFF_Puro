@@ -283,6 +283,85 @@ class CamadaExistenteTests(unittest.TestCase):
 
 
 
+class IdempotenciaTests(unittest.TestCase):
+    """S-821: a saída usada como entrada não duplica a camada nem a marca."""
+
+    def test_rodar_duas_vezes_nao_duplica_a_camada(self) -> None:
+        import fitz
+
+        with TemporaryDirectory() as raiz:
+            origem = livro(Path(raiz) / "livro.pdf")
+            caixa = (20.0, 30.0, 200.0, 45.0)
+            primeira, segunda = Path(raiz) / "uma.pdf", Path(raiz) / "duas.pdf"
+            escrever_camada([pagina_lida(("Nimzowitsch defende", 0.9, caixa))], primeira, origem=origem)
+            relatorio = escrever_camada([pagina_lida(("Nimzowitsch defende", 0.9, caixa))], segunda, origem=primeira)
+
+            saida = fitz.open(segunda)
+            try:
+                self.assertEqual(1, len(saida[0].search_for("Nimzowitsch")), "a camada entrou duas vezes")
+                self.assertEqual(1, saida.metadata["keywords"].count("ChessVisionOFF S-210"), saida.metadata["keywords"])
+            finally:
+                saida.close()
+        self.assertEqual(0, relatorio.ja_tinham_camada, "a camada nossa não é texto de origem")
+
+    def test_a_camada_de_origem_continua_quando_a_nossa_sai(self) -> None:
+        """Só o texto invisível que nós escrevemos sai; o impresso do livro fica."""
+        import fitz
+
+        with TemporaryDirectory() as raiz:
+            origem = livro(Path(raiz) / "livro.pdf", texto="impresso")
+            caixa = (20.0, 60.0, 200.0, 75.0)
+            primeira, segunda = Path(raiz) / "uma.pdf", Path(raiz) / "duas.pdf"
+            escrever_camada([pagina_lida(("Nimzowitsch", 0.9, caixa))], primeira, origem=origem)
+            escrever_camada([pagina_lida(("Nimzowitsch", 0.9, caixa))], segunda, origem=primeira)
+
+            antes, saida = fitz.open(origem), fitz.open(segunda)
+            try:
+                # `get_text`, e não `search_for`: a busca funde acertos no mesmo retângulo.
+                self.assertEqual(["impresso", "Nimzowitsch"], saida[0].get_text().split())
+                self.assertEqual(
+                    antes[0].get_pixmap(dpi=100).tobytes("png"), saida[0].get_pixmap(dpi=100).tobytes("png")
+                )
+            finally:
+                antes.close()
+                saida.close()
+
+    def test_a_saida_pode_ser_a_propria_entrada(self) -> None:
+        """A gravação vai por bytes e troca atômica: gravar por cima do livro aberto não falha."""
+        import fitz
+
+        with TemporaryDirectory() as raiz:
+            origem = livro(Path(raiz) / "livro.pdf")
+            for _ in range(2):
+                escrever_camada([pagina_lida(("Nimzowitsch", 0.9, (20.0, 30.0, 200.0, 45.0)))], origem, origem=origem)
+            saida = fitz.open(origem)
+            try:
+                self.assertEqual(1, len(saida[0].search_for("Nimzowitsch")))
+            finally:
+                saida.close()
+
+    def test_a_folha_corrigida_sai_sem_a_camada_do_motor(self) -> None:
+        """A S-253 copia a folha do livro; se o livro é saída nossa, a camada antiga não vem junto."""
+        import fitz
+
+        from chess_diagram_ocr.text import rico
+        from chess_diagram_ocr.text.pdf_pesquisavel import escrever
+
+        with TemporaryDirectory() as raiz:
+            origem = livro(Path(raiz) / "livro.pdf")
+            pesquisavel, folha = Path(raiz) / "pesquisavel.pdf", Path(raiz) / "folha.pdf"
+            caixa = (20.0, 30.0, 200.0, 45.0)
+            escrever_camada([pagina_lida(("Nimzowitsch", 0.9, caixa))], pesquisavel, origem=origem)
+            doc = rico.de_pagina(pagina_lida(("Nimzowitsch", 0.9, caixa), documento=str(pesquisavel)))
+            escrever(doc, folha)
+
+            saida = fitz.open(folha)
+            try:
+                self.assertEqual(1, len(saida[0].search_for("Nimzowitsch")), "a camada entrou duas vezes")
+            finally:
+                saida.close()
+
+
 class CadernoNaCamadaTests(unittest.TestCase):
     """S-614 sobre a S-253: a folha corrigida no caderno vence a leitura do motor na camada."""
 

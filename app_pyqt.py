@@ -278,23 +278,58 @@ def selftest(
     return 0
 
 
+def _argumentos() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Versão de teste da interface, em PyQt6.",
+        # **O erro de argumento não sai do processo** (S-907): ver `_ler_argumentos`.
+        exit_on_error=False,
+    )
+    parser.add_argument(
+        "--selftest",
+        action="store_true",
+        help="monta a janela sem mostrar, abre um PDF e sai. Para conferir uma instalação nova.",
+    )
+    # **Posicional, e é o gesto natural no Windows** (S-907): arrastar o livro para o ícone e
+    # "Abrir com..." passam o caminho assim, sem `--pdf`. Os dois ficam; `--pdf` vence.
+    parser.add_argument("livro", type=Path, nargs="?", default=None, metavar="PDF", help="livro a abrir.")
+    parser.add_argument("--pdf", type=Path, default=None, help="livro a abrir; sem isto, o primeiro de PDF/.")
+    parser.add_argument("--page", type=int, default=0, help="página do auto-teste (base 0).")
+    return parser
+
+
+def _ler_argumentos() -> argparse.Namespace:
+    """Os argumentos da linha, e **um que não se entende vai ao log e a janela abre assim mesmo**.
+
+    No `.exe` montado com `console=False`, `sys.stderr` é `None` (S-389), e o `argparse` que
+    reclama escreve o uso no fluxo que não existe: o `AttributeError` derrubava o processo antes
+    da janela e antes do log (S-907). Por isso `exit_on_error=False` e `parse_known_args` --
+    nenhum dos dois caminhos chama `parser.error` --, e a falta vira uma linha no arquivo.
+
+    O que sobra sem nome (dois livros arrastados de uma vez, por exemplo) também vai ao log:
+    abre o primeiro, e o segundo não some calado.
+    """
+    parser = _argumentos()
+    try:
+        args, sobra = parser.parse_known_args()
+    except argparse.ArgumentError as exc:
+        logger.warning("Argumento não entendido, a janela abre sem ele: %s", exc)
+        args, sobra = parser.parse_known_args([])
+    if sobra:
+        logger.warning("Argumentos ignorados: %s", " ".join(sobra))
+    if args.pdf is None:
+        args.pdf = args.livro
+    return args
+
+
 def main() -> None:
     # A mesma guarda do `app_tkinter.py`: num bundle congelado, `spawn` reexecuta o próprio
     # executável para criar cada filho, e sem isto cada filho abriria outra janela. Fora do
     # bundle é uma chamada sem efeito.
     mp.freeze_support()
 
-    parser = argparse.ArgumentParser(description="Versão de teste da interface, em PyQt6.")
-    parser.add_argument(
-        "--selftest",
-        action="store_true",
-        help="monta a janela sem mostrar, abre um PDF e sai. Para conferir uma instalação nova.",
-    )
-    parser.add_argument("--pdf", type=Path, default=None, help="livro a abrir; sem isto, o primeiro de PDF/.")
-    parser.add_argument("--page", type=int, default=0, help="página do auto-teste (base 0).")
-    args = parser.parse_args()
-
+    # **O log antes dos argumentos** (S-907): é ele que recebe a queixa sobre um argumento.
     configure_logging(log_file=default_log_file())
+    args = _ler_argumentos()
     if args.selftest:
         raise SystemExit(selftest(args.pdf, args.page))
 
@@ -309,36 +344,32 @@ def main() -> None:
     # arredondamento de escala é lida na construção dela; depois disso a chamada não tem efeito, e
     # em 125% o Qt arredonda para 100% e desenha a janela esticada -- o borrão da S-148 por outro
     # caminho. É a mesma pré-condição que `plataforma.consciencia_de_dpi` tem do lado do Tk.
-    from chess_diagram_ocr.qt.plataforma import politica_de_escala
+    from chess_diagram_ocr.qt.plataforma import instalar_borda, politica_de_escala
 
     politica_de_escala()
+    # **E a borda de exceção, também antes dela** (S-800). Sem ela a exceção que escapa de um slot
+    # é `qFatal` e o processo some sem uma linha de log; com ela, a que escapa daqui também vai
+    # ao arquivo -- `stderr`, num processo sem console, não vai a lugar nenhum (S-127).
+    borda = instalar_borda()
 
     from PyQt6.QtWidgets import QApplication
 
     from chess_diagram_ocr.qt.janela import JanelaPrincipal
 
     logger.info("Iniciando a janela em Qt (PyQt6).")
-    try:
-        aplicacao = QApplication(sys.argv)
-        janela = JanelaPrincipal()
-        # **Mostrar antes de abrir o livro.** O "ajustar à página" mede a área visível, e antes
-        # do `show()` ela ainda é a do tamanho pedido e não a que o gerenciador de janelas deu:
-        # o livro nasceria enquadrado para uma janela que não é esta.
-        janela.show()
-        if args.pdf is not None:
-            janela.abrir_pdf(args.pdf)
-        else:
-            # O livro da sessão anterior, e só na falta dele o primeiro da pasta (S-25).
-            janela.abrir_livro_da_sessao()
-        raise SystemExit(aplicacao.exec())
-    except SystemExit:
-        raise
-    except Exception:
-        # Sem isto uma exceção aqui sobe para o `sys.excepthook` e escreve em `stderr`, que num
-        # processo sem console não vai a lugar nenhum: o arquivo de log existiria e a única
-        # falha que ninguém consegue diagnosticar continuaria fora dele (S-127).
-        logger.exception("A janela de teste não abriu.")
-        raise
+    aplicacao = QApplication(sys.argv)
+    janela = JanelaPrincipal()
+    borda.frase.connect(janela.rodape.mostrar)
+    # **Mostrar antes de abrir o livro.** O "ajustar à página" mede a área visível, e antes
+    # do `show()` ela ainda é a do tamanho pedido e não a que o gerenciador de janelas deu:
+    # o livro nasceria enquadrado para uma janela que não é esta.
+    janela.show()
+    if args.pdf is not None:
+        janela.abrir_pdf(args.pdf)
+    else:
+        # O livro da sessão anterior, e só na falta dele o primeiro da pasta (S-25).
+        janela.abrir_livro_da_sessao()
+    raise SystemExit(aplicacao.exec())
 
 
 if __name__ == "__main__":

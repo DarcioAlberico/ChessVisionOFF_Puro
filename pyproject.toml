@@ -3,24 +3,21 @@ name = "chessvisionoff-puro"
 version = "0.1.0"
 description = "Extrai diagramas de xadrez de PDFs, converte para FEN e treina o modelo de forma incremental"
 readme = "README.md"
-# **A faixa, e nao o pino em 3.10 (S-436).** Era `==3.10.*`, e o ROADMAP registrava a
-# decisao de relaxar "quando houver motivo; exigiria re-resolver o lock". O motivo chegou e
-# tem data: o Python 3.10 sai de suporte em **outubro de 2026**, e o bundle do PyInstaller
-# **embarca o interpretador** -- manter o pino passaria a distribuir um Python sem correcao
-# de seguranca para quem baixa o .zip.
+# **O piso e 3.13, e e o interpretador padrao (S-830, D5 da solidez).** A S-436 abriu a faixa
+# `>=3.10,<3.14` porque o Python 3.10 saia de suporte em **outubro de 2026**, e o bundle do
+# PyInstaller **embarca o interpretador**: um `.exe` gerado num 3.10 distribui um Python sem
+# correcao de seguranca para quem baixa o .zip. O prazo venceu, e a faixa nao bastava -- o
+# `.python-version` continuava em 3.10, e todo `uv sync` criava o ambiente velho. O dono escolheu
+# o piso no proprio 3.13 (e nao 3.11): e a versao que a CI ja provava, e uma so versao provada e
+# o que a CI passa a rodar.
 #
-# O teto em 3.14 e deliberado: faixa aberta (`>=3.10`) deixaria o `uv` resolver para uma
-# versao que ninguem rodou, e a CI so prova as duas pontas que ela roda -- 3.10 e 3.13.
-# Subir o teto e trabalho de quem medir a de cima.
+# O teto em 3.14 continua deliberado: faixa aberta deixaria o `uv` resolver para uma versao que
+# ninguem rodou, e a CI so prova o 3.13. Subir o teto e trabalho de quem medir a de cima.
 #
-# `ruff` e `mypy` continuam mirando `py310`: quem lima e a ponta mais VELHA da faixa, senao
-# sintaxe de 3.11+ entra sem que nada avise e quebra na maquina de quem nao atualizou.
-#
-# O `.python-version` fica em 3.10, que e o padrao de quem so roda `uv sync`. Promover o 3.13
-# a padrao do bundle depende de um interpretador com Tk completo: o que o `uv` entrega para
-# 3.13 ja veio sem parte do `ttk`, e ali os ~14 testes de janela **pulam** em vez de rodar. A
-# janela e o produto, e isso merece ser aberto a mao antes.
-requires-python = ">=3.10,<3.14"
+# `ruff` e `mypy` miram o piso (`py313` / `"3.13"`), e `tests/test_environment.py` reprova
+# quando um dos quatro lugares -- este, o `.python-version`, o `ruff` e o `mypy` -- fica para
+# tras, ou quando o ambiente que roda a suite esta abaixo do piso.
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "numpy>=1.26.0",
     "opencv-python>=4.9.0",
@@ -33,13 +30,12 @@ dependencies = [
     "torch>=2.6",
     "torchvision>=0.21",
     "chess>=1.11",
-    # A janela (S-505). Era o extra `qt` enquanto o `app_tkinter.py` existia e o Qt era a
-    # segunda janela; no dia do corte ele passou a ser a UNICA, e uma dependencia sem a qual o
+    # A janela (S-505), a do `app_pyqt.py`. Era o extra `qt` enquanto a janela Tk existia e o
+    # Qt era a segunda; no dia do corte ele passou a ser a UNICA, e uma dependencia sem a qual o
     # programa nao abre nao e opcional. O `ttkbootstrap>=2.0` saiu daqui no mesmo movimento:
     # ele vestia o `ttk`, e nao ha mais `ttk` para vestir.
     #
-    # PyQt6, e nao PyQt5: e o que tem roda publicada na faixa `>=3.10,<3.14` inteira, e o teto
-    # de 3.13 do projeto e justamente onde o PyQt5 parou.
+    # PyQt6, e nao PyQt5: o PyQt5 parou antes do 3.13, que e o piso e o teto do projeto.
     "PyQt6>=6.6",
     # `pythonnet` e `pywebview` moravam aqui, so-Windows, pelo modo "Leitura" via WebView2.
     # Sairam com ele na S-69, e com elas a unica dependencia de plataforma do projeto.
@@ -56,6 +52,11 @@ dev = [
     # Como obrigatorio ele viajava dentro do `.exe`, e o bundle e o lugar onde peso custa.
     "pandas>=2.2.0",
     "pandas-stubs",
+    # O CRAP por funcao de `tools/qualidade/crapper.py` (S-801): `radon` da a complexidade,
+    # `coverage` a fracao de cada funcao que a suite executa. Sem os dois o metodo pedia CRAP
+    # abaixo de 10 e o projeto nao tinha como medir.
+    "radon>=6.0",
+    "coverage>=7.6",
 ]
 # Backend alternativo de inferencia em CPU (S-30). Opcional de proposito: o pipeline
 # funciona sem ele, e `cvoff-export-onnx` avisa se faltar.
@@ -117,7 +118,7 @@ cvoff-experiment = "chess_diagram_ocr.cli.experiment:main"
 cvoff-gallery = "chess_diagram_ocr.cli.gallery:main"
 cvoff-scan = "chess_diagram_ocr.cli.scan:main"
 cvoff-export-onnx = "chess_diagram_ocr.cli.export_onnx:main"
-# Diz quais itens do plano de reconhecimento de texto (S-178 a S-216) ja existem no disco.
+# Diz quais itens do plano de reconhecimento de texto (S-178 a S-217) ja existem no disco.
 # Olha o disco, nao o documento: `tests/test_text_status.py` e quem compara os dois.
 cvoff-texto-status = "chess_diagram_ocr.cli.text_status:main"
 # O placar da S-183: a mesma faixa de legenda lida pela camada de texto, pelo RapidOCR e
@@ -223,7 +224,7 @@ where = ["src"]
 testpaths = ["tests"]
 markers = ["requer_tesseract: precisa do binário do Tesseract, e pula onde ele não existe (S-720)"]
 # S-37: a suite roda num checkout sem instalacao editavel. Nao substitui `uv sync` -- o
-# `app_tkinter.py` e os `cvoff-*` continuam dependendo dela, e `tests/test_environment.py`
+# `app_pyqt.py` e os `cvoff-*` continuam dependendo dela, e `tests/test_environment.py`
 # e quem confere isso. Aqui o que se garante e que um diretorio movido nao desligue 611
 # testes em silencio, que foi o estado encontrado na analise da Fase 7.
 pythonpath = ["src"]
@@ -235,7 +236,7 @@ addopts = ["-ra"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py310"
+target-version = "py313"
 # O `.spec` do PyInstaller e Python, e ate a S-391 nenhuma das duas guardas o via: `ruff` e
 # `mypy` olham `.py`, o arquivo tem `# noqa: F821` espalhado -- que so faz sentido se alguem
 # estiver lintando -- e o comentario do `[tool.mypy]` dizia que `packaging/` entrava. O `.spec`
@@ -255,22 +256,49 @@ select = [
 ignore = [
     "E501",  # comprimento de linha ja e controlado por line-length
     "B008",  # chamada em argumento default: padrao aceito nos CLIs (Path(...))
+    # **As cinco modernizacoes que o `py313` liga ficam desligadas, e sao um item a parte (S-830).**
+    # Com o piso em 3.13 o `ruff` passou a acusar 40 linhas: `datetime.UTC` e `StrEnum` (3.11+), e
+    # os genericos, aliases e classes da PEP 695 (3.12+). Reescreve-las aqui quebraria dois
+    # interpretadores que ainda rodam este codigo: o `.venv` de desenvolvimento, em 3.10 ate o dono
+    # recria-lo, e o python de GPU do Suite_de_Edicao_de_Xadrez, em 3.11. Quem modernizar tira a
+    # linha correspondente e aplica o `--fix` depois dos dois ambientes estarem no 3.13.
+    "UP017",  # datetime.timezone.utc -> datetime.UTC
+    "UP040",  # TypeAlias -> `type X = ...`
+    "UP042",  # (str, Enum) -> StrEnum
+    "UP046",  # Generic[T] -> class X[T]
+    "UP047",  # TypeVar em funcao -> def f[T]
 ]
 
 [tool.mypy]
-python_version = "3.10"
-# `app_tkinter.py` ficava de fora, e e onde tudo e montado -- 1.302 linhas em que o
-# CONTRIBUTING registra que um `AttributeError` sobreviveu a 509 testes verdes (S-137). Ele
-# passa limpo; o que faltava era a guarda. `packaging/` entra pela mesma razao: o `--selftest`
-# decide o que o usuario recebe.
+python_version = "3.13"
+# `app_pyqt.py` entra porque e onde tudo e montado. A janela de antes, a Tk, ficava de fora --
+# 1.302 linhas em que o CONTRIBUTING registra que um `AttributeError` sobreviveu a 509 testes
+# verdes (S-137); o que faltava era a guarda. `packaging/` entra pela mesma razao: o
+# `--selftest` decide o que o usuario recebe.
 #
 # **O `.spec` fica de fora do mypy, e a razao e do formato (S-391).** O mypy so le `.py`, e o
 # arquivo nao pode virar um: o PyInstaller o executa injetando `SPECPATH`, `Analysis`, `EXE` e
 # `COLLECT` como globais -- nomes que nao existem em import nenhum, e que o verificador
 # acusaria um por um. Quem o cobre e o `ruff`, pelo `extend-include` acima, que e o que valida
 # o que da para validar sem executar o PyInstaller.
-files = ["src", "app_pyqt.py", "packaging"]
+#
+# `tools/` entra com as ferramentas de qualidade (S-801 a S-803): a catraca que mede a suite
+# tambem precisa de guarda.
+files = ["src", "app_pyqt.py", "packaging", "tools"]
 ignore_missing_imports = true
 warn_redundant_casts = true
+# S-804: um `# type: ignore` que ja nao silencia nada vira erro. Sem isto ele ficava para sempre,
+# e o proximo erro de verdade naquela linha entrava calado; foram 24 apagados no dia em que
+# ligou. A CI roda o mypy no 3.13 e no Windows, com as versoes do `uv.lock`: um ignore
+# que so serve noutra plataforma leva `unused-ignore` no codigo, e nao sai daqui. As contagens
+# de `type: ignore`, `Any` e `except Exception` por pacote estao em
+# `docs/metrics/catraca_de_tipos.json`, e so descem (`tools/qualidade/catraca_de_tipos.py`).
+warn_unused_ignores = true
 no_implicit_optional = true
 check_untyped_defs = true
+
+[tool.coverage.run]
+# A cobertura que `tools/qualidade/crapper.py` le (S-801). Caminho relativo para que o JSON
+# gravado numa maquina sirva noutra, e so `src/`, que e onde a catraca do CRAP olha.
+source = ["src"]
+relative_files = true

@@ -54,11 +54,10 @@ from typing import Any
 from ..atomic_io import atomic_write_text
 from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import add_verbose, cli_errors
+from . import EntradaInvalida, add_base_de_caractere_argument, add_verbose, cli_errors, fronteira
 
 logger = logging.getLogger(__name__)
 
-BASE_PADRAO = PROJECT_ROOT / "training_data"
 METRICAS = PROJECT_ROOT / "docs" / "metrics"
 
 TAREFAS_PADRAO = 16
@@ -162,12 +161,10 @@ def inventariar(
     base: Path, *, minimo: int = 1, tarefas: int = TAREFAS_PADRAO, registro: Any = None
 ) -> dict[str, Any]:
     """O manifesto inteiro. **Não escreve nada dentro de `base`.**"""
-    from ..text.dataset import BaseVazia
-
     base = Path(base)
     pastas = sorted(p for p in base.iterdir() if p.is_dir())
     if not pastas:
-        raise BaseVazia(f"{base} não tem nenhuma pasta de classe.")
+        raise EntradaInvalida(f"{base} não tem nenhuma pasta de classe.")
 
     medidas: list[Pasta] = []
     for posicao, caminho in enumerate(pastas, start=1):
@@ -224,7 +221,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Inventaria a base de caractere e grava o manifesto. Nao escreve na pasta (S-200).",
     )
-    parser.add_argument("--base", type=Path, default=BASE_PADRAO, help="Pasta com uma subpasta por classe.")
+    add_base_de_caractere_argument(parser)
     parser.add_argument("--saida", type=Path, help="Padrao: docs/metrics/texto_inventario_<data>.json")
     parser.add_argument("--minimo", type=int, default=3, help="Abaixo disto a classe vira achado (padrao 3).")
     parser.add_argument("--tarefas", type=int, default=TAREFAS_PADRAO, help="Threads da leitura.")
@@ -240,7 +237,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose)
 
-    registro = pr.ler(args.procedencia)
+    with fronteira(f"--procedencia {args.procedencia}"):
+        registro = pr.ler(args.procedencia)
+    if not Path(args.base).is_dir():
+        raise EntradaInvalida(f"a base de caractere nao esta em {args.base}")
     logger.info("Inventariando %s...", args.base)
     manifesto = inventariar(args.base, minimo=args.minimo, tarefas=args.tarefas, registro=registro)
 

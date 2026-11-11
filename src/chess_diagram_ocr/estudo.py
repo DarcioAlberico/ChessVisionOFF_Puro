@@ -655,6 +655,10 @@ class Sala:
     def __init__(self, documento: str = "") -> None:
         self.documento = str(documento or "")
         self._por_chave: dict[str, Estudo] = {}
+        self.crus: list[str] = []
+        """As partidas do arquivo que não abriram como estudo -- sem âncora, com lance ilegal, que
+        o `read_game` não leu --, como texto PGN, iguais a como vieram (S-814). Não são estudos e
+        não contam em `len`, mas voltam na gravação: o arquivo é reescrito inteiro a cada edição."""
 
     def __len__(self) -> int:
         return len(self._por_chave)

@@ -252,6 +252,19 @@ class CaixaTests(unittest.TestCase):
         alto = rico.mudar_caixa(doc, 5, 5, rico.CAIXA_ALTA)
         self.assertEqual(alto.para_texto(), "uma PALAVRA inteira")
 
+    def test_a_selecao_devolvida_cobre_o_texto_que_mudou_de_tamanho(self) -> None:
+        """`ß` -> `SS`, `ﬁ` -> `FI`, `İ` -> `i̇`: a caixa muda o comprimento, e o intervalo novo o segue (S-904)."""
+        for texto, de, ate, caixa, esperado in (
+            ("uma straße aqui", 4, 10, rico.CAIXA_ALTA, "STRASSE"),
+            ("o ﬁm e ﬁo", 2, 9, rico.CAIXA_ALTA, "FIM E FIO"),
+            ("em İzmir hoje", 3, 8, rico.CAIXA_BAIXA, "i̇zmir"),
+            ("uma straße aqui", 6, 6, rico.CAIXA_ALTA, "STRASSE"),
+        ):
+            with self.subTest(texto=texto, caixa=caixa):
+                novo, (inicio, fim) = rico.mudar_caixa_com_selecao(_doc(_texto(texto)), de, ate, caixa)
+                self.assertEqual(novo.para_texto()[inicio:fim], esperado)
+                self.assertEqual(novo, rico.mudar_caixa(_doc(_texto(texto)), de, ate, caixa))
+
     def test_a_faixa_de_confianca_sobrevive_a_troca(self) -> None:
         """Trocar a caixa não é dizer que o motor acertou: a régua é de outro dono."""
         doc = _doc(rico.Corrida(texto="duvidoso", faixa=documento.REVISAR, bloco=0))

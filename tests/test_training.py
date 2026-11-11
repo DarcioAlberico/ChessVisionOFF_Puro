@@ -392,6 +392,88 @@ class SplitAssignmentTests(unittest.TestCase):
             self.assertTrue(any("página do conjunto de campo" in linha for linha in registro.output))
             self.assertEqual(load_splits(splits_path)["campo.png"], "test", "gravado, não só em memória")
 
+    def _campo(self, root: Path, *, pdf_no_rotulo: str = "Livro.pdf", campo: str | None = None) -> tuple[Path, Path, Path, str]:
+        """Um rótulo novo da página 51 (base 1) do livro, e o `field_set.jsonl` com a página 50.
+
+        O nome da amostra é um que o hash do split manda para `train`: com outro, o teste
+        passaria por sorte, porque o sorteio já o poria em `val` ou `test`.
+        """
+        import json
+
+        import numpy as np
+
+        from chess_diagram_ocr.splits import assign_split
+
+        nome = next(f"campo_{i:03d}.png" for i in range(100) if assign_split(f"campo_{i:03d}.png") == "train")
+        samples = root / "samples"
+        samples.mkdir()
+        write_image(samples / nome, np.random.default_rng(3).integers(0, 256, (64, 64, 3), dtype=np.uint8))
+        csv_path = root / "labels.csv"
+        csv_path.write_text(
+            "filename,fen,side_to_move,source_pdf,source_page,source_diagram\n"
+            f"{nome},{LEGAL},w,{pdf_no_rotulo},51,1\n",
+            encoding="utf-8",
+        )
+        if campo is None:
+            campo = json.dumps({"pdf": "Livro.pdf", "page": 50, "reviewed": True,
+                                "diagrams": [{"bbox": [0, 0, 10, 10], "placement": LEGAL}]}) + "\n"
+        (root / "field_set.jsonl").write_text(campo, encoding="utf-8")
+        return csv_path, samples, root / "splits.csv", nome
+
+    def test_conjunto_de_campo_ilegivel_deixa_a_amostra_nova_sem_particao(self) -> None:
+        """S-838: com o `field_set.jsonl` ilegível não há como saber se a amostra é de campo.
+
+        Antes, um aviso no log e `set()`: a amostra sorteava `train`, e na rodada seguinte já
+        não era nova, então nunca mais seria fixada. Agora o treino recusa começar, e nada é
+        gravado: a amostra continua nova até o conjunto voltar a ser lido.
+        """
+        from chess_diagram_ocr.splits import load_splits
+        from chess_diagram_ocr.training import resolve_splits
+
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path, samples, splits_path, nome = self._campo(Path(tmp), campo="isto não é json\n")
+
+            with self.assertRaisesRegex(ValueError, "field_set.jsonl"):
+                resolve_splits(csv_path, samples, splits_path)
+
+            self.assertNotIn(nome, load_splits(splits_path), "a amostra ganhou partição sem a guarda de campo")
+
+    def test_queda_ao_fixar_a_pagina_de_campo_nao_deixa_train_no_disco(self) -> None:
+        """S-838: o `splits.csv` era gravado com o sorteio e só depois regravado com a página
+        de campo em `test`. Uma queda no meio deixava `train` no disco, para sempre."""
+        from chess_diagram_ocr.splits import load_splits
+        from chess_diagram_ocr.training import resolve_splits
+
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path, samples, splits_path, nome = self._campo(Path(tmp))
+
+            with patch("chess_diagram_ocr.training.pin_field_pages", side_effect=RuntimeError("queda")):
+                with self.assertRaises(RuntimeError):
+                    resolve_splits(csv_path, samples, splits_path)
+            mapa = resolve_splits(csv_path, samples, splits_path)
+
+            self.assertEqual(mapa[nome], "test")
+            self.assertEqual(load_splits(splits_path)[nome], "test")
+
+    def test_o_nome_do_livro_casa_como_na_medicao_de_campo(self) -> None:
+        """S-838: o casamento comparava `source_pdf` exato; a medição normaliza NFC, dupla
+        codificação e caixa. O mesmo livro escrito de outro jeito escapava da guarda."""
+        import json
+        import unicodedata
+
+        from chess_diagram_ocr.training import resolve_splits
+
+        no_campo = "Eröffnungswege.pdf"
+        for no_rotulo in (unicodedata.normalize("NFD", no_campo), no_campo.encode("utf-8").decode("latin-1"),
+                          no_campo.upper()):
+            with self.subTest(no_rotulo=no_rotulo), tempfile.TemporaryDirectory() as tmp:
+                campo = json.dumps({"pdf": no_campo, "page": 50, "reviewed": True,
+                                    "diagrams": [{"bbox": [0, 0, 10, 10], "placement": LEGAL}]}) + "\n"
+                csv_path, samples, splits_path, nome = self._campo(Path(tmp), pdf_no_rotulo=no_rotulo, campo=campo)
+                with self.assertLogs("chess_diagram_ocr.training", level="WARNING"):
+                    mapa = resolve_splits(csv_path, samples, splits_path)
+                self.assertEqual(mapa[nome], "test")
+
     def test_assign_new_false_le_e_nao_escreve(self) -> None:
         import tempfile
 
@@ -483,6 +565,64 @@ class SplitAssignmentTests(unittest.TestCase):
             corpo,
             "`Trainer.prepare` voltou a só ler o arquivo de splits; amostra nova fica fora do treino (S-56).",
         )
+
+
+class IdentidadeDoLivroNoSplitTests(unittest.TestCase):
+    """S-844: o mesmo livro sob dois nomes de arquivo é um livro só para o split.
+
+    O acervo guarda o mesmo PDF com nomes diferentes. A mesma página reextraída com recorte
+    deslocado escapa do guarda de imagem (dHash acima de 3), e o agrupamento por origem
+    comparava o **nome** do PDF: as duas amostras sorteavam split cada uma pelo seu nome, e o
+    mesmo diagrama impresso podia cair no treino e no teste. A identidade do livro é o hash do
+    conteúdo (D2 da solidez, opção a).
+    """
+
+    CABECALHO = "filename,fen,side_to_move,source_pdf,source_page,source_diagram"
+
+    def _cenario(self, root: Path, *, mesmo_conteudo: bool) -> tuple[dict[str, str], dict[str, str]]:
+        import numpy as np
+
+        from chess_diagram_ocr.audit import dhash, hamming_distance
+        from chess_diagram_ocr.splits import assign_split
+        from chess_diagram_ocr.training import resolve_splits
+
+        pdfs = root / "PDF"
+        pdfs.mkdir()
+        (pdfs / "Livro.pdf").write_bytes(b"%PDF-1.4 o mesmo livro\n")
+        (pdfs / "Livro - Copia.pdf").write_bytes(b"%PDF-1.4 o mesmo livro\n" if mesmo_conteudo else b"%PDF-1.4 outro\n")
+
+        # Duas amostras que, pelo nome, sorteiam splits diferentes: é o que a reextração faz.
+        primeiro = "board_00000.png"
+        segundo = next(
+            f"board_{i:05d}.png" for i in range(1, 100) if assign_split(f"board_{i:05d}.png") != assign_split(primeiro)
+        )
+
+        samples = root / "samples"
+        samples.mkdir()
+        pagina = np.random.default_rng(7).integers(0, 256, (212, 212, 3), dtype=np.uint8)
+        recorte, deslocado = pagina[:200, :200], pagina[6:206, 6:206]
+        self.assertGreater(hamming_distance(dhash(recorte), dhash(deslocado)), 3, "o guarda de imagem já os juntaria")
+        write_image(samples / primeiro, recorte)
+        write_image(samples / segundo, deslocado)
+
+        csv_path = root / "labels.csv"
+        csv_path.write_text(
+            f"{self.CABECALHO}\n{primeiro},{LEGAL},w,Livro.pdf,41,1\n{segundo},{LEGAL},w,Livro - Copia.pdf,41,1\n",
+            encoding="utf-8",
+        )
+        mapa = resolve_splits(csv_path, samples, root / "splits.csv", pdf_dir=pdfs)
+        return {"primeiro": mapa[primeiro], "segundo": mapa[segundo]}, {"primeiro": primeiro, "segundo": segundo}
+
+    def test_o_mesmo_pdf_sob_dois_nomes_cai_de_um_lado_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            splits, nomes = self._cenario(Path(tmp), mesmo_conteudo=True)
+        self.assertEqual(splits["primeiro"], splits["segundo"], f"o mesmo diagrama impresso cruzou split: {nomes}")
+
+    def test_livros_diferentes_continuam_sorteando_cada_um_o_seu(self) -> None:
+        """O contraste: com conteúdos distintos nada se junta, e o par segue o sorteio do nome."""
+        with tempfile.TemporaryDirectory() as tmp:
+            splits, _nomes = self._cenario(Path(tmp), mesmo_conteudo=False)
+        self.assertNotEqual(splits["primeiro"], splits["segundo"])
 
 
 def _tiny_dataset(root: Path, boards: int = 6) -> tuple[Path, Path, Path]:
@@ -667,6 +807,39 @@ class ReproducibilityTests(unittest.TestCase):
             self.assertTrue(checkpoint.metadata["split_hash"])
             self.assertEqual(checkpoint.metadata["dataset_size"], 4)
             self.assertEqual(checkpoint.metadata["best_epoch"], run.best_epoch)
+
+    def test_checkpoint_diz_o_que_a_carga_descartou(self) -> None:
+        """S-841: o metadado do checkpoint traz os contadores de descarte do treino e da validação."""
+        import tempfile
+
+        from chess_diagram_ocr.checkpoint import load_checkpoint
+        from chess_diagram_ocr.splits import load_splits, save_splits
+        from chess_diagram_ocr.training import train_model
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "a").mkdir()
+            csv_path, samples, splits_path = self._tiny_dataset(root / "a")
+            with csv_path.open("a", encoding="utf-8") as arquivo:
+                arquivo.write("estragada.png,4k3/8/8/44/8/8/8/4K3\n")
+            save_splits(splits_path, {**load_splits(splits_path), "estragada.png": "train"})
+            train_model(
+                csv_path=csv_path,
+                samples_dir=samples,
+                model_path=root / "a" / "m.pt",
+                epochs=1,
+                batch_size=64,
+                splits_path=splits_path,
+                fresh=True,
+                seed=7,
+                num_workers=0,
+                patience=0,
+            )
+            metadados = load_checkpoint(root / "a" / "m.pt").metadata
+
+        self.assertEqual(metadados["descartes"]["fen_invalida"], 1)
+        # A linha estragada é do treino: a validação não a descartou, porque nunca foi dela.
+        self.assertEqual(metadados["val_descartes"]["fen_invalida"], 0)
 
     def test_resume_keeps_the_best_metric_instead_of_restarting_it(self) -> None:
         """A pendencia aberta desde a Fase 1: retomar sobrescrevia o melhor checkpoint.
@@ -1113,6 +1286,106 @@ class EmpateEntreEpocasTests(unittest.TestCase):
             trainer.run_epoch(2)
 
             self.assertEqual(list((raiz / "pior").glob("*.tie-*.pt")), [])
+
+
+class MetadadoDeUmaEpocaTests(unittest.TestCase):
+    """S-858: os metadados de um treino de uma época, campo a campo, nos dois regimes.
+
+    `Trainer.prepare` foi partido em etapas (datasets, sabotagem, carregadores, metadado). O
+    que ele produz não pode mudar: os dois regimes daqui atravessam os dois ramos de cada
+    etapa -- split gravado com cabeça por janela, sabotagem e repetição; e sorteio com cabeça
+    por tabuleiro e pesos de classe.
+    """
+
+    COMUM = {
+        "class_names": list(PIECE_CLASSES),
+        "seed": 7,
+        "lr": 0.001,
+        "batch_size": 64,
+        "epochs_requested": 1,
+        "patience": 0,
+        "optimizer": "adam",
+        "augment_version": "aug0",
+        "descartes": {"fen_invalida": 0, "sem_split": 0, "ilegal": 0, "imagem_ausente": 0},
+        "val_size": 2,
+        "best_metric_name": "val_board_exact_acc",
+        "best_metric": 0.0,
+        "best_epoch": 1,
+    }
+
+    def _treinar(self, root: Path, *, com_split: bool, boards: int, arch, **optim) -> dict:
+        import dataclasses
+
+        from chess_diagram_ocr.checkpoint import git_commit
+        from chess_diagram_ocr.training import DataPlan, OptimPlan, OutputPlan, Trainer, TrainingPlan
+
+        csv_path, samples, splits_path = _tiny_dataset(root, boards=boards)
+        plano = TrainingPlan(
+            data=DataPlan(
+                csv_path=csv_path,
+                samples_dir=samples,
+                splits_path=splits_path if com_split else None,
+                val_ratio=0.25,
+                num_workers=0,
+            ),
+            output=OutputPlan(model_path=root / "m.pt", fresh=True, calibrate=False, pretrained=False),
+            model=arch,
+            optim=OptimPlan(epochs=1, batch_size=64, patience=0, seed=7, **optim),
+        )
+        metadados = dict(Trainer(plano).fit().metadata)
+        self.assertEqual(metadados.pop("git_commit"), git_commit())
+        self.assertEqual(metadados.pop("augment"), dataclasses.asdict(plano.optim.augment))
+        self.assertEqual(metadados.pop("splits_path"), str(splits_path) if com_split else "")
+        return metadados
+
+    def _conferir(self, obtido: dict, esperado: dict) -> None:
+        self.assertEqual(sorted(obtido), sorted(esperado))
+        for campo, valor in esperado.items():
+            with self.subTest(campo=campo):
+                self.assertEqual(obtido[campo], valor)
+
+    def test_split_gravado_com_cabeca_por_janela_sabotagem_e_repeticao(self) -> None:
+        from chess_diagram_ocr.model import ArchConfig
+
+        with tempfile.TemporaryDirectory() as tmp:
+            obtido = self._treinar(
+                Path(tmp), com_split=True, boards=6, arch=ArchConfig(), label_noise=0.25, corrected_repeat=2
+            )
+        self._conferir(obtido, {
+            **self.COMUM,
+            "arch_version": "cnn-gray-64-linear",
+            "class_weights": "none",
+            "label_noise": 0.25,
+            "corrected_repeat": 2,
+            "boards_per_batch": 4,
+            "batch_unit": "square",
+            "split_hash": "baaf38698d5c8dd9",
+            "labels_hash": "9bd61f342d94b4e1",
+            "dataset_size": 4,
+            "val_descartes": {"fen_invalida": 0, "sem_split": 0, "ilegal": 0, "imagem_ausente": 0},
+        })
+
+    def test_sorteio_com_cabeca_por_tabuleiro_e_pesos(self) -> None:
+        from chess_diagram_ocr.model import ArchConfig
+
+        with tempfile.TemporaryDirectory() as tmp:
+            obtido = self._treinar(
+                Path(tmp), com_split=False, boards=8, arch=ArchConfig(head="board"),
+                boards_per_batch=2, class_weights="balanced",
+            )
+        self._conferir(obtido, {
+            **self.COMUM,
+            "arch_version": "cnn-gray-64-board",
+            "class_weights": "balanced",
+            "label_noise": 0.0,
+            "corrected_repeat": 1,
+            "boards_per_batch": 2,
+            "batch_unit": "board",
+            "split_hash": "",
+            "labels_hash": "983d54f1fbc97284",
+            "dataset_size": 8,
+            "val_descartes": {},
+        })
 
 
 class MetadadosQueReproduzemTests(unittest.TestCase):

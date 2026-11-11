@@ -40,11 +40,11 @@ import ast
 import unittest
 from pathlib import Path
 
+import varredura
+
 RAIZ = Path(__file__).resolve().parents[1]
 
-ARQUIVOS_DE_UI = sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")) + sorted(
-    (RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py")
-)
+ARQUIVOS_DE_UI = varredura.da_interface()
 """Mesmo recorte do `test_strings` e do `test_busy`: a interface, e o que a monta."""
 
 LIMITE = 50

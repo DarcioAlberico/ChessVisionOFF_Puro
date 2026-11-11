@@ -31,7 +31,7 @@ from PyQt6.QtWidgets import QProgressDialog, QWidget
 
 from chess_diagram_ocr.games_db import nome_da_base, tamanho_da_base
 from chess_diagram_ocr.games_index import DEFAULT_INDEX_PATH, Indexacao, build_index
-from chess_diagram_ocr.qt.trabalho import Tarefa
+from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva, slot_se_vivo
 from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 from chess_diagram_ocr.ui.indice_da_base import (
     POR_MIL,
@@ -92,12 +92,15 @@ class IndexadorDaBase(QObject):
         relatar = self._relatar
 
         def _trabalho() -> Indexacao:
-            return build_index(lista, caminho, progress=relatar, cancel=cancelar)
+            # `podar`, e a janela nao tem a bandeira do terminal (S-809): este botao e o que a recusa
+            # da consulta manda apertar, e sem podar um indice que guarda uma base que saiu da pasta
+            # seria recusado de novo a cada rodada. Podar so tira o que nao existe mais no disco.
+            return build_index(lista, caminho, progress=relatar, cancel=cancelar, podar=True)
 
-        tarefa = Tarefa(_trabalho, parent=self, nome="índice da base de partidas")
-        tarefa.pronto.connect(self._pronto)
-        tarefa.falhou.connect(self._falhou)
-        tarefa.finished.connect(self._terminou)
+        tarefa = manter_viva(Tarefa(_trabalho, nome="índice da base de partidas"))
+        tarefa.pronto.connect(slot_se_vivo(self, self._pronto))
+        tarefa.falhou.connect(slot_se_vivo(self, self._falhou))
+        tarefa.finished.connect(slot_se_vivo(self, self._terminou))
         self._registrar_ocupado(len(lista))
         self._tarefa = tarefa
         tarefa.start()

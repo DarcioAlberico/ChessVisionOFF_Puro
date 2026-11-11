@@ -21,15 +21,20 @@ from __future__ import annotations
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
+from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex
+from chess_diagram_ocr.games_cache import CachedPosition, PositionCache
+from chess_diagram_ocr.games_db import PositionHit
 from chess_diagram_ocr.ui import (
     escopo_da_varredura,
     lista_de_partidas,
     pedido_de_treino,
 )
+from chess_diagram_ocr.ui.gallery_model import GalleryModel
 
 if TEM_PYQT:
     from PyQt6.QtCore import QThread
@@ -51,6 +56,48 @@ class DeclaracaoTests(unittest.TestCase):
         self.assertEqual(
             [c.chave for c in qt_dialogos.COLUNAS_DA_LISTA if c.elastica], ["white", "black", "event"]
         )
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class PerguntaQueRecusaTests(unittest.TestCase):
+    """S-864: a pergunta cujo padrão é a recusa mora num lugar, e a galeria e a sala a chamam."""
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.addCleanup(self.app.processEvents)
+
+    def _perguntar(self, resposta: object, **opcoes: bool) -> tuple[bool, qt_dialogos.QMessageBox]:
+        Caixa = qt_dialogos.QMessageBox
+        vistas: list[qt_dialogos.QMessageBox] = []
+
+        def espiar(caixa: qt_dialogos.QMessageBox) -> int:
+            vistas.append(caixa)
+            return int(resposta)  # type: ignore[call-overload]
+
+        with mock.patch.object(Caixa, "exec", espiar):
+            escolheu = qt_dialogos.perguntar_recusando(None, "Título", "Quer mesmo?", **opcoes)
+        (caixa,) = vistas
+        self.addCleanup(caixa.deleteLater)
+        return escolheu, caixa
+
+    def test_sim_ou_nao_com_nao_de_padrao(self) -> None:
+        Caixa = qt_dialogos.QMessageBox
+        escolheu, caixa = self._perguntar(Caixa.StandardButton.No)
+        self.assertFalse(escolheu)
+        self.assertEqual(caixa.icon(), Caixa.Icon.Question)
+        self.assertEqual((caixa.windowTitle(), caixa.text()), ("Título", "Quer mesmo?"))
+        self.assertEqual(caixa.standardButtons(), Caixa.StandardButton.Yes | Caixa.StandardButton.No)
+        self.assertEqual(caixa.defaultButton(), caixa.button(Caixa.StandardButton.No))
+        self.assertTrue(self._perguntar(Caixa.StandardButton.Yes)[0])
+
+    def test_o_aviso_e_ok_ou_cancelar_com_cancelar_de_padrao(self) -> None:
+        Caixa = qt_dialogos.QMessageBox
+        escolheu, caixa = self._perguntar(Caixa.StandardButton.Cancel, aviso=True)
+        self.assertFalse(escolheu)
+        self.assertEqual(caixa.icon(), Caixa.Icon.Warning)
+        self.assertEqual(caixa.standardButtons(), Caixa.StandardButton.Ok | Caixa.StandardButton.Cancel)
+        self.assertEqual(caixa.defaultButton(), caixa.button(Caixa.StandardButton.Cancel))
+        self.assertTrue(self._perguntar(Caixa.StandardButton.Ok, aviso=True)[0])
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -128,6 +175,214 @@ class BasesTests(unittest.TestCase):
         dialogo = self.dialogo()
         dialogo.reject()
         self.assertIsNone(dialogo.escolhidas)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class VizinhosTests(unittest.TestCase):
+    """S-892: a pergunta do "Aplicar aos vizinhos" conta à parte os que ela não vai tocar."""
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.addCleanup(self.app.processEvents)
+
+    def _hit(self, brancas: str, pretas: str, lance: int) -> PositionHit:
+        return PositionHit(move_number=lance, side_to_move="b", headers={"White": brancas, "Black": pretas})
+
+    def test_a_pergunta_conta_o_vizinho_poupado_e_ele_nao_muda(self) -> None:
+        karpov = self._hit("Karpov, Anatoly", "Korchnoi, Viktor", 24)
+        havasi = self._hit("Havasi, Kornel", "Tartakower, Saviely", 40)
+        entradas = [GalleryEntry(p, 0, f"posicao-{p}") for p in range(3)]
+        partidas = [
+            [karpov],
+            [havasi, self._hit("Karpov, Anatoly", "Korchnoi, Viktor", 31)],
+            [self._hit("Karpov, Anatoly", "Korchnoi, Viktor", 33)],
+        ]
+        cache = PositionCache()
+        for entrada, delas in zip(entradas, partidas, strict=True):
+            cache.positions[entrada.placement] = CachedPosition(count=len(delas), games=tuple(delas))
+        modelo = GalleryModel(index=GalleryIndex(entries=entradas), position_cache=cache)
+        modelo.go_to(1)
+        modelo.choose_game(havasi)
+        modelo.go_to(0)
+
+        dialogo = qt_dialogos.DialogoDePartidas(modelo=modelo)
+        self.addCleanup(descartar, dialogo)
+        frases: list[str] = []
+        dialogo.aplicou.connect(frases.append)
+        sim = qt_dialogos.QMessageBox.StandardButton.Yes
+        with mock.patch.object(qt_dialogos.QMessageBox, "question", return_value=sim) as pergunta:
+            dialogo.aplicar_aos_vizinhos()
+
+        texto = pergunta.call_args.args[2]
+        self.assertIn("a 1 diagrama(s) vizinho(s)", texto)
+        self.assertIn("1 vizinho(s) com outra partida já escolhida ficam como estão", texto)
+        self.assertEqual(modelo.annotations.get(1, 0).chosen_game, havasi.key)
+        self.assertEqual(modelo.annotations.get(1, 0).move_number, 40)
+        self.assertEqual(modelo.annotations.get(2, 0).move_number, 33)
+        self.assertEqual(frases, [f"{karpov.label}: aplicada a 1 diagrama(s) vizinho(s)."])
+
+
+def _partida(brancas: str, pretas: str, lance: int = 20, *, verificada: bool = True) -> PositionHit:
+    return PositionHit(
+        move_number=lance,
+        side_to_move="w",
+        headers={"White": brancas, "Black": pretas, "Event": "Torneio"},
+        verified=verificada,
+    )
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class ListaDePartidasTests(unittest.TestCase):
+    """S-886: a grade das candidatas -- o filtro, a cor de cada linha, os dois vazios e a busca por
+    nome --, como a pessoa a vê depois de abrir `Partidas da base` sobre um diagrama."""
+
+    KARPOV = _partida("Karpov, Anatoly", "Korchnoi, Viktor", 24)
+    HAVASI = _partida("Havasi, Kornel", "Tartakower, Saviely", 40)
+    TAL = _partida("Tal, Mikhail", "Botvinnik, Mikhail", 31)
+    LASKER = _partida("Lasker, Emanuel", "Steinitz, Wilhelm", 12)
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        self.addCleanup(self.app.processEvents)
+
+    def _modelo(self, candidatas: list[PositionHit], *, legenda: str = "Karpov - Korchnoi") -> GalleryModel:
+        """O diagrama do meio tem `candidatas`; o vizinho de cima tem só a do Havasi."""
+        entradas = [
+            GalleryEntry(0, 0, "posicao-0"),
+            GalleryEntry(1, 0, "posicao-1", caption=legenda),
+            GalleryEntry(2, 0, "posicao-2"),
+        ]
+        cache = PositionCache()
+        for entrada, delas in zip(entradas, [[self.HAVASI], candidatas, []], strict=True):
+            cache.positions[entrada.placement] = CachedPosition(count=len(delas), games=tuple(delas))
+        modelo = GalleryModel(index=GalleryIndex(entries=entradas), position_cache=cache)
+        modelo.go_to(1)
+        return modelo
+
+    def _dialogo(self, modelo: GalleryModel) -> qt_dialogos.DialogoDePartidas:
+        dialogo = qt_dialogos.DialogoDePartidas(modelo=modelo)
+        self.addCleanup(descartar, dialogo)
+        return dialogo
+
+    def _brancas(self, dialogo: qt_dialogos.DialogoDePartidas) -> list[str]:
+        coluna = [c.chave for c in qt_dialogos.COLUNAS_DA_LISTA].index("white")
+        return [dialogo.tabela.topLevelItem(i).text(coluna) for i in range(dialogo.tabela.topLevelItemCount())]
+
+    def _cor(self, dialogo: qt_dialogos.DialogoDePartidas, brancas: str) -> str:
+        from PyQt6.QtCore import Qt
+
+        linha = self._brancas(dialogo).index(brancas)
+        pincel = dialogo.tabela.topLevelItem(linha).foreground(0)
+        return "" if pincel.style() == Qt.BrushStyle.NoBrush else pincel.color().name()
+
+    def _papel(self, papel: str) -> str:
+        from PyQt6.QtGui import QColor
+
+        return QColor(qt_dialogos.tema.cor_atual(papel)).name()
+
+    def test_cada_linha_diz_por_que_esta_ali(self) -> None:
+        """A escolhida em negrito, a que a legenda confirma em verde, a dos vizinhos na cor dela,
+        e a que não tem razão nenhuma sem cor -- e a primeira já vem selecionada."""
+        modelo = self._modelo([self.TAL, self.KARPOV, self.HAVASI, self.LASKER])
+        modelo.choose_game(self.LASKER)
+        dialogo = self._dialogo(modelo)
+
+        self.assertEqual(dialogo.lbl_contagem.text(), "4 partida(s)")
+        self.assertEqual(self._cor(dialogo, "Karpov, Anatoly"), self._papel(qt_dialogos.tokens.PRONTO_TEXTO))
+        self.assertEqual(self._cor(dialogo, "Havasi, Kornel"), self._papel(qt_dialogos.tokens.VIZINHA_TEXTO))
+        self.assertEqual(self._cor(dialogo, "Tal, Mikhail"), "")
+        escolhida = dialogo.tabela.topLevelItem(self._brancas(dialogo).index("Lasker, Emanuel"))
+        self.assertTrue(escolhida.font(0).bold())
+        self.assertFalse(dialogo.tabela.topLevelItem(self._brancas(dialogo).index("Tal, Mikhail")).font(0).bold())
+        self.assertIs(dialogo.selecionada(), modelo.current_candidates()[0][0])
+        self.assertTrue(dialogo.vazio.isHidden())
+
+    def test_o_filtro_reduz_a_cada_tecla_e_o_vazio_dele_manda_apagar(self) -> None:
+        from PyQt6.QtTest import QTest
+
+        dialogo = self._dialogo(self._modelo([self.TAL, self.KARPOV, self.HAVASI]))
+        QTest.keyClicks(dialogo.campo_filtro, "TÁL")
+        self.assertEqual(self._brancas(dialogo), ["Tal, Mikhail"], "sem caixa e sem acento")
+
+        QTest.keyClicks(dialogo.campo_filtro, "zzz")
+        self.assertEqual(self._brancas(dialogo), [])
+        self.assertIsNone(dialogo.selecionada())
+        self.assertFalse(dialogo.vazio.isHidden())
+        self.assertEqual(dialogo.vazio.titulo.text(), qt_dialogos.strings.FILTRO_SEM_RESULTADO_TITULO)
+        self.assertTrue(dialogo.vazio.botao.isHidden(), "procurar por nome não conserta um filtro")
+        self.assertFalse(dialogo.btn_por_nome.isHidden())
+        self.assertFalse(dialogo.btn_vizinhos.isEnabled())
+
+        dialogo.campo_filtro.clear()
+        self.assertEqual(len(self._brancas(dialogo)), 3)
+        self.assertTrue(dialogo.vazio.isHidden())
+
+    def test_sem_candidata_o_vazio_oferece_a_busca_por_nome_uma_vez_so(self) -> None:
+        dialogo = self._dialogo(self._modelo([]))
+        self.assertEqual(dialogo.vazio.titulo.text(), qt_dialogos.strings.PARTIDAS_VAZIAS_TITULO)
+        self.assertFalse(dialogo.vazio.isHidden())
+        self.assertFalse(dialogo.vazio.botao.isHidden())
+        self.assertTrue(dialogo.btn_por_nome.isHidden(), "duas legendas iguais não convivem numa tela")
+
+    def test_a_busca_por_nome_junta_o_que_achou_e_conta_o_que_e_so_cabecalho(self) -> None:
+        modelo = self._modelo([self.KARPOV, self.TAL])
+        dialogo = self._dialogo(modelo)
+        sem_posicao = _partida("Korchnoi, Viktor", "Karpov, Anatoly", 7, verificada=False)
+        outra = _partida("Spassky, Boris", "Fischer, Robert", 18)
+        with mock.patch.object(modelo, "search_games_by_name", return_value=(self.TAL, outra, sem_posicao)):
+            dialogo.btn_por_nome.click()
+
+        self.assertEqual(
+            dialogo.lbl_contagem.text(), "4 partida(s), 2 pela busca por nome, 1 sem a posição (só headers)"
+        )
+        self.assertEqual(
+            sorted(self._brancas(dialogo)),
+            ["Karpov, Anatoly", "Korchnoi, Viktor", "Spassky, Boris", "Tal, Mikhail"],
+        )
+        divergente = self._papel(qt_dialogos.tokens.DIVERGENTE_TEXTO)
+        self.assertEqual(self._cor(dialogo, "Spassky, Boris"), divergente)
+        self.assertEqual(self._cor(dialogo, "Tal, Mikhail"), divergente, "a que já estava também veio da busca")
+
+    def test_sem_nomes_na_legenda_a_busca_diz_por_que_nao_procura(self) -> None:
+        modelo = self._modelo([self.TAL], legenda="Diagrama 12")
+        dialogo = self._dialogo(modelo)
+        with (
+            mock.patch.object(qt_dialogos.QMessageBox, "information") as aviso,
+            mock.patch.object(modelo, "search_games_by_name") as busca,
+        ):
+            dialogo.procurar_por_nome()
+        self.assertIn("não nomeia os dois jogadores", aviso.call_args.args[2])
+        busca.assert_not_called()
+        self.assertEqual(self._brancas(dialogo), ["Tal, Mikhail"])
+
+    def test_busca_sem_resultado_oferece_indexar_a_base(self) -> None:
+        modelo = self._modelo([self.TAL])
+        dialogo = self._dialogo(modelo)
+        Caixa = qt_dialogos.QMessageBox
+        vistas: list[str] = []
+
+        def clicar(rotulo: str) -> object:
+            def clicado(caixa: qt_dialogos.QMessageBox) -> object:
+                vistas.append(caixa.text())
+                return next((b for b in caixa.buttons() if b.text() == rotulo), None)
+
+            return clicado
+
+        with (
+            mock.patch.object(modelo, "search_games_by_name", return_value=()),
+            mock.patch.object(dialogo, "indexar_base") as indexar,
+            mock.patch.object(Caixa, "exec", return_value=0),
+        ):
+            with mock.patch.object(Caixa, "clickedButton", clicar("Indexar agora")):
+                dialogo.procurar_por_nome()
+            indexar.assert_called_once_with()
+            with mock.patch.object(Caixa, "clickedButton", clicar("Fechar")):
+                dialogo.procurar_por_nome()
+            indexar.assert_called_once_with()
+
+        self.assertEqual(len(vistas), 2)
+        self.assertIn("não achou partida com esta posição", vistas[0])
+        self.assertEqual(dialogo.lbl_contagem.text(), "1 partida(s)", "a lista fica como estava")
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -255,6 +510,23 @@ class TreinoTests(unittest.TestCase):
         controlador.estado.connect(vistos.append)
         controlador.iniciar()
         self.assertEqual(vistos, ["Já existe um treino em execução."])
+
+    def test_regime_ilegivel_vira_caixa_de_erro_e_nao_treina(self) -> None:
+        """S-839: o pedido recusa um checkpoint cujo regime não se lê, e a recusa chega à pessoa.
+
+        `iniciar` é slot do botão: a exceção que escapasse dele seria qFatal no PyQt6."""
+
+        def pedido() -> pedido_de_treino.TrainingRequest:
+            raise ValueError("Não deu para ler o regime de aumento de modelo.pt: truncado")
+
+        controlador = qt_dialogos.ControladorDeTreino(pedido=pedido)
+        self.addCleanup(descartar, controlador)
+        with mock.patch.object(qt_dialogos.QMessageBox, "critical") as caixa:
+            controlador.iniciar()
+        caixa.assert_called_once()
+        self.assertIn("regime de aumento de modelo.pt", caixa.call_args.args[2])
+        self.assertFalse(controlador.rodando)
+        self.assertIsNone(controlador.dialogo, "o modal do treino não abre para um treino que não começou")
 
     def test_cancelar_sem_treino_em_curso_nao_faz_nada(self) -> None:
         controlador = self.controlador()

@@ -31,6 +31,8 @@ import ast
 import unittest
 from pathlib import Path
 
+from ambiente_de_teste import pasta_temporaria
+
 RAIZ = Path(__file__).resolve().parents[1] / "src" / "chess_diagram_ocr"
 UI = RAIZ / "ui"
 
@@ -71,6 +73,7 @@ SEM_CHAMADOR: dict[str, str] = {
     "icones.Arco": E_O_TIPO,
     "icones.Poli": E_O_TIPO,
     "menu.Menu": E_O_TIPO,
+    "page_results.RespostaDaLeitura": E_O_TIPO,
     "varredura_de_revisao.ScanRequest": E_O_TIPO,
     # --- os instrumentos: o que a guarda usa para medir, e o produto não
     # `tokens.razao_de_contraste` estava aqui como instrumento e saiu no merge do religa **por ter
@@ -268,13 +271,40 @@ SEM_CHAMADOR.update(
             TABELA_PERCORRIDA + " (os papéis do cromo que `NO_CROMO_ESCURO` tem de cobrir; `test_qt_tema` "
             "aqui, e o `test_tema_escuro` da suíte)"
         ),
+        # --- a S-895 (2026-11-09): os sete módulos que não declaravam `__all__` passaram a declarar, e
+        # a guarda os leu pela primeira vez. Oito nomes sem chamador saíram (`board_edit.apply_edits` e
+        # `counts_by_symbol`, `estado_do_rodape.SEVERIDADES`, e em `strings` os rótulos do formulário
+        # do Tk e do zoom e `EDITOR_VAZIO`), dois ganharam chamador (`TAMANHO_DO_LOTE` e
+        # `TAXA_DE_APRENDIZADO`, que `configuracoes.CAMPOS` escrevia à mão), e estes ficam com motivo
+        "busy.FORA_DO_REGISTRO": (
+            TABELA_PERCORRIDA + " -- `test_busy` confere toda abertura de thread contra o registro "
+            "ou contra ela, nos dois sentidos"
+        ),
+        "strings.WORDS_REQUIRING_ACCENTS": INSTRUMENTO + " (a varredura de acentuação de `test_strings`)",
+        "strings.ALINHAR": (
+            "o agrupador da lista de alinhamentos da S-259/S-262, que o porte não trouxe -- o mesmo "
+            "motivo de `texto_declarado.COMANDO_DA_ESCOLHA`; o par dele, `CAIXA`, tem leitor"
+        ),
+        "strings.CORRIGIR_PELA_REDE": (
+            "o rótulo da segunda opinião remota, que saiu da janela na S-882 até o recurso ser ligado; "
+            "a S-882 o guardou para voltar com ele, e é a mesma decisão que mantém "
+            "`DiagramEditorModel.mark_net_corrected` (método, que esta guarda não lê)"
+        ),
+        "strings.TRADUZIDOS_PELO_QT": (
+            "a cópia medida do catálogo do Qt que justifica `BOTOES_PADRAO`; quem a remede é o "
+            "instrumento `c14_catalogo_do_qt.py` da suíte, e o produto cumpre a tabela de botões"
+        ),
+        "strings.DIVERGENCIAS_DECLARADAS": "o motivo escrito de onde `BOTOES_PADRAO` diverge de `TRADUZIDOS_PELO_QT`",
         "galeria_declarada.galeria_empilhada": (
             "o merge do religa ficou com o arranjo da Galeria da OCR_UI (a imagem elástica e a lateral "
             "rolável com o seguidor de foco), e o empilhamento da S-552 supõe a imagem fixa de 420 px "
             "-- o porte não o trouxe. Fica declarada para quando for, como `LARGURA_DO_CIRCULO`"
         ),
-        "substituicao.SEM_ROTACAO": GUARDADO_SEM_O_PAINEL,
-        "substituicao.PilhaDeSubstituicoes": GUARDADO_SEM_O_PAINEL,
+        # `substituicao.SEM_ROTACAO` e `substituicao.PilhaDeSubstituicoes` estavam aqui, e os
+        # catorze nomes de `selecao_de_area` no lote abaixo: saíram na S-881 (decisão D7 da
+        # solidez), que respondeu a pergunta adiada **apagando**. A substituição de diagrama no
+        # PDF -- `pdf_substituicao.py`, `ui/substituicao.py` e `ui/selecao_de_area.py` -- não tinha
+        # chamador nem teste; o registro do que ela era mora na `ARCHITECTURE.md`.
         # --- os que têm cliente fora de `src/`: os portões e as medições da suíte (`caissa`), que lê
         # o tronco como biblioteca -- o mesmo caso de `plataforma.gravar_icone`
         "folha_de_estilo.QUEM_PINTA": (
@@ -308,18 +338,9 @@ SEM_CHAMADOR.update(
                         "PROCESSADO", "ROTULOS_DE_EIXO", "ROTULOS_DE_ORDEM", "SEM_ANO", "SEM_EDITORA",
                         "SEM_IDIOMA", "SEM_RESULTADO", "SOBRA", "Faceta", "FaixaVisivel",
                         "IndiceDaBiblioteca", "ItemDaBiblioteca", "NAO_PROCESSADO", "ValorDeFaceta",
-                        "ano_no_titulo", "casa_com", "colunas_que_cabem", "dobrar", "editora_no_titulo",
+                        "ano_no_titulo", "casa_com", "colunas_que_cabem", "editora_no_titulo",
                         "era_de", "faixa_de_diagramas", "idioma_provavel", "item_de", "janela_visivel",
                         "peso_no_disco", "resumo_de", "titulo_do_arquivo",
-                    ),
-                ),
-                (
-                    "selecao_de_area",
-                    (
-                        "ALCAS", "LADO_DA_ALCA", "LADO_MINIMO_PARA_ALCAS_DE_BORDA", "PASSO_FINO_PT",
-                        "PASSO_PT", "TOLERANCIA_DA_ALCA", "Gesto", "alca_em", "centros_das_alcas",
-                        "decidir_gesto", "e_clique", "grampeado_ponto", "redimensionado",
-                        "selecao_pequena_demais",
                     ),
                 ),
                 (
@@ -422,6 +443,29 @@ def _exportados(arvore: ast.AST) -> list[str]:
     return []
 
 
+def _declara_all(arvore: ast.AST) -> bool:
+    """Se o módulo atribui a `__all__` uma lista ou tupla literal -- a única forma que a guarda lê."""
+    return any(
+        isinstance(no, ast.Assign)
+        and any(isinstance(alvo, ast.Name) and alvo.id == "__all__" for alvo in no.targets)
+        and isinstance(no.value, (ast.List, ast.Tuple))
+        for no in getattr(arvore, "body", [])
+    )
+
+
+def sem_all(pasta: Path) -> list[str]:
+    """Os módulos daquela pasta sem `__all__` literal, fora o `__init__.py` (S-895).
+
+    **É o que deixava a catraca vácua**: `_exportados` devolve vazio para eles, e um módulo que não
+    exporta nada nunca tem órfão. Sete módulos de `ui/` passavam por ela assim, com nomes sem
+    chamador dentro."""
+    return sorted(
+        caminho.name
+        for caminho in pasta.glob("*.py")
+        if caminho.name != "__init__.py" and not _declara_all(ast.parse(caminho.read_text(encoding="utf-8")))
+    )
+
+
 def orfaos() -> dict[str, list[str]]:
     """`modulo.py -> nomes exportados que nenhum outro módulo de `src/` usa`."""
     arvores = {
@@ -464,6 +508,20 @@ class DetectorTests(unittest.TestCase):
         self.assertEqual(_exportados(ast.parse("__all__ = list(nomes)\n")), [])
         self.assertEqual(_exportados(ast.parse("x = 1\n")), [])
 
+    def test_modulo_sem_all_e_acusado(self) -> None:
+        """O módulo de brinquedo: sem `__all__`, ou com um montado, ele é acusado; o `__init__.py`
+        fica isento, como em `orfaos()`. Sem isto a catraca passava verde sobre o que não lia."""
+        pasta = pasta_temporaria(self)
+        for nome, fonte in {
+            "__init__.py": "",
+            "declara.py": '__all__ = ["A"]\nA = 1\n',
+            "em_tupla.py": '__all__ = ("A",)\nA = 1\n',
+            "sem_all.py": "A = 1\ndef decide():\n    return A\n",
+            "montado.py": "NOMES = ['A']\n__all__ = list(NOMES)\nA = 1\n",
+        }.items():
+            (pasta / nome).write_bytes(fonte.encode("utf-8"))
+        self.assertEqual(["montado.py", "sem_all.py"], sem_all(pasta))
+
 
 class DecisaoOrfaTests(unittest.TestCase):
     """A pergunta que nada fazia, feita."""
@@ -482,6 +540,11 @@ class DecisaoOrfaTests(unittest.TestCase):
         exportados = sum(len(_exportados(a)) for a in arvores)
         self.assertGreater(exportados, 300, "o leitor de `__all__` deixou de achar os nomes")
         self.assertGreater(len(self.rotulos), 0, "a varredura não achou nenhum órfão -- suspeito")
+
+    def test_todo_modulo_de_ui_declara_all(self) -> None:
+        """Um módulo sem `__all__` é um módulo que esta guarda não vê (S-895). Eram sete -- e neles
+        havia nomes sem chamador que a catraca, em zero, nunca contou."""
+        self.assertEqual([], sem_all(UI), "módulo de `ui/` sem `__all__` literal: a guarda de órfãos não o lê")
 
     def test_o_modulo_do_desenho_nao_tem_decisao_orfa(self) -> None:
         """O módulo que a Fase 73 triou. **Zero**, salvo o que estiver declarado com motivo.

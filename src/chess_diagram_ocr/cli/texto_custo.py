@@ -49,7 +49,7 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import custo as _custo
 from . import (
@@ -58,9 +58,12 @@ from . import (
     EXIT_OK,
     add_dpi_argument,
     add_model_argument,
+    add_pdf_dir_argument,
     add_verbose,
     cli_errors,
     confere_baseline,
+    exige_documento,
+    fronteira,
 )
 
 logger = logging.getLogger(__name__)
@@ -259,7 +262,7 @@ def main(argv: list[str] | None = None) -> int:
             "o número escolhe (S-215)."
         ),
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo.")
+    add_pdf_dir_argument(parser)
     parser.add_argument("--pdf", type=Path, default=None, help="Um PDF só, em vez do acervo.")
     parser.add_argument("--livros", type=int, default=LIVROS, help=f"Quantos livros. Padrão: {LIVROS}.")
     parser.add_argument(
@@ -301,6 +304,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.pdf.exists():
             logger.error("PDF não encontrado: %s", args.pdf)
             return EXIT_BAD_INPUT
+        exige_documento(args.pdf)
         livros = [args.pdf]
     else:
         if not args.pdf_dir.is_dir():
@@ -356,7 +360,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.baseline is not None:
         # A existência do caminho já foi conferida antes de medir (S-381).
-        arquivado = json.loads(args.baseline.read_text(encoding="utf-8"))
+        with fronteira(f"--baseline {args.baseline}"):
+            arquivado = json.loads(args.baseline.read_text(encoding="utf-8"))
         pioras = _custo.comparar(arquivado, perfil, margem=args.margem)
         if pioras:
             print("")

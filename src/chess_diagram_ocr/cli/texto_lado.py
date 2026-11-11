@@ -41,10 +41,10 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import DEFAULT_DPI, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import lado as _lado
-from . import EXIT_BAD_INPUT, EXIT_OK, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, EXIT_OK, add_pdf_dir_argument, add_verbose, cli_errors, exige_documento
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ def _lados_da_pagina(
     indice: int,
     *,
     caption_reader: Any,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
 ) -> tuple[list[Any], list[float]]:
     """`(as decisões de lado, as confianças)` dos diagramas desta página.
 
@@ -98,7 +98,7 @@ def medir_livro(
     *,
     paginas: int,
     caption_reader: Any,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
 ) -> _lado.PorLivro:
     """A linha da tabela de um livro, sobre as `paginas` primeiras folhas com diagrama."""
     from ..pdf_io import open_document
@@ -127,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="cvoff-texto-lado",
         description="Mede quantos diagramas deixam de sair `default` com o glifo lendo a legenda (S-207).",
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo.")
+    add_pdf_dir_argument(parser)
     parser.add_argument("--pdf", type=Path, default=None, help="Um PDF só, em vez do acervo.")
     parser.add_argument("--livros", type=int, default=LIVROS, help=f"Quantos livros. Padrão: {LIVROS}.")
     parser.add_argument("--paginas", type=int, default=PAGINAS, help=f"Páginas com diagrama por livro. Padrão: {PAGINAS}.")
@@ -141,6 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.pdf.exists():
             logger.error("PDF não encontrado: %s", args.pdf)
             return EXIT_BAD_INPUT
+        exige_documento(args.pdf)
         livros = [args.pdf]
     else:
         if not args.pdf_dir.is_dir():

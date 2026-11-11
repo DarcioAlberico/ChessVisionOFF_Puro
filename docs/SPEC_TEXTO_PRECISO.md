@@ -27,9 +27,11 @@ diagnóstico, as metas com os portões, as decisões do dono e a ordem dos itens
 > | S-522 a S-526 | [SPEC_REVISAO_EXTERNA_2.md](SPEC_REVISAO_EXTERNA_2.md) |
 > | S-500 a S-506, S-527 a S-580 | [SPEC_SUITE.md](SPEC_SUITE.md) |
 > | S-581 a S-584 | [PLANO_COLUNAS_SOLUCOES.md](PLANO_COLUNAS_SOLUCOES.md) |
+> | S-585 a S-598 | [ROADMAP_PDF_COM_PGN.md](ROADMAP_PDF_COM_PGN.md) |
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
 > | S-702, S-710 a S-712, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
+> | S-800 a S-910 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
 
 Cada item traz o problema (com número quando há), a decisão, onde mora, e o **critério de aceite**,
 escrito para virar teste. A spec nasce com o primeiro item entregue, e os outros entram aqui quando
@@ -37,7 +39,7 @@ forem entregues; até lá, o que vale para eles é o roadmap.
 
 ## Fase 100 — A régua da prosa
 
-### S-702 · Conjuntos ouro-dev e ouro-teste congelados, com admissão que não usa motor nenhum
+## S-702 · Conjuntos ouro-dev e ouro-teste congelados, com admissão que não usa motor nenhum
 
 **Problema.** Todos os números de prosa de 2026-10-30 foram medidos em livros que serviram para
 desenhar a régua, a taxonomia e as regras de fusão: dev contaminado. Um portão medido neles promete

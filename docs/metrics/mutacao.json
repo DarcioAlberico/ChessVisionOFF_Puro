@@ -1,0 +1,146 @@
+{
+ "modulos": {
+  "src/chess_diagram_ocr/atomic_io.py": {
+   "data": "2026-11-09",
+   "limite": 50,
+   "mutantes": 40,
+   "mortos": 40,
+   "escore": 1.0,
+   "testes": [
+    "test_atomic_io.py",
+    "test_atomic_writes.py",
+    "test_audit.py",
+    "test_board_detection.py",
+    "test_board_head.py",
+    "test_dataset.py",
+    "test_dataset_browser.py",
+    "test_dataset_cache.py",
+    "test_experiments.py",
+    "test_falso_positivo_vence.py",
+    "test_fixtures.py",
+    "test_image_io.py",
+    "test_lote_de_diagramas.py",
+    "test_pdf_to_pgn.py",
+    "test_provenance.py",
+    "test_review_queue.py",
+    "test_texto_coleta.py",
+    "test_training.py",
+    "test_ui_state.py"
+   ],
+   "sobreviventes": []
+  },
+  "src/chess_diagram_ocr/decode.py": {
+   "data": "2026-11-09",
+   "limite": 50,
+   "mutantes": 50,
+   "mortos": 48,
+   "escore": 0.96,
+   "testes": [
+    "test_decode.py"
+   ],
+   "sobreviventes": [
+    {
+     "linha": 166,
+     "operador": "int",
+     "trecho": "return (row + col) % 2 == 0"
+    },
+    {
+     "linha": 385,
+     "operador": "int",
+     "trecho": "heap: list[tuple[float, int, tuple[int, ...]]] = [(0.0, 0, base)]"
+    }
+   ]
+  },
+  "src/chess_diagram_ocr/fen_utils.py": {
+   "data": "2026-11-09",
+   "limite": 50,
+   "mutantes": 50,
+   "mortos": 49,
+   "escore": 0.98,
+   "testes": [
+    "test_fen_utils.py",
+    "test_app_pyqt.py",
+    "test_board_edit.py",
+    "test_cor_por_livro.py",
+    "test_decode.py",
+    "test_estipulacao.py",
+    "test_field_eval.py",
+    "test_field_eval_caracterizacao.py",
+    "test_inference.py",
+    "test_lance_seguinte.py",
+    "test_legality_panel.py",
+    "test_marcas_de_casa.py",
+    "test_orientation.py",
+    "test_qt_painel_de_estudo.py",
+    "test_qt_tabuleiro.py"
+   ],
+   "sobreviventes": [
+    {
+     "linha": 110,
+     "operador": "boolc",
+     "trecho": "probe = board.copy(stack=False)"
+    }
+   ]
+  },
+  "src/chess_diagram_ocr/settings.py": {
+   "data": "2026-11-09",
+   "limite": 50,
+   "mutantes": 50,
+   "mortos": 50,
+   "escore": 1.0,
+   "testes": [
+    "test_settings.py",
+    "test_arquivo_do_dono.py",
+    "test_configuracoes.py",
+    "test_ocr.py",
+    "test_ocr_caption.py",
+    "test_qt_motor.py",
+    "test_qt_preferencias.py",
+    "test_second_opinion.py",
+    "test_text_recognizer.py",
+    "test_ui_motor_declarado.py",
+    "test_ui_ocr_que_falta.py"
+   ],
+   "sobreviventes": []
+  },
+  "src/chess_diagram_ocr/splits.py": {
+   "data": "2026-11-09",
+   "limite": 50,
+   "mutantes": 50,
+   "mortos": 49,
+   "escore": 0.98,
+   "testes": [
+    "test_splits.py",
+    "test_audit.py",
+    "test_dataset.py",
+    "test_experiments.py",
+    "test_split_caveat.py",
+    "test_training.py"
+   ],
+   "sobreviventes": [
+    {
+     "linha": 65,
+     "operador": "str",
+     "trecho": "raise ValueError(\"val_pct e test_pct devem ser positivos e somar menos de 100.\")"
+    }
+   ]
+  },
+  "src/chess_diagram_ocr/ui/legality.py": {
+   "data": "2026-11-09",
+   "limite": 50,
+   "mutantes": 50,
+   "mortos": 49,
+   "escore": 0.98,
+   "testes": [
+    "test_legality_panel.py"
+   ],
+   "sobreviventes": [
+    {
+     "linha": 108,
+     "operador": "ret",
+     "trecho": "return ()"
+    }
+   ]
+  }
+ }
+}

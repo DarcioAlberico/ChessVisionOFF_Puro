@@ -10,7 +10,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from qt_app import MOTIVO, TEM_PYQT
+from qt_app import MOTIVO, TEM_PYQT, esperar_ate
 
 from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
 from chess_diagram_ocr.ui import abas, mesa
@@ -69,14 +69,6 @@ class MesaDestacadaTests(_JanelaComLivro):
         janela.activateWindow()  # type: ignore[attr-defined]
         self.app.processEvents()
 
-    def esperar(self, condicao: object, ate_ms: int = 3000) -> bool:
-        passos = max(1, ate_ms // 20)
-        for _ in range(passos):
-            if condicao():  # type: ignore[operator]
-                return True
-            QTest.qWait(20)
-        return bool(condicao())  # type: ignore[operator]
-
     def rolagem_do_texto(self) -> QScrollArea:
         return self.principal.principal.pilha.widget(self.principal.principal.modos().index(abas.TEXTO))  # type: ignore[return-value]
 
@@ -115,17 +107,17 @@ class MesaDestacadaTests(_JanelaComLivro):
         self.assertFalse(self.mesa.destacada)
 
     def test_dez_vezes_nao_perdem_selecao_desfazer_nem_zoom(self) -> None:
-        self.texto.aplicar_zoom(2, avisar=False)
+        self.texto.vista.aplicar_zoom(2, avisar=False)
         self._selecionar(2, 8)
         self.texto.executar("negrito")
         self._selecionar(2, 8)
-        antes = (self.texto._selecao_atual(), len(self.texto._historico), self.texto.zoom_da_vista, self.texto.documento)
+        antes = (self.texto.espelho.selecao_atual(), len(self.texto.espelho._historico), self.texto.vista.zoom_da_vista, self.texto.documento)
         self.assertGreater(antes[1], 0, "a pilha precisa ter o que perder")
         for _ in range(10):
             self.mesa.destacar()
             self.mesa.devolver()
         self.assertFalse(sip.isdeleted(self.texto))
-        depois = (self.texto._selecao_atual(), len(self.texto._historico), self.texto.zoom_da_vista, self.texto.documento)
+        depois = (self.texto.espelho.selecao_atual(), len(self.texto.espelho._historico), self.texto.vista.zoom_da_vista, self.texto.documento)
         self.assertEqual(depois, antes)
         self.mesa.destacar()
         self.texto.desfazer()
@@ -133,8 +125,8 @@ class MesaDestacadaTests(_JanelaComLivro):
 
     def _selecionar(self, inicio: int, fim: int) -> None:
         cursor = self.texto.editor.textCursor()
-        cursor.setPosition(self.texto._mapa.posicao(inicio))
-        cursor.setPosition(self.texto._mapa.posicao(fim), cursor.MoveMode.KeepAnchor)
+        cursor.setPosition(self.texto.espelho.mapa.posicao(inicio))
+        cursor.setPosition(self.texto.espelho.mapa.posicao(fim), cursor.MoveMode.KeepAnchor)
         self.texto.editor.setTextCursor(cursor)
 
     # ------------------------------------------------------------- a folha da janela da mesa
@@ -145,11 +137,11 @@ class MesaDestacadaTests(_JanelaComLivro):
         self.app.processEvents()
         self.assertTrue(self.principal.mesa.armada, "o controle: com o Texto à frente a principal arma")
         self.mesa.destacar()
-        self.assertTrue(self.texto._na_mesa, "na janela da mesa a aba é mesa")
+        self.assertTrue(self.texto.caderno.na_mesa, "na janela da mesa a aba é mesa")
         self.assertFalse(self.principal.mesa.armada, "o PDF ao lado do cartão é a mesa sem o texto")
         self.mesa.devolver()
         self.assertTrue(self.principal.mesa.armada)
-        self.assertTrue(self.texto._na_mesa)
+        self.assertTrue(self.texto.caderno.na_mesa)
 
     def test_a_seta_vira_a_folha_do_livro_e_a_vista_diz_que_ela_nao_foi_lida(self) -> None:
         self.mesa.destacar()
@@ -159,14 +151,14 @@ class MesaDestacadaTests(_JanelaComLivro):
         self.assertTrue(janela.botao_seguinte.isEnabled())
         self.assertIs(janela.pilha_da_folha.currentWidget(), janela.visor)
         janela.botao_seguinte.click()
-        self.assertTrue(self.esperar(lambda: self.texto.folha_atual()[0] == pagina + 1), "a aba não acompanhou a folha")
+        esperar_ate(lambda: self.texto.folha_atual()[0] == pagina + 1, limite_s=3, o_que="a aba acompanhar a folha")
         self.assertEqual(self.principal.pdf.page_index, pagina + 1, "o visualizador do livro não foi junto")
         total = self.principal.pdf.page_count
         self.assertEqual(janela.rotulo_da_folha.text(), mesa.frase_da_folha_da_mesa(pagina + 1, total))
         self.assertIs(janela.pilha_da_folha.currentWidget(), janela.aviso_da_folha, "a vista mostrava a folha de antes")
         self.assertTrue(janela.botao_anterior.isEnabled())
         janela.botao_anterior.click()
-        self.assertTrue(self.esperar(lambda: self.texto.folha_atual()[0] == pagina))
+        esperar_ate(lambda: self.texto.folha_atual()[0] == pagina, limite_s=3, o_que="a aba voltar à folha")
         self.assertIn("cavalo", self.texto.texto(), "a folha lida não voltou do caderno")
         self.assertIs(janela.pilha_da_folha.currentWidget(), janela.visor)
 

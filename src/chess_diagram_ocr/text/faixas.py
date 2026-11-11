@@ -53,6 +53,8 @@ from typing import Any
 import cv2
 import numpy as np
 
+from ..config import DEFAULT_DPI
+
 FAIXA_INVERTER = 1
 """Valor da máscara de `achar_faixas` nos pixels da faixa: é o que se inverte."""
 
@@ -149,7 +151,7 @@ def _nucleo(
 
 def achar_faixas(
     imagem: np.ndarray,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     *,
     largura_minima_pol: float = 0.6,
     altura_minima_pol: float = 0.06,
@@ -236,7 +238,7 @@ def achar_faixas(
     return faixas, mascara
 
 
-def desinverter_faixas(imagem: np.ndarray, dpi: int = 220, **criterios: Any) -> tuple[np.ndarray, list[Faixa]]:
+def desinverter_faixas(imagem: np.ndarray, dpi: int = DEFAULT_DPI, **criterios: Any) -> tuple[np.ndarray, list[Faixa]]:
     """A página em cinza com cada faixa de texto claro virada em texto escuro sobre papel.
 
     `(cinza, faixas)`. Sem faixa nenhuma volta **o mesmo array** que entrou (em cinza), e `saida is

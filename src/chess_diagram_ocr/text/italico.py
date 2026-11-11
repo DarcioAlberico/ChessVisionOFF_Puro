@@ -67,7 +67,7 @@ léxico. Aqui só se decide `/` contra `l`, e só dentro de linha inclinada.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 import numpy as np
 
@@ -213,10 +213,7 @@ def inclinacao_da_linha(binaria: np.ndarray, caixas: Sequence[Caixa]) -> float |
     normalizados cada um pela *sua* largura não tem largura única que a desfaça depois. Os três
     valores brutos da tabela acima, para a mesma inclinação real, são a prova.
     """
-    medidas = [i for i in (inclinacao_do_box(binaria, c) for c in caixas) if i is not None]
-    if len(medidas) < MIN_BOXES_PARA_MEDIR:
-        return None
-    return float(np.median(medidas))
+    return _mediana_dos_boxes(inclinacao_do_box, binaria, caixas)
 
 
 def pendor_da_linha(binaria: np.ndarray, caixas: Sequence[Caixa]) -> float | None:
@@ -225,10 +222,21 @@ def pendor_da_linha(binaria: np.ndarray, caixas: Sequence[Caixa]) -> float | Non
     Mediana e não média pela razão de sempre: um glifo de xadrez ou um respingo no meio da linha
     move a média e não move a mediana.
     """
-    medidos = [p for p in (pendor_do_box(binaria, c) for c in caixas) if p is not None]
-    if len(medidos) < MIN_BOXES_PARA_MEDIR:
+    return _mediana_dos_boxes(pendor_do_box, binaria, caixas)
+
+
+def _mediana_dos_boxes(
+    medida: Callable[[np.ndarray, Caixa], float | None], binaria: np.ndarray, caixas: Sequence[Caixa]
+) -> float | None:
+    """A mediana de `medida` nos boxes que respondem, ou `None` com menos de `MIN_BOXES_PARA_MEDIR` deles.
+
+    É a regra da linha para as duas medidas por box (S-864): o box que não responde não conta, e uma
+    linha de três boxes não tem população para dizer nada.
+    """
+    medidas = [m for m in (medida(binaria, c) for c in caixas) if m is not None]
+    if len(medidas) < MIN_BOXES_PARA_MEDIR:
         return None
-    return float(np.median(medidos))
+    return float(np.median(medidas))
 
 
 def declarar(

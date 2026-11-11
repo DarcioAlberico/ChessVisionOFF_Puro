@@ -120,16 +120,34 @@ class LinhaQueNaoFechaTests(unittest.TestCase):
         self.assertIn("lance 72", lida.motivo)
         self.assertIn("no 4", lida.motivo)
 
+    def test_numero_de_brancas_nao_aceita_lance_de_pretas(self) -> None:
+        """S-899: `1.` é lance das brancas e `1...` das pretas. Com as pretas na vez, `1. e5` é
+        meio-lance perdido ou inventado pela leitura, e a docstring promete dizê-lo."""
+        pretas = chess.Board("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1")
+        for tokens in (["1.", "e5"], ["1.e5"]):
+            with self.subTest(tokens=tokens):
+                lida = validar(tokens, pretas)
+                self.assertEqual(lida.lances, ())
+                self.assertIn("vez é das pretas", lida.motivo)
+                self.assertEqual(lida.token, tokens[-1])
+        for tokens in (["1...", "e5"], ["1...e5"], ["1", "...", "e5"], ["1…e5"]):
+            with self.subTest(tokens=tokens):
+                self.assertEqual(validar(tokens, pretas).san, ("e5",))
+        brancas = chess.Board()
+        self.assertIn("vez é das brancas", validar(["1...e4"], brancas).motivo)
+        self.assertEqual(validar(["1", "e4"], brancas).san, ("e4",))  # número sem ponto não diz o lado
+
     def test_linha_sem_lance_nenhum_devolve_vazio_sem_levantar(self) -> None:
         lida = validar(["In", "1968", "he", "lost"], ITALIANA)
         self.assertEqual(lida.lances, ())
 
     def test_o_numero_e_a_reticencia_soltos_nao_sao_lance_nem_erro(self) -> None:
         """`4 ... ♗c5` é como a segmentação às vezes separa o que o livro imprimiu junto: os dois
-        primeiros tokens não são lance, e não podem ser contados como erro por não serem."""
+        primeiros tokens não são lance, e não podem ser contados como erro por não serem. O erro é
+        do `♗c5`: a reticência o diz das pretas, e a vez é das brancas (S-899)."""
         lida = validar(["4", "...", "♗c5"], ITALIANA)
         self.assertEqual(lida.lances, ())
-        self.assertIn("não é legal", lida.motivo)
+        self.assertIn("vez é das brancas", lida.motivo)
         self.assertEqual(lida.token, "♗c5")
 
 

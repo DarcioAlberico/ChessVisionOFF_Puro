@@ -30,8 +30,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..arquivo_do_dono import ler_texto
 from ..atomic_io import atomic_write_json
 from . import viewport
+from .livros import caminho_canonico, chave_do_livro
+
+__all__ = [
+    "AppState",
+    "load_state",
+    "save_state",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -285,16 +293,30 @@ class AppState:
 
     def page_for(self, pdf_path: Path) -> int:
         """Página em que este PDF foi deixado. 0 se ele nunca foi aberto."""
-        return int(self.pdf_history.get(_history_key(pdf_path), 0))
+        guardada = self._entrada_do_livro(pdf_path)
+        return 0 if guardada is None else int(self.pdf_history[guardada])
 
     def remember_page(self, pdf_path: Path, page_index: int) -> None:
-        key = _history_key(pdf_path)
         history = self.pdf_history
-        history.pop(key, None)
-        history[key] = int(page_index)
+        guardada = self._entrada_do_livro(pdf_path)
+        if guardada is not None:
+            history.pop(guardada)
+        history[_history_key(pdf_path)] = int(page_index)
         while len(history) > MAX_PDF_HISTORY:
             # dict preserva ordem de insercao: o primeiro e o menos recentemente tocado.
             history.pop(next(iter(history)))
+
+    def _entrada_do_livro(self, pdf_path: Path) -> str | None:
+        """A entrada do histórico que é este livro, por qualquer grafia (S-827).
+
+        A grafia gravada é o caso de toda virada de página, e sai sem varrer; as outras (`..`, caixa,
+        a gravada quando o caminho não resolvia) passam por `chave_do_livro`, uma vez por livro.
+        """
+        exata = _history_key(pdf_path)
+        if exata in self.pdf_history:
+            return exata
+        chave = chave_do_livro(pdf_path)
+        return next((gravada for gravada in self.pdf_history if chave_do_livro(gravada) == chave), None)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -339,11 +361,8 @@ class AppState:
 
 
 def _history_key(pdf_path: Path) -> str:
-    try:
-        return str(Path(pdf_path).resolve())
-    except OSError:
-        # Caminho de rede fora do ar: o não resolvido ainda serve de chave.
-        return str(pdf_path)
+    """Como o livro é gravado no histórico: um caminho que se abre, e que `recentes` mostra."""
+    return caminho_canonico(pdf_path)
 
 
 def _migrate(raw: dict[str, Any]) -> dict[str, Any]:
@@ -361,6 +380,108 @@ def _migrate(raw: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
+def _texto(valor: object) -> str | None:
+    return valor if isinstance(valor, str) else None
+
+
+def _sim_ou_nao(valor: object) -> bool | None:
+    return valor if isinstance(valor, bool) else None
+
+
+def _numero(valor: object) -> float | None:
+    """O número do JSON, sem o `bool` (que em Python é `int`): `true` não é zoom 1."""
+    return float(valor) if isinstance(valor, (int, float)) and not isinstance(valor, bool) else None
+
+
+def _inteiro(minimo: int | None = None) -> Callable[[object], int | None]:
+    def ler(valor: object) -> int | None:
+        if not isinstance(valor, int) or isinstance(valor, bool):
+            return None
+        return valor if minimo is None else max(minimo, valor)
+
+    return ler
+
+
+def _fracao(baixo: float, alto: float) -> Callable[[object], float | None]:
+    def ler(valor: object) -> float | None:
+        numero = _numero(valor)
+        return None if numero is None else _clamp(numero, baixo, alto)
+
+    return ler
+
+
+def _enquadramento(valor: object) -> str | None:
+    # Valor fora da lista cai no padrão, como todo campo deste arquivo: um estado de disco
+    # corrompido não pode abrir a janela num modo que não existe.
+    return str(valor) if valor in viewport.ENQUADRAMENTOS else None
+
+
+def _historico(valor: object) -> dict[str, int] | None:
+    """As entradas de página válidas, **aparadas ao teto** (S-828): o teto valia só para
+    `remember_page`, e um arquivo com 500 entradas seguia com 500. A ordem do arquivo é a de uso
+    (`recentes`), e ficam as últimas."""
+    if not isinstance(valor, dict):
+        return None
+    validas = [
+        (str(chave), int(pagina))
+        for chave, pagina in valor.items()
+        if isinstance(pagina, int) and not isinstance(pagina, bool) and pagina >= 0
+    ]
+    return dict(validas[-MAX_PDF_HISTORY:])
+
+
+def _glifos(valor: object) -> list[str] | None:
+    return [g for g in valor if isinstance(g, str) and g][:20] if isinstance(valor, list) else None
+
+
+_CAMPOS: tuple[tuple[str, Callable[[object], object]], ...] = (
+    ("last_pdf", _texto),
+    ("last_page", _inteiro(minimo=0)),
+    ("pdf_zoom", _fracao(0.25, 2.0)),
+    ("pdf_enquadramento", _enquadramento),
+    ("board_zoom", _fracao(0.45, 1.8)),
+    ("pdf_history", _historico),
+    ("show_heatmap", _sim_ou_nao),
+    ("show_diagram_boxes", _sim_ou_nao),
+    ("wheel_flips_page", _sim_ou_nao),
+    ("review_queue_path", _texto),
+    # Os três da S-156. Nenhum é validado aqui além do tipo: a geometria depende dos monitores
+    # que existem **agora**, e essa pergunta é de quem vai aplicá-la, não de quem a lê do disco.
+    ("window_geometry", _texto),
+    ("sash_fraction", _fracao(0.0, 1.0)),
+    ("active_tab", _texto),
+    # Pele, densidade e conjunto de peças (S-221, S-230, S-232), e nenhum é validado aqui além do
+    # tipo -- pelo mesmo motivo da geometria: o que está registrado é pergunta de quem vai usá-lo.
+    ("skin", _texto),
+    ("densidade", _texto),
+    ("piece_set", _texto),
+    ("piece_dir", _texto),
+    # O zoom da aba Texto (S-291) **não é grampeado aqui**: os limites são da aba que o desenha, e
+    # repeti-los os declararia num segundo lugar. Quem grampeia um `texto_zoom: 900` é `_aplicar_zoom`.
+    ("texto_zoom", _inteiro()),
+    ("texto_quebra", _sim_ou_nao),
+    ("texto_motor", _texto),
+    ("texto_lingua", _texto),
+    ("texto_bloco", _sim_ou_nao),
+    ("texto_diagramas", _texto),
+    ("texto_miniatura", _texto),
+    ("texto_familia", _texto),
+    ("texto_ao_lado", _sim_ou_nao),
+    ("texto_ultima_cor", _texto),
+    ("texto_ultimo_realce", _texto),
+    ("texto_ler_ao_chegar", _sim_ou_nao),
+    ("texto_fita_recolhida", _sim_ou_nao),
+    ("texto_glifos_recentes", _glifos),
+    ("texto_mesa", _texto),
+    ("mesa_fraction", _fracao(0.0, 1.0)),
+    ("estudo_aberto", _texto),
+    ("estudo_divisor", _fracao(0.0, 1.0)),
+    ("estudo_divisor_vertical", _fracao(0.0, 1.0)),
+)
+"""Como cada campo do `AppState` é lido do disco: o leitor devolve o valor, ou `None` quando o do
+arquivo não serve (S-828). O padrão **não** está aqui: é o do próprio `AppState`, num lugar só."""
+
+
 def state_from_dict(raw: dict[str, Any]) -> AppState:
     """Constrói o estado a partir do dicionário lido, ignorando campo de tipo errado.
 
@@ -369,146 +490,10 @@ def state_from_dict(raw: dict[str, Any]) -> AppState:
     """
     raw = _migrate(raw)
     state = AppState()
-
-    last_pdf = raw.get("last_pdf")
-    if isinstance(last_pdf, str):
-        state.last_pdf = last_pdf
-
-    last_page = raw.get("last_page")
-    if isinstance(last_page, int) and not isinstance(last_page, bool):
-        state.last_page = max(0, last_page)
-
-    pdf_zoom = raw.get("pdf_zoom")
-    if isinstance(pdf_zoom, (int, float)) and not isinstance(pdf_zoom, bool):
-        state.pdf_zoom = _clamp(float(pdf_zoom), 0.25, 2.0)
-    enquadramento = raw.get("pdf_enquadramento")
-    # Valor fora da lista cai no padrão, como todo campo deste arquivo: um estado de disco
-    # corrompido não pode abrir a janela num modo que não existe.
-    if enquadramento in viewport.ENQUADRAMENTOS:
-        state.pdf_enquadramento = str(enquadramento)
-
-    board_zoom = raw.get("board_zoom")
-    if isinstance(board_zoom, (int, float)) and not isinstance(board_zoom, bool):
-        state.board_zoom = _clamp(float(board_zoom), 0.45, 1.8)
-
-    history = raw.get("pdf_history")
-    if isinstance(history, dict):
-        state.pdf_history = {
-            str(key): int(value)
-            for key, value in history.items()
-            if isinstance(value, int) and not isinstance(value, bool) and value >= 0
-        }
-
-    show_heatmap = raw.get("show_heatmap")
-    if isinstance(show_heatmap, bool):
-        state.show_heatmap = show_heatmap
-
-    show_boxes = raw.get("show_diagram_boxes")
-    if isinstance(show_boxes, bool):
-        state.show_diagram_boxes = show_boxes
-
-    flips = raw.get("wheel_flips_page")
-    if isinstance(flips, bool):
-        state.wheel_flips_page = flips
-
-    queue_path = raw.get("review_queue_path")
-    if isinstance(queue_path, str):
-        state.review_queue_path = queue_path
-
-    # Os três da S-156. Nenhum é validado aqui além do tipo: a geometria depende dos monitores
-    # que existem **agora**, e essa pergunta é de quem vai aplicá-la, não de quem a lê do disco.
-    geometry = raw.get("window_geometry")
-    if isinstance(geometry, str):
-        state.window_geometry = geometry
-
-    sash = raw.get("sash_fraction")
-    if isinstance(sash, (int, float)) and not isinstance(sash, bool):
-        state.sash_fraction = _clamp(float(sash), 0.0, 1.0)
-
-    tab = raw.get("active_tab")
-    if isinstance(tab, str):
-        state.active_tab = tab
-
-    skin = raw.get("skin")
-    if isinstance(skin, str):
-        state.skin = skin
-
-    # Os dois da S-230, e nenhum é validado aqui além do tipo -- pelo mesmo motivo da pele e da
-    # geometria: conjunto registrado e pasta que existe são perguntas de quem vai usá-los.
-    densidade = raw.get("densidade")
-    if isinstance(densidade, str):
-        state.densidade = densidade
-
-    piece_set = raw.get("piece_set")
-    if isinstance(piece_set, str):
-        state.piece_set = piece_set
-
-    piece_dir = raw.get("piece_dir")
-    if isinstance(piece_dir, str):
-        state.piece_dir = piece_dir
-
-    # Os dois da S-291, e **nenhum é validado aqui além do tipo** -- a mesma regra de `skin`, da
-    # geometria e do conjunto de peças, três parágrafos acima: os limites do zoom são da aba que o
-    # desenha (`texto_panel.ZOOM_MINIMO`/`ZOOM_MAXIMO`), e repeti-los aqui os declararia num
-    # segundo lugar. Quem grampeia um `texto_zoom: 900` de arquivo estragado é `_aplicar_zoom`.
-    texto_zoom = raw.get("texto_zoom")
-    if isinstance(texto_zoom, int) and not isinstance(texto_zoom, bool):
-        state.texto_zoom = texto_zoom
-
-    texto_quebra = raw.get("texto_quebra")
-    if isinstance(texto_quebra, bool):
-        state.texto_quebra = texto_quebra
-
-    texto_motor = raw.get("texto_motor")
-    if isinstance(texto_motor, str):
-        state.texto_motor = texto_motor
-    texto_lingua = raw.get("texto_lingua")
-    if isinstance(texto_lingua, str):
-        state.texto_lingua = texto_lingua
-
-    texto_bloco = raw.get("texto_bloco")
-    if isinstance(texto_bloco, bool):
-        state.texto_bloco = texto_bloco
-
-    for chave in ("texto_diagramas", "texto_miniatura", "texto_familia"):
-        valor = raw.get(chave)
-        if isinstance(valor, str):
-            setattr(state, chave, valor)
-    ao_lado = raw.get("texto_ao_lado")
-    if isinstance(ao_lado, bool):
-        state.texto_ao_lado = ao_lado
-    for chave in ("texto_ultima_cor", "texto_ultimo_realce"):
-        if isinstance(raw.get(chave), str):
-            setattr(state, chave, raw[chave])
-    ler_ao_chegar = raw.get("texto_ler_ao_chegar")
-    if isinstance(ler_ao_chegar, bool):
-        state.texto_ler_ao_chegar = ler_ao_chegar
-    recolhida = raw.get("texto_fita_recolhida")
-    if isinstance(recolhida, bool):
-        state.texto_fita_recolhida = recolhida
-    glifos = raw.get("texto_glifos_recentes")
-    if isinstance(glifos, list):
-        state.texto_glifos_recentes = [g for g in glifos if isinstance(g, str) and g][:20]
-    texto_mesa = raw.get("texto_mesa")
-    if isinstance(texto_mesa, str):
-        state.texto_mesa = texto_mesa
-
-    mesa = raw.get("mesa_fraction")
-    if isinstance(mesa, (int, float)) and not isinstance(mesa, bool):
-        state.mesa_fraction = _clamp(float(mesa), 0.0, 1.0)
-
-    estudo_aberto = raw.get("estudo_aberto")
-    if isinstance(estudo_aberto, str):
-        state.estudo_aberto = estudo_aberto
-
-    estudo_divisor = raw.get("estudo_divisor")
-    if isinstance(estudo_divisor, (int, float)) and not isinstance(estudo_divisor, bool):
-        state.estudo_divisor = _clamp(float(estudo_divisor), 0.0, 1.0)
-
-    vertical = raw.get("estudo_divisor_vertical")
-    if isinstance(vertical, (int, float)) and not isinstance(vertical, bool):
-        state.estudo_divisor_vertical = _clamp(float(vertical), 0.0, 1.0)
-
+    for campo, ler in _CAMPOS:
+        valor = ler(raw.get(campo))
+        if valor is not None:
+            setattr(state, campo, valor)
     return state
 
 
@@ -519,8 +504,8 @@ def load_state(path: Path) -> AppState:
         return AppState()
 
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raw = json.loads(ler_texto(path, do_usuario=False))
+    except (OSError, ValueError) as exc:
         logger.warning("Estado da aplicação descartado (%s): %s", path, exc)
         return AppState()
 

@@ -12,8 +12,12 @@ Três coisas são travadas aqui, e as três já quebraram alguma coisa neste pro
 
 from __future__ import annotations
 
+import json
 import pickle
+import tempfile
 import unittest
+from dataclasses import asdict, fields, replace
+from pathlib import Path
 
 import torch
 
@@ -32,6 +36,8 @@ from chess_diagram_ocr.augment import (
     build_marca,
     desenhar_marca,
     from_letters,
+    from_metadado,
+    regime_of_checkpoint,
     stroke,
 )
 from chess_diagram_ocr.training import build_train_transform
@@ -104,14 +110,16 @@ class ConfigTests(unittest.TestCase):
     def test_a_versao_entra_nos_metadados_do_checkpoint(self) -> None:
         """Sem isso, comparar dois modelos pode estar comparando dois regimes de aumento.
 
-        A S-47 moveu a montagem dos metadados de `train_model` para `Trainer.prepare`; a
-        varredura acompanhou. `train_model` hoje só monta o plano e delega.
+        Pelos metadados do plano (`_optim_metadata`), que `Trainer.prepare` espalha nos do
+        checkpoint: era uma varredura do fonte de `prepare`, e um comentário com o nome bastava
+        para ela passar.
         """
-        import inspect
+        from chess_diagram_ocr.model import ArchConfig
+        from chess_diagram_ocr.training import OptimPlan, _optim_metadata
 
-        from chess_diagram_ocr import training
-
-        self.assertIn("augment_version", inspect.getsource(training.Trainer.prepare))
+        metadados = _optim_metadata(OptimPlan(augment=TODAS), ArchConfig())
+        self.assertEqual(metadados["augment_version"], TODAS.version)
+        self.assertEqual(metadados["augment"], asdict(TODAS))
 
     def test_a_ordem_e_a_de_uma_pagina_real(self) -> None:
         """O papel amarela antes de a tinta da hachura ser impressa; a granulação é do scanner."""
@@ -301,16 +309,32 @@ class DeterminismTests(unittest.TestCase):
         segunda = transformacao(cell(0.7))
         self.assertFalse(torch.equal(primeira, segunda))
 
-    def test_o_sorteio_usa_o_rng_do_torch(self) -> None:
+    def test_o_sorteio_usa_so_o_rng_do_torch(self) -> None:
         """O `DataLoader` semeia o RNG do torch por worker; com `random`, dois workers
-        aplicariam a mesma sequência de degradações."""
-        import inspect
+        aplicariam a mesma sequência de degradações.
 
-        from chess_diagram_ocr import augment
+        Mesma semente do torch e sementes diferentes do `random` e do numpy: a saída não pode
+        mudar. Era uma busca de `torch.rand` no texto do módulo (S-870), e um sorteio por
+        `random.uniform` ou `np.random` passava por ela. Vinte sementes para que cada etapa
+        de probabilidade 0,5 dispare algumas vezes; a marca entra com probabilidade 1.
+        """
+        import random
 
-        fonte = inspect.getsource(augment)
-        self.assertNotIn("random.random()", fonte)
-        self.assertIn("torch.rand", fonte)
+        import numpy as np
+
+        transformacao = build_train_transform(TODAS)
+        marca = build_marca(replace(TODAS, marca=1.0))
+        assert marca is not None
+        for semente in range(20):
+            saidas = []
+            for alheia in (1, 2):
+                random.seed(alheia)
+                np.random.seed(alheia)
+                torch.manual_seed(semente)
+                saidas.append((transformacao(cell(0.7)), marca(cell(0.9))))
+            with self.subTest(semente=semente):
+                self.assertTrue(torch.equal(saidas[0][0], saidas[1][0]), "a pipeline sorteou fora do torch")
+                self.assertTrue(torch.equal(saidas[0][1], saidas[1][1]), "a marca sorteou fora do torch")
 
 
 class MarcaTests(unittest.TestCase):
@@ -404,6 +428,111 @@ class MarcaTests(unittest.TestCase):
     def test_e_piclavel(self) -> None:
         marca = pickle.loads(pickle.dumps(MarcaEmVazia(0.15)))
         self.assertEqual(marca.p, 0.15)
+
+
+class RegimeDoCheckpointTests(unittest.TestCase):
+    """O checkpoint guarda o regime inteiro, e não só a letra (S-839).
+
+    A letra é um nome curto, e perde informação: `AugmentConfig(hatch=0.9)` e o `hatch=0.3` que
+    `from_letters("h")` devolve saem os dois `augh`. Retreinar "no regime do checkpoint" a partir
+    da letra treinava noutro regime e gravava a mesma letra -- a classe do incidente `augx`.
+    """
+
+    REGIMES = (
+        AugmentConfig(),
+        TODAS,
+        AugmentConfig(hatch=0.9),
+        AugmentConfig(hatch=0.3, hatch_period_px=(2, 6)),
+        AugmentConfig(stroke=0.3, stroke_px=(1, 2), stroke_margin_px=0),
+        AugmentConfig(jitter=0.0, affine=0.5, blur=0.1, marca=0.2),
+    )
+
+    def _gravado(self, pasta: Path, config: AugmentConfig) -> Path:
+        """Um `.pt` com os metadados de regime que o treino grava."""
+        from chess_diagram_ocr.checkpoint import save_checkpoint
+        from chess_diagram_ocr.model import ArchConfig
+        from chess_diagram_ocr.training import OptimPlan, _optim_metadata
+
+        caminho = pasta / "m.pt"
+        metadados = _optim_metadata(OptimPlan(augment=config), ArchConfig())
+        save_checkpoint(caminho, {"w": torch.zeros(1)}, metadata=metadados)
+        return caminho
+
+    def test_o_dicionario_reconstroi_o_regime_exato(self) -> None:
+        for config in self.REGIMES:
+            with self.subTest(config=config):
+                self.assertEqual(from_metadado(asdict(config)), config)
+                # Por JSON as tuplas voltam como listas, e o regime tem de sair o mesmo.
+                self.assertEqual(from_metadado(json.loads(json.dumps(asdict(config)))), config)
+
+    def test_todo_campo_fora_do_padrao_volta(self) -> None:
+        """Cada campo do regime, um por vez, fora do padrão: nenhum pode voltar no padrão."""
+        for campo in fields(AugmentConfig):
+            padrao = getattr(DEFAULT_AUGMENT, campo.name)
+            if isinstance(padrao, tuple):
+                outro: object = tuple(v + 1 for v in padrao)
+            elif isinstance(padrao, int):
+                outro = padrao + 1
+            else:
+                outro = padrao + 0.125
+            config = replace(DEFAULT_AUGMENT, **{campo.name: outro})
+            with self.subTest(campo=campo.name):
+                self.assertEqual(from_metadado(asdict(config)), config)
+
+    def test_campo_desconhecido_e_recusado(self) -> None:
+        """Um regime de um código mais novo traz transformação que este não sabe aplicar."""
+        with self.assertRaises(ValueError):
+            from_metadado({**asdict(AugmentConfig()), "dobra": 0.5})
+
+    def test_o_checkpoint_devolve_o_regime_que_o_treino_gravou(self) -> None:
+        for config in self.REGIMES:
+            with self.subTest(config=config), tempfile.TemporaryDirectory() as tmp:
+                caminho = self._gravado(Path(tmp), config)
+                self.assertEqual(regime_of_checkpoint(caminho), config)
+
+    def test_hachura_forte_nao_volta_como_a_da_letra(self) -> None:
+        """O par que a letra confundia: os dois são `augh`."""
+        self.assertEqual(AugmentConfig(hatch=0.9).version, from_letters("h").version)
+        with tempfile.TemporaryDirectory() as tmp:
+            regime = regime_of_checkpoint(self._gravado(Path(tmp), AugmentConfig(hatch=0.9)))
+        self.assertIsNotNone(regime)
+        assert regime is not None
+        self.assertEqual(regime.hatch, 0.9)
+
+    def test_sufixo_que_a_letra_nao_honra_e_recusado(self) -> None:
+        for texto in ("augh-j0", "aug0-b0.1", "auge-e1x2m3", "h-t2x6"):
+            with self.subTest(texto=texto), self.assertRaises(ValueError):
+                from_letters(texto)
+
+    def test_arquivo_ausente_e_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(regime_of_checkpoint(Path(tmp) / "nao-existe.pt"))
+
+    def test_arquivo_truncado_levanta(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = self._gravado(Path(tmp), TODAS)
+            caminho.write_bytes(caminho.read_bytes()[:200])
+            with self.assertRaises(ValueError):
+                regime_of_checkpoint(caminho)
+
+    def test_checkpoint_antigo_e_lido_pela_letra_com_aviso(self) -> None:
+        from chess_diagram_ocr.checkpoint import save_checkpoint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "antigo.pt"
+            save_checkpoint(caminho, {"w": torch.zeros(1)}, metadata={"augment_version": "augmhsp"})
+            with self.assertLogs("chess_diagram_ocr.augment", "WARNING"):
+                regime = regime_of_checkpoint(caminho)
+        self.assertEqual(regime, AugmentConfig(hflip=0.5, hatch=0.30, speckle=0.25, paper=0.30))
+
+    def test_checkpoint_anterior_a_s40_e_o_generico_com_aviso(self) -> None:
+        from chess_diagram_ocr.checkpoint import save_checkpoint
+
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "pre_s40.pt"
+            save_checkpoint(caminho, {"w": torch.zeros(1)}, metadata={})
+            with self.assertLogs("chess_diagram_ocr.augment", "WARNING"):
+                self.assertEqual(regime_of_checkpoint(caminho), AugmentConfig())
 
 
 if __name__ == "__main__":

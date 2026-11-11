@@ -43,8 +43,8 @@ comparar confiança crua com confiança calibrada.
 
 ## O que **não** entra no modo bloco
 
-Linha girada (S-197) e linha em negativo (S-195) voltam ao modo por caractere. A faixa delas
-deixa de ser um retângulo em pé, e endireitar a faixa inteira é outro problema — não este.
+Linha em negativo (S-195) volta ao modo por caractere: ler a faixa inteira dela é outro
+problema — não este. Linha girada não chega aqui: a página não marca ângulo (S-855).
 """
 
 from __future__ import annotations
@@ -163,18 +163,12 @@ def em_bloco(
 
     É a mesma regra da S-197 e da S-186: sem o segundo opinante, não mexer. Um leitor de linha
     ausente não é caso de erro -- ele é opcional por desenho (S-42), e o caminho por caractere é
-    o que sempre existiu.
-
-    `linha` girada ou vazia também volta pelo caminho de caractere: a faixa deixa de ser um
-    retângulo em pé, e endireitá-la é problema da S-197.
+    o que sempre existiu. `linha` vazia também volta pelo caminho de caractere.
     """
     por_caractere = [
         Lido(caractere=char, confianca=conf, do_glifo=char, do_bloco=char) for char, conf in lidos
     ]
     if leitor is None or not linha or len(linha) != len(lidos):
-        return por_caractere
-    if any(caixa.angulo for caixa in linha):
-        logger.debug("Linha girada: o modo bloco não se aplica, e ela volta ao modo por caractere.")
         return por_caractere
 
     x1 = max(0, min(c.x1 for c in linha) - margem)

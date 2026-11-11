@@ -1,5 +1,9 @@
 """De onde veio um texto lido, como vocabulário -- e não como `if` no meio do pipeline (S-207).
 
+Chamava-se `procedencias.py` até a S-862 (decisão D6 da solidez): o nome velho se
+confundia com `provenance.py`, `proveniencia.py` e `text/procedencia.py`, e não dizia que o
+assunto aqui é o texto lido.
+
 **Este módulo nasceu de uma regra que já existia, e que a S-207 quase quebrou.**
 `tests/test_text_recognizer.py::test_a_s43_nao_precisou_saber_que_o_glifo_existe` cobra que
 `ocr_caption.py` e `pdf_text.py` **não mencionem motor nenhum pelo nome** -- porque no dia em que

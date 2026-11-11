@@ -42,6 +42,17 @@ def _misread_probs() -> tuple[np.ndarray, list[int]]:
 
 
 class ReplicaTests(unittest.TestCase):
+    def test_linha_com_roque_replica(self) -> None:
+        """S-880: depois de 1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 o roque está de pé (`KQkq` inferido), e o
+        livro de abertura imprime `4.O-O`. Com ` - - 0 1` fixo o lance não existia, e o reparo saía
+        procurando trocas à toa -- e respondia que nem com duas a linha fechava."""
+        italiana = "r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R"
+        probs = probs_for_fen(italiana, confidence=0.99)
+        reparo = conferir(probs, [int(i) for i in probs.argmax(axis=1)],
+                          linha="4.O-O Nf6 5.d3 d6", turn=chess.WHITE, fullmove=4)
+        self.assertTrue(reparo.replicou, reparo.motivo)
+        self.assertEqual(reparo.trocas, ())
+
     def test_a_line_that_replays_changes_nothing(self) -> None:
         probs = probs_for_fen(TRUTH, confidence=0.99)
         reparo = conferir(probs, [int(i) for i in probs.argmax(axis=1)],

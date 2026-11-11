@@ -188,7 +188,9 @@ class LerLinhasTests(unittest.TestCase):
             return tsv((1, "um", 90.0), (3, "tres", 80.0))
 
         lidas = tesseract.ler_linhas([recorte, vazio, recorte, recorte], motor=MOTOR, rodar_tesseract=falso)
-        self.assertEqual([li.texto for li in lidas], ["um", "", "", "tres"])
+        # O recorte vazio não foi lido (`None`, S-853); o terceiro foi, e veio vazio (`""`).
+        self.assertEqual([None if li is None else li.texto for li in lidas], ["um", None, "", "tres"])
+        assert lidas[3] is not None
         self.assertEqual(lidas[3].confiancas, (0.8,))
         self.assertEqual(len(pedidos), 1, "um processo por folha")
         self.assertTrue(pedidos[0][:2] in (b"II", b"MM"), "um TIFF")
@@ -208,7 +210,19 @@ class LerLinhasTests(unittest.TestCase):
         def nao_pode(*_a: object, **_k: object) -> str:
             raise AssertionError("abriu processo")
 
-        self.assertEqual(tesseract.ler_linhas([np.zeros((0, 0))], motor=MOTOR, rodar_tesseract=nao_pode)[0].texto, "")
+        self.assertEqual(tesseract.ler_linhas([np.zeros((0, 0))], motor=MOTOR, rodar_tesseract=nao_pode), [None])
+
+    def test_a_palavra_com_espaco_dentro_nao_desloca_as_confiancas(self) -> None:
+        """U+2009 dentro de uma palavra do TSV: `split()` a parte em duas, e a confiança é uma por token (S-853)."""
+        recorte = np.full((20, 80), 255, dtype=np.uint8)
+
+        def falso(*_a: object, **_k: object) -> str:
+            return tsv((1, "white knight", 90.0), (1, "wins", 20.0))
+
+        [lida] = tesseract.ler_linhas([recorte], motor=MOTOR, rodar_tesseract=falso)
+        assert lida is not None
+        self.assertEqual(lida.texto.split(), ["white", "knight", "wins"])
+        self.assertEqual(lida.confiancas, (0.9, 0.9, 0.2))
 
     def test_folha_acima_do_teto_nao_vai_ao_processo(self) -> None:
         def nao_pode(*_a: object, **_k: object) -> str:

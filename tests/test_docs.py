@@ -28,9 +28,20 @@ from collections.abc import Iterable
 from fnmatch import fnmatch
 from pathlib import Path
 
+import varredura
+from arvores_do_repositorio import checkout_principal, normalizada, raizes_do_repositorio
+
 RAIZ = Path(__file__).resolve().parents[1]
 DOCS = RAIZ / "docs"
 README = RAIZ / "README.md"
+
+PRINCIPAL = checkout_principal()
+"""Onde moram os artefatos de uso -- `data/`, `PDF/`, `pgn_database/` --, que o git não versiona.
+
+É a própria `RAIZ` num checkout simples. Num worktree é o checkout principal (S-805): ancorados em
+`RAIZ`, os números vivos da S-135 pulavam ali em toda corrida, e um pulo de sempre é um teste que
+não existe. O que é **versionado** continua lido de `RAIZ`, que é a versão que está sendo conferida.
+"""
 
 SECAO = re.compile(r"^#{1,4} (S-\d{1,3})\b")
 """Uma seção de item: `## S-95 · ...` ou `### S-78 · ...`. O nível varia entre os arquivos."""
@@ -195,7 +206,7 @@ def secoes_de_spec(arquivos: Iterable[Path] | None = None) -> dict[int, list[str
     sobre o defeito.
     """
     ocorrencias: dict[int, list[str]] = {}
-    for arquivo in sorted(arquivos if arquivos is not None else DOCS.glob("*.md")):
+    for arquivo in sorted(arquivos if arquivos is not None else varredura.fontes(DOCS, "*.md", piso=30)):
         if arquivo.name in ARQUIVOS_DE_MEDICAO:
             continue
         for numero_da_linha, linha in enumerate(arquivo.read_text(encoding="utf-8").splitlines(), start=1):
@@ -270,48 +281,6 @@ def faixas_declaradas(texto: str) -> dict[int, str]:
                 if numero not in excluidos:
                     declarado[numero] = arquivo.group(1)
     return declarado
-
-
-def _raizes_do_repositorio() -> tuple[str, ...]:
-    """Toda árvore de trabalho deste repositório, e não só aquela em que a suíte está rodando.
-
-    **O furo que isto tapa (S-299).** A guarda abaixo comparava o caminho publicado contra
-    `RAIZ`, que é a árvore *atual*. Num `git worktree` a árvore atual é
-    `.claude/worktrees/algum-nome`, e um relatório que publicasse
-    `C:/Python-Chess2/ChessVisionOFF_Puro/models/piece_classifier.pt` -- o checkout principal, que
-    é onde os `.pt` e o `PDF/` de fato moram -- **não começava pela raiz atual e passava em
-    verde**. A guarda existia, rodava, e não olhava onde o arquivo defeituoso estava.
-
-    É a mesma classe de problema da S-296: guarda que não olha onde o trabalho está. E é o caso
-    normal aqui, não o exótico -- remedir campo a partir de um worktree é o procedimento, porque
-    os artefatos só existem no checkout principal.
-
-    Devolve pelo menos `RAIZ`: sem git, ou com um git que recusa, a guarda volta a ser o que era,
-    e não deixa de existir.
-    """
-    raizes = {str(RAIZ)}
-    try:
-        resultado = subprocess.run(
-            ["git", "worktree", "list", "--porcelain"],
-            cwd=RAIZ,
-            capture_output=True,
-            text=True,
-            check=False,
-            encoding="utf-8",
-            errors="replace",
-        )
-    except OSError:  # pragma: no cover - maquina sem git no PATH
-        return (_normalizada(RAIZ),)
-    if resultado.returncode == 0:
-        for linha in resultado.stdout.splitlines():
-            if linha.startswith("worktree "):
-                raizes.add(linha[len("worktree ") :].strip())
-    return tuple(sorted({_normalizada(Path(raiz)) for raiz in raizes if raiz}))
-
-
-def _normalizada(caminho: Path) -> str:
-    """A forma em que os caminhos são comparados: barra para frente, sem barra final, minúscula."""
-    return str(caminho).replace("\\", "/").rstrip("/").lower()
 
 
 class ItemEntregueTemSpecTests(unittest.TestCase):
@@ -429,10 +398,16 @@ class IndiceNaoEVacuoTests(unittest.TestCase):
         """O outro lado de `test_o_indice_nao_declara_faixa_sem_dono`: seção que o índice não
         cita é seção que ninguém acha pelo índice -- que é para o que o índice existe."""
         declarado = faixas_declaradas(README.read_text(encoding="utf-8"))
+        # **A isenção dos `ROADMAP*` vale só para item não entregue** (S-832). Ela existe porque
+        # um roadmap descreve o que ainda vai ser feito, e o item ganha casa na tabela quando
+        # ganha spec. Isenção irrestrita deixou as S-585 a S-598 -- entregues, com a spec morando
+        # no `ROADMAP_PDF_COM_PGN.md` -- sem linha na tabela, e a guarda verde sobre elas.
+        entregues = itens_entregues()
         sem_faixa = sorted(
             numero
             for numero, onde in secoes_de_spec().items()
-            if numero not in declarado and not all(arquivo.startswith("ROADMAP") for arquivo in onde)
+            if numero not in declarado
+            and not (numero not in entregues and all(arquivo.startswith("ROADMAP") for arquivo in onde))
         )
         self.assertEqual(
             [],
@@ -721,9 +696,14 @@ def chaves_da_secao(secao: str) -> list[str]:
     depender do que ninguém declarou é como um teste passa hoje e some amanhã, que é a mesma
     família de defeito que a S-128 consertou na CI.
     """
+    return [chave for chave, _ in pares_da_secao(secao)]
+
+
+def pares_da_secao(secao: str) -> list[tuple[str, str]]:
+    """`chave = valor` de uma seção do `pyproject.toml`, com o valor cru da mesma linha."""
     texto = (RAIZ / "pyproject.toml").read_text(encoding="utf-8")
     dentro = False
-    chaves: list[str] = []
+    pares: list[tuple[str, str]] = []
     for linha in texto.splitlines():
         despida = linha.strip()
         if despida.startswith("["):
@@ -731,10 +711,23 @@ def chaves_da_secao(secao: str) -> list[str]:
             continue
         if not dentro:
             continue
-        achado = re.match(r"([A-Za-z0-9_-]+)\s*=", despida)
+        achado = re.match(r"([A-Za-z0-9_-]+)\s*=\s*(.*)$", despida)
         if achado:
-            chaves.append(achado.group(1))
-    return chaves
+            pares.append((achado.group(1), achado.group(2)))
+    return pares
+
+
+MARCA_DOS_COMANDOS = "<!-- comandos: gerado de [project.scripts], conferido por tests/test_docs.py -->"
+FIM_DOS_COMANDOS = "<!-- fim dos comandos -->"
+
+
+def lista_de_comandos() -> str:
+    """O bloco do README com todo comando de `[project.scripts]`, um por linha (S-831)."""
+    linhas = []
+    for nome, alvo in pares_da_secao("project.scripts"):
+        modulo = alvo.strip("\"'").split(":", 1)[0]
+        linhas.append(f"- `{nome}` -- `{modulo}`")
+    return "\n".join(linhas)
 
 
 def _citado(texto: str, padrao: str) -> float:
@@ -817,7 +810,7 @@ class NumerosVivosTests(unittest.TestCase):
         _perto(self, citado, real, "linhas do labels.csv")
 
     def test_os_pngs_citados_batem_com_o_disco(self) -> None:
-        pasta = RAIZ / "data" / "samples"
+        pasta = PRINCIPAL / "data" / "samples"
         if not pasta.exists():
             self.skipTest("data/samples/ não existe neste checkout")
         real = sum(1 for _ in pasta.rglob("*.png"))
@@ -826,7 +819,7 @@ class NumerosVivosTests(unittest.TestCase):
 
     def test_o_acervo_citado_bate_com_a_pasta_PDF(self) -> None:
         """O número que a S-135 pegou mais desatualizado: 27 contra 39 livros."""
-        pasta = RAIZ / "PDF"
+        pasta = PRINCIPAL / "PDF"
         if not pasta.exists():
             self.skipTest("PDF/ não existe neste checkout")
         real = sum(1 for _ in pasta.glob("*.pdf"))
@@ -834,7 +827,7 @@ class NumerosVivosTests(unittest.TestCase):
         _perto(self, citado, real, "PDFs em PDF/")
 
     def test_a_base_de_partidas_citada_bate_com_o_disco(self) -> None:
-        pasta = RAIZ / "pgn_database"
+        pasta = PRINCIPAL / "pgn_database"
         if not pasta.exists():
             self.skipTest("pgn_database/ não existe neste checkout")
         real = sum(f.stat().st_size for f in pasta.rglob("*") if f.is_file()) / 10**9
@@ -855,7 +848,7 @@ class NumerosVivosTests(unittest.TestCase):
         para o `provenance_index.jsonl`, que este repositório nunca teve.
         """
         citados = set(re.findall(r"`(data/[\w./<>-]+)`", self.arquitetura))
-        pasta = RAIZ / "data"
+        pasta = PRINCIPAL / "data"
         if not pasta.exists():
             self.skipTest("data/ não existe neste checkout")
 
@@ -901,7 +894,7 @@ class NumerosVivosTests(unittest.TestCase):
         self.assertEqual([], sumidos, "A tabela marca como versionado um arquivo que não está no disco.")
 
         def existe(caminho: str) -> bool:
-            return (RAIZ / caminho).exists() or (RAIZ / caminho.rstrip("/")).exists()
+            return (PRINCIPAL / caminho).exists() or (PRINCIPAL / caminho.rstrip("/")).exists()
 
         sob_demanda = set(re.findall(r"`(data/[\w./-]+)`[^|]*\|[^|]*\|[^|]*sob demanda", self.arquitetura))
         de_uso = {c for c in citados - versionados if "<" not in c and c not in sob_demanda}
@@ -1013,9 +1006,9 @@ class NumerosVivosTests(unittest.TestCase):
         limpo, que é a única coisa que aquele número não significa. Quem decide é o conteúdo.
         """
         alvos = {
-            "data/samples/": (RAIZ / "data" / "samples", r"os PNGs 800×800 dos tabuleiros \| não \(([\d,]+) GB\)", 10**9),
-            "data/review_cache/": (RAIZ / "data" / "review_cache", r"não reabrir o PDF \| não \(([\d,]+) GB", 10**9),
-            "data/games_index.sqlite": (RAIZ / "data" / "games_index.sqlite", r"\(S-72, S-73\) \| não \((\d+) MB", 10**6),
+            "data/samples/": (PRINCIPAL / "data" / "samples", r"os PNGs 800×800 dos tabuleiros \| não \(([\d,]+) GB\)", 10**9),
+            "data/review_cache/": (PRINCIPAL / "data" / "review_cache", r"não reabrir o PDF \| não \(([\d,]+) GB", 10**9),
+            "data/games_index.sqlite": (PRINCIPAL / "data" / "games_index.sqlite", r"\(S-72, S-73\) \| não \((\d+) MB", 10**6),
         }
         for nome, (caminho, padrao, unidade) in alvos.items():
             with self.subTest(artefato=nome):
@@ -1077,6 +1070,33 @@ class NumerosVivosTests(unittest.TestCase):
         self.assertTrue(comandos, "o pyproject perdeu a seção de comandos (ou o leitor quebrou).")
         citado = int(_citado(self.readme, r"\*\*(\d+) comandos\*\* ficam disponiveis"))
         self.assertEqual(len(comandos), citado)
+
+    def test_o_readme_lista_todo_comando_de_project_scripts(self) -> None:
+        """A lista do README é a de `[project.scripts]`, na mesma ordem (S-831).
+
+        O número batia e a lista não: o README dizia "47 comandos", mostrava exemplos de uns
+        quarenta e mandava o resto para um `--help` que nenhum comando tem. `cvoff-gallery`,
+        `cvoff-scan` e `cvoff-texto-conflitos` não eram citados em lugar nenhum. A lista agora sai
+        do `pyproject.toml` por `lista_de_comandos`, e a falha imprime o bloco certo para colar.
+        """
+        nao_citados = [
+            nome
+            for nome in chaves_da_secao("project.scripts")
+            if not re.search(rf"(?<![\w-]){re.escape(nome)}(?![\w-])", self.readme)
+        ]
+        self.assertEqual([], nao_citados, "Comando de [project.scripts] que o README não cita.")
+
+        esperado = lista_de_comandos()
+        achado = re.search(
+            re.escape(MARCA_DOS_COMANDOS) + r"\n(.*?)\n" + re.escape(FIM_DOS_COMANDOS), self.readme, re.S
+        )
+        self.assertIsNotNone(achado, "o README perdeu o bloco da lista de comandos.")
+        assert achado is not None
+        self.assertEqual(
+            esperado,
+            achado.group(1),
+            "A lista de comandos do README diverge de [project.scripts]. O bloco certo é:\n" + esperado,
+        )
 
     def test_o_bundle_citado_bate_com_o_que_o_build_gravou(self) -> None:
         """O README publicava 5.247 arquivos de um build que tinha 4.723 (S-135).
@@ -1169,7 +1189,7 @@ class NumerosVivosTests(unittest.TestCase):
         roadmap = (DOCS / "ROADMAP.md").read_text(encoding="utf-8")
         criterio = roadmap.split("## Fase 6", 1)[1].split("## Fase 7", 1)[0]
         citado = _citado(criterio, r"\*\*([\d.]+)\*\*, e o arquivo dobrou")
-        _perto(self, citado, real, "linhas de app_tkinter.py citadas na Fase 6")
+        _perto(self, citado, real, "linhas de qt/janela.py citadas na Fase 6")
 
     def test_o_placar_das_fases_bate_com_o_da_janela(self) -> None:
         """O quadro "Onde o projeto está" cita o mesmo número da catraca (2026-08-18).
@@ -1187,8 +1207,121 @@ class NumerosVivosTests(unittest.TestCase):
         # separadoras, e cortar ali deixaria o quadro sem as linhas que se quer conferir.
         quadro = roadmap.split("## Onde o projeto está", 1)[1]
         quadro = quadro.split(chr(10) + "---" + chr(10), 1)[0]
-        citado = _citado(quadro, r"`app_tkinter\.py` em ([\d.]+) contra")
-        _perto(self, citado, real, "linhas de app_tkinter.py no quadro das fases")
+        citado = _citado(quadro, r"`qt/janela\.py` em ([\d.]+) contra")
+        _perto(self, citado, real, "linhas de qt/janela.py no quadro das fases")
+
+
+PACOTES_DA_ARQUITETURA = ("qt", "text", "ui")
+"""Os pacotes que a `ARCHITECTURE.md` descreve módulo a módulo, cada um na sua seção (S-832)."""
+
+
+def secao_do_pacote(texto: str, pacote: str) -> str:
+    """A seção `### ... (`src/chess_diagram_ocr/<pacote>/`)` da arquitetura, até o próximo título."""
+    marca = f"`src/chess_diagram_ocr/{pacote}/`"
+    linhas = texto.splitlines()
+    inicio = next((i for i, linha in enumerate(linhas) if linha.startswith("### ") and marca in linha), None)
+    assert inicio is not None, f"a ARCHITECTURE perdeu a seção de {marca}"
+    fim = next(
+        (i for i in range(inicio + 1, len(linhas)) if linhas[i].startswith(("## ", "### "))),
+        len(linhas),
+    )
+    return "\n".join(linhas[inicio:fim])
+
+
+def modulos_na_tabela(secao: str) -> set[str]:
+    """Os `nome.py` citados em linha de tabela da seção. Prosa não conta: era nela que os doze
+    "outros" de `text/` moravam sem dizer o que fazem."""
+    return {
+        nome
+        for linha in secao.splitlines()
+        if linha.startswith("|")
+        for nome in re.findall(r"`(\w+\.py)`", linha)
+    }
+
+
+class ArquiteturaCitaTodoModuloTests(unittest.TestCase):
+    """Todo módulo de `qt/`, `text/` e `ui/` tem linha na `ARCHITECTURE.md` (S-832).
+
+    O documento dizia "meia centena de módulos" de `ui/`, que tinha 78, e não citava 30 dos 73 de
+    `qt/`, 12 dos 68 de `text/` e cerca de 45 de `ui/` -- entre eles a primeira entrega inteira
+    das Fases 100 a 107. Um mapa que mostra metade é uma amostra, e quem o lê não sabe qual
+    metade está vendo: é a S-412 da árvore do README, um nível abaixo.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.arquitetura = (DOCS / "ARCHITECTURE.md").read_text(encoding="utf-8")
+
+    def test_todo_modulo_tem_linha_na_secao_do_seu_pacote(self) -> None:
+        ausentes = []
+        for pacote in PACOTES_DA_ARQUITETURA:
+            pasta = RAIZ / "src" / "chess_diagram_ocr" / pacote
+            no_disco = {p.name for p in pasta.glob("*.py") if p.name != "__init__.py"}
+            citados = modulos_na_tabela(secao_do_pacote(self.arquitetura, pacote))
+            ausentes += [f"{pacote}/{nome}" for nome in sorted(no_disco - citados)]
+        self.assertEqual(
+            [],
+            ausentes,
+            "Módulo sem linha na tabela do seu pacote em docs/ARCHITECTURE.md. Uma linha, com o "
+            "que ele responde.",
+        )
+
+    def test_a_tabela_nao_cita_modulo_que_nao_existe(self) -> None:
+        fantasmas = []
+        for pacote in PACOTES_DA_ARQUITETURA:
+            pasta = RAIZ / "src" / "chess_diagram_ocr" / pacote
+            citados = modulos_na_tabela(secao_do_pacote(self.arquitetura, pacote))
+            fantasmas += [f"{pacote}/{nome}" for nome in sorted(citados) if not (pasta / nome).exists()]
+        self.assertEqual([], fantasmas, "A ARCHITECTURE descreve um módulo que não existe.")
+
+
+WORKFLOWS = RAIZ / ".github" / "workflows"
+
+
+class WorkflowDoCiTests(unittest.TestCase):
+    """O CI roda com o token mínimo e com ações fixadas por commit (S-885).
+
+    Sem bloco `permissions:` o `GITHUB_TOKEN` recebe o padrão do repositório em todo push, e uma
+    ação presa por tag (`@v4`) roda o que o dono da tag mover para ela amanhã. Fixar por SHA, com
+    a tag num comentário ao lado, é o que faz a ação que rodou ser a que foi lida.
+    """
+
+    USO = re.compile(r"^\s*(?:-\s+)?uses:\s*(\S+)(.*)$")
+
+    def _workflows(self) -> dict[str, str]:
+        textos = {p.name: p.read_text(encoding="utf-8") for p in sorted(WORKFLOWS.glob("*.y*ml"))}
+        self.assertTrue(textos, "não há workflow em .github/workflows/")
+        return textos
+
+    def test_todo_workflow_declara_permissao_minima_no_topo(self) -> None:
+        sem = [
+            nome
+            for nome, texto in self._workflows().items()
+            if not re.search(r"^permissions:\s*\n\s+contents:\s*read\s*$", texto, re.M)
+        ]
+        self.assertEqual([], sem, "Workflow sem `permissions: contents: read` no topo.")
+
+    def test_toda_acao_e_fixada_por_sha_com_a_tag_ao_lado(self) -> None:
+        usos = [
+            (nome, achado.group(1), achado.group(2))
+            for nome, texto in self._workflows().items()
+            for linha in texto.splitlines()
+            if (achado := self.USO.match(linha))
+        ]
+        self.assertTrue(usos, "a varredura de `uses:` deixou de achar ações.")
+        soltas = [
+            f"{nome}: {alvo}"
+            for nome, alvo, resto in usos
+            if not re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}", alvo) or not re.search(r"#\s*v\d", resto)
+        ]
+        self.assertEqual([], soltas, "Ação presa por tag, ou fixada sem a tag em comentário.")
+
+    def test_o_extra_second_opinion_e_instalado_em_algum_passo(self) -> None:
+        """O `tsoj_reader` e as dependências do clone nunca rodavam no CI."""
+        instala = any(
+            re.search(r"uv sync\b.*--extra second-opinion", texto) for texto in self._workflows().values()
+        )
+        self.assertTrue(instala, "Nenhum passo do CI instala o extra `second-opinion`.")
 
 
 CHAVES_DE_CAMINHO = ("path", "base", "dir", "diretorio", "caminho", "pasta", "arquivo")
@@ -1238,7 +1371,7 @@ class CaminhoPublicadoTests(unittest.TestCase):
                 for indice, item in enumerate(no):
                     anda(item, arquivo, f"{trilha}[{indice}]")
 
-        for caminho in sorted((RAIZ / "docs" / "metrics").glob("*.json")):
+        for caminho in varredura.fontes(RAIZ / "docs" / "metrics", "*.json", piso=80):
             try:
                 anda(json.loads(caminho.read_text(encoding="utf-8")), caminho.name)
             except (OSError, ValueError):  # pragma: no cover - JSON em edição
@@ -1246,7 +1379,7 @@ class CaminhoPublicadoTests(unittest.TestCase):
         return achados
 
     def test_nenhum_relatorio_publica_a_raiz_do_disco(self) -> None:
-        raizes = _raizes_do_repositorio()
+        raizes = raizes_do_repositorio()
         dentro = []
         for arquivo, onde, valor in self._caminhos_publicados():
             if not _ABSOLUTO.match(valor):
@@ -1270,8 +1403,8 @@ class CaminhoPublicadoTests(unittest.TestCase):
         tem um elemento. O que ele trava é que a lista **venha do git** e não de `RAIZ`, e que a
         raiz atual esteja sempre nela mesmo quando o git não responde.
         """
-        raizes = _raizes_do_repositorio()
-        self.assertIn(_normalizada(RAIZ), raizes)
+        raizes = raizes_do_repositorio()
+        self.assertIn(normalizada(RAIZ), raizes)
         self.assertTrue(all(raiz == raiz.lower() and not raiz.endswith("/") for raiz in raizes))
 
     def test_a_regra_nao_confunde_o_glifo_da_barra_com_caminho(self) -> None:

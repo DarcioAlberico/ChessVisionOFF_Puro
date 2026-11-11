@@ -37,6 +37,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ..arquivo_do_dono import ArquivoIlegivel, ler_texto
 from ..atomic_io import atomic_write_text
 from .rico import DocumentoRico
 
@@ -84,7 +85,11 @@ def de_json(dados: Any) -> DocumentoRico:
         )
     if "documento" not in dados:
         raise ArquivoInvalido("o arquivo não traz documento nenhum")
-    return DocumentoRico.de_json(dados["documento"])
+    try:
+        return DocumentoRico.de_json(dados["documento"])
+    except (TypeError, ValueError, KeyError) as erro:
+        # A folha de origem estragada é `PaginaInvalida` (S-848), e quem abre o arquivo só pega esta.
+        raise ArquivoInvalido(f"o documento do arquivo não se lê: {erro}") from erro
 
 
 def gravar(caminho: Path, doc: DocumentoRico) -> Path:
@@ -101,11 +106,18 @@ def gravar(caminho: Path, doc: DocumentoRico) -> Path:
 
 
 def carregar(caminho: Path) -> DocumentoRico:
-    """Lê o documento do disco. Levanta `ArquivoInvalido` para o que não é documento do editor."""
+    """Lê o documento do disco. Levanta `ArquivoInvalido` para o que não é documento do editor.
+
+    É arquivo que a pessoa escolhe -- o diálogo oferece `Todos (*.*)` --, e por isso o texto sai de
+    `ler_texto` como do usuário (S-905): o PDF escolhido por engano é `ArquivoInvalido`, que o
+    painel mostra, e não o `UnicodeDecodeError` que saía do slot e derrubava o programa.
+    """
     caminho = Path(caminho)
     try:
-        dados = json.loads(caminho.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as erro:
+        dados = json.loads(ler_texto(caminho, do_usuario=True))
+    except ArquivoIlegivel as erro:
+        raise ArquivoInvalido(f"{caminho.name} não é um arquivo de texto: {erro}") from erro
+    except ValueError as erro:
         raise ArquivoInvalido(f"{caminho.name} não é um arquivo JSON válido: {erro}") from erro
     return de_json(dados)
 

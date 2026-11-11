@@ -66,7 +66,7 @@ class LetraNaTelaTests(unittest.TestCase):
 
     def familia_em(self, deslocamento: int) -> list[str]:
         cursor = QTextCursor(self.painel.editor.document())
-        cursor.setPosition(self.painel._mapa.posicao(deslocamento) + 1)
+        cursor.setPosition(self.painel.espelho.mapa.posicao(deslocamento) + 1)
         return list(cursor.charFormat().fontFamilies())
 
     def test_cada_familia_redesenha_a_prosa_e_deixa_a_notacao_na_monoespacada(self) -> None:
@@ -77,7 +77,7 @@ class LetraNaTelaTests(unittest.TestCase):
         notacao = len("Uma frase de prosa lida.\n\n") + 1
         for familia, nome in esperadas.items():
             with self.subTest(familia=familia):
-                self.painel.definir_familia_da_letra(familia)
+                self.painel.vista.definir_familia_da_letra(familia)
                 self.assertEqual(self.familia_em(0), [nome])
                 self.assertEqual(self.familia_em(notacao), [monoespacada])
                 self.assertEqual(divergencias(self.painel), [])
@@ -87,11 +87,11 @@ class LetraNaTelaTests(unittest.TestCase):
         recados: list[str] = []
         self.painel.estado.connect(recados.append)
         self.painel.mudar_familia_da_letra()
-        self.assertEqual(self.painel.familia_da_letra, "serifada")
+        self.assertEqual(self.painel.vista.familia_da_letra, "serifada")
         self.assertTrue(recados and recados[-1].startswith("Letra da folha: serifada"), recados)
 
     def test_a_letra_sobrevive_a_reabrir_pelo_estado(self) -> None:
-        self.painel.definir_familia_da_letra("monoespacada")
+        self.painel.vista.definir_familia_da_letra("monoespacada")
         estado = AppState()
         self.painel.anotar_estado(estado)
         self.assertEqual(estado.texto_familia, "monoespacada")
@@ -99,9 +99,9 @@ class LetraNaTelaTests(unittest.TestCase):
         outro = PainelDeTexto(dpi=72, pasta_de_rascunhos=pasta_temporaria(self) / "outros")
         self.addCleanup(descartar, outro)
         outro.aplicar_estado(estado)
-        self.assertEqual(outro.familia_da_letra, "monoespacada")
+        self.assertEqual(outro.vista.familia_da_letra, "monoespacada")
         outro.aplicar_estado(AppState(texto_familia="gótica"))
-        self.assertEqual(outro.familia_da_letra, "", "família desconhecida volta ao padrão")
+        self.assertEqual(outro.vista.familia_da_letra, "", "família desconhecida volta ao padrão")
 
 
 if __name__ == "__main__":

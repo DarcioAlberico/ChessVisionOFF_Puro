@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import inspect
 import unittest
 from pathlib import Path
@@ -31,6 +32,23 @@ from chess_diagram_ocr.config import DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER
 from chess_diagram_ocr.pdf_to_pgn import save_pdf_positions_to_pgn, scan_pdf_positions
 
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src" / "chess_diagram_ocr"
+
+
+def chamadas_de_um_tabuleiro(raiz: Path) -> list[tuple[str, bool]]:
+    """`(arquivo:linha, silencia)` de cada `detect_boards(..., max_boards=1)` sob `raiz`."""
+    achadas: list[tuple[str, bool]] = []
+    for caminho in sorted(raiz.rglob("*.py")):
+        for no in ast.walk(ast.parse(caminho.read_text(encoding="utf-8"))):
+            if not (isinstance(no, ast.Call) and ast.unparse(no.func).rsplit(".", 1)[-1] == "detect_boards"):
+                continue
+            nomeados = {k.arg: k.value for k in no.keywords}
+            teto = nomeados.get("max_boards")
+            if isinstance(teto, ast.Constant) and teto.value == 1:
+                aviso = nomeados.get("warn_on_cap")
+                silencia = isinstance(aviso, ast.Constant) and aviso.value is False
+                achadas.append((f"{caminho.relative_to(raiz).as_posix()}:{no.lineno}", silencia))
+    return achadas
 
 
 class BoardDetectionTests(unittest.TestCase):
@@ -149,17 +167,30 @@ class MaxBoardsCapTests(unittest.TestCase):
             detect_boards(page, max_boards=1, warn_on_cap=False)
 
     def test_the_internal_single_board_callers_all_silence_the_warning(self) -> None:
-        """Silenciar num lugar só deixaria o aviso vazando pelos outros dois."""
-        from chess_diagram_ocr import board_detection, service
-        from chess_diagram_ocr.detection import hybrid
+        """Silenciar num lugar só deixaria o aviso vazando pelos outros.
 
-        for modulo in (board_detection, hybrid, service):
-            fonte = inspect.getsource(modulo)
-            for chamada in fonte.split("detect_boards(")[1:]:
-                trecho = chamada[: chamada.find(")")]
-                if "max_boards=1" in trecho:
-                    with self.subTest(modulo=modulo.__name__):
-                        self.assertIn("warn_on_cap=False", trecho)
+        Pelo `src/` inteiro e com piso (S-871): a varredura olhava três módulos escolhidos à mão e
+        não via o quarto chamador (`importacao_de_imagens.py`), e um glob que voltasse vazio a
+        deixaria verde sobre nada.
+        """
+        chamadas = chamadas_de_um_tabuleiro(SRC)
+        self.assertGreaterEqual(len(chamadas), 4, f"a varredura de {SRC} achou só {chamadas}")
+        sem_silencio = [onde for onde, silencia in chamadas if not silencia]
+        self.assertEqual([], sem_silencio, "`detect_boards(max_boards=1)` sem `warn_on_cap=False`")
+
+    def test_a_varredura_dos_chamadores_reconhece_o_que_procura(self) -> None:
+        """O controle da guarda de cima, sobre fonte escrita aqui: as duas formas de chamar."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pasta = Path(tmp)
+            (pasta / "a.py").write_text(
+                "x = detect_boards(img, max_boards=1)\n"
+                "y = board_detection.detect_boards(image_rgb=img, max_boards=1, warn_on_cap=False)\n"
+                "z = detect_boards(img, max_boards=8)\n",
+                encoding="utf-8",
+            )
+            self.assertEqual([("a.py:1", False), ("a.py:2", True)], chamadas_de_um_tabuleiro(pasta))
 
     def test_the_default_cap_is_the_shared_constant(self) -> None:
         """O teto morava em seis arquivos como literal 8; divergir de novo seria facil."""

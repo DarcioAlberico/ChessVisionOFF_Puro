@@ -33,6 +33,7 @@ espelhado continua sendo um cavalo. Dobra o dataset de graça, e é a mais barat
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from pathlib import Path
 
@@ -144,13 +145,22 @@ def from_letters(texto: str) -> AugmentConfig:
     """`"mhsp"`, `"augmhsp"` ou `"aug0"` → `AugmentConfig`, nas probabilidades da S-40.
 
     Uma letra liga a transformação na probabilidade que a S-40 propôs; afinar valor por
-    valor seria oferecer um espaço de busca que ninguém mediu. É a leitura inversa de
-    `AugmentConfig.version` para os regimes de letras: `from_letters(config.version)` devolve
-    o regime do checkpoint, que é como a janela retreina no **mesmo** regime que produziu o
-    modelo de produção (C4) em vez de sempre no genérico.
+    valor seria oferecer um espaço de busca que ninguém mediu. É a leitura das letras que se
+    digitam no `cvoff-train --augment`, e a de um checkpoint gravado antes da S-839.
+
+    **Não é a inversa de `AugmentConfig.version` (S-839).** A letra diz *qual* transformação,
+    não *quanto*: `AugmentConfig(hatch=0.9)` também sai `augh`. Quem quer o regime de um
+    checkpoint lê `regime_of_checkpoint`, que reconstrói do dicionário gravado. E o sufixo depois
+    do `-` guarda justamente o que a letra não reconstrói (`-j0`, `-t2x6`): descartá-lo treinava
+    noutro regime em silêncio, por isso ele é recusado.
     """
     letras = texto[3:] if texto.startswith("aug") else texto
-    letras = letras.split("-", 1)[0]
+    letras, hifen, sufixo = letras.partition("-")
+    if hifen:
+        raise ValueError(
+            f"O regime {texto!r} tem o sufixo '-{sufixo}', que guarda valores que as letras não "
+            "reconstroem; o regime exato vem do metadado `augment` do checkpoint."
+        )
     if letras in ("", "0"):
         return AugmentConfig()
     desconhecidas = set(letras) - set(LETRAS)
@@ -167,20 +177,81 @@ def from_letters(texto: str) -> AugmentConfig:
     )
 
 
-def version_of_checkpoint(model_path: Path | str) -> str:
-    """O `augment_version` gravado no checkpoint, ou `"aug0"` quando não há como saber.
+def from_metadado(dados: Mapping[str, object]) -> AugmentConfig:
+    """O `asdict(AugmentConfig)` gravado no checkpoint → o mesmo `AugmentConfig` (S-839).
 
-    `"aug0"` para um checkpoint anterior à S-40 (que não gravava o regime) ou ausente: é o
-    regime que o produziu.
+    Campo ausente fica no padrão: o padrão de todo campo é o regime de antes dele existir, e um
+    checkpoint que não o grava foi treinado antes dele. Campo **desconhecido** levanta: é uma
+    transformação de um código mais novo, e treinar sem ela seria treinar noutro regime. As
+    tuplas aceitam lista, que é como voltam de um JSON.
+    """
+    desconhecidos = set(dados) - {campo.name for campo in fields(AugmentConfig)}
+    if desconhecidos:
+        raise ValueError(f"Campos de aumento que este código não conhece: {', '.join(sorted(desconhecidos))}.")
+    padrao = AugmentConfig()
+
+    def numero(nome: str) -> float:
+        valor = dados.get(nome, getattr(padrao, nome))
+        if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+            raise ValueError(f"Campo de aumento {nome!r} com valor {valor!r}: esperado número.")
+        return float(valor)
+
+    def par(nome: str) -> tuple[int, int]:
+        valor = dados.get(nome, getattr(padrao, nome))
+        if not isinstance(valor, (tuple, list)) or len(valor) != 2:
+            raise ValueError(f"Campo de aumento {nome!r} com valor {valor!r}: esperado par de inteiros.")
+        return int(valor[0]), int(valor[1])
+
+    # Campo a campo, e não `AugmentConfig(**dados)`: o tipo de cada um é conferido, e um campo
+    # novo esquecido aqui reprova `test_todo_campo_fora_do_padrao_volta`.
+    return AugmentConfig(
+        blur=numero("blur"),
+        jitter=numero("jitter"),
+        affine=numero("affine"),
+        hflip=numero("hflip"),
+        hatch=numero("hatch"),
+        speckle=numero("speckle"),
+        paper=numero("paper"),
+        invert=numero("invert"),
+        stroke=numero("stroke"),
+        marca=numero("marca"),
+        hatch_period_px=par("hatch_period_px"),
+        stroke_px=par("stroke_px"),
+        stroke_margin_px=int(numero("stroke_margin_px")),
+    )
+
+
+def regime_of_checkpoint(model_path: Path | str) -> AugmentConfig | None:
+    """O regime de aumento que treinou o checkpoint, exato; `None` quando o arquivo não existe.
+
+    `None` é o caminho comum do primeiro treino: não há regime a continuar. Arquivo que existe
+    e não se lê **levanta** `ValueError` (S-839): antes ele virava `aug0`, e "retreinar no
+    regime do checkpoint" treinava no genérico um modelo que não era genérico.
+
+    O regime sai do dicionário `augment` que o treino grava desde a S-839. Um checkpoint mais
+    antigo só tem a letra, e é lido por ela com aviso; um anterior à S-40 não tem nem a letra, e
+    é o genérico, que é o regime que o produziu.
     """
     from .checkpoint import load_checkpoint
 
+    caminho = Path(model_path)
+    if not caminho.exists():
+        return None
     try:
-        checkpoint = load_checkpoint(Path(model_path))
-    except Exception:  # noqa: BLE001 - .pt ausente, truncado ou de outro torch: o genérico
-        return "aug0"
-    versao = str(checkpoint.metadata.get("augment_version", "") or "aug0")
-    return versao
+        checkpoint = load_checkpoint(caminho)
+    except Exception as exc:  # noqa: BLE001 - truncado, de outro torch, ou nem é .pt: o torch não tem um tipo só
+        raise ValueError(f"Não deu para ler o regime de aumento de {caminho.name}: {exc}") from exc
+    dados = checkpoint.metadata.get("augment")
+    if isinstance(dados, Mapping):
+        return from_metadado(dados)
+    letra = str(checkpoint.metadata.get("augment_version", "") or "aug0")
+    logger.warning(
+        "%s não guarda o regime de aumento inteiro (anterior à S-839); lido pela letra %r, "
+        "nas probabilidades padrão de cada transformação.",
+        caminho.name,
+        letra,
+    )
+    return from_letters(letra)
 
 
 class _Sometimes(nn.Module):

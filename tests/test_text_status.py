@@ -1,4 +1,4 @@
-"""O plano de texto conferido contra o disco (S-178 a S-216).
+"""O plano de texto conferido contra o disco (S-178 a S-217).
 
 **O defeito que isto evita.** A `docs/SPEC_TEXTO.md` marca cada item com `⬜ planejada`,
 `◐ parcial` ou `✅ implementada`. Sem trava, essas marcas envelhecem exatamente como os doze
@@ -141,12 +141,7 @@ class SpecEDiscoTests(unittest.TestCase):
         # regra que o CONTRIBUTING já escreve para `data/samples/`: teste que depende de dado
         # não-versionado pula, não falha -- e aqui o pulo é por sonda, para o resto do item
         # continuar sendo cobrado.
-        ausentes = {
-            resultado.item.id
-            for resultado in resultados
-            for sonda in resultado.faltando
-            if sonda.startswith("arquivo:") and not (RAIZ / sonda.removeprefix("arquivo:")).exists()
-        }
+        ausentes = {resultado.item.id for resultado in resultados if text_status.so_falta_artefato(resultado)}
         todas = cli._divergencias(resultados, marcado)
         divergencias = [linha for linha in todas if linha.split(":")[0] not in ausentes]
 
@@ -235,6 +230,26 @@ class ComandoTests(unittest.TestCase):
         for proibido in (*text_status.SIMBOLO_DE_ESTADO.values(), "—"):
             self.assertNotIn(proibido, saida)
         saida.encode("cp1252")
+
+    def test_divergencia_por_artefato_ausente_nao_se_anuncia_como_falha_do_teste(self) -> None:
+        """Sem os pesos, a S-182 diverge e o teste **pula** -- e o comando dizia que ele falhava (S-831).
+
+        Num clone limpo `models/char_classifier.pt` não existe; a spec diz `implementada` e o disco
+        `parcial`. `test_a_marcacao_da_spec_corresponde_ao_disco` filtra essa divergência e pula, e
+        o comando a listava sob "tests/test_text_status.py falha por isso". As duas regras moram
+        agora em `text_status.so_falta_artefato`.
+        """
+        item = next(i for i in text_status.MANIFESTO if i.id == "S-182")
+        sem_pesos = text_status.Resultado(
+            item=item,
+            atendidas=tuple(s for s in item.sondas if not s.startswith("arquivo:")),
+            faltando=tuple(s for s in item.sondas if s.startswith("arquivo:")),
+        )
+        saida = cli._texto([sem_pesos], com_sondas=False, marcado={"S-182": "implementada"})
+
+        falha, _, pula = saida.partition("falta artefato")
+        self.assertNotIn("S-182", falha.split("Total:", 1)[1])
+        self.assertIn("S-182", pula)
 
     def test_a_fase_filtra(self) -> None:
         so_25 = text_status.verificar(RAIZ, fase=25)

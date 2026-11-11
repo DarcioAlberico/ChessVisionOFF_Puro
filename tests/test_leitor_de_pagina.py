@@ -14,6 +14,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 import numpy as np
 
@@ -502,6 +503,68 @@ class UmaAberturaPorFolhaTests(unittest.TestCase):
             self.assertEqual(pdf_io.open_count() - antes, 1)
 
 
+class UmaExtracaoPorFolhaTests(unittest.TestCase):
+    """A folha extraída uma vez por leitura, e a vizinha uma vez por varredura (S-851).
+
+    Uma `ler_pagina(motor="camada")` fazia oito `get_text("dict")` na folha lida -- margem, linhas,
+    negrito e itálico duas vezes cada, quadros e número impresso --, e o número impresso lê ainda as
+    quatro vizinhas, que a leitura da folha seguinte extraía de novo.
+    """
+
+    FOLHAS = 6
+
+    def setUp(self) -> None:
+        import fitz
+
+        from chess_diagram_ocr.text import folha_da_camada
+
+        folha_da_camada.limpar()
+        self.addCleanup(folha_da_camada.limpar)
+        self._dir = TemporaryDirectory()
+        self.addCleanup(self._dir.cleanup)
+        self.caminho = Path(self._dir.name) / "livro.pdf"
+        doc = fitz.open()
+        for i in range(self.FOLHAS):
+            pagina = doc.new_page(width=300.0, height=400.0)
+            pagina.insert_text((40.0, 20.0), "CABEÇALHO CORRENTE", fontsize=8)
+            pagina.insert_text((40.0, 80.0), f"uma linha de prosa da folha {i}", fontsize=11)
+            pagina.insert_text((40.0, 100.0), "outra linha, em negrito", fontsize=11, fontname="hebo")
+            pagina.insert_text((40.0, 120.0), "e uma em itálico", fontsize=11, fontname="heit")
+            pagina.insert_text((150.0, 390.0), str(10 + i), fontsize=8)
+        doc.save(str(self.caminho))
+        doc.close()
+
+        self.extracoes: dict[int, int] = {}
+        original = fitz.Page.get_text
+
+        def contado(pagina: fitz.Page, *args: object, **kwargs: object) -> object:
+            if (args[0] if args else kwargs.get("option")) == "dict":
+                self.extracoes[pagina.number] = self.extracoes.get(pagina.number, 0) + 1
+            return original(pagina, *args, **kwargs)
+
+        from unittest import mock
+
+        remendo = mock.patch.object(fitz.Page, "get_text", contado)
+        remendo.start()
+        self.addCleanup(remendo.stop)
+
+    def _ler(self, indice: int) -> PaginaLida:
+        return leitor.ler_pagina(self.caminho, indice, dpi=72, motor="camada")
+
+    def test_uma_leitura_extrai_cada_folha_no_maximo_uma_vez(self) -> None:
+        pagina = self._ler(2)
+        self.assertIn("folha 2", pagina.texto())
+        self.assertEqual(12, pagina.numero_impresso, "o número impresso ainda vem das vizinhas")
+        self.assertTrue(self.extracoes, "o remendo tem de ver a leitura")
+        self.assertLessEqual(max(self.extracoes.values()), 1, self.extracoes)
+
+    def test_a_varredura_extrai_cada_folha_uma_vez(self) -> None:
+        for indice in range(self.FOLHAS):
+            self._ler(indice)
+        self.assertEqual(set(range(self.FOLHAS)), set(self.extracoes))
+        self.assertLessEqual(max(self.extracoes.values()), 1, self.extracoes)
+
+
 class HifenDaQuebraTests(unittest.TestCase):
     """A palavra que a quebra de linha partiu volta inteira (S-353).
 
@@ -635,3 +698,47 @@ class MargemNoCorpoTests(unittest.TestCase):
         self.assertEqual(textos[-1], "Position after: 20...Qxd5")
         self.assertNotIn("Chapter 3 - folha 2", textos)
         self.assertEqual((lida.cabecalho and lida.cabecalho.texto, lida.rodape and lida.rodape.texto), ("O LIVRO", "2"))
+
+
+class OpcoesDeLeituraTests(unittest.TestCase):
+    """As chaves de `ler_pagina` descem num valor só, e as correções do glifo são uma lista de passos (S-855, S-860)."""
+
+    def test_as_chaves_de_ler_pagina_chegam_ao_glifo_num_valor_so(self) -> None:
+        """Uma chave esquecida na montagem da `OpcoesDoGlifo` voltaria ao padrão em silêncio: aqui ela quebra."""
+        import fitz
+
+        with TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "livro.pdf"
+            doc = fitz.open()
+            doc.new_page(width=300.0, height=400.0).insert_text((40.0, 60.0), "uma linha de prosa", fontsize=11)
+            doc.save(str(caminho))
+            doc.close()
+            with (
+                mock.patch.object(leitor, "_reconhecedor_configurado", return_value=mock.MagicMock(name="glifo")),
+                mock.patch.object(leitor, "linhas_do_glifo", return_value=([], [])) as glifo,
+                mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=[]),
+            ):
+                leitor.ler_pagina(
+                    caminho, 0, dpi=110, motor="glifo", reconhecedor=object(), colados="nunca", traco=False,
+                    numeros=False, juntar_lance=False, marcar_negrito=False, marcar_italico=False,
+                )
+
+        self.assertEqual(glifo.call_args.kwargs["opcoes"], leitor.OpcoesDoGlifo(colados="nunca", traco=False, numeros=False, juntar_lance=False))
+        self.assertEqual(glifo.call_args.kwargs["dpi"], 110)
+
+    def test_o_dicionario_e_o_ultimo_passo_e_so_entra_com_lexico(self) -> None:
+        """As correções de geometria mudam a palavra que o léxico julga: ele julga o texto que sai, por último."""
+        sem_geometria = leitor.OpcoesDoGlifo(traco=False, marca_fina=False, empilhados=False, italico=False, numeros=False)
+        self.assertEqual(sem_geometria.passos(frozenset()), ())
+        self.assertEqual(len(leitor.OpcoesDoGlifo().passos(frozenset())), 5)
+
+        visto: list[str] = []
+        linha = leitor.LinhaDoGlifo(np.zeros((1, 1)), [Caixa(0, 0, 1, 1)], {0: "a"}, np.zeros((1, 1)), 10, None)
+        so_numeros = leitor.OpcoesDoGlifo(traco=False, marca_fina=False, empilhados=False, italico=False)
+        with (
+            mock.patch.object(leitor._dicionario, "corrigir", side_effect=lambda lidos, *_: visto.append("lexico") or lidos),
+            mock.patch.object(leitor._numero, "corrigir", side_effect=lambda lidos, *_: visto.append("numeros") or lidos),
+        ):
+            for passo in so_numeros.passos(frozenset({"x"})):
+                passo([("a", 1.0)], linha)
+        self.assertEqual(visto, ["numeros", "lexico"])

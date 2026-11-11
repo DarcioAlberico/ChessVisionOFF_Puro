@@ -73,7 +73,7 @@ def folhas_do_livro(args):
     identidade, pdf = args
     doc = fitz.open(pdf)
     perfil = admissao.perfil_do_livro(doc)
-    produtor = admissao.produtor_de(doc)
+    produtor, criador = admissao.produtor_de(doc), admissao.criador_de(doc)
     recusadas = []
 
     def estrato_de(folha):
@@ -81,7 +81,7 @@ def folhas_do_livro(args):
 
     def admitida(folha):
         a = admissao.admitir_folha(doc[folha - 1], retangulos_de_diagrama(pdf, folha - 1),
-                                   produtor=produtor, perfil=perfil)
+                                   produtor=produtor, criador=criador, perfil=perfil)
         if not a.admitida:
             recusadas.append((folha, a.criterio))
         return a.admitida
@@ -128,7 +128,8 @@ def main(inventario, saida, log, reprovados_tsv=None):
         pdf = os.path.join(pdf_dir, nome[folha.identidade])
         doc = fitz.open(pdf)
         a = admissao.admitir_folha(doc[folha.folha - 1], retangulos_de_diagrama(pdf, folha.folha - 1),
-                                   produtor=admissao.produtor_de(doc), perfil=admissao.perfil_do_livro(doc))
+                                   produtor=admissao.produtor_de(doc), criador=admissao.criador_de(doc),
+                                   perfil=admissao.perfil_do_livro(doc))
         assert a.admitida, f"folha dev {folha.folha} de {folha.identidade} recusada: {a.criterio}"
     dvoretsky = next(i for i, n in nome.items() if n.startswith("Dvoretsky") and i in dev_livros)
 

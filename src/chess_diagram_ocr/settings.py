@@ -14,20 +14,30 @@ dependência invisível. Quem quiser o serviço antigo escreve o endereço dele.
 grava; `CVOFF_REMOTE_FEN_URL` e `CVOFF_REMOTE_FEN_ENABLED` são para uso em script e CI, e
 precisam poder desligar o recurso sem editar arquivo -- inclusive para o teste que prova
 que nenhuma requisição parte no uso padrão.
+
+**Duas camadas, e só uma é gravada (S-811).** `ConfiguracaoDoArquivo` é o que está no disco, com as
+chaves que esta versão não conhece guardadas à parte; `Configuracao` é o que vale agora, derivada por
+`aplicar_ambiente`. Carregar aplicava o ambiente sobre o que leu, e salvar gravava o resultado: um
+`CVOFF_REMOTE_FEN_ENABLED=0` virava `false` no arquivo para sempre, e um `CVOFF_REMOTE_FEN_URL` ia
+para o arquivo junto de `enabled=true` -- um consentimento que ninguém deu. `save_settings` aceita
+só a camada de arquivo, e o mypy acusa quem lhe passa a efetiva.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import TypeVar
 from urllib.parse import urlparse
 
+from .arquivo_do_dono import Leitura, Lida, VersaoFutura, gravavel, ler
 from .atomic_io import atomic_write_json
-from .config import DATA_DIR
+from .config import DATA_DIR, DEFAULT_DPI, DEFAULT_GLYPH_META_PATH, DEFAULT_GLYPH_MODEL_PATH, DEFAULT_MAX_BOARDS
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +54,8 @@ ENV_LOCAL_READER_PATH = "CVOFF_LOCAL_READER_PATH"
 ENV_LOCAL_READER_ENABLED = "CVOFF_LOCAL_READER_ENABLED"
 
 SETTINGS_VERSION = 1
+
+_N = TypeVar("_N", int, float)
 
 
 @dataclass(frozen=True)
@@ -126,9 +138,9 @@ class RemoteFenSettings:
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> RemoteFenSettings:
         return cls(
-            enabled=bool(data.get("enabled", False)),
+            enabled=_booleano(data, "enabled"),
             endpoint=str(data.get("endpoint", "") or "").strip(),
-            timeout=_flutuante(data, "timeout", 30.0),
+            timeout=_numero(data, "timeout", 30.0),
             # **O `acknowledged: true` de um arquivo antigo não é migrado (S-319).** Ele não
             # diz para qual endereço valia, e supor que valia para o de hoje seria reintroduzir
             # o defeito na migração: a pessoa vê o aviso uma vez a mais, e isso é o barato.
@@ -136,8 +148,8 @@ class RemoteFenSettings:
         )
 
 
-def _inteiro(data: Mapping[str, object], chave: str, padrao: int) -> int:
-    """O campo como `int`, ou o padrão **daquele campo**, com aviso nomeando-o (S-124).
+def _numero(data: Mapping[str, object], chave: str, padrao: _N) -> _N:
+    """O campo no tipo do padrão (`int` ou `float`), ou o padrão **daquele campo**, com aviso (S-124).
 
     **Por campo, e não um `except ValueError` em volta do arquivo inteiro.** Um `movetime_ms`
     com `"rápido"` dentro não pode zerar também o `endpoint`, que é trabalho do usuário e a
@@ -148,27 +160,84 @@ def _inteiro(data: Mapping[str, object], chave: str, padrao: int) -> int:
     sintaticamente perfeito. `app_tkinter` a chama no `__init__`, antes de a janela existir, e
     no bundle da S-55 (`console=False`) o traceback não aparece em lugar nenhum -- o programa
     simplesmente não abre.
+
+    **`NaN` e infinito não são número aqui (S-810).** O `json` do Python aceita `NaN` e
+    `Infinity`, e um `timeout` `NaN` passava. A faixa de cada campo é outra decisão, e mora em
+    `FAIXAS`, aplicada na camada efetiva.
     """
     bruto = data.get(chave)
     if bruto is None or bruto == "":
         return padrao
     try:
-        return int(str(bruto))
-    except (TypeError, ValueError):
-        logger.warning("settings.json: %r não é um número inteiro em %r; usando %r.", bruto, chave, padrao)
-        return padrao
-
-
-def _flutuante(data: Mapping[str, object], chave: str, padrao: float) -> float:
-    """Idem para `float`. Ver `_inteiro` para por que a coerção é por campo."""
-    bruto = data.get(chave)
-    if bruto is None or bruto == "":
-        return padrao
-    try:
-        return float(str(bruto))
+        valor = type(padrao)(str(bruto))
     except (TypeError, ValueError):
         logger.warning("settings.json: %r não é um número em %r; usando %r.", bruto, chave, padrao)
         return padrao
+    if not math.isfinite(valor):
+        logger.warning("settings.json: %r não é um número finito em %r; usando %r.", bruto, chave, padrao)
+        return padrao
+    return valor
+
+
+def _booleano(data: Mapping[str, object], chave: str) -> bool:
+    """`true` e `false` do JSON; **qualquer outra coisa é desligado**, com aviso (S-810).
+
+    Era `bool(data.get(...))`, e `bool("false")` é verdadeiro: um `"enabled": "false"` escrito à
+    mão ligava o envio da imagem para fora -- o contrário do que o cabeçalho promete. Nenhuma
+    grafia é adivinhada (`"sim"`, `1`): o campo é de ligar, e o lado seguro da dúvida é desligado.
+    Ausente é desligado sem aviso, que é o padrão e não defeito.
+    """
+    bruto = data.get(chave, False)
+    if isinstance(bruto, bool):
+        return bruto
+    logger.warning("settings.json: %r em %r não é true nem false; fica desligado.", bruto, chave)
+    return False
+
+
+@dataclass(frozen=True)
+class Faixa:
+    """Os valores aceitos por um campo numérico. `aberta_embaixo`: o mínimo não vale (S-810)."""
+
+    minimo: float
+    maximo: float
+    aberta_embaixo: bool = False
+
+    def contem(self, valor: float) -> bool:
+        embaixo = valor > self.minimo if self.aberta_embaixo else valor >= self.minimo
+        return embaixo and valor <= self.maximo
+
+    def __str__(self) -> str:
+        return f"{'(' if self.aberta_embaixo else '['}{self.minimo:g}, {self.maximo:g}]"
+
+
+def _nucleos() -> int:
+    return max(1, int(os.cpu_count() or 1))
+
+
+def faixas() -> dict[tuple[str, str], Faixa]:
+    """A faixa de cada campo que tem uma, por `(seção, campo)` (S-810).
+
+    **Uma função e não uma constante**, porque o teto de `threads` é desta máquina: o arquivo pode
+    ter vindo de outra, e é por isso que a faixa vale na camada efetiva e não é regravada.
+    """
+    return {
+        ("remote_fen", "timeout"): Faixa(0, 600, aberta_embaixo=True),
+        ("engine", "threads"): Faixa(1, _nucleos()),
+    }
+
+
+def _nas_faixas(settings: Settings) -> Settings:
+    """O valor fora da faixa vira o padrão **daquele campo**, com aviso -- como o que não é número."""
+    padrao = Settings()
+    for (secao, campo), faixa in faixas().items():
+        atual = getattr(settings, secao)
+        valor = getattr(atual, campo)
+        if faixa.contem(valor):
+            continue
+        de_fabrica = getattr(getattr(padrao, secao), campo)
+        logger.warning("settings.json: %s.%s = %r fora de %s; usando %r.", secao, campo, valor, faixa, de_fabrica)
+        settings = replace(settings, **{secao: replace(atual, **{campo: de_fabrica})})
+    return settings
 
 
 @dataclass(frozen=True)
@@ -228,10 +297,10 @@ class EngineSettings:
     def from_dict(cls, data: Mapping[str, object]) -> EngineSettings:
         return cls(
             path=str(data.get("path", "") or "").strip(),
-            movetime_ms=_inteiro(data, "movetime_ms", 800),
-            threads=_inteiro(data, "threads", 1),
-            hash_mb=_inteiro(data, "hash_mb", 16),
-            multipv=_inteiro(data, "multipv", 3),
+            movetime_ms=_numero(data, "movetime_ms", 800),
+            threads=_numero(data, "threads", 1),
+            hash_mb=_numero(data, "hash_mb", 16),
+            multipv=_numero(data, "multipv", 3),
             syzygy_path=str(data.get("syzygy_path", "") or "").strip(),
         )
 
@@ -278,15 +347,13 @@ class OcrSettings:
 
     def glyph_disabled_reason(self) -> str:
         """Por que o motor `glifo` não vai subir, em pt-BR. Vazio quando ele vai."""
-        from .config import PROJECT_ROOT
-
-        meta = PROJECT_ROOT / "models" / "char_meta.json"
+        meta = DEFAULT_GLYPH_META_PATH
         if not meta.exists():
             return (
                 f"O motor `glifo` precisa de {meta.name}, que descreve as classes de "
                 "caractere, e ele não está em models/."
             )
-        candidato = Path(self.glyph_model.strip()) if self.glyph_model.strip() else meta.parent / "char_classifier.pt"
+        candidato = Path(self.glyph_model.strip()) if self.glyph_model.strip() else DEFAULT_GLYPH_MODEL_PATH
         if not candidato.exists():
             return (
                 f"Os pesos do classificador de caracteres não estão em {candidato}. Eles não vêm "
@@ -308,7 +375,7 @@ class OcrSettings:
         bruto = data.get("languages")
         idiomas = tuple(str(item).strip() for item in bruto if str(item).strip()) if isinstance(bruto, list) else ()
         return cls(
-            enabled=bool(data.get("enabled", False)),
+            enabled=_booleano(data, "enabled"),
             engine=str(data.get("engine", "") or "rapidocr").strip().lower(),
             languages=idiomas or DEFAULT_OCR_LANGUAGES,
             glyph_model=str(data.get("glyph_model", "") or "").strip(),
@@ -354,7 +421,7 @@ class LocalReaderSettings:
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> LocalReaderSettings:
         return cls(
-            enabled=bool(data.get("enabled", False)),
+            enabled=_booleano(data, "enabled"),
             path=str(data.get("path", "") or "").strip(),
         )
 
@@ -396,12 +463,12 @@ class TrainingSettings:
     def from_dict(cls, data: Mapping[str, object]) -> TrainingSettings:
         padrao = cls()
         return cls(
-            epochs=max(1, _inteiro(data, "epochs", padrao.epochs)),
-            batch_size=max(1, _inteiro(data, "batch_size", padrao.batch_size)),
-            lr=_flutuante(data, "lr", padrao.lr),
-            ocr_iterations=max(100, _inteiro(data, "ocr_iterations", padrao.ocr_iterations)),
-            ocr_learning_rate=_flutuante(data, "ocr_learning_rate", padrao.ocr_learning_rate),
-            ocr_negatives=max(0, _inteiro(data, "ocr_negatives", padrao.ocr_negatives)),
+            epochs=max(1, _numero(data, "epochs", padrao.epochs)),
+            batch_size=max(1, _numero(data, "batch_size", padrao.batch_size)),
+            lr=_numero(data, "lr", padrao.lr),
+            ocr_iterations=max(100, _numero(data, "ocr_iterations", padrao.ocr_iterations)),
+            ocr_learning_rate=_numero(data, "ocr_learning_rate", padrao.ocr_learning_rate),
+            ocr_negatives=max(0, _numero(data, "ocr_negatives", padrao.ocr_negatives)),
         )
 
 
@@ -409,14 +476,13 @@ class TrainingSettings:
 class RecognitionSettings:
     """Como a página é rasterizada e quantos diagramas se procuram nela.
 
-    Os padrões são `config.DEFAULT_DPI` e `config.DEFAULT_MAX_BOARDS`, repetidos aqui como
-    número para que este módulo continue sem importar o `config` inteiro. O DPI muda o
-    tamanho do recorte que o classificador vê -- 220 é o que os relatórios de campo medem;
+    Os padrões são `config.DEFAULT_DPI` e `config.DEFAULT_MAX_BOARDS` (S-862). O DPI muda o
+    tamanho do recorte que o classificador vê -- o padrão é o que os relatórios de campo medem;
     subir ajuda em scans fracos e custa tempo por página.
     """
 
-    dpi: int = 220
-    max_boards: int = 12
+    dpi: int = DEFAULT_DPI
+    max_boards: int = DEFAULT_MAX_BOARDS
 
     def to_dict(self) -> dict[str, object]:
         return {"dpi": self.dpi, "max_boards": self.max_boards}
@@ -425,8 +491,8 @@ class RecognitionSettings:
     def from_dict(cls, data: Mapping[str, object]) -> RecognitionSettings:
         padrao = cls()
         return cls(
-            dpi=min(600, max(72, _inteiro(data, "dpi", padrao.dpi))),
-            max_boards=min(64, max(1, _inteiro(data, "max_boards", padrao.max_boards))),
+            dpi=min(600, max(72, _numero(data, "dpi", padrao.dpi))),
+            max_boards=min(64, max(1, _numero(data, "max_boards", padrao.max_boards))),
         )
 
 
@@ -529,41 +595,99 @@ def _flag(raw: str) -> bool | None:
     return None
 
 
+Configuracao = Settings
+"""A camada efetiva: o arquivo, com o ambiente e as faixas por cima (S-811). Não se grava."""
+
+
+@dataclass(frozen=True)
+class ConfiguracaoDoArquivo:
+    """A camada de arquivo: o que está em `settings.json`, sem ambiente e sem faixa (S-811).
+
+    `desconhecidas` são as seções e as chaves que esta versão não conhece -- de uma versão mais
+    nova com o mesmo esquema, ou escritas à mão. Voltam iguais na gravação: antes, a primeira
+    gravação as apagava.
+    """
+
+    preferencias: Settings = Settings()
+    desconhecidas: Mapping[str, object] = field(default_factory=dict)
+
+    def com(self, preferencias: Settings) -> ConfiguracaoDoArquivo:
+        """O mesmo arquivo com outras preferências: é como se grava o que o diálogo mudou."""
+        return replace(self, preferencias=preferencias)
+
+    def para_json(self) -> dict[str, object]:
+        saida = self.preferencias.to_dict()
+        for chave, valor in self.desconhecidas.items():
+            conhecida = saida.get(chave)
+            if isinstance(conhecida, dict) and isinstance(valor, Mapping):
+                saida[chave] = {**conhecida, **{k: v for k, v in valor.items() if k not in conhecida}}
+            elif chave not in saida:
+                saida[chave] = valor
+        return saida
+
+
+def ler_arquivo(path: Path = DEFAULT_SETTINGS_PATH) -> Leitura[ConfiguracaoDoArquivo]:
+    """A camada de arquivo: o que está gravado em `settings.json`, sem o ambiente (S-811, S-812).
+
+    Arquivo ausente é `Lida` com os padrões. Arquivo que não lê -- vírgula sobrando, topo que não é
+    objeto -- é leitura travada: os padrões valem em memória, e `save_settings` recusa gravar por
+    cima. Antes, os padrões voltavam como se fossem o arquivo, e o próximo *Salvar* escrevia
+    `endpoint: ''` sobre o que a pessoa tinha escrito. `version` maior que `SETTINGS_VERSION` trava
+    do mesmo jeito: foi gravado por uma versão mais nova, e regravá-lo seria rebaixá-lo.
+    """
+    return ler(path, _interpretar, ConfiguracaoDoArquivo)
+
+
+def _interpretar(texto: str) -> ConfiguracaoDoArquivo:
+    carregado = json.loads(texto)
+    if not isinstance(carregado, Mapping):
+        raise ValueError("o topo não é um objeto")
+    versao = carregado.get("version")
+    if isinstance(versao, int) and not isinstance(versao, bool) and versao > SETTINGS_VERSION:
+        raise VersaoFutura(versao)
+    return ConfiguracaoDoArquivo(Settings.from_dict(carregado), _desconhecidas(carregado))
+
+
+def _desconhecidas(dados: Mapping[str, object]) -> dict[str, object]:
+    """O que o arquivo tem e `Settings.to_dict` não escreve: seções inteiras e chaves de seção."""
+    modelo = Settings().to_dict()
+    fora: dict[str, object] = {}
+    for chave, valor in dados.items():
+        conhecida = modelo.get(chave)
+        if chave not in modelo:
+            fora[chave] = valor
+        elif isinstance(conhecida, dict) and isinstance(valor, Mapping):
+            resto = {k: v for k, v in valor.items() if k not in conhecida}
+            if resto:
+                fora[chave] = resto
+    return fora
+
+
+def aplicar_ambiente(arquivo: ConfiguracaoDoArquivo, env: Mapping[str, str] | None = None) -> Configuracao:
+    """A camada efetiva: o arquivo com as variáveis `CVOFF_*` e as faixas da S-810 por cima."""
+    return _nas_faixas(apply_environment(arquivo.preferencias, env=env))
+
+
 def load_settings(
     path: Path = DEFAULT_SETTINGS_PATH,
     *,
     env: Mapping[str, str] | None = None,
-) -> Settings:
-    """Lê as preferências. Arquivo ausente ou corrompido cai no padrão, que não envia nada.
+) -> Configuracao:
+    """As preferências que valem agora: o arquivo, com as variáveis de ambiente por cima.
 
-    Falhar para o lado do padrão é seguro aqui exatamente porque o padrão é "desligado":
-    um JSON truncado não pode ligar um envio para fora.
+    Arquivo ausente ou ilegível cai no padrão, que não envia nada: falhar para o lado do padrão é
+    seguro aqui exatamente porque o padrão é "desligado", e um JSON truncado não pode ligar um
+    envio para fora. Gravar é outra conversa -- ver `ler_arquivo` e `save_settings`.
     """
-    dados: Mapping[str, object] = {}
-    if path.exists():
-        try:
-            carregado = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(carregado, Mapping):
-                dados = carregado
-            else:
-                logger.warning("settings.json nao contem um objeto; usando os padroes.")
-        except (OSError, json.JSONDecodeError) as exc:
-            logger.warning("Nao foi possivel ler %s (%s); usando os padroes.", path, exc)
-
-    try:
-        return apply_environment(Settings.from_dict(dados), env=env)
-    except Exception:  # noqa: BLE001 - ver abaixo: preferencia nenhuma vale a janela nao abrir
-        # **Rede de seguranca, e nao o conserto** (S-124). O conserto e a coercao por campo
-        # (`_inteiro`, `_flutuante`), que preserva o resto do arquivo; isto aqui cobre a forma
-        # que ninguem previu -- uma secao que e lista, um valor que e dicionario -- e existe
-        # porque o custo do erro e desproporcional: `app_tkinter` chama isto no `__init__`,
-        # antes de a janela existir, e no bundle da S-55 (`console=False`) o traceback nao
-        # aparece em lugar nenhum. O programa nao abre e nao diz por que.
-        logger.exception("settings.json tem uma forma inesperada; abrindo com os padroes.")
-        return apply_environment(Settings(), env=env)
+    return aplicar_ambiente(ler_arquivo(path).valor, env=env)
 
 
-def save_settings(path: Path, settings: Settings) -> None:
-    """Grava as preferências de forma atômica (S-25)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(path, settings.to_dict())
+def save_settings(lida: Lida[ConfiguracaoDoArquivo]) -> None:
+    """Grava a camada de arquivo, de forma atômica (S-25), sobre uma leitura que leu (S-812).
+
+    Só a camada de arquivo: a efetiva tem o ambiente dentro, e gravá-la levaria uma variável de
+    uma sessão de script para o arquivo de todas as sessões (S-811).
+    """
+    lida = gravavel(lida)
+    lida.caminho.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(lida.caminho, lida.valor.para_json())

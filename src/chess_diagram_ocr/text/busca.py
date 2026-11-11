@@ -179,7 +179,7 @@ def padrao_de(
     else:
         partes: list[str] = []
         for caractere in agulha:
-            alternativas = _alternativas(caractere) if casar_figurina else caractere
+            alternativas = _alternativas(caractere, diferenciar_caixa) if casar_figurina else caractere
             partes.append(f"[{re.escape(alternativas)}]" if len(alternativas) > 1 else re.escape(caractere))
         corpo = "".join(partes)
     if palavra_inteira:
@@ -189,11 +189,15 @@ def padrao_de(
     return re.compile(corpo, 0 if diferenciar_caixa else re.IGNORECASE)
 
 
-def _alternativas(caractere: str) -> str:
-    """O caractere mais o que ele pode casar quando a figurina conta. Ele mesmo, quando não há."""
-    maiuscula = caractere.upper()
-    if maiuscula in notacao.FIGURINAS_DA_LETRA:
-        return caractere + notacao.FIGURINAS_DA_LETRA[maiuscula]
+def _alternativas(caractere: str, diferenciar_caixa: bool) -> str:
+    """O caractere mais o que ele pode casar quando a figurina conta. Ele mesmo, quando não há.
+
+    **Com a caixa diferenciada, só a maiúscula é peça** (S-902): `b` minúsculo é a coluna, e
+    `bxc6 -> dxc6` em massa reescrevia o `♗xc6` do livro. Sem diferenciar, `nf3` acha `♘f3`.
+    """
+    inicial = caractere if diferenciar_caixa else caractere.upper()
+    if inicial in notacao.FIGURINAS_DA_LETRA:
+        return caractere + notacao.FIGURINAS_DA_LETRA[inicial]
     letra = notacao.LETRA_DA_FIGURINA.get(caractere)
     if letra is not None:
         return caractere + letra + notacao.FIGURINAS_DA_LETRA[letra]

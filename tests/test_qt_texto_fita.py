@@ -106,8 +106,8 @@ class _Aba(unittest.TestCase):
 
     def selecionar(self, inicio: int, fim: int) -> None:
         cursor = self.painel.editor.textCursor()
-        cursor.setPosition(self.painel._mapa.posicao(inicio))
-        cursor.setPosition(self.painel._mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
+        cursor.setPosition(self.painel.espelho.mapa.posicao(inicio))
+        cursor.setPosition(self.painel.espelho.mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
         self.painel.editor.setTextCursor(cursor)
         self.app.processEvents()
 
@@ -193,24 +193,24 @@ class CorpoEmPontosTests(_Aba):
         doc = rico.aplicar_no_paragrafo(rico.de_pagina(_pagina("grande", "pequeno")), 0, 1, corpo=2)
         self.painel.desenhar_documento(doc)
         self.selecionar(1, 1)
-        base = self.painel._base[0]  # type: ignore[index]
+        base = self.painel.espelho.base[0]  # type: ignore[index]
         from chess_diagram_ocr.ui import tipografia
 
         esperado = tipografia.corpo(2, base=base)
-        self.assertEqual(self.painel.caixa_de_corpo.value(), esperado)
+        self.assertEqual(self.painel.ferramentas.caixa_de_corpo.value(), esperado)
         self.selecionar(0, len(doc.para_texto()))
-        self.assertEqual(self.painel.caixa_de_corpo.value(), self.painel.caixa_de_corpo.minimum(), "o misto não ficou vazio")
+        self.assertEqual(self.painel.ferramentas.caixa_de_corpo.value(), self.painel.ferramentas.caixa_de_corpo.minimum(), "o misto não ficou vazio")
 
     def test_digitar_o_corpo_muda_o_documento_num_passo(self) -> None:
         from paridade_do_texto import divergencias
 
         self.painel.desenhar_documento(rico.de_texto("um parágrafo"))
         self.selecionar(2, 2)
-        passos = len(self.painel._historico)
-        self.painel.caixa_de_corpo.setValue(self.painel.caixa_de_corpo.value() + 3)
-        self.painel._corpo_digitado()
+        passos = len(self.painel.espelho._historico)
+        self.painel.ferramentas.caixa_de_corpo.setValue(self.painel.ferramentas.caixa_de_corpo.value() + 3)
+        self.painel.ferramentas._corpo_digitado()
         self.assertEqual({c.atributos.corpo for c in self.painel.documento.corridas if c.texto.strip()}, {3})
-        self.assertEqual(len(self.painel._historico), passos + 1)
+        self.assertEqual(len(self.painel.espelho._historico), passos + 1)
         self.assertEqual(divergencias(self.painel), [])
 
 
@@ -218,7 +218,7 @@ class GaleriaTests(_Aba):
     """S-651."""
 
     def test_cada_amostra_no_proprio_estilo_e_a_do_cursor_marcada(self) -> None:
-        for estilo, amostra in self.painel.amostras.items():
+        for estilo, amostra in self.painel.ferramentas.amostras.items():
             with self.subTest(estilo=estilo or "normal"):
                 esperada = formato_de(rico.Corrida(estilo or "Normal", rico.Atributos(estilo=estilo))).font()
                 self.assertEqual((amostra.font().family(), amostra.font().pointSize(), amostra.font().bold()),
@@ -226,7 +226,7 @@ class GaleriaTests(_Aba):
         doc = rico.aplicar_estilo(rico.de_pagina(_pagina("Abertura", "prosa")), 0, 1, "titulo")
         self.painel.desenhar_documento(doc)
         self.selecionar(2, 2)
-        self.assertTrue(self.painel.amostras["titulo"].isChecked())
+        self.assertTrue(self.painel.ferramentas.amostras["titulo"].isChecked())
 
 
 class PincelTests(_Aba):
@@ -242,17 +242,17 @@ class PincelTests(_Aba):
         self.selecionar(1, 1)
         self.painel.copiar_formato()
         self.selecionar(7, 7)
-        passos = len(self.painel._historico)
+        passos = len(self.painel.espelho._historico)
         self.painel.colar_formato()
         fraca = next(c for c in self.painel.documento.corridas if "fraco" in c.texto)
         self.assertTrue(fraca.atributos.negrito)
         self.assertEqual(fraca.atributos.cor, "nota")
         self.assertEqual(fraca.faixa, faixas_antes.get("fraco", fraca.faixa), "o pincel levou a faixa do motor")
-        self.assertEqual(len(self.painel._historico), passos + 1)
+        self.assertEqual(len(self.painel.espelho._historico), passos + 1)
         self.assertEqual(divergencias(self.painel), [])
         self.selecionar(8, 8)
         self.assertTrue(self.painel.fita.botoes["negrito"].isChecked())
-        self.assertIsNone(self.painel._pincel, "o pincel de um uso continuou armado")
+        self.assertIsNone(self.painel.correcao._pincel, "o pincel de um uso continuou armado")
 
     def test_esc_desarma(self) -> None:
         self.painel.desenhar_documento(rico.de_texto("um bispo"))
@@ -260,7 +260,7 @@ class PincelTests(_Aba):
         self.painel.copiar_formato()
         self.painel.editor.setFocus()
         QTest.keyClick(self.painel.editor, Qt.Key.Key_Escape)
-        self.assertIsNone(self.painel._pincel)
+        self.assertIsNone(self.painel.correcao._pincel)
 
 
 class NavegacaoTests(_Aba):
@@ -276,7 +276,7 @@ class NavegacaoTests(_Aba):
         lista = self.painel.navegacao.titulos
         self.assertEqual([lista.item(i).text() for i in range(lista.count())], ["Abertura", "Final"])
         lista.itemClicked.emit(lista.item(1))
-        self.assertEqual(self.painel._mapa.deslocamento(self.painel.editor.textCursor().position()), texto.index("Final"))
+        self.assertEqual(self.painel.espelho.mapa.deslocamento(self.painel.editor.textCursor().position()), texto.index("Final"))
 
     def test_tres_achados_e_o_clique_no_terceiro_seleciona(self) -> None:
         from chess_diagram_ocr.qt.painel_de_navegacao import RESULTADOS
@@ -290,7 +290,7 @@ class NavegacaoTests(_Aba):
         self.assertEqual(lista.count(), 3)
         lista.itemClicked.emit(lista.item(2))
         self.assertEqual(self.painel.editor.textCursor().selectedText(), "Nf3")
-        self.assertEqual(self.painel._intervalo()[0], texto.rindex("Nf3"))
+        self.assertEqual(self.painel.espelho.intervalo()[0], texto.rindex("Nf3"))
 
 
 class OrcamentoTests(unittest.TestCase):
@@ -345,21 +345,21 @@ class CorPartidaTests(_Aba):
         segunda = texto_cores.nomes()[1]
         self.painel.desenhar_documento(rico.de_texto("um bispo e um cavalo"))
         self.selecionar(3, 8)
-        acao = next(a for a in self.painel.cor_rapida.menu().actions() if a.text() == segunda.capitalize())
+        acao = next(a for a in self.painel.ferramentas.cor_rapida.menu().actions() if a.text() == segunda.capitalize())
         acao.trigger()
         self.assertEqual(rico.valor_em_todo(self.painel.documento, 3, 8, "cor"), segunda)
-        self.assertEqual(self.painel.cor_rapida.text(), segunda.capitalize())
+        self.assertEqual(self.painel.ferramentas.cor_rapida.text(), segunda.capitalize())
         self.selecionar(14, 20)
-        self.painel.cor_rapida.click()
+        self.painel.ferramentas.cor_rapida.click()
         self.assertEqual(rico.valor_em_todo(self.painel.documento, 14, 20, "cor"), segunda, "o clique não repetiu a última")
-        self.painel.realce_rapido.click()
+        self.painel.ferramentas.realce_rapido.click()
         self.assertEqual(rico.valor_em_todo(self.painel.documento, 14, 20, "realce"), texto_cores.nomes()[0])
         estado = AppState()
         self.painel.anotar_estado(estado)
         self.assertEqual(estado.texto_ultima_cor, segunda)
 
     def test_os_dois_estao_na_fita_com_nome(self) -> None:
-        self.assertEqual(self.painel.cor_rapida.accessibleName(), "Cor da letra: a última usada")
+        self.assertEqual(self.painel.ferramentas.cor_rapida.accessibleName(), "Cor da letra: a última usada")
         self.assertIn("@cor_rapida", fita_do_texto.controles())
 
 
@@ -371,14 +371,14 @@ class BarraDeEstadoTests(_Aba):
         self.painel.desenhar_documento(rico.de_texto(texto))
         fim = len(" ".join(f"p{i}" for i in range(12)))
         self.selecionar(0, fim)
-        self.assertEqual(self.painel.caixa_de_palavras.text(), "12 de 357 palavras")
+        self.assertEqual(self.painel.vista.caixa_de_palavras.text(), "12 de 357 palavras")
         self.painel.estado.emit("um recado qualquer")
-        self.assertFalse(self.painel.recado.isHidden())
-        self.assertTrue(self.painel.caixa_de_palavras.isHidden())
-        self.assertEqual(self.painel._relogio_do_recado.interval(), 6000)
-        self.painel._relogio_do_recado.timeout.emit()
-        self.assertTrue(self.painel.recado.isHidden())
-        self.assertFalse(self.painel.caixa_de_palavras.isHidden())
+        self.assertFalse(self.painel.vista.recado.isHidden())
+        self.assertTrue(self.painel.vista.caixa_de_palavras.isHidden())
+        self.assertEqual(self.painel.vista._relogio_do_recado.interval(), 6000)
+        self.painel.vista._relogio_do_recado.timeout.emit()
+        self.assertTrue(self.painel.vista.recado.isHidden())
+        self.assertFalse(self.painel.vista.caixa_de_palavras.isHidden())
 
     def test_montar_o_painel_nao_levanta_no_filtro_de_eventos(self) -> None:
         """O filtro entra no editor antes de o rodapé existir, e os eventos de montar o corpo
@@ -414,7 +414,7 @@ class DesfazerComRotuloTests(_Aba):
             self.selecionar(inicio, fim)
             self.painel.executar(acao)
             documentos.append(self.painel.documento)
-        rotulos = list(reversed(self.painel._rotulos_do_historico))
+        rotulos = list(reversed(self.painel.espelho._rotulos_do_historico))
         from chess_diagram_ocr.ui import comandos
 
         self.assertEqual(rotulos[0], comandos.rotulo_de_botao("negrito"))
@@ -431,20 +431,20 @@ class LexicoTests(_Aba):
         self.painel.mostrar_pagina(_pagina("o p/ayer joga"))
         with mock.patch("chess_diagram_ocr.text.dicionario.carregar", return_value=frozenset({"o", "player", "payer", "joga"})):
             self.painel.marcar_fora_do_lexico()
-            self.assertEqual(self.painel._fora_do_lexico, [(2, 8)])
+            self.assertEqual(self.painel.correcao._fora_do_lexico, [(2, 8)])
             from PyQt6.QtWidgets import QMenu
 
             menu = QMenu()
             self.addCleanup(menu.deleteLater)
             sobre = QTextCursor(self.painel.editor.document())
-            sobre.setPosition(self.painel._mapa.posicao(4))
+            sobre.setPosition(self.painel.espelho.mapa.posicao(4))
             ponto = self.painel.editor.cursorRect(sobre).center()
-            self.painel._sugestoes_no_menu(menu, ponto)
+            self.painel.correcao.sugestoes_no_menu(menu, ponto)
             self.assertEqual(menu.actions()[0].text(), "player")
-            passos = len(self.painel._historico)
+            passos = len(self.painel.espelho._historico)
             menu.actions()[0].trigger()
         self.assertIn("o player joga", self.painel.documento.para_texto())
-        self.assertEqual(len(self.painel._historico), passos + 1)
+        self.assertEqual(len(self.painel.espelho._historico), passos + 1)
         self.assertEqual(self.painel._correcoes, 1)
 
     def test_f7_vai_a_proxima_marcada(self) -> None:

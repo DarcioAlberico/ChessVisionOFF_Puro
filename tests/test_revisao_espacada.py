@@ -18,11 +18,13 @@ from __future__ import annotations
 import json
 import unittest
 from datetime import date, timedelta
+from typing import Any
 
 from ambiente_de_teste import pasta_temporaria
 
 from chess_diagram_ocr import revisao_arquivo
 from chess_diagram_ocr import revisao_espacada as fsrs
+from chess_diagram_ocr.arquivo_do_dono import EsquemaFuturo, GravacaoRecusada, Lida, gravavel
 
 HOJE = date(2026, 9, 4)
 
@@ -340,9 +342,9 @@ class ArquivoTests(unittest.TestCase):
         não pode mudar é o que se lê de volta -- e uma segunda gravação dá byte a byte o mesmo
         arquivo, que é a propriedade que importa para um arquivo relido todo dia."""
         baralho = self._baralho()
-        revisao_arquivo.gravar(baralho, caminho=self.caminho)
+        revisao_arquivo.gravar(Lida(revisao_arquivo.BaralhoDoArquivo(baralho), self.caminho))
         primeira = self.caminho.read_bytes()
-        lido = revisao_arquivo.carregar(caminho=self.caminho)
+        lido = revisao_arquivo.carregar(caminho=self.caminho).valor.estados
         self.assertEqual(sorted(baralho), sorted(lido))
         um = next(iter(baralho.values()))
         outro = lido[um.chave]
@@ -350,31 +352,70 @@ class ArquivoTests(unittest.TestCase):
         self.assertEqual(um.historico, outro.historico)
         self.assertEqual(2, len(outro.historico))
         self.assertAlmostEqual(um.estabilidade, outro.estabilidade, places=3)
-        revisao_arquivo.gravar(lido, caminho=self.caminho)
+        revisao_arquivo.gravar(Lida(revisao_arquivo.BaralhoDoArquivo(lido), self.caminho))
         self.assertEqual(primeira, self.caminho.read_bytes())
 
     def test_arquivo_ausente_e_baralho_vazio(self) -> None:
-        self.assertEqual({}, revisao_arquivo.carregar(caminho=self.pasta / "nunca.json"))
+        self.assertEqual({}, revisao_arquivo.carregar(caminho=self.pasta / "nunca.json").valor.estados)
 
     def test_baralho_vazio_grava_e_nao_ressuscita_o_antigo(self) -> None:
         """**A diferença para a sala de estudo**: aqui o vazio pode querer dizer "apaguei o
         histórico", e deixar o arquivo antigo o traria de volta na abertura seguinte."""
-        revisao_arquivo.gravar(self._baralho(), caminho=self.caminho)
-        revisao_arquivo.gravar({}, caminho=self.caminho)
+        revisao_arquivo.gravar(Lida(revisao_arquivo.BaralhoDoArquivo(self._baralho()), self.caminho))
+        revisao_arquivo.gravar(Lida(revisao_arquivo.BaralhoDoArquivo({}), self.caminho))
         self.assertTrue(self.caminho.exists())
-        self.assertEqual({}, revisao_arquivo.carregar(caminho=self.caminho))
+        self.assertEqual({}, revisao_arquivo.carregar(caminho=self.caminho).valor.estados)
 
     def test_um_item_corrompido_nao_derruba_os_outros(self) -> None:
         """É o único dado deste programa que não se refaz varrendo o livro de novo."""
-        revisao_arquivo.gravar(self._baralho(3), caminho=self.caminho)
+        revisao_arquivo.gravar(Lida(revisao_arquivo.BaralhoDoArquivo(self._baralho(3)), self.caminho))
         dados = json.loads(self.caminho.read_text(encoding="utf-8"))
         dados["itens"][0]["vencimento"] = "isto-nao-e-data"
         self.caminho.write_text(json.dumps(dados), encoding="utf-8")
-        self.assertEqual(2, len(revisao_arquivo.carregar(caminho=self.caminho)))
+        self.assertEqual(2, len(revisao_arquivo.carregar(caminho=self.caminho).valor.estados))
 
     def test_esquema_do_futuro_nao_e_lido_pela_metade(self) -> None:
         self.caminho.write_text(json.dumps({"esquema": 99, "itens": []}), encoding="utf-8")
-        self.assertEqual({}, revisao_arquivo.carregar(caminho=self.caminho))
+        self.assertEqual({}, revisao_arquivo.carregar(caminho=self.caminho).valor.estados)
+
+    def _gravar_a_mao(self, itens: list[dict[str, Any]], esquema: object = 1) -> bytes:
+        self.caminho.write_text(json.dumps({"esquema": esquema, "itens": itens}), encoding="utf-8")
+        return self.caminho.read_bytes()
+
+    def _itens(self, quantos: int = 3) -> list[dict[str, Any]]:
+        return [e.para_json() for e in sorted(self._baralho(quantos).values(), key=lambda e: e.chave)]
+
+    def test_item_ruim_volta_igual_na_gravacao(self) -> None:
+        """**S-813.** O item que não lê não é agendado, mas é guardado cru e devolvido na gravação:
+        antes, a primeira sessão depois da corrupção o apagava, com os meses de revisão dele."""
+        itens = self._itens(3)
+        ruim = dict(itens[1])
+        ruim["vencimento"] = "isto-nao-e-data"
+        itens[1] = ruim
+        self._gravar_a_mao(itens)
+        leitura = revisao_arquivo.carregar(caminho=self.caminho)
+        self.assertIsInstance(leitura, Lida)
+        revisao_arquivo.gravar(gravavel(leitura))
+        gravados = json.loads(self.caminho.read_text(encoding="utf-8"))["itens"]
+        self.assertIn(ruim, gravados, "o item ruim volta igual")
+        self.assertEqual(3, len(gravados))
+        self.assertEqual(2, len(leitura.valor.estados), "e não é agendado")
+
+    def test_esquema_em_texto_le_como_numero(self) -> None:
+        """`"esquema": "1.0"` é o esquema 1 escrito à mão; antes travava o baralho inteiro."""
+        self._gravar_a_mao(self._itens(3), esquema="1.0")
+        leitura = revisao_arquivo.carregar(caminho=self.caminho)
+        self.assertIsInstance(leitura, Lida)
+        self.assertEqual(3, len(leitura.valor.estados))
+
+    def test_baralho_de_esquema_futuro_nao_e_sobrescrito(self) -> None:
+        """`"2.0"` é esquema futuro, e não ilegível: a frase manda abrir na versão que o gravou."""
+        original = self._gravar_a_mao(self._itens(3), esquema="2.0")
+        leitura = revisao_arquivo.carregar(caminho=self.caminho)
+        self.assertIsInstance(leitura, EsquemaFuturo)
+        with self.assertRaises(GravacaoRecusada):
+            revisao_arquivo.gravar(gravavel(leitura))
+        self.assertEqual(original, self.caminho.read_bytes())
 
     def test_mil_itens_com_vinte_revisoes_cabem_em_tres_megabytes(self) -> None:
         """**A medição que justifica guardar o log inteiro** (S-540): ele é a entrada do
@@ -389,10 +430,10 @@ class ArquivoTests(unittest.TestCase):
             for volta in range(19):
                 estado = fsrs.proximo(estado, fsrs.BOM, hoje=HOJE + timedelta(days=volta + 1))
             baralho[chave] = estado
-        revisao_arquivo.gravar(baralho, caminho=self.caminho)
+        revisao_arquivo.gravar(Lida(revisao_arquivo.BaralhoDoArquivo(baralho), self.caminho))
         tamanho = self.caminho.stat().st_size
         self.assertLess(tamanho, 3_000_000, f"o baralho ficou com {tamanho} bytes")
-        self.assertEqual(1000, len(revisao_arquivo.carregar(caminho=self.caminho)))
+        self.assertEqual(1000, len(revisao_arquivo.carregar(caminho=self.caminho).valor.estados))
 
     def test_a_gravacao_e_atomica(self) -> None:
         from pathlib import Path

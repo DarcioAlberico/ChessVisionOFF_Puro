@@ -30,6 +30,7 @@ import chess
 from ambiente_de_teste import pasta_temporaria
 from fake_uci_engine import ENGINE_NAME
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, cor_em, descartar, pixels_diferentes, renderizar
+from tempo_da_suite import limite, limite_ms
 from test_engine import _launcher
 
 from chess_diagram_ocr import tablebase
@@ -308,11 +309,11 @@ class AnaliseDaPartidaTests(unittest.TestCase):
         self.assertTrue(_girar(self.app, lambda: len(rodada.resultado) or rodada.ocupado, 2.0))
         inicio = time.monotonic()
         rodada.cancelar()
-        parou = rodada.esperar(1500)
+        parou = rodada.esperar(limite_ms(1500))
         gasto = time.monotonic() - inicio
         self.app.processEvents()
         self.assertTrue(parou, "a rodada não parou em 1,5 s")
-        self.assertLess(gasto, 1.5)
+        self.assertLess(gasto, limite(1.5))
         self.assertFalse(rodada.ocupado)
 
     def test_o_que_ja_foi_avaliado_fica(self) -> None:
@@ -517,7 +518,7 @@ class _Sala(unittest.TestCase):
 
     def analisar(self, painel: Any) -> None:
         painel.analyse()
-        self.assertTrue(_girar(self.app, lambda: not painel._analysing and painel._candidatos))
+        self.assertTrue(_girar(self.app, lambda: not painel.motor._analysing and painel.motor._candidatos))
 
 
 class PainelComMotorTests(_Sala):
@@ -543,10 +544,10 @@ class PainelComMotorTests(_Sala):
     def test_a_analise_enche_barra_linhas_e_desempenho(self) -> None:
         painel = self.sala(self.motor(multipv=3))
         self.analisar(painel)
-        self.assertEqual(3, len(painel.lbl_linha_do_motor.texto_das_linhas()))
-        self.assertIn("1. ", painel.lbl_linha_do_motor.texto_das_linhas()[0])
-        self.assertIn("profundidade 12", painel.lbl_desempenho.text())
-        self.assertIn("N/s", painel.lbl_desempenho.text())
+        self.assertEqual(3, len(painel.motor.lbl_linha_do_motor.texto_das_linhas()))
+        self.assertIn("1. ", painel.motor.lbl_linha_do_motor.texto_das_linhas()[0])
+        self.assertIn("profundidade 12", painel.motor.lbl_desempenho.text())
+        self.assertIn("N/s", painel.motor.lbl_desempenho.text())
         self.assertNotEqual(0.5, painel.vantagem.fracao)
 
     def test_o_clique_numa_linha_do_multipv_poe_a_variante_na_arvore(self) -> None:
@@ -554,8 +555,8 @@ class PainelComMotorTests(_Sala):
         ele chama: o teste emite o sinal e afirma o efeito na árvore (S-529)."""
         painel = self.sala(self.motor(multipv=3))
         self.analisar(painel)
-        segunda = painel._candidatos[1].pv_san[0]
-        painel.lbl_linha_do_motor.escolhida.emit(2)
+        segunda = painel.motor._candidatos[1].pv_san[0]
+        painel.motor.lbl_linha_do_motor.escolhida.emit(2)
         self.app.processEvents()
         filhos = [painel.estudo.raiz.board().san(no.move) for no in painel.estudo.raiz.variations]
         self.assertIn(segunda, filhos)
@@ -564,7 +565,7 @@ class PainelComMotorTests(_Sala):
         """O que a máquina sugeriu e o que a pessoa jogou não podem ficar indistinguíveis."""
         painel = self.sala(self.motor(multipv=3))
         self.analisar(painel)
-        painel.inserir_linha_do_motor(1)
+        painel.motor.inserir_linha_do_motor(1)
         primeiro = painel.estudo.raiz.variations[0]
         self.assertIn("motor", primeiro.starting_comment.casefold() + self.launcher.name.casefold())
 
@@ -574,7 +575,7 @@ class PainelComMotorTests(_Sala):
         painel = self.sala(self.motor(multipv=3))
         self.analisar(painel)
         antes = painel.estudo.no
-        painel.inserir_linha_do_motor(1)
+        painel.motor.inserir_linha_do_motor(1)
         self.assertIs(antes, painel.estudo.no)
 
     def test_a_barra_da_sala_espelha_quando_o_tabuleiro_e_virado(self) -> None:
@@ -603,16 +604,16 @@ class PainelComMotorTests(_Sala):
         sobe na primeira análise (S-33), então na hora de desenhar a seção só há o nome do arquivo.
         """
         painel = self.sala(self.motor())
-        self.assertEqual(f"Motor ({self.launcher.name})", painel.caixa_do_motor.title())
+        self.assertEqual(f"Motor ({self.launcher.name})", painel.motor.caixa_do_motor.title())
         self.analisar(painel)
-        self.assertEqual(f"Motor ({ENGINE_NAME})", painel.caixa_do_motor.title())
+        self.assertEqual(f"Motor ({ENGINE_NAME})", painel.motor.caixa_do_motor.title())
 
     def test_pedir_uma_linha_que_o_motor_nao_deu_vira_frase(self) -> None:
         painel = self.sala(self.motor(multipv=1))
         self.analisar(painel)
         vistos: list[str] = []
         painel.estado.connect(vistos.append)
-        painel.inserir_linha_do_motor(3)
+        painel.motor.inserir_linha_do_motor(3)
         self.assertTrue(any("ainda não respondeu" in frase for frase in vistos))
 
 
@@ -620,7 +621,7 @@ class OpcoesDoMotorTests(_Sala):
     """As opções aplicadas sem reiniciar (S-536)."""
 
     def _aplicar(self, painel: Any, antes: EngineSettings, depois: EngineSettings) -> Any:
-        vivo = painel.aplicar_opcoes_do_motor(antes, depois)
+        vivo = painel.motor.aplicar_opcoes_do_motor(antes, depois)
         self.assertTrue(_girar(self.app, lambda: not vivo.ocupado, 20.0))
         return vivo
 
@@ -660,7 +661,7 @@ class OpcoesDoMotorTests(_Sala):
         e o `close()` mais o `popen_uci` do seguinte custam centenas de milissegundos."""
         analisador = self.motor()
         painel = self.sala(analisador)
-        vivo = painel.aplicar_opcoes_do_motor(
+        vivo = painel.motor.aplicar_opcoes_do_motor(
             EngineSettings(path=str(self.launcher)),
             EngineSettings(path=str(_launcher(type(self)))),
         )
@@ -680,7 +681,7 @@ class OpcoesDoMotorTests(_Sala):
         self.assertIs(do_processo, analisador._engine)
         self.assertEqual(1, analisador.multipv)
         self.analisar(painel)
-        self.assertEqual(1, len(painel._candidatos))
+        self.assertEqual(1, len(painel.motor._candidatos))
 
     def test_um_caminho_sem_motor_apaga_a_secao_em_vez_de_deixa_la_cinza(self) -> None:
         """É a S-33 aplicada à troca: apontar para um binário que não existe é ficar sem motor."""
@@ -691,9 +692,9 @@ class OpcoesDoMotorTests(_Sala):
             EngineSettings(path=str(self.launcher)),
             EngineSettings(path=str(self.pasta / "nao-existe.exe")),
         )
-        self.assertFalse(painel.has_engine)
-        self.assertTrue(painel.caixa_do_motor.isHidden())
-        self.assertIsNone(painel.analisador)
+        self.assertFalse(painel.motor.has_engine)
+        self.assertTrue(painel.motor.caixa_do_motor.isHidden())
+        self.assertIsNone(painel.motor.analisador)
 
     def test_uma_sala_sem_motor_ganha_a_secao_e_a_barra_sem_reiniciar(self) -> None:
         """O caso que mais importa: a máquina em que a procura automática não achou nada, e a
@@ -701,10 +702,10 @@ class OpcoesDoMotorTests(_Sala):
         painel = self.sala(None)
         self.assertNotIn("analise_continua", painel.barra.acoes)
         self._aplicar(painel, EngineSettings(), EngineSettings(path=str(self.launcher)))
-        self.assertTrue(painel.has_engine)
+        self.assertTrue(painel.motor.has_engine)
         self.assertIn("analise_continua", painel.barra.acoes)
         self.assertEqual(3, painel.divisor_vertical.count())
-        self.addCleanup(lambda: painel.analisador and painel.analisador.close())
+        self.addCleanup(lambda: painel.motor.analisador and painel.motor.analisador.close())
 
     def test_as_preferencias_ficam_gravadas_para_a_proxima_sessao(self) -> None:
         from chess_diagram_ocr.settings import load_settings
@@ -718,6 +719,23 @@ class OpcoesDoMotorTests(_Sala):
         gravado = load_settings(self.pasta / "settings.json").engine
         self.assertEqual(256, gravado.hash_mb)
         self.assertEqual(4, gravado.multipv)
+
+    def test_settings_que_nao_le_nao_e_gravado_por_cima(self) -> None:
+        """**A leitura travada (S-812).** Uma vírgula sobrando fazia as opções do motor gravarem
+        os padrões por cima do arquivo -- e com eles `endpoint: ''`. Agora a sala aplica o motor
+        em memória, diz por que não gravou, e o arquivo fica como a pessoa o deixou."""
+        caminho = self.pasta / "settings.json"
+        original = b'{"remote_fen": {"endpoint": "https://meu/fen", "enabled": true},}'
+        caminho.write_bytes(original)
+        painel = self.sala(self.motor())
+        self._aplicar(
+            painel,
+            EngineSettings(path=str(self.launcher)),
+            EngineSettings(path=str(self.launcher), multipv=4),
+        )
+        self.assertEqual(original, caminho.read_bytes())
+        self.assertTrue(list(self.pasta.glob("settings.ilegivel-*.json")))
+        self.assertIn("settings.json não pôde ser lido", painel.lbl_status.text())
 
 
 class DialogoDoMotorTests(unittest.TestCase):
@@ -795,7 +813,7 @@ class TablebaseNaSalaTests(_Sala):
 
     def _com_tabela(self, wdl: int, dtz: int | None = None) -> Any:
         painel = self.sala(self.motor())
-        painel._finais = tablebase.Finais(self.pasta, tabela=_TabelaDeMentira(wdl, dtz))
+        painel.motor._finais = tablebase.Finais(self.pasta, tabela=_TabelaDeMentira(wdl, dtz))
         painel.estudo.tabuleiro.set_fen(self.FINAL)
         painel.campo_fen.setText(self.FINAL)
         painel.apply_fen()
@@ -806,14 +824,14 @@ class TablebaseNaSalaTests(_Sala):
         """O motor diz `+0,35` numa posição que ou é ganha ou é tábua -- não existe `+0,35` ali."""
         painel = self._com_tabela(-2, 12)
         self.analisar(painel)
-        self.assertIn("Tabela de finais", painel.lbl_motor.text())
-        self.assertIn("derrota das pretas", painel.lbl_motor.text())
+        self.assertIn("Tabela de finais", painel.motor.lbl_motor.text())
+        self.assertIn("derrota das pretas", painel.motor.lbl_motor.text())
 
     def test_tabuas_poem_a_barra_no_meio(self) -> None:
         """Uma tabela dizendo "tábuas" com a barra em +3,45 é a tela discordando de si mesma."""
         painel = self._com_tabela(0)
         self.analisar(painel)
-        self.assertIn("Tábuas", painel.lbl_motor.text())
+        self.assertIn("Tábuas", painel.motor.lbl_motor.text())
         self.assertEqual(0.5, painel.vantagem.fracao)
 
     def test_sem_pasta_nada_muda(self) -> None:
@@ -821,15 +839,15 @@ class TablebaseNaSalaTests(_Sala):
         painel = self.sala(self.motor())
         painel.estudo.tabuleiro.set_fen(self.FINAL)
         self.analisar(painel)
-        self.assertNotIn("Tabela de finais", painel.lbl_motor.text())
-        self.assertNotIn("Tábuas", painel.lbl_motor.text())
+        self.assertNotIn("Tabela de finais", painel.motor.lbl_motor.text())
+        self.assertNotIn("Tábuas", painel.motor.lbl_motor.text())
 
     def test_as_linhas_do_motor_continuam_sendo_as_do_motor(self) -> None:
         """A tabela diz o **resultado**, não a variante: ela substitui uma parte da tela e não a
         seção inteira."""
         painel = self._com_tabela(2, 5)
         self.analisar(painel)
-        self.assertTrue(painel.lbl_linha_do_motor.texto_das_linhas())
+        self.assertTrue(painel.motor.lbl_linha_do_motor.texto_das_linhas())
 
 
 class PartidaAnalisadaNaSalaTests(_Sala):
@@ -847,7 +865,7 @@ class PartidaAnalisadaNaSalaTests(_Sala):
             declarada.Avaliado(ply=2, numero=1, brancas=False, san="e5", centipeoes=-400,
                                mate_em=None, perda=430, juizo=declarada.ERRO_GRAVE),
         ]
-        janela = painel._chegou_a_analise_da_partida(avaliados)
+        janela = painel.motor._chegou_a_analise_da_partida(avaliados)
         if janela is not None:
             self.addCleanup(descartar, janela)
         primeiro = painel.estudo.raiz.variations[0]
@@ -878,7 +896,7 @@ class PartidaAnalisadaNaSalaTests(_Sala):
             declarada.Avaliado(ply=4, numero=2, brancas=False, san="Qh4#", centipeoes=-1000,
                                mate_em=-1, perda=0, juizo="", acabou=True),
         ]
-        janela = painel._chegou_a_analise_da_partida(avaliados)
+        janela = painel.motor._chegou_a_analise_da_partida(avaliados)
         if janela is not None:
             self.addCleanup(descartar, janela)
         mate = painel.estudo.raiz.variations[0].variations[0].variations[0].variations[0]
@@ -890,7 +908,7 @@ class PartidaAnalisadaNaSalaTests(_Sala):
         # ser um afogamento, e afogar no lugar de matar é justamente o `??` que esta passada existe
         # para achar: o símbolo continua sendo escrito no lance que a acabou.
         afogou = [*avaliados[:-1], replace(avaliados[-1], juizo=declarada.ERRO_GRAVE)]
-        self.assertEqual(2, painel._marcar_os_lances(afogou))
+        self.assertEqual(2, painel.motor._marcar_os_lances(afogou))
         self.assertIn(declarada.NAG_DE_JUIZO[declarada.ERRO_GRAVE], mate.nags)
         self.assertNotIn("%eval", mate.comment)
 

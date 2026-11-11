@@ -390,5 +390,51 @@ class DescricaoDoCheckpointTests(unittest.TestCase):
             self.assertEqual(set(presente) - set(ausente), set())
 
 
+SRC = Path(__file__).resolve().parents[1] / "src"
+"""Ancorado no arquivo do teste, e não em `PROJECT_ROOT`: num worktree aquele é o checkout
+principal, e a guarda varreria a árvore errada (memória "guarda de caminho é vácua")."""
+
+PISO_DE_CARGAS = 3
+"""As três cargas de 2026-11-09: `checkpoint._load_raw`, `cli/texto_train.py` e `text/modelo.py`.
+Menos que isto quer dizer que a varredura deixou de achá-las, não que elas sumiram."""
+
+
+def _cargas_do_torch() -> list[tuple[str, int, bool]]:
+    """Cada `torch.load(...)` de `src/`: arquivo, linha, e se passa `weights_only=True` literal."""
+    import ast
+
+    cargas: list[tuple[str, int, bool]] = []
+    for arquivo in sorted(SRC.rglob("*.py")):
+        arvore = ast.parse(arquivo.read_bytes(), filename=str(arquivo))
+        for no in ast.walk(arvore):
+            if not (
+                isinstance(no, ast.Call)
+                and isinstance(no.func, ast.Attribute)
+                and no.func.attr == "load"
+                and isinstance(no.func.value, ast.Name)
+                and no.func.value.id == "torch"
+            ):
+                continue
+            seguro = any(
+                k.arg == "weights_only" and isinstance(k.value, ast.Constant) and k.value.value is True
+                for k in no.keywords
+            )
+            cargas.append((arquivo.relative_to(SRC).as_posix(), no.lineno, seguro))
+    return cargas
+
+
+class CargaSoComWeightsOnlyTests(unittest.TestCase):
+    """S-845: todo `torch.load` de `src/` passa `weights_only=True` explícito.
+
+    Não há teste que falhe primeiro: o torch exigido (`>= 2.6`) já carrega só pesos por padrão,
+    e um `.pt` com `__reduce__` arbitrário já dá `UnpicklingError`. O que se trava é não
+    depender desse padrão, nem de um recurso que o desligava num torch antigo."""
+
+    def test_toda_carga_passa_weights_only(self) -> None:
+        cargas = _cargas_do_torch()
+        self.assertGreaterEqual(len(cargas), PISO_DE_CARGAS, f"a varredura achou só {cargas}")
+        self.assertEqual([(a, linha) for a, linha, seguro in cargas if not seguro], [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -165,7 +165,7 @@ def texto_de_estatisticas(linhas: Sequence[DatasetRow]) -> str:
     classes = class_distribution(linhas)
     total = sum(classes.values()) or 1
     saida = ["Casas por classe:"]
-    saida += [f"  {name:>6}: {count:>7} ({count / total:.2%})" for name, count in classes.most_common()]
+    saida += [f"  {name:>6}: {count:>7} ({formato.porcentagem(count / total, casas=2)})" for name, count in classes.most_common()]
     saida += ["", "Amostras por split: " + ", ".join(f"{k} {v}" for k, v in sorted(split_distribution(linhas).items()))]
     saida += ["", "Amostras por livro:"]
     saida += [f"  {name}: {count}" for name, count in source_distribution(linhas).most_common(10)]

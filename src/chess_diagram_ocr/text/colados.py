@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
+from typing import Literal, Protocol
 
 import numpy as np
 
@@ -63,38 +64,73 @@ GANHO_MINIMO = 0.05
 temperatura do modelo mudar, este limiar precisa ser remedido."""
 
 
-def _perfil_vertical(binaria: np.ndarray, caixa: Caixa) -> np.ndarray:
-    """Tinta por coluna do recorte. É onde o vale entre dois caracteres colados aparece."""
+Eixo = Literal["x", "y"]
+"""`x` procura a coluna de menos tinta (dois caracteres lado a lado, este módulo); `y`, a linha (duas linhas
+empilhadas, `duas_linhas`)."""
+
+
+def vale_no_eixo(binaria: np.ndarray, caixa: Caixa, eixo: Eixo, *, margem_do_vale: float = MARGEM_DO_VALE) -> int | None:
+    """O corte com menos tinta ao longo de `eixo`, em coordenadas da página. `None` quando não há vale.
+
+    **Uma conta para os dois gêmeos** (S-852): este módulo e `duas_linhas` tinham o perfil e o vale copiados,
+    um por coluna e o outro por linha. Ignora as pontas (`margem_do_vale`) -- o mínimo colado na borda é o fim
+    do próprio glifo, e cortar ali produz um pedaço vazio -- e exige que o mínimo esteja **abaixo da média**
+    do perfil: sem isso, uma letra sozinha de traço uniforme produziria um "vale" em qualquer lugar.
+    """
     recorte = caixa.recortar(binaria)
     if recorte.size == 0:
-        return np.zeros(0, dtype=np.float64)
-    return (recorte > 0).mean(axis=0)
-
-
-def vale(binaria: np.ndarray, caixa: Caixa) -> int | None:
-    """A coluna com menos tinta, em coordenadas da página. `None` quando não há vale.
-
-    Ignora as pontas (`MARGEM_DO_VALE`) e exige que o mínimo esteja **abaixo da média** do
-    perfil: sem isso, uma letra sozinha de traço uniforme produziria um "vale" em qualquer lugar.
-    """
-    perfil = _perfil_vertical(binaria, caixa)
+        return None
+    perfil = (recorte > 0).mean(axis=0 if eixo == "x" else 1)
     if perfil.size < 3:
         return None
 
-    margem = max(1, int(len(perfil) * MARGEM_DO_VALE))
+    margem = max(1, int(len(perfil) * margem_do_vale))
     miolo = perfil[margem : len(perfil) - margem]
     if miolo.size == 0:
         return None
     if float(miolo.min()) >= float(perfil.mean()):
         return None
-    return caixa.x1 + margem + int(miolo.argmin())
+    return (caixa.x1 if eixo == "x" else caixa.y1) + margem + int(miolo.argmin())
+
+
+def vale(binaria: np.ndarray, caixa: Caixa) -> int | None:
+    """A coluna com menos tinta, em coordenadas da página. `None` quando não há vale. Ver `vale_no_eixo`."""
+    return vale_no_eixo(binaria, caixa, "x")
+
+
+class Classificador(Protocol):
+    """O que o árbitro pede do classificador: um `(caractere, confiança)` por recorte."""
+
+    def classificar(self, recortes: list[np.ndarray]) -> list[tuple[str, float]]: ...
+
+
+Arbitro = Callable[[Sequence[Caixa]], float]
+
+
+def arbitro_de_confianca(cinza: np.ndarray, classificador: Classificador) -> Arbitro:
+    """Caixas -> confiança média delas: o árbitro do separador de colado e do corte de linha (S-186, S-198).
+
+    **Um só, e é o que roda** (S-852). Estava em três cópias -- `text/leitor.py` e os dois CLIs que mediram os
+    dois cortes --, com um comentário que justificava a cópia: se o separador for medido com um árbitro e rodar
+    com outro, a tabela que decidiu ligá-lo deixa de descrever o que está ligado. Recorte vazio não vota.
+    """
+
+    def julgar(caixas: Sequence[Caixa]) -> float:
+        recortes = [c.recortar(cinza) for c in caixas]
+        recortes = [r for r in recortes if r.size]
+        if not recortes:
+            return 0.0
+        lidos = classificador.classificar(recortes)
+        return float(sum(c for _, c in lidos) / len(lidos)) if lidos else 0.0
+
+    return julgar
 
 
 def partir(
     caixa: Caixa,
     corte: int,
     *,
-    arbitro: Callable[[Sequence[Caixa]], float] | None = None,
+    arbitro: Arbitro | None = None,
     modo: str = AUTO,
 ) -> list[Caixa]:
     """A caixa partida em duas no `corte`, ou intacta quando o árbitro não confirma.
@@ -108,8 +144,8 @@ def partir(
     if corte <= caixa.x1 or corte >= caixa.x2:
         return [caixa]
 
-    esquerda = Caixa(caixa.x1, caixa.y1, corte, caixa.y2, caixa.angulo)
-    direita = Caixa(corte, caixa.y1, caixa.x2, caixa.y2, caixa.angulo)
+    esquerda = Caixa(caixa.x1, caixa.y1, corte, caixa.y2)
+    direita = Caixa(corte, caixa.y1, caixa.x2, caixa.y2)
     if modo == SEMPRE:
         return [esquerda, direita]
     if arbitro is None:
@@ -125,7 +161,7 @@ def separar(
     caixas: Sequence[Caixa],
     *,
     escala: int,
-    arbitro: Callable[[Sequence[Caixa]], float] | None = None,
+    arbitro: Arbitro | None = None,
     modo: str = PADRAO,
 ) -> list[Caixa]:
     """As caixas com as coladas partidas, na ordem de leitura da esquerda para a direita.
@@ -156,12 +192,17 @@ def separar(
 __all__ = [
     "AUTO",
     "GANHO_MINIMO",
+    "Arbitro",
+    "Classificador",
+    "Eixo",
     "LARGURA_SUSPEITA",
     "MODOS",
     "NUNCA",
     "PADRAO",
     "SEMPRE",
+    "arbitro_de_confianca",
     "partir",
     "separar",
     "vale",
+    "vale_no_eixo",
 ]
